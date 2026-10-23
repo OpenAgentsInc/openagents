@@ -145,6 +145,9 @@ pub async fn guard(
     let Some(token) = bearer(request.headers(), &query).filter(|v| v.len() <= 4096) else {
         return refuse(request, StatusCode::UNAUTHORIZED).await;
     };
+    if request.uri().path().starts_with("/visit/") && !room_token::is_room_token(&token) {
+        return refuse(request, StatusCode::UNAUTHORIZED).await;
+    }
     if room_token::is_room_token(&token) {
         return match room(&state, &request, &query, &token) {
             Ok(admitted) => {
@@ -158,9 +161,14 @@ pub async fn guard(
                 request
                     .headers_mut()
                     .insert(super::proof::EXPIRY_HEADER, expiry);
-                request
-                    .headers_mut()
-                    .insert(ROOM_HEADER, HeaderValue::from_static("1"));
+                request.headers_mut().insert(
+                    ROOM_HEADER,
+                    HeaderValue::from_static(if admitted.room == room_token::Room::Visit {
+                        "visit"
+                    } else {
+                        "1"
+                    }),
+                );
                 next.run(request).await
             }
             Err(status) => refuse(request, status).await,

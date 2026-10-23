@@ -21,6 +21,8 @@ const projects = [];
 let delayCreate=false, releaseCreate, createArrived;
 const fixtureKey = "oak_fixture.synthetic-browser-key";
 const fixtureToken = "sess_" + "a".repeat(64);
+const visitorToken="sess_"+"b".repeat(64),visitorKey="oak_fixture.synthetic-visitor";
+let visitorActive=true;
 let active = true;
 let failMembership=false, failEnsure=false, oldEnsure=false; let ensuredProject;
 const expiry = Math.floor(Date.now() / 1000) + 3600;
@@ -40,6 +42,8 @@ const accountServer = http.createServer(async (req, res) => {
     res.writeHead(status, { "content-type": "application/json" });
     res.end(JSON.stringify(value));
   };
+  if(req.url==="/v1/sessions"&&req.method==="POST"&&auth==="Bearer "+visitorKey){visitorActive=true;return send(200,{session:{...fixtureSession,id:"fixture-visitor-session",account:"fixture-visitor"},token:visitorToken});}
+  const visitor=auth==="Bearer "+visitorToken;
   if (
     req.url === "/v1/sessions" &&
     req.method === "POST" &&
@@ -48,14 +52,14 @@ const accountServer = http.createServer(async (req, res) => {
     active = true;
     return send(200, { session: fixtureSession, token: fixtureToken });
   }
-  if (auth !== "Bearer " + fixtureToken || !active)
+  if ((!visitor&&auth !== "Bearer " + fixtureToken) || (visitor?!visitorActive:!active))
     return send(401, {
       error: {
         code: "unauthenticated",
         message: "Synthetic fixture signed out.",
       },
     });
-  if (req.url === "/v1/account/github") return failMembership?send(503,{error:{code:"unavailable",message:"Synthetic membership failure."}}):send(200,{github:{state:"none"},projects});
+  if (req.url === "/v1/account/github") return failMembership?send(503,{error:{code:"unavailable",message:"Synthetic membership failure."}}):send(200,{github:{state:"none"},projects:visitor?[]:projects});
   if(req.url==="/v1/projects/ensure" && req.method==="POST"){
     let raw="";for await(const part of req)raw+=part;const body=JSON.parse(raw);
     if(oldEnsure){oldEnsure=false;return send(404,{error:{code:"not_found",message:"Synthetic old account service has no such route."}});}
@@ -71,15 +75,15 @@ const accountServer = http.createServer(async (req, res) => {
     projects.push(project);if(delayCreate){delayCreate=false;createArrived?.();await new Promise(resolve=>releaseCreate=resolve);}return send(200,{project});
   }
   if (req.url === "/v1/session" && req.method === "DELETE") {
-    active = false;
+    if(visitor)visitorActive=false;else active = false;
     return send(200, { ended: true });
   }
-  if (req.url === "/v1/session") return send(200, { session: fixtureSession });
+  if (req.url === "/v1/session") return send(200, { session: visitor?{...fixtureSession,id:"fixture-visitor-session",account:"fixture-visitor"}:fixtureSession });
   if (req.url === "/v1/account")
     return send(200, {
       account: {
-        id: "fixture-account",
-        label: "Browser fixture",
+        id: visitor?"fixture-visitor":"fixture-account",
+        label: visitor?"Visitor fixture":"Browser fixture",
         principals: [],
       },
       workspaces: [],
@@ -140,6 +144,7 @@ const server = spawn(
     env: {
       ...process.env,
       HOME: isolatedHome,
+      ...(process.env.AETHYRFORGE_VISIT_CHECK==="1"?{OPENAGENTS_WEB_ROOM_TOKEN_KEY:"07".repeat(32),OPENAGENTS_SYNC_ORIGIN:process.env.AETHYRFORGE_TEST_SYNC_ORIGIN}:{}),
       OPENAGENTS_HAUNT_RELEASE: JSON.stringify(release),
       OPENAGENTS_UNIVERSE_RELEASE: JSON.stringify({...release,engine_url:config.editor+"/universe.html",project:{id:"universe",branch:"main",revision:0}}),
       OPENAGENTS_VERSE_PUBLISH_RUNTIME: JSON.stringify(config.publish_runtime),
@@ -352,7 +357,10 @@ try {
     page.locator('form[action="/sign-in"] button[type="submit"]').click(),
   ]);
   }
-  if(process.env.AETHYRFORGE_PERSONAL_CHECK==='1') {
+  if(process.env.AETHYRFORGE_VISIT_CHECK==='1') {
+    const {checkVisits}=await import('./check-verse-visits.mjs');
+    await checkVisits({page,context,base,config,out,errors,visitorKey});
+  } else if(process.env.AETHYRFORGE_PERSONAL_CHECK==='1') {
     const {checkPersonalWorld}=await import('./check-verse-planet.mjs');
     await checkPersonalWorld({page,context,base,config,out,errors});
   } else {

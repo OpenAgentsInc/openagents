@@ -12,6 +12,8 @@ mod playable_validation;
 mod publication;
 mod resources;
 pub(super) mod tutorial;
+mod visit_room;
+mod visits;
 
 pub(super) fn routes() -> Router<App> {
     Router::new()
@@ -19,6 +21,7 @@ pub(super) fn routes() -> Router<App> {
         .merge(publication::routes())
         .merge(history::routes())
         .merge(tutorial::routes())
+        .merge(visits::routes())
         .route("/v1/verse/studio/projects", get(list).post(create))
         .route(
             "/v1/verse/studio/projects/{id}/{namespace}/{branch}",

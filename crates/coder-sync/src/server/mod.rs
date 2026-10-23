@@ -141,6 +141,12 @@ pub fn router(state: StateData) -> Router {
         .route("/chat2/{id}/ws", get(chat::websocket))
         .route("/chat2/{id}/rows", get(chat::rows).post(chat::push))
         .route(
+            "/visit/{id}/rows",
+            get(chat::rows)
+                .post(chat::push)
+                .layer(axum::extract::DefaultBodyLimit::max(65_536)),
+        )
+        .route(
             "/chat2/{id}/checkpoint",
             get(chat::checkpoint).post(chat::publish_checkpoint),
         )

@@ -41,6 +41,8 @@ pub enum Room {
     Device,
     /// `/chat2/{id}/ws`: one chat's document.
     Chat,
+    /// Native website adapter: bounded visit-document rows, never a device socket.
+    Visit,
 }
 
 impl Room {
@@ -50,6 +52,7 @@ impl Room {
             Self::Registry => "registry",
             Self::Device => "device",
             Self::Chat => "chat2",
+            Self::Visit => "visit",
         }
     }
 
@@ -59,16 +62,20 @@ impl Room {
             "registry" => Some(Self::Registry),
             "device" => Some(Self::Device),
             "chat2" | "chat" => Some(Self::Chat),
+            "visit" => Some(Self::Visit),
             _ => None,
         }
     }
 
-    /// The room a `coder-sync` path opens: `/{kind}/{id}/ws` only. HTTP
-    /// routes, a device's keys and grants, and anything else are no room.
+    /// Browser rooms open only their socket. The native visit adapter instead
+    /// opens `/visit/{id}/rows`; it cannot open sockets or checkpoints.
     #[must_use]
     pub fn of_path(path: &str) -> Option<(Self, &str)> {
         let mut parts = path.strip_prefix('/')?.split('/');
         let (kind, id, last) = (parts.next()?, parts.next()?, parts.next()?);
+        if kind == "visit" && last == "rows" && parts.next().is_none() {
+            return Some((Self::Visit, id));
+        }
         if last != "ws" || parts.next().is_some() {
             return None;
         }
@@ -94,6 +101,17 @@ pub struct Admission {
 
 fn refused() -> Error {
     Error::new(Code::Forbidden, "This room token isn't valid here.")
+}
+
+fn visit_scope(room: Room, account: &str, id: &str, lifetime: u64) -> bool {
+    room != Room::Visit
+        || (account == "verse_visits"
+            && lifetime <= 30
+            && id.len() == 67
+            && id.starts_with("vv_")
+            && id[3..]
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()))
 }
 
 fn valid_account(account: &str) -> bool {
@@ -124,7 +142,12 @@ pub fn mint(
     now: u64,
     lifetime: u64,
 ) -> Result<String> {
-    if !valid_account(account) || !valid_id(id) || lifetime == 0 || lifetime > MAX_LIFETIME {
+    if !valid_account(account)
+        || !valid_id(id)
+        || lifetime == 0
+        || lifetime > MAX_LIFETIME
+        || !visit_scope(room, account, id, lifetime)
+    {
         return Err(Error::new(Code::Malformed, "This room can't be opened."));
     }
     let signer = RelaySigner::from_secret_hex(secret_hex)
@@ -193,6 +216,12 @@ pub fn verify(token: &str, keys: &[String], now: u64) -> Result<Admission> {
         || event.created_at > now.saturating_add(SKEW)
         || expires <= event.created_at
         || expires - event.created_at > MAX_LIFETIME
+        || !visit_scope(
+            room,
+            &account,
+            &id,
+            expires.saturating_sub(event.created_at),
+        )
     {
         return Err(refused());
     }
@@ -294,5 +323,35 @@ mod tests {
         ] {
             assert_eq!(Room::of_path(path), None, "{path}");
         }
+    }
+
+    #[test]
+    fn visit_adapter_tokens_are_short_and_cannot_open_other_room_paths() {
+        let id = format!("vv_{}", "a".repeat(64));
+        let token = mint(SECRET, "verse_visits", Room::Visit, &id, 1000, 30).unwrap();
+        assert_eq!(verify(&token, &keys(), 1001).unwrap().room, Room::Visit);
+        assert_eq!(
+            Room::of_path(&format!("/visit/{id}/rows")),
+            Some((Room::Visit, id.as_str()))
+        );
+        assert_eq!(
+            Room::of_path(&format!("/chat2/{id}/ws")),
+            Some((Room::Chat, id.as_str()))
+        );
+        assert!(mint(SECRET, "acct_1", Room::Visit, &id, 1000, 30).is_err());
+        assert!(mint(SECRET, "verse_visits", Room::Visit, &id, 1000, 31).is_err());
+        assert!(
+            mint(
+                SECRET,
+                "verse_visits",
+                Room::Visit,
+                "ordinary_chat",
+                1000,
+                30
+            )
+            .is_err()
+        );
+        assert_eq!(Room::of_path(&format!("/visit/{id}/checkpoint")), None);
+        assert_eq!(Room::of_path(&format!("/visit/{id}/ws")), None);
     }
 }

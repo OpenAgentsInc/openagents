@@ -56,6 +56,8 @@ fn clear_share() {
 }
 pub(super) fn context_changed(s: &mut State) {
     clear_share();
+    hide("visit-manage", true);
+    element("visit-manage").remove_attribute("href").ok();
     s.projects.publication.prepared = None;
     s.projects.publication.latest = None;
     s.projects.publication.selected = None;
@@ -78,6 +80,8 @@ fn scoped(s: &State, p: &Prepared) -> bool {
 }
 fn render(s: &mut State, value: Value) {
     clear_share();
+    hide("visit-manage", true);
+    element("visit-manage").remove_attribute("href").ok();
     let select = element("publish-version").unchecked_into::<web_sys::HtmlSelectElement>();
     select.set_inner_html("");
     for v in value["book"]["versions"].as_array().into_iter().flatten() {
@@ -123,6 +127,12 @@ fn render(s: &mut State, value: Value) {
 
     if let (Some(world), Some(release)) = (value["world"].as_str(), channel) {
         let link = format!("/new-lander/play/{world}/{release}");
+        if world_namespace() == WorldNamespace::PersonalPlanet {
+            element("visit-manage")
+                .set_attribute("href", &format!("/new-lander/invite/{world}/{release}"))
+                .ok();
+            hide("visit-manage", false);
+        }
         element("published-link").set_attribute("href", &link).ok();
         hide("published-link", false);
         element("published-link").set_text_content(Some("Open this playable version"));

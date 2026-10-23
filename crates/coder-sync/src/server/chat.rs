@@ -47,6 +47,14 @@ pub(crate) fn identity(
     query: &HashMap<String, String>,
     id: &str,
 ) -> Result<Identity> {
+    if id.starts_with("vv_")
+        && headers
+            .get(super::auth::ROOM_HEADER)
+            .and_then(|h| h.to_str().ok())
+            != Some("visit")
+    {
+        return Err(Failure(StatusCode::FORBIDDEN, "forbidden"));
+    }
     let header = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())

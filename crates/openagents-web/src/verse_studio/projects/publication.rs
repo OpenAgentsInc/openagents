@@ -347,6 +347,15 @@ async fn resolve(
     world: &str,
     release: Option<&str>,
 ) -> Result<PlayableRelease, Response> {
+    resolve_inner(app, headers, world, release, false).await
+}
+async fn resolve_inner(
+    app: &App,
+    headers: &HeaderMap,
+    world: &str,
+    release: Option<&str>,
+    invited: bool,
+) -> Result<PlayableRelease, Response> {
     let key = world_key(world).map_err(|_| missing())?;
     let (book, _) = read::<PublishedWorld>(&app.config.chat_store, &key)
         .await
@@ -372,7 +381,7 @@ async fn resolve(
         .iter()
         .find(|v| v.release == release && !v.revoked)
         .ok_or_else(missing)?;
-    if !version.public {
+    if !version.public && !invited {
         let a = access(app, headers, &book.project).await?;
         if a.owner() != book.owner {
             return Err(missing());
@@ -389,6 +398,37 @@ async fn resolve(
         return Err(missing());
     }
     Ok(p)
+}
+/// Called only after the visit adapter has checked its exact invitation and current access.
+pub(super) async fn invited(
+    app: &App,
+    world: &str,
+    release: &str,
+) -> Result<PlayableRelease, Response> {
+    resolve_inner(app, &HeaderMap::new(), world, Some(release), true).await
+}
+pub(super) async fn visit_owner(
+    app: &App,
+    headers: &HeaderMap,
+    world: &str,
+    release: &str,
+) -> Result<(Actor, PlayableRelease), Response> {
+    let (book, _) = read::<PublishedWorld>(
+        &app.config.chat_store,
+        &world_key(world).map_err(|_| missing())?,
+    )
+    .await
+    .map_err(|e| stored(&e))?
+    .ok_or_else(missing)?;
+    let a = access(app, headers, &book.project).await?;
+    if !crate::projects::api::role_of(&a.project).owns() || a.owner() != book.owner {
+        return Err(denied());
+    }
+    let p = resolve(app, headers, world, Some(release)).await?;
+    if p.manifest.content.document.namespace != WorldNamespace::PersonalPlanet {
+        return Err(denied());
+    }
+    Ok((a.actor, p))
 }
 pub(super) async fn tutorial_publication(
     app: &App,
@@ -469,6 +509,9 @@ async fn page(
         Ok(p) => p,
         Err(r) => return r,
     };
+    player_page(&p, None)
+}
+pub(super) fn player_page(p: &PlayableRelease, visit: Option<(&str, &str, bool)>) -> Response {
     let runtime = &p.manifest.runtime;
     let origin = endpoint(&runtime.engine_url)
         .unwrap()
@@ -487,17 +530,43 @@ async fn page(
     };
     let config=json!({"release":runtime.engine_release,"engine_abi":runtime.engine_abi,"project_format":runtime.project_format,"project":{"id":base,"branch":"main","revision":0}}).to_string().replace('<',"\\u003c");
     let playable = serde_json::to_string(&p).unwrap().replace('<', "\\u003c");
-    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Play · OpenAgents"}link rel="stylesheet" href="/new-lander/play/style.css";}body{header{a href="/new-lander/verse"{"Back to planets"}h1{(title)}span{ "Version " (p.manifest.saved_version) }button id="world-retry" type="button"{"Retry"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" hidden title="Playable world" data-engine-url=(endpoint(&runtime.engine_url).unwrap().join("player.html").unwrap().as_str()){}p id="player-controls"{"Click to look · WASD to walk · Esc to release the pointer"}p id="world-notice" role="status"{"Opening this playable version…"}}script id="engine-config" type="application/json"{(PreEscaped(config))}script id="playable-release" type="application/json" data-sdk-url=(&runtime.sdk_url){(PreEscaped(playable))}script type="module" src="/new-lander/play/boot.js"{}}}}.into_string();
-    crate::pages::medieval_town::response(
+    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Play · OpenAgents"}link rel="stylesheet" href="/new-lander/play/style.css";}body{header{a href="/new-lander/verse"{"Back to planets"}h1{(title)}span{ "Version " (p.manifest.saved_version) }button id="world-retry" type="button"{"Retry"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" hidden title="Playable world" data-engine-url=(endpoint(&runtime.engine_url).unwrap().join("player.html").unwrap().as_str()){}p id="player-controls"{"Click to look · WASD to walk · Esc to release the pointer"}p id="world-notice" role="status"{"Opening this playable version…"} @if let Some((id,sdk,anonymous))=visit { (super::visits::chat_markup(id,sdk,anonymous)) }}script id="engine-config" type="application/json"{(PreEscaped(config))}script id="playable-release" type="application/json" data-sdk-url=(&runtime.sdk_url){(PreEscaped(playable))}script type="module" src="/new-lander/play/boot.js"{} @if visit.is_some() {script type="module" src="/new-lander/visit/boot.js"{}}}}}.into_string();
+    let mut response = crate::pages::medieval_town::response(
         StatusCode::OK,
         body,
         "text/html; charset=utf-8",
         Some(&origin),
-    )
+    );
+    if let Some((_, sdk, _)) = visit {
+        // Chat UI uses the registered host SDK; the player keeps its independently pinned SDK.
+        let sdk_origin = endpoint(sdk).unwrap().origin().ascii_serialization();
+        if sdk_origin != origin {
+            if let Some(policy) = response
+                .headers()
+                .get(axum::http::header::CONTENT_SECURITY_POLICY)
+                .and_then(|v| v.to_str().ok())
+            {
+                let policy = policy
+                    .replace(
+                        "script-src 'self'",
+                        &format!("script-src 'self' {sdk_origin}"),
+                    )
+                    .replace(
+                        "connect-src 'self'",
+                        &format!("connect-src 'self' {sdk_origin}"),
+                    );
+                response.headers_mut().insert(
+                    axum::http::header::CONTENT_SECURITY_POLICY,
+                    policy.parse().unwrap(),
+                );
+            }
+        }
+    }
+    response
 }
 async fn boot() -> Response {
-    ([(axum::http::header::CONTENT_TYPE,"text/javascript; charset=utf-8"),(axum::http::header::CACHE_CONTROL,"no-store")],"try{const url=document.getElementById('playable-release').dataset.sdkUrl;const {default:init,mount_player}=await import(url);await init();window.versePlayer=mount_player();}catch{document.getElementById('world-notice').textContent='This version could not open. Reload to try again.';}").into_response()
+    ([(axum::http::header::CONTENT_TYPE,"text/javascript; charset=utf-8"),(axum::http::header::CACHE_CONTROL,"no-store")],"try{const url=document.getElementById('playable-release').dataset.sdkUrl;const modules=globalThis.verseSdkModules??=new Map();if(!modules.has(url))modules.set(url,(async()=>{const sdk=await import(url);await sdk.default();return sdk;})());const {mount_player}=await modules.get(url);window.versePlayer=mount_player();}catch{document.getElementById('world-notice').textContent='This version could not open. Reload to try again.';}").into_response()
 }
 async fn style() -> Response {
-    ([(axum::http::header::CONTENT_TYPE,"text/css; charset=utf-8")],"html,body{margin:0;height:100%;background:#081319;color:#d3e8e8;font:14px system-ui}body{display:flex;flex-direction:column}header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px}h1{font-size:16px;margin:0}header span{flex:1}a,button{color:inherit}button{background:#18313b;padding:8px;border:1px solid #426370}main{position:relative;flex:1}iframe{height:100%;width:100%;border:0}iframe[hidden]{display:block;visibility:hidden;pointer-events:none}#player-controls{position:absolute;bottom:8px;left:12px;max-width:calc(100% - 48px);margin:0;padding:8px 12px;background:#10232bee;pointer-events:none;font-size:12px}#world-notice{position:absolute;top:40%;left:20%;background:#10232bee;padding:24px}#world-notice[hidden]{display:none}").into_response()
+    ([(axum::http::header::CONTENT_TYPE,"text/css; charset=utf-8")],"html,body{margin:0;height:100%;background:#081319;color:#d3e8e8;font:14px system-ui}body{display:flex;flex-direction:column}header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px}h1{font-size:16px;margin:0}header span{flex:1}a,button{color:inherit}button{background:#18313b;padding:8px;border:1px solid #426370}main{position:relative;flex:1}iframe{height:100%;width:100%;border:0}iframe[hidden]{display:block;visibility:hidden;pointer-events:none}#player-controls{position:absolute;bottom:8px;left:12px;max-width:calc(100% - 48px);margin:0;padding:8px 12px;background:#10232bee;pointer-events:none;font-size:12px}#world-notice{position:absolute;top:40%;left:20%;background:#10232bee;padding:24px}#world-notice[hidden]{display:none}#visit{position:absolute;right:12px;top:12px;z-index:20;max-width:340px;width:calc(100% - 24px)}#visit-toggle{float:right}#visit-panel{clear:both;background:#10232bf5;border:1px solid #426370;padding:12px;max-height:65vh;overflow:auto}#visit [hidden]{display:none}#visit h2{font-size:16px;margin:0 0 8px}#visit p{font-size:12px}#visit textarea{box-sizing:border-box;width:100%;background:#081319;color:inherit}#visit-messages{padding:0;list-style:none;max-height:30vh;overflow:auto}#visit li{border-top:1px solid #426370;padding:8px 0;overflow-wrap:anywhere;white-space:pre-wrap}#visit li p{margin:4px 0}#visit li button{font-size:11px;padding:4px;margin-right:4px}#visit label{display:block}").into_response()
 }

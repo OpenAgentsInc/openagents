@@ -304,6 +304,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                             button id="publish-rollback" type="button" { "Review shared-link rollback" }
                             button id="publish-revoke" type="button" { "Review turning off a link" }
                             a id="published-link" hidden { "Open this playable version" }
+                            a id="visit-manage" hidden { "Invite people" }
                             p id="publish-status" role="status" {}
                         }
                         button id="edit-capture" type="button" { "Capture preview" }

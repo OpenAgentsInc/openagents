@@ -94,6 +94,7 @@ pub(crate) struct Options {
     pub analytics: Option<Arc<crate::analytics::Analytics>>,
     /// The room-token key (#12263); none, as in production without one.
     pub room_token_key: Option<String>,
+    pub sync_origin: Option<String>,
     /// The pylon relay (`--pylons-relay`); none by default, so no test
     /// reaches a live relay.
     pub pylons_relay: Option<String>,
@@ -183,6 +184,9 @@ async fn world_at(port: u16, options: Options) -> World {
     config.everglade = options.everglade;
     config.port = port;
     config.room_token_key = options.room_token_key;
+    if let Some(origin) = options.sync_origin {
+        config.sync_origin = origin;
+    }
     config.pylons_relay = options.pylons_relay;
     let store = Arc::new(Store::local(root.path().join("chats")));
     config.chat_store = store.clone();

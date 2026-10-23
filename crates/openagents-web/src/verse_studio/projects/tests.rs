@@ -1414,3 +1414,382 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
         StatusCode::GONE
     );
 }
+
+#[tokio::test]
+async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
+    use axum::{
+        Router,
+        extract::{Path, Query, State},
+        http::HeaderMap,
+        response::IntoResponse,
+        routing::get,
+    };
+    use openagents_doc::chat_frames::{encode, frame_type};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+    };
+    type Rows = Arc<Mutex<HashMap<String, Vec<(String, Vec<u8>)>>>>;
+    const SECRET: &str = "0707070707070707070707070707070707070707070707070707070707070707";
+    async fn sync(
+        State(rows): State<Rows>,
+        Path(id): Path<String>,
+        Query(q): Query<HashMap<String, String>>,
+        headers: HeaderMap,
+        body: axum::body::Bytes,
+    ) -> axum::response::Response {
+        let token = headers["authorization"]
+            .to_str()
+            .unwrap()
+            .strip_prefix("Bearer ")
+            .unwrap();
+        let grant = coder_access::room_token::verify(
+            token,
+            &[coder_access::room_token::public_key(SECRET).unwrap()],
+            super::now(),
+        )
+        .unwrap();
+        assert_eq!(grant.room, coder_access::room_token::Room::Visit);
+        assert_eq!(grant.id, id);
+        assert_eq!(grant.account, "verse_visits");
+        let mut rows = rows.lock().unwrap();
+        let list = rows.entry(id).or_default();
+        if !body.is_empty() {
+            let batch = q["batchId"].clone();
+            if !list.iter().any(|(id, _)| id == &batch) {
+                list.push((batch, body.to_vec()));
+            }
+            return axum::Json(json!({"ok":true})).into_response();
+        }
+        let mut bytes = Vec::new();
+        let mut pack = |frame: Vec<u8>| {
+            bytes.extend_from_slice(&(frame.len() as u32).to_le_bytes());
+            bytes.extend(frame);
+        };
+        pack(encode(frame_type::STATE, &json!({"seqFloor":0}), &[]));
+        for (index, (_, row)) in list.iter().enumerate() {
+            pack(encode(frame_type::ROW, &json!({"seq":index+1}), row));
+        }
+        pack(encode(
+            frame_type::ROWS_DONE,
+            &json!({"headSeq":list.len()}),
+            &[],
+        ));
+        bytes.into_response()
+    }
+    let rows: Rows = Default::default();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let router = Router::new()
+        .route("/visit/{id}/rows", get(sync).post(sync))
+        .with_state(rows.clone());
+    let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let mut runtime = publish_runtime();
+    runtime.template_world = "personal-planet".into();
+    let world = crate::projects::tests::world_with(crate::projects::tests::Options {
+        verse_personal_runtime: Some(runtime.clone()),
+        room_token_key: Some(SECRET.into()),
+        sync_origin: Some(origin),
+        ..Default::default()
+    })
+    .await;
+    let mut alice = Client::signed(&world, "octo-local").await;
+    let mut bob = Client::signed(&world, "quiet-local").await;
+    let (_, made) = alice
+        .call(
+            &world,
+            "POST",
+            "/v1/verse/studio/projects",
+            json!({"name":"Visit courtyard"}),
+        )
+        .await;
+    let project = made["id"].as_str().unwrap();
+    let path = format!("/v1/verse/studio/projects/{project}/personal-planet/main");
+    let document = aethyrforge_host::PlanetRecipe::new(7, 1000)
+        .document(aethyrforge_host::WorldTemplate {
+            world: runtime.template_world.clone(),
+            engine_release: runtime.engine_release.clone(),
+            asset_set_sha256: runtime.asset_set_sha256.clone(),
+            scene_sha256: runtime.scene_sha256.clone(),
+        })
+        .unwrap();
+    let (status, saved) = alice
+        .call(&world, "POST", &path, save("visit-save", 0, &document))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let (status,published)=alice.call(&world,"POST",&format!("{path}/publications"),json!({"command_id":"publish-visit","expected_sequence":0,"operation":"publish","saved_version":1,"document_sha256":saved["saved"]["document_sha256"],"public":false,"confirm_runtime_distribution":true,"release":null})).await;
+    assert_eq!(status, StatusCode::OK, "{published}");
+    let api = format!(
+        "/v1/verse/studio/visits/{}/{}",
+        published["world"].as_str().unwrap(),
+        published["event"]["release"].as_str().unwrap()
+    );
+    assert_eq!(
+        bob.call(
+            &world,
+            "POST",
+            &api,
+            json!({"command_id":"forbidden","anonymous":true,"hours":1})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let create = json!({"command_id":"create-visit","anonymous":true,"hours":1});
+    let mut other = Client {
+        browser: Browser(alice.browser.0.clone()),
+        csrf: alice.csrf.clone(),
+    };
+    let (one, two) = tokio::join!(
+        alice.call(&world, "POST", &api, create.clone()),
+        other.call(&world, "POST", &api, create.clone())
+    );
+    assert_eq!(one.0, StatusCode::CREATED, "{}", one.1);
+    assert_eq!(one, two);
+    let invitation = one.1;
+    let id = invitation["id"].as_str().unwrap();
+    let room_api = format!("/v1/verse/studio/visits/{id}");
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "POST",
+                &api,
+                json!({"command_id":"create-visit","anonymous":true,"hours":24})
+            )
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        alice.call(&world, "POST", &api, create.clone()).await.1,
+        invitation
+    );
+    // A concurrent changed intent must either win and read back exactly, or be refused.
+    let mut other = Client {
+        browser: Browser(alice.browser.0.clone()),
+        csrf: alice.csrf.clone(),
+    };
+    let (a, b) = tokio::join!(
+        alice.call(
+            &world,
+            "POST",
+            &api,
+            json!({"command_id":"race-intent","anonymous":true,"hours":1})
+        ),
+        other.call(
+            &world,
+            "POST",
+            &api,
+            json!({"command_id":"race-intent","anonymous":false,"hours":24})
+        )
+    );
+    assert!(a.0 == StatusCode::CREATED || b.0 == StatusCode::CREATED);
+    assert_ne!(
+        a.0, b.0,
+        "Differing intents cannot both be accepted: {a:?} {b:?}"
+    );
+    assert_eq!(guest(&world, &room_api).await.1["messages"], json!([]));
+    assert_eq!(
+        guest(
+            &world,
+            &format!(
+                "/v1/verse/play/{}/{}",
+                published["world"].as_str().unwrap(),
+                published["event"]["release"].as_str().unwrap()
+            )
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        guest(&world, invitation["link"].as_str().unwrap()).await.0,
+        StatusCode::OK,
+        "Scoped invitation may open a private pinned player"
+    );
+    for client in [&mut alice, &mut bob] {
+        assert_eq!(
+            client
+                .call(
+                    &world,
+                    "POST",
+                    &room_api,
+                    json!({"command_id":"join","operation":"join"})
+                )
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    let message = json!({"command_id":"message-1","operation":"send","text":"Hello from Bob"});
+    let (status, sent) = bob.call(&world, "POST", &room_api, message.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{sent}");
+    assert_eq!(sent["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(sent["messages"][0]["participant"], sent["me"]);
+    assert_eq!(
+        bob.call(&world, "POST", &room_api, message).await.1["messages"],
+        sent["messages"]
+    );
+    assert_eq!(
+        rows.lock().unwrap().values().map(Vec::len).sum::<usize>(),
+        1,
+        "Lost ACK retry does not duplicate a Loro message"
+    );
+    assert_eq!(
+        alice.call(&world, "GET", &room_api, Value::Null).await.1["messages"],
+        sent["messages"]
+    );
+    assert_eq!(
+        bob.call(
+            &world,
+            "POST",
+            &room_api,
+            json!({"command_id":"message-1","operation":"send","text":"Changed retry"})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        bob.call(
+            &world,
+            "POST",
+            &room_api,
+            json!({"command_id":"leave","operation":"leave"})
+        )
+        .await
+        .1["messages"],
+        json!([])
+    );
+    assert_eq!(
+        bob.call(
+            &world,
+            "POST",
+            &room_api,
+            json!({"command_id":"after-leave","operation":"send","text":"No"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        bob.call(
+            &world,
+            "POST",
+            &room_api,
+            json!({"command_id":"rejoin","operation":"join"})
+        )
+        .await
+        .1["messages"],
+        sent["messages"]
+    );
+    assert_eq!(
+        bob.call(&world, "GET", &path, Value::Null).await.0,
+        StatusCode::NOT_FOUND,
+        "A visitor receives no editor membership"
+    );
+    for n in 0..12 {
+        let (code,value)=alice.call(&world,"POST",&room_api,json!({"command_id":format!("rate-{n}"),"operation":"send","text":format!("Bounded message {n}")})).await;
+        assert_eq!(code, StatusCode::OK, "{value}");
+    }
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "POST",
+                &room_api,
+                json!({"command_id":"rate-over","operation":"send","text":"Too fast"})
+            )
+            .await
+            .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let (_, private_invite) = alice
+        .call(
+            &world,
+            "POST",
+            &api,
+            json!({"command_id":"second-room","anonymous":false,"hours":1}),
+        )
+        .await;
+    let private_id = private_invite["id"].as_str().unwrap();
+    let private_api = format!("/v1/verse/studio/visits/{private_id}");
+    assert_eq!(
+        guest(&world, &private_api).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (_, unjoined) = bob.call(&world, "GET", &private_api, Value::Null).await;
+    assert_eq!(
+        unjoined["messages"],
+        json!([]),
+        "Knowing a different room link does not read history before joining"
+    );
+    let disk = world
+        .root()
+        .join(format!("chats/verse-visits/invites/{private_id}.json"));
+    let mut expired: Value = serde_json::from_slice(&std::fs::read(&disk).unwrap()).unwrap();
+    expired["expires"] = 0.into();
+    std::fs::write(&disk, serde_json::to_vec(&expired).unwrap()).unwrap();
+    assert_eq!(
+        bob.call(&world, "GET", &private_api, Value::Null).await.0,
+        StatusCode::GONE
+    );
+    assert_eq!(
+        bob.call(
+            &world,
+            "POST",
+            &room_api,
+            json!({"command_id":"revoke-wrong","operation":"revoke"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "POST",
+                &room_api,
+                json!({"command_id":"revoke","operation":"revoke"})
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        bob.call(&world, "GET", &room_api, Value::Null).await.0,
+        StatusCode::GONE
+    );
+    assert_eq!(
+        guest(&world, invitation["link"].as_str().unwrap()).await.0,
+        StatusCode::GONE
+    );
+    assert_eq!(
+        alice.call(&world, "POST", &api, create).await.1["revoked"],
+        true,
+        "Retry never resurrects a revoked invitation"
+    );
+    let manage_path = format!(
+        "/new-lander/invite/{}/{}",
+        published["world"].as_str().unwrap(),
+        published["event"]["release"].as_str().unwrap()
+    );
+    let managed = alice
+        .browser
+        .send(&world, Request::builder().uri(&manage_path), Body::empty())
+        .await;
+    assert_eq!(managed.status, StatusCode::OK);
+    assert!(
+        managed.headers[axum::http::header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .contains("form-action 'self'")
+    );
+    assert_eq!(
+        managed.headers[axum::http::header::REFERRER_POLICY],
+        "same-origin"
+    );
+    task.abort();
+}

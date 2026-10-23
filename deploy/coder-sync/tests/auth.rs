@@ -642,3 +642,79 @@ async fn next_binary(
     .await
     .unwrap()
 }
+
+#[tokio::test]
+async fn native_visit_adapter_uses_existing_loro_rows_without_other_room_authority() {
+    use coder_access::room_token::Room;
+    use loro::{ExportMode, LoroDoc};
+    let f = Fixture::start().await;
+    let id = format!(
+        "vv_{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
+    let visit_token = room(Room::Visit, &id, "verse_visits", 30);
+    let doc = LoroDoc::new();
+    doc.get_map("messages")
+        .insert("m1", "Hello from the native adapter")
+        .unwrap();
+    let bytes = doc.export(ExportMode::all_updates()).unwrap();
+    let path = format!("/visit/{id}/rows?device=website&batchId=message1");
+    for expected_dup in [false, true] {
+        let response = reqwest::Client::new()
+            .post(format!("{}{path}", f.base))
+            .bearer_auth(&visit_token)
+            .body(bytes.clone())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let value: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(value["dup"], expected_dup);
+    }
+    assert_eq!(
+        f.get(
+            &format!("/visit/{id}/rows?after=0"),
+            Some(visit_token.clone())
+        )
+        .send()
+        .await
+        .unwrap()
+        .status(),
+        200
+    );
+    for path in [
+        format!("/chat2/{id}/rows"),
+        format!("/registry/verse_visits/rows"),
+        format!("/visit/{}other/rows", id),
+    ] {
+        assert_eq!(
+            f.get(&path, Some(visit_token.clone()))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            401,
+            "{path}"
+        );
+    }
+    assert_eq!(
+        f.get(&format!("/visit/{id}/rows"), Some(token('a')))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    assert_eq!(
+        f.get(
+            &format!("/chat2/{id}/rows"),
+            Some(room(Room::Chat, &id, "verse_visits", 30))
+        )
+        .send()
+        .await
+        .unwrap()
+        .status(),
+        401
+    );
+}

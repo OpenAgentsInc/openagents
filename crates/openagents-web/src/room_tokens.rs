@@ -196,6 +196,13 @@ async fn mint(
             "Choose a chat or computer to open.",
         );
     };
+    if room == Room::Visit {
+        return refused(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "Open your world invitation instead.",
+        );
+    }
     let id = match (room, ask.id) {
         (Room::Registry, None) => account.clone(),
         (Room::Registry, Some(id)) if id == account => id,

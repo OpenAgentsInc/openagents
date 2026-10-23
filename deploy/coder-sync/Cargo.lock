@@ -3453,6 +3453,7 @@ dependencies = [
  "getrandom 0.4.3",
  "httpdate",
  "lab-kit",
+ "nostr",
  "oa-copy",
  "openagents-dashboard",
  "openagents-login",
@@ -3511,6 +3512,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "web-time",
 ]
 
 [[package]]
