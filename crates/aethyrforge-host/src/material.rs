@@ -646,7 +646,7 @@ impl MaterialBundle {
 }
 
 /// An editable download includes creator-owned images, never engine or vendor assets.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MaterialProjectArchive {
     pub schema: String,

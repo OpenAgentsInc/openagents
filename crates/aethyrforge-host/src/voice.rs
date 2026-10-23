@@ -45,6 +45,8 @@ pub enum RequestControl {
     AskKiln,
     ReviewCandidate,
     ConfirmChange,
+    ConfirmPublish,
+    CancelPublish,
     CancelReview,
     Option(TutorialOption),
 }
@@ -64,6 +66,8 @@ pub fn request_control(
         "cancel" | "cancel change" => RequestControl::CancelReview,
         "review change" | "review kiln change" => RequestControl::ReviewCandidate,
         "confirm change" => RequestControl::ConfirmChange,
+        "confirm publish" => RequestControl::ConfirmPublish,
+        "cancel publish" => RequestControl::CancelPublish,
         "show options" | "show me the options" | "options" => RequestControl::Options,
         "inspect" | "inspect world" => RequestControl::Inspect,
         "map" | "back to planets" | "open the map" => RequestControl::Map,

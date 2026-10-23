@@ -102,6 +102,8 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 jev = { path = "../jev" }
 inference = { path = "../inference" }
 libc = "0.2"
+# Validate creator-owned WGSL before admitting a playable release.
+naga = { version = "30.0.1", features = ["wgsl-in"] }
 # An account's npub on a shared chat's preview picture (NIP-19).
 nostr = { path = "../nostr" }
 # Profile pages read kind 0 and kind 3 from relays (src/profiles, #12254).

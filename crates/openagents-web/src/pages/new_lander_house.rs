@@ -68,7 +68,7 @@ pub(crate) fn routes() -> Router<App> {
         )
 }
 
-async fn page() -> Response {
+async fn page(axum::extract::State(app): axum::extract::State<App>) -> Response {
     let Some(r) = release() else {
         return response(StatusCode::SERVICE_UNAVAILABLE, html! {
             (DOCTYPE) html lang="en" { head { meta name="viewport" content="width=device-width,initial-scale=1"; title { "Haunted House · OpenAgents" } }
@@ -103,6 +103,7 @@ async fn page() -> Response {
     let body = html! {
         (DOCTYPE) html lang="en" { head {
             meta id="engine-release" content=(r.release);
+            meta id="publish-enabled" content=(app.config.verse_publish_runtime.as_ref().is_some_and(|p|p.engine_release==r.release&&p.sdk_url==r.sdk_url).to_string());
             meta charset="utf-8"; meta name="viewport" content="width=device-width,initial-scale=1";
             title { "Haunted House · OpenAgents" }
             link rel="stylesheet" href="/new-lander/house/style.css";
@@ -130,6 +131,10 @@ async fn page() -> Response {
                 p class="voice-help" { "Browser speech service · say Show options, Review change, or Confirm change" }
             }
                         aside id="request-choices" hidden aria-label="Request options" {
+                            button id="project-publish" type="button" hidden data-tutorial-option="ready" { "Publish" }
+                            button id="project-play" type="button" hidden disabled data-tutorial-option="ready" { "Play" }
+                            button id="project-share" type="button" hidden disabled data-tutorial-option="ready" { "Share" }
+                            button id="project-revert" type="button" hidden disabled data-tutorial-option="ready" { "Revert to Starting house" }
                             @for (id,label) in [("request-inspect","Inspect world"),("request-mesh","Show mesh"),("request-map","Back to planets"),("request-compile","Compile world effect"),("request-undo","Undo")] {
                                 button id=(id) type="button" { (label) }
                             }
@@ -225,6 +230,18 @@ async fn page() -> Response {
                         button id="edit-source-draft" type="button" { "Keep world-effect draft" }
                         button id="edit-source-compile" type="button" { "Compile world effect" }
                         p id="edit-source-status" role="status" {}
+                        section id="publish-tools" hidden aria-label="Playable releases" {
+                            h3 { "Playable versions" }
+                            p { "Compile and inspect your change, then save before publishing. Revert returns to Starting house as a new change." }
+                            label for="publish-visibility" { "Who can play" }
+                            select id="publish-visibility" { option value="private" { "Project members" } option value="public" { "Anyone with the link" } }
+                            button id="publish-refresh" type="button" { "Find published versions" }
+                            label for="publish-version" { "Published version" } select id="publish-version" {}
+                            button id="publish-rollback" type="button" { "Review shared-link rollback" }
+                            button id="publish-revoke" type="button" { "Review turning off a link" }
+                            a id="published-link" hidden { "Open this playable version" }
+                            p id="publish-status" role="status" {}
+                        }
                         button id="edit-capture" type="button" { "Capture preview" }
                         img id="edit-capture-image" hidden alt="Captured view of the house" width="280";
                     }
@@ -283,6 +300,21 @@ async fn page() -> Response {
                     button id="edit-auth-voice-stop" type="button" { "Stop / mute" }
                     button id="edit-cancel" type="button" { "Cancel" }
                 }
+            }
+            dialog id="publish-review" hidden aria-labelledby="publish-review-title" {
+                section { h2 id="publish-review-title" { "Publish this saved version?" }
+                    p id="publish-review-target" {}
+                    a id="publish-review-link" hidden target="_blank" rel="noopener" { "Open the chosen playable version" }
+                    p id="publish-review-description" {}
+                    label { input id="publish-confirm-rights" type="checkbox"; span id="publish-confirm-label" { "Confirm this release change." } }
+                    p { "Say Confirm publish or Cancel publish, or use the buttons." }
+                    button id="publish-confirm" type="button" { "Confirm release change" }
+                    button id="publish-cancel" type="button" { "Cancel" }
+                }
+            }
+            aside id="publish-share-card" hidden aria-label="Share this version" {
+                p { "Exact playable version" } a id="publish-share-link" {}
+                button id="publish-share-close" type="button" { "Close" }
             }
             script id="creator-assets" type="application/json" {(PreEscaped(assets_json))}
             script id="engine-config" type="application/json" { (PreEscaped(text)) }

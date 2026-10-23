@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
-pub const VERSION: u16 = 6;
+pub const VERSION: u16 = 7;
 pub const MAX_BYTES: usize = 512 * 1024;
 /// Leave room for project, session, request, and message wrapper fields.
 pub const MAX_ACTION_BYTES: usize = MAX_BYTES - 8 * 1024;
@@ -248,6 +248,9 @@ pub enum Action {
         checkpoint: Option<Checkpoint>,
     },
     Inspect,
+    LoadPlayable {
+        release: crate::PlayableRelease,
+    },
     ExportProject,
     InspectMaterial {
         target: crate::MaterialTarget,
@@ -322,6 +325,7 @@ impl Action {
                 return None;
             }
             Self::Inspect
+            | Self::LoadPlayable { .. }
             | Self::ExportProject
             | Self::View { .. }
             | Self::Select { .. }
@@ -352,6 +356,7 @@ impl Action {
         let valid = match self {
             Self::Authorize { grant } => grant.validate().is_ok(),
             Self::Open { .. } | Self::Inspect | Self::Observe { .. } => outcome.status.is_some(),
+            Self::LoadPlayable { .. } => outcome.status.is_some(),
             Self::ExportProject => matches!(outcome.detail, Some(Detail::ProjectDocument { .. })),
             Self::RestoreProject { .. }
             | Self::RestoreMaterialProject { .. }
@@ -390,6 +395,7 @@ impl Action {
         }
         let valid = match self {
             Self::Authorize { grant } => grant.validate().is_ok(),
+            Self::LoadPlayable { release } => release.validate().is_ok(),
             Self::InspectMaterial { target } => target.validate().is_ok(),
             Self::PreviewMaterial { material } | Self::ApplyMaterial { material } => {
                 material.validate().is_ok()

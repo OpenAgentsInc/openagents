@@ -57,7 +57,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/demo/medieval-town/boot.js", get(boot))
         .route("/demo/medieval-town/style.css", get(style))
 }
-pub(super) fn response(
+pub(crate) fn response(
     status: StatusCode,
     body: impl Into<String>,
     content_type: &'static str,

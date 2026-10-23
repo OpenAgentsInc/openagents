@@ -5,10 +5,13 @@ use std::collections::BTreeMap;
 mod files;
 #[path = "history_browser.rs"]
 mod history;
+#[path = "publish_browser.rs"]
+mod publishing;
 
 #[derive(Default)]
 pub(super) struct Controller {
     history: history::View,
+    publication: publishing::Controller,
     images: BTreeMap<String, MaterialImage>,
     pub save: Option<Prepared>,
     project: String,
@@ -45,6 +48,7 @@ fn key(s: &State) -> String {
     )
 }
 pub(super) fn clear(s: &mut State) {
+    publishing::context_changed(s);
     history::clear();
     let reopening_session = s.snapshot()["session"].as_str().map(str::to_string);
     s.projects = Controller {
@@ -56,6 +60,7 @@ pub(super) fn clear(s: &mut State) {
     status("Choose a project for this account.");
 }
 fn change_project(s: &mut State, project: String) {
+    publishing::context_changed(s);
     // Recovery callbacks own their starting epoch. The new context starts idle,
     // even when its predecessor still has an export in flight.
     s.projects.project = project;
@@ -621,6 +626,7 @@ pub(super) fn mount(
 ) -> Result<(), JsValue> {
     hide("project-tools", false);
     history::mount(rc, listeners)?;
+    publishing::mount(rc, listeners)?;
     hide("project-save", false);
     for id in [
         "project-list",
@@ -698,6 +704,7 @@ pub(super) fn mount(
 }
 pub(super) fn poll(rc: &Rc<RefCell<State>>) {
     history::poll(rc);
+    publishing::poll(rc);
     let now = js_sys::Date::now();
     {
         let mut s = rc.borrow_mut();

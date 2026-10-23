@@ -8,11 +8,14 @@ use oa_auth::repos::Project as AccountProject;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 mod history;
+mod playable_validation;
+mod publication;
 mod resources;
 
 pub(super) fn routes() -> Router<App> {
     Router::new()
         .merge(resources::routes())
+        .merge(publication::routes())
         .merge(history::routes())
         .route("/v1/verse/studio/projects", get(list).post(create))
         .route(

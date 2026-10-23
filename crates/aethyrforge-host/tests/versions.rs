@@ -125,7 +125,7 @@ fn project_documents_and_restore_require_v5_and_leave_frozen_v4_unchanged() {
         detail: None,
     };
     assert!(action.validate_outcome(&outcome).is_err());
-    assert_eq!(VERSION, 6);
+    assert_eq!(VERSION, 7);
 }
 
 #[test]
@@ -167,4 +167,11 @@ fn material_actions_require_v6_and_frozen_v5_keeps_its_original_shape() {
         ExportProject,
     }
     assert!(serde_json::from_str::<V5Action>(&text).is_err());
+}
+
+#[test]
+fn playable_loading_requires_v7_and_keeps_v6_frozen() {
+    assert!(!include_str!("../schema/host-v6.json").contains("load_playable"));
+    let old = r#"{"protocol":"openagents.aethyrforge.host","version":6,"session":"old","sequence":1,"message":{"type":"hello","versions":[6]}}"#;
+    assert_eq!(Envelope::decode(old), Err(Error::Version));
 }

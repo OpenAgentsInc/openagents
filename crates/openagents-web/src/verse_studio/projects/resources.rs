@@ -17,7 +17,12 @@ fn hash_ok(s: &str) -> bool {
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
-fn resource_key(a: &Access, ns: WorldNamespace, branch: &str, name: &str) -> Result<String, Error> {
+pub(super) fn resource_key(
+    a: &Access,
+    ns: WorldNamespace,
+    branch: &str,
+    name: &str,
+) -> Result<String, Error> {
     Store::owner_key(
         &a.owner(),
         &format!(

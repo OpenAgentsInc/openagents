@@ -883,3 +883,178 @@ async fn material_save_rejects_an_oversized_source_reference_without_accepting_a
     assert_eq!(reopened["head"], accepted["saved"]);
     assert_eq!(reopened["history"].as_array().unwrap().len(), 1);
 }
+
+fn publish_runtime() -> aethyrforge_host::PublishRuntime {
+    serde_json::from_value(json!({"engine_url":"https://engine.example/","sdk_url":format!("https://engine.example/sdk/{}/aethyrforge_host.js","c".repeat(64)),"sdk_sha256":"c".repeat(64),"engine_release":"fixture-5","template_world":"fixture-house","engine_artifact_sha256":"d".repeat(64),"engine_abi":"aethyrforge.browser.v1","project_format":1,"protocol_version":7,"asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64),"artifacts":[{"path":"/private-assets/scene.json","resource":{"sha256":"e".repeat(64),"bytes":100,"media_type":"application/json"}}],"material_ids":[],"rights":["fantasy-props-cc0","openagents-project-runtime","medieval-town-licensed-runtime"]})).unwrap()
+}
+#[tokio::test]
+async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_revoke_and_rollback()
+ {
+    let world = crate::projects::tests::world_with(crate::projects::tests::Options {
+        verse_publish_runtime: Some(publish_runtime()),
+        ..Default::default()
+    })
+    .await;
+    let mut alice = Client::signed(&world, "octo-local").await;
+    let mut bob = Client::signed(&world, "quiet-local").await;
+    let (_, made) = alice
+        .call(
+            &world,
+            "POST",
+            "/v1/verse/studio/projects",
+            json!({"name":"Playable house"}),
+        )
+        .await;
+    let id = made["id"].as_str().unwrap();
+    let path = format!("/v1/verse/studio/projects/{id}/haunted-house/main");
+    let publications = format!("{path}/publications");
+    let mut d = document();
+    d.source_draft = d.active_source.clone();
+    d.originals.push(aethyrforge_host::OriginalImport {
+        name: "private-notes.txt".into(),
+        text: "Private editable import".into(),
+        sha256: aethyrforge_host::project_hash(b"Private editable import"),
+    });
+    let (_, saved) = alice
+        .call(&world, "POST", &path, save("save-1", 0, &d))
+        .await;
+    let mut publish = json!({"command_id":"publish-1","expected_sequence":0,"operation":"publish","saved_version":1,"document_sha256":saved["saved"]["document_sha256"],"public":true,"confirm_runtime_distribution":true,"release":null});
+    assert_eq!(
+        bob.call(&world, "POST", &publications, publish.clone())
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, first) = alice
+        .call(&world, "POST", &publications, publish.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(
+        alice
+            .call(&world, "POST", &publications, publish.clone())
+            .await
+            .1,
+        first,
+        "Lost-response retry does not create a second publication"
+    );
+    async fn guest(world: &World, path: &str) -> (StatusCode, Value) {
+        let r = Browser::default()
+            .send(world, Request::builder().uri(path), Body::empty())
+            .await;
+        (r.status, serde_json::from_str(&r.body).unwrap_or(json!({})))
+    }
+    let world_id = first["world"].as_str().unwrap();
+    let first_id = first["event"]["release"].as_str().unwrap();
+    let first_path = format!("/v1/verse/play/{world_id}/{first_id}");
+    let (status, pinned) = guest(&world, &first_path).await;
+    assert_eq!(status, StatusCode::OK, "{pinned}");
+    assert!(
+        pinned["manifest"]["content"]["document"]["originals"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "Private imported files are absent from player bytes"
+    );
+    assert_eq!(pinned["manifest"]["runtime"]["protocol_version"], 7);
+    d.environment.insert("fogDensity".into(), 0.03);
+    let (_, saved) = alice
+        .call(&world, "POST", &path, save("save-2", 1, &d))
+        .await;
+    publish["command_id"] = "publish-2".into();
+    publish["expected_sequence"] = 1.into();
+    publish["saved_version"] = 2.into();
+    publish["document_sha256"] = saved["saved"]["document_sha256"].clone();
+    let (_, second) = alice
+        .call(&world, "POST", &publications, publish.clone())
+        .await;
+    assert_eq!(second["book"]["sequence"], 2, "{second}");
+    assert_eq!(
+        guest(&world, &first_path).await.1,
+        pinned,
+        "Later saves/publications do not change an opened version"
+    );
+    // Saved source can be repairable. A matching pair of invalid active/draft
+    // strings must never be mistaken for a compiled playable candidate.
+    let mut invalid_doc = d.clone();
+    invalid_doc.source_draft = "fn oa_material( this is not WGSL".into();
+    invalid_doc.active_source = invalid_doc.source_draft.clone();
+    let (status, bad_saved) = alice
+        .call(&world, "POST", &path, save("bad-source", 2, &invalid_doc))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{bad_saved}");
+    let mut bad_publish = publish.clone();
+    bad_publish["command_id"] = "bad-active".into();
+    bad_publish["expected_sequence"] = 2.into();
+    bad_publish["saved_version"] = 3.into();
+    bad_publish["document_sha256"] = bad_saved["saved"]["document_sha256"].clone();
+    assert_eq!(
+        alice
+            .call(&world, "POST", &publications, bad_publish.clone())
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    invalid_doc = d.clone();
+    invalid_doc
+        .environment
+        .insert("unsupportedLighting".into(), 1.);
+    let (_, bad_saved) = alice
+        .call(&world, "POST", &path, save("bad-values", 3, &invalid_doc))
+        .await;
+    bad_publish["command_id"] = "bad-values".into();
+    bad_publish["saved_version"] = 4.into();
+    bad_publish["document_sha256"] = bad_saved["saved"]["document_sha256"].clone();
+    assert_eq!(
+        alice
+            .call(&world, "POST", &publications, bad_publish)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        alice
+            .call(&world, "GET", &publications, Value::Null)
+            .await
+            .1["book"],
+        second["book"]
+    );
+    let failed_before = second["book"].clone();
+    publish["command_id"] = "missing".into();
+    publish["expected_sequence"] = 2.into();
+    publish["document_sha256"] = "f".repeat(64).into();
+    assert_eq!(
+        alice
+            .call(&world, "POST", &publications, publish.clone())
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        alice
+            .call(&world, "GET", &publications, Value::Null)
+            .await
+            .1["book"],
+        failed_before
+    );
+    publish["command_id"] = "rollback".into();
+    publish["operation"] = "rollback".into();
+    publish["release"] = first_id.into();
+    let (_, rolled) = alice
+        .call(&world, "POST", &publications, publish.clone())
+        .await;
+    assert_eq!(rolled["book"]["channel"], first_id);
+    assert_eq!(rolled["book"]["sequence"], 3);
+    publish["command_id"] = "revoke".into();
+    publish["operation"] = "revoke".into();
+    publish["expected_sequence"] = 3.into();
+    let (_, revoked) = alice.call(&world, "POST", &publications, publish).await;
+    assert_eq!(revoked["book"]["channel"], Value::Null);
+    assert_eq!(guest(&world, &first_path).await.0, StatusCode::NOT_FOUND);
+    let second_id = second["event"]["release"].as_str().unwrap();
+    assert_eq!(
+        guest(&world, &format!("/v1/verse/play/{world_id}/{second_id}"))
+            .await
+            .0,
+        StatusCode::OK
+    );
+}

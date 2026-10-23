@@ -70,3 +70,11 @@ pub use contribution::*;
 
 mod material;
 pub use material::*;
+
+mod publication;
+pub use publication::*;
+
+#[cfg(target_arch = "wasm32")]
+mod player_browser;
+#[cfg(target_arch = "wasm32")]
+pub use player_browser::*;

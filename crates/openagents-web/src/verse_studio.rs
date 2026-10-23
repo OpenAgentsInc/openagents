@@ -22,7 +22,10 @@ const ROOT: &str = "/v1/verse/studio";
 const SCOPE: &str = "verse-studio";
 const TTL: u64 = 300;
 pub(crate) fn owns(path: &str) -> bool {
-    path == ROOT || path.starts_with("/v1/verse/studio/")
+    path == ROOT
+        || path.starts_with("/v1/verse/studio/")
+        || path.starts_with("/v1/verse/play/")
+        || path.starts_with("/new-lander/play/")
 }
 pub(crate) fn routes() -> Router<App> {
     Router::new()

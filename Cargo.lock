@@ -13851,6 +13851,7 @@ dependencies = [
  "mac-jobs",
  "markdown-stream",
  "maud",
+ "naga",
  "nostr",
  "nostr-transport",
  "oa-att",

@@ -896,6 +896,21 @@ fn route_request(rc: &Rc<RefCell<State>>) {
                 control.click();
             }
         }
+        Ok(RequestControl::ConfirmPublish) => {
+            if element("publish-review").has_attribute("open") {
+                input("publish-confirm-rights").set_checked(true);
+                element("publish-confirm")
+                    .unchecked_into::<web_sys::HtmlElement>()
+                    .click();
+            } else {
+                say("Review Publish before confirming it.");
+            }
+        }
+        Ok(RequestControl::CancelPublish) => {
+            element("publish-cancel")
+                .unchecked_into::<web_sys::HtmlElement>()
+                .click();
+        }
         Ok(RequestControl::ConfirmChange) => {
             let s = rc.borrow();
             let allowed = element("edit-auth").has_attribute("open")
@@ -944,7 +959,6 @@ fn route_request(rc: &Rc<RefCell<State>>) {
                     !e.has_attribute("disabled")
                         && !e.has_attribute("hidden")
                         && e.get_attribute("data-tutorial-option").as_deref() == Some("ready")
-                        && e.offset_width() > 0
                 });
             rc.borrow_mut().stop_request();
             if let Some(control) = available {

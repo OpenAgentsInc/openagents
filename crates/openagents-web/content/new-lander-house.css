@@ -23,3 +23,6 @@ nav{position:fixed;bottom:16px;left:16px;right:16px;display:flex;align-items:cen
 #face-controls{min-width:0;margin:12px 0;padding:10px;border:1px solid #586274}
 #face-canvas{display:block;width:100%;max-width:256px;height:auto;aspect-ratio:1;touch-action:none;background:repeating-conic-gradient(#242736 0% 25%,#35394b 0% 50%) 0/20px 20px;cursor:crosshair}
 #face-controls:disabled #face-canvas{opacity:.5;cursor:not-allowed;pointer-events:none}
+
+#publish-review{margin:0;padding:0;border:0;max-width:none;max-height:none;width:100%;height:100%;color:inherit;position:fixed;inset:0;display:grid;place-items:center;background:#0008}#publish-review section{max-width:min(420px,94vw);max-height:90vh;overflow:auto;padding:28px;background:var(--glass);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(18px)}#publish-review h2{font-size:20px}#publish-review p,#publish-review li{font-size:14px;line-height:1.5}#publish-review button,#publish-review a{margin:8px 6px 0 0;display:inline-block}
+#publish-share-card{position:fixed;right:16px;top:16px;max-width:min(460px,90vw);background:var(--glass);border:1px solid var(--line);padding:18px;z-index:30;overflow-wrap:anywhere}#publish-share-link{display:block}

@@ -35,7 +35,7 @@ mod lander6;
 mod lander8;
 mod layertree;
 pub mod live;
-mod medieval_town;
+pub(crate) mod medieval_town;
 mod new_lander;
 pub(crate) mod new_lander_house;
 mod pricing;
