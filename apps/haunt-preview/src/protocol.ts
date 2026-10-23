@@ -42,11 +42,15 @@ export function validEdit(
 }
 
 export async function sourceHash(source: string): Promise<string> {
-  const bytes = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(source),
-  );
-  return [...new Uint8Array(bytes)]
+  return sourceBytesHash(new TextEncoder().encode(source));
+}
+
+/** Hashes the exact bytes, independent of decoding or array offsets. */
+export async function sourceBytesHash(bytes: Uint8Array): Promise<string> {
+  const owned = new Uint8Array(bytes.byteLength);
+  owned.set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", owned);
+  return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
