@@ -1,8 +1,9 @@
 //! Native Medieval Town surface. Rust owns loading, movement, rendering, and timing.
 //! The host retains a CAMetalLayer and forwards display callbacks and touch input.
 
-const MANIFEST_URL: &str = "https://m4552b29fd280c68f---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app/private-assets/native-town-4552b29fd280c68fd91ce2ba00311e3297838a536f87b71212103214c0d21ea6.json";
-const MANIFEST_SHA256: &str = "4552b29fd280c68fd91ce2ba00311e3297838a536f87b71212103214c0d21ea6";
+const MANIFEST_URL: &str = "https://ma07af48b436be446---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app/private-assets/native-town-a07af48b436be4464854c93480d0a388a5172d4ffb04ce146607754c1ffe0c38.json";
+const MANIFEST_SHA256: &str = "a07af48b436be4464854c93480d0a388a5172d4ffb04ce146607754c1ffe0c38";
+const MAX_COLLISION_TRIANGLES: usize = 4_000_000;
 
 mod collision;
 mod gpu;
@@ -250,7 +251,7 @@ fn validate_manifest(m: &Manifest) -> Result<()> {
         || m.indices.count > 18_000_000
         || m.indices.count % 3 != 0
         || m.indices.count.checked_mul(4) != Some(raw_length(&m.indices))
-        || m.collision.triangle_count > 500_000
+        || m.collision.triangle_count > MAX_COLLISION_TRIANGLES
         || m.collision.triangle_count.checked_mul(36) != Some(raw_length(&m.collision))
         || m.draws.is_empty()
         || m.draws.len() > 8192

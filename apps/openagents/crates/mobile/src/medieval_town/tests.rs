@@ -131,6 +131,17 @@ fn material_arrays_require_matching_layers_complete_mips_and_linear_normal_maps(
 }
 
 #[test]
+fn collision_manifest_accepts_the_limit_and_rejects_one_more_triangle() {
+    let mut m = manifest();
+    m.collision.triangle_count = MAX_COLLISION_TRIANGLES;
+    m.collision.byte_length = MAX_COLLISION_TRIANGLES * 36;
+    assert!(validate_manifest(&m).is_ok());
+    m.collision.triangle_count += 1;
+    m.collision.byte_length += 36;
+    assert!(validate_manifest(&m).is_err());
+}
+
+#[test]
 fn compressed_files_require_exact_decoded_length_and_hash() {
     use std::io::Write;
     let raw = b"owned triangle data";
@@ -207,22 +218,37 @@ fn private_native_package_parses_and_walks_on_its_source_collision() {
         parts.push(decode_file(bytes, spec).unwrap());
     }
     let mesh = decode_mesh(manifest, parts).unwrap();
+    assert!(
+        mesh.walk_bounds.is_none(),
+        "The full town must not have an invisible walking box"
+    );
     let mut camera = Camera::new(mesh.spawn);
-    for i in 0..300 {
-        camera.update(&mesh, i as f64 / 60., 0., 0.5, 0., 0., false, false);
+    for i in 0..420 {
+        camera.update(&mesh, i as f64 / 60., 0., 1., 0., 0., false, false);
         assert!(
-            camera.position.y > -2.,
-            "Lost source ground at tick {i}: {:?}",
+            camera.position.y > 0.,
+            "Lost ground at tick {i}: {:?}",
             camera.position
         );
     }
     assert!(
-        camera.position.z > mesh.spawn.z + 3.,
-        "{:?}",
+        camera.position.z > 40.,
+        "The visible archway or stairs blocked walking: {:?}",
         camera.position
     );
-    assert!(camera.position.y > 0.);
-    assert!(camera.position.y < 5.);
+    assert!((camera.position.x - mesh.spawn.x).abs() < 0.1);
+    assert!((0.8..1.2).contains(&camera.position.y));
+    camera = Camera::new(mesh.spawn);
+    camera.yaw = 0.;
+    for i in 0..600 {
+        camera.update(&mesh, i as f64 / 60., 0., 1., 0., 0., false, false);
+        assert!(camera.position.y > 0.);
+    }
+    assert!(
+        camera.position.z < -10.,
+        "An invisible boundary blocked the open street: {:?}",
+        camera.position
+    );
     camera = Camera::new(mesh.spawn);
     camera.yaw = std::f32::consts::PI * 1.25;
     for i in 0..300 {

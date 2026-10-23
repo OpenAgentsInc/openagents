@@ -1,3 +1,14 @@
+# OpenAgents 1.0.0 (1021)
+
+Medieval Town fixes blocked open archways and walking over steps. Walk forward
+from the starting point, pass beneath the stone arch, and climb the steps
+without jumping. Explore other open arches and paths, and check that visible
+walls still stop the player. The town keeps its detailed materials, trees,
+shadows, castle, and mountain backdrops.
+
+Check walking, Run, Jump, looking around, and switching apps. Watch the FPS
+display while moving through the passage.
+
 # OpenAgents 1.0.0 (1020)
 
 Medieval Town now keeps the full town and its trees, castle, and mountain

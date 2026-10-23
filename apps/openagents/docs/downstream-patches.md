@@ -8,6 +8,8 @@ Keep fork-specific changes here so upstream updates can review each integration.
   in the background and release the surface when the town closes.
   Preserve the full town and its surroundings with instanced geometry,
   material texture arrays, normal maps, and cached directional shadows.
+  Use visible solid geometry for collision throughout the town so open arches
+  and steps stay walkable without an artificial movement boundary.
 
 - OpenAgents #12460: open the shared Grid suggestion form from the desktop
   Help menu and phone Settings, including for guests, with the sending app

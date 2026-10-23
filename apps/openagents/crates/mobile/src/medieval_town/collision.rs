@@ -18,7 +18,7 @@ pub(super) struct Collision {
 impl Collision {
     pub fn new(values: &[f32]) -> Result<Self> {
         if values.len() % 9 != 0
-            || values.len() > 500_000 * 9
+            || values.len() > super::MAX_COLLISION_TRIANGLES * 9
             || values.iter().any(|v| !v.is_finite() || v.abs() > 30_000.)
         {
             return Err(failed("The town collision mesh is incomplete."));
@@ -82,20 +82,25 @@ impl Collision {
     fn clear_among(&self, p: Vec3, triangles: &[usize]) -> bool {
         let a = p + Vec3::Y * RADIUS;
         let b = p + Vec3::Y * (HEIGHT - RADIUS);
+        let minimum = p - Vec3::new(RADIUS, 0., RADIUS);
+        let maximum = p + Vec3::new(RADIUS, HEIGHT, RADIUS);
         triangles.iter().all(|&i| {
-            segment_triangle_distance2(a, b, self.triangles[i]) >= (RADIUS - 0.003).powi(2)
+            let t = self.triangles[i];
+            let low = t.a.min(t.b).min(t.c);
+            let high = t.a.max(t.b).max(t.c);
+            // A triangle outside the capsule bounds cannot touch its rounded body.
+            if low.cmpgt(maximum).any() || high.cmplt(minimum).any() {
+                return true;
+            }
+            segment_triangle_distance2(a, b, t) >= (RADIUS - 0.003).powi(2)
         })
-    }
-    fn clear(&self, p: Vec3) -> bool {
-        self.clear_among(p, &self.nearby(p, RADIUS))
     }
     // A floor height describes a point. Rounded feet also contact nearby bevels
     // before the capsule axis reaches them; solve that contact without changing
     // the collision margin or allowing a step higher than the controller limit.
-    fn supported_floor(&self, p: Vec3, rise: f32) -> Option<f32> {
-        let mut low = self.floor(p, rise)?;
-        let ids = self.nearby(p, RADIUS);
-        let at = |height| self.clear_among(Vec3::new(p.x, height, p.z), &ids);
+    fn supported_floor_among(&self, p: Vec3, rise: f32, ids: &[usize]) -> Option<f32> {
+        let mut low = self.floor_among(p, rise, ids)?;
+        let at = |height| self.clear_among(Vec3::new(p.x, height, p.z), ids);
         if at(low) {
             return Some(low);
         }
@@ -113,22 +118,48 @@ impl Collision {
         }
         Some(high)
     }
-    fn floor(&self, p: Vec3, rise: f32) -> Option<f32> {
+    fn floor_among(&self, p: Vec3, rise: f32, ids: &[usize]) -> Option<f32> {
         let mut best = None;
-        for offset in [
+        let offsets = [
             Vec3::ZERO,
             Vec3::X * 0.16,
             -Vec3::X * 0.16,
             Vec3::Z * 0.16,
             -Vec3::Z * 0.16,
-        ] {
-            let sample = p + offset;
-            for i in self.nearby(sample, 0.) {
-                let t = self.triangles[i];
-                let ab = t.b - t.a;
-                let ac = t.c - t.a;
-                let denominator = ab.x * ac.z - ab.z * ac.x;
-                if denominator.abs() < 1e-8 {
+        ];
+        // Share triangle setup across the five foot samples.
+        for &i in ids {
+            let t = self.triangles[i];
+            let low = t.a.min(t.b).min(t.c);
+            let high = t.a.max(t.b).max(t.c);
+            if low.y > p.y + rise || high.y <= p.y - 60. {
+                continue;
+            }
+            let ab = t.b - t.a;
+            let ac = t.c - t.a;
+            let tolerance = (ab.abs() + ac.abs()) * 0.0002 + Vec3::splat(0.0001);
+            if low.x > p.x + 0.16 + tolerance.x
+                || high.x < p.x - 0.16 - tolerance.x
+                || low.z > p.z + 0.16 + tolerance.z
+                || high.z < p.z - 0.16 - tolerance.z
+            {
+                continue;
+            }
+            let denominator = ab.x * ac.z - ab.z * ac.x;
+            if denominator.abs() < 1e-8 {
+                continue;
+            }
+            let normal = ab.cross(ac).normalize();
+            if normal.y.abs() < 0.65 {
+                continue;
+            }
+            for offset in offsets {
+                let sample = p + offset;
+                if sample.x < low.x - tolerance.x
+                    || sample.x > high.x + tolerance.x
+                    || sample.z < low.z - tolerance.z
+                    || sample.z > high.z + tolerance.z
+                {
                     continue;
                 }
                 let dx = sample.x - t.a.x;
@@ -136,10 +167,6 @@ impl Collision {
                 let u = (dx * ac.z - dz * ac.x) / denominator;
                 let v = (ab.x * dz - ab.z * dx) / denominator;
                 if u < -0.0001 || v < -0.0001 || u + v > 1.0001 {
-                    continue;
-                }
-                let normal = ab.cross(ac).normalize();
-                if normal.y.abs() < 0.65 {
                     continue;
                 }
                 let y = t.a.y + ab.y * u + ac.y * v;
@@ -155,6 +182,9 @@ impl Collision {
         let horizontal = delta / steps as f32;
         let vertical = dy / steps as f32;
         for _ in 0..steps {
+            // Every trial stays within this horizontal neighborhood, including
+            // axis slides and rounded-foot samples. Reuse it for the whole step.
+            let ids = self.nearby(p, RADIUS + horizontal.length());
             for movement in [
                 horizontal,
                 Vec3::new(horizontal.x, 0., 0.),
@@ -164,15 +194,16 @@ impl Collision {
                     continue;
                 }
                 let next = p + movement;
-                if self.clear(next) {
+                if self.clear_among(next, &ids) {
                     p = next;
                     if movement == horizontal {
                         break;
                     }
                 } else if *grounded {
-                    if let Some(floor) = self.supported_floor(next, 0.27) {
+                    if let Some(floor) = self.supported_floor_among(next, 0.27, &ids) {
                         let step = Vec3::new(next.x, floor, next.z);
-                        if floor >= p.y - 0.1 && floor <= p.y + 0.27 && self.clear(step) {
+                        if floor >= p.y - 0.1 && floor <= p.y + 0.27 && self.clear_among(step, &ids)
+                        {
                             p = step;
                             if movement == horizontal {
                                 break;
@@ -183,7 +214,7 @@ impl Collision {
             }
             let next = p + Vec3::Y * vertical;
             if vertical <= 0. {
-                if let Some(floor) = self.supported_floor(p, 0.035) {
+                if let Some(floor) = self.supported_floor_among(p, 0.035, &ids) {
                     if next.y <= floor + 0.003 {
                         p.y = floor;
                         *grounded = true;
@@ -192,7 +223,7 @@ impl Collision {
                 }
             }
             *grounded = false;
-            if self.clear(next) {
+            if self.clear_among(next, &ids) {
                 p = next;
             }
         }
@@ -283,4 +314,130 @@ fn segment_triangle_distance2(a: Vec3, b: Vec3, t: Triangle) -> f32 {
         .min(segments(a, b, t.a, t.b))
         .min(segments(a, b, t.b, t.c))
         .min(segments(a, b, t.c, t.a))
+}
+
+#[cfg(test)]
+mod movement_tests {
+    use super::*;
+
+    fn quad(values: &mut Vec<f32>, corners: [[f32; 3]; 4]) {
+        for index in [0, 1, 2, 0, 2, 3] {
+            values.extend_from_slice(&corners[index]);
+        }
+    }
+    fn ground() -> Vec<f32> {
+        let mut values = Vec::new();
+        quad(
+            &mut values,
+            [
+                [-10., 0., -10.],
+                [10., 0., -10.],
+                [10., 0., 10.],
+                [-10., 0., 10.],
+            ],
+        );
+        values
+    }
+    fn stairs() -> Vec<f32> {
+        let mut values = ground();
+        for step in 0..5 {
+            let z = 1. + step as f32 * 0.4;
+            let lower = step as f32 * 0.2;
+            let upper = lower + 0.2;
+            quad(
+                &mut values,
+                [
+                    [-2., lower, z],
+                    [2., lower, z],
+                    [2., upper, z],
+                    [-2., upper, z],
+                ],
+            );
+            quad(
+                &mut values,
+                [
+                    [-2., upper, z],
+                    [2., upper, z],
+                    [2., upper, z + 0.4],
+                    [-2., upper, z + 0.4],
+                ],
+            );
+        }
+        quad(
+            &mut values,
+            [[-2., 1., 3.], [2., 1., 3.], [2., 1., 9.], [-2., 1., 9.]],
+        );
+        values
+    }
+    #[test]
+    fn capsule_walks_up_and_down_stairs_without_jumping() {
+        let world = Collision::new(&stairs()).unwrap();
+        let mut p = Vec3::ZERO;
+        let mut grounded = true;
+        for _ in 0..150 {
+            p = world.move_capsule(p, Vec3::Z * 0.04, -0.004, &mut grounded);
+            assert!(p.y >= 0. && p.y <= 1.01, "{p:?}");
+        }
+        assert!(p.z > 5.8 && (p.y - 1.).abs() < 0.01 && grounded, "{p:?}");
+        for _ in 0..150 {
+            p = world.move_capsule(p, -Vec3::Z * 0.04, -0.004, &mut grounded);
+        }
+        // Descending still follows gravity rather than snapping a full flight.
+        for _ in 0..300 {
+            p = world.move_capsule(p, Vec3::ZERO, -0.01, &mut grounded);
+        }
+        assert!(p.z < 0.2 && p.y.abs() < 0.01 && grounded, "{p:?}");
+    }
+    #[test]
+    fn open_arch_passes_but_a_solid_wall_still_blocks_the_capsule() {
+        let mut values = ground();
+        for (left, right, bottom, top) in [
+            (-2., -0.75, 0., 3.),
+            (0.75, 2., 0., 3.),
+            (-0.75, 0.75, 2.4, 3.),
+        ] {
+            quad(
+                &mut values,
+                [
+                    [left, bottom, 2.],
+                    [right, bottom, 2.],
+                    [right, top, 2.],
+                    [left, top, 2.],
+                ],
+            );
+        }
+        quad(
+            &mut values,
+            [[-2., 0., 6.], [2., 0., 6.], [2., 3., 6.], [-2., 3., 6.]],
+        );
+        let world = Collision::new(&values).unwrap();
+        let mut p = Vec3::ZERO;
+        let mut grounded = true;
+        for _ in 0..250 {
+            p = world.move_capsule(p, Vec3::Z * 0.04, -0.004, &mut grounded);
+        }
+        assert!(p.z > 5.5 && p.z < 5.71, "{p:?}");
+        assert!(p.y.abs() < 0.01 && grounded);
+    }
+    #[test]
+    fn stepping_does_not_push_the_capsule_through_a_low_ceiling() {
+        let mut values = stairs();
+        quad(
+            &mut values,
+            [
+                [-2., 1.85, 0.8],
+                [2., 1.85, 0.8],
+                [2., 1.85, 3.],
+                [-2., 1.85, 3.],
+            ],
+        );
+        let world = Collision::new(&values).unwrap();
+        let mut p = Vec3::ZERO;
+        let mut grounded = true;
+        for _ in 0..150 {
+            p = world.move_capsule(p, Vec3::Z * 0.04, -0.004, &mut grounded);
+            assert!(p.y + HEIGHT <= 1.853 || p.z < 0.5, "{p:?}");
+        }
+        assert!(p.z < 1.3, "{p:?}");
+    }
 }

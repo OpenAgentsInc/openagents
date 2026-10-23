@@ -136,6 +136,39 @@ final class MedievalTownTests: XCTestCase {
         app.buttons["medieval-town-close"].tap()
     }
 
+    func testWalkThroughArchwayAndSteps() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics"]
+        app.launch()
+        let metric = app.staticTexts["medieval-town-metrics"]
+        XCTAssertTrue(metric.waitForExistence(timeout: 10))
+        try waitForMetrics(metric, timeout: 180) { values in
+            values["ready"] as? Bool == true
+                && self.number(values, "completedFrames") >= 60
+                && self.number(values, "width") > self.number(values, "height")
+        }
+        try captureTownView(app, metric: metric, name: "arch-steps-before")
+        let before = try readMetrics(metric)
+        let start = try position(before)
+        let stick = app.otherElements["medieval-town-move"]
+        XCTAssertTrue(stick.exists)
+        let center = stick.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let forward = stick.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16))
+        center.press(forDuration: 0.1, thenDragTo: forward, withVelocity: .slow, thenHoldForDuration: 9)
+        try captureTownView(app, metric: metric, name: "arch-steps-other-side")
+        let after = try readMetrics(metric)
+        let finish = try position(after)
+        XCTAssertGreaterThan(finish[2], 35, "Walking crosses the arch and its steps without jumping")
+        XCTAssertGreaterThanOrEqual(finish[1], 0.7, "Walking reaches the raised steps on the far side")
+        XCTAssertGreaterThan(finish[2] - start[2], 15)
+        XCTAssertLessThan(abs(finish[0] - start[0]), 0.5)
+        XCTAssertGreaterThan(number(after, "distanceWalked") - number(before, "distanceWalked"), 15)
+        try orientTownCamera(app, metric: metric, yaw: 0, pitch: -0.04)
+        try captureTownView(app, metric: metric, name: "arch-steps-look-back")
+        app.buttons["medieval-town-close"].tap()
+    }
+
     private func captureTownView(_ app: XCUIApplication, metric: XCUIElement, name: String) throws {
         let frames = number(try readMetrics(metric), "completedFrames")
         try waitForMetrics(metric, timeout: 15) { self.number($0, "completedFrames") >= frames + 30 }
