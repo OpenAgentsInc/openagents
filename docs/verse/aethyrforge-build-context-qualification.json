@@ -12,6 +12,19 @@
   "failed_cloud_build": "90210157-3416-4a5d-94e6-c82f84a16fc3",
   "failed_source": "315138015de4056532254fbd078846c8744450eb",
   "failed_reason": "Official upload filter omitted the public catalog referenced by two native include_bytes! calls.",
-  "full_image_rebuild": "Pending in #12561; no image or deployment pass claimed.",
-  "production_traffic_changed": false
+  "full_image_rebuild": {
+    "status": "SUCCESS",
+    "id": "211a47e3-fdfd-40c0-899a-978c0a9ab3ed",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:975eb1303b6e06c15f418f87ab7802f957ec68be057d803814c2d5bdaa0dcbd0"
+  },
+  "production_traffic_changed": false,
+  "current_native_build": {
+    "status": "SUCCESS",
+    "id": "f8490441-0b25-4a22-9980-eadf5804cc18",
+    "source": "c20ac6e2ff8c9cbb1298300218e31632825107d1",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:e829ec359151ccc92e6ee498d5bf4d0391f93b322f2422380bfd1543d7286c04",
+    "candidate_revision": "coder-q61-c20ac6e2",
+    "gateway_hold": "serving",
+    "prior_tags_unchanged": true
+  }
 }
