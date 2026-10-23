@@ -199,7 +199,7 @@ fn schema_and_numeric_limits() {
         .encode()
         .unwrap();
     assert!(
-        Envelope::decode(&text.replacen("\"version\":4", "\"version\":4,\"version\":4", 1))
+        Envelope::decode(&text.replacen("\"version\":5", "\"version\":5,\"version\":5", 1))
             .is_err()
     );
     assert!(Envelope::decode(&" ".repeat(MAX_BYTES + 1)).is_err());
@@ -233,7 +233,7 @@ fn schema_and_numeric_limits() {
     assert!(endpoint("https://user:secret@engine.example").is_err());
     assert!(endpoint("https://engine.example?token=secret").is_err());
     assert!(endpoint("http://127.0.0.1:1234/engine").is_ok());
-    let expected = include_str!("../schema/host-v4.json");
+    let expected = include_str!("../schema/host-v5.json");
     let actual = serde_json::to_string_pretty(&schemars::schema_for!(Envelope)).unwrap();
     assert_eq!(expected.trim(), actual.trim());
 }

@@ -1,0 +1,43 @@
+{
+  "schema": "openagents.verse.project-qualification.v1",
+  "issue": 12554,
+  "status": "source checks complete; new immutable release and integrated browser qualification pending",
+  "protocol_version": 5,
+  "private_source": "845df602df1888303f16d9a0f2338cc033b04642",
+  "private_predecessor": "515c2958436e07e6a9ed36c7c0b5117a3ffdcb8b",
+  "immutable_release": null,
+  "sdk_sha256": null,
+  "native_consumer_binary_sha256": null,
+  "source_checks": {
+    "public_host": 40,
+    "native_project_storage": 3,
+    "native_house": 3,
+    "public_wasm_typecheck": true,
+    "private_contract": 25,
+    "private_kernel": 23,
+    "private_typecheck": true,
+    "browser_script_syntax": true
+  },
+  "coverage": [
+    "Two isolated local principals use existing project membership; accepted actors, idempotent saves, stale conflicts, compensating undo, viewer refusal, revocation, personal checkpoint separation, cookie CSRF, and private image upload validation.",
+    "Project content preserves source draft separately from active source, material/environment/entity/layout references, PNG references, and original exports. Player state and credentials are absent from the authored document.",
+    "Explicit old-origin file export/import with declared asset mapping preserves original bytes and unsupported material/change files; no primitive-to-kit attribution is invented.",
+    "Save acknowledgments preserve the accepted base while reporting later typing as unsaved; fetching/canceling/failing a load cannot adopt its version or tools.",
+    "Grant, authorization, action dispatch, receipt polling, and completion UI are bound to the original account/project context and engine session. Context switches reload pending private worlds.",
+    "A complete kernel/GPU candidate precedes restored generation adoption. Failed or superseded candidates keep the working generation. Blocked saved positions recover to a validated spawn or refuse the load; local undo cannot undo an imported shared world."
+  ],
+  "browser_fixture": {
+    "script": "scripts/check-verse-project.mjs",
+    "status": "not yet run against the new release",
+    "synthetic_account_service": true,
+    "real_signin_provider": false,
+    "tests": "Real native store and pinned GPU engine: delayed Save text, acknowledged base, canceled remote-version load, repairable-draft restore, and late checkpoint failure after project switch."
+  },
+  "unfinished_checks": [
+    "Build/pin the wire-v5 SDK/private release and fresh commit-named native consumer; retain older versioned origins.",
+    "Run and inspect desktop/mobile browser save/load/recovery/import and late-completion fault cases with the new artifacts; source/unit checks are not browser qualification.",
+    "Complete dedicated-account real provider sign-in and save/close/sign-in/resume; see NEEDS_OWNER.md. Synthetic principals and bearer reads are separate evidence.",
+    "Qualify rendered material layers with #12514; storing typed PNG references does not prove a rendered paint or generated material."
+  ],
+  "activation": "No root homepage promotion, production traffic shift, launch schedule, or new payout rail."
+}

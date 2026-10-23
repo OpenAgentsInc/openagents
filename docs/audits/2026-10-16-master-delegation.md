@@ -485,6 +485,19 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12554: wire v5 adds bounded editable exports and confirmed transactional
+  restores; v1–v4 remain pinned. Existing account projects/private files own
+  versioned saves, actor-aware undo, PNG resources, and per-person checkpoints.
+  Focused native storage checks (3), house checks (3), public host checks (40),
+  Wasm checks, private contract checks (25), and kernel checks (23) pass.
+  Late Save text stays unsaved; canceled loads and cross-context receipts cannot
+  adopt fetched versions or old tools. Run the retained project browser check
+  against a fresh native consumer and new immutable wire-v5 release, then verify
+  real dedicated-account save/close/sign-in/resume, file imports, conflicts,
+  revocation, and storage/network recovery in #12561. Provider access is in
+  `NEEDS_OWNER.md`. [Project qualification](../verse/aethyrforge-project-qualification.json).
+
+
 - #12563: the preview owns bottom-left zoom/Reset controls. The host keeps Back
   in the header, moves guidance out of that area, and leaves only Full screen in
   its compact mobile footer. Focused route/copy checks and script syntax pass.

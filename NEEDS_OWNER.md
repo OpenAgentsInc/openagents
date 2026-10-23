@@ -32,6 +32,18 @@ The locally generated Samantha audio fixture is synthetic speech, not a human
 microphone check; injected recognition events are a separate host-state test.
 No owner audio or owner account is needed for automated checks.
 
+Codex independently observed synthetic-file `getUserMedia` remain pending
+before SpeechRecognition started (`events: []`, `clicked: true`). The installed
+browser helper refused a headed diagnostic through its legacy screen-lease gate;
+that gate was not bypassed. Capture and ASR remain unqualified, with no claim of
+an ASR-provider outage. Complete the visible/microphone check through an
+authorized browser path when available.
+
+The dedicated-account provider step also covers #12554: save a world, close it,
+sign back in, find that account's project, and confirm resuming its editable
+content, repairable draft, and valid place. This is separate from native tests
+with two isolated local principals and synthetic browser account services.
+
 ## Check the live Maya work cards (#12524) (2026-10-22)
 
 While signed in, refresh [Verse](https://openagents.com/), walk up to each

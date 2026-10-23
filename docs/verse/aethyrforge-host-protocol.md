@@ -22,13 +22,13 @@ no secrets, and private engine source maps are not published.
 2. The private engine loads the operator-pinned public Wasm SDK and constructs
    `EngineEndpoint` with its exact allowed host origin and supported capabilities.
    Once its document has loaded, it posts the fixed public string
-   `openagents.aethyrforge.host/4/listening` to that host origin. This carries no
+   `openagents.aethyrforge.host/5/listening` to that host origin. This carries no
    authority. The host accepts it only from the configured origin **and its exact
    iframe window**, once per frame load.
-3. The host generates a 192-bit random session, sends `hello` with version `[4]`
+3. The host generates a 192-bit random session, sends `hello` with version `[5]`
    and sequence 1 to that exact window/origin, and transfers exactly one MessagePort.
    The engine accepts only its configured parent origin/window, one port, version
-   4, and a valid hello. It responds `ready` on that port. All further messages are
+   5, and a valid hello. It responds `ready` on that port. All further messages are
    UTF-8 JSON **strings** on the scoped channel, never arbitrary window messages.
 4. The host checks release, engine ABI, project format, and capabilities before
    sending `open`. Successful open includes status. Requests and results carry a
@@ -43,7 +43,7 @@ no secrets, and private engine source maps are not published.
    of Aethyrforge's richer authoring and release formats; matching it does not imply
    source, runtime, or saved-world compatibility.
 
-The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v4.json)
+The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v5.json)
 defines closed message shapes. Runtime validation adds UTF-8 byte limits, finite
 coordinates, safe integer bounds, state transitions, peer checks, and relationships
 between fields. Schema validation alone is insufficient. `Envelope::decode` and
@@ -175,3 +175,33 @@ remain unchanged. Mesh inspection draws the compiled triangle edges and does not
 change project revisions, collision, or player pose. The host owns window layout,
 focus, unsent fields, and session checkpoints; opening a panel uses the existing
 engine instance. Mobile uses the same tool DOM with compact tabs.
+
+
+Version 5 adds `export_project` and confirmed `restore_project` actions. Frozen
+v1–v4 schemas and pinned SDKs remain unchanged. The document includes bounded
+creator sources, material values and PNG references, environment, entity/layout
+references, and original imported files. It excludes fixed scene collision,
+compiled assets, private engine code, credentials, and personal presence. The
+asset-set and scene identities must match the target world. Exporting a copy is
+read-only; restoring it requires the existing exact-action permission and checks
+both the kernel candidate and GPU resources before adoption. A blocked personal
+checkpoint uses a validated starting place or refuses the restore.
+
+Account saves use the existing project membership and private project-file store.
+Each accepted version has a server-stamped actor, idempotent command, expected
+base version, source hash, and timestamp. Conflicts never silently replace a
+newer save. Compensating undo changes only the actor's still-applied fields and
+refuses fields another author changed. Camera, selection, tools, and unsent text
+are separate per-account checkpoints. A fetched version becomes the local base
+only after a confirmed restore succeeds. A Save response advances its accepted
+base but marks any text typed during the request as unsaved. Confirmation and
+late receipts stay bound to the original account, project context, and engine
+session; switching context ends the old private world before it can be adopted.
+
+The older editor must export its files before import on the new host origin.
+The explicit converter maps only supplied old asset names to current catalog IDs
+and preserves original scene/material/change files and unsupported fields. It
+never labels old primitives as kit assets. Device copies are account/project
+scoped; failed storage/network writes offer an editable export rather than a
+successful project-save label. PNG resources are hash-checked, decoded within
+4 MiB/2048-pixel limits, and privately stored under the same project authority.

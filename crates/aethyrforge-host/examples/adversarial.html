@@ -5,7 +5,7 @@ const host=document.querySelector('meta[name=host-origin]').content;
 window.addEventListener('message',event=>{
 if(event.source!==parent||event.origin!==host||event.ports.length!==1)return;
 const hello=JSON.parse(event.data),port=event.ports[0];
-const reply={protocol:'openagents.aethyrforge.host',version:4,session:hello.session,sequence:1,message:{type:'ready',release:'fixture-release',engine_abi:'fixture-abi',project_format:1,capabilities:['inspect']}};
+const reply={protocol:'openagents.aethyrforge.host',version:5,session:hello.session,sequence:1,message:{type:'ready',release:'fixture-release',engine_abi:'fixture-abi',project_format:1,capabilities:['inspect']}};
 const variant=location.pathname;
 if(variant.includes('session'))reply.session='forged-session';
 if(variant.includes('version'))reply.version=2;

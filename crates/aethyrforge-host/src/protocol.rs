@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
-pub const VERSION: u16 = 4;
+pub const VERSION: u16 = 5;
 pub const MAX_BYTES: usize = 65_536;
 pub const MAX_PENDING: usize = 16;
 pub const MAX_RESULTS: usize = 64;
@@ -244,6 +244,11 @@ pub enum Action {
         checkpoint: Option<Checkpoint>,
     },
     Inspect,
+    ExportProject,
+    RestoreProject {
+        document: crate::ProjectDocument,
+        checkpoint: Option<Checkpoint>,
+    },
     View {
         mode: ViewMode,
     },
@@ -297,7 +302,10 @@ impl Action {
             | Self::Lookup { .. } => {
                 return None;
             }
-            Self::Inspect | Self::View { .. } | Self::Select { .. } => Capability::Inspect,
+            Self::Inspect | Self::ExportProject | Self::View { .. } | Self::Select { .. } => {
+                Capability::Inspect
+            }
+            Self::RestoreProject { .. } => Capability::Propose,
             Self::Propose { .. } => Capability::Propose,
             Self::Draft { .. } => Capability::Draft,
             Self::Compile { .. } => Capability::Compile,
@@ -319,6 +327,8 @@ impl Action {
         let valid = match self {
             Self::Authorize { grant } => grant.validate().is_ok(),
             Self::Open { .. } | Self::Inspect | Self::Observe { .. } => outcome.status.is_some(),
+            Self::ExportProject => matches!(outcome.detail, Some(Detail::ProjectDocument { .. })),
+            Self::RestoreProject { .. } => outcome.status.is_some(),
             Self::Publish { .. } => matches!(outcome.detail, Some(Detail::Published { .. })),
             Self::Share { .. } => matches!(outcome.detail, Some(Detail::Shared { .. })),
             Self::Capture => matches!(
@@ -339,6 +349,13 @@ impl Action {
             Self::Open {
                 checkpoint: Some(c),
             } => c.validate().is_ok(),
+            Self::RestoreProject {
+                document,
+                checkpoint,
+            } => {
+                document.validate().is_ok()
+                    && checkpoint.as_ref().is_none_or(|c| c.validate().is_ok())
+            }
             Self::Propose { operations } => {
                 !operations.is_empty()
                     && operations.len() <= 8
@@ -373,6 +390,9 @@ impl Action {
 #[serde(deny_unknown_fields)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Detail {
+    ProjectDocument {
+        document: crate::ProjectDocument,
+    },
     CapturePreview {
         png: String,
         sha256: String,
@@ -426,6 +446,7 @@ impl Outcome {
         }
         if let Some(detail) = &self.detail {
             let valid = match detail {
+                Detail::ProjectDocument { document } => document.validate().is_ok(),
                 Detail::CapturePreview {
                     png,
                     sha256,

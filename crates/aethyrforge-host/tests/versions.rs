@@ -110,3 +110,20 @@ fn mesh_inspection_uses_v4_without_crossing_the_frozen_v3_boundary() {
         serde_json::from_str(include_str!("../schema/host-v3.json")).unwrap();
     assert!(v3["$defs"]["Status"]["properties"].get("view").is_none());
 }
+
+#[test]
+fn project_documents_and_restore_require_v5_and_leave_frozen_v4_unchanged() {
+    let old = r#"{"protocol":"openagents.aethyrforge.host","version":4,"session":"old-session","sequence":1,"message":{"type":"hello","versions":[4]}}"#;
+    assert_eq!(Envelope::decode(old), Err(Error::Version));
+    assert!(!include_str!("../schema/host-v4.json").contains("restore_project"));
+    assert!(!include_str!("../schema/host-v4.json").contains("ProjectDocument"));
+    let action = Action::ExportProject;
+    let outcome = Outcome {
+        state: ResultState::Applied,
+        message: "Exported".into(),
+        status: None,
+        detail: None,
+    };
+    assert!(action.validate_outcome(&outcome).is_err());
+    assert_eq!(VERSION, 5);
+}

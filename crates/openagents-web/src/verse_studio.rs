@@ -16,6 +16,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+mod projects;
+
 const ROOT: &str = "/v1/verse/studio";
 const SCOPE: &str = "verse-studio";
 const TTL: u64 = 300;
@@ -24,6 +26,7 @@ pub(crate) fn owns(path: &str) -> bool {
 }
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(projects::routes())
         .route("/v1/verse/studio/session", get(session))
         .route("/v1/verse/studio/grants", post(issue))
         .route("/v1/verse/studio/authorize", post(authorize))

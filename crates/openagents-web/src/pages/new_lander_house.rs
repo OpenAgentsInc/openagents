@@ -118,6 +118,7 @@ async fn page() -> Response {
                 a id="world-retry" href=(HOUSE) { "Reload world" }
                 button id="world-mesh" type="button" hidden aria-pressed="false" { "Mesh overlay" }
                 button id="world-edit" type="button" { "Edit" }
+                button id="project-save" type="button" hidden data-tutorial-option="ready" { "Save project" }
                 button id="world-fullscreen" type="button" { "Full screen" }
             }
             aside id="world-voice" hidden aria-label="Voice controls" {
@@ -198,6 +199,29 @@ async fn page() -> Response {
                         header { h2 id="history-title" { "05 / This visit" } button id="close-history" class="window-close" type="button" aria-label="Close History" { "×" } }
                         button id="edit-undo" type="button" { "Undo" } button id="edit-redo" type="button" { "Redo" }
                         ol id="edit-history-entries" {}
+                        div id="project-tools" hidden {
+                            h3 { "Saved worlds" }
+                            label for="project-picker" { "Project" } select id="project-picker" { option value="" { "Choose a project" } }
+                            button id="project-list" type="button" { "Find projects" }
+                            label for="project-name" { "New project name" } input id="project-name" maxlength="120";
+                            button id="project-create" type="button" { "Create project" }
+                            button id="project-open" type="button" { "Open latest" }
+                            button id="project-save-copy" type="button" { "Save project" }
+                            button id="project-undo" type="button" { "Undo my saved change" }
+                            button id="project-device" type="button" { "Keep on this device" }
+                            button id="project-recover" type="button" { "Open device copy" }
+                            button id="project-export" type="button" { "Export editable copy" }
+                            p id="project-status" role="status" { "Changes aren't saved to a project yet." }
+                            details {
+                                summary { "Import an editable or older Kiln save" }
+                                p { "Export files from the older editor first. Choose its scene, material, and changes files together. Originals stay in your editable export." }
+                                input id="project-import-files" type="file" accept="application/json,.json,.wgsl" multiple;
+                                label for="project-import-mapping" { "Old asset name to current asset ID (JSON)" }
+                                textarea id="project-import-mapping" rows="3" maxlength="4096" { "{}" }
+                                button id="project-import" type="button" { "Review import" }
+                                p id="project-import-report" {}
+                            }
+                        }
                         p { "Earnings: " strong { "Not recorded" } }
                     }
                 }

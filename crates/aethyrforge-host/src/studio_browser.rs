@@ -16,6 +16,8 @@ use web_sys::{
 };
 const SAVED: &str = "openagents.verse.pending.v1";
 const VISIT: &str = "openagents.verse.studio.v1";
+#[path = "project_browser.rs"]
+mod projects;
 type Handler = Closure<dyn FnMut(Event)>;
 fn window() -> web_sys::Window {
     web_sys::window().expect("window")
@@ -71,6 +73,7 @@ struct Resume {
     pending: PendingChange,
 }
 struct State {
+    projects: projects::Controller,
     demo: BrowserDemo,
     tab: String,
     account: Option<String>,
@@ -263,6 +266,17 @@ impl State {
         }));
         let list = element("edit-auth-changes");
         list.set_text_content(None);
+        if self.projects.save.is_some() {
+            element("edit-auth-title").set_text_content(Some(if signed {
+                "Save this world?"
+            } else {
+                "Sign in to save this world"
+            }));
+            element("edit-auth-description").set_text_content(Some("Your editable content and unfinished source draft will be saved. Publishing is a separate choice."));
+            hide("edit-signin", signed);
+            hide("edit-confirm", !signed);
+            return;
+        }
         if let Some(p) = &self.pending {
             let changes = match &p.pending.action {
                 Action::Propose { operations } => operations
@@ -355,6 +369,17 @@ impl Drop for BrowserStudio {
     }
 }
 async fn api(path: &str, body: Option<Value>) -> Result<Value, JsValue> {
+    let (code, value) = api_response(path, body).await?;
+    if !(200..300).contains(&code) {
+        return Err(JsValue::from_str(
+            value["error"]["message"]
+                .as_str()
+                .unwrap_or("The change could not be checked. Try again."),
+        ));
+    }
+    Ok(value)
+}
+async fn api_response(path: &str, body: Option<Value>) -> Result<(u16, Value), JsValue> {
     let init = RequestInit::new();
     init.set_method(if body.is_some() { "POST" } else { "GET" });
     init.set_credentials(RequestCredentials::SameOrigin);
@@ -372,14 +397,7 @@ async fn api(path: &str, body: Option<Value>) -> Result<Value, JsValue> {
         .unwrap_or_default();
     let value: Value = serde_json::from_str(&text)
         .map_err(|_| JsValue::from_str("The change could not be checked. Try again."))?;
-    if !response.ok() {
-        return Err(JsValue::from_str(
-            value["error"]["message"]
-                .as_str()
-                .unwrap_or("The change could not be checked. Try again."),
-        ));
-    }
-    Ok(value)
+    Ok((response.status(), value))
 }
 async fn pause(ms: i32) {
     let promise = Promise::new(&mut |resolve, _| {
@@ -394,6 +412,16 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     let Some(rc) = weak.upgrade() else { return };
     let mut s = rc.borrow_mut();
     let account = value["account"].as_str().map(str::to_string);
+    // A confirmed request may already have reached the private worker before its
+    // receipt is polled. End that worker even before owned_world is assigned.
+    if s.account.is_some() && s.account != account && s.busy {
+        let _ = s.request(&Action::RevokeAuthorization);
+        s.demo.reload();
+        projects::world_reloading(&mut s);
+        s.owned_world = None;
+        s.busy = false;
+        s.restore_complete = false;
+    }
     let policy = resume_policy(
         s.pending
             .as_ref()
@@ -408,9 +436,11 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     {
         let _ = s.request(&Action::RevokeAuthorization);
         s.demo.reload();
+        projects::world_reloading(&mut s);
         s.owned_world = None;
     }
     if policy == ResumePolicy::Discard {
+        projects::clear(&mut s);
         s.stop_input();
         s.pending = None;
         s.persist();
@@ -432,7 +462,7 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     let was_signed = s.account.is_some();
     s.account = account;
     s.csrf = value["csrf"].as_str().map(str::to_string);
-    if policy == ResumePolicy::Reconfirm && s.pending.is_some() {
+    if policy == ResumePolicy::Reconfirm && (s.pending.is_some() || s.projects.save.is_some()) {
         let _ = s.request(&Action::RevokeAuthorization);
         s.auth_card();
         say(if s.account.is_some() {
@@ -459,7 +489,22 @@ async fn refresh(weak: Weak<RefCell<State>>) {
         }
     }
 }
-async fn receipt(weak: &Weak<RefCell<State>>, action: Action) -> Result<(), JsValue> {
+fn require_scope(weak: &Weak<RefCell<State>>, scope: &ConfirmationScope) -> Result<(), JsValue> {
+    let rc = weak.upgrade().ok_or(JsValue::NULL)?;
+    if scope.accepts(projects::confirmation_scope(&rc.borrow()).as_ref()) {
+        Ok(())
+    } else {
+        Err(JsValue::from_str(
+            "The account, project, or world changed. Review your change again.",
+        ))
+    }
+}
+async fn receipt(
+    weak: &Weak<RefCell<State>>,
+    action: Action,
+    scope: &ConfirmationScope,
+) -> Result<(), JsValue> {
+    require_scope(weak, scope)?;
     let id = weak
         .upgrade()
         .ok_or(JsValue::NULL)?
@@ -467,6 +512,7 @@ async fn receipt(weak: &Weak<RefCell<State>>, action: Action) -> Result<(), JsVa
         .request(&action)?;
     for _ in 0..300 {
         pause(50).await;
+        require_scope(weak, scope)?;
         let rc = weak.upgrade().ok_or(JsValue::NULL)?;
         let value = rc.borrow().snapshot();
         if let Some(r) = value["receipts"]
@@ -488,8 +534,15 @@ async fn receipt(weak: &Weak<RefCell<State>>, action: Action) -> Result<(), JsVa
     ))
 }
 async fn confirm(weak: Weak<RefCell<State>>) {
+    if weak
+        .upgrade()
+        .is_some_and(|rc| rc.borrow().projects.save.is_some())
+    {
+        projects::confirm_save(weak).await;
+        return;
+    }
     let Some(rc) = weak.upgrade() else { return };
-    let sent = {
+    let (sent, scope) = {
         let mut s = rc.borrow_mut();
         if s.busy {
             return;
@@ -506,11 +559,20 @@ async fn confirm(weak: Weak<RefCell<State>>) {
             say("The world changed. Review your change and try again.");
             return;
         }
+        let Some(scope) = projects::confirmation_scope(&s) else {
+            s.auth_card();
+            return;
+        };
         s.busy = true;
-        json!({"csrf":csrf,"tab":s.tab,"session":value["session"],"release":element("engine-release").get_attribute("content"),"project":value["status"]["project"],"action":p.pending.action,"confirmed":true})
+        (
+            json!({"csrf":csrf,"tab":s.tab,"session":value["session"],"release":element("engine-release").get_attribute("content"),"project":value["status"]["project"],"action":p.pending.action,"confirmed":true}),
+            scope,
+        )
     };
     let result = async {
+        require_scope(&weak, &scope)?;
         let value = api("grants", Some(sent.clone())).await?;
+        require_scope(&weak, &scope)?;
         let grant: ScopedGrant = serde_json::from_value(value["grant"].clone())
             .map_err(|_| JsValue::from_str("Permission could not be checked."))?;
         let action: Action = serde_json::from_value(sent["action"].clone())
@@ -520,16 +582,24 @@ async fn confirm(weak: Weak<RefCell<State>>) {
             Some(json!({"csrf":sent["csrf"],"tab":sent["tab"],"grant":grant,"action":action})),
         )
         .await?;
-        receipt(&weak, Action::Authorize { grant }).await?;
-        receipt(&weak, action).await
+        require_scope(&weak, &scope)?;
+        receipt(&weak, Action::Authorize { grant }, &scope).await?;
+        require_scope(&weak, &scope)?;
+        receipt(&weak, action, &scope).await
     }
     .await;
     if let Some(rc) = weak.upgrade() {
         let mut s = rc.borrow_mut();
+        if !scope.accepts(projects::confirmation_scope(&s).as_ref()) {
+            return;
+        }
         s.busy = false;
         match result {
             Ok(()) => {
-                s.owned_world = s.account.clone();
+                if sent["action"]["type"] == "restore_project" {
+                    projects::restored(&mut s, &sent["action"]);
+                }
+                s.owned_world = scope.account.clone();
                 s.pending = None;
                 s.persist();
                 hide("edit-auth", true);
@@ -556,6 +626,9 @@ async fn confirm(weak: Weak<RefCell<State>>) {
                 say("We applied your change.");
             }
             Err(error) => {
+                if sent["action"]["type"] == "restore_project" {
+                    projects::cancel_open(&mut s);
+                }
                 hide("edit-auth", true);
                 if sent["action"]["type"] == "compile" {
                     s.visit.show("compile");
@@ -795,9 +868,10 @@ fn route_request(rc: &Rc<RefCell<State>>) {
             let s = rc.borrow();
             let allowed = element("edit-auth").has_attribute("open")
                 && s.account.is_some()
-                && s.pending
-                    .as_ref()
-                    .is_some_and(|p| !matches!(p.pending.action, Action::Publish { .. }));
+                && (s.projects.save.is_some()
+                    || s.pending
+                        .as_ref()
+                        .is_some_and(|p| !matches!(p.pending.action, Action::Publish { .. })));
             drop(s);
             if allowed {
                 say("Applying your reviewed change…");
@@ -855,6 +929,10 @@ fn queue_change(rc: &Rc<RefCell<State>>, mut action: Action) {
     let mut s = rc.borrow_mut();
     if s.busy {
         return;
+    }
+    s.projects.save = None;
+    if !matches!(action, Action::RestoreProject { .. }) {
+        projects::cancel_open(&mut s);
     }
     let snapshot = s.snapshot();
     if let Action::Compile { source_sha256, .. } = &mut action {
@@ -955,6 +1033,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         }
     }
     let rc = Rc::new(RefCell::new(State {
+        projects: projects::Controller::default(),
         demo,
         tab: random(),
         account: None,
@@ -980,6 +1059,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         speech_context: None,
     }));
     let mut listeners = Vec::new();
+    projects::mount(&rc, &mut listeners)?;
     let speech_supported = crate::voice_browser::supported();
     hide("world-voice", false);
     hide("edit-voice-start", !speech_supported);
@@ -1127,6 +1207,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         event.prevent_default();
         hide("edit-auth", true);
         if let Some(rc) = weak.upgrade() {
+            projects::cancel_open(&mut rc.borrow_mut());
             rc.borrow_mut().save_visit();
         }
         say("Your requested change is still here.");
@@ -1435,6 +1516,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     listen(&mut listeners, "edit-cancel", "click", move |_| {
         hide("edit-auth", true);
         if let Some(rc) = weak.upgrade() {
+            projects::cancel_open(&mut rc.borrow_mut());
             rc.borrow().persist();
         }
         say("Your requested change is still here.");
@@ -1492,6 +1574,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     let tick = Closure::wrap(Box::new(move || {
         let Some(rc) = weak.upgrade() else { return };
         selected(&rc);
+        projects::poll(&rc);
         let mut spoken = false;
         {
             let mut s = rc.borrow_mut();
@@ -1595,18 +1678,35 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
                     .as_ref()
                     .and_then(|p| p.pending.selection.clone())
                     .or_else(|| s.visit.selection.clone());
+                let Some(scope) = projects::confirmation_scope(&s) else {
+                    return;
+                };
+                let mesh = s.visit.mesh;
                 drop(s);
                 if let Some(target) = target {
-                    let _ = receipt(&weak, Action::Select { target }).await;
+                    if receipt(&weak, Action::Select { target }, &scope)
+                        .await
+                        .is_err()
+                        && require_scope(&weak, &scope).is_err()
+                    {
+                        return;
+                    }
                 }
-                if weak.upgrade().is_some_and(|rc| rc.borrow().visit.mesh) {
+                if require_scope(&weak, &scope).is_err() {
+                    return;
+                }
+                if mesh {
                     let _ = receipt(
                         &weak,
                         Action::View {
                             mode: ViewMode::Mesh,
                         },
+                        &scope,
                     )
                     .await;
+                }
+                if require_scope(&weak, &scope).is_err() {
+                    return;
                 }
                 if let Some(rc) = weak.upgrade() {
                     rc.borrow_mut().restore_complete = true;
