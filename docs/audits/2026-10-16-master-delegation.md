@@ -485,6 +485,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12513: rebuild the Kiln WASI tool bundle during the next normal deployment
+  and verify that its patch tool refuses overlapping ASCII and multibyte
+  searches. Native crate regressions cover both cases and unique replacements.
+
 - #12536: done on 2026-10-22; production revision
   `coder-web-f9fbed854c-20261022221217` serves `78c82b3af1`. Both real Maya
   heads opened through ordinary scene clicks in an isolated signed-out browser;

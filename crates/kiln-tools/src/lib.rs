@@ -6,6 +6,15 @@ use std::path::{Path, PathBuf};
 use rhai::module_resolvers::FileModuleResolver;
 use rhai::{Dynamic, Engine, EvalAltResult, Position};
 
+/// Count the occurrences of `needle` in `haystack`, including overlapping
+/// ones, at UTF-8 character boundaries.
+fn overlapping_matches(haystack: &str, needle: &str) -> usize {
+    haystack
+        .char_indices()
+        .filter(|&(start, _)| haystack[start..].starts_with(needle))
+        .count()
+}
+
 /// Apply search-and-replace blocks to `original`.
 ///
 /// The patch holds one or more blocks:
@@ -57,7 +66,7 @@ pub fn apply_patch(original: &str, patch: &str) -> Result<String, String> {
         if search.is_empty() {
             return Err(format!("block {blocks} has an empty search text"));
         }
-        match text.matches(&search).count() {
+        match overlapping_matches(&text, &search) {
             1 => text = text.replacen(&search, &replace, 1),
             0 => {
                 return Err(format!(
@@ -160,6 +169,60 @@ mod tests {
         );
         assert!(apply_patch("x x", patch).unwrap_err().contains("2 times"));
         assert!(apply_patch("x", "nothing").is_err());
+    }
+
+    #[test]
+    fn a_patch_refuses_overlapping_ascii_searches() {
+        for (original, search, count) in [
+            ("aaa", "aa", 2),
+            ("aaaa", "aa", 3),
+            ("abababa", "aba", 3),
+            ("a\na\na", "a\na", 2),
+        ] {
+            let patch = format!("<<<<<<< SEARCH\n{search}\n=======\nX\n>>>>>>> REPLACE");
+            assert_eq!(
+                apply_patch(original, &patch).unwrap_err(),
+                format!("block 1: the search text occurs {count} times; include more lines"),
+                "original: {original:?}, search: {search:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_patch_refuses_overlapping_multibyte_searches() {
+        for (original, search, count) in
+            [("ééé", "éé", 2), ("éééé", "éé", 3), ("🦊🦊🦊", "🦊🦊", 2)]
+        {
+            let patch = format!("<<<<<<< SEARCH\n{search}\n=======\nX\n>>>>>>> REPLACE");
+            assert_eq!(
+                apply_patch(original, &patch).unwrap_err(),
+                format!("block 1: the search text occurs {count} times; include more lines"),
+                "original: {original:?}, search: {search:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_patch_preserves_unique_searches_at_utf8_boundaries() {
+        for (original, search, expected) in [
+            ("aaa", "aaa", "X"),
+            ("ééé", "ééé", "X"),
+            ("前éé後", "éé", "前X後"),
+            ("前🦊後", "🦊後", "前X"),
+        ] {
+            let patch = format!("<<<<<<< SEARCH\n{search}\n=======\nX\n>>>>>>> REPLACE");
+            assert_eq!(apply_patch(original, &patch).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn a_patch_checks_overlaps_after_each_block() {
+        let patch = "<<<<<<< SEARCH\nseed\n=======\naaa\n>>>>>>> REPLACE\n\
+                     <<<<<<< SEARCH\naa\n=======\nX\n>>>>>>> REPLACE";
+        assert_eq!(
+            apply_patch("seed", patch).unwrap_err(),
+            "block 2: the search text occurs 2 times; include more lines"
+        );
     }
 
     #[test]
