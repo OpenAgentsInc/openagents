@@ -487,9 +487,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 - #12580: corrected light-button link colors and hover states, raised dim
   captions and disabled labels, and wrapped phone universe choices. The browser
-  contrast audit passes 66 phone/desktop states and 12 private editor states;
-  WebKit checks cover the homepage, login, and guest entry. Private tests pass
-  (974 passed, 15 skipped). Production deployment and live checks follow closure.
+  production contrast audit passes 76 phone/desktop states and 12 private editor
+  states; WebKit checks cover entry actions at 320, 390, 768, and 1440 pixels.
+  Private tests pass (974 passed, 15 skipped), as do five focused Rust tests and
+  36 private HTTP/artifact checks. Source `712ae5a6ed` is live at 100% traffic in
+  `coder-web-77cb3cd093-20261023233628`. The new runtime passes guest entry,
+  editing/sign-in cancellation, focus, draft, and engine/canvas retention checks.
+  The final production site smoke passes (74 passed, zero failed, two skipped).
 - #12576 / #12577: the owned shadcn/React/Effect presentation uses black and
   zinc surfaces with light controls across marketing, universe entry, Jarvis,
   publishing/sharing, planet setup, and visits/chat. Private Aethyrforge editor,
