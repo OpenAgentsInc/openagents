@@ -65,7 +65,7 @@ async function open(
     await page.route(origin + path, (route) =>
       route.fulfill({
         contentType: "text/html",
-        body: `<!doctype html><title>Host SDK conformance</title><a href=/>OpenAgents</a><a id=world-retry href=${path}>Reload world</a><button id=world-fullscreen>Full screen</button><iframe id=engine title=World data-engine-url="${c.editor}/" style="width:100%;height:80vh;border:0"></iframe><p id=world-notice role=status>Opening</p><script id=engine-config type=application/json>${JSON.stringify(hostConfig(c))}</script><script type=module>import init,{mount_demo} from '${c.editor}/sdk/${c.sdk_sha256}/aethyrforge_host.js';await init();window.medievalDemo=mount_demo();</script>`,
+        body: `<!doctype html><title>Host SDK conformance</title><style>html,body{margin:0;height:100%}main{position:fixed;inset:0}iframe{width:100%;height:100%;border:0}#world-notice[hidden]{display:none}</style><main><iframe id=engine title=World data-engine-url="${c.editor}/"></iframe><p id=world-notice role=status>Opening</p><div hidden><a id=world-retry href=${path}>Reload world</a><button id=world-fullscreen>Full screen</button></div></main><script id=engine-config type=application/json>${JSON.stringify(hostConfig(c))}</script><script type=module>import init,{mount_demo} from '${c.editor}/sdk/${c.sdk_sha256}/aethyrforge_host.js';await init();window.medievalDemo=mount_demo();</script>`,
       }),
     );
   } else if (mode === "candidate") {
@@ -90,11 +90,11 @@ async function open(
   await page.goto(origin + path, { waitUntil: "domcontentloaded" });
   try {
     await page.waitForFunction(
-      () =>
-        window.medievalDemo &&
-        ["open", "closed"].includes(
-          JSON.parse(window.medievalDemo.snapshot()).phase,
-        ),
+      () => {
+        if (!window.medievalDemo) return false;
+        const state = JSON.parse(window.medievalDemo.snapshot());
+        return state.phase === "open" || (state.phase === "closed" && Boolean(state.error));
+      },
       null,
       { timeout: 125000 },
     );
@@ -134,9 +134,23 @@ async function open(
     requests: () => requests,
   };
 }
+async function assertFullscreenWorld(page) {
+  assert.equal(await page.locator("header").count(), 0);
+  const layout = await page.locator("#engine").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { x:rect.x, y:rect.y, width:rect.width, height:rect.height,
+      viewportWidth:window.innerWidth, viewportHeight:window.innerHeight };
+  });
+  assert.ok(Math.abs(layout.x) < 1 && Math.abs(layout.y) < 1, JSON.stringify(layout));
+  assert.ok(Math.abs(layout.width-layout.viewportWidth) < 1, JSON.stringify(layout));
+  assert.ok(Math.abs(layout.height-layout.viewportHeight) < 1, JSON.stringify(layout));
+  assert.equal(await page.locator("#world-retry").isVisible(), false);
+  assert.equal(await page.locator("#world-fullscreen").isVisible(), false);
+}
 try {
   const run = await open(config);
   const { page, snapshot } = run;
+  await assertFullscreenWorld(page);
   // Real input reaches the private preview's Rust camera kernel.
   const frame = page.frames().find((f) => f.url().startsWith(config.preview));
   assert.ok(frame);
@@ -158,9 +172,6 @@ try {
   await page.keyboard.press("Escape");
   const moved = await snapshot();
   console.log("Host connected and movement passed:", config.release);
-  await page.click("#world-fullscreen");
-  await page.waitForFunction(() => document.fullscreenElement !== null);
-  await page.evaluate(() => document.exitFullscreen());
   if (process.env.AETHYRFORGE_WAIT_CANARY === "1") {
     fs.writeFileSync(
       out + "/old-session-ready.json",
@@ -203,7 +214,7 @@ try {
   // Allow the key-up and its next observation to reach the camera before sampling.
   await page.waitForTimeout(1000);
   const beforeReload = await snapshot();
-  await page.click("#world-retry");
+  await page.evaluate(() => window.medievalDemo.reload());
   await page.waitForFunction(
     (session) => {
       const s = JSON.parse(window.medievalDemo.snapshot());
@@ -250,7 +261,8 @@ try {
     reload_restored_checkpoint: true,
     close_removed_worker: true,
     back_navigation_reopened: true,
-    fullscreen_worked: true,
+    world_fills_viewport: true,
+    outer_header_removed: true,
     errors: run.errors,
     failed: run.failed,
     status: restored.status,
@@ -301,13 +313,16 @@ try {
     await check
       .locator("#world-notice[data-state=error]")
       .waitFor({ timeout: 125000 });
-    assert.ok(await check.locator("#world-retry").isVisible());
-    assert.ok(await check.locator('a[href="/"]').isVisible());
-    console.log("Unavailable engine offers retry/back:", failure);
+    assert.ok(await check.locator("#world-notice").isVisible());
+    await assertFullscreenWorld(check);
+    await check.reload({ waitUntil:"domcontentloaded" });
+    await check.locator("#world-notice[data-state=error]").waitFor({timeout:125000});
+    assert.ok(await check.locator("#world-notice").isVisible());
+    console.log("Unavailable engine remains readable after page reload:", failure);
     await check.close();
   }
-  result.missing_sdk_retry = true;
-  result.incompatible_release_retry = true;
+  result.missing_sdk_reload = true;
+  result.incompatible_release_reload = true;
   fs.writeFileSync(
     out + "/browser-" + run.mode + ".json",
     JSON.stringify(result, null, 2),
