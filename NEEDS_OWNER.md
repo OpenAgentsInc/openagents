@@ -1,3 +1,25 @@
+## Check Medieval Town on a test iPhone (TestFlight 1019, 2026-10-23)
+
+OpenAgents 1.0.0 (1019) is valid and available to **Internal Testers** and
+**Team (Expo)**. Source: `99d28b3a99`; mobile scene: `274c6ec08bba1370…`.
+Open the menu and choose **Medieval Town**. This native walking scene downloads
+about 12.7 MB, then uses its local cache.
+
+The Release iPhone 17 simulator on iOS 26.5 (M5 Max) completed 1,800 GPU frames
+in 30 seconds: 60.0 FPS, a 16.85 ms 95th-percentile frame interval, and no gaps
+over 25 ms. It moved 21.76 m and turned. Eight Rust checks and the menu, touch
+movement/look, background/resume, close, and offline chat checks passed.
+
+On a physical iPhone with the dedicated test account, check the FPS display
+while walking, wall collision, look, Run, Jump, rotation, and switching apps.
+Physical-device performance has not been measured.
+
+Release notes: the old archive script rejects a notification selector that
+already exists in unchanged app code; the signed archive has no APNs
+entitlement, and its identity, privacy, version, and fixture checks passed.
+Apple accepted the upload with a missing WebRTC vendor dSYM warning, which
+limits crash symbols for that framework.
+
 ## Complete the dedicated-account browser sign-in check (#12549) (2026-10-23)
 
 After the Haunted House review route is deployed, use the dedicated test
