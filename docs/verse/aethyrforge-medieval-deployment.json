@@ -1,7 +1,7 @@
 {
   "schema": "openagents.aethyrforge.deployment.v1",
   "issue": 12546,
-  "status": "candidate verification in progress",
+  "status": "candidate verified; production shift in progress",
   "url": "https://openagents.com/demo/medieval-town",
   "engine": {
     "source_revision": "97d0465a51460d2e951f96614aff437ed381ca27",
@@ -36,6 +36,52 @@
       "rollback_opened": "r1280bcf318d6ef1ad9"
     },
     "private_source_in_public_git": false,
-    "asset_bucket_public_access": false
+    "asset_bucket_public_access": false,
+    "candidate_browser": {
+      "mode": "candidate",
+      "browser": "155.0.8059.85",
+      "release": "rd4a6dcbc64ecc48e3d",
+      "ready_ms": 33175,
+      "requests_without_account_credentials": 1093,
+      "input_moved_player": true,
+      "reload_restored_checkpoint": true,
+      "close_removed_worker": true,
+      "back_navigation_reopened": true,
+      "fullscreen_worked": true,
+      "errors": [],
+      "failed": [],
+      "status": {
+        "project": {
+          "id": "medieval-town-lab",
+          "branch": "main",
+          "revision": 0
+        },
+        "generation": "afead962-e0b5-478b-a21c-193f946f7b0f",
+        "frame": 14,
+        "save": "device",
+        "checkpoint": {
+          "eye": [
+            4.402783393859863,
+            2.0762383937835693,
+            32.31417465209961
+          ],
+          "target": [
+            4.6746198867864335,
+            2.2140352312462315,
+            31.36174777684951
+          ],
+          "mode": "fly"
+        }
+      },
+      "missing_sdk_retry": true,
+      "incompatible_release_retry": true
+    }
+  },
+  "website": {
+    "source_revision": "c3b25278ac18fea5152c7ca88ca0d9631d22d1df",
+    "build_id": "187d16c4-31cc-42f2-b45f-ee4f4ebd8054",
+    "image_digest": "sha256:b3afdd3d3b470400f0ea1d46057589588007136806120546ecd5994e2f113637",
+    "candidate_revision": "coder-web-b3afdd3d3b-20261023043410",
+    "previous_serving_revision": "coder-web-f9fbed854c-20261022221217"
   }
 }
