@@ -108,7 +108,7 @@ fn marketing_content() -> Markup {
     }
 }
 
-fn universe_content(haunt: Option<&str>, _account: bool, signed_in: bool) -> Markup {
+fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Markup {
     let release = universe_release();
     html! {
         main.atlas id="verse-atlas" data-entry=(if signed_in {"member"} else {"locked"}) aria-labelledby="atlas-title" {
@@ -155,9 +155,9 @@ fn universe_content(haunt: Option<&str>, _account: bool, signed_in: bool) -> Mar
                 section id="verse-account" {
                     p.eyebrow { "YOUR PLACE IN THE VERSE" }
                     h2 #entry-title { "Your next world" br; "is waiting." }
-                    p #entry-description { "Log in, or look around as a guest." }
+                    p #entry-description { @if account { "Log in, or look around as a guest." } @else { "Look around as a guest." } }
                     div.entry-actions {
-                        a.small-button id="verse-signin" href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" }
+                        a.small-button id="verse-signin" hidden[!account] href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" }
                         button id="continue-guest" type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
                     }
                 }

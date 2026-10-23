@@ -1,8 +1,12 @@
 {
-  "engine_url": "https://engine.invalid/universe.html",
-  "sdk_url": "https://engine.invalid/sdk/aethyrforge_host.js",
-  "release": "unconfigured",
+  "engine_url": "https://u101d1eed6d2aa9f11---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/universe.html",
+  "sdk_url": "https://u101d1eed6d2aa9f11---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/sdk/486fe423a7798d10be218759fbdf3a703a7f5abaa12cc538741e0d90fd3ca2eb/aethyrforge_host.js",
+  "release": "u101d1eed6d2aa9f11",
   "engine_abi": "aethyrforge.browser.v1",
   "project_format": 1,
-  "project": { "id": "universe", "branch": "main", "revision": 0 }
+  "project": {
+    "id": "universe",
+    "branch": "main",
+    "revision": 0
+  }
 }
