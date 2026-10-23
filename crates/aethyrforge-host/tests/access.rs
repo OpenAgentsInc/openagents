@@ -93,3 +93,18 @@ fn expired_login_keeps_its_request_but_another_account_cannot_inherit_it() {
         ResumePolicy::Keep
     );
 }
+
+#[test]
+fn action_hash_normalizes_json_number_spelling_and_binds_the_exact_move() {
+    let integers: Action = serde_json::from_str(r#"{"type":"propose","operations":[{"type":"move","target":"werewolf-1","position":[-2,0,-14]}]}"#).unwrap();
+    let decimals: Action = serde_json::from_str(r#"{"operations":[{"position":[-2.0,0.0,-14.0],"target":"werewolf-1","type":"move"}],"type":"propose"}"#).unwrap();
+    assert_eq!(
+        action_digest(&integers).unwrap(),
+        action_digest(&decimals).unwrap()
+    );
+    let changed: Action = serde_json::from_str(r#"{"type":"propose","operations":[{"type":"move","target":"werewolf-1","position":[-2,0,-13]}]}"#).unwrap();
+    assert_ne!(
+        action_digest(&integers).unwrap(),
+        action_digest(&changed).unwrap()
+    );
+}

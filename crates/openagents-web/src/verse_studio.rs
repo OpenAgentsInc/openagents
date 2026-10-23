@@ -5,7 +5,7 @@ use crate::{
     cloud::session::{SessionError, Viewer},
     coder_sync::{answer, refused, stored},
 };
-use aethyrforge_host::{Action, Project, ScopedGrant, mutation};
+use aethyrforge_host::{Action, Project, ScopedGrant, action_digest, mutation};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, State},
@@ -246,7 +246,7 @@ async fn issue(
     let token = hash(&secp256k1::rand::random::<[u8; 32]>());
     let grant = ScopedGrant {
         token: token.clone(),
-        action_sha256: hash(&serde_json::to_vec(&sent.action).expect("validated action")),
+        action_sha256: action_digest(&sent.action).expect("validated action"),
         session: sent.session.clone(),
         release: sent.release.clone(),
         project: sent.project.clone(),
@@ -318,7 +318,7 @@ fn permits(
     grant.validate().is_ok()
         && grant.expires_at > at
         && held.expires_at > at
-        && grant.action_sha256 == hash(&serde_json::to_vec(action).expect("action"))
+        && grant.action_sha256 == action_digest(action).expect("validated action")
         && held.digest == hash(grant.token.as_bytes())
         && held.tab == tab
         && held.account_session == account_session
@@ -448,7 +448,7 @@ mod tests {
         };
         let grant = ScopedGrant {
             token: "a".repeat(64),
-            action_sha256: hash(&serde_json::to_vec(&action).unwrap()),
+            action_sha256: action_digest(&action).unwrap(),
             session: "engine-session".into(),
             release: "house-v1".into(),
             project: project.clone(),

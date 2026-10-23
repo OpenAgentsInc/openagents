@@ -2,6 +2,14 @@
 use crate::{Action, Capability, Checkpoint, Error, Project, protocol::id};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+/// Hash the validated typed action identically in the native host and browser SDK.
+pub fn action_digest(action: &Action) -> Result<String, Error> {
+    action.validate()?;
+    let bytes = serde_json::to_vec(action).map_err(|_| Error::Invalid("action"))?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]

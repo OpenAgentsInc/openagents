@@ -31,3 +31,11 @@ pub use studio_browser::*;
 pub fn protocol_version() -> u16 {
     VERSION
 }
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn action_sha256(input: String) -> Result<String, wasm_bindgen::JsValue> {
+    let action: Action = serde_json::from_str(&input)
+        .map_err(|_| wasm_bindgen::JsValue::from_str("Invalid action."))?;
+    action_digest(&action).map_err(|_| wasm_bindgen::JsValue::from_str("Invalid action."))
+}
