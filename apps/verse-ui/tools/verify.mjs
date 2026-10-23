@@ -36,6 +36,23 @@ if (candidate) {
     });
   });
 }
+for (const [asset, type] of [
+  ["ui.css", "text/css"],
+  ["ui.js", "text/javascript"],
+]) {
+  const response = await ctx.request.get(
+    (candidate || base) + "/new-lander/" + asset,
+    {
+      headers: { Cookie: "oa_cloud_login=synthetic-verse-ui-review" },
+    },
+  );
+  assert.equal(
+    response.status(),
+    200,
+    `${asset} must load with a login cookie`,
+  );
+  assert(response.headers()["content-type"].startsWith(type));
+}
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (e) => {
