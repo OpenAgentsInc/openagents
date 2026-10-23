@@ -7,6 +7,8 @@ pub const MAX_BYTES: usize = 65_536;
 pub const MAX_PENDING: usize = 16;
 pub const MAX_RESULTS: usize = 64;
 pub const DEADLINE_MS: u64 = 15_000;
+/// Initial asset transfer and GPU setup have a separate bounded deadline.
+pub const OPEN_DEADLINE_MS: u64 = 120_000;
 pub const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

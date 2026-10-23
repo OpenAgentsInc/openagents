@@ -1,0 +1,12 @@
+{
+  "engine_url": "https://r1280bcf318d6ef1ad9---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/",
+  "sdk_url": "https://r1280bcf318d6ef1ad9---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/sdk/928038888099bd9f53711882ffc1562c6fcd809df524bd09b172802872917cd9/aethyrforge_host.js",
+  "release": "r1280bcf318d6ef1ad9",
+  "engine_abi": "aethyrforge.browser.v1",
+  "project_format": 1,
+  "project": {
+    "id": "medieval-town-lab",
+    "branch": "main",
+    "revision": 0
+  }
+}

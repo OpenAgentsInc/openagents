@@ -90,7 +90,7 @@ idempotency ledger; future remote command services must retain their own results
 - Maximum envelope: 65,536 encoded UTF-8 bytes, including metadata. Source: 48,000
   bytes. IDs: 1–128 ASCII letters, digits, or `-_.:/`. Messages: 2,048 bytes, no NUL.
 - At most 16 pending requests and 64 retained results per connection. A request
-  times out after 15 seconds; late results can settle a retained unknown result.
+  times out after 15 seconds (120 seconds for initial world loading); late results can settle a retained unknown result.
   A duplicate request ID is rejected instead of re-executing. Use a new `lookup`
   request to inspect it. Evicted results return unknown, never re-execute.
 - Integer identities/revisions/frames are at most 2^53−1. Checkpoint coordinates

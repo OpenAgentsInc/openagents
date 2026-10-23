@@ -11,3 +11,8 @@ mod browser;
 pub use browser::*;
 mod engine;
 pub use engine::*;
+
+#[cfg(target_arch = "wasm32")]
+mod demo;
+#[cfg(target_arch = "wasm32")]
+pub use demo::*;

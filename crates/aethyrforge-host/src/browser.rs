@@ -193,6 +193,7 @@ fn loaded(weak: &Weak<RefCell<HostState>>, connect: bool) -> Result<(), JsValue>
             wire(&event).and_then(|text| s.host.as_mut().ok_or(Error::Phase)?.receive(&text));
         match result {
             Ok(Message::Ready { .. }) => {
+                s.started = now();
                 let checkpoint = s.checkpoint.clone();
                 if s.request(Action::Open { checkpoint }).is_err() {
                     s.error = Some("The world could not open.".into());
@@ -202,6 +203,13 @@ fn loaded(weak: &Weak<RefCell<HostState>>, connect: bool) -> Result<(), JsValue>
                 s.error = Some("Access to this world ended.".into());
                 s.disconnect();
                 s.checkpoint = None;
+            }
+            Ok(Message::Reply { outcome, .. })
+                if outcome.state != ResultState::Applied
+                    && s.host.as_ref().is_some_and(|h| h.phase == Phase::Ready) =>
+            {
+                s.error = Some(outcome.message);
+                s.disconnect();
             }
             Ok(_) => (),
             Err(_) => {
@@ -265,7 +273,7 @@ impl BrowserHost {
         )?;
         frame.set_attribute(
             "allow",
-            "camera 'none'; microphone 'none'; clipboard-read 'none'; clipboard-write 'none'",
+            "fullscreen; camera 'none'; microphone 'none'; clipboard-read 'none'; clipboard-write 'none'",
         )?;
         frame.set_attribute("referrerpolicy", "no-referrer")?;
         let rc = Rc::new(RefCell::new(HostState {
@@ -332,7 +340,12 @@ impl BrowserHost {
                 if let Some(h) = s.host.as_mut() {
                     h.expire(now());
                     if matches!(h.phase, Phase::Connecting | Phase::Opening)
-                        && now().saturating_sub(started) > DEADLINE_MS
+                        && now().saturating_sub(started)
+                            > if h.phase == Phase::Opening {
+                                OPEN_DEADLINE_MS
+                            } else {
+                                DEADLINE_MS
+                            }
                     {
                         s.error = Some("The world took too long to open. Try again.".into());
                         s.disconnect();

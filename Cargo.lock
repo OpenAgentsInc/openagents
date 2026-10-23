@@ -13781,6 +13781,7 @@ name = "openagents-web"
 version = "1.0.0"
 dependencies = [
  "actors",
+ "aethyrforge-host",
  "agent-contract",
  "agent-fleet",
  "agent-graph",

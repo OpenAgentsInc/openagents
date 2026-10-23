@@ -7,6 +7,7 @@ publish.workspace = true
 description = "The OpenAgents website: public pages, legal documents, the install and pairing pages, and the local read-only task browser."
 
 [dependencies]
+aethyrforge-host = { path = "../aethyrforge-host" }
 playtest = { path = "../playtest" }
 bitcoin-amount = { path = "../bitcoin-amount" }
 # The machine-talk guard: test-time for every page, and at run time for the

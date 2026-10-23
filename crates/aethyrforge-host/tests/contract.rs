@@ -333,3 +333,20 @@ fn authentication_request_has_a_result_and_shutdown_clears_views() {
     assert!(h.capabilities.is_empty());
     assert_eq!(h.pending(), 0);
 }
+
+#[test]
+fn initial_world_loading_has_a_bounded_deadline_separate_from_commands() {
+    let (mut host, _) = pair();
+    let open = host.request(Action::Open { checkpoint: None }, 0).unwrap();
+    let Message::Request { request_id, .. } = open.message else {
+        panic!()
+    };
+    host.expire(DEADLINE_MS);
+    assert_eq!(host.pending(), 1);
+    host.expire(OPEN_DEADLINE_MS);
+    assert_eq!(host.pending(), 0);
+    assert_eq!(
+        host.receipt(&request_id).unwrap().outcome.state,
+        ResultState::Unknown
+    );
+}

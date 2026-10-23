@@ -137,8 +137,12 @@ impl Host {
         self.pending.insert(
             request_id,
             Pending {
-                action,
-                deadline: now.saturating_add(DEADLINE_MS),
+                action: action.clone(),
+                deadline: now.saturating_add(if matches!(action, Action::Open { .. }) {
+                    OPEN_DEADLINE_MS
+                } else {
+                    DEADLINE_MS
+                }),
             },
         );
         Ok(e)
