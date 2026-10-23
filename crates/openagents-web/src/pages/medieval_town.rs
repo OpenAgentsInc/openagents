@@ -95,18 +95,23 @@ async fn page() -> Response {
     let Some(r) = release() else {
         return response(StatusCode::SERVICE_UNAVAILABLE,html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";title{"Medieval Town"}}body{h1{"Medieval Town"}p{"The world is unavailable right now."}a href=(PATH){"Try again"}" · " a href="/"{"Back to OpenAgents"}}}}.into_string(),"text/html; charset=utf-8",None);
     };
-    let config = serde_json::json!({"release":r.release,"engine_abi":r.engine_abi,"project_format":r.project_format,"project":r.project});
-    let text = serde_json::to_string(&config)
-        .expect("configuration")
-        .replace('<', "\\u003c");
-    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Medieval Town · OpenAgents"}link rel="stylesheet" href="/demo/medieval-town/style.css";}body{header{a href="/"{"OpenAgents"}h1{"Medieval Town"}span{"Click the world · WASD to move · Mouse to look · Space / C to rise or descend"}a id="world-retry" href=(PATH){"Reload world"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" title="Medieval Town" data-engine-url=(r.engine_url){}p id="world-notice" role="status" aria-live="polite"{"Opening Medieval Town… The first visit can take a little longer."}}script id="engine-config" type="application/json"{(PreEscaped(text))}script type="module" src="/demo/medieval-town/boot.js"{}}}}.into_string();
     response(
         StatusCode::OK,
-        body,
+        render(&r),
         "text/html; charset=utf-8",
         Some(&r.origin()),
     )
 }
+fn render(r: &Release) -> String {
+    let config = serde_json::json!({"release":r.release,"engine_abi":r.engine_abi,"project_format":r.project_format,"project":r.project});
+    let text = serde_json::to_string(&config)
+        .expect("configuration")
+        .replace('<', "\\u003c");
+    // The pinned SDK still binds both control IDs during startup.
+    // Keep those controls mounted and hidden until that requirement is removed.
+    html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Medieval Town · OpenAgents"}link rel="stylesheet" href="/demo/medieval-town/style.css";}body{main{iframe id="engine" title="Medieval Town" data-engine-url=(r.engine_url){}p id="world-notice" role="status" aria-live="polite"{"Opening Medieval Town… The first visit can take a little longer."}div id="world-host-controls" hidden {a id="world-retry" href=(PATH){"Reload world"}button id="world-fullscreen" type="button"{"Full screen"}}}script id="engine-config" type="application/json"{(PreEscaped(text))}script type="module" src="/demo/medieval-town/boot.js"{}}}}.into_string()
+}
+
 async fn boot() -> Response {
     let Some(r) = release() else {
         return response(
@@ -126,17 +131,36 @@ async fn boot() -> Response {
         Some(&r.origin()),
     )
 }
+const STYLE: &str = "html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#0b1217;color:#e3eeee;font:14px system-ui}main{position:fixed;inset:0}iframe{width:100%;height:100%;border:0;display:block}#world-notice{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);box-sizing:border-box;width:calc(100% - 32px);max-width:420px;padding:24px;background:#10202aee;border:1px solid #426171;border-radius:8px;line-height:1.5}#world-notice[hidden],#world-host-controls{display:none}";
 async fn style() -> Response {
-    response(
-        StatusCode::OK,
-        "html,body{height:100%;margin:0;background:#0b1217;color:#e3eeee;font:14px system-ui}body{display:flex;flex-direction:column}header{display:flex;align-items:center;gap:18px;padding:12px 18px;background:#10202a}h1{font-size:16px;margin:0}header span{flex:1;color:#b5c5cb}a,button{color:inherit}button{background:#1b3641;border:1px solid #517381;padding:6px 10px;border-radius:4px}main{position:relative;flex:1;min-height:0}iframe{width:100%;height:100%;border:0;display:block}#world-notice{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);max-width:420px;padding:24px;background:#10202aee;border:1px solid #426171;border-radius:8px;line-height:1.5}#world-notice[hidden]{display:none}@media(max-width:800px){header{flex-wrap:wrap;gap:10px}header span{order:5;flex-basis:100%;font-size:12px}}",
-        "text/css; charset=utf-8",
-        None,
-    )
+    response(StatusCode::OK, STYLE, "text/css; charset=utf-8", None)
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn demo_fills_the_viewport_without_an_outer_header_and_keeps_pinned_sdk_hooks() {
+        let release = Release::parse(
+            &serde_json::json!({"engine_url":"https://engine.example/",
+            "sdk_url":"https://engine.example/sdk/hash/aethyrforge_host.js","release":"release-1",
+            "engine_abi":"abi-1","project_format":1,
+            "project":{"id":"world","branch":"main","revision":0}})
+            .to_string(),
+        )
+        .unwrap();
+        let page = render(&release);
+        assert!(!page.contains("<header"));
+        assert!(!page.contains("WASD"));
+        assert!(page.contains(r#"<main><iframe id="engine" title="Medieval Town""#));
+        assert!(page.contains(r#"id="world-host-controls" hidden"#));
+        assert!(page.contains(r#"id="world-retry""#));
+        assert!(page.contains(r#"id="world-fullscreen""#));
+        assert!(page.contains(r#"id="engine-config" type="application/json""#));
+        assert!(page.contains(r#"id="world-notice" role="status" aria-live="polite""#));
+        assert!(STYLE.contains("main{position:fixed;inset:0}"));
+        assert!(STYLE.contains("iframe{width:100%;height:100%;border:0;display:block}"));
+        assert!(STYLE.contains("#world-host-controls{display:none}"));
+    }
     #[test]
     fn release_configuration_requires_one_pinned_origin() {
         let base = serde_json::json!({"engine_url":"https://engine.example/","sdk_url":"https://engine.example/sdk/hash/aethyrforge_host.js","release":"release-1","engine_abi":"abi-1","project_format":1,"project":{"id":"world","branch":"main","revision":0}});
