@@ -17,6 +17,7 @@ const config = JSON.parse(
 );
 assert.ok(config.protocol_version >= 5, "Use an editable wire-v5 release");
 const projects = [];
+let delayCreate=false, releaseCreate, createArrived;
 const fixtureKey = "oak_fixture.synthetic-browser-key";
 const fixtureToken = "sess_" + "a".repeat(64);
 let active = true;
@@ -57,7 +58,7 @@ const accountServer = http.createServer(async (req, res) => {
     let raw="";for await(const part of req)raw+=part;
     const body=JSON.parse(raw);
     const project={id:"prj_"+(projects.length+1).toString(16).padStart(16,"0"),name:body.name,instructions:null,created_unix:Math.floor(Date.now()/1000),repositories:[]};
-    projects.push(project);return send(200,{project});
+    projects.push(project);if(delayCreate){delayCreate=false;createArrived?.();await new Promise(resolve=>releaseCreate=resolve);}return send(200,{project});
   }
   if (req.url === "/v1/session" && req.method === "DELETE") {
     active = false;
@@ -270,6 +271,11 @@ try {
   const arrival=new Promise(resolve=>saveArrived=resolve);delaySave=true;
   await page.click("#edit-confirm");await arrival;
   await page.click("#edit-cancel");
+  const creationsBefore=projects.length;
+  await page.click("#project-create");
+  await page.waitForFunction(()=>document.querySelector("#project-status").textContent.includes("finish before creating"));
+  assert.equal(projects.length,creationsBefore,"Create during a Save must not start a request or change context");
+  assert.equal(await page.locator("#project-picker").inputValue(),first);
   const newer=saving+"\n// newer typing during the network wait";
   await page.fill("#edit-source",newer);
   releaseSave();
@@ -328,12 +334,51 @@ try {
   const arrivedCheckpoint=new Promise(resolve=>checkpointArrived=resolve);delayCheckpoint=true;
   await page.click("#project-save-copy");await page.click("#edit-confirm");await arrivedCheckpoint;
   assert.equal(savedPosts.at(-1).expected_version,3);
-  await page.fill("#project-name","Second synthetic project");await page.click("#project-create");
+  await page.fill("#project-name","Second synthetic project");
+  const creationArrival=new Promise(resolve=>createArrived=resolve);delayCreate=true;
+  await page.click("#project-create");await creationArrival;
+  const saveCount=savedPosts.length;
+  const revisionDuringCreate=JSON.parse(await page.evaluate(()=>window.hauntDemo.snapshot())).status.project.revision;
+  await page.click("#project-save-copy");
+  await page.waitForFunction(()=>document.querySelector("#project-status").textContent.includes("current change finish"));
+  await page.click("#edit-undo");
+  await page.waitForTimeout(150);
+  assert.equal(savedPosts.length,saveCount,"Save cannot start during project creation");
+  assert.equal(JSON.parse(await page.evaluate(()=>window.hauntDemo.snapshot())).status.project.revision,revisionDuringCreate);
+  assert.equal(await page.locator("#edit-auth").isVisible(),false,"Creation cannot retarget a confirmed engine action");
+  releaseCreate();
   await page.waitForFunction((id)=>document.querySelector("#project-picker").value!==id,first);
   releaseCheckpoint();await page.waitForTimeout(500);
   assert.ok(!(await page.locator("#project-status").innerText()).includes("could not save"),"A late checkpoint failure must not describe another project");
+  const holdRecovery=async()=>{
+    const editor=page.frames().find(f=>f.url().startsWith(config.editor));assert.ok(editor);
+    await editor.evaluate(()=>{
+      const service=window.aethyrforgeEditor.service;
+      if(!window.originalProjectExport){window.originalProjectExport=service.projectDocument.bind(service);service.projectDocument=async(...args)=>{const document=await window.originalProjectExport(...args);if(window.holdNextRecovery){window.holdNextRecovery=false;window.recoveryHeld=true;await new Promise(resolve=>window.releaseRecovery=resolve);}return document;};}
+      window.recoveryHeld=false;window.holdNextRecovery=true;
+    });
+    await page.fill("#edit-source",(await page.locator("#edit-source").inputValue())+"\n// fresh recovery "+Date.now());
+    await editor.waitForFunction(()=>window.recoveryHeld,null,{timeout:18000});
+    return editor;
+  };
+  const recoveryKey=id=>`openagents.verse.recovery.v1:fixture-account:${id}:haunted-house:main`;
+  const oldProject=await page.locator("#project-picker").inputValue();
+  const oldEditor=await holdRecovery();
+  await page.fill("#project-name","Recovery during creation");await page.click("#project-create");
+  await page.waitForFunction(id=>document.querySelector("#project-picker").value!==id,oldProject);
+  const recoveryProject=await page.locator("#project-picker").inputValue();
+  await page.waitForFunction(key=>localStorage.getItem(key)!==null,recoveryKey(recoveryProject),{timeout:18000});
+  const newCopy=await page.evaluate(key=>localStorage.getItem(key),recoveryKey(recoveryProject));
+  await oldEditor.evaluate(()=>window.releaseRecovery());await page.waitForTimeout(250);
+  assert.equal(await page.evaluate(key=>localStorage.getItem(key),recoveryKey(recoveryProject)),newCopy,"Old recovery completion cannot overwrite the new project's copy");
+  await holdRecovery();
+  await page.evaluate(key=>localStorage.removeItem(key),recoveryKey(first));
+  await page.selectOption("#project-picker",first);
+  await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).phase==="open"&&JSON.parse(window.hauntDemo.snapshot()).status.authoring,null,{timeout:120000});
+  await page.waitForFunction(key=>localStorage.getItem(key)!==null,recoveryKey(first),{timeout:20000});
+  assert.equal(await page.locator("#project-picker").inputValue(),first);
   await page.screenshot({path:path.join(out,"project-workspace-desktop.png")});
-  const result={release:config.release,protocol_version:config.protocol_version,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,microphone_used:false,readable_contribution_review:checkHistory,late_inspection_keeps_latest:checkHistory,inspection_non_mutating:checkHistory,late_save_keeps_newer_source:true,acknowledged_base_advances:true,canceled_load_keeps_active_base:true,confirmed_load_restores_repairable_draft:true,late_checkpoint_failure_scoped:true,grants,errors};
+  const result={release:config.release,protocol_version:config.protocol_version,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,microphone_used:false,readable_contribution_review:checkHistory,late_inspection_keeps_latest:checkHistory,inspection_non_mutating:checkHistory,late_save_keeps_newer_source:true,acknowledged_base_advances:true,canceled_load_keeps_active_base:true,confirmed_load_restores_repairable_draft:true,late_checkpoint_failure_scoped:true,create_during_save_is_serialized:true,save_and_edit_during_creation_are_serialized:true,recovery_across_create_and_picker_resumes:true,grants,errors};
   assert.deepEqual(errors,[]);
   fs.writeFileSync(path.join(out,"browser-project.json"),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result));

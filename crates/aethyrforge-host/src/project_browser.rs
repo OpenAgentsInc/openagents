@@ -55,6 +55,24 @@ pub(super) fn clear(s: &mut State) {
     picker().set_inner_html("<option value=\"\">Choose a project</option>");
     status("Choose a project for this account.");
 }
+fn change_project(s: &mut State, project: String) {
+    // Recovery callbacks own their starting epoch. The new context starts idle,
+    // even when its predecessor still has an export in flight.
+    s.projects.project = project;
+    s.projects.epoch = s.projects.epoch.wrapping_add(1);
+    s.projects.cursor = ProjectCursor::default();
+    s.projects.save = None;
+    s.projects.restored_visit = None;
+    s.projects.opening = false;
+    s.projects.open_serial = s.projects.open_serial.wrapping_add(1);
+    s.projects.busy = false;
+    s.projects.next_recovery = 0.;
+    s.projects.last_recovery.clear();
+    s.projects.next_access_check = 0.;
+    s.projects.reopening_session = None;
+    s.projects.history = history::View::default();
+    history::clear();
+}
 pub(super) fn confirmation_scope(s: &State) -> Option<ConfirmationScope> {
     Some(ConfirmationScope {
         account: s.account.clone(),
@@ -370,33 +388,43 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
     match id {
         "project-list" => return list(weak).await,
         "project-create" => {
-            let (account, epoch, csrf) = {
-                let s = rc.borrow();
-                (s.account.clone(), s.projects.epoch, s.csrf.clone())
-            };
-            let made = api(
-                "projects",
-                Some(json!({"csrf":csrf,"name":input("project-name").value()})),
-            )
-            .await?;
-            if !same(&rc.borrow(), &account, epoch) {
-                return Ok(());
-            }
-            // An uncertain create is never automatically retried: Find projects exposes it.
-            list(weak).await?;
-            if !same(&rc.borrow(), &account, epoch) {
-                return Ok(());
-            }
-            let id = made["id"].as_str().ok_or(JsValue::NULL)?.to_string();
-            picker().set_value(&id);
-            {
+            let (scope, csrf, name) = {
                 let mut s = rc.borrow_mut();
-                s.projects.project = id;
-                s.projects.epoch = s.projects.epoch.wrapping_add(1);
-                s.projects.cursor = ProjectCursor::default();
-                s.projects.restored_visit = None;
-                s.projects.save = None;
+                if s.busy {
+                    return Err(JsValue::from_str(
+                        "Let the current change or save finish before creating a project.",
+                    ));
+                }
+                let scope = confirmation_scope(&s).ok_or_else(|| {
+                    JsValue::from_str("Wait for the world to open before creating a project.")
+                })?;
+                s.busy = true;
+                (scope, s.csrf.clone(), input("project-name").value())
+            };
+            status("Creating project…");
+            let result = async {
+                let made = api("projects", Some(json!({"csrf":csrf,"name":name}))).await?;
+                require_scope(&weak, &scope)?;
+                // An uncertain create is never automatically retried: Find projects exposes it.
+                list(weak.clone()).await?;
+                require_scope(&weak, &scope)?;
+                made["id"].as_str().map(str::to_string).ok_or(JsValue::NULL)
             }
+            .await;
+            let mut s = rc.borrow_mut();
+            if !same(&s, &scope.account, scope.epoch) {
+                return Ok(());
+            }
+            s.busy = false;
+            if !scope.accepts(confirmation_scope(&s).as_ref()) {
+                return Ok(());
+            }
+            let id = result?;
+            picker().set_value(&id);
+            change_project(&mut s, id);
+            s.pending = None;
+            s.persist();
+            hide("edit-auth", true);
             status("Project created. Choose Save project to keep this world.");
         }
         "project-save" | "project-save-copy" => return prepare_save(weak).await,
@@ -642,15 +670,10 @@ pub(super) fn mount(
             s.stop_input();
             s.pending = None;
             s.persist();
-            s.projects.save = None;
-            s.projects.history = history::View::default();
+            change_project(&mut s, picker().value());
             s.projects.images.clear();
             materials::clear(&mut s);
-            history::clear();
             s.busy = false;
-            s.projects.project = picker().value();
-            s.projects.cursor.version = 0;
-            s.projects.epoch = s.projects.epoch.wrapping_add(1);
             s.owned_world = None;
             let owner = s.account.clone();
             s.visit.discard_for(owner);
