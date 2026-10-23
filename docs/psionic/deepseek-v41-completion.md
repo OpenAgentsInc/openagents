@@ -24,8 +24,8 @@ qualified G8 evidence remain outstanding: rule 2.4 is not frozen, and no
 fresh confirmation oracle has been captured. The separate Maya Pylons run
 Foreman's browser-editor work with an experimental consumer-q profile.
 G5 and G6 still depend on numerical acceptance. Paired native direct-pipeline
-G2 checks now pass on both cross-machine placements; the one-quad paired
-check remains pending. Runtime checks alone do not pass those gates.
+G2 checks and combined 2,872-input / 4,096-output boundary checks now pass
+on all three placements. Runtime checks alone do not pass those gates.
 
 The entries below retain earlier checks; later sections record their reruns
 and the current worker's evidence.
