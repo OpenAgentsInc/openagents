@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse.contribution-qualification.v1",
   "issue": 12555,
-  "status": "Code complete; focused source checks passed; integrated browser/provider qualification pending",
+  "status": "Code complete; retained readable-history browser check passed with real native/GPU and synthetic account service; final dedicated-account qualification pending",
   "scope": "Saved versions identify accepted content and server-stamped contributors. Saving a source draft does not assert compilation or GPU application. This visit reports local command outcomes separately.",
   "earnings": {
     "authority": "Existing owner-published signed earnings receipts, selected by current stable source; no payout or credit creation.",
@@ -29,11 +29,30 @@
   "browser_fixture": {
     "script": "scripts/check-verse-project.mjs",
     "history_opt_in": "AETHYRFORGE_CHECK_HISTORY=1",
-    "status": "Retained assertions not yet run on the new SDK: readable desktop/mobile review, late-version response, non-mutation, and exact editable download.",
-    "real_signin_provider": false
+    "status": "Passed readable desktop/mobile inspection, accepted row labels, latest-version response ordering, non-mutation, and exact editable download on s6c9e53150296a3c0a / native+SDK 6af4d05101. Codex inspected private captures; no human review or real provider sign-in is claimed.",
+    "real_signin_provider": false,
+    "result": {
+      "release": "s6c9e53150296a3c0a",
+      "protocol_version": 5,
+      "real_gpu_engine": true,
+      "real_native_project_store": true,
+      "synthetic_account_service": true,
+      "real_signin_provider": false,
+      "microphone_used": false,
+      "readable_contribution_review": true,
+      "late_inspection_keeps_latest": true,
+      "inspection_non_mutating": true,
+      "late_save_keeps_newer_source": true,
+      "acknowledged_base_advances": true,
+      "canceled_load_keeps_active_base": true,
+      "confirmed_load_restores_repairable_draft": true,
+      "late_checkpoint_failure_scoped": true,
+      "grants": 1,
+      "errors": []
+    }
   },
   "unfinished_checks": [
-    "Pin the new public SDK/native consumer and rerun against the #12566 fixed GPU candidate. Inspect private desktop/mobile captures.",
+    "The retained native/GPU browser check passed on the replacement #12566 candidate. Preserve older releases and complete the remaining combined #12561 cases.",
     "Run dedicated-account integrated contribution/receipt visibility, revocation, save/return, and real provider sign-in in #12561. Existing owner-only provider/microphone steps remain in NEEDS_OWNER.md.",
     "Production reward links remain unconfigured. No game earnings are invented, and no new payout rail is enabled."
   ]

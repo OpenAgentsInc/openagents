@@ -323,6 +323,7 @@ try {
   await page.click("#edit-cancel");
   await page.click("#project-open");await page.click("#edit-confirm");
   await page.locator("#edit-auth").waitFor({state:"hidden"});
+  await page.waitForFunction(()=>document.querySelector("#edit-source").value==="Repairable remote draft",null,{timeout:20000});
   assert.equal(await page.locator("#edit-source").inputValue(),"Repairable remote draft");
   const arrivedCheckpoint=new Promise(resolve=>checkpointArrived=resolve);delayCheckpoint=true;
   await page.click("#project-save-copy");await page.click("#edit-confirm");await arrivedCheckpoint;

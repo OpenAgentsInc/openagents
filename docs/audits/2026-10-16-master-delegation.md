@@ -489,9 +489,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   interface drift before replacing the working effect. Eight authoring checks,
   TypeScript checks, and real GPU compile/failure/repair/undo/redo checks pass;
   Codex inspected private working/failed-candidate captures. Pin candidate
-  `s6c9e53150296a3c0a` with public SDK/native `6af4d05101`, then rerun the
-  integrated saved-world and readable-contribution browser checks. They remain
-  pending for #12561; no provider or human-review pass is claimed.
+  `s6c9e53150296a3c0a` with public SDK/native `6af4d05101` passes the
+  retained saved-world and readable-contribution browser checks. Codex inspected
+  private desktop/mobile captures. Broader #12561 cases remain pending; no
+  provider or human-review pass is claimed.
   [Project qualification](../verse/aethyrforge-project-qualification.json).
 
 - #12555: saved-version contributors and readable, non-mutating inspection use
@@ -501,8 +502,9 @@ The status lines below summarize each issue and its comments. Open the issue for
   amounts/states stay labeled. Source drafts and local editor outcomes remain
   distinct. Focused source checks and integrated checks are recorded in
   [contribution qualification](../verse/aethyrforge-contribution-qualification.json).
-  Rerun the retained desktop/mobile review and late-inspection checks with the
-  new SDK after #12566, then qualify dedicated-account receipt visibility,
+  The retained desktop/mobile review, accepted row labels, late inspection,
+  non-mutation, and exact download pass on `s6c9e53150296a3c0a`; Codex
+  inspected private captures. Qualify dedicated-account receipt visibility,
   revocation, and save/return in #12561. No real payout or provider pass is claimed.
 
 - #12554: wire v5 adds bounded editable exports and confirmed transactional
@@ -514,7 +516,9 @@ The status lines below summarize each issue and its comments. Open the issue for
   adopt fetched versions or old tools. Run the retained project browser check
   against a fresh native consumer and new immutable wire-v5 release. Review
   candidate `p4a25d82b1bf39f001` passed delayed-Save/base/canceled-load checks,
-  then hit the renderer UV compile defect tracked in #12566. Fix and rerun; verify
+  then hit the renderer UV compile defect tracked in #12566. Its replacement
+  `s6c9e53150296a3c0a` passes the retained Save/base/cancel/restore and late
+  context-failure checks on fresh native/SDK `6af4d05101`. Still verify
   real dedicated-account save/close/sign-in/resume, file imports, conflicts,
   revocation, and storage/network recovery in #12561. Provider access is in
   `NEEDS_OWNER.md`. [Project qualification](../verse/aethyrforge-project-qualification.json).

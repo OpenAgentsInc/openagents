@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse.project-qualification.v1",
   "issue": 12554,
-  "status": "Source checks complete; immutable review candidate deployed without traffic; browser restore defect tracked in #12566",
+  "status": "Source checks and retained native/GPU project/contribution browser check passed; broader integrated/provider qualification remains pending",
   "protocol_version": 5,
   "private_source": "845df602df1888303f16d9a0f2338cc033b04642",
   "private_predecessor": "515c2958436e07e6a9ed36c7c0b5117a3ffdcb8b",
@@ -28,14 +28,33 @@
   ],
   "browser_fixture": {
     "script": "scripts/check-verse-project.mjs",
-    "status": "Real native store and GPU run: delayed Save typing/base and canceled remote version passed before saved-world restore failed with Line 654: struct member uv not found. #12566 blocks final qualification. Earlier navigation interruption was fixed in the synthetic harness; no real provider completion is claimed.",
+    "status": "Passed on s6c9e53150296a3c0a with fresh native/SDK 6af4d05101; synthetic account service, real native project store and real GPU engine. Codex inspected private desktop/mobile contribution captures.",
     "synthetic_account_service": true,
     "real_signin_provider": false,
-    "tests": "Real native store and pinned GPU engine: delayed Save text, acknowledged base, canceled remote-version load, repairable-draft restore, and late checkpoint failure after project switch."
+    "tests": "Real native store and pinned GPU engine: delayed Save text, acknowledged base, canceled remote-version load, repairable-draft restore, and late checkpoint failure after project switch.",
+    "result": {
+      "release": "s6c9e53150296a3c0a",
+      "protocol_version": 5,
+      "real_gpu_engine": true,
+      "real_native_project_store": true,
+      "synthetic_account_service": true,
+      "real_signin_provider": false,
+      "microphone_used": false,
+      "readable_contribution_review": true,
+      "late_inspection_keeps_latest": true,
+      "inspection_non_mutating": true,
+      "late_save_keeps_newer_source": true,
+      "acknowledged_base_advances": true,
+      "canceled_load_keeps_active_base": true,
+      "confirmed_load_restores_repairable_draft": true,
+      "late_checkpoint_failure_scoped": true,
+      "grants": 1,
+      "errors": []
+    }
   },
   "unfinished_checks": [
-    "Fix #12566 and pin a replacement candidate; preserve older origins and production traffic.",
-    "Run and inspect desktop/mobile browser save/load/recovery/import and late-completion fault cases with the new artifacts; source/unit checks are not browser qualification.",
+    "Keep the replacement candidate and all prior versioned origins; no production traffic or root-homepage promotion is authorized.",
+    "Complete broader save/load/recovery/import, conflict, revocation, storage/network fault, and mobile interaction cases in #12561. The retained core browser check passed; mobile contribution review was captured, not a complete mobile saved-world qualification.",
     "Complete dedicated-account real provider sign-in and save/close/sign-in/resume; see NEEDS_OWNER.md. Synthetic principals and bearer reads are separate evidence.",
     "Qualify rendered material layers with #12514; storing typed PNG references does not prove a rendered paint or generated material."
   ],
@@ -67,6 +86,18 @@
     "sdk_source": "6af4d051018c98a1a8ab440c56e49b2eb2451d0b",
     "sdk_sha256": "384fdbeae78c50b763e172889b2ed391b1a3f0031790f719eeb31b439ed90c70",
     "native_binary_sha256": "33b085bc751210d89d5d5ab8eb307ef43a00b71e32f2f4ff22253e4b16c2f69d",
-    "integrated_browser": "Pending immutable candidate build/deploy and retained project/contribution check. No production traffic shift."
+    "integrated_browser": "Passed the retained saved-world/contribution check on the new no-traffic candidate. No page errors; Codex capture review, not human review.",
+    "deployment": {
+      "editor": {
+        "build": "06e9084e-1103-4b50-938d-5cf211a105a3",
+        "image": "sha256:be837374818a2d29c5e2c5845ffff4f31d64bf308b1dc9a509aafc10f911c998",
+        "revision": "aethyrforge-editor-00013-wub"
+      },
+      "preview": {
+        "build": "c6a569ad-0b3a-4e96-a67c-c2f297d9d7b8",
+        "image": "sha256:b50bb0cd9234510fa19bbe1ca6a5d09663c0952f0d8230a220e345cf006c6a92",
+        "revision": "aethyrforge-preview-00013-qiy"
+      }
+    }
   }
 }
