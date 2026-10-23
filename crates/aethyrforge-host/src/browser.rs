@@ -9,7 +9,7 @@ use std::{
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{Event, HtmlIFrameElement, MessageChannel, MessageEvent, MessagePort};
 
-const BOOTSTRAP: &str = "openagents.aethyrforge.host/1/listening";
+const BOOTSTRAP: &str = "openagents.aethyrforge.host/2/listening";
 type Handler<T> = Closure<dyn FnMut(T)>;
 fn js(e: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&e.to_string())
@@ -374,6 +374,19 @@ impl BrowserHost {
     }
     pub fn snapshot(&self) -> String {
         self.state.borrow().snapshot()
+    }
+    pub fn restore_checkpoint(&self, checkpoint: String) -> Result<(), JsValue> {
+        let c: Checkpoint = serde_json::from_str(&checkpoint).map_err(js)?;
+        c.validate().map_err(js)?;
+        let mut s = self.state.borrow_mut();
+        if s.host
+            .as_ref()
+            .is_some_and(|h| !matches!(h.phase, Phase::Connecting | Phase::Ready))
+        {
+            return Err(js("The world is already open."));
+        }
+        s.checkpoint = Some(c);
+        Ok(())
     }
     pub fn reload(&self) {
         let s = self.state.borrow();

@@ -12,6 +12,7 @@ fn status() -> Status {
         generation: "fixture-generation-1".into(),
         frame: 1,
         save: SaveState::Unsaved,
+        selection: None,
         checkpoint: Some(Checkpoint {
             eye: [1., 2., 3.],
             target: [1., 2., 2.],
@@ -115,7 +116,7 @@ fn forged_peer_version_session_payload_and_replay_fail() {
     h.receive(&reply.encode().unwrap()).unwrap();
     assert_eq!(h.receive(&reply.encode().unwrap()), Err(Error::Replay));
     let mut invalid = reply;
-    invalid.version = 2;
+    invalid.version = VERSION + 1;
     assert_eq!(invalid.encode(), Err(Error::Version));
     let mut new = Host::new(
         "https://engine.example",
@@ -130,10 +131,12 @@ fn forged_peer_version_session_payload_and_replay_fail() {
     let (_, ready) = Engine::accept(
         &Envelope {
             protocol: PROTOCOL.into(),
-            version: 1,
+            version: VERSION,
             session: "session".into(),
             sequence: 1,
-            message: Message::Hello { versions: vec![1] },
+            message: Message::Hello {
+                versions: vec![VERSION],
+            },
         }
         .encode()
         .unwrap(),
@@ -194,7 +197,7 @@ fn schema_and_numeric_limits() {
         .encode()
         .unwrap();
     assert!(
-        Envelope::decode(&text.replacen("\"version\":1", "\"version\":1,\"version\":1", 1))
+        Envelope::decode(&text.replacen("\"version\":2", "\"version\":2,\"version\":2", 1))
             .is_err()
     );
     assert!(Envelope::decode(&" ".repeat(MAX_BYTES + 1)).is_err());
@@ -228,7 +231,7 @@ fn schema_and_numeric_limits() {
     assert!(endpoint("https://user:secret@engine.example").is_err());
     assert!(endpoint("https://engine.example?token=secret").is_err());
     assert!(endpoint("http://127.0.0.1:1234/engine").is_ok());
-    let expected = include_str!("../schema/host-v1.json");
+    let expected = include_str!("../schema/host-v2.json");
     let actual = serde_json::to_string_pretty(&schemars::schema_for!(Envelope)).unwrap();
     assert_eq!(expected.trim(), actual.trim());
 }
@@ -264,10 +267,12 @@ fn evicted_ids_cannot_reexecute_and_lookup_does_not_replay() {
     );
     let hello = Envelope {
         protocol: PROTOCOL.into(),
-        version: 1,
+        version: VERSION,
         session: "new-session".into(),
         sequence: 1,
-        message: Message::Hello { versions: vec![1] },
+        message: Message::Hello {
+            versions: vec![VERSION],
+        },
     };
     let (_, ready) = Engine::accept(
         &hello.encode().unwrap(),

@@ -18,6 +18,10 @@ fn release() -> Option<Release> {
     configured(&text)
 }
 
+pub(crate) fn engine_release() -> Option<String> {
+    release().map(|r| r.release)
+}
+
 pub(crate) fn available() -> bool {
     release().is_some()
 }
@@ -49,6 +53,7 @@ async fn page() -> Response {
         .replace('<', "\\u003c");
     let body = html! {
         (DOCTYPE) html lang="en" { head {
+            meta id="engine-release" content=(r.release);
             meta charset="utf-8"; meta name="viewport" content="width=device-width,initial-scale=1";
             title { "Haunted House · OpenAgents" }
             link rel="stylesheet" href="/new-lander/house/style.css";
@@ -61,7 +66,31 @@ async fn page() -> Response {
                 a id="world-map" href=(MAP) { "Back to planets" }
                 span { "Click to look · WASD to walk · Escape to release the pointer" }
                 a id="world-retry" href=(HOUSE) { "Reload world" }
+                button id="world-edit" type="button" { "Edit" }
                 button id="world-fullscreen" type="button" { "Full screen" }
+            }
+            aside id="edit-panel" hidden aria-labelledby="edit-title" {
+                header { h2 id="edit-title" { "Edit" } button id="edit-close" type="button" aria-label="Close Edit" { "×" } }
+                p id="edit-target" { "Click an object in the house." }
+                form id="edit-form" {
+                    div class="position-fields" {
+                        @for (id, label) in [("edit-x", "X"), ("edit-y", "Y"), ("edit-z", "Z")] {
+                            label { (label) input id=(id) type="number" step="0.1" required value="0"; }
+                        }
+                    }
+                    label for="edit-note" { "Notes" } textarea id="edit-note" maxlength="48000" {}
+                    input id="edit-submit" type="submit" value="Move object" disabled;
+                }
+                p id="edit-status" role="status" aria-live="polite" {}
+            }
+            dialog id="edit-auth" hidden {
+                section role="dialog" aria-modal="true" aria-labelledby="edit-auth-title" {
+                    h2 id="edit-auth-title" { "Sign in to make this change" }
+                    p id="edit-auth-description" { "Your view and requested change will stay here." }
+                    a id="edit-signin" href="/login?return_to=%2Fnew-lander%2Fhouse" { "Sign in" }
+                    button id="edit-confirm" type="button" hidden { "Confirm change" }
+                    button id="edit-cancel" type="button" { "Cancel" }
+                }
             }
             script id="engine-config" type="application/json" { (PreEscaped(text)) }
             script type="module" src="/new-lander/house/boot.js" {}
@@ -89,7 +118,7 @@ async fn boot() -> Response {
     response(
         StatusCode::OK,
         format!(
-            "try{{const {{default:init,mount_demo}}=await import({url});await init();window.hauntDemo=mount_demo();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.dataset.state='error';n.textContent='The house could not open. Reload to try again.';}}"
+            "try{{const {{default:init,mount_studio}}=await import({url});await init();window.hauntDemo=mount_studio();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.dataset.state='error';n.textContent='The house could not open. Reload to try again.';}}"
         ),
         "text/javascript; charset=utf-8",
         Some(&r.origin()),
@@ -99,7 +128,7 @@ async fn boot() -> Response {
 async fn style() -> Response {
     response(
         StatusCode::OK,
-        "html,body{height:100%;margin:0;background:#0c1014;color:#f0e9df;font:14px system-ui}main,iframe{position:fixed;inset:0;width:100%;height:100%;border:0}nav{position:fixed;bottom:16px;left:16px;right:16px;display:flex;align-items:center;gap:16px;pointer-events:none}nav>*{pointer-events:auto}nav span{flex:1;text-shadow:0 2px 4px #000}a,button{color:inherit;background:#10171cdd;border:1px solid #727b8080;border-radius:5px;padding:10px 14px;text-decoration:none}a:focus-visible,button:focus-visible{outline:2px solid white;outline-offset:3px}#world-notice{position:fixed;top:40%;left:50%;transform:translateX(-50%);padding:24px;max-width:400px;background:#131d23ee;border:1px solid #727b80}#world-notice[hidden]{display:none}@media(max-width:700px){nav{flex-wrap:wrap;gap:8px}nav span{order:5;flex-basis:100%;font-size:12px}}",
+        "input,textarea{box-sizing:border-box;color:inherit;background:#172027;border:1px solid #727b80;border-radius:4px;padding:8px;width:100%}button,input[type=submit]{cursor:pointer}input:disabled{opacity:.45;cursor:default}#edit-panel{position:fixed;top:24px;right:24px;width:min(320px,80vw);padding:20px;background:#131d23ed;border:1px solid #727b8080;border-radius:10px}#edit-panel header{display:flex;justify-content:space-between;align-items:center}#edit-panel h2{margin:0}#edit-panel label{display:block;margin:12px 0 6px}.position-fields{display:flex;gap:10px}.position-fields label{width:30%}#edit-auth{margin:0;padding:0;border:0;max-width:none;max-height:none;width:100%;height:100%;color:inherit;position:fixed;inset:0;display:grid;place-items:center;background:#0005}#edit-auth section{max-width:360px;padding:32px;background:#131d23eb;border:1px solid #727b8080;border-radius:14px;backdrop-filter:blur(18px)}#edit-auth button,#edit-auth a{margin:8px 6px 0 0;display:inline-block}#edit-auth[hidden],#edit-panel[hidden]{display:none}html,body{height:100%;margin:0;background:#0c1014;color:#f0e9df;font:14px system-ui}main,iframe{position:fixed;inset:0;width:100%;height:100%;border:0}nav{position:fixed;bottom:16px;left:16px;right:16px;display:flex;align-items:center;gap:16px;pointer-events:none}nav>*{pointer-events:auto}nav span{flex:1;text-shadow:0 2px 4px #000}a,button{color:inherit;background:#10171cdd;border:1px solid #727b8080;border-radius:5px;padding:10px 14px;text-decoration:none}a:focus-visible,button:focus-visible{outline:2px solid white;outline-offset:3px}#world-notice{position:fixed;top:40%;left:50%;transform:translateX(-50%);padding:24px;max-width:400px;background:#131d23ee;border:1px solid #727b80}#world-notice[hidden]{display:none}@media(max-width:700px){nav{flex-wrap:wrap;gap:8px}nav span{order:5;flex-basis:100%;font-size:12px}}",
         "text/css; charset=utf-8",
         None,
     )

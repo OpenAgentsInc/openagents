@@ -37,7 +37,7 @@ mod layertree;
 pub mod live;
 mod medieval_town;
 mod new_lander;
-mod new_lander_house;
+pub(crate) mod new_lander_house;
 mod pricing;
 pub mod profile;
 mod pylon_work;

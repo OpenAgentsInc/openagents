@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 pub const MAX_BYTES: usize = 65_536;
 pub const MAX_PENDING: usize = 16;
 pub const MAX_RESULTS: usize = 64;
@@ -144,18 +144,35 @@ pub enum ResultState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
+pub struct SelectedObject {
+    pub id: String,
+    pub asset: String,
+    pub position: [f64; 3],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Status {
     pub project: Project,
     pub generation: String,
     pub frame: u64,
     pub save: SaveState,
     pub checkpoint: Option<Checkpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectedObject>,
 }
 impl Status {
     pub fn validate(&self) -> Result<(), Error> {
         self.project.validate()?;
         if !id(&self.generation) || self.frame > MAX_SAFE_INTEGER {
             return Err(Error::Invalid("status"));
+        }
+        if self
+            .selection
+            .as_ref()
+            .is_some_and(|s| !id(&s.id) || !id(&s.asset) || !point(&s.position))
+        {
+            return Err(Error::Invalid("selection"));
         }
         if let Some(c) = &self.checkpoint {
             c.validate()?;
@@ -202,8 +219,11 @@ impl Edit {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    Authorize { grant: crate::ScopedGrant },
+    RevokeAuthorization,
     Open { checkpoint: Option<Checkpoint> },
     Inspect,
+    Select { target: String },
     Propose { operations: Vec<Edit> },
     Draft { asset: String, source: String },
     Compile { asset: Option<String> },
@@ -222,10 +242,15 @@ pub enum Action {
 impl Action {
     pub fn capability(&self) -> Option<Capability> {
         Some(match self {
-            Self::Open { .. } | Self::Close | Self::Cancel { .. } | Self::Lookup { .. } => {
+            Self::Authorize { .. }
+            | Self::RevokeAuthorization
+            | Self::Open { .. }
+            | Self::Close
+            | Self::Cancel { .. }
+            | Self::Lookup { .. } => {
                 return None;
             }
-            Self::Inspect => Capability::Inspect,
+            Self::Inspect | Self::Select { .. } => Capability::Inspect,
             Self::Propose { .. } => Capability::Propose,
             Self::Draft { .. } => Capability::Draft,
             Self::Compile { .. } => Capability::Compile,
@@ -245,6 +270,7 @@ impl Action {
             return Ok(());
         }
         let valid = match self {
+            Self::Authorize { grant } => grant.validate().is_ok(),
             Self::Open { .. } | Self::Inspect | Self::Observe { .. } => outcome.status.is_some(),
             Self::Publish { .. } => matches!(outcome.detail, Some(Detail::Published { .. })),
             Self::Share { .. } => matches!(outcome.detail, Some(Detail::Shared { .. })),
@@ -259,6 +285,7 @@ impl Action {
     }
     pub fn validate(&self) -> Result<(), Error> {
         let valid = match self {
+            Self::Authorize { grant } => grant.validate().is_ok(),
             Self::Open {
                 checkpoint: Some(c),
             } => c.validate().is_ok(),
@@ -269,7 +296,9 @@ impl Action {
             }
             Self::Draft { asset, source } => id(asset) && text(source, 48_000),
             Self::Compile { asset: Some(a) } => id(a),
-            Self::Cancel { target } | Self::Lookup { target } => id(target),
+            Self::Select { target } | Self::Cancel { target } | Self::Lookup { target } => {
+                id(target)
+            }
             _ => true,
         };
         if valid {

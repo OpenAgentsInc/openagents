@@ -22,13 +22,13 @@ no secrets, and private engine source maps are not published.
 2. The private engine loads the operator-pinned public Wasm SDK and constructs
    `EngineEndpoint` with its exact allowed host origin and supported capabilities.
    Once its document has loaded, it posts the fixed public string
-   `openagents.aethyrforge.host/1/listening` to that host origin. This carries no
+   `openagents.aethyrforge.host/2/listening` to that host origin. This carries no
    authority. The host accepts it only from the configured origin **and its exact
    iframe window**, once per frame load.
-3. The host generates a 192-bit random session, sends `hello` with version `[1]`
+3. The host generates a 192-bit random session, sends `hello` with version `[2]`
    and sequence 1 to that exact window/origin, and transfers exactly one MessagePort.
    The engine accepts only its configured parent origin/window, one port, version
-   1, and a valid hello. It responds `ready` on that port. All further messages are
+   2, and a valid hello. It responds `ready` on that port. All further messages are
    UTF-8 JSON **strings** on the scoped channel, never arbitrary window messages.
 4. The host checks release, engine ABI, project format, and capabilities before
    sending `open`. Successful open includes status. Requests and results carry a
@@ -38,12 +38,12 @@ no secrets, and private engine source maps are not published.
    dispatch. The host rejects decreasing result revisions and unsolicited results.
 5. Unknown fields, tags, capabilities, duplicate JSON keys, invalid numbers,
    incompatible versions, malformed payloads, and replayed messages fail closed.
-   Version 1 uses exact ABI/project-format matching. Incompatible schema changes
+   Version 2 uses exact ABI/project-format matching. Incompatible schema changes
    require a new wire version and fixtures. This small host schema is independent
    of Aethyrforge's richer authoring and release formats; matching it does not imply
    source, runtime, or saved-world compatibility.
 
-The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v1.json)
+The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v2.json)
 defines closed message shapes. Runtime validation adds UTF-8 byte limits, finite
 coordinates, safe integer bounds, state transitions, peer checks, and relationships
 between fields. Schema validation alone is insufficient. `Envelope::decode` and
@@ -123,3 +123,26 @@ The mock is synthetic and cannot qualify rendering, authorized edits, hosted
 persistence, publishing, asset licenses, production headers, or performance.
 The [integrated receipt](aethyrforge-host-conformance.json) records the exact tested private
 revision and artifact hashes, without publishing its code or binaries.
+
+## Version 2 authoring access
+
+Version 2 adds selected-object status, guest selection, and narrow authorization
+and revocation actions. Version 1 consumers reject those shapes, so the new SDK
+negotiates only version 2 and uses a separate bootstrap string. The frozen
+[v1 schema](../../crates/aethyrforge-host/schema/host-v1.json) and prior pinned
+SDK/engine releases remain unchanged. A v2 host cannot drive a v1 engine.
+
+The Rust host keeps sign-in cookies, CSRF tickets, pending edits, and panels on
+its own origin. It reuses the site's sign-in popup. Sign-in completion refreshes
+account standing and offers confirmation; it never executes the pending edit.
+The trusted service issues a five-minute grant bound to the current account
+session, tab, engine session/release, loaded project, private draft, action, and
+exact action hash. Every use rechecks the account and the durable grant record.
+Native bearer callers use the existing account read with no ambient-cookie
+CSRF authority. Only the narrow grant reaches the checked engine channel.
+
+Guest inspection and selection remain available. Cancel keeps the view and
+request. Revocation ends editing without closing guest exploration. House edits
+are not written into shared browser storage; durable project saves belong to the
+public persistence service. A renderer acknowledgement alone is not publication
+or proof of an account save.

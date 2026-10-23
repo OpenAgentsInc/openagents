@@ -17,8 +17,9 @@ url = "2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Node", "HtmlElement", "HtmlIFrameElement", "Event", "EventTarget", "MessageEvent", "MessagePort", "MessageChannel", "Crypto", "Performance", "Location"] }
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Node", "HtmlElement", "HtmlIFrameElement", "Event", "EventTarget", "MessageEvent", "MessagePort", "MessageChannel", "Crypto", "Performance", "Location", "Storage", "HtmlDialogElement", "HtmlInputElement", "HtmlTextAreaElement", "Request", "RequestInit", "RequestCredentials", "Response", "Headers", "BroadcastChannel"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }

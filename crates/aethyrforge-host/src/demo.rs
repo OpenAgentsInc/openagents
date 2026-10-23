@@ -6,7 +6,7 @@ use web_sys::{Event, EventTarget, HtmlIFrameElement};
 type Handler = Closure<dyn FnMut(Event)>;
 #[wasm_bindgen]
 pub struct BrowserDemo {
-    host: Rc<RefCell<Option<BrowserHost>>>,
+    pub(crate) host: Rc<RefCell<Option<BrowserHost>>>,
     changed: Closure<dyn FnMut()>,
     listeners: Vec<(EventTarget, &'static str, Handler)>,
 }

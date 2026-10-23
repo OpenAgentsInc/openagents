@@ -1,0 +1,89 @@
+//! Bounded edit intent and short-lived authoring permission. Tokens are not accounts.
+use crate::{Action, Capability, Checkpoint, Error, Project, protocol::id};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ScopedGrant {
+    pub token: String,
+    pub action_sha256: String,
+    pub session: String,
+    pub release: String,
+    /// The loaded base world, independent of the person's private draft.
+    pub project: Project,
+    pub draft: Project,
+    pub capability: Capability,
+    pub expires_at: u64,
+}
+impl ScopedGrant {
+    pub fn validate(&self) -> Result<(), Error> {
+        self.project.validate()?;
+        self.draft.validate()?;
+        if self.action_sha256.len() != 64
+            || !self
+                .action_sha256
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            || self.token.len() != 64
+            || !self
+                .token
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            || !id(&self.session)
+            || !id(&self.release)
+            || self.expires_at > crate::MAX_SAFE_INTEGER
+            || !mutation(self.capability)
+            || self.project.same_branch(&self.draft)
+        {
+            return Err(Error::Invalid("grant"));
+        }
+        Ok(())
+    }
+}
+pub fn mutation(capability: Capability) -> bool {
+    matches!(
+        capability,
+        Capability::Propose
+            | Capability::Draft
+            | Capability::Compile
+            | Capability::Undo
+            | Capability::Redo
+            | Capability::Save
+            | Capability::Publish
+            | Capability::Share
+    )
+}
+/// Host-origin session storage keeps this across sign-in; it contains no credential.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PendingChange {
+    pub world: String,
+    pub checkpoint: Checkpoint,
+    pub selection: Option<String>,
+    pub panels: Vec<String>,
+    pub draft: String,
+    pub action: Action,
+}
+impl PendingChange {
+    pub fn validate(&self) -> Result<(), Error> {
+        self.checkpoint.validate()?;
+        self.action.validate()?;
+        if self.world != "haunted-house"
+            || self.selection.as_ref().is_some_and(|s| !id(s))
+            || self.panels.len() > 8
+            || self.panels.iter().any(|p| {
+                !matches!(
+                    p.as_str(),
+                    "edit" | "mesh" | "materials" | "kiln" | "history"
+                )
+            })
+            || self.draft.len() > 48_000
+            || self.draft.contains('\0')
+            || !self.action.capability().is_some_and(mutation)
+        {
+            return Err(Error::Invalid("pending change"));
+        }
+        Ok(())
+    }
+}

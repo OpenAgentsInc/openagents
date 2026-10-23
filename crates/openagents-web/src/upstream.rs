@@ -295,6 +295,7 @@ pub fn owned(path: &str) -> bool {
         || crate::lightning_address::owns(path)
         || crate::profile_earnings::owns(path)
         || crate::verse_key::owns(path)
+        || crate::verse_studio::owns(path)
         || crate::grid_foreman::owns(path)
         || path == crate::pages::home::HOME
         // The Grid homepage and its account answer (crate::pages::grid_home).

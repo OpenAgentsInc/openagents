@@ -73,6 +73,11 @@ impl Engine {
         else {
             return Err(Error::Phase);
         };
+        if let Action::Authorize { grant } = action {
+            if grant.session != self.session || &grant.project != project {
+                return Err(Error::Invalid("grant binding"));
+            }
+        }
         // Bind request identity to its sequence, so evicting bounded results cannot
         // allow a prior request ID to execute again with a fresh sequence.
         if request_id != &format!("request-{}", e.sequence) {
