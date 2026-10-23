@@ -1,0 +1,28 @@
+{
+  "purpose": "Frozen two-file Maya-produced reference snapshot; incomplete, untested as a whole, not a product merge. This root commit preserves exported files, not the unavailable full native base tree.",
+  "native_base": "4094f9a075e341b4449e06030f5867c32c75d95c",
+  "native_export_digest": "9dffb00500ebe032ec68cefbc6e9674a7523c5ac9034a47a93f23ce1afd87509",
+  "receipt": {
+    "terminal_sha256": "2966cc1a4695c785771eaf3f8dbfbacfa6f6d1eac1643eefd5ec759c71727e08",
+    "before_sha256": "b6a850903dc068851ac616201b7ecbe34386b9905bb8d368ff2f7faad96f8a09",
+    "turns": 24,
+    "calls": 33,
+    "until": 1792743296,
+    "last_answer_turn": 24,
+    "phase": "stopped",
+    "base": "4094f9a075e341b4449e06030f5867c32c75d95c",
+    "digest": "9dffb00500ebe032ec68cefbc6e9674a7523c5ac9034a47a93f23ce1afd87509",
+    "only_phase_reason_changed": true,
+    "resolved_sha256": "8b0005451cc26c05cc2d70e2650131e605368d257b7c234e142d0f5146150c54"
+  },
+  "files": {
+    "apps/haunt-preview/src/asset-compiler.ts": {
+      "bytes": 19076,
+      "sha256": "7e7b7bdefdc6e90a91c7ddfb612ae45b00e6d62d845fbe0e63871059ab440904"
+    },
+    "apps/haunt-preview/tests/asset-compiler.test.ts": {
+      "bytes": 5105,
+      "sha256": "d9cdc42ceb826443ca221e1f41c436001f9f887c5e0e607eb575ea4fe46292ac"
+    }
+  }
+}
