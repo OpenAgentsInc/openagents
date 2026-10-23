@@ -485,6 +485,17 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12567: main `51d7b36629` serializes project creation and resets recovery/open
+  state and history across project changes; `bc8ad3af00` opens replacement frames
+  at the pinned release base. Host 53, Wasm, and the native consumer build pass.
+  The real GPU/native-store browser regression passes held Save/Create, held
+  Create/Save/draft-edit, and delayed recovery across Create and picker changes.
+  It uses a synthetic account service and direct fixture session, with scoped
+  local-network permission; it is not provider sign-in or microphone evidence.
+  Complete deployed/dedicated-account coverage in #12561 and material checks in
+  #12514. No production traffic changed.
+  [Project qualification](../verse/aethyrforge-project-qualification.json).
+
 - #12566: private main `d6c2e8d` uses the current renderer UV input and rejects
   interface drift before replacing the working effect. Eight authoring checks,
   TypeScript checks, and real GPU compile/failure/repair/undo/redo checks pass;
