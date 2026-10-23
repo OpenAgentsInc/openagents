@@ -485,35 +485,31 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12579: the shared CSS and JavaScript are explicit native asset routes.
-  The Cloud-cookie routing matrix passes for session, login, workspace, WorkOS,
-  and future cookies on configured hosts, while unknown hosts and legacy paths
-  stay blocked. The production check found the missing asset entries after
-  #12578; deploy this fix and repeat the real login-cookie browser check.
-
-- #12578: Verse login and signup handoffs use the shared zinc CSS without
-  loading the engine or tool finder. The failed-password form retains its CSRF,
-  return address, and HTTP status in focused Rust checks. Native authentication
-  markup passes desktop and narrow visual checks under a light device preference.
-  Production handoff checks continue with #12577's deployment.
-
-- #12577: dark zinc styling is on main in the public host and private engine.
-  Seven focused Rust checks, public TypeScript/build checks, 883 private tests
-  (13 skipped), and isolated browser checks of guest entry, Jarvis, sign-in
-  cancellation, native engine controls, and narrow layouts pass. Deployment and
-  production browser checks continue here; provider and microphone checks remain
-  in `NEEDS_OWNER.md`.
-
-- #12576: the owned shadcn/React/Effect presentation covers Verse entry, the native
-  editor and sign-in cards, publishing/sharing, planet setup, and visits/chat.
-  Fifteen focused Rust checks, TypeScript/build checks, deterministic assets, and
-  isolated Chrome guest/edit/cancel/focus/narrow-layout checks pass. The running
-  private engine keeps its generation, advancing frames, pose, and canvas identity.
-  Setup/invitation/player layouts use synthetic native test pages. After a separate
-  deployment, repeat provider sign-in and saved-version sharing with the dedicated
-  test account; existing human/microphone steps remain in `NEEDS_OWNER.md`.
-  This change does not deploy production or promote the root homepage.
-
+- #12576 / #12577: the owned shadcn/React/Effect presentation uses black and
+  zinc surfaces with light controls across marketing, universe entry, Jarvis,
+  publishing/sharing, planet setup, and visits/chat. Private Aethyrforge editor,
+  player, and map controls use the same palette; scene art stays independent.
+  Deployed on 2026-10-23 as `coder-web-41f4afa10c-20261023225932` at 100% traffic,
+  from public source `e119a1b450` and private source `cf0db5f`. The root homepage
+  retains its existing flow.
+- #12578: Verse login/signup handoffs load the shared CSS without an engine or
+  tool finder. Focused Rust checks retain the failed-password form's CSRF,
+  return address, and HTTP status. Real production login/signup pages pass at
+  desktop and phone widths with an explicit light preference.
+- #12579: the CSS and JavaScript are explicit native routes. The cookie/host
+  matrix passes for session, login, workspace, WorkOS, and future cookies;
+  unknown hosts and legacy paths stay blocked. The production check found this
+  omission after #12578. Both assets now load with login cookies, and the live
+  guest/edit/cancel/focus flow passes without replacing the engine or canvas.
+- Combined UI checks: TypeScript/build checks, ten focused Rust tests, 883 passing private
+  tests (13 more skipped), 36 HTTP/artifact checks, native account-screen layout
+  captures, and desktop/phone browser checks pass. House and town checks cover
+  movement, checkpoint reload, worker disposal, return navigation, and missing
+  or incompatible engines. The corrected candidate passes 63 site checks
+  (two skipped; nine account-service checks wait for traffic). The final production
+  smoke passes 74 checks with zero failures and two skipped account-only checks.
+  The live provider
+  approval, microphone checks, and Kiki's review remain in `NEEDS_OWNER.md`.
 
 - #12561 / #12562: implementation and agent-owned qualification complete across
   30 native children (17 original, 13 follow-ups). The connected hosted journey
