@@ -133,6 +133,20 @@ pub fn mount_demo() -> Result<BrowserDemo, JsValue> {
     let target: EventTarget = window.into();
     target.add_event_listener_with_callback("pagehide", leave.as_ref().unchecked_ref())?;
     listeners.push((target, "pagehide", leave));
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("window"))?;
+    let reload_window = window.clone();
+    let restored = Closure::wrap(Box::new(move |event: Event| {
+        if js_sys::Reflect::get(event.as_ref(), &JsValue::from_str("persisted"))
+            .ok()
+            .and_then(|v| v.as_bool())
+            == Some(true)
+        {
+            let _ = reload_window.location().reload();
+        }
+    }) as Box<dyn FnMut(Event)>);
+    let target: EventTarget = window.into();
+    target.add_event_listener_with_callback("pageshow", restored.as_ref().unchecked_ref())?;
+    listeners.push((target, "pageshow", restored));
     Ok(BrowserDemo {
         host,
         changed,
