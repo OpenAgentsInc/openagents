@@ -170,6 +170,7 @@ impl ProjectDocument {
         {
             return Err(invalid());
         }
+        crate::material::validate_project_materials(self)?;
         let bytes = serde_json::to_vec(self).map_err(|_| invalid())?;
         if bytes.len() > MAX_PROJECT_BYTES {
             return Err(Error::Invalid("project size"));

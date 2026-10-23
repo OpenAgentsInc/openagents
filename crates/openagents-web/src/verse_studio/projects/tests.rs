@@ -616,3 +616,211 @@ async fn contributor_history_uses_account_members_and_current_signed_test_credit
     assert!(!before.to_string().contains('@'));
     server.abort();
 }
+
+fn large_material_restore() -> (
+    ProjectDocument,
+    Vec<aethyrforge_host::MaterialBundle>,
+    Vec<u8>,
+) {
+    use aethyrforge_host::{
+        MaterialBundle, MaterialDocument, MaterialImage, MaterialTarget, WorldEntity,
+    };
+    let mut pixels = vec![0; 256 * 256 * 4];
+    let mut random = 23u32;
+    for pixel in &mut pixels[..256 * 8 * 4] {
+        random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+        *pixel = (random >> 24) as u8;
+    }
+    let mut bytes = Cursor::new(Vec::new());
+    image::RgbaImage::from_raw(256, 256, pixels)
+        .unwrap()
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .unwrap();
+    let bytes = bytes.into_inner();
+    assert!(bytes.len() > 4 * 1024 && bytes.len() <= aethyrforge_host::MAX_MATERIAL_PNG);
+    let image = MaterialImage::new(&bytes).unwrap();
+    let mut document = document();
+    let mut bundles = Vec::new();
+    for i in 0..8 {
+        let entity = format!("wolf-{i}");
+        document.entities.insert(
+            entity.clone(),
+            WorldEntity {
+                asset: "custom:haunt:werewolf".into(),
+                position: [i as f64, 0., 0.],
+                yaw: 0.,
+                scale: 1.,
+            },
+        );
+        let mut material = MaterialDocument::blank(MaterialTarget::werewolf_face(&entity));
+        material.generated.image = Some(image.resource.clone());
+        material.handmade.image = Some(image.resource.clone());
+        material.keep_in(&mut document).unwrap();
+        bundles.push(MaterialBundle {
+            document: material,
+            generated: Some(image.clone()),
+            handmade: Some(image.clone()),
+        });
+    }
+    (document, bundles, bytes)
+}
+
+#[tokio::test]
+async fn large_material_restore_fits_grants_and_authorization_and_oversize_keeps_the_grant() {
+    use aethyrforge_host::{Action, MAX_ACTION_BYTES, MAX_AUTHORIZATION_BYTES, MAX_BYTES};
+    let world = world().await;
+    let mut alice = Client::signed(&world, "octo-local").await;
+    let (document, materials, _) = large_material_restore();
+    let action = Action::RestoreMaterialProject {
+        document,
+        checkpoint: None,
+        materials,
+    };
+    action.validate().unwrap();
+    let envelope = aethyrforge_host::Envelope {
+        protocol: aethyrforge_host::PROTOCOL.into(),
+        version: aethyrforge_host::VERSION,
+        session: "material-session".into(),
+        sequence: 3,
+        message: aethyrforge_host::Message::Request {
+            request_id: "request-3".into(),
+            project: aethyrforge_host::Project {
+                id: "haunted-house".into(),
+                branch: "main".into(),
+                revision: 0,
+            },
+            action: action.clone(),
+        },
+    };
+    let frame = envelope.encode().unwrap();
+    assert_eq!(
+        aethyrforge_host::Envelope::decode(&frame).unwrap(),
+        envelope
+    );
+    let action_bytes = serde_json::to_vec(&action).unwrap().len();
+    assert!(action_bytes > 65_536 && action_bytes <= MAX_ACTION_BYTES);
+    let release = crate::pages::new_lander_house::engine_release().unwrap();
+    let issue = json!({"tab":"material-budget-tab","session":"material-session","release":release,"project":{"id":"haunted-house","branch":"main","revision":0},"action":action,"confirmed":true});
+    let (status, made) = alice
+        .call(&world, "POST", "/v1/verse/studio/grants", issue.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{made}");
+    let authorize = json!({"csrf":alice.csrf,"tab":"material-budget-tab","grant":made["grant"],"action":action});
+    let encoded = authorize.to_string();
+    assert!(encoded.len() > 65_536 && encoded.len() < MAX_BYTES);
+    // Whitespace keeps the JSON valid while crossing only the HTTP body bound.
+    for (path, mut body) in [("grants", issue.clone()), ("authorize", authorize.clone())] {
+        body["csrf"] = alice.csrf.clone().into();
+        let mut padded = body.to_string();
+        padded.extend(std::iter::repeat_n(
+            ' ',
+            MAX_AUTHORIZATION_BYTES + 1 - padded.len(),
+        ));
+        let response = alice
+            .browser
+            .send(
+                &world,
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/verse/studio/{path}"))
+                    .header("content-type", "application/json")
+                    .header("origin", world.origin()),
+                Body::from(padded),
+            )
+            .await;
+        assert_eq!(
+            response.status,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "{}",
+            response.body
+        );
+    }
+    let (status, allowed) = alice
+        .call(
+            &world,
+            "POST",
+            "/v1/verse/studio/authorize",
+            authorize.clone(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{allowed}");
+    assert_eq!(allowed["replay"], false);
+    assert_eq!(
+        alice
+            .call(&world, "POST", "/v1/verse/studio/authorize", authorize)
+            .await
+            .1["replay"],
+        true
+    );
+}
+
+#[tokio::test]
+async fn material_save_rejects_an_oversized_source_reference_without_accepting_a_revision() {
+    let world = world().await;
+    let mut alice = Client::signed(&world, "octo-local").await;
+    let (_, made) = alice
+        .call(
+            &world,
+            "POST",
+            "/v1/verse/studio/projects",
+            json!({"name":"Material bounds"}),
+        )
+        .await;
+    let path = format!(
+        "/v1/verse/studio/projects/{}/haunted-house/main",
+        made["id"].as_str().unwrap()
+    );
+    let (mut document, materials, bytes) = large_material_restore();
+    let image = materials[0].generated.as_ref().unwrap();
+    let response = alice
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(format!("{path}/resources/{}", image.resource.sha256))
+                .header("origin", world.origin())
+                .header("content-type", "image/png")
+                .header("x-verse-csrf", &alice.csrf),
+            Body::from(bytes),
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK, "{}", response.body);
+    let (status, accepted) = alice
+        .call(
+            &world,
+            "POST",
+            &path,
+            save("material-in-bound", 0, &document),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+    let mut source = materials[0].document.clone();
+    source.generated.image.as_mut().unwrap().bytes =
+        (aethyrforge_host::MAX_MATERIAL_PNG + 1) as u64;
+    let saved_source = document
+        .originals
+        .iter_mut()
+        .find(|s| s.name == format!("material-v1-{}.json", source.key()))
+        .unwrap();
+    saved_source.text = serde_json::to_string(&source).unwrap();
+    saved_source.sha256 = aethyrforge_host::project_hash(saved_source.text.as_bytes());
+    document
+        .layers
+        .iter_mut()
+        .find(|l| l.surface == format!("material-{}", source.key()) && l.kind == "generated")
+        .unwrap()
+        .texture = source.generated.image.clone().unwrap();
+    let (status, refused) = alice
+        .call(
+            &world,
+            "POST",
+            &path,
+            save("material-over-bound", 1, &document),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    let (_, reopened) = alice.call(&world, "GET", &path, Value::Null).await;
+    assert_eq!(reopened["head"], accepted["saved"]);
+    assert_eq!(reopened["history"].as_array().unwrap().len(), 1);
+}

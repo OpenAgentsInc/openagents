@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub const MATERIAL_SCHEMA: &str = "openagents.verse.material.v1";
 pub const SCAR_BACKEND: &str = "local-stylized-scars-v1";
 pub const MATERIAL_SIZE: usize = 256;
+pub const MAX_MATERIAL_PNG: usize = 16 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -329,7 +330,7 @@ impl MaterialDocument {
                 || layer.image.as_ref().is_some_and(|r| {
                     r.media_type != "image/png"
                         || r.bytes == 0
-                        || r.bytes > 4 * 1024 * 1024
+                        || r.bytes > MAX_MATERIAL_PNG as u64
                         || (r.sha256.len() != 64
                             || !r
                                 .sha256
@@ -342,6 +343,197 @@ impl MaterialDocument {
         }
         if let Some(recipe) = &self.recipe {
             recipe.validate()?;
+        }
+        Ok(())
+    }
+    pub fn key(&self) -> String {
+        crate::project_hash(
+            format!(
+                "{}\n{}\n{}",
+                self.target.entity, self.target.asset, self.target.surface
+            )
+            .as_bytes(),
+        )
+    }
+    pub fn keep_in(&self, project: &mut crate::ProjectDocument) -> Result<(), Error> {
+        self.validate()?;
+        if project
+            .entities
+            .get(&self.target.entity)
+            .is_none_or(|e| e.asset != self.target.asset)
+        {
+            return Err(Error::Invalid("saved material target"));
+        }
+        let key = self.key();
+        let name = format!("material-v1-{key}.json");
+        let surface = format!("material-{key}");
+        let text = serde_json::to_string(self).map_err(|_| Error::Invalid("material document"))?;
+        let mut candidate = project.clone();
+        candidate.originals.retain(|o| o.name != name);
+        candidate.originals.push(crate::OriginalImport {
+            name,
+            sha256: crate::project_hash(text.as_bytes()),
+            text,
+        });
+        candidate.layers.retain(|layer| layer.surface != surface);
+        for (kind, layer) in [("generated", &self.generated), ("paint", &self.handmade)] {
+            if let Some(texture) = &layer.image {
+                candidate.layers.push(crate::MaterialLayer {
+                    material: self.target.material.clone(),
+                    surface: surface.clone(),
+                    texture: texture.clone(),
+                    uv_set: 0,
+                    kind: kind.into(),
+                });
+            }
+        }
+        candidate.validate()?;
+        *project = candidate;
+        Ok(())
+    }
+}
+
+pub fn project_materials(project: &crate::ProjectDocument) -> Result<Vec<MaterialDocument>, Error> {
+    project.validate()?;
+    let documents = validate_project_materials(project)?;
+    if project.layers.iter().any(|l| {
+        !documents
+            .iter()
+            .any(|d| l.surface == format!("material-{}", d.key()))
+    }) {
+        return Err(Error::Invalid("unavailable material layer"));
+    }
+    Ok(documents)
+}
+
+/// Checks saved material sources without recursively validating their project.
+pub(crate) fn validate_project_materials(
+    project: &crate::ProjectDocument,
+) -> Result<Vec<MaterialDocument>, Error> {
+    let mut documents = Vec::new();
+    for source in project
+        .originals
+        .iter()
+        .filter(|o| o.name.starts_with("material-v1-"))
+    {
+        let document: MaterialDocument =
+            serde_json::from_str(&source.text).map_err(|_| Error::Invalid("saved material"))?;
+        document.validate()?;
+        if source.name != format!("material-v1-{}.json", document.key())
+            || documents
+                .iter()
+                .any(|d: &MaterialDocument| d.target == document.target)
+            || project
+                .entities
+                .get(&document.target.entity)
+                .is_none_or(|e| e.asset != document.target.asset)
+        {
+            return Err(Error::Invalid("saved material target"));
+        }
+        let surface = format!("material-{}", document.key());
+        let expected: Vec<_> = [
+            ("generated", &document.generated),
+            ("paint", &document.handmade),
+        ]
+        .into_iter()
+        .filter_map(|(kind, layer)| {
+            layer.image.as_ref().map(|texture| crate::MaterialLayer {
+                material: document.target.material.clone(),
+                surface: surface.clone(),
+                texture: texture.clone(),
+                uv_set: 0,
+                kind: kind.into(),
+            })
+        })
+        .collect();
+        if expected.iter().collect::<Vec<_>>()
+            != project
+                .layers
+                .iter()
+                .filter(|l| l.surface == surface)
+                .collect::<Vec<_>>()
+        {
+            return Err(Error::Invalid("saved material images"));
+        }
+        documents.push(document);
+    }
+    if project.layers.iter().any(|l| {
+        l.surface.starts_with("material-")
+            && !documents
+                .iter()
+                .any(|d| l.surface == format!("material-{}", d.key()))
+    }) {
+        return Err(Error::Invalid("unavailable material layer"));
+    }
+    Ok(documents)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct MaterialImage {
+    pub resource: ProjectResource,
+    pub png_base64: String,
+}
+impl MaterialImage {
+    pub fn new(bytes: &[u8]) -> Result<Self, Error> {
+        use base64::Engine;
+        let image = Self {
+            resource: ProjectResource {
+                sha256: crate::project_hash(bytes),
+                bytes: bytes.len() as u64,
+                media_type: "image/png".into(),
+            },
+            png_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        };
+        image.validate()?;
+        Ok(image)
+    }
+    /// Full PNG decoding also runs before GPU use and in the native file store.
+    pub fn validate(&self) -> Result<Vec<u8>, Error> {
+        use base64::Engine;
+        if self.png_base64.len() > MAX_MATERIAL_PNG.div_ceil(3) * 4
+            || self.resource.media_type != "image/png"
+        {
+            return Err(Error::Invalid("material PNG size"));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&self.png_base64)
+            .map_err(|_| Error::Invalid("material PNG"))?;
+        if bytes.len() < 24
+            || bytes.len() > MAX_MATERIAL_PNG
+            || bytes.len() as u64 != self.resource.bytes
+            || bytes[..8] != *b"\x89PNG\r\n\x1a\n"
+            || bytes[12..16] != *b"IHDR"
+            || bytes[16..20] != 256u32.to_be_bytes()
+            || bytes[20..24] != 256u32.to_be_bytes()
+            || crate::project_hash(&bytes) != self.resource.sha256
+        {
+            return Err(Error::Invalid("material PNG"));
+        }
+        Ok(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct MaterialBundle {
+    pub document: MaterialDocument,
+    pub generated: Option<MaterialImage>,
+    pub handmade: Option<MaterialImage>,
+}
+impl MaterialBundle {
+    pub fn validate(&self) -> Result<(), Error> {
+        self.document.validate()?;
+        for (image, layer) in [
+            (&self.generated, &self.document.generated),
+            (&self.handmade, &self.document.handmade),
+        ] {
+            if image.as_ref().map(|i| &i.resource) != layer.image.as_ref() {
+                return Err(Error::Invalid("material source image"));
+            }
+            if let Some(image) = image {
+                image.validate()?;
+            }
         }
         Ok(())
     }
@@ -519,6 +711,90 @@ pub fn generate_scars(recipe: &ScarRecipe) -> Result<MaterialPixels, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn project() -> crate::ProjectDocument {
+        serde_json::from_value(serde_json::json!({"schema":"openagents.verse.project.v1","namespace":"haunted-house","template":{"world":"house","engine_release":"fixture-6","asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64)},"source_revision":0,"entities":{"wolf-a":{"asset":"custom:haunt:werewolf","position":[0,0,0],"yaw":0,"scale":1}},"rooms":{},"removed_walls":[],"materials":{},"environment":{},"source_draft":"","active_source":"","layers":[],"originals":[]})).unwrap()
+    }
+    #[test]
+    fn saved_material_sources_and_renderable_bundles_share_the_same_image_bound() {
+        let resource = ProjectResource {
+            sha256: "a".repeat(64),
+            bytes: MAX_MATERIAL_PNG as u64,
+            media_type: "image/png".into(),
+        };
+        let mut material = MaterialDocument::blank(MaterialTarget::werewolf_face("wolf-a"));
+        material.generated.image = Some(resource);
+        material.validate().unwrap();
+        let mut saved = project();
+        material.keep_in(&mut saved).unwrap();
+        assert_eq!(project_materials(&saved).unwrap(), vec![material.clone()]);
+        let before = saved.clone();
+        material.generated.image.as_mut().unwrap().bytes += 1;
+        assert!(material.validate().is_err());
+        assert!(material.keep_in(&mut saved).is_err());
+        assert_eq!(saved, before);
+        // Simulate an external client bypassing keep_in with matching source and layer references.
+        let source = &mut saved.originals[0];
+        source.text = serde_json::to_string(&material).unwrap();
+        source.sha256 = crate::project_hash(source.text.as_bytes());
+        saved.layers[0].texture.bytes += 1;
+        assert!(saved.validate().is_err());
+        assert!(project_materials(&saved).is_err());
+        let image = MaterialImage {
+            resource: material.generated.image.clone().unwrap(),
+            png_base64: "a".repeat((MAX_MATERIAL_PNG + 1).div_ceil(3) * 4),
+        };
+        assert!(image.validate().is_err());
+        let bundle = MaterialBundle {
+            document: material,
+            generated: Some(image),
+            handmade: None,
+        };
+        assert!(bundle.validate().is_err());
+    }
+    #[test]
+    fn pretty_material_source_keeps_exact_text_within_the_generic_source_bound() {
+        let mut saved = project();
+        let material = MaterialDocument::blank(MaterialTarget::werewolf_face("wolf-a"));
+        material.keep_in(&mut saved).unwrap();
+        let source = &mut saved.originals[0];
+        source.text = format!(
+            "{}\n{}",
+            serde_json::to_string_pretty(&material).unwrap(),
+            " ".repeat(5000)
+        );
+        source.sha256 = crate::project_hash(source.text.as_bytes());
+        let text = source.text.clone();
+        assert!(text.len() > 4096 && text.len() <= 24 * 1024);
+        saved.validate().unwrap();
+        assert_eq!(project_materials(&saved).unwrap(), vec![material]);
+        assert_eq!(saved.originals[0].text, text);
+        saved.originals[0].text.push_str(&" ".repeat(24 * 1024));
+        saved.originals[0].sha256 = crate::project_hash(saved.originals[0].text.as_bytes());
+        assert!(saved.validate().is_err());
+    }
+    #[test]
+    fn saved_materials_bind_the_exact_instance_surface_and_source_images() {
+        let mut saved = project();
+        let mut material = MaterialDocument::blank(MaterialTarget::werewolf_face("wolf-a"));
+        material.handmade.image = Some(ProjectResource {
+            sha256: "a".repeat(64),
+            bytes: 300,
+            media_type: "image/png".into(),
+        });
+        material.keep_in(&mut saved).unwrap();
+        let accepted = saved.clone();
+        saved.layers[0].texture.sha256 = "b".repeat(64);
+        assert!(saved.validate().is_err());
+        saved = accepted.clone();
+        saved.entities.get_mut("wolf-a").unwrap().asset = "kit:chair".into();
+        assert!(saved.validate().is_err());
+        saved = accepted.clone();
+        saved.originals.push(saved.originals[0].clone());
+        assert!(saved.validate().is_err());
+        saved = accepted;
+        saved.originals.clear();
+        assert!(saved.validate().is_err());
+    }
     #[test]
     fn prompts_honor_blue_and_refuse_competing_areas_removal_and_conflicting_controls() {
         let blue = ScarRecipe::from_request("two blue scars", ScarArea::LeftCheek, 4).unwrap();

@@ -384,7 +384,13 @@ async fn api_response(path: &str, body: Option<Value>) -> Result<(u16, Value), J
     init.set_method(if body.is_some() { "POST" } else { "GET" });
     init.set_credentials(RequestCredentials::SameOrigin);
     if let Some(body) = body {
-        init.set_body(&JsValue::from_str(&body.to_string()));
+        let body = body.to_string();
+        if body.len() > MAX_AUTHORIZATION_BYTES {
+            return Err(JsValue::from_str(
+                "This change is too large. Export your sources and try fewer material layers.",
+            ));
+        }
+        init.set_body(&JsValue::from_str(&body));
     }
     let request = Request::new_with_str_and_init(&format!("/v1/verse/studio/{path}"), &init)?;
     request.headers().set("content-type", "application/json")?;

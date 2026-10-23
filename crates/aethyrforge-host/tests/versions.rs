@@ -125,5 +125,46 @@ fn project_documents_and_restore_require_v5_and_leave_frozen_v4_unchanged() {
         detail: None,
     };
     assert!(action.validate_outcome(&outcome).is_err());
-    assert_eq!(VERSION, 5);
+    assert_eq!(VERSION, 6);
+}
+
+#[test]
+fn material_actions_require_v6_and_frozen_v5_keeps_its_original_shape() {
+    let old = r#"{"protocol":"openagents.aethyrforge.host","version":5,"session":"old-session","sequence":1,"message":{"type":"hello","versions":[5]}}"#;
+    assert_eq!(Envelope::decode(old), Err(Error::Version));
+    assert!(Engine::accept(old, "old-release".into(), "abi".into(), 1, vec![]).is_err());
+    assert!(!include_str!("../schema/host-v5.json").contains("preview_material"));
+    assert!(!include_str!("../schema/host-v5.json").contains("MaterialBundle"));
+    let blank = MaterialBundle {
+        document: MaterialDocument::blank(MaterialTarget::werewolf_face("wolf-a")),
+        generated: None,
+        handmade: None,
+    };
+    let action = Action::PreviewMaterial { material: blank };
+    action.validate().unwrap();
+    assert_eq!(action.capability(), Some(Capability::Inspect));
+    let wrong = Outcome {
+        state: ResultState::Applied,
+        message: "Preview ready".into(),
+        status: None,
+        detail: Some(Detail::MaterialPreview {
+            action_sha256: "ff".repeat(32),
+            frame: 1,
+        }),
+    };
+    assert!(action.validate_outcome(&wrong).is_err());
+    let mut right = wrong;
+    right.detail = Some(Detail::MaterialPreview {
+        action_sha256: action_digest(&action).unwrap(),
+        frame: 1,
+    });
+    action.validate_outcome(&right).unwrap();
+    let text = serde_json::to_string(&action).unwrap();
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+    enum V5Action {
+        Inspect,
+        ExportProject,
+    }
+    assert!(serde_json::from_str::<V5Action>(&text).is_err());
 }

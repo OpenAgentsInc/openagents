@@ -199,8 +199,12 @@ fn schema_and_numeric_limits() {
         .encode()
         .unwrap();
     assert!(
-        Envelope::decode(&text.replacen("\"version\":5", "\"version\":5,\"version\":5", 1))
-            .is_err()
+        Envelope::decode(&text.replacen(
+            &format!("\"version\":{VERSION}"),
+            &format!("\"version\":{VERSION},\"version\":{VERSION}"),
+            1
+        ))
+        .is_err()
     );
     assert!(Envelope::decode(&" ".repeat(MAX_BYTES + 1)).is_err());
     assert!(
@@ -233,7 +237,7 @@ fn schema_and_numeric_limits() {
     assert!(endpoint("https://user:secret@engine.example").is_err());
     assert!(endpoint("https://engine.example?token=secret").is_err());
     assert!(endpoint("http://127.0.0.1:1234/engine").is_ok());
-    let expected = include_str!("../schema/host-v5.json");
+    let expected = include_str!("../schema/host-v6.json");
     let actual = serde_json::to_string_pretty(&schemars::schema_for!(Envelope)).unwrap();
     assert_eq!(expected.trim(), actual.trim());
 }
@@ -356,4 +360,28 @@ fn initial_world_loading_has_a_bounded_deadline_separate_from_commands() {
         host.receipt(&request_id).unwrap().outcome.state,
         ResultState::Unknown
     );
+}
+
+#[test]
+fn oversized_host_frame_does_not_consume_a_sequence_or_change_the_world() {
+    let (mut host, mut engine) = pair();
+    let request = host.request(Action::Open { checkpoint: None }, 0).unwrap();
+    let encoded = request.encode().unwrap();
+    let mut oversized = encoded.clone();
+    oversized.extend(std::iter::repeat_n(' ', MAX_BYTES + 1 - encoded.len()));
+    assert!(engine.receive(&oversized).is_err());
+    assert!(host.status.is_none());
+    // The exact same request is still fresh; rejection did not advance engine state.
+    let Message::Request { request_id, .. } = engine.receive(&encoded).unwrap() else {
+        panic!()
+    };
+    host.receive(
+        &engine
+            .reply(&request_id, outcome())
+            .unwrap()
+            .encode()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(host.status, Some(status()));
 }

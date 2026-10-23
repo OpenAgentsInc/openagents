@@ -38,12 +38,12 @@ no secrets, and private engine source maps are not published.
    dispatch. The host rejects decreasing result revisions and unsolicited results.
 5. Unknown fields, tags, capabilities, duplicate JSON keys, invalid numbers,
    incompatible versions, malformed payloads, and replayed messages fail closed.
-   Version 2 uses exact ABI/project-format matching. Incompatible schema changes
+   Version 6 uses exact ABI/project-format matching. Incompatible schema changes
    require a new wire version and fixtures. This small host schema is independent
    of Aethyrforge's richer authoring and release formats; matching it does not imply
    source, runtime, or saved-world compatibility.
 
-The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v5.json)
+The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v6.json)
 defines closed message shapes. Runtime validation adds UTF-8 byte limits, finite
 coordinates, safe integer bounds, state transitions, peer checks, and relationships
 between fields. Schema validation alone is insufficient. `Envelope::decode` and
@@ -87,7 +87,11 @@ idempotency ledger; future remote command services must retain their own results
 
 ## Bounds and lifetime
 
-- Maximum envelope: 65,536 encoded UTF-8 bytes, including metadata. Source: 48,000
+- Version 6 maximum envelope: 524,288 encoded UTF-8 bytes. Actions reserve 8 KiB
+  for the frame wrapper (516,096 bytes maximum); grant and authorization HTTP
+  bodies allow 540,672 bytes for CSRF and grant metadata. Browser and private
+  bridge preflight checks run before queue changes. Frozen v1–v5 artifacts keep
+  their original 65,536-byte envelope limit. Source: 48,000
   bytes. IDs: 1–128 ASCII letters, digits, or `-_.:/`. Messages: 2,048 bytes, no NUL.
 - At most 16 pending requests and 64 retained results per connection. A request
   times out after 15 seconds (120 seconds for initial world loading); late results can settle a retained unknown result.
@@ -186,6 +190,16 @@ asset-set and scene identities must match the target world. Exporting a copy is
 read-only; restoring it requires the existing exact-action permission and checks
 both the kernel candidate and GPU resources before adoption. A blocked personal
 checkpoint uses a validated starting place or refuses the restore.
+
+Version 6 defines instance-scoped face material inspection, temporary preview,
+confirmed apply, and restore with at most eight checked source bundles. Preview
+is read-only and returns its action hash and rendered frame; it does not advance
+project history. Each generated or handmade layer is a 256 × 256 PNG up to
+16 KiB. Saved material references use that same limit, while generic project
+resources retain their existing bounds. Saved material JSON can keep its exact
+text and hash up to the existing 24 KiB per-source and 48 KiB whole-project
+limits; formatting and JSON key order do not change its meaning. Frozen v1–v5
+schemas and matching pinned releases remain unchanged.
 
 Account saves use the existing project membership and private project-file store.
 Each accepted version has a server-stamped actor, idempotent command, expected

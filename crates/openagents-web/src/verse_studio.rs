@@ -31,7 +31,9 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/verse/studio/grants", post(issue))
         .route("/v1/verse/studio/authorize", post(authorize))
         .route("/v1/verse/studio/revoke", post(revoke))
-        .layer(DefaultBodyLimit::max(65_536))
+        .layer(DefaultBodyLimit::max(
+            aethyrforge_host::MAX_AUTHORIZATION_BYTES,
+        ))
 }
 fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -233,12 +235,16 @@ async fn issue(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let Ok(Json(sent)) = body else {
-        return refused(
-            StatusCode::BAD_REQUEST,
-            "invalid",
-            "Choose a change to confirm.",
-        );
+    let sent = match body {
+        Ok(Json(sent)) => sent,
+        Err(error) if error.status() == StatusCode::PAYLOAD_TOO_LARGE => return too_large(),
+        Err(_) => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "Choose a change to confirm.",
+            );
+        }
     };
     let Some(release) = crate::pages::new_lander_house::engine_release() else {
         return denied();
@@ -333,6 +339,13 @@ fn permits(
         && held.action == *action
         && action.capability() == Some(grant.capability)
 }
+fn too_large() -> Response {
+    refused(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "too_large",
+        "This change is too large. Export your layers, then use fewer or smaller images.",
+    )
+}
 async fn authorize(
     State(app): State<App>,
     headers: HeaderMap,
@@ -342,8 +355,10 @@ async fn authorize(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let Ok(Json(sent)) = body else {
-        return denied();
+    let sent = match body {
+        Ok(Json(sent)) => sent,
+        Err(error) if error.status() == StatusCode::PAYLOAD_TOO_LARGE => return too_large(),
+        Err(_) => return denied(),
     };
     if !csrf(&app, &headers, &v, &sent.csrf) {
         return denied();

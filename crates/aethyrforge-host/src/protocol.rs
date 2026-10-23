@@ -2,8 +2,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
-pub const VERSION: u16 = 5;
-pub const MAX_BYTES: usize = 65_536;
+pub const VERSION: u16 = 6;
+pub const MAX_BYTES: usize = 512 * 1024;
+/// Leave room for project, session, request, and message wrapper fields.
+pub const MAX_ACTION_BYTES: usize = MAX_BYTES - 8 * 1024;
+/// Authorization adds CSRF and grant fields outside the bounded action.
+pub const MAX_AUTHORIZATION_BYTES: usize = MAX_BYTES + 16 * 1024;
 pub const MAX_PENDING: usize = 16;
 pub const MAX_RESULTS: usize = 64;
 pub const DEADLINE_MS: u64 = 15_000;
@@ -245,6 +249,21 @@ pub enum Action {
     },
     Inspect,
     ExportProject,
+    InspectMaterial {
+        target: crate::MaterialTarget,
+    },
+    PreviewMaterial {
+        material: crate::MaterialBundle,
+    },
+    ClearMaterialPreview,
+    ApplyMaterial {
+        material: crate::MaterialBundle,
+    },
+    RestoreMaterialProject {
+        document: crate::ProjectDocument,
+        checkpoint: Option<Checkpoint>,
+        materials: Vec<crate::MaterialBundle>,
+    },
     RestoreProject {
         document: crate::ProjectDocument,
         checkpoint: Option<Checkpoint>,
@@ -302,10 +321,16 @@ impl Action {
             | Self::Lookup { .. } => {
                 return None;
             }
-            Self::Inspect | Self::ExportProject | Self::View { .. } | Self::Select { .. } => {
-                Capability::Inspect
-            }
-            Self::RestoreProject { .. } => Capability::Propose,
+            Self::Inspect
+            | Self::ExportProject
+            | Self::View { .. }
+            | Self::Select { .. }
+            | Self::InspectMaterial { .. }
+            | Self::PreviewMaterial { .. }
+            | Self::ClearMaterialPreview => Capability::Inspect,
+            Self::RestoreProject { .. }
+            | Self::RestoreMaterialProject { .. }
+            | Self::ApplyMaterial { .. } => Capability::Propose,
             Self::Propose { .. } => Capability::Propose,
             Self::Draft { .. } => Capability::Draft,
             Self::Compile { .. } => Capability::Compile,
@@ -328,7 +353,19 @@ impl Action {
             Self::Authorize { grant } => grant.validate().is_ok(),
             Self::Open { .. } | Self::Inspect | Self::Observe { .. } => outcome.status.is_some(),
             Self::ExportProject => matches!(outcome.detail, Some(Detail::ProjectDocument { .. })),
-            Self::RestoreProject { .. } => outcome.status.is_some(),
+            Self::RestoreProject { .. }
+            | Self::RestoreMaterialProject { .. }
+            | Self::ClearMaterialPreview => outcome.status.is_some(),
+            Self::InspectMaterial { target } => {
+                matches!(&outcome.detail, Some(Detail::Material { material }) if &material.document.target == target)
+            }
+            Self::ApplyMaterial { material } => {
+                outcome.status.is_some()
+                    && matches!(&outcome.detail, Some(Detail::Material { material: accepted }) if accepted == material)
+            }
+            Self::PreviewMaterial { .. } => {
+                matches!(&outcome.detail, Some(Detail::MaterialPreview { action_sha256, .. }) if crate::action_digest(self).as_ref() == Ok(action_sha256))
+            }
             Self::Publish { .. } => matches!(outcome.detail, Some(Detail::Published { .. })),
             Self::Share { .. } => matches!(outcome.detail, Some(Detail::Shared { .. })),
             Self::Capture => matches!(
@@ -344,8 +381,34 @@ impl Action {
         }
     }
     pub fn validate(&self) -> Result<(), Error> {
+        if serde_json::to_vec(self)
+            .map_err(|_| Error::Invalid("action"))?
+            .len()
+            > MAX_ACTION_BYTES
+        {
+            return Err(Error::Invalid("action bytes"));
+        }
         let valid = match self {
             Self::Authorize { grant } => grant.validate().is_ok(),
+            Self::InspectMaterial { target } => target.validate().is_ok(),
+            Self::PreviewMaterial { material } | Self::ApplyMaterial { material } => {
+                material.validate().is_ok()
+            }
+            Self::RestoreMaterialProject {
+                document,
+                checkpoint,
+                materials,
+            } => {
+                materials.len() <= 8
+                    && checkpoint.as_ref().is_none_or(|c| c.validate().is_ok())
+                    && materials.iter().all(|m| m.validate().is_ok())
+                    && crate::project_materials(document).is_ok_and(|expected| {
+                        expected.len() == materials.len()
+                            && expected
+                                .iter()
+                                .all(|d| materials.iter().filter(|m| &m.document == d).count() == 1)
+                    })
+            }
             Self::Open {
                 checkpoint: Some(c),
             } => c.validate().is_ok(),
@@ -390,6 +453,13 @@ impl Action {
 #[serde(deny_unknown_fields)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Detail {
+    Material {
+        material: crate::MaterialBundle,
+    },
+    MaterialPreview {
+        action_sha256: String,
+        frame: u64,
+    },
     ProjectDocument {
         document: crate::ProjectDocument,
     },
@@ -446,6 +516,17 @@ impl Outcome {
         }
         if let Some(detail) = &self.detail {
             let valid = match detail {
+                Detail::Material { material } => material.validate().is_ok(),
+                Detail::MaterialPreview {
+                    action_sha256,
+                    frame,
+                } => {
+                    *frame <= MAX_SAFE_INTEGER
+                        && action_sha256.len() == 64
+                        && action_sha256
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                }
                 Detail::ProjectDocument { document } => document.validate().is_ok(),
                 Detail::CapturePreview {
                     png,
