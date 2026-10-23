@@ -104,6 +104,8 @@ const OWNED_EXACT: [&str; 113] = [
     "/new-lander",
     "/new-lander/verse",
     "/new-lander/assets/verse.js",
+    "/new-lander/ui.css",
+    "/new-lander/ui.js",
     "/new-lander/house",
     // /lander7 with hand tracking (crate::pages::lander9).
     "/lander9",

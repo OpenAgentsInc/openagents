@@ -3378,7 +3378,14 @@ async fn cloud_cookies_reach_owned_pages_only_on_a_configured_host() {
         "oa_cloud_session=sess_synthetic_private; oa_cloud_workspace=synthetic; oa_cloud_login=synthetic",
     ] {
         for host in ["openagents.com", LOCAL, "localhost:4300"] {
-            for path in ["/", "/demo", "/static/chat-start.js", "/cloud"] {
+            for path in [
+                "/",
+                "/demo",
+                "/static/chat-start.js",
+                "/cloud",
+                "/new-lander/ui.css",
+                "/new-lander/ui.js",
+            ] {
                 let response = site
                     .clone()
                     .oneshot(
