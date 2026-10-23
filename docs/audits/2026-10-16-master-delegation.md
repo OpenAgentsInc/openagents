@@ -488,7 +488,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 - #12566: private main `d6c2e8d` uses the current renderer UV input and rejects
   interface drift before replacing the working effect. Eight authoring checks,
   TypeScript checks, and real GPU compile/failure/repair/undo/redo checks pass;
-  Codex inspected private working/failed-candidate captures. Pin candidate
+  Codex inspected private working/failed-candidate captures. Pinned candidate
   `s6c9e53150296a3c0a` with public SDK/native `6af4d05101` passes the
   retained saved-world and readable-contribution browser checks. Codex inspected
   private desktop/mobile captures. Broader #12561 cases remain pending; no
@@ -513,8 +513,8 @@ The status lines below summarize each issue and its comments. Open the issue for
   Focused native storage checks (3), house checks (3), public host checks (40),
   Wasm checks, private contract checks (25), and kernel checks (23) pass.
   Late Save text stays unsaved; canceled loads and cross-context receipts cannot
-  adopt fetched versions or old tools. Run the retained project browser check
-  against a fresh native consumer and new immutable wire-v5 release. Review
+  adopt fetched versions or old tools. The retained check used a fresh native
+  consumer and an immutable wire-v5 release. Review
   candidate `p4a25d82b1bf39f001` passed delayed-Save/base/canceled-load checks,
   then hit the renderer UV compile defect tracked in #12566. Its replacement
   `s6c9e53150296a3c0a` passes the retained Save/base/cancel/restore and late

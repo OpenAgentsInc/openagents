@@ -67,3 +67,6 @@ mod project_session;
 pub use project_session::*;
 mod contribution;
 pub use contribution::*;
+
+mod material;
+pub use material::*;
