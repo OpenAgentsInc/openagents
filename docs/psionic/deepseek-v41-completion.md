@@ -8,7 +8,7 @@ Status: the definitive checklist for
 place that says what finishes the epic. Those docs still hold the reasoning
 and the evidence. Update this file as items land.
 
-**Current status, 2026-10-22:** the owner reopened qualification after the
+**Current status, 2026-10-23:** the owner reopened qualification after the
 [closed-issue audit](../audits/2026-10-22-deepseek-closed-issues.md).
 [#12369](https://github.com/OpenAgentsInc/openagents/issues/12369) is open
 again, owned by Codex for the remaining G1–G8 acceptance work. Its earlier
@@ -20,8 +20,9 @@ the reasoning/completion floor held. G3 has current SM89 and SM120 component
 receipts. The private one-quad, two-dual, and four-single Pylons each pass the same
 eight runtime checks. Stage crash, freeze, deadline, and full-VM watcher
 recovery checks are retained. G1 and G4 numerical release acceptance and
-qualified G8 evidence remain outstanding: rule 2.4 is not frozen, and no
-fresh confirmation oracle has been captured. The separate Maya Pylons run
+qualified G8 evidence remain outstanding. Rule 2.4 froze at 02:16:32 UTC
+after its complete CPU calibration and fault checks; fresh B200 confirmation
+is starting. The frozen bounds and their limits are recorded below. The separate Maya Pylons run
 Foreman's browser-editor work with an experimental consumer-q profile.
 G5 and G6 still depend on numerical acceptance. Paired native direct-pipeline
 G2 checks and combined 2,872-input / 4,096-output boundary checks now pass
@@ -1697,6 +1698,7 @@ suite remains a finite 5/6 comparison with its disclosed Fibonacci failure.
 These limits do not establish bit-exact equivalence or qualify Maya's
 different consumer-q model.
 
-The reviewed package is ready for a timestamped freeze before any fresh
-B200 allocation or capture. G1/G4 confirmation and qualified public G8
-routing remain outstanding.
+The [freeze marker](verification/deepseek-v41-gates-2026-10-22/confirmation-freeze-2.4.json)
+records 02:16:32 UTC, before any fresh B200 allocation or capture. Its files
+were uploaded and verified before the guard received the new allocation
+request. G1/G4 confirmation and qualified public G8 routing remain outstanding.
