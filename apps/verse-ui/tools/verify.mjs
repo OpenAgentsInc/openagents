@@ -52,12 +52,8 @@ await page.waitForFunction(
   { timeout: 60000 },
 );
 assert.equal(
-  await page.evaluate(() =>
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--background")
-      .trim(),
-  ),
-  "#000000",
+  await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+  "rgb(0, 0, 0)",
 );
 await page.locator("#continue-guest").click();
 assert(await page.locator("#verse-choices").isVisible());
