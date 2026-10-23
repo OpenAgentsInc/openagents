@@ -89,7 +89,7 @@ async fn boot() -> Response {
     response(
         StatusCode::OK,
         format!(
-            "try{{const {{default:init,mount_demo}}=await import({url});await init();window.hauntDemo=mount_demo();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.textContent='The house could not open. Reload to try again.';}}"
+            "try{{const {{default:init,mount_demo}}=await import({url});await init();window.hauntDemo=mount_demo();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.dataset.state='error';n.textContent='The house could not open. Reload to try again.';}}"
         ),
         "text/javascript; charset=utf-8",
         Some(&r.origin()),
