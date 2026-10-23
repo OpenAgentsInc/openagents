@@ -56,3 +56,39 @@ fn day_cycle_advances_wraps_and_pauses_with_distinct_supported_styles() {
     recipe.initial_hour = f64::NAN;
     assert!(recipe.validate().is_err());
 }
+
+#[test]
+fn spoken_pause_resume_and_style_preserve_elapsed_clock_and_layout_seed() {
+    let mut accepted = PlanetRecipe::new(42, 1000);
+    accepted.day_minutes = 2;
+    let handle = |r: &PlanetRecipe, text: &str, now| {
+        r.changed(PlanetChange::from_request(text).unwrap().unwrap(), now)
+            .unwrap()
+    };
+    assert_eq!(accepted.hour_at(31_000), 14.);
+    let styled = handle(&accepted, "Use bold fantasy", 31_000);
+    assert_eq!(styled.hour_at(31_000), 14.);
+    assert_eq!(styled.clock_anchor_unix_ms, 1000);
+    let paused = handle(&styled, "Pause day cycle", 31_000);
+    assert_eq!(paused.initial_hour, 14.);
+    assert_eq!(paused.hour_at(61_000), 14.);
+    let resumed = handle(&paused, "Start day cycle", 61_000);
+    assert_eq!(resumed.hour_at(91_000), 20.);
+    let controls = accepted
+        .changed(
+            PlanetChange::Settings {
+                style: PlanetStyle::BoldFantasy,
+                hour: 8.,
+                cycle: false,
+                day_minutes: 2,
+            },
+            31_000,
+        )
+        .unwrap();
+    assert_eq!(controls.initial_hour, 14.);
+    assert_eq!(controls.seed, 42);
+    let time = handle(&resumed, "Set time to 3", 91_000);
+    assert_eq!(time.hour_at(91_000), 3.);
+    assert_eq!(time.seed, 42);
+    assert!(accepted.changed(PlanetChange::Hour(24.), 31_000).is_err());
+}

@@ -165,7 +165,7 @@ async fn prepare(weak: Weak<RefCell<State>>, operation: &str) -> Result<(), JsVa
             if materials::has_unsaved(&rc.borrow())||d.source_draft!=d.active_source{return Err(JsValue::from_str("Apply your face draft, compile your current effect, and save before publishing."));}
             Some(d)
         }else{None};
-        let value=project_api(&weak,&format!("projects/{}/haunted-house/main/publications",scope.project),None).await?;
+        let value=project_api(&weak,&format!("{}/publications",project_path(&scope.project)),None).await?;
         let mut s=rc.borrow_mut();if !scope.accepts(&s){return Ok(());}
         if operation!="publish" && selected.is_empty(){return Err(JsValue::from_str("Choose a published version first."));}
         let managed=if operation!="publish" {Some(value["book"]["versions"].as_array().and_then(|rows|rows.iter().find(|v|v["release"]==selected&&v["revoked"]!=true)).cloned().ok_or_else(||JsValue::from_str("This version changed. Refresh published versions and choose again."))?)} else {None};
@@ -226,10 +226,7 @@ async fn confirm(weak: Weak<RefCell<State>>) {
         message("Saving the playable release…");
         let value = project_api(
             &weak,
-            &format!(
-                "projects/{}/haunted-house/main/publications",
-                p.scope.project
-            ),
+            &format!("{}/publications", project_path(&p.scope.project)),
             Some(p.body.clone()),
         )
         .await?;
@@ -345,7 +342,7 @@ pub(super) fn mount(
             };
             let result = project_api(
                 &weak,
-                &format!("projects/{}/haunted-house/main/publications", scope.project),
+                &format!("{}/publications", project_path(&scope.project)),
                 None,
             )
             .await;

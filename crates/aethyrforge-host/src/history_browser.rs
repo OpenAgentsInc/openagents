@@ -142,12 +142,7 @@ async fn refresh(weak: Weak<RefCell<State>>) {
         (scope, s.projects.project.clone(), s.projects.history.turn)
     };
     element("project-history-status").set_text_content(Some("Loading saved changes…"));
-    let result = project_api(
-        &weak,
-        &format!("projects/{project}/haunted-house/main/history"),
-        None,
-    )
-    .await;
+    let result = project_api(&weak, &format!("{}/history", project_path(&project)), None).await;
     let mut s = rc.borrow_mut();
     if !scope.accepts(confirmation_scope(&s).as_ref()) || s.projects.history.turn != turn {
         return;
@@ -191,7 +186,7 @@ async fn inspect(weak: Weak<RefCell<State>>, version: u64) {
     element("project-history-change-limit").set_text_content(Some("Loading changes…"));
     let result = project_api(
         &weak,
-        &format!("projects/{project}/haunted-house/main/history/{version}"),
+        &format!("{}/history/{version}", project_path(&project)),
         None,
     )
     .await;
@@ -346,7 +341,8 @@ pub(super) fn poll(rc: &Rc<RefCell<State>>) {
         let result = project_api(
             &weak,
             &format!(
-                "projects/{project}/haunted-house/main/history/{}/earnings",
+                "{}/history/{}/earnings",
+                project_path(&project),
                 row.version
             ),
             None,

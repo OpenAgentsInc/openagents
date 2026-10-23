@@ -57,6 +57,13 @@ fn failed() -> Response {
         "The world or published version changed. Review Publish again.",
     )
 }
+fn registered_runtime(app: &App, ns: WorldNamespace) -> Option<&aethyrforge_host::PublishRuntime> {
+    match ns {
+        WorldNamespace::HauntedHouse => app.config.verse_publish_runtime.as_ref(),
+        WorldNamespace::PersonalPlanet => app.config.verse_personal_runtime.as_ref(),
+        _ => None,
+    }
+}
 async fn list(
     State(app): State<App>,
     headers: HeaderMap,
@@ -74,7 +81,7 @@ async fn list(
     match read::<PublishedWorld>(&app.config.chat_store, &world_key(&world).unwrap()).await {
         Ok(book) => answer(
             StatusCode::OK,
-            json!({"world":world,"book":book.map(|(b,_)|b.publications).unwrap_or_default(),"runtime":app.config.verse_publish_runtime}),
+            json!({"world":world,"book":book.map(|(b,_)|b.publications).unwrap_or_default(),"runtime":registered_runtime(&app,ns)}),
         ),
         Err(e) => stored(&e),
     }
@@ -197,7 +204,7 @@ async fn change(
         };
     }
     let (release, version) = if sent.operation == "publish" {
-        let Some(runtime) = app.config.verse_publish_runtime.as_ref() else {
+        let Some(runtime) = registered_runtime(&app, ns) else {
             return refused(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "publish_unavailable",
@@ -242,7 +249,7 @@ async fn change(
             "../../../../../docs/verse/fantasy-props-catalog.json"
         ));
         if catalog.as_ref().is_err()
-            || !runtime.accepts(&saved.document)
+            || !(runtime.accepts(&saved.document) || runtime.accepts_personal(&saved.document))
             || saved.document.entities.values().any(|e| {
                 !catalog
                     .as_ref()
@@ -467,9 +474,20 @@ async fn page(
         .unwrap()
         .origin()
         .ascii_serialization();
-    let config=json!({"release":runtime.engine_release,"engine_abi":runtime.engine_abi,"project_format":runtime.project_format,"project":{"id":"haunted-house","branch":"main","revision":0}}).to_string().replace('<',"\\u003c");
+    let personal = p.manifest.content.document.namespace == WorldNamespace::PersonalPlanet;
+    let base = if personal {
+        "personal-planet"
+    } else {
+        "haunted-house"
+    };
+    let title = if personal {
+        "Personal planet"
+    } else {
+        "Haunted House"
+    };
+    let config=json!({"release":runtime.engine_release,"engine_abi":runtime.engine_abi,"project_format":runtime.project_format,"project":{"id":base,"branch":"main","revision":0}}).to_string().replace('<',"\\u003c");
     let playable = serde_json::to_string(&p).unwrap().replace('<', "\\u003c");
-    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Play · OpenAgents"}link rel="stylesheet" href="/new-lander/play/style.css";}body{header{a href="/new-lander/verse"{"Back to planets"}h1{"Haunted House"}span{ "Version " (p.manifest.saved_version) }button id="world-retry" type="button"{"Retry"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" hidden title="Playable world" data-engine-url=(endpoint(&runtime.engine_url).unwrap().join("player.html").unwrap().as_str()){}p id="player-controls"{"Click to look · WASD to walk · Esc to release the pointer"}p id="world-notice" role="status"{"Opening this playable version…"}}script id="engine-config" type="application/json"{(PreEscaped(config))}script id="playable-release" type="application/json" data-sdk-url=(&runtime.sdk_url){(PreEscaped(playable))}script type="module" src="/new-lander/play/boot.js"{}}}}.into_string();
+    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Play · OpenAgents"}link rel="stylesheet" href="/new-lander/play/style.css";}body{header{a href="/new-lander/verse"{"Back to planets"}h1{(title)}span{ "Version " (p.manifest.saved_version) }button id="world-retry" type="button"{"Retry"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" hidden title="Playable world" data-engine-url=(endpoint(&runtime.engine_url).unwrap().join("player.html").unwrap().as_str()){}p id="player-controls"{"Click to look · WASD to walk · Esc to release the pointer"}p id="world-notice" role="status"{"Opening this playable version…"}}script id="engine-config" type="application/json"{(PreEscaped(config))}script id="playable-release" type="application/json" data-sdk-url=(&runtime.sdk_url){(PreEscaped(playable))}script type="module" src="/new-lander/play/boot.js"{}}}}.into_string();
     crate::pages::medieval_town::response(
         StatusCode::OK,
         body,

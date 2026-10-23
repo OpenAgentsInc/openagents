@@ -78,6 +78,39 @@ async fn page(axum::extract::State(app): axum::extract::State<App>) -> Response 
             }
         }.into_string(), "text/html; charset=utf-8", None);
     };
+    render(&app, r, None)
+}
+pub(crate) fn personal_page(app: &App, planet: &aethyrforge_host::PersonalPlanet) -> Response {
+    let Some(runtime) = app.config.verse_personal_runtime.as_ref() else {
+        return response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Your courtyard isn't available here yet. Return to the planets and try again later.",
+            "text/plain; charset=utf-8",
+            None,
+        );
+    };
+    let r = Release {
+        engine_url: runtime.engine_url.clone(),
+        sdk_url: runtime.sdk_url.clone(),
+        release: runtime.engine_release.clone(),
+        engine_abi: runtime.engine_abi.clone(),
+        project_format: runtime.project_format,
+        project: aethyrforge_host::Project {
+            id: "personal-planet".into(),
+            branch: "main".into(),
+            revision: 0,
+        },
+    };
+    render(app, r, Some(planet))
+}
+fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlanet>) -> Response {
+    let personal = planet.is_some();
+    let title = planet.map(|p| p.name.as_str()).unwrap_or("Haunted House");
+    let runtime = if personal {
+        app.config.verse_personal_runtime.as_ref()
+    } else {
+        app.config.verse_publish_runtime.as_ref()
+    };
     let config = serde_json::json!({"release":r.release,"engine_abi":r.engine_abi,"project_format":r.project_format,"project":r.project});
     let text = serde_json::to_string(&config)
         .expect("configuration")
@@ -102,25 +135,50 @@ async fn page(axum::extract::State(app): axum::extract::State<App>) -> Response 
         .replace('<', "\\u003c");
     let body = html! {
         (DOCTYPE) html lang="en" { head {
+            meta id="world-namespace" content=(if personal { "personal-planet" } else { "haunted-house" });
+            @if let Some(planet) = planet {
+                meta id="personal-owner" content=(&planet.owner);
+                meta id="personal-project" content=(&planet.project);
+                @if let Some(runtime) = runtime {
+                    script id="personal-template" type="application/json" { (PreEscaped(serde_json::to_string(&aethyrforge_host::WorldTemplate {world:runtime.template_world.clone(), engine_release:runtime.engine_release.clone(), asset_set_sha256:runtime.asset_set_sha256.clone(), scene_sha256:runtime.scene_sha256.clone()}).unwrap().replace('<',"\\u003c"))) }
+                }
+            }
             meta id="engine-release" content=(r.release);
-            meta id="publish-enabled" content=(app.config.verse_publish_runtime.as_ref().is_some_and(|p|p.engine_release==r.release&&p.sdk_url==r.sdk_url).to_string());
+            meta id="publish-enabled" content=(runtime.is_some_and(|p|p.engine_release==r.release&&p.sdk_url==r.sdk_url).to_string());
             meta charset="utf-8"; meta name="viewport" content="width=device-width,initial-scale=1";
-            title { "Haunted House · OpenAgents" }
+            title { (title) " · OpenAgents" }
             link rel="stylesheet" href="/new-lander/house/style.css";
         } body {
             main {
-                iframe id="engine" title="Haunted House" data-engine-url=(r.engine_url) {}
+                iframe id="engine" title=(title) data-engine-url=(r.engine_url) {}
                 p id="world-notice" role="status" aria-live="polite" { "Opening the house…" }
             }
             nav id="world-controls" aria-label="World controls" {
                 a id="world-map" href=(MAP) { "Back to planets" }
                 p id="world-touch-help" { "Left side: move · Right side: look" }
                 span { "Click to look · WASD to walk · Escape to release the pointer" }
-                a id="world-retry" href=(HOUSE) { "Reload world" }
+                a id="world-retry" href=(planet.map(|p|format!("/new-lander/planet/{}/world",p.id)).unwrap_or_else(||HOUSE.into())) { "Reload world" }
                 button id="world-mesh" type="button" hidden aria-pressed="false" { "Mesh overlay" }
                 button id="world-edit" type="button" { "Edit" }
                 button id="project-save" type="button" hidden data-tutorial-option="ready" { "Save project" }
                 button id="world-fullscreen" type="button" { "Full screen" }
+            }
+            @if personal {
+                aside id="planet-settings" aria-label="Courtyard settings" {
+                    details open {
+                        summary { "Your courtyard" }
+                        p { "64 × 64 metres · Up to 128 objects · Kit-based local generation" }
+                        label { "Style" select id="planet-style" { option value="soft-pastels" { "Soft pastels" } option value="bold-fantasy" { "Bold fantasy" } } }
+                        label { "Starting hour" input id="planet-hour" type="number" min="0" max="23.99" step="0.5" value="8"; }
+                        label { input id="planet-cycle" type="checkbox" checked; "Advancing day and night" }
+                        label { "Minutes per day" input id="planet-day" type="number" min="2" max="60" value="10"; }
+                        label { "Layout seed" input id="planet-seed" type="number" min="0" max="4294967295" value="1"; }
+                        button id="planet-generate" type="button" { "Generate courtyard" }
+                        button id="planet-apply" type="button" { "Review style and time" }
+                        p id="planet-status" role="status" { "Generate a courtyard, or open your latest saved world in Jarvis." }
+                        p { "Say Generate courtyard, Use bold fantasy, Set time to 18, Pause day cycle, or Start day cycle. Then say Confirm change." }
+                    }
+                }
             }
             aside id="world-voice" hidden aria-label="Voice controls" {
                 button id="edit-voice-start" type="button" hidden { "Listen" }
@@ -318,7 +376,7 @@ async fn page(axum::extract::State(app): axum::extract::State<App>) -> Response 
             }
             script id="creator-assets" type="application/json" {(PreEscaped(assets_json))}
             script id="engine-config" type="application/json" { (PreEscaped(text)) }
-            script type="module" src="/new-lander/house/boot.js" {}
+            script type="module" src=(if personal { "/new-lander/planet/boot.js" } else { "/new-lander/house/boot.js" }) {}
         } }
     }
     .into_string();
@@ -339,6 +397,33 @@ async fn boot() -> Response {
             None,
         );
     };
+    boot_release(r)
+}
+pub(crate) async fn personal_boot(
+    axum::extract::State(app): axum::extract::State<App>,
+) -> Response {
+    let Some(runtime) = app.config.verse_personal_runtime.as_ref() else {
+        return response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "",
+            "text/javascript; charset=utf-8",
+            None,
+        );
+    };
+    boot_release(Release {
+        engine_url: runtime.engine_url.clone(),
+        sdk_url: runtime.sdk_url.clone(),
+        release: runtime.engine_release.clone(),
+        engine_abi: runtime.engine_abi.clone(),
+        project_format: runtime.project_format,
+        project: aethyrforge_host::Project {
+            id: "personal-planet".into(),
+            branch: "main".into(),
+            revision: 0,
+        },
+    })
+}
+fn boot_release(r: Release) -> Response {
     let url = serde_json::to_string(&r.sdk_url).expect("SDK URL");
     let kiln_url = serde_json::to_string(&r.sdk_url.replace("aethyrforge_host.js", "kiln.js"))
         .expect("Kiln URL");

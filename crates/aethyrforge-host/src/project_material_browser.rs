@@ -124,7 +124,8 @@ async fn resource(
     }
     let request = Request::new_with_str_and_init(
         &format!(
-            "/v1/verse/studio/projects/{project}/haunted-house/main/resources/{}",
+            "/v1/verse/studio/{}/resources/{}",
+            project_path(project),
             image.sha256
         ),
         &init,

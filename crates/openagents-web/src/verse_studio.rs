@@ -207,7 +207,10 @@ fn valid_issue(sent: &Issue, release: &str) -> bool {
         && valid_id(&sent.tab)
         && valid_id(&sent.session)
         && sent.release == release
-        && sent.project.id == "haunted-house"
+        && matches!(
+            sent.project.id.as_str(),
+            "haunted-house" | "personal-planet"
+        )
         && sent.project.branch == "main"
         && sent.project.validate().is_ok()
         && sent.action.validate().is_ok()
@@ -250,8 +253,30 @@ async fn issue(
             );
         }
     };
-    let Some(release) = crate::pages::new_lander_house::engine_release() else {
+    let personal = sent.project.id == "personal-planet";
+    let release = if personal {
+        app.config
+            .verse_personal_runtime
+            .as_ref()
+            .map(|r| r.engine_release.clone())
+    } else {
+        crate::pages::new_lander_house::engine_release()
+    };
+    let Some(release) = release else {
         return denied();
+    };
+    let draft = if personal {
+        let planet = match projects::tutorial::owned_planet(&app, &headers, &v.account_id).await {
+            Ok(p) => p,
+            Err(r) => return r,
+        };
+        Project {
+            id: planet.project,
+            branch: "personal-planet".into(),
+            revision: 0,
+        }
+    } else {
+        private_draft(&v.account_id)
     };
     if !csrf(&app, &headers, &v, &sent.csrf) || !valid_issue(&sent, &release) {
         return denied();
@@ -263,7 +288,7 @@ async fn issue(
         session: sent.session.clone(),
         release: sent.release.clone(),
         project: sent.project.clone(),
-        draft: private_draft(&v.account_id),
+        draft,
         capability: sent.action.capability().expect("validated mutation"),
         expires_at: (now() + TTL).min(v.expires_at),
     };
@@ -366,6 +391,15 @@ async fn authorize(
     };
     if !csrf(&app, &headers, &v, &sent.csrf) {
         return denied();
+    }
+    if sent.grant.project.id == "personal-planet" {
+        let planet = match projects::tutorial::owned_planet(&app, &headers, &v.account_id).await {
+            Ok(p) => p,
+            Err(r) => return r,
+        };
+        if sent.grant.draft.id != planet.project || sent.grant.draft.branch != "personal-planet" {
+            return denied();
+        }
     }
     for _ in 0..4 {
         let (mut book, generation) = match load(&app.config.chat_store, &v.account_id).await {

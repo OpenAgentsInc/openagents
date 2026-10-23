@@ -12,7 +12,7 @@ fn bounded(block: &Block) -> bool {
 }
 pub(super) fn validate(d: &ProjectDocument, runtime: &PublishRuntime) -> bool {
     if d.validate().is_err()
-        || !runtime.accepts(d)
+        || !(runtime.accepts(d) || runtime.accepts_personal(d))
         || validate_playable_values_v1(d, &runtime.material_ids).is_err()
     {
         return false;

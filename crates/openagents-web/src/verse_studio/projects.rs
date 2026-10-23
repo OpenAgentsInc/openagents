@@ -11,7 +11,7 @@ mod history;
 mod playable_validation;
 mod publication;
 mod resources;
-mod tutorial;
+pub(super) mod tutorial;
 
 pub(super) fn routes() -> Router<App> {
     Router::new()
@@ -292,7 +292,11 @@ async fn commit(
         Ok(n) => n,
         Err(r) => return r,
     };
-    if sent.document.namespace != ns || sent.document.validate().is_err() {
+    if sent.document.namespace != ns
+        || sent.document.validate().is_err()
+        || (ns == WorldNamespace::PersonalPlanet
+            && aethyrforge_host::PlanetRecipe::from_document(&sent.document).is_err())
+    {
         return invalid();
     }
     let access = match access(&app, &headers, &id).await {

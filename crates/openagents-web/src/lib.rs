@@ -405,6 +405,8 @@ pub use projects::files::uploads::Policy as ProjectUploadPolicy;
 pub struct Config {
     /// Operator-registered immutable runtime for creator publication.
     pub verse_publish_runtime: Option<aethyrforge_host::PublishRuntime>,
+    /// Separate immutable runtime for personal courtyards.
+    pub verse_personal_runtime: Option<aethyrforge_host::PublishRuntime>,
     /// Operator-owned links from accepted Verse contributions to existing credit sources.
     pub verse_reward_links: Option<PathBuf>,
     /// Optional fixed earnings service origin; requests cannot choose it.
@@ -673,6 +675,12 @@ impl Config {
                     serde_json::from_str::<aethyrforge_host::PublishRuntime>(&text).ok()
                 })
                 .filter(|r| r.validate_current().is_ok()),
+            verse_personal_runtime: std::env::var("OPENAGENTS_VERSE_PERSONAL_RUNTIME")
+                .ok()
+                .and_then(|text| {
+                    serde_json::from_str::<aethyrforge_host::PublishRuntime>(&text).ok()
+                })
+                .filter(|r| r.validate_current().is_ok() && r.template_world == "personal-planet"),
             verse_reward_links: std::env::var_os("OPENAGENTS_VERSE_REWARD_LINKS")
                 .map(PathBuf::from),
             verse_reward_service: None,

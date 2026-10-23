@@ -42,10 +42,40 @@ fn picker() -> web_sys::HtmlSelectElement {
 }
 fn key(s: &State) -> String {
     format!(
-        "openagents.verse.recovery.v1:{}:{}:haunted-house:main",
+        "openagents.verse.recovery.v1:{}:{}:{}:main",
         s.account.as_deref().unwrap_or("guest"),
-        s.projects.project
+        s.projects.project,
+        world_namespace().key()
     )
+}
+pub(super) fn bind_personal(s: &mut State) {
+    if world_namespace() != WorldNamespace::PersonalPlanet {
+        return;
+    }
+    let meta = |id| {
+        window()
+            .document()
+            .and_then(|d| d.get_element_by_id(id))
+            .and_then(|e| e.get_attribute("content"))
+    };
+    if s.account.is_none() || s.account != meta("personal-owner") {
+        return;
+    }
+    let Some(project) = meta("personal-project") else {
+        return;
+    };
+    if s.projects.project == project {
+        return;
+    }
+    change_project(s, project.clone());
+    picker().set_inner_html("");
+    if let Ok(option) = window().document().unwrap().create_element("option") {
+        let _ = option.set_attribute("value", &project);
+        option.set_text_content(Some("Your planet"));
+        let _ = picker().append_child(&option);
+        picker().set_value(&project);
+    }
+    status("Generate your courtyard, or open its latest saved version.");
 }
 pub(super) fn clear(s: &mut State) {
     publishing::context_changed(s);
@@ -267,7 +297,7 @@ pub(super) async fn confirm_save(weak: Weak<RefCell<State>>) {
                     return Err(JsValue::from_str("The world or a draft changed. Review Save project again."));
                 }
             }
-            project_api(&weak,&format!("projects/{project}/haunted-house/main"),Some(body)).await
+            project_api(&weak,&project_path(&project),Some(body)).await
         }.await;
         let cp={
             let mut s=rc.borrow_mut();
@@ -283,9 +313,9 @@ pub(super) async fn confirm_save(weak: Weak<RefCell<State>>) {
             s.projects.save=None;hide("edit-auth",true);
             if feedback==SaveFeedback::NewerEdits {edited(&s);}else{status(&format!("Saved to project · version {}. Publishing is a separate choice.",s.projects.cursor.version));}
             s.save_visit();
-            json!({"csrf":s.csrf,"checkpoint":{"project":project,"namespace":"haunted-house","branch":"main","saved_version":s.projects.cursor.version,"visit":s.visit}})
+            json!({"csrf":s.csrf,"checkpoint":{"project":project,"namespace":world_namespace(),"branch":"main","saved_version":s.projects.cursor.version,"visit":s.visit}})
         };
-        let checkpoint_result=api(&format!("projects/{project}/haunted-house/main/checkpoint"),Some(cp)).await;
+        let checkpoint_result=api(&format!("{}/checkpoint",project_path(&project)),Some(cp)).await;
         let s=rc.borrow();
         if !same(&s,&account,epoch) {return Ok(());}
         if checkpoint_result.is_err() {
@@ -328,7 +358,7 @@ async fn open(weak: Weak<RefCell<State>>, undo: bool) -> Result<(), JsValue> {
     if id.is_empty() {
         return Err(JsValue::from_str("Choose a project first."));
     }
-    let path = format!("projects/{id}/haunted-house/main");
+    let path = project_path(&id);
     let v = if undo {
         project_api(
             &weak,
@@ -390,6 +420,13 @@ async fn open(weak: Weak<RefCell<State>>, undo: bool) -> Result<(), JsValue> {
 }
 async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
     let rc = weak.upgrade().ok_or(JsValue::NULL)?;
+    if world_namespace() == WorldNamespace::PersonalPlanet
+        && matches!(id, "project-list" | "project-create")
+    {
+        return Err(JsValue::from_str(
+            "This world uses your awarded planet project.",
+        ));
+    }
     match id {
         "project-list" => return list(weak).await,
         "project-create" => {
@@ -620,14 +657,275 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
     }
     Ok(())
 }
+pub(super) fn cancel_planet(s: &mut State) -> bool {
+    if world_namespace() != WorldNamespace::PersonalPlanet
+        || !s.busy
+        || !s.pending.as_ref().is_some_and(|p| {
+            matches!(
+                p.pending.action,
+                Action::RestoreProject { .. } | Action::RestoreMaterialProject { .. }
+            )
+        })
+    {
+        return false;
+    }
+    s.projects.epoch = s.projects.epoch.wrapping_add(1);
+    s.projects.busy = false;
+    s.projects.next_recovery = 0.;
+    s.projects.last_recovery.clear();
+    s.projects.open_serial = s.projects.open_serial.wrapping_add(1);
+    s.projects.opening = false;
+    s.projects.restored_visit = None;
+    s.projects.save = None;
+    s.pending = None;
+    s.busy = false;
+    s.persist();
+    let _ = s.request(&Action::RevokeAuthorization);
+    planet_note(
+        "Cancellation requested. Your current courtyard is still here; review it before trying again.",
+    );
+    true
+}
+fn planet_note(message: &str) {
+    if let Some(e) = window()
+        .document()
+        .and_then(|d| d.get_element_by_id("planet-status"))
+    {
+        e.set_text_content(Some(message));
+    }
+    say(message);
+}
+fn planet_settings(recipe: &PlanetRecipe) {
+    element("planet-style")
+        .unchecked_into::<web_sys::HtmlSelectElement>()
+        .set_value(match recipe.style {
+            PlanetStyle::SoftPastels => "soft-pastels",
+            PlanetStyle::BoldFantasy => "bold-fantasy",
+        });
+    input("planet-hour").set_value(&recipe.initial_hour.to_string());
+    input("planet-day").set_value(&recipe.day_minutes.to_string());
+    input("planet-seed").set_value(&recipe.seed.to_string());
+    input("planet-cycle").set_checked(recipe.cycle_enabled);
+}
+async fn prepare_planet(
+    weak: Weak<RefCell<State>>,
+    regenerate: bool,
+    change: Option<PlanetChange>,
+) -> Result<(), JsValue> {
+    let rc = weak.upgrade().ok_or(JsValue::NULL)?;
+    let (scope, recipe) = {
+        let mut s = rc.borrow_mut();
+        if s.busy || s.account.is_none() || s.projects.project.is_empty() {
+            return Err(JsValue::from_str(
+                "Sign in and let the current change finish first.",
+            ));
+        }
+        if materials::has_unsaved(&s) {
+            return Err(JsValue::from_str(
+                "Apply or export your face draft before changing the courtyard.",
+            ));
+        }
+        let scope = confirmation_scope(&s)
+            .ok_or_else(|| JsValue::from_str("Wait for the courtyard to open."))?;
+        let recipe = if change.is_some() {
+            PlanetRecipe::new(0, js_sys::Date::now() as u64)
+        } else {
+            let seed = input("planet-seed").value_as_number();
+            let minutes = input("planet-day").value_as_number();
+            if !seed.is_finite()
+                || seed.fract() != 0.
+                || !(0.0..=u32::MAX as f64).contains(&seed)
+                || !minutes.is_finite()
+                || minutes.fract() != 0.
+                || !(2.0..=60.0).contains(&minutes)
+            {
+                return Err(JsValue::from_str(
+                    "Choose a whole layout seed and a day length from 2 to 60 minutes.",
+                ));
+            }
+            let mut recipe = PlanetRecipe::new(seed as u32, js_sys::Date::now() as u64);
+            recipe.style = match element("planet-style")
+                .unchecked_into::<web_sys::HtmlSelectElement>()
+                .value()
+                .as_str()
+            {
+                "soft-pastels" => PlanetStyle::SoftPastels,
+                "bold-fantasy" => PlanetStyle::BoldFantasy,
+                _ => return Err(JsValue::from_str("Choose Soft pastels or Bold fantasy.")),
+            };
+            recipe.initial_hour = input("planet-hour").value_as_number();
+            recipe.cycle_enabled = input("planet-cycle").checked();
+            recipe.day_minutes = minutes as u16;
+            recipe
+                .validate()
+                .map_err(|_| JsValue::from_str("Choose a starting hour from 0 to under 24."))?;
+            recipe
+        };
+        s.busy = true;
+        s.projects.save = None;
+        (scope, recipe)
+    };
+    let result = async {
+        let mut accepted_recipe = recipe.clone();
+        let mut document = if regenerate {
+            let template: WorldTemplate = serde_json::from_str(
+                &element("personal-template")
+                    .text_content()
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| JsValue::from_str("Reload to open this courtyard's settings."))?;
+            recipe
+                .document(template)
+                .map_err(|_| JsValue::from_str("This courtyard could not be prepared."))?
+        } else {
+            let mut d = exported(&weak).await?;
+            let prior = PlanetRecipe::from_document(&d).map_err(|_| {
+                JsValue::from_str("Generate a courtyard or open your saved world first.")
+            })?;
+            let change = change.unwrap_or(PlanetChange::Settings {
+                style: recipe.style,
+                hour: recipe.initial_hour,
+                cycle: recipe.cycle_enabled,
+                day_minutes: recipe.day_minutes,
+            });
+            accepted_recipe = prior
+                .changed(change, js_sys::Date::now() as u64)
+                .map_err(|_| JsValue::from_str("Choose a supported style, hour, or day length."))?;
+            if d.source_draft != d.active_source {
+                return Err(JsValue::from_str(
+                    "Keep your unfinished effect before choosing a new world style.",
+                ));
+            }
+            if accepted_recipe.style != prior.style || matches!(change, PlanetChange::Style(_)) {
+                d.active_source = accepted_recipe.style.effect();
+                d.source_draft = d.active_source.clone();
+            }
+            d.environment = accepted_recipe.lighting_at(js_sys::Date::now() as u64);
+            d.originals.retain(|s| s.name != PLANET_SOURCE);
+            d.originals
+                .push(accepted_recipe.source().map_err(|_| JsValue::NULL)?);
+            d
+        };
+        if !scope.accepts(confirmation_scope(&rc.borrow()).as_ref()) {
+            return Ok(None);
+        }
+        if materials::has_unsaved(&rc.borrow()) {
+            return Err(JsValue::from_str(
+                "Your face draft changed. Keep or export it before trying again.",
+            ));
+        }
+        document.source_revision = rc.borrow().snapshot()["status"]["project"]["revision"]
+            .as_u64()
+            .unwrap_or(0);
+        let action = if regenerate {
+            Action::RestoreProject {
+                document,
+                checkpoint: None,
+            }
+        } else {
+            files::restore(&weak, &scope.project, document, None).await?
+        };
+        if !scope.accepts(confirmation_scope(&rc.borrow()).as_ref()) {
+            return Ok(None);
+        }
+        Ok::<_, JsValue>(Some((action, accepted_recipe)))
+    }
+    .await;
+    if !scope.accepts(confirmation_scope(&rc.borrow()).as_ref()) {
+        return Ok(());
+    }
+    rc.borrow_mut().busy = false;
+    if let Some((action, recipe)) = result? {
+        let message = if regenerate {
+            format!(
+                "Review replacing this courtyard with 24 kit objects in {}. Confirm change to generate; Cancel keeps the current world.",
+                recipe.style.label()
+            )
+        } else {
+            format!(
+                "Review {} at {:.1}:00 with the day cycle {}. Confirm change to apply.",
+                recipe.style.label(),
+                recipe.initial_hour,
+                if recipe.cycle_enabled {
+                    "running"
+                } else {
+                    "paused"
+                }
+            )
+        };
+        queue_change(&rc, action);
+        planet_note(&message);
+    }
+    Ok(())
+}
+pub(super) fn personal_request(rc: &Rc<RefCell<State>>, text: &str) -> bool {
+    if world_namespace() != WorldNamespace::PersonalPlanet {
+        return false;
+    }
+    let text = text
+        .trim()
+        .trim_end_matches(['.', '!', '?'])
+        .to_ascii_lowercase();
+    let regenerate = matches!(text.as_str(), "generate courtyard" | "regenerate courtyard");
+    let change = if regenerate {
+        None
+    } else {
+        match PlanetChange::from_request(&text) {
+            None => return false,
+            Some(Ok(change)) => Some(change),
+            Some(Err(_)) => {
+                planet_note("Say Set time to followed by an hour from 0 to under 24.");
+                return true;
+            }
+        }
+    };
+    let weak = Rc::downgrade(rc);
+    spawn_local(async move {
+        if let Err(e) = prepare_planet(weak, regenerate, change).await {
+            planet_note(
+                e.as_string()
+                    .as_deref()
+                    .unwrap_or("The courtyard could not change. Your working world is still here."),
+            );
+        }
+    });
+    true
+}
 pub(super) fn mount(
     rc: &Rc<RefCell<State>>,
     listeners: &mut Vec<(EventTarget, &'static str, Handler)>,
 ) -> Result<(), JsValue> {
     hide("project-tools", false);
+    if world_namespace() == WorldNamespace::PersonalPlanet {
+        for (id, regenerate) in [("planet-generate", true), ("planet-apply", false)] {
+            let weak = Rc::downgrade(rc);
+            listen(listeners, id, "click", move |_| {
+                let weak = weak.clone();
+                spawn_local(async move {
+                    if let Err(e) = prepare_planet(weak, regenerate, None).await {
+                        planet_note(
+                            e.as_string()
+                                .as_deref()
+                                .unwrap_or("The courtyard could not change. Try again."),
+                        );
+                    }
+                });
+            })?;
+        }
+    }
     history::mount(rc, listeners)?;
     publishing::mount(rc, listeners)?;
     hide("project-save", false);
+    if world_namespace() == WorldNamespace::PersonalPlanet {
+        for id in [
+            "project-list",
+            "project-create",
+            "project-name",
+            "project-picker",
+        ] {
+            hide(id, true);
+        }
+    }
     for id in [
         "project-list",
         "project-create",
@@ -810,6 +1108,16 @@ pub(super) fn poll(rc: &Rc<RefCell<State>>) {
 pub(super) fn restored(s: &mut State, action: &Value) {
     s.restore_complete = true;
     s.projects.reopening_session = None;
+    if world_namespace() == WorldNamespace::PersonalPlanet {
+        if let Ok(d) = serde_json::from_value::<ProjectDocument>(action["document"].clone()) {
+            if let Ok(recipe) = PlanetRecipe::from_document(&d) {
+                planet_settings(&recipe);
+                planet_note(
+                    "Your courtyard is ready. Walk, inspect, or save it to your planet project.",
+                );
+            }
+        }
+    }
     let matching = serde_json::from_value::<ProjectDocument>(action["document"].clone())
         .ok()
         .and_then(|d| d.sha256().ok())

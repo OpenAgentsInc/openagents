@@ -64,6 +64,16 @@ impl Client {
         )
     }
 }
+async fn guest(world: &World, path: &str) -> (StatusCode, Value) {
+    let r = Browser::default()
+        .send(world, Request::builder().uri(path), Body::empty())
+        .await;
+    (
+        r.status,
+        serde_json::from_str(&r.body).unwrap_or_else(|_| json!({"text":r.body})),
+    )
+}
+
 fn document() -> ProjectDocument {
     serde_json::from_value(json!({"schema":"openagents.verse.project.v1","namespace":"haunted-house","template":{"world":"fixture-house","engine_release":"fixture-5","asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64)},"source_revision":0,"entities":{},"rooms":{},"removed_walls":[],"materials":{},"environment":{"fogDensity":0.01},"source_draft":"repairable unfinished draft","active_source":aethyrforge_host::DEFAULT_EFFECT,"layers":[],"originals":[]})).unwrap()
 }
@@ -937,15 +947,6 @@ async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_
         first,
         "Lost-response retry does not create a second publication"
     );
-    async fn guest(world: &World, path: &str) -> (StatusCode, Value) {
-        let r = Browser::default()
-            .send(world, Request::builder().uri(path), Body::empty())
-            .await;
-        (
-            r.status,
-            serde_json::from_str(&r.body).unwrap_or_else(|_| json!({"text":r.body})),
-        )
-    }
     let world_id = first["world"].as_str().unwrap();
     let first_id = first["event"]["release"].as_str().unwrap();
     let first_path = format!("/v1/verse/play/{world_id}/{first_id}");
@@ -1072,8 +1073,12 @@ async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_
 
 #[tokio::test]
 async fn tutorial_award_requires_owner_choice_return_and_survives_membership_failure() {
+    let mut personal_runtime = publish_runtime();
+    personal_runtime.template_world = "personal-planet".into();
+    personal_runtime.engine_release = "personal-fixture".into();
     let world = crate::projects::tests::world_with(crate::projects::tests::Options {
         verse_publish_runtime: Some(publish_runtime()),
+        verse_personal_runtime: Some(personal_runtime.clone()),
         ..Default::default()
     })
     .await;
@@ -1285,6 +1290,98 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
         .await;
     assert_eq!(renamed["progress"]["planet"]["name"], "Moon garden");
     let project = planet["project"].as_str().unwrap();
+    let personal_path = format!("/v1/verse/studio/projects/{project}/personal-planet/main");
+    let personal = aethyrforge_host::PlanetRecipe::new(123, 1000)
+        .document(aethyrforge_host::WorldTemplate {
+            world: personal_runtime.template_world.clone(),
+            engine_release: personal_runtime.engine_release.clone(),
+            asset_set_sha256: personal_runtime.asset_set_sha256.clone(),
+            scene_sha256: personal_runtime.scene_sha256.clone(),
+        })
+        .unwrap();
+    let page = alice
+        .browser
+        .send(
+            &world,
+            Request::builder().uri(format!(
+                "/new-lander/planet/{}/world",
+                planet["id"].as_str().unwrap()
+            )),
+            Body::empty(),
+        )
+        .await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("id=\"planet-generate\""));
+    assert!(
+        page.body
+            .contains("id=\"world-namespace\" content=\"personal-planet\"")
+    );
+    let mut outside = personal.clone();
+    outside.entities.values_mut().next().unwrap().position[0] = 29.;
+    assert_eq!(
+        alice
+            .call(&world, "POST", &personal_path, save("outside", 0, &outside))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (code, personal_saved) = alice
+        .call(
+            &world,
+            "POST",
+            &personal_path,
+            save("planet-save", 0, &personal),
+        )
+        .await;
+    assert_eq!(code, StatusCode::OK, "{personal_saved}");
+    let (code, personal_published)=alice.call(&world,"POST",&format!("{personal_path}/publications"),json!({"command_id":"planet-publish","expected_sequence":0,"operation":"publish","saved_version":1,"document_sha256":personal_saved["saved"]["document_sha256"],"public":true,"confirm_runtime_distribution":true,"release":null})).await;
+    assert_eq!(code, StatusCode::OK, "{personal_published}");
+    let (code, playable) = guest(
+        &world,
+        &format!(
+            "/v1/verse/play/{}/{}",
+            personal_published["world"].as_str().unwrap(),
+            personal_published["event"]["release"].as_str().unwrap()
+        ),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(
+        playable["manifest"]["schema"],
+        "openagents.verse.playable.v2"
+    );
+    assert_eq!(
+        playable["manifest"]["content"]["document"]["originals"][0]["name"],
+        "planet-v1.json"
+    );
+    assert_eq!(alice.call(&world,"POST",T,json!({"operation":"play","world":personal_published["world"],"release":personal_published["event"]["release"]})).await.0,StatusCode::FORBIDDEN,"Personal publication cannot replace Haunted House tutorial proof");
+    let action = json!({"type":"restore_project","document":personal,"checkpoint":null});
+    let issue = json!({"tab":"planet-tab","session":"planet-session","release":personal_runtime.engine_release,"project":{"id":"personal-planet","branch":"main","revision":0},"action":action,"confirmed":true});
+    assert_ne!(
+        bob.call(&world, "POST", "/v1/verse/studio/grants", issue.clone())
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (code, issued) = alice
+        .call(&world, "POST", "/v1/verse/studio/grants", issue)
+        .await;
+    assert_eq!(code, StatusCode::OK, "{issued}");
+    assert_eq!(issued["grant"]["draft"]["id"], project);
+    let use_grant = json!({"tab":"planet-tab","grant":issued["grant"],"action":action});
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "POST",
+                "/v1/verse/studio/authorize",
+                use_grant.clone()
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+
     assert_eq!(
         alice
             .call(
@@ -1296,6 +1393,14 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
             .await
             .0,
         StatusCode::OK
+    );
+    assert_eq!(
+        alice
+            .call(&world, "POST", "/v1/verse/studio/authorize", use_grant)
+            .await
+            .0,
+        StatusCode::GONE,
+        "Revocation is checked again before using a grant"
     );
     let (status, deleted) = alice.call(&world, "GET", T, Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{deleted}");

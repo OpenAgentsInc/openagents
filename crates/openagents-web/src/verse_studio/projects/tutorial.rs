@@ -68,11 +68,39 @@ async fn planet_access(app: &App, headers: &HeaderMap, p: &PersonalPlanet) -> Re
     }
     Ok(())
 }
+pub(in crate::verse_studio) async fn owned_planet(
+    app: &App,
+    headers: &HeaderMap,
+    account: &str,
+) -> Result<PersonalPlanet, Response> {
+    let (p, _) = progress(app, account).await?;
+    let planet = p.planet.ok_or_else(steps)?;
+    planet_access(app, headers, &planet).await?;
+    Ok(planet)
+}
 pub(super) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/verse/studio/tutorial", get(get_progress).post(change))
         .route("/new-lander/planet/{id}", get(page).post(rename))
         .route("/new-lander/planet/style.css", get(style))
+        .route(
+            "/new-lander/planet/boot.js",
+            get(crate::pages::new_lander_house::personal_boot),
+        )
+        .route("/new-lander/planet/{id}/world", get(world))
+}
+async fn world(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+    let actor = match viewer(&app, &headers).await {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    match owned_planet(&app, &headers, &actor.account_id).await {
+        Ok(planet) if planet.id == id => {
+            crate::pages::new_lander_house::personal_page(&app, &planet)
+        }
+        Ok(_) => no_project(),
+        Err(r) => r,
+    }
 }
 async fn get_progress(State(app): State<App>, headers: HeaderMap) -> Response {
     let actor = match viewer(&app, &headers).await {
@@ -326,7 +354,7 @@ async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
             );
         }
     };
-    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{(&planet.name)" · OpenAgents"}link rel="stylesheet" href="/new-lander/planet/style.css";}body{main{a href="/new-lander/verse"{"Back to planets"}p{"YOUR PLANET"}h1{(&planet.name)}p{"Choose a name for your place in the Verse."}form method="post" action=(format!("/new-lander/planet/{id}")){input type="hidden" name="csrf" value=(token);label for="planet-name"{"Planet name"}input id="planet-name" name="name" value=(&planet.name) maxlength="80" required;button type="submit"{"Save name"}}p{"64 × 64 metres · Up to 128 objects · Private to you"}}}}}.into_string();
+    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{(&planet.name)" · OpenAgents"}link rel="stylesheet" href="/new-lander/planet/style.css";}body{main{a href="/new-lander/verse"{"Back to planets"}p{"YOUR PLANET"}h1{(&planet.name)}p{"Choose a name for your place in the Verse."}form method="post" action=(format!("/new-lander/planet/{id}")){input type="hidden" name="csrf" value=(token);label for="planet-name"{"Planet name"}input id="planet-name" name="name" value=(&planet.name) maxlength="80" required;button type="submit"{"Save name"}}p{"64 × 64 metres · Up to 128 objects · Private to you"}@if app.config.verse_personal_runtime.is_some(){a id="planet-enter" href=(format!("/new-lander/planet/{id}/world")){"Enter your courtyard"}}}}}}.into_string();
     let mut response = crate::pages::medieval_town::response(
         StatusCode::OK,
         body,

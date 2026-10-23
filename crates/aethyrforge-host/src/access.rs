@@ -77,7 +77,7 @@ impl PendingChange {
     pub fn validate(&self) -> Result<(), Error> {
         self.checkpoint.validate()?;
         self.action.validate()?;
-        if self.world != "haunted-house"
+        if !matches!(self.world.as_str(), "haunted-house" | "personal-planet")
             || self.selection.as_ref().is_some_and(|s| !id(s))
             || self.panels.len() > 8
             || self.panels.iter().any(|p| {

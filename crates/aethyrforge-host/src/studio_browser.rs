@@ -47,6 +47,29 @@ fn hide(id: &str, hidden: bool) {
         }
     }
 }
+fn world_namespace() -> WorldNamespace {
+    if window()
+        .document()
+        .and_then(|d| d.get_element_by_id("world-namespace"))
+        .and_then(|e| e.get_attribute("content"))
+        .as_deref()
+        == Some("personal-planet")
+    {
+        WorldNamespace::PersonalPlanet
+    } else {
+        WorldNamespace::HauntedHouse
+    }
+}
+fn project_path(project: &str) -> String {
+    format!("projects/{project}/{}/main", world_namespace().key())
+}
+fn stored_key(base: &str) -> String {
+    if world_namespace() == WorldNamespace::HauntedHouse {
+        base.into()
+    } else {
+        format!("{base}:{}", world_namespace().key())
+    }
+}
 fn say(text: &str) {
     element("edit-status").set_text_content(Some(text));
     element("voice-response").set_text_content(Some(text));
@@ -154,7 +177,10 @@ impl State {
         }
         if self.visit.validate().is_ok() {
             if let Ok(Some(storage)) = window().session_storage() {
-                let _ = storage.set_item(VISIT, &serde_json::to_string(&self.visit).unwrap());
+                let _ = storage.set_item(
+                    &stored_key(VISIT),
+                    &serde_json::to_string(&self.visit).unwrap(),
+                );
             }
         }
     }
@@ -245,10 +271,10 @@ impl State {
         if let Ok(Some(storage)) = window().session_storage() {
             if let Some(p) = &self.pending {
                 if let Ok(text) = serde_json::to_string(p) {
-                    let _ = storage.set_item(SAVED, &text);
+                    let _ = storage.set_item(&stored_key(SAVED), &text);
                 }
             } else {
-                let _ = storage.remove_item(SAVED);
+                let _ = storage.remove_item(&stored_key(SAVED));
             }
         }
     }
@@ -486,6 +512,7 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     s.account = account;
     materials::signed_in(&mut s);
     s.csrf = value["csrf"].as_str().map(str::to_string);
+    projects::bind_personal(&mut s);
     if policy == ResumePolicy::Reconfirm && (s.pending.is_some() || s.projects.save.is_some()) {
         let _ = s.request(&Action::RevokeAuthorization);
         s.auth_card();
@@ -882,6 +909,9 @@ fn route_request(rc: &Rc<RefCell<State>>) {
     // Feedback describes this request; earlier failures remain in their own tool state.
     say("");
     element("voice-heard").set_text_content(Some(&text));
+    if projects::personal_request(rc, &text) {
+        return;
+    }
     let control = request_control(&text, &capabilities);
     match control {
         Ok(RequestControl::Stop) => {
@@ -1016,7 +1046,7 @@ fn queue_change(rc: &Rc<RefCell<State>>, mut action: Action) {
         return;
     };
     let pending = PendingChange {
-        world: "haunted-house".into(),
+        world: world_namespace().key().into(),
         checkpoint,
         selection: s.selection.as_ref().map(|s| s.id.clone()),
         panels: vec!["edit".into()],
@@ -1051,12 +1081,12 @@ fn listen(
 pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     let pending = window()
         .session_storage()?
-        .and_then(|s| s.get_item(SAVED).ok().flatten())
+        .and_then(|s| s.get_item(&stored_key(SAVED)).ok().flatten())
         .and_then(|s| serde_json::from_str::<Resume>(&s).ok())
-        .filter(|r| r.pending.validate().is_ok());
+        .filter(|r| r.pending.validate().is_ok() && r.pending.world == world_namespace().key());
     let mut visit = window()
         .session_storage()?
-        .and_then(|s| s.get_item(VISIT).ok().flatten())
+        .and_then(|s| s.get_item(&stored_key(VISIT)).ok().flatten())
         .and_then(|s| serde_json::from_str::<StudioVisit>(&s).ok())
         .filter(|v| v.validate().is_ok())
         .unwrap_or_default();
@@ -1551,7 +1581,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
             return;
         };
         let pending = PendingChange {
-            world: "haunted-house".into(),
+            world: world_namespace().key().into(),
             checkpoint,
             selection: Some(selection.id.clone()),
             panels: vec!["edit".into()],
@@ -1581,6 +1611,9 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     listen(&mut listeners, "edit-cancel", "click", move |_| {
         hide("edit-auth", true);
         if let Some(rc) = weak.upgrade() {
+            if projects::cancel_planet(&mut rc.borrow_mut()) {
+                return;
+            }
             projects::cancel_open(&mut rc.borrow_mut());
             rc.borrow().persist();
         }

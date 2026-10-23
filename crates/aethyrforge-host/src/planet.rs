@@ -32,6 +32,38 @@ impl PlanetStyle {
         )
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PlanetChange {
+    Style(PlanetStyle),
+    Hour(f64),
+    Cycle(bool),
+    Settings {
+        style: PlanetStyle,
+        hour: f64,
+        cycle: bool,
+        day_minutes: u16,
+    },
+}
+impl PlanetChange {
+    pub fn from_request(text: &str) -> Option<Result<Self, Error>> {
+        let text = text
+            .trim()
+            .trim_end_matches(['.', '!', '?'])
+            .to_ascii_lowercase();
+        Some(match text.as_str() {
+            "use soft pastels" => Ok(Self::Style(PlanetStyle::SoftPastels)),
+            "use bold fantasy" => Ok(Self::Style(PlanetStyle::BoldFantasy)),
+            "pause day cycle" => Ok(Self::Cycle(false)),
+            "start day cycle" => Ok(Self::Cycle(true)),
+            _ => {
+                let hour = text.strip_prefix("set time to ")?;
+                hour.parse::<f64>()
+                    .map(Self::Hour)
+                    .map_err(|_| Error::Invalid("planet hour"))
+            }
+        })
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PlanetRecipe {
@@ -71,6 +103,39 @@ impl PlanetRecipe {
             return Err(Error::Invalid("personal planet recipe"));
         }
         Ok(())
+    }
+    /// Apply a control or spoken request to the accepted clock and layout identity.
+    pub fn changed(&self, change: PlanetChange, now_ms: u64) -> Result<Self, Error> {
+        self.validate()?;
+        let mut next = self.clone();
+        let mut clock = |hour: Option<f64>, cycle: bool, day_minutes: u16| {
+            if hour.is_some() || cycle != self.cycle_enabled || day_minutes != self.day_minutes {
+                next.initial_hour = hour.unwrap_or_else(|| self.hour_at(now_ms));
+                next.clock_anchor_unix_ms = now_ms;
+            }
+            next.cycle_enabled = cycle;
+            next.day_minutes = day_minutes;
+        };
+        match change {
+            PlanetChange::Style(style) => next.style = style,
+            PlanetChange::Hour(hour) => clock(Some(hour), self.cycle_enabled, self.day_minutes),
+            PlanetChange::Cycle(cycle) => clock(None, cycle, self.day_minutes),
+            PlanetChange::Settings {
+                style,
+                hour,
+                cycle,
+                day_minutes,
+            } => {
+                clock(
+                    (hour != self.initial_hour).then_some(hour),
+                    cycle,
+                    day_minutes,
+                );
+                next.style = style;
+            }
+        }
+        next.validate()?;
+        Ok(next)
     }
     pub fn hour_at(&self, now_ms: u64) -> f64 {
         let elapsed = if self.cycle_enabled {

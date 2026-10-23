@@ -107,9 +107,16 @@ impl PublishRuntime {
         Ok(())
     }
     pub fn accepts(&self, d: &ProjectDocument) -> bool {
+        self.accepts_namespace(d, crate::WorldNamespace::HauntedHouse)
+    }
+    pub fn accepts_personal(&self, d: &ProjectDocument) -> bool {
+        self.accepts_namespace(d, crate::WorldNamespace::PersonalPlanet)
+            && crate::planet::PlanetRecipe::from_document(d).is_ok()
+    }
+    fn accepts_namespace(&self, d: &ProjectDocument, namespace: crate::WorldNamespace) -> bool {
         self.validate().is_ok()
             && d.template.world == self.template_world
-            && d.namespace == crate::WorldNamespace::HauntedHouse
+            && d.namespace == namespace
             && d.template.engine_release == self.engine_release
             && d.template.asset_set_sha256 == self.asset_set_sha256
             && d.template.scene_sha256 == self.scene_sha256
@@ -142,13 +149,22 @@ impl PlayableRelease {
         content.validate()?;
         // Drafts and arbitrary imported source files remain private. Face sources
         // are bounded declarative documents needed to reconstruct playable layers.
+        let personal = content.document.namespace == crate::WorldNamespace::PersonalPlanet;
+        if personal {
+            crate::planet::PlanetRecipe::from_document(&content.document)?;
+        }
         content.document.source_draft = content.document.active_source.clone();
-        content
-            .document
-            .originals
-            .retain(|s| s.name.starts_with("material-v1-"));
+        content.document.originals.retain(|s| {
+            s.name.starts_with("material-v1-")
+                || (personal && s.name == crate::planet::PLANET_SOURCE)
+        });
         let manifest = PlayableManifest {
-            schema: "openagents.verse.playable.v1".into(),
+            schema: if personal {
+                "openagents.verse.playable.v2"
+            } else {
+                "openagents.verse.playable.v1"
+            }
+            .into(),
             world,
             saved_version: version,
             runtime,
@@ -165,18 +181,26 @@ impl PlayableRelease {
         let m = &self.manifest;
         m.content.validate()?;
         validate_playable_values_v1(&m.content.document, &m.runtime.material_ids)?;
-        if m.schema != "openagents.verse.playable.v1"
-            || !digest(&m.world)
+        let personal = match m.schema.as_str() {
+            "openagents.verse.playable.v1" => false,
+            "openagents.verse.playable.v2" => true,
+            _ => return Err(Error::Invalid("playable schema")),
+        };
+        let accepts = if personal {
+            m.runtime.accepts_personal(&m.content.document)
+        } else {
+            m.runtime.accepts(&m.content.document)
+        };
+        if !digest(&m.world)
             || m.saved_version == 0
             || m.saved_version > crate::MAX_SAFE_INTEGER
-            || !m.runtime.accepts(&m.content.document)
+            || !accepts
             || m.session_policy != "pin-until-exit"
             || m.content.document.source_draft != m.content.document.active_source
-            || m.content
-                .document
-                .originals
-                .iter()
-                .any(|s| !s.name.starts_with("material-v1-"))
+            || m.content.document.originals.iter().any(|s| {
+                !s.name.starts_with("material-v1-")
+                    && !(personal && s.name == crate::planet::PLANET_SOURCE)
+            })
             || project_hash(&serde_json::to_vec(m).map_err(|_| Error::Invalid("playable"))?)
                 != self.id
             || serde_json::to_vec(self)
@@ -436,6 +460,44 @@ mod tests {
         let mut source = runtime;
         source.artifacts[0].path = "/private-assets/vendor.blend".into();
         assert!(source.validate().is_err());
+    }
+    #[test]
+    fn personal_v2_keeps_the_recipe_and_refuses_missing_or_out_of_bounds_content() {
+        let (runtime, mut content) = fixture();
+        content.document = crate::planet::PlanetRecipe::new(42, 1000)
+            .document(content.document.template.clone())
+            .unwrap();
+        content.document.originals.push(crate::OriginalImport {
+            name: "private.txt".into(),
+            text: "private import".into(),
+            sha256: project_hash(b"private import"),
+        });
+        assert!(!runtime.accepts(&content.document));
+        assert!(runtime.accepts_personal(&content.document));
+        let release =
+            PlayableRelease::build("a".repeat(64), 2, runtime.clone(), content.clone()).unwrap();
+        assert_eq!(release.manifest.schema, "openagents.verse.playable.v2");
+        assert_eq!(release.manifest.content.document.originals.len(), 1);
+        release.validate().unwrap();
+        let bytes = serde_json::to_vec(&release).unwrap();
+        let stored: PlayableRelease = serde_json::from_slice(&bytes).unwrap();
+        stored.validate().unwrap();
+        assert_eq!(serde_json::to_vec(&stored).unwrap(), bytes);
+        let mut wrong_schema = release;
+        wrong_schema.manifest.schema = "openagents.verse.playable.v1".into();
+        wrong_schema.id = project_hash(&serde_json::to_vec(&wrong_schema.manifest).unwrap());
+        assert!(wrong_schema.validate().is_err());
+        let mut missing = content.clone();
+        missing.document.originals.clear();
+        assert!(PlayableRelease::build("a".repeat(64), 2, runtime.clone(), missing).is_err());
+        content
+            .document
+            .entities
+            .values_mut()
+            .next()
+            .unwrap()
+            .position[0] = 29.;
+        assert!(PlayableRelease::build("a".repeat(64), 2, runtime, content).is_err());
     }
     #[test]
     fn literal_v7_release_keeps_its_manifest_hash_and_exact_serialization() {
