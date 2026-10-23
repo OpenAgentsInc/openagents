@@ -12,16 +12,16 @@ use serde::{Deserialize, Serialize};
 const PATH: &str = "/demo/medieval-town";
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Release {
-    engine_url: String,
-    sdk_url: String,
-    release: String,
-    engine_abi: String,
-    project_format: u16,
-    project: Project,
+pub(super) struct Release {
+    pub(super) engine_url: String,
+    pub(super) sdk_url: String,
+    pub(super) release: String,
+    pub(super) engine_abi: String,
+    pub(super) project_format: u16,
+    pub(super) project: Project,
 }
 impl Release {
-    fn parse(text: &str) -> Option<Self> {
+    pub(super) fn parse(text: &str) -> Option<Self> {
         let r: Self = serde_json::from_str(text).ok()?;
         Host::new(
             &r.engine_url,
@@ -39,7 +39,7 @@ impl Release {
             && sdk.path().ends_with("/aethyrforge_host.js"))
         .then_some(r)
     }
-    fn origin(&self) -> String {
+    pub(super) fn origin(&self) -> String {
         endpoint(&self.engine_url)
             .expect("validated URL")
             .origin()
@@ -57,7 +57,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/demo/medieval-town/boot.js", get(boot))
         .route("/demo/medieval-town/style.css", get(style))
 }
-fn response(
+pub(super) fn response(
     status: StatusCode,
     body: impl Into<String>,
     content_type: &'static str,

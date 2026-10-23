@@ -1,0 +1,12 @@
+{
+  "engine_url": "https://unconfigured.example/",
+  "sdk_url": "https://unconfigured.example/aethyrforge_host.js",
+  "release": "",
+  "engine_abi": "aethyrforge.browser.v1",
+  "project_format": 1,
+  "project": {
+    "id": "haunted-house",
+    "branch": "main",
+    "revision": 0
+  }
+}

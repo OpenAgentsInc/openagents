@@ -1,155 +1,108 @@
-//! The existing browser creator lab, mounted under the isolated Verse preview.
+//! Haunted House review shell for the pinned, separately hosted private engine.
 
-use std::path::{Component, PathBuf};
-
-use axum::{
-    Router,
-    extract::{Path, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
-    response::{Html, IntoResponse, Response},
-    routing::get,
-};
-use maud::html;
-
+use super::medieval_town::{Release, response};
 use crate::App;
+use axum::{Router, http::StatusCode, response::Response, routing::get};
+use maud::{DOCTYPE, PreEscaped, html};
 
 pub(crate) const HOUSE: &str = "/new-lander/house";
+const MAP: &str = "/new-lander/verse?world=haunted-house";
+
+fn configured(text: &str) -> Option<Release> {
+    let r = Release::parse(text)?;
+    (r.project.id == "haunted-house" && r.project.branch == "main").then_some(r)
+}
+fn release() -> Option<Release> {
+    let text = std::env::var("OPENAGENTS_HAUNT_RELEASE")
+        .unwrap_or_else(|_| include_str!("../../content/demos/haunted-house.json").into());
+    configured(&text)
+}
+
+pub(crate) fn available() -> bool {
+    release().is_some()
+}
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(HOUSE, get(page))
-        .route("/new-lander/house/{*file}", get(asset))
-}
-
-fn directory() -> Option<PathBuf> {
-    let root = std::env::var_os("OPENAGENTS_VERSE_HOUSE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/haunt-preview/dist-verse")
-        });
-    [
-        "verse/index.html",
-        "material.wgsl",
-        "kiln/pkg/kiln.js",
-        "kiln/pkg/kiln_bg.wasm",
-        "kiln/tools/manifest.json",
-    ]
-    .iter()
-    .all(|name| root.join(name).is_file())
-    .then_some(root)
-}
-
-pub(crate) fn available() -> bool {
-    directory().is_some()
-}
-
-fn creator_label(github: Option<&str>, nostr: Option<&str>, label: &str) -> String {
-    if let Some(login) = github {
-        return login.chars().take(48).collect();
-    }
-    if let Some(key) = nostr {
-        return format!("Creator {}", key.chars().take(12).collect::<String>());
-    }
-    if !label.trim().is_empty() && !label.contains('@') && !label.chars().any(char::is_control) {
-        return label.chars().take(48).collect();
-    }
-    "Signed-in creator".into()
-}
-
-fn headers(response: &mut Response) {
-    let h = response.headers_mut();
-    h.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store, private"),
-    );
-    h.insert(
-        "x-robots-tag",
-        HeaderValue::from_static("noindex, nofollow"),
-    );
-    h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; worker-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"));
-    h.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-}
-
-async fn page(State(app): State<App>, request: HeaderMap) -> Response {
-    let Some(root) = directory() else {
-        let mut response = (StatusCode::SERVICE_UNAVAILABLE, Html(html! {
-            (maud::DOCTYPE) html lang="en" { head { title { "Haunted House · OpenAgents" } meta name="viewport" content="width=device-width,initial-scale=1"; } body { h1 { "The house isn't open here yet." } p { "You can return to the planets and keep exploring." } a href="/new-lander/verse?world=haunted-house" { "Back to planets" } } }
-        }.into_string())).into_response();
-        headers(&mut response);
-        return response;
-    };
-    let Ok(source) = tokio::fs::read_to_string(root.join("verse/index.html")).await else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    let viewer = if let Some(service) = app.config.cloud.as_deref() {
-        service.authenticate(&request).await.ok()
-    } else {
-        None
-    };
-    let author = viewer.as_ref().map(|v| {
-        creator_label(
-            v.github.as_ref().map(|(_, login)| login.as_str()),
-            v.nostr.as_deref(),
-            &v.account_label,
+        .route("/new-lander/house/boot.js", get(boot))
+        .route("/new-lander/house/style.css", get(style))
+        .route(
+            "/new-lander/house/{*file}",
+            get(|| async { StatusCode::NOT_FOUND }),
         )
-    });
-    let access = html! {
-        meta name="verse-member" content=(if viewer.is_some() {"true"} else {"false"});
-        meta name="verse-login" content=(if app.config.cloud.is_some() {"true"} else {"false"});
-        @if let Some(author) = author { meta name="verse-author" content=(author); }
-    };
-    let mut response =
-        Html(source.replace("<!--verse-access-->", &access.into_string())).into_response();
-    headers(&mut response);
-    response
 }
 
-fn content_type(file: &str) -> Option<&'static str> {
-    if file.ends_with(".js") {
-        Some("text/javascript; charset=utf-8")
-    } else if file.ends_with(".css") {
-        Some("text/css; charset=utf-8")
-    } else if file.ends_with(".wasm") {
-        Some("application/wasm")
-    } else if file.ends_with(".json") {
-        Some("application/json")
-    } else if file.ends_with(".wgsl") {
-        Some("text/plain; charset=utf-8")
-    } else {
-        None
+async fn page() -> Response {
+    let Some(r) = release() else {
+        return response(StatusCode::SERVICE_UNAVAILABLE, html! {
+            (DOCTYPE) html lang="en" { head { meta name="viewport" content="width=device-width,initial-scale=1"; title { "Haunted House · OpenAgents" } }
+                body { h1 { "The house isn't open here yet." } p { "You can return to the planets and keep exploring." }
+                    a href=(HOUSE) { "Try again" } " · " a href=(MAP) { "Back to planets" }
+                }
+            }
+        }.into_string(), "text/html; charset=utf-8", None);
+    };
+    let config = serde_json::json!({"release":r.release,"engine_abi":r.engine_abi,"project_format":r.project_format,"project":r.project});
+    let text = serde_json::to_string(&config)
+        .expect("configuration")
+        .replace('<', "\\u003c");
+    let body = html! {
+        (DOCTYPE) html lang="en" { head {
+            meta charset="utf-8"; meta name="viewport" content="width=device-width,initial-scale=1";
+            title { "Haunted House · OpenAgents" }
+            link rel="stylesheet" href="/new-lander/house/style.css";
+        } body {
+            main {
+                iframe id="engine" title="Haunted House" data-engine-url=(r.engine_url) {}
+                p id="world-notice" role="status" aria-live="polite" { "Opening the house…" }
+            }
+            nav aria-label="World controls" {
+                a id="world-map" href=(MAP) { "Back to planets" }
+                span { "Click to look · WASD to walk · Escape to release the pointer" }
+                a id="world-retry" href=(HOUSE) { "Reload world" }
+                button id="world-fullscreen" type="button" { "Full screen" }
+            }
+            script id="engine-config" type="application/json" { (PreEscaped(text)) }
+            script type="module" src="/new-lander/house/boot.js" {}
+        } }
     }
+    .into_string();
+    response(
+        StatusCode::OK,
+        body,
+        "text/html; charset=utf-8",
+        Some(&r.origin()),
+    )
 }
 
-async fn asset(Path(file): Path<String>) -> Response {
-    let path = std::path::Path::new(&file);
-    if !path
-        .components()
-        .all(|part| matches!(part, Component::Normal(_)))
-        || !(file.starts_with("assets/") || file.starts_with("kiln/") || file == "material.wgsl")
-    {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    let (Some(root), Some(mime)) = (directory(), content_type(&file)) else {
-        return StatusCode::NOT_FOUND.into_response();
+async fn boot() -> Response {
+    let Some(r) = release() else {
+        return response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "",
+            "text/javascript; charset=utf-8",
+            None,
+        );
     };
-    let (Ok(root), Ok(target)) = (
-        tokio::fs::canonicalize(&root).await,
-        tokio::fs::canonicalize(root.join(path)).await,
-    ) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    if !target.starts_with(&root) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    let Ok(bytes) = tokio::fs::read(target).await else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let mut response = ([(header::CONTENT_TYPE, mime)], bytes).into_response();
-    headers(&mut response);
-    response
+    let url = serde_json::to_string(&r.sdk_url).expect("SDK URL");
+    response(
+        StatusCode::OK,
+        format!(
+            "try{{const {{default:init,mount_demo}}=await import({url});await init();window.hauntDemo=mount_demo();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.textContent='The house could not open. Reload to try again.';}}"
+        ),
+        "text/javascript; charset=utf-8",
+        Some(&r.origin()),
+    )
+}
+
+async fn style() -> Response {
+    response(
+        StatusCode::OK,
+        "html,body{height:100%;margin:0;background:#0c1014;color:#f0e9df;font:14px system-ui}main,iframe{position:fixed;inset:0;width:100%;height:100%;border:0}nav{position:fixed;bottom:16px;left:16px;right:16px;display:flex;align-items:center;gap:16px;pointer-events:none}nav>*{pointer-events:auto}nav span{flex:1;text-shadow:0 2px 4px #000}a,button{color:inherit;background:#10171cdd;border:1px solid #727b8080;border-radius:5px;padding:10px 14px;text-decoration:none}a:focus-visible,button:focus-visible{outline:2px solid white;outline-offset:3px}#world-notice{position:fixed;top:40%;left:50%;transform:translateX(-50%);padding:24px;max-width:400px;background:#131d23ee;border:1px solid #727b80}#world-notice[hidden]{display:none}@media(max-width:700px){nav{flex-wrap:wrap;gap:8px}nav span{order:5;flex-basis:100%;font-size:12px}}",
+        "text/css; charset=utf-8",
+        None,
+    )
 }
 
 #[cfg(test)]
@@ -157,40 +110,24 @@ mod tests {
     use super::*;
     use axum::{
         body::{Body, to_bytes},
-        http::Request,
+        http::{Request, header},
     };
     use tower::ServiceExt;
 
-    #[test]
-    fn new_lander_house_attributes_public_identities_without_exposing_email() {
-        assert_eq!(
-            creator_label(Some("kiki"), None, "private@example.com"),
-            "kiki"
-        );
-        assert_eq!(
-            creator_label(None, Some("abcdef1234567890"), "private@example.com"),
-            "Creator abcdef123456"
-        );
-        assert_eq!(creator_label(None, None, "Kiki"), "Kiki");
-        assert_eq!(
-            creator_label(None, None, "private@example.com"),
-            "Signed-in creator"
-        );
-    }
-
     #[tokio::test]
-    async fn new_lander_house_never_exposes_source_or_unowned_files() {
+    async fn new_lander_house_never_serves_legacy_engine_or_source_files() {
         let root = tempfile::tempdir().unwrap();
         let app = crate::router(crate::Config::development(root.path().join("tasks")));
         for file in [
             "verse/index.html",
+            "material.wgsl",
             "package.json",
             "src/main.ts",
-            "assets/not-there.js",
-            "kiln/../../Cargo.toml",
+            "assets/old.js",
+            "kiln/pkg/kiln.js",
         ] {
             let uri = format!("{HOUSE}/{file}");
-            let response = app
+            let result = app
                 .clone()
                 .oneshot(
                     Request::builder()
@@ -201,10 +138,20 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{file}");
+            assert_eq!(result.status(), StatusCode::NOT_FOUND);
             assert!(crate::upstream::owned(&uri));
-            let body = to_bytes(response.into_body(), 4096).await.unwrap();
-            assert!(!String::from_utf8_lossy(&body).contains("verse-member"));
+            assert!(to_bytes(result.into_body(), 4096).await.unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn new_lander_house_refuses_another_world_or_branch() {
+        let base = serde_json::json!({"engine_url":"https://engine.example/","sdk_url":"https://engine.example/sdk/hash/aethyrforge_host.js","release":"house-1","engine_abi":"abi-1","project_format":1,"project":{"id":"haunted-house","branch":"main","revision":0}});
+        assert!(configured(&base.to_string()).is_some());
+        for (field, value) in [("id", "medieval-town-lab"), ("branch", "someone-else")] {
+            let mut bad = base.clone();
+            bad["project"][field] = value.into();
+            assert!(configured(&bad.to_string()).is_none());
         }
     }
 }

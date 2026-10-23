@@ -87,7 +87,7 @@ pub fn mount_demo() -> Result<BrowserDemo, JsValue> {
             }
         } else {
             notice.set_text_content(Some(
-                "Opening Medieval Town… The first visit can take a little longer.",
+                "Opening the world… The first visit can take a little longer.",
             ));
             let _ = notice.remove_attribute("hidden");
             let _ = notice.set_attribute("data-state", "opening");
