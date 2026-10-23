@@ -166,7 +166,7 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                     h2 id="choice-title" { "Where shall" br; "we go?" }
                     p id="choice-description" { "Explore the planets, or step inside the Haunted House." }
                     div.entry-actions {
-                        button id="verse-explore" type="button" { "Explore" span aria-hidden="true" { "↗" } }
+                        button.small-button id="verse-explore" type="button" { "Explore" span aria-hidden="true" { "↗" } }
                         @if let Some(path) = haunt { a.small-button href=(path) { "Haunted House ↗" } }
                     }
                 }
