@@ -25,6 +25,8 @@ declare global {
       snapshot: () => unknown;
       original: () => string;
       dispose: () => void;
+      pause: () => void;
+      resume: () => void;
       command: (operation: Operation) => Promise<unknown>;
       request: (text: string) => Promise<unknown>;
       editor: () => unknown;
@@ -378,6 +380,8 @@ async function start() {
       }),
     original: () => original,
     dispose: () => post({ type: "dispose" }),
+    pause: () => post({ type: "pause" }),
+    resume: () => post({ type: "resume" }),
     command: editor.submit,
     request: editor.interpret,
     editor: editor.snapshot,
