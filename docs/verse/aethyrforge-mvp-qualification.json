@@ -390,5 +390,18 @@
     "public_private_captures": false,
     "production_baseline_preserved": "coder-web-b3afdd3d3b-20261023184541 at100%; concurrent Medieval Town tag coder-web-b3afdd3d3b-20261023191802 preserved. Earlier17:05 baseline was superseded by the other agent, never restored."
   },
-  "native_children_closed": 30
+  "native_children_closed": 30,
+  "closure_verification": {
+    "epic_closed": true,
+    "native_children_closed": 30,
+    "projects_inspected": 20,
+    "matching_project_items": 31,
+    "all_matching_items_Done": true,
+    "missing_items": 0,
+    "status_drift": 0,
+    "matched_projects": [
+      19
+    ],
+    "private_record": "qualification/final-issue-board-check.json"
+  }
 }
