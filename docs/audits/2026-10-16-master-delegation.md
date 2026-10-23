@@ -485,6 +485,20 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12514: wire v6 adds scoped face previews/apply and complete editable material
+  restore. Local Rust scar generation and handmade layers share confirmed changes,
+  history, saved PNG resources, and device recovery. Host 53, native bounds/house,
+  Wasm, private types/kernel, and focused private authoring checks pass. The real
+  GPU/native-store browser flow passes generation/refinement, held-preview feedback,
+  delayed imports/Save responses, Undo/Redo/reopen, and missing-image recovery;
+  teardown exits cleanly. A second-werewolf renderer capture changes only the
+  selected face. Codex inspected private desktop/mobile and per-instance captures.
+  Sub-millisecond generation samples mean under 1 ms, not zero; adopted-frame
+  receipt and PNG-encoding timings are separate. Complete immutable deployment,
+  dedicated-account/provider/microphone and human qualification in #12561;
+  owner-only checks remain in `NEEDS_OWNER.md`. No production traffic changed.
+  [Material qualification](../verse/aethyrforge-material-qualification.json).
+
 - #12567: main `51d7b36629` serializes project creation and resets recovery/open
   state and history across project changes; `bc8ad3af00` opens replacement frames
   at the pinned release base. Host 53, Wasm, and the native consumer build pass.

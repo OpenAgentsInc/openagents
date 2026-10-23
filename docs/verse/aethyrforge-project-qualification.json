@@ -149,10 +149,10 @@
     ],
     "evidence": "Private scratch project-create-browser-permission-4/browser-project.json and captures; captures are not in public Git.",
     "remaining": [
-      "Qualify deployed/dedicated-account context transitions in #12561.",
-      "Continue material lifecycle and image-recovery checks in #12514; its canvas inline-style CSP refusal remains to be corrected."
+      "Qualify deployed/dedicated-account context transitions in #12561."
     ],
     "human_review": false,
-    "production_traffic_shifted": false
+    "production_traffic_shifted": false,
+    "material_followup": "The #12514 browser qualification fixes the served canvas styles, stale-canvas actions, and missing-image recovery; see aethyrforge-material-qualification.json."
   }
 }
