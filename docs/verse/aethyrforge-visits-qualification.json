@@ -485,5 +485,7 @@
     "Reports are delivered to and marked for the host, without automated moderation claims.",
     "Private captures remain available for Kiki/human review.",
     "Production traffic and root homepage are unchanged."
-  ]
+  ],
+  "final_integrated_qualification": "aethyrforge-mvp-qualification.json",
+  "historical_scope": "Earlier run identities/limitations above remain accurate for those runs. The final integrated record adds current hosted adapters, returning-user story and cleanup; provider/microphone/human checks remain pending."
 }

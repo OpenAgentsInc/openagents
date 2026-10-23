@@ -541,5 +541,7 @@
     "Kiki/human visual review of actual day/Bold/night desktop/mobile screens remains pending.",
     "Real Kiln qualification remains agent-owned in #12561 using the existing service credential; it is not classified as owner-only."
   ],
-  "production_traffic_shifted": false
+  "production_traffic_shifted": false,
+  "final_integrated_qualification": "aethyrforge-mvp-qualification.json",
+  "historical_scope": "Earlier run identities/limitations above remain accurate for those runs. The final integrated record adds current hosted adapters, returning-user story and cleanup; provider/microphone/human checks remain pending."
 }

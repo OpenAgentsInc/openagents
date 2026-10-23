@@ -53,5 +53,7 @@
   "unsafe_checkpoint_evidence": {
     "private_record": "hosted-story-5/reconstructed-checkpoint.json",
     "result": "Near-character fly checkpoint was refused; the engine reported using a clear starting place. The safe physically walked checkpoint passed in story7."
-  }
+  },
+  "final_integrated_qualification": "aethyrforge-mvp-qualification.json",
+  "historical_scope": "Earlier run identities/limitations above remain accurate for those runs. The final integrated record adds current hosted adapters, returning-user story and cleanup; provider/microphone/human checks remain pending."
 }

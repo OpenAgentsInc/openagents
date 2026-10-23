@@ -485,6 +485,24 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12561 / #12562: implementation and agent-owned qualification complete across
+  30 native children (17 original, 13 follow-ups). The connected hosted journey
+  follows the same isolated account and one awarded planet across recorded browser
+  restarts: guest/cancel/explicit edit, real Kiln candidate, local generation and
+  trusted painting, actual GCS save/return, Publish/Play/Share, map award, styles and
+  actual renderer day cycle, two-account hosted chat, and confirmed revocation.
+  Dirty face/source and a safe walking checkpoint survive actual GPU destruction
+  through a fresh authorized session. Interrupted runs remain interrupted; this is
+  not one uninterrupted pass. Resource/cache/brush methods and artifact identities
+  are in the [final qualification](../verse/aethyrforge-mvp-qualification.json).
+  All 31 owned current/noncurrent GCS generations and disposable infrastructure
+  were cleaned; existing seven-day soft-delete retention remains unchanged. Current
+  production traffic, other agents' Medieval Town updates, and immutable runtime
+  tags are preserved. A private 25-page packet is rendered and Codex-reviewed.
+  Real browser-provider login, microphone/ASR, and Kiki/human review remain in
+  `NEEDS_OWNER.md`; no production activation or human approval is claimed.
+
+
 - #12575: public `5169613bc1` passes the valid, matching-owner device-copy
   checkpoint into both confirmed restore paths. Thirty-one host library tests
   cover matching/mismatched owners and malformed visit/pose data. The actual

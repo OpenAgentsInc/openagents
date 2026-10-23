@@ -56,7 +56,11 @@
     ],
     "extra_worker_targets_after_close": 0,
     "qualification": "The original combined run failed its final window-only no-GPU fixture. These three preceding rendered-session/resource assertions passed. Route interception disables HTTP cache; repeats are not verified warm UI startup.",
-    "private_record": "hosted-resources-2/result.json"
+    "private_record": "hosted-resources-2/result.json",
+    "engine_release": "q61h58fea2816065441d",
+    "host_sdk_source": "315138015de4056532254fbd078846c8744450eb",
+    "private_engine_source": "0a28e7d32ed8eee81b8924e60289e9651d096a26",
+    "final_SDK_distinction": "These resource measurements precede SDK516; the final connected story uses the same private engine with SDK516. No unmeasured final-SDK performance claim."
   },
   "frames": {
     "sample_count": 180,
@@ -69,10 +73,11 @@
   },
   "worker_GPU_unavailable": {
     "passed": true,
-    "private_record": "hosted-no-gpu-1/result.json",
+    "private_record": "hosted-no-gpu-2/result.json",
     "method": "Test-only prelude in the exact dedicated preview worker script sets navigator.gpu to undefined. The actual worker initialization reaches the unavailable path; page shows The world could not open and a Reload control.",
     "physical_unsupported_browser": false,
-    "window_only_fixture": "Did not affect dedicated worker navigator; its timeout was a simulation-boundary failure."
+    "window_only_fixture": "Did not affect dedicated worker navigator; its timeout was a simulation-boundary failure.",
+    "verified_in_worker": "The exact worker prelude reports typeof navigator.gpu as undefined; the browser fixture asserts that report before accepting the failure notice."
   },
   "immutable_resource_cache": {
     "passed": true,

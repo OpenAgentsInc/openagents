@@ -144,10 +144,8 @@
     }
   ],
   "remaining_12561": [
-    "Qualify the new immutable profiles and in-product Kiln bootstrap; agent-turn completion was not observed within the qualification bound. No hang, provider failure, or relay defect is established.",
-    "Finish actual isolated GCS save/open/shared-role checks and independent artifact cleanup.",
-    "Complete dirty-material device recovery, repeated-session resources, actual pointer-brush timing, integrated journey, and private printable Kiki review packet.",
-    "Real browser-provider login, microphone capture/ASR, and Kiki human review remain explicit pending checks."
+    "Whole-agent-turn completion was not observed within the declared qualification bound; no hang or provider outage claim.",
+    "Real provider sign-in, microphone/ASR and human review remain in NEEDS_OWNER.md."
   ],
   "private_evidence": [
     "real-kiln-hosted-1/model.json",
@@ -157,5 +155,12 @@
     "kiln-verse-contract-tests.log",
     "kiln-12573-build.log"
   ],
-  "production_traffic_changed": false
+  "production_traffic_changed": false,
+  "final_qualification": "aethyrforge-mvp-qualification.json",
+  "connected_story": {
+    "native_product_kiln_bootstrap_checked": true,
+    "retained_real_candidate_explicit_Draft_Compile_Undo_Redo": true,
+    "private_record": "hosted-story-12/steps.json",
+    "whole_agent_turn_completed": false
+  }
 }

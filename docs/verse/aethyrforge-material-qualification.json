@@ -149,5 +149,7 @@
     "Real browser/provider sign-in cancel/complete/reconfirm and visible microphone/ASR checks remain in NEEDS_OWNER.md; injected recognition is routing evidence only.",
     "Kiki/human visual review and final platform/performance qualification remain in #12561."
   ],
-  "production_traffic_shifted": false
+  "production_traffic_shifted": false,
+  "final_integrated_qualification": "aethyrforge-mvp-qualification.json",
+  "historical_scope": "Earlier run identities/limitations above remain accurate for those runs. The final integrated record adds current hosted adapters, returning-user story and cleanup; provider/microphone/human checks remain pending."
 }

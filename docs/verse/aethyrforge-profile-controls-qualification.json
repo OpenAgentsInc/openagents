@@ -108,5 +108,7 @@
       "digest": "sha256:ef6963788fb614511a2d5daafbe816c7d1cc22ec88c9237ecd712e938fa96a5f",
       "revision": "aethyrforge-preview-00019-foj"
     }
-  ]
+  ],
+  "final_integrated_qualification": "aethyrforge-mvp-qualification.json",
+  "historical_scope": "Earlier run identities/limitations above remain accurate for those runs. The final integrated record adds current hosted adapters, returning-user story and cleanup; provider/microphone/human checks remain pending."
 }

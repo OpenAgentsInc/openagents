@@ -96,11 +96,7 @@
       "real_browser_provider_login": false
     }
   },
-  "remaining_12561": [
-    "Remove the owned qualification services, temporary account-store prefixes, and visit rooms after integrated checks. Test project and both accounts were deleted successfully.",
-    "Repeat integrated pinned-runtime and current coder-sync checks, real Kiln draft/review, dirty-material recovery, resource cleanup, and timing.",
-    "Prepare private printable actual-screen packet; human review, browser-provider login, and microphone remain separate pending checks."
-  ],
+  "remaining_12561": [],
   "failed_attempts": [
     "A reduced config omitted chat salt and inference proxy settings; corrected without product changes.",
     "The provisional bucket name differed from the staging spec; corrected to openagentsgemini-web-chats-stage.",
@@ -116,5 +112,7 @@
     "hosted-account-stack-8/result.json"
   ],
   "production_traffic_changed": false,
-  "prior_tags_changed": false
+  "prior_tags_changed": false,
+  "final_qualification": "aethyrforge-mvp-qualification.json",
+  "cleanup_complete": "Owned current/noncurrent GCS generations, isolated native service, account/web directories, room schema, secrets and six disposable native candidates removed. Existing provider soft-delete retention unchanged; no physical immediate-erasure claim."
 }

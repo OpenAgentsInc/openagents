@@ -21,11 +21,12 @@ changes in #12551 and the integrated journey in #12561.
 The bearer account read and the synthetic account-service browser fixture
 are separate checks; neither proves completion through the real provider.
 
-For #12560, repeat the invitation exchange with two isolated dedicated accounts
-through the real provider flow when both accounts are available. The local
-browser record uses two synthetic identities with real native access and
-coder-sync/Postgres/Loro storage. It does not establish real-provider login or
-human review. Hosted adapter qualification remains agent-owned in #12561.
+For #12560, real-provider sign-in remains separate from the completed hosted
+invitation/chat checks. Two isolated backend accounts used actual issued legacy
+session cookies, native cookie/CSRF forms, pinned players, hosted coder-sync and
+Postgres. Bidirectional messages persisted across browser restart; explicit
+revocation ended both players and refused new visits. This does not establish
+real-provider login or human review.
 
 ## Qualify the dedicated-account spoken creator journey (#12553, #12561) (2026-10-23)
 
@@ -47,16 +48,30 @@ authorized browser path when available.
 
 The dedicated-account provider step also covers #12554: save a world, close it,
 sign back in, find that account's project, and confirm resuming its editable
-content, repairable draft, and valid place. This is separate from native tests
-with two isolated local principals and synthetic browser account services.
+content, repairable draft, and valid place. The connected hosted returning-user check already passes with a fresh injected
+backend-issued legacy cookie and actual GCS storage; that is separate from
+provider sign-back-in.
 
 For #12559, review the retained Soft pastels, Bold fantasy, and night desktop/mobile
 screens in this app. The local native/GPU checks pass, including mobile microphone
 hit tests; Codex review does not constitute Kiki or human visual approval. The
 [pinned personal-world evidence](docs/verse/aethyrforge-personal-qualification.json)
-records the artifact and capture identities. Hosted combined qualification remains
-in #12561. Real Kiln is an agent-owned check with an available service key, not an
-owner-only prerequisite.
+records the earlier artifact and capture identities. The
+[final hosted qualification](docs/verse/aethyrforge-mvp-qualification.json) records
+the connected returning-user journey, actual renderer cycle, recovery, chat, and
+cleanup. Real Kiln produced a legal candidate that passed explicit native grants
+and hosted Draft/Compile/Undo/Redo. Whole-agent-turn completion was not observed
+within its bound; no provider failure is established.
+
+## Review Kiki's private actual-screen packet (#12561, #12562) (2026-10-23)
+
+Review the 25-page private printable packet linked in the Codex app chat. It follows
+homepage, guest house, edits, publication, one personal planet, save/return,
+invitations, chat, and ending a visit. Use Keep, Change, and Unclear spaces.
+Codex inspected the rendered pages; Kiki/human approval remains pending. Phone-size
+captures are desktop viewport evidence, not a physical-phone test. Supplemental
+interior, original-art, and earlier synthetic-account ledger captures are labeled.
+No printer job was sent. No launch, root-homepage promotion, or new payout is implied.
 
 ## Check the live Maya work cards (#12524) (2026-10-22)
 
