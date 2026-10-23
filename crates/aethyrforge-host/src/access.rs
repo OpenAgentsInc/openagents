@@ -87,3 +87,27 @@ impl PendingChange {
         Ok(())
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResumePolicy {
+    Keep,
+    Reconfirm,
+    Discard,
+}
+/// An expired login keeps its request; another account must start its own request.
+pub fn resume_policy(
+    owner: Option<&str>,
+    previous: Option<&str>,
+    current: Option<&str>,
+) -> ResumePolicy {
+    if current.is_some()
+        && (owner.is_some_and(|o| Some(o) != current)
+            || previous.is_some_and(|p| Some(p) != current))
+    {
+        ResumePolicy::Discard
+    } else if previous != current {
+        ResumePolicy::Reconfirm
+    } else {
+        ResumePolicy::Keep
+    }
+}

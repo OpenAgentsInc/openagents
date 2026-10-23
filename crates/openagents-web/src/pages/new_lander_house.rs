@@ -75,7 +75,7 @@ async fn page() -> Response {
                 form id="edit-form" {
                     div class="position-fields" {
                         @for (id, label) in [("edit-x", "X"), ("edit-y", "Y"), ("edit-z", "Z")] {
-                            label { (label) input id=(id) type="number" step="0.1" required value="0"; }
+                            label { (label) input id=(id) type="number" step="any" required value="0"; }
                         }
                     }
                     label for="edit-note" { "Notes" } textarea id="edit-note" maxlength="48000" {}

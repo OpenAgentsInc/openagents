@@ -65,3 +65,31 @@ fn grant_is_narrow_and_cannot_name_the_shared_tutorial_as_its_draft() {
     grant.capability = Capability::Inspect;
     assert!(grant.validate().is_err());
 }
+
+#[test]
+fn expired_login_keeps_its_request_but_another_account_cannot_inherit_it() {
+    assert_eq!(
+        resume_policy(None, None, Some("alice")),
+        ResumePolicy::Reconfirm
+    );
+    assert_eq!(
+        resume_policy(Some("alice"), Some("alice"), None),
+        ResumePolicy::Reconfirm
+    );
+    assert_eq!(
+        resume_policy(Some("alice"), None, Some("alice")),
+        ResumePolicy::Reconfirm
+    );
+    assert_eq!(
+        resume_policy(Some("alice"), None, Some("bob")),
+        ResumePolicy::Discard
+    );
+    assert_eq!(
+        resume_policy(None, Some("alice"), Some("bob")),
+        ResumePolicy::Discard
+    );
+    assert_eq!(
+        resume_policy(Some("alice"), Some("alice"), Some("alice")),
+        ResumePolicy::Keep
+    );
+}

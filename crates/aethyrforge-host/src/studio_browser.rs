@@ -74,6 +74,7 @@ struct State {
     busy: bool,
     popup: Option<web_sys::Window>,
     selection: Option<SelectedObject>,
+    owned_world: Option<String>,
 }
 impl State {
     fn snapshot(&self) -> Value {
@@ -199,27 +200,40 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     let Some(rc) = weak.upgrade() else { return };
     let mut s = rc.borrow_mut();
     let account = value["account"].as_str().map(str::to_string);
-    let changed = s.account.is_some() && account != s.account;
-    let alien = s
-        .pending
+    let policy = resume_policy(
+        s.pending.as_ref().and_then(|p| p.owner.as_deref()),
+        s.account.as_deref(),
+        account.as_deref(),
+    );
+    if s.owned_world
         .as_ref()
-        .and_then(|p| p.owner.as_ref())
-        .is_some_and(|owner| Some(owner) != account.as_ref());
-    if changed || alien {
+        .is_some_and(|owner| Some(owner) != account.as_ref())
+    {
+        let _ = s.request(&Action::RevokeAuthorization);
+        s.demo.reload();
+        s.owned_world = None;
+    }
+    if policy == ResumePolicy::Discard {
         s.pending = None;
         s.persist();
         note().set_value("");
-        let _ = s.request(&Action::RevokeAuthorization);
-        s.demo.reload();
         hide("edit-auth", true);
         say("Account changed. Choose a new change to continue.");
     }
     let was_signed = s.account.is_some();
     s.account = account;
     s.csrf = value["csrf"].as_str().map(str::to_string);
-    if !was_signed && s.account.is_some() && s.pending.is_some() {
+    if policy == ResumePolicy::Reconfirm && s.pending.is_some() {
+        let _ = s.request(&Action::RevokeAuthorization);
         s.auth_card();
-        say("You're signed in. Confirm your change to apply it.");
+        say(if s.account.is_some() {
+            "You're signed in. Confirm your change to apply it."
+        } else {
+            "Sign in again. Your requested change is still here."
+        });
+    }
+    if !was_signed && s.account.is_some() {
+        s.persist();
     }
     if let Some(popup) = &s.popup {
         if popup.closed().unwrap_or(true) {
@@ -294,6 +308,7 @@ async fn confirm(weak: Weak<RefCell<State>>) {
         s.busy = false;
         match result {
             Ok(()) => {
+                s.owned_world = s.account.clone();
                 s.pending = None;
                 s.persist();
                 hide("edit-auth", true);
@@ -373,6 +388,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         busy: false,
         popup: None,
         selection: None,
+        owned_world: None,
     }));
     let mut listeners = Vec::new();
     listen(&mut listeners, "world-edit", "click", |_| {
