@@ -1,0 +1,46 @@
+{
+  "schema": "openagents.verse.universe-qualification.v1",
+  "issue": 12550,
+  "status": "code complete; native consumer browser qualification pending",
+  "native_source_revision": "35843c9437",
+  "engine": {
+    "release": "u101d1eed6d2aa9f11",
+    "editor": "https://u101d1eed6d2aa9f11---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
+    "preview": "https://u101d1eed6d2aa9f11---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app",
+    "private_source": "469516cee64fe404caefbd7cce2edce59060b0a8",
+    "sdk_sha256": "486fe423a7798d10be218759fbdf3a703a7f5abaa12cc538741e0d90fd3ca2eb",
+    "sdk_source": "ddc9e40ee0f7e06cce7f47bc4e21128008aac7bd",
+    "protocol_version": 2,
+    "editor_image_digest": "sha256:8a6e76e13754880ca306acb55ee0add622c6f5d83df94e8d5e4c7b7d1a7c42bf",
+    "editor_revision": "aethyrforge-editor-00008-dug",
+    "preview_image_digest": "sha256:e40e5c30c6088dae76b975825817b42899a24704a37f352e27dbb2c32d73670d",
+    "preview_revision": "aethyrforge-preview-00008-nen"
+  },
+  "external_asset_files": 0,
+  "external_asset_bytes": 0,
+  "asset_set_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "manifest_sha256": "0ffd00753da6d5bf44997be5890a12ea0db5621c071310e7b7a4a5a56738ddc7",
+  "checks": {
+    "public_host_tests": 20,
+    "focused_website_tests": 4,
+    "public_wasm_check_and_build": true,
+    "private_typecheck_and_vite_build": true,
+    "native_consumer_browser_complete": false,
+    "real_provider_sign_in_complete": false
+  },
+  "implemented": [
+    "Rust guest/member entry and explicit Explore or Haunted House choice.",
+    "Centered translucent Grid card with pre-choice input lock.",
+    "Isolated private WebGPU planets, original star field, rings, gentle drift, reduced motion, picking, and orbit controls.",
+    "Locked central company world and curated keyboard destinations without live network claims.",
+    "Per-tab map selection and camera checkpoint return, with one frame handoff to the house.",
+    "Readable marketing and destination/back/retry links when graphics cannot open."
+  ],
+  "unfinished_checks": [
+    "Finish the fresh openagents-web-site consumer build and run scripts/check-verse-universe.mjs against these immutable origins.",
+    "Inspect actual desktop/mobile captures and verify pre-entry resource use, input lock, reduced motion, destination focus, house handoff, and map return.",
+    "Complete real test-account provider sign-in with the integrated journey in #12561; #12549 records the provider access step and popup reproducer."
+  ],
+  "source_rights": "The ported OpenAgents universe renderer keeps Apache-2.0 attribution and its license in private release notices. Other Aethyrforge implementation stays private. This does not change art rights.",
+  "activation": "Isolated immutable tags only. No production traffic shift, root homepage promotion, or launch schedule."
+}
