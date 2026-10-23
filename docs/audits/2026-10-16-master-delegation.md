@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12566: private main `d6c2e8d` uses the current renderer UV input and rejects
+  interface drift before replacing the working effect. Eight authoring checks,
+  TypeScript checks, and real GPU compile/failure/repair/undo/redo checks pass;
+  Codex inspected private working/failed-candidate captures. Pin candidate
+  `s6c9e53150296a3c0a` with public SDK/native `6af4d05101`, then rerun the
+  integrated saved-world and readable-contribution browser checks. They remain
+  pending for #12561; no provider or human-review pass is claimed.
+  [Project qualification](../verse/aethyrforge-project-qualification.json).
+
 - #12555: saved-version contributors and readable, non-mutating inspection use
   existing project access. Row summaries name accepted changed fields instead
   of repeating the save note. Exact current signed credits are read only through

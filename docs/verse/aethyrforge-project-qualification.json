@@ -50,5 +50,23 @@
     "preview_build": "4183be56-6045-4d8b-acd1-5611266c620b",
     "builds": "SUCCESS",
     "browser_qualification": "Failed saved restore; #12566. This candidate is not approved for promotion."
+  },
+  "uv_followup": {
+    "issue": 12566,
+    "private_source": "d6c2e8d57026ea0291576b9b5317edf6d81007ed",
+    "fix": "Use the current renderer rawUV input; reject a missing/renamed UV field and missing/duplicate integration marker before adoption.",
+    "checks": {
+      "private_authoring": 8,
+      "private_typecheck": true,
+      "real_gpu_compile_repair_undo_redo": true,
+      "failed_candidate_keeps_working_scene": true,
+      "scope": "Direct real private service/kernel/renderer checks, not provider sign-in or the integrated native saved-world flow.",
+      "capture_review": "Codex reviewed private effect-active and effect-failed-last-good captures; no human review claimed."
+    },
+    "next_candidate": "s6c9e53150296a3c0a",
+    "sdk_source": "6af4d051018c98a1a8ab440c56e49b2eb2451d0b",
+    "sdk_sha256": "384fdbeae78c50b763e172889b2ed391b1a3f0031790f719eeb31b439ed90c70",
+    "native_binary_sha256": "33b085bc751210d89d5d5ab8eb307ef43a00b71e32f2f4ff22253e4b16c2f69d",
+    "integrated_browser": "Pending immutable candidate build/deploy and retained project/contribution check. No production traffic shift."
   }
 }
