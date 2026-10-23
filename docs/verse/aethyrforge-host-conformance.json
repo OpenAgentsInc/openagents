@@ -1,0 +1,247 @@
+{
+  "schema": "openagents.aethyrforge.host.conformance.v1",
+  "verified_at": "2026-10-23T03:30:57.280519+00:00",
+  "issue": 12545,
+  "protocol": 1,
+  "public_sdk_revision": "0e0756f44529351652f7bdec41d055ba45bc8ccf",
+  "private_engine_revision": "8c92b46c4a387f902591a9285cbd0d1a908d3fc1",
+  "private_repository_visibility": "private",
+  "engine_release": "local-conformance-release",
+  "engine_abi": "aethyrforge.browser.v1",
+  "project_format": 1,
+  "environment": "Local macOS Chrome through openagents browser run; separate loopback host/editor/preview origins",
+  "public_artifact": {
+    "sha256": "eec098675bb71080fe7a9144388a7ffad8c71d74e5b0d02c4d535e794c3bffa4",
+    "files": [
+      {
+        "path": "aethyrforge_host.js",
+        "sha256": "45910aa0f139cc5928ff3c42699681a626440b046f7fff2988478a4c675fb2ec",
+        "bytes": 30702
+      },
+      {
+        "path": "aethyrforge_host_bg.wasm",
+        "sha256": "340c3ef3e03a7c35aea62abe042a8ce9a87c40ca4546bf82154691b64715eb06",
+        "bytes": 561572
+      },
+      {
+        "path": "forged-bytes.html",
+        "sha256": "5249c21dfafc356c195938835411124fdfc823fde3120a8533b6bd8018e300c1",
+        "bytes": 1186
+      },
+      {
+        "path": "forged-object.html",
+        "sha256": "5249c21dfafc356c195938835411124fdfc823fde3120a8533b6bd8018e300c1",
+        "bytes": 1186
+      },
+      {
+        "path": "forged-payload.html",
+        "sha256": "5249c21dfafc356c195938835411124fdfc823fde3120a8533b6bd8018e300c1",
+        "bytes": 1186
+      },
+      {
+        "path": "forged-session.html",
+        "sha256": "5249c21dfafc356c195938835411124fdfc823fde3120a8533b6bd8018e300c1",
+        "bytes": 1186
+      },
+      {
+        "path": "forged-version.html",
+        "sha256": "5249c21dfafc356c195938835411124fdfc823fde3120a8533b6bd8018e300c1",
+        "bytes": 1186
+      },
+      {
+        "path": "index.html",
+        "sha256": "a3342cfb4ec7a06c19332422e6c4b6b1d2fc776a861e5776242ed115e051f825",
+        "bytes": 2166
+      },
+      {
+        "path": "mock.html",
+        "sha256": "8e12af353c6c1b6642e8fa31724fde10aa780df611ac85f8b3205bf63dfb506b",
+        "bytes": 2157
+      }
+    ]
+  },
+  "private_artifact": {
+    "sha256": "946a60aeec9949ac00f2f426965fb2b2a6af5a7dc5171a83986fc68b6f1fb4ad",
+    "files": [
+      {
+        "path": "assets/editor-BijT3fSO.js",
+        "sha256": "f9300c7f67025a2f9ef6faa76f02ebd706743f30872333d148d3db5aa0374485",
+        "bytes": 369282
+      },
+      {
+        "path": "assets/editor-oI5kIjNm.css",
+        "sha256": "bc03b5130bed0a0d296c7ebf5c73530eac3611e30a52135bd523c9bf8a75a126",
+        "bytes": 14419
+      },
+      {
+        "path": "assets/preview-Byzo1POe.js",
+        "sha256": "160e0c370009f9055d102e73fd83d21545ec35ecb04620abb2012f2368c23727",
+        "bytes": 2240
+      },
+      {
+        "path": "assets/preview.worker-ABQtpPly.js",
+        "sha256": "09371288996ac4812c9c7bea68fec7bed6cee1eecfd17f340cfe12abca500445",
+        "bytes": 281728
+      },
+      {
+        "path": "assets/protocol-B28M36Bu.js",
+        "sha256": "cb456ec2542ccebfcc5f8927a314b35941d2385a50b6a09eda69d53080242450",
+        "bytes": 3996
+      },
+      {
+        "path": "favicon.svg",
+        "sha256": "160f33ee23f27890d308aef182c2287db643b11af07ccdd51ec2123c481072d4",
+        "bytes": 200
+      },
+      {
+        "path": "index.html",
+        "sha256": "e8e18d687340df895b91334f25af78879c30533efed30ac5e73b02ec2dd39ec1",
+        "bytes": 1096
+      },
+      {
+        "path": "kernel.wasm",
+        "sha256": "7b8b454b5770aab4184ba257ea63a74b065dee9b6c51507812944ca5a3346466",
+        "bytes": 500678
+      },
+      {
+        "path": "preview.html",
+        "sha256": "c0c190c330ec2b60446907402197286d82ac323738faf9cc69a22264a1f88833",
+        "bytes": 1048
+      },
+      {
+        "path": "private-assets/catalog.json",
+        "sha256": "850a73256fca0535a7456eef06d1e8af66a9112c2b727c40b44b0e4c1fb7256b",
+        "bytes": 142
+      },
+      {
+        "path": "private-assets/colors.bin",
+        "sha256": "8688d249e9d047b4fc2fb89ce05afe9ec89252ffccdd969de6eef260dd7ffb21",
+        "bytes": 12
+      },
+      {
+        "path": "private-assets/indices.bin",
+        "sha256": "be3e63ddb18e272dd8a8ba102772e6585e672d87230e0048635f47405926109f",
+        "bytes": 12
+      },
+      {
+        "path": "private-assets/scene-night.json",
+        "sha256": "9eebc8260322b45eb832847c67d6f256acbccee8ad4a32fd97480a594b707186",
+        "bytes": 1386
+      },
+      {
+        "path": "private-assets/scene.json",
+        "sha256": "c23ebc11ceb7d96622da0c838c8f31ad55f0e3efa99b23361f24940db59e15d2",
+        "bytes": 1384
+      },
+      {
+        "path": "private-assets/vertices.bin",
+        "sha256": "cf6527b3b92e9c1c66787205dc31b31a97a4ade679ec88ca9f19b80c2dc313a9",
+        "bytes": 144
+      }
+    ],
+    "source_maps": 0
+  },
+  "checks": {
+    "rust_contract_tests": 6,
+    "rust_native_locked_build": true,
+    "rust_wasm_locked_build": true,
+    "rust_format": true,
+    "hakari_generate_diff": true,
+    "hakari_manage_deps_dry_run": true,
+    "hakari_verify": true,
+    "workspace_hack_targets": true,
+    "private_typescript_check": true,
+    "private_build": true,
+    "private_unit_tests": 212,
+    "private_spec_check": true,
+    "browser": [
+      {
+        "engine": "public-mock",
+        "checks": [
+          "ready/open/inspect/observe/close",
+          "overlay continuity",
+          "window forgery ignored",
+          "reload checkpoint",
+          "release mismatch rejected",
+          "frame cleanup",
+          "forged session/version/payload/bytes/transport rejected"
+        ],
+        "session_changed_on_reload": true,
+        "generation_changed_on_reload": true,
+        "starting_checkpoint": {
+          "eye": [
+            2,
+            1.7,
+            4
+          ],
+          "target": [
+            2,
+            1.7,
+            3
+          ],
+          "mode": "walk"
+        },
+        "restored_checkpoint": {
+          "eye": [
+            3,
+            1.7,
+            4
+          ],
+          "target": [
+            3,
+            1.7,
+            3
+          ],
+          "mode": "walk"
+        }
+      },
+      {
+        "engine": "private-artifact",
+        "checks": [
+          "ready/open/inspect/observe/close",
+          "overlay continuity",
+          "window forgery ignored",
+          "reload checkpoint",
+          "release mismatch rejected",
+          "frame cleanup",
+          "forged session/version/payload/bytes/transport rejected"
+        ],
+        "session_changed_on_reload": true,
+        "generation_changed_on_reload": true,
+        "starting_checkpoint": {
+          "eye": [
+            0,
+            3.1700000762939453,
+            5
+          ],
+          "target": [
+            0,
+            3.1700000762939453,
+            4
+          ],
+          "mode": "fly"
+        },
+        "restored_checkpoint": {
+          "eye": [
+            3,
+            4,
+            6
+          ],
+          "target": [
+            3,
+            4,
+            5
+          ],
+          "mode": "fly"
+        }
+      }
+    ]
+  },
+  "limits": [
+    "Local artifact conformance only; not a production deployment or security qualification.",
+    "Private artifact uses original synthetic triangle data and an empty catalog, not vendor assets or Haunted House art.",
+    "Only read-only inspect/observe capabilities are enabled; authorization, editing, save services, publish/share, and deployment remain follow-up issues.",
+    "Public builds and mock checks require no private checkout, credentials, headers, assets, or engine binaries.",
+    "Hashes identify local tested bytes; operator artifact approval and immutable delivery are #12546."
+  ]
+}

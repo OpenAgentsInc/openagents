@@ -121,5 +121,5 @@ artifact using the same Rust endpoint, including panel continuity, reload
 checkpoint, forged window messages, pinned-release mismatch, and leaving the frame.
 The mock is synthetic and cannot qualify rendering, authorized edits, hosted
 persistence, publishing, asset licenses, production headers, or performance.
-The integrated receipt alongside this document records the exact tested private
+The [integrated receipt](aethyrforge-host-conformance.json) records the exact tested private
 revision and artifact hashes, without publishing its code or binaries.

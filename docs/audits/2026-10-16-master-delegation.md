@@ -485,6 +485,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12545: public SDK and private artifact pass local protocol and browser checks;
+  [receipt](../verse/aethyrforge-host-conformance.json). #12546 owns immutable private
+  deployment, production origins/headers, and a deployed conformance run.
+
 - #12513: rebuild the Kiln WASI tool bundle during the next normal deployment
   and verify that its patch tool refuses overlapping ASCII and multibyte
   searches. Native crate regressions cover both cases and unique replacements.
