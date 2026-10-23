@@ -48,9 +48,9 @@ authorized browser path when available.
 
 The dedicated-account provider step also covers #12554: save a world, close it,
 sign back in, find that account's project, and confirm resuming its editable
-content, repairable draft, and valid place. The connected hosted returning-user check already passes with a fresh injected
-backend-issued legacy cookie and actual GCS storage; that is separate from
-provider sign-back-in.
+content, repairable draft, and valid place. The connected hosted returning-user
+check already passes with a fresh injected backend-issued legacy cookie and actual
+GCS storage; that is separate from provider sign-back-in.
 
 For #12559, review the retained Soft pastels, Bold fantasy, and night desktop/mobile
 screens in this app. The local native/GPU checks pass, including mobile microphone

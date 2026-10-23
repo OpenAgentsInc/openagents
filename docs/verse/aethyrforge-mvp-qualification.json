@@ -25,7 +25,7 @@
   "sources": {
     "native_website": "c20ac6e2ff8c9cbb1298300218e31632825107d1",
     "host_sdk": "5169613bc1aaa513b4ad31c81d226ee52af8de9c",
-    "kiln_build": "5169613bc1",
+    "kiln_build": "5169613bc1aaa513b4ad31c81d226ee52af8de9c",
     "kiln_prompt_change": "c20ac6e2ff8c9cbb1298300218e31632825107d1",
     "private_engine": "0a28e7d32ed8eee81b8924e60289e9651d096a26",
     "gateway": "3188575a3171f83bd6934bf2fb4a154e7c8eb7b1",
@@ -151,7 +151,7 @@
     "injected_legacy_session_cookie": true,
     "real_speech_provider": false,
     "microphone_checked": false,
-    "transport": "Fresh backend-issued legacy sess_ cookie in a clean isolated profile, HttpOnly/Secure/SameSite=Strict; no application Authorization. Owned HTTPS proxy preserves browser Cookie and actual native CSRF/Origin/redirect behavior using per-profile host mapping and exact SPKI trust. Private runtime traffic remains direct. No production auth, CSP or origin relaxation."
+    "transport": "Fresh backend-issued legacy sess_ cookie in a clean isolated profile, HttpOnly/Secure/SameSite=Strict; no application Authorization. The owned HTTPS proxy forwards the browser Cookie unchanged and translates browser Origin/Referer to the configured isolated native origin, preserving strict native CSRF/Origin validation and real HTTP redirects. Per-profile host mapping and exact certificate SPKI trust affect only the isolated test profile. Private runtime traffic remains direct. No production auth, CSP or origin relaxation."
   },
   "connected_story": {
     "single_uninterrupted_pass": false,
@@ -389,5 +389,6 @@
     "public_private_engine_source": false,
     "public_private_captures": false,
     "production_baseline_preserved": "coder-web-b3afdd3d3b-20261023184541 at100%; concurrent Medieval Town tag coder-web-b3afdd3d3b-20261023191802 preserved. Earlier17:05 baseline was superseded by the other agent, never restored."
-  }
+  },
+  "native_children_closed": 30
 }
