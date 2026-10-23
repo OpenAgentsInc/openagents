@@ -1,3 +1,4 @@
+import { CommandQueue } from "./command-queue.ts";
 import { compileDecision } from "./compound.ts";
 import { isHouse } from "./town.ts";
 import { IS_TOWN, LAB } from "./lab.ts";
@@ -28,6 +29,7 @@ const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const clock = () => performance.timeOrigin + performance.now();
 export function createEditor(bridge: Bridge) {
+  const commandQueue = new CommandQueue();
   let ready = false,
     busy = false,
     selected: string | null = null,
@@ -145,9 +147,19 @@ export function createEditor(bridge: Bridge) {
     origin = "manual",
     baseRevision = bridge.state().project.revision,
   ) {
+    const queuedOperation = structuredClone(operation);
+    if (origin === "manual") cancel("Applying your change…");
+    return commandQueue.run(() =>
+      submitNow(queuedOperation, origin, baseRevision),
+    );
+  }
+  async function submitNow(
+    operation: Operation,
+    origin = "manual",
+    baseRevision = bridge.state().project.revision,
+  ) {
     if (!ready || busy)
       throw new Error("Wait for the current scene change to finish.");
-    if (origin === "manual") cancel("Applying your change…");
     busy = true;
     refresh();
     const request = crypto.randomUUID();
