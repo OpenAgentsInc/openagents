@@ -1,5 +1,7 @@
+import { CommandQueue } from "./command-queue.ts";
+import { compileDecision } from "./compound.ts";
 import { isHouse } from "./town.ts";
-import { IS_TOWN, LAB } from "./lab.ts";
+import { IS_TOWN, IS_VERSE, LAB } from "./lab.ts";
 import { createLayoutControls } from "./layout-controls.ts";
 import { Effect } from "effect";
 import {
@@ -8,8 +10,7 @@ import {
   type AssetKind,
   type Behavior,
   SCENE_PATH,
-  MAX_SCENE_BYTES,
-  decisionOperation,
+  MAX_PROJECT_BYTES,
   readProject,
   cleanHaunt,
   type Decision,
@@ -23,11 +24,16 @@ type Bridge = {
   post: (message: object) => void;
   state: () => any;
   workspace: <T>(job: () => Promise<T>) => Promise<T>;
+  materialChanged?: (project: Project) => Promise<void>;
+  materialSource?: () => string;
+  authorize?: () => boolean;
+  changed?: (operation: Operation, revision: number) => Promise<void>;
 };
 const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const clock = () => performance.timeOrigin + performance.now();
 export function createEditor(bridge: Bridge) {
+  const commandQueue = new CommandQueue();
   let ready = false,
     busy = false,
     selected: string | null = null,
@@ -94,6 +100,7 @@ export function createEditor(bridge: Bridge) {
     el("ghost-behavior").textContent = ghost
       ? `Selected ghost · ${ghost.behavior === "float" ? "Floating around" : ghost.behavior === "chase" ? "Chasing you" : "Still"}`
       : "Select a ghost to give it a behavior.";
+    if (p) el<HTMLSelectElement>("tint").value = p.tint;
     if (!p || rendered === p.revision) return;
     rendered = p.revision;
     const select = el<HTMLSelectElement>("selected");
@@ -145,9 +152,23 @@ export function createEditor(bridge: Bridge) {
     origin = "manual",
     baseRevision = bridge.state().project.revision,
   ) {
+    if (bridge.authorize && !bridge.authorize()) {
+      refresh();
+      throw new Error("Log in to make a change.");
+    }
+    const queuedOperation = structuredClone(operation);
+    if (origin === "manual") cancel("Applying your change…");
+    return commandQueue.run(() =>
+      submitNow(queuedOperation, origin, baseRevision),
+    );
+  }
+  async function submitNow(
+    operation: Operation,
+    origin = "manual",
+    baseRevision = bridge.state().project.revision,
+  ) {
     if (!ready || busy)
       throw new Error("Wait for the current scene change to finish.");
-    if (origin === "manual") cancel("Applying your change…");
     busy = true;
     refresh();
     const request = crypto.randomUUID();
@@ -189,6 +210,8 @@ export function createEditor(bridge: Bridge) {
       refresh();
       status(`Changed · ${Math.round(receipt.submittedMs)} ms`);
       await persist(result.state.project);
+      await bridge.materialChanged?.(result.state.project);
+      await bridge.changed?.(operation, receipt.revision);
       return receipt;
     } finally {
       busy = false;
@@ -196,10 +219,12 @@ export function createEditor(bridge: Bridge) {
     }
   }
   async function interpret(text: string) {
+    if (bridge.authorize && !bridge.authorize())
+      throw new Error("Log in to make a change.");
     if (!ready || busy)
       throw new Error("Wait for the current scene change to finish.");
     if (!text.trim() || new TextEncoder().encode(text).length > 1200)
-      throw new Error("Describe one short scene change.");
+      throw new Error("Describe your changes in a short request.");
     cancel();
     const controller = new AbortController();
     decision = controller;
@@ -211,7 +236,7 @@ export function createEditor(bridge: Bridge) {
     const poseAtStart = { ...bridge.state().pose };
     const started = clock();
     status(
-      "Choosing one scene change… You can keep walking or use the controls.",
+      "Choosing your scene changes… You can keep walking or use the controls.",
     );
     refresh();
     const timeout = setTimeout(() => controller.abort(), 2700);
@@ -255,10 +280,11 @@ export function createEditor(bridge: Bridge) {
           "The scene changed while this request was pending. Try it again.",
         );
       const roundTripMs = clock() - started;
-      const operation = decisionOperation(
+      const operation = compileDecision(
         d,
         text,
-        ["add_room", "add_wing", "remove_wall"].includes(d.action)
+        d.action === "compound" ||
+          ["add_room", "add_wing", "remove_wall"].includes(d.action)
           ? poseAtStart
           : bridge.state().pose,
         selectedAtStart,
@@ -330,9 +356,15 @@ export function createEditor(bridge: Bridge) {
   async function ingest(text: string, restore = false) {
     if (selfWrites.has(text)) return;
     try {
-      if (new TextEncoder().encode(text).length > MAX_SCENE_BYTES)
+      if (new TextEncoder().encode(text).length > MAX_PROJECT_BYTES)
         throw new Error("The scene file is too large.");
-      const project = readProject(JSON.parse(text));
+      const parsed = JSON.parse(text);
+      if (parsed.materialDraft === undefined && bridge.materialSource)
+        parsed.materialDraft = {
+          asset: LAB.material,
+          source: bridge.materialSource(),
+        };
+      const project = readProject(parsed);
       if (JSON.stringify(project) === JSON.stringify(bridge.state().project))
         return;
       if (restore) {
@@ -348,12 +380,9 @@ export function createEditor(bridge: Bridge) {
         });
         rendered = -1;
         refresh();
-        if (
-          !IS_TOWN &&
-          JSON.stringify(cleanHaunt(JSON.parse(text))) !==
-            JSON.stringify(JSON.parse(text))
-        )
+        if (JSON.stringify(project) !== JSON.stringify(JSON.parse(text)))
           await persist(project);
+        await bridge.materialChanged?.(project);
         status("Opened your saved Kiln scene.");
       } else
         await submit(
@@ -484,7 +513,11 @@ export function createEditor(bridge: Bridge) {
     setReady: (value: boolean) => {
       if (value && !initialized) {
         initialized = true;
-        status("Ready. Place an asset or describe one change.");
+        status(
+          IS_VERSE
+            ? "Ready. Choose something to change."
+            : "Ready. Place an asset or describe your changes.",
+        );
       }
       ready = value;
       refresh();

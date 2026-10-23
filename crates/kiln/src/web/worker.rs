@@ -47,6 +47,15 @@ impl Memory for JsMemory {
 /// The sentinel a host call returns for `proc_exit`; the shim throws it.
 const EXIT: &str = "kiln-exit";
 
+// A static module keeps the variadic WASI adapter compatible with a strict CSP.
+#[wasm_bindgen(
+    inline_js = "export function kilnWasiImport(h, name) { return (...a) => { const r = h(name, a.map(x => typeof x === 'bigint' ? Number(BigInt.asIntN(64, x)) : x)); if (typeof r === 'string') throw new Error(r); return r; }; }"
+)]
+extern "C" {
+    #[wasm_bindgen(js_name = kilnWasiImport)]
+    fn wasi_import(handler: &JsValue, name: &str) -> Function;
+}
+
 pub async fn run(message: JsValue) -> Result<JsValue, JsValue> {
     let started = now_ms();
     let module: WebAssembly::Module = get(&message, "module").dyn_into()?;
@@ -84,16 +93,12 @@ pub async fn run(message: JsValue) -> Result<JsValue, JsValue> {
     };
     // Each import becomes a JavaScript function that forwards its
     // arguments (64-bit ones as numbers) and throws to end the program.
-    let shim = Function::new_with_args(
-        "h, name",
-        "return (...a) => { const r = h(name, a.map(x => typeof x === 'bigint' ? Number(BigInt.asIntN(64, x)) : x)); if (typeof r === 'string') throw new Error(r); return r; }",
-    );
     let wasi = Object::new();
     for import in WebAssembly::Module::imports(&module).iter() {
         let module_name = get(&import, "module").as_string().unwrap_or_default();
         let name = get(&import, "name").as_string().unwrap_or_default();
         if module_name == "wasi_snapshot_preview1" {
-            let f = shim.call2(&JsValue::NULL, handler.as_ref(), &JsValue::from_str(&name))?;
+            let f = wasi_import(handler.as_ref(), &name);
             set(&wasi, &name, f);
         }
     }

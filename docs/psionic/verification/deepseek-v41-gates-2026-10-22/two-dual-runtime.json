@@ -195,5 +195,166 @@
     "Pylon CLI usage is absent; input counts come from the native serving tokenizer and template.",
     "Expected refusals have ok=false in the retained request results.",
     "This private runtime check provides no numerical qualification receipt. The two VMs remain allocated for subsequent qualification, after all native Pylon workers stopped."
-  ]
+  ],
+  "performance": {
+    "purpose": "Recorded native Pylon performance; network and head costs are aggregated",
+    "placement": "two-dual",
+    "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+    "rows": [
+      {
+        "tokens": 2,
+        "first_token_ms": 791,
+        "decode_tokens_per_second": 22.02,
+        "decode_token_ms": 45.42,
+        "stage_ms": [
+          10.84,
+          10.8,
+          10.95,
+          11.49
+        ],
+        "links_and_head_ms": 1.33,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          201,
+          194,
+          196,
+          189
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 773,
+        "decode_tokens_per_second": 19.43,
+        "decode_token_ms": 51.48,
+        "stage_ms": [
+          10.81,
+          10.79,
+          10.93,
+          11.43
+        ],
+        "links_and_head_ms": 7.52,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          193,
+          192,
+          193,
+          187
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 1592,
+        "decode_tokens_per_second": 21.83,
+        "decode_token_ms": 45.81,
+        "stage_ms": [
+          10.92,
+          10.86,
+          10.95,
+          11.49
+        ],
+        "links_and_head_ms": 1.59,
+        "stage_state_bytes_per_token": 261751,
+        "prefill_stage_ms": [
+          398,
+          396,
+          397,
+          384
+        ]
+      },
+      {
+        "tokens": 4096,
+        "first_token_ms": 989,
+        "decode_tokens_per_second": 20.16,
+        "decode_token_ms": 49.61,
+        "stage_ms": [
+          11.44,
+          11.54,
+          11.64,
+          12.17
+        ],
+        "links_and_head_ms": 2.82,
+        "stage_state_bytes_per_token": 261247,
+        "prefill_stage_ms": [
+          247,
+          246,
+          246,
+          239
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 773,
+        "decode_tokens_per_second": 20.82,
+        "decode_token_ms": 48.04,
+        "stage_ms": [
+          10.81,
+          10.79,
+          10.87,
+          11.43
+        ],
+        "links_and_head_ms": 4.13,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          193,
+          192,
+          193,
+          187
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 128713,
+        "decode_tokens_per_second": 16.45,
+        "decode_token_ms": 60.78,
+        "stage_ms": [
+          11.59,
+          11.84,
+          11.8,
+          12.16
+        ],
+        "links_and_head_ms": 13.39,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          31750,
+          31748,
+          32390,
+          31113
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 776,
+        "decode_tokens_per_second": 21.91,
+        "decode_token_ms": 45.64,
+        "stage_ms": [
+          10.89,
+          10.78,
+          10.88,
+          11.39
+        ],
+        "links_and_head_ms": 1.69,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          193,
+          193,
+          193,
+          187
+        ]
+      }
+    ],
+    "raw_lines": [
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 791 ms, then 22.02 tokens/s; a decode token took 45.42 ms: stages 10.84 + 10.80 + 10.95 + 11.49 ms, links and head 1.33 ms, 260727 bytes of stage state a token; prefill stages 201 + 194 + 196 + 189 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 773 ms, then 19.43 tokens/s; a decode token took 51.48 ms: stages 10.81 + 10.79 + 10.93 + 11.43 ms, links and head 7.52 ms, 260727 bytes of stage state a token; prefill stages 193 + 192 + 193 + 187 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 1592 ms, then 21.83 tokens/s; a decode token took 45.81 ms: stages 10.92 + 10.86 + 10.95 + 11.49 ms, links and head 1.59 ms, 261751 bytes of stage state a token; prefill stages 398 + 396 + 397 + 384 ms",
+      "pylon head: model group answered 4096 tokens (0 of reasoning): first token after 989 ms, then 20.16 tokens/s; a decode token took 49.61 ms: stages 11.44 + 11.54 + 11.64 + 12.17 ms, links and head 2.82 ms, 261247 bytes of stage state a token; prefill stages 247 + 246 + 246 + 239 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 773 ms, then 20.82 tokens/s; a decode token took 48.04 ms: stages 10.81 + 10.79 + 10.87 + 11.43 ms, links and head 4.13 ms, 260727 bytes of stage state a token; prefill stages 193 + 192 + 193 + 187 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 128713 ms, then 16.45 tokens/s; a decode token took 60.78 ms: stages 11.59 + 11.84 + 11.80 + 12.16 ms, links and head 13.39 ms, 260727 bytes of stage state a token; prefill stages 31750 + 31748 + 32390 + 31113 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 776 ms, then 21.91 tokens/s; a decode token took 45.64 ms: stages 10.89 + 10.78 + 10.88 + 11.39 ms, links and head 1.69 ms, 260727 bytes of stage state a token; prefill stages 193 + 193 + 193 + 187 ms"
+    ],
+    "limitations": [
+      "The links-and-head value is aggregate overhead, not separate one-way latencies for each network hop.",
+      "Short two-token answers have one decode step and are not sustained throughput measurements.",
+      "The4096-token workload ends with an honest output-cap refusal; it is not a complete answer."
+    ]
+  }
 }

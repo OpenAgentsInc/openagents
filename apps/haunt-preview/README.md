@@ -3,6 +3,7 @@
 A local browser editor with direct WebGPU, Effect, the real Kiln WASI/OPFS
 workspace, and the Rust Jev SDK. Scene controls apply typed commands immediately.
 Natural language takes one bounded decision request, then uses those same commands.
+You can combine up to four changes in one request; they save and undo together.
 
 - `/` opens **Haunted House**, with its spooky props and existing room editor.
 - `/medieval/` opens **Medieval Town Lab**, with a fullscreen world and floating
@@ -29,6 +30,93 @@ Shader source editing is under **Advanced**. Ordinary scene edits do not invoke
 Kiln's general coding loop, rewrite source, or compile a shader. Tint changes
 update a uniform; procedural object changes update geometry; kit edits update instances. New behaviors or shader programs
 belong in an explicit authoring workflow, rather than the placement interaction.
+
+## Verse entrance and editing panels
+
+`/new-lander/house` mounts this same house runtime inside the isolated marketing
+preview. Guests can walk, return to the planets, and open **Edit**. Edit opens
+translucent panels for objects/light, instructions, layout, material source, and
+the contribution log over the running world. Closing the panels preserves the
+player and renderer. The first requested change prompts sign-in through the
+existing account service. A local server without that service offers exploration
+and tool review; it does not display an unavailable login action. The standalone
+labs keep their existing local editing behavior.
+
+The log combines a committed snapshot of actual source changes, linked to their
+commits, with successful edits saved in this browser. Those local records carry
+the server-provided creator label, time, description, and version, and save to
+`haunt/changes.json` through Kiln. Rejected edits add no entry. This is local
+authoring history, not a shared world or payment ledger. Amounts show **Not
+recorded** because no house payment records exist; browser files cannot invent
+earnings. Shared collaboration and real reward attribution need their existing
+domain services. The optional natural-language adapter remains available in the
+standalone lab; this Rust mount offers its working direct controls.
+
+Build Kiln as described below, then build the browser files:
+
+```sh
+KILN_OUT=/path/to/built/kiln npm run build:verse --prefix apps/haunt-preview
+```
+
+Start `openagents-web` with `OPENAGENTS_VERSE_HOUSE_DIR` pointing to the absolute
+`apps/haunt-preview/dist-verse` directory. A development checkout also finds that
+directory automatically. The selector exposes house entry only when these files
+exist. The Rust server serves the built module, worker, shader, and Kiln files
+under `/new-lander/house/`; it does not serve source files or another directory.
+Build artifacts stay outside Git. `/` and the existing game routes are unchanged.
+
+```sh
+NEW_LANDER_URL=http://127.0.0.1:PORT \
+HAUNT_EVIDENCE="$(openagents scratch)/verse-house-browser" \
+openagents browser run -- node apps/haunt-preview/scripts/verify-verse.mjs
+```
+
+The check covers the real guest journey, panels, blocked guest edits, position
+continuity, and mobile layout. Two clearly named response fixtures exercise the
+member UI, Kiln saves/reopen, attribution, undo, and invalid-shader recovery in an
+isolated browser. They do not establish live sign-in, collaboration, or payments.
+
+## Natural requests and defaults
+
+Both labs treat omitted preferences and phrases such as `your choice`, `anywhere`,
+`surprise me`, `wherever it fits`, and `up to you` as choices the editor can make.
+
+- A generic prop or decoration becomes a pumpkin in Haunted House or a barrel in
+  Medieval Town. Generic town furniture becomes a chair; generic buildings use
+  cottages and townhouses. Explicit asset names stay explicit.
+- Automatic placement finds clear floor space near the player, then searches the
+  rest of the world on the same floor. It avoids walls, the player, and other props.
+  Buildings use clear outdoor plots. Explicit coordinates and directions take priority.
+- A singular request adds one object. `A couple` means two; `a few`, `some`,
+  `several`, and an unnumbered plural mean three. Literal counts stay exact, with
+  a limit of eight per request. Unsupported counts fail before anything changes.
+- Delegated sizes use normal size. Delegated lighting uses warm light; delegated
+  ghost movement uses floating. A room or wing with no location preference uses
+  a nearby wall where the extension fits.
+- Moving a selected prop `somewhere else` uses the same clear-space search.
+  Each change saves in Kiln and uses one undo step. Unsupported objects or actions and negated
+  requests leave the scene unchanged.
+
+Run `npm run verify:natural-defaults` through `openagents browser run` with
+`HAUNT_URL` set to the local preview to test natural phrases in both labs.
+
+## Combined requests
+
+- Haunted House: `add 3 ghosts and make them chase me`, `add 2 pumpkins and 3 candles`,
+  or `add 2 ghosts, turn the light blue, and make them float`.
+- Medieval Town: `add 2 houses and put benches outside`, or
+  `add 2 cottages and put 2 benches outside each house`.
+- `Them` and `it` can refer to the newest group created in the request. Existing
+  ghosts keep their behavior unless you explicitly address all ghosts.
+- Outside props go beside the new houses, with clear entrances. An unnumbered
+  plural adds one per house; explicit counts are totals unless you say `each`,
+  `every`, or `per house`.
+- All parts use one decision call, scene revision, Kiln save, and undo step.
+  If any part fails, none of the changes apply. Up to four parts and 32 underlying
+  edits fit in one request. Use undo or redo on its own.
+
+Run `npm run verify:compound` under `openagents browser run` with `HAUNT_URL` set
+for browser checks of combined edits, references, saves, and failures.
 
 ## Run
 
@@ -194,11 +282,15 @@ handles exact arguments and execution.
   IDs with X/Z/scale. Town furniture can also have a floor height; houses keep
   local room plans. `readProject` copies only saved fields and refuses unsupported
   versions, duplicate IDs, invalid assets, out-of-room coordinates, and invalid sizes.
+- Manual shader saves, Original, and Kiln WGSL writes share this history. Undo and
+  redo restore both the source file and preview. Empty or invalid drafts stay saved
+  while the last working shader continues. Shader source and scene data each have
+  a separate 64 KiB limit; saved projects also allow room for JSON escapes.
 - GPU handles, Effect values, player pose, model responses, and undo history are
   outside saved project data. Inspection returns copies.
 - A transaction carries its ID, project ID, base revision, and an allowed operation.
-  Add, move, resize, remove, tint, replace, undo, and redo share `SceneHistory`.
-  Batches contain at most eight scene edits and validate atomically.
+  Add, move, resize, remove, tint, shader source, replace, undo, and redo share `SceneHistory`.
+  Batches contain at most eight project edits and validate atomically.
 - The worker validates the targeted preview/token and command, prepares the change,
   and commits at a frame boundary. Failed commands preserve the project, history,
   player, shader, and device. IDs survive undo/redo; revision numbers never rewind.
@@ -218,6 +310,10 @@ handles exact arguments and execution.
   a second collaboration authority, identity service, or storage backend.
 
 ## Check
+
+Run `npm run verify:source-history` through `openagents browser run` with
+`HAUNT_URL` set to the local preview to check shader undo and reopen in both labs.
+
 
 ```sh
 npm run check
@@ -240,10 +336,11 @@ observation bound. Neither is a GPU presentation timestamp. Resource counters co
 the demo's objects, not total driver allocations. The earlier Pylon source-patch
 record remains historical evidence, rather than the current interaction.
 
-Scene Undo covers objects, light color, behaviors, and the house layout. Raw WGSL uses the Phase 0
-draft/validation path and **Original**; integrating asset-draft undo into the
-shared transaction history remains in #12502.
+Undo covers objects, light color, behaviors, the house layout, and manual or Kiln
+WGSL drafts through the shared transaction history completed in #12502.
 
-Device reconstruction (#12503), full game parity, shared projects, and public
-publishing remain follow-ups. The scoped browser-language exception is in
-[the agent contract](../../AGENTS.md).
+The owner superseded the separate runtime and asset-compiler work (#12503 and
+#12504) with the Aethyrforge migration. Their closures do not establish device
+reconstruction or full compiler acceptance. See the
+[implementation status and retained work](../../docs/verse/browser-editor-implementation-plan.md).
+The scoped browser-language exception is in [the agent contract](../../AGENTS.md).

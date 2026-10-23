@@ -146,7 +146,6 @@ pub(crate) fn facts(shown: &Shown) {
         let section = document.create_element("section").ok()?;
         section.set_id("pylon-work-facts");
         let _ = section.set_attribute("aria-label", "Live work");
-        let _ = section.set_attribute("style", "white-space:pre-wrap");
         parent.append_child(&section).ok()?;
         Some(section)
     });

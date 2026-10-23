@@ -264,7 +264,6 @@ test("delegated buildings preserve exact counts, choose usable styles and clear 
     "add 0 buildings anywhere",
     "add 9 buildings anywhere",
     "add 2.5 buildings anywhere",
-    "add buildings anywhere",
   ]) {
     const unchanged = structuredClone(s.project);
     assert.throws(() => decisionOperation(d, text, pose, null, s.project));
@@ -291,4 +290,150 @@ test("delegated buildings preserve exact counts, choose usable styles and clear 
   const distantPose = { ...pose, x: 35, z: -35 };
   apply(next, decisionOperation(d, text, distantPose, null, next.project));
   assert.equal(next.project.entities.length, before.entities.length + 2);
+});
+
+test("town chooses furniture, props, and fitting extensions without inventing exact arguments", () => {
+  const pose = { x: -11, z: 3, y: 0, yaw: 0, pitch: 0 };
+  const d = {
+    action: "add_asset",
+    asset: "furniture",
+    placement: "anywhere",
+    size: "normal",
+    confidence: 1,
+    needs_review: false,
+    tint: "warm",
+    model: "fixture",
+    model_ms: 1,
+  };
+  for (const [text, count, asset] of [
+    ["add a couple of furnishings wherever they fit", 2, "furniture"],
+    ["add 2 cool decorations of your choice anywhere", 2, "any_asset"],
+    ["add buildings anywhere", 3, "building"],
+  ] as const) {
+    const s = new SceneHistory();
+    apply(s, decisionOperation({ ...d, asset }, text, pose, null, s.project));
+    assert.equal(
+      s.project.entities.length,
+      initialProject().entities.length + count,
+    );
+    assert.deepEqual(readProject(s.project), s.project);
+  }
+  for (const action of ["add_room", "add_wing"]) {
+    const s = new SceneHistory(),
+      before = structuredClone(s.project);
+    apply(
+      s,
+      decisionOperation(
+        { ...d, action },
+        "add an extension wherever it fits",
+        pose,
+        null,
+        s.project,
+      ),
+    );
+    assert.ok(
+      Object.values(s.project.town!.buildings).some(
+        (b) => b.floors[0].rooms.length > 2,
+      ),
+    );
+    apply(s, { kind: "undo" });
+    assert.deepEqual(s.project.town, before.town);
+  }
+});
+
+test("compound town edits put benches outside each new house and save or fail together", async () => {
+  const { compileDecision } = await import("../src/compound.ts");
+  const base = {
+    action: "add_asset",
+    asset: "cottage",
+    placement: "anywhere",
+    size: "normal",
+    tint: "warm",
+    confidence: 1,
+    needs_review: false,
+    model: "fixture",
+    model_ms: 1,
+  };
+  const pose = { x: -11, z: 3, y: 0, yaw: 0, pitch: 0 };
+  for (const [outsideText, reference, count] of [
+    ["put benches outside", "outside_new_buildings", 2],
+    ["put 2 benches outside each house", "each_new_building", 4],
+    ["put 3 benches outside", "outside_new_buildings", 3],
+  ] as const) {
+    const s = new SceneHistory(),
+      before = structuredClone(s.project);
+    const first = "add 2 houses",
+      text = `${first} and ${outsideText}`;
+    const decision = {
+      ...base,
+      action: "compound",
+      steps: [
+        {
+          start: 0,
+          end: first.length,
+          text: first,
+          reference: "none",
+          decision: base,
+        },
+        {
+          start: first.length + 5,
+          end: text.length,
+          text: outsideText,
+          reference,
+          decision: { ...base, asset: "bench", placement: "outside" },
+        },
+      ],
+    };
+    const operation = compileDecision(decision, text, pose, null, s.project);
+    assert.deepEqual(s.project, before);
+    apply(s, operation);
+    const added = s.project.entities.slice(before.entities.length),
+      houses = added.filter((e) => isHouse(e.kind)),
+      benches = added.filter((e) => e.kind === "bench");
+    assert.equal(houses.length, 2);
+    assert.equal(benches.length, count);
+    assert.equal(s.past.length, 1);
+    const f = floor(s);
+    for (const bench of benches) {
+      assert.equal(f.roomAt(bench.x, bench.z, 0), undefined);
+      assert.equal(f.canStand(bench.x, bench.z), true);
+    }
+    for (const house of houses)
+      assert.ok(
+        benches.some((b) => Math.hypot(b.x - house.x, b.z - house.z) < 12),
+      );
+    assert.deepEqual(readProject(s.project), s.project);
+    apply(s, { kind: "undo" });
+    assert.deepEqual(s.project.entities, before.entities);
+    apply(s, { kind: "redo" });
+    assert.deepEqual(s.project.entities.slice(before.entities.length), added);
+  }
+  const s = new SceneHistory(),
+    before = structuredClone(s.project),
+    first = "add 2 houses",
+    second = "put 9 benches outside",
+    text = `${first} and ${second}`;
+  const decision = {
+    ...base,
+    action: "compound",
+    steps: [
+      {
+        start: 0,
+        end: first.length,
+        text: first,
+        reference: "none",
+        decision: base,
+      },
+      {
+        start: first.length + 5,
+        end: text.length,
+        text: second,
+        reference: "outside_new_buildings",
+        decision: { ...base, asset: "bench", placement: "outside" },
+      },
+    ],
+  };
+  assert.throws(() => compileDecision(decision, text, pose, null, s.project));
+  assert.deepEqual(s.project, before);
+  assert.equal(s.past.length, 0);
 });

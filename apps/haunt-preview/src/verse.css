@@ -1,0 +1,518 @@
+.verse-house {
+  --glass: linear-gradient(145deg, #19232d9c, #080d15b5);
+  color: #e7edf3;
+  background: #070a0f;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  overflow: hidden;
+}
+.verse-house [hidden] {
+  display: none !important;
+}
+.verse-house:has(#edit-workspace[open])
+  :is(.house-header, .house-hud, .caption, .room-label, .house-title) {
+  visibility: hidden;
+}
+.verse-house .house-header {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 72px;
+  z-index: 2;
+  background: linear-gradient(#06090dc9, transparent);
+  border: 0;
+  pointer-events: none;
+}
+.verse-house .brand {
+  color: #e1e8ee;
+  pointer-events: auto;
+  letter-spacing: 0.1em;
+}
+.verse-house .brand span,
+.verse-house .tag {
+  color: #a6b2bf;
+}
+.verse-house main {
+  display: block;
+  width: 100%;
+  max-width: none;
+}
+.verse-house .house {
+  padding: 0;
+}
+.verse-house .viewport {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.verse-house .viewport:after {
+  box-shadow: inset 0 0 120px 20px #0005;
+}
+.verse-house .house-title {
+  position: fixed;
+  top: 102px;
+  left: 40px;
+  pointer-events: none;
+  text-shadow: 0 2px 25px #000;
+}
+.verse-house .house-title h1 {
+  font:
+    400 clamp(28px, 3vw, 44px)/1.15 ui-sans-serif,
+    system-ui,
+    sans-serif;
+  letter-spacing: -0.05em;
+  color: #f1f4f8;
+}
+.verse-house .house-title > p:last-child {
+  font-size: 12px;
+  color: #acb8c6;
+}
+.verse-house .eyebrow {
+  color: #a4b6c6;
+  font:
+    9px ui-monospace,
+    monospace;
+  letter-spacing: 0.15em;
+}
+.verse-house .caption {
+  position: fixed;
+  bottom: 100px;
+  left: 40px;
+  right: 40px;
+  color: #acbac7;
+  pointer-events: none;
+}
+.verse-house .caption #timing {
+  color: #acbac7;
+}
+.verse-house .room-label {
+  bottom: 160px;
+  color: #c8d5e0;
+}
+.verse-house .room-label #wall-aim {
+  display: none;
+}
+.verse-house .house-hud {
+  position: fixed;
+  inset: auto 30px 28px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.verse-house .walk-help {
+  margin-right: auto;
+  color: #b1bdc8;
+  font-size: 11px;
+}
+.verse-house .map-button {
+  background: var(--glass);
+  border: 1px solid #dcecff38;
+  border-radius: 3px;
+  padding: 12px 18px;
+  color: #e3ebf4;
+  text-decoration: none;
+  font-size: 13px;
+  backdrop-filter: blur(10px);
+}
+.verse-house .map-button span {
+  margin-left: 9px;
+}
+.verse-house button {
+  color: #dae5ee;
+  background: #d5eaff0b;
+  border-color: #c2d9ed30;
+  border-radius: 3px;
+}
+.verse-house button:hover {
+  background: #d5eaff1c;
+  border-color: #c2d9ed65;
+}
+.verse-house button:focus-visible,
+.verse-house a:focus-visible {
+  outline: 2px solid #e1efff;
+  outline-offset: 4px;
+}
+.verse-house #open-edit {
+  min-width: 128px;
+  display: flex;
+  justify-content: space-between;
+  background: #e0e8ef;
+  color: #0b1520;
+  border-color: #e0e8ef;
+}
+.verse-house #edit-workspace {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 25px 30px;
+  border: 0;
+  background: transparent;
+  color: #e7edf3;
+  overflow: auto;
+}
+.verse-house #edit-workspace::backdrop {
+  background: #02060c9c;
+}
+.verse-house .workspace-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.verse-house h2 {
+  color: #e8eef5;
+  font:
+    400 32px ui-sans-serif,
+    system-ui,
+    sans-serif;
+  letter-spacing: -0.04em;
+}
+.verse-house .workspace-heading .eyebrow {
+  margin-bottom: 8px;
+}
+.verse-house .workspace-panels {
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) minmax(260px, 1fr) minmax(
+      330px,
+      1.2fr
+    );
+  align-items: start;
+  gap: 18px;
+  max-width: 1740px;
+  margin: auto;
+}
+.verse-house .workspace-panel {
+  background: var(--glass);
+  border: 1px solid #d9eaff30;
+  border-radius: 3px;
+  padding: 19px;
+  backdrop-filter: blur(10px);
+  min-width: 0;
+  box-shadow: 0 18px 50px #0004;
+}
+.verse-house .panel-heading {
+  display: flex;
+  justify-content: space-between;
+  color: #a3b6c7;
+  font:
+    9px ui-monospace,
+    monospace;
+  letter-spacing: 0.14em;
+  border-bottom: 1px solid #dcecff20;
+  padding-bottom: 13px;
+  margin-bottom: 17px;
+}
+.verse-house .workspace-panel h3 {
+  font-size: 17px;
+  letter-spacing: -0.025em;
+  font-weight: 450;
+  margin-bottom: 13px;
+  color: #edf3f8;
+}
+.verse-house .panel-objects {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.verse-house .panel-instructions {
+  grid-column: 2;
+  grid-row: 1;
+}
+.verse-house .panel-layout {
+  grid-column: 2;
+  grid-row: 2;
+}
+.verse-house .panel-material {
+  grid-column: 3;
+  grid-row: 1;
+}
+.verse-house .panel-changes {
+  grid-column: 3;
+  grid-row: 2;
+}
+.verse-house .scene-controls label,
+.verse-house .agent label {
+  color: #b6c5d2;
+}
+.verse-house input,
+.verse-house select,
+.verse-house textarea {
+  color: #d4e1ec;
+  background: #030a1266;
+  border-color: #b9d5f52e;
+  font-size: 11px;
+}
+.verse-house input:focus,
+.verse-house textarea:focus,
+.verse-house select:focus {
+  outline: 1px solid #b9d5f5;
+}
+.verse-house .primary {
+  color: #0a1520;
+  background: #d6e3ee;
+  border-color: #d6e3ee;
+}
+.verse-house .actions {
+  flex-wrap: wrap;
+}
+.verse-house .actions button {
+  padding: 9px 11px;
+  font-size: 10px;
+}
+.verse-house .agent,
+.verse-house .layout-tools,
+.verse-house .shader-tools {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #b8c6d2;
+}
+.verse-house .agent p,
+.verse-house #scene-count,
+.verse-house #shader-status,
+.verse-house #draft-state,
+.verse-house #wall-target {
+  color: #a4b9cb;
+}
+.verse-house .layout-tools summary,
+.verse-house .shader-tools summary {
+  color: #edf3f8;
+  font-size: 14px;
+  margin-bottom: 15px;
+}
+.verse-house #floorplan {
+  background: #030a1255;
+  height: 150px;
+}
+.verse-house #shader {
+  height: 205px;
+  min-height: 130px;
+  font-size: 10px;
+}
+.verse-house .file-tab {
+  background: #d5eaff08;
+  color: #b9cbdc;
+  font-size: 9px;
+}
+.verse-house .file-dot {
+  background: #c8e5ff;
+}
+.verse-house .panel-note,
+.verse-house #changes-status {
+  color: #b3c1ce;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.verse-house #changes-status {
+  color: #97b0c5;
+}
+.verse-house .changes-table {
+  max-height: 295px;
+  overflow: auto;
+  margin-top: 16px;
+}
+.verse-house table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 10px;
+  text-align: left;
+  table-layout: fixed;
+}
+.verse-house th {
+  color: #9db4c7;
+  font:
+    9px ui-monospace,
+    monospace;
+  padding: 10px 6px;
+  font-weight: 400;
+  border-bottom: 1px solid #d1eaff33;
+}
+.verse-house th:first-child {
+  width: 27%;
+}
+.verse-house th:last-child {
+  width: 22%;
+}
+.verse-house td {
+  vertical-align: top;
+  padding: 12px 6px;
+  border-bottom: 1px solid #d1eaff18;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  color: #c6d3df;
+}
+.verse-house td strong {
+  display: block;
+  font-weight: 500;
+  color: #ecf2f6;
+}
+.verse-house td time,
+.verse-house td small {
+  display: block;
+  font-size: 9px;
+  color: #97aabd;
+  margin-top: 4px;
+}
+.verse-house td a {
+  color: #dbe8f5;
+  text-decoration-color: #c0dcf444;
+  text-underline-offset: 3px;
+}
+.verse-house td:last-child {
+  color: #9eafbe;
+}
+.verse-house #edit-signin {
+  width: min(390px, calc(100% - 32px));
+  padding: 29px;
+  background: linear-gradient(135deg, #15202aeb, #080e16ed);
+  border: 1px solid #c9e5fc4d;
+  border-radius: 3px;
+  color: #d7e5f0;
+  backdrop-filter: blur(16px);
+}
+.verse-house #edit-signin::backdrop {
+  background: #03070d80;
+}
+.verse-house #edit-signin h2 {
+  font-size: 31px;
+  line-height: 1.15;
+}
+.verse-house #edit-signin p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #b4c5d3;
+}
+.verse-house .signin-action,
+.verse-house #keep-exploring {
+  display: block;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 16px;
+  padding: 12px;
+  font-size: 12px;
+  text-decoration: none;
+}
+.verse-house .signin-action {
+  background: #dde8f3;
+  color: #0d1722;
+}
+.verse-house .no-script {
+  position: fixed;
+  top: 35%;
+  padding: 30px;
+  background: #101824;
+  z-index: 10;
+}
+@media (max-width: 1100px) {
+  .verse-house .workspace-panels {
+    grid-template-columns: minmax(260px, 1fr) minmax(300px, 1fr);
+  }
+  .verse-house .panel-objects {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .verse-house .panel-instructions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .verse-house .panel-layout {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .verse-house .panel-material {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .verse-house .panel-changes {
+    grid-column: 2;
+    grid-row: 3;
+  }
+}
+@media (max-width: 650px) {
+  .verse-house .house-header {
+    padding: 0 18px;
+    height: 60px;
+  }
+  .verse-house .tag {
+    display: none;
+  }
+  .verse-house .brand {
+    font-size: 10px;
+  }
+  .verse-house .house-title {
+    left: 22px;
+    top: 90px;
+  }
+  .verse-house .house-title > p:last-child {
+    max-width: 220px;
+    line-height: 1.7;
+  }
+  .verse-house .caption {
+    left: 22px;
+    right: 22px;
+    bottom: 104px;
+    font-size: 9px;
+  }
+  .verse-house .walk-help {
+    display: none;
+  }
+  .verse-house .house-hud {
+    inset: auto 16px 24px;
+    gap: 8px;
+  }
+  .verse-house .house-hud button,
+  .verse-house .map-button {
+    font-size: 11px;
+    padding: 12px;
+  }
+  .verse-house .map-button {
+    margin-right: auto;
+  }
+  .verse-house #open-edit {
+    min-width: 96px;
+  }
+  .verse-house #edit-workspace {
+    padding: 22px 16px;
+  }
+  .verse-house .workspace-heading {
+    align-items: flex-start;
+  }
+  .verse-house .workspace-heading h2 {
+    font-size: 23px;
+  }
+  .verse-house .workspace-heading button {
+    font-size: 10px;
+    padding: 10px;
+  }
+  .verse-house .workspace-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+  .verse-house .workspace-panel {
+    width: 100%;
+    padding: 18px;
+  }
+  .verse-house .panel-instructions {
+    order: -1;
+  }
+  .verse-house .panel-changes {
+    order: 0;
+  }
+  .verse-house .panel-objects {
+    order: 1;
+  }
+  .verse-house .panel-layout {
+    order: 2;
+  }
+  .verse-house .panel-material {
+    order: 3;
+  }
+}

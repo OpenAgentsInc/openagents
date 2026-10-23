@@ -1,0 +1,125 @@
+{
+  "purpose": "Additional independent CPU portability calibration, not release acceptance",
+  "created_unix": 1792710097.3762178,
+  "policy_frozen": false,
+  "fresh_confirmation_captured": false,
+  "front_commit": "a723b380ce",
+  "source_commit": "c71d81bf00",
+  "cases": [
+    {
+      "case": "c8-window-1025",
+      "prompt_tokens": 1025,
+      "generated_tokens": 8,
+      "modes": [
+        {
+          "mode": "decode",
+          "positions": 9
+        },
+        {
+          "mode": "replay",
+          "positions": 9
+        }
+      ],
+      "profile": "cpu-bf16",
+      "bundle": "6422a2196438af5000f113112a1bfff79faae1c227ee59812796a6f43ddc08dc",
+      "report_sha256": "51f74ff6cc950144372c6f609221057097cfcd6498225ae1593adf7e0830575a",
+      "recording_sha256": "ca65613290cdf57de814ad227fc94b4162da6560f7c9b4c1bb5684c3bec4c346",
+      "index_recheck_sha256": "960dda2fabab378d47203ff0bc91ef33afd3ebd289238827a858dad11d0c6e7c",
+      "index_complete": true,
+      "index_local_changed": 0,
+      "index_score_error_max": 6.473208904266357,
+      "storage": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/reference-cpu3-index-replacement/c8-window-1025"
+    },
+    {
+      "case": "c1-chat-tides",
+      "prompt_tokens": 46,
+      "generated_tokens": 32,
+      "modes": [
+        {
+          "mode": "decode",
+          "positions": 33
+        },
+        {
+          "mode": "replay",
+          "positions": 33
+        }
+      ],
+      "profile": "cpu-bf16",
+      "bundle": "6422a2196438af5000f113112a1bfff79faae1c227ee59812796a6f43ddc08dc",
+      "report_sha256": "d4713d9ed1e93401eecd7a014fd802d24e1316fe596f9fe6e61d793e2e85a178",
+      "recording_sha256": "6e4be16055173c68e48261bd8a16f186a10b0a3818d9819f25d2a4e90eb32d8a",
+      "index_recheck_sha256": "c61801a57c1aebf3b334d85536e2d5bd6bd6656ac68f0414083b190b07df2d4d",
+      "index_complete": true,
+      "index_local_changed": 0,
+      "index_score_error_max": 1.177079439163208,
+      "storage": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/reference-cpu4-natural-c71/c1-chat-tides"
+    },
+    {
+      "case": "c2-chat-telescopes",
+      "prompt_tokens": 21,
+      "generated_tokens": 32,
+      "modes": [
+        {
+          "mode": "decode",
+          "positions": 33
+        },
+        {
+          "mode": "replay",
+          "positions": 33
+        }
+      ],
+      "profile": "cpu-bf16",
+      "bundle": "6422a2196438af5000f113112a1bfff79faae1c227ee59812796a6f43ddc08dc",
+      "report_sha256": "fc5f267976d2f7f49ad08b674bdaad4ed8bdb9612f3d89b25b173fd9b81033ab",
+      "recording_sha256": "31d2a15cb07ce712f5559f04794405af23a79627bcb5845bffead900f86b7b10",
+      "index_recheck_sha256": "55c84fa97d8e5e59e02be67527f3aad116ec573e0b9c3c160f24eb7ebf753470",
+      "index_complete": true,
+      "index_local_changed": 0,
+      "index_score_error_max": 3.767354965209961,
+      "storage": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/reference-cpu4-natural-c71/c2-chat-telescopes"
+    },
+    {
+      "case": "c3-code-merge",
+      "prompt_tokens": 48,
+      "generated_tokens": 32,
+      "modes": [
+        {
+          "mode": "decode",
+          "positions": 33
+        },
+        {
+          "mode": "replay",
+          "positions": 33
+        }
+      ],
+      "profile": "cpu-bf16",
+      "bundle": "6422a2196438af5000f113112a1bfff79faae1c227ee59812796a6f43ddc08dc",
+      "report_sha256": "789e320a4d651360d75807871b41fb5a08210d067c33e852a96ffeeea68f1417",
+      "recording_sha256": "2e49e1fdccce5b05d921e9dce3e9cde46030d5928f91d780235381b0099134bd",
+      "index_recheck_sha256": "a2e8ce0c462fc52f5054e8d7b70c4359b2cdf4f7b5b05af31c8068596d5a1dca",
+      "index_complete": true,
+      "index_local_changed": 0,
+      "index_score_error_max": 4.147634983062744,
+      "storage": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/reference-cpu4-natural-c71/c3-code-merge"
+    }
+  ],
+  "finished_cpu_collectors": [
+    {
+      "id": "5cf800f4a9b4467abaecc936add2e480",
+      "vm": "oa-dsv41-gates-cpu3",
+      "reason": "deleted",
+      "stop": "2026-10-22T23:02:04Z",
+      "cost": 25.465343,
+      "instance_id": "5745828073618008726"
+    },
+    {
+      "id": "26a424d93a654d98b0c83d8277c3fa4b",
+      "vm": "oa-dsv41-gates-cpu4",
+      "reason": "deleted",
+      "stop": "2026-10-22T23:03:14Z",
+      "cost": 16.440325,
+      "instance_id": "4395174293407237609"
+    }
+  ],
+  "cleanup_note": "Exact instance IDs, bundle pins, completed collections, and absent worker processes were checked before guard deletion; a subsequent VM inventory found neither machine."
+}

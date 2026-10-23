@@ -1,13 +1,16 @@
 # Browser editor implementation plan
 
-- **Status:** Phase 0 and the Phase 1 scene-command proof are implemented locally, 2026-10-22. #12502 still tracks moving raw asset drafts into the shared transaction/undo contract. Phases 2–5 remain planned. Public deployment is outside this proof.
-- **Architecture:** our TypeScript editor and runtime, Effect for asynchronous orchestration, direct WebGPU, editable WGSL, and selective Wasm CPU kernels. Browser-first with no Rust-only constraint is the owner's explicit direction for this work.
+- **Status:** Historical plan, superseded by the owner's Aethyrforge migration direction on 2026-10-23 UTC. [#12502](https://github.com/OpenAgentsInc/openagents/pull/12543) is implemented and merged. #12503 and #12504 are closed as not planned, not accepted as complete. The milestones below describe the previous implementation path and do not authorize further dispatch.
+- **Replacement:** [Aethyrforge migration plan](https://github.com/OpenAgentsInc/cakbags/blob/0aff9ea7d057772a8511b45b29e686a4fcb2dcd2/aethyrforge-migration-plan.md). The intended creator journey continues under that plan.
+- **Previous architecture:** our TypeScript editor and runtime, Effect for asynchronous orchestration, direct WebGPU, editable WGSL, and selective Wasm CPU kernels. Browser-first with no Rust-only constraint was the owner's explicit direction for this work.
 - **Decision:** [Owned renderer, WebGPU, and Effect](../audits/2026-10-22-owned-renderer-webgpu-and-effect.md).
 - **Goal:** make one Haunted House change through Kiln or the editor, see it in a running game, understand and repair errors, save the editable project, and explicitly publish a chosen version.
 - **Delivery order:** acceptance gates below determine progression. Set dates after the first demo supplies real iteration measurements.
 - **Product scope:** one authored Haunted House experience establishes the engine/editor contracts. Existing Rust games continue independently until a qualified replacement is chosen.
 
 ## Milestones and issues
+
+These are historical milestones. Consult each issue's current status and the replacement plan before resuming work.
 
 | Phase | Issue | Prerequisites | Exit milestone |
 | --- | --- | --- | --- |
@@ -37,7 +40,7 @@ flowchart TD
 ```
 
 - Native GitHub blockers and the OpenAgents project board mirror these prerequisites.
-- #12500 supplies the WebGPU proof. #12502 now supplies the creator flow and reversible scene commands; its remaining asset-command work still gates #12503 and #12504. Later follow-ups wait on their listed prerequisites.
+- #12500 supplies the WebGPU proof. #12502 supplies the creator flow and shared manual, Kiln, and raw-source undo history. The old #12503 and #12504 implementation paths were superseded before full acceptance.
 - Issues in the same phase can satisfy their own contracts using fixtures. Phase 3 integrates the Phase 2 outputs; neither Phase 2 issue secretly depends on the other.
 - The plan is the issue directory; no additional umbrella issue is needed to begin.
 
@@ -73,7 +76,7 @@ flowchart TD
 
 - **Issue:** [#12502](https://github.com/OpenAgentsInc/openagents/issues/12502).
 - **Implemented scene proof:** [creator flow and command contract](../../apps/haunt-preview/README.md#creator-flow), with [browser and real Jev results](verification/2026-10-22-haunted-house-commands/README.md). Direct actions bypass inference; one batched Jev decision interprets prose and uses those same commands. Kiln stores the editable scene through its existing WASI/OPFS path.
-- **Remaining in #12502:** route raw WGSL asset drafts and their undo/redo through the shared transaction history. Scene-object and lighting undo work now; advanced source editing still uses Phase 0 validation and **Original**.
+- **Completed in #12502:** [PR #12543](https://github.com/OpenAgentsInc/openagents/pull/12543), merged as `b2b86ed01d5656060fb855ef59dd1151e380a7ae`, routes manual, Kiln, and raw WGSL edits through shared undo/redo, preserves failed drafts separately from accepted GPU state, and supports saved-project reopening. TypeScript, 59 Node tests, 54 Kiln tests, the Wasm consumer, the production build, and isolated browser checks for both labs passed. See [source-history evidence](verification/2026-10-23-source-history.json).
 - **Top priority within this phase: Kiki's clear UX flow.**
   - Produce a compact screen/interaction sketch for open → select → change → see → understand an error → repair/undo → save → explicit publish.
   - Show one clear next action and progressively reveal advanced controls.
@@ -89,6 +92,12 @@ flowchart TD
 - **Unblocks:** #12503 and #12504.
 
 ## Phase 2: reusable runtime and incremental assets
+
+**Stopped work:** #12503 and #12504 were closed as superseded on 2026-10-23 UTC. Their unchecked requirements remain migration work; closure does not establish the exit evidence below.
+
+The partial #12503 runtime is preserved on [`codex/maya-12503-runtime`](https://github.com/OpenAgentsInc/openagents/tree/codex/maya-12503-runtime), at commit `408a0521b6`. It contains the retained Maya extraction, pause/resume methods and messages, and an unintegrated input batcher. Codex ported the extraction onto the merged source-history contract. TypeScript and 67 existing Node tests pass. Pause status and control behavior, input batching integration, device-loss reconstruction, and the final timing/resource measurements remain incomplete or unverified. Do not merge this checkpoint as accepted runtime work.
+
+Foreman's Maya 1 attempt `12503-maya1/attempt-003` stopped at 21 turns and 8 tool calls after its completed answer, with deadline `1792743375` unchanged. Only its phase and stop reason changed. The terminal state SHA-256 is `b8f86b50580a46b84f8ff63cfc0f1897771f9e7a12d72705829e6d0dd45bb865`; the exported code digest is `713d22259671d3474ea3fd43aec74519a270052cd922d44546323bda914af488`. The saved workspace and answers remain on `coderos-4080` under `/home/christopherdavid/.openagents/kiln-workspaces/12503-maya1/attempt-003/`. Its claim is released and its project status is Done for supersession. No replacement issue or standing-objective task starts from this handoff.
 
 - **Runtime issue:** [#12503](https://github.com/OpenAgentsInc/openagents/issues/12503).
   - Extract the demo into a worker runtime that initially owns simulation and rendering together.

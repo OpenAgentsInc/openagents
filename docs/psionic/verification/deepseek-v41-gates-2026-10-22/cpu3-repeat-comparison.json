@@ -1,0 +1,18 @@
+{
+  "purpose": "Repeated same-bundle plain BF16 CPU C4 collection on C3D and N2D; no additional calibration case is counted",
+  "bundle": "6422a2196438af5000f113112a1bfff79faae1c227ee59812796a6f43ddc08dc",
+  "profile": "cpu-bf16",
+  "files": 1836,
+  "by_suffix": {
+    ".u32": 1818,
+    ".f32": 18
+  },
+  "all_raw_tensor_bytes_equal": true,
+  "mismatched": [],
+  "source_reports_sha256": [
+    "7d464c2f0e5062f2058c12633c1cdb6203178d38ad5279b5f19f98bfc714d64d",
+    "1be8896e897b4326a0ea39dce8fc7d13264001ee5846deff70d001eb4f93a5a1"
+  ],
+  "old_prefix": "reference-cpu3-index/c4-engram-variants",
+  "new_prefix": "reference-cpu3-index-replacement/c4-engram-variants"
+}

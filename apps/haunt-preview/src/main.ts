@@ -1,9 +1,12 @@
-import { IS_TOWN, LAB } from "./lab.ts";
+import { IS_TOWN, IS_VERSE, LAB, LAB_BASE } from "./lab.ts";
+import { createVerseWorkspace } from "./verse.ts";
+import "./verse.css";
 import "./town.css";
 import { Effect } from "effect";
 import { ASSET, PROJECT, sourceHash, type ShaderEdit } from "./protocol.ts";
 import "./style.css";
 import { createEditor } from "./editor.ts";
+import { MaterialBridge } from "./material-bridge.ts";
 import { upgradeLegacyShader, type Operation } from "./project.ts";
 
 declare global {
@@ -14,6 +17,7 @@ declare global {
     kilnShaderChanged?: (source: string) => void;
     kilnWrite: (path: string, source: string) => Promise<number>;
     kilnReadScene: () => string | null;
+    kilnReadChanges?: () => string | null;
     kilnSceneChanged?: (source: string) => void;
 
     kilnState: () => string;
@@ -48,6 +52,7 @@ let draft = 0,
   saving = false,
   ready = false,
   sceneOpened = false;
+let startupFailed = false;
 let snapshot: Record<string, any> = {};
 let adapter: unknown;
 let latestResult: Record<string, unknown> = {};
@@ -79,16 +84,65 @@ function workspace<T>(job: () => Promise<T>): Promise<T> {
   workspaceQueue = next;
   return next;
 }
+const material = MaterialBridge({
+  project: () => snapshot.project,
+  submit: (source, origin) =>
+    editor.submit(
+      { kind: "set_material_source", asset: ASSET, source },
+      origin,
+    ),
+  preview: (source) => {
+    if (sourceSent !== source)
+      activeRequest = forward(source, manualSaveStart ?? now());
+    return activeRequest;
+  },
+  write: async (source) => {
+    const code = await workspace(() => window.kilnWrite(ASSET, source));
+    if (code !== 0) throw new Error("Couldn't save your shader. Try again.");
+  },
+  error: showError,
+});
+const editsMaterial = (operation: Operation): boolean =>
+  operation.kind === "set_material_source" ||
+  (operation.kind === "batch" && operation.operations.some(editsMaterial));
 const editor = createEditor({
   post: (message) => post(message),
   state: () => snapshot,
   workspace,
+  materialChanged: (project) => material.onProject(project),
+  materialSource: () => snapshot.project?.materialDraft?.source ?? sourceSent,
+  authorize: () => verse?.authorize() ?? true,
+  changed: async (operation, revision) => {
+    // Do not hold the shared command queue behind GPU validation or log saves.
+    const rendered = editsMaterial(operation)
+      ? activeRequest
+      : Promise.resolve({ type: "accepted" });
+    void rendered
+      .then((result) => {
+        if (result.type === "accepted")
+          return verse?.record(operation, revision);
+      })
+      .catch((error) => console.warn("Change log:", error));
+  },
 });
+const verse = IS_VERSE
+  ? createVerseWorkspace({
+      stop: () => {
+        dragging = false;
+        clearInput();
+      },
+      state: () => snapshot,
+      post,
+      workspace,
+    })
+  : undefined;
 function controls() {
-  saveButton.disabled = resetButton.disabled = !ready || saving;
-  shader.disabled = !ready;
-  editor.setReady(ready && sceneOpened && !saving);
+  saveButton.disabled = resetButton.disabled = !ready || saving || !sceneOpened;
+  shader.disabled = !ready || !sceneOpened;
+  editor.setReady(ready && sceneOpened);
   el<HTMLButtonElement>("walk").disabled = !ready;
+  const edit = document.querySelector<HTMLButtonElement>("#open-edit");
+  if (edit) edit.disabled = !ready || !sceneOpened;
 }
 
 function post(message: object) {
@@ -138,12 +192,15 @@ function forward(
 }
 
 async function save(source: string): Promise<Record<string, unknown>> {
+  if (sceneOpened && verse && !verse.authorize())
+    throw new Error("Log in to make a change.");
   if (!ready || saving)
     throw new Error("Wait for Kiln to finish before saving another edit.");
   saving = true;
   manualSaveStart = now();
   controls();
   try {
+    if (sceneOpened) return await material.save(source);
     await Effect.runPromise(
       Effect.tryPromise({
         try: () => workspace(() => window.kilnSaveShader(source)),
@@ -299,7 +356,8 @@ async function start() {
       if (message.type === "disposed") {
         ready = false;
         controls();
-        el("preview-status").textContent = "Preview closed.";
+        if (!startupFailed)
+          el("preview-status").textContent = "Preview closed.";
       }
       editor.receive(message);
     };
@@ -320,14 +378,14 @@ async function start() {
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
   resize();
-  const kilnPath = new URL("/kiln/pkg/kiln.js", location.origin).href;
+  const kilnPath = new URL(`${LAB_BASE}kiln/pkg/kiln.js`, location.origin).href;
   const kiln = await import(/* @vite-ignore */ kilnPath);
   await kiln.default();
   if (IS_TOWN) {
     if (typeof kiln.start_lab !== "function")
       throw new Error("Rebuild Kiln to open Medieval Town Lab.");
     kiln.start_lab("/kiln/", "medieval");
-  } else kiln.start_headless("/kiln/");
+  } else kiln.start_headless(`${LAB_BASE}kiln/`);
   const until = performance.now() + 30000;
   while (!window.kilnReady) {
     if (performance.now() > until)
@@ -341,7 +399,9 @@ async function start() {
       "Rebuild Kiln to include the Haunted House shader connection.",
     );
   window.kilnShaderChanged = (source) => {
-    activeRequest = forward(source, manualSaveStart ?? now());
+    if (sceneOpened) material.fileChanged(source);
+    else if (sourceSent !== source)
+      activeRequest = forward(source, manualSaveStart ?? now());
   };
   ready = true;
   controls();
@@ -380,7 +440,7 @@ async function start() {
   // A new device always starts with a working baseline, even if OPFS holds a bad draft.
   activeRequest = forward(original);
   await activeRequest;
-  if (previousDraft) {
+  if (previousDraft !== null) {
     // Upgrade this demo's v1 shader layout while preserving its authored tint/code.
     const upgraded = IS_TOWN
       ? previousDraft
@@ -392,11 +452,9 @@ async function start() {
     void editor.ingest(source);
   };
   const savedScene = window.kilnReadScene?.();
-  if (savedScene) await editor.ingest(savedScene, true);
-  else
-    document.getElementById("scene-status")!.textContent =
-      "Ready. Place an asset or describe one change.";
+  await editor.ingest(savedScene ?? JSON.stringify(snapshot.project), true);
   sceneOpened = true;
+  await verse?.ready();
   controls();
   window.addEventListener(
     "pagehide",
@@ -416,10 +474,13 @@ Effect.runPromise(
     catch: (e) => (e instanceof Error ? e : new Error(String(e))),
   }),
 ).catch((error) => {
+  startupFailed = true;
   ready = false;
   controls();
   post({ type: "dispose" });
-  el("loading").textContent = String(error);
+  el("loading").hidden = false;
+  el("loading").textContent = "The house couldn't start. Reload to try again.";
+  el("preview-status").textContent = "The house couldn't start.";
   el("shader-status").textContent = "The preview couldn't start.";
   showError(error);
 });

@@ -11,14 +11,17 @@ use std::{
 
 const MAX_TURNS: usize = 96;
 const MAX_GUIDANCE_BYTES: usize = 2000;
+const MAX_STOP_REASON_BYTES: usize = 512;
 const MAX_INSTRUCTION_BYTES: usize = INSTRUCTIONS.len() + 4000;
+const MAX_VIEW_LINES: usize = 80;
+const MAX_VIEW_BYTES: usize = 1400;
 
 const INSTRUCTIONS: &str = r#"You are Kiln, editing a bounded repository workspace. Reply only with one JSON object:
 {"thought":"one short sentence","commands":[...]}
 Commands: {"run":"ls PATH"}, {"run":"view PATH START END"}, {"run":"grep [-n] [-i] TEXT PATH"}, {"run":"copy SOURCE DEST"}, {"write":"PATH","content":"full text"}, {"patch":"PATH","search":"exact unique old text","replace":"new text"}, {"run":"check"}, {"done":"summary"}.
 grep matches literal text; separate alternatives with \|. -i ignores case, and -n includes the line numbers that grep always shows. Other regular expressions and shell commands are unavailable.
 copy duplicates an existing scoped text file in the private workspace without printing or regenerating it.
-Read before editing. Use small exact patches, preserve existing style, and write meaningful regression tests. View at most 20 lines at a time. No shell or arbitrary programs are available. check asks the coordinator to run the task's real checks outside this workspace. Read failures, repair, and check again. Say done only after check passed for your current files. Never change paths outside the supplied scope. Your edits remain private until a reviewer accepts them."#;
+Read before editing. Use small exact patches, preserve existing style, and write meaningful regression tests. View at most 80 lines at a time. No shell or arbitrary programs are available. check asks the coordinator to run the task's real checks outside this workspace. Read failures, repair, and check again. Say done only after check passed for your current files. Never change paths outside the supplied scope. Your edits remain private until a reviewer accepts them."#;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -75,6 +78,48 @@ fn normalized(path: &str) -> Result<()> {
         return Err("path must name a file or directory inside the configured scope".into());
     }
     Ok(())
+}
+
+fn view_page(text: &str, start: usize, end: usize) -> String {
+    let total = text.lines().count();
+    if start > total {
+        return format!("EOF: {total} lines; start {start} is past the end.");
+    }
+    let next = |last| {
+        if last < total {
+            format!("Next line: {}.", last + 1)
+        } else {
+            "EOF.".into()
+        }
+    };
+    let header = |last| format!("Lines {start}-{last} of {total}. {}\n", next(last));
+    let end = end.min(start.saturating_add(MAX_VIEW_LINES - 1)).min(total);
+    let mut body = String::new();
+    let mut last = None;
+    for (n, line) in text
+        .lines()
+        .enumerate()
+        .skip(start - 1)
+        .take(end - start + 1)
+    {
+        let numbered = format!("{}:{line}", n + 1);
+        let separator = usize::from(!body.is_empty());
+        if header(n + 1).len() + body.len() + separator + numbered.len() > MAX_VIEW_BYTES {
+            break;
+        }
+        if separator != 0 {
+            body.push('\n');
+        }
+        body.push_str(&numbered);
+        last = Some(n + 1);
+    }
+    match last {
+        Some(last) => format!("{}{body}", header(last)),
+        None => format!(
+            "Line {start} is too long for a {MAX_VIEW_BYTES}-byte page; no source lines shown. {}",
+            next(start)
+        ),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -175,6 +220,8 @@ pub struct Workspace {
     pub checked: Option<String>,
     #[serde(default)]
     pub answers: Vec<AnswerEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
 }
 impl Workspace {
     pub fn new(config: Config) -> Result<Self> {
@@ -202,6 +249,7 @@ impl Workspace {
             until: now() + 21600,
             checked: None,
             answers: vec![],
+            stop_reason: None,
         })
     }
     fn record_answer(
@@ -339,7 +387,7 @@ impl Workspace {
         kiln::sha256_hex(&serde_json::to_vec(&(&self.config.base, &self.files)).unwrap_or_default())
     }
     pub fn summary(&self) -> Value {
-        json!({"phase":self.phase,"turns":self.turns,"calls":self.calls,"base":self.config.base,"pylon":self.config.pylon,"model":self.config.model,"profile":self.config.profile,"files":self.files.keys().collect::<Vec<_>>(),"digest":self.digest(),"checked":self.checked,"done":self.agent.done,"latest":self.agent.steps.last(),"answers":self.answers})
+        json!({"phase":self.phase,"stop_reason":self.stop_reason,"turns":self.turns,"calls":self.calls,"base":self.config.base,"pylon":self.config.pylon,"model":self.config.model,"profile":self.config.profile,"files":self.files.keys().collect::<Vec<_>>(),"digest":self.digest(),"checked":self.checked,"done":self.agent.done,"latest":self.agent.steps.last(),"answers":self.answers})
     }
     fn grep(&self, mut args: &[String]) -> Result<String> {
         let mut ignore_case = false;
@@ -444,25 +492,7 @@ impl Workspace {
                             return Err("view requires a positive start and an end at or after it".into());
                         }
                         let text = self.read(path)?;
-                        let total = text.lines().count();
-                        if start > total {
-                            return Ok(format!("EOF: {total} lines; start {start} is past the end."));
-                        }
-                        let end = end.min(start.saturating_add(19)).min(total);
-                        let next = if end < total {
-                            format!("Next line: {}.", end + 1)
-                        } else {
-                            "EOF.".into()
-                        };
-                        let body = text
-                            .lines()
-                            .enumerate()
-                            .skip(start - 1)
-                            .take(end - start + 1)
-                            .map(|(n, l)| format!("{}:{l}", n + 1))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        Ok(format!("Lines {start}-{end} of {total}. {next}\n{body}"))
+                        Ok(view_page(&text, start, end))
                     }
                     ["grep", ..] => self.grep(&args[1..]),
                     _ => Err(
@@ -512,6 +542,19 @@ impl Workspace {
             return Err("workspace guidance limit reached".into());
         }
         self.agent.instructions.push_str(&addition);
+        Ok(())
+    }
+    fn stop(&mut self, reason: Option<&str>) -> Result<()> {
+        if let Some(reason) = reason {
+            if reason.trim().is_empty()
+                || reason.len() > MAX_STOP_REASON_BYTES
+                || reason.contains('\0')
+            {
+                return Err("stop reason must contain 1 to 512 bytes of text".into());
+            }
+            self.stop_reason = Some(reason.trim().into());
+        }
+        self.phase = "stopped".into();
         Ok(())
     }
     pub async fn advance(&mut self, path: &Path) -> Result<()> {
@@ -622,7 +665,7 @@ pub async fn run(args: &[String]) -> Result<()> {
     let action = args.first().map(String::as_str).unwrap_or("help");
     if action == "help" || args.iter().any(|s| s == "--help") {
         println!(
-            "kiln-workspace init|advance|status|export|feedback|guide|focus --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)\nguide --input FILE (up to 2000 bytes of UTF-8 text)\nfocus --input FILE (up to 2000 bytes for the current step; resets added guidance)"
+            "kiln-workspace init|advance|status|export|feedback|guide|focus|stop --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)\nguide --input FILE (up to 2000 bytes of UTF-8 text)\nfocus --input FILE (up to 2000 bytes for the current step; resets added guidance)\nstop [--reason TEXT] (up to 512 bytes; waits for the current advance)"
         );
         return Ok(());
     }
@@ -635,7 +678,11 @@ pub async fn run(args: &[String]) -> Result<()> {
         .write(true)
         .open(path.with_extension("lock"))
         .map_err(|e| e.to_string())?;
-    fs2::FileExt::try_lock_exclusive(&lock).map_err(|_| "workspace is already running")?;
+    if action == "stop" {
+        fs2::FileExt::lock_exclusive(&lock).map_err(|_| "could not lock the workspace")?;
+    } else {
+        fs2::FileExt::try_lock_exclusive(&lock).map_err(|_| "workspace is already running")?;
+    }
     if action == "init" {
         if path.exists() {
             return Err("workspace already initialized".into());
@@ -649,6 +696,15 @@ pub async fn run(args: &[String]) -> Result<()> {
     workspace.config.validate()?;
     match action {
         "advance" => workspace.advance(&path).await?,
+        "stop" => {
+            let reason = args
+                .iter()
+                .any(|arg| arg == "--reason")
+                .then(|| option("--reason"))
+                .transpose()?;
+            workspace.stop(reason.as_deref())?;
+            save(&path, &workspace)?;
+        }
         "guide" | "focus" => {
             let bytes = workspace_host::artifact::read(
                 &PathBuf::from(option("--input")?),
@@ -757,8 +813,11 @@ mod tests {
         workspace.checked = Some(workspace.digest());
         let checked = workspace.checked.clone();
         for (start, requested_end, displayed_end, next) in [
-            (100, 140, 119, "Next line: 120."),
-            (80, 140, 99, "Next line: 100."),
+            (1, 40, 40, "Next line: 41."),
+            (40, 75, 75, "Next line: 76."),
+            (1, usize::MAX, 80, "Next line: 81."),
+            (100, 140, 140, "Next line: 141."),
+            (80, 140, 140, "Next line: 141."),
             (2, 2, 2, "Next line: 3."),
             (145, 200, 150, "EOF."),
             (149, usize::MAX, 150, "EOF."),
@@ -775,7 +834,8 @@ mod tests {
             );
             let displayed = lines.collect::<Vec<_>>();
             assert_eq!(displayed.len(), displayed_end - start + 1);
-            assert!(displayed.len() <= 20);
+            assert!(displayed.len() <= 80);
+            assert!(output.len() <= 1400);
             assert_eq!(
                 displayed.first().unwrap(),
                 &format!("{start}:source {start} é")
@@ -784,6 +844,15 @@ mod tests {
                 displayed.last().unwrap(),
                 &format!("{displayed_end}:source {displayed_end} é")
             );
+            workspace.agent.steps.push(Step::default());
+            workspace.agent.observe(
+                &Command::Run(format!(
+                    "view apps/haunt-preview/runtime.ts {start} {requested_end}"
+                )),
+                0,
+                output.clone(),
+            );
+            assert!(workspace.agent.prompt("runtime.ts").contains(&output));
         }
         assert_eq!(
             workspace
@@ -834,6 +903,87 @@ mod tests {
                 ))
                 .unwrap(),
             "EOF: 0 lines; start 1 is past the end."
+        );
+    }
+    #[test]
+    fn view_pages_keep_whole_utf8_lines_and_survive_the_real_prompt_limit() {
+        let source = (1..=80)
+            .map(|n| format!("source {n} {}", "界é".repeat(12)))
+            .collect::<Vec<_>>();
+        let text = source.join("\n");
+        let mut agent = Agent::new("Read every source line", 12000);
+        agent.instructions = INSTRUCTIONS.into();
+        for _ in 0..30 {
+            agent.steps.push(Step {
+                observations: vec![Observation {
+                    command: "view old.ts 1 80".into(),
+                    code: 0,
+                    output: "old history\n".repeat(200),
+                }],
+                ..Default::default()
+            });
+        }
+        let mut start = 1;
+        let mut seen = Vec::new();
+        while start <= source.len() {
+            let page = view_page(&text, start, usize::MAX);
+            assert!(page.len() <= MAX_VIEW_BYTES);
+            let (header, body) = page.split_once('\n').unwrap();
+            let rows = body.lines().collect::<Vec<_>>();
+            assert!(!rows.is_empty() && rows.len() <= MAX_VIEW_LINES);
+            let last = start + rows.len() - 1;
+            let next = if last == source.len() {
+                "EOF.".into()
+            } else {
+                format!("Next line: {}.", last + 1)
+            };
+            assert_eq!(header, format!("Lines {start}-{last} of 80. {next}"));
+            for (n, row) in (start..=last).zip(rows) {
+                assert_eq!(row, format!("{n}:{}", source[n - 1]));
+                seen.push(n);
+            }
+            agent.steps.push(Step::default());
+            agent.observe(
+                &Command::Run(format!("view runtime.ts {start} 80")),
+                0,
+                page.clone(),
+            );
+            assert!(agent.prompt("runtime.ts").contains(&page));
+            assert_eq!(agent.budget, 12000);
+            start = last + 1;
+        }
+        assert_eq!(seen, (1..=80).collect::<Vec<_>>());
+    }
+    #[test]
+    fn view_byte_ceiling_includes_the_header_and_reports_oversized_lines() {
+        let header = "Lines 1-1 of 2. Next line: 2.\n";
+        let line = "x".repeat(MAX_VIEW_BYTES - header.len() - "1:".len());
+        let text = format!("{line}\nsecond line");
+        let page = view_page(&text, 1, 80);
+        assert_eq!(page.len(), MAX_VIEW_BYTES);
+        assert_eq!(page, format!("{header}1:{line}"));
+        assert_eq!(
+            view_page(&text, 2, 80),
+            "Lines 2-2 of 2. EOF.\n2:second line"
+        );
+
+        let large = "界".repeat(500);
+        let text = format!("small\n{large}\ntail");
+        assert_eq!(
+            view_page(&text, 1, 80),
+            "Lines 1-1 of 3. Next line: 2.\n1:small"
+        );
+        let diagnostic = view_page(&text, 2, 80);
+        assert_eq!(
+            diagnostic,
+            "Line 2 is too long for a 1400-byte page; no source lines shown. Next line: 3."
+        );
+        assert!(diagnostic.len() <= MAX_VIEW_BYTES);
+        assert!(!diagnostic.contains('界'));
+        assert_eq!(view_page(&text, 3, 80), "Lines 3-3 of 3. EOF.\n3:tail");
+        assert_eq!(
+            view_page(&large, 1, 80),
+            "Line 1 is too long for a 1400-byte page; no source lines shown. EOF."
         );
     }
     #[test]
@@ -1233,6 +1383,156 @@ mod tests {
         assert_eq!(load::<Workspace>(&state).unwrap().agent.task, full);
     }
     #[test]
+    fn stop_waits_for_the_locked_advance_and_preserves_the_saved_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let mut workspace: Workspace =
+            serde_json::from_value(legacy_workspace(root.path())).unwrap();
+        workspace.agent.task = "Current step".into();
+        workspace.agent.instructions = "Existing instructions".into();
+        workspace.agent.done = Some("Earlier summary".into());
+        workspace.agent.budget = 8250;
+        workspace
+            .files
+            .insert("apps/haunt-preview/a.ts".into(), "new".into());
+        workspace
+            .original
+            .insert("apps/haunt-preview/a.ts".into(), "old".into());
+        workspace.pending = vec![Command::Write {
+            path: "apps/haunt-preview/a.ts".into(),
+            content: "must not run".into(),
+        }];
+        workspace.checked = Some(workspace.digest());
+        workspace.turns = 11;
+        workspace.calls = 22;
+        workspace.record_answer("fixture prompt", &Err("fixture refusal".into()), 1);
+        let state = root.path().join("workspace.json");
+        save(&state, &workspace).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(state.with_extension("lock"))
+            .unwrap();
+        fs2::FileExt::try_lock_exclusive(&lock).unwrap();
+        let args = vec![
+            "stop".into(),
+            "--state".into(),
+            state.to_string_lossy().into_owned(),
+            "--reason".into(),
+            " Pause for review é ".into(),
+        ];
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let result = tokio::runtime::Runtime::new().unwrap().block_on(run(&args));
+            finished_tx.send(result).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(
+            finished_rx.recv_timeout(Duration::from_millis(100)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        // The advance completes its save before the waiting stop can load it.
+        workspace.turns += 1;
+        workspace.calls += 1;
+        save(&state, &workspace).unwrap();
+        let before = serde_json::to_value(&workspace).unwrap();
+        drop(lock);
+        finished_rx
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        waiter.join().unwrap();
+        let stopped: Workspace = load(&state).unwrap();
+        assert_eq!(stopped.phase, "stopped");
+        assert_eq!(stopped.stop_reason.as_deref(), Some("Pause for review é"));
+        let mut after = serde_json::to_value(&stopped).unwrap();
+        after["phase"] = before["phase"].clone();
+        after.as_object_mut().unwrap().remove("stop_reason");
+        assert_eq!(after, before);
+
+        let unchanged = std::fs::read(&state).unwrap();
+        std::fs::remove_file(root.path().join("key")).unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        for action in ["advance", "status", "export", "stop"] {
+            rt.block_on(run(&[
+                action.into(),
+                "--state".into(),
+                state.to_string_lossy().into_owned(),
+            ]))
+            .unwrap();
+            assert_eq!(std::fs::read(&state).unwrap(), unchanged);
+        }
+        let mut no_pending: Workspace = load(&state).unwrap();
+        no_pending.pending.clear();
+        let before = serde_json::to_value(&no_pending).unwrap();
+        rt.block_on(no_pending.advance(&state)).unwrap();
+        assert_eq!(serde_json::to_value(&no_pending).unwrap(), before);
+        assert!(
+            no_pending
+                .feedback(&no_pending.digest(), 0, "check passed")
+                .is_err()
+        );
+    }
+    #[tokio::test]
+    async fn stop_reason_is_optional_bounded_and_unavailable_to_model_commands() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let mut workspace: Workspace =
+            serde_json::from_value(legacy_workspace(root.path())).unwrap();
+        let state = root.path().join("workspace.json");
+        save(&state, &workspace).unwrap();
+        let before = std::fs::read(&state).unwrap();
+        assert!(workspace.execute(&Command::Run("stop".into())).is_err());
+        for reason in [String::new(), " \n ".into(), "\0".into(), "é".repeat(257)] {
+            assert!(
+                run(&[
+                    "stop".into(),
+                    "--state".into(),
+                    state.to_string_lossy().into_owned(),
+                    "--reason".into(),
+                    reason
+                ])
+                .await
+                .is_err()
+            );
+            assert_eq!(std::fs::read(&state).unwrap(), before);
+        }
+        assert!(
+            run(&[
+                "stop".into(),
+                "--state".into(),
+                state.to_string_lossy().into_owned(),
+                "--reason".into()
+            ])
+            .await
+            .is_err()
+        );
+        assert_eq!(std::fs::read(&state).unwrap(), before);
+        for phase in ["model", "awaiting-check", "review", "stopped"] {
+            let mut workspace: Workspace =
+                serde_json::from_value(legacy_workspace(root.path())).unwrap();
+            workspace.phase = phase.into();
+            workspace.stop(None).unwrap();
+            assert_eq!(workspace.phase, "stopped");
+            assert!(workspace.stop_reason.is_none());
+        }
+        let reason = "é".repeat(MAX_STOP_REASON_BYTES / 2);
+        run(&[
+            "stop".into(),
+            "--state".into(),
+            state.to_string_lossy().into_owned(),
+            "--reason".into(),
+            reason.clone(),
+        ])
+        .await
+        .unwrap();
+        let stopped: Workspace = load(&state).unwrap();
+        assert_eq!(stopped.stop_reason.as_deref(), Some(reason.as_str()));
+    }
+    #[test]
     fn legacy_workspace_loads_without_answer_evidence() {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
@@ -1240,6 +1540,7 @@ mod tests {
         assert!(legacy.get("answers").is_none());
         let workspace: Workspace = serde_json::from_value(legacy).unwrap();
         assert!(workspace.answers.is_empty());
+        assert!(workspace.stop_reason.is_none());
         assert_eq!(workspace.phase, "model");
         assert_eq!(workspace.config.profile, "consumer-q");
     }
@@ -1399,6 +1700,7 @@ mod tests {
             until: now() + 60,
             checked: None,
             answers: vec![],
+            stop_reason: None,
         };
         assert!(
             w.execute(&Command::Patch {

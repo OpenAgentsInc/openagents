@@ -8,17 +8,29 @@ Status: the definitive checklist for
 place that says what finishes the epic. Those docs still hold the reasoning
 and the evidence. Update this file as items land.
 
-**Current status, 2026-10-22:** the owner reopened qualification after the
+**Current status, 2026-10-23:** the owner reopened qualification after the
 [closed-issue audit](../audits/2026-10-22-deepseek-closed-issues.md).
 [#12369](https://github.com/OpenAgentsInc/openagents/issues/12369) is open
 again, owned by Codex for the remaining G1–G8 acceptance work. Its earlier
 closure authorized an experimental preview; it did not pass the original
 gates. Policy 2.3 failed, including one 38-token Engram case, and remains
-failed. G2 suite 2 has a retained 5/6 result against the oracle's 5/6;
-the corrected checker retains that result with the reasoning/completion floor held. G3's component evidence remains valid for its recorded
-bundles and devices. G4–G6 still need numerical acceptance; pinned G7 and
-qualified G8 evidence remain outstanding. The separate Maya optimization
-issues retain their existing owners and experimental profiles.
+failed. The pinned `06e5158778` worker passes the frozen G2 suite at 5/6
+against the oracle's 5/6 on all three placements, with identical answers and
+the reasoning/completion floor held. G3 has current SM89 and SM120 component
+receipts. The private one-quad, two-dual, and four-single Pylons each pass the same
+eight runtime checks. Stage crash, freeze, deadline, and full-VM watcher
+recovery checks are retained. G1 and G4 numerical release acceptance and
+qualified G8 evidence remain outstanding. Rule 2.4 froze at 02:16:32 UTC
+after its complete CPU calibration and fault checks; fresh B200 confirmation
+is waiting for capacity. The frozen bounds and their limits are recorded below.
+The separate Maya consumer-q campaign has stopped following the owner's later
+instruction; it supplies no original-weight qualification evidence.
+G5 and G6 still depend on numerical acceptance. Paired native direct-pipeline
+G2 checks and combined 2,872-input / 4,096-output boundary checks now pass
+on all three placements. Runtime checks alone do not pass those gates.
+
+The entries below retain earlier checks; later sections record their reruns
+and the current worker's evidence.
 
 **Qualification repair progress, 2026-10-22:** the qualification CLI now
 returns a failure status when its report fails, and `--release` prints the
@@ -1535,3 +1547,159 @@ stale-cache controls and cannot run as answer collection or release
 qualification. The parser regression and stage package checks pass. Existing
 same-prompt attempts remain retained; the candidate worker and acceptance
 limits stay unchanged.
+
+### Provisional fault detection and CPU repeat (2026-10-22)
+
+The short CPU-only calibration now accepts its independent references and
+numerically rejects wrong weights, routing, RoPE, and stale cache state. The
+natural-language stale-cache case has 79 numerical violations, separately from
+its malformed index evidence. The short Engram attempt still lacks numerical
+detection and remains retained. See [the provisional self-check](verification/deepseek-v41-gates-2026-10-22/provisional-control-self-check.json).
+This policy is not frozen: the long references, short conversation/code CPU
+cases, and isolated-stage envelopes must finish, and all controls must still
+fail under the resulting limits before fresh confirmation starts.
+
+The repeated C4 collection on C3D and N2D also matches all 1,836 saved tensor
+files byte for byte. See [the CPU repeat comparison](verification/deepseek-v41-gates-2026-10-22/cpu3-repeat-comparison.json).
+The repeat checks consistency; it does not count as another calibration case.
+
+### Complete runtime checks and calibration coverage (2026-10-22)
+
+Four-single now passes the same eight native Pylon runtime checks as one-quad
+and two-dual. Its exact 2,872-token request completed in 128.8 seconds; the
+2,873-token request was refused, and the next request answered normally.
+All four workers stopped. The earlier missing test-launcher attempt is retained
+as a failed setup attempt. See [the four-single runtime record](verification/deepseek-v41-gates-2026-10-22/four-single-runtime.json).
+The two cross-machine capped workloads measured 20.16 and 20.14 decode tokens/s;
+their recorded link-and-head overhead is aggregate, not a separate per-hop
+latency measurement.
+
+The unrelated-request cache control also fails numerically, with 80 numerical
+violations under the provisional short-reference policy. Replacing the fault
+report leaves every derived threshold identical. Its [record](verification/deepseek-v41-gates-2026-10-22/contrasting-cache-control.json)
+fixes the required fault cases before the remaining CPU calibration completes;
+every required fault must still fail the final CPU-only policy.
+
+All four stages now have complete CPU raw rechecks for the short Engram case,
+the 1,025-token boundary, and the 2,726-token long case. The redundant long-stage
+backup was cancelled after the first complete result uploaded and rechecked;
+its partial result is excluded. See [the complete CPU coverage](verification/deepseek-v41-gates-2026-10-22/g4-complete-cpu-rechecks.json).
+
+The `qualification_answers` example runs the unchanged frozen G2 suite through
+Pylon's direct `StageGroup` pipeline, including each case's prompt mode, native
+token IDs, and parsed reasoning. `v41-stage-build.sh group-answers` packages
+that separate tool. These native paired runs remain pending. The passive
+`observe_vm.py` sampler is ready for active GPU-memory and per-link TCP RTT
+observations; its [wiring checks](verification/deepseek-v41-gates-2026-10-22/observer-wiring-checks.json)
+use an idle GPU VM and existing CPU sockets, so they do not establish an active
+memory peak or GPU-link latency.
+
+The [additional CPU references](verification/deepseek-v41-gates-2026-10-22/additional-cpu-calibration.json)
+now retain three natural conversation/code cases with 32 generated positions
+and the 1,025-token boundary case with eight. Both decode and replay are
+complete for each case. Rechecking the hashed recordings finds no causal
+index inconsistency. These are independent plain-BF16 CPU calibration
+measurements; their old-policy failures remain visible. The connected
+2,726-token CPU reference still needs to finish before rule 2.4 can freeze.
+
+### Native direct-pipeline answer and resource checks, 2026-10-22
+
+The separate `StageGroup` collector now passes the unchanged frozen G2
+checker on [two-dual](verification/deepseek-v41-gates-2026-10-22/native-direct-two-dual.json)
+and [four-single](verification/deepseek-v41-gates-2026-10-22/native-direct-four-single.json).
+Every task produces the same token IDs as its earlier front-transport run.
+Both native parsers retain the thinking answer's reasoning and final text;
+the five chat tasks have no reasoning. Each placement scores 5/6 against
+5/6, holds the completion/reasoning floor, and retains the shared Fibonacci
+failure. This tests native prompt rendering and the direct stage pipeline;
+the earlier eight-check encrypted Pylon runs cover the job interface.
+
+| Measurement | Two-dual | Four-single |
+| --- | --- | --- |
+| Exact 2,872-token input, final `OK` | 128.872 s | 128.902 s |
+| 4,096-token output, honest `length` finish | 204.151 s | 205.951 s |
+| Median data-socket TCP RTT, stages 0→1 / 1→2 / 2→3 | 17 / 67 / 9 µs | 65 / 64 / 56 µs |
+| Largest observed GPU memory use | 73,319 MiB | 73,319 MiB |
+
+The resource sampler starts before worker loading and runs through all six
+tasks and both boundary probes. GPU memory is a whole-VM observation every
+200 ms, not an exact allocator high-water mark. TCP RTT comes from the
+kernel's estimates on verified worker data sockets, not a one-way
+application latency measurement. Each receipt also retains per-stage
+compute time and per-hop decode bytes. No candidate measurement sets a
+numerical tolerance.
+
+The two-dual collector's immediate remote-stop check still found workers;
+a later read-only check verified both worker processes and GPU contexts
+absent. The exact exit time was not captured. That failed immediate check
+remains recorded. Four-single passed its first remote absence check. Both
+groups drained before the next run. A separate combined 2,872-input /
+4,096-output probe is now running on each placement; it uses bounded remote
+drain polling and remains outside the G2 score. G1, G4, and qualified G8
+acceptance remain pending.
+
+The combined boundary run now passes on
+[two-dual](verification/deepseek-v41-gates-2026-10-22/native-joint-two.json)
+and [four-single](verification/deepseek-v41-gates-2026-10-22/native-joint-four.json):
+an exactly counted 2,872-token chat input reaches a 4,096-token `length`
+finish in 332.093 s and 332.378 s, respectively, under the same
+75 s decode-step, 150 s prefill, and 600 s request limits. The six G2
+answers repeat exactly and the unchanged checker again passes 5/6 versus
+5/6. Observed GPU peaks remain 73,319 / 72,029 / 71,687 / 72,939 MiB.
+Bounded remote polling verifies all worker processes and GPU contexts gone
+before any reuse; two-dual needs one retry, and four-single none. These
+runtime measurements exercise the input and output bounds together. They
+do not freeze rule 2.4 or pass the outstanding numerical gates.
+
+The [one-quad direct run](verification/deepseek-v41-gates-2026-10-22/native-joint-quad.json)
+now completes the same coverage. Its six answers match the earlier front
+run exactly and pass the unchanged G2 checker at 5/6 against 5/6. The combined
+2,872-input / 4,096-output request finishes with `length` in 330.937 s.
+Observed per-GPU peaks are unchanged; median local data-socket RTTs are
+18 / 10 / 11 µs. Remote drain polling needs three retries before proving
+every worker process and GPU context absent. All three supported placements
+now pass this native direct-pipeline coverage; numerical confirmation and
+qualified public routing remain pending.
+
+### Completed CPU calibration and prospective rule 2.4, 2026-10-23
+
+The connected 2,726-token plain-BF16 CPU case is complete: both decode and
+replay retain all 33 distributions for its 32-token continuation, with no
+missing position or worker-stop error. The independent raw index recheck
+is complete and finds no local score/selection inconsistency. Its recording
+is retained under the calibration bucket's
+reference-cpu2-index-replacement prefix. The finished CPU allocation was
+deleted through its exact guard record at 02:11:53 UTC, costing $92.34.
+
+The [prospective policy review](verification/deepseek-v41-gates-2026-10-22/policy-2.4-review.json)
+verifies all 30 input bindings, seven distinct CPU cases, 334 distribution
+comparisons across 14 case/mode pairs, and eight original-input CPU stage
+records. Every CPU reference passes. Wrong weights, routing, RoPE, and
+stale cache still have 2, 1, 11, and 4 numerical failures, respectively;
+the cache control's separate malformed evidence does not substitute for
+those numerical failures. The repeated C4 run is excluded as a duplicate.
+All numerical fields remain identical to the CPU derivation.
+
+The scopes bind [one-quad](verification/deepseek-v41-gates-2026-10-22/policy-2.4-one-quad.json),
+[two-dual](verification/deepseek-v41-gates-2026-10-22/policy-2.4-two-dual.json), and
+[four-single](verification/deepseek-v41-gates-2026-10-22/policy-2.4-four-single.json)
+to their actual manifests and execution configurations. The prepared
+16-case confirmation corpus has 32 generated positions in both modes for
+each case: 1,056 matched distributions. Prefix cases are correlated; this
+is a finite engineering check, not 1,056 independent samples or a confidence
+bound for arbitrary prompts. Exact input files and fault reports are
+content-addressed in the [input bindings](verification/deepseek-v41-gates-2026-10-22/calibration-inputs.json).
+
+Two CPU-derived bounds are nonbinding at this scope: per-position total
+variation exceeds its mathematical maximum, and the index changed-row
+fraction is one. Case-mean and tail checks, log-probability error, router
+constraints, index score/regret and per-row substitution limits, and exact
+local consistency remain separate requirements. The frozen complete-answer
+suite remains a finite 5/6 comparison with its disclosed Fibonacci failure.
+These limits do not establish bit-exact equivalence or qualify Maya's
+different consumer-q model.
+
+The [freeze marker](verification/deepseek-v41-gates-2026-10-22/confirmation-freeze-2.4.json)
+records 02:16:32 UTC, before any fresh B200 allocation or capture. Its files
+were uploaded and verified before the guard received the new allocation
+request. G1/G4 confirmation and qualified public G8 routing remain outstanding.
