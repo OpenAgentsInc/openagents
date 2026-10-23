@@ -485,6 +485,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12577: dark zinc styling is on main in the public host and private engine.
+  Seven focused Rust checks, public TypeScript/build checks, 883 private tests
+  (13 skipped), and isolated browser checks of guest entry, Jarvis, sign-in
+  cancellation, native engine controls, and narrow layouts pass. Deployment and
+  production browser checks continue here; provider and microphone checks remain
+  in `NEEDS_OWNER.md`.
+
 - #12576: the owned shadcn/React/Effect presentation covers Verse entry, the native
   editor and sign-in cards, publishing/sharing, planet setup, and visits/chat.
   Fifteen focused Rust checks, TypeScript/build checks, deterministic assets, and
