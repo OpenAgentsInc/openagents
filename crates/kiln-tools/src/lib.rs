@@ -172,6 +172,60 @@ mod tests {
     }
 
     #[test]
+    fn a_patch_refuses_overlapping_ascii_searches() {
+        for (original, search, count) in [
+            ("aaa", "aa", 2),
+            ("aaaa", "aa", 3),
+            ("abababa", "aba", 3),
+            ("a\na\na", "a\na", 2),
+        ] {
+            let patch = format!("<<<<<<< SEARCH\n{search}\n=======\nX\n>>>>>>> REPLACE");
+            assert_eq!(
+                apply_patch(original, &patch).unwrap_err(),
+                format!("block 1: the search text occurs {count} times; include more lines"),
+                "original: {original:?}, search: {search:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_patch_refuses_overlapping_multibyte_searches() {
+        for (original, search, count) in
+            [("ééé", "éé", 2), ("éééé", "éé", 3), ("🦊🦊🦊", "🦊🦊", 2)]
+        {
+            let patch = format!("<<<<<<< SEARCH\n{search}\n=======\nX\n>>>>>>> REPLACE");
+            assert_eq!(
+                apply_patch(original, &patch).unwrap_err(),
+                format!("block 1: the search text occurs {count} times; include more lines"),
+                "original: {original:?}, search: {search:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_patch_preserves_unique_searches_at_utf8_boundaries() {
+        for (original, search, expected) in [
+            ("aaa", "aaa", "X"),
+            ("ééé", "ééé", "X"),
+            ("前éé後", "éé", "前X後"),
+            ("前🦊後", "🦊後", "前X"),
+        ] {
+            let patch = format!("<<<<<<< SEARCH\n{search}\n=======\nX\n>>>>>>> REPLACE");
+            assert_eq!(apply_patch(original, &patch).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn a_patch_checks_overlaps_after_each_block() {
+        let patch = "<<<<<<< SEARCH\nseed\n=======\naaa\n>>>>>>> REPLACE\n\
+                     <<<<<<< SEARCH\naa\n=======\nX\n>>>>>>> REPLACE";
+        assert_eq!(
+            apply_patch("seed", patch).unwrap_err(),
+            "block 2: the search text occurs 2 times; include more lines"
+        );
+    }
+
+    #[test]
     fn the_engine_asserts() {
         let engine = engine(Path::new("."));
         assert!(engine.run("assert_eq(1 + 1, 2);").is_ok());
