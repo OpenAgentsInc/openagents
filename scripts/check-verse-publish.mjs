@@ -396,7 +396,7 @@ try {
   const first=await book();assert.equal(first.book.sequence,1,'Retry returns the existing publication');
   const firstId=first.book.channel,world=first.world;
   const firstPath=`/new-lander/play/${world}/${firstId}`;
-  const guest=await browser.newContext({viewport:{width:1280,height:800}});guestContexts.push(guest);
+  const guest=await browser.newContext({viewport:{width:1280,height:800},hasTouch:true});guestContexts.push(guest);
   if(process.env.AETHYRFORGE_LOCAL_CHECK==='1')await guest.grantPermissions(['local-network-access'],{origin:'https://openagents.com'});
   await guest.route('https://openagents.com/**',async route=>{
     const u=new URL(route.request().url());const response=await guest.request.fetch(base+u.pathname+u.search,{maxRedirects:0});
@@ -433,10 +433,16 @@ try {
   assert.equal(await guestEditor.evaluate(id=>window.aethyrforgeEditor.service.receipts.get(id).ok,denied),false,'Player worker refuses direct editor actions');
   await guestPage.bringToFront();
   const guestPreview=guestPage.frames().find(f=>f.url().startsWith(config.preview));assert.ok(guestPreview);
-  await guestPreview.evaluate(()=>{window.playerInputEvents=[];addEventListener('keydown',e=>window.playerInputEvents.push(e.code));});
+  await guestPreview.evaluate(()=>{
+    window.playerInputEvents=[];window.playerPointerEvents=[];
+    addEventListener('keydown',e=>window.playerInputEvents.push(e.code));
+    for(const type of ['pointerdown','click','pointerlockchange','pointerlockerror'])addEventListener(type,e=>window.playerPointerEvents.push({type,time:performance.now(),trusted:e.isTrusted,pointer:e.pointerType,locked:document.pointerLockElement?.id,focus:document.hasFocus()}));
+  });
   await guestPreview.locator('#world').click();
-  await guestPreview.waitForFunction(()=>document.pointerLockElement?.id==='world',null,{timeout:5000});
+  try{await guestPreview.waitForFunction(()=>document.pointerLockElement?.id==='world',null,{timeout:5000});}
+  catch(error){fs.writeFileSync(path.join(out,'player-pointer-events.json'),JSON.stringify(await guestPreview.evaluate(()=>window.playerPointerEvents),null,2));throw error;}
   assert.equal(await guestPreview.evaluate(()=>document.hasFocus()),true,'The nested player canvas has foreground focus');
+  assert.ok(await guestPreview.evaluate(()=>window.playerPointerEvents.some(e=>e.type==='click'&&e.pointer==='mouse'&&e.trusted&&e.time<700)),'The first trusted mouse click before 700ms acquires pointer lock without a wait');
   await guestPreview.locator('#world').focus();
   const guestPose=(await guestSnapshot()).engine.status.checkpoint;
   await guestPage.keyboard.down('w');await guestPage.waitForTimeout(700);await guestPage.keyboard.up('w');
@@ -446,10 +452,16 @@ try {
   assert.ok(walked.eye.some((n,i)=>Math.abs(n-guestPose.eye[i])>0.05),'The guest actually walks in the published world');
   for(const frame of guestPage.frames())if(frame.url().startsWith(config.preview))await frame.evaluate(()=>document.exitPointerLock?.());
   await guestPage.screenshot({path:path.join(out,'playable-guest-desktop.png')});
+  await guestPreview.waitForFunction(()=>!document.pointerLockElement);
+  const guestCanvas=await guestPreview.locator('#world').boundingBox();
+  await guestPage.touchscreen.tap(guestCanvas.x+guestCanvas.width*.7,guestCanvas.y+guestCanvas.height*.5);
+  await guestPreview.locator('#world').click();await guestPage.waitForTimeout(150);
+  assert.equal(await guestPreview.evaluate(()=>document.pointerLockElement===null),true,'A real preceding touch still suppresses its immediate compatibility click');
   console.log('Guest permissions and walking passed');
+  fs.writeFileSync(path.join(out,'player-pointer-events.json'),JSON.stringify(await guestPreview.evaluate(()=>window.playerPointerEvents),null,2));
   const priorPlayerSession=(await guestSnapshot()).engine.session;
   await guestEditor.evaluate(()=>{sessionStorage.setItem('fixture-player-reload-mode','hold-fail');location.reload();});
-  await guestEditor.waitForFunction(()=>window.playerLoadFixture?.actual()?.ok===true,null,{timeout:125000});
+  await guestEditor.waitForFunction(()=>window.playerLoadFixture?.actual()?.ok===true,null,{timeout:30000,polling:50});
   assert.notEqual((await guestSnapshot()).engine.session,priorPlayerSession);
   await guestPage.waitForTimeout(300);
   assert.equal(await guestPage.locator('#engine').isHidden(),true,'A replacement frame stays unavailable while LoadPlayable acknowledgment is held');
@@ -469,6 +481,27 @@ try {
   assert.equal((await guestSnapshot()).release,firstId,'Retry reloads the same pinned release');
   assert.equal(await guestEditor.evaluate(()=>window.aethyrforge.snapshot().status.authoring.active_source),changed);
   await guestPage.screenshot({path:path.join(out,'playable-reload-recovered.png')});
+  const recoveredSession=(await guestSnapshot()).engine.session;
+  await guestEditor.evaluate(()=>{
+    const registry=window.aethyrforgeEditor.service.registry,get=registry.get.bind(registry),states=new WeakMap();
+    registry.get=(...args)=>{
+      const value=get(...args);
+      if(value?.phase==='ready'&&value?.view){if(!states.has(value))states.set(value,{...value,phase:'error',message:'Injected fatal renderer status'});return states.get(value);}
+      return value;
+    };
+  });
+  await guestPage.waitForFunction(()=>['closed','revoked'].includes(JSON.parse(window.versePlayer.snapshot()).engine.phase)&&document.querySelector('#engine').hidden);
+  assert.equal(await guestPage.locator('#world-notice').isVisible(),true,'A post-success fatal status cannot leave the old frame interactive');
+  await guestPage.click('#world-retry');
+  await guestPage.waitForFunction(previous=>{
+    const s=JSON.parse(window.versePlayer.snapshot());return s.engine.session!==previous&&s.engine.receipts.some(r=>r.outcome.message==='Playable version opened.')&&!document.querySelector('#engine').hidden;
+  },recoveredSession,{timeout:30000});
+  assert.equal((await guestSnapshot()).release,firstId);
+  await guestPage.setViewportSize({width:390,height:844});
+  assert.equal(await guestPage.locator('#player-controls').isVisible(),true);
+  assert.equal(await guestPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await guestPage.screenshot({path:path.join(out,'playable-guest-mobile.png')});
+  await guestPage.setViewportSize({width:1280,height:800});
   console.log('Player reload failure and recovery passed');
   await page.bringToFront();
   // Publish another saved version, keeping the first guest pinned.
@@ -496,7 +529,7 @@ try {
   assert.equal(await page.evaluate(()=>JSON.parse(window.versePlayer.snapshot()).release),secondId,'Spoken Play opens the exact release through the real handler');
   await page.goBack({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.hauntDemo&&JSON.parse(window.hauntDemo.snapshot()).phase==='open',null,{timeout:125000});
-  await edit('history');await page.click('#project-list');await page.locator(`#project-picker option[value="${project}"]`).waitFor();
+  await edit('history');await page.click('#project-list');await page.locator(`#project-picker option[value="${project}"]`).waitFor({state:'attached'});
   await page.selectOption('#project-picker',project);await page.waitForTimeout(300);
   await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).phase==='open',null,{timeout:125000});
   await edit('compile');await page.click('#publish-refresh');
@@ -538,7 +571,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#publish-share-card').hidden&&!document.querySelector('#publish-share-link').hasAttribute('href'));
   assert.equal(await page.locator('#publish-share-link').innerText(),'');
   assert.deepEqual(errors,[]);
-  const result={protocol_version:7,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,player_reload_held_failed_and_same_version_recovered:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
+  const result={protocol_version:7,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,early_trusted_mouse_click_and_touch_ghost_guard:true,player_reload_held_failed_and_same_version_recovered:true,player_post_success_injected_fatal_status_recovers:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
   fs.writeFileSync(path.join(out,'browser-publish.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   }
 } catch(error){

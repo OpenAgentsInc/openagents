@@ -336,15 +336,20 @@ pub(super) fn mount(
         let weak = weak.clone();
         spawn_local(async move {
             let Some(rc) = weak.upgrade() else { return };
-            let scope = confirmation_scope(&rc.borrow());
-            let Some(scope) = scope else { return };
+            let scope = {
+                let s = rc.borrow();
+                if s.account.is_none() || s.projects.project.is_empty() {
+                    return;
+                }
+                ProjectScope::of(&s)
+            };
             let result = project_api(
                 &weak,
                 &format!("projects/{}/haunted-house/main/publications", scope.project),
                 None,
             )
             .await;
-            if !scope.accepts(confirmation_scope(&rc.borrow()).as_ref()) {
+            if !scope.accepts(&rc.borrow()) {
                 return;
             }
             match result {

@@ -161,11 +161,20 @@ impl State {
     fn layout(&self) {
         hide("edit-panel", !self.visit.open);
         hide("edit-shadow", !self.visit.open);
+        // Link management remains available after the engine frame closes.
+        if let Some(frame) = window()
+            .document()
+            .and_then(|d| d.get_element_by_id("engine"))
+        {
+            if self.visit.open {
+                let _ = frame.set_attribute("inert", "");
+            } else {
+                let _ = frame.remove_attribute("inert");
+            }
+        }
         if self.visit.open {
-            let _ = element("engine").set_attribute("inert", "");
             let _ = element("world-controls").set_attribute("inert", "");
         } else {
-            let _ = element("engine").remove_attribute("inert");
             let _ = element("world-controls").remove_attribute("inert");
         }
         let _ = element("edit-panel").set_attribute("data-active", &self.visit.active);
