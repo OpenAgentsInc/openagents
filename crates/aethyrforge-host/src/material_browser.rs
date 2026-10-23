@@ -17,6 +17,7 @@ pub(super) struct Controller {
     previewing: Option<u64>,
     dirty: bool,
     edited: bool,
+    stale: bool,
     voice_candidate: bool,
     previous: Option<[f64; 2]>,
 }
@@ -149,6 +150,10 @@ fn redraw(work: &Work) -> Result<(), JsValue> {
 }
 fn controls(work: &Work) {
     let _ = element("face-controls").remove_attribute("disabled");
+    let _ = element("face-canvas").set_attribute("aria-disabled", "false");
+    for id in ["face-export", "face-discard"] {
+        let _ = element(id).remove_attribute("disabled");
+    }
     input("face-generated-visible").set_checked(work.document.generated.visible);
     input("face-handmade-visible").set_checked(work.document.handmade.visible);
     input("face-generated-strength").set_value_as_number(work.document.generated.strength);
@@ -159,6 +164,7 @@ fn changed(s: &mut State) {
     s.materials.serial = s.materials.serial.wrapping_add(1);
     s.materials.dirty = true;
     s.materials.edited = true;
+    s.materials.stale = false;
     s.materials.voice_candidate = true;
     if s.projects.save.take().is_some() && !s.busy {
         hide("edit-auth", true);
@@ -310,6 +316,7 @@ async fn open(weak: Weak<RefCell<State>>) -> Option<MaterialDraftToken> {
             controls(&work);
             s.materials.work = Some(work);
             s.materials.edited = recovering_draft;
+            s.materials.stale = false;
             tell(
                 "Paint on the color map, or describe scars. Apply your face draft before saving this world.",
             );
@@ -598,6 +605,10 @@ pub(super) fn clear(s: &mut State) {
         ..Controller::default()
     };
     let _ = element("face-controls").set_attribute("disabled", "");
+    let _ = element("face-canvas").set_attribute("aria-disabled", "true");
+    for id in ["face-export", "face-discard"] {
+        let _ = element(id).set_attribute("disabled", "");
+    }
     let _ = put(&canvas(), &MaterialPixels::default());
     element("face-request")
         .unchecked_into::<HtmlTextAreaElement>()
@@ -607,8 +618,31 @@ pub(super) fn clear(s: &mut State) {
 pub(super) fn has_unsaved(s: &State) -> bool {
     s.materials.edited
 }
+pub(super) fn poll(rc: &Rc<RefCell<State>>) {
+    let mut s = rc.borrow_mut();
+    let Some(work) = s.materials.work.as_ref() else {
+        return;
+    };
+    let valid = current(&s, work);
+    if valid && s.materials.stale {
+        controls(work);
+        s.materials.stale = false;
+        tell("Your face draft is ready to preview or review.");
+    } else if !valid && !s.materials.stale {
+        s.materials.stale = true;
+        s.materials.previous = None;
+        let _ = element("face-controls").set_attribute("disabled", "");
+        let _ = element("face-canvas").set_attribute("aria-disabled", "true");
+        tell(if s.materials.edited {
+            "The world or selection changed. Your face draft is still here. Export it, then discard it to open the current face."
+        } else {
+            "The world or selection changed. Choose Edit selected werewolf face to continue painting."
+        });
+    }
+}
 pub(super) fn applied(s: &mut State) {
     s.materials.edited = false;
+    s.materials.stale = false;
     s.materials.voice_candidate = false;
     let current = s.input_context();
     if let Some(work) = s.materials.work.as_mut() {

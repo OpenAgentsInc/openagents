@@ -770,7 +770,16 @@ pub(super) fn poll(rc: &Rc<RefCell<State>>) {
     }
     let weak = Rc::downgrade(rc);
     spawn_local(async move {
-        let result = exported(&weak).await;
+        let result = async {
+            let document = exported(&weak).await?;
+            let rc = weak.upgrade().ok_or(JsValue::NULL)?;
+            if !same(&rc.borrow(), &account, epoch) {
+                return Err(JsValue::NULL);
+            }
+            files::collect(&weak, &document).await?;
+            Ok::<_, JsValue>(document)
+        }
+        .await;
         if let Some(rc) = weak.upgrade() {
             if !same(&rc.borrow(), &account, epoch) {
                 return;

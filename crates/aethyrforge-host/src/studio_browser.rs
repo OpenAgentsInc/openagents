@@ -1616,6 +1616,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     let tick = Closure::wrap(Box::new(move || {
         let Some(rc) = weak.upgrade() else { return };
         selected(&rc);
+        materials::poll(&rc);
         projects::poll(&rc);
         let mut spoken = false;
         {

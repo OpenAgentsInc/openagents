@@ -179,7 +179,7 @@ async fn page() -> Response {
                             p { "Choose one cheek or the forehead, one to eight scars, thin or thick, healed or fresh, and a solid color. Painting also works on a blank face layer." }
                             details { summary { "Generator colors" } p { "Pink, brown, red, blue, green, purple, tan, black, white, orange, yellow, or gray. Use the brush for other colors." } }
                             button id="face-generate" type="button" { "Generate local scars" }
-                            canvas id="face-canvas" width="256" height="256" aria-label="Face color map; drag to paint" style="width:100%;max-width:256px;aspect-ratio:1;touch-action:none;background:repeating-conic-gradient(#242736 0% 25%,#35394b 0% 50%) 0/20px 20px;cursor:crosshair;" {}
+                            canvas id="face-canvas" width="256" height="256" aria-label="Face color map; drag to paint" aria-disabled="true" {}
                             label for="face-brush-mode" { "Brush" }
                             select id="face-brush-mode" { option value="paint" { "Paint" } option value="erase" { "Erase handmade paint" } }
                             label for="face-brush-color" { "Paint color" } input id="face-brush-color" type="color" value="#8096c0";
@@ -191,10 +191,10 @@ async fn page() -> Response {
                             label for="face-handmade-strength" { "Paint strength" } input id="face-handmade-strength" type="range" min="0" max="1" step="0.05" value="1";
                             button id="face-preview" type="button" { "Preview face" }
                             button id="face-cancel" type="button" { "Cancel preview" }
-                            button id="face-discard" type="button" { "Discard face draft" }
                             button id="face-apply" type="button" { "Review face change" }
-                            button id="face-export" type="button" { "Export editable face layers" }
                         }
+                        button id="face-export" type="button" disabled { "Export editable face layers" }
+                        button id="face-discard" type="button" disabled { "Discard face draft" }
                         label for="face-import" { "Open an exported face-layer file" } input id="face-import" type="file" accept="application/json,.json";
                         p id="face-status" role="status" { "Select a werewolf in the house to begin." }
                         details { summary { "Shared material and fog" }
