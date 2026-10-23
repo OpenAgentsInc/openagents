@@ -158,9 +158,8 @@ fn loaded(weak: &Weak<RefCell<HostState>>, connect: bool) -> Result<(), JsValue>
     {
         s.checkpoint = Some(c)
     }
-    if let Some(p) = s.host.as_ref().map(|h| h.project().clone()) {
-        s.config.project = p
-    }
+    // A replacement document starts at the pinned release base. Edited project
+    // revisions belong to the previous frame and require an explicit restore.
     s.disconnect();
     s.error = None;
     s.started = now();

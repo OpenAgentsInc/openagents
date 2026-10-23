@@ -149,6 +149,23 @@ while (Date.now() < deadline) {
 assert.ok(base, log);
 const browser = await chromium.connectOverCDP(process.env.OPENAGENTS_CHROME_WS);
 const context = browser.contexts()[0];
+if(process.env.AETHYRFORGE_LOCAL_CHECK==="1")await context.grantPermissions(["local-network-access"],{origin:"https://openagents.com"});
+if(process.env.AETHYRFORGE_LOCAL_PROXY_CONFIG) {
+  const proxy=JSON.parse(fs.readFileSync(process.env.AETHYRFORGE_LOCAL_PROXY_CONFIG));
+  for(const [origin,upstream] of Object.entries(proxy)) {
+    assert.ok(origin===config.editor||origin===config.preview);
+    assert.equal(new URL(upstream).hostname,"127.0.0.1");
+    await context.route(origin+"/**",async route=>{
+      const incoming=new URL(route.request().url());
+      // A separate Node fetch has no account-service cookies or credentials.
+      const response=await fetch(upstream+incoming.pathname+incoming.search,{redirect:"manual"});
+      const headers=Object.fromEntries(response.headers);
+      for(const key of ["content-encoding","content-length","transfer-encoding"])delete headers[key];
+      const body=response.status>=300&&response.status<400?Buffer.alloc(0):Buffer.from(await response.arrayBuffer());
+      await route.fulfill({status:response.status,headers,body});
+    });
+  }
+}
 let page;
 const errors = [];
 let grants = 0;
@@ -185,6 +202,7 @@ try {
         headers,
         data: request.postDataBuffer() || undefined,
         maxRedirects: 0,
+        timeout: 120000,
       },
     );
     if (
@@ -248,15 +266,41 @@ try {
 
   page=await context.newPage();
   page.on("pageerror",e=>errors.push(e.message));
+  page.on("console",m=>{if(m.type()==="error")console.log("Browser console:",m.text());});
   await page.setViewportSize({width:1440,height:1000});
+  if(process.env.AETHYRFORGE_FIXTURE_DIRECT_SESSION==="1") {
+    // This fixture bootstrap does not exercise browser/provider sign-in.
+    const formPage=await context.request.get(base+"/sign-in");
+    const markup=await formPage.text();
+    const form=await page.evaluate(markup=>{
+      const document=new DOMParser().parseFromString(markup,"text/html");
+      const element=document.querySelector('form[action="/sign-in"]');
+      if(!element)throw Error("Native fixture sign-in form missing");
+      return Object.fromEntries(new FormData(element));
+    },markup);
+    form.credential=fixtureKey;
+    console.log("Fixture bootstrap: parsed native form");
+    const response=await context.request.post(base+"/sign-in",{form,headers:{origin:base,referer:base+"/sign-in"},maxRedirects:0});
+    console.log("Fixture bootstrap: response",response.status());
+    fs.writeFileSync(path.join(out,"fixture-form.html"),markup);
+    if(response.status()<300||response.status()>=400)fs.writeFileSync(path.join(out,"fixture-bootstrap-response.html"),await response.text());
+    assert.equal(response.status(),303,"Native fixture form fields: "+Object.keys(form).join(", "));
+    const cookies=await context.cookies(base);
+    console.log("Fixture bootstrap: cookie count",cookies.length);
+    assert.ok(cookies.length,"Native fixture session cookie");
+    await context.addCookies(cookies.map(cookie=>({...cookie,domain:"openagents.com",secure:true})));
+  } else {
   await page.goto("https://openagents.com/sign-in");
   await page.fill('input[name="credential"]',fixtureKey);
   await Promise.all([
     page.waitForURL("https://openagents.com/", {waitUntil:"domcontentloaded"}),
     page.locator('form[action="/sign-in"] button[type="submit"]').click(),
   ]);
+  }
+  console.log("Fixture host: opening house");
   await page.goto("https://openagents.com/new-lander/house");
-  await page.waitForFunction(()=>window.hauntDemo && JSON.parse(window.hauntDemo.snapshot()).phase==="open" && JSON.parse(window.hauntDemo.snapshot()).status.authoring,null,{timeout:125000});
+  console.log("Fixture host: house document opened");
+  await page.waitForFunction(()=>window.hauntDemo && JSON.parse(window.hauntDemo.snapshot()).phase==="open" && JSON.parse(window.hauntDemo.snapshot()).status.authoring,null,{timeout:process.env.AETHYRFORGE_LOCAL_CHECK==="1"?30000:125000});
   await page.click("#world-edit");
   await page.click("#tab-history");
   await page.fill("#project-name","Synthetic saved house");
@@ -336,12 +380,14 @@ try {
   assert.equal(savedPosts.at(-1).expected_version,3);
   await page.fill("#project-name","Second synthetic project");
   const creationArrival=new Promise(resolve=>createArrived=resolve);delayCreate=true;
-  await page.click("#project-create");await creationArrival;
+  await page.click("#project-create");console.log("Create overlap: click returned");await creationArrival;console.log("Create overlap: response held");
   const saveCount=savedPosts.length;
   const revisionDuringCreate=JSON.parse(await page.evaluate(()=>window.hauntDemo.snapshot())).status.project.revision;
-  await page.click("#project-save-copy");
-  await page.waitForFunction(()=>document.querySelector("#project-status").textContent.includes("current change finish"));
-  await page.click("#edit-undo");
+  await page.click("#project-save-copy");console.log("Create overlap: Save clicked",await page.locator("#project-status").innerText());
+  await page.waitForFunction(()=>document.querySelector("#project-status").textContent.includes("current change finish"));console.log("Create overlap: Save refused");
+  await page.click("#tab-compile");console.log("Create overlap: Compile tab active");
+  await page.click("#edit-source-draft");console.log("Create overlap: draft edit clicked");
+  await page.click("#tab-history");
   await page.waitForTimeout(150);
   assert.equal(savedPosts.length,saveCount,"Save cannot start during project creation");
   assert.equal(JSON.parse(await page.evaluate(()=>window.hauntDemo.snapshot())).status.project.revision,revisionDuringCreate);
@@ -378,12 +424,12 @@ try {
   await page.waitForFunction(key=>localStorage.getItem(key)!==null,recoveryKey(first),{timeout:20000});
   assert.equal(await page.locator("#project-picker").inputValue(),first);
   await page.screenshot({path:path.join(out,"project-workspace-desktop.png")});
-  const result={release:config.release,protocol_version:config.protocol_version,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,microphone_used:false,readable_contribution_review:checkHistory,late_inspection_keeps_latest:checkHistory,inspection_non_mutating:checkHistory,late_save_keeps_newer_source:true,acknowledged_base_advances:true,canceled_load_keeps_active_base:true,confirmed_load_restores_repairable_draft:true,late_checkpoint_failure_scoped:true,create_during_save_is_serialized:true,save_and_edit_during_creation_are_serialized:true,recovery_across_create_and_picker_resumes:true,grants,errors};
+  const result={release:config.release,protocol_version:config.protocol_version,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,fixture_direct_session:process.env.AETHYRFORGE_FIXTURE_DIRECT_SESSION==="1",controlled_local_https_proxy:!!process.env.AETHYRFORGE_LOCAL_PROXY_CONFIG,real_signin_provider:false,microphone_used:false,readable_contribution_review:checkHistory,late_inspection_keeps_latest:checkHistory,inspection_non_mutating:checkHistory,late_save_keeps_newer_source:true,acknowledged_base_advances:true,canceled_load_keeps_active_base:true,confirmed_load_restores_repairable_draft:true,late_checkpoint_failure_scoped:true,create_during_save_is_serialized:true,save_and_edit_during_creation_are_serialized:true,recovery_across_create_and_picker_resumes:true,grants,errors};
   assert.deepEqual(errors,[]);
   fs.writeFileSync(path.join(out,"browser-project.json"),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result));
 } catch(error) {
-  if(page){await page.screenshot({path:path.join(out,"project-error.png")});fs.writeFileSync(path.join(out,"project-error-state.json"),JSON.stringify({error:String(error),errors,body:await page.locator("body").innerText()},null,2));}
+  if(page){await page.screenshot({path:path.join(out,"project-error.png")});fs.writeFileSync(path.join(out,"project-error-state.json"),JSON.stringify({error:String(error),errors,body:await page.locator("body").innerText(),snapshot:await page.evaluate(()=>window.hauntDemo?.snapshot()),frames:await Promise.all(page.frames().map(async frame=>({url:frame.url(),state:await frame.evaluate(()=>({engine:window.aethyrforge?.snapshot(),notice:document.querySelector("#world-notice")?.textContent})).catch(()=>null)})))},null,2));}
   throw error;
 } finally {
   await context.close();await browser.close();server.kill("SIGTERM");accountServer.close();
