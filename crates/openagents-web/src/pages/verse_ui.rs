@@ -7,6 +7,33 @@ const JS: &str = include_str!("../../content/verse-ui/ui.js");
 const STYLE: &str = "<link rel=\"stylesheet\" href=\"/new-lander/ui.css\">";
 const SCRIPT: &str = "<script type=\"module\" src=\"/new-lander/ui.js\"></script>";
 
+/// Draw a labelled control's decorative HUD icon without a browser dependency.
+pub(super) fn icon(name: &str) -> maud::Markup {
+    let path = match name {
+        "map" => "m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5Zm6-2v16m6-14v16",
+        "reload" => "M20 7v5h-5M20 12a8 8 0 1 0-2 6",
+        "mesh" => "m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 0v18M3 8l9 5 9-5M3 16l9-3 9 3",
+        "edit" => "m15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 15v5Z",
+        "save" => "M5 3h12l4 4v14H3V3h2Zm2 0v7h10V3M7 21v-7h10v7",
+        "expand" => "M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6",
+        "objects" => "m12 3 9 5-9 5-9-5 9-5Zm-9 5v9l9 5 9-5V8m-9 5v9",
+        "materials" => {
+            "M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h3a5 5 0 0 0 0-10h-4ZM7 8h.01M12 6h.01M6 13h.01"
+        }
+        "request" => "M4 4h16v12H9l-5 4V4Zm4 5h8m-8 3h5",
+        "compile" => "m8 5-6 7 6 7m8-14 6 7-6 7m-3-16-2 18",
+        "history" => "M3 5v5h5M3 10a9 9 0 1 1 1 7m8-11v6l4 2",
+        "mic" => "M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5Zm-3 6v1a6 6 0 0 0 12 0v-1m-6 7v4m-4 0h8",
+        "stop" => "M6 6h12v12H6V6Z",
+        "play" => "m8 4 12 8-12 8V4Z",
+        "share" => "M14 3h7v7m0-7L10 14m-1-9H3v16h16v-6",
+        _ => "M12 3v18M3 12h18",
+    };
+    maud::html! {
+        svg.hud-icon viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" { path d=(path) {} }
+    }
+}
+
 pub(super) fn routes() -> Router<App> {
     Router::new()
         .route(

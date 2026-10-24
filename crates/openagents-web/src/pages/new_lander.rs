@@ -123,9 +123,9 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                     }
                     p id="world-notice" role="status" { "Opening the planets… You can also choose a destination below." }
                 }
-                div.atlas-heading { p.eyebrow { span.signal {} "THE VERSE" } h1 #atlas-title { "A universe" br; span { "worth exploring." } } p { "Find a world. Follow your curiosity." } }
+                div.atlas-heading { p.eyebrow { span.signal {} "THE VERSE / EXPLORATION" } h1 #atlas-title { "Choose your world." } p { "Find a world. Follow your curiosity." } }
                 aside.destination-panel aria-labelledby="world-title" {
-                    div.panel-label { span { "DESTINATION" } span { "◎" } }
+                    div.panel-label { span { "DESTINATION" } (super::verse_ui::icon("map")) }
                     p #world-category { "Company world · Locked" }
                     h2 #world-title { "OpenAgents" }
                     p #world-description { "Our home in the Verse. The Gym and Pylons will open here for their communities." }
@@ -153,7 +153,7 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                     }
                     div.world-list aria-label="Choose a destination" {
                         @for world in aethyrforge_host::WORLDS {
-                            button.world-option id=(format!("option-{}",world.id)) type="button" aria-pressed=(if world.id=="openagents" {"true"} else {"false"}) { span.world-option-dot {} span { strong { (world.name) } small { (world.category) } } span.option-arrow aria-hidden="true" { "↗" } }
+                            button.world-option id=(format!("option-{}",world.id)) type="button" aria-pressed=(if world.id=="openagents" {"true"} else {"false"}) { span.world-option-dot aria-hidden="true" {} span { strong { (world.name) } small { (world.category) } } span.option-arrow aria-hidden="true" { "↗" } }
                         }
                     }
                 }

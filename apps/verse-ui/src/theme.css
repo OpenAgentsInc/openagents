@@ -1218,3 +1218,908 @@
 [data-verse-ui="auth"] .oa-button:hover {
   background: #e4e4e7;
 }
+
+/* World HUD: keep the scene open and separate tools from navigation. */
+[data-verse-ui] {
+  --hud-surface: #101317ed;
+  --hud-line: #b5c7d82e;
+  --hud-accent: #c6e0ee;
+}
+[data-verse-ui] .hud-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+[data-verse-ui] .hud-section-label {
+  width: 100%;
+  margin: 0 0 10px;
+  font:
+    10px/1.4 ui-monospace,
+    monospace;
+  letter-spacing: 0.16em;
+  color: #c2cbd3;
+}
+[data-verse-ui="universe"] .site-header {
+  height: 64px;
+  margin: 0 24px;
+}
+[data-verse-ui="universe"] .atlas {
+  height: calc(100dvh - 64px);
+  min-height: 620px;
+}
+[data-verse-ui="universe"] .atlas-heading {
+  top: 28px;
+  left: 28px;
+  border-left: 2px solid var(--hud-accent);
+  padding-left: 16px;
+}
+[data-verse-ui="universe"] .atlas-heading h1 {
+  font-size: 27px;
+  letter-spacing: -0.03em;
+  margin: 10px 0 4px;
+}
+[data-verse-ui="universe"] .atlas-heading > p:last-child {
+  font-size: 12px;
+  margin-top: 6px;
+}
+[data-verse-ui] #verse-entry,
+[data-verse-ui] .destination-panel {
+  border-radius: 3px;
+  background: #10151bd9;
+  border-color: var(--hud-line);
+  border-top: 2px solid #bdd7e4a6;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 80px #0008;
+}
+[data-verse-ui] #verse-entry {
+  padding: 30px;
+}
+[data-verse-ui] .entry-label,
+[data-verse-ui] .panel-label {
+  font-family: ui-monospace, monospace;
+  color: #bccbd6;
+}
+[data-verse-ui] .entry-symbol {
+  width: 48px;
+  height: 48px;
+  border-radius: 0;
+  border: 1px solid var(--hud-line);
+}
+[data-verse-ui] .entry-actions > * {
+  border-radius: 2px;
+  min-height: 50px;
+  justify-content: space-between;
+  padding: 12px 18px;
+}
+[data-verse-ui] .destination-panel {
+  top: 28px;
+  right: 28px;
+  width: 340px;
+  padding: 22px;
+}
+[data-verse-ui] .panel-label {
+  margin-bottom: 22px;
+}
+[data-verse-ui] #world-title {
+  font-size: 30px;
+  margin-bottom: 10px;
+}
+[data-verse-ui] #world-description {
+  font-size: 12px;
+  min-height: 0;
+}
+[data-verse-ui] .destination-actions {
+  min-height: 0;
+  margin: 16px 0;
+}
+[data-verse-ui] .destination-actions .small-button {
+  border-radius: 2px;
+  background: var(--hud-accent);
+  color: #101317;
+  min-height: 44px;
+  justify-content: space-between;
+}
+[data-verse-ui] .world-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding-top: 18px;
+  margin-top: 20px;
+}
+[data-verse-ui] .world-option {
+  position: relative;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 104px;
+  padding: 12px;
+  border-radius: 2px;
+  border: 1px solid #bccbd61c;
+  background: #090e1480;
+}
+[data-verse-ui] .world-option:hover {
+  background: #25323b;
+}
+[data-verse-ui] .world-option[aria-pressed="true"] {
+  border-color: #c6e0ee9c;
+  background: #25323b;
+  box-shadow: inset 2px 0 var(--hud-accent);
+}
+[data-verse-ui] .world-option-dot {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 25%,
+    #bac8d3,
+    #526371 55%,
+    #101820 90%
+  );
+  border: 1px solid #d3e5f34d;
+  box-shadow: 0 0 0 4px #b6cfdf08;
+}
+[data-verse-ui] #option-haunted-house .world-option-dot {
+  background: radial-gradient(
+    circle at 30% 25%,
+    #d6c5a6,
+    #625d52 55%,
+    #1b2024 90%
+  );
+}
+[data-verse-ui] #option-creator-worlds .world-option-dot {
+  background: radial-gradient(
+    circle at 30% 25%,
+    #bccdbb,
+    #58685d 55%,
+    #111b1d 90%
+  );
+}
+[data-verse-ui] .world-option strong {
+  font-size: 12px;
+}
+[data-verse-ui] .world-option small {
+  font-size: 10px;
+}
+[data-verse-ui] .option-arrow {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+[data-verse-ui="studio"] #world-dock,
+[data-verse-ui="studio"]:has(#planet-settings):not(
+    :has(#edit-panel:not([hidden]))
+  )
+  #world-dock {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  left: 20px;
+  right: auto;
+  bottom: 20px;
+  z-index: 5;
+  width: min(520px, calc(100vw - 100px));
+  pointer-events: none;
+}
+[data-verse-ui="studio"] #world-controls,
+[data-verse-ui="studio"]:has(#planet-settings):not(
+    :has(#edit-panel:not([hidden]))
+  )
+  #world-dock
+  > #world-controls {
+  position: relative;
+  inset: auto;
+  order: 2;
+  width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  padding: 6px;
+  gap: 10px;
+  background: var(--hud-surface);
+  border: 1px solid var(--hud-line);
+  border-radius: 4px;
+  box-shadow: 0 8px 30px #0006;
+  backdrop-filter: blur(16px);
+}
+[data-verse-ui] .hud-navigation,
+[data-verse-ui] .hud-authoring {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+[data-verse-ui] .hud-authoring {
+  border-left: 1px solid var(--hud-line);
+  padding-left: 8px;
+}
+[data-verse-ui="studio"] #world-controls :is(a, button),
+[data-verse-ui] .hud-utilities > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 46px;
+  padding: 8px 12px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #edf2f5;
+  box-shadow: none;
+  cursor: pointer;
+  text-decoration: none;
+}
+[data-verse-ui="studio"] #world-controls :is(a, button):hover,
+[data-verse-ui] .hud-utilities > summary:hover {
+  background: #26313b;
+}
+[data-verse-ui="studio"] #world-controls #world-edit {
+  background: var(--hud-accent);
+  color: #101317;
+  min-width: 86px;
+}
+[data-verse-ui="studio"] #world-controls #world-edit:hover {
+  background: #e3f1f8;
+}
+[data-verse-ui="studio"] #world-mesh[aria-pressed="true"] {
+  border-color: #b7d3e6;
+  color: #dbedf9;
+  background: #27333d;
+}
+[data-verse-ui="studio"] #world-controls > span {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 4px;
+  white-space: nowrap;
+  font-size: 10px;
+}
+[data-verse-ui="studio"]
+  #world-dock:has(#world-voice:not([hidden]))
+  #world-controls
+  > span {
+  display: none;
+}
+[data-verse-ui] .hud-utilities {
+  position: relative;
+}
+[data-verse-ui] .hud-utilities > summary {
+  list-style: none;
+}
+[data-verse-ui] .hud-utilities > summary::-webkit-details-marker {
+  display: none;
+}
+[data-verse-ui] .hud-utility-menu {
+  position: absolute;
+  bottom: calc(100% + 16px);
+  left: 0;
+  width: 190px;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  background: #101317;
+  border: 1px solid var(--hud-line);
+  box-shadow: 0 10px 30px #0008;
+}
+[data-verse-ui="studio"] #world-controls .hud-utility-menu > * {
+  justify-content: flex-start;
+}
+[data-verse-ui="studio"] #world-dock #world-voice,
+[data-verse-ui="studio"]:has(#edit-panel:not([hidden]))
+  #world-dock
+  #world-voice {
+  position: static;
+  order: 1;
+  width: 100%;
+  max-width: none;
+  max-height: 100px;
+  overflow: auto;
+  transform: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  pointer-events: auto;
+  border: 1px solid var(--hud-line);
+  border-left: 2px solid #bdd7e4a6;
+  border-radius: 2px;
+  background: var(--hud-surface);
+  padding: 8px 12px;
+}
+[data-verse-ui] #world-voice button {
+  background: transparent;
+  border-color: transparent;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 2px;
+}
+[data-verse-ui] #world-voice #edit-voice-status {
+  margin-left: auto;
+  font-size: 11px;
+}
+[data-verse-ui] #world-voice :is(#voice-heard, #voice-response) {
+  width: 100%;
+  margin: 0;
+}
+[data-verse-ui] #world-voice .voice-help {
+  display: none;
+}
+[data-verse-ui] #edit-shadow {
+  background: #05080bb5;
+  backdrop-filter: blur(3px);
+}
+[data-verse-ui] #edit-panel,
+[data-verse-ui]:has(#edit-panel:not([hidden])) #edit-panel {
+  inset: 20px 20px 190px;
+  grid-template-columns: 82px minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 0.85fr) auto;
+  gap: 12px;
+}
+[data-verse-ui] .workspace-header {
+  grid-row: 1;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--hud-line);
+}
+[data-verse-ui] .workspace-header h1 {
+  font-size: 23px;
+  letter-spacing: -0.02em;
+}
+[data-verse-ui] .workspace-header .eyebrow {
+  font:
+    9px/1.8 ui-monospace,
+    monospace;
+  letter-spacing: 0.17em;
+  color: #bdcdd8;
+}
+[data-verse-ui] #edit-close {
+  border-radius: 2px;
+  background: #17212a;
+  border-color: var(--hud-line);
+}
+[data-verse-ui] #jarvis-toolbar {
+  grid-column: 1;
+  grid-row: 2/4;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+}
+[data-verse-ui] #jarvis-toolbar button {
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  min-height: 70px;
+  font: 10px/1.4 var(--font-sans);
+  color: #bbc6ce;
+  padding: 10px 6px;
+  background: #10151bc9;
+}
+[data-verse-ui] #jarvis-toolbar button:hover {
+  background: #25323b;
+}
+[data-verse-ui] #jarvis-toolbar [aria-selected="true"] {
+  color: #edf5fa;
+  background: #25323b;
+  border-color: #b5d2e55e;
+  box-shadow: inset 2px 0 var(--hud-accent);
+}
+[data-verse-ui] .tool-window {
+  background: var(--hud-surface);
+  border-color: var(--hud-line);
+  border-radius: 3px;
+  padding: 18px;
+  box-shadow: 0 10px 30px #0004;
+}
+[data-verse-ui] .tool-window > header {
+  border: 0;
+  border-bottom: 1px solid var(--hud-line);
+  border-radius: 0;
+  padding-bottom: 12px;
+}
+[data-verse-ui] .tool-window h2 {
+  font:
+    11px/1.4 ui-monospace,
+    monospace;
+  letter-spacing: 0.08em;
+  color: #cfdae3;
+}
+[data-verse-ui] .tool-window button,
+[data-verse-ui] .tool-window input[type="submit"],
+[data-verse-ui] .tool-window :is(input, select, textarea) {
+  border-radius: 2px;
+}
+[data-verse-ui] #panel-objects {
+  grid-column: 2;
+  grid-row: 2;
+}
+[data-verse-ui] #panel-materials {
+  grid-column: 3;
+  grid-row: 2/4;
+}
+[data-verse-ui] #panel-request {
+  grid-column: 4;
+  grid-row: 2;
+}
+[data-verse-ui] #panel-compile {
+  grid-column: 2;
+  grid-row: 3;
+}
+[data-verse-ui] #panel-history {
+  grid-column: 4;
+  grid-row: 3;
+}
+[data-verse-ui] #edit-status {
+  grid-row: 4;
+  border-radius: 2px;
+  background: #10151be8;
+  border-color: var(--hud-line);
+}
+[data-verse-ui] #request-choices {
+  border-radius: 3px;
+  background: #10151bf5;
+  border-color: var(--hud-line);
+}
+[data-verse-ui] #request-choices button {
+  border-radius: 2px;
+  background: transparent;
+  border-color: #b5c7d829;
+}
+[data-verse-ui] #request-choices #project-publish {
+  background: var(--hud-accent);
+  color: #101317;
+}
+[data-verse-ui] #planet-settings,
+[data-verse-ui] #publish-share-card,
+[data-verse-ui] dialog:not(#verse-entry),
+[data-verse-ui="player"] body > header,
+[data-verse-ui="setup"] main,
+[data-verse-ui="invite"] main,
+[data-verse-ui] #visit-panel,
+[data-verse-ui="auth"] .oa-auth-card {
+  background: #10151bf0;
+  border: 1px solid var(--hud-line);
+  border-top: 2px solid #bdd7e4a6;
+  border-radius: 3px;
+}
+[data-verse-ui] #planet-settings summary {
+  font:
+    12px/1.6 ui-monospace,
+    monospace;
+  color: #e1e9f0;
+  cursor: pointer;
+}
+[data-verse-ui] #planet-settings button {
+  border-radius: 2px;
+}
+[data-verse-ui] #project-history-rows {
+  list-style: none;
+  padding: 0;
+}
+[data-verse-ui] #project-history-rows li {
+  border-left: 2px solid #6f8d9f;
+  padding: 12px 12px 12px 16px;
+  margin: 10px 0;
+  background: #b5c7d808;
+}
+[data-verse-ui] #visit-earnings {
+  font:
+    11px/1.6 ui-monospace,
+    monospace;
+}
+@media (min-width: 800px) and (max-width: 1199px) {
+  [data-verse-ui] #edit-panel,
+  [data-verse-ui]:has(#edit-panel:not([hidden])) #edit-panel {
+    grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr);
+  }
+  [data-verse-ui] #panel-objects {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  [data-verse-ui] #panel-materials {
+    grid-column: 3;
+    grid-row: 2/4;
+  }
+  [data-verse-ui] #panel-request {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  [data-verse-ui] #panel-compile {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  [data-verse-ui] #panel-history {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  [data-verse-ui] #edit-panel:not([data-active="request"]) #panel-request,
+  [data-verse-ui] #edit-panel:not([data-active="history"]) #panel-history {
+    display: none;
+  }
+  [data-verse-ui] #edit-panel[data-active="request"] #panel-objects,
+  [data-verse-ui] #edit-panel[data-active="history"] #panel-compile {
+    visibility: hidden;
+  }
+}
+@media (max-width: 799px) {
+  [data-verse-ui="universe"] .site-header {
+    margin: 0 16px;
+  }
+  [data-verse-ui="universe"] .atlas {
+    min-height: 660px;
+  }
+  [data-verse-ui="universe"] .atlas-heading {
+    left: 20px;
+    top: 20px;
+    padding-left: 12px;
+  }
+  [data-verse-ui="universe"] .atlas-heading h1 {
+    font-size: 22px;
+  }
+  [data-verse-ui="universe"] .atlas-heading > p:last-child {
+    display: none;
+  }
+  [data-verse-ui] .destination-panel {
+    top: auto;
+    bottom: 65px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 355px;
+    padding: 16px;
+    overflow: auto;
+  }
+  [data-verse-ui] .panel-label {
+    display: flex;
+    margin-bottom: 12px;
+    font-size: 9px;
+  }
+  [data-verse-ui] #world-title {
+    font-size: 23px;
+    margin-bottom: 6px;
+  }
+  [data-verse-ui] #world-category {
+    font-size: 10px;
+  }
+  [data-verse-ui] #world-description {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  [data-verse-ui] .destination-actions {
+    position: static;
+    margin: 12px 0;
+  }
+  [data-verse-ui] .destination-actions .small-button {
+    font-size: 12px;
+    padding: 10px 14px;
+  }
+  [data-verse-ui] .world-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  [data-verse-ui] .world-option {
+    min-height: 78px;
+    padding: 9px 7px;
+    gap: 8px;
+  }
+  [data-verse-ui] .world-option strong {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+  [data-verse-ui] .world-option-dot {
+    width: 17px;
+    height: 17px;
+  }
+  [data-verse-ui] .world-option small,
+  [data-verse-ui] .option-arrow {
+    display: none;
+  }
+  [data-verse-ui="studio"] #world-dock,
+  [data-verse-ui="studio"]:has(#planet-settings):not(
+      :has(#edit-panel:not([hidden]))
+    )
+    #world-dock {
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: auto;
+    gap: 6px;
+  }
+  [data-verse-ui="studio"] #world-controls,
+  [data-verse-ui="studio"]:has(#planet-settings):not(
+      :has(#edit-panel:not([hidden]))
+    )
+    #world-dock
+    > #world-controls {
+    padding: 4px;
+    gap: 4px;
+  }
+  [data-verse-ui] .hud-navigation,
+  [data-verse-ui] .hud-authoring {
+    gap: 2px;
+  }
+  [data-verse-ui] .hud-authoring {
+    padding-left: 4px;
+  }
+  [data-verse-ui="studio"] #world-controls :is(a, button),
+  [data-verse-ui] .hud-utilities > summary {
+    min-width: 44px;
+    min-height: 48px;
+    padding: 8px;
+    font-size: 12px;
+  }
+  [data-verse-ui="studio"] #world-controls #world-edit {
+    min-width: 66px;
+  }
+  [data-verse-ui="studio"]
+    #world-controls
+    :is(#world-map, #world-mesh, #project-save)
+    > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  [data-verse-ui="studio"] #world-dock #world-voice,
+  [data-verse-ui="studio"]:has(#edit-panel:not([hidden]))
+    #world-dock
+    #world-voice {
+    max-height: 104px;
+    padding: 6px 8px;
+  }
+  [data-verse-ui] #verse-ui-root {
+    top: 12px;
+    bottom: auto;
+    right: 12px;
+  }
+  [data-verse-ui="studio"] #planet-settings {
+    top: 12px;
+    left: 12px;
+    right: 64px;
+    width: auto;
+    max-width: none;
+    max-height: 42vh;
+  }
+  [data-verse-ui] #edit-panel,
+  [data-verse-ui]:has(#edit-panel:not([hidden])) #edit-panel {
+    inset: 12px 8px 185px;
+    display: flex;
+    gap: 8px;
+  }
+  [data-verse-ui] .workspace-header {
+    padding: 0 48px 10px 4px;
+  }
+  [data-verse-ui] .workspace-header h1 {
+    font-size: 20px;
+  }
+  [data-verse-ui] .workspace-header .eyebrow {
+    font-size: 8px;
+  }
+  [data-verse-ui] #edit-close {
+    font-size: 11px;
+    padding: 8px 10px;
+  }
+  [data-verse-ui] #edit-close .hud-icon {
+    width: 15px;
+    height: 15px;
+  }
+  [data-verse-ui] #jarvis-toolbar {
+    flex-direction: row;
+    flex: none;
+    gap: 3px;
+    overflow: visible;
+    padding: 0;
+  }
+  [data-verse-ui] #jarvis-toolbar button {
+    flex: 1;
+    min-width: 0;
+    min-height: 61px;
+    padding: 7px 3px;
+    gap: 5px;
+    font-size: 10px;
+  }
+  [data-verse-ui] #jarvis-toolbar [aria-selected="true"] {
+    box-shadow: inset 0 -2px var(--hud-accent);
+  }
+  [data-verse-ui] .tool-window {
+    padding: 14px;
+  }
+  [data-verse-ui] #edit-status {
+    max-height: 45px;
+    min-height: 30px;
+    padding: 6px 10px;
+  }
+  [data-verse-ui] #request-choices {
+    top: auto;
+    bottom: 182px;
+    right: 12px;
+    left: 12px;
+    max-width: none;
+    max-height: 34vh;
+    overflow: auto;
+  }
+}
+@media (max-height: 600px) and (max-width: 999px) {
+  [data-verse-ui] #edit-panel,
+  [data-verse-ui]:has(#edit-panel:not([hidden])) #edit-panel {
+    bottom: 136px;
+  }
+  [data-verse-ui="studio"] #world-dock #world-voice {
+    max-height: 62px;
+  }
+  [data-verse-ui] #planet-settings {
+    max-height: 38vh;
+  }
+}
+
+[data-verse-ui="studio"] #world-controls {
+  z-index: 2;
+}
+[data-verse-ui="studio"] #world-dock #world-voice {
+  z-index: 1;
+}
+[data-verse-ui="studio"] #world-map > span {
+  white-space: nowrap;
+}
+[data-verse-ui="studio"] #world-mesh > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+[data-verse-ui="universe"] #verse-ui-root {
+  bottom: 20px;
+  top: auto;
+}
+[data-verse-ui="universe"] .camera-controls {
+  padding-right: 52px;
+}
+@media (max-width: 799px) {
+  [data-verse-ui="universe"] .back-link {
+    display: none;
+  }
+  [data-verse-ui="universe"] .camera-controls {
+    padding-right: 40px;
+  }
+}
+
+[data-verse-ui="universe"] .world-marker {
+  border: 0;
+  border-left: 1px solid #b7d0df8c;
+  border-radius: 0;
+  background: #080d12c7;
+  box-shadow: none;
+  font:
+    11px/1.4 ui-monospace,
+    monospace;
+  padding: 7px 12px;
+}
+[data-verse-ui="universe"] .camera-controls :is(a, button) {
+  border-radius: 2px;
+  border-color: var(--hud-line);
+  background: var(--hud-surface);
+  min-height: 40px;
+}
+@media (max-width: 799px) {
+  [data-verse-ui] #jarvis-toolbar [aria-selected="true"] {
+    background: #10151bc9;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  [data-verse-ui] #edit-panel[data-active="objects"] #tab-objects,
+  [data-verse-ui] #edit-panel[data-active="materials"] #tab-materials,
+  [data-verse-ui] #edit-panel[data-active="request"] #tab-request,
+  [data-verse-ui] #edit-panel[data-active="compile"] #tab-compile,
+  [data-verse-ui] #edit-panel[data-active="history"] #tab-history {
+    background: #25323b;
+    border-color: #b5d2e55e;
+    box-shadow: inset 0 -2px var(--hud-accent);
+  }
+}
+
+@media (max-height: 600px) and (max-width: 999px) {
+  [data-verse-ui] #edit-panel,
+  [data-verse-ui]:has(#edit-panel:not([hidden])) #edit-panel {
+    display: flex;
+    flex-direction: column;
+    inset: 10px 10px 136px;
+    gap: 6px;
+  }
+  [data-verse-ui] .workspace-header {
+    flex: none;
+    padding-bottom: 6px;
+  }
+  [data-verse-ui] .workspace-header .eyebrow {
+    display: none;
+  }
+  [data-verse-ui] .workspace-header h1 {
+    font-size: 18px;
+  }
+  [data-verse-ui] #jarvis-toolbar {
+    flex: none;
+    flex-direction: row;
+    gap: 4px;
+  }
+  [data-verse-ui] #jarvis-toolbar button {
+    flex: 1;
+    flex-direction: row;
+    min-height: 40px;
+    padding: 5px;
+  }
+  [data-verse-ui] #jarvis-toolbar .hud-icon {
+    width: 16px;
+    height: 16px;
+  }
+  [data-verse-ui] .tool-window {
+    flex: 1;
+    resize: none;
+    max-height: none;
+    min-height: 0;
+  }
+  [data-verse-ui] #edit-panel:not([data-active="objects"]) #panel-objects,
+  [data-verse-ui] #edit-panel:not([data-active="materials"]) #panel-materials,
+  [data-verse-ui] #edit-panel:not([data-active="request"]) #panel-request,
+  [data-verse-ui] #edit-panel:not([data-active="compile"]) #panel-compile,
+  [data-verse-ui] #edit-panel:not([data-active="history"]) #panel-history {
+    display: none;
+  }
+  [data-verse-ui] #edit-status {
+    flex: none;
+    max-height: 32px;
+    min-height: 24px;
+    padding: 4px 8px;
+  }
+}
+
+[data-verse-ui] #request-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+[data-verse-ui] #request-choices > .hud-section-label,
+[data-verse-ui] .hud-command-menu {
+  grid-column: 1/-1;
+}
+[data-verse-ui] #request-choices > button {
+  flex-direction: column;
+  min-height: 68px;
+  padding: 12px 8px;
+}
+[data-verse-ui] .hud-command-menu summary {
+  cursor: pointer;
+  padding: 12px 4px 4px;
+  color: #b9c6d0;
+  font-size: 11px;
+}
+[data-verse-ui] .hud-command-menu > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+[data-verse-ui] #project-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+[data-verse-ui] #project-tools > :not(button) {
+  grid-column: 1/-1;
+}
+[data-verse-ui] #project-tools > button {
+  margin: 0;
+  min-height: 44px;
+  padding: 8px;
+}
+[data-verse-ui] #project-tools > h3 {
+  margin-top: 20px;
+}
+[data-verse-ui] #project-tools > label {
+  margin-bottom: 0;
+}

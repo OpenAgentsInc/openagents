@@ -75,6 +75,18 @@ The Verse flow uses a dark zinc theme: black backgrounds, zinc cards, light text
 and light primary actions. Keep the private engine controls on the same palette.
 Scene materials and world lighting are independent of the interface theme.
 
+The world HUD groups map/display controls separately from editing and saving.
+Jarvis uses an instrument rail on desktop and compact tool tabs on phones.
+Reload and fullscreen live in the display menu; secondary world actions have an
+expandable menu. Rust renders the decorative SVG icons, and every icon control
+keeps its accessible name. Run the touch-target and retained-world check after
+changing this layout:
+
+```sh
+VERSE_UI_CAPTURE_DIR=/absolute/scratch/verse-hud \
+openagents browser run -- node apps/verse-ui/tools/check-hud.mjs
+```
+
 Check text contrast and phone overflow with the browser audit:
 
 ```sh

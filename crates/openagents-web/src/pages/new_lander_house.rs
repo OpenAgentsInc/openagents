@@ -155,14 +155,23 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
             }
             div id="world-dock" {
                 nav id="world-controls" aria-label="World controls" {
-                    a id="world-map" href=(MAP) { "Back to planets" }
+                    div.hud-navigation {
+                        a id="world-map" href=(MAP) title="Back to planets" { (super::verse_ui::icon("map")) span { "Back to planets" } }
+                        details.hud-utilities {
+                            summary aria-label="World display" title="World display" { (super::verse_ui::icon("expand")) }
+                            div.hud-utility-menu {
+                                a id="world-retry" href=(planet.map(|p|format!("/new-lander/planet/{}/world",p.id)).unwrap_or_else(||HOUSE.into())) { (super::verse_ui::icon("reload")) span { "Reload world" } }
+                                button id="world-fullscreen" type="button" { (super::verse_ui::icon("expand")) span { "Full screen" } }
+                            }
+                        }
+                    }
                     p id="world-touch-help" { "Left side: move · Right side: look" }
                     span { "Click to look · WASD to walk · Escape to release the pointer" }
-                    a id="world-retry" href=(planet.map(|p|format!("/new-lander/planet/{}/world",p.id)).unwrap_or_else(||HOUSE.into())) { "Reload world" }
-                    button id="world-mesh" type="button" hidden aria-pressed="false" { "Mesh overlay" }
-                    button id="world-edit" type="button" { "Edit" }
-                    button id="project-save" type="button" hidden data-tutorial-option="ready" { "Save project" }
-                    button id="world-fullscreen" type="button" { "Full screen" }
+                    div.hud-authoring {
+                        button id="world-mesh" type="button" hidden aria-pressed="false" title="Mesh overlay" { (super::verse_ui::icon("mesh")) span { "Mesh overlay" } }
+                        button id="world-edit" type="button" { (super::verse_ui::icon("edit")) span { "Edit" } }
+                        button id="project-save" type="button" hidden data-tutorial-option="ready" title="Save project" { (super::verse_ui::icon("save")) span { "Save project" } }
+                    }
                 }
                 @if personal {
                     aside id="planet-settings" aria-label="Courtyard settings" {
@@ -188,8 +197,8 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                     }
                 }
                 aside id="world-voice" hidden aria-label="Voice controls" {
-                    button id="edit-voice-start" type="button" hidden { "Listen" }
-                    button id="edit-voice-stop" type="button" { "Stop / mute" }
+                    button id="edit-voice-start" type="button" hidden { (super::verse_ui::icon("mic")) span { "Listen" } }
+                    button id="edit-voice-stop" type="button" { (super::verse_ui::icon("stop")) span { "Stop / mute" } }
                     p id="edit-voice-status" role="status" aria-live="polite" { "Microphone off" }
                     p id="voice-heard" {}
                     p id="voice-response" role="status" aria-live="polite" {}
@@ -197,23 +206,29 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                 }
             }
                         aside id="request-choices" hidden aria-label="Request options" {
-                            button id="project-publish" type="button" hidden data-tutorial-option="ready" { "Publish" }
-                            button id="project-play" type="button" hidden disabled data-tutorial-option="ready" { "Play" }
-                            button id="project-share" type="button" hidden disabled data-tutorial-option="ready" { "Share" }
-                            button id="project-revert" type="button" hidden disabled data-tutorial-option="ready" { "Revert to Starting house" }
-                            @for (id,label) in [("request-inspect","Inspect world"),("request-mesh","Show mesh"),("request-map","Back to planets"),("request-compile","Compile world effect"),("request-undo","Undo")] {
-                                button id=(id) type="button" { (label) }
+                            p.hud-section-label { "WORLD ACTIONS" }
+                            button id="project-publish" type="button" hidden data-tutorial-option="ready" { (super::verse_ui::icon("share")) "Publish" }
+                            button id="project-play" type="button" hidden disabled data-tutorial-option="ready" { (super::verse_ui::icon("play")) "Play" }
+                            button id="project-share" type="button" hidden disabled data-tutorial-option="ready" { (super::verse_ui::icon("share")) "Share" }
+                            details.hud-command-menu {
+                                summary { "More world actions" }
+                                div {
+                                    button id="project-revert" type="button" hidden disabled data-tutorial-option="ready" { "Revert to Starting house" }
+                                    @for (id,label) in [("request-inspect","Inspect world"),("request-mesh","Show mesh"),("request-map","Back to planets"),("request-compile","Compile world effect"),("request-undo","Undo")] {
+                                        button id=(id) type="button" { (label) }
+                                    }
+                                }
                             }
                         }
             div id="edit-shadow" hidden aria-hidden="true" {}
             aside id="edit-panel" hidden role="dialog" aria-modal="true" aria-labelledby="edit-title" data-active="objects" {
                 header class="workspace-header" {
                     div { p class="eyebrow" { "OPENAGENTS / STUDIO" } h1 id="edit-title" { "Jarvis" } }
-                    button id="edit-close" type="button" { "Inspect world" }
+                    button id="edit-close" type="button" { (super::verse_ui::icon("play")) "Inspect world" }
                 }
                 div id="jarvis-toolbar" hidden role="tablist" aria-label="Editing tools" {
                     @for (id,label) in [("objects","Object"),("materials","Materials"),("request","Request"),("compile","Compile"),("history","History")] {
-                        button id=(format!("tab-{id}")) type="button" role="tab" aria-controls=(format!("panel-{id}")) aria-selected="false" { (label) }
+                        button id=(format!("tab-{id}")) type="button" role="tab" aria-controls=(format!("panel-{id}")) aria-selected="false" { (super::verse_ui::icon(id)) span { (label) } }
                     }
                 }
                 section id="panel-objects" class="tool-window" aria-labelledby="objects-title" {
