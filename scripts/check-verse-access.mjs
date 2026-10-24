@@ -298,34 +298,34 @@ try {
       "werewolf-1",
   );
   await page.click("[data-aethyr-id=world-edit]");
-  assert.ok(await page.locator("#edit-panel").isVisible());
-  assert.equal(await page.locator("#edit-auth").isVisible(), false);
+  assert.ok(await page.locator("[data-aethyr-id=edit-panel]").isVisible());
+  assert.equal(await page.locator("[data-aethyr-id=edit-auth]").isVisible(), false);
   await page.waitForFunction(
     () =>
       document.querySelector("#edit-target").textContent === "werewolf-1" &&
       !document.querySelector("#edit-submit").disabled,
   );
-  await page.fill("#edit-x", "-2.1");
-  await page.fill("#edit-y", "0");
-  await page.fill("#edit-note", "Keep this requested move while signing in.");
+  await page.fill("[data-aethyr-id=edit-x] :is(input,textarea)", "-2.1");
+  await page.fill("[data-aethyr-id=edit-y] :is(input,textarea)", "0");
+  await page.fill("[data-aethyr-id=edit-note] :is(input,textarea)", "Keep this requested move while signing in.");
   const before = await snapshot();
-  await page.click("#edit-submit");
-  await page.locator("#edit-auth").waitFor({ state: "visible" });
+  await page.click("[data-aethyr-id=edit-submit]");
+  await page.locator("[data-aethyr-id=edit-auth]").waitFor({ state: "visible" });
   const pending = await page.evaluate(() =>
     JSON.parse(window.hauntDemo.pending_change()),
   );
   assert.equal(grants, 0);
-  assert.equal(await page.locator("#edit-confirm").isVisible(), false);
-  await page.click("#edit-cancel");
-  assert.equal(await page.locator("#edit-auth").isVisible(), false);
+  assert.equal(await page.locator("[data-aethyr-id=edit-confirm]").isVisible(), false);
+  await page.click("[data-aethyr-id=edit-cancel]");
+  assert.equal(await page.locator("[data-aethyr-id=edit-auth]").isVisible(), false);
   assert.equal(
-    await page.locator("#edit-note").inputValue(),
+    await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
     pending.pending.draft,
   );
-  await page.click("#edit-submit");
+  await page.click("[data-aethyr-id=edit-submit]");
   const popup = await Promise.all([
     context.waitForEvent("page"),
-    page.click("#edit-signin"),
+    page.click("[data-aethyr-id=edit-signin]"),
   ]).then((v) => v[0]);
   await popup.waitForLoadState("domcontentloaded");
   await popup.close();
@@ -343,12 +343,12 @@ try {
       JSON.parse(window.hauntDemo.snapshot()).status.selection?.id ===
       "werewolf-1",
   );
-  assert.ok(await page.locator("#edit-panel").isVisible());
+  assert.ok(await page.locator("[data-aethyr-id=edit-panel]").isVisible());
   assert.equal(
-    await page.locator("#edit-note").inputValue(),
+    await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
     pending.pending.draft,
   );
-  assert.equal(await page.locator("#edit-x").inputValue(), "-2.1");
+  assert.equal(await page.locator("[data-aethyr-id=edit-x] :is(input,textarea)").inputValue(), "-2.1");
   const resumed = await snapshot();
   for (let i = 0; i < 3; i++)
     assert.ok(
@@ -356,10 +356,10 @@ try {
         resumed.status.checkpoint.eye[i] - before.status.checkpoint.eye[i],
       ) < 0.05,
     );
-  await page.click("#edit-submit");
+  await page.click("[data-aethyr-id=edit-submit]");
   const login = await Promise.all([
     context.waitForEvent("page"),
-    page.click("#edit-signin"),
+    page.click("[data-aethyr-id=edit-signin]"),
   ]).then((v) => v[0]);
   await login.waitForURL("**/sign-in");
   await login.fill('input[name="credential"]', fixtureKey);
@@ -373,7 +373,7 @@ try {
   ]);
   assert.ok(loginResponse.ok());
   await page
-    .locator("#edit-confirm")
+    .locator("[data-aethyr-id=edit-confirm]")
     .waitFor({ state: "visible", timeout: 20000 });
   const signed = await snapshot();
   assert.equal(signed.session, resumed.session);
@@ -383,22 +383,22 @@ try {
   assert.equal(signed.status.project.revision, 0);
   assert.equal(grants, 0);
   assert.equal(
-    await page.locator("#edit-note").inputValue(),
+    await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
     pending.pending.draft,
   );
   await login.close();
   active = false;
   await page
-    .locator("#edit-signin")
+    .locator("[data-aethyr-id=edit-signin]")
     .waitFor({ state: "visible", timeout: 15000 });
   assert.equal(
-    await page.locator("#edit-note").inputValue(),
+    await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
     pending.pending.draft,
   );
   assert.equal((await snapshot()).session, resumed.session);
   const again = await Promise.all([
     context.waitForEvent("page"),
-    page.click("#edit-signin"),
+    page.click("[data-aethyr-id=edit-signin]"),
   ]).then((v) => v[0]);
   await again.waitForURL("**/sign-in");
   await again.fill('input[name="credential"]', fixtureKey);
@@ -412,12 +412,12 @@ try {
   ]);
   assert.ok(renewedResponse.ok());
   await page
-    .locator("#edit-confirm")
+    .locator("[data-aethyr-id=edit-confirm]")
     .waitFor({ state: "visible", timeout: 20000 });
   await again.close();
   assert.equal(grants, 0);
   await page.screenshot({ path: path.join(out, "explicit-confirmation.png") });
-  await page.click("#edit-confirm");
+  await page.click("[data-aethyr-id=edit-confirm]");
   await page.waitForFunction(
     () =>
       document.querySelector("#edit-status").textContent ===

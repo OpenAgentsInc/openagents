@@ -2,14 +2,19 @@
 // Regenerate: cargo run -p aethyr-ui -- --write
 
 export const SCHEMA = "aethyr.ui.v1";
-export const SCHEMA_SHA256 = "54e9944173ac5a3842be71db522385d0226face1e2017e1f26169d44311bf441";
+export const SCHEMA_SHA256 = "899fc1fad0c69a73a59dcd384dd8572b55a38346cee42a5c5e99830a00556bdb";
 export const MAX_NODES = 1024;
 export const MAX_DEPTH = 16;
 export const MAX_VIEW_BYTES = 524288;
 export const MAX_ID_BYTES = 128;
 export const MAX_TEXT_BYTES = 16384;
 export const MAX_FIELD_BYTES = 65536;
-export const ELEMENT_KINDS = ["panel", "stack", "text", "label", "button", "chip", "list", "field", "sheet", "dialog", "toast", "media_slot", "engine_surface"] as const;
+export const MAX_OPTIONS = 256;
+export const MAX_UPLOAD_BYTES = 33554432;
+export const MAX_ACCEPT = 32;
+export const MAX_FILES = 64;
+export const MAX_CANVAS_PIXELS = 4096;
+export const ELEMENT_KINDS = ["panel", "stack", "text", "label", "button", "chip", "list", "field", "sheet", "dialog", "toast", "media_slot", "engine_surface", "select", "checkbox", "range", "color", "file", "canvas"] as const;
 
 /**
  * One published revision of a controller's interface.
@@ -232,6 +237,83 @@ export type Element =
     readonly surface: string;
     readonly label: string;
     readonly kind: "engine_surface";
+  }
+  /**
+   * Choose one of `options`. Sends `select` with the chosen option's
+   * `value`; `value` is the current choice.
+   */
+  | {
+    readonly label: string;
+    readonly value: string;
+    readonly options: ReadonlyArray<Choice>;
+    readonly enabled?: boolean;
+    readonly kind: "select";
+  }
+  /**
+   * On or off. Sends `input` with `true` or `false`, the state the person
+   * asked for.
+   */
+  | {
+    readonly label: string;
+    readonly checked: boolean;
+    readonly enabled?: boolean;
+    readonly kind: "checkbox";
+  }
+  /**
+   * A number between `min` and `max` on `step`. Sends `input` with the
+   * new value as a decimal number.
+   */
+  | {
+    readonly label: string;
+    readonly value: Decimal;
+    readonly min: Decimal;
+    readonly max: Decimal;
+    readonly step: Decimal;
+    readonly enabled?: boolean;
+    readonly kind: "range";
+  }
+  /**
+   * A color, as `#rrggbb` in lowercase. Sends `input` with the new color.
+   */
+  | {
+    readonly label: string;
+    readonly value: string;
+    readonly enabled?: boolean;
+    readonly kind: "color";
+  }
+  /**
+   * An upload slot. The renderer checks each chosen file against
+   * `accept` and `max_bytes`, hands the files to the host under `slot`,
+   * and sends `input` with their names, one per line. File contents
+   * never travel in an intent.
+   */
+  | {
+    readonly label: string;
+    readonly slot: string;
+    /**
+     * Media types (`image/png`) or extensions (`.json`); empty takes any.
+     */
+    readonly accept?: ReadonlyArray<string>;
+    /**
+     * The largest file accepted, in bytes.
+     */
+    readonly max_bytes: number;
+    readonly multiple?: boolean;
+    readonly enabled?: boolean;
+    readonly kind: "file";
+  }
+  /**
+   * A drawing surface the host registered under `surface`, at `width` by
+   * `height` CSS pixels, scaled down to fit. The renderer keeps it mounted
+   * across revisions and never sends intents for it; the engine takes
+   * its own input (painting, for example).
+   */
+  | {
+    readonly surface: string;
+    readonly label: string;
+    readonly width: number;
+    readonly height: number;
+    readonly kind: "canvas";
   };
 
 export type Axis = "vertical" | "horizontal" | "wrap";
@@ -247,6 +329,22 @@ export type Emphasis = "secondary" | "primary" | "ghost" | "link";
 export type Glyph = "forward" | "back" | "close";
 
 export type Aspect = "square" | "wide" | "tall";
+
+/**
+ * One option of a `select`.
+ */
+export interface Choice {
+  readonly value: string;
+  readonly label: string;
+}
+
+/**
+ * A finite decimal number. Equality is by bit pattern, so a view compares
+ * equal to itself; validation refuses NaN and infinities. A whole number
+ * encodes as an integer (`5`, not `5.0`), as JavaScript writes it, so both
+ * sides produce the same JSON.
+ */
+export type Decimal = number;
 
 /**
  * What the person did, sent by the renderer. It carries identity and, for
@@ -885,6 +983,206 @@ export const SCHEMA_DOCUMENT: unknown = {
             "label"
           ],
           "description": "The engine's drawing surface, registered by the host under `surface`.\nThe renderer keeps it mounted across revisions and never sends\nintents for it; the engine takes its own input."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Choice"
+              }
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string",
+              "const": "select"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "value",
+            "options"
+          ],
+          "description": "Choose one of `options`. Sends `select` with the chosen option's\n`value`; `value` is the current choice."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "checked": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string",
+              "const": "checkbox"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "checked"
+          ],
+          "description": "On or off. Sends `input` with `true` or `false`, the state the person\nasked for."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "min": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "max": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "step": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string",
+              "const": "range"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "value",
+            "min",
+            "max",
+            "step"
+          ],
+          "description": "A number between `min` and `max` on `step`. Sends `input` with the\nnew value as a decimal number."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^#[0-9a-f]{6}$"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string",
+              "const": "color"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "value"
+          ],
+          "description": "A color, as `#rrggbb` in lowercase. Sends `input` with the new color."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "slot": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            },
+            "accept": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Media types (`image/png`) or extensions (`.json`); empty takes any."
+            },
+            "max_bytes": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0,
+              "description": "The largest file accepted, in bytes."
+            },
+            "multiple": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string",
+              "const": "file"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "slot",
+            "max_bytes"
+          ],
+          "description": "An upload slot. The renderer checks each chosen file against\n`accept` and `max_bytes`, hands the files to the host under `slot`,\nand sends `input` with their names, one per line. File contents\nnever travel in an intent."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "surface": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            },
+            "label": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "height": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "kind": {
+              "type": "string",
+              "const": "canvas"
+            }
+          },
+          "required": [
+            "kind",
+            "surface",
+            "label",
+            "width",
+            "height"
+          ],
+          "description": "A drawing surface the host registered under `surface`, at `width` by\n`height` CSS pixels, scaled down to fit. The renderer keeps it mounted\nacross revisions and never sends intents for it; the engine takes\nits own input (painting, for example)."
         }
       ],
       "description": "The closed set of node kinds. Anything else needs its own contract first."
@@ -997,6 +1295,28 @@ export const SCHEMA_DOCUMENT: unknown = {
         }
       ]
     },
+    "Choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "label"
+      ],
+      "description": "One option of a `select`."
+    },
+    "Decimal": {
+      "type": "number",
+      "format": "double",
+      "description": "A finite decimal number. Equality is by bit pattern, so a view compares\nequal to itself; validation refuses NaN and infinities. A whole number\nencodes as an integer (`5`, not `5.0`), as JavaScript writes it, so both\nsides produce the same JSON."
+    },
     "Intent": {
       "type": "object",
       "additionalProperties": false,
@@ -1043,7 +1363,7 @@ export const SCHEMA_DOCUMENT: unknown = {
         {
           "type": "string",
           "const": "select",
-          "description": "Choose a row of a selectable list; `value` is the row's ID."
+          "description": "Choose a row of a selectable list (`value` is the row's ID) or an\noption of a select (`value` is the option's value)."
         },
         {
           "type": "string",
@@ -1058,7 +1378,7 @@ export const SCHEMA_DOCUMENT: unknown = {
         {
           "type": "string",
           "const": "input",
-          "description": "A field's new value, in full."
+          "description": "A new value, in full: a field's text, a checkbox's `true` or\n`false`, a range's number, a color, or the names of chosen files."
         }
       ]
     }

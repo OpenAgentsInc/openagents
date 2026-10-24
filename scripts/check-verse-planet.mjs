@@ -26,27 +26,27 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
   let editor=page.frames().find(f=>f.url().startsWith(config.editor));assert.ok(editor);
   const exported=()=>editor.evaluate(()=>window.aethyrforgeEditor.service.projectDocument());
   const recipe=d=>JSON.parse(d.originals.find(s=>s.name==='planet-v1.json').text);
-  const confirm=async()=>{await page.locator('#edit-confirm').waitFor({state:'visible'});await page.click('#edit-confirm');await page.locator('#edit-auth').waitFor({state:'hidden'});};
-  const edit=async tab=>{if(await page.locator('#edit-panel').isHidden())await page.click('[data-aethyr-id=world-edit]');await page.click('#tab-'+tab);};
-  const close=async()=>{if(await page.locator('#edit-close').isVisible())await page.click('#edit-close');};
-  await page.fill('#planet-seed','42');await page.fill('#planet-day','2');await page.click('#planet-generate');
-  await page.locator('#edit-auth').waitFor({state:'visible'});await page.click('#edit-cancel');
+  const confirm=async()=>{await page.locator('[data-aethyr-id=edit-confirm]').waitFor({state:'visible'});await page.click('[data-aethyr-id=edit-confirm]');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'hidden'});};
+  const edit=async tab=>{if(await page.locator('[data-aethyr-id=edit-panel]').isHidden())await page.click('[data-aethyr-id=world-edit]');await page.click('[data-aethyr-id=tab-'+tab+']');};
+  const close=async()=>{if(await page.locator('[data-aethyr-id=edit-close]').isVisible())await page.click('[data-aethyr-id=edit-close]');};
+  await page.fill('[data-aethyr-id=planet-seed] :is(input,textarea)','42');await page.fill('[data-aethyr-id=planet-day] :is(input,textarea)','2');await page.click('[data-aethyr-id=planet-generate]');
+  await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'visible'});await page.click('[data-aethyr-id=edit-cancel]');
   assert.equal((await exported()).originals.length,0,'Cancel keeps the ungenerated base');
-  await page.click('#planet-generate');await confirm();
+  await page.click('[data-aethyr-id=planet-generate]');await confirm();
   await page.waitForFunction(()=>document.querySelector('#planet-status').textContent.includes('ready')||document.querySelector('#voice-response').textContent.includes('Sign in and confirm'));
-  assert.match(await page.locator('#planet-status').innerText(),/ready/);
+  assert.match(await page.locator('[data-aethyr-id=planet-status]').innerText(),/ready/);
   const first=await exported();assert.equal(Object.keys(first.entities).length,24);assert.equal(recipe(first).seed,42);
   await page.screenshot({path:path.join(out,'personal-day-desktop.png')});
   let releaseGrant, arrived;
   const held=new Promise(resolve=>arrived=resolve), released=new Promise(resolve=>releaseGrant=resolve);
   await context.route('https://openagents.com/v1/verse/studio/grants',async route=>{arrived();await released;await route.fallback();},{times:1});
-  await page.fill('#planet-seed','99');await page.click('#planet-generate');
-  try { await page.locator('#edit-confirm').waitFor({state:'visible'});await page.click('#edit-confirm');await held;
-    await page.click('#edit-cancel');
+  await page.fill('[data-aethyr-id=planet-seed] :is(input,textarea)','99');await page.click('[data-aethyr-id=planet-generate]');
+  try { await page.locator('[data-aethyr-id=edit-confirm]').waitFor({state:'visible'});await page.click('[data-aethyr-id=edit-confirm]');await held;
+    await page.click('[data-aethyr-id=edit-cancel]');
   } finally {releaseGrant();}
   await page.waitForTimeout(700);
   assert.deepEqual(await exported(),first,'Cancel while permission response is held keeps the working world');
-  await page.fill('#planet-seed','42');
+  await page.fill('[data-aethyr-id=planet-seed] :is(input,textarea)','42');
 
   // Advance only the host's measurement clock to test the actual request handler;
   // the private renderer keeps its real advancing clock.
@@ -57,19 +57,19 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
     await page.waitForFunction(()=>window.speechFixture.last&&!window.speechFixture.last.aborted);
     await page.evaluate(text=>{const r=window.speechFixture.last;r.onspeechstart?.({});r.onresult({results:[[{transcript:text}]]});},text);
   };
-  await phrase('use bold fantasy');await page.locator('#edit-auth').waitFor({state:'visible'});await phrase('confirm change');await page.locator('#edit-auth').waitFor({state:'hidden'});
+  await phrase('use bold fantasy');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'visible'});await phrase('confirm change');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'hidden'});
   let current=await exported();assert.equal(recipe(current).style,'bold-fantasy');assert.equal(recipe(current).clock_anchor_unix_ms,anchor,'Style-only handler preserves the clock anchor');
   await close();await page.screenshot({path:path.join(out,'personal-bold-desktop.png')});
-  await phrase('undo');await page.locator('#edit-auth').waitFor({state:'visible'});await phrase('confirm change');await page.locator('#edit-auth').waitFor({state:'hidden'});
-  assert.equal(recipe(await exported()).style,'soft-pastels');assert.equal(await page.locator('#planet-style').inputValue(),'soft-pastels');
-  await page.click('#planet-apply');await page.locator('#edit-auth').waitFor({state:'visible'});
+  await phrase('undo');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'visible'});await phrase('confirm change');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'hidden'});
+  assert.equal(recipe(await exported()).style,'soft-pastels');assert.equal(await page.locator('[data-aethyr-id=planet-style] select').inputValue(),'soft-pastels');
+  await page.click('[data-aethyr-id=planet-apply]');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'visible'});
   const reviewedUndo=await page.evaluate(()=>JSON.parse(window.hauntDemo.pending_change()).pending.action.document);
-  assert.equal(recipe(reviewedUndo).style,'soft-pastels','Review after Undo uses the accepted style');await page.click('#edit-cancel');
+  assert.equal(recipe(reviewedUndo).style,'soft-pastels','Review after Undo uses the accepted style');await page.click('[data-aethyr-id=edit-cancel]');
 
-  await phrase('redo');await page.locator('#edit-auth').waitFor({state:'visible'});await phrase('confirm change');await page.locator('#edit-auth').waitFor({state:'hidden'});
-  assert.equal(recipe(await exported()).style,'bold-fantasy');assert.equal(await page.locator('#planet-style').inputValue(),'bold-fantasy');
+  await phrase('redo');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'visible'});await phrase('confirm change');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'hidden'});
+  assert.equal(recipe(await exported()).style,'bold-fantasy');assert.equal(await page.locator('[data-aethyr-id=planet-style] select').inputValue(),'bold-fantasy');
 
-  await phrase('pause day cycle');await page.locator('#edit-auth').waitFor({state:'visible'});await phrase('confirm change');await page.locator('#edit-auth').waitFor({state:'hidden'});
+  await phrase('pause day cycle');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'visible'});await phrase('confirm change');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'hidden'});
   current=await exported();assert.ok(Math.abs(recipe(current).initial_hour-14)<.001,'Elapsed 8 to 14 pauses at 14');assert.equal(recipe(current).cycle_enabled,false);
   assert.deepEqual(current.entities,first.entities);
   const runtime=()=>editor.evaluate(()=>window.aethyrforgeEditor.snapshot().status);
@@ -81,13 +81,13 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
 
   await page.evaluate(()=>{Date.now=window.fixtureDateNow;});
   await phrase('stop');await close();
-  await page.fill('#planet-seed','999');await page.click('#planet-apply');await confirm();
+  await page.fill('[data-aethyr-id=planet-seed] :is(input,textarea)','999');await page.click('[data-aethyr-id=planet-apply]');await confirm();
   assert.equal(recipe(await exported()).seed,42,'Review settings does not relabel the accepted layout seed');
-  await page.fill('#planet-hour','22');await page.selectOption('#planet-style','soft-pastels');await page.click('#planet-apply');await page.locator('#edit-auth').waitFor({state:'visible'});assert.match(await page.locator('#planet-status').innerText(),/22:00/);await confirm();
+  await page.fill('[data-aethyr-id=planet-hour] :is(input,textarea)','22');await page.selectOption('[data-aethyr-id=planet-style] select','soft-pastels');await page.click('[data-aethyr-id=planet-apply]');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'visible'});assert.match(await page.locator('[data-aethyr-id=planet-status]').innerText(),/22:00/);await confirm();
   const night=await exported();assert.equal(recipe(night).initial_hour,22);assert.equal(recipe(night).cycle_enabled,false);assert.deepEqual(night.entities,first.entities);
   await page.screenshot({path:path.join(out,'personal-night-desktop.png')});
   // Resume through controls and observe real renderer time, without a wall-clock mock.
-  await page.check('#planet-cycle');await page.click('#planet-apply');await confirm();
+  await page.check('[data-aethyr-id=planet-cycle] input');await page.click('[data-aethyr-id=planet-apply]');await confirm();
   const running=recipe(await exported());assert.equal(running.initial_hour,22);
   const runningA=await runtime();await page.waitForTimeout(1800);const runningB=await runtime();
   assert.equal(runningA.revision,runningB.revision);assert.deepEqual(runningA.view.eye,runningB.view.eye);
@@ -109,27 +109,27 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
   await editor.evaluate(p=>window.aethyrforgeEditor.service.cameraPose(p.eye,p.target,undefined,p.mode),walked);
   await page.waitForFunction(p=>JSON.parse(window.hauntDemo.snapshot()).status.checkpoint.eye.every((v,i)=>Math.abs(v-p[i])<.03),walked.eye);
   await page.keyboard.press('Escape');
-  await edit('history');await page.click('#project-save-copy');await confirm();
+  await edit('history');await page.click('[data-aethyr-id=project-save-copy]');await confirm();
   await page.waitForFunction(()=>document.querySelector('#project-status').textContent.includes('Saved to project'));
   const kept=await exported();const savedPose=(await snapshot()).status.checkpoint;
   await close();await page.setViewportSize({width:390,height:844});
   const hit=async selector=>{await page.locator(selector).scrollIntoViewIfNeeded();const box=await page.locator(selector).boundingBox();assert.ok(box);assert.ok(await page.locator(selector).evaluate((e,b)=>{const hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return hit===e||e.contains(hit);},box),selector+' is reachable');};
-  for(const selector of ['#planet-settings > details > summary','#planet-hour','#planet-generate','#planet-apply','[data-aethyr-id=edit-voice-start]','[data-aethyr-id=edit-voice-stop]'])await hit(selector);
+  for(const selector of ['[data-aethyr-id=planet-card-toggle]','[data-aethyr-id=planet-hour] :is(input,textarea)','[data-aethyr-id=planet-generate]','[data-aethyr-id=planet-apply]','[data-aethyr-id=edit-voice-start]','[data-aethyr-id=edit-voice-stop]'])await hit(selector);
   await page.click('[data-aethyr-id=edit-voice-start]');await page.waitForFunction(()=>document.querySelector('#edit-voice-status').textContent.includes('Listening'));
   await hit('[data-aethyr-id=edit-voice-stop]');await page.click('[data-aethyr-id=edit-voice-stop]');assert.match(await page.locator('[data-aethyr-id=edit-voice-status]').innerText(),/off/);
-  await page.locator('#planet-settings > details > summary').scrollIntoViewIfNeeded();await page.click('#planet-settings > details > summary');
+  await page.locator('[data-aethyr-id=planet-card-toggle]').scrollIntoViewIfNeeded();await page.click('[data-aethyr-id=planet-card-toggle]');
   await hit('[data-aethyr-id=edit-voice-start]');await hit('[data-aethyr-id=edit-voice-stop]');
   await page.screenshot({path:path.join(out,'personal-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.setViewportSize({width:1440,height:1000});await page.reload();await ready();editor=page.frames().find(f=>f.url().startsWith(config.editor));
-  await edit('history');await page.click('#project-open');await confirm();
+  await edit('history');await page.click('[data-aethyr-id=project-open]');await confirm();
   const reopened=await exported();assert.deepEqual(reopened.entities,kept.entities);assert.deepEqual(recipe(reopened),recipe(kept));
   const restoredPose=(await snapshot()).status.checkpoint;
   assert.equal(restoredPose.mode,savedPose.mode);
   for(const key of ['eye','target'])assert.ok(restoredPose[key].every((v,i)=>Math.abs(v-savedPose[key][i])<.03),'Saved personal pose reopens');
-  await page.click('#project-save-copy');await confirm();await page.waitForFunction(()=>document.querySelector('#project-status').textContent.includes('Saved to project'));
-  await edit('compile');await page.selectOption('#publish-visibility','public');await edit('request');await page.click('#request-options');await page.click('[data-aethyr-id=project-publish]');
-  await page.locator('#publish-review[open]').waitFor();await page.check('#publish-confirm-rights');await page.click('#publish-confirm');await page.locator('#publish-review').waitFor({state:'hidden'});
-  const playablePath=await page.locator('#published-link').getAttribute('href');assert.ok(playablePath);
+  await page.click('[data-aethyr-id=project-save-copy]');await confirm();await page.waitForFunction(()=>document.querySelector('#project-status').textContent.includes('Saved to project'));
+  await edit('compile');await page.selectOption('[data-aethyr-id=publish-visibility] select','public');await edit('request');await page.click('[data-aethyr-id=request-options]');await page.click('[data-aethyr-id=project-publish]');
+  await page.locator('[data-aethyr-id=publish-review][open]').waitFor();await page.check('[data-aethyr-id=publish-confirm-rights] input');await page.click('[data-aethyr-id=publish-confirm]');await page.locator('[data-aethyr-id=publish-review]').waitFor({state:'hidden'});
+  const playablePath=await page.locator('[data-aethyr-id=published-link]').getAttribute('href');assert.ok(playablePath);
   const guest=await context.browser().newContext({viewport:{width:1280,height:800}});
   try {
     await guest.grantPermissions(['local-network-access'],{origin:'https://openagents.com'});

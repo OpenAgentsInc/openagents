@@ -56,6 +56,21 @@ window.harness = {
           onIntent={(intent) => {
             window.harness.intents.push(intent);
           }}
+          // A host canvas, as the engine registers one, and the files a
+          // slot receives (names and sizes only).
+          mount={(kind, id, element) => {
+            if (kind !== "canvas" || !element || element.firstChild) return;
+            const canvas = document.createElement("canvas");
+            canvas.id = id;
+            canvas.width = 256;
+            canvas.height = 256;
+            element.append(canvas);
+          }}
+          onFiles={(slot, files) => {
+            window.harness.trail.push(
+              `files ${slot} ${files.map((f) => `${f.name}:${f.size}`).join(",")}`,
+            );
+          }}
         />,
       ),
     );

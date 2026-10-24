@@ -108,17 +108,17 @@ const ready = async () => {
 };
 const tap = async (id) => page.locator(id).tap();
 const edit = async (tab) => {
-  if (await page.locator("#edit-panel").isHidden()) await tap("[data-aethyr-id=world-edit]");
-  await tap("#tab-" + tab);
+  if (await page.locator("[data-aethyr-id=edit-panel]").isHidden()) await tap("[data-aethyr-id=world-edit]");
+  await tap("[data-aethyr-id=tab-" + tab + "]");
 };
 const confirm = async () => {
-  await page.locator("#edit-confirm").waitFor({ state: "visible" });
+  await page.locator("[data-aethyr-id=edit-confirm]").waitFor({ state: "visible" });
   const saving =
-    (await page.locator("#edit-auth-title").textContent()) ===
+    (await page.locator("[data-aethyr-id=edit-auth-title]").textContent()) ===
     "Save this world?";
-  const prior = await page.locator("#edit-history-entries").textContent();
-  await tap("#edit-confirm");
-  await page.locator("#edit-auth").waitFor({ state: "hidden" });
+  const prior = await page.locator("[data-aethyr-id=edit-history-entries]").textContent();
+  await tap("[data-aethyr-id=edit-confirm]");
+  await page.locator("[data-aethyr-id=edit-auth]").waitFor({ state: "hidden" });
   // The engine receipt can arrive before the editor finishes its confirmation.
   if (!saving)
     await page.waitForFunction(
@@ -128,15 +128,15 @@ const confirm = async () => {
     );
 };
 const close = async () => {
-  if (await page.locator("#edit-close").isVisible()) await tap("#edit-close");
+  if (await page.locator("[data-aethyr-id=edit-close]").isVisible()) await tap("[data-aethyr-id=edit-close]");
 };
 const options = async () => {
   await edit("request");
-  await tap("#request-options");
+  await tap("[data-aethyr-id=request-options]");
 };
 const save = async () => {
   await edit("history");
-  await tap("#project-save-copy");
+  await tap("[data-aethyr-id=project-save-copy]");
   await confirm();
   await page.waitForFunction(() =>
     document
@@ -146,14 +146,14 @@ const save = async () => {
 };
 const publish = async () => {
   await edit("compile");
-  await page.selectOption("#publish-visibility", "public");
+  await page.selectOption("[data-aethyr-id=publish-visibility] select", "public");
   await options();
   await tap("[data-aethyr-id=project-publish]");
-  await page.locator("#publish-review[open]").waitFor();
-  await page.locator("#publish-confirm-rights").check();
-  await tap("#publish-confirm");
-  await page.locator("#publish-review").waitFor({ state: "hidden" });
-  const path = await page.locator("#published-link").getAttribute("href");
+  await page.locator("[data-aethyr-id=publish-review][open]").waitFor();
+  await page.locator("[data-aethyr-id=publish-confirm-rights] input").check();
+  await tap("[data-aethyr-id=publish-confirm]");
+  await page.locator("[data-aethyr-id=publish-review]").waitFor({ state: "hidden" });
+  const path = await page.locator("[data-aethyr-id=published-link]").getAttribute("href");
   assert(path);
   return path;
 };
@@ -213,13 +213,13 @@ try {
   await ready();
   await edit("materials");
   await page.getByText("Shared material and fog", { exact: true }).tap();
-  await page.locator("#edit-fog").fill("0.035");
-  await tap("#edit-fog-apply");
-  await page.locator("#edit-auth[open]").waitFor();
+  await page.locator("[data-aethyr-id=edit-fog] :is(input,textarea)").fill("0.035");
+  await tap("[data-aethyr-id=edit-fog-apply]");
+  await page.locator("[data-aethyr-id=edit-auth][open]").waitFor();
   await shot("02-sign-in-required");
   const before = await snap();
   const popupPromise = context.waitForEvent("page");
-  await tap("#edit-signin");
+  await tap("[data-aethyr-id=edit-signin]");
   const popup = await popupPromise;
   await popup.waitForLoadState("domcontentloaded");
   assert.equal(new URL(popup.url()).pathname, "/login");
@@ -232,20 +232,20 @@ try {
   assert(identity.signed_in);
   signed = true;
   await popup.close();
-  await page.locator("#edit-confirm").waitFor({ state: "visible" });
+  await page.locator("[data-aethyr-id=edit-confirm]").waitFor({ state: "visible" });
   const kept = await snap();
   assert.equal(kept.status.generation, before.status.generation);
   assert.deepEqual(kept.status.checkpoint, before.status.checkpoint);
   await confirm();
   await shot("03-authorized-edit");
   await edit("compile");
-  const source = await page.locator("#edit-source").inputValue(),
+  const source = await page.locator("[data-aethyr-id=edit-source] :is(input,textarea)").inputValue(),
     pose = (await snap()).status.checkpoint,
     generation = (await snap()).status.generation;
-  await page.locator("#edit-source").fill("invalid shader on purpose");
-  await tap("#edit-source-draft");
+  await page.locator("[data-aethyr-id=edit-source] :is(input,textarea)").fill("invalid shader on purpose");
+  await tap("[data-aethyr-id=edit-source-draft]");
   await confirm();
-  await tap("#edit-source-compile");
+  await tap("[data-aethyr-id=edit-source-compile]");
   await confirm();
   await page.waitForFunction(
     () =>
@@ -262,15 +262,15 @@ try {
     "return base * vec3<f32>(0.8, 0.6, 0.45);",
   );
   assert.notEqual(changed, source);
-  await page.locator("#edit-source").fill(changed);
-  await tap("#edit-source-draft");
+  await page.locator("[data-aethyr-id=edit-source] :is(input,textarea)").fill(changed);
+  await tap("[data-aethyr-id=edit-source-draft]");
   await confirm();
   await page.waitForFunction(
     (draft) =>
       JSON.parse(window.hauntDemo.snapshot()).status.authoring.draft === draft,
     changed,
   );
-  await tap("#edit-source-compile");
+  await tap("[data-aethyr-id=edit-source-compile]");
   await confirm();
   assert.equal((await snap()).status.authoring.active_source, changed);
   await close();
@@ -306,12 +306,12 @@ try {
       "werewolf-1",
   );
   await edit("materials");
-  await tap("#face-open");
-  await page.locator("#face-controls:not([disabled])").waitFor();
+  await tap("[data-aethyr-id=face-open]");
+  await page.locator("[data-aethyr-id=face-generate]:enabled").waitFor();
   await page
-    .locator("#face-request")
+    .locator("[data-aethyr-id=face-request] :is(input,textarea)")
     .fill("two thin healed blue scars on the left cheek");
-  await tap("#face-generate");
+  await tap("[data-aethyr-id=face-generate]");
   await page.waitForFunction(() =>
     document
       .querySelector("#face-status")
@@ -334,7 +334,7 @@ try {
   });
   await paint.detach();
   const faceRevision = (await snap()).status.project.revision;
-  await tap("#face-apply");
+  await tap("[data-aethyr-id=face-apply]");
   await confirm();
   await page.waitForFunction(
     (revision) =>
@@ -351,12 +351,12 @@ try {
   assert(JSON.parse(paintedMaterials[0].text).handmade.image);
   await shot("05b-painted-face");
   await edit("history");
-  await page.locator("#project-name").fill("Kiki mobile journey 12583");
-  await tap("#project-create");
+  await page.locator("[data-aethyr-id=project-name] :is(input,textarea)").fill("Kiki mobile journey 12583");
+  await tap("[data-aethyr-id=project-create]");
   await page.waitForFunction(() =>
     document.querySelector("#project-picker").value.startsWith("prj_"),
   );
-  project = await page.locator("#project-picker").inputValue();
+  project = await page.locator("[data-aethyr-id=project-picker] select").inputValue();
   fs.writeFileSync(dir + "journey-created.json", JSON.stringify({ project }));
   await save();
   await close();
@@ -369,9 +369,9 @@ try {
   await page.reload();
   await ready();
   await edit("history");
-  await tap("#project-list");
-  await page.selectOption("#project-picker", project);
-  await tap("#project-open");
+  await tap("[data-aethyr-id=project-list]");
+  await page.selectOption("[data-aethyr-id=project-picker] select", project);
+  await tap("[data-aethyr-id=project-open]");
   await confirm();
   assert.equal((await snap()).status.authoring.active_source, changed);
   const reopenedCreator = page
@@ -391,14 +391,14 @@ try {
   await shot("08-published-house");
   await options();
   await tap("[data-aethyr-id=project-share]");
-  await page.locator("#publish-share-card").waitFor({ state: "visible" });
+  await page.locator("[data-aethyr-id=publish-share-card]").waitFor({ state: "visible" });
   assert.equal(
-    await page.locator("#publish-share-link").getAttribute("href"),
+    await page.locator("[data-aethyr-id=publish-share-link]").getAttribute("href"),
     houseLink,
   );
   await shot("09-share-house");
   await visitGuest(houseLink);
-  await tap("#publish-share-close");
+  await tap("[data-aethyr-id=publish-share-close]");
   await options();
   await tap("[data-aethyr-id=project-play]");
   await page.waitForURL(origin + houseLink);
@@ -457,24 +457,24 @@ try {
   ).json();
   if (currentHead.head) {
     await edit("history");
-    await tap("#project-open");
+    await tap("[data-aethyr-id=project-open]");
     await confirm();
     await close();
   }
-  await page.locator("#planet-seed").fill("42");
-  await page.locator("#planet-day").fill("2");
-  await tap("#planet-generate");
+  await page.locator("[data-aethyr-id=planet-seed] :is(input,textarea)").fill("42");
+  await page.locator("[data-aethyr-id=planet-day] :is(input,textarea)").fill("2");
+  await tap("[data-aethyr-id=planet-generate]");
   await confirm();
   await page.waitForFunction(() =>
     document.querySelector("#planet-status").textContent.includes("ready"),
   );
   await shot("14-generated-courtyard");
-  await page.selectOption("#planet-style", "bold-fantasy");
-  await page.locator("#planet-hour").fill("18");
-  await tap("#planet-apply");
+  await page.selectOption("[data-aethyr-id=planet-style] select", "bold-fantasy");
+  await page.locator("[data-aethyr-id=planet-hour] :is(input,textarea)").fill("18");
+  await tap("[data-aethyr-id=planet-apply]");
   await confirm();
   await shot("15-style-and-time");
-  await page.locator("#planet-settings > details > summary").tap();
+  await page.locator("[data-aethyr-id=planet-card-toggle]").tap();
   await save();
   await shot("16-saved-planet");
   planetLink = await publish();
@@ -482,14 +482,14 @@ try {
   await visitGuest(planetLink);
   await options();
   await tap("[data-aethyr-id=project-share]");
-  await page.locator("#publish-share-card").waitFor({ state: "visible" });
+  await page.locator("[data-aethyr-id=publish-share-card]").waitFor({ state: "visible" });
   await shot("18-shared-planet");
   fs.writeFileSync(
     dir + "journey-links.json",
     JSON.stringify({ project, houseLink, planetPath, planetLink }, null, 2),
   );
   // The owner opens invitation controls from the playable page.
-  await tap("#publish-share-close");
+  await tap("[data-aethyr-id=publish-share-close]");
   await options();
   await tap("[data-aethyr-id=project-play]");
   await playerReady(page);
@@ -518,7 +518,7 @@ try {
   await tap("#planet-enter");
   await ready();
   await edit("history");
-  await tap("#project-open");
+  await tap("[data-aethyr-id=project-open]");
   await confirm();
   const ownerFrame = page
     .frames()
@@ -534,7 +534,7 @@ try {
     42,
   );
   await close();
-  await page.locator("#planet-settings > details > summary").tap();
+  await page.locator("[data-aethyr-id=planet-card-toggle]").tap();
   await shot("23-returned-to-saved-planet");
   const poseBefore = (await snap()).status.checkpoint;
   const preview = page

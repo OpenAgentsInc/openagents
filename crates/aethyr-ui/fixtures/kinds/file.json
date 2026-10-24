@@ -1,0 +1,45 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-file",
+  "revision": 1,
+  "root": {
+    "id": "file",
+    "style": {
+      "gap": "md"
+    },
+    "element": {
+      "kind": "stack",
+      "axis": "vertical",
+      "children": [
+        {
+          "id": "file-face",
+          "element": {
+            "kind": "file",
+            "label": "Open an exported face-layer file",
+            "slot": "face-import",
+            "accept": [
+              "application/json",
+              ".json"
+            ],
+            "max_bytes": 1048576
+          }
+        },
+        {
+          "id": "file-import",
+          "element": {
+            "kind": "file",
+            "label": "Older Kiln save files",
+            "slot": "project-import",
+            "accept": [
+              "application/json",
+              ".json",
+              ".wgsl"
+            ],
+            "max_bytes": 4194304,
+            "multiple": true
+          }
+        }
+      ]
+    }
+  }
+}

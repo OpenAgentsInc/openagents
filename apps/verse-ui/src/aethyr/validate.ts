@@ -2,8 +2,13 @@
 // sides run the same fixtures (crates/aethyr-ui/fixtures) and must return
 // the same error codes.
 import {
+  MAX_ACCEPT,
+  MAX_CANVAS_PIXELS,
   MAX_DEPTH,
   MAX_FIELD_BYTES,
+  MAX_FILES,
+  MAX_OPTIONS,
+  MAX_UPLOAD_BYTES,
   MAX_ID_BYTES,
   MAX_NODES,
   MAX_TEXT_BYTES,
@@ -87,6 +92,8 @@ function conforms(value: unknown, schema: Schema): boolean {
       return typeof value === "boolean";
     case "string":
       return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
     case "integer": {
       if (typeof value !== "number" || !Number.isInteger(value)) return false;
       const format = schema["format"];
@@ -119,6 +126,53 @@ function conforms(value: unknown, schema: Schema): boolean {
     default:
       return true;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Value checks for the form kinds, as in validate.rs.
+
+/** `#rrggbb`, lowercase. */
+export const validColor = (value: string) => /^#[0-9a-f]{6}$/.test(value);
+
+const token = /^[a-z0-9+.-]+$/;
+/** A media type (`image/png`, `image/*`) or an extension (`.json`). */
+export function validAccept(entry: string): boolean {
+  if (entry.startsWith(".")) return token.test(entry.slice(1));
+  const at = entry.indexOf("/");
+  if (at < 0) return false;
+  const kind = entry.slice(0, at);
+  const sub = entry.slice(at + 1);
+  return token.test(kind) && (sub === "*" || token.test(sub));
+}
+
+/**
+ * A range value as text: an optional `-`, digits with an optional fraction,
+ * and an optional exponent. No `+`, spaces, `Infinity`, or `NaN`.
+ */
+export function decimalText(text: string): number | undefined {
+  if (text.length > 64) return undefined;
+  if (!/^-?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text)) return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/** Finite, within bounds, and on the step from `min`. */
+export function onRange(value: number, min: number, max: number, step: number) {
+  if (!Number.isFinite(value) || value < min || value > max) return false;
+  const steps = Math.round((value - min) / step);
+  return (
+    Math.abs(min + steps * step - value) <= 1e-9 * Math.max(Math.abs(step), 1)
+  );
+}
+
+/** File names, one per line: at least one, none empty or with control characters. */
+export function validFileNames(value: string, multiple: boolean): boolean {
+  const names = value.split("\n");
+  return (
+    byteLength(value) <= MAX_TEXT_BYTES &&
+    names.length <= (multiple ? MAX_FILES : 1) &&
+    names.every((name) => name.trim() !== "" && !/\p{Cc}/u.test(name))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +237,59 @@ function checkNode(node: Node): ViewErrorCode | undefined {
       break;
     case "engine_surface":
       if (!validId(element.surface)) return "bad_reference";
+      label = element.label;
+      break;
+    case "select": {
+      if (element.options.length === 0 || element.options.length > MAX_OPTIONS)
+        return "bad_reference";
+      const values = new Set<string>();
+      for (const option of element.options) {
+        if (option.label.trim() === "") return "missing_label";
+        if (values.has(option.value)) return "bad_reference";
+        values.add(option.value);
+        texts.push(option.label, option.value);
+      }
+      if (!values.has(element.value)) return "bad_reference";
+      label = element.label;
+      break;
+    }
+    case "checkbox":
+      label = element.label;
+      break;
+    case "range":
+      if (
+        element.min >= element.max ||
+        element.step <= 0 ||
+        element.value < element.min ||
+        element.value > element.max
+      )
+        return "bad_reference";
+      label = element.label;
+      break;
+    case "color":
+      if (!validColor(element.value)) return "bad_reference";
+      label = element.label;
+      break;
+    case "file":
+      if (
+        !validId(element.slot) ||
+        (element.accept ?? []).length > MAX_ACCEPT ||
+        !(element.accept ?? []).every(validAccept) ||
+        element.max_bytes === 0 ||
+        element.max_bytes > MAX_UPLOAD_BYTES
+      )
+        return "bad_reference";
+      label = element.label;
+      break;
+    case "canvas":
+      if (
+        !validId(element.surface) ||
+        element.width < 1 ||
+        element.width > MAX_CANVAS_PIXELS ||
+        element.height < 1 ||
+        element.height > MAX_CANVAS_PIXELS
+      )
+        return "bad_reference";
       label = element.label;
       break;
   }
@@ -270,6 +377,13 @@ export function acceptIntent(
           ? ok(node)
           : fail("bad_value");
       }
+      if (element.kind === "select") {
+        if (element.enabled === false) return fail("disabled");
+        return value !== undefined &&
+          element.options.some((option) => option.value === value)
+          ? ok(node)
+          : fail("bad_value");
+      }
       break;
     case "input":
       if (element.kind === "field") {
@@ -277,6 +391,33 @@ export function acceptIntent(
         if (value === undefined || byteLength(value) > element.max_bytes)
           return fail("bad_value");
         return ok(node);
+      }
+      if (element.kind === "checkbox") {
+        if (element.enabled === false) return fail("disabled");
+        return value === "true" || value === "false"
+          ? ok(node)
+          : fail("bad_value");
+      }
+      if (element.kind === "range") {
+        if (element.enabled === false) return fail("disabled");
+        const number = value === undefined ? undefined : decimalText(value);
+        return number !== undefined &&
+          onRange(number, element.min, element.max, element.step)
+          ? ok(node)
+          : fail("bad_value");
+      }
+      if (element.kind === "color") {
+        if (element.enabled === false) return fail("disabled");
+        return value !== undefined && validColor(value)
+          ? ok(node)
+          : fail("bad_value");
+      }
+      if (element.kind === "file") {
+        if (element.enabled === false) return fail("disabled");
+        return value !== undefined &&
+          validFileNames(value, element.multiple === true)
+          ? ok(node)
+          : fail("bad_value");
       }
       break;
     case "submit":

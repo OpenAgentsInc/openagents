@@ -15,6 +15,7 @@ import {
 } from "react";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import { NativeSelect } from "../components/ui/native-select";
 import type {
   A11y,
   Element,
@@ -25,14 +26,20 @@ import type {
   Style,
   View,
 } from "./protocol";
-import { byteLength } from "./validate";
+import { byteLength, validAccept } from "./validate";
 
-/** Where the host attaches what it owns: media and the engine surface. */
+/** Where the host attaches what it owns: media, the engine, and canvases. */
 export type Mount = (
-  kind: "media" | "surface",
+  kind: "media" | "surface" | "canvas",
   id: string,
   element: HTMLElement | null,
 ) => void;
+
+/**
+ * Receives the files chosen in an upload slot, already checked against its
+ * `accept` and `max_bytes`. The intent that follows carries only their names.
+ */
+export type Files = (slot: string, files: ReadonlyArray<File>) => void;
 
 export interface RendererProps {
   readonly view: View;
@@ -42,6 +49,7 @@ export interface RendererProps {
    */
   readonly onIntent: (intent: Intent) => void | PromiseLike<unknown>;
   readonly mount?: Mount;
+  readonly onFiles?: Files;
 }
 
 interface Scope {
@@ -53,12 +61,14 @@ interface Scope {
   /** The revision drawn now. */
   readonly revision: () => number;
   readonly mount: Mount | undefined;
+  readonly files: Files | undefined;
 }
 
 const ScopeContext = createContext<Scope>({
   send: () => {},
   revision: () => 0,
   mount: undefined,
+  files: undefined,
 });
 
 const GLYPHS: Record<Glyph, string> = { forward: "↗", back: "←", close: "×" };
@@ -98,7 +108,7 @@ const plainClick = (event: MouseEvent) =>
   !event.shiftKey &&
   !event.altKey;
 
-export function AethyrView({ view, onIntent, mount }: RendererProps) {
+export function AethyrView({ view, onIntent, mount, onFiles }: RendererProps) {
   // The tree, not a closure, decides the revision an intent names.
   const latest = useRef(view);
   latest.current = view;
@@ -115,7 +125,7 @@ export function AethyrView({ view, onIntent, mount }: RendererProps) {
   );
   const revision = useCallback(() => latest.current.revision, []);
   return (
-    <ScopeContext.Provider value={{ send, revision, mount }}>
+    <ScopeContext.Provider value={{ send, revision, mount, files: onFiles }}>
       <div
         className="aui-root"
         data-aethyr-root={view.instance}
@@ -200,6 +210,18 @@ function ElementView({ node, common, extra }: ElementProps): ReactNode {
       return <MountView node={node} common={common} extra={extra} />;
     case "engine_surface":
       return <MountView node={node} common={common} extra={extra} />;
+    case "select":
+      return <SelectView node={node} common={common} extra={extra} />;
+    case "checkbox":
+      return <CheckboxView node={node} common={common} extra={extra} />;
+    case "range":
+      return <RangeView node={node} common={common} extra={extra} />;
+    case "color":
+      return <ColorView node={node} common={common} extra={extra} />;
+    case "file":
+      return <FileView node={node} common={common} extra={extra} />;
+    case "canvas":
+      return <CanvasView node={node} common={common} extra={extra} />;
   }
 }
 
@@ -615,6 +637,253 @@ function MountView({ node, common, extra }: ElementProps) {
       role={media ? "img" : "application"}
       aria-label={element.label}
       data-aethyr-slot={id}
+      {...common}
+    />
+  );
+}
+
+/**
+ * A control's value while its intents are handled: the newest value the
+ * person chose shows at once, one intent is in flight at a time, and when
+ * it settles the newest choice goes next. The draft ends once nothing is
+ * pending, and the tree's value shows again (the controller's answer).
+ */
+function usePending(node: string, kind: IntentKind, current: string) {
+  const { send } = useContext(ScopeContext);
+  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const flight = useRef(false);
+  const queued = useRef<string | undefined>(undefined);
+  const push = useCallback(
+    (value: string) => {
+      queued.current = value;
+      if (flight.current) return;
+      const next = queued.current;
+      queued.current = undefined;
+      const done = send(node, kind, next);
+      if (!done || typeof done.then !== "function") {
+        setDraft(undefined);
+        return;
+      }
+      flight.current = true;
+      const settle = () => {
+        flight.current = false;
+        if (queued.current !== undefined) push(queued.current);
+        else setDraft(undefined);
+      };
+      done.then(settle, settle);
+    },
+    [send, node, kind],
+  );
+  const choose = (value: string) => {
+    setDraft(value);
+    push(value);
+  };
+  return [draft ?? current, choose] as const;
+}
+
+/** A labelled native control in the field layout. */
+function Labelled({
+  label,
+  common,
+  extra,
+  className,
+  children,
+}: {
+  label: string;
+  common: Record<string, unknown>;
+  extra: ElementProps["extra"];
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className={classes("aui-field", className, ...extra)} {...common}>
+      <span className="aui-field-label">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function SelectView({ node, common, extra }: ElementProps) {
+  const element = node.element as Extract<Element, { kind: "select" }>;
+  const [value, choose] = usePending(node.id, "select", element.value);
+  return (
+    <Labelled
+      label={element.label}
+      common={common}
+      extra={extra}
+      className="aui-select"
+    >
+      <NativeSelect
+        value={value}
+        disabled={element.enabled === false}
+        onChange={(event) => choose(event.currentTarget.value)}
+      >
+        {element.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </NativeSelect>
+    </Labelled>
+  );
+}
+
+function CheckboxView({ node, common, extra }: ElementProps) {
+  const element = node.element as Extract<Element, { kind: "checkbox" }>;
+  const [value, choose] = usePending(node.id, "input", String(element.checked));
+  return (
+    <label className={classes("aui-check", ...extra)} {...common}>
+      <input
+        type="checkbox"
+        checked={value === "true"}
+        disabled={element.enabled === false}
+        onChange={(event) => choose(String(event.currentTarget.checked))}
+      />
+      <span>{element.label}</span>
+    </label>
+  );
+}
+
+/** A number as the shortest decimal text that reads back the same. */
+const decimal = (value: number) => String(Number(value.toPrecision(12)));
+
+function RangeView({ node, common, extra }: ElementProps) {
+  const element = node.element as Extract<Element, { kind: "range" }>;
+  const [value, choose] = usePending(node.id, "input", decimal(element.value));
+  return (
+    <Labelled
+      label={element.label}
+      common={common}
+      extra={extra}
+      className="aui-range"
+    >
+      <span className="aui-range-row">
+        <input
+          type="range"
+          min={element.min}
+          max={element.max}
+          step={element.step}
+          value={value}
+          disabled={element.enabled === false}
+          onChange={(event) =>
+            choose(decimal(Number(event.currentTarget.value)))
+          }
+        />
+        <output className="aui-range-value" aria-hidden="true">
+          {value}
+        </output>
+      </span>
+    </Labelled>
+  );
+}
+
+function ColorView({ node, common, extra }: ElementProps) {
+  const element = node.element as Extract<Element, { kind: "color" }>;
+  const [value, choose] = usePending(node.id, "input", element.value);
+  return (
+    <Labelled
+      label={element.label}
+      common={common}
+      extra={extra}
+      className="aui-color"
+    >
+      <span className="aui-color-row">
+        <input
+          type="color"
+          value={value}
+          disabled={element.enabled === false}
+          onChange={(event) => choose(event.currentTarget.value.toLowerCase())}
+        />
+        <code className="aui-code">{value}</code>
+      </span>
+    </Labelled>
+  );
+}
+
+/** Whether a file matches one `accept` entry: an extension or a media type. */
+function accepts(file: File, accept: ReadonlyArray<string>) {
+  if (accept.length === 0) return true;
+  const name = file.name.toLowerCase();
+  const type = file.type.toLowerCase();
+  return accept.some((entry) => {
+    if (!validAccept(entry)) return false;
+    if (entry.startsWith(".")) return name.endsWith(entry);
+    if (entry.endsWith("/*")) return type.startsWith(entry.slice(0, -1));
+    return type === entry;
+  });
+}
+
+const sizeText = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? `${Math.floor(bytes / (1024 * 1024))} MB`
+    : `${Math.max(1, Math.floor(bytes / 1024))} KB`;
+
+function FileView({ node, common, extra }: ElementProps) {
+  const { send, files } = useContext(ScopeContext);
+  const element = node.element as Extract<Element, { kind: "file" }>;
+  const accept = element.accept ?? [];
+  // The only renderer-held text: why the last choice was turned away.
+  const [problem, setProblem] = useState<string | undefined>(undefined);
+  return (
+    <Labelled
+      label={element.label}
+      common={common}
+      extra={extra}
+      className="aui-file"
+    >
+      <Input
+        type="file"
+        accept={accept.join(",") || undefined}
+        multiple={element.multiple === true}
+        disabled={element.enabled === false}
+        aria-invalid={problem ? true : undefined}
+        onChange={(event) => {
+          const input = event.currentTarget;
+          const chosen = [...(input.files ?? [])];
+          input.value = "";
+          if (chosen.length === 0) return;
+          if (chosen.some((file) => file.size > element.max_bytes)) {
+            setProblem(`Choose a file under ${sizeText(element.max_bytes)}.`);
+            return;
+          }
+          if (!chosen.every((file) => accepts(file, accept))) {
+            setProblem("Choose a file of a supported type.");
+            return;
+          }
+          setProblem(undefined);
+          files?.(element.slot, chosen);
+          send(node.id, "input", chosen.map((file) => file.name).join("\n"));
+        }}
+      />
+      {problem && (
+        <span className="aui-file-problem" role="alert">
+          {problem}
+        </span>
+      )}
+    </Labelled>
+  );
+}
+
+function CanvasView({ node, common, extra }: ElementProps) {
+  const { mount } = useContext(ScopeContext);
+  const element = node.element as Extract<Element, { kind: "canvas" }>;
+  const id = element.surface;
+  // Stable per surface, so the host's canvas stays mounted across revisions.
+  const attach = useCallback(
+    (el: HTMLElement | null) => mount?.("canvas", id, el),
+    [mount, id],
+  );
+  return (
+    <div
+      ref={attach}
+      className={classes("aui-canvas", ...extra)}
+      role="group"
+      aria-label={element.label}
+      data-aethyr-slot={id}
+      style={{
+        aspectRatio: `${element.width} / ${element.height}`,
+        maxWidth: `${element.width}px`,
+      }}
       {...common}
     />
   );

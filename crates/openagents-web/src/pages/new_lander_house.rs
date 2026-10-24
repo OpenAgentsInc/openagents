@@ -154,6 +154,9 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
             // The studio HUD controller draws here; `.studio-bridge` is the
             // release's own copy of those controls and the page without JavaScript.
             div id="house-hud" class="house-hud" {}
+            // The editor controller (Jarvis, its dialogs, the share card, and
+            // courtyard settings) draws here.
+            div id="house-editor" class="house-editor" {}
             div id="world-dock" {
                 nav id="world-controls" class="studio-bridge" aria-label="World controls" {
                     div.hud-navigation {
@@ -175,7 +178,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                     }
                 }
                 @if personal {
-                    aside id="planet-settings" aria-label="Courtyard settings" {
+                    aside id="planet-settings" class="studio-bridge" aria-label="Courtyard settings" {
                         details class="planet-card" open {
                             summary { "Your courtyard" }
                             p { "64 × 64 metres · Up to 128 objects" }
@@ -222,7 +225,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                             }
                         }
             div id="edit-shadow" hidden aria-hidden="true" {}
-            aside id="edit-panel" hidden role="dialog" aria-modal="true" aria-labelledby="edit-title" data-active="objects" {
+            aside id="edit-panel" class="studio-bridge" hidden role="dialog" aria-modal="true" aria-labelledby="edit-title" data-active="objects" {
                 header class="workspace-header" {
                     div { p class="eyebrow" { "OPENAGENTS / STUDIO" } h1 id="edit-title" { "Jarvis" } }
                     button id="edit-close" type="button" { (super::verse_ui::icon("play")) "Inspect world" }
@@ -373,7 +376,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                 }
                 p id="edit-status" role="status" aria-live="polite" {}
             }
-            dialog id="edit-auth" hidden {
+            dialog id="edit-auth" class="studio-bridge" hidden {
                 section role="dialog" aria-modal="true" aria-labelledby="edit-auth-title" {
                     h2 id="edit-auth-title" { "Sign in to make this change" }
                     p id="edit-auth-description" { "Your view and requested change will stay here." }
@@ -384,7 +387,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                     button id="edit-cancel" type="button" { "Cancel" }
                 }
             }
-            dialog id="publish-review" hidden aria-labelledby="publish-review-title" {
+            dialog id="publish-review" class="studio-bridge" hidden aria-labelledby="publish-review-title" {
                 section { h2 id="publish-review-title" { "Publish this saved version?" }
                     p id="publish-review-target" {}
                     a id="publish-review-link" hidden target="_blank" rel="noopener" { "Open the chosen playable version" }
@@ -395,7 +398,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                     button id="publish-cancel" type="button" { "Cancel" }
                 }
             }
-            aside id="publish-share-card" hidden aria-label="Share this version" {
+            aside id="publish-share-card" class="studio-bridge" hidden aria-label="Share this version" {
                 p { "Exact playable version" } a id="publish-share-link" {}
                 button id="publish-share-close" type="button" { "Close" }
             }
@@ -570,11 +573,16 @@ mod tests {
         // The HUD controller draws into `#house-hud`; the release keeps its
         // controls, by ID, in the bridge.
         assert!(text.contains("<div id=\"house-hud\" class=\"house-hud\"></div>"));
+        assert!(text.contains("<div id=\"house-editor\" class=\"house-editor\"></div>"));
         for bridged in [
             "p id=\"world-notice\" class=\"studio-bridge\"",
             "nav id=\"world-controls\" class=\"studio-bridge\"",
             "aside id=\"world-voice\" class=\"studio-bridge\" hidden",
             "aside id=\"request-choices\" class=\"studio-bridge\" hidden",
+            "aside id=\"edit-panel\" class=\"studio-bridge\" hidden",
+            "dialog id=\"edit-auth\" class=\"studio-bridge\" hidden",
+            "dialog id=\"publish-review\" class=\"studio-bridge\" hidden",
+            "aside id=\"publish-share-card\" class=\"studio-bridge\" hidden",
         ] {
             assert!(text.contains(bridged), "{bridged}");
         }

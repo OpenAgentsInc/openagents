@@ -52,6 +52,12 @@ A controller publishes a `View`:
   | `toast` | Short status message | `dismiss` when `dismissible` |
   | `media_slot` | A place the host fills, named by `slot` (never a URL) | none |
   | `engine_surface` | The engine's drawing surface, named by `surface` | none (the engine takes input) |
+  | `select` | Choose one of `options` (value and label each) | `select` (value: an option's value) |
+  | `checkbox` | On or off, with `checked` | `input` (value: `true` or `false`) |
+  | `range` | A number from `min` to `max` on `step` | `input` (value: a decimal on the step) |
+  | `color` | A color as `#rrggbb`, lowercase | `input` (value: the new color) |
+  | `file` | An upload slot: `slot`, `accept` (types or extensions), `max_bytes`, `multiple` | `input` (value: the chosen names, one per line) |
+  | `canvas` | A drawing surface the host mounts, named by `surface`, `width` × `height` | none (the engine takes input) |
 
 - `style` refers to tokens only: `gap` and `padding` (`none` to `xl` on the
   spacing scale), `align`, `tone` (`default`, `muted`, `primary`, `danger`),
@@ -63,7 +69,10 @@ A controller publishes a `View`:
   scopes need a nonempty label.
 
 Limits: 1,024 nodes, depth 16 (the root is depth 1), 512 KiB encoded, 16 KiB
-per string, and 64 KiB for a field's `max_bytes`. Unknown kinds, properties,
+per string, 64 KiB for a field's `max_bytes`, 256 options per select, 32
+`accept` entries and 32 MiB per upload slot, 64 files per intent, and 4,096
+CSS pixels for a canvas side. Range numbers are finite; a whole number
+encodes as an integer (`5`), as JavaScript writes it. Unknown kinds, properties,
 and token names fail to decode.
 
 ## Intents
@@ -75,7 +84,12 @@ The renderer sends an `Intent`:
   "kind": "activate" }
 ```
 
-`select` and `input` carry a `value`; the others carry none. An intent carries
+`select` and `input` carry a `value`; the others carry none. A range value is
+an optional `-`, digits with an optional fraction, and an optional exponent;
+no `+`, spaces, `Infinity`, or `NaN`, so both sides read the same text. A
+file's contents never travel in an intent: the renderer checks each chosen
+file against the slot's `accept` and `max_bytes`, hands the files to the host
+(`onFiles(slot, files)`), and sends only their names. An intent carries
 identity, not a payload to run: the controller looks the node up in the
 revision it published and refuses the intent when:
 
@@ -131,6 +145,9 @@ renderer (`AethyrView`):
   shows what the tree says until a new revision changes it. Escape on a
   dialog sends `dismiss`; the dialog stays open unless the controller closes
   it;
+- keeps a select's, checkbox's, range's, or color's newest choice showing
+  while its intent is handled, with one in flight at a time, then shows the
+  tree's value again;
 - keeps a field's draft while its `input` intents are handled, so a slow
   handler never drops keystrokes. One input is in flight at a time; when it
   settles, the field sends its newest draft against the newest revision. The
@@ -226,11 +243,41 @@ on. While the world shows an error the root carries
 message never shows beside ours. When the editor closes, focus returns to the
 visible Edit button.
 
-The editor (Jarvis: its tool windows and `#edit-panel`), the sign-in and
-confirmation dialog (`#edit-auth`), publish review (`#publish-review`), the
-share card, and courtyard settings (`#planet-settings`) are still the
-release's own DOM. They use controls the protocol has no element for yet
-(selects, checkboxes, ranges, color, file pickers, and a paint canvas).
+### The house editor (#12595)
+
+`makeEditorController` (`editor.ts`) draws the rest of the studio into
+`#house-editor`: Jarvis (`#edit-panel`, a sheet with its tool tabs and five
+tool windows), the sign-in and confirmation dialog (`#edit-auth`), publish
+review (`#publish-review`), the share card (`#publish-share-card`), and
+courtyard settings (`#planet-settings`). Each carries `.studio-bridge` and is
+hidden once the host mounts.
+
+The controller works from a declarative layout (`editor-layout.ts`): each
+entry names a release control by ID and the node to draw for it (button,
+link, field, select, checkbox, range, color, file, canvas, a list of lines,
+or a list of rows with actions), plus fixed copy and disclosures the visitor
+opens. `editor-host.ts` reads every named control into a `Mirror` (shown,
+enabled, text, value, checked, options, same-site `href`, pressed or
+selected, list rows), on each page mutation and every 300 ms for values the
+release sets in code. Every intent becomes one `BridgeOp` on the release's
+own control: a click; a value with `input` (and `change` for selects,
+ranges, colors); a click on a checkbox that differs; the chosen files placed
+in the upload input; or a click on a row's action. Same-site links go through
+the controller.
+
+- The release's dialogs open non-modally (`showModal` becomes `show`); the
+  controller's dialogs are the modal ones, and Escape clicks the release's
+  Cancel.
+- The face canvas (`#face-canvas`) and the capture image move into the
+  renderer's `canvas` and `media_slot` while shown, keeping the release's
+  listeners, and go back when they close.
+- At phone width one tool window shows, the one the release marks active;
+  the tabs choose it.
+- Visible nodes keep the release's IDs. Checks fill fields as
+  `[data-aethyr-id=ID] :is(input,textarea)`, choose options with
+  `[data-aethyr-id=ID] select`, and check boxes with `[data-aethyr-id=ID]
+  input`; reads through `document.querySelector('#ID')` still read the
+  release's copy.
 
 ## Design tokens
 
