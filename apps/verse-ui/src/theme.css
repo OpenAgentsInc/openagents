@@ -648,6 +648,10 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+[data-verse-ui]:has(#edit-panel:not([hidden]):not([data-active="request"]))
+  #request-choices {
+  display: none;
+}
 [data-verse-ui]:has(#edit-panel:not([hidden])) #world-voice {
   top: auto;
   bottom: 16px;
