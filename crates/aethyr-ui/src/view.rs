@@ -83,9 +83,12 @@ pub enum Element {
         trailing: Option<Glyph>,
     },
     /// A small toggle or filter. Sends `activate`; `selected` is controller
-    /// state, never inferred from color.
+    /// state, never inferred from color. An optional `detail` is a short
+    /// second line, such as a destination's category.
     Chip {
         label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
         selected: bool,
         #[serde(default = "yes", skip_serializing_if = "is_true")]
         enabled: bool,

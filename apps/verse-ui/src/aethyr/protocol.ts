@@ -2,7 +2,7 @@
 // Regenerate: cargo run -p aethyr-ui -- --write
 
 export const SCHEMA = "aethyr.ui.v1";
-export const SCHEMA_SHA256 = "7cb7158967ef3a98dd1dcd0052830489501b3dd5705907c50374a6cebde1bce8";
+export const SCHEMA_SHA256 = "54e9944173ac5a3842be71db522385d0226face1e2017e1f26169d44311bf441";
 export const MAX_NODES = 1024;
 export const MAX_DEPTH = 16;
 export const MAX_VIEW_BYTES = 524288;
@@ -146,10 +146,12 @@ export type Element =
   }
   /**
    * A small toggle or filter. Sends `activate`; `selected` is controller
-   * state, never inferred from color.
+   * state, never inferred from color. An optional `detail` is a short
+   * second line, such as a destination's category.
    */
   | {
     readonly label: string;
+    readonly detail?: string;
     readonly selected: boolean;
     readonly enabled?: boolean;
     readonly kind: "chip";
@@ -642,6 +644,12 @@ export const SCHEMA_DOCUMENT: unknown = {
             "label": {
               "type": "string"
             },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "selected": {
               "type": "boolean"
             },
@@ -658,7 +666,7 @@ export const SCHEMA_DOCUMENT: unknown = {
             "label",
             "selected"
           ],
-          "description": "A small toggle or filter. Sends `activate`; `selected` is controller\nstate, never inferred from color."
+          "description": "A small toggle or filter. Sends `activate`; `selected` is controller\nstate, never inferred from color. An optional `detail` is a short\nsecond line, such as a destination's category."
         },
         {
           "type": "object",

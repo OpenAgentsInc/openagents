@@ -148,6 +148,7 @@ function checkNode(node: Node): ViewErrorCode | undefined {
       label = element.label;
       break;
     case "chip":
+      if (element.detail !== undefined) texts.push(element.detail);
       label = element.label;
       break;
     case "list":

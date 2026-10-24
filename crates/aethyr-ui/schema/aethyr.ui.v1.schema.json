@@ -374,6 +374,12 @@
             "label": {
               "type": "string"
             },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "selected": {
               "type": "boolean"
             },
@@ -390,7 +396,7 @@
             "label",
             "selected"
           ],
-          "description": "A small toggle or filter. Sends `activate`; `selected` is controller\nstate, never inferred from color."
+          "description": "A small toggle or filter. Sends `activate`; `selected` is controller\nstate, never inferred from color. An optional `detail` is a short\nsecond line, such as a destination's category."
         },
         {
           "type": "object",
