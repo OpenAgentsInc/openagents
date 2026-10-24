@@ -240,10 +240,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aethyr-tokens"
-version = "1.0.0"
-
-[[package]]
 name = "aethyr-ui"
 version = "1.0.0"
 dependencies = [

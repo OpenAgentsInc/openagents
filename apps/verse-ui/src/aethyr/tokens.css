@@ -1,5 +1,5 @@
-/* Generated from crates/aethyr-tokens; do not edit.
-   Regenerate: cargo run -p aethyr-tokens -- --write */
+/* Generated from crates/oa-tokens; do not edit.
+   Regenerate: cargo run -p oa-tokens -- --write */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -25,20 +25,20 @@
   --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 :root {
-  --background: #000000;
-  --foreground: #fafafa;
-  --card: #18181bef;
-  --popover: #18181b;
-  --primary: #fafafa;
-  --primary-foreground: #18181b;
-  --secondary: #27272a;
-  --muted: #18181b;
-  --muted-foreground: #a1a1aa;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #191919ef;
+  --popover: #191919;
+  --primary: #ededed;
+  --primary-foreground: #0a0a0a;
+  --secondary: #1e1e1e;
+  --muted: #101010;
+  --muted-foreground: #818181;
   --accent: #3f3f46;
-  --border: #ffffff1f;
-  --input: #ffffff28;
-  --ring: #d4d4d8;
-  --destructive: #f87171;
+  --border: #2c2c2c;
+  --input: #404040;
+  --ring: #ededed;
+  --destructive: #ff4d42;
   --radius: 0.75rem;
   --hud-radius-control: 8px;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;

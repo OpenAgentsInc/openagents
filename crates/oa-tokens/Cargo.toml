@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "The OpenAgents design token table (Apps SDK UI roles, Coder Light and Coder Noir) as dependency-free data, shared by the web components and the native GUI themes."
+description = "The OpenAgents design token table (Apps SDK UI roles, Coder Light, Coder Noir, the HUD layer and scales) as dependency-free data, shared by the web components, the Kiki and Verse stylesheet, and the native GUI themes."
 
 [features]
 # Serialize `ThemeChoice` as a stored preference (`system`, `light`, `dark`).

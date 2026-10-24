@@ -76,12 +76,12 @@
       "regenerate": "CARGO_TARGET_DIR=\"${OPENAGENTS_APP_TARGET_DIR:-${CARGO_TARGET_DIR:?}-app}\" apps/openagents/scripts/android/build-core.sh"
     },
     {
-      "name": "aethyr-tokens",
+      "name": "verse-ui-tokens",
       "files": ["apps/verse-ui/src/aethyr/tokens.css"],
-      "sources": ["crates/aethyr-tokens/"],
-      "package": "aethyr-tokens",
-      "check": "cargo test -p aethyr-tokens --lib tests::generated_stylesheet_is_current",
-      "regenerate": ". ./scripts/dev/cargo-build-env.sh; cargo run -q -p aethyr-tokens -- --write"
+      "sources": ["crates/oa-tokens/"],
+      "package": "oa-tokens",
+      "check": "cargo test -p oa-tokens --lib stylesheet::tests::generated_stylesheet_is_current",
+      "regenerate": ". ./scripts/dev/cargo-build-env.sh; cargo run -q -p oa-tokens -- --write"
     },
     {
       "name": "aethyr-ui-schema",

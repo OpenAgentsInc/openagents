@@ -59,7 +59,8 @@ Tracked as one epic with task issues. In order:
    TypeScript types, the Effect controller runtime, and the React DOM
    renderer on the design system ([UI protocol](ui-protocol.md)).
 3. **Design tokens crate** emitting the CSS the website uses today
-   (`crates/aethyr-tokens`).
+   (`crates/oa-tokens`, which absorbed `aethyr-tokens` per
+   [ADR 0012](../adr/0012-one-token-crate.md)).
 4. **Kiki surfaces on Aethyr:** the entry and destination flow, the universe
    HUD, the house studio, the player, and invitations, each moved to an Effect
    controller and the shared renderer, phone width first.
