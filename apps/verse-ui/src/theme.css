@@ -1882,8 +1882,8 @@
   border: 1px solid var(--hud-line);
   border-radius: var(--radius);
   box-shadow: var(--hud-glow);
-  backdrop-filter: blur(var(--hud-blur));
   -webkit-backdrop-filter: blur(var(--hud-blur));
+  backdrop-filter: blur(var(--hud-blur));
 }
 /* Corner ticks give panels the game HUD frame. */
 .hud-panel::before,
@@ -1950,8 +1950,8 @@
   padding: 0 clamp(16px, 4vw, 40px);
   border-bottom: 1px solid var(--border);
   background: #000000b3;
-  backdrop-filter: blur(var(--hud-blur-bar));
   -webkit-backdrop-filter: blur(var(--hud-blur-bar));
+  backdrop-filter: blur(var(--hud-blur-bar));
 }
 .lp-brand {
   display: inline-flex;
