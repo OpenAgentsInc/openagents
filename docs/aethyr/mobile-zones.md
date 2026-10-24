@@ -187,8 +187,7 @@ flags. WebView 124 logs `Failed to create WebGPU Context Provider`, and
 `--enable-features=Vulkan` crashes it (`Vulkan not supported with in process
 gpu`). Chrome 124 on the same image has no adapter either.
 
-What works, on CoderOS (RTX 4080, emulator 36.5.11, `-gpu host`, so the guest
-has gfxstream Vulkan 1.3 on the NVIDIA GPU):
+What works, on CoderOS (emulator 36.5.11, API 35 x86_64 image):
 
 1. Install a current Chromium `SystemWebView.apk` from the official x86_64
    snapshots (`chromium-browser-snapshots/AndroidDesktop_x64/<rev>/chrome-android-desktop.zip`,
@@ -201,32 +200,49 @@ has gfxstream Vulkan 1.3 on the NVIDIA GPU):
    _ --enable-unsafe-webgpu --enable-dawn-features=ignore_imported_ahardwarebuffer_vulkan_image_size
    ```
 
-   `--enable-unsafe-webgpu` gives an adapter (`vendor=nvidia
-   arch=lovelace`). Without the Dawn toggle, the first canvas frame loses the
+   `--enable-unsafe-webgpu` gives an adapter for the emulator's host Vulkan
+   device (`nvidia`/`lovelace` on the RTX 4080, `mesa`/`software` with
+   lavapipe). Without the Dawn toggle, the first canvas frame loses the
    device: `Required texture memory size (…) is larger than the
    AHardwareBuffer allocation size (0)`, because the emulator's gralloc reports
    a zero allocation size for the canvas buffers. `--ignore-gpu-blocklist`
    isn't needed. Leave out `--enable-features=Vulkan`.
 
+3. Start the emulator with `-feature GuestAngle`, so the guest's GLES runs on
+   ANGLE over the guest's own Vulkan driver instead of the emulator's host GLES
+   translator. This step is what lets the engine render. Without it, the guest
+   hangs on a WebGPU canvas: the WebView GPU thread blocks in
+   `eglCreateSyncKHR` (`rcCreateSyncKHR` on the host) while presenting a frame
+   that Dawn rendered in Vulkan. A clear-only WebGPU animation hits it about
+   one run in five, and every time when the page also waits on
+   `onSubmittedWorkDone` each frame, from a worker's `OffscreenCanvas` or the
+   main thread. It is a synchronization hang, not GPU load: with every draw
+   and dispatch removed, the engine's first frame still never completed, and
+   with SwiftShader or lavapipe the host's Vulkan worker threads sat idle.
+   With host NVIDIA Vulkan, the engine's first frames end in Xid 109
+   (`CTX SWITCH TIMEOUT`) and `VK_ERROR_DEVICE_LOST`, which fits the same
+   hang. `GuestAngle` was not tried on the NVIDIA GPU.
+
 The probe and the runner then report the adapter, and a WebGPU canvas
 renders. This proves the app path only. It is not a device record.
 
-The engine releases go further than the probe, but they don't run for long.
-On 2026-10-24, the candidates `ah87e564ee79` (house) and `au87e564ee79`
-(universe) opened through the debug catalog, and the bridge completed
-`listening` → `hello`, `ready` → `open`, and the `open` reply. At 360×800
-on the RTX 4080, the house showed its night sky. About 90 seconds later
-(right after a camera drag), the guest GPU stalled: the host logged NVIDIA
-Xid 109 (`CTX SWITCH TIMEOUT`) for `qemu-system-x86`, and the emulator exited
-with `VK_ERROR_DEVICE_LOST`. The universe showed its stars and planet labels,
-and its canvas went black after about 20 seconds. That run was stopped
-before it could stall the host. The earlier house pin (`z12580he8d9551374`)
-caused the same Xid within seconds at 1080×2400. With host SwiftShader or lavapipe Vulkan, the
-emulator stayed up, but the first engine frame never finished. The WebView
-GPU thread blocked the app's UI thread until Android reported it as not
-responding. A simple full-screen WebGPU animation runs at 60 fps on the same
-setups, so the stall comes from the engine's frame workload on gfxstream.
-It isn't from the canvas path. Don't loop engine runs on a shared host GPU.
+Tested on 2026-10-24 (emulator 36.5.11, API 35 x86_64 `google_apis`,
+SystemWebView 158.0.8123.0), with host Vulkan from lavapipe
+(`VK_ICD_FILENAMES=…/lvp_icd.x86_64.json`, `LP_NUM_THREADS=16`, `-gpu host
+-feature GuestAngle -cores 8`) and the display at `wm size 720x1280`,
+`wm density 240`: the candidates `ah4f82fe5e6f` (house) and `au4f82fe5e6f`
+(universe) opened through the debug catalog, the adapter was `mesa`/`software`,
+and the bridge completed `listening` → `hello`, `ready` → `open`, and the
+`open` reply. The Haunted House rendered the house, its lit doorway, and the
+night sky, and held for more than 90 seconds (about 3 frames per second at
+360×556). The Verse rendered its planets, orbits, and labels, and kept
+animating. Notes:
+
+- `-feature GuestAngle` with `-gpu swiftshader_indirect` crashes the emulator
+  at boot on 36.5.11. Use `-gpu host` with a software Vulkan ICD instead.
+- Software Vulkan is slow but safe on a shared machine. Don't run engine zones
+  on the host NVIDIA GPU through the emulator without `GuestAngle`: each hang
+  is an Xid on the host, and the earlier runs here produced several.
 
 ## Not done yet
 
