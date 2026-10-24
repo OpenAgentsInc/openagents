@@ -688,6 +688,59 @@ impl MaterialProjectArchive {
     }
 }
 
+/// What the face editor's controls should do after a staleness check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FaceControls {
+    Keep,
+    Enable,
+    Disable,
+}
+
+/// Whether an open face draft still belongs to the current world and
+/// selection. The browser checks every 200 ms, and Apply's confirmation makes
+/// the draft current again; the two can arrive in either order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FaceDraftAccess {
+    stale: bool,
+}
+
+impl FaceDraftAccess {
+    pub fn stale(&self) -> bool {
+        self.stale
+    }
+
+    /// A periodic check; `current` says whether the draft matches now.
+    pub fn check(&mut self, current: bool) -> FaceControls {
+        match (current, self.stale) {
+            (true, true) => {
+                self.stale = false;
+                FaceControls::Enable
+            }
+            (false, false) => {
+                self.stale = true;
+                FaceControls::Disable
+            }
+            _ => FaceControls::Keep,
+        }
+    }
+
+    /// Apply's confirmation made the draft current again. A check may already
+    /// have seen Apply's new revision and disabled the controls; turn them
+    /// back on.
+    pub fn applied(&mut self) -> FaceControls {
+        if std::mem::take(&mut self.stale) {
+            FaceControls::Enable
+        } else {
+            FaceControls::Keep
+        }
+    }
+
+    /// The draft was opened or edited, so it is current.
+    pub fn reset(&mut self) {
+        self.stale = false;
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BrushMode {
@@ -860,6 +913,39 @@ pub fn generate_scars(recipe: &ScarRecipe) -> Result<MaterialPixels, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn apply_confirmation_after_its_revision_reenables_the_face_controls() {
+        // #12598: the 200 ms check sees Apply's new revision before Apply's
+        // confirmation arrives, so it disables the controls first.
+        let mut access = FaceDraftAccess::default();
+        assert_eq!(access.check(true), FaceControls::Keep);
+        assert_eq!(access.check(false), FaceControls::Disable);
+        assert_eq!(access.check(false), FaceControls::Keep);
+        assert!(access.stale());
+        assert_eq!(access.applied(), FaceControls::Enable);
+        assert!(!access.stale());
+        // The draft now names the new revision, so later checks pass quietly.
+        assert_eq!(access.check(true), FaceControls::Keep);
+    }
+
+    #[test]
+    fn apply_confirmation_before_its_revision_changes_nothing() {
+        let mut access = FaceDraftAccess::default();
+        assert_eq!(access.applied(), FaceControls::Keep);
+        assert_eq!(access.check(true), FaceControls::Keep);
+    }
+
+    #[test]
+    fn a_face_draft_for_another_world_waits_until_it_is_current_again() {
+        let mut access = FaceDraftAccess::default();
+        assert_eq!(access.check(false), FaceControls::Disable);
+        assert_eq!(access.check(true), FaceControls::Enable);
+        assert_eq!(access.check(false), FaceControls::Disable);
+        access.reset();
+        assert!(!access.stale());
+        assert_eq!(access.check(true), FaceControls::Keep);
+    }
+
     #[test]
     fn owned_face_sources_export_without_a_device_and_after_same_world_reconstruction() {
         let world = crate::Project {
