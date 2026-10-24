@@ -24,7 +24,8 @@ PY
 )"
 export CARGO_BUILD_BUILD_DIR="$CARGO_TARGET_DIR/worktrees/$state_key"
 kernel_optimizer="${AETHYRFORGE_WASM_OPT:-wasm-opt}"
-if ! optimizer_version="$("$kernel_optimizer" --version 2>/dev/null)" || [[ "$optimizer_version" != "wasm-opt version 132" ]]; then
+# Homebrew prints "wasm-opt version 132"; the GitHub release binary adds " (version_132)".
+if ! optimizer_version="$("$kernel_optimizer" --version 2>/dev/null)" || [[ "$optimizer_version" != "wasm-opt version 132" && "$optimizer_version" != "wasm-opt version 132 (version_132)" ]]; then
   echo 'Build the browser kernel with Binaryen 132 (wasm-opt on PATH, or AETHYRFORGE_WASM_OPT).' >&2
   exit 1
 fi
