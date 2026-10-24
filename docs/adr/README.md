@@ -29,6 +29,7 @@ order and never reuse a number.
 | 0009 | [Zones, and the Grid](0009-zones-and-the-grid.md) | Accepted |
 | 0010 | [Loading zones in the mobile app](0010-mobile-zone-loading.md) | Accepted |
 | 0011 | [Rendering and shaders](0011-rendering-and-shaders.md) | Accepted |
+| 0012 | [One token crate](0012-one-token-crate.md) | Accepted |
 
 Background:
 

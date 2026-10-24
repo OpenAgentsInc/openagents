@@ -29,6 +29,7 @@ GPU-drawn framework).
 | Zones, and the Grid as the coding-agent zone | [0009](../adr/0009-zones-and-the-grid.md) |
 | Mobile zones run in a web view now and on Aethyr natively later; the Grid is built into the shell | [0010](../adr/0010-mobile-zone-loading.md) |
 | GPU-driven rendering; Slang shaders shipped as WGSL | [0011](../adr/0011-rendering-and-shaders.md) |
+| One token crate: `oa-tokens` absorbs `aethyr-tokens`; Coder Noir roles win where they mean the same thing | [0012](../adr/0012-one-token-crate.md) |
 
 ## Where things go
 
@@ -36,7 +37,7 @@ GPU-drawn framework).
 | --- | --- |
 | Engine Rust crates (`af-kernel`, `af-gpu`, `af-render-lab`, `af-mmorpg-core`, `af-world-server`) | `crates/aethyr/`, its own Cargo workspace (Rust 1.98.1, `wasm32-unknown-unknown`), excluded from the root workspace like `crates/psionic` |
 | Aethyr web: the Effect controllers, the React DOM renderer, the web host, the engine's TypeScript renderer and runtime until Rust parity, editor, player, preview, labs, and their tests | `apps/aethyr/`, one npm package that absorbs `apps/verse-ui` |
-| View-tree schema, design tokens, device profile | Rust crates in the root workspace (`crates/aethyr-ui`, `crates/aethyr-tokens`, `crates/aethyr-profile`), so the website, the engine, and the mobile app can all link them |
+| View-tree schema, design tokens, device profile | Rust crates in the root workspace (`crates/aethyr-ui`, `crates/aethyr-profile`; tokens in `crates/oa-tokens` per [0012](../adr/0012-one-token-crate.md)), so the website, the engine, and the mobile app can all link them |
 | Zone launcher, web runner, and host bridge for the phone | `apps/openagents/crates/mobile` (Rust) with thin UIKit and Kotlin hosts |
 | Engine specification and research | `docs/aethyr/` |
 | Licensed assets | Never in Git ([private assets](../verse/private-assets.md)) |
