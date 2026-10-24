@@ -106,6 +106,8 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.5.3")
     implementation("androidx.camera:camera-view:1.5.3")
     implementation("androidx.core:core-ktx:1.15.0")
+    // WebViewCompat.addWebMessageListener: the zone runner's native bridge (ADR 0010).
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.fragment:fragment:1.3.0")
     implementation("com.google.zxing:core:3.5.4")
     implementation("org.rustls:rustls-platform-verifier")

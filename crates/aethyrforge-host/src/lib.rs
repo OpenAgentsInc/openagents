@@ -15,6 +15,10 @@ mod browser;
 pub use browser::*;
 mod engine;
 pub use engine::*;
+mod native;
+pub use native::*;
+mod zones;
+pub use zones::*;
 
 #[cfg(target_arch = "wasm32")]
 mod demo;

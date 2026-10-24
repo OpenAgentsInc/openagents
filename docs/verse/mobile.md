@@ -21,6 +21,15 @@ is hidden ([below](#the-grids-portal-to-lagrange-1)). See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md).
 
+**Zones in the OpenAgents app.** Under ADR 0009 the name "the Grid" now
+belongs to the coding-agent zone. The OpenAgents mobile app (`apps/openagents`)
+has a zone launcher that lists the Grid (built in, opening the sessions
+list), the Haunted House, and the Verse universe. The last two are the
+website's pinned web releases in a `WKWebView` or Android `WebView`, with a
+native `aethyrforge-host` bridge. See [Zones in the mobile app](../aethyr/mobile-zones.md).
+This section describes the bare Verse world, whose new name is still an open
+question for the owner.
+
 ### The Grid's sticks
 
 The Grid draws two faint sticks, rings with round knobs at half the opacity

@@ -49,6 +49,37 @@ coordinates, safe integer bounds, state transitions, peer checks, and relationsh
 between fields. Schema validation alone is insufficient. `Envelope::decode` and
 `EngineEndpoint` enforce the complete public decoder contract.
 
+## Native-bridge transport
+
+The OpenAgents mobile app opens a zone's release top-level in a platform web
+view and plays the trusted page's role (ADR 0010,
+[mobile zones](../aethyr/mobile-zones.md)). The envelopes, schemas, sequence
+rules, and bounds are the ones above. Only the carrier and the peer check
+change:
+
+1. The shell exposes `window.aethyrHost` (`NATIVE_CHANNEL`) with
+   `postMessage(string)` and an `onmessage` handler. Android's
+   `WebViewCompat.addWebMessageListener` injects this object only on the
+   zone's origin. iOS defines the same object over a `WKScriptMessageHandler`
+   and delivers frames with `callAsyncJavaScript`.
+2. `EngineEndpoint` uses the channel only when its document is top-level and
+   the object has `postMessage`. It posts the bootstrap string
+   (`BOOTSTRAP`, `openagents.aethyrforge.host/7/listening`) on the channel,
+   accepts `hello` as the first frame, and answers `ready` on the same
+   channel. No `MessagePort` is transferred, because the native channel is
+   already scoped to one web view. A framed document keeps the
+   `postMessage` transport.
+3. The shell's `NativeHost` accepts a frame only when the web view reports
+   the zone's exact origin and the main frame (`WKScriptMessage.frameInfo`,
+   or Android's `sourceOrigin` and `isMainFrame`), and the frame is no
+   larger than `MAX_BYTES`. It answers the bootstrap once per document and
+   validates everything after it with the same `Host`. Each page load starts
+   a new random session.
+
+Releases built before this transport still work in browsers. In a native web
+view they load, but no bridge session starts until they are rebuilt against
+this SDK.
+
 ## Operations and results
 
 | Operation | Contract |

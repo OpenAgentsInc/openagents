@@ -9,7 +9,6 @@ use std::{
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{Event, HtmlIFrameElement, MessageChannel, MessageEvent, MessagePort};
 
-const BOOTSTRAP: &str = "openagents.aethyrforge.host/7/listening";
 type Handler<T> = Closure<dyn FnMut(T)>;
 fn js(e: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&e.to_string())
@@ -407,9 +406,68 @@ impl Drop for BrowserHost {
     }
 }
 
+/// The engine's side of the scoped channel: a transferred port from a parent
+/// frame, or the native shell's `window.aethyrHost` object (ADR 0010).
+enum Channel {
+    Port(MessagePort),
+    Native(JsValue),
+}
+impl Channel {
+    fn post(&self, text: &str) -> Result<(), JsValue> {
+        match self {
+            Self::Port(port) => port.post_message(&JsValue::from_str(text)),
+            Self::Native(object) => {
+                let post: Function =
+                    js_sys::Reflect::get(object, &JsValue::from_str("postMessage"))?.dyn_into()?;
+                post.call1(object, &JsValue::from_str(text)).map(|_| ())
+            }
+        }
+    }
+    fn close(&self) {
+        match self {
+            Self::Port(port) => {
+                port.set_onmessage(None);
+                port.close();
+            }
+            Self::Native(object) => {
+                let _ =
+                    js_sys::Reflect::set(object, &JsValue::from_str("onmessage"), &JsValue::NULL);
+            }
+        }
+    }
+}
+fn send_on(channel: &Channel, e: Envelope) -> Result<(), JsValue> {
+    channel.post(&e.encode().map_err(js)?)
+}
+/// A native shell's channel, offered only to a top-level document. A page in
+/// a frame keeps the `postMessage` transport even if the object exists.
+fn native_channel() -> Option<JsValue> {
+    let w = window();
+    let top_level = w
+        .parent()
+        .ok()
+        .flatten()
+        .is_none_or(|p| JsValue::from(p) == JsValue::from(w.clone()));
+    if !top_level {
+        return None;
+    }
+    let object = js_sys::Reflect::get(&w, &JsValue::from_str(NATIVE_CHANNEL)).ok()?;
+    let post = js_sys::Reflect::get(&object, &JsValue::from_str("postMessage")).ok()?;
+    (object.is_object() && post.is_function()).then_some(object)
+}
+fn native_wire(event: &JsValue) -> Result<String, Error> {
+    let value = js_sys::Reflect::get(event, &JsValue::from_str("data"))
+        .map_err(|_| Error::Invalid("transport"))?;
+    if !value.is_string() || js_sys::JsString::from(value.clone()).length() as usize > MAX_BYTES {
+        return Err(Error::Invalid("transport size"));
+    }
+    value.as_string().ok_or(Error::Invalid("transport"))
+}
+
 struct EndpointState {
     engine: Option<Engine>,
-    port: Option<MessagePort>,
+    port: Option<Channel>,
+    native_listener: Option<Handler<JsValue>>,
     listener: Option<Handler<MessageEvent>>,
     window_listener: Option<Handler<MessageEvent>>,
     callback: Option<Function>,
@@ -419,9 +477,9 @@ struct EndpointState {
 impl EndpointState {
     fn dispose(&mut self) {
         if let Some(p) = self.port.take() {
-            p.set_onmessage(None);
             p.close();
         }
+        self.native_listener = None;
         self.engine = None;
         self.callback = None;
         if let Some(l) = self.load_listener.take() {
@@ -461,12 +519,17 @@ impl EngineEndpoint {
         let rc = Rc::new(RefCell::new(EndpointState {
             engine: None,
             port: None,
+            native_listener: None,
             listener: None,
             window_listener: None,
             callback: Some(callback),
             last_status: 0,
             load_listener: None,
         }));
+        if let Some(channel) = native_channel() {
+            Self::connect_native(&rc, channel, release, abi, format, caps)?;
+            return Ok(Self { state: rc });
+        }
         let announce_origin = host_origin.clone();
         let weak = Rc::downgrade(&rc);
         let listener = Closure::wrap(Box::new(move |event: MessageEvent| {
@@ -520,7 +583,7 @@ impl EngineEndpoint {
                 return;
             }
             s.engine = Some(engine);
-            s.port = Some(port);
+            s.port = Some(Channel::Port(port));
             s.listener = Some(onmessage);
         }) as Box<dyn FnMut(MessageEvent)>);
         window().add_event_listener_with_callback("message", listener.as_ref().unchecked_ref())?;
@@ -554,7 +617,7 @@ impl EngineEndpoint {
             .ok_or_else(|| js("session"))?
             .reply(&request_id, o)
             .map_err(js)?;
-        send(s.port.as_ref().ok_or_else(|| js("port"))?, e)
+        send_on(s.port.as_ref().ok_or_else(|| js("port"))?, e)
     }
     pub fn status(&self, status: String) -> Result<bool, JsValue> {
         if status.len() > MAX_BYTES {
@@ -571,7 +634,7 @@ impl EngineEndpoint {
             .ok_or_else(|| js("session"))?
             .status(status)
             .map_err(js)?;
-        send(s.port.as_ref().ok_or_else(|| js("port"))?, e)?;
+        send_on(s.port.as_ref().ok_or_else(|| js("port"))?, e)?;
         s.last_status = now();
         Ok(true)
     }
@@ -587,7 +650,7 @@ impl EngineEndpoint {
             .ok_or_else(|| js("session"))?
             .auth_required(&request_id, message)
             .map_err(js)?;
-        send(s.port.as_ref().ok_or_else(|| js("port"))?, e)
+        send_on(s.port.as_ref().ok_or_else(|| js("port"))?, e)
     }
     pub fn revoke(&self, message: String) -> Result<(), JsValue> {
         let mut s = self.state.borrow_mut();
@@ -597,7 +660,7 @@ impl EngineEndpoint {
             .ok_or_else(|| js("session"))?
             .revoke(message)
             .map_err(js)?;
-        send(s.port.as_ref().ok_or_else(|| js("port"))?, e)?;
+        send_on(s.port.as_ref().ok_or_else(|| js("port"))?, e)?;
         s.dispose();
         Ok(())
     }
@@ -608,5 +671,68 @@ impl EngineEndpoint {
 impl Drop for EngineEndpoint {
     fn drop(&mut self) {
         self.state.borrow_mut().dispose();
+    }
+}
+impl EngineEndpoint {
+    /// The native shell is the trusted peer: it loaded this document by exact
+    /// origin and checks every frame's origin and main-frame flag itself. The
+    /// first frame must be `hello`; everything after is the same session.
+    fn connect_native(
+        rc: &Rc<RefCell<EndpointState>>,
+        channel: JsValue,
+        release: String,
+        abi: String,
+        format: u16,
+        caps: Vec<Capability>,
+    ) -> Result<(), JsValue> {
+        let weak = Rc::downgrade(rc);
+        let onmessage = Closure::wrap(Box::new(move |event: JsValue| {
+            let Some(rc) = weak.upgrade() else { return };
+            let mut s = rc.borrow_mut();
+            let Ok(text) = native_wire(&event) else {
+                s.dispose();
+                return;
+            };
+            if s.engine.is_none() {
+                let Ok((engine, ready)) =
+                    Engine::accept(&text, release.clone(), abi.clone(), format, caps.clone())
+                else {
+                    return;
+                };
+                let sent = s.port.as_ref().map(|c| send_on(c, ready));
+                if !matches!(sent, Some(Ok(()))) {
+                    s.dispose();
+                    return;
+                }
+                s.engine = Some(engine);
+                return;
+            }
+            let result = s
+                .engine
+                .as_mut()
+                .ok_or(Error::Phase)
+                .and_then(|e| e.receive(&text));
+            let Ok(message) = result else {
+                s.dispose();
+                return;
+            };
+            let callback = s.callback.clone();
+            drop(s);
+            if let (Some(callback), Ok(json)) = (callback, serde_json::to_string(&message)) {
+                let _ = callback.call1(&JsValue::NULL, &JsValue::from_str(&json));
+            }
+        }) as Box<dyn FnMut(JsValue)>);
+        js_sys::Reflect::set(
+            &channel,
+            &JsValue::from_str("onmessage"),
+            onmessage.as_ref().unchecked_ref(),
+        )?;
+        {
+            let mut s = rc.borrow_mut();
+            s.native_listener = Some(onmessage);
+            s.port = Some(Channel::Native(channel.clone()));
+        }
+        // Announce without holding the state, in case a shell answers at once.
+        Channel::Native(channel).post(BOOTSTRAP)
     }
 }

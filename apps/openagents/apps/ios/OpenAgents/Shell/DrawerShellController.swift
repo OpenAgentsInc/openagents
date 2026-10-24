@@ -361,6 +361,19 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
         else { show() }
     }
 
+    func showZones() {
+        closeDrawer(animated: false)
+        view.endEditing(true)
+        let show: () -> Void = { [weak self] in
+            self?.present(ZonesViewController.sheet { [weak self] in
+                // The Grid is the app's own sessions, computers, and transcripts.
+                self?.showSessions()
+            }, animated: true)
+        }
+        if presentedViewController != nil { dismiss(animated: false, completion: show) }
+        else { show() }
+    }
+
     /// The sessions list lives in the drawer.
     func showSessions() {
         if presentedViewController != nil { dismiss(animated: true) }

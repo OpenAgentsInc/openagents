@@ -14,7 +14,7 @@ use crate::App;
 const PATH: &str = "/new-lander";
 const VERSE: &str = "/new-lander/verse";
 const SCRIPT_PATH: &str = "/new-lander/assets/verse.js";
-fn universe_release() -> Option<super::medieval_town::Release> {
+pub(crate) fn universe_release() -> Option<super::medieval_town::Release> {
     let text = std::env::var("OPENAGENTS_UNIVERSE_RELEASE")
         .unwrap_or_else(|_| include_str!("../../content/demos/universe.json").into());
     let release = super::medieval_town::Release::parse(&text)?;

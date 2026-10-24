@@ -11494,6 +11494,21 @@ public static func android(home: String, current: AndroidSecretStorage, retired:
 })
 }
     
+    /**
+     * An offline wallet for simulator captures: a fixed balance and
+     * history, a seed held only in memory, and no network. It never touches
+     * the Keychain and holds no money.
+     */
+public static func fixture(home: String, listener: WalletListener) -> CoreWallet  {
+    return try!  FfiConverterTypeCoreWallet_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corewallet_fixture(
+        FfiConverterString.lower(home),
+        FfiConverterTypeWalletListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
 
     
     /**
@@ -11635,6 +11650,663 @@ public func FfiConverterTypeCoreWallet_lift(_ handle: UInt64) throws -> CoreWall
 #endif
 public func FfiConverterTypeCoreWallet_lower(_ value: CoreWallet) -> UInt64 {
     return FfiConverterTypeCoreWallet.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One open zone in one web view.
+ */
+public protocol CoreZoneRunnerProtocol: AnyObject, Sendable {
+    
+    func activate(instance: String, revision: UInt64, node: String) throws  -> ZoneRunnerAction
+    
+    /**
+     * May the web view navigate (or a subresource frame load) to `url`?
+     * Anything else is cancelled; it never opens elsewhere silently.
+     */
+    func allowsNavigation(url: String)  -> Bool
+    
+    /**
+     * The bootstrap string an engine page sends first (for diagnostics).
+     */
+    func bootstrap()  -> String
+    
+    /**
+     * A frame on the bridge channel; deliver what comes back, in order.
+     */
+    func bridge(origin: String, mainFrame: Bool, text: String, nowMs: UInt64)  -> ZoneBridgeReply
+    
+    /**
+     * The card to show over the web view (Rust Native JSON), or none.
+     */
+    func card() throws  -> String?
+    
+    func channelName()  -> String
+    
+    /**
+     * The WebGPU adapter the page reported, once it has.
+     */
+    func gpuAdapter()  -> ZoneGpuAdapter?
+    
+    /**
+     * Why WebGPU is missing (`no-webgpu`, `no-adapter`, `error`), if it is.
+     */
+    func gpuMissingReason()  -> String?
+    
+    func iosChannelScript()  -> String
+    
+    func iosDeliverScript()  -> String
+    
+    func manifest()  -> ZoneManifest
+    
+    /**
+     * The largest frame either channel carries.
+     */
+    func maxFrameBytes()  -> UInt64
+    
+    /**
+     * The exact origin the web view may show and accept frames from.
+     */
+    func origin()  -> String
+    
+    func pageFailed(offline: Bool) 
+    
+    func pageFinished() 
+    
+    func pageStarted() 
+    
+    func phase()  -> ZoneRunnerPhase
+    
+    /**
+     * A frame on the probe channel.
+     */
+    func probe(origin: String, mainFrame: Bool, text: String) throws 
+    
+    func probeChannelName()  -> String
+    
+    func probeScript(platform: ZoneWebPlatform)  -> String
+    
+    /**
+     * The page the web view loads first.
+     */
+    func url()  -> String
+    
+    func userAgent()  -> String?
+    
+}
+/**
+ * One open zone in one web view.
+ */
+open class CoreZoneRunner: CoreZoneRunnerProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corezonerunner(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corezonerunner(handle, $0) }
+    }
+
+    
+
+    
+open func activate(instance: String, revision: UInt64, node: String)throws  -> ZoneRunnerAction  {
+    return try  FfiConverterTypeZoneRunnerAction_lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * May the web view navigate (or a subresource frame load) to `url`?
+     * Anything else is cancelled; it never opens elsewhere silently.
+     */
+open func allowsNavigation(url: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_allows_navigation(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The bootstrap string an engine page sends first (for diagnostics).
+     */
+open func bootstrap() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_bootstrap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A frame on the bridge channel; deliver what comes back, in order.
+     */
+open func bridge(origin: String, mainFrame: Bool, text: String, nowMs: UInt64) -> ZoneBridgeReply  {
+    return try!  FfiConverterTypeZoneBridgeReply_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_bridge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(origin),
+        FfiConverterBool.lower(mainFrame),
+        FfiConverterString.lower(text),
+        FfiConverterUInt64.lower(nowMs),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The card to show over the web view (Rust Native JSON), or none.
+     */
+open func card()throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_card(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func channelName() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_channel_name(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The WebGPU adapter the page reported, once it has.
+     */
+open func gpuAdapter() -> ZoneGpuAdapter?  {
+    return try!  FfiConverterOptionTypeZoneGpuAdapter.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_gpu_adapter(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Why WebGPU is missing (`no-webgpu`, `no-adapter`, `error`), if it is.
+     */
+open func gpuMissingReason() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_gpu_missing_reason(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func iosChannelScript() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_ios_channel_script(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func iosDeliverScript() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_ios_deliver_script(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func manifest() -> ZoneManifest  {
+    return try!  FfiConverterTypeZoneManifest_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_manifest(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The largest frame either channel carries.
+     */
+open func maxFrameBytes() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_max_frame_bytes(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The exact origin the web view may show and accept frames from.
+     */
+open func origin() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_origin(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func pageFailed(offline: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_page_failed(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(offline),uniffiCallStatus
+    )
+}
+}
+    
+open func pageFinished()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_page_finished(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func pageStarted()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_page_started(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func phase() -> ZoneRunnerPhase  {
+    return try!  FfiConverterTypeZoneRunnerPhase_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_phase(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A frame on the probe channel.
+     */
+open func probe(origin: String, mainFrame: Bool, text: String)throws   {try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_probe(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(origin),
+        FfiConverterBool.lower(mainFrame),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+}
+}
+    
+open func probeChannelName() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_probe_channel_name(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func probeScript(platform: ZoneWebPlatform) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_probe_script(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeZoneWebPlatform_lower(platform),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The page the web view loads first.
+     */
+open func url() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_url(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func userAgent() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezonerunner_user_agent(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreZoneRunner: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreZoneRunner
+
+    public static func lift(_ handle: UInt64) throws -> CoreZoneRunner {
+        return CoreZoneRunner(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreZoneRunner) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreZoneRunner {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreZoneRunner, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreZoneRunner_lift(_ handle: UInt64) throws -> CoreZoneRunner {
+    return try FfiConverterTypeCoreZoneRunner.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreZoneRunner_lower(_ value: CoreZoneRunner) -> UInt64 {
+    return FfiConverterTypeCoreZoneRunner.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The launcher the iOS and Android shells present.
+ */
+public protocol CoreZonesProtocol: AnyObject, Sendable {
+    
+    /**
+     * Resolve a tapped card against the view it was drawn from.
+     */
+    func activate(instance: String, revision: UInt64, node: String) throws  -> ZoneLaunch
+    
+    /**
+     * Replace the web zones with a fetched catalog body. The Grid stays.
+     */
+    func applyCatalog(json: String) throws 
+    
+    /**
+     * The launcher's Rust Native view (JSON). Each call is a new revision.
+     */
+    func launcher() throws  -> String
+    
+    /**
+     * Fetch the public catalog and apply it. On any failure the current
+     * list stays, so the launcher never empties.
+     */
+    func refresh() async throws 
+    
+    /**
+     * A web runner for one listed web zone.
+     */
+    func runner(zoneId: String) throws  -> CoreZoneRunner
+    
+    func zones()  -> [ZoneManifest]
+    
+}
+/**
+ * The launcher the iOS and Android shells present.
+ */
+open class CoreZones: CoreZonesProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corezones(self.handle, $0) }
+    }
+    /**
+     * The launcher over the bundled pins; works offline.
+     */
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corezones_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corezones(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Resolve a tapped card against the view it was drawn from.
+     */
+open func activate(instance: String, revision: UInt64, node: String)throws  -> ZoneLaunch  {
+    return try  FfiConverterTypeZoneLaunch_lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezones_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Replace the web zones with a fetched catalog body. The Grid stays.
+     */
+open func applyCatalog(json: String)throws   {try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezones_apply_catalog(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(json),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The launcher's Rust Native view (JSON). Each call is a new revision.
+     */
+open func launcher()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezones_launcher(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Fetch the public catalog and apply it. On any failure the current
+     * list stays, so the launcher never empties.
+     */
+open func refresh()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corezones_refresh(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeZoneError_lift
+        )
+}
+    
+    /**
+     * A web runner for one listed web zone.
+     */
+open func runner(zoneId: String)throws  -> CoreZoneRunner  {
+    return try  FfiConverterTypeCoreZoneRunner_lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezones_runner(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(zoneId),uniffiCallStatus
+    )
+})
+}
+    
+open func zones() -> [ZoneManifest]  {
+    return try!  FfiConverterSequenceTypeZoneManifest.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corezones_zones(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreZones: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreZones
+
+    public static func lift(_ handle: UInt64) throws -> CoreZones {
+        return CoreZones(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreZones) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreZones {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreZones, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreZones_lift(_ handle: UInt64) throws -> CoreZones {
+    return try FfiConverterTypeCoreZones.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreZones_lower(_ value: CoreZones) -> UInt64 {
+    return FfiConverterTypeCoreZones.lower(value)
 }
 
 
@@ -27291,6 +27963,249 @@ public func FfiConverterTypeWorktreeSpec_lower(_ value: WorktreeSpec) -> RustBuf
 }
 
 
+/**
+ * The result of a frame from the page.
+ */
+public struct ZoneBridgeReply: Equatable, Hashable {
+    /**
+     * Frames to deliver to the page's `window.aethyrHost.onmessage`, in order.
+     */
+    public var deliver: [String]
+    /**
+     * The bridge refused the frame (wrong origin, subframe, size, shape).
+     */
+    public var refused: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Frames to deliver to the page's `window.aethyrHost.onmessage`, in order.
+         */deliver: [String], 
+        /**
+         * The bridge refused the frame (wrong origin, subframe, size, shape).
+         */refused: Bool) {
+        self.deliver = deliver
+        self.refused = refused
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ZoneBridgeReply: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneBridgeReply: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneBridgeReply {
+        return
+            try ZoneBridgeReply(
+                deliver: FfiConverterSequenceString.read(from: &buf), 
+                refused: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ZoneBridgeReply, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.deliver, into: &buf)
+        FfiConverterBool.write(value.refused, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneBridgeReply_lift(_ buf: RustBuffer) throws -> ZoneBridgeReply {
+    return try FfiConverterTypeZoneBridgeReply.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneBridgeReply_lower(_ value: ZoneBridgeReply) -> RustBuffer {
+    return FfiConverterTypeZoneBridgeReply.lower(value)
+}
+
+
+/**
+ * The WebGPU adapter the web view reported.
+ */
+public struct ZoneGpuAdapter: Equatable, Hashable {
+    public var vendor: String
+    public var architecture: String
+    public var device: String
+    public var description: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(vendor: String, architecture: String, device: String, description: String) {
+        self.vendor = vendor
+        self.architecture = architecture
+        self.device = device
+        self.description = description
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ZoneGpuAdapter: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneGpuAdapter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneGpuAdapter {
+        return
+            try ZoneGpuAdapter(
+                vendor: FfiConverterString.read(from: &buf), 
+                architecture: FfiConverterString.read(from: &buf), 
+                device: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ZoneGpuAdapter, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.vendor, into: &buf)
+        FfiConverterString.write(value.architecture, into: &buf)
+        FfiConverterString.write(value.device, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneGpuAdapter_lift(_ buf: RustBuffer) throws -> ZoneGpuAdapter {
+    return try FfiConverterTypeZoneGpuAdapter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneGpuAdapter_lower(_ value: ZoneGpuAdapter) -> RustBuffer {
+    return FfiConverterTypeZoneGpuAdapter.lower(value)
+}
+
+
+/**
+ * One launcher entry.
+ */
+public struct ZoneManifest: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var summary: String
+    public var runner: ZoneRunnerKind
+    /**
+     * The immutable release ID (web zones only).
+     */
+    public var releaseId: String?
+    /**
+     * The page a web runner loads (web zones only).
+     */
+    public var url: String?
+    /**
+     * The exact origin a web runner may show (web zones only).
+     */
+    public var origin: String?
+    /**
+     * The website page to open in a browser when the web view can't run it.
+     */
+    public var pageUrl: String?
+    public var detailFloor: ZoneDetailFloor
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, summary: String, runner: ZoneRunnerKind, 
+        /**
+         * The immutable release ID (web zones only).
+         */releaseId: String?, 
+        /**
+         * The page a web runner loads (web zones only).
+         */url: String?, 
+        /**
+         * The exact origin a web runner may show (web zones only).
+         */origin: String?, 
+        /**
+         * The website page to open in a browser when the web view can't run it.
+         */pageUrl: String?, detailFloor: ZoneDetailFloor) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.runner = runner
+        self.releaseId = releaseId
+        self.url = url
+        self.origin = origin
+        self.pageUrl = pageUrl
+        self.detailFloor = detailFloor
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ZoneManifest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneManifest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneManifest {
+        return
+            try ZoneManifest(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                summary: FfiConverterString.read(from: &buf), 
+                runner: FfiConverterTypeZoneRunnerKind.read(from: &buf), 
+                releaseId: FfiConverterOptionString.read(from: &buf), 
+                url: FfiConverterOptionString.read(from: &buf), 
+                origin: FfiConverterOptionString.read(from: &buf), 
+                pageUrl: FfiConverterOptionString.read(from: &buf), 
+                detailFloor: FfiConverterTypeZoneDetailFloor.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ZoneManifest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.summary, into: &buf)
+        FfiConverterTypeZoneRunnerKind.write(value.runner, into: &buf)
+        FfiConverterOptionString.write(value.releaseId, into: &buf)
+        FfiConverterOptionString.write(value.url, into: &buf)
+        FfiConverterOptionString.write(value.origin, into: &buf)
+        FfiConverterOptionString.write(value.pageUrl, into: &buf)
+        FfiConverterTypeZoneDetailFloor.write(value.detailFloor, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneManifest_lift(_ buf: RustBuffer) throws -> ZoneManifest {
+    return try FfiConverterTypeZoneManifest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneManifest_lower(_ value: ZoneManifest) -> RustBuffer {
+    return FfiConverterTypeZoneManifest.lower(value)
+}
+
+
 
 public enum AccessibilityDirection: Equatable, Hashable {
     
@@ -35018,6 +35933,570 @@ public func FfiConverterTypeWidgetKind_lower(_ value: WidgetKind) -> RustBuffer 
 }
 
 
+
+/**
+ * The least detail a zone accepts (ADR 0007). Placeholder until the shared
+ * device profile lands; every zone accepts any device today.
+ */
+
+public enum ZoneDetailFloor: Equatable, Hashable {
+    
+    case any
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ZoneDetailFloor: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneDetailFloor: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneDetailFloor
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneDetailFloor {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .any
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZoneDetailFloor, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .any:
+            writeInt(&buf, Int32(1))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneDetailFloor_lift(_ buf: RustBuffer) throws -> ZoneDetailFloor {
+    return try FfiConverterTypeZoneDetailFloor.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneDetailFloor_lower(_ value: ZoneDetailFloor) -> RustBuffer {
+    return FfiConverterTypeZoneDetailFloor.lower(value)
+}
+
+
+
+public 
+enum ZoneError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Invalid(message: String
+    )
+    case Unavailable(message: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension ZoneError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneError: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Invalid(
+            message: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Unavailable(
+            message: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZoneError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Invalid(message):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case let .Unavailable(message):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(message, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneError_lift(_ buf: RustBuffer) throws -> ZoneError {
+    return try FfiConverterTypeZoneError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneError_lower(_ value: ZoneError) -> RustBuffer {
+    return FfiConverterTypeZoneError.lower(value)
+}
+
+
+/**
+ * What the shell does after a card is chosen.
+ */
+
+public enum ZoneLaunch: Equatable, Hashable {
+    
+    /**
+     * Show the app's existing coding-agent surfaces (sessions, computers,
+     * transcripts). Nothing is downloaded.
+     */
+    case grid
+    /**
+     * Open this zone in the web runner (`CoreZones::runner`).
+     */
+    case web(zoneId: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ZoneLaunch: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneLaunch: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneLaunch
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneLaunch {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .grid
+        
+        case 2: return .web(zoneId: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZoneLaunch, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .grid:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .web(zoneId):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(zoneId, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneLaunch_lift(_ buf: RustBuffer) throws -> ZoneLaunch {
+    return try FfiConverterTypeZoneLaunch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneLaunch_lower(_ value: ZoneLaunch) -> RustBuffer {
+    return FfiConverterTypeZoneLaunch.lower(value)
+}
+
+
+
+/**
+ * What a card button asks the shell to do.
+ */
+
+public enum ZoneRunnerAction: Equatable, Hashable {
+    
+    /**
+     * Reload the zone's page.
+     */
+    case retry
+    /**
+     * Close the runner.
+     */
+    case close
+    /**
+     * Open this website page in the system browser.
+     */
+    case openInBrowser(url: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ZoneRunnerAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneRunnerAction: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneRunnerAction
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneRunnerAction {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .retry
+        
+        case 2: return .close
+        
+        case 3: return .openInBrowser(url: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZoneRunnerAction, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .retry:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .close:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .openInBrowser(url):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(url, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneRunnerAction_lift(_ buf: RustBuffer) throws -> ZoneRunnerAction {
+    return try FfiConverterTypeZoneRunnerAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneRunnerAction_lower(_ value: ZoneRunnerAction) -> RustBuffer {
+    return FfiConverterTypeZoneRunnerAction.lower(value)
+}
+
+
+
+/**
+ * How a zone runs on this device.
+ */
+
+public enum ZoneRunnerKind: Equatable, Hashable {
+    
+    /**
+     * Compiled into the shell; nothing is downloaded.
+     */
+    case builtin
+    /**
+     * The zone's web release in a platform web view.
+     */
+    case web
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ZoneRunnerKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneRunnerKind: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneRunnerKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneRunnerKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .builtin
+        
+        case 2: return .web
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZoneRunnerKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .builtin:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .web:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneRunnerKind_lift(_ buf: RustBuffer) throws -> ZoneRunnerKind {
+    return try FfiConverterTypeZoneRunnerKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneRunnerKind_lower(_ value: ZoneRunnerKind) -> RustBuffer {
+    return FfiConverterTypeZoneRunnerKind.lower(value)
+}
+
+
+
+/**
+ * What the shell shows.
+ */
+
+public enum ZoneRunnerPhase: Equatable, Hashable {
+    
+    /**
+     * The page or the WebGPU check is still on its way: show the card.
+     */
+    case loading
+    /**
+     * Show the web view, with no card over it.
+     */
+    case ready
+    /**
+     * The page didn't load: show the card with Retry.
+     */
+    case failed(message: String
+    )
+    /**
+     * This web view can't run the zone: show the card with Open in browser.
+     */
+    case unavailable
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ZoneRunnerPhase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneRunnerPhase: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneRunnerPhase
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneRunnerPhase {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .loading
+        
+        case 2: return .ready
+        
+        case 3: return .failed(message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .unavailable
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZoneRunnerPhase, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .loading:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .ready:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .failed(message):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case .unavailable:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneRunnerPhase_lift(_ buf: RustBuffer) throws -> ZoneRunnerPhase {
+    return try FfiConverterTypeZoneRunnerPhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneRunnerPhase_lower(_ value: ZoneRunnerPhase) -> RustBuffer {
+    return FfiConverterTypeZoneRunnerPhase.lower(value)
+}
+
+
+
+/**
+ * Which platform's web view hosts the runner; it decides how the page
+ * reaches the native channels.
+ */
+
+public enum ZoneWebPlatform: Equatable, Hashable {
+    
+    /**
+     * `WKScriptMessageHandler`s named [`NATIVE_CHANNEL`] and [`PROBE_CHANNEL`].
+     */
+    case ios
+    /**
+     * `WebViewCompat.addWebMessageListener` objects with those names.
+     */
+    case android
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ZoneWebPlatform: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZoneWebPlatform: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneWebPlatform
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZoneWebPlatform {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .ios
+        
+        case 2: return .android
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZoneWebPlatform, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .ios:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .android:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneWebPlatform_lift(_ buf: RustBuffer) throws -> ZoneWebPlatform {
+    return try FfiConverterTypeZoneWebPlatform.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZoneWebPlatform_lower(_ value: ZoneWebPlatform) -> RustBuffer {
+    return FfiConverterTypeZoneWebPlatform.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -36189,6 +37668,30 @@ fileprivate struct FfiConverterOptionTypeWorktreeSpec: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeWorktreeSpec.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeZoneGpuAdapter: FfiConverterRustBuffer {
+    typealias SwiftType = ZoneGpuAdapter?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeZoneGpuAdapter.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeZoneGpuAdapter.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -37730,6 +39233,31 @@ fileprivate struct FfiConverterSequenceTypeWordCheck: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeWordCheck.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeZoneManifest: FfiConverterRustBuffer {
+    typealias SwiftType = [ZoneManifest]
+
+    public static func write(_ value: [ZoneManifest], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeZoneManifest.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ZoneManifest] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ZoneManifest]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeZoneManifest.read(from: &buf))
         }
         return seq
     }
@@ -39802,6 +41330,90 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_keystore_add_seed() != 40221) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corezones_activate() != 12176) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezones_apply_catalog() != 28823) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezones_launcher() != 15427) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezones_refresh() != 54297) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezones_runner() != 38500) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezones_zones() != 1328) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_activate() != 9082) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_allows_navigation() != 11085) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_bootstrap() != 6261) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_bridge() != 6186) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_card() != 33528) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_channel_name() != 48082) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_gpu_adapter() != 41611) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_gpu_missing_reason() != 14276) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_ios_channel_script() != 31986) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_ios_deliver_script() != 8618) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_manifest() != 51657) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_max_frame_bytes() != 29464) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_origin() != 48595) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_page_failed() != 3793) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_page_finished() != 58668) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_page_started() != 36260) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_phase() != 10701) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_probe() != 40987) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_probe_channel_name() != 8045) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_probe_script() != 62584) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_url() != 59140) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corezonerunner_user_agent() != 25999) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_constructor_captionfader_new() != 1206) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -39871,7 +41483,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_constructor_corewallet_android() != 16399) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_constructor_corewallet_fixture() != 43539) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_constructor_corewallet_new() != 43285) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_corezones_new() != 10509) {
         return InitializationResult.apiChecksumMismatch
     }
 
