@@ -1,10 +1,5 @@
-//! `/download`: every way to get OpenAgents, from one table
-//! ([`DOWNLOADS`]): Coder for macOS, Linux, and Windows; the desktop app
-//! for the same three; the Android and iPhone apps; and the web app.
-//! Coder is one download per platform: an archive holding `coder`, the
-//! `openagents` command, and the engine Coder runs its turns with, which
-//! the page never offers as a separate product (`scripts/release/coder.sh`).
-//! `/install` and `/desktop` redirect here permanently (`308`).
+//! Browser entry for saved `/download` links. Existing installer endpoints
+//! remain available for clients that already use them.
 
 use axum::Router;
 use axum::http::{HeaderMap, header};
@@ -12,7 +7,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use maud::{Markup, html};
 use openagents_ui::actions::TextLink;
-use openagents_ui::content::{CodeBlock, MarkdownRoot, PageColumn, Table};
+use openagents_ui::content::{MarkdownRoot, PageColumn, Table};
 
 use crate::App;
 use crate::ui_page::UiPage;
@@ -194,12 +189,12 @@ async fn download(headers: HeaderMap) -> Response {
     download_page(&headers, DESKTOP_RELEASED)
 }
 
-/// The page for `headers`; `desktop` shows the desktop downloads.
+/// The browser entry page; the release flag no longer changes its content.
 pub fn download_page(headers: &HeaderMap, desktop: bool) -> Response {
-    let mut response = UiPage::new("Download OpenAgents")
+    let mut response = UiPage::new("OpenAgents on the web")
         .section("/download")
         .path("/download")
-        .description("Coder runs on macOS, Linux, and Windows. One command installs it, and the same command updates it.")
+        .description("Chat, explore the Verse, and create worlds in your browser.")
         .head(html! { script src=(crate::analytics::SCRIPT) defer {} })
         .content(page(desktop))
         .respond(headers);
@@ -210,118 +205,19 @@ pub fn download_page(headers: &HeaderMap, desktop: bool) -> Response {
     response
 }
 
-/// The page's content; `desktop` shows the desktop downloads.
-pub(crate) fn page(desktop: bool) -> PageColumn {
-    let manual = coder_downloads(CODER_VERSION);
-    PageColumn::new(html! {
-        (MarkdownRoot::new(html! {
-            h1 { "Download OpenAgents" }
-            section aria-labelledby="coder-title" {
-                h2 #coder-title { "Coder" }
-                p.oa-page-meta {
-                    @if CODER_VERSION.contains("-rc.") { "Release candidate " } @else { "Version " }
-                    (CODER_VERSION) "."
-                }
-                (CodeBlock::new(CODER_SH).language("bash").title("macOS and Linux"))
-                (CodeBlock::new(CODER_PS1).language("powershell").title("Windows, in PowerShell"))
-                p {
-                    "Run " code { "coder" } " to open the new terminal. Coder also adds the "
-                    code { "openagents" } " command; run " code { "openagents --help" }
-                    " to see it. Run the install command again to update."
-                }
-                p.oa-page-meta {
-                    "Windows RC: local task services and background automation require macOS or Linux."
-                }
-            }
-        }))
-        @if let Some(manual) = manual {
-            details.oa-disclosure {
-                summary { "Download Coder manually" }
-                (manual)
-            }
-        }
-        @if desktop {
-            (MarkdownRoot::new(html! {
-                h2 #desktop-title { "Desktop" }
-                p.oa-page-meta { "Version " (DESKTOP_VERSION) "." }
-            }))
-            (downloads_table("Desktop downloads", Part::Desktop, desktop))
-            (MarkdownRoot::new(html! {
-                p {
-                    "Mac: open the .dmg and drag OpenAgents onto Applications. \
-    Needs macOS 13 or later."
-                }
-                p {
-                    "Linux: run " code { "chmod +x OpenAgents-" (DESKTOP_VERSION) "-x86_64.AppImage" }
-                    " and open it, or install the .deb with "
-                    code { "sudo apt install ./openagents_" (DESKTOP_VERSION) "_amd64.deb" } "."
-                }
-                p { "Windows may ask you to confirm: More info \u{2192} Run anyway." }
-            }))
-        }
-        (MarkdownRoot::new(html! {
-            @if shown(Part::Phone, desktop).next().is_some() {
-            section aria-labelledby="phone-title" {
-                h2 #phone-title { "Phone" }
-                @for (download, url) in shown(Part::Phone, desktop) {
-                    @if download.platform == "iPhone" {
-                        p {
-                            "iPhone: install "
-                            (TextLink::new("TestFlight", TESTFLIGHT_APP))
-                            " from the App Store, then "
-                            (TextLink::new(download.label, url))
-                            "."
-                        }
-                    } @else {
-                        p {
-                            (download.platform) ": "
-                            (TextLink::new(download.label, url).force_external(false))
-                            ", open it on your phone, and allow your browser to install apps \
-    when asked."
-                        }
-                    }
-                }
-            }
-            }
-            section aria-labelledby="web-title" {
-                h2 #web-title { "Web" }
-                @for (download, url) in shown(Part::Web, desktop) {
-                    p {
-                        "Nothing to install: "
-                        (TextLink::new(download.label, url).force_external(false))
-                        " in any browser."
-                    }
-                }
-            }
-        }))
-    })
-}
-
-/// A table of `part`'s downloads, one row per platform.
-fn downloads_table(label: &str, part: Part, desktop: bool) -> Markup {
-    let mut rows: Vec<(&str, Vec<(&str, &str)>)> = Vec::new();
-    for (download, url) in shown(part, desktop) {
-        match rows
-            .iter_mut()
-            .find(|(platform, _)| *platform == download.platform)
-        {
-            Some((_, links)) => links.push((download.label, url)),
-            None => rows.push((download.platform, vec![(download.label, url)])),
-        }
-    }
-    let mut table = Table::new().label(label).header(["Platform", "Download"]);
-    for (platform, links) in rows {
-        table = table.row([
-            html! { strong { (platform) } },
-            html! {
-                @for (i, (label, url)) in links.iter().enumerate() {
-                    @if i > 0 { " \u{b7} " }
-                    (TextLink::new(*label, *url).force_external(false))
-                }
-            },
-        ]);
-    }
-    html! { (table) }
+/// Browser destinations for visitors following an older app link.
+pub(crate) fn page(_desktop: bool) -> PageColumn {
+    PageColumn::new(MarkdownRoot::new(html! {
+        h1 { "OpenAgents on the web" }
+        p { "Chat, explore, and create in your browser." }
+        h2 { "Explore the Verse" }
+        p { "Visit connected worlds, step into the Haunted House, and make it your own." }
+        p { (TextLink::new("Enter the Verse", crate::layout::VERSE)) }
+        h2 { "Chat with OpenAgents" }
+        p { "Bring a question or an idea to your next conversation." }
+        p { (TextLink::new("Open chat", "/chat")) }
+        p { (TextLink::new("Start on the web", "/docs/download")) }
+    }))
 }
 
 /// A link to one release file, opening in place (a download, not a tab).
@@ -442,50 +338,18 @@ mod tests {
     }
 
     #[test]
-    fn the_page_offers_every_platform_that_has_a_download() {
-        let page = page(true).render().into_string();
-        for download in DOWNLOADS {
-            match download.url {
-                Some(url) => {
-                    assert!(page.contains(&format!("href=\"{url}\"")), "{url}");
-                    assert!(page.contains(download.label), "{}", download.label);
-                    assert!(page.contains(download.platform), "{}", download.platform);
-                }
-                // A download with no address is not on the page at all.
-                None => assert!(!page.contains(download.label), "{}", download.label),
+    fn saved_download_links_offer_only_browser_destinations() {
+        for desktop in [false, true] {
+            let page = page(desktop).render().into_string();
+            for href in [crate::layout::VERSE, "/chat", "/docs/download"] {
+                assert!(page.contains(&format!("href=\"{href}\"")), "{href}");
             }
+            for url in every_url() {
+                assert!(!page.contains(&url), "retired build link: {url}");
+            }
+            assert!(!page.contains(CODER_SH) && !page.contains(CODER_PS1));
+            crate::copy_guard::assert_plain("/download", &page);
         }
-        for heading in ["Coder", "Desktop", "Web"] {
-            assert!(
-                page.contains(&format!("-title\">{heading}</h2>")),
-                "{heading}"
-            );
-        }
-        // The iPhone beta is hidden until Apple's review approves a build.
-        assert!(!page.contains("phone-title") && !page.contains(TESTFLIGHT_APP));
-        assert!(page.contains("Windows may ask you to confirm: More info \u{2192} Run anyway."));
-        assert!(page.contains(CODER_SH) && page.contains(CODER_PS1));
-        // Each install command has the design kit's Copy action.
-        assert!(
-            page.contains(&format!("data-oa-copy=\"{CODER_SH}\"")),
-            "{page}"
-        );
-        assert!(
-            page.contains(&format!("data-oa-copy=\"{CODER_PS1}\"")),
-            "{page}"
-        );
-        crate::copy_guard::assert_plain("/download", &page);
-    }
-
-    #[test]
-    fn desktop_downloads_wait_for_the_release() {
-        let page = page(false).render().into_string();
-        for download in DOWNLOADS.iter().filter(|d| d.part == Part::Desktop) {
-            assert!(!page.contains(download.url.unwrap()), "{download:?}");
-        }
-        assert!(!page.contains("desktop-title") && !page.contains("Run anyway"));
-        assert!(!page.contains(super::super::connect::TESTFLIGHT));
-        assert!(page.contains("href=\"https://openagents.com/\""));
     }
 
     #[test]

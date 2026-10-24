@@ -13,19 +13,10 @@ the repository at
 (schema `openagents.cli-tree.v1`), checked against the command's own help
 by a test.
 
-## Install
+## Existing CLI users
 
-```sh
-curl -fsSL https://openagents.com/cli/install.sh | bash
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://openagents.com/cli/install.ps1 | iex
-```
-
-The installer puts `openagents` and `coder` in `~/.openagents/bin`.
+This reference describes the earlier command-line tools. For the current
+browser experience, [start on the web](/docs/download).
 
 ## Output for programs
 

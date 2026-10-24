@@ -171,8 +171,8 @@ pub(crate) async fn reply_chips(app: &App, chat: &Conversation) -> Markup {
 const PLUGIN_RUNS_ON: &str = "With Coder on your computer";
 
 /// The card action that works on this site: nothing here runs a plugin,
-/// so each card leads to getting Coder, which does.
-const PLUGIN_ACTION: (&str, &str) = ("Get Coder", "/download");
+/// so each card links to its documentation.
+const PLUGIN_ACTION: (&str, &str) = ("Read documentation", "/docs/coder-plugins");
 
 /// The icon a built-in plugin's card shows, by slug.
 fn plugin_icon(slug: &str) -> Icon {
@@ -354,7 +354,7 @@ mod tests {
         // A sample plugin's slug draws nothing.
         assert!(!html.contains("Project map"));
         assert!(html.contains(PLUGIN_RUNS_ON));
-        assert!(html.contains(r#"href="/download""#));
+        assert!(html.contains(r#"href="/docs/coder-plugins""#));
         assert!(!html.contains("<button"));
         crate::copy_guard::assert_plain("/chat", &html);
         assert!(plugin_cards(&[]).into_string().is_empty());

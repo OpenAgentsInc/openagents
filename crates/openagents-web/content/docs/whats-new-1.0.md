@@ -1,7 +1,7 @@
 # What's new in 1.0
 
-OpenAgents 1.0 is out on the web and in the terminal. Install the terminal
-version from the [download page](/download).
+This page describes the earlier 1.0 release. For the current browser
+experience, [start on the web](/docs/download).
 
 ## On the website
 
@@ -19,17 +19,8 @@ version from the [download page](/download).
 
 ## In the terminal
 
-Install or update Coder on macOS or Linux:
-
-```sh
-curl -fsSL https://openagents.com/cli/install.sh | bash
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://openagents.com/cli/install.ps1 | iex
-```
+This section describes the earlier terminal release. For the current
+browser experience, [start on the web](/docs/download).
 
 - **Log in to your account:** run `coder login`, then approve the code at
   [openagents.com/device](https://openagents.com/device). Inside Coder, type `/login`.
@@ -60,4 +51,4 @@ password is never sent.
 We ask our model providers not to train on your chats and not to keep them.
 Read the [privacy policy](/privacy) for the details.
 
-Next: [Download](/docs/download).
+Next: [Start on the web](/docs/download).

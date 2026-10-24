@@ -211,7 +211,8 @@ fn coder_is_offered_while_a_computer_is_online() {
         panel.contains("None of your computers is online"),
         "{panel}"
     );
-    assert!(panel.contains(r#"href="/download""#), "{panel}");
+    assert!(panel.contains("You can keep chatting here."), "{panel}");
+    assert!(!panel.contains("/download") && !panel.contains("Get Coder"));
     choices.account = false;
     let html = render(Some(&choices), &picked);
     assert!(!html.contains("Where it runs"), "{html}");

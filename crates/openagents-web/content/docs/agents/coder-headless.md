@@ -7,11 +7,8 @@ Coder runs on your own computer, in your own Git checkout.
 
 ## What you need
 
-- The `openagents` command. Install it (macOS and Linux):
-
-```sh
-curl -fsSL https://openagents.com/cli/install.sh | bash
-```
+- An existing installation of the earlier `openagents` command. For the
+  current browser experience, [start on the web](/docs/download).
 
 - A Git checkout to work in. Coder works in its own worktree of it, on a
   branch named `chat/<session>`, so your folder is left alone.

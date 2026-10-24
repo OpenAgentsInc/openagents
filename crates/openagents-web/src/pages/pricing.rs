@@ -108,15 +108,15 @@ fn thousands(n: u64) -> String {
 
 fn free(visitor: Visitor) -> PlanCard {
     let (label, href) = match visitor {
-        Visitor::Anonymous => ("Download Coder", crate::layout::DOWNLOAD.to_owned()),
+        Visitor::Anonymous => ("Open chat", super::home::NEW.to_owned()),
         Visitor::SignedOut => ("Sign up free", crate::auth::login_href("/", true)),
         Visitor::Free => ("Current plan", PLAN.to_owned()),
         Visitor::Pro => ("Start a chat", super::home::NEW.to_owned()),
     };
     PlanCard::new("Free", "Free")
         .note("For people and agents")
-        .lead("All of Coder, and:")
-        .item("Coder on terminal, desktop, web and phone")
+        .lead("Create and chat in your browser")
+        .item("OpenAgents on the web")
         .item_with(
             "Every coding agent: Claude Code, Codex, OpenCode, Grok Build, Devin and Cursor",
             [

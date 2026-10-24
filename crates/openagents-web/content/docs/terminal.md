@@ -5,9 +5,8 @@ When a message is coding work, Coder runs on this computer, in the folder
 you started from, and its steps stream into the same screen. It works over
 SSH and in tmux.
 
-To install it on macOS or Linux, run
-`curl -fsSL https://openagents.com/cli/install.sh | bash`; for Windows,
-see [Download](/docs/download).
+This guide describes the earlier terminal app. For the current browser
+experience, [start on the web](/docs/download).
 
 ## Start it
 

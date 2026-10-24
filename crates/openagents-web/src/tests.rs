@@ -736,20 +736,20 @@ async fn the_legal_pages_carry_the_published_text() {
 }
 
 #[tokio::test]
-async fn the_homepage_links_one_download_page_and_starts_a_chat() {
+async fn the_homepage_links_the_web_verse_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
     let (_, home) = get(site.clone(), "/chat").await;
-    // Download is a pill link in the header's top-right actions (and, at
+    // The Verse is a pill link in the header's top-right actions (and, at
     // phone width only, a row in the drawer instead).
     let actions = home.find("class=\"oa-main-header-actions\"").unwrap();
     let download = actions
         + home[actions..]
-            .find("href=\"/download\"")
-            .expect("the header links /download");
-    assert_eq!(home.matches("href=\"/download\"").count(), 2);
+            .find("href=\"/new-lander/verse\"")
+            .expect("the header links /new-lander/verse");
+    assert_eq!(home.matches("href=\"/new-lander/verse\"").count(), 2);
     assert!(home.contains(
-        "<li class=\"oa-nav-row oa-phone-only\"><a class=\"oa-nav-item\" href=\"/download\">"
+        "<li class=\"oa-nav-row oa-phone-only\"><a class=\"oa-nav-item\" href=\"/new-lander/verse\">"
     ));
     assert!(
         home[home[..download].rfind('<').unwrap()..download]
@@ -764,8 +764,8 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     assert!(home.contains("href=\"/chat\" aria-current=\"page\""));
     assert!(home.contains(">New chat</span>"));
     assert!(!home.contains("[ Download OpenAgents ]") && !home.contains("<h1>OpenAgents</h1>"));
-    assert!(!home.contains("/install"), "every link says /download");
-    assert!(!home.contains(".dmg"), "downloads live on /download");
+    assert!(!home.contains("/install"), "no installers are promoted");
+    assert!(!home.contains(".dmg"), "no app builds are promoted");
     assert!(!home.contains("curl ") && !home.contains("irm "));
     assert!(home.contains("id=\"chat-input\""));
     assert!(home.contains("action=\"/chat\""));
@@ -2251,90 +2251,28 @@ async fn the_ice_cream_man_page_says_it_cannot_be_played_without_the_build() {
 }
 
 #[tokio::test]
-async fn the_download_page_offers_every_platform_from_its_table() {
+async fn saved_download_addresses_open_the_web_experience() {
     let root = tempfile::tempdir().unwrap();
-    let (status, body) = get(router(config(root.path().into())), "/download").await;
-    assert_eq!(status, StatusCode::OK);
-    // Each install command sits in a code block with its Copy action.
-    assert!(body.contains(&format!("data-oa-copy=\"{}\"", pages::CODER_SH)));
-    assert!(body.contains(&format!("data-oa-copy=\"{}\"", pages::CODER_PS1)));
-    assert!(body.contains("Run <code>coder</code> to open the new terminal"));
-    for legacy in [
-        "1.0.0-rc.2",
-        "OpenAgents for Mac",
-        "OpenAgents Terminal",
-        "Everything else",
-        "openagentsgemini-cli-releases/openagents/install.",
-    ] {
-        assert!(!body.contains(legacy), "legacy download remained: {legacy}");
-    }
-    // Desktop files show only once the release is out (`DESKTOP_RELEASED`).
-    assert_eq!(body.contains(".dmg"), pages::DESKTOP_RELEASED);
-    assert_eq!(body.contains("AppImage"), pages::DESKTOP_RELEASED);
-    let main = &body[body.find("<main").unwrap()..body.find("</main>").unwrap()];
-    let links: Vec<&str> = main
-        .split("href=\"")
-        .skip(1)
-        .map(|rest| &rest[..rest.find('"').unwrap()])
-        .filter(|href| href.starts_with("http"))
-        .collect();
-    // One Coder download per platform, never the engine or the CLI as a
-    // download of its own. A release published as separate executables
-    // (up to 1.0.0-rc.5) is installed only by the one-line installers.
-    let mut expected = Vec::new();
-    if pages::published_as_archives(pages::CODER_VERSION) {
-        for (_, platform) in pages::CODER_PLATFORMS {
-            expected.push(format!(
-                "{}/{}",
-                pages::CODER_BASE,
-                pages::coder_archive(pages::CODER_VERSION, platform)
-            ));
-        }
-        expected.push(format!(
-            "{}/SHA256SUMS-coder-{}",
-            pages::CODER_BASE,
-            pages::CODER_VERSION
-        ));
-    }
-    // Then every other platform, in the table's order.
-    for part in [pages::Part::Desktop, pages::Part::Phone, pages::Part::Web] {
-        for (download, url) in pages::shown(part, pages::DESKTOP_RELEASED) {
-            if download.platform == "iPhone" {
-                expected.push(pages::TESTFLIGHT_APP.to_owned());
-            }
-            expected.push(url.to_owned());
+    for path in ["/download", "/docs/download", "/download.md"] {
+        let (status, body) = get(router(config(root.path().into())), path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            body.contains("/new-lander/verse") && body.contains("/chat"),
+            "{path}"
+        );
+        for old in [
+            pages::CODER_SH,
+            pages::CODER_PS1,
+            "Get OpenAgents",
+            "Get Coder",
+            "Download OpenAgents",
+            ".dmg",
+            "testflight",
+            "cli-releases",
+        ] {
+            assert!(!body.contains(old), "{path}: {old}");
         }
     }
-    assert_eq!(links, expected, "{body}");
-    // The Phone section shows only while a phone download is listed.
-    let phone = pages::shown(pages::Part::Phone, pages::DESKTOP_RELEASED)
-        .next()
-        .is_some();
-    assert_eq!(body.contains(pages::TESTFLIGHT), phone);
-    assert!(!main.to_lowercase().contains("microcoder"), "{main}");
-    assert!(body.contains("<h2 id=\"coder-title\">Coder</h2>"));
-    assert_eq!(body.contains("<h2 id=\"phone-title\">Phone</h2>"), phone);
-    assert!(body.contains("<h2 id=\"web-title\">Web</h2>"));
-    assert!(body.contains("<title>Download OpenAgents \u{b7} OpenAgents</title>"));
-    assert!(body.contains("<h1>Download OpenAgents</h1>"));
-    // Download is the header pill now; on its own page it is marked current.
-    let pill = body.find("href=\"/download\"").expect("download pill");
-    let tag_end = pill + body[pill..].find('>').unwrap();
-    let tag_start = body[..pill].rfind('<').unwrap();
-    assert!(
-        body[tag_start..tag_end].contains("aria-current=\"page\""),
-        "{}",
-        &body[tag_start..tag_end]
-    );
-    assert!(!body.contains("href=\"/docs\" aria-current"));
-    let (status, guide) = get(router(config(root.path().into())), "/docs/download").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(guide.contains(pages::CODER_SH));
-    assert!(guide.contains(pages::CODER_PS1));
-    assert!(!guide.contains("1.0.0-rc.2"));
-    assert!(!guide.contains(".dmg"));
-    assert!(!guide.contains("OpenAgents Terminal"));
-    assert!(!guide.to_lowercase().contains("microcoder"));
     // Its older addresses, and the guide's old name, redirect for good.
     for (old, new) in [
         ("/install", "/download"),
@@ -4162,7 +4100,8 @@ fn the_coder_1_0_post_keeps_to_the_claims() {
     }
     assert!(body.contains("docs/inference/briefed-agent-ab.md"));
     assert!(body.contains("No small model ran in this study"));
-    assert!(body.contains(crate::pages::CODER_SH) && body.contains(crate::pages::CODER_PS1));
+    assert!(!body.contains(crate::pages::CODER_SH) && !body.contains(crate::pages::CODER_PS1));
+    assert!(body.contains("[the Verse](/new-lander/verse)"));
     for line in body
         .lines()
         .filter(|l| l.contains("$1.84") || l.contains("121 s"))

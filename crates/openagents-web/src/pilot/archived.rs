@@ -17,5 +17,5 @@ pub(crate) const ARCHIVED_INSTALL: &str = concat!(
     "https://github.com/OpenAgentsInc/openagents/blob/main/docs/coder/guides/headless.md",
     "\">terminal and headless usage</a> and <a href=\"",
     "https://github.com/OpenAgentsInc/openagents/blob/main/docs/sales/README.md#first-workflow-offer-v1",
-    "\">the frozen offer</a>. The <a href=\"/download\">general downloads</a> are available separately; a release download alone does not qualify this pilot path.</p><p>Qualification and a private scoped agreement precede work. The pilot request cannot install software, run a task, or grant execution authority.</p>"
+    "\">the frozen offer</a>. The <a href=\"/chat\">web app</a> is available separately; using it alone does not qualify this pilot path.</p><p>Qualification and a private scoped agreement precede work. The pilot request cannot install software, run a task, or grant execution authority.</p>"
 );

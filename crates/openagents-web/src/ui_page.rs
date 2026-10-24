@@ -25,7 +25,7 @@ use openagents_ui::shell::{
 };
 
 use crate::account::Account;
-use crate::layout::{COPYRIGHT, DOCS, DOWNLOAD, GITHUB, X};
+use crate::layout::{COPYRIGHT, DOCS, GITHUB, VERSE, X};
 use crate::theme;
 
 /// Where the account menu's entries go. Billing joins them once a real
@@ -142,7 +142,7 @@ impl UiPage {
     }
 
     /// The navigation entry to mark current, by its href (`/` marks "New
-    /// chat", `/download` the Download pill, `/docs` the Docs row).
+    /// chat", `/new-lander/verse` the Enter the Verse pill, `/docs` the Docs row).
     pub fn section(mut self, href: impl Into<String>) -> Self {
         self.section = Some(href.into());
         self
@@ -346,7 +346,7 @@ impl UiPage {
                             .icon(Icon::BarChart),
                     );
                 }
-                // Download lives in the header's pill only, not twice.
+                // Enter the Verse lives in the header's pill only, not twice.
                 if picture {
                     menu = menu.picture(crate::account::AVATAR);
                 }
@@ -373,12 +373,12 @@ impl UiPage {
             Account::Unknown => sidebar,
         };
         // At phone width the panel is a drawer and the header keeps one
-        // action, so Download and (for a signed-out visitor) the legal
+        // action, so Enter the Verse and (for a signed-out visitor) the legal
         // links move into the drawer.
         let sidebar = sidebar.bottom(
-            NavItem::new("Download", DOWNLOAD)
-                .icon(Icon::Download.size(IconSize::Md))
-                .current(current == Some(DOWNLOAD))
+            NavItem::new("Enter the Verse", VERSE)
+                .icon(Icon::Globe.size(IconSize::Md))
+                .current(current == Some(VERSE))
                 .phone_only(true),
         );
         let sidebar = if show_legal {
@@ -391,21 +391,21 @@ impl UiPage {
             Some(toggle) => sidebar.corner(toggle),
             None => sidebar,
         };
-        let on_download = current == Some(DOWNLOAD);
-        let mut download = ButtonLink::new("Download", DOWNLOAD)
+        let on_verse = current == Some(VERSE);
+        let mut verse = ButtonLink::new("Enter the Verse", VERSE)
             .color(Color::Secondary)
             .variant(ButtonVariant::Outline)
             .size(ControlSize::Sm)
             .pill(true)
-            .icon_start(Icon::Download)
-            .selected(on_download)
+            .icon_start(Icon::Globe)
+            .selected(on_verse)
             .class("oa-wide-only");
-        if on_download {
-            download = download.attr("aria-current", "page");
+        if on_verse {
+            verse = verse.attr("aria-current", "page");
         }
         let actions = html! {
             @if let Some(actions) = &self.actions { (actions) }
-            (download)
+            (verse)
             @if signed_out {
                 (ButtonLink::new("Log in", &log_in)
                     .size(ControlSize::Sm)
@@ -751,9 +751,9 @@ mod tests {
     }
 
     #[test]
-    fn download_is_a_pill_beside_the_toggle_and_docs_is_a_footer_link() {
-        let html = UiPage::new("Download OpenAgents")
-            .section("/download")
+    fn the_web_entry_is_a_pill_and_docs_is_a_footer_link() {
+        let html = UiPage::new("Explore the Verse")
+            .section("/new-lander/verse")
             .scriptless()
             .content(html! { p { "x" } })
             .render(&HeaderMap::new())
@@ -785,17 +785,17 @@ mod tests {
         }
         // The page's name is the header row's breadcrumb.
         assert!(html.contains(
-            "<span class=\"oa-breadcrumb-current\" aria-current=\"page\" title=\"Download OpenAgents\">"
+            "<span class=\"oa-breadcrumb-current\" aria-current=\"page\" title=\"Explore the Verse\">"
         ));
-        // Download is a pill link in the header actions; the theme toggle
+        // Enter the Verse is a pill link in the header actions; the theme toggle
         // sits in the sidebar's bottom-right corner, not the header.
         let actions = html.find("class=\"oa-main-header-actions\"").unwrap();
-        let download = actions + html[actions..].find("href=\"/download\"").unwrap();
+        let download = actions + html[actions..].find("href=\"/new-lander/verse\"").unwrap();
         // At phone width the header keeps one action: the pill is hidden
-        // there and Download is a drawer row instead.
+        // there and Enter the Verse is a drawer row instead.
         assert!(html[download.saturating_sub(300)..download].contains("oa-wide-only"));
         assert!(html.contains(
-            "<li class=\"oa-nav-row oa-phone-only\"><a class=\"oa-nav-item\" href=\"/download\" aria-current=\"page\">"
+            "<li class=\"oa-nav-row oa-phone-only\"><a class=\"oa-nav-item\" href=\"/new-lander/verse\" aria-current=\"page\">"
         ));
         // A header menu button opens the same drawer at phone width.
         assert!(
@@ -862,7 +862,7 @@ mod tests {
                 .into_string()
         };
         // Signed in: an account menu above the button with settings and a
-        // sign-out form; Download is the header pill only, and Docs is a
+        // sign-out form; Enter the Verse is the header pill only, and Docs is a
         // footer link.
         let html = page(Account::SignedIn {
             name: "Ada <Lovelace>".into(),
@@ -876,9 +876,9 @@ mod tests {
         assert!(html.contains("<span class=\"oa-account-name\">Ada &lt;Lovelace&gt;</span>"));
         assert!(html.contains("data-side=\"top\""));
         assert!(!html.contains(">Billing<"));
-        // Download is the header pill, not a second menu entry.
+        // Enter the Verse is the header pill, not a second menu entry.
         let aside_end = html.find("</aside>").unwrap();
-        assert!(!html[account..aside_end].contains(&format!("href=\"{DOWNLOAD}\"")));
+        assert!(!html[account..aside_end].contains(&format!("href=\"{VERSE}\"")));
         assert!(html[account..].contains(&format!("href=\"{SETTINGS}\"")));
         // (The footer links show only to someone signed out: no drawer
         // fine print here.)
@@ -919,8 +919,8 @@ mod tests {
         let fine_print = html.find("oa-sidebar-fine-print").unwrap();
         assert!(fine_print < html.find("href=\"/terms\"").unwrap());
         assert!(html.contains(COPYRIGHT));
-        // ...and Log in and Sign up beside Download in the header.
-        let header = &html[html.find("Download").unwrap()..];
+        // ...and Log in and Sign up beside Enter the Verse in the header.
+        let header = &html[html.find("Enter the Verse").unwrap()..];
         assert!(header.contains(">Log in<") && header.contains("href=\"/signup\""));
         assert!(
             !html.contains("class=\"oa-nav-item\" href=\"/docs\"") && !html.contains("oa-account")

@@ -11,19 +11,13 @@ machine-hours; it isn't on sale yet. See [Pricing](/docs/pricing).
 
 ## Do I need a computer?
 
-No. On [OpenAgents for iPhone](/docs/iphone), coding work can run on
-OpenAgents Cloud, a cloud computer we start for you, with free cloud time
-to try it. To run Coder on your own computer, install it on a Mac, Linux,
-or Windows computer ([Download and install](/docs/download)).
+No. Use [OpenAgents](/new-lander) in your phone's or computer's browser.
 
 ## Do I need an account?
 
-You don't need to sign up. The phone app makes your account from 12 words
-the first time it opens. On the website, [log in](https://openagents.com/login)
-by scanning a code with the phone app or with a Nostr browser extension;
-GitHub still logs in accounts that signed up with it before. With
-`coder login` and `/sync on`, your account shows Coder's chats from your
-computer. See [Sync, share, and export](/docs/coder-sync).
+You can explore the Verse as a guest. Sign in when prompted to save,
+publish, and share your changes. You can also start [a chat](/chat)
+without logging in.
 
 ## Which model answers the chat?
 
@@ -120,21 +114,10 @@ Yes. The apps, the chat service, Coder, and the protocols are at
 [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents),
 under the Apache License 2.0.
 
-## Is version 1.0 out?
+## Do I need an app download?
 
-Yes. Coder 1.0.0 is out; get it from the [download page](/download).
-Coder updates itself when a newer release is out.
-
-## How do I see what changed in a build?
-
-On the phone, **Settings → About** shows the version and build, and
-TestFlight shows what each build brought. The [download page](/download)
-shows Coder's current version.
-
-## Is there a desktop app or an Android app?
-
-Both are coming soon. Until then, use [Coder](/docs/coder) and
-[OpenAgents Terminal](/docs/terminal) on your computer, and
-[OpenAgents for iPhone](/docs/iphone) on your phone.
+No. We are focusing on the web experience. Open [the Verse](/new-lander/verse)
+or [chat](/chat) in your browser. Older desktop and phone builds are no
+longer offered here.
 
 Next: [Glossary](/docs/glossary).

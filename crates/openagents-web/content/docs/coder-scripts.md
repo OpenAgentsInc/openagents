@@ -1,9 +1,10 @@
 # Coder from scripts
 
 `openagents coder` runs the same chat as the terminal app, without the
-screen: for scripts, CI jobs, and other agents. It comes with Coder; see
-[Download and install](/docs/download). Run `openagents coder --help`
-for every command.
+screen: for scripts, CI jobs, and other agents. This reference is for the
+earlier Coder app. For the current browser experience,
+[start on the web](/docs/download). Run `openagents coder --help` for every
+command.
 
 ## Send a message
 

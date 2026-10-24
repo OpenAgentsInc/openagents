@@ -513,7 +513,7 @@ async fn privacy_md() -> Response {
 }
 
 async fn download_md() -> Response {
-    doc_md("/download", doc_source("download"), "Download")
+    doc_md("/download", doc_source("download"), "Start on the web")
 }
 
 async fn pricing_md(State(app): State<App>) -> Response {
@@ -535,7 +535,7 @@ fn home_markdown() -> String {
 The homepage is the Grid, a shared 3D world in the browser where people, agents, and \
 pylons meet. Walk to its terminal to ask the live pylons a question. \
 To chat without the Grid, [start a chat](/chat).\n\n## Start here\n\n\
-- [Download](/download.md): the apps and Coder for your computer.\n\
+- [Start on the web](/download.md): chat, explore, and create in your browser.\n\
 - [Docs](/docs.md): guides to the chat, Coder, the apps, plugins, and the Gym.\n\
 - [Blog](/blog.md): news from OpenAgents, newest first.\n\
 - [API](/docs/api.md): use our models from your own code. Beta.\n\
@@ -676,7 +676,7 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 - [Pricing]({SITE}/pricing.md)\n\
 - [What works today]({SITE}/promises.md): each thing that works, with its proof.\n\
 - [Roadmap]({SITE}/roadmap.md): what comes next.\n\
-- [Download]({SITE}/download.md)\n\
+- [Start on the web]({SITE}/download.md)\n\
 - [Terms of service]({SITE}/terms.md)\n\
 - [Privacy policy]({SITE}/privacy.md)\n",
         guide_list(true),
@@ -1235,7 +1235,7 @@ pub(crate) fn head(title: &str, description: Option<&str>, path: Option<&str>) -
                 "url": url,
                 "description": description,
                 "applicationCategory": "DeveloperApplication",
-                "operatingSystem": "macOS, iOS, Linux, Windows",
+                "operatingSystem": "Web browser",
                 "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
                 "publisher": {"@id": format!("{SITE}/#organization")}
             })

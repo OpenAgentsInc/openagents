@@ -706,7 +706,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         record("home: theme toggle in the sidebar corner",
                corner >= 0 and "data-oa-theme-toggle" in home.text[corner:corner + 1500])
         # Phone width (40rem and under): no rail, a header menu button opens
-        # the drawer, Download and the legal links live in the drawer, and
+        # the drawer, the Verse and the legal links live in the drawer, and
         # the cards are two small ones a row (no browser here, so the served
         # markup and stylesheet carry the layout).
         sheet = re.search(r'<link rel="stylesheet" href="(/static/ui\.css[^"]*)"', home.text)
@@ -717,8 +717,8 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         record("home: phone hides the rail",
                "@media (max-width: 40rem) { .oa-left-panel[popover]:not(:popover-open) { display: none; }"
                in compact)
-        record("home: Download and legal links in the phone drawer",
-               re.search(r'class="oa-nav-row oa-phone-only"><a class="oa-nav-item" href="/download"', home.text)
+        record("home: Verse and legal links in the phone drawer",
+               re.search(r'class="oa-nav-row oa-phone-only"><a class="oa-nav-item" href="/new-lander/verse"', home.text)
                is not None and 'class="oa-sidebar-fine-print oa-phone-only"' in home.text
                and ".oa-home-legal { display: none; }" in compact)
         record("home: phone cards two small ones a row",
@@ -771,20 +771,15 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                  if not site.get(p).text.lstrip().startswith("---")]
         record("promises: Markdown twins", not twins, ", ".join(twins))
 
-    # Download: Coder (terminal) one-liners first; desktop downloads hidden.
+    # Saved download links now offer browser destinations.
     if want("download"):
         dl = site.get("/download")
         body = dl.text
-        sh_line = "/cli/install.sh" in body and "curl" in body
-        ps_line = "/cli/install.ps1" in body
-        record("download: loads", dl.status == 200, f"{dl.status}")
-        record("download: Coder one-liners for macOS/Linux and Windows", sh_line and ps_line)
-        first_install = body.find("/cli/install.sh")
-        desktop_links = re.findall(r'href="[^"]*(?:\.dmg|\.msi|\.AppImage|\.deb|desktop/[^"]*)"', body)
-        record("download: Coder comes before any other download",
-               first_install >= 0 and all(body.find(l) > first_install for l in desktop_links))
-        record("download: desktop downloads hidden", not desktop_links,
-               ", ".join(desktop_links[:3]))
+        record("web entry: saved download address loads", dl.status == 200, f"{dl.status}")
+        record("web entry: Verse and chat destinations",
+               'href="/new-lander/verse"' in body and 'href="/chat"' in body)
+        record("web entry: no retired app promotions",
+               not any(old in body for old in ("/cli/install.", "Get OpenAgents", "Get Coder", ".dmg", ".AppImage", "testflight")))
 
     # Campaign and affiliate links (#11698): /go/{code} redirects to the
     # code's page and sets the oa_ref cookie only for a person's click, only

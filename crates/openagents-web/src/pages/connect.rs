@@ -116,33 +116,15 @@ pub fn connect_page(headers: &HeaderMap) -> Response {
     let content = PageColumn::new(html! {
         article.oa-card id="connect" {
             (MarkdownRoot::new(html! {
-                h1 { "Get the OpenAgents app" }
-                p {
-                    "This code connects your phone to a computer running OpenAgents. \
-    Install the OpenAgents app, then scan the code on your computer again."
-                }
-                p { "iPhone: " a href=(TESTFLIGHT) { "get OpenAgents on TestFlight" } "." }
-                p { "Android: the OpenAgents app is in testing and not yet public." }
-                p {
-                    "Already have the app? Open it, choose Connect a computer, and point it \
-    at the code."
-                }
+                h1 { "OpenAgents on the web" }
+                p { "This is an older app connection link. Continue in your browser." }
+                p { a href="/new-lander/verse" { "Enter the Verse" } }
+                p { a href="/chat" { "Open chat" } }
             }))
         }
-        (MarkdownRoot::new(html! {
-            p.oa-page-meta {
-                "On a computer? Install Coder with "
-                code { (super::download::CODER_SH) }
-                ", start its host with "
-                code { "openagents host serve --iroh --control" }
-                ", then run "
-                code { "openagents connect invite" }
-                " in a second terminal to show a code to scan."
-            }
-        }))
     });
     // No script and no form: the code in the fragment stays in the browser.
-    let mut response = UiPage::new("Get the OpenAgents app")
+    let mut response = UiPage::new("OpenAgents on the web")
         .path("/connect")
         .scriptless()
         .without_toggle()
@@ -177,7 +159,7 @@ mod tests {
     /// The page a phone without the app lands on runs no script and allows
     /// none, so nothing can read the code in its fragment or send it on.
     #[tokio::test]
-    async fn the_connect_page_runs_no_script_and_points_to_the_app() {
+    async fn the_connect_page_runs_no_script_and_points_to_the_web() {
         let (status, headers, body) = read(connect(HeaderMap::new()).await).await;
         assert_eq!(status, StatusCode::OK);
         let lower = body.to_ascii_lowercase();
@@ -207,8 +189,9 @@ mod tests {
         assert!(policy.contains("form-action 'none'"), "{policy}");
         assert_eq!(headers[header::REFERRER_POLICY], "no-referrer");
         assert_eq!(headers[header::CACHE_CONTROL], "no-store");
-        assert!(body.contains("Get the OpenAgents app"));
-        assert!(body.contains(TESTFLIGHT));
+        assert!(body.contains("OpenAgents on the web"));
+        assert!(body.contains("/new-lander/verse") && body.contains("/chat"));
+        assert!(!body.contains(TESTFLIGHT) && !body.contains("/cli/install"));
         assert!(!lower.contains("<form"), "{body}");
     }
 

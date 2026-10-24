@@ -4,7 +4,7 @@
 //! procedural shader built from Shader Skills (gokayfem/shader-skills, MIT;
 //! `crates/lander5-web`).
 //!
-//! The page is one response: the title and the Download link as HTML over
+//! The page is one response: the title and the Enter the Verse link as HTML over
 //! a canvas, the two fragment shaders as inline data blocks, and the
 //! WebGL2 runner's wasm-bindgen glue and module (base64) in one inline
 //! module script. The runner's build (`scripts/build-lander5-web.sh`) is
@@ -37,11 +37,10 @@ use crate::pages::everglade::{accepts, accepts_gzip};
 pub(crate) const LANDER5_GLUE: &str = "lander5_web.js";
 pub(crate) const LANDER5_WASM: &str = "lander5_web_bg.wasm";
 
-/// Where the Download button goes: the same page the home page's Download
-/// buttons open.
-const DOWNLOAD: &str = "/download";
+/// The world selector for the browser entry button.
+const VERSE: &str = crate::layout::VERSE;
 const TITLE: &str = "OpenAgents";
-const DESCRIPTION: &str = "Download OpenAgents.";
+const DESCRIPTION: &str = "Explore OpenAgents in your browser.";
 
 /// The page's look. The body's gradient stands in for the scene until the
 /// first frame, and stays when there is no WebGL2: near-black sky, the light gray
@@ -150,9 +149,9 @@ pub(super) fn fits_in_script(text: &str) -> bool {
 }
 
 /// What another page adds to this one (`/lander6`'s demo card): its own
-/// stylesheet, markup after the Download link, and a module script that
+/// stylesheet, markup after the Enter the Verse link, and a module script that
 /// runs after the runner's, loading files from this site. `main`, when
-/// given, is the whole of `<main>` instead (`/lander7` has no Download
+/// given, is the whole of `<main>` instead (`/lander7` has no Enter the Verse
 /// link).
 pub(super) struct Addition {
     pub style: &'static str,
@@ -216,7 +215,7 @@ pub(super) fn assemble_page_with_head(
     let in_main = addition.map_or("", |addition| addition.in_main);
     let main = match (main, addition.and_then(|addition| addition.main)) {
         (Some(main), _) | (None, Some(main)) => main.to_owned(),
-        (None, None) => format!("<h1>{TITLE}</h1><a href=\"{DOWNLOAD}\">Download</a>{in_main}"),
+        (None, None) => format!("<h1>{TITLE}</h1><a href=\"{VERSE}\">Enter the Verse</a>{in_main}"),
     };
     let grid_source = addition
         .and_then(|addition| addition.grid)

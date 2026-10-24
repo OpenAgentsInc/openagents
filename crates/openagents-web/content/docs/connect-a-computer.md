@@ -5,13 +5,8 @@ chats show on the website, in the left panel, where you can reply to them.
 
 ## Connect it to your account
 
-1. Install Coder on the computer. On macOS and Linux:
-
-   ```sh
-   curl -fsSL https://openagents.com/cli/install.sh | bash
-   ```
-
-   On Windows, in PowerShell: `irm https://openagents.com/cli/install.ps1 | iex`
+1. These steps apply to an existing installation of the earlier Coder app.
+   For the current browser experience, [start on the web](/docs/download).
 2. Run `coder login`. It shows a code.
 3. Approve that code at [openagents.com/device](https://openagents.com/device).
 4. In Coder, type `/sync on`.

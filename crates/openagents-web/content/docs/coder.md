@@ -10,28 +10,10 @@ through Claude Code, Codex, or OpenCode on your own login, hand work to
 other agents on your computer, or use its own coding loop on OpenAgents
 models. You don't need an API key to start.
 
-## 1. Install
+## Existing Coder users
 
-On macOS or Linux:
-
-```sh
-curl -fsSL https://openagents.com/cli/install.sh | bash
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://openagents.com/cli/install.ps1 | iex
-```
-
-Open a new terminal and check the version:
-
-```sh
-coder --version
-```
-
-Updates install themselves. See [Download and install](/docs/download)
-for what gets installed, updating, and uninstalling.
+This guide describes the earlier terminal app. For the current browser
+experience, [start on the web](/docs/download).
 
 ## 2. Log in
 

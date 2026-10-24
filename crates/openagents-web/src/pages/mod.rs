@@ -71,10 +71,7 @@ pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
 pub(crate) use content::{DOCS, section_anchor, section_of};
 #[cfg(test)]
-pub(crate) use download::{
-    CODER_BASE, CODER_PLATFORMS, CODER_PS1, CODER_SH, CODER_VERSION, DESKTOP_RELEASED, Part,
-    TESTFLIGHT_APP, coder_archive, published_as_archives, shown,
-};
+pub(crate) use download::{CODER_PS1, CODER_SH};
 #[cfg(test)]
 pub(crate) use everglade::GRID_POLICY;
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};

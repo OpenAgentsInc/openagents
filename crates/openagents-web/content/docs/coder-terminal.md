@@ -7,7 +7,8 @@ folder from where you are:
 coder --in ~/code/my-project
 ```
 
-It works in any terminal, over SSH, and in tmux. Install it from [Download and install](/docs/download).
+This reference is for the earlier terminal app. For the current browser
+experience, [start on the web](/docs/download).
 
 ## The screen
 

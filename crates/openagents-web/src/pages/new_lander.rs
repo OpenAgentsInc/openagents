@@ -49,7 +49,7 @@ fn header(verse: bool, account: bool) -> Markup {
                 @if account {
                     a href=(format!("/login?return_to={back}")) { "Log in" }
                     a.nav-button href=(format!("/signup?return_to={back}")) { "Sign up ↗" }
-                } @else { a.nav-button href="/download" { "Get OpenAgents ↗" } }
+                } @else { a.nav-button href="/chat" { "Open chat ↗" } }
             }
         }
     }
@@ -95,11 +95,11 @@ fn marketing_content() -> Markup {
                 div.scroll-note { span { "BUILT FOR WHAT COMES NEXT" } a href="#products" aria-label="Explore products" { "↓" } }
             }
             section.products #products aria-labelledby="products-title" {
-                div.section-heading { p.eyebrow { "THE OPENAGENTS TOOLKIT" } h2 #products-title { "One platform." br; span { "More ways to create." } } p { "Work with an agent, build with Coder, or bring OpenAgents into your own tools." } }
+                div.section-heading { p.eyebrow { "THE OPENAGENTS TOOLKIT" } h2 #products-title { "One platform." br; span { "More ways to create." } } p { "Chat with an agent, explore the Verse, or build with our API." } }
                 div.product-grid {
                     a.product-card href="/chat" { span.product-number { "01 / ASSISTANT" } div.product-icon aria-hidden="true" { "✳" } h3 { "OpenAgents" } p { "An agent to think, build, and work with you." } span.product-action { "Open chat" span { "↗" } } }
-                    a.product-card href="/download" { span.product-number { "02 / CODE" } div.product-icon.code-icon aria-hidden="true" { ">_" } h3 { "Coder" } p { "Bring an agent into your development workflow." } span.product-action { "Get Coder" span { "↗" } } }
-                    a.product-card href="/download" { span.product-number { "03 / EVERYWHERE" } div.product-icon.app-icon aria-hidden="true" { (mark()) } h3 { "The OpenAgents app" } p { "Find the app and tools for your devices." } span.product-action { "View downloads" span { "↗" } } }
+                    a.product-card href=(VERSE) { span.product-number { "02 / EXPLORE" } div.product-icon.code-icon aria-hidden="true" { "◇" } h3 { "The Verse" } p { "Discover connected worlds from your browser." } span.product-action { "Enter the Verse" span { "↗" } } }
+                    a.product-card href="/new-lander/house" { span.product-number { "03 / CREATE" } div.product-icon.app-icon aria-hidden="true" { (mark()) } h3 { "Haunted House" } p { "Step inside, make a change, and share your world." } span.product-action { "Explore the house" span { "↗" } } }
                     a.product-card href="/docs/api" { span.product-number { "04 / BUILD" } div.product-icon.api-icon aria-hidden="true" { "{ }" } h3 { "For developers" } p { "Connect your ideas to the OpenAgents API." } span.product-action { "Explore the API" span { "↗" } } }
                 }
             }
@@ -300,6 +300,23 @@ mod tests {
 
     #[test]
     fn new_lander_marketing_never_starts_a_game() {
+        for account in [false, true] {
+            for page in [
+                document(marketing_content(), false, account),
+                document(universe_content(None, account, false), true, account),
+            ] {
+                for old in [
+                    "/download",
+                    "Get OpenAgents",
+                    "Get Coder",
+                    "View downloads",
+                    "The OpenAgents app",
+                ] {
+                    assert!(!page.contains(old), "{old}");
+                }
+                crate::copy_guard::assert_plain(PATH, &page);
+            }
+        }
         let page = document(marketing_content(), false, true);
         assert!(!page.contains("<script") && !page.contains("<canvas") && !page.contains(".wasm"));
         assert!(page.contains("Enter the Verse") && page.contains("noindex, nofollow"));

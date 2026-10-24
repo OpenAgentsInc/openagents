@@ -4,25 +4,10 @@ Coder, its chats, and the `openagents` command work on Windows, with the
 same keys and commands as on macOS and Linux. This guide installs Coder in
 PowerShell, sets up an agent, and covers what's different on Windows.
 
-## 1. Install
+## Existing Coder users
 
-Open PowerShell (in Windows Terminal, if you have it) and run:
-
-```powershell
-irm https://openagents.com/cli/install.ps1 | iex
-```
-
-The installer puts `coder`, the `openagents` command, the engine, and
-`coder-boundary.exe` in `%USERPROFILE%\.openagents\bin`, and adds that
-folder to your user `PATH`. The last one keeps the commands Coder runs
-from writing outside the folders they're given. Windows on ARM runs the
-x86_64 build.
-
-Close PowerShell, open a new window, and check:
-
-```powershell
-coder --version
-```
+This guide describes the earlier terminal app. For the current browser
+experience, [start on the web](/docs/download).
 
 ## 2. Set up an agent
 
@@ -77,8 +62,7 @@ Remove-Item -Recurse "$env:USERPROFILE\.openagents\bin"
 ```
 
 Then remove `.openagents\bin` from your user `PATH` in **Settings → System
-→ About → Advanced system settings → Environment Variables**. Full
-details: [Download and install](/docs/download).
+→ About → Advanced system settings → Environment Variables**.
 
 Problems? See the Windows notes in [Troubleshooting](/docs/troubleshooting).
 

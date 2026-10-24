@@ -15,8 +15,7 @@ sends your message now. What the reply wrote so far stays in the chat, with
 "You stopped this answer." under it. Use `Ctrl+Enter` instead to let the
 reply finish and send your message after it.
 
-Without scripts, use **Send**. The [download](/download) link still works
-either way.
+Without scripts, use **Send**.
 
 ## Log in
 

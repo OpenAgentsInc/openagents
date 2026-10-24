@@ -900,10 +900,7 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
             }
             @if choices.account && choices.computers.is_empty() && choices.environments.is_empty() {
                 p class="oa-composer-note" {
-                    "None of your computers is online. Open Coder on your computer, logged in, with "
-                    code { "/sync on" }
-                    ", to run work there. "
-                    a href="/download" { "Get Coder" }
+                    "None of your computers is online. You can keep chatting here."
                 }
             }
         },

@@ -14,23 +14,11 @@ Reading, editing, running tests, and pushing go straight through. Steps
 that are hard to undo, such as a deploy, a merge, a secret, a payment, or a
 DNS change, stop and wait until you press **Y** to allow or **N** to deny.
 
-## Install
+## Try OpenAgents today
 
-On macOS or Linux, in a terminal:
-
-```sh
-curl -fsSL https://openagents.com/cli/install.sh | bash
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://openagents.com/cli/install.ps1 | iex
-```
-
-Then run `coder` in your project folder. [Start here](/docs/start-here)
-walks you through your first half hour, and the [download page](/download)
-has every platform.
+This post describes the earlier Coder release. We are now focusing on the
+web experience. Open [the Verse](/new-lander/verse) or [chat](/chat)
+in your browser.
 
 ## What's in 1.0
 

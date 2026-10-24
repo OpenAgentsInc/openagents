@@ -3,7 +3,8 @@
 `openagents` is the command-line program that comes with Coder. Use it
 to run Coder from a script, chat from a script, change settings, work
 with plugins, and connect phones to a computer without a screen. It
-installs with Coder; see [Download and install](/docs/download).
+comes with the earlier Coder app. For the current browser experience,
+[start on the web](/docs/download).
 
 Every command takes `--json` for machine-readable output and `--help` for
 its syntax. `openagents doctor` shows which identities, stores, and relays

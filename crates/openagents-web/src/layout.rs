@@ -16,8 +16,8 @@ pub const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 /// OpenAgents on X, linked from the bottom of the left panel.
 pub const X: &str = "https://x.com/OpenAgentsInc";
 
-/// The download page, linked from the header's pill on every page.
-pub const DOWNLOAD: &str = "/download";
+/// The browser world selector, linked from the header and phone drawer.
+pub const VERSE: &str = "/new-lander/verse";
 
 /// The documentation, linked from the bottom of the left panel.
 pub const DOCS: &str = "/docs";
