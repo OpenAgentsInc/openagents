@@ -3209,7 +3209,8 @@
   }
   .verse-hud [data-aethyr-id="verse-controls"] {
     position: absolute;
-    right: 24px;
+    /* Leave room for the fixed tool search button in the corner. */
+    right: 76px;
     bottom: 20px;
     z-index: 5;
     gap: 8px;
