@@ -137,7 +137,12 @@ async fn the_json_list_names_every_screen_and_state() {
 async fn site_states_show_their_sample_data() {
     let all = screens();
     let cases = [
-        ("download", "desktop", StatusCode::OK, "Download OpenAgents"),
+        (
+            "download",
+            "desktop",
+            StatusCode::OK,
+            "OpenAgents on the web",
+        ),
         ("stats", "populated", StatusCode::OK, "sample-weather"),
         ("stats", "no-data", StatusCode::OK, "Stats"),
         ("live", "one", StatusCode::OK, "A Coder run started"),

@@ -1,8 +1,8 @@
 # Use Coder on Windows
 
 Coder, its chats, and the `openagents` command work on Windows, with the
-same keys and commands as on macOS and Linux. This guide installs Coder in
-PowerShell, sets up an agent, and covers what's different on Windows.
+same keys and commands as on macOS and Linux. This reference covers agent
+setup and Windows commands for existing users.
 
 ## Existing Coder users
 

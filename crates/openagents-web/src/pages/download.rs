@@ -12,10 +12,7 @@ use openagents_ui::content::{MarkdownRoot, PageColumn, Table};
 use crate::App;
 use crate::ui_page::UiPage;
 
-/// The Coder release the page names and links. It stays at the newest
-/// published release: set it to a new version only after
-/// `scripts/release/coder.sh` has published that version
-/// (`docs/release/terminal.md`), or the page links files that don't exist.
+/// The earlier Coder release used by the command-reference check.
 pub(crate) const CODER_VERSION: &str = "1.0.0";
 pub(crate) const CODER_BASE: &str =
     "https://storage.googleapis.com/openagentsgemini-cli-releases/coder";
@@ -62,8 +59,7 @@ pub(crate) const DESKTOP_VERSION: &str = "1.0.0";
 /// Release day). Until then the page shows no desktop downloads.
 pub const DESKTOP_RELEASED: bool = false;
 
-/// Every download the page offers outside Coder. Coder's own files come
-/// from [`CODER_PLATFORMS`] and its installers.
+/// Earlier app download addresses, kept to interpret historical analytics.
 pub(crate) const DOWNLOADS: [Download; 8] = [
     Download {
         part: Part::Desktop,

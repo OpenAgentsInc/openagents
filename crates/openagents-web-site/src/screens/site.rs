@@ -15,12 +15,12 @@ pub fn screens() -> Vec<Screen> {
     vec![
         page(
             "download",
-            "Download",
+            "Start on the web",
             &["/download"],
             vec![
                 state("default", "As served", download),
-                state("desktop", "With desktop downloads", download_desktop),
-                state("get-app", "Get the OpenAgents app", get_app),
+                state("desktop", "Older app address", download_desktop),
+                state("get-app", "Browser entry", get_app),
             ],
         ),
         page(

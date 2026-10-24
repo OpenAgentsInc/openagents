@@ -146,7 +146,7 @@ pub(super) fn plugins(_pane: Pane) -> Markup {
     let card = |name: &str, icon: Icon, summary: &str| {
         PluginCard::new(name, icon, summary)
             .runs_on("With Coder on your computer")
-            .action("Get Coder", "/download")
+            .action("Read documentation", "/docs/coder-plugins")
     };
     let cards = PluginCards::new("Plugins").cards([
         card(
@@ -183,10 +183,10 @@ pub(super) fn plans(_pane: Pane) -> Markup {
         .lead("Start free. Upgrade when you need the cloud.")
         .cards([
             PlanCard::new("Free", "Free")
-                .lead("Everything you need to use Coder:")
-                .item("Coder on terminal, desktop, web and phone")
+                .lead("Create and chat in your browser")
+                .item("OpenAgents on the web")
                 .item_with("Every coding agent", ["Use your own subscriptions"])
-                .action("Get Coder", "/download"),
+                .action("Open chat", "/chat"),
             PlanCard::new("Pro", "$20")
                 .per("/mo.")
                 .note("3-day free trial")

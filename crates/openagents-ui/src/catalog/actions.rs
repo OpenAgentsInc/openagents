@@ -78,7 +78,7 @@ pub(super) fn buttons(pane: Pane) -> Markup {
         (specimen("ButtonLink", "Links styled as buttons", row(html! {
             (ButtonLink::new("Open docs", "/docs").icon_start(Icon::Code))
             (ButtonLink::new("GitHub", "https://github.com/OpenAgentsInc/openagents").external(true).variant(ButtonVariant::Outline).color(Color::Secondary))
-            (ButtonLink::icon(Icon::Download, "Download", "/download").variant(ButtonVariant::Soft).color(Color::Secondary))
+            (ButtonLink::icon(Icon::Globe, "Enter the Verse", "/new-lander/verse").variant(ButtonVariant::Soft).color(Color::Secondary))
         })))
         (specimen("CopyButton", "Copy to clipboard", row(html! {
             (CopyButton::new("cargo test -p openagents-ui").label("Copy command").variant(ButtonVariant::Outline).color(Color::Secondary))
@@ -97,7 +97,7 @@ pub(super) fn links(_pane: Pane) -> Markup {
             p { "Read the " (TextLink::new("adoption plan", "/docs")) " before you start." }
             p { "A " (TextLink::new("primary link", "/docs").primary(true)) " and an " (TextLink::new("underlined one", "/docs").underline(true)) "." }
             p { "External: " (TextLink::new("Apps SDK UI", "https://github.com/openai/apps-sdk-ui")) }
-            p { "Forced external: " (TextLink::new("download page", "/download").force_external(true)) }
+            p { "Forced external: " (TextLink::new("documentation", "/docs").force_external(true)) }
             p { "Without href: " (TextLink::without_href("not a link yet")) }
             p { "With content: " (TextLink::with_content(html! { (Icon::Globe) " openagents.com" }, "/")) }
         })))
