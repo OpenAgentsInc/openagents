@@ -59,6 +59,17 @@ pub enum Encoder {
     Ts,
 }
 
+/// How the web backend reaches WebGPU (ADR 0004): one replay call per pass
+/// (the default) or one import call per command, for A/B runs. Native hosts
+/// call `webgpu.h` directly either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Calls {
+    #[default]
+    Batched,
+    PerCall,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ShaderSource {
@@ -80,6 +91,7 @@ pub struct Config {
     pub crowd_tiers: bool,
     pub camera: CameraMode,
     pub encoder: Encoder,
+    pub calls: Calls,
     pub cull_shader: ShaderSource,
     pub seed: u64,
     /// Fixed scene time in seconds, for repeatable captures.
@@ -100,6 +112,7 @@ impl Default for Config {
             crowd_tiers: true,
             camera: CameraMode::Street,
             encoder: Encoder::Rust,
+            calls: Calls::Batched,
             cull_shader: ShaderSource::Wgsl,
             seed: 1,
             time: None,
@@ -191,6 +204,8 @@ pub struct Stats {
     /// CPU milliseconds encoding the CPU path's main pass draws.
     pub main_encode_ms: f64,
     pub encoder: Encoder,
+    /// Whether the web backend batched its calls this frame.
+    pub batched_calls: bool,
     pub commands: CommandCounts,
     pub gpu: PassTimes,
     pub gpu_timestamps: bool,
@@ -398,6 +413,7 @@ fn entries<'a>(list: Vec<(u32, BindingResource<'a>)>) -> Vec<BindGroupEntry<'a>>
 impl Lab {
     pub fn new(gpu: Gpu, config: Config, width: u32, height: u32) -> Lab {
         let config = config.normalized();
+        af_gpu::set_batched_calls(config.calls == Calls::Batched);
         let assets = Self::build_assets(&gpu, config.variants);
         let world = Self::build_world(&gpu, &assets, &config);
         let targets = Self::build_targets(&gpu, &config, width, height);
@@ -471,6 +487,7 @@ impl Lab {
 
     pub fn set_config(&mut self, config: Config) {
         let config = config.normalized();
+        af_gpu::set_batched_calls(config.calls == Calls::Batched);
         let old = std::mem::replace(&mut self.config, config.clone());
         if old.variants != config.variants {
             self.assets = Self::build_assets(&self.gpu, config.variants);
@@ -1241,6 +1258,7 @@ impl Lab {
         st.cpu_cull_ms = cpu_cull_ms;
         st.main_encode_ms = main_encode_ms;
         st.encoder = cfg.encoder;
+        st.batched_calls = af_gpu::batched_calls();
         st.commands = commands;
         st.config = cfg;
         st.errors.extend(errors);
@@ -1413,6 +1431,8 @@ impl Lab {
         pass.set_bind_group(0, &self.bindings.forward_cpu[s]);
         pass.set_vertex_buffer(0, &a.vertex, 0, a_size(&a.vertex));
         pass.set_index_buffer(&a.index, IndexFormat::Uint32, 0, a.geometry.indices.len() as u64 * 4);
+        // The setup above is not part of the draw encode, whichever path makes the calls.
+        pass.flush();
         let start = now_ms();
         let external = (self.config.encoder == Encoder::Ts).then_some(self.external_encoder).flatten();
         let mut elapsed = None;
@@ -1442,6 +1462,8 @@ impl Lab {
                 pass.set_vertex_buffer(1, &self.world.list_a, d.offset as u64 * 4, d.count as u64 * 4);
                 pass.draw_indexed(d.index_count, d.count, d.first_index, d.base_vertex as i32, 0);
             }
+            // Batched web calls reach WebGPU here; count that in the encode.
+            pass.flush();
         }
         let ms = elapsed.unwrap_or(now_ms() - start);
         pass.end();

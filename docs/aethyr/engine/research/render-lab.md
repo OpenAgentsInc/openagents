@@ -178,6 +178,26 @@ imports (about 150–440 ns per draw) and 0.10–0.15 ms from TypeScript (about
   real GPU adapter (headless Linux Chrome on CoderOS falls back to SwiftShader,
   per the GPU Native research), and add a matched table here.
 
+### Batched web calls
+
+Per ADR 0004, the web backend batches pass commands (#12592). Rust writes each
+render or compute pass's commands as `u32` words into Wasm memory
+(`crates/aethyr/gpu/src/batch.rs`), and a single `replay` import
+(`apps/aethyr/apps/render-lab/gpu-batch.ts`) issues them when the pass ends.
+That replaces one import call per command. Batching is on by default. The
+lab's **Rust GPU calls** control, or `calls: "per-call"` in its configuration,
+turns it off for comparison, and `af_gpu::set_batched_calls` does the same for
+other callers.
+
+`apps/aethyr/tools/measure-render-lab-encode.mjs` compares the main-pass
+encode of the CPU path at about 1,500 draws in three ways: Rust per call, Rust
+batched, and TypeScript direct. It reports p50 and p95 and checks the issue's
+gate, which requires batched to be within 0.1 ms of TypeScript at p95. Build
+and serve the lab, then run the tool in a browser that has a real GPU adapter
+(`AF_CDP` connects to a running Chrome). No result from a real GPU has been
+recorded yet. A SwiftShader smoke run only shows that the cases render the
+same 1,495 draws.
+
 ## Open items
 
 - Window presentation through `SurfaceSource` is written but not run.

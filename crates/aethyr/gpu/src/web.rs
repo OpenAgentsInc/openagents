@@ -1,7 +1,15 @@
-//! Browser backend: every call crosses into the JavaScript import table in
+//! Browser backend: calls cross into the JavaScript import table in
 //! `apps/render-lab/gpu-imports.ts`. Handles are indexes into that table.
 //! Descriptors cross once, at creation, as JSON; per-frame calls pass integers.
+//!
+//! Pass commands are batched by default (ADR 0004): they are encoded into one
+//! word buffer ([`crate::batch`]) and replayed by a single `replay` call when
+//! the pass ends, when another pass's command arrives, or before anything is
+//! released or submitted (so a freed table slot is never reused while queued
+//! words still name it). `set_batched(false)` restores one import call per
+//! command.
 
+use crate::batch::{self, Command};
 use crate::*;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -51,6 +59,7 @@ unsafe extern "C" {
     pub fn take_error(out: *mut u8, cap: u32) -> u32;
     pub fn now() -> f64;
     pub fn log(message: *const u8, len: u32);
+    pub fn replay(pass: u32, words: *const u32, len: u32);
 }
 }
 
@@ -64,8 +73,51 @@ const BIND_GROUP: u32 = 6;
 const QUERY_SET: u32 = 7;
 
 thread_local! {
+    static BATCHED: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+    /// The pass the queued words belong to, and the words.
+    static QUEUE: std::cell::RefCell<(u32, Vec<u32>)> = const { std::cell::RefCell::new((0, Vec::new())) };
     static NEXT_TICKET: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
     static READS: std::cell::RefCell<VecDeque<(ReadTicket, Vec<u8>)>> = Default::default();
+}
+
+pub fn set_batched(on: bool) {
+    flush();
+    BATCHED.with(|b| b.set(on));
+}
+
+pub fn batched() -> bool {
+    BATCHED.with(|b| b.get())
+}
+
+/// Replays the queued words, if any, with one call.
+pub fn flush() {
+    QUEUE.with(|q| {
+        let mut q = q.borrow_mut();
+        if !q.1.is_empty() {
+            unsafe { ffi::replay(q.0, q.1.as_ptr(), q.1.len() as u32) }
+            q.1.clear();
+        }
+    });
+}
+
+/// Queues a pass command when batching; `false` means "make the call".
+fn queue(pass: Handle, command: Command) -> bool {
+    if !batched() {
+        return false;
+    }
+    let other = QUEUE.with(|q| {
+        let q = q.borrow();
+        !q.1.is_empty() && q.0 != pass
+    });
+    if other {
+        flush();
+    }
+    QUEUE.with(|q| {
+        let mut q = q.borrow_mut();
+        q.0 = pass;
+        batch::encode(&mut q.1, &command);
+    });
+    true
 }
 
 /// Called by JavaScript to reserve memory for a finished read.
@@ -128,6 +180,7 @@ pub fn from_host() -> (Device, Vec<Feature>, AdapterInfo) {
 }
 
 pub fn release(kind: Kind, handle: Handle) {
+    flush();
     if handle != 0 {
         unsafe { ffi::release(kind_code(kind), handle) }
     }
@@ -218,6 +271,7 @@ pub fn write_texture(_: &Device, texture: Handle, mip: u32, layer: u32, data: &[
 }
 
 pub fn submit(_: &Device, buffers: &[Handle]) {
+    flush();
     unsafe { ffi::submit(buffers.as_ptr(), buffers.len() as u32) }
 }
 
@@ -268,32 +322,45 @@ pub fn copy_texture_to_buffer(_: Handle, _: Handle, _: Handle, _: u32, _: Extent
 }
 
 pub fn finish(encoder: Handle) -> Handle {
+    flush();
     unsafe { ffi::finish(encoder) }
 }
 
 pub fn compute_set_pipeline(pass: Handle, p: Handle) {
-    unsafe { ffi::set_pipeline(pass, p) }
+    if !queue(pass, Command::SetPipeline { pipeline: p }) {
+        unsafe { ffi::set_pipeline(pass, p) }
+    }
 }
 pub fn render_set_pipeline(pass: Handle, p: Handle) {
-    unsafe { ffi::set_pipeline(pass, p) }
+    compute_set_pipeline(pass, p)
 }
 pub fn compute_set_bind_group(pass: Handle, i: u32, g: Handle) {
-    unsafe { ffi::set_bind_group(pass, i, g) }
+    if !queue(pass, Command::SetBindGroup { index: i, group: g }) {
+        unsafe { ffi::set_bind_group(pass, i, g) }
+    }
 }
 pub fn render_set_bind_group(pass: Handle, i: u32, g: Handle) {
-    unsafe { ffi::set_bind_group(pass, i, g) }
+    compute_set_bind_group(pass, i, g)
 }
 pub fn dispatch(pass: Handle, x: u32, y: u32, z: u32) {
-    unsafe { ffi::dispatch(pass, x, y, z) }
+    if !queue(pass, Command::Dispatch { x, y, z }) {
+        unsafe { ffi::dispatch(pass, x, y, z) }
+    }
 }
 pub fn dispatch_indirect(pass: Handle, b: Handle, o: u64) {
-    unsafe { ffi::dispatch_indirect(pass, b, o as f64) }
+    if !queue(pass, Command::DispatchIndirect { buffer: b, offset: o }) {
+        unsafe { ffi::dispatch_indirect(pass, b, o as f64) }
+    }
 }
 pub fn end_compute_pass(pass: Handle) {
-    unsafe { ffi::end_pass(pass) }
+    if queue(pass, Command::EndPass) {
+        flush();
+    } else {
+        unsafe { ffi::end_pass(pass) }
+    }
 }
 pub fn end_render_pass(pass: Handle) {
-    unsafe { ffi::end_pass(pass) }
+    end_compute_pass(pass)
 }
 /// `u64::MAX` (WGPU_WHOLE_SIZE) crosses as -1, which the host turns into an omitted size.
 fn whole(size: u64) -> f64 {
@@ -301,22 +368,36 @@ fn whole(size: u64) -> f64 {
 }
 
 pub fn set_vertex_buffer(pass: Handle, slot: u32, b: Handle, o: u64, s: u64) {
-    unsafe { ffi::set_vertex_buffer(pass, slot, b, o as f64, whole(s)) }
+    if !queue(pass, Command::SetVertexBuffer { slot, buffer: b, offset: o, size: s }) {
+        unsafe { ffi::set_vertex_buffer(pass, slot, b, o as f64, whole(s)) }
+    }
 }
 pub fn set_index_buffer(pass: Handle, b: Handle, f: IndexFormat, o: u64, s: u64) {
-    unsafe { ffi::set_index_buffer(pass, b, (f == IndexFormat::Uint32) as u32, o as f64, whole(s)) }
+    let uint32 = f == IndexFormat::Uint32;
+    if !queue(pass, Command::SetIndexBuffer { buffer: b, uint32, offset: o, size: s }) {
+        unsafe { ffi::set_index_buffer(pass, b, uint32 as u32, o as f64, whole(s)) }
+    }
 }
 pub fn draw(pass: Handle, v: u32, i: u32, fv: u32, fi: u32) {
-    unsafe { ffi::draw(pass, v, i, fv, fi) }
+    if !queue(pass, Command::Draw { vertices: v, instances: i, first_vertex: fv, first_instance: fi }) {
+        unsafe { ffi::draw(pass, v, i, fv, fi) }
+    }
 }
 pub fn draw_indexed(pass: Handle, n: u32, i: u32, fi: u32, bv: i32, fin: u32) {
-    unsafe { ffi::draw_indexed(pass, n, i, fi, bv, fin) }
+    let command = Command::DrawIndexed { indices: n, instances: i, first_index: fi, base_vertex: bv, first_instance: fin };
+    if !queue(pass, command) {
+        unsafe { ffi::draw_indexed(pass, n, i, fi, bv, fin) }
+    }
 }
 pub fn draw_indirect(pass: Handle, b: Handle, o: u64) {
-    unsafe { ffi::draw_indirect(pass, b, o as f64) }
+    if !queue(pass, Command::DrawIndirect { buffer: b, offset: o }) {
+        unsafe { ffi::draw_indirect(pass, b, o as f64) }
+    }
 }
 pub fn draw_indexed_indirect(pass: Handle, b: Handle, o: u64) {
-    unsafe { ffi::draw_indexed_indirect(pass, b, o as f64) }
+    if !queue(pass, Command::DrawIndexedIndirect { buffer: b, offset: o }) {
+        unsafe { ffi::draw_indexed_indirect(pass, b, o as f64) }
+    }
 }
 
 pub fn read_buffer(_: &Device, buffer: Handle, offset: u64, size: u64) -> ReadTicket {
