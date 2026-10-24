@@ -1,3 +1,14 @@
+# OpenAgents 1.0.0 (1022)
+
+Medieval Town shows a loading progress bar, the current item, file and byte
+counts, and preparation steps until the first frame appears. Downloads reuse
+unchanged saved files across scene updates and load several files at once.
+
+Open the menu and choose Medieval Town. Check the loading screen on the first
+visit and when reopening the town. Close during loading and reopen it. If a
+download fails, use Try again and confirm the town opens. Walk through the
+stone arch and its steps, look around, and watch the FPS display.
+
 # OpenAgents 1.0.0 (1021)
 
 Medieval Town fixes blocked open archways and walking over steps. Walk forward

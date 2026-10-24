@@ -10,6 +10,8 @@ Keep fork-specific changes here so upstream updates can review each integration.
   material texture arrays, normal maps, and cached directional shadows.
   Use visible solid geometry for collision throughout the town so open arches
   and steps stay walkable without an artificial movement boundary.
+  Report live loading steps and byte counts through a separate Rust progress
+  record, reuse verified files across updates, and cancel downloads on close.
 
 - OpenAgents #12460: open the shared Grid suggestion form from the desktop
   Help menu and phone Settings, including for guests, with the sending app

@@ -7,6 +7,9 @@ const MAX_COLLISION_TRIANGLES: usize = 4_000_000;
 
 mod collision;
 mod gpu;
+mod loading;
+pub use loading::MedievalTownLoadingProgress;
+use loading::{Progress, Session};
 
 use collision::Collision;
 use glam::{Mat4, Vec3};
@@ -395,68 +398,20 @@ fn decode_floats(bytes: &[u8]) -> Result<Vec<f32>> {
     }
     Ok(result)
 }
-async fn download(
-    client: &reqwest::Client,
-    url: &reqwest::Url,
-    expected: &str,
-    size: Option<usize>,
-    path: &Path,
-) -> Result<Vec<u8>> {
-    if let Ok(bytes) = std::fs::read(path) {
-        if size.is_none_or(|n| n == bytes.len()) && digest(&bytes) == expected {
-            return Ok(bytes);
-        }
+fn asset_names(m: &Manifest) -> Vec<&'static str> {
+    let mut names = vec!["Buildings", "Model details"];
+    if m.instances.is_some() {
+        names.push("Town layout");
     }
-    let maximum = size.unwrap_or(8 * 1024 * 1024);
-    let mut last = String::new();
-    for _ in 0..3 {
-        let attempt = async {
-            let mut response = client
-                .get(url.clone())
-                .send()
-                .await
-                .map_err(|e| e.to_string())?
-                .error_for_status()
-                .map_err(|e| e.to_string())?;
-            if response
-                .content_length()
-                .is_some_and(|n| n > maximum as u64)
-            {
-                return Err("file is larger than expected".into());
-            }
-            let mut bytes = Vec::with_capacity(maximum.min(8 * 1024 * 1024));
-            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-                if bytes.len() + chunk.len() > maximum {
-                    return Err("file is larger than expected".into());
-                }
-                bytes.extend_from_slice(&chunk);
-            }
-            if size.is_some_and(|n| n != bytes.len()) || digest(&bytes) != expected {
-                return Err("file did not finish downloading".into());
-            }
-            Ok::<_, String>(bytes)
-        }
-        .await;
-        match attempt {
-            Ok(bytes) => {
-                let temporary = path.with_extension("download");
-                std::fs::write(&temporary, &bytes)
-                    .map_err(|_| failed("The town could not be saved on this device."))?;
-                std::fs::rename(&temporary, path)
-                    .map_err(|_| failed("The town could not be saved on this device."))?;
-                return Ok(bytes);
-            }
-            Err(error) => last = error,
-        }
+    if m.texture_arrays.is_some() {
+        names.extend(["Colors", "Surface details", "Lighting details"]);
+    } else {
+        names.push("Colors");
     }
-    eprintln!(
-        "Medieval Town download {}: {}",
-        url.path(),
-        last.chars().take(160).collect::<String>()
-    );
-    Err(failed("The town could not finish downloading. Try again."))
+    names.push("Ground and walls");
+    names
 }
-async fn load(cache: &Path) -> Result<Mesh> {
+async fn load(cache: &Path, session: &Session) -> Result<Mesh> {
     let url = option_env!("OPENAGENTS_MEDIEVAL_MANIFEST_URL").unwrap_or(MANIFEST_URL);
     let expected = option_env!("OPENAGENTS_MEDIEVAL_MANIFEST_SHA256").unwrap_or(MANIFEST_SHA256);
     let url = reqwest::Url::parse(url)
@@ -464,38 +419,125 @@ async fn load(cache: &Path) -> Result<Mesh> {
     if url.scheme() != "https" || !valid_hash(expected) {
         return Err(failed("The town download has not been configured."));
     }
-    let cache = cache.join("MedievalTown").join(expected);
+    let cache = cache.join("MedievalTown");
     std::fs::create_dir_all(&cache)
         .map_err(|_| failed("The town could not be saved on this device."))?;
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(180))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| failed("The town download could not start."))?;
-    let bytes = download(&client, &url, expected, None, &cache.join("manifest.json")).await?;
+    session.phase("Reading the town map", 0., "Town map");
+    let bytes = loading::download(
+        &client,
+        &url,
+        expected,
+        None,
+        &cache,
+        session,
+        None,
+        "Town map",
+        Default::default(),
+    )
+    .await?;
     let m: Manifest = serde_json::from_slice(&bytes)
         .map_err(|_| failed("The town description could not be read."))?;
     validate_manifest(&m)?;
-    let file = |spec: &FileSpec| -> Result<(reqwest::Url, PathBuf)> {
+    let names = asset_names(&m);
+    let specs: Vec<_> = m.files().into_iter().cloned().collect();
+    session.files(&specs.iter().map(|s| s.byte_length).collect::<Vec<_>>());
+    let mut pending = specs.iter().cloned().enumerate();
+    let mut tasks = tokio::task::JoinSet::new();
+    let spawn = |tasks: &mut tokio::task::JoinSet<Result<(usize, Vec<u8>)>>,
+                 index: usize,
+                 spec: FileSpec|
+     -> Result<()> {
         let target = url
             .join(&spec.url)
             .map_err(|_| failed("A town file has an invalid address."))?;
         if target.origin() != url.origin() || target.scheme() != "https" {
             return Err(failed("A town file has an invalid address."));
         }
-        Ok((target, cache.join(&spec.sha256)))
+        let (client, cache, session, name) =
+            (client.clone(), cache.clone(), session.clone(), names[index]);
+        tasks.spawn(async move {
+            let bytes = loading::download(
+                &client,
+                &target,
+                &spec.sha256,
+                Some(spec.byte_length),
+                &cache,
+                &session,
+                Some(index),
+                name,
+                Default::default(),
+            )
+            .await?;
+            Ok((index, bytes))
+        });
+        Ok(())
     };
-    let mut parts = Vec::new();
-    for spec in m.files() {
-        let (url, path) = file(spec)?;
-        parts.push(decode_file(
-            download(&client, &url, &spec.sha256, Some(spec.byte_length), &path).await?,
-            spec,
-        )?);
+    for _ in 0..3 {
+        if let Some((index, spec)) = pending.next() {
+            spawn(&mut tasks, index, spec)?;
+        }
     }
-    decode_mesh(m, parts)
+    let mut compressed: Vec<Option<Vec<u8>>> = (0..specs.len()).map(|_| None).collect();
+    while let Some(result) = tokio::select! { biased;
+        _ = session.cancel.cancelled() => return Err(failed("Loading stopped.")),
+        result = tasks.join_next() => result,
+    } {
+        let (index, bytes) =
+            result.map_err(|_| failed("The town download stopped. Try again."))??;
+        compressed[index] = Some(bytes);
+        if let Some((index, spec)) = pending.next() {
+            spawn(&mut tasks, index, spec)?;
+        }
+    }
+    let raw_total: usize = specs.iter().map(raw_length).sum();
+    let mut raw_done = 0;
+    let mut parts = Vec::new();
+    for (index, spec) in specs.into_iter().enumerate() {
+        session.check()?;
+        session.phase(
+            "Unpacking the town",
+            0.8 + 0.1 * raw_done as f32 / raw_total.max(1) as f32,
+            names[index],
+        );
+        let bytes = compressed[index]
+            .take()
+            .ok_or_else(|| failed("The town files are incomplete."))?;
+        raw_done += raw_length(&spec);
+        let owned = session.clone();
+        parts.push(
+            tokio::task::spawn_blocking(move || {
+                owned.check()?;
+                decode_file(bytes, &spec)
+            })
+            .await
+            .map_err(|_| failed("The town files could not be unpacked."))??,
+        );
+    }
+    session.check()?;
+    let owned = session.clone();
+    let mesh = tokio::task::spawn_blocking(move || {
+        owned.check()?;
+        decode_mesh_inner(m, parts, Some(&owned))
+    })
+    .await
+    .map_err(|_| failed("The town could not finish opening."))??;
+    session.check()?;
+    Ok(mesh)
 }
+#[cfg(test)]
 fn decode_mesh(m: Manifest, parts: Vec<Vec<u8>>) -> Result<Mesh> {
+    decode_mesh_inner(m, parts, None)
+}
+fn decode_mesh_inner(m: Manifest, parts: Vec<Vec<u8>>, progress: Option<&Session>) -> Result<Mesh> {
+    if let Some(progress) = progress {
+        progress.check()?;
+        progress.phase("Preparing models", 0.9, "Buildings");
+    }
     validate_manifest(&m)?;
     if parts.len() != m.files().len() {
         return Err(failed("The town files are incomplete."));
@@ -570,7 +612,15 @@ fn decode_mesh(m: Manifest, parts: Vec<Vec<u8>>) -> Result<Mesh> {
             .into_rgba8();
         (None, image.into_raw(), spec.width, spec.height)
     };
+    if let Some(progress) = progress {
+        progress.check()?;
+        progress.phase("Preparing walking paths", 0.92, "Ground and walls");
+    }
     let collision = Collision::new(&decode_floats(&parts.next().unwrap())?)?;
+    if let Some(progress) = progress {
+        progress.check()?;
+        progress.phase("Opening graphics", 0.94, "");
+    }
     Ok(Mesh {
         vertices,
         indices,
@@ -712,6 +762,7 @@ struct State {
     width: u32,
     height: u32,
     benchmark: Option<Benchmark>,
+    generation: u64,
 }
 #[derive(uniffi::Object)]
 pub struct MedievalTownRenderer {
@@ -719,6 +770,8 @@ pub struct MedievalTownRenderer {
     state: Mutex<State>,
     gpu: Mutex<Option<gpu::Gpu>>,
     loading: AtomicBool,
+    progress: Arc<Progress>,
+    loading_session: Mutex<Option<Session>>,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl MedievalTownRenderer {
@@ -734,41 +787,102 @@ impl MedievalTownRenderer {
                 width: 0,
                 height: 0,
                 benchmark: None,
+                generation: 0,
             }),
             gpu: Mutex::new(None),
             loading: AtomicBool::new(false),
+            progress: Progress::new(),
+            loading_session: Mutex::new(None),
         })
     }
     pub async fn prepare(&self) -> Result<()> {
         if self.loading.swap(true, Ordering::AcqRel) {
             return Err(failed("The town is already loading."));
         }
-        struct LoadingGuard<'a>(&'a AtomicBool);
+        let session = {
+            let mut current = self.loading_session.lock().unwrap();
+            if let Some(old) = current.take() {
+                old.cancel.cancel();
+            }
+            let session = self.progress.begin();
+            *current = Some(session.clone());
+            session
+        };
+        struct LoadingGuard<'a> {
+            loading: &'a AtomicBool,
+            session: Session,
+            completed: bool,
+        }
         impl Drop for LoadingGuard<'_> {
             fn drop(&mut self) {
-                self.0.store(false, Ordering::Release);
+                if !self.completed {
+                    self.session.cancel.cancel();
+                }
+                self.loading.store(false, Ordering::Release);
             }
         }
-        let _loading = LoadingGuard(&self.loading);
-        let result = load(&self.cache).await;
-        let mesh = Arc::new(result?);
+        let mut guard = LoadingGuard {
+            loading: &self.loading,
+            session: session.clone(),
+            completed: false,
+        };
+        let result = load(&self.cache, &session).await;
+        let mesh = match result {
+            Ok(mesh) => Arc::new(mesh),
+            Err(error) => {
+                session.fail(&error.to_string());
+                return Err(error);
+            }
+        };
+        session.check()?;
         let mut state = self.state.lock().unwrap();
+        session.check()?;
         state.camera = Camera::new(mesh.spawn);
         state.mesh = Some(mesh);
+        state.generation = session.generation;
+        guard.completed = true;
         Ok(())
+    }
+    pub fn loading_progress(&self) -> MedievalTownLoadingProgress {
+        self.progress.snapshot()
+    }
+    pub fn cancel_loading(&self) {
+        let current = self.loading_session.lock().unwrap();
+        if let Some(session) = current.as_ref() {
+            session.cancel.cancel();
+        }
+        self.progress.stop();
     }
     pub fn attach(&self, layer: u64, width: u32, height: u32, scale: f32) -> Result<()> {
         let (width, height) = extent(width, height, scale)?;
         let mut state = self.state.lock().unwrap();
+        let session = self
+            .loading_session
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| failed("Wait for the town to finish loading."))?;
+        session.check()?;
         let mesh = state
             .mesh
             .as_ref()
             .ok_or_else(|| failed("Wait for the town to finish loading."))?;
-        let renderer = gpu::Gpu::new(layer, width, height, mesh)?;
+        let renderer = gpu::Gpu::new(layer, width, height, mesh, |stage, fraction| {
+            session.phase(stage, 0.94 + 0.05 * fraction, "")
+        });
+        let renderer = match renderer {
+            Ok(renderer) => renderer,
+            Err(error) => {
+                session.fail(&error.to_string());
+                return Err(error);
+            }
+        };
+        session.check()?;
         *self.gpu.lock().unwrap() = Some(renderer);
         state.width = width;
         state.height = height;
         state.timing = Timing::default();
+        session.phase("Drawing the town", 0.99, "");
         Ok(())
     }
     pub fn resize(&self, width: u32, height: u32, scale: f32) -> Result<()> {
@@ -821,6 +935,9 @@ impl MedievalTownRenderer {
         let Some(gpu) = guard.as_mut() else {
             return Ok(());
         };
+        if gpu.completed() > 0 {
+            self.progress.finish(state.generation);
+        }
         let mut input = (move_x, move_z, look_x, look_y, run, jump);
         if state.benchmark.as_ref().is_some_and(|b| b.done) {
             gpu.poll();

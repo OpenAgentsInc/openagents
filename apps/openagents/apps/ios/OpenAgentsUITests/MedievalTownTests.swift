@@ -22,7 +22,7 @@ final class MedievalTownTests: XCTestCase {
         entry.tap()
 
         let surface = app.otherElements["medieval-town-surface"]
-        XCTAssertTrue(surface.waitForExistence(timeout: 10))
+        XCTAssertTrue(surface.waitForExistence(timeout: 300))
         let metric = app.staticTexts["medieval-town-metrics"]
         try waitForMetrics(metric, timeout: 180) { values in
             (values["ready"] as? Bool) == true && self.number(values, "completedFrames") >= 30
@@ -87,7 +87,7 @@ final class MedievalTownTests: XCTestCase {
         app.launchArguments = ["-demo", "-route", "medieval-town", "-town-bench"]
         app.launch()
         let metric = app.staticTexts["medieval-town-metrics"]
-        XCTAssertTrue(metric.waitForExistence(timeout: 10))
+        XCTAssertTrue(metric.waitForExistence(timeout: 300))
         try waitForMetrics(metric, timeout: 210) { $0["benchmarkComplete"] as? Bool == true }
         let after = try readMetrics(metric)
         saveMetrics(after, name: "native-town-completed-frame-cadence")
@@ -107,7 +107,7 @@ final class MedievalTownTests: XCTestCase {
         app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics"]
         app.launch()
         let metric = app.staticTexts["medieval-town-metrics"]
-        XCTAssertTrue(metric.waitForExistence(timeout: 10))
+        XCTAssertTrue(metric.waitForExistence(timeout: 300))
         try waitForMetrics(metric, timeout: 180) { values in
             values["ready"] as? Bool == true
                 && self.number(values, "completedFrames") >= 60
@@ -142,7 +142,7 @@ final class MedievalTownTests: XCTestCase {
         app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics"]
         app.launch()
         let metric = app.staticTexts["medieval-town-metrics"]
-        XCTAssertTrue(metric.waitForExistence(timeout: 10))
+        XCTAssertTrue(metric.waitForExistence(timeout: 300))
         try waitForMetrics(metric, timeout: 180) { values in
             values["ready"] as? Bool == true
                 && self.number(values, "completedFrames") >= 60
@@ -167,6 +167,98 @@ final class MedievalTownTests: XCTestCase {
         try orientTownCamera(app, metric: metric, yaw: 0, pitch: -0.04)
         try captureTownView(app, metric: metric, name: "arch-steps-look-back")
         app.buttons["medieval-town-close"].tap()
+    }
+
+    func testColdLoadingProgressCanCloseAndReopen() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics", "-town-cold-cache"]
+        app.launch()
+        let details = app.staticTexts["medieval-town-loading-details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.progressIndicators["medieval-town-loading-progress"].exists)
+        XCTAssertTrue(app.buttons["medieval-town-close"].isHittable)
+        XCTAssertFalse(app.otherElements["medieval-town-move"].exists)
+        try waitForMetrics(details, timeout: 180) { values in
+            self.number(values, "totalBytes") > 100_000_000
+                && self.number(values, "completedBytes") > 0
+                && values["finished"] as? Bool == false
+        }
+        let first = try readMetrics(details)
+        saveMetrics(first, name: "native-town-real-cold-progress-first")
+        try waitForMetrics(details, timeout: 90) { values in
+            self.number(values, "completedBytes") > self.number(first, "completedBytes")
+                && values["finished"] as? Bool == false
+        }
+        let advanced = try readMetrics(details)
+        XCTAssertFalse((advanced["stage"] as? String ?? "").isEmpty)
+        XCTAssertFalse((advanced["currentAsset"] as? String ?? "").isEmpty)
+        XCTAssertLessThan(number(advanced, "fraction"), 1)
+        saveMetrics(advanced, name: "native-town-real-cold-progress-advanced")
+        attachScreen(name: "native-town-real-cold-loading")
+
+        app.buttons["medieval-town-close"].tap()
+        let closed = NSPredicate { _, _ in !app.staticTexts["medieval-town-loading-stage"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: closed, object: app)], timeout: 5), .completed)
+        XCTAssertTrue(app.openDrawer())
+        app.buttons["sidebar-medieval-town"].tap()
+        let metric = app.staticTexts["medieval-town-metrics"]
+        var stages = Set([first["stage"] as? String ?? "", advanced["stage"] as? String ?? ""])
+        var samples: [[String: Any]] = [first, advanced]
+        let reopened = NSPredicate { _, _ in
+            if let progress = self.availableMetrics(details), samples.count < 64 {
+                stages.insert(progress["stage"] as? String ?? "")
+                samples.append(progress)
+            }
+            if app.buttons["medieval-town-retry"].exists { return true }
+            return self.availableMetrics(metric).map { self.number($0, "completedFrames") >= 30 } ?? false
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: reopened, object: app)], timeout: 300), .completed)
+        saveMetrics(["stages": stages.sorted(), "samples": samples], name: "native-town-real-cold-loading-stages")
+        XCTAssertFalse(app.buttons["medieval-town-retry"].exists)
+        XCTAssertGreaterThan(stages.filter { !$0.isEmpty }.count, 1)
+        XCTAssertTrue(metric.exists)
+        XCTAssertFalse(app.progressIndicators["medieval-town-loading-progress"].exists)
+        XCTAssertTrue(app.otherElements["medieval-town-move"].exists)
+        let resumed = try readMetrics(metric)
+        XCTAssertGreaterThan(number(resumed, "fps"), 0)
+        XCTAssertGreaterThan(number(resumed, "sceneTriangles"), 4_000_000)
+        saveMetrics(resumed, name: "native-town-interrupted-load-reopened")
+
+        app.buttons["medieval-town-close"].tap()
+        XCTAssertTrue(app.openDrawer())
+        app.buttons["sidebar-medieval-town"].tap()
+        XCTAssertTrue(metric.waitForExistence(timeout: 180))
+        try waitForMetrics(metric, timeout: 20) { self.number($0, "completedFrames") >= 30 }
+        saveMetrics(try readMetrics(metric), name: "native-town-cold-fixture-warm-reopen")
+        app.buttons["medieval-town-close"].tap()
+    }
+
+    /// The first error is a presentation fixture; Retry uses the real loader.
+    func testSyntheticLoadingFailureCanRetry() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics", "-town-load-failure-once"]
+        app.launch()
+        let retry = app.buttons["medieval-town-retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["medieval-town-loading-error"].exists)
+        XCTAssertTrue(app.buttons["medieval-town-close"].isHittable)
+        XCTAssertFalse(app.otherElements["medieval-town-move"].exists)
+        attachScreen(name: "native-town-synthetic-loading-failure")
+        retry.tap()
+        let metric = app.staticTexts["medieval-town-metrics"]
+        XCTAssertTrue(metric.waitForExistence(timeout: 300))
+        try waitForMetrics(metric, timeout: 20) { self.number($0, "completedFrames") >= 30 }
+        XCTAssertFalse(retry.exists)
+        XCTAssertTrue(app.otherElements["medieval-town-move"].exists)
+        saveMetrics(try readMetrics(metric), name: "native-town-real-loader-after-synthetic-failure")
+        app.buttons["medieval-town-close"].tap()
+    }
+
+    private func attachScreen(name: String) {
+        let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        image.name = name
+        image.lifetime = .keepAlways
+        add(image)
     }
 
     private func captureTownView(_ app: XCUIApplication, metric: XCUIElement, name: String) throws {

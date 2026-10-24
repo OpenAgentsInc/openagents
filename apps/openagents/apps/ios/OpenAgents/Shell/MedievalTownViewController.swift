@@ -10,12 +10,14 @@ final class MedievalTownViewController: UIViewController {
     private let status = UILabel()
     private var statusWidth: NSLayoutConstraint?
     private var statusHeight: NSLayoutConstraint?
-    private let retry = UIButton(type: .system)
+    private let loading = MedievalTownLoadingView()
+    private var retry: UIButton { loading.retry }
     private let sprint = UIButton(type: .system)
     private let jump = UIButton(type: .system)
     private let renderQueue = DispatchQueue(label: "com.openagents.medieval-town.render", qos: .userInteractive)
     private var renderer: MedievalTownRenderer?
     private var loadTask: Task<Void, Never>?
+    private var loadingTimer: Timer?
     private var displayLink: CADisplayLink?
     private var inFlight = false
     private var visible = false
@@ -23,6 +25,9 @@ final class MedievalTownViewController: UIViewController {
     private var attached = false
     private var prepared = false
     private var attaching = false
+    private var loadFailed = false
+    private var firstFrameShown = false
+    private var failureFixtureUsed = false
     private var generation = 0
     private var lastMetricsTime: CFTimeInterval = 0
     private var lastSize = CGSize.zero
@@ -35,6 +40,14 @@ final class MedievalTownViewController: UIViewController {
         || ProcessInfo.processInfo.arguments.contains("-town-bench")
         || ProcessInfo.processInfo.arguments.contains("-town-metrics")
     private var benchmarkSaved = false
+    private static let coldCacheSession = UUID().uuidString
+    private lazy var cachePath: String = {
+        let arguments = ProcessInfo.processInfo.arguments
+        let cold = arguments.contains("-demo") && arguments.contains("-town-cold-cache")
+        let name = cold ? "medieval-town-test-\(Self.coldCacheSession)" : "medieval-town"
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(name, isDirectory: true).path
+    }()
 
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
@@ -65,6 +78,14 @@ final class MedievalTownViewController: UIViewController {
             look.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             look.topAnchor.constraint(equalTo: view.topAnchor),
             look.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        loading.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(loading)
+        NSLayoutConstraint.activate([
+            loading.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            loading.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            loading.topAnchor.constraint(equalTo: view.topAnchor),
+            loading.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
         let close = UIButton(type: .system)
@@ -106,7 +127,7 @@ final class MedievalTownViewController: UIViewController {
         configureButton(jump)
         move.accessibilityIdentifier = "medieval-town-move"
         move.accessibilityLabel = "Move"
-        [close, status, retry, move, sprint, jump].forEach {
+        [close, status, move, sprint, jump].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview($0)
         }
@@ -124,10 +145,6 @@ final class MedievalTownViewController: UIViewController {
             status.topAnchor.constraint(equalTo: safe.topAnchor, constant: 10),
             statusWidth,
             statusHeight,
-            retry.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
-            retry.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 10),
-            retry.widthAnchor.constraint(equalToConstant: 120),
-            retry.heightAnchor.constraint(equalToConstant: 44),
             move.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 22),
             move.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -22),
             move.widthAnchor.constraint(equalToConstant: 124),
@@ -141,6 +158,7 @@ final class MedievalTownViewController: UIViewController {
             sprint.widthAnchor.constraint(equalToConstant: 58),
             sprint.heightAnchor.constraint(equalToConstant: 44),
         ])
+        setPlayable(false)
         let center = NotificationCenter.default
         observers = [
             center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -183,7 +201,9 @@ final class MedievalTownViewController: UIViewController {
 
     deinit {
         displayLink?.invalidate()
+        renderer?.cancelLoading()
         loadTask?.cancel()
+        loadingTimer?.invalidate()
         observers.forEach(NotificationCenter.default.removeObserver)
         if let town = renderer {
             let layer = surface.metalLayer
@@ -206,17 +226,23 @@ final class MedievalTownViewController: UIViewController {
     private func loadTown() {
         guard visible else { return }
         stopTown()
-        statusWidth?.constant = 160
-        statusHeight?.constant = 40
-        status.text = "Opening Medieval Town…"
-        status.accessibilityValue = "Opening Medieval Town."
+        loadFailed = false
+        firstFrameShown = false
+        loading.reset()
+        setPlayable(false)
         retry.isHidden = true
-        let path = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("medieval-town", isDirectory: true).path
-        let town = MedievalTownRenderer(cacheDirectory: path)
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-demo"), arguments.contains("-town-load-failure-once"), !failureFixtureUsed {
+            failureFixtureUsed = true
+            let current = generation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.showFailure(generation: current) }
+            return
+        }
+        let town = MedievalTownRenderer(cacheDirectory: cachePath)
         renderer = town
         benchmarkSaved = false
         let current = generation
+        startLoadingTimer()
         loadTask = Task { [weak self] in
             do {
                 try await town.prepare()
@@ -232,7 +258,7 @@ final class MedievalTownViewController: UIViewController {
     }
 
     private func attachIfNeeded() {
-        guard visible, foreground, prepared, !attached, !attaching, let town = renderer else { return }
+        guard visible, foreground, prepared, !attached, !attaching, !loadFailed, let town = renderer else { return }
         attaching = true
         view.layoutIfNeeded()
         let size = surface.drawableSize
@@ -271,8 +297,11 @@ final class MedievalTownViewController: UIViewController {
 
     private func stopTown() {
         generation += 1
+        renderer?.cancelLoading()
         loadTask?.cancel()
         loadTask = nil
+        loadingTimer?.invalidate()
+        loadingTimer = nil
         displayLink?.invalidate()
         displayLink = nil
         attached = false
@@ -295,12 +324,13 @@ final class MedievalTownViewController: UIViewController {
 
     private func showFailure(generation current: Int) {
         guard current == generation else { return }
+        loadFailed = true
+        loadingTimer?.invalidate()
+        loadingTimer = nil
         displayLink?.isPaused = true
         if let town = renderer { renderQueue.async { town.setActive(active: false) } }
-        statusWidth?.constant = 160
-        statusHeight?.constant = 40
-        status.text = "Couldn't open the town."
-        status.accessibilityValue = "Couldn't open the town."
+        setPlayable(false)
+        loading.showFailure(renderer?.loadingProgress(), diagnostics: diagnosticMetrics)
         retry.isHidden = false
     }
 
@@ -313,12 +343,49 @@ final class MedievalTownViewController: UIViewController {
     }
 
     private func updateActive() {
+        if visible && foreground && !firstFrameShown && !loadFailed { startLoadingTimer() }
+        else if !visible || !foreground {
+            loadingTimer?.invalidate()
+            loadingTimer = nil
+        }
         attachIfNeeded()
         if visible && foreground && attached { resizeSurface() }
-        let active = visible && foreground && attached
+        let active = visible && foreground && attached && !loadFailed
         displayLink?.isPaused = !active
         if !active { resetInput() }
         if let town = renderer { renderQueue.async { town.setActive(active: active) } }
+    }
+
+    private func startLoadingTimer() {
+        guard loadingTimer == nil, !firstFrameShown, !loadFailed, let town = renderer else { return }
+        let current = generation
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            guard let self, current == generation, visible, foreground else { return }
+            showLoading(town.loadingProgress())
+        }
+        loadingTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        showLoading(town.loadingProgress())
+    }
+
+    private func showLoading(_ progress: MedievalTownLoadingProgress) {
+        guard !loadFailed else { return }
+        loading.update(progress, diagnostics: diagnosticMetrics)
+        if progress.error != nil {
+            showFailure(generation: generation)
+        } else if progress.finished {
+            firstFrameShown = true
+            loadingTimer?.invalidate()
+            loadingTimer = nil
+            setPlayable(true)
+        }
+    }
+
+    private func setPlayable(_ playable: Bool) {
+        loading.isHidden = playable
+        [look, move, sprint, jump, status].forEach { $0.isHidden = !playable }
+        surface.isAccessibilityElement = playable
+        if !playable { resetInput() }
     }
 
     private func resizeSurface() {
@@ -410,6 +477,153 @@ final class MedievalTownViewController: UIViewController {
 
 private func logMedievalTownFailure(_ error: Error, stage: String) {
     NSLog("Medieval Town %@ failed: %@", stage, String(error.localizedDescription.prefix(512)))
+}
+
+private final class MedievalTownLoadingView: UIView {
+    let retry = UIButton(type: .system)
+    private let background = CAGradientLayer()
+    private let step = UILabel()
+    private let asset = UILabel()
+    private let details = UILabel()
+    private let percent = UILabel()
+    private let bar = UIProgressView(progressViewStyle: .default)
+    private let error = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        accessibilityIdentifier = "medieval-town-loading"
+        background.colors = [UIColor(red: 0.15, green: 0.23, blue: 0.28, alpha: 1).cgColor,
+                             UIColor(red: 0.28, green: 0.32, blue: 0.36, alpha: 1).cgColor]
+        background.startPoint = CGPoint(x: 0, y: 0)
+        background.endPoint = CGPoint(x: 1, y: 1)
+        layer.insertSublayer(background, at: 0)
+        let panel = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterialDark))
+        panel.layer.cornerRadius = 24
+        panel.clipsToBounds = true
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(panel)
+        let title = UILabel()
+        title.text = "Medieval Town"
+        title.font = .preferredFont(forTextStyle: .title2)
+        title.textColor = .white
+        title.adjustsFontForContentSizeCategory = true
+        title.accessibilityTraits = .header
+        title.textAlignment = .center
+        [step, asset, details, percent, error].forEach {
+            $0.textColor = .white
+            $0.textAlignment = .center
+            $0.numberOfLines = 0
+            $0.adjustsFontForContentSizeCategory = true
+            $0.font = .preferredFont(forTextStyle: .subheadline)
+        }
+        details.font = .preferredFont(forTextStyle: .caption1)
+        details.textColor = UIColor.white.withAlphaComponent(0.8)
+        percent.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
+        step.accessibilityIdentifier = "medieval-town-loading-stage"
+        asset.accessibilityIdentifier = "medieval-town-loading-asset"
+        details.accessibilityIdentifier = "medieval-town-loading-details"
+        percent.accessibilityIdentifier = "medieval-town-loading-percent"
+        bar.accessibilityIdentifier = "medieval-town-loading-progress"
+        error.accessibilityIdentifier = "medieval-town-loading-error"
+        bar.progressTintColor = UIColor(red: 0.59, green: 0.83, blue: 0.75, alpha: 1)
+        bar.trackTintColor = UIColor.white.withAlphaComponent(0.18)
+        let stack = UIStackView(arrangedSubviews: [title, step, asset, bar, percent, details, error, retry])
+        stack.axis = .vertical
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let scroll = UIScrollView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        panel.contentView.addSubview(scroll)
+        scroll.addSubview(stack)
+        let panelWidth = panel.widthAnchor.constraint(equalToConstant: 360)
+        panelWidth.priority = .defaultHigh
+        let panelHeight = panel.heightAnchor.constraint(equalTo: stack.heightAnchor, constant: 48)
+        panelHeight.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            panel.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor),
+            panel.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.centerYAnchor),
+            panel.widthAnchor.constraint(lessThanOrEqualTo: safeAreaLayoutGuide.widthAnchor, constant: -40),
+            panelWidth,
+            panelHeight,
+            panel.heightAnchor.constraint(lessThanOrEqualTo: safeAreaLayoutGuide.heightAnchor, constant: -24),
+            scroll.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: panel.contentView.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor),
+            stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -48),
+            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -24),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 24),
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24),
+            bar.heightAnchor.constraint(equalToConstant: 6),
+            retry.heightAnchor.constraint(equalToConstant: 44),
+        ])
+        reset()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        background.frame = bounds
+    }
+
+    func reset() {
+        step.text = "Checking saved files"
+        asset.text = nil
+        asset.isHidden = true
+        details.text = "Getting the town ready"
+        details.accessibilityValue = nil
+        percent.text = "0%"
+        percent.isHidden = false
+        bar.progress = 0
+        bar.isHidden = false
+        details.isHidden = false
+        error.isHidden = true
+        retry.isHidden = true
+    }
+
+    func update(_ progress: MedievalTownLoadingProgress, diagnostics: Bool) {
+        let fraction = progress.fraction.isFinite ? max(0, min(progress.finished ? 1 : 0.99, progress.fraction)) : 0
+        let percentage = Int(fraction * 100)
+        step.text = progress.stage.isEmpty ? "Getting the town ready" : progress.stage
+        asset.text = progress.currentAsset
+        asset.isHidden = progress.currentAsset.isEmpty
+        percent.text = "\(percentage)%"
+        bar.setProgress(fraction, animated: true)
+        bar.accessibilityValue = "\(percentage) percent"
+        var lines: [String] = []
+        if progress.totalBytes > 0 {
+            let done = ByteCountFormatter.string(fromByteCount: Int64(clamping: progress.completedBytes), countStyle: .file)
+            let total = ByteCountFormatter.string(fromByteCount: Int64(clamping: progress.totalBytes), countStyle: .file)
+            lines.append("\(done) of \(total)")
+        } else if progress.completedBytes > 0 {
+            let done = ByteCountFormatter.string(fromByteCount: Int64(clamping: progress.completedBytes), countStyle: .file)
+            lines.append("\(done) received")
+        }
+        if progress.totalFiles > 0 { lines.append("\(progress.completedFiles) of \(progress.totalFiles) files") }
+        details.text = lines.isEmpty ? "Getting the town ready" : lines.joined(separator: " · ")
+        if diagnostics {
+            let values: [String: Any] = ["stage": progress.stage, "fraction": fraction,
+                "completedBytes": progress.completedBytes, "totalBytes": progress.totalBytes,
+                "completedFiles": progress.completedFiles, "totalFiles": progress.totalFiles,
+                "currentAsset": progress.currentAsset, "finished": progress.finished,
+                "failed": progress.error != nil]
+            if let data = try? JSONSerialization.data(withJSONObject: values, options: [.sortedKeys]) {
+                details.accessibilityValue = String(data: data, encoding: .utf8)
+            }
+        } else { details.accessibilityValue = nil }
+    }
+
+    func showFailure(_ progress: MedievalTownLoadingProgress?, diagnostics: Bool) {
+        if let progress { update(progress, diagnostics: diagnostics) }
+        step.text = "Loading stopped"
+        error.text = progress?.error ?? "Couldn't open the town. Try again."
+        percent.isHidden = true
+        bar.isHidden = true
+        error.isHidden = false
+        retry.isHidden = false
+    }
 }
 
 private final class MedievalTownMetalView: UIView {

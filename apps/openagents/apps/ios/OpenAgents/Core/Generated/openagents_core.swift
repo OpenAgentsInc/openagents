@@ -12620,9 +12620,13 @@ public protocol MedievalTownRendererProtocol: AnyObject, Sendable {
     
     func beginBenchmark() 
     
+    func cancelLoading() 
+    
     func detach() 
     
     func frame(timestamp: Double, moveX: Float, moveZ: Float, lookX: Float, lookY: Float, run: Bool, jump: Bool) throws 
+    
+    func loadingProgress()  -> MedievalTownLoadingProgress
     
     func metrics()  -> String
     
@@ -12717,6 +12721,14 @@ open func beginBenchmark()  {try! rustCall() {
 }
 }
     
+open func cancelLoading()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_cancel_loading(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
 open func detach()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_medievaltownrenderer_detach(
@@ -12738,6 +12750,15 @@ open func frame(timestamp: Double, moveX: Float, moveZ: Float, lookX: Float, loo
         FfiConverterBool.lower(jump),uniffiCallStatus
     )
 }
+}
+    
+open func loadingProgress() -> MedievalTownLoadingProgress  {
+    return try!  FfiConverterTypeMedievalTownLoadingProgress_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_loading_progress(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 open func metrics() -> String  {
@@ -21708,6 +21729,88 @@ public func FfiConverterTypeLiveStatus_lift(_ buf: RustBuffer) throws -> LiveSta
 #endif
 public func FfiConverterTypeLiveStatus_lower(_ value: LiveStatus) -> RustBuffer {
     return FfiConverterTypeLiveStatus.lower(value)
+}
+
+
+public struct MedievalTownLoadingProgress: Equatable, Hashable {
+    public var stage: String
+    public var fraction: Float
+    public var completedBytes: UInt64
+    public var totalBytes: UInt64
+    public var completedFiles: UInt32
+    public var totalFiles: UInt32
+    public var currentAsset: String
+    public var error: String?
+    public var finished: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(stage: String, fraction: Float, completedBytes: UInt64, totalBytes: UInt64, completedFiles: UInt32, totalFiles: UInt32, currentAsset: String, error: String?, finished: Bool) {
+        self.stage = stage
+        self.fraction = fraction
+        self.completedBytes = completedBytes
+        self.totalBytes = totalBytes
+        self.completedFiles = completedFiles
+        self.totalFiles = totalFiles
+        self.currentAsset = currentAsset
+        self.error = error
+        self.finished = finished
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MedievalTownLoadingProgress: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMedievalTownLoadingProgress: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MedievalTownLoadingProgress {
+        return
+            try MedievalTownLoadingProgress(
+                stage: FfiConverterString.read(from: &buf), 
+                fraction: FfiConverterFloat.read(from: &buf), 
+                completedBytes: FfiConverterUInt64.read(from: &buf), 
+                totalBytes: FfiConverterUInt64.read(from: &buf), 
+                completedFiles: FfiConverterUInt32.read(from: &buf), 
+                totalFiles: FfiConverterUInt32.read(from: &buf), 
+                currentAsset: FfiConverterString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf), 
+                finished: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MedievalTownLoadingProgress, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.stage, into: &buf)
+        FfiConverterFloat.write(value.fraction, into: &buf)
+        FfiConverterUInt64.write(value.completedBytes, into: &buf)
+        FfiConverterUInt64.write(value.totalBytes, into: &buf)
+        FfiConverterUInt32.write(value.completedFiles, into: &buf)
+        FfiConverterUInt32.write(value.totalFiles, into: &buf)
+        FfiConverterString.write(value.currentAsset, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterBool.write(value.finished, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMedievalTownLoadingProgress_lift(_ buf: RustBuffer) throws -> MedievalTownLoadingProgress {
+    return try FfiConverterTypeMedievalTownLoadingProgress.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMedievalTownLoadingProgress_lower(_ value: MedievalTownLoadingProgress) -> RustBuffer {
+    return FfiConverterTypeMedievalTownLoadingProgress.lower(value)
 }
 
 
@@ -39600,10 +39703,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_begin_benchmark() != 64463) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_cancel_loading() != 26836) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_detach() != 58514) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_frame() != 27745) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_loading_progress() != 21240) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_metrics() != 3761) {

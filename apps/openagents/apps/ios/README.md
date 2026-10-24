@@ -105,20 +105,28 @@ Collision follows solid scene geometry across the full town, including open
 arches and steps. The scene has no artificial walking boundary. Its first visit
 downloads about 124 MB; later visits use a verified local cache.
 
+The loading screen shows the current item, byte and file counts, unpacking,
+and graphics setup until the first frame appears. Close cancels loading;
+Try again keeps completed downloads. Three downloads run at once, and unchanged
+files are reused across scene updates, including files saved by earlier builds.
+
 `-demo -route medieval-town -town-bench` runs an offline-account simulator
 check against the real scene download: five seconds of warm-up, then 30
 seconds of movement and camera turns. Completed GPU frames and frame timing
 are saved to `Documents/medieval-town-benchmark.json`.
 
-The build 1021 Release check on the iPhone 17 simulator (iOS 26.5, M5 Max)
-completed 1,800 GPU frames in 30 seconds: 60.0 FPS, a 16.72 ms 95th-percentile
-frame interval, and no intervals over 25 ms. The camera moved 21.76 m and turned
+The build 1022 Release check on the iPhone 17 simulator (iOS 26.5, M5 Max)
+completed 1,800 GPU frames in 30 seconds: 60.0 FPS, a 16.77 ms 95th-percentile
+frame interval, and two intervals over 25 ms. The camera moved 21.76 m and turned
 through a scene with 4.33 million placed triangles and 103 material layers.
-The native process used 422 MB after loading and peaked at 679 MB while loading.
+The native process used 422 MB after loading and peaked at 660 MB while loading.
 Touch controls walked 30.9 m through the arch and stairs without jumping and
-beyond the former movement boundary. Three UI checks cover that passage,
-completed frames, movement, look, and background/resume. Six focused Rust checks
-cover stairs, headroom, solid walls, package limits, and actual town routes.
+beyond the former movement boundary. Five UI checks cover that passage,
+completed frames, movement, look, background/resume, actual cold-load progress,
+closing and reopening during loading, and a synthetic failure followed by a
+real retry. Five focused Rust checks cover streaming, verified cache reuse,
+bad and truncated downloads, cancellation, and stale progress. Two GPU helper
+checks cover upload batches and byte accounting.
 These are simulator measurements; physical-device performance has not been measured.
 
 ## Launch arguments

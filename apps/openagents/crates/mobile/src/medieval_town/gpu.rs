@@ -58,7 +58,22 @@ pub(super) struct Gpu {
     error: Arc<Mutex<Option<String>>>,
 }
 impl Gpu {
-    pub fn new(layer: u64, width: u32, height: u32, mesh: &Mesh) -> Result<Self> {
+    pub fn new(
+        layer: u64,
+        width: u32,
+        height: u32,
+        mesh: &Mesh,
+        progress: impl Fn(&'static str, f32),
+    ) -> Result<Self> {
+        let started = Instant::now();
+        let phase = |stage: &'static str, fraction: f32| {
+            eprintln!(
+                "Medieval Town graphics: {stage}; elapsed={:.3}s",
+                started.elapsed().as_secs_f64()
+            );
+            progress(stage, fraction);
+        };
+        phase("Opening graphics", 0.);
         #[cfg(not(target_vendor = "apple"))]
         {
             let _ = (layer, width, height, mesh);
@@ -134,6 +149,7 @@ impl Gpu {
                 view_formats: vec![],
             };
             surface.configure(&device, &config);
+            phase("Loading models", 0.08);
             let expanded;
             let vertex_data = if mesh.vertex_stride == 32 {
                 expanded = expand_legacy_vertices(&mesh.vertices);
@@ -151,7 +167,11 @@ impl Gpu {
                 contents: bytemuck::cast_slice(&mesh.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
+            phase("Loading textures", 0.2);
             let (base_view, normal_view, mra_view) = if let Some(arrays) = &mesh.texture_arrays {
+                let total = arrays.base_color.bytes.len()
+                    + arrays.normal.bytes.len()
+                    + arrays.mra.bytes.len();
                 (
                     upload_array(
                         &device,
@@ -160,6 +180,9 @@ impl Gpu {
                         &arrays.base_color,
                         wgpu::TextureFormat::Rgba8UnormSrgb,
                         4,
+                        |bytes| {
+                            phase("Loading textures", texture_progress(bytes, total));
+                        },
                     ),
                     upload_array(
                         &device,
@@ -168,6 +191,12 @@ impl Gpu {
                         &arrays.normal,
                         wgpu::TextureFormat::Rg8Unorm,
                         2,
+                        |bytes| {
+                            phase(
+                                "Loading textures",
+                                texture_progress(arrays.base_color.bytes.len() + bytes, total),
+                            );
+                        },
                     ),
                     upload_array(
                         &device,
@@ -176,6 +205,17 @@ impl Gpu {
                         &arrays.mra,
                         wgpu::TextureFormat::Rgba8Unorm,
                         4,
+                        |bytes| {
+                            phase(
+                                "Loading textures",
+                                texture_progress(
+                                    arrays.base_color.bytes.len()
+                                        + arrays.normal.bytes.len()
+                                        + bytes,
+                                    total,
+                                ),
+                            );
+                        },
                     ),
                 )
             } else {
@@ -200,6 +240,7 @@ impl Gpu {
                     layers: 1,
                     mip_count: 1,
                 };
+                let total = atlas.bytes.len() + normal.bytes.len() + mra.bytes.len();
                 (
                     upload_array(
                         &device,
@@ -208,6 +249,7 @@ impl Gpu {
                         &atlas,
                         wgpu::TextureFormat::Rgba8UnormSrgb,
                         4,
+                        |bytes| phase("Loading textures", texture_progress(bytes, total)),
                     ),
                     upload_array(
                         &device,
@@ -216,6 +258,12 @@ impl Gpu {
                         &normal,
                         wgpu::TextureFormat::Rg8Unorm,
                         2,
+                        |bytes| {
+                            phase(
+                                "Loading textures",
+                                texture_progress(atlas.bytes.len() + bytes, total),
+                            );
+                        },
                     ),
                     upload_array(
                         &device,
@@ -224,9 +272,19 @@ impl Gpu {
                         &mra,
                         wgpu::TextureFormat::Rgba8Unorm,
                         4,
+                        |bytes| {
+                            phase(
+                                "Loading textures",
+                                texture_progress(
+                                    atlas.bytes.len() + normal.bytes.len() + bytes,
+                                    total,
+                                ),
+                            );
+                        },
                     ),
                 )
             };
+            phase("Preparing materials", 0.65);
             let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("Town anisotropic material filtering"),
                 address_mode_u: wgpu::AddressMode::Repeat,
@@ -391,6 +449,7 @@ impl Gpu {
                     group
                 })
                 .collect();
+            phase("Preparing sunlight", 0.75);
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
                 bind_group_layouts: &[Some(&globals), Some(&local)],
@@ -493,9 +552,13 @@ impl Gpu {
                 shadow_pipeline("nearShadowVertex"),
                 shadow_pipeline("farShadowVertex"),
             ];
+            phase("Preparing sunlight", 0.84);
             let world = pipeline(false);
+            phase("Preparing sunlight", 0.92);
             let sky = pipeline(true);
+            phase("Drawing the town", 0.98);
             let depth = make_depth(&device, width, height);
+            phase("Drawing the town", 1.);
             Ok(Self {
                 surface,
                 device,
@@ -841,6 +904,7 @@ fn upload_array(
     array: &super::TextureArray,
     format: wgpu::TextureFormat,
     channels: u32,
+    progress: impl Fn(usize),
 ) -> wgpu::TextureView {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
@@ -861,31 +925,90 @@ fn upload_array(
         let width = (array.width >> mip).max(1);
         let height = (array.height >> mip).max(1);
         let length = (width * height * array.layers * channels) as usize;
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: mip,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &array.bytes[offset..offset + length],
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width * channels),
-                rows_per_image: Some(height),
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: array.layers,
-            },
-        );
+        for slab in texture_slabs(width, height, array.layers, channels) {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: mip,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: slab.first_row,
+                        z: slab.first_layer,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &array.bytes[offset + slab.offset..offset + slab.offset + slab.bytes],
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * channels),
+                    rows_per_image: Some(slab.rows),
+                },
+                wgpu::Extent3d {
+                    width,
+                    height: slab.rows,
+                    depth_or_array_layers: slab.layers,
+                },
+            );
+            // Queue writes otherwise retain every staging allocation until the
+            // first frame. Start bounded transfers while the CPU prepares more.
+            queue.submit([]);
+            let _ = device.poll(wgpu::PollType::Poll);
+            progress(offset + slab.offset + slab.bytes);
+        }
         offset += length;
     }
     texture.create_view(&wgpu::TextureViewDescriptor {
         dimension: Some(wgpu::TextureViewDimension::D2Array),
         ..Default::default()
     })
+}
+const TEXTURE_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
+#[derive(Debug)]
+struct TextureSlab {
+    offset: usize,
+    bytes: usize,
+    first_layer: u32,
+    layers: u32,
+    first_row: u32,
+    rows: u32,
+}
+fn texture_slabs(width: u32, height: u32, layers: u32, channels: u32) -> Vec<TextureSlab> {
+    let row_bytes = (width * channels) as usize;
+    let layer_bytes = row_bytes * height as usize;
+    let mut slabs = Vec::new();
+    if layer_bytes <= TEXTURE_UPLOAD_BYTES {
+        let per_slab = (TEXTURE_UPLOAD_BYTES / layer_bytes) as u32;
+        for first_layer in (0..layers).step_by(per_slab as usize) {
+            let count = per_slab.min(layers - first_layer);
+            slabs.push(TextureSlab {
+                offset: first_layer as usize * layer_bytes,
+                bytes: count as usize * layer_bytes,
+                first_layer,
+                layers: count,
+                first_row: 0,
+                rows: height,
+            });
+        }
+    } else {
+        let per_slab = (TEXTURE_UPLOAD_BYTES / row_bytes).max(1) as u32;
+        for first_layer in 0..layers {
+            for first_row in (0..height).step_by(per_slab as usize) {
+                let rows = per_slab.min(height - first_row);
+                slabs.push(TextureSlab {
+                    offset: first_layer as usize * layer_bytes + first_row as usize * row_bytes,
+                    bytes: rows as usize * row_bytes,
+                    first_layer,
+                    layers: 1,
+                    first_row,
+                    rows,
+                });
+            }
+        }
+    }
+    slabs
+}
+fn texture_progress(bytes: usize, total: usize) -> f32 {
+    0.2 + 0.45 * (bytes as f64 / total.max(1) as f64).clamp(0., 1.) as f32
 }
 fn make_shadow(device: &wgpu::Device, resolution: u32, label: &str) -> wgpu::TextureView {
     device
@@ -941,6 +1064,49 @@ fn shadow_matrices(eye: Vec3, spawn: Vec3, sun: Vec3) -> [Mat4; 2] {
 #[cfg(test)]
 mod shader_tests {
     use super::*;
+    #[test]
+    fn texture_slabs_cover_every_mip_layer_and_tail_without_pixel_changes() {
+        for (size, layers, channels) in
+            [(512u32, 103, 4), (256, 103, 2), (256, 103, 4), (2048, 1, 4)]
+        {
+            for mip in 0..=size.ilog2() {
+                let size = (size >> mip).max(1);
+                let mut covered = 0;
+                for slab in texture_slabs(size, size, layers, channels) {
+                    assert_eq!(slab.offset, covered);
+                    assert!(slab.bytes > 0 && slab.bytes <= TEXTURE_UPLOAD_BYTES);
+                    assert!(slab.first_layer + slab.layers <= layers);
+                    assert!(slab.first_row + slab.rows <= size);
+                    assert_eq!(
+                        slab.bytes,
+                        (size * slab.rows * slab.layers * channels) as usize
+                    );
+                    assert!(slab.layers == 1 || (slab.first_row == 0 && slab.rows == size));
+                    assert_eq!(
+                        slab.offset,
+                        ((slab.first_layer * size * size + slab.first_row * size) * channels)
+                            as usize
+                    );
+                    covered += slab.bytes;
+                }
+                assert_eq!(covered, (size * size * layers * channels) as usize);
+            }
+        }
+    }
+    #[test]
+    fn texture_progress_counts_all_material_bytes_and_stays_in_its_phase() {
+        let base = 144_004_300;
+        let normal = 18_000_486;
+        let mra = 36_000_972;
+        let total = base + normal + mra;
+        let samples = [0, base / 2, base, base + normal, total, total + 1]
+            .map(|bytes| texture_progress(bytes, total));
+        assert!(samples.windows(2).all(|values| values[0] <= values[1]));
+        assert!((samples[0] - 0.2).abs() < 0.0001);
+        assert!((samples[4] - 0.65).abs() < 0.0001);
+        assert_eq!(samples[4], samples[5]);
+        assert!((0.2..=0.65).contains(&texture_progress(0, 0)));
+    }
     #[test]
     fn shader_uniform_offsets_match_native_buffers() {
         let module = naga::front::wgsl::parse_str(include_str!("town.wgsl")).unwrap();
