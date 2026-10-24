@@ -385,5 +385,303 @@
         }
       }
     }
+  },
+  {
+    "name": "select whose value is not an option",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "select",
+          "label": "S",
+          "value": "x",
+          "options": [
+            {
+              "value": "a",
+              "label": "A"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "select with no options",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "select",
+          "label": "S",
+          "value": "a",
+          "options": []
+        }
+      }
+    }
+  },
+  {
+    "name": "select with a repeated option",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "select",
+          "label": "S",
+          "value": "a",
+          "options": [
+            {
+              "value": "a",
+              "label": "A"
+            },
+            {
+              "value": "a",
+              "label": "Again"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "select option without a label",
+    "error": "missing_label",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "select",
+          "label": "S",
+          "value": "a",
+          "options": [
+            {
+              "value": "a",
+              "label": " "
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "checkbox without a label",
+    "error": "missing_label",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "checkbox",
+          "label": "",
+          "checked": false
+        }
+      }
+    }
+  },
+  {
+    "name": "range with min above max",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "range",
+          "label": "R",
+          "value": 1,
+          "min": 5,
+          "max": 1,
+          "step": 1
+        }
+      }
+    }
+  },
+  {
+    "name": "range with a zero step",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "range",
+          "label": "R",
+          "value": 1,
+          "min": 0,
+          "max": 5,
+          "step": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "range value outside its bounds",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "range",
+          "label": "R",
+          "value": 9,
+          "min": 0,
+          "max": 5,
+          "step": 1
+        }
+      }
+    }
+  },
+  {
+    "name": "color that is not #rrggbb",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "color",
+          "label": "C",
+          "value": "#FFF"
+        }
+      }
+    }
+  },
+  {
+    "name": "file with a path as its slot",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "file",
+          "label": "F",
+          "slot": "a/b",
+          "max_bytes": 10
+        }
+      }
+    }
+  },
+  {
+    "name": "file with no size limit",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "file",
+          "label": "F",
+          "slot": "f",
+          "max_bytes": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "file over the upload limit",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "file",
+          "label": "F",
+          "slot": "f",
+          "max_bytes": 33554433
+        }
+      }
+    }
+  },
+  {
+    "name": "file accepting a script tag",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "file",
+          "label": "F",
+          "slot": "f",
+          "accept": [
+            "<script>"
+          ],
+          "max_bytes": 10
+        }
+      }
+    }
+  },
+  {
+    "name": "canvas wider than the limit",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "canvas",
+          "surface": "c",
+          "label": "C",
+          "width": 5000,
+          "height": 10
+        }
+      }
+    }
+  },
+  {
+    "name": "canvas with no height",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "canvas",
+          "surface": "c",
+          "label": "C",
+          "width": 10,
+          "height": 0
+        }
+      }
+    }
   }
 ]

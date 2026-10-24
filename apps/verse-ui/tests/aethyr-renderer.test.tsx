@@ -103,6 +103,11 @@ async function layout(width: number) {
       "dialog",
       "media_slot",
       "engine_surface",
+      "select",
+      "range",
+      "color",
+      "file",
+      "canvas",
     ]);
     return [...document.querySelectorAll<HTMLElement>("[data-aethyr-id]")].map(
       (el) => {
@@ -154,6 +159,90 @@ for (const kind of ELEMENT_KINDS)
     );
     assert.equal(new Set(ids).size, ids.length);
   });
+
+test("form controls send typed values; files go to the host, not the intent", async () => {
+  const select = fixture("select");
+  assert.deepEqual(
+    strip(
+      await intentsAfter(select, async () => {
+        await page.getByLabel("Style").selectOption("bold-fantasy");
+      }),
+    ),
+    [{ node: "select-style", kind: "select", value: "bold-fantasy" }],
+  );
+  // A disabled select is disabled in the DOM.
+  assert.ok(await page.getByLabel("Who can play").isDisabled());
+
+  const checkbox = fixture("checkbox");
+  assert.deepEqual(
+    strip(
+      await intentsAfter(checkbox, async () => {
+        await page.getByLabel("Advancing day and night").click();
+      }),
+    ),
+    [{ node: "checkbox-cycle", kind: "input", value: "false" }],
+  );
+  // Nothing answered, so the tree's value stands.
+  assert.ok(await page.getByLabel("Advancing day and night").isChecked());
+
+  const range = fixture("range");
+  assert.deepEqual(
+    strip(
+      await intentsAfter(range, async () => {
+        await page.getByLabel("Brush size").fill("12");
+      }),
+    ),
+    [{ node: "range-size", kind: "input", value: "12" }],
+  );
+
+  const color = fixture("color");
+  assert.deepEqual(
+    strip(
+      await intentsAfter(color, async () => {
+        await page.getByLabel("Paint color").fill("#FF8800");
+      }),
+    ),
+    [{ node: "color-paint", kind: "input", value: "#ff8800" }],
+  );
+
+  const file = fixture("file");
+  await page.evaluate(() => (window.harness.trail.length = 0));
+  const intents = await intentsAfter(file, async () => {
+    const face = page.getByLabel("Open an exported face-layer file");
+    // Too large: turned away, nothing reaches the host or the controller.
+    await face.setInputFiles({
+      name: "big.json",
+      mimeType: "application/json",
+      buffer: Buffer.alloc(1048577),
+    });
+    await page.getByRole("alert").waitFor();
+    // The wrong type: turned away too.
+    await face.setInputFiles({
+      name: "face.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("png"),
+    });
+    await face.setInputFiles({
+      name: "face-layers.json",
+      mimeType: "application/json",
+      buffer: Buffer.from("{}"),
+    });
+  });
+  assert.deepEqual(strip(intents), [
+    { node: "file-face", kind: "input", value: "face-layers.json" },
+  ]);
+  assert.deepEqual(await page.evaluate(() => window.harness.trail.slice()), [
+    "files face-import face-layers.json:2",
+  ]);
+  assert.equal(await page.getByRole("alert").count(), 0);
+
+  // The host's canvas is mounted in place and keeps its own input.
+  await page.evaluate((v) => window.harness.render(v), fixture("canvas"));
+  assert.equal(
+    await page.locator("[data-aethyr-id=canvas] > canvas#face-canvas").count(),
+    1,
+  );
+});
 
 test("every fixture has a snapshot", () => {
   const files = readdirSync(kindsDir).map((f) => f.replace(/\.json$/, ""));

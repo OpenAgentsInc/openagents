@@ -70,6 +70,15 @@ pub fn typescript() -> String {
         "export const MAX_FIELD_BYTES = {};",
         crate::MAX_FIELD_BYTES
     );
+    for (name, value) in [
+        ("MAX_OPTIONS", crate::MAX_OPTIONS),
+        ("MAX_UPLOAD_BYTES", crate::MAX_UPLOAD_BYTES),
+        ("MAX_ACCEPT", crate::MAX_ACCEPT),
+        ("MAX_FILES", crate::MAX_FILES),
+        ("MAX_CANVAS_PIXELS", crate::MAX_CANVAS_PIXELS as usize),
+    ] {
+        let _ = writeln!(out, "export const {name} = {value};");
+    }
     let kinds: Vec<String> = ELEMENT_KINDS.iter().map(|k| format!("{k:?}")).collect();
     let _ = writeln!(
         out,

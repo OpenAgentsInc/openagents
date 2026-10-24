@@ -36,6 +36,16 @@ pub const MAX_ID_BYTES: usize = 128;
 pub const MAX_TEXT_BYTES: usize = 16 * 1024;
 /// The largest `max_bytes` a field may declare.
 pub const MAX_FIELD_BYTES: usize = 64 * 1024;
+/// The most options one select may offer.
+pub const MAX_OPTIONS: usize = 256;
+/// The largest file an upload slot may accept, in bytes.
+pub const MAX_UPLOAD_BYTES: usize = 32 * 1024 * 1024;
+/// The most `accept` entries one upload slot may list.
+pub const MAX_ACCEPT: usize = 32;
+/// The most files one `input` intent may name.
+pub const MAX_FILES: usize = 64;
+/// The widest or tallest a canvas may be, in CSS pixels.
+pub const MAX_CANVAS_PIXELS: u32 = 4096;
 
 #[cfg(test)]
 mod tests;

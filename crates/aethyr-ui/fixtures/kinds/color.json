@@ -1,0 +1,25 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-color",
+  "revision": 1,
+  "root": {
+    "id": "color",
+    "style": {
+      "gap": "md"
+    },
+    "element": {
+      "kind": "stack",
+      "axis": "vertical",
+      "children": [
+        {
+          "id": "color-paint",
+          "element": {
+            "kind": "color",
+            "label": "Paint color",
+            "value": "#8096c0"
+          }
+        }
+      ]
+    }
+  }
+}

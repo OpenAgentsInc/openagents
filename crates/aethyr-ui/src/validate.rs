@@ -1,6 +1,8 @@
+use crate::view::Decimal;
 use crate::view::{Element, Intent, IntentKind, Node, View};
 use crate::{
-    MAX_DEPTH, MAX_FIELD_BYTES, MAX_ID_BYTES, MAX_NODES, MAX_TEXT_BYTES, MAX_VIEW_BYTES, SCHEMA,
+    MAX_ACCEPT, MAX_CANVAS_PIXELS, MAX_DEPTH, MAX_FIELD_BYTES, MAX_FILES, MAX_ID_BYTES, MAX_NODES,
+    MAX_OPTIONS, MAX_TEXT_BYTES, MAX_UPLOAD_BYTES, MAX_VIEW_BYTES, SCHEMA,
 };
 use std::collections::HashSet;
 use std::fmt;
@@ -122,6 +124,79 @@ fn label_ok(text: &str) -> bool {
     !text.trim().is_empty()
 }
 
+/// `#rrggbb`, lowercase.
+pub(crate) fn valid_color(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// A media type (`image/png`, `image/*`) or an extension (`.json`).
+pub(crate) fn valid_accept(entry: &str) -> bool {
+    let token = |s: &str| {
+        !s.is_empty()
+            && s.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"+.-".contains(&b))
+    };
+    match entry.strip_prefix('.') {
+        Some(extension) => token(extension),
+        None => entry
+            .split_once('/')
+            .is_some_and(|(kind, sub)| token(kind) && (sub == "*" || token(sub))),
+    }
+}
+
+/// A range value as text: an optional `-`, digits with an optional
+/// fraction, and an optional exponent. No `+`, spaces, `inf`, or `NaN`, so
+/// Rust and TypeScript read the same strings.
+pub(crate) fn decimal_text(text: &str) -> Option<f64> {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let body = text.strip_prefix('-').unwrap_or(text);
+    let (mantissa, exponent) = match body.find(['e', 'E']) {
+        Some(at) => (&body[..at], Some(&body[at + 1..])),
+        None => (body, None),
+    };
+    let mantissa_ok = match mantissa.split_once('.') {
+        Some((whole, fraction)) => {
+            (digits(whole) || whole.is_empty())
+                && (digits(fraction) || fraction.is_empty())
+                && !(whole.is_empty() && fraction.is_empty())
+        }
+        None => digits(mantissa),
+    };
+    let exponent_ok = exponent.is_none_or(|e| digits(e.strip_prefix(['-', '+']).unwrap_or(e)));
+    if text.len() > 64 || !mantissa_ok || !exponent_ok {
+        return None;
+    }
+    text.parse().ok().filter(|v: &f64| v.is_finite())
+}
+
+/// A range's value: finite, within bounds, and on the step from `min`.
+pub(crate) fn on_range(value: f64, min: f64, max: f64, step: f64) -> bool {
+    if !value.is_finite() || value < min || value > max {
+        return false;
+    }
+    let steps = ((value - min) / step).round();
+    (min + steps * step - value).abs() <= 1e-9 * step.abs().max(1.0)
+}
+
+/// File names, one per line: at least one, none empty or with control
+/// characters, and only one unless the slot takes several.
+pub(crate) fn valid_file_names(value: &str, multiple: bool) -> bool {
+    let names: Vec<&str> = value.split('\n').collect();
+    value.len() <= MAX_TEXT_BYTES
+        && names.len() <= if multiple { MAX_FILES } else { 1 }
+        && names
+            .iter()
+            .all(|name| !name.trim().is_empty() && !name.chars().any(char::is_control))
+}
+
+fn finite(values: &[Decimal]) -> bool {
+    values.iter().all(|d| d.0.is_finite())
+}
+
 /// A view that passed structural validation. It says nothing about whether
 /// the controller is allowed to do what an intent asks.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -198,6 +273,61 @@ impl ValidatedView {
                 }
             }
             (Element::Field { enabled: on, .. }, IntentKind::Submit) => no_value(enabled(*on))?,
+            (
+                Element::Select {
+                    enabled: on,
+                    options,
+                    ..
+                },
+                IntentKind::Select,
+            ) => {
+                enabled(*on)?;
+                let value = value.ok_or(IntentError::BadValue)?;
+                if !options.iter().any(|option| option.value == value) {
+                    return Err(IntentError::BadValue);
+                }
+            }
+            (Element::Checkbox { enabled: on, .. }, IntentKind::Input) => {
+                enabled(*on)?;
+                if !matches!(value, Some("true" | "false")) {
+                    return Err(IntentError::BadValue);
+                }
+            }
+            (
+                Element::Range {
+                    enabled: on,
+                    min,
+                    max,
+                    step,
+                    ..
+                },
+                IntentKind::Input,
+            ) => {
+                enabled(*on)?;
+                let value = value.and_then(decimal_text).ok_or(IntentError::BadValue)?;
+                if !on_range(value, min.0, max.0, step.0) {
+                    return Err(IntentError::BadValue);
+                }
+            }
+            (Element::Color { enabled: on, .. }, IntentKind::Input) => {
+                enabled(*on)?;
+                if !value.is_some_and(valid_color) {
+                    return Err(IntentError::BadValue);
+                }
+            }
+            (
+                Element::File {
+                    enabled: on,
+                    multiple,
+                    ..
+                },
+                IntentKind::Input,
+            ) => {
+                enabled(*on)?;
+                if !value.is_some_and(|v| valid_file_names(v, *multiple)) {
+                    return Err(IntentError::BadValue);
+                }
+            }
             (
                 Element::Sheet {
                     open: true,
@@ -328,6 +458,87 @@ fn check_node(node: &Node) -> Result<(), ViewError> {
         }
         Element::EngineSurface { surface, label } => {
             if !valid_id(surface) {
+                return Err(ViewError::BadReference(id()));
+            }
+            Some(label)
+        }
+        Element::Select {
+            label,
+            value,
+            options,
+            ..
+        } => {
+            if options.is_empty() || options.len() > MAX_OPTIONS {
+                return Err(ViewError::BadReference(id()));
+            }
+            let mut values = HashSet::new();
+            for option in options {
+                if !label_ok(&option.label) {
+                    return Err(ViewError::MissingLabel(id()));
+                }
+                if !values.insert(option.value.as_str()) {
+                    return Err(ViewError::BadReference(id()));
+                }
+                texts.push(&option.label);
+                texts.push(&option.value);
+            }
+            if !values.contains(value.as_str()) {
+                return Err(ViewError::BadReference(id()));
+            }
+            Some(label)
+        }
+        Element::Checkbox { label, .. } => Some(label),
+        Element::Range {
+            label,
+            value,
+            min,
+            max,
+            step,
+            ..
+        } => {
+            if !finite(&[*value, *min, *max, *step])
+                || min.0 >= max.0
+                || step.0 <= 0.0
+                || value.0 < min.0
+                || value.0 > max.0
+            {
+                return Err(ViewError::BadReference(id()));
+            }
+            Some(label)
+        }
+        Element::Color { label, value, .. } => {
+            if !valid_color(value) {
+                return Err(ViewError::BadReference(id()));
+            }
+            Some(label)
+        }
+        Element::File {
+            label,
+            slot,
+            accept,
+            max_bytes,
+            ..
+        } => {
+            if !valid_id(slot)
+                || accept.len() > MAX_ACCEPT
+                || !accept.iter().all(|entry| valid_accept(entry))
+                || *max_bytes == 0
+                || *max_bytes as usize > MAX_UPLOAD_BYTES
+            {
+                return Err(ViewError::BadReference(id()));
+            }
+            Some(label)
+        }
+        Element::Canvas {
+            surface,
+            label,
+            width,
+            height,
+        } => {
+            if !valid_id(surface)
+                || !(1..=MAX_CANVAS_PIXELS).contains(width)
+                || !(1..=MAX_CANVAS_PIXELS).contains(height)
+            {
                 return Err(ViewError::BadReference(id()));
             }
             Some(label)

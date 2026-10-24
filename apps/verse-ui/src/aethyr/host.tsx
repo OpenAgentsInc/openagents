@@ -6,7 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 import { useAtomValue } from "@effect/atom-react";
 import type { Controller } from "./controller";
 import type { Intent, View } from "./protocol";
-import { AethyrView, type Mount } from "./renderer";
+import { AethyrView, type Files, type Mount } from "./renderer";
 
 /** Runs an effect in the host's runtime (a `ManagedRuntime`, usually). */
 export type Run<R> = <A, E>(
@@ -17,6 +17,8 @@ export interface ControllerViewProps<S, E, R> {
   readonly controller: Controller<S, E, R>;
   readonly run: Run<R>;
   readonly mount?: Mount;
+  /** Receives files chosen in upload slots. */
+  readonly onFiles?: Files;
   /** Told about failures other than stale intents. Never sees input values. */
   readonly onError?: (message: string) => void;
 }
@@ -25,6 +27,7 @@ export function ControllerView<S, E, R>({
   controller,
   run,
   mount,
+  onFiles,
   onError,
 }: ControllerViewProps<S, E, R>) {
   const view: View = useAtomValue(controller.view);
@@ -54,5 +57,12 @@ export function ControllerView<S, E, R>({
     },
     [controller, run, onError],
   );
-  return <AethyrView view={view} onIntent={onIntent} mount={mount} />;
+  return (
+    <AethyrView
+      view={view}
+      onIntent={onIntent}
+      mount={mount}
+      onFiles={onFiles}
+    />
+  );
 }

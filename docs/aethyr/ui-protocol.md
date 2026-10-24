@@ -52,6 +52,12 @@ A controller publishes a `View`:
   | `toast` | Short status message | `dismiss` when `dismissible` |
   | `media_slot` | A place the host fills, named by `slot` (never a URL) | none |
   | `engine_surface` | The engine's drawing surface, named by `surface` | none (the engine takes input) |
+  | `select` | Choose one of `options` (value and label each) | `select` (value: an option's value) |
+  | `checkbox` | On or off, with `checked` | `input` (value: `true` or `false`) |
+  | `range` | A number from `min` to `max` on `step` | `input` (value: a decimal on the step) |
+  | `color` | A color as `#rrggbb`, lowercase | `input` (value: the new color) |
+  | `file` | An upload slot: `slot`, `accept` (types or extensions), `max_bytes`, `multiple` | `input` (value: the chosen names, one per line) |
+  | `canvas` | A drawing surface the host mounts, named by `surface`, `width` × `height` | none (the engine takes input) |
 
 - `style` refers to tokens only: `gap` and `padding` (`none` to `xl` on the
   spacing scale), `align`, `tone` (`default`, `muted`, `primary`, `danger`),
@@ -63,7 +69,10 @@ A controller publishes a `View`:
   scopes need a nonempty label.
 
 Limits: 1,024 nodes, depth 16 (the root is depth 1), 512 KiB encoded, 16 KiB
-per string, and 64 KiB for a field's `max_bytes`. Unknown kinds, properties,
+per string, 64 KiB for a field's `max_bytes`, 256 options per select, 32
+`accept` entries and 32 MiB per upload slot, 64 files per intent, and 4,096
+CSS pixels for a canvas side. Range numbers are finite; a whole number
+encodes as an integer (`5`), as JavaScript writes it. Unknown kinds, properties,
 and token names fail to decode.
 
 ## Intents
@@ -75,7 +84,12 @@ The renderer sends an `Intent`:
   "kind": "activate" }
 ```
 
-`select` and `input` carry a `value`; the others carry none. An intent carries
+`select` and `input` carry a `value`; the others carry none. A range value is
+an optional `-`, digits with an optional fraction, and an optional exponent;
+no `+`, spaces, `Infinity`, or `NaN`, so both sides read the same text. A
+file's contents never travel in an intent: the renderer checks each chosen
+file against the slot's `accept` and `max_bytes`, hands the files to the host
+(`onFiles(slot, files)`), and sends only their names. An intent carries
 identity, not a payload to run: the controller looks the node up in the
 revision it published and refuses the intent when:
 
@@ -131,6 +145,9 @@ renderer (`AethyrView`):
   shows what the tree says until a new revision changes it. Escape on a
   dialog sends `dismiss`; the dialog stays open unless the controller closes
   it;
+- keeps a select's, checkbox's, range's, or color's newest choice showing
+  while its intent is handled, with one in flight at a time, then shows the
+  tree's value again;
 - keeps a field's draft while its `input` intents are handled, so a slow
   handler never drops keystrokes. One input is in flight at a time; when it
   settles, the field sends its newest draft against the newest revision. The

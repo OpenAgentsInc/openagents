@@ -162,7 +162,109 @@ pub enum Element {
         surface: String,
         label: String,
     },
+    /// Choose one of `options`. Sends `select` with the chosen option's
+    /// `value`; `value` is the current choice.
+    Select {
+        label: String,
+        value: String,
+        options: Vec<Choice>,
+        #[serde(default = "yes", skip_serializing_if = "is_true")]
+        enabled: bool,
+    },
+    /// On or off. Sends `input` with `true` or `false`, the state the person
+    /// asked for.
+    Checkbox {
+        label: String,
+        checked: bool,
+        #[serde(default = "yes", skip_serializing_if = "is_true")]
+        enabled: bool,
+    },
+    /// A number between `min` and `max` on `step`. Sends `input` with the
+    /// new value as a decimal number.
+    Range {
+        label: String,
+        value: Decimal,
+        min: Decimal,
+        max: Decimal,
+        step: Decimal,
+        #[serde(default = "yes", skip_serializing_if = "is_true")]
+        enabled: bool,
+    },
+    /// A color, as `#rrggbb` in lowercase. Sends `input` with the new color.
+    Color {
+        label: String,
+        #[schemars(regex(pattern = r"^#[0-9a-f]{6}$"))]
+        value: String,
+        #[serde(default = "yes", skip_serializing_if = "is_true")]
+        enabled: bool,
+    },
+    /// An upload slot. The renderer checks each chosen file against
+    /// `accept` and `max_bytes`, hands the files to the host under `slot`,
+    /// and sends `input` with their names, one per line. File contents
+    /// never travel in an intent.
+    File {
+        label: String,
+        #[schemars(regex(pattern = r"^[A-Za-z0-9_.:-]{1,128}$"))]
+        slot: String,
+        /// Media types (`image/png`) or extensions (`.json`); empty takes any.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        accept: Vec<String>,
+        /// The largest file accepted, in bytes.
+        max_bytes: u32,
+        #[serde(default, skip_serializing_if = "is_false")]
+        multiple: bool,
+        #[serde(default = "yes", skip_serializing_if = "is_true")]
+        enabled: bool,
+    },
+    /// A drawing surface the host registered under `surface`, at `width` by
+    /// `height` CSS pixels, scaled down to fit. The renderer keeps it mounted
+    /// across revisions and never sends intents for it; the engine takes
+    /// its own input (painting, for example).
+    Canvas {
+        #[schemars(regex(pattern = r"^[A-Za-z0-9_.:-]{1,128}$"))]
+        surface: String,
+        label: String,
+        #[schemars(range(min = 1, max = 4096))]
+        width: u32,
+        #[schemars(range(min = 1, max = 4096))]
+        height: u32,
+    },
 }
+
+/// One option of a `select`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Choice {
+    pub value: String,
+    pub label: String,
+}
+
+/// A finite decimal number. Equality is by bit pattern, so a view compares
+/// equal to itself; validation refuses NaN and infinities. A whole number
+/// encodes as an integer (`5`, not `5.0`), as JavaScript writes it, so both
+/// sides produce the same JSON.
+#[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
+#[serde(transparent)]
+pub struct Decimal(pub f64);
+
+impl Serialize for Decimal {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        const SAFE: f64 = 9_007_199_254_740_991.0;
+        if self.0.fract() == 0.0 && self.0.abs() <= SAFE {
+            serializer.serialize_i64(self.0 as i64)
+        } else {
+            serializer.serialize_f64(self.0)
+        }
+    }
+}
+
+impl PartialEq for Decimal {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl Eq for Decimal {}
 
 impl Element {
     /// The `kind` tag, as serialized.
@@ -181,6 +283,12 @@ impl Element {
             Self::Toast { .. } => "toast",
             Self::MediaSlot { .. } => "media_slot",
             Self::EngineSurface { .. } => "engine_surface",
+            Self::Select { .. } => "select",
+            Self::Checkbox { .. } => "checkbox",
+            Self::Range { .. } => "range",
+            Self::Color { .. } => "color",
+            Self::File { .. } => "file",
+            Self::Canvas { .. } => "canvas",
         }
     }
 
@@ -211,6 +319,12 @@ pub const ELEMENT_KINDS: &[&str] = &[
     "toast",
     "media_slot",
     "engine_surface",
+    "select",
+    "checkbox",
+    "range",
+    "color",
+    "file",
+    "canvas",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -390,13 +504,15 @@ impl A11y {
 pub enum IntentKind {
     /// Press a button or chip.
     Activate,
-    /// Choose a row of a selectable list; `value` is the row's ID.
+    /// Choose a row of a selectable list (`value` is the row's ID) or an
+    /// option of a select (`value` is the option's value).
     Select,
     /// Submit a field.
     Submit,
     /// Close a dismissible dialog, sheet, or toast.
     Dismiss,
-    /// A field's new value, in full.
+    /// A new value, in full: a field's text, a checkbox's `true` or
+    /// `false`, a range's number, a color, or the names of chosen files.
     Input,
 }
 
