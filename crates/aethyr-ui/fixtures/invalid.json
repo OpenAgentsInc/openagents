@@ -1,0 +1,389 @@
+[
+  {
+    "name": "another schema",
+    "error": "schema",
+    "view": {
+      "schema": "rust-native.view.v3",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body"
+        }
+      }
+    }
+  },
+  {
+    "name": "revision zero",
+    "error": "identity",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 0,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body"
+        }
+      }
+    }
+  },
+  {
+    "name": "instance with a space",
+    "error": "identity",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "two words",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body"
+        }
+      }
+    }
+  },
+  {
+    "name": "node id with a slash",
+    "error": "bad_id",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a/b",
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body"
+        }
+      }
+    }
+  },
+  {
+    "name": "empty node id",
+    "error": "bad_id",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "",
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body"
+        }
+      }
+    }
+  },
+  {
+    "name": "duplicate ids",
+    "error": "duplicate_id",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "s",
+        "element": {
+          "kind": "stack",
+          "axis": "vertical",
+          "children": [
+            {
+              "id": "a",
+              "element": {
+                "kind": "text",
+                "value": "x",
+                "role": "body"
+              }
+            },
+            {
+              "id": "a",
+              "element": {
+                "kind": "text",
+                "value": "x",
+                "role": "body"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "button without a label",
+    "error": "missing_label",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "b",
+        "element": {
+          "kind": "button",
+          "label": "  "
+        }
+      }
+    }
+  },
+  {
+    "name": "dialog without a label",
+    "error": "missing_label",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "d",
+        "element": {
+          "kind": "dialog",
+          "label": "",
+          "open": true,
+          "children": []
+        }
+      }
+    }
+  },
+  {
+    "name": "link to another site",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "b",
+        "element": {
+          "kind": "button",
+          "label": "Go",
+          "href": "https://example.com/"
+        }
+      }
+    }
+  },
+  {
+    "name": "protocol-relative link",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "b",
+        "element": {
+          "kind": "button",
+          "label": "Go",
+          "href": "//example.com/"
+        }
+      }
+    }
+  },
+  {
+    "name": "selected row that is not a child",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "l",
+        "element": {
+          "kind": "list",
+          "label": "L",
+          "selectable": true,
+          "selected": "zz",
+          "children": [
+            {
+              "id": "a",
+              "element": {
+                "kind": "text",
+                "value": "x",
+                "role": "body"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "selected row in a plain list",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "l",
+        "element": {
+          "kind": "list",
+          "label": "L",
+          "selected": "a",
+          "children": [
+            {
+              "id": "a",
+              "element": {
+                "kind": "text",
+                "value": "x",
+                "role": "body"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "media slot with a URL",
+    "error": "bad_reference",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "m",
+        "element": {
+          "kind": "media_slot",
+          "slot": "https://x/y.png",
+          "label": "Art"
+        }
+      }
+    }
+  },
+  {
+    "name": "field over its bound",
+    "error": "text_limit",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "f",
+        "element": {
+          "kind": "field",
+          "label": "F",
+          "value": "abcdef",
+          "max_bytes": 4
+        }
+      }
+    }
+  },
+  {
+    "name": "field with no room",
+    "error": "text_limit",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "f",
+        "element": {
+          "kind": "field",
+          "label": "F",
+          "value": "",
+          "max_bytes": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "field bound over the maximum",
+    "error": "text_limit",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "f",
+        "element": {
+          "kind": "field",
+          "label": "F",
+          "value": "",
+          "max_bytes": 65537
+        }
+      }
+    }
+  },
+  {
+    "name": "a raw color",
+    "error": "encoding",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "style": {
+          "color": "#ff0000"
+        },
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body"
+        }
+      }
+    }
+  },
+  {
+    "name": "an unknown kind",
+    "error": "encoding",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "marquee",
+          "value": "x"
+        }
+      }
+    }
+  },
+  {
+    "name": "an unknown property",
+    "error": "encoding",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body",
+          "html": "<b>x</b>"
+        }
+      }
+    }
+  },
+  {
+    "name": "an unknown token",
+    "error": "encoding",
+    "view": {
+      "schema": "aethyr.ui.v1",
+      "instance": "fixture",
+      "revision": 1,
+      "root": {
+        "id": "a",
+        "style": {
+          "gap": "huge"
+        },
+        "element": {
+          "kind": "text",
+          "value": "x",
+          "role": "body"
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,42 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-chip",
+  "revision": 1,
+  "root": {
+    "id": "chip",
+    "style": {
+      "gap": "sm"
+    },
+    "element": {
+      "kind": "stack",
+      "axis": "wrap",
+      "children": [
+        {
+          "id": "chip-openagents",
+          "element": {
+            "kind": "chip",
+            "label": "OpenAgents",
+            "selected": true
+          }
+        },
+        {
+          "id": "chip-blue-rush",
+          "element": {
+            "kind": "chip",
+            "label": "Blue Rush",
+            "selected": false
+          }
+        },
+        {
+          "id": "chip-far-field",
+          "element": {
+            "kind": "chip",
+            "label": "Far Field",
+            "selected": false,
+            "enabled": false
+          }
+        }
+      ]
+    }
+  }
+}

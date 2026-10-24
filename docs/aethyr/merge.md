@@ -56,8 +56,9 @@ Tracked as one epic with task issues. In order:
    `kernel.wasm` and bundle hashes against the same Aethyrforge commit.
 2. **Aethyr UI protocol:** the view-tree and intent schema in Rust, generated
    TypeScript types, the Effect controller runtime, and the React DOM
-   renderer on the design system.
-3. **Design tokens crate** emitting the CSS the website uses today.
+   renderer on the design system ([UI protocol](ui-protocol.md)).
+3. **Design tokens crate** emitting the CSS the website uses today
+   (`crates/aethyr-tokens`).
 4. **Kiki surfaces on Aethyr:** the entry and destination flow, the universe
    HUD, the house studio, the player, and invitations, each moved to an Effect
    controller and the shared renderer, phone width first.

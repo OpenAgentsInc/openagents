@@ -1,0 +1,68 @@
+/* Generated from crates/aethyr-tokens; do not edit.
+   Regenerate: cargo run -p aethyr-tokens -- --write */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+:root {
+  --background: #000000;
+  --foreground: #fafafa;
+  --card: #18181bef;
+  --popover: #18181b;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #3f3f46;
+  --border: #ffffff1f;
+  --input: #ffffff28;
+  --ring: #d4d4d8;
+  --destructive: #f87171;
+  --radius: 0.75rem;
+  --hud-radius-control: 8px;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --hud-label-size: 11px;
+  --hud-label-tracking: 0.18em;
+  --hud-glass: #0b0c10cc;
+  --hud-line: #ffffff26;
+  --hud-tick: #ffffff73;
+  --hud-glow: 0 0 0 1px #ffffff14, 0 18px 60px #00000080;
+  --hud-tick-size: 14px;
+  --hud-header: 64px;
+  --hud-blur: 18px;
+  --hud-blur-bar: 14px;
+  --hud-motion: 0.15s;
+  --hud-fade: 0.8s;
+  --hud-pulse: 2.4s;
+  --hud-space-xs: 4px;
+  --hud-space-sm: 8px;
+  --hud-space-md: 12px;
+  --hud-space-lg: 16px;
+  --hud-space-xl: 24px;
+}
+@media (max-width: 760px) {
+  :root {
+    --hud-header: 56px;
+  }
+}

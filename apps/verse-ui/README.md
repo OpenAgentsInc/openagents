@@ -102,3 +102,20 @@ colors on translucent surfaces. Inspect the saved screenshots for image
 backgrounds that axe cannot measure. Set `VERSE_UI_REVIEW_CSS` to a local built
 stylesheet to test before deployment, and `VERSE_UI_REVIEW_FIXTURES` to the
 Rust test capture directory to include account-only cards without signing in.
+
+## Aethyr UI protocol
+
+`src/aethyr/` holds the Aethyr controller runtime, the React DOM renderer, and
+the entry-dialog demo ([protocol](../../docs/aethyr/ui-protocol.md)). It moves
+to `apps/aethyr` later. Two files there are generated from Rust; don't edit
+them:
+
+- `protocol.ts`: `cargo run -p aethyr-ui -- --write`
+- `tokens.css`: `cargo run -p aethyr-tokens -- --write`
+
+`npm test` checks `protocol.ts` against the Rust schema. Its renderer tests
+open the built `ui.css` in Chromium, so run `npm run build` first. Set
+`AETHYR_CHROMIUM` to a Chromium binary when Playwright's own isn't
+installed, `AETHYR_CAPTURE_DIR` to keep screenshots, `UPDATE_SNAPSHOTS=1` to
+rewrite `tests/snapshots/aethyr-renderer.json`, and `AETHYR_WRITE_FIXTURES=1`
+to rewrite the controller views the Rust tests read.

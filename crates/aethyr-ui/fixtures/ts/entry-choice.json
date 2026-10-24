@@ -1,0 +1,97 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "verse-entry-fixture",
+  "revision": 2,
+  "root": {
+    "id": "verse-entry",
+    "element": {
+      "kind": "dialog",
+      "label": "Where shall we go?",
+      "open": true,
+      "children": [
+        {
+          "id": "entry-brand",
+          "element": {
+            "kind": "label",
+            "value": "OPENAGENTS / THE VERSE"
+          }
+        },
+        {
+          "id": "verse-choices",
+          "style": {
+            "gap": "md"
+          },
+          "element": {
+            "kind": "stack",
+            "axis": "vertical",
+            "children": [
+              {
+                "id": "choice-label",
+                "element": {
+                  "kind": "label",
+                  "value": "CHOOSE YOUR NEXT STEP"
+                }
+              },
+              {
+                "id": "choice-title",
+                "element": {
+                  "kind": "text",
+                  "value": "Where shall we go?",
+                  "role": "title"
+                }
+              },
+              {
+                "id": "choice-description",
+                "element": {
+                  "kind": "text",
+                  "value": "Explore the planets, or step inside the Haunted House.",
+                  "role": "body"
+                }
+              },
+              {
+                "id": "choice-actions",
+                "style": {
+                  "gap": "sm"
+                },
+                "element": {
+                  "kind": "stack",
+                  "axis": "wrap",
+                  "children": [
+                    {
+                      "id": "verse-explore",
+                      "element": {
+                        "kind": "button",
+                        "label": "Explore the planets",
+                        "trailing": "forward"
+                      }
+                    },
+                    {
+                      "id": "verse-haunt",
+                      "element": {
+                        "kind": "button",
+                        "label": "Haunted House tutorial",
+                        "emphasis": "primary",
+                        "href": "/haunted-house",
+                        "trailing": "forward"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "verse-entry-back",
+          "element": {
+            "kind": "button",
+            "label": "Back to OpenAgents",
+            "emphasis": "link",
+            "href": "/new-lander",
+            "leading": "back"
+          }
+        }
+      ]
+    }
+  }
+}
