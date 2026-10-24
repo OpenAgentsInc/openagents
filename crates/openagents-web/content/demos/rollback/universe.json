@@ -1,0 +1,12 @@
+{
+  "engine_url": "https://z12580ue8d9551374---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/universe.html",
+  "sdk_url": "https://z12580ue8d9551374---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/sdk/aa6320f41271d9ba59c7fc20be45c1332772c59adf4829bdfe2839c125a00e04/aethyrforge_host.js",
+  "release": "z12580ue8d9551374",
+  "engine_abi": "aethyrforge.browser.v1",
+  "project_format": 1,
+  "project": {
+    "id": "universe",
+    "branch": "main",
+    "revision": 0
+  }
+}

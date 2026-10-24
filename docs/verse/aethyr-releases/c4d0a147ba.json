@@ -1,0 +1,161 @@
+{
+  "schema": "openagents.aethyr.release-qualification.v1",
+  "issue": 12590,
+  "commit": "c4d0a147ba0597c2d29780d81fc0db5b9c733f71",
+  "protocol_version": 7,
+  "toolchain": {
+    "node": "v22.23.2",
+    "npm": "10.9.8",
+    "rustc_root": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "rustc_aethyr": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "wasm_bindgen": "wasm-bindgen 0.2.128",
+    "wasm_opt": "wasm-opt version 132 (version_132)",
+    "platform": "Linux-6.18.49-x86_64-with-glibc2.42"
+  },
+  "sdk": {
+    "wasm_sha256": "9803bd0795c39239879ce32e74cd9885cd906a21a00df71d8d9bcd1f6b45333c",
+    "closure_sha256": "44b2d92ef690c178e01fb378b3941f1e7087cc42c5f01e75d2997bbd00010f07"
+  },
+  "kernel_sha256": "5898cbbd4a1db151344557a5dc9b48893832eeb49933def9e3b77592d2b65f37",
+  "profiles": {
+    "universe": {
+      "release": "auc4d0a147ba",
+      "editor": {
+        "image_digest": "sha256:49686d1d00523856eb543b9ac48ef2a9b9753e04ddcfa943b8b922d428eafea4",
+        "revision": "aethyrforge-editor-00065-bad"
+      },
+      "preview": {
+        "image_digest": "sha256:bd07f2622087bbc211a2929f1f81eb7f7f1dcd7b7a3aff20935eff9f87a41f20",
+        "revision": "aethyrforge-preview-00070-dip"
+      },
+      "asset_set_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "asset_files": 0,
+      "asset_bytes": 0,
+      "release_json_sha256": "17b4530b8f36dbcd6ae70041a174cf4d9e538ee3ee02265d14ac24044ea7629d",
+      "context_sha256": {
+        "editor": "e674d6c019b446a71915cb9cad400c64f672312850d3326bcf24ec9e9113e33d",
+        "preview": "0a9ada16bb982eda562f11a2d6567d9ea37469432375e45f40944e5a6eaa621d"
+      }
+    },
+    "house": {
+      "release": "ahc4d0a147ba",
+      "editor": {
+        "image_digest": "sha256:f2d0499ac31de37703f5c8fa7e63816803d66fd3ae5e2f93bc475c0fea4e0e9d",
+        "revision": "aethyrforge-editor-00066-waw"
+      },
+      "preview": {
+        "image_digest": "sha256:eacc8d12030acb2bf601e48eaa0164bf483f392182be8cb57969263f60f18266",
+        "revision": "aethyrforge-preview-00071-gax"
+      },
+      "asset_set_sha256": "d29dcabe5d7fc3a224319e29caddcd69d17485dd264575b6861c4599cd9650c1",
+      "asset_files": 29,
+      "asset_bytes": 10265849,
+      "release_json_sha256": "467ea535e386369c8a11d4dff433a54af0c345a70d2d972260dc86df03222b88",
+      "context_sha256": {
+        "editor": "0dcf2590be83d9bb5bb03a9cdf5d842398d17dbbd40e8324c2656367765fe85b",
+        "preview": "bea7ed4aa7c1e8d37cb45dacc05efe7737b2d1637aead84bb89df7690e1594d3"
+      }
+    },
+    "planet": {
+      "release": "apc4d0a147ba",
+      "editor": {
+        "image_digest": "sha256:b5b70067bca294f9b256c4fd70536ec3ac10d58d29f4f83f712a5df7e5ecbb5d",
+        "revision": "aethyrforge-editor-00067-qat"
+      },
+      "preview": {
+        "image_digest": "sha256:506ea2e01683d23808d7a242368be42477244119a1dcd0ce7cf193bb4f583fee",
+        "revision": "aethyrforge-preview-00072-cid"
+      },
+      "asset_set_sha256": "69ecc4470f3ae4ef88244a430dd7b56af1ebd80309e5f0d87a138303c1a1b354",
+      "asset_files": 30,
+      "asset_bytes": 10427976,
+      "release_json_sha256": "f7e7f5c015ce37c5ccbc58b1c55772d567c6441d630dfcdc811a300dd9dfd3c4",
+      "context_sha256": {
+        "editor": "68e337fb13c30a6c907e21a38822f8a1f83cc510a73c8926d801ec004f3558f8",
+        "preview": "167f082d5d0cf5a7102344361f3693020725723b941a353c7d7dbbc2f4cc8442"
+      }
+    }
+  },
+  "asset_bucket_prefix": "assetsets/",
+  "candidate_checks": [
+    {
+      "profile": "house",
+      "check": "check-haunted-house",
+      "result": "pass",
+      "runs": [
+        "pass"
+      ]
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-project",
+      "result": "pass",
+      "runs": [
+        "pass"
+      ]
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-publish",
+      "result": "pass",
+      "runs": [
+        "pass"
+      ]
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-material",
+      "result": "pass",
+      "runs": [
+        "pass"
+      ]
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-access",
+      "result": "pass",
+      "runs": [
+        "pass"
+      ]
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-voice",
+      "result": "pass",
+      "runs": [
+        "pass"
+      ]
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-workspace",
+      "result": "pass",
+      "runs": [
+        "pass"
+      ]
+    },
+    {
+      "profile": "universe",
+      "check": "check-verse-universe",
+      "result": "pass",
+      "runs": [
+        "fail",
+        "pass"
+      ],
+      "note": "Failed once waiting for the keyboard-selected world (line 185); passed on its single rerun (checks/check-verse-universe/rerun-output.log) and in the four earlier full runs."
+    }
+  ],
+  "pins": [
+    "haunted-house.json",
+    "runtimes/haunted-house.json",
+    "runtimes/personal-planet.json",
+    "universe.json"
+  ],
+  "rollback": [
+    "rollback/haunted-house.json",
+    "rollback/runtimes/haunted-house.json",
+    "rollback/runtimes/personal-planet.json",
+    "rollback/universe.json"
+  ],
+  "production_checks": "pending: run the same checks without candidate mode after the website shift"
+}
