@@ -3409,3 +3409,15 @@ The review render is `~/work/film-out/cut/verse-trailer-kiki.mp4` (72 s), in
 Video Lab as `verse-trailer-kiki`. It follows Kiki's storyboard beat by beat
 with her lines. Show it to Kiki, and send a Verse logo to replace the THE
 VERSE wordmark.
+
+## Physical iPhone and provider approval for Verse (#12583) (2026-10-24)
+
+- Open the [Verse preview](https://openagents.com/new-lander) in iPhone Safari and repeat guest entry,
+  an edit, saving, publishing, sharing, planet setup, and returning to the save.
+  Automated production checks use Chrome with a phone viewport and touch input.
+- Approve the external sign-in provider in the first-edit card. Automation opens
+  that screen, then uses the dedicated test account's existing app credential;
+  it does not approve an external provider login.
+- Try a spoken editing request and a spoken planet setup request on the phone.
+  Automation checks the typed request path and microphone-denied controls,
+  without recording live speech.

@@ -55,6 +55,22 @@ It checks real guest entry and first-edit sign-in/cancellation, keyboard focus,
 workspace retention, engine generation/frame/pose retention, and narrow layouts.
 It does not complete provider sign-in, publish anything, or record speech.
 
+From the repository root, run the live mobile journey with the dedicated test account:
+
+```sh
+OPENAGENTS_VERIFY_OUTPUT=/absolute/scratch/verse-mobile \
+openagents browser run -- node apps/verse-ui/tools/check-mobile-live.mjs
+```
+
+This check uses real production APIs and GPU rendering at a phone viewport with
+touch input. It creates test projects, saves and publishes changes, opens shared
+links as a guest, sets up the test account's planet, checks chat, and returns to
+the saved world. It reads the private test credential file at
+`~/work/.secrets/openagents-test-account.env`; it never uses the owner's account.
+It opens the provider sign-in screen, then uses the existing test app credential.
+Provider approval, physical iPhone Safari, and live speech recognition still need
+manual checks. Captures and results go to the specified scratch directory.
+
 The Verse flow uses a dark zinc theme: black backgrounds, zinc cards, light text,
 and light primary actions. Keep the private engine controls on the same palette.
 Scene materials and world lighting are independent of the interface theme.
