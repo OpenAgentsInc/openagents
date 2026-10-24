@@ -485,19 +485,21 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12583: the dedicated-account production mobile journey passes 25 steps,
+- #12583: the dedicated-account production mobile journey passes 26 steps,
   including guest entry, first-edit confirmation, failed-shader recovery, painted
   face save/reopen, publishing, anonymous playback, planet setup, chat, return,
   and touch walking. Publishing and planet allocation are enabled; reopened
   saves, painted textures, touch selection, capture, and overlapping options are
   repaired. Device-copy recovery, saved-change undo, reverting, two-tab chat,
   mute/hide/leave, and ending an invitation also pass. The site smoke passes
-  75 checks with zero failures and two unrelated skipped checks; private tests
+  73 checks with zero failures and three skipped checks (the installer passed
+  in the earlier 75-check run); private tests
   pass 974 with 15 skipped. The updated sync service passes four staging room
   permission probes and production chat. Local sync/Postgres fixture checks
   could not run because the installed Homebrew Postgres lacks its expected data
   paths. The final mobile navigation layout (`dba7b4a4e1`) passes 320, 390, and
-  844 px hit tests; its production image and final journey check are pending.
+  844 px hit tests and the live return tap. It is deployed at 100% traffic as
+  `coder-web-da64192934-20261024054820`; the served stylesheet matches the build.
   Physical iPhone, provider approval, and live speech checks are in
   [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
 - #12580: corrected light-button link colors and hover states, raised dim
