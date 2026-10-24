@@ -14,3 +14,6 @@
 "CoreError.Storage.message" = "detail"
 "CoreError.NotImplemented.message" = "detail"
 "CoreError.Internal.message" = "detail"
+"MedievalTownError.Failed.message" = "detail"
+"ZoneError.Invalid.message" = "detail"
+"ZoneError.Unavailable.message" = "detail"

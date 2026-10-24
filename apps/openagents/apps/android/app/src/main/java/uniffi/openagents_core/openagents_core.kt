@@ -2208,6 +2208,28 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_transcriptview_attach_cloud(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_attach(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_begin_benchmark(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_cancel_loading(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_detach(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_frame(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_loading_progress(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_metrics(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_prepare(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_reset_metrics(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_resize(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_medievaltownrenderer_set_active(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_orbrenderer_set_audio_levels(
@@ -2256,6 +2278,62 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_keystore_add_seed(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezones_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezones_apply_catalog(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezones_launcher(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezones_refresh(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezones_runner(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezones_zones(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_allows_navigation(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_bootstrap(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_bridge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_card(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_channel_name(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_gpu_adapter(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_gpu_missing_reason(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_ios_channel_script(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_ios_deliver_script(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_manifest(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_max_frame_bytes(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_origin(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_page_failed(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_page_finished(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_page_started(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_phase(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_probe(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_probe_channel_name(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_probe_script(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_url(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corezonerunner_user_agent(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_captionfader_new(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreclient_new(
@@ -2296,13 +2374,15 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_transcriptview_new(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_medievaltownrenderer_new(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_orbrenderer_new(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_corewallet_android(
     ): Int
-    external fun uniffi_openagents_mobile_checksum_constructor_corewallet_fixture(
-    ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_corewallet_new(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_corezones_new(
     ): Int
     external fun ffi_openagents_mobile_uniffi_contract_version(
     ): Int
@@ -3496,6 +3576,34 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_transcriptview_attach_cloud(`ptr`: Long,`chat`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
+    external fun uniffi_openagents_mobile_fn_clone_medievaltownrenderer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_medievaltownrenderer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_medievaltownrenderer_new(`cacheDirectory`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_attach(`ptr`: Long,`layer`: Long,`width`: Int,`height`: Int,`scale`: Float,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_begin_benchmark(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_cancel_loading(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_detach(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_frame(`ptr`: Long,`timestamp`: Double,`moveX`: Float,`moveZ`: Float,`lookX`: Float,`lookY`: Float,`run`: Byte,`jump`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_loading_progress(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_metrics(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_prepare(`ptr`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_reset_metrics(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_resize(`ptr`: Long,`width`: Int,`height`: Int,`scale`: Float,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_medievaltownrenderer_set_active(`ptr`: Long,`active`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_clone_orbrenderer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_orbrenderer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -3544,8 +3652,6 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_constructor_corewallet_android(`home`: RustBuffer.ByValue,`current`: Long,`retired`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
-    external fun uniffi_openagents_mobile_fn_constructor_corewallet_fixture(`home`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
-    ): Long
     external fun uniffi_openagents_mobile_fn_constructor_corewallet_new(`home`: RustBuffer.ByValue,`store`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_corewallet_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -3581,6 +3687,72 @@ internal object UniffiLib {
     external fun uniffi_openagents_mobile_fn_method_keystore_read_seed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_keystore_add_seed(`ptr`: Long,`entropy`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_corezones(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_corezones(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_corezones_new(uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corezones_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezones_apply_catalog(`ptr`: Long,`json`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corezones_launcher(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezones_refresh(`ptr`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corezones_runner(`ptr`: Long,`zoneId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corezones_zones(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_corezonerunner(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_corezonerunner(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_allows_navigation(`ptr`: Long,`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_bootstrap(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_bridge(`ptr`: Long,`origin`: RustBuffer.ByValue,`mainFrame`: Byte,`text`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_card(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_channel_name(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_gpu_adapter(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_gpu_missing_reason(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_ios_channel_script(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_ios_deliver_script(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_manifest(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_max_frame_bytes(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_origin(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_page_failed(`ptr`: Long,`offline`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_page_finished(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_page_started(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_phase(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_probe(`ptr`: Long,`origin`: RustBuffer.ByValue,`mainFrame`: Byte,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_probe_channel_name(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_probe_script(`ptr`: Long,`platform`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_url(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corezonerunner_user_agent(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_core_version(uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -5149,6 +5321,39 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_transcriptview_attach_cloud() and 0xFFFF) != 17521) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_attach() and 0xFFFF) != 3633) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_begin_benchmark() and 0xFFFF) != 64463) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_cancel_loading() and 0xFFFF) != 26836) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_detach() and 0xFFFF) != 58514) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_frame() and 0xFFFF) != 27745) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_loading_progress() and 0xFFFF) != 21240) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_metrics() and 0xFFFF) != 3761) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_prepare() and 0xFFFF) != 19591) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_reset_metrics() and 0xFFFF) != 59133) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_resize() and 0xFFFF) != 43208) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_medievaltownrenderer_set_active() and 0xFFFF) != 56339) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame() and 0xFFFF) != 5432) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5221,6 +5426,90 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_keystore_add_seed() and 0xFFFF) != 40221) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezones_activate() and 0xFFFF) != 12176) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezones_apply_catalog() and 0xFFFF) != 28823) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezones_launcher() and 0xFFFF) != 15427) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezones_refresh() and 0xFFFF) != 54297) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezones_runner() and 0xFFFF) != 38500) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezones_zones() and 0xFFFF) != 1328) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_activate() and 0xFFFF) != 9082) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_allows_navigation() and 0xFFFF) != 11085) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_bootstrap() and 0xFFFF) != 6261) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_bridge() and 0xFFFF) != 6186) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_card() and 0xFFFF) != 33528) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_channel_name() and 0xFFFF) != 48082) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_gpu_adapter() and 0xFFFF) != 41611) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_gpu_missing_reason() and 0xFFFF) != 14276) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_ios_channel_script() and 0xFFFF) != 31986) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_ios_deliver_script() and 0xFFFF) != 8618) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_manifest() and 0xFFFF) != 51657) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_max_frame_bytes() and 0xFFFF) != 29464) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_origin() and 0xFFFF) != 48595) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_page_failed() and 0xFFFF) != 3793) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_page_finished() and 0xFFFF) != 58668) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_page_started() and 0xFFFF) != 36260) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_phase() and 0xFFFF) != 10701) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_probe() and 0xFFFF) != 40987) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_probe_channel_name() and 0xFFFF) != 8045) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_probe_script() and 0xFFFF) != 62584) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_url() and 0xFFFF) != 59140) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corezonerunner_user_agent() and 0xFFFF) != 25999) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_captionfader_new() and 0xFFFF) != 1206) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5281,16 +5570,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_constructor_transcriptview_new() and 0xFFFF) != 32269) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_medievaltownrenderer_new() and 0xFFFF) != 17730) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() and 0xFFFF) != 33643) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_android() and 0xFFFF) != 16399) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_fixture() and 0xFFFF) != 43539) {
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_new() and 0xFFFF) != 43285) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_new() and 0xFFFF) != 43285) {
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_corezones_new() and 0xFFFF) != 10509) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -23548,24 +23840,6 @@ open class CoreWallet: Disposable, AutoCloseable, CoreWalletInterface
 
 
 
-    /**
-     * An offline wallet for simulator captures: a fixed balance and
-     * history, a seed held only in memory, and no network. It never touches
-     * the Keychain and holds no money.
-     */ fun `fixture`(`home`: kotlin.String, `listener`: WalletListener): CoreWallet {
-            return FfiConverterTypeCoreWallet.lift(
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_openagents_mobile_fn_constructor_corewallet_fixture(
-
-
-        FfiConverterString.lower(`home`),
-        FfiConverterTypeWalletListener.lower(`listener`),_status)
-}
-    )
-    }
-
-
-
     }
 
 }
@@ -23590,6 +23864,1052 @@ public object FfiConverterTypeCoreWallet: FfiConverter<CoreWallet, Long> {
     override fun allocationSize(value: CoreWallet) = 8UL
 
     override fun write(value: CoreWallet, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * One open zone in one web view.
+ */
+public interface CoreZoneRunnerInterface {
+
+    fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): ZoneRunnerAction
+
+    /**
+     * May the web view navigate (or a subresource frame load) to `url`?
+     * Anything else is cancelled; it never opens elsewhere silently.
+     */
+    fun `allowsNavigation`(`url`: kotlin.String): kotlin.Boolean
+
+    /**
+     * The bootstrap string an engine page sends first (for diagnostics).
+     */
+    fun `bootstrap`(): kotlin.String
+
+    /**
+     * A frame on the bridge channel; deliver what comes back, in order.
+     */
+    fun `bridge`(`origin`: kotlin.String, `mainFrame`: kotlin.Boolean, `text`: kotlin.String, `nowMs`: kotlin.ULong): ZoneBridgeReply
+
+    /**
+     * The card to show over the web view (Rust Native JSON), or none.
+     */
+    fun `card`(): kotlin.String?
+
+    fun `channelName`(): kotlin.String
+
+    /**
+     * The WebGPU adapter the page reported, once it has.
+     */
+    fun `gpuAdapter`(): ZoneGpuAdapter?
+
+    /**
+     * Why WebGPU is missing (`no-webgpu`, `no-adapter`, `error`), if it is.
+     */
+    fun `gpuMissingReason`(): kotlin.String?
+
+    fun `iosChannelScript`(): kotlin.String
+
+    fun `iosDeliverScript`(): kotlin.String
+
+    fun `manifest`(): ZoneManifest
+
+    /**
+     * The largest frame either channel carries.
+     */
+    fun `maxFrameBytes`(): kotlin.ULong
+
+    /**
+     * The exact origin the web view may show and accept frames from.
+     */
+    fun `origin`(): kotlin.String
+
+    fun `pageFailed`(`offline`: kotlin.Boolean)
+
+    fun `pageFinished`()
+
+    fun `pageStarted`()
+
+    fun `phase`(): ZoneRunnerPhase
+
+    /**
+     * A frame on the probe channel.
+     */
+    fun `probe`(`origin`: kotlin.String, `mainFrame`: kotlin.Boolean, `text`: kotlin.String)
+
+    fun `probeChannelName`(): kotlin.String
+
+    fun `probeScript`(`platform`: ZoneWebPlatform): kotlin.String
+
+    /**
+     * The page the web view loads first.
+     */
+    fun `url`(): kotlin.String
+
+    fun `userAgent`(): kotlin.String?
+
+    companion object
+}
+
+/**
+ * One open zone in one web view.
+ */
+open class CoreZoneRunner: Disposable, AutoCloseable, CoreZoneRunnerInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_corezonerunner(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_corezonerunner(handle, status)
+        }
+    }
+
+
+    @Throws(ZoneException::class)override fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): ZoneRunnerAction {
+            return FfiConverterTypeZoneRunnerAction.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ZoneException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_activate(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * May the web view navigate (or a subresource frame load) to `url`?
+     * Anything else is cancelled; it never opens elsewhere silently.
+     */override fun `allowsNavigation`(`url`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_allows_navigation(
+        it,
+
+        FfiConverterString.lower(`url`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The bootstrap string an engine page sends first (for diagnostics).
+     */override fun `bootstrap`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_bootstrap(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * A frame on the bridge channel; deliver what comes back, in order.
+     */override fun `bridge`(`origin`: kotlin.String, `mainFrame`: kotlin.Boolean, `text`: kotlin.String, `nowMs`: kotlin.ULong): ZoneBridgeReply {
+            return FfiConverterTypeZoneBridgeReply.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_bridge(
+        it,
+
+        FfiConverterString.lower(`origin`),
+        FfiConverterBoolean.lower(`mainFrame`),
+        FfiConverterString.lower(`text`),
+        FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The card to show over the web view (Rust Native JSON), or none.
+     */
+    @Throws(ZoneException::class)override fun `card`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ZoneException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_card(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `channelName`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_channel_name(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The WebGPU adapter the page reported, once it has.
+     */override fun `gpuAdapter`(): ZoneGpuAdapter? {
+            return FfiConverterOptionalTypeZoneGpuAdapter.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_gpu_adapter(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Why WebGPU is missing (`no-webgpu`, `no-adapter`, `error`), if it is.
+     */override fun `gpuMissingReason`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_gpu_missing_reason(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `iosChannelScript`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_ios_channel_script(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `iosDeliverScript`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_ios_deliver_script(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `manifest`(): ZoneManifest {
+            return FfiConverterTypeZoneManifest.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_manifest(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The largest frame either channel carries.
+     */override fun `maxFrameBytes`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_max_frame_bytes(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The exact origin the web view may show and accept frames from.
+     */override fun `origin`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_origin(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `pageFailed`(`offline`: kotlin.Boolean)
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_page_failed(
+        it,
+
+        FfiConverterBoolean.lower(`offline`),_status)
+}
+    }
+
+
+
+    override fun `pageFinished`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_page_finished(
+        it,
+        _status)
+}
+    }
+
+
+
+    override fun `pageStarted`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_page_started(
+        it,
+        _status)
+}
+    }
+
+
+
+    override fun `phase`(): ZoneRunnerPhase {
+            return FfiConverterTypeZoneRunnerPhase.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_phase(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * A frame on the probe channel.
+     */
+    @Throws(ZoneException::class)override fun `probe`(`origin`: kotlin.String, `mainFrame`: kotlin.Boolean, `text`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(ZoneException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_probe(
+        it,
+
+        FfiConverterString.lower(`origin`),
+        FfiConverterBoolean.lower(`mainFrame`),
+        FfiConverterString.lower(`text`),_status)
+}
+    }
+
+
+
+    override fun `probeChannelName`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_probe_channel_name(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `probeScript`(`platform`: ZoneWebPlatform): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_probe_script(
+        it,
+
+        FfiConverterTypeZoneWebPlatform.lower(`platform`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The page the web view loads first.
+     */override fun `url`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_url(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `userAgent`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezonerunner_user_agent(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreZoneRunner: FfiConverter<CoreZoneRunner, Long> {
+    override fun lower(value: CoreZoneRunner): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreZoneRunner {
+        return CoreZoneRunner(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreZoneRunner {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreZoneRunner) = 8UL
+
+    override fun write(value: CoreZoneRunner, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * The launcher the iOS and Android shells present.
+ */
+public interface CoreZonesInterface {
+
+    /**
+     * Resolve a tapped card against the view it was drawn from.
+     */
+    fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): ZoneLaunch
+
+    /**
+     * Replace the web zones with a fetched catalog body. The Grid stays.
+     */
+    fun `applyCatalog`(`json`: kotlin.String)
+
+    /**
+     * The launcher's Rust Native view (JSON). Each call is a new revision.
+     */
+    fun `launcher`(): kotlin.String
+
+    /**
+     * Fetch the public catalog and apply it. On any failure the current
+     * list stays, so the launcher never empties.
+     */
+    suspend fun `refresh`()
+
+    /**
+     * A web runner for one listed web zone.
+     */
+    fun `runner`(`zoneId`: kotlin.String): CoreZoneRunner
+
+    fun `zones`(): List<ZoneManifest>
+
+    companion object
+}
+
+/**
+ * The launcher the iOS and Android shells present.
+ */
+open class CoreZones: Disposable, AutoCloseable, CoreZonesInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * The launcher over the bundled pins; works offline.
+     */
+    constructor() :
+        this(UniffiWithHandle,
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_corezones_new(
+
+        _status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_corezones(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_corezones(handle, status)
+        }
+    }
+
+
+    /**
+     * Resolve a tapped card against the view it was drawn from.
+     */
+    @Throws(ZoneException::class)override fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): ZoneLaunch {
+            return FfiConverterTypeZoneLaunch.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ZoneException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezones_activate(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Replace the web zones with a fetched catalog body. The Grid stays.
+     */
+    @Throws(ZoneException::class)override fun `applyCatalog`(`json`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(ZoneException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezones_apply_catalog(
+        it,
+
+        FfiConverterString.lower(`json`),_status)
+}
+    }
+
+
+
+
+    /**
+     * The launcher's Rust Native view (JSON). Each call is a new revision.
+     */
+    @Throws(ZoneException::class)override fun `launcher`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ZoneException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezones_launcher(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Fetch the public catalog and apply it. On any failure the current
+     * list stays, so the launcher never empties.
+     */
+    @Throws(ZoneException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `refresh`() {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corezones_refresh(
+                uniffiHandle,
+
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        ZoneException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * A web runner for one listed web zone.
+     */
+    @Throws(ZoneException::class)override fun `runner`(`zoneId`: kotlin.String): CoreZoneRunner {
+            return FfiConverterTypeCoreZoneRunner.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ZoneException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezones_runner(
+        it,
+
+        FfiConverterString.lower(`zoneId`),_status)
+}
+    }
+    )
+    }
+
+
+    override fun `zones`(): List<ZoneManifest> {
+            return FfiConverterSequenceTypeZoneManifest.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corezones_zones(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreZones: FfiConverter<CoreZones, Long> {
+    override fun lower(value: CoreZones): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreZones {
+        return CoreZones(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreZones {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreZones) = 8UL
+
+    override fun write(value: CoreZones, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -25089,6 +26409,439 @@ public object FfiConverterTypeLayoutListener: FfiConverter<LayoutListener, Long>
     override fun allocationSize(value: LayoutListener) = 8UL
 
     override fun write(value: LayoutListener, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface MedievalTownRendererInterface {
+
+    fun `attach`(`layer`: kotlin.ULong, `width`: kotlin.UInt, `height`: kotlin.UInt, `scale`: kotlin.Float)
+
+    fun `beginBenchmark`()
+
+    fun `cancelLoading`()
+
+    fun `detach`()
+
+    fun `frame`(`timestamp`: kotlin.Double, `moveX`: kotlin.Float, `moveZ`: kotlin.Float, `lookX`: kotlin.Float, `lookY`: kotlin.Float, `run`: kotlin.Boolean, `jump`: kotlin.Boolean)
+
+    fun `loadingProgress`(): MedievalTownLoadingProgress
+
+    fun `metrics`(): kotlin.String
+
+    suspend fun `prepare`()
+
+    fun `resetMetrics`()
+
+    fun `resize`(`width`: kotlin.UInt, `height`: kotlin.UInt, `scale`: kotlin.Float)
+
+    fun `setActive`(`active`: kotlin.Boolean)
+
+    companion object
+}
+
+open class MedievalTownRenderer: Disposable, AutoCloseable, MedievalTownRendererInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    constructor(`cacheDirectory`: kotlin.String) :
+        this(UniffiWithHandle,
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_medievaltownrenderer_new(
+
+
+        FfiConverterString.lower(`cacheDirectory`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_medievaltownrenderer(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_medievaltownrenderer(handle, status)
+        }
+    }
+
+
+    @Throws(MedievalTownException::class)override fun `attach`(`layer`: kotlin.ULong, `width`: kotlin.UInt, `height`: kotlin.UInt, `scale`: kotlin.Float)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(MedievalTownException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_attach(
+        it,
+
+        FfiConverterULong.lower(`layer`),
+        FfiConverterUInt.lower(`width`),
+        FfiConverterUInt.lower(`height`),
+        FfiConverterFloat.lower(`scale`),_status)
+}
+    }
+
+
+
+    override fun `beginBenchmark`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_begin_benchmark(
+        it,
+        _status)
+}
+    }
+
+
+
+    override fun `cancelLoading`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_cancel_loading(
+        it,
+        _status)
+}
+    }
+
+
+
+    override fun `detach`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_detach(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(MedievalTownException::class)override fun `frame`(`timestamp`: kotlin.Double, `moveX`: kotlin.Float, `moveZ`: kotlin.Float, `lookX`: kotlin.Float, `lookY`: kotlin.Float, `run`: kotlin.Boolean, `jump`: kotlin.Boolean)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(MedievalTownException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_frame(
+        it,
+
+        FfiConverterDouble.lower(`timestamp`),
+        FfiConverterFloat.lower(`moveX`),
+        FfiConverterFloat.lower(`moveZ`),
+        FfiConverterFloat.lower(`lookX`),
+        FfiConverterFloat.lower(`lookY`),
+        FfiConverterBoolean.lower(`run`),
+        FfiConverterBoolean.lower(`jump`),_status)
+}
+    }
+
+
+
+    override fun `loadingProgress`(): MedievalTownLoadingProgress {
+            return FfiConverterTypeMedievalTownLoadingProgress.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_loading_progress(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `metrics`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_metrics(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(MedievalTownException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `prepare`() {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_prepare(
+                uniffiHandle,
+
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        MedievalTownException.ErrorHandler,
+    )
+    }
+
+    override fun `resetMetrics`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_reset_metrics(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(MedievalTownException::class)override fun `resize`(`width`: kotlin.UInt, `height`: kotlin.UInt, `scale`: kotlin.Float)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(MedievalTownException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_resize(
+        it,
+
+        FfiConverterUInt.lower(`width`),
+        FfiConverterUInt.lower(`height`),
+        FfiConverterFloat.lower(`scale`),_status)
+}
+    }
+
+
+
+    override fun `setActive`(`active`: kotlin.Boolean)
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_medievaltownrenderer_set_active(
+        it,
+
+        FfiConverterBoolean.lower(`active`),_status)
+}
+    }
+
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMedievalTownRenderer: FfiConverter<MedievalTownRenderer, Long> {
+    override fun lower(value: MedievalTownRenderer): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): MedievalTownRenderer {
+        return MedievalTownRenderer(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): MedievalTownRenderer {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: MedievalTownRenderer) = 8UL
+
+    override fun write(value: MedievalTownRenderer, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -35548,6 +37301,79 @@ public object FfiConverterTypeLiveStatus: FfiConverterRustBuffer<LiveStatus> {
 
 
 
+data class MedievalTownLoadingProgress (
+    var `stage`: kotlin.String
+    ,
+    var `fraction`: kotlin.Float
+    ,
+    var `completedBytes`: kotlin.ULong
+    ,
+    var `totalBytes`: kotlin.ULong
+    ,
+    var `completedFiles`: kotlin.UInt
+    ,
+    var `totalFiles`: kotlin.UInt
+    ,
+    var `currentAsset`: kotlin.String
+    ,
+    var `error`: kotlin.String?
+    ,
+    var `finished`: kotlin.Boolean
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMedievalTownLoadingProgress: FfiConverterRustBuffer<MedievalTownLoadingProgress> {
+    override fun read(buf: ByteBuffer): MedievalTownLoadingProgress {
+        return MedievalTownLoadingProgress(
+            FfiConverterString.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MedievalTownLoadingProgress) = (
+            FfiConverterString.allocationSize(value.`stage`) +
+            FfiConverterFloat.allocationSize(value.`fraction`) +
+            FfiConverterULong.allocationSize(value.`completedBytes`) +
+            FfiConverterULong.allocationSize(value.`totalBytes`) +
+            FfiConverterUInt.allocationSize(value.`completedFiles`) +
+            FfiConverterUInt.allocationSize(value.`totalFiles`) +
+            FfiConverterString.allocationSize(value.`currentAsset`) +
+            FfiConverterOptionalString.allocationSize(value.`error`) +
+            FfiConverterBoolean.allocationSize(value.`finished`)
+    )
+
+    override fun write(value: MedievalTownLoadingProgress, buf: ByteBuffer) {
+            FfiConverterString.write(value.`stage`, buf)
+            FfiConverterFloat.write(value.`fraction`, buf)
+            FfiConverterULong.write(value.`completedBytes`, buf)
+            FfiConverterULong.write(value.`totalBytes`, buf)
+            FfiConverterUInt.write(value.`completedFiles`, buf)
+            FfiConverterUInt.write(value.`totalFiles`, buf)
+            FfiConverterString.write(value.`currentAsset`, buf)
+            FfiConverterOptionalString.write(value.`error`, buf)
+            FfiConverterBoolean.write(value.`finished`, buf)
+    }
+}
+
+
+
 data class ModelInfo (
     var `id`: kotlin.String
     ,
@@ -39940,6 +41766,192 @@ public object FfiConverterTypeWorktreeSpec: FfiConverterRustBuffer<WorktreeSpec>
 
 
 
+/**
+ * The result of a frame from the page.
+ */
+data class ZoneBridgeReply (
+    /**
+     * Frames to deliver to the page's `window.aethyrHost.onmessage`, in order.
+     */
+    var `deliver`: List<kotlin.String>
+    ,
+    /**
+     * The bridge refused the frame (wrong origin, subframe, size, shape).
+     */
+    var `refused`: kotlin.Boolean
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneBridgeReply: FfiConverterRustBuffer<ZoneBridgeReply> {
+    override fun read(buf: ByteBuffer): ZoneBridgeReply {
+        return ZoneBridgeReply(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZoneBridgeReply) = (
+            FfiConverterSequenceString.allocationSize(value.`deliver`) +
+            FfiConverterBoolean.allocationSize(value.`refused`)
+    )
+
+    override fun write(value: ZoneBridgeReply, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`deliver`, buf)
+            FfiConverterBoolean.write(value.`refused`, buf)
+    }
+}
+
+
+
+/**
+ * The WebGPU adapter the web view reported.
+ */
+data class ZoneGpuAdapter (
+    var `vendor`: kotlin.String
+    ,
+    var `architecture`: kotlin.String
+    ,
+    var `device`: kotlin.String
+    ,
+    var `description`: kotlin.String
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneGpuAdapter: FfiConverterRustBuffer<ZoneGpuAdapter> {
+    override fun read(buf: ByteBuffer): ZoneGpuAdapter {
+        return ZoneGpuAdapter(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZoneGpuAdapter) = (
+            FfiConverterString.allocationSize(value.`vendor`) +
+            FfiConverterString.allocationSize(value.`architecture`) +
+            FfiConverterString.allocationSize(value.`device`) +
+            FfiConverterString.allocationSize(value.`description`)
+    )
+
+    override fun write(value: ZoneGpuAdapter, buf: ByteBuffer) {
+            FfiConverterString.write(value.`vendor`, buf)
+            FfiConverterString.write(value.`architecture`, buf)
+            FfiConverterString.write(value.`device`, buf)
+            FfiConverterString.write(value.`description`, buf)
+    }
+}
+
+
+
+/**
+ * One launcher entry.
+ */
+data class ZoneManifest (
+    var `id`: kotlin.String
+    ,
+    var `title`: kotlin.String
+    ,
+    var `summary`: kotlin.String
+    ,
+    var `runner`: ZoneRunnerKind
+    ,
+    /**
+     * The immutable release ID (web zones only).
+     */
+    var `releaseId`: kotlin.String?
+    ,
+    /**
+     * The page a web runner loads (web zones only).
+     */
+    var `url`: kotlin.String?
+    ,
+    /**
+     * The exact origin a web runner may show (web zones only).
+     */
+    var `origin`: kotlin.String?
+    ,
+    /**
+     * The website page to open in a browser when the web view can't run it.
+     */
+    var `pageUrl`: kotlin.String?
+    ,
+    var `detailFloor`: ZoneDetailFloor
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneManifest: FfiConverterRustBuffer<ZoneManifest> {
+    override fun read(buf: ByteBuffer): ZoneManifest {
+        return ZoneManifest(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeZoneRunnerKind.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterTypeZoneDetailFloor.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZoneManifest) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`summary`) +
+            FfiConverterTypeZoneRunnerKind.allocationSize(value.`runner`) +
+            FfiConverterOptionalString.allocationSize(value.`releaseId`) +
+            FfiConverterOptionalString.allocationSize(value.`url`) +
+            FfiConverterOptionalString.allocationSize(value.`origin`) +
+            FfiConverterOptionalString.allocationSize(value.`pageUrl`) +
+            FfiConverterTypeZoneDetailFloor.allocationSize(value.`detailFloor`)
+    )
+
+    override fun write(value: ZoneManifest, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`summary`, buf)
+            FfiConverterTypeZoneRunnerKind.write(value.`runner`, buf)
+            FfiConverterOptionalString.write(value.`releaseId`, buf)
+            FfiConverterOptionalString.write(value.`url`, buf)
+            FfiConverterOptionalString.write(value.`origin`, buf)
+            FfiConverterOptionalString.write(value.`pageUrl`, buf)
+            FfiConverterTypeZoneDetailFloor.write(value.`detailFloor`, buf)
+    }
+}
+
+
+
 
 enum class AccessibilityDirection {
 
@@ -42887,6 +44899,68 @@ public object FfiConverterTypeLabMediaView: FfiConverterRustBuffer<LabMediaView>
 }
 
 
+
+
+
+
+
+sealed class MedievalTownException: kotlin.Exception() {
+
+    class Failed(
+
+        val `detail`: kotlin.String
+        ) : MedievalTownException() {
+        override val message
+            get() = "detail=${ `detail` }"
+    }
+
+
+
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<MedievalTownException> {
+        override fun lift(error_buf: RustBuffer.ByValue): MedievalTownException = FfiConverterTypeMedievalTownError.lift(error_buf)
+    }
+
+
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMedievalTownError : FfiConverterRustBuffer<MedievalTownException> {
+    override fun read(buf: ByteBuffer): MedievalTownException {
+
+
+        return when(buf.getInt()) {
+            1 -> MedievalTownException.Failed(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: MedievalTownException): ULong {
+        return when(value) {
+            is MedievalTownException.Failed -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`detail`)
+            )
+        }
+    }
+
+    override fun write(value: MedievalTownException, buf: ByteBuffer) {
+        when(value) {
+            is MedievalTownException.Failed -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`detail`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
 
 
 
@@ -46562,6 +48636,511 @@ public object FfiConverterTypeWidgetKind : FfiConverterRustBuffer<WidgetKind>{
 
 
 
+/**
+ * The least detail a zone accepts (ADR 0007). Placeholder until the shared
+ * device profile lands; every zone accepts any device today.
+ */
+
+enum class ZoneDetailFloor {
+
+    ANY;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneDetailFloor: FfiConverterRustBuffer<ZoneDetailFloor> {
+    override fun read(buf: ByteBuffer) = try {
+        ZoneDetailFloor.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ZoneDetailFloor) = 4UL
+
+    override fun write(value: ZoneDetailFloor, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+
+sealed class ZoneException: kotlin.Exception() {
+
+    class Invalid(
+
+        val `detail`: kotlin.String
+        ) : ZoneException() {
+        override val message
+            get() = "detail=${ `detail` }"
+    }
+
+    class Unavailable(
+
+        val `detail`: kotlin.String
+        ) : ZoneException() {
+        override val message
+            get() = "detail=${ `detail` }"
+    }
+
+
+
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<ZoneException> {
+        override fun lift(error_buf: RustBuffer.ByValue): ZoneException = FfiConverterTypeZoneError.lift(error_buf)
+    }
+
+
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneError : FfiConverterRustBuffer<ZoneException> {
+    override fun read(buf: ByteBuffer): ZoneException {
+
+
+        return when(buf.getInt()) {
+            1 -> ZoneException.Invalid(
+                FfiConverterString.read(buf),
+                )
+            2 -> ZoneException.Unavailable(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ZoneException): ULong {
+        return when(value) {
+            is ZoneException.Invalid -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`detail`)
+            )
+            is ZoneException.Unavailable -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`detail`)
+            )
+        }
+    }
+
+    override fun write(value: ZoneException, buf: ByteBuffer) {
+        when(value) {
+            is ZoneException.Invalid -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`detail`, buf)
+                Unit
+            }
+            is ZoneException.Unavailable -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`detail`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+/**
+ * What the shell does after a card is chosen.
+ */
+sealed class ZoneLaunch {
+
+    /**
+     * Show the app's existing coding-agent surfaces (sessions, computers,
+     * transcripts). Nothing is downloaded.
+     */
+    object Grid : ZoneLaunch()
+
+
+    /**
+     * Open this zone in the web runner (`CoreZones::runner`).
+     */
+    data class Web(
+        val `zoneId`: kotlin.String) : ZoneLaunch()
+
+    {
+
+
+        companion object
+    }
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneLaunch : FfiConverterRustBuffer<ZoneLaunch>{
+    override fun read(buf: ByteBuffer): ZoneLaunch {
+        return when(buf.getInt()) {
+            1 -> ZoneLaunch.Grid
+            2 -> ZoneLaunch.Web(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ZoneLaunch): ULong = when(value) {
+        is ZoneLaunch.Grid -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ZoneLaunch.Web -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`zoneId`)
+            )
+        }
+    }
+
+    override fun write(value: ZoneLaunch, buf: ByteBuffer) {
+        when(value) {
+            is ZoneLaunch.Grid -> {
+                buf.putInt(1)
+                Unit
+            }
+            is ZoneLaunch.Web -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`zoneId`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * What a card button asks the shell to do.
+ */
+sealed class ZoneRunnerAction {
+
+    /**
+     * Reload the zone's page.
+     */
+    object Retry : ZoneRunnerAction()
+
+
+    /**
+     * Close the runner.
+     */
+    object Close : ZoneRunnerAction()
+
+
+    /**
+     * Open this website page in the system browser.
+     */
+    data class OpenInBrowser(
+        val `url`: kotlin.String) : ZoneRunnerAction()
+
+    {
+
+
+        companion object
+    }
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneRunnerAction : FfiConverterRustBuffer<ZoneRunnerAction>{
+    override fun read(buf: ByteBuffer): ZoneRunnerAction {
+        return when(buf.getInt()) {
+            1 -> ZoneRunnerAction.Retry
+            2 -> ZoneRunnerAction.Close
+            3 -> ZoneRunnerAction.OpenInBrowser(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ZoneRunnerAction): ULong = when(value) {
+        is ZoneRunnerAction.Retry -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ZoneRunnerAction.Close -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ZoneRunnerAction.OpenInBrowser -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`url`)
+            )
+        }
+    }
+
+    override fun write(value: ZoneRunnerAction, buf: ByteBuffer) {
+        when(value) {
+            is ZoneRunnerAction.Retry -> {
+                buf.putInt(1)
+                Unit
+            }
+            is ZoneRunnerAction.Close -> {
+                buf.putInt(2)
+                Unit
+            }
+            is ZoneRunnerAction.OpenInBrowser -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`url`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * How a zone runs on this device.
+ */
+
+enum class ZoneRunnerKind {
+
+    /**
+     * Compiled into the shell; nothing is downloaded.
+     */
+    BUILTIN,
+    /**
+     * The zone's web release in a platform web view.
+     */
+    WEB;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneRunnerKind: FfiConverterRustBuffer<ZoneRunnerKind> {
+    override fun read(buf: ByteBuffer) = try {
+        ZoneRunnerKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ZoneRunnerKind) = 4UL
+
+    override fun write(value: ZoneRunnerKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What the shell shows.
+ */
+sealed class ZoneRunnerPhase {
+
+    /**
+     * The page or the WebGPU check is still on its way: show the card.
+     */
+    object Loading : ZoneRunnerPhase()
+
+
+    /**
+     * Show the web view, with no card over it.
+     */
+    object Ready : ZoneRunnerPhase()
+
+
+    /**
+     * The page didn't load: show the card with Retry.
+     */
+    data class Failed(
+        val `message`: kotlin.String) : ZoneRunnerPhase()
+
+    {
+
+
+        companion object
+    }
+
+    /**
+     * This web view can't run the zone: show the card with Open in browser.
+     */
+    object Unavailable : ZoneRunnerPhase()
+
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneRunnerPhase : FfiConverterRustBuffer<ZoneRunnerPhase>{
+    override fun read(buf: ByteBuffer): ZoneRunnerPhase {
+        return when(buf.getInt()) {
+            1 -> ZoneRunnerPhase.Loading
+            2 -> ZoneRunnerPhase.Ready
+            3 -> ZoneRunnerPhase.Failed(
+                FfiConverterString.read(buf),
+                )
+            4 -> ZoneRunnerPhase.Unavailable
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ZoneRunnerPhase): ULong = when(value) {
+        is ZoneRunnerPhase.Loading -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ZoneRunnerPhase.Ready -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ZoneRunnerPhase.Failed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`message`)
+            )
+        }
+        is ZoneRunnerPhase.Unavailable -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: ZoneRunnerPhase, buf: ByteBuffer) {
+        when(value) {
+            is ZoneRunnerPhase.Loading -> {
+                buf.putInt(1)
+                Unit
+            }
+            is ZoneRunnerPhase.Ready -> {
+                buf.putInt(2)
+                Unit
+            }
+            is ZoneRunnerPhase.Failed -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`message`, buf)
+                Unit
+            }
+            is ZoneRunnerPhase.Unavailable -> {
+                buf.putInt(4)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * Which platform's web view hosts the runner; it decides how the page
+ * reaches the native channels.
+ */
+
+enum class ZoneWebPlatform {
+
+    /**
+     * `WKScriptMessageHandler`s named [`NATIVE_CHANNEL`] and [`PROBE_CHANNEL`].
+     */
+    IOS,
+    /**
+     * `WebViewCompat.addWebMessageListener` objects with those names.
+     */
+    ANDROID;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZoneWebPlatform: FfiConverterRustBuffer<ZoneWebPlatform> {
+    override fun read(buf: ByteBuffer) = try {
+        ZoneWebPlatform.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ZoneWebPlatform) = 4UL
+
+    override fun write(value: ZoneWebPlatform, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 /**
  * @suppress
@@ -48124,6 +50703,38 @@ public object FfiConverterOptionalTypeWorktreeSpec: FfiConverterRustBuffer<Workt
         } else {
             buf.put(1)
             FfiConverterTypeWorktreeSpec.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeZoneGpuAdapter: FfiConverterRustBuffer<ZoneGpuAdapter?> {
+    override fun read(buf: ByteBuffer): ZoneGpuAdapter? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeZoneGpuAdapter.read(buf)
+    }
+
+    override fun allocationSize(value: ZoneGpuAdapter?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeZoneGpuAdapter.allocationSize(value)
+        }
+    }
+
+    override fun write(value: ZoneGpuAdapter?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeZoneGpuAdapter.write(value, buf)
         }
     }
 }
@@ -49896,6 +52507,34 @@ public object FfiConverterSequenceTypeWordCheck: FfiConverterRustBuffer<List<Wor
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeWordCheck.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZoneManifest: FfiConverterRustBuffer<List<ZoneManifest>> {
+    override fun read(buf: ByteBuffer): List<ZoneManifest> {
+        val len = buf.getInt()
+        return List<ZoneManifest>(len) {
+            FfiConverterTypeZoneManifest.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZoneManifest>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZoneManifest.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZoneManifest>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZoneManifest.write(it, buf)
         }
     }
 }
