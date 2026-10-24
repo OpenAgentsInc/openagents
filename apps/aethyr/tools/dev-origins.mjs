@@ -6,6 +6,7 @@ export function devOrigins(environment = process.env) {
     ![
       "medieval-town",
       "haunted-house",
+      "personal-planet",
       "medieval-overview",
       "starter",
       "open-ground",

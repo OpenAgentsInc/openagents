@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { devOrigins } from "../tools/dev-origins.mjs";
 
 test("overview has its own exact loopback pair; existing deployments keep defaults", () => {
-  for (const profile of [undefined, "medieval-town", "haunted-house"]) {
+  for (const profile of [
+    undefined,
+    "medieval-town",
+    "haunted-house",
+    "personal-planet",
+  ]) {
     const result = devOrigins({ VITE_WORLD_PROFILE: profile });
     assert.equal(result.editorPort, 55304);
     assert.equal(result.previewPort, 55305);
