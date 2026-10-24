@@ -339,3 +339,29 @@ test("the entry demo runs its controller in the browser", async () => {
     assert.equal(revision, "3");
   }
 });
+
+test("a field keeps every keystroke while a slow handler catches up", async () => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.evaluate(() => window.harness.slowField(60));
+  const name = page.getByLabel("Planet name");
+  // Typed far faster than the handler: without a draft, each input would
+  // name a revision the previous one replaced and be refused as stale.
+  await name.pressSequentially("Moon garden", { delay: 5 });
+  // The field shows what was typed at once, not the handler's lagging value.
+  assert.equal(await name.inputValue(), "Moon garden");
+  await page.waitForFunction(
+    () => window.harness.fieldValue() === "Moon garden",
+    undefined,
+    { timeout: 10_000 },
+  );
+  assert.equal(await name.inputValue(), "Moon garden");
+  await name.press("End");
+  await name.press("Backspace");
+  await name.pressSequentially("ns", { delay: 5 });
+  await page.waitForFunction(
+    () => window.harness.fieldValue() === "Moon gardens",
+    undefined,
+    { timeout: 10_000 },
+  );
+  assert.equal(await name.inputValue(), "Moon gardens");
+});

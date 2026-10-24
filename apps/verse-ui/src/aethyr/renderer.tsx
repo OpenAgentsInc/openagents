@@ -8,6 +8,7 @@ import {
   useContext,
   useLayoutEffect,
   useRef,
+  useState,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -35,17 +36,28 @@ export type Mount = (
 
 export interface RendererProps {
   readonly view: View;
-  readonly onIntent: (intent: Intent) => void;
+  /**
+   * Handles one intent. A host that returns a promise lets fields know when
+   * their last value has been handled (see `FieldView`).
+   */
+  readonly onIntent: (intent: Intent) => void | PromiseLike<unknown>;
   readonly mount?: Mount;
 }
 
 interface Scope {
-  readonly send: (node: string, kind: IntentKind, value?: string) => void;
+  readonly send: (
+    node: string,
+    kind: IntentKind,
+    value?: string,
+  ) => void | PromiseLike<unknown>;
+  /** The revision drawn now. */
+  readonly revision: () => number;
   readonly mount: Mount | undefined;
 }
 
 const ScopeContext = createContext<Scope>({
   send: () => {},
+  revision: () => 0,
   mount: undefined,
 });
 
@@ -93,7 +105,7 @@ export function AethyrView({ view, onIntent, mount }: RendererProps) {
   const send = useCallback(
     (node: string, kind: IntentKind, value?: string) => {
       const { instance, revision } = latest.current;
-      onIntent(
+      return onIntent(
         value === undefined
           ? { instance, revision, node, kind }
           : { instance, revision, node, kind, value },
@@ -101,8 +113,9 @@ export function AethyrView({ view, onIntent, mount }: RendererProps) {
     },
     [onIntent],
   );
+  const revision = useCallback(() => latest.current.revision, []);
   return (
-    <ScopeContext.Provider value={{ send, mount }}>
+    <ScopeContext.Provider value={{ send, revision, mount }}>
       <div
         className="aui-root"
         data-aethyr-root={view.instance}
@@ -308,13 +321,24 @@ function ChipView({ node, common, extra }: ElementProps) {
   return (
     <button
       type="button"
-      className={classes("aui-chip", ...extra)}
+      className={classes(
+        "aui-chip",
+        element.detail !== undefined && "aui-chip-detailed",
+        ...extra,
+      )}
       aria-pressed={element.selected}
       disabled={element.enabled === false}
       onClick={() => send(node.id, "activate")}
       {...common}
     >
-      {element.label}
+      {element.detail === undefined ? (
+        element.label
+      ) : (
+        <>
+          <span className="aui-chip-label">{element.label}</span>
+          <small className="aui-chip-detail">{element.detail}</small>
+        </>
+      )}
     </button>
   );
 }
@@ -378,19 +402,72 @@ function ListView({ node, common, extra }: ElementProps) {
   );
 }
 
+/**
+ * A field keeps a local draft while its `input` intents are handled, so a
+ * slow handler never drops keystrokes or moves the caret back. One input is
+ * in flight at a time; when it settles, the newest draft is sent against the
+ * newest revision (an intent for a replaced revision would be refused as
+ * stale). The draft ends when the tree shows it, or when the controller
+ * replaces the value with one this field never sent.
+ */
 function FieldView({ node, common, extra }: ElementProps) {
-  const { send } = useContext(ScopeContext);
+  const { send, revision } = useContext(ScopeContext);
   const element = node.element as Extract<Element, { kind: "field" }>;
   const enabled = element.enabled !== false;
+  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const [settled, setSettled] = useState(0);
+  const flight = useRef(false);
+  const sent = useRef<{ value: string; revision: number } | undefined>(
+    undefined,
+  );
+  const values = useRef(new Set<string>());
+  const push = useCallback(
+    (value: string) => {
+      const at = revision();
+      if (sent.current?.value === value && sent.current.revision === at) return;
+      sent.current = { value, revision: at };
+      values.current.add(value);
+      const done = send(node.id, "input", value);
+      if (done && typeof done.then === "function") {
+        flight.current = true;
+        const finish = () => {
+          flight.current = false;
+          setSettled((n) => n + 1);
+        };
+        done.then(finish, finish);
+      }
+    },
+    [send, revision, node.id],
+  );
+  useLayoutEffect(() => {
+    if (draft === undefined || flight.current) return;
+    if (draft === element.value) {
+      setDraft(undefined);
+      values.current.clear();
+    } else if (!values.current.has(element.value) && sent.current) {
+      // The controller chose another value (it cleared or reset the field).
+      const pendingUserEdit = draft !== sent.current.value;
+      if (!pendingUserEdit) {
+        setDraft(undefined);
+        values.current.clear();
+        sent.current = undefined;
+        return;
+      }
+      push(draft);
+    } else push(draft);
+  }, [draft, element.value, settled, push]);
   const change = (value: string) => {
-    if (byteLength(value) <= element.max_bytes) send(node.id, "input", value);
+    if (byteLength(value) > element.max_bytes) return;
+    setDraft(value);
+    if (!flight.current) push(value);
   };
+  const value = draft ?? element.value;
   return (
     <label className={classes("aui-field", ...extra)} {...common}>
       <span className="aui-field-label">{element.label}</span>
       {element.multiline ? (
         <Textarea
-          value={element.value}
+          value={value}
           placeholder={element.placeholder}
           disabled={!enabled}
           onChange={(event) => change(event.target.value)}
@@ -398,7 +475,7 @@ function FieldView({ node, common, extra }: ElementProps) {
       ) : (
         <Input
           type={element.secret ? "password" : "text"}
-          value={element.value}
+          value={value}
           placeholder={element.placeholder}
           disabled={!enabled}
           autoComplete={element.secret ? "off" : undefined}

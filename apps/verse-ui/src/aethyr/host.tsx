@@ -30,7 +30,7 @@ export function ControllerView<S, E, R>({
   const view: View = useAtomValue(controller.view);
   const onIntent = useCallback(
     (intent: Intent) => {
-      void run(controller.dispatch(intent)).then((exit) => {
+      return run(controller.dispatch(intent)).then((exit) => {
         if (Exit.isSuccess(exit)) return;
         const error = Cause.squash(exit.cause);
         // A stale intent is expected after a newer revision; drop it.

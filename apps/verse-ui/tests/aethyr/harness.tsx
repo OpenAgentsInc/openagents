@@ -3,7 +3,8 @@
 // or runs the entry controller with recording services.
 import { createRoot, type Root } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Duration, Effect, Layer, ManagedRuntime } from "effect";
+import * as Controller from "../../src/aethyr/controller";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { RegistryContext } from "@effect/atom-react";
 import { AethyrView } from "../../src/aethyr/renderer";
@@ -26,6 +27,10 @@ declare global {
         accounts: boolean;
         hauntPath?: string;
       }) => Promise<void>;
+      /** A field whose handler takes `delay` ms per keystroke. */
+      slowField: (delay: number) => Promise<void>;
+      /** The slow field's controller state. */
+      fieldValue: () => string;
     };
   }
 }
@@ -48,7 +53,9 @@ window.harness = {
       target.render(
         <AethyrView
           view={view}
-          onIntent={(intent) => window.harness.intents.push(intent)}
+          onIntent={(intent) => {
+            window.harness.intents.push(intent);
+          }}
         />,
       ),
     );
@@ -83,6 +90,47 @@ window.harness = {
             controller={controller}
             run={(effect) => runtime.runPromiseExit(effect)}
             onError={(message) => trail.push(`error ${message}`)}
+          />
+        </RegistryContext.Provider>,
+      ),
+    );
+  },
+  fieldValue: () => "",
+  async slowField(delay) {
+    const registry = AtomRegistry.make();
+    const runtime = ManagedRuntime.make(
+      Layer.succeed(AtomRegistry.AtomRegistry, registry),
+    );
+    const controller = await runtime.runPromise(
+      Controller.make<{ name: string }>({
+        instance: "slow-field",
+        initial: { name: "" },
+        render: (state) => ({
+          id: "slow",
+          element: {
+            kind: "field",
+            label: "Planet name",
+            value: state.name,
+            max_bytes: 64,
+          },
+        }),
+        handle: (state, intent) =>
+          Effect.gen(function* () {
+            yield* Effect.sleep(Duration.millis(delay));
+            return intent.kind === "input"
+              ? { name: intent.value ?? "" }
+              : state;
+          }),
+      }),
+    );
+    window.harness.fieldValue = () => registry.get(controller.state).name;
+    const target = container();
+    flushSync(() =>
+      target.render(
+        <RegistryContext.Provider value={registry}>
+          <ControllerView
+            controller={controller}
+            run={(effect) => runtime.runPromiseExit(effect)}
           />
         </RegistryContext.Provider>,
       ),
