@@ -285,7 +285,10 @@ fn check_node(node: &Node) -> Result<(), ViewError> {
             }
             Some(label)
         }
-        Element::Chip { label, .. } => Some(label),
+        Element::Chip { label, detail, .. } => {
+            texts.extend(detail.as_deref());
+            Some(label)
+        }
         Element::List {
             label,
             selectable,

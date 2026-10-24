@@ -108,6 +108,31 @@ fn marketing_content() -> Markup {
     }
 }
 
+/// What the Verse controller (`apps/verse-ui/src/aethyr/verse.ts`) needs
+/// from the server. World names come from the engine host's one list.
+fn verse_config(haunt: Option<&str>, account: bool, signed_in: bool) -> String {
+    let worlds: Vec<_> = aethyrforge_host::WORLDS
+        .iter()
+        .map(|w| serde_json::json!({"id": w.id, "name": w.name, "category": w.category, "description": w.description}))
+        .collect();
+    serde_json::json!({
+        "accounts": account,
+        "signedIn": signed_in,
+        "hauntPath": haunt,
+        "blueRushPath": super::blue_rush::PATH,
+        "mapPath": VERSE,
+        "worlds": worlds,
+    })
+    .to_string()
+    .replace('<', "\\u003c")
+}
+
+/// The Verse page is a shell (#12588). With JavaScript, the Aethyr
+/// controller draws the interface into `#verse-hud`. The `.verse-bridge`
+/// blocks are the server's own copy of the controls: they are the page
+/// without JavaScript, and they carry the element IDs the pinned engine
+/// release (`aethyrforge-host`'s `mount_universe`) reads and writes. The
+/// web host hides them once it mounts and relays intents to them.
 fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Markup {
     let release = universe_release();
     html! {
@@ -123,76 +148,82 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                     p.hud-toast id="world-notice" role="status" { "Opening the planets… You can also choose a destination below." }
                 }
                 div.verse-title { p.hud-label { span.hud-signal {} "THE VERSE / EXPLORATION" } h1 #atlas-title { "Choose your world." } }
-                aside.hud-panel.verse-panel aria-labelledby="world-title" {
-                    div.verse-panel-head {
-                        div {
-                            p.hud-label #world-category { "Company world · Locked" }
-                            h2 #world-title { "OpenAgents" }
-                        }
-                        span.verse-panel-icon { (super::verse_ui::icon("map")) }
-                    }
-                    p #world-description { "Our home in the Verse. The Gym and Pylons will open here for their communities." }
-                    div.verse-actions {
-                        div id="destination-openagents" { span.hud-label.verse-locked { "◇ Locked for now" } a.hud-link href="/docs" { "About OpenAgents ↗" } }
-                        div id="destination-blue-rush" hidden { a.hud-button.hud-primary href=(super::blue_rush::PATH) { "Meet Blue Rush ↗" } }
-                        div id="destination-haunted-house" hidden {
-                            @if let Some(path) = haunt { a.hud-button.hud-primary href=(path) { "Enter Haunted House ↗" } }
-                            @else { p { "The house is not open here yet." } }
-                        }
-                        div id="destination-creator-worlds" hidden {
-                            p id="planet-status" role="status" { "Publish your own house, choose Play or Share, then return here." }
-                            div.hud-card id="planet-ready" hidden {
-                                h3 { "A place of your own" }
-                                p { "Your house is published. Create your first personal planet." }
-                                p.verse-fine { "64 × 64 metres · Up to 128 objects · Private to you. Uses one account project; your account's project limit applies." }
-                                button.hud-button.hud-primary id="planet-create" type="button" { "Create my planet" }
+                div.verse-bridge {
+                    aside.hud-panel.verse-panel aria-labelledby="world-title" {
+                        div.verse-panel-head {
+                            div {
+                                p.hud-label #world-category { "Company world · Locked" }
+                                h2 #world-title { "OpenAgents" }
                             }
-                            div.hud-card id="planet-owned" hidden {
-                                h3 { "Your planet is ready" }
-                                a.hud-button.hud-primary id="planet-setup" { "Set up my planet ↗" }
+                            span.verse-panel-icon { (super::verse_ui::icon("map")) }
+                        }
+                        p #world-description { "Our home in the Verse. The Gym and Pylons will open here for their communities." }
+                        div.verse-actions {
+                            div id="destination-openagents" { span.hud-label.verse-locked { "◇ Locked for now" } a.hud-link href="/docs" { "About OpenAgents ↗" } }
+                            div id="destination-blue-rush" hidden { a.hud-button.hud-primary href=(super::blue_rush::PATH) { "Meet Blue Rush ↗" } }
+                            div id="destination-haunted-house" hidden {
+                                @if let Some(path) = haunt { a.hud-button.hud-primary href=(path) { "Enter Haunted House ↗" } }
+                                @else { p { "The house is not open here yet." } }
+                            }
+                            div id="destination-creator-worlds" hidden {
+                                p id="planet-status" role="status" { "Publish your own house, choose Play or Share, then return here." }
+                                div.hud-card id="planet-ready" hidden {
+                                    h3 { "A place of your own" }
+                                    p { "Your house is published. Create your first personal planet." }
+                                    p.verse-fine { "64 × 64 metres · Up to 128 objects · Private to you. Uses one account project; your account's project limit applies." }
+                                    button.hud-button.hud-primary id="planet-create" type="button" { "Create my planet" }
+                                }
+                                div.hud-card id="planet-owned" hidden {
+                                    h3 { "Your planet is ready" }
+                                    a.hud-button.hud-primary id="planet-setup" { "Set up my planet ↗" }
+                                }
+                            }
+                            @for id in ["new-horizons", "far-field"] { div id=(format!("destination-{id}")) hidden { span.hud-label.verse-locked { "◇ Still taking shape" } } }
+                        }
+                        div.verse-worlds role="group" aria-label="Choose a destination" {
+                            @for world in aethyrforge_host::WORLDS {
+                                button.verse-world-chip id=(format!("option-{}",world.id)) data-world=(world.id) type="button" aria-pressed=(if world.id=="openagents" {"true"} else {"false"}) { span.verse-dot aria-hidden="true" {} span { strong { (world.name) } small { (world.category) } } }
                             }
                         }
-                        @for id in ["new-horizons", "far-field"] { div id=(format!("destination-{id}")) hidden { span.hud-label.verse-locked { "◇ Still taking shape" } } }
                     }
-                    div.verse-worlds role="group" aria-label="Choose a destination" {
-                        @for world in aethyrforge_host::WORLDS {
-                            button.verse-world-chip id=(format!("option-{}",world.id)) data-world=(world.id) type="button" aria-pressed=(if world.id=="openagents" {"true"} else {"false"}) { span.verse-dot aria-hidden="true" {} span { strong { (world.name) } small { (world.category) } } }
-                        }
+                    div.verse-controls {
+                        p.hud-label id="universe-status" { "Drag to orbit · Scroll to zoom · Select a world" }
+                        a.hud-button.hud-ghost id="world-retry" href=(VERSE) { "Reload map" }
+                        button.hud-button.hud-ghost id="world-fullscreen" type="button" { "Full screen" }
                     }
-                }
-                div.verse-controls {
-                    p.hud-label id="universe-status" { "Drag to orbit · Scroll to zoom · Select a world" }
-                    a.hud-button.hud-ghost id="world-retry" href=(VERSE) { "Reload map" }
-                    button.hud-button.hud-ghost id="world-fullscreen" type="button" { "Full screen" }
                 }
             }
-            dialog.hud-panel.verse-entry id="verse-entry" aria-labelledby="entry-title" aria-describedby="entry-description" {
-                div.verse-entry-head { span.hud-label { "OPENAGENTS / THE VERSE" } span.verse-entry-mark aria-hidden="true" { (mark()) } }
-                section id="verse-account" {
-                    p.hud-label { "YOUR PLACE IN THE VERSE" }
-                    h2 #entry-title { "Your next world is waiting." }
-                    p #entry-description { @if account { "Log in, or look around as a guest." } @else { "Look around as a guest." } }
-                    div.verse-entry-actions {
-                        a.hud-button id="verse-signin" hidden[!account] href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in" span aria-hidden="true" { "↗" } }
-                        button.hud-button.hud-primary id="continue-guest" type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
+            div.verse-hud #verse-hud {}
+            script id="verse-config" type="application/json" { (PreEscaped(verse_config(haunt, account, signed_in))) }
+            div.verse-bridge {
+                dialog.hud-panel.verse-entry id="verse-entry" aria-labelledby="entry-title" aria-describedby="entry-description" {
+                    div.verse-entry-head { span.hud-label { "OPENAGENTS / THE VERSE" } span.verse-entry-mark aria-hidden="true" { (mark()) } }
+                    section id="verse-account" {
+                        p.hud-label { "YOUR PLACE IN THE VERSE" }
+                        h2 #entry-title { "Your next world is waiting." }
+                        p #entry-description { @if account { "Log in, or look around as a guest." } @else { "Look around as a guest." } }
+                        div.verse-entry-actions {
+                            a.hud-button id="verse-signin" hidden[!account] href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in" span aria-hidden="true" { "↗" } }
+                            button.hud-button.hud-primary id="continue-guest" type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
+                        }
                     }
-                }
-                section id="verse-choices" hidden {
-                    p.hud-label { "CHOOSE YOUR NEXT STEP" }
-                    h2 id="choice-title" { "Where shall we go?" }
-                    p id="choice-description" { "Explore the planets, or step inside the Haunted House." }
-                    div.verse-entry-actions {
-                        button.hud-button id="verse-explore" type="button" { "Explore the planets" span aria-hidden="true" { "↗" } }
-                        @if let Some(path) = haunt { a.hud-button.hud-primary href=(path) { "Haunted House tutorial" span aria-hidden="true" { "↗" } } }
+                    section id="verse-choices" hidden {
+                        p.hud-label { "CHOOSE YOUR NEXT STEP" }
+                        h2 id="choice-title" { "Where shall we go?" }
+                        p id="choice-description" { "Explore the planets, or step inside the Haunted House." }
+                        div.verse-entry-actions {
+                            button.hud-button id="verse-explore" type="button" { "Explore the planets" span aria-hidden="true" { "↗" } }
+                            @if let Some(path) = haunt { a.hud-button.hud-primary href=(path) { "Haunted House tutorial" span aria-hidden="true" { "↗" } } }
+                        }
                     }
+                    a.hud-link.verse-entry-back href=(PATH) { "← Back to OpenAgents" }
                 }
-                a.hud-link.verse-entry-back href=(PATH) { "← Back to OpenAgents" }
-            }
-            nav.hud-panel.verse-fallback aria-label="Other ways to explore" {
-                a href=(VERSE) { "Try the 3D view again" }
-                a href=(PATH) { "Back to OpenAgents" }
-                @if let Some(path) = haunt { a href=(path) { "Enter Haunted House" } }
-                a href=(super::blue_rush::PATH) { "Meet Blue Rush" }
+                nav.hud-panel.verse-fallback aria-label="Other ways to explore" {
+                    a href=(VERSE) { "Try the 3D view again" }
+                    a href=(PATH) { "Back to OpenAgents" }
+                    @if let Some(path) = haunt { a href=(path) { "Enter Haunted House" } }
+                    a href=(super::blue_rush::PATH) { "Meet Blue Rush" }
+                }
             }
             noscript { p.hud-toast { "This is a still view. You can use the links to visit a destination." } }
         }
@@ -276,10 +307,10 @@ async fn script() -> Response {
     let body = if let Some(release) = universe_release() {
         let url = serde_json::to_string(&release.sdk_url).expect("SDK URL");
         format!(
-            r#"try{{const sdk=await import({url});await sdk.default();window.universeDemo=sdk.mount_universe();}}catch{{document.getElementById('world-notice').textContent='The 3D view could not open. Reload the map or choose a destination below.';}}"#
+            r#"try{{const sdk=await import({url});await sdk.default();window.universeDemo=sdk.mount_universe();}}catch{{const n=document.getElementById('world-notice');n.dataset.state='error';n.textContent='The 3D view could not open. Reload the map or choose a destination below.';}}"#
         )
     } else {
-        "document.getElementById('world-notice').textContent='The 3D view is unavailable here. You can use the destination links below.';".into()
+        "const n=document.getElementById('world-notice');n.dataset.state='error';n.textContent='The 3D view is unavailable here. You can use the destination links below.';".into()
     };
     (
         [
@@ -329,6 +360,76 @@ mod tests {
         );
     }
 
+    /// The Verse page is a shell for the Aethyr controller, and it keeps every
+    /// element the pinned engine release needs plus links that work without
+    /// JavaScript.
+    #[test]
+    fn new_lander_verse_is_a_controller_shell_with_the_engine_bridge() {
+        let page = document(
+            universe_content(Some("/new-lander/house"), true, false),
+            true,
+            true,
+        );
+        assert!(page.contains(r#"id="verse-hud""#));
+        for id in [
+            "engine",
+            "world-notice",
+            "universe-exploration",
+            "verse-entry",
+            "verse-account",
+            "verse-choices",
+            "continue-guest",
+            "verse-explore",
+            "verse-signin",
+            "verse-atlas",
+            "world-title",
+            "world-category",
+            "world-description",
+            "planet-ready",
+            "planet-owned",
+            "planet-create",
+            "planet-setup",
+            "planet-status",
+            "world-retry",
+            "world-fullscreen",
+        ] {
+            if id == "engine" && universe_release().is_none() {
+                continue;
+            }
+            assert!(page.contains(&format!(r#"id="{id}""#)), "{id}");
+        }
+        for world in aethyrforge_host::WORLDS {
+            assert!(page.contains(&format!(r#"id="option-{}""#, world.id)));
+            assert!(page.contains(&format!(r#"id="destination-{}""#, world.id)));
+        }
+        // Without JavaScript, the fallback links still reach each destination.
+        assert!(page.contains(r#"<nav class="hud-panel verse-fallback""#));
+        assert!(page.contains(r#"href="/new-lander/house">Enter Haunted House</a>"#));
+
+        let start = page
+            .find(r#"<script id="verse-config" type="application/json">"#)
+            .unwrap();
+        let body = &page[start..];
+        let json = &body[body.find('>').unwrap() + 1..body.find("</script>").unwrap()];
+        let config: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(config["accounts"], true);
+        assert_eq!(config["signedIn"], false);
+        assert_eq!(config["hauntPath"], "/new-lander/house");
+        assert_eq!(config["mapPath"], VERSE);
+        assert_eq!(config["blueRushPath"], super::super::blue_rush::PATH);
+        let worlds = config["worlds"].as_array().unwrap();
+        assert_eq!(worlds.len(), aethyrforge_host::WORLDS.len());
+        for (json, world) in worlds.iter().zip(aethyrforge_host::WORLDS.iter()) {
+            assert_eq!(json["id"], world.id);
+            assert_eq!(json["name"], world.name);
+            crate::copy_guard::assert_plain(VERSE, world.description);
+        }
+        let closed = document(universe_content(None, false, true), true, false);
+        assert!(closed.contains(r#""hauntPath":null"#) && closed.contains(r#""signedIn":true"#));
+        // Kiki has no chat entry points.
+        assert!(!page.contains("/chat"));
+    }
+
     #[tokio::test]
     async fn new_lander_routes_are_owned_and_the_root_stays_the_grid() {
         let root = tempfile::tempdir().unwrap();
@@ -363,5 +464,22 @@ mod tests {
                 );
             }
         }
+        // The self-hosted sans face (so no computer falls back to monospace).
+        let font = super::super::verse_ui::FONT_PATH;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(font)
+                    .header(header::HOST, "127.0.0.1:4300")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(crate::upstream::owned(font));
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "font/woff2");
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        assert_eq!(&bytes[..4], b"wOF2");
     }
 }

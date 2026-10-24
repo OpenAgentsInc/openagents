@@ -80,7 +80,7 @@ pub(crate) fn response(
         HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
     );
     let csp = format!(
-        "default-src 'none'; script-src 'self' {} 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' {}; frame-src {}; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; object-src 'none'",
+        "default-src 'none'; script-src 'self' {} 'wasm-unsafe-eval'; style-src 'self'; font-src 'self'; connect-src 'self' {}; frame-src {}; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; object-src 'none'",
         origin.unwrap_or("'none'"),
         origin.unwrap_or("'none'"),
         origin.unwrap_or("'none'")

@@ -1,7 +1,7 @@
 // The /new-lander/verse entry dialog as an Aethyr controller: account or
-// guest, then a choice of where to go, then closed. A demonstration of the
-// protocol's shape; the live page still uses its server-rendered dialog
-// until #12588 moves it over.
+// guest, then a choice of where to go, then closed. The Verse controller
+// (`verse.ts`) draws this tree as part of the page; `makeEntryController`
+// runs it on its own.
 import { Context, Effect } from "effect";
 import * as Controller from "./controller";
 import type { Node } from "./protocol";
@@ -77,7 +77,7 @@ export function renderEntry(
           style: { gap: "sm" },
           element: {
             kind: "stack",
-            axis: "wrap",
+            axis: "vertical",
             children: [
               ...(options.accounts
                 ? [
@@ -125,7 +125,7 @@ export function renderEntry(
           style: { gap: "sm" },
           element: {
             kind: "stack",
-            axis: "wrap",
+            axis: "vertical",
             children: [
               {
                 id: "verse-explore",

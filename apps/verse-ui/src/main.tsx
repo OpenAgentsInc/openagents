@@ -37,6 +37,7 @@ import {
 import { inputStyles } from "./components/ui/input";
 import { textareaStyles } from "./components/ui/textarea";
 import { nativeSelectStyles } from "./components/ui/native-select";
+import { mountVerse } from "./aethyr/verse-host";
 
 const openAtom = Atom.make(false);
 const actionsAtom = Atom.make<AvailableAction[]>([]);
@@ -223,6 +224,11 @@ declare global {
 if (document.documentElement.hasAttribute("data-verse-ui") && !window.verseUi) {
   const lifetime = Effect.scoped(
     Effect.gen(function* () {
+      // /new-lander/verse: the Aethyr controller draws the interface.
+      if (document.documentElement.dataset.verseUi === "universe")
+        yield* Effect.acquireRelease(Effect.sync(mountVerse), (dispose) =>
+          Effect.sync(() => dispose?.()),
+        );
       yield* Effect.acquireRelease(Effect.sync(acquireUi), (dispose) =>
         Effect.sync(dispose),
       );

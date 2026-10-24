@@ -24,6 +24,7 @@
           "element": {
             "kind": "chip",
             "label": "Blue Rush",
+            "detail": "Creator studio",
             "selected": false
           }
         },

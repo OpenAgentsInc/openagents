@@ -72,8 +72,8 @@ assert.equal(
   await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
   "rgb(0, 0, 0)",
 );
-await page.locator("#continue-guest").click();
-assert(await page.locator("#verse-choices").isVisible());
+await page.locator("[data-aethyr-id=continue-guest]").click();
+assert(await page.locator("[data-aethyr-id=verse-choices]").isVisible());
 await page.screenshot({ path: capture("choices-desktop.png") });
 await page.getByRole("link", { name: "Haunted House ↗", exact: true }).click();
 await page.waitForFunction(() => window.verseUi && window.hauntDemo);

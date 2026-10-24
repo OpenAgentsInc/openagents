@@ -111,7 +111,10 @@ pub mod weight {
 /// of the product uses the system stacks, [`sans`] and [`mono`].
 pub mod geist {
     /// Body text. Tailwind's `--font-sans` in the Kiki stylesheet.
-    pub const SANS: &str = "\"Geist\", \"Inter\", ui-sans-serif, system-ui, sans-serif";
+    /// Inter is self-hosted by the site (`/new-lander/fonts/`); the named
+    /// system faces follow so a computer whose default font is monospace still
+    /// draws a proportional sans.
+    pub const SANS: &str = "\"Geist\", \"Inter\", ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, \"Noto Sans\", \"Helvetica Neue\", Arial, sans-serif";
     /// Labels, indexes, and other HUD readouts. `--font-mono`.
     pub const MONO: &str = "\"Geist Mono\", ui-monospace, SFMono-Regular, Menlo, monospace";
 }

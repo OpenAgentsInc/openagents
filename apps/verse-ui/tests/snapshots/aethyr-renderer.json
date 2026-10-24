@@ -415,8 +415,8 @@
         "id": "chip-blue-rush",
         "tag": "button",
         "display": "flex",
-        "position": "static",
-        "direction": "row",
+        "position": "relative",
+        "direction": "column",
         "wrap": "nowrap",
         "visible": true
       },
@@ -454,8 +454,8 @@
         "id": "chip-blue-rush",
         "tag": "button",
         "display": "flex",
-        "position": "static",
-        "direction": "row",
+        "position": "relative",
+        "direction": "column",
         "wrap": "nowrap",
         "visible": true
       },
@@ -469,7 +469,7 @@
         "visible": true
       }
     ],
-    "markup": "<div class=\"aui-root\" data-aethyr-root=\"kinds-chip\" data-aethyr-revision=\"1\"><div class=\"aui-stack aui-axis-wrap aui-gap-sm\" data-aethyr-id=\"chip\" data-aethyr-kind=\"stack\"><button type=\"button\" class=\"aui-chip\" aria-pressed=\"true\" data-aethyr-id=\"chip-openagents\" data-aethyr-kind=\"chip\">OpenAgents</button><button type=\"button\" class=\"aui-chip\" aria-pressed=\"false\" data-aethyr-id=\"chip-blue-rush\" data-aethyr-kind=\"chip\">Blue Rush</button><button type=\"button\" class=\"aui-chip\" aria-pressed=\"false\" disabled=\"\" data-aethyr-id=\"chip-far-field\" data-aethyr-kind=\"chip\">Far Field</button></div></div>"
+    "markup": "<div class=\"aui-root\" data-aethyr-root=\"kinds-chip\" data-aethyr-revision=\"1\"><div class=\"aui-stack aui-axis-wrap aui-gap-sm\" data-aethyr-id=\"chip\" data-aethyr-kind=\"stack\"><button type=\"button\" class=\"aui-chip\" aria-pressed=\"true\" data-aethyr-id=\"chip-openagents\" data-aethyr-kind=\"chip\">OpenAgents</button><button type=\"button\" class=\"aui-chip aui-chip-detailed\" aria-pressed=\"false\" data-aethyr-id=\"chip-blue-rush\" data-aethyr-kind=\"chip\"><span class=\"aui-chip-label\">Blue Rush</span><small class=\"aui-chip-detail\">Creator studio</small></button><button type=\"button\" class=\"aui-chip\" aria-pressed=\"false\" disabled=\"\" data-aethyr-id=\"chip-far-field\" data-aethyr-kind=\"chip\">Far Field</button></div></div>"
   },
   "list": {
     "390": [

@@ -125,16 +125,16 @@ try {
     null,
     { timeout: 125000 },
   );
-  if (await page.locator("#continue-guest").isVisible())
-    await page.locator("#continue-guest").tap();
-  if (await page.locator("#verse-explore").isVisible())
-    await page.locator("#verse-explore").tap();
+  if (await page.locator("[data-aethyr-id=continue-guest]").isVisible())
+    await page.locator("[data-aethyr-id=continue-guest]").tap();
+  if (await page.locator("[data-aethyr-id=verse-explore]").isVisible())
+    await page.locator("[data-aethyr-id=verse-explore]").tap();
   for (const [width, height] of [
     [390, 844],
     [1440, 1000],
   ]) {
     await page.setViewportSize({ width, height });
-    await page.locator("#option-haunted-house").tap();
+    await page.locator("[data-aethyr-id=option-haunted-house]").tap();
     await targets(".world-option:visible");
     await capture("universe-" + width);
   }
