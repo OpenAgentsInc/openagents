@@ -75,15 +75,10 @@ try {
   ]) {
     await page.setViewportSize({ width, height });
     await targets(
-      "#world-controls a:visible,#world-controls button:visible,#world-controls summary:visible",
-    );
-    await page.locator(".hud-utilities summary").tap();
-    await targets(
-      "#world-controls a:visible,#world-controls button:visible,#world-controls summary:visible",
+      "[data-aethyr-id=world-controls] :is(a, button):visible",
     );
     await capture("display-" + width);
-    await page.locator(".hud-utilities summary").tap();
-    await page.locator("#world-edit").tap();
+    await page.locator("[data-aethyr-id=world-edit]").tap();
     for (const tab of [
       "objects",
       "materials",
@@ -99,7 +94,7 @@ try {
     }
     await page.locator("#edit-close").tap();
     await targets(
-      "#world-controls a:visible,#world-controls button:visible,#world-controls summary:visible",
+      "[data-aethyr-id=world-controls] :is(a, button):visible",
     );
   }
   assert(
@@ -116,7 +111,7 @@ try {
   assert.equal(after.generation, before.generation);
   assert.deepEqual(after.checkpoint, before.checkpoint);
   assert(after.frame > before.frame);
-  await page.locator("#world-map").tap();
+  await page.locator("[data-aethyr-id=world-map]").tap();
   await page.waitForURL((url) => url.pathname === "/new-lander/verse");
   await page.waitForFunction(
     () =>

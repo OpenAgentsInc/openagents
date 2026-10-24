@@ -312,7 +312,7 @@ try {
   await editor.evaluate(()=>window.aethyrforgeEditor.service.command({kind:"entity.select",id:"werewolf-1"}));
   await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).status.selection?.id==="werewolf-1");
   await editor.evaluate(()=>window.aethyrforge.cameraPose([-2.3,1.8,-12.3],[-2.4,1.8,-14.8],undefined,"fly"));
-  await page.click("#world-edit");
+  await page.click("[data-aethyr-id=world-edit]");
   await page.click("#tab-materials");
   await page.click("#face-open");
   await page.locator("#face-controls:not([disabled])").waitFor();
@@ -468,7 +468,7 @@ try {
     await page.evaluate(text=>{const recognition=window.speechFixture.last;recognition.onspeechstart?.({});recognition.onresult({results:[[{transcript:text}]]});},text);
     await page.waitForTimeout(250);
   };
-  await page.click("#edit-voice-start");
+  await page.click("[data-aethyr-id=edit-voice-start]");
   await phrase("Add three thin healed red scars on the forehead; keep the fur.");
   await page.waitForFunction(()=>document.querySelector("#face-status").textContent.includes("Face preview ready"));
   const currentB=await face();assert.equal(currentB.document.recipe.count,3);
@@ -476,7 +476,7 @@ try {
   assert.equal(currentB.handmade_png,currentA.handmade_png);
   await phrase("review change");await page.locator("#edit-confirm").waitFor({state:"visible"});
   await phrase("confirm change");await page.locator("#edit-auth").waitFor({state:"hidden"});
-  await page.click("#edit-voice-stop");
+  await page.click("[data-aethyr-id=edit-voice-stop]");
   await page.click("#tab-history");await page.click("#project-save-copy");await confirm();
   await page.waitForFunction(()=>document.querySelector("#project-status").textContent.includes("version 4"));
   const savedB=savedPosts.at(-1).document;

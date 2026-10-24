@@ -230,9 +230,14 @@ if (document.documentElement.hasAttribute("data-verse-ui") && !window.verseUi) {
         yield* Effect.acquireRelease(Effect.sync(mountVerse), (dispose) =>
           Effect.sync(() => dispose?.()),
         );
-      // Planet setup, invitations, and the player bar: house controllers.
+      // Planet setup, invitations, the player bar, and the studio HUD.
       const surface = document.documentElement.dataset.verseUi;
-      if (surface === "setup" || surface === "invite" || surface === "player")
+      if (
+        surface === "setup" ||
+        surface === "invite" ||
+        surface === "player" ||
+        surface === "studio"
+      )
         yield* Effect.acquireRelease(
           Effect.sync(() => mountHouse(surface)),
           (dispose) => Effect.sync(() => dispose?.()),

@@ -111,7 +111,7 @@ await page.evaluate(() => {
   window.__uiEngine = document.querySelector("#engine");
   window.__uiCanvas = document.querySelector("#face-canvas");
 });
-await page.locator("#world-edit").click();
+await page.locator("[data-aethyr-id=world-edit]").click();
 assert(await page.locator("#edit-panel").isVisible());
 await page.locator("#edit-note").fill("Keep this draft while reviewing tools.");
 await page.getByRole("button", { name: "Find a tool", exact: true }).click();

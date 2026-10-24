@@ -17,11 +17,22 @@ export const actionNames = {
 } as const;
 export type ActionId = keyof typeof actionNames;
 export type AvailableAction = { id: ActionId; label: string };
+/**
+ * The control for an action: the Aethyr renderer's, which carries the same ID
+ * as `data-aethyr-id`, or else the page's own element.
+ */
+function controlFor(document: Document, id: string): HTMLElement | null {
+  for (const node of document.querySelectorAll<HTMLElement>(
+    `[data-aethyr-id="${id}"]`,
+  ))
+    if (node.getClientRects().length) return node;
+  return document.getElementById(id);
+}
 export function availableActions(document: Document): AvailableAction[] {
   return Object.entries(actionNames).flatMap(([id, label]) => {
-    const node = document.getElementById(id);
+    const node = controlFor(document, id);
     return node &&
-      !node.matches(":disabled") &&
+      !node.matches(":disabled, [aria-disabled=true]") &&
       !node.closest("[hidden],[inert]") &&
       node.getClientRects().length
       ? [{ id: id as ActionId, label }]
@@ -29,7 +40,7 @@ export function availableActions(document: Document): AvailableAction[] {
   });
 }
 export function invokeAction(document: Document, id: ActionId): void {
-  const node = document.getElementById(id);
+  const node = controlFor(document, id);
   if (
     !(id in actionNames) ||
     !node ||

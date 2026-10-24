@@ -16,6 +16,7 @@ them, `aethyr.ui.v1`, and the design tokens both sides use
 | Entry dialog | `apps/verse-ui/src/aethyr/entry.ts` |
 | `/new-lander/verse` | `verse.ts` (controller) and `verse-host.tsx` (web host and engine bridge); see [Surfaces](#surfaces) |
 | Planet setup, invitations, player bar | `house.ts` (controllers) and `house-host.tsx` (web host and bridge); see [Surfaces](#surfaces) |
+| Studio HUD (`/new-lander/house`, courtyards) | `studio.ts` (controller) and `house-host.tsx`; see [Surfaces](#surfaces) |
 
 The web files move to `apps/aethyr` when that package exists.
 
@@ -198,8 +199,38 @@ bridge, as the release draws them. Browser checks
 use `[data-aethyr-id=planet-name] input`, `[data-aethyr-id=planet-save]`,
 `[data-aethyr-id=access-signed-in]`, `[data-aethyr-id=invite-create]`,
 `[data-aethyr-id$=-end]` on an invitation row, and
-`[data-aethyr-id=world-retry]`. The studio (`/new-lander/house`) still runs on
-the release's own controls.
+`[data-aethyr-id=world-retry]`.
+
+### The studio HUD (#12588)
+
+On `/new-lander/house` and a courtyard (`/new-lander/planet/{id}/world`),
+`makeStudioController` draws the HUD into `#house-hud`:
+
+- the world notice: opening, or an error with Reload world and Back to
+  planets. Without WebGPU the error says the browser can't show 3D worlds;
+- the dock: Planets, Reload, Full screen (wide screens), Mesh, Edit, and
+  Save, disabled while the editor is open;
+- the voice bar (Listen, Stop / mute, status, what it heard, its answer), or
+  the controls help line when voice is off;
+- the world actions (Publish, Play, Share, and More), shown when the release
+  offers them and the editor is closed or on Request.
+
+The release's copies (`#world-notice`, `#world-controls`, `#world-voice`,
+`#request-choices`) carry `.studio-bridge` and are hidden once the host
+mounts (`data-aethyr-house="studio"`). The host clicks them by ID and reads
+their `hidden`, `disabled`, `aria-pressed`, and text back through
+`studioReport`. Visible nodes use the same IDs, so checks address them as
+`[data-aethyr-id=world-edit]`, `[data-aethyr-id=edit-voice-status]`, and so
+on. While the world shows an error the root carries
+`data-aethyr-world="error"` and the frame is hidden, so the engine's own
+message never shows beside ours. When the editor closes, focus returns to the
+visible Edit button.
+
+The editor (Jarvis: its tool windows and `#edit-panel`), the sign-in and
+confirmation dialog (`#edit-auth`), publish review (`#publish-review`), the
+share card, and courtyard settings (`#planet-settings`) are still the
+release's own DOM. They use controls the protocol has no element for yet
+(selects, checkboxes, ranges, color, file pickers, and a paint canvas).
 
 ## Design tokens
 

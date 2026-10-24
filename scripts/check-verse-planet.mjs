@@ -27,7 +27,7 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
   const exported=()=>editor.evaluate(()=>window.aethyrforgeEditor.service.projectDocument());
   const recipe=d=>JSON.parse(d.originals.find(s=>s.name==='planet-v1.json').text);
   const confirm=async()=>{await page.locator('#edit-confirm').waitFor({state:'visible'});await page.click('#edit-confirm');await page.locator('#edit-auth').waitFor({state:'hidden'});};
-  const edit=async tab=>{if(await page.locator('#edit-panel').isHidden())await page.click('#world-edit');await page.click('#tab-'+tab);};
+  const edit=async tab=>{if(await page.locator('#edit-panel').isHidden())await page.click('[data-aethyr-id=world-edit]');await page.click('#tab-'+tab);};
   const close=async()=>{if(await page.locator('#edit-close').isVisible())await page.click('#edit-close');};
   await page.fill('#planet-seed','42');await page.fill('#planet-day','2');await page.click('#planet-generate');
   await page.locator('#edit-auth').waitFor({state:'visible'});await page.click('#edit-cancel');
@@ -52,7 +52,7 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
   // the private renderer keeps its real advancing clock.
   const anchor=recipe(first).clock_anchor_unix_ms;
   await page.evaluate(now=>{window.fixtureDateNow=Date.now;Date.now=()=>now;},anchor+30000);
-  await edit('request');await page.click('#edit-voice-start');
+  await edit('request');await page.click('[data-aethyr-id=edit-voice-start]');
   const phrase=async text=>{
     await page.waitForFunction(()=>window.speechFixture.last&&!window.speechFixture.last.aborted);
     await page.evaluate(text=>{const r=window.speechFixture.last;r.onspeechstart?.({});r.onresult({results:[[{transcript:text}]]});},text);
@@ -114,11 +114,11 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
   const kept=await exported();const savedPose=(await snapshot()).status.checkpoint;
   await close();await page.setViewportSize({width:390,height:844});
   const hit=async selector=>{await page.locator(selector).scrollIntoViewIfNeeded();const box=await page.locator(selector).boundingBox();assert.ok(box);assert.ok(await page.locator(selector).evaluate((e,b)=>{const hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return hit===e||e.contains(hit);},box),selector+' is reachable');};
-  for(const selector of ['#planet-settings > details > summary','#planet-hour','#planet-generate','#planet-apply','#edit-voice-start','#edit-voice-stop'])await hit(selector);
-  await page.click('#edit-voice-start');await page.waitForFunction(()=>document.querySelector('#edit-voice-status').textContent.includes('Listening'));
-  await hit('#edit-voice-stop');await page.click('#edit-voice-stop');assert.match(await page.locator('#edit-voice-status').innerText(),/off/);
+  for(const selector of ['#planet-settings > details > summary','#planet-hour','#planet-generate','#planet-apply','[data-aethyr-id=edit-voice-start]','[data-aethyr-id=edit-voice-stop]'])await hit(selector);
+  await page.click('[data-aethyr-id=edit-voice-start]');await page.waitForFunction(()=>document.querySelector('#edit-voice-status').textContent.includes('Listening'));
+  await hit('[data-aethyr-id=edit-voice-stop]');await page.click('[data-aethyr-id=edit-voice-stop]');assert.match(await page.locator('[data-aethyr-id=edit-voice-status]').innerText(),/off/);
   await page.locator('#planet-settings > details > summary').scrollIntoViewIfNeeded();await page.click('#planet-settings > details > summary');
-  await hit('#edit-voice-start');await hit('#edit-voice-stop');
+  await hit('[data-aethyr-id=edit-voice-start]');await hit('[data-aethyr-id=edit-voice-stop]');
   await page.screenshot({path:path.join(out,'personal-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.setViewportSize({width:1440,height:1000});await page.reload();await ready();editor=page.frames().find(f=>f.url().startsWith(config.editor));
   await edit('history');await page.click('#project-open');await confirm();
@@ -127,7 +127,7 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
   assert.equal(restoredPose.mode,savedPose.mode);
   for(const key of ['eye','target'])assert.ok(restoredPose[key].every((v,i)=>Math.abs(v-savedPose[key][i])<.03),'Saved personal pose reopens');
   await page.click('#project-save-copy');await confirm();await page.waitForFunction(()=>document.querySelector('#project-status').textContent.includes('Saved to project'));
-  await edit('compile');await page.selectOption('#publish-visibility','public');await edit('request');await page.click('#request-options');await page.click('#project-publish');
+  await edit('compile');await page.selectOption('#publish-visibility','public');await edit('request');await page.click('#request-options');await page.click('[data-aethyr-id=project-publish]');
   await page.locator('#publish-review[open]').waitFor();await page.check('#publish-confirm-rights');await page.click('#publish-confirm');await page.locator('#publish-review').waitFor({state:'hidden'});
   const playablePath=await page.locator('#published-link').getAttribute('href');assert.ok(playablePath);
   const guest=await context.browser().newContext({viewport:{width:1280,height:800}});

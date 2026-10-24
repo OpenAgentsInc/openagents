@@ -32,8 +32,19 @@ import {
   type PlayerState,
   type VisitStatus,
 } from "./house";
+import {
+  EMPTY_REPORT,
+  StudioEngine,
+  initialStudio,
+  makeStudioController,
+  studioReport,
+  type Control,
+  type StudioReport,
+  type StudioState,
+  type WorldPhase,
+} from "./studio";
 
-export type HouseSurface = "setup" | "invite" | "player";
+export type HouseSurface = "setup" | "invite" | "player" | "studio";
 
 const byId = (id: string) => document.getElementById(id);
 const textOf = (node: Element | null | undefined) =>
@@ -274,10 +285,151 @@ const watchPlayer =
     };
   };
 
+// --- Studio ---------------------------------------------------------------
+
+const control = (id: string): Control => {
+  const node = byId(id) as HTMLButtonElement | null;
+  return {
+    shown: node !== null && !node.hidden,
+    enabled: node !== null && !node.disabled,
+  };
+};
+
+/** What the release shows on its studio controls now. */
+function readStudio(): StudioReport {
+  const notice = byId("world-notice");
+  const phase: WorldPhase =
+    notice?.dataset.state === "error"
+      ? "error"
+      : !notice || notice.hidden
+        ? "open"
+        : "opening";
+  const editor = byId("edit-panel");
+  const editing = editor !== null && !editor.hidden;
+  const mesh = byId("world-mesh");
+  return {
+    phase,
+    notice: textOf(notice) || EMPTY_REPORT.notice,
+    editing,
+    tool: editing ? (editor?.dataset.active ?? "") : "",
+    mesh: {
+      ...control("world-mesh"),
+      pressed: mesh?.getAttribute("aria-pressed") === "true",
+    },
+    save: control("project-save"),
+    voice: {
+      shown: control("world-voice").shown,
+      listen: {
+        ...control("edit-voice-start"),
+        label: textOf(byId("edit-voice-start")) || "Listen",
+      },
+      stop: control("edit-voice-stop"),
+      status: textOf(byId("edit-voice-status")),
+      heard: textOf(byId("voice-heard")),
+      response: textOf(byId("voice-response")),
+    },
+    actions: control("request-choices").shown,
+    publish: control("project-publish"),
+    play: control("project-play"),
+    share: control("project-share"),
+    revert: control("project-revert"),
+  };
+}
+
+function studioController() {
+  const layer = Layer.succeed(StudioEngine, {
+    // The release listens on its own controls; a click from the visitor's
+    // gesture keeps the activation full screen and the microphone need.
+    click: (id: string) => Effect.sync(() => byId(id)?.click()),
+  });
+  const touch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const initial = initialStudio(
+    {
+      gpu: "gpu" in window.navigator,
+      touch,
+      mapPath: byId("world-map")?.getAttribute("href") ?? "/new-lander/verse",
+      reloadPath:
+        byId("world-retry")?.getAttribute("href") ?? window.location.pathname,
+    },
+    readStudio(),
+  );
+  return { layer, make: makeStudioController(initial) };
+}
+
+/**
+ * Follow the release as it writes its controls, the notice, and the editor.
+ * While the world shows an error, the page says so on the root, so the frame
+ * (which draws its own message) stays out of sight behind ours. When the
+ * editor closes, focus returns to the visible Edit button.
+ */
+const watchStudio =
+  (mount: HTMLElement) =>
+  (
+    controller: Pick<Controller<StudioState>, "update">,
+    runtime: ManagedRuntime.ManagedRuntime<
+      StudioEngine | Navigator | AtomRegistry.AtomRegistry,
+      never
+    >,
+  ) => {
+    let frame = 0;
+    let editing = readStudio().editing;
+    const refresh = () => {
+      frame = 0;
+      const report = readStudio();
+      document.documentElement.dataset.aethyrWorld = report.phase;
+      runtime.runFork(
+        controller.update((state) => studioReport(state, report)),
+      );
+      if (editing && !report.editing)
+        requestAnimationFrame(() =>
+          mount
+            .querySelector<HTMLElement>('[data-aethyr-id="world-edit"]')
+            ?.focus({ preventScroll: true }),
+        );
+      editing = report.editing;
+    };
+    // The HUD's own renders are not the release's.
+    const observer = new MutationObserver((records) => {
+      if (records.every((record) => mount.contains(record.target))) return;
+      if (!frame) frame = requestAnimationFrame(refresh);
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: [
+        "hidden",
+        "disabled",
+        "aria-pressed",
+        "data-state",
+        "data-active",
+        "inert",
+      ],
+    });
+    refresh();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      delete document.documentElement.dataset.aethyrWorld;
+    };
+  };
+
 export function mountHouse(surface: HouseSurface): (() => void) | undefined {
   const mount = byId("house-hud");
+  if (!mount) return undefined;
+  if (surface === "studio") {
+    if (!document.querySelector(".studio-bridge")) return undefined;
+    const parts = studioController();
+    const dispose = run(mount, parts.layer, parts.make, watchStudio(mount));
+    document.documentElement.dataset.aethyrHouse = surface;
+    return () => {
+      dispose();
+      delete document.documentElement.dataset.aethyrHouse;
+    };
+  }
   const bridge = document.querySelector<HTMLElement>(".house-bridge");
-  if (!mount || !bridge) return undefined;
+  if (!bridge) return undefined;
   let dispose: (() => void) | undefined;
   if (surface === "setup") {
     const parts = setupController(bridge);

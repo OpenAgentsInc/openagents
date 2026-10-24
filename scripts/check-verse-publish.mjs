@@ -372,7 +372,7 @@ try {
   console.log("Fixture host: house document opened");
   await page.waitForFunction(()=>window.hauntDemo && JSON.parse(window.hauntDemo.snapshot()).phase==="open" && JSON.parse(window.hauntDemo.snapshot()).status.authoring,null,{timeout:process.env.AETHYRFORGE_LOCAL_CHECK==="1"?30000:125000});
   const snapshot=()=>page.evaluate(()=>JSON.parse(window.hauntDemo.snapshot()));
-  const edit=async(tab)=>{if(await page.locator('#edit-panel').isHidden())await page.click('#world-edit');await page.click('#tab-'+tab);};
+  const edit=async(tab)=>{if(await page.locator('#edit-panel').isHidden())await page.click('[data-aethyr-id=world-edit]');await page.click('#tab-'+tab);};
   const confirm=async()=>{await page.locator('#edit-confirm').waitFor({state:'visible'});await page.click('#edit-confirm');await page.locator('#edit-auth').waitFor({state:'hidden'});};
   const options=async()=>{await edit('request');await page.click('#request-options');};
   const csrf=async()=>page.evaluate(async()=> (await(await fetch('/v1/verse/studio/session')).json()).csrf);
@@ -418,7 +418,7 @@ try {
     console.log('Delayed Draft status and immediate Compile passed');
   } else {
   if(await page.locator('#edit-close').isVisible())await page.click('#edit-close');assert.equal((await snapshot()).status.authoring.active_source,changed);
-  await options();await page.click('#project-revert');await confirm();
+  await options();await page.click('[data-aethyr-id=project-revert]');await confirm();
   assert.equal((await snapshot()).status.authoring.active_source,source,'Revert is a new change to Starting house');
   await edit('compile');await page.fill('#edit-source',changed);await page.click('#edit-source-draft');await confirm();
   await page.click('#edit-source-compile');await confirm();
@@ -428,7 +428,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#project-status').textContent.includes('version 1'));
   const book=()=>page.evaluate(async project=>(await(await fetch(`/v1/verse/studio/projects/${project}/haunted-house/main/publications`)).json()),project);
   assert.equal((await book()).book.sequence,0,'Compile, inspect, Revert and Save never publish automatically');
-  await edit('compile');await page.selectOption('#publish-visibility','public');await options();await page.click('#project-publish');
+  await edit('compile');await page.selectOption('#publish-visibility','public');await options();await page.click('[data-aethyr-id=project-publish]');
   await page.locator('#publish-review[open]').waitFor();assert.match(await page.locator('#publish-review-target').innerText(),/Version 1 · Anyone with the link/);
   await page.click('#publish-confirm');await page.waitForFunction(()=>document.querySelector('#publish-status').textContent.includes('Confirm the playable'));
   assert.equal(publicationPosts.length,0,'Unchecked confirmation sends no publication');
@@ -450,7 +450,7 @@ try {
   const firstId=first.book.channel,world=first.world;
   const firstPath=`/new-lander/play/${world}/${firstId}`;
   if(process.env.AETHYRFORGE_PLANET_ONLY==='1') {
-    await options();await page.click('#project-share');
+    await options();await page.click('[data-aethyr-id=project-share]');
     await page.locator('#publish-share-card').waitFor({state:'visible'});
     const chosen=await page.evaluate(async()=>await(await fetch('/v1/verse/studio/tutorial')).json());
     assert.equal(chosen.progress.choice,'share');assert.equal(chosen.progress.planet,null);
@@ -652,8 +652,8 @@ try {
   const shared=page.locator('#panel-materials details').filter({has:page.locator('#edit-fog')});await shared.locator('summary').click();
   await page.fill('#edit-fog','0.025');await page.click('#edit-fog-apply');await confirm();
   await edit('history');await page.click('#project-save-copy');await confirm();await page.waitForFunction(()=>document.querySelector('#project-status').textContent.includes('version 2'));
-  await page.click('#edit-voice-start');
-  await options();await page.click('#project-publish');await page.locator('#publish-review[open]').waitFor();
+  await page.click('[data-aethyr-id=edit-voice-start]');
+  await options();await page.click('[data-aethyr-id=project-publish]');await page.locator('#publish-review[open]').waitFor();
   const phrase=async text=>{
     await page.waitForFunction(()=>window.speechFixture.last&&!window.speechFixture.last.aborted);
     await page.evaluate(text=>window.speechFixture.last.onresult({results:[[{transcript:text}]]}),text);await page.waitForTimeout(200);

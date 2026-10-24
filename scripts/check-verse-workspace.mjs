@@ -93,7 +93,7 @@ try {
   await page.mouse.click(720,500);
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => JSON.parse(window.hauntDemo.snapshot()).status.selection?.id === "werewolf-1");
-  await page.click("#world-edit");
+  await page.click("[data-aethyr-id=world-edit]");
   await page.locator("#author-tools").waitFor({state:"visible"});
   for (const name of ["objects","materials","request","compile","history"]) assert.ok(await page.locator(`#panel-${name}`).isVisible(),name);
   assert.equal(await page.locator("#engine").getAttribute("inert"), "");
@@ -110,7 +110,7 @@ try {
   assert.equal(afterTyping.session,first.session);
   await page.screenshot({path:path.join(out,"jarvis-desktop.png")});
   const note=await page.locator("#edit-note").inputValue();
-  for(let i=0;i<3;i++){await page.click("#edit-close");await page.click("#world-edit");}
+  for(let i=0;i<3;i++){await page.click("#edit-close");await page.click("[data-aethyr-id=world-edit]");}
   assert.equal((await snapshot()).session, first.session);
   assert.equal(await page.locator("#edit-note").inputValue(),note);
   await page.click("#edit-fog-apply");
@@ -120,13 +120,13 @@ try {
   assert.equal((await snapshot()).status.project.revision,0);
   assert.equal(await page.locator("#edit-note").inputValue(),note);
   await page.click("#edit-close");
-  await page.click("#world-mesh");
+  await page.click("[data-aethyr-id=world-mesh]");
   await page.waitForFunction(() => JSON.parse(window.hauntDemo.snapshot()).status.view === "mesh");
   assert.equal((await snapshot()).status.project.revision,0);
   await page.screenshot({path:path.join(out,"jarvis-mesh.png")});
-  await page.click("#world-mesh");
+  await page.click("[data-aethyr-id=world-mesh]");
   await page.waitForFunction(() => JSON.parse(window.hauntDemo.snapshot()).status.view === "shaded");
-  await page.click("#world-edit");
+  await page.click("[data-aethyr-id=world-edit]");
   await page.setViewportSize({width:390,height:844});
   await page.waitForTimeout(200);
   assert.equal(await page.locator("#jarvis-toolbar").getAttribute("role"),"tablist");
