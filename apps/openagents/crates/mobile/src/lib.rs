@@ -7,6 +7,7 @@
 //! - [`caption`]: the voice caption's streaming veil (wraps `openagents-veil`).
 //! - [`wallet`]: the Wallet screen over the shared Spark wallet
 //!   (`crates/spark-wallet`), and the seed rules the identity reads.
+//! - [`zones`]: the zone launcher, web runner, and native host bridge (ADR 0010).
 
 #[cfg(all(feature = "account-fixture", not(target_abi = "sim")))]
 compile_error!("The account fixture is only available for the iOS simulator.");
@@ -24,6 +25,7 @@ pub mod visual;
 pub mod voice_ui;
 pub mod wallet;
 pub mod wallpaper;
+pub mod zones;
 
 /// Version handshake: the Swift/Kotlin bindings must match the linked library.
 #[uniffi::export]

@@ -221,6 +221,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethyrforge-host"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "js-sys",
+ "openagents-workspace-hack",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "agent-contract"
 version = "1.0.0"
 dependencies = [
@@ -11719,6 +11736,7 @@ dependencies = [
 name = "openagents-mobile"
 version = "1.0.0"
 dependencies = [
+ "aethyrforge-host",
  "agent-contract",
  "agent-lab",
  "async-trait",

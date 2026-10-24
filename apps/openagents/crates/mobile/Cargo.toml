@@ -33,6 +33,8 @@ push-gateway = { path = "../../../../crates/push-gateway", default-features = fa
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 computer-driver = { path = "../../../../crates/computer-driver" }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
+# Zones: the website's release pins and the native bridge transport (ADR 0010).
+aethyrforge-host = { path = "../../../../crates/aethyrforge-host" }
 lab-kit = { path = "../../../../crates/lab-kit" }
 lab-ui = { path = "../../../../crates/lab-ui" }
 # The autonomy card every shell shares (#12045).
