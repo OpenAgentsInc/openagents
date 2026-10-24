@@ -58,6 +58,7 @@ pub mod ask;
 mod attention;
 mod attention_openapi;
 pub mod attribution;
+pub mod research;
 #[doc(hidden)]
 pub mod auth;
 pub mod backend;
@@ -633,6 +634,10 @@ pub struct Config {
     /// links, their signed `oa_ref` cookie, click records and the
     /// scoreboard. Separate from the cookieless [`analytics`].
     pub attribution: Arc<attribution::Attribution>,
+    /// The disclosed playtest research stream for the launch funnel
+    /// ([`research`]): per-session events, the funnel dashboard, and the
+    /// `playtest::events` sink.
+    pub research: Arc<research::Research>,
     /// Website sign-ins waiting on a phone's scan (#12001,
     /// [`web_sign_in`]), in memory for the few minutes each stands.
     pub(crate) web_sign_in: Arc<web_sign_in::Waiting>,
@@ -756,6 +761,7 @@ impl Config {
             plan: None,
             analytics: Arc::new(analytics::Analytics::default()),
             attribution: Arc::new(attribution::Attribution::default()),
+            research: Arc::new(research::Research::default()),
             web_sign_in: Arc::default(),
             agent_accounts: Vec::new(),
             work_host_token: None,
@@ -926,7 +932,8 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .merge(docs_mcp::routes())
         .merge(oauth::routes())
         .merge(analytics::routes())
-        .merge(attribution::routes());
+        .merge(attribution::routes())
+        .merge(research::routes());
     let site = extend(site)
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
@@ -946,6 +953,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
             app.clone(),
             agent_work::gate,
         ))
+        .layer(middleware::from_fn(research::inject))
         .layer(middleware::from_fn(projects::scope))
         .layer(middleware::from_fn_with_state(app.clone(), account::scope))
         // Before anything reads the session: refresh a WorkOS session, or

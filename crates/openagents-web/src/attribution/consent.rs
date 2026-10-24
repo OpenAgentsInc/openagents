@@ -26,6 +26,13 @@ fn question(target: &Target) -> String {
         Some("tt") => "our TikTok video",
         Some("ig") => "our Instagram post",
         Some("li") => "our LinkedIn post",
+        Some("youtube") => "our YouTube video",
+        Some("reddit") => "our Reddit post",
+        Some("itch") => "our itch.io post",
+        Some("discord") => "our Discord",
+        Some("hn") => "our Hacker News post",
+        Some("email") => "our email",
+        Some("friend") => "a link a friend shared",
         Some(_) => "one of our posts",
         None => {
             return "You came here through a link from someone who recommends us. \

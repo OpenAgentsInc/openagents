@@ -33,6 +33,10 @@
 //! Counts are kept in memory and written every minute to the store
 //! ([`store`]); the dashboard is `/admin/analytics` ([`dashboard`]).
 //!
+//! The playtest research stream on the launch funnel's pages
+//! ([`crate::research`]) is another separate, disclosed feature; nothing
+//! here reads its events.
+//!
 //! Affiliate and campaign links (`/go/`, `/r/`, #11698) are a separate,
 //! disclosed feature in [`crate::attribution`]: it alone may set a cookie
 //! (`oa_ref`) and keep per-click records. Nothing here reads that cookie or
@@ -320,6 +324,7 @@ fn ignored(template: &str) -> bool {
         || template == visits::BEACON
         || template == DASHBOARD
         || template == crate::attribution::SCOREBOARD
+        || crate::research::owns(template)
 }
 
 /// The name a request is counted under: its route template, a docs page's

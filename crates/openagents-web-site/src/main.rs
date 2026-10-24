@@ -573,6 +573,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?);
     attribution.spawn();
     config.attribution = attribution.clone();
+    // The playtest research stream for the launch funnel, kept beside the
+    // analytics counts, and the sink for `playtest::events` steps.
+    let research = std::sync::Arc::new(openagents_web::research::Research::from_env()?);
+    research.spawn();
+    openagents_web::research::install_sink(&research);
+    config.research = research.clone();
     // The actor runtime (#11253): the account database, in its own schema;
     // with OPENAGENTS_WEB_MAC_JOBS_ACTORS=1 Mac jobs run through it. The
     // connection string is never printed.
@@ -613,6 +619,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Err(error) = analytics.flush().await {
         eprintln!("The last analytics counts were not kept: {error}");
+    }
+    if let Err(error) = research.flush().await {
+        eprintln!("The last playtest research events were not kept: {error}");
     }
     if let Some(actors) = actors {
         actors.shutdown().await;
