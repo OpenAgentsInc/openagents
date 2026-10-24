@@ -82,7 +82,15 @@ declare global {
 export async function installOpenAgentsHost(
   service: EditorService,
 ): Promise<void> {
-  if (window.openAgentsHostStop || window.parent === window) return;
+  // A framed page talks to its parent; a top-level page only has a host when a
+  // native shell injected `window.aethyrHost` (ADR 0010). The SDK's endpoint
+  // picks the matching channel.
+  const native =
+    typeof (window as { aethyrHost?: { postMessage?: unknown } }).aethyrHost
+      ?.postMessage === "function";
+  if (window.openAgentsHostStop || (window.parent === window && !native)) {
+    return;
+  }
   const host = import.meta.env.VITE_OPENAGENTS_HOST_ORIGIN as
     string | undefined;
   const sdkUrl = import.meta.env.VITE_OPENAGENTS_PROTOCOL_URL as
