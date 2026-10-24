@@ -67,7 +67,10 @@ pub(crate) fn routes() -> Router<App> {
         )
 }
 
-async fn page(axum::extract::State(app): axum::extract::State<App>) -> Response {
+async fn page(
+    axum::extract::State(app): axum::extract::State<App>,
+    headers: axum::http::HeaderMap,
+) -> Response {
     let Some(r) = release() else {
         return response(StatusCode::SERVICE_UNAVAILABLE, html! {
             (DOCTYPE) html lang="en" { head { meta name="viewport" content="width=device-width,initial-scale=1"; title { "Haunted House · OpenAgents" } }
@@ -77,7 +80,7 @@ async fn page(axum::extract::State(app): axum::extract::State<App>) -> Response 
             }
         }.into_string(), "text/html; charset=utf-8", None);
     };
-    render(&app, r, None)
+    render(&app, r, None, crate::launch::session(&headers).is_some())
 }
 pub(crate) fn personal_page(app: &App, planet: &aethyrforge_host::PersonalPlanet) -> Response {
     let Some(runtime) = app.config.verse_personal_runtime.as_ref() else {
@@ -100,9 +103,16 @@ pub(crate) fn personal_page(app: &App, planet: &aethyrforge_host::PersonalPlanet
             revision: 0,
         },
     };
-    render(app, r, Some(planet))
+    render(app, r, Some(planet), false)
 }
-fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlanet>) -> Response {
+/// `playtest`: the visitor is in a launch playtest, so the page shows the
+/// Finish playtest button ([`crate::launch::finish_controls`]).
+fn render(
+    app: &App,
+    r: Release,
+    planet: Option<&aethyrforge_host::PersonalPlanet>,
+    playtest: bool,
+) -> Response {
     let personal = planet.is_some();
     let title = planet.map(|p| p.name.as_str()).unwrap_or("Haunted House");
     let runtime = if personal {
@@ -402,6 +412,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                 p { "Exact playable version" } a id="publish-share-link" {}
                 button id="publish-share-close" type="button" { "Close" }
             }
+            @if playtest { (crate::launch::finish_controls()) }
             script id="creator-assets" type="application/json" {(PreEscaped(assets_json))}
             script id="engine-config" type="application/json" { (PreEscaped(text)) }
             script type="module" src=(if personal { "/new-lander/planet/boot.js" } else { "/new-lander/house/boot.js" }) {}

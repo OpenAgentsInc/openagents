@@ -121,6 +121,8 @@ pub(crate) fn authentication(
     if return_to == "/new-lander"
         || return_to.starts_with("/new-lander/")
         || return_to.starts_with("/new-lander?")
+        || return_to == crate::launch::INTRO
+        || return_to.starts_with("/playtest/")
     {
         let body = page.without_toggle().render(headers).into_string();
         (status, Html(document(body, "auth"))).into_response()

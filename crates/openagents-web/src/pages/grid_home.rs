@@ -1,4 +1,7 @@
-//! `/`: the Grid homepage. `/home`, where it started, redirects here.
+//! `/home`: the Grid homepage. It was `/` until the launch homepage took
+//! that address (2026-10-24); `/` with one of this page's query parameters
+//! (`?chat=`, `?suggest=`, `?lab=`, ...) redirects here with its query
+//! ([`super::new_lander`]).
 //!
 //! The header and accessible pylon list are HTML. The live pylons and Verse
 //! load in separate chunks; only Verse draws the world. Once it paints,
@@ -35,10 +38,7 @@ use super::pylons_field::{field, list_html};
 use crate::App;
 
 /// The page.
-pub(crate) const GRID_HOME_PATH: &str = "/";
-/// The page's first address, which redirects to [`GRID_HOME_PATH`] with
-/// its query (`?chat=` names the terminal's open chat).
-pub(crate) const OLD_GRID_HOME_PATH: &str = "/home";
+pub(crate) const GRID_HOME_PATH: &str = "/home";
 /// Who is signed in, for the top bar.
 pub(crate) const GRID_HOME_ME: &str = "/home/me";
 
@@ -46,7 +46,7 @@ const TITLE: &str = "OpenAgents";
 const DESCRIPTION: &str = "OpenAgents: agents, pylons, and the Grid where they meet.";
 
 /// Where Log in and Sign up return to.
-const BACK: &str = "%2F";
+const BACK: &str = "%2Fhome";
 /// The chat entry point respects the feature flags and saved UI choice.
 const CHAT: &str = super::home::NEW;
 
@@ -506,17 +506,7 @@ static KEPT: Mutex<Option<((String, bool), Arc<Document>)>> = Mutex::new(None);
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(GRID_HOME_PATH, get(page))
-        .route(OLD_GRID_HOME_PATH, get(moved))
         .route(GRID_HOME_ME, get(me))
-}
-
-/// `/home`, permanently at `/` now, with the query kept.
-async fn moved(uri: axum::http::Uri) -> axum::response::Redirect {
-    let to = match uri.query() {
-        Some(query) => format!("{GRID_HOME_PATH}?{query}"),
-        None => GRID_HOME_PATH.to_owned(),
-    };
-    axum::response::Redirect::permanent(&to)
 }
 
 /// The page's metadata: description, link preview, canonical address,
@@ -705,12 +695,11 @@ mod tests {
             html.contains("</svg>OpenAgents</h1>")
                 && html.contains("<nav id=\"home-account\" aria-label=\"Account\">")
         );
-        assert!(html.contains("href=\"/login?return_to=%2F\">Log in</a>"));
-        assert!(html.contains("href=\"/signup?return_to=%2F\">Sign up</a>"));
-        // `/` carries the site's metadata: its preview, canonical address,
-        // and Markdown twin.
-        assert!(html.contains("<link rel=\"canonical\" href=\"https://openagents.com/\">"));
-        assert!(html.contains("href=\"/index.md\""));
+        assert!(html.contains("href=\"/login?return_to=%2Fhome\">Log in</a>"));
+        assert!(html.contains("href=\"/signup?return_to=%2Fhome\">Sign up</a>"));
+        // The page carries the site's metadata: its preview and canonical
+        // address. The Markdown twin belongs to `/`.
+        assert!(html.contains("<link rel=\"canonical\" href=\"https://openagents.com/home\">"));
         assert!(html.contains("og:image"));
         assert_eq!(html.matches("name=\"description\"").count(), 1);
         assert!(html.contains(list));

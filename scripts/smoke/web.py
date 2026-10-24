@@ -633,16 +633,24 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
-    # / is the Grid homepage and /home moves there (#12413); a chat starts
-    # at /chat. Check the default chat view separately from the HTML page.
+    # / is the launch homepage (Play the beta, the waitlist); the Grid is at
+    # /home, and / with a Grid query moves there. A chat starts at /chat.
+    # Check the default chat view separately from the HTML page.
     if want("home"):
-        grid = Site(base).get("/", cookies=False)
-        record("home: / is the Grid homepage", grid.status == 200
+        launch = Site(base).get("/", cookies=False)
+        record("home: / is the launch homepage", launch.status == 200
+               and 'href="/playtest?from=home"' in launch.text
+               and 'action="/waitlist"' in launch.text, f"{launch.status}")
+        intro = Site(base).get("/playtest", cookies=False)
+        record("home: /playtest explains what we record", intro.status == 200
+               and "What we record" in intro.text, f"{intro.status}")
+        grid = Site(base).get("/home", cookies=False)
+        record("home: /home is the Grid homepage", grid.status == 200
                and 'id="everglade-canvas"' in grid.text and "data-ambient" in grid.text
                and 'id="pylons-panel"' in grid.text, f"{grid.status}")
-        moved = Site(base).get("/home?chat=x", cookies=False)
-        record("home: /home moves to /", moved.status == 308
-               and moved.location() in ("/?chat=x", base.rstrip("/") + "/?chat=x"),
+        moved = Site(base).get("/?chat=x", cookies=False)
+        record("home: / with a Grid query moves to /home", moved.status == 307
+               and moved.location() in ("/home?chat=x", base.rstrip("/") + "/home?chat=x"),
                f"{moved.status} {moved.location()}")
         visitor = Site(base)
         visitor.cookies.clear()
@@ -1014,7 +1022,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
             record("signed in: /device code page", device.status == 200 and "code" in device.text.lower())
             # A signed-in person who isn't allowed agent work sees no
             # Environments link, and nothing at the address (#11162).
-            home = account.get("/", headers=HTML)
+            home = account.get("/home", headers=HTML)
             env_link = bool(re.search(r'href="/environments[/"]', home.text))
             record("signed in: no Environments link without agent work", not env_link)
             env = account.get("/environments", headers=HTML)

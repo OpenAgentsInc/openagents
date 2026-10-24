@@ -584,13 +584,17 @@ async fn plain_text_json_and_the_root_skill_answer_in_their_types() {
 #[tokio::test]
 async fn the_grid_homepage_has_one_heading_and_agent_discovery_links() {
     let root = tempfile::tempdir().unwrap();
-    let (status, _, html) = fetch(site(root.path()), "/", Some("text/html")).await;
+    let (status, _, html) = fetch(site(root.path()), "/home", Some("text/html")).await;
     assert_eq!(status, StatusCode::OK);
-    // The Grid homepage (#12413) keeps one heading and the agent metadata,
-    // with its Markdown twin.
+    // The Grid homepage (#12413) keeps one heading and the agent metadata.
     assert_eq!(html.matches("<h1").count(), 1, "{html}");
     assert!(html.contains("data-ambient"));
-    assert!(html.contains("<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">"));
+    // The launch homepage at `/` has one heading and the Markdown twin.
+    let (status, _, launch) = fetch(site(root.path()), "/", Some("text/html")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(launch.matches("<h1").count(), 1, "{launch}");
+    assert!(launch.contains("<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">"));
+    assert_eq!(launch.matches("name=\"description\"").count(), 1);
     // The new chat, at `/chat`, keeps them too.
     let (status, _, chat) = fetch(site(root.path()), "/chat?ui=html", Some("text/html")).await;
     assert_eq!(status, StatusCode::OK);

@@ -1,16 +1,26 @@
-//! An isolated marketing preview and on-entry universe selector. `/` is unchanged.
+//! The launch homepage at [`HOME`] (`/`), its first address `/new-lander`,
+//! and the on-entry universe selector at `/new-lander/verse`.
+//!
+//! The homepage's first action is Play the beta (the playtest,
+//! [`crate::playtest`]); the second is the waitlist form, which posts to
+//! [`crate::launch::WAITLIST`]. It loads no script. The Grid homepage
+//! that `/` served before moved to `/home` ([`super::grid_home`]); a `/`
+//! address carrying one of the Grid's own query parameters (a chat, the
+//! suggestion box, Game Lab, a project) is sent there with its query.
 
 use axum::{
     Router,
-    extract::State,
+    extract::{RawQuery, State},
     http::{HeaderMap, HeaderValue, header},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
 use maud::{Markup, PreEscaped, html};
 
 use crate::App;
 
+/// The launch homepage.
+pub(crate) const HOME: &str = "/";
 const PATH: &str = "/new-lander";
 const VERSE: &str = "/new-lander/verse";
 const SCRIPT_PATH: &str = "/new-lander/assets/verse.js";
@@ -24,35 +34,39 @@ pub(crate) fn universe_release() -> Option<super::medieval_town::Release> {
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(super::verse_ui::routes())
+        .route(HOME, get(home))
         .route(PATH, get(marketing))
         .route(VERSE, get(universe))
         .route(SCRIPT_PATH, get(script))
 }
 
-fn mark() -> Markup {
+pub(crate) fn mark() -> Markup {
     html! { svg viewBox="0 0 40 40" fill="none" aria-hidden="true" { path d="M12 7a16 16 0 1 0 16 0M20 3v17" stroke="currentColor" stroke-width="3" stroke-linecap="round" {} } }
 }
 
-fn header(verse: bool, account: bool) -> Markup {
-    let back = if verse {
-        "%2Fnew-lander%2Fverse"
-    } else {
-        "%2Fnew-lander"
-    };
+/// The top bar. `back` is where Log in returns (percent-encoded); Sign up
+/// goes on to the short profile.
+pub(crate) fn header(verse: bool, account: bool, back: &str) -> Markup {
     html! {
         header.lp-header {
-            a.lp-brand href=(PATH) aria-label="OpenAgents home" { (mark()) span { "OpenAgents" } }
-            @if verse { a.lp-back href=(PATH) { "← OpenAgents" } }
-            @else { nav.lp-nav aria-label="Main navigation" { a href="#products" { "Products" } a href="/docs" { "Docs" } a href="https://github.com/OpenAgentsInc/openagents" { "GitHub ↗" } } }
+            a.lp-brand href=(HOME) aria-label="OpenAgents home" { (mark()) span { "OpenAgents" } }
+            @if verse { a.lp-back href=(HOME) { "← OpenAgents" } }
+            @else { nav.lp-nav aria-label="Main navigation" { a href="/#products" { "Products" } a href="/docs" { "Docs" } a href="https://github.com/OpenAgentsInc/openagents" { "GitHub ↗" } } }
             nav.lp-account aria-label="Account" {
                 @if account {
                     a.hud-button.hud-ghost href=(format!("/login?return_to={back}")) { "Log in" }
-                    a.hud-button href=(format!("/signup?return_to={back}")) { "Sign up" }
+                    a.hud-button href=(format!("/signup?return_to={}", crate::launch::PROFILE_RETURN)) { "Sign up" }
                 } @else if !verse {
-                    a.hud-button href=(VERSE) { "Enter the Verse" }
+                    a.hud-button href=(crate::launch::INTRO) { "Play the beta" }
                 }
             }
         }
+    }
+}
+
+pub(crate) fn footer() -> Markup {
+    html! {
+        footer.lp-footer { a.lp-brand href=(HOME) { (mark()) span { "OpenAgents" } } span { "Create anything." } nav aria-label="Footer" { a href="/docs" { "Docs" } a href="/contact" { "Contact" } a href="/privacy" { "Privacy" } a href="https://github.com/OpenAgentsInc/openagents" { "Open source ↗" } } }
     }
 }
 
@@ -81,30 +95,37 @@ fn poster() -> Markup {
     }
 }
 
-fn marketing_content() -> Markup {
+/// The launch page. `source` is where the visitor came from (already
+/// cleaned); the Play links and the waitlist carry it on.
+fn marketing_content(source: &str) -> Markup {
+    let play = crate::launch::intro_href("home", source);
     html! {
-        main.lp {
+        main.lp #main {
             section.lp-hero aria-labelledby="hero-title" {
                 div.lp-hero-copy {
-                    p.hud-label { span.hud-signal {} "OPEN TO EVERY IDEA" }
+                    p.hud-label { span.hud-signal {} "PUBLIC BETA · PLAYTEST OPEN" }
                     h1 #hero-title { "Your ideas." br; span { "A whole universe." } }
-                    p.lp-lede { "Tools to create. Agents to help. A place to bring it all together." }
-                    a.hud-button.hud-primary.hud-large href=(VERSE) { span { "Enter the Verse" } span aria-hidden="true" { "↗" } }
-                    p.lp-caption { "Explore a first look at our connected worlds." }
+                    p.lp-lede { "Build a world in your browser with an agent to help. Try the beta in about five minutes, then tell us what you think." }
+                    div.lp-cta {
+                        a.hud-button.hud-primary.hud-large href=(play) { span { "Play the beta" } span aria-hidden="true" { "↗" } }
+                        a.hud-button.hud-ghost.hud-large href="#waitlist" { span { "Join the waitlist" } span aria-hidden="true" { "↓" } }
+                    }
+                    p.lp-caption { "Free. No account needed to play." }
                 }
                 div.lp-hero-art aria-hidden="true" { (poster()) }
             }
             section.lp-products #products aria-labelledby="products-title" {
                 div.lp-section-heading { p.hud-label { "THE OPENAGENTS TOOLKIT" } h2 #products-title { "One platform. " span { "More ways to create." } } p { "Explore the Verse, make a world, or build with our API." } }
                 div.lp-product-grid {
-                    a.hud-card.lp-product href=(VERSE) { span.hud-index { "01 / EXPLORE" } h3 { "The Verse" } p { "Discover connected worlds from your browser." } span.lp-product-action { "Enter the Verse ↗" } }
-                    a.hud-card.lp-product href="/new-lander/house" { span.hud-index { "02 / CREATE" } h3 { "Haunted House" } p { "Step inside, make a change, and share your world." } span.lp-product-action { "Explore the house ↗" } }
+                    a.hud-card.lp-product href=(play) { span.hud-index { "01 / PLAY" } h3 { "Haunted House" } p { "Step inside, make a change, and share your world." } span.lp-product-action { "Play the beta ↗" } }
+                    a.hud-card.lp-product href=(VERSE) { span.hud-index { "02 / EXPLORE" } h3 { "The Verse" } p { "Discover connected worlds from your browser." } span.lp-product-action { "Enter the Verse ↗" } }
                     a.hud-card.lp-product href="/docs/api" { span.hud-index { "03 / BUILD" } h3 { "For developers" } p { "Connect your ideas to the OpenAgents API." } span.lp-product-action { "Explore the API ↗" } }
                 }
             }
-            section.lp-invitation { p.hud-label { "MAKE ROOM FOR YOUR IMAGINATION" } h2 { "Something starts when you enter." } a.hud-button.hud-primary.hud-large href=(VERSE) { span { "Enter the Verse" } span aria-hidden="true" { "↗" } } }
+            (crate::launch::waitlist_section(source, None, &crate::launch::WaitlistDraft::default()))
+            section.lp-invitation { p.hud-label { "MAKE ROOM FOR YOUR IMAGINATION" } h2 { "Something starts when you enter." } a.hud-button.hud-primary.hud-large href=(play) { span { "Play the beta" } span aria-hidden="true" { "↗" } } }
         }
-        footer.lp-footer { a.lp-brand href=(PATH) { (mark()) span { "OpenAgents" } } span { "Create anything." } nav aria-label="Footer" { a href="/docs" { "Docs" } a href="/privacy" { "Privacy" } a href="https://github.com/OpenAgentsInc/openagents" { "Open source ↗" } } }
+        (footer())
     }
 }
 
@@ -231,23 +252,85 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
 }
 
 fn document(content: Markup, verse: bool, account: bool) -> String {
-    let path = if verse { VERSE } else { PATH };
-    let title = if verse {
-        "The Verse · OpenAgents"
+    if verse {
+        launch_document(
+            content,
+            "The Verse · OpenAgents",
+            VERSE,
+            account,
+            Surface::Verse,
+        )
     } else {
-        "OpenAgents · Create anything"
-    };
+        launch_document(
+            content,
+            "OpenAgents · Create anything",
+            HOME,
+            account,
+            Surface::Preview,
+        )
+    }
+}
+
+const LAUNCH_DESCRIPTION: &str = "Build a world in your browser with an agent to help. Play the OpenAgents beta, or join the waitlist.";
+
+/// Which kind of page [`launch_document`] draws.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Surface {
+    /// The homepage at `/`, which search engines may list.
+    Home,
+    /// An address that isn't listed: `/new-lander` and the launch forms.
+    Preview,
+    /// The Verse selector, which loads its controller.
+    Verse,
+}
+
+/// A launch page in the Verse presentation: the top bar, `content`, and
+/// for the Verse its controller. `path` is the canonical address and where
+/// Log in returns.
+pub(crate) fn launch_document(
+    content: Markup,
+    title: &str,
+    path: &str,
+    account: bool,
+    surface: Surface,
+) -> String {
+    let verse = surface == Surface::Verse;
+    let back = path.replace('/', "%2F");
     let body = html! {
         (maud::DOCTYPE)
         html lang="en" {
-            head { meta charset="utf-8"; meta name="viewport" content="width=device-width, initial-scale=1"; meta name="robots" content="noindex, nofollow"; meta name="description" content="Tools to create. Agents to help. Explore the OpenAgents toolkit and the Verse."; meta name="color-scheme" content="dark"; title { (title) } link rel="canonical" href=(format!("https://openagents.com{path}")); }
-            body class=(if verse {"verse-page"} else {"marketing-page"}) { a.hud-skip href=(if verse {"#world-title"} else {"#products"}) { "Skip to content" } (header(verse,account)) (content) @if verse { script type="module" src=(SCRIPT_PATH) {} } }
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                meta name="color-scheme" content="dark";
+                title { (title) }
+                @if surface == Surface::Home {
+                    // The site's shared metadata: link preview, the Markdown
+                    // twin, and the organization's JSON-LD.
+                    (PreEscaped(crate::agent_ready::head(title, Some(LAUNCH_DESCRIPTION), Some(path))))
+                } @else {
+                    meta name="robots" content="noindex, nofollow";
+                    meta name="description" content=(LAUNCH_DESCRIPTION);
+                    link rel="canonical" href=(format!("https://openagents.com{path}"));
+                }
+            }
+            body class=(if verse {"verse-page"} else {"marketing-page"}) { a.hud-skip href=(if verse {"#world-title"} else {"#main"}) { "Skip to content" } (header(verse, account, &back)) (content) @if verse { script type="module" src=(SCRIPT_PATH) {} } }
         }
     }.into_string();
     super::verse_ui::document(body, if verse { "universe" } else { "marketing" })
 }
 
-fn respond(content: String) -> Response {
+/// The page's headers: the policy (with the engine's origin for the
+/// Verse), never stored, and unlisted unless `listed`.
+pub(crate) fn respond_listed(content: String, listed: bool) -> Response {
+    let mut response = respond(content);
+    if listed {
+        response.headers_mut().remove("x-robots-tag");
+    }
+    response
+}
+
+pub(crate) fn respond(content: String) -> Response {
     let mut response = Html(content).into_response();
     let headers = response.headers_mut();
     let engine = universe_release();
@@ -270,14 +353,57 @@ fn respond(content: String) -> Response {
     response
 }
 
-async fn marketing(State(app): State<App>) -> Response {
-    respond(document(
-        marketing_content(),
-        false,
-        app.config
-            .features
-            .on(crate::features::Feature::HomeAccount),
-    ))
+/// The query parameters the Grid homepage reads; `/` with one of them is
+/// an older Grid address.
+const GRID_QUERY: [&str; 6] = ["chat", "suggest", "lab", "ui", "project", "gl"];
+
+/// `utm_source` or `ref` from a query, cleaned.
+pub(crate) fn source_of(query: Option<&str>) -> String {
+    let pairs: Vec<(String, String)> = url::form_urlencoded::parse(query.unwrap_or("").as_bytes())
+        .into_owned()
+        .take(32)
+        .collect();
+    let find = |name: &str| {
+        pairs
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
+    crate::launch::forms::source(find("utm_source").or_else(|| find("ref")).unwrap_or(""))
+}
+
+async fn home(State(app): State<App>, RawQuery(query): RawQuery) -> Response {
+    if let Some(query) = query.as_deref()
+        && url::form_urlencoded::parse(query.as_bytes())
+            .any(|(k, _)| GRID_QUERY.contains(&k.as_ref()))
+    {
+        return Redirect::temporary(&format!("{}?{query}", super::grid_home::GRID_HOME_PATH))
+            .into_response();
+    }
+    launch(&app, query.as_deref(), Surface::Home)
+}
+
+async fn marketing(State(app): State<App>, RawQuery(query): RawQuery) -> Response {
+    launch(&app, query.as_deref(), Surface::Preview)
+}
+
+fn launch(app: &App, query: Option<&str>, surface: Surface) -> Response {
+    let source = source_of(query);
+
+    let account = app
+        .config
+        .features
+        .on(crate::features::Feature::HomeAccount);
+    respond_listed(
+        launch_document(
+            marketing_content(&source),
+            "OpenAgents · Create anything",
+            HOME,
+            account,
+            surface,
+        ),
+        surface == Surface::Home,
+    )
 }
 
 async fn universe(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -335,7 +461,7 @@ mod tests {
     fn new_lander_marketing_never_starts_a_game() {
         for account in [false, true] {
             for page in [
-                document(marketing_content(), false, account),
+                document(marketing_content(""), false, account),
                 document(universe_content(None, account, false), true, account),
             ] {
                 for old in [
@@ -350,9 +476,17 @@ mod tests {
                 crate::copy_guard::assert_plain(PATH, &page);
             }
         }
-        let page = document(marketing_content(), false, true);
+        let page = document(marketing_content("hn"), false, true);
         assert!(!page.contains("<script") && !page.contains("<canvas") && !page.contains(".wasm"));
         assert!(page.contains("Enter the Verse") && page.contains("noindex, nofollow"));
+        // Play the beta first, the waitlist second, both carrying the source.
+        let play = page.find("Play the beta").unwrap();
+        assert!(play < page.find("Join the waitlist").unwrap());
+        assert!(page.contains(r#"href="/playtest?from=home&amp;utm_source=hn""#));
+        assert!(
+            page.contains(r#"action="/waitlist""#) && page.contains(r#"name="source" value="hn""#)
+        );
+        assert!(page.contains(r#"href="/signup?return_to=%2Fplaytest%2Fprofile""#));
         crate::copy_guard::assert_plain(PATH, &page);
         crate::copy_guard::assert_plain(
             VERSE,
@@ -431,39 +565,83 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn new_lander_routes_are_owned_and_the_root_stays_the_grid() {
+    async fn the_root_is_the_launch_page_and_the_grid_moved_to_home() {
         let root = tempfile::tempdir().unwrap();
         let app = crate::router(crate::Config::development(root.path().join("tasks")));
-        for path in [PATH, VERSE, SCRIPT_PATH, "/"] {
+        let fetch = |path: &'static str| {
+            let app = app.clone();
+            async move {
+                let request = Request::builder()
+                    .uri(path)
+                    .header(header::HOST, "127.0.0.1:4300")
+                    .body(Body::empty())
+                    .unwrap();
+                let response = app.oneshot(request).await.unwrap();
+                let status = response.status();
+                let headers = response.headers().clone();
+                let body = String::from_utf8(
+                    to_bytes(response.into_body(), 4 * 1024 * 1024)
+                        .await
+                        .unwrap()
+                        .to_vec(),
+                )
+                .unwrap();
+                (status, headers, body)
+            }
+        };
+        for path in [HOME, PATH, VERSE, SCRIPT_PATH, "/home"] {
+            let (status, headers, body) = fetch(path).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+            assert!(crate::upstream::owned(path), "{path}");
+            match path {
+                HOME | PATH => {
+                    assert!(
+                        body.contains("Play the beta") && body.contains(r#"action="/waitlist""#)
+                    );
+                    assert!(!body.contains("everglade-canvas"));
+                    assert!(
+                        body.contains(r#"<link rel="canonical" href="https://openagents.com/">"#)
+                    );
+                    // Only `/` may be listed by search engines.
+                    assert_eq!(headers.contains_key("x-robots-tag"), path == PATH);
+                    assert_eq!(body.contains("noindex"), path == PATH);
+                    crate::copy_guard::assert_plain(HOME, &body);
+                }
+                "/home" => {
+                    assert!(body.contains("everglade-canvas"));
+                    assert!(!body.contains(SCRIPT_PATH));
+                }
+                VERSE => {
+                    assert!(body.contains(SCRIPT_PATH) && body.contains("Locked for now"));
+                    assert_eq!(
+                        body.contains("Enter Haunted House"),
+                        super::super::new_lander_house::available()
+                    );
+                }
+                _ => {}
+            }
+        }
+        // A Grid address saved before the move keeps working.
+        for (old, to) in [
+            ("/?chat=abc-1", "/home?chat=abc-1"),
+            ("/?suggest=web", "/home?suggest=web"),
+            ("/?lab=game", "/home?lab=game"),
+            ("/?ui=gpui", "/home?ui=gpui"),
+            ("/?project=prj_1", "/home?project=prj_1"),
+        ] {
             let request = Request::builder()
-                .uri(path)
+                .uri(old)
                 .header(header::HOST, "127.0.0.1:4300")
                 .body(Body::empty())
                 .unwrap();
             let response = app.clone().oneshot(request).await.unwrap();
-            assert_eq!(response.status(), StatusCode::OK, "{path}");
-            if path != "/" {
-                assert!(crate::upstream::owned(path));
-            }
-            let body = String::from_utf8(
-                to_bytes(response.into_body(), 2 * 1024 * 1024)
-                    .await
-                    .unwrap()
-                    .to_vec(),
-            )
-            .unwrap();
-            if path == "/" {
-                assert!(body.contains("everglade-canvas"));
-                assert!(!body.contains(SCRIPT_PATH));
-            }
-            if path == VERSE {
-                assert!(body.contains(SCRIPT_PATH) && body.contains("Locked for now"));
-                assert_eq!(
-                    body.contains("Enter Haunted House"),
-                    super::super::new_lander_house::available()
-                );
-            }
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT, "{old}");
+            assert_eq!(response.headers()[header::LOCATION], to);
         }
+        // A campaign tag stays on the launch page and rides along.
+        let (status, _, body) = fetch("/?utm_source=Newsletter").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("utm_source=newsletter"));
         // The self-hosted sans face (so no computer falls back to monospace).
         let font = super::super::verse_ui::FONT_PATH;
         let response = app
