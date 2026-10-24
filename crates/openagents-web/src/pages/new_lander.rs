@@ -464,5 +464,22 @@ mod tests {
                 );
             }
         }
+        // The self-hosted sans face (so no computer falls back to monospace).
+        let font = super::super::verse_ui::FONT_PATH;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(font)
+                    .header(header::HOST, "127.0.0.1:4300")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(crate::upstream::owned(font));
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "font/woff2");
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        assert_eq!(&bytes[..4], b"wOF2");
     }
 }
