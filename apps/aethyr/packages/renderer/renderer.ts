@@ -6,6 +6,11 @@ import {
   mmorpgHemisphereSH,
 } from "./mmorpg-lighting.ts";
 import { planarLightingChanged } from "./planar-lighting-state.ts";
+import {
+  FULL_RENDERER_DETAIL,
+  validateRendererDetail,
+  type RendererDetail,
+} from "./detail-settings.ts";
 import type { Grass, GrassManifest } from "./grass.ts";
 import { grassGroundMarker } from "./grass-ground.ts";
 import {
@@ -692,6 +697,24 @@ export class Renderer {
   get groundGrassStats() {
     return this.grass ? { ...this.grass.stats } : undefined;
   }
+  private detailSettings: RendererDetail = FULL_RENDERER_DETAIL;
+  /** Current Detail switches; `renderScale` is applied by the caller's `resize`. */
+  get detail(): Readonly<RendererDetail> {
+    return this.detailSettings;
+  }
+  /** Apply Detail's quality switches (ADR 0007). Takes effect next frame. */
+  setDetail(value: RendererDetail) {
+    const next = Object.freeze({ ...validateRendererDetail(value) });
+    const prior = this.detailSettings;
+    this.detailSettings = next;
+    if (
+      next.shadowRefreshMeters < prior.shadowRefreshMeters ||
+      next.shadowRefreshDot > prior.shadowRefreshDot
+    )
+      this.shadowDirty = true;
+    this.grass?.setReach(next.foliageReach);
+    this.battleCrowd?.setReach(next.crowdReach);
+  }
   private enemyData?: CharacterManifest;
   private enemies?: EnemyCharacters;
   private enemyActors: readonly EnemyActorPose[] = [];
@@ -966,6 +989,7 @@ export class Renderer {
       throw Error("This battle was cancelled before it opened.");
     }
     const previous = this.battleCrowd;
+    candidate.setReach(this.detailSettings.crowdReach);
     this.battleCrowd = candidate;
     this.battleTime = undefined;
     this.gpuBytes += candidate.bytes - (previous?.bytes ?? 0);
@@ -1786,6 +1810,7 @@ export class Renderer {
         sampleCount: 4,
       });
       this.gpuBytes += this.grass.accountedBytes;
+      this.grass.setReach(this.detailSettings.foliageReach);
     }
     this.spellEffects = await GameplayEffects.create(d);
     this.gpuBytes += this.spellEffects.bytes;
@@ -3402,8 +3427,10 @@ export class Renderer {
         ? normalize([fwd[0], 0, fwd[2]])
         : [0, 0, -1];
     if (
-      Math.hypot(...sub(camera.eye, this.lastShadowEye)) > 2 ||
-      dot(horizontalForward, this.lastShadowForward) < 0.995
+      Math.hypot(...sub(camera.eye, this.lastShadowEye)) >
+        this.detailSettings.shadowRefreshMeters ||
+      dot(horizontalForward, this.lastShadowForward) <
+        this.detailSettings.shadowRefreshDot
     )
       this.shadowDirty = true;
     if (this.shadowDirty) {

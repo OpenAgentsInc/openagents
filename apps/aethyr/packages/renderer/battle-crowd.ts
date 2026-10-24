@@ -633,6 +633,8 @@ interface Readback {
 /** Fixed-capacity local GPU combat, compacted source animation draws, and small async counters. */
 export class BattleCrowd {
   readonly bytes: number;
+  /** Detail's share of the LOD and draw distances (ADR 0007). */
+  private reach = 1;
   private count: number;
   private radius: number;
   private front = 0;
@@ -1222,6 +1224,12 @@ export class BattleCrowd {
           new Uint32Array(this.config.capacity * 2),
         );
   }
+  /** Scale the LOD tier and draw distances for Detail; 1 is configured. */
+  setReach(reach: number) {
+    if (!Number.isFinite(reach) || reach < 0.1 || reach > 1)
+      throw new Error("Use a crowd reach from 0.1 to 1.");
+    this.reach = reach;
+  }
   setCount(count: number) {
     this.assertOpen();
     if (this.pending)
@@ -1295,8 +1303,11 @@ export class BattleCrowd {
     );
     this.words.set(
       [
-        this.config.nearDistance,
-        this.config.maxDistance,
+        this.config.nearDistance * this.reach,
+        Math.max(
+          this.config.nearDistance * this.reach,
+          this.config.maxDistance * this.reach,
+        ),
         this.config.respawnSeconds,
         0,
       ],

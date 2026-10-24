@@ -120,6 +120,14 @@ const offsets = Array.from(
 
 /** Bounded patch slots keep roots stable; dirty slots refresh the GPU cache. */
 export class GrassPatchPlanner {
+  /** Detail's share of `maxDistance`; never below `lodDistance + 5`. */
+  reach = 1;
+  get drawDistance() {
+    return Math.max(
+      this.manifest.lodDistance + 5,
+      this.manifest.maxDistance * this.reach,
+    );
+  }
   readonly data = new Float32Array(
     (GRASS_LIMITS.nearPatches + GRASS_LIMITS.farPatches) * 4,
   );
@@ -150,7 +158,7 @@ export class GrassPatchPlanner {
     }
     const baseX = Math.floor(eye[0] / 10) * 10,
       baseZ = Math.floor(eye[2] / 10) * 10;
-    const radius2 = this.manifest.maxDistance ** 2,
+    const radius2 = this.drawDistance ** 2,
       near2 = this.manifest.lodDistance ** 2;
     for (let i = 0; i < offsets.length; i++) {
       const x = baseX + offsets[i][0] * 10,
@@ -300,6 +308,12 @@ export class Grass {
     );
     this.currentManifest = next;
     this.planner.manifest = next;
+  }
+  /** Scale the draw distance for Detail (ADR 0007); 1 is the manifest's. */
+  setReach(reach: number) {
+    if (!Number.isFinite(reach) || reach < 0.1 || reach > 1)
+      throw new Error("Use a grass reach from 0.1 to 1.");
+    this.planner.reach = reach;
   }
   static async create(
     device: GPUDevice,
@@ -507,7 +521,7 @@ export class Grass {
     u[106] = this.manifest.bladeHeight;
     u[107] = this.manifest.windStrength;
     u[108] = this.manifest.lodDistance;
-    u[109] = this.manifest.maxDistance;
+    u[109] = this.planner.drawDistance;
     u[110] = this.manifest.interactionRadius;
     u[111] = this.sampleCount;
     u[63] = this.manifest.terrainProfile === "quick-mmorpg-v1" ? 1 : 0;

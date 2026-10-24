@@ -12,6 +12,14 @@ import {
 } from "../../packages/renderer/film-frame.ts";
 import { DRUID_ABILITIES } from "../../packages/runtime/druid-abilities.ts";
 import type { V3 } from "../../packages/renderer/math.ts";
+import {
+  browserEnvironment,
+  LIVE_QUERIES,
+  probeDeviceProfile,
+  probeLive,
+} from "../../packages/runtime/device-profile.ts";
+import { DetailDriver } from "../../packages/runtime/detail-driver.ts";
+import { defaultProfile } from "../../packages/runtime/detail.ts";
 
 const ui = playerChrome(),
   startup = performance.now();
@@ -25,6 +33,10 @@ let capturing = false;
 let startupMetrics: Record<string, unknown> = {};
 let phase: "loading" | "ready" | "error" | "closed" = "loading";
 let selectedSpell: (typeof DRUID_ABILITIES)[number]["id"] | undefined;
+let detail: DetailDriver | undefined;
+let failure: { message: string; detail: unknown } | undefined;
+// Probe while the world downloads; a probe failure only loses information.
+const probing = probeDeviceProfile().catch(() => defaultProfile());
 const keys = new Set<string>();
 const close = () => {
   if (disposed) return;
@@ -62,6 +74,15 @@ const objective = () => {
 };
 const message = (error: unknown) =>
   ui.message(error instanceof Error ? error.message : String(error));
+/** Failure reports carry the profile and the Detail the world was running at. */
+const fail = (error: unknown) => {
+  failure = {
+    message: error instanceof Error ? error.message : String(error),
+    detail: detail?.report() ?? null,
+  };
+};
+const applyInterfaceDetail = () =>
+  detail?.applyInterface(document.documentElement);
 const resize = () => {
   if (!session || capturing) return;
   const size = liveViewport(Math.floor(innerWidth), Math.floor(innerHeight));
@@ -76,12 +97,18 @@ function draw(now: number) {
       ui.message(objective());
     }
     frame = requestAnimationFrame(draw);
+    if (detail && detail.detail !== interfaceDetail) {
+      interfaceDetail = detail.detail;
+      applyInterfaceDetail();
+    }
   } catch (error) {
+    fail(error);
     close();
     phase = "error";
     message(error);
   }
 }
+let interfaceDetail: number | undefined;
 window.addEventListener("keydown", (event) => {
   if (!session || event.target instanceof HTMLButtonElement) return;
   if (
@@ -182,6 +209,20 @@ async function start() {
     return;
   }
   session = await WorldSession.create(source);
+  detail = new DetailDriver(await probing);
+  session.attachDetail(detail);
+  applyInterfaceDetail();
+  const env = browserEnvironment();
+  for (const query of LIVE_QUERIES)
+    matchMedia(query).addEventListener(
+      "change",
+      () => {
+        detail?.updateProfile(probeLive(env, detail.profile));
+        session?.attachDetail(detail);
+        applyInterfaceDetail();
+      },
+      { signal: lifetime.signal },
+    );
   resize();
   session.render(0);
   await session.renderer.device.queue.onSubmittedWorkDone();
@@ -241,6 +282,8 @@ Object.assign(window, {
       phase,
       startup: startupMetrics,
       ...(session ? session.inspect() : {}),
+      detail: detail?.report() ?? null,
+      ...(failure ? { failure } : {}),
     }),
     input: (value: Parameters<WorldSession["input"]>[0]) =>
       session?.input(value),
@@ -296,6 +339,8 @@ Object.assign(window, {
       release();
       const renderer = session.renderer,
         old = { width: renderer.width, height: renderer.height };
+      // Screenshots are taken at full detail, whatever the device was doing.
+      session.holdDetail(1);
       try {
         renderer.resize(size.width, size.height);
         const result = await renderer.capturePixelsDetailed(options.time ?? 0, {
@@ -315,6 +360,7 @@ Object.assign(window, {
       } finally {
         capturing = false;
         if (!disposed) {
+          session.holdDetail(undefined);
           renderer.resize(old.width, old.height);
           paused = priorPaused;
           resize();
@@ -326,6 +372,7 @@ Object.assign(window, {
 });
 void start().catch((error) => {
   if (disposed) return;
+  fail(error);
   session?.dispose();
   session = undefined;
   phase = "error";

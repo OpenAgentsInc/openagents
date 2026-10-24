@@ -64,7 +64,7 @@ Tracked as one epic with task issues. In order:
    HUD, the house studio, the player, and invitations, each moved to an Effect
    controller and the shared renderer, phone width first.
 5. **Device profile and detail controller**, wired first to the current
-   renderer's quality switches.
+   renderer's quality switches ([device profile](device-profile.md)).
 6. **Releases built from this repository**, deployed by digest to the existing
    editor and preview services, then pinned.
 7. **Mobile:** the zone launcher, the web runner on iOS and Android, the

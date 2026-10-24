@@ -36,6 +36,7 @@ import {
 import { assertNativeStartCapture } from "./capture-actors.ts";
 import { isDruidAbility, type DruidAbility } from "./druid-abilities.ts";
 import type { preparePublishedWorld } from "./published-world.ts";
+import type { DetailDriver } from "./detail-driver.ts";
 
 type Published = Awaited<ReturnType<typeof preparePublishedWorld>>;
 
@@ -62,6 +63,10 @@ export class WorldSession {
   private readonly gameplayVisuals = new GameplayVisualSync();
   private readonly frameMetrics = new FrameMetrics();
   private readonly framePacer = new FramePacer();
+  private detailDriver?: DetailDriver;
+  private viewport?: { width: number; height: number };
+  /** GPU timestamps resolve a few frames late; read this far back. */
+  private static readonly GPU_SAMPLE_LAG = 4;
   private benchmarkCamera?: Camera;
   private benchmarkStarted = 0;
   private hostClampedSeconds = 0;
@@ -236,7 +241,46 @@ export class WorldSession {
 
   resize(width: number, height: number) {
     this.assertOpen();
-    this.renderer.resize(width, height);
+    this.viewport = { width, height };
+    const scale = this.renderer.detail.renderScale;
+    this.renderer.resize(
+      Math.max(1, Math.round(width * scale)),
+      Math.max(1, Math.round(height * scale)),
+    );
+    this.detailDriver?.controller.reset();
+  }
+  /**
+   * Let a detail driver steer the renderer's quality switches from measured
+   * frames (ADR 0007). Without one the renderer stays at full detail.
+   */
+  attachDetail(driver: DetailDriver | undefined) {
+    this.assertOpen();
+    this.detailDriver = driver;
+    this.applyDetail();
+  }
+  get detail() {
+    return this.detailDriver;
+  }
+  /** Pin Detail, for a capture; `undefined` resumes control. */
+  holdDetail(value: number | undefined) {
+    if (!this.detailDriver) return;
+    const changed =
+      value === undefined
+        ? this.detailDriver.release()
+        : this.detailDriver.hold(value);
+    if (changed) this.applyDetail();
+  }
+  private applyDetail() {
+    const next = this.detailDriver?.renderer();
+    if (!next) return;
+    const scaleChanged = next.renderScale !== this.renderer.detail.renderScale;
+    this.renderer.setDetail(next);
+    if (scaleChanged && this.viewport)
+      this.resize(this.viewport.width, this.viewport.height);
+  }
+  /** The profile and current Detail, for frame and failure reports. */
+  detailReport() {
+    return this.detailDriver?.report() ?? null;
   }
   input(value: Partial<typeof this.held>) {
     if (this.disposed) return;
@@ -351,6 +395,13 @@ export class WorldSession {
     }
     const renderStarted = measured ? performance.now() : 0;
     const submitted = this.render(time, camera);
+    if (this.detailDriver && submitted && !this.frameMetrics.recording) {
+      const gpuMs = this.renderer.gpuFrameSample(
+        this.renderer.frame - WorldSession.GPU_SAMPLE_LAG,
+      );
+      if (this.detailDriver.observe({ interval_ms: observedInterval, gpu_ms: gpuMs }))
+        this.applyDetail();
+    }
     if (this.frameMetrics.recording) {
       const profiled = this.frameMetrics.instrumented;
       const geometry = this.renderer.runtimeInspection();
@@ -440,6 +491,8 @@ export class WorldSession {
           })()
         : undefined;
     if (request.op === "start") {
+      // Measured frames run at one fixed Detail so results stay comparable.
+      this.detailDriver?.hold();
       this.stoppedBenchmarkCounters = undefined;
       this.frameMetrics.start(request);
       this.framePacer.configure(this.frameMetrics.targetHz);
@@ -457,7 +510,9 @@ export class WorldSession {
       this.kernel.setProfiling(false);
     }
     if (request.drain) await this.renderer.drain();
-    return this.frameMetrics.result(
+    const detail = this.detailReport();
+    if (request.op === "stop") this.holdDetail(undefined);
+    const result = this.frameMetrics.result(
       "player",
       {
         renderer: this.renderer.benchmarkInfo(),
@@ -484,6 +539,7 @@ export class WorldSession {
       (frame) => this.renderer.gpuFrameSample(frame),
       this.renderer.completedFrameSnapshot(),
     );
+    return { ...result, detail };
   }
   start(now: number) {
     this.assertOpen();
@@ -511,6 +567,7 @@ export class WorldSession {
       kernel: this.kernel.benchmarkInfo(),
       spellPreparation: this.lastSpellPreparation,
       spans: { ...this.spans },
+      detail: this.detailReport(),
     };
   }
   interact() {
