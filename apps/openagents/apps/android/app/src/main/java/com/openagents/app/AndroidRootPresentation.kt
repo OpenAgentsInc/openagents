@@ -148,6 +148,8 @@ internal class AndroidRootPresentation(
         }
         tool(R.drawable.oa_ic_chat, "Chat") { panes.showSession(); guarded { owner.selectDefaultChat() } }
         walletButton = tool(R.drawable.oa_ic_wallet, "Wallet") { go(AndroidHostRoute.WALLET) }
+        // Zones work signed out too: the Haunted House opens as a guest.
+        tool(R.drawable.oa_ic_zones, "Zones") { activity.openZones() }
         tool(R.drawable.oa_ic_settings, "Settings") { go(AndroidHostRoute.SETTINGS) }
         moreButton = tool(R.drawable.oa_ic_more, "More") { showMore(moreButton) }
         yourIdShown = owner.account() != null
@@ -239,6 +241,11 @@ internal class AndroidRootPresentation(
     private fun panesViewWidth() = panes.view.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
     private fun panesViewHeight() = panes.view.height.takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
     fun view(): View = root
+
+    /** The Grid is the app's own coding-agent surfaces: show the sessions list. */
+    fun showGrid() {
+        if (!closed) panes.showNavigation()
+    }
 
     private fun showMore(anchor: View) {
         PopupMenu(activity, anchor).apply {

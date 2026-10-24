@@ -48,5 +48,13 @@
                 <data android:scheme="https" android:host="openagents.com" android:pathPrefix="/projects/join/" />
             </intent-filter>
         </activity>
+        <!-- The zone launcher and web runner (ADR 0010). Not exported. -->
+        <activity
+            android:name=".zones.ZonesActivity"
+            android:exported="false" />
+        <activity
+            android:name=".zones.ZoneWebActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false" />
     </application>
 </manifest>

@@ -61,6 +61,17 @@ class MainActivity : ComponentActivity() {
         catch (_: Exception) { credentialPending = false; credentialResult = null; result(false) }
         return AutoCloseable { if (credentialResult === result) credentialResult = null }
     }
+    /** The zone launcher (ADR 0010); the Grid comes back as the sessions list. */
+    private val zonesLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == com.openagents.app.zones.ZonesActivity.RESULT_GRID) rootPresentation?.showGrid()
+    }
+    internal fun openZones(zone: String? = null) {
+        val intent = android.content.Intent(this, com.openagents.app.zones.ZonesActivity::class.java)
+        zone?.let { intent.putExtra(com.openagents.app.zones.ZonesActivity.EXTRA_ZONE, it) }
+        runCatching { zonesLauncher.launch(intent) }
+    }
     private var debugFixture: AndroidDebugFixture? = null
     private var rootPresentation: AndroidRootPresentation? = null
     private var attachmentResults: AndroidAttachmentActivityResultOwner? = null
@@ -91,6 +102,10 @@ class MainActivity : ComponentActivity() {
             rootPresentation = AndroidRootPresentation(this, app, app.androidHost(BuildConfig.DEBUG && debugLaunch.demo))
             setContentView(requireNotNull(rootPresentation).view())
             if (BuildConfig.DEBUG && debugLaunch.demo) debugLaunch.route?.let { rootPresentation?.openDebugRoute(it) }
+            // Debug builds: `--es openagents.zones launcher|<zone id>` opens the zone launcher (screenshots).
+            if (BuildConfig.DEBUG && savedInstanceState == null) intent.getStringExtra("openagents.zones")?.let {
+                openZones(it.takeUnless { zone -> zone == "launcher" })
+            }
         }
         if (savedInstanceState == null) routeAppLink(intent)
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
