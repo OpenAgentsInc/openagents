@@ -1,5 +1,15 @@
 # OpenAgents agent contract
 
+Architecture decisions live only in [`docs/adr/`](docs/adr/README.md); every
+older decision record is deprecated (owner, 2026-10-24). The cross-device
+framework is **Aethyr** and the plan for moving Aethyrforge here and rebuilding
+the Kiki MVP on it is [`docs/aethyr/merge.md`](docs/aethyr/merge.md). Per
+[ADR 0005](docs/adr/0005-effect-controls-the-ui.md), Aethyr's web UI
+controllers are TypeScript with Effect 4 and Effect Atom: `apps/aethyr` is a
+named TypeScript exception for them, the React DOM renderer, the web host, and
+the engine's web code moved from Aethyrforge (owner, 2026-10-24). It absorbs
+`apps/verse-ui`. Domain authority stays in Rust.
+
 Product code in this workspace is Rust. Do not add TypeScript. The existing
 browser exception is `apps/haunt-preview`: the owner explicitly requested
 Effect, TypeScript, and direct WebGPU for the browser-first Haunted House

@@ -1,5 +1,7 @@
 # ADR 0001: Compile custom theme sources into resolved families
 
+> **Deprecated (owner, 2026-10-24).** All decision records outside [`docs/adr/`](../../../../docs/adr/README.md) are deprecated; see [ADR 0001](../../../../docs/adr/0001-one-decision-record-folder.md). This record is history.
+
 - Status: Accepted
 - Date: 2026-08-22
 
