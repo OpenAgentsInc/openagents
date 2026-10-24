@@ -243,8 +243,8 @@ try {
   const original=await snapshot();
   await page.click("[data-aethyr-id=edit-voice-start]");
   await phrase("show options");
-  assert.ok(await page.locator("[data-aethyr-id=request-choices]").isVisible());
-  assert.equal(await page.locator("[data-aethyr-id=edit-panel]").isVisible(),false);
+  await page.locator("[data-aethyr-id=request-choices]").waitFor({ state: "visible" });
+  await page.locator("[data-aethyr-id=edit-panel]").waitFor({ state: "hidden" });
   await phrase("show mesh");
   await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).status.view==="mesh");
   await phrase("hide mesh");
@@ -254,21 +254,22 @@ try {
   const spoken=JSON.parse(await page.evaluate(()=>window.hauntDemo.pending_change()));
   assert.equal(spoken.pending.action.type,"compile");assert.match(spoken.pending.action.source_sha256,/^[a-f0-9]{64}$/);
   await phrase("confirm change");assert.equal(grants,0);
-  await phrase("cancel change");assert.equal(await page.locator("[data-aethyr-id=edit-auth]").isVisible(),false);
+  await phrase("cancel change");await page.locator("[data-aethyr-id=edit-auth]").waitFor({ state: "hidden" });
   await page.click("[data-aethyr-id=world-edit]");
   await page.click("[data-aethyr-id=edit-source-compile]");
   const clicked=JSON.parse(await page.evaluate(()=>window.hauntDemo.pending_change()));
   assert.deepEqual(clicked.pending.action,spoken.pending.action);
   await phrase("cancel change");await phrase("inspect");
-  assert.equal(await page.locator("[data-aethyr-id=edit-panel]").isVisible(),false);
+  await page.locator("[data-aethyr-id=edit-panel]").waitFor({ state: "hidden" });
   assert.match(await page.locator("[data-aethyr-id=edit-voice-status]").innerText(),/Listening/);
   await phrase("share");assert.match(await page.locator("[data-aethyr-id=voice-response]").innerText(),/isn't available/);
   assert.equal((await snapshot()).status.project.revision,0);
   await phrase("show options");
-  assert.ok(await page.locator("[data-aethyr-id=request-choices]").isVisible());
+  await page.locator("[data-aethyr-id=request-choices]").waitFor({ state: "visible" });
   assert.equal(await page.locator("[data-aethyr-id=voice-heard]").innerText(),"show options");
   assert.equal(await page.locator("[data-aethyr-id=voice-response]").innerText(),"Choose an option, or say its name.");
-  assert.equal(await page.locator("[data-aethyr-id=edit-status]").innerText(),"Choose an option, or say its name.");
+  // The editor is closed here; its status line is the release's bridge copy.
+  assert.equal(await page.locator("#edit-status").textContent(),"Choose an option, or say its name.");
   await page.screenshot({path:path.join(out,"voice-world-desktop.png")});
   // Hold a queued recognition callback, stop, and deliver it late.
   await page.waitForFunction(()=>window.speechFixture.last && !window.speechFixture.last.aborted);
@@ -276,7 +277,7 @@ try {
   await page.click("[data-aethyr-id=edit-voice-stop]");const starts=await page.evaluate(()=>window.speechFixture.starts);
   await page.evaluate(()=>window.lateSpeech({results:[[{transcript:"compile"}]]}));await page.waitForTimeout(800);
   assert.equal(await page.evaluate(()=>window.speechFixture.starts),starts);
-  assert.equal(await page.locator("[data-aethyr-id=edit-auth]").isVisible(),false);
+  await page.locator("[data-aethyr-id=edit-auth]").waitFor({ state: "hidden" });
   await page.click("[data-aethyr-id=edit-voice-start]");
   await page.evaluate(()=>window.speechFixture.last.onerror({error:"not-allowed"}));await page.waitForTimeout(700);
   assert.match(await page.locator("[data-aethyr-id=edit-voice-status]").innerText(),/denied/);

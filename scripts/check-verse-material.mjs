@@ -362,6 +362,8 @@ try {
   await page.click("[data-aethyr-id=face-preview]");
   await editor.waitForFunction(()=>window.heldPreviewStarted);
   await page.fill("[data-aethyr-id=face-request] :is(input,textarea)","remove all scars");await page.click("[data-aethyr-id=face-generate]");
+  // The controller shows the release's new status on its next render.
+  await page.waitForFunction(()=>/Erase handmade paint only removes brush marks/.test(document.querySelector("[data-aethyr-id=face-status]")?.textContent??""));
   const refusal=await page.locator("[data-aethyr-id=face-status]").textContent();
   assert.match(refusal,/Erase handmade paint only removes brush marks/);
   await editor.evaluate(()=>window.releaseHeldPreview());

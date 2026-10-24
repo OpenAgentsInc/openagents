@@ -298,8 +298,8 @@ try {
       "werewolf-1",
   );
   await page.click("[data-aethyr-id=world-edit]");
-  assert.ok(await page.locator("[data-aethyr-id=edit-panel]").isVisible());
-  assert.equal(await page.locator("[data-aethyr-id=edit-auth]").isVisible(), false);
+  await page.locator("[data-aethyr-id=edit-panel]").waitFor({ state: "visible" });
+  await page.locator("[data-aethyr-id=edit-auth]").waitFor({ state: "hidden" });
   await page.waitForFunction(
     () =>
       document.querySelector("#edit-target").textContent === "werewolf-1" &&
@@ -315,9 +315,10 @@ try {
     JSON.parse(window.hauntDemo.pending_change()),
   );
   assert.equal(grants, 0);
-  assert.equal(await page.locator("[data-aethyr-id=edit-confirm]").isVisible(), false);
+  await page.locator("[data-aethyr-id=edit-confirm]").waitFor({ state: "hidden" });
   await page.click("[data-aethyr-id=edit-cancel]");
-  assert.equal(await page.locator("[data-aethyr-id=edit-auth]").isVisible(), false);
+  // The controller closes the dialog on its next render.
+  await page.locator("[data-aethyr-id=edit-auth]").waitFor({ state: "hidden" });
   assert.equal(
     await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
     pending.pending.draft,
@@ -343,7 +344,7 @@ try {
       JSON.parse(window.hauntDemo.snapshot()).status.selection?.id ===
       "werewolf-1",
   );
-  assert.ok(await page.locator("[data-aethyr-id=edit-panel]").isVisible());
+  await page.locator("[data-aethyr-id=edit-panel]").waitFor({ state: "visible" });
   assert.equal(
     await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
     pending.pending.draft,

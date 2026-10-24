@@ -373,6 +373,9 @@ try {
   await page.waitForFunction(()=>window.hauntDemo && JSON.parse(window.hauntDemo.snapshot()).phase==="open" && JSON.parse(window.hauntDemo.snapshot()).status.authoring,null,{timeout:process.env.AETHYRFORGE_LOCAL_CHECK==="1"?30000:125000});
   const snapshot=()=>page.evaluate(()=>JSON.parse(window.hauntDemo.snapshot()));
   const edit=async(tab)=>{if(await page.locator('[data-aethyr-id=edit-panel]').isHidden())await page.click('[data-aethyr-id=world-edit]');await page.click('[data-aethyr-id=tab-'+tab+']');};
+  // The visible box shows the release's state after the controller's next
+  // render, so wait for it rather than expecting the click to flip it at once.
+  const checkRights=async()=>{const box=page.locator('[data-aethyr-id=publish-confirm-rights] input');if(!(await box.isChecked()))await box.click();await page.waitForFunction(()=>document.querySelector('[data-aethyr-id=publish-confirm-rights] input')?.checked&&document.querySelector('#publish-confirm-rights').checked);};
   const confirm=async()=>{await page.locator('[data-aethyr-id=edit-confirm]').waitFor({state:'visible'});await page.click('[data-aethyr-id=edit-confirm]');await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'hidden'});};
   const options=async()=>{await edit('request');await page.click('[data-aethyr-id=request-options]');};
   const csrf=async()=>page.evaluate(async()=> (await(await fetch('/v1/verse/studio/session')).json()).csrf);
@@ -403,7 +406,7 @@ try {
   await page.locator('[data-aethyr-id=edit-confirm]').waitFor({state:'visible'});await page.click('[data-aethyr-id=edit-confirm]');
   await draftEditor.waitForFunction(()=>window.draftStatusFixture.observed);
   await page.waitForTimeout(200);
-  assert.equal(await page.locator('[data-aethyr-id=edit-auth]').isVisible(),true,'Draft is not acknowledged while its matching status is held');
+  await page.locator('[data-aethyr-id=edit-auth]').waitFor({ state: "visible" });
   assert.equal((await snapshot()).status.authoring.draft,source);
   await draftEditor.evaluate(()=>{window.draftStatusFixture.held=false;window.draftStatusFixture.release();});
   await page.locator('[data-aethyr-id=edit-auth]').waitFor({state:'hidden'});
@@ -435,7 +438,7 @@ try {
   await page.locator('[data-aethyr-id=publish-review][open]').waitFor();assert.match(await page.locator('[data-aethyr-id=publish-review-target]').innerText(),/Version 1 · Anyone with the link/);
   await page.click('[data-aethyr-id=publish-confirm]');await page.waitForFunction(()=>document.querySelector('#publish-status').textContent.includes('Confirm the playable'));
   assert.equal(publicationPosts.length,0,'Unchecked confirmation sends no publication');
-  await page.check('[data-aethyr-id=publish-confirm-rights] input');
+  await checkRights();
   const arrived=new Promise(resolve=>publishArrived=resolve);holdPublish=true;losePublishAck=true;
   await page.click('[data-aethyr-id=publish-confirm]');await arrived;
   await page.click('[data-aethyr-id=publish-confirm]');
@@ -466,11 +469,11 @@ try {
     const count=projects.length;failEnsure=true;
     await page.click('[data-aethyr-id=planet-create]');
     await page.waitForFunction(()=>!document.querySelector('[data-aethyr-id=planet-create]').disabled&&document.querySelector('[data-aethyr-id=planet-status]').textContent.includes('Try again'));
-    assert.equal(projects.length,count);assert.equal(await page.locator('[data-aethyr-id=planet-owned]').isHidden(),true);
+    assert.equal(projects.length,count);await page.locator('[data-aethyr-id=planet-owned]').waitFor({ state: "hidden" });
     oldEnsure=true;
     await page.click('[data-aethyr-id=planet-create]');
     await page.waitForFunction(()=>!document.querySelector('[data-aethyr-id=planet-create]').disabled&&document.querySelector('[data-aethyr-id=planet-status]').textContent.includes('Try again'));
-    assert.equal(projects.length,count);assert.equal(await page.locator('[data-aethyr-id=planet-owned]').isHidden(),true);
+    assert.equal(projects.length,count);await page.locator('[data-aethyr-id=planet-owned]').waitFor({ state: "hidden" });
     assert.doesNotMatch(await page.locator('[data-aethyr-id=planet-status]').innerText(),/removed/);
     const refreshHeld=new Promise(resolve=>refreshSessionArrived=resolve);holdRefreshSession=true;
     await refreshHeld;
@@ -490,13 +493,13 @@ try {
       active=false;const getsBefore=tutorialGets;releaseRefreshSession();
       await page.waitForTimeout(300);assert.equal(tutorialGets,getsBefore,"Refresh from before allocation cannot acquire the allocation generation");
       await page.waitForFunction(()=>document.querySelector('[data-aethyr-id=planet-status]').textContent.includes('Log in again'));
-      assert.equal(await page.locator('[data-aethyr-id=planet-owned]').isHidden(),true);
+      await page.locator('[data-aethyr-id=planet-owned]').waitFor({ state: "hidden" });
       active=true;
       // The new context must poll again while the old allocation response is held.
       await page.locator('[data-aethyr-id=planet-owned]').waitFor({state:'visible'});
       releaseAllocationAck();
       await page.waitForTimeout(2200);
-      assert.equal(await page.locator('[data-aethyr-id=planet-owned]').isVisible(),true,'A late old allocation cannot overwrite the rechecked award');
+      await page.locator('[data-aethyr-id=planet-owned]').waitFor({ state: "visible" });
     }
     assert.match(await page.locator('[data-aethyr-id=option-openagents] small').textContent(),/Locked/);
     assert.equal(await page.locator('.verse-page .account-nav').isHidden(),true,'Confirmed owners are not offered Log in or Sign up');
@@ -670,7 +673,7 @@ try {
   await phrase('share');await page.locator('[data-aethyr-id=publish-share-card]').waitFor({state:'visible'});
   assert.equal(await page.locator('[data-aethyr-id=publish-share-link]').getAttribute('href'),`/new-lander/play/${world}/${secondId}`);
   await page.screenshot({path:path.join(out,'share-version-desktop.png')});await page.click('[data-aethyr-id=publish-share-close]');
-  await phrase('play');await page.waitForURL('https://openagents.com/new-lander/play/**');
+  await page.bringToFront();await phrase('play');await page.waitForURL('https://openagents.com/new-lander/play/**');
   await page.waitForFunction(()=>window.versePlayer&&JSON.parse(window.versePlayer.snapshot()).engine.receipts.some(r=>r.outcome.message==='Playable version opened.'),null,{timeout:125000});
   assert.equal(await page.evaluate(()=>JSON.parse(window.versePlayer.snapshot()).release),secondId,'Spoken Play opens the exact release through the real handler');
   await page.goBack({waitUntil:'domcontentloaded'});
@@ -695,13 +698,13 @@ try {
   await page.selectOption('[data-aethyr-id=publish-version] select',firstId);await page.click('[data-aethyr-id=publish-rollback]');await page.locator('[data-aethyr-id=publish-review][open]').waitFor();
   assert.equal(await page.locator('[data-aethyr-id=publish-version] select').inputValue(),firstId,'Preparing management preserves the selected non-default version');
   assert.equal(await page.locator('[data-aethyr-id=publish-review-target]').innerText(),'Version 1 · Anyone with the link');assert.equal(await page.locator('[data-aethyr-id=publish-review-link]').getAttribute('href'),firstPath);
-  await page.check('[data-aethyr-id=publish-confirm-rights] input');await page.click('[data-aethyr-id=publish-confirm]');await page.locator('[data-aethyr-id=publish-review]').waitFor({state:'hidden'});
+  await checkRights();await page.click('[data-aethyr-id=publish-confirm]');await page.locator('[data-aethyr-id=publish-review]').waitFor({state:'hidden'});
   assert.equal((await book()).book.channel,firstId,'Rollback works with bad source, a face draft, and a closed engine');
   await page.selectOption('[data-aethyr-id=publish-version] select',secondId);await page.click('[data-aethyr-id=publish-revoke]');await page.locator('[data-aethyr-id=publish-review][open]').waitFor();
   assert.equal(await page.locator('[data-aethyr-id=publish-review-target]').innerText(),'Version 2 · Anyone with the link');
   await page.screenshot({path:path.join(out,'revoke-version-desktop.png')});
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(out,'revoke-version-mobile.png')});
-  await page.check('[data-aethyr-id=publish-confirm-rights] input');await page.click('[data-aethyr-id=publish-confirm]');await page.locator('[data-aethyr-id=publish-review]').waitFor({state:'hidden'});
+  await checkRights();await page.click('[data-aethyr-id=publish-confirm]');await page.locator('[data-aethyr-id=publish-review]').waitFor({state:'hidden'});
   assert.equal(await page.locator('[data-aethyr-id=edit-source] :is(input,textarea)').inputValue(),'unfinished invalid private WGSL');
   assert.equal((await book()).book.sequence,4);
   const revoked=await guest.request.get(base+`/v1/verse/play/${world}/${secondId}`);assert.equal(revoked.status(),404);
@@ -710,15 +713,18 @@ try {
   await page.evaluate(()=>document.querySelector('#project-share').click());
   await page.locator('[data-aethyr-id=publish-share-card]').waitFor({state:'visible'});
   await page.selectOption('[data-aethyr-id=project-picker] select','');
-  assert.equal(await page.locator('[data-aethyr-id=publish-share-card]').isHidden(),true);
-  assert.equal(await page.locator('[data-aethyr-id=publish-share-link]').getAttribute('href'),null);
+  await page.locator('[data-aethyr-id=publish-share-card]').waitFor({ state: "hidden" });
+  // The closed card draws nothing; the release clears its own link.
+  assert.equal(await page.locator('#publish-share-link').getAttribute('href'),null);
   await page.selectOption('[data-aethyr-id=project-picker] select',project);await edit('compile');await page.click('[data-aethyr-id=publish-refresh]');
   await page.waitForFunction(()=>document.querySelector('#published-link').hasAttribute('href'));
   await page.evaluate(()=>document.querySelector('#project-share').click());
   await page.locator('[data-aethyr-id=publish-share-card]').waitFor({state:'visible'});
+  // The release notices a lost session on its timer; a background tab's timers are throttled.
+  await page.bringToFront();
   active=false;
   await page.waitForFunction(()=>document.querySelector('#publish-share-card').hidden&&!document.querySelector('#publish-share-link').hasAttribute('href'));
-  assert.equal(await page.locator('[data-aethyr-id=publish-share-link]').innerText(),'');
+  assert.equal(await page.locator('#publish-share-link').textContent(),'');
   assert.deepEqual(errors,[]);
   const result={protocol_version:7,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,trusted_mouse_click_gets_pointer_lock:true,mouse_click_document_ms:mouseClick.time,early_mouse_click_exercised:mouseClick.time<700,touch_ghost_guard:true,player_reload_held_failed_and_same_version_recovered:true,player_post_success_injected_fatal_status_recovers:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
   fs.writeFileSync(path.join(out,'browser-publish.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));

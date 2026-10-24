@@ -113,9 +113,10 @@ try {
   for(let i=0;i<3;i++){await page.click("[data-aethyr-id=edit-close]");await page.click("[data-aethyr-id=world-edit]");}
   assert.equal((await snapshot()).session, first.session);
   assert.equal(await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),note);
+  if(await page.locator("[data-aethyr-id=edit-fog]").isHidden())await page.click("[data-aethyr-id=material-fog-toggle]");
   await page.click("[data-aethyr-id=edit-fog-apply]");
   await page.locator("[data-aethyr-id=edit-auth]").waitFor({state:"visible"});
-  assert.equal(await page.locator("[data-aethyr-id=edit-confirm]").isVisible(),false);
+  await page.locator("[data-aethyr-id=edit-confirm]").waitFor({ state: "hidden" });
   await page.click("[data-aethyr-id=edit-cancel]");
   assert.equal((await snapshot()).status.project.revision,0);
   assert.equal(await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),note);
@@ -132,16 +133,17 @@ try {
   assert.equal(await page.evaluate(()=>document.querySelector("#jarvis-toolbar").getAttribute("role")),"tablist");
   for(const name of ["objects","materials","request","compile","history"]){
     await page.click(`[data-aethyr-id=tab-${name}]`);
-    assert.ok(await page.locator(`[data-aethyr-id=panel-${name}]`).isVisible());
-    for(const other of ["objects","materials","request","compile","history"].filter(n=>n!==name)) assert.equal(await page.locator(`[data-aethyr-id=panel-${other}]`).isVisible(),false);
+    await page.locator(`[data-aethyr-id=panel-${name}]`).waitFor({ state: "visible" });
+    for(const other of ["objects","materials","request","compile","history"].filter(n=>n!==name)) await page.locator(`[data-aethyr-id=panel-${other}]`).waitFor({ state: "hidden" });
   }
   await page.click("[data-aethyr-id=tab-request]");
   await page.screenshot({path:path.join(out,"jarvis-mobile.png")});
   await page.reload(); await ready();
   await page.waitForFunction(() => JSON.parse(window.hauntDemo.snapshot()).status.selection?.id === "werewolf-1");
-  assert.equal(await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),note);
-  assert.equal(await page.locator("[data-aethyr-id=edit-kiln-request] :is(input,textarea)").inputValue(),"Keep this request; do not apply it yet.");
-  assert.equal(await page.locator("[data-aethyr-id=edit-source] :is(input,textarea)").inputValue(),source+"\n// unsent browser check");
+  // The editor stays closed after a reload; the drafts are restored into the release's fields.
+  assert.equal(await page.locator("#edit-note").inputValue(),note);
+  assert.equal(await page.locator("#edit-kiln-request").inputValue(),"Keep this request; do not apply it yet.");
+  assert.equal(await page.locator("#edit-source").inputValue(),source+"\n// unsent browser check");
   assert.notEqual((await snapshot()).session,first.session);
   snapshots.push(await snapshot());
   assert.deepEqual(errors,[]);
