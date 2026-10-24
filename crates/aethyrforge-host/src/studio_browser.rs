@@ -513,6 +513,9 @@ async fn refresh(weak: Weak<RefCell<State>>) {
         say("Account changed. Choose a new change to continue.");
     }
     let was_signed = s.account.is_some();
+    if was_signed && s.account != account {
+        projects::account_changed(&mut s);
+    }
     s.account = account;
     materials::signed_in(&mut s);
     s.csrf = value["csrf"].as_str().map(str::to_string);

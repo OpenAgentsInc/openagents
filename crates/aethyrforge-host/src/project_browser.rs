@@ -78,6 +78,11 @@ pub(super) fn bind_personal(s: &mut State) {
     }
     status("Generate your courtyard, or open its latest saved version.");
 }
+/// The signed-in account went away or changed: its publication context, the
+/// share card included, belongs to the previous account.
+pub(super) fn account_changed(s: &mut State) {
+    publishing::context_changed(s);
+}
 pub(super) fn clear(s: &mut State) {
     publishing::context_changed(s);
     history::clear();
