@@ -2328,6 +2328,7 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 1.25;
+  white-space: nowrap;
 }
 .verse-world-chip small {
   font: 10px var(--font-mono);
