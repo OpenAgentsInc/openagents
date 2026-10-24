@@ -1,0 +1,40 @@
+.stream-controls {
+  position: absolute;
+  top: max(166px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 28px);
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(27, 27, 27, 0.91);
+  pointer-events: auto;
+}
+.stream-controls > span {
+  padding: 0 8px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.stream-controls button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(228, 228, 228, 0.08);
+  white-space: nowrap;
+}
+.stream-controls button:hover {
+  background: rgba(228, 228, 228, 0.16);
+}
+.stream-controls button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+@media (max-width: 620px) {
+  .stream-controls {
+    top: 238px;
+  }
+}

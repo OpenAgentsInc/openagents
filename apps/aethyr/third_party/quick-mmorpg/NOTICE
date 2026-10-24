@@ -1,0 +1,47 @@
+Quick_3D_MMORPG adaptation
+
+Source: https://github.com/simondevyoutube/Quick_3D_MMORPG
+Revision: 547884332ca650abe96264f7230702d36481b9bc
+Copyright (c) 2021 simondevyoutube
+Client copyright (c) 2020 simondevyoutube
+License: MIT; see LICENSE in this directory.
+
+The active reference is client/index.html, client/src/main.js, client/shared,
+and server/index.mjs plus server/src. The older client/main.js is not the live
+entry point.
+
+Aethyrforge adapts the source controller, class definitions, state machines,
+following camera, NPC behavior, health, inventory, chat, proximity queries,
+terrain/scenery generation, UI layout, lighting/fog, and particle profiles.
+Relevant source files include player-entity.js, player-state.js, player-input.js,
+npc-entity.js, third-person-camera.js, health-component.js, health-bar.js,
+network-controller.js, network-entity-controller.js, inventory-controller.js,
+ui-controller.js, floating-name.js, scenery-controller.js, threejs_component.js,
+render-component.js, blood-effect.js, sorceror-effect.js, particle-system.js,
+level-up-component.js, base.css, and index.html; shared definitions, terrain,
+noise, spatial-grid, and spline modules; and the server's world, entity, client,
+and login-queue modules.
+
+Owned Rust modules implement authoritative state and the browser prediction
+kernel. The browser uses React/Effect UI and direct WebGPU rendering, without a
+Three.js or Socket.IO runtime. Fixed 60 Hz simulation and 10 Hz snapshots replace
+the source transport. Sequenced controls and versioned inventory commands replace
+client-authored transforms, health, and equipment. The source's working gameplay
+is preserved; unused quest/XP paths remain dormant. Guest class selection,
+respawn, bounded resources, and NPC health bars are explicit adaptations.
+
+World distances multiply source units by worldScale=1/6; radians and seconds
+remain unchanged. Source +Z facing maps to runtime yaw through
+sourceYaw=pi-runtimeYaw. Terrain/scenery use fixed source seed-one and seed-two
+noise. A bounded moving terrain patch and scenery window replace unbounded
+client scenery accumulation. Our grass and sky are retained by request.
+
+The earlier asset-selected local Paladin/zombie encounter remains separate from
+the shared-world profile. It uses the source movement and combat data, adapted
+collision/separation, a restart action, and one bounded health-bar draw.
+
+Terrain simplex noise derives from Jonas Wagner's MIT implementation retained
+by the source; see ../simplex-noise/LICENSE. Source art, character models, maps,
+icons, sprites, scenery and equipment remain in private prepared asset directories
+with their original notices. This repository contains no source or derived art.
+See docs/quick-mmorpg-port.md for the feature inventory and verification scope.

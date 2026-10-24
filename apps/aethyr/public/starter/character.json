@@ -1,0 +1,345 @@
+{
+  "schema": "aethyrforge.character.v1",
+  "name": "Owned courtyard explorer",
+  "geometry": {
+    "vertices": {
+      "url": "/starter/character-vertices.bin",
+      "sha256": "e80b1bc2fc0e8907e8436d40258eaf75a8c2e0cd23eff031387807306d2d340f",
+      "byteLength": 9216
+    },
+    "indices": {
+      "url": "/starter/character-indices.bin",
+      "sha256": "609d071889b8ec8712ee5f6dff39071f5ece6e133a13405fce587371f933c431",
+      "byteLength": 864
+    },
+    "vertexCount": 144,
+    "indexCount": 216
+  },
+  "joints": [
+    {
+      "parent": -1,
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "inverseBind": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "idle",
+      "duration": 1,
+      "distance": 0,
+      "tracks": [
+        {
+          "joint": 0,
+          "translation": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0.025,
+                0
+              ]
+            },
+            {
+              "time": 1,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "rotation": [],
+          "scale": []
+        }
+      ]
+    },
+    {
+      "name": "walk",
+      "duration": 1,
+      "distance": 1.3,
+      "tracks": [
+        {
+          "joint": 0,
+          "translation": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0.06,
+                0
+              ]
+            },
+            {
+              "time": 1,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "rotation": [],
+          "scale": []
+        }
+      ]
+    },
+    {
+      "name": "run",
+      "duration": 1,
+      "distance": 1.3,
+      "tracks": [
+        {
+          "joint": 0,
+          "translation": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0.06,
+                0
+              ]
+            },
+            {
+              "time": 1,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "rotation": [],
+          "scale": []
+        }
+      ]
+    },
+    {
+      "name": "jump",
+      "duration": 1,
+      "distance": 0,
+      "tracks": [
+        {
+          "joint": 0,
+          "translation": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0.1,
+                0
+              ]
+            },
+            {
+              "time": 1,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "rotation": [],
+          "scale": []
+        }
+      ]
+    },
+    {
+      "name": "backpedal",
+      "duration": 1,
+      "distance": 1.3,
+      "tracks": [
+        {
+          "joint": 0,
+          "translation": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0.06,
+                0
+              ]
+            },
+            {
+              "time": 1,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "rotation": [],
+          "scale": []
+        }
+      ]
+    },
+    {
+      "name": "strafe_left",
+      "duration": 1,
+      "distance": 1.3,
+      "tracks": [
+        {
+          "joint": 0,
+          "translation": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0.06,
+                0
+              ]
+            },
+            {
+              "time": 1,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "rotation": [],
+          "scale": []
+        }
+      ]
+    },
+    {
+      "name": "strafe_right",
+      "duration": 1,
+      "distance": 1.3,
+      "tracks": [
+        {
+          "joint": 0,
+          "translation": [
+            {
+              "time": 0,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "time": 0.5,
+              "value": [
+                0,
+                0.06,
+                0
+              ]
+            },
+            {
+              "time": 1,
+              "value": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "rotation": [],
+          "scale": []
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Explorer blue",
+      "color": [
+        0.15,
+        0.4,
+        0.8,
+        1
+      ],
+      "alphaCutoff": 0,
+      "doubleSided": false
+    }
+  ],
+  "draws": [
+    {
+      "material": 0,
+      "firstIndex": 0,
+      "indexCount": 216
+    }
+  ]
+}

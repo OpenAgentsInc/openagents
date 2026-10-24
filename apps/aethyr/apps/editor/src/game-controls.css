@@ -1,0 +1,51 @@
+.game-controls {
+  position: absolute;
+  top: max(106px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 28px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(27, 27, 27, 0.91);
+  box-shadow: 0 4px 20px #00000033;
+  pointer-events: auto;
+}
+.game-controls p {
+  margin: 0;
+  padding: 0 8px;
+  max-width: 290px;
+  line-height: 1.45;
+}
+.game-controls button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(228, 228, 228, 0.08);
+  white-space: nowrap;
+}
+.game-controls button:hover:not(:disabled) {
+  background: rgba(228, 228, 228, 0.16);
+}
+.game-controls kbd {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 620px) {
+  .game-controls {
+    top: 126px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .game-controls p {
+    flex-basis: 100%;
+    padding: 4px 8px;
+    text-align: center;
+  }
+}

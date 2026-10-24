@@ -1,0 +1,114 @@
+/* Owned shadcn controls share the public Verse palette. */
+:root {
+  --panel: #18181bef;
+  --line: #ffffff1f;
+  --muted: #a1a1aa;
+  --accent: #fafafa;
+  color: #fafafa;
+  background: #000;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+#preview-frame {
+  background: #000;
+}
+.project-badge,
+.day-night,
+.shot-picker,
+.capture-button,
+.hotbar,
+.tool-panel,
+.loading-card,
+.performance-readout,
+.play-controls,
+.game-controls,
+.stream-controls {
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: 0 8px 30px #0005;
+}
+.brand,
+.eyebrow,
+.selected-object strong,
+.tool-panel textarea.shader-source {
+  color: #fafafa;
+}
+.hotbar .tool-button.is-active,
+.hotbar .walk-button,
+.primary-button,
+.day-night button.active,
+.druid-buttons button[aria-pressed="true"],
+.druid-buttons .druid-cast {
+  color: #18181b;
+  background: #fafafa;
+  border-color: #fafafa;
+}
+.hotbar .walk-button:hover,
+.hotbar .tool-button.is-active:hover,
+.primary-button:hover:not(:disabled) {
+  color: #18181b;
+  background: #e4e4e7;
+}
+.asset-card.is-selected {
+  border-color: #a1a1aa;
+}
+input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
+select,
+textarea {
+  background: #09090b;
+  color: #fafafa;
+  border-color: #3f3f46;
+}
+input[type="range"],
+input[type="checkbox"] {
+  accent-color: #fafafa;
+}
+input[type="range"],
+input[type="checkbox"],
+input[type="color"] {
+  width: revert;
+  height: revert;
+  padding: revert;
+}
+.slider-label input {
+  width: 100%;
+}
+textarea {
+  field-sizing: fixed;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #d4d4d8;
+  outline-offset: 3px;
+}
+.notice--error,
+.druid-error {
+  color: #fca5a5;
+  border-color: #f8717140;
+  background: #271212ed;
+}
+@media (pointer: coarse) {
+  button,
+  input,
+  select {
+    min-height: 44px;
+  }
+}
+
+/* Disabled actions still need readable labels on both light and dark buttons. */
+.hotbar button:disabled,
+[data-slot="button"]:disabled {
+  opacity: 1;
+  color: #a1a1aa;
+  background: #27272a;
+  border-color: #52525b;
+}
+.hotbar kbd {
+  opacity: 1;
+  color: inherit;
+}
+.footer-hints b {
+  opacity: 1;
+  color: #a1a1aa;
+}

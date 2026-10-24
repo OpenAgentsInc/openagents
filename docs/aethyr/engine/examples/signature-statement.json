@@ -1,0 +1,7 @@
+{
+  "schema": "aethyrforge.signature.v1",
+  "purpose": "channel",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "subjectDigest": "sha256:29c91a2ca125739cdd1888c25a00e989ee3176cb55a7780fb556556c1374cf92",
+  "keyId": "00000000-0000-4000-8000-000000000700"
+}

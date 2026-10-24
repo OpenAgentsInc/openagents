@@ -1,0 +1,36 @@
+{
+  "schema": "aethyrforge.starter-game.v1",
+  "id": "town-key-and-exit",
+  "title": "The courtyard key",
+  "spawn": [
+    0,
+    0,
+    4
+  ],
+  "key": {
+    "id": "starter-key",
+    "position": [
+      -2,
+      0,
+      1
+    ],
+    "radius": 1.8
+  },
+  "exit": {
+    "id": "starter-exit",
+    "position": [
+      2,
+      0,
+      -3
+    ],
+    "radius": 1.8
+  },
+  "requiredCapabilities": [
+    "character.controller",
+    "camera.first-third-person",
+    "interaction.proximity",
+    "objective.key-exit",
+    "game.restart",
+    "environment.sky"
+  ]
+}

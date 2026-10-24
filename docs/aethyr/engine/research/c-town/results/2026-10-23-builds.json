@@ -1,0 +1,158 @@
+{
+  "schema": "aethyrforge.c-town-leaf-build.v1",
+  "startedAt": "2026-10-23T16:41:47.914Z",
+  "boundary": "Each recorded sample changes an actually used movement-speed constant and recompiles one dependency-free simulation translation unit/crate. Initial warmup is excluded. This includes compiler/driver startup and linking; it does not include browser reload, data migration, asset builds, or a complete engine rebuild.",
+  "compilers": {
+    "c": "Homebrew clang version 23.1.3\nTarget: arm64-apple-darwin25.4.0\nThread model: posix",
+    "rust": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: aarch64-apple-darwin\nrelease: 1.98.1\nLLVM version: 22.1.8"
+  },
+  "flags": {
+    "c": [
+      "--target=wasm32",
+      "-std=c17",
+      "-O3",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-fno-builtin",
+      "-fno-strict-aliasing",
+      "-nostdlib"
+    ],
+    "linker": [
+      "--no-entry",
+      "--export-memory",
+      "--export-all",
+      "--allow-undefined",
+      "--initial-memory=16777216",
+      "--max-memory=268435456"
+    ],
+    "rust": [
+      "release",
+      "opt-level=3",
+      "lto=thin",
+      "codegen-units=1",
+      "panic=abort",
+      "incremental=false"
+    ]
+  },
+  "sources": {
+    "c": "32dac11700dc8ee9d66ce582ae94224a4116954ad9840b013704af7f9a336955",
+    "cHeader": "ecf345d2901c0c0ab37271f713dffad6696040e0930ce24695d75b194d61e99d",
+    "rust": "25591e1eb9032108cb583dc26422d68888c9e2653c89c70eddd1e856e32391e6"
+  },
+  "warmup": {
+    "c": {
+      "ms": 62.444833,
+      "bytes": 5757,
+      "sha256": "7309691f43ef5630ae1128c0b951869433e803e9c4b6cb2af0997d342ffce524"
+    },
+    "rust": {
+      "ms": 546.704791,
+      "bytes": 56335,
+      "sha256": "507e2889795cd781e65c9402b587467fcb559ad85301a1cc2dd86cc92eca3b18"
+    }
+  },
+  "samples": [
+    {
+      "kind": "c",
+      "trial": 0,
+      "scale": 1.00001,
+      "ms": 56.57562500000006,
+      "bytes": 5757,
+      "sha256": "660b0ff5968b0be9673ea8291626139fe31f740aff42026138f74830522cb0f6"
+    },
+    {
+      "kind": "rust",
+      "trial": 0,
+      "scale": 1.00001,
+      "ms": 461.61250000000007,
+      "bytes": 56335,
+      "sha256": "a97ace9aa35bc11b77d275ddd75afe55e9d0ec7d9703c72f12c795b370149080"
+    },
+    {
+      "kind": "rust",
+      "trial": 1,
+      "scale": 1.00002,
+      "ms": 455.57349999999997,
+      "bytes": 56335,
+      "sha256": "776419fc6b1a271780be017598e30915bfd51bbcd26c64aadf57c3389243209c"
+    },
+    {
+      "kind": "c",
+      "trial": 1,
+      "scale": 1.00002,
+      "ms": 57.27299999999991,
+      "bytes": 5757,
+      "sha256": "97f938364638cd1fef0ee9cc06e1bb3567e63042f1233e40138d64bb92b05059"
+    },
+    {
+      "kind": "c",
+      "trial": 2,
+      "scale": 1.00003,
+      "ms": 56.39866599999982,
+      "bytes": 5757,
+      "sha256": "256ecea2a1f24b2ac7d49ef59886ec870463d3268a8fd110a8da037b831a592e"
+    },
+    {
+      "kind": "rust",
+      "trial": 2,
+      "scale": 1.00003,
+      "ms": 458.9192499999999,
+      "bytes": 56335,
+      "sha256": "3264a05fb2228d363b0d5a44e5283e8b975965bad3d073a600c343287ec8a3e6"
+    },
+    {
+      "kind": "rust",
+      "trial": 3,
+      "scale": 1.00004,
+      "ms": 468.9245000000001,
+      "bytes": 56335,
+      "sha256": "fd3df114c7457582230586421af0609f3b65570f0753efdbb02d3e7fedfa820e"
+    },
+    {
+      "kind": "c",
+      "trial": 3,
+      "scale": 1.00004,
+      "ms": 58.24883399999999,
+      "bytes": 5757,
+      "sha256": "421b41246d56f249cc2543591b5fae2b236e9b6851cbb1999a16065c797f28be"
+    },
+    {
+      "kind": "c",
+      "trial": 4,
+      "scale": 1.00005,
+      "ms": 58.44820800000025,
+      "bytes": 5757,
+      "sha256": "5a86927107d5831ae0a597318c46582ae64425e45702931d452f8a9eada02410"
+    },
+    {
+      "kind": "rust",
+      "trial": 4,
+      "scale": 1.00005,
+      "ms": 461.7923330000003,
+      "bytes": 56335,
+      "sha256": "cb975ada4f1d9f4e472b47350489869e739c0e93053519b0a732355418762faf"
+    }
+  ],
+  "ok": true,
+  "summary": {
+    "c": {
+      "count": 5,
+      "min": 56.39866599999982,
+      "median": 57.27299999999991,
+      "p95": 58.4083332000002,
+      "p99": 58.44023304000024,
+      "max": 58.44820800000025,
+      "mean": 57.38886660000001
+    },
+    "rust": {
+      "count": 5,
+      "min": 455.57349999999997,
+      "median": 461.61250000000007,
+      "p95": 467.49806660000013,
+      "p99": 468.63921332000007,
+      "max": 468.9245000000001,
+      "mean": 461.3644166000001
+    }
+  },
+  "completedAt": "2026-10-23T16:41:51.124Z"
+}

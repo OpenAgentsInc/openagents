@@ -1,0 +1,475 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aethyrforge.invalid/contracts/command.schema.json",
+  "title": "Instant authored transaction",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "aethyrforge.command.v1"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "branchId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "baseRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "actorId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "capabilityRef": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "building.place"
+              },
+              "targetIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "minItems": 0,
+                "maxItems": 0,
+                "uniqueItems": true
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "entityId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "prefabDigest": {
+                    "type": "string",
+                    "pattern": "^sha256:[0-9a-f]{64}$"
+                  },
+                  "transform": {
+                    "type": "object",
+                    "properties": {
+                      "positionMeters": {
+                        "type": "array",
+                        "items": {
+                          "type": "number",
+                          "minimum": -1000000,
+                          "maximum": 1000000
+                        },
+                        "minItems": 3,
+                        "maxItems": 3
+                      },
+                      "rotation": {
+                        "type": "array",
+                        "items": {
+                          "type": "number",
+                          "minimum": -1,
+                          "maximum": 1
+                        },
+                        "minItems": 4,
+                        "maxItems": 4
+                      },
+                      "scale": {
+                        "type": "number",
+                        "minimum": 0.001,
+                        "maximum": 1000
+                      }
+                    },
+                    "required": [
+                      "positionMeters",
+                      "rotation",
+                      "scale"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "entityId",
+                  "prefabDigest",
+                  "transform"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "targetIds",
+              "args"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "entity.setTransform"
+              },
+              "targetIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "minItems": 1,
+                "maxItems": 1,
+                "uniqueItems": true
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "transform": {
+                    "type": "object",
+                    "properties": {
+                      "positionMeters": {
+                        "type": "array",
+                        "items": {
+                          "type": "number",
+                          "minimum": -1000000,
+                          "maximum": 1000000
+                        },
+                        "minItems": 3,
+                        "maxItems": 3
+                      },
+                      "rotation": {
+                        "type": "array",
+                        "items": {
+                          "type": "number",
+                          "minimum": -1,
+                          "maximum": 1
+                        },
+                        "minItems": 4,
+                        "maxItems": 4
+                      },
+                      "scale": {
+                        "type": "number",
+                        "minimum": 0.001,
+                        "maximum": 1000
+                      }
+                    },
+                    "required": [
+                      "positionMeters",
+                      "rotation",
+                      "scale"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "transform"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "targetIds",
+              "args"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "entity.remove"
+              },
+              "targetIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "minItems": 1,
+                "maxItems": 32,
+                "uniqueItems": true
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "childPolicy": {
+                    "enum": [
+                      "reject-if-owned",
+                      "detach-reviewed"
+                    ]
+                  }
+                },
+                "required": [
+                  "childPolicy"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "targetIds",
+              "args"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "room.add"
+              },
+              "targetIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "minItems": 1,
+                "maxItems": 1,
+                "uniqueItems": true
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "buildingId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "attachWallId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "widthMm": {
+                    "type": "integer",
+                    "minimum": 2000,
+                    "maximum": 32000
+                  },
+                  "depthMm": {
+                    "type": "integer",
+                    "minimum": 2000,
+                    "maximum": 32000
+                  },
+                  "side": {
+                    "enum": [
+                      "inside",
+                      "outside"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "buildingId",
+                  "attachWallId",
+                  "widthMm",
+                  "depthMm",
+                  "side",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "targetIds",
+              "args"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "wall.setPolicy"
+              },
+              "targetIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "minItems": 1,
+                "maxItems": 32,
+                "uniqueItems": true
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "policy": {
+                    "enum": [
+                      "solid",
+                      "open-boundary"
+                    ]
+                  }
+                },
+                "required": [
+                  "policy"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "targetIds",
+              "args"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "opening.add"
+              },
+              "targetIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "minItems": 1,
+                "maxItems": 1,
+                "uniqueItems": true
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "openingId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "offsetMm": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "widthMm": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 32000
+                  },
+                  "heightMm": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 10000
+                  },
+                  "sillMm": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "kind": {
+                    "enum": [
+                      "door",
+                      "window",
+                      "arch"
+                    ]
+                  }
+                },
+                "required": [
+                  "openingId",
+                  "offsetMm",
+                  "widthMm",
+                  "heightMm",
+                  "sillMm",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "targetIds",
+              "args"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 8
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entityId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "entityId",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 32
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "selectionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "minItems": 0,
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "selectionRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "viewRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "selectionIds",
+        "selectionRevision",
+        "viewRevision"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "commandId",
+    "projectId",
+    "branchId",
+    "baseRevision",
+    "actorId",
+    "capabilityRef",
+    "operations",
+    "preconditions",
+    "context"
+  ],
+  "additionalProperties": false
+}

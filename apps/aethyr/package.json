@@ -1,0 +1,53 @@
+{
+  "name": "aethyrforge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:boids": "vite --config tools/boids-vite.config.ts",
+    "build:boids": "vite build --config tools/boids-vite.config.ts",
+    "verify:boids": "node tools/verify-boids.mjs",
+    "dev": "node tools/dev.mjs",
+    "dev:ground": "node tools/dev-ground.mjs",
+    "prepare:assets": "npm run prepare:scene && npm run prepare:lighting && npm run prepare:bounce && npm run prepare:destruction",
+    "build:kernel": "bash tools/build-kernel.sh",
+    "check": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts packages/editor-services/*.test.ts",
+    "build": "npm run build:kernel && npm run check && vite build",
+    "verify:spec": "python3 tools/check_spec.py",
+    "prepare:scene": "python3 tools/assets/compile_medieval.py && python3 tools/assets/compile_catalog.py && python3 tools/assets/compile_decals.py && python3 tools/assets/compile_uv1.py && python3 tools/assets/compile_surface_decals.py && python3 tools/assets/compile_sky.py && tsx tools/assets/compile-ibl.ts && python3 tools/assets/compile_water.py",
+    "prepare:lighting": "tsx tools/assets/compile-atmosphere.ts && tsx tools/assets/compile-ibl.ts --manifest \"$AETHYRFORGE_LIGHTING_OUTPUT/lighting-environments.json\" --look \"$AETHYRFORGE_PRIVATE_ASSETS/scene-look.json\" && tsx tools/assets/link-lighting.ts",
+    "prepare:bounce": "tsx tools/assets/compile-bounce.ts",
+    "prepare:effects": "python3 tools/assets/compile_particles.py --publish",
+    "prepare:collision": "python3 tools/assets/compile_collision.py",
+    "prepare:destruction": "python3 tools/assets/compile_gameplay.py && python3 tools/assets/compile_collision.py",
+    "prepare:character": "python3 tools/assets/compile_character.py --pack \"$AETHYRFORGE_EVERGLADE_PACK\" --publish",
+    "build:player": "npm run build:kernel && tsx tools/build-player.ts"
+  },
+  "dependencies": {
+    "@effect/atom-react": "4.0.6",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "effect": "4.0.6",
+    "radix-ui": "1.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "scheduler": "0.28.0",
+    "tailwind-merge": "3.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.18",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "@webgpu/types": "0.1.74",
+    "meshoptimizer": "1.3.0",
+    "playwright": "1.64.1",
+    "prettier": "3.9.10",
+    "tailwindcss": "4.1.18",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

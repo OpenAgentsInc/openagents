@@ -1,0 +1,734 @@
+{
+  "schema": "aethyrforge.c-town-browser-summary.v1",
+  "startedAt": "2026-10-23T17:10:46.035Z",
+  "completedAt": "2026-10-23T17:15:15.638Z",
+  "revision": "bacb9c62e1459d5c1fedec1f755d1931b72fff6f",
+  "dirty": true,
+  "browser": "155.0.8059.85",
+  "graphicsDevices": [
+    {
+      "vendor": "Google Inc. (Apple)",
+      "device": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Max, Version 26.4 (Build 25E246))",
+      "driverVendor": "Apple",
+      "driverVersion": "26.4"
+    }
+  ],
+  "configuration": {
+    "trials": 1,
+    "durationMs": 120000,
+    "warmupMs": 10000,
+    "width": 1280,
+    "height": 720,
+    "route": "MT-10",
+    "motion": "sway"
+  },
+  "boundaries": {
+    "startup": "Fresh isolated browser context to engine ready. OS caches are not flushed; repeat navigation uses browser resource cache.",
+    "cpu": "Worker performance.now intervals around named work. CPU is stepMs plus renderCpuMs; cullMs and clusterMs are nested in renderCpuMs.",
+    "cadence": "summary includes every worker animation callback. submittedSummary includes accepted render submissions only; its frameMs and submissionIntervalsMs measure consecutive submissions. submittedFramesPerSecond counts submissions after the first measured callback divided by the first-to-last callback window. These are accepted submissions, not measured display presentation.",
+    "gpu": "Only renderer timestamp queries qualify. Null means not available.",
+    "trace": "Optional separate diagnostic run; excluded from timing summaries.",
+    "motion": "The worker perturbs the render camera with the same 20-second, 1-meter and 0.12-radian sway. The controller pose stays fixed while simulation still steps.",
+    "memory": "Chrome JavaScript heap estimates do not include GPU, worker Wasm, or complete browser process memory."
+  },
+  "fixedTimeCaptures": {
+    "sha256": [
+      "df12fed5bd74d0830d046aea6015bad0b9bdb1c377c1b6b757b6c44bd349d7a1"
+    ],
+    "byteIdentical": true,
+    "boundary": "PNG bytes from time=0 at the selected shot and pinned dimensions, captured after timing. Different hashes require decoded-pixel analysis before a parity claim."
+  },
+  "runs": [
+    {
+      "variant": "c",
+      "trial": 0,
+      "coldReadyMs": 1696.6595829999997,
+      "warmReadyMs": 2175.859208000009,
+      "summary": {
+        "frameMs": {
+          "count": 6689,
+          "min": 16.5,
+          "median": 16.69999999999709,
+          "p95": 33.29999999999927,
+          "p99": 50,
+          "max": 150,
+          "mean": 17.941680370758036,
+          "missing": 0
+        },
+        "cpuMs": {
+          "count": 6689,
+          "min": 0,
+          "median": 0,
+          "p95": 3.7000000178813934,
+          "p99": 4.300000011920929,
+          "max": 6.0999999940395355,
+          "mean": 1.2564060397881673,
+          "missing": 0
+        },
+        "simulationMs": {
+          "count": 6689,
+          "min": 0,
+          "median": 0,
+          "p95": 0.09999999403953552,
+          "p99": 0.10000002384185791,
+          "max": 0.20000001788139343,
+          "mean": 0.013544625468025259,
+          "missing": 0
+        },
+        "cullingMs": {
+          "count": 6689,
+          "min": 0,
+          "median": 0,
+          "p95": 0.30000001192092896,
+          "p99": 0.4000000059604645,
+          "max": 1.2000000178813934,
+          "mean": 0.08298699370876238,
+          "missing": 0
+        },
+        "clusterMs": {
+          "count": 6689,
+          "min": 0,
+          "median": 0,
+          "p95": 0.800000011920929,
+          "p99": 0.9000000059604645,
+          "max": 1.7000000178813934,
+          "mean": 0.2616086111802623,
+          "missing": 0
+        },
+        "renderSubmitMs": {
+          "count": 6689,
+          "min": 0,
+          "median": 0,
+          "p95": 3.699999988079071,
+          "p99": 4.300000011920929,
+          "max": 6.0999999940395355,
+          "mean": 1.242861414320142,
+          "missing": 0
+        },
+        "gpuMs": {
+          "count": 2552,
+          "min": 9.699328,
+          "median": 37.945344,
+          "p95": 46.923776,
+          "p99": 50.42929663999998,
+          "max": 119.27552,
+          "mean": 37.176528652037604,
+          "missing": 4137
+        }
+      },
+      "submittedSummary": {
+        "frameMs": {
+          "count": 2553,
+          "min": 16.59999999999127,
+          "median": 50,
+          "p95": 66.69999999999709,
+          "p99": 66.70000000001164,
+          "max": 166.59999999999854,
+          "mean": 46.97551899725845,
+          "missing": 1
+        },
+        "cpuMs": {
+          "count": 2554,
+          "min": 2.699999988079071,
+          "median": 3.100000023841858,
+          "p95": 4.0999999940395355,
+          "p99": 4.699999988079071,
+          "max": 6.0999999940395355,
+          "mean": 3.2649177761402743,
+          "missing": 0
+        },
+        "simulationMs": {
+          "count": 2554,
+          "min": 0,
+          "median": 0,
+          "p95": 0.09999999403953552,
+          "p99": 0.10000002384185791,
+          "max": 0.10000002384185791,
+          "mean": 0.013194988202376579,
+          "missing": 0
+        },
+        "cullingMs": {
+          "count": 2554,
+          "min": 0,
+          "median": 0.19999998807907104,
+          "p95": 0.3999999761581421,
+          "p99": 0.5469999971985617,
+          "max": 1.2000000178813934,
+          "mean": 0.21734534100153152,
+          "missing": 0
+        },
+        "clusterMs": {
+          "count": 2554,
+          "min": 0.3999999761581421,
+          "median": 0.699999988079071,
+          "p95": 0.9000000059604645,
+          "p99": 1.0000000298023224,
+          "max": 1.7000000178813934,
+          "mean": 0.6851605325703893,
+          "missing": 0
+        },
+        "renderSubmitMs": {
+          "count": 2554,
+          "min": 2.699999988079071,
+          "median": 3.100000023841858,
+          "p95": 4.0999999940395355,
+          "p99": 4.5999999940395355,
+          "max": 6.0999999940395355,
+          "mean": 3.2517227879378976,
+          "missing": 0
+        },
+        "gpuMs": {
+          "count": 2552,
+          "min": 9.699328,
+          "median": 37.945344,
+          "p95": 46.923776,
+          "p99": 50.42929663999998,
+          "max": 119.27552,
+          "mean": 37.176528652037604,
+          "missing": 2
+        }
+      },
+      "submissionIntervalsMs": {
+        "count": 2553,
+        "min": 16.59999999999127,
+        "median": 50,
+        "p95": 66.69999999999709,
+        "p99": 66.70000000001164,
+        "max": 166.59999999999854,
+        "mean": 46.97551899725845
+      },
+      "submissionMeasurementMs": 119995.2,
+      "submittedFramesPerSecond": 21.28418470072136,
+      "captureSHA256": "df12fed5bd74d0830d046aea6015bad0b9bdb1c377c1b6b757b6c44bd349d7a1",
+      "submittedFrames": 2554,
+      "gpuScope": "main-HDR-pass-only",
+      "renderer": {
+        "backend": "c",
+        "width": 1280,
+        "height": 720,
+        "sourceInstances": 8118,
+        "sourceTriangles": 4381000,
+        "frameWasmBytes": 13041664,
+        "gpuAccountedBytes": 1073585498,
+        "inFlight": 2,
+        "gpuScope": "main-HDR-pass-only",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": ""
+        }
+      },
+      "kernel": {
+        "backend": "c",
+        "simulation": "c-packed",
+        "authorWasmBytes": 1179648,
+        "packedWasmBytes": 16777216,
+        "authorCalls": 7,
+        "packedSteps": 7180,
+        "speedScale": 1
+      },
+      "requestCount": 408,
+      "responseContentLengthBytes": 663741185,
+      "responseGroups": {
+        "assets": {
+          "requests": 394,
+          "declaredBodyBytes": 662150341
+        },
+        "wasm": {
+          "requests": 3,
+          "declaredBodyBytes": 624723
+        },
+        "host": {
+          "requests": 11,
+          "declaredBodyBytes": 966121
+        }
+      },
+      "missingContentLengthResponses": 0,
+      "pageErrorCount": 0
+    },
+    {
+      "variant": "baseline",
+      "trial": 0,
+      "coldReadyMs": 1818.688542000018,
+      "warmReadyMs": 2355.2307080000173,
+      "summary": {
+        "frameMs": {
+          "count": 6673,
+          "min": 16.5,
+          "median": 16.69999999999709,
+          "p95": 33.30000000000291,
+          "p99": 50,
+          "max": 66.70000000001164,
+          "mean": 17.97969429042415,
+          "missing": 0
+        },
+        "cpuMs": {
+          "count": 6673,
+          "min": 0,
+          "median": 0.09999999403953552,
+          "p95": 5.9000000059604645,
+          "p99": 7,
+          "max": 11.700000017881393,
+          "mean": 1.7939157801358288,
+          "missing": 0
+        },
+        "simulationMs": {
+          "count": 6673,
+          "min": 0,
+          "median": 0.09999999403953552,
+          "p95": 0.10000002384185791,
+          "p99": 0.20000001788139343,
+          "max": 0.29999998211860657,
+          "mean": 0.06067735652113968,
+          "missing": 0
+        },
+        "cullingMs": {
+          "count": 6673,
+          "min": 0,
+          "median": 0,
+          "p95": 1,
+          "p99": 1.199999988079071,
+          "max": 5.500000029802322,
+          "mean": 0.2847444929453845,
+          "missing": 0
+        },
+        "clusterMs": {
+          "count": 6673,
+          "min": 0,
+          "median": 0,
+          "p95": 1.300000011920929,
+          "p99": 1.5000000298023224,
+          "max": 2.899999976158142,
+          "mean": 0.38906039264754844,
+          "missing": 0
+        },
+        "renderSubmitMs": {
+          "count": 6673,
+          "min": 0,
+          "median": 0,
+          "p95": 5.800000011920929,
+          "p99": 6.9000000059604645,
+          "max": 11.600000023841858,
+          "mean": 1.7332384236146892,
+          "missing": 0
+        },
+        "gpuMs": {
+          "count": 2449,
+          "min": 9.240576,
+          "median": 39.256064,
+          "p95": 47.94613759999999,
+          "p99": 52.169277439999995,
+          "max": 58.916864,
+          "mean": 38.5193258962842,
+          "missing": 4224
+        }
+      },
+      "submittedSummary": {
+        "frameMs": {
+          "count": 2449,
+          "min": 16.60000000000582,
+          "median": 50,
+          "p95": 66.69999999999709,
+          "p99": 66.80000000000291,
+          "max": 83.40000000000873,
+          "mean": 48.97717435688072,
+          "missing": 1
+        },
+        "cpuMs": {
+          "count": 2450,
+          "min": 3.199999988079071,
+          "median": 4.699999988079071,
+          "p95": 6.5999999940395355,
+          "p99": 7.300000011920929,
+          "max": 11.700000017881393,
+          "mean": 4.774000000321135,
+          "missing": 0
+        },
+        "simulationMs": {
+          "count": 2450,
+          "min": 0,
+          "median": 0.09999999403953552,
+          "p95": 0.10000002384185791,
+          "p99": 0.20000001788139343,
+          "max": 0.20000001788139343,
+          "mean": 0.058122448921203614,
+          "missing": 0
+        },
+        "cullingMs": {
+          "count": 2450,
+          "min": 0.29999998211860657,
+          "median": 0.7000000178813934,
+          "p95": 1.0999999940395355,
+          "p99": 1.601999993920279,
+          "max": 5.500000029802322,
+          "mean": 0.7755510209896127,
+          "missing": 0
+        },
+        "clusterMs": {
+          "count": 2450,
+          "min": 0.5,
+          "median": 1.0000000298023224,
+          "p95": 1.4999999701976776,
+          "p99": 1.699999988079071,
+          "max": 2.899999976158142,
+          "mean": 1.0596734694437104,
+          "missing": 0
+        },
+        "renderSubmitMs": {
+          "count": 2450,
+          "min": 3.199999988079071,
+          "median": 4.600000023841858,
+          "p95": 6.5,
+          "p99": 7.299999982118607,
+          "max": 11.600000023841858,
+          "mean": 4.715877551399932,
+          "missing": 0
+        },
+        "gpuMs": {
+          "count": 2449,
+          "min": 9.240576,
+          "median": 39.256064,
+          "p95": 47.94613759999999,
+          "p99": 52.169277439999995,
+          "max": 58.916864,
+          "mean": 38.5193258962842,
+          "missing": 1
+        }
+      },
+      "submissionIntervalsMs": {
+        "count": 2449,
+        "min": 16.60000000000582,
+        "median": 50,
+        "p95": 66.69999999999709,
+        "p99": 66.80000000000291,
+        "max": 83.40000000000873,
+        "mean": 48.97717435688072
+      },
+      "submissionMeasurementMs": 119961.79999999999,
+      "submittedFramesPerSecond": 20.414832054870804,
+      "captureSHA256": "df12fed5bd74d0830d046aea6015bad0b9bdb1c377c1b6b757b6c44bd349d7a1",
+      "submittedFrames": 2450,
+      "gpuScope": "main-HDR-pass-only",
+      "renderer": {
+        "backend": "baseline",
+        "width": 1280,
+        "height": 720,
+        "sourceInstances": 8118,
+        "sourceTriangles": 4381000,
+        "frameWasmBytes": 0,
+        "gpuAccountedBytes": 1073585658,
+        "inFlight": 1,
+        "gpuScope": "main-HDR-pass-only",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "",
+          "description": ""
+        }
+      },
+      "kernel": {
+        "backend": "baseline",
+        "simulation": "current-rust-json",
+        "authorWasmBytes": 1179648,
+        "packedWasmBytes": 0,
+        "authorCalls": 7246,
+        "packedSteps": 0,
+        "speedScale": 1
+      },
+      "requestCount": 406,
+      "responseContentLengthBytes": 663728292,
+      "responseGroups": {
+        "assets": {
+          "requests": 394,
+          "declaredBodyBytes": 662150341
+        },
+        "wasm": {
+          "requests": 1,
+          "declaredBodyBytes": 611816
+        },
+        "host": {
+          "requests": 11,
+          "declaredBodyBytes": 966135
+        }
+      },
+      "missingContentLengthResponses": 0,
+      "pageErrorCount": 0
+    }
+  ],
+  "evidenceSHA256": "d2e4c9bebed212405d18685047a5667cabbebb3f486686bdf5c94b27b58e9c9d",
+  "machine": {
+    "cpuModel": "Apple M5 Max",
+    "logicalCpus": 18,
+    "totalMemoryBytes": 137438953472,
+    "osRelease": "25.4.0",
+    "boundary": "Machine information recorded when summarizing these local measurements."
+  },
+  "modules": {
+    "baseline": {
+      "bytes": 611816,
+      "sha256": "24d0cf3815ac19978a3d26edd96eaa631f15e34f057f4602ba10515a655552b2",
+      "gzipBytes": 184721,
+      "withoutCustomSectionsBytes": 513551,
+      "withoutCustomSectionsGzipBytes": 171869,
+      "sections": [
+        {
+          "id": 1,
+          "payloadBytes": 271,
+          "encodedBytes": 274
+        },
+        {
+          "id": 3,
+          "payloadBytes": 663,
+          "encodedBytes": 666
+        },
+        {
+          "id": 4,
+          "payloadBytes": 5,
+          "encodedBytes": 7
+        },
+        {
+          "id": 5,
+          "payloadBytes": 3,
+          "encodedBytes": 5
+        },
+        {
+          "id": 6,
+          "payloadBytes": 9,
+          "encodedBytes": 11
+        },
+        {
+          "id": 7,
+          "payloadBytes": 66,
+          "encodedBytes": 68
+        },
+        {
+          "id": 9,
+          "payloadBytes": 235,
+          "encodedBytes": 238
+        },
+        {
+          "id": 10,
+          "payloadBytes": 467643,
+          "encodedBytes": 467647
+        },
+        {
+          "id": 11,
+          "payloadBytes": 44623,
+          "encodedBytes": 44627
+        },
+        {
+          "id": 0,
+          "payloadBytes": 98031,
+          "encodedBytes": 98035
+        },
+        {
+          "id": 0,
+          "payloadBytes": 77,
+          "encodedBytes": 79
+        },
+        {
+          "id": 0,
+          "payloadBytes": 148,
+          "encodedBytes": 151
+        }
+      ]
+    },
+    "frame": {
+      "bytes": 7129,
+      "sha256": "39b8cc5833ddb11db03db957353d7df276e8927a08c8494c6cde64dd146ef763",
+      "gzipBytes": 3423,
+      "withoutCustomSectionsBytes": 6801,
+      "withoutCustomSectionsGzipBytes": 3165,
+      "sections": [
+        {
+          "id": 1,
+          "payloadBytes": 60,
+          "encodedBytes": 62
+        },
+        {
+          "id": 2,
+          "payloadBytes": 14,
+          "encodedBytes": 16
+        },
+        {
+          "id": 3,
+          "payloadBytes": 6,
+          "encodedBytes": 8
+        },
+        {
+          "id": 5,
+          "payloadBytes": 5,
+          "encodedBytes": 7
+        },
+        {
+          "id": 6,
+          "payloadBytes": 71,
+          "encodedBytes": 73
+        },
+        {
+          "id": 7,
+          "payloadBytes": 232,
+          "encodedBytes": 235
+        },
+        {
+          "id": 10,
+          "payloadBytes": 6389,
+          "encodedBytes": 6392
+        },
+        {
+          "id": 0,
+          "payloadBytes": 126,
+          "encodedBytes": 128
+        },
+        {
+          "id": 0,
+          "payloadBytes": 47,
+          "encodedBytes": 49
+        },
+        {
+          "id": 0,
+          "payloadBytes": 148,
+          "encodedBytes": 151
+        }
+      ]
+    },
+    "simulation": {
+      "bytes": 5778,
+      "sha256": "3956dedc0ffcb7fa0ef5864e4b8f42904be325b90c0e305b279df25b281c9d85",
+      "gzipBytes": 2613,
+      "withoutCustomSectionsBytes": 5280,
+      "withoutCustomSectionsGzipBytes": 2311,
+      "sections": [
+        {
+          "id": 1,
+          "payloadBytes": 42,
+          "encodedBytes": 44
+        },
+        {
+          "id": 2,
+          "payloadBytes": 40,
+          "encodedBytes": 42
+        },
+        {
+          "id": 3,
+          "payloadBytes": 15,
+          "encodedBytes": 17
+        },
+        {
+          "id": 5,
+          "payloadBytes": 6,
+          "encodedBytes": 8
+        },
+        {
+          "id": 6,
+          "payloadBytes": 78,
+          "encodedBytes": 80
+        },
+        {
+          "id": 7,
+          "payloadBytes": 359,
+          "encodedBytes": 362
+        },
+        {
+          "id": 10,
+          "payloadBytes": 4716,
+          "encodedBytes": 4719
+        },
+        {
+          "id": 0,
+          "payloadBytes": 295,
+          "encodedBytes": 298
+        },
+        {
+          "id": 0,
+          "payloadBytes": 47,
+          "encodedBytes": 49
+        },
+        {
+          "id": 0,
+          "payloadBytes": 148,
+          "encodedBytes": 151
+        }
+      ]
+    },
+    "rustPacked": {
+      "bytes": 56335,
+      "sha256": "507e2889795cd781e65c9402b587467fcb559ad85301a1cc2dd86cc92eca3b18",
+      "gzipBytes": 22196,
+      "withoutCustomSectionsBytes": 49736,
+      "withoutCustomSectionsGzipBytes": 20158,
+      "sections": [
+        {
+          "id": 1,
+          "payloadBytes": 174,
+          "encodedBytes": 177
+        },
+        {
+          "id": 2,
+          "payloadBytes": 40,
+          "encodedBytes": 42
+        },
+        {
+          "id": 3,
+          "payloadBytes": 87,
+          "encodedBytes": 89
+        },
+        {
+          "id": 4,
+          "payloadBytes": 5,
+          "encodedBytes": 7
+        },
+        {
+          "id": 5,
+          "payloadBytes": 4,
+          "encodedBytes": 6
+        },
+        {
+          "id": 6,
+          "payloadBytes": 9,
+          "encodedBytes": 11
+        },
+        {
+          "id": 7,
+          "payloadBytes": 166,
+          "encodedBytes": 169
+        },
+        {
+          "id": 9,
+          "payloadBytes": 28,
+          "encodedBytes": 30
+        },
+        {
+          "id": 10,
+          "payloadBytes": 44196,
+          "encodedBytes": 44200
+        },
+        {
+          "id": 11,
+          "payloadBytes": 4994,
+          "encodedBytes": 4997
+        },
+        {
+          "id": 0,
+          "payloadBytes": 6366,
+          "encodedBytes": 6369
+        },
+        {
+          "id": 0,
+          "payloadBytes": 77,
+          "encodedBytes": 79
+        },
+        {
+          "id": 0,
+          "payloadBytes": 148,
+          "encodedBytes": 151
+        }
+      ]
+    }
+  },
+  "publishedHarnessCommit": "074f29061e1769d484f32b84aafd178aa359a5aa",
+  "runtimeSourceCommit": "eac043702d4b28dcac7d3e6e9d74701902017a32",
+  "originalRuntimeCommit": "bb4380c6036a67586065cb7c1812aabfeef514fb",
+  "attributionMap": "2026-10-23-commit-map.json"
+}

@@ -1,0 +1,37 @@
+Aethyrforge adapts the public OpenAgents Grove spell timings, damage rules,
+structural support behavior, and source-fragment approach at revision
+83fe8b7f6b3cd437ae9b7af213cf9f04875dd793.
+
+Source: https://github.com/OpenAgentsInc/openagents
+Copyright OpenAgents contributors. Apache License, Version 2.0.
+The full license is retained in ../openagents-camera/LICENSE and included in
+browser releases with this notice.
+
+Relevant source modules at the revision above:
+- crates/verse-zone-everglade/src/zones/everglade/demolition/meteor.rs
+- crates/verse-zone-everglade/src/zones/everglade/demolition/site.rs
+- crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs
+- crates/verse-zone-everglade/src/zones/everglade/demolition/kit.rs
+- crates/verse-zone-grove/src/zones/grove/kit.rs
+- crates/verse-zone-grove/src/zones/grove/cast.rs
+- crates/verse-zone-grove/src/zones/grove/mod.rs
+- crates/verse-world/src/meteor_swarm.rs
+
+Aethyrforge reimplements these contracts in its owned
+Rust/Wasm kernel and direct WebGPU renderer. Its coarse scene cells, triangle
+ownership stream, runtime bridge, geometry limits, and rendering are new
+implementations. Licensed kit art and derived fracture geometry remain private
+runtime assets and are not part of this source distribution.
+
+Meteor Shower adapts Grove's six-impact Meteor Swarm. Lightning Bolt is the
+horizontal beam; Thunderbolt is the separate sky strike. Aethyrforge uses local
+play-session damage with no mana cost or multiplayer authority. Active cast
+times remain, and movement continues during casting.
+
+This work includes material taken from the System Reference Document 5.2.1
+("SRD 5.2.1") by Wizards of the Coast LLC and available at
+https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.2.1
+is licensed under the Creative Commons Attribution 4.0 International License
+available at https://creativecommons.org/licenses/by/4.0/legalcode.
+This implementation adapts selected spell mechanics for real-time local play;
+it is not a complete implementation of that rules document.

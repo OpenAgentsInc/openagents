@@ -13,6 +13,9 @@ exclude = [
     # LayerTree TEE sandbox: research only, its own workspace, never built
     # by default (docs/research/layertree/2026-10-15-mainnet-tee-spec.md).
     "crates/layertree-tee-lab",
+    # Aethyr engine crates (af-*), moved from Aethyrforge: their own workspace
+    # pinned to Rust 1.98.1 with wasm32-unknown-unknown (docs/aethyr/merge.md).
+    "crates/aethyr",
 ]
 resolver = "2"
 

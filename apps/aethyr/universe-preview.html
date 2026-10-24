@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>The planets</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #030303;
+        color: #f2f2f2;
+        font: 13px system-ui;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+      }
+      .marker {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        border: 0;
+        background: #0a0a0ab3;
+        color: #e7e7e7;
+        border-radius: 5px;
+        padding: 6px 10px;
+        white-space: nowrap;
+        font: 12px system-ui;
+        cursor: pointer;
+      }
+      .marker:focus-visible {
+        outline: 2px solid white;
+      }
+      #notice {
+        position: absolute;
+        left: 30%;
+        right: 30%;
+        top: 48%;
+        text-align: center;
+      }
+      #controls {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        display: flex;
+        gap: 8px;
+      }
+      #controls button {
+        background: #191919bd;
+        border: 1px solid #707070;
+        color: #ffffff;
+        padding: 8px 12px;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas
+      id="universe"
+      tabindex="0"
+      aria-label="Orbit the planets. Drag, scroll, or use arrow keys and plus or minus."
+    ></canvas>
+    <div id="markers"></div>
+    <div id="controls">
+      <button id="zoom-in" aria-label="Zoom in">+</button
+      ><button id="zoom-out" aria-label="Zoom out">−</button
+      ><button id="reset">Reset view</button>
+    </div>
+    <p id="notice">Opening the planets…</p>
+    <script type="module" src="/apps/universe/preview.ts"></script>
+  </body>
+</html>

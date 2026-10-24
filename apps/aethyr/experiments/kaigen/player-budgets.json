@@ -1,0 +1,36 @@
+{
+  "schema": "aethyrforge.player-byte-budgets.v1",
+  "status": "Initial local regression ceilings; startup targets require device-qualified results.",
+  "compression": { "gzipLevel": 9, "brotliQuality": 6 },
+  "profiles": {
+    "empty": {
+      "jsRawBytes": 32768,
+      "jsGzipBytes": 12288,
+      "wasmRawBytes": 0,
+      "assetRawBytes": 16384,
+      "deliveredFiles": 6
+    },
+    "room": {
+      "jsRawBytes": 655360,
+      "jsGzipBytes": 215040,
+      "wasmRawBytes": 921600,
+      "assetRawBytes": 163840,
+      "deliveredFiles": 20
+    },
+    "character": {
+      "jsRawBytes": 688128,
+      "jsGzipBytes": 225280,
+      "wasmRawBytes": 921600,
+      "assetRawBytes": 196608,
+      "deliveredFiles": 28
+    },
+    "town": {
+      "jsRawBytes": 688128,
+      "jsGzipBytes": 225280,
+      "wasmRawBytes": 921600,
+      "assetRawBytes": 805306368,
+      "deliveredFiles": 600
+    }
+  },
+  "town": "Uses the character code budget and its own 768 MiB full-content regression ceiling. This does not qualify the proposed first-play or memory targets; private Town content is not compared with empty or box-room assets."
+}

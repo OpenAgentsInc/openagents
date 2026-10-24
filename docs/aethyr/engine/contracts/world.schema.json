@@ -1,0 +1,411 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aethyrforge.invalid/contracts/world.schema.json",
+  "title": "Initial semantic building world slice",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "aethyrforge.world.v1"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "transform": {
+            "type": "object",
+            "properties": {
+              "positionMeters": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1000000,
+                  "maximum": 1000000
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1,
+                  "maximum": 1
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "scale": {
+                "type": "number",
+                "minimum": 0.001,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "positionMeters",
+              "rotation",
+              "scale"
+            ],
+            "additionalProperties": false
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "building"
+                },
+                "version": {
+                  "const": 1
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "storeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                          },
+                          "elevationMm": {
+                            "type": "integer",
+                            "minimum": -1000000,
+                            "maximum": 1000000
+                          },
+                          "heightMm": {
+                            "type": "integer",
+                            "minimum": 1800,
+                            "maximum": 10000
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "elevationMm",
+                          "heightMm"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 32
+                    },
+                    "rooms": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "storeyId": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                          },
+                          "boundary": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "wallId": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                                },
+                                "direction": {
+                                  "enum": [
+                                    -1,
+                                    1
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "wallId",
+                                "direction"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "minItems": 3,
+                            "maxItems": 64
+                          },
+                          "ceilingMm": {
+                            "type": "integer",
+                            "minimum": 1800,
+                            "maximum": 10000
+                          },
+                          "publiclyReachable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "storeyId",
+                          "boundary",
+                          "ceilingMm",
+                          "publiclyReachable"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 128
+                    },
+                    "walls": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                          },
+                          "storeyId": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                          },
+                          "startMm": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": -1000000,
+                              "maximum": 1000000
+                            },
+                            "minItems": 2,
+                            "maxItems": 2
+                          },
+                          "endMm": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": -1000000,
+                              "maximum": 1000000
+                            },
+                            "minItems": 2,
+                            "maxItems": 2
+                          },
+                          "thicknessMm": {
+                            "type": "integer",
+                            "minimum": 50,
+                            "maximum": 2000
+                          },
+                          "heightMm": {
+                            "type": "integer",
+                            "minimum": 500,
+                            "maximum": 10000
+                          },
+                          "roomIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 2,
+                            "uniqueItems": true
+                          },
+                          "policy": {
+                            "enum": [
+                              "solid",
+                              "open-boundary"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "storeyId",
+                          "startMm",
+                          "endMm",
+                          "thicknessMm",
+                          "heightMm",
+                          "roomIds",
+                          "policy"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 2048
+                    },
+                    "openings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                          },
+                          "wallId": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                          },
+                          "offsetMm": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000000
+                          },
+                          "widthMm": {
+                            "type": "integer",
+                            "minimum": 100,
+                            "maximum": 32000
+                          },
+                          "heightMm": {
+                            "type": "integer",
+                            "minimum": 100,
+                            "maximum": 10000
+                          },
+                          "sillMm": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "kind": {
+                            "enum": [
+                              "door",
+                              "window",
+                              "arch"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "wallId",
+                          "offsetMm",
+                          "widthMm",
+                          "heightMm",
+                          "sillMm",
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 0,
+                      "maxItems": 32768
+                    },
+                    "entranceOpeningIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 64,
+                      "uniqueItems": true
+                    },
+                    "kitDigest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    }
+                  },
+                  "required": [
+                    "storeys",
+                    "rooms",
+                    "walls",
+                    "openings",
+                    "entranceOpeningIds",
+                    "kitDigest"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "kind",
+                "version",
+                "data"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "transform",
+          "components"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 1024
+    },
+    "entryPoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "entityId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "localPositionMeters": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "entityId",
+          "localPositionMeters"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 32
+    }
+  },
+  "required": [
+    "schema",
+    "projectId",
+    "revision",
+    "entities",
+    "entryPoints"
+  ],
+  "additionalProperties": false
+}
