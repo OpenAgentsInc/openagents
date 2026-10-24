@@ -887,7 +887,8 @@ PY
     took "production revision (no traffic)" "$t"
     [ -z "${DRY_RUN:-}" ] || { say "  spec: $spec"; return 0; }
     if [ "${WEB_VERSE_MVP:-1}" = 1 ]; then
-        curl -fsS --retry 3 --connect-timeout 5 --max-time 30 \
+        # Tag routing can lag behind the revision's ready condition.
+        curl -fsS --retry 5 --retry-all-errors --retry-max-time 60 --connect-timeout 5 --max-time 30 \
             -H 'X-OpenAgents-Test: 1' "$TAG_URL/new-lander/house" > "$STATE/verse-candidate.html"
         python3 - "$STATE/verse-candidate.html" << 'PY'
 import pathlib, sys
