@@ -17,7 +17,8 @@
 # there is no operator-pinned SDK URL to supply. render.py makes the editor
 # and preview container contexts. build.json records every hash, and
 # candidates/ holds the pin JSON each profile would publish. No GCP call is
-# made; build runs on any machine with the pinned toolchains.
+# made, except to read a reused asset set's manifest (below); build runs on
+# any machine with the pinned toolchains.
 #
 # Profiles (AETHYR_PROFILES, default all four):
 #   universe  /new-lander/verse map          -> demos/universe.json
@@ -30,6 +31,13 @@
 # with package-assets.py. Those files stay under DIR and in the private
 # bucket; never in Git.
 #
+# AETHYR_REUSE_ASSET_SET_HOUSE, _PLANET, and _TOWN (each an asset set
+# SHA-256) skip packaging for that profile and reuse an asset set already
+# uploaded to the bucket, for a build machine without the private source.
+# build reads only that set's assets-manifest.json, as the automation
+# account, and checks its identity; no asset file is fetched. stage then
+# mounts the same assetsets/SHA256 prefix and refuses if it is missing.
+#
 # stage uploads each new asset set once to the bucket the live preview
 # service already mounts (AETHYR_ASSET_BUCKET overrides), builds each
 # context with Cloud Build, and deploys each image by digest to
@@ -40,6 +48,9 @@
 # check runs scripts/check-haunted-house.mjs, scripts/check-medieval-town.mjs
 # and the scripts/check-verse-*.mjs entry checks in candidate mode against
 # the tag URLs, each in its own browser through `openagents browser run`.
+# AETHYR_CHECK_CDP=http://127.0.0.1:PORT runs them in an existing
+# WebGPU browser instead (a machine whose own Chrome has no GPU), clearing
+# its cookies, cache, and release-origin storage before each check.
 # It builds the native website consumer from DIR's worktree and serves the
 # candidate pins with it, unless AETHYRFORGE_HOST_RESPONSE_URL names a
 # website candidate already serving them.
@@ -153,6 +164,35 @@ check_tools() {
     fi
 }
 
+# The asset set a profile reuses from the bucket instead of packaging, if any.
+reused_asset_set() { # PROFILE
+    local name value
+    name=AETHYR_REUSE_ASSET_SET_$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')
+    value=${!name:-}
+    [ -z "$value" ] || [ "$1" != universe ] || die "The universe has no asset set to reuse."
+    [ -z "$value" ] || [[ $value =~ ^[0-9a-f]{64}$ ]] || die "$name must be an asset set SHA-256."
+    printf '%s\n' "$value"
+}
+
+# Reads an uploaded asset set's manifest (read-only) and checks that it names
+# that set. Only the manifest is fetched; the asset files stay in the bucket.
+fetch_asset_manifest() { # SHA256 ASSETS_DIR
+    local set=$1 assets=$2 bucket
+    bucket=$(asset_bucket)
+    mkdir -p "$assets/private-assets"
+    g storage cat "gs://$bucket/assetsets/$set/assets-manifest.json" > "$assets/assets-manifest.json" ||
+        die "No asset set $set in gs://$bucket (read as the automation account)."
+    python3 - "$assets/assets-manifest.json" "$set" <<'PY' || die "gs://$bucket/assetsets/$set/assets-manifest.json does not describe $set."
+import hashlib, json, sys
+m = json.load(open(sys.argv[1]))
+body = json.dumps(m['files'], sort_keys=True, separators=(',', ':')).encode()
+ok = m.get('schema') == 'aethyrforge.browser-assets.v1' and m['sha256'] == sys.argv[2] == hashlib.sha256(body).hexdigest()
+sys.exit(not ok)
+PY
+    printf 'gs://%s/assetsets/%s\n' "$bucket" "$set" > "$assets/reused-from"
+    say "    reusing asset set $set from gs://$bucket ($(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["files"]))' "$assets/assets-manifest.json") files)"
+}
+
 build() {
     local ref=${1:-origin/main} commit short
     commit=$(git -C "$ROOT" rev-parse --verify "$ref^{commit}") || die "Unknown commit: $ref"
@@ -203,7 +243,7 @@ build() {
     say "  kernel.wasm $kernel_sha"
 
     local source=${AETHYR_PRIVATE_SOURCE:-$HOME/.openagents/verse/private/aethyrforge}
-    local p release editor preview assets asset_set
+    local p release editor preview assets asset_set reuse
     rm -rf "$DIR/candidates"
     mkdir -p "$DIR/candidates"
     for p in $(profiles); do
@@ -214,9 +254,12 @@ build() {
         rm -rf "${DIR:?}/$p"
         mkdir -p "$DIR/$p"
         assets=$DIR/$p/assets
+        reuse=$(reused_asset_set "$p")
         if [ "$p" = universe ]; then
             mkdir -p "$DIR/$p/empty-source"
             python3 "$HERE/package-assets.py" "$DIR/$p/empty-source" "$assets/private-assets" universe > /dev/null
+        elif [ -n "$reuse" ]; then
+            fetch_asset_manifest "$reuse" "$assets"
         else
             [ -d "$source" ] || die "No private asset source at $source (set AETHYR_PRIVATE_SOURCE)."
             python3 "$HERE/package-assets.py" "$source" "$assets/private-assets" "$(asset_profile "$p")" > /dev/null
@@ -301,6 +344,7 @@ for p in names.split():
         'asset_set_sha256': assets['sha256'], 'asset_files': len(assets['files']),
         'asset_bytes': sum(f['bytes'] for f in assets['files']),
         'largest_asset': max(assets['files'], key=lambda f: f['bytes'])['path'] if assets['files'] else None,
+        'asset_set_source': (pd / 'assets/reused-from').read_text().strip() if (pd / 'assets/reused-from').exists() else 'packaged',
         'release_json_sha256': release_sha,
         'context_sha256': {role: tree(pd / 'context' / role) for role in ('editor', 'preview')},
         'site_files': {role: len(manifest['files'][role]) for role in ('editor', 'preview')},
@@ -389,6 +433,9 @@ PY
         # The asset set: written once, never overwritten; its manifest goes last.
         if g storage ls "$prefix/assets-manifest.json" > /dev/null 2>&1; then
             say "    asset set $asset_set is already uploaded"
+        elif [ -f "$DIR/$p/assets/reused-from" ]; then
+            [ -n "${DRY_RUN:-}" ] || die "The reused asset set $prefix is missing; build $p from the private source instead."
+            say "    DRY_RUN: would mount the reused asset set $prefix"
         else
             if [ -n "$(ls -A "$DIR/$p/assets/private-assets")" ]; then
                 apply storage cp --recursive --no-clobber "$DIR/$p/assets/private-assets" "$prefix/"
@@ -451,7 +498,10 @@ smoke() {
     if [ "$largest" != None ]; then
         curl -fsS --http2 -H "Origin: $HOST_ORIGIN" -o "$DIR/$p/largest.bin" "$preview/private-assets/$largest" ||
             die "$preview did not serve its largest runtime file."
-        [ "$(sha "$DIR/$p/largest.bin")" = "$(sha "$DIR/$p/assets/private-assets/$largest")" ] || die "The largest runtime file changed in transit."
+        # Against the manifest, which a reused asset set has without its files.
+        [ "$(sha "$DIR/$p/largest.bin")" = "$(python3 -c 'import json,sys
+print(next(f["sha256"] for f in json.load(open(sys.argv[1]))["files"] if f["path"]==sys.argv[2]))' "$DIR/$p/assets/assets-manifest.json" "$largest")" ] ||
+            die "The largest runtime file changed in transit."
         rm -f "$DIR/$p/largest.bin"
     fi
     if [ "$largest" != None ] && curl -fsS -o /dev/null "$editor/private-assets/$largest" 2> /dev/null; then
@@ -518,11 +568,52 @@ if done: (d / 'runtime-overrides.json').write_text(json.dumps(done, indent=2) + 
 PY
 }
 
+# Runs one check in its own browser, or in the AETHYR_CHECK_CDP browser after
+# clearing what an earlier check left there.
+check_browser() {
+    if [ -z "${AETHYR_CHECK_CDP:-}" ]; then
+        openagents browser run -- "$@"
+        return
+    fi
+    local ws
+    ws=$(curl -fsS "$AETHYR_CHECK_CDP/json/version" | python3 -c 'import json,sys; print(json.load(sys.stdin)["webSocketDebuggerUrl"])') || return 1
+    node --input-type=module - "$ws" "$AETHYRFORGE_RELEASE_CONFIG" <<'JS' || return 1
+import fs from "node:fs";
+import { createRequire } from "node:module";
+const { chromium } = createRequire(process.cwd() + "/")("playwright");
+const [ws, configPath] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(configPath));
+const browser = await chromium.connectOverCDP(ws);
+const context = browser.contexts()[0];
+const [first, ...rest] = context.pages();
+for (const page of rest) await page.close();
+const page = first ?? (await context.newPage());
+await page.goto("about:blank");
+await context.clearCookies();
+await context.unrouteAll({ behavior: "ignoreErrors" });
+// Chromium refuses Storage.clearDataForOrigin on a browser-level session.
+const cdp = await context.newCDPSession(page);
+await cdp.send("Network.clearBrowserCache");
+const origins = ["https://openagents.com", config.editor, config.preview, config.personal_preview].filter(Boolean);
+for (const origin of new Set(origins.map((url) => new URL(url).origin)))
+  await cdp.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
+await browser.close();
+JS
+    OPENAGENTS_CHROME_WS=$ws "$@"
+}
+
 check() {
     need_dir "${1:-}"
     [ -f "$DIR/stage.json" ] || die "Stage $DIR first."
     [ "$(field "$DIR/stage.json" dry_run)" = False ] || die "$DIR was staged as a dry run; there are no tags to check."
-    command -v openagents > /dev/null || die "Install the openagents CLI: every check runs in its own browser through 'openagents browser run'."
+    if [ -n "${AETHYR_CHECK_CDP:-}" ]; then
+        mkdir -p "$DIR/checks"
+        curl -fsS "$AETHYR_CHECK_CDP/json/version" > "$DIR/checks/browser.json" || die "No DevTools endpoint at $AETHYR_CHECK_CDP."
+    else
+        command -v openagents > /dev/null || die "Install the openagents CLI: every check runs in its own browser through 'openagents browser run'."
+    fi
+    # The checks load Playwright; apps/aethyr installs it.
+    [ ! -d "$SRC/apps/aethyr/node_modules/playwright" ] || export NODE_PATH=$SRC/apps/aethyr/node_modules${NODE_PATH:+:$NODE_PATH}
     : "${CARGO_TARGET_DIR:=$HOME/work/openagents-target-1}"
     export CARGO_TARGET_DIR
     # shellcheck source=/dev/null
@@ -564,7 +655,7 @@ check() {
         check_config "$profile" "$DIR/checks/$name/config.json"
         say "  $name ($profile)"
         if AETHYRFORGE_DEPLOY_SCRATCH=$DIR/checks/$name AETHYRFORGE_RELEASE_CONFIG=$DIR/checks/$name/config.json \
-            openagents browser run -- node "$SRC/$script" < /dev/null > "$DIR/checks/$name/output.log" 2>&1; then
+            check_browser node "$SRC/$script" < /dev/null > "$DIR/checks/$name/output.log" 2>&1; then
             printf '%s\t%s\tpass\n' "$profile" "$name" >> "$DIR/checks/results.tsv"
         else
             printf '%s\t%s\tfail\n' "$profile" "$name" >> "$DIR/checks/results.tsv"
@@ -588,6 +679,7 @@ from pathlib import Path
 d = Path(sys.argv[1])
 rows = [l.split('\t') for l in (d / 'checks/results.tsv').read_text().splitlines()]
 out = {'schema': 'openagents.aethyr.release-checks.v1', 'mode': 'candidate', 'host_responses': sys.argv[2],
+       'browser': json.loads((d / 'checks/browser.json').read_text()).get('Browser') if (d / 'checks/browser.json').exists() else 'openagents browser run',
        'checks': [{'profile': p, 'check': n, 'result': r} for p, n, r in rows]}
 out['passed'] = bool(rows) and all(r == 'pass' for _, _, r in rows)
 (d / 'checks.json').write_text(json.dumps(out, indent=2) + '\n')

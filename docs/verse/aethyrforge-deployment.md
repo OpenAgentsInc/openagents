@@ -77,17 +77,25 @@ new suffix.
   (`CC_wasm32_unknown_unknown` overrides the search).
 - The compiled private asset source in `AETHYR_PRIVATE_SOURCE` (default
   `~/.openagents/verse/private/aethyrforge`) for every profile except
-  `universe`.
+  `universe`, or an asset set that is already uploaded (see
+  [Reuse an uploaded asset set](#reuse-an-uploaded-asset-set)).
 - For `stage`, the automation account's gcloud configuration
   (`CLOUDSDK_CONFIG`, default `~/work/.secrets/gcloud-sa-config`). The script
   checks that its active account is a service account and never falls back to
   a person's login ([automation account](../deployment/automation-account.md)).
 - For `check`, the `openagents` CLI (each check runs in its own browser
-  through `openagents browser run`) and Playwright.
+  through `openagents browser run`) and Playwright, which `check` loads from
+  `apps/aethyr/node_modules` when it is there. On a machine whose own Chrome
+  falls back to a CPU renderer, set `AETHYR_CHECK_CDP` to a WebGPU browser's
+  DevTools address instead (on CoderOS, the `gpu-browser` user service at
+  `http://127.0.0.1:9340`). The checks then share that browser, so `check`
+  closes its extra tabs and clears its cookies, cache, and the release and host
+  origins' storage before each one, and records the browser in `checks.json`.
 
 ### Build
 
-`build` makes no GCP call and runs on any machine with the toolchains:
+`build` runs on any machine with the toolchains. It makes no GCP call, except
+to read a reused asset set's manifest:
 
 1. Checks the commit out into a detached worktree, `DIR/src`, so no local
    edit reaches the release.
@@ -140,6 +148,30 @@ candidate carries them over. When the asset set changed, `check` and `pin`
 need the reviewed runtime JSON in `AETHYR_RUNTIME_HOUSE` or
 `AETHYR_RUNTIME_PLANET`; the script checks its identity fields and that every
 artifact it lists is in the new asset set.
+
+### Reuse an uploaded asset set
+
+A build machine without the private source can reuse an asset set that an
+earlier release already uploaded. Set `AETHYR_REUSE_ASSET_SET_HOUSE`,
+`AETHYR_REUSE_ASSET_SET_PLANET`, or `AETHYR_REUSE_ASSET_SET_TOWN` to its
+SHA-256. The current pins name theirs in `asset_set_sha256`
+(`demos/runtimes/haunted-house.json`, `demos/runtimes/personal-planet.json`);
+the town's is the `only-dir` of the preview revision its tag serves.
+
+```sh
+AETHYR_REUSE_ASSET_SET_HOUSE=$(jq -r .asset_set_sha256 crates/openagents-web/content/demos/runtimes/haunted-house.json) \
+AETHYR_REUSE_ASSET_SET_PLANET=$(jq -r .asset_set_sha256 crates/openagents-web/content/demos/runtimes/personal-planet.json) \
+AETHYR_PROFILES='universe house planet' scripts/deploy/aethyr/release.sh build origin/main
+```
+
+For each such profile, `build` skips `package-assets.py`. As the automation
+account, it reads only `assetsets/SHA256/assets-manifest.json` from the bucket
+and checks that the manifest hashes to that SHA-256. No asset file is
+downloaded. `build.json` records the source as `asset_set_source`. `stage`
+mounts the same prefix, and refuses if it is missing. The smoke check
+compares the largest runtime file with the manifest's hash. Because the asset
+set is unchanged, the candidate runtime carries over the current pin's scene,
+artifacts, and materials, and no `AETHYR_RUNTIME_*` override is needed.
 
 ### Stage
 
