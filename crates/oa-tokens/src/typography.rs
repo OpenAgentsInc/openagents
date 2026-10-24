@@ -107,6 +107,15 @@ pub mod weight {
     pub const BOLD: u16 = 700;
 }
 
+/// The Geist stacks Kiki and Verse draw in ([`crate::stylesheet`]). The rest
+/// of the product uses the system stacks, [`sans`] and [`mono`].
+pub mod geist {
+    /// Body text. Tailwind's `--font-sans` in the Kiki stylesheet.
+    pub const SANS: &str = "\"Geist\", \"Inter\", ui-sans-serif, system-ui, sans-serif";
+    /// Labels, indexes, and other HUD readouts. `--font-mono`.
+    pub const MONO: &str = "\"Geist Mono\", ui-monospace, SFMono-Regular, Menlo, monospace";
+}
+
 /// Whether `size` points is a step of the type scale, text or heading.
 #[must_use]
 pub fn on_scale(size: f32) -> bool {

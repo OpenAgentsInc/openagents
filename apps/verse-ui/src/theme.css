@@ -1,5 +1,5 @@
 @import "tailwindcss";
-/* Design tokens, generated from crates/aethyr-tokens. */
+/* Design tokens, generated from crates/oa-tokens. */
 @import "./aethyr/tokens.css";
 @source "./**/*.{ts,tsx}";
 /* The Aethyr renderer uses design-system classes only. */

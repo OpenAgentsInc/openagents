@@ -111,7 +111,7 @@ to `apps/aethyr` later. Two files there are generated from Rust; don't edit
 them:
 
 - `protocol.ts`: `cargo run -p aethyr-ui -- --write`
-- `tokens.css`: `cargo run -p aethyr-tokens -- --write`
+- `tokens.css`: `cargo run -p oa-tokens -- --write`
 
 `npm test` checks `protocol.ts` against the Rust schema. Its renderer tests
 open the built `ui.css` in Chromium, so run `npm run build` first. Set

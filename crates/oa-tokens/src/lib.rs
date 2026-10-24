@@ -10,7 +10,11 @@
 //! - [`noir`] holds **Coder Noir**: every Noir value, and the roles whose
 //!   dark value it replaces. Every other dark value is Apps SDK UI's.
 //! - [`product`] holds our own roles in the same naming scheme.
-//! - [`typography`] holds the font stacks and type scale in points.
+//! - [`typography`] holds the font stacks and type scale in points, and
+//!   [`blur`], [`motion`], and [`space`] the other scales.
+//! - [`hud`] holds the HUD layer Kiki and Verse draw over the live world.
+//! - [`stylesheet`] writes the web stylesheet `apps/verse-ui` imports, with
+//!   shadcn's colors on Coder Noir's roles (ADR 0012).
 //! - [`palette`] resolves the table into the native role palettes, Coder
 //!   Light and Coder Noir, that GUI surfaces paint with.
 //! - [`ThemeChoice`] is the person's choice (follow the system, Light, or
@@ -20,14 +24,18 @@
 //! scheme.
 
 pub mod apps_sdk;
+pub mod hud;
 pub mod noir;
 pub mod palette;
 pub mod product;
+pub mod scale;
+pub mod stylesheet;
 pub mod typography;
 
 use std::collections::HashMap;
 
 pub use palette::{Palette, Rgba8};
+pub use scale::{blur, motion, space};
 
 /// A titled group of `(name, value)` custom properties.
 #[derive(Clone, Copy, Debug)]

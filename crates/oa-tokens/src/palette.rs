@@ -42,6 +42,37 @@ impl Rgba8 {
     pub const fn rgb_u32(self) -> u32 {
         ((self.r as u32) << 16) | ((self.g as u32) << 8) | self.b as u32
     }
+
+    /// Reads `#rrggbb` or `#rrggbbaa`.
+    #[must_use]
+    pub fn from_hex(hex: &str) -> Option<Rgba8> {
+        let digits = hex.strip_prefix('#')?;
+        if !digits.is_ascii() {
+            return None;
+        }
+        let byte = |i: usize| u8::from_str_radix(digits.get(i..i + 2)?, 16).ok();
+        let a = match digits.len() {
+            6 => 255,
+            8 => byte(6)?,
+            _ => return None,
+        };
+        Some(Rgba8 {
+            r: byte(0)?,
+            g: byte(2)?,
+            b: byte(4)?,
+            a,
+        })
+    }
+
+    /// `#rrggbb` when opaque, else `#rrggbbaa`.
+    #[must_use]
+    pub fn hex(self) -> String {
+        if self.a == 255 {
+            format!("#{:06x}", self.rgb_u32())
+        } else {
+            format!("#{:06x}{:02x}", self.rgb_u32(), self.a)
+        }
+    }
 }
 
 /// The colors a GUI surface paints with, by role. The names follow

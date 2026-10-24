@@ -10,7 +10,7 @@ them, `aethyr.ui.v1`, and the design tokens both sides use
 | View tree and intent schema | `crates/aethyr-ui` (Rust, the source) |
 | JSON Schema | `crates/aethyr-ui/schema/aethyr.ui.v1.schema.json` (generated) |
 | TypeScript types | `apps/verse-ui/src/aethyr/protocol.ts` (generated) |
-| Design tokens | `crates/aethyr-tokens`, written to `apps/verse-ui/src/aethyr/tokens.css` |
+| Design tokens | `crates/oa-tokens` ([ADR 0012](../adr/0012-one-token-crate.md)), written to `apps/verse-ui/src/aethyr/tokens.css` |
 | Controller runtime | `apps/verse-ui/src/aethyr/controller.ts` |
 | React DOM renderer | `apps/verse-ui/src/aethyr/renderer.tsx`, joined to a controller by `host.tsx` |
 | Demo | `apps/verse-ui/src/aethyr/entry.ts`, the `/new-lander/verse` entry dialog |
@@ -139,20 +139,24 @@ refusals, which are expected after a newer revision.
 
 ## Design tokens
 
-`crates/aethyr-tokens` defines each token once as a Rust constant: the shadcn
-colors and radius, the HUD values (`--hud-glass`, `--hud-line`, `--hud-tick`,
-`--hud-glow`, `--hud-header` with its phone value), type, blur, motion, and the
-spacing scale. `cargo run -p aethyr-tokens -- --write` writes `tokens.css`,
-including Tailwind's `@theme inline` mapping, and `theme.css` imports it.
-Native and GPU renderers read the constants (`aethyr_tokens::rgba` parses a
-color). The view tree's `gap`, `padding`, and `tone` resolve to these tokens.
+`crates/oa-tokens` defines each token once as a Rust constant
+([ADR 0012](../adr/0012-one-token-crate.md)). Its `stylesheet` module writes
+`tokens.css`: the shadcn colors on Coder Noir's roles (`noir`), with the hover
+fill as a product role (`product::HOVER_FILL`); the HUD values in `hud`
+(`--hud-glass`, `--hud-line`, `--hud-tick`, `--hud-glow`, `--hud-header` with
+its phone value), the radii, and the label type; the Geist stacks
+(`typography::geist`); and the `blur`, `motion`, and `space` scales.
+`cargo run -p oa-tokens -- --write` writes `tokens.css`, including Tailwind's
+`@theme inline` mapping, and `theme.css` imports it. Native and GPU renderers
+read the constants (`Rgba8::from_hex` parses a color). The view tree's `gap`,
+`padding`, and `tone` resolve to these tokens.
 
 ## Generated files and checks
 
 | File | Regenerate | Check |
 | --- | --- | --- |
 | `aethyr.ui.v1.schema.json`, `protocol.ts` | `cargo run -p aethyr-ui -- --write` | `cargo test -p aethyr-ui`; `npm test` compares the schema digest in `protocol.ts` |
-| `tokens.css` | `cargo run -p aethyr-tokens -- --write` | `cargo test -p aethyr-tokens` |
+| `tokens.css` | `cargo run -p oa-tokens -- --write` | `cargo test -p oa-tokens` |
 | `crates/aethyr-ui/fixtures/ts/*.json` | `AETHYR_WRITE_FIXTURES=1 npm test` | Both test suites |
 | `tests/snapshots/aethyr-renderer.json` | `UPDATE_SNAPSHOTS=1 npm test` | `npm test` |
 

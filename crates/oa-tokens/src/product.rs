@@ -3,6 +3,11 @@
 
 use crate::Section;
 
+/// The fill under a hovered or selected row, menu item, or ghost button on a
+/// dark surface (shadcn's `--accent` in the Kiki stylesheet). Coder Noir has
+/// no hover fill: its accent is the near-white control color.
+pub const HOVER_FILL: u32 = 0x3f3f46;
+
 /// Appended to the component token layer.
 pub const COMPONENTS: &[Section] = &[Section {
     // Terminal panels stay Coder Noir in both themes (adoption plan, phase 4).
