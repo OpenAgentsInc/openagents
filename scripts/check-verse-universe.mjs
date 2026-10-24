@@ -100,7 +100,7 @@ try {
     );
   const cameraControls = async (p, frame) => {
     assert.equal(await p.locator(".map-home").count(),0);
-    assert.ok(await p.locator(".site-header .back-link").isVisible());
+    assert.ok(await p.locator(".lp-header .lp-back").isVisible());
     const plus=frame.locator("#zoom-in");
     const button=await plus.boundingBox();assert.ok(button);
     const hit=await p.evaluate(({x,y})=>document.elementFromPoint(x,y)?.id,{x:button.x+button.width/2,y:button.y+button.height/2});
@@ -200,10 +200,11 @@ try {
   await page.waitForFunction(
     () => document.querySelector("[data-aethyr-id=world-title]").textContent === "OpenAgents",
   );
+  // textContent: the HUD label is uppercased by CSS.
   assert.ok(
     await page
       .locator("[data-aethyr-id=destination-openagents]")
-      .innerText()
+      .textContent()
       .then((t) => t.includes("Locked")),
   );
   assert.equal(

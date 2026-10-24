@@ -217,9 +217,26 @@ try {
     if (url.pathname.startsWith("/auth/"))
       console.log("Auth response fulfilled", url.pathname);
   });
+  // Resource errors this check expects: its own wrong-tab authorization below
+  // is refused on purpose, and the local website consumer runs without the
+  // Everglade and Pylons wasm builds that the home page loads in production.
+  const expectedResourceError = (message) => {
+    if (!message.text().startsWith("Failed to load resource")) return false;
+    const url = message.location().url;
+    if (!url) return false;
+    const { origin, pathname } = new URL(url);
+    if (origin !== "https://openagents.com") return false;
+    if (message.text().includes("status of 403"))
+      return pathname === "/v1/verse/studio/authorize";
+    return (
+      message.text().includes("status of 404") &&
+      /^\/(everglade\/everglade_web|pylons\/layer\/pylons_web)(_bg\.wasm|\.js)$/.test(pathname)
+    );
+  };
   context.on("page", (popup) =>
     popup.on("console", (message) => {
-      if (message.type() === "error") errors.push("Popup: " + message.text());
+      if (message.type() === "error" && !expectedResourceError(message))
+        errors.push("Popup: " + message.text());
     }),
   );
   page = await context.newPage();
@@ -238,7 +255,7 @@ try {
     };
   });
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push(m.text());
+    if (m.type() === "error" && !expectedResourceError(m)) errors.push(m.text());
   });
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("request", (request) => {
@@ -262,30 +279,27 @@ try {
     );
   await page.goto("https://openagents.com/new-lander/house");
   await ready();
-  await page.click("[data-aethyr-id=world-edit]");
-  assert.ok(await page.locator("#edit-panel").isVisible());
-  assert.equal(await page.locator("#edit-auth").isVisible(), false);
   const editor = page.frames().find((f) => f.url().startsWith(config.editor));
   assert.ok(editor);
   const preview = page.frames().find((f) => f.url().startsWith(config.preview));
   assert.ok(preview);
-  await preview.locator("#world").click();
+  // The edit panel is modal and makes the world inert, so select the
+  // werewolf first (as check-verse-material does), then open Edit. Picking
+  // by pointer is covered by check-verse-workspace.
   await editor.evaluate(() =>
-    window.aethyrforge.cameraPose(
-      [0, 1.62, -12],
-      [-2.4, 1.3, -14.8],
-      undefined,
-      "walk",
-    ),
+    window.aethyrforgeEditor.service.command({
+      kind: "entity.select",
+      id: "werewolf-1",
+    }),
   );
-  await page.waitForTimeout(500);
-  await page.mouse.click(720, 450);
-  await page.keyboard.press("Escape");
   await page.waitForFunction(
     () =>
       JSON.parse(window.hauntDemo.snapshot()).status.selection?.id ===
       "werewolf-1",
   );
+  await page.click("[data-aethyr-id=world-edit]");
+  assert.ok(await page.locator("#edit-panel").isVisible());
+  assert.equal(await page.locator("#edit-auth").isVisible(), false);
   await page.waitForFunction(
     () =>
       document.querySelector("#edit-target").textContent === "werewolf-1" &&

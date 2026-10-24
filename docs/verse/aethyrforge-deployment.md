@@ -233,7 +233,11 @@ the tag URLs, `scripts/check-medieval-town.mjs`,
 `scripts/check-haunted-house.mjs`, `scripts/check-verse-project.mjs`,
 `-publish`, `-material`, `-access`, `-voice`, `-workspace`, and
 `-universe`. Candidate mode loads the host's responses at the real host origin
-to exercise the exact origin protocol. To check against a website candidate
+to exercise the exact origin protocol. When the website that will serve the
+pins is newer than the release commit, set `AETHYR_CHECK_REF` to that commit:
+`check` then builds the website consumer and runs the check scripts from a
+detached worktree of it (`DIR/check-src`), and `checks.json` records it as
+`checks_commit`. To check against a website candidate
 instead, set `AETHYRFORGE_HOST_RESPONSE_URL` to its tag URL. Results go to
 `checks.json` and each check's output to `DIR/checks/NAME/`. Any failure
 stops the release.

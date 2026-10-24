@@ -113,6 +113,8 @@ try {
   for(let i=0;i<3;i++){await page.click("#edit-close");await page.click("[data-aethyr-id=world-edit]");}
   assert.equal((await snapshot()).session, first.session);
   assert.equal(await page.locator("#edit-note").inputValue(),note);
+  const shared=page.locator("#panel-materials details").filter({has:page.locator("#edit-fog")});
+  if(!(await shared.evaluate(e=>e.open)))await shared.locator("summary").click();
   await page.click("#edit-fog-apply");
   await page.locator("#edit-auth").waitFor({state:"visible"});
   assert.equal(await page.locator("#edit-confirm").isVisible(),false);

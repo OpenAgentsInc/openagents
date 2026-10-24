@@ -48,6 +48,10 @@
 # check runs scripts/check-haunted-house.mjs, scripts/check-medieval-town.mjs
 # and the scripts/check-verse-*.mjs entry checks in candidate mode against
 # the tag URLs, each in its own browser through `openagents browser run`.
+# AETHYR_CHECK_REF=REF takes the website consumer and the check scripts from
+# a later commit (a detached worktree at DIR/check-src) instead of the
+# release's own, for checking these engine tags against the website that
+# will serve them; checks.json records that commit.
 # AETHYR_CHECK_CDP=http://127.0.0.1:PORT runs them in an existing
 # WebGPU browser instead (a machine whose own Chrome has no GPU), clearing
 # its cookies, cache, and release-origin storage before each check.
@@ -616,8 +620,20 @@ check() {
     [ ! -d "$SRC/apps/aethyr/node_modules/playwright" ] || export NODE_PATH=$SRC/apps/aethyr/node_modules${NODE_PATH:+:$NODE_PATH}
     : "${CARGO_TARGET_DIR:=$HOME/work/openagents-target-1}"
     export CARGO_TARGET_DIR
+    CHECK_SRC=$SRC
+    if [ -n "${AETHYR_CHECK_REF:-}" ]; then
+        local ref
+        ref=$(git -C "$ROOT" rev-parse --verify "$AETHYR_CHECK_REF^{commit}") || die "Unknown AETHYR_CHECK_REF: $AETHYR_CHECK_REF"
+        CHECK_SRC=$DIR/check-src
+        if [ -d "$CHECK_SRC" ]; then
+            git -C "$CHECK_SRC" checkout --quiet --detach "$ref"
+        else
+            git -C "$ROOT" worktree add --quiet --detach "$CHECK_SRC" "$ref"
+        fi
+        say "  website and checks from $ref"
+    fi
     # shellcheck source=/dev/null
-    (cd "$SRC" && . scripts/dev/cargo-build-env.sh && cargo build --locked -p openagents-web-site --bin openagents-web >&2)
+    (cd "$CHECK_SRC" && . scripts/dev/cargo-build-env.sh && cargo build --locked -p openagents-web-site --bin openagents-web >&2)
     export OPENAGENTS_TEST_WEB_BINARY=$CARGO_TARGET_DIR/debug/openagents-web
     runtime_overrides || exit 1
     local c=$DIR/candidates
@@ -655,7 +671,7 @@ check() {
         check_config "$profile" "$DIR/checks/$name/config.json"
         say "  $name ($profile)"
         if AETHYRFORGE_DEPLOY_SCRATCH=$DIR/checks/$name AETHYRFORGE_RELEASE_CONFIG=$DIR/checks/$name/config.json \
-            check_browser node "$SRC/$script" < /dev/null > "$DIR/checks/$name/output.log" 2>&1; then
+            check_browser node "$CHECK_SRC/$script" < /dev/null > "$DIR/checks/$name/output.log" 2>&1; then
             printf '%s\t%s\tpass\n' "$profile" "$name" >> "$DIR/checks/results.tsv"
         else
             printf '%s\t%s\tfail\n' "$profile" "$name" >> "$DIR/checks/results.tsv"
@@ -673,12 +689,12 @@ house scripts/check-verse-voice.mjs
 house scripts/check-verse-workspace.mjs
 universe scripts/check-verse-universe.mjs
 CHECKS
-    python3 - "$DIR" "$AETHYRFORGE_HOST_RESPONSE_URL" <<'PY'
+    python3 - "$DIR" "$AETHYRFORGE_HOST_RESPONSE_URL" "$(git -C "$CHECK_SRC" rev-parse HEAD)" <<'PY'
 import json, sys
 from pathlib import Path
 d = Path(sys.argv[1])
 rows = [l.split('\t') for l in (d / 'checks/results.tsv').read_text().splitlines()]
-out = {'schema': 'openagents.aethyr.release-checks.v1', 'mode': 'candidate', 'host_responses': sys.argv[2],
+out = {'schema': 'openagents.aethyr.release-checks.v1', 'mode': 'candidate', 'host_responses': sys.argv[2], 'checks_commit': sys.argv[3],
        'browser': json.loads((d / 'checks/browser.json').read_text()).get('Browser') if (d / 'checks/browser.json').exists() else 'openagents browser run',
        'checks': [{'profile': p, 'check': n, 'result': r} for p, n, r in rows]}
 out['passed'] = bool(rows) and all(r == 'pass' for _, _, r in rows)
