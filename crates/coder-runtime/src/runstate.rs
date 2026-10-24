@@ -715,12 +715,28 @@ impl Store {
     /// A record already ended keeps its mark: `settled`, and `cancelled`
     /// — which is an end someone chose and wrote, not something a crash
     /// may be allowed to relabel — take no `unknown` from recovery.
+    ///
+    /// An entry the directory listing can't read is trouble, not a skip:
+    /// recovery that can't see every record doesn't answer that it found
+    /// every unfinished run, and it marks nothing before it says so.
     pub fn recover(&mut self) -> Result<Vec<Run>, Trouble> {
-        let mut paths: Vec<PathBuf> = std::fs::read_dir(&self.dir)?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == RECORD_EXT))
-            .collect();
+        let entries = std::fs::read_dir(&self.dir)?.map(|entry| entry.map(|entry| entry.path()));
+        self.recover_from(entries)
+    }
+
+    /// [`Store::recover`] over a listing of the store's paths: the
+    /// directory read in production, an injected listing under test.
+    fn recover_from(
+        &mut self,
+        entries: impl IntoIterator<Item = std::io::Result<PathBuf>>,
+    ) -> Result<Vec<Run>, Trouble> {
+        let mut paths = Vec::new();
+        for entry in entries {
+            let path = entry?;
+            if path.extension().is_some_and(|ext| ext == RECORD_EXT) {
+                paths.push(path);
+            }
+        }
         paths.sort();
         let mut runs = Vec::new();
         for path in paths {
@@ -1323,6 +1339,34 @@ mod tests {
         // And the record file shows no unknown mark on the live run.
         let text = std::fs::read_to_string(dir.path().join("run-live.jsonl")).unwrap();
         assert!(!text.contains(r#""state":"unknown""#));
+    }
+
+    #[test]
+    fn recovery_refuses_a_listing_it_could_not_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let questions = digests(&[]);
+        let sources = digests(&[]);
+        let mut store = Store::open(dir.path()).unwrap();
+        let mut dead = claim("run-dead", &questions, &sources);
+        dead.owner = dead_pid();
+        store.claim(&dead).unwrap();
+        let record = dir.path().join("run-dead.jsonl");
+        // An entry the listing couldn't read may be an unfinished record:
+        // recovery says so instead of answering without it.
+        let entries = vec![
+            Ok(record.clone()),
+            Err(std::io::Error::other("unreadable entry")),
+        ];
+        let trouble = store.recover_from(entries).unwrap_err();
+        assert!(matches!(trouble, Trouble::Io(_)), "{trouble}");
+        // It marked nothing on the way to the error.
+        let text = std::fs::read_to_string(&record).unwrap();
+        assert!(!text.contains(r#""state":"unknown""#));
+        // A clean listing still recovers the crashed run.
+        let runs = store.recover().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run, "run-dead");
+        assert_eq!(runs[0].state, State::Unknown);
     }
 
     #[test]
