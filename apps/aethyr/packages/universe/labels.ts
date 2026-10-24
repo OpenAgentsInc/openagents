@@ -18,7 +18,7 @@ export interface Label {
 }
 
 /** Space kept clear around each shown label. */
-export const LABEL_GAP = 6;
+export const LABEL_GAP = 2;
 
 const overlaps = (a: Label, b: Label, gap: number) =>
   Math.abs(a.x - b.x) * 2 < a.width + b.width + gap * 2 &&
@@ -28,10 +28,18 @@ const overlaps = (a: Label, b: Label, gap: number) =>
 export function placeLabels(
   labels: ReadonlyArray<Label>,
   selected: string | undefined,
+  frame?: { readonly width: number; readonly height: number },
   gap = LABEL_GAP,
 ): Set<string> {
+  // A label cut off by the frame's edge reads as a mistake; leave it out.
+  const fits = (label: Label) =>
+    !frame ||
+    (label.x - label.width / 2 >= 0 &&
+      label.x + label.width / 2 <= frame.width &&
+      label.y - label.height / 2 >= 0 &&
+      label.y + label.height / 2 <= frame.height);
   const order = labels
-    .filter((label) => label.inFrame)
+    .filter((label) => label.inFrame && (label.id === selected || fits(label)))
     .sort(
       (a, b) =>
         Number(b.id === selected) - Number(a.id === selected) ||

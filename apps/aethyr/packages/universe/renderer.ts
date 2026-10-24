@@ -266,7 +266,7 @@ export class Universe {
           p.visible && p.x >= 0.03 && p.x <= 0.97 && p.y >= 0.08 && p.y <= 0.9,
       });
     }
-    const shown = placeLabels(labels, this.selected);
+    const shown = placeLabels(labels, this.selected, box);
     for (const label of labels) {
       const element = document.getElementById(`marker-${label.id}`)!;
       element.hidden = !shown.has(label.id);

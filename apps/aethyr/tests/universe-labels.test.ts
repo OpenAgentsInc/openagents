@@ -51,6 +51,16 @@ test("labels with room all show, and off-frame labels never do", () => {
   );
 });
 
+test("a label the frame's edge would cut off stays hidden unless selected", () => {
+  const edge = [label("new-horizons", 380, 200, 20), label("openagents", 190, 300, 27)];
+  const frame = { width: 393, height: 500 };
+  assert.deepEqual([...placeLabels(edge, undefined, frame)], ["openagents"]);
+  assert.deepEqual(
+    [...placeLabels(edge, "new-horizons", frame)].sort(),
+    ["new-horizons", "openagents"],
+  );
+});
+
 test("no two shown labels overlap, whatever the layout", () => {
   let seed = 7;
   const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
