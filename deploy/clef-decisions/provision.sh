@@ -22,7 +22,7 @@ export CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
 g() { gcloud --project "$PROJECT" --quiet "$@"; }
 # The gateway's Direct VPC egress subnets: production (openagents-web-production)
 # and staging (openagents-web-staging).
-GATEWAY_RANGES=10.42.27.0/26,10.42.26.0/26
+GATEWAY_RANGES=10.42.27.0/24,10.42.26.0/26
 
 upload() {
     g storage cp "$HERE/startup.sh" "$HERE/restarter.sh" "$B/"

@@ -58,7 +58,7 @@ g('secrets','add-iam-policy-binding','openagents-lnurl-runtime','--member=servic
 for member in ['157437760789-compute@developer.gserviceaccount.com','oa-vertex-inference@'+project+'.iam.gserviceaccount.com']:
  g('secrets','add-iam-policy-binding','openagents-lnurl-breez-api-key','--member=serviceAccount:'+member,'--role=roles/secretmanager.secretAccessor','--condition=None')
 name='oa-lnurl-1'
-for suffix,sources,ports,priority in [('web','10.42.27.0/26,10.42.26.0/26','tcp:8180','900'),('hooks','0.0.0.0/0','tcp:80,tcp:443','900'),('iap','35.235.240.0/20','tcp:22','900')]:
+for suffix,sources,ports,priority in [('web','10.42.27.0/24,10.42.26.0/26','tcp:8180','900'),('hooks','0.0.0.0/0','tcp:80,tcp:443','900'),('iap','35.235.240.0/20','tcp:22','900')]:
  if g('compute','firewall-rules','describe',name+'-'+suffix,missing=True) is None:
   g('compute','firewall-rules','create',name+'-'+suffix,'--network=default','--direction=INGRESS','--priority='+priority,'--source-ranges='+sources,'--target-tags='+name,'--allow='+ports)
 if g('compute','firewall-rules','describe',name+'-deny-other',missing=True) is None:

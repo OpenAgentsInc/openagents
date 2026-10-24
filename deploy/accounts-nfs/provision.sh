@@ -21,7 +21,7 @@ case "$env" in
         ;;
     production)
         subnet=openagents-web-production
-        range=10.42.27.0/26
+        range=10.42.27.0/24
         address=10.42.27.2
         keep_days=30
         ;;

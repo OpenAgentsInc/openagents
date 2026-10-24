@@ -274,13 +274,17 @@ JSON and `--stack-image` (see its docstring), applied with `gcloud run
 services replace` as `chris@`. Roll back with `scripts/deploy/web.sh
 rollback REVISION`.
 
+The production subnet expanded from `/26` to `/24` on 2026-10-24 after a
+rollout ran out of private IP addresses. Its firewall rules use the same
+production range.
+
 The steps it was built with, kept for another environment:
 
 The same design, in its own subnet, server and secrets. With the
 automation account, from the repository root:
 
 1. `sh deploy/accounts-nfs/provision.sh production`: subnet
-   `openagents-web-production` (10.42.27.0/26), server
+   `openagents-web-production` (10.42.27.0/24), server
    `oa-accounts-nfs-production` at 10.42.27.2, 30-day hourly snapshots,
    the NFS firewall, and a rule letting the subnet reach the pay host
    (`oa-pay-1`, tcp:4400), which the site calls today over the `default`
