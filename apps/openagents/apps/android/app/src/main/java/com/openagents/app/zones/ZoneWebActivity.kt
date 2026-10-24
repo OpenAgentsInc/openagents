@@ -10,7 +10,9 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.View
+import android.webkit.ConsoleMessage
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -26,6 +28,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.openagents.app.BuildConfig
 import com.openagents.app.OaStyle
 import com.openagents.app.R
 import com.openagents.app.SemanticViewAdapter
@@ -86,6 +89,9 @@ class ZoneWebActivity : ComponentActivity() {
         WebViewCompat.addWebMessageListener(web, runner.channelName(), origins) { _, message, origin, main, reply ->
             val text = message.data ?: return@addWebMessageListener
             val result = runner.bridge(origin.toString(), main, text, System.currentTimeMillis().toULong())
+            // Debug builds: record the handshake (bootstrap, hello, ready, open) for device runs.
+            if (BuildConfig.DEBUG) Log.d(TAG, "bridge <- ${text.take(200)} refused=${result.refused} -> " +
+                result.deliver.joinToString(" | ") { it.take(200) })
             for (frame in result.deliver) reply.postMessage(frame)
         }
         WebViewCompat.addWebMessageListener(web, runner.probeChannelName(), origins) { _, message, origin, main, _ ->
@@ -97,6 +103,13 @@ class ZoneWebActivity : ComponentActivity() {
                     "android=${Build.VERSION.RELEASE} sdk=${Build.VERSION.SDK_INT} webview=${WebViewCompat.getCurrentWebViewPackage(this)?.versionName ?: ""}")
             }
             refresh()
+        }
+        if (BuildConfig.DEBUG) web.webChromeClient = object : WebChromeClient() {
+            // Debug builds: the zone's console in logcat, for device runs.
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                Log.d(TAG, "console ${message.messageLevel()}: ${message.message().take(300)}")
+                return true
+            }
         }
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =

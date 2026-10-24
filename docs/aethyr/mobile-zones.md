@@ -98,6 +98,23 @@ IDs and HTTPS pages.
 - **Debug entry points.** iOS: `-route zones` opens the launcher, and adding
   `-zone haunted-house` opens that zone's runner. Android debug builds take
   `--es openagents.zones launcher` or `--es openagents.zones haunted-house`.
+- **Candidate catalog (Android debug builds).** To open candidate engine
+  releases before their pins ship, push an `openagents.zones.v1` catalog to
+  the app's external files directory and name it with
+  `--es openagents.zones.catalog <file>`:
+
+  ```sh
+  adb push candidate-zones.json /sdcard/Android/data/com.openagents.app.debug/files/
+  adb shell am start -n com.openagents.app.debug/com.openagents.app.MainActivity \
+    --es openagents.zones.catalog candidate-zones.json --es openagents.zones haunted-house
+  ```
+
+  The catalog passes the same checks as `GET /v1/zones` (at most 64 KiB, and
+  the file must sit directly in that directory). While it is applied, the
+  launcher doesn't refresh from openagents.com, until the process ends.
+  `adb logcat -s OpenAgentsZones` records the applied release IDs. Debug
+  builds also log each bridge frame (`bridge <- … -> …`) and the zone's
+  console. Release builds ignore the extra and log neither.
 
 ## The host bridge (native transport)
 
@@ -160,6 +177,56 @@ valid HTTPS host origin different from its own, for example
   failure and retry, and a full bridge handshake against the real `Engine`.
 - `cargo test -p openagents-web zones`: the endpoint lists the pinned
   releases and is in the site's owned routes.
+
+## WebGPU on the Android emulator (development only)
+
+The stock emulator WebView can't run a zone. On the API 35 `google_apis`
+x86_64 image (WebView 124.0.6367.219), and on API 36.1 (WebView 134),
+`navigator.gpu` exists but `requestAdapter()` returns null, with or without
+flags. WebView 124 logs `Failed to create WebGPU Context Provider`, and
+`--enable-features=Vulkan` crashes it (`Vulkan not supported with in process
+gpu`). Chrome 124 on the same image has no adapter either.
+
+What works, on CoderOS (RTX 4080, emulator 36.5.11, `-gpu host`, so the guest
+has gfxstream Vulkan 1.3 on the NVIDIA GPU):
+
+1. Install a current Chromium `SystemWebView.apk` from the official x86_64
+   snapshots (`chromium-browser-snapshots/AndroidDesktop_x64/<rev>/chrome-android-desktop.zip`,
+   `apks/SystemWebView.apk`; 158.0.8123.0 was tested), then
+   `adb shell cmd webviewupdate set-webview-implementation com.android.webview`.
+   The image is `userdebug`, so a provider not signed by Google is accepted.
+2. Write `/data/local/tmp/webview-command-line`:
+
+   ```
+   _ --enable-unsafe-webgpu --enable-dawn-features=ignore_imported_ahardwarebuffer_vulkan_image_size
+   ```
+
+   `--enable-unsafe-webgpu` gives an adapter (`vendor=nvidia
+   arch=lovelace`). Without the Dawn toggle, the first canvas frame loses the
+   device: `Required texture memory size (…) is larger than the
+   AHardwareBuffer allocation size (0)`, because the emulator's gralloc reports
+   a zero allocation size for the canvas buffers. `--ignore-gpu-blocklist`
+   isn't needed. Leave out `--enable-features=Vulkan`.
+
+The probe and the runner then report the adapter, and a WebGPU canvas
+renders. This proves the app path only. It is not a device record.
+
+The engine releases go further than the probe, but they don't run for long.
+On 2026-10-24, the candidates `ah87e564ee79` (house) and `au87e564ee79`
+(universe) opened through the debug catalog, and the bridge completed
+`listening` → `hello`, `ready` → `open`, and the `open` reply. At 360×800
+on the RTX 4080, the house showed its night sky. About 90 seconds later
+(right after a camera drag), the guest GPU stalled: the host logged NVIDIA
+Xid 109 (`CTX SWITCH TIMEOUT`) for `qemu-system-x86`, and the emulator exited
+with `VK_ERROR_DEVICE_LOST`. The universe showed its stars and planet labels,
+and its canvas went black after about 20 seconds. That run was stopped
+before it could stall the host. The earlier house pin (`z12580he8d9551374`)
+caused the same Xid within seconds at 1080×2400. With host SwiftShader or lavapipe Vulkan, the
+emulator stayed up, but the first engine frame never finished. The WebView
+GPU thread blocked the app's UI thread until Android reported it as not
+responding. A simple full-screen WebGPU animation runs at 60 fps on the same
+setups, so the stall comes from the engine's frame workload on gfxstream.
+It isn't from the canvas path. Don't loop engine runs on a shared host GPU.
 
 ## Not done yet
 

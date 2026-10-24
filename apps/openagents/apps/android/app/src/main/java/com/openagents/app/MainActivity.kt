@@ -102,6 +102,11 @@ class MainActivity : ComponentActivity() {
             rootPresentation = AndroidRootPresentation(this, app, app.androidHost(BuildConfig.DEBUG && debugLaunch.demo))
             setContentView(requireNotNull(rootPresentation).view())
             if (BuildConfig.DEBUG && debugLaunch.demo) debugLaunch.route?.let { rootPresentation?.openDebugRoute(it) }
+            // Debug builds: `--es openagents.zones.catalog <file>` applies a candidate zone catalog from
+            // the app's external files directory (docs/aethyr/mobile-zones.md); release builds ignore it.
+            if (BuildConfig.DEBUG) intent.getStringExtra("openagents.zones.catalog")?.let {
+                com.openagents.app.zones.Zones.applyDebugCatalog(this, it)
+            }
             // Debug builds: `--es openagents.zones launcher|<zone id>` opens the zone launcher (screenshots).
             if (BuildConfig.DEBUG && savedInstanceState == null) intent.getStringExtra("openagents.zones")?.let {
                 openZones(it.takeUnless { zone -> zone == "launcher" })
