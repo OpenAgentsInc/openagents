@@ -136,9 +136,9 @@ pub fn valid_name(name: &str) -> bool {
 pub fn tag(text: Option<&str>) -> String {
     let text = text.unwrap_or_default().trim().to_ascii_lowercase();
     if text.len() <= 48
-        && text
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-' | b'.'))
+        && text.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-' | b'.')
+        })
     {
         text
     } else {
@@ -150,10 +150,8 @@ pub fn tag(text: Option<&str>) -> String {
 /// [`MOST_PATH`] printable characters.
 pub fn path(text: &str) -> Option<String> {
     let text = text.split(['?', '#']).next().unwrap_or_default();
-    (text.starts_with('/')
-        && text.len() <= MOST_PATH
-        && text.chars().all(|c| c.is_ascii_graphic()))
-    .then(|| text.to_owned())
+    (text.starts_with('/') && text.len() <= MOST_PATH && text.chars().all(|c| c.is_ascii_graphic()))
+        .then(|| text.to_owned())
 }
 
 /// Bounded, scrubbed free text: control characters and runs of whitespace
@@ -225,7 +223,9 @@ pub fn parse(body: &[u8], now_ms: u64) -> Result<Batch, Refusal> {
             batch.refused += 1;
             continue;
         };
-        let age = sent.saturating_sub(event.t.unwrap_or(sent)).min(MOST_AGE_MS);
+        let age = sent
+            .saturating_sub(event.t.unwrap_or(sent))
+            .min(MOST_AGE_MS);
         let mut props = BTreeMap::new();
         if !aggregate {
             for (key, value) in event.x.into_iter().take(MOST_PROPS) {

@@ -660,7 +660,11 @@ pub(crate) async fn inject(request: Request, next: Next) -> Response {
     }
     let (mut parts, body) = response.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, MOST_PAGE).await else {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "The page couldn't be loaded.").into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "The page couldn't be loaded.",
+        )
+            .into_response();
     };
     let page = add_tag(&bytes);
     parts.headers.remove(header::CONTENT_LENGTH);

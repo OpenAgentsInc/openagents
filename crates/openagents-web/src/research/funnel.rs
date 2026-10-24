@@ -109,11 +109,7 @@ pub struct Session {
 impl Session {
     /// The furthest stage reached.
     pub fn furthest(&self) -> Stage {
-        self.reached
-            .keys()
-            .copied()
-            .max()
-            .unwrap_or(Stage::Visited)
+        self.reached.keys().copied().max().unwrap_or(Stage::Visited)
     }
 }
 
@@ -121,12 +117,14 @@ impl Session {
 pub fn sessions(events: &[Event]) -> Vec<Session> {
     let mut by_id: BTreeMap<&str, Session> = BTreeMap::new();
     for event in events {
-        let session = by_id.entry(event.session.as_str()).or_insert_with(|| Session {
-            id: event.session.clone(),
-            first: event.at,
-            last: event.at,
-            ..Session::default()
-        });
+        let session = by_id
+            .entry(event.session.as_str())
+            .or_insert_with(|| Session {
+                id: event.session.clone(),
+                first: event.at,
+                last: event.at,
+                ..Session::default()
+            });
         session.first = session.first.min(event.at);
         session.last = session.last.max(event.at);
         session.events += 1;
@@ -140,14 +138,22 @@ pub fn sessions(events: &[Event]) -> Vec<Session> {
             session.campaign.clone_from(&event.campaign);
         }
         if session.device.is_empty() && !event.device.is_empty() {
-            session.device = event.device.split('/').next().unwrap_or_default().to_owned();
+            session.device = event
+                .device
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .to_owned();
         }
         for stage in stages_of(event) {
             let at = session.reached.entry(stage).or_insert(event.at);
             *at = (*at).min(event.at);
         }
         if let Some(name) = named(event).filter(|n| n.starts_with("tutorial_")) {
-            let at = session.milestones.entry(name.to_owned()).or_insert(event.at);
+            let at = session
+                .milestones
+                .entry(name.to_owned())
+                .or_insert(event.at);
             *at = (*at).min(event.at);
         }
     }
@@ -222,10 +228,7 @@ pub fn median(values: &mut [u64]) -> Option<u64> {
 }
 
 /// The funnel overall and grouped by `key`, largest groups first.
-pub fn by<'a>(
-    sessions: &'a [Session],
-    key: impl Fn(&Session) -> String,
-) -> Vec<(String, Funnel)> {
+pub fn by<'a>(sessions: &'a [Session], key: impl Fn(&Session) -> String) -> Vec<(String, Funnel)> {
     let mut groups: BTreeMap<String, Vec<&'a Session>> = BTreeMap::new();
     for session in sessions {
         groups.entry(key(session)).or_default().push(session);
@@ -244,7 +247,9 @@ pub fn milestones(sessions: &[Session]) -> Vec<(String, usize, Option<u64>)> {
     let mut seen: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     for session in sessions {
         for (name, at) in &session.milestones {
-            seen.entry(name.as_str()).or_default().push(at.saturating_sub(session.first));
+            seen.entry(name.as_str())
+                .or_default()
+                .push(at.saturating_sub(session.first));
         }
     }
     let mut out: Vec<(String, usize, Option<u64>)> = seen

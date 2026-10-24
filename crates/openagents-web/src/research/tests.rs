@@ -45,7 +45,10 @@ fn a_batch_is_checked_bounded_and_scrubbed() {
     assert_eq!(parsed.source, "reddit");
     assert_eq!(parsed.campaign, "reddit-gamedev");
     assert_eq!(parsed.events.len(), 3);
-    assert_eq!(parsed.refused, 3, "unknown kind, a step from a page, a bad path");
+    assert_eq!(
+        parsed.refused, 3,
+        "unknown kind, a step from a page, a bad path"
+    );
     let first = &parsed.events[0];
     assert_eq!(first.path, "/playtest", "no query string");
     assert_eq!(first.label, "Write to me at [email] card #");
@@ -107,7 +110,13 @@ fn opting_out_keeps_only_counts_and_drops_held_events() {
     let r = research();
     let parsed = ingest::parse(&batch("ps_abcdef123456", vec![click("a")].into()), NOW).unwrap();
     assert_eq!(
-        r.admit(parsed, false, "mobile/ios/safari", Some("acct_1".into()), NOW),
+        r.admit(
+            parsed,
+            false,
+            "mobile/ios/safari",
+            Some("acct_1".into()),
+            NOW
+        ),
         Admission::Kept { refused: 0 }
     );
     let (events, _) = r.snapshot();
@@ -121,12 +130,21 @@ fn opting_out_keeps_only_counts_and_drops_held_events() {
     assert!(r.snapshot().0.is_empty(), "the held events are dropped");
     let later = ingest::parse(&batch("ps_abcdef123456", vec![click("b")].into()), NOW).unwrap();
     r.admit(later, false, "mobile/ios/safari", None, NOW);
-    r.step("ps_abcdef123456", "survey_completed", &[("score", "5")], NOW);
+    r.step(
+        "ps_abcdef123456",
+        "survey_completed",
+        &[("score", "5")],
+        NOW,
+    );
     let (events, counts) = r.snapshot();
     assert!(events.is_empty());
     let total: u64 = counts.iter().map(|c| c.count).sum();
     assert_eq!(total, 2);
-    assert!(counts.iter().any(|c| c.kind == "click" && c.path == "/playtest"));
+    assert!(
+        counts
+            .iter()
+            .any(|c| c.kind == "click" && c.path == "/playtest")
+    );
 }
 
 #[test]
@@ -163,8 +181,11 @@ fn a_session_and_the_process_are_rate_limited() {
     let r = research();
     let mut kept = 0;
     for i in 0..(MOST_PER_WINDOW / ingest::MOST_EVENTS + 1) {
-        let parsed =
-            ingest::parse(&batch(&format!("ps_session{i:06}"), full.clone().into()), NOW).unwrap();
+        let parsed = ingest::parse(
+            &batch(&format!("ps_session{i:06}"), full.clone().into()),
+            NOW,
+        )
+        .unwrap();
         if r.admit(parsed, false, "", None, NOW) != Admission::Limited {
             kept += ingest::MOST_EVENTS;
         }
@@ -221,7 +242,13 @@ fn the_funnel_counts_drop_off_and_median_time() {
     for (s, at) in [("a", 10_000), ("b", 21_000)] {
         events.push(event(s, at, "step", "", "playtest_started"));
     }
-    events.push(event("a", 40_000, "milestone", "/playtest", "tutorial_moved"));
+    events.push(event(
+        "a",
+        40_000,
+        "milestone",
+        "/playtest",
+        "tutorial_moved",
+    ));
     events.push(event("a", 50_000, "step", "", "tutorial_jumped"));
     events.push(event("a", 60_000, "step", "", "survey_started"));
     events.push(event("a", 90_000, "step", "", "survey_completed"));
@@ -282,12 +309,16 @@ fn the_tag_goes_in_once_and_the_policy_allows_this_site() {
         "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self'; connect-src 'self'"
     );
     assert_eq!(
-        allow_self("default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src https://a.example"),
+        allow_self(
+            "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src https://a.example"
+        ),
         "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src https://a.example 'self'"
     );
     assert!(funnel_page("/") && funnel_page("/playtest") && funnel_page("/playtest/survey"));
     assert!(funnel_page("/new-lander/verse") && funnel_page("/new-lander-house"));
-    assert!(!funnel_page("/chat") && !funnel_page("/playtesting") && !funnel_page("/admin/research"));
+    assert!(
+        !funnel_page("/chat") && !funnel_page("/playtesting") && !funnel_page("/admin/research")
+    );
 }
 
 #[tokio::test]
@@ -366,7 +397,13 @@ async fn the_beacon_keeps_a_coarse_device_and_drops_bots_and_quiet_details() {
     let stored = serde_json::to_string(&events).unwrap();
     assert!(!stored.contains("iPhone OS") && !stored.contains("127.0.0.1"));
 
-    let (status, _, _) = send(&site, post(body.clone(), BOT).body(Body::from(body.clone())).unwrap()).await;
+    let (status, _, _) = send(
+        &site,
+        post(body.clone(), BOT)
+            .body(Body::from(body.clone()))
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, _, _) = send(
         &site,
@@ -378,7 +415,11 @@ async fn the_beacon_keeps_a_coarse_device_and_drops_bots_and_quiet_details() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (events, counts) = research.snapshot();
-    assert_eq!(events.len(), 1, "neither the bot nor the quiet batch is kept");
+    assert_eq!(
+        events.len(),
+        1,
+        "neither the bot nor the quiet batch is kept"
+    );
     assert_eq!(counts.iter().map(|c| c.count).sum::<u64>(), 1);
 
     let (status, _, _) = send(&site, post(vec![], IPHONE).body(Body::from("{}")).unwrap()).await;
@@ -435,7 +476,12 @@ async fn the_dashboard_and_export_are_a_plain_404_without_the_admin_gate() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(headers[header::CONTENT_TYPE].to_str().unwrap().starts_with("text/csv"));
+    assert!(
+        headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/csv")
+    );
     assert!(csv.starts_with("session,account,"));
     assert!(csv.contains("ps_abcdef123456"));
 }
@@ -448,14 +494,26 @@ async fn funnel_pages_get_the_script_and_a_policy_that_loads_it() {
     assert!(body.contains("<script src=\"/static/r.js\" defer></script>"));
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
     assert!(policy.contains("script-src") && policy.contains("connect-src"));
-    assert!(!headers.contains_key(header::CONTENT_LENGTH) || headers[header::CONTENT_LENGTH] == body.len().to_string().as_str());
+    assert!(
+        !headers.contains_key(header::CONTENT_LENGTH)
+            || headers[header::CONTENT_LENGTH] == body.len().to_string().as_str()
+    );
     let (status, headers, script) = send(&site, admin(SCRIPT, None)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(headers[header::CONTENT_TYPE], "text/javascript; charset=utf-8");
+    assert_eq!(
+        headers[header::CONTENT_TYPE],
+        "text/javascript; charset=utf-8"
+    );
     assert!(script.contains("\"/a/r\""));
-    assert!(!script.contains("http://") && !script.contains("https://"), "first-party only");
+    assert!(
+        !script.contains("http://") && !script.contains("https://"),
+        "first-party only"
+    );
     let (_, _, privacy) = send(&site, admin("/privacy", None)).await;
-    assert!(!privacy.contains("/static/r.js"), "other pages get no script");
+    assert!(
+        !privacy.contains("/static/r.js"),
+        "other pages get no script"
+    );
     assert!(privacy.contains("Playtest research"));
 }
 

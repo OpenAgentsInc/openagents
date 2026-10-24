@@ -17,7 +17,12 @@ use crate::analytics::dashboard::{allowed, guarded, number};
 use crate::ui_page::UiPage;
 
 /// The windows a view may ask for, in days.
-pub const DAYS: [(u64, &str); 4] = [(1, "Today"), (2, "48 hours"), (7, "7 days"), (30, "30 days")];
+pub const DAYS: [(u64, &str); 4] = [
+    (1, "Today"),
+    (2, "48 hours"),
+    (7, "7 days"),
+    (30, "30 days"),
+];
 /// The most sessions listed.
 const MOST_LISTED: usize = 100;
 /// The most events a timeline shows.
@@ -104,7 +109,11 @@ pub(super) async fn export(
     let asked = Asked::from_query(query.as_deref());
     let Ok((events, _)) = app.config.research.load(asked.days).await else {
         return guarded(
-            (StatusCode::SERVICE_UNAVAILABLE, "The events couldn't be read.").into_response(),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "The events couldn't be read.",
+            )
+                .into_response(),
         );
     };
     let body = match asked.what.as_str() {
@@ -112,11 +121,7 @@ pub(super) async fn export(
         "funnel" => funnel_csv(&funnel::sessions(&events)),
         _ => events_csv(&events),
     };
-    let mut response = (
-        [(header::CONTENT_TYPE, "text/csv; charset=utf-8")],
-        body,
-    )
-        .into_response();
+    let mut response = ([(header::CONTENT_TYPE, "text/csv; charset=utf-8")], body).into_response();
     if let Ok(value) = HeaderValue::from_str(&format!(
         "attachment; filename=\"research-{}-{}d.csv\"",
         asked.what, asked.days
@@ -143,7 +148,11 @@ pub fn field(text: &str) -> String {
 }
 
 fn line(fields: &[&str]) -> String {
-    let mut out = fields.iter().map(|f| field(f)).collect::<Vec<_>>().join(",");
+    let mut out = fields
+        .iter()
+        .map(|f| field(f))
+        .collect::<Vec<_>>()
+        .join(",");
     out.push('\n');
     out
 }
@@ -173,8 +182,7 @@ pub fn events_csv(events: &[Event]) -> String {
 
 pub fn sessions_csv(sessions: &[Session]) -> String {
     let mut header = vec![
-        "session", "account", "source", "campaign", "device", "first", "last", "events",
-        "furthest",
+        "session", "account", "source", "campaign", "device", "first", "last", "events", "furthest",
     ];
     header.extend(Stage::ALL.iter().map(|s| s.key()));
     let mut out = line(&header);
@@ -261,7 +269,13 @@ fn windows(asked: &Asked) -> Markup {
 fn funnel_table(label: &str, overall: &Funnel) -> Markup {
     let mut table = Table::new()
         .label(label)
-        .header(["Step", "Sessions", "Of previous", "Drop-off", "Median time from previous"])
+        .header([
+            "Step",
+            "Sessions",
+            "Of previous",
+            "Drop-off",
+            "Median time from previous",
+        ])
         .numeric(1)
         .numeric(2)
         .numeric(3)
@@ -307,8 +321,7 @@ fn grouped(label: &str, first: &str, rows: &[(String, Funnel)]) -> Markup {
     for (name, f) in rows.iter().take(40) {
         let mut cells = vec![html! { code { (name) } }];
         cells.extend(f.reached.iter().map(|n| html! { (number(*n as u64)) }));
-        let rate = (f.reached[0] > 0)
-            .then(|| 100.0 * f.reached[5] as f64 / f.reached[0] as f64);
+        let rate = (f.reached[0] > 0).then(|| 100.0 * f.reached[5] as f64 / f.reached[0] as f64);
         cells.push(html! { (percent(rate)) });
         table = table.row(cells);
     }
@@ -329,10 +342,7 @@ pub fn report(events: &[Event], counts: &[Count], asked: &Asked, stored: bool) -
         .fact("Page views", number(funnel::impressions(events, counts)))
         .fact("Sessions", number(sessions.len() as u64))
         .fact("Signed in", number(signed_in as u64))
-        .fact(
-            "Surveys completed",
-            number(overall.reached[5] as u64),
-        )
+        .fact("Surveys completed", number(overall.reached[5] as u64))
         .fact("Opted-out events (counted only)", number(opted_out))
         .fact("Events", number(events.len() as u64));
     let mut recent: Vec<&Session> = sessions.iter().collect();
@@ -401,7 +411,14 @@ fn recent_table(recent: &[&Session]) -> Markup {
     }
     let mut table = Table::new()
         .label("Recent sessions")
-        .header(["Session", "Last seen", "Furthest step", "Source", "Device", "Events"])
+        .header([
+            "Session",
+            "Last seen",
+            "Furthest step",
+            "Source",
+            "Device",
+            "Events",
+        ])
         .numeric(5);
     for s in recent.iter().take(MOST_LISTED) {
         table = table.row([
@@ -425,7 +442,11 @@ fn opted_table(opted: &[((String, String), u64)]) -> Markup {
         .header(["Kind", "Path", "Count"])
         .numeric(2);
     for ((kind, path), n) in opted.iter().take(40) {
-        table = table.row([html! { (kind) }, html! { code { (path) } }, html! { (number(*n)) }]);
+        table = table.row([
+            html! { (kind) },
+            html! { code { (path) } },
+            html! { (number(*n)) },
+        ]);
     }
     html! { (table) }
 }
@@ -447,9 +468,23 @@ pub fn timeline(events: &[Event], id: &str) -> Markup {
     let start = session.first;
     let facts = Facts::new()
         .fact("Session", html! { code { (id) } })
-        .fact("Account", session.account.clone().unwrap_or_else(|| "Not signed in".into()))
-        .fact("Source", format!("{} / {}", session.source, session.campaign))
-        .fact("Device", mine.iter().find(|e| !e.device.is_empty()).map_or("unknown".into(), |e| e.device.clone()))
+        .fact(
+            "Account",
+            session
+                .account
+                .clone()
+                .unwrap_or_else(|| "Not signed in".into()),
+        )
+        .fact(
+            "Source",
+            format!("{} / {}", session.source, session.campaign),
+        )
+        .fact(
+            "Device",
+            mine.iter()
+                .find(|e| !e.device.is_empty())
+                .map_or("unknown".into(), |e| e.device.clone()),
+        )
         .fact("Started", iso(start))
         .fact("Length", funnel::duration(session.last - start))
         .fact("Furthest step", session.furthest().name());

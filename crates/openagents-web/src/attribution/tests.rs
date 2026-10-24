@@ -340,11 +340,7 @@ fn every_code_is_a_channel_and_series_with_a_page_of_ours() {
         assert!(campaign_word(code.code), "{}", code.code);
         assert!(codes::CHANNELS.contains(&code.channel()), "{}", code.code);
         assert!(!code.series().is_empty());
-        assert!(
-            crate::upstream::owned(code.path()),
-            "{}",
-            code.destination
-        );
+        assert!(crate::upstream::owned(code.path()), "{}", code.destination);
         assert!(seen.insert(code.code), "{} twice", code.code);
     }
     assert!(codes::find("yt-cost").is_some() && codes::find("x-cost").is_some());
@@ -364,8 +360,7 @@ fn every_code_is_a_channel_and_series_with_a_page_of_ours() {
     ] {
         let code = codes::find(launch).unwrap();
         assert!(
-            code.destination
-                .contains(&format!("utm_campaign={launch}"))
+            code.destination.contains(&format!("utm_campaign={launch}"))
                 && code.destination.contains("utm_source="),
             "{launch}"
         );
