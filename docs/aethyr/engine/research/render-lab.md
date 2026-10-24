@@ -194,9 +194,40 @@ encode of the CPU path at about 1,500 draws in three ways: Rust per call, Rust
 batched, and TypeScript direct. It reports p50 and p95 and checks the issue's
 gate, which requires batched to be within 0.1 ms of TypeScript at p95. Build
 and serve the lab, then run the tool in a browser that has a real GPU adapter
-(`AF_CDP` connects to a running Chrome). No result from a real GPU has been
-recorded yet. A SwiftShader smoke run only shows that the cases render the
-same 1,495 draws.
+(`AF_CDP` connects to a running Chrome).
+
+On the RTX 4080 (Chrome 152, 1,460 draws), the first batched version was no
+faster than one call per command: 0.815 ms at p95 batched, 0.805 ms per call,
+and 0.560 ms from TypeScript. The cost was in the work on either side of the
+crossing, not the crossing itself. The lab now reports `main_replay_ms` (the
+JavaScript replay inside the encode) and `main_log_ms` (the Rust log build
+that the TypeScript timer leaves out), so the encode splits into its Rust and
+JavaScript parts. The changes that followed:
+
+- The replay switches on literal opcodes, with draw commands first, and
+  indexes the handle table directly.
+- It passes an offset or size as its low word when the high word is zero.
+  `lo + hi * 2^32` is always a double, which V8 allocates on every call.
+- Rust records into one buffer per thread, borrowed once per command and
+  inlined at each call site.
+- A per-pass state cache (`af_gpu::batch::Recorder`) skips a pipeline, bind
+  group, or buffer bind that repeats the one already set. It forgets at the
+  end of each pass and on every release. The per-call path makes every bind.
+
+SwiftShader in a container, 1,495 draws, 10 s × 5 rounds (CPU timings only,
+not a GPU result):
+
+| Path | Before p50 | Before p95 | After p50 | After p95 |
+| --- | --- | --- | --- | --- |
+| Rust per call | 0.290 ms | 0.640 ms | 0.290 ms | 0.630 ms |
+| Rust batched | 0.305 ms | 0.580 ms | 0.275 ms | 0.545 ms |
+| TypeScript direct | 0.210 ms | 0.360 ms | 0.215 ms | 0.365 ms |
+
+After the changes, the Rust part of the batched encode is 0.050 ms at p50
+and 0.085 ms at p95. The replay costs 0.020 ms more than the TypeScript loop
+at p50, which is the opcode dispatch. The rest of the p95 gap is the replay's
+wider tail. These runs also show wider whole-frame tails in both Rust modes,
+so the gate needs the 4080 run again.
 
 ## Open items
 
