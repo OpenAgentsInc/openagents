@@ -256,7 +256,7 @@ if (process.env.VERSE_UI_REVIEW_FIXTURES) {
         }),
       );
       await page
-        .locator("#publish-share-card,#visit-panel,#visit")
+        .locator("#publish-share-card")
         .evaluateAll((nodes) => nodes.forEach((n) => (n.hidden = false)));
       await audit(`fixture-cards-${file}-${width}`);
       await page

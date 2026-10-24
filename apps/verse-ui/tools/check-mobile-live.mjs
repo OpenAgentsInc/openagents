@@ -424,18 +424,22 @@ try {
     planetPath,
   );
   await tap("[data-aethyr-id=planet-setup]");
-  await page.locator("#planet-name").fill("Kiki mobile garden");
+  await page
+    .locator("[data-aethyr-id=planet-name] input")
+    .fill("Kiki mobile garden");
   const renameResponse = page.waitForResponse(
     (r) =>
       r.request().method() === "POST" &&
       new URL(r.url()).pathname === planetPath,
   );
-  await page.locator("button[type=submit]").tap();
+  await tap("[data-aethyr-id=planet-save]");
   assert.equal((await renameResponse).status(), 303);
   await page.waitForFunction(
-    () => document.querySelector("h1")?.textContent === "Kiki mobile garden",
+    () =>
+      document.querySelector("[data-aethyr-id=setup-title]")?.textContent ===
+      "Kiki mobile garden",
   );
-  await page.locator("#planet-enter").tap();
+  await tap("[data-aethyr-id=planet-enter]");
   await page.waitForURL("**/world");
   await ready();
   await shot("13-personal-world");
@@ -491,44 +495,22 @@ try {
   await playerReady(page);
   await shot("19-personal-player");
   await page.goto(origin + planetLink.replace("/play/", "/invite/"));
-  await page.selectOption("select[name=access]", "anonymous");
-  await page.selectOption("select[name=hours]", "1");
-  await page.locator("button[type=submit]").tap();
-  const invitation = page.locator('a[href^="/new-lander/visit/"]').last();
+  await tap("[data-aethyr-id=access-anonymous]");
+  await tap("[data-aethyr-id=hours-1]");
+  await tap("[data-aethyr-id=invite-create]");
+  const invitation = page
+    .locator('[data-aethyr-id=invitations] a[href^="/new-lander/visit/"]')
+    .last();
   await invitation.waitFor();
   const invitePath = await invitation.getAttribute("href");
   assert(invitePath);
   await shot("20-invitation-created");
   await page.goto(origin + invitePath);
   await playerReady(page);
-  await page.waitForFunction(
-    () => window.verseVisit && !JSON.parse(window.verseVisit.snapshot()).busy,
-  );
-  if (await page.locator("#visit-panel").isHidden()) await tap("#visit-toggle");
-  if (
-    !(await page.evaluate(
-      () => JSON.parse(window.verseVisit.snapshot()).joined,
-    ))
-  )
-    await tap("#visit-join");
-  await page.waitForFunction(
-    () => JSON.parse(window.verseVisit.snapshot()).joined,
-  );
-  await page.locator("#visit-text").fill("Mobile journey check 12583");
-  await tap("#visit-send");
-  await page
-    .locator("#visit-messages")
-    .getByText("Mobile journey check 12583", { exact: true })
-    .waitFor();
-  await shot("21-chat-message");
-  await tap("#visit-toggle");
-  assert(await page.locator("#visit-panel").isHidden());
-  await tap("#visit-toggle");
-  await tap("#visit-leave");
-  await page.waitForFunction(
-    () => !JSON.parse(window.verseVisit.snapshot()).joined,
-  );
-  await shot("22-chat-left");
+  // Visits are play only: no chat (owner, 2026-10-24).
+  assert.equal(await page.locator("#visit, [id^=visit-]").count(), 0);
+  assert(!/chat/i.test(await page.locator("body").innerText()));
+  await shot("21-visit-player");
   await visitGuest(invitePath);
   await page.getByRole("link", { name: "Back to planets", exact: true }).tap();
   await page.locator("[data-aethyr-id=planet-owned]").waitFor({ state: "visible" });

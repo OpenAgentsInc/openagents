@@ -12,7 +12,6 @@ mod playable_validation;
 mod publication;
 mod resources;
 pub(super) mod tutorial;
-mod visit_room;
 mod visits;
 
 pub(super) fn routes() -> Router<App> {

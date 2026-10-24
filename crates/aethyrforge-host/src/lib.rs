@@ -87,8 +87,3 @@ mod tutorial;
 pub use tutorial::*;
 mod planet;
 pub use planet::*;
-
-#[cfg(target_arch = "wasm32")]
-mod visit_browser;
-#[cfg(target_arch = "wasm32")]
-pub use visit_browser::*;

@@ -155,7 +155,6 @@
 [data-verse-ui] #world-edit,
 [data-verse-ui] #planet-enter,
 [data-verse-ui] #planet-generate,
-[data-verse-ui] #visit-send,
 [data-verse-ui] form > button[type="submit"],
 [data-verse-ui] [data-slot="button"][data-variant="default"] {
   background: var(--primary);
@@ -173,7 +172,6 @@
     #planet-create,
     #planet-enter,
     #planet-generate,
-    #visit-send,
     form > button[type="submit"],
     [data-slot="button"][data-variant="default"]
   ):hover:not(:disabled) {
@@ -733,48 +731,6 @@
   padding: 8px 12px;
   border-radius: 8px;
 }
-[data-verse-ui] #visit {
-  position: fixed;
-  right: 20px;
-  bottom: 80px;
-  z-index: 4;
-  max-width: calc(100vw - 40px);
-}
-[data-verse-ui] #visit-panel {
-  width: 340px;
-  max-width: 100%;
-  max-height: 65vh;
-  overflow: auto;
-  padding: 20px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  backdrop-filter: blur(18px);
-}
-[data-verse-ui] #visit-panel h2 {
-  font-size: 18px;
-  margin: 0 0 14px;
-}
-[data-verse-ui] #visit-panel p {
-  font-size: 12px;
-}
-[data-verse-ui] #visit-panel textarea {
-  width: 100%;
-  margin-top: 8px;
-}
-[data-verse-ui] #visit-messages {
-  list-style: none;
-  padding: 0;
-  margin: 16px 0;
-}
-[data-verse-ui] #visit-messages li {
-  padding: 10px 12px;
-  margin: 8px 0;
-  border-radius: 10px;
-  background: var(--secondary);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
 @media (max-width: 799px) {
   
   
@@ -933,11 +889,6 @@
     max-width: calc(100% - 80px);
     bottom: 12px;
     left: 12px;
-  }
-  [data-verse-ui] #visit {
-    right: 12px;
-    bottom: 70px;
-    max-width: calc(100vw - 24px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1418,7 +1369,6 @@
 [data-verse-ui="player"] body > header,
 [data-verse-ui="setup"] main,
 [data-verse-ui="invite"] main,
-[data-verse-ui] #visit-panel,
 [data-verse-ui="auth"] .oa-auth-card {
   background: #10151bf0;
   border: 1px solid var(--hud-line);
@@ -2845,6 +2795,12 @@
   background: var(--primary);
   color: var(--primary-foreground);
 }
+/* A selected chip keeps its fill under the pointer; the generic button
+   hover would otherwise put its dark label on a dark fill. */
+[data-verse-ui] .aui-chip:not(.aui-chip-detailed)[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+}
 [data-verse-ui] .aui-chip:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -3228,4 +3184,67 @@
 /* The world row on a phone scrolls sideways on purpose; its bar stays hidden. */
 .verse-hud [data-aethyr-id="verse-worlds"] {
   overflow-y: hidden;
+}
+
+/* --- House surfaces on Aethyr (#12588) --------------------------------
+   Planet setup, invitations, and the player bar draw into #house-hud. The
+   server's own markup (.house-bridge) stays for the release and for
+   visitors without JavaScript; once the host mounts it is hidden. Phone
+   width first: one column with a 16px gutter. */
+[data-aethyr-house] .house-bridge {
+  display: none !important;
+}
+.house-hud > .aui-root {
+  display: contents;
+}
+[data-verse-ui] .house-hud :is([data-aethyr-id="setup"], [data-aethyr-id="invite"]) {
+  width: min(520px, calc(100% - 32px));
+  margin: var(--hud-space-lg) auto;
+  padding: var(--hud-space-lg);
+}
+.house-hud :is([data-aethyr-id="planet-save"], [data-aethyr-id="invite-create"], [data-aethyr-id="planet-enter"]) {
+  align-self: stretch;
+  justify-content: center;
+}
+.house-hud [data-aethyr-id="setup-back"],
+.house-hud [data-aethyr-id="invite-back"] {
+  align-self: flex-start;
+}
+.house-hud [data-aethyr-id="invitations"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.house-hud [data-aethyr-id="invitations"] > li {
+  padding: var(--hud-space-sm) 0;
+  border-top: 1px solid var(--hud-line);
+}
+[data-verse-ui="player"] .house-hud [data-aethyr-id="player-bar"] {
+  position: fixed;
+  top: var(--hud-space-sm);
+  right: var(--hud-space-sm);
+  left: var(--hud-space-sm);
+  z-index: 3;
+  padding: var(--hud-space-sm) var(--hud-space-md);
+}
+.house-hud [data-aethyr-id="player-heading"] {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.house-hud [data-aethyr-id="player-title"] {
+  white-space: nowrap;
+}
+@media (min-width: 761px) {
+  [data-verse-ui] .house-hud :is([data-aethyr-id="setup"], [data-aethyr-id="invite"]) {
+    margin-top: 9vh;
+    padding: var(--hud-space-xl);
+  }
+  .house-hud :is([data-aethyr-id="planet-save"], [data-aethyr-id="invite-create"], [data-aethyr-id="planet-enter"]) {
+    align-self: flex-start;
+  }
+  [data-verse-ui="player"] .house-hud [data-aethyr-id="player-bar"] {
+    top: var(--hud-space-lg);
+    right: var(--hud-space-lg);
+    left: var(--hud-space-lg);
+  }
 }
