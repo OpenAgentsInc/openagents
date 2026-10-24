@@ -418,7 +418,10 @@ try {
     console.log('Delayed Draft status and immediate Compile passed');
   } else {
   if(await page.locator('[data-aethyr-id=edit-close]').isVisible())await page.click('[data-aethyr-id=edit-close]');assert.equal((await snapshot()).status.authoring.active_source,changed);
-  await options();await page.click('[data-aethyr-id=project-revert]');await confirm();
+  await options();
+  // Revert to Starting house is under More world actions.
+  if(!(await page.locator('[data-aethyr-id=project-revert]').isVisible()))await page.click('[data-aethyr-id=request-more]');
+  await page.click('[data-aethyr-id=project-revert]');await confirm();
   assert.equal((await snapshot()).status.authoring.active_source,source,'Revert is a new change to Starting house');
   await edit('compile');await page.fill('[data-aethyr-id=edit-source] :is(input,textarea)',changed);await page.click('[data-aethyr-id=edit-source-draft]');await confirm();
   await page.click('[data-aethyr-id=edit-source-compile]');await confirm();
@@ -677,6 +680,8 @@ try {
   await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).phase==='open',null,{timeout:125000});
   await edit('compile');await page.click('[data-aethyr-id=publish-refresh]');
   await page.waitForFunction(id=>document.querySelector('#publish-version').value===id,secondId);
+  // Refreshing the published version can reopen the world; select once it is open.
+  await page.waitForFunction(()=>{const s=JSON.parse(window.hauntDemo.snapshot());return s.phase==='open'&&s.status!==null;},null,{timeout:125000});
   const editor=page.frames().find(f=>f.url().startsWith(config.editor));assert.ok(editor);
   await editor.evaluate(()=>window.aethyrforgeEditor.service.command({kind:'entity.select',id:'werewolf-1'}));
   await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).status.selection?.id==='werewolf-1');

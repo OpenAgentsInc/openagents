@@ -233,7 +233,9 @@ try {
       run.mode === "candidate"
         ? process.env.AETHYRFORGE_HOST_RESPONSE_URL
         : origin;
-    await check.route(origin + path + "**", async (route) => {
+    // Every request to the site, not only the page: its scripts and styles
+    // must come from the same website as the page under test.
+    await check.route(origin + "/**", async (route) => {
       const url = new URL(route.request().url()),
         response = await context.request.get(
           responseOrigin + url.pathname + url.search,
