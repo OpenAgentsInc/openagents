@@ -105,6 +105,18 @@ assert(
 );
 const instrumented = instrumentationFlag === "1";
 const captureHz = Number(process.env.AF_BATTLE_CAPTURE_HZ || 60);
+const viewportWidth = Number(process.env.AF_BATTLE_WIDTH || 1280),
+  viewportHeight = Number(process.env.AF_BATTLE_HEIGHT || 720);
+assert(
+  Number.isSafeInteger(viewportWidth) &&
+    viewportWidth >= 640 &&
+    viewportWidth <= 3840,
+);
+assert(
+  Number.isSafeInteger(viewportHeight) &&
+    viewportHeight >= 360 &&
+    viewportHeight <= 2160,
+);
 assert(
   [60, 120].includes(captureHz),
   "Choose a 60 or 120 Hz capture request rate.",
@@ -157,6 +169,8 @@ const report = {
   route,
   seconds,
   configuration: {
+    viewport: [viewportWidth, viewportHeight],
+    deviceScaleFactor: 1,
     instrumented,
     targetHz: "display",
     route,
@@ -192,7 +206,8 @@ const report = {
 const browser = await chromium.connectOverCDP(endpoint);
 report.browserMode = await observeApplicationBrowserMode(browser);
 const context = await browser.newContext({
-  viewport: { width: 1280, height: 720 },
+  viewport: { width: viewportWidth, height: viewportHeight },
+  deviceScaleFactor: 1,
   serviceWorkers: "block",
 });
 const page = await context.newPage();

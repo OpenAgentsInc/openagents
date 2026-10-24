@@ -604,8 +604,11 @@ test("all source battle materials are opaque without cutout or coverage while re
   assert.equal(pipeline.primitive.cullMode, "none");
   assert.equal(pipeline.depthStencil.depthWriteEnabled, true);
   assert.equal(pipeline.fragment.targets[0].blend, undefined);
-  assert(!BATTLE_RENDER_WGSL.includes("discard"));
-  assert(!BATTLE_RENDER_WGSL.includes("texel.a"));
+  const opaqueFragment = BATTLE_RENDER_WGSL.split(
+    "@fragment fn fragmentMain",
+  )[1].split("struct SpriteOutput")[0];
+  assert(!opaqueFragment.includes("discard"));
+  assert(!opaqueFragment.includes("texel.a"));
   assert(BATTLE_RENDER_WGSL.includes(",1.0);\n}"));
   battle.dispose();
   const invalid = assets();
@@ -619,6 +622,116 @@ test("all source battle materials are opaque without cutout or coverage while re
     /complete battle/,
   );
   assert.equal(rejected.buffers.length, 0);
+});
+
+test("optional distant silhouettes use bounded separate coverage draws and keep mesh materials opaque", async () => {
+  const models = assets(),
+    model = models[0];
+  model.impostor = {
+    views: 8,
+    tileSize: 32,
+    width: 512,
+    height: 512,
+    frames: 100,
+    bounds: { minY: -0.1, maxY: 2.1, radius: 1.4 },
+    clips: Object.fromEntries(
+      ["idle", "walk", "attack", "death"].map((name, index) => [
+        name,
+        {
+          duration: 2,
+          firstFrame: index * 25,
+          frameCount: 25,
+          loop: index < 2,
+        },
+      ]),
+    ) as typeof model.clips,
+    color: new Uint8Array(512 * 512 * 8 * 4),
+    normal: new Uint8Array(512 * 512 * 8 * 4),
+  };
+  const gpu = fakeGpu(),
+    battle = await BattleCrowd.create(gpu.device, models, terrain(), {
+      count: 129,
+      capacity: 129,
+    });
+  const opaque = gpu.pipelines.find(
+    (p) => p.vertex.entryPoint === "vertexMain",
+  );
+  const sprite = gpu.pipelines.find(
+    (p) => p.vertex.entryPoint === "vertexImpostor",
+  );
+  assert.equal(opaque.multisample.alphaToCoverageEnabled, false);
+  assert.equal(sprite.multisample.alphaToCoverageEnabled, true);
+  assert.equal(sprite.fragment.constants.impostorSampleCount, 4);
+  assert.equal(sprite.depthStencil.depthWriteEnabled, true);
+  assert.equal(sprite.fragment.targets[0].blend, undefined);
+  const metadata = gpu.buffers.find(
+    (b) => b.label === "Battle crowd: projected character sizes",
+  );
+  assert.deepEqual(
+    [...new Float32Array(metadata.storage)],
+    [1.8, 1, 0, 0, 1.8, 0, 0, 0, 1.8, 0, 0, 0, 1.8, 0, 0, 0].map(Math.fround),
+  );
+  const visible = gpu.buffers.find(
+    (b) => b.label === "Battle crowd: compacted visible actor IDs",
+  );
+  assert.equal(visible.size, 129 * 12 * 4);
+  const args = gpu.buffers.find(
+    (b) => b.label === "Battle crowd: indexed indirect arguments",
+  );
+  assert.deepEqual(
+    [...new Uint32Array(args.storage).slice(40, 45)],
+    [6, 0, 0, 0, 0],
+  );
+  battle.prepare(gpu.encoder, { ...frame(), viewportHeight: 1080 }, 1 / 60);
+  const uniform = gpu.buffers.find(
+    (b) => b.label === "Battle crowd: frame and simulation parameters",
+  );
+  const camera = frame().viewProjection;
+  assert(
+    Math.abs(
+      new Float32Array(uniform.storage)[35] -
+        (1080 * Math.hypot(camera[1], camera[5], camera[9])) / 2,
+    ) < 1e-3,
+  );
+  // Detail's silhouette threshold travels in the frame's free sun.w slot.
+  assert.equal(new Float32Array(uniform.storage)[39], 8);
+  battle.render(gpu.pass);
+  assert.deepEqual(
+    gpu.draws.slice(0, 9),
+    [0, 20, 40, 60, 80, 100, 120, 140, 160],
+  );
+  assert.equal(battle.inspect().impostorClasses, 1);
+  assert.equal(battle.inspect().frameDraws, 12);
+  battle.afterSubmit();
+  await flush();
+  const probe = await battle.probe();
+  assert.equal(probe.draws.length, 12);
+  assert.equal(probe.draws[8].kind, "paladin");
+  assert.equal(probe.draws[8].lod, "impostor");
+  assert.equal(probe.draws[8].indexCount, 6);
+  // Lower Detail raises the threshold up to the 16-pixel readability floor.
+  for (const bad of [7.9, 16.1, Number.NaN])
+    assert.throws(() => battle.setSilhouettePixels(bad));
+  battle.setSilhouettePixels(16);
+  battle.prepare(gpu.encoder, { ...frame(), viewportHeight: 1080 }, 1 / 60);
+  assert.equal(new Float32Array(uniform.storage)[39], 16);
+  battle.afterSubmit();
+  battle.dispose();
+  assert(gpu.buffers.every((b) => b.destroyed));
+  assert(gpu.textures.every((t) => t.destroyed));
+});
+
+test("single-sample distant silhouettes use opaque cutoff instead of unavailable sample coverage", async () => {
+  const gpu=fakeGpu();
+  const battle=await BattleCrowd.create(gpu.device,assets(),terrain(),{count:100,capacity:100,sampleCount:1});
+  const sprite=gpu.pipelines.find((pipeline)=>pipeline.vertex.entryPoint==="vertexImpostor");
+  assert.equal(sprite.multisample.alphaToCoverageEnabled,false);
+  assert.equal(sprite.fragment.constants.impostorSampleCount,1);
+  assert.equal(sprite.fragment.targets[0].blend,undefined);
+  assert.equal(sprite.depthStencil.depthWriteEnabled,true);
+  assert(BATTLE_RENDER_WGSL.includes("if albedo.a<select(.5,.01,impostorSampleCount>1u){discard;}"));
+  assert(BATTLE_RENDER_WGSL.includes("select(1.0,albedo.a,impostorSampleCount>1u)"));
+  battle.dispose();
 });
 
 test("partial actor workgroups are dispatched without padding actors or skipping the tail", async () => {
@@ -1125,6 +1238,101 @@ test("contact handling retains deepest stable contacts and never turns from posi
   assert(!source.includes("atan2(a.motion.x,-a.motion.y)"));
   assert(!source.includes(".08/max(length(correction)"));
   assert(!source.includes("population>10u"));
+});
+
+test("team-mask and squared rejection preserve nearest-target ties and every physical contact", () => {
+  const predicateBody = BATTLE_SIMULATION_WGSL.match(
+    /fn withinDistanceSquared\([^]*?\)->bool\s*\{([^]*?)\n\}/,
+  );
+  const maskBody = BATTLE_SIMULATION_WGSL.match(
+    /fn cellHasTeam\([^]*?\)->bool\s*\{([^]*?)\}/,
+  );
+  assert(predicateBody && maskBody);
+  const predicate = new Function("squared", "limit", "max", predicateBody[1]);
+  const includes = (squared: number, limit: number) =>
+    Boolean(predicate(squared, limit, Math.max));
+  const maskFunction = new Function(
+    "mask",
+    "team",
+    "i32",
+    maskBody[1]
+      .replace("atomicLoad(&cells[cell].x)", "mask")
+      .replace(/(\d+)u/g, "$1"),
+  );
+  const hasTeam = (mask: number, team: number) =>
+    Boolean(maskFunction(mask, team, (n: number) => n | 0));
+  type Candidate = { id: number; team: number; squared: number };
+  const nearest = (groups: Candidate[][], team: number, optimized: boolean) => {
+    let best = 0xffffffff,
+      distance = 1e9;
+    for (const group of groups) {
+      const mask = group.reduce((bits, a) => bits | (1 << a.team), 0);
+      if (optimized && !hasTeam(mask, 1 - team)) continue;
+      for (const a of group) {
+        if (a.team === team || (optimized && !includes(a.squared, distance)))
+          continue;
+        const d = Math.fround(Math.sqrt(a.squared));
+        if (d < distance || (d === distance && a.id < best)) {
+          distance = d;
+          best = a.id;
+        }
+      }
+    }
+    return best;
+  };
+  const roundedTie = [
+    { id: 9, team: 1, squared: 1 },
+    { id: 2, team: 1, squared: 1 + 2 ** -23 },
+  ];
+  assert.equal(Math.fround(Math.sqrt(roundedTie[1].squared)), 1);
+  assert.equal(
+    nearest([roundedTie], 0, true),
+    2,
+    "float-equal lengths must still use the stable ID tie",
+  );
+  assert.equal(hasTeam(0, 1), false);
+  assert.equal(hasTeam(1, 1), false);
+  assert.equal(hasTeam(2, 0), false);
+  assert.equal(hasTeam(3, 0) && hasTeam(3, 1), true);
+  let seed = 0x51ce;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 2 ** 32;
+  };
+  for (let trial = 0; trial < 1000; trial++) {
+    const groups = Array.from({ length: 9 }, () =>
+      Array.from({ length: 16 }, (_, id) => {
+        const x = Math.fround((random() - 0.5) * 4000),
+          z = Math.fround((random() - 0.5) * 4000);
+        return {
+          id: id + Math.floor(random() * 1000),
+          team: Number(random() > 0.5),
+          squared: Math.fround(Math.fround(x * x) + Math.fround(z * z)),
+        };
+      }),
+    );
+    for (const team of [0, 1])
+      assert.equal(nearest(groups, team, true), nearest(groups, team, false));
+  }
+  for (const left of BATTLE_BODY_RADII)
+    for (const right of BATTLE_BODY_RADII) {
+      const limit = left + right + 0.6;
+      for (let index = -100; index <= 100; index++) {
+        const d = Math.fround(limit + index * 1e-7),
+          squared = Math.fround(d * d);
+        const distance = Math.fround(Math.sqrt(squared));
+        const gap = Math.fround(
+          Math.fround(
+            Math.fround(distance - Math.fround(left)) - Math.fround(right),
+          ) - Math.fround(0.1),
+        );
+        if (gap < 0.5)
+          assert(
+            includes(squared, limit),
+            "broad rejection must not remove a body contact at a rounding boundary",
+          );
+      }
+    }
 });
 
 test("production turn math preserves exact signed-zero axis goals and converges from every quadrant", () => {
@@ -1703,7 +1911,7 @@ test("device preflight rejects buffer, binding and dispatch failures before allo
   assert.equal(large.gridBytes, 512 * 512 * 268);
   assert.equal(large.actorBytes, 64_000_000);
   assert.equal(large.damageBytes, 8_000_000);
-  assert.equal(large.visibleBytes, 32_000_000);
+  assert.equal(large.visibleBytes, 48_000_000);
   assert.equal(large.actorWorkgroups, 7813);
   assert.equal(large.clearWorkgroups, 7813);
   assert.equal(large.largestStorageBytes, 70_254_592);

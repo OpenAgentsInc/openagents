@@ -19,6 +19,31 @@ inspected). The 13 files changed by the three later commits (`22e749c`,
 render lab, `tools/build-webgpu-native.sh`, `docs/research/render-lab.md`, and
 `Cargo.lock`) were then synced, so every copied file matches `71c19bf`.
 
+### Later syncs
+
+- 2026-10-24, #12594: `f42c02cfad4d4df99f6269b4245f86200fd784b6` ("Optimize
+  million-fighter rendering and enemy searches"), the newest Aethyrforge
+  commit at the time; no later commit touches battle code. Its diff from
+  `71c19bf` was applied with the path map below: 12 files under
+  `apps/aethyr/` (renderer, tests, tools) and `docs/aethyr/engine/battle-crowd.md`.
+  `battle-crowd.ts` and `renderer.ts` carried the Detail changes from #12589,
+  and the diff applied over them without conflicts. Per the owner's decision,
+  `tools/assets/compile-battle-impostors.mjs` came in alone, as
+  `apps/aethyr/tools/assets/compile-battle-impostors.mjs`; the rest of
+  `tools/assets/` stays out. Licensed sources, baked atlases, and captures
+  stay out of Git.
+
+  Changes beyond the source commit:
+  - The baker's guard against writing atlases inside the checkout now
+    resolves the openagents checkout root (four levels up) instead of the
+    script's grandparent folder, which is `apps/aethyr` here.
+  - The silhouette threshold follows Detail (ADR 0007): the
+    `crowd_tier_distance` knob sets `RendererDetail.crowdSilhouettePixels`
+    from 8 px at full to 16 px at the knob's floor, never above 16 px, and
+    the renderer passes it to `BattleCrowd.setSilhouettePixels`. The shader
+    reads it from the battle frame's unused `sun.w` instead of the constant
+    `8.0`. At `Detail` 1 the behavior matches the source commit.
+
 ## Where things went
 
 | Aethyrforge path | openagents path |

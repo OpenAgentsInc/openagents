@@ -109,7 +109,7 @@ and a test checks that.
 | `render_scale` | 0.5 | 5 steps | Drawing-buffer size over the viewport size. Applied by `WorldSession.resize`, so the canvas stretches to fill the page |
 | `shadow_quality` | 0 | linear | How far the camera moves (2 m at full, 8 m at the floor) or turns (dot 0.995 to 0.98) before the sun shadow cascades refit |
 | `foliage_density` | 0.4 | linear | Grass draw distance over the manifest's `maxDistance`, never below `lodDistance + 5` |
-| `crowd_tier_distance` | 0.4 | linear | Battle crowd LOD and draw distances over their configured values |
+| `crowd_tier_distance` | 0.4 | linear | Battle crowd LOD and draw distances over their configured values, and the distant silhouette threshold (8 px at full, 16 px at the floor, never above 16 px) |
 
 `aa`, `occlusion`, and `cluster_lod_bias` are not declared yet. Four-sample
 anti-aliasing is fixed in every pipeline the renderer creates, so changing it

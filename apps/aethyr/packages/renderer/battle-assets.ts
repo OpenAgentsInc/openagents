@@ -25,6 +25,23 @@ interface BattleBlob {
   sha256: string;
   byteLength: number;
 }
+export interface BattleImpostorLayout {
+  views: 8;
+  tileSize: 32;
+  width: 512;
+  height: 512;
+  frames: number;
+  bounds: { minY: number; maxY: number; radius: number };
+  clips: Record<BattleClipName, BattleClip>;
+}
+export interface BattleImpostorRecipe extends BattleImpostorLayout {
+  color: BattleBlob;
+  normal: BattleBlob;
+}
+export interface BattleImpostorAssets extends BattleImpostorLayout {
+  color: Uint8Array<ArrayBuffer>;
+  normal: Uint8Array<ArrayBuffer>;
+}
 export interface BattleCrowdClassRecipe {
   kind: BattleClass;
   height: number;
@@ -50,6 +67,7 @@ export interface BattleCrowdClassRecipe {
     rgba: BattleBlob;
   };
   clips: Record<BattleClipName, BattleClip>;
+  impostor?: BattleImpostorRecipe;
 }
 export interface BattleCrowdManifest {
   schema: "aethyrforge.battle-crowd.v1";
@@ -80,6 +98,45 @@ export interface BattleCrowdClassAssets {
     rgba: Uint8Array<ArrayBuffer>;
   };
   clips: Record<BattleClipName, BattleClip>;
+  impostor?: BattleImpostorAssets;
+}
+export const BATTLE_IMPOSTOR_BYTES = 512 * 512 * 8 * 4;
+export function validateBattleImpostorLayout(
+  value: BattleImpostorLayout,
+  clips: Record<BattleClipName, BattleClip>,
+) {
+  if (
+    !value ||
+    value.views !== 8 ||
+    value.tileSize !== 32 ||
+    value.width !== 512 ||
+    value.height !== 512
+  )
+    throw Error("Prepare a supported distant battle character.");
+  integer(value.frames, 8, 256);
+  if (!value.bounds) throw Error("Prepare complete distant character bounds.");
+  finite(value.bounds.minY, -20, 20);
+  finite(value.bounds.maxY, -20, 20);
+  finite(value.bounds.radius, 0.01, 20);
+  if (value.bounds.maxY <= value.bounds.minY)
+    throw Error("Prepare complete distant character bounds.");
+  let next = 0;
+  for (const name of BATTLE_CLIPS) {
+    const clip = value.clips?.[name],
+      source = clips[name];
+    if (
+      !clip ||
+      !source ||
+      clip.duration !== source.duration ||
+      clip.loop !== source.loop ||
+      clip.firstFrame !== next ||
+      clip.frameCount !== Math.ceil(clip.duration * 12) + 1
+    )
+      throw Error("Distant battle movements must match their source timing.");
+    next += clip.frameCount;
+  }
+  if (next !== value.frames)
+    throw Error("Prepare complete distant battle movements.");
 }
 export const BATTLE_ASSET_LIMITS = Object.freeze({
   manifestBytes: 512 * 1024,
@@ -166,6 +223,14 @@ export function validateBattleCrowd(value: BattleCrowdManifest) {
       model.vat.normals,
       model.materials.rgba,
     ];
+    if (model.impostor) {
+      validateBattleImpostorLayout(model.impostor, model.clips);
+      for (const file of [model.impostor.color, model.impostor.normal]) {
+        if (file?.byteLength !== BATTLE_IMPOSTOR_BYTES)
+          throw Error("Distant battle images have inconsistent lengths.");
+        files.push(file);
+      }
+    }
     files.forEach((file) => {
       blob(file);
       total += file.byteLength;
@@ -281,6 +346,13 @@ export function validateBattleCrowdBuffers(
     for (const component of plane)
       if (!halfFinite(component))
         throw new Error("The battle crowd animation contains an invalid pose.");
+  if (
+    !!recipe.impostor !== !!model.impostor ||
+    (model.impostor &&
+      (model.impostor.color.byteLength !== BATTLE_IMPOSTOR_BYTES ||
+        model.impostor.normal.byteLength !== BATTLE_IMPOSTOR_BYTES))
+  )
+    throw Error("The distant battle images are incomplete.");
   return model;
 }
 export async function loadBattleCrowdAssets(
@@ -329,6 +401,10 @@ export async function loadBattleCrowdAssets(
       load(model.vat.normals),
       load(model.materials.rgba),
     ]);
+    const impostor = model.impostor;
+    const sprite = impostor
+      ? await Promise.all([load(impostor.color), load(impostor.normal)])
+      : undefined;
     classes.push(
       validateBattleCrowdBuffers(model, {
         kind: model.kind,
@@ -350,6 +426,15 @@ export async function loadBattleCrowdAssets(
           rgba: new Uint8Array(rgba),
         },
         clips: model.clips,
+        ...(impostor && sprite
+          ? {
+              impostor: {
+                ...impostor,
+                color: new Uint8Array(sprite[0]),
+                normal: new Uint8Array(sprite[1]),
+              },
+            }
+          : {}),
       }),
     );
   }

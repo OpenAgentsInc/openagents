@@ -131,7 +131,7 @@ fn applyBlast(point:vec3f,radius:f32,team:u32,amount:u32,kind:u32){
  let center=cellPosition(point.xz);let extent=i32(ceil(radius/battleCellSize));var hits=0u;
  for(var z=-extent;z<=extent;z++){for(var x=-extent;x<=extent;x++){
   let q=center+vec2i(x,z);if any(q<vec2i(0))||any(q>=vec2i(battleGridDimension)){continue;}
-  let c=cellIndex(q);let n=min(atomicLoad(&cells[c].count),64u);
+  let c=cellIndex(q);if !cellHasTeam(c,1u-team){continue;}let n=min(atomicLoad(&cells[c].count),64u);
   for(var i=0u;i<n;i++){
    let id=cells[c].members[i];let a=source[id];if a.motion.z<=0.0||a.info.y==team{continue;}
    let d=distance(a.pose.xyz+vec3(0,.6,0),point);
@@ -168,7 +168,7 @@ fn applyBlast(point:vec3f,radius:f32,team:u32,amount:u32,kind:u32){
     let p=frame.participantPose.xyz;let c=cellPosition(p.xz);let facing=vec2(sin(frame.participantPose.w),-cos(frame.participantPose.w));
     for(var z=-1;z<=1;z++){for(var x=-1;x<=1;x++){
      let q=c+vec2i(x,z);if any(q<vec2i(0))||any(q>=vec2i(battleGridDimension)){continue;}
-     let cell=cellIndex(q);let n=min(atomicLoad(&cells[cell].count),64u);
+     let cell=cellIndex(q);if !cellHasTeam(cell,1u-frame.participant.x){continue;}let n=min(atomicLoad(&cells[cell].count),64u);
      for(var i=0u;i<n;i++){let destination=cells[cell].members[i];let a=source[destination];let delta=a.pose.xz-p.xz;let d=length(delta);
       if a.motion.z>0.0&&a.info.y!=frame.participant.x&&d<1.8+max(0.0,bodyRadius(a.info.x)-.64)&&abs(a.pose.y-p.y)<2.0&&dot(facing,safeNormal(delta))>.5{damageActor(destination,300u,true);atomicAdd(&stats[47],300u);atomicAdd(&stats[49],1u);atomicAdd(&stats[5],1u);atomicAdd(&stats[21],300u);}
      }
@@ -223,7 +223,7 @@ fn localProjectileHit(origin:vec3f,delta:vec3f,team:u32)->f32{
  let low=cellPosition(min(origin.xz,origin.xz+delta.xz)-vec2(battleMaxBodyRadius));let high=cellPosition(max(origin.xz,origin.xz+delta.xz)+vec2(battleMaxBodyRadius));
  // <=.7m swept motion plus twice the largest 1.33m body radius spans at most 3x3 four-metre cells.
  for(var z=0;z<3;z++){let iz=low.y+z;if iz>high.y{break;}for(var x=0;x<3;x++){
-  let ix=low.x+x;if ix>high.x{break;}let cell=cellIndex(vec2i(ix,iz));let count=min(atomicLoad(&cells[cell].count),64u);
+  let ix=low.x+x;if ix>high.x{break;}let cell=cellIndex(vec2i(ix,iz));if !cellHasTeam(cell,1u-team){continue;}let count=min(atomicLoad(&cells[cell].count),64u);
   for(var i=0u;i<count;i++){let a=source[cells[cell].members[i]];if a.motion.z<=0.0||a.info.y==team{continue;}
    var height=select(1.8,3.3,a.info.x==3u);if a.info.x==2u{height=1.3;}
    best=min(best,capsuleSegmentHit(origin,delta,a.pose.xyz,height,bodyRadius(a.info.x)));

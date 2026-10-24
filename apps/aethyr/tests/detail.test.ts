@@ -149,6 +149,16 @@ test("full detail leaves the renderer exactly as it was", () => {
   assert.equal(floor.shadowRefreshMeters, 8);
   assert.equal(floor.foliageReach, 0.4);
   assert.equal(floor.crowdReach, 0.4);
+  assert.equal(floor.crowdSilhouettePixels, 16);
+  const half = rendererDetailFromKnobs([
+    { knob: "crowd_tier_distance", value: 0.7 },
+  ]);
+  assert(Math.abs(half.crowdSilhouettePixels - 12) < 1e-9);
+  // Below the knob's floor the threshold stays at the readability floor.
+  const under = rendererDetailFromKnobs([
+    { knob: "crowd_tier_distance", value: 0.2 },
+  ]);
+  assert.equal(under.crowdSilhouettePixels, 16);
 });
 
 test("sustained overload lowers renderer settings without passing the floors", () => {
@@ -157,7 +167,10 @@ test("sustained overload lowers renderer settings without passing the floors", (
     driver.observe({ interval_ms: 40 });
     const r = driver.renderer();
     assert.ok(
-      r.renderScale >= 0.5 && r.foliageReach >= 0.4 && r.crowdReach >= 0.4,
+      r.renderScale >= 0.5 &&
+        r.foliageReach >= 0.4 &&
+        r.crowdReach >= 0.4 &&
+        r.crowdSilhouettePixels <= 16,
     );
   }
   assert.equal(driver.detail, 0);

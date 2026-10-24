@@ -54,6 +54,11 @@ fn groundHeight(position:vec2f)->f32 {
 }
 fn cellPosition(position:vec2f)->vec2i {return battleGridPosition(position,frame.battle.xy);}
 fn cellIndex(position:vec2i)->u32 {return battleGridIndex(position);}
+fn cellHasTeam(cell:u32,team:u32)->bool{return (atomicLoad(&cells[cell].x)&i32(1u<<team))!=0;}
+fn withinDistanceSquared(squared:f32,limit:f32)->bool{
+ // Conservative rejection leaves the original square-root comparisons and stable ties intact.
+ let padded=limit+max(.00001,limit*.000001);return squared<=padded*padded;
+}
 fn spawn(id:u32)->vec2f {
  let columns=u32(ceil(sqrt(f32(frame.counts.x))));let rows=(frame.counts.x+columns-1u)/columns;
  let spacing=2.0*frame.battle.z/f32(columns);let jitter=vec2(random(id^frame.counts.z),random(id^frame.counts.z^0xb123u))-.5;
@@ -100,7 +105,7 @@ fn clearSpawn(location:vec2f,kind:u32,id:u32)->bool {
   let a=source[id];
   if a.motion.z>0.0{
    let position=a.pose.xz;let cell=cellIndex(cellPosition(position));let slot=atomicAdd(&cells[cell].count,1u);
-   atomicAdd(&cells[cell].x,i32((position.x-frame.battle.x)*64.0));atomicAdd(&cells[cell].z,i32((position.y-frame.battle.y)*64.0));
+   atomicOr(&cells[cell].x,i32(1u<<a.info.y));
    atomicMax(&scatterStats[0],slot+1u);if slot==0u{atomicAdd(&scatterStats[1],1u);}
    if slot<64u{cells[cell].members[slot]=id;}else{atomicAdd(&scatterStats[2],1u);}
   }
@@ -141,23 +146,29 @@ fn clearSpawn(location:vec2f,kind:u32,id:u32)->bool {
   let extent=select(1,4,kind==1u&&search&&!ranged);var visits=0u;
   for(var z=-extent;z<=extent;z++){for(var x=-extent;x<=extent;x++){
    let coordinate=cell+vec2i(x,z);if any(coordinate<vec2i(0))||any(coordinate>=vec2i(battleGridDimension)){continue;}
-   let c=cellIndex(coordinate);let population=atomicLoad(&cells[c].count);if population==0u{continue;}
-   let nearby=abs(x)<=1&&abs(z)<=1;
-   if !search&&!nearby{continue;}
+   let c=cellIndex(coordinate);let nearby=abs(x)<=1&&abs(z)<=1;
+   if !nearby{if !search||!cellHasTeam(c,1u-a.info.y){continue;}}
+   let population=atomicLoad(&cells[c].count);if population==0u{continue;}
    let tested=min(population,64u);visits+=tested;
    for(var n=0u;n<tested;n++){
     let candidate=cells[c].members[n];if candidate==id{continue;}let other=source[candidate];if other.motion.z<=0.0{continue;}
-    let delta=position-other.pose.xz;let d=length(delta);
-    if nearby&&other.info.y!=a.info.y&&(d<threatDistance||(d==threatDistance&&candidate<threatId)){threatDistance=d;threatDirection=-delta;threatId=candidate;}
-    let gap=d-bodyRadius(kind)-bodyRadius(other.info.x)-.1;
-    if nearby&&gap<.5{
+    let delta=position-other.pose.xz;let squared=dot(delta,delta);var d=-1.0;
+    if ranged&&nearby&&other.info.y!=a.info.y&&withinDistanceSquared(squared,threatDistance){
+     d=length(delta);if d<threatDistance||(d==threatDistance&&candidate<threatId){threatDistance=d;threatDirection=-delta;threatId=candidate;}
+    }
+    if nearby&&withinDistanceSquared(squared,bodyRadius(kind)+bodyRadius(other.info.x)+.6){
+     if d<0.0{d=length(delta);}let gap=d-bodyRadius(kind)-bodyRadius(other.info.x)-.1;
+     if gap<.5{
      var away=safeNormal(delta);
      if d<.0001{let angle=random(min(id,candidate)^(max(id,candidate)*0x517cc1b7u))*6.2831853;away=vec2(cos(angle),sin(angle))*select(-1.0,1.0,id<candidate);}
      // Keep the deepest contacts, sorted by gap and stable ID instead of scatter order.
      var slot=0u;for(;slot<constraintCount;slot++){let c=constraints[slot];if gap<c.z||(gap==c.z&&candidate<u32(c.w)){break;}}
      if slot<16u{let end=min(constraintCount,15u);for(var n=end;n>slot;n--){constraints[n]=constraints[n-1u];followingSpeed[n]=followingSpeed[n-1u];}constraints[slot]=vec4(away,gap,f32(candidate));followingSpeed[slot]=max(0.0,-dot(other.motion.xy,away));constraintCount=min(16u,constraintCount+1u);}
+     }
     }
-    if search&&other.info.y!=a.info.y&&(d<candidateDistance||(d==candidateDistance&&candidate<candidateId)){candidateDistance=d;candidateDirection=-delta;candidateId=candidate;}
+    if search&&other.info.y!=a.info.y&&withinDistanceSquared(squared,candidateDistance){
+     if d<0.0{d=length(delta);}if d<candidateDistance||(d==candidateDistance&&candidate<candidateId){candidateDistance=d;candidateDirection=-delta;candidateId=candidate;}
+    }
    }
   }}
   // A live target keeps ownership until a replacement is substantially nearer.
@@ -295,15 +306,17 @@ struct Draw {indexCount:u32,instanceCount:atomic<u32>,firstIndex:u32,baseVertex:
 @group(0)@binding(2)var<storage,read_write>draws:array<Draw>;
 @group(0)@binding(3)var<storage,read_write>stats:array<atomic<u32>>;
 @group(0)@binding(4)var<uniform>frame:Frame;
-var<workgroup> binCounts:array<atomic<u32>,8>;
-var<workgroup> binOffsets:array<u32,8>;
+struct Models {data:array<vec4f,4>}
+@group(0)@binding(5)var<uniform>models:Models;
+var<workgroup> binCounts:array<atomic<u32>,12>;
+var<workgroup> binOffsets:array<u32,12>;
 var<workgroup> culledCount:atomic<u32>;
 @compute @workgroup_size(32)fn clearDraws(@builtin(global_invocation_id)inv:vec3u){
- let id=inv.x;if id<8u{atomicStore(&draws[id].instanceCount,0u);}
+ let id=inv.x;if id<12u{atomicStore(&draws[id].instanceCount,0u);}
  if id==9u||id==10u||id==16u||id==24u||(id>=17u&&id<=20u){atomicStore(&stats[id],0u);}
 }
 @compute @workgroup_size(128)fn compact(@builtin(global_invocation_id)inv:vec3u,@builtin(local_invocation_index)lane:u32){
- if lane<8u{atomicStore(&binCounts[lane],0u);}if lane==0u{atomicStore(&culledCount,0u);}workgroupBarrier();
+ if lane<12u{atomicStore(&binCounts[lane],0u);}if lane==0u{atomicStore(&culledCount,0u);}workgroupBarrier();
  let id=inv.x;var survives=false;var batch=0u;var rank=0u;
  if id<frame.counts.x{
   let a=actors[id];let distance=length(a.pose.xyz-frame.eyeTime.xyz);
@@ -311,15 +324,18 @@ var<workgroup> culledCount:atomic<u32>;
   for(var plane=0u;plane<6u;plane++){outside=outside||dot(frame.planes[plane],center)<-4.5;}
   if outside{atomicAdd(&culledCount,1u);}else{
    let lod=select(0u,1u,distance>frame.tuning.x);batch=a.info.x*2u+lod;
+   let projectedHeight=models.data[a.info.x].x*frame.tuning.w/max((frame.viewProjection*center).w,.01);
+   if models.data[a.info.x].y>.5&&projectedHeight<frame.sun.w{batch=8u+a.info.x;}
    rank=atomicAdd(&binCounts[batch],1u);survives=true;
   }
  }
  workgroupBarrier();
- if lane<8u{
+ if lane<12u{
   let count=atomicLoad(&binCounts[lane]);binOffsets[lane]=0u;
   if count>0u{
    binOffsets[lane]=atomicAdd(&draws[lane].instanceCount,count);
-   atomicAdd(&stats[9u+lane%2u],count);atomicAdd(&stats[17u+lane/2u],count);atomicAdd(&stats[24],count*(draws[lane].indexCount/3u));
+   let lod=select(lane%2u,1u,lane>=8u);let kind=select(lane/2u,lane-8u,lane>=8u);
+   atomicAdd(&stats[9u+lod],count);atomicAdd(&stats[17u+kind],count);atomicAdd(&stats[24],count*(draws[lane].indexCount/3u));
   }
  }
  if lane==0u{let count=atomicLoad(&culledCount);if count>0u{atomicAdd(&stats[16],count);}}
@@ -333,7 +349,7 @@ export const BATTLE_RENDER_WGSL =
   /* wgsl */ `
 ${MMORPG_FOG_WGSL}
 struct Draw {data:vec4u}
-struct Class {clips:array<vec4f,4>,dimensions:vec4u,settings:vec4f}
+struct Class {clips:array<vec4f,4>,dimensions:vec4u,settings:vec4f,spriteClips:array<vec4f,4>,spriteSize:vec4u,spriteBounds:vec4f}
 @group(0)@binding(0)var<uniform>frame:Frame;
 @group(0)@binding(1)var<storage,read>actors:array<Actor>;
 @group(0)@binding(2)var<storage,read>visible:array<u32>;
@@ -343,6 +359,9 @@ struct Class {clips:array<vec4f,4>,dimensions:vec4u,settings:vec4f}
 @group(1)@binding(2)var materialTexture:texture_2d_array<f32>;
 @group(1)@binding(3)var materialSampler:sampler;
 @group(1)@binding(4)var<uniform>kind:Class;
+@group(1)@binding(5)var spriteColor:texture_2d_array<f32>;
+@group(1)@binding(6)var spriteNormal:texture_2d_array<f32>;
+override impostorSampleCount:u32=4u;
 struct Input {@location(0)uv:vec2f,@location(1)vertex:u32,@location(2)material:u32}
 struct Output {@builtin(position)clip:vec4f,@location(0)normal:vec3f,@location(1)uv:vec2f,@location(2)world:vec3f,@location(3)@interpolate(flat)material:u32,@location(4)@interpolate(flat)team:u32,@location(5)@interpolate(flat)hurt:f32}
 @vertex fn vertexMain(input:Input,@builtin(instance_index)instance:u32)->Output {
@@ -362,5 +381,47 @@ struct Output {@builtin(position)clip:vec4f,@location(0)normal:vec3f,@location(1
  color=mix(color,vec3(2.0,.1,.04),clamp(input.hurt*2.0,0.0,.45));
  let scale=clamp(frame.ambient.w,1.0,100.0);let fog=mmoFog(frame.eyeTime.y/scale,(input.world-frame.eyeTime.xyz)/scale);color=mix(color,mmoFogColor,fog);
  return vec4(color*${SCENE_LINEAR_SCALE},1.0);
+}
+struct SpriteOutput {
+ @builtin(position)clip:vec4f,@location(0)uv:vec2f,@location(1)world:vec3f,
+ @location(2)@interpolate(flat)tile:vec2f,@location(3)@interpolate(flat)layer:u32,
+ @location(4)@interpolate(flat)rotation:vec2f,@location(5)@interpolate(flat)team:u32,@location(6)@interpolate(flat)hurt:f32,
+}
+@vertex fn vertexImpostor(@builtin(vertex_index)vertex:u32,@builtin(instance_index)instance:u32)->SpriteOutput{
+ let a=actors[visible[draw.data.x+instance]];let corners=array<vec2f,4>(vec2(0,0),vec2(1,0),vec2(0,1),vec2(1,1));let uv=corners[vertex];
+ let toward=frame.eyeTime.xz-a.pose.xz;
+ let right=normalize(vec3(frame.viewProjection[0][0],frame.viewProjection[1][0],frame.viewProjection[2][0]));
+ let up=normalize(vec3(frame.viewProjection[0][1],frame.viewProjection[1][1],frame.viewProjection[2][1]));
+ let horizontal=(uv.x*2.0-1.0)*kind.spriteBounds.x;
+ let world=a.pose.xyz+vec3(0,kind.spriteBounds.y,0)+right*horizontal+up*((1.0-uv.y)*(kind.spriteBounds.z-kind.spriteBounds.y));
+ let azimuth=acos(clamp(toward.y*inverseSqrt(max(dot(toward,toward),1e-8)),-1.0,1.0))*select(1.0,-1.0,toward.x<0.0);
+ let rotation=3.141592654-a.pose.w;let theta=azimuth-rotation;
+ let layer=u32(floor(fract(theta/6.2831853+1.0)*f32(kind.spriteSize.z)+.5))%kind.spriteSize.z;
+ let animation=kind.spriteClips[min(a.info.w,3u)];let clock=select(min(a.motion.w,animation.x),a.motion.w%animation.x,animation.w>.5);
+ let frameIndex=u32(animation.y)+u32(round(clamp(clock/animation.x,0.0,1.0)*max(animation.z-1.0,0.0)));
+ let columns=kind.spriteSize.x/kind.spriteSize.w;
+ var output:SpriteOutput;output.clip=frame.viewProjection*vec4(world,1);output.uv=uv;output.world=world;
+ output.tile=vec2f(vec2u(frameIndex%columns,frameIndex/columns))*f32(kind.spriteSize.w);output.layer=layer;
+ output.rotation=vec2(cos(rotation),sin(rotation));output.team=a.info.y;output.hurt=select(0.0,a.clocks.y,a.motion.z>0.0);return output;
+}
+@fragment fn fragmentImpostor(input:SpriteOutput)->@location(0)vec4f{
+ let tileSize=f32(kind.spriteSize.w);let footprint=min(vec2(4),max(vec2(1),fwidth(input.uv)*tileSize));
+ let offsets=array<vec2f,4>(vec2(-.25,-.25),vec2(.25,-.25),vec2(-.25,.25),vec2(.25,.25));
+ var albedo=vec4f(0);var encodedNormal=vec4f(0);
+ for(var sample=0u;sample<4u;sample++){
+  let pixel=clamp(input.uv*tileSize+offsets[sample]*footprint,vec2(.5),vec2(tileSize-.5));
+  let coordinate=(input.tile+pixel)/vec2f(kind.spriteSize.xy);
+  albedo+=textureSampleLevel(spriteColor,materialSampler,coordinate,i32(input.layer),0.0)*.25;
+  encodedNormal+=textureSampleLevel(spriteNormal,materialSampler,coordinate,i32(input.layer),0.0)*.25;
+ }
+ if albedo.a<select(.5,.01,impostorSampleCount>1u){discard;}
+ let decoded=encodedNormal.xyz/max(encodedNormal.a,.001)*2.0-1.0;let local=decoded*inverseSqrt(max(dot(decoded,decoded),1e-8));
+ let normal=vec3(input.rotation.x*local.x+input.rotation.y*local.z,local.y,-input.rotation.y*local.x+input.rotation.x*local.z);
+ let faction=select(vec3(.3,.55,1),vec3(1,.27,.16),input.team==1u);
+ let texel=albedo.rgb/max(albedo.a,.001);let light=max(dot(normal,normalize(frame.sun.xyz)),0.0);
+ var color=mix(texel,texel*faction,.12)*(frame.ambient.rgb+frame.sunColor.rgb*light);
+ color=mix(color,vec3(2,.1,.04),clamp(input.hurt*2.0,0.0,.45));
+ let scale=clamp(frame.ambient.w,1.0,100.0);let fog=mmoFog(frame.eyeTime.y/scale,(input.world-frame.eyeTime.xyz)/scale);color=mix(color,mmoFogColor,fog);
+ return vec4(color*${SCENE_LINEAR_SCALE},select(1.0,albedo.a,impostorSampleCount>1u));
 }
 `;
