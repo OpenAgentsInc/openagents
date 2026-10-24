@@ -129,10 +129,14 @@ The Vite environment for each profile:
 `https://TAG---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app` and
 `https://TAG---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app`.
 
+`engine_artifact_sha256` in a publishing runtime is the SHA-256 of the
+profile's release manifest, the `release.json` that `render.py` writes. The
+manifest embeds the SDK URL, so the value changes whenever the SDK does, even
+for the same engine release; earlier pins follow the same rule.
+
 The publishing runtimes (`demos/runtimes/*.json`) also name the scene, its
 artifacts, and its materials. When a profile's asset set is unchanged, the
-candidate carries them over and sets `engine_artifact_sha256` to the SHA-256 of
-the profile's `release.json`. When the asset set changed, `check` and `pin`
+candidate carries them over. When the asset set changed, `check` and `pin`
 need the reviewed runtime JSON in `AETHYR_RUNTIME_HOUSE` or
 `AETHYR_RUNTIME_PLANET`; the script checks its identity fields and that every
 artifact it lists is in the new asset set.
@@ -143,7 +147,8 @@ artifact it lists is in the new asset set.
 context against `build.json`. Then, for each profile:
 
 1. Uploads the asset set once to the bucket the live `aethyrforge-preview`
-   service already mounts (`AETHYR_ASSET_BUCKET` overrides it). An existing
+   service already mounts, `openagentsgemini-aethyrforge-releases`
+   (`AETHYR_ASSET_BUCKET` overrides it). An existing
    `assetsets/ASSET_SET_SHA256/assets-manifest.json` means the set is already
    there; nothing under that prefix is overwritten (`--no-clobber`), and the
    manifest is written last.
@@ -161,6 +166,11 @@ context against `build.json`. Then, for each profile:
      --add-volume name=runtime,type=cloud-storage,bucket=BUCKET,readonly=true,mount-options=only-dir=assetsets/ASSET_SET_SHA256 \
      --add-volume-mount volume=runtime,mount-path=/runtime
    ```
+
+   The preview service already has the read-only gcsfuse volume `runtime` at
+   `/runtime`. Every release has been deployed with these same flags against
+   it, which point the volume at the new asset set; no `--remove-volume` is
+   needed.
 
 4. Checks that both tag URLs answer `/health` with the release's
    `X-Aethyrforge-Release` header over HTTP/2, that the preview serves its
