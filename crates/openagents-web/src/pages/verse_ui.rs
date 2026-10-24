@@ -68,14 +68,7 @@ pub(crate) fn document(body: String, surface: &str) -> String {
         surface,
         "marketing" | "universe" | "studio" | "player" | "setup" | "invite" | "auth"
     ));
-    let mut body = body.replacen("<html ", &format!("<html data-verse-ui=\"{surface}\" "), 1);
-    for old in [
-        "/new-lander/house/style.css",
-        "/new-lander/play/style.css",
-        "/new-lander/planet/style.css",
-    ] {
-        body = body.replace(&format!("<link rel=\"stylesheet\" href=\"{old}\">"), "");
-    }
+    let body = body.replacen("<html ", &format!("<html data-verse-ui=\"{surface}\" "), 1);
     let assets = if matches!(surface, "marketing" | "auth") {
         STYLE.into()
     } else {

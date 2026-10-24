@@ -61,7 +61,6 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(HOUSE, get(page))
         .route("/new-lander/house/boot.js", get(boot))
-        .route("/new-lander/house/style.css", get(style))
         .route(
             "/new-lander/house/{*file}",
             get(|| async { StatusCode::NOT_FOUND }),
@@ -147,7 +146,6 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
             meta id="publish-enabled" content=(runtime.is_some_and(|p|p.engine_release==r.release&&p.sdk_url==r.sdk_url).to_string());
             meta charset="utf-8"; meta name="viewport" content="width=device-width,initial-scale=1";
             title { (title) " · OpenAgents" }
-            link rel="stylesheet" href="/new-lander/house/style.css";
         } body {
             main {
                 iframe id="engine" title=(title) data-engine-url=(r.engine_url) {}
@@ -461,15 +459,6 @@ fn boot_release(r: Release) -> Response {
     )
 }
 
-async fn style() -> Response {
-    response(
-        StatusCode::OK,
-        include_str!("../../content/new-lander-house.css"),
-        "text/css; charset=utf-8",
-        None,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,6 +501,8 @@ mod tests {
             "src/main.ts",
             "assets/old.js",
             "kiln/pkg/kiln.js",
+            // The studio's old blue palette; the design system styles the studio.
+            "style.css",
         ] {
             let uri = format!("{HOUSE}/{file}");
             let result = app
