@@ -824,10 +824,11 @@ if medieval_release:
 # A rollback uses the earlier revision's own settings. Explicitly setting
 # WEB_VERSE_MVP=0 disables new publication/allocation without rewriting old links.
 verse_runtime_names = ("OPENAGENTS_VERSE_PUBLISH_RUNTIME", "OPENAGENTS_VERSE_PERSONAL_RUNTIME")
-web["env"] = [e for e in web.get("env", []) if e["name"] not in verse_runtime_names]
+web["env"] = [e for e in web.get("env", []) if e["name"] not in (*verse_runtime_names, "OPENAGENTS_HAUNT_RELEASE")]
+demo_root = Path(launcher_path).parents[2] / "crates/openagents-web/content/demos"
+house = json.loads((demo_root / "haunted-house.json").read_text())
+web["env"].append({"name": "OPENAGENTS_HAUNT_RELEASE", "value": json.dumps(house, separators=(",", ":"))})
 if os.environ.get("WEB_VERSE_MVP", "1") == "1":
-    demo_root = Path(launcher_path).parents[2] / "crates/openagents-web/content/demos"
-    house = json.loads((demo_root / "haunted-house.json").read_text())
     for env_name, profile in zip(verse_runtime_names, ("haunted-house", "personal-planet")):
         runtime = json.loads((demo_root / "runtimes" / (profile + ".json")).read_text())
         if runtime["template_world"] != profile:

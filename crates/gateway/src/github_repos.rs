@@ -352,6 +352,7 @@ mod tests {
                 "/v1/account/github/repositories",
                 "/v1/account/github/token",
                 "/v1/projects",
+                "/v1/projects/ensure",
                 "/v1/projects/{id}",
                 "/v1/projects/{id}/members",
                 "/v1/projects/{id}/members/{member}",

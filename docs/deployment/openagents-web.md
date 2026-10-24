@@ -1503,3 +1503,8 @@ metadata; they contain no private source or asset files. Promotion checks that
 the candidate enables publishing before allowing the normal traffic switch.
 `WEB_VERSE_MVP=0` disables new publishing and planet allocation for a promotion;
 already published links keep their own saved runtime registration.
+Promotion applies the house entry configuration with these registrations. An SDK
+or input fix can use new delivery URLs while retaining the compatible engine
+identity and asset set, so existing saves still open. The production gateway must
+also serve `POST /v1/projects/ensure`; the gateway smoke checks this route with an
+empty request, which creates no project.
