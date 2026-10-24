@@ -1,3 +1,19 @@
+# OpenAgents 1.0.0 (1023)
+
+A new Zones screen opens worlds and workspaces from one place. Tap Zones in the
+toolbar above your sessions. You will see three cards: The Grid, The Haunted
+House, and The Verse.
+
+- The Grid takes you back to your sessions and coding agents.
+- The Haunted House and The Verse open in a full-screen view with a close
+  button. This build checks whether your iPhone can draw them. If it can't, you
+  see "can't run here yet" with Open in browser; tap it and check the world
+  opens in Safari. If the view stays on loading, close it: worlds start inside
+  the app with the next engine update.
+
+Open each card, close it, and switch apps while a world is open. Report what
+the Haunted House showed on your iPhone and your iOS version.
+
 # OpenAgents 1.0.0 (1022)
 
 Medieval Town shows a loading progress bar, the current item, file and byte
