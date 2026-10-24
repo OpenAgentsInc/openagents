@@ -1492,3 +1492,14 @@ On the Grid homepage, walking through an arch asks the GPUI chat to stand
 the tenant's page full screen with its own Back to the Grid button
 (`homeHostedOpen`); no page elements are drawn over the world. On other
 pages the arch opens the tenant as its own page.
+
+### Verse creator runtime registration
+
+Production promotion registers the immutable Haunted House and personal-planet
+runtimes from `crates/openagents-web/content/demos/runtimes/`. Keep the house
+registration aligned with `content/demos/haunted-house.json` when changing engine
+releases. The registrations contain URLs, hashes, and licensed runtime asset
+metadata; they contain no private source or asset files. Promotion checks that
+the candidate enables publishing before allowing the normal traffic switch.
+`WEB_VERSE_MVP=0` disables new publishing and planet allocation for a promotion;
+already published links keep their own saved runtime registration.

@@ -462,6 +462,28 @@ mod tests {
     };
     use tower::ServiceExt;
 
+    #[test]
+    fn registered_creator_runtimes_match_the_shipped_worlds() {
+        let house: aethyrforge_host::PublishRuntime = serde_json::from_str(include_str!(
+            "../../content/demos/runtimes/haunted-house.json"
+        ))
+        .unwrap();
+        let personal: aethyrforge_host::PublishRuntime = serde_json::from_str(include_str!(
+            "../../content/demos/runtimes/personal-planet.json"
+        ))
+        .unwrap();
+        house.validate_current().unwrap();
+        personal.validate_current().unwrap();
+        let demo: serde_json::Value =
+            serde_json::from_str(include_str!("../../content/demos/haunted-house.json")).unwrap();
+        assert_eq!(house.engine_url, demo["engine_url"]);
+        assert_eq!(house.sdk_url, demo["sdk_url"]);
+        assert_eq!(house.engine_release, demo["release"]);
+        assert_eq!(house.template_world, "haunted-house");
+        assert_eq!(personal.template_world, "personal-planet");
+        assert_ne!(personal.engine_url, house.engine_url);
+    }
+
     #[tokio::test]
     async fn new_lander_house_never_serves_legacy_engine_or_source_files() {
         let root = tempfile::tempdir().unwrap();

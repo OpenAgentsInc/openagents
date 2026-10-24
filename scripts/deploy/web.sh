@@ -581,6 +581,7 @@ promote() {
         "$ROOT/deploy/production/web.sh" "$stack_image" "$serve_image" \
         "$ROOT/deploy/staging/gateway.sh" "$retire_serve" > "$spec" << 'PY'
 import json, os, re, sys
+from pathlib import Path
 
 service, revision = (json.load(open(p)) for p in sys.argv[1:3])
 image, name, launcher_path, stack_image, serve_image, gateway_launcher_path, retire_serve = sys.argv[3:10]
@@ -819,6 +820,24 @@ if medieval_release:
     json.loads(medieval_release)
     web["env"] = [e for e in web.get("env", []) if e["name"] != "OPENAGENTS_MEDIEVAL_RELEASE"]
     web["env"].append({"name": "OPENAGENTS_MEDIEVAL_RELEASE", "value": medieval_release})
+# Keep the creator journey enabled with the same immutable runtimes as the demo.
+# A rollback uses the earlier revision's own settings. Explicitly setting
+# WEB_VERSE_MVP=0 disables new publication/allocation without rewriting old links.
+verse_runtime_names = ("OPENAGENTS_VERSE_PUBLISH_RUNTIME", "OPENAGENTS_VERSE_PERSONAL_RUNTIME")
+web["env"] = [e for e in web.get("env", []) if e["name"] not in verse_runtime_names]
+if os.environ.get("WEB_VERSE_MVP", "1") == "1":
+    demo_root = Path(launcher_path).parents[2] / "crates/openagents-web/content/demos"
+    house = json.loads((demo_root / "haunted-house.json").read_text())
+    for env_name, profile in zip(verse_runtime_names, ("haunted-house", "personal-planet")):
+        runtime = json.loads((demo_root / "runtimes" / (profile + ".json")).read_text())
+        if runtime["template_world"] != profile:
+            sys.exit("Verse runtime has the wrong world: " + profile)
+        if profile == "haunted-house" and any(
+            runtime[field] != house[demo_field]
+            for field, demo_field in (("engine_url", "engine_url"), ("sdk_url", "sdk_url"), ("engine_release", "release"))
+        ):
+            sys.exit("Register the publishing runtime for the current Haunted House release first.")
+        web["env"].append({"name": env_name, "value": json.dumps(runtime, separators=(",", ":"))})
 traffic = []
 for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):
@@ -866,6 +885,16 @@ PY
     fi
     took "production revision (no traffic)" "$t"
     [ -z "${DRY_RUN:-}" ] || { say "  spec: $spec"; return 0; }
+    if [ "${WEB_VERSE_MVP:-1}" = 1 ]; then
+        curl -fsS --retry 3 --connect-timeout 5 --max-time 30 \
+            -H 'X-OpenAgents-Test: 1' "$TAG_URL/new-lander/house" > "$STATE/verse-candidate.html"
+        python3 - "$STATE/verse-candidate.html" << 'PY'
+import pathlib, sys
+page = pathlib.Path(sys.argv[1]).read_text()
+if 'id="publish-enabled" content="true"' not in page:
+    sys.exit("Verse publishing is disabled on the candidate. Check its registered runtime before shifting traffic.")
+PY
+    fi
     printf '%s\n' "$previous" > "$STATE/$SERVICE.previous"
     printf '%s\n' "$name" > "$STATE/$SERVICE.candidate"
     printf '%s %s %s\n' "$DEPLOY_EVENT_RUN" "$DEPLOY_EVENT_STARTED" "${commit:--}" > "$STATE/$SERVICE.deploy-event"
