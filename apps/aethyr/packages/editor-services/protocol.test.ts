@@ -283,14 +283,14 @@ test("shader source admission counts encoded bytes and rejects oversized ready p
   const ready = { ...base, type: "ready", status: INITIAL_STATUS, assets: [] };
   assert.equal(
     isPreviewEvent(
-      { ...ready, shaderSource: "a".repeat(65536) },
+      { ...ready, shaderSource: "a".repeat(131072) },
       "active-session",
     ),
     true,
   );
   assert.equal(
     isPreviewEvent(
-      { ...ready, shaderSource: "é".repeat(32769) },
+      { ...ready, shaderSource: "é".repeat(65537) },
       "active-session",
     ),
     false,
