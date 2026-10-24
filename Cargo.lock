@@ -240,6 +240,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethyr-tokens"
+version = "1.0.0"
+
+[[package]]
 name = "aethyrforge-host"
 version = "1.0.0"
 dependencies = [

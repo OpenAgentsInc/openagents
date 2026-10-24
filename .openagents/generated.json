@@ -74,6 +74,14 @@
       "check": "apps/openagents/scripts/android/build-core.sh leaves the committed binding unchanged",
       "requires": {"env": ["ANDROID_NDK_HOME"], "commands": ["cargo-ndk"]},
       "regenerate": "CARGO_TARGET_DIR=\"${OPENAGENTS_APP_TARGET_DIR:-${CARGO_TARGET_DIR:?}-app}\" apps/openagents/scripts/android/build-core.sh"
+    },
+    {
+      "name": "aethyr-tokens",
+      "files": ["apps/verse-ui/src/aethyr/tokens.css"],
+      "sources": ["crates/aethyr-tokens/"],
+      "package": "aethyr-tokens",
+      "check": "cargo test -p aethyr-tokens --lib tests::generated_stylesheet_is_current",
+      "regenerate": ". ./scripts/dev/cargo-build-env.sh; cargo run -q -p aethyr-tokens -- --write"
     }
   ]
 }

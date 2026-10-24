@@ -1,47 +1,13 @@
 @import "tailwindcss";
+/* Design tokens, generated from crates/aethyr-tokens. */
+@import "./aethyr/tokens.css";
 @source "./**/*.{ts,tsx}";
+/* The Aethyr renderer uses design-system classes only. */
+@source not "./aethyr";
 @custom-variant dark (&:is(.dark *));
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-destructive: var(--destructive);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
-}
 :root {
   color-scheme: dark;
-  --background: #000000;
-  --foreground: #fafafa;
-  --card: #18181bef;
-  --popover: #18181b;
-  --primary: #fafafa;
-  --primary-foreground: #18181b;
-  --secondary: #27272a;
-  --muted: #18181b;
-  --muted-foreground: #a1a1aa;
-  --accent: #3f3f46;
-  --border: #ffffff1f;
-  --input: #ffffff28;
-  --ring: #d4d4d8;
-  --destructive: #f87171;
-  --radius: 0.75rem;
+  /* Older names some Verse controls still use. */
   --ink: var(--foreground);
   --line: var(--border);
   --cyan: var(--primary);
@@ -1819,14 +1785,7 @@
    The homepage (marketing) and Verse (universe) surfaces use only
    these; their old hand-written stylesheet is gone.
    =================================================================== */
-:root {
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --hud-glass: #0b0c10cc;
-  --hud-line: #ffffff26;
-  --hud-tick: #ffffff73;
-  --hud-glow: 0 0 0 1px #ffffff14, 0 18px 60px #00000080;
-  --hud-header: 64px;
-}
+/* The HUD tokens (--hud-*) are in aethyr/tokens.css. */
 [data-verse-ui] body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
@@ -1840,7 +1799,7 @@
   top: -80px;
   z-index: 80;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--hud-radius-control);
   background: var(--primary);
   color: var(--primary-foreground);
 }
@@ -1849,8 +1808,8 @@
 }
 .hud-label {
   margin: 0;
-  font: 500 11px/1.4 var(--font-mono);
-  letter-spacing: 0.18em;
+  font: 500 var(--hud-label-size)/1.4 var(--font-mono);
+  letter-spacing: var(--hud-label-tracking);
   text-transform: uppercase;
   color: var(--muted-foreground);
   display: flex;
@@ -1863,7 +1822,7 @@
   border-radius: 50%;
   background: var(--foreground);
   box-shadow: 0 0 10px #ffffffb3;
-  animation: hud-pulse 2.4s ease-in-out infinite;
+  animation: hud-pulse var(--hud-pulse) ease-in-out infinite;
 }
 @keyframes hud-pulse {
   50% {
@@ -1878,16 +1837,16 @@
   min-height: 40px;
   padding: 0 16px;
   border: 1px solid var(--hud-line);
-  border-radius: 8px;
+  border-radius: var(--hud-radius-control);
   background: #18181bcc;
   color: var(--foreground);
   font: 500 14px/1 var(--font-sans);
   text-decoration: none;
   cursor: pointer;
   transition:
-    background 0.15s,
-    border-color 0.15s,
-    box-shadow 0.15s;
+    background var(--hud-motion),
+    border-color var(--hud-motion),
+    box-shadow var(--hud-motion);
 }
 [data-verse-ui] .hud-button.hud-primary {
   background: var(--primary);
@@ -1923,8 +1882,8 @@
   border: 1px solid var(--hud-line);
   border-radius: var(--radius);
   box-shadow: var(--hud-glow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(var(--hud-blur));
+  -webkit-backdrop-filter: blur(var(--hud-blur));
 }
 /* Corner ticks give panels the game HUD frame. */
 .hud-panel::before,
@@ -1933,8 +1892,8 @@
 .hud-card::after {
   content: "";
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: var(--hud-tick-size);
+  height: var(--hud-tick-size);
   pointer-events: none;
   border-color: var(--hud-tick);
   border-style: solid;
@@ -1957,7 +1916,7 @@
   margin: 0;
   padding: 10px 14px;
   border: 1px solid var(--hud-line);
-  border-radius: 8px;
+  border-radius: var(--hud-radius-control);
   background: var(--hud-glass);
   color: #d4d4d8;
   font-size: 13px;
@@ -1991,8 +1950,8 @@
   padding: 0 clamp(16px, 4vw, 40px);
   border-bottom: 1px solid var(--border);
   background: #000000b3;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(var(--hud-blur-bar));
+  -webkit-backdrop-filter: blur(var(--hud-blur-bar));
 }
 .lp-brand {
   display: inline-flex;
@@ -2097,11 +2056,11 @@
   padding: 24px;
   text-decoration: none;
   transition:
-    border-color 0.15s,
-    transform 0.15s;
+    border-color var(--hud-motion),
+    transform var(--hud-motion);
 }
 .hud-index {
-  font: 500 11px var(--font-mono);
+  font: 500 var(--hud-label-size) var(--font-mono);
   letter-spacing: 0.16em;
   color: var(--muted-foreground);
 }
@@ -2185,7 +2144,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  transition: opacity 0.8s;
+  transition: opacity var(--hud-fade);
 }
 .verse-still svg {
   width: min(900px, 120%);
@@ -2457,9 +2416,6 @@
 }
 
 @media (max-width: 760px) {
-  :root {
-    --hud-header: 56px;
-  }
   .lp-header {
     gap: 12px;
   }
