@@ -21,8 +21,8 @@ export async function checkVisits({page,context,base,config,out,errors,visitorKe
   const privateInvite=await call(create,{command_id:'signed-visit',anonymous:false,hours:1});
   const manage=`/new-lander/invite/${published.world}/${published.event.release}`;
   await page.goto('https://openagents.com'+manage);
-  await page.selectOption('select[name="access"]','signed-in');await page.selectOption('select[name="hours"]','24');
-  await page.click('button[type="submit"]');await page.waitForURL('https://openagents.com'+manage);await page.locator('a[href^="/new-lander/visit/"]').nth(2).waitFor();
+  await page.click('[data-aethyr-id=access-signed-in]');await page.click('[data-aethyr-id=hours-24]');
+  await page.click('[data-aethyr-id=invite-create]');await page.waitForURL('https://openagents.com'+manage);await page.locator('[data-aethyr-id=invitations] a[href^="/new-lander/visit/"]').nth(2).waitFor();
   const visitor=await context.browser().newContext({viewport:{width:1280,height:850}});
   const anonymous=await context.browser().newContext({viewport:{width:390,height:844}});
   const others=[visitor,anonymous];

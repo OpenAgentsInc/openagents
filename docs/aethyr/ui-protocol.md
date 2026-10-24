@@ -15,6 +15,7 @@ them, `aethyr.ui.v1`, and the design tokens both sides use
 | React DOM renderer | `apps/verse-ui/src/aethyr/renderer.tsx`, joined to a controller by `host.tsx` |
 | Entry dialog | `apps/verse-ui/src/aethyr/entry.ts` |
 | `/new-lander/verse` | `verse.ts` (controller) and `verse-host.tsx` (web host and engine bridge); see [Surfaces](#surfaces) |
+| Planet setup, invitations, player bar | `house.ts` (controllers) and `house-host.tsx` (web host and bridge); see [Surfaces](#surfaces) |
 
 The web files move to `apps/aethyr` when that package exists.
 
@@ -172,6 +173,26 @@ this repository (#12590) stops writing to the page, the bridge goes.
 Browser checks address the visible controls as `[data-aethyr-id=ID]`, with
 the same IDs the bridge uses (`[data-aethyr-id=continue-guest]`,
 `[data-aethyr-id=option-haunted-house]`, `[data-aethyr-id=planet-setup]`).
+
+### Planet setup, invitations, and the player bar (#12588)
+
+The same pattern serves three house pages. Each server page keeps its own
+markup in `.house-bridge` and adds an empty `#house-hud`; once
+`house-host.tsx` mounts, it sets `data-aethyr-house` on the root, which hides
+the bridge, and draws the controller's tree into `#house-hud`.
+
+| Page | Controller | What the bridge keeps |
+| --- | --- | --- |
+| `/new-lander/planet/{id}` | `makeSetupController`: the name field (a draft until saved), Save, and the courtyard link | The name form and its CSRF token. Save fills `#planet-name` and submits the form. |
+| `/new-lander/invite/{world}/{release}` | `makeInviteController`: access and expiry as chips, Create, and the invitation links | The invitation form. Create sets both selects and submits it. Rows carry `data-state`, `data-access`, and `data-expiry`. |
+| `/new-lander/play/...`, `/new-lander/visit/{id}` | `makePlayerController`: back, title, version, Retry, and Full screen | The header with `#world-retry` and `#world-fullscreen`, which the release listens on and hides when a visit ends. The bar follows `hidden` on them. |
+
+The engine frame, `#world-notice`, `#player-controls`, and the visit chat
+(`#visit`) stay outside the bridge, as the release draws them. Browser checks
+use `[data-aethyr-id=planet-name] input`, `[data-aethyr-id=planet-save]`,
+`[data-aethyr-id=access-signed-in]`, `[data-aethyr-id=invite-create]`, and
+`[data-aethyr-id=world-retry]`. The studio (`/new-lander/house`) still runs on
+the release's own controls.
 
 ## Design tokens
 

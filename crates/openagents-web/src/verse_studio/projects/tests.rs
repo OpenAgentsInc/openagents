@@ -964,6 +964,8 @@ async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_
     assert_eq!(status, StatusCode::OK);
     let page = page["text"].as_str().unwrap();
     assert!(page.contains("id=\"world-retry\""));
+    // The player bar draws into `#house-hud`; the header stays as its bridge.
+    assert!(page.contains("<div id=\"house-hud\" class=\"house-hud\"></div><header class=\"house-bridge\" data-version=\"1\">"));
     assert!(
         page.contains("id=\"engine\" hidden"),
         "The base scene starts hidden before SDK initialization"
@@ -1240,6 +1242,12 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
         .and_then(|v| v.split('"').next())
         .expect("Native form has a token");
     assert!(token.len() > 16, "The form never contains an empty token");
+    // The setup controller draws into `#house-hud`; the form stays as its bridge.
+    assert!(
+        setup.body.contains(
+            "<div id=\"house-hud\" class=\"house-hud\"></div><main class=\"house-bridge\">"
+        )
+    );
     let (native_status, native_setup) = alice.call(&world, "GET", &setup_path, Value::Null).await;
     assert_eq!(native_status, StatusCode::OK);
     assert!(
@@ -1827,5 +1835,20 @@ async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
         managed.headers[axum::http::header::REFERRER_POLICY],
         "same-origin"
     );
+    // The invitation controller reads the bridge: the form, the version,
+    // and each row's state, access, and expiry.
+    assert!(managed.body.contains("id=\"house-hud\""));
+    assert!(
+        managed
+            .body
+            .contains("<main class=\"house-bridge\" data-version=\"")
+    );
+    assert!(managed.body.contains("<p class=\"invite-intro\">"));
+    assert!(
+        managed
+            .body
+            .contains("<li class=\"invitation\" data-state=\"Revoked\"")
+    );
+    assert!(managed.body.contains("select name=\"access\""));
     task.abort();
 }

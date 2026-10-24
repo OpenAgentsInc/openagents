@@ -99,7 +99,7 @@ export async function checkProfileControls({page,context,base,config,out,errors}
   for(const width of [1440,390]){
     await page.setViewportSize({width,height:width===390?844:1000});
     await fullSize(player);
-    for(const selector of ['#world-retry','#world-fullscreen'])await hit(page,selector);
+    for(const selector of ['[data-aethyr-id=world-retry]','[data-aethyr-id=world-fullscreen]'])await hit(page,selector);
     if(invite){await hit(page,'#visit-toggle');await page.click('#visit-toggle');await hit(page,'#visit-toggle');await page.click('#visit-toggle');}
     await page.screenshot({path:path.join(out,`profile-player-${personal?'personal':'house'}-${width}.png`)});
   }

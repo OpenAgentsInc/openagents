@@ -527,10 +527,10 @@ try {
     await page.screenshot({path:path.join(out,'planet-awarded-mobile.png')});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await page.click('[data-aethyr-id=planet-setup]');await page.waitForURL('https://openagents.com'+planetPath);
-    await page.fill('#planet-name','Moon garden');const formArrived=new Promise(resolve=>planetFormArrived=resolve);await page.click('button[type="submit"]');
+    await page.fill('[data-aethyr-id=planet-name] input','Moon garden');const formArrived=new Promise(resolve=>planetFormArrived=resolve);await page.click('[data-aethyr-id=planet-save]');
     const formResult=await formArrived;assert.equal(formResult.status,303);assert.equal(formResult.origin,'https://openagents.com');
-    await page.waitForFunction(()=>document.querySelector('h1')?.textContent==='Moon garden',null,{timeout:10000});
-    await page.reload();assert.equal(await page.locator('h1').innerText(),'Moon garden');
+    await page.waitForFunction(()=>document.querySelector('[data-aethyr-id=setup-title]')?.textContent==='Moon garden',null,{timeout:10000});
+    await page.reload();assert.equal(await page.locator('[data-aethyr-id=setup-title]').innerText(),'Moon garden');assert.equal(await page.locator('[data-aethyr-id=planet-name] input').inputValue(),'Moon garden');
     await page.screenshot({path:path.join(out,'planet-setup-mobile.png')});
     await secondTab.reload();await secondTab.waitForFunction(()=>document.querySelector('[data-aethyr-id=world-title]').textContent==='Moon garden');
     assert.deepEqual(errors,[]);
@@ -616,7 +616,7 @@ try {
   await guestPage.screenshot({path:path.join(out,'playable-reload-failed.png')});
   const failedSession=(await guestSnapshot()).engine.session;
   await guestEditor.evaluate(()=>sessionStorage.removeItem('fixture-player-reload-mode'));
-  await guestPage.click('#world-retry');
+  await guestPage.click('[data-aethyr-id=world-retry]');
   await guestPage.waitForFunction(previous=>{
     const s=window.versePlayer&&JSON.parse(window.versePlayer.snapshot());
     return s?.engine.session!==previous&&s?.engine.receipts.some(r=>r.outcome.message==='Playable version opened.')&&!document.querySelector('#engine').hidden;
@@ -635,7 +635,7 @@ try {
   });
   await guestPage.waitForFunction(()=>['closed','revoked'].includes(JSON.parse(window.versePlayer.snapshot()).engine.phase)&&document.querySelector('#engine').hidden);
   assert.equal(await guestPage.locator('#world-notice').isVisible(),true,'A post-success fatal status cannot leave the old frame interactive');
-  await guestPage.click('#world-retry');
+  await guestPage.click('[data-aethyr-id=world-retry]');
   await guestPage.waitForFunction(previous=>{
     const s=JSON.parse(window.versePlayer.snapshot());return s.engine.session!==previous&&s.engine.receipts.some(r=>r.outcome.message==='Playable version opened.')&&!document.querySelector('#engine').hidden;
   },recoveredSession,{timeout:30000});

@@ -38,6 +38,7 @@ import { inputStyles } from "./components/ui/input";
 import { textareaStyles } from "./components/ui/textarea";
 import { nativeSelectStyles } from "./components/ui/native-select";
 import { mountVerse } from "./aethyr/verse-host";
+import { mountHouse } from "./aethyr/house-host";
 
 const openAtom = Atom.make(false);
 const actionsAtom = Atom.make<AvailableAction[]>([]);
@@ -228,6 +229,13 @@ if (document.documentElement.hasAttribute("data-verse-ui") && !window.verseUi) {
       if (document.documentElement.dataset.verseUi === "universe")
         yield* Effect.acquireRelease(Effect.sync(mountVerse), (dispose) =>
           Effect.sync(() => dispose?.()),
+        );
+      // Planet setup, invitations, and the player bar: house controllers.
+      const surface = document.documentElement.dataset.verseUi;
+      if (surface === "setup" || surface === "invite" || surface === "player")
+        yield* Effect.acquireRelease(
+          Effect.sync(() => mountHouse(surface)),
+          (dispose) => Effect.sync(() => dispose?.()),
         );
       yield* Effect.acquireRelease(Effect.sync(acquireUi), (dispose) =>
         Effect.sync(dispose),
