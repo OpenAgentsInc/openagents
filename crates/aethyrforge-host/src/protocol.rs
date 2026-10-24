@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
 pub const VERSION: u16 = 7;
+/// The fixed public string an engine document sends to announce itself. It
+/// carries no authority; the host answers with `hello` only to its exact peer.
+pub const BOOTSTRAP: &str = "openagents.aethyrforge.host/7/listening";
 pub const MAX_BYTES: usize = 512 * 1024;
 /// Leave room for project, session, request, and message wrapper fields.
 pub const MAX_ACTION_BYTES: usize = MAX_BYTES - 8 * 1024;
