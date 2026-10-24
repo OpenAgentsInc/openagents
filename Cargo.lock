@@ -240,6 +240,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethyr-profile"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aethyr-tokens"
 version = "1.0.0"
 
