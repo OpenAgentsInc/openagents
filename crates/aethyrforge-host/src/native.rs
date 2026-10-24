@@ -35,7 +35,7 @@ pub enum NativeEvent {
     /// The engine announced itself. Deliver this `hello` envelope to it.
     Hello(String),
     /// A validated message on the session.
-    Message(Message),
+    Message(Box<Message>),
 }
 
 /// Bounds every native frame before any parsing, as `wire` does for ports.
@@ -109,7 +109,9 @@ impl NativeHost {
         if !self.listened {
             return Err(Error::Phase);
         }
-        self.host.receive(text).map(NativeEvent::Message)
+        self.host
+            .receive(text)
+            .map(|m| NativeEvent::Message(Box::new(m)))
     }
     /// Encode a request for the engine; the shell delivers the string.
     pub fn request(&mut self, action: Action, now: u64) -> Result<String, Error> {
@@ -204,7 +206,7 @@ mod tests {
         let ready = ready.encode().unwrap();
         assert!(matches!(
             h.receive(peer(), &ready).unwrap(),
-            NativeEvent::Message(Message::Ready { .. })
+            NativeEvent::Message(m) if matches!(*m, Message::Ready { .. })
         ));
         let open = h.request(Action::Open { checkpoint: None }, 0).unwrap();
         let Message::Request { request_id, .. } = engine.receive(&open).unwrap() else {

@@ -16,10 +16,10 @@ use axum::{
     routing::get,
 };
 
-pub(crate) const PATH: &str = "/v1/zones";
+pub(crate) const ZONES_PATH: &str = "/v1/zones";
 
 pub(crate) fn routes() -> Router<App> {
-    Router::new().route(PATH, get(|| async { catalog_response() }))
+    Router::new().route(ZONES_PATH, get(|| async { catalog_response() }))
 }
 
 fn entry(id: &str, r: Release) -> Option<ZoneEntry> {
@@ -88,6 +88,6 @@ mod tests {
         let response = catalog_response();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
-        assert!(crate::upstream::owned(PATH));
+        assert!(crate::upstream::owned(ZONES_PATH));
     }
 }

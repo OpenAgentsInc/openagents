@@ -256,7 +256,7 @@ impl Runner {
                 deliver: vec![hello],
                 refused: false,
             },
-            Ok(NativeEvent::Message(Message::Ready { .. })) => {
+            Ok(NativeEvent::Message(m)) if matches!(*m, Message::Ready { .. }) => {
                 match self.bridge.request(Action::Open { checkpoint: None }, now) {
                     Ok(open) => ZoneBridgeReply {
                         deliver: vec![open],
