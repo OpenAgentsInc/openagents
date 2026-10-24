@@ -8,7 +8,7 @@
 // controller's tree into `#house-hud`, submits the bridge's forms, clicks its
 // controls, and folds what the release writes there back into the controller.
 import { createRoot } from "react-dom/client";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Fiber, Layer, ManagedRuntime } from "effect";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { RegistryContext } from "@effect/atom-react";
 import { ControllerView } from "./host";
@@ -18,16 +18,19 @@ import {
   Navigator,
   PlanetForm,
   PlayerEngine,
+  VisitCheck,
   initialInvite,
   initialSetup,
   makeInviteController,
   makePlayerController,
   makeSetupController,
   playerReport,
+  watchVisit,
   type Choice,
   type Invitation,
   type PlayerReport,
   type PlayerState,
+  type VisitStatus,
 } from "./house";
 
 export type HouseSurface = "setup" | "invite" | "player";
@@ -86,6 +89,9 @@ function inviteController(bridge: HTMLElement) {
       state: row.dataset.state ?? "",
       access: row.dataset.access ?? "",
       expiry: row.dataset.expiry ?? "",
+      end:
+        row.querySelector<HTMLInputElement>(".invitation-end input[name=id]")
+          ?.value || undefined,
     }),
   ).filter((row) => row.link.startsWith("/"));
   const layer = Layer.succeed(InviteForm, {
@@ -94,6 +100,15 @@ function inviteController(bridge: HTMLElement) {
         access.value = chosenAccess;
         hours.value = chosenHours;
         submit(form);
+      }),
+    end: (id: string) =>
+      Effect.sync(() => {
+        const input = Array.from(
+          bridge.querySelectorAll<HTMLInputElement>(
+            ".invitation-end input[name=id]",
+          ),
+        ).find((field) => field.value === id);
+        submit(input?.form);
       }),
   });
   const initial = initialInvite({
@@ -118,14 +133,59 @@ const readPlayer = (): PlayerReport => ({
 // gesture keeps the activation full screen needs.
 const click = (id: string) => Effect.sync(() => byId(id)?.click());
 
-function playerController(bridge: HTMLElement) {
-  const layer = Layer.succeed(PlayerEngine, {
-    retry: click("world-retry"),
-    fullscreen: click("world-fullscreen"),
+declare global {
+  interface Window {
+    versePlayer?: { readonly close?: () => void };
+  }
+}
+
+/** Close the pinned player and show why, as the release does for an error. */
+const closePlayer = (message: string) =>
+  Effect.sync(() => {
+    window.versePlayer?.close?.();
+    for (const id of ["engine", "world-retry", "world-fullscreen"])
+      byId(id)?.setAttribute("hidden", "");
+    const notice = byId("world-notice");
+    if (notice) {
+      notice.textContent = message;
+      notice.hidden = false;
+    }
   });
+
+/**
+ * An invitation the server no longer serves answers 410; one that needs
+ * sign-in answers 401 once the visitor has signed out.
+ */
+const visitStatus = (id: string | undefined) =>
+  Effect.promise(async (): Promise<VisitStatus> => {
+    if (!id) return "open";
+    try {
+      const response = await fetch(
+        `/v1/verse/studio/visits/${encodeURIComponent(id)}`,
+        { credentials: "same-origin", cache: "no-store" },
+      );
+      if (response.status === 410) return "ended";
+      if (response.status === 401) return "signed_out";
+      return "open";
+    } catch {
+      // Offline for a moment is not an ended invitation.
+      return "open";
+    }
+  });
+
+function playerController(bridge: HTMLElement) {
+  const layer = Layer.mergeAll(
+    Layer.succeed(PlayerEngine, {
+      retry: click("world-retry"),
+      fullscreen: click("world-fullscreen"),
+      close: closePlayer,
+    }),
+    Layer.succeed(VisitCheck, { status: visitStatus(bridge.dataset.visit) }),
+  );
   const initial = {
     title: textOf(bridge.querySelector("h1")),
     version: bridge.dataset.version ?? "",
+    ended: undefined,
     ...readPlayer(),
   };
   return { layer, make: makePlayerController(initial) };
@@ -140,7 +200,13 @@ function run<S, Svc>(
     InvalidView,
     Svc | Navigator | AtomRegistry.AtomRegistry
   >,
-  watch?: (update: (f: (state: S) => S) => void) => () => void,
+  watch?: (
+    controller: Controller<S, never, Svc | Navigator>,
+    runtime: ManagedRuntime.ManagedRuntime<
+      Svc | Navigator | AtomRegistry.AtomRegistry,
+      never
+    >,
+  ) => () => void,
 ) {
   const registry = AtomRegistry.make();
   const runtime = ManagedRuntime.make(
@@ -151,7 +217,7 @@ function run<S, Svc>(
     ),
   );
   const controller = runtime.runSync(make);
-  const unwatch = watch?.((f) => runtime.runFork(controller.update(f)));
+  const unwatch = watch?.(controller, runtime);
   const root = createRoot(mount);
   root.render(
     <RegistryContext.Provider value={registry}>
@@ -169,17 +235,28 @@ function run<S, Svc>(
   };
 }
 
-/** The release shows and hides its player controls; follow it. */
+/**
+ * The release shows and hides its player controls; follow it. On a visit,
+ * also check that its invitation still stands.
+ */
 const watchPlayer =
   (bridge: HTMLElement) =>
-  (update: (f: (state: PlayerState) => PlayerState) => void) => {
+  (
+    controller: Pick<Controller<PlayerState>, "update">,
+    runtime: ManagedRuntime.ManagedRuntime<
+      PlayerEngine | VisitCheck | Navigator | AtomRegistry.AtomRegistry,
+      never
+    >,
+  ) => {
     let frame = 0;
     const observer = new MutationObserver(() => {
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
         const report = readPlayer();
-        update((state) => playerReport(state, report));
+        runtime.runFork(
+          controller.update((state) => playerReport(state, report)),
+        );
       });
     });
     observer.observe(bridge, {
@@ -187,9 +264,13 @@ const watchPlayer =
       attributes: true,
       attributeFilter: ["hidden"],
     });
+    const visit = bridge.dataset.visit
+      ? runtime.runFork(watchVisit(controller))
+      : undefined;
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
+      if (visit) runtime.runFork(Fiber.interrupt(visit));
     };
   };
 

@@ -184,13 +184,20 @@ the bridge, and draws the controller's tree into `#house-hud`.
 | Page | Controller | What the bridge keeps |
 | --- | --- | --- |
 | `/new-lander/planet/{id}` | `makeSetupController`: the name field (a draft until saved), Save, and the courtyard link | The name form and its CSRF token. Save fills `#planet-name` and submits the form. |
-| `/new-lander/invite/{world}/{release}` | `makeInviteController`: access and expiry as chips, Create, and the invitation links | The invitation form. Create sets both selects and submits it. Rows carry `data-state`, `data-access`, and `data-expiry`. |
-| `/new-lander/play/...`, `/new-lander/visit/{id}` | `makePlayerController`: back, title, version, Retry, and Full screen | The header with `#world-retry` and `#world-fullscreen`, which the release listens on and hides when a visit ends. The bar follows `hidden` on them. |
+| `/new-lander/invite/{world}/{release}` | `makeInviteController`: access and expiry as chips, Create, the invitation links, and End invitation on open ones | The invitation form, and one `.invitation-end` form per open row. Create sets both selects and submits the first; End submits the row's form. Rows carry `data-state`, `data-access`, and `data-expiry`. |
+| `/new-lander/play/...`, `/new-lander/visit/{id}` | `makePlayerController`: back, title, version, Retry, and Full screen | The header with `#world-retry` and `#world-fullscreen`, which the release listens on and hides when it fails. The bar follows `hidden` on them. |
 
-The engine frame, `#world-notice`, `#player-controls`, and the visit chat
-(`#visit`) stay outside the bridge, as the release draws them. Browser checks
+Visits are play only; they have no chat (owner, 2026-10-24). On a visit the
+header carries `data-visit`, and `watchVisit` asks
+`GET /v1/verse/studio/visits/{id}` every 15 seconds. A 410 (the host ended
+the invitation, or it expired) or a 401 (a sign-in visit after sign-out)
+closes the player (`versePlayer.close()`) and shows why in the bar.
+
+The engine frame, `#world-notice`, and `#player-controls` stay outside the
+bridge, as the release draws them. Browser checks
 use `[data-aethyr-id=planet-name] input`, `[data-aethyr-id=planet-save]`,
-`[data-aethyr-id=access-signed-in]`, `[data-aethyr-id=invite-create]`, and
+`[data-aethyr-id=access-signed-in]`, `[data-aethyr-id=invite-create]`,
+`[data-aethyr-id$=-end]` on an invitation row, and
 `[data-aethyr-id=world-retry]`. The studio (`/new-lander/house`) still runs on
 the release's own controls.
 

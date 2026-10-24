@@ -2,21 +2,26 @@
 // recording services and no DOM.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Fiber, Layer, ManagedRuntime } from "effect";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import {
   InviteForm,
   Navigator,
   PlanetForm,
   PlayerEngine,
+  VisitCheck,
+  ENDED,
+  SIGNED_OUT,
   initialInvite,
   initialSetup,
   makeInviteController,
   makePlayerController,
   makeSetupController,
   playerReport,
+  watchVisit,
   type InviteState,
   type PlayerState,
+  type VisitStatus,
   type SetupState,
 } from "../src/aethyr/house";
 import {
@@ -31,9 +36,9 @@ function harness<S, Svc>(
   build: (trail: string[]) => {
     layer: Layer.Layer<Svc>;
     make: Effect.Effect<
-      Controller<S, never, Svc | Navigator>,
+      Controller<S, never, NoInfer<Svc> | Navigator>,
       InvalidView,
-      Svc | Navigator | AtomRegistry.AtomRegistry
+      NoInfer<Svc> | Navigator | AtomRegistry.AtomRegistry
     >;
   },
 ) {
@@ -61,7 +66,7 @@ function harness<S, Svc>(
       controller.dispatch(intentFor(view(), node, kind, value)),
     );
   const update = (f: (s: S) => S) => runtime.runPromise(controller.update(f));
-  return { trail, view, state, send, update };
+  return { trail, view, state, send, update, runtime, controller };
 }
 
 const element = <K extends Element["kind"]>(
@@ -134,10 +139,10 @@ test("setup follows its links", async () => {
 
 const PAGE = {
   version: "3",
-  intro: "Invite people to this saved version.",
+  intro: "Invite people to play this saved version. Editing stays private.",
   accessOptions: [
     { value: "signed-in", label: "People who sign in with the link" },
-    { value: "anonymous", label: "Anyone with the link · sign in to chat" },
+    { value: "anonymous", label: "Anyone with the link" },
   ],
   hoursOptions: [
     { value: "1", label: "In 1 hour" },
@@ -147,9 +152,17 @@ const PAGE = {
   invitations: [
     {
       link: "/new-lander/visit/v1",
-      state: "Visit and manage chat",
+      state: "Open",
       access: "Sign in to visit",
       expiry: "Expires in 1 hours",
+      end: "v1",
+    },
+    {
+      link: "/new-lander/visit/v2",
+      state: "Ended",
+      access: "Anyone with the link",
+      expiry: "",
+      end: undefined,
     },
   ],
 };
@@ -159,6 +172,7 @@ const invite = (initial: InviteState) =>
     layer: Layer.succeed(InviteForm, {
       create: (access: string, hours: string) =>
         Effect.sync(() => void trail.push(`create ${access} ${hours}`)),
+      end: (id: string) => Effect.sync(() => void trail.push(`end ${id}`)),
     }),
     make: makeInviteController(initial, "invite-test"),
   }));
@@ -188,7 +202,11 @@ test("invitations list each link and say when there are none", async () => {
   );
   assert.equal(
     element(view(), "invitation-0-detail", "text").value,
-    "Visit and manage chat · Sign in to visit · Expires in 1 hours",
+    "Open · Sign in to visit · Expires in 1 hours",
+  );
+  assert.equal(
+    element(view(), "invitation-1-detail", "text").value,
+    "Ended · Anyone with the link",
   );
   await send("invitation-0-open", "activate");
   assert.deepEqual(trail, ["go /new-lander/visit/v1"]);
@@ -197,22 +215,43 @@ test("invitations list each link and say when there are none", async () => {
   assert.equal(findNode(empty.view(), "invitations"), undefined);
 });
 
-const player = (initial: PlayerState) =>
+test("the host ends an open invitation once; ended ones have no control", async () => {
+  const { trail, view, state, send } = invite(initialInvite(PAGE));
+  assert.equal(findNode(view(), "invitation-1-end"), undefined);
+  await send("invitation-0-end", "activate");
+  assert.deepEqual(trail, ["end v1"]);
+  assert.equal(state().creating, true);
+  assert.equal(element(view(), "invitation-0-end", "button").enabled, false);
+});
+
+const player = (initial: PlayerState, status: VisitStatus = "open") =>
   harness((trail) => ({
-    layer: Layer.succeed(PlayerEngine, {
-      retry: Effect.sync(() => void trail.push("retry")),
-      fullscreen: Effect.sync(() => void trail.push("fullscreen")),
-    }),
+    layer: Layer.mergeAll(
+      Layer.succeed(PlayerEngine, {
+        retry: Effect.sync(() => void trail.push("retry")),
+        fullscreen: Effect.sync(() => void trail.push("fullscreen")),
+        close: (message: string) =>
+          Effect.sync(() => void trail.push(`close ${message}`)),
+      }),
+      Layer.succeed(VisitCheck, {
+        status: Effect.sync(() => {
+          trail.push("check");
+          return status;
+        }),
+      }),
+    ),
     make: makePlayerController(initial, "player-test"),
   }));
+const PLAYING: PlayerState = {
+  title: "Haunted House",
+  version: "2",
+  retry: true,
+  fullscreen: true,
+  ended: undefined,
+};
 
 test("the player bar mirrors the release's controls and drives them", async () => {
-  const { trail, view, send, update } = player({
-    title: "Haunted House",
-    version: "2",
-    retry: true,
-    fullscreen: true,
-  });
+  const { trail, view, send, update } = player(PLAYING);
   assert.ok(validateView(view()).ok);
   assert.equal(element(view(), "player-title", "text").value, "Haunted House");
   assert.equal(findNode(view(), "player-version")?.style?.hide_on_phone, true);
@@ -220,8 +259,52 @@ test("the player bar mirrors the release's controls and drives them", async () =
   await send("world-fullscreen", "activate");
   await send("player-back", "activate");
   assert.deepEqual(trail, ["retry", "fullscreen", "go /new-lander/verse"]);
-  // A visit that ends hides the release's controls; the bar follows.
+  // The release hides its controls when it fails for good; the bar follows.
   await update((s) => playerReport(s, { retry: false, fullscreen: false }));
   assert.equal(findNode(view(), "world-retry"), undefined);
   assert.equal(findNode(view(), "world-fullscreen"), undefined);
+});
+
+test("an open visit closes once its invitation ends", async () => {
+  const { trail, view, state, runtime, controller } = player(PLAYING, "ended");
+  await runtime.runPromise(watchVisit(controller, 1));
+  assert.deepEqual(trail, ["check", `close ${ENDED}`]);
+  assert.equal(state().ended, ENDED);
+  assert.equal(findNode(view(), "world-retry"), undefined);
+  // The release may report its controls again; an ended visit stays closed.
+  await runtime.runPromise(
+    controller.update((s) =>
+      playerReport(s, { retry: true, fullscreen: true }),
+    ),
+  );
+  assert.equal(findNode(view(), "world-retry"), undefined);
+});
+
+test("a sign-in visit closes once the visitor signs out", async () => {
+  const { trail, view, runtime, controller } = player(PLAYING, "signed_out");
+  await runtime.runPromise(watchVisit(controller, 1));
+  assert.deepEqual(trail, ["check", `close ${SIGNED_OUT}`]);
+  assert.equal(findNode(view(), "world-fullscreen"), undefined);
+});
+
+test("a visit whose invitation stands keeps playing", async () => {
+  const { trail, state, runtime, controller } = player(PLAYING, "open");
+  const fiber = runtime.runFork(watchVisit(controller, 1));
+  while (trail.filter((t) => t === "check").length < 3)
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  await runtime.runPromise(Fiber.interrupt(fiber));
+  assert.ok(!trail.some((t) => t.startsWith("close")));
+  assert.equal(state().ended, undefined);
+});
+
+test("no house surface offers chat", () => {
+  const views = [
+    setup(initialSetup("Planet 7", "/w")).view(),
+    invite(initialInvite(PAGE)).view(),
+    player(PLAYING).view(),
+    player({ ...PLAYING, ended: ENDED }).view(),
+    player({ ...PLAYING, ended: SIGNED_OUT }).view(),
+  ];
+  for (const view of views)
+    assert.doesNotMatch(JSON.stringify(view.root), /chat/i);
 });

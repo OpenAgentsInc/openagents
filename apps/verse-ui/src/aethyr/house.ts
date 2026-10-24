@@ -1,7 +1,8 @@
 // The Haunted House's form surfaces as Aethyr controllers (#12588): planet
 // setup (`/new-lander/planet/{id}`), invitations
 // (`/new-lander/invite/{world}/{release}`), and the player's top bar
-// (`/new-lander/play/...` and `/new-lander/visit/...`). Each owns what the
+// (`/new-lander/play/...` and `/new-lander/visit/...`). Visits have no chat.
+// Each owns what the
 // visitor sees. Saving, inviting, and the engine stay with the server and
 // the pinned release, reached through the services below; the web host
 // (`house-host.tsx`) drives the server's own forms and controls.
@@ -23,6 +24,8 @@ export class InviteForm extends Context.Service<
   InviteForm,
   {
     readonly create: (access: string, hours: string) => Effect.Effect<void>;
+    /** End one invitation by ID. */
+    readonly end: (id: string) => Effect.Effect<void>;
   }
 >()("aethyr/InviteForm") {}
 
@@ -32,8 +35,17 @@ export class PlayerEngine extends Context.Service<
   {
     readonly retry: Effect.Effect<void>;
     readonly fullscreen: Effect.Effect<void>;
+    /** Close the player and say why, after its invitation ended. */
+    readonly close: (message: string) => Effect.Effect<void>;
   }
 >()("aethyr/PlayerEngine") {}
+
+/** Whether a visit may go on: its invitation stands and, if it needs one, the sign-in. */
+export type VisitStatus = "open" | "ended" | "signed_out";
+export class VisitCheck extends Context.Service<
+  VisitCheck,
+  { readonly status: Effect.Effect<VisitStatus> }
+>()("aethyr/VisitCheck") {}
 
 export const MAP_PATH = "/new-lander/verse";
 /** The server's limit on a planet name, in characters. */
@@ -197,10 +209,13 @@ export interface Choice {
 /** One invitation, as the server listed it. */
 export interface Invitation {
   readonly link: string;
-  /** "Visit and manage chat", or "Revoked". */
+  /** "Open", "Ended", or "Expired". */
   readonly state: string;
   readonly access: string;
+  /** Empty once it has ended. */
   readonly expiry: string;
+  /** The invitation's ID while the host can still end it. */
+  readonly end: string | undefined;
 }
 
 export interface InviteState {
@@ -211,6 +226,7 @@ export interface InviteState {
   readonly access: string;
   readonly hours: string;
   readonly invitations: ReadonlyArray<Invitation>;
+  /** Creating or ending an invitation; the page is about to reload. */
   readonly creating: boolean;
 }
 
@@ -313,9 +329,24 @@ export function renderInvite(state: InviteState): Node {
               },
               text(
                 `invitation-${index}-detail`,
-                [row.state, row.access, row.expiry].join(" · "),
+                [row.state, row.access, row.expiry]
+                  .filter((part) => part !== "")
+                  .join(" · "),
                 "caption",
               ),
+              ...(row.end === undefined
+                ? []
+                : [
+                    {
+                      id: `invitation-${index}-end`,
+                      element: {
+                        kind: "button",
+                        label: "End invitation",
+                        emphasis: "ghost",
+                        enabled: !state.creating,
+                      },
+                    } satisfies Node,
+                  ]),
             ],
             "xs",
           ),
@@ -361,6 +392,13 @@ export const makeInviteController = (
             yield* form.create(state.access, state.hours);
             return { ...state, creating: true };
           }
+          const ending = /^invitation-(\d+)-end$/.exec(id);
+          if (ending) {
+            const end = state.invitations[Number(ending[1])]?.end;
+            if (state.creating || end === undefined) return state;
+            yield* form.end(end);
+            return { ...state, creating: true };
+          }
           const href = hrefOf(node);
           if (href) yield* navigator.go(href);
           return state;
@@ -376,7 +414,12 @@ export interface PlayerState {
   /** What the pinned player shows of its own controls. */
   readonly retry: boolean;
   readonly fullscreen: boolean;
+  /** Why the visit closed while it was open; the release's notice shows it. */
+  readonly ended: string | undefined;
 }
+
+export const ENDED = "This invitation has ended. Ask the host for a new link.";
+export const SIGNED_OUT = "You signed out. Sign in again to keep visiting.";
 
 /** What the player host observed on the engine's controls. */
 export interface PlayerReport {
@@ -389,7 +432,7 @@ export const playerReport = (
   report: PlayerReport,
 ): PlayerState => ({
   ...state,
-  ...report,
+  ...(state.ended === undefined ? report : { retry: false, fullscreen: false }),
 });
 
 export function renderPlayer(state: PlayerState): Node {
@@ -473,4 +516,34 @@ export const makePlayerController = (
           return state;
         }),
     });
+  });
+
+/** How often an open visit asks whether its invitation still stands. */
+export const VISIT_CHECK_MS = 15_000;
+
+/**
+ * While a visit is open, check its invitation; when it has ended, or a visit
+ * that needs sign-in has lost it, close the player and say why. Runs until it ends or is interrupted.
+ */
+export const watchVisit = (
+  controller: Pick<Controller.Controller<PlayerState>, "update">,
+  every = VISIT_CHECK_MS,
+) =>
+  Effect.gen(function* () {
+    const check = yield* VisitCheck;
+    const engine = yield* PlayerEngine;
+    while (true) {
+      yield* Effect.sleep(every);
+      const status = yield* check.status;
+      if (status === "open") continue;
+      const message = status === "ended" ? ENDED : SIGNED_OUT;
+      yield* engine.close(message);
+      yield* controller.update((state) => ({
+        ...state,
+        ended: message,
+        retry: false,
+        fullscreen: false,
+      }));
+      return;
+    }
   });

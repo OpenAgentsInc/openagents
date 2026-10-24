@@ -100,7 +100,7 @@ export async function checkProfileControls({page,context,base,config,out,errors}
     await page.setViewportSize({width,height:width===390?844:1000});
     await fullSize(player);
     for(const selector of ['[data-aethyr-id=world-retry]','[data-aethyr-id=world-fullscreen]'])await hit(page,selector);
-    if(invite){await hit(page,'#visit-toggle');await page.click('#visit-toggle');await hit(page,'#visit-toggle');await page.click('#visit-toggle');}
+    if(invite)assert.equal(await page.locator('#visit, [id^="visit-"]').count(),0,'Visits have no chat');
     await page.screenshot({path:path.join(out,`profile-player-${personal?'personal':'house'}-${width}.png`)});
   }
   const before=await page.evaluate(()=>JSON.parse(window.versePlayer.snapshot()));

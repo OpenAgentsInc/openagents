@@ -510,7 +510,7 @@ async fn page(
     };
     player_page(&p, None)
 }
-pub(super) fn player_page(p: &PlayableRelease, visit: Option<(&str, &str, bool)>) -> Response {
+pub(super) fn player_page(p: &PlayableRelease, visit: Option<&str>) -> Response {
     let runtime = &p.manifest.runtime;
     let origin = endpoint(&runtime.engine_url)
         .unwrap()
@@ -529,39 +529,13 @@ pub(super) fn player_page(p: &PlayableRelease, visit: Option<(&str, &str, bool)>
     };
     let config=json!({"release":runtime.engine_release,"engine_abi":runtime.engine_abi,"project_format":runtime.project_format,"project":{"id":base,"branch":"main","revision":0}}).to_string().replace('<',"\\u003c");
     let playable = serde_json::to_string(&p).unwrap().replace('<', "\\u003c");
-    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Play · OpenAgents"}}body{div id="house-hud" class="house-hud"{}header class="house-bridge" data-version=(p.manifest.saved_version){a href="/new-lander/verse"{"Back to planets"}h1{(title)}span{ "Version " (p.manifest.saved_version) }button id="world-retry" type="button"{"Retry"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" hidden title="Playable world" data-engine-url=(endpoint(&runtime.engine_url).unwrap().join("player.html").unwrap().as_str()){}p id="player-controls"{"Click to look · WASD to walk · Esc to release the pointer"}p id="world-notice" role="status"{"Opening this playable version…"} @if let Some((id,sdk,anonymous))=visit { (super::visits::chat_markup(id,sdk,anonymous)) }}script id="engine-config" type="application/json"{(PreEscaped(config))}script id="playable-release" type="application/json" data-sdk-url=(&runtime.sdk_url){(PreEscaped(playable))}script type="module" src="/new-lander/play/boot.js"{} @if visit.is_some() {script type="module" src="/new-lander/visit/boot.js"{}}}}}.into_string();
-    let mut response = crate::pages::medieval_town::response(
+    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Play · OpenAgents"}}body{div id="house-hud" class="house-hud"{}header class="house-bridge" data-version=(p.manifest.saved_version) data-visit=[visit]{a href="/new-lander/verse"{"Back to planets"}h1{(title)}span{ "Version " (p.manifest.saved_version) }button id="world-retry" type="button"{"Retry"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" hidden title="Playable world" data-engine-url=(endpoint(&runtime.engine_url).unwrap().join("player.html").unwrap().as_str()){}p id="player-controls"{"Click to look · WASD to walk · Esc to release the pointer"}p id="world-notice" role="status"{"Opening this playable version…"}}script id="engine-config" type="application/json"{(PreEscaped(config))}script id="playable-release" type="application/json" data-sdk-url=(&runtime.sdk_url){(PreEscaped(playable))}script type="module" src="/new-lander/play/boot.js"{}}}}.into_string();
+    crate::pages::medieval_town::response(
         StatusCode::OK,
         crate::pages::verse_ui::document(body, "player"),
         "text/html; charset=utf-8",
         Some(&origin),
-    );
-    if let Some((_, sdk, _)) = visit {
-        // Chat UI uses the registered host SDK; the player keeps its independently pinned SDK.
-        let sdk_origin = endpoint(sdk).unwrap().origin().ascii_serialization();
-        if sdk_origin != origin {
-            if let Some(policy) = response
-                .headers()
-                .get(axum::http::header::CONTENT_SECURITY_POLICY)
-                .and_then(|v| v.to_str().ok())
-            {
-                let policy = policy
-                    .replace(
-                        "script-src 'self'",
-                        &format!("script-src 'self' {sdk_origin}"),
-                    )
-                    .replace(
-                        "connect-src 'self'",
-                        &format!("connect-src 'self' {sdk_origin}"),
-                    );
-                response.headers_mut().insert(
-                    axum::http::header::CONTENT_SECURITY_POLICY,
-                    policy.parse().unwrap(),
-                );
-            }
-        }
-    }
-    response
+    )
 }
 async fn boot() -> Response {
     ([(axum::http::header::CONTENT_TYPE,"text/javascript; charset=utf-8"),(axum::http::header::CACHE_CONTROL,"no-store")],"try{const url=document.getElementById('playable-release').dataset.sdkUrl;const modules=globalThis.verseSdkModules??=new Map();if(!modules.has(url))modules.set(url,(async()=>{const sdk=await import(url);await sdk.default();return sdk;})());const {mount_player}=await modules.get(url);window.versePlayer=mount_player();}catch{document.getElementById('world-notice').textContent='This version could not open. Reload to try again.';}").into_response()

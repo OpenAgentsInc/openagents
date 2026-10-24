@@ -8,8 +8,6 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 
 [dependencies]
 aethyrforge-host = { path = "../aethyrforge-host" }
-loro = "=1.13.9"
-openagents-doc = { path = "../../apps/openagents/crates/doc" }
 playtest = { path = "../playtest" }
 bitcoin-amount = { path = "../bitcoin-amount" }
 # The machine-talk guard: test-time for every page, and at run time for the

@@ -1460,80 +1460,13 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
 }
 
 #[tokio::test]
-async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
-    use axum::{
-        Router,
-        extract::{Path, Query, State},
-        http::HeaderMap,
-        response::IntoResponse,
-        routing::get,
-    };
-    use openagents_doc::chat_frames::{encode, frame_type};
-    use std::{
-        collections::HashMap,
-        sync::{Arc, Mutex},
-    };
-    type Rows = Arc<Mutex<HashMap<String, Vec<(String, Vec<u8>)>>>>;
+async fn versioned_visits_bind_retry_intent_identity_and_revocation() {
     const SECRET: &str = "0707070707070707070707070707070707070707070707070707070707070707";
-    async fn sync(
-        State(rows): State<Rows>,
-        Path(id): Path<String>,
-        Query(q): Query<HashMap<String, String>>,
-        headers: HeaderMap,
-        body: axum::body::Bytes,
-    ) -> axum::response::Response {
-        let token = headers["authorization"]
-            .to_str()
-            .unwrap()
-            .strip_prefix("Bearer ")
-            .unwrap();
-        let grant = coder_access::room_token::verify(
-            token,
-            &[coder_access::room_token::public_key(SECRET).unwrap()],
-            super::now(),
-        )
-        .unwrap();
-        assert_eq!(grant.room, coder_access::room_token::Room::Visit);
-        assert_eq!(grant.id, id);
-        assert_eq!(grant.account, "verse_visits");
-        let mut rows = rows.lock().unwrap();
-        let list = rows.entry(id).or_default();
-        if !body.is_empty() {
-            let batch = q["batchId"].clone();
-            if !list.iter().any(|(id, _)| id == &batch) {
-                list.push((batch, body.to_vec()));
-            }
-            return axum::Json(json!({"ok":true})).into_response();
-        }
-        let mut bytes = Vec::new();
-        let mut pack = |frame: Vec<u8>| {
-            bytes.extend_from_slice(&(frame.len() as u32).to_le_bytes());
-            bytes.extend(frame);
-        };
-        pack(encode(frame_type::STATE, &json!({"seqFloor":0}), &[]));
-        for (index, (_, row)) in list.iter().enumerate() {
-            pack(encode(frame_type::ROW, &json!({"seq":index+1}), row));
-        }
-        pack(encode(
-            frame_type::ROWS_DONE,
-            &json!({"headSeq":list.len()}),
-            &[],
-        ));
-        bytes.into_response()
-    }
-    let rows: Rows = Default::default();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let origin = format!("http://{}", listener.local_addr().unwrap());
-    let router = Router::new()
-        .route("/visit/{id}/rows", get(sync).post(sync))
-        .with_state(rows.clone());
-    let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let mut runtime = publish_runtime();
     runtime.template_world = "personal-planet".into();
     let world = crate::projects::tests::world_with(crate::projects::tests::Options {
         verse_personal_runtime: Some(runtime.clone()),
         room_token_key: Some(SECRET.into()),
-        sync_origin: Some(origin),
         ..Default::default()
     })
     .await;
@@ -1633,7 +1566,12 @@ async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
         a.0, b.0,
         "Differing intents cannot both be accepted: {a:?} {b:?}"
     );
-    assert_eq!(guest(&world, &room_api).await.1["messages"], json!([]));
+    // Visits are play only: the state carries no chat.
+    let (status, visit_state) = guest(&world, &room_api).await;
+    assert_eq!(status, StatusCode::OK);
+    for removed in ["messages", "participants", "joined", "reports"] {
+        assert!(visit_state[removed].is_null(), "{visit_state}");
+    }
     assert_eq!(
         guest(
             &world,
@@ -1652,103 +1590,53 @@ async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
         StatusCode::OK,
         "Scoped invitation may open a private pinned player"
     );
-    for client in [&mut alice, &mut bob] {
+    let (status, visit_page) = guest(&world, invitation["link"].as_str().unwrap()).await;
+    assert_eq!(status, StatusCode::OK);
+    let visit_page = visit_page["text"].as_str().unwrap();
+    assert!(visit_page.contains(&format!("data-visit=\"{id}\"")));
+    for chat in [
+        "id=\"visit\"",
+        "visit-toggle",
+        "visit/boot.js",
+        "chat",
+        "Chat",
+    ] {
+        assert!(!visit_page.contains(chat), "A visit offers no chat: {chat}");
+    }
+    assert_eq!(
+        guest(&world, "/new-lander/visit/boot.js").await.0,
+        StatusCode::GONE,
+        "The chat loader is gone; the path reads as an ended visit"
+    );
+    for operation in ["join", "send", "leave", "heartbeat", "report"] {
         assert_eq!(
-            client
-                .call(
-                    &world,
-                    "POST",
-                    &room_api,
-                    json!({"command_id":"join","operation":"join"})
-                )
-                .await
-                .0,
-            StatusCode::OK
+            bob.call(
+                &world,
+                "POST",
+                &room_api,
+                json!({"command_id":operation,"operation":operation})
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST,
+            "{operation} was a chat operation"
         );
     }
-    let message = json!({"command_id":"message-1","operation":"send","text":"Hello from Bob"});
-    let (status, sent) = bob.call(&world, "POST", &room_api, message.clone()).await;
-    assert_eq!(status, StatusCode::OK, "{sent}");
-    assert_eq!(sent["messages"].as_array().unwrap().len(), 1);
-    assert_eq!(sent["messages"][0]["participant"], sent["me"]);
-    assert_eq!(
-        bob.call(&world, "POST", &room_api, message).await.1["messages"],
-        sent["messages"]
-    );
-    assert_eq!(
-        rows.lock().unwrap().values().map(Vec::len).sum::<usize>(),
-        1,
-        "Lost ACK retry does not duplicate a Loro message"
-    );
-    assert_eq!(
-        alice.call(&world, "GET", &room_api, Value::Null).await.1["messages"],
-        sent["messages"]
-    );
-    assert_eq!(
-        bob.call(
-            &world,
-            "POST",
-            &room_api,
-            json!({"command_id":"message-1","operation":"send","text":"Changed retry"})
-        )
-        .await
-        .0,
-        StatusCode::BAD_REQUEST
-    );
-    assert_eq!(
-        bob.call(
-            &world,
-            "POST",
-            &room_api,
-            json!({"command_id":"leave","operation":"leave"})
-        )
-        .await
-        .1["messages"],
-        json!([])
-    );
-    assert_eq!(
-        bob.call(
-            &world,
-            "POST",
-            &room_api,
-            json!({"command_id":"after-leave","operation":"send","text":"No"})
-        )
-        .await
-        .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        bob.call(
-            &world,
-            "POST",
-            &room_api,
-            json!({"command_id":"rejoin","operation":"join"})
-        )
-        .await
-        .1["messages"],
-        sent["messages"]
-    );
     assert_eq!(
         bob.call(&world, "GET", &path, Value::Null).await.0,
         StatusCode::NOT_FOUND,
         "A visitor receives no editor membership"
     );
-    for n in 0..12 {
-        let (code,value)=alice.call(&world,"POST",&room_api,json!({"command_id":format!("rate-{n}"),"operation":"send","text":format!("Bounded message {n}")})).await;
-        assert_eq!(code, StatusCode::OK, "{value}");
-    }
-    assert_eq!(
-        alice
-            .call(
-                &world,
-                "POST",
-                &room_api,
-                json!({"command_id":"rate-over","operation":"send","text":"Too fast"})
-            )
-            .await
-            .0,
-        StatusCode::TOO_MANY_REQUESTS
-    );
+    // An invitation saved while visits had chat still opens.
+    let legacy_path = world
+        .root()
+        .join(format!("chats/verse-visits/invites/{id}.json"));
+    let mut legacy: Value = serde_json::from_slice(&std::fs::read(&legacy_path).unwrap()).unwrap();
+    legacy["members"] = json!({"m":{"label":"Host","seen":1,"active":true}});
+    legacy["commands"] = json!({});
+    legacy["reports"] = json!({"report:m:x":"Reported by participant"});
+    std::fs::write(&legacy_path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    assert_eq!(guest(&world, &room_api).await.0, StatusCode::OK);
     let (_, private_invite) = alice
         .call(
             &world,
@@ -1763,11 +1651,9 @@ async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
         guest(&world, &private_api).await.0,
         StatusCode::UNAUTHORIZED
     );
-    let (_, unjoined) = bob.call(&world, "GET", &private_api, Value::Null).await;
     assert_eq!(
-        unjoined["messages"],
-        json!([]),
-        "Knowing a different room link does not read history before joining"
+        bob.call(&world, "GET", &private_api, Value::Null).await.0,
+        StatusCode::OK
     );
     let disk = world
         .root()
@@ -1810,6 +1696,11 @@ async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
         guest(&world, invitation["link"].as_str().unwrap()).await.0,
         StatusCode::GONE
     );
+    let rewritten: Value = serde_json::from_slice(&std::fs::read(&legacy_path).unwrap()).unwrap();
+    assert!(
+        rewritten["members"].is_null() && rewritten["reports"].is_null(),
+        "Ending an invitation drops what chat stored"
+    );
     assert_eq!(
         alice.call(&world, "POST", &api, create).await.1["revoked"],
         true,
@@ -1847,8 +1738,65 @@ async fn versioned_visits_bind_retry_intent_identity_rooms_and_revocation() {
     assert!(
         managed
             .body
-            .contains("<li class=\"invitation\" data-state=\"Revoked\"")
+            .contains("<li class=\"invitation\" data-state=\"Ended\"")
     );
     assert!(managed.body.contains("select name=\"access\""));
-    task.abort();
+    for chat in ["chat", "Chat"] {
+        assert!(!managed.body.contains(chat), "Invitations offer no chat");
+    }
+    // The host ends the open invitation from the page.
+    let race = if a.0 == StatusCode::CREATED {
+        &a.1
+    } else {
+        &b.1
+    };
+    let race_id = race["id"].as_str().unwrap();
+    let end_path = format!("{manage_path}/end");
+    let form = managed
+        .body
+        .split(&format!("action=\"{end_path}\""))
+        .nth(1)
+        .expect("The open invitation can be ended");
+    assert!(form.contains(&format!("name=\"id\" value=\"{race_id}\"")));
+    let token = form
+        .split("name=\"csrf\" value=\"")
+        .nth(1)
+        .and_then(|v| v.split('"').next())
+        .unwrap();
+    let encoded = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("csrf", token)
+        .append_pair("id", race_id)
+        .finish();
+    let ended = bob
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(&end_path)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("origin", world.origin()),
+            Body::from(encoded.clone()),
+        )
+        .await;
+    assert_ne!(ended.status, StatusCode::SEE_OTHER, "Only the host ends it");
+    let ended = alice
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(&end_path)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("origin", world.origin()),
+            Body::from(encoded),
+        )
+        .await;
+    assert_eq!(ended.status, StatusCode::SEE_OTHER, "{}", ended.body);
+    assert_eq!(
+        guest(&world, &format!("/v1/verse/studio/visits/{race_id}"))
+            .await
+            .0,
+        StatusCode::GONE
+    );
 }

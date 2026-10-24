@@ -155,7 +155,6 @@
 [data-verse-ui] #world-edit,
 [data-verse-ui] #planet-enter,
 [data-verse-ui] #planet-generate,
-[data-verse-ui] #visit-send,
 [data-verse-ui] form > button[type="submit"],
 [data-verse-ui] [data-slot="button"][data-variant="default"] {
   background: var(--primary);
@@ -173,7 +172,6 @@
     #planet-create,
     #planet-enter,
     #planet-generate,
-    #visit-send,
     form > button[type="submit"],
     [data-slot="button"][data-variant="default"]
   ):hover:not(:disabled) {
@@ -733,48 +731,6 @@
   padding: 8px 12px;
   border-radius: 8px;
 }
-[data-verse-ui] #visit {
-  position: fixed;
-  right: 20px;
-  bottom: 80px;
-  z-index: 4;
-  max-width: calc(100vw - 40px);
-}
-[data-verse-ui] #visit-panel {
-  width: 340px;
-  max-width: 100%;
-  max-height: 65vh;
-  overflow: auto;
-  padding: 20px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  backdrop-filter: blur(18px);
-}
-[data-verse-ui] #visit-panel h2 {
-  font-size: 18px;
-  margin: 0 0 14px;
-}
-[data-verse-ui] #visit-panel p {
-  font-size: 12px;
-}
-[data-verse-ui] #visit-panel textarea {
-  width: 100%;
-  margin-top: 8px;
-}
-[data-verse-ui] #visit-messages {
-  list-style: none;
-  padding: 0;
-  margin: 16px 0;
-}
-[data-verse-ui] #visit-messages li {
-  padding: 10px 12px;
-  margin: 8px 0;
-  border-radius: 10px;
-  background: var(--secondary);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
 @media (max-width: 799px) {
   
   
@@ -933,11 +889,6 @@
     max-width: calc(100% - 80px);
     bottom: 12px;
     left: 12px;
-  }
-  [data-verse-ui] #visit {
-    right: 12px;
-    bottom: 70px;
-    max-width: calc(100vw - 24px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1418,7 +1369,6 @@
 [data-verse-ui="player"] body > header,
 [data-verse-ui="setup"] main,
 [data-verse-ui="invite"] main,
-[data-verse-ui] #visit-panel,
 [data-verse-ui="auth"] .oa-auth-card {
   background: #10151bf0;
   border: 1px solid var(--hud-line);

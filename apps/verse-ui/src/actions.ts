@@ -11,7 +11,6 @@ export const actionNames = {
   "tab-compile": "World effect tools",
   "tab-history": "History and saved projects",
   "request-options": "Show options",
-  "visit-toggle": "Show or hide chat",
   "verse-explore": "Explore planets",
   "planet-setup": "Set up my planet",
   "planet-enter": "Enter your courtyard",

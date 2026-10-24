@@ -1,25 +1,12 @@
-//! Version-pinned invitations grant play and authenticated chat, never project editing.
+//! Version-pinned invitations grant play, never project editing.
 use super::*;
 use axum::{
     Form,
     response::{IntoResponse, Redirect},
 };
-use maud::{DOCTYPE, Markup, html};
-use std::collections::BTreeMap;
+use maud::{DOCTYPE, html};
+use serde::de::IgnoredAny;
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Member {
-    label: String,
-    seen: u64,
-    active: bool,
-}
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Sent {
-    hash: String,
-    at: u64,
-}
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Invite {
@@ -32,9 +19,13 @@ struct Invite {
     hours: u64,
     expires: u64,
     revoked: bool,
-    members: BTreeMap<String, Member>,
-    commands: BTreeMap<String, Sent>,
-    reports: BTreeMap<String, String>,
+    // Invitations made while visits had chat carry these; they are read and dropped.
+    #[serde(default, skip_serializing, rename = "members")]
+    _members: Option<IgnoredAny>,
+    #[serde(default, skip_serializing, rename = "commands")]
+    _commands: Option<IgnoredAny>,
+    #[serde(default, skip_serializing, rename = "reports")]
+    _reports: Option<IgnoredAny>,
 }
 fn unavailable() -> Response {
     refused(
@@ -85,12 +76,6 @@ async fn live(
     }
     Ok((invite, generation, p))
 }
-fn participant(invite: &Invite, actor: &Actor) -> String {
-    hash(format!("{}:{}", invite.id, actor.account_id).as_bytes())
-}
-fn room(invite: &Invite) -> String {
-    format!("vv_{}", invite.id)
-}
 fn summary(i: &Invite) -> Value {
     json!({"id":i.id,"world":i.world,"release":i.release,"anonymous":i.anonymous,"expires":i.expires,"revoked":i.revoked,"link":format!("/new-lander/visit/{}",i.id)})
 }
@@ -108,10 +93,6 @@ struct Command {
     csrf: String,
     command_id: String,
     operation: String,
-    #[serde(default)]
-    text: String,
-    #[serde(default)]
-    target: String,
 }
 pub(super) fn routes() -> Router<App> {
     Router::new()
@@ -124,7 +105,7 @@ pub(super) fn routes() -> Router<App> {
             "/new-lander/invite/{world}/{release}",
             get(manage).post(create_form),
         )
-        .route("/new-lander/visit/boot.js", get(boot))
+        .route("/new-lander/invite/{world}/{release}/end", post(end_form))
         .route("/new-lander/visit/{id}", get(page))
 }
 fn ready(app: &App) -> Result<(), Response> {
@@ -227,9 +208,9 @@ async fn make(
             hours: sent.hours,
             expires: now() + sent.hours * 3600,
             revoked: false,
-            members: BTreeMap::new(),
-            commands: BTreeMap::new(),
-            reports: BTreeMap::new(),
+            _members: None,
+            _commands: None,
+            _reports: None,
         },
     };
     for _ in 0..8 {
@@ -311,39 +292,8 @@ async fn view(app: &App, headers: &HeaderMap, id: &str) -> Result<Value, Respons
             "Sign in to accept this invitation.",
         ));
     }
-    let me = actor.as_ref().map(|a| participant(&i, a));
-    let joined = me
-        .as_ref()
-        .is_some_and(|id| i.members.get(id).is_some_and(|m| m.active));
-    let messages = if joined {
-        visit_room::messages(&visit_room::load(app, &room(&i)).await?)?
-    } else {
-        Vec::new()
-    };
-    // Re-check revocation after the network wait. A stale fetch must not reopen an ended visit.
-    let (i, _, _) = live(app, id).await?;
-    let joined = joined
-        && me
-            .as_ref()
-            .is_some_and(|id| i.members.get(id).is_some_and(|m| m.active));
-    let messages = if joined { messages } else { Vec::new() };
-    let reports: Vec<_> = if actor.as_ref().is_some_and(|a| a.account_id == i.owner) {
-        i.reports
-            .keys()
-            .filter(|key| key.starts_with("report:"))
-            .cloned()
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let participants: Vec<_> = i
-        .members
-        .iter()
-        .filter(|(_, m)| m.active && m.seen + 45 > now())
-        .map(|(id, m)| json!({"id":id,"label":m.label}))
-        .collect();
     Ok(
-        json!({"invite":summary(&i),"saved_version":p.manifest.saved_version,"signed_in":actor.is_some(),"host":actor.as_ref().is_some_and(|a|a.account_id==i.owner),"me":me,"joined":joined,"participants":participants,"messages":messages,"reports":reports}),
+        json!({"invite":summary(&i),"saved_version":p.manifest.saved_version,"signed_in":actor.is_some(),"host":actor.as_ref().is_some_and(|a|a.account_id==i.owner)}),
     )
 }
 async fn command(
@@ -362,152 +312,22 @@ async fn act(app: &App, headers: &HeaderMap, id: &str, sent: Command) -> Result<
     if !csrf(app, headers, &actor, &sent.csrf) || !valid_id(&sent.command_id) {
         return Err(denied());
     }
+    if sent.operation != "revoke" {
+        return Err(invalid());
+    }
     for _ in 0..8 {
         let (mut i, g, _) = live(app, id).await?;
-        let me = participant(&i, &actor);
-        let t = now();
-        let mut outgoing = None;
-        match sent.operation.as_str() {
-            "revoke" => {
-                if i.owner != actor.account_id {
-                    return Err(denied());
-                }
-                i.revoked = true;
-            }
-            "join" => {
-                if !i.members.contains_key(&me) && i.members.len() >= 64 {
-                    return Err(refused(
-                        StatusCode::CONFLICT,
-                        "visit_full",
-                        "This visit is full.",
-                    ));
-                }
-                i.members.insert(
-                    me.clone(),
-                    Member {
-                        label: if i.owner == actor.account_id {
-                            "Host".into()
-                        } else {
-                            format!("Visitor {}", &me[..6])
-                        },
-                        seen: t,
-                        active: true,
-                    },
-                );
-            }
-            "leave" => {
-                if let Some(m) = i.members.get_mut(&me) {
-                    m.active = false;
-                }
-            }
-            "heartbeat" => {
-                let m = i
-                    .members
-                    .get_mut(&me)
-                    .filter(|m| m.active)
-                    .ok_or_else(denied)?;
-                m.seen = t;
-            }
-            "send" => {
-                let m = i
-                    .members
-                    .get_mut(&me)
-                    .filter(|m| m.active)
-                    .ok_or_else(denied)?;
-                let text = sent.text.trim();
-                if text.is_empty()
-                    || text.len() > 1000
-                    || text
-                        .chars()
-                        .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
-                {
-                    return Err(invalid());
-                }
-                let command = hash(format!("{id}:{me}:{}", sent.command_id).as_bytes());
-                let digest = hash(text.as_bytes());
-                let at = if let Some(previous) = i.commands.get(&command) {
-                    if previous.hash != digest {
-                        return Err(invalid());
-                    }
-                    previous.at
-                } else {
-                    if i.commands.len() >= 512 {
-                        return Err(refused(
-                            StatusCode::CONFLICT,
-                            "chat_full",
-                            "This chat is full. Ask the host for a new invitation.",
-                        ));
-                    }
-                    if i.reports.keys().any(|k| k == &format!("blocked:{me}")) {
-                        return Err(denied());
-                    }
-                    // Separate rate keys are bounded by the same 512 accepted commands.
-                    let recent = i
-                        .reports
-                        .iter()
-                        .filter(|(k, v)| {
-                            k.starts_with(&format!("rate:{me}:"))
-                                && v.parse::<u64>().is_ok_and(|at| at + 60 > t)
-                        })
-                        .count();
-                    if recent >= 12 {
-                        return Err(refused(
-                            StatusCode::TOO_MANY_REQUESTS,
-                            "slow_down",
-                            "Wait a moment before sending another message.",
-                        ));
-                    }
-                    i.commands.insert(
-                        command.clone(),
-                        Sent {
-                            hash: digest,
-                            at: t,
-                        },
-                    );
-                    i.reports
-                        .insert(format!("rate:{me}:{command}"), t.to_string());
-                    t
-                };
-                m.seen = t;
-                outgoing = Some((
-                    command.clone(),
-                    json!({"id":command,"participant":me,"label":m.label,"text":text,"at":at}),
-                ));
-            }
-            "report" => {
-                if !i.members.get(&me).is_some_and(|m| m.active) || i.reports.len() > 1024 {
-                    return Err(denied());
-                }
-                if sent.target.len() != 64 {
-                    return Err(invalid());
-                }
-                let messages = visit_room::messages(&visit_room::load(app, &room(&i)).await?)?;
-                if !messages.iter().any(|m| m["id"] == sent.target) {
-                    return Err(invalid());
-                }
-                i.reports.insert(
-                    format!("report:{me}:{}", sent.target),
-                    "Reported by participant".into(),
-                );
-            }
-            _ => return Err(invalid()),
+        if i.owner != actor.account_id {
+            return Err(denied());
         }
+        i.revoked = true;
         match app
             .config
             .chat_store
             .write_key(&key(id)?, serde_json::to_vec(&i).unwrap(), Some(&g))
             .await
         {
-            Ok(_) => {
-                if i.revoked {
-                    return Ok(json!({"revoked":true}));
-                }
-                if let Some((command, message)) = outgoing {
-                    live(app, id).await?;
-                    visit_room::send(app, &room(&i), &command, &message).await?;
-                }
-                return view(app, headers, id).await;
-            }
+            Ok(_) => return Ok(json!({"revoked":true})),
             Err(Error::Conflict) => continue,
             Err(e) => return Err(stored(&e)),
         }
@@ -515,25 +335,6 @@ async fn act(app: &App, headers: &HeaderMap, id: &str, sent: Command) -> Result<
     Err(unavailable())
 }
 
-pub(super) fn chat_markup(id: &str, sdk: &str, anonymous: bool) -> Markup {
-    html! {aside id="visit" data-id=(id) data-sdk-url=(sdk) data-anonymous=(anonymous.to_string()) aria-label="World chat" {
-        button id="visit-toggle" type="button"{"Show chat"}
-        section id="visit-panel" hidden {
-            h2{"World chat"}p id="visit-status" role="status"{"Connecting…"}
-            a id="visit-retry" href=(format!("/new-lander/visit/{id}")) hidden{"Reload chat"}
-            a id="visit-login" href=(format!("/login?return_to=%2Fnew-lander%2Fvisit%2F{id}")) hidden{"Sign in to chat"}
-            button id="visit-join" type="button" hidden{"Join chat"}button id="visit-leave" type="button" hidden{"Leave chat"}
-            button id="visit-revoke" type="button" hidden{"End invitation"}
-            button id="visit-mute" type="button"{"Mute chat"}
-            button id="visit-unblock" type="button" hidden{"Show hidden people"}
-            p id="visit-reports" hidden{}
-            p id="visit-presence"{}ol id="visit-messages"{}
-            label for="visit-text"{"Message"}textarea id="visit-text" maxlength="1000" rows="2" disabled{}
-            button id="visit-send" type="button" disabled{"Send"}
-            p{"Hide chat to keep the view clear. Mute stops new messages appearing for you."}
-        }
-    }}
-}
 async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
     if let Err(r) = ready(&app) {
         return r;
@@ -552,17 +353,7 @@ async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
             };
         }
     }
-    publication::player_page(
-        &p,
-        Some((
-            &id,
-            &app.config.verse_personal_runtime.as_ref().unwrap().sdk_url,
-            i.anonymous,
-        )),
-    )
-}
-async fn boot() -> Response {
-    ([(axum::http::header::CONTENT_TYPE,"text/javascript; charset=utf-8")],"try{const url=document.getElementById('visit').dataset.sdkUrl;const modules=globalThis.verseSdkModules??=new Map();if(!modules.has(url))modules.set(url,(async()=>{const sdk=await import(url);await sdk.default();return sdk;})());const {mount_visit}=await modules.get(url);window.verseVisit=mount_visit();}catch{document.getElementById('visit-status').textContent='Chat could not connect. Reload to try again.';document.getElementById('visit-panel').hidden=false;document.getElementById('visit-retry').hidden=false;for(const id of ['visit-toggle','visit-mute','visit-unblock','visit-send'])document.getElementById(id).hidden=true;}").into_response()
+    publication::player_page(&p, Some(&id))
 }
 #[derive(Deserialize)]
 struct CreateForm {
@@ -594,6 +385,28 @@ async fn create_form(
     )
     .await
     {
+        Ok(_) => Redirect::to(&format!("/new-lander/invite/{world}/{release}")).into_response(),
+        Err(r) => r,
+    }
+}
+#[derive(Deserialize)]
+struct EndForm {
+    csrf: String,
+    id: String,
+}
+/// End one invitation from the invitations page; an open visit closes on its next check.
+async fn end_form(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((world, release)): Path<(String, String)>,
+    Form(sent): Form<EndForm>,
+) -> Response {
+    let command = Command {
+        csrf: sent.csrf,
+        command_id: "end-invitation".into(),
+        operation: "revoke".into(),
+    };
+    match act(&app, &headers, &sent.id, command).await {
         Ok(_) => Redirect::to(&format!("/new-lander/invite/{world}/{release}")).into_response(),
         Err(r) => r,
     }
@@ -632,7 +445,7 @@ async fn manage(
         Ok(v) => v,
         Err(_) => return denied(),
     };
-    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Invite people · OpenAgents"}}body{div id="house-hud" class="house-hud"{}main class="house-bridge" data-version=(version){a href="/new-lander/verse"{"Back to planets"}h1{"Invite people"}p{"Version "(version)}p class="invite-intro"{"Invite people to this saved version. Visitors can play and chat. Editing stays private."}form method="post"{input type="hidden" name="csrf" value=(token);input type="hidden" name="command_id" value=(hash(&secp256k1::rand::random::<[u8;32]>()));label{"Who can visit? " select name="access"{option value="signed-in"{"People who sign in with the link"}option value="anonymous"{"Anyone with the link · sign in to chat"}}}label{" Link expires " select name="hours"{option value="1"{"In 1 hour"}option value="24"{"In 1 day"}option value="168"{"In 7 days"}}}button type="submit"{"Create invitation"}}ul{@for row in rows{@let state=if row["revoked"]==true{"Revoked"}else{"Visit and manage chat"};@let access=if row["anonymous"]==true{"Anonymous play · sign in to chat"}else{"Sign in to visit"};@let expiry=expiry_label(row["expires"].as_u64().unwrap_or(0));li class="invitation" data-state=(state) data-access=(access) data-expiry=(expiry){@if let Some(link)=row["link"].as_str(){a href=(link){"Open invitation"}" · "(state)" · "(access)" · "(expiry)}}}}}}}}.into_string();
+    let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Invite people · OpenAgents"}}body{div id="house-hud" class="house-hud"{}main class="house-bridge" data-version=(version){a href="/new-lander/verse"{"Back to planets"}h1{"Invite people"}p{"Version "(version)}p class="invite-intro"{"Invite people to play this saved version. Editing stays private."}form method="post"{input type="hidden" name="csrf" value=(token);input type="hidden" name="command_id" value=(hash(&secp256k1::rand::random::<[u8;32]>()));label{"Who can visit? " select name="access"{option value="signed-in"{"People who sign in with the link"}option value="anonymous"{"Anyone with the link"}}}label{" Link expires " select name="hours"{option value="1"{"In 1 hour"}option value="24"{"In 1 day"}option value="168"{"In 7 days"}}}button type="submit"{"Create invitation"}}ul{@for row in rows{@let expires=row["expires"].as_u64().unwrap_or(0);@let open=row["revoked"]!=true&&expires>now();@let state=if row["revoked"]==true{"Ended"}else if open{"Open"}else{"Expired"};@let access=if row["anonymous"]==true{"Anyone with the link"}else{"Sign in to visit"};@let expiry=if open{expiry_label(expires)}else{String::new()};li class="invitation" data-state=(state) data-access=(access) data-expiry=(expiry){@if let Some(link)=row["link"].as_str(){a href=(link){"Open invitation"}" · "(state)" · "(access)@if open{" · "(expiry)}}@if open{form class="invitation-end" method="post" action=(format!("/new-lander/invite/{world}/{release}/end")){input type="hidden" name="csrf" value=(token);input type="hidden" name="id" value=(row["id"].as_str().unwrap_or_default());button type="submit"{"End invitation"}}}}}}}}}}.into_string();
     let mut response = crate::pages::medieval_town::response(
         StatusCode::OK,
         crate::pages::verse_ui::document(body, "invite"),
