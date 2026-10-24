@@ -6,6 +6,11 @@ const CSS: &str = include_str!("../../content/verse-ui/ui.css");
 const JS: &str = include_str!("../../content/verse-ui/ui.js");
 const STYLE: &str = "<link rel=\"stylesheet\" href=\"/new-lander/ui.css\">";
 const SCRIPT: &str = "<script type=\"module\" src=\"/new-lander/ui.js\"></script>";
+/// Inter (SIL Open Font License, `content/verse-ui/fonts/OFL-Inter.txt`),
+/// Latin, variable weight. Self-hosted so a computer without the design's
+/// face still gets a proportional sans, not its default monospace.
+pub(crate) const FONT_PATH: &str = "/new-lander/fonts/inter-latin-wght.woff2";
+const FONT: &[u8] = include_bytes!("../../content/verse-ui/fonts/inter-latin-wght.woff2");
 
 /// Draw a labelled control's decorative HUD icon without a browser dependency.
 pub(super) fn icon(name: &str) -> maud::Markup {
@@ -57,6 +62,18 @@ pub(super) fn routes() -> Router<App> {
                         (header::CACHE_CONTROL, "no-cache"),
                     ],
                     JS,
+                )
+            }),
+        )
+        .route(
+            FONT_PATH,
+            get(|| async {
+                (
+                    [
+                        (header::CONTENT_TYPE, "font/woff2"),
+                        (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+                    ],
+                    FONT,
                 )
             }),
         )

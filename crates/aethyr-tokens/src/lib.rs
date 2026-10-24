@@ -121,8 +121,10 @@ tokens! {
 }
 
 /// The sans-serif family. Tailwind owns the `--font-sans` name, so it is
-/// written into the `@theme` block rather than `:root`.
-pub const FONT_SANS: &str = "\"Geist\", \"Inter\", ui-sans-serif, system-ui, sans-serif";
+/// written into the `@theme` block rather than `:root`. Inter is
+/// self-hosted (`theme.css`); the named system faces follow so a computer
+/// whose default font is monospace still draws a proportional sans.
+pub const FONT_SANS: &str = "\"Geist\", \"Inter\", ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, \"Noto Sans\", \"Helvetica Neue\", Arial, sans-serif";
 
 /// Widths up to this are phones: panels become sheets, secondary controls hide.
 pub const PHONE_MAX_WIDTH: &str = "760px";

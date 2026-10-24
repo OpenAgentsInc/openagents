@@ -354,7 +354,7 @@ async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         "text/html; charset=utf-8",
         None,
     );
-    response.headers_mut().insert(axum::http::header::CONTENT_SECURITY_POLICY,axum::http::HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"));
+    response.headers_mut().insert(axum::http::header::CONTENT_SECURITY_POLICY,axum::http::HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"));
     response.headers_mut().insert(
         axum::http::header::REFERRER_POLICY,
         axum::http::HeaderValue::from_static("same-origin"),
