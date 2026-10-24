@@ -119,7 +119,9 @@ function styleControls() {
   )) {
     if (
       node.closest("#verse-ui-root,[data-slot=dialog-content]") ||
-      node.dataset.verseControl
+      node.dataset.verseControl ||
+      // HUD components already carry the design system's own styles.
+      node.matches(".hud-button, .verse-world-chip")
     )
       continue;
     node.classList.add(

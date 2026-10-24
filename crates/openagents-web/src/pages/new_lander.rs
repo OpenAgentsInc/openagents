@@ -14,7 +14,6 @@ use crate::App;
 const PATH: &str = "/new-lander";
 const VERSE: &str = "/new-lander/verse";
 const SCRIPT_PATH: &str = "/new-lander/assets/verse.js";
-const STYLE: &str = include_str!("new_lander.css");
 fn universe_release() -> Option<super::medieval_town::Release> {
     let text = std::env::var("OPENAGENTS_UNIVERSE_RELEASE")
         .unwrap_or_else(|_| include_str!("../../content/demos/universe.json").into());
@@ -41,15 +40,17 @@ fn header(verse: bool, account: bool) -> Markup {
         "%2Fnew-lander"
     };
     html! {
-        header.site-header {
-            a.brand href=(PATH) aria-label="OpenAgents home" { (mark()) span { "OpenAgents" } }
-            @if verse { a.back-link href=(PATH) { "← Back to OpenAgents" } }
-            @else { nav.site-nav aria-label="Main navigation" { a href="#products" { "Products" } a href="/docs" { "Docs" } a href="https://github.com/OpenAgentsInc/openagents" { "GitHub ↗" } } }
-            nav.account-nav aria-label="Account" {
+        header.lp-header {
+            a.lp-brand href=(PATH) aria-label="OpenAgents home" { (mark()) span { "OpenAgents" } }
+            @if verse { a.lp-back href=(PATH) { "← OpenAgents" } }
+            @else { nav.lp-nav aria-label="Main navigation" { a href="#products" { "Products" } a href="/docs" { "Docs" } a href="https://github.com/OpenAgentsInc/openagents" { "GitHub ↗" } } }
+            nav.lp-account aria-label="Account" {
                 @if account {
-                    a href=(format!("/login?return_to={back}")) { "Log in" }
-                    a.nav-button href=(format!("/signup?return_to={back}")) { "Sign up ↗" }
-                } @else { a.nav-button href="/chat" { "Open chat ↗" } }
+                    a.hud-button.hud-ghost href=(format!("/login?return_to={back}")) { "Log in" }
+                    a.hud-button href=(format!("/signup?return_to={back}")) { "Sign up" }
+                } @else if !verse {
+                    a.hud-button href=(VERSE) { "Enter the Verse" }
+                }
             }
         }
     }
@@ -82,116 +83,118 @@ fn poster() -> Markup {
 
 fn marketing_content() -> Markup {
     html! {
-        main {
-            section.hero aria-labelledby="hero-title" {
-                div.hero-copy {
-                    p.eyebrow { span.signal {} "OPEN TO EVERY IDEA" }
+        main.lp {
+            section.lp-hero aria-labelledby="hero-title" {
+                div.lp-hero-copy {
+                    p.hud-label { span.hud-signal {} "OPEN TO EVERY IDEA" }
                     h1 #hero-title { "Your ideas." br; span { "A whole universe." } }
-                    p.hero-description { "Tools to create. Agents to help. A place to bring it all together." }
-                    a.enter-button href=(VERSE) { span { "Enter the Verse" } span aria-hidden="true" { "↗" } }
-                    p.hero-caption { "Explore a first look at our connected worlds." }
+                    p.lp-lede { "Tools to create. Agents to help. A place to bring it all together." }
+                    a.hud-button.hud-primary.hud-large href=(VERSE) { span { "Enter the Verse" } span aria-hidden="true" { "↗" } }
+                    p.lp-caption { "Explore a first look at our connected worlds." }
                 }
-                div.hero-art { (poster()) span.orbit-caption { "A WORLD OF POSSIBILITIES" } }
-                div.scroll-note { span { "BUILT FOR WHAT COMES NEXT" } a href="#products" aria-label="Explore products" { "↓" } }
+                div.lp-hero-art aria-hidden="true" { (poster()) }
             }
-            section.products #products aria-labelledby="products-title" {
-                div.section-heading { p.eyebrow { "THE OPENAGENTS TOOLKIT" } h2 #products-title { "One platform." br; span { "More ways to create." } } p { "Chat with an agent, explore the Verse, or build with our API." } }
-                div.product-grid {
-                    a.product-card href="/chat" { span.product-number { "01 / ASSISTANT" } div.product-icon aria-hidden="true" { "✳" } h3 { "OpenAgents" } p { "An agent to think, build, and work with you." } span.product-action { "Open chat" span { "↗" } } }
-                    a.product-card href=(VERSE) { span.product-number { "02 / EXPLORE" } div.product-icon.code-icon aria-hidden="true" { "◇" } h3 { "The Verse" } p { "Discover connected worlds from your browser." } span.product-action { "Enter the Verse" span { "↗" } } }
-                    a.product-card href="/new-lander/house" { span.product-number { "03 / CREATE" } div.product-icon.app-icon aria-hidden="true" { (mark()) } h3 { "Haunted House" } p { "Step inside, make a change, and share your world." } span.product-action { "Explore the house" span { "↗" } } }
-                    a.product-card href="/docs/api" { span.product-number { "04 / BUILD" } div.product-icon.api-icon aria-hidden="true" { "{ }" } h3 { "For developers" } p { "Connect your ideas to the OpenAgents API." } span.product-action { "Explore the API" span { "↗" } } }
+            section.lp-products #products aria-labelledby="products-title" {
+                div.lp-section-heading { p.hud-label { "THE OPENAGENTS TOOLKIT" } h2 #products-title { "One platform. " span { "More ways to create." } } p { "Explore the Verse, make a world, or build with our API." } }
+                div.lp-product-grid {
+                    a.hud-card.lp-product href=(VERSE) { span.hud-index { "01 / EXPLORE" } h3 { "The Verse" } p { "Discover connected worlds from your browser." } span.lp-product-action { "Enter the Verse ↗" } }
+                    a.hud-card.lp-product href="/new-lander/house" { span.hud-index { "02 / CREATE" } h3 { "Haunted House" } p { "Step inside, make a change, and share your world." } span.lp-product-action { "Explore the house ↗" } }
+                    a.hud-card.lp-product href="/docs/api" { span.hud-index { "03 / BUILD" } h3 { "For developers" } p { "Connect your ideas to the OpenAgents API." } span.lp-product-action { "Explore the API ↗" } }
                 }
             }
-            section.invitation { p.eyebrow { "MAKE ROOM FOR YOUR IMAGINATION" } h2 { "Something starts" br; "when you enter." } a.enter-button href=(VERSE) { span { "Enter the Verse" } span aria-hidden="true" { "↗" } } }
+            section.lp-invitation { p.hud-label { "MAKE ROOM FOR YOUR IMAGINATION" } h2 { "Something starts when you enter." } a.hud-button.hud-primary.hud-large href=(VERSE) { span { "Enter the Verse" } span aria-hidden="true" { "↗" } } }
         }
-        footer.site-footer { a.brand href=(PATH) { (mark()) "OpenAgents" } span { "Create anything." } nav aria-label="Footer" { a href="/docs" { "Docs" } a href="/privacy" { "Privacy" } a href="https://github.com/OpenAgentsInc/openagents" { "Open source ↗" } } }
+        footer.lp-footer { a.lp-brand href=(PATH) { (mark()) span { "OpenAgents" } } span { "Create anything." } nav aria-label="Footer" { a href="/docs" { "Docs" } a href="/privacy" { "Privacy" } a href="https://github.com/OpenAgentsInc/openagents" { "Open source ↗" } } }
     }
 }
 
 fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Markup {
     let release = universe_release();
     html! {
-        main.atlas id="verse-atlas" data-entry=(if signed_in {"member"} else {"locked"}) aria-labelledby="atlas-title" {
-            div #universe-exploration inert {
-                div.universe-stage {
-                    div.still-universe aria-hidden="true" { (poster()) }
+        main.verse id="verse-atlas" data-entry=(if signed_in {"member"} else {"locked"}) aria-labelledby="atlas-title" {
+            div.verse-world #universe-exploration inert {
+                div.verse-stage {
+                    div.verse-still aria-hidden="true" { (poster()) }
                     @if let Some(release) = &release {
                         iframe id="engine" title="The Verse planets" data-engine-url=(&release.engine_url) {}
                         @let config = serde_json::json!({"release":release.release,"engine_abi":release.engine_abi,"project_format":release.project_format,"project":release.project});
                         script id="engine-config" type="application/json" { (PreEscaped(config.to_string().replace('<', "\\u003c"))) }
                     }
-                    p id="world-notice" role="status" { "Opening the planets… You can also choose a destination below." }
+                    p.hud-toast id="world-notice" role="status" { "Opening the planets… You can also choose a destination below." }
                 }
-                div.atlas-heading { p.eyebrow { span.signal {} "THE VERSE / EXPLORATION" } h1 #atlas-title { "Choose your world." } p { "Find a world. Follow your curiosity." } }
-                aside.destination-panel aria-labelledby="world-title" {
-                    div.panel-label { span { "DESTINATION" } (super::verse_ui::icon("map")) }
-                    p #world-category { "Company world · Locked" }
-                    h2 #world-title { "OpenAgents" }
+                div.verse-title { p.hud-label { span.hud-signal {} "THE VERSE / EXPLORATION" } h1 #atlas-title { "Choose your world." } }
+                aside.hud-panel.verse-panel aria-labelledby="world-title" {
+                    div.verse-panel-head {
+                        div {
+                            p.hud-label #world-category { "Company world · Locked" }
+                            h2 #world-title { "OpenAgents" }
+                        }
+                        span.verse-panel-icon { (super::verse_ui::icon("map")) }
+                    }
                     p #world-description { "Our home in the Verse. The Gym and Pylons will open here for their communities." }
-                    div.destination-actions {
-                        div id="destination-openagents" { span.locked-label { "◇ Locked for now" } a.text-link href="/docs" { "About OpenAgents ↗" } }
-                        div id="destination-blue-rush" hidden { a.small-button href=(super::blue_rush::PATH) { "Meet Blue Rush ↗" } }
+                    div.verse-actions {
+                        div id="destination-openagents" { span.hud-label.verse-locked { "◇ Locked for now" } a.hud-link href="/docs" { "About OpenAgents ↗" } }
+                        div id="destination-blue-rush" hidden { a.hud-button.hud-primary href=(super::blue_rush::PATH) { "Meet Blue Rush ↗" } }
                         div id="destination-haunted-house" hidden {
-                            @if let Some(path) = haunt { a.small-button href=(path) { "Enter Haunted House ↗" } }
+                            @if let Some(path) = haunt { a.hud-button.hud-primary href=(path) { "Enter Haunted House ↗" } }
                             @else { p { "The house is not open here yet." } }
                         }
                         div id="destination-creator-worlds" hidden {
                             p id="planet-status" role="status" { "Publish your own house, choose Play or Share, then return here." }
-                            div id="planet-ready" hidden {
+                            div.hud-card id="planet-ready" hidden {
                                 h3 { "A place of your own" }
                                 p { "Your house is published. Create your first personal planet." }
-                                p { "64 × 64 metres · Up to 128 objects · Private to you. Uses one account project; your account's project limit applies." }
-                                button.small-button id="planet-create" type="button" { "Create my planet" }
+                                p.verse-fine { "64 × 64 metres · Up to 128 objects · Private to you. Uses one account project; your account's project limit applies." }
+                                button.hud-button.hud-primary id="planet-create" type="button" { "Create my planet" }
                             }
-                            div id="planet-owned" hidden {
+                            div.hud-card id="planet-owned" hidden {
                                 h3 { "Your planet is ready" }
-                                a.small-button id="planet-setup" { "Set up my planet ↗" }
+                                a.hud-button.hud-primary id="planet-setup" { "Set up my planet ↗" }
                             }
                         }
-                        @for id in ["new-horizons", "far-field"] { div id=(format!("destination-{id}")) hidden { span.locked-label { "◇ Still taking shape" } } }
+                        @for id in ["new-horizons", "far-field"] { div id=(format!("destination-{id}")) hidden { span.hud-label.verse-locked { "◇ Still taking shape" } } }
                     }
-                    div.world-list aria-label="Choose a destination" {
+                    div.verse-worlds role="group" aria-label="Choose a destination" {
                         @for world in aethyrforge_host::WORLDS {
-                            button.world-option id=(format!("option-{}",world.id)) type="button" aria-pressed=(if world.id=="openagents" {"true"} else {"false"}) { span.world-option-dot aria-hidden="true" {} span { strong { (world.name) } small { (world.category) } } span.option-arrow aria-hidden="true" { "↗" } }
+                            button.verse-world-chip id=(format!("option-{}",world.id)) data-world=(world.id) type="button" aria-pressed=(if world.id=="openagents" {"true"} else {"false"}) { span.verse-dot aria-hidden="true" {} span { strong { (world.name) } small { (world.category) } } }
                         }
                     }
                 }
-                div.atlas-footer {
-                    p id="universe-status" { "Drag to orbit · Scroll to zoom · Select a world" }
-                    div.camera-controls { a id="world-retry" href=(VERSE) { "Reload map" } button id="world-fullscreen" type="button" { "Full screen" } }
+                div.verse-controls {
+                    p.hud-label id="universe-status" { "Drag to orbit · Scroll to zoom · Select a world" }
+                    a.hud-button.hud-ghost id="world-retry" href=(VERSE) { "Reload map" }
+                    button.hud-button.hud-ghost id="world-fullscreen" type="button" { "Full screen" }
                 }
             }
-            dialog.signin-card id="verse-entry" aria-labelledby="entry-title" aria-describedby="entry-description" {
-                div.entry-label { span { "OPENAGENTS / THE VERSE" } span aria-hidden="true" { "◎" } }
-                div.entry-symbol aria-hidden="true" { (mark()) }
+            dialog.hud-panel.verse-entry id="verse-entry" aria-labelledby="entry-title" aria-describedby="entry-description" {
+                div.verse-entry-head { span.hud-label { "OPENAGENTS / THE VERSE" } span.verse-entry-mark aria-hidden="true" { (mark()) } }
                 section id="verse-account" {
-                    p.eyebrow { "YOUR PLACE IN THE VERSE" }
-                    h2 #entry-title { "Your next world" br; "is waiting." }
+                    p.hud-label { "YOUR PLACE IN THE VERSE" }
+                    h2 #entry-title { "Your next world is waiting." }
                     p #entry-description { @if account { "Log in, or look around as a guest." } @else { "Look around as a guest." } }
-                    div.entry-actions {
-                        a.small-button id="verse-signin" hidden[!account] href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" }
-                        button id="continue-guest" type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
+                    div.verse-entry-actions {
+                        a.hud-button id="verse-signin" hidden[!account] href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" }
+                        button.hud-button.hud-primary id="continue-guest" type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
                     }
                 }
                 section id="verse-choices" hidden {
-                    p.eyebrow { "CHOOSE YOUR NEXT STEP" }
-                    h2 id="choice-title" { "Where shall" br; "we go?" }
+                    p.hud-label { "CHOOSE YOUR NEXT STEP" }
+                    h2 id="choice-title" { "Where shall we go?" }
                     p id="choice-description" { "Explore the planets, or step inside the Haunted House." }
-                    div.entry-actions {
-                        button.small-button id="verse-explore" type="button" { "Explore" span aria-hidden="true" { "↗" } }
-                        @if let Some(path) = haunt { a.small-button href=(path) { "Haunted House ↗" } }
+                    div.verse-entry-actions {
+                        button.hud-button id="verse-explore" type="button" { "Explore the planets" span aria-hidden="true" { "↗" } }
+                        @if let Some(path) = haunt { a.hud-button.hud-primary href=(path) { "Haunted House tutorial" span aria-hidden="true" { "↗" } } }
                     }
                 }
-                a.entry-back href=(PATH) { "← Back to OpenAgents" }
+                a.hud-link.verse-entry-back href=(PATH) { "← Back to OpenAgents" }
             }
-            nav.fallback-destinations aria-label="Other ways to explore" {
+            nav.hud-panel.verse-fallback aria-label="Other ways to explore" {
                 a href=(VERSE) { "Try the 3D view again" }
                 a href=(PATH) { "Back to OpenAgents" }
                 @if let Some(path) = haunt { a href=(path) { "Enter Haunted House" } }
                 a href=(super::blue_rush::PATH) { "Meet Blue Rush" }
             }
-            noscript { p.no-script { "This is a still view. You can use the links to visit a destination." } }
+            noscript { p.hud-toast { "This is a still view. You can use the links to visit a destination." } }
         }
     }
 }
@@ -206,8 +209,8 @@ fn document(content: Markup, verse: bool, account: bool) -> String {
     let body = html! {
         (maud::DOCTYPE)
         html lang="en" {
-            head { meta charset="utf-8"; meta name="viewport" content="width=device-width, initial-scale=1"; meta name="robots" content="noindex, nofollow"; meta name="description" content="Tools to create. Agents to help. Explore the OpenAgents toolkit and the Verse."; meta name="color-scheme" content="dark"; title { (title) } link rel="canonical" href=(format!("https://openagents.com{path}")); style { (PreEscaped(STYLE)) } }
-            body class=(if verse {"verse-page"} else {"marketing-page"}) { a.skip-link href=(if verse {"#world-title"} else {"#products"}) { "Skip to content" } (header(verse,account)) (content) @if verse { script type="module" src=(SCRIPT_PATH) {} } }
+            head { meta charset="utf-8"; meta name="viewport" content="width=device-width, initial-scale=1"; meta name="robots" content="noindex, nofollow"; meta name="description" content="Tools to create. Agents to help. Explore the OpenAgents toolkit and the Verse."; meta name="color-scheme" content="dark"; title { (title) } link rel="canonical" href=(format!("https://openagents.com{path}")); }
+            body class=(if verse {"verse-page"} else {"marketing-page"}) { a.hud-skip href=(if verse {"#world-title"} else {"#products"}) { "Skip to content" } (header(verse,account)) (content) @if verse { script type="module" src=(SCRIPT_PATH) {} } }
         }
     }.into_string();
     super::verse_ui::document(body, if verse { "universe" } else { "marketing" })
@@ -222,8 +225,7 @@ fn respond(content: String) -> Response {
         .map(|r| r.origin())
         .unwrap_or_else(|| "'none'".into());
     let policy = format!(
-        "default-src 'none'; style-src 'self' {}; script-src 'self' 'wasm-unsafe-eval' {origin}; connect-src 'self' {origin}; frame-src {origin}; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
-        super::lander5::source_hash(STYLE)
+        "default-src 'none'; style-src 'self'; script-src 'self' 'wasm-unsafe-eval' {origin}; connect-src 'self' {origin}; frame-src {origin}; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
     );
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
