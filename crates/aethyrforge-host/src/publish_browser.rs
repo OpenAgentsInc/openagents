@@ -175,12 +175,22 @@ async fn prepare(weak: Weak<RefCell<State>>, operation: &str) -> Result<(), JsVa
             if materials::has_unsaved(&rc.borrow())||d.source_draft!=d.active_source{return Err(JsValue::from_str("Apply your face draft, compile your current effect, and save before publishing."));}
             Some(d)
         }else{None};
+        let saved_sha=if let Some(current)=&document {
+            let version=rc.borrow().projects.cursor.version;
+            let saved=project_api(&weak,&format!("{}/history/{version}",project_path(&scope.project)),None).await?;
+            let stored:ProjectDocument=serde_json::from_value(saved["document"].clone()).map_err(|_|JsValue::from_str("Your saved version could not open. Try again."))?;
+            let hash=stored.sha256().map_err(|_|JsValue::NULL)?;
+            if saved["version"].as_u64()!=Some(version) || saved["document_sha256"].as_str()!=Some(hash.as_str()) || !current.matches_saved_content(&stored) {
+                return Err(JsValue::from_str("Save your current changes before publishing."));
+            }
+            hash
+        }else{String::new()};
         let value=project_api(&weak,&format!("{}/publications",project_path(&scope.project)),None).await?;
         let mut s=rc.borrow_mut();if !scope.accepts(&s){return Ok(());}
         if operation!="publish" && selected.is_empty(){return Err(JsValue::from_str("Choose a published version first."));}
         let managed=if operation!="publish" {Some(value["book"]["versions"].as_array().and_then(|rows|rows.iter().find(|v|v["release"]==selected&&v["revoked"]!=true)).cloned().ok_or_else(||JsValue::from_str("This version changed. Refresh published versions and choose again."))?)} else {None};
         let public=element("publish-visibility").unchecked_into::<web_sys::HtmlSelectElement>().value()=="public";
-        let body=json!({"csrf":s.csrf,"command_id":random(),"expected_sequence":value["book"]["sequence"],"operation":operation,"saved_version":if document.is_some(){s.projects.cursor.version}else{0},"document_sha256":document.as_ref().map(ProjectDocument::sha256).transpose().map_err(|_|JsValue::NULL)?.unwrap_or_default(),"public":public,"confirm_runtime_distribution":true,"release":if document.is_some(){Value::Null}else{Value::String(selected)}});
+        let body=json!({"csrf":s.csrf,"command_id":random(),"expected_sequence":value["book"]["sequence"],"operation":operation,"saved_version":if document.is_some(){s.projects.cursor.version}else{0},"document_sha256":saved_sha,"public":public,"confirm_runtime_distribution":true,"release":if document.is_some(){Value::Null}else{Value::String(selected)}});
         let (engine,context)=if document.is_some(){(Some(confirmation_scope(&s).ok_or(JsValue::NULL)?),Some(s.input_context().ok_or(JsValue::NULL)?))}else{(None,None)};
         s.projects.publication.prepared=Some(Prepared{scope:scope.clone(),engine,context,document,body});
         let version=managed.as_ref().map(|v|v["saved_version"].clone()).unwrap_or(json!(s.projects.cursor.version));

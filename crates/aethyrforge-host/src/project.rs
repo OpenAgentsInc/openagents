@@ -101,6 +101,13 @@ fn numbers(v: &[f64]) -> bool {
     v.iter().all(|n| n.is_finite() && n.abs() <= 100_000.)
 }
 impl ProjectDocument {
+    /// Compare saved content after a restore assigns a new local revision.
+    pub fn matches_saved_content(&self, saved: &Self) -> bool {
+        let mut current = self.clone();
+        current.source_revision = saved.source_revision;
+        current == *saved
+    }
+
     pub fn validate(&self) -> Result<(), Error> {
         let invalid = || Error::Invalid("project document");
         if self.schema != PROJECT_SCHEMA
@@ -334,6 +341,21 @@ pub(crate) mod tests {
     use super::*;
     pub(crate) fn document() -> ProjectDocument {
         serde_json::from_value(serde_json::json!({"schema":PROJECT_SCHEMA,"namespace":"haunted-house","template":{"world":"synthetic-house","engine_release":"fixture-1","asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64)},"source_revision":0,"entities":{"prop-1":{"asset":"custom:haunt:pumpkin","position":[0,0,-8],"yaw":0,"scale":1}},"rooms":{},"removed_walls":[],"materials":{"fur":{"roughness":0.8}},"environment":{"fogDensity":0.01},"source_draft":crate::DEFAULT_EFFECT,"active_source":crate::DEFAULT_EFFECT,"layers":[],"originals":[]})).unwrap()
+    }
+    #[test]
+    fn reopening_preserves_publishable_content_but_new_edits_do_not() {
+        let saved = document();
+        let mut opened = saved.clone();
+        opened.source_revision = 17;
+        assert!(opened.matches_saved_content(&saved));
+        opened.source_draft.push_str("\n// Unfinished edit");
+        assert!(!opened.matches_saved_content(&saved));
+        opened = saved.clone();
+        opened.environment.insert("fogDensity".into(), 0.02);
+        assert!(!opened.matches_saved_content(&saved));
+        opened = saved.clone();
+        opened.template.engine_release = "another-engine".into();
+        assert!(!opened.matches_saved_content(&saved));
     }
     #[test]
     fn editable_content_excludes_presence_and_preserves_invalid_drafts() {
