@@ -34,6 +34,7 @@
 //! carry the events.
 
 pub mod award;
+pub mod events;
 pub mod feedback;
 pub mod report;
 pub mod session;

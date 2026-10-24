@@ -1,5 +1,5 @@
 # Privacy Policy
-Last updated: 2026-10-21
+Last updated: 2026-10-24
 
 This Privacy Policy describes how OpenAgents, Inc. (“we,” “us,” or “our”) handles personal information that we collect through our website [https://openagents.com](https://openagents.com) , our APIs and inference gateway, Coder and Coder Terminal, the Forum, Pylon, and any other service that links to this Privacy Policy (collectively, the “Services”).
 
@@ -50,13 +50,27 @@ We keep personal information for as long as reasonably necessary for the purpose
 
 We use cookies and similar technologies for authentication, preferences, security, and to understand how the Services are used. Most browsers let you remove or reject cookies through their settings; doing so may affect functionality such as staying signed in.
 
-**Website analytics.** On openagents.com we measure use ourselves, without third-party analytics or tracking scripts and without cookies. The one cookie exception is the cookie for affiliate and campaign links described in section 6, which is a separate feature set only when you follow such a link. We record only aggregate hourly totals: which kind of page was opened, the name of the referring site, the type of device (phone, tablet, or computer), whether the visit came from a person, an automated agent, or a crawler, response status and speed, and a fixed list of actions (sending a chat, receiving an answer, clicking a suggestion, card, or download, copying the install command, and signing in). For this purpose we do not record IP addresses, account identifiers, the content you submit, full page or referrer addresses, or any identifier that distinguishes one visitor from another. We keep these totals for up to 13 months.
+**Website analytics.** On openagents.com we measure use ourselves, without third-party analytics or tracking scripts and without cookies. The cookie exceptions are the cookie for affiliate and campaign links described in section 6, which is a separate feature set only when you follow such a link, and the playtest's session cookie described under Playtest research below. We record only aggregate hourly totals: which kind of page was opened, the name of the referring site, the type of device (phone, tablet, or computer), whether the visit came from a person, an automated agent, or a crawler, response status and speed, and a fixed list of actions (sending a chat, receiving an answer, clicking a suggestion, card, or download, copying the install command, and signing in). For this purpose we do not record IP addresses, account identifiers, the content you submit, full page or referrer addresses, or any identifier that distinguishes one visitor from another. We keep these totals for up to 13 months.
 
 **Visits to the Grid homepage.** On our homepage (openagents.com/, where the Grid is), we also record what each visit does, in order, so we can see where people get stuck. When you open the page, it makes a random number for your visit and keeps it in that browser tab only (not a cookie); it is gone when you close the tab. With that number we record a fixed list of steps: the page and the Grid loading (how long it took, and whether your browser drew it with WebGPU or WebGL), joining the Grid, walking to the terminal, entering the Pylon Bay, pointing at or opening a Pylon (only its kind, such as a Mac or a GPU machine), going through a portal and which place it led to, Game Lab steps, choosing a model, sending a message, whether an answer came and roughly how long it took, clicking Log in or Sign up, signing in, and roughly how long the page was open. We never record what you type, your account, your IP address, keys, or Pylon names with it, and we never connect the number to your account or to a cookie. We delete these records after 30 days.
 
+**Playtest research.** On the pages of our game playtest (the homepage, the playtest and its tutorial, the survey, and the game's house and world pages), we record what each visit does in more detail, so we can see where players get stuck and fix it. This is separate from the totals above, and our own small script does it; no third party receives it. We record:
+
+- each page you open and each move between pages, how long the page was open and in view, and how far you scrolled;
+- each click: the name or id the page gives the button or link you clicked, its role, and up to 60 characters of its visible text;
+- when you send a form, the names of its fields, never what you typed in them (we never record what you type anywhere);
+- errors in our pages (the message and which of our script files it came from);
+- the game's progress steps (for example, the game finished loading or a tutorial step was completed), and the survey being started and finished;
+- the size of your screen and whether it is a touch screen, and the type of device, operating system, and browser (for example, "phone, iOS, Safari"), not the full browser description;
+- the campaign link that brought you, if any (for example, "reddit, reddit-gamedev").
+
+These records carry a random session number: the one the playtest keeps in a cookie named oa_playtest, or, before you start the playtest, one your browser tab keeps until you close it. If you are signed in, we keep your account's id with them. We never record your IP address with them. We keep them for 180 days, and only we see them.
+
+You can turn this off in the playtest's introduction. When it is off, or when your browser sends a Do Not Track or Global Privacy Control signal, we keep only counts of which pages were opened and which kinds of event happened, with no session number, account, click text, or detail.
+
 Our hosting provider's request logs, which we use to operate and secure the Services, include IP addresses and are deleted after 30 days.
 
-**Do Not Track and Global Privacy Control.** When your browser sends a Do Not Track or Global Privacy Control signal, our website analytics count only that a page was opened (the kind of page, its status, and its speed), and nothing else about your visit. The Grid homepage makes no visit number and records no steps. We also set no affiliate or campaign link cookie (section 6).
+**Do Not Track and Global Privacy Control.** When your browser sends a Do Not Track or Global Privacy Control signal, our website analytics count only that a page was opened (the kind of page, its status, and its speed), and nothing else about your visit. The Grid homepage makes no visit number and records no steps, and playtest research keeps only counts. We also set no affiliate or campaign link cookie (section 6).
 
 ## 6. Affiliate and Campaign Links
 

@@ -341,7 +341,7 @@ fn every_code_is_a_channel_and_series_with_a_page_of_ours() {
         assert!(codes::CHANNELS.contains(&code.channel()), "{}", code.code);
         assert!(!code.series().is_empty());
         assert!(
-            crate::upstream::owned(code.destination),
+            crate::upstream::owned(code.path()),
             "{}",
             code.destination
         );
@@ -349,6 +349,27 @@ fn every_code_is_a_channel_and_series_with_a_page_of_ours() {
     }
     assert!(codes::find("yt-cost").is_some() && codes::find("x-cost").is_some());
     assert!(codes::find("tt-capability").is_some());
+    for launch in [
+        "x-chris",
+        "x-openagents",
+        "youtube-kiki",
+        "reddit-gamedev",
+        "reddit-indiedev",
+        "reddit-playmygame",
+        "itch-community",
+        "discord",
+        "hn",
+        "email",
+        "friend-share",
+    ] {
+        let code = codes::find(launch).unwrap();
+        assert!(
+            code.destination
+                .contains(&format!("utm_campaign={launch}"))
+                && code.destination.contains("utm_source="),
+            "{launch}"
+        );
+    }
 }
 
 #[tokio::test]
