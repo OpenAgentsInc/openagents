@@ -1,0 +1,181 @@
+{
+  "schema": "aethyrforge.requirements.v1",
+  "status": "specified-not-implemented",
+  "requirements": [
+    {
+      "id": "AF-PRODUCT",
+      "owner": "docs/product.md",
+      "milestone": "M7",
+      "status": "specified",
+      "acceptance": "Complete indie-creator creation/play/publish product; capability map and original game acceptance"
+    },
+    {
+      "id": "AF-UX",
+      "owner": "docs/creator-experience.md",
+      "milestone": "M1",
+      "status": "specified",
+      "acceptance": "Fullscreen contextual tools, keyboard/touch/accessibility and clear save/live/publish states"
+    },
+    {
+      "id": "AF-FRONTEND",
+      "owner": "docs/frontend.md",
+      "milestone": "M1",
+      "status": "specified",
+      "acceptance": "React DOM components, Effect Atom UI state, Effect 4 services; independent engine scheduling, bounded views, scoped lifecycle and Strict Mode recovery"
+    },
+    {
+      "id": "AF-WORLD",
+      "owner": "docs/world-model.md",
+      "milestone": "M1",
+      "status": "specified",
+      "acceptance": "Semantic building graph with stable IDs, openings, reachability and one owned boundary"
+    },
+    {
+      "id": "AF-COMMAND",
+      "owner": "docs/contracts.md",
+      "milestone": "M1",
+      "status": "specified",
+      "acceptance": "Closed attributed all-or-none commands; exact retries, revision conflict and inverse intents"
+    },
+    {
+      "id": "AF-KERNEL",
+      "owner": "docs/runtime.md",
+      "milestone": "M2",
+      "status": "specified",
+      "acceptance": "60Hz kernel, coarse buffers, bounded physics/navigation, lifecycle and precision"
+    },
+    {
+      "id": "AF-ABI",
+      "owner": "docs/runtime-abi.md",
+      "milestone": "M2",
+      "status": "specified",
+      "acceptance": "Versioned fixed binary layouts, slab ownership, limits and status semantics"
+    },
+    {
+      "id": "AF-GPU",
+      "owner": "docs/rendering.md",
+      "milestone": "M2",
+      "status": "specified",
+      "acceptance": "Direct WebGPU render graph, instancing/streaming, shader errors and device recovery"
+    },
+    {
+      "id": "AF-COMPILE",
+      "owner": "docs/asset-compilation.md",
+      "milestone": "M2",
+      "status": "specified",
+      "acceptance": "Incremental complete generation closure, cache correctness and reproducible outputs"
+    },
+    {
+      "id": "AF-SCRIPT",
+      "owner": "docs/scripting.md",
+      "milestone": "M3",
+      "status": "specified",
+      "acceptance": "Safe behavior dialect and state-preserving compatible replacement"
+    },
+    {
+      "id": "AF-BYTECODE",
+      "owner": "docs/behavior-bytecode.md",
+      "milestone": "M3",
+      "status": "specified",
+      "acceptance": "Instruction/verifier semantics and concrete charged fuel/memory bounds"
+    },
+    {
+      "id": "AF-GAME",
+      "owner": "docs/game-systems.md",
+      "milestone": "M3",
+      "status": "specified",
+      "acceptance": "Media, terrain, input, UI, vertical traversal and complete game creation"
+    },
+    {
+      "id": "AF-AI",
+      "owner": "docs/ai-authoring.md",
+      "milestone": "M3",
+      "status": "specified",
+      "acceptance": "Evaluated semantic actions, explicit exact fields, context capture and granted agent jobs"
+    },
+    {
+      "id": "AF-COLLAB",
+      "owner": "docs/collaboration.md",
+      "milestone": "M4",
+      "status": "specified",
+      "acceptance": "Serial branches, scoped CRDT text, offline merge, compensating undo and revoked access"
+    },
+    {
+      "id": "AF-PUBLISH",
+      "owner": "docs/publishing.md",
+      "milestone": "M5",
+      "status": "specified",
+      "acceptance": "Exact signed immutable release and monotonic channel CAS with session policy"
+    },
+    {
+      "id": "AF-SECURITY",
+      "owner": "docs/security.md",
+      "milestone": "M7",
+      "status": "specified",
+      "acceptance": "Separate origins, broker capabilities, hostile content/guest/import tests"
+    },
+    {
+      "id": "AF-OPS",
+      "owner": "docs/operations.md",
+      "milestone": "M7",
+      "status": "specified",
+      "acceptance": "Storage fault model, backups/restore, telemetry privacy, capacity and self-host recovery"
+    },
+    {
+      "id": "AF-PLATFORM",
+      "owner": "docs/platform-support.md",
+      "milestone": "M7",
+      "status": "specified",
+      "acceptance": "Capability profiles and exact hardware/browser lifecycle qualification"
+    },
+    {
+      "id": "AF-PERF",
+      "owner": "docs/performance.md",
+      "milestone": "M7",
+      "status": "specified",
+      "acceptance": "Pinned workloads and separately measured frame/edit/startup/publish budgets"
+    },
+    {
+      "id": "AF-INTEGRATION",
+      "owner": "docs/integration.md",
+      "milestone": "M5",
+      "status": "specified",
+      "acceptance": "Portable owned formats and replaceable OpenAgents/Kiln/service adapters"
+    },
+    {
+      "id": "AF-QUALIFY",
+      "owner": "docs/verification.md",
+      "milestone": "M7",
+      "status": "specified",
+      "acceptance": "Traceable component/integration/security/accessibility and fault evidence"
+    },
+    {
+      "id": "AF-MULTIPLAYER",
+      "owner": "docs/collaboration.md",
+      "milestone": "M6",
+      "status": "specified",
+      "acceptance": "Release-pinned authoritative play, prediction/correction and region handoff"
+    },
+    {
+      "id": "AF-RIGHTS",
+      "owner": "docs/integration.md",
+      "milestone": "M5",
+      "status": "specified",
+      "acceptance": "Rights-aware admission/export and owner-approved code licensing"
+    },
+    {
+      "id": "AF-EXPERIMENTS",
+      "owner": "docs/risks-and-experiments.md",
+      "milestone": "M0",
+      "status": "specified",
+      "acceptance": "Falsifiable architecture probes before commitments are declared qualified"
+    },
+    {
+      "id": "AF-REFERENCE-PARITY",
+      "owner": "docs/references/medieval-town.md",
+      "milestone": "M7",
+      "status": "specified",
+      "acceptance": "Source-pinned gallery analysis, all16 scenic shot recipes, calibrated sky/light/material/atmosphere, private capture comparisons, interactive quality and performance evidence"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "aethyrforge.channel.v1",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "channel": "staging",
+  "sequence": 1,
+  "previousRefDigest": null,
+  "releaseId": "sha256:9d7fd083d0b3dcf48a015d667490e652a62d79a718aa1a1b17b46c66754dff75",
+  "keyId": "00000000-0000-4000-8000-000000000700",
+  "issuedAt": "2026-10-22T12:00:00Z",
+  "expiresAt": "2026-10-23T12:00:00Z",
+  "trustVersion": 1
+}

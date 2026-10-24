@@ -1,0 +1,19 @@
+The camera-rail helper manually adapts algorithms from OpenAgents camera_rig.rs
+and film_shot.rs at revision 83fe8b7f6b3cd437ae9b7af213cf9f04875dd793.
+
+Source: https://github.com/OpenAgentsInc/openagents
+License: Apache License, Version 2.0; see LICENSE in this directory.
+
+Integer timing, transported up vectors, and roll support are Aethyrforge additions.
+
+The character-camera helper manually adapts FollowCamera from
+crates/verse-gfx/src/camera.rs at the same revision. The Rust walking kernel adapts
+movement constants and rules from crates/verse-world/src/social/controller.rs,
+re-exported by crates/verse/src/controller.rs and used by Everglade.
+
+Aethyrforge keeps its -Z-forward coordinate system, 0.3-meter walking radius,
+fixed simulation ticks, and owned building collision. Static triangle contacts,
+the bounded spatial index, collision queries, and measured movement velocity are
+Aethyrforge additions. The orbit starts six meters away for the town. First-
+person transition, zoom hysteresis, collision pull-in, and eased return follow
+Verse's camera behavior.

@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aethyrforge.invalid/contracts/release.schema.json",
+  "title": "Immutable release body",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "aethyrforge.release.v1"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "branchId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "worldDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "engine": {
+      "type": "object",
+      "properties": {
+        "abi": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "buildDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "vmVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "behaviorCompilerDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "abi",
+        "buildDigest",
+        "vmVersion",
+        "behaviorCompilerDigest"
+      ],
+      "additionalProperties": false
+    },
+    "targetProfile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "rightsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1099511627776
+          },
+          "mediaType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "role": {
+            "enum": [
+              "engine",
+              "world",
+              "behavior-compiler",
+              "rights",
+              "mesh",
+              "texture",
+              "behavior",
+              "material",
+              "audio",
+              "source",
+              "world-compiler"
+            ]
+          }
+        },
+        "required": [
+          "digest",
+          "byteLength",
+          "mediaType",
+          "role"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 100000
+    },
+    "entryPoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entryId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "worldDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "spawnId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          }
+        },
+        "required": [
+          "entryId",
+          "worldDigest",
+          "spawnId"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 32
+    },
+    "compilerDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "worldSchema": {
+      "const": "aethyrforge.world.v1"
+    },
+    "simulationProtocol": {
+      "const": "af.simulation.1"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*){1,7}$"
+      },
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "startupDigests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$"
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "maxItems": 100000
+    },
+    "offlinePolicy": {
+      "enum": [
+        "cached-trust",
+        "fresh-authorization"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "projectId",
+    "branchId",
+    "revision",
+    "worldDigest",
+    "engine",
+    "targetProfile",
+    "rightsDigest",
+    "artifacts",
+    "entryPoints",
+    "compilerDigest",
+    "worldSchema",
+    "simulationProtocol",
+    "capabilities",
+    "startupDigests",
+    "offlinePolicy"
+  ],
+  "additionalProperties": false
+}

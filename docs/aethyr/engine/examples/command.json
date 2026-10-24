@@ -1,0 +1,33 @@
+{
+  "schema": "aethyrforge.command.v1",
+  "commandId": "00000000-0000-4000-8000-000000000400",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "branchId": "00000000-0000-4000-8000-000000000002",
+  "baseRevision": 7,
+  "actorId": "00000000-0000-4000-8000-000000000500",
+  "capabilityRef": "00000000-0000-4000-8000-000000000501",
+  "operations": [
+    {
+      "kind": "wall.setPolicy",
+      "targetIds": [
+        "00000000-0000-4000-8000-000000000106"
+      ],
+      "args": {
+        "policy": "open-boundary"
+      }
+    }
+  ],
+  "preconditions": [
+    {
+      "entityId": "00000000-0000-4000-8000-000000000010",
+      "version": 3
+    }
+  ],
+  "context": {
+    "selectionIds": [
+      "00000000-0000-4000-8000-000000000106"
+    ],
+    "selectionRevision": 12,
+    "viewRevision": 18
+  }
+}

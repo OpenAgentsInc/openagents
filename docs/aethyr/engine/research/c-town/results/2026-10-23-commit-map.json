@@ -1,0 +1,48 @@
+{
+  "schema": "aethyrforge.c-town-commit-attribution-map.v1",
+  "boundary": "Raw private measurement logs retain original local commit IDs. Agent attribution was corrected before publication. Every mapped commit has an identical Git tree; numbers, bundle hashes, and raw evidence hashes are unchanged. Published commits are ancestors of main.",
+  "commits": [
+    {
+      "originalLocalCommit": "ddb58bbc8ca8bb9f9fee6096b2a389ad62b6dec9",
+      "publishedCommit": "e0811bb03282f561353b80aa86620c419f16ce1b",
+      "tree": "f0ed27ddb6fe818f5b522d026bc112349104d642",
+      "change": "Agent attribution only; identical source tree."
+    },
+    {
+      "originalLocalCommit": "747a88a5caa768f3d29889b8a77ef3735c882642",
+      "publishedCommit": "87ae58c0f3b81539a1ce2ba28dd896233f726ff6",
+      "tree": "4a5f76d69d861c5d862e3272bacfc131c9c9b4a7",
+      "change": "Agent attribution only; identical source tree."
+    },
+    {
+      "originalLocalCommit": "bb4380c6036a67586065cb7c1812aabfeef514fb",
+      "publishedCommit": "eac043702d4b28dcac7d3e6e9d74701902017a32",
+      "tree": "a8c6c06197da8fab8c2ccea9356d70461627dc02",
+      "change": "Agent attribution only; identical source tree."
+    },
+    {
+      "originalLocalCommit": "d5d6cdfb0a92e08f7a3e68830df9a9f4d37863bf",
+      "publishedCommit": "876477f11d16b64d42642caaaa9743fe47cc11d1",
+      "tree": "7f7131577e3edf5a6aad153aee82ad3e8857789a",
+      "change": "Agent attribution only; identical source tree."
+    },
+    {
+      "originalLocalCommit": "bacb9c62e1459d5c1fedec1f755d1931b72fff6f",
+      "publishedCommit": "074f29061e1769d484f32b84aafd178aa359a5aa",
+      "tree": "4e2d1a77ef82078cf25aebf71ccc82f421861bbb",
+      "change": "Agent attribution only; identical source tree."
+    },
+    {
+      "originalLocalCommit": "c583245f223d40c3b7b57191eec2db70b40d1bb5",
+      "publishedCommit": "068e5ae05cbc864f7cfa97d76b21eab0a744e9fd",
+      "tree": "5636e4e116b5d48f89744a9b1481d94987c629d1",
+      "change": "Agent attribution only; identical source tree."
+    },
+    {
+      "originalLocalCommit": "3fc79e440bd7adbe066e020b9b830228dbf152af",
+      "publishedCommit": "9169b6e0a4c1625bb84967832450c0fc63f0f65e",
+      "tree": "367c362800dc3127950db5d2624edfefd90486bd",
+      "change": "Agent attribution only; identical source tree."
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aethyrforge world</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #191919;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+      }
+      #notice {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        color: #eeeeee;
+        font: 14px system-ui;
+        text-align: center;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas
+      id="world"
+      tabindex="0"
+      aria-label="Walkable Medieval Town"
+    ></canvas>
+    <div id="notice">Preparing the world…</div>
+    <script type="module" src="/apps/preview/main.ts"></script>
+  </body>
+</html>

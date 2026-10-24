@@ -1,0 +1,2387 @@
+{
+  "schema": "aethyrforge.town-renderer-phase1.v1",
+  "generatedAt": "2026-10-24T13:04:03.881990+00:00",
+  "implementationCommit": "66db899d0ad5fabcdaaeac0d3c89359eec47a603",
+  "baselineCommit": "6b35a92",
+  "status": "implemented-diagnostics-not-qualified",
+  "qualified": false,
+  "defaults": {
+    "compiledSourceBatches": false,
+    "preparedSurfaceBrdf": false
+  },
+  "localEvidenceRoot": ".openagents/scratch/codex-01a1698f-a3cc-7361-b1a6-2aa016b614ae",
+  "runs": [
+    {
+      "directory": "phase1-baseline-a",
+      "reportSha256": "860049e39704bbc0ed970d76f4b9dd93a6f66dea4a2ff41cb97214cd216f7082",
+      "failure": null,
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 10000,
+        "warmupMs": 5000,
+        "order": [
+          0,
+          100000
+        ],
+        "scenarios": [
+          "night"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "sway"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "9cde1beeb2788056f4464c9c4addfe47fd0f58f9d43d4d20cf7de88289270398",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "7300aa644c4db11a64de6e457c8323c82767a44f3e439306e3bd4e944a47c40c",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 0,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "fe2df4ad6d629117f70b958c939c8a9a4b19c643a68cdaabddb5eb0a57d76a27",
+          "durationMs": 10004.600000023842,
+          "completionRateHz": 53.47540131526748,
+          "gpuEnvelopeMs": {
+            "count": 535,
+            "min": 9.633792,
+            "p50": 13.76256,
+            "p95": 16.469196799999995,
+            "p99": 17.301504,
+            "max": 22.151168,
+            "mean": 13.962720418691577,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 3.7000000178813934,
+            "cullMs": 0.699999988079071,
+            "clusterMs": 0.4000000059604645,
+            "commandEncodeMs": 3.199999988079071,
+            "gpuMs": 8.585216,
+            "fullGpuMs": 13.76256
+          },
+          "sourceCommandMedians": {
+            "draws": null,
+            "pipelines": null,
+            "materials": null,
+            "windBindings": null
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.timeline",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.interval-max",
+            "completion.slow-fraction",
+            "completion.latency-p95",
+            "completion.latency-max",
+            "qualification.duration"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 779600,
+            "nativeBundleBytes": null,
+            "instanceBytes": 5197440,
+            "windBytes": 1299360,
+            "bundles": 26,
+            "builds": 752,
+            "reuses": 9619,
+            "uploads": 1214,
+            "uploadBytes": 94335080,
+            "executions": 9792,
+            "tableDraws": 38980,
+            "admittedDraws": 27635,
+            "recordedCommands": 31993,
+            "cpuMembershipBytes": 195540
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_950003cc-8da2-4104-a89e-79da22d150c0_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 86,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_950003cc-8da2-4104-a89e-79da22d150c0_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 86,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        },
+        {
+          "count": 100000,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-1.json",
+          "rawSha256": "2eafc6a746df7aa5f2f581af33520ee8f37aaf7e579460a9d15116bc491be0a2",
+          "durationMs": 10004.600000023842,
+          "completionRateHz": 47.877976130865655,
+          "gpuEnvelopeMs": {
+            "count": 479,
+            "min": 11.993088,
+            "p50": 16.121856,
+            "p95": 19.352780799999994,
+            "p99": 20.934819839999996,
+            "max": 23.068672,
+            "mean": 16.06220318997913,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 4,
+            "cullMs": 0.7000000178813934,
+            "clusterMs": 0.40000003576278687,
+            "commandEncodeMs": 3.5,
+            "gpuMs": 10.092544,
+            "fullGpuMs": 16.121856
+          },
+          "sourceCommandMedians": {
+            "draws": null,
+            "pipelines": null,
+            "materials": null,
+            "windBindings": null
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.timeline",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.slow-fraction",
+            "completion.latency-p95",
+            "qualification.duration",
+            "gpu.budget-p95"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 779600,
+            "nativeBundleBytes": null,
+            "instanceBytes": 5197440,
+            "windBytes": 1299360,
+            "bundles": 26,
+            "builds": 752,
+            "reuses": 18454,
+            "uploads": 2330,
+            "uploadBytes": 181048280,
+            "executions": 18627,
+            "tableDraws": 38980,
+            "admittedDraws": 27635,
+            "recordedCommands": 31993,
+            "cpuMembershipBytes": 195540
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_950003cc-8da2-4104-a89e-79da22d150c0_2",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 1018,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_950003cc-8da2-4104-a89e-79da22d150c0_2",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 1018,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "phase1-baseline-b",
+      "reportSha256": "a00f3eab1b86322082d7d2898d116d7127f6e5015a5a44e5c003efb5e8599061",
+      "failure": null,
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 30000,
+        "warmupMs": 5000,
+        "order": [
+          100000,
+          0
+        ],
+        "scenarios": [
+          "night"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "sway"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "39edcd306e186639fe5cf2ec3128c1a8cc77dbb2179c6ee10871b05b1c90cc71",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "7300aa644c4db11a64de6e457c8323c82767a44f3e439306e3bd4e944a47c40c",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 100000,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "a36a45798b605c213106394eb458c9b3db1489e99ee1066d925b2316f2e31a33",
+          "durationMs": 30006.29999998212,
+          "completionRateHz": 45.957015693398446,
+          "gpuEnvelopeMs": {
+            "count": 1379,
+            "min": 12.582912,
+            "p50": 17.104896,
+            "p95": 20.97152,
+            "p99": 22.55880192,
+            "max": 25.034752,
+            "mean": 17.13326800290062,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 3.7999999821186066,
+            "cullMs": 0.699999988079071,
+            "clusterMs": 0.4000000059604645,
+            "commandEncodeMs": 3.2000000178813934,
+            "gpuMs": 10.551296,
+            "fullGpuMs": 17.104896
+          },
+          "sourceCommandMedians": {
+            "draws": 8136,
+            "pipelines": 1670,
+            "materials": 4626,
+            "windBindings": 496
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.timeline",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.interval-max",
+            "completion.slow-fraction",
+            "completion.latency-p95",
+            "completion.latency-max",
+            "gpu.budget-p95"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 779600,
+            "nativeBundleBytes": null,
+            "instanceBytes": 5197440,
+            "windBytes": 1299360,
+            "bundles": 26,
+            "builds": 838,
+            "reuses": 17911,
+            "uploads": 2271,
+            "uploadBytes": 176463980,
+            "executions": 18143,
+            "tableDraws": 38980,
+            "admittedDraws": 27729,
+            "recordedCommands": 32109,
+            "cpuMembershipBytes": 195540
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_1272a2c8-916a-4908-8249-23e71578ef1c_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 83,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_1272a2c8-916a-4908-8249-23e71578ef1c_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 83,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        },
+        {
+          "count": 0,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-1.json",
+          "rawSha256": "999fe55bcfdd56171794e672221661ca70181accafe40cc860d4029df7f96c04",
+          "durationMs": 30010.30000001192,
+          "completionRateHz": 47.517019156737305,
+          "gpuEnvelopeMs": {
+            "count": 1426,
+            "min": 10.223616,
+            "p50": 14.7456,
+            "p95": 17.891328,
+            "p99": 19.103744,
+            "max": 22.872064,
+            "mean": 14.794177525946683,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 5.300000011920929,
+            "cullMs": 1.0,
+            "clusterMs": 0.5999999940395355,
+            "commandEncodeMs": 4.5999999940395355,
+            "gpuMs": 9.076736,
+            "fullGpuMs": 14.7456
+          },
+          "sourceCommandMedians": {
+            "draws": 8136.0,
+            "pipelines": 1670.0,
+            "materials": 4626.0,
+            "windBindings": 496.0
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.timeline",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.interval-max",
+            "completion.slow-fraction",
+            "completion.stalls",
+            "completion.latency-p95",
+            "completion.latency-max",
+            "gpu.budget-p95"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 779600,
+            "nativeBundleBytes": null,
+            "instanceBytes": 5197440,
+            "windBytes": 1299360,
+            "bundles": 26,
+            "builds": 838,
+            "reuses": 36732,
+            "uploads": 4564,
+            "uploadBytes": 354630080,
+            "executions": 36964,
+            "tableDraws": 38980,
+            "admittedDraws": 27729,
+            "recordedCommands": 32109,
+            "cpuMembershipBytes": 195540
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_1272a2c8-916a-4908-8249-23e71578ef1c_2",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 1881,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_1272a2c8-916a-4908-8249-23e71578ef1c_2",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 1881,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "phase1-candidate-b",
+      "reportSha256": "04d4603b060df88cd3fd9a75225c0045a43a24b50383d74475f016038ada2b14",
+      "failure": null,
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 30000,
+        "warmupMs": 5000,
+        "order": [
+          100000,
+          0
+        ],
+        "scenarios": [
+          "night"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "sway"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": true
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "3fcd632b387ebdc304817316c1b80de6f6b4f43195da0ad9945f86de600fc543",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "99bb089526fdf0ef6b55ae88955415489d24b161ab8330e9b5d294fec67f2b78",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 100000,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "04d10503668b408e97a4887c4de48c39fc491762b5c5eb2d9c1fa427f719426e",
+          "durationMs": 30009.80000001192,
+          "completionRateHz": 40.28683963237075,
+          "gpuEnvelopeMs": {
+            "count": 1209,
+            "min": 13.041664,
+            "p50": 20.185088,
+            "p95": 24.641536,
+            "p99": 26.673152,
+            "max": 29.687808,
+            "mean": 20.155707923904117,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 4.5999999940395355,
+            "cullMs": 1.300000011920929,
+            "clusterMs": 0.4999999701976776,
+            "commandEncodeMs": 4,
+            "gpuMs": 12.910592,
+            "fullGpuMs": 20.185088
+          },
+          "sourceCommandMedians": {
+            "draws": 5748,
+            "pipelines": 1638,
+            "materials": 4602,
+            "windBindings": 465
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.timeline",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.interval-max",
+            "completion.slow-fraction",
+            "completion.latency-p95",
+            "completion.latency-p99",
+            "completion.latency-max",
+            "gpu.budget-p95"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 645280,
+            "nativeBundleBytes": null,
+            "instanceBytes": 8273792,
+            "windBytes": 2068448,
+            "bundles": 26,
+            "builds": 495,
+            "reuses": 15813,
+            "uploads": 2097,
+            "uploadBytes": 94620160,
+            "executions": 15932,
+            "tableDraws": 32264,
+            "admittedDraws": 24567,
+            "recordedCommands": 27366,
+            "compiledViews": 4,
+            "compiledSourceDraws": 15592,
+            "compiledTableDraws": 8876,
+            "compiledMembershipBytes": 290176,
+            "compiledGatherBytes": 6766368,
+            "cpuMembershipBytes": 161848
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_7f5b7244-e6b2-4458-ab0b-bca6d6ead2b0_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 79,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_7f5b7244-e6b2-4458-ab0b-bca6d6ead2b0_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 79,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        },
+        {
+          "count": 0,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-1.json",
+          "rawSha256": "f2ac3f47208be92684c56281f61107615aebee6a4cd034ca0f154ec3d0d00b74",
+          "durationMs": 30011.40000000596,
+          "completionRateHz": 46.14912999725854,
+          "gpuEnvelopeMs": {
+            "count": 1385,
+            "min": 9.961472,
+            "p50": 14.221312,
+            "p95": 17.629184,
+            "p99": 18.884853760000006,
+            "max": 21.561344,
+            "mean": 14.376232479422326,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 7.9000000059604645,
+            "cullMs": 2.5,
+            "clusterMs": 0.800000011920929,
+            "commandEncodeMs": 7,
+            "gpuMs": 8.978432,
+            "fullGpuMs": 14.221312
+          },
+          "sourceCommandMedians": {
+            "draws": 5748,
+            "pipelines": 1638,
+            "materials": 4602,
+            "windBindings": 465
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.timeline",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.interval-max",
+            "completion.slow-fraction",
+            "completion.latency-p95",
+            "gpu.budget-p95"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 645280,
+            "nativeBundleBytes": null,
+            "instanceBytes": 8273792,
+            "windBytes": 2068448,
+            "bundles": 26,
+            "builds": 495,
+            "reuses": 34270,
+            "uploads": 4347,
+            "uploadBytes": 195851920,
+            "executions": 34389,
+            "tableDraws": 32264,
+            "admittedDraws": 24567,
+            "recordedCommands": 27366,
+            "compiledViews": 4,
+            "compiledSourceDraws": 15592,
+            "compiledTableDraws": 8876,
+            "compiledMembershipBytes": 290176,
+            "compiledGatherBytes": 6766368,
+            "cpuMembershipBytes": 161848
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_7f5b7244-e6b2-4458-ab0b-bca6d6ead2b0_2",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 1677,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_7f5b7244-e6b2-4458-ab0b-bca6d6ead2b0_2",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 1677,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "phase1-shader-only",
+      "reportSha256": "3bf8a677c47d83e8babe3a6f228800f5b6d1c74d1a86e717f9807777ba9f4f1d",
+      "failure": "Error: page.waitForTimeout: Target page, context or browser has been closed",
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 30000,
+        "warmupMs": 5000,
+        "order": [
+          100000,
+          0
+        ],
+        "scenarios": [
+          "night"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "sway"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": false
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "3fcd632b387ebdc304817316c1b80de6f6b4f43195da0ad9945f86de600fc543",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "99bb089526fdf0ef6b55ae88955415489d24b161ab8330e9b5d294fec67f2b78",
+      "workersAfterClose": null,
+      "cleanupErrors": [],
+      "windows": []
+    },
+    {
+      "directory": "phase1-shader-only-retry",
+      "reportSha256": "c8eb95b63968d0cf95551a4b4483820904927a46f2765a81af8804b1d2aef574",
+      "failure": "Error: page.waitForTimeout: Target page, context or browser has been closed",
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 30000,
+        "warmupMs": 5000,
+        "order": [
+          100000,
+          0
+        ],
+        "scenarios": [
+          "night"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "sway"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": false,
+        "preparedSurfaceBrdf": true
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "8b8e63e048e815e946131c4e8bf87da1d71de22ff32e243bf3b890a4624c308f",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "99bb089526fdf0ef6b55ae88955415489d24b161ab8330e9b5d294fec67f2b78",
+      "workersAfterClose": null,
+      "cleanupErrors": [],
+      "windows": []
+    },
+    {
+      "directory": "phase1-quality-default",
+      "reportSha256": "106fb0f22745fba92704335525d5c59f912f1782f78012b412643ca04311b48d",
+      "failure": "Error: The Town action did not complete.",
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 1000,
+        "warmupMs": 500,
+        "order": [
+          0
+        ],
+        "scenarios": [
+          "day",
+          "night"
+        ],
+        "shots": [
+          "spawn",
+          "MT-11"
+        ],
+        "routes": [
+          "static"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": false,
+        "preparedSurfaceBrdf": false
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "8b8e63e048e815e946131c4e8bf87da1d71de22ff32e243bf3b890a4624c308f",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "7300aa644c4db11a64de6e457c8323c82767a44f3e439306e3bd4e944a47c40c",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 0,
+          "scenario": "day",
+          "shot": "spawn",
+          "route": "static",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "c0f40d5499e6a72c005b7b7f4ab572675e3fb72d0e365423473db50d9e8a6702",
+          "durationMs": 1003,
+          "completionRateHz": 60.81754735792622,
+          "gpuEnvelopeMs": {
+            "count": 61,
+            "min": 9.8304,
+            "p50": 11.14112,
+            "p95": 12.77952,
+            "p99": 13.041663999999999,
+            "max": 13.238272,
+            "mean": 11.322686950819671,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 1.5999999940395355,
+            "cullMs": 0,
+            "clusterMs": 0,
+            "commandEncodeMs": 1.5,
+            "gpuMs": 6.946816,
+            "fullGpuMs": 11.14112
+          },
+          "sourceCommandMedians": {
+            "draws": 8355,
+            "pipelines": 1704,
+            "materials": 4690,
+            "windBindings": 490
+          },
+          "strictOk": false,
+          "applicationOk": true,
+          "failedStrictChecks": [
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "qualification.duration",
+            "qualification.warmup"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 5,
+            "indirectBytes": 391100,
+            "nativeBundleBytes": null,
+            "instanceBytes": 2597760,
+            "windBytes": 649440,
+            "bundles": 13,
+            "builds": 322,
+            "reuses": 2358,
+            "uploads": 33,
+            "uploadBytes": 2581260,
+            "executions": 2387,
+            "tableDraws": 19555,
+            "admittedDraws": 13526,
+            "recordedCommands": 15924,
+            "compiledViews": 0,
+            "compiledSourceDraws": 0,
+            "compiledTableDraws": 0,
+            "compiledMembershipBytes": 0,
+            "compiledGatherBytes": 0,
+            "cpuMembershipBytes": 98095
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "ff3cd5890caeecec20060ccf7056ba64050f885dfc22db2280d4f7e0db5967fe",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_0bb9958c-4ca0-4b4f-a13e-5d694f4a13ca_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "day",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 76,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "ff3cd5890caeecec20060ccf7056ba64050f885dfc22db2280d4f7e0db5967fe",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_0bb9958c-4ca0-4b4f-a13e-5d694f4a13ca_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "day",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 76,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "phase1-quality-day-default",
+      "reportSha256": "e464d15a2deb20ff4b8bcfb272b92bf0eae85fd59827441eb3a63387b073c508",
+      "failure": null,
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 1000,
+        "warmupMs": 500,
+        "order": [
+          0
+        ],
+        "scenarios": [
+          "day"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "static"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": false,
+        "preparedSurfaceBrdf": false
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "8b8e63e048e815e946131c4e8bf87da1d71de22ff32e243bf3b890a4624c308f",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "7300aa644c4db11a64de6e457c8323c82767a44f3e439306e3bd4e944a47c40c",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 0,
+          "scenario": "day",
+          "shot": "spawn",
+          "route": "static",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "254c972a2db7792f853dbc3b32128eaafc77ec7ada7807f104ccd6f4e1872d7a",
+          "durationMs": 1004.4000000059605,
+          "completionRateHz": 59.73715651099556,
+          "gpuEnvelopeMs": {
+            "count": 60,
+            "min": 8.126464,
+            "p50": 8.617984,
+            "p95": 9.50272,
+            "p99": 9.753067519999998,
+            "max": 9.8304,
+            "mean": 8.739225600000003,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 1.5999999940395355,
+            "cullMs": 0.0,
+            "clusterMs": 0.0,
+            "commandEncodeMs": 1.5,
+            "gpuMs": 5.832704,
+            "fullGpuMs": 8.617984
+          },
+          "sourceCommandMedians": {
+            "draws": 8355.0,
+            "pipelines": 1704.0,
+            "materials": 4690.0,
+            "windBindings": 490.0
+          },
+          "strictOk": false,
+          "applicationOk": true,
+          "failedStrictChecks": [
+            "completion.interval-p95",
+            "qualification.duration",
+            "qualification.warmup"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 5,
+            "indirectBytes": 391100,
+            "nativeBundleBytes": null,
+            "instanceBytes": 2597760,
+            "windBytes": 649440,
+            "bundles": 13,
+            "builds": 322,
+            "reuses": 2256,
+            "uploads": 33,
+            "uploadBytes": 2581260,
+            "executions": 2285,
+            "tableDraws": 19555,
+            "admittedDraws": 13526,
+            "recordedCommands": 15924,
+            "compiledViews": 0,
+            "compiledSourceDraws": 0,
+            "compiledTableDraws": 0,
+            "compiledMembershipBytes": 0,
+            "compiledGatherBytes": 0,
+            "cpuMembershipBytes": 98095
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "ff3cd5890caeecec20060ccf7056ba64050f885dfc22db2280d4f7e0db5967fe",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_9270793e-3a00-411c-ac27-db43216646b2_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "day",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 69,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "ff3cd5890caeecec20060ccf7056ba64050f885dfc22db2280d4f7e0db5967fe",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_9270793e-3a00-411c-ac27-db43216646b2_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "day",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 69,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "phase1-quality-day-candidate",
+      "reportSha256": "915395805457f33e25bf2f4b52e2972440e5b7b4849e6f1d00a00705546365a2",
+      "failure": null,
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 1000,
+        "warmupMs": 500,
+        "order": [
+          0
+        ],
+        "scenarios": [
+          "day"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "static"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": true,
+        "preparedSurfaceBrdf": true
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "6b35a925c41fd82e2bd68dbc4584bbff98628373",
+      "sourceSha256": "8b8e63e048e815e946131c4e8bf87da1d71de22ff32e243bf3b890a4624c308f",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "99bb089526fdf0ef6b55ae88955415489d24b161ab8330e9b5d294fec67f2b78",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 0,
+          "scenario": "day",
+          "shot": "spawn",
+          "route": "static",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "ed651b03c4ba85a5dcf028b5f94d76972076be204a10ed4b0443f70d84241112",
+          "durationMs": 1003.1000000238419,
+          "completionRateHz": 59.81457481664232,
+          "gpuEnvelopeMs": {
+            "count": 60,
+            "min": 7.20896,
+            "p50": 8.84736,
+            "p95": 9.9680256,
+            "p99": 10.38155776,
+            "max": 10.420224,
+            "mean": 8.847360000000002,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 1.7000000178813934,
+            "cullMs": 0.0,
+            "clusterMs": 0.0,
+            "commandEncodeMs": 1.6000000089406967,
+            "gpuMs": 5.40672,
+            "fullGpuMs": 8.84736
+          },
+          "sourceCommandMedians": {
+            "draws": 5740.0,
+            "pipelines": 1681.0,
+            "materials": 4680.0,
+            "windBindings": 466.0
+          },
+          "strictOk": false,
+          "applicationOk": true,
+          "failedStrictChecks": [
+            "completion.interval-p95",
+            "qualification.duration",
+            "qualification.warmup"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 5,
+            "indirectBytes": 323140,
+            "nativeBundleBytes": null,
+            "instanceBytes": 4134528,
+            "windBytes": 1033632,
+            "bundles": 13,
+            "builds": 257,
+            "reuses": 2189,
+            "uploads": 33,
+            "uploadBytes": 2071560,
+            "executions": 2218,
+            "tableDraws": 16157,
+            "admittedDraws": 11826,
+            "recordedCommands": 13309,
+            "compiledViews": 2,
+            "compiledSourceDraws": 7822,
+            "compiledTableDraws": 4424,
+            "compiledMembershipBytes": 145132,
+            "compiledGatherBytes": 3380832,
+            "cpuMembershipBytes": 81049
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "ff3cd5890caeecec20060ccf7056ba64050f885dfc22db2280d4f7e0db5967fe",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_a9da35ef-28d8-4b7b-ac0c-5c07b328918d_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "day",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 64,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "ff3cd5890caeecec20060ccf7056ba64050f885dfc22db2280d4f7e0db5967fe",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_a9da35ef-28d8-4b7b-ac0c-5c07b328918d_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "day",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 64,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "phase1-final-66db899",
+      "reportSha256": "15bb8cd783b160c13a3acdf82c0c8295d043e13cd1a25e596736d1bc43b219e1",
+      "failure": null,
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 30000,
+        "warmupMs": 5000,
+        "order": [
+          100000
+        ],
+        "scenarios": [
+          "night"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "sway"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": true,
+        "preparedSurfaceBrdf": true
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "66db899d0ad5fabcdaaeac0d3c89359eec47a603",
+      "sourceSha256": "8b8e63e048e815e946131c4e8bf87da1d71de22ff32e243bf3b890a4624c308f",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "99bb089526fdf0ef6b55ae88955415489d24b161ab8330e9b5d294fec67f2b78",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 100000,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "48f682a8c7237289e0ea97715420b9f69748a6f667582b2b1033ffa42c0ff7c7",
+          "durationMs": 30003.59999999404,
+          "completionRateHz": 55.26003546242215,
+          "gpuEnvelopeMs": {
+            "count": 1658,
+            "min": 10.48576,
+            "p50": 13.238272,
+            "p95": 16.580608,
+            "p99": 18.181652480000004,
+            "max": 43.58144,
+            "mean": 13.563501317249688,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 4.0999999940395355,
+            "cullMs": 1.2000000178813934,
+            "clusterMs": 0.4000000059604645,
+            "commandEncodeMs": 3.5999999940395355,
+            "gpuMs": 8.51968,
+            "fullGpuMs": 13.238272
+          },
+          "sourceCommandMedians": {
+            "draws": 5748.0,
+            "pipelines": 1638.0,
+            "materials": 4602.0,
+            "windBindings": 465.0
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.interval-max",
+            "completion.slow-fraction",
+            "completion.stalls",
+            "completion.latency-p95",
+            "completion.latency-max"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 645280,
+            "nativeBundleBytes": null,
+            "instanceBytes": 8273792,
+            "windBytes": 2068448,
+            "bundles": 26,
+            "builds": 495,
+            "reuses": 21039,
+            "uploads": 2548,
+            "uploadBytes": 114632320,
+            "executions": 21154,
+            "tableDraws": 32264,
+            "admittedDraws": 24567,
+            "recordedCommands": 27366,
+            "compiledViews": 4,
+            "compiledSourceDraws": 15592,
+            "compiledTableDraws": 8876,
+            "compiledMembershipBytes": 290176,
+            "compiledGatherBytes": 6766368,
+            "cpuMembershipBytes": 161848
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_27fbec10-a9be-4731-b9d6-4392330ce5bc_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 61,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_27fbec10-a9be-4731-b9d6-4392330ce5bc_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 61,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ],
+      "codeFilesMatchImplementationCommit": true,
+      "codeMismatches": [],
+      "generatedKernelSha256": null
+    },
+    {
+      "directory": "phase1-final-original-66db899",
+      "reportSha256": "c86955bab1c7ba84738d8f488dadb56e366e800114c44787a06bf050db131d49",
+      "failure": null,
+      "configuration": {
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "durationMs": 30000,
+        "warmupMs": 5000,
+        "order": [
+          100000
+        ],
+        "scenarios": [
+          "night"
+        ],
+        "shots": [
+          "spawn"
+        ],
+        "routes": [
+          "sway"
+        ],
+        "targetHz": "display",
+        "minHz": 60,
+        "instrumented": true,
+        "compiledBatches": false,
+        "preparedSurfaceBrdf": false
+      },
+      "browser": "155.0.8059.85",
+      "host": {
+        "release": "25.4.0",
+        "cpu": "Apple M5 Max",
+        "logicalCpus": 18
+      },
+      "sourceRevision": "66db899d0ad5fabcdaaeac0d3c89359eec47a603",
+      "sourceSha256": "8b8e63e048e815e946131c4e8bf87da1d71de22ff32e243bf3b890a4624c308f",
+      "sourceStable": true,
+      "assetClosure": {
+        "sha256": "2a41779e89ddf88050522da8a757bacdb4af7352bae9cfb563092d2069571dd5",
+        "files": 470,
+        "rawBytes": 637679875,
+        "unchanged": true
+      },
+      "shaderSha256": "7300aa644c4db11a64de6e457c8323c82767a44f3e439306e3bd4e944a47c40c",
+      "workersAfterClose": 0,
+      "cleanupErrors": [],
+      "windows": [
+        {
+          "count": 100000,
+          "scenario": "night",
+          "shot": "spawn",
+          "route": "sway",
+          "rawEvidence": "window-0.json",
+          "rawSha256": "77674209be0073aa6e0b7a8699ffbf1aef1a324ec35322647a39443b7b2b3e8c",
+          "durationMs": 30008.19999998808,
+          "completionRateHz": 38.889370238816845,
+          "gpuEnvelopeMs": {
+            "count": 1167,
+            "min": 13.500416,
+            "p50": 20.840448,
+            "p95": 25.473843200000005,
+            "p99": 27.678474239999996,
+            "max": 63.963136,
+            "mean": 21.1166875749786,
+            "missing": 0
+          },
+          "acceptedCpuAndGpuMedians": {
+            "renderCpuMs": 3.699999988079071,
+            "cullMs": 0.699999988079071,
+            "clusterMs": 0.4000000059604645,
+            "commandEncodeMs": 3.199999988079071,
+            "gpuMs": 13.565952,
+            "fullGpuMs": 20.840448
+          },
+          "sourceCommandMedians": {
+            "draws": 8136,
+            "pipelines": 1670,
+            "materials": 4626,
+            "windBindings": 496
+          },
+          "strictOk": false,
+          "applicationOk": false,
+          "failedStrictChecks": [
+            "completion.count",
+            "completion.interval-p95",
+            "completion.interval-p99",
+            "completion.interval-max",
+            "completion.slow-fraction",
+            "completion.stalls",
+            "completion.latency-p95",
+            "completion.latency-p99",
+            "completion.latency-max",
+            "gpu.budget-p95"
+          ],
+          "sourceSubmission": {
+            "enabled": true,
+            "path": "render-bundles-indirect",
+            "views": 10,
+            "indirectBytes": 779600,
+            "nativeBundleBytes": null,
+            "instanceBytes": 5197440,
+            "windBytes": 1299360,
+            "bundles": 26,
+            "builds": 850,
+            "reuses": 15935,
+            "uploads": 2106,
+            "uploadBytes": 163643480,
+            "executions": 16173,
+            "tableDraws": 38980,
+            "admittedDraws": 27729,
+            "recordedCommands": 32109,
+            "compiledViews": 0,
+            "compiledSourceDraws": 0,
+            "compiledTableDraws": 0,
+            "compiledMembershipBytes": 0,
+            "compiledGatherBytes": 0,
+            "cpuMembershipBytes": 195540
+          },
+          "quality": {
+            "before": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_fc353ed2-ccfb-47a7-83c4-5e0531afaffc_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 65,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            },
+            "restored": {
+              "width": 1280,
+              "height": 720,
+              "pixelSha256": "414f69170fb8d36c41b676c46432a6d5133aca1c8d92433a4ff22eaa6121c142",
+              "time": 0,
+              "camera": {
+                "eye": [
+                  6,
+                  4,
+                  20
+                ],
+                "target": [
+                  6,
+                  3.9818211861429385,
+                  19.000165248290124
+                ],
+                "up": [
+                  0,
+                  1,
+                  0
+                ],
+                "fov": 1,
+                "vignette": null
+              },
+              "actors": {
+                "schema": "aethyrforge.capture-actors.v1",
+                "id": "actors_fc353ed2-ccfb-47a7-83c4-5e0531afaffc_1",
+                "sourceIdentity": "38502befadc35ac826958faa5a566ecc804413c456b57d8ee9c5c7820517092c",
+                "scenario": "night",
+                "modelIdentity": "e669ca953f5697c81b7b583f1da4e262705b6aaf1ea29b2842383b59b1fd975d",
+                "sourceFrame": 65,
+                "actorIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "count": 8,
+                "poseSha256": "3922ff4c32eb569cd6fd12c6ca640fae6d46bc7fa6ceb78e26466e27e0994b1d",
+                "basis": "native-start"
+              }
+            }
+          }
+        }
+      ],
+      "codeFilesMatchImplementationCommit": true,
+      "codeMismatches": [],
+      "generatedKernelSha256": null
+    }
+  ],
+  "comparisons": [
+    {
+      "file": "phase1-base-v-compiled.json",
+      "sha256": "ede822e11f2fb99abc99c71a7fc280108d673ffcf8c2f8c9e5cbe2ce7dc38afb",
+      "evidenceAndExactImageOk": true,
+      "qualified": false,
+      "pairs": 2,
+      "failedChecks": []
+    },
+    {
+      "file": "phase1-day-quality-comparison.json",
+      "sha256": "8cc0a49fc46ee4e268878b4ceaf9934a6ec74f94a224450f77448df73cc5f524",
+      "evidenceAndExactImageOk": true,
+      "qualified": false,
+      "pairs": 1,
+      "failedChecks": []
+    },
+    {
+      "file": "phase1-final-comparison.json",
+      "sha256": "40fa53736d7e5865cf9a1c9be6c1f426fa176c2def5f9ee8437aac53c1301b47",
+      "evidenceAndExactImageOk": true,
+      "qualified": false,
+      "pairs": 1,
+      "failedChecks": []
+    }
+  ],
+  "checks": {
+    "typescript": true,
+    "tests": {
+      "passed": 1318,
+      "skipped": 2,
+      "failed": 0
+    },
+    "browserLifecycle": true,
+    "kernelBytes": 888480
+  },
+  "delivery": {
+    "profile": "room",
+    "rawJsCeiling": 655360,
+    "baselineRawJsBytes": 694163,
+    "finalRawJsBytes": 697355,
+    "budgetRaised": false,
+    "qualified": false,
+    "finalBudget": {
+      "ok": false,
+      "checks": [
+        {
+          "metric": "jsRawBytes",
+          "actual": 697355,
+          "max": 655360,
+          "ok": false
+        },
+        {
+          "metric": "jsGzipBytes",
+          "actual": 212117,
+          "max": 215040,
+          "ok": true
+        },
+        {
+          "metric": "wasmRawBytes",
+          "actual": 888480,
+          "max": 921600,
+          "ok": true
+        },
+        {
+          "metric": "assetRawBytes",
+          "actual": 91157,
+          "max": 163840,
+          "ok": true
+        },
+        {
+          "metric": "deliveredFiles",
+          "actual": 15,
+          "max": 20,
+          "ok": true
+        }
+      ],
+      "violations": [
+        "jsRawBytes: 697355 exceeds 655360."
+      ]
+    }
+  },
+  "limitations": [
+    "Chronological cohorts on a shared machine are not a controlled causal speedup estimate.",
+    "Headed and headless rates cannot be pooled. No physical presentation evidence exists.",
+    "Both candidates remain disabled by default; opaque draw reordering still requires complete visual/edit qualification.",
+    "Earlier dirty runs retain file hashes; final runs use the committed code and independently checked file identities.",
+    "The full phase 1 artifact/material-page requirements and phases 2 through 5 are incomplete."
+  ]
+}

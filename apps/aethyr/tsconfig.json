@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "types": ["@webgpu/types", "node", "vite/client"]
+  },
+  "include": ["apps", "packages", "tests", "vite.config.ts"]
+}
