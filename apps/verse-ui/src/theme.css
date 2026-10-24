@@ -341,6 +341,9 @@
   height: 100%;
   border: 0;
 }
+[data-verse-ui="studio"] #world-dock {
+  display: contents;
+}
 [data-verse-ui="studio"] #world-controls {
   position: fixed;
   left: 20px;
@@ -999,6 +1002,43 @@
     left: 12px;
     right: 12px;
     max-width: none;
+  }
+  [data-verse-ui="studio"]:has(#planet-settings):not(
+      :has(#edit-panel:not([hidden]))
+    )
+    #world-dock {
+    position: fixed;
+    left: 12px;
+    right: 64px;
+    bottom: 12px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+  [data-verse-ui="studio"]:has(#planet-settings):not(
+      :has(#edit-panel:not([hidden]))
+    )
+    #world-dock
+    > #world-controls {
+    position: static;
+    order: 2;
+    width: 100%;
+  }
+  [data-verse-ui="studio"]:has(#planet-settings):not(
+      :has(#edit-panel:not([hidden]))
+    )
+    #world-dock
+    > #world-voice {
+    position: static;
+    order: 1;
+    width: 100%;
+    max-width: none;
+    pointer-events: auto;
+  }
+  [data-verse-ui="studio"] #world-dock > #planet-settings {
+    pointer-events: auto;
   }
   [data-verse-ui] #verse-ui-root {
     bottom: 12px;

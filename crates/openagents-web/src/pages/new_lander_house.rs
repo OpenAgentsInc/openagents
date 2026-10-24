@@ -153,46 +153,48 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                 iframe id="engine" title=(title) data-engine-url=(r.engine_url) {}
                 p id="world-notice" role="status" aria-live="polite" { "Opening the house…" }
             }
-            nav id="world-controls" aria-label="World controls" {
-                a id="world-map" href=(MAP) { "Back to planets" }
-                p id="world-touch-help" { "Left side: move · Right side: look" }
-                span { "Click to look · WASD to walk · Escape to release the pointer" }
-                a id="world-retry" href=(planet.map(|p|format!("/new-lander/planet/{}/world",p.id)).unwrap_or_else(||HOUSE.into())) { "Reload world" }
-                button id="world-mesh" type="button" hidden aria-pressed="false" { "Mesh overlay" }
-                button id="world-edit" type="button" { "Edit" }
-                button id="project-save" type="button" hidden data-tutorial-option="ready" { "Save project" }
-                button id="world-fullscreen" type="button" { "Full screen" }
-            }
-            @if personal {
-                aside id="planet-settings" aria-label="Courtyard settings" {
-                    details class="planet-card" open {
-                        summary { "Your courtyard" }
-                        p { "64 × 64 metres · Up to 128 objects" }
-                        label { "Style" select id="planet-style" { option value="soft-pastels" { "Soft pastels" } option value="bold-fantasy" { "Bold fantasy" } } }
-                        label { "Starting hour" input id="planet-hour" type="number" min="0" max="23.99" step="0.5" value="8"; }
-                        label { input id="planet-cycle" type="checkbox" checked; "Advancing day and night" }
-                        label { "Minutes per day" input id="planet-day" type="number" min="2" max="60" value="10"; }
-                        label { "Layout seed" input id="planet-seed" type="number" min="0" max="4294967295" value="1"; }
-                        button id="planet-generate" type="button" { "Generate courtyard" }
-                        button id="planet-apply" type="button" { "Review style and time" }
-                        p id="planet-status" role="status" { "Generate a courtyard, or open your latest saved world in Jarvis." }
-                        p { "Say Generate courtyard, or use the controls." }
-                        details { summary { "Voice choices" } ul {
-                            li { "Use soft pastels / Use bold fantasy" }
-                            li { "Set time to 18" }
-                            li { "Pause day cycle / Start day cycle" }
-                            li { "Confirm change / Cancel change" }
-                        } }
+            div id="world-dock" {
+                nav id="world-controls" aria-label="World controls" {
+                    a id="world-map" href=(MAP) { "Back to planets" }
+                    p id="world-touch-help" { "Left side: move · Right side: look" }
+                    span { "Click to look · WASD to walk · Escape to release the pointer" }
+                    a id="world-retry" href=(planet.map(|p|format!("/new-lander/planet/{}/world",p.id)).unwrap_or_else(||HOUSE.into())) { "Reload world" }
+                    button id="world-mesh" type="button" hidden aria-pressed="false" { "Mesh overlay" }
+                    button id="world-edit" type="button" { "Edit" }
+                    button id="project-save" type="button" hidden data-tutorial-option="ready" { "Save project" }
+                    button id="world-fullscreen" type="button" { "Full screen" }
+                }
+                @if personal {
+                    aside id="planet-settings" aria-label="Courtyard settings" {
+                        details class="planet-card" open {
+                            summary { "Your courtyard" }
+                            p { "64 × 64 metres · Up to 128 objects" }
+                            label { "Style" select id="planet-style" { option value="soft-pastels" { "Soft pastels" } option value="bold-fantasy" { "Bold fantasy" } } }
+                            label { "Starting hour" input id="planet-hour" type="number" min="0" max="23.99" step="0.5" value="8"; }
+                            label { input id="planet-cycle" type="checkbox" checked; "Advancing day and night" }
+                            label { "Minutes per day" input id="planet-day" type="number" min="2" max="60" value="10"; }
+                            label { "Layout seed" input id="planet-seed" type="number" min="0" max="4294967295" value="1"; }
+                            button id="planet-generate" type="button" { "Generate courtyard" }
+                            button id="planet-apply" type="button" { "Review style and time" }
+                            p id="planet-status" role="status" { "Generate a courtyard, or open your latest saved world in Jarvis." }
+                            p { "Say Generate courtyard, or use the controls." }
+                            details { summary { "Voice choices" } ul {
+                                li { "Use soft pastels / Use bold fantasy" }
+                                li { "Set time to 18" }
+                                li { "Pause day cycle / Start day cycle" }
+                                li { "Confirm change / Cancel change" }
+                            } }
+                        }
                     }
                 }
-            }
-            aside id="world-voice" hidden aria-label="Voice controls" {
-                button id="edit-voice-start" type="button" hidden { "Listen" }
-                button id="edit-voice-stop" type="button" { "Stop / mute" }
-                p id="edit-voice-status" role="status" aria-live="polite" { "Microphone off" }
-                p id="voice-heard" {}
-                p id="voice-response" role="status" aria-live="polite" {}
-                p class="voice-help" { "Browser speech service · say Show options, Review change, or Confirm change" }
+                aside id="world-voice" hidden aria-label="Voice controls" {
+                    button id="edit-voice-start" type="button" hidden { "Listen" }
+                    button id="edit-voice-stop" type="button" { "Stop / mute" }
+                    p id="edit-voice-status" role="status" aria-live="polite" { "Microphone off" }
+                    p id="voice-heard" {}
+                    p id="voice-response" role="status" aria-live="polite" {}
+                    p class="voice-help" { "Browser speech service · say Show options, Review change, or Confirm change" }
+                }
             }
                         aside id="request-choices" hidden aria-label="Request options" {
                             button id="project-publish" type="button" hidden data-tutorial-option="ready" { "Publish" }
