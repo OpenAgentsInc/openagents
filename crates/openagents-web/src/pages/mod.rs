@@ -37,6 +37,7 @@ mod layertree;
 pub mod live;
 pub(crate) mod medieval_town;
 mod new_lander;
+mod zones;
 pub(crate) mod new_lander_house;
 mod pricing;
 pub mod profile;
@@ -127,6 +128,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(medieval_town::routes())
         .merge(new_lander::routes())
         .merge(new_lander_house::routes())
+        .merge(zones::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
         .merge(gpui_fonts::routes())

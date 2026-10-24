@@ -43,7 +43,7 @@ fn configured(text: &str) -> Option<Release> {
     let r = Release::parse(text)?;
     (r.project.id == "haunted-house" && r.project.branch == "main").then_some(r)
 }
-fn release() -> Option<Release> {
+pub(crate) fn release() -> Option<Release> {
     let text = std::env::var("OPENAGENTS_HAUNT_RELEASE")
         .unwrap_or_else(|_| include_str!("../../content/demos/haunted-house.json").into());
     configured(&text)
