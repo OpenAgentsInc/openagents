@@ -175,7 +175,7 @@ build() {
         [ -z "$(git -C "$SRC" status --porcelain --ignored --untracked-files=all -- . ':!apps/aethyr/node_modules' ':!apps/aethyr/public/kernel.wasm')" ] ||
             die "$SRC has changes; remove it to rebuild from a clean checkout."
     else
-        git -C "$ROOT" worktree add --detach "$SRC" "$commit" > /dev/null
+        git -C "$ROOT" worktree add --quiet --detach "$SRC" "$commit"
     fi
     check_tools
     say "build $short in $DIR"
