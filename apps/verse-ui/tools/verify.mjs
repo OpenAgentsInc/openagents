@@ -112,21 +112,21 @@ await page.evaluate(() => {
   window.__uiCanvas = document.querySelector("#face-canvas");
 });
 await page.locator("[data-aethyr-id=world-edit]").click();
-assert(await page.locator("#edit-panel").isVisible());
-await page.locator("#edit-note").fill("Keep this draft while reviewing tools.");
+assert(await page.locator("[data-aethyr-id=edit-panel]").isVisible());
+await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").fill("Keep this draft while reviewing tools.");
 await page.getByRole("button", { name: "Find a tool", exact: true }).click();
 await page.getByPlaceholder("Find a tool…").waitFor();
 await page.screenshot({ path: capture("tool-finder.png") });
 await page.keyboard.press("Escape");
 assert(
-  await page.locator("#edit-panel").isVisible(),
+  await page.locator("[data-aethyr-id=edit-panel]").isVisible(),
   "Escape from tool finder must keep Jarvis open",
 );
 await page.waitForFunction(
   () => document.activeElement?.getAttribute("aria-label") === "Find a tool",
 );
 assert.equal(
-  await page.locator("#edit-note").inputValue(),
+  await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
   "Keep this draft while reviewing tools.",
 );
 assert(
@@ -137,14 +137,14 @@ assert(
   ),
 );
 await page.getByText("Shared material and fog", { exact: true }).click();
-await page.locator("#edit-fog").fill("0.03");
-await page.locator("#edit-fog-apply").click();
-await page.locator("#edit-auth[open]").waitFor();
+await page.locator("[data-aethyr-id=edit-fog] :is(input,textarea)").fill("0.03");
+await page.locator("[data-aethyr-id=edit-fog-apply]").click();
+await page.locator("[data-aethyr-id=edit-auth][open]").waitFor();
 await page.screenshot({ path: capture("signin-desktop.png") });
-await page.locator("#edit-cancel").click();
-assert(await page.locator("#edit-panel").isVisible());
+await page.locator("[data-aethyr-id=edit-cancel]").click();
+assert(await page.locator("[data-aethyr-id=edit-panel]").isVisible());
 assert.equal(
-  await page.locator("#edit-note").inputValue(),
+  await page.locator("[data-aethyr-id=edit-note] :is(input,textarea)").inputValue(),
   "Keep this draft while reviewing tools.",
 );
 const after = JSON.parse(
@@ -166,15 +166,15 @@ assert.deepEqual(
 );
 await page.screenshot({ path: capture("editor-final-desktop.png") });
 await page.setViewportSize({ width: 390, height: 844 });
-await page.locator("#tab-materials").click();
-assert(await page.locator("#panel-materials").isVisible());
-assert(!(await page.locator("#panel-objects").isVisible()));
+await page.locator("[data-aethyr-id=tab-materials]").click();
+assert(await page.locator("[data-aethyr-id=panel-materials]").isVisible());
+assert(!(await page.locator("[data-aethyr-id=panel-objects]").isVisible()));
 await page.screenshot({ path: capture("editor-mobile.png") });
 const overflow = await page.evaluate(
   () => document.documentElement.scrollWidth > innerWidth,
 );
 assert(!overflow, "No page overflow at narrow width");
-await page.locator("#edit-close").click();
+await page.locator("[data-aethyr-id=edit-close]").click();
 await page.goto(base + "/new-lander/verse");
 await page.waitForFunction(() => window.universeDemo);
 await page.screenshot({ path: capture("universe-mobile.png") });

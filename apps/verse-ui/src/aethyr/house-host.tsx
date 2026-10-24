@@ -13,6 +13,15 @@ import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { RegistryContext } from "@effect/atom-react";
 import { ControllerView } from "./host";
 import type { Controller, InvalidView } from "./controller";
+import type { Files, Mount } from "./renderer";
+import {
+  EditorBridge,
+  editorReport,
+  makeEditorController,
+  type EditorState,
+} from "./editor";
+import { EDITOR_SURFACES } from "./editor-layout";
+import { editorHost, initialEditor, readEditor } from "./editor-host";
 import {
   InviteForm,
   Navigator,
@@ -218,6 +227,7 @@ function run<S, Svc>(
       never
     >,
   ) => () => void,
+  host: { readonly mount?: Mount; readonly onFiles?: Files } = {},
 ) {
   const registry = AtomRegistry.make();
   const runtime = ManagedRuntime.make(
@@ -235,6 +245,8 @@ function run<S, Svc>(
       <ControllerView
         controller={controller}
         run={(effect) => runtime.runPromiseExit(effect)}
+        mount={host.mount}
+        onFiles={host.onFiles}
       />
     </RegistryContext.Provider>,
   );
@@ -422,8 +434,14 @@ export function mountHouse(surface: HouseSurface): (() => void) | undefined {
     if (!document.querySelector(".studio-bridge")) return undefined;
     const parts = studioController();
     const dispose = run(mount, parts.layer, parts.make, watchStudio(mount));
+    // The editor, its dialogs, the share card, and courtyard settings.
+    const editorMount = byId("house-editor");
+    const disposeEditor = editorMount
+      ? mountEditor(editorMount, mount)
+      : undefined;
     document.documentElement.dataset.aethyrHouse = surface;
     return () => {
+      disposeEditor?.();
       dispose();
       delete document.documentElement.dataset.aethyrHouse;
     };
@@ -446,5 +464,81 @@ export function mountHouse(surface: HouseSurface): (() => void) | undefined {
   return () => {
     dispose();
     delete document.documentElement.dataset.aethyrHouse;
+  };
+}
+
+// --- Editor ---------------------------------------------------------------
+
+/**
+ * Follow the release's editor controls: on each change it makes to the page,
+ * and every 300 ms for values it sets in code (which no mutation reports).
+ * When Jarvis opens, focus moves to the active tool's tab.
+ */
+const watchEditor =
+  (mount: HTMLElement, hud: HTMLElement) =>
+  (
+    controller: Pick<Controller<EditorState>, "update">,
+    runtime: ManagedRuntime.ManagedRuntime<
+      EditorBridge | Navigator | AtomRegistry.AtomRegistry,
+      never
+    >,
+  ) => {
+    let frame = 0;
+    let open = readEditor(EDITOR_SURFACES).mirror["edit-panel"]?.shown ?? false;
+    const refresh = () => {
+      frame = 0;
+      const report = readEditor(EDITOR_SURFACES);
+      runtime.runFork(
+        controller.update((state) => editorReport(state, report)),
+      );
+      const now = report.mirror["edit-panel"]?.shown ?? false;
+      if (now && !open)
+        requestAnimationFrame(() =>
+          mount
+            .querySelector<HTMLElement>(`[data-aethyr-id="tab-${report.tool}"]`)
+            ?.focus({ preventScroll: true }),
+        );
+      open = now;
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(refresh);
+    };
+    const observer = new MutationObserver((records) => {
+      if (
+        records.every((r) => mount.contains(r.target) || hud.contains(r.target))
+      )
+        return;
+      schedule();
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    });
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") schedule();
+    }, 300);
+    window.addEventListener("resize", schedule);
+    return () => {
+      observer.disconnect();
+      window.clearInterval(poll);
+      window.removeEventListener("resize", schedule);
+      cancelAnimationFrame(frame);
+    };
+  };
+
+function mountEditor(mount: HTMLElement, hud: HTMLElement) {
+  const host = editorHost(EDITOR_SURFACES);
+  const dispose = run(
+    mount,
+    host.layer,
+    makeEditorController(EDITOR_SURFACES, initialEditor(EDITOR_SURFACES)),
+    watchEditor(mount, hud),
+    { mount: host.mount, onFiles: host.onFiles },
+  );
+  return () => {
+    dispose();
+    host.restore();
   };
 }

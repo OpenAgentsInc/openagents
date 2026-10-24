@@ -198,22 +198,22 @@ for (const width of [390, 1440]) {
   await audit(`edit-hover-${width}`);
   await page.locator("[data-aethyr-id=world-edit]").click();
   for (const tab of ["objects", "materials", "request", "compile", "history"]) {
-    await page.locator("#tab-" + tab).click();
+    await page.locator("[data-aethyr-id=tab-" + tab + "]").click();
     await audit(`${tab}-${width}`);
   }
   await page.getByRole("button", { name: "Find a tool", exact: true }).click();
   await audit(`tool-finder-${width}`);
   await page.keyboard.press("Escape");
-  await page.locator("#tab-materials").click();
+  await page.locator("[data-aethyr-id=tab-materials]").click();
   await page.getByText("Shared material and fog", { exact: true }).click();
-  await page.locator("#edit-fog").fill("0.03");
-  await page.locator("#edit-fog-apply").click();
-  await page.locator("#edit-auth[open]").waitFor();
+  await page.locator("[data-aethyr-id=edit-fog] :is(input,textarea)").fill("0.03");
+  await page.locator("[data-aethyr-id=edit-fog-apply]").click();
+  await page.locator("[data-aethyr-id=edit-auth][open]").waitFor();
   await audit(`first-edit-signin-${width}`);
-  await page.locator("#edit-signin").hover();
+  await page.locator("[data-aethyr-id=edit-signin]").hover();
   await audit(`first-edit-signin-hover-${width}`);
-  await page.locator("#edit-cancel").click();
-  await page.locator("#edit-close").click();
+  await page.locator("[data-aethyr-id=edit-cancel]").click();
+  await page.locator("[data-aethyr-id=edit-close]").click();
   await page.goto(base + "/demo/medieval-town");
   await page.waitForFunction(
     () =>
@@ -249,21 +249,21 @@ if (process.env.VERSE_UI_REVIEW_FIXTURES) {
         .locator("iframe")
         .evaluateAll((nodes) => nodes.forEach((n) => n.remove()));
       await audit(`fixture-${file}-${width}`);
-      await page.locator("#publish-review").evaluateAll((nodes) =>
+      await page.locator("[data-aethyr-id=publish-review]").evaluateAll((nodes) =>
         nodes.forEach((n) => {
           n.hidden = false;
           n.showModal();
         }),
       );
       await page
-        .locator("#publish-share-card")
+        .locator("[data-aethyr-id=publish-share-card]")
         .evaluateAll((nodes) => nodes.forEach((n) => (n.hidden = false)));
       await audit(`fixture-cards-${file}-${width}`);
       await page
         .locator("dialog[open]")
         .evaluateAll((nodes) => nodes.forEach((n) => n.close()));
       await page
-        .locator("#publish-share-link")
+        .locator("[data-aethyr-id=publish-share-link]")
         .evaluateAll((nodes) =>
           nodes.forEach(
             (n) =>

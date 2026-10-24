@@ -3415,3 +3415,139 @@
     max-height: calc(100vh - 220px);
   }
 }
+
+/* --- The house editor on Aethyr (#12595) -------------------------------
+   Jarvis, its dialogs, the share card, and courtyard settings draw into
+   #house-editor; the release's copies (.studio-bridge) are hidden. Jarvis
+   leaves the bottom of the screen to the dock and voice bar. Phone width
+   first: one tool window at a time, chosen with the tabs. */
+.house-editor > .aui-root,
+.house-editor [data-aethyr-id="house-editor"] {
+  display: contents;
+}
+[data-verse-ui="studio"] .house-editor [data-aethyr-id="edit-panel"] {
+  position: fixed;
+  inset: 12px 8px 185px;
+  z-index: 4;
+  width: auto;
+  max-width: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--hud-space-md);
+  gap: var(--hud-space-md);
+}
+.house-editor [data-aethyr-id="edit-header"] {
+  justify-content: space-between;
+  padding-right: 40px;
+}
+.house-editor [data-aethyr-id="jarvis-toolbar"] .aui-chip {
+  white-space: nowrap;
+}
+.house-editor [data-aethyr-id="edit-windows"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--hud-space-md);
+}
+.house-editor [data-aethyr-id="author-tools"] {
+  display: contents;
+}
+.house-editor [data-aethyr-id="edit-windows"] .aui-panel {
+  padding: var(--hud-space-lg);
+  min-width: 0;
+}
+.house-editor [data-aethyr-id="edit-position"] > * {
+  flex: 1;
+  min-width: 0;
+}
+.house-editor :is(.aui-field textarea) {
+  max-height: 35vh;
+}
+.house-editor [data-aethyr-id="edit-source"] textarea {
+  font-family: var(--font-mono);
+  min-height: 160px;
+}
+.house-editor [data-aethyr-id^="close-"] {
+  align-self: flex-end;
+}
+[data-verse-ui="studio"] .house-editor [data-aethyr-id="planet-settings"] {
+  position: fixed;
+  top: 12px;
+  right: 64px;
+  left: 12px;
+  z-index: 5;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: var(--hud-space-md);
+}
+/* Jarvis covers the courtyard; its settings return when it closes. */
+.house-editor:has([data-aethyr-id="edit-panel"]) [data-aethyr-id="planet-settings"] {
+  display: none;
+}
+[data-verse-ui="studio"] .house-editor [data-aethyr-id="publish-share-card"] {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  z-index: 30;
+  overflow-wrap: anywhere;
+  padding: var(--hud-space-lg);
+}
+@media (min-width: 800px) {
+  [data-verse-ui="studio"] .house-editor [data-aethyr-id="edit-panel"] {
+    inset: 20px 20px 190px;
+    padding: var(--hud-space-lg);
+  }
+  .house-editor [data-aethyr-id="edit-windows"] {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+  [data-verse-ui="studio"] .house-editor [data-aethyr-id="planet-settings"] {
+    top: 20px;
+    right: auto;
+    left: 20px;
+    width: 300px;
+    max-height: 70vh;
+  }
+  [data-verse-ui="studio"] .house-editor [data-aethyr-id="publish-share-card"] {
+    top: 20px;
+    right: 20px;
+    left: auto;
+    width: min(420px, calc(100vw - 40px));
+  }
+}
+/* A window's Close sits in its corner, beside the title. */
+.house-editor [data-aethyr-id="edit-windows"] .aui-panel {
+  position: relative;
+}
+.house-editor [data-aethyr-id^="close-"] {
+  position: absolute;
+  top: var(--hud-space-sm);
+  right: var(--hud-space-sm);
+  min-height: 32px;
+  padding: 4px 10px;
+}
+/* The editor covers the world, so the world's notice waits behind it. */
+body:has(.house-editor [data-aethyr-id="edit-panel"])
+  .house-hud
+  [data-aethyr-id="world-notice"] {
+  display: none;
+}
+@media (max-width: 799px) {
+  /* "Inspect world" closes Jarvis on phones; the corner holds Find a tool. */
+  .house-editor [data-aethyr-id="edit-panel"] > .aui-close {
+    display: none;
+  }
+  .house-editor [data-aethyr-id="edit-header"] {
+    padding-right: 52px;
+  }
+}
+/* A dismissible dialog's title leaves room for its close button. */
+[data-verse-ui] .hud-dialog:has(> .aui-close) .aui-title {
+  padding-right: 40px;
+}
+/* Phones raise form text to 16 px; let a select grow with it. */
+[data-verse-ui] .aui-select select {
+  height: auto;
+  min-height: 36px;
+  line-height: 1.4;
+}

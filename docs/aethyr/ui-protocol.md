@@ -243,11 +243,41 @@ on. While the world shows an error the root carries
 message never shows beside ours. When the editor closes, focus returns to the
 visible Edit button.
 
-The editor (Jarvis: its tool windows and `#edit-panel`), the sign-in and
-confirmation dialog (`#edit-auth`), publish review (`#publish-review`), the
-share card, and courtyard settings (`#planet-settings`) are still the
-release's own DOM. They use controls the protocol has no element for yet
-(selects, checkboxes, ranges, color, file pickers, and a paint canvas).
+### The house editor (#12595)
+
+`makeEditorController` (`editor.ts`) draws the rest of the studio into
+`#house-editor`: Jarvis (`#edit-panel`, a sheet with its tool tabs and five
+tool windows), the sign-in and confirmation dialog (`#edit-auth`), publish
+review (`#publish-review`), the share card (`#publish-share-card`), and
+courtyard settings (`#planet-settings`). Each carries `.studio-bridge` and is
+hidden once the host mounts.
+
+The controller works from a declarative layout (`editor-layout.ts`): each
+entry names a release control by ID and the node to draw for it (button,
+link, field, select, checkbox, range, color, file, canvas, a list of lines,
+or a list of rows with actions), plus fixed copy and disclosures the visitor
+opens. `editor-host.ts` reads every named control into a `Mirror` (shown,
+enabled, text, value, checked, options, same-site `href`, pressed or
+selected, list rows), on each page mutation and every 300 ms for values the
+release sets in code. Every intent becomes one `BridgeOp` on the release's
+own control: a click; a value with `input` (and `change` for selects,
+ranges, colors); a click on a checkbox that differs; the chosen files placed
+in the upload input; or a click on a row's action. Same-site links go through
+the controller.
+
+- The release's dialogs open non-modally (`showModal` becomes `show`); the
+  controller's dialogs are the modal ones, and Escape clicks the release's
+  Cancel.
+- The face canvas (`#face-canvas`) and the capture image move into the
+  renderer's `canvas` and `media_slot` while shown, keeping the release's
+  listeners, and go back when they close.
+- At phone width one tool window shows, the one the release marks active;
+  the tabs choose it.
+- Visible nodes keep the release's IDs. Checks fill fields as
+  `[data-aethyr-id=ID] :is(input,textarea)`, choose options with
+  `[data-aethyr-id=ID] select`, and check boxes with `[data-aethyr-id=ID]
+  input`; reads through `document.querySelector('#ID')` still read the
+  release's copy.
 
 ## Design tokens
 

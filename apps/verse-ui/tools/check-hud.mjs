@@ -86,13 +86,13 @@ try {
       "compile",
       "history",
     ]) {
-      await targets("#jarvis-toolbar button:visible,#edit-close");
-      await page.locator("#tab-" + tab).tap();
-      assert(await page.locator("#panel-" + tab).isVisible());
+      await targets("[data-aethyr-id=jarvis-toolbar] button:visible,[data-aethyr-id=edit-close]");
+      await page.locator("[data-aethyr-id=tab-" + tab + "]").tap();
+      assert(await page.locator("[data-aethyr-id=panel-" + tab + "]").isVisible());
       if (tab === "history" || tab === "materials")
         await capture(tab + "-" + width);
     }
-    await page.locator("#edit-close").tap();
+    await page.locator("[data-aethyr-id=edit-close]").tap();
     await targets(
       "[data-aethyr-id=world-controls] :is(a, button):visible",
     );
