@@ -176,15 +176,33 @@ async fn save(
     book: &Book,
     generation: Option<&str>,
 ) -> Result<(), Error> {
-    store
-        .write_key(
-            &key(account)?,
-            serde_json::to_vec(book)
-                .map_err(|_| Error::Invalid("Permissions could not be saved."))?,
-            generation,
-        )
-        .await
-        .map(|_| ())
+    let key = key(account)?;
+    let bytes =
+        serde_json::to_vec(book).map_err(|_| Error::Invalid("Permissions could not be saved."))?;
+    write_grants(|| async {
+        store
+            .write_key(&key, bytes.clone(), generation)
+            .await
+            .map(|_| ())
+    })
+    .await
+}
+
+async fn write_grants<F>(mut write: impl FnMut() -> F) -> Result<(), Error>
+where
+    F: std::future::Future<Output = Result<(), Error>>,
+{
+    // Retry only a refused write, with the same bytes and generation condition.
+    // A conflict must return to the caller, which reads the new grant book.
+    for seconds in [1, 2, 4] {
+        match write().await {
+            Err(Error::Http(429)) => {
+                tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
+            }
+            result => return result,
+        }
+    }
+    write().await
 }
 fn private_draft(account: &str) -> Project {
     Project {
@@ -492,6 +510,50 @@ async fn revoke(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn throttled_grants_retry_until_storage_accepts_the_write() {
+        let mut results = std::collections::VecDeque::from([
+            Err(Error::Http(429)),
+            Err(Error::Http(429)),
+            Ok(()),
+        ]);
+        write_grants(|| std::future::ready(results.pop_front().expect("bounded writes")))
+            .await
+            .unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn throttled_grants_stop_after_four_writes() {
+        let mut attempts = 0;
+        let result = write_grants(|| {
+            attempts += 1;
+            std::future::ready(Err(Error::Http(429)))
+        })
+        .await;
+        assert!(matches!(result, Err(Error::Http(429))));
+        assert_eq!(attempts, 4);
+    }
+
+    #[tokio::test]
+    async fn throttled_grants_return_conflicts_and_other_failures_to_the_caller() {
+        for error in [Error::Conflict, Error::Http(403), Error::Http(503)] {
+            let mut results =
+                std::collections::VecDeque::from([Err(Error::Http(429)), Err(error), Ok(())]);
+            assert!(
+                write_grants(|| std::future::ready(results.pop_front().unwrap()))
+                    .await
+                    .is_err()
+            );
+            assert_eq!(
+                results.len(),
+                1,
+                "a failed precondition must not be retried"
+            );
+        }
+    }
+
     fn fixture() -> (Held, ScopedGrant, Action) {
         let project = Project {
             id: "haunted-house".into(),
