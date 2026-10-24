@@ -12,6 +12,8 @@ protocol AppRouter: AnyObject {
     func showSearch()
     func showWallet()
     func showMedievalTown()
+    /// The zone launcher (ADR 0010): the Grid, the Haunted House, the Verse.
+    func showZones()
 }
 
 /// iPad shell: OpenAgents mobile with a sidebar. The sidebar is the phone's
@@ -178,6 +180,20 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         else { show() }
     }
 
+    func showZones() {
+        guard !isCollapsed else { return tabs.showZones() }
+        let show = { [weak self] in
+            guard let self else { return }
+            self.present(ZonesViewController.sheet { [weak self] in
+                // The Grid is the app's own sessions, computers, and transcripts.
+                self?.show(.primary)
+                self?.sidebar.showSessions()
+            }, animated: true)
+        }
+        if presentedViewController != nil { dismiss(animated: false, completion: show) }
+        else { show() }
+    }
+
     /// A session came on screen in either shell (sidebar, drawer, search):
     /// it's the one to keep across a width change.
     func sessionDidAppear(_ chatId: String) {
@@ -296,6 +312,11 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         })
         town.accessibilityLabel = "Medieval Town"
         town.accessibilityIdentifier = "sidebar-medieval-town"
+        let zones = UIBarButtonItem(image: UIImage(systemName: "square.grid.2x2"), primaryAction: UIAction { [weak self] _ in
+            self?.router?.showZones()
+        })
+        zones.accessibilityLabel = "Zones"
+        zones.accessibilityIdentifier = "sidebar-zones"
         let options = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: list.optionsMenu())
         options.accessibilityLabel = "Options"
         let compose = UIBarButtonItem(image: UIImage(systemName: "plus"), primaryAction: UIAction { [weak self] _ in
@@ -306,14 +327,14 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         compose.accessibilityLabel = "New session"
         compose.accessibilityIdentifier = "new-session"
         list.navigationItem.rightBarButtonItem = nil
-        list.toolbarItems = [chat, wallet, town, settings, options, .flexibleSpace(), compose]
+        list.toolbarItems = [chat, wallet, zones, town, settings, options, .flexibleSpace(), compose]
         nav.isToolbarHidden = false
         // Voice beside compose, once a host can run it.
         let voiceBar = VoiceBarItem(app: app, host: self)
         self.voiceBar = voiceBar
         let syncVoice = { [weak self, weak voiceBar] in
             guard let self, let voiceBar else { return }
-            let items = voiceBar.visible ? [chat, wallet, town, settings, options, .flexibleSpace(), voiceBar.item, compose] : [chat, wallet, town, settings, options, .flexibleSpace(), compose]
+            let items = voiceBar.visible ? [chat, wallet, zones, town, settings, options, .flexibleSpace(), voiceBar.item, compose] : [chat, wallet, zones, town, settings, options, .flexibleSpace(), compose]
             if self.list.toolbarItems?.count != items.count {
                 self.list.setToolbarItems(items, animated: self.view.window != nil)
             }
