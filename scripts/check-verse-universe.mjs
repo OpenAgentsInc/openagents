@@ -153,7 +153,7 @@ try {
   await page.getByRole("link", { name: "Enter the Verse" }).first().click();
   await ready(page);
   assert.equal((await snapshot(page)).status.project.id, "universe");
-  const card = page.locator("#verse-entry");
+  const card = page.locator("[data-aethyr-id=verse-entry]");
   assert.ok(await card.isVisible());
   const box = await card.boundingBox();
   assert.ok(Math.abs(box.x + box.width / 2 - 720) < 3);
@@ -172,43 +172,43 @@ try {
   const distance = (c) => Math.hypot(...c.eye.map((n, i) => n - c.target[i]));
   assert.ok(Math.abs(distance(lockedAfter) - distance(lockedBefore)) < 0.001);
   await page.screenshot({ path: path.join(out, "universe-entry.png") });
-  await page.click("#continue-guest");
-  assert.ok(await page.locator("#verse-choices").isVisible());
-  await page.click("#verse-explore");
+  await page.click("[data-aethyr-id=continue-guest]");
+  assert.ok(await page.locator("[data-aethyr-id=verse-choices]").isVisible());
+  await page.click("[data-aethyr-id=verse-explore]");
   assert.equal(await card.isVisible(), false);
   assert.equal(
     await page.locator("#universe-exploration").getAttribute("inert"),
     null,
   );
-  await page.locator("#option-haunted-house").focus();
+  await page.locator("[data-aethyr-id=option-haunted-house]").focus();
   await page.keyboard.press("Enter");
   await page.waitForFunction(
     () =>
-      document.querySelector("#world-title").textContent === "Haunted House" &&
+      document.querySelector("[data-aethyr-id=world-title]").textContent === "Haunted House" &&
       JSON.parse(window.universeDemo.snapshot()).status.selection?.id ===
         "haunted-house",
   );
   assert.equal(
-    await page.locator("#destination-openagents").isVisible(),
+    await page.locator("[data-aethyr-id=destination-openagents]").isVisible(),
     false,
   );
   assert.equal(
-    await page.locator("#destination-haunted-house a").getAttribute("href"),
+    await page.locator("[data-aethyr-id=destination-haunted-house] a").getAttribute("href"),
     "/new-lander/house",
   );
-  await page.click("#option-openagents");
+  await page.click("[data-aethyr-id=option-openagents]");
   await page.waitForFunction(
-    () => document.querySelector("#world-title").textContent === "OpenAgents",
+    () => document.querySelector("[data-aethyr-id=world-title]").textContent === "OpenAgents",
   );
   assert.ok(
     await page
-      .locator("#destination-openagents")
+      .locator("[data-aethyr-id=destination-openagents]")
       .innerText()
       .then((t) => t.includes("Locked")),
   );
   assert.equal(
     await page
-      .locator('#destination-openagents a[href="/new-lander/house"]')
+      .locator('[data-aethyr-id=destination-openagents] a[href="/new-lander/house"]')
       .count(),
     0,
   );
@@ -223,7 +223,7 @@ try {
   await page.waitForTimeout(500);
   const manualAfter = await pose(page);
   assert.ok(Math.abs(yaw(manualAfter) - yaw(manualBefore)) > 0.04);
-  await page.click("#option-haunted-house");
+  await page.click("[data-aethyr-id=option-haunted-house]");
   await page.waitForFunction(
     () =>
       JSON.parse(window.universeDemo.snapshot()).status.selection?.id ===
@@ -233,7 +233,7 @@ try {
   const beforeHouse = await pose(page);
   const original = (await snapshot(page)).session;
   await page.screenshot({ path: path.join(out, "universe-explore.png") });
-  await page.locator("#destination-haunted-house a").click();
+  await page.locator("[data-aethyr-id=destination-haunted-house] a").click();
   await page.waitForFunction(
     () =>
       window.hauntDemo &&
@@ -287,11 +287,11 @@ try {
   await reduced.screenshot({
     path: path.join(out, "universe-mobile-entry.png"),
   });
-  await reduced.click("#continue-guest");
-  await reduced.click("#verse-explore");
-  await reduced.locator("#option-haunted-house").focus();
+  await reduced.click("[data-aethyr-id=continue-guest]");
+  await reduced.click("[data-aethyr-id=verse-explore]");
+  await reduced.locator("[data-aethyr-id=option-haunted-house]").focus();
   await reduced.keyboard.press("Enter");
-  assert.ok(await reduced.locator("#destination-haunted-house a").isVisible());
+  assert.ok(await reduced.locator("[data-aethyr-id=destination-haunted-house] a").isVisible());
   await cameraControls(reduced,reducedPreview);
   await reduced.screenshot({path:path.join(out,"universe-mobile-explore.png")});
   await reduced.close();
@@ -302,9 +302,9 @@ try {
   );
   await blocked.goto("https://openagents.com/new-lander/verse");
   await blocked.waitForFunction(() => window.universeDemo);
-  await blocked.click("#continue-guest");
-  await blocked.click("#verse-explore");
-  await blocked.locator(".fallback-destinations").waitFor({ state: "visible" });
+  await blocked.click("[data-aethyr-id=continue-guest]");
+  await blocked.click("[data-aethyr-id=verse-explore]");
+  await blocked.locator("[data-aethyr-id=verse-fallback]").waitFor({ state: "visible" });
   await blocked.waitForFunction(
     () =>
       document
@@ -313,7 +313,7 @@ try {
     null,
     { timeout: 25000 },
   );
-  await blocked.locator('.fallback-destinations a[href="/new-lander"]').click();
+  await blocked.locator('[data-aethyr-id=verse-fallback] a[href="/new-lander"]').click();
   await blocked.waitForURL("**/new-lander");
   await blocked.close();
   assert.deepEqual(errors, []);

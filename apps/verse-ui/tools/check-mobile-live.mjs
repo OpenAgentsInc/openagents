@@ -187,7 +187,7 @@ let project, houseLink, planetPath, planetLink;
 try {
   await page.goto(origin + "/new-lander");
   await page.locator(".enter-button").first().tap();
-  await tap("#continue-guest");
+  await tap("[data-aethyr-id=continue-guest]");
   await page.getByRole("link", { name: "Haunted House ↗", exact: true }).tap();
   await ready();
   assert.equal(
@@ -407,23 +407,23 @@ try {
   await page.getByRole("link", { name: "Back to planets", exact: true }).tap();
   await page.waitForURL((u) => u.pathname === "/new-lander/verse");
   await page
-    .locator("#planet-ready:visible,#planet-owned:visible")
+    .locator("[data-aethyr-id=planet-ready]:visible,[data-aethyr-id=planet-owned]:visible")
     .first()
     .waitFor();
   await shot("11-planet-award-ready");
-  if (await page.locator("#planet-ready").isVisible())
-    await tap("#planet-create");
-  await page.locator("#planet-owned").waitFor({ state: "visible" });
-  planetPath = await page.locator("#planet-setup").getAttribute("href");
+  if (await page.locator("[data-aethyr-id=planet-ready]").isVisible())
+    await tap("[data-aethyr-id=planet-create]");
+  await page.locator("[data-aethyr-id=planet-owned]").waitFor({ state: "visible" });
+  planetPath = await page.locator("[data-aethyr-id=planet-setup]").getAttribute("href");
   assert(planetPath);
   await shot("12-planet-awarded");
   await page.reload();
-  await page.locator("#planet-owned").waitFor({ state: "visible" });
+  await page.locator("[data-aethyr-id=planet-owned]").waitFor({ state: "visible" });
   assert.equal(
-    await page.locator("#planet-setup").getAttribute("href"),
+    await page.locator("[data-aethyr-id=planet-setup]").getAttribute("href"),
     planetPath,
   );
-  await tap("#planet-setup");
+  await tap("[data-aethyr-id=planet-setup]");
   await page.locator("#planet-name").fill("Kiki mobile garden");
   const renameResponse = page.waitForResponse(
     (r) =>
@@ -531,8 +531,8 @@ try {
   await shot("22-chat-left");
   await visitGuest(invitePath);
   await page.getByRole("link", { name: "Back to planets", exact: true }).tap();
-  await page.locator("#planet-owned").waitFor({ state: "visible" });
-  await tap("#planet-setup");
+  await page.locator("[data-aethyr-id=planet-owned]").waitFor({ state: "visible" });
+  await tap("[data-aethyr-id=planet-setup]");
   await tap("#planet-enter");
   await ready();
   await edit("history");

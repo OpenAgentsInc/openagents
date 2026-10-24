@@ -180,9 +180,9 @@ for (const width of [390, 1440]) {
     timeout: 30000,
   });
   await audit(`universe-entry-${width}`);
-  await page.locator("#continue-guest").hover();
+  await page.locator("[data-aethyr-id=continue-guest]").hover();
   await audit(`guest-hover-${width}`);
-  await page.locator("#continue-guest").click();
+  await page.locator("[data-aethyr-id=continue-guest]").click();
   await audit(`destinations-${width}`);
   await page.goto(base + "/new-lander/house");
   await page.waitForFunction(() => window.verseUi && window.hauntDemo, null, {

@@ -7,11 +7,6 @@
 @custom-variant dark (&:is(.dark *));
 :root {
   color-scheme: dark;
-  /* Older names some Verse controls still use. */
-  --ink: var(--foreground);
-  --line: var(--border);
-  --cyan: var(--primary);
-  --glass: var(--card);
 }
 [data-verse-ui] {
   background: var(--background);
@@ -248,7 +243,8 @@
   max-width: min(420px, calc(100vw - 40px));
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: var(--card);
+  /* Opaque, so the frame's own message never shows through it. */
+  background: var(--popover);
   color: var(--foreground);
   padding: 24px 28px;
   text-align: center;
@@ -2579,9 +2575,16 @@
 }
 
 /* --- House editor and players: same HUD frame as the Verse ------------- */
+/* One panel stack: the voice bar sits on the dock at the same width. The
+   voice bar's older floating offsets (top and right) must not shift it. */
 [data-verse-ui="studio"] #world-dock > #world-controls,
 [data-verse-ui="studio"] #world-dock #world-voice {
   position: relative;
+  inset: auto;
+  width: 100%;
+  margin: 0;
+  border-width: 1px;
+  border-style: solid;
   border-radius: 12px;
   border-color: var(--hud-line);
   background: var(--hud-glass);
@@ -2939,5 +2942,245 @@
   }
   [data-verse-ui] .aui-phone-hide {
     display: none;
+  }
+}
+
+/* A chip with a detail line: a destination, with its category under it. */
+[data-verse-ui] .aui-chip.aui-chip-detailed {
+  position: relative;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 52px;
+  padding: var(--hud-space-sm) var(--hud-space-md);
+  border-color: var(--border);
+  border-radius: var(--hud-radius-control);
+  color: var(--foreground);
+  font: inherit;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+}
+.aui-chip-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.aui-chip-detail {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font: 10px/1.3 var(--font-mono);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-verse-ui] .aui-chip.aui-chip-detailed[aria-pressed="true"] {
+  border-color: #ffffff66;
+  background: #ffffff10;
+  color: var(--foreground);
+  box-shadow: inset 2px 0 0 var(--foreground);
+}
+@media (hover: hover) {
+  [data-verse-ui] .aui-chip.aui-chip-detailed:hover {
+    border-color: #ffffff4d;
+    background: #ffffff0a;
+  }
+}
+/* In a dialog, a column of buttons fills the width, label left, glyph right. */
+[data-verse-ui] .hud-dialog .aui-axis-vertical > .hud-button.aui-button {
+  width: 100%;
+  min-height: 48px;
+  justify-content: space-between;
+}
+/* A dialog's first label is its eyebrow, ruled off from the content. */
+[data-verse-ui] .hud-dialog > .aui-stack > .hud-label:first-child {
+  margin: 0;
+  padding-bottom: var(--hud-space-lg);
+  border-bottom: 1px solid var(--border);
+}
+[data-verse-ui] .hud-dialog .aui-title {
+  font-size: 26px;
+  line-height: 1.05;
+}
+@media (min-width: 761px) {
+  [data-verse-ui] .hud-dialog .aui-title {
+    font-size: 32px;
+  }
+}
+
+/* --- The Verse on Aethyr (#12588) -------------------------------------
+   The controller's tree draws into #verse-hud over the planets. The
+   server's copy of the controls (.verse-bridge) stays in the page for the
+   engine and for visitors without JavaScript; once the host mounts it is
+   hidden. Phone width first: the destination is a bottom sheet with a
+   scrolling row of worlds. */
+[data-aethyr-verse] .verse-bridge {
+  display: none !important;
+}
+.verse-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.verse-hud > .aui-root,
+.verse-hud [data-aethyr-id="verse-hud"] {
+  display: contents;
+}
+.verse-hud :is(.aui-sheet, .aui-dialog, [data-aethyr-id="verse-controls"]) {
+  pointer-events: auto;
+}
+[data-verse-ui] .verse-hud [data-aethyr-id="verse-panel"] {
+  position: absolute;
+  top: auto;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 5;
+  width: auto;
+  max-height: calc(var(--sheet, 276px) + 24px);
+  overflow-y: auto;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-radius: var(--radius);
+}
+/* The sheet scrolls; its rows keep their height. */
+.verse-hud [data-aethyr-id="verse-panel"] > * {
+  flex-shrink: 0;
+}
+.verse-hud [data-aethyr-id="world-category"] {
+  margin: 0;
+}
+[data-verse-ui] .verse-hud [data-aethyr-id="world-title"] {
+  font-size: 22px;
+}
+[data-verse-ui] .verse-hud [data-aethyr-id="world-description"] {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #b4b4bc;
+  font-size: 13px;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.verse-hud [data-aethyr-id^="destination-"] > .hud-button,
+.verse-hud [data-aethyr-id^="planet-"] > .hud-button {
+  width: 100%;
+  justify-content: space-between;
+}
+.verse-hud [data-aethyr-id^="destination-"] .hud-label {
+  margin: 0;
+  font-size: 10px;
+}
+.verse-hud :is([data-aethyr-id="planet-ready"], [data-aethyr-id="planet-owned"]) {
+  padding: var(--hud-space-md);
+  border: 1px solid var(--hud-line);
+  border-radius: var(--hud-radius-control);
+  background: #ffffff08;
+}
+.verse-hud [data-aethyr-id="verse-worlds"] {
+  display: grid;
+  grid-auto-columns: minmax(136px, 42%);
+  grid-auto-flow: column;
+  gap: 8px;
+  margin: 0 -14px;
+  padding: 10px 14px 2px;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.verse-hud [data-aethyr-id="verse-worlds"]::-webkit-scrollbar {
+  display: none;
+}
+[data-verse-ui] .verse-hud [data-aethyr-id^="option-"] {
+  min-height: 48px;
+  padding-left: 30px;
+  scroll-snap-align: start;
+}
+/* Each world's planet colour, as on the map. */
+.verse-hud [data-aethyr-id^="option-"]::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  width: 11px;
+  height: 11px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #f4f4f5, #71717a 70%);
+  box-shadow: 0 0 10px #ffffff40;
+}
+.verse-hud [data-aethyr-id="option-haunted-house"]::before {
+  background: radial-gradient(circle at 30% 30%, #fde68a, #92400e 75%);
+}
+.verse-hud [data-aethyr-id="option-blue-rush"]::before {
+  background: radial-gradient(circle at 30% 30%, #bae6fd, #1d4ed8 75%);
+}
+.verse-hud [data-aethyr-id="option-creator-worlds"]::before {
+  background: radial-gradient(circle at 30% 30%, #d9f99d, #3f6212 75%);
+}
+.verse-hud [data-aethyr-id="verse-fallback"] {
+  gap: 4px 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+[data-aethyr-verse] .verse #world-notice,
+[data-aethyr-verse] .verse:has(.verse-fallback:not([hidden])) #world-notice:not([hidden]) {
+  top: 92px;
+  bottom: auto;
+  width: calc(100% - 32px);
+}
+@media (min-width: 761px) {
+  [data-verse-ui] .verse-hud [data-aethyr-id="verse-panel"] {
+    top: 24px;
+    right: 24px;
+    bottom: auto;
+    left: auto;
+    width: 372px;
+    max-height: calc(100% - 112px);
+    gap: 14px;
+    padding: 20px;
+  }
+  [data-verse-ui] .verse-hud [data-aethyr-id="world-title"] {
+    font-size: 28px;
+  }
+  [data-verse-ui] .verse-hud [data-aethyr-id="world-description"] {
+    display: block;
+    font-size: 14px;
+  }
+  .verse-hud [data-aethyr-id="verse-worlds"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-columns: auto;
+    grid-auto-flow: row;
+    margin: 0;
+    padding: 14px 0 0;
+    overflow: visible;
+  }
+  .verse-hud [data-aethyr-id="verse-controls"] {
+    position: absolute;
+    right: 24px;
+    bottom: 20px;
+    z-index: 5;
+    gap: 8px;
+  }
+  .verse-hud [data-aethyr-id="universe-status"] {
+    margin: 0 8px 0 0;
+    font-size: 10px;
+  }
+  [data-aethyr-verse] .verse #world-notice,
+  [data-aethyr-verse]
+    .verse:has(.verse-fallback:not([hidden]))
+    #world-notice:not([hidden]) {
+    top: auto;
+    bottom: 88px;
+    width: auto;
   }
 }

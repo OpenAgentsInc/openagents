@@ -13,7 +13,8 @@ them, `aethyr.ui.v1`, and the design tokens both sides use
 | Design tokens | `crates/aethyr-tokens`, written to `apps/verse-ui/src/aethyr/tokens.css` |
 | Controller runtime | `apps/verse-ui/src/aethyr/controller.ts` |
 | React DOM renderer | `apps/verse-ui/src/aethyr/renderer.tsx`, joined to a controller by `host.tsx` |
-| Demo | `apps/verse-ui/src/aethyr/entry.ts`, the `/new-lander/verse` entry dialog |
+| Entry dialog | `apps/verse-ui/src/aethyr/entry.ts` |
+| `/new-lander/verse` | `verse.ts` (controller) and `verse-host.tsx` (web host and engine bridge); see [Surfaces](#surfaces) |
 
 The web files move to `apps/aethyr` when that package exists.
 
@@ -41,7 +42,7 @@ A controller publishes a `View`:
   | `text` | Text with a role: body, title, heading, caption, code, status | none |
   | `label` | Mono uppercase HUD readout, optional signal dot | none |
   | `button` | A control; with `href` (a same-site path) a link | `activate` |
-  | `chip` | A small toggle with explicit `selected` | `activate` |
+  | `chip` | A small toggle with explicit `selected`, and an optional `detail` line | `activate` |
   | `list` | Rows; `selectable` lists choose a row | `select` (value: row ID) |
   | `field` | Single or multiline text, bounded by `max_bytes` | `input` (value), `submit` |
   | `sheet` | Non-modal panel; bottom sheet on phones | `dismiss` when `dismissible` and open |
@@ -124,9 +125,16 @@ renderer (`AethyrView`):
 - uses the design system: `hud-panel`, `hud-label`, `hud-button`,
   `hud-toast`, the `aui-*` layout classes and `hud-dialog` in `theme.css`, and
   the shadcn `Input` and `Textarea`;
-- holds no state beyond DOM focus and hover. A chip, row, or field shows what
-  the tree says until a new revision changes it. Escape on a dialog sends
-  `dismiss`; the dialog stays open unless the controller closes it;
+- holds no state beyond DOM focus, hover, and a field's draft. A chip or row
+  shows what the tree says until a new revision changes it. Escape on a
+  dialog sends `dismiss`; the dialog stays open unless the controller closes
+  it;
+- keeps a field's draft while its `input` intents are handled, so a slow
+  handler never drops keystrokes. One input is in flight at a time; when it
+  settles, the field sends its newest draft against the newest revision. The
+  draft ends when the tree shows it, or when the controller sets a value the
+  field never sent (a reset). Hosts return the dispatch promise from
+  `onIntent` so fields know when an input settled;
 - names the revision it drew in every intent;
 - keys children by node ID and keeps media and engine surfaces mounted
   across revisions through the host's `mount(kind, id, element)` callback;
@@ -136,6 +144,34 @@ renderer (`AethyrView`):
 `ControllerView` (in `host.tsx`) reads the controller's `view` atom from the
 shared registry and runs `dispatch` in the host's runtime. It drops `stale`
 refusals, which are expected after a newer revision.
+
+## Surfaces
+
+### `/new-lander/verse` (#12588)
+
+The server page (`crates/openagents-web/src/pages/new_lander.rs`) is a
+shell: the planets' stage (`#engine`, `#world-notice`) inside
+`#universe-exploration`, the `#verse-hud` mount point, the
+`#verse-config` JSON the controller starts from, and two `.verse-bridge`
+blocks. The Verse controller draws the entry dialog, the destination sheet
+with its world chips, the map controls, and the fallback links into
+`#verse-hud`.
+
+The `.verse-bridge` blocks are the server's own copy of those controls. They
+are the page for visitors without JavaScript (the fallback links work), and
+they carry the element IDs the pinned engine release (`aethyrforge-host`'s
+`mount_universe`) reads and writes: `#continue-guest`, `#verse-explore`,
+`#option-*`, `#destination-*`, `#planet-*`, `#world-title`, and the rest.
+Once the web host mounts, it hides them (`data-aethyr-verse` on the root),
+keeps the release's own entry dialog from opening as a modal, turns intents
+into clicks on the bridge, and folds what the release writes there, and its
+`universeDemo.visit()`, back into the controller (`engineReport`). The
+engine never reopens a dialog the visitor closed. When a release built from
+this repository (#12590) stops writing to the page, the bridge goes.
+
+Browser checks address the visible controls as `[data-aethyr-id=ID]`, with
+the same IDs the bridge uses (`[data-aethyr-id=continue-guest]`,
+`[data-aethyr-id=option-haunted-house]`, `[data-aethyr-id=planet-setup]`).
 
 ## Design tokens
 
