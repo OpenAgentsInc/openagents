@@ -244,6 +244,15 @@ name = "aethyr-tokens"
 version = "1.0.0"
 
 [[package]]
+name = "aethyr-ui"
+version = "1.0.0"
+dependencies = [
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aethyrforge-host"
 version = "1.0.0"
 dependencies = [

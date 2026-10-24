@@ -1,0 +1,16 @@
+[package]
+name = "aethyr-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Aethyr UI protocol: the view tree a controller publishes and the intents a renderer sends back (ADR 0005)."
+
+[dependencies]
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+# Generated schema and TypeScript keep declaration order.
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[lints]
+workspace = true

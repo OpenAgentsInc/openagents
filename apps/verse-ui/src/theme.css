@@ -560,7 +560,7 @@
   border-radius: 7px;
   margin: 12px 0;
 }
-[data-verse-ui] dialog:not(#verse-entry) {
+[data-verse-ui] dialog:not(#verse-entry, .hud-dialog) {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--popover);
@@ -571,29 +571,29 @@
   overflow: auto;
   box-shadow: 0 24px 100px #00000099;
 }
-[data-verse-ui] dialog:not(.verse-entry)::backdrop {
+[data-verse-ui] dialog:not(.verse-entry, .hud-dialog)::backdrop {
   background: #0505059c;
   backdrop-filter: blur(5px);
 }
-[data-verse-ui] dialog:not(#verse-entry) section {
+[data-verse-ui] dialog:not(#verse-entry, .hud-dialog) section {
   background: transparent;
   border: 0;
   padding: 0;
   width: auto;
 }
-[data-verse-ui] dialog h2 {
+[data-verse-ui] dialog:where(:not(.hud-dialog)) h2 {
   font-size: 23px;
   line-height: 1.2;
   margin: 0 0 14px;
   font-weight: 550;
 }
-[data-verse-ui] dialog p,
-[data-verse-ui] dialog li {
+[data-verse-ui] dialog:where(:not(.hud-dialog)) p,
+[data-verse-ui] dialog:where(:not(.hud-dialog)) li {
   font-size: 13px;
   line-height: 1.7;
 }
-[data-verse-ui] dialog button,
-[data-verse-ui] dialog a {
+[data-verse-ui] dialog:where(:not(.hud-dialog)) button,
+[data-verse-ui] dialog:where(:not(.hud-dialog)) a {
   margin-top: 14px;
   margin-right: 8px;
 }
@@ -959,7 +959,7 @@
 }
 
 /* Native modal focus/confirmation stays with the Rust controller. */
-[data-verse-ui] dialog:not(#verse-entry) {
+[data-verse-ui] dialog:not(#verse-entry, .hud-dialog) {
   position: fixed;
   inset: 0;
   margin: auto;
@@ -1405,7 +1405,7 @@
 }
 [data-verse-ui] #planet-settings,
 [data-verse-ui] #publish-share-card,
-[data-verse-ui] dialog:not(#verse-entry),
+[data-verse-ui] dialog:not(#verse-entry, .hud-dialog),
 [data-verse-ui="player"] body > header,
 [data-verse-ui="setup"] main,
 [data-verse-ui="invite"] main,
@@ -2648,5 +2648,296 @@
   .verse #world-notice,
   .verse:has(.verse-fallback:not([hidden])) #world-notice:not([hidden]) {
     bottom: calc(var(--sheet) + 72px);
+  }
+}
+
+/* ===================================================================
+   Aethyr renderer (apps/verse-ui/src/aethyr/renderer.tsx): the layout
+   and the few components a view tree needs beyond the HUD set above.
+   Every value comes from a token.
+   =================================================================== */
+[data-verse-ui] dialog.hud-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-width: none;
+  margin: auto;
+  padding: 28px;
+  color: var(--foreground);
+  background: #0b0c10f0;
+}
+[data-verse-ui] dialog.hud-dialog::backdrop {
+  background: #00000047;
+}
+.aui-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hud-space-sm);
+  min-width: 0;
+}
+.aui-stack.aui-axis-horizontal,
+.aui-stack.aui-axis-wrap {
+  flex-direction: row;
+  align-items: center;
+}
+.aui-stack.aui-axis-wrap {
+  flex-wrap: wrap;
+}
+.aui-gap-none {
+  gap: 0;
+}
+.aui-gap-xs {
+  gap: var(--hud-space-xs);
+}
+.aui-gap-sm {
+  gap: var(--hud-space-sm);
+}
+.aui-gap-md {
+  gap: var(--hud-space-md);
+}
+.aui-gap-lg {
+  gap: var(--hud-space-lg);
+}
+.aui-gap-xl {
+  gap: var(--hud-space-xl);
+}
+.aui-pad-none {
+  padding: 0;
+}
+.aui-pad-xs {
+  padding: var(--hud-space-xs);
+}
+.aui-pad-sm {
+  padding: var(--hud-space-sm);
+}
+.aui-pad-md {
+  padding: var(--hud-space-md);
+}
+.aui-pad-lg {
+  padding: var(--hud-space-lg);
+}
+.aui-pad-xl {
+  padding: var(--hud-space-xl);
+}
+.aui-align-start {
+  justify-content: flex-start;
+}
+.aui-align-center {
+  justify-content: center;
+}
+.aui-align-end {
+  justify-content: flex-end;
+}
+.aui-align-between {
+  justify-content: space-between;
+}
+.aui-axis-vertical.aui-align-center {
+  align-items: center;
+  text-align: center;
+}
+.aui-axis-vertical.aui-align-end {
+  align-items: flex-end;
+}
+.aui-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hud-space-md);
+  padding: var(--hud-space-xl);
+}
+[data-verse-ui] .aui-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 26px;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+}
+[data-verse-ui] .aui-heading {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 17px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+[data-verse-ui] .aui-body {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 15px;
+  line-height: 1.55;
+}
+[data-verse-ui] .aui-caption {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.aui-code {
+  font: 13px/1.5 var(--font-mono);
+  color: var(--foreground);
+}
+[data-verse-ui] .aui-status {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+}
+[data-verse-ui] .aui-tone-default {
+  color: var(--foreground);
+}
+[data-verse-ui] .aui-tone-muted {
+  color: var(--muted-foreground);
+}
+[data-verse-ui] .aui-tone-primary {
+  color: var(--primary);
+}
+[data-verse-ui] .aui-tone-danger {
+  color: var(--destructive);
+}
+.aui-glyph {
+  flex: none;
+}
+.hud-link.aui-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hud-space-xs);
+}
+[data-verse-ui] .aui-button[aria-disabled="true"],
+[data-verse-ui] .aui-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+[data-verse-ui] .aui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hud-space-xs);
+  min-height: 32px;
+  padding: 0 var(--hud-space-md);
+  border: 1px solid var(--hud-line);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted-foreground);
+  font: 500 var(--hud-label-size) / 1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background var(--hud-motion),
+    border-color var(--hud-motion),
+    color var(--hud-motion);
+}
+[data-verse-ui] .aui-chip[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+[data-verse-ui] .aui-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.aui-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hud-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.aui-option {
+  padding: var(--hud-space-sm) var(--hud-space-md);
+  border: 1px solid transparent;
+  border-radius: var(--hud-radius-control);
+  cursor: pointer;
+}
+.aui-option[aria-selected="true"] {
+  border-color: var(--hud-line);
+  background: var(--hud-glass);
+}
+.aui-option:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+[data-verse-ui] .aui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hud-space-xs);
+  margin: 0;
+}
+.aui-field-label {
+  font: 500 var(--hud-label-size) / 1.4 var(--font-mono);
+  letter-spacing: var(--hud-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.aui-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hud-space-md);
+  width: min(380px, 100%);
+  padding: var(--hud-space-xl);
+}
+[data-verse-ui] .aui-close {
+  position: absolute;
+  top: var(--hud-space-sm);
+  right: var(--hud-space-sm);
+  min-width: 40px;
+  padding: 0;
+}
+.aui-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hud-space-sm);
+}
+[data-verse-ui] .aui-toast .aui-close {
+  position: static;
+  min-height: 32px;
+  min-width: 32px;
+}
+.hud-toast.aui-tone-danger {
+  border-color: var(--destructive);
+}
+.aui-media {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--hud-line);
+  border-radius: var(--radius);
+  background: var(--hud-glass);
+}
+.aui-aspect-square {
+  aspect-ratio: 1;
+}
+.aui-aspect-wide {
+  aspect-ratio: 16 / 9;
+}
+.aui-aspect-tall {
+  aspect-ratio: 3 / 4;
+}
+.aui-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  overflow: hidden;
+}
+@media (max-width: 760px) {
+  [data-verse-ui] dialog.hud-dialog {
+    width: calc(100vw - 20px);
+    margin: auto auto 10px;
+    padding: 20px;
+  }
+  .aui-sheet {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    width: auto;
+    max-height: 70dvh;
+    overflow: auto;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  [data-verse-ui] .aui-phone-hide {
+    display: none;
   }
 }

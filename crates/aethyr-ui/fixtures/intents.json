@@ -1,0 +1,387 @@
+{
+  "view": {
+    "schema": "aethyr.ui.v1",
+    "instance": "intents",
+    "revision": 7,
+    "root": {
+      "id": "root",
+      "element": {
+        "kind": "stack",
+        "axis": "vertical",
+        "children": [
+          {
+            "id": "go",
+            "element": {
+              "kind": "button",
+              "label": "Go",
+              "emphasis": "primary"
+            }
+          },
+          {
+            "id": "off",
+            "element": {
+              "kind": "button",
+              "label": "Off",
+              "enabled": false
+            }
+          },
+          {
+            "id": "chip",
+            "element": {
+              "kind": "chip",
+              "label": "Chip",
+              "selected": false
+            }
+          },
+          {
+            "id": "rows",
+            "element": {
+              "kind": "list",
+              "label": "Rows",
+              "selectable": true,
+              "children": [
+                {
+                  "id": "row-a",
+                  "element": {
+                    "kind": "text",
+                    "value": "A",
+                    "role": "body"
+                  }
+                },
+                {
+                  "id": "row-b",
+                  "element": {
+                    "kind": "text",
+                    "value": "B",
+                    "role": "body"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "plain-rows",
+            "element": {
+              "kind": "list",
+              "label": "Plain",
+              "children": [
+                {
+                  "id": "row-c",
+                  "element": {
+                    "kind": "text",
+                    "value": "C",
+                    "role": "body"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "name",
+            "element": {
+              "kind": "field",
+              "label": "Name",
+              "value": "",
+              "max_bytes": 4
+            }
+          },
+          {
+            "id": "locked",
+            "element": {
+              "kind": "field",
+              "label": "Locked",
+              "value": "",
+              "enabled": false,
+              "max_bytes": 4
+            }
+          },
+          {
+            "id": "modal",
+            "element": {
+              "kind": "dialog",
+              "label": "Modal",
+              "open": true,
+              "dismissible": true,
+              "children": []
+            }
+          },
+          {
+            "id": "fixed",
+            "element": {
+              "kind": "dialog",
+              "label": "Fixed",
+              "open": true,
+              "children": []
+            }
+          },
+          {
+            "id": "shut",
+            "element": {
+              "kind": "sheet",
+              "label": "Shut",
+              "open": false,
+              "dismissible": true,
+              "children": []
+            }
+          },
+          {
+            "id": "note",
+            "element": {
+              "kind": "toast",
+              "message": "Saved",
+              "dismissible": true
+            }
+          },
+          {
+            "id": "words",
+            "element": {
+              "kind": "text",
+              "value": "Words",
+              "role": "body"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "activate a button",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "go",
+        "kind": "activate"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "activate a disabled button",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "off",
+        "kind": "activate"
+      },
+      "expect": "disabled"
+    },
+    {
+      "name": "activate a chip",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "chip",
+        "kind": "activate"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "activate with a value",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "go",
+        "kind": "activate",
+        "value": "x"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "an older revision",
+      "intent": {
+        "instance": "intents",
+        "revision": 6,
+        "node": "go",
+        "kind": "activate"
+      },
+      "expect": "stale"
+    },
+    {
+      "name": "another instance",
+      "intent": {
+        "instance": "other",
+        "revision": 7,
+        "node": "go",
+        "kind": "activate"
+      },
+      "expect": "stale"
+    },
+    {
+      "name": "an unknown node",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "gone",
+        "kind": "activate"
+      },
+      "expect": "unknown_node"
+    },
+    {
+      "name": "activate text",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "words",
+        "kind": "activate"
+      },
+      "expect": "not_accepted"
+    },
+    {
+      "name": "select a row",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "rows",
+        "kind": "select",
+        "value": "row-b"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "select a row that is not a child",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "rows",
+        "kind": "select",
+        "value": "row-c"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "select without a value",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "rows",
+        "kind": "select"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "select in a plain list",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "plain-rows",
+        "kind": "select",
+        "value": "row-c"
+      },
+      "expect": "not_accepted"
+    },
+    {
+      "name": "input in bounds",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "name",
+        "kind": "input",
+        "value": "abcd"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "input counted in UTF-8 bytes",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "name",
+        "kind": "input",
+        "value": "éé"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "input over its byte bound",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "name",
+        "kind": "input",
+        "value": "ééé"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "input without a value",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "name",
+        "kind": "input"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "input in a disabled field",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "locked",
+        "kind": "input",
+        "value": "a"
+      },
+      "expect": "disabled"
+    },
+    {
+      "name": "submit a field",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "name",
+        "kind": "submit"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "dismiss a dismissible dialog",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "modal",
+        "kind": "dismiss"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "dismiss a fixed dialog",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "fixed",
+        "kind": "dismiss"
+      },
+      "expect": "not_accepted"
+    },
+    {
+      "name": "dismiss a closed sheet",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "shut",
+        "kind": "dismiss"
+      },
+      "expect": "not_accepted"
+    },
+    {
+      "name": "dismiss a toast",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "note",
+        "kind": "dismiss"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "submit a button",
+      "intent": {
+        "instance": "intents",
+        "revision": 7,
+        "node": "go",
+        "kind": "submit"
+      },
+      "expect": "not_accepted"
+    }
+  ]
+}

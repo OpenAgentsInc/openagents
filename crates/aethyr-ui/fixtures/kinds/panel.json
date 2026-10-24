@@ -1,0 +1,38 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-panel",
+  "revision": 1,
+  "root": {
+    "id": "panel",
+    "element": {
+      "kind": "panel",
+      "title": "Destination",
+      "children": [
+        {
+          "id": "panel-label",
+          "element": {
+            "kind": "label",
+            "value": "COMPANY WORLD",
+            "signal": true
+          }
+        },
+        {
+          "id": "panel-title",
+          "element": {
+            "kind": "text",
+            "value": "OpenAgents",
+            "role": "title"
+          }
+        },
+        {
+          "id": "panel-body",
+          "element": {
+            "kind": "text",
+            "value": "Our home in the Verse.",
+            "role": "body"
+          }
+        }
+      ]
+    }
+  }
+}

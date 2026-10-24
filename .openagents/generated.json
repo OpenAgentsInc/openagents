@@ -82,6 +82,14 @@
       "package": "aethyr-tokens",
       "check": "cargo test -p aethyr-tokens --lib tests::generated_stylesheet_is_current",
       "regenerate": ". ./scripts/dev/cargo-build-env.sh; cargo run -q -p aethyr-tokens -- --write"
+    },
+    {
+      "name": "aethyr-ui-schema",
+      "files": ["crates/aethyr-ui/schema/aethyr.ui.v1.schema.json", "apps/verse-ui/src/aethyr/protocol.ts"],
+      "sources": ["crates/aethyr-ui/src/"],
+      "package": "aethyr-ui",
+      "check": "cargo test -p aethyr-ui --lib tests::generated_files_are_current",
+      "regenerate": ". ./scripts/dev/cargo-build-env.sh; cargo run -q -p aethyr-ui -- --write"
     }
   ]
 }

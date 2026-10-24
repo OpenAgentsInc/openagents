@@ -1,0 +1,41 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-dialog",
+  "revision": 1,
+  "root": {
+    "id": "dialog",
+    "element": {
+      "kind": "dialog",
+      "label": "Your next world is waiting.",
+      "open": true,
+      "dismissible": true,
+      "children": [
+        {
+          "id": "dialog-title",
+          "element": {
+            "kind": "text",
+            "value": "Your next world is waiting.",
+            "role": "title"
+          }
+        },
+        {
+          "id": "dialog-body",
+          "element": {
+            "kind": "text",
+            "value": "Look around as a guest.",
+            "role": "body"
+          }
+        },
+        {
+          "id": "dialog-go",
+          "element": {
+            "kind": "button",
+            "label": "Continue as guest",
+            "emphasis": "primary",
+            "trailing": "forward"
+          }
+        }
+      ]
+    }
+  }
+}

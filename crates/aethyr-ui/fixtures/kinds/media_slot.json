@@ -1,0 +1,14 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-media-slot",
+  "revision": 1,
+  "root": {
+    "id": "media_slot",
+    "element": {
+      "kind": "media_slot",
+      "slot": "verse-still",
+      "label": "A still view of the planets",
+      "aspect": "wide"
+    }
+  }
+}

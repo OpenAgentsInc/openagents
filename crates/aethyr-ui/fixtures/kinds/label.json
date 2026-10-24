@@ -1,0 +1,13 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-label",
+  "revision": 1,
+  "root": {
+    "id": "label",
+    "element": {
+      "kind": "label",
+      "value": "THE VERSE / EXPLORATION",
+      "signal": true
+    }
+  }
+}

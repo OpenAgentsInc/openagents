@@ -118,7 +118,10 @@ function styleControls() {
     "button, input[type=submit], .small-button",
   )) {
     if (
-      node.closest("#verse-ui-root,[data-slot=dialog-content]") ||
+      // Aethyr renderer controls carry the design system's own classes.
+      node.closest(
+        "#verse-ui-root,[data-slot=dialog-content],[data-aethyr-root]",
+      ) ||
       node.dataset.verseControl ||
       // HUD components already carry the design system's own styles.
       node.matches(".hud-button, .verse-world-chip")
@@ -140,7 +143,7 @@ function styleControls() {
     for (const node of document.querySelectorAll<HTMLElement>(selector)) {
       if (
         node.dataset.verseControl ||
-        node.closest("[data-slot=dialog-content]")
+        node.closest("[data-slot=dialog-content],[data-aethyr-root]")
       )
         continue;
       node.classList.add(...styles.split(" ").filter(Boolean));

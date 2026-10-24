@@ -1,0 +1,61 @@
+{
+  "schema": "aethyr.ui.v1",
+  "instance": "kinds-button",
+  "revision": 1,
+  "root": {
+    "id": "button",
+    "style": {
+      "gap": "sm"
+    },
+    "element": {
+      "kind": "stack",
+      "axis": "wrap",
+      "children": [
+        {
+          "id": "button-primary",
+          "element": {
+            "kind": "button",
+            "label": "Continue as guest",
+            "emphasis": "primary",
+            "trailing": "forward"
+          }
+        },
+        {
+          "id": "button-secondary",
+          "element": {
+            "kind": "button",
+            "label": "Log in",
+            "href": "/login?return_to=%2Fnew-lander%2Fverse",
+            "trailing": "forward"
+          }
+        },
+        {
+          "id": "button-ghost",
+          "element": {
+            "kind": "button",
+            "label": "Full screen",
+            "emphasis": "ghost"
+          }
+        },
+        {
+          "id": "button-link",
+          "element": {
+            "kind": "button",
+            "label": "Back to OpenAgents",
+            "emphasis": "link",
+            "href": "/new-lander",
+            "leading": "back"
+          }
+        },
+        {
+          "id": "button-disabled",
+          "element": {
+            "kind": "button",
+            "label": "Create my planet",
+            "enabled": false
+          }
+        }
+      ]
+    }
+  }
+}
