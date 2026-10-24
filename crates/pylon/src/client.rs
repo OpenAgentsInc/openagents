@@ -6,6 +6,10 @@
 //! the smaller of that and the beacon's ceiling, and keeps its answer
 //! subscription on a fresh relay connection before the old one's lifetime
 //! ends. Feedback never extends the wait.
+//!
+//! Every ask, extended or not, survives a dropped answer connection: the
+//! buyer subscribes again for the same request within its wait and never
+//! sends the job twice.
 
 use std::collections::{BTreeSet, HashSet};
 use std::io::Write;
@@ -573,8 +577,23 @@ async fn ask_for(
         let frame = match read {
             None => continue,
             Some(Err(e)) => {
-                error = Some(format!("relay: {e}"));
-                break;
+                // The job may still be running. Listen again for the same
+                // request on a fresh connection, within the same wait, and
+                // never send the request again. An answer sent while no
+                // subscription listened is lost (answers are ephemeral),
+                // so a reconnect that finds nothing ends as a timeout.
+                match resubscribe(&ask.relay, buyer, &filter, deadline).await {
+                    Some(next) => {
+                        conn = next;
+                        connections += 1;
+                        opened = Instant::now();
+                        continue;
+                    }
+                    None => {
+                        error = Some(format!("relay: {e}; no answer within {} s", wait.as_secs()));
+                        break;
+                    }
+                }
             }
             Some(Ok(frame)) => Frame::parse(frame),
         };
@@ -756,6 +775,34 @@ async fn ask_for(
         paid_msat: payment.as_ref().map(|p| p.amount_msat),
         declared,
     })
+}
+
+/// Open a fresh relay connection and subscribe it to `filter`, retrying
+/// with backoff until `deadline`. Returns `None` when no attempt succeeds
+/// in time.
+async fn resubscribe(
+    url: &str,
+    buyer: &Identity,
+    filter: &Value,
+    deadline: tokio::time::Instant,
+) -> Option<nostr_transport::Connection> {
+    let mut pause = Duration::from_millis(250);
+    loop {
+        let attempt = async {
+            let mut next = relay::connect(url, buyer, LIFETIME).await.ok()?;
+            next.send(json!(["REQ", "answer", filter])).await.ok()?;
+            Some(next)
+        };
+        if let Ok(Some(next)) = tokio::time::timeout_at(deadline, attempt).await {
+            return Some(next);
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return None;
+        }
+        tokio::time::sleep_until(deadline.min(now + pause)).await;
+        pause = (pause * 2).min(Duration::from_secs(5));
+    }
 }
 
 /// Buy one job from `provider` under NIP-X402 before sending it: seal a

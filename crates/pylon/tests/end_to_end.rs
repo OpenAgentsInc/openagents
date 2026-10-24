@@ -5,14 +5,14 @@
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use nostr::domain::{Event, EventClass, Filter};
 use nostr::pylon::{PoolPolicy, parse_receipt};
 use pylon::client::{self, Ask};
-use pylon::engine::Echo;
+use pylon::engine::{Echo, Engine, Generation, Pending, Turn};
 use pylon::field::{Live, RelayField};
 use pylon::group::Want;
 use pylon::identity::Identity;
@@ -36,6 +36,17 @@ struct Sub {
 struct Hub {
     stored: Vec<Event>,
     subs: Vec<Sub>,
+    /// Close the connection that publishes the first job request signed by
+    /// this key, right after accepting it.
+    drop_requester: Option<String>,
+    /// Once a requester was dropped, refuse every new connection.
+    refuse_after_drop: bool,
+    dropped: bool,
+    /// Every job request and result the relay accepted, ephemeral or not.
+    requests: Vec<Event>,
+    results: Vec<Event>,
+    /// `answer` subscriptions opened, across every connection.
+    answer_subs: u32,
 }
 
 /// A minimal NIP-01/NIP-42 relay: stores regular and addressable events,
@@ -52,6 +63,13 @@ async fn relay() -> (String, Arc<Mutex<Hub>>) {
             let Ok((stream, _)) = listener.accept().await else {
                 return;
             };
+            {
+                let hub = shared.lock().await;
+                if hub.refuse_after_drop && hub.dropped {
+                    drop(stream);
+                    continue;
+                }
+            }
             next += 1;
             let conn = next;
             let hub = Arc::clone(&shared);
@@ -83,6 +101,13 @@ async fn relay() -> (String, Arc<Mutex<Hub>>) {
                                 continue;
                             }
                             let mut hub = hub.lock().await;
+                            match event.kind {
+                                25_900 => hub.requests.push(event.clone()),
+                                26_900 => hub.results.push(event.clone()),
+                                _ => {}
+                            }
+                            let drop_now = event.kind == 25_900
+                                && hub.drop_requester.as_deref() == Some(event.pubkey.as_str());
                             match event.class() {
                                 EventClass::Ephemeral => {}
                                 EventClass::Addressable => {
@@ -106,6 +131,11 @@ async fn relay() -> (String, Arc<Mutex<Hub>>) {
                                         sub.tx.send(json!(["EVENT", sub.id, event]).to_string());
                                 }
                             }
+                            if drop_now {
+                                hub.drop_requester = None;
+                                hub.dropped = true;
+                                break;
+                            }
                         }
                         "REQ" => {
                             let id = frame[1].as_str().unwrap().to_string();
@@ -120,6 +150,9 @@ async fn relay() -> (String, Arc<Mutex<Hub>>) {
                                 }
                             }
                             let _ = tx.send(json!(["EOSE", id]).to_string());
+                            if id == "answer" {
+                                hub.answer_subs += 1;
+                            }
                             hub.subs.push(Sub {
                                 conn,
                                 id,
@@ -963,4 +996,166 @@ async fn a_pylon_with_wrong_canary_answers_is_marked_check_fail_and_leaves_the_p
         stop_tx.send(()).unwrap();
         task.await.unwrap().unwrap();
     }
+}
+
+/// Echo held until the buyer has opened a second `answer` subscription
+/// (or `hold` passes), counting the jobs it runs for `prompt`.
+struct Delayed {
+    hub: Arc<Mutex<Hub>>,
+    prompt: String,
+    hold: Duration,
+    runs: Arc<AtomicU32>,
+}
+
+impl Engine for Delayed {
+    fn model(&self) -> &str {
+        "echo"
+    }
+
+    fn healthy(&self) -> Pending<'_, bool> {
+        Box::pin(async { true })
+    }
+
+    fn generate<'a>(
+        &'a self,
+        turns: &'a [Turn],
+        max_tokens: u32,
+    ) -> Pending<'a, Result<Generation, String>> {
+        Box::pin(async move {
+            if turns.iter().any(|t| t.content == self.prompt) {
+                self.runs.fetch_add(1, Ordering::SeqCst);
+                let until = std::time::Instant::now() + self.hold;
+                while std::time::Instant::now() < until {
+                    if self.hub.lock().await.answer_subs >= 2 {
+                        // Answer after the resubscription, not racing it.
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            }
+            Echo.generate(turns, max_tokens).await
+        })
+    }
+}
+
+struct Dropped {
+    answer: Result<client::Answer, String>,
+    elapsed: Duration,
+    requests: Vec<Event>,
+    results: Vec<Event>,
+    runs: u32,
+}
+
+/// A buyer whose relay connection closes right after the relay accepts its
+/// job request, against a pylon that answers only once the buyer has
+/// resubscribed (or `hold` passes). With `refuse`, the relay accepts no
+/// new connection after the drop.
+async fn dropped_buyer(prompt: &str, wait: Duration, hold: Duration, refuse: bool) -> Dropped {
+    let (url, hub) = relay().await;
+    let home = tempfile::tempdir().unwrap();
+    let provider_key = Identity::generate();
+    let buyer = Identity::generate();
+    let runs = Arc::new(AtomicU32::new(0));
+    let engine = Delayed {
+        hub: Arc::clone(&hub),
+        prompt: prompt.into(),
+        hold,
+        runs: Arc::clone(&runs),
+    };
+    let mut config = Config::new(&url, "dropped-buyer", home.path().to_path_buf());
+    config.allow = Some(BTreeSet::from([buyer.pubkey().to_string()]));
+    let provider = Provider::new(config, provider_key.clone(), Arc::new(engine)).unwrap();
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let running = tokio::spawn(Arc::clone(&provider).run(async {
+        let _ = stop_rx.await;
+    }));
+    wait_for_beacon(&hub).await;
+    {
+        let mut hub = hub.lock().await;
+        hub.drop_requester = Some(buyer.pubkey().to_string());
+        hub.refuse_after_drop = refuse;
+    }
+    let ask = Ask {
+        relay: url,
+        pylon: Some(provider_key.pubkey().into()),
+        prompt: prompt.into(),
+        wait,
+        publish_receipt: false,
+        home: home.path().to_path_buf(),
+        checkers: BTreeSet::new(),
+        pay: None,
+    };
+    let started = std::time::Instant::now();
+    let answer = tokio::time::timeout(wait + Duration::from_secs(5), client::ask(&buyer, &ask))
+        .await
+        .expect("the ask ends by its own deadline");
+    let elapsed = started.elapsed();
+    // Let a held job finish, so its execution and any result are counted.
+    tokio::time::sleep(hold.saturating_sub(elapsed) + Duration::from_millis(500)).await;
+    let (requests, results) = {
+        let hub = hub.lock().await;
+        (hub.requests.clone(), hub.results.clone())
+    };
+    let _ = stop_tx.send(());
+    let _ = running.await;
+    let run = Dropped {
+        answer,
+        elapsed,
+        requests,
+        results,
+        runs: runs.load(Ordering::SeqCst),
+    };
+    let answer = run.answer.as_ref();
+    eprintln!(
+        "dropped buyer (reconnect refused: {refuse}): elapsed {} ms of a {} ms wait; \
+         requests {:?}; results {:?}; provider executions {}; answer request {:?}; \
+         outcome {:?}; text {:?}; error {:?}",
+        run.elapsed.as_millis(),
+        wait.as_millis(),
+        run.requests.iter().map(|e| &e.id).collect::<Vec<_>>(),
+        run.results.iter().map(|e| &e.id).collect::<Vec<_>>(),
+        run.runs,
+        answer.map(|a| &a.request),
+        answer.map(|a| &a.outcome),
+        answer.map(|a| &a.text),
+        answer.map(|a| &a.error),
+    );
+    run
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_buyer_whose_relay_drops_resubscribes_and_gets_the_one_result() {
+    let wait = Duration::from_secs(10);
+    let run = dropped_buyer("hello again", wait, Duration::from_secs(5), false).await;
+    let answer = run.answer.unwrap();
+    assert_eq!(answer.text.as_deref(), Some("echo: niaga olleh"));
+    assert_eq!(answer.outcome, "accepted");
+    assert!(answer.error.is_none(), "{:?}", answer.error);
+    assert!(run.elapsed < wait);
+    // The request went out once, and its one result answers it.
+    assert_eq!(run.requests.len(), 1, "the buyer must not republish");
+    assert_eq!(run.requests[0].id, answer.request);
+    assert_eq!(run.results.len(), 1);
+    assert_eq!(
+        run.results[0].tag_values("e").next(),
+        Some(answer.request.as_str())
+    );
+    assert_eq!(run.runs, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_buyer_that_cannot_resubscribe_ends_incomplete_without_republishing() {
+    let wait = Duration::from_secs(2);
+    let run = dropped_buyer("are you there", wait, Duration::from_secs(3), true).await;
+    let answer = run.answer.unwrap();
+    assert!(answer.text.is_none());
+    assert_eq!(answer.outcome, "timeout");
+    let error = answer.error.unwrap();
+    assert!(error.contains("relay"), "{error}");
+    // It kept trying for the whole wait instead of ending at the drop.
+    assert!(run.elapsed >= wait - Duration::from_millis(100));
+    assert_eq!(run.requests.len(), 1, "the buyer must not republish");
+    assert_eq!(run.requests[0].id, answer.request);
+    assert!(run.runs <= 1);
 }
