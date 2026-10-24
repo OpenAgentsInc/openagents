@@ -667,6 +667,12 @@ check() {
         python3 -c 'import json,sys; sys.exit(sys.argv[2] not in json.load(open(sys.argv[1]))["profiles"])' "$DIR/build.json" "$profile" || continue
         local name
         name=$(basename "$script" .mjs)
+        # Each check starts from an empty scratch folder: the checks keep their
+        # native project store (chats/, tasks/, native-home/) there, and their
+        # synthetic account service numbers projects from prj_..01 each run, so
+        # a store left by an earlier run on this release directory answers the
+        # first save with 409 newer_version.
+        rm -rf "${DIR:?}/checks/$name"
         mkdir -p "$DIR/checks/$name"
         check_config "$profile" "$DIR/checks/$name/config.json"
         say "  $name ($profile)"
