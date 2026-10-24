@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12584: grant-storage throttling retries are on `main` (`67e2a0d8dc`);
+  all 16 targeted Verse tests pass. Production mobile edit, save, publish,
+  share, and planet verification remains pending deployment.
 - #12583: the dedicated-account production mobile journey passes 26 steps,
   including guest entry, first-edit confirmation, failed-shader recovery, painted
   face save/reopen, publishing, anonymous playback, planet setup, chat, return,
