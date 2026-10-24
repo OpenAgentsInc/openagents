@@ -184,17 +184,20 @@ function notice(state: StudioState): Node | undefined {
 
 function dock(state: StudioState): Node {
   const inert = state.editing;
+  // After an engine failure, Reload is the way forward, on every width.
+  const failed = state.phase === "error";
   const navigation = row("world-navigation", [
     button("world-map", "Planets", {
       href: state.mapPath,
       name: "Back to planets",
       enabled: !inert,
     }),
-    button("world-retry", "Reload", {
+    button("world-retry", failed ? "Reload world" : "Reload", {
       href: state.reloadPath,
       name: "Reload world",
       enabled: !inert,
-      phone: false,
+      emphasis: failed ? "primary" : "ghost",
+      phone: failed,
     }),
     button("world-fullscreen", "Full screen", {
       enabled: !inert,
@@ -214,7 +217,10 @@ function dock(state: StudioState): Node {
       },
     });
   authoring.push(
-    button("world-edit", "Edit", { emphasis: "primary", enabled: !inert }),
+    button("world-edit", "Edit", {
+      emphasis: failed ? "ghost" : "primary",
+      enabled: !inert,
+    }),
   );
   if (state.save.shown)
     authoring.push(

@@ -140,6 +140,24 @@ test("an opening world says so; an error offers reload and the planets", async (
   assert.deepEqual(trail, ["click world-retry", `go ${PAGE.mapPath}`]);
 });
 
+test("after an engine failure, Reload is the dock's primary action on phones too", async () => {
+  const { view, report } = studio(OPEN);
+  const reload = () => findNode(view(), "world-retry");
+  assert.equal(reload()?.style?.hide_on_phone, true);
+  assert.equal(element(view(), "world-retry", "button").emphasis, "ghost");
+  assert.equal(element(view(), "world-edit", "button").emphasis, "primary");
+  await report({
+    ...OPEN,
+    phase: "error",
+    notice: "The world could not open.",
+  });
+  assert.equal(reload()?.style?.hide_on_phone, undefined);
+  assert.equal(element(view(), "world-retry", "button").emphasis, "primary");
+  assert.equal(element(view(), "world-retry", "button").label, "Reload world");
+  assert.equal(element(view(), "world-edit", "button").emphasis, "ghost");
+  assert.ok(validateView(view()).ok);
+});
+
 test("without WebGPU the error names the reason", () => {
   const { view } = studio(
     { ...OPEN, phase: "error", notice: "The world could not open." },

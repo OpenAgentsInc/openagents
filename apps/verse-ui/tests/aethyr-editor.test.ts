@@ -189,6 +189,39 @@ test("controls carry the release's values and send one bridge operation each", a
   ]);
 });
 
+test("a checkbox or choice shows at once, and rolls back if the release refuses it", async () => {
+  const state = everything({
+    "publish-confirm-rights": { checked: false },
+    "face-area": {
+      value: "forehead",
+      options: [
+        { value: "left_cheek", label: "Left cheek" },
+        { value: "forehead", label: "Forehead" },
+      ],
+    },
+  });
+  const { trail, view, send, report } = editor(state);
+  await send("publish-confirm-rights", "input", "true");
+  await send("face-area", "select", "left_cheek");
+  // Before the release's next report, the view already shows both choices.
+  assert.equal(
+    element(view(), "publish-confirm-rights", "checkbox").checked,
+    true,
+  );
+  assert.equal(element(view(), "face-area", "select").value, "left_cheek");
+  assert.deepEqual(trail, [
+    { op: "check", id: "publish-confirm-rights", checked: true },
+    { op: "set", id: "face-area", value: "left_cheek" },
+  ]);
+  // The release kept its own values: its report puts them back.
+  await report(state);
+  assert.equal(
+    element(view(), "publish-confirm-rights", "checkbox").checked,
+    false,
+  );
+  assert.equal(element(view(), "face-area", "select").value, "forehead");
+});
+
 test("disabled controls stay disabled; the renderer cannot act on them", async () => {
   const { view, send } = editor(
     everything({
