@@ -644,8 +644,14 @@ const MOST_PAGE: usize = 4 * 1024 * 1024;
 
 /// Adds the capture script to a funnel page, and lets the page's policy
 /// load it from this site and send to this site.
-pub(crate) async fn inject(request: Request, next: Next) -> Response {
+pub(crate) async fn inject(mut request: Request, next: Next) -> Response {
     let wanted = request.method() == Method::GET && funnel_page(request.uri().path());
+    if wanted {
+        // Some pages answer with a body compressed ahead of time; ask for
+        // the plain one. The site's outer compression layer has already
+        // read this header and compresses the finished page.
+        request.headers_mut().remove(header::ACCEPT_ENCODING);
+    }
     let response = next.run(request).await;
     if !wanted || response.status() != StatusCode::OK {
         return response;

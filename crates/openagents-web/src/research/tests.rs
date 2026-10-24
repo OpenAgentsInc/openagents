@@ -492,6 +492,19 @@ async fn funnel_pages_get_the_script_and_a_policy_that_loads_it() {
     let (status, headers, body) = send(&site, admin("/", None)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("<script src=\"/static/r.js\" defer></script>"));
+    // A browser that accepts brotli gets the tagged page compressed.
+    let mut asked = admin("/", None);
+    asked
+        .headers_mut()
+        .insert(header::ACCEPT_ENCODING, "br, gzip".parse().unwrap());
+    let response = site.clone().oneshot(asked).await.unwrap();
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+    let compressed = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
+    let mut plain = Vec::new();
+    brotli::BrotliDecompress(&mut &compressed[..], &mut plain).unwrap();
+    assert!(String::from_utf8_lossy(&plain).contains("/static/r.js"));
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
     assert!(policy.contains("script-src") && policy.contains("connect-src"));
     assert!(
