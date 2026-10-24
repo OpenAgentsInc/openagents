@@ -205,7 +205,7 @@ GATEWAY_HELD = {
     "device: signed out goes to log in",
     "projects: signed out goes to log in",
     "gateway: /v1/models",
-    "gateway: planet project allocation route",
+    "Verse: creating a planet requires sign-in",
     "traces: signed out is refused",
 }
 CANDIDATE = False
@@ -1027,10 +1027,11 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                    env.status == 404, f"{env.status}")
         if want("gateway"):
             gw = Site(base)
-            allocation = gw.request("/v1/projects/ensure", method="POST", body={})
-            record("gateway: planet project allocation route",
-                   allocation.status in (400, 401, 403, 422),
-                   f"{allocation.status}; empty request creates no project")
+            allocation = gw.request("/v1/verse/studio/tutorial", method="POST",
+                                    body={"operation": "allocate", "csrf": ""})
+            record("Verse: creating a planet requires sign-in",
+                   allocation.status == 401,
+                   f"{allocation.status}; signed-out request creates no project")
             models = gw.get("/api/v1/models")
             try:
                 ids = [m["id"] for m in models.json()["data"]]

@@ -1506,5 +1506,6 @@ already published links keep their own saved runtime registration.
 Promotion applies the house entry configuration with these registrations. An SDK
 or input fix can use new delivery URLs while retaining the compatible engine
 identity and asset set, so existing saves still open. The production gateway must
-also serve `POST /v1/projects/ensure`; the gateway smoke checks this route with an
-empty request, which creates no project.
+also serve `POST /v1/projects/ensure` on its internal account service. Check
+allocation through the signed-in mobile journey; the public website owns a
+different project API. The deployment smoke refuses signed-out planet creation.
