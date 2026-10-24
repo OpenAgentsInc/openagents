@@ -173,7 +173,7 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                     h2 #entry-title { "Your next world is waiting." }
                     p #entry-description { @if account { "Log in, or look around as a guest." } @else { "Look around as a guest." } }
                     div.verse-entry-actions {
-                        a.hud-button id="verse-signin" hidden[!account] href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" }
+                        a.hud-button id="verse-signin" hidden[!account] href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in" span aria-hidden="true" { "↗" } }
                         button.hud-button.hud-primary id="continue-guest" type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
                     }
                 }
