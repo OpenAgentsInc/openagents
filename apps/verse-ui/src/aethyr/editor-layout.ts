@@ -475,7 +475,8 @@ const signIn: Surface = {
       bridged: false,
       axis: "wrap",
       children: [
-        { t: "link", id: "edit-signin", emphasis: "primary" },
+        // The release keeps the pending change and opens the sign-in popup.
+        { t: "link", id: "edit-signin", emphasis: "primary", relay: true },
         { t: "button", id: "edit-confirm", emphasis: "primary" },
         { t: "button", id: "edit-auth-voice-stop" },
         { t: "button", id: "edit-cancel" },

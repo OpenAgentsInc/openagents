@@ -265,9 +265,9 @@ test("release-built rows keep their actions", async () => {
 test("Escape on a dialog is the release's Cancel; links stay on the site", async () => {
   const { trail, send } = editor(
     everything({
-      "edit-signin": {
-        text: "Sign in",
-        href: "/login?return_to=%2Fnew-lander%2Fhouse",
+      "published-link": {
+        text: "Open playable version",
+        href: "/new-lander/play/w/r",
       },
       "publish-share-link": {
         text: "https://openagents.com/new-lander/play/w/r",
@@ -277,15 +277,30 @@ test("Escape on a dialog is the release's Cancel; links stay on the site", async
   await send("edit-auth", "dismiss");
   await send("publish-review", "dismiss");
   await send("edit-panel", "dismiss");
-  await send("edit-signin", "activate");
+  await send("published-link", "activate");
   await send("publish-share-link", "activate");
   assert.deepEqual(trail, [
     { op: "click", id: "edit-cancel" },
     { op: "click", id: "publish-cancel" },
     { op: "click", id: "edit-close" },
-    "go /login?return_to=%2Fnew-lander%2Fhouse",
+    "go /new-lander/play/w/r",
     { op: "click", id: "publish-share-link" },
   ]);
+});
+
+test("Sign in is relayed to the release and never navigates", async () => {
+  const { trail, view, send } = editor(
+    everything({
+      "edit-signin": {
+        text: "Sign in",
+        href: "/login?return_to=%2Fnew-lander%2Fhouse",
+      },
+    }),
+  );
+  // No href: the page cannot follow the link itself.
+  assert.equal(element(view(), "edit-signin", "button").href, undefined);
+  await send("edit-signin", "activate");
+  assert.deepEqual(trail, [{ op: "click", id: "edit-signin" }]);
 });
 
 test("the editor never offers chat", () => {

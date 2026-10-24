@@ -130,6 +130,12 @@ export type Spec =
       readonly id: string;
       readonly label?: string;
       readonly emphasis?: "primary";
+      /**
+       * The release's own click handler does more than navigate (Sign in
+       * keeps the pending change and opens a popup), so the control draws
+       * no `href` and every activation clicks the release's link.
+       */
+      readonly relay?: true;
     }
   | {
       readonly t: "field";
@@ -271,7 +277,7 @@ function render(spec: Spec, state: EditorState): Node[] {
             label,
             emphasis: spec.emphasis ?? "link",
             trailing: "forward",
-            ...(m.href && { href: m.href }),
+            ...(m.href && !spec.relay && { href: m.href }),
           },
         },
       ];
@@ -675,9 +681,10 @@ export const makeEditorController = (
             case "link": {
               const href =
                 node.element.kind === "button" ? node.element.href : undefined;
-              // Same-site links go through the controller; others are the
-              // release's (a download or a new tab).
-              if (href) yield* navigator.go(href);
+              // Same-site links go through the controller; others, and
+              // relayed links, are the release's (a download, a new tab, or
+              // its own handler).
+              if (href && !spec.relay) yield* navigator.go(href);
               else yield* bridge.act({ op: "click", id });
               break;
             }
