@@ -1,20 +1,23 @@
-## Check the improved Medieval Town on a test iPhone (TestFlight 1020, 2026-10-23)
+## Check Medieval Town passages on a test iPhone (TestFlight 1021, 2026-10-23)
 
-OpenAgents 1.0.0 (1020) is valid and available to **Internal Testers** and
-**Team (Expo)**. Source: `631a2a724c`; mobile scene: `4552b29fd280c68f…`.
-Open the menu and choose **Medieval Town**. The full town, trees, castle, and
-mountain backdrops now use detailed material maps and directional shadows.
-The first visit downloads about 97 MB, then uses its local cache.
+OpenAgents 1.0.0 (1021) is valid and available to **Internal Testers** and
+**Team (Expo)**. Source: `949d1f4e64`; mobile scene: `a07af48b436be446…`.
+Open the menu and choose **Medieval Town**. Collision now follows visible solid
+geometry throughout the town, and the artificial movement boundary is removed.
+The first visit downloads about 124 MB, then uses its local cache.
 
 The Release iPhone 17 simulator on iOS 26.5 (M5 Max) completed 1,800 GPU frames
-in 30 seconds: 60.0 FPS, a 16.78 ms 95th-percentile frame interval, and one gap
+in 30 seconds: 60.0 FPS, a 16.72 ms 95th-percentile frame interval, and no gaps
 over 25 ms. It moved 21.76 m and turned through the 4.33-million-triangle scene.
-The native process used 312 MB after loading and peaked at 569 MB during loading.
-Twelve Rust checks, five landscape captures, and the menu, touch movement/look,
-background/resume, close, and offline chat checks passed.
+Touch controls also walked 30.9 m through the arch and stairs without jumping,
+past the old movement boundary, then looked back through the arch.
+The native process used 422 MB after loading and peaked at 679 MB during loading.
+Six focused Rust checks and three iOS UI checks passed, including the passage,
+frame cadence, touch movement/look, background/resume, and close.
 
-On a physical iPhone with the dedicated test account, check the FPS display
-while walking, wall collision, look, Run, Jump, rotation, and switching apps.
+On a physical iPhone with the dedicated test account, walk forward through the
+stone arch and its steps without jumping, and continue into the open streets.
+Check the FPS display, wall collision, look, Run, Jump, rotation, and switching apps.
 Physical-device performance has not been measured.
 
 Release notes: the old archive script rejects a notification selector that
