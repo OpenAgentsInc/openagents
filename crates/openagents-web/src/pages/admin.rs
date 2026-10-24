@@ -41,11 +41,16 @@ pub(crate) const KILN: &str = "/admin/kiln/";
 const DEFAULT_RELAY: &str = "wss://relay.openagents.com";
 
 /// The admin pages the hub links, with a line on each.
-const PAGES: [(&str, &str, &str); 4] = [
+const PAGES: [(&str, &str, &str); 5] = [
     (
         "Kiln",
         KILN,
         "A coding agent that runs in your browser tab.",
+    ),
+    (
+        "Launch sign-ups",
+        crate::playtest::ADMIN,
+        "The waitlist, profiles, and playtest surveys, with downloads.",
     ),
     (
         "Analytics",
@@ -334,13 +339,13 @@ pub(crate) fn owns(path: &str) -> bool {
 
 /// Who is asking.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Visitor {
+pub(crate) enum Visitor {
     SignedOut,
     Member,
     Admin,
 }
 
-async fn visitor(app: &App, headers: &HeaderMap) -> Visitor {
+pub(crate) async fn visitor(app: &App, headers: &HeaderMap) -> Visitor {
     let Some(service) = app.config.cloud.as_deref() else {
         return Visitor::SignedOut;
     };
@@ -352,12 +357,12 @@ async fn visitor(app: &App, headers: &HeaderMap) -> Visitor {
 }
 
 /// Sign in, then come back to `path`.
-fn sign_in(path: &str) -> Response {
+pub(crate) fn sign_in(path: &str) -> Response {
     guarded(Redirect::to(&crate::auth::login_href(path, false)).into_response())
 }
 
 /// Never cached by anyone else, indexed, or sent on as a referrer.
-fn guarded(response: Response) -> Response {
+pub(crate) fn guarded(response: Response) -> Response {
     let mut response = crate::analytics::dashboard::guarded(response);
     response.headers_mut().insert(
         header::CACHE_CONTROL,

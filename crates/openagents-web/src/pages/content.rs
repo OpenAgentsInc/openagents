@@ -479,6 +479,14 @@ mod tests {
         assert!(TERMS.starts_with("# Terms of Service\nLast updated: 2026-10-09"));
         assert!(PRIVACY.starts_with("# Privacy Policy\nLast updated: 2026-10-24"));
         assert!(TERMS.contains("train, fine-tune, and evaluate the models and tools we run"));
+        // The launch playtest's cookie, what it records, and the way out.
+        for text in [
+            "oa_playtest",
+            "Play without recording",
+            "Deleting your account deletes its profile",
+        ] {
+            assert!(PRIVACY.contains(text), "{text}");
+        }
         assert!(PRIVACY.contains("To train, fine-tune, and evaluate models we run or develop"));
         assert!(
             PRIVACY.contains("On a paid plan, you may ask us not to use the content you submit")

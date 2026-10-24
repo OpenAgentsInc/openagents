@@ -36,8 +36,7 @@ mod lander8;
 mod layertree;
 pub mod live;
 pub(crate) mod medieval_town;
-mod new_lander;
-mod zones;
+pub(crate) mod new_lander;
 pub(crate) mod new_lander_house;
 mod pricing;
 pub mod profile;
@@ -50,6 +49,7 @@ mod snap;
 mod snap_shares;
 pub mod stats;
 mod verse_hands;
+mod zones;
 
 use axum::Router;
 

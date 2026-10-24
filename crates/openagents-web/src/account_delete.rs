@@ -143,6 +143,9 @@ async fn forget(app: &App, viewer: &Viewer) -> Result<(), &'static str> {
     if let Some(vault) = app.config.vault_store.as_deref() {
         vault.remove_owner(&owner).await.map_err(|_| "the vault")?;
     }
+    crate::playtest::store::forget_account(&app.config.chat_store, &viewer.account_id)
+        .await
+        .map_err(|_| "the launch profile")?;
     app.config
         .chat_store
         .remove_owner(&owner)

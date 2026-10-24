@@ -1804,20 +1804,20 @@ async fn the_lander11_page_has_the_chat_over_verse() {
     }
 }
 
-/// `/`: the Grid homepage (#12413): one response with the heading, Log in
-/// and Sign up back to `/`, the pylons' list, and Verse's ambient canvas;
-/// `/home` redirects there with its query; `/home/me` answers a visitor as
-/// signed out; the new chat is at `/chat` and the classic home page at
-/// `/home/classic`.
+/// `/home`: the Grid homepage (#12413; `/` until the launch homepage took
+/// it): one response with the heading, Log in and Sign up back to `/home`,
+/// the pylons' list, and Verse's ambient canvas; `/` with the Grid's query
+/// redirects here; `/home/me` answers a visitor as signed out; the new chat
+/// is at `/chat` and the classic home page at `/home/classic`.
 #[tokio::test]
-async fn the_grid_homepage_is_at_the_root_and_the_new_chat_at_chat() {
+async fn the_grid_homepage_is_at_home_and_the_new_chat_at_chat() {
     let root = tempfile::tempdir().unwrap();
     let config = config(root.path().join("tasks"));
-    let (status, headers, html) = get_with(router(config.clone()), "/", LOCAL).await;
+    let (status, headers, html) = get_with(router(config.clone()), "/home", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert!(html.contains("</svg>OpenAgents</h1>"), "{html}");
-    assert!(html.contains("href=\"/login?return_to=%2F\""));
-    assert!(html.contains("href=\"/signup?return_to=%2F\""));
+    assert!(html.contains("href=\"/login?return_to=%2Fhome\""));
+    assert!(html.contains("href=\"/signup?return_to=%2Fhome\""));
     assert!(html.contains("id=\"pylons-panel\"") && html.contains("data-ambient"));
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
     // The Grid's players meet on the public relay (#12406), and Kiln at the
@@ -1829,10 +1829,13 @@ async fn the_grid_homepage_is_at_the_root_and_the_new_chat_at_chat() {
             && !policy.contains("unsafe-inline"),
         "{policy}"
     );
-    crate::copy_guard::assert_plain("/", &html);
-    for (old, to) in [("/home", "/"), ("/home?chat=abc-1", "/?chat=abc-1")] {
+    crate::copy_guard::assert_plain("/home", &html);
+    for (old, to) in [
+        ("/?chat=abc-1", "/home?chat=abc-1"),
+        ("/?chat=abc-1&gl", "/home?chat=abc-1&gl"),
+    ] {
         let (status, headers, _) = get_with(router(config.clone()), old, LOCAL).await;
-        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
+        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT, "{old}");
         assert_eq!(headers[header::LOCATION], to, "{old}");
     }
     let (status, headers, me) = get_with(router(config.clone()), "/home/me", LOCAL).await;
@@ -1846,7 +1849,7 @@ async fn the_grid_homepage_is_at_the_root_and_the_new_chat_at_chat() {
     // except that Log in and Sign up are hidden (`home_account`).
     let mut off = config.clone();
     off.features = crate::features::Features::none();
-    let (status, _, no_features) = get_with(router(off), "/", LOCAL).await;
+    let (status, _, no_features) = get_with(router(off), "/home", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert!(!no_features.contains(">Log in</a>") && !no_features.contains(">Sign up</a>"));
     assert!(no_features.contains("<nav id=\"home-account\" aria-label=\"Account\"></nav>"));
@@ -4768,13 +4771,14 @@ async fn the_pylons_page_lists_pylons_and_serves_its_builds() {
     }
 }
 
-/// #12260, #12413: the older landers move to the Grid homepage at `/`,
-/// and the classic home page still answers.
+/// #12260, #12413: the older landers move to `/` (the launch homepage
+/// since 2026-10-24; the Grid is at `/home`), and the classic home page
+/// still answers.
 #[tokio::test]
 async fn the_older_landers_move_to_the_grid_homepage() {
     let root = tempfile::tempdir().unwrap();
     let site = crate::router(crate::Config::development(root.path().join("tasks")));
-    let (_, _, home) = get_with(site.clone(), "/", LOCAL).await;
+    let (_, _, home) = get_with(site.clone(), "/home", LOCAL).await;
     assert!(home.contains("lander-chat-keep"));
     for old in [
         "/lander3", "/lander4", "/lander5", "/lander6", "/lander7", "/lander8", "/lander9",
@@ -4930,8 +4934,6 @@ async fn retired_pages_permanently_redirect_and_keep_queries_on_chats() {
                 ("/gpui", "/chat"),
                 ("/gpui/", "/chat"),
                 ("/gpui?ui=html&project=p1", "/chat?ui=html&project=p1"),
-                ("/home", "/"),
-                ("/home?chat=abc-1&gl", "/?chat=abc-1&gl"),
                 ("/new", "/chat"),
                 ("/new?project=p1", "/chat?project=p1"),
                 (

@@ -285,6 +285,8 @@ pub fn owned(path: &str) -> bool {
         || crate::research::owns(path)
         // The staff entrance and Kiln (crate::pages::admin).
         || crate::pages::admin::owns(path)
+        // The launch playtest, waitlist, and staff export (crate::playtest).
+        || crate::playtest::owns(path)
         || crate::oauth::owns(path)
         || crate::phone_api::owns(path)
         || path == "/v1/agent-assignments"

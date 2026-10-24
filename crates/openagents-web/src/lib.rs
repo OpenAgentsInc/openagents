@@ -107,6 +107,7 @@ pub mod features;
 mod issue_claims;
 mod issue_claims_openapi;
 mod owner_notifications;
+pub mod playtest;
 mod profile_earnings;
 mod profiles;
 #[doc(hidden)]
@@ -852,6 +853,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
         .merge(live_games::routes())
+        .merge(playtest::routes())
         .merge(sand_gallery::routes())
         .merge(purchases::routes())
         .merge(chat_html::routes())

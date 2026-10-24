@@ -2080,6 +2080,348 @@
   text-decoration: none;
 }
 
+/* --- Launch: calls to action, forms, the playtest --------------------- */
+.lp-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.lp-cta .hud-button.hud-large {
+  min-width: 220px;
+}
+.lp-waitlist {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  align-items: start;
+  gap: 40px;
+  padding: 96px clamp(16px, 6vw, 80px);
+  border-top: 1px solid var(--border);
+}
+.lp-waitlist .lp-section-heading p {
+  margin-bottom: 0;
+}
+.lp-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 16px 80px;
+}
+.lp-page > h1,
+.lp-intro h1,
+.lp-done h1 {
+  margin: 14px 0 12px;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  font-weight: 600;
+}
+.lp-page .lp-lede {
+  max-width: none;
+  margin-bottom: 24px;
+}
+.lp-page .lp-waitlist {
+  grid-template-columns: 1fr;
+  gap: 24px;
+  padding: 0;
+  border: 0;
+}
+.lp-form {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+}
+.hud-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+[data-verse-ui] .hud-field > label,
+[data-verse-ui] .hud-field > legend {
+  padding: 0;
+  margin-bottom: 2px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+}
+[data-verse-ui] .hud-field input:not([type="checkbox"]):not([type="radio"]),
+[data-verse-ui] .hud-field textarea,
+[data-verse-ui] .hud-field select {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+.hud-hint {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 400;
+}
+.hud-required {
+  color: var(--muted-foreground);
+}
+.hud-problem {
+  border-color: var(--destructive);
+  color: var(--foreground);
+}
+.hud-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+[data-verse-ui] .hud-choice {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+.hud-choice input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.hud-choice span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--hud-line);
+  border-radius: var(--hud-radius-control);
+  background: #18181bcc;
+  color: #d4d4d8;
+  font-size: 14px;
+  transition:
+    background var(--hud-motion),
+    border-color var(--hud-motion);
+}
+.hud-choice input:checked + span {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.hud-choice input:focus-visible + span {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.hud-scale {
+  display: grid;
+  gap: 6px;
+}
+.hud-scale-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.hud-scale-step span {
+  width: 100%;
+  padding: 0;
+  font-family: var(--font-mono);
+}
+.hud-scale-step {
+  min-width: 0;
+}
+[data-verse-ui] .hud-scale-ends {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 12px;
+}
+[data-verse-ui] .hud-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #d4d4d8;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.hud-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.lp-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.lp-steps li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 4px 12px;
+  color: #b4b4bc;
+  line-height: 1.5;
+}
+.lp-steps li::before {
+  content: "0" counter(step);
+  grid-row: span 2;
+  color: var(--muted-foreground);
+  font: 500 var(--hud-label-size) / 22px var(--font-mono);
+  letter-spacing: 0.16em;
+}
+.lp-steps strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.lp-consent {
+  margin: 24px 0;
+  padding: 20px 22px;
+}
+.lp-consent h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 600;
+}
+[data-verse-ui] .lp-consent p {
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+[data-verse-ui] .lp-consent a,
+[data-verse-ui] .lp-page .hud-hint a {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+.lp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0;
+}
+.lp-done {
+  padding: 28px 24px;
+}
+[data-verse-ui] .lp-done > p {
+  line-height: 1.55;
+}
+.lp-share {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+[data-verse-ui] .lp-share label {
+  color: var(--foreground);
+  font-size: 14px;
+}
+.lp-share-row {
+  display: flex;
+  gap: 8px;
+}
+[data-verse-ui] .lp-share-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.lp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 24px 0;
+}
+.lp-stat {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+.lp-stat strong {
+  font: 600 32px/1 var(--font-sans);
+}
+/* The house during a playtest: Finish playtest sits under the top
+   controls, and the prompt rises from the bottom. */
+[data-verse-ui] .playtest-finish {
+  position: fixed;
+  z-index: 70;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  min-height: 36px;
+  white-space: nowrap;
+}
+[data-verse-ui] .playtest-finish.playtest-ready {
+  animation: playtest-glow var(--hud-pulse) ease-in-out infinite;
+}
+@keyframes playtest-glow {
+  50% {
+    box-shadow: 0 0 40px #ffffff73;
+  }
+}
+.playtest-prompt {
+  position: fixed;
+  z-index: 71;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 16px;
+  -webkit-backdrop-filter: blur(var(--hud-blur));
+  backdrop-filter: blur(var(--hud-blur));
+}
+[data-verse-ui] .playtest-prompt p {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 15px;
+}
+.playtest-prompt .lp-actions {
+  margin: 12px 0 0;
+}
+@media (max-width: 760px) {
+  .lp-cta {
+    display: grid;
+  }
+  .lp-cta .hud-button.hud-large {
+    width: 100%;
+    min-width: 0;
+  }
+  .lp-waitlist {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 56px 20px;
+  }
+  .lp-page {
+    padding: 28px 16px 56px;
+  }
+  .lp-form {
+    padding: 18px 16px;
+  }
+  .lp-actions .hud-button,
+  .lp-form > .hud-button {
+    width: 100%;
+    min-width: 0;
+  }
+  .hud-scale-row {
+    gap: 4px;
+  }
+  .hud-scale-step span {
+    min-height: 44px;
+    font-size: 13px;
+  }
+  .lp-stats {
+    grid-template-columns: 1fr;
+  }
+  [data-verse-ui] .playtest-finish {
+    left: auto;
+    right: calc(12px + env(safe-area-inset-right));
+    transform: none;
+  }
+  .playtest-prompt {
+    bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+}
+
 /* --- Verse ------------------------------------------------------------ */
 [data-verse-ui="universe"] body {
   height: 100dvh;
