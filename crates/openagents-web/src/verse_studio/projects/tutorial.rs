@@ -332,21 +332,15 @@ async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     if let Err(r) = planet_access(&app, &headers, &planet).await {
         return r;
     }
-    let Some(cookie) = actor.cookie.as_ref() else {
-        return refused(
-            StatusCode::UNAUTHORIZED,
-            "signin_required",
-            "Sign in to name your planet.",
-        );
-    };
-    let token = match app
-        .config
-        .cloud
-        .as_ref()
-        .and_then(|service| service.csrf(&headers, cookie, SCOPE, "").ok())
-    {
-        Some(token) => token,
-        None => {
+    let token = match actor.cookie.as_ref().map_or(Ok(String::new()), |cookie| {
+        app.config
+            .cloud
+            .as_ref()
+            .unwrap()
+            .csrf(&headers, cookie, SCOPE, "")
+    }) {
+        Ok(token) => token,
+        Err(_) => {
             return refused(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "planet_setup_unavailable",

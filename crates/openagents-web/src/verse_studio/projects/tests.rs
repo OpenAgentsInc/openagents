@@ -1221,7 +1221,7 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
     let setup_path = format!("/new-lander/planet/{}", planet["id"].as_str().unwrap());
     let setup = alice
         .browser
-        .send(&world, Request::builder().uri(setup_path), Body::empty())
+        .send(&world, Request::builder().uri(&setup_path), Body::empty())
         .await;
     assert_eq!(setup.status, StatusCode::OK);
     let policy = setup.headers[axum::http::header::CONTENT_SECURITY_POLICY]
@@ -1240,6 +1240,42 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
         .and_then(|v| v.split('"').next())
         .expect("Native form has a token");
     assert!(token.len() > 16, "The form never contains an empty token");
+    let (native_status, native_setup) = alice.call(&world, "GET", &setup_path, Value::Null).await;
+    assert_eq!(native_status, StatusCode::OK);
+    assert!(
+        native_setup["text"]
+            .as_str()
+            .unwrap()
+            .contains("id=\"planet-name\"")
+    );
+    let empty_confirmation = alice
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(&setup_path)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("origin", world.origin()),
+            Body::from("csrf=&name=Unconfirmed"),
+        )
+        .await;
+    assert_eq!(empty_confirmation.status, StatusCode::FORBIDDEN);
+    let native_credential = alice.browser.0["oa_cloud_session"].clone();
+    let native_form = alice
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(&setup_path)
+                .header("authorization", format!("Bearer {native_credential}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("origin", world.origin()),
+            Body::from("csrf=&name=App+garden"),
+        )
+        .await;
+    assert_eq!(native_form.status, StatusCode::SEE_OTHER);
     let encoded = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("csrf", token)
         .append_pair("name", "Native garden")
