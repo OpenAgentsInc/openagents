@@ -66,7 +66,7 @@ export async function checkProfileControls({page,context,base,config,out,errors}
   };
   for(const width of [1440,390]){
     await page.setViewportSize({width,height:width===390?844:1000});
-    for(const selector of ['#world-edit','#edit-voice-start','#edit-voice-stop'])await hit(page,selector);
+    for(const selector of ['[data-aethyr-id=world-edit]','[data-aethyr-id=edit-voice-start]','[data-aethyr-id=edit-voice-stop]'])await hit(page,selector);
     await page.screenshot({path:path.join(out,`profile-${personal?'personal':'house'}-${width}.png`)});
   }
   if(process.env.AETHYRFORGE_PROFILE_STUDIO_ONLY==='1') {

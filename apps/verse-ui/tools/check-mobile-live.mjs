@@ -108,7 +108,7 @@ const ready = async () => {
 };
 const tap = async (id) => page.locator(id).tap();
 const edit = async (tab) => {
-  if (await page.locator("#edit-panel").isHidden()) await tap("#world-edit");
+  if (await page.locator("#edit-panel").isHidden()) await tap("[data-aethyr-id=world-edit]");
   await tap("#tab-" + tab);
 };
 const confirm = async () => {
@@ -148,7 +148,7 @@ const publish = async () => {
   await edit("compile");
   await page.selectOption("#publish-visibility", "public");
   await options();
-  await tap("#project-publish");
+  await tap("[data-aethyr-id=project-publish]");
   await page.locator("#publish-review[open]").waitFor();
   await page.locator("#publish-confirm-rights").check();
   await tap("#publish-confirm");
@@ -178,7 +178,7 @@ const visitGuest = async (path) => {
     await p.screenshot({
       path: dir + "journey-guest-" + steps.length + ".png",
     });
-    assert(!(await p.locator("#world-edit").count()));
+    assert(!(await p.locator("[data-aethyr-id=world-edit]").count()));
   } finally {
     await guest.close();
   }
@@ -195,19 +195,19 @@ try {
     "true",
   );
   await shot("01-guest-house");
-  await tap("#world-mesh");
+  await tap("[data-aethyr-id=world-mesh]");
   await page.waitForFunction(
     () =>
       document.querySelector("#world-mesh").getAttribute("aria-pressed") ===
       "true",
   );
-  await tap("#world-mesh");
+  await tap("[data-aethyr-id=world-mesh]");
   await page.waitForFunction(
     () =>
       document.querySelector("#world-mesh").getAttribute("aria-pressed") ===
       "false",
   );
-  await tap("#world-map");
+  await tap("[data-aethyr-id=world-map]");
   await page.waitForURL((u) => u.pathname === "/new-lander/verse");
   await page.getByRole("link", { name: "Haunted House ↗", exact: true }).tap();
   await ready();
@@ -360,7 +360,7 @@ try {
   fs.writeFileSync(dir + "journey-created.json", JSON.stringify({ project }));
   await save();
   await close();
-  await tap("#project-save");
+  await tap("[data-aethyr-id=project-save]");
   await confirm();
   await page.waitForFunction(() =>
     document.querySelector("#project-status").textContent.includes("version 2"),
@@ -390,7 +390,7 @@ try {
   houseLink = await publish();
   await shot("08-published-house");
   await options();
-  await tap("#project-share");
+  await tap("[data-aethyr-id=project-share]");
   await page.locator("#publish-share-card").waitFor({ state: "visible" });
   assert.equal(
     await page.locator("#publish-share-link").getAttribute("href"),
@@ -400,7 +400,7 @@ try {
   await visitGuest(houseLink);
   await tap("#publish-share-close");
   await options();
-  await tap("#project-play");
+  await tap("[data-aethyr-id=project-play]");
   await page.waitForURL(origin + houseLink);
   await playerReady(page);
   await shot("10-play-house");
@@ -481,7 +481,7 @@ try {
   await shot("17-published-planet");
   await visitGuest(planetLink);
   await options();
-  await tap("#project-share");
+  await tap("[data-aethyr-id=project-share]");
   await page.locator("#publish-share-card").waitFor({ state: "visible" });
   await shot("18-shared-planet");
   fs.writeFileSync(
@@ -491,7 +491,7 @@ try {
   // The owner opens invitation controls from the playable page.
   await tap("#publish-share-close");
   await options();
-  await tap("#project-play");
+  await tap("[data-aethyr-id=project-play]");
   await playerReady(page);
   await shot("19-personal-player");
   await page.goto(origin + planetLink.replace("/play/", "/invite/"));
@@ -573,7 +573,7 @@ try {
   );
   await cdp.detach();
   await shot("24-touch-walking");
-  await tap("#world-map");
+  await tap("[data-aethyr-id=world-map]");
   await page.waitForURL((url) => url.pathname === "/new-lander/verse");
   await shot("25-world-navigation");
 

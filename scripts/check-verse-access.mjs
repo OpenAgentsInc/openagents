@@ -262,7 +262,7 @@ try {
     );
   await page.goto("https://openagents.com/new-lander/house");
   await ready();
-  await page.click("#world-edit");
+  await page.click("[data-aethyr-id=world-edit]");
   assert.ok(await page.locator("#edit-panel").isVisible());
   assert.equal(await page.locator("#edit-auth").isVisible(), false);
   const editor = page.frames().find((f) => f.url().startsWith(config.editor));

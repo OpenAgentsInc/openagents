@@ -301,7 +301,7 @@ try {
   await page.goto("https://openagents.com/new-lander/house");
   console.log("Fixture host: house document opened");
   await page.waitForFunction(()=>window.hauntDemo && JSON.parse(window.hauntDemo.snapshot()).phase==="open" && JSON.parse(window.hauntDemo.snapshot()).status.authoring,null,{timeout:process.env.AETHYRFORGE_LOCAL_CHECK==="1"?30000:125000});
-  await page.click("#world-edit");
+  await page.click("[data-aethyr-id=world-edit]");
   await page.click("#tab-history");
   await page.fill("#project-name","Synthetic saved house");
   await page.click("#project-create");

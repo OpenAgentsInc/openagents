@@ -248,7 +248,7 @@ try {
       .length,
     0,
   );
-  await page.click("#world-map");
+  await page.click("[data-aethyr-id=world-map]");
   await ready(page);
   await page.waitForFunction(
     () => JSON.parse(window.universeDemo.visit()).selected === "haunted-house",

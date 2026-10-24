@@ -149,10 +149,13 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
         } body {
             main {
                 iframe id="engine" title=(title) data-engine-url=(r.engine_url) {}
-                p id="world-notice" role="status" aria-live="polite" { "Opening the house…" }
+                p id="world-notice" class="studio-bridge" role="status" aria-live="polite" { "Opening the house…" }
             }
+            // The studio HUD controller draws here; `.studio-bridge` is the
+            // release's own copy of those controls and the page without JavaScript.
+            div id="house-hud" class="house-hud" {}
             div id="world-dock" {
-                nav id="world-controls" aria-label="World controls" {
+                nav id="world-controls" class="studio-bridge" aria-label="World controls" {
                     div.hud-navigation {
                         a id="world-map" href=(MAP) title="Back to planets" { (super::verse_ui::icon("map")) span { "Back to planets" } }
                         details.hud-utilities {
@@ -194,7 +197,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                         }
                     }
                 }
-                aside id="world-voice" hidden aria-label="Voice controls" {
+                aside id="world-voice" class="studio-bridge" hidden aria-label="Voice controls" {
                     button id="edit-voice-start" type="button" hidden { (super::verse_ui::icon("mic")) span { "Listen" } }
                     button id="edit-voice-stop" type="button" { (super::verse_ui::icon("stop")) span { "Stop / mute" } }
                     p id="edit-voice-status" role="status" aria-live="polite" { "Microphone off" }
@@ -203,7 +206,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
                     p class="voice-help" { "Browser speech service · say Show options, Review change, or Confirm change" }
                 }
             }
-                        aside id="request-choices" hidden aria-label="Request options" {
+                        aside id="request-choices" class="studio-bridge" hidden aria-label="Request options" {
                             p.hud-section-label { "WORLD ACTIONS" }
                             button id="project-publish" type="button" hidden data-tutorial-option="ready" { (super::verse_ui::icon("share")) "Publish" }
                             button id="project-play" type="button" hidden disabled data-tutorial-option="ready" { (super::verse_ui::icon("play")) "Play" }
@@ -564,6 +567,35 @@ mod tests {
         assert!(text.contains("Applies to every material in the house."));
         assert!(text.contains("Allow a world effect (all materials)"));
         assert!(!text.contains("id=\"edit-kiln-world\" type=\"checkbox\" checked"));
+        // The HUD controller draws into `#house-hud`; the release keeps its
+        // controls, by ID, in the bridge.
+        assert!(text.contains("<div id=\"house-hud\" class=\"house-hud\"></div>"));
+        for bridged in [
+            "p id=\"world-notice\" class=\"studio-bridge\"",
+            "nav id=\"world-controls\" class=\"studio-bridge\"",
+            "aside id=\"world-voice\" class=\"studio-bridge\" hidden",
+            "aside id=\"request-choices\" class=\"studio-bridge\" hidden",
+        ] {
+            assert!(text.contains(bridged), "{bridged}");
+        }
+        for id in [
+            "world-map",
+            "world-retry",
+            "world-fullscreen",
+            "world-mesh",
+            "world-edit",
+            "project-save",
+            "edit-voice-start",
+            "edit-voice-stop",
+            "project-publish",
+            "project-play",
+            "project-share",
+            "project-revert",
+            "request-inspect",
+            "request-undo",
+        ] {
+            assert!(text.contains(&format!("id=\"{id}\"")), "{id}");
+        }
     }
 
     #[test]

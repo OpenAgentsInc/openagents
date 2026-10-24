@@ -194,9 +194,9 @@ for (const width of [390, 1440]) {
     { timeout: 60000 },
   );
   await audit(`house-${width}`);
-  await page.locator("#world-edit").hover();
+  await page.locator("[data-aethyr-id=world-edit]").hover();
   await audit(`edit-hover-${width}`);
-  await page.locator("#world-edit").click();
+  await page.locator("[data-aethyr-id=world-edit]").click();
   for (const tab of ["objects", "materials", "request", "compile", "history"]) {
     await page.locator("#tab-" + tab).click();
     await audit(`${tab}-${width}`);

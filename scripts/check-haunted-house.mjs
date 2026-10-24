@@ -122,7 +122,10 @@ async function open(
   );
   s = await snapshot();
   assert.ok(s.status.checkpoint);
-  assert.equal(await page.locator("#world-notice").isVisible(), false);
+  assert.equal(
+    await page.locator("[data-aethyr-id=world-notice]").isVisible(),
+    false,
+  );
   return {
     page,
     snapshot,
@@ -158,13 +161,13 @@ try {
   await page.keyboard.press("Escape");
   const moved = await snapshot();
   console.log("Host connected and movement passed:", config.release);
-  await page.click("#world-fullscreen");
+  await page.click("[data-aethyr-id=world-fullscreen]");
   await page.waitForFunction(() => document.fullscreenElement !== null);
   await page.evaluate(() => document.exitFullscreen());
   // Allow the key-up and its next observation to reach the camera before sampling.
   await page.waitForTimeout(1000);
   const beforeReload = await snapshot();
-  await page.click("#world-retry");
+  await page.click("[data-aethyr-id=world-retry]");
   await page.waitForFunction(
     (session) => {
       const s = JSON.parse(window.hauntDemo.snapshot());
@@ -190,7 +193,7 @@ try {
   await expectWorkers(1);
   await page.screenshot({ path: out + "/house-" + run.mode + ".png" });
   assert.equal(restored.status.save, "unsaved");
-  await page.click("#world-map");
+  await page.click("[data-aethyr-id=world-map]");
   await page.waitForURL("**/new-lander/verse?world=haunted-house");
   await expectWorkers(0);
   await page.goBack({ waitUntil: "domcontentloaded" });
@@ -261,11 +264,17 @@ try {
       await route.fulfill({ status: response.status(), headers, body });
     });
     await check.goto(origin + path, { waitUntil: "domcontentloaded" });
+    // The notice offers both, at every width; the frame stays out of sight.
     await check
-      .locator("#world-notice[data-state=error]")
+      .locator("[data-aethyr-id=world-notice-retry]")
       .waitFor({ timeout: 125000 });
-    assert.ok(await check.locator("#world-retry").isVisible());
-    assert.ok(await check.locator('#world-map').isVisible());
+    assert.ok(
+      await check.locator("[data-aethyr-id=world-notice-map]").isVisible(),
+    );
+    assert.equal(
+      await check.locator("#engine").evaluate((e) => getComputedStyle(e).visibility),
+      "hidden",
+    );
     console.log("Unavailable engine offers retry/back:", failure);
     await check.close();
   }

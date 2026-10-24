@@ -3248,3 +3248,96 @@
     left: var(--hud-space-lg);
   }
 }
+
+/* --- The studio HUD on Aethyr (#12588) --------------------------------
+   The studio controller draws the world notice, the dock (with the voice bar
+   and world actions above it) into #house-hud over the world. The release's
+   own copy of those controls (.studio-bridge) stays in the page and is
+   hidden once the host mounts. While the world shows an error, the frame
+   (which draws its own message) stays out of sight behind the notice.
+   Phone width first: the dock spans the screen above the bottom edge. */
+[data-aethyr-house="studio"] .studio-bridge {
+  display: none !important;
+}
+[data-aethyr-world="error"][data-verse-ui="studio"] #engine {
+  visibility: hidden;
+}
+[data-verse-ui="studio"] .house-hud > .aui-root,
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="studio-hud"] {
+  display: contents;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-notice"] {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  z-index: 6;
+  width: min(420px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  padding: var(--hud-space-xl);
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-dock"] {
+  position: fixed;
+  right: 64px;
+  bottom: 12px;
+  left: 12px;
+  z-index: 5;
+  pointer-events: none;
+}
+[data-verse-ui="studio"]
+  .house-hud
+  [data-aethyr-id="world-dock"]
+  > :not([data-aethyr-id="world-help"]) {
+  pointer-events: auto;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-help"] {
+  padding: 0 var(--hud-space-xs);
+  text-shadow: 0 1px 4px #000000;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-controls"] {
+  padding: var(--hud-space-xs);
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-controls"] .aui-button {
+  min-height: 44px;
+}
+[data-verse-ui="studio"] .house-hud :is(.aui-button, .aui-chip) {
+  white-space: nowrap;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-edit"] {
+  min-width: 76px;
+}
+[data-verse-ui="studio"] .house-hud :is([data-aethyr-id="world-voice"], [data-aethyr-id="request-choices"]) {
+  padding: var(--hud-space-sm) var(--hud-space-md);
+}
+/* Short enough to stay below the editor, which leaves the dock its space. */
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-voice"] {
+  max-height: 96px;
+  overflow-y: auto;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-voice"] .aui-status {
+  font-size: 12px;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="world-voice"] .aui-button {
+  min-height: 36px;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="edit-voice-status"] {
+  font-size: 11px;
+}
+[data-verse-ui="studio"] .house-hud [data-aethyr-id="request-choices"] {
+  max-height: 30vh;
+  overflow-y: auto;
+}
+@media (min-width: 800px) {
+  [data-verse-ui="studio"] .house-hud [data-aethyr-id="world-dock"] {
+    right: auto;
+    bottom: 20px;
+    left: 20px;
+    width: min(520px, calc(100vw - 100px));
+  }
+  [data-verse-ui="studio"] .house-hud [data-aethyr-id="request-choices"] {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: min(370px, calc(100vw - 40px));
+    max-height: calc(100vh - 220px);
+  }
+}
