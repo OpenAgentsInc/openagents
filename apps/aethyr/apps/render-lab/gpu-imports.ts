@@ -1,7 +1,11 @@
 /// <reference types="@webgpu/types" />
 // The browser half of `af-gpu`: a handle table and the `af_gpu` imports the
 // Rust renderer calls. Descriptors arrive as JSON once, at creation; per-frame
-// calls pass integers. Decision record: docs/decisions/0006.
+// calls pass integers. Pass commands arrive batched by default: `replay` runs
+// a whole pass's commands from Wasm memory in one call (ADR 0004,
+// `gpu-batch.ts`); the per-call imports remain for A/B runs.
+
+import { replay } from "./gpu-batch.ts";
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -270,6 +274,13 @@ export function createGpuHost(
       const bytes = encoder.encode(message);
       memory().set(bytes.subarray(0, cap), out);
       return Math.min(bytes.length, cap);
+    },
+    replay: (pass: number, ptr: number, len: number) => {
+      const words = new Uint32Array(exports!.memory.buffer, ptr, len);
+      if (replay(get<GPURenderPassEncoder>(pass), words, get)) {
+        table[pass] = null;
+        free.push(pass);
+      }
     },
     now: () => performance.now(),
     log: (ptr: number, len: number) => console.log(text(ptr, len)),

@@ -36,6 +36,7 @@ const DEFAULTS: Config = {
   "crowd-tiers": true,
   camera: "street",
   encoder: "rust",
+  calls: "batched",
   "cull-shader": "wgsl",
   seed: 1,
   time: null,
@@ -53,6 +54,7 @@ const CONTROLS: [string, string, [string, string][]][] = [
   ["crowd-tiers", "Crowd tiers", [["true", "Skinned / VAT / impostor"], ["false", "All skinned"]]],
   ["camera", "Camera", [["street", "Street walk"], ["overview", "Overview"], ["orbit", "Orbit (drag)"]]],
   ["encoder", "CPU-path encoder", [["rust", "Rust via imports"], ["ts", "TypeScript direct"]]],
+  ["calls", "Rust GPU calls", [["batched", "Batched per pass"], ["per-call", "One import per call"]]],
   ["cull-shader", "Cull shader", [["wgsl", "Hand-written WGSL"], ["slang", "Slang → WGSL"]]],
 ];
 
@@ -134,7 +136,7 @@ function render() {
     ["Render / output", `${stats.render_size?.join("×")} → ${stats.output_size?.join("×")}`],
     ["CPU frame", `${fmt(stats.cpu_frame_ms)} ms`],
     ["CPU cull (CPU path)", `${fmt(stats.cpu_cull_ms)} ms`],
-    ["Main-pass encode", `${fmt(stats.main_encode_ms, 3)} ms (${stats.encoder})`],
+    ["Main-pass encode", `${fmt(stats.main_encode_ms, 3)} ms (${stats.encoder}${stats.encoder === "rust" ? (stats.batched_calls ? ", batched" : ", per call") : ""})`],
     ["GPU total", stats.gpu_timestamps ? `${fmt(g.total)} ms` : "no timestamp queries"],
     ["Cull · expand · raster", `${fmt(g.cull_1 + g.cull_2)} · ${fmt(g.expand_1 + g.expand_2)} · ${fmt(g.raster_1 + g.raster_2)} ms`],
     ["HiZ · resolve · TAA", `${fmt(g.hiz)} · ${fmt(g.resolve)} · ${fmt(g.taa)} ms`],

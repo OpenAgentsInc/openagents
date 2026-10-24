@@ -5,6 +5,9 @@
 //!
 //! - `wasm32`: the browser's WebGPU, reached through a small JavaScript import
 //!   table (`apps/render-lab/gpu-imports.ts`). The browser keeps full validation.
+//!   Pass commands are batched by default: each pass's commands are written
+//!   to Wasm memory ([`batch`]) and replayed by one call (ADR 0004);
+//!   [`set_batched_calls`] switches back to one import call each, for A/B runs.
 //! - `native` feature: a native `webgpu.h` implementation, Dawn or wgpu-native,
 //!   linked through bindings generated from that implementation's header.
 //!
@@ -15,6 +18,8 @@
 
 use serde::Serialize;
 use std::cell::RefCell;
+
+pub mod batch;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -648,6 +653,13 @@ impl ComputePass<'_> {
         backend::dispatch_indirect(self.raw, buffer.raw, offset);
     }
 
+    /// Hands the commands recorded so far to the GPU API now, rather than at
+    /// `end`; for timing. Only batched web calls have anything to hand over.
+    pub fn flush(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        web::flush();
+    }
+
     pub fn end(self) {
         backend::end_compute_pass(self.raw);
         std::mem::forget(self);
@@ -705,6 +717,13 @@ impl RenderPass<'_> {
         backend::draw_indexed_indirect(self.raw, buffer.raw, offset);
     }
 
+    /// Hands the commands recorded so far to the GPU API now, rather than at
+    /// `end`; for timing. Only batched web calls have anything to hand over.
+    pub fn flush(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        web::flush();
+    }
+
     pub fn end(self) {
         backend::end_render_pass(self.raw);
         std::mem::forget(self);
@@ -715,6 +734,24 @@ impl Drop for RenderPass<'_> {
     fn drop(&mut self) {
         backend::end_render_pass(self.raw);
     }
+}
+
+/// Batches web pass commands (the default) or makes one import call per
+/// command. Only the browser backend has calls to batch; elsewhere this does
+/// nothing.
+pub fn set_batched_calls(on: bool) {
+    #[cfg(target_arch = "wasm32")]
+    web::set_batched(on);
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = on;
+}
+
+/// Whether web pass commands are batched; always `false` off the web.
+pub fn batched_calls() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    return web::batched();
+    #[cfg(not(target_arch = "wasm32"))]
+    false
 }
 
 /// Monotonic milliseconds for CPU timing on either platform.
