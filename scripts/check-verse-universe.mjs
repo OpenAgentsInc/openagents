@@ -180,7 +180,14 @@ try {
     await page.locator("#universe-exploration").getAttribute("inert"),
     null,
   );
-  await page.locator("[data-aethyr-id=option-haunted-house]").focus();
+  // The sheet opens over a few frames, and a focus call on a chip it still
+  // hides does nothing. Press Enter only once the chip itself has focus.
+  await page.waitForFunction(() => {
+    const chip = document.querySelector("[data-aethyr-id=option-haunted-house]");
+    if (!chip || chip.disabled || chip.closest("[inert]")) return false;
+    chip.focus();
+    return document.activeElement === chip;
+  });
   await page.keyboard.press("Enter");
   await page.waitForFunction(
     () =>

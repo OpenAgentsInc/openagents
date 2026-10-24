@@ -606,6 +606,18 @@ export const editorReport = (
   report: Pick<EditorState, "mirror" | "tool" | "compact">,
 ): EditorState => ({ ...state, ...report });
 
+/** The state with one control showing the visitor's choice. */
+const chose = (
+  state: EditorState,
+  id: string,
+  choice: Partial<Pick<Mirror, "value" | "checked">>,
+): EditorState => {
+  const mirror = state.mirror[id];
+  return mirror
+    ? { ...state, mirror: { ...state.mirror, [id]: { ...mirror, ...choice } } }
+    : state;
+};
+
 /** Find the layout entry an intent names. */
 function find(surfaces: ReadonlyArray<Surface>, id: string): Spec | undefined {
   const pending: Spec[] = surfaces.flatMap((s) => [...s.children]);
@@ -692,18 +704,21 @@ export const makeEditorController = (
               if (intent.kind === "input")
                 yield* bridge.act({ op: "set", id, value: intent.value ?? "" });
               break;
+            // The release sets these in code, which no mutation reports, so
+            // the next poll would be the first to show them. Show the choice
+            // now; that poll's report replaces it if the release refused it.
             case "select":
             case "range":
-            case "color":
-              yield* bridge.act({ op: "set", id, value: intent.value ?? "" });
-              break;
-            case "check":
-              yield* bridge.act({
-                op: "check",
-                id,
-                checked: intent.value === "true",
-              });
-              break;
+            case "color": {
+              const value = intent.value ?? "";
+              yield* bridge.act({ op: "set", id, value });
+              return chose(state, id, { value });
+            }
+            case "check": {
+              const checked = intent.value === "true";
+              yield* bridge.act({ op: "check", id, checked });
+              return chose(state, id, { checked });
+            }
             case "file":
               yield* bridge.act({ op: "files", id });
               break;

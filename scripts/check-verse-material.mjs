@@ -328,11 +328,19 @@ try {
     await page.mouse.move(b.x+b.width*x,b.y+b.height*y);await page.mouse.down();
     await page.mouse.move(b.x+b.width*(x+.02),b.y+b.height*(y+.03),{steps:3});await page.mouse.up();
   };
+  // Brush mode stays disabled while the release finishes a face import; choose
+  // it only once the release enables it, and go on once the release shows it.
+  const brush=async(mode)=>{
+    await page.waitForFunction(()=>{const e=document.getElementById("face-brush-mode");return e&&!e.matches(":disabled");});
+    await page.locator("[data-aethyr-id=face-brush-mode] select:enabled").waitFor();
+    await page.selectOption("[data-aethyr-id=face-brush-mode] select",mode);
+    await page.waitForFunction(m=>document.getElementById("face-brush-mode").value===m,mode);
+  };
   const confirm=async()=>{
     await page.locator("[data-aethyr-id=edit-confirm]").waitFor({state:"visible"});await page.click("[data-aethyr-id=edit-confirm]");
     await page.locator("[data-aethyr-id=edit-auth]").waitFor({state:"hidden"});
   };
-  await page.evaluate(()=>{const read=File.prototype.text;File.prototype.text=function(){const result=read.call(this);if(this.name==="delayed-face.json")return new Promise(resolve=>{window.releaseFaceRead=()=>result.then(resolve);window.faceReadStarted=true;});return result;};});
+  await page.evaluate(()=>{const read=File.prototype.text;File.prototype.text=function(){const result=read.call(this);if(this.name==="delayed-face.json")return new Promise(resolve=>{window.releaseFaceRead=()=>result.then(v=>{resolve(v);window.faceReadDone=true;});window.faceReadStarted=true;});return result;};});
   await page.evaluate(()=>{window.generationSamples=[];new MutationObserver(()=>{const text=document.querySelector("#face-status").textContent;const match=/Generated locally in ([0-9.]+) ms/.exec(text);if(text.includes("Generated locally in under 1 ms"))window.generationSamples.push({less_than_ms:1});else if(match)window.generationSamples.push({rounded_ms:Number(match[1]),rounding_ms:1});}).observe(document.querySelector("#face-status"),{childList:true,subtree:true,characterData:true});});
   assert.equal(await page.locator("#face-canvas").evaluate(e=>getComputedStyle(e).touchAction),"none","Painting styles are served under CSP");
   const baseline=(await snapshot()).status.project.revision;
@@ -380,7 +388,7 @@ try {
   await page.waitForFunction(()=>document.querySelector("#face-status").textContent.includes("Erase handmade paint only removes brush marks"));
   const refused=await face();assert.deepEqual(refused,generated);
   await page.click("[data-aethyr-id=face-open]");assert.deepEqual(await face(),generated,"Open reuses the edited draft");
-  await page.selectOption("[data-aethyr-id=face-brush-mode] select","erase");await stroke(.19,.43);
+  await brush("erase");await stroke(.19,.43);
   await page.locator("[data-aethyr-id=face-handmade-strength] input").evaluate(e=>{e.value="0.6";e.dispatchEvent(new Event("input",{bubbles:true}));});
   const refined=await face();assert.notEqual(refined.handmade_png,generated.handmade_png);
   const expectedMaterial=await page.evaluate(async source=>{
@@ -437,11 +445,13 @@ try {
   await page.evaluate(()=>{window.faceReadStarted=false;});
   await page.setInputFiles("[data-aethyr-id=face-import] input",{name:"delayed-face.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(accepted))});
   await page.waitForFunction(()=>window.faceReadStarted);
-  await page.selectOption("[data-aethyr-id=face-brush-mode] select","paint");
+  await brush("paint");
   const beforeStroke=await face();
   await stroke(.48,.58);const latestStroke=await face();
   assert.notEqual(latestStroke.handmade_png,beforeStroke.handmade_png,"The newer stroke actually paints the canvas");
-  await page.evaluate(()=>window.releaseFaceRead());await page.waitForTimeout(300);
+  await page.evaluate(()=>{window.faceReadDone=false;window.releaseFaceRead();});await page.waitForFunction(()=>window.faceReadDone);
+  // Let the release's import handler run on the text, then compare.
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   assert.deepEqual(await face(),latestStroke,"Delayed import cannot replace newer strokes");
   // A read begun before Save may finish during its POST. The saved base still advances;
   // imported pixels remain editable and the completion must describe them as unsaved.
@@ -520,7 +530,7 @@ try {
   await page.waitForFunction(()=>document.querySelector("#face-controls").disabled);
   assert.equal(await page.locator("[data-aethyr-id=face-export]").isEnabled(),true);
   await page.click("[data-aethyr-id=face-open]");await page.locator("[data-aethyr-id=face-generate]:enabled").waitFor();
-  await page.selectOption("[data-aethyr-id=face-brush-mode] select","paint");await stroke(.25,.65);
+  await brush("paint");await stroke(.25,.65);
   const finalPaint=await face();assert.notEqual(finalPaint.handmade_png,currentB.handmade_png,"Painting works after another accepted edit");
   await page.setViewportSize({width:390,height:844});await page.click("[data-aethyr-id=tab-materials]");
   await page.screenshot({path:path.join(out,"face-workspace-mobile.png")});
