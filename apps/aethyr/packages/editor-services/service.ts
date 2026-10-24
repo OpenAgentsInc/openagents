@@ -775,10 +775,10 @@ export class EditorService {
   }
   shader(source: string): string | undefined {
     this.requireEditing();
-    if (!source.trim() || new TextEncoder().encode(source).byteLength > 65536) {
+    if (!source.trim() || new TextEncoder().encode(source).byteLength > 131072) {
       this.registry.set(
         editorAtoms.error,
-        "Use a WGSL material shader up to 64 KiB.",
+        "Use a WGSL material shader up to 128 KiB.",
       );
       return;
     }

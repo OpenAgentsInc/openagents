@@ -5945,8 +5945,8 @@ export class Renderer {
     revision: number,
     current: () => boolean,
   ) {
-    if (new TextEncoder().encode(source).length > 65536)
-      throw new Error("Keep shader edits below 64 KiB.");
+    if (new TextEncoder().encode(source).length > 131072)
+      throw new Error("Keep shader edits below 128 KiB.");
     if (revision !== this.desiredShader || !current() || this.disposed)
       return undefined;
     if (source === this.shaders.MATERIAL && this.stockPipelineFamily)

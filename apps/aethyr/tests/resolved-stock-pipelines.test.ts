@@ -313,8 +313,8 @@ test("prepared but unactivated, superseded and no-longer-current shader candidat
   assert.equal(p.candidate.stockChoiceRevision, revision);
   assertDraws(p);
   await assert.rejects(
-    p.candidate.prepareShader("x".repeat(65537)),
-    /Keep shader edits below 64 KiB/,
+    p.candidate.prepareShader("x".repeat(131073)),
+    /Keep shader edits below 128 KiB/,
   );
   assert.equal(p.candidate.stockChoiceRevision, revision);
 });

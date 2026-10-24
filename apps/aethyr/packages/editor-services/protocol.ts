@@ -755,7 +755,7 @@ export function isPreviewEvent(
     return (
       (event.shaderSource === undefined ||
         (typeof event.shaderSource === "string" &&
-          new TextEncoder().encode(event.shaderSource).byteLength <= 65536)) &&
+          new TextEncoder().encode(event.shaderSource).byteLength <= 131072)) &&
       (event.hasSourceSky === undefined ||
         typeof event.hasSourceSky === "boolean") &&
       validSourceIntensity(event.sourceSkyLightIntensity) &&

@@ -333,7 +333,7 @@ test("agent v1 validates copied explicit actions, context expectations, and boun
         scale: 21,
       },
     },
-    { type: "shader", source: "é".repeat(32_769) },
+    { type: "shader", source: "é".repeat(65_537) },
     { type: "input", input: zeroInput, durationMs: 0 },
     { type: "input", input: zeroInput, durationMs: 1001 },
     { type: "input", input: { ...zeroInput, forward: 2 }, durationMs: 10 },

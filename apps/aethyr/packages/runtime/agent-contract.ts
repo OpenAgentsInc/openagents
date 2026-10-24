@@ -17,7 +17,7 @@ export const AGENT_LIMITS = Object.freeze({
   inspectObjects: 64,
   logEntries: 64,
   logBytes: 1024 * 1024,
-  shaderBytes: 65_536,
+  shaderBytes: 131_072,
   inputDurationMs: 1000,
   captureBytes: 32 * 1024 * 1024,
 });
@@ -377,7 +377,7 @@ export function validateAgentAction(value: unknown): AgentAction {
       !value.source.trim() ||
       utf8.encode(value.source).byteLength > AGENT_LIMITS.shaderBytes
     )
-      throw new Error("Use shader source up to 64 KiB.");
+      throw new Error("Use shader source up to 128 KiB.");
   } else if (value.type === "camera") {
     keys(value, ["type", "eye", "target", "up", "fov", "mode"]);
     validateCamera(value);
