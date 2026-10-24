@@ -316,6 +316,7 @@ fn the_tag_goes_in_once_and_the_policy_allows_this_site() {
     );
     assert!(funnel_page("/") && funnel_page("/playtest") && funnel_page("/playtest/survey"));
     assert!(funnel_page("/new-lander/verse") && funnel_page("/new-lander-house"));
+    assert!(!funnel_page("/verse/hands/left.glb") && !funnel_page("/new-lander/app.js"));
     assert!(
         !funnel_page("/chat") && !funnel_page("/playtesting") && !funnel_page("/admin/research")
     );

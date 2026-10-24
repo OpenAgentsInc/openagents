@@ -70,10 +70,21 @@ async function open(
     );
   } else if (mode === "candidate") {
     const candidate = process.env.AETHYRFORGE_HOST_RESPONSE_URL;
-    await page.route(origin + "/new-lander/**", async (route) => {
-      const url = new URL(route.request().url());
-      const response = await context.request.get(
+    // The candidate's pages, and the research script and beacon they add.
+    const fromCandidate = (url) =>
+      url.origin === origin &&
+      (url.pathname.startsWith("/new-lander/") ||
+        url.pathname === "/static/r.js" ||
+        url.pathname === "/a/r");
+    await page.route(fromCandidate, async (route) => {
+      const request = route.request(),
+        url = new URL(request.url());
+      const response = await context.request.fetch(
         candidate + url.pathname + url.search,
+        {
+          method: request.method(),
+          data: request.postDataBuffer() ?? undefined,
+        },
       );
       const headers = { ...response.headers() };
       delete headers["content-encoding"];

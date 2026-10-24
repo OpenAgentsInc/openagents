@@ -55,6 +55,8 @@ try {
     const response = await context.request.fetch(
       base + url.pathname + url.search,
       {
+        method: request.method(),
+        data: request.postDataBuffer() ?? undefined,
         headers: { ...request.headers(), host: new URL(base).host, cookie: "" },
         maxRedirects: 0,
       },

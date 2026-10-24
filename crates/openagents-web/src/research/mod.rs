@@ -618,7 +618,9 @@ pub(crate) fn owns(path: &str) -> bool {
     matches!(path, BEACON | SCRIPT | DASHBOARD | EXPORT)
 }
 
-/// Whether a page at `path` belongs to the launch funnel.
+/// Whether a page at `path` belongs to the launch funnel. A file under a
+/// funnel prefix (its last segment has an extension, like
+/// `/verse/hands/left.glb`) is not a page.
 pub fn funnel_page(path: &str) -> bool {
     const PREFIXES: [&str; 8] = [
         "/new-lander",
@@ -630,6 +632,9 @@ pub fn funnel_page(path: &str) -> bool {
         "/waitlist",
         "/signup",
     ];
+    if path.rsplit('/').next().is_some_and(|name| name.contains('.')) {
+        return false;
+    }
     path == "/"
         || PREFIXES.iter().any(|prefix| {
             path.strip_prefix(prefix)
