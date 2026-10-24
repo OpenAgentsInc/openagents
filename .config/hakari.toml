@@ -39,7 +39,7 @@ third-party = [
 
 [final-excludes]
 # This tiny build dependency must not pull the application graph onto the host.
-# The design tokens and the Aethyr view-tree schema are small leaf crates the
-# website, the engine (wasm), and the mobile app all link; they must not pull
-# the application graph.
-workspace-members = ["oa-tokens", "aethyr-ui"]
+# The design tokens, the Aethyr view-tree schema, and the device profile are
+# small leaf crates the website, the engine (wasm), and the mobile app all
+# link; they must not pull the application graph.
+workspace-members = ["oa-tokens", "aethyr-ui", "aethyr-profile"]

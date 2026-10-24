@@ -1,0 +1,10 @@
+[
+  { "knob": "render_scale", "curve": { "kind": "steps", "count": 5 }, "floor": 0.5, "full": 1.0 },
+  { "knob": "shadow_quality", "curve": { "kind": "linear" }, "floor": 0.0, "full": 1.0 },
+  { "knob": "foliage_density", "curve": { "kind": "linear" }, "floor": 0.4, "full": 1.0 },
+  { "knob": "crowd_tier_distance", "curve": { "kind": "linear" }, "floor": 0.4, "full": 1.0 },
+  { "knob": "backdrop_blur", "curve": { "kind": "steps", "count": 2 }, "floor": 0.0, "full": 1.0 },
+  { "knob": "ui_shadows", "curve": { "kind": "steps", "count": 2 }, "floor": 0.0, "full": 1.0 },
+  { "knob": "motion", "curve": { "kind": "steps", "count": 2 }, "floor": 0.0, "full": 1.0 },
+  { "knob": "ui_effects", "curve": { "kind": "steps", "count": 2 }, "floor": 0.0, "full": 1.0 }
+]
