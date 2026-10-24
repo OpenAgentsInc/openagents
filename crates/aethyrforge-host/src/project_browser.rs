@@ -415,9 +415,38 @@ async fn open(weak: Weak<RefCell<State>>, undo: bool) -> Result<(), JsValue> {
         }
     };
     rc.borrow_mut().projects.restored_visit = visit;
-    queue_change(&rc, action);
-    status("Review opening this saved world. Your current world stays until you confirm.");
-    Ok(())
+    // Choosing a project replaces the engine session. Keep the user's Open
+    // request until that session can receive the restore, or the context changes.
+    for _ in 0..2400 {
+        {
+            let s = rc.borrow();
+            if !same(&s, &account, epoch) || s.projects.open_serial != serial {
+                return Ok(());
+            }
+            let snapshot = s.snapshot();
+            if snapshot["phase"] == "open"
+                && serde_json::from_value::<Checkpoint>(snapshot["status"]["checkpoint"].clone())
+                    .is_ok()
+            {
+                drop(s);
+                queue_change(&rc, action);
+                status(
+                    "Review opening this saved world. Your current world stays until you confirm.",
+                );
+                return Ok(());
+            }
+            if matches!(snapshot["phase"].as_str(), Some("failed" | "closed")) {
+                return Err(JsValue::from_str(
+                    "Reload the world, then open your saved version again.",
+                ));
+            }
+        }
+        status("Opening the world before reviewing your saved version…");
+        pause(50).await;
+    }
+    Err(JsValue::from_str(
+        "The world is taking longer to open. Reload it and try again.",
+    ))
 }
 async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
     let rc = weak.upgrade().ok_or(JsValue::NULL)?;
