@@ -1049,6 +1049,13 @@ async fn profile_send(State(app): State<App>, headers: HeaderMap, body: Bytes) -
     }
     let current = session(&headers);
     profile.session = current.as_ref().map(|s| s.id.clone());
+    let first_for_account = match &who {
+        Some((account, _)) => matches!(
+            store::account_profile(&app.config.chat_store, account).await,
+            Ok(None)
+        ),
+        None => false,
+    };
     if let Err(error) = store::keep_profile(&app.config.chat_store, &profile).await {
         eprintln!("openagents-web: launch profile not kept: {error}");
         return profile_form(
@@ -1060,6 +1067,9 @@ async fn profile_send(State(app): State<App>, headers: HeaderMap, body: Bytes) -
         );
     }
     step(&headers, Step::ProfileCompleted, current.as_ref(), &[]);
+    if first_for_account {
+        step(&headers, Step::SignupCompleted, current.as_ref(), &[]);
+    }
     let played = current.is_some();
     page(
         &app,

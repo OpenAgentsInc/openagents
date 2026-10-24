@@ -34,11 +34,14 @@ pub enum Step {
     ProfileStarted,
     /// A profile was kept.
     ProfileCompleted,
+    /// A signed-in account kept its first profile: sign-up returns to the
+    /// profile, so this marks a sign-up that finished.
+    SignupCompleted,
 }
 
 impl Step {
     /// Every step.
-    pub const ALL: [Step; 12] = [
+    pub const ALL: [Step; 13] = [
         Step::PlayClicked,
         Step::PlaytestStarted,
         Step::PlaytestOptedOut,
@@ -51,6 +54,7 @@ impl Step {
         Step::ShareCopied,
         Step::ProfileStarted,
         Step::ProfileCompleted,
+        Step::SignupCompleted,
     ];
 
     /// The step's stable name.
@@ -69,6 +73,7 @@ impl Step {
             Step::ShareCopied => "share_copied",
             Step::ProfileStarted => "profile_started",
             Step::ProfileCompleted => "profile_completed",
+            Step::SignupCompleted => "signup_completed",
         }
     }
 
@@ -148,6 +153,7 @@ mod tests {
             "survey_completed",
             "waitlist_joined",
             "playtest_opted_out",
+            "signup_completed",
         ] {
             assert!(Step::parse(name).is_some(), "{name}");
         }
