@@ -96,7 +96,7 @@ Stop extending these. Each is removed when its replacement passes its checks.
 | Python and TypeScript asset tools in Aethyrforge `tools/assets` | One Rust asset compiler | Each tool's Rust replacement matches its output hashes |
 | The C Town experiment code | Its recorded results | At import |
 | The cross-origin SDK fetch and the "private adapter" machinery in the host protocol | Linking `aethyrforge-host` at build time; the protocol stays as a security boundary | New releases no longer need it |
-| Chat entry points in Kiki surfaces | Kiki's own flows | Done on the web (`c4560e65`) |
+| Chat entry points in Kiki surfaces, including visitor-to-visitor chat on the house player and invitation pages (owner, 2026-10-24) | Kiki's own flows | Open Chat removed on the web (`c4560e65`); visitor chat removal in #12588 |
 | `docs/audits/2026-10-22-owned-renderer-webgpu-and-effect.md` and `docs/verse/engine/roadmap.md` | [0004](../adr/0004-engine-core-and-gpu-interface.md) and this plan | Now: mark them historical |
 | Headless Linux Chrome as GPU performance evidence | Real-GPU hosts that record the adapter | Now |
 
