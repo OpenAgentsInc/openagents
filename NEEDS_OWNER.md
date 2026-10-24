@@ -1,30 +1,42 @@
-## Check Medieval Town passages on a test iPhone (TestFlight 1021, 2026-10-23)
+## Check Medieval Town loading on a test iPhone (TestFlight 1022, 2026-10-23)
 
-OpenAgents 1.0.0 (1021) is valid and available to **Internal Testers** and
-**Team (Expo)**. Source: `949d1f4e64`; mobile scene: `a07af48b436be446…`.
-Open the menu and choose **Medieval Town**. Collision now follows visible solid
-geometry throughout the town, and the artificial movement boundary is removed.
-The first visit downloads about 124 MB, then uses its local cache.
+OpenAgents 1.0.0 (1022) is valid and available to **Internal Testers** and
+**Team (Expo)**. Source: `d7b7e17cb0e0`. Its TestFlight notes are set.
+The mobile scene remains `a07af48b436be446…`.
+
+Open the menu and choose **Medieval Town**. A loading panel now shows real
+progress, the current asset, downloaded bytes, and completed files, followed by
+unpacking, walking-path, and graphics preparation. Play controls appear after
+the first completed frame. Close stays responsive during loading; errors keep
+the failed asset details and offer Retry.
+Saved files are reused across scene updates, and up to three files download
+at once. The cold-cache screenshot shows **28%**, **Colors**, **40.9 MB of
+122.4 MB**, and **3 of 7 files**.
+
+Five loader Rust checks, two GPU helper checks, and five iOS UI checks passed.
+The UI checks cover real cold-download progress, interruption and reopening,
+warm-cache reopening, movement/look, background/resume, the arch and stairs,
+frame cadence, and a synthetic error followed by a real Retry load.
+The 34.075-second cold-load test includes navigation, interruption, and multiple
+reopens; it is not an isolated loading-time measurement.
 
 The Release iPhone 17 simulator on iOS 26.5 (M5 Max) completed 1,800 GPU frames
-in 30 seconds: 60.0 FPS, a 16.72 ms 95th-percentile frame interval, and no gaps
-over 25 ms. It moved 21.76 m and turned through the 4.33-million-triangle scene.
-Touch controls also walked 30.9 m through the arch and stairs without jumping,
-past the old movement boundary, then looked back through the arch.
-The native process used 422 MB after loading and peaked at 679 MB during loading.
-Six focused Rust checks and three iOS UI checks passed, including the passage,
-frame cadence, touch movement/look, background/resume, and close.
+in 29.999 seconds: **60.001 FPS**, a **16.771 ms** 95th-percentile frame interval,
+and **two gaps over 25 ms**. The process used about **422 MiB** after loading
+and peaked at **660 MiB**. Touch controls walked 30.9 m through the arch and
+stairs without jumping, then looked back through the passage.
 
-On a physical iPhone with the dedicated test account, walk forward through the
-stone arch and its steps without jumping, and continue into the open streets.
-Check the FPS display, wall collision, look, Run, Jump, rotation, and switching apps.
-Physical-device performance has not been measured.
+On a physical iPhone with the dedicated test account, check the first download's
+progress and asset details, Close during loading, reopen, and Retry after an
+interruption. Once the town opens, walk through the stone arch and its steps
+without jumping. Check wall collision, look, Run, Jump, rotation, switching apps,
+and the FPS display. **Physical-phone loading time and performance remain
+unmeasured.**
 
-Release notes: the old archive script rejects a notification selector that
-already exists in unchanged app code; the signed archive has no APNs
-entitlement, and its identity, privacy, version, and fixture checks passed.
-Apple accepted the upload with a missing WebRTC vendor dSYM warning, which
-limits crash symbols for that framework.
+Apple accepted this upload with the existing missing WebRTC vendor dSYM
+warning, which limits crash symbols for that framework. The unchanged
+notification-selector guard exception is recorded separately in the archive
+proof; identity, privacy, version, fixture, and signed entitlement checks passed.
 
 ## Complete the dedicated-account browser sign-in check (#12549) (2026-10-23)
 

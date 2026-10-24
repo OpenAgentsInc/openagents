@@ -119,7 +119,7 @@ The build 1022 Release check on the iPhone 17 simulator (iOS 26.5, M5 Max)
 completed 1,800 GPU frames in 30 seconds: 60.0 FPS, a 16.77 ms 95th-percentile
 frame interval, and two intervals over 25 ms. The camera moved 21.76 m and turned
 through a scene with 4.33 million placed triangles and 103 material layers.
-The native process used 422 MB after loading and peaked at 660 MB while loading.
+The native process used 422 MiB after loading and peaked at 660 MiB while loading.
 Touch controls walked 30.9 m through the arch and stairs without jumping and
 beyond the former movement boundary. Five UI checks cover that passage,
 completed frames, movement, look, background/resume, actual cold-load progress,
