@@ -328,8 +328,8 @@ try {
     await page.mouse.move(b.x+b.width*x,b.y+b.height*y);await page.mouse.down();
     await page.mouse.move(b.x+b.width*(x+.02),b.y+b.height*(y+.03),{steps:3});await page.mouse.up();
   };
-  // Brush mode stays disabled while the release finishes a face import; choose
-  // it only once the release enables it, and go on once the release shows it.
+  // Choose a brush only once the release enables it, and go on once the
+  // release shows the choice.
   const brush=async(mode)=>{
     await page.waitForFunction(()=>{const e=document.getElementById("face-brush-mode");return e&&!e.matches(":disabled");});
     await page.locator("[data-aethyr-id=face-brush-mode] select:enabled").waitFor();
@@ -442,6 +442,14 @@ try {
   assert.ok(archive.materials[0].generated.png_base64);assert.ok(archive.materials[0].handmade.png_base64);
   // File.text is held to model a real delayed local import, without replacing material handlers.
   await page.click("[data-aethyr-id=tab-materials]");
+  // The held import below cannot re-enable the face controls, and the last Apply
+  // may have left them disabled: release c4d0a147ba's 200 ms poll can see the
+  // new revision before Apply's receipt resolves, mark the draft stale, and
+  // Apply then keeps the draft without enabling them again. Reopen the same
+  // draft as a visitor would; the import below still has to lose to newer strokes.
+  await page.click("[data-aethyr-id=face-open]");
+  await page.waitForFunction(()=>document.querySelector("#face-status").textContent.includes("existing face draft is open"));
+  await page.waitForFunction(()=>!document.getElementById("face-brush-mode").matches(":disabled"));
   await page.evaluate(()=>{window.faceReadStarted=false;});
   await page.setInputFiles("[data-aethyr-id=face-import] input",{name:"delayed-face.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(accepted))});
   await page.waitForFunction(()=>window.faceReadStarted);
