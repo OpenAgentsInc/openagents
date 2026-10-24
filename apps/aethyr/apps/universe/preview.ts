@@ -1,5 +1,6 @@
 import "./ui.css";
 import { Universe } from "../../packages/universe/renderer";
+import { pinchStep } from "../../packages/universe/labels";
 import {
   camera,
   project,
@@ -50,6 +51,7 @@ const select = (id: string) => {
     throw Error("Choose one of the planets on this map.");
   selected = id;
   runtime!.focus(id);
+  runtime!.choose(id);
   runtime!.ambient = false;
   publish();
 };
@@ -137,19 +139,46 @@ try {
     markers.append(b);
   }
   let drag: { x: number; y: number; distance: number } | undefined;
+  // Two fingers pinch to zoom; phones use this instead of the zoom buttons.
+  const pointers = new Map<number, { x: number; y: number }>();
+  let pinch: number | undefined;
+  const spread = () => {
+    const [a, b] = [...pointers.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
   canvas.addEventListener(
     "pointerdown",
     (e) => {
       canvas.focus();
       canvas.setPointerCapture(e.pointerId);
-      drag = { x: e.clientX, y: e.clientY, distance: 0 };
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        pinch = spread();
+        drag = undefined;
+      } else drag = { x: e.clientX, y: e.clientY, distance: 0 };
       runtime!.ambient = false;
     },
     { signal: lifetime.signal },
   );
+  const lift = (e: PointerEvent) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = undefined;
+  };
+  canvas.addEventListener("pointercancel", (e) => {
+    lift(e);
+    drag = undefined;
+  }, { signal: lifetime.signal });
   canvas.addEventListener(
     "pointermove",
     (e) => {
+      if (pointers.has(e.pointerId))
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch !== undefined && runtime) {
+        const now = spread();
+        zoom(pinchStep(pinch, now, runtime.distance));
+        pinch = now;
+        return;
+      }
       if (!drag || !runtime) return;
       const dx = e.clientX - drag.x,
         dy = e.clientY - drag.y;
@@ -181,6 +210,7 @@ try {
         }
         if (nearest) select(nearest);
       }
+      lift(e);
       drag = undefined;
     },
     { signal: lifetime.signal },

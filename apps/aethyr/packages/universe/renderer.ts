@@ -2,6 +2,7 @@
 // Ported from OpenAgents apps/verse-selector at 9fd3263494.
 import { camera, geometry, project, worlds, type Vec3 } from "./space.ts";
 import { shader } from "./shaders.ts";
+import { placeLabels, type Label } from "./labels.ts";
 
 export class Universe {
   yaw = 0.13;
@@ -27,6 +28,9 @@ export class Universe {
   submittedFrames = 0;
   disposed = false;
   ambient = true;
+  /** The chosen planet, whose label always shows. */
+  selected: string | undefined = "openagents";
+  private labelSizes = new Map<string, { width: number; height: number }>();
   private motion = matchMedia("(prefers-reduced-motion: reduce)");
   private lastAmbientFrame = 0;
   private lastYaw = NaN;
@@ -234,16 +238,47 @@ export class Universe {
     pass.end();
     this.device.queue.submit([encoder.finish()]);
     this.submittedFrames++;
+    this.placeLabels(view.eye);
+  }
+  /** Show the selected planet's label and every other label that has room. */
+  private placeLabels(eye: Vec3) {
+    const box = this.canvas.getBoundingClientRect();
+    const labels: Label[] = [];
     for (const world of worlds) {
+      const element = document.getElementById(`marker-${world.id}`);
+      if (!element) continue;
       const p = project(world.position, this.matrix);
-      const label = document.getElementById(`marker-${world.id}`);
-      if (label) {
-        label.style.left = `${p.x * 100}%`;
-        label.style.top = `${p.y * 100}%`;
-        label.hidden =
-          !p.visible || p.x < 0.03 || p.x > 0.97 || p.y < 0.08 || p.y > 0.9;
+      element.style.left = `${p.x * 100}%`;
+      element.style.top = `${p.y * 100}%`;
+      let size = this.labelSizes.get(world.id);
+      if (!size) {
+        element.hidden = false;
+        size = { width: element.offsetWidth, height: element.offsetHeight };
+        if (size.width > 0) this.labelSizes.set(world.id, size);
       }
+      labels.push({
+        id: world.id,
+        x: p.x * box.width,
+        y: p.y * box.height,
+        ...size,
+        depth: Math.hypot(...world.position.map((v, i) => v - eye[i])),
+        inFrame:
+          p.visible && p.x >= 0.03 && p.x <= 0.97 && p.y >= 0.08 && p.y <= 0.9,
+      });
     }
+    const shown = placeLabels(labels, this.selected);
+    for (const label of labels) {
+      const element = document.getElementById(`marker-${label.id}`)!;
+      element.hidden = !shown.has(label.id);
+      if (label.id === this.selected) element.setAttribute("aria-current", "true");
+      else element.removeAttribute("aria-current");
+    }
+  }
+  /** Mark a planet as chosen; its label stays visible. */
+  choose(id: string) {
+    this.selected = id;
+    // Draw the next frame even if the camera does not move.
+    this.lastYaw = NaN;
   }
   start() {
     const draw = (t: number) => {
