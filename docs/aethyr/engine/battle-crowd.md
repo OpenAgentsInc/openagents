@@ -78,18 +78,20 @@ connected player's movement, inventory, health, and shared NPCs.
   600/150-triangle near/far meshes. It retains source vertex attributes and
   evaluates the owned character animator at 60 Hz into half-float position and
   normal textures. The vertex shader interpolates animation frames. Four
-  classes and two detail levels require eight indirect draws.
+  classes and two mesh detail levels require eight indirect draws. A new optional
+  distant silhouette tier adds four draws, described below.
 - Source base colors use 256-pixel texture-array layers. The crowd has simpler
   lighting than the ordinary high-detail player: it omits normal/emissive maps
   and individual cast shadows. This is an explicit crowd rendering profile.
   All four source character materials are opaque. The cooker ignores image
   alpha before resizing, and the renderer uses opaque depth-writing draws
-  without alpha testing or alpha-to-coverage.
+  without alpha testing or alpha-to-coverage. Distant silhouettes use a separate
+  pipeline with coverage edges; source mesh materials stay opaque.
 - Terrain sampling uses the visible terrain's actual vertices and triangles,
   including its coarser outer area. Starting a battle pins that terrain patch
   around the battle. Overview and orbit change only the rendering camera;
   they do not teleport the connected player. Their explicit spectator profile
-  extends fog visibility by 10× so the source close-camera height fog does not
+  scales fog visibility with battlefield radius so close-camera height fog does not
   obscure the armies from above. Ordinary player views keep the source fog.
   Movement input is neutral while
   spectating.
@@ -115,6 +117,154 @@ local guest session and start Battle Lab directly in dolly view. Counts from
 100 through 1,000,000 are supported; malformed values use the small 10,000
 default. Public/player builds and other profiles ignore this shortcut.
 Stopping a battle does not automatically restart it.
+
+## Million-fighter rendering profile
+
+The optional distant tier keeps each fighter's actual position, heading,
+health state, and animation clock. It draws a two-triangle silhouette only
+when the character projects below eight pixels in height. Larger characters
+keep the existing 600/150-triangle meshes, including nearby fighting crowds.
+No simulation tick, actor, contact, or attack is removed for this rendering tier.
+
+In Aethyr, the device profile's `crowd_tier_distance` knob
+([ADR 0007](../../adr/0007-capability-and-detail.md),
+[device profile](../device-profile.md)) drives both the tier distances and
+this threshold. At `Detail` 1 the threshold is eight pixels, as in
+Aethyrforge; it rises linearly to 16 pixels at the knob's floor of 0.4. The
+16-pixel readability floor is half the 32-pixel atlas tile: a fighter taller
+than that always keeps its mesh, and `BattleCrowd.setSilhouettePixels`
+refuses a larger value. The crowd's near and draw distances follow the same
+knob and never drop below its floor.
+
+`tools/assets/compile-battle-impostors.mjs` bakes the existing private source
+geometry, animation, and albedo into per-class color and normal atlases. Each
+has eight yaw views, 32-pixel tiles, and approximately 12 animation samples per
+second with the source clip durations and loop flags. The baker includes every
+pose in the bounds, adds two-pixel tile margins, and checks every used frame
+and view for coverage. Unused tiles and borders must be clear; color and normal
+coverage must match. Four-sample resolves preserve silhouette edges.
+
+This is a distant-image approximation, with discrete viewing directions and
+animation frames. It does not reproduce full geometry at every camera elevation.
+The renderer selects it by actual viewport height and projection, rather than
+population size. Camera-facing quads use source-sized bounds, local normals,
+and the existing sun, ambient light, faction tint, hit flash, and fog. A bounded
+four-tap filter stays inside each tile. The four-sample path uses
+alpha-to-coverage; the single-sample API path uses a half-coverage cutoff.
+
+The optional atlases add 64 MiB to the private assets, for a total battle closure
+of 113,268,508 bytes, below the existing 128 MiB admission limit. The old private
+asset sets remain supported. Twelve indirect bins hold the eight mesh batches
+and four silhouette batches. GPU probes expose each actual batch's instance
+and index counts; far/class totals include silhouettes, and triangle counters
+use their real two-triangle geometry. In the million-fighter wide profile,
+all one million instances remain submitted while triangles fall from
+146,850,000 to 2,000,000.
+
+Simulation work also falls without changing its decisions. Each grid cell now
+records a team bitmask instead of two unused centroid sums. Enemy-only searches
+and damage queries skip friendly-only cells; physical contacts still include
+both teams. Conservative squared-distance rejection avoids unnecessary square
+roots, while surviving candidates retain the original distance comparisons
+and ID tie breaks. A randomized equivalence test covers target ordering,
+rounded-distance ties, both teams, and body-contact boundaries. The nine AI,
+nine squad, and 17 kernel regression groups pass on the production GPU shader.
+
+To bake a new private asset set without modifying its source folder:
+
+```sh
+AF_BATTLE_ASSET_ROOT=SOURCE_PRIVATE_ROOT \
+AF_BATTLE_IMPOSTOR_OUTPUT=EMPTY_PRIVATE_OUTPUT \
+openagents browser run -- node tools/assets/compile-battle-impostors.mjs
+```
+
+The output reuses source files through hard links, creates new content-addressed
+atlases and a battle manifest, and replaces its own scene manifest. Licensed
+source assets, atlases, and captures stay outside Git.
+
+### Million-fighter measurements and stop point
+
+The completed before/after profiles used an Apple M5 Max, Chrome 155 with the
+Metal WebGPU adapter, 1280 × 720, DPR one, seed one, five seconds of warmup,
+and one ten-second diagnostic window per camera. Only one GPU scene ran at a
+time. GPU p95 covers the complete submitted render and compute frame.
+
+| Camera | Previous completions/s | New completions/s | Previous GPU p95 | New GPU p95 |
+| --- | --- | --- | --- | --- |
+| Overview | 16.76 | 59.56 | 63.13 ms | 8.78 ms |
+| Orbit | 17.16 | 59.32 | 57.57 ms | 9.18 ms |
+| Dolly | 59.75 | 59.46 | 10.62 ms | 6.49 ms |
+| First person | Not measured in this baseline | 59.95 | Not measured | 5.64 ms |
+| Third person | Not measured in this baseline | 59.57 | Not measured | 6.10 ms |
+
+Every new diagnostic window has zero measured additional dropped battle time
+and zero grid/projectile overflow, with advancing GPU combat and fresh status.
+Wide probes submit exactly one million instances and two million triangles.
+Nearby fighters remain mesh draws. First person includes real movement,
+accepted attacks, 1,280 outgoing damage, incoming hits, death, and respawn.
+
+The initial third-person route accepted five attacks but dealt no damage:
+its default downward pitch put firebolts into the ground about four metres
+away. That run remains a failed participation check. The tool now sends a
+public look adjustment after entry and every respawn, retaining the same damage
+gate. Its separate ten-second rerun reached 59.89 completions/s, 4.95 metres of
+sampled movement, five accepted attacks, 2,721 outgoing damage, 600 incoming
+damage, three observed deaths/respawns, and zero sampled added local lost time.
+No player pose or health was injected.
+
+A longer production-path matrix started with GPU timestamp instrumentation
+disabled, two 30-second windows per camera, and active first/third-person
+participation. The user then requested immediate wrap-up and no more runs.
+Only these windows finished before the test stopped:
+
+| Camera | Repeat | Measured duration | Completed submissions/s | Lowest full one-second completion bin |
+| --- | --- | --- | --- | --- |
+| Overview | 1 | 30.182 s | 59.77 | 55 |
+| Overview | 2 | 30.243 s | 60.01 | 59 |
+| Orbit | 1 | 30.264 s | 59.97 | 59 |
+
+All three pass the explicit experimental mean target: at least 58 accepted and
+completed frames/s, no measured additional simulation loss, no overflow,
+fresh advancing combat, and complete wide population visibility. This target
+is separate from the existing stricter pacing gate; short stalls, queue-fence
+notification timing, and physical display presentation are not erased by the
+mean. The all-five-camera sustained matrix is incomplete. The second Orbit
+window was interrupted; sustained Dolly and fighting first/third-person
+windows were not performed in that matrix. No 1920 × 1080 qualification or new
+video recording was performed. The previous 750,000-fighter videos do not show
+this build and must not be presented as new million-fighter footage.
+
+Private evidence directories are `battle-million-baseline-wide`,
+`battle-million-impostor-profile-1`, `battle-million-third-aim-check`, and
+`battle-million-all-views-final`. The last contains completed window files,
+the interrupted raw window, and `stopped-at-user-request.json`. Its source SHA
+and the corrected third-person rerun are
+`2be1689bd478a9a498efa1e8a5caef9f5898fd85ba17b52ce3ee7c07789f1d77`.
+The earlier all-view diagnostic source SHA is
+`12bd89cfe2d2ee7b4ef69b5eacb4e74f47f5b05b245182ea92a4806debfd182b`;
+later changes add the single-sample coverage fallback and corrected test aim.
+Both completed reports verify unchanged sources and assets before/after.
+The shared new battle-asset SHA is
+`13c53ae005b31e87b527dab717e00581f5dcb0267167a712f4d87a1aedebdf55`,
+with manifest SHA
+`9de6b180693b4c661105f8885e710a902fe545db6dea7ea1724ccb779b754a97`.
+
+Verification completed before the stop request:
+
+- Full suite: 1,386 passed, two skipped; production build and TypeScript passed.
+- Final narrow changes: 36 crowd tests, five window/camera tests, TypeScript,
+  and shader validation passed. The single-sample fallback was not GPU-tested;
+  the application uses four samples.
+- Production GPU: nine AI cases, nine squad cases, and 17 kernel groups passed,
+  including convoy motion, body contacts, player combat, and Meteor Shower.
+- The final baker passed all 4,416 used frame/view coverage checks, matching
+  color/normal alpha, clear unused tiles, and clear tile borders. A repeated
+  bake produced the same content-addressed manifest. Production loading admits
+  and hash-checks the complete 113,268,508-byte asset closure.
+
+No further tests, recordings, or performance runs followed the stop request.
+The saved commands support a future run when requested; a mean near 60 in the
+completed diagnostics is not a completed sustained all-view qualification.
 
 ## NPC decisions
 
@@ -570,7 +720,7 @@ rendering cost alongside simulation cost. Million-wide dropped
 cumulative loss since reset reached 2.754 seconds, including warmup. Grid
 **total** overflow and projectile overflow stayed zero in all nine probes.
 
-Next, add source-sized distant impostors to reduce wide-view triangle work.
+The distant silhouette profile below replaces this earlier next step.
 Improve neighbor-data locality separately, measuring combat-query cost and
 accuracy rather than inferring it from camera culling.
 

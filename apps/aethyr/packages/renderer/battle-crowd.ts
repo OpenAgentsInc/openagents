@@ -1,6 +1,8 @@
 import {
   BATTLE_CLASSES,
   BATTLE_CLIPS,
+  BATTLE_IMPOSTOR_BYTES,
+  validateBattleImpostorLayout,
   type BattleCrowdClassAssets,
 } from "./battle-assets.ts";
 import {
@@ -82,9 +84,15 @@ export const BATTLE_CROWD_LIMITS = Object.freeze({
   step: 1 / 60,
   stepsPerFrame: 3,
 });
+/**
+ * Silhouette thresholds in projected pixels: `full` at Detail 1 and the
+ * readability floor at Detail 0. The floor is half the 32-pixel atlas tile, so
+ * a silhouette is never drawn larger than its tile resolves cleanly.
+ */
+export const BATTLE_SILHOUETTE_PIXELS = Object.freeze({ full: 8, floor: 16 });
 const FRAME_BYTES = 336,
   COUNTER_BYTES = 256,
-  BATCHES = 8;
+  BATCHES = 12;
 export interface BattleCrowdTerrain {
   layout?: "mmorpg-patch";
   heights: Float32Array;
@@ -114,6 +122,7 @@ export interface BattleCrowdFrame {
   sunColor?: readonly number[];
   ambient?: readonly number[];
   sourceFogScale?: number;
+  viewportHeight?: number;
 }
 export interface BattleCrowdGpuCounters {
   alive: number;
@@ -172,6 +181,7 @@ export interface BattleCrowdGpuCounters {
   meteorHits: number;
 }
 export interface BattleCrowdStats {
+  impostorClasses: number;
   enabled: boolean;
   count: number;
   capacity: number;
@@ -200,6 +210,12 @@ export interface BattleCrowdProbe {
   tick: number;
   sampleSha256: string;
   gpu: BattleCrowdGpuCounters;
+  draws: {
+    kind: string;
+    lod: "near" | "far" | "impostor";
+    indexCount: number;
+    instanceCount: number;
+  }[];
   participant: BattleParticipantSnapshot;
   projectiles: ReturnType<typeof decodeBattleOrdnanceProbe>["projectiles"];
   sieges: ReturnType<typeof decodeBattleOrdnanceProbe>["sieges"];
@@ -622,6 +638,7 @@ interface Model {
   vertices: GPUBuffer;
   indices: GPUBuffer;
   group: GPUBindGroup;
+  impostor: boolean;
 }
 interface Readback {
   buffer: GPUBuffer;
@@ -635,6 +652,8 @@ export class BattleCrowd {
   readonly bytes: number;
   /** Detail's share of the LOD and draw distances (ADR 0007). */
   private reach = 1;
+  /** Projected height, in pixels, below which a fighter draws as a silhouette. */
+  private silhouettePixels: number = BATTLE_SILHOUETTE_PIXELS.full;
   private count: number;
   private radius: number;
   private front = 0;
@@ -677,6 +696,8 @@ export class BattleCrowd {
     private compaction: GPUComputePipeline[],
     private compactionGroups: GPUBindGroup[],
     private pipeline: GPURenderPipeline,
+    private impostorPipeline: GPURenderPipeline,
+    private quadIndices: GPUBuffer,
     private renderGroups: GPUBindGroup[][],
     private readbacks: Readback[],
     private ordnance: BattleOrdnance,
@@ -719,6 +740,14 @@ export class BattleCrowd {
       classes.find((model) => model.kind === kind)!,
     );
     for (const model of ordered) {
+      if (model.impostor) {
+        validateBattleImpostorLayout(model.impostor, model.clips);
+        if (
+          model.impostor.color.byteLength !== BATTLE_IMPOSTOR_BYTES ||
+          model.impostor.normal.byteLength !== BATTLE_IMPOSTOR_BYTES
+        )
+          throw Error("Prepare complete distant battle images.");
+      }
       if (
         !model.vertices.byteLength ||
         model.vertices.byteLength % 16 ||
@@ -818,6 +847,7 @@ export class BattleCrowd {
         entry(2, "storage"),
         entry(3, "storage"),
         entry(4, "uniform"),
+        entry(5, "uniform"),
       ]);
       const renderLayout = layout([
         entry(0, "uniform", GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT),
@@ -846,7 +876,17 @@ export class BattleCrowd {
           visibility: GPUShaderStage.FRAGMENT,
           sampler: { type: "filtering" },
         },
-        entry(4, "uniform", GPUShaderStage.VERTEX),
+        entry(4, "uniform", GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT),
+        {
+          binding: 5,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: { sampleType: "float", viewDimension: "2d-array" },
+        },
+        {
+          binding: 6,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: { sampleType: "float", viewDimension: "2d-array" },
+        },
       ]);
       const compute = async (
         code: string,
@@ -926,6 +966,34 @@ export class BattleCrowd {
           alphaToCoverageEnabled: false,
         },
       });
+      const impostorPipeline = await device.createRenderPipelineAsync({
+        label: "Battle crowd: distant source silhouettes",
+        layout: device.createPipelineLayout({
+          bindGroupLayouts: [renderLayout, modelLayout],
+        }),
+        vertex: { module: shader, entryPoint: "vertexImpostor" },
+        fragment: {
+          module: shader,
+          entryPoint: "fragmentImpostor",
+          constants: { impostorSampleCount: config.sampleCount },
+          targets: [{ format: config.format }],
+        },
+        primitive: { topology: "triangle-list", cullMode: "none" },
+        depthStencil: {
+          format: config.depthFormat,
+          depthWriteEnabled: true,
+          depthCompare: "less-equal",
+        },
+        multisample: {
+          count: config.sampleCount,
+          alphaToCoverageEnabled: config.sampleCount > 1,
+        },
+      });
+      const quadIndices = upload(
+        "Battle crowd: distant silhouette quad",
+        new Uint16Array([0, 1, 2, 2, 1, 3]),
+        GPUBufferUsage.INDEX,
+      );
       const states = [0, 1].map((i) =>
         buffer(
           `Battle crowd: actor state ${i}`,
@@ -980,6 +1048,8 @@ export class BattleCrowd {
           ),
         ),
       );
+      for (let kind = 0; kind < 4; kind++)
+        args.set([6, 0, 0, 0, 0], (8 + kind) * 5);
       const indirect = upload(
         "Battle crowd: indexed indirect arguments",
         args,
@@ -1012,6 +1082,18 @@ export class BattleCrowd {
           ],
         }),
       );
+      const modelInfo = upload(
+        "Battle crowd: projected character sizes",
+        new Float32Array(
+          ordered.flatMap((model) => [
+            model.height,
+            Number(!!model.impostor),
+            0,
+            0,
+          ]),
+        ),
+        GPUBufferUsage.UNIFORM,
+      );
       const compactionGroups = states.map((state) =>
         device.createBindGroup({
           layout: compactLayout,
@@ -1021,6 +1103,7 @@ export class BattleCrowd {
             bind(2, indirect),
             bind(3, counters),
             bind(4, uniform),
+            bind(5, modelInfo),
           ],
         }),
       );
@@ -1102,7 +1185,26 @@ export class BattleCrowd {
           model.materials.rgba,
           4,
         );
-        const data = new Float32Array(24),
+        const sprite = model.impostor;
+        const spriteColor = texture(
+          `Battle crowd: ${model.kind} distant albedo`,
+          sprite ? 512 : 1,
+          sprite ? 512 : 1,
+          sprite ? 8 : 1,
+          "rgba8unorm-srgb",
+          sprite?.color ?? new Uint8Array(4),
+          4,
+        );
+        const spriteNormal = texture(
+          `Battle crowd: ${model.kind} distant normals`,
+          sprite ? 512 : 1,
+          sprite ? 512 : 1,
+          sprite ? 8 : 1,
+          "rgba8unorm",
+          sprite?.normal ?? new Uint8Array([128, 128, 255, 255]),
+          4,
+        );
+        const data = new Float32Array(48),
           uints = new Uint32Array(data.buffer);
         BATTLE_CLIPS.forEach((name, index) => {
           const clip = model.clips[name];
@@ -1121,6 +1223,28 @@ export class BattleCrowd {
           16,
         );
         data[20] = model.height;
+        if (sprite) {
+          BATTLE_CLIPS.forEach((name, index) => {
+            const clip = sprite.clips[name];
+            data.set(
+              [
+                clip.duration,
+                clip.firstFrame,
+                clip.frameCount,
+                Number(clip.loop),
+              ],
+              24 + index * 4,
+            );
+          });
+          uints.set(
+            [sprite.width, sprite.height, sprite.views, sprite.tileSize],
+            40,
+          );
+          data.set(
+            [sprite.bounds.radius, sprite.bounds.minY, sprite.bounds.maxY, 0],
+            44,
+          );
+        }
         const settings = upload(
           `Battle crowd: ${model.kind} clip table`,
           data,
@@ -1137,6 +1261,14 @@ export class BattleCrowd {
             },
             { binding: 3, resource: sampler },
             bind(4, settings),
+            {
+              binding: 5,
+              resource: spriteColor.createView({ dimension: "2d-array" }),
+            },
+            {
+              binding: 6,
+              resource: spriteNormal.createView({ dimension: "2d-array" }),
+            },
           ],
         });
         return {
@@ -1151,6 +1283,7 @@ export class BattleCrowd {
             GPUBufferUsage.INDEX,
           ),
           group,
+          impostor: !!sprite,
         };
       });
       const readbacks = Array.from({ length: 3 }, () => ({
@@ -1179,6 +1312,8 @@ export class BattleCrowd {
         compaction,
         compactionGroups,
         pipeline,
+        impostorPipeline,
+        quadIndices,
         renderGroups,
         readbacks,
         ordnance,
@@ -1229,6 +1364,22 @@ export class BattleCrowd {
     if (!Number.isFinite(reach) || reach < 0.1 || reach > 1)
       throw new Error("Use a crowd reach from 0.1 to 1.");
     this.reach = reach;
+  }
+  /**
+   * Set the silhouette threshold for Detail. It stays between the full value
+   * and the readability floor, so a fighter taller than the floor always
+   * keeps its mesh.
+   */
+  setSilhouettePixels(pixels: number) {
+    if (
+      !Number.isFinite(pixels) ||
+      pixels < BATTLE_SILHOUETTE_PIXELS.full ||
+      pixels > BATTLE_SILHOUETTE_PIXELS.floor
+    )
+      throw new Error(
+        `Use a silhouette threshold from ${BATTLE_SILHOUETTE_PIXELS.full} to ${BATTLE_SILHOUETTE_PIXELS.floor} pixels.`,
+      );
+    this.silhouettePixels = pixels;
   }
   setCount(count: number) {
     this.assertOpen();
@@ -1282,6 +1433,17 @@ export class BattleCrowd {
     const sourceFogScale = frame.sourceFogScale ?? 1;
     if (!finite(sourceFogScale, 1, 100))
       throw new Error("Choose a supported battle fog distance.");
+    const viewportHeight = frame.viewportHeight ?? 720;
+    if (!finite(viewportHeight, 1, 32768))
+      throw Error("Choose a supported battle viewport height.");
+    const pixelScale =
+      (viewportHeight *
+        Math.hypot(
+          frame.viewProjection[1],
+          frame.viewProjection[5],
+          frame.viewProjection[9],
+        )) /
+      2;
     this.words.set(Array.from(frame.viewProjection), 0);
     this.words.set([...frame.eye, frame.time], 16);
     this.words.set(
@@ -1309,11 +1471,11 @@ export class BattleCrowd {
           this.config.maxDistance * this.reach,
         ),
         this.config.respawnSeconds,
-        0,
+        pixelScale,
       ],
       32,
     );
-    this.words.set([...sun, 0], 36);
+    this.words.set([...sun, this.silhouettePixels], 36);
     this.words.set([...color, 0], 40);
     this.words.set([...ambient, sourceFogScale], 44);
     this.words.set(battleFrustumPlanes(frame.viewProjection), 48);
@@ -1431,6 +1593,17 @@ export class BattleCrowd {
         this.frameDraws++;
       }
     }
+    pass.setPipeline(this.impostorPipeline);
+    pass.setIndexBuffer(this.quadIndices, "uint16");
+    for (let kind = 0; kind < this.models.length; kind++) {
+      const model = this.models[kind];
+      if (!model.impostor) continue;
+      pass.setBindGroup(1, model.group);
+      pass.setBindGroup(0, this.renderGroups[this.front][8 + kind]);
+      pass.drawIndexedIndirect(this.indirect, (8 + kind) * 20);
+      this.submittedDraws++;
+      this.frameDraws++;
+    }
     const extraDraws = this.ordnance.render(
       pass,
       this.participant.active && !!this.participant.firstPerson,
@@ -1477,6 +1650,7 @@ export class BattleCrowd {
       radius: this.radius,
       submittedDraws: this.submittedDraws,
       frameDraws: this.frameDraws,
+      impostorClasses: this.models.filter((model) => model.impostor).length,
       simulationSteps: this.steps,
       droppedSeconds: this.dropped,
       accountedGpuBytes: this.disposed ? 0 : this.bytes,
@@ -1514,7 +1688,8 @@ export class BattleCrowd {
       ids.add(hash(index ^ this.config.seed) % count);
     const selected = [...ids],
       actorBytes = COUNTER_BYTES + selected.length * 64,
-      bytes = actorBytes + BATTLE_COMBAT_BYTES;
+      drawOffset = actorBytes + BATTLE_COMBAT_BYTES,
+      bytes = drawOffset + BATCHES * 20;
     const read = this.device.createBuffer({
       label: "Battle crowd: explicit sampled state probe",
       size: bytes,
@@ -1538,6 +1713,13 @@ export class BattleCrowd {
         read,
         actorBytes,
         BATTLE_COMBAT_BYTES,
+      );
+      encoder.copyBufferToBuffer(
+        this.indirect,
+        0,
+        read,
+        drawOffset,
+        BATCHES * 20,
       );
       this.device.queue.submit([encoder.finish()]);
       await read.mapAsync(GPUMapMode.READ);
@@ -1581,6 +1763,20 @@ export class BattleCrowd {
           n.toString(16).padStart(2, "0"),
         ).join(""),
         gpu: counters,
+        draws: Array.from({ length: BATCHES }, (_, batch) => {
+          const args = new Uint32Array(raw, drawOffset + batch * 20, 5);
+          return {
+            kind: BATTLE_CLASSES[batch < 8 ? Math.floor(batch / 2) : batch - 8],
+            lod:
+              batch >= 8
+                ? ("impostor" as const)
+                : batch % 2
+                  ? ("far" as const)
+                  : ("near" as const),
+            indexCount: args[0],
+            instanceCount: args[1],
+          };
+        }),
         ...decodeBattleOrdnanceProbe(raw, actorBytes),
         samples,
       };

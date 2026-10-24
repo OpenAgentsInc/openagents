@@ -21,6 +21,17 @@ import {
   evaluateApplicationPacing,
   observeApplicationBrowserMode,
 } from "./application-pacing.mjs";
+import {
+  battleParticipationPlan,
+  battleRecordingLook,
+  NEUTRAL_BATTLE_INPUT,
+} from "./battle-shot-plan.mjs";
+import {
+  battleParticipantWindow,
+  battleParticipationAim,
+  battleWindowAround60,
+  battleAllViewsCoverage,
+} from "./battle-window-metrics.mjs";
 function battleOverflowFidelity(before, after, samples) {
   const checks = [
     "gridOverflows",
@@ -87,6 +98,10 @@ const integer = (name, fallback, low, high) => {
   );
   return n;
 };
+const viewport = {
+  width: integer("AF_BATTLE_WIDTH", 1280, 640, 3840),
+  height: integer("AF_BATTLE_HEIGHT", 720, 360, 2160),
+};
 const counts = (process.env.AF_BATTLE_COUNTS || "10000").split(",").map(Number);
 assert(
   counts.length > 0 &&
@@ -113,6 +128,17 @@ assert(
   "Set AF_BATTLE_INSTRUMENTED to 0 or 1.",
 );
 const instrumented = instrumentationFlag === "1";
+const participationFlag = process.env.AF_BATTLE_PARTICIPATE ?? "0";
+assert(["0", "1"].includes(participationFlag));
+const participationEnabled = participationFlag === "1";
+if (participationEnabled)
+  assert(
+    durationMs >= 2000,
+    "Active battle windows need at least two seconds.",
+  );
+const participatingView = (view) =>
+  participationEnabled && ["first", "third"].includes(view);
+
 const mode = process.env.AF_BATTLE_MODE || "diagnostic";
 assert(["diagnostic", "qualification"].includes(mode));
 if (mode === "qualification")
@@ -134,7 +160,8 @@ const report = {
   kernelSha256: sha(await readFile(resolve(root, "public/kernel.wasm"))),
   url: url.href,
   configuration: {
-    viewport: [1280, 720],
+    viewport: [viewport.width, viewport.height],
+    deviceScaleFactor: 1,
     counts,
     views,
     repeats,
@@ -142,6 +169,12 @@ const report = {
     warmupMs,
     mode,
     instrumented,
+    activeParticipation: participationEnabled,
+    participantAttack: participationEnabled ? "ranged" : null,
+    thirdPersonResetAim: participationEnabled
+      ? battleParticipationAim("third")
+      : null,
+    experimentalMeanTargetHz: 58,
     seed: 1,
     targetHz: "display",
   },
@@ -156,6 +189,7 @@ const report = {
     "This is a device-local GPU battle experiment, not 10,000 authoritative multiplayer sessions.",
     "The actor pool includes living fighters and held corpses with explicit local replenishment. Alive/moving/attacking populations are reported throughout.",
     "Submissions and queue-fence callbacks are not compositor or physical display presentation. Full GPU timings exclude uploads/copies outside measured passes and composition.",
+    "Opt-in AF_BATTLE_PARTICIPATE=1 applies real bounded movement, turn, ranged attack, camera-look and respawn commands during first/third-person windows; standing windows cannot pass the separate all-view mean target.",
     "This verifier performs no video encoding. Recording overhead is measured separately by record-battle.mjs.",
     "Qualification applies only to this run's exact source and asset pins. A source change requires new qualification; earlier runs remain separate evidence for their prior code.",
     "Pool capacity means simulated actors. First, third and dolly shots report their submitted subset separately and cannot establish full-army visibility capacity through culling alone.",
@@ -176,7 +210,8 @@ if (counts.includes(0))
 const browser = await chromium.connectOverCDP(endpoint);
 report.browserMode = await observeApplicationBrowserMode(browser);
 const context = await browser.newContext({
-  viewport: { width: 1280, height: 720 },
+  viewport,
+  deviceScaleFactor: 1,
   serviceWorkers: "block",
 });
 const page = await context.newPage();
@@ -238,6 +273,16 @@ async function action(action) {
   assert.equal(receipt.ok, true, receipt.message);
   return receipt;
 }
+async function restoreThirdPersonAim(view) {
+  if (view !== "third") return null;
+  const controls = { ...NEUTRAL_BATTLE_INPUT, ...battleParticipationAim(view) };
+  const receipt = await action({
+    op: "input",
+    ...controls,
+    attackKind: "ranged",
+  });
+  return { controls, receipt };
+}
 async function capture(name) {
   const path = resolve(output, `${name}.png`);
   await page.screenshot({ path });
@@ -287,6 +332,16 @@ const check = (name, details = {}) => {
 };
 try {
   await page.goto(url.href);
+  report.observedViewport = await page.evaluate(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio,
+  }));
+  assert.deepEqual(
+    report.observedViewport,
+    { ...viewport, devicePixelRatio: 1 },
+    "The actual browser viewport or DPR differs from the requested workload.",
+  );
   await until(
     (s) => s.phase === "ready" && s.mmorpg,
     "The prepared battle world did not open",
@@ -342,6 +397,15 @@ try {
           );
         }
         await sleep(warmupMs);
+        if (participatingView(view)) {
+          await action({ op: "respawn" });
+          await until(
+            (s) => s.battle?.participant?.ready && s.battle.participant.alive,
+            "The measured participant did not return ready",
+          );
+          await action({ op: "weapon", attackKind: "ranged" });
+          activeRaw.participationAim = await restoreThirdPersonAim(view);
+        }
         const beforeMetrics = await benchmark({
           op: count ? "readBattle" : "read",
         });
@@ -363,7 +427,16 @@ try {
         activeRaw.started = started;
         await persistRaw("measurement-started");
         const samples = (activeRaw.statusSamples = []),
+          inputEvents = (activeRaw.inputEvents = []),
+          participantEvents = (activeRaw.participantEvents = []),
+          inputPlan = participatingView(view)
+            ? battleParticipationPlan(durationMs / 1000)
+            : [],
           begin = performance.now();
+        activeRaw.inputPlan = inputPlan;
+        let lastInputAt = -Infinity,
+          lastLookElapsed = 0,
+          priorAlive;
         while (performance.now() - begin < durationMs) {
           const s = await status();
           assert.equal(s.phase, "ready");
@@ -376,8 +449,72 @@ try {
             battle: structuredClone(s.battle),
             runtimeMetrics: s.runtimeMetrics,
           });
+          if (participatingView(view)) {
+            const atMs = performance.now() - begin,
+              actor = s.battle?.participant;
+            assert(
+              actor?.active,
+              "The measured battle participant disappeared",
+            );
+            if (priorAlive === true && !actor.alive)
+              participantEvents.push({
+                kind: "death-observed",
+                atMs,
+                participant: structuredClone(actor),
+              });
+            priorAlive = actor.alive;
+            if (actor.ready && !actor.alive) {
+              participantEvents.push({
+                kind: "respawn-request",
+                atMs,
+                participant: structuredClone(actor),
+              });
+              const receipt = await action({ op: "respawn" });
+              participantEvents.push({
+                kind: "respawn-receipt",
+                atMs: performance.now() - begin,
+                receipt,
+              });
+              if (view === "third") {
+                const aim = await restoreThirdPersonAim(view);
+                participantEvents.push({
+                  kind: "respawn-aim",
+                  atMs: performance.now() - begin,
+                  ...aim,
+                });
+              }
+            } else if (atMs - lastInputAt >= 250) {
+              const phase = inputPlan.findLast((p) => p.atMs <= atMs);
+              const controls =
+                actor.ready && actor.alive
+                  ? {
+                      ...(phase?.input ?? NEUTRAL_BATTLE_INPUT),
+                      ...battleRecordingLook(
+                        durationMs / 1000,
+                        lastLookElapsed,
+                        atMs,
+                        view,
+                      ),
+                    }
+                  : NEUTRAL_BATTLE_INPUT;
+              const receipt = await action({
+                op: "input",
+                ...controls,
+                attackKind: "ranged",
+              });
+              inputEvents.push({ atMs, controls, receipt });
+              lastInputAt = atMs;
+              lastLookElapsed = atMs;
+            }
+          }
           await sleep(250);
         }
+        if (participatingView(view))
+          await action({
+            op: "input",
+            ...NEUTRAL_BATTLE_INPUT,
+            attackKind: "ranged",
+          });
         const stopped = await benchmark({ op: "stop", drain: true });
         measuring = false;
         activeRaw.stopped = stopped;
@@ -493,6 +630,8 @@ try {
           view,
           repeat,
           instrumented,
+          warmupMs,
+          requestedDurationMs: durationMs,
           observedMs,
           productCounters,
           pacing,
@@ -513,6 +652,8 @@ try {
               "alive",
               "dead",
               "visible",
+              "near",
+              "far",
               "moving",
               "attacking",
               "deaths",
@@ -532,9 +673,23 @@ try {
           beforeProbe,
           afterProbe,
           changedSampleActors: changed,
+          inputPlan,
+          inputEvents,
+          participantEvents,
+          participantEvidence: participatingView(view)
+            ? battleParticipantWindow(samples, participantEvents)
+            : null,
+          gpuStageSnapshot: instrumented
+            ? {
+                timingStatus: stopped.resources.renderer.gpuTimingStatus,
+                scope:
+                  "Latest measured GPU frame only. Pass spans may overlap; do not sum them or call these stage percentiles.",
+              }
+            : null,
           statusSamples: samples,
           metrics: stopped,
         };
+        row.around60 = battleWindowAround60(row);
         activeRaw.result = {
           pacing,
           applicationPacing,
@@ -542,6 +697,8 @@ try {
           statusFreshness,
           combatProgress,
           overflowFidelity,
+          participantEvidence: row.participantEvidence,
+          around60: row.around60,
         };
         await persistRaw("evaluated");
         report.windows.push(row);
@@ -553,8 +710,14 @@ try {
           count
             ? `Real ${count}-actor ${view} battle advances combat, death and GPU poses`
             : "Zero-crowd player-camera baseline completed",
-          { pacing: pacing.ok, applicationPacing: applicationPacing.ok,
-            overflowFidelity: overflowFidelity?.ok ?? true, index },
+          {
+            pacing: pacing.ok,
+            applicationPacing: applicationPacing.ok,
+            overflowFidelity: overflowFidelity?.ok ?? true,
+            around60: row.around60.ok,
+            activeParticipation: row.participantEvidence?.ok ?? null,
+            index,
+          },
         );
         await capture(`battle-${index}-${count}-${view}-after`);
         await action({ op: "stop" });
@@ -584,7 +747,25 @@ try {
       .map((g) => g.count),
   );
   report.qualified = mode === "qualification" && report.largestPassingPool > 0;
-  report.overflowFidelity = report.windows.every((w) => !w.count || w.overflowFidelity.ok);
+  report.around60AllViews = counts
+    .filter((count) => count > 0)
+    .map((count) => battleAllViewsCoverage(report.windows, count));
+  report.largestAround60AllViewsPool = Math.max(
+    0,
+    ...report.around60AllViews
+      .filter((result) => result.ok)
+      .map((result) => result.count),
+  );
+  report.activeParticipationFidelity =
+    participationEnabled &&
+    report.windows.filter((w) => ["first", "third"].includes(w.view)).length >
+      0 &&
+    report.windows
+      .filter((w) => ["first", "third"].includes(w.view))
+      .every((w) => w.participantEvidence?.ok === true);
+  report.overflowFidelity = report.windows.every(
+    (w) => !w.count || w.overflowFidelity.ok,
+  );
   report.qualificationScope = instrumented
     ? "application/queue cadence and GPU timestamp budget"
     : "application/queue cadence; GPU timestamp budget unavailable";
@@ -594,8 +775,10 @@ try {
   console.log(
     JSON.stringify({
       functionalPass: true,
+      activeParticipationPass: report.activeParticipationFidelity,
       largestPassingPool: report.largestPassingPool,
       qualified: report.qualified,
+      largestAround60AllViewsPool: report.largestAround60AllViewsPool,
       windows: report.windows.length,
     }),
   );

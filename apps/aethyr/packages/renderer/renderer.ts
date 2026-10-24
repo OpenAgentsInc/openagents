@@ -714,6 +714,7 @@ export class Renderer {
       this.shadowDirty = true;
     this.grass?.setReach(next.foliageReach);
     this.battleCrowd?.setReach(next.crowdReach);
+    this.battleCrowd?.setSilhouettePixels(next.crowdSilhouettePixels);
   }
   private enemyData?: CharacterManifest;
   private enemies?: EnemyCharacters;
@@ -990,6 +991,7 @@ export class Renderer {
     }
     const previous = this.battleCrowd;
     candidate.setReach(this.detailSettings.crowdReach);
+    candidate.setSilhouettePixels(this.detailSettings.crowdSilhouettePixels);
     this.battleCrowd = candidate;
     this.battleTime = undefined;
     this.gpuBytes += candidate.bytes - (previous?.bytes ?? 0);
@@ -3862,7 +3864,7 @@ export class Renderer {
       const elapsed = this.battleTime === undefined ? 1 / 60 : Math.max(0, time - this.battleTime);
       this.battleTime = time;
       this.battleCrowd.prepare(encoder, {
-        viewProjection: view, eye: camera.eye, time,
+        viewProjection: view, eye: camera.eye, time, viewportHeight: this.height,
         sunDirection: movingFrame?.sunDirection,
         sunIlluminance: movingFrame?.sunIlluminance,
         ambient: [0.45, 0.52, 0.65],

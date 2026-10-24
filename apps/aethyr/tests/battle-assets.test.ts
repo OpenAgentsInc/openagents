@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   BATTLE_CLASSES,
   BATTLE_CLIPS,
+  BATTLE_IMPOSTOR_BYTES,
   loadBattleCrowdAssets,
   validateBattleCrowd,
   validateBattleCrowdBuffers,
@@ -113,6 +114,45 @@ test("four source classes load bounded hashed geometry, VAT, LODs and color maps
   model.vat.positions[0] = 0;
   model.materials.rgba[3] = 127;
   assert.throws(() => validateBattleCrowdBuffers(recipe, model), /stay opaque/);
+});
+
+test("distant image recipes retain source clips, fixed geometry bounds and hashed byte limits", () => {
+  const f = fixture(),
+    model = f.manifest.classes[0],
+    sha256 = "0".repeat(64);
+  model.impostor = {
+    views: 8,
+    tileSize: 32,
+    width: 512,
+    height: 512,
+    frames: 8,
+    bounds: { minY: 0, maxY: 2, radius: 1.4 },
+    clips: structuredClone(model.clips),
+    color: {
+      url: `/private-assets/battle-${sha256}.impostor-color.bin`,
+      sha256,
+      byteLength: BATTLE_IMPOSTOR_BYTES,
+    },
+    normal: {
+      url: `/private-assets/battle-${sha256}.impostor-normal.bin`,
+      sha256,
+      byteLength: BATTLE_IMPOSTOR_BYTES,
+    },
+  };
+  assert.doesNotThrow(() => validateBattleCrowd(f.manifest));
+  for (const mutate of [
+    (v: any) => (v.views = 16),
+    (v: any) => (v.frames = 257),
+    (v: any) => (v.bounds.radius = Infinity),
+    (v: any) => (v.bounds.maxY = -1),
+    (v: any) => (v.clips.attack.duration = 2),
+    (v: any) => v.color.byteLength--,
+    (v: any) => (v.normal.url = "https://untrusted.invalid/normal.bin"),
+  ]) {
+    const changed = structuredClone(f.manifest);
+    mutate(changed.classes[0].impostor);
+    assert.throws(() => validateBattleCrowd(changed));
+  }
 });
 
 test("crowd recipes reject unbounded atlases, missing classes, bad ranges and unpinned URLs", () => {
