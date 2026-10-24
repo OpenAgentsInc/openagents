@@ -144,9 +144,9 @@ The latest day with a full sweep for each backend.
 | vertex-gemini | 3.50 | 16 | 6.35 s | $1.722 | 15.40 | 4k (5.6k measured) tok × 13 q, c=4 | none seen | 2026-10-11 |
 | coderos-clef | 4.21 | 1 | 0.27 s | $0.0079 | 16.06 | 4k (5.0k measured) tok × 13 q, c=2 | 1 | 2026-10-11 |
 | coderos-llamacpp | 3.14 | 1 | 0.66 s | $0.0106 | 9.63 | 0.5k (0.6k measured) tok × 1 q, c=1 | 1 | 2026-10-11 |
-| h100-clef-flash | 9.87 | 4 | 0.43 s | $0.180 | 39.45 | 4k (5.0k measured) tok × 13 q, c=4 | 1 | 2026-10-11 |
-| h100-clef-27b | 3.83 | 1 | 0.30 s | $0.464 | 13.48 | 4k (5.0k measured) tok × 13 q, c=4 | 1 | 2026-10-11 |
-| sealed-gpu | 2.94 | 2 | 0.78 s | $0.646 | 3.11 | 0.5k (0.6k measured) tok × 1 q, c=2 | 8 | 2026-10-11 |
+| h100-clef-flash | 9.06 | 1 | 0.12 s | $0.196 | 41.44 | 4k (5.5k measured) tok × 13 q, c=1 | 1 | 2026-10-24 |
+| h100-clef-27b | 3.42 | 1 | 0.33 s | $0.520 | 14.79 | 4k (5.5k measured) tok × 13 q, c=4 | 1 | 2026-10-24 |
+| sealed-gpu | 2.86 | 2 | 0.79 s | $0.663 | 3.32 | 0.5k (0.7k measured) tok × 1 q, c=2 | none seen | 2026-10-24 |
 | sealed-cpu | 0.04 | 1 | 31.28 s | $3.472 | 0.04 | 0.5k (0.6k measured) tok × 1 q, c=1 | 1 | 2026-10-11 |
 | coderos-clef-prod | 3.65 | 1 | 0.31 s | $0.0091 | 15.17 | 4k (5.5k measured) tok × 13 q, c=1 | 1 | 2026-10-15 |
 <!-- dt:summary:end -->
@@ -357,49 +357,48 @@ RTX 4080 16 GB, llama.cpp b11538 Clef-Flash Q4_K_M. Model `clef-flash`, plan `fu
 
 ### h100-clef-flash
 
-1x H100 80GB, Psionic Clef-Flash Q4_K_M CUDA. Model `clef-flash`, plan `full`, 2026-10-11, run on `oa-decision-h100.us-east5-a.c.openagentsgemini.internal`. Price: spot a3-highgpu-1g us-east5 (H100 $5.71 + vCPU/RAM).
+1x H100 80GB, Psionic Clef-Flash Q4_K_M CUDA. Model `clef-flash`, plan `full`, 2026-10-24, run on `oa-decision-h100.us-east5-a.c.openagentsgemini.internal`. Price: spot a3-highgpu-1g us-east5 (H100 $5.71 + vCPU/RAM).
 
 | Point | Shape | Conc | OK / failed | Decisions/s | Peak 10 s | p50 s | p90 s | p99 s | queue / prefill / head ms (p50) | busy retries | $ / 1,000 | GPU util mean / max, mem max |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| c1 | 1.5k (1.5k measured) tok × 1 q | 1 | 1098 / 0 | 9.15 | 9.90 | 0.11 | 0.12 | 0.13 | 0 / 105 / 3 | 0 | $0.194 | 65 % / 78 %, 24.3 GB |
-| c4 | 1.5k (1.5k measured) tok × 1 q | 4 | 1188 / 0 | 9.87 | 10.00 | 0.41 | 0.42 | 0.43 | 304 / 97 / 3 | 0 | $0.180 | 74 % / 94 %, 24.3 GB |
-| t500q1-cold | 0.5k (0.6k measured) tok × 1 q | 4 | 1288 / 0 | 10.70 | 10.80 | 0.38 | 0.38 | 0.39 | 281 / 90 / 3 | 0 | $0.166 | 86 % / 87 %, 24.3 GB |
-| t4000q1-cold | 4k (3.3k measured) tok × 1 q | 4 | 616 / 0 | 5.10 | 5.20 | 0.80 | 0.85 | 0.90 | 606 / 206 / 3 | 0 | $0.349 | 82 % / 97 %, 24.5 GB |
-| t16000q1-cold | 16k (8.4k measured) tok × 1 q | 4 | 258 / 0 | 2.12 | 2.40 | 1.90 | 2.48 | 2.92 | 1,407 / 480 / 4 | 0 | $0.841 | 85 % / 97 %, 24.8 GB |
-| t4000q4-cold | 4k (4.0k measured) tok × 4 q | 4 | 513 / 0 | 17.00 | 17.20 | 0.94 | 0.98 | 1.02 | 708 / 220 / 6 | 0 | $0.105 | 81 % / 96 %, 24.5 GB |
-| t4000q13-cold | 4k (5.0k measured) tok × 13 q | 4 | 368 / 0 | 39.45 | 40.30 | 1.32 | 1.33 | 1.33 | 987 / 321 / 10 | 0 | $0.0451 | 90 % / 99 %, 24.5 GB |
-| t1500q1-warm | 1.5k (1.4k measured) tok × 1 q warm | 4 | 295577 / 0 | 2,463 | 2,558 | 0.00 | 0.00 | 0.00 | 0 / 0 / 0, cached 100% | 0 | $0.0007 | 4 % / 97 %, 24.4 GB |
-| router-cold | router (8,697 tok) | 4 | 244 / 0 | 8.73 | 9.10 | 2.03 | 2.25 | 2.26 | 1,490 / 515 / 12 | 0 | $0.204 | 87 % / 97 %, 24.9 GB |
+| c1 | 1.5k (1.7k measured) tok × 1 q | 1 | 1088 / 0 | 9.06 | 9.10 | 0.11 | 0.12 | 0.12 | 0 / 105 / 3 | 0 | $0.196 | 72 % / 81 %, 24.4 GB |
+| c4 | 1.5k (1.7k measured) tok × 1 q | 4 | 1079 / 0 | 8.96 | 9.10 | 0.45 | 0.46 | 0.47 | 332 / 108 / 3 | 0 | $0.198 | 73 % / 84 %, 24.4 GB |
+| t500q1-cold | 0.5k (0.7k measured) tok × 1 q | 1 | 1205 / 0 | 10.04 | 10.10 | 0.10 | 0.10 | 0.10 | 0 / 96 / 3 | 0 | $0.177 | 84 % / 85 %, 24.3 GB |
+| t4000q1-cold | 4k (4.2k measured) tok × 1 q | 1 | 465 / 0 | 3.87 | 3.90 | 0.26 | 0.28 | 0.31 | 0 / 256 / 3 | 0 | $0.460 | 84 % / 99 %, 24.5 GB |
+| t16000q1-cold | 16k (15.9k measured) tok × 1 q | 1 | 138 / 0 | 1.14 | 1.20 | 0.87 | 0.94 | 0.98 | 0 / 855 / 4 | 0 | $1.554 | 95 % / 99 %, 25.0 GB |
+| t4000q4-cold | 4k (4.6k measured) tok × 4 q | 1 | 403 / 0 | 13.42 | 13.60 | 0.29 | 0.32 | 0.33 | 0 / 278 / 6 | 0 | $0.132 | 86 % / 99 %, 24.5 GB |
+| t4000q13-cold | 4k (5.5k measured) tok × 13 q | 1 | 383 / 0 | 41.44 | 41.60 | 0.31 | 0.32 | 0.32 | 0 / 297 / 13 | 0 | $0.0429 | 80 % / 98 %, 24.6 GB |
+| t1500q1-warm | 1.5k (1.7k measured) tok × 1 q warm | 1 | 125598 / 0 | 1,047 | 1,120 | 0.00 | 0.00 | 0.00 | 0 / 0 / 0, cached 100% | 0 | $0.0017 | 3 % / 67 %, 24.5 GB |
+| router-cold | router (8,694 tok) | 1 | 240 / 0 | 8.63 | 9.10 | 0.54 | 0.75 | 0.76 | 0 / 512 / 13 | 0 | $0.206 | 97 % / 99 %, 25.0 GB |
 
 ### h100-clef-27b
 
-1x H100 80GB, Psionic Clef 27B Q4_K_M CUDA. Model `clef`, plan `full`, 2026-10-11, run on `oa-decision-h100.us-east5-a.c.openagentsgemini.internal`. Price: spot a3-highgpu-1g us-east5 (H100 $5.71 + vCPU/RAM).
+1x H100 80GB, Psionic Clef 27B Q4_K_M CUDA. Model `clef`, plan `full`, 2026-10-24, run on `oa-decision-h100.us-east5-a.c.openagentsgemini.internal`. Price: spot a3-highgpu-1g us-east5 (H100 $5.71 + vCPU/RAM).
 
 | Point | Shape | Conc | OK / failed | Decisions/s | Peak 10 s | p50 s | p90 s | p99 s | queue / prefill / head ms (p50) | busy retries | $ / 1,000 | GPU util mean / max, mem max |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| c1 | 1.5k (1.5k measured) tok × 1 q | 1 | 383 / 0 | 3.83 | 3.90 | 0.26 | 0.28 | 0.30 | 0 / 253 / 3 | 0 | $0.464 | 89 % / 100 %, 26.0 GB |
-| c4 | 1.5k (1.5k measured) tok × 1 q | 4 | 388 / 0 | 3.84 | 3.90 | 1.04 | 1.08 | 1.13 | 778 / 254 / 3 | 0 | $0.463 | 95 % / 100 %, 26.0 GB |
-| t500q1-cold | 0.5k (0.6k measured) tok × 1 q | 4 | 391 / 0 | 3.87 | 3.90 | 1.03 | 1.06 | 1.08 | 777 / 251 / 3 | 0 | $0.459 | 94 % / 100 %, 25.9 GB |
-| t4000q1-cold | 4k (3.3k measured) tok × 1 q | 4 | 186 / 0 | 1.82 | 2.00 | 2.26 | 2.40 | 2.48 | 1,704 / 573 / 3 | 0 | $0.975 | 92 % / 100 %, 26.5 GB |
-| t16000q1-cold | 16k (8.2k measured) tok × 1 q | 4 | 74 / 0 | 0.72 | 0.90 | 5.47 | 7.54 | 9.06 | 3,929 / 1,156 / 4 | 0 | $2.483 | 91 % / 100 %, 27.3 GB |
-| t4000q13-cold | 4k (5.0k measured) tok × 13 q | 4 | 107 / 0 | 13.48 | 14.30 | 3.87 | 3.91 | 3.92 | 2,903 / 965 / 10 | 0 | $0.132 | 94 % / 100 %, 26.6 GB |
-| router-cold | router (8,691 tok) | 4 | 72 / 0 | 2.98 | 3.80 | 5.92 | 6.60 | 6.60 | 4,367 / 1,531 / 12 | 0 | $0.598 | 99 % / 100 %, 27.3 GB |
+| c1 | 1.5k (1.7k measured) tok × 1 q | 1 | 343 / 0 | 3.42 | 3.50 | 0.29 | 0.31 | 0.33 | 0 / 286 / 3 | 0 | $0.520 | 81 % / 100 %, 26.2 GB |
+| c4 | 1.5k (1.7k measured) tok × 1 q | 4 | 347 / 0 | 3.43 | 3.50 | 1.16 | 1.20 | 1.23 | 869 / 287 / 3 | 0 | $0.518 | 87 % / 100 %, 26.2 GB |
+| t500q1-cold | 0.5k (0.7k measured) tok × 1 q | 4 | 370 / 0 | 3.66 | 3.70 | 1.10 | 1.10 | 1.11 | 820 / 271 / 3 | 0 | $0.486 | 90 % / 100 %, 26.0 GB |
+| t4000q1-cold | 4k (4.2k measured) tok × 1 q | 4 | 141 / 0 | 1.37 | 1.40 | 2.92 | 3.04 | 3.17 | 2,196 / 727 / 3 | 0 | $1.297 | 88 % / 100 %, 26.6 GB |
+| t16000q1-cold | 16k (15.8k measured) tok × 1 q | 4 | 40 / 0 | 0.36 | 0.40 | 10.95 | 11.31 | 11.52 | 8,218 / 2,762 / 4 | 0 | $4.871 | 98 % / 100 %, 27.5 GB |
+| t4000q13-cold | 4k (5.5k measured) tok × 13 q | 4 | 117 / 0 | 14.79 | 15.60 | 3.52 | 3.56 | 3.59 | 2,634 / 866 / 13 | 0 | $0.120 | 92 % / 100 %, 26.8 GB |
+| router-cold | router (8,689 tok) | 4 | 72 / 0 | 2.95 | 3.80 | 5.96 | 6.64 | 6.65 | 4,398 / 1,540 / 13 | 0 | $0.602 | 99 % / 100 %, 27.4 GB |
 
 ### sealed-gpu
 
-oa-att-h100-1: H100 in CC mode + TDX, Psionic Clef-Flash CUDA, NIP-ATT sealed. Model `clef-flash`, plan `full`, 2026-10-11, run on `oa-decision-h100.us-east5-a.c.openagentsgemini.internal`. Price: spot a3-highgpu-1g us-east5 + Confidential Computing surcharge.
+oa-att-h100-1: H100 in CC mode + TDX, Psionic Clef-Flash CUDA, NIP-ATT sealed. Model `clef-flash`, plan `full`, 2026-10-24, run on `oa-decision-h100.us-east5-a.c.openagentsgemini.internal`. Price: spot a3-highgpu-1g us-east5 + Confidential Computing surcharge.
 
 | Point | Shape | Conc | OK / failed | Decisions/s | Peak 10 s | p50 s | p90 s | p99 s | verify / seal / relay ms (p50) | busy retries | $ / 1,000 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| c1 | 1.5k (1.5k measured) tok × 1 q | 1 | 130 / 0 | 1.44 | 1.50 | 0.70 | 0.73 | 0.83 | 328 / 0 / 366 | 0 | $1.321 |
-| c2 | 1.5k (1.5k measured) tok × 1 q | 2 | 266 / 0 | 2.94 | 3.00 | 0.68 | 0.72 | 0.78 | 315 / 0 / 355 | 0 | $0.646 |
-| c4 | 1.5k (1.5k measured) tok × 1 q | 4 | 277 / 0 | 2.38 | 3.20 | 0.66 | 0.71 | 0.76 | 308 / 0 / 347 | 2 | $0.795 |
-| c8 | 1.5k (1.5k measured) tok × 1 q | 8 | 279 / 4 (503:['busy', 'no free slot'] ×4) | 1.21 | 3.20 | 0.65 | 0.70 | 0.78 | 303 / 0 / 337 | 6 | $1.569 |
-| c16 | 1.5k (1.5k measured) tok × 1 q | 16 | 325 / 182 (0:oa-att: the relay closed the query: "rate-limited: REQ rate exceeded" ×173, 503:['busy', 'no free slot'] ×9) | 1.41 | 4.70 | 0.66 | 0.71 | 116 | 310 / 0 / 349 | 14 | $1.348 |
-| t500q1-cold | 0.5k (0.6k measured) tok × 1 q | 2 | 282 / 0 | 3.11 | 3.20 | 0.64 | 0.69 | 0.73 | 299 / 0 / 331 | 0 | $0.610 |
-| t4000q1-cold | 4k (3.3k measured) tok × 1 q | 2 | 239 / 0 | 2.63 | 2.80 | 0.76 | 0.82 | 0.93 | 302 / 0 / 450 | 0 | $0.720 |
-| t16000q1-cold | 16k (8.3k measured) tok × 1 q | 2 | 154 / 0 | 1.69 | 1.90 | 1.24 | 1.56 | 1.86 | 293 / 0 / 940 | 0 | $1.126 |
-| t1500q1-warm | 1.5k (1.4k measured) tok × 1 q warm | 2 | 351 / 0 | 3.88 | 4.00 | 0.51 | 0.55 | 0.63 | 281 / 0 / 214 | 0 | $0.489 |
+| c1 | 1.5k (1.7k measured) tok × 1 q | 1 | 140 / 0 | 1.55 | 1.60 | 0.65 | 0.70 | 0.76 | 295 / 0 / 338 | 0 | $1.227 |
+| c2 | 1.5k (1.7k measured) tok × 1 q | 2 | 259 / 0 | 2.86 | 3.00 | 0.69 | 0.74 | 0.79 | 324 / 0 / 370 | 0 | $0.663 |
+| c4 | 1.5k (1.7k measured) tok × 1 q | 4 | 267 / 2 (503:['busy', 'no free slot'] ×2) | 2.31 | 3.10 | 0.67 | 0.71 | 0.88 | 313 / 0 / 355 | 0 | $0.820 |
+| c8 | 1.5k (1.7k measured) tok × 1 q | 8 | 285 / 6 (503:['busy', 'no free slot'] ×6) | 2.47 | 3.30 | 0.63 | 0.68 | 0.73 | 284 / 0 / 329 | 0 | $0.768 |
+| t500q1-cold | 0.5k (0.7k measured) tok × 1 q | 2 | 300 / 0 | 3.32 | 3.40 | 0.59 | 0.63 | 0.68 | 278 / 0 / 307 | 0 | $0.572 |
+| t4000q1-cold | 4k (4.2k measured) tok × 1 q | 2 | 235 / 0 | 2.59 | 2.60 | 0.77 | 0.81 | 0.86 | 276 / 0 / 483 | 0 | $0.732 |
+| t16000q1-cold | 16k (14.5k measured) tok × 1 q | 2 | 1 / 2 (503:['not_admitted', 'the prompt is 16555 Clef tokens; this server admits 16384 (sen ×1, 503:['not_admitted', 'the prompt is 16490 Clef tokens; this server admits 16384 (sen ×1) | 0.01 | 0.10 | 1.47 | 1.47 | 1.47 | 299 / 0 / 1165 | 0 | $210.80 |
+| t1500q1-warm | 1.5k (1.7k measured) tok × 1 q warm | 2 | 349 / 0 | 3.86 | 4.10 | 0.51 | 0.56 | 0.70 | 282 / 0 / 209 | 0 | $0.492 |
 
 ### sealed-cpu
 
@@ -443,6 +442,7 @@ every run in Cloud Storage (scheduled and by hand).
 | jev | 2026-10-21 | daily | 33.63 | 4 | 0.23 s | $0.0756 |
 | jev | 2026-10-22 | daily | 26.14 | 4 | 0.27 s | $0.0757 |
 | jev | 2026-10-23 | daily | 30.11 | 4 | 0.23 s | $0.0757 |
+| jev | 2026-10-24 | daily | 31.56 | 4 | 0.21 s | $0.0757 |
 | gateway-jev | 2026-10-11 | full | 86.39 | 32 | 0.62 s | $0.0662 |
 | gateway-jev | 2026-10-12 | daily | 1.85 | 1 | 0.71 s | $0.0717 |
 | gateway-jev | 2026-10-13 | daily | 9.87 | 1 | 0.12 s | $0.0718 |
@@ -456,6 +456,7 @@ every run in Cloud Storage (scheduled and by hand).
 | gateway-jev | 2026-10-21 | daily | 10.15 | 1 | 0.12 s | $0.0719 |
 | gateway-jev | 2026-10-22 | daily | 10.09 | 1 | 0.13 s | $0.0718 |
 | gateway-jev | 2026-10-23 | daily | 10.14 | 1 | 0.12 s | $0.0719 |
+| gateway-jev | 2026-10-24 | daily | 9.79 | 1 | 0.12 s | $0.0718 |
 | gateway-pylon | 2026-10-11 | full | 4.14 | 4 | 1.24 s | $0.0081 |
 | gateway-pylon | 2026-10-12 | daily | 1.45 | 4 | 3.65 s | $0.0229 |
 | gateway-pylon | 2026-10-13 | daily | 4.29 | 1 | 0.55 s | $0.0078 |
@@ -469,6 +470,7 @@ every run in Cloud Storage (scheduled and by hand).
 | gateway-pylon | 2026-10-21 | daily | 18.82 | 4 | 0.40 s | $0.0018 |
 | gateway-pylon | 2026-10-22 | daily | 18.89 | 4 | 0.40 s | $0.0018 |
 | gateway-pylon | 2026-10-23 | daily | 18.89 | 4 | 0.40 s | $0.0018 |
+| gateway-pylon | 2026-10-24 | daily | 18.84 | 4 | 0.40 s | $0.0018 |
 | vertex-gemini | 2026-10-11 | full | 3.50 | 16 | 6.35 s | $1.722 |
 | vertex-gemini | 2026-10-12 | daily | 1.39 | 4 | 8.88 s | $1.895 |
 | vertex-gemini | 2026-10-13 | daily | 1.41 | 4 | 6.63 s | $1.829 |
@@ -482,11 +484,15 @@ every run in Cloud Storage (scheduled and by hand).
 | vertex-gemini | 2026-10-21 | daily | 0.83 | 4 | 20.91 s | $1.789 |
 | vertex-gemini | 2026-10-22 | daily | 0.14 | 4 | 116 s | $1.671 |
 | vertex-gemini | 2026-10-23 | daily | 0.32 | 4 | 76.50 s | $1.856 |
+| vertex-gemini | 2026-10-24 | daily | 0.26 | 4 | 118 s | $1.634 |
 | coderos-clef | 2026-10-11 | full | 4.21 | 1 | 0.27 s | $0.0079 |
 | coderos-llamacpp | 2026-10-11 | full | 3.14 | 1 | 0.66 s | $0.0106 |
 | h100-clef-flash | 2026-10-11 | full | 9.87 | 4 | 0.43 s | $0.180 |
+| h100-clef-flash | 2026-10-24 | full | 9.06 | 1 | 0.12 s | $0.196 |
 | h100-clef-27b | 2026-10-11 | full | 3.83 | 1 | 0.30 s | $0.464 |
+| h100-clef-27b | 2026-10-24 | full | 3.42 | 1 | 0.33 s | $0.520 |
 | sealed-gpu | 2026-10-11 | full | 2.94 | 2 | 0.78 s | $0.646 |
+| sealed-gpu | 2026-10-24 | full | 2.86 | 2 | 0.79 s | $0.663 |
 | sealed-cpu | 2026-10-11 | full | 0.04 | 1 | 31.28 s | $3.472 |
 | sealed-cpu | 2026-10-12 | daily | 0.03 | 1 | 32.81 s | $3.906 |
 | sealed-cpu | 2026-10-13 | daily | 0.03 | 1 | 32.99 s | $4.032 |
@@ -500,6 +506,7 @@ every run in Cloud Storage (scheduled and by hand).
 | sealed-cpu | 2026-10-21 | daily | 0.03 | 1 | 33.23 s | $4.032 |
 | sealed-cpu | 2026-10-22 | daily | 0.03 | 1 | 31.99 s | $3.906 |
 | sealed-cpu | 2026-10-23 | daily | 0.03 | 1 | 32.59 s | $3.906 |
+| sealed-cpu | 2026-10-24 | daily | 0.03 | 1 | 32.51 s | $3.906 |
 | coderos-clef-prod | 2026-10-12 | daily | 3.78 | 1 | 0.28 s | $0.0088 |
 | coderos-clef-prod | 2026-10-13 | daily | 3.75 | 1 | 0.29 s | $0.0089 |
 | coderos-clef-prod | 2026-10-14 | daily | 3.80 | 1 | 0.28 s | $0.0088 |
