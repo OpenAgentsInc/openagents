@@ -24,7 +24,6 @@ struct Site {
 }
 
 fn site() -> Site {
-    kept::start();
     let root = tempfile::tempdir().unwrap();
     let mut config = Config::development(root.path().join("tasks"));
     config.analytics = Arc::new(Analytics::new(None, Some(STAFF_KEY)));
@@ -43,14 +42,29 @@ struct Reply {
 }
 
 impl Reply {
-    /// The playtest cookie this reply set, as `name=value`.
+    /// The cookies this reply kept, as a `Cookie` header, when it set the
+    /// playtest's.
     fn cookie(&self) -> Option<String> {
+        let kept: Vec<&str> = self
+            .headers
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .filter(|v| !v.contains("Max-Age=0"))
+            .map(|v| v.split(';').next().unwrap())
+            .collect();
+        kept.iter()
+            .any(|v| v.starts_with("oa_playtest="))
+            .then(|| kept.join("; "))
+    }
+
+    fn set_cookie(&self, name: &str) -> Option<String> {
         self.headers
             .get_all(header::SET_COOKIE)
             .iter()
             .filter_map(|v| v.to_str().ok())
-            .find(|v| v.starts_with("oa_playtest="))
-            .map(|v| v.split(';').next().unwrap().to_owned())
+            .find(|v| v.starts_with(&format!("{name}=")))
+            .map(str::to_owned)
     }
 }
 
@@ -100,9 +114,8 @@ impl Site {
 
 fn session_id(cookie: &str) -> String {
     cookie
-        .trim_start_matches("oa_playtest=")
-        .split('.')
-        .next()
+        .split("; ")
+        .find_map(|pair| pair.strip_prefix("oa_playtest="))
         .unwrap()
         .to_owned()
 }
@@ -233,9 +246,20 @@ async fn a_playtest_runs_from_the_intro_through_the_house_to_the_survey() {
     let cookie = started.cookie().unwrap();
     let id = session_id(&cookie);
     assert!(super::valid_session(&id), "{id}");
-    assert!(cookie.ends_with(".1.discord"));
-    let set = started.headers[header::SET_COOKIE].to_str().unwrap();
-    assert!(set.contains("HttpOnly") && set.contains("SameSite=Lax"));
+    // The research script reads the session's cookie; the source's isn't
+    // for scripts.
+    let set = started.set_cookie("oa_playtest").unwrap();
+    assert!(!set.contains("HttpOnly") && set.contains("SameSite=Lax"));
+    let from = started.set_cookie("oa_playtest_from").unwrap();
+    assert!(from.starts_with("oa_playtest_from=discord;") && from.contains("HttpOnly"));
+    // Recording on clears an earlier opt-out.
+    assert!(
+        started
+            .set_cookie("oa_research_optout")
+            .unwrap()
+            .contains("Max-Age=0")
+    );
+    assert!(cookie.contains("oa_playtest_from=discord"));
 
     // The house shows the Finish playtest button only during a playtest.
     let house = site.get(super::HOUSE, client, Some(&cookie)).await;
@@ -258,7 +282,7 @@ async fn a_playtest_runs_from_the_intro_through_the_house_to_the_survey() {
             .unwrap()
     };
     assert_eq!(
-        site.send(beacon("finish_prompted")).await.status,
+        site.send(beacon("tutorial_finish_prompted")).await.status,
         StatusCode::NO_CONTENT
     );
     // The page can't claim a step the server owns.
@@ -341,10 +365,10 @@ async fn a_playtest_runs_from_the_intro_through_the_house_to_the_survey() {
         kept::steps(&id),
         [
             Step::PlaytestStarted,
-            Step::FinishPrompted,
-            Step::FinishClicked,
-            Step::SurveyViewed,
-            Step::SurveySubmitted,
+            Step::TutorialFinishPrompted,
+            Step::TutorialFinishClicked,
+            Step::SurveyStarted,
+            Step::SurveyCompleted,
         ]
     );
 }
@@ -355,7 +379,7 @@ async fn a_playtest_without_recording_and_a_browser_that_declines_send_no_sessio
     let client = "203.0.113.5";
     let started = site.post("/playtest/start", client, None, "record=0").await;
     let cookie = started.cookie().unwrap();
-    assert!(cookie.contains(".0."));
+    assert!(cookie.contains("oa_research_optout=1"));
     let id = session_id(&cookie);
     site.get("/playtest/survey?from=finish", client, Some(&cookie))
         .await;
@@ -368,7 +392,8 @@ async fn a_playtest_without_recording_and_a_browser_that_declines_send_no_sessio
         )
         .await;
     assert_eq!(reply.status, StatusCode::OK);
-    assert!(kept::steps(&id).is_empty());
+    // Only the choice itself is sent.
+    assert_eq!(kept::steps(&id), [Step::PlaytestOptedOut]);
     let surveys: Vec<Survey> = store::all(&site.store, store::SURVEYS).await.unwrap();
     assert!(!surveys[0].recorded);
 
@@ -410,10 +435,9 @@ async fn the_survey_checks_its_answers_and_works_without_a_playtest_cookie() {
         .await;
     assert_eq!(follow.status, StatusCode::BAD_REQUEST);
     assert!(follow.body.contains("Add your email"));
-    // Reaching the survey directly starts a playtest that records nothing.
+    // Reaching the survey directly starts a playtest for it.
     let direct = site.get(super::SURVEY, client, None).await;
     let cookie = direct.cookie().unwrap();
-    assert!(cookie.contains(".0."));
     let kept = site
         .post(
             super::SURVEY,
@@ -573,18 +597,29 @@ async fn the_export_is_for_staff_only() {
 
 #[test]
 fn a_cookie_is_read_back_only_when_well_formed() {
-    let session = super::Session::new(true, "Twitter");
-    let set = session.cookie(true);
-    let set = set.to_str().unwrap();
-    assert!(set.contains("; Secure"));
-    let pair = set.split(';').next().unwrap();
+    let session = super::Session::new("Twitter");
+    let set: Vec<String> = session
+        .cookies(true)
+        .iter()
+        .map(|v| v.to_str().unwrap().to_owned())
+        .collect();
+    assert!(set.iter().all(|v| v.contains("; Secure")));
+    // What the research script accepts: 8 to 64 of A-Z a-z 0-9 _ -.
+    assert!(crate::research::ingest::valid_session(&session.id));
+    let pairs: Vec<&str> = set.iter().map(|v| v.split(';').next().unwrap()).collect();
     let mut headers = HeaderMap::new();
-    headers.insert(header::COOKIE, format!("other=1; {pair}").parse().unwrap());
+    headers.insert(
+        header::COOKIE,
+        format!("other=1; {}", pairs.join("; ")).parse().unwrap(),
+    );
     assert_eq!(super::session(&headers), Some(session));
+    assert!(!super::opted_out(&headers));
+    headers.insert(header::COOKIE, "oa_research_optout=1".parse().unwrap());
+    assert!(super::opted_out(&headers));
     for bad in [
-        "oa_playtest=pt_123.1.x",
-        "oa_playtest=pt_0123456789abcdef01234567.2.x",
-        "oa_playtest=xx_0123456789abcdef01234567.1.x",
+        "oa_playtest=pt_123",
+        "oa_playtest=pt_0123456789abcdef0123456z",
+        "oa_playtest=xx_0123456789abcdef01234567",
     ] {
         let mut headers = HeaderMap::new();
         headers.insert(header::COOKIE, bad.parse().unwrap());

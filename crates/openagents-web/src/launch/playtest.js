@@ -1,13 +1,23 @@
-// The playtest's page script (crate::playtest). In the house it offers the
+// The launch playtest's page script (crate::launch). On the intro it hands
+// the recording choice to the research script; in the house it offers the
 // survey after a few minutes or at the tutorial's end; on the thank-you
 // page it copies the share link. It reports only the steps the server
-// can't see, and only for a playtest the visitor agreed to have recorded
-// (the server checks the cookie).
+// can't see, and the server drops them when the visitor opted out.
 const report = (step) => {
   try {
     navigator.sendBeacon("/playtest/events", new Blob([JSON.stringify({ step })], { type: "application/json" }));
   } catch {}
 };
+
+// The intro's two start buttons: the research script keeps the choice
+// (the server sets the same cookie when the form arrives).
+for (const button of document.querySelectorAll('button[name="record"]')) {
+  button.addEventListener("click", () => {
+    try {
+      window.oaResearch?.optOut(button.value === "0");
+    } catch {}
+  });
+}
 
 const finish = document.getElementById("playtest-finish");
 const prompt = document.getElementById("playtest-prompt");
@@ -20,7 +30,7 @@ if (finish && prompt) {
     offered = true;
     prompt.hidden = false;
     finish.classList.add("playtest-ready");
-    report("finish_prompted");
+    report("tutorial_finish_prompted");
   };
   setTimeout(offer, Number(finish.dataset.promptAfter || 240) * 1000);
   // The tutorial's last step shows the house's Save, Publish, and Share

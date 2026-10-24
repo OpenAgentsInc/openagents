@@ -80,7 +80,7 @@ async fn page(
             }
         }.into_string(), "text/html; charset=utf-8", None);
     };
-    render(&app, r, None, crate::playtest::session(&headers).is_some())
+    render(&app, r, None, crate::launch::session(&headers).is_some())
 }
 pub(crate) fn personal_page(app: &App, planet: &aethyrforge_host::PersonalPlanet) -> Response {
     let Some(runtime) = app.config.verse_personal_runtime.as_ref() else {
@@ -106,7 +106,7 @@ pub(crate) fn personal_page(app: &App, planet: &aethyrforge_host::PersonalPlanet
     render(app, r, Some(planet), false)
 }
 /// `playtest`: the visitor is in a launch playtest, so the page shows the
-/// Finish playtest button ([`crate::playtest::finish_controls`]).
+/// Finish playtest button ([`crate::launch::finish_controls`]).
 fn render(
     app: &App,
     r: Release,
@@ -412,7 +412,7 @@ fn render(
                 p { "Exact playable version" } a id="publish-share-link" {}
                 button id="publish-share-close" type="button" { "Close" }
             }
-            @if playtest { (crate::playtest::finish_controls()) }
+            @if playtest { (crate::launch::finish_controls()) }
             script id="creator-assets" type="application/json" {(PreEscaped(assets_json))}
             script id="engine-config" type="application/json" { (PreEscaped(text)) }
             script type="module" src=(if personal { "/new-lander/planet/boot.js" } else { "/new-lander/house/boot.js" }) {}

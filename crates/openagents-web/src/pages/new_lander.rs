@@ -3,7 +3,7 @@
 //!
 //! The homepage's first action is Play the beta (the playtest,
 //! [`crate::playtest`]); the second is the waitlist form, which posts to
-//! [`crate::playtest::WAITLIST`]. It loads no script. The Grid homepage
+//! [`crate::launch::WAITLIST`]. It loads no script. The Grid homepage
 //! that `/` served before moved to `/home` ([`super::grid_home`]); a `/`
 //! address carrying one of the Grid's own query parameters (a chat, the
 //! suggestion box, Game Lab, a project) is sent there with its query.
@@ -55,9 +55,9 @@ pub(crate) fn header(verse: bool, account: bool, back: &str) -> Markup {
             nav.lp-account aria-label="Account" {
                 @if account {
                     a.hud-button.hud-ghost href=(format!("/login?return_to={back}")) { "Log in" }
-                    a.hud-button href=(format!("/signup?return_to={}", crate::playtest::PROFILE_RETURN)) { "Sign up" }
+                    a.hud-button href=(format!("/signup?return_to={}", crate::launch::PROFILE_RETURN)) { "Sign up" }
                 } @else if !verse {
-                    a.hud-button href=(crate::playtest::INTRO) { "Play the beta" }
+                    a.hud-button href=(crate::launch::INTRO) { "Play the beta" }
                 }
             }
         }
@@ -98,7 +98,7 @@ fn poster() -> Markup {
 /// The launch page. `source` is where the visitor came from (already
 /// cleaned); the Play links and the waitlist carry it on.
 fn marketing_content(source: &str) -> Markup {
-    let play = crate::playtest::intro_href("home", source);
+    let play = crate::launch::intro_href("home", source);
     html! {
         main.lp #main {
             section.lp-hero aria-labelledby="hero-title" {
@@ -122,7 +122,7 @@ fn marketing_content(source: &str) -> Markup {
                     a.hud-card.lp-product href="/docs/api" { span.hud-index { "03 / BUILD" } h3 { "For developers" } p { "Connect your ideas to the OpenAgents API." } span.lp-product-action { "Explore the API ↗" } }
                 }
             }
-            (crate::playtest::waitlist_section(source, None, &crate::playtest::WaitlistDraft::default()))
+            (crate::launch::waitlist_section(source, None, &crate::launch::WaitlistDraft::default()))
             section.lp-invitation { p.hud-label { "MAKE ROOM FOR YOUR IMAGINATION" } h2 { "Something starts when you enter." } a.hud-button.hud-primary.hud-large href=(play) { span { "Play the beta" } span aria-hidden="true" { "↗" } } }
         }
         (footer())
@@ -369,10 +369,10 @@ pub(crate) fn source_of(query: Option<&str>) -> String {
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.as_str())
     };
-    crate::playtest::forms::source(find("utm_source").or_else(|| find("ref")).unwrap_or(""))
+    crate::launch::forms::source(find("utm_source").or_else(|| find("ref")).unwrap_or(""))
 }
 
-async fn home(State(app): State<App>, headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
+async fn home(State(app): State<App>, RawQuery(query): RawQuery) -> Response {
     if let Some(query) = query.as_deref()
         && url::form_urlencoded::parse(query.as_bytes())
             .any(|(k, _)| GRID_QUERY.contains(&k.as_ref()))
@@ -380,25 +380,16 @@ async fn home(State(app): State<App>, headers: HeaderMap, RawQuery(query): RawQu
         return Redirect::temporary(&format!("{}?{query}", super::grid_home::GRID_HOME_PATH))
             .into_response();
     }
-    launch(&app, &headers, query.as_deref(), Surface::Home)
+    launch(&app, query.as_deref(), Surface::Home)
 }
 
-async fn marketing(
-    State(app): State<App>,
-    headers: HeaderMap,
-    RawQuery(query): RawQuery,
-) -> Response {
-    launch(&app, &headers, query.as_deref(), Surface::Preview)
+async fn marketing(State(app): State<App>, RawQuery(query): RawQuery) -> Response {
+    launch(&app, query.as_deref(), Surface::Preview)
 }
 
-fn launch(app: &App, headers: &HeaderMap, query: Option<&str>, surface: Surface) -> Response {
+fn launch(app: &App, query: Option<&str>, surface: Surface) -> Response {
     let source = source_of(query);
-    crate::playtest::step(
-        headers,
-        crate::playtest::events::Step::LandingViewed,
-        None,
-        &source,
-    );
+
     let account = app
         .config
         .features

@@ -49,7 +49,7 @@ const PAGES: [(&str, &str, &str); 5] = [
     ),
     (
         "Launch sign-ups",
-        crate::playtest::ADMIN,
+        crate::launch::ADMIN,
         "The waitlist, profiles, and playtest surveys, with downloads.",
     ),
     (

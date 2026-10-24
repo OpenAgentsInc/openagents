@@ -38,7 +38,7 @@ use sha2::{Digest, Sha256};
 
 use crate::App;
 use crate::pages::new_lander::{Surface, footer, launch_document};
-use events::{Event, Step};
+use events::Step;
 use forms::{ENGINES, EXPERIENCE, FINISHED, Fields, ROLES};
 use store::{Kept, Profile, Survey};
 
@@ -60,7 +60,10 @@ const HOUSE: &str = crate::pages::new_lander_house::HOUSE;
 /// What a visitor shares with a friend.
 const SHARE: &str = "https://openagents.com/playtest?utm_source=friend&utm_medium=share&utm_campaign=playtest-launch";
 
-const COOKIE: &str = "oa_playtest";
+const COOKIE: &str = crate::research::SESSION_COOKIE;
+const FROM_COOKIE: &str = "oa_playtest_from";
+/// The research script's opt-out cookie (`/static/r.js`).
+const OPT_OUT_COOKIE: &str = "oa_research_optout";
 /// A playtest session lasts a week.
 const COOKIE_AGE: u64 = 7 * 24 * 3600;
 /// Seconds in the house before the survey is offered.
@@ -100,50 +103,41 @@ pub(crate) fn owns(path: &str) -> bool {
 
 // --- Sessions ------------------------------------------------------------
 
-/// A visitor's playtest, from the `oa_playtest` cookie.
+/// A visitor's playtest: the id in `oa_playtest` (which the research script
+/// reads too, so it isn't `HttpOnly`) and where they came from, in
+/// `oa_playtest_from`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Session {
     pub(crate) id: String,
-    /// Whether they agreed to have their steps recorded.
-    pub(crate) recorded: bool,
     pub(crate) source: String,
 }
 
 impl Session {
-    fn new(recorded: bool, source: &str) -> Self {
+    fn new(source: &str) -> Self {
         let random = crate::cloud::byo::fresh_request();
         Session {
             id: format!("pt_{}", &random[..24]),
-            recorded,
             source: forms::source(source),
         }
     }
 
-    fn cookie(&self, secure: bool) -> HeaderValue {
-        let value = format!(
-            "{COOKIE}={}.{}.{}; Max-Age={COOKIE_AGE}; Path=/; HttpOnly; SameSite=Lax{}",
-            self.id,
-            u8::from(self.recorded),
-            self.source,
-            if secure { "; Secure" } else { "" }
-        );
-        HeaderValue::from_str(&value).expect("a cleaned cookie is valid")
-    }
-
-    fn parse(value: &str) -> Option<Self> {
-        let mut parts = value.splitn(3, '.');
-        let id = parts.next()?;
-        let recorded = match parts.next()? {
-            "1" => true,
-            "0" => false,
-            _ => return None,
-        };
-        let source = parts.next().unwrap_or("");
-        valid_session(id).then(|| Session {
-            id: id.to_owned(),
-            recorded,
-            source: forms::source(source),
-        })
+    /// The `Set-Cookie` values that keep this session.
+    fn cookies(&self, secure: bool) -> Vec<HeaderValue> {
+        let secure = if secure { "; Secure" } else { "" };
+        let mut values = vec![format!(
+            "{COOKIE}={}; Max-Age={COOKIE_AGE}; Path=/; SameSite=Lax{secure}",
+            self.id
+        )];
+        if !self.source.is_empty() {
+            values.push(format!(
+                "{FROM_COOKIE}={}; Max-Age={COOKIE_AGE}; Path=/; HttpOnly; SameSite=Lax{secure}",
+                self.source
+            ));
+        }
+        values
+            .into_iter()
+            .map(|value| HeaderValue::from_str(&value).expect("a cleaned cookie is valid"))
+            .collect()
     }
 }
 
@@ -157,46 +151,72 @@ pub(crate) fn valid_session(id: &str) -> bool {
     })
 }
 
-/// The request's playtest session, if it carries one.
-pub(crate) fn session(headers: &HeaderMap) -> Option<Session> {
+fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|value| value.to_str().ok())
         .flat_map(|value| value.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .find(|(name, _)| *name == COOKIE)
-        .and_then(|(_, value)| Session::parse(value))
+        .find(|(key, _)| *key == name)
+        .map(|(_, value)| value.trim())
 }
 
-/// Whether the browser asks not to be tracked.
-fn declines(headers: &HeaderMap) -> bool {
-    ["dnt", "sec-gpc"]
-        .iter()
-        .any(|name| headers.get(*name).is_some_and(|v| v.as_bytes() == b"1"))
+/// The request's playtest session, if it carries one.
+pub(crate) fn session(headers: &HeaderMap) -> Option<Session> {
+    let id = cookie(headers, COOKIE).filter(|id| valid_session(id))?;
+    Some(Session {
+        id: id.to_owned(),
+        source: forms::source(cookie(headers, FROM_COOKIE).unwrap_or("")),
+    })
 }
 
-/// Emit `step` for this request. The session id goes along only when the
-/// visitor agreed; a browser that declines tracking sends nothing.
-pub(crate) fn step(headers: &HeaderMap, step: Step, session: Option<&Session>, source: &str) {
-    if declines(headers) {
+/// Whether the visitor turned recording off (the intro's choice, kept by
+/// the research script's `oa_research_optout` cookie) or their browser
+/// asks not to be tracked.
+pub(crate) fn opted_out(headers: &HeaderMap) -> bool {
+    cookie(headers, OPT_OUT_COOKIE) == Some("1")
+        || ["dnt", "sec-gpc"]
+            .iter()
+            .any(|name| headers.get(*name).is_some_and(|v| v.as_bytes() == b"1"))
+}
+
+/// The `Set-Cookie` for the intro's recording choice, matching what the
+/// research script's `window.oaResearch.optOut` writes.
+fn opt_out_cookie(off: bool) -> HeaderValue {
+    let value = if off {
+        format!("{OPT_OUT_COOKIE}=1; Max-Age=31536000; Path=/; SameSite=Lax")
+    } else {
+        format!("{OPT_OUT_COOKIE}=0; Max-Age=0; Path=/; SameSite=Lax")
+    };
+    HeaderValue::from_str(&value).expect("a fixed cookie is valid")
+}
+
+/// Send `step` for this request's playtest, with the source, the device
+/// class, and `extra`. Nothing goes without a session; when the visitor
+/// opted out, only that choice is sent.
+pub(crate) fn step(
+    headers: &HeaderMap,
+    step: Step,
+    session: Option<&Session>,
+    extra: &[(&str, &str)],
+) {
+    let Some(session) = session else {
+        return;
+    };
+    if opted_out(headers) && step != Step::PlaytestOptedOut {
         return;
     }
     let agent = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    let source = match (source, session) {
-        ("", Some(session)) => session.source.clone(),
-        (source, _) => forms::source(source),
-    };
-    events::emit(&Event {
-        step,
-        session: session.filter(|s| s.recorded).map(|s| s.id.clone()),
-        source: (!source.is_empty()).then_some(source),
-        device: Some(forms::device_and_browser(agent).0),
-        at_unix: crate::chat_store::now_unix(),
-    });
+    let mut props = vec![("device", forms::device_and_browser(agent).0)];
+    if !session.source.is_empty() {
+        props.push(("source", session.source.as_str()));
+    }
+    props.extend_from_slice(extra);
+    events::emit(&session.id, step, &props);
 }
 
 // --- Limits --------------------------------------------------------------
@@ -287,7 +307,7 @@ fn account_links(app: &App) -> bool {
 
 /// A launch page's response: the shared frame, the policy, never stored.
 fn page(app: &App, status: StatusCode, title: &str, path: &str, content: Markup) -> Response {
-    page_with(app, status, title, path, content, None)
+    page_with(app, status, title, path, content, Vec::new())
 }
 
 fn page_with(
@@ -296,7 +316,7 @@ fn page_with(
     title: &str,
     path: &str,
     content: Markup,
-    cookie: Option<HeaderValue>,
+    cookie: Vec<HeaderValue>,
 ) -> Response {
     let body = html! {
         (content)
@@ -311,8 +331,8 @@ fn page_with(
         Surface::Preview,
     ));
     *response.status_mut() = status;
-    if let Some(cookie) = cookie {
-        response.headers_mut().append(header::SET_COOKIE, cookie);
+    for value in cookie {
+        response.headers_mut().append(header::SET_COOKIE, value);
     }
     response
 }
@@ -469,7 +489,7 @@ async fn waitlist_send(State(app): State<App>, headers: HeaderMap, body: Bytes) 
             &headers,
             Step::WaitlistJoined,
             session(&headers).as_ref(),
-            &entry.source,
+            &[],
         ),
         Ok(Kept::AlreadyThere) => {}
         Err(error) => {
@@ -536,9 +556,8 @@ async fn intro(State(app): State<App>, headers: HeaderMap, RawQuery(query): RawQ
     let from_home = url::form_urlencoded::parse(query.as_deref().unwrap_or("").as_bytes())
         .any(|(k, v)| k == "from" && v == "home");
     if from_home {
-        step(&headers, Step::PlayClicked, current.as_ref(), &source);
+        step(&headers, Step::PlayClicked, current.as_ref(), &[]);
     }
-    step(&headers, Step::IntroViewed, current.as_ref(), &source);
     let open = crate::pages::new_lander_house::available();
     page(
         &app,
@@ -560,9 +579,9 @@ async fn intro(State(app): State<App>, headers: HeaderMap, RawQuery(query): RawQ
                 }
                 section.hud-card.lp-consent aria-labelledby="consent-title" {
                     h2 #consent-title { "What we record" }
-                    p { "While you play, we record which steps you reach and which buttons you choose, under a random ID for this playtest. We use it only to make OpenAgents better." }
-                    p { "We don't record what you type in the house. Your answers aren't linked to you unless you add your email to the survey." }
-                    p { "Rather we didn't? Choose Play without recording. Your browser's Do Not Track or Global Privacy Control setting does the same. " a href="/privacy" { "Read our privacy policy" } "." }
+                    p { "While you play, we record the pages you open, the buttons you choose, and how far you get, under a random ID for this playtest. We use it only to make OpenAgents better." }
+                    p { "We never record what you type. If you're signed in, we keep your account with it." }
+                    p { "Rather we didn't? Choose Play without recording, and we'll only count visits. Your browser's Do Not Track or Global Privacy Control setting does the same. " a href="/privacy" { "Read our privacy policy" } "." }
                 }
                 @if open {
                     form method="post" action=(START) {
@@ -591,13 +610,23 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         "" => session(&headers).map(|s| s.source).unwrap_or_default(),
         source => source.to_owned(),
     };
-    let session = Session::new(fields.get("record") != "0", &source);
-    step(&headers, Step::PlaytestStarted, Some(&session), "");
+    let session = Session::new(&source);
+    let off = fields.get("record") == "0";
     let mut response = Redirect::to(HOUSE).into_response();
-    response.headers_mut().append(
-        header::SET_COOKIE,
-        session.cookie(app.config.secure_cookies),
-    );
+    let set = response.headers_mut();
+    for cookie in session.cookies(app.config.secure_cookies) {
+        set.append(header::SET_COOKIE, cookie);
+    }
+    set.append(header::SET_COOKIE, opt_out_cookie(off));
+    // The choice made now counts, whatever an earlier cookie said.
+    let mut asked = headers.clone();
+    asked.remove(header::COOKIE);
+    let started = if off {
+        Step::PlaytestOptedOut
+    } else {
+        Step::PlaytestStarted
+    };
+    step(&asked, started, Some(&session), &[]);
     response
 }
 
@@ -648,18 +677,18 @@ async fn page_event(headers: HeaderMap, body: Bytes) -> Response {
     if !limiter("events").allow(&current.id) {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
-    step(&headers, named, Some(&current), "");
+    step(&headers, named, Some(&current), &[]);
     StatusCode::NO_CONTENT.into_response()
 }
 
 // --- Survey --------------------------------------------------------------
 
-/// The session to tie a survey to: the cookie's, or a new one that
-/// records nothing for someone who reached the survey another way.
+/// The session to tie a survey to: the cookie's, or a new one for someone
+/// who reached the survey another way.
 fn survey_session(headers: &HeaderMap, source: &str) -> (Session, bool) {
     match session(headers) {
         Some(session) => (session, false),
-        None => (Session::new(false, source), true),
+        None => (Session::new(source), true),
     }
 }
 
@@ -675,16 +704,25 @@ async fn survey_page(
         .map(|(_, v)| v.into_owned())
         .unwrap_or_default();
     if matches!(from.as_str(), "finish" | "prompt") {
-        step(&headers, Step::FinishClicked, Some(&current), "");
+        step(
+            &headers,
+            Step::TutorialFinishClicked,
+            Some(&current),
+            &[("from", from.as_str())],
+        );
     }
-    let cookie = fresh.then(|| current.cookie(app.config.secure_cookies));
+    let cookie = if fresh {
+        current.cookies(app.config.secure_cookies)
+    } else {
+        Vec::new()
+    };
     if store::survey_done(&app.config.chat_store, &current.id)
         .await
         .unwrap_or(false)
     {
         return thanks(&app, &current, cookie, true);
     }
-    step(&headers, Step::SurveyViewed, Some(&current), "");
+    step(&headers, Step::SurveyStarted, Some(&current), &[]);
     survey_form(&app, StatusCode::OK, &Fields::default(), None, cookie)
 }
 
@@ -693,7 +731,7 @@ fn survey_form(
     status: StatusCode,
     draft: &Fields,
     problem: Option<&str>,
-    cookie: Option<HeaderValue>,
+    cookie: Vec<HeaderValue>,
 ) -> Response {
     let content = html! {
         main.lp-page #main {
@@ -742,7 +780,13 @@ fn survey_form(
 async fn survey_send(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
     let fields = Fields::parse(&body);
     let (current, fresh) = survey_session(&headers, "");
-    let cookie = || fresh.then(|| current.cookie(app.config.secure_cookies));
+    let cookie = || {
+        if fresh {
+            current.cookies(app.config.secure_cookies)
+        } else {
+            Vec::new()
+        }
+    };
     if !fields.get("website").is_empty() {
         return thanks(&app, &current, cookie(), false);
     }
@@ -785,7 +829,7 @@ async fn survey_send(State(app): State<App>, headers: HeaderMap, body: Bytes) ->
     survey.device = device.to_owned();
     survey.browser = browser.to_owned();
     survey.source = current.source.clone();
-    survey.recorded = current.recorded && !declines(&headers);
+    survey.recorded = !opted_out(&headers);
     survey.created_unix = crate::chat_store::now_unix();
     if let Some(service) = app.config.cloud.as_deref()
         && crate::chat_owner::session(&headers).is_some()
@@ -799,7 +843,7 @@ async fn survey_send(State(app): State<App>, headers: HeaderMap, body: Bytes) ->
         }
     }
     match store::keep_survey(&app.config.chat_store, &survey).await {
-        Ok(Kept::New) => step(&headers, Step::SurveySubmitted, Some(&current), ""),
+        Ok(Kept::New) => step(&headers, Step::SurveyCompleted, Some(&current), &[]),
         Ok(Kept::AlreadyThere) => {}
         Err(error) => {
             eprintln!("openagents-web: playtest survey not kept: {error}");
@@ -823,7 +867,7 @@ fn share_link(session: &Session) -> String {
     format!("{SHARE}&utm_content={code}")
 }
 
-fn thanks(app: &App, session: &Session, cookie: Option<HeaderValue>, again: bool) -> Response {
+fn thanks(app: &App, session: &Session, cookie: Vec<HeaderValue>, again: bool) -> Response {
     let share = share_link(session);
     let content = html! {
         main.lp-page #main {
@@ -872,7 +916,7 @@ async fn profile_page(
             .map(|s| s.source.clone())
             .unwrap_or_default();
     }
-    step(&headers, Step::ProfileViewed, current.as_ref(), &source);
+    step(&headers, Step::ProfileStarted, current.as_ref(), &[]);
     let who = member(&app, &headers).await;
     let mut draft = Profile {
         heard: source,
@@ -1015,7 +1059,7 @@ async fn profile_send(State(app): State<App>, headers: HeaderMap, body: Bytes) -
             Some("We couldn't save your profile just now. Try again in a minute."),
         );
     }
-    step(&headers, Step::ProfileSubmitted, current.as_ref(), "");
+    step(&headers, Step::ProfileCompleted, current.as_ref(), &[]);
     let played = current.is_some();
     page(
         &app,

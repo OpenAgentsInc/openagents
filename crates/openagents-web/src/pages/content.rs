@@ -481,8 +481,8 @@ mod tests {
         assert!(TERMS.contains("train, fine-tune, and evaluate the models and tools we run"));
         // The launch playtest's cookie, what it records, and the way out.
         for text in [
-            "oa_playtest",
-            "Play without recording",
+            "oa_playtest_from",
+            "Playtest answers, the waitlist, and profiles",
             "Deleting your account deletes its profile",
         ] {
             assert!(PRIVACY.contains(text), "{text}");

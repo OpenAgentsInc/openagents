@@ -58,7 +58,6 @@ pub mod ask;
 mod attention;
 mod attention_openapi;
 pub mod attribution;
-pub mod research;
 #[doc(hidden)]
 pub mod auth;
 pub mod backend;
@@ -106,13 +105,14 @@ pub mod environments;
 pub mod features;
 mod issue_claims;
 mod issue_claims_openapi;
+pub mod launch;
 mod owner_notifications;
-pub mod playtest;
 mod profile_earnings;
 mod profiles;
 #[doc(hidden)]
 pub mod promises;
 mod published_agents;
+pub mod research;
 mod run_commands_openapi;
 #[doc(hidden)]
 pub mod runs;
@@ -853,7 +853,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
         .merge(live_games::routes())
-        .merge(playtest::routes())
+        .merge(launch::routes())
         .merge(sand_gallery::routes())
         .merge(purchases::routes())
         .merge(chat_html::routes())
