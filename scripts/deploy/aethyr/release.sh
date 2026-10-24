@@ -259,9 +259,10 @@ d, commit, sdk_sha, kernel_sha, protocol, names = sys.argv[1:]
 d = Path(d)
 src = d / 'src'
 def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
-def tree(root):
-    lines = ''.join(f'{sha(f)}  ./{f.relative_to(root)}\n' for f in sorted(root.rglob('*'), key=lambda f: str(f.relative_to(root))) if f.is_file())
+def tree_of(root, files):
+    lines = ''.join(f'{sha(f)}  ./{f.relative_to(root)}\n' for f in sorted(files, key=lambda f: str(f.relative_to(root))))
     return hashlib.sha256(lines.encode()).hexdigest()
+def tree(root): return tree_of(root, [f for f in root.rglob('*') if f.is_file()])
 def run(*cmd, cwd=None):
     try: return subprocess.check_output(cmd, cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
     except Exception: return None
@@ -282,7 +283,8 @@ record = {
     },
     'sdk': {'source': 'crates/aethyrforge-host', 'wasm_sha256': sdk_sha,
             'files': {f.name: sha(f) for f in sorted((d / 'sdk').iterdir()) if f.is_file() and f.suffix in ('.js', '.wasm')},
-            'closure_sha256': tree(d / 'sdk')},
+            # The files render.py ships at /sdk/SHA256/, not the test pages beside them.
+            'closure_sha256': tree_of(d / 'sdk', [f for f in (d / 'sdk').rglob('*') if f.is_file() and (f.suffix in ('.js', '.wasm'))])},
     'kernel': {'path': 'apps/aethyr/public/kernel.wasm', 'sha256': kernel_sha,
                'bytes': (src / 'apps/aethyr/public/kernel.wasm').stat().st_size},
     'profiles': {},
@@ -440,7 +442,7 @@ smoke() {
     editor=$(field "$DIR/build.json" "profiles.$p.editor")
     preview=$(field "$DIR/build.json" "profiles.$p.preview")
     largest=$(field "$DIR/build.json" "profiles.$p.largest_asset")
-    if [ -n "${DRY_RUN:-}" ]; then say "    DRY_RUN: would check $editor/health, $preview/health, and /private-assets/$largest"; return 0; fi
+    if [ -n "${DRY_RUN:-}" ]; then say "    DRY_RUN: would check $editor/health, $preview/health, and the largest runtime file ($largest)"; return 0; fi
     local url
     for url in "$editor" "$preview"; do
         curl -fsS --http2 -o /dev/null "$url/health" || die "$url/health did not answer."
@@ -469,7 +471,7 @@ d, p, out = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 b = json.load(open(d / 'build.json'))
 v = b['profiles'][p]
 cfg = {'release': v['release'], 'editor': v['editor'], 'preview': v['preview'],
-       'sdk_sha256': b['sdk']['wasm_sha256'], 'protocol_version': b['protocol_version'], 'v': b['protocol_version']}
+       'sdk_sha256': b['sdk']['wasm_sha256'], 'protocol_version': b['protocol_version']}
 cand = d / 'candidates'
 def current(name):
     f = cand / name
@@ -512,7 +514,7 @@ for p, name in (('house', 'runtimes/haunted-house.json'), ('planet', 'runtimes/p
             sys.exit(f'{override}: {a["path"]} is not in the asset set')
     (d / 'candidates' / name).write_bytes(text)
     done[p] = hashlib.sha256(text).hexdigest()
-if done: (d / 'candidates/overrides.json').write_text(json.dumps(done, indent=2) + '\n')
+if done: (d / 'runtime-overrides.json').write_text(json.dumps(done, indent=2) + '\n')
 PY
 }
 
@@ -611,10 +613,12 @@ s = json.load(open(d / 'stage.json'))
 c = json.load(open(d / 'checks.json'))
 demos = root / 'crates/openagents-web/content/demos'
 rollback = demos / 'rollback'
-overrides = json.loads((d / 'candidates/overrides.json').read_text()) if (d / 'candidates/overrides.json').exists() else {}
+overrides = json.loads((d / 'runtime-overrides.json').read_text()) if (d / 'runtime-overrides.json').exists() else {}
 for p, v in b['profiles'].items():
     if p in ('house', 'planet') and not v.get('runtime_carried_over') and p not in overrides:
         sys.exit(f'The {p} asset set changed and no reviewed publishing runtime was checked; rerun check with AETHYR_RUNTIME_{p.upper()}.')
+out = root / 'docs/verse/aethyr-releases' / (b['commit'][:10] + '.json')
+if out.exists(): sys.exit(f'{out} exists; qualification entries are never edited.')
 written = []
 for f in sorted((d / 'candidates').rglob('*.json')):
     name = f.relative_to(d / 'candidates')
@@ -641,9 +645,7 @@ entry = {
     'rollback': [f'rollback/{n}' for n in written],
     'production_checks': 'pending: run the same checks without candidate mode after the website shift',
 }
-out = root / 'docs/verse/aethyr-releases' / (b['commit'][:10] + '.json')
 out.parent.mkdir(parents=True, exist_ok=True)
-if out.exists(): sys.exit(f'{out} exists; qualification entries are never edited.')
 out.write_text(json.dumps(entry, indent=2) + '\n')
 print('\n'.join(['wrote ' + str(demos / n) for n in written] + ['kept ' + str(rollback / n) for n in written] + ['wrote ' + str(out)]))
 PY
