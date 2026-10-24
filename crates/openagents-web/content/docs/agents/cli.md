@@ -15,7 +15,7 @@ by a test.
 
 ## Existing CLI users
 
-This reference describes the earlier command-line tools. For the current
+This reference describes the earlier command-line program. For the current
 browser experience, [start on the web](/docs/download).
 
 ## Output for programs

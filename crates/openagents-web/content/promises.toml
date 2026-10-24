@@ -1240,14 +1240,12 @@ id = "L2"
 group = "L"
 statement = "Terminal 1.0 installs on Mac, Linux, and Windows."
 surfaces = ["terminal"]
-status = "launching"
-link = "/download"
+status = "dropped"
+link = "/docs/download"
 issues = [11091]
 episodes = [277, 289]
-evidence = [
-  { test = "crates/openagents-web/src/tests.rs::the_download_page_offers_every_platform_from_its_table" },
-  { smoke = "download: Coder one-liners for macOS/Linux and Windows" },
-]
+note = "We are focusing on the web experience. Older app downloads are no longer offered here."
+evidence = []
 
 [[promise]]
 id = "L3"
@@ -1436,14 +1434,14 @@ evidence = [
 [[promise]]
 id = "W5"
 group = "L"
-statement = "The download page offers Coder for every platform it runs on."
-surfaces = ["web", "terminal"]
-status = "launching"
-link = "/download"
+statement = "Chat, explore, and create in your browser."
+surfaces = ["web", "verse"]
+status = "shipped"
+link = "/new-lander"
 issues = [11103]
 evidence = [
-  { test = "crates/openagents-web/src/tests.rs::the_download_page_offers_every_platform_from_its_table" },
-  { smoke = "download: Coder comes before any other download" },
+  { test = "crates/openagents-web/src/tests.rs::saved_download_addresses_open_the_web_experience" },
+  { smoke = "web entry: no retired app promotions" },
 ]
 
 [[promise]]

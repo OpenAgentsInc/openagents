@@ -5,9 +5,9 @@ OpenAgents runs in your browser. Start with [the homepage](/new-lander),
 
 ## Explore and create
 
-1. Choose **Enter the Verse** on the homepage.
+1. Choose **Enter the Verse** on [the homepage](/new-lander).
 2. Continue as a guest to explore the planets and enter the Haunted House.
-3. Choose **Edit** to open the tools and try a change.
+3. Choose **Edit** in [the Haunted House](/new-lander/house) to try a change.
 4. Sign in when prompted to save, publish, and share your work.
 
 ## Chat

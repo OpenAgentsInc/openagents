@@ -27540,6 +27540,58 @@
         ],
         "security": []
       }
+    },
+    "/v1/earnings/public/{party}/sources/{source}": {
+      "get": {
+        "operationId": "currentPublishedEarning",
+        "tags": [
+          "Earnings"
+        ],
+        "summary": "Read or choose profile earnings receipts",
+        "description": "Private previews require the account session and an attached Nostr key. Publication is explicit. Public receipts omit account IDs, payment hashes, preimages, and payout destinations.",
+        "responses": {
+          "200": {
+            "description": "Earnings or the selected receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Log in again"
+          },
+          "403": {
+            "description": "Choose your own profile"
+          },
+          "503": {
+            "description": "Earnings are unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "party",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "security": []
+      }
     }
   },
   "components": {
