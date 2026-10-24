@@ -108,6 +108,7 @@ fn join(low: u32, high: u32) -> u64 {
 }
 
 /// Appends one command to `out`.
+#[inline(always)]
 pub fn encode(out: &mut Vec<u32>, command: &Command) {
     match *command {
         Command::SetPipeline { pipeline } => out.extend_from_slice(&[op::SET_PIPELINE, pipeline]),
@@ -259,6 +260,106 @@ pub fn decode(words: &[u32]) -> Result<Vec<Command>, DecodeError> {
     Ok(out)
 }
 
+/// Slots the state cache tracks; a command on a higher slot is always kept.
+const CACHED_SLOTS: usize = 8;
+/// No handle is `u32::MAX`, so it marks "not known".
+const UNKNOWN: u32 = u32::MAX;
+
+/// One pass's commands as words, without the binds that change nothing.
+///
+/// WebGPU keeps a pass's pipeline, bind groups, and buffers until they are
+/// set again, so setting the same one twice in a pass is skipped. The cache
+/// knows nothing at the start of a pass; call [`Recorder::forget`] whenever a
+/// handle may name a different object (a release frees a table slot that a
+/// later object may take).
+#[derive(Debug)]
+pub struct Recorder {
+    /// The pass the words belong to (0 when none).
+    pub pass: u32,
+    pub words: Vec<u32>,
+    pipeline: u32,
+    bind_groups: [u32; CACHED_SLOTS],
+    vertex_buffers: [(u32, u64, u64); CACHED_SLOTS],
+    index_buffer: (u32, bool, u64, u64),
+}
+
+impl Default for Recorder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Recorder {
+    pub const fn new() -> Self {
+        Self {
+            pass: 0,
+            words: Vec::new(),
+            pipeline: UNKNOWN,
+            bind_groups: [UNKNOWN; CACHED_SLOTS],
+            vertex_buffers: [(UNKNOWN, 0, 0); CACHED_SLOTS],
+            index_buffer: (UNKNOWN, false, 0, 0),
+        }
+    }
+
+    /// Forgets every bind, so the next of each is recorded.
+    pub fn forget(&mut self) {
+        self.pipeline = UNKNOWN;
+        self.bind_groups = [UNKNOWN; CACHED_SLOTS];
+        self.vertex_buffers = [(UNKNOWN, 0, 0); CACHED_SLOTS];
+        self.index_buffer = (UNKNOWN, false, 0, 0);
+    }
+
+    /// Records a command for the current pass; returns `false` when it was a
+    /// bind that changes nothing. Ending the pass forgets its binds.
+    #[inline(always)]
+    pub fn record(&mut self, command: &Command) -> bool {
+        match *command {
+            Command::SetPipeline { pipeline } => {
+                if self.pipeline == pipeline {
+                    return false;
+                }
+                self.pipeline = pipeline;
+            }
+            Command::SetBindGroup { index, group } => {
+                if let Some(slot) = self.bind_groups.get_mut(index as usize) {
+                    if *slot == group {
+                        return false;
+                    }
+                    *slot = group;
+                }
+            }
+            Command::SetVertexBuffer {
+                slot,
+                buffer,
+                offset,
+                size,
+            } => {
+                if let Some(bound) = self.vertex_buffers.get_mut(slot as usize) {
+                    if *bound == (buffer, offset, size) {
+                        return false;
+                    }
+                    *bound = (buffer, offset, size);
+                }
+            }
+            Command::SetIndexBuffer {
+                buffer,
+                uint32,
+                offset,
+                size,
+            } => {
+                if self.index_buffer == (buffer, uint32, offset, size) {
+                    return false;
+                }
+                self.index_buffer = (buffer, uint32, offset, size);
+            }
+            Command::EndPass => self.forget(),
+            _ => {}
+        }
+        encode(&mut self.words, command);
+        true
+    }
+}
+
 /// One of every command kind, with edge values (a negative base vertex,
 /// offsets past 4 GiB, and a whole-buffer size). The JavaScript replay test
 /// reads the same list from `fixtures/batch.json`.
@@ -400,6 +501,83 @@ mod tests {
             decode(&[op::END_PASS, 0]),
             Err(DecodeError::UnknownOpcode { at: 1, opcode: 0 })
         );
+    }
+
+    #[test]
+    fn recorder_skips_binds_that_change_nothing() {
+        let mut r = Recorder::new();
+        let pipeline = Command::SetPipeline { pipeline: 3 };
+        let group = Command::SetBindGroup { index: 1, group: 9 };
+        let vertex = |offset| Command::SetVertexBuffer {
+            slot: 1,
+            buffer: 4,
+            offset,
+            size: 64,
+        };
+        let draw = Command::DrawIndexed {
+            indices: 36,
+            instances: 2,
+            first_index: 0,
+            base_vertex: 0,
+            first_instance: 0,
+        };
+        assert!(r.record(&pipeline));
+        assert!(!r.record(&pipeline));
+        assert!(r.record(&group));
+        assert!(!r.record(&group));
+        assert!(r.record(&Command::SetBindGroup {
+            index: 1,
+            group: 10
+        }));
+        assert!(r.record(&vertex(0)));
+        assert!(!r.record(&vertex(0)));
+        assert!(r.record(&vertex(64)));
+        // Draws are never skipped, even when they repeat.
+        assert!(r.record(&draw));
+        assert!(r.record(&draw));
+        // A bind on a slot past the cache is always kept.
+        let far = Command::SetBindGroup {
+            index: 40,
+            group: 1,
+        };
+        assert!(r.record(&far));
+        assert!(r.record(&far));
+        let kept = [
+            pipeline,
+            group,
+            Command::SetBindGroup {
+                index: 1,
+                group: 10,
+            },
+            vertex(0),
+            vertex(64),
+            draw,
+            draw,
+            far,
+            far,
+        ];
+        assert_eq!(decode(&r.words).unwrap(), kept);
+    }
+
+    #[test]
+    fn recorder_forgets_at_the_end_of_a_pass_and_on_request() {
+        let mut r = Recorder::new();
+        let pipeline = Command::SetPipeline { pipeline: 3 };
+        let index = Command::SetIndexBuffer {
+            buffer: 2,
+            uint32: true,
+            offset: 0,
+            size: u64::MAX,
+        };
+        assert!(r.record(&pipeline));
+        assert!(r.record(&index));
+        assert!(!r.record(&index));
+        assert!(r.record(&Command::EndPass));
+        // A new pass (which may reuse the old pass's handle) binds again.
+        assert!(r.record(&pipeline));
+        assert!(r.record(&index));
+        r.forget();
+        assert!(r.record(&pipeline));
     }
 
     /// The JavaScript replay test reads this fixture; regenerate it with

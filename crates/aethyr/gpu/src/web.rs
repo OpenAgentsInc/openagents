@@ -6,8 +6,9 @@
 //! word buffer ([`crate::batch`]) and replayed by a single `replay` call when
 //! the pass ends, when another pass's command arrives, or before anything is
 //! released or submitted (so a freed table slot is never reused while queued
-//! words still name it). `set_batched(false)` restores one import call per
-//! command.
+//! words still name it). A bind that repeats the one already set in the pass
+//! is not recorded. `set_batched(false)` restores one import call per command,
+//! with every bind made.
 
 use crate::batch::{self, Command};
 use crate::*;
@@ -72,52 +73,77 @@ const RENDER_PIPELINE: u32 = 5;
 const BIND_GROUP: u32 = 6;
 const QUERY_SET: u32 = 7;
 
+/// Whether pass commands are batched, and the commands not yet replayed.
+struct Batch {
+    on: bool,
+    recorder: batch::Recorder,
+}
+
 thread_local! {
-    static BATCHED: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
-    /// The pass the queued words belong to, and the words.
-    static QUEUE: std::cell::RefCell<(u32, Vec<u32>)> = const { std::cell::RefCell::new((0, Vec::new())) };
+    static BATCH: std::cell::RefCell<Batch> =
+        const { std::cell::RefCell::new(Batch { on: true, recorder: batch::Recorder::new() }) };
     static NEXT_TICKET: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
     static READS: std::cell::RefCell<VecDeque<(ReadTicket, Vec<u8>)>> = Default::default();
 }
 
 pub fn set_batched(on: bool) {
-    flush();
-    BATCHED.with(|b| b.set(on));
+    BATCH.with(|b| {
+        let mut b = b.borrow_mut();
+        replay(&mut b.recorder);
+        b.recorder.forget();
+        b.on = on;
+    });
 }
 
 pub fn batched() -> bool {
-    BATCHED.with(|b| b.get())
+    BATCH.with(|b| b.borrow().on)
 }
 
-/// Replays the queued words, if any, with one call.
+/// Replays the recorded words, if any, with one call.
+fn replay(recorder: &mut batch::Recorder) {
+    if !recorder.words.is_empty() {
+        unsafe { ffi::replay(recorder.pass, recorder.words.as_ptr(), recorder.words.len() as u32) }
+        recorder.words.clear();
+    }
+}
+
+/// Replays the recorded words, if any, with one call.
 pub fn flush() {
-    QUEUE.with(|q| {
-        let mut q = q.borrow_mut();
-        if !q.1.is_empty() {
-            unsafe { ffi::replay(q.0, q.1.as_ptr(), q.1.len() as u32) }
-            q.1.clear();
-        }
-    });
+    BATCH.with(|b| replay(&mut b.borrow_mut().recorder));
 }
 
-/// Queues a pass command when batching; `false` means "make the call".
+/// Records a pass command when batching; `false` means "make the call".
+/// One borrow per command: this runs for every draw. Inlined, so each call
+/// site records its own command kind without matching on it at run time.
+#[inline(always)]
 fn queue(pass: Handle, command: Command) -> bool {
-    if !batched() {
-        return false;
+    BATCH.with(|b| {
+        let mut b = b.borrow_mut();
+        if !b.on {
+            return false;
+        }
+        let recorder = &mut b.recorder;
+        if recorder.pass != pass {
+            replay(recorder);
+            recorder.forget();
+            recorder.pass = pass;
+        }
+        recorder.record(&command);
+        true
+    })
+}
+
+/// Ends a pass: replays its words, and the next pass starts with nothing bound.
+fn end_pass(pass: Handle) {
+    if queue(pass, Command::EndPass) {
+        BATCH.with(|b| {
+            let recorder = &mut b.borrow_mut().recorder;
+            replay(recorder);
+            recorder.pass = 0;
+        });
+    } else {
+        unsafe { ffi::end_pass(pass) }
     }
-    let other = QUEUE.with(|q| {
-        let q = q.borrow();
-        !q.1.is_empty() && q.0 != pass
-    });
-    if other {
-        flush();
-    }
-    QUEUE.with(|q| {
-        let mut q = q.borrow_mut();
-        q.0 = pass;
-        batch::encode(&mut q.1, &command);
-    });
-    true
 }
 
 /// Called by JavaScript to reserve memory for a finished read.
@@ -180,7 +206,13 @@ pub fn from_host() -> (Device, Vec<Feature>, AdapterInfo) {
 }
 
 pub fn release(kind: Kind, handle: Handle) {
-    flush();
+    // The freed slot may name a new object next; nothing recorded or cached
+    // may still refer to it.
+    BATCH.with(|b| {
+        let recorder = &mut b.borrow_mut().recorder;
+        replay(recorder);
+        recorder.forget();
+    });
     if handle != 0 {
         unsafe { ffi::release(kind_code(kind), handle) }
     }
@@ -353,11 +385,7 @@ pub fn dispatch_indirect(pass: Handle, b: Handle, o: u64) {
     }
 }
 pub fn end_compute_pass(pass: Handle) {
-    if queue(pass, Command::EndPass) {
-        flush();
-    } else {
-        unsafe { ffi::end_pass(pass) }
-    }
+    end_pass(pass)
 }
 pub fn end_render_pass(pass: Handle) {
     end_compute_pass(pass)

@@ -24,71 +24,89 @@ export type PassLike = GPURenderPassEncoder | GPUComputePassEncoder;
 const TWO_32 = 4294967296;
 const ALL = 0xffffffff;
 
-/// `low + high · 2^32`; `u64::MAX` (WGPU_WHOLE_SIZE) means "to the end".
-const offset = (low: number, high: number) => low + high * TWO_32;
-const size = (low: number, high: number) => (low === ALL && high === ALL ? undefined : low + high * TWO_32);
+/** `lo + hi · 2^32`, without a double when `hi` is zero. */
+const join = (lo: number, hi: number) => (hi === 0 ? lo : lo + hi * TWO_32);
 
 /**
- * Replays `words` on `pass`. `get` turns a handle into its object. Returns
- * whether the pass ended (the caller frees its handle). Throws on a word it
- * does not know, rather than guessing.
+ * Replays `words` on `pass`, with handles indexing `table`. Returns whether
+ * the pass ended (the caller frees its handle). Throws on a word it does not
+ * know, rather than guessing.
+ *
+ * This loop runs once per command on every frame, so it stays flat: the
+ * cases are literal opcodes (a case on `OP.x` reads a property each time),
+ * the commands a draw loop makes come first, and offsets and sizes are
+ * computed inline. A size of `u64::MAX` (WGPU_WHOLE_SIZE) is left out.
+ * `lo + hi * 2^32` is always a double, which V8 allocates; a value whose high
+ * word is zero passes the low word as it is, as TypeScript callers do.
  */
-export function replay(pass: PassLike, words: Uint32Array, get: (handle: number) => any): boolean {
-  let ended = false;
-  let i = 0;
-  const n = words.length;
+export function replay(pass: PassLike, words: Uint32Array, table: ArrayLike<any>): boolean {
   const p = pass as any;
+  const n = words.length;
+  let i = 0;
   while (i < n) {
     switch (words[i]) {
-      case OP.setPipeline:
-        p.setPipeline(get(words[i + 1]));
-        i += 2;
-        break;
-      case OP.setBindGroup:
-        p.setBindGroup(words[i + 1], get(words[i + 2]));
-        i += 3;
-        break;
-      case OP.setVertexBuffer:
-        p.setVertexBuffer(words[i + 1], get(words[i + 2]), offset(words[i + 3], words[i + 4]), size(words[i + 5], words[i + 6]));
+      case 3: {
+        // setVertexBuffer: slot, buffer, offset (lo, hi), size (lo, hi)
+        const lo = words[i + 5];
+        const hi = words[i + 6];
+        const offset = words[i + 4] === 0 ? words[i + 3] : words[i + 3] + words[i + 4] * TWO_32;
+        if (hi === 0) p.setVertexBuffer(words[i + 1], table[words[i + 2]], offset, lo);
+        else if (lo === ALL && hi === ALL) p.setVertexBuffer(words[i + 1], table[words[i + 2]], offset);
+        else p.setVertexBuffer(words[i + 1], table[words[i + 2]], offset, lo + hi * TWO_32);
         i += 7;
         break;
-      case OP.setIndexBuffer:
-        p.setIndexBuffer(get(words[i + 1]), words[i + 2] ? "uint32" : "uint16", offset(words[i + 3], words[i + 4]), size(words[i + 5], words[i + 6]));
-        i += 7;
-        break;
-      case OP.draw:
-        p.draw(words[i + 1], words[i + 2], words[i + 3], words[i + 4]);
-        i += 5;
-        break;
-      case OP.drawIndexed:
-        // The base vertex is a signed 32-bit value.
+      }
+      case 6:
+        // drawIndexed: indices, instances, first index, base vertex (signed), first instance
         p.drawIndexed(words[i + 1], words[i + 2], words[i + 3], words[i + 4] | 0, words[i + 5]);
         i += 6;
         break;
-      case OP.drawIndirect:
-        p.drawIndirect(get(words[i + 1]), offset(words[i + 2], words[i + 3]));
+      case 2:
+        p.setBindGroup(words[i + 1], table[words[i + 2]]);
+        i += 3;
+        break;
+      case 5:
+        p.draw(words[i + 1], words[i + 2], words[i + 3], words[i + 4]);
+        i += 5;
+        break;
+      case 1:
+        p.setPipeline(table[words[i + 1]]);
+        i += 2;
+        break;
+      case 4: {
+        const lo = words[i + 5];
+        const hi = words[i + 6];
+        const format = words[i + 2] ? "uint32" : "uint16";
+        const offset = words[i + 4] === 0 ? words[i + 3] : words[i + 3] + words[i + 4] * TWO_32;
+        if (hi === 0) p.setIndexBuffer(table[words[i + 1]], format, offset, lo);
+        else if (lo === ALL && hi === ALL) p.setIndexBuffer(table[words[i + 1]], format, offset);
+        else p.setIndexBuffer(table[words[i + 1]], format, offset, lo + hi * TWO_32);
+        i += 7;
+        break;
+      }
+      case 7:
+        p.drawIndirect(table[words[i + 1]], join(words[i + 2], words[i + 3]));
         i += 4;
         break;
-      case OP.drawIndexedIndirect:
-        p.drawIndexedIndirect(get(words[i + 1]), offset(words[i + 2], words[i + 3]));
+      case 8:
+        p.drawIndexedIndirect(table[words[i + 1]], join(words[i + 2], words[i + 3]));
         i += 4;
         break;
-      case OP.dispatch:
+      case 9:
         p.dispatchWorkgroups(words[i + 1], words[i + 2], words[i + 3]);
         i += 4;
         break;
-      case OP.dispatchIndirect:
-        p.dispatchWorkgroupsIndirect(get(words[i + 1]), offset(words[i + 2], words[i + 3]));
+      case 10:
+        p.dispatchWorkgroupsIndirect(table[words[i + 1]], join(words[i + 2], words[i + 3]));
         i += 4;
         break;
-      case OP.endPass:
-        pass.end();
-        ended = true;
-        i += 1;
-        break;
+      case 11:
+        p.end();
+        // Nothing follows the end of a pass in one replay.
+        return true;
       default:
         throw new Error(`unknown batched command ${words[i]} at word ${i}`);
     }
   }
-  return ended;
+  return false;
 }

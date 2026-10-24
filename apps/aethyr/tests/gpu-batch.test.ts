@@ -31,7 +31,8 @@ function mockPass() {
   return { pass: pass as any, calls };
 }
 
-const handle = (h: number) => `#${h}`;
+// The handle table: slot h holds "#h".
+const handle = Array.from({ length: 64 }, (_, h) => `#${h}`);
 
 test("the Rust fixture replays as the same calls, in order", () => {
   const { pass, calls } = mockPass();
@@ -41,8 +42,8 @@ test("the Rust fixture replays as the same calls, in order", () => {
     ["setPipeline", "#7"],
     ["setBindGroup", 1, "#42"],
     ["setVertexBuffer", 1, "#9", 5_000_000_000, 4096],
-    ["setVertexBuffer", 0, "#3", 0, undefined],
-    ["setIndexBuffer", "#4", "uint32", 256, undefined],
+    ["setVertexBuffer", 0, "#3", 0],
+    ["setIndexBuffer", "#4", "uint32", 256],
     ["setIndexBuffer", "#5", "uint16", 0, 64],
     ["draw", 3, 1, 0, 0],
     ["drawIndexed", 36, 120, 6, -4, 2],

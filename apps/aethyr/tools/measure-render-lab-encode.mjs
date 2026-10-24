@@ -106,6 +106,9 @@ const summary = Object.fromEntries(
     {
       encode_p50_ms: median(runs.map((r) => r.main_encode_ms.p50)),
       encode_p95_ms: median(runs.map((r) => r.main_encode_ms.p95)),
+      replay_p50_ms: median(runs.map((r) => r.main_replay_ms?.p50 ?? 0)),
+      replay_p95_ms: median(runs.map((r) => r.main_replay_ms?.p95 ?? 0)),
+      log_p50_ms: median(runs.map((r) => r.main_log_ms?.p50 ?? 0)),
       cpu_frame_p50_ms: median(runs.map((r) => r.cpu_frame_ms.p50)),
       draws,
       per_draw_ns: (median(runs.map((r) => r.main_encode_ms.p50)) * 1e6) / draws,
@@ -132,7 +135,15 @@ console.table(
   Object.fromEntries(
     Object.entries(summary).map(([k, v]) => [
       k,
-      { "p50 ms": v.encode_p50_ms.toFixed(3), "p95 ms": v.encode_p95_ms.toFixed(3), "ns/draw": v.per_draw_ns.toFixed(0), draws: v.draws },
+      {
+        "p50 ms": v.encode_p50_ms.toFixed(3),
+        "p95 ms": v.encode_p95_ms.toFixed(3),
+        // Batched: the JS replay inside the encode. TypeScript: the Rust log build outside it.
+        "replay p50": v.replay_p50_ms.toFixed(3),
+        "log p50": v.log_p50_ms.toFixed(3),
+        "ns/draw": v.per_draw_ns.toFixed(0),
+        draws: v.draws,
+      },
     ]),
   ),
 );

@@ -277,7 +277,7 @@ export function createGpuHost(
     },
     replay: (pass: number, ptr: number, len: number) => {
       const words = new Uint32Array(exports!.memory.buffer, ptr, len);
-      if (replay(get<GPURenderPassEncoder>(pass), words, get)) {
+      if (replay(table[pass] as GPURenderPassEncoder, words, table)) {
         table[pass] = null;
         free.push(pass);
       }

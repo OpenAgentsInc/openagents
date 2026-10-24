@@ -97,7 +97,7 @@ let host: GpuHost;
 let stats: Stats = {};
 let paused = new URLSearchParams(location.search).get("paused") === "1";
 let captureRequest: ((v: { width: number; height: number; rgba: string }) => void) | null = null;
-const frameSamples: { cpu: number; encode: number; interval: number; gpu: number }[] = [];
+const frameSamples: { cpu: number; encode: number; replay: number; log: number; interval: number; gpu: number }[] = [];
 let lastFrame = 0;
 let tsEncoderOn = false;
 
@@ -183,6 +183,8 @@ async function measure(seconds: number, warmup = 2) {
     interval_ms: { p50: percentile(pick((s) => s.interval), 0.5), p95: percentile(pick((s) => s.interval), 0.95) },
     cpu_frame_ms: { p50: percentile(pick((s) => s.cpu), 0.5), p95: percentile(pick((s) => s.cpu), 0.95) },
     main_encode_ms: { p50: percentile(pick((s) => s.encode), 0.5), p95: percentile(pick((s) => s.encode), 0.95) },
+    main_replay_ms: { p50: percentile(pick((s) => s.replay), 0.5), p95: percentile(pick((s) => s.replay), 0.95) },
+    main_log_ms: { p50: percentile(pick((s) => s.log), 0.5), p95: percentile(pick((s) => s.log), 0.95) },
     gpu_total_ms: { p50: percentile(gpuTotals, 0.5), p95: percentile(gpuTotals, 0.95) },
     gpu_pass_p50_ms: Object.fromEntries(Object.entries(passes).map(([k, v]) => [k, percentile(v, 0.5)])),
     commands: stats.commands,
@@ -208,7 +210,7 @@ function step(now: number) {
     const cpu = performance.now() - t0;
     stats = JSON.parse(new TextDecoder().decode(new Uint8Array(exports.memory.buffer, exports.af_lab_output(), len)));
     stats.host_errors = host.errors.slice(-3);
-    frameSamples.push({ cpu, encode: stats.main_encode_ms, interval: lastFrame ? now - lastFrame : 0, gpu: stats.gpu?.total ?? 0 });
+    frameSamples.push({ cpu, encode: stats.main_encode_ms, replay: stats.main_replay_ms ?? 0, log: stats.main_log_ms ?? 0, interval: lastFrame ? now - lastFrame : 0, gpu: stats.gpu?.total ?? 0 });
     if (frameSamples.length > 4000) frameSamples.shift();
     lastFrame = now;
     if (captureRequest && host.currentTexture) {

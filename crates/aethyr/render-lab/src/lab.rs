@@ -179,6 +179,14 @@ pub struct PassTimes {
     pub total: f64,
 }
 
+/// Where the CPU path's main-pass encode time went, in milliseconds.
+#[derive(Clone, Copy, Debug, Default)]
+struct EncodeSplit {
+    total: f64,
+    replay: f64,
+    log: f64,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Stats {
     pub frame: u64,
@@ -203,6 +211,12 @@ pub struct Stats {
     pub cpu_cull_ms: f64,
     /// CPU milliseconds encoding the CPU path's main pass draws.
     pub main_encode_ms: f64,
+    /// Of `main_encode_ms`, the part spent replaying batched calls in
+    /// JavaScript (zero when calls are not batched or TypeScript encodes).
+    pub main_replay_ms: f64,
+    /// Rust milliseconds building the draw log the TypeScript encoder reads;
+    /// not part of `main_encode_ms`, which times only the TypeScript loop.
+    pub main_log_ms: f64,
     pub encoder: Encoder,
     /// Whether the web backend batched its calls this frame.
     pub batched_calls: bool,
@@ -1184,9 +1198,9 @@ impl Lab {
         encoder.copy_buffer_to_buffer(&wd.cluster_template, 0, &wd.draw_args_b, 0, 16);
         encoder.copy_buffer_to_buffer(&wd.crowd_template, 0, &wd.crowd_args, 0, 64);
         encoder.clear_buffer(&self.stats_buf, 0, STATS_WORDS * 4);
-        let mut main_encode_ms = 0.0;
+        let mut split = EncodeSplit::default();
         match cfg.path {
-            Path::Cpu => main_encode_ms = self.encode_cpu(&mut encoder),
+            Path::Cpu => split = self.encode_cpu(&mut encoder),
             Path::Gpu => self.encode_gpu(&mut encoder),
             Path::Visbuffer => self.encode_visbuffer(&mut encoder),
         }
@@ -1256,7 +1270,9 @@ impl Lab {
         st.total_instances = self.world.total;
         st.cpu_frame_ms = now_ms() - start;
         st.cpu_cull_ms = cpu_cull_ms;
-        st.main_encode_ms = main_encode_ms;
+        st.main_encode_ms = split.total;
+        st.main_replay_ms = split.replay;
+        st.main_log_ms = split.log;
         st.encoder = cfg.encoder;
         st.batched_calls = af_gpu::batched_calls();
         st.commands = commands;
@@ -1423,7 +1439,7 @@ impl Lab {
 
     // Handles are u32 on the web (the only host with an external encoder) and usize natively.
     #[allow(clippy::unnecessary_cast)]
-    fn encode_cpu(&self, encoder: &mut CommandEncoder) -> f64 {
+    fn encode_cpu(&self, encoder: &mut CommandEncoder) -> EncodeSplit {
         let s = self.sample_index();
         let a = &self.assets;
         let mut pass = self.main_pass(encoder, "main", true, 2);
@@ -1433,6 +1449,7 @@ impl Lab {
         pass.set_index_buffer(&a.index, IndexFormat::Uint32, 0, a.geometry.indices.len() as u64 * 4);
         // The setup above is not part of the draw encode, whichever path makes the calls.
         pass.flush();
+        let mut split = EncodeSplit::default();
         let start = now_ms();
         let external = (self.config.encoder == Encoder::Ts).then_some(self.external_encoder).flatten();
         let mut elapsed = None;
@@ -1450,6 +1467,7 @@ impl Lab {
                     d.base_vertex,
                 ]);
             }
+            split.log = now_ms() - start;
             elapsed = hook(pass_handle(&pass), &log);
         }
         if elapsed.is_none() {
@@ -1463,11 +1481,13 @@ impl Lab {
                 pass.draw_indexed(d.index_count, d.count, d.first_index, d.base_vertex as i32, 0);
             }
             // Batched web calls reach WebGPU here; count that in the encode.
+            let replay = now_ms();
             pass.flush();
+            split.replay = now_ms() - replay;
         }
-        let ms = elapsed.unwrap_or(now_ms() - start);
+        split.total = elapsed.unwrap_or(now_ms() - start);
         pass.end();
-        ms
+        split
     }
 
     fn encode_gpu_raster(&self, encoder: &mut CommandEncoder, list: &Buffer, args: &Buffer, clear: bool, slot: u32) {
