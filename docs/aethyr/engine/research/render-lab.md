@@ -229,6 +229,64 @@ at p50, which is the opcode dispatch. The rest of the p95 gap is the replay's
 wider tail. These runs also show wider whole-frame tails in both Rust modes,
 so the gate needs the 4080 run again.
 
+#### Real-GPU results after the changes
+
+**Measured** on 2026-10-25 from a fresh clone of `main` at `90ca907caa6`
+(which contains `fbfcd67f4da` and `ca4a5be18c8`), with
+`tools/measure-render-lab-encode.mjs`, `AF_ROUNDS=5`, 10 s per sample,
+1920x1080, 7,454 instances calibrated to 1,460 CPU-path draws. Each figure is
+the median over the five rounds of that round's p50 or p95. The Wasm module
+was built with rustc 1.98.1 and wasm-opt 132 on each machine. Neither run
+reported page or lab errors.
+
+**M5 Max** (macOS 26.4, Google Chrome 155.0.8059.85, headless, launched by the
+tool with a temporary profile; WebGPU adapter `apple` / `metal-3`, not a
+fallback adapter; about 400 frames per second, uncapped):
+
+| Path | Encode p50 | Encode p95 | Per draw (p50) | `main_replay_ms` p50 / p95 | `main_log_ms` p50 / p95 | CPU frame p50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Rust per call | 0.115 ms | 0.600 ms | 79 ns | 0 / 0 | 0 / 0 | 0.260 ms |
+| Rust batched | 0.110 ms | 0.590 ms | 75 ns | 0.080 / 0.560 ms | 0 / 0 | 0.245 ms |
+| TypeScript direct | 0.075 ms | 0.595 ms | 51 ns | 0 / 0 | 0 / 0.005 ms | 0.220 ms |
+
+Batched minus TypeScript at p95 is **−0.005 ms**, so the gate (≤ 0.1 ms) is
+**met**. Per round, the gap at p95 was −0.020, 0.000, −0.005, −0.005 and
+0.000 ms.
+
+**RTX 4080** (CoderOS, i7-14700K, NVIDIA driver 595.71.05, the CoderOS GPU
+browser, ungoogled Chromium 152.0.7977.82 over CDP; adapter `nvidia` /
+`lovelace`; about 62.5 frames per second, since that browser keeps its vsync;
+4.4 GB of 16 GB VRAM free, the rest held by local model servers):
+
+| Path | Encode p50 | Encode p95 | Per draw (p50) | `main_replay_ms` p50 / p95 | `main_log_ms` p50 / p95 | CPU frame p50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Rust per call | 0.610 ms | 0.915 ms | 418 ns | 0 / 0.005 ms | 0 / 0 | 2.155 ms |
+| Rust batched | 0.635 ms | 0.855 ms | 435 ns | 0.510 / 0.690 ms | 0 / 0 | 2.180 ms |
+| TypeScript direct | 0.450 ms | 0.585 ms | 308 ns | 0 / 0 | 0.015 / 0.025 ms | 2.080 ms |
+
+Batched minus TypeScript at p95 is **0.270 ms** here, so the 4080 still
+misses the 0.1 ms margin. A first run in the same browser gave the same
+figures (0.265 ms).
+
+What the two runs show:
+
+- **Measured:** on the M5 the three paths share one p95 tail of about
+  0.6 ms, while their p50s differ by at most 0.04 ms. Batched replay alone
+  reaches 0.56 ms at p95, so the tail is inside the WebGPU calls, which the
+  TypeScript loop makes too.
+- **Inferred:** that shared tail is Chrome's own cost, such as the WebGPU
+  client flushing its command buffer to the GPU process, not the Wasm
+  crossing.
+- **Measured:** on the 4080 the JavaScript replay alone (0.510 ms p50,
+  0.690 ms p95) costs more than the TypeScript loop that makes the same calls
+  (0.450 / 0.585 ms). The Rust encode adds about 0.125 ms at p50.
+- **Inferred:** the replay's opcode dispatch and word decoding cost more
+  relative to the WebGPU calls on this host and browser than on the M5.
+- **Measured:** this 4080 host ran slower than in the first 4080 run on
+  `ce78251bc7d` (TypeScript p50 0.450 against 0.200 ms). The browser, its
+  frame rate cap, and the host's load (load average about 3.5) may all
+  differ between the two runs, so compare figures within one run only.
+
 ## Open items
 
 - Window presentation through `SurfaceSource` is written but not run.
