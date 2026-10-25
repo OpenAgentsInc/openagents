@@ -3728,7 +3728,10 @@
 /* Short enough to stay below the editor, which leaves the dock its space. */
 [data-verse-ui="studio"] .house-hud [data-aethyr-id="world-voice"] {
   max-height: 96px;
+  overflow-x: hidden;
   overflow-y: auto;
+  /* The panel's corner marks overflow it by a pixel; no scrollbars for that. */
+  scrollbar-width: none;
 }
 [data-verse-ui="studio"] .house-hud [data-aethyr-id="world-voice"] .aui-status {
   font-size: 12px;
