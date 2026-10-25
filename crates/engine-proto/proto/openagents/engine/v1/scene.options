@@ -1,0 +1,7 @@
+openagents.engine.v1.SceneMetadata.scene_id max_length:48
+openagents.engine.v1.SceneMetadata.landmarks max_count:16
+openagents.engine.v1.SceneMetadata.colliders max_count:64
+openagents.engine.v1.Landmark.id max_length:48
+openagents.engine.v1.Landmark.label max_length:64
+openagents.engine.v1.Landmark.interaction_label max_length:64
+openagents.engine.v1.AxisAlignedBox.id max_length:48

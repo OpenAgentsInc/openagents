@@ -6599,6 +6599,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
+name = "engine-proto"
+version = "1.0.0"
+dependencies = [
+ "prost 0.13.5",
+ "prost-build 0.13.5",
+ "tempfile",
+]
+
+[[package]]
 name = "ensure-cov"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

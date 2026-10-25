@@ -1,0 +1,2 @@
+nanopb==0.4.9.1
+protobuf==5.29.3

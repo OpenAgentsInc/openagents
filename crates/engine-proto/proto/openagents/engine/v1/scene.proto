@@ -1,0 +1,47 @@
+syntax = "proto3";
+package openagents.engine.v1;
+
+// Display and collision metadata shared by engine hosts. These messages do
+// not authorize commands, admit assets, or replace simulation state.
+message SceneMetadata {
+  uint32 schema_version = 1; // Must be 1 for this contract.
+  string scene_id = 2; // 1-48 ASCII letters, digits, underscores, or hyphens.
+  CoordinateConvention coordinates = 3;
+  repeated Landmark landmarks = 4; // At most 16, with distinct IDs.
+  repeated AxisAlignedBox colliders = 5; // At most 64, with distinct IDs.
+}
+
+enum CoordinateConvention {
+  COORDINATE_CONVENTION_UNSPECIFIED = 0;
+  // Positions and dimensions are meters. +Y is up; the forward axis is +Z.
+  COORDINATE_CONVENTION_Y_UP_METERS_Z_FORWARD = 1;
+}
+
+message Vec3 {
+  // Every component must be finite, with magnitude at most 1,000,000 meters.
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message Landmark {
+  string id = 1; // Same identifier rules as scene_id.
+  string label = 2; // Nonempty UTF-8, at most 64 bytes, without ASCII controls.
+  Vec3 position = 3; // Required: the ground reference point, in scene axes.
+  float label_height_m = 4; // Finite offset above position.y, from 0 to 100.
+  InteractionRange interaction = 5; // Absent for a decorative landmark.
+  string interaction_label = 6; // Nonempty with interaction; at most 64 UTF-8 bytes, without ASCII controls.
+}
+
+message InteractionRange {
+  // Ground-plane distances from the reference point. These control prompts,
+  // not access. Both must be finite; 0 < enter_m <= leave_m <= 100.
+  float enter_m = 1;
+  float leave_m = 2;
+}
+
+message AxisAlignedBox {
+  string id = 1; // Same identifier rules as scene_id.
+  Vec3 min = 2; // Required; every component is less than max's component.
+  Vec3 max = 3; // Required; bounds use the scene's coordinate convention.
+}
