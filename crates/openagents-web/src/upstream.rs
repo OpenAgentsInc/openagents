@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 120] = [
+const OWNED_EXACT: [&str; 126] = [
     // The public zone catalog shells open (crate::pages::zones).
     "/v1/zones",
     "/v1/pylons/work",
@@ -110,6 +110,14 @@ const OWNED_EXACT: [&str; 120] = [
     "/new-lander/ui.js",
     "/new-lander/fonts/inter-latin-wght.woff2",
     "/new-lander/house",
+    // The Verse playtest flow prototype (crate::pages::verse_flow).
+    "/new-lander/flow",
+    "/new-lander/flow.js",
+    // Kiki's playtest trail (crate::pages::landernew).
+    "/landernew",
+    "/landernew/flow.js",
+    "/landernew/map",
+    "/landernew/house",
     // The launch homepage and the playtest's house, behind the private
     // preview (crate::preview), and "Coming soon" at `/` (crate::pages::coming_soon).
     "/beta",
@@ -531,5 +539,26 @@ mod agent_lab_routes {
         }
         assert!(!super::owned("/v1/labs-other"));
         assert!(!super::owned("/labs/agents"));
+    }
+}
+
+#[cfg(test)]
+mod preview_routes {
+    /// A signed-in visitor's Cloud cookie refuses anything this server
+    /// doesn't own, so every private preview page has to be owned here.
+    #[test]
+    fn preview_pages_stay_on_this_server() {
+        for path in [
+            crate::pages::new_lander::HOME,
+            crate::pages::verse_flow::PATH,
+            "/new-lander/flow.js",
+            "/landernew",
+            "/landernew/map",
+            "/landernew/house",
+            "/landernew/flow.js",
+        ] {
+            assert!(crate::preview::gated(path) || path == "/beta", "{path}");
+            assert!(super::owned(path), "{path}");
+        }
     }
 }
