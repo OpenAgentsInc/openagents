@@ -253,6 +253,38 @@ test("chat has World and Agent rooms; the agent sends requests to Kiln", async (
   );
 });
 
+test("characters speak in World chat and answer when named", async () => {
+  await open();
+  // A string, so the bundler's helpers don't enter the page.
+  await page.evaluate(`
+    window.asked = [];
+    window.hauntDemo = { npc_chat: (text) => window.asked.push(text) };
+    window.dispatchEvent(new CustomEvent("aethyr-npc", { detail: {
+      sequence: 1, npc: "ghost", name: "Ghost", kind: "greet", text: "Who goes there?",
+    } }));
+  `);
+  await page.getByRole("tab", { name: "World" }).click();
+  await page.locator(".kiki-msg", { hasText: "Who goes there?" }).waitFor();
+  const box = page.getByLabel("Message people in this world");
+  await page.waitForFunction(
+    () =>
+      !(
+        document.querySelector(
+          '[aria-label="Message people in this world"]',
+        ) as HTMLInputElement
+      ).disabled,
+  );
+  await box.fill("@ghost hello");
+  await box.press("Enter");
+  await page.waitForFunction(
+    () => (window as unknown as { asked: string[] }).asked.length === 1,
+  );
+  assert.deepEqual(
+    await page.evaluate(() => (window as unknown as { asked: string[] }).asked),
+    ["@ghost hello"],
+  );
+});
+
 test("inventory adds an asset through the release's Add prop", async () => {
   await open();
   const inventory = page.locator('[data-kiki-pane="inventory"]');

@@ -733,6 +733,8 @@ async function signedIn(): Promise<boolean | undefined> {
 
 export function mountKiki(): () => void {
   const registry = AtomRegistry.make();
+  // The world has characters once one speaks (host protocol v8).
+  let characters = false;
   const phone = window.innerWidth < PHONE;
   registry.set(deskAtom, load(initialDesk(phone)));
   const assets = readAssets();
@@ -827,7 +829,7 @@ export function mountKiki(): () => void {
       if (command) say(run(command));
     }
     heard = next.heard;
-    registry.set(worldOpenAtom, flag("kikiWorldChat") === "open");
+    registry.set(worldOpenAtom, flag("kikiWorldChat") === "open" || characters);
   };
 
   // The guest rule: watch the release's change confirmation open.
@@ -987,6 +989,36 @@ export function mountKiki(): () => void {
     }
     if (next !== state) setDesk(next);
   };
+  // A character's line (`aethyr-npc`, host protocol v8) joins World chat;
+  // a World message naming one (`@ghost hello`) asks it to reply.
+  const npcLine = (event: Event) => {
+    const line = (event as CustomEvent).detail as
+      { name?: unknown; text?: unknown; kind?: unknown } | undefined;
+    if (typeof line?.name !== "string" || typeof line.text !== "string") return;
+    characters = true;
+    registry.set(worldOpenAtom, true);
+    const text = line.kind === "emote" ? `* ${line.text} *` : line.text;
+    registry.update(worldLogAtom, (log) =>
+      append(log, message(line.name as string, text, false)),
+    );
+  };
+  const worldSend = (event: Event) => {
+    const text = (event as CustomEvent).detail?.text;
+    const demo = (
+      window as { hauntDemo?: { npc_chat?: (text: string) => unknown } }
+    ).hauntDemo;
+    if (typeof text !== "string" || !/^\s*@/.test(text)) return;
+    if (typeof demo?.npc_chat !== "function") return;
+    try {
+      demo.npc_chat(text.trim());
+    } catch (error) {
+      const why =
+        typeof error === "string" ? error : "No one here by that name.";
+      registry.update(worldLogAtom, (log) =>
+        append(log, message("World", why, false)),
+      );
+    }
+  };
   const worldMessage = (event: Event) => {
     const detail = (event as CustomEvent).detail as
       { name?: unknown; text?: unknown; at?: unknown } | undefined;
@@ -1014,6 +1046,8 @@ export function mountKiki(): () => void {
   document.addEventListener("pointercancel", up);
   document.addEventListener("keydown", key, true);
   document.addEventListener("kiki:world-message", worldMessage);
+  document.addEventListener("kiki:world-send", worldSend);
+  window.addEventListener("aethyr-npc", npcLine);
   document.addEventListener("kiki:world-people", worldPeople);
   window.addEventListener("resize", resize);
 
@@ -1030,6 +1064,8 @@ export function mountKiki(): () => void {
     document.removeEventListener("pointercancel", up);
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("kiki:world-message", worldMessage);
+    document.removeEventListener("kiki:world-send", worldSend);
+    window.removeEventListener("aethyr-npc", npcLine);
     document.removeEventListener("kiki:world-people", worldPeople);
     window.removeEventListener("resize", resize);
     document.documentElement.removeAttribute("data-kiki-editing");
