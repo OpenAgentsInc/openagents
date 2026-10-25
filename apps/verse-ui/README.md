@@ -103,6 +103,38 @@ backgrounds that axe cannot measure. Set `VERSE_UI_REVIEW_CSS` to a local built
 stylesheet to test before deployment, and `VERSE_UI_REVIEW_FIXTURES` to the
 Rust test capture directory to include account-only cards without signing in.
 
+## Kiki's house editor (`.kiki`)
+
+Pages whose `<html>` or `<body>` has the class `kiki` (the `/landernew` trail)
+get Kiki's design; every other page is unchanged. CSS sits at the end of
+`src/theme.css` and is scoped under `.kiki`. On the studio (`data-verse-ui="studio"`),
+`src/kiki/desk-host.tsx` also mounts a desk beside the house controllers:
+
+- Black-and-white glass cards. Tools (the Jarvis sheet), Voice (the voice bar),
+  Chat, World inventory, Edits and payouts, and World actions (Play, Compile,
+  Revert, Publish) are panes. Drag a pane by its header, move it with the
+  arrow keys on a focused header, and close it with ×. The visitor's layout is
+  kept in `localStorage` on this device. On phones, one desk card shows at a time.
+- Card commands use a fixed grammar (`src/kiki/commands.ts`), for example
+  "show inventory", "close chat", or "open the tools window". They work in
+  Chat → Agent and when the house's voice controls hear them. Any other Agent
+  message goes to Kiln through the release's Request field and Review request button.
+- World inventory lists `#creator-assets` and adds an asset through the
+  release's `#edit-place-asset` and `#edit-place` (Add prop), at the Object
+  tools' X, Y, Z. It is disabled while the release hides or disables Add prop.
+- Edits and payouts mirror the release's change history, saved changes, and
+  `#visit-earnings`. "Not recorded" reads as "Paid: 0".
+- Guests keep one change at a time. When a guest's change confirmation opens
+  while this visit already holds a change, the desk cancels it with the release's
+  Cancel and shows "Revert to make another change". Revert presses `edit-undo`
+  (or `project-revert`). A visitor is a guest when `data-kiki-guest="true"`
+  is set on `<html>` or `<body>`; otherwise, when `/v1/verse/studio/session`
+  reports them signed out. `data-kiki-guest="false"` turns the rule off.
+- World chat has no server here. The World tab stays read-only until the page
+  sets `data-kiki-world-chat="open"`. Then it sends
+  `kiki:world-send` (`{text}`) on `document`, and shows
+  `kiki:world-message` (`{name, text, at?}`) and `kiki:world-people` (`{names}`).
+
 ## Aethyr UI protocol
 
 `src/aethyr/` holds the Aethyr controller runtime, the React DOM renderer, and

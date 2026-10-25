@@ -39,6 +39,7 @@ import { textareaStyles } from "./components/ui/textarea";
 import { nativeSelectStyles } from "./components/ui/native-select";
 import { mountVerse } from "./aethyr/verse-host";
 import { mountHouse } from "./aethyr/house-host";
+import { isKiki, mountKiki } from "./kiki/desk-host";
 
 const openAtom = Atom.make(false);
 const actionsAtom = Atom.make<AvailableAction[]>([]);
@@ -122,7 +123,7 @@ function styleControls() {
     if (
       // Aethyr renderer controls carry the design system's own classes.
       node.closest(
-        "#verse-ui-root,[data-slot=dialog-content],[data-aethyr-root]",
+        "#verse-ui-root,[data-slot=dialog-content],[data-aethyr-root],#kiki-desk,[data-kiki-bar]",
       ) ||
       node.dataset.verseControl ||
       // HUD components already carry the design system's own styles.
@@ -145,7 +146,7 @@ function styleControls() {
     for (const node of document.querySelectorAll<HTMLElement>(selector)) {
       if (
         node.dataset.verseControl ||
-        node.closest("[data-slot=dialog-content],[data-aethyr-root]")
+        node.closest("[data-slot=dialog-content],[data-aethyr-root],#kiki-desk")
       )
         continue;
       node.classList.add(...styles.split(" ").filter(Boolean));
@@ -241,6 +242,15 @@ if (document.documentElement.hasAttribute("data-verse-ui") && !window.verseUi) {
         yield* Effect.acquireRelease(
           Effect.sync(() => mountHouse(surface)),
           (dispose) => Effect.sync(() => dispose?.()),
+        );
+      // Kiki's movable editor cards, only on pages that carry `kiki`.
+      if (
+        surface === "studio" &&
+        isKiki() &&
+        document.documentElement.dataset.aethyrHouse === "studio"
+      )
+        yield* Effect.acquireRelease(Effect.sync(mountKiki), (dispose) =>
+          Effect.sync(dispose),
         );
       yield* Effect.acquireRelease(Effect.sync(acquireUi), (dispose) =>
         Effect.sync(dispose),

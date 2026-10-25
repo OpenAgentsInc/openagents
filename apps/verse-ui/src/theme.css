@@ -3894,3 +3894,574 @@ body:has(.house-editor [data-aethyr-id="edit-panel"])
   min-height: 36px;
   line-height: 1.4;
 }
+
+/* --- Kiki's house editor (`.kiki` on <html> or <body>) ------------------
+   Only pages that carry the `kiki` class (the /landernew trail) use these
+   rules; every other page keeps the styles above. Black-and-white glass
+   cards over the full-window world: translucent dark glass, blur, a thin
+   light border, 14px corners. Each editor card can be dragged by its
+   header and closed with its × (src/kiki/desk-host.tsx). */
+.kiki {
+  --kiki-glass: rgba(18, 18, 22, 0.46);
+  --kiki-glass-hi: rgba(237, 237, 237, 0.08);
+  --kiki-line: rgba(237, 237, 237, 0.16);
+  --kiki-dim: #a1a1a7;
+  --kiki-ember: #e8792b;
+  --kiki-ember-ink: #1a0d04;
+  --kiki-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  --hud-glass: var(--kiki-glass);
+  --hud-line: var(--kiki-line);
+  --hud-glow: var(--kiki-shadow);
+}
+.kiki :is(.hud-panel, .hud-card, .kiki-card, .kiki-practice) {
+  background: var(--kiki-glass);
+  border: 1px solid var(--kiki-line);
+  border-radius: 14px;
+  box-shadow: var(--kiki-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+.kiki :is(.hud-panel, .hud-card)::before,
+.kiki :is(.hud-panel, .hud-card)::after {
+  display: none;
+}
+/* Glass inside glass reads as one card: tool windows are sections. */
+.kiki .house-editor [data-aethyr-id="edit-windows"] .aui-panel {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--kiki-line);
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  padding: var(--hud-space-md) 0 0;
+}
+.kiki .house-editor [data-aethyr-id^="close-"] {
+  top: var(--hud-space-xs);
+  right: 0;
+}
+
+/* Cards: a header to drag by, an × to close. */
+.kiki .kiki-pane-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--kiki-line);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.kiki .kiki-pane-bar:active {
+  cursor: grabbing;
+}
+.kiki .kiki-pane-bar:focus-visible {
+  outline: 1px solid var(--foreground);
+  outline-offset: -2px;
+}
+/* On an Aethyr panel the bar spans the panel's padding. */
+.kiki [data-aethyr-id] > .kiki-pane-bar {
+  margin: calc(-1 * var(--kiki-pad-y, 0px)) calc(-1 * var(--kiki-pad-x, 0px))
+    0;
+}
+.kiki .kiki-pane-title {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--kiki-dim);
+}
+.kiki .kiki-pane-close {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--kiki-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.kiki .kiki-pane-close:hover {
+  color: var(--foreground);
+  background: var(--kiki-glass-hi);
+}
+.kiki .kiki-pane-close:focus-visible {
+  outline: 1px solid var(--foreground);
+}
+.kiki [data-kiki-pane][data-kiki-closed] {
+  display: none !important;
+}
+.kiki [data-kiki-pane][data-kiki-moved] {
+  position: fixed !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: min(var(--kiki-w, 360px), calc(100vw - 32px)) !important;
+  margin: 0 !important;
+  transform: none !important;
+  pointer-events: auto;
+}
+/* The Jarvis sheet keeps "Inspect world" to leave the editor; its own ×
+   would also leave it, so the card's × (which only hides it) replaces it. */
+.kiki .house-editor [data-aethyr-id="edit-panel"] > .aui-close {
+  display: none;
+}
+.kiki .house-editor [data-aethyr-id="edit-panel"] {
+  --kiki-pad-x: var(--hud-space-md);
+  --kiki-pad-y: var(--hud-space-md);
+}
+.kiki .house-editor [data-aethyr-id="edit-header"] {
+  padding-right: 0;
+}
+.kiki .house-hud [data-aethyr-id="world-voice"] {
+  --kiki-pad-x: var(--hud-space-md);
+  --kiki-pad-y: var(--hud-space-sm);
+  max-height: none;
+}
+/* Edit mode: Play, Compile, Revert, and Publish live on the actions card. */
+:root[data-kiki-editing] .house-hud [data-aethyr-id="request-choices"] {
+  display: none;
+}
+
+/* The desk's own cards. Phone width first: full width under the top edge. */
+.kiki .kiki-card {
+  position: fixed;
+  z-index: 8;
+  top: 16px;
+  right: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 220px);
+  color: var(--foreground);
+  font-size: 14px;
+}
+.kiki .kiki-card-body {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (min-width: 800px) {
+  .kiki .house-editor [data-aethyr-id="edit-panel"] {
+    inset: 20px auto auto 20px;
+    width: min(400px, calc(100vw - 40px));
+    max-height: calc(100vh - 140px);
+    --kiki-pad-x: var(--hud-space-lg);
+    --kiki-pad-y: var(--hud-space-lg);
+  }
+  .kiki .house-editor [data-aethyr-id="edit-windows"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .kiki .kiki-card {
+    left: auto;
+    width: 340px;
+  }
+  .kiki [data-kiki-pane="actions"] {
+    top: 20px;
+    right: 20px;
+  }
+  .kiki [data-kiki-pane="chat"] {
+    top: 148px;
+    right: 20px;
+    height: min(420px, calc(100vh - 424px));
+    min-height: 240px;
+  }
+  .kiki [data-kiki-pane="payouts"] {
+    top: auto;
+    right: 20px;
+    bottom: 20px;
+    max-height: 240px;
+  }
+  .kiki [data-kiki-pane="inventory"] {
+    top: 20px;
+    right: auto;
+    left: 440px;
+    width: 280px;
+    max-height: calc(100vh - 240px);
+  }
+}
+
+.kiki .kiki-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.kiki .kiki-center {
+  justify-content: center;
+}
+.kiki [data-kiki-pane="actions"] .kiki-row {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.kiki [data-kiki-pane="actions"] .kiki-button {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.kiki .kiki-button,
+.kiki .kiki-tab {
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid var(--kiki-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+.kiki .kiki-button:hover:not(:disabled),
+.kiki .kiki-tab:hover {
+  background: var(--kiki-glass-hi);
+  border-color: rgba(237, 237, 237, 0.4);
+}
+.kiki .kiki-button:focus-visible,
+.kiki .kiki-tab:focus-visible,
+.kiki .kiki-composer input:focus-visible,
+.kiki .kiki-search:focus-visible {
+  outline: 1px solid var(--foreground);
+  outline-offset: 2px;
+}
+.kiki .kiki-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.kiki .kiki-solid,
+.kiki .kiki-tab.kiki-on {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: var(--background);
+}
+.kiki .kiki-solid:hover:not(:disabled),
+.kiki .kiki-tab.kiki-on:hover {
+  background: #ffffff;
+}
+.kiki .kiki-ember {
+  background: var(--kiki-ember);
+  border-color: var(--kiki-ember);
+  color: var(--kiki-ember-ink);
+  font-weight: 600;
+}
+.kiki .kiki-ember:hover:not(:disabled) {
+  background: #f28a3d;
+}
+.kiki .kiki-caption,
+.kiki .kiki-empty,
+.kiki .kiki-people {
+  margin: 0;
+  color: var(--kiki-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.kiki .kiki-heading {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--kiki-dim);
+}
+.kiki .kiki-amount {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chat: larger text, bubbles with names and times, own messages right. */
+.kiki [data-kiki-pane="chat"] .kiki-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.kiki .kiki-tabs {
+  display: flex;
+  gap: 4px;
+}
+.kiki .kiki-tab {
+  min-height: 32px;
+  padding: 5px 14px;
+  font-size: 13px;
+}
+.kiki .kiki-room {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 10px;
+  min-height: 0;
+}
+.kiki .kiki-msgs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 120px;
+  margin: 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  list-style: none;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.kiki .kiki-room > .kiki-empty {
+  flex: 1;
+  font-size: 15px;
+}
+.kiki .kiki-msg {
+  display: grid;
+  gap: 3px;
+  max-width: 88%;
+  animation: kiki-in 0.25s ease-out;
+}
+.kiki .kiki-who {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--kiki-dim);
+}
+.kiki .kiki-who time {
+  margin-left: 6px;
+  opacity: 0.75;
+}
+.kiki .kiki-txt {
+  padding: 8px 11px;
+  border: 1px solid var(--kiki-line);
+  border-radius: 12px 12px 12px 4px;
+  background: rgba(237, 237, 237, 0.07);
+  overflow-wrap: anywhere;
+}
+.kiki .kiki-mine {
+  align-self: flex-end;
+  justify-items: end;
+}
+.kiki .kiki-mine .kiki-txt {
+  border-color: var(--foreground);
+  border-radius: 12px 12px 4px 12px;
+  background: var(--foreground);
+  color: var(--background);
+}
+@keyframes kiki-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.kiki .kiki-composer {
+  display: flex;
+  gap: 8px;
+}
+.kiki .kiki-composer input,
+.kiki .kiki-search {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid var(--kiki-line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 15px;
+}
+.kiki .kiki-composer input:disabled {
+  opacity: 0.5;
+}
+/* The voice bar's transcript reads like the chat. */
+.kiki
+  .house-hud
+  [data-aethyr-id="world-voice"]
+  :is([data-aethyr-id="voice-response"], [data-aethyr-id="voice-heard"]) {
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--kiki-line);
+  border-radius: 12px 12px 12px 4px;
+  background: rgba(237, 237, 237, 0.07);
+  color: var(--foreground);
+  font-size: 15px;
+  line-height: 1.45;
+  animation: kiki-in 0.25s ease-out;
+}
+.kiki .house-hud [data-aethyr-id="world-voice"] [data-aethyr-id="voice-heard"] {
+  align-self: flex-end;
+  border-radius: 12px 12px 4px 12px;
+  background: var(--foreground);
+  color: var(--background);
+}
+
+/* World inventory and the edits log. */
+.kiki .kiki-assets,
+.kiki .kiki-log {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.kiki .kiki-assets li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0 4px 2px;
+  border-bottom: 1px solid var(--kiki-line);
+}
+.kiki .kiki-assets li:last-child,
+.kiki .kiki-log li:last-child {
+  border-bottom: 0;
+}
+.kiki .kiki-assets .kiki-button {
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+.kiki .kiki-log li {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--kiki-line);
+  font-size: 13px;
+}
+
+/* Guest practice: one change at a time. */
+.kiki .kiki-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.kiki .kiki-practice {
+  display: grid;
+  gap: 14px;
+  width: min(460px, 100%);
+  box-sizing: border-box;
+  padding: 28px 24px;
+  border-color: rgba(232, 121, 43, 0.7);
+  box-shadow:
+    0 0 0 1px rgba(232, 121, 43, 0.25),
+    0 18px 60px rgba(232, 121, 43, 0.18);
+  text-align: center;
+  color: var(--foreground);
+}
+.kiki .kiki-practice h2 {
+  margin: 0;
+  color: var(--kiki-ember);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.kiki .kiki-practice p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.kiki .kiki-practice .kiki-button {
+  min-height: 44px;
+  padding: 10px 20px;
+  font-size: 15px;
+}
+.kiki .kiki-reopen {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 8;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid var(--kiki-line);
+  border-radius: 999px;
+  background: var(--kiki-glass);
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+.kiki [data-kiki-pane="payouts"] ~ .kiki-reopen {
+  bottom: 276px;
+}
+@media (max-width: 799px) {
+  .kiki .kiki-reopen,
+  .kiki [data-kiki-pane="payouts"] ~ .kiki-reopen {
+    right: 16px;
+    bottom: 190px;
+  }
+}
+.kiki .kiki-notice {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 60;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 10px 16px;
+  transform: translateX(-50%);
+  border: 1px solid var(--kiki-line);
+  border-radius: 14px;
+  background: var(--kiki-glass);
+  color: var(--foreground);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  font-size: 14px;
+}
+
+/* Sign-in (first edit, and on Publish) and publish review: a centred glass
+   box on every width. */
+.kiki dialog.hud-dialog {
+  width: min(440px, calc(100vw - 32px));
+  margin: auto;
+  padding: 28px;
+  text-align: center;
+}
+.kiki dialog.hud-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+.kiki dialog.hud-dialog .aui-stack {
+  align-items: center;
+}
+.kiki dialog.hud-dialog .aui-title {
+  font-size: 20px;
+}
+
+/* The playtest finish button and survey prompt: bigger and easy to read. */
+.kiki .playtest-finish {
+  min-height: 48px;
+  padding: 12px 26px;
+  font-size: 17px;
+}
+.kiki .playtest-prompt {
+  width: min(520px, calc(100vw - 32px));
+  padding: 24px;
+  border: 1px solid var(--kiki-line);
+  border-radius: 14px;
+  background: var(--kiki-glass);
+  box-shadow: var(--kiki-shadow);
+  text-align: center;
+}
+.kiki .playtest-prompt p {
+  font-size: 19px;
+  line-height: 1.4;
+}
+.kiki .playtest-prompt .lp-actions {
+  justify-content: center;
+}
+.kiki .playtest-prompt .hud-button {
+  min-height: 46px;
+  padding: 10px 22px;
+  font-size: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kiki :is(.kiki-msg, .kiki-button, .kiki-tab),
+  .kiki .house-hud [data-aethyr-id="world-voice"] [data-aethyr-id] {
+    animation: none;
+    transition: none;
+  }
+}
