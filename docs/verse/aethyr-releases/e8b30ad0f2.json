@@ -1,0 +1,135 @@
+{
+  "schema": "openagents.aethyr.release-qualification.v1",
+  "issue": 12590,
+  "commit": "e8b30ad0f288a258e557f82e5fa6d01658bb1ba3",
+  "protocol_version": 8,
+  "toolchain": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "rustc_root": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "rustc_aethyr": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "wasm_bindgen": "wasm-bindgen 0.2.128",
+    "wasm_opt": "wasm-opt version 132",
+    "platform": "macOS-26.4-arm64-arm-64bit-Mach-O"
+  },
+  "sdk": {
+    "wasm_sha256": "ffe95bdc33e3e809acdb433b6654d6ade1c72382d5d1f7010e5440606180d092",
+    "closure_sha256": "20f6c5f7f9b104eb196660ec29227c14e6c051373888865cceada02cfbc003e6"
+  },
+  "kernel_sha256": "3200bb13a33adc70246a81c186b3d2fbeb81dc6f713f073230272e1c44c78a8c",
+  "profiles": {
+    "universe": {
+      "release": "aue8b30ad0f2",
+      "editor": {
+        "image_digest": "sha256:86f2c17cbd473a28566ed3c04caa691a89cb0cf6c646d42ce96f1fc3893ccd1c",
+        "revision": "aethyrforge-editor-00068-giq"
+      },
+      "preview": {
+        "image_digest": "sha256:d415145bfd82ca255d7f70dd13e992add6675fcf91f857096e9427cae45f93df",
+        "revision": "aethyrforge-preview-00073-dad"
+      },
+      "asset_set_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "asset_files": 0,
+      "asset_bytes": 0,
+      "release_json_sha256": "59fac35dbada9872dd52f6e2fcd1dd7bb459eb602335bbc0b829ff66a8c42f4f",
+      "context_sha256": {
+        "editor": "9a0e6095012aa1028cc142efc5c27ec8da2cf447bc4c64c0e8f73ce1ac555f66",
+        "preview": "625a2956fdb56b449efc491e3191f8a7b8ed9c477449f4de6b304c9497ea2a4a"
+      }
+    },
+    "house": {
+      "release": "ahe8b30ad0f2",
+      "editor": {
+        "image_digest": "sha256:a4544f69ac811f6a74579b73d54be708f7d3085c5f6dbda5eef807cd93cae509",
+        "revision": "aethyrforge-editor-00069-wuy"
+      },
+      "preview": {
+        "image_digest": "sha256:67af0952dc213efd08a61136148295e3c01555d6d687c708a21d419feac5b9fc",
+        "revision": "aethyrforge-preview-00074-rod"
+      },
+      "asset_set_sha256": "d29dcabe5d7fc3a224319e29caddcd69d17485dd264575b6861c4599cd9650c1",
+      "asset_files": 29,
+      "asset_bytes": 10265849,
+      "release_json_sha256": "c2f6e0162243a27242c0ebc3126a71117b4bfd5d7b94359d7892fe1d3a80084d",
+      "context_sha256": {
+        "editor": "0afa0496416652ac95935349d762de267c8e5ad6bba44e5f280a44ce6620c540",
+        "preview": "9d48669e5a1014e6b4fec818113ab42fe2af7923b4ef2958ee959c927e65214e"
+      }
+    },
+    "planet": {
+      "release": "ape8b30ad0f2",
+      "editor": {
+        "image_digest": "sha256:3f45a2188b00a71860230408d7b878adc1db90816bd32428696d2901189de28b",
+        "revision": "aethyrforge-editor-00070-piz"
+      },
+      "preview": {
+        "image_digest": "sha256:023fe2d6024afdec98a2f5712e6a07bcadfd6173228861bf5e97fb9dd203da8b",
+        "revision": "aethyrforge-preview-00075-rah"
+      },
+      "asset_set_sha256": "69ecc4470f3ae4ef88244a430dd7b56af1ebd80309e5f0d87a138303c1a1b354",
+      "asset_files": 30,
+      "asset_bytes": 10427976,
+      "release_json_sha256": "cd1e1b151bf7e3ef06a1bbf94696531504efe25562b99ee701770ba3448b3726",
+      "context_sha256": {
+        "editor": "aced1a7d8a3e53174bd9fcf1bd7fdbff66a80195f72fc368bdca903a6e358763",
+        "preview": "45b2035641d968b33a9ff024c5393dfa83c2cf813aa026dff6bb4d83a23d06c1"
+      }
+    }
+  },
+  "asset_bucket_prefix": "assetsets/",
+  "candidate_checks": [
+    {
+      "profile": "house",
+      "check": "check-haunted-house",
+      "result": "pass"
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-project",
+      "result": "pass"
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-publish",
+      "result": "pass"
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-material",
+      "result": "pass"
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-access",
+      "result": "pass"
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-voice",
+      "result": "pass"
+    },
+    {
+      "profile": "house",
+      "check": "check-verse-workspace",
+      "result": "pass"
+    },
+    {
+      "profile": "universe",
+      "check": "check-verse-universe",
+      "result": "pass"
+    }
+  ],
+  "pins": [
+    "haunted-house.json",
+    "runtimes/haunted-house.json",
+    "runtimes/personal-planet.json",
+    "universe.json"
+  ],
+  "rollback": [
+    "rollback/haunted-house.json",
+    "rollback/runtimes/haunted-house.json",
+    "rollback/runtimes/personal-planet.json",
+    "rollback/universe.json"
+  ],
+  "production_checks": "pending: run the same checks without candidate mode after the website shift"
+}
