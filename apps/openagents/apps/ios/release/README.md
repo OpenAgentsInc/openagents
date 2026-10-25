@@ -48,6 +48,12 @@ never printed.
 4. `scripts/release/asc.py wait-valid --build N --version 1.0.0` (repository
    root) waits for processing and internal testing.
 
+Over ssh, the archive fails to sign the LiveActivity extension with
+`errSecInternalComponent`, because an ssh shell can't use the login keychain.
+Run the archive and export commands from the owner's logged-in session instead,
+for example as a one-shot LaunchAgent (`launchctl bootstrap gui/501 <plist>`),
+then remove the agent. Build 1023 was shipped this way on 2026-10-24.
+
 Before signing, the owner checks that this version and build are available.
 If they are already used, change every app/extension version in
 `OpenAgents.xcodeproj/project.pbxproj` and `version.json` together, commit, and push.
