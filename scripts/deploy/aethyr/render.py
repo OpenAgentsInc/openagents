@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 p=argparse.ArgumentParser()
 for name in ['release','editor','preview','host','sdk','dist','sdk-directory','assets-manifest','output']:p.add_argument('--'+name,required=True)
-p.add_argument("--protocol-version",type=int,choices=[1,2,3,4,5,6,7],default=1)
+p.add_argument("--protocol-version",type=int,choices=[1,2,3,4,5,6,7,8],default=1)
 p.add_argument("--profile",choices=["world","universe"],default="world")
 a=p.parse_args()
 assert re.fullmatch(r'[a-z0-9-]{1,63}',a.release)
