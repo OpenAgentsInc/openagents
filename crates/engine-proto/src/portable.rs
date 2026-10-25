@@ -55,8 +55,10 @@ pub fn validate_scene(scene: &CompiledScene) -> Result<(), &'static str> {
         {
             return Err("invalid compiled placement");
         }
-        let determinant = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2])
-            + m[8] * (m[1] * m[6] - m[5] * m[2]);
+        // Evaluate the same float32 wire matrix in float64 in every consumer.
+        let d: [f64; 16] = std::array::from_fn(|i| f64::from(m[i]));
+        let determinant = d[0] * (d[5] * d[10] - d[9] * d[6]) - d[4] * (d[1] * d[10] - d[9] * d[2])
+            + d[8] * (d[1] * d[6] - d[5] * d[2]);
         if determinant.abs() <= 1e-12
             || [3, 7, 11].iter().any(|i| m[*i].abs() > 1e-5)
             || (m[15] - 1.).abs() > 1e-5

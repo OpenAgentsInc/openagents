@@ -117,9 +117,15 @@ def checked_file(root, relative, expected=None):
     if not 0 < size <= 512*1024*1024 or (expected is not None and size != expected):
         raise ValueError('Asset length mismatch')
     digest = hashlib.sha256()
+    total = 0
     with current.open('rb') as stream:
         for chunk in iter(lambda: stream.read(1024*1024), b''):
+            total += len(chunk)
+            if total > size:
+                raise ValueError('Asset changed while hashing')
             digest.update(chunk)
+    if total != size:
+        raise ValueError('Asset changed while hashing')
     return size, digest.digest()
 
 

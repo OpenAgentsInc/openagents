@@ -1,6 +1,7 @@
 {
   "manifest.pb": true,
   "scene.pb": true,
+  "scene-precision.pb": true,
   "scene-unknown.pb": true,
   "manifest-unknown.pb": true,
   "scene-invalid-transform.pb": false,

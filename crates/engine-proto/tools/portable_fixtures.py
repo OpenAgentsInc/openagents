@@ -27,6 +27,9 @@ def generate(root):
         cases[name] = valid
     write('manifest.pb', manifest)
     cases['scene.pb'] = True
+    precision=CompiledScene();precision.CopyFrom(scene)
+    precision.placements[0].transform[:]=[1,1.0000001192092896,0,0,1.0000001192092896,1.000000238418579,0,0,0,0,1_000_000,0,0,0,0,1]
+    write('scene-precision.pb',precision)
     for name, value in [('scene-unknown.pb',scene),('manifest-unknown.pb',manifest)]:
         (folder / name).write_bytes(value.SerializeToString(deterministic=True) + b'\x98\x06\x01')
         cases[name] = True
