@@ -11,6 +11,7 @@ mod bunny;
 pub(crate) mod cad;
 pub mod chat;
 mod cloud;
+pub(crate) mod coming_soon;
 pub mod connect;
 pub(crate) mod contact;
 pub mod content;
@@ -36,7 +37,6 @@ mod lander8;
 mod layertree;
 pub mod live;
 pub(crate) mod medieval_town;
-pub(crate) mod coming_soon;
 pub(crate) mod new_lander;
 pub(crate) mod new_lander_house;
 mod pricing;
@@ -49,6 +49,7 @@ pub(crate) mod sdk_docs;
 mod snap;
 mod snap_shares;
 pub mod stats;
+pub(crate) mod verse_flow;
 mod verse_hands;
 mod zones;
 
@@ -130,6 +131,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(coming_soon::routes())
         .merge(new_lander::routes())
         .merge(new_lander_house::routes())
+        .merge(verse_flow::routes())
         .merge(zones::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
