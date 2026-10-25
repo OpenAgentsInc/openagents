@@ -1,7 +1,8 @@
 # OpenAgents 1.0.0 (1027)
 
 The Grid's multiplayer now follows the original Grid. Open Zones > The Grid
-on two devices or alongside web staging, tap Play, and check names and walking,
+on two devices or alongside [web staging](https://grid-1027---aethyr-staging-ezxz4mgdsq-uc.a.run.app/grid.html),
+tap Play, and check names and walking,
 running, jumping, and player contact. Try Players > Mute, Unmute, Block, and
 Unblock. Switch apps and return, then tap Play to rejoin. Close and reopen the
 Grid and check your name and player identity. Watch observes without sharing
