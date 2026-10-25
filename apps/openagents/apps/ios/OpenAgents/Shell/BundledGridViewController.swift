@@ -8,7 +8,8 @@ import UIKit
 /// in that release; Rust owns shell actions, service URLs, and local suggestions.
 final class BundledGridViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private let core: CoreBundledGrid
-    private let openSessions: () -> Void
+    /// Nil in the Grid-only build: no Sessions button, Close is the only way out.
+    private let openSessions: (() -> Void)?
     private var web: WKWebView!
     private var assets: GridBundleAssets?
     private let cardHost = UIView()
@@ -25,12 +26,12 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
               let provider = CGDataProvider(url: bundle.appendingPathComponent("Michroma-Regular.ttf") as CFURL) else { return nil }
         return CGFont(provider)
     }()
-    private static func controlFont(_ size: CGFloat) -> UIFont {
+    static func controlFont(_ size: CGFloat) -> UIFont {
         guard let face = controlFace else { return Fonts.ui(.sans, size) }
         return CTFontCreateWithGraphicsFont(face, size, nil, nil) as UIFont
     }
 
-    init(openSessions: @escaping () -> Void) {
+    init(openSessions: (() -> Void)?) {
         self.openSessions = openSessions
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("AethyrGrid")
         core = CoreBundledGrid(storageDirectory: directory.path)
@@ -61,6 +62,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         sessions.accessibilityIdentifier = "grid-sessions"
         sessions.tintColor = Palette.text
         sessions.addAction(UIAction { [weak self] _ in self?.finish(sessions: true) }, for: .touchUpInside)
+        sessions.isHidden = openSessions == nil
 
         let config = WKWebViewConfiguration()
         // A persistent store belonging only to this bundled world. Native app
@@ -172,7 +174,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         web.stopLoading()
         web.configuration.userContentController.removeAllScriptMessageHandlers()
         let open = openSessions
-        dismiss(animated: true) { if sessions { open() } }
+        dismiss(animated: true) { if sessions { open?() } }
     }
     fileprivate func accepts(_ message: WKScriptMessage) -> Bool {
         message.frameInfo.isMainFrame && core.allowsNavigation(url: message.frameInfo.request.url?.absoluteString ?? "")

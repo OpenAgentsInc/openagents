@@ -125,6 +125,29 @@ copying the release. Normal iOS builds need neither Emscripten nor that checkout
 including movement, camera changes, jumping, background/resume, and the map/guide.
 `-demo -route zones -zone grid -grid-offline -grid-probe` opens that fixture.
 
+## Grid-only experiment
+
+A compile-time variant of this app (Swift flag `GRID_ONLY`) opens on one
+black Aethyr-styled home screen with a single **Enter the Grid** button
+(Michroma on a solid `#ededed` pill, from aethyr-cpp's `web/app.css`). The
+button opens the bundled Grid above (`BundledGridViewController`) full screen
+without its Sessions button; **Close** returns home. No account, chat, drawer,
+sign-in, or notification setup runs. The normal app is unchanged: the variant
+only swaps the scene delegate (`AppDelegate.sceneDelegateClass`,
+`GridOnly/GridOnlyHome.swift`). Both variants share `com.openagents.app`, so
+`SceneStateMigration` discards the saved scene whenever the variant changes.
+
+Build it by adding the flag to the usual commands, for example:
+
+```sh
+xcodebuild ... -scheme OpenAgents 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG GRID_ONLY' build
+```
+
+For TestFlight, archive with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=GRID_ONLY`
+and the next free `CURRENT_PROJECT_VERSION` on the command line, and keep the
+build internal-only (see `release/test-notes.md`). `-enter-grid` opens the
+Grid at launch for screenshots.
+
 ## Medieval Town
 
 Open the navigation menu and choose **Medieval Town**. Use the left stick to

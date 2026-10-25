@@ -5,12 +5,27 @@ import Foundation
 enum SceneStateMigration {
     static let doneKey = "openagents.sceneState.uikitV1"
 
+    static let variantKey = "openagents.sceneState.variant"
+
+    /// This build's scene variant: the Grid-only experiment or the app.
+    #if GRID_ONLY
+    static let variant = "grid-only"
+    #else
+    static let variant = "app"
+    #endif
+
     static func discardInheritedState(
         defaults: UserDefaults = .standard,
         fileManager: FileManager = .default,
         bundleID: String? = Bundle.main.bundleIdentifier
     ) {
-        guard !defaults.bool(forKey: doneKey), let bundleID else { return }
+        guard let bundleID else { return }
+        // The Grid-only experiment shares this bundle ID. iOS reconnects a
+        // saved scene with its archived delegate, so after switching between
+        // it and the app the old variant's screen would come back; discard
+        // the saved scene state whenever the variant changes.
+        let changed = (defaults.string(forKey: variantKey) ?? "app") != variant
+        guard changed || !defaults.bool(forKey: doneKey) else { return }
         if let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first {
             let saved = library
                 .appendingPathComponent("Saved Application State", isDirectory: true)
@@ -20,5 +35,6 @@ enum SceneStateMigration {
             }
         }
         defaults.set(true, forKey: doneKey)
+        defaults.set(variant, forKey: variantKey)
     }
 }

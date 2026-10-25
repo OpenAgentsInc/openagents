@@ -1,3 +1,13 @@
+# OpenAgents 1.0.0 (1028): Grid-only experiment (internal only)
+
+An experimental build, not a normal release: it was archived with the
+`GRID_ONLY` flag and is distributed to internal testers only. The app opens on
+one screen with an Enter the Grid button. Tap it to open the Grid full screen.
+Walk with the left stick, look with the right stick, try Run and Jump, then
+tap Close to return to the button. Nothing else in the app is reachable.
+Installing the next normal build returns the usual app. Source and version
+files stay at 1027; the next normal build must be 1029 or later.
+
 # OpenAgents 1.0.0 (1027)
 
 The Grid's multiplayer now follows the original Grid. Open Zones > The Grid
