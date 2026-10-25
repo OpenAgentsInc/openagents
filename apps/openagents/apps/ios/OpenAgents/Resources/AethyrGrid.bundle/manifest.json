@@ -1,11 +1,15 @@
 {
   "format": "openagents.aethyr-grid.bundle.v1",
   "repository": "https://github.com/OpenAgentsInc/aethyr-cpp",
-  "revision": "04a935b84b95084d81c2287514692d9c2e62ca6c",
+  "revision": "a8f9a9a71335ff1e7da49c9a75cde96a7ced63c3",
   "files": {
     "Info.plist": {
       "bytes": 485,
       "sha256": "df5bc463e0ac7ee124fb1ffb7a05964622b9caf168d1fd2138d5ae819f0c8130"
+    },
+    "Michroma-Regular.ttf": {
+      "bytes": 64344,
+      "sha256": "b62301163788bc5b7f8fcac0b74b184e34e1827e577b499ecb724da065098f87"
     },
     "grid-builds.js": {
       "bytes": 2133,
@@ -24,16 +28,16 @@
       "sha256": "cfbcbdc74600c5ae3c1d8b5727ef012fdd37fbfb13db3f6419c0cccf8c2b3007"
     },
     "grid-ui.css": {
-      "bytes": 3418,
-      "sha256": "8722cdd8d9ff3b3a7c8140048bd5e20e796ca04bdcb8a0e59f47bd02f5c30b6b"
+      "bytes": 4111,
+      "sha256": "869e05d116d1dc872beebd7fc7bae734866581356372ec2741ae929af7434d26"
     },
     "grid-ui.js": {
       "bytes": 24434,
       "sha256": "95c6492b461205ec2eb18e636f174011071380f0979aff60be8fec747856cdc0"
     },
     "grid.html": {
-      "bytes": 7114,
-      "sha256": "4d74b9e88f7abcb4f92fed1e72a747ddb6f4d1007573ba0c41d73a2a07e5bd8b"
+      "bytes": 7098,
+      "sha256": "aa6c2104da8fe9157dedd6315fdae5efb54b47d9895a3aacf222f0623af044aa"
     },
     "grid.js": {
       "bytes": 9764,
@@ -52,8 +56,8 @@
       "sha256": "9f52d17609aae8b43bf9a3ae4f872bd460adf8979a1128bf8562be8a3aedad2e"
     },
     "licenses/NOTICE.txt": {
-      "bytes": 1243,
-      "sha256": "a37103eb222751067ef7a6fcc15ba2ce9099be85980995e044d42d258a8a99b8"
+      "bytes": 1544,
+      "sha256": "41494bc78067784b308e003258815de58d47f502b8fbebc9f7bb52f74e5ed8e8"
     },
     "licenses/engine-proto.txt": {
       "bytes": 2189,
@@ -62,6 +66,10 @@
     "licenses/grid-robot-cc0.txt": {
       "bytes": 765,
       "sha256": "cbc2c4d12a25b78ddc1060d21a592f8c67ce0bdd60bf2b64144d7883c5573619"
+    },
+    "licenses/michroma-ofl.txt": {
+      "bytes": 4395,
+      "sha256": "33c39ce59a45bfb0dae3280e98bdb46be59d6d68efc62d4dc5fae90a26d2f393"
     },
     "licenses/noble-hashes-mit.txt": {
       "bytes": 1109,

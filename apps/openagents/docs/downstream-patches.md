@@ -1607,3 +1607,5 @@ master delegation audit.
   stay in the shared Aethyr release; Sessions stays native. Rust owns the
   shell's cards, navigation/service allowlists, and bounded local suggestions.
   Bundle hashes and offline simulator rendering/movement checks cover the import.
+- 2026-10-25: Grid controls and the native iOS Grid header share the locally
+  bundled Michroma font; its SIL OFL notice ships with the pinned Aethyr bundle.

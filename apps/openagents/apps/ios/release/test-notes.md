@@ -1,3 +1,9 @@
+# OpenAgents 1.0.0 (1025)
+
+The Grid's title and controls now share Michroma. The font ships with the app
+so it also works offline. Check Play, Players, Settings, Camera, New look, Map,
+Guide, Run, Jump, and Sessions in portrait and landscape.
+
 # OpenAgents 1.0.0 (1024)
 
 The Grid now opens Aethyr's 3D world inside the app. Open Zones above your

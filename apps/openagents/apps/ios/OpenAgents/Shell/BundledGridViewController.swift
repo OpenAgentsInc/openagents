@@ -1,3 +1,4 @@
+import CoreText
 import CryptoKit
 import os
 import UIKit
@@ -18,6 +19,15 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
     private var notifications: [NSObjectProtocol] = []
     private let probe = ProcessInfo.processInfo.arguments.contains("-grid-probe")
     private static let log = Logger(subsystem: "com.openagents.app", category: "aethyr-grid")
+    private static let controlFace: CGFont? = {
+        guard let bundle = Bundle.main.url(forResource: "AethyrGrid", withExtension: "bundle"),
+              let provider = CGDataProvider(url: bundle.appendingPathComponent("Michroma-Regular.ttf") as CFURL) else { return nil }
+        return CGFont(provider)
+    }()
+    private static func controlFont(_ size: CGFloat) -> UIFont {
+        guard let face = controlFace else { return Fonts.ui(.sans, size) }
+        return CTFontCreateWithGraphicsFont(face, size, nil, nil) as UIFont
+    }
 
     init(openSessions: @escaping () -> Void) {
         self.openSessions = openSessions
@@ -37,7 +47,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         let title = UILabel()
         title.text = "The Grid"
         title.textColor = Palette.text
-        title.font = Fonts.ui(.sansSemibold, 17)
+        title.font = Self.controlFont(17)
         let close = UIButton(type: .system)
         close.setImage(UIImage(systemName: "xmark"), for: .normal)
         close.accessibilityLabel = "Close Grid"
@@ -46,6 +56,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         close.addAction(UIAction { [weak self] _ in self?.finish() }, for: .touchUpInside)
         let sessions = UIButton(type: .system)
         sessions.setTitle("Sessions", for: .normal)
+        sessions.titleLabel?.font = Self.controlFont(12)
         sessions.accessibilityIdentifier = "grid-sessions"
         sessions.tintColor = Palette.text
         sessions.addAction(UIAction { [weak self] _ in self?.finish(sessions: true) }, for: .touchUpInside)
@@ -239,7 +250,7 @@ private final class GridPageRelay: NSObject, WKScriptMessageHandler, WKScriptMes
                 let data = try Data(contentsOf: self.root.appendingPathComponent(path), options: .mappedIfSafe)
                 guard data.count == record.bytes, SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == record.sha256 else { throw URLError(.cannotDecodeContentData) }
                 let mime: String
-                switch (path as NSString).pathExtension { case "html": mime = "text/html"; case "css": mime = "text/css"; case "js": mime = "application/javascript"; case "wasm": mime = "application/wasm"; case "txt": mime = "text/plain"; default: mime = "application/octet-stream" }
+                switch (path as NSString).pathExtension { case "html": mime = "text/html"; case "css": mime = "text/css"; case "js": mime = "application/javascript"; case "wasm": mime = "application/wasm"; case "ttf": mime = "font/ttf"; case "txt": mime = "text/plain"; default: mime = "application/octet-stream" }
                 DispatchQueue.main.async { self.complete(task, identity, status: 200, data: data, mime: mime) }
             } catch { DispatchQueue.main.async { self.complete(task, identity, status: 500, data: Data()) } }
         }

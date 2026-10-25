@@ -11,7 +11,7 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[2]
 DEST=ROOT/'apps/ios/OpenAgents/Resources/AethyrGrid.bundle'
-FILES=['grid.html','grid-ui.css','index.js','index.wasm','index.data','grid-nostr.js','grid-builds.js','grid-session.js','semantic.js','grid-nav.js','grid-ui.js','grid.js']
+FILES=['grid.html','grid-ui.css','Michroma-Regular.ttf','index.js','index.wasm','index.data','grid-nostr.js','grid-builds.js','grid-session.js','semantic.js','grid-nav.js','grid-ui.js','grid.js']
 
 
 def check(root):

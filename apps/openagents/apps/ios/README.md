@@ -101,6 +101,7 @@ Open **Zones** above your sessions, then **The Grid**. The app bundles the publi
 Aethyr C++/WebAssembly renderer, Grid art, and shared Protobuf metadata. It loads
 through WebKit from checked local files, without downloading scene code. Tap
 Play, then use the move and look sticks, Run, Jump, Map, Guide, and camera controls.
+The title and controls share the bundled Michroma face, including offline.
 Online presence uses the Grid's own Nostr identity, separate from the app account.
 Public Pylon and Foreman reads send no app credentials. Suggestions stay on the
 phone. The native Sessions button returns to conversations; Close returns to Zones.

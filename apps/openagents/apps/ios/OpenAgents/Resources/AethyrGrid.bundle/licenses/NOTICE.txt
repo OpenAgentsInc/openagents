@@ -21,3 +21,8 @@ scure-base-mit.txt.
 
 The scene contract decoder includes Nanopb; asset verification includes PicoSHA2.
 See engine-proto.txt for their licenses and notices.
+
+Michroma Regular by Vernon Adams is bundled from Google Fonts revision
+e7db6ca603fd4862010383ff17ffd6cc4ffac1c0 (ofl/michroma/Michroma-Regular.ttf),
+SHA-256 b62301163788bc5b7f8fcac0b74b184e34e1827e577b499ecb724da065098f87.
+It is distributed under the SIL Open Font License 1.1; see michroma-ofl.txt.
