@@ -311,14 +311,14 @@ fn render(
                         }
                     }
                     section id="panel-request" class="tool-window" aria-labelledby="request-title" {
-                        header { h2 id="request-title" { "03 / Kiln" } button id="close-request" class="window-close" type="button" aria-label="Close Request" { "×" } }
+                        header { h2 id="request-title" { "03 / Request" } button id="close-request" class="window-close" type="button" aria-label="Close Request" { "×" } }
                         label for="edit-kiln-request" { "Request" } textarea id="edit-kiln-request" maxlength="4800" rows="5" {}
                         label class="check-label" { input id="edit-kiln-world" type="checkbox"; "Allow a world effect (all materials)" }
                         button id="edit-request-review" type="button" { "Review request" }
-                        button id="edit-kiln-ask" type="button" hidden { "Ask Kiln" }
+                        button id="edit-kiln-ask" type="button" hidden { "Do it" }
                         button id="request-options" type="button" { "Show options" }
-                        button id="edit-kiln-stop" type="button" { "Stop" }
-                        button id="edit-kiln-review" type="button" { "Review Kiln's change" }
+                        button id="edit-kiln-stop" type="button" hidden { "Stop" }
+                        button id="edit-kiln-review" type="button" hidden { "Review the change" }
                         p id="edit-kiln-status" role="status" {}
                     }
                     section id="panel-compile" class="tool-window" aria-labelledby="compile-title" {
@@ -375,7 +375,7 @@ fn render(
                             button id="project-export" type="button" { "Export editable copy" }
                             p id="project-status" role="status" { "Changes aren't saved to a project yet." }
                             details {
-                                summary { "Import an editable or older Kiln save" }
+                                summary { "Import an editable or older saved copy" }
                                 p { "Export files from the older editor first. Choose its scene, material, and changes files together. Originals stay in your editable export." }
                                 input id="project-import-files" type="file" accept="application/json,.json,.wgsl" multiple;
                                 label for="project-import-mapping" { "Old asset name to current asset ID (JSON)" }
@@ -467,12 +467,10 @@ pub(crate) async fn personal_boot(
 }
 fn boot_release(r: Release) -> Response {
     let url = serde_json::to_string(&r.sdk_url).expect("SDK URL");
-    let kiln_url = serde_json::to_string(&r.sdk_url.replace("aethyrforge_host.js", "kiln.js"))
-        .expect("Kiln URL");
     response(
         StatusCode::OK,
         format!(
-            "window.loadVerseKiln=async context=>{{const k=await import({kiln_url});await k.default();await k.start_verse('/kiln/',context);}};try{{const {{default:init,mount_studio}}=await import({url});await init();window.hauntDemo=mount_studio();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.dataset.state='error';n.textContent='The house could not open. Reload to try again.';}}"
+            "try{{const {{default:init,mount_studio}}=await import({url});await init();window.hauntDemo=mount_studio();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.dataset.state='error';n.textContent='The house could not open. Reload to try again.';}}"
         ),
         "text/javascript; charset=utf-8",
         Some(&r.origin()),

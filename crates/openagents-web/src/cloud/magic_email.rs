@@ -137,7 +137,7 @@ impl Sender {
     }
 }
 
-fn client_ip(peer: Option<IpAddr>, headers: &HeaderMap, cloud_run: bool) -> IpAddr {
+pub(crate) fn client_ip(peer: Option<IpAddr>, headers: &HeaderMap, cloud_run: bool) -> IpAddr {
     let peer = peer.unwrap_or(IpAddr::from([0, 0, 0, 0])).to_canonical();
     let local = match peer {
         IpAddr::V4(ip) => ip.is_private() || ip.is_loopback() || ip.is_link_local(),

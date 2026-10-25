@@ -662,6 +662,9 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
           # Gemini on Vertex for the chat's images and PDFs (#11221).
           {"name": "VERTEX_SA_JSON",
            "valueFrom": {"secretKeyRef": {"name": "openagents-vertex-sa-key", "key": "latest"}}},
+          # Haunted House requests: one Jev decision, OpenRouter first.
+          {"name": "OPENROUTER_API_KEY",
+           "valueFrom": {"secretKeyRef": {"name": "openagents-openrouter-api-key", "key": "latest"}}},
           # Work hosts that take "work on this issue" runs (#11258).
           {"name": "OPENAGENTS_WORK_HOST_TOKEN",
            "valueFrom": {"secretKeyRef": {"name": "openagents-work-host-token", "key": "latest"}}},

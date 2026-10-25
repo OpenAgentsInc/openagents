@@ -59,6 +59,7 @@ pub use studio_layout::*;
 
 mod voice;
 pub use voice::*;
+pub mod house_request;
 #[cfg(target_arch = "wasm32")]
 mod voice_browser;
 

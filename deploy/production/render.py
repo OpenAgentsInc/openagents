@@ -114,6 +114,8 @@ def main():
         plain("BOAT_API_BASE", "https://oa-boat-157437760789.us-central1.run.app/api/v1"),
         # Gemini on Vertex for the chat's images and PDFs (#11221).
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
+        # Haunted House requests: one Jev decision, OpenRouter first.
+        secret("openagents-openrouter-api-key", "OPENROUTER_API_KEY"),
         # Work hosts that take "work on this issue" runs (#11258).
         secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
         # Admit the dedicated production test account, preserving the general gate.

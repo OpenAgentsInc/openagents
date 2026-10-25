@@ -15,7 +15,12 @@ export type Authoring = {
 export type ProjectEdit =
   | { type: "move"; target: string; position: [number, number, number] }
   | { type: "material"; target: string; parameter: string; value: number }
-  | { type: "place"; asset: string; position: [number, number, number] }
+  | {
+      type: "place";
+      asset: string;
+      position: [number, number, number];
+      scale?: number;
+    }
   | { type: "remove"; target: string };
 export type AuthorAction =
   | {
