@@ -43,6 +43,16 @@ final class SceneStateMigrationTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: savedState().path))
     }
 
+    func testSwitchingFromTheGridOnlyExperimentDiscardsItsScene() throws {
+        SceneStateMigration.discardInheritedState(defaults: defaults, bundleID: bundleID)
+        // A scene saved by the other variant (same bundle ID) is discarded.
+        defaults.set("other-variant", forKey: SceneStateMigration.variantKey)
+        try seedSavedState()
+        SceneStateMigration.discardInheritedState(defaults: defaults, bundleID: bundleID)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: savedState().path))
+        XCTAssertEqual(defaults.string(forKey: SceneStateMigration.variantKey), SceneStateMigration.variant)
+    }
+
     func testFreshInstallIsMarkedDone() {
         SceneStateMigration.discardInheritedState(defaults: defaults, bundleID: bundleID)
         XCTAssertTrue(defaults.bool(forKey: SceneStateMigration.doneKey))
