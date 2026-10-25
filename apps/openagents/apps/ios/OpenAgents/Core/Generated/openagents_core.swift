@@ -11723,21 +11723,6 @@ public static func android(home: String, current: AndroidSecretStorage, retired:
 })
 }
     
-    /**
-     * An offline wallet for simulator captures: a fixed balance and
-     * history, a seed held only in memory, and no network. It never touches
-     * the Keychain and holds no money.
-     */
-public static func fixture(home: String, listener: WalletListener) -> CoreWallet  {
-    return try!  FfiConverterTypeCoreWallet_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_openagents_mobile_fn_constructor_corewallet_fixture(
-        FfiConverterString.lower(home),
-        FfiConverterTypeWalletListener_lower(listener),uniffiCallStatus
-    )
-})
-}
-    
 
     
     /**
@@ -41740,9 +41725,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_corewallet_android() != 16399) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_openagents_mobile_checksum_constructor_corewallet_fixture() != 43539) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_corewallet_new() != 43285) {

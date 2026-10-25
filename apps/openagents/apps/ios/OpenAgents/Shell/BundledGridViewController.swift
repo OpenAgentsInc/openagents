@@ -91,7 +91,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
             close.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 8), close.bottomAnchor.constraint(equalTo: bar.bottomAnchor), close.widthAnchor.constraint(equalToConstant: 44), close.heightAnchor.constraint(equalToConstant: 44),
             sessions.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12), sessions.bottomAnchor.constraint(equalTo: bar.bottomAnchor), sessions.heightAnchor.constraint(equalToConstant: 44),
             title.centerXAnchor.constraint(equalTo: bar.centerXAnchor), title.centerYAnchor.constraint(equalTo: close.centerYAnchor),
-            web.topAnchor.constraint(equalTo: bar.bottomAnchor), web.leadingAnchor.constraint(equalTo: view.leadingAnchor), web.trailingAnchor.constraint(equalTo: view.trailingAnchor), web.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            web.topAnchor.constraint(equalTo: bar.bottomAnchor), web.leadingAnchor.constraint(equalTo: safe.leadingAnchor), web.trailingAnchor.constraint(equalTo: safe.trailingAnchor), web.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             cardHost.topAnchor.constraint(equalTo: bar.bottomAnchor), cardHost.leadingAnchor.constraint(equalTo: view.leadingAnchor), cardHost.trailingAnchor.constraint(equalTo: view.trailingAnchor), cardHost.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             card.centerYAnchor.constraint(equalTo: cardHost.centerYAnchor), card.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20), card.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -20),
         ])
