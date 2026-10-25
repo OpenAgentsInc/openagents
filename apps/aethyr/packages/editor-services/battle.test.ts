@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { EditorService } from "./service.ts";
 import { editorAtoms } from "./state.ts";
+import { BATTLE_HOLD_LIMITS } from "../renderer/battle-crowd.ts";
 import {
   validBattleAction,
   validBattleRequest,
   validBattleStatus,
+  BATTLE_HOLD_MAX_TICK,
   isPreviewEvent,
   PREVIEW_PROTOCOL,
   INITIAL_STATUS,
@@ -282,4 +284,35 @@ test("battle service requests preserve the session and reject player or offline 
       Object.defineProperty(globalThis, "location", previousLocation);
     else Reflect.deleteProperty(globalThis, "location");
   }
+});
+
+test("Battle Lab fixed-tick holds bound tick, camera and clock, and report their progress", () => {
+  assert.equal(BATTLE_HOLD_MAX_TICK, BATTLE_HOLD_LIMITS.maxTick);
+  for (const action of [
+    { op: "hold", tick: 0 },
+    { op: "hold", tick: 180 },
+    { op: "hold", tick: BATTLE_HOLD_MAX_TICK, cameraSeconds: 0, time: 86400 },
+    { op: "hold", tick: 600, cameraSeconds: 12.5, time: 3 },
+    { op: "release" },
+  ])
+    assert.equal(validBattleAction(action), true, JSON.stringify(action));
+  for (const action of [
+    { op: "hold" },
+    ...[-1, 1.5, NaN, "180", BATTLE_HOLD_MAX_TICK + 1].map((tick) => ({ op: "hold", tick })),
+    { op: "hold", tick: 1, cameraSeconds: -1 },
+    { op: "hold", tick: 1, time: Infinity },
+    { op: "hold", tick: 1, time: 86401 },
+    { op: "hold", tick: 1, seed: 2 },
+    { op: "release", tick: 1 },
+  ])
+    assert.equal(validBattleAction(action), false, JSON.stringify(action));
+  const battle = { enabled: true, count: 1_000_000, camera: "dolly", stats: { simulationSteps: 90 } };
+  const hold = { tick: 180, steps: 90, reached: false, cameraSeconds: 3, time: 3 };
+  assert.equal(validBattleStatus({ ...battle, hold }), true);
+  assert.equal(validBattleStatus({ ...battle, hold: { ...hold, steps: 180, reached: true } }), true);
+  for (const patch of [
+    { reached: true }, { steps: 181 }, { steps: -1 }, { tick: 1.5 },
+    { cameraSeconds: NaN }, { time: -1 }, { seed: 1 },
+  ])
+    assert.equal(validBattleStatus({ ...battle, hold: { ...hold, ...patch } }), false, JSON.stringify(patch));
 });

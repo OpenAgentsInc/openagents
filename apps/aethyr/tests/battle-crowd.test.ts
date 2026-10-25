@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import {
   BattleCrowd,
   BATTLE_CROWD_LIMITS,
+  BATTLE_HOLD_LIMITS,
+  BATTLE_VIEW_FRAME_WORDS,
   battleFrustumPlanes,
   battleRadius,
   battleTerrainHeight,
@@ -1956,4 +1959,176 @@ test("device preflight rejects buffer, binding and dispatch failures before allo
     assert.equal(bad.textures.length, 0);
     assert.equal(bad.pipelines.length, 0);
   }
+});
+
+/**
+ * Battle Lab fixed-tick capture (issue 12599). The mock device executes no
+ * WGSL, so "identical state at tick N" is shown as: the same seeded GPU
+ * buffers, the same ordered simulation dispatches and bind groups, and the
+ * same simulation-visible uniform words at every one of the N steps. The next
+ * test proves the simulation shader reads no other uniform words.
+ */
+async function heldRun(
+  seed: number,
+  tick: number,
+  elapsed: (index: number) => number,
+  camera: (index: number) => ReturnType<typeof frame>,
+) {
+  const gpu = fakeGpu(),
+    battle = await BattleCrowd.create(gpu.device, assets(), terrain(), {
+      count: 200,
+      capacity: 256,
+      seed,
+    });
+  // Live frames first: the hold must restart from the seed, not continue.
+  for (let i = 0; i < 5; i++) {
+    battle.prepare(gpu.encoder, camera(i), 1 / 30);
+    battle.afterSubmit();
+  }
+  battle.hold(tick);
+  const uniform = gpu.buffers.find(
+      (b) => b.label === "Battle crowd: frame and simulation parameters",
+    ),
+    groups = new Map<unknown, number>(),
+    view = new Set(BATTLE_VIEW_FRAME_WORDS),
+    steps: unknown[] = [];
+  const seeded = digestBuffers(gpu.buffers, uniform);
+  let frames = 0;
+  while (battle.inspect().simulationSteps < tick || frames < 3) {
+    assert(frames < tick + 10, "the held battle stopped advancing");
+    gpu.computes.length = 0;
+    battle.prepare(gpu.encoder, camera(frames), elapsed(frames));
+    battle.render(gpu.pass);
+    battle.afterSubmit();
+    await flush();
+    const words = new Uint32Array(uniform.storage.slice(0));
+    const simulationWords = Array.from(words).filter((_, i) => !view.has(i));
+    for (const stage of gpu.computes) {
+      if (stage.label !== "Battle crowd: grid, pursuit and combat") continue;
+      for (let i = 0; i < stage.commands.length; i += 12) {
+        const commands = stage.commands.slice(i, i + 12);
+        assert.equal(commands[0].pipeline, "clear");
+        if (!groups.has(commands[0].binding))
+          groups.set(commands[0].binding, groups.size);
+        steps.push({
+          group: groups.get(commands[0].binding),
+          commands: commands.map((c: any) => c.pipeline ?? c.dispatch),
+          simulationWords,
+        });
+      }
+    }
+    frames++;
+  }
+  const stats = battle.inspect();
+  battle.dispose();
+  return {
+    stats,
+    steps,
+    frames,
+    digest: createHash("sha256")
+      .update(seeded)
+      .update(JSON.stringify(steps))
+      .digest("hex"),
+  };
+}
+function digestBuffers(buffers: any[], skip: any) {
+  const hash = createHash("sha256");
+  for (const b of buffers)
+    if (b !== skip) hash.update(b.label).update(new Uint8Array(b.storage));
+  return hash.digest("hex");
+}
+const movingCamera = (i: number) => {
+  const eye = [Math.sin(i) * 90, 30 + (i % 7) * 5, 80 + i];
+  return {
+    viewProjection: multiply(
+      perspective(Math.PI / 3, 1.5, 0.1, 2000),
+      lookAt(eye as [number, number, number], [i % 5, 0, 0]),
+    ),
+    eye,
+    time: i * 0.37,
+  };
+};
+test("a held battle reaches exactly its tick from the seed, independent of frame timing and camera", async () => {
+  const tick = 37;
+  const steady = await heldRun(7, tick, () => 1 / 60, () => frame());
+  const jittery = await heldRun(
+    7,
+    tick,
+    (i) => [0, 10, 0.003, 1 / 60, 0.25, 0][i % 6],
+    movingCamera,
+  );
+  for (const run of [steady, jittery]) {
+    assert.equal(run.stats.simulationSteps, tick);
+    assert.equal(run.stats.heldTick, tick);
+    assert.equal(run.steps.length, tick);
+    // Held frames never drop time, however long or short they are.
+    assert.equal(run.stats.droppedSeconds, 0);
+  }
+  // Ceiling of three steps per frame, then three held frames with no steps.
+  assert.equal(steady.frames, Math.ceil(tick / 3));
+  assert(jittery.frames >= steady.frames);
+  assert.deepEqual(jittery.steps, steady.steps);
+  assert.equal(jittery.digest, steady.digest);
+  // Ping-pong state buffers alternate exactly as in the live battle.
+  assert.deepEqual(
+    steady.steps.map((s: any) => s.group),
+    Array.from({ length: tick }, (_, i) => i % 2),
+  );
+  const otherSeed = await heldRun(8, tick, () => 1 / 60, () => frame());
+  assert.notEqual(otherSeed.digest, steady.digest);
+});
+test("the simulation shader reads none of the view-only frame words", () => {
+  const body = BATTLE_SIMULATION_WGSL.replace(/struct Frame \{[^}]*\}/, "");
+  for (const field of ["viewProjection", "eyeTime", "sun", "sunColor", "ambient", "planes"])
+    assert.doesNotMatch(body, new RegExp(`frame\\.${field}\\b`), field);
+  assert.doesNotMatch(body, /frame\.tuning(?!\.z\b)/);
+  assert.match(body, /frame\.tuning\.z/);
+  // Word layout: tuning is words 32-35 and only its z (respawn) is simulated.
+  assert.deepEqual(
+    [32, 33, 34, 35].filter((w) => BATTLE_VIEW_FRAME_WORDS.includes(w)),
+    [32, 33, 35],
+  );
+  for (let w = 72; w < 84; w++) assert(!BATTLE_VIEW_FRAME_WORDS.includes(w));
+});
+test("a held battle refuses participants, bounds its tick, and resumes the live clock on release", async () => {
+  const gpu = fakeGpu(),
+    battle = await BattleCrowd.create(gpu.device, assets(), terrain(), {
+      count: 8,
+      capacity: 16,
+    });
+  for (const tick of [-1, 1.5, NaN, BATTLE_HOLD_LIMITS.maxTick + 1])
+    assert.throws(() => battle.hold(tick), /tick/);
+  const participant = {
+    active: true,
+    position: [0, 0, 0] as const,
+    yaw: 0,
+    team: 0 as const,
+    attackSequence: 1,
+    attack: "melee" as const,
+    aim: [0, 0, -10] as const,
+  };
+  battle.setParticipant(participant);
+  assert.throws(() => battle.hold(4), /Leave the battle/);
+  battle.setParticipant({ ...participant, active: false });
+  battle.hold(4);
+  assert.throws(() => battle.setParticipant(participant), /Release/);
+  battle.prepare(gpu.encoder, frame(), 0);
+  assert.throws(() => battle.hold(4), /Submit/);
+  battle.afterSubmit();
+  battle.prepare(gpu.encoder, frame(), 100);
+  battle.afterSubmit();
+  assert.equal(battle.inspect().simulationSteps, 4);
+  battle.prepare(gpu.encoder, frame(), 1 / 60);
+  battle.afterSubmit();
+  assert.equal(battle.inspect().simulationSteps, 4);
+  assert.equal(battle.inspect().droppedSeconds, 0);
+  battle.release();
+  assert.equal(battle.inspect().heldTick, null);
+  battle.prepare(gpu.encoder, frame(), 2 / 60);
+  battle.afterSubmit();
+  assert.equal(battle.inspect().simulationSteps, 6);
+  battle.hold(2);
+  battle.setCount(8);
+  assert.equal(battle.inspect().heldTick, null);
+  battle.dispose();
 });

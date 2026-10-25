@@ -359,7 +359,7 @@ and one openagents capture differ in 9 of 921,600 pixels, none by more than
 and is not frozen at a fixed tick. Orbit and dolly move the camera over time:
 the difference between the builds (PSNR 16–30 dB) is the same as between two
 captures of one build. A bit-exact image-for-image gate needs a capture that
-stops at a fixed tick, which Battle Lab does not offer yet.
+stops at a fixed tick; [fixed-tick capture](#fixed-tick-capture) adds it.
 
 Private evidence directories on CoderOS are `battle-million-4080-diagnostic`,
 `battle-million-4080-sustained`, `battle-million-4080-stable-fallback` and
@@ -675,6 +675,86 @@ Recorded canvas frames do not include the React controls. Frame submission and
 completion evidence also cannot establish physical display presentation.
 Results apply to the tested browser, machine, viewport, crowd profile, camera,
 and active population; they are not a multiplayer capacity claim.
+
+## Fixed-tick capture
+
+The live battle steps whenever frames arrive, so two captures of one build
+never show the same moment. A Battle Lab **hold** freezes one exact moment:
+
+- `window.aethyrforge.battle({ op: "hold", tick, cameraSeconds?, time? })`
+  restarts the running battle from its seed and runs exactly `tick` fixed
+  1/60 s steps, three per frame at most, then stops. Frame timing never changes
+  the step count, and held frames add no dropped time. `tick` runs from 0 to
+  36,000 (`BATTLE_HOLD_LIMITS.maxTick`, ten simulated minutes).
+- The spectator camera is placed `cameraSeconds` into its path (default
+  `tick / 60`), and the world clock that drives grass, sky and water is fixed
+  at `time` (default `tick / 60`).
+- MMO actors (your avatar, other players and their effects) are hidden while
+  held, so only the battle and the world are in the frame.
+- Status reports `battle.hold = { tick, steps, reached, cameraSeconds, time }`.
+  `reached` turns true when `steps === tick`. The GPU tick counter in a
+  `readBattle` probe then also equals `tick`.
+- Only `overview`, `orbit` and `dolly` can hold. A participant's pose feeds the
+  simulation every frame, so joining, first and third person are refused while
+  held. Any other battle action, including `{ op: "release" }`, releases the
+  hold; the live battle then continues from the held tick.
+- Screenshots taken while held (`capturePixels`, `captureBlob`) use the held
+  battle camera unless they pass their own.
+
+The live path is unchanged: without a hold, `BattleCrowd.prepare` uses the
+same accumulator as before.
+
+**Why it is deterministic.** The simulation reads only the seed-built actor
+buffers, the delayed-damage and combat buffers, and the simulation words of
+the frame uniform (battle center, radius, counts, seed, terrain, respawn time
+and participant). `BATTLE_VIEW_FRAME_WORDS` lists the view-only words (camera,
+clock, LOD distances, pixel scale, lighting and frustum planes).
+`tests/battle-crowd.test.ts` checks that the simulation WGSL reads none of
+them. It also runs two holds to the same tick on the mock device, one with
+steady frames and a fixed camera and one with jittery frame times (0 to 10 s)
+and a moving camera. Both produce the same seeded buffers, the same ordered
+dispatches and ping-pong bind groups, and the same simulation words at every
+one of the steps, and stop at exactly that tick. Damage accumulates with
+integer atomics, and targets break ties by id, so the GPU's thread order does
+not change the outcome. One exception: the order in which visible fighters
+are compacted into draw lists is not fixed. Opaque, depth-tested pixels do not
+depend on it, but exact depth ties could, and the probe's `sampleSha256`
+includes the projectile visible list. The tool therefore compares its own
+camera-independent state digest instead.
+
+**Capture tool.** `tools/capture-battle-tick.mjs` opens Battle Lab, starts the
+battle, and for each view holds the tick and waits for `reached`. It then
+checks that the probe's GPU tick equals the requested tick and captures the
+held frame twice. The two captures must be byte-identical (`repeatable`). It
+writes `<stem>.png`, `<stem>.rgba` (raw RGBA8) and one JSON report with the
+state digest, RGBA and PNG SHA-256, source and asset pins, and browser mode.
+Settings: `AF_BATTLE_COUNT` (default 1,000,000), `AF_BATTLE_SEED` (1),
+`AF_BATTLE_TICK` (180), `AF_BATTLE_VIEWS` (`overview,orbit,dolly`),
+`AF_BATTLE_CAMERA_SECONDS` and `AF_BATTLE_TIME` (both `tick / 60`),
+`AF_BATTLE_WIDTH`/`AF_BATTLE_HEIGHT` (1280 × 720), and `AF_BATTLE_LABEL` (file
+prefix, default the short revision). It needs the benchmark build
+(`VITE_C_TOWN_BENCHMARK=1`) for the `readBattle` probe.
+
+```sh
+cd apps/aethyr
+VITE_C_TOWN_BENCHMARK=1 AETHYRFORGE_PRIVATE_ASSETS="$BATTLE_ASSETS" npm run dev   # separate shell
+OPENAGENTS_CHROME_PORT=9340 AF_EDITOR_URL=http://127.0.0.1:55316/ \
+AF_BATTLE_ASSET_ROOT="$BATTLE_ASSETS" AF_CAPTURE_DIR="$EVIDENCE/battle-tick-a" \
+AF_BATTLE_TICK=180 AF_BATTLE_LABEL=a node tools/capture-battle-tick.mjs
+# ...the same again into battle-tick-b (another run, or another build)...
+node tools/capture-battle-tick.mjs --compare \
+  "$EVIDENCE/battle-tick-a/battle-tick-a-s1-t180.json" \
+  "$EVIDENCE/battle-tick-b/battle-tick-b-s1-t180.json"
+```
+
+`--compare` exits non-zero unless both reports use the same count, seed, tick,
+camera time and clock, and every view matches in both state digest and RGBA
+bytes. For a view whose images differ, it reports the number of differing
+pixels and the largest channel difference.
+
+A build that lacks the hold, such as Aethyrforge `f42c02c`, cannot take part
+directly. Apply this change to that checkout first, so both builds freeze the
+same moment. The paths map per [provenance](../provenance.md).
 
 ## Spacing and motion correction, 2026-10-24
 

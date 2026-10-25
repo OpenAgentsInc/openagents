@@ -85,6 +85,24 @@ export const BATTLE_CROWD_LIMITS = Object.freeze({
   stepsPerFrame: 3,
 });
 /**
+ * Battle Lab fixed-tick capture (issue 12599). A held battle restarts from its
+ * seed and runs exactly `tick` fixed 1/60 s steps, at most `stepsPerFrame` per
+ * frame, then stops advancing. Frame timing never changes how many steps run.
+ */
+export const BATTLE_HOLD_LIMITS = Object.freeze({ maxTick: 36_000 });
+/**
+ * Frame-uniform words (f32/u32 index) that only the view reads: camera,
+ * clock, LOD distances, projected-pixel scale and lighting. The simulation
+ * shader reads none of them, so a held tick does not depend on the camera or
+ * on when frames happen. `tests/battle-crowd.test.ts` checks both halves.
+ */
+export const BATTLE_VIEW_FRAME_WORDS: readonly number[] = Object.freeze([
+  ...Array.from({ length: 20 }, (_, i) => i), // viewProjection, eye, time
+  32, 33, 35, // near/max LOD distance, projected-pixel scale
+  ...Array.from({ length: 12 }, (_, i) => 36 + i), // sun, sun color, ambient, fog scale
+  ...Array.from({ length: 24 }, (_, i) => 48 + i), // frustum planes
+]);
+/**
  * Silhouette thresholds in projected pixels: `full` at Detail 1 and the
  * readability floor at Detail 0. The floor is half the 32-pixel atlas tile, so
  * a silhouette is never drawn larger than its tile resolves cleanly.
@@ -202,6 +220,8 @@ export interface BattleCrowdStats {
   squadIntervalTicks: number;
   participant: BattleParticipant;
   sampleSerial: number;
+  /** The fixed tick a Battle Lab hold runs to, or null for the live battle. */
+  heldTick: number | null;
   gpu: BattleCrowdGpuCounters | null;
 }
 export interface BattleCrowdProbe {
@@ -634,6 +654,17 @@ export function validateBattleCrowdDevice(
   return budget;
 }
 
+function inactiveParticipant(): BattleParticipant {
+  return {
+    active: false,
+    position: [0, 0, 0],
+    yaw: 0,
+    team: 0,
+    attackSequence: 0,
+    attack: "melee",
+    aim: [0, 0, -10],
+  };
+}
 interface Model {
   vertices: GPUBuffer;
   indices: GPUBuffer;
@@ -669,15 +700,8 @@ export class BattleCrowd {
   private pending = false;
   private disposed = false;
   private participantEpoch = 0;
-  private participant: BattleParticipant = {
-    active: false,
-    position: [0, 0, 0],
-    yaw: 0,
-    team: 0,
-    attackSequence: 0,
-    attack: "melee",
-    aim: [0, 0, -10],
-  };
+  private heldTick: number | undefined;
+  private participant: BattleParticipant = inactiveParticipant();
   private words = new Float32Array(FRAME_BYTES / 4);
   private uints = new Uint32Array(this.words.buffer);
   private constructor(
@@ -1389,10 +1413,42 @@ export class BattleCrowd {
       throw new Error("Choose a battle count within its prepared capacity.");
     this.count = count;
     this.radius = battleRadius(count, this.config.radius);
+    this.heldTick = undefined;
     this.reset();
+  }
+  /**
+   * Battle Lab fixed-tick capture: restart this battle from its seed and run
+   * exactly `tick` fixed steps, then hold there. Only a spectated battle can
+   * hold, because a participant's pose feeds the simulation every frame.
+   */
+  hold(tick: number) {
+    this.assertOpen();
+    if (this.pending)
+      throw new Error("Submit the current battle frame before holding a tick.");
+    if (
+      !Number.isSafeInteger(tick) ||
+      tick < 0 ||
+      tick > BATTLE_HOLD_LIMITS.maxTick
+    )
+      throw new Error(
+        `Choose a battle tick from 0 to ${BATTLE_HOLD_LIMITS.maxTick}.`,
+      );
+    if (this.participant.active)
+      throw new Error("Leave the battle before holding a fixed tick.");
+    this.participant = inactiveParticipant();
+    this.reset();
+    this.heldTick = tick;
+  }
+  /** Return to the live battle; it continues from the held tick. */
+  release() {
+    this.assertOpen();
+    this.heldTick = undefined;
+    this.accumulator = 0;
   }
   setParticipant(value: BattleParticipant) {
     this.assertOpen();
+    if (this.heldTick !== undefined && value.active)
+      throw new Error("Release the held battle tick before joining it.");
     if (this.participant.active && !value.active)
       this.contactSampler.invalidate();
     this.participant = validateBattleParticipant(value);
@@ -1500,19 +1556,10 @@ export class BattleCrowd {
       80,
     );
     this.device.queue.writeBuffer(this.uniform, 0, this.words);
-    const accepted = Math.min(elapsed, 0.1);
-    this.dropped += elapsed - accepted;
-    this.accumulator += accepted;
-    const steps = Math.min(
-      BATTLE_CROWD_LIMITS.stepsPerFrame,
-      Math.floor((this.accumulator + 1e-10) / BATTLE_CROWD_LIMITS.step),
-    );
-    this.accumulator -= steps * BATTLE_CROWD_LIMITS.step;
-    if (this.accumulator >= BATTLE_CROWD_LIMITS.step) {
-      const rest = this.accumulator % BATTLE_CROWD_LIMITS.step;
-      this.dropped += this.accumulator - rest;
-      this.accumulator = rest;
-    }
+    const steps =
+      this.heldTick === undefined
+        ? this.liveSteps(elapsed)
+        : Math.min(BATTLE_CROWD_LIMITS.stepsPerFrame, this.heldTick - this.steps);
     if (this.count && steps) {
       const pass = encoder.beginComputePass({
         label: "Battle crowd: grid, pursuit and combat",
@@ -1574,6 +1621,23 @@ export class BattleCrowd {
     this.frames++;
     this.frameDraws = 0;
     this.pending = true;
+  }
+  /** Fixed-step accumulator for the live battle; frame timing sets the step count. */
+  private liveSteps(elapsed: number) {
+    const accepted = Math.min(elapsed, 0.1);
+    this.dropped += elapsed - accepted;
+    this.accumulator += accepted;
+    const steps = Math.min(
+      BATTLE_CROWD_LIMITS.stepsPerFrame,
+      Math.floor((this.accumulator + 1e-10) / BATTLE_CROWD_LIMITS.step),
+    );
+    this.accumulator -= steps * BATTLE_CROWD_LIMITS.step;
+    if (this.accumulator >= BATTLE_CROWD_LIMITS.step) {
+      const rest = this.accumulator % BATTLE_CROWD_LIMITS.step;
+      this.dropped += this.accumulator - rest;
+      this.accumulator = rest;
+    }
+    return steps;
   }
   render(pass: GPURenderPassEncoder) {
     this.assertOpen();
@@ -1662,6 +1726,7 @@ export class BattleCrowd {
       squadIntervalTicks: BATTLE_SQUAD_INTERVAL,
       participant: { ...this.participant },
       sampleSerial: this.serial,
+      heldTick: this.heldTick ?? null,
       gpu: this.latest,
     };
   }

@@ -385,6 +385,18 @@ let battleView: BattleView = "overview";
 let battleStarted = 0;
 let battleField: ReturnType<typeof battleTerrain> | undefined;
 let battleParticipant: BattleParticipant | undefined;
+/**
+ * Battle Lab fixed-tick capture (issue 12599): the crowd runs to `tick` and
+ * stops, the spectator camera and world clock stay at fixed values, and MMO
+ * actors are hidden, so every frame and capture of the hold is the same image.
+ */
+let battleHold: { tick: number; cameraSeconds: number; time: number } | undefined;
+function releaseBattleHold() {
+  if (!battleHold) return;
+  renderer?.releaseBattle();
+  battleStarted = performance.now() - battleHold.cameraSeconds * 1000;
+  battleHold = undefined;
+}
 const battleFollowCamera = new BattleFollowCamera();
 function battleLook(yaw: number, pitch: number) {
   if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) return;
@@ -499,8 +511,12 @@ function battleSummary() {
 function battleStatus(): EngineStatus["battle"] {
   if (WORLD_PROFILE.id !== "open-ground") return undefined;
   const { enabled, count, camera, stats, center, radius } = battleSummary();
+  const battle = renderer?.battleInfo();
+  if (battleHold && battle?.heldTick !== battleHold.tick) battleHold = undefined;
+  const hold = battleHold && battle ? { ...battleHold, steps: battle.simulationSteps,
+    reached: battle.simulationSteps === battleHold.tick } : undefined;
   return { enabled, count, camera, stats, ...(center ? {center: [...center] as V3, radius} : {}),
-    ...(battleParticipant ? { participant: participantStatus() } : {}) };
+    ...(battleParticipant ? { participant: participantStatus() } : {}), ...(hold ? { hold } : {}) };
 }
 let groundProps: GroundPropsDocument | undefined;
 let groundDraftKey: string | undefined;
@@ -1375,6 +1391,7 @@ async function initialize() {
   mmorpgEditing = false;
   battleView = "overview";
   battleParticipant = undefined;
+  battleHold = undefined;
   battleFollowCamera.reset();
   battleField = undefined;
   battleScriptInput = undefined;
@@ -1728,7 +1745,7 @@ function drawFrame(
     if (sharedFrame) {
       const { local, prediction } = sharedFrame;
       const others = sharedFrame.actors.sort((a,b) => Math.hypot(a.position[0]-local.position[0],a.position[2]-local.position[2])-Math.hypot(b.position[0]-local.position[0],b.position[2]-local.position[2])).slice(0,63);
-      if (!localBattlePose) renderer.setMmorpgActors([local, ...others], local.id, mmorpgSession!.state.events, mmorpgSession!.tick);
+      if (!localBattlePose && !battleHold) renderer.setMmorpgActors([local, ...others], local.id, mmorpgSession!.state.events, mmorpgSession!.tick);
       mmorpgPresentation = mmorpgSession!.presentation(local, others);
       updatePlayer({ position: local.position, eye: [local.position[0], local.position[1] + 1.62, local.position[2]],
         yaw: local.yaw, pitch: 0, grounded: prediction.grounded,
@@ -1785,7 +1802,7 @@ function drawFrame(
     const activeBattle = renderer.battleInfo();
     if (activeBattle?.enabled && (battleView !== "player" || localBattlePose))
       renderCamera = battleCamera(activeBattle.center, activeBattle.radius, battleView,
-        (performance.now() - battleStarted) / 1000, localBattlePose, battleFollowCamera.orbit);
+        battleHold ? battleHold.cameraSeconds : (performance.now() - battleStarted) / 1000, localBattlePose, battleFollowCamera.orbit);
     battleTarget = localBattlePose && localBattlePose.alive && battleFollowing() && battleField && battleAttack === "meteor_shower"
       ? battleMeteorTarget(battleField, renderCamera, width / height, aimPointer, localBattlePose.eye, battleView !== "first")
       : undefined;
@@ -1800,7 +1817,7 @@ function drawFrame(
     updateGameplayAim(renderCamera);
     if (battleParticipant) renderer.setGameplayAim(battleTarget ? {point: battleTarget.point, normal: battleTarget.normal, radius: 4, overlay: true} : undefined);
     const renderStarted = measured ? performance.now() : 0;
-    const frameTime = animationClock.sample(performance.now());
+    const frameTime = battleHold ? battleHold.time : animationClock.sample(performance.now());
     const submitted = renderer.render(
       renderCamera,
       renderedSettings,
@@ -3667,6 +3684,7 @@ async function handle(message: PreviewMessage) {
       if (!renderer || status.phase !== "ready" || mmorpgSession?.state.connection !== "online")
         throw Error("Join the grass world before starting a battle.");
       const action = message.action;
+      if (action.op !== "hold" && action.op !== "camera") releaseBattleHold();
       const continuingView = action.op === "camera" && battleFollowing() && ["first", "third", "player"].includes(action.view);
       if (action.op !== "input" && action.op !== "weapon" && !continuingView) {
         input = { forward: 0, right: 0, up: 0, sprint: false, jump: false };
@@ -3715,15 +3733,29 @@ async function handle(message: PreviewMessage) {
         battleTarget = undefined;
         battleMeteorPending = false;
         battleFollowCamera.cancelAttack();
+      } else if (action.op === "hold") {
+        if (!renderer.battleInfo()?.enabled) throw Error("Start a battle before holding a tick.");
+        if (battleParticipant) throw Error("Leave the battle before holding a fixed tick.");
+        if (!["overview", "orbit", "dolly"].includes(battleView))
+          throw Error("Choose the overview, orbit or dolly view before holding a tick.");
+        renderer.holdBattle(action.tick);
+        battleHold = { tick: action.tick, cameraSeconds: action.cameraSeconds ?? action.tick / 60,
+          time: action.time ?? action.tick / 60 };
+        renderer.setMmorpgActors([], undefined, [], 0);
+      } else if (action.op === "release") {
+        // releaseBattleHold() above already resumed the live battle.
       } else if (action.op === "camera") {
         if (!renderer.battleInfo()?.enabled) throw Error("Start a battle before choosing its view.");
+        if (battleHold && !["overview", "orbit", "dolly"].includes(action.view))
+          throw Error("Release the held battle tick before following a fighter.");
         if (["first", "third"].includes(action.view) && !battleParticipant)
           joinBattleParticipant(undefined, 0, action.view as "first" | "third");
         else changeBattleView(action.view);
       }
       status = { ...status, mmorpgEditing, battle: battleStatus() };
       send({ type: "status", status });
-      receipt(message.requestId, true, action.op === "stop" ? "Battle stopped" : action.op === "input" ? "Battle input updated" : "Battle ready");
+      receipt(message.requestId, true, action.op === "stop" ? "Battle stopped" : action.op === "input" ? "Battle input updated"
+        : action.op === "hold" ? `Battle holding at tick ${action.tick}` : "Battle ready");
     } else if (message.type === "mmorpgEditing") {
       if (!validMmorpgEditingRequest(message) || playerMode.active ||
           import.meta.env.VITE_PUBLIC_DEMO === "1" || WORLD_PROFILE.id !== "open-ground")
@@ -4075,7 +4107,10 @@ async function handle(message: PreviewMessage) {
             options.time ??
             (filmState.manual ? animationClock.time : undefined),
           view = {
-            camera: cameraForCapture(camera, options.camera),
+            camera: cameraForCapture(
+              battleHold && lastBattleSubmittedCamera ? lastBattleSubmittedCamera : camera,
+              options.camera,
+            ),
             env: environmentForCapture(
               effectiveEnvironment(),
               options.exposure,

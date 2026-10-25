@@ -964,6 +964,16 @@ export class Renderer {
     this.battleCrowd.setCount(this.battleCrowd.inspect().count);
     this.battleTime = undefined;
   }
+  /** Battle Lab fixed-tick capture: restart from the seed and stop at exactly `tick`. */
+  holdBattle(tick: number) {
+    if (!this.battleCrowd) throw Error("Start a battle first.");
+    this.battleCrowd.hold(tick);
+    this.battleTime = undefined;
+  }
+  releaseBattle() {
+    this.battleCrowd?.release();
+    this.battleTime = undefined;
+  }
   stopBattle() {
     this.battleLoadSerial++;
     if (this.battleCrowd) {

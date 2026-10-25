@@ -115,6 +115,9 @@ export type BattleAction =
   | { op: "reset" }
   | { op: "stop" }
   | { op: "camera"; view: BattleView }
+  /** Battle Lab fixed-tick capture: restart from the seed, run to `tick`, freeze camera and clock. */
+  | { op: "hold"; tick: number; cameraSeconds?: number; time?: number }
+  | { op: "release" }
   | { op: "join"; at?: [number, number]; team?: 0 | 1; view?: "first" | "third"; class?: "paladin" | "sorceror" }
   | { op: "leave" }
   | { op: "respawn" }
@@ -138,8 +141,19 @@ export interface BattleParticipantStatus {
   tick: number;
   droppedSeconds: number;
 }
+/** Ticks a Battle Lab hold may run to; matches `BATTLE_HOLD_LIMITS.maxTick`. */
+export const BATTLE_HOLD_MAX_TICK = 36_000;
+export interface BattleHoldStatus {
+  tick: number;
+  /** Fixed steps run since the hold restarted the battle; equals `tick` once reached. */
+  steps: number;
+  reached: boolean;
+  cameraSeconds: number;
+  time: number;
+}
 export interface BattleStatus {
   enabled: boolean;
+  hold?: BattleHoldStatus;
   count: number;
   camera: BattleView;
   center?: [number, number, number];
@@ -171,6 +185,15 @@ export function validBattleAction(value: unknown): value is BattleAction {
       fields(["op", "view"]) &&
       ["overview", "orbit", "player", "first", "third", "dolly"].includes(String(action.view))
     );
+  if (action.op === "hold")
+    return (
+      fields(["op", "tick", "cameraSeconds", "time"]) &&
+      Number.isSafeInteger(action.tick) &&
+      (action.tick as number) >= 0 &&
+      (action.tick as number) <= BATTLE_HOLD_MAX_TICK &&
+      (action.cameraSeconds === undefined || (finite(action.cameraSeconds, 86400) && (action.cameraSeconds as number) >= 0)) &&
+      (action.time === undefined || (finite(action.time, 86400) && (action.time as number) >= 0))
+    );
   if (action.op === "join") return fields(["op", "at", "team", "view", "class"]) &&
     (action.at === undefined || (Array.isArray(action.at) && action.at.length === 2 && action.at.every((v) => finite(v, 20000)))) &&
     (action.team === undefined || action.team === 0 || action.team === 1) &&
@@ -181,7 +204,7 @@ export function validBattleAction(value: unknown): value is BattleAction {
     finite(action.forward, 1) && finite(action.turn, 1) && typeof action.sprint === "boolean" && typeof action.attack === "boolean" &&
     (action.attackKind === undefined || weapon(action.attackKind)) &&
     (action.lookX === undefined || finite(action.lookX, .5)) && (action.lookY === undefined || finite(action.lookY, .5));
-  return ["stop", "reset", "leave", "respawn"].includes(String(action.op)) && fields(["op"]);
+  return ["stop", "reset", "leave", "respawn", "release"].includes(String(action.op)) && fields(["op"]);
 }
 export function validBattleRequest(
   value: unknown,
@@ -207,7 +230,7 @@ export function validBattleStatus(value: unknown): value is BattleStatus {
   const battle = value as Record<string, unknown>;
   return (
     Object.keys(battle).every((key) =>
-      ["enabled", "count", "camera", "stats", "message", "center", "radius", "participant"].includes(key),
+      ["enabled", "count", "camera", "stats", "message", "center", "radius", "participant", "hold"].includes(key),
     ) &&
     typeof battle.enabled === "boolean" &&
     Number.isSafeInteger(battle.count) &&
@@ -217,6 +240,7 @@ export function validBattleStatus(value: unknown): value is BattleStatus {
     (battle.center === undefined || (Array.isArray(battle.center) && battle.center.length === 3 && battle.center.every((v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 20000))) &&
     (battle.radius === undefined || (typeof battle.radius === "number" && Number.isFinite(battle.radius) && battle.radius >= 0 && battle.radius <= 1000)) &&
     (battle.participant === undefined || validBattleParticipantStatus(battle.participant)) &&
+    (battle.hold === undefined || validBattleHoldStatus(battle.hold)) &&
     validNumericSummary(battle.stats) &&
     Object.values(battle.stats as Record<string, number>).every(
       (n) => n <= Number.MAX_SAFE_INTEGER,
@@ -224,6 +248,15 @@ export function validBattleStatus(value: unknown): value is BattleStatus {
     (battle.message === undefined ||
       (typeof battle.message === "string" && battle.message.length <= 256))
   );
+}
+function validBattleHoldStatus(value: unknown): value is BattleHoldStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const h = value as BattleHoldStatus;
+  const tick = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= BATTLE_HOLD_MAX_TICK;
+  const seconds = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 86400;
+  return Object.keys(h).every((k) => ["tick", "steps", "reached", "cameraSeconds", "time"].includes(k)) &&
+    tick(h.tick) && tick(h.steps) && h.steps <= h.tick && typeof h.reached === "boolean" &&
+    h.reached === (h.steps === h.tick) && seconds(h.cameraSeconds) && seconds(h.time);
 }
 function validBattleParticipantStatus(value: unknown): value is BattleParticipantStatus {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
