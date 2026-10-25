@@ -407,7 +407,7 @@ fn launch(app: &App, query: Option<&str>, surface: Surface) -> Response {
     )
 }
 
-async fn universe(State(app): State<App>, headers: HeaderMap) -> Response {
+pub(crate) async fn universe(State(app): State<App>, headers: HeaderMap) -> Response {
     let haunt = if super::new_lander_house::available() {
         Some(super::new_lander_house::HOUSE)
     } else if crate::live_games::tenants().iter().any(|t| t == "haunt") {

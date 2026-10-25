@@ -957,6 +957,8 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
             app.clone(),
             agent_work::gate,
         ))
+        // The /landernew trail's presentation on the pages it continues into.
+        .layer(middleware::from_fn(pages::landernew_carry))
         .layer(middleware::from_fn(research::inject))
         .layer(middleware::from_fn(projects::scope))
         .layer(middleware::from_fn_with_state(app.clone(), account::scope))

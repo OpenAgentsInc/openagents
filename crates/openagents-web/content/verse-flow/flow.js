@@ -2,6 +2,9 @@
 // Claude artifact (mock house) and at /new-lander/flow on openagents.com,
 // where the house screens run the real Haunted House release.
 const REAL = location.pathname.startsWith('/new-lander/flow');
+// At /landernew this file draws only the landing page and the login card;
+// both lead to the real map (#lander carries where).
+const LANDER = document.getElementById('lander');
 const $ = (id) => document.getElementById(id);
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -175,8 +178,19 @@ const orbs = (() => {
 })();
 
 /* ---------- 02 login ---------- */
-$('googleBtn').onclick = () => { S.user = 'you@gmail.com'; setWallet(); toast('Logged in with Google'); go('map'); };
-$('guestBtn').onclick = () => { S.user = null; setWallet(); go('map'); };
+$('googleBtn').onclick = () => { if (LANDER) return leave(LANDER.dataset.login); S.user = 'you@gmail.com'; setWallet(); toast('Logged in with Google'); go('map'); };
+$('guestBtn').onclick = () => { if (LANDER) return leave(LANDER.dataset.map); S.user = null; setWallet(); go('map'); };
+// The real map skips its own entry card once this browser has entered.
+function leave(path) {
+  try { sessionStorage.setItem('openagents.verse-map.v1', JSON.stringify({ choice: 'explore', exploring: true, selected: 'haunted-house' })); } catch (e) { /* storage blocked: the map shows its card */ }
+  location.assign(path);
+}
+// Unticking consent opts this browser out of research capture (/static/r.js).
+$('consent').onchange = (e) => {
+  const out = !e.target.checked;
+  try { out ? localStorage.setItem('oa_research_optout', '1') : localStorage.removeItem('oa_research_optout'); } catch (err) { /* cookie below still applies */ }
+  document.cookie = 'oa_research_optout=' + (out ? '1; max-age=31536000' : '; max-age=0') + '; path=/; samesite=lax';
+};
 
 /* ---------- 03 the galaxy: behind the login card, and the rotatable map ---------- */
 const galaxy = (() => {
@@ -550,4 +564,10 @@ $('survey').onsubmit = (e) => {
 /* ---------- boot ---------- */
 setWallet();
 const startAt = (location.hash || '').slice(1);
-go(SCREENS.some((s) => s[0] === startAt) ? startAt : 'landing');
+if (LANDER) {
+  $('steps').hidden = true;
+  // Without Google on this server, the button is the site's own sign-in.
+  if (LANDER.dataset.loginLabel) { $('googleBtn').querySelector('svg')?.remove(); $('googleBtn').lastChild.textContent = LANDER.dataset.loginLabel; }
+  try { $('consent').checked = localStorage.getItem('oa_research_optout') !== '1'; } catch (e) { /* default stays ticked */ }
+  go(startAt === 'login' ? 'login' : 'landing');
+} else go(SCREENS.some((s) => s[0] === startAt) ? startAt : 'landing');

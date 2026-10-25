@@ -19,7 +19,7 @@ use crate::App;
 
 pub(crate) const PATH: &str = "/new-lander/flow";
 const SCRIPT_PATH: &str = "/new-lander/flow.js";
-const BODY: &str = include_str!("../../content/verse-flow/page.html");
+pub(crate) const BODY: &str = include_str!("../../content/verse-flow/page.html");
 const SCRIPT: &str = include_str!("../../content/verse-flow/flow.js");
 const POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; frame-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
@@ -30,8 +30,13 @@ pub(crate) fn routes() -> Router<App> {
 }
 
 async fn page() -> Response {
+    page_response(BODY)
+}
+
+/// `body` (the flow page or a variant of it) as a page under [`POLICY`].
+pub(crate) fn page_response(body: &str) -> Response {
     let html = format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"><meta name=\"robots\" content=\"noindex\">{BODY}</html>"
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"><meta name=\"robots\" content=\"noindex\">{body}</html>"
     );
     let mut response = axum::response::Html(html).into_response();
     let headers = response.headers_mut();
@@ -43,7 +48,7 @@ async fn page() -> Response {
     response
 }
 
-async fn script() -> Response {
+pub(crate) async fn script() -> Response {
     (
         [
             (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),

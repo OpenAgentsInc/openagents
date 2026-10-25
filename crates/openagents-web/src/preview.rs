@@ -26,7 +26,7 @@ pub(crate) const COOKIE: &str = "oa_preview";
 /// The preview lasts 30 days on a device.
 const COOKIE_AGE: u64 = 30 * 24 * 3600;
 /// Addresses only the preview reaches: each one, and everything under it.
-const GATED: [&str; 4] = ["/beta", "/playtest", "/waitlist", "/new-lander"];
+const GATED: [&str; 5] = ["/beta", "/playtest", "/waitlist", "/new-lander", "/landernew"];
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/preview/{key}", get(open))

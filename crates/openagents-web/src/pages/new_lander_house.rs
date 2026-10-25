@@ -70,7 +70,7 @@ pub(crate) fn routes() -> Router<App> {
         )
 }
 
-async fn page(
+pub(crate) async fn page(
     axum::extract::State(app): axum::extract::State<App>,
     headers: axum::http::HeaderMap,
 ) -> Response {

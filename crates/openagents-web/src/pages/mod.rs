@@ -34,6 +34,7 @@ mod lander11;
 mod lander5;
 mod lander6;
 mod lander8;
+mod landernew;
 mod layertree;
 pub mod live;
 pub(crate) mod medieval_town;
@@ -99,6 +100,7 @@ pub(crate) use pylons::{
     CARD_GLUE as PYLONS_CARD_GLUE, CARD_WASM as PYLONS_CARD_WASM, LAYER_GLUE as PYLONS_LAYER_GLUE,
     LAYER_WASM as PYLONS_LAYER_WASM, PYLONS_LIVE_PATH, PYLONS_PATH,
 };
+pub(crate) use landernew::carry as landernew_carry;
 pub(crate) use pylons_field::field as pylons_field;
 #[cfg(test)]
 pub(crate) use snap::{SNAP_CANVAS, SNAP_GLUE, SNAP_PATH, SNAP_START, SNAP_WASM};
@@ -132,6 +134,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(new_lander::routes())
         .merge(new_lander_house::routes())
         .merge(verse_flow::routes())
+        .merge(landernew::routes())
         .merge(zones::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
