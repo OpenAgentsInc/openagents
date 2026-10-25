@@ -266,6 +266,105 @@ No further tests, recordings, or performance runs followed the stop request.
 The saved commands support a future run when requested; a mean near 60 in the
 completed diagnostics is not a completed sustained all-view qualification.
 
+### RTX 4080 measurements (measured on CoderOS), 2026-10-25
+
+These runs are measured on an NVIDIA GeForce RTX 4080 (driver 595.71.05,
+16 GiB) through the CoderOS GPU browser: ungoogled-chromium 152 inside a
+headless cage compositor, WebGPU on the NVIDIA Vulkan adapter (`nvidia` /
+`lovelace`), with DevTools on `127.0.0.1:9340`. They used openagents commit
+`6c6b5122f0` (the port merged in `f2e981d2e55`, clean tree) and
+`verify-battle-crowd.mjs`. The source pin is
+`86941a2af1721ce98a75e1365c7b6652bfa0597b7c1fabd3aeaff9463f45c2e8`; it differs
+from the M5 Max pin because the port adds the `Detail` hooks, which run at
+`Detail` 1 here. The silhouette asset set is the same as on the M5 Max
+(`13c53ae005b31e87b527dab717e00581f5dcb0267167a712f4d87a1aedebdf55`). Settings
+also match: 1280 × 720, DPR one, seed one, five seconds of warmup, and active
+first/third-person participation. The cage output paces frames at about
+62 Hz, so completions top out near 62/s instead of 60/s. Local model servers
+held about 10.5 GiB of the card's memory during all runs.
+
+**Diagnostic profile** (one ten-second instrumented window per camera; M5 Max
+columns copied from the table above):
+
+| Camera | RTX 4080 completions/s | M5 Max completions/s | RTX 4080 GPU p95 | M5 Max GPU p95 | RTX 4080 GPU p50 |
+| --- | --- | --- | --- | --- | --- |
+| Overview | 62.18 | 59.56 | 6.21 ms | 8.78 ms | 5.46 ms |
+| Orbit | 62.18 | 59.32 | 6.41 ms | 9.18 ms | 5.64 ms |
+| Dolly | 62.22 | 59.46 | 6.49 ms | 6.49 ms | 5.48 ms |
+| First person | 62.32 | 59.95 | 6.33 ms | 5.64 ms | 5.55 ms |
+| Third person | 62.43 | 59.57 | 6.34 ms | 6.10 ms | 5.49 ms |
+
+Every window had zero measured dropped battle time, zero grid and projectile
+overflow, and fresh, advancing GPU combat. Overview and orbit submitted exactly
+one million instances and two million triangles, all of them silhouettes.
+Strict pacing failed in every window: completion-interval p95 was 21–30 ms
+against the 17.5 ms limit, with no stalls over 50 ms. The cause is uneven
+cage/compositor cadence, not GPU time. The first-person window passed the
+participation check (3.5 m of movement, 1,784 outgoing damage). The
+third-person window moved 4.1 m and dealt 3,367 damage, but failed that check
+because it sampled 0.017 s (one tick) of local dropped time.
+
+**Sustained production-path matrix** (GPU timestamps off, two 30-second
+qualification windows per camera, all ten windows completed):
+
+| Camera | Repeat 1 completions/s | Repeat 2 completions/s | Lowest full one-second bin |
+| --- | --- | --- | --- |
+| Overview | 62.21 | 62.21 | 61 / 61 |
+| Orbit | 62.17 | 62.28 | 61 / 61 |
+| Dolly | 62.15 | 62.25 | 61 / 61 |
+| First person | 62.33 | 62.38 | 61 / 62 |
+| Third person | 62.35 | 62.35 | 62 / 62 |
+
+All ten windows met the 58/s experimental mean target, with no measured
+dropped simulation time and no overflow. Overview, orbit and dolly pass the
+all-view mean check with two windows each. Repeat 2 of first person (10.4 m of
+movement, 5,743 damage) and of third person (7.3 m, 8,603 damage) also pass
+participation. Repeat 1 of each failed participation because it sampled
+0.033 s of local dropped time, so the run reports `qualified: false`. Strict
+pacing was not met for the same cadence reason as above. There are no GPU
+timings, because timestamps were off.
+
+**Old asset set without silhouette atlases** (same diagnostic settings, asset
+pin `c38bd51f76492f345b44fdedfe03b3b74dd3e1fcda01a780c4ee088f8aea5d9b`): the
+renderer falls back to the mesh tiers, with no silhouette draws and no errors.
+Every window passed its functional checks, and first/third-person
+participation passed.
+
+| Camera | Completions/s | GPU p95 | Triangles |
+| --- | --- | --- | --- |
+| Overview | 45.98 | 23.31 ms | 146,850,000 |
+| Orbit | 44.05 | 24.11 ms | 146,850,000 |
+| Dolly | 61.51 | 6.52 ms | 405,179 |
+| First person | 62.05 | 9.51 ms | 37,687,975 |
+| Third person | 61.46 | 9.11 ms | 37,797,896 |
+
+On the 4080, silhouettes cut overview GPU p95 from 23.31 ms to 6.21 ms and
+triangles from 146.85 million to 2 million. First-person GPU p95 falls from
+9.51 ms to 6.33 ms. On the M5 Max, the pre-silhouette overview p95 was 63.13 ms.
+
+The first attempt, before these runs, lost the WebGPU device with
+`VK_ERROR_OUT_OF_DEVICE_MEMORY` while allocating the battle textures. At that
+point about 1.4 GiB of the card's memory was free. Chromium restarted its GPU
+process, which freed memory, and every later run succeeded. On a 16 GiB card,
+the million-fighter profile needs the other GPU processes to leave a few GiB
+free.
+
+**Image comparison with the Aethyrforge `f42c02c` build.** Both builds served
+the same silhouette asset set. Each was captured on the same GPU browser with
+seed one, one million fighters, 1280 × 720, and the overview, orbit and dolly
+cameras three seconds after the start. The overview frames from Aethyrforge
+and one openagents capture differ in 9 of 921,600 pixels, none by more than
+8/255 (PSNR 94.6 dB). Two captures of the openagents build itself differ in
+7.5% of pixels, because the live battle is advanced by frame-paced GPU ticks
+and is not frozen at a fixed tick. Orbit and dolly move the camera over time:
+the difference between the builds (PSNR 16–30 dB) is the same as between two
+captures of one build. A bit-exact image-for-image gate needs a capture that
+stops at a fixed tick, which Battle Lab does not offer yet.
+
+Private evidence directories on CoderOS are `battle-million-4080-diagnostic`,
+`battle-million-4080-sustained`, `battle-million-4080-stable-fallback` and
+`kiki-compare`. Captures and assets stay out of Git.
+
 ## NPC decisions
 
 Battle fighters use rule-based GPU state machines, not model inference. Each
