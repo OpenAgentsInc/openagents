@@ -1,9 +1,9 @@
 # The OpenAgents mobile app for iOS
 
-The OpenAgents mobile app (formerly OpenAgents Coder) uses a UIKit shell over the Rust mobile core. The phone
-is a **peer device**: it mirrors the workspace registry, joins per-chat session
-rooms, and drives remote engines through the durable command ledger. No agent
-runs on the phone.
+The OpenAgents mobile app uses a UIKit shell over the Rust mobile core and
+Aethyr. Its current entry point is Grid-only home and the full-screen Grid.
+No account, chat client, or background chat sync starts on this path. The older
+chat peer hosts remain in source as legacy implementation reference.
 
 **Rust decides what to paint and where; Swift paints, scrolls and handles
 gestures.** Everything in Rust is platform-neutral — the future Android app
@@ -23,7 +23,8 @@ RUSTUP_TOOLCHAIN=1.98.1 CARGO_TARGET_DIR="$HOME/work/coder-desktop-target-agent1
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-Signed out, the first screen is a chat answered by OpenAgents
+The following account flow describes the legacy chat host, not the current
+Grid-only entry point. In that host, signed out, the first screen is a chat answered by OpenAgents
 (`Session/CloudChatViewController.swift`, #11978): a few messages work with no
 account, then a sheet asks the person to sign in, and after sign-in the chat
 moves to the account. **Sign in** sits in the top bar and **See a demo** under
