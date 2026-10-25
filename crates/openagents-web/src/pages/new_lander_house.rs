@@ -37,6 +37,8 @@ use axum::{Router, http::StatusCode, response::Response, routing::get};
 use maud::{DOCTYPE, PreEscaped, html};
 
 pub(crate) const HOUSE: &str = "/new-lander/house";
+/// The same house, where the playtest opens it.
+pub(crate) const PLAYTEST_HOUSE: &str = "/playtest/house";
 const MAP: &str = "/new-lander/verse?world=haunted-house";
 
 fn configured(text: &str) -> Option<Release> {
@@ -60,6 +62,7 @@ pub(crate) fn available() -> bool {
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(HOUSE, get(page))
+        .route(PLAYTEST_HOUSE, get(page))
         .route("/new-lander/house/boot.js", get(boot))
         .route(
             "/new-lander/house/{*file}",

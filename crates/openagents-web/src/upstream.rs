@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 117] = [
+const OWNED_EXACT: [&str; 120] = [
     // The public zone catalog shells open (crate::pages::zones).
     "/v1/zones",
     "/v1/pylons/work",
@@ -110,6 +110,11 @@ const OWNED_EXACT: [&str; 117] = [
     "/new-lander/ui.js",
     "/new-lander/fonts/inter-latin-wght.woff2",
     "/new-lander/house",
+    // The launch homepage and the playtest's house, behind the private
+    // preview (crate::preview), and "Coming soon" at `/` (crate::pages::coming_soon).
+    "/beta",
+    "/playtest/house",
+    "/coming-soon.js",
     // /lander7 with hand tracking (crate::pages::lander9).
     "/lander9",
     "/games/grow-little-bunny",
@@ -287,6 +292,7 @@ pub fn owned(path: &str) -> bool {
         || crate::pages::admin::owns(path)
         // The launch playtest, waitlist, and staff export (crate::playtest).
         || crate::launch::owns(path)
+        || path.starts_with("/preview/")
         || crate::oauth::owns(path)
         || crate::phone_api::owns(path)
         || path == "/v1/agent-assignments"

@@ -589,7 +589,7 @@ async fn the_grid_homepage_has_one_heading_and_agent_discovery_links() {
     // The Grid homepage (#12413) keeps one heading and the agent metadata.
     assert_eq!(html.matches("<h1").count(), 1, "{html}");
     assert!(html.contains("data-ambient"));
-    // The launch homepage at `/` has one heading and the Markdown twin.
+    // "Coming soon" at `/` has one heading and the Markdown twin.
     let (status, _, launch) = fetch(site(root.path()), "/", Some("text/html")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(launch.matches("<h1").count(), 1, "{launch}");

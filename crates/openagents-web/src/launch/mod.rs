@@ -56,7 +56,7 @@ pub(crate) const ADMIN: &str = "/admin/launch";
 /// Sign-up's `return_to`: the profile, percent-encoded.
 pub(crate) const PROFILE_RETURN: &str = "%2Fplaytest%2Fprofile";
 /// The Haunted House tutorial the playtest opens.
-const HOUSE: &str = crate::pages::new_lander_house::HOUSE;
+const HOUSE: &str = crate::pages::new_lander_house::PLAYTEST_HOUSE;
 /// What a visitor shares with a friend.
 const SHARE: &str = "https://openagents.com/playtest?utm_source=friend&utm_medium=share&utm_campaign=playtest-launch";
 
@@ -522,7 +522,7 @@ fn waitlist_done(app: &App) -> Response {
                     p { "We'll email you when there's something new to try. While you wait, the beta is open now." }
                     div.lp-actions {
                         a.hud-button.hud-primary href=(INTRO) { "Play the beta" }
-                        a.hud-button.hud-ghost href="/" { "Back to OpenAgents" }
+                        a.hud-button.hud-ghost href=(crate::pages::new_lander::HOME) { "Back to OpenAgents" }
                     }
                 }
             }
@@ -581,14 +581,13 @@ async fn intro(State(app): State<App>, headers: HeaderMap, RawQuery(query): RawQ
                     h2 #consent-title { "What we record" }
                     p { "While you play, we record the pages you open, the buttons you choose, and how far you get, under a random ID for this playtest. We use it only to make OpenAgents better." }
                     p { "We never record what you type. If you're signed in, we keep your account with it." }
-                    p { "Rather we didn't? Choose Play without recording, and we'll only count visits. Your browser's Do Not Track or Global Privacy Control setting does the same. " a href="/privacy" { "Read our privacy policy" } "." }
+                    p { a href="/privacy" { "Read our privacy policy" } "." }
                 }
                 @if open {
                     form method="post" action=(START) {
                         input type="hidden" name="source" value=(source);
                         div.lp-actions {
                             button.hud-button.hud-primary.hud-large type="submit" name="record" value="1" { span { "Start the playtest" } span aria-hidden="true" { "↗" } }
-                            button.hud-button.hud-ghost type="submit" name="record" value="0" { "Play without recording" }
                         }
                     }
                 } @else {
@@ -885,7 +884,7 @@ fn thanks(app: &App, session: &Session, cookie: Vec<HeaderValue>, again: bool) -
                 div.lp-actions {
                     a.hud-button.hud-primary href=(PROFILE) { "Tell us about you" }
                     @if account_links(app) { a.hud-button href=(format!("/signup?return_to={PROFILE_RETURN}")) { "Create an account" } }
-                    a.hud-button.hud-ghost href="/" { "Back to OpenAgents" }
+                    a.hud-button.hud-ghost href=(crate::pages::new_lander::HOME) { "Back to OpenAgents" }
                 }
             }
         }
@@ -1088,7 +1087,7 @@ async fn profile_send(State(app): State<App>, headers: HeaderMap, body: Bytes) -
                         } @else {
                             a.hud-button.hud-primary href=(INTRO) { "Play the beta" }
                         }
-                        a.hud-button.hud-ghost href="/" { "Back to OpenAgents" }
+                        a.hud-button.hud-ghost href=(crate::pages::new_lander::HOME) { "Back to OpenAgents" }
                     }
                 }
             }

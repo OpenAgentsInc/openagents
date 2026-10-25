@@ -633,17 +633,19 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
-    # / is the launch homepage (Play the beta, the waitlist); the Grid is at
-    # /home, and / with a Grid query moves there. A chat starts at /chat.
-    # Check the default chat view separately from the HTML page.
+    # / says Coming soon; the launch flow answers 404 without the private
+    # preview link. The Grid is at /home, and / with a Grid query moves
+    # there. A chat starts at /chat. Check the default chat view separately
+    # from the HTML page.
     if want("home"):
-        launch = Site(base).get("/", cookies=False)
-        record("home: / is the launch homepage", launch.status == 200
-               and 'href="/playtest?from=home"' in launch.text
-               and 'action="/waitlist"' in launch.text, f"{launch.status}")
-        intro = Site(base).get("/playtest", cookies=False)
-        record("home: /playtest explains what we record", intro.status == 200
-               and "What we record" in intro.text, f"{intro.status}")
+        soon = Site(base).get("/", cookies=False)
+        record("home: / says Coming soon", soon.status == 200
+               and "<h1>Coming soon</h1>" in soon.text and "/playtest" not in soon.text,
+               f"{soon.status}")
+        for hidden in ("/beta", "/playtest", "/new-lander/house"):
+            gone = Site(base).get(hidden, cookies=False)
+            record(f"home: {hidden} is hidden without the preview", gone.status == 404,
+                   f"{gone.status}")
         grid = Site(base).get("/home", cookies=False)
         record("home: /home is the Grid homepage", grid.status == 200
                and 'id="everglade-canvas"' in grid.text and "data-ambient" in grid.text

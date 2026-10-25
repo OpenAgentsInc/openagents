@@ -622,7 +622,8 @@ pub(crate) fn owns(path: &str) -> bool {
 /// funnel prefix (its last segment has an extension, like
 /// `/verse/hands/left.glb`) is not a page.
 pub fn funnel_page(path: &str) -> bool {
-    const PREFIXES: [&str; 8] = [
+    const PREFIXES: [&str; 9] = [
+        "/beta",
         "/new-lander",
         "/playtest",
         "/survey",

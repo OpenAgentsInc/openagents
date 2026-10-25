@@ -36,6 +36,7 @@ mod lander8;
 mod layertree;
 pub mod live;
 pub(crate) mod medieval_town;
+pub(crate) mod coming_soon;
 pub(crate) mod new_lander;
 pub(crate) mod new_lander_house;
 mod pricing;
@@ -126,6 +127,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(lander11::routes())
         .merge(grid_home::routes())
         .merge(medieval_town::routes())
+        .merge(coming_soon::routes())
         .merge(new_lander::routes())
         .merge(new_lander_house::routes())
         .merge(zones::routes())

@@ -107,6 +107,7 @@ mod issue_claims;
 mod issue_claims_openapi;
 pub mod launch;
 mod owner_notifications;
+mod preview;
 mod profile_earnings;
 mod profiles;
 #[doc(hidden)]
@@ -935,7 +936,8 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .merge(oauth::routes())
         .merge(analytics::routes())
         .merge(attribution::routes())
-        .merge(research::routes());
+        .merge(research::routes())
+        .merge(preview::routes());
     let site = extend(site)
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
@@ -971,6 +973,8 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         // A hidden feature's routes answer 404 before anything but the
         // host guard runs (#12336).
         .layer(middleware::from_fn_with_state(app.clone(), features::gate))
+        // The unreviewed launch flow answers 404 without the preview link.
+        .layer(middleware::from_fn(preview::gate))
         .layer(middleware::from_fn(move |request, next| {
             let hosts = hosts.clone();
             async move { guard(hosts, request, next).await }

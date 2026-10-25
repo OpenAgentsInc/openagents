@@ -230,7 +230,6 @@ async fn a_playtest_runs_from_the_intro_through_the_house_to_the_survey() {
     assert_eq!(intro.status, StatusCode::OK);
     for text in [
         "What we record",
-        "Play without recording",
         "ABOUT 5 MINUTES",
         r#"name="source" value="discord""#,
     ] {

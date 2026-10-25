@@ -84,9 +84,6 @@
   text-decoration: none;
   text-underline-offset: 4px;
 }
-[data-verse-ui] a:hover {
-  text-decoration: underline;
-}
 
 
 

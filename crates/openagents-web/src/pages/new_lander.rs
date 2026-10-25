@@ -19,8 +19,8 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::App;
 
-/// The launch homepage.
-pub(crate) const HOME: &str = "/";
+/// The launch homepage, behind the private preview ([`crate::preview`]).
+pub(crate) const HOME: &str = "/beta";
 const PATH: &str = "/new-lander";
 const VERSE: &str = "/new-lander/verse";
 const SCRIPT_PATH: &str = "/new-lander/assets/verse.js";
@@ -51,7 +51,7 @@ pub(crate) fn header(verse: bool, account: bool, back: &str) -> Markup {
         header.lp-header {
             a.lp-brand href=(HOME) aria-label="OpenAgents home" { (mark()) span { "OpenAgents" } }
             @if verse { a.lp-back href=(HOME) { "← OpenAgents" } }
-            @else { nav.lp-nav aria-label="Main navigation" { a href="/#products" { "Products" } a href="/docs" { "Docs" } a href="https://github.com/OpenAgentsInc/openagents" { "GitHub ↗" } } }
+            @else { nav.lp-nav aria-label="Main navigation" { a href="/beta#products" { "Products" } a href="/docs" { "Docs" } a href="https://github.com/OpenAgentsInc/openagents" { "GitHub ↗" } } }
             nav.lp-account aria-label="Account" {
                 @if account {
                     a.hud-button.hud-ghost href=(format!("/login?return_to={back}")) { "Log in" }
@@ -402,7 +402,8 @@ fn launch(app: &App, query: Option<&str>, surface: Surface) -> Response {
             account,
             surface,
         ),
-        surface == Surface::Home,
+        // Not listed while it's behind the private preview.
+        false,
     )
 }
 
@@ -599,12 +600,8 @@ mod tests {
                         body.contains("Play the beta") && body.contains(r#"action="/waitlist""#)
                     );
                     assert!(!body.contains("everglade-canvas"));
-                    assert!(
-                        body.contains(r#"<link rel="canonical" href="https://openagents.com/">"#)
-                    );
-                    // Only `/` may be listed by search engines.
-                    assert_eq!(headers.contains_key("x-robots-tag"), path == PATH);
-                    assert_eq!(body.contains("noindex"), path == PATH);
+                    // Neither is listed while behind the private preview.
+                    assert!(headers.contains_key("x-robots-tag"), "{path}");
                     crate::copy_guard::assert_plain(HOME, &body);
                 }
                 "/home" => {
@@ -639,7 +636,7 @@ mod tests {
             assert_eq!(response.headers()[header::LOCATION], to);
         }
         // A campaign tag stays on the launch page and rides along.
-        let (status, _, body) = fetch("/?utm_source=Newsletter").await;
+        let (status, _, body) = fetch("/beta?utm_source=Newsletter").await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("utm_source=newsletter"));
         // The self-hosted sans face (so no computer falls back to monospace).
