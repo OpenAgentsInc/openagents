@@ -646,7 +646,9 @@ check() {
     # The website consumer that serves the candidate pins at the host origin.
     if [ -z "${AETHYRFORGE_HOST_RESPONSE_URL:-}" ]; then
         mkdir -p "$DIR/checks/host-home"
-        HOME=$DIR/checks/host-home "$OPENAGENTS_TEST_WEB_BINARY" --listen 127.0.0.1:0 \
+        # The /new-lander pages sit behind the private preview; this loopback
+        # check server serves them without the preview cookie.
+        HOME=$DIR/checks/host-home OPENAGENTS_WEB_OPEN_PREVIEW=1 "$OPENAGENTS_TEST_WEB_BINARY" --listen 127.0.0.1:0 \
             --store "$DIR/checks/host-tasks" --chat-store "$DIR/checks/host-chats" \
             --pylons-relay off --profile-relay off > "$DIR/checks/host.log" 2>&1 &
         HOST_PID=$!

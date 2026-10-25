@@ -669,6 +669,10 @@ pub struct Config {
     /// address (#11615, [`chat_export`]). Absent, nothing is saved on the
     /// server and the browser downloads the file.
     pub downloads: Option<PathBuf>,
+    /// Serve the private preview's pages without the preview cookie: only a
+    /// loopback check server (`OPENAGENTS_WEB_OPEN_PREVIEW=1`) sets it, for
+    /// release checks that load `/new-lander` pages ([`preview::gate`]).
+    pub open_preview: bool,
 }
 
 impl Config {
@@ -772,6 +776,7 @@ impl Config {
             shutdown: shutdown::Shutdown::default(),
             actors: None,
             downloads: None,
+            open_preview: false,
         }
     }
 }
@@ -976,7 +981,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         // host guard runs (#12336).
         .layer(middleware::from_fn_with_state(app.clone(), features::gate))
         // The unreviewed launch flow answers 404 without the preview link.
-        .layer(middleware::from_fn(preview::gate))
+        .layer(middleware::from_fn_with_state(app.clone(), preview::gate))
         .layer(middleware::from_fn(move |request, next| {
             let hosts = hosts.clone();
             async move { guard(hosts, request, next).await }

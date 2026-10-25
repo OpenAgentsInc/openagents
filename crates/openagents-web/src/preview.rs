@@ -9,7 +9,7 @@
 
 use axum::{
     Router,
-    extract::{Path, Request},
+    extract::{Path, Request, State},
     http::{HeaderMap, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Redirect, Response},
@@ -72,10 +72,16 @@ async fn open(Path(key): Path<String>) -> Response {
 }
 
 /// Answers a preview address with 404 unless the request carries the key.
-pub(crate) async fn gate(request: Request, next: Next) -> Response {
+/// A loopback check server started with `OPENAGENTS_WEB_OPEN_PREVIEW=1`
+/// (the Aethyr release checks) serves them without it.
+pub(crate) async fn gate(State(app): State<App>, request: Request, next: Next) -> Response {
     // The site's own tests exercise the gated pages directly; this module's
     // tests cover the gate.
-    if !cfg!(test) && gated(request.uri().path()) && !admitted(request.headers()) {
+    if !cfg!(test)
+        && !app.config.open_preview
+        && gated(request.uri().path())
+        && !admitted(request.headers())
+    {
         return StatusCode::NOT_FOUND.into_response();
     }
     next.run(request).await

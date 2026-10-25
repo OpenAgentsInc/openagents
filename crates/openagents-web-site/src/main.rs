@@ -456,6 +456,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if config.downloads.is_some() && !listen.ip().is_loopback() {
         return Err("--local-downloads needs a loopback --listen address".into());
     }
+    // Release checks load the private preview's pages from a loopback server.
+    if std::env::var("OPENAGENTS_WEB_OPEN_PREVIEW").is_ok_and(|v| v == "1") {
+        if !listen.ip().is_loopback() {
+            return Err("OPENAGENTS_WEB_OPEN_PREVIEW needs a loopback --listen address".into());
+        }
+        config.open_preview = true;
+    }
     // A public deployment is served over HTTPS behind its proxy.
     config.secure_cookies = !config.public_hosts.is_empty();
     if config.secure_cookies && !shared_chats {
