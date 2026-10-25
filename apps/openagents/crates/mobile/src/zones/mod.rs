@@ -13,11 +13,13 @@
 //! No credentials enter a web view. Sign-in and payments stay native sheets;
 //! a zone asks the shell for them over the bridge.
 
+mod bundled_grid;
 mod launcher;
 mod runner;
 #[cfg(test)]
 mod tests;
 
+pub use bundled_grid::*;
 pub use launcher::*;
 pub use runner::*;
 
@@ -95,7 +97,7 @@ pub(crate) fn grid() -> Zone {
         manifest: ZoneManifest {
             id: GRID_ZONE.into(),
             title: "The Grid".into(),
-            summary: "Your coding agents: sessions, computers, and transcripts.".into(),
+            summary: "A shared workspace for your coding agents.".into(),
             runner: ZoneRunnerKind::Builtin,
             release_id: None,
             url: None,

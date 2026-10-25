@@ -185,7 +185,7 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         let show = { [weak self] in
             guard let self else { return }
             self.present(ZonesViewController.sheet { [weak self] in
-                // The Grid is the app's own sessions, computers, and transcripts.
+                // Sessions opened from the Grid remain in the native sidebar.
                 self?.show(.primary)
                 self?.sidebar.showSessions()
             }, animated: true)

@@ -35,7 +35,6 @@ mkdir -p "$OUT/include"
 # Keep compiler state separate for this checkout in the shared app target.
 export CARGO_TARGET_DIR="$CARGO_OUT"
 source "$ROOT/../../scripts/dev/cargo-build-env.sh"
-export CARGO_INCREMENTAL=0
 
 CORE_FEATURES=()
 if [[ "${OPENAGENTS_ACCOUNT_FIXTURE:-}" == "1" ]]; then
@@ -63,6 +62,8 @@ fi
 run_cargo() {
   local jobs_env=()
   if [[ -n "${CARGO_BUILD_JOBS:-}" ]]; then jobs_env=("CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS"); fi
+  local protoc_env=()
+  if [[ -n "${PROTOC:-}" ]]; then protoc_env=("PROTOC=$PROTOC"); fi
   env -i HOME="$HOME" USER="${USER:-}" TERM="${TERM:-dumb}" \
     PATH="$HOME/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     IPHONEOS_DEPLOYMENT_TARGET=26.0 \
@@ -70,7 +71,7 @@ run_cargo() {
     CARGO_TARGET_DIR="$CARGO_OUT" \
     RUSTC="$RUSTC" CARGO_BUILD_BUILD_DIR="$CARGO_BUILD_BUILD_DIR" \
     KACHE_BASE_DIR="$KACHE_BASE_DIR" KACHE_LOCAL_ONLY="${KACHE_LOCAL_ONLY:-1}" \
-    CARGO_INCREMENTAL=0 \
+    ${protoc_env[@]+"${protoc_env[@]}"} \
     ${jobs_env[@]+"${jobs_env[@]}"} cargo "$@"
 }
 

@@ -1,0 +1,17 @@
+The Grid robot, an original character for Verse
+
+Made by OpenAgents with scripts/blender/grid_robot.py, from primitives
+(Reference mode). GarderX's "Low Poly Sci-fi Robot" (Fab, standard license)
+was studied for proportions, part breakdown, and design language only:
+inspired by, nothing copied. None of its geometry, UVs, or materials were
+copied, edited, or exported.
+
+Its skeleton is the Universal rig of Superhero_Male_FullBody.gltf from
+Quaternius's Universal Base Characters (CC0 1.0, https://quaternius.com),
+whose joint names, parents, and rest transforms are copied verbatim so the
+Universal Animation Library plays on it. See PROVENANCE.md.
+
+License:
+CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/

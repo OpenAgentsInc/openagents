@@ -1601,3 +1601,9 @@ master delegation audit.
   it on WebGPU with the HTML fallback retained.
 - #12335: Analytics, attribution, and Drive access use shared Rust Native admin forms in three lazy web modules through `web/page-host`; admin-only JSON reads and the HTML fallback stay available.
 - #12425: The Grid's shared GPUI composer offers native Flint beside DeepSeek and Any Pylon, keeps the choice per chat, and preserves an explicit Flint request while the worker restarts.
+
+- 2026-10-25: iOS Zones opens the pinned Aethyr C++/Wasm Grid in a bundled
+  WebKit view. The world, touch controls, public Nostr presence, map, and guide
+  stay in the shared Aethyr release; Sessions stays native. Rust owns the
+  shell's cards, navigation/service allowlists, and bounded local suggestions.
+  Bundle hashes and offline simulator rendering/movement checks cover the import.

@@ -1,3 +1,17 @@
+# OpenAgents 1.0.0 (1024)
+
+The Grid now opens Aethyr's 3D world inside the app. Open Zones above your
+sessions, then The Grid. The scene ships with the app and opens offline.
+
+Tap Play to join, use the two sticks to move and look, and try Run, Jump,
+Camera, New look, Map, and Guide. Nearby stations open their panels.
+Players appear when the phone is online. Suggestions are saved on this phone.
+Sessions in the top bar returns to your conversations; Close returns to Zones.
+
+Check closing and reopening the Grid, rotating the phone, and switching apps
+while playing. Returning pauses your shared presence until you choose Play
+again. Check the scene on your iPhone and report your model and iOS version.
+
 # OpenAgents 1.0.0 (1023)
 
 A new Zones screen opens worlds and workspaces from one place. Tap Zones in the

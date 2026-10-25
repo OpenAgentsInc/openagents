@@ -6884,6 +6884,235 @@ public func FfiConverterTypeCoreBrowserPayments_lower(_ value: CoreBrowserPaymen
 
 
 
+public protocol CoreBundledGridProtocol: AnyObject, Sendable {
+    
+    func activate(instance: String, revision: UInt64, node: String) throws  -> ZoneRunnerAction
+    
+    func allowsNavigation(url: String)  -> Bool
+    
+    func card() throws  -> String?
+    
+    func externalUrl(url: String)  -> String?
+    
+    func failed() 
+    
+    func iosScript()  -> String
+    
+    func ready() 
+    
+    func retry() 
+    
+    func serviceUrl(path: String)  -> String?
+    
+    func suggestion(body: String) throws  -> String
+    
+}
+open class CoreBundledGrid: CoreBundledGridProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corebundledgrid(self.handle, $0) }
+    }
+public convenience init(storageDirectory: String) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corebundledgrid_new(
+        FfiConverterString.lower(storageDirectory),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corebundledgrid(handle, $0) }
+    }
+
+    
+
+    
+open func activate(instance: String, revision: UInt64, node: String)throws  -> ZoneRunnerAction  {
+    return try  FfiConverterTypeZoneRunnerAction_lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),uniffiCallStatus
+    )
+})
+}
+    
+open func allowsNavigation(url: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_allows_navigation(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
+    
+open func card()throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_card(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func externalUrl(url: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_external_url(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
+    
+open func failed()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_failed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func iosScript() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_ios_script(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func ready()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_ready(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func retry()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_retry(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func serviceUrl(path: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_service_url(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+    
+open func suggestion(body: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeZoneError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebundledgrid_suggestion(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(body),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreBundledGrid: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreBundledGrid
+
+    public static func lift(_ handle: UInt64) throws -> CoreBundledGrid {
+        return CoreBundledGrid(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreBundledGrid) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreBundledGrid {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreBundledGrid, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreBundledGrid_lift(_ handle: UInt64) throws -> CoreBundledGrid {
+    return try FfiConverterTypeCoreBundledGrid.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreBundledGrid_lower(_ value: CoreBundledGrid) -> UInt64 {
+    return FfiConverterTypeCoreBundledGrid.lower(value)
+}
+
+
+
+
+
+
 public protocol CoreChatHomesProtocol: AnyObject, Sendable {
     
     func activate(instance: String, revision: UInt64, node: String) async throws  -> ChatHomeAction
@@ -41330,6 +41559,36 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_keystore_add_seed() != 40221) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_activate() != 49113) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_allows_navigation() != 40041) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_card() != 9701) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_external_url() != 39882) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_failed() != 42955) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_ios_script() != 55937) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_ready() != 41630) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_retry() != 3854) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_service_url() != 46337) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebundledgrid_suggestion() != 65093) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_corezones_activate() != 12176) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -41487,6 +41746,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_corewallet_new() != 43285) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_corebundledgrid_new() != 22585) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_corezones_new() != 10509) {

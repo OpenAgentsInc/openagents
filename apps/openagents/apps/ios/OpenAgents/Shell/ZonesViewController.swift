@@ -7,7 +7,7 @@ final class ZonesViewController: UIViewController {
     private let zones = CoreZones()
     private let scroll = UIScrollView()
     private let content = UIStackView()
-    /// The Grid opens the app's own coding-agent surfaces.
+    /// Sessions remain native when opened from the bundled Grid.
     var openGrid: (() -> Void)?
 
     /// The launcher in its own navigation stack, as a large sheet.
@@ -64,9 +64,10 @@ final class ZonesViewController: UIViewController {
         super.viewDidAppear(animated)
         // `-route zones -zone haunted-house` opens a zone directly (screenshots, UI tests).
         let args = ProcessInfo.processInfo.arguments
-        guard !autoOpened, let i = args.firstIndex(of: "-zone"), i + 1 < args.count,
-              let runner = try? zones.runner(zoneId: args[i + 1]) else { return }
+        guard !autoOpened, let i = args.firstIndex(of: "-zone"), i + 1 < args.count else { return }
         autoOpened = true
+        if args[i + 1] == "grid" { return showGrid(animated: false) }
+        guard let runner = try? zones.runner(zoneId: args[i + 1]) else { return }
         let web = ZoneWebViewController(runner: runner)
         web.modalPresentationStyle = .fullScreen
         present(web, animated: false)
@@ -83,8 +84,7 @@ final class ZonesViewController: UIViewController {
         do {
             switch try zones.activate(instance: instance, revision: revision, node: key) {
             case .grid:
-                let open = openGrid
-                dismiss(animated: true) { open?() }
+                showGrid(animated: true)
             case let .web(zoneId):
                 let runner = try zones.runner(zoneId: zoneId)
                 let web = ZoneWebViewController(runner: runner)
@@ -95,6 +95,15 @@ final class ZonesViewController: UIViewController {
             Toast.show(error.localizedDescription, in: view.window)
             render()
         }
+    }
+
+    private func showGrid(animated: Bool) {
+        let grid = BundledGridViewController { [weak self] in
+            let open = self?.openGrid
+            self?.dismiss(animated: true) { open?() }
+        }
+        grid.modalPresentationStyle = .fullScreen
+        present(grid, animated: animated)
     }
 }
 

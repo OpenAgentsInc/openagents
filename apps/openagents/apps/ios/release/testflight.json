@@ -4,7 +4,7 @@
   "marketingUrl": "https://openagents.com",
   "privacyPolicyUrl": "https://openagents.com/privacy",
   "externalGroup": "OpenAgents Beta Testers",
-  "whatToTest": "Welcome to the OpenAgents beta. You don't need a computer or an account.\n\n1. The app opens on a chat. Type a question and send it. The answer streams in. There is no sign-in.\n2. Back up your account in Settings: 12 words that also open your wallet.\n3. Start a new chat, or ask for a coding task. It runs in our cloud, with free cloud time to try it.\n4. To connect your own computer, scan the code OpenAgents shows on it from Settings > Connect a computer.\n\nSomething wrong? Take a screenshot and send it as TestFlight feedback.",
+  "whatToTest": "Build 1024: Open Zones, then The Grid. Aethyr's 3D world now ships inside the app. Try Play, the touch sticks, Run, Jump, Map, Guide, camera controls, close/reopen, and switching apps. Sessions returns to your conversations. Check on your iPhone and report its model and iOS version.\n\nWelcome to the OpenAgents beta. You don't need a computer or an account.\n\n1. The app opens on a chat. Type a question and send it. The answer streams in. There is no sign-in.\n2. Back up your account in Settings: 12 words that also open your wallet.\n3. Start a new chat, or ask for a coding task. It runs in our cloud, with free cloud time to try it.\n4. To connect your own computer, scan the code OpenAgents shows on it from Settings > Connect a computer.\n\nSomething wrong? Take a screenshot and send it as TestFlight feedback.",
   "review": {
     "contactFirstName": "Christopher",
     "contactLastName": "David",

@@ -1,0 +1,91 @@
+{
+  "format": "openagents.aethyr-grid.bundle.v1",
+  "repository": "https://github.com/OpenAgentsInc/aethyr-cpp",
+  "revision": "04a935b84b95084d81c2287514692d9c2e62ca6c",
+  "files": {
+    "Info.plist": {
+      "bytes": 485,
+      "sha256": "df5bc463e0ac7ee124fb1ffb7a05964622b9caf168d1fd2138d5ae819f0c8130"
+    },
+    "grid-builds.js": {
+      "bytes": 2133,
+      "sha256": "91ae6c8eb2fd8938b59d24859513659e4e4169064f56b59f9ac9d3fb21217e2f"
+    },
+    "grid-nav.js": {
+      "bytes": 4021,
+      "sha256": "c1e7e4dc0d0fe994d0ffbf6dc697011594bcb13a08402245a55a02bb94f20ccc"
+    },
+    "grid-nostr.js": {
+      "bytes": 251980,
+      "sha256": "a7c4846fde84a0d6ce7596f3fcfc88435d29fdcd616887205ab97f9a16bc6407"
+    },
+    "grid-session.js": {
+      "bytes": 13611,
+      "sha256": "cfbcbdc74600c5ae3c1d8b5727ef012fdd37fbfb13db3f6419c0cccf8c2b3007"
+    },
+    "grid-ui.css": {
+      "bytes": 3418,
+      "sha256": "8722cdd8d9ff3b3a7c8140048bd5e20e796ca04bdcb8a0e59f47bd02f5c30b6b"
+    },
+    "grid-ui.js": {
+      "bytes": 24434,
+      "sha256": "95c6492b461205ec2eb18e636f174011071380f0979aff60be8fec747856cdc0"
+    },
+    "grid.html": {
+      "bytes": 7114,
+      "sha256": "4d74b9e88f7abcb4f92fed1e72a747ddb6f4d1007573ba0c41d73a2a07e5bd8b"
+    },
+    "grid.js": {
+      "bytes": 9764,
+      "sha256": "18d0bfccda679d0c7a91e04cacceb673e192af84bc3b1de9211f2b4509a427b9"
+    },
+    "index.data": {
+      "bytes": 48751183,
+      "sha256": "7a1a3b5c11b7aff391aca3264e3962a58159799ac138e77d750ca2c2faf7192f"
+    },
+    "index.js": {
+      "bytes": 108706,
+      "sha256": "bb13a70aabddc134885d0713917474388b5797e4bd79232e4dbf156f893d074d"
+    },
+    "index.wasm": {
+      "bytes": 358849,
+      "sha256": "9f52d17609aae8b43bf9a3ae4f872bd460adf8979a1128bf8562be8a3aedad2e"
+    },
+    "licenses/NOTICE.txt": {
+      "bytes": 1243,
+      "sha256": "a37103eb222751067ef7a6fcc15ba2ce9099be85980995e044d42d258a8a99b8"
+    },
+    "licenses/engine-proto.txt": {
+      "bytes": 2189,
+      "sha256": "4b787e4bb3c34aaf04ce515cf90e3a314836f662932c2f0cdae014c735cf2933"
+    },
+    "licenses/grid-robot-cc0.txt": {
+      "bytes": 765,
+      "sha256": "cbc2c4d12a25b78ddc1060d21a592f8c67ce0bdd60bf2b64144d7883c5573619"
+    },
+    "licenses/noble-hashes-mit.txt": {
+      "bytes": 1109,
+      "sha256": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+    },
+    "licenses/noble-mit.txt": {
+      "bytes": 1109,
+      "sha256": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+    },
+    "licenses/nostr-tools.txt": {
+      "bytes": 1210,
+      "sha256": "f0510d3b9d1223c45e8fdd2b49270ec8734fff491c7f7d1b948ee70162e1ceff"
+    },
+    "licenses/openagents-apache-2.0.txt": {
+      "bytes": 11346,
+      "sha256": "751b8c583c0b0d5bca39d318f80b6706a95cb690afd3650065deedcde1fe402e"
+    },
+    "licenses/scure-base-mit.txt": {
+      "bytes": 1110,
+      "sha256": "3239e134eb6e6d64538ca76498c7fcb08a395249dd9d4af9927bf6d0169ee429"
+    },
+    "semantic.js": {
+      "bytes": 2675,
+      "sha256": "e9c4cd2cfd5f820d4088c7d3a9f3676359f39ea4161a66840eb7ded33d9d5915"
+    }
+  }
+}

@@ -366,7 +366,7 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
         view.endEditing(true)
         let show: () -> Void = { [weak self] in
             self?.present(ZonesViewController.sheet { [weak self] in
-                // The Grid is the app's own sessions, computers, and transcripts.
+                // Sessions opened from the Grid remain in the native drawer.
                 self?.showSessions()
             }, animated: true)
         }

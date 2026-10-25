@@ -254,3 +254,6 @@ crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_mix/rows.bin
 # attention parity tests read (#12392); regenerate with the
 # deepseek_v41_attention_rows example.
 crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_attention/rows.bin
+# Public Aethyr Grid art packed for the offline iOS scene; pinned by the
+# neighboring bundle manifest and scripts/ios/sync-aethyr-grid.py.
+apps/openagents/apps/ios/OpenAgents/Resources/AethyrGrid.bundle/index.data

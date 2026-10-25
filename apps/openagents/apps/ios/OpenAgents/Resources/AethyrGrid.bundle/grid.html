@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Grid · Aethyr</title>
+<link rel="stylesheet" href="grid-ui.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Michroma&display=swap">
+<style>
+  :root{--content:#ededed;--dim:#8a8a8a;--line:rgba(237,237,237,.16);--glass:rgba(14,14,14,.5);color-scheme:dark}
+  html,body{height:100%;margin:0;background:#080808;color:var(--content);font-family:"Geist",ui-sans-serif,system-ui,sans-serif;font-size:13px;overflow:hidden}
+  #canvas{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
+  .top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 16px);left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;justify-content:space-between;align-items:center;gap:12px;pointer-events:none}
+  .title{font-family:"Michroma",sans-serif;font-size:12px;letter-spacing:.32em;text-transform:uppercase}
+  .top button{pointer-events:auto}
+  button{font:inherit;color:inherit;cursor:pointer;background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:7px 13px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  button:hover{border-color:rgba(237,237,237,.4)}
+  .hint{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);transform:translateX(-50%);color:var(--dim);font-size:12px;text-align:center;pointer-events:none;transition:opacity .6s;width:max-content;max-width:calc(100vw - 32px)}
+  /* The hotbar, as in the Verse's screens bar: glass slots with a glyph, a label and a number key. */
+  .hotbar{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);transform:translateX(-50%);display:flex;gap:4px;padding:4px;border-radius:10px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+  .slot{position:relative;width:64px;height:52px;padding:0;border-radius:7px;display:grid;place-items:center;align-content:center;border:2px solid rgba(237,237,237,.14);background:rgba(10,10,14,.45);backdrop-filter:none;-webkit-backdrop-filter:none}
+  .slot .ico{font-size:18px;line-height:1}
+  .slot .lbl{font-size:9px;letter-spacing:.04em;color:var(--dim);margin-top:3px;white-space:nowrap}
+  .slot .key{position:absolute;left:4px;top:2px;font-size:10px;color:var(--dim)}
+  .slot.on{border-color:var(--content);background:rgba(237,237,237,.12);box-shadow:0 0 0 1px rgba(0,0,0,.6),0 0 14px rgba(237,237,237,.25)}
+  .slot.on .lbl{color:var(--content)}
+  .hud{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 20px);color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums;pointer-events:none;text-align:right}
+  .loading{position:fixed;inset:0;display:grid;place-items:center;color:var(--dim);letter-spacing:.3em;text-transform:uppercase;font-size:11px;pointer-events:none}
+  [hidden]{display:none!important}
+  .cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:rgba(237,237,237,.7);pointer-events:none}
+  /* Touch sticks, as in the old Grid: faint rings with round knobs. */
+  .stick{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 56px);width:112px;height:112px;border-radius:50%;border:1px solid rgba(237,237,237,.22);touch-action:none;display:none}
+  .stick i{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px;border-radius:50%;background:rgba(237,237,237,.22)}
+  .stick.move{left:max(28px,env(safe-area-inset-left,0px))}
+  .stick.look{right:max(28px,env(safe-area-inset-right,0px))}
+  body.touch .stick{display:block}
+  .pads{position:fixed;right:max(28px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 184px);display:none;gap:8px;touch-action:none}
+  .pads button{padding:10px 14px;user-select:none;-webkit-user-select:none}
+  .pads button.on{border-color:rgba(237,237,237,.7);background:rgba(237,237,237,.16)}
+  body.touch .pads{display:flex}
+  body.touch .hotbar{left:max(28px,env(safe-area-inset-left,0px));transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 184px)}
+  body.touch .hint{display:none}
+  body.touch .hud{bottom:calc(env(safe-area-inset-bottom,0px) + 236px)}
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="0" aria-label="The Grid. W A S D to move, mouse to look." oncontextmenu="event.preventDefault()"></canvas>
+<div class="loading" id="loading">Loading the Grid…</div>
+<div class="top"><div class="title">The Grid</div><nav aria-label="Grid controls"><span id="connection" role="status">Loading</span><button id="playBtn">Play</button><button id="peopleBtn">Players</button><button id="settingsBtn">Settings</button><a href="index.html">The Verse</a></nav></div>
+<!-- The hotbar: click a slot or press its number -->
+<div class="hotbar" id="hotbar" role="toolbar" aria-label="Hotbar">
+  <button class="slot" id="camBtn" title="First person (1 or V)"><span class="key">1</span><span class="ico">◐</span><span class="lbl">First person</span></button>
+  <button class="slot" id="lookBtn" title="A different character (2 or R; hold to keep going)"><span class="key">2</span><span class="ico">⟳</span><span class="lbl">New look</span></button>
+  <button class="slot" id="mapBtn" title="Map (M)"><span class="key">M</span><span class="ico">⌖</span><span class="lbl">Map</span></button>
+  <button class="slot" id="guideBtn" title="Grid guide (H)"><span class="key">H</span><span class="ico">?</span><span class="lbl">Guide</span></button>
+</div>
+<div id="worldLabels"></div>
+<button id="interact" hidden></button>
+<div id="notice" role="status" aria-live="polite"></div>
+<canvas id="minimap" width="300" height="300" aria-label="Grid map. Click to walk somewhere." hidden tabindex="0"></canvas>
+<aside id="gridPanel" class="panel" hidden aria-labelledby="panelTitle"><header><h2 id="panelTitle"></h2><button id="panelClose" aria-label="Close panel">×</button></header><div id="panelBody"></div></aside>
+<div class="cross" id="cross" hidden></div>
+<div class="hint" id="hint">W A S D to move · Shift to run · Space to jump · scroll to zoom · click to look around, Esc to stop · V switches camera</div>
+<div class="hud" id="hud"></div>
+<div class="stick move" id="moveStick"><i></i></div>
+<div class="stick look" id="lookStick"><i></i></div>
+<div class="pads"><button id="runTouch">Run</button><button id="jumpTouch">Jump</button></div>
+<script>var Module = { scene: 'grid', canvas: document.getElementById('canvas'), print: (t) => console.log(t), printErr: (t) => console.error(t) };</script>
+<script src="grid-nostr.js"></script>
+<script src="grid-builds.js"></script>
+<script src="grid-session.js"></script>
+<script src="semantic.js"></script>
+<script src="grid-nav.js"></script>
+<script src="grid-ui.js"></script>
+<script src="grid.js"></script>
+<script async src="index.js"></script>
+</body>
+</html>

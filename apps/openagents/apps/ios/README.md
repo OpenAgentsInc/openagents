@@ -95,6 +95,35 @@ OpenAgentsShared/   Compiled into the app and the extension: the activity's
    arrives (rasterized on the worker thread) and forwards touches; the demo's
    "Agent visuals" chat (`-demo -route chat:chat-visuals`) has one of each.
 
+## The Grid
+
+Open **Zones** above your sessions, then **The Grid**. The app bundles the public
+Aethyr C++/WebAssembly renderer, Grid art, and shared Protobuf metadata. It loads
+through WebKit from checked local files, without downloading scene code. Tap
+Play, then use the move and look sticks, Run, Jump, Map, Guide, and camera controls.
+Online presence uses the Grid's own Nostr identity, separate from the app account.
+Public Pylon and Foreman reads send no app credentials. Suggestions stay on the
+phone. The native Sessions button returns to conversations; Close returns to Zones.
+
+Backgrounding leaves Play and pauses the world. Returning stays in Watch until
+the person joins again. Loading or graphics failures show the shared Rust Native
+retry card. Other zone releases continue through their existing runner.
+
+The pinned files and licenses are in `OpenAgents/Resources/AethyrGrid.bundle`.
+From `apps/openagents`, refresh or verify them with:
+
+```sh
+python3 scripts/ios/sync-aethyr-grid.py /path/to/aethyr-cpp
+python3 scripts/ios/sync-aethyr-grid.py --check
+python3 -m unittest discover -s scripts/ios -p test_sync_aethyr_grid.py
+```
+
+The importer requires a committed public Aethyr checkout and builds it before
+copying the release. Normal iOS builds need neither Emscripten nor that checkout.
+`BundledGridTests` exercises the bundled scene offline on an isolated demo,
+including movement, camera changes, jumping, background/resume, and the map/guide.
+`-demo -route zones -zone grid -grid-offline -grid-probe` opens that fixture.
+
 ## Medieval Town
 
 Open the navigation menu and choose **Medieval Town**. Use the left stick to

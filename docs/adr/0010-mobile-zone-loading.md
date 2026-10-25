@@ -61,12 +61,20 @@ uses the same manifest, capability broker, and detail floors
 
 ### The Grid
 
-The Grid is a **first-party zone compiled into the shell.** The launcher
-lists it beside downloaded zones. It opens the app's existing coding-agent
-surfaces (sessions, computers, transcripts, approvals), which are already
-Rust Native views over `coder-sync`. Nothing is downloaded, so it works
-offline and needs no web view. When Aethyr's GPU UI ships, the Grid's views
-move to it like any other screen.
+The Grid is a **first-party zone compiled into the shell.** Following the owner's
+2026-10-25 request, iOS bundles the pinned Aethyr C++/Wasm Grid and its public
+assets. WebKit executes those checked local files through an app-owned asset
+handler; no engine code is downloaded. Its existing WebGL2 renderer supplies the
+3D world and touch controls. This is the same Aethyr scene already running on
+the web, rather than a second renderer written for UIKit.
+
+The shell keeps Close, Sessions, loading/failure cards, and lifecycle controls.
+Rust owns the shell's navigation and public-service allowlists and local suggestion
+storage. Native account credentials and grants never enter the world; Grid
+presence has its own identity. Backgrounding leaves Play, and returning requires
+an explicit join. Other downloaded zones retain their existing WebGPU runner.
+Android still opens the existing coding-agent surfaces for its built-in Grid.
+The later native Aethyr runner remains gated on device qualification.
 
 ## Why not the alternatives
 
