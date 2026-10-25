@@ -10,6 +10,8 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
     private let core: CoreBundledGrid
     /// Nil in the Grid-only build: no Sessions button, Close is the only way out.
     private let openSessions: (() -> Void)?
+    private let standalone: Bool
+    private let onClose: (() -> Void)?
     private var web: WKWebView!
     private var assets: GridBundleAssets?
     private let cardHost = UIView()
@@ -31,7 +33,9 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         return CTFontCreateWithGraphicsFont(face, size, nil, nil) as UIFont
     }
 
-    init(openSessions: (() -> Void)?) {
+    init(openSessions: (() -> Void)?, standalone: Bool = false, onClose: (() -> Void)? = nil) {
+        self.standalone = standalone
+        self.onClose = onClose
         self.openSessions = openSessions
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("AethyrGrid")
         core = CoreBundledGrid(storageDirectory: directory.path)
@@ -51,8 +55,8 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         title.textColor = Palette.text
         title.font = Self.controlFont(17)
         let close = UIButton(type: .system)
-        close.setImage(UIImage(systemName: "xmark"), for: .normal)
-        close.accessibilityLabel = "Close Grid"
+        close.setImage(UIImage(systemName: standalone ? "chevron.left" : "xmark"), for: .normal)
+        close.accessibilityLabel = standalone ? "Home" : "Close Grid"
         close.accessibilityIdentifier = "grid-close"
         close.tintColor = Palette.text
         close.addAction(UIAction { [weak self] _ in self?.finish() }, for: .touchUpInside)
@@ -64,7 +68,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         sessions.addAction(UIAction { [weak self] _ in self?.finish(sessions: true) }, for: .touchUpInside)
         sessions.isHidden = openSessions == nil
 
-        let config = WKWebViewConfiguration()
+        let config = GridGameWebView.configuration()
         // A persistent store belonging only to this bundled world. Native app
         // credentials and other zones' cookies are never copied into it.
         config.websiteDataStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "B3BC81F5-0339-4E90-943C-9BD6E6E64E20")!)
@@ -77,7 +81,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
             assets = try? GridBundleAssets(root: bundle, core: core)
         }
         if let assets { config.setURLSchemeHandler(assets, forURLScheme: "aethyr-grid") }
-        web = WKWebView(frame: .zero, configuration: config)
+        web = GridGameWebView(frame: .zero, configuration: config)
         web.accessibilityIdentifier = "grid-web"
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -100,7 +104,20 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         view.addSubview(bar)
         [title, close, sessions].forEach(bar.addSubview)
         let safe = view.safeAreaLayoutGuide
-        NSLayoutConstraint.activate([
+        if standalone {
+            bar.removeFromSuperview()
+            view.addSubview(close)
+            close.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+            close.tintColor = UIColor(white:0.93,alpha:1)
+            close.layer.cornerRadius = 22
+            NSLayoutConstraint.activate([
+                close.leadingAnchor.constraint(equalTo:safe.leadingAnchor,constant:12), close.topAnchor.constraint(equalTo:safe.topAnchor,constant:8),
+                close.widthAnchor.constraint(equalToConstant:44),close.heightAnchor.constraint(equalToConstant:44),
+                web.topAnchor.constraint(equalTo:view.topAnchor),web.bottomAnchor.constraint(equalTo:view.bottomAnchor),web.leadingAnchor.constraint(equalTo:view.leadingAnchor),web.trailingAnchor.constraint(equalTo:view.trailingAnchor),
+                cardHost.topAnchor.constraint(equalTo:view.topAnchor),cardHost.bottomAnchor.constraint(equalTo:view.bottomAnchor),cardHost.leadingAnchor.constraint(equalTo:view.leadingAnchor),cardHost.trailingAnchor.constraint(equalTo:view.trailingAnchor),
+                card.centerYAnchor.constraint(equalTo:cardHost.centerYAnchor),card.leadingAnchor.constraint(equalTo:safe.leadingAnchor,constant:20),card.trailingAnchor.constraint(equalTo:safe.trailingAnchor,constant:-20),
+            ])
+        } else { NSLayoutConstraint.activate([
             bar.topAnchor.constraint(equalTo: view.topAnchor), bar.leadingAnchor.constraint(equalTo: view.leadingAnchor), bar.trailingAnchor.constraint(equalTo: view.trailingAnchor), bar.bottomAnchor.constraint(equalTo: safe.topAnchor, constant: 44),
             close.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 8), close.bottomAnchor.constraint(equalTo: bar.bottomAnchor), close.widthAnchor.constraint(equalToConstant: 44), close.heightAnchor.constraint(equalToConstant: 44),
             sessions.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12), sessions.bottomAnchor.constraint(equalTo: bar.bottomAnchor), sessions.heightAnchor.constraint(equalToConstant: 44),
@@ -109,6 +126,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
             cardHost.topAnchor.constraint(equalTo: bar.bottomAnchor), cardHost.leadingAnchor.constraint(equalTo: view.leadingAnchor), cardHost.trailingAnchor.constraint(equalTo: view.trailingAnchor), cardHost.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             card.centerYAnchor.constraint(equalTo: cardHost.centerYAnchor), card.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20), card.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -20),
         ])
+        }
         if probe {
             metrics.frame = CGRect(x: 1, y: 1, width: 2, height: 2)
             metrics.text = "Grid scene"
@@ -127,6 +145,8 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         load()
     }
 
+    override var prefersStatusBarHidden: Bool { standalone }
+
     private func load() {
         timeout?.cancel()
         core.retry()
@@ -135,6 +155,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         guard assets != nil else { core.failed(); return refresh() }
         var components = URLComponents(string: "aethyr-grid://bundle/grid.html")!
         components.queryItems = [URLQueryItem(name: "boot", value: boot)]
+        if standalone { components.queryItems?.append(URLQueryItem(name:"camera",value:"player")) }
         if ProcessInfo.processInfo.arguments.contains("-grid-offline") { components.queryItems?.append(URLQueryItem(name: "offline", value: "1")) }
         // Only the demo/probe harness can override transport or test names.
         let args = ProcessInfo.processInfo.arguments
@@ -174,7 +195,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         web.stopLoading()
         web.configuration.userContentController.removeAllScriptMessageHandlers()
         let open = openSessions
-        dismiss(animated: true) { if sessions { open?() } }
+        if let onClose { onClose() } else { dismiss(animated: true) { if sessions { open?() } } }
     }
     fileprivate func accepts(_ message: WKScriptMessage) -> Bool {
         message.frameInfo.isMainFrame && core.allowsNavigation(url: message.frameInfo.request.url?.absoluteString ?? "")
@@ -184,7 +205,12 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         switch value["phase"] as? String {
         case "ready": timeout?.cancel(); core.ready(); refresh()
         case "failed": timeout?.cancel(); core.failed(); refresh()
-        case "metrics": if probe { metrics.accessibilityValue = value["value"] as? String }
+        case "metrics": if probe, let raw = value["value"] as? String, let data = raw.data(using:.utf8), var fields = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+            fields["root"] = standalone && presentingViewController == nil
+            fields["textInteraction"] = web.configuration.preferences.isTextInteractionEnabled
+            fields["pinchEnabled"] = web.scrollView.pinchGestureRecognizer?.isEnabled ?? false
+            if let data = try? JSONSerialization.data(withJSONObject:fields) { metrics.accessibilityValue = String(data:data,encoding:.utf8) }
+        }
         default: break
         }
     }
@@ -192,6 +218,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         guard accepts(message), let body = message.body as? String, body.utf8.count <= 20_000 else { return reply(nil, "The suggestion could not be saved.") }
         do { reply(try core.suggestion(body: body), nil) } catch { reply(nil, "The suggestion could not be saved.") }
     }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { (webView as? GridGameWebView)?.enforceGameInput() }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
     private func failed(_ error: Error) {

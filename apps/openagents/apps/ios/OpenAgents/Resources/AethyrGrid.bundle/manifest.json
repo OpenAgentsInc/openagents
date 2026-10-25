@@ -1,7 +1,7 @@
 {
   "format": "openagents.aethyr-grid.bundle.v1",
   "repository": "https://github.com/OpenAgentsInc/aethyr-cpp",
-  "revision": "4b2f8cf0b27da73c6d906007059328cd083def22",
+  "revision": "1e9d491ba55fad85326d1eba1fa4a58b397de189",
   "files": {
     "Info.plist": {
       "bytes": 485,
@@ -40,20 +40,20 @@
       "sha256": "44cd24dd7c80fc96b2b5aa3b49300f24dd3138d9bafc5fd45eae03ce658abfc1"
     },
     "grid.js": {
-      "bytes": 9647,
-      "sha256": "d2f79fc40f6ad2de3f238fe8055b9f7a844993df2646d93e0fa9aa4e30873d26"
+      "bytes": 9788,
+      "sha256": "50095635cfc45afe44b749afc73a6c72115f9f002977ee885e3a49ca63da9b1d"
     },
     "index.data": {
       "bytes": 48751183,
       "sha256": "7a1a3b5c11b7aff391aca3264e3962a58159799ac138e77d750ca2c2faf7192f"
     },
     "index.js": {
-      "bytes": 108706,
-      "sha256": "bb13a70aabddc134885d0713917474388b5797e4bd79232e4dbf156f893d074d"
+      "bytes": 108957,
+      "sha256": "b6b6063f8aaf0c401e37ad5d5337b359f5908669d0fc519c73be95aeef386a4f"
     },
     "index.wasm": {
-      "bytes": 360313,
-      "sha256": "e4889103973a6c106305591c4207e6e46e7cae61c14dd86178f19445d8a2b238"
+      "bytes": 360561,
+      "sha256": "2cbf6b6ae09c6f6e38acaeac6138d5cb9a1785718de18a75c4130c6205491051"
     },
     "licenses/NOTICE.txt": {
       "bytes": 1936,

@@ -29,11 +29,11 @@ final class CoderIdentityTests: XCTestCase {
         XCTAssertTrue(restored.configuration.delegateClass === LegacyWindowSceneDelegate.self)
 
         let configuration = AppDelegate.windowConfiguration(for: restored)
-        XCTAssertTrue(configuration.delegateClass === SceneDelegate.self)
+        XCTAssertTrue(configuration.delegateClass === GridOnlySceneDelegate.self)
         XCTAssertTrue(configuration.sceneClass === UIWindowScene.self)
         XCTAssertNil(configuration.storyboard)
         XCTAssertTrue(NSClassFromString("OpenAgentsCoderSceneDelegate") === SceneDelegate.self)
-        XCTAssertTrue(UIApplication.shared.connectedScenes.first?.delegate is SceneDelegate)
+        XCTAssertTrue(UIApplication.shared.connectedScenes.first?.delegate is GridOnlySceneDelegate)
     }
 
     func testAttributionIsBundled() throws {

@@ -1635,3 +1635,11 @@ master delegation audit.
   hydrate off-screen chats at launch. Synthetic deleted-history/local-write tests
   cover reconnect and newer checkpoints; physical-device retest remains required.
   The Grid importer also refuses an incomplete linker placeholder even if hashes match.
+
+- Grid-only 1030 starts from the 1028 app path: the scene delegate directly owns
+  home and Grid, with no chat/account/notification startup. Child replacement
+  replaces modal presentation. The bundled Grid uses its on-foot camera mode,
+  native text/lookup/zoom tools are disabled, and Home returns to an Aethyr
+  `af-home` field with a bottom entry button. The field ports the public
+  homepage WGSL (`crates/openagents-web/src/pages/coming_soon.rs`) through
+  `af-gpu`, with a bounded Rust still frame for hosts without a GPU adapter.

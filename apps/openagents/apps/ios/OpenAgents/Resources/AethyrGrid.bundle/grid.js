@@ -18,6 +18,7 @@
     G = {
       input: f('grid_input', [n, n, n, n, n, n, n, n]), toggleView: f('grid_toggle_view', []),
       zoom: f('grid_zoom', [n]), firstPerson: f('grid_first_person', [], n),
+      cameraMode:f('grid_camera_mode',[],n),cameraX:f('grid_camera_x',[],n),cameraY:f('grid_camera_y',[],n),cameraZ:f('grid_camera_z',[],n),
       anim: f('grid_anim', [], 'string'), fps: f('grid_fps', [], n),
       x: f('grid_x', [], n), y: f('grid_y', [], n), z: f('grid_z', [], n), speed: f('grid_speed', [], n),
       place: f('grid_place', [n, n, n]), reroll: f('grid_reroll', []),

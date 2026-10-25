@@ -17,8 +17,10 @@
   addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('touch');
     const style=document.createElement('style');
-    style.textContent='nav a[href="index.html"]{display:none}.top .title{display:none}.top{justify-content:flex-end}.stick{width:104px;height:104px}.stick.move{left:16px}.stick.look{right:16px}body.touch .hotbar{left:16px;gap:3px}.slot{width:44px;height:54px}.slot .lbl{font-size:8px}.slot .key{display:none}.pads{right:16px;gap:4px}.pads button{padding:10px 9px;font-size:12px}.hud{max-width:70vw}';
+    style.textContent='nav a[href="index.html"]{display:none}.top .title{display:none}.top{justify-content:flex-end}.top nav{margin-left:48px}.panel{top:calc(env(safe-area-inset-top) + 76px)}html,body,*{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}input,textarea,select{font-size:16px!important}.stick{width:104px;height:104px}.stick.move{left:16px}.stick.look{right:16px}body.touch .hotbar{left:16px;gap:3px}.slot{width:44px;height:54px}.slot .lbl{font-size:8px}.slot .key{display:none}.pads{right:16px;gap:4px}.pads button{padding:10px 9px;font-size:12px}.hud{max-width:70vw}';
     document.head.append(style);
+    for(const type of ['contextmenu','selectstart','dragstart']) document.addEventListener(type,event=>event.preventDefault());
+    document.addEventListener('focusin',event=>{if(event.target.matches('input,textarea')){event.target.setAttribute('autocorrect','off');event.target.setAttribute('autocapitalize','off');event.target.spellcheck=false;}});
     document.querySelector('#camBtn .lbl').textContent='Camera';
     document.getElementById('camBtn').setAttribute('aria-label','First person');
     document.getElementById('canvas').setAttribute('aria-label','The Grid world');
@@ -31,7 +33,7 @@
       if(!window.G || !window.gridState || G.fps()<=0) return;
       if(!ready) {ready=true;post({phase:'ready'});}
       maxY=Math.max(maxY,G.y());
-      if(window.__gridNativeTest) post({phase:'metrics',value:JSON.stringify({x:G.x(),y:G.y(),z:G.z(),yaw:G.yaw(),maxY,fps:G.fps(),firstPerson:!!G.firstPerson(),joined:gridState().joined,landmarks:G.metadata.landmarks.length,colliders:G.metadata.colliders.length,network:gridState().network})});
+      if(window.__gridNativeTest) post({phase:'metrics',value:JSON.stringify({camera:{mode:G.cameraMode(),x:G.cameraX(),y:G.cameraY(),z:G.cameraZ()},scale:visualViewport?.scale??1,selection:getSelection()?.toString()??"",x:G.x(),y:G.y(),z:G.z(),yaw:G.yaw(),maxY,fps:G.fps(),firstPerson:!!G.firstPerson(),joined:gridState().joined,landmarks:G.metadata.landmarks.length,colliders:G.metadata.colliders.length,network:gridState().network})});
     },250);
     addEventListener('pagehide',()=>clearInterval(report),{once:true});
     // The suggestion is saved on this device by the shell's Rust module.

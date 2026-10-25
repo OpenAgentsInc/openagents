@@ -125,28 +125,28 @@ copying the release. Normal iOS builds need neither Emscripten nor that checkout
 including movement, camera changes, jumping, background/resume, and the map/guide.
 `-demo -route zones -zone grid -grid-offline -grid-probe` opens that fixture.
 
-## Grid-only experiment
+## Grid-only starting point
 
-A compile-time variant of this app (Swift flag `GRID_ONLY`) opens on one
-black Aethyr-styled home screen with a single **Enter the Grid** button
-(Michroma on a solid `#ededed` pill, from aethyr-cpp's `web/app.css`). The
-button opens the bundled Grid above (`BundledGridViewController`) full screen
-without its Sessions button; **Close** returns home. No account, chat, drawer,
-sign-in, or notification setup runs. The normal app is unchanged: the variant
-only swaps the scene delegate (`AppDelegate.sceneDelegateClass`,
-`GridOnly/GridOnlyHome.swift`). Both variants share `com.openagents.app`, so
-`SceneStateMigration` discards the saved scene whenever the variant changes.
+The app now starts only in `GridOnlySceneDelegate`, with no chat model, account,
+notification, or background chat-sync startup. The previous chat hosts below
+remain implementation reference; they are not on this app's navigation path.
+The 1028 Grid-only experiment is the starting point for build 1030.
 
-Build it by adding the flag to the usual commands, for example:
+Aethyr's `af-home` Rust renderer draws the public homepage's stars and nebula
+through `af-gpu`. A bounded still renderer covers hosts without WebGPU. The
+local home bundle uses Michroma, Coming soon, and a bottom Enter the Grid button.
+Build it with `apps/aethyr/tools/build-grid-home.sh` from the repository root
+(after installing `apps/aethyr` dependencies; `ESBUILD` can select its bundler).
 
-```sh
-xcodebuild ... -scheme OpenAgents 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG GRID_ONLY' build
-```
+`GridOnlyRootController` replaces its child when entering Grid or returning Home;
+it never presents Grid modally. Grid fills the window and starts behind the local
+avatar without the overview transition. Watch still controls presence separately.
+The WebKit host disables native text interaction, link previews, menus, and page
+zoom while retaining the game's pointer events and accessible buttons.
 
-For TestFlight, archive with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=GRID_ONLY`
-and the next free `CURRENT_PROJECT_VERSION` on the command line, and keep the
-build internal-only (see `release/test-notes.md`). `-enter-grid` opens the
-Grid at launch for screenshots.
+`GridOnlyTests` covers the home renderer, bottom entry, direct full-screen Grid,
+camera placement, held controls, movement, background return, and returning Home.
+The TestFlight archive uses `GRID_ONLY` and is internal-only, like 1028.
 
 ## Medieval Town
 

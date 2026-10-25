@@ -12,6 +12,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "af-home"
+version = "0.1.0"
+dependencies = [
+ "af-gpu",
+ "naga",
+]
+
+[[package]]
 name = "af-kernel"
 version = "0.1.0"
 dependencies = [

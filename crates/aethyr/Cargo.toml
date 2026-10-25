@@ -1,5 +1,5 @@
 [workspace]
-members = ["gpu", "kernel", "mmorpg-core", "render-lab", "server"]
+members = ["gpu", "home", "kernel", "mmorpg-core", "render-lab", "server"]
 resolver = "2"
 
 [workspace.package]

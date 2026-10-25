@@ -1,5 +1,4 @@
 import UIKit
-import UserNotifications
 
 // Started from main.swift (SceneStateMigration runs first).
 final class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,10 +6,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        #if !GRID_ONLY
-        // Before launch finishes, so a tap that launched the app is delivered.
-        UNUserNotificationCenter.current().delegate = PushNotifications.shared
-        #endif
         // Backstop: a session still bound to another app's delegate (kept by
         // the system despite the migration) is destroyed, so the next scene
         // comes from `windowConfiguration(for:)`.
@@ -23,14 +18,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
-    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        PushNotifications.shared.didRegister(deviceToken: deviceToken)
-    }
-
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        PushNotifications.shared.didFailToRegister(error)
-    }
-
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
@@ -39,12 +26,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         Self.windowConfiguration(for: connectingSceneSession)
     }
 
-    /// The Grid-only experiment (`GRID_ONLY`) opens on its own home screen.
-    #if GRID_ONLY
+    /// Grid-only is the app's starting point; there is no chat startup path.
     static let sceneDelegateClass: AnyClass = GridOnlySceneDelegate.self
-    #else
-    static let sceneDelegateClass: AnyClass = SceneDelegate.self
-    #endif
 
     static func windowConfiguration(for session: UISceneSession) -> UISceneConfiguration {
         // Do not inherit the previous SwiftUI app's archived delegate.

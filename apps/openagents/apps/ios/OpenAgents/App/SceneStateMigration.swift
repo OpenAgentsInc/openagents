@@ -7,12 +7,8 @@ enum SceneStateMigration {
 
     static let variantKey = "openagents.sceneState.variant"
 
-    /// This build's scene variant: the Grid-only experiment or the app.
-    #if GRID_ONLY
-    static let variant = "grid-only"
-    #else
-    static let variant = "app"
-    #endif
+    /// Replaces the old app and the modal Grid experiment with root navigation.
+    static let variant = "grid-only-root"
 
     static func discardInheritedState(
         defaults: UserDefaults = .standard,

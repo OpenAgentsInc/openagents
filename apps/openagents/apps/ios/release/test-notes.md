@@ -1,3 +1,15 @@
+# OpenAgents 1.0.0 (1030): Grid only
+
+Starts from the Grid-only 1028 experience. The home screen shows the homepage's
+stars and nebula through Aethyr, with Enter the Grid near the bottom. Grid fills
+the screen directly and starts behind the player without a fly-in. Long holds
+and repeated taps should stay in the game, with no text selection, lookup,
+context menus, or browser zoom. Home returns to the home screen. There is no
+chat, account, or background chat-sync path in this build.
+
+Try moving, looking, jumping, holding the controls, portrait/landscape, switching
+apps, returning home, and re-entering Grid. This build is for internal testing.
+
 # OpenAgents 1.0.0 (1029)
 
 Reduces memory use when chat history syncs while you use Grid. Chats load when

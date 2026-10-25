@@ -6,7 +6,7 @@ final class BundledGridTests: XCTestCase {
 
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "-route", "zones", "-zone", "grid", "-grid-offline", "-grid-probe"]
+        app.launchArguments = ["-demo", "-enter-grid", "-grid-offline", "-grid-probe"]
         app.launch()
         return app
     }
@@ -56,12 +56,12 @@ final class BundledGridTests: XCTestCase {
         XCTAssertTrue(web.buttons["Play"].exists)
         capture(app,"aethyr-grid-resumed")
         app.buttons["grid-close"].tap()
-        XCTAssertTrue(app.buttons["open:grid"].waitForExistence(timeout: 10))
-        app.buttons["open:grid"].tap(); ready(app)
-        app.buttons["grid-sessions"].tap()
-        XCTAssertTrue(app.buttons["new-session"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.webViews.firstMatch.exists)
-        capture(app,"aethyr-grid-native-sessions")
+        XCTAssertTrue(app.webViews.buttons["Enter the Grid"].waitForExistence(timeout: 10))
+        app.webViews.buttons["Enter the Grid"].tap(); ready(app)
+        XCTAssertFalse(app.buttons["grid-sessions"].exists)
+        app.buttons["grid-close"].tap()
+        XCTAssertTrue(app.webViews.buttons["Enter the Grid"].waitForExistence(timeout: 10))
+        capture(app,"aethyr-grid-native-home")
     }
 
     private func network(_ values: [String: Any]) -> [String: Any] { values["network"] as? [String: Any] ?? [:] }
@@ -72,7 +72,7 @@ final class BundledGridTests: XCTestCase {
             throw XCTSkip("Set TEST_RUNNER_GRID_TEST_RELAY to the loopback multiplayer fixture.")
         }
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "-route", "zones", "-zone", "grid", "-grid-probe", "-grid-relay", relay, "-grid-name", "iOS Multiplayer QA"]
+        app.launchArguments = ["-demo", "-enter-grid", "-grid-probe", "-grid-relay", relay, "-grid-name", "iOS Multiplayer QA"]
         app.launch(); ready(app)
         wait(app, timeout: 60) { self.network($0)["ready"] as? Bool == true && self.players($0).contains { $0["name"] as? String == "Original Grid probe" } }
         XCTAssertEqual(number(network(metrics(app)), "framesPublished"), 0, "Watch listens without advertising an avatar")
@@ -114,7 +114,7 @@ final class BundledGridTests: XCTestCase {
         web.buttons["Watch"].tap()
         wait(app) { $0["joined"] as? Bool == false }
         app.buttons["grid-close"].tap()
-        app.buttons["open:grid"].tap(); ready(app)
+        app.webViews.buttons["Enter the Grid"].tap(); ready(app)
         wait(app) { self.network($0)["ready"] as? Bool == true && self.players($0).count >= 2 }
         XCTAssertEqual(network(metrics(app))["key"] as? String, identity)
         capture(app, "aethyr-grid-mobile-multiplayer-reopened")
@@ -123,7 +123,7 @@ final class BundledGridTests: XCTestCase {
 
     func testPublicRelayAuthenticatesAndPublishesMobilePresence() {
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "-route", "zones", "-zone", "grid", "-grid-probe", "-grid-name", "iOS Staging QA"]
+        app.launchArguments = ["-demo", "-enter-grid", "-grid-probe", "-grid-name", "iOS Staging QA"]
         app.launch(); ready(app)
         wait(app, timeout: 60) { self.network($0)["ready"] as? Bool == true }
         app.webViews.firstMatch.buttons["Play"].tap()
@@ -148,7 +148,7 @@ final class BundledGridTests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             let frame = web.frame
-            return frame.width > frame.height && app.buttons["grid-sessions"].isHittable
+            return frame.width > frame.height && app.buttons["grid-close"].isHittable
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [rotated], timeout: 10), .completed)
         wait(app) { self.number($0,"fps") > 0 }

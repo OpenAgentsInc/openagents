@@ -1,76 +1,118 @@
 import UIKit
+@preconcurrency import WebKit
 
-/// The Grid-only experiment (Swift flag `GRID_ONLY`, see apps/ios/README.md):
-/// the app opens on one Aethyr-styled home screen whose only control is
-/// "Enter the Grid", which opens the bundled Aethyr Grid full screen. No
-/// account, chat, drawer, or other app surface is created in this variant.
-/// Compiled into every build so the normal app keeps it building; only the
-/// `GRID_ONLY` scene configuration uses it.
+/// The app's only scene: Aethyr home and the bundled Grid. No account or
+/// session model is constructed on this path.
 @objc(OpenAgentsGridOnlySceneDelegate)
 final class GridOnlySceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
-
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
         window.overrideUserInterfaceStyle = .dark
-        window.rootViewController = GridOnlyHomeViewController()
+        window.rootViewController = GridOnlyRootController()
         self.window = window
         window.makeKeyAndVisible()
     }
 }
 
-/// Aethyr UI (aethyr-cpp `web/app.css` / `player-controls.css`): black ink,
-/// #ededed content, and a solid content-colored pill set in Michroma.
-final class GridOnlyHomeViewController: UIViewController {
-    static let ink = UIColor.black
-    static let content = UIColor(red: 0xed / 255, green: 0xed / 255, blue: 0xed / 255, alpha: 1)
-    private let enter = UIButton(type: .custom)
-    private var autoEntered = false
-
-    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = Self.ink
-        view.accessibilityIdentifier = "grid-home"
-
-        var config = UIButton.Configuration.filled()
-        config.cornerStyle = .capsule
-        config.baseBackgroundColor = Self.content
-        config.baseForegroundColor = Self.ink
-        config.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 30, bottom: 16, trailing: 30)
-        config.attributedTitle = AttributedString("Enter the Grid", attributes: AttributeContainer([
-            .font: BundledGridViewController.controlFont(15),
-            .kern: 1.6,
-        ]))
-        enter.configuration = config
-        enter.configurationUpdateHandler = { button in
-            // `button.solid:hover` brightens to white.
-            button.configuration?.baseBackgroundColor = button.isHighlighted ? .white : Self.content
-        }
-        enter.accessibilityIdentifier = "grid-enter"
-        enter.addAction(UIAction { [weak self] _ in self?.openGrid(animated: true) }, for: .touchUpInside)
-        enter.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(enter)
-        NSLayoutConstraint.activate([
-            enter.centerXAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerXAnchor),
-            enter.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
-        ])
+/// Navigation replaces the child screen. Grid is never presented as a modal.
+final class GridOnlyRootController: UIViewController {
+    private var screen: UIViewController?
+    override var prefersStatusBarHidden: Bool { true }
+    override var childForStatusBarHidden: UIViewController? { screen }
+    override func viewDidLoad() { super.viewDidLoad(); view.backgroundColor = .black; home() }
+    private func show(_ next: UIViewController) {
+        let visible = view.window != nil
+        if visible { screen?.beginAppearanceTransition(false, animated:false) }
+        screen?.willMove(toParent: nil)
+        screen?.view.removeFromSuperview()
+        screen?.removeFromParent()
+        if visible { screen?.endAppearanceTransition() }
+        screen = next
+        addChild(next)
+        if visible { next.beginAppearanceTransition(true, animated:false) }
+        next.view.frame = view.bounds
+        next.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(next.view)
+        next.didMove(toParent: self)
+        if visible { next.endAppearanceTransition() }
+        setNeedsStatusBarAppearanceUpdate()
     }
-
+    private func home() {
+        show(GridOnlyHomeViewController { [weak self] in self?.enter() })
+    }
+    private func enter() {
+        show(BundledGridViewController(openSessions: nil, standalone: true, onClose: { [weak self] in self?.home() }))
+    }
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // `-enter-grid` opens the Grid at launch (screenshots, UI tests).
-        guard !autoEntered, ProcessInfo.processInfo.arguments.contains("-enter-grid") else { return }
-        autoEntered = true
-        openGrid(animated: false)
+        if ProcessInfo.processInfo.arguments.contains("-enter-grid"), screen is GridOnlyHomeViewController { enter() }
     }
+}
 
-    private func openGrid(animated: Bool) {
-        // Close returns here; there is no Sessions button in this variant.
-        let grid = BundledGridViewController(openSessions: nil)
-        grid.modalPresentationStyle = .fullScreen
-        present(grid, animated: animated)
+/// Thin WebKit host for the Rust Aethyr af-home renderer and its home UI.
+final class GridOnlyHomeViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate {
+    private let enter: () -> Void
+    private var web: GridGameWebView!
+    private let metrics = UILabel()
+    private var homeURL: URL?
+    private var notifications: [NSObjectProtocol] = []
+    init(enter: @escaping () -> Void) { self.enter = enter; super.init(nibName:nil,bundle:nil) }
+    required init?(coder: NSCoder) { fatalError() }
+    override var prefersStatusBarHidden: Bool { true }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        view.accessibilityIdentifier = "grid-home"
+        let config = GridGameWebView.configuration()
+        config.websiteDataStore = .nonPersistent()
+        config.userContentController.add(GridHomeRelay(self), name: "gridHome")
+        web = GridGameWebView(frame: view.bounds, configuration: config)
+        web.autoresizingMask = [.flexibleWidth,.flexibleHeight]
+        web.navigationDelegate = self
+        web.accessibilityIdentifier = "grid-home-web"
+        view.addSubview(web)
+        if ProcessInfo.processInfo.arguments.contains("-grid-probe") {
+            metrics.frame = CGRect(x:1,y:1,width:2,height:2)
+            metrics.textColor = .clear
+            metrics.text = "Aethyr home"
+            metrics.accessibilityIdentifier = "grid-home-metrics"
+            metrics.accessibilityValue = "{}"
+            view.addSubview(metrics)
+        }
+        if let bundle = Bundle.main.url(forResource:"AethyrHome",withExtension:"bundle") {
+            homeURL = bundle.appendingPathComponent("home.html")
+            web.loadFileURL(homeURL!, allowingReadAccessTo: bundle)
+        }
+        for (event, phase) in [(UIApplication.willResignActiveNotification,"background"),(UIApplication.didBecomeActiveNotification,"foreground")] {
+            notifications.append(NotificationCenter.default.addObserver(forName:event,object:nil,queue:.main) { [weak self] _ in
+                self?.web.evaluateJavaScript("window.aethyrHomeLifecycle?.('\(phase)')",completionHandler:nil)
+            })
+        }
     }
+    deinit { notifications.forEach(NotificationCenter.default.removeObserver) }
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        web.evaluateJavaScript("window.dispatchEvent(new Event('pagehide'))",completionHandler:nil)
+        web.stopLoading()
+        web.configuration.userContentController.removeAllScriptMessageHandlers()
+    }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, message.frameInfo.request.url == homeURL,
+              let value = message.body as? [String:Any] else { return }
+        if value["kind"] as? String == "enter" { enter() }
+        if value["kind"] as? String == "ready", let data = try? JSONSerialization.data(withJSONObject:value) {
+            metrics.accessibilityValue = String(data:data,encoding:.utf8)
+        }
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { self.web.enforceGameInput() }
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy)->Void) {
+        decisionHandler(action.request.url == homeURL ? .allow : .cancel)
+    }
+}
+private final class GridHomeRelay: NSObject, WKScriptMessageHandler {
+    weak var owner: GridOnlyHomeViewController?
+    init(_ owner: GridOnlyHomeViewController) { self.owner = owner }
+    func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) { owner?.userContentController(c,didReceive:message) }
 }
