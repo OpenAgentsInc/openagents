@@ -7,3 +7,6 @@ body button,body input,body select,body textarea,.panel input,.panel select,.pan
 .hotbar .slot .lbl{font-size:8px;letter-spacing:0;line-height:1.25;white-space:normal;padding:0 2px}
 #interact{max-width:calc(100vw - 32px);white-space:normal}
 @media(max-width:650px){body.touch .hotbar .slot .lbl{font-size:7.5px}}
+
+/* Rapid game-control taps must not trigger the browser double-tap zoom. */
+button,a{touch-action:manipulation}

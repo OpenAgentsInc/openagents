@@ -1622,8 +1622,10 @@ master delegation audit.
   UIKit lifecycle delivery is immediate and WebKit callbacks are ordered and
   bound to each page load, preserving background-to-Watch and explicit rejoin.
 
-- Grid 1029 pins Aethyr `2dd1b0d9bbe22762a54759a70282338c14b3a938`, which safely ignores invalid
+- Grid 1029 pins Aethyr `4b2f8cf0b27da73c6d906007059328cd083def22`, which safely ignores invalid
   display-name values in signed states and keeps subsequent avatar frames working.
+  Rapid control taps use `touch-action: manipulation`, preventing iOS double-tap
+  zoom from moving the Players panel close button off screen.
 
 - Build 1029: the 1027 iPhone crash (`C515D846-D0C3-4FD4-BDBC-B891B310FC77`)
   aborts in Loro checkpoint history expansion, not in the Grid renderer. The Rust
