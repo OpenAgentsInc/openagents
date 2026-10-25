@@ -5,6 +5,7 @@ const GridUI = (() => {
   const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
   const offline = params.has('offline');
+  let peopleRevision = '';
   let G, session, panel = '', selectedKey = '', noticeTimer, destination = null, path = [], figures = [], currentStation = null;
   let hudAt = 0, servicesAt = -Infinity, serviceBusy = false, pylons = [], foreman = null, activity = null, machines = [];
   const labels = new Map(), slots = new Map(), builds = new Map();
@@ -17,7 +18,7 @@ const GridUI = (() => {
   function link(label, url, parent=body) { const a=element('a',label,'service-link'); a.href=url; a.target='_blank'; a.rel='noopener noreferrer'; parent.append(a); return a; }
   function notice(text) { $('notice').textContent=text; $('notice').classList.add('on'); clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>$('notice').classList.remove('on'),3500); }
   function release() { dispatchEvent(new Event('grid-release')); if(document.pointerLockElement) document.exitPointerLock(); }
-  function closePanel() { panel=''; $('gridPanel').hidden=true; G?.pause(0); cv.focus({preventScroll:true}); }
+  function closePanel() { panel=''; $('gridPanel').hidden=true; G?.pause(session?.pendingSpawn?1:0); cv.focus({preventScroll:true}); }
   function openPanel(id, title) {
     release(); panel=id; $('panelTitle').textContent=title; body.replaceChildren(); $('gridPanel').hidden=false; G?.pause(1);
     $('panelClose').focus({preventScroll:true});
@@ -27,12 +28,12 @@ const GridUI = (() => {
     $('connection').textContent=session.status;
     $('playBtn').textContent=session.joined?'Watch':'Play';
     $('peopleBtn').textContent='Players' + (session.peers.size?' · '+session.peers.size:'');
-    if(panel==='people') people();
+    if(panel==='people' && peopleRevision!==peopleStamp()) people();
   }
   function join() {
     if(!G || session.joined) return;
     const spawn=session.join(); if(spawn) G.place(spawn.x,spawn.z,spawn.yaw);
-    G.watch(0); cv.focus({preventScroll:true});
+    G.watch(0); G.pause(session.pendingSpawn?1:0); cv.focus({preventScroll:true});
   }
   function watch() { release(); session.watch(); G.watch(1); destination=null; path=[]; closePanel(); }
   function ready(engine) {
@@ -55,7 +56,7 @@ const GridUI = (() => {
     G.watch(1); session.connect(); connection();
     if(params.has('play') || params.has('at')) join();
     if(at && at.length>=2 && at.every(Number.isFinite) && at.every(n=>Math.abs(n)<260)) G.place(at[0],at[1],at[2]||0);
-    window.gridState=()=>({joined:session.joined,status:session.status,key:session.key,name:session.name,players:session.figures().map(({key,name,p})=>({key,name,p})),destination,panel,station:currentStation?.id,builds:[...builds.values()],pylons:pylons.length});
+    window.gridState=()=>({joined:session.joined,status:session.status,key:session.key,name:session.name,network:session.metrics(),players:session.figures().map(({key,name,p})=>({key,name,p})),destination,panel,station:currentStation?.id,builds:[...builds.values()],pylons:pylons.length});
     // Shared inspection hooks used by OpenAgents' Grid smoke tools.
     window.verse_players=()=>JSON.stringify(window.gridState().players);
     window.verse_face=(x,z)=>G.face(x,z);
@@ -116,9 +117,11 @@ const GridUI = (() => {
     button(session.muted.has(key)?'Unmute':'Mute',()=>{session.moderate(key,'muted',!session.muted.has(key));player(key);});
     button('Block',()=>{session.moderate(key,'blocked',true);people();});
   }
+  function peopleStamp() { return JSON.stringify([session.name,session.joined,[...session.peers].map(([k,p])=>[k,p.name]),[...session.blocked],[...session.muted]]); }
   function people() {
     if(!G) return;
     if(panel!=='people') openPanel('people','Players'); else body.replaceChildren();
+    peopleRevision=peopleStamp();
     const self=element('div',session.name+(session.joined?' · You':' · Watching'),'row');body.append(self);
     if(!session.peers.size) paragraph(offline?'You are exploring offline.':'Other players appear here as they join.');
     for(const peer of [...session.peers.values()].slice(0,128)) button(peer.name+(session.muted.has(peer.key)?' · Muted':''),()=>player(peer.key));
@@ -134,7 +137,7 @@ const GridUI = (() => {
     paragraph(offline?'Offline: your avatar stays in this browser.':'Your position and display name are shared while you play. Watch listens without sharing your position.');
     body.append(element('small','Player key'));body.append(element('code',session.key));
     button('Copy invite',()=>{
-      const url=new URL(location.href);url.searchParams.delete('name');url.searchParams.delete('at');url.searchParams.delete('play');
+      const url=new URL(['https:','http:'].includes(location.protocol)?location.href:'https://aethyr-staging-ezxz4mgdsq-uc.a.run.app/grid.html');url.searchParams.delete('name');url.searchParams.delete('at');url.searchParams.delete('play');url.searchParams.delete('boot');
       if(!navigator.clipboard?.writeText){notice('Copy the address from your browser to invite a friend.');return;}
       navigator.clipboard.writeText(url.href).then(()=>notice('Invite copied.'),()=>notice('Copy the address from your browser to invite a friend.'));
     });
@@ -259,6 +262,8 @@ const GridUI = (() => {
   };
   function tick(now,dt,kx,ky,px,py) {
     if(!session)return null;
+    const spawn=session.pollSpawn();
+    if(spawn) { G.place(spawn.x,spawn.z,spawn.yaw); G.pause(panel?1:0); }
     peers(now);session.tick([G.x(),G.y(),G.z()],G.yaw(),G.speed(),[G.vx(),G.vy(),G.vz()]);services(now);map();
     let nearest=null,distance=Infinity;
     for(const station of stations){

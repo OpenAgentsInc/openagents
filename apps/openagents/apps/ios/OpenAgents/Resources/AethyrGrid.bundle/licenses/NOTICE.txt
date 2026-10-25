@@ -26,3 +26,9 @@ Michroma Regular by Vernon Adams is bundled from Google Fonts revision
 e7db6ca603fd4862010383ff17ffd6cc4ffac1c0 (ofl/michroma/Michroma-Regular.ttf),
 SHA-256 b62301163788bc5b7f8fcac0b74b184e34e1827e577b499ecb724da065098f87.
 It is distributed under the SIL Open Font License 1.1; see michroma-ofl.txt.
+
+The multiplayer session/crowd behavior in web/grid-session.js and swept player
+collision in src/grid_players.h are ported from OpenAgents revision
+82849c925ce20db839c53734eda2839e4a8301a8: crates/verse/src/session.rs,
+crates/verse-core/src/crowd.rs, and crates/verse-world/src/social/{arrival,controller}.rs.
+Apache-2.0, with the license reproduced above. NIP-MV JSON remains interoperable.

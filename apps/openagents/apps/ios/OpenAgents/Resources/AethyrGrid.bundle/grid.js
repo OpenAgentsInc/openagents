@@ -110,7 +110,6 @@
     const click = drag && drag.moved < 6; drag = null;
     if (click && cv.requestPointerLock) { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* drag to look instead */ } }
   });
-  document.addEventListener('pointerlockchange', () => { $('cross').hidden = document.pointerLockElement !== cv; });
   cv.addEventListener('wheel', (e) => {
     if (!G) return;
     e.preventDefault();

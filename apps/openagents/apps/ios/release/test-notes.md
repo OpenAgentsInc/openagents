@@ -1,3 +1,15 @@
+# OpenAgents 1.0.0 (1027)
+
+The Grid's multiplayer now follows the original Grid. Open Zones > The Grid
+on two devices or alongside web staging, tap Play, and check names and walking,
+running, jumping, and player contact. Try Players > Mute, Unmute, Block, and
+Unblock. Switch apps and return, then tap Play to rejoin. Close and reopen the
+Grid and check your name and player identity. Watch observes without sharing
+your position. Reconnecting should restore the other players.
+
+The Medieval Town background/loading fix and Michroma controls remain included.
+Please report any crash with your phone model, iOS version, and preceding actions.
+
 # OpenAgents 1.0.0 (1026)
 
 This build updates Medieval Town when you switch apps or interrupt loading.

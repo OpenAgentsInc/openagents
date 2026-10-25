@@ -15,6 +15,7 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
     private let card = UIStackView()
     private let metrics = UILabel()
     private var boot = ""
+    private var lifecycleRevision = 0
     private var timeout: DispatchWorkItem?
     private var notifications: [NSObjectProtocol] = []
     private let probe = ProcessInfo.processInfo.arguments.contains("-grid-probe")
@@ -115,8 +116,12 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
             metrics.accessibilityValue = "{}"
             view.addSubview(metrics)
         }
-        notifications.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.lifecycle("background") })
-        notifications.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.lifecycle("foreground") })
+        notifications.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.lifecycle("background") }
+        })
+        notifications.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.lifecycle("foreground") }
+        })
         load()
     }
 
@@ -129,6 +134,15 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         var components = URLComponents(string: "aethyr-grid://bundle/grid.html")!
         components.queryItems = [URLQueryItem(name: "boot", value: boot)]
         if ProcessInfo.processInfo.arguments.contains("-grid-offline") { components.queryItems?.append(URLQueryItem(name: "offline", value: "1")) }
+        // Only the demo/probe harness can override transport or test names.
+        let args = ProcessInfo.processInfo.arguments
+        if probe && args.contains("-demo") {
+            for (flag, name) in [("-grid-relay", "relay"), ("-grid-name", "name")] {
+                if let index = args.firstIndex(of: flag), index + 1 < args.count {
+                    components.queryItems?.append(URLQueryItem(name: name, value: args[index + 1]))
+                }
+            }
+        }
         web.load(URLRequest(url: components.url!))
         let request = DispatchWorkItem { [weak self] in self?.core.failed(); self?.refresh() }
         timeout = request
@@ -145,7 +159,12 @@ final class BundledGridViewController: UIViewController, WKNavigationDelegate, W
         }
     }
     private func lifecycle(_ phase: String) {
-        web?.callAsyncJavaScript("window.aethyrGridLifecycle?.(phase)", arguments: ["phase": phase], in: nil, in: .page, completionHandler: nil)
+        lifecycleRevision += 1
+        web?.callAsyncJavaScript("""
+            if (boot !== new URLSearchParams(location.search).get("boot") || revision < (window.__gridNativeLifecycleRevision || 0)) return;
+            window.__gridNativeLifecycleRevision = revision;
+            window.aethyrGridLifecycle?.(phase);
+            """, arguments: ["phase": phase, "revision": lifecycleRevision, "boot": boot], in: nil, in: .page, completionHandler: nil)
     }
     private func finish(sessions: Bool = false) {
         timeout?.cancel()

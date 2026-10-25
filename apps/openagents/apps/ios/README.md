@@ -229,3 +229,13 @@ allow one-use loopback credential delivery. The account token stays in Rust and
 Keychain. `-account-fixture` separates test caches, account entries, display
 profiles, device IDs, and drafts from ordinary app use. Neither fixture flag is
 part of a distribution build.
+
+The bundled Grid uses the same NIP-MV world and relay as the original Grid and
+web staging. Its release UI test covers an authenticated loopback relay, an
+original `verse-net` Rust peer, movement, mute/block, reconnect, background to
+Watch, rejoin, and guest-key persistence after close/reopen. Start Aethyr's
+`tests/grid-relay.cjs`, then the `verse-net` `grid_presence_probe` example;
+pass `TEST_RUNNER_GRID_TEST_RELAY=ws://127.0.0.1:PORT` to the Xcode test command.
+Relay/name launch overrides are accepted only with both `-demo` and `-grid-probe`.
+The public-relay UI smoke uses the normal release relay with an anonymous demo
+world key and leaves before closing; no native account credentials are shared.

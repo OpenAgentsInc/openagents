@@ -1613,3 +1613,11 @@ master delegation audit.
   work synchronously on deactivation, covering uploads, presents, and resize
   recovery. Interrupted graphics setup resumes from cache. Concurrency and real
   GPU background-transition checks cover the lifecycle boundary.
+
+- Grid multiplayer: bundle Aethyr `f87a857aec47842f75852c3adaf1e9aeff73fa65`,
+  with the original Grid's relay authentication/subscription recovery, 5 Hz
+  movement, crowd interpolation, spawn recovery, player collision, and persistent
+  local moderation. The UIKit host adds only demo/probe transport selection;
+  diagnostics and UI tests exercise the actual bundled world and Rust wire peer.
+  UIKit lifecycle delivery is immediate and WebKit callbacks are ordered and
+  bound to each page load, preserving background-to-Watch and explicit rejoin.

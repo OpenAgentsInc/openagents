@@ -31,7 +31,7 @@
       if(!window.G || !window.gridState || G.fps()<=0) return;
       if(!ready) {ready=true;post({phase:'ready'});}
       maxY=Math.max(maxY,G.y());
-      if(window.__gridNativeTest) post({phase:'metrics',value:JSON.stringify({x:G.x(),y:G.y(),z:G.z(),yaw:G.yaw(),maxY,fps:G.fps(),firstPerson:!!G.firstPerson(),joined:gridState().joined,landmarks:G.metadata.landmarks.length,colliders:G.metadata.colliders.length})});
+      if(window.__gridNativeTest) post({phase:'metrics',value:JSON.stringify({x:G.x(),y:G.y(),z:G.z(),yaw:G.yaw(),maxY,fps:G.fps(),firstPerson:!!G.firstPerson(),joined:gridState().joined,landmarks:G.metadata.landmarks.length,colliders:G.metadata.colliders.length,network:gridState().network})});
     },250);
     addEventListener('pagehide',()=>clearInterval(report),{once:true});
     // The suggestion is saved on this device by the shell's Rust module.

@@ -1,7 +1,7 @@
 {
   "format": "openagents.aethyr-grid.bundle.v1",
   "repository": "https://github.com/OpenAgentsInc/aethyr-cpp",
-  "revision": "a8f9a9a71335ff1e7da49c9a75cde96a7ced63c3",
+  "revision": "f87a857aec47842f75852c3adaf1e9aeff73fa65",
   "files": {
     "Info.plist": {
       "bytes": 485,
@@ -24,24 +24,24 @@
       "sha256": "a7c4846fde84a0d6ce7596f3fcfc88435d29fdcd616887205ab97f9a16bc6407"
     },
     "grid-session.js": {
-      "bytes": 13611,
-      "sha256": "cfbcbdc74600c5ae3c1d8b5727ef012fdd37fbfb13db3f6419c0cccf8c2b3007"
+      "bytes": 20319,
+      "sha256": "23113b88cc191b9092e22e61bc5e0b30ae4e508a0ce3b2c4ee91a67240863fef"
     },
     "grid-ui.css": {
       "bytes": 4111,
       "sha256": "869e05d116d1dc872beebd7fc7bae734866581356372ec2741ae929af7434d26"
     },
     "grid-ui.js": {
-      "bytes": 24434,
-      "sha256": "95c6492b461205ec2eb18e636f174011071380f0979aff60be8fec747856cdc0"
+      "bytes": 25030,
+      "sha256": "68c2f3d9ecb103caa975826f9a1d90e6d76d47353479033edc722f0cd6a0a751"
     },
     "grid.html": {
-      "bytes": 7098,
-      "sha256": "aa6c2104da8fe9157dedd6315fdae5efb54b47d9895a3aacf222f0623af044aa"
+      "bytes": 6909,
+      "sha256": "44cd24dd7c80fc96b2b5aa3b49300f24dd3138d9bafc5fd45eae03ce658abfc1"
     },
     "grid.js": {
-      "bytes": 9764,
-      "sha256": "18d0bfccda679d0c7a91e04cacceb673e192af84bc3b1de9211f2b4509a427b9"
+      "bytes": 9647,
+      "sha256": "d2f79fc40f6ad2de3f238fe8055b9f7a844993df2646d93e0fa9aa4e30873d26"
     },
     "index.data": {
       "bytes": 48751183,
@@ -52,12 +52,12 @@
       "sha256": "bb13a70aabddc134885d0713917474388b5797e4bd79232e4dbf156f893d074d"
     },
     "index.wasm": {
-      "bytes": 358849,
-      "sha256": "9f52d17609aae8b43bf9a3ae4f872bd460adf8979a1128bf8562be8a3aedad2e"
+      "bytes": 360313,
+      "sha256": "e4889103973a6c106305591c4207e6e46e7cae61c14dd86178f19445d8a2b238"
     },
     "licenses/NOTICE.txt": {
-      "bytes": 1544,
-      "sha256": "41494bc78067784b308e003258815de58d47f502b8fbebc9f7bb52f74e5ed8e8"
+      "bytes": 1936,
+      "sha256": "f27fb2618b08ee9e619333670f6c85a300bc994ab7fd64b64e540ef5ca85a8ee"
     },
     "licenses/engine-proto.txt": {
       "bytes": 2189,

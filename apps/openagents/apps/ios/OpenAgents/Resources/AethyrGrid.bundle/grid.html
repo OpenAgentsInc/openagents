@@ -27,7 +27,6 @@
   .hud{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 20px);color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums;pointer-events:none;text-align:right}
   .loading{position:fixed;inset:0;display:grid;place-items:center;color:var(--dim);letter-spacing:.3em;text-transform:uppercase;font-size:11px;pointer-events:none}
   [hidden]{display:none!important}
-  .cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:rgba(237,237,237,.7);pointer-events:none}
   /* Touch sticks, as in the old Grid: faint rings with round knobs. */
   .stick{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 56px);width:112px;height:112px;border-radius:50%;border:1px solid rgba(237,237,237,.22);touch-action:none;display:none}
   .stick i{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px;border-radius:50%;background:rgba(237,237,237,.22)}
@@ -59,7 +58,6 @@
 <div id="notice" role="status" aria-live="polite"></div>
 <canvas id="minimap" width="300" height="300" aria-label="Grid map. Click to walk somewhere." hidden tabindex="0"></canvas>
 <aside id="gridPanel" class="panel" hidden aria-labelledby="panelTitle"><header><h2 id="panelTitle"></h2><button id="panelClose" aria-label="Close panel">×</button></header><div id="panelBody"></div></aside>
-<div class="cross" id="cross" hidden></div>
 <div class="hint" id="hint">W A S D to move · Shift to run · Space to jump · scroll to zoom · click to look around, Esc to stop · V switches camera</div>
 <div class="hud" id="hud"></div>
 <div class="stick move" id="moveStick"><i></i></div>
