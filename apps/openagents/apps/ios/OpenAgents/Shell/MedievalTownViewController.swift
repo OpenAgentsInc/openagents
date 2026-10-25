@@ -25,6 +25,10 @@ final class MedievalTownViewController: UIViewController {
     private var attached = false
     private var prepared = false
     private var attaching = false
+    private var resumeLoading = false
+    private var setupHold: DispatchSemaphore?
+    private var setupHoldUsed = false
+    private var setupRestarts = 0
     private var loadFailed = false
     private var firstFrameShown = false
     private var failureFixtureUsed = false
@@ -161,17 +165,25 @@ final class MedievalTownViewController: UIViewController {
         setPlayable(false)
         let center = NotificationCenter.default
         observers = [
-            center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.foreground = false
-                self?.updateActive()
+            center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.foreground = false
+                    self?.updateActive()
+                    self?.releaseSetupHold()
+                }
             },
-            center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.foreground = false
-                self?.updateActive()
+            center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.foreground = false
+                    self?.updateActive()
+                    self?.releaseSetupHold()
+                }
             },
-            center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.foreground = true
-                self?.updateActive()
+            center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.foreground = true
+                    self?.updateActive()
+                }
             },
         ]
     }
@@ -200,12 +212,14 @@ final class MedievalTownViewController: UIViewController {
     }
 
     deinit {
+        setupHold?.signal()
         displayLink?.invalidate()
         renderer?.cancelLoading()
         loadTask?.cancel()
         loadingTimer?.invalidate()
         observers.forEach(NotificationCenter.default.removeObserver)
         if let town = renderer {
+            town.setActive(active: false)
             let layer = surface.metalLayer
             renderQueue.async {
                 town.setActive(active: false)
@@ -268,7 +282,16 @@ final class MedievalTownViewController: UIViewController {
         let queue = renderQueue
         let benchmark = benchmarking
         let current = generation
+        // Hold only the demo fixture's first setup, released after deactivation.
+        // This exercises the real loader, renderer, and suspension error path.
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-demo"), args.contains("-town-pause-setup"), !setupHoldUsed {
+            setupHoldUsed = true
+            setupHold = DispatchSemaphore(value: 0)
+        }
+        let hold = setupHold
         queue.async { [weak self, metalLayer] in
+            if let hold { _ = hold.wait(timeout: .now() + 10) }
             do {
                 try town.attach(layer: pointer, width: UInt32(size.width), height: UInt32(size.height), scale: scale)
                 if benchmark { town.beginBenchmark() }
@@ -285,11 +308,20 @@ final class MedievalTownViewController: UIViewController {
                     updateActive()
                 }
             } catch {
-                logMedievalTownFailure(error, stage: "opening the display")
+                let suspended: Bool
+                if case MedievalTownError.Suspended = error { suspended = true }
+                else { suspended = false; logMedievalTownFailure(error, stage: "opening the display") }
                 DispatchQueue.main.async { [weak self] in
                     guard let self, current == generation else { return }
                     attaching = false
-                    showFailure(generation: current)
+                    if suspended {
+                        setupRestarts += 1
+                        prepared = false
+                        resumeLoading = true
+                        updateActive()
+                    } else {
+                        showFailure(generation: current)
+                    }
                 }
             }
         }
@@ -297,6 +329,8 @@ final class MedievalTownViewController: UIViewController {
 
     private func stopTown() {
         generation += 1
+        renderer?.setActive(active: false)
+        releaseSetupHold()
         renderer?.cancelLoading()
         loadTask?.cancel()
         loadTask = nil
@@ -307,6 +341,7 @@ final class MedievalTownViewController: UIViewController {
         attached = false
         prepared = false
         attaching = false
+        resumeLoading = false
         inFlight = false
         resetInput()
         if let town = renderer {
@@ -322,13 +357,18 @@ final class MedievalTownViewController: UIViewController {
         renderer = nil
     }
 
+    private func releaseSetupHold() {
+        setupHold?.signal()
+        setupHold = nil
+    }
+
     private func showFailure(generation current: Int) {
         guard current == generation else { return }
         loadFailed = true
         loadingTimer?.invalidate()
         loadingTimer = nil
         displayLink?.isPaused = true
-        if let town = renderer { renderQueue.async { town.setActive(active: false) } }
+        renderer?.setActive(active: false)
         setPlayable(false)
         loading.showFailure(renderer?.loadingProgress(), diagnostics: diagnosticMetrics)
         retry.isHidden = false
@@ -343,6 +383,14 @@ final class MedievalTownViewController: UIViewController {
     }
 
     private func updateActive() {
+        if resumeLoading && visible && foreground {
+            resumeLoading = false
+            loadTown()
+            return
+        }
+        // Deliver both edges before starting setup, so an old queued activation
+        // cannot reopen graphics after a newer background notification.
+        renderer?.setActive(active: visible && foreground && !loadFailed)
         if visible && foreground && !firstFrameShown && !loadFailed { startLoadingTimer() }
         else if !visible || !foreground {
             loadingTimer?.invalidate()
@@ -353,7 +401,6 @@ final class MedievalTownViewController: UIViewController {
         let active = visible && foreground && attached && !loadFailed
         displayLink?.isPaused = !active
         if !active { resetInput() }
-        if let town = renderer { renderQueue.async { town.setActive(active: active) } }
     }
 
     private func startLoadingTimer() {
@@ -446,7 +493,14 @@ final class MedievalTownViewController: UIViewController {
         statusWidth?.constant = 74
         statusHeight?.constant = 28
         status.text = String(format: "%.0f FPS", fps)
-        status.accessibilityValue = diagnosticMetrics ? json : String(format: "%.0f frames per second", fps)
+        if diagnosticMetrics {
+            var snapshot = values
+            snapshot["graphicsSetupRestarts"] = setupRestarts
+            let data = try? JSONSerialization.data(withJSONObject: snapshot)
+            status.accessibilityValue = data.flatMap { String(data: $0, encoding: .utf8) } ?? json
+        } else {
+            status.accessibilityValue = String(format: "%.0f frames per second", fps)
+        }
         if benchmarking, values["benchmarkComplete"] as? Bool == true, !benchmarkSaved {
             benchmarkSaved = true
             displayLink?.isPaused = true

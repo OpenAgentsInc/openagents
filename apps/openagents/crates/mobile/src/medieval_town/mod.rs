@@ -30,6 +30,8 @@ use std::{
 pub enum MedievalTownError {
     #[error("{message}")]
     Failed { message: String },
+    #[error("The town was paused.")]
+    Suspended,
 }
 fn failed(message: impl Into<String>) -> MedievalTownError {
     MedievalTownError::Failed {
@@ -756,9 +758,9 @@ struct Benchmark {
 }
 struct State {
     mesh: Option<Arc<Mesh>>,
+    activity_epoch: u64,
     camera: Camera,
     timing: Timing,
-    active: bool,
     width: u32,
     height: u32,
     benchmark: Option<Benchmark>,
@@ -766,6 +768,7 @@ struct State {
 }
 #[derive(uniffi::Object)]
 pub struct MedievalTownRenderer {
+    activity: Arc<gpu::Activity>,
     cache: PathBuf,
     state: Mutex<State>,
     gpu: Mutex<Option<gpu::Gpu>>,
@@ -778,12 +781,13 @@ impl MedievalTownRenderer {
     #[uniffi::constructor]
     pub fn new(cache_directory: String) -> Arc<Self> {
         Arc::new(Self {
+            activity: Arc::new(gpu::Activity::new()),
             cache: PathBuf::from(cache_directory),
             state: Mutex::new(State {
                 mesh: None,
+                activity_epoch: 0,
                 camera: Camera::new(Vec3::ZERO),
                 timing: Timing::default(),
-                active: true,
                 width: 0,
                 height: 0,
                 benchmark: None,
@@ -867,11 +871,17 @@ impl MedievalTownRenderer {
             .mesh
             .as_ref()
             .ok_or_else(|| failed("Wait for the town to finish loading."))?;
-        let renderer = gpu::Gpu::new(layer, width, height, mesh, |stage, fraction| {
-            session.phase(stage, 0.94 + 0.05 * fraction, "")
-        });
+        let renderer = gpu::Gpu::new(
+            layer,
+            width,
+            height,
+            self.activity.clone(),
+            mesh,
+            |stage, fraction| session.phase(stage, 0.94 + 0.05 * fraction, ""),
+        );
         let renderer = match renderer {
             Ok(renderer) => renderer,
+            Err(MedievalTownError::Suspended) => return Err(MedievalTownError::Suspended),
             Err(error) => {
                 session.fail(&error.to_string());
                 return Err(error);
@@ -896,14 +906,17 @@ impl MedievalTownRenderer {
         Ok(())
     }
     pub fn set_active(&self, active: bool) {
-        let mut state = self.state.lock().unwrap();
-        state.active = active;
-        state.camera.last = None;
+        if active {
+            self.activity.activate();
+        } else {
+            self.activity.suspend();
+        }
     }
     pub fn detach(&self) {
+        self.activity.suspend();
         let mut state = self.state.lock().unwrap();
         *self.gpu.lock().unwrap() = None;
-        state.active = false;
+        self.activity.detach();
         state.camera.last = None;
     }
     pub fn frame(
@@ -925,8 +938,13 @@ impl MedievalTownRenderer {
         }
         let start = Instant::now();
         let mut state = self.state.lock().unwrap();
-        if !state.active {
+        if !self.activity.active() {
             return Ok(());
+        }
+        let epoch = self.activity.epoch();
+        if state.activity_epoch != epoch {
+            state.camera.last = None;
+            state.activity_epoch = epoch;
         }
         let Some(mesh) = state.mesh.clone() else {
             return Ok(());
@@ -996,7 +1014,6 @@ impl MedievalTownRenderer {
             warmed: false,
             done: false,
         });
-        state.active = true;
         if let Some(mesh) = state.mesh.clone() {
             state.camera = Camera::new(mesh.spawn);
         }
@@ -1011,6 +1028,7 @@ impl MedievalTownRenderer {
     pub fn metrics(&self) -> String {
         let state = self.state.lock().unwrap();
         let gpu = self.gpu.lock().unwrap();
+        let paused = self.activity.paused();
         let completed = gpu.as_ref().map_or(0, |g| g.completed());
         let elapsed = state
             .timing
@@ -1024,7 +1042,7 @@ impl MedievalTownRenderer {
             .get((cpu.len() as f64 * 0.95) as usize)
             .copied()
             .unwrap_or(0.);
-        serde_json::json!({"ready":gpu.is_some(),"submittedFrames":state.timing.submitted,"completedFrames":completed,"fps":if elapsed>0.{completed as f64/elapsed}else{0.},"liveFps":gpu.as_ref().map_or(0.,|g|g.live_fps()),"cpuMs":mean,"cpuP95Ms":p95,"gpuMs":serde_json::Value::Null,"frameP95Ms":frame_p95,"missedFramesOver25Ms":missed,"benchmarkComplete":state.benchmark.as_ref().is_some_and(|b|b.done),"elapsed":elapsed,"playerPosition":state.camera.position.to_array(),"distanceWalked":state.timing.distance_walked,"maxDisplacement":state.timing.max_displacement,"yaw":state.camera.yaw,"pitch":state.camera.pitch,"drawCalls":state.timing.draws,"triangles":state.timing.triangles,"width":state.width,"height":state.height,"backend":"Metal","materialLayers":state.mesh.as_ref().and_then(|m| m.texture_arrays.as_ref()).map_or(1, |a| a.base_color.layers),"sceneDrawGroups":state.mesh.as_ref().map_or(0,|m|m.draws.len()),"sceneTriangles":state.mesh.as_ref().map_or(0,|m|m.draws.iter().map(|d|d.index_count as u64 / 3 * d.instance_count as u64).sum::<u64>()),"manifestSha256":option_env!("OPENAGENTS_MEDIEVAL_MANIFEST_SHA256").unwrap_or(MANIFEST_SHA256)}).to_string()
+        serde_json::json!({"ready":gpu.is_some(),"submittedFrames":state.timing.submitted,"completedFrames":completed,"pausedSubmittedFrames":paused.0,"pausedCompletedFrames":paused.1,"fps":if elapsed>0.{completed as f64/elapsed}else{0.},"liveFps":gpu.as_ref().map_or(0.,|g|g.live_fps()),"cpuMs":mean,"cpuP95Ms":p95,"gpuMs":serde_json::Value::Null,"frameP95Ms":frame_p95,"missedFramesOver25Ms":missed,"benchmarkComplete":state.benchmark.as_ref().is_some_and(|b|b.done),"elapsed":elapsed,"playerPosition":state.camera.position.to_array(),"distanceWalked":state.timing.distance_walked,"maxDisplacement":state.timing.max_displacement,"yaw":state.camera.yaw,"pitch":state.camera.pitch,"drawCalls":state.timing.draws,"triangles":state.timing.triangles,"width":state.width,"height":state.height,"backend":"Metal","materialLayers":state.mesh.as_ref().and_then(|m| m.texture_arrays.as_ref()).map_or(1, |a| a.base_color.layers),"sceneDrawGroups":state.mesh.as_ref().map_or(0,|m|m.draws.len()),"sceneTriangles":state.mesh.as_ref().map_or(0,|m|m.draws.iter().map(|d|d.index_count as u64 / 3 * d.instance_count as u64).sum::<u64>()),"manifestSha256":option_env!("OPENAGENTS_MEDIEVAL_MANIFEST_SHA256").unwrap_or(MANIFEST_SHA256)}).to_string()
     }
 }
 fn extent(width: u32, height: u32, scale: f32) -> Result<(u32, u32)> {

@@ -31879,6 +31879,7 @@ enum MedievalTownError: Swift.Error, Equatable, Hashable, Foundation.LocalizedEr
     
     case Failed(message: String
     )
+    case Suspended
 
     
 
@@ -31911,6 +31912,7 @@ public struct FfiConverterTypeMedievalTownError: FfiConverterRustBuffer {
         case 1: return .Failed(
             message: try FfiConverterString.read(from: &buf)
             )
+        case 2: return .Suspended
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -31927,6 +31929,10 @@ public struct FfiConverterTypeMedievalTownError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(1))
             FfiConverterString.write(message, into: &buf)
             
+        
+        case .Suspended:
+            writeInt(&buf, Int32(2))
+        
         }
     }
 }

@@ -139,6 +139,10 @@ The loading screen shows the current item, byte and file counts, unpacking,
 and graphics setup until the first frame appears. Close cancels loading;
 Try again keeps completed downloads. Three downloads run at once, and unchanged
 files are reused across scene updates, including files saved by earlier builds.
+App deactivation synchronously closes the Rust graphics gate and drains prior
+Metal submissions. Uploads, presentation, and resize recovery use that same gate;
+CPU loading does not hold it. Interrupted graphics setup restarts from cache on
+return. Diagnostic metrics include submitted/completed counts at the last pause.
 
 `-demo -route medieval-town -town-bench` runs an offline-account simulator
 check against the real scene download: five seconds of warm-up, then 30

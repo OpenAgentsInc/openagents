@@ -1,3 +1,12 @@
+# OpenAgents 1.0.0 (1026)
+
+This build updates Medieval Town when you switch apps or interrupt loading.
+Try walking, looking, jumping, rotating the phone, switching apps several
+times, and closing/reopening the town. After returning, check that it keeps
+working. Please report any crash with your phone model and iOS version.
+
+The Grid's bundled Michroma font update is included.
+
 # OpenAgents 1.0.0 (1025)
 
 The Grid's title and controls now share Michroma. The font ships with the app

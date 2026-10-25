@@ -2,16 +2,125 @@ use super::{Camera, Mesh, Result, failed};
 use glam::{Mat4, Vec3, Vec4};
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
     time::Instant,
 };
 use wgpu::util::DeviceExt;
 #[derive(Default)]
 struct Completions {
     generation: u64,
+    submitted: u64,
     count: u64,
     start: Option<Instant>,
     times: VecDeque<f64>,
+}
+
+struct Context {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    completions: Arc<Mutex<Completions>>,
+    error: Arc<Mutex<Option<String>>>,
+}
+#[derive(Default)]
+struct ActivityState {
+    context: Option<Context>,
+    paused: (u64, u64),
+    quiesced: bool,
+}
+/// The lifecycle boundary includes texture setup, render submits, and presents.
+/// CPU loading/encoding never holds this lock. UIKit can stop GPU work without
+/// waiting for a shader compilation or for the town's scene-state lock.
+pub(super) struct Activity {
+    allowed: AtomicBool,
+    epoch: AtomicU64,
+    state: Mutex<ActivityState>,
+}
+impl Activity {
+    pub fn new() -> Self {
+        Self {
+            allowed: AtomicBool::new(true),
+            epoch: AtomicU64::new(1),
+            state: Mutex::new(ActivityState::default()),
+        }
+    }
+    pub fn active(&self) -> bool {
+        self.allowed.load(Ordering::Acquire)
+    }
+    pub fn activate(&self) {
+        let _guard = self.state.lock().unwrap();
+        if !self.active() {
+            self.epoch.fetch_add(1, Ordering::AcqRel);
+        }
+        self.allowed.store(true, Ordering::Release);
+    }
+    pub fn epoch(&self) -> u64 {
+        self.epoch.load(Ordering::Acquire)
+    }
+    fn check(&self) -> Result<()> {
+        if self.active() {
+            Ok(())
+        } else {
+            Err(super::MedievalTownError::Suspended)
+        }
+    }
+    fn run<T>(&self, work: impl FnOnce() -> T) -> Option<T> {
+        if !self.active() {
+            return None;
+        }
+        let mut state = self.state.lock().unwrap();
+        if !self.active() {
+            return None;
+        }
+        state.quiesced = false;
+        Some(work())
+    }
+    fn register(&self, context: Context) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        self.check()?;
+        if let Some(old) = state.context.as_ref() {
+            Self::drain(old);
+        }
+        state.context = Some(context);
+        state.paused = (0, 0);
+        state.quiesced = false;
+        Ok(())
+    }
+    fn drain(context: &Context) {
+        // Fence after Metal presentation too, not just the render submission.
+        let fence = context.queue.submit([]);
+        if let Err(error) = context.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(fence),
+            timeout: Some(std::time::Duration::from_secs(2)),
+        }) {
+            eprintln!("Medieval Town graphics pause: {error}");
+            *context.error.lock().unwrap() = Some(error.to_string());
+        }
+    }
+    pub fn suspend(&self) {
+        self.allowed.store(false, Ordering::Release);
+        let mut state = self.state.lock().unwrap();
+        // Repeated notifications still join an in-progress pause, but must not
+        // submit another fence once iOS has already entered the background.
+        if !state.quiesced {
+            if let Some(context) = state.context.as_ref() {
+                Self::drain(context);
+                let c = context.completions.lock().unwrap();
+                let paused = (c.submitted, c.count);
+                drop(c);
+                state.paused = paused;
+            }
+            state.quiesced = true;
+        }
+    }
+    pub fn paused(&self) -> (u64, u64) {
+        self.state.lock().unwrap().paused
+    }
+    pub fn detach(&self) {
+        self.state.lock().unwrap().context = None;
+    }
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -37,10 +146,12 @@ struct DrawUniform {
     material: [f32; 4],
 }
 pub(super) struct Gpu {
+    activity: Arc<Activity>,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    needs_configure: bool,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     frame: wgpu::Buffer,
@@ -62,9 +173,11 @@ impl Gpu {
         layer: u64,
         width: u32,
         height: u32,
+        activity: Arc<Activity>,
         mesh: &Mesh,
         progress: impl Fn(&'static str, f32),
     ) -> Result<Self> {
+        activity.check()?;
         let started = Instant::now();
         let phase = |stage: &'static str, fraction: f32| {
             eprintln!(
@@ -76,7 +189,7 @@ impl Gpu {
         phase("Opening graphics", 0.);
         #[cfg(not(target_vendor = "apple"))]
         {
-            let _ = (layer, width, height, mesh);
+            let _ = (layer, width, height, mesh, activity);
             return Err(failed("This town view requires an Apple Metal display."));
         }
         #[cfg(target_vendor = "apple")]
@@ -131,6 +244,13 @@ impl Gpu {
                 eprintln!("Medieval Town graphics: {e}");
                 *captured.lock().unwrap() = Some(e.to_string());
             }));
+            let completions = Arc::new(Mutex::new(Completions::default()));
+            activity.register(Context {
+                device: device.clone(),
+                queue: queue.clone(),
+                completions: completions.clone(),
+                error: error.clone(),
+            })?;
             let caps = surface.get_capabilities(&adapter);
             let format = caps
                 .formats
@@ -148,7 +268,9 @@ impl Gpu {
                 alpha_mode: wgpu::CompositeAlphaMode::Auto,
                 view_formats: vec![],
             };
-            surface.configure(&device, &config);
+            activity
+                .run(|| surface.configure(&device, &config))
+                .ok_or(super::MedievalTownError::Suspended)?;
             phase("Loading models", 0.08);
             let expanded;
             let vertex_data = if mesh.vertex_stride == 32 {
@@ -176,6 +298,7 @@ impl Gpu {
                     upload_array(
                         &device,
                         &queue,
+                        &activity,
                         "Town base colors",
                         &arrays.base_color,
                         wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -183,10 +306,11 @@ impl Gpu {
                         |bytes| {
                             phase("Loading textures", texture_progress(bytes, total));
                         },
-                    ),
+                    )?,
                     upload_array(
                         &device,
                         &queue,
+                        &activity,
                         "Town tangent normals",
                         &arrays.normal,
                         wgpu::TextureFormat::Rg8Unorm,
@@ -197,10 +321,11 @@ impl Gpu {
                                 texture_progress(arrays.base_color.bytes.len() + bytes, total),
                             );
                         },
-                    ),
+                    )?,
                     upload_array(
                         &device,
                         &queue,
+                        &activity,
                         "Town metallic roughness occlusion",
                         &arrays.mra,
                         wgpu::TextureFormat::Rgba8Unorm,
@@ -216,7 +341,7 @@ impl Gpu {
                                 ),
                             );
                         },
-                    ),
+                    )?,
                 )
             } else {
                 let atlas = super::TextureArray {
@@ -245,15 +370,17 @@ impl Gpu {
                     upload_array(
                         &device,
                         &queue,
+                        &activity,
                         "Town legacy colors",
                         &atlas,
                         wgpu::TextureFormat::Rgba8UnormSrgb,
                         4,
                         |bytes| phase("Loading textures", texture_progress(bytes, total)),
-                    ),
+                    )?,
                     upload_array(
                         &device,
                         &queue,
+                        &activity,
                         "Town legacy normals",
                         &normal,
                         wgpu::TextureFormat::Rg8Unorm,
@@ -264,10 +391,11 @@ impl Gpu {
                                 texture_progress(atlas.bytes.len() + bytes, total),
                             );
                         },
-                    ),
+                    )?,
                     upload_array(
                         &device,
                         &queue,
+                        &activity,
                         "Town legacy roughness",
                         &mra,
                         wgpu::TextureFormat::Rgba8Unorm,
@@ -281,7 +409,7 @@ impl Gpu {
                                 ),
                             );
                         },
-                    ),
+                    )?,
                 )
             };
             phase("Preparing materials", 0.65);
@@ -559,11 +687,14 @@ impl Gpu {
             phase("Drawing the town", 0.98);
             let depth = make_depth(&device, width, height);
             phase("Drawing the town", 1.);
+            activity.check()?;
             Ok(Self {
+                activity,
                 surface,
                 device,
                 queue,
                 config,
+                needs_configure: false,
                 vertices,
                 indices,
                 frame,
@@ -577,7 +708,7 @@ impl Gpu {
                 world,
                 sky,
                 depth,
-                completions: Arc::new(Mutex::new(Completions::default())),
+                completions,
                 error,
             })
         }
@@ -585,8 +716,16 @@ impl Gpu {
     pub fn resize(&mut self, width: u32, height: u32) {
         self.config.width = width;
         self.config.height = height;
-        self.surface.configure(&self.device, &self.config);
-        self.depth = make_depth(&self.device, width, height);
+        self.reconfigure();
+    }
+    fn reconfigure(&mut self) {
+        let activity = self.activity.clone();
+        self.needs_configure = activity
+            .run(|| {
+                self.surface.configure(&self.device, &self.config);
+                self.depth = make_depth(&self.device, self.config.width, self.config.height);
+            })
+            .is_none();
     }
     pub fn poll(&self) {
         let _ = self.device.poll(wgpu::PollType::Poll);
@@ -594,6 +733,7 @@ impl Gpu {
     pub fn reset_metrics(&self) {
         let mut c = self.completions.lock().unwrap();
         c.generation += 1;
+        c.submitted = 0;
         c.count = 0;
         c.start = None;
         c.times.clear();
@@ -640,6 +780,15 @@ impl Gpu {
         )
     }
     pub fn draw(&mut self, camera: &Camera, mesh: &Mesh) -> Result<Option<(u32, u32)>> {
+        if !self.activity.active() {
+            return Ok(None);
+        }
+        if self.needs_configure {
+            self.reconfigure();
+            if self.needs_configure {
+                return Ok(None);
+            }
+        }
         self.poll();
         if self.error.lock().unwrap().is_some() {
             return Err(failed(
@@ -650,14 +799,14 @@ impl Gpu {
             wgpu::CurrentSurfaceTexture::Success(frame) => frame,
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
                 drop(frame);
-                self.surface.configure(&self.device, &self.config);
+                self.reconfigure();
                 return Ok(None);
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
                 return Ok(None);
             }
             wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.config);
+                self.reconfigure();
                 return Ok(None);
             }
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Validation => {
@@ -744,7 +893,6 @@ impl Gpu {
                 }
             }
         }
-        self.cached_shadows = Some(shadows);
         {
             let colors = [Some(wgpu::RenderPassColorAttachment {
                 view: &target,
@@ -789,23 +937,34 @@ impl Gpu {
                 triangles += draw.index_count / 3 * draw.instance_count;
             }
         }
-        self.queue.submit(Some(encoder.finish()));
-        frame.present();
-        let completions = self.completions.clone();
-        let generation = completions.lock().unwrap().generation;
-        self.queue.on_submitted_work_done(move || {
-            let mut c = completions.lock().unwrap();
-            if c.generation != generation {
-                return;
-            }
-            let now = Instant::now();
-            let start = *c.start.get_or_insert(now);
-            c.count += 1;
-            c.times.push_back(now.duration_since(start).as_secs_f64());
-            if c.times.len() > 3600 {
-                c.times.pop_front();
-            }
+        let commands = encoder.finish();
+        let submitted = self.activity.run(|| {
+            self.queue.submit(Some(commands));
+            frame.present();
+            let completions = self.completions.clone();
+            let generation = {
+                let mut c = completions.lock().unwrap();
+                c.submitted += 1;
+                c.generation
+            };
+            self.queue.on_submitted_work_done(move || {
+                let mut c = completions.lock().unwrap();
+                if c.generation != generation {
+                    return;
+                }
+                let now = Instant::now();
+                let start = *c.start.get_or_insert(now);
+                c.count += 1;
+                c.times.push_back(now.duration_since(start).as_secs_f64());
+                if c.times.len() > 3600 {
+                    c.times.pop_front();
+                }
+            });
         });
+        if submitted.is_none() {
+            return Ok(None);
+        }
+        self.cached_shadows = Some(shadows);
         Ok(Some((draws, triangles)))
     }
 }
@@ -900,12 +1059,14 @@ fn shadow_binding(binding: u32) -> wgpu::BindGroupLayoutEntry {
 fn upload_array(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    activity: &Activity,
     label: &str,
     array: &super::TextureArray,
     format: wgpu::TextureFormat,
     channels: u32,
     progress: impl Fn(usize),
-) -> wgpu::TextureView {
+) -> Result<wgpu::TextureView> {
+    activity.check()?;
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: wgpu::Extent3d {
@@ -926,41 +1087,45 @@ fn upload_array(
         let height = (array.height >> mip).max(1);
         let length = (width * height * array.layers * channels) as usize;
         for slab in texture_slabs(width, height, array.layers, channels) {
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &texture,
-                    mip_level: mip,
-                    origin: wgpu::Origin3d {
-                        x: 0,
-                        y: slab.first_row,
-                        z: slab.first_layer,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &array.bytes[offset + slab.offset..offset + slab.offset + slab.bytes],
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(width * channels),
-                    rows_per_image: Some(slab.rows),
-                },
-                wgpu::Extent3d {
-                    width,
-                    height: slab.rows,
-                    depth_or_array_layers: slab.layers,
-                },
-            );
-            // Queue writes otherwise retain every staging allocation until the
-            // first frame. Start bounded transfers while the CPU prepares more.
-            queue.submit([]);
-            let _ = device.poll(wgpu::PollType::Poll);
+            activity
+                .run(|| {
+                    queue.write_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &texture,
+                            mip_level: mip,
+                            origin: wgpu::Origin3d {
+                                x: 0,
+                                y: slab.first_row,
+                                z: slab.first_layer,
+                            },
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &array.bytes[offset + slab.offset..offset + slab.offset + slab.bytes],
+                        wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(width * channels),
+                            rows_per_image: Some(slab.rows),
+                        },
+                        wgpu::Extent3d {
+                            width,
+                            height: slab.rows,
+                            depth_or_array_layers: slab.layers,
+                        },
+                    );
+                    // Queue writes otherwise retain every staging allocation until the
+                    // first frame. Start bounded transfers while the CPU prepares more.
+                    queue.submit([]);
+                    let _ = device.poll(wgpu::PollType::Poll);
+                })
+                .ok_or(super::MedievalTownError::Suspended)?;
             progress(offset + slab.offset + slab.bytes);
         }
         offset += length;
     }
-    texture.create_view(&wgpu::TextureViewDescriptor {
+    Ok(texture.create_view(&wgpu::TextureViewDescriptor {
         dimension: Some(wgpu::TextureViewDimension::D2Array),
         ..Default::default()
-    })
+    }))
 }
 const TEXTURE_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Debug)]
@@ -1064,6 +1229,53 @@ fn shadow_matrices(eye: Vec3, spawn: Vec3, sun: Vec3) -> [Mat4; 2] {
 #[cfg(test)]
 mod shader_tests {
     use super::*;
+    #[test]
+    fn pause_joins_the_current_submit_and_rejects_queued_work() {
+        let activity = Arc::new(Activity::new());
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = activity.clone();
+        let submit = std::thread::spawn(move || {
+            worker
+                .run(|| {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                })
+                .unwrap();
+        });
+        entered_rx.recv().unwrap();
+        let (paused_tx, paused_rx) = std::sync::mpsc::channel();
+        let pauser = activity.clone();
+        let pause = std::thread::spawn(move || {
+            pauser.suspend();
+            paused_tx.send(()).unwrap();
+        });
+        let deadline = Instant::now() + std::time::Duration::from_secs(2);
+        while activity.active() && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        assert!(!activity.active());
+        assert_eq!(
+            paused_rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        );
+        assert!(
+            activity
+                .run(|| panic!("a queued upload must not run after pause"))
+                .is_none()
+        );
+        release_tx.send(()).unwrap();
+        paused_rx.recv().unwrap();
+        submit.join().unwrap();
+        pause.join().unwrap();
+        activity.suspend();
+        assert!(matches!(
+            activity.check(),
+            Err(super::super::MedievalTownError::Suspended)
+        ));
+        activity.activate();
+        assert_eq!(activity.run(|| 42), Some(42));
+    }
     #[test]
     fn texture_slabs_cover_every_mip_layer_and_tail_without_pixel_changes() {
         for (size, layers, channels) in

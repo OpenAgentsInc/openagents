@@ -81,6 +81,49 @@ final class MedievalTownTests: XCTestCase {
         XCTAssertTrue(app.buttons["drawer-menu"].exists || app.buttons["sidebar-medieval-town"].exists)
     }
 
+    func testBackgroundTransitionDrainsTheTownGpu() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics"]
+        app.launch()
+        let metric = app.staticTexts["medieval-town-metrics"]
+        XCTAssertTrue(metric.waitForExistence(timeout: 300))
+        try waitForMetrics(metric, timeout: 180) { self.number($0, "completedFrames") >= 30 }
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait, .landscapeRight] {
+            XCUIDevice.shared.orientation = orientation
+            let before = number(try readMetrics(metric), "completedFrames")
+            XCUIDevice.shared.press(.home)
+            XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.state == .runningBackgroundSuspended)
+            app.activate()
+            try waitForMetrics(metric, timeout: 15) { self.number($0, "completedFrames") >= before + 10 }
+            let values = try readMetrics(metric)
+            XCTAssertGreaterThan(number(values, "pausedSubmittedFrames"), 0)
+            XCTAssertEqual(number(values, "pausedCompletedFrames"), number(values, "pausedSubmittedFrames"),
+                "Every submitted frame must finish before the background transition returns")
+            saveMetrics(values, name: "native-town-background-drained-\(orientation.rawValue)")
+        }
+        app.buttons["medieval-town-close"].tap()
+    }
+
+    func testBackgroundDuringGraphicsSetupRestartsOnReturn() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics", "-town-pause-setup"]
+        app.launch()
+        let stage = app.staticTexts["medieval-town-loading-stage"]
+        let opening = NSPredicate { _, _ in stage.exists && stage.label == "Opening graphics" }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: opening, object: app)], timeout: 180), .completed)
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.state == .runningBackgroundSuspended)
+        app.activate()
+        let metric = app.staticTexts["medieval-town-metrics"]
+        XCTAssertTrue(metric.waitForExistence(timeout: 180))
+        try waitForMetrics(metric, timeout: 30) { self.number($0, "completedFrames") >= 30 }
+        let values = try readMetrics(metric)
+        XCTAssertEqual(number(values, "graphicsSetupRestarts"), 1)
+        XCTAssertFalse(app.buttons["medieval-town-retry"].exists)
+        saveMetrics(values, name: "native-town-interrupted-graphics-resumed")
+        app.buttons["medieval-town-close"].tap()
+    }
+
     /// Run in a Release simulator or on a device after the asset cache is warm.
     func testNativeTownCompletedFrameCadence() throws {
         let app = XCUIApplication()

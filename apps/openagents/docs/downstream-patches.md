@@ -1609,3 +1609,7 @@ master delegation audit.
   Bundle hashes and offline simulator rendering/movement checks cover the import.
 - 2026-10-25: Grid controls and the native iOS Grid header share the locally
   bundled Michroma font; its SIL OFL notice ships with the pinned Aethyr bundle.
+- 2026-10-25: native iOS Medieval Town closes graphics admission and drains Metal
+  work synchronously on deactivation, covering uploads, presents, and resize
+  recovery. Interrupted graphics setup resumes from cache. Concurrency and real
+  GPU background-transition checks cover the lifecycle boundary.
