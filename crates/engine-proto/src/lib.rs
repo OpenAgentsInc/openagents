@@ -5,6 +5,21 @@ pub mod v1 {
     include!("generated/openagents.engine.v1.rs");
 }
 pub use v1::*;
+pub mod portable;
+
+/// The shared standalone Grid profile. Decode once, before frame work begins.
+pub fn grid() -> &'static SceneMetadata {
+    static GRID: std::sync::OnceLock<SceneMetadata> = std::sync::OnceLock::new();
+    GRID.get_or_init(|| decode(include_bytes!("../data/grid.pb")).expect("checked Grid metadata"))
+}
+
+/// Export the exact metadata consumed by Rust and foreign engine hosts.
+pub fn export_grid(directory: &std::path::Path) -> std::io::Result<()> {
+    std::fs::write(
+        directory.join("grid-layout.pb"),
+        include_bytes!("../data/grid.pb"),
+    )
+}
 
 pub const MAX_BYTES: usize = 16 * 1024;
 pub const MAX_LANDMARKS: usize = 16;

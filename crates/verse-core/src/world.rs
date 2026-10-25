@@ -82,6 +82,16 @@ pub const GYM_WALLS: [([f32; 2], [f32; 2]); 5] = [
 /// The Gym walls' height, m: low, so the third-person camera sees over them.
 pub const GYM_WALL_HEIGHT: f32 = 1.2;
 
+#[cfg(test)]
+mod metadata_tests {
+    use super::*;
+    #[test]
+    fn shared_grid_collision_matches_the_gym_geometry() {
+        let geometry = GYM_WALLS.map(|(min, max)| GymSite::GRID.footprint(Footprint { min, max }));
+        assert_eq!(GymSite::GRID.walls(), geometry);
+    }
+}
+
 /// Where a world stands its Gym. The Gym's geometry and interaction
 /// constants (`GYM_*`) are in its own frame, which is Coder's plaza; a site
 /// turns that frame `yaw` about the vertical and then moves it by `offset`.
@@ -192,6 +202,28 @@ impl GymSite {
     /// The Gym's wall footprints in the world.
     #[must_use]
     pub fn walls(self) -> [Footprint; 5] {
+        if self == Self::GRID {
+            let scene = engine_proto::grid();
+            return [
+                "gym-right",
+                "gym-left",
+                "gym-back",
+                "gym-front-right",
+                "gym-front-left",
+            ]
+            .map(|id| {
+                let wall = scene
+                    .colliders
+                    .iter()
+                    .find(|wall| wall.id == id)
+                    .expect("Grid Gym wall");
+                let (min, max) = (wall.min.unwrap(), wall.max.unwrap());
+                Footprint {
+                    min: [min.x, min.z],
+                    max: [max.x, max.z],
+                }
+            });
+        }
         GYM_WALLS.map(|(min, max)| self.footprint(Footprint { min, max }))
     }
 

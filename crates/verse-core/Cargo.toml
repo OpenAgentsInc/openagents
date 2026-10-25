@@ -7,6 +7,7 @@ publish.workspace = true
 description = "What Verse's zones share: the static world, zone controls and atmosphere, the avatar figure, particle effects, tooltips, and scene labels."
 
 [dependencies]
+engine-proto = { path = "../engine-proto" }
 atif = { path = "../atif" }
 coder-ui = { path = "../coder-ui" }
 glam = "0.30.10"

@@ -24,15 +24,15 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n openagents/engine/v1/scene.proto\x12\x14openagents.engine.v1\"\xe6\x01\n\rSceneMetadata\x12\x16\n\x0eschema_version\x18\x01 \x01(\r\x12\x10\n\x08scene_id\x18\x02 \x01(\t\x12?\n\x0b\x63oordinates\x18\x03 \x01(\x0e\x32*.openagents.engine.v1.CoordinateConvention\x12\x31\n\tlandmarks\x18\x04 \x03(\x0b\x32\x1e.openagents.engine.v1.Landmark\x12\x37\n\tcolliders\x18\x05 \x03(\x0b\x32$.openagents.engine.v1.AxisAlignedBox\"\'\n\x04Vec3\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\t\n\x01z\x18\x03 \x01(\x02\"\xc3\x01\n\x08Landmark\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05label\x18\x02 \x01(\t\x12,\n\x08position\x18\x03 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12\x16\n\x0elabel_height_m\x18\x04 \x01(\x02\x12;\n\x0binteraction\x18\x05 \x01(\x0b\x32&.openagents.engine.v1.InteractionRange\x12\x19\n\x11interaction_label\x18\x06 \x01(\t\"4\n\x10InteractionRange\x12\x0f\n\x07\x65nter_m\x18\x01 \x01(\x02\x12\x0f\n\x07leave_m\x18\x02 \x01(\x02\"n\n\x0e\x41xisAlignedBox\x12\n\n\x02id\x18\x01 \x01(\t\x12\'\n\x03min\x18\x02 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12\'\n\x03max\x18\x03 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3*n\n\x14\x43oordinateConvention\x12%\n!COORDINATE_CONVENTION_UNSPECIFIED\x10\x00\x12/\n+COORDINATE_CONVENTION_Y_UP_METERS_Z_FORWARD\x10\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n openagents/engine/v1/scene.proto\x12\x14openagents.engine.v1\"\xe6\x01\n\rSceneMetadata\x12\x16\n\x0eschema_version\x18\x01 \x01(\r\x12\x10\n\x08scene_id\x18\x02 \x01(\t\x12?\n\x0b\x63oordinates\x18\x03 \x01(\x0e\x32*.openagents.engine.v1.CoordinateConvention\x12\x31\n\tlandmarks\x18\x04 \x03(\x0b\x32\x1e.openagents.engine.v1.Landmark\x12\x37\n\tcolliders\x18\x05 \x03(\x0b\x32$.openagents.engine.v1.AxisAlignedBox\"\'\n\x04Vec3\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\t\n\x01z\x18\x03 \x01(\x02\"\xc3\x01\n\x08Landmark\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05label\x18\x02 \x01(\t\x12,\n\x08position\x18\x03 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12\x16\n\x0elabel_height_m\x18\x04 \x01(\x02\x12;\n\x0binteraction\x18\x05 \x01(\x0b\x32&.openagents.engine.v1.InteractionRange\x12\x19\n\x11interaction_label\x18\x06 \x01(\t\"4\n\x10InteractionRange\x12\x0f\n\x07\x65nter_m\x18\x01 \x01(\x02\x12\x0f\n\x07leave_m\x18\x02 \x01(\x02\"n\n\x0e\x41xisAlignedBox\x12\n\n\x02id\x18\x01 \x01(\t\x12\'\n\x03min\x18\x02 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12\'\n\x03max\x18\x03 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\"}\n\rAssetManifest\x12\x16\n\x0eschema_version\x18\x01 \x01(\r\x12\x10\n\x08scene_id\x18\x02 \x01(\t\x12\x0f\n\x07profile\x18\x03 \x01(\t\x12\x31\n\tartifacts\x18\x04 \x03(\x0b\x32\x1e.openagents.engine.v1.Artifact\"\xa8\x01\n\x08\x41rtifact\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04path\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\x0c\x12\x13\n\x0b\x62yte_length\x18\x04 \x01(\x04\x12\x0e\n\x06\x66ormat\x18\x05 \x01(\t\x12\x14\n\x0c\x64\x65pendencies\x18\x06 \x03(\t\x12\x37\n\x07\x62uffers\x18\x07 \x03(\x0b\x32&.openagents.engine.v1.BufferDescriptor\"z\n\x10\x42ufferDescriptor\x12\x10\n\x08semantic\x18\x01 \x01(\t\x12\x13\n\x0b\x62yte_offset\x18\x02 \x01(\x04\x12\x13\n\x0b\x62yte_length\x18\x03 \x01(\x04\x12\x13\n\x0b\x62yte_stride\x18\x04 \x01(\r\x12\x15\n\relement_count\x18\x05 \x01(\x04\"\xcc\x02\n\rCompiledScene\x12\x16\n\x0eschema_version\x18\x01 \x01(\r\x12\x10\n\x08scene_id\x18\x02 \x01(\t\x12?\n\x0b\x63oordinates\x18\x03 \x01(\x0e\x32*.openagents.engine.v1.CoordinateConvention\x12\x38\n\nplacements\x18\x04 \x03(\x0b\x32$.openagents.engine.v1.ScenePlacement\x12\x30\n\x06lights\x18\x05 \x03(\x0b\x32 .openagents.engine.v1.SceneLight\x12\x32\n\x07\x63\x61meras\x18\x06 \x03(\x0b\x32!.openagents.engine.v1.SceneCamera\x12\x30\n\x05spawn\x18\x07 \x01(\x0b\x32!.openagents.engine.v1.SceneCamera\"f\n\x0eScenePlacement\x12\n\n\x02id\x18\x01 \x01(\t\x12\x10\n\x08\x61sset_id\x18\x02 \x01(\t\x12\x11\n\ttransform\x18\x03 \x03(\x02\x12\r\n\x05\x61\x63tor\x18\x04 \x01(\t\x12\x14\n\x0csource_class\x18\x05 \x01(\t\"\x8a\x01\n\nSceneLight\x12\n\n\x02id\x18\x01 \x01(\t\x12,\n\x08position\x18\x02 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12\x30\n\x0clinear_color\x18\x03 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12\x10\n\x08radius_m\x18\x04 \x01(\x02\"\x9f\x01\n\x0bSceneCamera\x12\n\n\x02id\x18\x01 \x01(\t\x12,\n\x08position\x18\x02 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12*\n\x06target\x18\x03 \x01(\x0b\x32\x1a.openagents.engine.v1.Vec3\x12\x1c\n\x14vertical_fov_degrees\x18\x04 \x01(\x02\x12\x0c\n\x04name\x18\x05 \x01(\t*n\n\x14\x43oordinateConvention\x12%\n!COORDINATE_CONVENTION_UNSPECIFIED\x10\x00\x12/\n+COORDINATE_CONVENTION_Y_UP_METERS_Z_FORWARD\x10\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'openagents.engine.v1.scene_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_COORDINATECONVENTION']._serialized_start=696
-  _globals['_COORDINATECONVENTION']._serialized_end=806
+  _globals['_COORDINATECONVENTION']._serialized_start=1860
+  _globals['_COORDINATECONVENTION']._serialized_end=1970
   _globals['_SCENEMETADATA']._serialized_start=59
   _globals['_SCENEMETADATA']._serialized_end=289
   _globals['_VEC3']._serialized_start=291
@@ -43,4 +43,18 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_INTERACTIONRANGE']._serialized_end=582
   _globals['_AXISALIGNEDBOX']._serialized_start=584
   _globals['_AXISALIGNEDBOX']._serialized_end=694
+  _globals['_ASSETMANIFEST']._serialized_start=696
+  _globals['_ASSETMANIFEST']._serialized_end=821
+  _globals['_ARTIFACT']._serialized_start=824
+  _globals['_ARTIFACT']._serialized_end=992
+  _globals['_BUFFERDESCRIPTOR']._serialized_start=994
+  _globals['_BUFFERDESCRIPTOR']._serialized_end=1116
+  _globals['_COMPILEDSCENE']._serialized_start=1119
+  _globals['_COMPILEDSCENE']._serialized_end=1451
+  _globals['_SCENEPLACEMENT']._serialized_start=1453
+  _globals['_SCENEPLACEMENT']._serialized_end=1555
+  _globals['_SCENELIGHT']._serialized_start=1558
+  _globals['_SCENELIGHT']._serialized_end=1696
+  _globals['_SCENECAMERA']._serialized_start=1699
+  _globals['_SCENECAMERA']._serialized_end=1858
 # @@protoc_insertion_point(module_scope)

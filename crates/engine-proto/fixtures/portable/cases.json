@@ -1,0 +1,21 @@
+{
+  "manifest.pb": true,
+  "scene.pb": true,
+  "scene-unknown.pb": true,
+  "manifest-unknown.pb": true,
+  "scene-invalid-transform.pb": false,
+  "scene-invalid-singular.pb": false,
+  "scene-invalid-projective.pb": false,
+  "scene-invalid-spawn.pb": false,
+  "scene-invalid-camera.pb": false,
+  "scene-invalid-color.pb": false,
+  "scene-invalid-utftext.pb": false,
+  "scene-invalid-duplicate.pb": false,
+  "scene-invalid-count.pb": false,
+  "manifest-invalid-path.pb": false,
+  "manifest-invalid-digest.pb": false,
+  "manifest-invalid-cycle.pb": false,
+  "manifest-invalid-missing.pb": false,
+  "manifest-invalid-buffer.pb": false,
+  "manifest-invalid-overflow.pb": false
+}

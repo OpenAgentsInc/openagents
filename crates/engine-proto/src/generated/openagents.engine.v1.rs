@@ -70,6 +70,133 @@ pub struct AxisAlignedBox {
     #[prost(message, optional, tag = "3")]
     pub max: ::core::option::Option<Vec3>,
 }
+/// Binds one compiled scene to exact files. Not a signature or publication grant.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AssetManifest {
+    /// Must be 1.
+    #[prost(uint32, tag = "1")]
+    pub schema_version: u32,
+    #[prost(string, tag = "2")]
+    pub scene_id: ::prost::alloc::string::String,
+    /// Explicit consumer profile, at most 64 ASCII ID characters.
+    #[prost(string, tag = "3")]
+    pub profile: ::prost::alloc::string::String,
+    /// 1-32, distinct IDs and relative paths.
+    #[prost(message, repeated, tag = "4")]
+    pub artifacts: ::prost::alloc::vec::Vec<Artifact>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Artifact {
+    /// Scene identifier rules.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// At most 192 UTF-8 bytes; safe relative POSIX path, no symlinks.
+    #[prost(string, tag = "2")]
+    pub path: ::prost::alloc::string::String,
+    /// Exactly 32 bytes, covering the exact file bytes.
+    #[prost(bytes = "vec", tag = "3")]
+    pub sha256: ::prost::alloc::vec::Vec<u8>,
+    /// 1..512 MiB; the complete manifest is at most 1 GiB.
+    #[prost(uint64, tag = "4")]
+    pub byte_length: u64,
+    /// At most 64 ASCII ID characters.
+    #[prost(string, tag = "5")]
+    pub format: ::prost::alloc::string::String,
+    /// At most 8 distinct artifact IDs; acyclic.
+    #[prost(string, repeated, tag = "6")]
+    pub dependencies: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// At most 8 distinct semantic names.
+    #[prost(message, repeated, tag = "7")]
+    pub buffers: ::prost::alloc::vec::Vec<BufferDescriptor>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BufferDescriptor {
+    /// Scene identifier rules.
+    #[prost(string, tag = "1")]
+    pub semantic: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub byte_offset: u64,
+    /// Nonempty, entirely inside the artifact.
+    #[prost(uint64, tag = "3")]
+    pub byte_length: u64,
+    /// Nonzero; byte_length == element_count * byte_stride.
+    #[prost(uint32, tag = "4")]
+    pub byte_stride: u32,
+    #[prost(uint64, tag = "5")]
+    pub element_count: u64,
+}
+/// Bounded interchange for compiled town metadata. Render buffers stay separate.
+/// This is not an authored world document, runtime state, or release identity.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CompiledScene {
+    /// Must be 1.
+    #[prost(uint32, tag = "1")]
+    pub schema_version: u32,
+    #[prost(string, tag = "2")]
+    pub scene_id: ::prost::alloc::string::String,
+    #[prost(enumeration = "CoordinateConvention", tag = "3")]
+    pub coordinates: i32,
+    /// At most 32768; distinct IDs.
+    #[prost(message, repeated, tag = "4")]
+    pub placements: ::prost::alloc::vec::Vec<ScenePlacement>,
+    /// At most 2048; distinct IDs.
+    #[prost(message, repeated, tag = "5")]
+    pub lights: ::prost::alloc::vec::Vec<SceneLight>,
+    /// At most 64; distinct IDs.
+    #[prost(message, repeated, tag = "6")]
+    pub cameras: ::prost::alloc::vec::Vec<SceneCamera>,
+    /// Required.
+    #[prost(message, optional, tag = "7")]
+    pub spawn: ::core::option::Option<SceneCamera>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScenePlacement {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Nonempty UTF-8 reference, at most 192 bytes.
+    #[prost(string, tag = "2")]
+    pub asset_id: ::prost::alloc::string::String,
+    /// Exactly 16 column-major floats. Affine, finite, nonsingular; Y-up meters.
+    #[prost(float, repeated, tag = "3")]
+    pub transform: ::prost::alloc::vec::Vec<f32>,
+    /// Optional source grouping; at most 192 UTF-8 bytes.
+    #[prost(string, tag = "4")]
+    pub actor: ::prost::alloc::string::String,
+    /// Optional import hint; at most 192 UTF-8 bytes.
+    #[prost(string, tag = "5")]
+    pub source_class: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SceneLight {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Required.
+    #[prost(message, optional, tag = "2")]
+    pub position: ::core::option::Option<Vec3>,
+    /// Required, RGB radiance multipliers, 0..32.
+    #[prost(message, optional, tag = "3")]
+    pub linear_color: ::core::option::Option<Vec3>,
+    /// Finite, 0 < radius <= 1000000.
+    #[prost(float, tag = "4")]
+    pub radius_m: f32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SceneCamera {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Required.
+    #[prost(message, optional, tag = "2")]
+    pub position: ::core::option::Option<Vec3>,
+    /// Required, distinct from position.
+    #[prost(message, optional, tag = "3")]
+    pub target: ::core::option::Option<Vec3>,
+    /// Finite, 1..179.
+    #[prost(float, tag = "4")]
+    pub vertical_fov_degrees: f32,
+    /// Optional UTF-8 display/source name, at most 192 bytes.
+    #[prost(string, tag = "5")]
+    pub name: ::prost::alloc::string::String,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CoordinateConvention {

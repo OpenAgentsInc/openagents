@@ -51,6 +51,7 @@ browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-cl
 dev-destruction = ["verse-zone-everglade/dev-destruction"]
 
 [dependencies]
+engine-proto = { path = "../engine-proto" }
 snap-web = { path = "../snap-web", default-features = false }
 snap-rules = { path = "../snap-rules" }
 verse-game = { path = "../verse-game" }

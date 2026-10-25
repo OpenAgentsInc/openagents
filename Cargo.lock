@@ -6604,6 +6604,7 @@ version = "1.0.0"
 dependencies = [
  "prost 0.13.5",
  "prost-build 0.13.5",
+ "sha2 0.10.9",
  "tempfile",
 ]
 
@@ -21198,6 +21199,7 @@ dependencies = [
  "compute-workbench",
  "contribution-workbench",
  "cpal",
+ "engine-proto",
  "futures-util",
  "getrandom 0.3.4",
  "glam",
@@ -21325,6 +21327,7 @@ version = "1.0.0"
 dependencies = [
  "atif",
  "coder-ui",
+ "engine-proto",
  "glam",
  "openagents-workspace-hack",
  "serde",

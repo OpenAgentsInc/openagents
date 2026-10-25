@@ -296,6 +296,24 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
         serde_json::to_vec(&pack).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    engine_proto::export_grid(dir).map_err(|e| e.to_string())?;
+    let assets = engine_proto::portable::manifest_files(
+        dir,
+        "grid",
+        "openagents-grid-pack-v1",
+        &[
+            ("layout", "grid-layout.pb", "SceneMetadata-v1", &[]),
+            ("white", flat::WHITE_TEXTURE, "PNG", &[]),
+            ("portal-view", PORTAL_VIEW, "PNG", &[]),
+            (
+                "pack",
+                MANIFEST,
+                "VersePack-v1",
+                &["layout", "white", "portal-view"],
+            ),
+        ],
+    )?;
+    engine_proto::portable::write_manifest(&dir.join("grid-assets.pb"), &assets)?;
     Ok(pack)
 }
 
@@ -822,6 +840,16 @@ mod tests {
     fn the_pinned_pack_is_what_the_sources_compile_to() {
         let dir = tempfile::tempdir().unwrap();
         let pack = compile(dir.path()).unwrap();
+        let layout =
+            engine_proto::decode(&std::fs::read(dir.path().join("grid-layout.pb")).unwrap())
+                .unwrap();
+        assert_eq!(&layout, engine_proto::grid());
+        let assets = engine_proto::portable::decode_manifest(
+            &std::fs::read(dir.path().join("grid-assets.pb")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(assets.profile, "openagents-grid-pack-v1");
+        assert_eq!(assets.artifacts.len(), 4);
         let compiled = std::fs::read(dir.path().join(MANIFEST)).unwrap();
         let pinned = std::fs::read(pinned_dir().join(MANIFEST)).unwrap();
         assert!(

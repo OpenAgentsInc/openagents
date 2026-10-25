@@ -62,6 +62,78 @@ typedef struct _openagents_engine_v1_SceneMetadata {
     openagents_engine_v1_AxisAlignedBox colliders[64]; /* At most 64, with distinct IDs. */
 } openagents_engine_v1_SceneMetadata;
 
+typedef struct _openagents_engine_v1_BufferDescriptor {
+    char semantic[49]; /* Scene identifier rules. */
+    uint64_t byte_offset;
+    uint64_t byte_length; /* Nonempty, entirely inside the artifact. */
+    uint32_t byte_stride; /* Nonzero; byte_length == element_count * byte_stride. */
+    uint64_t element_count;
+} openagents_engine_v1_BufferDescriptor;
+
+typedef PB_BYTES_ARRAY_T(32) openagents_engine_v1_Artifact_sha256_t;
+typedef struct _openagents_engine_v1_Artifact {
+    char id[49]; /* Scene identifier rules. */
+    char path[193]; /* At most 192 UTF-8 bytes; safe relative POSIX path, no symlinks. */
+    openagents_engine_v1_Artifact_sha256_t sha256; /* Exactly 32 bytes, covering the exact file bytes. */
+    uint64_t byte_length; /* 1..512 MiB; the complete manifest is at most 1 GiB. */
+    char format[65]; /* At most 64 ASCII ID characters. */
+    pb_size_t dependencies_count;
+    char dependencies[8][49]; /* At most 8 distinct artifact IDs; acyclic. */
+    pb_size_t buffers_count;
+    openagents_engine_v1_BufferDescriptor buffers[8]; /* At most 8 distinct semantic names. */
+} openagents_engine_v1_Artifact;
+
+/* Binds one compiled scene to exact files. Not a signature or publication grant. */
+typedef struct _openagents_engine_v1_AssetManifest {
+    uint32_t schema_version; /* Must be 1. */
+    char scene_id[49];
+    char profile[65]; /* Explicit consumer profile, at most 64 ASCII ID characters. */
+    pb_size_t artifacts_count;
+    openagents_engine_v1_Artifact artifacts[32]; /* 1-32, distinct IDs and relative paths. */
+} openagents_engine_v1_AssetManifest;
+
+typedef struct _openagents_engine_v1_ScenePlacement {
+    char id[49];
+    char asset_id[193]; /* Nonempty UTF-8 reference, at most 192 bytes. */
+    /* Exactly 16 column-major floats. Affine, finite, nonsingular; Y-up meters. */
+    float transform[16];
+    char actor[193]; /* Optional source grouping; at most 192 UTF-8 bytes. */
+    char source_class[193]; /* Optional import hint; at most 192 UTF-8 bytes. */
+} openagents_engine_v1_ScenePlacement;
+
+typedef struct _openagents_engine_v1_SceneLight {
+    char id[49];
+    bool has_position;
+    openagents_engine_v1_Vec3 position; /* Required. */
+    bool has_linear_color;
+    openagents_engine_v1_Vec3 linear_color; /* Required, RGB radiance multipliers, 0..32. */
+    float radius_m; /* Finite, 0 < radius <= 1000000. */
+} openagents_engine_v1_SceneLight;
+
+typedef struct _openagents_engine_v1_SceneCamera {
+    char id[49];
+    bool has_position;
+    openagents_engine_v1_Vec3 position; /* Required. */
+    bool has_target;
+    openagents_engine_v1_Vec3 target; /* Required, distinct from position. */
+    float vertical_fov_degrees; /* Finite, 1..179. */
+    char name[193]; /* Optional UTF-8 display/source name, at most 192 bytes. */
+} openagents_engine_v1_SceneCamera;
+
+/* Bounded interchange for compiled town metadata. Render buffers stay separate.
+ This is not an authored world document, runtime state, or release identity. */
+typedef struct _openagents_engine_v1_CompiledScene {
+    uint32_t schema_version; /* Must be 1. */
+    char scene_id[49];
+    openagents_engine_v1_CoordinateConvention coordinates;
+    pb_callback_t placements; /* At most 32768; distinct IDs. */
+    pb_callback_t lights; /* At most 2048; distinct IDs. */
+    pb_size_t cameras_count;
+    openagents_engine_v1_SceneCamera cameras[64]; /* At most 64; distinct IDs. */
+    bool has_spawn;
+    openagents_engine_v1_SceneCamera spawn; /* Required. */
+} openagents_engine_v1_CompiledScene;
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,17 +151,39 @@ extern "C" {
 
 
 
+
+
+#define openagents_engine_v1_CompiledScene_coordinates_ENUMTYPE openagents_engine_v1_CoordinateConvention
+
+
+
+
+
 /* Initializer values for message structs */
 #define openagents_engine_v1_SceneMetadata_init_default {0, "", _openagents_engine_v1_CoordinateConvention_MIN, 0, {openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default, openagents_engine_v1_Landmark_init_default}, 0, {openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default, openagents_engine_v1_AxisAlignedBox_init_default}}
 #define openagents_engine_v1_Vec3_init_default   {0, 0, 0}
 #define openagents_engine_v1_Landmark_init_default {"", "", false, openagents_engine_v1_Vec3_init_default, 0, false, openagents_engine_v1_InteractionRange_init_default, ""}
 #define openagents_engine_v1_InteractionRange_init_default {0, 0}
 #define openagents_engine_v1_AxisAlignedBox_init_default {"", false, openagents_engine_v1_Vec3_init_default, false, openagents_engine_v1_Vec3_init_default}
+#define openagents_engine_v1_AssetManifest_init_default {0, "", "", 0, {openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default, openagents_engine_v1_Artifact_init_default}}
+#define openagents_engine_v1_Artifact_init_default {"", "", {0, {0}}, 0, "", 0, {"", "", "", "", "", "", "", ""}, 0, {openagents_engine_v1_BufferDescriptor_init_default, openagents_engine_v1_BufferDescriptor_init_default, openagents_engine_v1_BufferDescriptor_init_default, openagents_engine_v1_BufferDescriptor_init_default, openagents_engine_v1_BufferDescriptor_init_default, openagents_engine_v1_BufferDescriptor_init_default, openagents_engine_v1_BufferDescriptor_init_default, openagents_engine_v1_BufferDescriptor_init_default}}
+#define openagents_engine_v1_BufferDescriptor_init_default {"", 0, 0, 0, 0}
+#define openagents_engine_v1_CompiledScene_init_default {0, "", _openagents_engine_v1_CoordinateConvention_MIN, {{NULL}, NULL}, {{NULL}, NULL}, 0, {openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default, openagents_engine_v1_SceneCamera_init_default}, false, openagents_engine_v1_SceneCamera_init_default}
+#define openagents_engine_v1_ScenePlacement_init_default {"", "", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "", ""}
+#define openagents_engine_v1_SceneLight_init_default {"", false, openagents_engine_v1_Vec3_init_default, false, openagents_engine_v1_Vec3_init_default, 0}
+#define openagents_engine_v1_SceneCamera_init_default {"", false, openagents_engine_v1_Vec3_init_default, false, openagents_engine_v1_Vec3_init_default, 0, ""}
 #define openagents_engine_v1_SceneMetadata_init_zero {0, "", _openagents_engine_v1_CoordinateConvention_MIN, 0, {openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero, openagents_engine_v1_Landmark_init_zero}, 0, {openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero, openagents_engine_v1_AxisAlignedBox_init_zero}}
 #define openagents_engine_v1_Vec3_init_zero      {0, 0, 0}
 #define openagents_engine_v1_Landmark_init_zero  {"", "", false, openagents_engine_v1_Vec3_init_zero, 0, false, openagents_engine_v1_InteractionRange_init_zero, ""}
 #define openagents_engine_v1_InteractionRange_init_zero {0, 0}
 #define openagents_engine_v1_AxisAlignedBox_init_zero {"", false, openagents_engine_v1_Vec3_init_zero, false, openagents_engine_v1_Vec3_init_zero}
+#define openagents_engine_v1_AssetManifest_init_zero {0, "", "", 0, {openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero, openagents_engine_v1_Artifact_init_zero}}
+#define openagents_engine_v1_Artifact_init_zero  {"", "", {0, {0}}, 0, "", 0, {"", "", "", "", "", "", "", ""}, 0, {openagents_engine_v1_BufferDescriptor_init_zero, openagents_engine_v1_BufferDescriptor_init_zero, openagents_engine_v1_BufferDescriptor_init_zero, openagents_engine_v1_BufferDescriptor_init_zero, openagents_engine_v1_BufferDescriptor_init_zero, openagents_engine_v1_BufferDescriptor_init_zero, openagents_engine_v1_BufferDescriptor_init_zero, openagents_engine_v1_BufferDescriptor_init_zero}}
+#define openagents_engine_v1_BufferDescriptor_init_zero {"", 0, 0, 0, 0}
+#define openagents_engine_v1_CompiledScene_init_zero {0, "", _openagents_engine_v1_CoordinateConvention_MIN, {{NULL}, NULL}, {{NULL}, NULL}, 0, {openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero, openagents_engine_v1_SceneCamera_init_zero}, false, openagents_engine_v1_SceneCamera_init_zero}
+#define openagents_engine_v1_ScenePlacement_init_zero {"", "", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "", ""}
+#define openagents_engine_v1_SceneLight_init_zero {"", false, openagents_engine_v1_Vec3_init_zero, false, openagents_engine_v1_Vec3_init_zero, 0}
+#define openagents_engine_v1_SceneCamera_init_zero {"", false, openagents_engine_v1_Vec3_init_zero, false, openagents_engine_v1_Vec3_init_zero, 0, ""}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define openagents_engine_v1_Vec3_x_tag          1
@@ -111,6 +205,43 @@ extern "C" {
 #define openagents_engine_v1_SceneMetadata_coordinates_tag 3
 #define openagents_engine_v1_SceneMetadata_landmarks_tag 4
 #define openagents_engine_v1_SceneMetadata_colliders_tag 5
+#define openagents_engine_v1_BufferDescriptor_semantic_tag 1
+#define openagents_engine_v1_BufferDescriptor_byte_offset_tag 2
+#define openagents_engine_v1_BufferDescriptor_byte_length_tag 3
+#define openagents_engine_v1_BufferDescriptor_byte_stride_tag 4
+#define openagents_engine_v1_BufferDescriptor_element_count_tag 5
+#define openagents_engine_v1_Artifact_id_tag     1
+#define openagents_engine_v1_Artifact_path_tag   2
+#define openagents_engine_v1_Artifact_sha256_tag 3
+#define openagents_engine_v1_Artifact_byte_length_tag 4
+#define openagents_engine_v1_Artifact_format_tag 5
+#define openagents_engine_v1_Artifact_dependencies_tag 6
+#define openagents_engine_v1_Artifact_buffers_tag 7
+#define openagents_engine_v1_AssetManifest_schema_version_tag 1
+#define openagents_engine_v1_AssetManifest_scene_id_tag 2
+#define openagents_engine_v1_AssetManifest_profile_tag 3
+#define openagents_engine_v1_AssetManifest_artifacts_tag 4
+#define openagents_engine_v1_ScenePlacement_id_tag 1
+#define openagents_engine_v1_ScenePlacement_asset_id_tag 2
+#define openagents_engine_v1_ScenePlacement_transform_tag 3
+#define openagents_engine_v1_ScenePlacement_actor_tag 4
+#define openagents_engine_v1_ScenePlacement_source_class_tag 5
+#define openagents_engine_v1_SceneLight_id_tag   1
+#define openagents_engine_v1_SceneLight_position_tag 2
+#define openagents_engine_v1_SceneLight_linear_color_tag 3
+#define openagents_engine_v1_SceneLight_radius_m_tag 4
+#define openagents_engine_v1_SceneCamera_id_tag  1
+#define openagents_engine_v1_SceneCamera_position_tag 2
+#define openagents_engine_v1_SceneCamera_target_tag 3
+#define openagents_engine_v1_SceneCamera_vertical_fov_degrees_tag 4
+#define openagents_engine_v1_SceneCamera_name_tag 5
+#define openagents_engine_v1_CompiledScene_schema_version_tag 1
+#define openagents_engine_v1_CompiledScene_scene_id_tag 2
+#define openagents_engine_v1_CompiledScene_coordinates_tag 3
+#define openagents_engine_v1_CompiledScene_placements_tag 4
+#define openagents_engine_v1_CompiledScene_lights_tag 5
+#define openagents_engine_v1_CompiledScene_cameras_tag 6
+#define openagents_engine_v1_CompiledScene_spawn_tag 7
 
 /* Struct field encoding specification for nanopb */
 #define openagents_engine_v1_SceneMetadata_FIELDLIST(X, a) \
@@ -158,11 +289,93 @@ X(a, STATIC,   OPTIONAL, MESSAGE,  max,               3)
 #define openagents_engine_v1_AxisAlignedBox_min_MSGTYPE openagents_engine_v1_Vec3
 #define openagents_engine_v1_AxisAlignedBox_max_MSGTYPE openagents_engine_v1_Vec3
 
+#define openagents_engine_v1_AssetManifest_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   schema_version,    1) \
+X(a, STATIC,   SINGULAR, STRING,   scene_id,          2) \
+X(a, STATIC,   SINGULAR, STRING,   profile,           3) \
+X(a, STATIC,   REPEATED, MESSAGE,  artifacts,         4)
+#define openagents_engine_v1_AssetManifest_CALLBACK NULL
+#define openagents_engine_v1_AssetManifest_DEFAULT NULL
+#define openagents_engine_v1_AssetManifest_artifacts_MSGTYPE openagents_engine_v1_Artifact
+
+#define openagents_engine_v1_Artifact_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, STRING,   id,                1) \
+X(a, STATIC,   SINGULAR, STRING,   path,              2) \
+X(a, STATIC,   SINGULAR, BYTES,    sha256,            3) \
+X(a, STATIC,   SINGULAR, UINT64,   byte_length,       4) \
+X(a, STATIC,   SINGULAR, STRING,   format,            5) \
+X(a, STATIC,   REPEATED, STRING,   dependencies,      6) \
+X(a, STATIC,   REPEATED, MESSAGE,  buffers,           7)
+#define openagents_engine_v1_Artifact_CALLBACK NULL
+#define openagents_engine_v1_Artifact_DEFAULT NULL
+#define openagents_engine_v1_Artifact_buffers_MSGTYPE openagents_engine_v1_BufferDescriptor
+
+#define openagents_engine_v1_BufferDescriptor_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, STRING,   semantic,          1) \
+X(a, STATIC,   SINGULAR, UINT64,   byte_offset,       2) \
+X(a, STATIC,   SINGULAR, UINT64,   byte_length,       3) \
+X(a, STATIC,   SINGULAR, UINT32,   byte_stride,       4) \
+X(a, STATIC,   SINGULAR, UINT64,   element_count,     5)
+#define openagents_engine_v1_BufferDescriptor_CALLBACK NULL
+#define openagents_engine_v1_BufferDescriptor_DEFAULT NULL
+
+#define openagents_engine_v1_CompiledScene_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   schema_version,    1) \
+X(a, STATIC,   SINGULAR, STRING,   scene_id,          2) \
+X(a, STATIC,   SINGULAR, UENUM,    coordinates,       3) \
+X(a, CALLBACK, REPEATED, MESSAGE,  placements,        4) \
+X(a, CALLBACK, REPEATED, MESSAGE,  lights,            5) \
+X(a, STATIC,   REPEATED, MESSAGE,  cameras,           6) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  spawn,             7)
+#define openagents_engine_v1_CompiledScene_CALLBACK pb_default_field_callback
+#define openagents_engine_v1_CompiledScene_DEFAULT NULL
+#define openagents_engine_v1_CompiledScene_placements_MSGTYPE openagents_engine_v1_ScenePlacement
+#define openagents_engine_v1_CompiledScene_lights_MSGTYPE openagents_engine_v1_SceneLight
+#define openagents_engine_v1_CompiledScene_cameras_MSGTYPE openagents_engine_v1_SceneCamera
+#define openagents_engine_v1_CompiledScene_spawn_MSGTYPE openagents_engine_v1_SceneCamera
+
+#define openagents_engine_v1_ScenePlacement_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, STRING,   id,                1) \
+X(a, STATIC,   SINGULAR, STRING,   asset_id,          2) \
+X(a, STATIC,   FIXARRAY, FLOAT,    transform,         3) \
+X(a, STATIC,   SINGULAR, STRING,   actor,             4) \
+X(a, STATIC,   SINGULAR, STRING,   source_class,      5)
+#define openagents_engine_v1_ScenePlacement_CALLBACK NULL
+#define openagents_engine_v1_ScenePlacement_DEFAULT NULL
+
+#define openagents_engine_v1_SceneLight_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, STRING,   id,                1) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  position,          2) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  linear_color,      3) \
+X(a, STATIC,   SINGULAR, FLOAT,    radius_m,          4)
+#define openagents_engine_v1_SceneLight_CALLBACK NULL
+#define openagents_engine_v1_SceneLight_DEFAULT NULL
+#define openagents_engine_v1_SceneLight_position_MSGTYPE openagents_engine_v1_Vec3
+#define openagents_engine_v1_SceneLight_linear_color_MSGTYPE openagents_engine_v1_Vec3
+
+#define openagents_engine_v1_SceneCamera_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, STRING,   id,                1) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  position,          2) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  target,            3) \
+X(a, STATIC,   SINGULAR, FLOAT,    vertical_fov_degrees,   4) \
+X(a, STATIC,   SINGULAR, STRING,   name,              5)
+#define openagents_engine_v1_SceneCamera_CALLBACK NULL
+#define openagents_engine_v1_SceneCamera_DEFAULT NULL
+#define openagents_engine_v1_SceneCamera_position_MSGTYPE openagents_engine_v1_Vec3
+#define openagents_engine_v1_SceneCamera_target_MSGTYPE openagents_engine_v1_Vec3
+
 extern const pb_msgdesc_t openagents_engine_v1_SceneMetadata_msg;
 extern const pb_msgdesc_t openagents_engine_v1_Vec3_msg;
 extern const pb_msgdesc_t openagents_engine_v1_Landmark_msg;
 extern const pb_msgdesc_t openagents_engine_v1_InteractionRange_msg;
 extern const pb_msgdesc_t openagents_engine_v1_AxisAlignedBox_msg;
+extern const pb_msgdesc_t openagents_engine_v1_AssetManifest_msg;
+extern const pb_msgdesc_t openagents_engine_v1_Artifact_msg;
+extern const pb_msgdesc_t openagents_engine_v1_BufferDescriptor_msg;
+extern const pb_msgdesc_t openagents_engine_v1_CompiledScene_msg;
+extern const pb_msgdesc_t openagents_engine_v1_ScenePlacement_msg;
+extern const pb_msgdesc_t openagents_engine_v1_SceneLight_msg;
+extern const pb_msgdesc_t openagents_engine_v1_SceneCamera_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
 #define openagents_engine_v1_SceneMetadata_fields &openagents_engine_v1_SceneMetadata_msg
@@ -170,13 +383,27 @@ extern const pb_msgdesc_t openagents_engine_v1_AxisAlignedBox_msg;
 #define openagents_engine_v1_Landmark_fields &openagents_engine_v1_Landmark_msg
 #define openagents_engine_v1_InteractionRange_fields &openagents_engine_v1_InteractionRange_msg
 #define openagents_engine_v1_AxisAlignedBox_fields &openagents_engine_v1_AxisAlignedBox_msg
+#define openagents_engine_v1_AssetManifest_fields &openagents_engine_v1_AssetManifest_msg
+#define openagents_engine_v1_Artifact_fields &openagents_engine_v1_Artifact_msg
+#define openagents_engine_v1_BufferDescriptor_fields &openagents_engine_v1_BufferDescriptor_msg
+#define openagents_engine_v1_CompiledScene_fields &openagents_engine_v1_CompiledScene_msg
+#define openagents_engine_v1_ScenePlacement_fields &openagents_engine_v1_ScenePlacement_msg
+#define openagents_engine_v1_SceneLight_fields &openagents_engine_v1_SceneLight_msg
+#define openagents_engine_v1_SceneCamera_fields &openagents_engine_v1_SceneCamera_msg
 
 /* Maximum encoded size of messages (where known) */
-#define OPENAGENTS_ENGINE_V1_OPENAGENTS_ENGINE_V1_SCENE_PB_H_MAX_SIZE openagents_engine_v1_SceneMetadata_size
+/* openagents_engine_v1_CompiledScene_size depends on runtime parameters */
+#define OPENAGENTS_ENGINE_V1_OPENAGENTS_ENGINE_V1_SCENE_PB_H_MAX_SIZE openagents_engine_v1_AssetManifest_size
+#define openagents_engine_v1_Artifact_size       1484
+#define openagents_engine_v1_AssetManifest_size  47706
 #define openagents_engine_v1_AxisAlignedBox_size 84
+#define openagents_engine_v1_BufferDescriptor_size 89
 #define openagents_engine_v1_InteractionRange_size 10
 #define openagents_engine_v1_Landmark_size       216
+#define openagents_engine_v1_SceneCamera_size    284
+#define openagents_engine_v1_SceneLight_size     89
 #define openagents_engine_v1_SceneMetadata_size  9066
+#define openagents_engine_v1_ScenePlacement_size 715
 #define openagents_engine_v1_Vec3_size           15
 
 #ifdef __cplusplus

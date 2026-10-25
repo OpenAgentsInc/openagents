@@ -42,7 +42,8 @@ def main():
         baseline = ROOT / 'compatibility/scene-v1.descriptor.pb'
         if not baseline.is_file():
             raise SystemExit('The published v1 descriptor is missing; do not regenerate the baseline')
-        errors = check(parse(baseline.read_bytes()), parse(descriptor))
+        errors = [error for published in (ROOT / 'compatibility').glob('*.descriptor.pb')
+                  for error in check(parse(published.read_bytes()), parse(descriptor))]
         if errors:
             raise SystemExit('\n'.join(errors))
         encoded = subprocess.check_output([protoc, '-I', str(ROOT / 'proto'), '--encode=openagents.engine.v1.SceneMetadata', PROTO],
@@ -51,6 +52,10 @@ def main():
         (output / 'fixtures/scene.pb').write_bytes(encoded)
         sys.path.insert(0, str(python))
         from openagents.engine.v1.scene_pb2 import SceneMetadata
+        from google.protobuf.json_format import ParseDict
+        (output / 'data').mkdir()
+        grid = ParseDict(json.loads((ROOT / 'data/grid.json').read_text()), SceneMetadata())
+        (output / 'data/grid.pb').write_bytes(grid.SerializeToString(deterministic=True))
         message = SceneMetadata.FromString(encoded)
         cases = {'scene.pb': True, 'scene-unknown.pb': True}
         (output / 'fixtures/scene-unknown.pb').write_bytes(encoded + b'\x98\x06\x01')
@@ -93,6 +98,8 @@ def main():
             (output / 'fixtures' / name).write_bytes(data)
             cases[name] = False
         (output / 'fixtures/cases.json').write_text(json.dumps(cases, indent=2) + '\n')
+        from portable_fixtures import generate
+        generate(output)
         files = [p for p in output.rglob('*') if p.is_file() and '__pycache__' not in p.parts]
         expected = {str(p.relative_to(output)) for p in files}
         checked = {str(p.relative_to(ROOT)) for folder in (ROOT / 'generated/c', ROOT / 'generated/python') if folder.exists() for p in folder.rglob('*') if p.is_file() and '__pycache__' not in p.parts}

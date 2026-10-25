@@ -21,6 +21,27 @@ PB_BIND(openagents_engine_v1_InteractionRange, openagents_engine_v1_InteractionR
 PB_BIND(openagents_engine_v1_AxisAlignedBox, openagents_engine_v1_AxisAlignedBox, AUTO)
 
 
+PB_BIND(openagents_engine_v1_AssetManifest, openagents_engine_v1_AssetManifest, 4)
+
+
+PB_BIND(openagents_engine_v1_Artifact, openagents_engine_v1_Artifact, 2)
+
+
+PB_BIND(openagents_engine_v1_BufferDescriptor, openagents_engine_v1_BufferDescriptor, AUTO)
+
+
+PB_BIND(openagents_engine_v1_CompiledScene, openagents_engine_v1_CompiledScene, 4)
+
+
+PB_BIND(openagents_engine_v1_ScenePlacement, openagents_engine_v1_ScenePlacement, 2)
+
+
+PB_BIND(openagents_engine_v1_SceneLight, openagents_engine_v1_SceneLight, AUTO)
+
+
+PB_BIND(openagents_engine_v1_SceneCamera, openagents_engine_v1_SceneCamera, 2)
+
+
 
 
 

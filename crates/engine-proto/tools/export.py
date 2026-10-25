@@ -27,13 +27,14 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, path)
         files[target] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for folder, target in [('generated/c', 'c'), ('generated/python', 'python'), ('vendor/nanopb', 'nanopb'), ('fixtures', 'fixtures'), ('proto', 'proto')]:
+    for folder, target in [('generated/c', 'c'), ('generated/python', 'python'), ('vendor/nanopb', 'nanopb'), ('fixtures', 'fixtures'), ('proto', 'proto'), ('data', 'data')]:
         for source in sorted((ROOT / folder).rglob('*')):
             if source.is_file() and '__pycache__' not in source.parts:
                 add(source, str(Path(target) / source.relative_to(ROOT / folder)))
     for name in ['toolchain.json', 'scene.descriptor.pb', 'README.md']:
         add(ROOT / name, name)
     add(ROOT / 'src/generated/openagents.engine.v1.rs', 'rust/openagents.engine.v1.rs')
+    add(ROOT / 'tools/portable.py', 'python/engine_portable.py')
     manifest = {'format': 'openagents.engine-proto.bundle.v1', 'repository': 'https://github.com/OpenAgentsInc/openagents',
                 'revision': subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip(),
                 'dirty': dirty, 'files': dict(sorted(files.items()))}

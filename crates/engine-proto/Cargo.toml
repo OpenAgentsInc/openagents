@@ -8,6 +8,7 @@ description = "Versioned cross-language engine scene metadata contracts"
 
 [dependencies]
 prost = "=0.13.5"
+sha2 = "0.10"
 
 [dev-dependencies]
 prost-build = "=0.13.5"
