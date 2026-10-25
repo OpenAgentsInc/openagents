@@ -388,6 +388,14 @@ impl BrowserStudio {
     pub fn reload(&self) {
         self.state.borrow().demo.reload()
     }
+    /// See [`BrowserDemo::npc_talk`].
+    pub fn npc_talk(&self, intent: String, npc: Option<String>) -> Result<String, JsValue> {
+        self.state.borrow().demo.npc_talk(intent, npc)
+    }
+    /// See [`BrowserDemo::npc_chat`].
+    pub fn npc_chat(&self, text: String) -> Result<String, JsValue> {
+        self.state.borrow().demo.npc_chat(text)
+    }
     pub fn close(&self) {
         let mut state = self.state.borrow_mut();
         state.stop_input();

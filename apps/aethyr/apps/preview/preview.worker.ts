@@ -189,6 +189,16 @@ import {
   loadHauntProject,
 } from "../../packages/editor-services/world-profile.ts";
 import { WorldClock } from "../../packages/runtime/world-clock.ts";
+import {
+  NpcDirector,
+  npcOccluders,
+  segmentBlocked,
+  type NpcLabel,
+  type NpcOccluder,
+  type NpcPose,
+  type TalkIntent,
+} from "../../packages/runtime/npc.ts";
+import { NPC_LABEL_HEIGHT } from "../../packages/renderer/npc-figures.ts";
 import { FramePacer } from "../../packages/runtime/frame-pacer.ts";
 import { prepareWorld as prepareRuntimeWorld } from "../../packages/runtime/world-loader.ts";
 import type { OverviewPresentation } from "../../packages/runtime/overview.ts";
@@ -1541,6 +1551,12 @@ async function initialize() {
     publishEnvironment();
     updatePlayer(checkResult(kernel.request({ type: "snapshot" })).player, 0);
   }
+  if (NPC_WORLDS.includes(WORLD_PROFILE.id)) {
+    npcWalls = npcOccluders(
+      (project?.colliders ?? []) as { id?: string; min: number[]; max: number[] }[],
+    );
+    await installNpcs();
+  }
   initializeGameplay(environment.mode);
   if (published?.world?.game) game = new StarterGame(published.world.game);
   else syncGame();
@@ -1591,6 +1607,110 @@ async function initialize() {
     shaderSource: lastWorkingShader,
   });
   frameId = scope.requestAnimationFrame(draw);
+}
+let npcs: NpcDirector | undefined;
+let npcStyle: string | undefined;
+let npcRenderer: Renderer | undefined;
+let npcInstalling = false;
+let npcWalls: NpcOccluder[] = [];
+const NPC_WORLDS = ["haunted-house", "personal-planet"];
+function currentNpcStyle() {
+  return WORLD_PROFILE.id === "personal-planet"
+    ? authoring.planetSources.current(snapshot)?.style
+    : undefined;
+}
+/** Characters stand in the house and on personal planets, one per planet style. */
+async function installNpcs() {
+  if (!renderer || !NPC_WORLDS.includes(WORLD_PROFILE.id)) return;
+  const style = currentNpcStyle();
+  const next = NpcDirector.forWorld(
+    WORLD_PROFILE.id,
+    style,
+    npcs?.lastSequence ?? 0,
+  );
+  if (!next) return;
+  const target = renderer;
+  await target.setNpcFigures(next.npcs.map((n) => n.figure));
+  if (target !== renderer) return;
+  npcs = next;
+  npcStyle = style;
+  npcRenderer = target;
+  status = { ...status, npc: npcs.view() };
+}
+function refreshNpcs() {
+  if (npcInstalling || !NPC_WORLDS.includes(WORLD_PROFILE.id)) return;
+  if (npcs && renderer === npcRenderer && currentNpcStyle() === npcStyle)
+    return;
+  npcInstalling = true;
+  void installNpcs()
+    .catch(() => undefined)
+    .finally(() => {
+      npcInstalling = false;
+    });
+}
+function npcLabels(view: Camera, poses: NpcPose[]): NpcLabel[] {
+  const eye = view.eye;
+  const matrix = multiply(
+    perspective(view.fov ?? 1, width / height, view.near ?? 0.1, view.far),
+    lookAt(eye, add(eye, direction(view.yaw, view.pitch)), view.up ?? [0, 1, 0]),
+  );
+  const nearby = npcs!.nearest()?.id;
+  const said = npcs!.recent(7);
+  const labels: NpcLabel[] = [];
+  for (const pose of poses) {
+    const point: V3 = [
+      pose.position[0],
+      pose.position[1] + NPC_LABEL_HEIGHT[pose.figure],
+      pose.position[2],
+    ];
+    const clip = [0, 1, 2, 3].map(
+      (r) =>
+        matrix[r] * point[0] +
+        matrix[r + 4] * point[1] +
+        matrix[r + 8] * point[2] +
+        matrix[r + 12],
+    );
+    if (clip[3] <= 0.05) continue;
+    const x = clip[0] / clip[3],
+      y = clip[1] / clip[3];
+    if (Math.abs(x) > 1.2 || Math.abs(y) > 1.2) continue;
+    if (Math.hypot(...point.map((v, i) => v - eye[i])) > 14) continue;
+    if (segmentBlocked(eye, point, npcWalls)) continue;
+    const line = said.get(pose.id);
+    labels.push({
+      id: pose.id,
+      name: pose.name,
+      x: (x + 1) / 2,
+      y: (1 - y) / 2,
+      nearby: pose.id === nearby,
+      ...(line ? { line: { kind: line.kind, text: line.text } } : {}),
+    });
+  }
+  return labels;
+}
+function stepNpcs(view: Camera) {
+  refreshNpcs();
+  if (!npcs || !renderer || renderer !== npcRenderer) return;
+  const time = performance.now() / 1000;
+  const feet: V3 =
+    mode === "walk" && player
+      ? [...player.position]
+      : [view.eye[0], view.eye[1] - 1.62, view.eye[2]];
+  const greeted = npcs.update(feet, time);
+  const poses = npcs.poses();
+  renderer.updateNpcs(poses, time);
+  if (greeted.length) {
+    status = { ...status, npc: npcs.view() };
+    send({ type: "status", status });
+  }
+  send({ type: "npcLabels", labels: npcLabels(view, poses) });
+}
+function npcRequest(intent: TalkIntent, requestId: string, id?: string) {
+  if (!npcs) throw new Error("No one is here to talk to.");
+  const line = npcs.talk(intent, id);
+  status = { ...status, npc: npcs.view() };
+  send({ type: "status", status });
+  receipt(requestId, true, `${line.name}: ${line.text}`);
 }
 function viewCheckpoint() {
   const active = renderer?.battleInfo()?.enabled ? lastBattleSubmittedCamera : undefined;
@@ -1814,6 +1934,7 @@ function drawFrame(
         meteorTargetValid: !!battleTarget, firstPerson: battleView === "first" });
     }
     const renderedSettings = effectiveEnvironment();
+    if (NPC_WORLDS.includes(WORLD_PROFILE.id)) stepNpcs(renderCamera);
     updateGameplayAim(renderCamera);
     if (battleParticipant) renderer.setGameplayAim(battleTarget ? {point: battleTarget.point, normal: battleTarget.normal, radius: 4, overlay: true} : undefined);
     const renderStarted = measured ? performance.now() : 0;
@@ -1919,6 +2040,7 @@ function drawFrame(
         kernelWork: snapshot.runtimeWork,
         runtimeEditMetrics,
         game: gameStatus(),
+        ...(npcs ? { npc: npcs.view(), npcRendering: renderer.npcStats } : {}),
         streaming: streamingStatus(),
         runtimeMetrics: {
           firstControlMs,
@@ -3798,6 +3920,26 @@ async function handle(message: PreviewMessage) {
       status = { ...status, character: characterStatus(), combat: combatState };
       send({ type: "status", status });
       receipt(message.requestId, true, "Encounter restarted");
+    } else if (message.type === "npc") {
+      if (
+        !["reply", "hint", "emote"].includes(message.intent) ||
+        (message.npc !== undefined &&
+          (typeof message.npc !== "string" || message.npc.length > 128)) ||
+        Object.keys(message).some(
+          (key) =>
+            !["protocol", "sessionId", "requestId", "type", "intent", "npc"].includes(key),
+        )
+      )
+        throw new Error("Ask someone for a reply, a hint, or an emote.");
+      npcRequest(message.intent, message.requestId, message.npc);
+    } else if (
+      message.type === "game" &&
+      message.action === "interact" &&
+      npcs &&
+      !game
+    ) {
+      // Interact (E) talks to the nearest character in worlds without a quest.
+      npcRequest("reply", message.requestId);
     } else if (message.type === "game") {
       await gameAction(message.action, message.requestId);
     } else if (message.type === "command") {

@@ -895,7 +895,7 @@ async fn material_save_rejects_an_oversized_source_reference_without_accepting_a
 }
 
 fn publish_runtime() -> aethyrforge_host::PublishRuntime {
-    serde_json::from_value(json!({"engine_url":"https://engine.example/","sdk_url":format!("https://engine.example/sdk/{}/aethyrforge_host.js","c".repeat(64)),"sdk_sha256":"c".repeat(64),"engine_release":"fixture-5","template_world":"fixture-house","engine_artifact_sha256":"d".repeat(64),"engine_abi":"aethyrforge.browser.v1","project_format":1,"protocol_version":7,"asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64),"artifacts":[{"path":"/private-assets/scene.json","resource":{"sha256":"e".repeat(64),"bytes":100,"media_type":"application/json"}}],"material_ids":[],"rights":["fantasy-props-cc0","openagents-project-runtime","medieval-town-licensed-runtime"]})).unwrap()
+    serde_json::from_value(json!({"engine_url":"https://engine.example/","sdk_url":format!("https://engine.example/sdk/{}/aethyrforge_host.js","c".repeat(64)),"sdk_sha256":"c".repeat(64),"engine_release":"fixture-5","template_world":"fixture-house","engine_artifact_sha256":"d".repeat(64),"engine_abi":"aethyrforge.browser.v1","project_format":1,"protocol_version":aethyrforge_host::VERSION,"asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64),"artifacts":[{"path":"/private-assets/scene.json","resource":{"sha256":"e".repeat(64),"bytes":100,"media_type":"application/json"}}],"material_ids":[],"rights":["fantasy-props-cc0","openagents-project-runtime","medieval-town-licensed-runtime"]})).unwrap()
 }
 #[tokio::test]
 async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_revoke_and_rollback()
@@ -959,7 +959,7 @@ async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_
             .is_empty(),
         "Private imported files are absent from player bytes"
     );
-    assert_eq!(pinned["manifest"]["runtime"]["protocol_version"], 7);
+    assert_eq!(pinned["manifest"]["runtime"]["protocol_version"], aethyrforge_host::VERSION);
     let (status, page) = guest(&world, &format!("/new-lander/play/{world_id}/{first_id}")).await;
     assert_eq!(status, StatusCode::OK);
     let page = page["text"].as_str().unwrap();

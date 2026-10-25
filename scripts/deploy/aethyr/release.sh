@@ -78,7 +78,7 @@ RUN_HASH=ezxz4mgdsq-uc
 HOST_ORIGIN=https://openagents.com
 BUILD_SA=projects/$PROJECT/serviceAccounts/oa-mvp-automation@$PROJECT.iam.gserviceaccount.com
 SA_CONFIG=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
-PROTOCOL_VERSION=7
+PROTOCOL_VERSION=8
 ROOT=$(git rev-parse --show-toplevel)
 HERE=$ROOT/scripts/deploy/aethyr
 

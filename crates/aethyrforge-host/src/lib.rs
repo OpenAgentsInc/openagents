@@ -19,6 +19,8 @@ mod native;
 pub use native::*;
 mod zones;
 pub use zones::*;
+mod npc;
+pub use npc::*;
 
 #[cfg(target_arch = "wasm32")]
 mod demo;

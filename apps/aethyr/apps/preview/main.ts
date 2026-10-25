@@ -16,6 +16,7 @@ import {
   DRUID_ABILITIES,
   type DruidAbility,
 } from "../../packages/runtime/druid-abilities.ts";
+import { NpcOverlay } from "./npc-overlay.ts";
 const canvas = document.querySelector<HTMLCanvasElement>("#world")!;
 canvas.setAttribute("aria-label", WORLD_PROFILE.name);
 const notice = document.querySelector<HTMLDivElement>("#notice")!;
@@ -42,6 +43,21 @@ let battleView = "overview";
 let mouseAttack = false;
 let battleOrbitDrag: { id: number; x: number; y: number } | undefined;
 let pointerPosition: { x: number; y: number } | undefined;
+const npcOverlay = new NpcOverlay(document.body, (intent, npc) =>
+  askNpc(intent, npc),
+);
+let npcPresent = false;
+function askNpc(intent: "reply" | "hint" | "emote", npc?: string) {
+  if (!session) return;
+  worker.postMessage({
+    type: "npc",
+    intent,
+    ...(npc ? { npc } : {}),
+    protocol: PREVIEW_PROTOCOL,
+    sessionId: session,
+    requestId: crypto.randomUUID(),
+  });
+}
 function sendAim(clientX?: number, clientY?: number) {
   const locked = document.pointerLockElement === canvas || !!battleOrbitDrag;
   if (!locked && clientX !== undefined && clientY !== undefined)
@@ -177,8 +193,15 @@ window.addEventListener("message", (event) => {
 });
 worker.addEventListener("message", (event) => {
   const message = event.data as PreviewEvent;
+  if (message.type === "npcLabels") {
+    // Preview-local: the page places the labels; the editor never sees them.
+    npcOverlay.update(message.labels);
+    return;
+  }
   if (message.type === "status" || message.type === "ready") {
     const status = message.status;
+    npcPresent = !!status.npc?.npcs.length;
+    if (!npcPresent) npcOverlay.clear();
     notice.textContent = status.phase === "ready" ? "" : status.message;
     if (status.view) mode = status.view.mode;
     gameplayEnabled = status.gameplay?.enabled === true;
@@ -439,6 +462,19 @@ window.addEventListener("keydown", (event) => {
       },
       editorOrigin,
     );
+    return;
+  }
+  if (
+    npcPresent &&
+    event.code === "KeyH" &&
+    !event.repeat &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    session
+  ) {
+    event.preventDefault();
+    askNpc("hint");
     return;
   }
   if (

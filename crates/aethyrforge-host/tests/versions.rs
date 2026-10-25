@@ -125,7 +125,7 @@ fn project_documents_and_restore_require_v5_and_leave_frozen_v4_unchanged() {
         detail: None,
     };
     assert!(action.validate_outcome(&outcome).is_err());
-    assert_eq!(VERSION, 7);
+    assert_eq!(VERSION, 8);
 }
 
 #[test]
@@ -174,4 +174,71 @@ fn playable_loading_requires_v7_and_keeps_v6_frozen() {
     assert!(!include_str!("../schema/host-v6.json").contains("load_playable"));
     let old = r#"{"protocol":"openagents.aethyrforge.host","version":6,"session":"old","sequence":1,"message":{"type":"hello","versions":[6]}}"#;
     assert_eq!(Envelope::decode(old), Err(Error::Version));
+}
+
+#[test]
+fn npc_status_and_talk_require_v8_and_keep_v7_frozen() {
+    let v7 = include_str!("../schema/host-v7.json");
+    assert!(!v7.contains("NpcView") && !v7.contains("\"talk\""));
+    let v8 = include_str!("../schema/host-v8.json");
+    assert!(v8.contains("NpcView") && v8.contains("\"talk\""));
+    let old = r#"{"protocol":"openagents.aethyrforge.host","version":7,"session":"old","sequence":1,"message":{"type":"hello","versions":[7]}}"#;
+    assert_eq!(Envelope::decode(old), Err(Error::Version));
+    assert_eq!(BOOTSTRAP, "openagents.aethyrforge.host/8/listening");
+    // A frozen v7 status decoder rejects the new field, so it never crosses that boundary.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    #[allow(dead_code)]
+    struct V7Status {
+        project: Project,
+        generation: String,
+        frame: u64,
+        save: SaveState,
+        checkpoint: Option<Checkpoint>,
+    }
+    let mut status: Status = serde_json::from_str(r#"{"project":{"id":"haunted-house","branch":"main","revision":0},"generation":"g","frame":1,"save":"unsaved","checkpoint":null}"#).unwrap();
+    status.npc = Some(NpcView {
+        npcs: vec![NpcInfo {
+            id: "ghost".into(),
+            name: "Ghost".into(),
+        }],
+        nearby: None,
+        lines: vec![NpcLine {
+            sequence: 1,
+            npc: "ghost".into(),
+            name: "Ghost".into(),
+            kind: NpcLineKind::Hint,
+            text: "Follow the passage to the gallery.".into(),
+            emote: None,
+        }],
+    });
+    status.validate().unwrap();
+    assert!(serde_json::from_str::<V7Status>(&serde_json::to_string(&status).unwrap()).is_err());
+    // An applied talk must carry the character's line.
+    let talk = Action::Talk {
+        npc: Some("ghost".into()),
+        intent: TalkIntent::Hint,
+    };
+    talk.validate().unwrap();
+    assert_eq!(talk.capability(), Some(Capability::Inspect));
+    let bare = Outcome {
+        state: ResultState::Applied,
+        message: "Said".into(),
+        status: None,
+        detail: None,
+    };
+    assert!(talk.validate_outcome(&bare).is_err());
+    let said = Outcome {
+        status: Some(status),
+        ..bare
+    };
+    talk.validate_outcome(&said).unwrap();
+    assert!(
+        Action::Talk {
+            npc: Some("bad id!".into()),
+            intent: TalkIntent::Reply
+        }
+        .validate()
+        .is_err()
+    );
 }

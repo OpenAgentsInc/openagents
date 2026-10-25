@@ -1,3 +1,8 @@
+import type {
+  NpcLabel,
+  NpcView,
+  TalkIntent,
+} from "../runtime/npc.ts";
 import {
   validMmoUiState,
   type MmoUiAction,
@@ -340,6 +345,8 @@ export type PreviewRequest =
       cell?: "entry" | "town";
     }
   | { type: "game"; action: "start" | "interact" | "reset" }
+  /** Ask a character (the nearest when `npc` is absent) for a line. */
+  | { type: "npc"; intent: TalkIntent; npc?: string }
   | { type: "spellSwarm"; count: SpellSwarmCount }
   | { type: "setSceneEffects"; settings: SceneEffectsSettings }
   | { type: "previewImpact" }
@@ -424,6 +431,8 @@ export function validMmorpgEditingRequest(
   );
 }
 export interface EngineStatus {
+  /** The world's characters and their newest lines (host wire version 8). */
+  npc?: NpcView;
   battle?: BattleStatus;
   mmorpg?: MmoUiState;
   mmorpgEditing?: boolean;
@@ -526,6 +535,8 @@ export const INITIAL_STATUS: EngineStatus = {
 };
 export type PreviewEvent = (
   | { type: "mmorpgFocusChat" }
+  /** Preview-local: positions character labels; never forwarded to the editor. */
+  | { type: "npcLabels"; labels: NpcLabel[] }
   | { type: "agentDiscovery"; result: AgentDiscovery }
   | { type: "agentInspection"; result: AgentInspection }
   | { type: "agentCapture"; result: AgentCaptureEnvelope }

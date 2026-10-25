@@ -20,6 +20,14 @@ impl BrowserPlayer {
     pub fn close(&self) {
         self.demo.close();
     }
+    /// See [`BrowserDemo::npc_talk`].
+    pub fn npc_talk(&self, intent: String, npc: Option<String>) -> Result<String, JsValue> {
+        self.demo.npc_talk(intent, npc)
+    }
+    /// See [`BrowserDemo::npc_chat`].
+    pub fn npc_chat(&self, text: String) -> Result<String, JsValue> {
+        self.demo.npc_chat(text)
+    }
 }
 impl Drop for BrowserPlayer {
     fn drop(&mut self) {

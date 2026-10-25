@@ -38,7 +38,7 @@ if (
   throw Error("The planets need separate host and preview origins.");
 const sdk = await import(/* @vite-ignore */ sdkURL);
 await sdk.default();
-if (sdk.protocol_version() !== 7)
+if (sdk.protocol_version() !== 8)
   throw Error("The planets need the matching host SDK.");
 const frame = document.querySelector<HTMLIFrameElement>("#universe-preview")!;
 let endpoint: Endpoint,

@@ -43,7 +43,7 @@ no secrets, and private engine source maps are not published.
    of Aethyrforge's richer authoring and release formats; matching it does not imply
    source, runtime, or saved-world compatibility.
 
-The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v6.json)
+The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v8.json)
 defines closed message shapes. Runtime validation adds UTF-8 byte limits, finite
 coordinates, safe integer bounds, state transitions, peer checks, and relationships
 between fields. Schema validation alone is insufficient. `Envelope::decode` and
@@ -250,3 +250,62 @@ never labels old primitives as kit assets. Device copies are account/project
 scoped; failed storage/network writes offer an editable export rather than a
 successful project-save label. PNG resources are hash-checked, decoded within
 4 MiB/2048-pixel limits, and privately stored under the same project authority.
+
+## Version 8 characters (NPCs)
+
+Version 8 adds the world's characters to status and one `talk` action. Adding a
+field to the closed status shape breaks strict v7 decoders, so v8 is a new wire
+version with its own bootstrap (`openagents.aethyrforge.host/8/listening`) and
+the [v8 schema](../../crates/aethyrforge-host/schema/host-v8.json). The frozen
+v1–v7 schemas and the SDKs pinned with earlier releases remain unchanged; a v8
+host cannot drive a v7 engine. Publication still accepts playable runtimes pinned
+at version 7 or 8.
+
+`status.npc` is present only in worlds that have characters (the Haunted House
+and personal planets):
+
+```json
+{
+  "npcs": [{ "id": "ghost", "name": "Ghost" }],
+  "nearby": "ghost",
+  "lines": [
+    { "sequence": 7, "npc": "ghost", "name": "Ghost", "kind": "greet",
+      "text": "Oooh. You made it all the way to the gallery." },
+    { "sequence": 8, "npc": "ghost", "name": "Ghost", "kind": "emote",
+      "text": "twirls slowly through the air", "emote": "spin" }
+  ]
+}
+```
+
+- `npcs`: at most 16, each with a bounded `id` and a `name` of at most 64 bytes.
+- `nearby`: the character within talking distance, or `null`.
+- `lines`: the newest four lines, oldest first, with strictly increasing
+  `sequence` for the engine session. `kind` is `greet` (the player walked up),
+  `hint` (the next step), `reply`, or `emote`. `emote` (`wave`, `hop`, `spin`,
+  `bow`) is present exactly when `kind` is `emote`. `text` is at most 512 bytes.
+
+The `talk` action, `{"type": "talk", "npc": "ghost" | null, "intent": "reply" |
+"hint" | "emote"}`, needs only the `inspect` capability, so guests and players
+can use it. A missing `npc` means the nearest character. The result is `applied`
+with status whose `npc.lines` include the new line; the message is
+`"Name: text"`. An unknown name or nobody nearby fails with a readable reason.
+
+The browser SDK (`mount_studio`, `mount_player`, and the demo host) adds the
+following; they answer only in worlds with characters (today the house and
+personal-planet editor releases, not published player pages):
+
+- `npc_talk(intent, npc?)`: sends `talk`.
+- `npc_chat(text)`: a chat message that starts with an exact `@id` mention (for
+  example `@ghost hello`) asks that character to `reply`. This is a bounded
+  ID parse, not intent routing; other messages are not for characters.
+- A window `CustomEvent` named `aethyr-npc` per new line, in sequence order,
+  whose `detail` is that line's JSON (the shape above). It fires for greetings,
+  keyboard and button requests in the world, and host requests alike, so a chat
+  card can show every line by listening once.
+
+Lines come from the checked-in dataset
+[`apps/aethyr/packages/runtime/npc-dataset.json`](../../apps/aethyr/packages/runtime/npc-dataset.json)
+(`openagents.aethyr.npcs.v1`): places, characters with positions and greet,
+reply, and emote lines, and ordered hints keyed on places visited and characters
+met. No model is called. Figures are original box geometry drawn by the engine;
+no licensed asset is involved.

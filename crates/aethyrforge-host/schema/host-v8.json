@@ -1,0 +1,2211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Envelope",
+  "type": "object",
+  "properties": {
+    "protocol": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "session": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "message": {
+      "$ref": "#/$defs/Message"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "version",
+    "session",
+    "sequence",
+    "message"
+  ],
+  "$defs": {
+    "Message": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "versions": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint16",
+                "minimum": 0,
+                "maximum": 65535
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "hello"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "versions"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "release": {
+              "type": "string"
+            },
+            "engine_abi": {
+              "type": "string"
+            },
+            "project_format": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Capability"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "ready"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "release",
+            "engine_abi",
+            "project_format",
+            "capabilities"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string"
+            },
+            "project": {
+              "$ref": "#/$defs/Project"
+            },
+            "action": {
+              "$ref": "#/$defs/Action"
+            },
+            "type": {
+              "type": "string",
+              "const": "request"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "request_id",
+            "project",
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string"
+            },
+            "outcome": {
+              "$ref": "#/$defs/Outcome"
+            },
+            "type": {
+              "type": "string",
+              "const": "reply"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "request_id",
+            "outcome"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/Status"
+            },
+            "type": {
+              "type": "string",
+              "const": "status"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "status"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "auth_required"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "request_id",
+            "message"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "revoked"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "message"
+          ]
+        }
+      ]
+    },
+    "Capability": {
+      "type": "string",
+      "enum": [
+        "inspect",
+        "propose",
+        "draft",
+        "compile",
+        "undo",
+        "redo",
+        "save",
+        "publish",
+        "share",
+        "navigate",
+        "capture",
+        "observe"
+      ]
+    },
+    "Project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "branch",
+        "revision"
+      ]
+    },
+    "Action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "grant": {
+              "$ref": "#/$defs/ScopedGrant"
+            },
+            "type": {
+              "type": "string",
+              "const": "authorize"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "grant"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "revoke_authorization"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "checkpoint": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Checkpoint"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "open"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "inspect"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "release": {
+              "$ref": "#/$defs/PlayableRelease"
+            },
+            "type": {
+              "type": "string",
+              "const": "load_playable"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "release"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "export_project"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/MaterialTarget"
+            },
+            "type": {
+              "type": "string",
+              "const": "inspect_material"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "material": {
+              "$ref": "#/$defs/MaterialBundle"
+            },
+            "type": {
+              "type": "string",
+              "const": "preview_material"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "material"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "clear_material_preview"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "material": {
+              "$ref": "#/$defs/MaterialBundle"
+            },
+            "type": {
+              "type": "string",
+              "const": "apply_material"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "material"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "document": {
+              "$ref": "#/$defs/ProjectDocument"
+            },
+            "checkpoint": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Checkpoint"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "materials": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MaterialBundle"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "restore_material_project"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "document",
+            "materials"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "document": {
+              "$ref": "#/$defs/ProjectDocument"
+            },
+            "checkpoint": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Checkpoint"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "restore_project"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "document"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "$ref": "#/$defs/ViewMode"
+            },
+            "type": {
+              "type": "string",
+              "const": "view"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "mode"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "select"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operations": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Edit"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "propose"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "operations"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "draft"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "asset",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source_sha256": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "compile"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "undo"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "redo"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "save"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "$ref": "#/$defs/Visibility"
+            },
+            "type": {
+              "type": "string",
+              "const": "publish"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "visibility"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "$ref": "#/$defs/Visibility"
+            },
+            "type": {
+              "type": "string",
+              "const": "share"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "visibility"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/Destination"
+            },
+            "type": {
+              "type": "string",
+              "const": "navigate"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "capture"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "type": {
+              "type": "string",
+              "const": "observe"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "enabled"
+          ]
+        },
+        {
+          "description": "Version 8: ask a character (the nearest one when `npc` is absent) to\nreply, give a hint about the next step, or emote.",
+          "type": "object",
+          "properties": {
+            "npc": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "intent": {
+              "$ref": "#/$defs/TalkIntent"
+            },
+            "type": {
+              "type": "string",
+              "const": "talk"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "intent"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "cancel"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "lookup"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "close"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ScopedGrant": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "action_sha256": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        },
+        "release": {
+          "type": "string"
+        },
+        "project": {
+          "description": "The loaded base world, independent of the person's private draft.",
+          "$ref": "#/$defs/Project"
+        },
+        "draft": {
+          "$ref": "#/$defs/Project"
+        },
+        "capability": {
+          "$ref": "#/$defs/Capability"
+        },
+        "expires_at": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "token",
+        "action_sha256",
+        "session",
+        "release",
+        "project",
+        "draft",
+        "capability",
+        "expires_at"
+      ]
+    },
+    "Checkpoint": {
+      "type": "object",
+      "properties": {
+        "eye": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "target": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "mode": {
+          "$ref": "#/$defs/CameraMode"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "eye",
+        "target",
+        "mode"
+      ]
+    },
+    "CameraMode": {
+      "type": "string",
+      "enum": [
+        "walk",
+        "fly"
+      ]
+    },
+    "PlayableRelease": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/PlayableManifest"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "manifest"
+      ]
+    },
+    "PlayableManifest": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "world": {
+          "type": "string"
+        },
+        "saved_version": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "runtime": {
+          "$ref": "#/$defs/PublishRuntime"
+        },
+        "content": {
+          "$ref": "#/$defs/MaterialProjectArchive"
+        },
+        "session_policy": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "world",
+        "saved_version",
+        "runtime",
+        "content",
+        "session_policy"
+      ]
+    },
+    "PublishRuntime": {
+      "description": "An operator-registered runtime, never a URL supplied by a creator request.",
+      "type": "object",
+      "properties": {
+        "engine_url": {
+          "type": "string"
+        },
+        "sdk_url": {
+          "type": "string"
+        },
+        "sdk_sha256": {
+          "type": "string"
+        },
+        "engine_release": {
+          "type": "string"
+        },
+        "template_world": {
+          "type": "string"
+        },
+        "engine_artifact_sha256": {
+          "type": "string"
+        },
+        "engine_abi": {
+          "type": "string"
+        },
+        "project_format": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "protocol_version": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "asset_set_sha256": {
+          "type": "string"
+        },
+        "scene_sha256": {
+          "type": "string"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeArtifact"
+          }
+        },
+        "rights": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "material_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "engine_url",
+        "sdk_url",
+        "sdk_sha256",
+        "engine_release",
+        "template_world",
+        "engine_artifact_sha256",
+        "engine_abi",
+        "project_format",
+        "protocol_version",
+        "asset_set_sha256",
+        "scene_sha256",
+        "artifacts",
+        "rights",
+        "material_ids"
+      ]
+    },
+    "RuntimeArtifact": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "resource": {
+          "$ref": "#/$defs/ProjectResource"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "resource"
+      ]
+    },
+    "ProjectResource": {
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "media_type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "bytes",
+        "media_type"
+      ]
+    },
+    "MaterialProjectArchive": {
+      "description": "An editable download includes creator-owned images, never engine or vendor assets.",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "document": {
+          "$ref": "#/$defs/ProjectDocument"
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MaterialBundle"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "document",
+        "materials"
+      ]
+    },
+    "ProjectDocument": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "namespace": {
+          "$ref": "#/$defs/WorldNamespace"
+        },
+        "template": {
+          "$ref": "#/$defs/WorldTemplate"
+        },
+        "source_revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "entities": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/WorldEntity"
+          }
+        },
+        "rooms": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/WorldRoom"
+          }
+        },
+        "removed_walls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "materials": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "source_draft": {
+          "type": "string"
+        },
+        "active_source": {
+          "type": "string"
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MaterialLayer"
+          }
+        },
+        "originals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OriginalImport"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "namespace",
+        "template",
+        "source_revision",
+        "entities",
+        "rooms",
+        "removed_walls",
+        "materials",
+        "environment",
+        "source_draft",
+        "active_source",
+        "layers",
+        "originals"
+      ]
+    },
+    "WorldNamespace": {
+      "type": "string",
+      "enum": [
+        "haunted-house",
+        "universe-preferences",
+        "medieval-town",
+        "personal-planet"
+      ]
+    },
+    "WorldTemplate": {
+      "type": "object",
+      "properties": {
+        "world": {
+          "type": "string"
+        },
+        "engine_release": {
+          "type": "string"
+        },
+        "asset_set_sha256": {
+          "type": "string"
+        },
+        "scene_sha256": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "world",
+        "engine_release",
+        "asset_set_sha256",
+        "scene_sha256"
+      ]
+    },
+    "WorldEntity": {
+      "type": "object",
+      "properties": {
+        "asset": {
+          "type": "string"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "yaw": {
+          "type": "number",
+          "format": "double"
+        },
+        "scale": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "position",
+        "yaw",
+        "scale"
+      ]
+    },
+    "WorldRoom": {
+      "type": "object",
+      "properties": {
+        "center": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "height": {
+          "type": "number",
+          "format": "double"
+        },
+        "floor_y": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "center",
+        "size",
+        "height",
+        "floor_y"
+      ]
+    },
+    "MaterialLayer": {
+      "type": "object",
+      "properties": {
+        "material": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "texture": {
+          "$ref": "#/$defs/ProjectResource"
+        },
+        "uv_set": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "material",
+        "surface",
+        "texture",
+        "uv_set",
+        "kind"
+      ]
+    },
+    "OriginalImport": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sha256",
+        "text"
+      ]
+    },
+    "MaterialBundle": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/MaterialDocument"
+        },
+        "generated": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialImage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "handmade": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialImage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "document"
+      ]
+    },
+    "MaterialDocument": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/MaterialTarget"
+        },
+        "generated": {
+          "$ref": "#/$defs/ColorLayer"
+        },
+        "handmade": {
+          "$ref": "#/$defs/ColorLayer"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScarRecipe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "target",
+        "generated",
+        "handmade"
+      ]
+    },
+    "MaterialTarget": {
+      "type": "object",
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "asset": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "uv_set": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "uv_bounds": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "entity",
+        "asset",
+        "surface",
+        "material",
+        "uv_set",
+        "size",
+        "uv_bounds"
+      ]
+    },
+    "ColorLayer": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectResource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "strength": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "visible",
+        "strength"
+      ]
+    },
+    "ScarRecipe": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "request": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "area": {
+          "$ref": "#/$defs/ScarArea"
+        },
+        "count": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "width": {
+          "type": "number",
+          "format": "double"
+        },
+        "angle": {
+          "type": "number",
+          "format": "double"
+        },
+        "color": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "healed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "request",
+        "seed",
+        "area",
+        "count",
+        "width",
+        "angle",
+        "color",
+        "healed"
+      ]
+    },
+    "ScarArea": {
+      "type": "string",
+      "enum": [
+        "left_cheek",
+        "right_cheek",
+        "forehead"
+      ]
+    },
+    "MaterialImage": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "$ref": "#/$defs/ProjectResource"
+        },
+        "png_base64": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "resource",
+        "png_base64"
+      ]
+    },
+    "ViewMode": {
+      "type": "string",
+      "enum": [
+        "shaded",
+        "mesh"
+      ]
+    },
+    "Edit": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "position": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "type": {
+              "type": "string",
+              "const": "move"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target",
+            "position"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "parameter": {
+              "type": "string"
+            },
+            "value": {
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "material"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target",
+            "parameter",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "type": "string"
+            },
+            "position": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "type": {
+              "type": "string",
+              "const": "place"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "asset",
+            "position"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "remove"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        }
+      ]
+    },
+    "Visibility": {
+      "type": "string",
+      "enum": [
+        "private",
+        "public"
+      ]
+    },
+    "Destination": {
+      "type": "string",
+      "enum": [
+        "universe",
+        "house",
+        "personal_planet"
+      ]
+    },
+    "TalkIntent": {
+      "type": "string",
+      "enum": [
+        "reply",
+        "hint",
+        "emote"
+      ]
+    },
+    "Outcome": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/ResultState"
+        },
+        "message": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Status"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Detail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "message"
+      ]
+    },
+    "ResultState": {
+      "type": "string",
+      "enum": [
+        "applied",
+        "rejected",
+        "unsupported",
+        "cancelled",
+        "unknown"
+      ]
+    },
+    "Status": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "$ref": "#/$defs/Project"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "frame": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "save": {
+          "$ref": "#/$defs/SaveState"
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Checkpoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authoring": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthoringView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "view": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ViewMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "npc": {
+          "description": "Version 8: the world's characters and their newest lines.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NpcView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "project",
+        "generation",
+        "frame",
+        "save"
+      ]
+    },
+    "SaveState": {
+      "type": "string",
+      "enum": [
+        "unsaved",
+        "device",
+        "project",
+        "failed"
+      ]
+    },
+    "SelectedObject": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "asset": {
+          "type": "string"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "asset",
+        "position"
+      ]
+    },
+    "AuthoringView": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "effect_scope": {
+          "type": "string"
+        },
+        "can_undo": {
+          "type": "boolean"
+        },
+        "can_redo": {
+          "type": "boolean"
+        },
+        "draft": {
+          "type": "string"
+        },
+        "active_source": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MaterialBinding"
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "revision",
+        "effect_scope",
+        "can_undo",
+        "can_redo",
+        "draft",
+        "active_source",
+        "diagnostics",
+        "materials",
+        "environment"
+      ]
+    },
+    "MaterialBinding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "objects"
+      ]
+    },
+    "NpcView": {
+      "type": "object",
+      "properties": {
+        "npcs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NpcInfo"
+          }
+        },
+        "nearby": {
+          "description": "The character close enough to talk to, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "description": "The newest lines, oldest first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NpcLine"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "npcs",
+        "lines"
+      ]
+    },
+    "NpcInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "NpcLine": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "description": "Strictly increasing within one engine session.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "npc": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/NpcLineKind"
+        },
+        "text": {
+          "type": "string"
+        },
+        "emote": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NpcEmote"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "npc",
+        "name",
+        "kind",
+        "text"
+      ]
+    },
+    "NpcLineKind": {
+      "oneOf": [
+        {
+          "description": "Said once when the player comes near.",
+          "type": "string",
+          "const": "greet"
+        },
+        {
+          "description": "The next step, when asked.",
+          "type": "string",
+          "const": "hint"
+        },
+        {
+          "description": "An answer when the character is named.",
+          "type": "string",
+          "const": "reply"
+        },
+        {
+          "description": "A gesture with a short description.",
+          "type": "string",
+          "const": "emote"
+        }
+      ]
+    },
+    "NpcEmote": {
+      "type": "string",
+      "enum": [
+        "wave",
+        "hop",
+        "spin",
+        "bow"
+      ]
+    },
+    "Detail": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "material": {
+              "$ref": "#/$defs/MaterialBundle"
+            },
+            "type": {
+              "type": "string",
+              "const": "material"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "material"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_sha256": {
+              "type": "string"
+            },
+            "frame": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "material_preview"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "action_sha256",
+            "frame"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "document": {
+              "$ref": "#/$defs/ProjectDocument"
+            },
+            "type": {
+              "type": "string",
+              "const": "project_document"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "document"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "png": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "height": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "capture_preview"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "png",
+            "sha256",
+            "width",
+            "height"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Diagnostic"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "diagnostics"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "items"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "release": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "published"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "release",
+            "url"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "shared"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "url"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "height": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "capture"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "url",
+            "sha256",
+            "width",
+            "height"
+          ]
+        }
+      ]
+    },
+    "Diagnostic": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "asset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "column": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ]
+    }
+  }
+}

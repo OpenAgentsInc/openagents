@@ -5,7 +5,7 @@ This crate contains no renderer, editor, engine assets, private dependency, or
 engine license grant. Aethyrforge remains proprietary. OpenAgents contributors
 can build and test this crate with no Aethyrforge checkout or credentials.
 
-- [Wire schema](schema/host-v6.json)
+- [Wire schema](schema/host-v8.json)
 - Frozen v1–v4 schemas and pinned releases remain available.
 - [Protocol and ownership](../../docs/verse/aethyrforge-host-protocol.md)
 - [Synthetic host](examples/host.html) and [engine](examples/mock.html)

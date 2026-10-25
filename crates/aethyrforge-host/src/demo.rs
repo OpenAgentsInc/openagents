@@ -29,6 +29,30 @@ impl BrowserDemo {
             h.close()
         }
     }
+    /// Ask a character for a `reply`, `hint`, or `emote`; the nearest one
+    /// when `npc` is absent. The line arrives as an `aethyr-npc` window event.
+    pub fn npc_talk(&self, intent: String, npc: Option<String>) -> Result<String, JsValue> {
+        let intent: TalkIntent = serde_json::from_value(serde_json::Value::String(intent))
+            .map_err(|_| JsValue::from_str("Choose reply, hint, or emote."))?;
+        let action = Action::Talk { npc, intent };
+        action
+            .validate()
+            .map_err(|_| JsValue::from_str("Name a character in this world."))?;
+        let text = serde_json::to_string(&action).map_err(|_| JsValue::from_str("talk"))?;
+        self.host
+            .borrow()
+            .as_ref()
+            .ok_or_else(|| JsValue::from_str("Wait for the world to open."))?
+            .request(text)
+    }
+    /// A chat message that starts with `@id` (for example `@ghost hello`)
+    /// asks that character to reply. Other messages are not for characters.
+    pub fn npc_chat(&self, text: String) -> Result<String, JsValue> {
+        let id = npc_mention(&text)
+            .ok_or_else(|| JsValue::from_str("Start with @ and a character's name."))?
+            .to_ascii_lowercase();
+        self.npc_talk("reply".into(), Some(id))
+    }
 }
 impl Drop for BrowserDemo {
     fn drop(&mut self) {
@@ -64,6 +88,8 @@ pub(crate) fn mount_demo_inner(player: bool) -> Result<BrowserDemo, JsValue> {
     let host: Rc<RefCell<Option<BrowserHost>>> = Rc::new(RefCell::new(None));
     let weak = Rc::downgrade(&host);
     let mut observing_session = String::new();
+    let mut npc_session = String::new();
+    let mut npc_heard = 0u64;
     let changed = Closure::wrap(Box::new(move || {
         let Some(host) = weak.upgrade() else { return };
         let text = host
@@ -74,6 +100,7 @@ pub(crate) fn mount_demo_inner(player: bool) -> Result<BrowserDemo, JsValue> {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
             return;
         };
+        announce_npc_lines(&value, &mut npc_session, &mut npc_heard);
         if let Some(error) = value["error"].as_str() {
             notice.set_text_content(Some(error));
             let _ = notice.remove_attribute("hidden");
@@ -157,4 +184,38 @@ pub(crate) fn mount_demo_inner(player: bool) -> Result<BrowserDemo, JsValue> {
         changed,
         listeners,
     })
+}
+
+/// Each new character line becomes one `aethyr-npc` event on `window`, with
+/// the `NpcLine` JSON as `detail`, so the page (for example its chat card)
+/// can show it. Sequences restart with each engine session.
+fn announce_npc_lines(value: &serde_json::Value, session: &mut String, heard: &mut u64) {
+    let current = value["session"].as_str().unwrap_or_default();
+    if current != session {
+        *session = current.into();
+        *heard = 0;
+    }
+    let Some(lines) = value["status"]["npc"]["lines"].as_array() else {
+        return;
+    };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    for line in lines {
+        let Some(sequence) = line["sequence"].as_u64() else {
+            continue;
+        };
+        if sequence <= *heard {
+            continue;
+        }
+        *heard = sequence;
+        let Ok(detail) = js_sys::JSON::parse(&line.to_string()) else {
+            continue;
+        };
+        let init = web_sys::CustomEventInit::new();
+        init.set_detail(&detail);
+        if let Ok(event) = web_sys::CustomEvent::new_with_event_init_dict("aethyr-npc", &init) {
+            let _ = window.dispatch_event(&event);
+        }
+    }
 }

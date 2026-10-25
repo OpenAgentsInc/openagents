@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 // Stored playable v1 manifests keep these rules when the live wire advances.
-const PLAYABLE_PROTOCOLS: &[u16] = &[7];
+const PLAYABLE_PROTOCOLS: &[u16] = &[7, 8];
 const PLAYABLE_V1_MAX_BYTES: usize = 512 * 1024 - 12 * 1024;
 fn digest(s: &str) -> bool {
     s.len() == 64
@@ -143,9 +143,19 @@ impl PlayableRelease {
         world: String,
         version: u64,
         runtime: PublishRuntime,
-        mut content: MaterialProjectArchive,
+        content: MaterialProjectArchive,
     ) -> Result<Self, Error> {
-        runtime.validate_current()?;
+        Self::build_for(world, version, runtime, content, VERSION)
+    }
+    /// `current` is the wire version new publications must use.
+    fn build_for(
+        world: String,
+        version: u64,
+        runtime: PublishRuntime,
+        mut content: MaterialProjectArchive,
+        current: u16,
+    ) -> Result<Self, Error> {
+        runtime.validate_for_publication(current)?;
         content.validate()?;
         // Drafts and arbitrary imported source files remain private. Face sources
         // are bounded declarative documents needed to reconstruct playable layers.
@@ -436,7 +446,8 @@ mod tests {
     fn stored_v7_manifest_survives_a_simulated_next_wire_while_new_publication_requires_current_runtime()
      {
         let (runtime, content) = fixture();
-        let release = PlayableRelease::build("a".repeat(64), 1, runtime.clone(), content).unwrap();
+        let release =
+            PlayableRelease::build_for("a".repeat(64), 1, runtime.clone(), content, 7).unwrap();
         let bytes = serde_json::to_vec(&release).unwrap();
         assert!(runtime.validate_for_publication(8).is_err());
         let stored: PlayableRelease = serde_json::from_slice(&bytes).unwrap();
@@ -475,7 +486,8 @@ mod tests {
         assert!(!runtime.accepts(&content.document));
         assert!(runtime.accepts_personal(&content.document));
         let release =
-            PlayableRelease::build("a".repeat(64), 2, runtime.clone(), content.clone()).unwrap();
+            PlayableRelease::build_for("a".repeat(64), 2, runtime.clone(), content.clone(), 7)
+                .unwrap();
         assert_eq!(release.manifest.schema, "openagents.verse.playable.v2");
         assert_eq!(release.manifest.content.document.originals.len(), 1);
         release.validate().unwrap();
@@ -489,7 +501,9 @@ mod tests {
         assert!(wrong_schema.validate().is_err());
         let mut missing = content.clone();
         missing.document.originals.clear();
-        assert!(PlayableRelease::build("a".repeat(64), 2, runtime.clone(), missing).is_err());
+        assert!(
+            PlayableRelease::build_for("a".repeat(64), 2, runtime.clone(), missing, 7).is_err()
+        );
         content
             .document
             .entities
@@ -497,7 +511,7 @@ mod tests {
             .next()
             .unwrap()
             .position[0] = 29.;
-        assert!(PlayableRelease::build("a".repeat(64), 2, runtime, content).is_err());
+        assert!(PlayableRelease::build_for("a".repeat(64), 2, runtime, content, 7).is_err());
     }
     #[test]
     fn literal_v7_release_keeps_its_manifest_hash_and_exact_serialization() {

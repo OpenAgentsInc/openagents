@@ -180,6 +180,7 @@ mod tests {
             selection: None,
             authoring: None,
             view: None,
+            npc: None,
         }
     }
 

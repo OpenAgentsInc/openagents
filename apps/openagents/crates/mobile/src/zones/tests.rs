@@ -288,6 +288,7 @@ fn the_bridge_bootstraps_and_opens_as_a_guest_within_bounds() {
                     selection: None,
                     authoring: None,
                     view: None,
+                    npc: None,
                 }),
                 detail: None,
             },

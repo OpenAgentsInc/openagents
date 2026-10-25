@@ -44,6 +44,9 @@ type Request = {
       };
     };
     mode?: "shaded" | "mesh";
+    /** Talk: the character id; absent means the nearest one. */
+    npc?: string | null;
+    intent?: "reply" | "hint" | "emote";
   };
 };
 type Outcome = {
@@ -116,8 +119,8 @@ export async function installOpenAgentsHost(
   // The deployment operator pins this public SDK URL. It never comes from a message.
   const sdk = (await import(/* @vite-ignore */ sdkUrl)) as Sdk;
   await sdk.default();
-  if (sdk.protocol_version?.() !== 7)
-    throw new Error("This world needs the matching version 7 host SDK.");
+  if (sdk.protocol_version?.() !== 8)
+    throw new Error("This world needs the matching version 8 host SDK.");
   const player = location.pathname.endsWith("/player.html");
   let loadedPlayable: string | undefined;
   let opened = false,
@@ -147,6 +150,7 @@ export async function installOpenAgentsHost(
           }
         : null,
       ...(!player && state.authoring ? { authoring: state.authoring } : {}),
+      ...(state.npc ? { npc: state.npc } : {}),
       ...(state.selection
         ? {
             selection: {
@@ -239,6 +243,7 @@ export async function installOpenAgentsHost(
               "load_playable",
               "inspect",
               "observe",
+              "talk",
               "view",
               "capture",
               "lookup",
@@ -387,6 +392,27 @@ export async function installOpenAgentsHost(
                       },
                     }
                   : {}),
+              };
+              break;
+            }
+            case "talk": {
+              const npc = request.action.npc ?? undefined;
+              await completed(
+                service.send(
+                  {
+                    type: "npc",
+                    intent: request.action.intent ?? "reply",
+                    ...(npc ? { npc } : {}),
+                  },
+                  true,
+                ),
+              );
+              const said = service.registry.get(editorAtoms.status).npc?.lines;
+              const line = said?.[said.length - 1];
+              result = {
+                state: "applied",
+                message: line ? `${line.name}: ${line.text}` : "Nobody answered.",
+                status: snapshot(),
               };
               break;
             }

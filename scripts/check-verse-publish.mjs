@@ -15,7 +15,7 @@ fs.mkdirSync(out, { recursive: true });
 const config = JSON.parse(
   fs.readFileSync(process.env.AETHYRFORGE_RELEASE_CONFIG),
 );
-assert.equal(config.protocol_version,7,"Use the playable wire-v7 runtime");
+assert.equal(config.protocol_version,8,"Use the playable wire-v8 runtime");
 assert.ok(config.publish_runtime);
 const projects = [];
 let delayCreate=false, releaseCreate, createArrived;
@@ -726,7 +726,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#publish-share-card').hidden&&!document.querySelector('#publish-share-link').hasAttribute('href'));
   assert.equal(await page.locator('#publish-share-link').textContent(),'');
   assert.deepEqual(errors,[]);
-  const result={protocol_version:7,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,trusted_mouse_click_gets_pointer_lock:true,mouse_click_document_ms:mouseClick.time,early_mouse_click_exercised:mouseClick.time<700,touch_ghost_guard:true,player_reload_held_failed_and_same_version_recovered:true,player_post_success_injected_fatal_status_recovers:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
+  const result={protocol_version:config.protocol_version,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,trusted_mouse_click_gets_pointer_lock:true,mouse_click_document_ms:mouseClick.time,early_mouse_click_exercised:mouseClick.time<700,touch_ghost_guard:true,player_reload_held_failed_and_same_version_recovered:true,player_post_success_injected_fatal_status_recovers:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
   fs.writeFileSync(path.join(out,'browser-publish.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   }
   }

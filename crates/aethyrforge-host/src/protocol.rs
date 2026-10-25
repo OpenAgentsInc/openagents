@@ -2,10 +2,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
-pub const VERSION: u16 = 7;
+pub const VERSION: u16 = 8;
 /// The fixed public string an engine document sends to announce itself. It
 /// carries no authority; the host answers with `hello` only to its exact peer.
-pub const BOOTSTRAP: &str = "openagents.aethyrforge.host/7/listening";
+pub const BOOTSTRAP: &str = "openagents.aethyrforge.host/8/listening";
 pub const MAX_BYTES: usize = 512 * 1024;
 /// Leave room for project, session, request, and message wrapper fields.
 pub const MAX_ACTION_BYTES: usize = MAX_BYTES - 8 * 1024;
@@ -178,6 +178,9 @@ pub struct Status {
     pub authoring: Option<crate::AuthoringView>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view: Option<ViewMode>,
+    /// Version 8: the world's characters and their newest lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub npc: Option<crate::NpcView>,
 }
 impl Status {
     pub fn validate(&self) -> Result<(), Error> {
@@ -200,6 +203,9 @@ impl Status {
         }
         if let Some(c) = &self.checkpoint {
             c.validate()?;
+        }
+        if let Some(npc) = &self.npc {
+            npc.validate()?;
         }
         Ok(())
     }
@@ -308,6 +314,12 @@ pub enum Action {
     Observe {
         enabled: bool,
     },
+    /// Version 8: ask a character (the nearest one when `npc` is absent) to
+    /// reply, give a hint about the next step, or emote.
+    Talk {
+        npc: Option<String>,
+        intent: crate::TalkIntent,
+    },
     Cancel {
         target: String,
     },
@@ -332,6 +344,7 @@ impl Action {
             | Self::ExportProject
             | Self::View { .. }
             | Self::Select { .. }
+            | Self::Talk { .. }
             | Self::InspectMaterial { .. }
             | Self::PreviewMaterial { .. }
             | Self::ClearMaterialPreview => Capability::Inspect,
@@ -359,6 +372,11 @@ impl Action {
         let valid = match self {
             Self::Authorize { grant } => grant.validate().is_ok(),
             Self::Open { .. } | Self::Inspect | Self::Observe { .. } => outcome.status.is_some(),
+            Self::Talk { .. } => outcome
+                .status
+                .as_ref()
+                .and_then(|s| s.npc.as_ref())
+                .is_some_and(|n| !n.lines.is_empty()),
             Self::LoadPlayable { .. } => outcome.status.is_some(),
             Self::ExportProject => matches!(outcome.detail, Some(Detail::ProjectDocument { .. })),
             Self::RestoreProject { .. }
@@ -448,6 +466,7 @@ impl Action {
             Self::Select { target } | Self::Cancel { target } | Self::Lookup { target } => {
                 id(target)
             }
+            Self::Talk { npc, .. } => npc.as_deref().is_none_or(id),
             _ => true,
         };
         if valid {

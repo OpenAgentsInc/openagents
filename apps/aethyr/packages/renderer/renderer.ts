@@ -73,6 +73,14 @@ import { validateMmorpgActors } from "../assets/src/mmorpg.ts";
 import type { MmorpgWorldManifest } from "../assets/src/mmorpg.ts";
 import type { MmorpgEffects } from "./mmorpg-effects.ts";
 import type { MmorpgNames } from "./mmorpg-names.ts";
+import {
+  NPC_COLORS,
+  npcInstanceLayout,
+  npcInstanceMatrices,
+  type NpcColor,
+  type NpcInstanceLayout,
+} from "./npc-figures.ts";
+import type { NpcFigure, NpcPose } from "../runtime/npc.ts";
 import type { MmoEvent } from "../runtime/mmorpg-protocol.ts";
 import type { MmorpgTerrain, MmorpgTerrainMetadata } from "./mmorpg-terrain.ts";
 import {
@@ -5339,6 +5347,38 @@ export class Renderer {
         this.submittedGeometry.drawCalls++;
       }
     }
+    if (
+      !transparent &&
+      !additive &&
+      !source?.dynamicOnly &&
+      this.npcInstances &&
+      this.roomVertices &&
+      this.roomIndices &&
+      (!wire || this.meshRoomIndices)
+    ) {
+      pass.setVertexBuffer(4, this.zeroWind);
+      pass.setVertexBuffer(0, this.roomVertices);
+      pass.setVertexBuffer(1, this.npcInstances);
+      pass.setVertexBuffer(2, this.roomColors!);
+      pass.setVertexBuffer(3, this.roomUV1!);
+      pass.setIndexBuffer(
+        wire ? this.meshRoomIndices! : this.roomIndices,
+        "uint32",
+      );
+      for (const group of this.npcGroups) {
+        pass.setBindGroup(1, group.material);
+        if (specialized)
+          pass.setPipeline(
+            this.materialPipeline(group.material, false, false, specialized),
+          );
+        pass.drawIndexed(wire ? 72 : 36, group.count, 0, 0, group.first);
+        if (countSubmission) {
+          this.submittedGeometry.instances += group.count;
+          this.submittedGeometry.triangles += group.count * 12;
+          this.submittedGeometry.drawCalls++;
+        }
+      }
+    }
     if (!wire && this.sourceDebris && source?.debris !== "none") {
       if (specialized)
         pass.setPipeline(
@@ -5541,44 +5581,10 @@ export class Renderer {
     }
     return candidate!;
   }
-  private async buildAuthored(
-    snapshot: any,
-    assetMeshes: Map<string, number>,
-    catalog = new Map<string, CatalogAsset>(),
-    plan: PropPlan,
-    structureKey: string,
-  ) {
-    const entities = snapshot.entities ?? [];
-    const removed = new Set<string>(snapshot.removedWalls ?? []);
-    const models = plan.matrixRecords();
-    const draws: Draw[] = [];
-    const creatorOwners: string[] = [];
-    const mappedWalls = new Set<string>();
-    for (const entity of entities) {
-      const meshIndex = assetMeshes.get(entity.kind);
-      if (meshIndex === undefined) continue;
-      const first = plan.handle(entity.id)!.slot;
-      creatorOwners[first] = entity.id;
-      const suppressed = new Set<number>();
-      for (const part of catalog.get(entity.kind)?.wallParts ?? []) {
-        const wallId = entity.id + ":" + part.wallId;
-        mappedWalls.add(wallId);
-        if (removed.has(wallId))
-          for (const i of part.primitiveIndices) suppressed.add(i);
-      }
-      this.scene.meshes[meshIndex].primitives.forEach((p, i) => {
-        if (!suppressed.has(i))
-          draws.push({
-            firstIndex: p.firstIndex,
-            indexCount: p.indexCount,
-            baseVertex: p.baseVertex,
-            firstInstance: first,
-            count: 1,
-            material: p.material,
-          });
-      });
-    }
-    if (!this.roomVertices) {
+  /** The owned unit cube shared by authored rooms and character figures. */
+  private async ensureOwnedCube() {
+    if (this.roomVertices) return;
+    {
       const v: number[] = [];
       const faces: [V3, V3, V3, V3, V3][] = [
         [
@@ -5675,6 +5681,112 @@ export class Renderer {
         packedChannels: "metallic-r-roughness-g-occlusion-b",
       });
     }
+  }
+  private npcFigures: NpcFigure[] = [];
+  private npcLayout?: NpcInstanceLayout;
+  private npcInstances?: GPUBuffer;
+  private npcGroups: { material: GPUBindGroup; first: number; count: number }[] =
+    [];
+  private readonly npcMaterials = new Map<NpcColor, GPUBindGroup>();
+  /** Install the world's character figures; poses follow with updateNpcs. */
+  async setNpcFigures(figures: readonly NpcFigure[]) {
+    if (this.disposed) throw new Error("The world closed.");
+    await this.ensureOwnedCube();
+    const layout = npcInstanceLayout(figures);
+    const groups: typeof this.npcGroups = [];
+    for (const group of layout.groups) {
+      let material = this.npcMaterials.get(group.color);
+      if (!material) {
+        const color = NPC_COLORS[group.color];
+        material = await this.makeMaterial({
+          id: `owned-character-${group.color}`,
+          name: `Owned character ${group.color}`,
+          baseColorFactor: [...color.base, 1],
+          emissiveFactor: [...color.emissive],
+          roughness: 0.85,
+          metallic: 0,
+          normalScale: 1,
+          uvScale: [1, 1],
+          alphaMode: "OPAQUE",
+          alphaCutoff: 0.5,
+          doubleSided: true,
+          packedChannels: "metallic-r-roughness-g-occlusion-b",
+        });
+        this.npcMaterials.set(group.color, material);
+      }
+      groups.push({ material, first: group.first, count: group.count });
+    }
+    if (this.disposed) throw new Error("The world closed.");
+    this.releaseBuffer(this.npcInstances);
+    this.npcInstances = layout.order.length
+      ? this.buffer(
+          new Float32Array(layout.order.length * 16),
+          GPUBufferUsage.VERTEX,
+          "Character figure parts",
+        )
+      : undefined;
+    this.npcFigures = [...figures];
+    this.npcLayout = layout;
+    this.npcGroups = groups;
+    this.shadowDirty = true;
+  }
+  /** Pose the installed figures for this frame. */
+  updateNpcs(poses: readonly NpcPose[], time: number) {
+    if (!this.npcInstances || !this.npcLayout || this.disposed) return;
+    if (poses.length !== this.npcFigures.length)
+      throw new Error("Pose every character in the world.");
+    this.device.queue.writeBuffer(
+      this.npcInstances,
+      0,
+      npcInstanceMatrices(this.npcLayout, this.npcFigures, poses, time),
+    );
+    this.shadowDirty = true;
+  }
+  get npcStats() {
+    return {
+      figures: this.npcFigures.length,
+      parts: this.npcLayout?.order.length ?? 0,
+      drawCalls: this.npcInstances ? this.npcGroups.length : 0,
+    };
+  }
+  private async buildAuthored(
+    snapshot: any,
+    assetMeshes: Map<string, number>,
+    catalog = new Map<string, CatalogAsset>(),
+    plan: PropPlan,
+    structureKey: string,
+  ) {
+    const entities = snapshot.entities ?? [];
+    const removed = new Set<string>(snapshot.removedWalls ?? []);
+    const models = plan.matrixRecords();
+    const draws: Draw[] = [];
+    const creatorOwners: string[] = [];
+    const mappedWalls = new Set<string>();
+    for (const entity of entities) {
+      const meshIndex = assetMeshes.get(entity.kind);
+      if (meshIndex === undefined) continue;
+      const first = plan.handle(entity.id)!.slot;
+      creatorOwners[first] = entity.id;
+      const suppressed = new Set<number>();
+      for (const part of catalog.get(entity.kind)?.wallParts ?? []) {
+        const wallId = entity.id + ":" + part.wallId;
+        mappedWalls.add(wallId);
+        if (removed.has(wallId))
+          for (const i of part.primitiveIndices) suppressed.add(i);
+      }
+      this.scene.meshes[meshIndex].primitives.forEach((p, i) => {
+        if (!suppressed.has(i))
+          draws.push({
+            firstIndex: p.firstIndex,
+            indexCount: p.indexCount,
+            baseVertex: p.baseVertex,
+            firstInstance: first,
+            count: 1,
+            material: p.material,
+          });
+      });
+    }
+    await this.ensureOwnedCube();
     const cubes: number[] = [];
     const append = (
       local: number[],
