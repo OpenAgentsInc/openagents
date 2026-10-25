@@ -5,7 +5,7 @@
 const GridNet = (() => {
   const WORLD = 'verse-bare', MAX = 128;
   const MOVING = 200, IDLE = 5000, STATE = 30000, DELAY = 500, STALE = 10000, JOIN_RETRY = 5000;
-  const cleanName = value => [...String(value).replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/\s+/g, ' ').trim()].slice(0, 40).join('');
+  const cleanName = value => [...(typeof value === 'string' ? value : '').replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/\s+/g, ' ').trim()].slice(0, 40).join('');
   const keyOK = k => typeof k === 'string' && /^[0-9a-f]{64}$/.test(k);
   const finite = (v, n, limit) => Array.isArray(v) && v.length === n && v.every(x => Number.isFinite(x) && Math.abs(x) <= limit);
   const validPose = p => p && p.id === 'avatar' && p.role === 'avatar' && finite(p.p, 3, 264) && finite(p.q, 4, 1.001) && Math.hypot(...p.q) > .9 && Math.hypot(...p.q) < 1.1;

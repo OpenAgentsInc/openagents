@@ -1,7 +1,7 @@
 {
   "format": "openagents.aethyr-grid.bundle.v1",
   "repository": "https://github.com/OpenAgentsInc/aethyr-cpp",
-  "revision": "f87a857aec47842f75852c3adaf1e9aeff73fa65",
+  "revision": "2dd1b0d9bbe22762a54759a70282338c14b3a938",
   "files": {
     "Info.plist": {
       "bytes": 485,
@@ -24,8 +24,8 @@
       "sha256": "a7c4846fde84a0d6ce7596f3fcfc88435d29fdcd616887205ab97f9a16bc6407"
     },
     "grid-session.js": {
-      "bytes": 20319,
-      "sha256": "23113b88cc191b9092e22e61bc5e0b30ae4e508a0ce3b2c4ee91a67240863fef"
+      "bytes": 20346,
+      "sha256": "009da46483860ebfbf72580c92350c5ce33fb7a3f16e4dcef6dc71d88dc89393"
     },
     "grid-ui.css": {
       "bytes": 4111,

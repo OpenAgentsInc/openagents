@@ -1621,3 +1621,15 @@ master delegation audit.
   diagnostics and UI tests exercise the actual bundled world and Rust wire peer.
   UIKit lifecycle delivery is immediate and WebKit callbacks are ordered and
   bound to each page load, preserving background-to-Watch and explicit rejoin.
+
+- Grid 1028 pins Aethyr `2dd1b0d9bbe22762a54759a70282338c14b3a938`, which safely ignores invalid
+  display-name values in signed states and keeps subsequent avatar frames working.
+
+- Build 1028: the 1027 iPhone crash (`C515D846-D0C3-4FD4-BDBC-B891B310FC77`)
+  aborts in Loro checkpoint history expansion, not in the Grid renderer. The Rust
+  viewer skips already-contained checkpoints, converts full snapshots to missing
+  updates before merging, serializes checkpoint merges, and propagates checkpoint
+  failures without advancing the durable cursor. iOS and Android no longer eagerly
+  hydrate off-screen chats at launch. Synthetic deleted-history/local-write tests
+  cover reconnect and newer checkpoints; physical-device retest remains required.
+  The Grid importer also refuses an incomplete linker placeholder even if hashes match.

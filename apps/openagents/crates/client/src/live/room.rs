@@ -235,6 +235,46 @@ impl Persister {
     }
 }
 
+// Full checkpoint merges expand historical operations. Room actors run on
+// separate blocking workers; keep those transient allocations from overlapping.
+static CHECKPOINT_IMPORT: Mutex<()> = Mutex::new(());
+
+/// Returns whether the checkpoint needed a merge. Inspecting a modern snapshot
+/// reads its version metadata without decoding every historical string. Loro's
+/// normal import into a nonempty doc eagerly decodes that history even when all
+/// operations are already present (the build 1027 OOM stack).
+fn import_checkpoint(doc: &loro::LoroDoc, bytes: &[u8]) -> Result<bool, String> {
+    let _serial = lock(&CHECKPOINT_IMPORT);
+    let meta = loro::LoroDoc::decode_import_blob_meta(bytes, true).ok();
+    if let Some(meta) = &meta {
+        if !meta.partial_end_vv.is_empty() && doc.state_vv().includes_vv(&meta.partial_end_vv) {
+            return Ok(false);
+        }
+    }
+    let updates;
+    let bytes = if meta.is_some_and(|m| m.mode == loro::EncodedBlobMode::Snapshot)
+        && !doc.oplog_vv().is_empty()
+    {
+        // Loading a snapshot into an empty doc keeps old change blocks lazy.
+        // Export only the missing span before merging into the live doc;
+        // importing the entire snapshot directly calls visit_all_changes and
+        // allocates every historical string, including already-known deletes.
+        let snapshot = loro::LoroDoc::new();
+        snapshot.import(bytes).map_err(|err| err.to_string())?;
+        updates = snapshot
+            .export(loro::ExportMode::updates(&doc.oplog_vv()))
+            .map_err(|err| err.to_string())?;
+        updates.as_slice()
+    } else {
+        bytes
+    };
+    let status = doc.import(bytes).map_err(|err| err.to_string())?;
+    if status.pending.is_some() {
+        return Err("checkpoint is missing causal dependencies".into());
+    }
+    Ok(true)
+}
+
 /// Remote bytes → the session doc; outbox hooks → the docs store.
 pub(crate) struct ViewerSink {
     pub(crate) doc: Weak<SessionDoc>,
@@ -321,12 +361,13 @@ impl ChatDocSink for ViewerSink {
     }
 
     fn apply_checkpoint(&self, bytes: &[u8], cursor: u64) -> Result<(), String> {
-        match self.import(bytes, cursor, true) {
-            RowImportOutcome::Applied => Ok(()),
-            RowImportOutcome::PendingDependencies => {
-                Err("checkpoint is missing causal dependencies".into())
-            }
-        }
+        let Some(doc) = self.doc.upgrade() else {
+            return Ok(());
+        };
+        import_checkpoint(doc.doc(), bytes)?;
+        self.persister.applied(cursor, true);
+        (self.on_applied)();
+        Ok(())
     }
 
     fn contains_frontier(&self, frontier: &[u8]) -> bool {
@@ -851,5 +892,76 @@ mod save_pace_tests {
         // The owner's 90 MB chat (build 1017): at most one rewrite every 45 s.
         assert_eq!(save_interval(90 * 1024 * 1024), Duration::from_secs(45));
         assert_eq!(save_interval(usize::MAX), SAVE_INTERVAL_MAX);
+    }
+
+    #[test]
+    fn repeated_checkpoint_skips_history_expansion_and_preserves_local_edits() {
+        let host = loro::LoroDoc::new();
+        host.set_peer_id(1).unwrap();
+        // A short visible transcript with substantial deleted history: the
+        // nonempty snapshot merge must not re-expand this on every reconnect.
+        let text = host.get_text("transcript");
+        text.insert(0, &"historical message\n".repeat(100_000))
+            .unwrap();
+        host.commit();
+        text.delete(0, text.len_unicode()).unwrap();
+        text.insert(0, "visible message").unwrap();
+        host.commit();
+        let bytes = host.export(loro::ExportMode::Snapshot).unwrap();
+        let viewer = loro::LoroDoc::new();
+        assert!(import_checkpoint(&viewer, &bytes).unwrap());
+        viewer.set_peer_id(2).unwrap();
+        viewer.get_map("local").insert("draft", "keep me").unwrap();
+        viewer.commit();
+        let before = viewer.oplog_vv();
+        for _ in 0..3 {
+            assert!(!import_checkpoint(&viewer, &bytes).unwrap());
+        }
+        assert_eq!(viewer.oplog_vv(), before);
+        assert_eq!(viewer.get_text("transcript").to_string(), "visible message");
+        assert!(viewer.get_map("local").get("draft").is_some());
+
+        text.insert(text.len_unicode(), " newer").unwrap();
+        host.commit();
+        let newer = host.export(loro::ExportMode::Snapshot).unwrap();
+        assert!(import_checkpoint(&viewer, &newer).unwrap());
+        assert_eq!(
+            viewer.get_text("transcript").to_string(),
+            "visible message newer"
+        );
+        assert!(viewer.get_map("local").get("draft").is_some());
+    }
+
+    #[test]
+    fn invalid_checkpoint_does_not_advance_persisted_cursor() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(DocsStore::open(dir.path()).unwrap());
+        let doc = Arc::new(SessionDoc::from_doc(loro::LoroDoc::new()));
+        let persister = Persister::new(&doc, store.clone(), "chat", 7);
+        let sink = ViewerSink {
+            doc: Arc::downgrade(&doc),
+            store,
+            chat_id: "chat".into(),
+            persister: persister.clone(),
+            on_applied: Arc::new(|| {}),
+        };
+        assert!(sink.apply_checkpoint(b"invalid", 20).is_err());
+        assert_eq!(persister.cursor(), 7);
+        assert_eq!(persister.generation.load(Ordering::Acquire), 0);
+
+        let host = loro::LoroDoc::new();
+        host.get_text("transcript").insert(0, "first").unwrap();
+        host.commit();
+        let base = host.oplog_vv();
+        host.get_text("transcript").insert(5, " second").unwrap();
+        host.commit();
+        let missing_base = host.export(loro::ExportMode::updates(&base)).unwrap();
+        assert!(sink.apply_checkpoint(&missing_base, 20).is_err());
+        assert_eq!(persister.cursor(), 7);
+        assert_eq!(persister.generation.load(Ordering::Acquire), 0);
+        let complete = host.export(loro::ExportMode::Snapshot).unwrap();
+        sink.apply_checkpoint(&complete, 20).unwrap();
+        assert_eq!(persister.cursor(), 20);
+        assert_eq!(doc.doc().get_text("transcript").to_string(), "first second");
     }
 }

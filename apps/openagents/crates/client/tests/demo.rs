@@ -407,7 +407,10 @@ fn new_sessions_are_born_on_chat2() {
 
 #[test]
 fn warm_sessions_are_capped_and_preload_follows_the_front_page() {
-    let (client, _dir) = demo(fast());
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = ClientConfig::new("https://edge.invalid", dir.path());
+    config.platform = "desktop".into();
+    let client = Client::new(config, Credentials::Demo(fast()), Arc::new(NullListener)).unwrap();
     client.preload_sessions();
     let open = client.open_session_ids();
     assert_eq!(open.len(), openagents_client::PRELOAD_CAP);
@@ -439,6 +442,17 @@ fn warm_sessions_are_capped_and_preload_follows_the_front_page() {
         open.iter().any(|o| o == "chat-veil"),
         "streaming sessions stay"
     );
+}
+
+#[test]
+fn mobile_does_not_hydrate_offscreen_chats_at_launch() {
+    let (client, _dir) = demo(fast());
+    client.preload_sessions();
+    assert!(client.open_session_ids().is_empty());
+    assert!(!client.workspace().front.recent.is_empty());
+    let session = client.open_session("chat-home").unwrap();
+    assert!(session.snapshot().transcript_len > 0);
+    assert_eq!(client.open_session_ids(), ["chat-home"]);
 }
 
 #[test]

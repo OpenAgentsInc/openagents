@@ -1899,6 +1899,13 @@ impl Client {
     /// recent), up to [`PRELOAD_CAP`]. Opening is instant (local snapshot);
     /// live rooms dial behind the client's dial cap.
     pub fn preload_sessions(&self) {
+        // A checkpoint can expand substantially when merged into a cached
+        // Loro doc. Do not hydrate several off-screen chats alongside Grid's
+        // renderer on phones (build 1027 exhausted memory in this import).
+        // Registry rows still sync; opening a chat starts its room normally.
+        if matches!(self.inner.config.platform.as_str(), "ios" | "android") {
+            return;
+        }
         let workspace = self.workspace();
         let front = &workspace.front;
         let candidates = front

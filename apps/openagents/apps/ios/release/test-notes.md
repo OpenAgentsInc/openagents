@@ -1,3 +1,11 @@
+# OpenAgents 1.0.0 (1028)
+
+Reduces memory use when chat history syncs while you use Grid. Chats load when
+you open them, and reconnecting avoids loading the same history again.
+Also improves how the Grid handles player names. Includes the original Grid
+multiplayer port and the background/rejoin fix. Try names, walking, player contact, mute/block,
+reconnect, and switching apps alongside [web staging](https://grid-1028---aethyr-staging-ezxz4mgdsq-uc.a.run.app/grid.html).
+
 # OpenAgents 1.0.0 (1027)
 
 The Grid's multiplayer now follows the original Grid. Open Zones > The Grid

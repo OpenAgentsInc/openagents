@@ -26,6 +26,9 @@ def check(root):
         if len(data)!=record['bytes'] or hashlib.sha256(data).hexdigest()!=record['sha256']:raise ValueError('Grid bundle hash mismatch: '+name)
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual!=set(manifest['files'])|{'manifest.json'}:raise ValueError('Unexpected Grid bundle files')
+    wasm=(root/'index.wasm').read_bytes()
+    if len(wasm)<=100_000 or not wasm.startswith(b'\x00asm\x01\x00\x00\x00'):
+        raise ValueError('Incomplete Grid WebAssembly build')
     for reference in re.findall(r'(?:src|href)="([^"#?]+)"',(root/'grid.html').read_text()):
         if '://' not in reference and reference!='index.html' and reference not in manifest['files']:
             raise ValueError('Missing Grid page asset: '+reference)
