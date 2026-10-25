@@ -635,6 +635,10 @@ check() {
     # shellcheck source=/dev/null
     (cd "$CHECK_SRC" && . scripts/dev/cargo-build-env.sh && cargo build --locked -p openagents-web-site --bin openagents-web >&2)
     export OPENAGENTS_TEST_WEB_BINARY=$CARGO_TARGET_DIR/debug/openagents-web
+    # The /new-lander pages sit behind the private preview. Every website
+    # these checks start listens on loopback and serves them without the
+    # preview cookie (the site refuses the variable on any other address).
+    export OPENAGENTS_WEB_OPEN_PREVIEW=1
     runtime_overrides || exit 1
     local c=$DIR/candidates
     [ ! -f "$c/universe.json" ] || pin_env OPENAGENTS_UNIVERSE_RELEASE "$c/universe.json"
@@ -646,9 +650,7 @@ check() {
     # The website consumer that serves the candidate pins at the host origin.
     if [ -z "${AETHYRFORGE_HOST_RESPONSE_URL:-}" ]; then
         mkdir -p "$DIR/checks/host-home"
-        # The /new-lander pages sit behind the private preview; this loopback
-        # check server serves them without the preview cookie.
-        HOME=$DIR/checks/host-home OPENAGENTS_WEB_OPEN_PREVIEW=1 "$OPENAGENTS_TEST_WEB_BINARY" --listen 127.0.0.1:0 \
+        HOME=$DIR/checks/host-home "$OPENAGENTS_TEST_WEB_BINARY" --listen 127.0.0.1:0 \
             --store "$DIR/checks/host-tasks" --chat-store "$DIR/checks/host-chats" \
             --pylons-relay off --profile-relay off > "$DIR/checks/host.log" 2>&1 &
         HOST_PID=$!
