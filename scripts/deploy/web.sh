@@ -892,17 +892,47 @@ PY
     if [ "${WEB_VERSE_MVP:-1}" = 1 ]; then
         # /new-lander is behind the private preview (preview.rs), so the
         # check sends the preview cookie from this machine's key file.
+        # The key never reaches the command line, the log, or the repository:
+        # curl reads the Cookie header from a private file (-H @file).
         preview_env=${OPENAGENTS_PREVIEW_ENV:-$HOME/work/.secrets/openagents-preview.env}
         [ -r "$preview_env" ] || { echo "No preview key at $preview_env: set OPENAGENTS_PREVIEW_ENV or WEB_VERSE_MVP=0." >&2; exit 1; }
-        preview_key=$(sed -n 's/^OPENAGENTS_PREVIEW_KEY=//p' "$preview_env")
+        preview_header=$(mktemp)
+        chmod 600 "$preview_header"
+        sed -n 's/^OPENAGENTS_PREVIEW_KEY=\(.*\)$/Cookie: oa_preview=\1/p' "$preview_env" > "$preview_header"
+        [ -s "$preview_header" ] || { rm -f "$preview_header"; echo "No OPENAGENTS_PREVIEW_KEY= line in $preview_env." >&2; exit 1; }
         # Tag routing can lag behind the revision's ready condition.
-        curl -fsS --retry 5 --retry-all-errors --retry-max-time 60 --connect-timeout 5 --max-time 30 \
-            -H 'X-OpenAgents-Test: 1' -b "oa_preview=$preview_key" "$TAG_URL/new-lander/house" > "$STATE/verse-candidate.html"
-        python3 - "$STATE/verse-candidate.html" << 'PY'
-import pathlib, sys
+        if ! curl -fsS --retry 5 --retry-all-errors --retry-max-time 60 --connect-timeout 5 --max-time 30 \
+            -H 'X-OpenAgents-Test: 1' -H @"$preview_header" "$TAG_URL/new-lander/house" > "$STATE/verse-candidate.html"; then
+            rm -f "$preview_header"
+            say "The candidate did not serve /new-lander/house with the preview cookie: do not shift."
+            exit 1
+        fi
+        # A common house request answers at once from the local phrases (no
+        # model call) for a preview visitor.
+        house_code=$(curl -sS -o "$STATE/house-request.json" -w '%{http_code}' --connect-timeout 5 --max-time 10 \
+            -H 'X-OpenAgents-Test: 1' -H @"$preview_header" -H 'content-type: application/json' \
+            --data '{"text":"add three pumpkins to my left","assets":[{"id":"custom:haunt:pumpkin","name":"Pumpkin"}],"player":{"position":[0,0,0],"yaw":0},"selected":null}' \
+            "$TAG_URL/v1/verse/house/request" || true)
+        rm -f "$preview_header"
+        # Without the cookie, the house and its request endpoint stay hidden.
+        public_house=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 30 "$TAG_URL/new-lander/house" || true)
+        public_request=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 30 \
+            -H 'content-type: application/json' --data '{}' "$TAG_URL/v1/verse/house/request" || true)
+        python3 - "$STATE/verse-candidate.html" "$STATE/house-request.json" "$house_code" "$public_house" "$public_request" << 'PY'
+import json, pathlib, sys
 page = pathlib.Path(sys.argv[1]).read_text()
 if 'id="publish-enabled" content="true"' not in page:
     sys.exit("Verse publishing is disabled on the candidate. Check its registered runtime before shifting traffic.")
+code, public_house, public_request = sys.argv[3:6]
+try:
+    answer = json.loads(pathlib.Path(sys.argv[2]).read_text())
+except (OSError, ValueError):
+    answer = {}
+edits = answer.get("edits") or []
+if code != "200" or len(edits) != 3 or any(e.get("asset") != "custom:haunt:pumpkin" for e in edits):
+    sys.exit(f"The candidate's house request endpoint answered {code} without three pumpkins: do not shift.")
+if public_house != "404" or public_request != "404":
+    sys.exit(f"Without the preview cookie the candidate answered the house {public_house} and its request endpoint {public_request} (want 404): do not shift.")
 PY
     fi
     printf '%s\n' "$previous" > "$STATE/$SERVICE.previous"

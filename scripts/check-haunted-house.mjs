@@ -28,6 +28,33 @@ async function expectWorkers(count) {
 }
 const origin = "https://openagents.com",
   path = "/new-lander/house";
+// The house is behind the private preview (crates/openagents-web/src/preview.rs).
+// A loopback check website opens it itself (OPENAGENTS_WEB_OPEN_PREVIEW=1).
+// Any other website (production, or a deployed candidate named by
+// AETHYRFORGE_HOST_RESPONSE_URL) gets the preview cookie, read from this
+// machine's key file at run time; the key is never in the repository and
+// never printed.
+function previewKey() {
+  const file =
+    process.env.OPENAGENTS_PREVIEW_ENV ||
+    process.env.HOME + "/work/.secrets/openagents-preview.env";
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    throw new Error(
+      `No preview key at ${file}: set OPENAGENTS_PREVIEW_ENV to check a website that isn't on loopback.`,
+    );
+  }
+  const key = /^OPENAGENTS_PREVIEW_KEY=(.+)$/m.exec(text)?.[1]?.trim();
+  if (!key) throw new Error(`No OPENAGENTS_PREVIEW_KEY= line in ${file}.`);
+  return key;
+}
+const loopback = (site) =>
+  ["127.0.0.1", "localhost", "[::1]"].includes(new URL(site).hostname);
+/** Headers that admit a request to `site` through the preview gate. */
+const previewHeaders = (site) =>
+  loopback(site) ? {} : { cookie: "oa_preview=" + previewKey() };
 function hostConfig(c) {
   return {
     release: c.release,
@@ -74,6 +101,7 @@ async function open(
     const fromCandidate = (url) =>
       url.origin === origin &&
       (url.pathname.startsWith("/new-lander/") ||
+        url.pathname === "/v1/verse/house/request" ||
         url.pathname === "/static/r.js" ||
         url.pathname === "/a/r");
     await page.route(fromCandidate, async (route) => {
@@ -84,6 +112,12 @@ async function open(
         {
           method: request.method(),
           data: request.postDataBuffer() ?? undefined,
+          headers: {
+            ...(request.headers()["content-type"]
+              ? { "content-type": request.headers()["content-type"] }
+              : {}),
+            ...previewHeaders(candidate),
+          },
         },
       );
       const headers = { ...response.headers() };
@@ -97,6 +131,17 @@ async function open(
       });
     });
   }
+  if (mode === "production")
+    await context.addCookies([
+      {
+        name: "oa_preview",
+        value: previewKey(),
+        url: origin,
+        httpOnly: true,
+        secure: true,
+        sameSite: "Lax",
+      },
+    ]);
   const started = Date.now();
   await page.goto(origin + path, { waitUntil: "domcontentloaded" });
   try {
@@ -147,6 +192,78 @@ async function open(
     mode,
     requests: () => requests,
   };
+}
+/**
+ * A guest types "add three pumpkins to my left" in the house's Request
+ * window. It must answer from the local phrases, with no call to the
+ * house request service, and three pumpkins must be placed within 5 s:
+ * the engine applies the one-use session permit and the three-place
+ * change, and the house says so.
+ */
+async function addPumpkins(page, snapshot) {
+  const text = "add three pumpkins to my left";
+  const calls = [];
+  const watch = (r) => {
+    if (new URL(r.url()).pathname === "/v1/verse/house/request")
+      calls.push(r.method());
+  };
+  page.on("request", watch);
+  await page.click("[data-aethyr-id=world-edit]");
+  await page.click("[data-aethyr-id=tab-request]");
+  const field = page.locator("[data-aethyr-id=edit-kiln-request] textarea");
+  await field.fill("");
+  // Typed at a quick typist's pace: every key must land.
+  await field.pressSequentially(text, { delay: 30 });
+  assert.equal(await field.inputValue(), text);
+  const seen = (await snapshot()).receipts.map((r) => r.request_id);
+  const started = Date.now();
+  await page.click("[data-aethyr-id=edit-request-review]");
+  try {
+    await page.waitForFunction(
+      (seen) => {
+        const s = JSON.parse(window.hauntDemo.snapshot());
+        const fresh = s.receipts.filter((r) => !seen.includes(r.request_id));
+        return (
+          document.getElementById("edit-status")?.textContent ===
+            "Added three pumpkins to your left." &&
+          fresh.some((r) => r.outcome.message === "Change confirmed.") &&
+          fresh.some(
+            (r) =>
+              r.outcome.state === "applied" &&
+              r.outcome.message === "Change applied.",
+          )
+        );
+      },
+      seen,
+      { timeout: 5000 },
+    );
+  } catch (e) {
+    const s = await snapshot();
+    console.log(
+      JSON.stringify({
+        said: await page.evaluate(
+          () => document.getElementById("edit-status")?.textContent,
+        ),
+        receipts: s.receipts
+          .filter((r) => !seen.includes(r.request_id))
+          .map((r) => r.outcome),
+        calls,
+      }),
+    );
+    throw new Error("Three pumpkins did not appear within 5 s: " + e.message);
+  }
+  const ms = Date.now() - started;
+  page.off("request", watch);
+  assert.deepEqual(calls, [], "a common phrase must not call the service");
+  await page.click("[data-aethyr-id=edit-close]");
+  await page.screenshot({
+    path:
+      out +
+      "/pumpkins-" +
+      (process.env.AETHYRFORGE_CHECK_MODE || "production") +
+      ".png",
+  });
+  return { ms, service_calls: calls.length };
 }
 try {
   const run = await open(config);
@@ -217,6 +334,8 @@ try {
   );
   assert.notEqual((await snapshot()).session, restored.session);
   console.log("Back navigation reopened the world.");
+  const pumpkins = await addPumpkins(page, snapshot);
+  console.log("Three pumpkins appeared:", JSON.stringify(pumpkins));
   const result = {
     mode: run.mode,
     browser: browser.version(),
@@ -227,6 +346,7 @@ try {
     reload_restored_checkpoint: true,
     close_removed_worker: true,
     map_return_and_back_reopened: true,
+    typed_request_added_three_pumpkins_ms: pumpkins.ms,
     fullscreen_worked: true,
     errors: run.errors,
     failed: run.failed,
@@ -250,6 +370,7 @@ try {
       const url = new URL(route.request().url()),
         response = await context.request.get(
           responseOrigin + url.pathname + url.search,
+          { headers: previewHeaders(responseOrigin) },
         );
       const headers = { ...response.headers() };
       delete headers["content-encoding"];
@@ -285,7 +406,9 @@ try {
       await check.locator("[data-aethyr-id=world-notice-map]").isVisible(),
     );
     assert.equal(
-      await check.locator("#engine").evaluate((e) => getComputedStyle(e).visibility),
+      await check
+        .locator("#engine")
+        .evaluate((e) => getComputedStyle(e).visibility),
       "hidden",
     );
     console.log("Unavailable engine offers retry/back:", failure);

@@ -58,6 +58,12 @@
 # It builds the native website consumer from DIR's worktree and serves the
 # candidate pins with it, unless AETHYRFORGE_HOST_RESPONSE_URL names a
 # website candidate already serving them.
+# That candidate is behind the private preview, so the house check sends
+# the preview cookie from OPENAGENTS_PREVIEW_ENV (default
+# ~/work/.secrets/openagents-preview.env); the loopback website needs none.
+# The house check also types "add three pumpkins to my left" as a guest and
+# fails unless the three pumpkins are placed within 5 s, with no call to
+# the house request service.
 #
 # pin copies the current pins to crates/openagents-web/content/demos/rollback/
 # and writes the candidates in their place in this checkout, then writes the
