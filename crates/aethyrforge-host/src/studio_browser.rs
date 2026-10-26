@@ -934,6 +934,11 @@ async fn ask_house(weak: Weak<RefCell<State>>, text: String) {
     if !current(&rc) {
         return;
     }
+    // The request is answered for the world it was asked in. Applying it
+    // changes the project revision, which must not read as a stale request
+    // (the poll would replace the answer with "The world or selection
+    // changed"), so the turn ends here.
+    rc.borrow_mut().input_turn.cancel();
     let result = async {
         let answer = answer.map_err(JsValue::from_str)?;
         let mut operations = Vec::new();
@@ -977,7 +982,8 @@ async fn ask_house(weak: Weak<RefCell<State>>, text: String) {
         Ok::<String, JsValue>(answer.say)
     }
     .await;
-    if !current(&rc) {
+    // A newer request started while this one applied: it speaks for itself.
+    if rc.borrow().input_turn.active() {
         return;
     }
     element("edit-voice-status").set_text_content(Some(if rc.borrow().voice_enabled {
