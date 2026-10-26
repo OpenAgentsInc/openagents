@@ -105,5 +105,18 @@
     "rollback/runtimes/haunted-house.json",
     "rollback/runtimes/personal-planet.json"
   ],
-  "production_checks": "pending: run the same checks without candidate mode after the website shift"
+  "production_checks": {
+    "website_revision": "coder-web-d0dd584e37-20261026191138",
+    "website_commit": "de85aed9aa172dab04de65bc4f03bcdaf6a97271",
+    "shifted": "2026-10-26",
+    "promote": "passed: the house served with the preview cookie, the house request endpoint answered three pumpkins, and both answered 404 without it",
+    "shift_smoke": "78 passed, 0 failed, 2 skipped",
+    "live": [
+      "/ says Coming soon",
+      "/new-lander/house: 200 with the current preview key, 404 with the previous key and with none",
+      "\"add three pumpkins to my left\": 200, three custom:haunt:pumpkin edits in 0.16 s",
+      "\"put two candles in front of me\": 200, two custom:haunt:candle edits in 0.15 s"
+    ],
+    "browser_checks": "the candidate checks (checks.json above) ran in a browser; they were not rerun against production"
+  }
 }
