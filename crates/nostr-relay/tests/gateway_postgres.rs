@@ -1101,9 +1101,57 @@ fn websocket_contract(address_one: SocketAddr, address_two: SocketAddr) {
     assert_eq!(read_json(&mut publisher)[2], true);
     assert_no_message(&mut subscriber);
 
+    ephemeral_room_contract(&mut publisher, &mut subscriber);
+
     subscriber.close(None).unwrap();
     publisher.close(None).unwrap();
     openagents_profile_contract(address_one);
+}
+
+/// A subscription to ephemeral kinds alone has no history: it is answered
+/// with EOSE at once (#12601), counts nothing, and then receives each frame
+/// once, in the publisher's process and in another.
+fn ephemeral_room_contract(
+    publisher: &mut WebSocket<StdTcpStream>,
+    subscriber: &mut WebSocket<StdTcpStream>,
+) {
+    let room = json!({"kinds": [23_300], "#w": ["ephemeral-room"]});
+    send_json(subscriber, json!(["REQ", "room", room]));
+    assert_eq!(read_json(subscriber), json!(["EOSE", "room", ["finish"]]));
+    send_json(publisher, json!(["REQ", "own-room", room]));
+    assert_eq!(
+        read_json(publisher),
+        json!(["EOSE", "own-room", ["finish"]])
+    );
+    send_json(publisher, json!(["COUNT", "room-count", room]));
+    let count = read_json(publisher);
+    assert_eq!(count[0], "COUNT");
+    assert_eq!(count[2]["count"], 0);
+
+    let frame = signed_event(
+        21,
+        now(),
+        23_300,
+        vec![Tag::new(vec!["w".into(), "ephemeral-room".into()])],
+        "pose",
+    );
+    send_json(publisher, json!(["EVENT", frame]));
+    let mut replies = [read_json(publisher), read_json(publisher)];
+    replies.sort_by_key(|reply| reply[0].as_str().unwrap_or_default().to_owned());
+    assert_eq!(replies[0][0], "EVENT");
+    assert_eq!(replies[0][1], "own-room");
+    assert_eq!(replies[0][2]["id"], frame.id);
+    assert_eq!(replies[1], json!(["OK", frame.id, true, ""]));
+    let delivered = read_json(subscriber);
+    assert_eq!(delivered[0], "EVENT");
+    assert_eq!(delivered[1], "room");
+    assert_eq!(delivered[2]["id"], frame.id);
+    // The publisher's process skips its own NOTIFY echo; nobody sees the
+    // frame twice.
+    assert_no_message(publisher);
+    assert_no_message(subscriber);
+    send_json(publisher, json!(["CLOSE", "own-room"]));
+    send_json(subscriber, json!(["CLOSE", "room"]));
 }
 
 fn openagents_profile_contract(address: SocketAddr) {

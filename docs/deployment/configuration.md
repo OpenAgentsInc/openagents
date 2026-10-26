@@ -164,7 +164,7 @@ has no certificate configuration.
 | `NOSTR_RELAY_RATE_MEDIA_PER_MIN_IP` | no | `30` | Combined media uploads and deletes per minute per client IP. |
 | `NOSTR_RELAY_RATE_MEDIA_PER_MIN_PUBKEY` | no | `15` | Combined media uploads and deletes per minute per authenticated pubkey. |
 | `NOSTR_RELAY_MAX_CONNECTIONS_PER_IP` | no | `20` | Concurrent WebSocket connections per client IP (1–4,096). |
-| `NOSTR_RELAY_SEND_QUEUE_CAPACITY` | no | `256` | Maximum queued outbound messages per connection (8–65,536). Historical result batches and per-subscription EOSE buffers are each capped below half this value so their handoff remains bounded. A slow connection that fills the queue is closed. |
+| `NOSTR_RELAY_SEND_QUEUE_CAPACITY` | no | `256` | Maximum queued outbound messages per connection (8–65,536). Historical result batches and per-subscription EOSE buffers are each capped below half this value so their handoff remains bounded. When the queue is full, a new message replaces the oldest queued ephemeral event; a slow connection whose queue holds only stored events and replies is closed, so it never misses a stored event. |
 
 When the relay runs behind a reverse proxy, the client IP is taken from the
 proxy connection's `X-Forwarded-For` header **only when**

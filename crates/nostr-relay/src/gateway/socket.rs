@@ -42,6 +42,12 @@ pub struct SocketIo {
 
 pub type ServerWebSocket = WebSocket<SocketIo>;
 
+/// Buffered frame bytes that trigger a write before the connection flushes.
+const WRITE_BUFFER_BYTES: usize = 64 * 1_024;
+/// The least a connection may hold in its write buffer before it stops
+/// taking frames and waits for the socket to drain.
+const MIN_WRITE_BUFFER_BYTES: usize = 256 * 1_024;
+
 pub async fn read_http_head(stream: &mut TcpStream) -> Result<(Vec<u8>, HttpHead), GatewayError> {
     timeout(HANDSHAKE_TIMEOUT, read_http_head_inner(stream))
         .await
@@ -307,10 +313,17 @@ pub async fn websocket_handshake(
         stream,
         prefix: Cursor::new(request_head),
     };
+    // Frames collect in the write buffer until the connection flushes a
+    // batch, or until they pass `write_buffer_size`, so a crowded room's
+    // deliveries leave in a few large writes instead of one per frame.
+    let max_write_buffer = max_message_bytes
+        .saturating_mul(2)
+        .saturating_add(4_096)
+        .max(MIN_WRITE_BUFFER_BYTES);
     let config = WebSocketConfig::default()
         .read_buffer_size(4_096)
-        .write_buffer_size(0)
-        .max_write_buffer_size(max_message_bytes.saturating_mul(2).saturating_add(4_096))
+        .write_buffer_size(WRITE_BUFFER_BYTES.min(max_write_buffer / 2))
+        .max_write_buffer_size(max_write_buffer)
         .max_message_size(Some(max_message_bytes))
         .max_frame_size(Some(max_message_bytes));
     let mut handshake = ServerHandshake::start(io, NoCallback, Some(config));

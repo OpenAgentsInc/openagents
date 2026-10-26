@@ -357,8 +357,30 @@ fn event_object_raw(input: &str) -> Option<&str> {
 }
 
 pub fn event_message(subscription_id: &str, event: &Event) -> String {
-    serde_json::to_string(&json!(["EVENT", subscription_id, event]))
-        .expect("serializing a validated event cannot fail")
+    let subscription =
+        serde_json::to_string(subscription_id).expect("serializing a string cannot fail");
+    event_message_from_json(&subscription, &event_json(event))
+}
+
+/// The bytes `["EVENT",,]` adds around a subscription ID and an event.
+pub const EVENT_MESSAGE_OVERHEAD: usize = r#"["EVENT",,]"#.len();
+
+/// An event as JSON, serialized once for every subscriber it goes to.
+pub fn event_json(event: &Event) -> String {
+    serde_json::to_string(event).expect("serializing a validated event cannot fail")
+}
+
+/// `["EVENT", subscription, event]` from a subscription ID already
+/// serialized as a JSON string and an event already serialized as JSON.
+pub fn event_message_from_json(subscription_json: &str, event_json: &str) -> String {
+    let mut message =
+        String::with_capacity(EVENT_MESSAGE_OVERHEAD + subscription_json.len() + event_json.len());
+    message.push_str(r#"["EVENT","#);
+    message.push_str(subscription_json);
+    message.push(',');
+    message.push_str(event_json);
+    message.push(']');
+    message
 }
 
 pub fn ok_message(event_id: &str, accepted: bool, message: &str) -> String {

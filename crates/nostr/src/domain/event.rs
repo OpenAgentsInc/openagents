@@ -1,10 +1,17 @@
-use secp256k1::{Secp256k1, XOnlyPublicKey, schnorr::Signature};
+use std::sync::LazyLock;
+
+use secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey, schnorr::Signature};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::expanded::validate_expanded_event;
 use super::hex::{decode_lower_hex, encode_lower_hex};
 use super::{DomainError, EventClass, ReplacementAddress, TimestampPolicy};
+
+/// One verification context for every signature check. Creating a context
+/// computes its blinding with a full generator multiplication, which cost
+/// as much as the verification itself when done for each event.
+static VERIFIER: LazyLock<Secp256k1<VerifyOnly>> = LazyLock::new(Secp256k1::verification_only);
 
 /// Tag names beyond single ASCII letters that this relay indexes for
 /// filtering. NIP-WK Work Events (kind 32171) are enumerated through the
@@ -131,7 +138,7 @@ impl Event {
                 .map_err(|_| DomainError::InvalidPublicKey)?;
         let signature = Signature::from_byte_array(decode_lower_hex::<64>(&self.sig, "sig")?);
         let message = decode_lower_hex::<32>(&self.id, "id")?;
-        Secp256k1::verification_only()
+        VERIFIER
             .verify_schnorr(&signature, &message, &public_key)
             .map_err(|_| DomainError::InvalidSignature)
     }
