@@ -887,9 +887,14 @@ PY
     took "production revision (no traffic)" "$t"
     [ -z "${DRY_RUN:-}" ] || { say "  spec: $spec"; return 0; }
     if [ "${WEB_VERSE_MVP:-1}" = 1 ]; then
+        # /new-lander is behind the private preview (preview.rs), so the
+        # check sends the preview cookie from this machine's key file.
+        preview_env=${OPENAGENTS_PREVIEW_ENV:-$HOME/work/.secrets/openagents-preview.env}
+        [ -r "$preview_env" ] || { echo "No preview key at $preview_env: set OPENAGENTS_PREVIEW_ENV or WEB_VERSE_MVP=0." >&2; exit 1; }
+        preview_key=$(sed -n 's/^OPENAGENTS_PREVIEW_KEY=//p' "$preview_env")
         # Tag routing can lag behind the revision's ready condition.
         curl -fsS --retry 5 --retry-all-errors --retry-max-time 60 --connect-timeout 5 --max-time 30 \
-            -H 'X-OpenAgents-Test: 1' "$TAG_URL/new-lander/house" > "$STATE/verse-candidate.html"
+            -H 'X-OpenAgents-Test: 1' -b "oa_preview=$preview_key" "$TAG_URL/new-lander/house" > "$STATE/verse-candidate.html"
         python3 - "$STATE/verse-candidate.html" << 'PY'
 import pathlib, sys
 page = pathlib.Path(sys.argv[1]).read_text()
