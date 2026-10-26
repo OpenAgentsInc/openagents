@@ -20,7 +20,7 @@ use sha2::{Digest, Sha256};
 use crate::App;
 
 /// SHA-256 (hex) of the preview key.
-const KEY_SHA256: &str = "a8e4a0d9a8730553ac556bc021c1c366baa1cae9e9ebe66c094f0770543eb8e2";
+const KEY_SHA256: &str = "b0346a4a8e75dd93412c55985dba42714e876b97c53a89c01d60d6c80783f8d4";
 /// Holds the key once the preview link has been opened.
 pub(crate) const COOKIE: &str = "oa_preview";
 /// The preview lasts 30 days on a device.
