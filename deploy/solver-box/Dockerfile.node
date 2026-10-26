@@ -1,0 +1,8 @@
+# Provision Node on the deployed immutable Solver image without rebuilding
+# or replacing its harness. The canonical Dockerfile also includes Node.
+FROM us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box@sha256:33583ecf8f5ef270ec9666615d5c22360dd5c732880455f1479e3fae4e028ab8
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+COPY runtime-node-check.cjs /tmp/runtime-node-check.cjs
+RUN node --test /tmp/runtime-node-check.cjs && rm /tmp/runtime-node-check.cjs

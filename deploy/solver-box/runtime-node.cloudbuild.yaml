@@ -1,0 +1,13 @@
+# Source context: Dockerfile.node and runtime-node-check.cjs from this folder.
+# _IMAGE is a fresh immutable tag, never latest. No credentials enter the image.
+substitutions:
+  _IMAGE: ''
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, -f, Dockerfile.node, -t, '${_IMAGE}', .]
+  - name: gcr.io/cloud-builders/docker
+    args: [run, --rm, --entrypoint, node, '${_IMAGE}', -e, 'require("node:test"); require("node:vm"); if (!globalThis.crypto?.getRandomValues) process.exit(1)']
+images: ['${_IMAGE}']
+options:
+  logging: GCS_ONLY
+timeout: 1200s

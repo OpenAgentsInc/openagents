@@ -29,7 +29,7 @@ gcloud builds submit --no-source --config deploy/solver-box/cloudbuild.yaml \
 | Release `coder-new` (also linked as `coder`) | `/usr/local/bin` |
 | The briefing scripts (`scripts/filefind`, `scripts/coder`, `scripts/bench/briefed-ab`, `scripts/bench/traces`) | `/opt/oa-tools`, named by `CODER_ISSUE_RUN_TOOLS` |
 | Rust 1.97.1 (rust-toolchain.toml) with rustfmt and clippy, build tools, protobuf | the `rust:1.97.1-slim-trixie` base |
-| git, python3 with numpy, ripgrep, bubblewrap, jq | Debian packages |
+| git, python3 with numpy, Node.js (node:test and Web Crypto), ripgrep, bubblewrap, jq | Debian packages |
 | gh (current; Debian's 2.46 lacks fields the solver reads) | GitHub's apt repository |
 | The entrypoint [`solver-box-run`](solver-box-run) | `/usr/local/bin/solver-box-run` |
 
@@ -106,3 +106,21 @@ and deletes its box. The host token is `OA_WORK_HOST_TOKEN`, else the
 People ask through the site (`POST /v1/work {repo, issue, land: "pr",
 engine: "solver"}`), the Coder SDK (`coder_sdk::cloud_solver::submit` and
 `follow`), or the CLI: `coder solver N --cloud [--json] [--detach]`.
+
+
+## Node provisioning for the deployed harness
+
+The Verse proof run #93 exposed that the deployed image lacked Node: its
+JavaScript suite could only be checked separately. `Dockerfile.node` adds
+Debian Node to the digest-pinned, otherwise unchanged deployed image. Build it
+with `runtime-node.cloudbuild.yaml`, using a minimal context containing that
+Dockerfile and `runtime-node-check.cjs`, and a fresh immutable `_IMAGE` tag.
+The build executes the controller test toolchain inside the image and then
+runs a container-level Node check. The canonical Dockerfile also installs Node
+for future full harness builds. No account/provider credentials enter either.
+
+The existing dispatcher accepts `OA_SOLVER_IMAGE` through a systemd drop-in:
+`[Service]` then `Environment=OA_SOLVER_IMAGE=<immutable image digest>`.
+Only switch/restart when its queue has no running jobs; preserve all other
+service settings. Check service health and a real app-launched run afterward.
+Rollback removes only that image override and restarts the idle dispatcher.

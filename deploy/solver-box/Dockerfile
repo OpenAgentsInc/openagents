@@ -34,7 +34,7 @@ FROM rust:1.97.1-slim-trixie
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates curl git jq procps ripgrep bubblewrap \
-        python3 python3-numpy \
+        python3 python3-numpy nodejs \
         build-essential pkg-config clang cmake protobuf-compiler libprotobuf-dev \
         libssl-dev libasound2-dev libudev-dev \
     # gh from GitHub's own apt repository: Debian's 2.46 lacks the
