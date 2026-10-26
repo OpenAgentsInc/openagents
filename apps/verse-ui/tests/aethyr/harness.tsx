@@ -3,6 +3,7 @@
 // or runs the entry controller with recording services.
 import { createRoot, type Root } from "react-dom/client";
 import { flushSync } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import { Duration, Effect, Layer, ManagedRuntime } from "effect";
 import * as Controller from "../../src/aethyr/controller";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
@@ -29,6 +30,11 @@ declare global {
       }) => Promise<void>;
       /** A field whose handler takes `delay` ms per keystroke. */
       slowField: (delay: number) => Promise<void>;
+      /** A field whose handler answers at once but whose tree only shows
+       *  the value on the next poll, as the house's bridge does. */
+      polledField: (interval: number) => void;
+      /** The polled field's host value. */
+      polledValue: () => string;
       /** The slow field's controller state. */
       fieldValue: () => string;
     };
@@ -44,9 +50,56 @@ const container = () => {
   return root;
 };
 
+function PolledField({ interval }: { interval: number }) {
+  const host = useRef("");
+  const [view, setView] = useState<View>(() => polledView("", 1));
+  useEffect(() => {
+    window.harness.polledValue = () => host.current;
+    const timer = setInterval(() => {
+      setView((v) =>
+        v.root.element.kind === "field" && v.root.element.value !== host.current
+          ? polledView(host.current, v.revision + 1)
+          : v,
+      );
+    }, interval);
+    return () => clearInterval(timer);
+  }, [interval]);
+  return (
+    <AethyrView
+      view={view}
+      onIntent={(intent) => {
+        if (intent.kind === "input") host.current = intent.value ?? "";
+        return Promise.resolve();
+      }}
+    />
+  );
+}
+function polledView(value: string, revision: number): View {
+  return {
+    schema: "aethyr.ui.v1",
+    instance: "polled-field",
+    revision,
+    root: {
+      id: "polled",
+      element: {
+        kind: "field",
+        label: "Request",
+        value,
+        multiline: true,
+        max_bytes: 4800,
+      },
+    },
+  } as View;
+}
+
 window.harness = {
   intents: [],
   trail: [],
+  polledField(interval) {
+    const target = container();
+    flushSync(() => target.render(<PolledField interval={interval} />));
+  },
+  polledValue: () => "",
   render(view) {
     const target = container();
     flushSync(() =>

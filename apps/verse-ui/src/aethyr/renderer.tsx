@@ -430,7 +430,10 @@ function ListView({ node, common, extra }: ElementProps) {
  * in flight at a time; when it settles, the newest draft is sent against the
  * newest revision (an intent for a replaced revision would be refused as
  * stale). The draft ends when the tree shows it, or when the controller
- * replaces the value with one this field never sent.
+ * replaces the value with one this field never sent. Only a tree newer than
+ * the last input can do that: a host that answers the input at once but
+ * shows it on its next poll (the house's bridge) still shows the older
+ * value for a while, and that must not end the draft.
  */
 function FieldView({ node, common, extra }: ElementProps) {
   const { send, revision } = useContext(ScopeContext);
@@ -466,7 +469,11 @@ function FieldView({ node, common, extra }: ElementProps) {
     if (draft === element.value) {
       setDraft(undefined);
       values.current.clear();
-    } else if (!values.current.has(element.value) && sent.current) {
+    } else if (
+      !values.current.has(element.value) &&
+      sent.current &&
+      revision() > sent.current.revision
+    ) {
       // The controller chose another value (it cleared or reset the field).
       const pendingUserEdit = draft !== sent.current.value;
       if (!pendingUserEdit) {
@@ -477,7 +484,7 @@ function FieldView({ node, common, extra }: ElementProps) {
       }
       push(draft);
     } else push(draft);
-  }, [draft, element.value, settled, push]);
+  }, [draft, element.value, settled, push, revision]);
   const change = (value: string) => {
     if (byteLength(value) > element.max_bytes) return;
     setDraft(value);

@@ -429,6 +429,27 @@ test("the entry demo runs its controller in the browser", async () => {
   }
 });
 
+test("a field keeps every keystroke while a polled tree lags behind", async () => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.evaluate(() => window.harness.polledField(16));
+  const field = page.getByLabel("Request");
+  const text = "add three pumpkins to my left";
+  // A quick typist: the tree catches up with one draft while the next key
+  // is already typed. Every key must stay.
+  for (const delay of [5, 30, 80]) {
+    await field.fill("");
+    await field.pressSequentially(text, { delay });
+    assert.equal(await field.inputValue(), text, `typed every ${delay} ms`);
+    await page.waitForFunction(
+      (want) => window.harness.polledValue() === want,
+      text,
+      { timeout: 10_000 },
+    );
+    await page.waitForTimeout(100);
+    assert.equal(await field.inputValue(), text, `settled after ${delay} ms`);
+  }
+});
+
 test("a field keeps every keystroke while a slow handler catches up", async () => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.evaluate(() => window.harness.slowField(60));
