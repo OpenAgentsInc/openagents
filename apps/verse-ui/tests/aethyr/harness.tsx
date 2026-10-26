@@ -37,12 +37,28 @@ declare global {
       polledValue: () => string;
       /** The slow field's controller state. */
       fieldValue: () => string;
+      /**
+       * The house editor's shape (#12602): one controller tree with several
+       * fields, each input set on the release's hidden form control and
+       * shown in the tree only when a poll reads that form back. Every
+       * field shares the tree's revision.
+       */
+      houseForm: (interval: number) => Promise<void>;
+      /** The hidden form's values now. */
+      houseValues: () => Record<string, string>;
+      /** Read the hidden form into the tree now, as the poll does. */
+      housePoll: () => void;
+      /** The release sets one of its controls in code, which no poll has
+       *  read yet. */
+      houseSet: (id: string, value: string) => void;
     };
   }
 }
 
 let root: Root | undefined;
+let houseTimer: ReturnType<typeof setInterval> | undefined;
 const container = () => {
+  clearInterval(houseTimer);
   root?.unmount();
   const element = document.getElementById("root")!;
   element.replaceChildren();
@@ -164,6 +180,102 @@ window.harness = {
     );
   },
   fieldValue: () => "",
+  houseValues: () => ({}),
+  housePoll: () => {},
+  houseSet: () => {},
+  async houseForm(interval) {
+    // The release's own form, hidden, with the controls studio_browser.rs
+    // builds: number inputs that are required.
+    document.getElementById("house-release")?.remove();
+    const form = document.createElement("form");
+    form.id = "house-release";
+    form.hidden = true;
+    for (const id of ["house-x", "house-y"]) {
+      const input = document.createElement("input");
+      input.id = id;
+      input.type = "number";
+      input.step = "any";
+      input.required = true;
+      input.value = "0";
+      form.append(input);
+    }
+    const note = document.createElement("textarea");
+    note.id = "house-note";
+    form.append(note);
+    document.body.append(form);
+    const control = (id: string) =>
+      document.getElementById(id) as HTMLInputElement;
+    const read = () => ({
+      x: control("house-x").value,
+      y: control("house-y").value,
+      note: control("house-note").value,
+    });
+    const field = (id: string, label: string, value: string) => ({
+      id,
+      element: { kind: "field" as const, label, value, max_bytes: 4800 },
+    });
+    const registry = AtomRegistry.make();
+    const runtime = ManagedRuntime.make(
+      Layer.succeed(AtomRegistry.AtomRegistry, registry),
+    );
+    let polls = 0;
+    const controller = await runtime.runPromise(
+      Controller.make<{ form: ReturnType<typeof read>; polls: number }>({
+        instance: "house-form",
+        initial: { form: read(), polls },
+        render: (state) => ({
+          id: "house-editor",
+          element: {
+            kind: "stack",
+            axis: "vertical",
+            children: [
+              field("house-x", "X", state.form.x),
+              field("house-y", "Y", state.form.y),
+              field("house-note", "Note", state.form.note),
+              {
+                id: "house-polls",
+                element: {
+                  kind: "text",
+                  role: "caption",
+                  value: `Read ${state.polls} times`,
+                },
+              },
+            ],
+          },
+        }),
+        // The bridge: set the release's control and announce it. The tree
+        // does not change; the next poll shows the value.
+        handle: (state, intent) =>
+          Effect.sync(() => {
+            if (intent.kind === "input") {
+              const element = control(intent.node);
+              element.value = intent.value ?? "";
+              element.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+            return state;
+          }),
+      }),
+    );
+    // Each poll reads the form, and also something else the release
+    // changed, so every poll draws a new revision.
+    const poll = () =>
+      controller.update(() => ({ form: read(), polls: ++polls }));
+    window.harness.houseValues = read;
+    window.harness.housePoll = () => runtime.runSync(poll());
+    window.harness.houseSet = (id, value) => void (control(id).value = value);
+    const target = container();
+    flushSync(() =>
+      target.render(
+        <RegistryContext.Provider value={registry}>
+          <ControllerView
+            controller={controller}
+            run={(effect) => runtime.runPromiseExit(effect)}
+          />
+        </RegistryContext.Provider>,
+      ),
+    );
+    houseTimer = setInterval(() => runtime.runFork(poll()), interval);
+  },
   async slowField(delay) {
     const registry = AtomRegistry.make();
     const runtime = ManagedRuntime.make(

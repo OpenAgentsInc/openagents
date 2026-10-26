@@ -491,11 +491,31 @@ function FieldView({ node, common, extra }: ElementProps) {
     if (!flight.current) push(value);
   };
   const value = draft ?? element.value;
+  // A value the visitor did not type can replace the text while they have
+  // all of it selected: a polled tree catching up with a value the host set
+  // in code, between a select-all and the next key (`fill` does exactly
+  // that). Setting the value moves the caret to the end, so that key would
+  // be appended to the new value instead of replacing it ("1.25-2.1", which
+  // the house's number control drops as invalid; #12602). Keep the whole
+  // new value selected, as the old one was.
+  const control = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const before = control.current;
+  const reselect =
+    before !== null &&
+    before.value !== value &&
+    before.value !== "" &&
+    before.ownerDocument.activeElement === before &&
+    before.selectionStart === 0 &&
+    before.selectionEnd === before.value.length;
+  useLayoutEffect(() => {
+    if (reselect) control.current?.select();
+  });
   return (
     <label className={classes("aui-field", ...extra)} {...common}>
       <span className="aui-field-label">{element.label}</span>
       {element.multiline ? (
         <Textarea
+          ref={control}
           value={value}
           placeholder={element.placeholder}
           disabled={!enabled}
@@ -503,6 +523,7 @@ function FieldView({ node, common, extra }: ElementProps) {
         />
       ) : (
         <Input
+          ref={control}
           type={element.secret ? "password" : "text"}
           value={value}
           placeholder={element.placeholder}

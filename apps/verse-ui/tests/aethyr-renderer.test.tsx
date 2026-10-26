@@ -450,6 +450,58 @@ test("a field keeps every keystroke while a polled tree lags behind", async () =
   }
 });
 
+test("house fields filled back to back keep their values while the tree lags", async () => {
+  // #12602: the house editor's fields share one tree, whose revision moves
+  // whenever the bridge polls the release's hidden form. The release sets X
+  // and Y in code when an object is selected, which only the next poll
+  // shows. `fill` selects a field's text and then types; when that poll
+  // lands between the two, the field's value is replaced under the
+  // selection. The typed text must still replace the whole value, not be
+  // appended to it ("1.25-2.1", which the release's number control drops,
+  // leaving X empty and the form invalid).
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.evaluate(() => window.harness.houseForm(300));
+  const fields = [
+    [page.getByLabel("X"), "-2.1"],
+    [page.getByLabel("Y"), "0"],
+    [page.getByLabel("Note"), "Keep this requested move while signing in."],
+  ] as const;
+  for (const at of ["1.25", "-0.5"]) {
+    await page.evaluate((at) => {
+      window.harness.houseSet("house-x", at);
+      window.harness.houseSet("house-y", at);
+    }, at);
+    for (const [field, value] of fields) {
+      // `fill`, with the poll between its selection and its typing.
+      await field.selectText();
+      await page.evaluate(() => window.harness.housePoll());
+      await page.keyboard.insertText(value);
+    }
+    await page.evaluate(() => window.harness.housePoll());
+    assert.deepEqual(await page.evaluate(() => window.harness.houseValues()), {
+      x: "-2.1",
+      y: "0",
+      note: "Keep this requested move while signing in.",
+    });
+    for (const [field, value] of fields)
+      assert.equal(await field.inputValue(), value, `after ${at}`);
+  }
+  // A quick fill with the timer's polls racing it keeps every value too.
+  for (let n = 0; n < 20; n++) {
+    for (const [field, value] of fields) await field.fill(`${value}${n}`);
+    await page.waitForFunction(
+      (n) => window.harness.houseValues().x === `-2.1${n}`,
+      n,
+      { timeout: 10_000 },
+    );
+    assert.deepEqual(await page.evaluate(() => window.harness.houseValues()), {
+      x: `-2.1${n}`,
+      y: `0${n}`,
+      note: `Keep this requested move while signing in.${n}`,
+    });
+  }
+});
+
 test("a field keeps every keystroke while a slow handler catches up", async () => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.evaluate(() => window.harness.slowField(60));
