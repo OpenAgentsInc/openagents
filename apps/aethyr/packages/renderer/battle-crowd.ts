@@ -872,6 +872,7 @@ export class BattleCrowd {
         entry(3, "storage"),
         entry(4, "uniform"),
         entry(5, "uniform"),
+        entry(6, "storage"),
       ]);
       const renderLayout = layout([
         entry(0, "uniform", GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT),
@@ -948,7 +949,13 @@ export class BattleCrowd {
         ),
         compaction = await compute(
           BATTLE_COMPACTION_WGSL,
-          ["clearDraws", "compact"],
+          [
+            "clearDraws",
+            "compact",
+            "countOrdered",
+            "scanOrdered",
+            "writeOrdered",
+          ],
           compactLayout,
         );
       const shader = device.createShaderModule({
@@ -1063,6 +1070,11 @@ export class BattleCrowd {
         config.capacity * BATCHES * 4,
         GPUBufferUsage.STORAGE,
       );
+      const groupBins = buffer(
+        "Battle crowd: ordered compaction workgroup offsets",
+        Math.ceil(config.capacity / 128) * BATCHES * 4,
+        GPUBufferUsage.STORAGE,
+      );
       const args = new Uint32Array(BATCHES * 5);
       ordered.forEach((model, kind) =>
         model.lods.forEach((lod, level) =>
@@ -1128,6 +1140,7 @@ export class BattleCrowd {
             bind(3, counters),
             bind(4, uniform),
             bind(5, modelInfo),
+            bind(6, groupBins),
           ],
         }),
       );
@@ -1593,8 +1606,17 @@ export class BattleCrowd {
     compact.setBindGroup(0, this.compactionGroups[this.front]);
     compact.setPipeline(this.compaction[0]);
     compact.dispatchWorkgroups(1);
-    if (this.count) {
+    if (this.count && this.heldTick === undefined) {
       compact.setPipeline(this.compaction[1]);
+      compact.dispatchWorkgroups(Math.ceil(this.count / 128));
+    } else if (this.count) {
+      // Held battles list each batch in ascending actor id, so fighters with
+      // equal depth overlap the same way in every frame and every run.
+      compact.setPipeline(this.compaction[2]);
+      compact.dispatchWorkgroups(Math.ceil(this.count / 128));
+      compact.setPipeline(this.compaction[3]);
+      compact.dispatchWorkgroups(1);
+      compact.setPipeline(this.compaction[4]);
       compact.dispatchWorkgroups(Math.ceil(this.count / 128));
     }
     compact.end();

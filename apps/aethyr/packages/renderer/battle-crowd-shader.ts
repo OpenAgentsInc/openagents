@@ -311,6 +311,55 @@ struct Models {data:array<vec4f,4>}
 var<workgroup> binCounts:array<atomic<u32>,12>;
 var<workgroup> binOffsets:array<u32,12>;
 var<workgroup> culledCount:atomic<u32>;
+@group(0)@binding(6)var<storage,read_write>groupBins:array<u32>;
+var<workgroup> laneBatch:array<u32,128>;
+const CULLED=12u;
+const ABSENT=13u;
+/** The draw batch of one actor (0-11), or CULLED when outside the view. */
+fn actorBatch(id:u32)->u32{
+ let a=actors[id];let distance=length(a.pose.xyz-frame.eyeTime.xyz);
+ var outside=distance>frame.tuning.y+4.5;let center=vec4(a.pose.xyz+vec3(0,1.3,0),1.0);
+ for(var plane=0u;plane<6u;plane++){outside=outside||dot(frame.planes[plane],center)<-4.5;}
+ if outside{return CULLED;}
+ let lod=select(0u,1u,distance>frame.tuning.x);var batch=a.info.x*2u+lod;
+ let projectedHeight=models.data[a.info.x].x*frame.tuning.w/max((frame.viewProjection*center).w,.01);
+ if models.data[a.info.x].y>.5&&projectedHeight<frame.sun.w{batch=8u+a.info.x;}
+ return batch;
+}
+// Ordered compaction (Battle Lab hold, issue 12599): the same batches as
+// compact, but every batch lists its actors in ascending id, so depth ties
+// between fighters resolve the same way in every frame and every run.
+// countOrdered counts each workgroup's batches, scanOrdered turns the counts
+// into offsets in workgroup order, and writeOrdered ranks lanes by lane index.
+@compute @workgroup_size(128)fn countOrdered(@builtin(global_invocation_id)inv:vec3u,@builtin(workgroup_id)wg:vec3u,@builtin(local_invocation_index)lane:u32){
+ if lane<12u{atomicStore(&binCounts[lane],0u);}if lane==0u{atomicStore(&culledCount,0u);}workgroupBarrier();
+ let id=inv.x;var batch=ABSENT;if id<frame.counts.x{batch=actorBatch(id);}
+ if batch<CULLED{atomicAdd(&binCounts[batch],1u);}else if batch==CULLED{atomicAdd(&culledCount,1u);}
+ workgroupBarrier();
+ if lane<12u{
+  let count=atomicLoad(&binCounts[lane]);groupBins[wg.x*12u+lane]=count;
+  if count>0u{
+   let lod=select(lane%2u,1u,lane>=8u);let kind=select(lane/2u,lane-8u,lane>=8u);
+   atomicAdd(&stats[9u+lod],count);atomicAdd(&stats[17u+kind],count);atomicAdd(&stats[24],count*(draws[lane].indexCount/3u));
+  }
+ }
+ if lane==0u{let count=atomicLoad(&culledCount);if count>0u{atomicAdd(&stats[16],count);}}
+}
+@compute @workgroup_size(32)fn scanOrdered(@builtin(local_invocation_index)lane:u32){
+ if lane<12u{
+  var total=0u;let groups=(frame.counts.x+127u)/128u;
+  for(var g=0u;g<groups;g++){let i=g*12u+lane;let count=groupBins[i];groupBins[i]=total;total+=count;}
+  atomicStore(&draws[lane].instanceCount,total);
+ }
+}
+@compute @workgroup_size(128)fn writeOrdered(@builtin(global_invocation_id)inv:vec3u,@builtin(workgroup_id)wg:vec3u,@builtin(local_invocation_index)lane:u32){
+ let id=inv.x;var batch=ABSENT;if id<frame.counts.x{batch=actorBatch(id);}
+ laneBatch[lane]=batch;workgroupBarrier();
+ if batch<CULLED{
+  var rank=0u;for(var i=0u;i<lane;i++){if laneBatch[i]==batch{rank++;}}
+  visible[batch*frame.counts.y+groupBins[wg.x*12u+batch]+rank]=id;
+ }
+}
 @compute @workgroup_size(32)fn clearDraws(@builtin(global_invocation_id)inv:vec3u){
  let id=inv.x;if id<12u{atomicStore(&draws[id].instanceCount,0u);}
  if id==9u||id==10u||id==16u||id==24u||(id>=17u&&id<=20u){atomicStore(&stats[id],0u);}
@@ -319,15 +368,8 @@ var<workgroup> culledCount:atomic<u32>;
  if lane<12u{atomicStore(&binCounts[lane],0u);}if lane==0u{atomicStore(&culledCount,0u);}workgroupBarrier();
  let id=inv.x;var survives=false;var batch=0u;var rank=0u;
  if id<frame.counts.x{
-  let a=actors[id];let distance=length(a.pose.xyz-frame.eyeTime.xyz);
-  var outside=distance>frame.tuning.y+4.5;let center=vec4(a.pose.xyz+vec3(0,1.3,0),1.0);
-  for(var plane=0u;plane<6u;plane++){outside=outside||dot(frame.planes[plane],center)<-4.5;}
-  if outside{atomicAdd(&culledCount,1u);}else{
-   let lod=select(0u,1u,distance>frame.tuning.x);batch=a.info.x*2u+lod;
-   let projectedHeight=models.data[a.info.x].x*frame.tuning.w/max((frame.viewProjection*center).w,.01);
-   if models.data[a.info.x].y>.5&&projectedHeight<frame.sun.w{batch=8u+a.info.x;}
-   rank=atomicAdd(&binCounts[batch],1u);survives=true;
-  }
+  batch=actorBatch(id);
+  if batch==CULLED{atomicAdd(&culledCount,1u);}else{rank=atomicAdd(&binCounts[batch],1u);survives=true;}
  }
  workgroupBarrier();
  if lane<12u{

@@ -977,10 +977,14 @@ export class Renderer {
     if (!this.battleCrowd) throw Error("Start a battle first.");
     this.battleCrowd.hold(tick);
     this.battleTime = undefined;
+    // A held frame renders at a fixed world time that may be earlier than the
+    // live clock; impact playback only runs forward, so start it afresh.
+    this.previewImpacts?.clear();
   }
   releaseBattle() {
     this.battleCrowd?.release();
     this.battleTime = undefined;
+    this.previewImpacts?.clear();
   }
   stopBattle() {
     this.battleLoadSerial++;

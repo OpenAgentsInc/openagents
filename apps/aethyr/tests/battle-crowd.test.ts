@@ -2132,3 +2132,46 @@ test("a held battle refuses participants, bounds its tick, and resumes the live 
   assert.equal(battle.inspect().heldTick, null);
   battle.dispose();
 });
+test("a held battle compacts in actor order so equal-depth fighters overlap the same way every run", async () => {
+  const gpu = fakeGpu(),
+    battle = await BattleCrowd.create(gpu.device, assets(), terrain(), {
+      count: 300,
+      capacity: 384,
+    });
+  const compaction = () =>
+    gpu.computes
+      .filter((stage) => stage.label === "Battle crowd: frustum and LOD indirect compaction")
+      .flatMap((stage) =>
+        stage.commands
+          .filter((c: any) => c.pipeline || c.dispatch)
+          .map((c: any) => c.pipeline ?? c.dispatch),
+      );
+  battle.prepare(gpu.encoder, frame(), 1 / 60);
+  battle.afterSubmit();
+  // The live battle keeps its single-pass atomic compaction.
+  assert.deepEqual(compaction(), ["clearDraws", 1, "compact", 3]);
+  battle.hold(2);
+  gpu.computes.length = 0;
+  battle.prepare(gpu.encoder, frame(), 1 / 60);
+  battle.afterSubmit();
+  assert.deepEqual(compaction(), [
+    "clearDraws", 1, "countOrdered", 3, "scanOrdered", 1, "writeOrdered", 3,
+  ]);
+  battle.release();
+  gpu.computes.length = 0;
+  battle.prepare(gpu.encoder, frame(), 1 / 60);
+  battle.afterSubmit();
+  assert.deepEqual(compaction(), ["clearDraws", 1, "compact", 3]);
+  battle.dispose();
+  // Both paths choose batches with the same function; the ordered path ranks
+  // lanes by index and offsets workgroups by a scan in workgroup order.
+  const body = (name: string) => {
+    const start = BATTLE_COMPACTION_WGSL.indexOf(`fn ${name}(`);
+    return BATTLE_COMPACTION_WGSL.slice(start, BATTLE_COMPACTION_WGSL.indexOf("@compute", start + 1));
+  };
+  for (const name of ["compact", "countOrdered", "writeOrdered"])
+    assert.match(body(name), /actorBatch\(id\)/, name);
+  assert.doesNotMatch(body("writeOrdered"), /atomic/);
+  assert.match(body("writeOrdered"), /for\(var i=0u;i<lane;i\+\+\)\{if laneBatch\[i\]==batch\{rank\+\+;\}\}/);
+  assert.match(body("scanOrdered"), /for\(var g=0u;g<groups;g\+\+\)/);
+});
