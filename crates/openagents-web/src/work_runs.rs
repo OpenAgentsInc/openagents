@@ -1834,41 +1834,9 @@ pub(crate) async fn agent_viewer(app: &App, headers: &HeaderMap) -> Result<Viewe
         )
     };
     let viewer = match bearer {
-        Some(token) => {
-            let mut asked = HeaderMap::new();
-            if let Some(host) = headers.get(header::HOST) {
-                asked.insert(header::HOST, host.clone());
-            }
-            let cookie = |workspace: Option<&str>| {
-                let mut text = format!("oa_cloud_session={token}");
-                if let Some(workspace) = workspace {
-                    text.push_str("; oa_cloud_workspace=");
-                    text.push_str(workspace);
-                }
-                HeaderValue::from_str(&text).ok()
-            };
-            asked.insert(header::COOKIE, cookie(None).ok_or_else(signed_out)?);
-            let viewer = service
-                .authenticate(&asked)
-                .await
-                .map_err(|_| signed_out())?;
-            match (
-                &viewer.workspace,
-                crate::cloud::default_workspace(&viewer).map(|w| w.id.clone()),
-            ) {
-                (None, Some(workspace)) => {
-                    asked.insert(
-                        header::COOKIE,
-                        cookie(Some(&workspace)).ok_or_else(signed_out)?,
-                    );
-                    service
-                        .authenticate(&asked)
-                        .await
-                        .map_err(|_| signed_out())?
-                }
-                _ => viewer,
-            }
-        }
+        // App sessions are bearer credentials, independent of the browser's
+        // WorkOS cookie mode. This also selects and revalidates their workspace.
+        Some(token) => service.app_viewer(token).await.map_err(|_| signed_out())?,
         None => service
             .authenticate(headers)
             .await

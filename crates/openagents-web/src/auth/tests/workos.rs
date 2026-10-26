@@ -1595,3 +1595,133 @@ async fn login_and_signup_have_a_way_back_to_the_grid() {
     }
     assert!(crate::workos_auth::BACK_JS.contains("event.key !== 'Escape'"));
 }
+
+#[tokio::test]
+async fn cloud_issue_runs_accept_app_bearers_under_workos_without_browser_cookies() {
+    async fn work_call(
+        world: &World,
+        method: &str,
+        path: &str,
+        body: serde_json::Value,
+        token: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut request = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::HOST, HOST)
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(token) = token {
+            request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        let response = world
+            .site
+            .clone()
+            .oneshot(request.body(Body::from(body.to_string())).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap_or_default())
+    }
+
+    for mode in [Mode::Dual, Mode::Workos] {
+        let mut w = workos_world(mode, PRODUCTION).await;
+        let mut browser = Browser::default();
+        let page = browser.get(&w.world, "/login").await;
+        browser
+            .post(
+                &w.world,
+                "/login/code",
+                &[("csrf", &csrf(&page.body)), ("email", "work@example.com")],
+            )
+            .await;
+        let page = browser.get(&w.world, "/login/verify").await;
+        browser
+            .post(
+                &w.world,
+                "/login/verify",
+                &[
+                    ("csrf", &csrf(&page.body)),
+                    ("code", &w.mail.code("work@example.com")),
+                ],
+            )
+            .await;
+        assert!(signed_in(&mut browser, &w.world).await);
+        let started = device_start(&w.world, "Verse iOS").await;
+        device_decide(
+            &w.world,
+            &mut browser,
+            started["user_code"].as_str().unwrap(),
+            "approve",
+        )
+        .await;
+        let (status, signed) = device_poll(&w.world, &started).await;
+        assert_eq!(status, StatusCode::OK, "{signed}");
+        let token = signed["access_token"].as_str().unwrap();
+        // A live app session does not grant permission to use a cloud worker.
+        let (status, denied) =
+            work_call(&w.world, "GET", "/v1/work", json!(null), Some(token)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{mode:?}: {denied}");
+        assert_eq!(denied["error"]["code"], "not_allowed");
+        let account = signed["account"]["id"].as_str().unwrap().to_string();
+        let mut config = crate::Config::development(w.world.root.path().join("work-tasks"));
+        config.chat_store = Arc::new(crate::chat_store::Store::local(
+            w.world.root.path().join("work-runs"),
+        ));
+        config.cloud = Some(Arc::new(
+            crate::cloud::session::CloudSession::load(
+                &w.world
+                    .root
+                    .path()
+                    .join("private/cloud.json")
+                    .canonicalize()
+                    .unwrap(),
+            )
+            .unwrap(),
+        ));
+        config.agent_accounts = vec![account];
+        w.world.site = crate::router(config);
+        let (status, rows) = work_call(&w.world, "GET", "/v1/work", json!(null), Some(token)).await;
+        assert_eq!(status, StatusCode::OK, "{mode:?}: {rows}");
+        assert_eq!(rows["runs"], json!([]));
+        let (status, run) = work_call(
+            &w.world,
+            "POST",
+            "/v1/work",
+            json!({"repo":"OpenAgentsInc/aethyr-cpp","issue":63,"land":"pr","engine":"briefed"}),
+            Some(token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{mode:?}: {run}");
+        assert_eq!(run["state"], "waiting");
+        assert_eq!(run["land"], "pr");
+        let path = format!("/v1/work/{}", run["id"].as_str().unwrap());
+        let (status, read) = work_call(&w.world, "GET", &path, json!(null), Some(token)).await;
+        assert_eq!(status, StatusCode::OK, "{read}");
+        assert_eq!(read["id"], run["id"]);
+        let (status, stopped) = work_call(
+            &w.world,
+            "POST",
+            &format!("{path}/cancel"),
+            json!({}),
+            Some(token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{stopped}");
+        let (status, _) = work_call(
+            &w.world,
+            "POST",
+            "/v1/device/sign-out",
+            json!({}),
+            Some(token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = work_call(&w.world, "GET", &path, json!(null), Some(token)).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "revoked app sessions stay refused"
+        );
+    }
+}
