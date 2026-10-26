@@ -1573,6 +1573,14 @@
               "minItems": 3,
               "maxItems": 3
             },
+            "scale": {
+              "description": "Uniform size; absent means the asset's own size.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
             "type": {
               "type": "string",
               "const": "place"

@@ -226,6 +226,9 @@ pub enum Edit {
     Place {
         asset: String,
         position: [f64; 3],
+        /// Uniform size; absent means the asset's own size.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scale: Option<f64>,
     },
     Remove {
         target: String,
@@ -240,7 +243,15 @@ impl Edit {
                 parameter,
                 value,
             } => id(target) && id(parameter) && value.is_finite(),
-            Self::Place { asset, position } => id(asset) && point(position),
+            Self::Place {
+                asset,
+                position,
+                scale,
+            } => {
+                id(asset)
+                    && point(position)
+                    && scale.is_none_or(|s| s.is_finite() && (0.25..=4.0).contains(&s))
+            }
             Self::Remove { target } => id(target),
         }
     }

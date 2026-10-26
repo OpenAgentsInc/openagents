@@ -201,7 +201,7 @@ const request: Spec = {
   t: "window",
   id: "panel-request",
   tool: "request",
-  title: "03 / Kiln",
+  title: "03 / Request",
   close: "close-request",
   children: [
     {
@@ -383,7 +383,7 @@ const history: Spec = {
         {
           t: "more",
           id: "project-import-more",
-          label: "Import an editable or older Kiln save",
+          label: "Import an editable or older saved copy",
           children: [
             {
               t: "static",

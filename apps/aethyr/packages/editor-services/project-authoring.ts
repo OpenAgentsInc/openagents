@@ -305,6 +305,7 @@ export class ProjectAuthoring {
               id: crypto.randomUUID(),
               kind: edit.asset,
               position: edit.position,
+              ...(edit.scale === undefined ? {} : { scale: edit.scale }),
             },
           });
         }

@@ -42,7 +42,7 @@ pub enum RequestControl {
     Map,
     Options,
     Stop,
-    AskKiln,
+    Ask,
     ReviewCandidate,
     ConfirmChange,
     ConfirmPublish,
@@ -50,8 +50,8 @@ pub enum RequestControl {
     CancelReview,
     Option(TutorialOption),
 }
-/// Only exact control names are shortcuts. Natural-language editing stays in Kiln's
-/// bounded project workspace, rather than guessing targets or granting mutations.
+/// Only exact control names are shortcuts. Other requests go to the house request path
+/// (`house_request`), which resolves typed edits rather than guessing targets.
 pub fn request_control(
     text: &str,
     capabilities: &[Capability],
@@ -64,7 +64,9 @@ pub fn request_control(
     let control = match words.as_str() {
         "stop" | "mute" => RequestControl::Stop,
         "cancel" | "cancel change" => RequestControl::CancelReview,
-        "review change" | "review kiln change" => RequestControl::ReviewCandidate,
+        "review change" | "review the change" | "review kiln change" => {
+            RequestControl::ReviewCandidate
+        }
         "confirm change" => RequestControl::ConfirmChange,
         "confirm publish" => RequestControl::ConfirmPublish,
         "cancel publish" => RequestControl::CancelPublish,
@@ -93,7 +95,7 @@ pub fn request_control(
         "change art style" => RequestControl::Option(TutorialOption::ArtStyle),
         "set time" => RequestControl::Option(TutorialOption::Time),
         "day night cycle" => RequestControl::Option(TutorialOption::Cycle),
-        _ => RequestControl::AskKiln,
+        _ => RequestControl::Ask,
     };
     if let RequestControl::Review(action) = &control {
         if action
@@ -144,10 +146,7 @@ mod tests {
             request_control("review change", &[]).unwrap(),
             RequestControl::ReviewCandidate
         );
-        assert_eq!(
-            request_control("yes", &[]).unwrap(),
-            RequestControl::AskKiln
-        );
+        assert_eq!(request_control("yes", &[]).unwrap(), RequestControl::Ask);
         assert_eq!(
             request_control("publish", &[]).unwrap(),
             RequestControl::Option(TutorialOption::Publish)
@@ -175,11 +174,11 @@ mod tests {
         assert!(request_control("undo", &[]).is_err());
         assert_eq!(
             request_control("Do not undo; make the fur rougher", &[]).unwrap(),
-            RequestControl::AskKiln
+            RequestControl::Ask
         );
         assert_eq!(
             request_control("Add five huge pumpkins to my left", &[]).unwrap(),
-            RequestControl::AskKiln
+            RequestControl::Ask
         );
         assert_eq!(
             request_control("show me the options", &[]).unwrap(),
@@ -220,7 +219,7 @@ impl TutorialOption {
         }
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CreatorAsset {
     pub id: String,

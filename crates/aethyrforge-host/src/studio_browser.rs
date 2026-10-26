@@ -116,7 +116,6 @@ struct State {
     input_epoch: u64,
     speech: Option<crate::voice_browser::Speech>,
     speech_event: Rc<RefCell<VecDeque<crate::voice_browser::SpeechEvent>>>,
-    kiln_loading: bool,
     speech_started: f64,
     voice_enabled: bool,
     voice_session: Option<String>,
@@ -329,7 +328,7 @@ impl State {
                             parameter,
                             value,
                         } => format!("{target}: {parameter} = {value}"),
-                        Edit::Place { asset, position } => format!(
+                        Edit::Place { asset, position, .. } => format!(
                             "Place {asset} at {}, {}, {}",
                             position[0], position[1], position[2]
                         ),
@@ -736,9 +735,9 @@ fn selected(rc: &Rc<RefCell<State>>) {
                 .as_str()
                 .or_else(|| value["working"].as_str())
                 .unwrap_or(if value["busy"] == true {
-                    "Kiln is working."
+                    "Working on it…"
                 } else {
-                    "Kiln is ready for review."
+                    "Ready."
                 });
             element("edit-kiln-status").set_text_content(Some(text));
         }
@@ -814,81 +813,229 @@ fn kiln_call(name: &str, arg: Option<&str>) -> Result<JsValue, JsValue> {
         f.call0(&JsValue::NULL)
     }
 }
-async fn ask_kiln(weak: Weak<RefCell<State>>) {
+/// Resolve with `None` when `promise` hasn't settled within `ms`.
+async fn within(promise: Promise, ms: f64) -> Result<Option<JsValue>, JsValue> {
+    if ms <= 0.0 {
+        return Ok(None);
+    }
+    let late = JsValue::from_str("house-request-deadline");
+    let timer = {
+        let late = late.clone();
+        Promise::new(&mut |resolve, _| {
+            let late = late.clone();
+            let done = Closure::once_into_js(move || {
+                let _ = resolve.call1(&JsValue::NULL, &late);
+            });
+            let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(
+                done.unchecked_ref(),
+                ms as i32,
+            );
+        })
+    };
+    let value = JsFuture::from(Promise::race(&js_sys::Array::of2(&promise, &timer))).await?;
+    Ok((value != late).then_some(value))
+}
+/// One decision request for what the local phrases don't cover.
+async fn decide_remotely(
+    request: &house_request::HouseRequest,
+) -> Result<house_request::HouseAnswer, &'static str> {
+    let started = js_sys::Date::now();
+    let left = || HOUSE_REQUEST_DEADLINE_MS - (js_sys::Date::now() - started);
+    let init = RequestInit::new();
+    init.set_method("POST");
+    init.set_credentials(RequestCredentials::SameOrigin);
+    init.set_body(&JsValue::from_str(
+        &serde_json::to_string(request).map_err(|_| house_request::NOT_UNDERSTOOD)?,
+    ));
+    let fetch = Request::new_with_str_and_init(house_request::ENDPOINT, &init)
+        .and_then(|r| {
+            r.headers().set("content-type", "application/json")?;
+            Ok(window().fetch_with_request(&r))
+        })
+        .map_err(|_| house_request::NOT_UNDERSTOOD)?;
+    let Some(response) = within(fetch, left()).await.map_err(|_| OFFLINE)? else {
+        return Err(TOO_SLOW);
+    };
+    let response: Response = response.dyn_into().map_err(|_| OFFLINE)?;
+    let status = response.status();
+    let text = response.text().map_err(|_| OFFLINE)?;
+    let Some(text) = within(text, left()).await.map_err(|_| OFFLINE)? else {
+        return Err(TOO_SLOW);
+    };
+    let text = text.as_string().unwrap_or_default();
+    if status == 429 {
+        return Err("That's a lot of requests at once. Wait a moment and try again.");
+    }
+    if !(200..300).contains(&status) {
+        return Err(house_request::NOT_UNDERSTOOD);
+    }
+    serde_json::from_str(&text).map_err(|_| house_request::NOT_UNDERSTOOD)
+}
+const HOUSE_REQUEST_DEADLINE_MS: f64 = 5_000.0;
+const TOO_SLOW: &str = "Couldn't do that in time. Try 'add three pumpkins to my left'.";
+const OFFLINE: &str = "Couldn't reach the house service. Check your connection and try again.";
+/// A request applied in this session right away. Guests see it too; saving
+/// and publishing still go through sign-in and their own confirmation.
+async fn ask_house(weak: Weak<RefCell<State>>, text: String) {
     let Some(rc) = weak.upgrade() else { return };
-    let (snapshot, epoch) = {
+    let (epoch, context, pose, selected, assets) = {
         let mut s = rc.borrow_mut();
-        if s.kiln_loading {
-            say("Kiln is opening. Try your request again in a moment.");
-            return;
-        }
         s.stop_request();
         let Some(context) = s.input_context() else {
+            say("Wait for the house to open.");
             return;
         };
-        let epoch = s.input_turn.begin(context);
+        let snapshot = s.snapshot();
+        let Ok(checkpoint) =
+            serde_json::from_value::<Checkpoint>(snapshot["status"]["checkpoint"].clone())
+        else {
+            say("Wait for the house to open.");
+            return;
+        };
+        let epoch = s.input_turn.begin(context.clone());
         s.input_epoch = epoch;
-        s.kiln_loading = true;
-        (s.snapshot(), epoch)
+        let assets = house_request::house_assets(
+            &serde_json::from_str::<Vec<CreatorAsset>>(
+                &element("creator-assets").text_content().unwrap_or_default(),
+            )
+            .unwrap_or_default(),
+        );
+        (
+            epoch,
+            context,
+            house_request::Pose::from_checkpoint(&checkpoint),
+            s.selection.as_ref().map(|v| v.id.clone()),
+            assets,
+        )
     };
-    let status = &snapshot["status"];
-    let Ok(view) = serde_json::from_value::<AuthoringView>(status["authoring"].clone()) else {
-        rc.borrow_mut().kiln_loading = false;
-        say("Wait for the editing tools to open.");
+    let current = |rc: &Rc<RefCell<State>>| {
+        let s = rc.borrow();
+        s.input_context()
+            .is_some_and(|c| c == context && s.input_turn.current(epoch, &c))
+    };
+    let answer = match house_request::parse(&text, &assets) {
+        Some(intent) => house_request::answer(&intent, &pose, selected.as_deref()),
+        None => {
+            element("edit-voice-status").set_text_content(Some(if rc.borrow().voice_enabled {
+                "Listening · working on it…"
+            } else {
+                "Working on it…"
+            }));
+            say("Working on it…");
+            decide_remotely(&house_request::HouseRequest {
+                text: text.clone(),
+                assets: assets.clone(),
+                player: pose,
+                selected: selected.clone(),
+            })
+            .await
+        }
+    };
+    if !current(&rc) {
         return;
-    };
-    let selection = status["selection"].clone();
-    let mut view = view;
-    view.materials.retain(|m| {
-        selection["id"]
-            .as_str()
-            .is_some_and(|id| m.objects.iter().any(|s| s == id))
-    });
-    let context =
-        json!({"project":status["project"],"selection":selection,"authoring":view,"allow_world_effect":input("edit-kiln-world").checked(),"assets":serde_json::from_str::<Vec<CreatorAsset>>(&element("creator-assets").text_content().unwrap_or_default()).unwrap_or_default(),"camera":status["checkpoint"]}).to_string();
-    let task: HtmlTextAreaElement = element("edit-kiln-request").unchecked_into();
-    let task = task.value();
-    if task.trim().is_empty() {
-        rc.borrow_mut().kiln_loading = false;
+    }
+    let result = async {
+        let answer = answer.map_err(JsValue::from_str)?;
+        let mut operations = Vec::new();
+        let mut history = Vec::new();
+        for edit in &answer.edits {
+            match edit {
+                house_request::HouseEdit::Place {
+                    asset,
+                    position,
+                    scale,
+                    ..
+                } => {
+                    if !assets.iter().any(|a| &a.id == asset) {
+                        return Err(JsValue::from_str(house_request::NOT_UNDERSTOOD));
+                    }
+                    operations.push(Edit::Place {
+                        asset: asset.clone(),
+                        position: *position,
+                        scale: *scale,
+                    });
+                }
+                house_request::HouseEdit::Remove { target } => operations.push(Edit::Remove {
+                    target: target.clone(),
+                }),
+                house_request::HouseEdit::Undo => history.push(Action::Undo),
+                house_request::HouseEdit::Redo => history.push(Action::Redo),
+            }
+        }
+        if operations.is_empty() == history.is_empty()
+            || operations.len() > house_request::MAX_COUNT
+            || history.len() > 1
+        {
+            return Err(JsValue::from_str(house_request::NOT_UNDERSTOOD));
+        }
+        let action = if operations.is_empty() {
+            history.remove(0)
+        } else {
+            Action::Propose { operations }
+        };
+        preview(&weak, action).await?;
+        Ok::<String, JsValue>(answer.say)
+    }
+    .await;
+    if !current(&rc) {
         return;
     }
     element("edit-voice-status").set_text_content(Some(if rc.borrow().voice_enabled {
-        "Listening · Kiln is processing"
+        "Listening"
     } else {
-        "Processing request · microphone off"
+        "Microphone off"
     }));
-    say("Kiln is working. Say Review change when it is ready, or use the review button.");
-    let run = async {
-        if js_sys::Reflect::get(&window(), &"kilnVerseContext".into())?.is_function() {
-            kiln_call("kilnVerseContext", Some(&context))?;
-        } else {
-            let p = kiln_call("loadVerseKiln", Some(&context))?;
-            JsFuture::from(Promise::resolve(&p)).await?;
-        }
-        let current = rc
-            .borrow()
-            .input_context()
-            .is_some_and(|c| rc.borrow().input_turn.current(epoch, &c));
-        if !current {
-            return Err(JsValue::from_str(
-                "The request stopped. Review the current world before trying again.",
-            ));
-        }
-        // Loading can yield. Reinstall the captured context only after the freshness check.
-        kiln_call("kilnVerseContext", Some(&context))?;
-        kiln_call("kilnAgent", Some(&task))?;
-        Ok::<(), JsValue>(())
+    match result {
+        Ok(words) => say(&words),
+        Err(error) => say(error
+            .as_string()
+            .as_deref()
+            .unwrap_or(house_request::NOT_UNDERSTOOD)),
     }
-    .await;
-    rc.borrow_mut().kiln_loading = false;
-    if let Err(error) = run {
-        element("edit-kiln-status").set_text_content(Some(
-            error
-                .as_string()
-                .as_deref()
-                .unwrap_or("Kiln could not start. Your manual tools are still available."),
-        ));
-    }
+}
+/// Apply `action` in this session with a one-use local permission. The
+/// engine's permit only limits execution inside this tab; saved and
+/// published versions still need a signed-in, server-issued grant.
+async fn preview(weak: &Weak<RefCell<State>>, action: Action) -> Result<(), JsValue> {
+    let rc = weak.upgrade().ok_or(JsValue::NULL)?;
+    let (grant, scope) = {
+        let s = rc.borrow();
+        if s.busy {
+            return Err(JsValue::from_str("Finish the open change first."));
+        }
+        let value = s.snapshot();
+        let project: Project = serde_json::from_value(value["status"]["project"].clone())
+            .map_err(|_| JsValue::from_str("Wait for the house to open."))?;
+        let session = value["session"].as_str().unwrap_or_default().to_string();
+        let release = element("engine-release")
+            .get_attribute("content")
+            .unwrap_or_default();
+        let token: String = (0..8)
+            .map(|_| format!("{:08x}", (js_sys::Math::random() * 4_294_967_295.0) as u32))
+            .collect();
+        let grant = ScopedGrant {
+            token,
+            action_sha256: action_digest(&action)
+                .map_err(|_| JsValue::from_str(house_request::NOT_UNDERSTOOD))?,
+            session,
+            release,
+            draft: Project {
+                id: project.id.clone(),
+                branch: "session-preview".into(),
+                revision: project.revision,
+            },
+            project,
+            capability: action
+                .capability()
+                .ok_or_else(|| JsValue::from_str(house_request::NOT_UNDERSTOOD))?,
+            expires_at: (js_sys::Date::now() / 1000.0) as u64 + 60,
+        };
+        let scope = projects::confirmation_scope(&s)
+            .ok_or_else(|| JsValue::from_str("Wait for the house to open."))?;
+        (grant, scope)
+    };
+    receipt(weak, Action::Authorize { grant }, &scope).await?;
+    receipt(weak, action, &scope).await
 }
 fn start_speech(s: &mut State) {
     let Some(context) = s.input_context() else {
@@ -931,6 +1078,17 @@ fn route_request(rc: &Rc<RefCell<State>>) {
     say("");
     element("voice-heard").set_text_content(Some(&text));
     if projects::personal_request(rc, &text) {
+        return;
+    }
+    if house_request::parse(&text, &[]).is_some_and(|i| {
+        matches!(
+            i,
+            house_request::Intent::Undo
+                | house_request::Intent::Redo
+                | house_request::Intent::RemoveSelected
+        )
+    }) {
+        spawn_local(ask_house(Rc::downgrade(rc), text.clone()));
         return;
     }
     let control = request_control(&text, &capabilities);
@@ -1028,10 +1186,10 @@ fn route_request(rc: &Rc<RefCell<State>>) {
                 say("This option isn't available here yet. Nothing has changed.");
             }
         }
-        Ok(RequestControl::AskKiln) => {
+        Ok(RequestControl::Ask) => {
             if !materials::route(rc, &text) {
                 materials::forget_voice(&mut rc.borrow_mut());
-                spawn_local(ask_kiln(Rc::downgrade(rc)));
+                spawn_local(ask_house(Rc::downgrade(rc), text.clone()));
             }
         }
         Err(message) => say(message),
@@ -1166,7 +1324,6 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         input_epoch: 0,
         speech: None,
         speech_event: Rc::new(RefCell::new(VecDeque::new())),
-        kiln_loading: false,
         speech_started: 0.,
         voice_enabled: false,
         voice_session: None,
@@ -1469,16 +1626,16 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         }
         let result = kiln_call("kilnVerseCandidate", None).and_then(|raw| {
             let value: Value = serde_json::from_str(&raw.as_string().unwrap_or_default())
-                .map_err(|_| JsValue::from_str("Kiln's change is not ready yet."))?;
+                .map_err(|_| JsValue::from_str("The change is not ready yet."))?;
             if value["project"] != rc.borrow().snapshot()["status"]["project"]
                 || value["selection"] != rc.borrow().snapshot()["status"]["selection"]
             {
                 return Err(JsValue::from_str(
-                    "The world changed. Ask Kiln again with the current selection.",
+                    "The world changed. Ask again with the current selection.",
                 ));
             }
             let action: Action = serde_json::from_value(value["action"].clone())
-                .map_err(|_| JsValue::from_str("Kiln's change could not be read."))?;
+                .map_err(|_| JsValue::from_str("The change could not be read."))?;
             if let Action::Draft { source, .. } = &action {
                 let field: HtmlTextAreaElement = element("edit-source").unchecked_into();
                 field.set_value(source);
@@ -1490,7 +1647,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
             say(error
                 .as_string()
                 .as_deref()
-                .unwrap_or("Kiln's change could not be read."));
+                .unwrap_or("The change could not be read."));
         }
     })?;
     for (id, action) in [
@@ -1575,6 +1732,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
                             input("edit-y").value_as_number(),
                             input("edit-z").value_as_number(),
                         ],
+                        scale: None,
                     }],
                 },
             );

@@ -16,6 +16,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+mod house_request;
 mod projects;
 
 const ROOT: &str = "/v1/verse/studio";
@@ -24,6 +25,7 @@ const TTL: u64 = 300;
 pub(crate) fn owns(path: &str) -> bool {
     path == ROOT
         || path.starts_with("/v1/verse/studio/")
+        || path == house_request::PATH
         || path.starts_with("/v1/verse/play/")
         || path.starts_with("/new-lander/play/")
         || path.starts_with("/new-lander/planet/")
@@ -32,6 +34,7 @@ pub(crate) fn owns(path: &str) -> bool {
 }
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(house_request::routes())
         .merge(projects::routes())
         .route("/v1/verse/studio/session", get(session))
         .route("/v1/verse/studio/grants", post(issue))

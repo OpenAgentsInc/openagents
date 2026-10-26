@@ -26,7 +26,16 @@ pub(crate) const COOKIE: &str = "oa_preview";
 /// The preview lasts 30 days on a device.
 const COOKIE_AGE: u64 = 30 * 24 * 3600;
 /// Addresses only the preview reaches: each one, and everything under it.
-const GATED: [&str; 5] = ["/beta", "/playtest", "/waitlist", "/new-lander", "/landernew"];
+/// The Haunted House's request endpoint is gated with the house, so only a
+/// visitor holding the preview cookie can spend decision-model calls.
+const GATED: [&str; 6] = [
+    "/beta",
+    "/playtest",
+    "/waitlist",
+    "/new-lander",
+    "/landernew",
+    "/v1/verse/house/request",
+];
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/preview/{key}", get(open))
@@ -93,10 +102,27 @@ mod tests {
 
     #[test]
     fn only_the_preview_addresses_are_gated() {
-        for path in ["/beta", "/playtest", "/playtest/house", "/waitlist", "/new-lander/house", "/new-lander-house"] {
+        for path in [
+            "/beta",
+            "/playtest",
+            "/playtest/house",
+            "/waitlist",
+            "/new-lander/house",
+            "/new-lander-house",
+            aethyrforge_host::house_request::ENDPOINT,
+        ] {
             assert!(gated(path), "{path}");
         }
-        for path in ["/", "/home", "/playtesting", "/betas", "/docs", "/preview/x"] {
+        for path in [
+            "/",
+            "/home",
+            "/playtesting",
+            "/betas",
+            "/docs",
+            "/preview/x",
+            "/v1/verse/studio/session",
+            "/v1/verse/house/requests",
+        ] {
             assert!(!gated(path), "{path}");
         }
     }

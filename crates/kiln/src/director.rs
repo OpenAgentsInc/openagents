@@ -229,12 +229,58 @@ fn target_scope(text: &str) -> &'static str {
     "unsupported"
 }
 
+/// The decision client. OpenRouter answers first when its key is set, then
+/// the Vercel AI Gateway, then TypeSafe direct; with neither fallback key,
+/// TypeSafe direct alone (`TYPESAFE_API_KEY`). Keys come from the server's
+/// environment and are never logged.
 pub fn client() -> jev::Result<Client> {
-    Client::new(Config::new().timeout(DEADLINE).retry(RetryPolicy {
+    let retry = RetryPolicy {
         max_retries: 0,
         budget: Some(DEADLINE),
         ..Default::default()
-    }))
+    };
+    let config = Config::new().timeout(DEADLINE).retry(retry);
+    let key = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+    };
+    let mut doors = Vec::new();
+    if let Some(k) = key(jev::doors::OPENROUTER_KEY_VAR) {
+        doors.push(jev::doors::Door::new(
+            jev::doors::OPENROUTER_DOOR,
+            jev::doors::OPENROUTER_URL,
+            jev::doors::Naming::OpenRouter,
+            jev::ApiKey::new(k),
+        ));
+    }
+    if let Some(k) = key(jev::doors::GATEWAY_KEY_VAR) {
+        doors.push(jev::doors::Door::new(
+            jev::doors::GATEWAY_DOOR,
+            jev::doors::GATEWAY_URL,
+            jev::doors::Naming::Gateway,
+            jev::ApiKey::new(k),
+        ));
+    }
+    if doors.is_empty() {
+        return Client::new(config);
+    }
+    if let Some(k) = key("TYPESAFE_API_KEY") {
+        doors.push(jev::doors::Door::new(
+            jev::doors::TYPESAFE_DOOR,
+            jev::doors::TYPESAFE_DOOR,
+            jev::doors::Naming::Canonical,
+            jev::ApiKey::new(k),
+        ));
+    }
+    let primary = doors.remove(0);
+    let failover = jev::doors::Failover::new(primary, doors);
+    Client::new(
+        config
+            .exchange(jev::doors::exchange(failover))
+            .base_url(jev::doors::TYPESAFE_DOOR),
+    )
 }
 
 fn chosen(
