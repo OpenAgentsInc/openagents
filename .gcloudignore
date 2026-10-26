@@ -17,6 +17,10 @@
 /apps/openagents/*
 !/apps/openagents/Cargo.toml
 !/apps/openagents/crates/
+# The Hand Duel and Everglade crates depend on the hands crate by path.
+!/apps/openagents/web/
+/apps/openagents/web/*
+!/apps/openagents/web/hands/
 !/questions/
 !/docs/
 /docs/*

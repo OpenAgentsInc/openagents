@@ -22,6 +22,7 @@ COPY tests ./tests
 COPY vendor ./vendor
 COPY apps/openagents/Cargo.toml ./apps/openagents/Cargo.toml
 COPY apps/openagents/crates ./apps/openagents/crates
+COPY apps/openagents/web/hands ./apps/openagents/web/hands
 COPY questions ./questions
 COPY docs/protocol/fixtures ./docs/protocol/fixtures
 # Make real sources newer than the dependency skeleton.
