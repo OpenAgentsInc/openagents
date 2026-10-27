@@ -40,8 +40,6 @@ pub struct Access {
     #[prost(message, optional, tag = "2")]
     pub authorization: ::core::option::Option<super::super::common::v1::SignedEvent>,
 }
-/// Existing coder_access::Pending JSON, retained byte-for-byte for exact retries.
-/// This is a named compatibility record, never a free-form executable payload.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TaskScope {
     #[prost(string, tag = "1")]
@@ -102,6 +100,8 @@ pub struct TaskBinding {
     #[prost(bool, tag = "8")]
     pub cancel_sent: bool,
 }
+/// Existing coder_access::Pending JSON, retained byte-for-byte for exact retries.
+/// This is a named compatibility record, never a free-form executable payload.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PreparedCall {
     #[prost(string, tag = "1")]
@@ -120,7 +120,7 @@ pub struct PreparedCall {
     pub cursor: ::core::option::Option<TaskCursor>,
 }
 /// Native bridge requests; credentials are separate Keychain-owned arguments.
-/// Exactly the fields used by operation are accepted. No arbitrary HOST RPC.
+/// Only pair/reach/probe and task start/read/cancel are exposed; no generic RPC.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AgentRequest {
     #[prost(uint32, tag = "1")]

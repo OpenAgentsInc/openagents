@@ -39,8 +39,6 @@ typedef struct _openagents_host_v1_Access {
     pb_callback_t authorization;
 } openagents_host_v1_Access;
 
-/* Existing coder_access::Pending JSON, retained byte-for-byte for exact retries.
- This is a named compatibility record, never a free-form executable payload. */
 typedef struct _openagents_host_v1_TaskScope {
     pb_callback_t workspace;
     pb_callback_t task;
@@ -77,6 +75,8 @@ typedef struct _openagents_host_v1_TaskBinding {
     pb_callback_t cancel_sent;
 } openagents_host_v1_TaskBinding;
 
+/* Existing coder_access::Pending JSON, retained byte-for-byte for exact retries.
+ This is a named compatibility record, never a free-form executable payload. */
 typedef struct _openagents_host_v1_PreparedCall {
     pb_callback_t pending_json;
     pb_callback_t operation;
@@ -88,7 +88,7 @@ typedef struct _openagents_host_v1_PreparedCall {
 } openagents_host_v1_PreparedCall;
 
 /* Native bridge requests; credentials are separate Keychain-owned arguments.
- Exactly the fields used by operation are accepted. No arbitrary HOST RPC. */
+ Only pair/reach/probe and task start/read/cancel are exposed; no generic RPC. */
 typedef struct _openagents_host_v1_AgentRequest {
     pb_callback_t schema;
     pb_callback_t operation;

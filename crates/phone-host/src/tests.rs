@@ -200,3 +200,40 @@ fn shared_boundary_rejects_unknown_nested_fields_and_oversized_strings() {
         Err("unknown semantic field")
     );
 }
+
+#[test]
+fn continuation_pins_the_native_cursor_revision() {
+    let run = "a".repeat(64);
+    let cursor = wire::TaskCursor {
+        scope: Some(wire::TaskScope {
+            workspace: "aethyr".into(),
+            task: run.clone(),
+            revision: 4,
+            attempt: Some(1),
+            intent_digest: format!("sha256:{}", "b".repeat(64)),
+        }),
+        source: "trace:1".into(),
+        source_digest: format!("sha256:{}", "c".repeat(64)),
+        source_bytes: 100,
+        next_step: 2,
+        prefix_digest: format!("sha256:{}", "d".repeat(64)),
+    };
+    let q = wire::AgentRequest {
+        operation: "read".into(),
+        phone_run: run.clone(),
+        remote_task: run,
+        workspace: "aethyr".into(),
+        cursor: Some(cursor),
+        ..Default::default()
+    };
+    let Operation::ReadTask { query } = operation(&q, &"b".repeat(64)).unwrap() else {
+        panic!()
+    };
+    query.validate().unwrap();
+    assert_eq!(query.revision, Some(4));
+}
+#[test]
+fn native_microcoder_generated_reply_is_preserved() {
+    let step = json!({"source":"system","message":"Microcoder loop observation.","extra":{"microcoder":{"event":{"event":"generated","generated":{"action":{"Ok":{"reply":"Read the real C ABI.","finished":true}}}}}}});
+    assert_eq!(agent_text(&step), Some("Read the real C ABI."));
+}

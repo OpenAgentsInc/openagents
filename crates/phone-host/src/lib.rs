@@ -297,7 +297,11 @@ fn operation(q: &wire::AgentRequest, host: &str) -> Result<Operation> {
             query: coder_access::task_read::PageQuery {
                 workspace: q.workspace.clone(),
                 task: expected,
-                revision: None,
+                revision: q
+                    .cursor
+                    .as_ref()
+                    .and_then(|c| c.scope.as_ref())
+                    .map(|s| s.revision),
                 cursor: q.cursor.clone().map(native_cursor).transpose()?,
                 limit: 16,
             },
