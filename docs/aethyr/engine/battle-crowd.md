@@ -384,10 +384,14 @@ agent's render lab ran, so the participation runs waited for it to finish.
 
 | Build | Overview RGBA SHA-256 | Orbit | Dolly |
 | --- | --- | --- | --- |
-| openagents `18fda333b7`, run 1 | `13ca259b17f37f08…` | `4aa22c84156fa997…` | `e0106e4c222c4502…` |
-| openagents `18fda333b7`, run 2 | same | same | same |
+| openagents `6e61a0018c`, run 1 | `13ca259b17f37f08…` | `4aa22c84156fa997…` | `e0106e4c222c4502…` |
+| openagents `6e61a0018c`, run 2 | same | same | same |
 | Aethyrforge `f42c02c` + the hold, run 1 | same | same | same |
 | Aethyrforge `f42c02c` + the hold, run 2 | same | same | same |
+
+The openagents captures ran from that change as first committed
+(`18fda333b7`, clean tree), before it was rebased onto main; the rebase only
+brought in native render-lab tools, no web app or battle file.
 
 - Every capture repeated byte for byte inside its own run, and every
   `--compare` printed `MATCH` for all three views: 0 of 921,600 pixels
@@ -397,11 +401,11 @@ agent's render lab ran, so the participation runs waited for it to finish.
   (openagents) and `41c9d71c…` (Aethyrforge), and openagents runs the silhouette
   threshold through Detail (at Detail 1, the same 8 px).
 - Aethyrforge has no hold, so its checkout got `1dfb75838e1` and
-  `18fda333b7` applied with the [provenance](../provenance.md) path map. One
+  `6e61a0018c` applied with the [provenance](../provenance.md) path map. One
   hunk of `battle-crowd.ts` (the hold constants) was placed by hand, because
   the Detail lines around it differ. Aethyrforge's battle tests pass with it
   (51 of 51).
-- Before `18fda333b7`, the orbit view was not repeatable even inside one run:
+- Before `6e61a0018c`, the orbit view was not repeatable even inside one run:
   successive captures of the same held frame differed in 15–25 isolated
   pixels (up to 51/255), where distant fighters tie in depth. See
   [draw order](#fixed-tick-capture).
@@ -863,7 +867,7 @@ bytes. For a view whose images differ, it reports the number of differing
 pixels and the largest channel difference.
 
 A build that lacks the hold, such as Aethyrforge `f42c02c`, cannot take part
-directly. Apply `1dfb75838e1` and `18fda333b7` to that checkout first, so both
+directly. Apply `1dfb75838e1` and `6e61a0018c` to that checkout first, so both
 builds freeze the same moment and draw it in the same order. The paths map
 per [provenance](../provenance.md). The comparison against `f42c02c` matched
 exactly; see [the 4080 results](#fixed-tick-comparison-and-60-hz-cage-measured-on-coderos-2026-10-26).
