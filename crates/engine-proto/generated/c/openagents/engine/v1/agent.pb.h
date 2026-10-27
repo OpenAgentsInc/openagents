@@ -48,6 +48,7 @@ typedef struct _openagents_engine_v1_AgentTask {
     pb_callback_t connection;
     pb_callback_t result;
     pb_callback_t exit;
+    pb_callback_t transport; /* host-v1; empty records retain their legacy SSH reader. */
 } openagents_engine_v1_AgentTask;
 
 typedef struct _openagents_engine_v1_AgentOperation {
@@ -80,6 +81,8 @@ typedef struct _openagents_engine_v1_AgentDispatch {
     pb_callback_t objective;
     pb_callback_t write;
     pb_callback_t after;
+    pb_callback_t transport;
+    pb_callback_t admitted;
 } openagents_engine_v1_AgentDispatch;
 
 typedef struct _openagents_engine_v1_AgentProgress {
@@ -106,17 +109,17 @@ extern "C" {
 /* Initializer values for message structs */
 #define openagents_engine_v1_ToolActivity_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentEvent_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
-#define openagents_engine_v1_AgentTask_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define openagents_engine_v1_AgentTask_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentOperation_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentReply_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
-#define openagents_engine_v1_AgentDispatch_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define openagents_engine_v1_AgentDispatch_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentProgress_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_ToolActivity_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentEvent_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
-#define openagents_engine_v1_AgentTask_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define openagents_engine_v1_AgentTask_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentOperation_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentReply_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
-#define openagents_engine_v1_AgentDispatch_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define openagents_engine_v1_AgentDispatch_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define openagents_engine_v1_AgentProgress_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 
 /* Field tags (for use in manual encoding/decoding) */
@@ -148,6 +151,7 @@ extern "C" {
 #define openagents_engine_v1_AgentTask_connection_tag 12
 #define openagents_engine_v1_AgentTask_result_tag 13
 #define openagents_engine_v1_AgentTask_exit_tag  14
+#define openagents_engine_v1_AgentTask_transport_tag 15
 #define openagents_engine_v1_AgentOperation_op_tag 1
 #define openagents_engine_v1_AgentOperation_id_tag 2
 #define openagents_engine_v1_AgentOperation_target_tag 3
@@ -171,6 +175,8 @@ extern "C" {
 #define openagents_engine_v1_AgentDispatch_objective_tag 5
 #define openagents_engine_v1_AgentDispatch_write_tag 6
 #define openagents_engine_v1_AgentDispatch_after_tag 7
+#define openagents_engine_v1_AgentDispatch_transport_tag 8
+#define openagents_engine_v1_AgentDispatch_admitted_tag 9
 #define openagents_engine_v1_AgentProgress_v_tag 1
 #define openagents_engine_v1_AgentProgress_run_tag 2
 #define openagents_engine_v1_AgentProgress_state_tag 3
@@ -223,7 +229,8 @@ X(a, CALLBACK, REPEATED, MESSAGE,  events,           10) \
 X(a, CALLBACK, SINGULAR, BOOL,     history_truncated,  11) \
 X(a, CALLBACK, SINGULAR, STRING,   connection,       12) \
 X(a, CALLBACK, SINGULAR, STRING,   result,           13) \
-X(a, CALLBACK, OPTIONAL, SINT32,   exit,             14)
+X(a, CALLBACK, OPTIONAL, SINT32,   exit,             14) \
+X(a, CALLBACK, SINGULAR, STRING,   transport,        15)
 #define openagents_engine_v1_AgentTask_CALLBACK pb_default_field_callback
 #define openagents_engine_v1_AgentTask_DEFAULT NULL
 #define openagents_engine_v1_AgentTask_events_MSGTYPE openagents_engine_v1_AgentEvent
@@ -261,7 +268,9 @@ X(a, CALLBACK, SINGULAR, STRING,   id,                3) \
 X(a, CALLBACK, SINGULAR, STRING,   target,            4) \
 X(a, CALLBACK, SINGULAR, STRING,   objective,         5) \
 X(a, CALLBACK, SINGULAR, BOOL,     write,             6) \
-X(a, CALLBACK, SINGULAR, UINT64,   after,             7)
+X(a, CALLBACK, SINGULAR, UINT64,   after,             7) \
+X(a, CALLBACK, SINGULAR, STRING,   transport,         8) \
+X(a, CALLBACK, SINGULAR, BOOL,     admitted,          9)
 #define openagents_engine_v1_AgentDispatch_CALLBACK pb_default_field_callback
 #define openagents_engine_v1_AgentDispatch_DEFAULT NULL
 

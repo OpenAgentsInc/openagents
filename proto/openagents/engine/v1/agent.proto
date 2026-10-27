@@ -37,6 +37,7 @@ message AgentTask {
   string connection = 12;
   string result = 13;
   optional sint32 exit = 14;
+  string transport = 15; // host-v1; empty records retain their legacy SSH reader.
 }
 message AgentOperation {
   string op = 1; // begin, decision, dispatch, cancel, offline, observe.
@@ -66,6 +67,8 @@ message AgentDispatch {
   string objective = 5;
   bool write = 6;
   uint64 after = 7;
+  string transport = 8;
+  bool admitted = 9;
 }
 message AgentProgress {
   uint32 v = 1;

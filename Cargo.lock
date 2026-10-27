@@ -14946,6 +14946,7 @@ name = "phone-host"
 version = "1.0.0"
 dependencies = [
  "coder-access",
+ "coder-connect",
  "coder-host",
  "coder-host-wire",
  "coder-reach",

@@ -83,11 +83,13 @@ checks protect those messages as well as the original v1 scene contract.
 ## Phone agent contracts
 
 The top-level `proto/openagents/engine/v1/agent.proto` defines durable tasks,
-local coordinator operations, tool activity, SSH dispatch and progress pages.
+local coordinator operations, tool activity, dispatch and progress pages.
 Swift uses Aethyr's C++/Nanopb codec through a narrow C ABI rather than adding
 a second protobuf runtime to the app. Linux uses the generated Python module
 and `engine_agent` envelope helper. Existing SSH authentication and Codex
-protocols are unchanged.
+protocols are unchanged. New phone tasks use the native HOST SDK described in
+[`phone-host`](../phone-host/README.md); pre-HOST task records keep their original
+SSH reader/cancellation path, with no new legacy submissions.
 
 New runtime contracts use Nanopb callbacks so large repeated messages are not
 allocated at their maximum size. `tools/contracts.py` derives C++ presentation

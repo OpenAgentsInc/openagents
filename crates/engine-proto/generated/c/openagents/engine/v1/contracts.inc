@@ -63,6 +63,7 @@ static const WireFieldDef fields_openagents_engine_v1_AgentTask[] = {
   {12, "connection", 9, false, 32, 100, "", false},
   {13, "result", 9, false, 16000, 100, "", false},
   {14, "exit", 17, false, 65536, 100, "", true},
+  {15, "transport", 9, false, 32, 100, "", false},
 };
 static const WireFieldDef fields_openagents_engine_v1_AgentOperation[] = {
   {1, "op", 9, false, 32, 100, "", false},
@@ -92,6 +93,8 @@ static const WireFieldDef fields_openagents_engine_v1_AgentDispatch[] = {
   {5, "objective", 9, false, 4000, 100, "", false},
   {6, "write", 8, false, 65536, 100, "", false},
   {7, "after", 4, false, 65536, 100, "", false},
+  {8, "transport", 9, false, 32, 100, "", false},
+  {9, "admitted", 8, false, 65536, 100, "", false},
 };
 static const WireFieldDef fields_openagents_engine_v1_AgentProgress[] = {
   {1, "v", 13, false, 65536, 100, "", false},
@@ -541,10 +544,10 @@ static const WireMessageDef wire_messages[] = {
   {"openagents.common.v1.Refusal", &openagents_common_v1_Refusal_msg, sizeof(openagents_common_v1_Refusal), fields_openagents_common_v1_Refusal, 5},
   {"openagents.engine.v1.ToolActivity", &openagents_engine_v1_ToolActivity_msg, sizeof(openagents_engine_v1_ToolActivity), fields_openagents_engine_v1_ToolActivity, 8},
   {"openagents.engine.v1.AgentEvent", &openagents_engine_v1_AgentEvent_msg, sizeof(openagents_engine_v1_AgentEvent), fields_openagents_engine_v1_AgentEvent, 6},
-  {"openagents.engine.v1.AgentTask", &openagents_engine_v1_AgentTask_msg, sizeof(openagents_engine_v1_AgentTask), fields_openagents_engine_v1_AgentTask, 14},
+  {"openagents.engine.v1.AgentTask", &openagents_engine_v1_AgentTask_msg, sizeof(openagents_engine_v1_AgentTask), fields_openagents_engine_v1_AgentTask, 15},
   {"openagents.engine.v1.AgentOperation", &openagents_engine_v1_AgentOperation_msg, sizeof(openagents_engine_v1_AgentOperation), fields_openagents_engine_v1_AgentOperation, 13},
   {"openagents.engine.v1.AgentReply", &openagents_engine_v1_AgentReply_msg, sizeof(openagents_engine_v1_AgentReply), fields_openagents_engine_v1_AgentReply, 3},
-  {"openagents.engine.v1.AgentDispatch", &openagents_engine_v1_AgentDispatch_msg, sizeof(openagents_engine_v1_AgentDispatch), fields_openagents_engine_v1_AgentDispatch, 7},
+  {"openagents.engine.v1.AgentDispatch", &openagents_engine_v1_AgentDispatch_msg, sizeof(openagents_engine_v1_AgentDispatch), fields_openagents_engine_v1_AgentDispatch, 9},
   {"openagents.engine.v1.AgentProgress", &openagents_engine_v1_AgentProgress_msg, sizeof(openagents_engine_v1_AgentProgress), fields_openagents_engine_v1_AgentProgress, 13},
   {"openagents.engine.v1.RequiredAssetBuffer", &openagents_engine_v1_RequiredAssetBuffer_msg, sizeof(openagents_engine_v1_RequiredAssetBuffer), fields_openagents_engine_v1_RequiredAssetBuffer, 2},
   {"openagents.engine.v1.RequiredAssetFile", &openagents_engine_v1_RequiredAssetFile_msg, sizeof(openagents_engine_v1_RequiredAssetFile), fields_openagents_engine_v1_RequiredAssetFile, 5},

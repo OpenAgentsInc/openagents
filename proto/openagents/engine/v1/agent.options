@@ -20,3 +20,4 @@
 *.files max_count:40 max_length:512
 *.base max_length:64
 *.head max_length:64
+*.transport max_length:32

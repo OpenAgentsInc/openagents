@@ -21,3 +21,5 @@ sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "time", "net", "io-util"] }
 [lints]
 workspace = true
+[dev-dependencies]
+coder-connect = { path = "../coder-connect", default-features = false }

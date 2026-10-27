@@ -69,6 +69,9 @@ pub struct AgentTask {
     pub result: ::prost::alloc::string::String,
     #[prost(sint32, optional, tag = "14")]
     pub exit: ::core::option::Option<i32>,
+    /// host-v1; empty records retain their legacy SSH reader.
+    #[prost(string, tag = "15")]
+    pub transport: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AgentOperation {
@@ -127,6 +130,10 @@ pub struct AgentDispatch {
     pub write: bool,
     #[prost(uint64, tag = "7")]
     pub after: u64,
+    #[prost(string, tag = "8")]
+    pub transport: ::prost::alloc::string::String,
+    #[prost(bool, tag = "9")]
+    pub admitted: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AgentProgress {

@@ -12,7 +12,7 @@ PB_BIND(openagents_engine_v1_ToolActivity, openagents_engine_v1_ToolActivity, AU
 PB_BIND(openagents_engine_v1_AgentEvent, openagents_engine_v1_AgentEvent, AUTO)
 
 
-PB_BIND(openagents_engine_v1_AgentTask, openagents_engine_v1_AgentTask, AUTO)
+PB_BIND(openagents_engine_v1_AgentTask, openagents_engine_v1_AgentTask, 2)
 
 
 PB_BIND(openagents_engine_v1_AgentOperation, openagents_engine_v1_AgentOperation, AUTO)

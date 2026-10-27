@@ -2,7 +2,7 @@
 
 This top-level directory is the canonical source for shared OpenAgents/Aethyr
 Protobuf contracts. Schemas live by versioned package rather than implementation
-language. The package is `openagents.engine.v1`:
+language. Engine contracts use `openagents.engine.v1`:
 
 | Schema | Shared contract |
 | --- | --- |
@@ -12,6 +12,19 @@ language. The package is `openagents.engine.v1`:
 | [control.proto](openagents/engine/v1/control.proto) | Engine controls, capabilities, request identities, events and receipts |
 | [state.proto](openagents/engine/v1/state.proto) | Registered component fields, snapshots, entity references/order and revision-fenced deltas |
 | [assets.proto](openagents/engine/v1/assets.proto) | Consumer asset profiles; [profiles.json](openagents/engine/v1/profiles.json) is the declarative input |
+
+Additional packages share the existing Nostr host boundary:
+
+| Package/schema | Shared contract |
+| --- | --- |
+| `openagents.common.v1` / [refs.proto](openagents/common/v1/refs.proto) | Event/artifact/source references, original signed JSON and domain-qualified refusals |
+| `openagents.host.v1` / [host.proto](openagents/host/v1/host.proto) | Verified access, task binding/cursor and phone SDK operations |
+| `openagents.reach.v1` / [reach.proto](openagents/reach/v1/reach.proto) | Authenticated presence, compatibility, hints and telemetry |
+
+These are typed native/interchange boundaries, not new Nostr event formats.
+Original NIP-01 signed JSON and NIP-HOST/REACH validation remain authoritative.
+[`phone-host`](../crates/phone-host/README.md) reuses the existing Rust clients
+for the Aethyr phone; its native header is included in the pinned export.
 
 Adjacent `.options` files define C/C++ allocation and shared byte/count limits.
 Profiles generate a checked-in binary and a compiled C++ byte image, so an

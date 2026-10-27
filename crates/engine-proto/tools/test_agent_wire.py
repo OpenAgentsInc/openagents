@@ -7,7 +7,7 @@ from openagents.engine.v1.agent_pb2 import AgentDispatch, AgentProgress
 
 class AgentWireTest(unittest.TestCase):
     def test_request_and_progress_preserve_identity_cursor_and_actual_tools(self):
-        q=dict(v=1,op='start',id='task00001',target='peer00001',objective='Inspect',write=False,after=0)
+        q=dict(v=1,op='start',id='task00001',target='peer00001',objective='Inspect',write=False,after=0,transport='host-v1',admitted=False)
         self.assertEqual(decode(encode(q,AgentDispatch)),q)
         p=dict(v=1,run=q['id'],state='succeeded',seq=2,exit=0,events=[dict(seq=2,kind='tool',tool=dict(id='actual-call',state='failed',exit=7,input='run',output='actual error'))])
         result=decode(encode(p),AgentProgress)

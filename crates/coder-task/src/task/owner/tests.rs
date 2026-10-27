@@ -1,6 +1,9 @@
 use super::*;
 
 pub(super) fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Grant) {
+    fixture_with_mode(None)
+}
+fn fixture_with_mode(read_only: Option<bool>) -> (tempfile::TempDir, tempfile::TempDir, Grant) {
     let root = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let repository = workspace.path().join("repo");
@@ -52,7 +55,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Grant) {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
-                    read_only: None,
+                    read_only,
                     adapter: "bounded-command".into(),
                     model: None,
                 },
@@ -1287,4 +1290,15 @@ async fn one_hashed_readonly_input_does_not_expose_its_neighbors_or_allow_writes
     assert!(trace.contains("readonly_input"));
     assert!(trace.contains("approved-review"));
     assert!(!trace.contains("private-neighbor"));
+}
+
+#[tokio::test]
+async fn a_read_only_intent_refuses_a_writing_owner_grant() {
+    let (root, _workspace, grant) = fixture_with_mode(Some(true));
+    let dir = root.path().join("store");
+    assert!(grant.write_workspace);
+    let error = execute(&dir, &serde_json::to_vec(&grant).unwrap()).await.unwrap_err();
+    assert!(matches!(error, Error::InvalidCommand(_)));
+    let task = Store::open(&dir).unwrap().show(&grant.task_id).unwrap();
+    assert!(task.run.is_none());
 }

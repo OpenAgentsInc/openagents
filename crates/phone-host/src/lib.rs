@@ -168,7 +168,7 @@ fn access(q: &wire::AgentRequest, key: &SecretKey) -> Result<Access> {
     )
     .map_err(|_| "Invalid signed grant")?;
     let access = Access::from_authorization(event, key, &g.host, now()?, RelayPolicy::Production)
-        .map_err(|e| e.to_string())?;
+        .map_err(Failure::host)?;
     if project_access(&access)? != *a {
         return Err("Grant projection differs from its signed original".into());
     };
@@ -232,6 +232,14 @@ fn task_id(host: &str, run: &str) -> Result<String> {
     {
         return Err("Invalid phone task identity".into());
     }
+    if run.len() == 64
+        && run
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Ok(run.into());
+    }
+    // Compatibility for UUID-based phone records created before HOST v1.
     Ok(format!(
         "{:x}",
         Sha256::digest(format!("openagents.phone-task.v1\0{host}\0{run}"))
@@ -309,13 +317,26 @@ fn base() -> wire::AgentReply {
     }
 }
 async fn reach(device: &coder_host::client::Device) -> Result<coder_host::client::Reach> {
-    let r = coder_host::client::fetch_reach(device, device.relay())
-        .await
-        .map_err(|e| e.to_string())?;
-    r.presence
-        .judge(now()?, Freshness::default())
-        .map_err(|e| e.to_string())?;
-    Ok(r)
+    for attempt in 0..5 {
+        match coder_host::client::fetch_reach(device, device.relay()).await {
+            Ok(r) => {
+                r.presence
+                    .judge(now()?, Freshness::default())
+                    .map_err(|e| e.to_string())?;
+                return Ok(r);
+            }
+            Err(coder_host::Error::Reach(error))
+                if error.code == coder_reach::Refusal::Stale && attempt < 4 =>
+            {
+                if attempt == 0 {
+                    let _ = coder_host::client::nudge(device, device.relay()).await;
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Err(error) => return Err(error.to_string().into()),
+        }
+    }
+    Err("The host has not published current signed presence".into())
 }
 async fn direct(
     client: &Client,
@@ -324,7 +345,7 @@ async fn direct(
     pending: &Pending,
     r: &coder_host::client::Reach,
     stream: Stream,
-) -> Result<Outcome> {
+) -> Result<(Outcome, Option<Access>)> {
     let config = channel::ClientConfig {
         device: *key,
         host: access.grant.host.clone(),
@@ -342,6 +363,7 @@ async fn direct(
     {
         channel.send(&fragment).await.map_err(|e| e.to_string())?;
     }
+    let mut renewed: Option<Access> = None;
     let mut assembler = coder_host_wire::Assembler::default();
     for _ in 0..128 {
         let Some(frame) = channel.recv().await.map_err(|e| e.to_string())? else {
@@ -354,12 +376,22 @@ async fn direct(
                 coder_host_wire::ToDevice::Answer(event) => {
                     return client
                         .verify_reply(pending, &event, now()?)
+                        .map(|outcome| (outcome, renewed))
                         .map_err(Failure::host);
                 }
                 coder_host_wire::ToDevice::Closing(_) => {
                     return Err("Host revoked or closed this channel".into());
                 }
-                coder_host_wire::ToDevice::Renewal(_) | coder_host_wire::ToDevice::Pong(_) => {}
+                coder_host_wire::ToDevice::Renewal(event) => {
+                    renewed = Some(
+                        renewed
+                            .as_ref()
+                            .unwrap_or(access)
+                            .renewed(event, key, now()?, RelayPolicy::Production)
+                            .map_err(Failure::host)?,
+                    );
+                }
+                coder_host_wire::ToDevice::Pong(_) => {}
                 _ => return Err("Unexpected host message".into()),
             }
         }
@@ -372,6 +404,20 @@ fn cut(value: &str, n: usize) -> String {
         end -= 1
     }
     value[..end].into()
+}
+// The native Microcoder owner keeps generated replies as ATIF system evidence;
+// ordinary agents use message. Both come from the signed original task page.
+fn agent_text(step: &serde_json::Value) -> Option<&str> {
+    if step["source"] == "agent" && step.get("tool_calls").is_none() {
+        return step["message"].as_str().filter(|s| !s.is_empty());
+    }
+    let event = &step["extra"]["microcoder"]["event"];
+    if event["event"] == "generated" {
+        return event["generated"]["action"]["Ok"]["reply"]
+            .as_str()
+            .filter(|s| !s.is_empty());
+    }
+    None
 }
 fn events(page: &coder_access::task_read::Page, after: u64) -> Vec<AgentEvent> {
     let mut out = Vec::new();
@@ -390,13 +436,14 @@ fn events(page: &coder_access::task_read::Page, after: u64) -> Vec<AgentEvent> {
             }
             coder_access::task_read::Step::Original { index, step } => {
                 let seq = index * 128 + 1;
-                let text = step["message"].as_str().unwrap_or("");
+                let generated = agent_text(step);
+                let text = generated.or_else(|| step["message"].as_str()).unwrap_or("");
                 if seq > after && !text.is_empty() {
                     out.push(AgentEvent {
                         seq,
                         kind: if step["source"] == "user" {
                             "user"
-                        } else if step["source"] == "agent" {
+                        } else if generated.is_some() || step["source"] == "agent" {
                             "agent_message"
                         } else {
                             "status"
@@ -430,7 +477,12 @@ fn events(page: &coder_access::task_read::Page, after: u64) -> Vec<AgentEvent> {
                             kind: "tool".into(),
                             tool: Some(ToolActivity {
                                 id: cut(id, 128),
-                                kind: "command".into(),
+                                kind: if call["function_name"] == "shell" {
+                                    "command"
+                                } else {
+                                    "tool"
+                                }
+                                .into(),
                                 name: cut(call["function_name"].as_str().unwrap_or("Tool"), 80),
                                 state: match result.and_then(|r| r["extra"]["status"].as_str()) {
                                     Some("completed") => "succeeded",
@@ -507,11 +559,15 @@ fn progress(outcome: Outcome, p: &wire::PreparedCall) -> Result<wire::AgentReply
                     }
                     Phase::Failed => "failed",
                     Phase::Cancelled => "cancelled",
+                    Phase::Unknown => "unknown",
                     _ => "running",
                 }
                 .into();
             }
-            if progress.state != "running" {
+            if matches!(
+                progress.state.as_str(),
+                "succeeded" | "failed" | "cancelled"
+            ) {
                 progress.exit = Some(if progress.state == "succeeded" { 0 } else { -1 });
                 progress.result = page
                     .evidence
@@ -519,14 +575,13 @@ fn progress(outcome: Outcome, p: &wire::PreparedCall) -> Result<wire::AgentReply
                     .iter()
                     .rev()
                     .find_map(|step| match step {
-                        coder_access::task_read::Step::Original { step, .. }
-                            if step["source"] == "agent" && step.get("tool_calls").is_none() =>
-                        {
-                            step["message"].as_str()
-                        }
+                        coder_access::task_read::Step::Original { step, .. } => agent_text(step),
                         _ => None,
                     })
-                    .map(|s| cut(s, 32768))
+                    .map(|s| {
+                        progress.result_truncated = s.len() > 16000;
+                        cut(s, 16000)
+                    })
                     .unwrap_or_else(|| {
                         format!(
                             "Host task {} · execution {}",
@@ -564,6 +619,32 @@ pub async fn call(
     if q.operation == "validate" {
         let mut reply = base();
         reply.access = Some(project_access(&a)?);
+        return Ok(reply);
+    }
+    if q.operation == "probe" {
+        let (id, callback) = io.ok_or("A Tailnet stream is required")?;
+        if !r.hints.hints.iter().any(|h| {
+            h.class == Class::Tailnet
+                && h.transport == Transport::Tcp
+                && h.address == q.stream_address
+        }) {
+            return Err("Tailnet endpoint is not in authenticated host hints".into());
+        }
+        let config = channel::ClientConfig {
+            device: key,
+            host: a.grant.host.clone(),
+            grant: a.grant.grant.clone(),
+            epoch: a.grant.epoch,
+            generation: r.presence.presence.generation,
+            timeout: Duration::from_secs(10),
+        };
+        let channel = channel::connect(Stream { id, io: callback }, &config, now()?)
+            .await
+            .map_err(|e| e.to_string())?;
+        channel.close().await.map_err(|e| e.to_string())?;
+        let mut reply = base();
+        reply.reach = Some(project_reach(&r));
+        reply.route = "tailnet".into();
         return Ok(reply);
     }
     if q.operation == "reach" {
@@ -620,13 +701,15 @@ pub async fn call(
     }
     match (&*p.operation, &pending.request.op) {
         ("start", Operation::CreateTask { task })
-            if task.workspace == p.workspace && pending.request.request == p.remote_task => {}
+            if task.workspace == p.workspace
+                && pending.request.request == p.remote_task
+                && task.read_only == (!q.allow_writes).then_some(true) => {}
         ("read", Operation::ReadTask { query })
             if query.workspace == p.workspace && query.task == p.remote_task => {}
         ("cancel", Operation::CancelTask { task, .. }) if task == &p.remote_task => {}
         _ => return Err("Saved request differs from its task binding".into()),
     }
-    let outcome = if let Some((id, callback)) = io {
+    let (outcome, renewed) = if let Some((id, callback)) = io {
         if !r.hints.hints.iter().any(|h| {
             h.class == Class::Tailnet
                 && h.transport == Transport::Tcp
@@ -636,9 +719,10 @@ pub async fn call(
         }
         direct(&client, &a, &key, &pending, &r, Stream { id, io: callback }).await?
     } else {
-        client.send(&pending).await.map_err(Failure::host)?
+        (client.send(&pending).await.map_err(Failure::host)?, None)
     };
     let mut reply = progress(outcome, &p)?;
+    reply.access = renewed.as_ref().map(project_access).transpose()?;
     reply.route = if io.is_some() { "tailnet" } else { "relay" }.into();
     Ok(reply)
 }
@@ -661,7 +745,7 @@ pub unsafe extern "C" fn openagents_phone_host_call(
         }
         let bytes = unsafe { std::slice::from_raw_parts(input, size) };
         engine_proto::wire::validate("openagents.host.v1.AgentRequest", bytes)
-            .map_err(str::to_owned)?;
+            .map_err(Failure::from)?;
         let key = unsafe { CStr::from_ptr(secret) }
             .to_str()
             .map_err(|_| "Invalid device key")?
@@ -674,7 +758,7 @@ pub unsafe extern "C" fn openagents_phone_host_call(
             .map_err(|_| "Native runtime unavailable")?
             .block_on(call(q, key, callback.map(|f| (stream, f))))
     });
-    let reply = match result {
+    let mut reply = match result {
         Ok(Ok(reply)) => reply,
         other => {
             let mut reply = base();
@@ -685,6 +769,9 @@ pub unsafe extern "C" fn openagents_phone_host_call(
             reply
         }
     };
+    if let Some(error) = reply.error.as_mut() {
+        error.message = cut(&error.message, 512);
+    }
     let bytes = reply.encode_to_vec().into_boxed_slice();
     unsafe { *length = bytes.len() };
     Box::into_raw(bytes).cast::<u8>()
@@ -715,3 +802,6 @@ pub unsafe extern "C" fn openagents_phone_host_key_free(key: *mut c_char) {
         unsafe { drop(std::ffi::CString::from_raw(key)) }
     }
 }
+
+#[cfg(test)]
+mod tests;

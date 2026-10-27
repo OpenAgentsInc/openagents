@@ -3456,6 +3456,26 @@ mod tests {
         policy
     }
 
+    #[test]
+    fn a_phone_read_only_intent_cannot_be_upgraded_by_host_policy() {
+        let s = setup();
+        let mut p = policy(1);
+        p.engine.access = adapter::Access::Full;
+        p.save(&s.root).unwrap();
+        let id = "9".repeat(64);
+        let request = TaskCreate { read_only: Some(true), ..create("allowed") };
+        s.inbox.create(&id, "phone", &request).unwrap();
+        let task = Store::open(&s.store).unwrap().show(&id).unwrap();
+        assert_eq!(task.intent.configuration.read_only, Some(true));
+        let grant = launched_grant(&s, 0);
+        assert!(!grant.write_workspace);
+        let configuration = grant.adapter_configuration.unwrap();
+        assert_ne!(configuration.access, adapter::Access::Full);
+        assert!(s.inbox.capabilities().contains(&coder_host::access::protocol::TASK_READ_ONLY.to_owned()));
+        let other = setup();
+        assert!(other.inbox.create(&id, "phone", &request).is_err());
+    }
+
     fn launched_grant(s: &Setup, index: usize) -> owner::Grant {
         owner::Grant::parse(&std::fs::read(&s.launched.lock().unwrap()[index]).unwrap()).unwrap()
     }

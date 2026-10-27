@@ -771,3 +771,14 @@ design is `docs/auth/README.md`, "Sign-in keys for agents".
 | Invariant | Status | Checked by |
 | --- | --- | --- |
 | A machine grant (`build.prune`, `process.stop`, `host.upgrade`) to a chat ID is usable only by that chat. A command or tool that names a chat (`--agent`, `OPENAGENTS_CHAT_ID`, or the MCP server's chat) must carry that chat's proof in `OPENAGENTS_CHAT_PROOF`, a keyed hash the engine makes from `grants/machine.key` in the lease root and hands only to that chat's MCP server and harness shell. Without it, or with another chat's, the action is refused, the refusal says what was missing, and it is logged. The owner at an interactive terminal needs no proof and is logged as `owner`, never as the chat named. | New on 2026-10-18 ([#12067](https://github.com/OpenAgentsInc/openagents/issues/12067)). Model boundary: on one Unix account a process that reads the key file can still forge a proof; this stops a copied or guessed ID. | `a_copied_or_guessed_chat_id_is_refused`, `the_real_chat_is_accepted_with_its_proof`, `the_owner_at_a_terminal_acts_as_the_owner` in `crates/coder-lease/src/machine/proof.rs`; `prunes_only_under_this_chats_grant_and_logs_it` in `apps/openagents/crates/mcp/src/machine_action.rs`; `only_a_granted_agent_may_upgrade_and_refusals_are_logged` in `apps/openagents/crates/host-upgrade/src/grant.rs` |
+
+## Phone task read-only requests
+
+A NIP-HOST `task.create` with `read_only: true` is accepted only by a host
+advertising `task-read-only` and with an enabled policy for that workspace.
+The task intent retains the restriction. Every auto-start grant derives the
+existing read-only policy, and owner/adapter admission and journal replay
+refuse a writing grant for that intent. A later host policy cannot upgrade
+it. Omitting the field preserves existing bytes and behavior; older hosts
+refuse the unknown field. Checked by the phone-host tests and
+`a_phone_read_only_intent_cannot_be_upgraded_by_host_policy` in coder-task.
