@@ -1,0 +1,46 @@
+(* Coax 0.2.0 accepted subset. Planned language syntax is not in this grammar.
+   Lexing: ASCII identifiers (excluding reserved keywords), signed-range
+   integer tokens in decimal/hex/binary with separators, escaped byte strings,
+   whitespace, line comments and nested block comments. A unary minus is a
+   separate token. Type names are syntactically identifiers/reserved words;
+   the checker currently accepts int/s64, bool and string only. *)
+
+file = { import | procedure | constant | assertion } ;
+import = "#import", string, ";" ;
+procedure = identifier, "::", "(", [ parameters ], ")",
+            [ "->", type ], block ;
+parameters = parameter, { ",", parameter }, [ "," ] ;
+parameter = identifier, ":", type ;
+constant = identifier, "::", expression, ";" ;
+assertion = "#assert", expression, ";" ;
+type = identifier | reserved-type-name ;
+
+block = "{", { statement }, "}" ;
+statement = block | declaration | assignment | return | if | while |
+            expression, ";" ;
+declaration = identifier, ":=", expression, ";" |
+              identifier, ":", type, [ "=", ( expression | "---" ) ], ";" ;
+assignment = identifier, ( "=" | "+=" | "-=" | "*=" | "/=" | "%=" ),
+             expression, ";" ;
+return = "return", [ expression ], ";" ;
+if = "if", expression, block, [ "else", ( if | block ) ] ;
+while = "while", expression, block ;
+
+expression = disjunction ;
+disjunction = conjunction, { "||", conjunction } ;
+conjunction = comparison, { "&&", comparison } ;
+(* Comparisons do not chain, including mixed equality/ordering. *)
+comparison = sum, [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ), sum ] ;
+sum = product, { ( "+" | "-" ), product } ;
+product = unary, { ( "*" | "/" | "%" ), unary } ;
+unary = ( "-" | "!" | "#run" ), unary | primary ;
+primary = integer | string | "true" | "false" |
+          identifier, [ "(", [ arguments ], ")" ] |
+          "(", expression, ")" ;
+arguments = expression, { ",", expression }, [ "," ] ;
+
+(* Semantics also require unique names, no shadowing, immutable parameters
+   and constants, correctly typed calls/returns, a void zero-argument main,
+   no unused expression results, literal checked print formats, and bounded
+   compile-time execution. print is provided by Basic; type_name is an
+   unevaluated but typechecked scalar intrinsic. *)

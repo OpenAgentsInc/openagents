@@ -25,6 +25,7 @@ struct Local {
   Str name;
   Type type;
   Loc loc;
+  bool immutable = false;
 };
 
 struct Checker {
@@ -34,6 +35,7 @@ struct Checker {
   bool has_basic = false;
   std::vector<Local> locals;
   ProcDecl *current = nullptr;
+  uint32_t constant_depth = 0;
 
   void err(Loc loc, const char *code, const std::string &msg, const std::string &fix = "") {
     error_at(src, loc, code, msg, fix);
@@ -58,13 +60,39 @@ struct Checker {
     return nullptr;
   }
 
+  ConstDecl *find_constant(Str name) {
+    for (ConstDecl *c : file->constants)
+      if (str_eq(c->name, name)) return c;
+    return nullptr;
+  }
+
+  Type constant_type(ConstDecl *c) {
+    if (c->checked == 2) return c->type;
+    if (c->checked == 1) {
+      err(c->loc, "E0340", "constant dependency cycle at '" + to_std(c->name) + "'");
+      return Type::invalid;
+    }
+    if (constant_depth >= 64) {
+      err(c->loc, "E0347", "constant type dependency depth exceeds 64");
+      return Type::invalid;
+    }
+    constant_depth++;
+    c->checked = 1;
+    c->type = expr(c->expr);
+    if (c->type == Type::void_)
+      err(c->loc, "E0341", "a constant must have a value");
+    c->checked = 2;
+    constant_depth--;
+    return c->type;
+  }
+
   Local *find_local(Str name) {
     for (size_t i = locals.size(); i-- > 0;)
       if (str_eq(locals[i].name, name)) return &locals[i];
     return nullptr;
   }
 
-  bool declare(Str name, Type type, Loc loc) {
+  bool declare(Str name, Type type, Loc loc, bool immutable = false) {
     if (Local *prev = find_local(name)) {
       err(loc, "E0303",
           "'" + to_std(name) + "' is already declared at line " + std::to_string(prev->loc.line) +
@@ -76,7 +104,11 @@ struct Checker {
       err(loc, "E0304", "'" + to_std(name) + "' is already the name of a procedure", "pick another name");
       return false;
     }
-    locals.push_back(Local{name, type, loc});
+    if (find_constant(name) || str_eq(name, "type_name")) {
+      err(loc, "E0342", "'" + to_std(name) + "' is already a constant or intrinsic", "pick another name");
+      return false;
+    }
+    locals.push_back(Local{name, type, loc, immutable});
     return true;
   }
 
@@ -92,8 +124,17 @@ struct Checker {
       case ExprKind::int_lit: return Type::int_;
       case ExprKind::bool_lit: return Type::bool_;
       case ExprKind::string_lit: return Type::string_;
+      case ExprKind::run: {
+        Type t = expr(e->lhs);
+        if (t == Type::void_) err(e->loc, "E0341", "#run must produce a value");
+        return t;
+      }
       case ExprKind::ident: {
         if (Local *l = find_local(e->text)) return l->type;
+        if (ConstDecl *c = find_constant(e->text)) {
+          e->constant = c;
+          return constant_type(c);
+        }
         if (find_proc(e->text)) {
           err(e->loc, "E0305", "procedures are not values in coax0", "call it: " + to_std(e->text) + "()");
           return Type::invalid;
@@ -158,6 +199,27 @@ struct Checker {
   }
 
   Type call(Expr *e) {
+    if (str_eq(e->text, "type_name")) {
+      if (e->args.count != 1) {
+        err(e->loc, "E0343", "type_name needs exactly one expression");
+        return Type::invalid;
+      }
+      Type t = expr(e->args[0]);
+      if (t == Type::invalid) return t;
+      if (t == Type::void_) {
+        err(e->loc, "E0343", "type_name needs an expression with a value");
+        return Type::invalid;
+      }
+      // The operand is typechecked but never executed, even at compile time.
+      const char *name = type_name(t);
+      e->kind = ExprKind::string_lit;
+      e->text = Str{name, (int32_t)strlen(name)};
+      return Type::string_;
+    }
+    if (find_constant(e->text)) {
+      err(e->loc, "E0314", "'" + to_std(e->text) + "' is a constant, not a procedure");
+      return Type::invalid;
+    }
     if (str_eq(e->text, "print") && !find_proc(e->text)) {
       e->builtin_print = true;
       if (!has_basic) {
@@ -268,8 +330,13 @@ struct Checker {
         Local *l = find_local(s->name);
         Type t = expr(s->expr);
         if (!l) {
-          err(s->loc, "E0306", "'" + to_std(s->name) + "' is not declared",
-              "declare it: " + to_std(s->name) + " := ...;");
+          if (find_constant(s->name)) err(s->loc, "E0344", "constants cannot be assigned");
+          else err(s->loc, "E0306", "'" + to_std(s->name) + "' is not declared",
+                   "declare it: " + to_std(s->name) + " := ...;");
+          break;
+        }
+        if (l->immutable) {
+          err(s->loc, "E0344", "parameters cannot be assigned", "copy it into a local variable");
           break;
         }
         if (t == Type::invalid || l->type == Type::invalid) break;
@@ -340,10 +407,23 @@ struct Checker {
           err(p->loc, "E0334",
               "procedure '" + to_std(p->name) + "' is already declared at line " +
                   std::to_string(file->procs[j]->loc.line));
-      if (str_eq(p->name, "print") && has_basic)
-        err(p->loc, "E0335", "'print' is already declared by module Basic", "pick another name");
+      if ((str_eq(p->name, "print") && has_basic) || str_eq(p->name, "type_name"))
+        err(p->loc, "E0335", "'" + to_std(p->name) + "' is already a builtin", "pick another name");
       for (Param &prm : p->params) prm.type = resolve_type(prm.type_text, prm.type_loc);
       if (p->ret_text.count) p->ret = resolve_type(p->ret_text, p->ret_loc);
+    }
+    for (int32_t i = 0; i < file->constants.count; i++) {
+      ConstDecl *c = file->constants[i];
+      for (int32_t j = 0; j < i; j++)
+        if (str_eq(c->name, file->constants[j]->name))
+          err(c->loc, "E0345", "duplicate constant '" + to_std(c->name) + "'");
+      if (find_proc(c->name) || str_eq(c->name, "type_name") || (has_basic && str_eq(c->name, "print")))
+        err(c->loc, "E0345", "constant '" + to_std(c->name) + "' conflicts with a procedure or intrinsic");
+    }
+    for (ConstDecl *c : file->constants) constant_type(c);
+    for (Expr *a : file->assertions) {
+      Type t = expr(a);
+      if (t != Type::invalid && t != Type::bool_) err(a->loc, "E0346", "#assert requires bool");
     }
     ProcDecl *entry = find_proc(Str{"main", 4});
     if (!entry) {
@@ -354,7 +434,7 @@ struct Checker {
     for (ProcDecl *p : file->procs) {
       current = p;
       locals.clear();
-      for (const Param &prm : p->params) declare(prm.name, prm.type, prm.loc);
+      for (const Param &prm : p->params) declare(prm.name, prm.type, prm.loc, true);
       stmt(p->body);
       if (p->ret != Type::void_ && p->ret != Type::invalid && !always_returns(p->body))
         err(p->loc, "E0338", "'" + to_std(p->name) + "' can reach its end without returning " + type_name(p->ret),

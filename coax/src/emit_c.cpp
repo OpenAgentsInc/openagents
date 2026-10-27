@@ -155,7 +155,14 @@ struct Emitter {
         break;
       case ExprKind::bool_lit: out += e->int_value ? "1" : "0"; break;
       case ExprKind::string_lit: string_literal(e->text); break;
-      case ExprKind::ident: local_name(e->text); break;
+      case ExprKind::ident:
+        if (e->constant) expr(e->constant->expr);
+        else local_name(e->text);
+        break;
+      case ExprKind::run:
+        // Evaluation must replace every #run with a target-independent literal.
+        fputs("coax: internal error: unevaluated #run reached the C emitter\n", stderr);
+        abort();
       case ExprKind::call:
         if (e->builtin_print) {
           out += "coax_print(";

@@ -1,7 +1,7 @@
 // Coax compiler (coax0): shared declarations.
 // The language is specified in coax/spec.md.
-// This is Phase 1 of its start plan (§20): a transpiler from a Coax subset
-// to C. Everything here is plain structs, arrays and one arena.
+// Scalar bootstrap and compile-time slice (§20): a transpiler from a Coax
+// subset to C. Syntax nodes are plain structs allocated in a compile arena.
 #pragma once
 #include <cstdint>
 #include <cstdio>
@@ -105,7 +105,7 @@ const char *type_name(Type t);
 
 // ---- Syntax tree ----
 
-enum class ExprKind : uint8_t { int_lit, bool_lit, string_lit, ident, call, unary, binary };
+enum class ExprKind : uint8_t { int_lit, bool_lit, string_lit, ident, call, unary, binary, run };
 
 struct Expr {
   ExprKind kind;
@@ -117,6 +117,7 @@ struct Expr {
   Expr *lhs = nullptr, *rhs = nullptr;  // unary uses lhs
   Slice<Expr *> args;         // call
   struct ProcDecl *proc = nullptr;      // call: resolved target (null for builtins)
+  struct ConstDecl *constant = nullptr; // ident: resolved global constant
   bool builtin_print = false;
 };
 
@@ -159,10 +160,20 @@ struct Import {
   Loc loc;
 };
 
+struct ConstDecl {
+  Str name;
+  Loc loc;
+  Expr *expr = nullptr;  // replaced with a literal after compile-time evaluation
+  Type type = Type::invalid;
+  uint8_t checked = 0, evaluated = 0; // 0 unseen, 1 visiting, 2 done
+};
+
 struct File {
   const Source *src = nullptr;
   Slice<Import> imports;
   Slice<ProcDecl *> procs;
+  Slice<ConstDecl *> constants;
+  Slice<Expr *> assertions;
 };
 
 bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, File *out);
@@ -170,6 +181,8 @@ bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, Fi
 // ---- Checker and C emitter ----
 
 bool check(Arena *arena, File *file);
+// Bounded, side-effect-free AST evaluation; no host I/O or foreign calls.
+bool evaluate(File *file);
 
 struct EmitOptions {
   bool release = false;  // release: integer overflow wraps; debug: it traps

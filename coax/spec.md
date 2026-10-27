@@ -1,1200 +1,814 @@
-# Coax: a language for Aethyr
+# Coax: language specification and implementation plan
 
-Date: 2026-10-27. Status: **draft specification, heading toward a start.**
-Nothing here is built yet. The owner wants to start soon. §20 is the start
-plan, and the rest of this document is what the first version has to
-satisfy.
+Date: 2026-10-27. Status: **working scalar bootstrap; broader language design**.
+The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
+end in `.coax`; the executable is `coax`; a future build entry is `build.coax`.
 
-Coax is a programming language for the Verse and the rest of OpenAgents'
-real-time code. It starts from Jonathan Blow's Jai and changes what our
-constraints call for. Source files end in `.coax`. The compiler is `coax`.
+Coax is a systems language for Aethyr and OpenAgents' real-time code. Its
+purpose is to make data representation, compilation, allocation and engine
+metadata visible and programmable without obscuring runtime behavior.
+This is a Coax design, not a compatibility specification for another language.
 
-The draft draws on two sources about Jai:
-
-- [The Jai Primer](https://github.com/BSVino/JaiPrimer/blob/master/JaiPrimer.md),
-  an early outside summary of Blow's talks. Blow has said it does not
-  describe the language well.
-- **Real Jai code**: Forrest Smith's
-  [Advent of Code 2022 solutions](https://github.com/forrestthewoods/aoc2022/tree/master/jai).
-  These are a 4,821-line `main.jai` and a 53-line `modules/autorun.jai`
-  metaprogram plugin, written against the closed beta compiler. Where this
-  document says "Jai does X", it is citing that code (as `aoc2022
-  main.jai:LINE`) or the primer. It is never citing the compiler itself,
-  which we have not used.
+**Implementation status matters.** Version 0.2.0 implements procedures,
+`int`/`s64`, `bool`, counted byte strings, scalar control flow, immutable
+top-level constants, bounded `#run`, `#assert`, and `type_name(expression)`.
+It generates C11 and uses a host C compiler to produce executables. Other
+syntax below is a target design unless explicitly marked implemented. The
+[bootstrap grammar](grammar.ebnf) describes the accepted subset.
+There is no shipping engine subsystem written in Coax yet.
 
 Contents:
 
-- Part A, the case (§1–§4): what we need, why Jai is the dream, why we
-  can't depend on it, and what Coax does differently.
-- Part B, the language (§5–§17).
-- Part C, the plan (§18–§22).
-
----
-
-# Part A. The case
-
-## 1. What we are asking for
-
-Every requirement comes from [aethyr-cpp](https://github.com/OpenAgentsInc/aethyr-cpp)
-(the C++ Verse engine, "this repository" below), the OpenAgents monorepo, or
-the owner's direction on 2026-10-27 to make the Verse as fast as possible.
-
-| # | Requirement | Where it comes from |
-| --- | --- | --- |
-| R1 | **Compile in well under a second** for a one-file change, and keep it there as the code grows | The owner: C++ compiles faster than Rust, and that matters. The 11.9 s `ecs.h` rebuild ([performance stack](https://github.com/OpenAgentsInc/aethyr-cpp/blob/main/docs/performance-stack.md)) |
-| R2 | **Hot reload that keeps state**, including when a struct's layout changes | Performance stack item 1 |
-| R3 | **Data-oriented by default**: SoA and AoS from one declaration, arenas, no hidden allocation | Item 3; the ECS's dense sparse sets |
-| R4 | **Deterministic simulation**: bit-identical results across machines and worker counts | `-ffp-contract=off` on Ice Cream Man and the text reading; replays and saves |
-| R5 | **Safe parallelism without a borrow checker** | Item 3's job tiers |
-| R6 | **One source for CPU and GPU data layouts**, and shaders that share it | Item 4; `home.metal` and the instance buffers in `src/metal` |
-| R7 | **SIMD over SoA** without hand intrinsics for each target | Item 5 |
-| R8 | **Every target we ship**: native Metal on iPhone, iPad and Mac first, WebAssembly for the web worlds, later Android, Linux and Windows | `apps/openagents-ios` (metal-cpp), the Emscripten build |
-| R9 | **The protocol is native**: OpenAgents Protocol schemas, data classes, limits and versions are types | openagents `docs/protocol/openagents-protocol-spec.md`; `third_party/openagents-engine-proto` |
-| R10 | **Reflection** for saves, replication and the editor, with versions | The ECS's registered fields; world saves |
-| R11 | **C interop, and a path from C++**, so it can live beside 40,000 lines of C++ for years | Every rewrite risk |
-| R12 | **Agents write most of the code**: one canonical form, errors with fixes, a compiler you can query | How this repository is built |
-| R13 | **The build lives in the source**: no CMake and `project.yml` both listing files | `CMakeLists.txt`, `apps/openagents-ios/project.yml` |
-| R14 | **Bounded data at trust boundaries**: decoders refuse oversize input before allocating | Protocol principle 6 |
-
-## 2. Why Jai is the dream
-
-In the performance discussion I said that the best possible stack, with
-unlimited time, would be "Jai, if we had access to it". Here is what that
-means, feature by feature. These are properties no shipping language we
-can use today has all at once.
-
-### 2.1 Compile speed is a design goal, not an afterthought
-
-Blow's stated target is compiling a large game in about a second, and
-public demos have shown builds of large programs in that range. Three
-design choices make it possible, and C++ and Rust lack all three:
-
-- **No headers and no textual includes.** Each file is parsed once per
-  build. C++ reparses `ecs.h` in every translation unit that includes it,
-  which is why touching it costs 80 s of CPU here.
-- **No template instantiation model that multiplies work.** Polymorphic
-  procedures (`$T`) are instantiated once per type set, without
-  two-phase lookup, SFINAE or header-only libraries.
-- **A fast debug backend** that does not go through LLVM for the inner
-  loop.
-
-R1 is the requirement we care about most. Jai is the only language
-designed from the start around it at game scale.
-
-### 2.2 The build is a program, and it can watch the compiler
-
-`aoc2022 modules/autorun.jai` is the clearest demonstration in the
-sources. It is a **metaprogram plugin**: ordinary Jai code that the
-compiler loads, and that receives a message for each compiler event:
-
-```jai
-message :: (_p: *Plugin, message: *Compiler.Message) {
-    p := cast(*AutorunPlugin) _p;
-    if message.kind == .COMPLETE {
-        complete := cast(*Compiler.Message_Complete) message;
-        if complete.error_code != .NONE { p.should_run = false; }
-    }
-}
-
-shutdown :: (_p: *Plugin) {
-    ...
-    using options := Compiler.get_build_options(p.workspace);
-    if output_type != .EXECUTABLE { log(...); }
-    else { ...; Process.run_command(run_string); }
-}
-```
-
-The plugin reads the workspace's build options, sees whether the
-compile succeeded, and runs the program. That alone replaces a shell
-script. The same message stream also delivers every typechecked
-declaration, so a plugin can:
-
-- generate code from types;
-- reject code that breaks a project rule;
-- emit side files such as bindings or schemas;
-- drive the whole build: which files, which targets, which flags.
-
-For us this is R13 (no CMake) and much of R9 and R10 (codecs and
-reflection generated from types) with no separate generator.
-
-### 2.3 Code is a value at compile time
-
-`aoc2022 main.jai:86-105` builds assertion macros that print the source
-text of their arguments:
-
-```jai
-code_to_string :: (code: Code) -> string #expand {
-    PP       :: #import "Program_Print";
-    Compiler :: #import "Compiler";
-    code_node := Compiler.compiler_get_nodes(code);
-    builder: String_Builder;
-    PP.print_expression(*builder, code_node);
-    return builder_to_string(*builder, allocator=temp);
-}
-
-assert_eq :: (a: Code, b: Code) #expand {
-    sa := #run code_to_string(a);   // the expression's text, computed at compile time
-    va := #insert a;                // the expression's value, at run time
-    ...
-    assert(va == vb, "...left: %  expr: %...", va, sa, vb, sb, #location(a));
-}
-```
-
-Here is what that code shows:
-
-- A parameter of type `Code` receives an unevaluated expression.
-- `#expand` makes the procedure a hygienic macro, inlined into the
-  caller's scope.
-- `compiler_get_nodes` turns the code into an AST the program can walk.
-- `#insert` splices code back in.
-- `#location` gives the call site.
-
-Rust needs procedural macros in a separate crate to do this, and C++
-needs the preprocessor. Jai does it with ordinary procedures in the same
-file.
-
-### 2.4 `#run` runs anything
-
-Any procedure can run at compile time, including file IO, through a
-bytecode interpreter. Lookup tables, baked assets, generated SIMD
-kernels, protocol codecs and test vectors become ordinary code. They are
-not build steps in another language.
-
-### 2.5 Memory is explicit but not painful
-
-- **The implicit `context`** carries the allocator. Libraries allocate
-  through it, and the caller chooses where memory comes from.
-- **The temporary allocator** is built in. `aoc2022 main.jai:79` sets
-  `result.allocator = temp;`, and `main.jai:92` passes `allocator=temp`.
-  Scratch memory is a pointer bump, freed in bulk, with no lifetimes to
-  annotate.
-- **`[..]` dynamic arrays** carry their allocator. `array_add(*result, x)`
-  is the whole API.
-- **`---`** opts out of zero initialization where it matters.
-
-That is the arena-and-frame-allocator discipline game engines use, as the
-language default instead of a convention.
-
-### 2.6 Data-oriented layout in the type system
-
-The primer's `SOA` keyword switches a struct's array layout without
-changing the code that uses it. Every engine that wants cache-friendly
-data hand-writes this in C++, as our ECS does.
-
-### 2.7 Small things that add up
-
-All of these appear in aoc2022:
-
-- **`ifx a then b else c`** expressions (`main.jai:167`, `:1623`).
-- **Multiple return values**: `file, success := read_entire_file(...)`.
-- **Distinct types**: `RoomIndex :: #type,distinct int;` (`main.jai:2747`)
-  makes an index type that cannot be mixed with a plain `int` or another
-  index type. That is a typed handle for free.
-- **Struct literals** `Vec2.{a, b}` and defaults in declarations
-  (`cur_room : RoomIndex = -1;`).
-- **`for` with `it` and `it_index`**, plus ranges such as `for 0..n-1`.
-- **`defer` blocks** (`main.jai:3-6` times the whole program with one).
-- **`using` and `#as using base:`** (`autorun.jai`) for composition, with
-  implicit conversion to the base. This is inheritance's useful part
-  without vtables.
-- **`#scope_module`** to make the rest of a file private.
-- **Module aliases**: `Compiler :: #import "Compiler";`.
-- **A real standard library** for this kind of code: `Basic`, `String`,
-  `Hash_Table`, `Sort`, `File` and `Bit_Operations`.
-
-### 2.8 Made by game developers for games
-
-Every feature is chosen for one audience:
-
-- programmers who ship 60 Hz software;
-- who know where their memory is;
-- who would rather have power than guard rails.
-
-That is our audience too, except that most of our code is written by
-agents (§4.1).
-
-## 3. Why we can't depend on Jai
-
-- **No access.** Jai is a closed beta by invitation. There is no public
-  download, no public license and no published release date.
-- **No license we can plan around.** We would not know the license terms
-  for shipping a commercial product, the compiler's redistribution terms
-  for CI and agent hosts, or whether we could patch it.
-- **One maintainer team, one roadmap.** Blow's studio builds Jai for its
-  own games. If our needs diverge, we cannot change the language, fix a
-  compiler bug, or add a backend.
-- **No platform story we can depend on.** We need:
-  - first-class Metal on iOS, under Apple's code-signing rules;
-  - WebAssembly for the web worlds;
-  - Xcode and App Store integration.
-  
-  None of these is a published commitment.
-- **No GPU language.** Jai does not compile shaders. Our CPU/GPU layout
-  sharing (R6) would remain a separate system.
-- **No determinism model.** There is no stated floating-point
-  contraction policy, and `Table` iterates in hash order (§4.3).
-- **Agents cannot learn it.** There is very little public Jai code. aoc2022
-  is one of the few large public samples. Models write languages well in
-  proportion to how much of them they have seen. For a language of our
-  own, we would write the corpus: spec, examples, tests and a translated
-  engine.
-
-So "the dream" is the design. It is not a dependency. Coax takes the
-design and adds what we need, in a compiler we own.
-
-## 4. What Coax does differently, and why
-
-### 4.1 Agents write most of the code
-
-Jai trusts the programmer ("design for good programmers"). Coax keeps the
-power but adds checks on by default:
-
-| Jai | Coax | Why |
-| --- | --- | --- |
-| Bounds and null checks are the programmer's job | On by default in debug and dev builds; `#no_check` on a block turns them off, and the compiler lists every unchecked block | Agent mistakes surface in the first run |
-| `cast(*AutorunPlugin) _p` is unchecked (`autorun.jai`) | A downcast through `#as` base is checked in debug (type ID in the base) | Plugins and event systems are full of these |
-| `xx` autocasts to whatever the context needs | `xx` only between integer widths, and checked in debug; other casts are written out | An autocast hides a lossy conversion where an agent cannot see it |
-| Format strings are `print("%", x)` over `..Any` | Same at the call site, but the format is checked against the arguments at compile time | Wrong argument counts are a run-time surprise in Jai |
-| Optional semicolons and several equivalent spellings in places | One canonical form, printed by the compiler (`coax fmt`) | Agents and diffs both want one form |
-
-### 4.2 Derive what Jai makes you hand-write
-
-aoc2022 repeats the same three blocks for every key type (`main.jai:2766-2800`):
-
-```jai
-operator == :: (a: d16_search_state, b: d16_search_state) -> bool {
-    return a.opened_valves == b.opened_valves && a.released_pressure == ... ;
-}
-get_hash_d16_search_state :: (v: d16_search_state) -> u32 {
-    result = hash_combine(result, Hash.get_hash(v.opened_valves)); ...
-}
-full_list : Table(d16_full_key, [..]d16_search_state, get_hash_d16_full_key);
-```
-
-Hash tables then find `operator ==` and `get_hash` by name. The author
-needed `#poke_name Hash_Table operator==;` (end of `main.jai`) to put
-those names where the hash-table module could see them. Coax replaces
-that with:
-
-- **`#derive(eq, hash, order, print, proto)`** on a struct. The
-  compiler writes field-by-field implementations from reflection, in
-  declaration order.
-- **Explicit constraints** on polymorphic parameters:
-  `Table :: struct ($K: Type/Hashable, $V: Type)`. A missing `hash` is an
-  error at the `Table` use site with a fix ("add `#derive(hash)` to
-  `d16_full_key`"). It is never a name lookup inside another module.
-- No `#poke_name`.
-
-### 4.3 Determinism is a language property
-
-Jai has no float model, and hash-table iteration is in hash order. That
-is fine for puzzles, but it breaks replays and lockstep simulation. Coax
-adds:
-
-- `strict` blocks, `deterministic` procedures and `fixed32` (§13);
-- `Table` iteration in insertion order by default, with `Hash_Order_Table`
-  as an explicit opt-in.
-
-### 4.4 Parallelism has a contract
-
-Jai's primer mentions that captures could restrict what threads touch.
-Coax makes capture lists into **effects** that the job scheduler and the
-compiler both check (§12). This is the biggest addition.
-
-### 4.5 The protocol and the GPU are in the language
-
-- `@proto` types with field numbers, limits, data classes and versions,
-  checked against the frozen descriptors (§14).
-- `shader` procedures that compile to MSL first, sharing `@gpu` struct
-  layouts with CPU code (§15).
-
-### 4.6 Hot reload is designed in
-
-Jai can hot-reload a DLL like any native language. Coax adds:
-
-- `#persistent` state;
-- procedure IDs instead of raw function pointers;
-- compiler-generated layout migration (§16).
-
-### 4.7 The compiler is a service
-
-The compiler is long-running, with a query API: types, uses, layouts,
-effects and "what changed". Agents call it instead of grepping (§17).
-
-### 4.8 Targets we ship
-
-Metal-first native on Apple, WebAssembly, and C output for the
-transition (§16, §20). Jai's announced targets do not include iOS or wasm
-as commitments.
-
-### 4.9 Summary table
-
-| Area | Jai | Coax |
-| --- | --- | --- |
-| Availability | Closed beta | Ours, in this repo |
-| Compile speed | Core goal | Core goal (same design, §16) |
-| Metaprogram | Plugins with compiler messages | Same, plus typed build API and the query server |
-| Macros | `Code`, `#expand`, `#insert` | Same, plus hygiene rules written down and a size limit on expansions |
-| Equality and hashing | Hand-written, found by name, `#poke_name` | `#derive`, explicit constraints |
-| Operator overloading | Any type | Math, comparison and indexing only, and pure (§9) |
-| Casts | `cast`, `xx` | `cast`, `xx` for integers only, checked in debug |
-| Checks | Programmer's job | On in debug and dev, listed when off |
-| Floats | Platform default | `strict`, `fixed32` |
-| Hash maps | Hash-order iteration | Insertion order by default |
-| Threads | Library | Effects in capture lists, checked |
-| Serialization | Reflection and libraries | `@proto` types, versions, limits |
-| GPU | None | `shader` procedures, `@gpu` layouts, MSL first |
-| Hot reload | DLL reload | `#persistent`, procedure IDs, migrations |
-| `Any` | Everywhere | Tools and logging only; refused in `@proto` and `#persistent` types |
-| Tooling | Compiler | Compiler server, query API, `coax fmt`, diagnostics with fixes |
-| Targets | Desktop | Apple Metal first, wasm, C output |
-
----
-
-# Part B. The language
+1. Requirements
+2. Compiler architecture
+3. Design rules
+4. Representation and metadata
+5. Lexical structure
+6. Declarations and types
+7. Procedures and specialization
+8. Control flow
+9. Operators
+10. Compile-time execution, reflection and macros
+11. Memory, context and errors
+12. Jobs and concurrency
+13. Determinism
+14. Protocol boundaries
+15. GPU programs
+16. Builds, iteration and hot reload
+17. Interop, modules and tooling
+18. Engine example
+19. Costs and risks
+20. Implementation order and exit gates
+21. Non-goals
+22. Open questions
+
+## 1. Requirements
+
+The [performance plan](https://github.com/OpenAgentsInc/aethyr-cpp/blob/main/docs/performance-stack.md) provides the engine context.
+These are requirements and evaluation criteria, not measured compiler claims.
+
+| Requirement | Concrete test |
+| --- | --- |
+| Short development loop | Measure edit → check → generation → link → launch/reload, with asset and GPU preparation reported separately. |
+| Control of representation | Inspect field offsets, padding, ownership, SoA/AoS layout and generated C. |
+| Compile-time programming | Run bounded typed computation; eventually inspect declarations and generate checked code with provenance. |
+| Native Apple integration | Preserve the Swift host, C ABI, metal-cpp and native Metal path. |
+| Browser delivery | Prove wasm32 memory, browser bindings, async loading and shader integration separately. |
+| Deterministic simulation | Replay representative workloads across architectures and worker counts; check exact outputs. |
+| Explicit lifetime policies | World, level, thread-scratch and pool storage have visible owners and reset boundaries. |
+| Safe parallel scheduling | Validate actual regions and aliases before claiming that effect lists prevent races. |
+| Stable interchange | Consume versioned public schemas; retain original signed bytes and existing validation. |
+| Inspectable tools | Diagnostics refer to original source; generated output and expansion provenance remain available. |
+| Incremental adoption | A C-output subsystem can coexist with C++ without replacing the engine or build system. |
+
+No compiler throughput number or schedule estimate is a release gate by
+itself. A smaller implementation that improves a real engine workflow is
+more useful than a large unsupported language surface.
+
+## 2. Compiler architecture
+
+### 2.1 Current pipeline
+
+`source → lexer → recursive-descent parser → name/type checker → bounded
+AST evaluator → C11 emitter → C compiler/linker → executable`.
+
+The compiler is C++20, built as one translation unit. It needs no LLVM,
+VM package, network access or additional language compiler. `coax check`
+stops after checking and compile-time evaluation, without invoking the C
+compiler or executing `main`. `coax c` prints the generated C.
+
+The evaluator uses the checked AST. Bytecode is not required to prove
+compile-time semantics; adopt an internal bytecode representation only if
+profiling justifies its implementation and debugging costs. The interpreter
+belongs to the compiler. Target programs contain native code and small C
+support helpers for strings, printing and checked arithmetic, not that
+interpreter. Startup and support code still exist; there is no managed heap.
+
+### 2.2 Planned dependency scheduler
+
+The compiler eventually represents work as declarations and explicit
+prerequisites rather than repeated whole-program passes:
+
+1. Load and parse a source unit; allocate stable declaration handles.
+2. Collect names, then resolve signatures and constant/type dependencies.
+3. Check ready bodies and generic instances; record effects and layouts.
+4. Evaluate ready compile-time work within its workspace's permissions.
+5. Add generated declarations with their source/expansion provenance.
+6. Revisit declarations waiting for those names or layouts.
+7. Diagnose unresolved cycles or lack of progress; never spin indefinitely.
+8. Freeze the checked workspace, lower it, emit code, and link.
+
+A future `typechecked_available` event means all currently ready work has
+been checked; it does not mean the program is complete. Plugins may add
+bounded work at this point. `complete` is emitted only after generated
+work converges and all required declarations succeed. Generated code must
+pass the same parser, checker, effect and layout rules as handwritten code.
+
+The bootstrap resolves global scalar constant dependencies and forward
+procedure signatures. It does not implement plugins, generated declarations,
+parallel checking, a server or a general fixed-point scheduler yet.
+
+### 2.3 Backends and target separation
+
+C output is the first debug and release path. Release currently changes
+runtime integer overflow behavior and C optimization, not language features.
+A later native debug backend must earn its cost through measured iteration
+improvements. An optimizing backend can follow independently; no target is
+supported merely because a backend recognizes its CPU name.
+
+Host compile-time values, target layout, browser bindings and GPU code are
+separate domains. Layout queries must use an explicit target description,
+never the compiler machine's `sizeof`. No compile-time host address, file
+handle, allocator state or context pointer may become target initialization.
+
+## 3. Design rules
+
+- **Representation is visible.** No hidden object allocation, mandatory GC,
+  implicit deep copy or virtual object hierarchy.
+- **Initialization has meaning.** Scalars start at zero; structs use declared
+  field defaults. `---` explicitly requests uninitialized storage. Diagnostic
+  builds track it where possible; deterministic and compile-time code reject
+  an uninitialized read.
+- **Errors are values.** Fallible libraries return typed results. Fatal runtime
+  arithmetic/bounds errors are traps, not exceptions or recoverable results.
+- **Metadata removes duplication.** Registries, inspectors and codecs should
+  derive from checked declarations instead of separate handwritten copies.
+- **Compilation is programmable and bounded.** Generated code is inspectable,
+  attributable to source, and checked before it enters a target program.
+- **Authority is external.** A schema, effect annotation or generated API grants
+  no network, filesystem, host or payment authority by itself.
+- **One form for ordinary work.** A future formatter chooses a canonical form;
+  it is not implemented yet. Prefer named fields and explicit conversions.
+- **Do not promise general memory safety.** Pointers, shallow views, foreign
+  interfaces and mutable shared storage require ownership and alias discipline.
+
+## 4. Representation and metadata
+
+### 4.1 Storage models
+
+AoS, SoA and blocked SoA are explicit storage choices. A future `SOA(4)`
+struct transformation produces accessors, layouts and reflection metadata;
+it cannot change the logical meaning of copies or expose a fictitious pointer
+to an interleaved object. Measure conversion and gather/scatter costs.
+
+Copies of structs copy their fields. Copies of views and strings copy a
+pointer/count descriptor, not backing storage. Dynamic-array growth can
+invalidate borrowed views. Resetting an arena invalidates its borrows even
+when the bytes still appear readable. Use generation-checked handles for
+persistent references into pools and worlds.
+
+### 4.2 Derived operations
+
+`#derive(eq, hash, order, print, proto)` is planned library code over typed
+metadata, not a bypass around checking. A custom equality must have a
+compatible hash before the type can be a table key. Ordering and iteration
+policies must be explicit; an insertion-ordered table differs from a hash-order
+table. Neither order should silently determine a persistent identity.
+
+### 4.3 Four different layouts
+
+Keep native CPU layout, C ABI layout, GPU resource layout and protocol encoding
+separate. A future layout report includes target, field offsets, alignment,
+padding and layout fingerprint. Cross-target GPU declarations must either
+satisfy one explicit restricted layout or emit separate checked adapters;
+there is no universal padding assumption.
+
+Reflection can describe that a field is a pointer. It cannot infer whether to
+persist an address, a handle, an artifact reference or nothing. Those meanings
+need explicit schema annotations and reviewed adapters.
 
 ## 5. Lexical structure
 
-- **Source.** UTF-8. One file is one source unit. Line comments `//`,
-  nestable block comments `/* */`, and doc comments `///` on the next
-  declaration.
-- **Identifiers.** ASCII letters, digits and `_`. Unicode identifiers are
-  not allowed, so the same name never has two spellings.
-- **Keywords**, about 40, reserved:
+- Source is UTF-8; identifiers use ASCII letters, digits and `_`, beginning
+  with a letter or `_`. Keywords cannot be identifiers.
+- `//` comments, nested `/* */` comments and whitespace separate tokens.
+  `///` documentation attachment is planned.
+- Directives start with `#`; annotations start with `@`.
+- Integer literals support decimal, hexadecimal, binary and `_` separators,
+  within the signed 64-bit bootstrap range. `-9223372036854775807 - 1`
+  expresses the minimum signed value today.
+- Strings support `\n`, `\t`, `\r`, `\0`, `\\` and `\"`. They count bytes,
+  may contain NUL, and need not be zero-terminated. UTF-8 is the text
+  convention, not a promise that arbitrary byte strings are valid text.
+- Semicolons terminate ordinary declarations and statements.
+- Floating literals, Unicode escapes, raw strings and character literals are
+  planned. Reserved words for later features are diagnosed rather than
+  accepted with guessed semantics.
 
-  `struct union enum enum_flags if else ifx then while for break continue
-  return defer switch case using cast xx inline no_inline job pure strict
-  deterministic shader try or_else push_context null true false it it_index
-  size_of type_of type_info Type Code`
-
-- **Directives** begin with `#` (`#run`, `#import`, `#insert`...).
-  Annotations begin with `@` (`@proto`, `@gpu`, `@1`...). Directives
-  change compilation. Annotations attach data to declarations, and
-  reflection can read them.
-- **Literals.**
-  - Integers: `123`, `0x7f`, `0b1010` and `1_000_000`.
-  - Floats: `1.5` and `1e-3`.
-  - Strings: `"..."` with `\n \t \\ \" \u{...}`.
-  - Raw strings: `#string END ... END`, as in Jai.
-  - Characters: `#char "a"` (`aoc2022 main.jai:719`).
-- **Semicolons** end statements. `coax fmt` inserts nothing and accepts
-  nothing else.
+The grammar distinguishes a procedure's parameter list followed by a body
+from a parenthesized constant expression. `COUNT :: (40 + 2);` is a constant.
 
 ## 6. Declarations and types
 
-### 6.1 Declarations
+### 6.1 Implemented declarations
 
 ```coax
-counter: s32 = 0;                 // variable with type and value
-name := "Kiki";                   // inferred
-speed: f32;                       // zero
-scratch: [4096] u8 = ---;         // uninitialized, explicit
-GRAVITY :: 9.81;                  // constant, compile-time
-Vec3 :: struct { x, y, z: f32; }  // type
-lerp :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+COUNT :: 64;
+LABEL :: "visible";
+square :: (n: int) -> int { return n * n; }
+
+main :: () {
+  count := COUNT;
+  ready: bool = false;
+  scratch: int = ---;
+  scratch = square(count);
+}
 ```
 
-`::` is a constant binding. Types and procedures are values bound with
-`::`. Order of declarations in a file does not matter. There are no
-forward declarations.
+Top-level scalar constants use `::`. They may reference later constants and
+procedure signatures. Cycles are errors. Constants cannot be assigned or
+shadowed. Ordinary calls in constant initializers require `#run`; arithmetic
+on constants does not. Local constants and procedure values are not supported.
 
-### 6.2 Built-in types
+`int` and `s64` denote the same signed 64-bit type. The other implemented types
+are `bool` and `string`; a procedure without a return annotation returns no
+value. There are no implicit numeric or boolean conversions.
 
-| Group | Types |
+### 6.2 Planned scalar and aggregate types
+
+| Group | Target vocabulary and rule |
 | --- | --- |
-| Integers | `s8 s16 s32 s64 u8 u16 u32 u64`, `int` (= s64), `uint` (= u64) |
-| Floats | `f32 f64` |
-| Fixed point | `fixed32` (Q16.16), `fixed64` (Q32.32) |
-| Small math | `v2 v3 v4 quat m3 m4`, and integer `v2i v3i v4i` |
-| SIMD lanes | `f32x4 s32x4 u32x4 f32x8` |
-| Other | `bool`, `string` (view: pointer + byte count, UTF-8), `Type`, `Code`, `Any` (§4.9 limits) |
+| Integers | `s8 s16 s32 s64 u8 u16 u32 u64`; `uint` is u64, not a C integer alias. |
+| Floating point | `f32 f64`, with explicit strict-mode behavior. |
+| Fixed point | `fixed32` and `fixed64`, after scale, overflow and rounding rules have vectors. |
+| Small math/SIMD | `v2 v3 v4 quat m3 m4`, integer vectors and explicit lane types. |
+| Pointers | `*T` non-null, `*T?` nullable; address-of `*x`, dereference `p.*`. |
+| Inline arrays | `[N] T`: storage belongs to the containing value. |
+| Views | `[] T`: pointer/count borrow; no ownership transfer or lifetime extension. |
+| Dynamic arrays | `[..] T`: data/count/capacity plus allocator policy; explicit growth/free. |
+| Optional | `T?`: test or unwrap before access. |
+| Distinct | `RoomIndex :: #distinct int;`: no implicit mixing with int. |
+| Handles | `Handle(T)`: explicit index/generation with stale-reference checks. |
+| Meta types | `Type`, `Code`, constrained polymorphic parameters; not implemented. |
+| Dynamic values | `Any`: borrowed type/value descriptor for tools and logging; no implicit owned box. |
 
-Integer overflow traps in debug and dev and wraps in release, unless a
-block says `#wrap`, which makes wrapping the defined result in every
-build. There is no implicit conversion between integer types, between
-integers and floats, or from `bool`.
+Array bounds checks must have an explicit build-mode policy. Releasing a
+container does not free separately owned allocations unless its explicit
+`destroy` operation says so.
 
-### 6.3 Composite types
-
-- **Pointers.**
-  - `*T` is never null.
-  - `*T?` may be null.
-  - `p.x` reads through a pointer. `p.*` dereferences it (Jai writes
-    `<<p`, as in `aoc2022 <<most_time`; we use a postfix form so chains
-    read left to right).
-  - `*x` takes the address of `x`, as in Jai.
-- **Arrays.**
-  - `[N] T` has a fixed size.
-  - `[] T` is a view.
-  - `[..] T` is dynamic and carries its allocator.
-  - Views never decay to pointers.
-  - Indexing is bounds-checked in debug and dev.
-- **Optionals.** `T?`. The compiler requires a test (`if x {...}`,
-  `x or_else default`, `try x`) before the value is used.
-- **Distinct types.** `RoomIndex :: #distinct int;` is Jai's
-  `#type,distinct`. Arithmetic within the type is allowed, and mixing it
-  with `int` needs a cast.
-- **Handles.** `Handle(T)` is a 32-bit index plus a generation (like
-  `ecs::Entity`). A stale handle fails its generation check in debug.
-
-### 6.4 Structs
+### 6.3 Structs, enums and unions
 
 ```coax
-Room :: struct #derive(eq, hash, print) {
-  name:    string;
-  mask:    u64;
-  rate:    int;
+Room :: struct #derive(eq, hash) {
+  name: string;
   tunnels: [..] RoomIndex;
-  cur:     RoomIndex = -1;      // default
+  selected: RoomIndex = -1;
 }
-
-Player :: struct {
-  #as using body: Body;         // composition; *Player converts to *Body
-  score: int;
-}
+Outcome :: enum u8 { completed; refused; failed; cancelled; unknown; }
+Answer :: union { text: string; count: int; }
 ```
 
-- Fields are laid out in declaration order with natural alignment, unless
-  the struct says `#packed` or `#c_layout` (C ABI, §17).
-- `using` brings a field's members into scope. `#as` also allows implicit
-  conversion to that field's type. This follows Jai (`autorun.jai`).
-- Literals: `Room.{name = "AA", rate = 0}` names its fields. A positional
-  `Vec2.{1, 2}` is allowed only for the built-in math types and for
-  structs marked `#positional`. Agents get field names wrong less often
-  than they get positions wrong.
+This is target syntax. Struct fields follow declaration order and natural
+alignment unless an explicit layout mode is chosen. `using` exposes an
+embedded field's members; it does not establish virtual inheritance. `#as`
+conversion relationships must be separately declared and checked. Copies
+remain shallow.
 
-### 6.5 Enums and unions
+Unions are tagged by default and require exhaustive handling. Raw overlapping
+storage, if introduced, needs an explicit unsafe form and manual discriminator
+rules. Enums specify an underlying width; flags use a separate `enum_flags`
+form. Persistent enum values and field identities must be assigned explicitly,
+not inferred from declaration order.
 
-```coax
-Outcome :: enum u8 {
-  completed @wire "completed";
-  refused   @wire "refused";
-  failed    @wire "failed";
-  cancelled @wire "cancelled";
-  unknown   @wire "unknown";
-}
+## 7. Procedures and specialization
 
-Answer :: union {
-  noul:   struct { noul: f64; };
-  choice: struct { choice: u32; confidence: f64; probabilities: [] f64; };
-}
-```
+### 7.1 Current rules
 
-- Every enum has an explicit underlying type. `enum_flags` makes bit
-  sets.
-- `@wire` gives the protocol spelling (§14).
-- Unions are tagged. `switch` on a union or enum must be exhaustive, or
-  have `case else`.
+Procedures have named, typed scalar parameters and zero or one return value.
+Parameters are immutable; copy one into a local to update it. Procedures can
+refer to later procedures. Calls check arity, types and whether results are
+used. A program has `main :: ()` with no parameters or return value.
 
-## 7. Procedures
+Multiple returns, named/default arguments, overloads, variadics, callbacks and
+explicit pointer mutation are planned. Passing a large value by an optimized
+physical convention must not silently make it a mutable reference.
 
-### 7.1 One form everywhere
+### 7.2 Planned generics
 
-```coax
-                                  { ... }   // block
-                       [read m]   { ... }   // captured block
-    (i: s32) -> f32    [read m]   { ... }   // anonymous procedure
-f :: (i: s32) -> f32   [read m]   { ... }   // named: same text, local or global
-```
+`$T` binds a type; `$N` binds a compile-time value. A constraint such as
+`Hashable` describes the operations a specialization needs. Constraints are
+checked at instantiation with a diagnostic that names the call and missing
+operation. They do not imply a runtime vtable or heap object.
 
-This is the primer's code maturation path. Capture lists are optional on
-ordinary code and required on jobs (§12).
+Specialization keys include resolved types, constant arguments, target and
+relevant effects/options. Cache repeated instances and report instance counts,
+code size and generation time. Put limits on recursive specialization and
+produce a source-level instantiation trace on failure.
 
-### 7.2 Parameters and returns
+`#bake_arguments draw(limit = 64)` is a proposed explicit partial
+specialization: the baked arguments become constants, and the remaining
+parameters stay ordinary parameters. It must use the same specialization
+cache and budget as inferred generics. No silent constant specialization of
+every call is permitted; that would hide code-size and compilation costs.
 
-- Parameters are immutable. To change something, pass `*T`.
-- Defaults: `(n: int = 4)`. Named arguments at the call site:
-  `split(s, sep = ",")`.
-- **Multiple returns**, as in Jai: `read_file :: (path: string) -> (data:
-  string, ok: bool)`, and the call site writes `data, ok := read_file(p);`.
-- Varargs: `(args: ..T)`. `..Any` is allowed only in procedures marked
-  `#format` (§4.1), which the compiler checks.
-- Calling conventions: the Coax convention by default (it passes
-  `context`), `#c_call` for C, and `#no_context` for leaf procedures and
-  callbacks.
+A future semantic customization hook may calculate a result type from
+resolved argument types, for example combining physical dimensions. It must
+be a pure, bounded type computation with an explicit input/output contract,
+not permission to mutate arbitrary compiler state. Establish ordinary generic
+constraints and diagnostics before deciding whether a separate `#modify`
+surface is necessary. None of these facilities exists in the bootstrap.
 
-### 7.3 Inlining and specialization
+### 7.3 Evaluation order
 
-- `inline` and `no_inline` work at the definition and at the call site, as
-  in the primer.
-- `#bake_arguments f(n = 4)` creates a specialized copy at compile time.
-  This is the primer's `#bake`.
+Compile-time operands and call arguments are evaluated left to right, with
+short-circuit boolean operators. The target language requires the same rule.
+The bootstrap C emitter does not yet lower all runtime operands to ordered
+temporaries. Until it does, sequence effectful runtime calls into separate
+locals; C's argument evaluation order is not a language guarantee. This is an
+adoption blocker for general effectful expressions, not a solved feature.
 
-### 7.4 Polymorphism
+## 8. Control flow
 
-```coax
-max :: (a: $T/Ordered, b: T) -> T { return ifx a > b then a else b; }
+Implemented: blocks, `if`/`else if`/`else`, `while`, `return`, assignments,
+compound integer assignments, and expression statements for void calls.
+Non-void procedures must return on all statically covered paths.
 
-Pool :: struct ($T: Type, $N: int) {
-  items: [N] T;
-  free:  [N] u32;
-  count: u32;
-}
-```
+Planned: `ifx condition then a else b`, `for`, exhaustive `switch`, `break`,
+`continue`, `defer`, `try` and `or_else`.
 
-- `$T` binds a type at the call site, and `$N` binds a compile-time
-  value.
-- `/Ordered` is a **constraint**: a named set of procedures that must
-  exist for `T`. The constraints are `Ordered`, `Hashable`, `Equatable`,
-  `Numeric`, `Printable`, `Proto` and `Gpu`. A user constraint is a
-  struct of procedure types:
+Use half-open `0..<n` for the first range implementation. An empty range has
+zero iterations. Reverse iteration and removal need explicit invalidation
+rules before acceptance. Do not add an implicit iterator allocation.
 
-  ```coax
-  Hashable :: constraint ($T) { hash: (T) -> u64; eq: (T, T) -> bool; }
-  ```
-
-- Instantiations are cached by type signature across builds (§16).
-- There are no type-level metaprograms. Anything fancier is `#run` code
-  that generates declarations (§10).
-
-## 8. Expressions and control flow
-
-- `ifx c then a else b` is the conditional expression (Jai's spelling).
-- `if`, `while`, `for`, `switch`, `defer`, `break` and `continue`.
-  Labeled loops: `for :outer rows { for cols { break outer; } }`.
-- **`for`** forms:
-
-  ```coax
-  for 0..n-1 { ... }              // range, inclusive like Jai: it, it_index
-  for i: 0..<n { ... }            // half-open, named
-  for items { it.x += 1; }        // array, view or SOA: it is a pointer-like accessor
-  for < items { ... }             // reverse
-  for k, v: table { ... }         // insertion order (§4.3)
-  ```
-
-  Removing the current element during a `for` over a dynamic array uses
-  `remove it;`, as in Jai. The compiler swaps and keeps the loop correct.
-- **`defer`** runs at scope exit, last in first out. `defer` blocks may
-  not `return`.
-- **Errors are values** (§11). `try` unwraps or returns the error, and
-  `or_else` supplies a default.
+`defer` will execute cleanup at lexical-scope exit in reverse registration
+order, including return and propagated errors. A deferred block cannot return
+from its containing procedure. It is not an automatic type destructor.
 
 ## 9. Operators
 
-Operators are allowed on user types, unlike our first draft, because
-aoc2022 shows how much they help with small math types (`Vec2`, `Vec3`
-at `main.jai:247-300`). They are limited so they cannot hide work:
+The bootstrap implements integer `+ - * / %`, unary `-`, comparisons,
+boolean `&& || !`, and string equality/inequality. Comparisons cannot chain.
+Runtime arithmetic traps on signed overflow in development and wraps in
+`--release`; division by zero always traps. The minimum integer divided by
+minus one traps; its remainder is zero.
 
-- Overloadable operators:
-  - arithmetic `+ - * / %` and unary `-`;
-  - comparison `== != < <= > >=`;
-  - indexing `[]`;
-  - bitwise `& | ^ ~ << >>`.
-  
-  Assignment, `.`, `&&`, `||` and calls cannot be overloaded.
-- **An operator procedure must be `pure`**: it touches only its
-  parameters, cannot allocate, and cannot fail. It reads like math, so it
-  must behave like math.
-- `==` and `hash` come from `#derive` unless a type needs something else.
-  If `==` is written by hand, `hash` must be too, or the type cannot be a
-  `Table` key.
-- The built-in math types already have their operators. `v3 * f32`,
-  `m4 * v4` and `quat * v3` need no code.
+Compile-time arithmetic is checked in every build mode (§10). This avoids
+release settings silently changing generated constants.
 
-## 10. Compile time: `#run`, `Code` and macros
+Planned overloaded operators must be pure, nonallocating and nonfallible.
+Assignment, field lookup, short-circuit booleans and procedure calls are not
+overloadable. Indexing, arithmetic and comparison require specific constraints.
+An overload cannot hide an I/O operation or an allocation behind math syntax.
 
-### 10.1 `#run`
+## 10. Compile-time execution, reflection and macros
+
+### 10.1 Implemented `#run` and `#assert`
 
 ```coax
-SINE_TABLE :: #run make_sine_table(1024);     // array computed at compile time, stored in the binary
-#run check_layouts();                         // a compile-time assertion pass
+square :: (n: int) -> int { return n * n; }
+TABLE_SIZE :: #run square(16);
+#assert TABLE_SIZE == 256;
+#assert type_name(TABLE_SIZE) == "int";
+main :: () { count := TABLE_SIZE; }
 ```
 
-- `#run expr` evaluates any expression at compile time in the bytecode
-  interpreter, and the result becomes a constant. The interpreter can do
-  file IO, network IO only with `#allow_network`, call C through
-  `#import_c`, and allocate.
-- A `#run` that reads files records them as build inputs, so changing
-  the file rebuilds what depends on it.
-- `#run` output is deterministic. The interpreter offers no clock and no
-  randomness unless the build options allow them.
+`#run` evaluates its following unary expression; parenthesize a larger
+expression, for example `#run (square(16) + 2)`. Results are `int`, `bool` or
+`string` and become literals in the generated C. `#run` requires a value;
+top-level void execution is not supported. `#assert` is a top-level bool
+expression that must evaluate true before C emission. Use `#run` for calls
+inside an assertion as well.
 
-### 10.2 `Code` and macros
+Evaluation uses ordinary checked procedures, branches, loops, recursive calls,
+mutable locals and immutable parameters. An executed attempt to print is a
+compile error. There is no compile-time file, process, network, clock,
+randomness, foreign call or allocator API in this subset. The compiler driver
+still reads input and invokes the selected C toolchain; this restriction is
+about interpreted program code, not process sandboxing.
 
-Taken from the aoc2022 assert macros, with rules added:
+A `#run` expression has an isolated frame. It can read global constants and
+call procedures with compile-time arguments. It cannot capture a surrounding
+runtime local or parameter, even when its containing procedure is itself
+called by another compile-time expression. All `#run` sites in checked
+procedure bodies must succeed, including sites in runtime branches.
 
-```coax
-assert_eq :: (a: Code, b: Code) #expand {
-  va := #insert a;
-  vb := #insert b;
-  if va != vb {
-    fail("left: % (%)\nright: % (%)", va, #text a, vb, #text b, at = #location(a));
-  }
-}
-```
+Limits for the bootstrap:
 
-- A `Code` parameter receives an unevaluated, typechecked expression or
-  block.
-- `#insert c` splices it, and `#insert #run gen()` splices code that a
-  compile-time procedure built.
-- `#text c` is the expression's source text, normalized by `coax fmt`.
-  It replaces the `code_to_string` helper that aoc2022 writes by hand.
-- `#location(c)` gives the file, line and column.
-- **Hygiene.** Names declared inside an `#expand` body are private to it,
-  unless they are declared `#export_to_caller`. Jai's `#expand` lets a
-  macro read and write the caller's locals through backticks. Coax allows
-  that only for names the macro lists in its signature:
-  `(a: Code) #expand [write caller.count]`.
-- **Budgets.** The compiler reports any macro whose expansion is over
-  4 KB of AST nodes, or over 1 ms of interpreter time per use. A macro
-  nobody notices is a compile-time cost nobody budgets.
+| Resource | Limit and diagnostic |
+| --- | --- |
+| Evaluation work | 100,000 evaluated expression/statement visits across one compilation, E0400. |
+| Active interpreted calls | 64, E0403; call sites are printed as bounded source notes. |
+| Active constant dependencies | 64, E0403; type-resolution dependencies also stop at 64, E0347. |
+| Constant cycles | E0340 for type dependencies; E0402 for a value cycle reached through a procedure. |
+| Runtime capture | E0401. |
+| Executed output | E0404. |
+| Uninitialized read | E0405. |
+| False assertion | E0406. |
+| Overflow or division by zero | E0407, in debug and release. |
+| Call missing `#run` | E0408. |
 
-### 10.3 Reflection
+The work budget counts interpreted work, not parsing, every compiler allocation
+or total wall time. It is not a complete hostile-source resource sandbox.
+Memoized constants and folded `#run` sites are not re-executed. Host pointers
+and runtime mutable state cannot be retained because this subset cannot
+construct them. Only checked scalar values cross into target initialization.
 
-```coax
-info := type_info(Room);           // *Type_Info_Struct
-for info.members {
-  print("% % @%\n", it.name, it.type.name, it.offset);
-  for it.notes { ... }             // annotations: @proto, @1, @limit(...)
-}
-```
+### 10.2 Reflection now and later
 
-- Every type has a `Type_Info` at compile time and at run time. Struct
-  members carry names, types, offsets and annotations.
-- `#derive`, codecs, the editor's inspector and save files are all
-  library code over reflection.
-- Run-time type info for a type can be dropped with `#no_type_info`, so
-  shipped binaries carry only what they need.
+`type_name(expression)` is implemented for the three scalar types. Its operand
+is typechecked but unevaluated. It returns a string constant without evaluating
+side effects or arithmetic in the operand; `type_name(1 / 0)` is `"int"`.
+Unknown names and ill-typed operands remain errors. It needs no module import.
 
-### 10.4 Metaprogram plugins
+Planned `type_of`, `size_of` and `type_info` expose resolved types and
+**target-specific** layout. Metadata includes fields, offsets, alignment,
+defaults, annotations, enum values, procedure signatures and effects. It has
+an explicit schema version. Runtime metadata is opt-in or stripped by use;
+tools can retain richer metadata separately.
 
-Coax keeps Jai's plugin model (`autorun.jai`) and types it:
+A compiler's temporary type ID is not a persistent component ID. Registered
+engine component identities and protocol names remain explicit and stable
+through a rebuild. A future `Any` borrows its value; neither reflection nor a
+boxed descriptor extends storage lifetime.
 
-```coax
-Autorun :: struct { #as using base: Build.Plugin; should_run := true; }
+### 10.3 Planned typed code and macros
 
-on_message :: (p: *Autorun, m: Build.Message) {
-  switch m {
-    case .typechecked: (d: Build.Declaration) { lint_layout(d); }
-    case .complete:    (c) { p.should_run = c.ok; }
-  }
-}
+`Code` represents syntax with a phase and expected category: expression,
+statement, declaration or type. Quoted code records its original source span
+and lexical bindings. `#insert` splices the expected category and checks the
+result. `#expand` defines a call-site macro. Ordinary execution, quotation,
+expansion and later target execution are distinct operations.
 
-on_finish :: (p: *Autorun, w: *Build.Workspace) {
-  if p.should_run && w.options.output == .executable { Process.run(w.output_path); }
-}
-```
+Expansion-local names are hygienic. Access to caller bindings requires named
+captures with read/write permission. A macro cannot acquire a caller's locals
+through text matching or mutate unrelated declarations. Arguments are not
+silently evaluated twice; the expansion must state duplication explicitly or
+bind a temporary.
 
-- `Build.Message` is a tagged union, so a plugin cannot mistake one
-  message kind for another. aoc2022 casts `*Compiler.Message` to
-  `*Compiler.Message_Complete` by hand.
-- Message kinds:
-  - `file_loaded`;
-  - `parsed`;
-  - `typechecked` (per declaration);
-  - `phase` (before and after code generation);
-  - `complete`.
-- A plugin may:
-  - add declarations (`Build.add_source(w, text)`);
-  - add files;
-  - set build options;
-  - report diagnostics with fixes;
-  - write side outputs (bindings, `.proto` files, shader sources).
-- Plugins run in the interpreter. They are part of the build's input
-  hash, so a plugin change rebuilds what it affects.
+Maintain an expansion tree: source invocation → generator → generated node →
+checked declaration → emitted range. Expose expanded text/typed nodes without
+executing target code. Primary diagnostics point at the invocation or original
+declaration, with notes into generated code.
 
-## 11. Memory and errors
+Budgets use deterministic work and node counts. Initial proposed defaults are
+64 nested expansions and 100,000 new nodes per workspace; validate these with
+real generators before freezing them. Wall-time profiling can warn, but a
+machine-dependent one-millisecond threshold must not change program validity.
 
-### 11.1 The context
+### 10.4 Planned compiler plugins
 
-```coax
-Context :: struct {
-  allocator:      Allocator;
-  temp:           *Temp_Allocator;      // reset by the caller, usually once a frame
-  logger:         Logger;
-  jobs:           *Job_System;
-  assert_handler: Assert_Handler;
-}
-```
+A plugin gets typed events and scoped declaration handles, not mutable raw
+compiler pointers. Events include file-loaded, parsed, signature-ready,
+typechecked, typechecked-available, before-lowering and complete. Workspaces
+isolate build declarations from target declarations.
 
-- `context` is passed implicitly to every procedure, except `#no_context`
-  and `#c_call` procedures.
-- `push_context .{allocator = frame_arena} { library_call(); }` changes
-  it for a block.
-- **`temp`** is a pointer-bump arena, as in Jai. `reset_temp()` frees it
-  all, and a frame loop calls it once a frame. In debug, memory from
-  `temp` is poisoned after a reset, and a pointer to it held in
-  `#persistent` data is reported at the reset that invalidates it.
+Plugins can propose source, dependencies and diagnostics through checked APIs.
+They cannot mutate a frozen target or mark an unchecked declaration valid.
+Adding a declaration schedules its prerequisites; unresolved dependency cycles
+produce a finite explanation. Plugin identity, version, options and recorded
+inputs enter cache keys. A failed plugin invalidates the workspace output.
 
-### 11.2 Allocation rules
+This API, `Code`, macros and generated declaration scheduling are not
+implemented by the scalar evaluator.
 
-- Allocation is explicit: `New(T)`, `NewArray(n, T)`, `array_add` and
-  `free`. A procedure that allocates says so with `#allocates`, and the
-  compiler checks that transitively. A `job` or `shader` cannot allocate
-  except from an arena it was handed.
-- Owned pointers `!*T` free what they own when their owner is freed (the
-  primer). They are meant for the few tree-shaped structures. Most data
-  lives in arenas and pools.
-- `@joint` fields share one allocation (the primer's mesh example).
+### 10.5 Planned conditional compilation
 
-### 11.3 Errors
+`#if CONSTANT { ... } else { ... }` selects declarations or statements at
+compile time. Both branches must parse; only the selected branch participates
+in name resolution, typechecking, effects and emission. A condition cannot
+depend on a declaration that exists only inside its own selected branch.
+Such dependency cycles must be diagnosed rather than guessed.
 
-```coax
-Read_Error :: enum u8 { not_found; too_large; denied; }
+This is distinct from runtime `if`, whose bodies are checked and whose
+`#run` sites must succeed even when its condition is false. Target and module
+configuration used by `#if` are explicit workspace inputs and cache-key
+components. The bootstrap rejects `#if`; adding it follows the declaration
+dependency scheduler instead of ad hoc source-text deletion.
 
-read_file :: (path: string, max: int) -> (string, Read_Error?) #allocates { ... }
+## 11. Memory, context and errors
 
-load :: (p: string) -> (Level, Read_Error?) {
-  text := try read_file(p, 1 << 20);      // returns the error to our caller
-  level := parse(text) or_else default_level();
-  return level, null;
-}
-```
+### 11.1 Planned explicit context
 
-- A procedure that can fail returns an error as its last result, typed
-  as an optional enum or union. `try` returns it upward, and `or_else`
-  handles it in place. Ignoring an error result is a compile error.
-- There are no exceptions and no panics in library code. `assert` calls
-  `context.assert_handler`, which in a shipped build records and
-  continues, or stops the frame, as the app decides.
-- Protocol refusals are ordinary enum values (`Refusal.limit_exceeded`).
+Ordinary procedures can receive an implicit context holding allocator,
+scratch arena and logging services. `push_context` derives a block-local
+context without mutating an unrelated caller's policy. `#no_context` leaf
+procedures and C-callable procedures omit it. Dependencies such as allocation
+and host I/O appear in transitive effect summaries even when context passing
+is implicit.
 
-## 12. Jobs: captures as effects
+A foreign allocator is not redirected by changing Coax context. Context layout
+is private to its versioned runtime; independently built modules use explicit
+C ABI entry points and opaque handles. The current scalar bootstrap has no
+implicit context convention yet.
 
-The most important addition to Jai.
+### 11.2 Lifetimes and allocation
 
-```coax
-move :: (dt: f32) job [write transforms.position, read velocities] {
-  for_parallel transforms grain 1024 {
-    it.position += velocities[it_index] * dt;
-  }
-}
+| Storage | Owner and invalidation |
+| --- | --- |
+| Persistent world | Resident host; versioned handles survive code replacement. |
+| Level arena | Level owner; every borrow ends before arena reset. |
+| Thread scratch | Worker/thread; cannot escape into another worker or persistent state. |
+| Reusable pool | Pool owner; generation changes on recycling. |
+| Dynamic array | Container owner; growth can move storage and invalidate views. |
+| Foreign buffer | Explicit acquire/release contract with the foreign owner. |
 
-animate :: () job [write poses, read transforms.orientation, read clips] { ... }
-```
+Allocation operations, deep copies and releases are explicit. `New`,
+`NewArray`, `array_add`, `free` and `destroy` are planned library operations.
+`destroy` only releases what its contract explicitly owns. Debug poisoning
+and allocation provenance help find stale views; they cannot prove that every
+raw pointer is safe. No automatic recursive destruction is implied.
 
-1. A `job` declares every piece of shared data it touches, as `read` or
-   `write`. The compiler refuses a job body that touches anything else,
-   including globals.
-2. **Effects are per field.** `write transforms.position` and
-   `read transforms.orientation` do not conflict, and SOA makes that true
-   at the memory level.
-3. **The scheduler builds the frame graph from capture lists.** Two jobs
-   run in parallel only if each one's writes are disjoint from the
-   other's reads and writes. This is checked at compile time when the
-   graph is static, and at schedule time otherwise.
-4. **`for_parallel` splits a range.** A split writes only its own index
-   range of a `write` array, and the compiler checks that writes are
-   indexed by `it_index`.
-5. **Deterministic merge.** Reductions (`sum`, `min`, appends) combine in
-   index order, so results do not depend on the worker count.
-6. A `job` can call only procedures that are `job`s with a subset of its
-   effects, or `pure`.
+An allocation effect is checked transitively before a job, shader or strict
+no-allocation section accepts a call. Low-level FFI needs a declared effect
+summary and manual review. Scratch lifetimes cannot be enforced solely by an
+allocator's existence.
 
-This is the protocol's `Effects` object (reads, writes, attenuation)
-applied to memory. It is not a borrow checker. Inside a job, pointers are
-ordinary pointers. The guarantee is about which data two jobs may touch
-at once, which is the guarantee a frame graph needs.
+### 11.3 Errors and resource cleanup
+
+Fallible APIs return a value plus a typed optional error or a tagged result.
+Ignored errors are compile errors. `try` propagates an error and runs active
+`defer` cleanup; `or_else` handles it explicitly. This syntax is planned.
+
+Foreign errors map through explicit adapters. An HTTP status or protocol
+refusal keeps its original domain and code; it is not collapsed to an
+unqualified integer. Fatal arithmetic, invalid handles and failed invariants
+must stop the affected operation; an assertion handler cannot safely continue
+past arbitrary memory corruption.
+
+## 12. Jobs and concurrency
+
+A planned job declares reads/writes of memory regions and subfields. The
+scheduler allows overlap only when writes do not conflict with other reads
+or writes. SoA field separation must correspond to actual disjoint storage.
+A pointer hidden in a view can alias another region; field names alone are
+not a race-freedom proof.
+
+Require an alias/region discipline, disjoint range validation, and effect
+summaries for callees before enabling parallel execution. Foreign calls,
+atomics and shared allocators need declared behavior. Ordinary raw pointers
+remain manually managed; there is no general borrow checker.
+
+Thread contexts and scratch arenas are separate. Shared general-purpose
+allocator state is still synchronized. A future atomic API must specify
+ordering for each operation and target; using native threads does not define
+that memory model automatically.
+
+Deterministic reductions combine in a specified index/tree order. Test the
+same replay with 1, 2, 4 and 8 workers. No job syntax, scheduler integration,
+atomic API or static race checker exists in the bootstrap yet.
 
 ## 13. Determinism
 
-```coax
-step_ice_cream :: (s: *Sim, input: Input) deterministic strict { ... }
-```
+A future `strict` floating mode forbids contraction, reassociation and
+approximate reciprocal/square-root substitutions. It pins rounding and math
+implementations with exact vectors. The engine's existing fdlibm behavior and
+`-ffp-contract=off` invariants remain authoritative. Do not substitute a claim
+of correctly rounded transcendental math for those tested algorithms.
 
-- **`strict`** means:
-  - no FMA contraction;
-  - no reassociation;
-  - IEEE rounding;
-  - no approximate reciprocal or rsqrt;
-  - math from `Strict_Math` (correctly rounded `sin`, `cos`, `pow`,
-    `sqrt`) instead of the platform libm.
-  
-  Today that takes per-file `-ffp-contract=off` in CMake, which is easy
-  to lose. Here it travels with the code.
-- **`deterministic`** is checked transitively. A deterministic procedure
-  cannot:
-  - read clocks;
-  - read uninitialized memory;
-  - iterate a `Hash_Order_Table`;
-  - call non-`strict` float code;
-  - start jobs other than `for_parallel` with ordered merges.
-- **`fixed32` and `fixed64`** for results that must match the Rust build
-  or `web/semantic.js` exactly.
-- **Randomness is a value.** `Rng` is passed in, never global.
-- **Replay tests:** `#test replay "fixtures/icecream/*.trace"`.
+A deterministic function cannot read clocks, uninitialized memory, ambient
+randomness or hash-order iteration, nor call a function with incompatible
+effects. Random generators are explicit values. Fixed-point arithmetic still
+needs explicit scale, rounding and overflow rules; it does not automatically
+reproduce a different algorithm's floating-point outputs.
 
-## 14. The protocol is native
+Cross-platform proof includes serializations, replay order, compiler flags,
+SIMD lowering and scheduling. The initial evaluator only proves scalar integer,
+bool and byte-string behavior; it makes no floating-point determinism claim.
 
-The OpenAgents Protocol keeps `.proto` files as the public source of
-truth. Coax imports them, or emits them, and generates codecs at compile
-time:
+## 14. Protocol boundaries
 
-```coax
-#import_proto "openagents/engine/v1/state.proto";
+Public `.proto` files and published descriptors remain the interchange source
+of truth. A future `#import_proto` consumes existing contracts and generates
+checked types/codecs. Source annotations may propose schema changes, but those
+must return through the owning repository's versioning and compatibility
+review; they are not a competing silently editable schema source.
 
-EntityState :: struct @proto("openagents.verse.presence.v1.EntityState")
-                      @class(presence) @version 3 @max_bytes 4096 {
-  entity:   string      @1 @limit(max_bytes = 64) @grammar(entity_id);
-  position: v3          @2 @unit("m");
-  stamp:    Stamp       @3;
-  look:     AvatarLook? @4 @since 2;
-  shade:    u32         @5 @[1, 2];   // versions 1–2 only; number and name stay reserved
-}
-```
+The current engine bundle under `third_party/openagents-engine-proto` contains
+frozen schemas, generated bindings and compatibility evidence. Preserve that
+pin and its existing C ABI consumers. A planned shared options package or a
+future `proto/compatibility` directory is not a currently implemented facility.
+Do not move or overwrite published descriptors as a side effect of language
+work. If the owning source repository changes or is archived, record a reviewed
+source/bundle migration instead of inferring new ownership from this draft.
 
-- Field numbers, limits, data classes, sensitivity and units are the
-  protocol's `openagents.options.v1` options, written as annotations.
-- `@version`, `@since` and version ranges are the primer's automatic
-  versioning. Reading an old record runs the generated migration.
-- **Breaking changes fail the build.** The compiler checks each `@proto`
-  type against the frozen descriptors in `proto/compatibility/`, as
-  `buf breaking` does.
-- **Bounded decoders** check every limit before allocating (R14), on
-  every target.
-- **NIP JSON.** `@wire`, `@json_key` and `@nullable` produce exact NIP
-  JSON. Signed bytes are never re-serialized for verification.
-- `Any`, raw pointers and `Hash_Order_Table` are refused inside `@proto`
-  types.
-- The same annotations drive saves, replication and hot-reload
-  migration: one set of versions and one migration path.
+Bounded codecs must validate sizes, nesting, presence, unknown-field policy,
+units and revisions before admitting domain values. A decoded record grants
+no host authority. Original signed JSON and content-addressed bytes keep their
+existing representation and validation; ordinary protobuf serialization is
+not canonical hashing.
 
-## 15. GPU: shaders in the same language
+Protocol versions, native layout versions, save migrations and hot-reload
+versions are distinct axes. A field rename cannot automatically infer a safe
+migration. Pointer fields, `Any` and live resources are not portable wire data.
+No proto frontend or new codec is implemented by this change.
 
-```coax
-Instance :: struct @gpu { model: m4; color: v4; }
+## 15. GPU programs
 
-node_vs :: (v: Vertex_In, @instance inst: Instance, @uniform frame: Frame_Uniforms) -> Vertex_Out
-           shader vertex {
-  out: Vertex_Out;
-  out.position = frame.view_proj * inst.model * v4.{v.position.x, v.position.y, v.position.z, 1};
-  out.color = inst.color;
-  return out;
-}
+A future shader subset may share typed declarations with CPU code while
+lowering separately to MSL and WGSL. It has no general pointers, allocator,
+implicit context or recursion. Resource access modes and target capabilities
+are explicit. Native Metal features require target-specific validation and
+fallback decisions.
 
-cull :: (@storage instances: [] Instance, @storage draws: *Indirect_Args) shader compute(64) { ... }
-```
+A CPU procedure compiled to Wasm is not a GPU shader. Browser WebGPU consumes
+WGSL through browser bindings; native Metal consumes its own compiled pipeline.
+The first shader experiment must compare shared-schema generation against a
+new language backend before choosing either approach.
 
-- **`shader` procedures** are a restricted subset:
-  - no pointers except bound resources;
-  - no recursion;
-  - no allocation;
-  - no `context`.
-  
-  They compile to **MSL** first for the native Metal path, then WGSL for
-  WebGPU, then SPIR-V.
-- **`@gpu` structs** get one layout valid on every target. The compiler
-  reports the padding, and the CPU upload uses the same type, so instance
-  buffers like `src/metal`'s cannot disagree with their shaders.
-- **Metal is first class.** Argument buffers, indirect command buffers,
-  memoryless targets, tile shaders and imageblocks are attributes. The
-  compiler says which features a shader uses that a target lacks.
-- **Shaders hot-reload** like code, and the pipeline is rebuilt between
-  frames.
+Validate offsets, strides, alignment and upload lengths for each pipeline.
+GPU resources remain resident host objects with explicit queue/fence ownership.
+Replacing a shader creates a new pipeline between frames, retires old resources
+after completion, and cannot reinterpret a live buffer under an incompatible
+layout. None of this is implemented by the scalar compiler.
 
-## 16. The compiler and hot reload
+## 16. Builds, iteration and hot reload
 
-### 16.1 Speed targets
+### 16.1 A capability-aware build program
 
-| Measure | Target |
-| --- | --- |
-| Front end (parse and typecheck) | 1,000,000 lines per second per core |
-| Debug build, whole engine (~40k lines) | under 0.5 s |
-| One-procedure change, debug, to running code | under 50 ms |
-| Optimized release | minutes are fine |
+`build.coax` is a proposed typed build API. A workspace selects explicit
+sources, targets, defines, libraries, outputs and plugins. It distinguishes
+build-host execution from target compilation. File/process/network access
+requires declared permission. Pure `#run` expressions do not inherit it.
 
-How:
+A reproducible build records compiler hash/version, target description,
+toolchain versions, source/module/plugin hashes, options and every admitted
+input. File reads record paths and content; directory enumeration is sorted.
+Environment reads use an allowlist and enter the cache key. Clock and randomness
+are absent by default. Network access needs a pinned fetched artifact and
+explicit opt-in; results are not a silently trusted cache dependency.
 
-- no headers, no preprocessor, one parse per file;
-- **the compiler is a server**: it holds the typed program in memory and
-  invalidates per declaration, not per file;
-- **own debug backends** for arm64, x86-64 and wasm, emitting machine code
-  from a simple IR. Release builds go through LLVM, or through C output
-  during the transition (§20);
-- polymorphic instantiations cached across builds;
-- `#run` in a bytecode interpreter.
+C compiler and linker invocation remain explicit toolchain steps. The current
+driver uses `COAX_CC` or `cc`; it does not provision or pin that compiler.
+Dependency resolution, package locks, remote caching, hermetic execution and
+artifact signing are additional systems, not automatic consequences of a
+programmable build language.
 
-### 16.2 Hot reload
+`build.coax` may generate CMake and Xcode source manifests first. Keep existing
+CMake, `project.yml`, Xcode and Emscripten paths until generated parity and
+real native/browser builds pass. Do not delete working build inputs merely
+because a language build API has been designed.
 
-- **`#persistent` globals and what they own** live in host memory, and
-  survive a reload. Everything else is code.
-- **Procedure IDs.** In debug builds, calls go through a per-procedure
-  table, so a changed procedure replaces its entry between frames.
-  Procedure values stored in persistent data are IDs, never raw
-  addresses.
-- **Layout migration.** If a `#persistent` struct changes, the compiler
-  generates the migration from `@version` (or field names), applies it to
-  live data, then resumes.
-- **iOS devices** cannot load code at runtime. Device builds are fixed
-  images, and the reload loop runs on a Mac host (performance stack item
-  1). Coax does not try to get around code signing.
+### 16.2 Measure the whole loop
 
-### 16.3 The build API
+Record clean and warm parse/check/evaluate/emit/link times separately, then
+asset processing, launch, GPU preparation and reload. For web delivery add
+Wasm processing, compression, transfer, instantiation and browser setup.
+Measure on named hardware, source revision and toolchain with multiple runs.
+Report workload size and specialization/expansion counts alongside timings.
 
-The build is a program, so a project root has `build.coax`:
+An eventual resident compiler can invalidate declarations and cached
+specializations precisely. That requires explicit dependency tracking and
+bounded cache lifetime. The single-shot bootstrap is not incremental and has
+not demonstrated any whole-engine compilation-speed target.
 
-```coax
-#import "Build";
+### 16.3 Transactional host reload
 
-build :: () {
-  w := Build.workspace("verse");
-  w.options.output = .executable;
-  w.options.targets = .[.macos_arm64, .ios_arm64, .wasm32];
-  w.options.optimize = .debug;
-  Build.add_files(w, "src/**/*.coax");
-  Build.add_c_library(w, "third_party/stb", headers = "stb_image.h");
-  Build.add_plugin(w, Autorun);
-  Build.emit_xcode_target(w, "apps/openagents-ios");   // replaces project.yml source lists
-}
-#run build();
-```
+The resident host owns persistent storage, platform services, queues and
+resource lifetimes. Reloadable code is behind a versioned C interface. Stop
+workers at a safe point, verify no old stack frame/callback can execute, and
+replace procedure-table entries only after compatibility checks.
 
-This replaces `CMakeLists.txt` and the source lists in
-`apps/openagents-ios/project.yml` with one program (R13). Xcode and
-Emscripten remain the linkers and packagers, at first.
+Stored procedure references use stable IDs, not stale code addresses. Layout
+changes need an explicit migration plan: allocate new storage, migrate checked
+fields, validate handles/resources, and atomically publish or roll back. Do
+not infer compatibility from matching field names. Preserve original state
+until the migration succeeds.
 
-## 17. Interop, modules, tooling and the standard library
+Mac-host development reload is distinct from a signed iOS device image.
+Device builds keep platform code-signing and deployment rules. A faster
+compiler alone supplies no stack migration, safe pointer replacement, worker
+quiescence or GPU resource preservation.
+
+## 17. Interop, modules and tooling
 
 ### 17.1 Modules
 
-- `#import "Basic";` brings a module's public names into scope.
-- `Hash :: #import "Hash";` binds it to a name (Jai, `aoc2022 main.jai`
-  end).
-- `#load "file.coax";` adds a file to the current module.
-- A module is a directory with `module.coax`. Everything is public unless
-  it is under `#scope_file` or `#scope_module` (Jai), and `#scope_export`
-  ends a private section.
-- There are no cyclic imports between modules. Files within a module may
-  refer to each other freely.
-- Versions and fetching are not the language's job. Modules are vendored
-  directories, as `third_party/` is today.
+Currently only `#import "Basic";` is supported, providing checked `print`.
+A future directory module has `module.coax`, explicit visibility and acyclic
+imports. `#load` adds a source unit to a module without making it a package
+manager. Vendored/locked sources are explicit inputs; import does not download
+code. Conditional compilation and module parameters must be represented in
+cache keys and editor analysis.
 
-### 17.2 C, C++ and Swift
+### 17.2 C, C++, Swift and platform support
 
-- **C both ways.** Coax calls C directly and exports `#export_c` entry
-  points. `#import_c "stb_image.h"` reads a C header through libclang at
-  compile time.
-- **C++ through C shims.** Coax does not parse C++. metal-cpp, Jolt and our
-  own C++ engine get an `extern "C"` layer, which is the shape
-  `src/metal/home_app.h` already has.
-- **Swift** calls Coax through the same C boundary a bridging header uses
-  today.
-- `#c_layout` structs pass between Coax and C++ with no copying.
+Use fixed-width C ABI data, explicit lengths, opaque handles and named release
+functions. `int` is s64, not C `int`. A counted Coax string is not `char *`.
+Generated headers must record size, alignment, calling convention, ownership,
+nullability, callback lifetime and allocator pairing. Test both directions.
+
+C++ classes and metal-cpp stay behind `extern "C"` shims. Swift uses the same
+boundary. A future context-carrying internal convention must not leak across
+these interfaces. Header import through libclang is planned and needs rules
+for macros, inline-only symbols, variadics and unsupported declarations.
+
+C11 output runs on the tested host. iOS, Android, Linux, Windows and wasm32
+need distinct runtime, linker, ABI and debugging evidence before becoming
+supported compiler targets. No C output claim establishes that an arbitrary
+platform integration is complete.
+
+For Wasm, test pointer width, linear-memory growth and invalidated typed-array
+views, explicit host imports, async loads, main-loop ownership and resource
+release. Include browser input, geometry upload and rendering in the vertical
+slice, not just a successful Wasm link.
 
 ### 17.3 Tooling
 
-- `coax fmt`: the parser printing its tree. One form.
-- **Diagnostics** carry a stable code, a primary span, an explanation and
-  a machine-applicable fix where possible. A capture error says exactly
-  which `read` or `write` to add.
-- **The query server** answers over a local socket: a symbol's type, its
-  uses, a job's effects, a struct's layout (`#layout`), the macros
-  expanded at a site, and what changed since the last build.
-- **Tests in the language**: `#test` blocks, replay tests and shader
-  golden-image tests.
-- **Debugging**: DWARF from the debug backends, so LLDB and Xcode work.
+Implemented commands: `coax version`, `check`, `c`, `build` and `run`.
+`--keep-c` retains generated source for inspection. Errors have stable codes,
+source locations and fix text where available; compile-time failures add call
+site notes. C debug locations still refer to generated C: source maps and
+full debugger integration are future work.
 
-### 17.4 Standard library, first cut
+Planned tools include a formatter, typed symbol/layout/effect queries,
+expansion traces and a compiler server. The editor needs a safe analysis mode
+that does not automatically execute privileged build plugins. Missing generated
+inputs must be reported honestly rather than replaced with guessed symbols.
 
-| Module | Contents |
+The standard library will grow by consumer: strings/views, containers, arenas,
+reflection, math, jobs, files/processes, protocol adapters and platform bridges.
+The existence of a module name in this plan does not mean it is importable.
+
+## 18. Engine example
+
+The complete runnable bootstrap example is
+[budget.coax](examples/budget.coax): derive a static visibility
+budget with ordinary checked computation, assert it, and print the result.
+The emitted C contains the computed literal. It does not invoke an evaluator
+on startup or alter the shipping engine.
+
+The later representative engine slice is `src/paynet`'s pulse update: explicit
+SoA storage, a checked update loop, derived GPU upload layout, and a C ABI
+called from the resident native host. Required evidence is:
+
+- Same input and output as the existing C++ update, including edge cases.
+- No hidden frame allocations; explicit scratch and ownership boundaries.
+- Exact deterministic results where the existing subsystem requires them.
+- Native Metal pipeline receives verified layout and bounds.
+- Frame time within an agreed budget, compared on the same hardware.
+- iOS and browser paths remain functional with independent target proofs.
+
+This example determines which structs, arrays, loops and FFI features to add
+next. Do not implement the whole target language before proving a subsystem.
+
+## 19. Costs and risks
+
+A production language includes diagnostics, debuggers, ABIs, standard
+libraries, platforms, documentation, build reproducibility and maintenance.
+Parsing a few examples is not the expensive part.
+
+| Risk | Mitigation |
 | --- | --- |
-| `Basic` | `print`, `log`, `assert`, `New`, `free`, array procedures, `temp`, `get_time` |
-| `String` | views, `split`, `trim`, `starts_with`, `String_Builder`, number parsing |
-| `Table` | `Table($K/Hashable, $V)` in insertion order; `Hash_Order_Table` |
-| `Sort` | stable and unstable sorts, `Heap` |
-| `Math` | the built-in math types, `Strict_Math`, `Fixed` |
-| `Simd` | lane types, `for_simd` support |
-| `Jobs` | the scheduler, `for_parallel`, frame graph |
-| `File`, `Process` | IO for tools and `#run` |
-| `Proto` | codecs, NIP JSON, JCS |
-| `Metal` | device, queues, argument buffers, through C shims over metal-cpp |
-| `Build` | workspaces, options, plugins, messages |
-| `Reflect` | `Type_Info`, `#derive` implementations |
+| Metaprogramming hides behavior | Inspect generated code, dependencies and expansion provenance. |
+| Manual lifetime bugs | Stable handles, explicit owners, scratch boundaries, poisoning and runtime checks. |
+| Specialization/expansion explosion | Deterministic budgets, caching, per-declaration time/code-size reports. |
+| Compiler work delays engine work | Every stage proves a usable workflow and has a stop decision. |
+| Premature new backend | Keep C output until measured evidence justifies replacement. |
+| Build side effects | Separate pure evaluation from explicitly permitted build work. |
+| Claimed cross-platform support | Publish a target matrix backed by ABI, runtime and end-to-end tests. |
+| Metadata becomes a second schema source | Preserve public contracts, stable IDs and reviewed adapters. |
+| Unsafe reload | Safe points, versioned C ABI, transactional migration and rollback. |
 
----
+## 20. Implementation order and exit gates
 
-# Part C. The plan
+Stages are dependency-ordered and evidence-driven, not calendar promises.
+Each stage produces something independently testable. Platform/engine rollout
+happens only after its own gate; a bootstrap compiler does not mean the app
+already uses it.
 
-## 18. Worked example: the payment network's pulses
+| Stage | Work and prerequisites | Exit evidence |
+| --- | --- | --- |
+| 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
+| 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
+| 2 — Data and C boundary | Structs/defaults, fixed arrays/views, half-open `for`, `defer`, explicit mutation and fixed-width export/import. Ordered runtime operand lowering before general effectful expressions. | Field/layout/ownership vectors; one pulse kernel called by the native host; compare outputs and frame cost. |
+| 3 — Metadata and generation | Target layouts and stable declaration IDs first; reflection, derived operations and hygienic typed code next. | Generated registry or inspector with provenance, invalid generator fixtures and bounded expansion. Consider bytecode only after profiling. |
+| 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
+| 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |
+| 6 — Protocol and GPU experiments | Stable metadata/layouts and previous native ABI proof. Existing protocol adapters remain until parity. | One bounded codec and one Metal pipeline, separately tested; compare generated schemas/shaders before choosing a compiler backend. |
+| 7 — Browser vertical slice | wasm32 runtime/host ABI and separate shader bridge. | Geometry, memory growth, async resources, input, rendering and debug path in an actual browser. |
+| 8 — Resident compiler and reload | Dependency cache, stable code IDs, safe points and transactional state migration. | Mac-host edit/reload retains state and resources, rolls back failures and has measured latency. No device code-loading bypass. |
+| 9 — Additional backends | Earlier workflows demonstrate value; C backend remains a reference. | Native debug/optimized backends pass the same conformance and target suites and improve a measured workload. |
 
-`src/paynet` moves up to 100,000 payment pulses a second along channels
-on Metal. In Coax:
+Stop after stage 2 if the subsystem is harder to maintain or less reliable
+than its C++ equivalent. Pause after stage 4 if ordinary C++ code generation
+provides the same workflow with less infrastructure. At every stage, keep
+working engine paths until replacement parity is demonstrated.
 
-```coax
-Pulse :: struct SOA(4) { t: f32 @hot; speed: f32 @hot; edge: u32; }
-Edge  :: struct #derive(eq) { from, to: u32; length: f32; }
+## 21. Non-goals
 
-#persistent pulses: [..] Pulse;
-#persistent edges:  [..] Edge;
-#persistent nodes:  [..] v3;
+No mandatory GC, runtime VM, implicit recursive destructors, exceptions,
+virtual inheritance, header preprocessor, automatic package downloading or
+platform code-signing bypass. There is no claim of general memory safety,
+whole-engine migration, automatic GPU compilation or fully hermetic builds.
 
-advance_pulses :: (dt: f32) job [write pulses.t, read pulses.speed] deterministic strict {
-  for_simd pulses { it.t = min(it.t + it.speed * dt, 1.0); }
-}
-
-Pulse_Instance :: struct @gpu { position: v3; glow: f32; }
-
-collect_pulses :: (out: [] Pulse_Instance) job [read pulses, read edges, read nodes, write out] {
-  for_parallel pulses grain 4096 {
-    e := edges[it.edge];
-    out[it_index] = .{position = lerp(nodes[e.from], nodes[e.to], it.t), glow = 1 - it.t};
-  }
-}
-
-pulse_vs :: (@instance p: Pulse_Instance, @uniform f: Frame_Uniforms) -> Vertex_Out shader vertex { ... }
-
-frame :: (dt: f32) {
-  advance_pulses(dt);                  // writes pulses.t
-  collect_pulses(frame_instances());   // reads pulses.t: scheduled after
-  draw(pulse_pipeline, frame_instances());
-  reset_temp();
-}
-```
-
-The source shows every property we care about:
-
-- the layout (`SOA(4)`, `@hot`);
-- what each job touches;
-- what must be deterministic;
-- the layout the GPU shares;
-- what survives a reload (`#persistent`).
-
-## 19. What it costs
-
-A production language like this is years of work for a small, strong
-team. Jai has been in development since 2014. The parser is not the
-expensive part. The expensive parts are:
-
-- the backends;
-- debug info and LLDB on Apple;
-- Xcode, Metal and wasm integration;
-- the standard library and tooling;
-- keeping all of it working through every OS and Xcode release.
-
-The start plan below spends that cost in stages. Each stage ships
-something the engine uses, and each has a point where we can stop.
-
-## 20. Start plan
-
-The rule: **every phase produces code that runs in the shipping app**, and
-nothing waits on the next phase. C output is the bridge. It goes through
-Xcode and Emscripten exactly as today's C++ does, so there is no new
-toolchain risk until we choose to take it.
-
-### Phase 0. Freeze the core (about 2 weeks)
-
-- Turn Part B into a grammar file (`coax/grammar.ebnf`) and a list
-  of the 50 programs it must accept or reject (`coax/conformance/`).
-- Translate three real subsystems to Coax on paper, without a compiler:
-  - `src/paynet` pulses;
-  - the ECS move pass in `src/ecs`;
-  - one shader from `home.metal`.
-  
-  Every feature they don't use is cut from version 0.
-- Decide the open questions in §22 that block the grammar.
-
-Exit: the grammar parses the three translations with a throwaway
-parser.
-
-### Phase 1. `coax0`: a transpiler to C (about 6 weeks)
-
-**Started 2026-10-27:** `coax/` in the openagents repo compiles and runs hello world, with
-procedures, `int`/`bool`/`string`, control flow, checked `print` formats
-and overflow traps ([coax/README.md](README.md)).
-
-- Written in C-style C++ in `coax/` at the root of the openagents repo,
-  with no new dependencies. Nothing of Coax lives in aethyr-cpp (owner,
-  2026-10-27); the engine consumes the generated C.
-- Input: declarations, structs, `SOA` and `SOA(4)`, procedures, multiple
-  returns, `ifx`, `defer`, `for`, `#distinct`, optionals, `try`, unions,
-  `#derive(eq, hash)`, `pure` operators, and `job` capture lists checked
-  for effects.
-- Output: one C file per module plus a header for the C boundary, which
-  CMake and `project.yml` pick up like any other source.
-- No `#run` yet. Generated tables come from a small `coax0` built-in list.
-
-Exit: `src/paynet`'s pulse update is written in Coax, ships in the
-OpenAgents iOS app, and its frame time matches the C++ version within 5%.
-
-### Phase 2. Effects and determinism in production (about 4 weeks)
-
-- The job scheduler (performance stack item 3) reads Coax effect lists.
-- `strict` and `deterministic` are checked and emitted as per-function
-  attributes plus `-ffp-contract=off` on the generated file.
-- Replay tests run in `ctest` over the Ice Cream Man traces.
-
-Exit: one deterministic simulation system runs in Coax and passes replay
-tests at 1, 2, 4 and 8 workers.
-
-### Phase 3. `#run`, reflection and the build program (about 8 weeks)
-
-- A bytecode interpreter in `coax`, running `#run`, `Code`, `#insert` and
-  `#expand`, and metaprogram plugins.
-- `type_info` and `#derive` as library code.
-- `build.coax` generates the CMake source list and `project.yml` sources.
-  The old lists are deleted when it does.
-
-Exit: the asset baker or the protocol codecs are generated by `#run`
-instead of a separate tool.
-
-### Phase 4. Protocol and GPU (about 8 weeks)
-
-- `@proto` types, `#import_proto`, bounded decoders and the breaking-change
-  check against `proto/compatibility/`.
-- `shader` procedures to MSL, and `@gpu` layouts shared with the C output.
-
-Exit: one presence type and one Metal pipeline are defined only in Coax.
-
-### Phase 5. The compiler server and hot reload (about 8 weeks)
-
-- `coax` becomes a long-running server with the query API.
-- Hot reload on the Mac Metal host, with `#persistent` and migrations.
-
-Exit: a one-procedure change reaches the running Mac host in under 200
-ms, with state kept.
-
-### Phase 6. Own backends (open-ended)
-
-- A debug backend for arm64 Apple targets first, then wasm, then x86-64.
-- C output stays the release path until a backend beats it.
-
-Exit: the R1 targets in §16.1.
-
-### Kill and pause criteria
-
-- **After Phase 1:** stop if writing the pulse system in Coax was not
-  faster for agents and people than C-style C++, or if agents produced
-  more defects in it.
-- **After Phase 3:** pause the language work if the build-program and
-  `#run` gains could be had as a C++ code generator for less.
-- **At any phase:** if Jai ships publicly under a license we can use,
-  compare it to Coax on R1–R14, and move the Coax-only features (§4) into
-  libraries and plugins on Jai if it covers enough.
-
-### What changes in the C++ now
-
-These apply from today, whether or not Phase 1 starts this month:
-
-- Plain structs, C boundaries between subsystems, systems registered with
-  their reads and writes, arenas instead of ad hoc allocation, and
-  `strict` code isolated in its own files. Code written that way
-  translates to Coax almost line for line.
-
-## 21. Not planned
-
-- As in Jai: no garbage collection, RAII, exceptions, inheritance,
-  references, header files, preprocessor, or virtual machine in shipped
-  code.
-- Beyond Jai: no borrow checker, because capture-list effects cover the
-  case we have. No runtime code loading on iOS. No package manager. No
-  Unicode identifiers.
+The bootstrap intentionally rejects unsupported reserved syntax. It does not
+pretend to implement pointer ownership, floats, structs, macros, effects,
+context, shaders or general compiler plugins.
 
 ## 22. Open questions
 
-1. **Inclusive ranges.** Jai's `0..n-1` is inclusive. Should Coax keep that
-   for familiarity, or use only `0..<n` to remove off-by-one bugs?
-   Decide in Phase 0.
-2. **Shader language.** Is a Coax shader subset better than Slang (the
-   performance stack's choice) with layouts shared through generated
-   code? Phase 4 decides it with one pipeline written both ways.
-3. **Effect granularity.** Field-level effects fit SOA data. Do
-   pointer-heavy structures such as navmeshes and BVHs need explicit
-   partitions?
-4. **Where the compiler lives.** Decided 2026-10-27: `coax/` at the root
-   of the openagents repo, with the spec (`coax/spec.md`) and the book
-   (`coax/book/`). Does it move to its own repo later?
-5. **Macro budgets.** Are 4 KB of AST nodes and 1 ms per use the right
-   limits, or should they be per-module settings?
-6. **Odin and Zig as hosts.** Either could host part of this as libraries
-   plus code generation. Phase 1's kill criteria are the test of whether
-   a language of our own earns its cost.
+1. Which pulse-kernel ABI and representative data set best prove stage 2?
+2. Which region/alias model is sufficient for field/range effects without
+   overpromising safety for arbitrary pointer graphs?
+3. What stable IDs distinguish compiler declarations, engine registrations,
+   GPU layouts and protocol names across independent builds?
+4. Which generated registry or asset workflow should establish plugin value
+   before a programmable build replaces existing source manifests?
+5. Which host capability interface can support useful file/process work while
+   preserving input provenance and safe editor analysis?
+6. When does measured AST evaluation cost justify an internal bytecode VM?
+7. Should shader layout sharing remain a generator feeding existing shader
+   tools, or justify a restricted Coax backend after the pipeline experiment?
+8. Decided 2026-10-27: Coax lives in `coax/` at the root of the openagents
+   repo, with this spec, the grammar, the compiler and the book
+   (`coax/book/`). Nothing of Coax stays in aethyr-cpp.

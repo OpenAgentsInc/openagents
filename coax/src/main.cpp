@@ -5,12 +5,14 @@
 //   coax run   file.coax [--release]                 compile and run
 //   coax build file.coax [-o out] [--release] [--keep-c]
 //   coax c     file.coax [--release]                 print the generated C
+//   coax check file.coax                             check without invoking C
 //   coax version
 //
 // The C compiler is $COAX_CC, or cc.
 #include "coax.h"
 
 #include "check.cpp"
+#include "eval.cpp"
 #include "emit_c.cpp"
 #include "lex.cpp"
 #include "parse.cpp"
@@ -23,7 +25,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.1.0";
+static const char *VERSION = "coax0 0.2.0";
 
 int32_t g_error_count = 0;
 
@@ -105,11 +107,12 @@ static bool compile_to_c(const char *path, const EmitOptions &opts, std::string 
   Arena arena;
   std::vector<Token> tokens;
   File file;
-  if (!lex(&arena, &src, &tokens) || !parse(&arena, &src, tokens, &file) || !check(&arena, &file)) {
+  if (!lex(&arena, &src, &tokens) || !parse(&arena, &src, tokens, &file) || !check(&arena, &file) ||
+      !evaluate(&file)) {
     fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
     return false;
   }
-  *c_out = emit_c(&file, opts);
+  if (c_out) *c_out = emit_c(&file, opts);
   return true;
 }
 
@@ -146,6 +149,7 @@ static int usage() {
           "usage: coax run   file.coax [--release]\n"
           "       coax build file.coax [-o out] [--release] [--keep-c]\n"
           "       coax c     file.coax [--release]\n"
+          "       coax check file.coax\n"
           "       coax version\n");
   return 2;
 }
@@ -157,7 +161,7 @@ static int main_impl(int argc, char **argv) {
     puts(VERSION);
     return 0;
   }
-  if (cmd != "run" && cmd != "build" && cmd != "c") return usage();
+  if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check") return usage();
 
   const char *input = nullptr;
   std::string out;
@@ -172,6 +176,7 @@ static int main_impl(int argc, char **argv) {
     else return usage();
   }
   if (!input) return usage();
+  if (cmd == "check") return compile_to_c(input, opts, nullptr) ? 0 : 1;
 
   if (cmd == "c") {
     std::string c;

@@ -15,7 +15,8 @@ for src in tests/pass/*.coax; do
   name=$(basename "$src" .coax)
   for mode in "" --release; do
     got=$("$COAX" run "$src" $mode 2>&1)
-    if [[ "$got" == "$(cat "tests/pass/$name.out")" ]]; then pass=$((pass + 1))
+    rc=$?
+    if [[ $rc -eq 0 && "$got" == "$(cat "tests/pass/$name.out")" ]]; then pass=$((pass + 1))
     else note "$name ${mode:-debug}" "output differs:"; diff <(echo "$got") "tests/pass/$name.out" | head -20; fi
   done
 done
@@ -35,3 +36,7 @@ done
 
 echo "$pass passed, $fail failed"
 [[ $fail -eq 0 ]]
+fixtures_rc=$?
+python3 tests/compile_time.py
+python_rc=$?
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 ]]

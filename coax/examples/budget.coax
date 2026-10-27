@@ -1,0 +1,20 @@
+#import "Basic";
+
+TILE_EDGE :: 16;
+VISIBLE_BUDGET :: #run visibility_budget(4);
+#assert VISIBLE_BUDGET == 64;
+#assert type_name(VISIBLE_BUDGET) == "int";
+
+visibility_budget :: (tiles: int) -> int {
+  total := 0;
+  i := 0;
+  while i < tiles {
+    total += TILE_EDGE;
+    i += 1;
+  }
+  return total;
+}
+
+main :: () {
+  print("visible budget: %\n", VISIBLE_BUDGET);
+}

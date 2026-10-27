@@ -96,6 +96,14 @@ struct Parser {
   }
 
   Expr *unary() {
+    if (peek().kind == Tok::directive && str_eq(peek().text, "run")) {
+      Token t = next();
+      Expr *e = make<Expr>(arena);
+      e->kind = ExprKind::run;
+      e->loc = t.loc;
+      if (!(e->lhs = unary())) return nullptr;
+      return e;
+    }
     if (at(Tok::minus) || at(Tok::bang)) {
       Token t = next();
       Expr *operand = unary();
@@ -281,6 +289,17 @@ struct Parser {
 
   // ---- top level ----
 
+  bool starts_procedure() const {
+    if (!at(Tok::lparen)) return false;
+    int depth = 0;
+    for (int i = 0; peek(i).kind != Tok::eof; i++) {
+      if (peek(i).kind == Tok::lparen) depth++;
+      if (peek(i).kind == Tok::rparen && --depth == 0)
+        return peek(i + 1).kind == Tok::lbrace || peek(i + 1).kind == Tok::arrow;
+    }
+    return false;
+  }
+
   ProcDecl *proc(const Token &name) {
     ProcDecl *p = make<ProcDecl>(arena);
     p->name = name.text;
@@ -316,6 +335,8 @@ struct Parser {
   bool file(File *out) {
     std::vector<Import> imports;
     std::vector<ProcDecl *> procs;
+    std::vector<ConstDecl *> constants;
+    std::vector<Expr *> assertions;
     while (!at(Tok::eof) && !failed) {
       const Token &t = peek();
       if (t.kind == Tok::directive && str_eq(t.text, "import")) {
@@ -330,6 +351,13 @@ struct Parser {
         if (!expect(Tok::semicolon, "after the import")) break;
         continue;
       }
+      if (t.kind == Tok::directive && str_eq(t.text, "assert")) {
+        next();
+        Expr *condition = expr();
+        if (!condition || !expect(Tok::semicolon, "after #assert")) break;
+        assertions.push_back(condition);
+        continue;
+      }
       if (t.kind == Tok::directive) {
         fail(t.loc, "E0210", "#" + to_std(t.text) + " is not supported by coax0 yet");
         break;
@@ -337,14 +365,17 @@ struct Parser {
       if (t.kind == Tok::ident && peek(1).kind == Tok::coloncolon) {
         next();
         next();
-        if (!at(Tok::lparen)) {
-          fail(peek().loc, "E0211", "only procedures can be declared at the top level in coax0",
-               "write " + to_std(t.text) + " :: () { ... }");
-          break;
+        if (starts_procedure()) {
+          ProcDecl *p = proc(t);
+          if (!p) break;
+          procs.push_back(p);
+        } else {
+          ConstDecl *c = make<ConstDecl>(arena);
+          c->name = t.text;
+          c->loc = t.loc;
+          if (!(c->expr = expr()) || !expect(Tok::semicolon, "after the constant")) break;
+          constants.push_back(c);
         }
-        ProcDecl *p = proc(t);
-        if (!p) break;
-        procs.push_back(p);
         continue;
       }
       if (t.kind == Tok::ident && (peek(1).kind == Tok::colon || peek(1).kind == Tok::colonequal)) {
@@ -357,6 +388,8 @@ struct Parser {
     out->src = src;
     out->imports = to_slice(arena, imports);
     out->procs = to_slice(arena, procs);
+    out->constants = to_slice(arena, constants);
+    out->assertions = to_slice(arena, assertions);
     return !failed;
   }
 };

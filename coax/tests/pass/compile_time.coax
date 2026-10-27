@@ -1,0 +1,53 @@
+#import "Basic";
+
+// Forward constants and procedures resolve before compile-time execution.
+MAX_VISIBLE :: #run visible_budget(4);
+FORWARD :: LATER + 2;
+LATER :: (40);
+LABEL :: #run label(MAX_VISIBLE);
+MINIMUM :: -9223372036854775807 - 1;
+ZERO :: MINIMUM % -1;
+
+#assert MAX_VISIBLE == 64;
+#assert FORWARD == 42;
+#assert LABEL == "dense";
+#assert type_name(MAX_VISIBLE) == "int";
+#assert type_name(LABEL) == "string";
+#assert type_name(true) == "bool";
+#assert #run factorial(6) == 720;
+#assert #run (true || forbidden());
+#assert #run (false && forbidden()) == false;
+#assert "a\0b" != "a";
+
+visible_budget :: (tiles: int) -> int {
+  count := 0;
+  i := 0;
+  while i < tiles {
+    count += 16;
+    i += 1;
+  }
+  return count;
+}
+
+factorial :: (n: int) -> int {
+  if n <= 1 { return 1; }
+  return n * factorial(n - 1);
+}
+
+label :: (count: int) -> string {
+  if count >= 64 { return "dense"; }
+  return "sparse";
+}
+
+forbidden :: () -> bool {
+  print("must not run\n");
+  return false;
+}
+
+main :: () {
+  local := #run factorial(5);
+  print("visible: %, answer: %, label: %, local: %\n", MAX_VISIBLE, FORWARD, LABEL, local);
+  print("types: %, %, %\n", type_name(local), type_name(LABEL), type_name(forbidden()));
+  print("runtime: %, %, %\n", factorial(5), visible_budget(4), label(64));
+  print("min: %, remainder: %\n", MINIMUM, ZERO);
+}
