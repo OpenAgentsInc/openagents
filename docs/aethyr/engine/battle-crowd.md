@@ -298,8 +298,10 @@ Every window had zero measured dropped battle time, zero grid and projectile
 overflow, and fresh, advancing GPU combat. Overview and orbit submitted exactly
 one million instances and two million triangles, all of them silhouettes.
 Strict pacing failed in every window: completion-interval p95 was 21–30 ms
-against the 17.5 ms limit, with no stalls over 50 ms. The cause is uneven
-cage/compositor cadence, not GPU time. The first-person window passed the
+against the 17.5 ms limit, with no stalls over 50 ms. GPU time is not the
+cause. (This section first blamed uneven cage cadence; the
+[60 Hz cage runs](#fixed-tick-comparison-and-60-hz-cage-measured-on-coderos-2026-10-26)
+show the cage only set the rate.) The first-person window passed the
 participation check (3.5 m of movement, 1,784 outgoing damage). The
 third-person window moved 4.1 m and dealt 3,367 damage, but failed that check
 because it sampled 0.017 s (one tick) of local dropped time.
@@ -364,6 +366,100 @@ stops at a fixed tick; [fixed-tick capture](#fixed-tick-capture) adds it.
 Private evidence directories on CoderOS are `battle-million-4080-diagnostic`,
 `battle-million-4080-sustained`, `battle-million-4080-stable-fallback` and
 `kiki-compare`. Captures and assets stay out of Git.
+
+### Fixed-tick comparison and 60 Hz cage (measured on CoderOS), 2026-10-26
+
+Issue #12599. Same RTX 4080, driver and Chromium as above, but on a second
+cage + Chromium started for these runs on `127.0.0.1:9343` with the same
+command line and environment as the shared browser on 9340 (which was not
+touched). Same million-fighter silhouette asset set
+(`13c53ae005b31e87…`), 1280 × 720, DPR one, seed one. Other agents used the
+card throughout: local model servers held about 10.5 GiB, and the sampled GPU
+utilization from everyone was 29–37% on average during these runs. Two later
+attempts lost the device to `VK_ERROR_OUT_OF_DEVICE_MEMORY` while another
+agent's render lab ran, so the participation runs waited for it to finish.
+
+**Exact image match (measured).** `capture-battle-tick.mjs` at tick 180
+(three seconds), overview, orbit and dolly:
+
+| Build | Overview RGBA SHA-256 | Orbit | Dolly |
+| --- | --- | --- | --- |
+| openagents `18fda333b7`, run 1 | `13ca259b17f37f08…` | `4aa22c84156fa997…` | `e0106e4c222c4502…` |
+| openagents `18fda333b7`, run 2 | same | same | same |
+| Aethyrforge `f42c02c` + the hold, run 1 | same | same | same |
+| Aethyrforge `f42c02c` + the hold, run 2 | same | same | same |
+
+- Every capture repeated byte for byte inside its own run, and every
+  `--compare` printed `MATCH` for all three views: 0 of 921,600 pixels
+  differ, between runs of one build and between the two builds. The state
+  digest was `3926493a30023238…` in all twelve views.
+- The two builds really are different: their kernels hash `5898cbbd…`
+  (openagents) and `41c9d71c…` (Aethyrforge), and openagents runs the silhouette
+  threshold through Detail (at Detail 1, the same 8 px).
+- Aethyrforge has no hold, so its checkout got `1dfb75838e1` and
+  `18fda333b7` applied with the [provenance](../provenance.md) path map. One
+  hunk of `battle-crowd.ts` (the hold constants) was placed by hand, because
+  the Detail lines around it differ. Aethyrforge's battle tests pass with it
+  (51 of 51).
+- Before `18fda333b7`, the orbit view was not repeatable even inside one run:
+  successive captures of the same held frame differed in 15–25 isolated
+  pixels (up to 51/255), where distant fighters tie in depth. See
+  [draw order](#fixed-tick-capture).
+
+**Why the cage ran at 62 Hz (measured).** wlroots' headless backend (0.20,
+used by cage 0.3) re-arms its frame timer a whole number of milliseconds after
+each commit, and `1000000 / 60000` rounds down to 16 ms. A page that only
+counts `requestAnimationFrame` measured 62.37 Hz with a 16.1 ms p95 interval.
+No setting can make it 60 Hz: the event-loop timer only takes whole
+milliseconds, so a custom output mode gives 16 ms (62.5 Hz) or 17 ms
+(58.8 Hz), and `WLR_HEADLESS_OUTPUTS` only sets the number of outputs. The fix
+is a small wlroots patch that keeps frames on a fixed grid of refresh
+periods, each firing at most 1 ms after its grid point. With it, the same page
+measured 60.00 Hz with a 17.1 ms p95 and 17.2 ms maximum. The patch and the
+module change are coderos-hosts `99fd7bd` (`modules/gpu-browser.nix`); the
+shared browser on 9340 gets it when the owner rebuilds CoderOS.
+
+**Strict pacing with the 60 Hz cage (measured).** `verify-battle-crowd.mjs`,
+diagnostic mode, timestamps off, one 15-second window per camera after five
+seconds of warmup, on the stock cage and then on the patched one:
+
+| Camera | Stock: completions/s | Stock: interval p95 | 60 Hz cage: completions/s | 60 Hz cage: interval p95 | 60 Hz cage: callback p95 |
+| --- | --- | --- | --- | --- | --- |
+| Overview | 62.20 | 21.5 ms | 59.94 | 27.2 ms | 17.1 ms |
+| Orbit | 62.12 | 23.9 ms | 59.98 | 28.1 ms | 17.1 ms |
+| Dolly | 62.04 | 21.2 ms | 60.00 | 24.9 ms | 17.1 ms |
+
+With the patch, frame callbacks arrive every 16–17 ms (never later than 17.2 ms), and the
+crowd completes exactly 60 frames a second, but the strict check still fails:
+it times GPU completions, and those are uneven for reasons after the
+compositor. From the raw windows of the patched run, the time from the frame
+callback to the queue submit had a p95 of 9.8–10.5 ms (median 5.5–6.4 ms), and
+the time from submit to the host's completion notice had a p95 of 13–17 ms
+(median 6–7 ms), on a card other processes were using at the same time.
+Submits alone already miss the limit (interval p95 20–21 ms). The earlier
+conclusion that "the cause is uneven cage/compositor cadence" is therefore
+wrong: the cage set the rate (62.5/s instead of 60/s), not the unevenness.
+The pacing check keeps its limits (no host tolerance), since the cage can
+present at a steady 60 Hz; on this shared card it reports
+`qualified: false` for frame-preparation and completion jitter (inferred from
+the timings above; not traced inside Chromium or the driver).
+
+**Participation (measured, 60 Hz cage).** First and third person, two
+15-second windows each, with participation: every window passed its
+functional checks at 59.97–60.05 completions/s. The first repeat of each view
+passed participation (first person 7.9 m and 4,160 damage, third person
+7.1 m and 3,874 damage). The second repeat of each failed it again, because it
+sampled 0.033 s (two ticks) of local dropped time, as on the stock cage. In
+both failing windows the two ticks dropped at the same participant tick
+(388), about 0.3 s after the window opened, and no frame callback in the
+window was later than 17.5 ms. Every repeat had also dropped two to four ticks
+before its window opened. So the drops come with the tool's respawn and probe
+reads at the start of each window, not with frame timing (inferred, not traced
+further); whether they land inside the sampled window is a race, which is why
+one repeat of each view fails. The 60 Hz cage does not change this.
+
+Private evidence on CoderOS is in `~/work/b12599/` (`oa-c`, `oa-d`, `af-a`,
+`af-b`, `pace-stock`, `pace-grid`, `part-grid`).
 
 ## NPC decisions
 
@@ -716,11 +812,25 @@ and a moving camera. Both produce the same seeded buffers, the same ordered
 dispatches and ping-pong bind groups, and the same simulation words at every
 one of the steps, and stop at exactly that tick. Damage accumulates with
 integer atomics, and targets break ties by id, so the GPU's thread order does
-not change the outcome. One exception: the order in which visible fighters
-are compacted into draw lists is not fixed. Opaque, depth-tested pixels do not
-depend on it, but exact depth ties could, and the probe's `sampleSha256`
-includes the projectile visible list. The tool therefore compares its own
+not change the outcome.
+
+**Draw order.** The live crowd compacts visible fighters into its draw lists
+with atomics, so their order changes from frame to frame. Fighters at equal
+depth (common for distant silhouettes in a 24-bit depth buffer) then overlap
+differently: before this was fixed, two captures of the same held orbit frame
+differed in 15–25 isolated pixels. A held battle compacts in three passes
+instead. `countOrdered` counts each workgroup's batches, `scanOrdered` turns
+the counts into offsets in workgroup order, and `writeOrdered` ranks each lane
+by its index. Every batch then lists its fighters in ascending id, so ties
+resolve the same way in every frame, run and build. Both paths pick batches
+with the same `actorBatch` function, and the live battle keeps its single
+atomic pass. The probe's `sampleSha256` also covers the projectile list,
+whose slots are claimed with atomics, so the tool compares its own
 camera-independent state digest instead.
+
+Holding also clears impact playback. A held frame renders at a fixed world
+time that can be earlier than the live clock, and impact playback refuses a
+clock that goes backwards.
 
 **Capture tool.** `tools/capture-battle-tick.mjs` opens Battle Lab, starts the
 battle, and for each view holds the tick and waits for `reached`. It then
@@ -753,8 +863,10 @@ bytes. For a view whose images differ, it reports the number of differing
 pixels and the largest channel difference.
 
 A build that lacks the hold, such as Aethyrforge `f42c02c`, cannot take part
-directly. Apply this change to that checkout first, so both builds freeze the
-same moment. The paths map per [provenance](../provenance.md).
+directly. Apply `1dfb75838e1` and `18fda333b7` to that checkout first, so both
+builds freeze the same moment and draw it in the same order. The paths map
+per [provenance](../provenance.md). The comparison against `f42c02c` matched
+exactly; see [the 4080 results](#fixed-tick-comparison-and-60-hz-cage-measured-on-coderos-2026-10-26).
 
 ## Spacing and motion correction, 2026-10-24
 
