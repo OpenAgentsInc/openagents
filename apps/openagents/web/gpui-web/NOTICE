@@ -1,5 +1,0 @@
-This crate is derived from the `gpui_web` crate of zui
-(https://github.com/zeronsh/zui, rev 361ff20b919fdfb80199ee6d9aed725300cb7d54),
-itself extracted from Zed's GPUI (https://github.com/zed-industries/zed).
-Copyright the Zed Industries and zui authors. Licensed under the Apache
-License, Version 2.0; see LICENSE-APACHE.

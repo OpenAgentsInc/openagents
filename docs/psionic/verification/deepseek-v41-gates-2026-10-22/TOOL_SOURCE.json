@@ -1,9 +1,0 @@
-{
-  "commit": "31eed8e523c966c9d9b33d4816949a5e0f35b4ad",
-  "files_sha256": {
-    "oracle_manifest.py": "1a3c13a64ae5dd62203e45a7df40623ac9bb22bf4d352dcdbd84f0a90d789d1c",
-    "oracle_vm.sh": "7ad9426572bd190233f952db889a564e823229483c5eaf88dfbc9800ae9c02db",
-    "oracle_dump.py": "eeaf392a340137eb85188fd716cad6ff4c7c320a707bc4b04bc435a4612bbf11",
-    "test_oracle_capture.py": "ec072b47a5bf52715d260a6c191814a7f9d075fb8c757e10dd6bca0e0a08283a"
-  }
-}

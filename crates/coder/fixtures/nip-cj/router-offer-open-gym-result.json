@@ -1,8 +1,0 @@
-{
-  "v": 2,
-  "requires": [],
-  "type": "offer",
-  "offer": "open_screen",
-  "screen": "gym.result",
-  "label": "See your result"
-}

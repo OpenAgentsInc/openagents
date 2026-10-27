@@ -1,9 +1,0 @@
-{
-  "tagline": "Edits here go live in seconds.",
-  "title": "livehost demo",
-  "points": [
-    { "name": "Copy and templates", "detail": "Data the host interprets at run time." },
-    { "name": "Browser modules", "detail": "WebAssembly, uploaded by hash." },
-    { "name": "Handlers", "detail": "WebAssembly components, loaded without a restart." }
-  ]
-}

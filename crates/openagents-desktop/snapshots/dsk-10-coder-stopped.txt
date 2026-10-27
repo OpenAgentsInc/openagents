@@ -1,7 +1,0 @@
-message user
-  markdown "add a unit test for slugify"
-message assistant
-  markdown "Working on adding a unit test for slugify."
-vertical stack [card]
-  body "Codex is working."
-status "Coder stopped before the turn started."

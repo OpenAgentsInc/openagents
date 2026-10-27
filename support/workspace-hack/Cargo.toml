@@ -1,8 +1,0 @@
-[package]
-name = "openagents-workspace-hack"
-version = "0.1.0"
-edition = "2021"
-publish = false
-
-# Empty replacement for consumers outside the two managed workspaces.
-[workspace]

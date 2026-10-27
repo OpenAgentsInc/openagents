@@ -1,5 +1,0 @@
-vertical stack
-  vertical stack [align=center]
-    surface pairing-code "A code for your phone to scan"
-    heading "Scan with the OpenAgents app on your phone." [align=center]
-    link "Can't scan? Copy a code instead" -> copy_code

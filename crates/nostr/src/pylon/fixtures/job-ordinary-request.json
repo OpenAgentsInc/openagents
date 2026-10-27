@@ -1,7 +1,0 @@
-{
-  "v": 1,
-  "requires": [],
-  "task": "What is 2 + 2?",
-  "transcript": [{"role": "user", "content": "What is 2 + 2?"}],
-  "client": "openagents-pylon 0.1.0"
-}

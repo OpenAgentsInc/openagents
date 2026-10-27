@@ -1,4 +1,0 @@
-<resources>
-    <!-- Marks a Rust Native node drawn with the default row style. -->
-    <item name="oa_default_row" type="id" />
-</resources>

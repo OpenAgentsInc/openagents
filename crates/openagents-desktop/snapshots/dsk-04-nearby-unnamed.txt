@@ -1,8 +1,0 @@
-vertical stack [align=center]
-  heading "A phone wants to connect." [align=center]
-  body "Check that your phone shows this code:" [align=center]
-  heading "482 913" [align=center bold]
-  status "Connect only if the codes match." [align=center]
-  horizontal stack
-    button "Don't connect" -> nearby_decline
-    button "Connect" -> nearby_connect

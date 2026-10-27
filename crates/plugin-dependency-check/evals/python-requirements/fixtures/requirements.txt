@@ -1,5 +1,0 @@
-# Runtime dependencies for the billing worker.
-celery==5.4.0
-redis
-stripe>=9.0
-pydantic~=2.8

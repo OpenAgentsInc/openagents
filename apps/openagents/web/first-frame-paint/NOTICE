@@ -1,7 +1,0 @@
-This crate's shaders (src/shaders.rs) are ported from the `gpui_wgpu` crate
-of zui (https://github.com/zeronsh/zui, rev
-361ff20b919fdfb80199ee6d9aed725300cb7d54, src/shaders.wgsl and
-src/shaders_subpixel.wgsl), itself derived from Zed's GPUI
-(https://github.com/zed-industries/zed). Copyright the Zed Industries and
-zui authors. Licensed under the Apache License, Version 2.0; see
-LICENSE-APACHE.

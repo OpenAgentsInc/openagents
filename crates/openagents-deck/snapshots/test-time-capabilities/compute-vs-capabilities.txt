@@ -1,8 +1,0 @@
-table at 40,100 720x242 ×1.0027856
-   | Test-time compute | Test-time capabilities
-  What changes | How much the model computes | What the running agent can do
-  The weights | Fixed | Fixed
-  Where the gain comes from | Longer reasoning, more samples | A component admitted to the run
-  Who supplies it | The lab, at serving time | Anyone, and it can be shared
-  What proves it | A verifier picking the best sample | A claim others can rerun
-  What is left after | Nothing is kept | The capability, for every agent

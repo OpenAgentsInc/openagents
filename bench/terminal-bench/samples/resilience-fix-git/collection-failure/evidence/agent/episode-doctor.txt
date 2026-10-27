@@ -1,2 +1,0 @@
-exit 0
-doctor ok: collect-fail probe

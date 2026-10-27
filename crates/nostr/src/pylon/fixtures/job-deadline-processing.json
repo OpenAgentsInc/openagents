@@ -1,7 +1,0 @@
-{
-  "v": 1,
-  "requires": ["pylon.deadline.v1"],
-  "type": "status",
-  "status": "processing",
-  "deadline_secs": 300
-}

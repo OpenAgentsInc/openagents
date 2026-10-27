@@ -1,7 +1,0 @@
-# Neutral. Round 18: the upper lip no longer rolled in (round 13 had
-# rolled it in 0.15 toward the tracker's numbers; the owner read the lips
-# as thin). Round 19: the lids relaxed again so the upper lid covers the
-# iris's top 1-2 mm (round 18's larger, fully open eyes stared, 12% more
-# open than the reference's).
-CTRL_expressions.eyeRelaxL 0.22
-CTRL_expressions.eyeRelaxR 0.22

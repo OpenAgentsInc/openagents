@@ -1,8 +1,0 @@
-{
-  "snapshot.pb": true,
-  "duplicate-entity.pb": false,
-  "wrong-field-kind.pb": false,
-  "integer-overflow.pb": false,
-  "nan.pb": false,
-  "unknown.pb": false
-}

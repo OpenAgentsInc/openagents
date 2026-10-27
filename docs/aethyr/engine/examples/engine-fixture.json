@@ -1,6 +1,0 @@
-{
-  "fixture": true,
-  "executable": false,
-  "engineAbi": "af.kernel.1",
-  "note": "Synthetic wire descriptor only; no engine implementation exists."
-}

@@ -1,7 +1,0 @@
-{
-  "why": "a flat palm carried across the frame switches to the next desk, once a swipe",
-  "synthetic": true,
-  "expect": [
-    "swipe left"
-  ]
-}

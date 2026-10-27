@@ -1,3 +1,0 @@
-[submodule "crates/lib/regtest"]
-	path = crates/lib/regtest
-	url = https://github.com/BoltzExchange/regtest.git

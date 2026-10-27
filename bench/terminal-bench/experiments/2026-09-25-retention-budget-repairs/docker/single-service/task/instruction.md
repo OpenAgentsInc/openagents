@@ -1,1 +1,0 @@
-Produce a synthetic checkpoint.

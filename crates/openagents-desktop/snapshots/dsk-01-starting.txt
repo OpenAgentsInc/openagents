@@ -1,4 +1,0 @@
-vertical stack
-  vertical stack [align=center]
-    body "Starting Coder on this Mac…" [align=center]
-    heading "Scan with the OpenAgents app on your phone." [align=center]

@@ -1,5 +1,0 @@
-{
-  "transient_then_success": "status=0 calls=4",
-  "persistent_failure": "status=1 calls=3",
-  "network": "stubbed; no cloud writes"
-}

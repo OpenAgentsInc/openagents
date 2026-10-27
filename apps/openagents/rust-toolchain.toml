@@ -1,4 +1,0 @@
-[toolchain]
-# GPUI needs std::hint::cold_path (stable from 1.98); the root workspace pins its own.
-channel = "1.98.1"
-components = ["rustfmt", "clippy"]

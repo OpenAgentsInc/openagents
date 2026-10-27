@@ -1,4 +1,0 @@
-*.bin binary
-*.gltf -text
-*.png binary
-license.txt -text -whitespace
