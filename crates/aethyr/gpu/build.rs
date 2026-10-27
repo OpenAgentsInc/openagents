@@ -2,6 +2,10 @@
 //! implementation and links it. Set `AF_WEBGPU_DIR` to a directory containing
 //! `include/webgpu/webgpu.h` (Dawn) or `include/webgpu.h` (wgpu-native) and a
 //! `lib` directory with the library. `AF_WEBGPU_IMPL` is `dawn` or `wgpu-native`.
+//!
+//! Dawn links as `libwebgpu_dawn.{so,dylib}` when the install has one, or as the
+//! static `libwebgpu_dawn.a` that Dawn's prebuilt releases ship (see
+//! `tools/fetch-dawn.sh`), together with the C++ runtime and system libraries.
 
 fn main() {
     println!("cargo:rerun-if-env-changed=AF_WEBGPU_DIR");
@@ -53,7 +57,21 @@ mod native {
         let lib = dir.join("lib");
         println!("cargo:rustc-link-search=native={}", lib.display());
         println!("cargo:rustc-env=AF_WEBGPU_LIB_DIR={}", lib.display());
+        let shared = ["libwebgpu_dawn.so", "libwebgpu_dawn.dylib"].iter().any(|f| lib.join(f).exists());
         match implementation.as_str() {
+            "dawn" if !shared && lib.join("libwebgpu_dawn.a").exists() => {
+                println!("cargo:rustc-link-lib=static=webgpu_dawn");
+                if target.contains("apple") {
+                    println!("cargo:rustc-link-lib=dylib=c++");
+                    for framework in ["CoreFoundation", "Foundation", "IOSurface", "QuartzCore", "Cocoa", "IOKit", "Metal"] {
+                        println!("cargo:rustc-link-lib=framework={framework}");
+                    }
+                } else {
+                    for system in ["stdc++", "dl", "pthread", "m", "rt"] {
+                        println!("cargo:rustc-link-lib=dylib={system}");
+                    }
+                }
+            }
             "dawn" => println!("cargo:rustc-link-lib=dylib=webgpu_dawn"),
             _ => println!("cargo:rustc-link-lib=dylib=wgpu_native"),
         }

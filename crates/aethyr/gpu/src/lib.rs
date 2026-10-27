@@ -31,7 +31,7 @@ mod native;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
 use native as backend;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
-pub use native::{NativeOptions, SurfaceSource};
+pub use native::{NativeOptions, PresentMode, SurfaceSource};
 
 #[cfg(all(not(target_arch = "wasm32"), not(feature = "native")))]
 mod null;
@@ -574,6 +574,19 @@ impl Gpu {
     /// Natively, configures a window surface; on the web the host owns the canvas.
     pub fn resize_surface(&self, width: u32, height: u32) {
         backend::resize_surface(&self.raw, width, height);
+    }
+
+    /// Natively, sets a window surface's present mode (falling back to `Fifo`)
+    /// and returns the mode in effect, or `None` when rendering offscreen.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
+    pub fn set_present_mode(&self, mode: PresentMode) -> Option<PresentMode> {
+        backend::set_present_mode(&self.raw, mode)
+    }
+
+    /// The present modes a native window surface supports (empty offscreen).
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
+    pub fn present_modes(&self) -> Vec<PresentMode> {
+        backend::present_modes(&self.raw)
     }
 
     /// Blocks until queued work finishes. Native only; a no-op on the web.

@@ -9,7 +9,7 @@
 //! an offscreen texture that [`crate::Gpu::surface_texture`] exposes.
 //!
 //! Environment: `AF_WGPU_LOG=warn|info|debug|trace` forwards wgpu-native's log
-//! to stderr; `AF_GPU_DISABLE_FEATURES=timestamp-query,subgroups,...` keeps
+//! (and, with any implementation, uncaptured device errors) to stderr; `AF_GPU_DISABLE_FEATURES=timestamp-query,subgroups,...` keeps
 //! those optional features off the device, for A/B runs.
 
 // The header's constants keep their C names, including in match patterns.
@@ -48,6 +48,44 @@ pub enum SurfaceSource {
     Windows { hinstance: *mut c_void, hwnd: *mut c_void },
 }
 
+/// How a window surface paces presentation. `Fifo` waits for vertical sync
+/// and is the only mode every implementation must support; the others fall
+/// back to `Fifo` where the surface lacks them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PresentMode {
+    #[default]
+    Fifo,
+    Mailbox,
+    Immediate,
+}
+
+impl PresentMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            PresentMode::Fifo => "fifo",
+            PresentMode::Mailbox => "mailbox",
+            PresentMode::Immediate => "immediate",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<PresentMode> {
+        match name {
+            "fifo" => Some(PresentMode::Fifo),
+            "mailbox" => Some(PresentMode::Mailbox),
+            "immediate" => Some(PresentMode::Immediate),
+            _ => None,
+        }
+    }
+
+    fn raw(self) -> WGPUPresentMode {
+        match self {
+            PresentMode::Fifo => WGPUPresentMode_Fifo,
+            PresentMode::Mailbox => WGPUPresentMode_Mailbox,
+            PresentMode::Immediate => WGPUPresentMode_Immediate,
+        }
+    }
+}
+
 /// How [`crate::Gpu::new_native`] picks an adapter and where frames go.
 #[derive(Clone, Debug)]
 pub struct NativeOptions {
@@ -61,11 +99,13 @@ pub struct NativeOptions {
     pub surface: Option<SurfaceSource>,
     /// Format of the offscreen target (`Rgba8Unorm` or `Bgra8Unorm`).
     pub offscreen_format: TextureFormat,
+    /// Presentation pacing for a window surface.
+    pub present_mode: PresentMode,
 }
 
 impl Default for NativeOptions {
     fn default() -> Self {
-        NativeOptions { width: 1280, height: 720, backend: None, low_power: false, surface: None, offscreen_format: TextureFormat::Rgba8Unorm }
+        NativeOptions { width: 1280, height: 720, backend: None, low_power: false, surface: None, offscreen_format: TextureFormat::Rgba8Unorm, present_mode: PresentMode::Fifo }
     }
 }
 
@@ -87,6 +127,9 @@ pub struct Device {
     queue: WGPUQueue,
     surface: WGPUSurface,
     format: TextureFormat,
+    /// Present modes the surface supports, and the one configured.
+    present_modes: Vec<PresentMode>,
+    present_mode: Cell<PresentMode>,
     size: Cell<[u32; 2]>,
     offscreen: Cell<WGPUTexture>,
     current: Cell<WGPUTexture>,
@@ -129,7 +172,11 @@ unsafe extern "C" fn on_uncaptured_error(_: *const WGPUDevice, kind: WGPUErrorTy
         WGPUErrorType_Internal => "internal",
         _ => "error",
     };
-    push_error(log, format!("{label}: {}", unsafe { text(message) }));
+    let message = format!("{label}: {}", unsafe { text(message) });
+    if std::env::var_os("AF_WGPU_LOG").is_some() {
+        eprintln!("[af-gpu] {message}");
+    }
+    push_error(log, message);
 }
 
 unsafe extern "C" fn on_device_lost(_: *const WGPUDevice, reason: WGPUDeviceLostReason, message: WGPUStringView, log: *mut c_void, _: *mut c_void) {
@@ -299,7 +346,8 @@ fn create_surface(instance: WGPUInstance, source: SurfaceSource) -> WGPUSurface 
     unsafe { wgpuInstanceCreateSurface(instance, &desc) }
 }
 
-fn surface_format_for(surface: WGPUSurface, adapter: WGPUAdapter) -> TextureFormat {
+/// The surface's preferred 8-bit format and its supported present modes.
+fn surface_caps(surface: WGPUSurface, adapter: WGPUAdapter) -> (TextureFormat, Vec<PresentMode>) {
     let mut caps = WGPUSurfaceCapabilities::default();
     unsafe { wgpuSurfaceGetCapabilities(surface, adapter, &mut caps) };
     let formats = if caps.formats.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(caps.formats, caps.formatCount) } };
@@ -308,8 +356,10 @@ fn surface_format_for(surface: WGPUSurface, adapter: WGPUAdapter) -> TextureForm
     } else {
         TextureFormat::Rgba8Unorm
     };
+    let modes = if caps.presentModes.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(caps.presentModes, caps.presentModeCount) } };
+    let modes = [PresentMode::Fifo, PresentMode::Mailbox, PresentMode::Immediate].into_iter().filter(|m| modes.contains(&m.raw())).collect();
     unsafe { wgpuSurfaceCapabilitiesFreeMembers(caps) };
-    format
+    (format, modes)
 }
 
 fn configure_surface(dev: &Device, width: u32, height: u32) {
@@ -323,7 +373,7 @@ fn configure_surface(dev: &Device, width: u32, height: u32) {
         width: width.max(1),
         height: height.max(1),
         alphaMode: WGPUCompositeAlphaMode_Auto,
-        presentMode: WGPUPresentMode_Fifo,
+        presentMode: dev.present_mode.get().raw(),
         ..Default::default()
     };
     unsafe { wgpuSurfaceConfigure(dev.surface, &config) };
@@ -424,7 +474,8 @@ pub fn new_device(options: &NativeOptions) -> Result<(Device, Vec<Feature>, Adap
     };
     unsafe { wgpuAdapterInfoFreeMembers(raw_info) };
 
-    let format = if surface.is_null() { options.offscreen_format } else { surface_format_for(surface, adapter) };
+    let (format, present_modes) = if surface.is_null() { (options.offscreen_format, Vec::new()) } else { surface_caps(surface, adapter) };
+    let present_mode = if present_modes.contains(&options.present_mode) { options.present_mode } else { PresentMode::Fifo };
     let dev = Device {
         instance,
         adapter,
@@ -432,6 +483,8 @@ pub fn new_device(options: &NativeOptions) -> Result<(Device, Vec<Feature>, Adap
         queue: unsafe { wgpuDeviceGetQueue(device) },
         surface,
         format,
+        present_modes,
+        present_mode: Cell::new(present_mode),
         size: Cell::new([options.width.max(1), options.height.max(1)]),
         offscreen: Cell::new(null_mut()),
         current: Cell::new(null_mut()),
@@ -991,7 +1044,7 @@ pub fn surface_view(dev: &Device) -> Handle {
             let mut st = WGPUSurfaceTexture::default();
             unsafe { wgpuSurfaceGetCurrentTexture(dev.surface, &mut st) };
             if st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal && st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal {
-                push_error(dev.errors, format!("surface texture unavailable (status {}); rendering offscreen this frame", st.status));
+                push_error(dev.errors, format!("surface texture unavailable ({}); rendering offscreen this frame", surface_status(st.status)));
                 if !st.texture.is_null() {
                     unsafe { wgpuTextureRelease(st.texture) };
                 }
@@ -1002,6 +1055,19 @@ pub fn surface_view(dev: &Device) -> Handle {
         dev.current.get()
     };
     create_view(texture as Handle, &TextureViewDescriptor::default())
+}
+
+fn surface_status(status: WGPUSurfaceGetCurrentTextureStatus) -> String {
+    match status {
+        WGPUSurfaceGetCurrentTextureStatus_Timeout => "timeout".into(),
+        WGPUSurfaceGetCurrentTextureStatus_Outdated => "outdated".into(),
+        WGPUSurfaceGetCurrentTextureStatus_Lost => "lost".into(),
+        WGPUSurfaceGetCurrentTextureStatus_Error => "error".into(),
+        // wgpu-native on macOS: the window is not visible (NSWindow occlusion).
+        #[cfg(af_wgpu_native)]
+        s if s as i64 == WGPUSurfaceGetCurrentTextureStatus_Occluded as i64 => "occluded".into(),
+        other => format!("status {other:#x}"),
+    }
 }
 
 pub fn surface_format(dev: &Device) -> TextureFormat {
@@ -1029,6 +1095,25 @@ pub fn resize_surface(dev: &Device, width: u32, height: u32) {
         unsafe { wgpuTextureRelease(old) };
     }
     configure_surface(dev, size[0], size[1]);
+}
+
+/// Reconfigures a window surface for `mode`, falling back to `Fifo` where the
+/// surface lacks it. Returns the mode in effect (`None` without a window).
+pub fn set_present_mode(dev: &Device, mode: PresentMode) -> Option<PresentMode> {
+    if dev.surface.is_null() {
+        return None;
+    }
+    let mode = if dev.present_modes.contains(&mode) { mode } else { PresentMode::Fifo };
+    if dev.present_mode.replace(mode) != mode {
+        let [w, h] = dev.size.get();
+        configure_surface(dev, w, h);
+    }
+    Some(mode)
+}
+
+/// The present modes a window surface supports (empty offscreen).
+pub fn present_modes(dev: &Device) -> Vec<PresentMode> {
+    dev.present_modes.clone()
 }
 
 /// Processes device events. With `wait`, first blocks (by polling) until the

@@ -80,8 +80,23 @@ else
   fi
   [ -z "$expected" ] && echo "warning: no pinned checksum for $version $platform ($actual)" >&2
   # Headers ship under include/webgpu/; af-gpu's build.rs expects them flat.
-  unzip -o -j -q "$tmp/$zip" 'include/webgpu/*' -d "$out/include"
-  unzip -o -j -q "$tmp/$zip" 'lib/libwgpu_native.so' 'lib/libwgpu_native.dylib' 'wgpu-native-meta/wgpu-native-git-tag' -d "$out/lib" 2>/dev/null || true
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -o -j -q "$tmp/$zip" 'include/webgpu/*' -d "$out/include"
+    unzip -o -j -q "$tmp/$zip" 'lib/libwgpu_native.so' 'lib/libwgpu_native.dylib' 'wgpu-native-meta/wgpu-native-git-tag' -d "$out/lib" 2>/dev/null || true
+  else
+    # Hosts without unzip (NixOS by default): the same extraction in Python.
+    python3 -I - "$tmp/$zip" "$out" <<'PY'
+import os, sys, zipfile
+archive, out = sys.argv[1], sys.argv[2]
+wanted = {"lib/libwgpu_native.so": "lib", "lib/libwgpu_native.dylib": "lib", "wgpu-native-meta/wgpu-native-git-tag": "lib"}
+with zipfile.ZipFile(archive) as z:
+    for name in z.namelist():
+        dest = "include" if name.startswith("include/webgpu/") and not name.endswith("/") else wanted.get(name)
+        if dest:
+            with open(os.path.join(out, dest, os.path.basename(name)), "wb") as f:
+                f.write(z.read(name))
+PY
+  fi
   case "$platform" in
     # Let binaries find the dylib through the rpath af-gpu's build.rs adds.
     macos-*) install_name_tool -id "@rpath/libwgpu_native.dylib" "$out/lib/libwgpu_native.dylib" 2>/dev/null || true ;;

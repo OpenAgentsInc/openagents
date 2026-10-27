@@ -13,9 +13,15 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 name = "render-lab-native"
 required-features = ["native"]
 
+[[bin]]
+name = "render-lab-window"
+required-features = ["window"]
+
 [features]
 default = []
 native = ["af-gpu/native"]
+# The windowed runner: winit for the window, plus a CAMetalLayer on macOS.
+window = ["native", "dep:winit", "dep:raw-window-metal"]
 
 [dependencies]
 af-gpu = { path = "../gpu" }
@@ -23,6 +29,10 @@ bytemuck = { version = "1", features = ["derive"] }
 glam = { version = "0.30", features = ["bytemuck"] }
 serde.workspace = true
 serde_json.workspace = true
+winit = { version = "0.30", optional = true, default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+raw-window-metal = { version = "1", optional = true }
 
 [dev-dependencies]
 naga = { version = "30", features = ["wgsl-in"] }

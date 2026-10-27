@@ -151,4 +151,6 @@ console.log(`adapter: ${JSON.stringify(adapter)}${swiftshader ? " (SwiftShader: 
 console.log(`batched − TypeScript at p95: ${gap.toFixed(3)} ms (gate ≤ 0.1 ms: ${gap <= 0.1 ? "met" : "not met"})`);
 console.log(`report: ${out}`);
 await page.close();
-if (!process.env.AF_CDP) await browser.close();
+// A CDP connection keeps Node alive; leave the shared browser running and exit.
+if (process.env.AF_CDP) process.exit(0);
+await browser.close();

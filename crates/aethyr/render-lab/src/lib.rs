@@ -11,6 +11,7 @@ pub mod crowd;
 pub mod lab;
 pub mod scene;
 
+pub mod bench;
 #[cfg(feature = "native")]
 pub mod capi;
 

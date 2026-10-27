@@ -4,14 +4,17 @@
 //!
 //! ```text
 //! render-lab-native [--width 1920] [--height 1080] [--frames 300] [--warmup 60]
-//!                   [--backend vulkan|metal|...] [--suite compare|quick]
+//!                   [--backend vulkan|metal|...] [--suite compare|quick|heavy|all]
 //!                   [--config '{"path":"gpu"}'] [--capture DIR] [--verbose]
 //! ```
 //!
 //! `--config` runs one case (merged over the defaults) instead of a suite.
+//! `heavy` is the city-scale scene (#12600): ten times the street scene's
+//! instances, five times its crowd, seen from the overview camera.
 //! `--capture DIR` writes each case's last frame as a PPM image.
 
 use af_render_lab::capi::{HostOptions, NativeLab};
+use af_render_lab::bench::{config_from, median, percentile, suite};
 use af_render_lab::{Config, Stats};
 use serde_json::{Value, json};
 use std::time::Instant;
@@ -51,59 +54,6 @@ fn args() -> Args {
         }
     }
     a
-}
-
-/// The comparisons the web lab makes (decision 0007), at default scene size.
-fn suite(name: &str) -> Vec<(&'static str, Value)> {
-    let compare = vec![
-        ("cpu-forward-taa", json!({"path": "cpu", "aa": "taa"})),
-        ("gpu-forward-taa", json!({"path": "gpu", "aa": "taa"})),
-        ("visbuffer-taa", json!({"path": "visbuffer", "aa": "taa"})),
-        ("cpu-forward-msaa4", json!({"path": "cpu", "aa": "msaa4"})),
-        ("gpu-forward-msaa4", json!({"path": "gpu", "aa": "msaa4"})),
-        ("gpu-forward-no-aa", json!({"path": "gpu", "aa": "none"})),
-        ("visbuffer-no-aa", json!({"path": "visbuffer", "aa": "none"})),
-        ("gpu-forward-taa-no-occlusion", json!({"path": "gpu", "aa": "taa", "occlusion": false})),
-        ("cpu-overview-taa", json!({"path": "cpu", "camera": "overview"})),
-        ("visbuffer-overview-taa", json!({"path": "visbuffer", "camera": "overview"})),
-        ("gpu-overview-crowd-tiers-off", json!({"path": "gpu", "camera": "overview", "crowd-tiers": false})),
-        ("gpu-overview-crowd-tiers-on", json!({"path": "gpu", "camera": "overview", "crowd-tiers": true})),
-    ];
-    match name {
-        "compare" => compare,
-        "quick" => compare.into_iter().filter(|(n, _)| matches!(*n, "cpu-forward-taa" | "gpu-forward-taa" | "visbuffer-taa")).collect(),
-        other => panic!("unknown suite {other}"),
-    }
-}
-
-fn config_from(overrides: &Value) -> Config {
-    let mut base = serde_json::to_value(Config::default()).unwrap();
-    if let (Some(base), Some(over)) = (base.as_object_mut(), overrides.as_object()) {
-        for (k, v) in over {
-            base.insert(k.clone(), v.clone());
-        }
-    }
-    // A fixed scene time keeps frames comparable across runs and machines.
-    if base["time"].is_null() {
-        base["time"] = json!(12.0);
-    }
-    serde_json::from_value(base).expect("config")
-}
-
-fn median(mut v: Vec<f64>) -> f64 {
-    if v.is_empty() {
-        return 0.0;
-    }
-    v.sort_by(f64::total_cmp);
-    v[v.len() / 2]
-}
-
-fn percentile(mut v: Vec<f64>, p: f64) -> f64 {
-    if v.is_empty() {
-        return 0.0;
-    }
-    v.sort_by(f64::total_cmp);
-    v[((v.len() - 1) as f64 * p).round() as usize]
 }
 
 fn write_ppm(path: &str, w: u32, h: u32, rgba: &[u8]) {
@@ -185,7 +135,7 @@ fn main() {
         Some(text) => vec![("custom".into(), serde_json::from_str(text).expect("--config JSON"))],
         None => suite(&a.suite).into_iter().map(|(n, v)| (n.to_string(), v)).collect(),
     };
-    let host = HostOptions { backend: a.backend.clone(), low_power: false };
+    let host = HostOptions { backend: a.backend.clone(), ..Default::default() };
     let first = config_from(&cases[0].1);
     let mut native = NativeLab::new(a.width, a.height, first, &host).unwrap_or_else(|e| {
         eprintln!("render-lab-native: {e}");
