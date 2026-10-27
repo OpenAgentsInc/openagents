@@ -29,10 +29,14 @@ Every chapter says which kind it is:
 | Part | Status |
 | --- | --- |
 | I. Getting started (chapters 1–4) | Runs today |
-| II. The language (5–9) | Design |
+| II. The language (5–9) | Design, except Chapter 9's first half, which runs today |
 | III. Data and speed (10–13) | Design |
-| IV. Coax in OpenAgents (14–17) | Design |
-| V. Building Coax (18–19) | Runs today (18), plan (19) |
+| IV. Coax in OpenAgents (14–18) | Design |
+| V. Building Coax (19–20) | Runs today (19), plan (20) |
+
+The language moves faster than any one chapter. When the book and the
+compiler disagree, the compiler and its tests are right, and the book has
+a bug. The specification (`coax/spec.md`) is the design of record.
 
 ## Who this book is for
 
@@ -41,13 +45,15 @@ Every chapter says which kind it is:
 - **Agents** writing Coax for OpenAgents. The book is written to be read
   start to finish by a model as well as a person. Every rule has a reason,
   and every error code is in [Appendix B](appendix-b-error-codes.md).
-- **People who want to work on the compiler.** Chapter 18 walks through
-  `coax0`, which is about 1,800 lines of C-style C++.
+- **People who want to work on the compiler.** Chapter 19 walks through
+  `coax0`, which is about 3,000 lines of C-style C++.
 
 ## Conventions
 
-- Source files end in `.coax`. Commands assume you are at the repository
-  root, with the compiler built (`coax/build.sh`).
+- Source files end in `.coax`. Commands assume you are at the root of the
+  openagents repository, with the compiler built (`coax/build.sh`).
 - `coax` means `coax/bin/coax`.
+- `check-examples.sh` in this folder compiles and runs every listing in
+  the chapters marked *Runs today*.
 - Output is shown in a block after the program. Errors are shown exactly
   as the compiler prints them.

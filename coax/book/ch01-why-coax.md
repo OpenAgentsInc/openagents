@@ -23,27 +23,33 @@ rendering, and SIMD only where the profiler says. Coax is the sixth
 thing: a language where those five are the default instead of a
 discipline.
 
-Fourteen requirements came out of that work. They are listed in full in
-§1 of the specification. In short:
+The specification turns that into requirements, each with a concrete
+test (spec §1). In short, Coax has to give us:
 
-1. A one-file change compiles in well under a second, and stays that way
-   as the code grows.
-2. Hot reload keeps the world's state, even when a struct's layout
-   changes.
-3. Data-oriented layout is the default.
-4. Simulations are deterministic: the same inputs give the same bits on
-   every machine and every core count.
-5. Parallel code is safe without a borrow checker.
-6. CPU and GPU share one definition of every buffer.
-7. SIMD comes from the data layout, not from hand-written intrinsics.
-8. It targets Metal on Apple devices first, then WebAssembly, then
-   everything else.
-9. The OpenAgents Protocol's schemas are types in the language.
-10. Reflection drives saves, replication and the editor.
-11. It lives beside 40,000 lines of C++ for years.
-12. Agents can write it well.
-13. The build is part of the source.
-14. Decoders refuse oversized input before they allocate.
+1. **A short development loop**, measured end to end: edit, check,
+   generate, link, launch or reload.
+2. **Control of representation**: field offsets, padding, ownership and
+   SoA or AoS layout you can inspect, down to the generated C.
+3. **Compile-time programming**: bounded, typed computation now, and code
+   that generates checked code later.
+4. **Native Apple integration**: the Swift host, the C boundary, metal-cpp
+   and the native Metal path stay as they are.
+5. **Browser delivery**, proved separately on WebAssembly.
+6. **Deterministic simulation**: the same replay gives the same output on
+   every architecture and worker count.
+7. **Explicit lifetimes**: world, level, scratch and pool storage each have
+   a visible owner and a visible reset point.
+8. **Safe parallel scheduling**, claimed only after real aliasing is
+   checked.
+9. **Stable interchange** with the OpenAgents Protocol's public schemas.
+10. **Inspectable tools**: errors point at your source, and generated code
+    can always be read.
+11. **Incremental adoption**: Coax code sits beside the C++ engine without
+    replacing it or its build.
+
+None of these is a speed number. A small compiler that makes one real
+engine workflow better is worth more than a large language that only
+exists on paper.
 
 ## 1.2 The dream
 
@@ -51,11 +57,22 @@ Jai meets more of that list than any language we can use. These are the
 reasons we call it the dream.
 
 **Compile speed is the design goal.** Jai has no header files and no
-textual includes, so each file is parsed once per build. It has no
-template instantiation model that multiplies work. It has a fast debug
-backend that does not go through LLVM. C++ parses `ecs.h` again in every
-file that includes it, and Rust's compile times are the reason this
-repository exists.
+textual includes, so each file is parsed once per build. Its compiler is
+C++, with a handwritten recursive-descent parser, multithreaded work, an
+internal bytecode for compile-time execution, and two backends: a custom
+x64 backend built to produce code quickly, and LLVM for optimized builds.
+The evidence is specific and worth keeping attached to its workloads:
+
+| Evidence | Result | What it doesn't show |
+| --- | --- | --- |
+| Blow's 2025 demonstration | ~300,000 lines, clean rebuild, 2.3 s | Incremental builds (that compiler had none; it makes full rebuilds fast instead) |
+| Smári McCarthy, 2024 | ~44,000 lines, three executables, ~1.3 s | That the front end is the whole story: over two-thirds of that time was LLVM |
+
+C++ parses `ecs.h` again in every file that includes it, and Rust's
+compile times are the reason the C++ engine exists. The lesson we take is
+not a lines-per-second number. It's that a development build should be
+designed for feedback time and a release build for runtime speed, and
+that the thing to measure is edit to visible result.
 
 **The build is a program, and it can watch the compiler.** In Forrest
 Smith's Advent of Code repository, `modules/autorun.jai` is 53 lines of
@@ -94,9 +111,16 @@ memory comes from without the library taking allocator parameters. A
 built-in temporary allocator makes scratch memory a pointer bump that is
 freed all at once. Dynamic arrays carry their allocator with them.
 
-**Layout is in the type system.** Marking a struct `SOA` changes how its
-arrays are stored without changing the code that uses them. Every engine
-that cares about the cache writes this by hand.
+**The compiler's knowledge is application infrastructure.** An engine
+keeps several views of the same data: CPU structs, editor properties,
+saves, network messages, debug views, asset processing. Without one
+source of truth, each needs its own declarations, parsers or hand-kept
+registries. Jai lets the program ask the compiler what it already knows,
+through `type_info`, `Code` and compile-time messages, and generate the
+rest. Blow's 2025 demonstration showed generated command registries,
+generated code you can step through in a debugger, and visual analysis of
+a large game. Current Jai builds structure-of-arrays layouts this way too,
+with reflection and `#insert`, instead of a dedicated keyword.
 
 **The small things are right.** `ifx` conditional expressions, multiple
 return values, distinct integer types (`RoomIndex :: #type,distinct
@@ -105,23 +129,40 @@ inheritance.
 
 ## 1.3 Why we can't depend on it
 
-- **We can't get it.** Jai is a closed beta by invitation, with no public
-  download and no release date.
-- **We can't plan around its license.** There are no published terms for
-  shipping commercial software with it or putting the compiler on CI and
-  agent machines.
+- **We can't get it.** As of October 2026 the official compiler is a
+  closed beta. The studio's 1 September 2026 announcement describes public
+  binaries, and later source, as work that follows the game's release, and
+  there is no verified public release yet. Unofficial implementations
+  (Jacket, and OpenJai's early Zig bootstrap) are separate projects that
+  can't stand in for the official compiler's behavior or license.
+- **We can't plan around its license.** A stated intent to publish source
+  is not a license. We'd need terms for shipping commercial software and
+  for running the compiler on every CI and agent machine, at a pinned
+  version.
 - **We can't change it.** Its team builds it for their own games. If we
   need an iOS or WebAssembly target, a Metal shader story, or a bug fixed
   before a launch, we wait.
-- **It doesn't do several things we need.** It has no shader language, no
-  stated floating-point model, and its hash tables iterate in hash order,
-  which breaks replays.
-- **Agents can't learn it.** There is very little public Jai. Models write
-  a language about as well as the amount of it they've read. For a
-  language of our own, we write that material: this book, the
-  specification, the tests, and eventually a translated engine.
+- **It doesn't do several things we need.** It has no shader language: a
+  Jai program can be compiled to WebAssembly, but WebGPU takes WGSL, so
+  shaders stay a separate language. Public material describes no formal
+  floating-point or concurrency memory model. Its plain `union` overlays
+  storage without a tag. The hash tables in Forrest Smith's code iterate
+  in hash order, which breaks replays.
+- **It's proven in places we aren't.** The strongest platform evidence is
+  per project: *Order of the Sinking Star* on PC, PlayStation 5 and
+  Nintendo Switch 2, Polygon's procedural engine on desktop and in the
+  browser through WebAssembly and WebGPU, and the Focus editor. None of
+  that is the iOS and Metal path we ship first.
+- **Agents can't learn it reliably.** There is little public Jai, and what
+  exists spans compiler generations: older code dereferences with `<<p`,
+  newer code with `p.*`. An agent produces convincing obsolete syntax.
+  For a language of our own, we write the material agents learn from:
+  this book, the specification, the tests and the grammar, all pinned to
+  the compiler that's actually in the repository.
 
-So we took the design, not the dependency.
+So we took the design, not the dependency. The report that informed this
+chapter put it well: study Jai's compiler-as-a-programming-interface
+architecture even if you never adopt the language. That's what Coax is.
 
 ## 1.4 What Coax adds
 
@@ -129,15 +170,16 @@ Chapter by chapter, this book covers what Coax does that Jai doesn't:
 
 | Area | Coax | Chapter |
 | --- | --- | --- |
-| Checks | On by default in debug and dev builds; every unchecked block is listed | 3, 17 |
+| Checks | Overflow and division checks today; bounds and handle checks in development builds next | 2, 3 |
 | Diagnostics | Stable codes, the source line, and a fix | 4 |
 | Equality and hashing | `#derive(eq, hash)` and explicit constraints, instead of hand-written code found by name | 5, 8 |
 | Parallelism | A job's capture list is its effects, checked by the compiler and the scheduler | 11 |
 | Determinism | `strict` floating point, `deterministic` procedures, `fixed32`, ordered tables | 12 |
 | GPU | Shaders in Coax, compiled to Metal first, sharing struct layouts with the CPU | 13 |
 | Protocol | Field numbers, limits, data classes and versions on the type | 14 |
-| Hot reload | `#persistent` state and compiler-written layout migrations | 15 |
-| Tooling | The compiler as a server that agents can query | 17 |
+| Hot reload | Persistent state behind a versioned C boundary, with explicit, transactional layout migrations | 15 |
+| Compile time | Bounded `#run` and `#assert` today; typed code generation with provenance later | 9 |
+| Tooling | The compiler as a server that agents can query | 18 |
 
 ## 1.5 What Coax will never have
 

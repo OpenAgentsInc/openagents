@@ -1,0 +1,44 @@
+#import "Basic";
+
+// Computed while compiling. The program only contains the answers.
+CELLS :: #run cells_in_grid(24, 16);
+PRIME_100 :: #run nth_prime(100);
+SIZE_CLASS :: #run size_class(CELLS);
+
+#assert CELLS == 384;
+#assert PRIME_100 == 541;
+#assert type_name(SIZE_CLASS) == "string";
+
+cells_in_grid :: (width: int, height: int) -> int {
+  return width * height;
+}
+
+nth_prime :: (n: int) -> int {
+  found := 0;
+  candidate := 1;
+  while found < n {
+    candidate += 1;
+    if is_prime(candidate) { found += 1; }
+  }
+  return candidate;
+}
+
+is_prime :: (n: int) -> bool {
+  if n < 2 { return false; }
+  d := 2;
+  while d * d <= n {
+    if n % d == 0 { return false; }
+    d += 1;
+  }
+  return true;
+}
+
+size_class :: (cells: int) -> string {
+  if cells > 256 { return "large"; }
+  return "small";
+}
+
+main :: () {
+  print("% cells (%), prime #100 is %\n", CELLS, SIZE_CLASS, PRIME_100);
+  print("still callable at run time: %\n", is_prime(97));
+}

@@ -46,9 +46,33 @@ Kiki has 3 lives and 300 points; ready: false
 
 And for constants, the one you've seen already:
 
-- **`name :: value`** binds a constant. Procedures are constants. In
-  `coax0` the only constants are top-level procedures. Number and type
-  constants are *Design*.
+- **`name :: value`** binds a constant. Procedures are constants, and so
+  are values declared at the top of a file:
+
+```coax
+#import "Basic";
+
+TILE_EDGE :: 16;
+TILES :: TILE_EDGE * TILE_EDGE;     // constants can use other constants
+WORLD_NAME :: "Haunted House";
+LATE :: EARLY + 1;                  // in any order
+EARLY :: 41;
+
+main :: () {
+  print("% has % tiles; the answer is %\n", WORLD_NAME, TILES, LATE);
+}
+```
+
+```
+Haunted House has 256 tiles; the answer is 42
+```
+
+A constant is computed while compiling, and the generated C contains the
+answer (`256`), not the arithmetic. Constants can refer to each other in
+any order. A cycle (`A :: B; B :: A;`) is an error (`E0340`), and so is
+assigning to a constant (`E0344`). Constants can be computed by calling
+procedures too, with `#run`, which Chapter 9 covers. Local constants
+inside a procedure and type constants are *Design*.
 
 The shape is the point. A local variable, a global, a procedure and a
 type are all `name`, then what it is, then its value. Code can move from
@@ -230,9 +254,9 @@ below 10000, 6171 takes the most steps: 261
 - **Division truncates toward zero**, as in C: `-7 / 2` is `-3`, and
   `-7 % 2` is `-1`.
 
-*Design:* `for` loops over ranges and arrays (`for 0..n-1 { print("%",
-it); }`), `break` and `continue` with labels, `switch`, `defer`, and the
-`ifx a then b else c` expression. `coax0` reserves all of these words and
+*Design:* `for` loops over half-open ranges and arrays
+(`for i: 0..<n { ... }`), `break` and `continue` with labels, exhaustive
+`switch`, `defer`, and the `ifx a then b else c` expression. `coax0` reserves all of these words and
 refuses them for now.
 
 ## 3.5 print
@@ -274,6 +298,7 @@ You've now used nearly all of `coax0`:
 
 - the `#import` directive and the `Basic` module;
 - procedures, parameters, returns, recursion and declarations in any order;
+- top-level constants, computed while compiling;
 - `int`, `bool` and `string`;
 - the four declaration forms, and no shadowing;
 - `if`, `else if`, `else` and `while`;

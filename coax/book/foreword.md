@@ -22,17 +22,22 @@ stack at all, if we could snap our fingers and have the whole Verse
 rewritten, what would be fastest? Fastest to run and fastest to change?
 
 The honest answer was a language that already exists, and that we cannot
-use. Jonathan Blow's Jai compiles large programs in about a second. It
-lets programs run any code at compile time, including the build itself.
+use. Jonathan Blow showed his Jai compiler rebuilding a game of roughly
+300,000 lines from scratch in 2.3 seconds. It lets programs run code at
+compile time, inspect the compiler's understanding of their own types,
+and write the build itself.
 It puts structure-of-arrays layout in the type system, and it hands every
 procedure an allocator without making anyone thread it through by hand.
 It was designed by people who ship games, for people who ship games.
-It is in closed beta, by invitation, with no license we can plan a company
-around.
+Its first big game, *Order of the Sinking Star*, shipped on 8 October
+2026. The compiler itself is still a closed beta: public binaries are
+promised after the game, and source later, with no license yet that we
+could plan a company around.
 
-Wanting what you can't have is a good way to learn what you want. When we
-read the Jai primer, and then 4,800 lines of real Jai that Forrest Smith
-wrote for Advent of Code 2022, we found that we wanted more than Jai, not
+Wanting what you can't have is a good way to learn what you want. We read
+the Jai primer, 4,800 lines of real Jai that Forrest Smith wrote for
+Advent of Code 2022, and a long technical report on Jai's compiler, build
+system and production use. We found that we wanted more than Jai, not
 less:
 
 - Most of our code is written by agents, so checks must be on by default
@@ -58,7 +63,7 @@ in a day. It will grow one feature at a time, and each feature will earn
 its place by shipping in the real app. If a feature doesn't make the
 Verse faster to build or safer to change, it doesn't go in. If the
 language as a whole stops paying for itself, we will stop. The plan says
-when (Chapter 19).
+when (Chapter 20).
 
 This book grows with the compiler. Part I runs today: every example in it
 is compiled and checked. The rest is the design we're building toward,

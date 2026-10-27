@@ -1,0 +1,11 @@
+#import "Basic";
+
+TILE_EDGE :: 16;
+TILES :: TILE_EDGE * TILE_EDGE;     // constants can use other constants
+WORLD_NAME :: "Haunted House";
+LATE :: EARLY + 1;                  // in any order
+EARLY :: 41;
+
+main :: () {
+  print("% has % tiles; the answer is %\n", WORLD_NAME, TILES, LATE);
+}

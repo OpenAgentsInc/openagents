@@ -13,7 +13,7 @@ coax/build.sh
 
 That compiles the whole compiler as a single translation unit:
 `src/main.cpp` includes the other source files, so there is one compiler
-invocation and no build system. It takes about a second and a half and
+invocation and no build system. It takes about a second and
 leaves the compiler at `coax/bin/coax`. Check it:
 
 ```sh
@@ -21,7 +21,7 @@ coax/bin/coax version
 ```
 
 ```
-coax0 0.1.0
+coax0 0.2.0
 ```
 
 The rest of this book writes `coax` for `coax/bin/coax`. To type
@@ -86,17 +86,22 @@ statement ends with a semicolon. `print`'s first argument is a **format**.
 Each `%` in it is replaced by the next argument, which you'll see in a
 moment.
 
-## 2.4 Three ways to compile
+## 2.4 Four ways to compile
 
 `coax run` compiles to a temporary folder, runs the program, and deletes
-it. There are two other commands:
+it. There are three other commands:
 
 ```sh
 coax build hello.coax            # writes ./hello, an ordinary executable
 ./hello
 coax build hello.coax -o greet   # choose the name
 coax c hello.coax                # print the C that coax0 generates
+coax check hello.coax            # check it, without calling the C compiler or running it
 ```
+
+`coax check` is the fastest answer to "is this program right?". It does
+everything except generate machine code: parsing, type checking, and the
+compile-time work in Chapter 9.
 
 Add `--release` to any of them for an optimized build. Release builds
 change one behavior you can see, in §2.6.
@@ -108,7 +113,7 @@ hands it to your C compiler (`cc`, or whatever `COAX_CC` names). That's
 deliberate. The C output goes through Xcode and Emscripten exactly as
 the engine's C++ does, so Coax code can ship in the iPhone app and the
 web build from the first day, with no new toolchain to trust. Our own
-machine-code backends come later (Chapter 19).
+machine-code backends come later (Chapter 20).
 
 Here's the end of what `coax c hello.coax` prints:
 
