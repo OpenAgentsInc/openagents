@@ -679,12 +679,23 @@ try {
   await page.goBack({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.hauntDemo&&JSON.parse(window.hauntDemo.snapshot()).phase==='open',null,{timeout:125000});
   await edit('history');await page.click('[data-aethyr-id=project-list]');await page.locator(`#project-picker option[value="${project}"]`).waitFor({state:'attached'});
-  await page.selectOption('[data-aethyr-id=project-picker] select',project);await page.waitForTimeout(300);
-  await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).phase==='open',null,{timeout:125000});
+  // Choosing the project reopens the world in a new engine session. Until the
+  // replacement frame connects, the page still reports the old session as
+  // open while that frame is torn down (#12603), so wait for the new session
+  // rather than for "open". Hold the replacement editor document, as a slow
+  // network would, so every run covers that window.
+  const closing=(await snapshot()).session;
+  let heldReopen=0;const reopening=url=>url.href.startsWith(config.editor);
+  const holdReopen=async route=>{if(route.request().isNavigationRequest()){heldReopen++;await new Promise(resolve=>setTimeout(resolve,1500));}await route.fallback();};
+  await page.route(reopening,holdReopen);
+  await page.selectOption('[data-aethyr-id=project-picker] select',project);
+  await page.waitForFunction(old=>{const s=JSON.parse(window.hauntDemo.snapshot());return s.phase==='open'&&s.session!==old&&s.status!==null;},closing,{timeout:125000});
+  await page.unroute(reopening,holdReopen);
+  const reopened=(await snapshot()).session;
+  assert.ok(heldReopen>0,'Choosing the project reopens the world');
   await edit('compile');await page.click('[data-aethyr-id=publish-refresh]');
   await page.waitForFunction(id=>document.querySelector('#publish-version').value===id,secondId);
-  // Refreshing the published version can reopen the world; select once it is open.
-  await page.waitForFunction(()=>{const s=JSON.parse(window.hauntDemo.snapshot());return s.phase==='open'&&s.status!==null;},null,{timeout:125000});
+  assert.equal((await snapshot()).session,reopened,'Refreshing the published versions does not reopen the world');
   const editor=page.frames().find(f=>f.url().startsWith(config.editor));assert.ok(editor);
   await editor.evaluate(()=>window.aethyrforgeEditor.service.command({kind:'entity.select',id:'werewolf-1'}));
   await page.waitForFunction(()=>JSON.parse(window.hauntDemo.snapshot()).status.selection?.id==='werewolf-1');
@@ -732,18 +743,51 @@ try {
   }
   }
 } catch(error){
-  for(const guest of guestContexts)for(const guestPage of guest.pages())if(!guestPage.isClosed()){
-    await guestPage.screenshot({path:path.join(out,'guest-error.png')});
-    fs.writeFileSync(path.join(out,'guest-error-state.json'),JSON.stringify(await guestPage.evaluate(()=>({body:document.body.innerText,player:window.versePlayer?.snapshot(),frameHidden:document.querySelector('#engine')?.hidden})),null,2));
-    const frames=[];
-    for(const f of guestPage.frames())if(f.url().startsWith(config.editor)||f.url().startsWith(config.preview))frames.push(await f.evaluate(()=>({url:location.href,body:document.body.innerText,state:window.aethyrforge?.snapshot(),width:innerWidth,height:innerHeight})).catch(error=>({error:String(error)})));
-    fs.writeFileSync(path.join(out,'guest-private-frame-error.json'),JSON.stringify(frames,null,2));
-  }
-  if(page&&!page.isClosed()){await page.screenshot({path:path.join(out,'publish-error.png')});fs.writeFileSync(path.join(out,'publish-error-state.json'),JSON.stringify({error:String(error),errors,body:await page.locator('body').innerText(),snapshot:await page.evaluate(()=>window.hauntDemo?.snapshot()),frames:await Promise.all(page.frames().filter(f=>f.url().startsWith(config.editor)).map(f=>f.evaluate(()=>window.aethyrforgeEditor?.snapshot())))},null,2));}
+  // Report the failure first. Everything below only adds evidence: a world
+  // that is closing or reopening disposes its editor registry, and a frame
+  // can navigate away mid-call, so no capture may replace this error.
+  console.error('check-verse-publish failed:',error?.stack||error);
+  try{fs.writeFileSync(path.join(out,'publish-error.txt'),String(error?.stack||error));}catch{}
+  await captureFailure(error).catch(capture=>console.error('Failure capture incomplete:',capture?.message||capture));
   throw error;
 } finally {
   releaseRefreshSession?.();releaseAllocationAck?.();releasePublish?.();releaseSave?.();releaseCheckpoint?.();
-  for(const guest of guestContexts){await guest.unrouteAll({behavior:'wait'});await guest.close();}
-  await context.unrouteAll({behavior:'wait'});await context.close();await browser.close();server.kill('SIGTERM');accountServer.close();
+  for(const step of [
+    ...guestContexts.map(guest=>async()=>{await guest.unrouteAll({behavior:'wait'});await guest.close();}),
+    async()=>{await context.unrouteAll({behavior:'wait'});await context.close();},
+    ()=>browser.close(),
+  ])await Promise.resolve().then(step).catch(e=>console.error('Cleanup:',e?.message||e));
+  server.kill('SIGTERM');accountServer.close();
   fs.writeFileSync(path.join(out,'native-fixture.log'),log);
+}
+
+/** Evidence for a failed run. Each read stands alone and never throws. */
+async function captureFailure(error){
+  const quiet=async(label,read)=>{try{return await read();}catch(e){return {unavailable:label,reason:String(e?.message||e).split('\n')[0]};}};
+  // Read a frame's engine state without letting a disposed registry throw.
+  const frameState=frame=>quiet('frame '+frame.url(),()=>frame.evaluate(()=>{
+    const read=f=>{try{return f();}catch(e){return {unavailable:String(e?.message||e)};}};
+    return {url:location.href,body:document.body?.innerText,editor:read(()=>window.aethyrforgeEditor?.snapshot()),state:read(()=>window.aethyrforge?.snapshot()),width:innerWidth,height:innerHeight};
+  }));
+  for(const guest of guestContexts)for(const guestPage of guest.pages())if(!guestPage.isClosed()){
+    await quiet('guest screenshot',()=>guestPage.screenshot({path:path.join(out,'guest-error.png')}));
+    const state=await quiet('guest page',()=>guestPage.evaluate(()=>{
+      const read=f=>{try{return f();}catch(e){return {unavailable:String(e?.message||e)};}};
+      return {body:document.body.innerText,player:read(()=>window.versePlayer?.snapshot()),frameHidden:document.querySelector('#engine')?.hidden};
+    }));
+    fs.writeFileSync(path.join(out,'guest-error-state.json'),JSON.stringify(state,null,2));
+    const frames=[];
+    for(const f of guestPage.frames())if(f.url().startsWith(config.editor)||f.url().startsWith(config.preview))frames.push(await frameState(f));
+    fs.writeFileSync(path.join(out,'guest-private-frame-error.json'),JSON.stringify(frames,null,2));
+  }
+  if(page&&!page.isClosed()){
+    await quiet('screenshot',()=>page.screenshot({path:path.join(out,'publish-error.png')}));
+    const state={error:String(error?.stack||error),errors,
+      body:await quiet('body',()=>page.locator('body').innerText({timeout:5000})),
+      world:await quiet('world',()=>page.evaluate(()=>({phase:document.documentElement.dataset.aethyrWorld,notice:document.querySelector('#world-notice')?.textContent,status:document.querySelector('#project-status')?.textContent}))),
+      snapshot:await quiet('host snapshot',()=>page.evaluate(()=>{try{return window.hauntDemo?.snapshot();}catch(e){return {unavailable:String(e?.message||e)};}})),
+      frames:[]};
+    for(const f of page.frames())if(f.url().startsWith(config.editor))state.frames.push(await frameState(f));
+    fs.writeFileSync(path.join(out,'publish-error-state.json'),JSON.stringify(state,null,2));
+  }
 }
