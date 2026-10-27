@@ -79,3 +79,20 @@ Source lighting and authored worlds retain their own semantics and formats.
 Compatibility checking covers every frozen descriptor in `compatibility/`.
 Add a new immutable snapshot when publishing additional messages, so subsequent
 checks protect those messages as well as the original v1 scene contract.
+
+## Phone agent contracts
+
+The top-level `proto/openagents/engine/v1/agent.proto` defines durable tasks,
+local coordinator operations, tool activity, SSH dispatch and progress pages.
+Swift uses Aethyr's C++/Nanopb codec through a narrow C ABI rather than adding
+a second protobuf runtime to the app. Linux uses the generated Python module
+and `engine_agent` envelope helper. Existing SSH authentication and Codex
+protocols are unchanged.
+
+New runtime contracts use Nanopb callbacks so large repeated messages are not
+allocated at their maximum size. `tools/contracts.py` derives C++ presentation
+field tables and shared Python limits from descriptors and `.options`; neither
+consumer authors a competing schema. Strings/counts, finite values, exact
+integers, nesting and aggregate byte limits are enforced by consumers. Task
+records reject unknown fields on read/edit/write; progress accepts additive
+fields. This differs deliberately from signed bytes, which are never rewritten.

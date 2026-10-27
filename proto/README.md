@@ -4,7 +4,8 @@ This top-level directory is the canonical source for shared OpenAgents/Aethyr
 Protobuf contracts. Schemas live by versioned package rather than implementation
 language. The first package is
 [`openagents.engine.v1`](openagents/engine/v1/scene.proto): scene metadata,
-asset manifests and compiled scene descriptions. The adjacent `.options` file
+asset manifests and compiled scene descriptions, plus the
+[phone agent task/progress contract](openagents/engine/v1/agent.proto). The adjacent `.options` file
 defines the C/C++ Nanopb bounds.
 
 `crates/engine-proto` consumes these schemas for Rust and holds the existing

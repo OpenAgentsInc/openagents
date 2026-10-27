@@ -8,7 +8,10 @@ fn generated_rust_matches_schema() {
     prost_build::Config::new()
         .out_dir(output.path())
         .compile_protos(
-            &[schemas.join("openagents/engine/v1/scene.proto")],
+            &[
+                schemas.join("openagents/engine/v1/scene.proto"),
+                schemas.join("openagents/engine/v1/agent.proto"),
+            ],
             &[schemas],
         )
         .unwrap();

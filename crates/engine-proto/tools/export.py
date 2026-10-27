@@ -39,6 +39,7 @@ def main():
         add(ROOT / name, name)
     add(ROOT / 'src/generated/openagents.engine.v1.rs', 'rust/openagents.engine.v1.rs')
     add(ROOT / 'tools/portable.py', 'python/engine_portable.py')
+    add(ROOT / 'tools/agent_wire.py', 'python/engine_agent.py')
     manifest = {'format': 'openagents.engine-proto.bundle.v1', 'repository': 'https://github.com/OpenAgentsInc/openagents',
                 'revision': subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip(),
                 'dirty': dirty, 'files': dict(sorted(files.items()))}

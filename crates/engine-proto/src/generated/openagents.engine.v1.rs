@@ -226,3 +226,161 @@ impl CoordinateConvention {
         }
     }
 }
+/// Local phone-agent contracts, not a replacement for Codex or NIP-HOST.
+/// Revision fences one task generation. Sequence/cursor values are exact
+/// nonnegative integers <= 2^53-1 at JSON presentation boundaries.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToolActivity {
+    /// Actual provider call ID, scoped to its task/turn.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub input: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub output: ::prost::alloc::string::String,
+    #[prost(sint32, optional, tag = "7")]
+    pub exit: ::core::option::Option<i32>,
+    #[prost(bool, tag = "8")]
+    pub truncated: bool,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AgentEvent {
+    #[prost(uint64, tag = "1")]
+    pub seq: u64,
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub tool: ::core::option::Option<ToolActivity>,
+    #[prost(string, tag = "5")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub speaker: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AgentTask {
+    /// 1; old schema-1 JSON records have an explicit reader.
+    #[prost(uint32, tag = "1")]
+    pub schema: u32,
+    #[prost(string, tag = "2")]
+    pub id: ::prost::alloc::string::String,
+    /// Authenticated tailnet peer, not chosen by the model.
+    #[prost(string, tag = "3")]
+    pub target: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub objective: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub phase: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "6")]
+    pub revision: u64,
+    #[prost(uint64, tag = "7")]
+    pub seq: u64,
+    #[prost(bool, tag = "8")]
+    pub write: bool,
+    #[prost(bool, tag = "9")]
+    pub admitted: bool,
+    #[prost(message, repeated, tag = "10")]
+    pub events: ::prost::alloc::vec::Vec<AgentEvent>,
+    #[prost(bool, tag = "11")]
+    pub history_truncated: bool,
+    #[prost(string, tag = "12")]
+    pub connection: ::prost::alloc::string::String,
+    #[prost(string, tag = "13")]
+    pub result: ::prost::alloc::string::String,
+    #[prost(sint32, optional, tag = "14")]
+    pub exit: ::core::option::Option<i32>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AgentOperation {
+    /// begin, decision, dispatch, cancel, offline, observe.
+    #[prost(string, tag = "1")]
+    pub op: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub target: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub objective: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "5")]
+    pub revision: u64,
+    #[prost(bool, tag = "6")]
+    pub write: bool,
+    /// Proposed delegate/clarify; coordinator admits dispatch.
+    #[prost(string, tag = "7")]
+    pub action: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub run: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "9")]
+    pub seq: u64,
+    #[prost(string, tag = "10")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "11")]
+    pub events: ::prost::alloc::vec::Vec<AgentEvent>,
+    #[prost(string, tag = "12")]
+    pub result: ::prost::alloc::string::String,
+    #[prost(sint32, optional, tag = "13")]
+    pub exit: ::core::option::Option<i32>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AgentReply {
+    #[prost(bool, tag = "1")]
+    pub ok: bool,
+    #[prost(string, tag = "2")]
+    pub error: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub task: ::core::option::Option<AgentTask>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AgentDispatch {
+    #[prost(uint32, tag = "1")]
+    pub v: u32,
+    /// start/read/cancel. Identity is the idempotency key.
+    #[prost(string, tag = "2")]
+    pub op: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub target: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub objective: ::prost::alloc::string::String,
+    #[prost(bool, tag = "6")]
+    pub write: bool,
+    #[prost(uint64, tag = "7")]
+    pub after: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AgentProgress {
+    #[prost(uint32, tag = "1")]
+    pub v: u32,
+    #[prost(string, tag = "2")]
+    pub run: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "4")]
+    pub seq: u64,
+    #[prost(message, repeated, tag = "5")]
+    pub events: ::prost::alloc::vec::Vec<AgentEvent>,
+    #[prost(string, tag = "6")]
+    pub result: ::prost::alloc::string::String,
+    #[prost(sint32, optional, tag = "7")]
+    pub exit: ::core::option::Option<i32>,
+    #[prost(string, tag = "8")]
+    pub base: ::prost::alloc::string::String,
+    #[prost(string, tag = "9")]
+    pub head: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "10")]
+    pub files: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag = "11")]
+    pub more: bool,
+    #[prost(bool, tag = "12")]
+    pub result_truncated: bool,
+    #[prost(string, tag = "13")]
+    pub error: ::prost::alloc::string::String,
+}

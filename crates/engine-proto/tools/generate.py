@@ -15,6 +15,7 @@ SCHEMAS = ROOT.parents[1] / 'proto'
 MODE = sys.argv[1] if len(sys.argv) > 1 else 'check'
 VERSIONS = json.loads((ROOT / 'toolchain.json').read_text())
 PROTO = 'openagents/engine/v1/scene.proto'
+PROTOS = sorted(str(p.relative_to(SCHEMAS)) for p in SCHEMAS.rglob('*.proto'))
 
 
 def main():
@@ -38,8 +39,10 @@ def main():
         env = {**os.environ, 'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ.get('PATH', '')}
         subprocess.run([protoc, '-I', str(SCHEMAS), '--plugin=protoc-gen-nanopb=' + str(plugin),
                         '--nanopb_out=-I' + str(SCHEMAS) + ':' + str(c), '--python_out=' + str(python),
-                        '--descriptor_set_out=' + str(output / 'scene.descriptor.pb'), PROTO], check=True, env=env)
+                        '--descriptor_set_out=' + str(output / 'scene.descriptor.pb'), *PROTOS], check=True, env=env)
         descriptor = (output / 'scene.descriptor.pb').read_bytes()
+        from contracts import generate as generate_contracts
+        generate_contracts(descriptor, SCHEMAS, output)
         baseline = ROOT / 'compatibility/scene-v1.descriptor.pb'
         if not baseline.is_file():
             raise SystemExit('The published v1 descriptor is missing; do not regenerate the baseline')
