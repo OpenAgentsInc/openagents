@@ -46,6 +46,9 @@ descriptors, and test semantic limits across consumers. See the
 Existing provider protocols and signed source bytes keep their own formats;
 these messages do not authorize operations or define GPU layouts.
 
+The planned `openagents.verse.*` packages for everything 3D are specified in
+[the Verse protocol specification](../docs/verse/openagents-verse-protocol.md).
+
 The broader migration is tracked in
 [Aethyr epic #113](https://github.com/OpenAgentsInc/aethyr-cpp/issues/113).
 
