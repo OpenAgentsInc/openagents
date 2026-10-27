@@ -1,5 +1,6 @@
 """Bounded standard protobuf adapter for the existing SSH stdin channel."""
 import base64
+import math
 from google.protobuf.message import DecodeError
 from openagents.engine.v1.agent_pb2 import AgentDispatch, AgentProgress
 from engine_contract_limits import LIMITS
@@ -23,6 +24,8 @@ def validate(message, depth=0):
             elif field.type == field.TYPE_STRING:
                 if len(item.encode()) > length or '\0' in item:
                     raise ValueError('Protobuf string limit')
+            elif field.type in (field.TYPE_FLOAT,field.TYPE_DOUBLE) and not math.isfinite(item):
+                raise ValueError("Protobuf finite value required")
             elif field.type in (field.TYPE_UINT64, field.TYPE_INT64, field.TYPE_SINT64):
                 if abs(item) > 9007199254740991:
                     raise ValueError('Protobuf integer limit')

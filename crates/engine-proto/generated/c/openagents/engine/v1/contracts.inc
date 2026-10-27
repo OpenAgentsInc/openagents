@@ -286,6 +286,76 @@ static const WireFieldDef fields_openagents_engine_v1_HudFrame[] = {
   {12, "toasts", 11, true, 65536, 6, "openagents.engine.v1.HudToast"},
   {13, "hits", 11, true, 65536, 8, "openagents.engine.v1.HudHit"},
 };
+#include "openagents/engine/v1/state.pb.h"
+static const WireFieldDef fields_openagents_engine_v1_RegisteredFieldSchema[] = {
+  {1, "name", 9, false, 128, 100, ""},
+  {2, "kind", 14, false, 65536, 100, "openagents.engine.v1.RegisteredFieldKind"},
+  {3, "bits", 13, false, 65536, 100, ""},
+  {4, "source_contract", 9, false, 256, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_ComponentSchema[] = {
+  {1, "name", 9, false, 128, 100, ""},
+  {2, "version", 13, false, 65536, 100, ""},
+  {3, "resource", 8, false, 65536, 100, ""},
+  {4, "fields", 11, true, 65536, 256, "openagents.engine.v1.RegisteredFieldSchema"},
+};
+static const WireFieldDef fields_openagents_engine_v1_AuthoredSource[] = {
+  {1, "contract", 9, false, 256, 100, ""},
+  {2, "json", 9, false, 1048576, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_RegisteredFieldValue[] = {
+  {1, "name", 9, false, 128, 100, ""},
+  {2, "kind", 14, false, 65536, 100, "openagents.engine.v1.RegisteredFieldKind"},
+  {3, "boolean", 8, false, 65536, 100, ""},
+  {4, "integer", 18, false, 65536, 100, ""},
+  {5, "unsigned_value", 4, false, 65536, 100, ""},
+  {6, "number", 1, false, 65536, 100, ""},
+  {7, "text", 9, false, 65536, 100, ""},
+  {8, "vector", 1, true, 65536, 3, ""},
+  {9, "entity", 13, false, 65536, 100, ""},
+  {10, "source", 11, false, 65536, 100, "openagents.engine.v1.AuthoredSource"},
+};
+static const WireFieldDef fields_openagents_engine_v1_ComponentState[] = {
+  {1, "name", 9, false, 128, 100, ""},
+  {2, "version", 13, false, 65536, 100, ""},
+  {3, "fields", 11, true, 65536, 256, "openagents.engine.v1.RegisteredFieldValue"},
+};
+static const WireFieldDef fields_openagents_engine_v1_EntityState[] = {
+  {1, "id", 13, false, 65536, 100, ""},
+  {2, "components", 11, true, 65536, 256, "openagents.engine.v1.ComponentState"},
+};
+static const WireFieldDef fields_openagents_engine_v1_ComponentVersion[] = {
+  {1, "name", 9, false, 128, 100, ""},
+  {2, "version", 13, false, 65536, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_EntityChange[] = {
+  {1, "id", 13, false, 65536, 100, ""},
+  {2, "set", 11, true, 65536, 256, "openagents.engine.v1.ComponentState"},
+  {3, "put", 11, true, 65536, 256, "openagents.engine.v1.ComponentState"},
+  {4, "unset", 9, true, 128, 256, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_WorldSnapshot[] = {
+  {1, "contract_version", 13, false, 65536, 100, ""},
+  {2, "world", 9, false, 128, 100, ""},
+  {3, "schema", 13, false, 65536, 100, ""},
+  {4, "revision", 4, false, 65536, 100, ""},
+  {5, "definitions", 11, true, 65536, 1024, "openagents.engine.v1.ComponentSchema"},
+  {6, "entities", 11, true, 65536, 65536, "openagents.engine.v1.EntityState"},
+  {7, "resources", 11, true, 65536, 1024, "openagents.engine.v1.ComponentState"},
+};
+static const WireFieldDef fields_openagents_engine_v1_WorldDelta[] = {
+  {1, "contract_version", 13, false, 65536, 100, ""},
+  {2, "world", 9, false, 128, 100, ""},
+  {3, "schema", 13, false, 65536, 100, ""},
+  {4, "base_revision", 4, false, 65536, 100, ""},
+  {5, "revision", 4, false, 65536, 100, ""},
+  {6, "versions", 11, true, 65536, 1024, "openagents.engine.v1.ComponentVersion"},
+  {7, "added", 11, true, 65536, 65536, "openagents.engine.v1.EntityState"},
+  {8, "removed", 13, true, 65536, 65536, ""},
+  {9, "changed", 11, true, 65536, 65536, "openagents.engine.v1.EntityChange"},
+  {10, "resources", 11, true, 65536, 1024, "openagents.engine.v1.ComponentState"},
+  {11, "entity_order", 13, true, 65536, 65536, ""},
+};
 static const WireMessageDef wire_messages[] = {
   {"openagents.engine.v1.ToolActivity", &openagents_engine_v1_ToolActivity_msg, sizeof(openagents_engine_v1_ToolActivity), fields_openagents_engine_v1_ToolActivity, 8},
   {"openagents.engine.v1.AgentEvent", &openagents_engine_v1_AgentEvent_msg, sizeof(openagents_engine_v1_AgentEvent), fields_openagents_engine_v1_AgentEvent, 6},
@@ -321,4 +391,14 @@ static const WireMessageDef wire_messages[] = {
   {"openagents.engine.v1.HudToast", &openagents_engine_v1_HudToast_msg, sizeof(openagents_engine_v1_HudToast), fields_openagents_engine_v1_HudToast, 3},
   {"openagents.engine.v1.HudHit", &openagents_engine_v1_HudHit_msg, sizeof(openagents_engine_v1_HudHit), fields_openagents_engine_v1_HudHit, 3},
   {"openagents.engine.v1.HudFrame", &openagents_engine_v1_HudFrame_msg, sizeof(openagents_engine_v1_HudFrame), fields_openagents_engine_v1_HudFrame, 13},
+  {"openagents.engine.v1.RegisteredFieldSchema", &openagents_engine_v1_RegisteredFieldSchema_msg, sizeof(openagents_engine_v1_RegisteredFieldSchema), fields_openagents_engine_v1_RegisteredFieldSchema, 4},
+  {"openagents.engine.v1.ComponentSchema", &openagents_engine_v1_ComponentSchema_msg, sizeof(openagents_engine_v1_ComponentSchema), fields_openagents_engine_v1_ComponentSchema, 4},
+  {"openagents.engine.v1.AuthoredSource", &openagents_engine_v1_AuthoredSource_msg, sizeof(openagents_engine_v1_AuthoredSource), fields_openagents_engine_v1_AuthoredSource, 2},
+  {"openagents.engine.v1.RegisteredFieldValue", &openagents_engine_v1_RegisteredFieldValue_msg, sizeof(openagents_engine_v1_RegisteredFieldValue), fields_openagents_engine_v1_RegisteredFieldValue, 10},
+  {"openagents.engine.v1.ComponentState", &openagents_engine_v1_ComponentState_msg, sizeof(openagents_engine_v1_ComponentState), fields_openagents_engine_v1_ComponentState, 3},
+  {"openagents.engine.v1.EntityState", &openagents_engine_v1_EntityState_msg, sizeof(openagents_engine_v1_EntityState), fields_openagents_engine_v1_EntityState, 2},
+  {"openagents.engine.v1.ComponentVersion", &openagents_engine_v1_ComponentVersion_msg, sizeof(openagents_engine_v1_ComponentVersion), fields_openagents_engine_v1_ComponentVersion, 2},
+  {"openagents.engine.v1.EntityChange", &openagents_engine_v1_EntityChange_msg, sizeof(openagents_engine_v1_EntityChange), fields_openagents_engine_v1_EntityChange, 4},
+  {"openagents.engine.v1.WorldSnapshot", &openagents_engine_v1_WorldSnapshot_msg, sizeof(openagents_engine_v1_WorldSnapshot), fields_openagents_engine_v1_WorldSnapshot, 7},
+  {"openagents.engine.v1.WorldDelta", &openagents_engine_v1_WorldDelta_msg, sizeof(openagents_engine_v1_WorldDelta), fields_openagents_engine_v1_WorldDelta, 11},
 };

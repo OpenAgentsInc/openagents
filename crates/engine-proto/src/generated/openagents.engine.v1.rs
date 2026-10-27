@@ -778,3 +778,187 @@ impl CoordinateConvention {
         }
     }
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RegisteredFieldSchema {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(enumeration = "RegisteredFieldKind", tag = "2")]
+    pub kind: i32,
+    #[prost(uint32, tag = "3")]
+    pub bits: u32,
+    /// Required only for an explicitly registered existing authored-data format.
+    #[prost(string, tag = "4")]
+    pub source_contract: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ComponentSchema {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub version: u32,
+    #[prost(bool, tag = "3")]
+    pub resource: bool,
+    #[prost(message, repeated, tag = "4")]
+    pub fields: ::prost::alloc::vec::Vec<RegisteredFieldSchema>,
+}
+/// Existing authored documents/trigger expressions retain their named source
+/// format. This is not an automatic fallback for unmodeled component data.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AuthoredSource {
+    #[prost(string, tag = "1")]
+    pub contract: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub json: ::prost::alloc::string::String,
+}
+/// Exactly the value selected by the registered schema is present. There is
+/// deliberately no generic object/map/Any escape hatch for component fields.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RegisteredFieldValue {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(enumeration = "RegisteredFieldKind", tag = "2")]
+    pub kind: i32,
+    #[prost(bool, optional, tag = "3")]
+    pub boolean: ::core::option::Option<bool>,
+    #[prost(sint64, optional, tag = "4")]
+    pub integer: ::core::option::Option<i64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub unsigned_value: ::core::option::Option<u64>,
+    #[prost(double, optional, tag = "6")]
+    pub number: ::core::option::Option<f64>,
+    #[prost(string, optional, tag = "7")]
+    pub text: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(double, repeated, tag = "8")]
+    pub vector: ::prost::alloc::vec::Vec<f64>,
+    #[prost(uint32, optional, tag = "9")]
+    pub entity: ::core::option::Option<u32>,
+    #[prost(message, optional, tag = "10")]
+    pub source: ::core::option::Option<AuthoredSource>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ComponentState {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub version: u32,
+    #[prost(message, repeated, tag = "3")]
+    pub fields: ::prost::alloc::vec::Vec<RegisteredFieldValue>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityState {
+    #[prost(uint32, tag = "1")]
+    pub id: u32,
+    #[prost(message, repeated, tag = "2")]
+    pub components: ::prost::alloc::vec::Vec<ComponentState>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ComponentVersion {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub version: u32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityChange {
+    #[prost(uint32, tag = "1")]
+    pub id: u32,
+    /// Only changed registered fields.
+    #[prost(message, repeated, tag = "2")]
+    pub set: ::prost::alloc::vec::Vec<ComponentState>,
+    /// Whole replacement component.
+    #[prost(message, repeated, tag = "3")]
+    pub put: ::prost::alloc::vec::Vec<ComponentState>,
+    #[prost(string, repeated, tag = "4")]
+    pub unset: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WorldSnapshot {
+    /// 1.
+    #[prost(uint32, tag = "1")]
+    pub contract_version: u32,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "3")]
+    pub schema: u32,
+    #[prost(uint64, tag = "4")]
+    pub revision: u64,
+    #[prost(message, repeated, tag = "5")]
+    pub definitions: ::prost::alloc::vec::Vec<ComponentSchema>,
+    #[prost(message, repeated, tag = "6")]
+    pub entities: ::prost::alloc::vec::Vec<EntityState>,
+    #[prost(message, repeated, tag = "7")]
+    pub resources: ::prost::alloc::vec::Vec<ComponentState>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WorldDelta {
+    #[prost(uint32, tag = "1")]
+    pub contract_version: u32,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "3")]
+    pub schema: u32,
+    #[prost(uint64, tag = "4")]
+    pub base_revision: u64,
+    #[prost(uint64, tag = "5")]
+    pub revision: u64,
+    #[prost(message, repeated, tag = "6")]
+    pub versions: ::prost::alloc::vec::Vec<ComponentVersion>,
+    #[prost(message, repeated, tag = "7")]
+    pub added: ::prost::alloc::vec::Vec<EntityState>,
+    #[prost(uint32, repeated, tag = "8")]
+    pub removed: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, repeated, tag = "9")]
+    pub changed: ::prost::alloc::vec::Vec<EntityChange>,
+    #[prost(message, repeated, tag = "10")]
+    pub resources: ::prost::alloc::vec::Vec<ComponentState>,
+    /// Target iteration order; required even when IDs reuse indices.
+    #[prost(uint32, repeated, tag = "11")]
+    pub entity_order: ::prost::alloc::vec::Vec<u32>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum RegisteredFieldKind {
+    FieldKindUnspecified = 0,
+    FieldKindBool = 1,
+    FieldKindSigned = 2,
+    FieldKindUnsigned = 3,
+    FieldKindNumber = 4,
+    FieldKindText = 5,
+    FieldKindVec3 = 6,
+    FieldKindEntity = 7,
+    FieldKindSource = 8,
+}
+impl RegisteredFieldKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::FieldKindUnspecified => "FIELD_KIND_UNSPECIFIED",
+            Self::FieldKindBool => "FIELD_KIND_BOOL",
+            Self::FieldKindSigned => "FIELD_KIND_SIGNED",
+            Self::FieldKindUnsigned => "FIELD_KIND_UNSIGNED",
+            Self::FieldKindNumber => "FIELD_KIND_NUMBER",
+            Self::FieldKindText => "FIELD_KIND_TEXT",
+            Self::FieldKindVec3 => "FIELD_KIND_VEC3",
+            Self::FieldKindEntity => "FIELD_KIND_ENTITY",
+            Self::FieldKindSource => "FIELD_KIND_SOURCE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "FIELD_KIND_UNSPECIFIED" => Some(Self::FieldKindUnspecified),
+            "FIELD_KIND_BOOL" => Some(Self::FieldKindBool),
+            "FIELD_KIND_SIGNED" => Some(Self::FieldKindSigned),
+            "FIELD_KIND_UNSIGNED" => Some(Self::FieldKindUnsigned),
+            "FIELD_KIND_NUMBER" => Some(Self::FieldKindNumber),
+            "FIELD_KIND_TEXT" => Some(Self::FieldKindText),
+            "FIELD_KIND_VEC3" => Some(Self::FieldKindVec3),
+            "FIELD_KIND_ENTITY" => Some(Self::FieldKindEntity),
+            "FIELD_KIND_SOURCE" => Some(Self::FieldKindSource),
+            _ => None,
+        }
+    }
+}

@@ -50,3 +50,12 @@ class ExportTest(unittest.TestCase):
                 self.assertTrue(json.loads((dirty / 'manifest.json').read_text())['dirty'])
                 self.assertEqual((dirty / name).read_bytes(), source.read_bytes())
                 source.write_bytes(expected)
+
+    def test_generated_bindings_compile_in_c_and_cpp(self):
+        # Protect every consumer from legal proto names that are C/C++ keywords.
+        import os
+        includes=['-I'+str(ROOT/'generated/c'),'-I'+str(ROOT/'vendor/nanopb')]
+        for source in sorted((ROOT/'generated/c').rglob('*.pb.c')):
+            for compiler,language,standard in [(os.environ.get('CC','cc'),'c','c11'),(os.environ.get('CXX','c++'),'c++','c++20')]:
+                with self.subTest(source=source.name,language=language):
+                    subprocess.run([compiler,'-x',language,'-std='+standard,'-fsyntax-only',*includes,str(source)],check=True,capture_output=True)

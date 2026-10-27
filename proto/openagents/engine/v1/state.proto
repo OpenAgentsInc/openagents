@@ -1,0 +1,74 @@
+syntax = "proto3";
+package openagents.engine.v1;
+
+enum RegisteredFieldKind {
+  FIELD_KIND_UNSPECIFIED = 0;
+  FIELD_KIND_BOOL = 1;
+  FIELD_KIND_SIGNED = 2;
+  FIELD_KIND_UNSIGNED = 3;
+  FIELD_KIND_NUMBER = 4;
+  FIELD_KIND_TEXT = 5;
+  FIELD_KIND_VEC3 = 6;
+  FIELD_KIND_ENTITY = 7;
+  FIELD_KIND_SOURCE = 8;
+}
+message RegisteredFieldSchema {
+  string name = 1;
+  RegisteredFieldKind kind = 2;
+  uint32 bits = 3;
+  string source_contract = 4; // Required only for an explicitly registered existing authored-data format.
+}
+message ComponentSchema {
+  string name = 1;
+  uint32 version = 2;
+  bool resource = 3;
+  repeated RegisteredFieldSchema fields = 4;
+}
+// Existing authored documents/trigger expressions retain their named source
+// format. This is not an automatic fallback for unmodeled component data.
+message AuthoredSource { string contract = 1; string json = 2; }
+// Exactly the value selected by the registered schema is present. There is
+// deliberately no generic object/map/Any escape hatch for component fields.
+message RegisteredFieldValue {
+  string name = 1;
+  RegisteredFieldKind kind = 2;
+  optional bool boolean = 3;
+  optional sint64 integer = 4;
+  optional uint64 unsigned_value = 5;
+  optional double number = 6;
+  optional string text = 7;
+  repeated double vector = 8;
+  optional uint32 entity = 9;
+  AuthoredSource source = 10;
+}
+message ComponentState { string name = 1; uint32 version = 2; repeated RegisteredFieldValue fields = 3; }
+message EntityState { uint32 id = 1; repeated ComponentState components = 2; }
+message ComponentVersion { string name = 1; uint32 version = 2; }
+message EntityChange {
+  uint32 id = 1;
+  repeated ComponentState set = 2; // Only changed registered fields.
+  repeated ComponentState put = 3; // Whole replacement component.
+  repeated string unset = 4;
+}
+message WorldSnapshot {
+  uint32 contract_version = 1; // 1.
+  string world = 2;
+  uint32 schema = 3;
+  uint64 revision = 4;
+  repeated ComponentSchema definitions = 5;
+  repeated EntityState entities = 6;
+  repeated ComponentState resources = 7;
+}
+message WorldDelta {
+  uint32 contract_version = 1;
+  string world = 2;
+  uint32 schema = 3;
+  uint64 base_revision = 4;
+  uint64 revision = 5;
+  repeated ComponentVersion versions = 6;
+  repeated EntityState added = 7;
+  repeated uint32 removed = 8;
+  repeated EntityChange changed = 9;
+  repeated ComponentState resources = 10;
+  repeated uint32 entity_order = 11; // Target iteration order; required even when IDs reuse indices.
+}

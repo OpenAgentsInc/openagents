@@ -104,6 +104,8 @@ def main():
         (output / 'fixtures/cases.json').write_text(json.dumps(cases, indent=2) + '\n')
         from portable_fixtures import generate
         generate(output)
+        from state_fixtures import generate as generate_state
+        generate_state(output)
         files = [p for p in output.rglob('*') if p.is_file() and '__pycache__' not in p.parts]
         expected = {str(p.relative_to(output)) for p in files}
         checked = {str(p.relative_to(ROOT)) for folder in (ROOT / 'generated/c', ROOT / 'generated/python') if folder.exists() for p in folder.rglob('*') if p.is_file() and '__pycache__' not in p.parts}

@@ -147,3 +147,33 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod state_wire_fixtures {
+    use prost::Message;
+    #[test]
+    fn python_state_fixture_preserves_typed_values_and_zero_presence() {
+        let value =
+            super::WorldSnapshot::decode(&include_bytes!("../fixtures/state/snapshot.pb")[..])
+                .unwrap();
+        assert_eq!(value.revision, 7);
+        assert_eq!(value.entities[0].id, 0);
+        let fields = &value.entities[0].components[0].fields;
+        assert_eq!(
+            fields.iter().find(|f| f.name == "enabled").unwrap().boolean,
+            Some(false)
+        );
+        assert_eq!(
+            fields
+                .iter()
+                .find(|f| f.name == "coins")
+                .unwrap()
+                .unsigned_value,
+            Some(4294967295)
+        );
+        assert_eq!(
+            fields.iter().find(|f| f.name == "position").unwrap().vector,
+            vec![1., 2., 3.]
+        );
+    }
+}
