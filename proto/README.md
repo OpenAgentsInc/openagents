@@ -59,7 +59,10 @@ descriptors, and test semantic limits across consumers. See the
 Existing provider protocols and signed source bytes keep their own formats;
 these messages do not authorize operations or define GPU layouts.
 
-The planned `openagents.verse.*` packages for everything 3D are specified in
+The whole planned protocol tree (every `openagents.*` package, the `nostr.*`
+mirrors of all pinned NIPs, and vendored Lightning Labs protos) is specified in
+[the OpenAgents Protocol specification](../docs/protocol/openagents-protocol-spec.md).
+Its 3D chapter, the `openagents.verse.*` packages, is
 [the Verse protocol specification](../docs/verse/openagents-verse-protocol.md).
 
 The broader migration is tracked in

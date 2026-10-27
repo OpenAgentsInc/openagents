@@ -5,7 +5,13 @@ committed under `proto/` yet. The `.proto` sketches show shape, naming and
 boundaries. Their field numbers are provisional until each package's first
 descriptor snapshot is published, and after that they are frozen.
 
-This is the single specification and build plan for `openagents.verse`, the
+This is **Chapter V** of [the OpenAgents Protocol](../protocol/openagents-protocol-spec.md),
+the specification for every OpenAgents project. That document owns the
+principles, descriptor options, limits, Nostr mirrors and the whole package
+tree. Where this chapter's §4 sketches the tree outside `verse`, the master
+spec's §4 replaces it.
+
+This chapter is the single specification and build plan for `openagents.verse`, the
 Protobuf namespace for everything 3D that OpenAgents makes: the Verse
 metaverse, its worlds, zones, planets and the galaxy; avatars, agents and
 townsfolk; presence, chat and social; the authoritative realm service;

@@ -9,6 +9,7 @@ operations, gaps, and evidence.
 
 | Need | Document |
 | --- | --- |
+| One Protobuf protocol for every OpenAgents project (plan) | [OpenAgents Protocol specification](openagents-protocol-spec.md) |
 | Current role coverage and limitations | [Implementation coverage](2026-09-26-nip-implementation-coverage.md) |
 | Product functionality that should use Nostr | [Codebase adoption audit](../audits/2026-09-26-nostr-adoption/README.md) |
 | Remaining protocol work and completion criteria | [Implementation plan](implementation-plan.md) |
