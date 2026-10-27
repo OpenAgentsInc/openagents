@@ -459,6 +459,7 @@ every run in Cloud Storage (scheduled and by hand).
 | gateway-jev | 2026-10-24 | daily | 9.79 | 1 | 0.12 s | $0.0718 |
 | gateway-jev | 2026-10-25 | daily | 10.03 | 1 | 0.13 s | $0.0718 |
 | gateway-jev | 2026-10-26 | daily | 10.17 | 1 | 0.12 s | $0.0719 |
+| gateway-jev | 2026-10-27 | daily | 9.33 | 1 | 0.17 s | $0.0719 |
 | gateway-pylon | 2026-10-11 | full | 4.14 | 4 | 1.24 s | $0.0081 |
 | gateway-pylon | 2026-10-12 | daily | 1.45 | 4 | 3.65 s | $0.0229 |
 | gateway-pylon | 2026-10-13 | daily | 4.29 | 1 | 0.55 s | $0.0078 |
@@ -475,6 +476,7 @@ every run in Cloud Storage (scheduled and by hand).
 | gateway-pylon | 2026-10-24 | daily | 18.84 | 4 | 0.40 s | $0.0018 |
 | gateway-pylon | 2026-10-25 | daily | 18.81 | 4 | 0.40 s | $0.0018 |
 | gateway-pylon | 2026-10-26 | daily | 18.95 | 4 | 0.40 s | $0.0018 |
+| gateway-pylon | 2026-10-27 | daily | 18.84 | 4 | 0.41 s | $0.0018 |
 | vertex-gemini | 2026-10-11 | full | 3.50 | 16 | 6.35 s | $1.722 |
 | vertex-gemini | 2026-10-12 | daily | 1.39 | 4 | 8.88 s | $1.895 |
 | vertex-gemini | 2026-10-13 | daily | 1.41 | 4 | 6.63 s | $1.829 |
@@ -491,6 +493,7 @@ every run in Cloud Storage (scheduled and by hand).
 | vertex-gemini | 2026-10-24 | daily | 0.26 | 4 | 118 s | $1.634 |
 | vertex-gemini | 2026-10-25 | daily | 0.17 | 4 | 75.54 s | $1.701 |
 | vertex-gemini | 2026-10-26 | daily | 1.62 | 4 | 6.13 s | $1.769 |
+| vertex-gemini | 2026-10-27 | daily | 0.86 | 4 | 20.04 s | $1.799 |
 | coderos-clef | 2026-10-11 | full | 4.21 | 1 | 0.27 s | $0.0079 |
 | coderos-llamacpp | 2026-10-11 | full | 3.14 | 1 | 0.66 s | $0.0106 |
 | h100-clef-flash | 2026-10-11 | full | 9.87 | 4 | 0.43 s | $0.180 |
