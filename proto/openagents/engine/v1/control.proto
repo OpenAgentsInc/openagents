@@ -1,0 +1,67 @@
+syntax = "proto3";
+package openagents.engine.v1;
+
+message CameraControl {
+  string action = 1;
+  optional double delta = 2;
+  optional sint32 view = 3;
+  optional bool allow_toggle = 4;
+  optional bool on = 5;
+}
+message EntityEdit {
+  string action = 1;
+  optional uint32 id = 2;
+  optional sint32 mesh = 3;
+  optional double x = 4; optional double y = 5; optional double z = 6;
+  optional double yaw = 7; optional double scale = 8;
+  repeated double tint = 9;
+  optional double glow = 10;
+  optional bool on = 11;
+  optional bool pickable = 12;
+}
+message InputIntent {
+  double key_x = 1; double key_y = 2; double pad_x = 3; double pad_y = 4;
+  bool run = 5; bool jump = 6; double dyaw = 7; double dpitch = 8;
+}
+message WorldLoad { string name = 1; }
+message EngineCapabilities {
+  uint32 schema = 1;
+  string world = 2;
+  uint64 revision = 3; // Control revision, not the simulation tick.
+  repeated string operations = 4;
+  repeated string camera_actions = 5;
+  repeated string entity_actions = 6;
+  bool world_load = 7; // Host configuration; this is not an authorization grant.
+}
+// Exactly the payload named by op must be present. Capabilities has no payload.
+// Expected revision fences mutations; request_id deduplicates exact retries.
+message EngineRequest {
+  uint32 schema = 1;
+  string request_id = 2;
+  string world = 3;
+  uint64 expected_revision = 4;
+  string op = 5; // capabilities, camera, entity, input, load.
+  CameraControl camera = 6;
+  EntityEdit entity = 7;
+  InputIntent input = 8;
+  WorldLoad load = 9;
+}
+message EngineEvent {
+  string request_id = 1;
+  string world = 2;
+  uint64 revision = 3;
+  string kind = 4;
+  optional uint32 entity_id = 5;
+}
+message EngineReply {
+  uint32 schema = 1;
+  string request_id = 2;
+  uint64 revision = 3;
+  bool ok = 4;
+  string code = 5;
+  string error = 6;
+  EngineEvent event = 7;
+  EngineCapabilities capabilities = 8;
+  optional uint32 entity_id = 9;
+  optional sint32 view = 10;
+}

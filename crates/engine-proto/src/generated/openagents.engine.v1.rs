@@ -158,6 +158,149 @@ pub struct AgentProgress {
     pub error: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CameraControl {
+    #[prost(string, tag = "1")]
+    pub action: ::prost::alloc::string::String,
+    #[prost(double, optional, tag = "2")]
+    pub delta: ::core::option::Option<f64>,
+    #[prost(sint32, optional, tag = "3")]
+    pub view: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag = "4")]
+    pub allow_toggle: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag = "5")]
+    pub on: ::core::option::Option<bool>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityEdit {
+    #[prost(string, tag = "1")]
+    pub action: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag = "2")]
+    pub id: ::core::option::Option<u32>,
+    #[prost(sint32, optional, tag = "3")]
+    pub mesh: ::core::option::Option<i32>,
+    #[prost(double, optional, tag = "4")]
+    pub x: ::core::option::Option<f64>,
+    #[prost(double, optional, tag = "5")]
+    pub y: ::core::option::Option<f64>,
+    #[prost(double, optional, tag = "6")]
+    pub z: ::core::option::Option<f64>,
+    #[prost(double, optional, tag = "7")]
+    pub yaw: ::core::option::Option<f64>,
+    #[prost(double, optional, tag = "8")]
+    pub scale: ::core::option::Option<f64>,
+    #[prost(double, repeated, tag = "9")]
+    pub tint: ::prost::alloc::vec::Vec<f64>,
+    #[prost(double, optional, tag = "10")]
+    pub glow: ::core::option::Option<f64>,
+    #[prost(bool, optional, tag = "11")]
+    pub on: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag = "12")]
+    pub pickable: ::core::option::Option<bool>,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct InputIntent {
+    #[prost(double, tag = "1")]
+    pub key_x: f64,
+    #[prost(double, tag = "2")]
+    pub key_y: f64,
+    #[prost(double, tag = "3")]
+    pub pad_x: f64,
+    #[prost(double, tag = "4")]
+    pub pad_y: f64,
+    #[prost(bool, tag = "5")]
+    pub run: bool,
+    #[prost(bool, tag = "6")]
+    pub jump: bool,
+    #[prost(double, tag = "7")]
+    pub dyaw: f64,
+    #[prost(double, tag = "8")]
+    pub dpitch: f64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WorldLoad {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EngineCapabilities {
+    #[prost(uint32, tag = "1")]
+    pub schema: u32,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+    /// Control revision, not the simulation tick.
+    #[prost(uint64, tag = "3")]
+    pub revision: u64,
+    #[prost(string, repeated, tag = "4")]
+    pub operations: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag = "5")]
+    pub camera_actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag = "6")]
+    pub entity_actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Host configuration; this is not an authorization grant.
+    #[prost(bool, tag = "7")]
+    pub world_load: bool,
+}
+/// Exactly the payload named by op must be present. Capabilities has no payload.
+/// Expected revision fences mutations; request_id deduplicates exact retries.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EngineRequest {
+    #[prost(uint32, tag = "1")]
+    pub schema: u32,
+    #[prost(string, tag = "2")]
+    pub request_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "4")]
+    pub expected_revision: u64,
+    /// capabilities, camera, entity, input, load.
+    #[prost(string, tag = "5")]
+    pub op: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "6")]
+    pub camera: ::core::option::Option<CameraControl>,
+    #[prost(message, optional, tag = "7")]
+    pub entity: ::core::option::Option<EntityEdit>,
+    #[prost(message, optional, tag = "8")]
+    pub input: ::core::option::Option<InputIntent>,
+    #[prost(message, optional, tag = "9")]
+    pub load: ::core::option::Option<WorldLoad>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EngineEvent {
+    #[prost(string, tag = "1")]
+    pub request_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub revision: u64,
+    #[prost(string, tag = "4")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag = "5")]
+    pub entity_id: ::core::option::Option<u32>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EngineReply {
+    #[prost(uint32, tag = "1")]
+    pub schema: u32,
+    #[prost(string, tag = "2")]
+    pub request_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub revision: u64,
+    #[prost(bool, tag = "4")]
+    pub ok: bool,
+    #[prost(string, tag = "5")]
+    pub code: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub error: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "7")]
+    pub event: ::core::option::Option<EngineEvent>,
+    #[prost(message, optional, tag = "8")]
+    pub capabilities: ::core::option::Option<EngineCapabilities>,
+    #[prost(uint32, optional, tag = "9")]
+    pub entity_id: ::core::option::Option<u32>,
+    #[prost(sint32, optional, tag = "10")]
+    pub view: ::core::option::Option<i32>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ArtifactReference {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,

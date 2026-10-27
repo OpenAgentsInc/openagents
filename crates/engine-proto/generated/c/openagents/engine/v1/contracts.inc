@@ -78,6 +78,80 @@ static const WireFieldDef fields_openagents_engine_v1_AgentProgress[] = {
   {12, "result_truncated", 8, false, 65536, 100, ""},
   {13, "error", 9, false, 2000, 100, ""},
 };
+#include "openagents/engine/v1/control.pb.h"
+static const WireFieldDef fields_openagents_engine_v1_CameraControl[] = {
+  {1, "action", 9, false, 32, 100, ""},
+  {2, "delta", 1, false, 65536, 100, ""},
+  {3, "view", 17, false, 65536, 100, ""},
+  {4, "allow_toggle", 8, false, 65536, 100, ""},
+  {5, "on", 8, false, 65536, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_EntityEdit[] = {
+  {1, "action", 9, false, 32, 100, ""},
+  {2, "id", 13, false, 65536, 100, ""},
+  {3, "mesh", 17, false, 65536, 100, ""},
+  {4, "x", 1, false, 65536, 100, ""},
+  {5, "y", 1, false, 65536, 100, ""},
+  {6, "z", 1, false, 65536, 100, ""},
+  {7, "yaw", 1, false, 65536, 100, ""},
+  {8, "scale", 1, false, 65536, 100, ""},
+  {9, "tint", 1, true, 65536, 3, ""},
+  {10, "glow", 1, false, 65536, 100, ""},
+  {11, "on", 8, false, 65536, 100, ""},
+  {12, "pickable", 8, false, 65536, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_InputIntent[] = {
+  {1, "key_x", 1, false, 65536, 100, ""},
+  {2, "key_y", 1, false, 65536, 100, ""},
+  {3, "pad_x", 1, false, 65536, 100, ""},
+  {4, "pad_y", 1, false, 65536, 100, ""},
+  {5, "run", 8, false, 65536, 100, ""},
+  {6, "jump", 8, false, 65536, 100, ""},
+  {7, "dyaw", 1, false, 65536, 100, ""},
+  {8, "dpitch", 1, false, 65536, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_WorldLoad[] = {
+  {1, "name", 9, false, 128, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_EngineCapabilities[] = {
+  {1, "schema", 13, false, 65536, 100, ""},
+  {2, "world", 9, false, 128, 100, ""},
+  {3, "revision", 4, false, 65536, 100, ""},
+  {4, "operations", 9, true, 32, 16, ""},
+  {5, "camera_actions", 9, true, 32, 16, ""},
+  {6, "entity_actions", 9, true, 32, 16, ""},
+  {7, "world_load", 8, false, 65536, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_EngineRequest[] = {
+  {1, "schema", 13, false, 65536, 100, ""},
+  {2, "request_id", 9, false, 128, 100, ""},
+  {3, "world", 9, false, 128, 100, ""},
+  {4, "expected_revision", 4, false, 65536, 100, ""},
+  {5, "op", 9, false, 32, 100, ""},
+  {6, "camera", 11, false, 65536, 100, "openagents.engine.v1.CameraControl"},
+  {7, "entity", 11, false, 65536, 100, "openagents.engine.v1.EntityEdit"},
+  {8, "input", 11, false, 65536, 100, "openagents.engine.v1.InputIntent"},
+  {9, "load", 11, false, 65536, 100, "openagents.engine.v1.WorldLoad"},
+};
+static const WireFieldDef fields_openagents_engine_v1_EngineEvent[] = {
+  {1, "request_id", 9, false, 128, 100, ""},
+  {2, "world", 9, false, 128, 100, ""},
+  {3, "revision", 4, false, 65536, 100, ""},
+  {4, "kind", 9, false, 64, 100, ""},
+  {5, "entity_id", 13, false, 65536, 100, ""},
+};
+static const WireFieldDef fields_openagents_engine_v1_EngineReply[] = {
+  {1, "schema", 13, false, 65536, 100, ""},
+  {2, "request_id", 9, false, 128, 100, ""},
+  {3, "revision", 4, false, 65536, 100, ""},
+  {4, "ok", 8, false, 65536, 100, ""},
+  {5, "code", 9, false, 64, 100, ""},
+  {6, "error", 9, false, 2000, 100, ""},
+  {7, "event", 11, false, 65536, 100, "openagents.engine.v1.EngineEvent"},
+  {8, "capabilities", 11, false, 65536, 100, "openagents.engine.v1.EngineCapabilities"},
+  {9, "entity_id", 13, false, 65536, 100, ""},
+  {10, "view", 17, false, 65536, 100, ""},
+};
 #include "openagents/engine/v1/hud.pb.h"
 static const WireFieldDef fields_openagents_engine_v1_ArtifactReference[] = {
   {1, "id", 9, false, 128, 100, ""},
@@ -220,6 +294,14 @@ static const WireMessageDef wire_messages[] = {
   {"openagents.engine.v1.AgentReply", &openagents_engine_v1_AgentReply_msg, sizeof(openagents_engine_v1_AgentReply), fields_openagents_engine_v1_AgentReply, 3},
   {"openagents.engine.v1.AgentDispatch", &openagents_engine_v1_AgentDispatch_msg, sizeof(openagents_engine_v1_AgentDispatch), fields_openagents_engine_v1_AgentDispatch, 7},
   {"openagents.engine.v1.AgentProgress", &openagents_engine_v1_AgentProgress_msg, sizeof(openagents_engine_v1_AgentProgress), fields_openagents_engine_v1_AgentProgress, 13},
+  {"openagents.engine.v1.CameraControl", &openagents_engine_v1_CameraControl_msg, sizeof(openagents_engine_v1_CameraControl), fields_openagents_engine_v1_CameraControl, 5},
+  {"openagents.engine.v1.EntityEdit", &openagents_engine_v1_EntityEdit_msg, sizeof(openagents_engine_v1_EntityEdit), fields_openagents_engine_v1_EntityEdit, 12},
+  {"openagents.engine.v1.InputIntent", &openagents_engine_v1_InputIntent_msg, sizeof(openagents_engine_v1_InputIntent), fields_openagents_engine_v1_InputIntent, 8},
+  {"openagents.engine.v1.WorldLoad", &openagents_engine_v1_WorldLoad_msg, sizeof(openagents_engine_v1_WorldLoad), fields_openagents_engine_v1_WorldLoad, 1},
+  {"openagents.engine.v1.EngineCapabilities", &openagents_engine_v1_EngineCapabilities_msg, sizeof(openagents_engine_v1_EngineCapabilities), fields_openagents_engine_v1_EngineCapabilities, 7},
+  {"openagents.engine.v1.EngineRequest", &openagents_engine_v1_EngineRequest_msg, sizeof(openagents_engine_v1_EngineRequest), fields_openagents_engine_v1_EngineRequest, 9},
+  {"openagents.engine.v1.EngineEvent", &openagents_engine_v1_EngineEvent_msg, sizeof(openagents_engine_v1_EngineEvent), fields_openagents_engine_v1_EngineEvent, 5},
+  {"openagents.engine.v1.EngineReply", &openagents_engine_v1_EngineReply_msg, sizeof(openagents_engine_v1_EngineReply), fields_openagents_engine_v1_EngineReply, 10},
   {"openagents.engine.v1.ArtifactReference", &openagents_engine_v1_ArtifactReference_msg, sizeof(openagents_engine_v1_ArtifactReference), fields_openagents_engine_v1_ArtifactReference, 5},
   {"openagents.engine.v1.InteractionRequest", &openagents_engine_v1_InteractionRequest_msg, sizeof(openagents_engine_v1_InteractionRequest), fields_openagents_engine_v1_InteractionRequest, 5},
   {"openagents.engine.v1.ConversationSnapshot", &openagents_engine_v1_ConversationSnapshot_msg, sizeof(openagents_engine_v1_ConversationSnapshot), fields_openagents_engine_v1_ConversationSnapshot, 10},
