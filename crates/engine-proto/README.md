@@ -1,11 +1,15 @@
 # Engine Protobuf contracts
 
-`proto/openagents/engine/v1/scene.proto` owns the first shared engine contract:
+The repository's top-level
+[`proto/openagents/engine/v1/scene.proto`](https://github.com/OpenAgentsInc/openagents/blob/main/proto/openagents/engine/v1/scene.proto)
+owns the first shared engine contract:
 scene axes, landmarks, prompt ranges, and collision boxes. This package defines
 metadata, not engine commands, asset admission, signed bytes, or GPU layouts.
 The existing Nostr and JSON document protocols are unchanged.
 
-The setup follows LND's versioned packages and checked-in generated bindings,
+This crate consumes the language-neutral schema and holds its generators,
+validators, fixtures and exported bindings. See [`proto/`](https://github.com/OpenAgentsInc/openagents/tree/main/proto)
+for the schema layout. The setup follows LND's versioned packages and checked-in generated bindings,
 and the LND SDK's regeneration tests. Rust uses Prost; C/C++ uses Nanopb with
 fixed arrays and bounded strings for Wasm; Python supports asset tooling.
 Normal builds need no compiler, network, or OpenAgents workspace dependency.

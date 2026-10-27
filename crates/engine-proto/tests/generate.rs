@@ -3,12 +3,13 @@ use std::path::PathBuf;
 #[test]
 fn generated_rust_matches_schema() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let schemas = root.join("../../proto");
     let output = tempfile::tempdir().unwrap();
     prost_build::Config::new()
         .out_dir(output.path())
         .compile_protos(
-            &[root.join("proto/openagents/engine/v1/scene.proto")],
-            &[root.join("proto")],
+            &[schemas.join("openagents/engine/v1/scene.proto")],
+            &[schemas],
         )
         .unwrap();
     let name = "openagents.engine.v1.rs";

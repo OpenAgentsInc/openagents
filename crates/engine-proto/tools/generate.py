@@ -11,6 +11,7 @@ import tempfile
 from compatibility import check, parse
 
 ROOT = Path(__file__).resolve().parents[1]
+SCHEMAS = ROOT.parents[1] / 'proto'
 MODE = sys.argv[1] if len(sys.argv) > 1 else 'check'
 VERSIONS = json.loads((ROOT / 'toolchain.json').read_text())
 PROTO = 'openagents/engine/v1/scene.proto'
@@ -35,8 +36,8 @@ def main():
         c.mkdir(parents=True)
         python.mkdir(parents=True)
         env = {**os.environ, 'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ.get('PATH', '')}
-        subprocess.run([protoc, '-I', str(ROOT / 'proto'), '--plugin=protoc-gen-nanopb=' + str(plugin),
-                        '--nanopb_out=-I' + str(ROOT / 'proto') + ':' + str(c), '--python_out=' + str(python),
+        subprocess.run([protoc, '-I', str(SCHEMAS), '--plugin=protoc-gen-nanopb=' + str(plugin),
+                        '--nanopb_out=-I' + str(SCHEMAS) + ':' + str(c), '--python_out=' + str(python),
                         '--descriptor_set_out=' + str(output / 'scene.descriptor.pb'), PROTO], check=True, env=env)
         descriptor = (output / 'scene.descriptor.pb').read_bytes()
         baseline = ROOT / 'compatibility/scene-v1.descriptor.pb'
@@ -46,7 +47,7 @@ def main():
                   for error in check(parse(published.read_bytes()), parse(descriptor))]
         if errors:
             raise SystemExit('\n'.join(errors))
-        encoded = subprocess.check_output([protoc, '-I', str(ROOT / 'proto'), '--encode=openagents.engine.v1.SceneMetadata', PROTO],
+        encoded = subprocess.check_output([protoc, '-I', str(SCHEMAS), '--encode=openagents.engine.v1.SceneMetadata', PROTO],
                                           input=(ROOT / 'fixtures/scene.textproto').read_bytes())
         (output / 'fixtures').mkdir()
         (output / 'fixtures/scene.pb').write_bytes(encoded)

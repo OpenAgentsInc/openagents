@@ -9,6 +9,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
+SCHEMAS = REPO / 'proto' / 'openagents' / 'engine'
 
 
 def main():
@@ -16,7 +17,7 @@ def main():
     parser.add_argument('destination', type=Path)
     parser.add_argument('--allow-dirty', action='store_true')
     args = parser.parse_args()
-    dirty = bool(subprocess.check_output(['git', '-C', str(REPO), 'status', '--porcelain', '--', 'crates/engine-proto', 'scripts/engine-proto.sh']))
+    dirty = bool(subprocess.check_output(['git', '-C', str(REPO), 'status', '--porcelain', '--', 'proto', 'crates/engine-proto', 'scripts/engine-proto.sh']))
     if dirty and not args.allow_dirty:
         raise SystemExit('Commit the contract before exporting its bindings')
     if args.destination.exists():
@@ -27,10 +28,13 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, path)
         files[target] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for folder, target in [('generated/c', 'c'), ('generated/python', 'python'), ('vendor/nanopb', 'nanopb'), ('fixtures', 'fixtures'), ('proto', 'proto'), ('data', 'data')]:
+    for folder, target in [('generated/c', 'c'), ('generated/python', 'python'), ('vendor/nanopb', 'nanopb'), ('fixtures', 'fixtures'), ('data', 'data')]:
         for source in sorted((ROOT / folder).rglob('*')):
             if source.is_file() and '__pycache__' not in source.parts:
                 add(source, str(Path(target) / source.relative_to(ROOT / folder)))
+    for source in sorted(SCHEMAS.rglob('*')):
+        if source.is_file():
+            add(source, str(Path('proto/openagents/engine') / source.relative_to(SCHEMAS)))
     for name in ['toolchain.json', 'scene.descriptor.pb', 'README.md']:
         add(ROOT / name, name)
     add(ROOT / 'src/generated/openagents.engine.v1.rs', 'rust/openagents.engine.v1.rs')
