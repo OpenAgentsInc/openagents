@@ -9,7 +9,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
-SCHEMAS = REPO / 'proto' / 'openagents' / 'engine'
+SCHEMAS = REPO / 'proto' / 'openagents'
 
 
 def main():
@@ -17,7 +17,7 @@ def main():
     parser.add_argument('destination', type=Path)
     parser.add_argument('--allow-dirty', action='store_true')
     args = parser.parse_args()
-    dirty = bool(subprocess.check_output(['git', '-C', str(REPO), 'status', '--porcelain', '--', 'proto', 'crates/engine-proto', 'scripts/engine-proto.sh']))
+    dirty = bool(subprocess.check_output(['git', '-C', str(REPO), 'status', '--porcelain', '--', 'proto', 'crates/engine-proto', 'crates/phone-host', 'scripts/engine-proto.sh']))
     if dirty and not args.allow_dirty:
         raise SystemExit('Commit the contract before exporting its bindings')
     if args.destination.exists():
@@ -34,10 +34,12 @@ def main():
                 add(source, str(Path(target) / source.relative_to(ROOT / folder)))
     for source in sorted(SCHEMAS.rglob('*')):
         if source.is_file():
-            add(source, str(Path('proto/openagents/engine') / source.relative_to(SCHEMAS)))
+            add(source, str(Path('proto/openagents') / source.relative_to(SCHEMAS)))
     for name in ['toolchain.json', 'scene.descriptor.pb', 'README.md']:
         add(ROOT / name, name)
-    add(ROOT / 'src/generated/openagents.engine.v1.rs', 'rust/openagents.engine.v1.rs')
+    for source in sorted((ROOT / 'src/generated').glob('*.rs')):
+        add(source, 'rust/' + source.name)
+    add(REPO / 'crates/phone-host/include/phone_host.h', 'native/phone_host.h')
     add(ROOT / 'tools/portable.py', 'python/engine_portable.py')
     add(ROOT / 'tools/agent_wire.py', 'python/engine_agent.py')
     manifest = {'format': 'openagents.engine-proto.bundle.v1', 'repository': 'https://github.com/OpenAgentsInc/openagents',

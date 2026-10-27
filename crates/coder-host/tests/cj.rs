@@ -224,6 +224,7 @@ fn reseal(device: &Enrolled, request: Request) -> Pending {
 fn create() -> Operation {
     Operation::CreateTask {
         task: TaskCreate {
+            read_only: None,
             title: "Check the build".into(),
             prompt: "Run the tests and report.".into(),
             workspace: "checkout".into(),

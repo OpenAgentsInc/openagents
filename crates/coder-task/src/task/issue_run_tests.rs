@@ -476,6 +476,7 @@ fn an_inactive_own_claim_is_recovered_but_live_and_foreign_claims_are_not() {
                         source_revision: None,
                     },
                     configuration: RequestedConfiguration {
+                        read_only: None,
                         adapter: "bounded-command".into(),
                         model: None,
                     },
@@ -1031,6 +1032,7 @@ fn a_claim_whose_task_ended_is_stale_and_released_but_live_landed_and_foreign_on
                             source_revision: None,
                         },
                         configuration: RequestedConfiguration {
+                            read_only: None,
                             adapter: "bounded-command".into(),
                             model: None,
                         },

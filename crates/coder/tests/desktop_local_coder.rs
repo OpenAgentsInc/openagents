@@ -53,6 +53,7 @@ async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {
         let mut client = SocketControl::new(task_socket);
         let request = "1".repeat(64);
         let create = TaskCreate {
+            read_only: None,
             title: "Scratch task".into(),
             prompt: "Synthetic request".into(),
             workspace: "checkout".into(),

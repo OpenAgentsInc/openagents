@@ -161,6 +161,7 @@ impl Fixture {
 fn create(title: &str) -> Operation {
     Operation::CreateTask {
         task: TaskCreate {
+            read_only: None,
             title: title.into(),
             prompt: "Read the README and report.".into(),
             workspace: "checkout".into(),

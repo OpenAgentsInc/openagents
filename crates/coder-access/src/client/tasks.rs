@@ -27,6 +27,7 @@ pub fn title(prompt: &str) -> String {
 }
 pub fn input(prompt: &str, workspace: &str) -> TaskCreate {
     TaskCreate {
+        read_only: None,
         title: title(prompt),
         prompt: prompt.into(),
         workspace: workspace.into(),

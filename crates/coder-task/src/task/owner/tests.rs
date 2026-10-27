@@ -52,6 +52,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Grant) {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: "bounded-command".into(),
                     model: None,
                 },

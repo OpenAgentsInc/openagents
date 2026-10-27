@@ -214,6 +214,9 @@ impl Reading {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RequestedConfiguration {
+    /// A caller may restrict a task to read-only execution; never a grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only: Option<bool>,
     pub adapter: String,
     pub model: Option<String>,
 }

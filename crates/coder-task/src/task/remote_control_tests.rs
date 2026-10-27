@@ -153,6 +153,7 @@ async fn two_principal_queue_reorder_and_release_keep_current_admission() {
             &task,
             "synthetic-device",
             &TaskCreate {
+                read_only: None,
                 title: "Synthetic mixed queue".into(),
                 prompt: "An inert synthetic task.".into(),
                 workspace: "checkout".into(),

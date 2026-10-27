@@ -99,6 +99,7 @@ fn submit(store: &mut task::Store, id: &str, root: &std::path::Path, prompt: &st
                     source_revision: None,
                 },
                 configuration: task::RequestedConfiguration {
+                    read_only: None,
                     adapter: task::adapter::NAME.into(),
                     model: Some("synthetic".into()),
                 },

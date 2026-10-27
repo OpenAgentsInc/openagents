@@ -1,0 +1,21 @@
+syntax = "proto3";
+package openagents.host.v1;
+import "openagents/common/v1/refs.proto";
+import "openagents/reach/v1/reach.proto";
+import "openagents/engine/v1/agent.proto";
+message GrantOrigin { string kind = 1; string id = 2; string issuer = 3; }
+message Grant { string id = 1; string host = 2; string owner = 3; string device = 4; string relay = 5; repeated string rights = 6; uint64 epoch = 7; GrantOrigin origin = 8; uint64 issued_at = 9; uint64 expires_at = 10; }
+// First slice supports unscoped device grants. The original is reverified on
+// every use and must agree with every projected field. Scoped grants refuse.
+message Access { Grant grant = 1; openagents.common.v1.SignedEvent authorization = 2; }
+// Existing coder_access::Pending JSON, retained byte-for-byte for exact retries.
+// This is a named compatibility record, never a free-form executable payload.
+message TaskScope { string workspace = 1; string task = 2; uint64 revision = 3; optional uint64 attempt = 4; string intent_digest = 5; }
+message TaskCursor { TaskScope scope = 1; string source = 2; string source_digest = 3; uint64 source_bytes = 4; uint64 next_step = 5; string prefix_digest = 6; }
+message Connection { uint32 schema = 1; Access access = 2; string workspace = 3; string peer = 4; string label = 5; }
+message TaskBinding { uint32 schema = 1; string phone_run = 2; string remote_task = 3; uint64 revision = 4; PreparedCall pending = 5; TaskCursor cursor = 6; uint64 cursor_after = 7; bool cancel_sent = 8; }
+message PreparedCall { string pending_json = 1; string operation = 2; string phone_run = 3; string workspace = 4; string remote_task = 5; uint64 after = 6; TaskCursor cursor = 7; }
+// Native bridge requests; credentials are separate Keychain-owned arguments.
+// Exactly the fields used by operation are accepted. No arbitrary HOST RPC.
+message AgentRequest { uint32 schema = 1; string operation = 2; string invitation = 3; Access access = 4; PreparedCall pending = 5; string phone_run = 6; string workspace = 7; string objective = 8; string remote_task = 9; uint64 revision = 10; uint64 after = 11; bool allow_writes = 12; TaskCursor cursor = 13; string stream_address = 14; }
+message AgentReply { uint32 schema = 1; openagents.common.v1.Refusal error = 2; Access access = 3; openagents.reach.v1.ReachState reach = 4; PreparedCall pending = 5; openagents.engine.v1.AgentProgress progress = 6; string remote_task = 7; uint64 revision = 8; string route = 9; TaskCursor cursor = 10; string host_phase = 11; }

@@ -184,6 +184,7 @@ fn run() -> Result<Value, String> {
                 source_revision: Some(git(&workspace, &["rev-parse", "HEAD"])?),
             },
             configuration: task::RequestedConfiguration {
+                read_only: None,
                 adapter: task::adapter::NAME.into(),
                 model: Some(model.clone()),
             },

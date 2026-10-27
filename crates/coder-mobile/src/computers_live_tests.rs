@@ -314,6 +314,7 @@ fn the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_h
     let Outcome::Dispatched { receipt } = runtime
         .block_on(operator.call(Operation::CreateTask {
             task: TaskCreate {
+                read_only: None,
                 title: "Fix the flaky parser test".into(),
                 prompt: "Find why the parser test fails one run in ten.".into(),
                 workspace: "checkout".into(),
@@ -481,6 +482,7 @@ fn serve_a_host_for_a_device_run() {
         runtime
             .block_on(operator.call(Operation::CreateTask {
                 task: TaskCreate {
+                    read_only: None,
                     title: "Device run task".into(),
                     prompt: "Created by the fixture for the activity screen.".into(),
                     workspace: "checkout".into(),

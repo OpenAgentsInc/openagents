@@ -70,6 +70,7 @@ impl Fixture {
                         source_revision: None,
                     },
                     configuration: coder::task::RequestedConfiguration {
+                        read_only: None,
                         adapter: "bounded-command".into(),
                         model: None,
                     },

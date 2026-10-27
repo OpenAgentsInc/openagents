@@ -825,6 +825,11 @@ impl Host {
             if task.run.is_some() || task.status != Status::Queued {
                 return Err(Error::InvalidTransition);
             }
+            if task.intent.configuration.read_only == Some(true) && grant.write_workspace {
+                return Err(Error::InvalidCommand(
+                    "this task requires a read-only execution grant",
+                ));
+            }
             if grant.intent_digest != task.intent_digest || grant.expected_revision != task.revision
             {
                 return Err(Error::RevisionMismatch);

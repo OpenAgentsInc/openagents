@@ -153,6 +153,7 @@ fn a_phone_pairs_over_loopback_iroh_then_creates_a_task_over_iroh() {
         .create_task(
             &host_key,
             &TaskCreate {
+                read_only: None,
                 title: "Fix the flaky test".into(),
                 prompt: "Fix the flaky test in the checkout.".into(),
                 workspace: "checkout".into(),

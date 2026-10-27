@@ -176,6 +176,7 @@ async fn a_reconnected_link_sends_the_original_packet_and_rejects_changed_bytes(
     let first = link(&host, Right::Operate).await;
     let action = Operation::CreateTask {
         task: TaskCreate {
+            read_only: None,
             title: "Synthetic exact retry".into(),
             prompt: "Original bytes".into(),
             workspace: "checkout".into(),

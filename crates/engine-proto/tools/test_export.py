@@ -19,6 +19,7 @@ class ExportTest(unittest.TestCase):
             crate = repo / 'crates/engine-proto'
             shutil.copytree(ROOT, crate, ignore=shutil.ignore_patterns('__pycache__'))
             shutil.copytree(ROOT.parents[1] / 'proto', repo / 'proto')
+            shutil.copytree(ROOT.parents[1] / 'crates/phone-host/include', repo / 'crates/phone-host/include')
             def git(*args):
                 return subprocess.check_output(['git', '-C', str(repo), *args], stderr=subprocess.STDOUT)
             git('init', '-q')

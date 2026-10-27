@@ -536,6 +536,7 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
 
     step("create a task");
     let create = TaskCreate {
+        read_only: None,
         title: "Fix the flaky parser test".into(),
         prompt: "Find why the parser test fails one run in ten.".into(),
         workspace: "checkout".into(),
@@ -581,6 +582,7 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
     let unknown = direct
         .call(Operation::CreateTask {
             task: TaskCreate {
+                read_only: None,
                 workspace: "elsewhere".into(),
                 ..create.clone()
             },
@@ -982,6 +984,7 @@ async fn send_screenshot(link: &Link, inspect: &Inspect) {
     assert!(complete);
     assert_eq!(received, bytes.len() as u64);
     let create = TaskCreate {
+        read_only: None,
         title: "Fix the settings layout".into(),
         prompt: "Fix the layout in this screenshot.".into(),
         workspace: "checkout".into(),
@@ -1008,6 +1011,7 @@ async fn send_screenshot(link: &Link, inspect: &Inspect) {
     let refused = link
         .call(Operation::CreateTask {
             task: TaskCreate {
+                read_only: None,
                 title: "Another".into(),
                 prompt: "Another".into(),
                 workspace: "checkout".into(),

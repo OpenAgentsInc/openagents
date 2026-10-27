@@ -1,0 +1,11 @@
+syntax = "proto3";
+package openagents.common.v1;
+// Projections of nips/openagents/contracts.md; signed source bytes stay authoritative.
+message EventRef { string id = 1; string pubkey = 2; uint32 kind = 3; optional string coordinate = 4; }
+message SourceHint { optional string url = 1; EventRef event = 2; }
+message ArtifactRef { string digest = 1; uint64 size = 2; string media_type = 3; optional string schema = 4; EventRef event = 5; repeated SourceHint sources = 6; }
+// Original NIP-01 JSON, including encrypted content. Never reconstruct signed
+// content from a projection or treat this wrapper as proof of verification.
+message SignedEvent { string json = 1; }
+// Domain preserves the independent shared-contract, HOST and REACH vocabularies.
+message Refusal { string domain = 1; string code = 2; string message = 3; optional string missing_right = 4; bool retryable = 5; }

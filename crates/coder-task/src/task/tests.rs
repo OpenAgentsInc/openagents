@@ -36,6 +36,7 @@ fn submit(command_id: &str, task_id: &str) -> Vec<u8> {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: "microluna".into(),
                     model: Some("example/model".into()),
                 },

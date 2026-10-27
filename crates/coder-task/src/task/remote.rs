@@ -668,11 +668,11 @@ impl Tasks for Inbox {
     }
 
     fn capabilities(&self) -> Vec<String> {
+        let mut flags = vec![coder_host::access::protocol::TASK_READ_ONLY.to_owned()];
         if self.starts_at_once() {
-            vec![coder_host::access::protocol::CODER_START_AT_ONCE.to_owned()]
-        } else {
-            Vec::new()
+            flags.push(coder_host::access::protocol::CODER_START_AT_ONCE.to_owned());
         }
+        flags
     }
 
     fn prefer(&self, key: &str, engine: nostr::cj_conversation::Engine) {
@@ -689,6 +689,11 @@ impl Tasks for Inbox {
     }
 
     fn create(&self, key: &str, device: &str, task: &TaskCreate) -> Result<TaskRef, Code> {
+        if task.read_only == Some(true)
+            && self.autostart.as_ref().and_then(|a| a.policy()).is_none()
+        {
+            return Err(Code::Forbidden);
+        }
         let root = self
             .workspaces
             .get(&task.workspace)
@@ -720,6 +725,9 @@ impl Tasks for Inbox {
             .autostart
             .as_ref()
             .and_then(|autostart| autostart.model_requesting(&task.workspace, requested));
+        if task.read_only == Some(true) && model.is_none() {
+            return Err(Code::Forbidden);
+        }
         let command = |model: Option<String>| Command {
             schema: COMMAND_SCHEMA.into(),
             command_id: format!("host-create-{key}"),
@@ -734,6 +742,7 @@ impl Tasks for Inbox {
                         source_revision: None,
                     },
                     configuration: RequestedConfiguration {
+                        read_only: task.read_only,
                         adapter: super::adapter::NAME.into(),
                         model,
                     },
@@ -1554,6 +1563,7 @@ mod tests {
 
     fn create() -> TaskCreate {
         TaskCreate {
+            read_only: None,
             title: "Fix the flaky test".into(),
             prompt: "Find why the test fails one run in ten.".into(),
             workspace: "checkout".into(),
@@ -1598,6 +1608,7 @@ mod tests {
         assert!(tasks[0].run.is_none());
         drop(store);
         let unknown = TaskCreate {
+            read_only: None,
             workspace: "elsewhere".into(),
             ..create()
         };

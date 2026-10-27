@@ -199,6 +199,7 @@ fn ended_task(dir: &Path) {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: "microcoder-repository".into(),
                     model: Some("gpt-6-luna".into()),
                 },
@@ -915,6 +916,7 @@ fn canonical_queue(dir: &Path) -> (String, Sender) {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: "microcoder-repository".into(),
                     model: None,
                 },

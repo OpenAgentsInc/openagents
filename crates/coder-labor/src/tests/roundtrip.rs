@@ -61,6 +61,7 @@ fn intent(workspace: &Path, title: &str) -> TaskIntent {
             source_revision: Some(git(workspace, &["rev-parse", "HEAD"])),
         },
         configuration: RequestedConfiguration {
+            read_only: None,
             adapter: "bounded-command".into(),
             model: None,
         },

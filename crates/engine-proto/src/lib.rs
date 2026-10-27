@@ -5,7 +5,28 @@ pub mod v1 {
     include!("generated/openagents.engine.v1.rs");
 }
 pub use v1::*;
+pub mod engine {
+    pub mod v1 {
+        pub use crate::v1::*;
+    }
+}
+pub mod common {
+    pub mod v1 {
+        include!("generated/openagents.common.v1.rs");
+    }
+}
+pub mod host {
+    pub mod v1 {
+        include!("generated/openagents.host.v1.rs");
+    }
+}
+pub mod reach {
+    pub mod v1 {
+        include!("generated/openagents.reach.v1.rs");
+    }
+}
 pub mod portable;
+pub mod wire;
 
 /// The shared standalone Grid profile. Decode once, before frame work begins.
 pub fn grid() -> &'static SceneMetadata {

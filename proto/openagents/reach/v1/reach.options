@@ -1,0 +1,2 @@
+openagents.reach.v1.* type:FT_CALLBACK
+openagents.reach.v1.*.* max_length:4096 max_count:64

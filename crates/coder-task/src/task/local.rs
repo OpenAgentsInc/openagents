@@ -1537,6 +1537,7 @@ impl Local {
                 source_revision: Some(checkout.head.clone()),
             },
             configuration: RequestedConfiguration {
+                read_only: None,
                 adapter: adapter::NAME.into(),
                 model: Some(model),
             },

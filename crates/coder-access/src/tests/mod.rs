@@ -337,6 +337,7 @@ pub(super) fn forge(
 pub(super) fn task() -> Operation {
     Operation::CreateTask {
         task: TaskCreate {
+            read_only: None,
             title: "Synthetic task".into(),
             prompt: "Summarize the synthetic fixture".into(),
             workspace: "fixture".into(),

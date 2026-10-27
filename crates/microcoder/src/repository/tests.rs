@@ -87,6 +87,7 @@ pub(super) fn fixture_images(
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: NAME.into(),
                     model: Some(model.into()),
                 },
@@ -1774,6 +1775,7 @@ async fn an_empty_directory_inside_a_repository_is_not_a_workspace() {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: NAME.into(),
                     model: Some("fixture-model".into()),
                 },

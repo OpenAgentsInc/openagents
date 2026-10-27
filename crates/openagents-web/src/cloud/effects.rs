@@ -762,6 +762,7 @@ mod tests {
                 "binding_identity":format!("sha256:{}","a".repeat(64))});
             let action = Operation::CreateTask {
                 task: TaskCreate {
+                    read_only: None,
                     title: "Synthetic exact action".into(),
                     prompt: "Original action bytes.".into(),
                     workspace: "fixture".into(),

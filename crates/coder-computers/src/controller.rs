@@ -1049,6 +1049,7 @@ impl Computers {
                     ));
                 };
                 let task = coder_access::protocol::TaskCreate {
+                    read_only: None,
                     title: task_title(&prompt),
                     prompt,
                     workspace: workspace.clone(),

@@ -474,6 +474,7 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                 || admission.grant.task_id != task.task_id
                 || admission.grant.intent_digest != task.intent_digest
                 || admission.grant.expected_revision != task.revision
+                || (task.intent.configuration.read_only == Some(true) && admission.grant.write_workspace)
                 // A scripted turn (#10572) is admitted only in its own
                 // shape; every other admission is checked exactly as before.
                 || if admission.adapter == SCRIPTED_ADAPTER {
@@ -1094,6 +1095,11 @@ async fn execute_inner(
         let task = store.show(&grant.task_id)?;
         if task.run.is_some() || task.status != Status::Queued {
             return Err(Error::InvalidTransition);
+        }
+        if task.intent.configuration.read_only == Some(true) && grant.write_workspace {
+            return Err(Error::InvalidCommand(
+                "this task requires a read-only execution grant",
+            ));
         }
         if grant.intent_digest != task.intent_digest || grant.expected_revision != task.revision {
             return Err(Error::RevisionMismatch);

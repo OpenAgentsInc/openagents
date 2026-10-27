@@ -368,6 +368,7 @@ mod tests {
                         source_revision: Some(scratch.base.clone()),
                     },
                     configuration: RequestedConfiguration {
+                        read_only: None,
                         adapter: "microcoder-repository".into(),
                         model: None,
                     },

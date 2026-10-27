@@ -446,6 +446,7 @@ mod tests {
                     source_revision: None,
                 },
                 configuration: super::super::RequestedConfiguration {
+                    read_only: None,
                     adapter: "microcoder-repository".into(),
                     model: None,
                 },

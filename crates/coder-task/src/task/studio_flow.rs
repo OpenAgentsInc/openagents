@@ -782,6 +782,7 @@ impl Studio {
                                 source_revision: None,
                             },
                             configuration: RequestedConfiguration {
+                                read_only: None,
                                 adapter: super::super::adapter::NAME.into(),
                                 model: Some(seat.route.model.clone()),
                             },

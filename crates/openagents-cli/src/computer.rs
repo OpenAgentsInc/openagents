@@ -806,6 +806,7 @@ fn dispatch(
                 None => None,
             };
             let task = TaskCreate {
+                read_only: None,
                 title: args
                     .option("title")
                     .map_or_else(|| prompt.chars().take(60).collect(), str::to_owned),

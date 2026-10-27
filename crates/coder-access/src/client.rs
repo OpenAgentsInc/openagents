@@ -562,6 +562,7 @@ mod pending_tests {
             .prepare_with_id(
                 Operation::CreateTask {
                     task: TaskCreate {
+                        read_only: None,
                         title: "Synthetic retry".into(),
                         prompt: "Keep the original command.".into(),
                         workspace: "fixture".into(),

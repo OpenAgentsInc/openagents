@@ -1777,6 +1777,11 @@ impl Autostart {
                 let preferred = asked.and_then(|provider| policy.preferring(provider));
                 let not_allowed = asked.is_some() && preferred.is_none();
                 let policy = preferred.unwrap_or_else(|| policy.clone());
+                let policy = if task.intent.configuration.read_only == Some(true) {
+                    policy.read_only()
+                } else {
+                    policy
+                };
                 if task.intent.configuration.model.as_deref() != Some(&policy.engine.model) {
                     write(
                         Entry::new(now, "skipped")
@@ -3468,6 +3473,7 @@ mod tests {
 
     fn create(workspace: &str) -> TaskCreate {
         TaskCreate {
+            read_only: None,
             title: "Fix the flaky test".into(),
             prompt: "Find why it fails.".into(),
             workspace: workspace.into(),
@@ -3776,6 +3782,7 @@ mod tests {
         );
         // Another request that reuses the key with other content still refuses.
         let changed = TaskCreate {
+            read_only: None,
             prompt: "Something else".into(),
             ..create("allowed")
         };

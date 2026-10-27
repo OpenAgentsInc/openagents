@@ -14942,6 +14942,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "phone-host"
+version = "1.0.0"
+dependencies = [
+ "coder-access",
+ "coder-host",
+ "coder-host-wire",
+ "coder-reach",
+ "engine-proto",
+ "nostr",
+ "prost 0.13.5",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
 name = "physics"
 version = "1.0.0"
 dependencies = [

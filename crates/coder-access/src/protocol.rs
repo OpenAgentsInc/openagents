@@ -307,9 +307,12 @@ pub fn code_digest(enrollment: &str, code: &str) -> Result<String> {
     ))
 }
 
+pub const TASK_READ_ONLY: &str = "task-read-only";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskCreate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only: Option<bool>,
     pub title: String,
     pub prompt: String,
     /// A host-scoped workspace label. The host resolves it; it is never a path.
@@ -1604,6 +1607,9 @@ impl Operation {
             }
             Self::Revoke { device } => public(device)?,
             Self::CreateTask { task } => {
+                if task.read_only == Some(false) {
+                    return fail(Code::Malformed, "read_only must be true or absent");
+                }
                 text(&task.title, 200)?;
                 text(&task.workspace, 128)?;
                 if task.prompt.is_empty() || task.prompt.len() > 16 * 1024 {

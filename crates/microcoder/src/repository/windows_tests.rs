@@ -82,6 +82,7 @@ fn fixture(access: Access) -> Option<(tempfile::TempDir, PathBuf, Vec<u8>)> {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: NAME.into(),
                     model: Some("fixture-model".into()),
                 },

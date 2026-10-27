@@ -1,5 +1,34 @@
 // Generated from proto/. Do not edit.
 #define OPENAGENTS_CONTRACT_TABLE_VERSION 2
+#include "openagents/common/v1/refs.pb.h"
+static const WireFieldDef fields_openagents_common_v1_EventRef[] = {
+  {1, "id", 9, false, 64, 64, "", false},
+  {2, "pubkey", 9, false, 64, 64, "", false},
+  {3, "kind", 13, false, 4096, 64, "", false},
+  {4, "coordinate", 9, false, 1024, 64, "", true},
+};
+static const WireFieldDef fields_openagents_common_v1_SourceHint[] = {
+  {1, "url", 9, false, 4096, 64, "", true},
+  {2, "event", 11, false, 4096, 64, "openagents.common.v1.EventRef", true},
+};
+static const WireFieldDef fields_openagents_common_v1_ArtifactRef[] = {
+  {1, "digest", 9, false, 71, 64, "", false},
+  {2, "size", 4, false, 4096, 64, "", false},
+  {3, "media_type", 9, false, 128, 64, "", false},
+  {4, "schema", 9, false, 256, 64, "", true},
+  {5, "event", 11, false, 4096, 64, "openagents.common.v1.EventRef", true},
+  {6, "sources", 11, true, 4096, 16, "openagents.common.v1.SourceHint", true},
+};
+static const WireFieldDef fields_openagents_common_v1_SignedEvent[] = {
+  {1, "json", 9, false, 524288, 64, "", false},
+};
+static const WireFieldDef fields_openagents_common_v1_Refusal[] = {
+  {1, "domain", 9, false, 32, 64, "", false},
+  {2, "code", 9, false, 64, 64, "", false},
+  {3, "message", 9, false, 512, 64, "", false},
+  {4, "missing_right", 9, false, 4096, 64, "", true},
+  {5, "retryable", 8, false, 4096, 64, "", false},
+};
 #include "openagents/engine/v1/agent.pb.h"
 static const WireFieldDef fields_openagents_engine_v1_ToolActivity[] = {
   {1, "id", 9, false, 128, 100, "", false},
@@ -378,7 +407,138 @@ static const WireFieldDef fields_openagents_engine_v1_WorldDelta[] = {
   {10, "resources", 11, true, 65536, 1024, "openagents.engine.v1.ComponentState", true},
   {11, "entity_order", 13, true, 65536, 65536, "", false},
 };
+#include "openagents/reach/v1/reach.pb.h"
+static const WireFieldDef fields_openagents_reach_v1_VersionRange[] = {
+  {1, "min", 13, false, 4096, 64, "", false},
+  {2, "max", 13, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_reach_v1_Telemetry[] = {
+  {1, "cpu_count", 13, false, 4096, 64, "", false},
+  {2, "cpu_utilization_pct", 13, false, 4096, 64, "", false},
+  {3, "memory_available_pct", 13, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_reach_v1_Presence[] = {
+  {1, "host", 9, false, 4096, 64, "", false},
+  {2, "owner", 9, false, 4096, 64, "", false},
+  {3, "generation", 4, false, 4096, 64, "", false},
+  {4, "protocol", 13, false, 4096, 64, "", false},
+  {5, "compatibility", 11, false, 4096, 64, "openagents.reach.v1.VersionRange", true},
+  {6, "capabilities", 9, true, 4096, 64, "", false},
+  {7, "observed_at", 4, false, 4096, 64, "", false},
+  {8, "telemetry", 11, false, 4096, 64, "openagents.reach.v1.Telemetry", true},
+};
+static const WireFieldDef fields_openagents_reach_v1_Hint[] = {
+  {1, "class_name", 9, false, 4096, 64, "", false},
+  {2, "transport", 9, false, 4096, 64, "", false},
+  {3, "address", 9, false, 4096, 64, "", false},
+  {4, "status", 9, false, 4096, 64, "", false},
+  {5, "observed_at", 4, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_reach_v1_ReachState[] = {
+  {1, "presence", 11, false, 4096, 64, "openagents.reach.v1.Presence", true},
+  {2, "hints", 11, true, 4096, 64, "openagents.reach.v1.Hint", true},
+  {3, "issued_at", 4, false, 4096, 64, "", false},
+  {4, "expires_at", 4, false, 4096, 64, "", false},
+  {5, "received_at", 4, false, 4096, 64, "", false},
+};
+#include "openagents/host/v1/host.pb.h"
+static const WireFieldDef fields_openagents_host_v1_GrantOrigin[] = {
+  {1, "kind", 9, false, 4096, 64, "", false},
+  {2, "id", 9, false, 4096, 64, "", false},
+  {3, "issuer", 9, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_host_v1_Grant[] = {
+  {1, "id", 9, false, 64, 64, "", false},
+  {2, "host", 9, false, 64, 64, "", false},
+  {3, "owner", 9, false, 64, 64, "", false},
+  {4, "device", 9, false, 64, 64, "", false},
+  {5, "relay", 9, false, 4096, 64, "", false},
+  {6, "rights", 9, true, 16, 7, "", false},
+  {7, "epoch", 4, false, 4096, 64, "", false},
+  {8, "origin", 11, false, 4096, 64, "openagents.host.v1.GrantOrigin", true},
+  {9, "issued_at", 4, false, 4096, 64, "", false},
+  {10, "expires_at", 4, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_host_v1_Access[] = {
+  {1, "grant", 11, false, 4096, 64, "openagents.host.v1.Grant", true},
+  {2, "authorization", 11, false, 4096, 64, "openagents.common.v1.SignedEvent", true},
+};
+static const WireFieldDef fields_openagents_host_v1_TaskScope[] = {
+  {1, "workspace", 9, false, 4096, 64, "", false},
+  {2, "task", 9, false, 4096, 64, "", false},
+  {3, "revision", 4, false, 4096, 64, "", false},
+  {4, "attempt", 4, false, 4096, 64, "", true},
+  {5, "intent_digest", 9, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_host_v1_TaskCursor[] = {
+  {1, "scope", 11, false, 4096, 64, "openagents.host.v1.TaskScope", true},
+  {2, "source", 9, false, 4096, 64, "", false},
+  {3, "source_digest", 9, false, 4096, 64, "", false},
+  {4, "source_bytes", 4, false, 4096, 64, "", false},
+  {5, "next_step", 4, false, 4096, 64, "", false},
+  {6, "prefix_digest", 9, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_host_v1_Connection[] = {
+  {1, "schema", 13, false, 4096, 64, "", false},
+  {2, "access", 11, false, 4096, 64, "openagents.host.v1.Access", true},
+  {3, "workspace", 9, false, 4096, 64, "", false},
+  {4, "peer", 9, false, 4096, 64, "", false},
+  {5, "label", 9, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_host_v1_TaskBinding[] = {
+  {1, "schema", 13, false, 4096, 64, "", false},
+  {2, "phone_run", 9, false, 4096, 64, "", false},
+  {3, "remote_task", 9, false, 4096, 64, "", false},
+  {4, "revision", 4, false, 4096, 64, "", false},
+  {5, "pending", 11, false, 4096, 64, "openagents.host.v1.PreparedCall", true},
+  {6, "cursor", 11, false, 4096, 64, "openagents.host.v1.TaskCursor", true},
+  {7, "cursor_after", 4, false, 4096, 64, "", false},
+  {8, "cancel_sent", 8, false, 4096, 64, "", false},
+};
+static const WireFieldDef fields_openagents_host_v1_PreparedCall[] = {
+  {1, "pending_json", 9, false, 524288, 64, "", false},
+  {2, "operation", 9, false, 4096, 64, "", false},
+  {3, "phone_run", 9, false, 4096, 64, "", false},
+  {4, "workspace", 9, false, 4096, 64, "", false},
+  {5, "remote_task", 9, false, 4096, 64, "", false},
+  {6, "after", 4, false, 4096, 64, "", false},
+  {7, "cursor", 11, false, 4096, 64, "openagents.host.v1.TaskCursor", true},
+};
+static const WireFieldDef fields_openagents_host_v1_AgentRequest[] = {
+  {1, "schema", 13, false, 4096, 64, "", false},
+  {2, "operation", 9, false, 4096, 64, "", false},
+  {3, "invitation", 9, false, 640, 64, "", false},
+  {4, "access", 11, false, 4096, 64, "openagents.host.v1.Access", true},
+  {5, "pending", 11, false, 4096, 64, "openagents.host.v1.PreparedCall", true},
+  {6, "phone_run", 9, false, 128, 64, "", false},
+  {7, "workspace", 9, false, 128, 64, "", false},
+  {8, "objective", 9, false, 4000, 64, "", false},
+  {9, "remote_task", 9, false, 64, 64, "", false},
+  {10, "revision", 4, false, 4096, 64, "", false},
+  {11, "after", 4, false, 4096, 64, "", false},
+  {12, "allow_writes", 8, false, 4096, 64, "", false},
+  {13, "cursor", 11, false, 4096, 64, "openagents.host.v1.TaskCursor", true},
+  {14, "stream_address", 9, false, 512, 64, "", false},
+};
+static const WireFieldDef fields_openagents_host_v1_AgentReply[] = {
+  {1, "schema", 13, false, 4096, 64, "", false},
+  {2, "error", 11, false, 4096, 64, "openagents.common.v1.Refusal", true},
+  {3, "access", 11, false, 4096, 64, "openagents.host.v1.Access", true},
+  {4, "reach", 11, false, 4096, 64, "openagents.reach.v1.ReachState", true},
+  {5, "pending", 11, false, 4096, 64, "openagents.host.v1.PreparedCall", true},
+  {6, "progress", 11, false, 4096, 64, "openagents.engine.v1.AgentProgress", true},
+  {7, "remote_task", 9, false, 4096, 64, "", false},
+  {8, "revision", 4, false, 4096, 64, "", false},
+  {9, "route", 9, false, 4096, 64, "", false},
+  {10, "cursor", 11, false, 4096, 64, "openagents.host.v1.TaskCursor", true},
+  {11, "host_phase", 9, false, 4096, 64, "", false},
+};
 static const WireMessageDef wire_messages[] = {
+  {"openagents.common.v1.EventRef", &openagents_common_v1_EventRef_msg, sizeof(openagents_common_v1_EventRef), fields_openagents_common_v1_EventRef, 4},
+  {"openagents.common.v1.SourceHint", &openagents_common_v1_SourceHint_msg, sizeof(openagents_common_v1_SourceHint), fields_openagents_common_v1_SourceHint, 2},
+  {"openagents.common.v1.ArtifactRef", &openagents_common_v1_ArtifactRef_msg, sizeof(openagents_common_v1_ArtifactRef), fields_openagents_common_v1_ArtifactRef, 6},
+  {"openagents.common.v1.SignedEvent", &openagents_common_v1_SignedEvent_msg, sizeof(openagents_common_v1_SignedEvent), fields_openagents_common_v1_SignedEvent, 1},
+  {"openagents.common.v1.Refusal", &openagents_common_v1_Refusal_msg, sizeof(openagents_common_v1_Refusal), fields_openagents_common_v1_Refusal, 5},
   {"openagents.engine.v1.ToolActivity", &openagents_engine_v1_ToolActivity_msg, sizeof(openagents_engine_v1_ToolActivity), fields_openagents_engine_v1_ToolActivity, 8},
   {"openagents.engine.v1.AgentEvent", &openagents_engine_v1_AgentEvent_msg, sizeof(openagents_engine_v1_AgentEvent), fields_openagents_engine_v1_AgentEvent, 6},
   {"openagents.engine.v1.AgentTask", &openagents_engine_v1_AgentTask_msg, sizeof(openagents_engine_v1_AgentTask), fields_openagents_engine_v1_AgentTask, 14},
@@ -427,4 +587,19 @@ static const WireMessageDef wire_messages[] = {
   {"openagents.engine.v1.EntityChange", &openagents_engine_v1_EntityChange_msg, sizeof(openagents_engine_v1_EntityChange), fields_openagents_engine_v1_EntityChange, 4},
   {"openagents.engine.v1.WorldSnapshot", &openagents_engine_v1_WorldSnapshot_msg, sizeof(openagents_engine_v1_WorldSnapshot), fields_openagents_engine_v1_WorldSnapshot, 7},
   {"openagents.engine.v1.WorldDelta", &openagents_engine_v1_WorldDelta_msg, sizeof(openagents_engine_v1_WorldDelta), fields_openagents_engine_v1_WorldDelta, 11},
+  {"openagents.reach.v1.VersionRange", &openagents_reach_v1_VersionRange_msg, sizeof(openagents_reach_v1_VersionRange), fields_openagents_reach_v1_VersionRange, 2},
+  {"openagents.reach.v1.Telemetry", &openagents_reach_v1_Telemetry_msg, sizeof(openagents_reach_v1_Telemetry), fields_openagents_reach_v1_Telemetry, 3},
+  {"openagents.reach.v1.Presence", &openagents_reach_v1_Presence_msg, sizeof(openagents_reach_v1_Presence), fields_openagents_reach_v1_Presence, 8},
+  {"openagents.reach.v1.Hint", &openagents_reach_v1_Hint_msg, sizeof(openagents_reach_v1_Hint), fields_openagents_reach_v1_Hint, 5},
+  {"openagents.reach.v1.ReachState", &openagents_reach_v1_ReachState_msg, sizeof(openagents_reach_v1_ReachState), fields_openagents_reach_v1_ReachState, 5},
+  {"openagents.host.v1.GrantOrigin", &openagents_host_v1_GrantOrigin_msg, sizeof(openagents_host_v1_GrantOrigin), fields_openagents_host_v1_GrantOrigin, 3},
+  {"openagents.host.v1.Grant", &openagents_host_v1_Grant_msg, sizeof(openagents_host_v1_Grant), fields_openagents_host_v1_Grant, 10},
+  {"openagents.host.v1.Access", &openagents_host_v1_Access_msg, sizeof(openagents_host_v1_Access), fields_openagents_host_v1_Access, 2},
+  {"openagents.host.v1.TaskScope", &openagents_host_v1_TaskScope_msg, sizeof(openagents_host_v1_TaskScope), fields_openagents_host_v1_TaskScope, 5},
+  {"openagents.host.v1.TaskCursor", &openagents_host_v1_TaskCursor_msg, sizeof(openagents_host_v1_TaskCursor), fields_openagents_host_v1_TaskCursor, 6},
+  {"openagents.host.v1.Connection", &openagents_host_v1_Connection_msg, sizeof(openagents_host_v1_Connection), fields_openagents_host_v1_Connection, 5},
+  {"openagents.host.v1.TaskBinding", &openagents_host_v1_TaskBinding_msg, sizeof(openagents_host_v1_TaskBinding), fields_openagents_host_v1_TaskBinding, 8},
+  {"openagents.host.v1.PreparedCall", &openagents_host_v1_PreparedCall_msg, sizeof(openagents_host_v1_PreparedCall), fields_openagents_host_v1_PreparedCall, 7},
+  {"openagents.host.v1.AgentRequest", &openagents_host_v1_AgentRequest_msg, sizeof(openagents_host_v1_AgentRequest), fields_openagents_host_v1_AgentRequest, 14},
+  {"openagents.host.v1.AgentReply", &openagents_host_v1_AgentReply_msg, sizeof(openagents_host_v1_AgentReply), fields_openagents_host_v1_AgentReply, 11},
 };

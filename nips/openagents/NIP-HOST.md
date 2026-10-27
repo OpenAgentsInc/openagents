@@ -99,6 +99,18 @@ still applies its own checks. For example, a terminal stream needs a
 [TERM](NIP-TERM.md) session, and a file read still passes the disclosure
 policy.
 
+### Read-only task creation
+
+A host advertising `task-read-only` accepts optional `read_only: true` in
+`task.create`. A client sends this field only after reading that capability
+in fresh authenticated presence. An older host refuses the unknown field.
+The task owner's durable intent retains the restriction across
+restarts and later turns. Every auto-start grant for that task is derived
+with the owner's existing read-only policy; changing the general host policy
+cannot upgrade it. Without an enabled auto-start policy the request refuses.
+Omitting the field preserves existing task bytes and behavior. Explicit false
+is malformed. This restriction grants no execution authority or host right.
+
 ## Host invitations
 
 ### Workspace-scoped computer access

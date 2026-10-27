@@ -47,6 +47,7 @@ fn studio_task() -> (tempfile::TempDir, PathBuf, PathBuf) {
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
+                    read_only: None,
                     adapter: super::super::adapter::NAME.into(),
                     model: Some("studio-sim".into()),
                 },

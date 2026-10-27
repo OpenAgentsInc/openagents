@@ -12,6 +12,7 @@ def generate(descriptor, schemas, output):
     lines = ['// Generated from proto/. Do not edit.', '#define OPENAGENTS_CONTRACT_TABLE_VERSION 2']
     messages = []
     limits = {}
+    rust_messages = []
     for file in files:
         stem = Path(file.name).with_suffix('')
         lines.append(f'#include "{stem}.pb.h"')
@@ -25,6 +26,7 @@ def generate(descriptor, schemas, output):
             full = file.package + '.' + message.name
             c = full.replace('.', '_')
             lines.append(f'static const WireFieldDef fields_{c}[] = {{')
+            rust_fields = []
             for field in message.field:
                 length, count = 65536, 100
                 for pattern, settings in options:
@@ -36,7 +38,9 @@ def generate(descriptor, schemas, output):
                 subtype = field.type_name.lstrip('.')
                 limits[full+'.'+field.name] = (length, count)
                 presence = 'true' if field.proto3_optional or field.type == field.TYPE_MESSAGE else 'false'
+                rust_fields.append(f'({field.number}, {field.type}, {repeated}, {length}, {count}, \"{subtype}\")')
                 lines.append(f'  {{{field.number}, "{field.name}", {field.type}, {repeated}, {length}, {count}, "{subtype}", {presence}}},')
+            rust_messages.append('('+repr(full).replace("'", '"')+', &['+','.join(rust_fields)+'])')
             lines.append('};')
             messages.append((full, c, len(message.field)))
     lines.append('static const WireMessageDef wire_messages[] = {')
@@ -46,6 +50,10 @@ def generate(descriptor, schemas, output):
     target = output / 'generated/c/openagents/engine/v1/contracts.inc'
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text('\n'.join(lines))
+
+    rust = output / 'generated/rust/wire.rs'
+    rust.parent.mkdir(parents=True, exist_ok=True)
+    rust.write_text('// Generated from proto/ options.\nconst MESSAGES: &[(&str, &[Field])] = &[\n'+',\n'.join(rust_messages)+'];\n')
 
     python = output / 'generated/python/engine_contract_limits.py'
     python.parent.mkdir(parents=True, exist_ok=True)
