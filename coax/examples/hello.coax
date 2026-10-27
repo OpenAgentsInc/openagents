@@ -1,0 +1,5 @@
+#import "Basic";
+
+main :: () {
+  print("Hello, world!\n");
+}

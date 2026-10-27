@@ -1,0 +1,37 @@
+#import "Basic";
+
+// Iterative Fibonacci: locals, while, compound assignment, returns.
+fib :: (n: int) -> int {
+  a := 0;
+  b := 1;
+  i := 0;
+  while i < n {
+    next := a + b;
+    a = b;
+    b = next;
+    i += 1;
+  }
+  return a;
+}
+
+classify :: (n: int) -> string {
+  if n % 15 == 0 { return "FizzBuzz"; }
+  else if n % 3 == 0 { return "Fizz"; }
+  else if n % 5 == 0 { return "Buzz"; }
+  return "";
+}
+
+main :: () {
+  print("fib(%) = %\n", 50, fib(50));
+  n := 1;
+  while n <= 15 {
+    word := classify(n);
+    if word == "" { print("%\n", n); } else { print("%\n", word); }
+    n += 1;
+  }
+  ok: bool = fib(10) == 55 && !(1 > 2);
+  print("ok: %, 100%% sure\n", ok);
+  scratch: int = ---;
+  scratch = -7 / 2;
+  print("% %\n", scratch, -7 % 2);
+}

@@ -1,0 +1,28 @@
+#import "Basic";
+
+// How many steps does n take to reach 1?
+steps :: (start: int) -> int {
+  n := start;
+  count := 0;
+  while n != 1 {
+    if n % 2 == 0 { n /= 2; }
+    else { n = 3 * n + 1; }
+    count += 1;
+  }
+  return count;
+}
+
+main :: () {
+  best := 1;
+  best_steps := 0;
+  n := 1;
+  while n < 10000 {
+    s := steps(n);
+    if s > best_steps {
+      best = n;
+      best_steps = s;
+    }
+    n += 1;
+  }
+  print("below 10000, % takes the most steps: %\n", best, best_steps);
+}

@@ -1,0 +1,13 @@
+#import "Basic";
+
+main :: () {
+  lives := 3;               // inferred: int
+  name: string = "Kiki";    // declared and initialized
+  score: int;               // zero
+  ready: bool;              // false
+  buffer: int = ---;        // uninitialized: you promise to write it first
+
+  buffer = lives * 100;
+  score += buffer;
+  print("% has % lives and % points; ready: %\n", name, lives, score, ready);
+}

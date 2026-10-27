@@ -1,0 +1,3 @@
+// expect: E0323
+f :: () -> int { return 1; }
+main :: () { f(); }

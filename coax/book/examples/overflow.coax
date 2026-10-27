@@ -1,0 +1,8 @@
+#import "Basic";
+
+main :: () {
+  big := 9223372036854775807;   // the largest int
+  print("before: %\n", big);
+  big += 1;
+  print("after: %\n", big);
+}

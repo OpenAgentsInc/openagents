@@ -1,0 +1,2 @@
+// expect: E0311
+main :: () { b := 1 == true; }

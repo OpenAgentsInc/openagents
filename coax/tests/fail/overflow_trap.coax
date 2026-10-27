@@ -1,0 +1,3 @@
+// expect: trap integer overflow
+#import "Basic";
+main :: () { x := 9223372036854775807; x += 1; print("%\n", x); }

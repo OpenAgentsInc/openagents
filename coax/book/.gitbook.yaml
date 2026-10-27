@@ -1,0 +1,5 @@
+# GitBook Git Sync: set the space's project directory to coax/book.
+root: ./
+structure:
+  readme: README.md
+  summary: SUMMARY.md

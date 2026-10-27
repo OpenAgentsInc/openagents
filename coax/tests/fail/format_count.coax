@@ -1,0 +1,3 @@
+// expect: E0320
+#import "Basic";
+main :: () { print("% and %\n", 1); }

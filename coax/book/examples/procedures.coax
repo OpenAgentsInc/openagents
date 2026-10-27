@@ -1,0 +1,28 @@
+#import "Basic";
+
+main :: () {
+  print("gcd(1071, 462) = %\n", gcd(1071, 462));
+  print("7 is % and 9 is %\n", parity(7), parity(9 + 1));
+  print("2^10 = %\n", power(2, 10));
+}
+
+// Declaration order does not matter: main can call these before they appear.
+gcd :: (a: int, b: int) -> int {
+  if b == 0 { return a; }
+  return gcd(b, a % b);
+}
+
+parity :: (n: int) -> string {
+  if n % 2 == 0 { return "even"; }
+  return "odd";
+}
+
+power :: (base: int, exponent: int) -> int {
+  result := 1;
+  i := 0;
+  while i < exponent {
+    result *= base;
+    i += 1;
+  }
+  return result;
+}

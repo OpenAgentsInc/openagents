@@ -1,0 +1,2 @@
+// expect: E0331
+main :: () { x := 1; if x { } }

@@ -1,0 +1,3 @@
+// expect: E0201
+#import "Basic";
+main :: () { print("hi\n") }
