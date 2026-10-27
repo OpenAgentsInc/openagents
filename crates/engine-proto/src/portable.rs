@@ -245,8 +245,84 @@ pub fn manifest_files(
     Ok(manifest)
 }
 
+/// Consumer profiles are generated from top-level proto/profiles.json.
+/// Requirements are compiled into the consumer, never trusted from a manifest.
+pub fn consumer_profile(id: &str) -> Result<&'static ConsumerAssetProfile, String> {
+    static CATALOG: std::sync::OnceLock<AssetProfileCatalog> = std::sync::OnceLock::new();
+    let catalog = CATALOG.get_or_init(|| {
+        AssetProfileCatalog::decode(&include_bytes!("../data/profiles.pb")[..])
+            .expect("checked consumer profiles")
+    });
+    catalog
+        .profiles
+        .iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| "unknown asset consumer profile".into())
+}
+
+pub fn manifest_for_profile(
+    directory: &std::path::Path,
+    id: &str,
+) -> Result<AssetManifest, String> {
+    let profile = consumer_profile(id)?;
+    let dependencies: Vec<Vec<&str>> = profile
+        .files
+        .iter()
+        .map(|f| f.dependencies.iter().map(String::as_str).collect())
+        .collect();
+    let files: Vec<_> = profile
+        .files
+        .iter()
+        .zip(&dependencies)
+        .map(|(f, d)| {
+            (
+                f.id.as_str(),
+                f.path.as_str(),
+                f.format.as_str(),
+                d.as_slice(),
+            )
+        })
+        .collect();
+    manifest_files(directory, &profile.scene_id, id, &files)
+}
+
+pub fn validate_profile(manifest: &AssetManifest) -> Result<(), String> {
+    validate_manifest(manifest).map_err(str::to_owned)?;
+    let profile = consumer_profile(&manifest.profile)?;
+    if profile.scene_id != manifest.scene_id || profile.files.len() != manifest.artifacts.len() {
+        return Err("asset profile required files differ".into());
+    }
+    for file in &profile.files {
+        let asset = manifest
+            .artifacts
+            .iter()
+            .find(|a| a.id == file.id)
+            .ok_or("asset profile required file missing")?;
+        if asset.path != file.path
+            || asset.format != file.format
+            || asset.dependencies.iter().collect::<BTreeSet<_>>()
+                != file.dependencies.iter().collect::<BTreeSet<_>>()
+        {
+            return Err("asset profile required file differs".into());
+        }
+        for buffer in &file.buffers {
+            if !asset
+                .buffers
+                .iter()
+                .any(|b| b.semantic == buffer.semantic && b.byte_stride == buffer.byte_stride)
+            {
+                return Err("asset profile required buffer missing".into());
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn write_manifest(path: &std::path::Path, manifest: &AssetManifest) -> Result<(), String> {
     validate_manifest(manifest).map_err(str::to_owned)?;
+    if consumer_profile(&manifest.profile).is_ok() {
+        validate_profile(manifest)?;
+    }
     std::fs::write(path, manifest.encode_to_vec()).map_err(|e| e.to_string())
 }
 
@@ -288,5 +364,51 @@ mod tests {
             5
         );
         assert_eq!(scene.landmarks.len(), 7);
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+    #[test]
+    fn compiled_profiles_bind_files_and_buffer_semantics() {
+        for identity in [
+            "aethyr-grid-v1",
+            "aethyr-town-v1",
+            "openagents-grid-pack-v1",
+        ] {
+            let profile = consumer_profile(identity).unwrap();
+            let mut manifest = AssetManifest {
+                schema_version: 1,
+                scene_id: profile.scene_id.clone(),
+                profile: identity.into(),
+                artifacts: vec![],
+            };
+            for file in &profile.files {
+                manifest.artifacts.push(Artifact {
+                    id: file.id.clone(),
+                    path: file.path.clone(),
+                    format: file.format.clone(),
+                    dependencies: file.dependencies.clone(),
+                    byte_length: 128,
+                    sha256: vec![0; 32],
+                    buffers: file
+                        .buffers
+                        .iter()
+                        .map(|b| BufferDescriptor {
+                            semantic: b.semantic.clone(),
+                            byte_stride: b.byte_stride,
+                            byte_length: u64::from(b.byte_stride),
+                            element_count: 1,
+                            byte_offset: 0,
+                        })
+                        .collect(),
+                });
+            }
+            validate_profile(&manifest).unwrap();
+            manifest.artifacts[0].path = "wrong-file.bin".into();
+            assert!(validate_profile(&manifest).is_err());
+        }
+        assert!(consumer_profile("unknown-profile").is_err());
     }
 }

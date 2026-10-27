@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {"id":"aethyr-grid-v1","scene_id":"grid","files":[
+      {"id":"layout","path":"grid-layout.pb","format":"SceneMetadata-v1"},
+      {"id":"provenance","path":"grid-source.json","format":"JSON"},
+      {"id":"art","path":"grid.bin","format":"AGR1","dependencies":["layout","provenance"]}
+    ]},
+    {"id":"aethyr-town-v1","scene_id":"town","files":[
+      {"id":"scene","path":"town-scene.pb","format":"CompiledScene-v1"},
+      {"id":"art","path":"town.bin","format":"TWN2","dependencies":["scene"],"buffers":[{"semantic":"placements","byte_stride":56},{"semantic":"heights","byte_stride":4}]}
+    ]},
+    {"id":"openagents-grid-pack-v1","scene_id":"grid","files":[
+      {"id":"layout","path":"grid-layout.pb","format":"SceneMetadata-v1"},
+      {"id":"white","path":"verse-flat-white.png","format":"PNG"},
+      {"id":"portal-view","path":"everglade-portal.png","format":"PNG"},
+      {"id":"pack","path":"pack.json","format":"VersePack-v1","dependencies":["layout","white","portal-view"]}
+    ]}
+  ]
+}

@@ -96,3 +96,19 @@ consumer authors a competing schema. Strings/counts, finite values, exact
 integers, nesting and aggregate byte limits are enforced by consumers. Task
 records reject unknown fields on read/edit/write; progress accepts additive
 fields. This differs deliberately from signed bytes, which are never rewritten.
+
+## Engine, HUD, state and profiles
+
+The package also generates `hud.proto`, `control.proto`, `state.proto` and
+`assets.proto`; the top-level proto index describes their consumers and
+compatibility policy. State fields come from the engine's typed registration,
+not an opaque JSON payload. Existing authored formats must be named explicitly.
+World save containers have a new protobuf body and an old-format reader.
+
+Consumer asset requirements are authored once in top-level
+`proto/openagents/engine/v1/profiles.json`, generated to `data/profiles.pb`,
+embedded in C++ and included by Rust. `manifest_for_profile` builds production
+manifests from it; `validate_profile` checks exact files/formats/dependencies and
+required buffer semantics. The low-level `manifest_for`/`manifest_files` helpers
+remain for explicitly described imports and fixtures, rather than competing
+production profile definitions. Normal builds need no generator or network.

@@ -49,8 +49,8 @@ typedef struct _openagents_engine_v1_ConversationDelta {
     pb_callback_t revision;
     pb_callback_t upsert;
     pb_callback_t remove;
-    pb_callback_t phase;
-    pb_callback_t history_truncated;
+    pb_callback_t phase; /* Empty means unchanged in a delta. */
+    pb_callback_t history_truncated; /* Monotonic until a replacement snapshot. */
 } openagents_engine_v1_ConversationDelta;
 
 typedef struct _openagents_engine_v1_HudBar {

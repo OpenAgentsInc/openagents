@@ -9,7 +9,7 @@ from google.protobuf import descriptor_pb2
 def generate(descriptor, schemas, output):
     descriptors = descriptor_pb2.FileDescriptorSet.FromString(descriptor)
     files = [file for file in descriptors.file if file.name != 'openagents/engine/v1/scene.proto']
-    lines = ['// Generated from proto/. Do not edit.']
+    lines = ['// Generated from proto/. Do not edit.', '#define OPENAGENTS_CONTRACT_TABLE_VERSION 2']
     messages = []
     limits = {}
     for file in files:
@@ -35,7 +35,8 @@ def generate(descriptor, schemas, output):
                 repeated = 'true' if field.label == field.LABEL_REPEATED else 'false'
                 subtype = field.type_name.lstrip('.')
                 limits[full+'.'+field.name] = (length, count)
-                lines.append(f'  {{{field.number}, "{field.name}", {field.type}, {repeated}, {length}, {count}, "{subtype}"}},')
+                presence = 'true' if field.proto3_optional or field.type == field.TYPE_MESSAGE else 'false'
+                lines.append(f'  {{{field.number}, "{field.name}", {field.type}, {repeated}, {length}, {count}, "{subtype}", {presence}}},')
             lines.append('};')
             messages.append((full, c, len(message.field)))
     lines.append('static const WireMessageDef wire_messages[] = {')

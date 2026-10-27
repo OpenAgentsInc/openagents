@@ -297,22 +297,7 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
     )
     .map_err(|e| e.to_string())?;
     engine_proto::export_grid(dir).map_err(|e| e.to_string())?;
-    let assets = engine_proto::portable::manifest_files(
-        dir,
-        "grid",
-        "openagents-grid-pack-v1",
-        &[
-            ("layout", "grid-layout.pb", "SceneMetadata-v1", &[]),
-            ("white", flat::WHITE_TEXTURE, "PNG", &[]),
-            ("portal-view", PORTAL_VIEW, "PNG", &[]),
-            (
-                "pack",
-                MANIFEST,
-                "VersePack-v1",
-                &["layout", "white", "portal-view"],
-            ),
-        ],
-    )?;
+    let assets = engine_proto::portable::manifest_for_profile(dir, "openagents-grid-pack-v1")?;
     engine_proto::portable::write_manifest(&dir.join("grid-assets.pb"), &assets)?;
     Ok(pack)
 }

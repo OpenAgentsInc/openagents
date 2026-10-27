@@ -157,6 +157,44 @@ pub struct AgentProgress {
     #[prost(string, tag = "13")]
     pub error: ::prost::alloc::string::String,
 }
+/// Consumer requirements are compiled into the host, not supplied by an
+/// untrusted asset manifest. Exact art bytes remain separate and hash-bound.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequiredAssetBuffer {
+    #[prost(string, tag = "1")]
+    pub semantic: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub byte_stride: u32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequiredAssetFile {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub format: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "4")]
+    pub dependencies: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "5")]
+    pub buffers: ::prost::alloc::vec::Vec<RequiredAssetBuffer>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConsumerAssetProfile {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub scene_id: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "3")]
+    pub files: ::prost::alloc::vec::Vec<RequiredAssetFile>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AssetProfileCatalog {
+    #[prost(uint32, tag = "1")]
+    pub schema_version: u32,
+    #[prost(message, repeated, tag = "2")]
+    pub profiles: ::prost::alloc::vec::Vec<ConsumerAssetProfile>,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CameraControl {
     #[prost(string, tag = "1")]
@@ -365,8 +403,10 @@ pub struct ConversationDelta {
     pub upsert: ::prost::alloc::vec::Vec<AgentEvent>,
     #[prost(string, repeated, tag = "6")]
     pub remove: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Empty means unchanged in a delta.
     #[prost(string, tag = "7")]
     pub phase: ::prost::alloc::string::String,
+    /// Monotonic until a replacement snapshot.
     #[prost(bool, tag = "8")]
     pub history_truncated: bool,
 }

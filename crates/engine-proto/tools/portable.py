@@ -144,3 +144,29 @@ def manifest_for(root, scene_id, profile, entries):
         size, digest = checked_file(root, path)
         manifest.artifacts.add(id=identity, path=path, format=format, dependencies=dependencies, byte_length=size, sha256=digest)
     return validate_manifest(manifest)
+
+
+def consumer_profile(identity):
+    from openagents.engine.v1.assets_pb2 import AssetProfileCatalog
+    catalog=AssetProfileCatalog.FromString((Path(__file__).resolve().parents[1]/'data/profiles.pb').read_bytes())
+    if catalog.schema_version!=1:raise ValueError('Invalid consumer profile catalog')
+    for profile in catalog.profiles:
+        if profile.id==identity:return profile
+    raise ValueError('Unknown asset consumer profile')
+
+
+def manifest_for_profile(root, identity):
+    profile=consumer_profile(identity)
+    return manifest_for(root,profile.scene_id,identity,[(f.id,f.path,f.format,list(f.dependencies)) for f in profile.files])
+
+
+def validate_profile(manifest):
+    validate_manifest(manifest)
+    profile=consumer_profile(manifest.profile)
+    if profile.scene_id!=manifest.scene_id or len(profile.files)!=len(manifest.artifacts):raise ValueError('Asset profile required files differ')
+    for file in profile.files:
+        asset=next((a for a in manifest.artifacts if a.id==file.id),None)
+        if asset is None or asset.path!=file.path or asset.format!=file.format or set(asset.dependencies)!=set(file.dependencies):raise ValueError('Asset profile required file differs')
+        for buffer in file.buffers:
+            if not any(b.semantic==buffer.semantic and b.byte_stride==buffer.byte_stride for b in asset.buffers):raise ValueError('Asset profile required buffer missing')
+    return manifest

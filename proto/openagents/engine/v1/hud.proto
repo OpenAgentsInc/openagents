@@ -25,8 +25,8 @@ message ConversationDelta {
   uint64 revision = 4;
   repeated AgentEvent upsert = 5;
   repeated string remove = 6;
-  string phase = 7;
-  bool history_truncated = 8;
+  string phase = 7; // Empty means unchanged in a delta.
+  bool history_truncated = 8; // Monotonic until a replacement snapshot.
 }
 message HudBar { string id = 1; string label = 2; string kind = 3; string text = 4; double value = 5; double max = 6; }
 message HudCounter { string id = 1; string label = 2; string value = 3; }
