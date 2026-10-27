@@ -304,7 +304,7 @@ What the two runs show:
 ## Follow-up runs (#12600)
 
 **Measured** on 2026-10-26 from fresh clones of `main` at `79196508036` with
-this change applied (the commit that adds this section). Both machines ran
+the change that landed as `0280998ed70` applied. Both machines ran
 the native runners at 1920x1080 with a fixed scene time of 12 s, 60 warm-up
 and 300 measured frames offscreen, 120 warm-up and 600 measured frames in a
 window. Times are milliseconds; ranges are two runs, single values are one.
