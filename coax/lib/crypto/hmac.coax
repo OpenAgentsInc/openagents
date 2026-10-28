@@ -1,0 +1,140 @@
+// Bounded HMAC-SHA256, including reusable inner/outer streaming state.
+// Keys, contexts and scratch remain secret material; no erasure or production
+// side-channel assurance is implied. Cleanup is a separate platform contract.
+#load "sha256.coax";
+#load "../../tests/nostr/hmac_rfc.coax";
+#authority;
+HMAC_STATE_BYTES :: 224;
+
+#test "HMAC state, empty key, streaming and repeat final are explicit" {
+  key:[1]u8;msg:=[3]u8.[97,98,99];s:[224]u8;out:[40]u8;expected:[32]u8;
+  #assert hmac_sha256_state_size()==224;
+  #assert hmac_sha256_init_checked(s[..],key[0..<0],false)==SHA_OK;
+  #assert hmac_sha256_info(s[..]).phase==SHA_ACTIVE && hmac_sha256_info(s[..]).total==0;
+  #assert hmac_sha256_update_checked(s[..],msg[0..<1],false)==SHA_OK;
+  #assert hmac_sha256_update_checked(s[..],msg[1..<3],false)==SHA_OK;
+  #assert hmac_sha256_info(s[..]).total==3 && hmac_sha256_info(s[..]).buffered==3;
+  #assert hmac_sha256_final_checked(s[..],out[..],false)==SHA_OK;
+  #assert hmac_sha256_checked(key[0..<0],msg[..],expected[..],false)==SHA_OK;
+  for i:0..<32 {#assert out[i]==expected[i];}
+  saved:=s;#assert hmac_sha256_final_checked(s[..],out[..],false)==SHA_OK;
+  for i:0..<224 {#assert s[i]==saved[i];}
+  #assert hmac_sha256_info(s[..]).phase==SHA_FINAL && hmac_sha256_info(s[..]).total==3;
+  #assert hmac_sha256_update_checked(s[..],msg[..],false)==SHA_PHASE;
+}
+#test "HMAC errors preserve caller storage" {
+  s:[225]u8;key:=[1]u8.[7];out:[32]u8;
+  for i:0..<225 {s[i]=165;}
+  #assert hmac_sha256_init_checked(s[..],key[..],false)==SHA_BAD_STATE;
+  #assert hmac_sha256_init_checked(s[0..<223],key[..],false)==SHA_BAD_STATE;
+  #assert hmac_sha256_init_checked(s[0..<224],key[..],true)==SHA_ALIAS;
+  #assert hmac_sha256_update_checked(s[0..<224],key[..],false)==SHA_BAD_STATE;
+  #assert hmac_sha256_final_checked(s[0..<224],out[..],false)==SHA_BAD_STATE;
+  for i:0..<225 {#assert s[i]==165;}
+  #assert hmac_sha256_init_checked(s[0..<224],key[..],false)==SHA_OK;saved:=s;
+  #assert hmac_sha256_update_checked(s[0..<224],key[..],true)==SHA_ALIAS;
+  #assert hmac_sha256_update_checked(s[0..<224],key[0..<0],true)==SHA_OK;
+  #assert hmac_sha256_final_checked(s[0..<224],out[0..<31],false)==SHA_BAD_OUTPUT;
+  #assert hmac_sha256_final_checked(s[0..<224],out[..],true)==SHA_ALIAS;
+  for i:0..<225 {#assert s[i]==saved[i];}
+  #assert hmac_sha256_info(s[..]).error==SHA_BAD_STATE;
+  #assert hmac_sha256_checked(key[..],key[..],out[..],true)==SHA_ALIAS;
+}
+#test "HMAC metadata does not mistake unkeyed or inconsistent SHA states for a context" {
+  s:[224]u8;key:[1]u8;
+  #assert sha256_init(s[0..<112])==SHA_OK && sha256_init(s[112..<224])==SHA_OK;
+  #assert hmac_sha256_info(s[..]).error==SHA_BAD_STATE;
+  #assert hmac_sha256_init_checked(s[..],key[..],false)==SHA_OK;
+  s[112]=0;#assert hmac_sha256_info(s[..]).error==SHA_BAD_STATE;
+  #assert hmac_sha256_init_checked(s[..],key[..],false)==SHA_OK;
+  #assert cb_store_be64(s[..],120,0);#assert hmac_sha256_info(s[..]).error==SHA_BAD_STATE;
+  #assert hmac_sha256_init_checked(s[..],key[..],false)==SHA_OK;
+  out:[32]u8;#assert sha256_final_checked(s[112..<224],out[..],false)==SHA_OK;
+  #assert hmac_sha256_info(s[..]).error==SHA_BAD_STATE;
+}
+#test "HMAC length preflight rejects invalid counts without reading data" {
+  #assert hmac_sha256_init_request(224,-1,false)==SHA_BAD_INPUT;
+  #assert hmac_sha256_init_request(224,1048577,false)==SHA_BAD_INPUT;
+  #assert hmac_sha256_init_request(224,0,false)==SHA_OK;
+  #assert hmac_sha256_request(-1,0,32,false)==SHA_BAD_INPUT;
+  #assert hmac_sha256_request(1048577,0,32,false)==SHA_BAD_INPUT;
+  #assert hmac_sha256_request(0,-1,32,false)==SHA_BAD_INPUT;
+  #assert hmac_sha256_request(0,0,31,false)==SHA_BAD_OUTPUT;
+  src:[224]u8;out:[223]u8;
+  #assert hmac_sha256_commit(src[..],out[..])==SHA_BAD_STATE;
+}
+
+hmac_sha256_state_size :: ()->int #export_c {return HMAC_STATE_BYTES;}
+hmac_sha256_init_request :: (state:int,key:int,overlap:bool)->u32 {
+  if state!=HMAC_STATE_BYTES {return SHA_BAD_STATE;}
+  if !sha256_input_ok(key) {return SHA_BAD_INPUT;}
+  if overlap {return SHA_ALIAS;}
+  return SHA_OK;
+}
+hmac_sha256_request :: (key:int,input:int,out:int,overlap:bool)->u32 {
+  if !sha256_input_ok(key) {return SHA_BAD_INPUT;}
+  return sha256_request(input,out,overlap);
+}
+hmac_sha256_info :: (state:[]u8)->Sha256Info #export_c {
+  if state.count!=HMAC_STATE_BYTES {return Sha256Info.{error=SHA_BAD_STATE};}
+  inner:=sha256_info(state[0..<112]);outer:=sha256_info(state[112..<224]);
+  if inner.error!=0 {return Sha256Info.{error=inner.error};}
+  if outer.error!=0 {return Sha256Info.{error=outer.error};}
+  if inner.phase!=outer.phase || inner.total<64 {return Sha256Info.{error=SHA_BAD_STATE};}
+  expected:=ifx inner.phase==SHA_ACTIVE then cast(u64)64 else cast(u64)96;
+  if outer.total!=expected {return Sha256Info.{error=SHA_BAD_STATE};}
+  return Sha256Info.{phase=inner.phase,total=inner.total-64,buffered=inner.buffered};
+}
+hmac_sha256_commit :: (source:[]u8,out:[]u8)->u32 {
+  // The source is a distinct local working buffer in every product call.
+  // Reuse the checked copy primitive rather than depending on SHA header bytes.
+  if cb_copy_checked(source,out,false) {return SHA_OK;}
+  return SHA_BAD_STATE;
+}
+hmac_sha256_init_checked :: (state:[]u8,key:[]u8,overlap:bool)->u32 {
+  status:=hmac_sha256_init_request(state.count,key.count,overlap);if status!=SHA_OK {return status;}
+  hashed:[32]u8;effective:=key;
+  if key.count>64 {status=sha256_hash_checked(key,hashed[..],false);if status!=SHA_OK {return status;}effective=hashed[..];}
+  block:[64]u8;for i:0..<effective.count {block[i]=effective[i];}
+  inner:[64]u8;outer:[64]u8;
+  for i:0..<64 {inner[i]=block[i]^0x36;outer[i]=block[i]^0x5c;}
+  work:[224]u8;
+  status=sha256_init(work[0..<112]);if status!=SHA_OK {return status;}
+  status=sha256_init(work[112..<224]);if status!=SHA_OK {return status;}
+  status=sha256_update_checked(work[0..<112],inner[..],false);if status!=SHA_OK {return status;}
+  status=sha256_update_checked(work[112..<224],outer[..],false);if status!=SHA_OK {return status;}
+  return hmac_sha256_commit(work[..],state);
+}
+hmac_sha256_update_checked :: (state:[]u8,input:[]u8,overlap:bool)->u32 {
+  info:=hmac_sha256_info(state);if info.error!=0 {return info.error;}
+  if info.phase!=SHA_ACTIVE {return SHA_PHASE;}
+  // SHA update is already transactional. The alias fact conservatively covers
+  // the original whole HMAC context, including its untouched outer half.
+  return sha256_update_checked(state[0..<112],input,overlap);
+}
+hmac_sha256_final_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 {
+  info:=hmac_sha256_info(state);if info.error!=0 {return info.error;}
+  if !cb_span(out.count,0,32) {return SHA_BAD_OUTPUT;}
+  if overlap {return SHA_ALIAS;}
+  if info.phase==SHA_FINAL {return sha256_final_checked(state[112..<224],out,false);}
+  work:[224]u8;for i:0..<224 {work[i]=state[i];}
+  digest:[32]u8;
+  status:=sha256_final_checked(work[0..<112],digest[..],false);if status!=SHA_OK {return status;}
+  status=sha256_update_checked(work[112..<224],digest[..],false);if status!=SHA_OK {return status;}
+  status=sha256_final_checked(work[112..<224],out,false);if status!=SHA_OK {return status;}
+  return hmac_sha256_commit(work[..],state);
+}
+hmac_sha256_checked :: (key:[]u8,input:[]u8,out:[]u8,overlap:bool)->u32 {
+  status:=hmac_sha256_request(key.count,input.count,out.count,overlap);if status!=SHA_OK {return status;}
+  state:[224]u8;
+  status=hmac_sha256_init_checked(state[..],key,false);if status!=SHA_OK {return status;}
+  status=hmac_sha256_update_checked(state[..],input,false);if status!=SHA_OK {return status;}
+  return hmac_sha256_final_checked(state[..],out,false);
+}
+
+#forall "HMAC key reduction has an exact 64-byte boundary" which:0..<3 {
+  lengths:=[3]int.[63,64,65];key:[65]u8;for i:0..<65 {key[i]=cast(u8)i;}message:=[3]u8.[97,98,99];out:[32]u8;
+  expected:=[3][32]u8.[[32]u8.[210,190,230,243,37,231,236,158,14,65,35,25,246,119,81,52,244,63,78,22,225,104,183,56,109,226,42,41,199,10,123,157],[32]u8.[106,181,65,180,134,157,202,113,196,202,17,216,187,27,2,83,59,120,154,85,117,131,22,20,41,41,44,116,4,188,33,246],[32]u8.[223,191,254,228,103,27,173,0,237,93,30,25,153,213,94,211,176,204,119,74,195,87,249,235,246,73,193,97,36,20,252,236]];
+  #assert hmac_sha256_checked(key[0..<lengths[which]],message[..],out[..],false)==SHA_OK;
+  for i:0..<32 {#assert out[i]==expected[which][i];}
+}

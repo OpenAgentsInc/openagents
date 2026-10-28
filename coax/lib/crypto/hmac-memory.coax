@@ -1,0 +1,6 @@
+// Metadata observation only. The pure core owns HMAC policy and state changes.
+#load "hmac.coax";
+hmac_sha256_init :: (state:[]u8,key:[]u8)->u32 #export_c {return hmac_sha256_init_checked(state,key,bytes_overlap(state,key));}
+hmac_sha256_update :: (state:[]u8,input:[]u8)->u32 #export_c {return hmac_sha256_update_checked(state,input,bytes_overlap(state,input));}
+hmac_sha256_final :: (state:[]u8,out:[]u8)->u32 #export_c {return hmac_sha256_final_checked(state,out,bytes_overlap(state,out));}
+hmac_sha256 :: (key:[]u8,input:[]u8,out:[]u8)->u32 #export_c {return hmac_sha256_checked(key,input,out,bytes_overlap(key,out)||bytes_overlap(input,out));}

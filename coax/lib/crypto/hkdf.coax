@@ -1,0 +1,71 @@
+// RFC5869 SHA-256 extract and bounded expand. Fixed staging makes all output
+// transactional. This code retains key/derived material; secure erasure and
+// production-secret assurance remain separate implementation/review gates.
+#load "hmac.coax";
+#load "../../tests/nostr/hkdf_rfc.coax";
+#authority;
+HKDF_MAX_OUTPUT :: 8160;
+HKDF_MAX_INFO :: 1024;
+#test "HKDF preflight keeps RFC and local resource bounds explicit" {
+  #assert hkdf_expand_request(32,0,0,0,false)==SHA_OK;
+  #assert hkdf_expand_request(32,0,0,0,true)==SHA_OK;
+  #assert hkdf_expand_request(31,0,32,1,false)==SHA_BAD_INPUT;
+  #assert hkdf_expand_request(1048577,0,32,1,false)==SHA_BAD_INPUT;
+  #assert hkdf_expand_request(1048576,0,32,1,false)==SHA_OK;
+  #assert hkdf_expand_request(32,-1,32,1,false)==SHA_BAD_INPUT;
+  #assert hkdf_expand_request(32,1025,32,1,false)==SHA_BAD_INPUT;
+  #assert hkdf_expand_request(32,1024,32,1,false)==SHA_OK;
+  #assert hkdf_expand_request(32,0,8160,8160,false)==SHA_OK;
+  #assert hkdf_expand_request(32,0,8161,8161,false)==SHA_LENGTH;
+  #assert hkdf_expand_request(32,0,32,-1,false)==SHA_LENGTH;
+  #assert hkdf_expand_request(32,0,31,32,false)==SHA_BAD_OUTPUT;
+  #assert hkdf_expand_request(32,0,32,1,true)==SHA_ALIAS;
+  #assert hkdf_blocks(0)==0 && hkdf_blocks(1)==1 && hkdf_blocks(31)==1 && hkdf_blocks(32)==1 && hkdf_blocks(33)==2 && hkdf_blocks(8160)==255;
+}
+#test "zero and partial HKDF outputs preserve their guards" {
+  key:[32]u8;info:[1]u8;out:[34]u8;for i:0..<34 {out[i]=165;}
+  #assert hkdf_expand_checked(key[..],info[0..<0],out[..],0,true)==SHA_OK;
+  for i:0..<34 {#assert out[i]==165;}
+  #assert hkdf_expand_checked(key[..],info[..],out[..],1,true)==SHA_ALIAS;
+  #assert hkdf_expand_checked(key[0..<31],info[..],out[..],1,false)==SHA_BAD_INPUT;
+  #assert hkdf_expand_checked(key[..],info[..],out[0..<0],1,false)==SHA_BAD_OUTPUT;
+  #assert hkdf_expand_checked(key[..],info[..],out[..],1,false)==SHA_OK;
+  #assert out[1]==165 && out[33]==165;
+}
+#test "extract and expand output errors are values" {
+  salt:[1]u8;ikm:[1]u8;prk:[32]u8;out:[1]u8;
+  #assert hkdf_extract_checked(salt[..],ikm[..],prk[0..<31],false)==SHA_BAD_OUTPUT;
+  #assert hkdf_extract_checked(salt[..],ikm[..],prk[..],true)==SHA_ALIAS;
+  #assert hkdf_expand_checked(prk[..],ikm[..],out[..],-1,false)==SHA_LENGTH;
+}
+hkdf_expand_request :: (prk:int,info:int,out:int,length:int,overlap:bool)->u32 {
+  if prk<32 || !sha256_input_ok(prk) || info<0 || info>HKDF_MAX_INFO {return SHA_BAD_INPUT;}
+  if length<0 || length>HKDF_MAX_OUTPUT {return SHA_LENGTH;}
+  if !cb_span(out,0,length) {return SHA_BAD_OUTPUT;}
+  if length>0 && overlap {return SHA_ALIAS;}
+  return SHA_OK;
+}
+hkdf_extract_checked :: (salt:[]u8,ikm:[]u8,out:[]u8,overlap:bool)->u32 {
+  // An empty HMAC key zero-pads to the same block as RFC's absent-salt
+  // HashLen zero bytes; no special salt representation or entropy is needed.
+  return hmac_sha256_checked(salt,ikm,out,overlap);
+}
+hkdf_blocks :: (length:int)->int {return (length+31)/32;}
+hkdf_expand_checked :: (prk:[]u8,info:[]u8,out:[]u8,length:int,overlap:bool)->u32 {
+  status:=hkdf_expand_request(prk.count,info.count,out.count,length,overlap);if status!=SHA_OK {return status;}
+  base:[224]u8;status=hmac_sha256_init_checked(base[..],prk,false);if status!=SHA_OK {return status;}
+  staged:[HKDF_MAX_OUTPUT]u8;previous:[32]u8;previous_count:=0;
+  // Complete blocks are staged, including a final partial block's unused
+  // suffix. Only the requested prefix is copied to caller output afterward.
+  for block:0..<hkdf_blocks(length) {
+    work:=base;
+    status=hmac_sha256_update_checked(work[..],previous[0..<previous_count],false);if status!=SHA_OK {return status;}
+    status=hmac_sha256_update_checked(work[..],info,false);if status!=SHA_OK {return status;}
+    count:=[1]u8.[cast(u8)(block+1)];
+    status=hmac_sha256_update_checked(work[..],count[..],false);if status!=SHA_OK {return status;}
+    status=hmac_sha256_final_checked(work[..],previous[..],false);if status!=SHA_OK {return status;}
+    for i:0..<32 {staged[block*32+i]=previous[i];}
+    previous_count=32;
+  }
+  for i:0..<length {out[i]=staged[i];}return SHA_OK;
+}

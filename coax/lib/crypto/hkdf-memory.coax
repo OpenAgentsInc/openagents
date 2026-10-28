@@ -1,0 +1,5 @@
+// Runtime pointer observations only. Core procedures own KDF admission/policy.
+#load "hmac-memory.coax";
+#load "hkdf.coax";
+hkdf_extract :: (salt:[]u8,ikm:[]u8,out:[]u8)->u32 #export_c {return hkdf_extract_checked(salt,ikm,out,bytes_overlap(salt,out)||bytes_overlap(ikm,out));}
+hkdf_expand :: (prk:[]u8,info:[]u8,out:[]u8,length:int)->u32 #export_c {return hkdf_expand_checked(prk,info,out,length,bytes_overlap(prk,out)||bytes_overlap(info,out));}
