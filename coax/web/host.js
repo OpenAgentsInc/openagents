@@ -21,7 +21,7 @@
 //   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
 //   coaxial_cursor(state)     0 the default, 1 a link
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
-//                             out: 1 navigates to the outbox's URL; others go to the page's
+//                             out: 1 navigates to the outbox's URL, 2 copies its text; others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
@@ -207,7 +207,7 @@ function frame(now) {
 
 // ---- input: keys, the pointer and typed text go to the app; its actions come out
 const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
-  Home: -8, End: -9, PageUp: -10, PageDown: -11 };
+  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12 };
 const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports[name](arena.state, ...args) : 0);
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
@@ -238,6 +238,9 @@ function after(gesture, tap = false) {
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_outbox(arena.state), x.coaxial_outbox_len(arena.state)).slice());
     call("coaxial_action_done");
     if (code === 1) { if (text.startsWith("/")) location.assign(text); }
+    // A copy or cut: the app chose the text (never a masked field's); this runs
+    // inside the key event, so the browser lets it reach the clipboard.
+    else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
   const cursor = ["", "pointer"][call("coaxial_cursor")] || "";

@@ -1,0 +1,1400 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "coax",
+  "initiative": {
+    "slug": "coax-nostr",
+    "title": "Coax Nostr: our own Nostr stack, crypto included, in Coax",
+    "body": "Every Nostr integration on openagents.com runs in Coax: SHA-256, secp256k1, BIP-340, ECDH, NIP-44, NIP-59, events, bech32, relay client. Specification: coax/nostr.md.",
+    "spec": "coax/nostr.md",
+    "labels": [
+      "nostr",
+      "crypto",
+      "coax"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "m0-hashes",
+      "title": "Hashes and ciphers",
+      "body": "Byte helpers, SHA-256, HMAC, HKDF, PBKDF2, ChaCha20, hex and base64 in Coax, each against its official vectors.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m1-field-scalar",
+      "title": "Field and scalar arithmetic",
+      "body": "secp256k1 field elements (10×26) and scalars mod n, with inversion and square root, proven bounds and differential tests.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m2-verify",
+      "title": "Group arithmetic and Schnorr verify",
+      "body": "Points, wNAF dual multiplication and BIP-340 verification.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m3-sign-ecdh",
+      "title": "Signing and ECDH",
+      "body": "Fixed-base comb, constant-time ladder, BIP-340 signing and x-only ECDH, with timing evidence.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m4-nip44-nip59",
+      "title": "NIP-44 and NIP-59",
+      "body": "Version 2 encryption, seals and gift wraps that interoperate with spec implementations.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m5-events",
+      "title": "Events and encodings",
+      "body": "Bounded JSON, NIP-01 events, filters, bech32 and NIP-19, JCS and the 3188 artifact envelope.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m6-relay",
+      "title": "A relay client in the page",
+      "body": "Host random, socket and storage imports; the relay state machine with NIP-42 AUTH.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m7-no-typescript",
+      "title": "Replace the TypeScript",
+      "body": "The hidden deck opens with no TypeScript: opener, gate, sealer and injector in Coax; the INVARIANTS change.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m8-project-live",
+      "title": "The project page goes live",
+      "body": "/project/coax reads its project, tasks and order from the relay and signs claims in the page.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "compiler",
+      "title": "Coax compiler prerequisites",
+      "body": "Small compiler features and fixes the stack wants; none blocks M0–M2.",
+      "parent": "coax-nostr"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "coax-fix-compound-assign-view",
+      "parent": "compiler",
+      "title": "Compound assignment through a view emits valid C",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "compiler",
+        "bug"
+      ],
+      "body": "`t[0].count[b] += 1` on an array field reached through a view generates C that does not compile (found building the project page). Fix the emitter and add a regression test.",
+      "files": [
+        "coax/src/emit_c.cpp",
+        "coax/tests/"
+      ],
+      "acceptance": [
+        "A test with `t[0].count[b] += 1` (and -=, *=, |=) through a view compiles and runs under ASan",
+        "coax/tests pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "coax-intrinsic-value-barrier",
+      "parent": "compiler",
+      "title": "A value_barrier intrinsic for constant-time code",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "compiler",
+        "crypto"
+      ],
+      "body": "Add `value_barrier(x: u64) -> u64` (and u32) that the optimizer cannot see through: native emits `__asm__(\"\" : \"+r\"(x))`, wasm32 emits a call to a non-inlined identity. Document it in coax/spec.md §9.",
+      "files": [
+        "coax/src/",
+        "coax/spec.md",
+        "coax/tests/"
+      ],
+      "acceptance": [
+        "Generated C for a masked select compiled with clang -O2 contains no conditional branch on the masked value (checked by objdump in a test script)",
+        "coax/tests pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "coax-intrinsic-wrapping-ops",
+      "parent": "compiler",
+      "title": "Explicit wrapping add and rotate for u32 and u64",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "compiler",
+        "crypto",
+        "optional"
+      ],
+      "body": "Add `add_wrap`, `sub_wrap`, `mul_wrap`, `rotl`, `rotr` for u32/u64 that never trap in any build mode. SHA-256 and ChaCha20 can use them instead of computing in u64 and masking.",
+      "files": [
+        "coax/src/",
+        "coax/spec.md"
+      ],
+      "acceptance": [
+        "Tests for each op at the type's limits in debug and --release",
+        "coax/tests pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "coax-intrinsic-mul-wide",
+      "parent": "compiler",
+      "title": "mul_wide: a 64×64→128 multiply as two u64 halves",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "compiler",
+        "crypto",
+        "optional"
+      ],
+      "body": "Add `mul_wide(a, b: u64) -> (hi, lo: u64)`: C emits `unsigned __int128`; wasm32 emits a four-multiply split. Enables a 5×52 field on native later.",
+      "files": [
+        "coax/src/",
+        "coax/spec.md"
+      ],
+      "acceptance": [
+        "Random and edge vectors match a reference computed with __int128 on native and in wasm32 (node or a headless page)",
+        "coax/tests pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "coax-debug-only-fields",
+      "parent": "compiler",
+      "title": "Debug-only struct fields and checks",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "compiler"
+      ],
+      "body": "A way to declare fields and statements that exist only in development builds (spec §10.5 conditional compilation, the minimal slice), so field elements can carry magnitudes in debug and not in release.",
+      "files": [
+        "coax/src/",
+        "coax/spec.md"
+      ],
+      "acceptance": [
+        "A struct with a debug-only field has a smaller size_of in --release; statements under the debug condition are absent from release C",
+        "coax/tests pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "crypto-bytes",
+      "parent": "m0-hashes",
+      "title": "Byte helpers: big/little-endian loads, constant-time equality, select and zeroize",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "crypto"
+      ],
+      "body": "coax/lib/crypto/bytes.coax: load/store be32/le32/be64/le64, ct_eq over views (returns a mask), ct_select for u32/u64 and views, zeroize through the value barrier (a #foreign no-op until the intrinsic lands).",
+      "files": [
+        "coax/lib/crypto/bytes.coax"
+      ],
+      "acceptance": [
+        "#test covers every helper at boundaries",
+        "coax mutate coax/lib/crypto/bytes.coax: no surviving mutants"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "crypto-chacha20",
+        "crypto-ct-timing-harness",
+        "crypto-sha256",
+        "nostr-json",
+        "secp-field-repr",
+        "secp-scalar"
+      ]
+    },
+    {
+      "slug": "crypto-vectors-pinned",
+      "parent": "m0-hashes",
+      "title": "Pin the official test vectors with their sources and hashes",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "crypto",
+        "tests"
+      ],
+      "body": "Create coax/tests/vectors/ with the files listed in coax/nostr.md §9.1 (NIST SHA-256 subset, RFC 4231, 5869, 7914, 8439, BIP-340 CSV, Wycheproof ecdh_secp256k1, NIP-44 vectors, BIP-173) and SOURCES.md recording URL, retrieval date and SHA-256 of each.",
+      "files": [
+        "coax/tests/vectors/",
+        "coax/tests/vectors/SOURCES.md"
+      ],
+      "acceptance": [
+        "Every file in SOURCES.md matches its recorded SHA-256 (a check script)",
+        "No file is modified from upstream"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "crypto-vector-runner"
+      ]
+    },
+    {
+      "slug": "crypto-vector-runner",
+      "parent": "m0-hashes",
+      "title": "A native vector runner for Coax crypto modules",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "tests",
+        "tools"
+      ],
+      "body": "tools/coax-nostr/vectors.sh builds each module with `coax c` → clang with ASan/UBSan and runs a C driver per vector file, reporting pass/fail per row. Heavy vectors run here; small ones also run as #test.",
+      "files": [
+        "tools/coax-nostr/vectors.sh",
+        "tools/coax-nostr/vectors/"
+      ],
+      "acceptance": [
+        "Runs on macOS with the existing toolchain",
+        "Fails loudly on a single wrong row (tested by corrupting one expected value in a temp copy)"
+      ],
+      "blocked_by": [
+        "crypto-vectors-pinned"
+      ],
+      "blocks": [
+        "crypto-chacha20",
+        "crypto-sha256"
+      ]
+    },
+    {
+      "slug": "crypto-sha256",
+      "parent": "m0-hashes",
+      "title": "SHA-256, streaming and one-shot, with the BIP-340 tagged hash",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto"
+      ],
+      "body": "coax/lib/crypto/sha256.coax: init/update/final over views, one-shot sha256, and tagged_hash(tag, msg) = SHA256(SHA256(tag)||SHA256(tag)||msg) with the three BIP-340 tags' prefixes precomputed with #run.",
+      "files": [
+        "coax/lib/crypto/sha256.coax"
+      ],
+      "acceptance": [
+        "NIST subset and the 1 MiB split-at-every-chunk test pass in the vector runner",
+        "#test: empty, \"abc\", tagged hash of BIP0340/challenge known value",
+        "coax mutate: no surviving mutants",
+        "≥ 150 MB/s in wasm32, ≥ 300 MB/s native (bench printed)"
+      ],
+      "blocked_by": [
+        "crypto-bytes",
+        "crypto-vector-runner"
+      ],
+      "blocks": [
+        "crypto-hmac-hkdf",
+        "nostr-envelope",
+        "schnorr-verify"
+      ]
+    },
+    {
+      "slug": "crypto-hmac-hkdf",
+      "parent": "m0-hashes",
+      "title": "HMAC-SHA256 and HKDF",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "crypto"
+      ],
+      "body": "coax/lib/crypto/hmac.coax and hkdf.coax: hmac_sha256(key, msg), HKDF extract and expand (NIP-44 uses expand with 76 bytes).",
+      "files": [
+        "coax/lib/crypto/hmac.coax",
+        "coax/lib/crypto/hkdf.coax"
+      ],
+      "acceptance": [
+        "RFC 4231 cases 1–7 and RFC 5869 cases 1–3 pass",
+        "coax mutate: no surviving mutants"
+      ],
+      "blocked_by": [
+        "crypto-sha256"
+      ],
+      "blocks": [
+        "crypto-pbkdf2",
+        "nip44-v2",
+        "unlock-gate-coax"
+      ]
+    },
+    {
+      "slug": "crypto-pbkdf2",
+      "parent": "m0-hashes",
+      "title": "PBKDF2-HMAC-SHA256",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "crypto"
+      ],
+      "body": "coax/lib/crypto/pbkdf2.coax for the phrase gate (210,000 rounds); reuse the HMAC inner/outer state per round.",
+      "files": [
+        "coax/lib/crypto/pbkdf2.coax"
+      ],
+      "acceptance": [
+        "RFC 7914 §11 vectors pass",
+        "210,000 rounds take under 400 ms in wasm32 in Chrome"
+      ],
+      "blocked_by": [
+        "crypto-hmac-hkdf"
+      ],
+      "blocks": [
+        "unlock-gate-coax"
+      ]
+    },
+    {
+      "slug": "crypto-chacha20",
+      "parent": "m0-hashes",
+      "title": "ChaCha20 block function and stream cipher",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "crypto"
+      ],
+      "body": "coax/lib/crypto/chacha20.coax per RFC 8439 §2.3–2.4: 32-byte key, 12-byte nonce, 32-bit counter; xor stream into caller buffer.",
+      "files": [
+        "coax/lib/crypto/chacha20.coax"
+      ],
+      "acceptance": [
+        "RFC 8439 §2.3.2, §2.4.2, A.1 and A.2 pass",
+        "coax mutate: no surviving mutants",
+        "≥ 250 MB/s in wasm32"
+      ],
+      "blocked_by": [
+        "crypto-bytes",
+        "crypto-vector-runner"
+      ],
+      "blocks": [
+        "nip44-v2",
+        "unlock-gate-coax"
+      ]
+    },
+    {
+      "slug": "nostr-hex-base64",
+      "parent": "m0-hashes",
+      "title": "Bounded hex and base64 codecs",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/hex.coax and base64.coax (standard alphabet, with padding, as NIP-44 uses): encode and strict decode into caller buffers; refuse bad characters, bad padding and overflow.",
+      "files": [
+        "coax/lib/nostr/hex.coax",
+        "coax/lib/nostr/base64.coax"
+      ],
+      "acceptance": [
+        "RFC 4648 §10 vectors pass",
+        "Every invalid NIP-44 base64 case is refused",
+        "coax mutate: no surviving mutants"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "nip44-v2",
+        "nostr-bech32",
+        "nostr-event"
+      ]
+    },
+    {
+      "slug": "secp-field-repr",
+      "parent": "m1-field-scalar",
+      "title": "Field elements in 10×26 limbs: load, store, normalize, add, negate",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "coax/lib/crypto/secp_field.coax: the representation, set_b32 (refusing ≥ p where asked), get_b32, normalize (constant time), add, negate with magnitude parameter, mul_int, is_zero, equal. Debug magnitude/normalized tracking.",
+      "files": [
+        "coax/lib/crypto/secp_field.coax"
+      ],
+      "acceptance": [
+        "#test round-trips for 0, 1, p−1, 2^256−1 mod p and limb-boundary values",
+        "Magnitude violations trap in debug builds (negative tests)"
+      ],
+      "blocked_by": [
+        "crypto-bytes"
+      ],
+      "blocks": [
+        "secp-field-mul"
+      ]
+    },
+    {
+      "slug": "secp-field-mul",
+      "parent": "m1-field-scalar",
+      "title": "Field multiply and square with compile-time bound proofs",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "mul and sqr with reduction by 2^256 ≡ 2^32 + 977; #run/#assert prove the largest accumulator stays below 2^64 for inputs of magnitude ≤ 8.",
+      "files": [
+        "coax/lib/crypto/secp_field.coax"
+      ],
+      "acceptance": [
+        "The bound #assert fails to compile if the admitted magnitude is raised to 9 (documented negative check)",
+        "1,000,000 random products match a native libsecp256k1 harness",
+        "coax mutate: no surviving mutants"
+      ],
+      "blocked_by": [
+        "secp-field-repr",
+        "secp-libsecp-harness"
+      ],
+      "blocks": [
+        "secp-field-inv-sqrt"
+      ]
+    },
+    {
+      "slug": "secp-field-inv-sqrt",
+      "parent": "m1-field-scalar",
+      "title": "Field inversion and square root with fixed addition chains",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "inv (a^(p−2)) and sqrt (a^((p+1)/4), returning whether a root exists), constant time, plus inv_vartime for public inputs (may initially call inv).",
+      "files": [
+        "coax/lib/crypto/secp_field.coax"
+      ],
+      "acceptance": [
+        "a·inv(a) = 1 for 100,000 random a; sqrt(a²) = ±a; non-residues refused",
+        "Matches libsecp harness on edge values"
+      ],
+      "blocked_by": [
+        "secp-field-mul"
+      ],
+      "blocks": [
+        "secp-group"
+      ]
+    },
+    {
+      "slug": "secp-scalar",
+      "parent": "m1-field-scalar",
+      "title": "Scalars mod n in 8×32 limbs",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "coax/lib/crypto/secp_scalar.coax: set_b32 with overflow flag, get_b32, add, mul, negate, inverse, is_zero, constant-time cond_negate, and bit/window extraction for multiplication.",
+      "files": [
+        "coax/lib/crypto/secp_scalar.coax"
+      ],
+      "acceptance": [
+        "Edge values (0, 1, n−1, n, 2^256−1) and 1,000,000 random ops match the libsecp harness",
+        "coax mutate: no surviving mutants"
+      ],
+      "blocked_by": [
+        "crypto-bytes",
+        "secp-libsecp-harness"
+      ],
+      "blocks": [
+        "secp-group"
+      ]
+    },
+    {
+      "slug": "secp-libsecp-harness",
+      "parent": "m1-field-scalar",
+      "title": "A differential harness against libsecp256k1",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "tests",
+        "tools"
+      ],
+      "body": "tools/coax-nostr/fuzz/: fetch libsecp256k1 at a pinned tag (verify tarball hash), build it with the harness only, expose field/scalar/point/schnorr/ecdh comparisons to C drivers that call our modules. Never vendored into the tree.",
+      "files": [
+        "tools/coax-nostr/fuzz/"
+      ],
+      "acceptance": [
+        "`tools/coax-nostr/fuzz/run.sh field 60` runs 60 s with no disagreement on a correct build and finds a planted bug",
+        "Tarball hash pinned and checked"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "secp-field-mul",
+        "secp-scalar"
+      ]
+    },
+    {
+      "slug": "secp-group",
+      "parent": "m2-verify",
+      "title": "Points: affine and Jacobian add, double and mixed add",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "coax/lib/crypto/secp_group.coax: infinity handling, gej_double, gej_add_ge (mixed), gej_add, ge_set_gej, set_xo (lift x with even y, BIP-340), is_valid_xo, and constant-time table selection ge_table_select.",
+      "files": [
+        "coax/lib/crypto/secp_group.coax"
+      ],
+      "acceptance": [
+        "Generator multiples 1..1000 match the harness",
+        "Doubling/adding at infinity and P + (−P) correct",
+        "coax mutate: no surviving mutants"
+      ],
+      "blocked_by": [
+        "secp-field-inv-sqrt",
+        "secp-scalar"
+      ],
+      "blocks": [
+        "secp-mult-base",
+        "secp-mult-const",
+        "secp-mult-verify"
+      ]
+    },
+    {
+      "slug": "secp-mult-verify",
+      "parent": "m2-verify",
+      "title": "wNAF dual multiplication a·G + b·P for verification",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "coax/lib/crypto/secp_mult.coax: ecmult_vartime(a, P, b) using wNAF (window 5 for P, a precomputed G table generated with #run). Public inputs only; name ends _vartime.",
+      "files": [
+        "coax/lib/crypto/secp_mult.coax"
+      ],
+      "acceptance": [
+        "100,000 random (a, P, b) match the harness",
+        "Precomputed table generated at compile time within the step budget"
+      ],
+      "blocked_by": [
+        "secp-group"
+      ],
+      "blocks": [
+        "schnorr-verify"
+      ]
+    },
+    {
+      "slug": "schnorr-verify",
+      "parent": "m2-verify",
+      "title": "BIP-340 Schnorr verification",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "coax/lib/crypto/schnorr.coax: verify(sig64, msg32, xonly32) per BIP-340, refusing r ≥ p, s ≥ n and invalid public keys.",
+      "files": [
+        "coax/lib/crypto/schnorr.coax"
+      ],
+      "acceptance": [
+        "Every verification row of BIP-340 test-vectors.csv (pass and fail) matches",
+        "1 hour of differential fuzzing vs libsecp with no disagreement",
+        "Verify ≤ 600 µs in wasm32 in Chrome, ≤ 100 µs native (bench)"
+      ],
+      "blocked_by": [
+        "secp-mult-verify",
+        "crypto-sha256"
+      ],
+      "blocks": [
+        "nostr-event",
+        "schnorr-sign",
+        "verify-one-real-event"
+      ]
+    },
+    {
+      "slug": "verify-one-real-event",
+      "parent": "m2-verify",
+      "title": "The page verifies one real event in Coax",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "web",
+        "nostr"
+      ],
+      "body": "A dev-only probe page under apps/openagents-web loads one event JSON baked at build time (fetched from relay.openagents.com by the build), recomputes its id with a minimal serializer, verifies the signature and draws VERIFIED or REFUSED.",
+      "files": [
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "Probe screenshot shows VERIFIED for a real event and REFUSED when one hex digit of sig is changed",
+        "check-visuals.sh passes"
+      ],
+      "blocked_by": [
+        "schnorr-verify"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "secp-mult-base",
+      "parent": "m3-sign-ecdh",
+      "title": "Constant-time fixed-base multiplication k·G",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "Comb method with a table generated by #run (32 KB variant for the page, 64 KB native); every lookup through ge_table_select; no secret branches.",
+      "files": [
+        "coax/lib/crypto/secp_mult.coax"
+      ],
+      "acceptance": [
+        "100,000 random k match the harness",
+        "Timing harness |t| < 4.5 over 10^6 runs, fixed vs random k, native",
+        "Release wasm grows by ≤ 40 KB"
+      ],
+      "blocked_by": [
+        "secp-group",
+        "crypto-ct-timing-harness"
+      ],
+      "blocks": [
+        "schnorr-sign"
+      ]
+    },
+    {
+      "slug": "secp-mult-const",
+      "parent": "m3-sign-ecdh",
+      "title": "Constant-time variable-base multiplication k·P",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "A fixed-window (4-bit) constant-time multiplication for ECDH, with signed-digit recoding and masked table selection.",
+      "files": [
+        "coax/lib/crypto/secp_mult.coax"
+      ],
+      "acceptance": [
+        "100,000 random (k, P) match the harness",
+        "Timing harness |t| < 4.5, native"
+      ],
+      "blocked_by": [
+        "secp-group",
+        "crypto-ct-timing-harness"
+      ],
+      "blocks": [
+        "crypto-ecdh-xonly"
+      ]
+    },
+    {
+      "slug": "schnorr-sign",
+      "parent": "m3-sign-ecdh",
+      "title": "BIP-340 signing with auxiliary randomness",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "sign(msg32, seckey32, aux32) per BIP-340 (negate key for odd y, tagged nonce from aux, zero-nonce refusal), keypair and xonly_pubkey; zeroizes every secret buffer.",
+      "files": [
+        "coax/lib/crypto/schnorr.coax"
+      ],
+      "acceptance": [
+        "Every signing row of BIP-340 test-vectors.csv matches byte for byte",
+        "Secret scratch is all zero after return (#test reads it)",
+        "Timing |t| < 4.5 native",
+        "Sign ≤ 300 µs wasm32"
+      ],
+      "blocked_by": [
+        "secp-mult-base",
+        "schnorr-verify"
+      ],
+      "blocks": [
+        "nip59-seal-wrap",
+        "nostr-keys",
+        "nostr-nip42"
+      ]
+    },
+    {
+      "slug": "crypto-ecdh-xonly",
+      "parent": "m3-sign-ecdh",
+      "title": "x-only ECDH shared secret",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "crypto",
+        "secp256k1"
+      ],
+      "body": "coax/lib/crypto/ecdh.coax: shared_x(seckey, xonly_pub) = x(k·P) as NIP-44 requires (unhashed x coordinate).",
+      "files": [
+        "coax/lib/crypto/ecdh.coax"
+      ],
+      "acceptance": [
+        "NIP-44 get_conversation_key vectors' shared points match",
+        "Wycheproof ecdh_secp256k1 adapted cases pass",
+        "Timing |t| < 4.5 native"
+      ],
+      "blocked_by": [
+        "secp-mult-const"
+      ],
+      "blocks": [
+        "nip44-v2"
+      ]
+    },
+    {
+      "slug": "crypto-ct-timing-harness",
+      "parent": "m3-sign-ecdh",
+      "title": "A dudect-style constant-time timing harness",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "tests",
+        "tools"
+      ],
+      "body": "tools/coax-nostr/timing/: fixed-vs-random class runs with Welch's t-test, native (Apple silicon and x86-64) and a wasm32 report mode.",
+      "files": [
+        "tools/coax-nostr/timing/"
+      ],
+      "acceptance": [
+        "Flags a deliberately branching ct_eq (|t| > 10) and passes the real ct_eq (|t| < 4.5)"
+      ],
+      "blocked_by": [
+        "crypto-bytes"
+      ],
+      "blocks": [
+        "secp-mult-base",
+        "secp-mult-const"
+      ]
+    },
+    {
+      "slug": "nip44-v2",
+      "parent": "m4-nip44-nip59",
+      "title": "NIP-44 version 2 encrypt and decrypt",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "nostr",
+        "crypto"
+      ],
+      "body": "coax/lib/nostr/nip44.coax: conversation_key (HKDF-extract with salt \"nip44-v2\"), message_keys (HKDF-expand 76 bytes), calc_padded_len, pad/unpad, encrypt (random 32-byte nonce from the caller), decrypt with constant-time MAC check over nonce||ciphertext.",
+      "files": [
+        "coax/lib/nostr/nip44.coax"
+      ],
+      "acceptance": [
+        "Every valid and invalid case of nip44.vectors.json passes",
+        "Decrypting a NIP-07 signer's ciphertext and vice versa (a manual check recorded in the PR)",
+        "coax mutate: no surviving mutants"
+      ],
+      "blocked_by": [
+        "crypto-hmac-hkdf",
+        "crypto-chacha20",
+        "crypto-ecdh-xonly",
+        "nostr-hex-base64"
+      ],
+      "blocks": [
+        "nip59-seal-wrap"
+      ]
+    },
+    {
+      "slug": "nip59-seal-wrap",
+      "parent": "m4-nip44-nip59",
+      "title": "NIP-59 rumor, seal and gift wrap",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/nip59.coax: build rumor (unsigned), seal (kind 13, signed by author, NIP-44 to recipient), wrap (kind 1059 from a fresh key, randomized created_at within two days back); unwrap verifies wrap sig, decrypts, verifies seal sig and that rumor pubkey equals seal pubkey.",
+      "files": [
+        "coax/lib/nostr/nip59.coax"
+      ],
+      "acceptance": [
+        "Opens wraps made by today's coax/web/unlock/seal.ts and by nostr-effect nip44+pure",
+        "Wraps it makes open with nostr-effect nip44+pure",
+        "Refuses a rumor whose pubkey differs from the seal's"
+      ],
+      "blocked_by": [
+        "nip44-v2",
+        "schnorr-sign",
+        "nostr-event"
+      ],
+      "blocks": [
+        "coax-nostr-cli",
+        "open-sealed-deck-native",
+        "unlock-opener-coax"
+      ]
+    },
+    {
+      "slug": "open-sealed-deck-native",
+      "parent": "m4-nip44-nip59",
+      "title": "Open today's sealed deck natively with the Coax stack",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "nostr",
+        "tests"
+      ],
+      "body": "A native test that fetches the sealed test deck's wrap fixture (checked in from the scratch e2e, test deck only), unwraps it with the recipient test key, checks the 3188 envelope digest and prints the slide titles.",
+      "files": [
+        "tools/coax-nostr/tests/"
+      ],
+      "acceptance": [
+        "Prints the two test-deck slide titles; digest matches"
+      ],
+      "blocked_by": [
+        "nip59-seal-wrap",
+        "nostr-envelope"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "nostr-json",
+      "parent": "m5-events",
+      "title": "Bounded JSON pull parser and writer",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/json.coax: tokens with byte ranges, depth 16, string unescape into caller buffers (all JSON escapes, surrogate pairs), integer parsing to 2^53, refusal of anything over limits; writer appending to a caller buffer.",
+      "files": [
+        "coax/lib/nostr/json.coax"
+      ],
+      "acceptance": [
+        "JSONTestSuite y_/n_ cases relevant to RFC 8259 (pinned subset) behave correctly",
+        "No allocation (checked by building with a trapping allocator)",
+        "Fuzz 1 hour against a reference parser in the native harness with no crash"
+      ],
+      "blocked_by": [
+        "crypto-bytes"
+      ],
+      "blocks": [
+        "nostr-event",
+        "nostr-jcs"
+      ]
+    },
+    {
+      "slug": "nostr-event",
+      "parent": "m5-events",
+      "title": "NIP-01 events: serialize, id, sign, verify and field rules",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/event.coax: parse an event object, the exact NIP-01 id serialization and escaping, compute id, sign (fill pubkey/id/sig), verify (recompute id, check sig), the ingest field rules of coax/nostr.md §7.2.",
+      "files": [
+        "coax/lib/nostr/event.coax"
+      ],
+      "acceptance": [
+        "Serialization fixtures with every escape class and astral characters match nostr-effect's getEventHash",
+        "Events signed here verify in nostr-effect and vice versa (differential, 10,000 random events)"
+      ],
+      "blocked_by": [
+        "nostr-json",
+        "schnorr-verify",
+        "nostr-hex-base64"
+      ],
+      "blocks": [
+        "nip59-seal-wrap",
+        "nostr-filter",
+        "nostr-nip42",
+        "nostr-relay-state-machine"
+      ]
+    },
+    {
+      "slug": "nostr-filter",
+      "parent": "m5-events",
+      "title": "REQ filters: build and match locally",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/filter.coax: ids, authors, kinds, #<tag>, since, until, limit; serialize to JSON and match an event locally (to drop events a relay shouldn't have sent).",
+      "files": [
+        "coax/lib/nostr/filter.coax"
+      ],
+      "acceptance": [
+        "#test matrix of filter × event matches NIP-01 semantics"
+      ],
+      "blocked_by": [
+        "nostr-event"
+      ],
+      "blocks": [
+        "nostr-relay-state-machine"
+      ]
+    },
+    {
+      "slug": "nostr-bech32",
+      "parent": "m5-events",
+      "title": "bech32 and NIP-19 entities",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/bech32.coax: BIP-173 bech32 encode/decode with NIP-19 length limits; npub/nsec/note and nprofile/nevent/naddr TLV; unknown TLV types ignored; nsec decodes into a SecretSlot.",
+      "files": [
+        "coax/lib/nostr/bech32.coax"
+      ],
+      "acceptance": [
+        "BIP-173 valid and invalid vectors pass",
+        "NIP-19 examples round-trip; nostr-effect Nip19 agrees on 10,000 random entities"
+      ],
+      "blocked_by": [
+        "nostr-hex-base64"
+      ],
+      "blocks": [
+        "nostr-keys"
+      ]
+    },
+    {
+      "slug": "nostr-jcs",
+      "parent": "m5-events",
+      "title": "RFC 8785 canonical JSON for contract digests",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/jcs.coax: canonicalize objects of strings, integers, booleans, null, arrays and objects; member order by UTF-16 code units; refuse floats.",
+      "files": [
+        "coax/lib/nostr/jcs.coax"
+      ],
+      "acceptance": [
+        "RFC 8785 examples (integer-only) and astral-key ordering cases pass",
+        "Digest of today's sealed test deck envelope matches lib.ts"
+      ],
+      "blocked_by": [
+        "nostr-json"
+      ],
+      "blocks": [
+        "nostr-envelope"
+      ]
+    },
+    {
+      "slug": "nostr-envelope",
+      "parent": "m5-events",
+      "title": "The 3188 artifact envelope",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/envelope.coax: build and check openagents.artifact-envelope.v1 (inline body, digest = SHA-256 of JCS bytes, 1 MiB cap) per nips/openagents/contracts.md.",
+      "files": [
+        "coax/lib/nostr/envelope.coax"
+      ],
+      "acceptance": [
+        "Builds byte-identical envelopes to coax/web/unlock/lib.ts for the test deck",
+        "Refuses a digest mismatch and an oversize body"
+      ],
+      "blocked_by": [
+        "nostr-jcs",
+        "crypto-sha256"
+      ],
+      "blocks": [
+        "coax-nostr-cli",
+        "open-sealed-deck-native",
+        "unlock-opener-coax"
+      ]
+    },
+    {
+      "slug": "host-random-import",
+      "parent": "m6-relay",
+      "title": "Host import: random bytes",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "web",
+        "host"
+      ],
+      "body": "coax/web/host.js: `random(ptr, len)` from crypto.getRandomValues (chunked at 65,536 bytes); a page without it refuses to run crypto.",
+      "files": [
+        "coax/web/host.js"
+      ],
+      "acceptance": [
+        "A probe page draws 64 random hex characters that change per load",
+        "check-visuals.sh passes"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "relay-in-page"
+      ]
+    },
+    {
+      "slug": "host-socket-pipe",
+      "parent": "m6-relay",
+      "title": "Host import: a WebSocket byte pipe",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "web",
+        "host"
+      ],
+      "body": "socket_open(url), socket_send(id, ptr, len), socket_close(id); open/frame/close/error delivered through the inbox as new message kinds; at most 4 sockets; text frames only.",
+      "files": [
+        "coax/web/host.js",
+        "apps/openagents-web/ui.coax"
+      ],
+      "acceptance": [
+        "A probe page connects to relay.openagents.com, sends a REQ and draws the frame count",
+        "Closing and errors arrive as inbox messages (#test with a fake inbox)"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "relay-in-page"
+      ]
+    },
+    {
+      "slug": "host-storage-pipe",
+      "parent": "m6-relay",
+      "title": "Host import: IndexedDB bytes",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "web",
+        "host"
+      ],
+      "body": "store_put/get/delete over one IndexedDB object store per origin; results via the inbox; private browsing failure reported, not thrown.",
+      "files": [
+        "coax/web/host.js"
+      ],
+      "acceptance": [
+        "Put, reload, get returns the same bytes in a probe page",
+        "Works when IndexedDB is unavailable (reports unavailable)"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "nostr-keys"
+      ]
+    },
+    {
+      "slug": "nostr-relay-state-machine",
+      "parent": "m6-relay",
+      "title": "The relay client state machine",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/relay.coax per coax/nostr.md §8: connection states, backoff, subscriptions, EOSE, CLOSED reasons, OK handling, duplicate suppression, verification before delivery, AUTH-before-REQ queueing.",
+      "files": [
+        "coax/lib/nostr/relay.coax"
+      ],
+      "acceptance": [
+        "#test drives it with scripted relay transcripts: auth-required, CLOSED auth-required then success, duplicate events, bad signatures dropped and counted, backoff timing",
+        "No I/O inside the module (it compiles without the host)"
+      ],
+      "blocked_by": [
+        "nostr-event",
+        "nostr-filter",
+        "nostr-nip42"
+      ],
+      "blocks": [
+        "coax-nostr-cli",
+        "relay-in-page"
+      ]
+    },
+    {
+      "slug": "nostr-nip42",
+      "parent": "m6-relay",
+      "title": "NIP-42 AUTH events",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/nip42.coax: build the kind 22242 event for (challenge, relay URL) and sign it locally or hand it to the NIP-07 signer.",
+      "files": [
+        "coax/lib/nostr/nip42.coax"
+      ],
+      "acceptance": [
+        "Events verify in nostr-effect and match its Nip42 builder's tags"
+      ],
+      "blocked_by": [
+        "nostr-event",
+        "schnorr-sign"
+      ],
+      "blocks": [
+        "nostr-relay-state-machine"
+      ]
+    },
+    {
+      "slug": "nostr-keys",
+      "parent": "m6-relay",
+      "title": "Key slots, storage records and the NIP-07 adapter",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "coax/lib/nostr/keys.coax: SecretSlot with forget(), import from nsec or hex, the stored record format, and the signer interface the page calls (local slot or NIP-07 through host imports: pubkey, sign, nip44 decrypt).",
+      "files": [
+        "coax/lib/nostr/keys.coax",
+        "coax/web/host.js"
+      ],
+      "acceptance": [
+        "A pasted key survives reload via storage; forget() zeroes the slot and deletes the record",
+        "With a NIP-07 extension present, signing goes through it (manual check recorded)"
+      ],
+      "blocked_by": [
+        "host-storage-pipe",
+        "nostr-bech32",
+        "schnorr-sign"
+      ],
+      "blocks": [
+        "claim-from-page",
+        "relay-in-page"
+      ]
+    },
+    {
+      "slug": "relay-in-page",
+      "parent": "m6-relay",
+      "title": "The page subscribes to relay.openagents.com with AUTH",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "web",
+        "nostr"
+      ],
+      "body": "Wire host pipes and relay.coax into a probe page: connect, answer AUTH with a test key, subscribe to a known filter, draw verified event count and refusals.",
+      "files": [
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "Probe on staging shows the expected count from relay.openagents.com",
+        "A REQ is never sent before AUTH completes (asserted from the outbox log)"
+      ],
+      "blocked_by": [
+        "nostr-relay-state-machine",
+        "host-socket-pipe",
+        "host-random-import",
+        "nostr-keys"
+      ],
+      "blocks": [
+        "project-page-live",
+        "unlock-opener-coax"
+      ]
+    },
+    {
+      "slug": "unlock-opener-coax",
+      "parent": "m7-no-typescript",
+      "title": "Open the hidden deck in Coax",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "web",
+        "nostr"
+      ],
+      "body": "Replace coax/web/unlock/page.ts: fetch the wrap through relay.coax with AUTH as the recipient, unwrap with nip59.coax, check the envelope, hand slides to ui.coax.",
+      "files": [
+        "apps/openagents-web/",
+        "coax/web/unlock/"
+      ],
+      "acceptance": [
+        "The real phrase opens the deck on staging with page.ts removed",
+        "Wrong key shows the key-wrong state"
+      ],
+      "blocked_by": [
+        "relay-in-page",
+        "nip59-seal-wrap",
+        "nostr-envelope"
+      ],
+      "blocks": [
+        "invariant-coax-only"
+      ]
+    },
+    {
+      "slug": "unlock-gate-coax",
+      "parent": "m7-no-typescript",
+      "title": "The phrase gate in Coax, without AES",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "web",
+        "crypto"
+      ],
+      "body": "Replace gate.ts: salted SHA-256 check, PBKDF2 (210,000 rounds) to a ChaCha20 key and an HMAC key, encrypt-then-MAC pointer (coax/nostr.md §10.3), all in Coax; the terminal raises the check.",
+      "files": [
+        "apps/openagents-web/",
+        "coax/web/unlock/gate.ts"
+      ],
+      "acceptance": [
+        "A refused phrase and the real phrase behave as today on staging with gate.ts removed",
+        "No WebCrypto call remains in the page (grep check in check-visuals.sh)"
+      ],
+      "blocked_by": [
+        "crypto-pbkdf2",
+        "crypto-chacha20",
+        "crypto-hmac-hkdf"
+      ],
+      "blocks": [
+        "invariant-coax-only"
+      ]
+    },
+    {
+      "slug": "coax-nostr-cli",
+      "parent": "m7-no-typescript",
+      "title": "coax-nostr: a native CLI for keygen, seal, gate, publish and verify",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "tools",
+        "nostr"
+      ],
+      "body": "tools/coax-nostr/: a native program built from the same modules: keygen, seal deck.md --author --to, gate (writes unlock entries for deploy.sh), publish (sign and send events to a relay with AUTH, using a small native socket), verify, fetch.",
+      "files": [
+        "tools/coax-nostr/",
+        "coax/web/deploy.sh"
+      ],
+      "acceptance": [
+        "deploy.sh runs the gate step with coax-nostr and no bun",
+        "Re-sealing the deck with coax-nostr opens on staging"
+      ],
+      "blocked_by": [
+        "nip59-seal-wrap",
+        "nostr-envelope",
+        "nostr-relay-state-machine"
+      ],
+      "blocks": [
+        "invariant-coax-only",
+        "publish-project-events"
+      ]
+    },
+    {
+      "slug": "invariant-coax-only",
+      "parent": "m7-no-typescript",
+      "title": "INVARIANTS: Coaxial pages draw and compute everything in Coax",
+      "size": "S",
+      "sats": 2000,
+      "labels": [
+        "policy",
+        "web"
+      ],
+      "body": "Change the INVARIANTS rule as coax/nostr.md §5 says, extend check-visuals.sh to refuse any page script besides host.js and any WebCrypto use, delete coax/web/unlock/, remove bun from deploy.",
+      "files": [
+        "INVARIANTS.md",
+        "coax/web/check-visuals.sh",
+        "coax/web/unlock/"
+      ],
+      "acceptance": [
+        "check-visuals.sh passes on all pages and fails on a planted extra script",
+        "coax/web/unlock/ is gone"
+      ],
+      "blocked_by": [
+        "unlock-opener-coax",
+        "unlock-gate-coax",
+        "coax-nostr-cli"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "publish-project-events",
+      "parent": "m8-project-live",
+      "title": "Publish the Coax project and its tasks as Nostr events",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "nostr",
+        "projects"
+      ],
+      "body": "Use coax-nostr publish to sign the kind 30621 project (with path and contributions tags per docs/protocol/2026-10-28-projects.md), its work items from this file, and the queue order record, with the project key.",
+      "files": [
+        "tools/coax-nostr/",
+        "apps/openagents-web/project/coax/work/"
+      ],
+      "acceptance": [
+        "Events fetched back from relay.openagents.com verify and match this file",
+        "Re-publishing is idempotent (same d tags replace)"
+      ],
+      "blocked_by": [
+        "coax-nostr-cli"
+      ],
+      "blocks": [
+        "project-page-live"
+      ]
+    },
+    {
+      "slug": "project-page-live",
+      "parent": "m8-project-live",
+      "title": "/project/coax reads its project, tasks and order from the relay",
+      "size": "L",
+      "sats": 15000,
+      "labels": [
+        "web",
+        "projects"
+      ],
+      "body": "The real project page subscribes to the project, its tasks and the order record, verifies incrementally (≤ 4 ms per frame), and draws the queue from verified events only; the demo page keeps baked data.",
+      "files": [
+        "apps/openagents-web/project.coax",
+        "apps/openagents-web/project/coax/"
+      ],
+      "acceptance": [
+        "Moving a task in the order record and republishing reorders the live page without a deploy",
+        "Unverified events never appear; a count of rows still checking is shown"
+      ],
+      "blocked_by": [
+        "relay-in-page",
+        "publish-project-events"
+      ],
+      "blocks": [
+        "claim-from-page",
+        "secp-glv"
+      ]
+    },
+    {
+      "slug": "claim-from-page",
+      "parent": "m8-project-live",
+      "title": "Claim a task from the page with a signed event",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "web",
+        "projects",
+        "nostr"
+      ],
+      "body": "A signed-in visitor (local key or NIP-07) claims an OPEN task: the page builds the claim request, signs it, sends it to the coordinator endpoint and shows the lease.",
+      "files": [
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "A claim made in the page appears on another browser within 5 s",
+        "The claim is refused cleanly when another claim holds the task"
+      ],
+      "blocked_by": [
+        "project-page-live",
+        "nostr-keys"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "secp-glv",
+      "parent": "m8-project-live",
+      "title": "GLV endomorphism for faster verification",
+      "size": "M",
+      "sats": 6000,
+      "labels": [
+        "crypto",
+        "secp256k1",
+        "performance"
+      ],
+      "body": "Split scalars with the secp256k1 endomorphism in ecmult_vartime; measure verify on the live project page.",
+      "files": [
+        "coax/lib/crypto/secp_mult.coax"
+      ],
+      "acceptance": [
+        "Differential fuzz 1 hour clean",
+        "Verify at least 1.3× faster in wasm32 (bench)"
+      ],
+      "blocked_by": [
+        "project-page-live"
+      ],
+      "blocks": []
+    }
+  ]
+}

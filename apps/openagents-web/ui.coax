@@ -2,15 +2,18 @@
 // (INVARIANTS.md, "Coaxial pages draw everything in Coax"): the access
 // terminal that takes a typed code, the presentation a code opens (a key
 // prompt the first time on a device, then the slides), and the not-found
-// page's HOME link. The host (coax/web/host.js) passes keys, the pointer
-// and typed text in and carries actions out; coax/web/unlock does the
-// crypto and answers with messages. Text is Filament (font.coax).
+// page's HOME. Every panel, field and button is the Metareal HUD bar
+// (metareal/light.coax metareal_bar, the iOS Start bar's light, drawn by
+// splash.wgsl), and all text is Filament (font.coax). The host
+// (coax/web/host.js) passes keys, the pointer and typed or pasted text in
+// and carries actions out; coax/web/unlock does the crypto and answers with
+// messages.
 
 // Keys the host names; every other key arrives as its code point.
 KEY_ESCAPE :: -1;   KEY_ENTER :: -2;    KEY_BACKSPACE :: -3; KEY_LEFT :: -4;
 KEY_RIGHT :: -5;    KEY_UP :: -6;       KEY_DOWN :: -7;      KEY_HOME :: -8;
-KEY_END :: -9;      KEY_PAGE_UP :: -10; KEY_PAGE_DOWN :: -11;
-MOD_CTRL :: 2;  MOD_ALT :: 4;  MOD_META :: 8;   // and 1, shift, which typing ignores
+KEY_END :: -9;      KEY_PAGE_UP :: -10; KEY_PAGE_DOWN :: -11; KEY_DELETE :: -12;
+MOD_SHIFT :: 1; MOD_CTRL :: 2; MOD_ALT :: 4; MOD_META :: 8;
 POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
 
 // Messages in (coaxial_message) and actions out (coaxial_action). Below 16
@@ -26,6 +29,7 @@ MSG_LOADING :: 21;      // fetching and opening
 MSG_DECK :: 22;         // the slides, as deck lines (below)
 MSG_NOTICE :: 23;       // a short message, then close
 ACT_NAVIGATE :: 1;      // go to the URL in the outbox
+ACT_COPY :: 2;          // put the outbox's text on the clipboard
 ACT_CODE :: 16;         // check the code in the outbox
 ACT_KEY :: 17;          // try the key in the outbox
 ACT_CANCEL :: 18;       // the visitor closed the prompt
@@ -37,6 +41,9 @@ ACT_CANCEL :: 18;       // the visitor closed the prompt
 TERM_CLOSED :: 0; TERM_OPEN :: 1; TERM_BUSY :: 2; TERM_ERROR :: 3; TERM_GRANTED :: 4;
 SHOW_NONE :: 0; SHOW_LOADING :: 1; SHOW_KEY :: 2; SHOW_CHECKING :: 3; SHOW_DECK :: 4; SHOW_NOTICE :: 5;
 
+FIELD_CODE :: 0;       // the terminal's code
+FIELD_KEY :: 1;        // the key prompt's key, drawn as dots and never copied
+FIELD_CAP :: 160;
 CODE_MAX :: 48;        // bytes a typed code may hold (phrases are 4 to 40 letters)
 KEY_MAX :: 160;
 NOTICE_MAX :: 160;
@@ -53,26 +60,37 @@ GRANT_HOLD :: 0.9;     // seconds ACCESS GRANTED shows before it fades
 GRANT_FADE :: 0.6;
 VEIL :: 0.5;           // seconds the scene takes to dim behind a presentation
 NOTICE_TIME :: 2.6;
+DOUBLE :: 0.35;        // seconds between the clicks of a double click
 DIM :: 0.74;           // how much the scene dims
 
-ORANGE_R :: 1.0; ORANGE_G :: 0.55; ORANGE_B :: 0.12;   // #ff8c1f
+ORANGE_R :: 1.0; ORANGE_G :: 0.55; ORANGE_B :: 0.12;   // #ff8c1f: focus, active
 RED_R :: 1.0;    RED_G :: 0.32;    RED_B :: 0.32;
 GRANT_R :: 1.0;  GRANT_G :: 0.82;  GRANT_B :: 0.6;
+HUD_R :: 0.93;   HUD_G :: 0.93;    HUD_B :: 0.95;      // the HUD's white
+
+// A text field: its bytes, the caret and the selection's other end (both
+// byte offsets on code point boundaries), and where it was last drawn, so
+// the pointer can find a position in it.
+Field :: struct {
+  text: [FIELD_CAP] u8; n: int; caret: int; anchor: int;
+  left: f32; from: int; size: f32; gap: f32; pitch: f32;   // pitch: a dot's width when masked
+}
 
 Ui :: struct {
   time: f32; width: f32; height: f32; dpr: f32; still: bool; page: int;   // from the frame
   armed: bool;
   // the terminal
-  term: int; term_at: f32; vis: f32; replace: bool; typed_at: f32;
+  term: int; term_at: f32; vis: f32; typed_at: f32;
   pending: [8] u8; pending_n: int; pending_at: f32;
-  code: [CODE_MAX] u8; code_n: int;
+  fields: [2] Field;
   // the presentation
   show: int; show_at: f32; veil: f32; slide: int; notes: bool;
   deck: [DECK_CAP] u8; deck_n: int;
-  key: [KEY_MAX] u8; key_n: int; key_wrong: bool;
+  key_wrong: bool;
   notice: [NOTICE_MAX] u8; notice_n: int;
   // the pointer, in device pixels
   down: bool; down_x: f32; down_y: f32; down_at: f32; moved: bool; touch: bool; held: bool;
+  dragging: bool; clicked_at: f32; clicked_x: f32;
   px: f32; py: f32;
   button: Box;           // the key prompt's OPEN, as last drawn
   field: Box;            // the text field taking typing, as last drawn (zero: none)
@@ -87,9 +105,6 @@ least :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 most :: (a: int, b: int) -> int { if a > b { return a; } return b; }
 
 // ---- small text buffers
-
-// Appends code point c to buf holding n bytes, if it fits. Returns the new length.
-append :: (buf: [] u8, n: int, c: u32) -> int { return n + encode(c, buf, n); }
 
 // Drops the last code point of buf's first n bytes. Returns the new length.
 pop :: (buf: [] u8, n: int) -> int {
@@ -118,41 +133,203 @@ put_int :: (buf: [] u8, at: int, v: int) -> int {
 trim_from :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
 trim_to :: (text: string) -> int { j := text.count; while j > 0 && text[j - 1] == ' ' { j -= 1; } return j; }
 
-code_text :: (u: [] Ui) -> string { return cast(string) u[0].code[0..<u[0].code_n]; }
-deck_text :: (u: [] Ui) -> string { return cast(string) u[0].deck[0..<u[0].deck_n]; }
-
 raise :: (u: [] Ui, action: int, text: string) {
   u[0].out_n = put(u[0].outbox[..], 0, text);
   u[0].action = action;
+}
+
+// ---- text fields
+
+field :: (u: [] Ui, k: int) -> [] Field { return u[0].fields[k..<k + 1]; }
+field_text :: (f: [] Field) -> string { return cast(string) f[0].text[0..<f[0].n]; }
+code_text :: (u: [] Ui) -> string { return field_text(field(u, FIELD_CODE)); }
+deck_text :: (u: [] Ui) -> string { return cast(string) u[0].deck[0..<u[0].deck_n]; }
+field_limit :: (k: int) -> int { return ifx k == FIELD_CODE then CODE_MAX else KEY_MAX; }
+
+sel_lo :: (f: [] Field) -> int { return least(f[0].caret, f[0].anchor); }
+sel_hi :: (f: [] Field) -> int { return most(f[0].caret, f[0].anchor); }
+
+// The code point boundary before and after byte i.
+prev_at :: (text: string, i: int) -> int {
+  k := i - 1;
+  while k > 0 && (text[k] & 0xC0) == 0x80 { k -= 1; }
+  return most(k, 0);
+}
+next_at :: (text: string, i: int) -> int {
+  if i >= text.count { return text.count; }
+  return least(text.count, i + decode(text, i).len);
+}
+// Word boundaries, as a Mac moves by Option: over spaces, then a word.
+word_before :: (text: string, i: int) -> int {
+  k := i;
+  while k > 0 && text[k - 1] == ' ' { k -= 1; }
+  while k > 0 && text[k - 1] != ' ' { k -= 1; }
+  return k;
+}
+word_after :: (text: string, i: int) -> int {
+  k := i;
+  while k < text.count && text[k] == ' ' { k += 1; }
+  while k < text.count && text[k] != ' ' { k += 1; }
+  return k;
+}
+
+field_clear :: (f: [] Field) {
+  for i: 0..<FIELD_CAP { f[0].text[i] = 0; }
+  f[0].n = 0; f[0].caret = 0; f[0].anchor = 0; f[0].from = 0;
+}
+
+field_set :: (f: [] Field, text: string, limit: int) {
+  field_clear(f);
+  f[0].n = put(f[0].text[0..<limit], 0, text);
+  f[0].caret = f[0].n; f[0].anchor = f[0].n;
+}
+
+// Deletes bytes a to b, the caret landing where they were.
+field_cut :: (f: [] Field, a: int, b: int) {
+  first := most(0, least(a, b)); last := least(f[0].n, most(a, b));
+  gone := last - first;
+  if gone > 0 {
+    for i: first..<f[0].n - gone { f[0].text[i] = f[0].text[i + gone]; }
+    for i: f[0].n - gone..<f[0].n { f[0].text[i] = 0; }
+    f[0].n -= gone;
+  }
+  f[0].caret = first; f[0].anchor = first;
+}
+
+// Types code point c over the selection, if it fits within limit bytes.
+field_insert :: (f: [] Field, c: u32, limit: int) {
+  if sel_lo(f) != sel_hi(f) { field_cut(f, sel_lo(f), sel_hi(f)); }
+  bytes: [4] u8;
+  n := encode(c, bytes[..], 0);
+  if n == 0 || f[0].n + n > least(limit, FIELD_CAP) { return; }
+  at := f[0].caret;
+  k := f[0].n - 1;
+  while k >= at { f[0].text[k + n] = f[0].text[k]; k -= 1; }
+  for i: 0..<n { f[0].text[at + i] = bytes[i]; }
+  f[0].n += n; f[0].caret = at + n; f[0].anchor = f[0].caret;
+}
+
+// Moves the caret to byte to; extending keeps the selection's other end.
+field_move :: (f: [] Field, to: int, extend: bool) {
+  f[0].caret = most(0, least(f[0].n, to));
+  if !extend { f[0].anchor = f[0].caret; }
+}
+
+field_word_at :: (f: [] Field, i: int) {
+  text := field_text(f);
+  a := i; b := i;
+  if i < text.count && text[i] == ' ' { return; }
+  while a > 0 && text[a - 1] != ' ' { a -= 1; }
+  while b < text.count && text[b] != ' ' { b += 1; }
+  f[0].anchor = a; f[0].caret = b;
+}
+
+// A key in field k. Returns whether the field used it. Cmd or Ctrl + V is
+// left to the browser, whose paste arrives as text; the key field never
+// copies or cuts.
+field_key :: (u: [] Ui, k: int, key: int, mods: int) -> bool {
+  f := field(u, k);
+  text := field_text(f);
+  command := (mods & (MOD_META | MOD_CTRL)) != 0;
+  word := (mods & (MOD_ALT | MOD_CTRL)) != 0;
+  whole := (mods & MOD_META) != 0;
+  extend := (mods & MOD_SHIFT) != 0;
+  u[0].typed_at = u[0].time;
+  if command && (key == 'a' || key == 'A') { f[0].anchor = 0; f[0].caret = f[0].n; return true; }
+  if command && (key == 'c' || key == 'C' || key == 'x' || key == 'X') {
+    if k == FIELD_KEY || sel_lo(f) == sel_hi(f) { return true; }   // a key never leaves in clear
+    raise(u, ACT_COPY, text[sel_lo(f)..<sel_hi(f)]);
+    if key == 'x' || key == 'X' { field_cut(f, sel_lo(f), sel_hi(f)); }
+    return true;
+  }
+  if command && (key == 'v' || key == 'V') { return false; }
+  if key == KEY_BACKSPACE || key == KEY_DELETE {
+    if sel_lo(f) != sel_hi(f) { field_cut(f, sel_lo(f), sel_hi(f)); return true; }
+    c := f[0].caret;
+    if key == KEY_BACKSPACE {
+      to := ifx whole then 0 else ifx word then word_before(text, c) else prev_at(text, c);
+      field_cut(f, to, c);
+    } else {
+      to := ifx whole then f[0].n else ifx word then word_after(text, c) else next_at(text, c);
+      field_cut(f, c, to);
+    }
+    return true;
+  }
+  if key == KEY_LEFT || key == KEY_RIGHT {
+    c := f[0].caret;
+    if !extend && !whole && !word && sel_lo(f) != sel_hi(f) {
+      field_move(f, ifx key == KEY_LEFT then sel_lo(f) else sel_hi(f), false);
+      return true;
+    }
+    to := 0;
+    if key == KEY_LEFT { to = ifx whole then 0 else ifx word then word_before(text, c) else prev_at(text, c); }
+    else { to = ifx whole then f[0].n else ifx word then word_after(text, c) else next_at(text, c); }
+    field_move(f, to, extend);
+    return true;
+  }
+  if key == KEY_HOME || key == KEY_UP { field_move(f, 0, extend); return true; }
+  if key == KEY_END || key == KEY_DOWN { field_move(f, f[0].n, extend); return true; }
+  if key >= 32 && key != 127 && !command {
+    if k == FIELD_KEY && key == ' ' { return true; }
+    field_insert(f, cast(u32) key, field_limit(k));
+    return true;
+  }
+  return false;
+}
+
+// Where byte i of a field sits on screen, as last drawn.
+field_x :: (f: [] Field, i: int) -> f32 {
+  text := field_text(f);
+  from := least(f[0].from, text.count);
+  if f[0].pitch > 0 {
+    chars := 0; j := from;
+    while j < i && j < text.count { j = next_at(text, j); chars += 1; }
+    return f[0].left + cast(f32) chars * f[0].pitch;
+  }
+  if i <= from { return f[0].left; }
+  return f[0].left + (measure(text[from..<least(i, text.count)], f[0].gap, 0.6, false) + f[0].gap * 0.5) * f[0].size;
+}
+
+// The byte nearest screen x.
+field_hit :: (f: [] Field, x: f32) -> int {
+  text := field_text(f);
+  best := least(f[0].from, text.count); far := -1.0f32;
+  i := best;
+  while true {
+    off := abs(field_x(f, i) - x);
+    if far < 0 || off < far { far = off; best = i; }
+    if i >= text.count { break; }
+    i = next_at(text, i);
+  }
+  return best;
+}
+
+// The field taking typing now, or -1.
+active_field :: (u: [] Ui) -> int {
+  t := u[0].term;
+  if t == TERM_OPEN || t == TERM_ERROR { return FIELD_CODE; }
+  if t == TERM_CLOSED && u[0].show == SHOW_KEY { return FIELD_KEY; }
+  return -1;
 }
 
 // ---- the terminal
 
 open_terminal :: (u: [] Ui, text: string) {
   u[0].term = TERM_OPEN; u[0].term_at = u[0].time; u[0].typed_at = u[0].time;
-  u[0].code_n = put(u[0].code[..], 0, text);
-  u[0].replace = false; u[0].pending_n = 0;
+  field_set(field(u, FIELD_CODE), text, CODE_MAX);
+  u[0].pending_n = 0;
 }
 
 close_terminal :: (u: [] Ui) {
-  for i: 0..<CODE_MAX { u[0].code[i] = 0; }
-  u[0].term = TERM_CLOSED; u[0].code_n = 0; u[0].pending_n = 0; u[0].replace = false;
-}
-
-type_code :: (u: [] Ui, c: u32) {
-  if u[0].term != TERM_OPEN && u[0].term != TERM_ERROR { return; }
-  if c < 32 || c == 127 { return; }
-  if u[0].replace { u[0].code_n = 0; u[0].replace = false; }
-  u[0].term = TERM_OPEN;
-  u[0].code_n = append(u[0].code[..], u[0].code_n, c);
-  u[0].typed_at = u[0].time;
+  field_clear(field(u, FIELD_CODE));
+  u[0].term = TERM_CLOSED; u[0].pending_n = 0;
 }
 
 submit_code :: (u: [] Ui) {
   if u[0].term != TERM_OPEN && u[0].term != TERM_ERROR { return; }
   text := code_text(u);
   if trim_from(text) >= trim_to(text) { return; }
-  u[0].term = TERM_BUSY; u[0].term_at = u[0].time; u[0].replace = false;
+  u[0].term = TERM_BUSY; u[0].term_at = u[0].time;
   raise(u, ACT_CODE, text);
 }
 
@@ -188,16 +365,16 @@ go :: (u: [] Ui, step: int) {
 show :: (u: [] Ui, what: int) { u[0].show = what; u[0].show_at = u[0].time; }
 
 close_show :: (u: [] Ui) {
-  for i: 0..<KEY_MAX { u[0].key[i] = 0; }
-  u[0].key_n = 0;
+  field_clear(field(u, FIELD_KEY));
   show(u, SHOW_NONE);
 }
 
 submit_key :: (u: [] Ui) {
-  if u[0].show != SHOW_KEY || u[0].key_n == 0 { return; }
-  raise(u, ACT_KEY, cast(string) u[0].key[0..<u[0].key_n]);
-  for i: 0..<KEY_MAX { u[0].key[i] = 0; }
-  u[0].key_n = 0; u[0].key_wrong = false;
+  f := field(u, FIELD_KEY);
+  if u[0].show != SHOW_KEY || f[0].n == 0 { return; }
+  raise(u, ACT_KEY, field_text(f));
+  field_clear(f);
+  u[0].key_wrong = false;
   show(u, SHOW_CHECKING);
 }
 
@@ -207,28 +384,22 @@ submit_key :: (u: [] Ui) {
 // browser from acting on it too).
 ui_key :: (u: [] Ui, key: int, mods: int) -> bool {
   typing := key >= 32 && (mods & (MOD_CTRL | MOD_ALT | MOD_META)) == 0;
-  c := cast(u32) most(key, 0);
   term := u[0].term;
   if term != TERM_CLOSED {
     if term == TERM_GRANTED { return true; }
     if key == KEY_ESCAPE { close_terminal(u); return true; }
+    if term == TERM_BUSY { return key == KEY_ENTER || typing || key == KEY_BACKSPACE; }
     if key == KEY_ENTER { submit_code(u); return true; }
-    if key == KEY_BACKSPACE {
-      if term == TERM_BUSY { return true; }
-      if u[0].replace { u[0].code_n = 0; u[0].replace = false; } else { u[0].code_n = pop(u[0].code[..], u[0].code_n); }
-      u[0].term = TERM_OPEN; u[0].typed_at = u[0].time;
-      return true;
-    }
-    if typing { type_code(u, c); return true; }
-    return false;
+    before := code_text(u).count;
+    used := field_key(u, FIELD_CODE, key, mods);
+    if used && term == TERM_ERROR && (typing || code_text(u).count != before) { u[0].term = TERM_OPEN; }
+    return used;
   }
   what := u[0].show;
   if what == SHOW_KEY {
     if key == KEY_ESCAPE { close_show(u); raise(u, ACT_CANCEL, ""); return true; }
     if key == KEY_ENTER { submit_key(u); return true; }
-    if key == KEY_BACKSPACE { u[0].key_n = pop(u[0].key[..], u[0].key_n); return true; }
-    if typing && c != ' ' { u[0].key_n = append(u[0].key[..], u[0].key_n, c); u[0].typed_at = u[0].time; return true; }
-    return false;
+    return field_key(u, FIELD_KEY, key, mods);
   }
   if what == SHOW_LOADING || what == SHOW_CHECKING || what == SHOW_NOTICE {
     if key == KEY_ESCAPE { close_show(u); raise(u, ACT_CANCEL, ""); return true; }
@@ -247,7 +418,7 @@ ui_key :: (u: [] Ui, key: int, mods: int) -> bool {
   // PENDING seconds opens the terminal holding both.
   if !u[0].armed || u[0].page != 0 || !typing { return false; }
   if u[0].pending_n == 0 || u[0].time - u[0].pending_at > PENDING { u[0].pending_n = 0; }
-  u[0].pending_n = append(u[0].pending[..], u[0].pending_n, c);
+  u[0].pending_n += encode(cast(u32) key, u[0].pending[..], u[0].pending_n);
   u[0].pending_at = u[0].time;
   if pop(u[0].pending[..], u[0].pending_n) > 0 {
     open_terminal(u, cast(string) u[0].pending[0..<u[0].pending_n]);
@@ -256,16 +427,14 @@ ui_key :: (u: [] Ui, key: int, mods: int) -> bool {
   return false;
 }
 
-// Typed or pasted text: as keys, without the named ones.
+// Typed or pasted text: as keys, without the named ones. A paste into the
+// key prompt drops its spaces and line breaks.
 ui_type :: (u: [] Ui, text: string) {
   i := 0;
   while i < text.count {
     d := decode(text, i); i += d.len;
-    if d.code == '\n' || d.code == '\r' { continue; }
-    if u[0].term == TERM_CLOSED && u[0].show == SHOW_KEY {
-      if d.code > ' ' && d.code != 127 { u[0].key_n = append(u[0].key[..], u[0].key_n, d.code); u[0].typed_at = u[0].time; }
-      continue;
-    }
+    if d.code < 32 || d.code == 127 { continue; }
+    if u[0].term == TERM_CLOSED && u[0].show == SHOW_KEY && d.code == ' ' { continue; }
     _ := ui_key(u, cast(int) d.code, 0);
   }
 }
@@ -276,12 +445,15 @@ ui_message :: (u: [] Ui, kind: int, length: int) {
   text := cast(string) u[0].inbox[0..<n];
   if kind == MSG_TEXT { ui_type(u, text); }
   if kind == MSG_ARMED { u[0].armed = true; }
-  if kind == MSG_REFUSED && u[0].term == TERM_BUSY { u[0].term = TERM_ERROR; u[0].term_at = u[0].time; u[0].replace = true; }
+  if kind == MSG_REFUSED && u[0].term == TERM_BUSY {
+    u[0].term = TERM_ERROR; u[0].term_at = u[0].time;
+    f := field(u, FIELD_CODE); f[0].anchor = 0; f[0].caret = f[0].n;   // the next key replaces it
+  }
   if kind == MSG_GRANTED && u[0].term == TERM_BUSY {
     u[0].term = TERM_GRANTED; u[0].term_at = u[0].time;
     if u[0].show == SHOW_NONE { show(u, SHOW_LOADING); }
   }
-  if kind == MSG_KEY_NEEDED { u[0].key_n = 0; u[0].key_wrong = false; show(u, SHOW_KEY); }
+  if kind == MSG_KEY_NEEDED { field_clear(field(u, FIELD_KEY)); u[0].key_wrong = false; show(u, SHOW_KEY); }
   if kind == MSG_KEY_WRONG { u[0].key_wrong = true; show(u, SHOW_KEY); }
   if kind == MSG_LOADING { show(u, SHOW_LOADING); }
   if kind == MSG_DECK {
@@ -297,18 +469,29 @@ ui_message :: (u: [] Ui, kind: int, length: int) {
 ui_pointer :: (u: [] Ui, x: f32, y: f32, phase: int, kind: int) -> bool {
   d := hi(u[0].dpr, 1);
   u[0].px = x; u[0].py = y;
+  k := active_field(u);
   if phase == POINTER_DOWN {
     u[0].down = true; u[0].down_x = x; u[0].down_y = y; u[0].down_at = u[0].time;
     u[0].moved = false; u[0].touch = kind != 0; u[0].held = false;
+    if k >= 0 && inside(u[0].field, x, y) {
+      f := field(u, k);
+      at := field_hit(f, x);
+      if u[0].time - u[0].clicked_at < DOUBLE && abs(x - u[0].clicked_x) < 6 * d { field_word_at(f, at); u[0].clicked_at = -10; }
+      else { field_move(f, at, false); u[0].clicked_at = u[0].time; u[0].dragging = true; }
+      u[0].clicked_x = x; u[0].typed_at = u[0].time;
+      return true;
+    }
     return false;
   }
   if phase == POINTER_MOVE {
     if u[0].down && abs(x - u[0].down_x) + abs(y - u[0].down_y) > 10 * d { u[0].moved = true; }
+    if u[0].down && u[0].dragging && k >= 0 { field_move(field(u, k), field_hit(field(u, k), x), true); return true; }
     return false;
   }
-  if phase == POINTER_CANCEL || !u[0].down { u[0].down = false; return false; }
+  if phase == POINTER_CANCEL || !u[0].down { u[0].down = false; u[0].dragging = false; return false; }
   // up
   u[0].down = false;
+  if u[0].dragging { u[0].dragging = false; return true; }
   if u[0].held { return true; }
   dx := x - u[0].down_x;
   if u[0].term == TERM_CLOSED && u[0].show == SHOW_DECK {
@@ -368,43 +551,79 @@ ink :: (core: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> In
   return Ink.{core = core, light = light, glow = glow, red = red, green = green, blue = blue, mode = MODE_STROKE};
 }
 
-// An outline with its corners clipped at 45°, cut pixels in.
-outline :: (out: [] f32, at: int, b: Box, cut: f32, k: Ink) -> int {
-  xs := [9] f32.[b.x0 + cut, b.x1 - cut, b.x1, b.x1, b.x1 - cut, b.x0 + cut, b.x0, b.x0, b.x0 + cut];
-  ys := [9] f32.[b.y0, b.y0, b.y0 + cut, b.y1 - cut, b.y1, b.y1, b.y1 - cut, b.y0 + cut, b.y0];
-  vertices := at;
-  for i: 1..<9 {
-    if lit(out, vertices, xs[i - 1], ys[i - 1], xs[i], ys[i], k.core, k.light, k.glow, k.red, k.green, k.blue, k.mode) { vertices += 6; }
+// Draws text (font.coax draw_text) at d device pixels per CSS pixel, so
+// small text is drawn sharp (font.md "Small sizes").
+write :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, space: f32,
+          k: Ink, rich: bool, bold: bool) -> int {
+  s := k; s.scale = d;
+  return draw_text(out, at, text, x, base, cap, gap, space, s, rich, bold);
+}
+
+// A Metareal HUD bar over box b: metareal_bar's glass, cut corners, edge,
+// sweep and glow at scale k (device pixels per point), lit light in a
+// colour. press and flash are the bar's own: pressed, and lit up.
+bar :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32, red: f32, green: f32, blue: f32) -> int {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return at; }
+  hw := (b.x1 - b.x0) * 0.5; hh := (b.y1 - b.y0) * 0.5;
+  cx := b.x0 + hw; cy := b.y0 + hh;
+  m := 20 * k;   // room for the glow, as iOS draws it
+  sx := [6] f32.[-1, 1, 1, -1, 1, -1];
+  sy := [6] f32.[-1, -1, 1, -1, 1, 1];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    qx := sx[v] * (hw + m); qy := sy[v] * (hh + m);
+    out[o] = cx + qx; out[o + 1] = cy + qy;
+    out[o + 2] = qx; out[o + 3] = qy;
+    out[o + 4] = hw; out[o + 5] = hh; out[o + 6] = k; out[o + 7] = light;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_BAR;
+    out[o + 12] = press; out[o + 13] = flash; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return at + 6;
+}
+
+// A HUD element: the bar, and brackets that mark its corners at a glance:
+// a bright line across each of its two cut corners and an L at each square
+// one, a little outside.
+hud :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32, red: f32, green: f32, blue: f32) -> int {
+  vertices := bar(out, at, b, k, press, flash, light, red, green, blue);
+  c := 14 * k;           // metareal_bar's cut
+  o := 4 * k;            // the brackets' distance outside
+  t := lo(10 * k, (b.y1 - b.y0) * 0.3);
+  core := 0.6 * k; glow := 5 * k; l := light * 0.95;
+  // the cut corners: top left and bottom right
+  s := o * 1.4142;
+  if lit(out, vertices, b.x0 - s + c * 0.15, b.y0 + c * 0.85, b.x0 + c * 0.85, b.y0 - s + c * 0.15, core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
+  if lit(out, vertices, b.x1 + s - c * 0.15, b.y1 - c * 0.85, b.x1 - c * 0.85, b.y1 + s - c * 0.15, core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
+  // the square corners: top right and bottom left
+  xs := [2] f32.[b.x1 + o, b.x0 - o]; ys := [2] f32.[b.y0 - o, b.y1 + o];
+  for i: 0..<2 {
+    dx := ifx i == 0 then -t else t; dy := ifx i == 0 then t else -t;
+    if lit(out, vertices, xs[i] + dx, ys[i], xs[i], ys[i], core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
+    if lit(out, vertices, xs[i], ys[i], xs[i], ys[i] + dy, core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
   }
   return vertices;
 }
 
-// The panel the shader fills behind the terminal or a prompt (uniforms 8 to 14).
-panel :: (uniforms: [] f32, b: Box, cut: f32, alpha: f32, tint: f32) {
+// The dark glass the shader lays behind the panel taking the eye (the
+// terminal, a prompt, a slide), in metareal_bar's shape (uniforms 8 to 14).
+panel :: (uniforms: [] f32, b: Box, k: f32, alpha: f32, tint: f32) {
   uniforms[8] = b.x0; uniforms[9] = b.y0; uniforms[10] = b.x1; uniforms[11] = b.y1;
-  uniforms[12] = cut; uniforms[13] = alpha; uniforms[14] = tint;
+  uniforms[12] = k; uniforms[13] = alpha; uniforms[14] = tint;
 }
 
 // Draws text, cut with an ellipsis where it would run past width pixels.
-draw_fit :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, space: f32, k: Ink, width: f32) -> int {
-  if measure(text, gap, space, false) * cap <= width { return draw_text(out, at, text, x, base, cap, gap, space, k, false, false); }
+draw_fit :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, space: f32, k: Ink, width: f32) -> int {
+  if measure(text, gap, space, false) * cap <= width { return write(d, out, at, text, x, base, cap, gap, space, k, false, false); }
   dots := "…";
   room := width - (measure(dots, gap, space, false) + gap) * cap;
   end := 0; i := 0;
   while i < text.count {
-    d := decode(text, i);
-    if measure(text[0..<i + d.len], gap, space, false) * cap > room { break; }
-    i += d.len; end = i;
+    r := decode(text, i);
+    if measure(text[0..<i + r.len], gap, space, false) * cap > room { break; }
+    i += r.len; end = i;
   }
-  vertices := draw_text(out, at, text[0..<end], x, base, cap, gap, space, k, false, false);
-  return draw_text(out, vertices, dots, x + (measure(text[0..<end], gap, space, false) + gap) * cap, base, cap, gap, space, k, false, false);
-}
-
-// The tail of text that fits width pixels: its first byte.
-tail_from :: (text: string, cap: f32, gap: f32, space: f32, width: f32) -> int {
-  i := 0;
-  while i < text.count && measure(text[i..<text.count], gap, space, false) * cap > width { i += decode(text, i).len; }
-  return i;
+  vertices := write(d, out, at, text[0..<end], x, base, cap, gap, space, k, false, false);
+  return write(d, out, vertices, dots, x + (measure(text[0..<end], gap, space, false) + gap) * cap, base, cap, gap, space, k, false, false);
 }
 
 // A refused code's shake: pixels across at a fraction f of SHAKE.
@@ -417,63 +636,108 @@ shake :: (f: f32) -> f32 {
 }
 
 caret :: (out: [] f32, at: int, x: f32, base: f32, cap: f32, d: f32, u: [] Ui) -> int {
-  on := u[0].still || (u[0].time - u[0].typed_at) / 1.06 - floor((u[0].time - u[0].typed_at) / 1.06) < 0.5;
+  since := u[0].time - u[0].typed_at;
+  on := u[0].still || since / 1.06 - floor(since / 1.06) < 0.5;
   if !on { return at; }
-  if lit(out, at, x, base + 2 * d, x, base - cap - 3 * d, 0.7 * d, 1, 6 * d, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { return at + 6; }
+  px := floor(x) + 0.5;
+  if lit(out, at, px, base + 2 * d, px, base - cap - 3 * d, 0.5 * d, 1, 3 * d, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { return at + 6; }
   return at;
 }
 
-// The access terminal along the bottom: OA://ACCESS, the typed code after
-// a ">" with a blinking caret, and a status line.
+// A field's text (or its dots, for the key) from left on base, keeping the
+// caret in view within width; the selection lit orange behind it, and the
+// caret. Records the layout in the field for the pointer.
+draw_field :: (u: [] Ui, k: int, out: [] f32, at: int, left: f32, base: f32, size: f32, gap: f32, width: f32,
+               light: f32, focused: bool) -> int {
+  f := field(u, k);
+  d := hi(u[0].dpr, 1);
+  text := field_text(f);
+  masked := k == FIELD_KEY;
+  f[0].left = left; f[0].size = size; f[0].gap = gap;
+  f[0].pitch = ifx masked then 7 * d else 0.0f32;
+  // the first byte shown: the tail that fits, moved back to keep the caret in view
+  from := 0;
+  if masked {
+    chars := 0; i := 0;
+    while i < text.count { i = next_at(text, i); chars += 1; }
+    skip := most(0, chars - cast(int) (width / f[0].pitch));
+    i = 0;
+    for c: 0..<skip { i = next_at(text, i); }
+    from = i;
+  } else {
+    while from < text.count && measure(text[from..<text.count], gap, 0.6, false) * size > width { from = next_at(text, from); }
+  }
+  if f[0].caret < from { from = f[0].caret; }
+  f[0].from = from;
+  vertices := at;
+  mid := base - size * 0.5;
+  // the selection
+  if sel_lo(f) != sel_hi(f) {
+    a := hi(field_x(f, sel_lo(f)), left - 2 * d); b := lo(field_x(f, sel_hi(f)), left + width + 2 * d);
+    if b > a && lit(out, vertices, a, mid, b, mid, size * 0.85, 0.42 * light, 2 * d, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
+  }
+  if masked {
+    pen := left + f[0].pitch * 0.5; i := from;
+    while i < text.count && pen < left + width {
+      if tinted_dot(out, vertices, pen, mid, 1.5 * d, 0.9 * light, 2 * d, HUD_R, HUD_G, HUD_B) { vertices += 6; }
+      pen += f[0].pitch; i = next_at(text, i);
+    }
+  } else {
+    end := from;
+    while end < text.count && measure(text[from..<next_at(text, end)], gap, 0.6, false) * size <= width { end = next_at(text, end); }
+    vertices = write(d, out, vertices, text[from..<end], left, base, size, gap, 0.6, ink(0.7 * d, 0.95 * light, 6 * d, 0.96, 0.96, 0.96), false, false);
+  }
+  if focused && sel_lo(f) == sel_hi(f) { vertices = caret(out, vertices, field_x(f, f[0].caret), base, size, d, u); }
+  return vertices;
+}
+
+// The access terminal along the bottom, a HUD bar: OA://ACCESS, the typed
+// code after a ">" with its caret, and a status line.
 draw_terminal :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   if u[0].vis <= 0 && u[0].term == TERM_CLOSED { return at; }
   t := u[0].time; d := hi(u[0].dpr, 1); w := u[0].width; h := u[0].height;
   term := u[0].term;
   a := ease(u[0].vis);
   lift := 24 * (1 - a);
+  flash := 0.0f32;
   if term == TERM_GRANTED {
     f := ease((t - u[0].term_at - GRANT_HOLD) / GRANT_FADE);
     a *= 1 - f; lift -= 8 * f;
+    flash = ifx u[0].still then 1.0f32 else 1 - ease((t - u[0].term_at) / (GRANT_HOLD + GRANT_FADE));
   }
   if u[0].still { lift = 0; }
   sx := ifx term == TERM_ERROR && !u[0].still then shake((t - u[0].term_at) / SHAKE) else 0.0f32;
-  pw := lo(680 * d, w - 32 * d);
+  if term == TERM_ERROR { flash = ifx u[0].still then 0.4f32 else 0.6 * (1 - ease((t - u[0].term_at) / 0.8)); }
+  pw := lo(680 * d, w - 40 * d);
   b := Box.{x0 = (w - pw) * 0.5 + sx * d, x1 = (w + pw) * 0.5 + sx * d, y1 = h - h * 0.05 + lift * d, y0 = 0};
-  b.y0 = b.y1 - 92 * d;
+  b.y0 = b.y1 - 96 * d;
   tint := ifx term == TERM_ERROR then 1.0f32 else ifx term == TERM_GRANTED then 2.0f32 else 0.0f32;
-  panel(uniforms, b, 12 * d, a, tint);
-  vertices := at;
-  // the border and its glow
-  edge := ink(0.55 * d, 0.5 * a, 12 * d, ORANGE_R, ORANGE_G, ORANGE_B);
-  if term == TERM_ERROR { edge = ink(0.6 * d, 0.75 * a, 14 * d, RED_R, RED_G, RED_B); }
-  if term == TERM_GRANTED { edge = ink(0.8 * d, 0.95 * a, 22 * d, GRANT_R, GRANT_G, GRANT_B); }
-  vertices = outline(out, vertices, b, 12 * d, edge);
+  panel(uniforms, b, d, a, tint);
+  r: f32 = ORANGE_R; g: f32 = ORANGE_G; bl: f32 = ORANGE_B;
+  if term == TERM_ERROR { r = RED_R; g = RED_G; bl = RED_B; }
+  if term == TERM_GRANTED { r = GRANT_R; g = GRANT_G; bl = GRANT_B; }
+  vertices := hud(out, at, b, d, 0, flash, a, r, g, bl);
   // the header
-  left := b.x0 + 16 * d; right := b.x1 - 16 * d;
+  left := b.x0 + 22 * d; right := b.x1 - 22 * d;
   small := 7 * d;
-  head := ink(0.5 * d, 0.75 * a, 4 * d, ORANGE_R, ORANGE_G, ORANGE_B);
-  vertices = draw_text(out, vertices, "OA://ACCESS", left, b.y0 + 19 * d, small, 0.46, 1.3, head, false, false);
+  head := ink(0.5 * d, 0.8 * a, 4 * d, ORANGE_R, ORANGE_G, ORANGE_B);
+  vertices = write(d, out, vertices, "OA://ACCESS", left, b.y0 + 22 * d, small, 0.46, 1.3, head, false, false);
   secure := "LINK SECURE";
   lw := measure(secure, 0.46, 1.3, false) * small;
-  vertices = draw_text(out, vertices, secure, right - lw, b.y0 + 19 * d, small, 0.46, 1.3, head, false, false);
+  vertices = write(d, out, vertices, secure, right - lw, b.y0 + 22 * d, small, 0.46, 1.3, head, false, false);
   pulse := ifx u[0].still then 1.0f32 else 0.35 + 0.65 * (0.5 + 0.5 * cos(t * 6.2832 / 1.6));
-  if tinted_dot(out, vertices, right - lw - 11 * d, b.y0 + 19 * d - small * 0.5, 2.2 * d, pulse * a, 5 * d, ORANGE_R, ORANGE_G, ORANGE_B) { vertices += 6; }
+  if tinted_dot(out, vertices, right - lw - 11 * d, b.y0 + 22 * d - small * 0.5, 2.2 * d, pulse * a, 4 * d, ORANGE_R, ORANGE_G, ORANGE_B) { vertices += 6; }
   // the prompt and the code
-  cap := 11.5 * d; base := b.y0 + 56 * d;
-  vertices = draw_text(out, vertices, ">", left, base, cap, 0.3, 0.6, ink(0.75 * d, a, 8 * d, ORANGE_R, ORANGE_G, ORANGE_B), false, false);
+  cap := 11.5 * d; base := b.y0 + 59 * d;
+  vertices = write(d, out, vertices, ">", left, base, cap, 0.3, 0.6, ink(0.75 * d, a, 8 * d, ORANGE_R, ORANGE_G, ORANGE_B), false, false);
   x := left + (measure(">", 0.3, 0.6, false) * cap) + 12 * d;
   text := code_text(u);
-  room := right - x - 8 * d;
-  shown := text[tail_from(text, cap, 0.3, 0.6, room)..<text.count];
-  vertices = draw_text(out, vertices, shown, x, base, cap, 0.3, 0.6, ink(0.7 * d, 0.95 * a, 6 * d, 0.96, 0.96, 0.96), false, false);
-  if term != TERM_GRANTED {
-    end := x + measure(shown, 0.3, 0.6, false) * cap + ifx shown.count > 0 then 4 * d else 0.0f32;
-    vertices = caret(out, vertices, end, base, cap, d, u);
-    u[0].field = Box.{x0 = x - 8 * d, x1 = right, y0 = base - cap - 10 * d, y1 = base + 10 * d};
-  }
+  editing := term == TERM_OPEN || term == TERM_ERROR;
+  vertices = draw_field(u, FIELD_CODE, out, vertices, x, base, cap, 0.36, right - x - 8 * d, a, editing || term == TERM_BUSY);
+  if editing { u[0].field = Box.{x0 = x - 8 * d, x1 = right, y0 = base - cap - 10 * d, y1 = base + 10 * d}; }
   // the status line
   status: [128] u8; n := 0;
-  sink := ink(0.5 * d, 0.45 * a, 3 * d, 0.93, 0.93, 0.93);
+  sink := ink(0.5 * d, 0.5 * a, 3 * d, 0.93, 0.93, 0.93);
   gap := 0.34f32;
   if term == TERM_OPEN { n = put(status[..], 0, "ENTER TO TRANSMIT · ESC TO CLOSE"); }
   if term == TERM_BUSY {
@@ -496,17 +760,17 @@ draw_terminal :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
     sink = ink(0.6 * d, a, 12 * d, GRANT_R, GRANT_G, GRANT_B);
     gap = 0.7;
   }
-  vertices = draw_fit(out, vertices, cast(string) status[0..<n], left, b.y0 + 80 * d, small, gap, gap + 0.8, sink, right - left);
+  vertices = draw_fit(d, out, vertices, cast(string) status[0..<n], left, b.y0 + 82 * d, small, gap, gap + 0.8, sink, right - left);
   return vertices;
 }
 
-// The not-found page's HOME, as the pointer finds it.
+// The not-found page's HOME button, as the pointer finds it.
 home_box :: (u: [] Ui) -> Box {
   d := hi(u[0].dpr, 1);
   cap := 8 * d;
   w := measure("HOME", 0.41, 0.8, false) * cap;
-  base := u[0].height * 0.94;
-  return Box.{x0 = (u[0].width - w) * 0.5 - 14 * d, x1 = (u[0].width + w) * 0.5 + 14 * d, y0 = base - cap - 12 * d, y1 = base + 12 * d};
+  base := u[0].height * 0.93;
+  return Box.{x0 = (u[0].width - w) * 0.5 - 22 * d, x1 = (u[0].width + w) * 0.5 + 22 * d, y0 = base - cap - 11 * d, y1 = base + 11 * d};
 }
 
 draw_home :: (u: [] Ui, out: [] f32, at: int) -> int {
@@ -514,9 +778,10 @@ draw_home :: (u: [] Ui, out: [] f32, at: int) -> int {
   d := hi(u[0].dpr, 1);
   b := home_box(u);
   hover := !u[0].touch && inside(b, u[0].px, u[0].py);
-  shown := ifx u[0].still then 1.0f32 else ease((u[0].time - 1.6) / 0.6);
-  light := (ifx hover then 0.93f32 else 0.54f32) * shown * ui_scene(u);
-  return draw_text(out, at, "HOME", b.x0 + 14 * d, b.y1 - 12 * d, 8 * d, 0.41, 0.8, ink(0.55 * d, light, 5 * d, 0.93, 0.93, 0.95), false, false);
+  shown := (ifx u[0].still then 1.0f32 else ease((u[0].time - 1.6) / 0.6)) * ui_scene(u);
+  r: f32 = ifx hover then ORANGE_R else HUD_R; g: f32 = ifx hover then ORANGE_G else HUD_G; bl: f32 = ifx hover then ORANGE_B else HUD_B;
+  vertices := hud(out, at, b, d, ifx hover then 0.5f32 else 0.0f32, 0, 0.8 * shown, r, g, bl);
+  return write(d, out, vertices, "HOME", b.x0 + 22 * d, b.y1 - 11 * d, 8 * d, 0.41, 0.8, ink(0.55 * d, 0.93 * shown, 5 * d, r, g, bl), false, false);
 }
 
 // Lines that text wraps to at width pixels and cap.
@@ -528,12 +793,12 @@ line_total :: (text: string, cap: f32, width: f32, gap: f32, space: f32, rich: b
 
 // Draws text wrapped to width pixels, the first line's top at y. Returns
 // the new vertex count; writes the height used to height[0].
-draw_wrapped :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, gap: f32, space: f32,
+draw_wrapped :: (d: f32, out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, gap: f32, space: f32,
                  k: Ink, width: f32, leading: f32, rich: bool, draw: bool, height: [] f32) -> int {
   next: [1] int; i := 0; lines := 0; vertices := at;
   while i < text.count && lines < 200 {
     end := wrap(text, i, width / cap, gap, space, rich, next[..]);
-    if draw { vertices = draw_text(out, vertices, text[i..<end], x, y + cap + cast(f32) lines * leading, cap, gap, space, k, rich, rich && bold_at(text, i)); }
+    if draw { vertices = write(d, out, vertices, text[i..<end], x, y + cap + cast(f32) lines * leading, cap, gap, space, k, rich, rich && bold_at(text, i)); }
     i = next[0]; lines += 1;
   }
   height[0] = ifx lines > 0 then cap + cast(f32) (lines - 1) * leading else 0.0f32;
@@ -560,21 +825,21 @@ slide_flow :: (u: [] Ui, out: [] f32, at: int, k: int, x0: f32, y: f32, width: f
     text := deck[i + 1..<end];
     i = end + 1;
     if kind == 'T' {
-      vertices = draw_wrapped(out, vertices, text, x0, top, title, 0.22, 0.7, ink(0.75 * d * scale + 0.35 * d, 0.97 * light, 10 * d * scale, 0.95, 0.95, 0.97), width, title * 1.55, true, draw, used[..]);
+      vertices = draw_wrapped(d, out, vertices, text, x0, top, title, 0.22, 0.7, ink(0.75 * d * scale + 0.35 * d, 0.97 * light, 10 * d * scale, 0.95, 0.95, 0.97), width, title * 1.55, true, draw, used[..]);
       top += used[0] + title * 0.75;
     }
     if kind == 'S' {
-      vertices = draw_wrapped(out, vertices, text, x0, top, sub, 0.22, 0.75, ink(0.55 * d, 0.85 * light, 4 * d, 0.66, 0.66, 0.7), width, sub * 2, true, draw, used[..]);
+      vertices = draw_wrapped(d, out, vertices, text, x0, top, sub, 0.22, 0.75, ink(0.55 * d, 0.85 * light, 4 * d, 0.66, 0.66, 0.7), width, sub * 2, true, draw, used[..]);
       top += used[0] + sub * 2.4;
     }
     if kind == 'B' {
       indent := body * 2.2;
-      vertices = draw_wrapped(out, vertices, text, x0 + indent, top, body, 0.22, 0.75, ink(0.6 * d, 0.92 * light, 4 * d, 0.92, 0.92, 0.94), width - indent, body * 2.1, true, draw, used[..]);
-      if draw && tinted_dot(out, vertices, x0 + body * 0.5, top + body * 0.5, body * 0.22, light, body * 0.9, ORANGE_R, ORANGE_G, ORANGE_B) { vertices += 6; }
+      vertices = draw_wrapped(d, out, vertices, text, x0 + indent, top, body, 0.22, 0.75, ink(0.6 * d, 0.92 * light, 4 * d, 0.92, 0.92, 0.94), width - indent, body * 2.1, true, draw, used[..]);
+      if draw && tinted_dot(out, vertices, x0 + body * 0.5, top + body * 0.5, body * 0.22, light, body * 0.5, ORANGE_R, ORANGE_G, ORANGE_B) { vertices += 6; }
       top += used[0] + body * 1.25;
     }
     if kind == 'P' {
-      vertices = draw_wrapped(out, vertices, text, x0, top, body, 0.22, 0.75, ink(0.6 * d, 0.84 * light, 4 * d, 0.84, 0.84, 0.86), width, body * 2.1, true, draw, used[..]);
+      vertices = draw_wrapped(d, out, vertices, text, x0, top, body, 0.22, 0.75, ink(0.6 * d, 0.84 * light, 4 * d, 0.84, 0.84, 0.86), width, body * 2.1, true, draw, used[..]);
       top += used[0] + body * 1.1;
     }
     if kind == 'N' && u[0].notes {
@@ -583,24 +848,25 @@ slide_flow :: (u: [] Ui, out: [] f32, at: int, k: int, x0: f32, y: f32, width: f
         if draw && lit(out, vertices, x0, top, x0 + width, top, 0.4 * d, 0.35 * light, 2 * d, 0.6, 0.6, 0.66, MODE_STROKE) { vertices += 6; }
         top += body * 1.4; noted = true;
       }
-      vertices = draw_wrapped(out, vertices, text, x0, top, note, 0.22, 0.75, ink(0.5 * d, 0.6 * light, 3 * d, 0.6, 0.6, 0.66), width, note * 2, true, draw, used[..]);
+      vertices = draw_wrapped(d, out, vertices, text, x0, top, note, 0.22, 0.75, ink(0.5 * d, 0.6 * light, 3 * d, 0.6, 0.6, 0.66), width, note * 2, true, draw, used[..]);
       top += used[0] + note * 1.2;
     }
   }
   return Flow.{y = top, vertices = vertices};
 }
 
-// The current slide, centred over the dimmed scene, with a progress line
-// along the top and its number at the bottom.
-draw_deck :: (u: [] Ui, out: [] f32, at: int) -> int {
+// The current slide in a HUD panel over the dimmed scene, with a progress
+// line along the top and its number at the bottom.
+draw_deck :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   d := hi(u[0].dpr, 1); w := u[0].width; h := u[0].height;
   light := ease(u[0].veil);
   n := slide_count(deck_text(u));
   if n == 0 || light <= 0 { return at; }
   k := most(0, least(n - 1, u[0].slide));
-  width := lo(880 * d, w - 32 * d);
+  pad := lo(32 * d, w * 0.05);
+  width := lo(880 * d, w - 40 * d - pad * 2);
   x0 := (w - width) * 0.5;
-  room := h - 110 * d;
+  room := h - 130 * d - pad * 2;
   scale := 1.0f32;
   for pass: 0..<3 {
     tall := slide_flow(u, out, at, k, x0, 0, width, scale, light, false).y;
@@ -608,10 +874,14 @@ draw_deck :: (u: [] Ui, out: [] f32, at: int) -> int {
     scale = hi(0.4, scale * room / tall * 0.98);
   }
   tall := slide_flow(u, out, at, k, x0, 0, width, scale, light, false).y;
-  vertices := slide_flow(u, out, at, k, x0, hi(48 * d, (h - tall) * 0.5), width, scale, light, true).vertices;
+  top := hi(56 * d + pad, (h - tall) * 0.5);
+  card := Box.{x0 = x0 - pad, x1 = x0 + width + pad, y0 = top - pad, y1 = top + tall + pad * 0.6};
+  panel(uniforms, card, d, light, 0);
+  vertices := hud(out, at, card, d, 0, 0, 0.7 * light, HUD_R, HUD_G, HUD_B);
+  vertices = slide_flow(u, out, vertices, k, x0, top, width, scale, light, true).vertices;
   // progress along the top
   done := w * cast(f32) (k + 1) / cast(f32) n;
-  if lit(out, vertices, 0, 1 * d, done, 1 * d, 1 * d, light, 8 * d, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
+  if lit(out, vertices, 0, 1 * d, done, 1 * d, 1 * d, light, 6 * d, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
   // "3 / 12"
   count: [32] u8;
   c := put_int(count[..], 0, k + 1);
@@ -620,65 +890,61 @@ draw_deck :: (u: [] Ui, out: [] f32, at: int) -> int {
   label := cast(string) count[0..<c];
   cap := 8.5 * d;
   lw := measure(label, 0.45, 0.9, false) * cap;
-  return draw_text(out, vertices, label, (w - lw) * 0.5, h - 18 * d, cap, 0.45, 0.9, ink(0.5 * d, 0.5 * light, 3 * d, 0.6, 0.6, 0.66), false, false);
+  return write(d, out, vertices, label, (w - lw) * 0.5, h - 18 * d, cap, 0.45, 0.9, ink(0.5 * d, 0.55 * light, 3 * d, 0.6, 0.6, 0.66), false, false);
 }
 
-// The key prompt, the first time a presentation opens on a device.
+// The key prompt, the first time a presentation opens on a device: what to
+// do, in steps, a field that shows dots for the key, and OPEN.
 draw_prompt :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   d := hi(u[0].dpr, 1); w := u[0].width; h := u[0].height; t := u[0].time;
   a := ease(u[0].veil);
   checking := u[0].show == SHOW_CHECKING;
-  pw := lo(440 * d, w - 32 * d);
-  inner := pw - 40 * d;
-  say := "This needs the key it was sealed to. Paste it (nsec or hex) to keep it on this device, in this browser only.";
+  pw := lo(480 * d, w - 40 * d);
+  inner := pw - 48 * d;
+  step := "PASTE YOUR DECK KEY (ONE LINE, NSEC OR HEX), THEN PRESS ENTER.";
   small := 7.5 * d;
-  lines := line_total(say, small, inner, 0.25, 0.75, false);
-  tall := 20 * d + 14 * d + 18 * d + (small + cast(f32) (lines - 1) * small * 2.2) + 20 * d + 36 * d + 14 * d + 30 * d + 22 * d + 20 * d;
+  lines := line_total(step, small, inner, 0.28, 0.8, false);
+  title := 12 * d;
+  tall := 26 * d + title + 18 * d + (small + cast(f32) (lines - 1) * small * 2.2) + 18 * d + 38 * d + 16 * d + 32 * d + 24 * d + 22 * d;
   b := Box.{x0 = (w - pw) * 0.5, x1 = (w + pw) * 0.5, y0 = (h - tall) * 0.5, y1 = (h + tall) * 0.5};
-  panel(uniforms, b, 12 * d, a, ifx u[0].key_wrong then 1.0f32 else 0.0f32);
-  vertices := outline(out, at, b, 12 * d, ink(0.55 * d, 0.45 * a, 12 * d, ORANGE_R, ORANGE_G, ORANGE_B));
-  x := b.x0 + 20 * d; y := b.y0 + 20 * d;
-  vertices = draw_text(out, vertices, "KEY NEEDED", x, y + 14 * d, 14 * d, 0.3, 0.8, ink(0.7 * d, 0.97 * a, 9 * d, 0.95, 0.95, 0.97), false, false);
-  y += 14 * d + 18 * d;
+  panel(uniforms, b, d, a, ifx u[0].key_wrong then 1.0f32 else 0.0f32);
+  vertices := hud(out, at, b, d, 0, 0, a, HUD_R, HUD_G, HUD_B);
+  x := b.x0 + 24 * d; y := b.y0 + 26 * d;
+  vertices = draw_fit(d, out, vertices, "THIS DECK IS LOCKED TO A KEY", x, y + title, title, 0.28, 0.9, ink(0.7 * d, 0.97 * a, 9 * d, 0.95, 0.95, 0.97), inner);
+  y += title + 18 * d;
   used: [1] f32;
-  vertices = draw_wrapped(out, vertices, say, x, y, small, 0.25, 0.75, ink(0.5 * d, 0.75 * a, 3 * d, 0.66, 0.66, 0.7), inner, small * 2.2, false, true, used[..]);
-  y += used[0] + 20 * d;
-  // the field: one dot per character, never the key itself
-  field := Box.{x0 = x, x1 = b.x1 - 20 * d, y0 = y, y1 = y + 36 * d};
-  if !checking { u[0].field = field; }
-  vertices = outline(out, vertices, field, 6 * d, ink(0.5 * d, 0.4 * a, 4 * d, 0.6, 0.6, 0.66));
-  key := cast(string) u[0].key[0..<u[0].key_n];
-  chars := 0; i := 0;
-  while i < key.count { i += decode(key, i).len; chars += 1; }
-  fits := most(1, cast(int) ((field.x1 - field.x0 - 30 * d) / (7 * d)));
-  mid := (field.y0 + field.y1) * 0.5;
-  pen := field.x0 + 14 * d;
-  for c: most(0, chars - fits)..<chars {
-    if tinted_dot(out, vertices, pen, mid, 1.5 * d, 0.9 * a, 3 * d, 0.93, 0.93, 0.95) { vertices += 6; }
-    pen += 7 * d;
+  vertices = draw_wrapped(d, out, vertices, step, x, y, small, 0.28, 0.8, ink(0.5 * d, 0.85 * a, 3 * d, 0.85, 0.85, 0.88), inner, small * 2.2, false, true, used[..]);
+  y += used[0] + 18 * d;
+  // the field, in focus: orange
+  box := Box.{x0 = x, x1 = b.x1 - 24 * d, y0 = y, y1 = y + 38 * d};
+  vertices = bar(out, vertices, box, d, 0, 0, (ifx checking then 0.45f32 else 0.9f32) * a, ORANGE_R, ORANGE_G, ORANGE_B);
+  mid := (box.y0 + box.y1) * 0.5;
+  f := field(u, FIELD_KEY);
+  if !checking {
+    u[0].field = box;
+    if f[0].n == 0 {
+      vertices = write(d, out, vertices, "NSEC1… OR 64 HEX", box.x0 + 22 * d, mid + 3.5 * d, 7 * d, 0.3, 0.8, ink(0.5 * d, 0.3 * a, 2 * d, 0.75, 0.75, 0.8), false, false);
+    }
+    vertices = draw_field(u, FIELD_KEY, out, vertices, box.x0 + 14 * d, mid + 5 * d, 10 * d, 0.3, box.x1 - box.x0 - 30 * d, a, true);
   }
-  if chars == 0 && !checking {
-    vertices = draw_text(out, vertices, "NSEC OR HEX", pen, mid + 3.5 * d, 7 * d, 0.3, 0.8, ink(0.5 * d, 0.3 * a, 2 * d, 0.7, 0.7, 0.75), false, false);
-  }
-  if !checking { vertices = caret(out, vertices, pen + ifx chars > 0 then -2 * d else -6 * d, mid + 5 * d, 10 * d, d, u); }
-  y = field.y1 + 14 * d;
-  // OPEN
-  button := Box.{x0 = x, x1 = x + 96 * d, y0 = y, y1 = y + 30 * d};
+  y = box.y1 + 16 * d;
+  // OPEN, in orange
+  button := Box.{x0 = x, x1 = x + 104 * d, y0 = y, y1 = y + 32 * d};
   u[0].button = button;
   hover := !u[0].touch && inside(button, u[0].px, u[0].py) && !checking;
-  vertices = outline(out, vertices, button, 6 * d, ink(0.6 * d, (ifx hover then 0.95f32 else 0.6f32) * a, 10 * d, ORANGE_R, ORANGE_G, ORANGE_B));
+  vertices = hud(out, vertices, button, d, ifx hover then 0.6f32 else 0.0f32, 0, a, ORANGE_R, ORANGE_G, ORANGE_B);
   label: [16] u8;
   n := put(label[..], 0, ifx checking then "CHECKING" else "OPEN");
-  if checking { dots := (cast(int) floor((t - u[0].show_at) * 4)) % 4; for k: 0..<dots { n = put(label[..], n, "."); } }
-  word := cast(string) label[0..<n];
+  if checking { dots := (cast(int) floor((t - u[0].show_at) * 4)) % 4; for i: 0..<dots { n = put(label[..], n, "."); } }
   cap := 8 * d;
   lw := measure(ifx checking then "CHECKING" else "OPEN", 0.4, 0.8, false) * cap;
-  vertices = draw_text(out, vertices, word, (button.x0 + button.x1 - lw) * 0.5, (button.y0 + button.y1 + cap) * 0.5, cap, 0.4, 0.8, ink(0.6 * d, a, 6 * d, ORANGE_R, ORANGE_G, ORANGE_B), false, false);
-  hint := "ENTER TO OPEN · ESC TO CLOSE";
-  vertices = draw_fit(out, vertices, hint, button.x1 + 16 * d, (button.y0 + button.y1 + 6 * d) * 0.5, 6 * d, 0.3, 0.8, ink(0.45 * d, 0.4 * a, 2 * d, 0.93, 0.93, 0.93), field.x1 - button.x1 - 16 * d);
-  y = button.y1 + 22 * d;
+  vertices = write(d, out, vertices, cast(string) label[0..<n], (button.x0 + button.x1 - lw) * 0.5, (button.y0 + button.y1 + cap) * 0.5, cap, 0.4, 0.8, ink(0.65 * d, a, 6 * d, ORANGE_R, ORANGE_G, ORANGE_B), false, false);
+  vertices = draw_fit(d, out, vertices, "ESC TO CANCEL", button.x1 + 18 * d, (button.y0 + button.y1 + 7 * d) * 0.5, 7 * d, 0.32, 0.9, ink(0.45 * d, 0.55 * a, 2 * d, 0.93, 0.93, 0.93), b.x1 - 24 * d - button.x1 - 18 * d);
+  y = button.y1 + 24 * d;
   if u[0].key_wrong && !checking {
-    vertices = draw_fit(out, vertices, "THAT ISN'T THE KEY THIS WAS SEALED TO.", x, y, 7 * d, 0.3, 0.8, ink(0.55 * d, 0.95 * a, 7 * d, RED_R, RED_G, RED_B), inner);
+    vertices = draw_fit(d, out, vertices, "THAT ISN'T THE KEY THIS DECK IS LOCKED TO.", x, y, 7 * d, 0.3, 0.8, ink(0.55 * d, 0.95 * a, 7 * d, RED_R, RED_G, RED_B), inner);
+  } else {
+    vertices = draw_fit(d, out, vertices, "THE KEY STAYS IN THIS BROWSER, ON THIS DEVICE.", x, y, 6.5 * d, 0.3, 0.8, ink(0.45 * d, 0.45 * a, 2 * d, 0.8, 0.8, 0.85), inner);
   }
   return vertices;
 }
@@ -691,21 +957,23 @@ draw_status :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
     word: [16] u8;
     n := put(word[..], 0, "OPENING");
     dots := ifx u[0].still then 3 else (cast(int) floor((u[0].time - u[0].show_at) * 4)) % 4;
-    for k: 0..<dots { n = put(word[..], n, "."); }
+    for i: 0..<dots { n = put(word[..], n, "."); }
     cap := 9 * d;
     lw := measure("OPENING", 0.5, 0.8, false) * cap;
-    return draw_text(out, at, cast(string) word[0..<n], (w - lw) * 0.5, (h + cap) * 0.5, cap, 0.5, 0.8, ink(0.6 * d, 0.9 * a, 8 * d, ORANGE_R, ORANGE_G, ORANGE_B), false, false);
+    b := Box.{x0 = (w - lw) * 0.5 - 26 * d, x1 = (w + lw) * 0.5 + 34 * d, y0 = (h - cap) * 0.5 - 14 * d, y1 = (h + cap) * 0.5 + 14 * d};
+    vertices := hud(out, at, b, d, 0, 0, 0.8 * a, ORANGE_R, ORANGE_G, ORANGE_B);
+    return write(d, out, vertices, cast(string) word[0..<n], (w - lw) * 0.5, (h + cap) * 0.5, cap, 0.5, 0.8, ink(0.6 * d, 0.9 * a, 8 * d, ORANGE_R, ORANGE_G, ORANGE_B), false, false);
   }
   text := cast(string) u[0].notice[0..<u[0].notice_n];
   cap := 10 * d;
-  pw := lo(440 * d, w - 32 * d);
-  lines := line_total(text, cap, pw - 40 * d, 0.25, 0.75, false);
-  tall := 40 * d + cap + cast(f32) (lines - 1) * cap * 2.1;
+  pw := lo(440 * d, w - 40 * d);
+  lines := line_total(text, cap, pw - 48 * d, 0.25, 0.75, false);
+  tall := 48 * d + cap + cast(f32) (lines - 1) * cap * 2.1;
   b := Box.{x0 = (w - pw) * 0.5, x1 = (w + pw) * 0.5, y0 = (h - tall) * 0.5, y1 = (h + tall) * 0.5};
-  panel(uniforms, b, 12 * d, a, 0);
-  vertices := outline(out, at, b, 12 * d, ink(0.55 * d, 0.45 * a, 12 * d, ORANGE_R, ORANGE_G, ORANGE_B));
+  panel(uniforms, b, d, a, 0);
+  vertices := hud(out, at, b, d, 0, 0, a, HUD_R, HUD_G, HUD_B);
   used: [1] f32;
-  return draw_wrapped(out, vertices, text, b.x0 + 20 * d, b.y0 + 20 * d, cap, 0.25, 0.75, ink(0.6 * d, 0.92 * a, 5 * d, 0.93, 0.93, 0.95), pw - 40 * d, cap * 2.1, false, true, used[..]);
+  return draw_wrapped(d, out, vertices, text, b.x0 + 24 * d, b.y0 + 24 * d, cap, 0.25, 0.75, ink(0.6 * d, 0.92 * a, 5 * d, 0.93, 0.93, 0.95), pw - 48 * d, cap * 2.1, false, true, used[..]);
 }
 
 // Everything above the scene, from vertex at. Sets the panel uniforms.
@@ -715,7 +983,7 @@ ui_draw :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   vertices := draw_home(u, out, at);
   if u[0].term != TERM_CLOSED || u[0].vis > 0 { return draw_terminal(u, out, vertices, uniforms); }
   what := u[0].show;
-  if what == SHOW_DECK { return draw_deck(u, out, vertices); }
+  if what == SHOW_DECK { return draw_deck(u, out, vertices, uniforms); }
   if what == SHOW_KEY || what == SHOW_CHECKING { return draw_prompt(u, out, vertices, uniforms); }
   if what == SHOW_LOADING || what == SHOW_NOTICE { return draw_status(u, out, vertices, uniforms); }
   return vertices;
@@ -731,13 +999,16 @@ send :: (u: [] Ui, kind: int, text: string) {
   n := put(u[0].inbox[..], 0, text);
   ui_message(u, kind, n);
 }
+outbox :: (u: [] Ui) -> string { return cast(string) u[0].outbox[0..<u[0].out_n]; }
+key_text :: (u: [] Ui) -> string { return field_text(field(u, FIELD_KEY)); }
+typed :: (u: [] Ui, text: string) { for i: 0..<text.count { _ := ui_key(u, cast(int) text[i], 0); } }
 
 #test "the second key opens the terminal holding both; the first alone does nothing" {
   u: [1] Ui; fresh(u[..], 5);
   #assert !ui_key(u[..], 'p', 0) && u[0].term == TERM_CLOSED && !ui_wants_text(u[..]);
   u[0].time = 6;
   #assert ui_key(u[..], 'o', 1) && u[0].term == TERM_OPEN && code_text(u[..]) == "po" && ui_wants_text(u[..]);
-  #assert ui_key(u[..], KEY_ESCAPE, 0) && u[0].term == TERM_CLOSED && u[0].code_n == 0;
+  #assert ui_key(u[..], KEY_ESCAPE, 0) && u[0].term == TERM_CLOSED && field(u[..], FIELD_CODE)[0].n == 0;
   // keys too far apart, a shortcut, or no presentations here: nothing opens
   _ := ui_key(u[..], 'a', 0); u[0].time = 9;
   #assert !ui_key(u[..], 'b', 0) && u[0].term == TERM_CLOSED;
@@ -750,18 +1021,18 @@ send :: (u: [] Ui, kind: int, text: string) {
   #assert !ui_key(v[..], 'b', 0) && v[0].term == TERM_CLOSED;
 }
 
-#test "a code is capped, edited, and sent on Enter; refused shakes and the next key replaces it" {
+#test "a code is capped and sent on Enter; refused selects it so the next key replaces it" {
   u: [1] Ui; fresh(u[..], 1);
   open_terminal(u[..], "");
   for i: 0..<100 { _ := ui_key(u[..], 'x', 0); }
-  #assert u[0].code_n == CODE_MAX;
-  u[0].code_n = 0;
+  #assert field(u[..], FIELD_CODE)[0].n == CODE_MAX;
+  field_clear(field(u[..], FIELD_CODE));
   #assert ui_key(u[..], KEY_ENTER, 0) && u[0].term == TERM_OPEN && u[0].action == 0;   // nothing to send
   send(u[..], MSG_TEXT, "Sésame");
   _ := ui_key(u[..], KEY_BACKSPACE, 0);
   #assert code_text(u[..]) == "Sésam";
   _ = ui_key(u[..], KEY_ENTER, 0);
-  #assert u[0].term == TERM_BUSY && u[0].action == ACT_CODE && cast(string) u[0].outbox[0..<u[0].out_n] == "Sésam";
+  #assert u[0].term == TERM_BUSY && u[0].action == ACT_CODE && outbox(u[..]) == "Sésam";
   _ = ui_key(u[..], 'z', 0);
   #assert code_text(u[..]) == "Sésam";            // busy: typing waits
   send(u[..], MSG_REFUSED, "");
@@ -769,6 +1040,106 @@ send :: (u: [] Ui, kind: int, text: string) {
   _ = ui_key(u[..], 'q', 0);
   #assert u[0].term == TERM_OPEN && code_text(u[..]) == "q";
   #assert u[0].inbox[0] == 0;                      // messages don't stay in the inbox
+}
+
+#test "editing: select all, typing over it, cut, copy, and paste left to the browser" {
+  u: [1] Ui; fresh(u[..], 1);
+  open_terminal(u[..], "hello world");
+  #assert ui_key(u[..], 'a', MOD_META) && sel_lo(field(u[..], FIELD_CODE)) == 0 && sel_hi(field(u[..], FIELD_CODE)) == 11;
+  #assert ui_key(u[..], 'c', MOD_META) && u[0].action == ACT_COPY && outbox(u[..]) == "hello world" && code_text(u[..]) == "hello world";
+  u[0].action = 0;
+  #assert !ui_key(u[..], 'v', MOD_META) && !ui_key(u[..], 'v', MOD_CTRL);
+  _ := ui_key(u[..], 'x', MOD_CTRL);
+  #assert u[0].action == ACT_COPY && outbox(u[..]) == "hello world" && code_text(u[..]) == "";
+  typed(u[..], "one two");
+  _ = ui_key(u[..], 'a', MOD_CTRL);
+  typed(u[..], "Z");
+  #assert code_text(u[..]) == "Z";
+  send(u[..], MSG_TEXT, "pasted");                 // a paste arrives as text, at the caret
+  #assert code_text(u[..]) == "Zpasted";
+}
+
+#test "editing: the caret moves by letter, word and line, and Shift extends a selection" {
+  u: [1] Ui; fresh(u[..], 1);
+  open_terminal(u[..], "alpha beta gamma");
+  f := field(u[..], FIELD_CODE);
+  _ := ui_key(u[..], KEY_LEFT, 0);
+  #assert f[0].caret == 15;
+  _ = ui_key(u[..], KEY_LEFT, MOD_ALT);
+  #assert f[0].caret == 11;
+  _ = ui_key(u[..], KEY_LEFT, MOD_ALT | MOD_SHIFT);
+  #assert f[0].caret == 6 && f[0].anchor == 11;
+  _ = ui_key(u[..], KEY_RIGHT, 0);                 // collapses to the selection's end
+  #assert f[0].caret == 11 && f[0].anchor == 11;
+  _ = ui_key(u[..], KEY_LEFT, MOD_META);
+  #assert f[0].caret == 0;
+  _ = ui_key(u[..], KEY_END, MOD_SHIFT);
+  #assert f[0].caret == 16 && f[0].anchor == 0;
+  _ = ui_key(u[..], KEY_HOME, 0);
+  _ = ui_key(u[..], KEY_RIGHT, MOD_ALT);
+  #assert f[0].caret == 5;
+  _ = ui_key(u[..], KEY_RIGHT, MOD_SHIFT);
+  #assert sel_lo(f) == 5 && sel_hi(f) == 6;
+  typed(u[..], "_");
+  #assert code_text(u[..]) == "alpha_beta gamma";
+}
+
+#test "editing: Backspace and Delete by letter, word and line" {
+  u: [1] Ui; fresh(u[..], 1);
+  open_terminal(u[..], "one two three");
+  _ := ui_key(u[..], KEY_BACKSPACE, MOD_ALT);
+  #assert code_text(u[..]) == "one two ";
+  _ = ui_key(u[..], KEY_BACKSPACE, MOD_CTRL);
+  #assert code_text(u[..]) == "one ";
+  _ = ui_key(u[..], KEY_HOME, 0);
+  _ = ui_key(u[..], KEY_DELETE, 0);
+  #assert code_text(u[..]) == "ne ";
+  _ = ui_key(u[..], KEY_DELETE, MOD_ALT);
+  #assert code_text(u[..]) == " ";
+  typed(u[..], "a b");
+  _ = ui_key(u[..], KEY_BACKSPACE, MOD_META);
+  #assert code_text(u[..]) == " " && field(u[..], FIELD_CODE)[0].caret == 0;
+  _ = ui_key(u[..], KEY_END, 0);
+  typed(u[..], "x");
+  _ = ui_key(u[..], KEY_LEFT, MOD_SHIFT | MOD_META);
+  _ = ui_key(u[..], KEY_BACKSPACE, 0);
+  #assert code_text(u[..]) == "";
+}
+
+#test "editing: click places the caret, drag selects, double click selects a word" {
+  out: [UI_QUADS * 6 * VERTEX_FLOATS] f32; uniforms: [16] f32;
+  u: [1] Ui; fresh(u[..], 1); u[0].still = true;
+  open_terminal(u[..], "alpha beta");
+  ui_step(u[..], 0.1);
+  drawn := ui_draw(u[..], out[..], 0, uniforms[..]);
+  #assert drawn > 0;
+  f := field(u[..], FIELD_CODE);
+  b := u[0].field;
+  #assert b.x1 > b.x0;
+  y := (b.y0 + b.y1) * 0.5;
+  start := field_x(f, 0); mid := field_x(f, 5); end := field_x(f, 10);
+  #assert start < mid && mid < end;
+  #assert ui_pointer(u[..], mid, y, POINTER_DOWN, 0) && f[0].caret == 5;
+  _ := ui_pointer(u[..], end + 30, y, POINTER_MOVE, 0);
+  _ = ui_pointer(u[..], end + 30, y, POINTER_UP, 0);
+  #assert sel_lo(f) == 5 && sel_hi(f) == 10;
+  u[0].time = 3;
+  _ = ui_pointer(u[..], field_x(f, 2), y, POINTER_DOWN, 0); _ = ui_pointer(u[..], field_x(f, 2), y, POINTER_UP, 0);
+  u[0].time = 3.2;
+  _ = ui_pointer(u[..], field_x(f, 2), y, POINTER_DOWN, 0); _ = ui_pointer(u[..], field_x(f, 2), y, POINTER_UP, 0);
+  #assert sel_lo(f) == 0 && sel_hi(f) == 5;
+}
+
+#test "the key field: spaces dropped, copy and cut never take the key" {
+  u: [1] Ui; fresh(u[..], 1);
+  send(u[..], MSG_KEY_NEEDED, "");
+  send(u[..], MSG_TEXT, "nsec1 abc\n");
+  #assert key_text(u[..]) == "nsec1abc";
+  _ := ui_key(u[..], 'a', MOD_META);
+  #assert ui_key(u[..], 'c', MOD_META) && u[0].action == 0;
+  #assert ui_key(u[..], 'x', MOD_META) && u[0].action == 0 && key_text(u[..]) == "nsec1abc";
+  _ = ui_key(u[..], KEY_BACKSPACE, 0);
+  #assert key_text(u[..]) == "";
 }
 
 #test "granted: the terminal fades, then the presentation's loading, prompt and slides" {
@@ -781,11 +1152,10 @@ send :: (u: [] Ui, kind: int, text: string) {
   #assert u[0].term == TERM_CLOSED && u[0].veil > 0.9 && ui_scene(u[..]) < 0.5;
   send(u[..], MSG_KEY_NEEDED, "");
   #assert ui_wants_text(u[..]);
-  send(u[..], MSG_TEXT, "nsec1 abc");
-  #assert cast(string) u[0].key[0..<u[0].key_n] == "nsec1abc";
+  send(u[..], MSG_TEXT, "nsec1abc");
   _ = ui_key(u[..], KEY_ENTER, 0);
-  #assert u[0].action == ACT_KEY && cast(string) u[0].outbox[0..<u[0].out_n] == "nsec1abc";
-  #assert u[0].key_n == 0 && u[0].key[0] == 0 && u[0].show == SHOW_CHECKING;
+  #assert u[0].action == ACT_KEY && outbox(u[..]) == "nsec1abc";
+  #assert field(u[..], FIELD_KEY)[0].n == 0 && field(u[..], FIELD_KEY)[0].text[0] == 0 && u[0].show == SHOW_CHECKING;
   send(u[..], MSG_KEY_WRONG, "");
   #assert u[0].show == SHOW_KEY && u[0].key_wrong;
   send(u[..], MSG_DECK, "DTalk\n=\nTOne\nBa **b**\n=\nTTwo\n=\nTThree\nNa note\n");
@@ -835,27 +1205,30 @@ send :: (u: [] Ui, kind: int, text: string) {
   _ := ui_pointer(u[..], cx, cy, POINTER_MOVE, 0);
   #assert ui_cursor(u[..]) == 1;
   _ = ui_pointer(u[..], cx, cy, POINTER_DOWN, 0);
-  #assert ui_pointer(u[..], cx, cy, POINTER_UP, 0) && u[0].action == ACT_NAVIGATE && cast(string) u[0].outbox[0..<u[0].out_n] == "/";
+  #assert ui_pointer(u[..], cx, cy, POINTER_UP, 0) && u[0].action == ACT_NAVIGATE && outbox(u[..]) == "/";
   _ = ui_pointer(u[..], 10, 10, POINTER_MOVE, 0);
   #assert ui_cursor(u[..]) == 0;
 }
 
-#test "the terminal, a slide and the prompt fit a 320 px phone" {
+#test "every panel is a HUD bar, and the terminal, a slide and the prompt fit a 320 px phone" {
   out: [UI_QUADS * 6 * VERTEX_FLOATS] f32; uniforms: [16] f32;
   u: [1] Ui;
   u[0].width = 960; u[0].height = 1920; u[0].dpr = 3; u[0].time = 2; u[0].armed = true; u[0].still = true;
   open_terminal(u[..], "an access code much longer than a phone is wide");
   ui_step(u[..], 0.1);
-  for state: 0..<3 {
+  for state: 0..<4 {
     if state == 1 { _ := ui_key(u[..], KEY_ENTER, 0); send(u[..], MSG_REFUSED, ""); }
     if state == 2 { close_terminal(u[..]); ui_step(u[..], 0.1); send(u[..], MSG_DECK, "DT\n=\nTA title long enough to wrap on a phone held upright\nSSub\nBA bullet with **bold** words that runs on for a while and wraps to more lines\nPAnd a paragraph.\n"); ui_step(u[..], 1); }
+    if state == 3 { send(u[..], MSG_KEY_NEEDED, ""); send(u[..], MSG_TEXT, "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"); }
     n := ui_draw(u[..], out[..], 0, uniforms[..]);
     #assert n > 0 && n % 6 == 0;
-    for v: 0..<n { x := out[v * VERTEX_FLOATS]; y := out[v * VERTEX_FLOATS + 1]; #assert x > -60 && x < 1020 && y > -60 && y < 1980; }
-    if state < 2 { #assert uniforms[8] >= 48 - 21 && uniforms[10] <= 912 + 21 && uniforms[11] < 1920 && uniforms[13] > 0.9; }
+    bars := 0;
+    for v: 0..<n {
+      x := out[v * VERTEX_FLOATS]; y := out[v * VERTEX_FLOATS + 1];
+      if out[v * VERTEX_FLOATS + 11] == MODE_BAR { bars += 1; continue; }   // a bar's quad holds its glow too
+      #assert x > -60 && x < 1020 && y > -60 && y < 1980;
+    }
+    #assert bars >= 6;
+    #assert uniforms[10] > uniforms[8] && uniforms[8] >= 0 && uniforms[10] <= 960 && uniforms[13] > 0.9;
   }
-  send(u[..], MSG_KEY_NEEDED, "");
-  ui_step(u[..], 1);
-  n := ui_draw(u[..], out[..], 0, uniforms[..]);
-  #assert n > 0 && uniforms[8] >= 48 && uniforms[10] <= 912;
 }

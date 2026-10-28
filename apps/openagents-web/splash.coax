@@ -27,7 +27,7 @@ SplashState :: struct {
 LINES :: 2;          // the most lines a page has
 LINE_MAX :: 11;      // letters in the longest line
 MAX_SEGMENTS :: 160; // a page's strokes, with room
-VERTEX_FLOATS :: 12; // x, y, along, across, length, core, light, glow, red, green, blue, mode
+VERTEX_FLOATS :: 16; // x, y, along, across, length, core, light, glow, red, green, blue, mode, then a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 50400; // (MAX_SEGMENTS + GRAPH_QUADS + UI_QUADS) * 6
 
 // How the shader draws a quad (the vertex's last float).
@@ -35,7 +35,8 @@ MODE_STROKE :: 0.0;  // a sharp core and a soft glow: words, nodes
 MODE_LINK :: 1.0;    // a soft line, faded where it meets its nodes
 MODE_PULSE :: 2.0;   // a payment in flight: a hot head, a tail, a coloured glow
 MODE_GLOW_TEXT :: 3.0; // a stroke with a white core and a coloured glow: the amounts
-UNIFORM_FLOATS :: 16; // width, height, time, fade, still, scene, 0, 0, then the panel (ui.coax): x0, y0, x1, y1, cut, alpha, tint, 0
+MODE_BAR :: 4.0;    // a Metareal HUD bar (ui.coax bar): metareal_bar's glass, cuts, edge, sweep and glow
+UNIFORM_FLOATS :: 16; // width, height, time, fade, still, scene, 0, 0, then the panel (ui.coax): x0, y0, x1, y1, scale, alpha, tint, 0
 
 CAP :: 11.0;         // COMING SOON's cap height, CSS pixels
 TITLE_CAP :: 20.0;   // 404's cap height, CSS pixels
@@ -147,6 +148,7 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
     out[o + 9] = green;
     out[o + 10] = blue;
     out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
   }
   return true;
 }

@@ -345,13 +345,13 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
 }
 
 #test "small text with a scale lands on device-pixel centres, without glow" {
-  out: [600 * 12] f32;
+  out: [600 * VERTEX_FLOATS] f32;
   k := Ink.{core = 1, light = 0.8, glow = 6, red = 1, green = 1, blue = 1, mode = 0, scale = 2};
   // 7.5 CSS pixels at 2x: small. Each quad's first corner is its start, back by core + glow along and across.
   n := draw_text(out[..], 0, "EH", 10.3, 40.7, 15, 0.3, 1, k, false, false);
   #assert n > 0;
   for q: 0..<n / 6 {
-    o := q * 6 * 12;
+    o := q * 6 * VERTEX_FLOATS;
     #assert out[o + 7] == 1 && out[o + 5] == 0.6;   // glow, core
   }
   // the same text large keeps its glow and core

@@ -3,13 +3,16 @@
 // how dim the scene is, the panel behind the terminal or a prompt, and each
 // stroke's place, width, light and glow.
 //
-// Temporary: hand-written WGSL until Coax emits WGSL (coax/web.md). The
-// nebula is the previous openagents.com splash's, unchanged.
+// Temporary: hand-written WGSL until Coax emits WGSL (coax/web.md), except
+// the HUD bar, which is metareal/light.coax's metareal_bar (the iOS Start
+// bar's light, Stages.metal bar_fragment) converted by coax/web/wgsl.py at
+// build time into the block below. The nebula is the previous
+// openagents.com splash's, unchanged.
 
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, scene: f32, pad0: f32, pad1: f32,
   panel: vec4f,        // x0, y0, x1, y1 in device pixels (ui.coax)
-  cut: f32, alpha: f32, tint: f32, pad2: f32,   // corner, opacity, 0 orange / 1 red / 2 granted
+  k: f32, alpha: f32, tint: f32, pad2: f32,   // device px per point, opacity, 0 orange / 1 red / 2 granted
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -42,26 +45,112 @@ fn fbm(q: vec2f) -> f32 {
   return vec4f(panel(pos.xy, c), 1.0);
 }
 
-// The panel behind the terminal or a prompt: a dark glass with its corners
-// clipped at 45°, faint scanlines and an inner glow in the state's colour.
+// The panel behind the terminal, a prompt or a slide: dark glass in
+// metareal_bar's shape (its two 45° cuts), faint scanlines and an inner glow
+// in the state's colour. The bar itself, edge and sweep, is drawn over it
+// as a MODE_BAR quad.
 fn panel(p: vec2f, under: vec3f) -> vec3f {
   if (u.alpha <= 0.0) { return under; }
-  let lo = u.panel.xy; let hi = u.panel.zw;
-  let x = p.x - lo.x; let y = p.y - lo.y; let w = hi.x - lo.x; let h = hi.y - lo.y;
-  // distance inside the clipped rectangle (negative outside)
-  let side = min(min(x, w - x), min(y, h - y));
-  let corner = min(min(x + y, (w - x) + y), min(x + (h - y), (w - x) + (h - y))) - u.cut;
-  let inside = min(side, corner * 0.7071);
-  if (inside <= 0.0) { return under; }
+  let half = (u.panel.zw - u.panel.xy) * 0.5;
+  let q = p - (u.panel.xy + half);
+  let inside = -coax_p_cut_distance(q.x, q.y, half.x, half.y, max(u.k, 1.0));
+  if (inside <= -1.0) { return under; }
   var tint = vec3f(1.0, 0.55, 0.12);
   if (u.tint > 0.5 && u.tint < 1.5) { tint = vec3f(1.0, 0.24, 0.24); }
   if (u.tint > 1.5) { tint = vec3f(1.0, 0.65, 0.3); }
-  let shade = mix(vec3f(0.055, 0.039, 0.024), vec3f(0.016, 0.016, 0.024), clamp(y / max(h, 1.0), 0.0, 1.0));
+  let shade = mix(vec3f(0.055, 0.039, 0.024), vec3f(0.016, 0.016, 0.024), clamp((q.y + half.y) / max(2.0 * half.y, 1.0), 0.0, 1.0));
   let line = select(0.0, 0.035, fract(p.y / 3.0) < 0.34);
-  let glow = exp(-inside / 18.0) * select(0.06, 0.16, u.tint > 1.5);
+  let glow = exp(-max(inside, 0.0) / 18.0) * select(0.06, 0.16, u.tint > 1.5);
   let glass = mix(under * 0.18, shade, 0.86) + vec3f(line) + tint * glow;
-  return mix(under, glass, clamp(u.alpha, 0.0, 1.0) * smoothstep(0.0, 1.5, inside));
+  return mix(under, glass, clamp(u.alpha, 0.0, 1.0) * smoothstep(-0.5, 1.0, inside));
 }
+
+// ---- generated: metareal/light.coax (metareal_bar) by coax/web/wgsl.py; do not edit
+fn coax_p_hi(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a > l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn coax_p_lo(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a < l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn coax_p_cut_distance(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32) -> f32 {
+  var coax_t14: f32;
+  var coax_t15: f32;
+  var coax_t16: f32;
+  var coax_t17: f32;
+  var coax_t18: f32;
+  var coax_t19: f32;
+  var coax_t20: f32;
+  var coax_t21: f32;
+  var coax_t22: f32;
+  var coax_t23: f32;
+  var l_dx: f32 = (abs(l_x) - l_w);
+  var l_dy: f32 = (abs(l_y) - l_h);
+  coax_t16 = coax_p_hi(l_dx, 0.0);
+  coax_t17 = coax_p_hi(l_dx, 0.0);
+  coax_t15 = (coax_t16 * coax_t17);
+  coax_t19 = coax_p_hi(l_dy, 0.0);
+  coax_t20 = coax_p_hi(l_dy, 0.0);
+  coax_t18 = (coax_t19 * coax_t20);
+  coax_t14 = sqrt((coax_t15 + coax_t18));
+  coax_t21 = coax_p_lo(coax_p_hi(l_dx, l_dy), 0.0);
+  var l_box: f32 = (coax_t14 + coax_t21);
+  coax_t22 = abs((l_x + l_y));
+  coax_t23 = ((l_w + l_h) - (14.0 * l_k));
+  return coax_p_hi(l_box, ((coax_t22 - coax_t23) * 0.707106769));
+}
+fn coax_p_sat(l_a: f32) -> f32 {
+  return coax_p_lo(1.0, coax_p_hi(0.0, l_a));
+}
+fn coax_p_smooth(l_a: f32, l_b: f32, l_x: f32) -> f32 {
+  var l_t: f32 = coax_p_sat(((l_x - l_a) / (l_b - l_a)));
+  return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
+}
+fn metareal_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_press: f32, l_flash: f32) -> f32 {
+  var coax_t24: f32;
+  var coax_t25: f32;
+  var coax_t26: f32;
+  var coax_t27: f32;
+  var coax_t28: f32;
+  var coax_t29: f32;
+  var coax_t30: f32;
+  var coax_t31: f32;
+  var coax_t32: f32;
+  var coax_t33: f32;
+  var coax_t34: f32;
+  var l_d: f32 = coax_p_cut_distance(l_x, l_y, l_w, l_h, l_k);
+  var l_inside: f32 = (1.0 - coax_p_smooth((-0.5), 0.5, l_d));
+  coax_t24 = (0.5 * l_k);
+  coax_t25 = (1.60000002 * l_k);
+  coax_t26 = abs(l_d);
+  var l_edge: f32 = (1.0 - coax_p_smooth(coax_t24, coax_t25, coax_t26));
+  coax_t27 = (l_t / 6.0);
+  coax_t28 = floor((l_t / 6.0));
+  var l_phase: f32 = (coax_t27 - coax_t28);
+  let coax_sq1: f32 = ((((l_x + (l_y * 0.600000024)) / l_w) - ((-1.60000002) + ((3.20000005 * l_phase) / 0.219999999))) / 0.100000001);
+  var l_sweep: f32 = exp((-(coax_sq1 * coax_sq1)));
+  if ((l_phase > 0.219999999))
+  {
+    l_sweep = 0.0;
+  }
+  var l_glass: f32 = ((((0.0350000001 + (0.0250000004 * (1.0 - (l_y / l_h)))) + (0.100000001 * l_press)) + (0.100000001 * l_sweep)) * l_inside);
+  coax_t31 = (-coax_p_hi(l_d, 0.0));
+  coax_t32 = (9.0 * l_k);
+  coax_t30 = exp((coax_t31 / coax_t32));
+  coax_t33 = (1.0 - l_inside);
+  coax_t29 = (coax_t30 * coax_t33);
+  coax_t34 = (0.100000001 + (0.300000012 * l_flash));
+  var l_glow: f32 = (coax_t29 * coax_t34);
+  return ((l_glass + (l_edge * (0.649999976 + (0.5 * l_flash)))) + l_glow);
+}
+// ---- end generated
 
 // ---- the words, the graph and the amounts: one quad per stroke
 struct V {
@@ -69,20 +158,30 @@ struct V {
   @location(0) place: vec2f,   // along, across, pixels
   @location(1) shape: vec4f,   // length, core, light, glow
   @location(2) tint: vec4f,    // red, green, blue, mode (splash.coax MODE_*)
+  @location(3) bar: vec4f,     // a HUD bar's press and flash
 }
-@vertex fn fx_vs(@location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f) -> V {
+@vertex fn fx_vs(@location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f, @location(3) d: vec4f) -> V {
   var o: V;
   let ndc = vec2f(a.x / u.size.x * 2.0 - 1.0, 1.0 - a.y / u.size.y * 2.0);
   o.pos = vec4f(ndc, 0.0, 1.0);
   o.place = a.zw;
   o.shape = b;
   o.tint = c;
+  o.bar = d;
   return o;
 }
 @fragment fn fx_fs(v: V) -> @location(0) vec4f {
   let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   let d = length(vec2f(along, v.place.y));
   let mode = v.tint.w;
+  if (mode > 3.5) {
+    // A HUD bar (ui.coax bar): place is the point from the bar's centre,
+    // shape its half width, half height, scale and light. As iOS draws it,
+    // a press shrinks the bar a little.
+    let p = v.place / (1.0 - 0.03 * v.bar.x);
+    let c = metareal_bar(p.x, p.y, v.shape.x, v.shape.y, v.shape.z, u.time, v.bar.x, v.bar.y);
+    return vec4f(v.tint.rgb * c * v.shape.w * u.fade, 1.0);
+  }
   if (mode > 1.5 && mode < 2.5) {
     // A payment in flight, as the Payment Network demo draws one
     // (aethyr-cpp src/paynet/render.cpp): a capsule glow-wide with a
@@ -103,7 +202,7 @@ struct V {
     let ends = smoothstep(0.0, 8.0, v.place.x) * smoothstep(0.0, 8.0, v.shape.x - v.place.x);
     return vec4f(v.tint.rgb * (core * 0.8 + halo) * ends * v.shape.z * u.fade, 1.0);
   }
-  if (mode > 2.5) {
+  if (mode > 2.5 && mode < 3.5) {
     // An amount: a near-white core in a coloured glow.
     let c = (mix(v.tint.rgb, vec3f(1.0, 0.97, 0.92), 0.75) * core + v.tint.rgb * halo * 1.8) * v.shape.z * u.fade;
     return vec4f(c, 1.0);

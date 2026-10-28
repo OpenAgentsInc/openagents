@@ -236,6 +236,7 @@ tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, gl
     out[o + 2] = a[v]; out[o + 3] = c[v];
     out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
     out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
   }
   return true;
 }
