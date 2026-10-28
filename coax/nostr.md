@@ -279,7 +279,10 @@ noncanonical encodings where required, and insufficient buffers.
 JCS contract digests sort UTF-16 code units. The initial envelope profile is an
 explicit integer-only RFC 8785 subset, with safe-number bounds; reject floats
 until a complete interoperable number renderer exists. Digest the specified
-original/canonical representation, not a lossy proto reconstruction.
+original/canonical representation, not a lossy proto reconstruction. The initial
+artifact-envelope consumer caps raw/canonical bodies at512KiB, each string
+at64KiB and depth16, while the published outer wire ceiling stays1MiB. These
+axes remain distinct; unsupported larger bodies refuse before emission.
 
 ## 8. Relay and persistent state
 

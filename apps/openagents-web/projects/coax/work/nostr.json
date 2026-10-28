@@ -1132,13 +1132,14 @@
       "labels": [
         "nostr"
       ],
-      "body": "coax/lib/nostr/envelope.coax: build and check openagents.artifact-envelope.v1 (inline body, digest = SHA-256 of JCS bytes, 1 MiB cap) per nips/openagents/contracts.md.",
+      "body": "Build/check openagents.artifact-envelope.v1 per the immutable contracts.md wire format. The published outer wire ceiling remains1MiB. The current Coax consumer selects raw/canonical JSON bodies\u2264512KiB, individual strings\u226464KiB and depth16, matching its JCS/JSON profile; refuse unsupported larger bodies explicitly rather than claiming universal1MiB canonical-body support. Digest is SHA256 of the specified canonical JCS bytes, with original input retained.",
       "files": [
         "coax/lib/nostr/envelope.coax"
       ],
       "acceptance": [
         "Builds byte-identical envelopes to coax/web/unlock/lib.ts for the test deck",
-        "Refuses a digest mismatch and an oversize body"
+        "Refuses a digest mismatch and an oversize body",
+        "Independent outer-wire, canonical-body, string, depth and output budgets are tested exactly/one-over; build output is readable by the selected consumer and oversized bodies refuse before commit"
       ],
       "blocked_by": [
         "nostr-jcs",
