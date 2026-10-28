@@ -1,7 +1,7 @@
 # Nostr projections for Coax
 
 This first slice has **16 alpha schemas**: shared NIP-01 event/filter types,
-NIP-42 authentication, and 14 Block agent, identity and channel projections.
+NIP-42 authentication, and 14 external agent, identity and channel projections.
 All live under root `proto/nostr/`, with one versioned namespace per source.
 They mirror the current pins in [`nips/`](../../nips/README.md); the original
 Nostr/HTTP/JWS protocols remain unchanged.
@@ -61,7 +61,7 @@ validate the full Event, signed JSON or authentication. Coax now has initial str
 [`#import_proto`](../../coax/proto.md) now imports all five descriptor profiles
 into typed Coax wire views, presence/oneof accessors, repeated iterators and
 bounded caller-buffer codecs. `coax/tests/proto_import.py` exercises the real
-Event fixture, Block types, unknown preservation, strict duplicate policy and
+Event fixture, external types, unknown preservation, strict duplicate policy and
 limits through generated native C ABI code, including sanitizer and pinned
 protoc interoperability runs. The kind-only reader remains a regression
 reference. Domain adapters and live product/cryptographic admission are not
@@ -91,7 +91,7 @@ Sync reports that required review instead of filing issues or rewriting schemas
 without approval.
 
 The original 191-file pre-reset NIP recovery remains recorded in
-[recovery.json](recovery.json). Current official/Block pins advance separately;
+[recovery.json](recovery.json). Current official/external pins advance separately;
 the OpenAgents-authored NIPs remain outside this mirror. Next slices include
 GS, MP, PL, RS, ER and PMA, and additional official NIPs. PMA remains reserved;
 no runtime support is implied by its specification being present.

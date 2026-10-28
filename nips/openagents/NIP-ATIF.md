@@ -223,9 +223,9 @@ NIP-44 encrypted to one recipient, usually the owner:
 The relay rules are the envelope's: author-authenticated publication, reads
 and COUNT restricted to author and recipient, no search. The relay learns
 that the recorder sent the owner some number of artifacts of some size,
-not what they hold. This is the same agent-to-owner trust shape as Block
+not what they hold. This is the same agent-to-owner trust shape as external
 [NIP-AE](../block/NIP-AE.md) and [NIP-AM](../block/NIP-AM.md), carried in
-the OpenAgents envelope rather than a Block kind.
+the OpenAgents envelope rather than an external kind.
 
 A NIP-REACH direct channel or a HOST read may deliver the same manifest and
 chunk objects without a relay; the byte checks are identical.
@@ -341,18 +341,18 @@ A reader orders segments by these links, never by timestamps.
   may cite trajectories. Training on or republishing one needs its own
   recorded consent and keeps its provenance.
 
-## Relationship to Block NIPs
+## Relationship to external NIPs
 
-Block's Buzz specifications define no trajectory or transcript format, and
-the Buzz tree contains no ATIF writer: its Harbor benchmark adapter
-declares `SUPPORTS_ATIF = False`. Buzz agent conversation lives in NIP-29
+The external specifications define no trajectory or transcript format, and
+the external tree contains no ATIF writer: its Harbor benchmark adapter
+declares `SUPPORTS_ATIF = False`. External agent conversation lives in NIP-29
 channel messages (kind `9`), live protocol traffic in ephemeral
 observability frames, usage in metrics records, and memory in engrams. The
-mapping below lets a host that speaks both produce ATIF from Block traffic
-and cite Block events from ATIF steps. None of these kinds carries ATIF
+mapping below lets a host that speaks both produce ATIF from external traffic
+and cite external events from ATIF steps. None of these kinds carries ATIF
 bytes.
 
-| Block NIP | Relationship |
+| External NIP | Relationship |
 | --- | --- |
 | [NIP-AO](../block/NIP-AO.md) observer frames, `24200` | Ephemeral, relay-unstored, at most 65,535 bytes per frame. A host observing AO telemetry (`acp_read`, `acp_write`, `turn_started`, `session_resolved`) may derive ATIF steps from it: AO `sessionId` becomes `session_id`, and each step records `extra.buzz_ao` with `sessionId`, `turnId`, and the `seq` range it came from. The result is `converted`, and `coverage` is `complete` only if every `seq` was seen and `session_resolved` arrived. AO control (`cancel_turn`) is not a trajectory step unless the agent records acting on it. |
 | [NIP-AM](../block/NIP-AM.md) turn metrics, `44200` | One AM event per completed turn, keyed by `(sessionId, turnSeq)`. ATIF agent steps that close that turn record `extra.buzz_turn` with `sessionId`, `turnSeq`, and `turnId`. Token counts map to ATIF step `metrics` (`inputTokens` to `prompt_tokens`, `outputTokens` to `completion_tokens`, `costUsd` to `cost_usd`), and AM's rule holds in both directions: an unreported count stays absent, never zero. AM is accounting; it cannot rebuild a trajectory, and a trajectory does not replace AM. |
@@ -361,7 +361,7 @@ bytes.
 | NIP-29 channel messages (kind `9`) | The conversation people see. A user or agent step may record the event ID it received or sent in `extra.nostr_event`, linking chat to steps. Channel messages are not a trajectory, and a trajectory does not republish them. |
 | [NIP-CW](../block/NIP-CW.md), [NIP-RS](../block/NIP-RS.md), [NIP-DV](../block/NIP-DV.md) | Channel windows, read state, and DM visibility are views of chat. They have no trajectory role. |
 
-A Buzz agent that wants durable, owner-private history gets it from this
+An external agent that wants durable, owner-private history gets it from this
 profile: the agent key signs `3188` envelopes to its owner, the same
 relationship AE and AM already verify.
 

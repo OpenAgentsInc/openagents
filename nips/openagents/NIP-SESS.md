@@ -34,7 +34,7 @@ Test-time capabilities: the steering rows for delegate engines and the ATIF `por
 | [CTX](NIP-CTX.md) | Owns task frames, instructions in context, history hierarchy, compaction evidence, and source expansion. A session projection does not replace these. |
 | [POL](NIP-POL.md), [CTRL](NIP-CTRL.md) | Own disclosure, exact approvals, and task-scoped client control. An observer or steering client cannot create sessions, submit paid turns, or approve effects without separate admission. |
 | [ENV](NIP-ENV.md), [WS](NIP-WS.md) | ENV establishes an execution attachment; WS supplies versioned workspace/resource references and bounded projection synchronization. Neither a ready environment nor a live view admits a turn. |
-| Block [AO](../block/NIP-AO.md), [AM](../block/NIP-AM.md), [AE](../block/NIP-AE.md) | Telemetry, turn metrics, and agent memory remain separate records. Their presence is not complete session history, native resume support, or authority to answer a pending request. |
+| External [AO](../block/NIP-AO.md), [AM](../block/NIP-AM.md), [AE](../block/NIP-AE.md) | Telemetry, turn metrics, and agent memory remain separate records. Their presence is not complete session history, native resume support, or authority to answer a pending request. |
 
 Artifacts use the private `3188` envelope or durable host-authenticated local
 storage. CAP operations advertise exact input/output SchemaRefs for adapter

@@ -126,10 +126,10 @@ coax/build.sh test
 PROTOC=/path/to/protoc-29.3/bin/protoc python3 coax/tests/proto_import.py --oracle
 ```
 
-Tests compile the actual Nostr/Block and existing OpenAgents profiles. Generated
+Tests compile the actual Nostr/external and existing OpenAgents profiles. Generated
 Coax is compiled to C11 and exercised through its generated C ABI. Tests cover
 the real source-derived Event fixture, unknown retention and field edits,
-Block identity/agent/channel types, every scalar type, full-width numbers,
+External identity/agent/channel types, every scalar type, full-width numbers,
 packed repeats, nested recursion, null/missing/zero, oneof replacement, limits,
 invalid input, buffer alias/capacity and descriptor rejection. Generated native
 code runs under ASan/UBSan. The oracle checks both wire directions with pinned

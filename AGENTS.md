@@ -17,7 +17,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |
 | `docs/verification/`, `docs/lightning/`, `docs/verse/` | Verification plan, the Breez Spark wallet plan, Verse and the Metareal engine |
-| `nips/` | Official, Block and OpenAgents NIPs, pinned |
+| `nips/` | Official, external and OpenAgents NIPs, pinned |
 
 ## Rules
 

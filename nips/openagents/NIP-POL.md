@@ -87,7 +87,7 @@ guidance does not silently become an execution permission.
 
 Explicit instructions, learned preferences, retrieved evidence, and client
 presentation settings are different records. CAP `30181` ranks admissible
-bindings; Block AE stores mutable private memory. Neither supplies the
+bindings; external AE stores mutable private memory. Neither supplies the
 following learning, review, and activation lifecycle. KB supplies shareable
 knowledge, not permission to mine private history or change a user's policy.
 

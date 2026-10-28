@@ -529,7 +529,7 @@ proto/nostr/
   event/v1/             Event, Tag, Filter, relay messages (REQ, EVENT, OK, EOSE,
                         CLOSED, NOTICE, AUTH, COUNT, NEG-*)
   nip<NN>/v1/           one package per official NIP with a structured body (§11.3)
-  block/<id>/v1/        one package per Block NIP with a structured body (§11.4)
+  block/<id>/v1/        one package per external NIP with a structured body (§11.4)
   MANIFEST.json         pins: nips/manifest.json commits, per-package source digest
 
 proto/third_party/
@@ -1731,7 +1731,7 @@ build on; those packages are built first (phase P2, §36).
 | 73 | External content IDs | `nip73` | `ExternalId{kind, value}` (`i`/`k` tags) | |
 | 75 | Zap goals | `nip75` | `ZapGoal` (9041) | |
 | 77 | Negentropy | `nip77` (+ `event.v1`) | NEG-* messages | ● |
-| 78 | App data | `nip78` | `AppData` (30078) with opaque content | ● (Block RS) |
+| 78 | App data | `nip78` | `AppData` (30078) with opaque content | ● (external RS) |
 | 7D | Forum threads | `nip7d` | `Thread` (11) and replies via NIP-22 | ● (Forum) |
 | 84 | Highlights | `nip84` | `Highlight` (9802) | |
 | 85 | Trusted assertions | `nip85` | assertion kinds 30382–30385, provider list 10040 | ● |
@@ -1763,9 +1763,9 @@ OpenAgents payment design (Cashu, Fedimint). They exist so readers can
 recognise and refuse or display those records, not so OpenAgents packages
 can import them.
 
-### 11.4 Block NIP packages
+### 11.4 External NIP packages
 
-The first 14 selected Block packages use alpha namespaces. The remaining v1
+The first 14 selected external packages use alpha namespaces. The remaining v1
 entries are planned targets, not materialized schemas.
 
 | NIP | Title | Kinds | Mirror | OA use |
@@ -1793,7 +1793,7 @@ entries are planned targets, not materialized schemas.
 
 ### 11.5 Nostr sync
 
-`scripts/sync-nips.sh` refreshes complete official/Block source trees and
+`scripts/sync-nips.sh` refreshes complete official/external source trees and
 per-file hashes. `proto/nostr/MANIFEST.json` records each materialized alpha
 schema and its exact source pins/hashes. Sync reports stale mirrors; the local
 `check_nostr_sources.py`, NIP pin checks and `scripts/proto.sh check` reject
@@ -1895,7 +1895,7 @@ where a compat reader is named:
 | 39230 / 39231 | historical SA trajectory kinds | `trace.v1` on 3198 / 3199 |
 | 380xx | historical agent kinds | `sovereign.v1` |
 | 5934 / 6934 / 7000 (NIP-LBR over NIP-90) | historical labor | `labor.v1`; no compatibility claimed |
-| 30179 | Block PMA reserved | must be rejected; audit current rejection evidence in P0 |
+| 30179 | External PMA reserved | must be rejected; audit current rejection evidence in P0 |
 
 ## 13. `third_party.*`: Lightning Labs and other vendored protocols
 
@@ -1966,7 +1966,7 @@ no code serves it.
 | 4 | `account.v1` | tenancy, glossary "Tenancy" | Implemented | v1alpha1 |
 | 5 | `credential.v1` | oak_ keys, CMK, device sign-in, BYOK | Implemented | v1alpha1 |
 | 6 | `vault.v1` | NIP-VAULT | Partial | v1alpha1 |
-| 7 | `identity.v1` | NIP-05, Block OA, XP key links | Partial | v1alpha1 |
+| 7 | `identity.v1` | NIP-05, external OA, XP key links | Partial | v1alpha1 |
 | 8 | `decision.v1` | NIP-DEC, `/v1/decisions`, `/v1/systemone`, `/v1/classify`, `/v1/jobs` | Implemented | alpha → v1 after §35 |
 | 9 | `inference.v1` | Responses, chat completions, models | Implemented | v1alpha1 |
 | 10 | `receipt.v1` | `openagents.receipt.execution.v1`, `crates/receipts` | Implemented | alpha → v1 after §35 |
@@ -2226,14 +2226,14 @@ the credentials an agent session may use. It never exposes DEKs.
 **Purpose.** The Nostr-key side of identity: profiles, NIP-05 names,
 owner attestations, and links between keys.
 
-**Sources.** Kind 0 with NIP-24 `bot`; Block NIP-OA `auth` tags (used by
+**Sources.** Kind 0 with NIP-24 `bot`; external NIP-OA `auth` tags (used by
 AGENT and PYLON); NIP-XP key links (13195); NIP-39 external identities.
 
 ```proto
 package openagents.identity.v1;
 
 message KeyIdentity { T.Pubkey pubkey = 1; optional string nip05 = 2; optional bool bot = 3; repeated string relays = 4; }
-// Block OA: owner attests that `agent` acts for `owner` under conditions.
+// external OA: owner attests that `agent` acts for `owner` under conditions.
 message OwnerAttestation { T.Pubkey owner = 1; T.Pubkey agent = 2; optional string conditions = 3; /* "created_at<T" */ optional bytes sig = 4; }
 message KeyLink { T.Pubkey from = 1; T.Pubkey to = 2; optional string purpose = 3; optional int64 linked_at = 4; }
 message AccountKeyBinding { optional string account_id = 1; T.Pubkey pubkey = 2; optional string proof = 3; optional int64 bound_at = 4; }
@@ -2668,7 +2668,7 @@ message Autonomy {
   repeated Wake wakes = 6 [(openagents.options.v1.limits) = {max_count: 16}];
   optional uint32 coalesce_secs = 7;             // 0–1800
 }
-// Kind 30187 tags: d, auth (Block OA), p owner, r URL, status, alt, e att-release/att-endpoint.
+// Kind 30187 tags: d, auth (external OA), p owner, r URL, status, alt, e att-release/att-endpoint.
 message PublicDefinition { AgentDefinition definition = 1; openagents.identity.v1.OwnerAttestation auth = 2;
                            T.Pubkey owner = 3; optional string url = 4; optional bool revoked = 5; repeated T.EventRef attestations = 6; }
 // Kind 3204: owner-published gateway receipt.
@@ -3244,7 +3244,7 @@ message Chunk { option (openagents.options.v1.contract) = "openagents.atif-chunk
                 T.Digest digest = 5; optional string text = 6 [(openagents.options.v1.limits) = {min_bytes: 1, max_bytes: 32768}]; }
 ```
 
-Supported Block AO, AM and AE records and NIP-C7 kind 9 messages map onto ATIF
+Supported external AO, AM and AE records and NIP-C7 kind 9 messages map onto ATIF
 steps. Reserved PMA kind 30179 remains refused. Preserve model names,
 reasoning, tool IDs/results, and `extra` evidence, including the native
 Microcoder generated reply used by the phone SDK. A projection's abbreviated
@@ -3270,7 +3270,7 @@ message RunRecord {
   oneof data { Created created = 10; Admitted admitted = 11; Dispatched dispatched = 12; Observed observed = 13;
                Resolved resolved = 14; CancelRequested cancel_requested = 15; Unknown unknown = 16; Reconciled reconciled = 17;
                Handoff handoff = 18; Settled settled = 19; }
-  repeated BlockRef block_refs = 20;                // Block AO/AM/AE refs; durable flag; kind 24200 refused as durable
+  repeated BlockRef block_refs = 20;                // external AO/AM/AE refs; durable flag; kind 24200 refused as durable
 }
 // digest = SHA256("openagents.run-record.v1\n" || JCS(record))
 message Created { openagents.capability.v1.Grant grant = 1; Baseline baseline = 2; }
@@ -3729,7 +3729,7 @@ message Run { optional string id = 1; /* run_ */ optional string task = 2; optio
 
 Host descriptor (`openagents.coder.host-descriptor.v1`), host runtime
 (`openagents.coder.host-runtime.v1`), SSH-managed hosts
-(`openagents.coder.ssh-managed.v1`), Block PL push leases, and the `connect-*`
+(`openagents.coder.ssh-managed.v1`), external PL push leases, and the `connect-*`
 enrollment family (`connect-enroll-*`, `connect-nearby-*`, `connect-ssh*`,
 `connect-sas`).
 
@@ -3739,7 +3739,7 @@ message HostDescriptor { T.Pubkey host = 1; optional string label = 2; optional 
                          repeated string models = 6; repeated string capabilities = 7; optional string version = 8; }
 message Harness { optional string id = 1; /* codex, claude-code, cursor-agent, opencode */ optional string version = 2; optional bool signed_in = 3; }
 message SshManagedHost { optional string host = 1; optional string address = 2; optional string user = 3; T.Digest host_key = 4; }
-message PushLease { T.Pubkey device = 1; optional string token_ref = 2; optional int64 expires_at = 3; }   // Block PL, kind 30350
+message PushLease { T.Pubkey device = 1; optional string token_ref = 2; optional int64 expires_at = 3; }   // external PL, kind 30350
 ```
 
 ### 25.3 `openagents.coder.sync.v1`
@@ -4525,7 +4525,7 @@ and fixed in the same change that lands the relevant package:
   `work-host` roles are implemented.
 - Kind 30440 (livehost) is used but not registered.
 - `xp-quest.v1.json` and `xp-award.v1.json` lack the `pylon-check` rule.
-- Block PMA kind 30179 must remain rejected. Recheck the current relay
+- External PMA kind 30179 must remain rejected. Recheck the current relay
   implementation and tests before treating an older coverage note as an
   unimplemented defect.
 - `payment-receipt.v1.json` lists excluded rails (§26.1).
@@ -4568,7 +4568,7 @@ wire. Register and review extension numbers before stable publication.
 Coax now has initial scalar widths, structs, arrays/views and a C boundary.
 `#import_proto` now consumes selected proto3 descriptor closures and generates
 typed borrowed views, presence/oneof accessors, repeated iterators and bounded
-caller-buffer codecs. Nostr/Block fixtures and all scalar wire types are tested
+caller-buffer codecs. Nostr/external fixtures and all scalar wire types are tested
 through generated native C11, ASan/UBSan and pinned protoc. Its first strict
 reader rejects duplicate known singular/oneof fields and unsupported shapes;
 see [the exact importer contract](../../coax/proto.md). Checked domain adapters,
@@ -4698,13 +4698,13 @@ a compiling graph: generate actual descriptors before starting a cutover.
 | Phase | Scope and prerequisites | Exit evidence |
 | --- | --- | --- |
 | **P0. Recover and namespace** | This recovery: root contracts, immutable baselines, source manifests, vendor modules, consumer profiles, Metareal migration and initial alpha Verse references. | Reproducible descriptors; all baseline/vendor hashes and migration tests pass. No old app workspace is resurrected. |
-| **P1. Coax contract ingestion** | Widths/structs/byte views/C ABI and selected proto3 `#import_proto` now exist, including bounded presence/oneof/repeated codecs. Nostr/Block native fixture tests and protoc interoperability pass. Checked domain adapters and live product parity remain open. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
+| **P1. Coax contract ingestion** | Widths/structs/byte views/C ABI and selected proto3 `#import_proto` now exist, including bounded presence/oneof/repeated codecs. Nostr/external native fixture tests and protoc interoperability pass. Checked domain adapters and live product parity remain open. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
 | **P2. Decision foundations** | Shared validation/options; selected Nostr envelope/mirrors; receipt and inference wire primitives before decision. | Fractional scores, string choices, structured rubrics, state restrictions and exact receipt refs round-trip through a real Coax/FM consumer. |
 | **P3. Runtime prerequisites** | Context→policy→capability→program; identity/attestation/skill; extension→eval; needed UI and payment reference primitives. | Compiled import graph, checked domain adapters and preserved admission/effect ownership. |
 | **P4. Execution and sessions** | Run/trace/exec/chat/session/control/workspace, then environment/work/coordination/automation/live after P2/P3 imports. | A real task, observed tool progress, result, cancellation and reconnect in the app; then actual sessions/terminals. Coax owns product logic. |
 | **P5. Products and money** | Accounts/credentials, cloud/computers, payments/ledger/markets/billing/Pylon and product services after their actual imports. | Versioned API/schema parity and real surface proofs. Preserve accounting units separately from payment execution rails. |
 | **P6. Metareal and Verse** | Chapter V's corrected V0–V12 dependency order. Small presence work can proceed after P1/P2; realm waits for world/sim/character/quest/environment. | Native Metal/C ABI and legacy reader parity; authenticated world authority; pinned saves/replication. New transport versions require negotiated dual readers. |
-| **P7. Remaining mirrors** | Extend official/Block Nostr and optimization coverage by actual consumer; unused designs remain alpha. | Source-pinned lossless mappings, independent conformance and complete catalog tracking, separate from feature status. |
+| **P7. Remaining mirrors** | Extend official/external Nostr and optimization coverage by actual consumer; unused designs remain alpha. | Source-pinned lossless mappings, independent conformance and complete catalog tracking, separate from feature status. |
 | **P8. Incremental publication** | Publish each passing profile's sources/descriptors/version manifest and Coax consumer artifacts. | Reproducible inputs and an independent client. Hosting remains an owner decision; no big-bang cutover. |
 
 P2 includes inference/receipt before decisions. P3 includes context/attestation
@@ -4746,7 +4746,7 @@ retain their wire encodings until separately reviewed migrations pass.
    `payment-receipt.v1.json` is superseded.
 8. Lightning Labs protos are vendored byte-exact under their own package
    names and never embedded in OpenAgents messages.
-9. The current sources contain 100 official NIPs and 20 Block NIPs, and every one with
+9. The current sources contain 100 official NIPs and 20 external NIPs, and every one with
    a structured body gets a mirror package.
 10. The 2,368 schema IDs are tiered: protocol, product API, evidence.
     Evidence keeps its JSON.

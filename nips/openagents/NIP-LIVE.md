@@ -23,7 +23,7 @@ recognized voice grants no authority to execute a command.
 | [ENV](NIP-ENV.md), [WS](NIP-WS.md) | Admitted execution environment and workspace/resource identities. Neither grants capture or input rights. |
 | Official [53](../official/53.md), [17](../official/17.md), [29](../official/29.md) | Public live-activity discovery and conversation/group transport. Participation metadata does not establish capture, task-control, or recording consent. |
 | Official [94](../official/94.md), [B7](../official/B7.md) | Optional file/blob locators. Private captures still require scoped access and exact byte identity. |
-| Block [AO](../block/NIP-AO.md), [PL](../block/NIP-PL.md) | Optional ephemeral telemetry and client wakeups. Neither is a durable media history or session grant. |
+| External [AO](../block/NIP-AO.md), [PL](../block/NIP-PL.md) | Optional ephemeral telemetry and client wakeups. Neither is a durable media history or session grant. |
 
 Every artifact below has `v`, `requires: []`, and optional inert `meta`, plus
 exactly its specified fields. Shared IDs, references, integer bounds, unknown

@@ -1,13 +1,13 @@
 # Upstream NIP sync, 2026-10-27
 
-The official and Block mirrors now match their upstream branch heads at sync
+The official and external mirrors now match their upstream branch heads at sync
 time. This is a source update; it does not implement a relay, change native
 HOST/REACH admission, or introduce generated Nostr protobuf messages.
 
 | Source | Previous pin | Current pin | Inventory |
 | --- | --- | --- | --- |
 | Official | `b82211e96c6dad616ed2ea43034c1c621256b745` | `400d157c53264b8e58c7b3cdbd21ef546fb7a157` | 100 specs plus upstream README |
-| Block | `781d39510cf23cfe224e8f521ae06a23377e06de` | `24a370606044c0c7be787cc2fd98ec0bfe1d606b` | 20 specs plus two JSON fixtures |
+| External | `781d39510cf23cfe224e8f521ae06a23377e06de` | `24a370606044c0c7be787cc2fd98ec0bfe1d606b` | 20 specs plus two JSON fixtures |
 
 Exact source links are in `nips/manifest.json`. The pre-reset recovery record
 is unchanged and describes the historical tree, not the current upstreams.
@@ -32,7 +32,7 @@ The 36 OpenAgents-authored NIPs and their shared contracts/schemas are unchanged
   Presence of a command definition is not permission to execute a tool.
 - **README:** Index and kind registry follow these changes.
 
-## Block changes reviewed
+## External changes reviewed
 
 - **AR (new):** Kind 45010 channel artifacts, stable UUID identity,
   complete-snapshot revisions, atomic `prev` checks, replay idempotence,
@@ -68,7 +68,7 @@ old Markdown-only sync. Both are now included unchanged and syntax checked.
 `sync-nips.sh` reads complete Git trees, not a list of known NIP numbers.
 `check-nips-pin.sh --latest` verifies every upstream byte and the live branch
 heads. `--offline` checks hashes, inventory, spec counts and JSON syntax.
-The checker rejects missing/extra/changed files; only the locally owned Block
+The checker rejects missing/extra/changed files; only the locally owned external
 index is exempt. Tool regressions cover fixture/nested-file inclusion, byte
 preservation, stale-file removal, local/upstream README precedence and symlink
 refusal. Protocol compatibility tests remain a separate gate.

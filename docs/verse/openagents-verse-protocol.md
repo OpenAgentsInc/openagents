@@ -567,11 +567,11 @@ Rules:
   against re-serialized content.
 - Each official NIP that defines a structured body gets
   `nostr.nip<NN>.v1`. Examples: `nip29` group metadata, `nip94` file
-  metadata, `nip53` live activities, `nip32` labels. Block NIPs we pin get
+  metadata, `nip53` live activities, `nip32` labels. External NIPs we pin get
   `nostr.block.<id>.v1`: `oa` owner attestation, `ae` engrams, `ap`
   personas. Pins come from `nips/manifest.json`.
 - The Verse uses these official NIPs: 01, 02 (planned buddies), 17, 24,
-  29, 32, 42, 44, 53, 59, 65, 67, 94, C7. It also uses Block OA, AA, AE,
+  29, 32, 42, 44, 53, 59, 65, 67, 94, C7. It also uses external OA, AA, AE,
   AP, AM, IA, MP and RS. Those packages are built first (§16, phase V1).
 
 ### 8.3 NIP-MV mapping table
@@ -2487,7 +2487,7 @@ adapters are ready; do not create placeholders to satisfy a phase label.
 | Phase | Packages and prerequisites | Exit evidence |
 | --- | --- | --- |
 | **V0 — Baseline and selected tooling** | Master P0/P1: current engine/common/HOST/REACH baselines, selected-profile generator compatibility, proposed Verse common primitives and a selected Nostr envelope. | Existing outputs and bundle pins remain valid. Native Metal, C ABI, registered saves, and frozen Kiki behavior unchanged. |
-| **V1 — Presence consumer** | Verse presence plus only the Nostr/Block mirrors its existing reader needs, after master P2 foundations. | Actual NIP-MV fixtures and bounded captured traffic round-trip through existing validation; a real Grid/mobile consumer works. Alpha until the gate; no automatic v1. |
+| **V1 — Presence consumer** | Verse presence plus only the Nostr/external mirrors its existing reader needs, after master P2 foundations. | Actual NIP-MV fixtures and bounded captured traffic round-trip through existing validation; a real Grid/mobile consumer works. Alpha until the gate; no automatic v1. |
 | **V2 — Document prerequisites and authoring** | Presentation primitives and NPC placement/card/line types first, then doc→authoring. Shared ArtStyle/ObjectLight ownership follows §9.2. | Stored house/planet/sandbox JSON and deltas convert losslessly with explicit old readers. Identity rules unchanged; frozen Kiki goldens remain valid. |
 | **V3 — Assets, worlds and zones** | Presentation→asset→world after their actual types exist. | Pinned pack/catalog/ZoneManifest admission, old asset profiles and loading limits preserved. No claim that the scene profile is implemented until the live proof passes. |
 | **V4 — Publish, galaxy and progress views** | Doc/authoring/world prerequisites from V2/V3; basic character/progress views where consumed. | Existing publishing, galaxy, planet setup, old JSON routes, and playtest flow work with checked adapters. No mandatory Connect deployment. |

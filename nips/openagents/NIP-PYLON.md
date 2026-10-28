@@ -46,7 +46,7 @@ claims count.
 | [XP](NIP-XP.md) | Reputation for verified work. XP never converts to sats, and nothing here pays XP. |
 | [EVAL](NIP-EVAL.md) | Spot-check suites and Gym results that grade a pylon's answers. |
 | [MV](NIP-MV.md) | A world authority projects beacons, receipts, and aggregates into `33301` object states (NIP-MV). |
-| Block [NIP-OA](../block/NIP-OA.md) | An optional `auth` tag binds a pylon key to its owner's key without sharing the owner key. |
+| External [NIP-OA](../block/NIP-OA.md) | An optional `auth` tag binds a pylon key to its owner's key without sharing the owner key. |
 | [NIP-32](../official/32.md) | Check verdicts are labels in the `openagents.pylon` namespace. |
 | [NIP-40](../official/40.md) | Every beacon and aggregate carries an `expiration` equal to its `valid_until`. |
 

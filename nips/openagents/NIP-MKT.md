@@ -58,7 +58,7 @@ admission requirements before it issues a quote.
 | `3188` | Regular | Existing private artifact envelope for commercial records and terms. |
 
 `3192` and `30192` are draft assignments, not registrations. They do not collide
-with this repository's pinned official, Block, or OpenAgents allocations.
+with this repository's pinned official, external, or OpenAgents allocations.
 Implementers must check the kind registry before deployment. No implementation
 may advertise market support merely because it stores these kinds.
 

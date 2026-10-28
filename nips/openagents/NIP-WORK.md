@@ -371,7 +371,7 @@ An unavailable historical source becomes a named gap, not fabricated history.
 
 A native work item can link to an external GitHub, NIP-34, Git, calendar, or
 other object without becoming that object's authority. Use official
-[NIP-34](../official/34.md) for Git collaboration where appropriate and Block
+[NIP-34](../official/34.md) for Git collaboration where appropriate and external
 [NIP-GS](../block/NIP-GS.md) for its exact authorship contract. An external
 status event, merge announcement, or webhook does not establish a verified
 current ref or acceptance. Verify the original source and signer according to

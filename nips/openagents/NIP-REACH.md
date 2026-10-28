@@ -24,7 +24,7 @@ operation separately.
 | NIP-HOST (drafted separately) | Host-wide device grants, their IDs, and revocation epochs. REACH binds a direct channel to one grant ID and epoch through a grant check; it does not define grants. |
 | [CTRL](NIP-CTRL.md) and [SESS](NIP-SESS.md) | Task control and engine sessions. A direct channel can carry their operations; it does not change their admission rules. |
 | [ENV](NIP-ENV.md) | Environment leases. Placement here picks a host for new work; it does not allocate, lease, or move anything. |
-| Block [NIP-PL](../block/NIP-PL.md) | Push wakeups. A wake can prompt a client to read presence; it proves nothing about the host. |
+| External [NIP-PL](../block/NIP-PL.md) | Push wakeups. A wake can prompt a client to read presence; it proves nothing about the host. |
 
 ## Roles and encoding
 

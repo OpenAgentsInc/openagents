@@ -57,7 +57,7 @@ and its actual authority.
 
 | Contract | SOV composition and boundary |
 | --- | --- |
-| Block [OA](../block/NIP-OA.md) and [AA](../block/NIP-AA.md) | Owner provenance and conditional relay membership. Neither appoints a runtime controller nor grants execution or spending. |
+| External [OA](../block/NIP-OA.md) and [AA](../block/NIP-AA.md) | Owner provenance and conditional relay membership. Neither appoints a runtime controller nor grants execution or spending. |
 | [POL](NIP-POL.md) | Governing instructions, disclosure, exact-action approvals, and adoption authority. Agent-generated goals and judgments cannot widen these rights. |
 | [WORK](NIP-WORK.md), [CTX](NIP-CTX.md), and [KB](NIP-KB.md) | Persistent objectives, private state and evidence, and separately admitted reusable knowledge. Beliefs and summaries remain distinct from authoritative outcomes. |
 | [AUTO](NIP-AUTO.md) | Finite schedules, source observations, and checked continuation. A tick is an admitted occurrence, not a new job family. |
@@ -381,7 +381,7 @@ currency, including fees, and refuses unsupported conversions. No estimated
 exchange rate can satisfy a required hard bound. Unknown cost is not zero.
 Pending or unknown payments retain reservations until attributable wallet and
 provider evidence supports reconciliation. A successful signature, invoice,
-model-written balance, payment-hash claim, or Block AM cost estimate cannot
+model-written balance, payment-hash claim, or external AM cost estimate cannot
 substitute for that evidence.
 
 | Mechanism | Permitted relationship |
@@ -431,7 +431,7 @@ distinguish recorded timestamps from estimates. A digest of an unordered set
 of events is not a replayable history. Hidden model reasoning is not required;
 observable decisions and supporting evidence are the contract.
 
-Block AO telemetry can support live observation but is ephemeral and cannot
+External AO telemetry can support live observation but is ephemeral and cannot
 replace durable RUN records. SESS/WS projections and CTRL observation rights
 expose bounded permitted views, with missing records shown as gaps. Signed
 records remain attributable claims; EVAL and LAB independently establish the

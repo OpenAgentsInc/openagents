@@ -13,16 +13,16 @@ continue through their resident host owner.
 
 | Existing contract | Reuse and boundary |
 | --- | --- |
-| Official [NIP-34](../official/34.md), Block [MP](../block/NIP-MP.md) | Repository announcements, Git collaboration, and cross-repository grouping. A repository coordinate or project membership does not identify a local checkout, authorize a file mutation, or establish its current revision. |
+| Official [NIP-34](../official/34.md), external [MP](../block/NIP-MP.md) | Repository announcements, Git collaboration, and cross-repository grouping. A repository coordinate or project membership does not identify a local checkout, authorize a file mutation, or establish its current revision. |
 | Official [NIP-54](../official/54.md), [NIP-78](../official/78.md) | Published articles and application data. Neither defines conditional edits of a host document or complete operational projection replay. |
-| Block [WP](../block/NIP-WP.md), [RS](../block/NIP-RS.md), [PL](../block/NIP-PL.md) | Workspace presentation, read-position synchronization, and notification delivery. Read, snooze, seen, and delivered are not execution, document version, or command acceptance states. |
+| External [WP](../block/NIP-WP.md), [RS](../block/NIP-RS.md), [PL](../block/NIP-PL.md) | Workspace presentation, read-position synchronization, and notification delivery. Read, snooze, seen, and delivered are not execution, document version, or command acceptance states. |
 | [CAP](NIP-CAP.md), [CJ](NIP-CJ.md), [POL](NIP-POL.md) | Typed host operations, authenticated invocation, exact action approvals, disclosure, and enforcement. Resource registration, a view, and collaboration membership confer no grant. |
 | [ENV](NIP-ENV.md), [RUN](NIP-RUN.md), [COORD](NIP-COORD.md) | Environment allocation/attachment, durable effects and recovery, and claims/fencing. WS does not provision environments or transfer a RUN controller. |
 | [CTX](NIP-CTX.md), [SESS](NIP-SESS.md), [CTRL](NIP-CTRL.md) | Task context, engine-session behavior, and task control. These can use the view contract below without merging their authority or state machines. |
 
 A workspace is a host-admitted resource namespace. A project association is
 an organizational link, not an execution root. A WORK planning project and a
-Block MP repository grouping can both reference a workspace without becoming
+External MP repository grouping can both reference a workspace without becoming
 its authority. Equal repository URLs or matching basenames cannot prove that
 two checkouts, worktrees, documents, or workspaces are the same resource.
 
@@ -402,7 +402,7 @@ a ResourceRef alone cannot open a port or process handle.
 ## Audience-bound activity summaries
 
 A device that is not connected learns that a host needs attention through two
-separate records: a Block [PL](../block/NIP-PL.md) wake that carries nothing,
+separate records: an external [PL](../block/NIP-PL.md) wake that carries nothing,
 and an activity summary that the device fetches after it reconnects. The
 summary tells a person which task or session needs them and why. It grants
 nothing, it is not a projection cut, and it never replaces the authoritative

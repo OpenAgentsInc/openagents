@@ -248,7 +248,7 @@ The first [Nostr mirror profiles](../proto/nostr/README.md) now compile into
 selected descriptors. `examples/nostr-wire.coax` is a bounded C-ABI consumer of
 the shared Event projection's kind field. `tests/nostr.py` compiles it and reads
 a canonical source-derived protobuf fixture, including kind zero, all selected
-Block kinds, unknown fields, wide timestamps and malformed inputs. That narrow
+External kinds, unknown fields, wide timestamps and malformed inputs. That narrow
 reader remains as a regression reference. `examples/nostr-proto.coax` now uses
 the descriptor-generated API; `tests/proto_import.py` checks actual native
 round trips, all scalar types, presence, oneofs, repeats, malformed inputs and

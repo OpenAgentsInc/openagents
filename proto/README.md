@@ -20,7 +20,7 @@ workspace is restored.
 
 | Root | Namespace and status |
 | --- | --- |
-| `nostr/` | 16 new alpha schemas: shared events/NIP-42 and 14 Block agent, identity and channel projections. |
+| `nostr/` | 16 new alpha schemas: shared events/NIP-42 and 14 external agent, identity and channel projections. |
 | `openagents/common/v1/` | Recovered refs, signed-original wrappers and domain-qualified errors. |
 | `openagents/engine/v1/` | Six recovered schemas: scene, agent, HUD, control, registered state and assets. Metareal and other consumers share them. |
 | `openagents/host/v1/`, `openagents/reach/v1/` | Recovered phone task/admission, binding/cursor and authenticated reach records. Existing wire types are unchanged. |

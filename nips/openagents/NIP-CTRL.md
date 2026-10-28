@@ -27,9 +27,9 @@ durable resume, or these operations.
 | [RUN](NIP-RUN.md) | Authoritative journal, recovery, controller generations, and fenced handoff. Reconnecting a client does not transfer ownership. |
 | [CAP](NIP-CAP.md) and [CJ](NIP-CJ.md) | Registered typed operations, binding admission, authenticated invocation, idempotency, and results. CTRL is an operation profile over execution jobs. |
 | Official [NIP-46](../official/46.md) | Optional remote signing. A signer connection or permission to sign an event is not permission to control a task. |
-| Block [NIP-OA](../block/NIP-OA.md) and [NIP-AA](../block/NIP-AA.md) | Agent provenance and relay admission. Neither supplies the task-scoped rights below. |
-| Block [NIP-AO](../block/NIP-AO.md) | Optional live telemetry and advisory `cancel_turn`. Its ephemeral owner-only channel cannot replace durable command admission or catch-up. |
-| Block [NIP-RS](../block/NIP-RS.md), [NIP-PL](../block/NIP-PL.md), and [NIP-ER](../block/NIP-ER.md) | Read-position sync, mobile wakeups, and reminders. They grant no task control and establish no execution result. |
+| External [NIP-OA](../block/NIP-OA.md) and [NIP-AA](../block/NIP-AA.md) | Agent provenance and relay admission. Neither supplies the task-scoped rights below. |
+| External [NIP-AO](../block/NIP-AO.md) | Optional live telemetry and advisory `cancel_turn`. Its ephemeral owner-only channel cannot replace durable command admission or catch-up. |
+| External [NIP-RS](../block/NIP-RS.md), [NIP-PL](../block/NIP-PL.md), and [NIP-ER](../block/NIP-ER.md) | Read-position sync, mobile wakeups, and reminders. They grant no task control and establish no execution result. |
 
 A host exposes the following CAP operation roles with pinned SchemaRefs:
 

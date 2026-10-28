@@ -927,7 +927,7 @@ Parsing a few examples is not the expensive part.
 
 The protocol plan's P0 recovery runs now. Its P1 ingestion follows stage 2's
 actual type/ABI prerequisites. Version 0.4.0 ships selected descriptor imports
-and bounded codecs with Nostr/Block, scalar and protoc interoperability tests;
+and bounded codecs with Nostr/external, scalar and protoc interoperability tests;
 product/domain parity remains open. The initial 0.3.0 home port used a
 hand-written resource codec and opaque bounded host storage. The current iOS
 home now uses generated `ios-home` codecs for configuration and invocation,

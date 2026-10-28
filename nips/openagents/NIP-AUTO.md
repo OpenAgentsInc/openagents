@@ -20,7 +20,7 @@ The owner authorizes the immutable plan. One admitted controller serializes
 its state. A source observes a resource; a worker executes an occurrence; a
 checker evaluates continuation. These roles may share a process, but their
 outputs and authority remain distinct. An owner field, relay membership, or
-Block owner attestation cannot appoint a controller or grant spending.
+External owner attestation cannot appoint a controller or grant spending.
 
 CAP operations use pinned SchemaRefs and CJ execution admission:
 
@@ -303,9 +303,9 @@ private and retain the signed inputs and decision evidence under the admitted
 policy. Imported recipes, hooks, learned preferences, and work-item text are
 inputs subject to POL, not permission to create another automation.
 
-Block [ER](../block/NIP-ER.md) can show a reminder and
+External [ER](../block/NIP-ER.md) can show a reminder and
 [PL](../block/NIP-PL.md) can wake a client. Neither schedules an admitted
-occurrence. Block [AO](../block/NIP-AO.md) telemetry is ephemeral, and
+occurrence. External [AO](../block/NIP-AO.md) telemetry is ephemeral, and
 [AM](../block/NIP-AM.md) usage summaries do not reserve a shared budget.
 [NIP-40](../official/40.md) expiry concerns event visibility, not job fencing.
 COORD's read-only background findings keep their existing smaller contract;
