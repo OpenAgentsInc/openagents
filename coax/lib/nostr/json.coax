@@ -1,0 +1,528 @@
+// Bounded JSON (RFC 8259) for the Coax Nostr modules (coax/nostr.md, 7.1): a
+// pull parser over a byte view and a writer into a caller's buffer. Nothing
+// allocates. The parser yields one token at a time with its byte range; a
+// string token's range is its raw bytes between the quotes, unescaped on
+// demand into a caller buffer (json_unescape). Limits: input 1 MiB, depth 16,
+// a string 64 KiB raw. Over any limit, or on any byte that isn't JSON, the
+// parser refuses the whole text: every later call returns JSON_ERROR, and it
+// never truncates. Strings must be UTF-8 (no overlongs, no surrogates, at
+// most U+10FFFF). Numbers are checked against the JSON grammar; json_int
+// reads one as an integer within 2^53.
+
+JSON_MAX_INPUT :: 1048576;
+JSON_DEPTH :: 16;
+JSON_MAX_STRING :: 65536;
+
+// Tokens.
+JSON_ERROR :: -1;
+JSON_END :: 0;           // the one value and its trailing whitespace are done
+JSON_OBJECT :: 1;        // {
+JSON_OBJECT_END :: 2;    // }
+JSON_ARRAY :: 3;         // [
+JSON_ARRAY_END :: 4;     // ]
+JSON_STRING :: 5;        // a value, or a key when key is set
+JSON_NUMBER :: 6;
+JSON_TRUE :: 7;
+JSON_FALSE :: 8;
+JSON_NULL :: 9;
+
+// What may come next.
+JW_VALUE :: 0;           // a value (the start, after a colon or a comma in an array)
+JW_VALUE_OR_CLOSE :: 1;  // after [
+JW_KEY_OR_CLOSE :: 2;    // after {
+JW_KEY :: 3;             // after a comma in an object
+JW_COLON :: 4;
+JW_NEXT :: 5;            // a comma or the container's close
+JW_DONE :: 6;
+
+Json :: struct {
+  text: string;
+  at: int;
+  depth: int;
+  object: [JSON_DEPTH] bool;   // per open container: an object, or an array
+  want: int;
+  tok: int;
+  from: int; to: int;          // the token's bytes (a string's without its quotes)
+  key: bool;                   // the string token is an object's key
+  error_at: int;               // where it was refused, or -1
+}
+
+json_start :: (j: [] Json, text: string) {
+  j[0].text = text; j[0].at = 0; j[0].depth = 0; j[0].want = JW_VALUE;
+  j[0].tok = JSON_END; j[0].from = 0; j[0].to = 0; j[0].key = false; j[0].error_at = -1;
+  if text.count > JSON_MAX_INPUT { if json_refuse(j, 0) == JSON_ERROR {} }
+}
+
+json_refuse :: (j: [] Json, at: int) -> int {
+  j[0].tok = JSON_ERROR; j[0].error_at = at; j[0].from = at; j[0].to = at; j[0].key = false;
+  return JSON_ERROR;
+}
+
+json_token :: (j: [] Json, tok: int, from: int, to: int) -> int {
+  j[0].tok = tok; j[0].from = from; j[0].to = to; j[0].key = false;
+  return tok;
+}
+
+// The token's bytes.
+json_text :: (j: [] Json) -> string { return j[0].text[j[0].from..<j[0].to]; }
+
+json_after_value :: (j: [] Json) { j[0].want = ifx j[0].depth == 0 then JW_DONE else JW_NEXT; }
+
+json_hex :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) c - '0'; }
+  if c >= 'a' && c <= 'f' { return cast(int) c - 'a' + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) c - 'A' + 10; }
+  return -1;
+}
+json_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+
+// The length of the UTF-8 sequence at i, or 0 when it isn't one.
+json_utf8 :: (text: string, i: int) -> int {
+  c := cast(int) text[i];
+  if c < 0x80 { return 1; }
+  n := 0; low := 0x80; cp := 0;
+  if c >= 0xC2 && c <= 0xDF { n = 2; cp = c & 0x1F; }
+  else if c >= 0xE0 && c <= 0xEF { n = 3; cp = c & 0x0F; low = 0x800; }
+  else if c >= 0xF0 && c <= 0xF4 { n = 4; cp = c & 0x07; low = 0x10000; }
+  else { return 0; }
+  if i + n > text.count { return 0; }
+  for k: 1..<n {
+    b := cast(int) text[i + k];
+    if (b & 0xC0) != 0x80 { return 0; }
+    cp = cp * 64 + (b & 0x3F);
+  }
+  if cp < low || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) { return 0; }
+  return n;
+}
+
+// A string from its opening quote at j.at: checks escapes and UTF-8.
+json_string :: (j: [] Json) -> int {
+  text := j[0].text;
+  i := j[0].at + 1;
+  while true {
+    if i >= text.count || i - j[0].at - 1 > JSON_MAX_STRING { return json_refuse(j, i); }
+    c := text[i];
+    if c == '"' { break; }
+    if c < 0x20 { return json_refuse(j, i); }
+    if c == '\\' {
+      if i + 1 >= text.count { return json_refuse(j, i); }
+      e := text[i + 1];
+      if e == 'u' {
+        if i + 6 > text.count { return json_refuse(j, i); }
+        for k: 2..<6 { if json_hex(text[i + k]) < 0 { return json_refuse(j, i); } }
+        i += 6;
+      } else if e == '"' || e == '\\' || e == '/' || e == 'b' || e == 'f' || e == 'n' || e == 'r' || e == 't' {
+        i += 2;
+      } else { return json_refuse(j, i); }
+      continue;
+    }
+    n := json_utf8(text, i);
+    if n == 0 { return json_refuse(j, i); }
+    i += n;
+  }
+  if i - j[0].at - 1 > JSON_MAX_STRING { return json_refuse(j, i); }
+  t := json_token(j, JSON_STRING, j[0].at + 1, i);
+  j[0].at = i + 1;
+  return t;
+}
+
+json_number :: (j: [] Json) -> int {
+  text := j[0].text;
+  s := j[0].at; i := s;
+  if i < text.count && text[i] == '-' { i += 1; }
+  if i >= text.count || !json_digit(text[i]) { return json_refuse(j, i); }
+  if text[i] == '0' { i += 1; } else { while i < text.count && json_digit(text[i]) { i += 1; } }
+  if i < text.count && text[i] == '.' {
+    i += 1;
+    if i >= text.count || !json_digit(text[i]) { return json_refuse(j, i); }
+    while i < text.count && json_digit(text[i]) { i += 1; }
+  }
+  if i < text.count && (text[i] == 'e' || text[i] == 'E') {
+    i += 1;
+    if i < text.count && (text[i] == '+' || text[i] == '-') { i += 1; }
+    if i >= text.count || !json_digit(text[i]) { return json_refuse(j, i); }
+    while i < text.count && json_digit(text[i]) { i += 1; }
+  }
+  j[0].at = i;
+  return json_token(j, JSON_NUMBER, s, i);
+}
+
+json_word :: (j: [] Json, word: string, tok: int) -> int {
+  text := j[0].text; s := j[0].at;
+  if s + word.count > text.count { return json_refuse(j, s); }
+  for k: 0..<word.count { if text[s + k] != word[k] { return json_refuse(j, s + k); } }
+  j[0].at = s + word.count;
+  return json_token(j, tok, s, s + word.count);
+}
+
+json_value :: (j: [] Json) -> int {
+  c := j[0].text[j[0].at];
+  if c == '{' || c == '[' {
+    if j[0].depth >= JSON_DEPTH { return json_refuse(j, j[0].at); }
+    j[0].object[j[0].depth] = c == '{';
+    j[0].depth += 1;
+    j[0].want = ifx c == '{' then JW_KEY_OR_CLOSE else JW_VALUE_OR_CLOSE;
+    j[0].at += 1;
+    return json_token(j, ifx c == '{' then JSON_OBJECT else JSON_ARRAY, j[0].at - 1, j[0].at);
+  }
+  t := JSON_ERROR;
+  if c == '"' { t = json_string(j); }
+  else if c == '-' || json_digit(c) { t = json_number(j); }
+  else if c == 't' { t = json_word(j, "true", JSON_TRUE); }
+  else if c == 'f' { t = json_word(j, "false", JSON_FALSE); }
+  else if c == 'n' { t = json_word(j, "null", JSON_NULL); }
+  else { return json_refuse(j, j[0].at); }
+  if t != JSON_ERROR { json_after_value(j); }
+  return t;
+}
+
+json_close :: (j: [] Json) -> int {
+  j[0].depth -= 1;
+  object := j[0].object[j[0].depth];
+  j[0].at += 1;
+  t := json_token(j, ifx object then JSON_OBJECT_END else JSON_ARRAY_END, j[0].at - 1, j[0].at);
+  json_after_value(j);
+  return t;
+}
+
+// The next token: JSON_END once the value is complete, JSON_ERROR from the
+// first byte that isn't JSON on.
+json_next :: (j: [] Json) -> int {
+  if j[0].tok == JSON_ERROR { return JSON_ERROR; }
+  text := j[0].text;
+  while true {
+    while j[0].at < text.count {
+      c := text[j[0].at];
+      if c != ' ' && c != '\t' && c != '\n' && c != '\r' { break; }
+      j[0].at += 1;
+    }
+    if j[0].want == JW_DONE {
+      if j[0].at == text.count { return json_token(j, JSON_END, j[0].at, j[0].at); }
+      return json_refuse(j, j[0].at);
+    }
+    if j[0].at >= text.count { return json_refuse(j, j[0].at); }
+    c := text[j[0].at];
+    w := j[0].want;
+    if w == JW_COLON {
+      if c != ':' { return json_refuse(j, j[0].at); }
+      j[0].at += 1; j[0].want = JW_VALUE;
+      continue;
+    }
+    if w == JW_NEXT {
+      object := j[0].object[j[0].depth - 1];
+      if c == ',' { j[0].at += 1; j[0].want = ifx object then JW_KEY else JW_VALUE; continue; }
+      if (object && c == '}') || (!object && c == ']') { return json_close(j); }
+      return json_refuse(j, j[0].at);
+    }
+    if w == JW_KEY_OR_CLOSE || w == JW_KEY {
+      if w == JW_KEY_OR_CLOSE && c == '}' { return json_close(j); }
+      if c != '"' { return json_refuse(j, j[0].at); }
+      t := json_string(j);
+      if t == JSON_ERROR { return t; }
+      j[0].key = true; j[0].want = JW_COLON;
+      return t;
+    }
+    if w == JW_VALUE_OR_CLOSE && c == ']' { return json_close(j); }
+    return json_value(j);
+  }
+  return JSON_ERROR;
+}
+
+// Skips the value whose first token was just read (a container to its end).
+// False when the text is refused on the way.
+json_skip :: (j: [] Json) -> bool {
+  if j[0].tok == JSON_ERROR { return false; }
+  if j[0].tok != JSON_OBJECT && j[0].tok != JSON_ARRAY { return true; }
+  depth := j[0].depth - 1;
+  while j[0].depth > depth {
+    if json_next(j) == JSON_ERROR { return false; }
+  }
+  return true;
+}
+
+// Every token to the end: true when the text is one JSON value.
+json_valid :: (text: string) -> bool {
+  j: [1] Json;
+  json_start(j[..], text);
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_END { return true; }
+    if t == JSON_ERROR { return false; }
+  }
+  return false;
+}
+
+// A number token's text as an integer: no fraction or exponent, |n| <= 2^53.
+JsonInt :: struct { ok: bool; value: int; }
+JSON_INT_MOST :: 9007199254740992;
+json_int :: (s: string) -> JsonInt {
+  r: JsonInt;
+  i := 0; negative := false;
+  if i < s.count && s[i] == '-' { negative = true; i += 1; }
+  if i >= s.count || s.count - i > 16 { return r; }
+  if s[i] == '0' && s.count - i > 1 { return r; }
+  v := 0;
+  while i < s.count {
+    if !json_digit(s[i]) { return r; }
+    v = v * 10 + cast(int) (s[i] - '0');
+    i += 1;
+  }
+  if v > JSON_INT_MOST { return r; }
+  r.ok = true; r.value = ifx negative then -v else v;
+  return r;
+}
+
+// A UTF-8 encoding of cp into out at n: the new length, or -1 when it doesn't fit.
+json_put_cp :: (out: [] u8, n: int, cp: int) -> int {
+  need := ifx cp < 0x80 then 1 else ifx cp < 0x800 then 2 else ifx cp < 0x10000 then 3 else 4;
+  if n < 0 || n + need > out.count { return -1; }
+  if need == 1 { out[n] = cast(u8) cp; }
+  else if need == 2 { out[n] = cast(u8) (0xC0 | (cp >> 6)); out[n + 1] = cast(u8) (0x80 | (cp & 0x3F)); }
+  else if need == 3 {
+    out[n] = cast(u8) (0xE0 | (cp >> 12)); out[n + 1] = cast(u8) (0x80 | ((cp >> 6) & 0x3F)); out[n + 2] = cast(u8) (0x80 | (cp & 0x3F));
+  } else {
+    out[n] = cast(u8) (0xF0 | (cp >> 18)); out[n + 1] = cast(u8) (0x80 | ((cp >> 12) & 0x3F));
+    out[n + 2] = cast(u8) (0x80 | ((cp >> 6) & 0x3F)); out[n + 3] = cast(u8) (0x80 | (cp & 0x3F));
+  }
+  return n + need;
+}
+
+json_u4 :: (raw: string, i: int) -> int {
+  if i + 6 > raw.count || raw[i] != '\\' || raw[i + 1] != 'u' { return -1; }
+  v := 0;
+  for k: 2..<6 { h := json_hex(raw[i + k]); if h < 0 { return -1; } v = v * 16 + h; }
+  return v;
+}
+
+// A string token's raw bytes (json_text) unescaped into out: its length, or
+// -1 when it doesn't fit or holds a lone surrogate. The bytes were checked
+// by the parser.
+json_unescape :: (raw: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  while i < raw.count {
+    c := raw[i];
+    if c != '\\' {
+      if n >= out.count { return -1; }
+      out[n] = c; n += 1; i += 1;
+      continue;
+    }
+    if i + 1 >= raw.count { return -1; }
+    e := raw[i + 1];
+    if e == 'u' {
+      cp := json_u4(raw, i);
+      if cp < 0 { return -1; }
+      i += 6;
+      if cp >= 0xDC00 && cp <= 0xDFFF { return -1; }
+      if cp >= 0xD800 && cp <= 0xDBFF {
+        lo := json_u4(raw, i);
+        if lo < 0xDC00 || lo > 0xDFFF { return -1; }
+        cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+        i += 6;
+      }
+      n = json_put_cp(out, n, cp);
+      if n < 0 { return -1; }
+      continue;
+    }
+    b := e;
+    if e == 'b' { b = 8; } else if e == 'f' { b = 12; } else if e == 'n' { b = 10; } else if e == 'r' { b = 13; } else if e == 't' { b = 9; }
+    if n >= out.count { return -1; }
+    out[n] = b; n += 1; i += 2;
+  }
+  return n;
+}
+
+// Whether a string token's raw bytes say exactly s (escapes read as what they mean).
+json_is :: (raw: string, s: string) -> bool {
+  if raw.count == s.count {
+    plain := true;
+    for i: 0..<raw.count { if raw[i] == '\\' { plain = false; break; } }
+    if plain { for i: 0..<raw.count { if raw[i] != s[i] { return false; } } return true; }
+  }
+  buf: [256] u8;
+  n := json_unescape(raw, buf[..]);
+  if n != s.count { return false; }
+  for i: 0..<n { if buf[i] != s[i] { return false; } }
+  return true;
+}
+
+// ---- the writer: each call appends to out from at and returns the new
+// length, or -1 when it doesn't fit (and -1 stays -1 down a chain of calls).
+
+json_raw :: (out: [] u8, at: int, text: string) -> int {
+  if at < 0 || at + text.count > out.count { return -1; }
+  for i: 0..<text.count { out[at + i] = text[i]; }
+  return at + text.count;
+}
+
+// s as a JSON string, escaped the way NIP-01 serializes an event: \" \\ \n
+// \r \t \b \f, other control bytes as \u00XX, everything else as it is.
+json_write_string :: (out: [] u8, at: int, s: string) -> int {
+  n := json_raw(out, at, "\"");
+  for i: 0..<s.count {
+    if n < 0 { return -1; }
+    c := s[i];
+    if c == '"' { n = json_raw(out, n, "\\\""); }
+    else if c == '\\' { n = json_raw(out, n, "\\\\"); }
+    else if c == 10 { n = json_raw(out, n, "\\n"); }
+    else if c == 13 { n = json_raw(out, n, "\\r"); }
+    else if c == 9 { n = json_raw(out, n, "\\t"); }
+    else if c == 8 { n = json_raw(out, n, "\\b"); }
+    else if c == 12 { n = json_raw(out, n, "\\f"); }
+    else if c < 0x20 {
+      n = json_raw(out, n, "\\u00");
+      digits := "0123456789abcdef";
+      if n >= 0 && n + 2 <= out.count { out[n] = digits[c >> 4]; out[n + 1] = digits[c & 15]; n += 2; } else { n = -1; }
+    } else {
+      if n >= out.count { return -1; }
+      out[n] = c; n += 1;
+    }
+  }
+  return json_raw(out, n, "\"");
+}
+
+json_write_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 { return -1; }
+  digits: [24] u8; c := 0; x := v; n := at;
+  if x < 0 { n = json_raw(out, n, "-"); x = -x; }
+  while true { digits[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  if n < 0 || n + c > out.count { return -1; }
+  for k: 0..<c { out[n + k] = digits[c - 1 - k]; }
+  return n + c;
+}
+
+// ---- checks
+
+#load "fixtures/json_suite.coax";
+#load "fixtures/coax_relay.coax";
+
+#test "the pinned JSONTestSuite cases: every y_ parses, every n_ is refused" {
+  for k: 0..<JSON_SUITE_N {
+    ok := json_valid(JSON_SUITE_TEXT[k]);
+    if ok != JSON_SUITE_VALID[k] { #assert JSON_SUITE_NAMES[k] == ""; }
+  }
+}
+
+#test "tokens come with their byte ranges, keys marked" {
+  text := " {\"a\": [1, -2.5e3, \"x\\ny\"], \"b\": {}, \"c\": true}";
+  j: [1] Json;
+  json_start(j[..], text);
+  #assert json_next(j[..]) == JSON_OBJECT && j[0].from == 1;
+  #assert json_next(j[..]) == JSON_STRING && j[0].key && json_text(j[..]) == "a";
+  #assert json_next(j[..]) == JSON_ARRAY && !j[0].key;
+  #assert json_next(j[..]) == JSON_NUMBER && json_text(j[..]) == "1" && json_int(json_text(j[..])).value == 1;
+  #assert json_next(j[..]) == JSON_NUMBER && json_text(j[..]) == "-2.5e3" && !json_int(json_text(j[..])).ok;
+  #assert json_next(j[..]) == JSON_STRING && !j[0].key && json_text(j[..]) == "x\\ny";
+  buf: [8] u8;
+  #assert json_unescape(json_text(j[..]), buf[..]) == 3 && buf[1] == 10;
+  #assert json_next(j[..]) == JSON_ARRAY_END;
+  #assert json_next(j[..]) == JSON_STRING && j[0].key && json_is(json_text(j[..]), "b");
+  #assert json_next(j[..]) == JSON_OBJECT && json_skip(j[..]) && j[0].tok == JSON_OBJECT_END;
+  #assert json_next(j[..]) == JSON_STRING && json_next(j[..]) == JSON_TRUE;
+  #assert json_next(j[..]) == JSON_OBJECT_END && json_next(j[..]) == JSON_END && json_next(j[..]) == JSON_END;
+}
+
+#test "limits: depth 16, the input and a string's length; a refusal sticks" {
+  deep: [40] u8;
+  for i: 0..<16 { deep[i] = '['; deep[16 + i] = ']'; }
+  #assert json_valid(cast(string) deep[0..<32]);
+  for i: 0..<17 { deep[i] = '['; deep[17 + i] = ']'; }
+  #assert !json_valid(cast(string) deep[0..<34]);
+  long: [JSON_MAX_STRING + 3] u8;
+  for i: 0..<long.count { long[i] = 'a'; }
+  long[0] = '"'; long[JSON_MAX_STRING + 1] = '"';
+  #assert json_valid(cast(string) long[0..<JSON_MAX_STRING + 2]);
+  long[JSON_MAX_STRING + 1] = 'a'; long[JSON_MAX_STRING + 2] = '"';
+  #assert !json_valid(cast(string) long[..]);
+  j: [1] Json;
+  json_start(j[..], "[1,]");
+  #assert json_next(j[..]) == JSON_ARRAY && json_next(j[..]) == JSON_NUMBER && json_next(j[..]) == JSON_ERROR;
+  #assert j[0].error_at == 3 && json_next(j[..]) == JSON_ERROR && !json_skip(j[..]);
+}
+
+#test "UTF-8 inside strings, byte by byte" {
+  b: [6] u8;
+  b[0] = '"'; b[1] = 0xC3; b[2] = 0xA9; b[3] = '"';
+  #assert json_valid(cast(string) b[0..<4]);
+  b[2] = 0x41; #assert !json_valid(cast(string) b[0..<4]);          // a lead byte without its continuation
+  b[1] = 0xC0; b[2] = 0x80; #assert !json_valid(cast(string) b[0..<4]);   // overlong
+  b[1] = 0xFF; b[2] = 0x41; #assert !json_valid(cast(string) b[0..<4]);
+  b[1] = 0xED; b[2] = 0xA0; b[3] = 0x80; b[4] = '"';
+  #assert !json_valid(cast(string) b[0..<5]);                       // an encoded surrogate
+  b[1] = 0xE2; b[2] = 0x82; b[3] = 0xAC; #assert json_valid(cast(string) b[0..<5]);   // €
+  b[1] = 0xF4; b[2] = 0x90; b[3] = 0x80; b[4] = 0x80; b[5] = '"';
+  #assert !json_valid(cast(string) b[0..<6]);                       // over U+10FFFF
+  b[2] = 0x8F; b[3] = 0xBF; b[4] = 0xBF; #assert json_valid(cast(string) b[0..<6]);
+  #assert !json_valid("\"a\tb\"");                                  // a raw control byte
+}
+
+#test "unescaping: every escape, surrogate pairs, refusal of lone ones and of what doesn't fit" {
+  out: [32] u8;
+  n := json_unescape("\\\"\\\\\\/\\b\\f\\n\\r\\t", out[..]);
+  #assert n == 8 && out[0] == '"' && out[1] == '\\' && out[2] == '/' && out[3] == 8 && out[4] == 12 && out[5] == 10 && out[6] == 13 && out[7] == 9;
+  n = json_unescape("a\\u00e9\\u20AC\\ud83d\\ude00", out[..]);
+  #assert n == 1 + 2 + 3 + 4 && cast(string) out[0..<n] == "aé€😀";
+  #assert json_unescape("\\ud83d", out[..]) == -1 && json_unescape("\\ude00", out[..]) == -1 && json_unescape("\\ud83dx", out[..]) == -1;
+  #assert json_unescape("\\u0000", out[..]) == 1 && out[0] == 0;
+  small: [2] u8;
+  #assert json_unescape("abc", small[..]) == -1 && json_unescape("\\u20ac", small[..]) == -1 && json_unescape("ab", small[..]) == 2;
+  #assert json_is("a\\u0062c", "abc") && json_is("abc", "abc") && !json_is("abd", "abc") && !json_is("ab", "abc");
+}
+
+#test "integers within 2^53, and nothing else" {
+  #assert json_int("9007199254740992").ok && json_int("-9007199254740992").value == -9007199254740992;
+  #assert !json_int("9007199254740993").ok && !json_int("12345678901234567").ok;
+  #assert json_int("0").ok && json_int("-0").value == 0 && !json_int("01").ok && !json_int("1.0").ok && !json_int("1e3").ok && !json_int("").ok && !json_int("-").ok;
+  #assert json_int("1761686400").value == 1761686400;
+}
+
+#test "the writer escapes as NIP-01 does, appends, and refuses what doesn't fit" {
+  out: [64] u8;
+  ctl: [1] u8; ctl[0] = 1;
+  n := json_raw(out[..], 0, "[");
+  n = json_write_string(out[..], n, "a\"b\\c\nd\te\r\\u");
+  #assert n > 0;
+  n = json_raw(out[..], n, ",");
+  n = json_write_string(out[..], n, cast(string) ctl[..]);
+  n = json_raw(out[..], n, ",");
+  n = json_write_int(out[..], n, -1761686400);
+  n = json_raw(out[..], n, "]");
+  #assert cast(string) out[0..<n] == "[\"a\\\"b\\\\c\\nd\\te\\r\\\\u\",\"\\u0001\",-1761686400]";
+  #assert json_valid(cast(string) out[0..<n]);
+  small: [4] u8;
+  #assert json_write_string(small[..], 0, "abc") == -1 && json_write_int(small[..], json_raw(small[..], 0, "abcde"), 1) == -1;
+  #assert json_write_string(small[..], 0, "ab") == 4 && json_write_int(small[..], 0, 1234) == 4 && json_write_int(small[..], 0, 12345) == -1;
+}
+
+// Every frame relay.openagents.com sent for the coax project's subscriptions
+// parses, and each EVENT's event carries the NIP-01 fields.
+#test "every frame of the captured relay transcript parses" {
+  text := COAX_RELAY;
+  frames := 0; events := 0; i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    frame := text[i..<e];
+    #assert json_valid(frame);
+    j: [1] Json;
+    json_start(j[..], frame);
+    #assert json_next(j[..]) == JSON_ARRAY && json_next(j[..]) == JSON_STRING;
+    if json_is(json_text(j[..]), "EVENT") {
+      #assert json_next(j[..]) == JSON_STRING && json_next(j[..]) == JSON_OBJECT;
+      fields := 0;
+      while json_next(j[..]) == JSON_STRING {
+        k := json_text(j[..]);
+        t := json_next(j[..]);
+        if json_is(k, "id") || json_is(k, "pubkey") || json_is(k, "sig") { #assert t == JSON_STRING; fields += 1; }
+        if json_is(k, "kind") || json_is(k, "created_at") { #assert t == JSON_NUMBER && json_int(json_text(j[..])).ok; fields += 1; }
+        if json_is(k, "content") { #assert t == JSON_STRING; buf: [JSON_MAX_STRING] u8; #assert json_unescape(json_text(j[..]), buf[..]) >= 0; fields += 1; }
+        if json_is(k, "tags") { #assert t == JSON_ARRAY; fields += 1; }
+        #assert json_skip(j[..]);
+      }
+      #assert fields == 7;
+      events += 1;
+    }
+    frames += 1;
+    i = e + 1;
+  }
+  #assert frames == COAX_RELAY_FRAMES && events > 100;
+}
