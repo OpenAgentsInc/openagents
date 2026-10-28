@@ -4,17 +4,19 @@
 -- (kept title, members and agreed goals; a running turn; the edit recorded
 -- under the turn) hold for them as for every write. 0013's talk_lines is
 -- defined again with the members and the proposed goals' agreements, which
--- landed after 0013 had run.
+-- landed after 0013 had run. Every function is CREATE OR REPLACE: this file
+-- first shipped as 0016_project_agent_tools.sql, and staging and production
+-- applied it under that name before the rename.
 
 -- A JSON pointer as a path: "/days/0/milestones/-" → {days,0,milestones,-}.
-CREATE FUNCTION projects.pointer(p text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION projects.pointer(p text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
   SELECT CASE WHEN p IS NULL OR left(p, 1) <> '/' THEN NULL
     ELSE (SELECT array_agg(replace(replace(x, '~1', '/'), '~0', '~') ORDER BY o) FROM unnest(string_to_array(substr(p, 2), '/')) WITH ORDINALITY AS u(x, o)) END
 $$;
 
 -- RFC 6902 add, remove, replace, move and test over the document; the result
 -- is {"doc": ...} or {"error": ...}.
-CREATE FUNCTION projects.patch_apply(doc jsonb, ops jsonb) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION projects.patch_apply(doc jsonb, ops jsonb) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
   o jsonb; p text[]; f text[]; parent text[]; last text; v jsonb; holder jsonb; n int := 0;
 BEGIN
@@ -62,20 +64,20 @@ BEGIN
 END $$;
 
 -- The days kept in date order, with a day made for a date that has none.
-CREATE FUNCTION projects.with_day(doc jsonb, day text) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION projects.with_day(doc jsonb, day text) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
   SELECT CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(doc->'days', '[]')) d WHERE d->>'date' = day) THEN doc
     ELSE jsonb_set(doc, '{days}', (SELECT jsonb_agg(d ORDER BY d->>'date') FROM jsonb_array_elements(
            coalesce(doc->'days', '[]') || jsonb_build_array(jsonb_build_object('date', day, 'milestones', '[]'::jsonb))) d), true) END
 $$;
 
 -- A fresh id for a new item, with a prefix.
-CREATE FUNCTION projects.fresh_id(prefix text) RETURNS text LANGUAGE sql VOLATILE AS $$
+CREATE OR REPLACE FUNCTION projects.fresh_id(prefix text) RETURNS text LANGUAGE sql VOLATILE AS $$
   SELECT prefix || '-' || substr(md5(random()::text || clock_timestamp()::text), 1, 8)
 $$;
 
 -- milestone_edit: add, reword, move or carry over a milestone, or add or
 -- reword a backlog (checklist) item. {"doc": ...} or {"error": ...}.
-CREATE FUNCTION projects.milestone_edit(doc jsonb, body jsonb) RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$
+CREATE OR REPLACE FUNCTION projects.milestone_edit(doc jsonb, body jsonb) RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$
 DECLARE
   act text := coalesce(body->>'action', '');
   mid text := nullif(btrim(coalesce(body->>'id', '')), '');
@@ -138,7 +140,7 @@ END $$;
 -- goal_propose: a new goal, or a change to one, as proposed. A change to an
 -- agreed goal is a new proposed goal that names it in "replaces"; the agreed
 -- goal stays until the members agree.
-CREATE FUNCTION projects.goal_propose(doc jsonb, body jsonb) RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$
+CREATE OR REPLACE FUNCTION projects.goal_propose(doc jsonb, body jsonb) RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$
 DECLARE
   gid text := nullif(btrim(coalesce(body->>'id', '')), '');
   txt text := nullif(btrim(coalesce(body->>'text', '')), '');
@@ -161,7 +163,7 @@ END $$;
 
 -- The agent's document tools: an approved project's runner or agent only
 -- (anyone else, or any other project, gets the same 404 as no project), from the version it read, then push.
-CREATE FUNCTION projects.agent_edit(op text, want text, body jsonb, who jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION projects.agent_edit(op text, want text, body jsonb, who jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
   pk text := nullif(who->>'pubkey', '');
   cur projects.docs;
