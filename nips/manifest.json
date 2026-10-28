@@ -5,20 +5,22 @@
       "repo": "https://github.com/nostr-protocol/nips",
       "subdir": ".",
       "branch": "master",
-      "commit": "b82211e96c6dad616ed2ea43034c1c621256b745",
-      "tree_url": "https://github.com/nostr-protocol/nips/tree/b82211e96c6dad616ed2ea43034c1c621256b745",
-      "synced_at": "2026-09-26T07:12:27Z",
-      "files": 100
+      "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+      "tree_url": "https://github.com/nostr-protocol/nips/tree/400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+      "synced_at": "2026-10-28T00:33:01Z",
+      "files": 101,
+      "specifications": 100
     },
     {
       "name": "block",
       "repo": "https://github.com/block/buzz",
       "subdir": "docs/nips",
       "branch": "main",
-      "commit": "781d39510cf23cfe224e8f521ae06a23377e06de",
-      "tree_url": "https://github.com/block/buzz/tree/781d39510cf23cfe224e8f521ae06a23377e06de/docs/nips",
-      "synced_at": "2026-09-26T07:12:30Z",
-      "files": 17
+      "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+      "tree_url": "https://github.com/block/buzz/tree/24a370606044c0c7be787cc2fd98ec0bfe1d606b/docs/nips",
+      "synced_at": "2026-10-28T00:33:08Z",
+      "files": 22,
+      "specifications": 20
     }
   ]
 }
