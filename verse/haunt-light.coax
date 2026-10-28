@@ -13,4 +13,42 @@ verse_haunt_shade :: (albedo:f32,light:f32,glow:f32,distance:f32,channel:f32,fla
  lit:=albedo*(light+glow*2.0f32+flash*2.0f32)*1.3f32;
  return lit+(fogcolor-lit)*fog;
 }
+// The night's key light: the moon, from the house's look (moonDir, normalized),
+// its blue-white light, and how far round the player its shadows reach (a
+// square that many metres each way, and that deep along the light).
+verse_haunt_moon_dir :: (axis:f32)->f32 #export_c {return ifx axis<0.5f32 then -0.552944f32 else ifx axis<1.5f32 then 0.552944f32 else -0.623310f32;}
+verse_haunt_moonlight :: (channel:f32)->f32 #export_c {return ifx channel<0.5f32 then 0.33f32 else ifx channel<1.5f32 then 0.375f32 else 0.51f32;}
+verse_haunt_shadow_reach :: (axis:f32)->f32 #export_c {return ifx axis<0.5f32 then 26.0f32 else 70.0f32;}
+// How much of the moon a point at shadow-map coordinates (u, v) gets when lit
+// is the share of the map's taps that see it: full light outside the map, and
+// the map fading out over its last tenth so its edge never shows.
+verse_haunt_shadow_edge :: (u:f32,v:f32,lit:f32)->f32 #export_c {
+ e:=hl_max(hl_max(u*2.0f32-1.0f32,1.0f32-u*2.0f32),hl_max(v*2.0f32-1.0f32,1.0f32-v*2.0f32));
+ fade:=hl_min(1.0f32,hl_max(0.0f32,(e-0.9f32)*10.0f32));
+ return lit+(1.0f32-lit)*fade;
+}
+// Night's tone: the engine's curve, its darks lifted so a moonlit yard still
+// reads (a fifth of the square root), white still white and black still black.
+verse_haunt_night :: (light:f32)->f32 #export_c {
+ t:=1.0f32-exp(-light*1.35f32);
+ return t*0.8f32+sqrt(hl_max(t,0.0f32))*0.2f32;
+}
 #test "point lights end at their radius" {#assert verse_haunt_attenuate(5.0f32,5.0f32)==0.0f32;#assert verse_haunt_attenuate(0.0f32,5.0f32)==1.0f32;}
+#test "the moon is a unit light from the look's moonDir, above the horizon" {
+ x:=verse_haunt_moon_dir(0.0f32);y:=verse_haunt_moon_dir(1.0f32);z:=verse_haunt_moon_dir(2.0f32);
+ #assert abs(x*x+y*y+z*z-1.0f32)<0.0001f32;#assert y>0.0f32;
+ #assert verse_haunt_moonlight(2.0f32)>verse_haunt_moonlight(0.0f32);
+}
+#test "shadows fade out at the map's edge and never past it" {
+ #assert verse_haunt_shadow_edge(0.5f32,0.5f32,0.0f32)==0.0f32;
+ #assert verse_haunt_shadow_edge(0.5f32,0.5f32,0.4f32)==0.4f32;
+ #assert verse_haunt_shadow_edge(1.0f32,0.5f32,0.0f32)==1.0f32;
+ #assert verse_haunt_shadow_edge(0.5f32,-0.2f32,0.0f32)==1.0f32;
+ #assert verse_haunt_shadow_edge(0.975f32,0.5f32,0.0f32)>0.4f32;
+}
+#test "night's tone keeps black and white and lifts the dark" {
+ #assert verse_haunt_night(0.0f32)==0.0f32;
+ #assert verse_haunt_night(20.0f32)>0.999f32;
+ #assert verse_haunt_night(0.05f32)>1.4f32*(1.0f32-exp(-0.05f32*1.35f32));
+ for i:0..<40 {a:=cast(f32)i*0.1f32;#assert verse_haunt_night(a+0.1f32)>verse_haunt_night(a);}
+}

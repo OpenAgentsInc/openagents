@@ -82,7 +82,7 @@
 //                             memory copied each frame to storage buffers
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
 // The WGSL's scene_vs/scene_fs read group 1: the storage assets, then the stores, then the texture
-// and its sampler, in that order.
+// and its sampler, in that order. A WGSL with shadow_vs/shadow_fs also gets a shadow map (shadowLayout).
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 
@@ -510,7 +510,9 @@ async function loadShaders() {
   // With a scene, every pipeline in the pass shares its depth buffer; only the scene tests and writes it.
   const scene = !!engine?.exports.coaxial_draws;
   const flat = scene ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
-  const [bg, fx, sc] = await Promise.all([
+  const shadows = scene && /fn\s+shadow_vs\b/.test(code);
+  const sceneGroups = scene ? [gpu.layout, sceneLayout(), ...(shadows ? [shadowLayout()] : [])] : [];
+  const [bg, fx, sc, sh] = await Promise.all([
     device.createRenderPipelineAsync({ layout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: [{ format }] } }),
     device.createRenderPipelineAsync({
       layout, ...flat,
@@ -522,13 +524,19 @@ async function loadShaders() {
         color: { operation: "max", srcFactor: "one", dstFactor: "one" }, alpha: { operation: "max", srcFactor: "one", dstFactor: "one" } } }] },
     }),
     scene ? device.createRenderPipelineAsync({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, sceneLayout()] }),
+      layout: device.createPipelineLayout({ bindGroupLayouts: sceneGroups }),
       vertex: { module, entryPoint: "scene_vs" }, fragment: { module, entryPoint: "scene_fs", targets: [{ format }] },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
     }) : null,
+    shadows ? device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, sceneLayout()] }),
+      vertex: { module, entryPoint: "shadow_vs" }, fragment: { module, entryPoint: "shadow_fs", targets: [] },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 },
+    }) : null,
   ]);
-  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; // swapped whole, at the next frame
+  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; // swapped whole, at the next frame
   return true;
 }
 
@@ -596,6 +604,21 @@ function sceneLayout() {
     entries.push({ binding: entries.length, visibility: GPUShaderStage.FRAGMENT, sampler: {} });
   }
   return (gpu.sceneLayout = gpu.device.createBindGroupLayout({ entries }));
+}
+// The shadow map, when the WGSL has shadow_vs/shadow_fs: the scene drawn first from its key
+// light into a depth texture (2048 square, 1024 on a phone), which scene_fs reads as group 2:
+// the map, then a comparison sampler.
+function shadowLayout() {
+  if (gpu.shadowLayout) return gpu.shadowLayout;
+  const { device } = gpu, size = matchMedia("(pointer: coarse)").matches ? 1024 : 2048;
+  gpu.shadowLayout = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "comparison" } }] });
+  gpu.shadowMap = device.createTexture({ size: [size, size], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+  gpu.shadowGroup = device.createBindGroup({ layout: gpu.shadowLayout, entries: [
+    { binding: 0, resource: gpu.shadowMap.createView() },
+    { binding: 1, resource: device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" }) }] });
+  return gpu.shadowLayout;
 }
 // Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
 function bindScene() {
@@ -697,14 +720,24 @@ function frame(now) {
     gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT });
   }
   const encoder = device.createCommandEncoder();
+  const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
+  const drawScene = (pass) => {
+    pass.setBindGroup(1, gpu.sceneGroup); pass.setIndexBuffer(gpu.index, "uint32");
+    for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) pass.drawIndexed(list[i * 4 + 1], list[i * 4 + 3], list[i * 4], 0, list[i * 4 + 2]);
+  };
+  if (draws && gpu.shadow) {
+    const shade = encoder.beginRenderPass({ colorAttachments: [],
+      depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
+    shade.setBindGroup(0, gpu.bindGroup); shade.setPipeline(gpu.shadow); drawScene(shade); shade.end();
+  }
   const pass = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
     ...(gpu.scene ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
   pass.setPipeline(gpu.bg); pass.draw(3);
   if (draws) {
-    pass.setPipeline(gpu.scene); pass.setBindGroup(1, gpu.sceneGroup); pass.setIndexBuffer(gpu.index, "uint32");
-    const list = new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4);
-    for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) pass.drawIndexed(list[i * 4 + 1], list[i * 4 + 3], list[i * 4], 0, list[i * 4 + 2]);
+    pass.setPipeline(gpu.scene);
+    if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
+    drawScene(pass);
   }
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   pass.end();

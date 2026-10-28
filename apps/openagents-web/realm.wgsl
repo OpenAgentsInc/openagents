@@ -20,7 +20,7 @@ struct U {
 }
 @group(0) @binding(0) var<uniform> u: U;
 
-fn tone(c: vec3f) -> vec3f { return vec3f(verse_tone(c.r), verse_tone(c.g), verse_tone(c.b)); }
+fn tone(c: vec3f) -> vec3f { return vec3f(verse_haunt_night(c.r), verse_haunt_night(c.g), verse_haunt_night(c.b)); }
 
 // A plate (realm.coax plate): a dark wood fill with one thin bronze line
 // round it and small rounded corners. Look 1 lights the line; 2 (under
@@ -84,6 +84,52 @@ struct S {
   @location(5) @interpolate(flat) slice: u32,
 }
 fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
+
+// ---- the moon's shadow map (haunt-light.coax verse_haunt_moon_dir, _shadow_reach): a square
+// round the eye, snapped to whole texels so the shadows hold still as you walk, drawn first by
+// shadow_vs/shadow_fs and read by scene_fs, twelve taps of the comparison sampler for a soft edge.
+fn moon_dir() -> vec3f { return vec3f(verse_haunt_moon_dir(0.0), verse_haunt_moon_dir(1.0), verse_haunt_moon_dir(2.0)); }
+fn shadow_place(w: vec3f) -> vec3f {
+  let l = moon_dir();
+  let r = normalize(cross(vec3f(0.0, 1.0, 0.0), l));
+  let up = cross(l, r);
+  let reach = verse_haunt_shadow_reach(0.0);
+  let deep = verse_haunt_shadow_reach(1.0);
+  let snap = reach * 2.0 / 1024.0;
+  let c = vec3f(floor(dot(u.eye.xyz, r) / snap) * snap, floor(dot(u.eye.xyz, up) / snap) * snap, dot(u.eye.xyz, l));
+  return vec3f((dot(w, r) - c.x) / reach, (dot(w, up) - c.y) / reach, 0.5 - (dot(w, l) - c.z) / (2.0 * deep));
+}
+struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) @interpolate(flat) slice: u32 }
+@vertex fn shadow_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> Shade {
+  let b = id * 12u;
+  let p = vec4f(word(b), word(b + 1u), word(b + 2u), 1.0);
+  let m = objects[instance];
+  let q = shadow_place(vec3f(dot(m.r0, p), dot(m.r1, p), dot(m.r2, p)));
+  var o: Shade;
+  o.pos = vec4f(q.xy, q.z, 1.0);
+  if (m.material.a > 0.5) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); }
+  o.uv = vec2f(word(b + 6u), word(b + 7u));
+  o.slice = vertices[b + 8u] >> 24u;
+  return o;
+}
+@fragment fn shadow_fs(s: Shade) {
+  if (textureSampleLevel(sheets, sheet, s.uv, s.slice, 0.0).a < 0.35) { discard; }
+}
+@group(2) @binding(0) var shadow_map: texture_depth_2d;
+@group(2) @binding(1) var shadow_cmp: sampler_comparison;
+fn moonlit(w: vec3f, n: vec3f) -> f32 {
+  let q = shadow_place(w + n * 0.06);
+  let uv = vec2f(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5);
+  let texel = 1.0 / f32(textureDimensions(shadow_map).x);
+  let taps = array(vec2f(-0.94, -0.40), vec2f(0.95, -0.77), vec2f(-0.09, -0.93), vec2f(0.34, 0.29),
+                   vec2f(-0.92, 0.46), vec2f(-0.82, -0.98)  * 0.5, vec2f(-0.38, 0.28), vec2f(0.97, 0.76),
+                   vec2f(0.44, -0.37), vec2f(0.54, -0.87) * 0.5, vec2f(-0.26, 0.97), vec2f(0.79, 0.19));
+  var lit = 0.0;
+  for (var k = 0; k < 12; k++) {
+    lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + taps[k] * texel * 2.2, q.z);
+  }
+  return verse_haunt_shadow_edge(uv.x, uv.y, lit / 12.0);
+}
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
   let b = id * 12u;
   let p = vec4f(word(b), word(b + 1u), word(b + 2u), 1.0);
@@ -106,9 +152,10 @@ fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   if (tex.a < 0.35) { discard; }
   let n = normalize(s.normal);
-  let moon = max(0.0, dot(n, normalize(vec3f(-0.55, 0.55, -0.62))));
+  let facing = max(0.0, dot(n, moon_dir()));
+  let moon = select(0.0, facing * moonlit(s.world, n), facing > 0.0);
   var lit = vec3f(verse_haunt_ambient(n.y, 0.0), verse_haunt_ambient(n.y, 1.0), verse_haunt_ambient(n.y, 2.0))
-          + moon * vec3f(0.5625, 0.6375, 0.8625) * 0.48;
+          + moon * vec3f(verse_haunt_moonlight(0.0), verse_haunt_moonlight(1.0), verse_haunt_moonlight(2.0));
   let count = u32(u.eye.w);
   for (var i = 0u; i < count; i++) {
     let l = lights[i];
@@ -216,7 +263,7 @@ fn verse_tone(l_light: f32) -> f32 {
 }
 // ---- end generated
 
-// ---- generated: verse/haunt-light.coax (verse_haunt_ambient, verse_haunt_attenuate, verse_haunt_shade) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/haunt-light.coax (verse_haunt_ambient, verse_haunt_attenuate, verse_haunt_shade, verse_haunt_moon_dir, verse_haunt_moonlight, verse_haunt_shadow_reach, verse_haunt_shadow_edge, verse_haunt_night) by coax/web/wgsl.py; do not edit
 fn verse_haunt_ambient(l_ny: f32, l_channel: f32) -> f32 {
   var l_sky: f32 = select(select(0.150000006, 0.0900000036, (l_channel < 1.5)), 0.0799999982, (l_channel < 0.5));
   var l_ground: f32 = select(select(0.0199999996, 0.0250000004, (l_channel < 1.5)), 0.0299999993, (l_channel < 0.5));
@@ -238,6 +285,39 @@ fn verse_haunt_shade(l_albedo: f32, l_light: f32, l_glow: f32, l_distance: f32, 
   var l_fogcolor: f32 = select(select(0.0700000003, 0.0399999991, (l_channel < 1.5)), 0.0350000001, (l_channel < 0.5));
   var l_lit: f32 = ((l_albedo * ((l_light + (l_glow * 2.0)) + (l_flash * 2.0))) * 1.29999995);
   return (l_lit + ((l_fogcolor - l_lit) * l_fog));
+}
+fn verse_haunt_moon_dir(l_axis: f32) -> f32 {
+  return select(select((-0.62331003), 0.552944005, (l_axis < 1.5)), (-0.552944005), (l_axis < 0.5));
+}
+fn verse_haunt_moonlight(l_channel: f32) -> f32 {
+  return select(select(0.50999999, 0.375, (l_channel < 1.5)), 0.330000013, (l_channel < 0.5));
+}
+fn verse_haunt_shadow_reach(l_axis: f32) -> f32 {
+  return select(70.0, 26.0, (l_axis < 0.5));
+}
+fn coax_p_hl_min(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a < l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn verse_haunt_shadow_edge(l_u: f32, l_v: f32, l_lit: f32) -> f32 {
+  var coax_t0: f32;
+  var coax_t1: f32;
+  coax_t0 = coax_p_hl_max(((l_u * 2.0) - 1.0), (1.0 - (l_u * 2.0)));
+  coax_t1 = coax_p_hl_max(((l_v * 2.0) - 1.0), (1.0 - (l_v * 2.0)));
+  var l_e: f32 = coax_p_hl_max(coax_t0, coax_t1);
+  var l_fade: f32 = coax_p_hl_min(1.0, coax_p_hl_max(0.0, ((l_e - 0.899999976) * 10.0)));
+  return (l_lit + ((1.0 - l_lit) * l_fade));
+}
+fn verse_haunt_night(l_light: f32) -> f32 {
+  var coax_t2: f32;
+  var coax_t3: f32;
+  var l_t: f32 = (1.0 - exp(((-l_light) * 1.35000002)));
+  coax_t2 = (l_t * 0.800000012);
+  coax_t3 = (sqrt(coax_p_hl_max(l_t, 0.0)) * 0.200000003);
+  return (coax_t2 + coax_t3);
 }
 // ---- end generated
 
