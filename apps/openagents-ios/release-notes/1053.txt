@@ -1,0 +1,3 @@
+Voice in the Grid. Tap the microphone at the top left to talk to the Foreman hands-free; talk over a reply to interrupt it.
+
+Voice needs a voice server. None is hosted yet: long-press the microphone and enter the address of a Mac running metareal/voice-host on your Wi-Fi, for example ws://your-mac.local:8787. Speech is recognized and spoken by Google; we don't keep the audio.

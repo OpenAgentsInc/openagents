@@ -21,7 +21,7 @@ targets:
     platform: iOS
     sources:
       - path: OpenAgents
-        excludes: [Platform/Stages.metal]
+        excludes: [Platform/Stages.metal, Info.plist]
       - path: Generated/Home.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Player.c
@@ -59,9 +59,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1052"
+        CURRENT_PROJECT_VERSION: "1053"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: OpenAgents/Info.plist
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_CFBundleDisplayName: OpenAgents
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
