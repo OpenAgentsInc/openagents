@@ -280,9 +280,9 @@ main :: () {a:[4] u8;b:[4] u8;
         first=r.stdout.splitlines()[0].decode()
         self.assertIn('descriptor_sha256='+hashlib.sha256(descriptor.read_bytes()).hexdigest(),first)
         self.assertIn('generator=coax0-native-v1',first)
-        self.assertIn('compiler=coax0-0.6.0',first)
-        runtime=(ROOT/'coax/src/proto_runtime.inc').read_bytes()
-        body=runtime[len(b'R\"COAX_PROTO('):-len(b')COAX_PROTO\"\n')]
+        self.assertIn('compiler='+checked([COAX,'--version']).decode().strip().replace(' ','-'),first)
+        core=(ROOT/'coax/lib/proto/wire.coax').read_bytes()
+        body=core.split(b'// @proto-runtime-checks\n')[0]+(ROOT/'coax/lib/proto/memory.coax').read_bytes()
         self.assertIn('runtime_sha256='+hashlib.sha256(body).hexdigest(),first)
         self.assertNotIn('python=',first);self.assertEqual(list(temp.iterdir()),[])
         # The duplicate emitted declaration is located at the import, not at
@@ -293,14 +293,16 @@ main :: () {a:[4] u8;b:[4] u8;
         self.assertTrue(any(x['line']==1 and 'generated proto import P' in x['message'] for x in errors),errors)
         self.assertEqual(list(temp.iterdir()),[])
 
-    def test_native_matches_pre_port_generation(self):
+    def test_schema_declaration_characterization(self):
         baseline=json.loads((ROOT/'coax/tests/proto/import-baselines.json').read_text())
         for name,expected in baseline['profiles'].items():
             descriptor=ROOT/name
             self.assertEqual(hashlib.sha256(descriptor.read_bytes()).hexdigest(),expected['descriptor_sha256'],name)
             source=checked([COAX,'proto',descriptor,'--prefix',baseline['prefix']])
-            body=source.split(b'\n',1)[1]
-            self.assertEqual(hashlib.sha256(body).hexdigest(),expected['source_sha256'],name)
+            body=source.split(b'// @proto-descriptor-declarations\n',1)[1]
+            self.assertEqual(hashlib.sha256(body).hexdigest(),expected['declarations_sha256'],name)
+            self.assertNotIn(b'#authority;',source)
+            self.assertNotIn(b'@proto-runtime-checks',source)
 
     def test_relocated_compiler_needs_no_interpreter_or_helpers(self):
         isolated=self.d/'standalone';isolated.mkdir()
@@ -373,7 +375,7 @@ for(int arg=1;arg<argc;arg++){std::ifstream file(argv[arg],std::ios::binary);std
 return 0;}'''
         harness.write_text(code)
         executable=self.d/'native-sanitized'
-        checked([os.environ.get('CXX','c++'),'-std=c++20','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',harness,'-o',executable])
+        checked([os.environ.get('CXX','c++'),'-std=c++20','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I',ROOT/'coax/bin',harness,'-o',executable])
         descriptors=sorted((ROOT/'proto/descriptors').glob('*.pb'))+[ROOT/'coax/tests/proto/types.pb']
         r=run([executable,*descriptors],env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0',UBSAN_OPTIONS='halt_on_error=1'))
         self.assertEqual(r.returncode,0,r.stderr.decode())

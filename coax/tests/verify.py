@@ -63,6 +63,17 @@ class Verify(unittest.TestCase):
         self.assertEqual(small.returncode, 1)
         self.assertIn("error[E0400]: compile-time evaluation exceeded 1000 steps", small.stderr)
 
+    def test_failed_struct_expression_never_dereferences_empty_evaluator_value(self):
+        for body in ('#assert false;', 'while true {}'):
+            path = self.write(
+                'Result :: struct { value: int; }\n'
+                'bad :: () -> Result {' + body + ' return Result.{}; }\n'
+                '#test "failed value" { #assert bad().value == 0; }\nmain :: () {}\n')
+            r = coax('test', path, '--steps', '1000')
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn('1 check, 0 passed, 1 failed', r.stdout)
+            self.assertIn('error[E040', r.stderr)
+
     def test_checks_do_not_change_the_program(self):
         path = self.write(
             "#import \"Basic\";\n"

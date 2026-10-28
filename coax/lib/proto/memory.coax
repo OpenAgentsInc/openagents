@@ -1,0 +1,10 @@
+// Native-address bridge. All limits, parsing and copy policy live in wire.coax.
+// These wrappers only observe storage overlap and forward to the checked core.
+// Native ABI/sanitizer tests cover physical pointer validity and aliasing.
+PB_rewrite :: (wire:[] u8,removed_fields:[] u32,number:u32,wt:u8,raw:u64,data:[] u8,txt:string,is_text:bool,clear:bool,out:[] u8)->PB_View {
+  overlap:=bytes_overlap(wire,out) || bytes_overlap(data,out) || bytes_overlap(txt,out);
+  return PB_rewrite_checked(wire,removed_fields,number,wt,raw,data,txt,is_text,clear,out,overlap);
+}
+PB_copy :: (wire:[] u8,out:[] u8)->PB_View {
+  return PB_copy_checked(wire,out,bytes_overlap(wire,out));
+}

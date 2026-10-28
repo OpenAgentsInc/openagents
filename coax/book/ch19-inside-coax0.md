@@ -26,16 +26,18 @@ source → lexer → parser → checker → evaluator → C emitter → cc → e
 
 ## 19.2 One translation unit
 
-`main.cpp` `#include`s every other `.cpp` file, so `coax/build.sh` is a
-single compiler invocation:
+`main.cpp` `#include`s every other `.cpp` file, so there is one C++20
+compiler invocation. Run the build script from the repository root:
 
 ```sh
-c++ -std=c++20 -O1 -g -Wall -Wextra -o bin/coax src/main.cpp
+coax/build.sh
 ```
 
-That's under a second. There is no build system to configure, no
-incremental-build bugs, and nothing to cache. It's the performance
-stack's unity-build advice, applied to the compiler itself.
+The script first copies the authoritative `.coax` protobuf runtime sources into
+an ignored C++ include, then compiles with `-I bin`. It runs the pure wire core's
+checks and mutation gate before atomically publishing `coax/bin/coax`. There is
+no Python generator or installed runtime-file dependency. Directly compiling
+`src/main.cpp` requires the generated include from that build step.
 
 ## 19.3 Memory: one arena
 

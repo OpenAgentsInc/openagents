@@ -4,51 +4,64 @@
   "profiles": {
     "proto/descriptors/block-agent.pb": {
       "descriptor_sha256": "3b01669a52f1f7074897daefcadface740022783cee5ae46e7f85cd273039b2b",
-      "source_sha256": "5a5e5df622b4680b8b249076ee92067c1345d5e3105c8f96c8575278c16a725c"
+      "legacy_source_sha256": "5a5e5df622b4680b8b249076ee92067c1345d5e3105c8f96c8575278c16a725c",
+      "declarations_sha256": "d583331c1422188cadd7d345a82519e4bb54ffdad28b6a9f414a1125401b9a5d"
     },
     "proto/descriptors/block-channel.pb": {
       "descriptor_sha256": "483512b0b62338a077861d50511e6164d97ee0e2880cfde813720fe1baea93c0",
-      "source_sha256": "aa68555b0e5f4f9d0d4b2ee5b0de8aedd45fbc186106b8980a4f05917c41254f"
+      "legacy_source_sha256": "aa68555b0e5f4f9d0d4b2ee5b0de8aedd45fbc186106b8980a4f05917c41254f",
+      "declarations_sha256": "da74501e1463b69fe5e73a8812a5c09717322380bfbab1a72373001a39831ad7"
     },
     "proto/descriptors/block-identity.pb": {
       "descriptor_sha256": "3cb2be545cb37903509f430280e5aec81db27017dc869b97814654ad7365b9c5",
-      "source_sha256": "bec1d125ff1ab0d2f3cdc0fe927251c5b1f51bcbe49a271cd63048780f7f0114"
+      "legacy_source_sha256": "bec1d125ff1ab0d2f3cdc0fe927251c5b1f51bcbe49a271cd63048780f7f0114",
+      "declarations_sha256": "58072e97391eb9951dc30d19b5fc0dfaade2cd4185180b18ab419187553fcc88"
     },
     "proto/descriptors/coax-foundation.pb": {
       "descriptor_sha256": "1b4592363d84f1fed960d771e2509038e01059a64d29a93011e2d168a1be980d",
-      "source_sha256": "93a4c001599ca7e66a789b96754bb07eccc7c4132dd56b2ddcf10e616e797911"
+      "legacy_source_sha256": "93a4c001599ca7e66a789b96754bb07eccc7c4132dd56b2ddcf10e616e797911",
+      "declarations_sha256": "2166e5d1592d2f9969a4a206e135bf566fe01535f05e6e1c937f12a063d0129b"
     },
     "proto/descriptors/ios-home.pb": {
       "descriptor_sha256": "9ced28885e6dcb2c970d05ce084ee0afa4ce539d4f79d6d3d0b2396fb74bb899",
-      "source_sha256": "39a3e74c3d162a4576c24c5b2e75460eac270e09972445a435cfb328b880b8c2"
+      "legacy_source_sha256": "39a3e74c3d162a4576c24c5b2e75460eac270e09972445a435cfb328b880b8c2",
+      "declarations_sha256": "bc0de083bfc755860beb8ffe0ef3f73fe4a27049e6f3ad67bb0f13bf897759e2"
     },
     "proto/descriptors/metareal.pb": {
       "descriptor_sha256": "1924a1bad25e05f93e5523362d50b9aea053348f5e7729da8bf6bd7132055117",
-      "source_sha256": "10338ef5d1928283a52631ad2d1bb8eb8732c7c2384dfee00231ec1ba26ba945"
+      "legacy_source_sha256": "10338ef5d1928283a52631ad2d1bb8eb8732c7c2384dfee00231ec1ba26ba945",
+      "declarations_sha256": "5bbbf98e50754f4764d3cad70c72791824156156cc1f015564437f1136d48779"
     },
     "proto/descriptors/nostr-event.pb": {
       "descriptor_sha256": "1fd21423bc708d76a4b86357fb269862598d044d9ae74c69a48c855d5e66382c",
-      "source_sha256": "7e5076e487c1949de473ffea7849e87c4aa8e1e673c01b6246a7ec57f5b11310"
+      "legacy_source_sha256": "7e5076e487c1949de473ffea7849e87c4aa8e1e673c01b6246a7ec57f5b11310",
+      "declarations_sha256": "ac8814d6fa7db97cfb5cfb9c85dca41cf564c1937821a59247988b3797d1112b"
     },
     "proto/descriptors/nostr.pb": {
       "descriptor_sha256": "81b9401f87a9ab7e9f8b4a18539a99e29b6617b66b411d93ac0f94f417cbbaea",
-      "source_sha256": "d05f9235badd5b558df2c25d7ec96748482b84b08213e4d9c9475475458996b7"
+      "legacy_source_sha256": "d05f9235badd5b558df2c25d7ec96748482b84b08213e4d9c9475475458996b7",
+      "declarations_sha256": "def8014c368d9bd2c4cba052038f59654cbbeea391385d0e0d299559610fcc5a"
     },
     "proto/descriptors/owned.pb": {
       "descriptor_sha256": "135b068408d94e3da03af8d1086fbffb2a8ea6ce04f34d503f5f3f68015a2539",
-      "source_sha256": "b90bca7c5bcad6e757bd29665eedaf3b1b9d80f7830e614851cbb1ea0d00e34f"
+      "legacy_source_sha256": "b90bca7c5bcad6e757bd29665eedaf3b1b9d80f7830e614851cbb1ea0d00e34f",
+      "declarations_sha256": "ea0cf1e1adee9d1a79d32e18c586a51075417e5d2119d1421fd7e39f2e250c40"
     },
     "proto/descriptors/phone-agent.pb": {
       "descriptor_sha256": "05f12e950350c35a8025ef79d6d45fc935939175897dfee48c2e00480febf93f",
-      "source_sha256": "6f5ec7dc686bc98492f661e853da4d27416a7b4a41c45d6a5c2575b489b5c453"
+      "legacy_source_sha256": "6f5ec7dc686bc98492f661e853da4d27416a7b4a41c45d6a5c2575b489b5c453",
+      "declarations_sha256": "e192e384d06c85b6a7bcd9f887eb4317a988f2fa760d44f5c01611c11feff6a0"
     },
     "coax/tests/proto/types.pb": {
       "descriptor_sha256": "aa0d95e090eea0897080891233f6bb3de8864d94be4cf5f226730455546c7b24",
-      "source_sha256": "fd3369793cf31522de56afcc9a02dbe7f09e08183feb9ef57b3bf7f0f26bdade"
+      "legacy_source_sha256": "fd3369793cf31522de56afcc9a02dbe7f09e08183feb9ef57b3bf7f0f26bdade",
+      "declarations_sha256": "549298b45ed0fdd67673f71e33e465767546cbae9e3338c9feb41bc1a7442db8"
     },
     "proto/descriptors/verse.pb": {
       "descriptor_sha256": "99d5f92eb657a5965364ed203b378e2bf29bd6c1f55342d29edf8c341fb71d40",
-      "source_sha256": "550b0e76234711ea5e189af7ccc86e546dff539581392af7fd7288c1b8550312"
+      "legacy_source_sha256": "550b0e76234711ea5e189af7ccc86e546dff539581392af7fd7288c1b8550312",
+      "declarations_sha256": "e3923283743c8ad99afe250be5f108b1056014aa5a9c69390d318f3895804916"
     }
-  }
+  },
+  "purpose": "Legacy output characterization, not a correctness oracle. Declaration hashes exclude the independently checked wire runtime."
 }

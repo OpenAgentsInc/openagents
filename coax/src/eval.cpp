@@ -385,7 +385,7 @@ struct Evaluator {
       case ExprKind::field: {
         if (e->field_index < 0) break;
         Value *base = locate(e->lhs, frame, h, allow_calls, root);
-        if (!base) return nullptr;
+        if (!base || failed) return nullptr;
         return &(*base->agg)[(size_t)e->field_index];
       }
       case ExprKind::index: {

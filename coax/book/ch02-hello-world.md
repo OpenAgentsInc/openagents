@@ -13,15 +13,15 @@ coax/build.sh
 
 That compiles the whole compiler as a single translation unit:
 `src/main.cpp` includes the other source files, so there is one compiler
-invocation and no build system. It takes about a second and
-leaves the compiler at `coax/bin/coax`. Check it:
+invocation. Shell byte copies embed the Coax wire runtime, and its checks and
+mutation gate run before publishing the compiler at `coax/bin/coax`. Check it:
 
 ```sh
 coax/bin/coax version
 ```
 
 ```
-coax0 0.2.0
+coax0 0.6.1
 ```
 
 The rest of this book writes `coax` for `coax/bin/coax`. To type

@@ -1,4 +1,4 @@
-# Descriptor imports in coax0 0.6.0
+# Descriptor imports in coax0 0.6.1
 
 `#import_proto` generates real Coax declarations from a binary
 `google.protobuf.FileDescriptorSet`. Root `proto/` remains the schema source.
@@ -16,8 +16,12 @@ the resulting implementation, and `coax header` exposes exported C wrappers.
 `coax/examples/nostr-proto.coax` is a runnable presence/repeated-field example.
 
 The importer is built into coax0 in C++20. `coax/src/proto.cpp` parses the
-bounded binary descriptor directly; `coax/src/proto_runtime.inc` embeds the
-Coax runtime as a raw string literal in the compiler binary. There is no
+bounded binary descriptor directly. Authoritative runtime source lives in
+`coax/lib/proto/wire.coax` (pure wire/policy core) and `memory.coax` (two native
+address-overlap wrappers). `coax/build.sh` embeds these sources into the compiler
+using shell byte copies; `bin/proto_runtime.inc` is ignored build output. Only
+the core's program section, before `// @proto-runtime-checks`, enters generated
+applications. Its checks and `#authority` belong to the core's own test target. There is no
 interpreter, protoc invocation, protobuf library, subprocess, temporary file,
 or installed helper/runtime-file dependency. A relocated compiler works with
 an empty `PATH`. The retired `COAX_PROTO_TOOL` and `COAX_PROTO_PYTHON` variables
@@ -169,15 +173,34 @@ and output budgets bound the import. Errors retain the originating import's
 location, including JSON diagnostics; generated declarations do not invent
 user-file line numbers past EOF.
 
-`tests/proto/import-baselines.json` pins the pre-port generated source for all
-11 existing profiles plus the scalar fixture. The native CLI must emit the
-same body byte for byte. Tests also relocate the compiler alone and generate
-the actual iOS C/header with an empty PATH, poisoned legacy tool variables and
-an unusable temporary directory. Native descriptor fuzzing and SHA padding
-vectors run under ASan/UBSan; target-side protoc/ABI tests remain independent.
+The descriptor parser/generator in `src/proto.cpp` remains C++ bootstrap code
+in the compiler's trusted computing base, along with the checker, evaluator and
+C emitter. It has no Coax checks of its own. Reimplementing its decisions in a
+second Coax model would not check this implementation. ASan/UBSan and malformed-
+descriptor fuzzing detect exercised defects; they do not prove the reader or
+generator correct. A future verified/self-hosted importer is separate work.
 
-`coax test coax/tests/proto/runtime.coax` executes the generated wire routines
-over all two-byte varint/UTF-8 inputs and wide boundary vectors. File-level
-`#authority` still cannot exclude generated APIs or native-address operations
-from its coverage requirement. Python is used by test/oracle and schema
-maintenance scripts, not normal compilation or the iOS app build.
+The evidence has distinct scopes:
+
+| Gate | What it establishes | What it does not establish |
+| --- | --- | --- |
+| Legacy declaration hashes in `tests/proto/import-baselines.json` | No generated schema-API drift for 11 existing profiles plus the scalar fixture; original full-output hashes retained as history | Correctness of either generator |
+| `coax test coax/lib/proto/wire.coax` | Bounded, executable properties of the actual pure runtime source, including exhaustive two-byte varint/UTF-8 inputs and explicit limit/capacity/Unicode boundaries | Universal correctness, native pointer validity or complete generated-API coverage |
+| `coax mutate coax/lib/proto/wire.coax` | All selected mutations are rejected by those checks, with no exemptions | A proof or an exhaustive defect model |
+| `coax test coax/tests/proto/runtime.coax` | Selected actual imported routines agree with the checked core's expected behavior | Every generated accessor, or a separate parser implementation |
+| Native descriptor and generated-C ASan/UBSan tests | Exercised malformed input, address aliasing and ABI paths avoid reported sanitizer defects | Memory safety on all inputs |
+| `PROTOC=/path/to/protoc python3 coax/tests/proto_import.py --oracle` | Independent protobuf implementation agrees on the tested scalar/presence/oneof/repeated/unknown-field vectors | Full protobuf conformance; unsupported shapes remain rejected |
+| Relocated binary and iOS consumer tests | The real Home codecs compile/run without Python/helpers in normal builds | General engine/app correctness |
+
+`wire.coax` carries `#authority`, so compiling it runs its checks and requires
+actual procedure execution. Bootstrap builds run both its checks and mutation
+gate before publishing coax0. The two tiny `memory.coax` wrappers supply the
+physical-overlap observation to the pure policy; that observation is a native
+boundary tested by C ABI/sanitizer cases, not Coax verification. Callers use the
+generated public message APIs, not the internal `_checked` routines.
+
+The complete imported profile is not marked `#authority`: that would imply
+coverage of all its generated APIs and native operations. Generated sources
+include neither the core's authority directive nor its test harness. Their
+runtime fingerprint covers exactly the embedded program core plus address
+wrappers. Python remains test/oracle and schema-maintenance tooling only.

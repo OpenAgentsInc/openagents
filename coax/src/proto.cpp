@@ -20,9 +20,7 @@ namespace coax::proto {
 using View = std::string_view;
 static constexpr size_t MAX_DESCRIPTOR = 8 * 1024 * 1024;
 static constexpr size_t MAX_SOURCE = 8 * 1024 * 1024;
-static constexpr char RUNTIME[] =
 #include "proto_runtime.inc"
-;
 
 struct Error : std::runtime_error { using std::runtime_error::runtime_error; };
 static void require(bool condition, const std::string &message) {
@@ -417,8 +415,17 @@ static std::string join(const std::vector<std::string> &values, View separator) 
   }
   return out;
 }
+// The checked source is embedded verbatim at compiler build time. Checks are
+// compiler tests, not part of every imported application's authority boundary.
+static std::string runtime_program() {
+  View core(PROTO_CORE_SOURCE);
+  size_t end=core.find("// @proto-runtime-checks\n");
+  require(end!=View::npos, "missing wire runtime check boundary");
+  return std::string(core.substr(0,end))+PROTO_MEMORY_SOURCE;
+}
 static std::string runtime_source(const std::string &prefix) {
-  View input(RUNTIME);
+  const std::string program=runtime_program();
+  View input(program);
   std::string out;
   size_t at = 0;
   while (at < input.size()) {
@@ -617,6 +624,7 @@ struct Generator {
   }
   std::string generate() {
     emit(runtime_source(p));
+    emit("// @proto-descriptor-declarations");
     for (const Enum &e : descriptor.enums) {
       std::vector<std::string> known;
       for (const auto &[name,value] : e.values) {
@@ -659,7 +667,7 @@ static Result import_descriptor(View raw,const std::string &prefix,const std::st
     std::string compiler_id=compiler;
     for (char &c : compiler_id) if (c==' ') c='-';
     result.provenance="// coax-proto-v2 generator=coax0-native-v1 compiler="+compiler_id+
-        " descriptor_sha256="+sha256(raw)+" runtime_sha256="+sha256(RUNTIME)+" prefix="+prefix;
+        " descriptor_sha256="+sha256(raw)+" runtime_sha256="+sha256(runtime_program())+" prefix="+prefix;
     result.source=Generator(descriptor,prefix).generate();
     require(result.source.size()+result.provenance.size()+1<=MAX_SOURCE,"generated source budget");
     result.source=result.provenance+"\n"+result.source;

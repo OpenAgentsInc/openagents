@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.6.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.6.1's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The C++20 compiler parses and checks one source file, executes bounded
@@ -232,13 +232,17 @@ procedures, no mutation sites and surviving non-exempt mutants fail the command.
 Equivalent marks remain human review obligations. See `tests/verify.py` for
 false-green and signed-range regressions.
 
-`tests/proto/runtime.coax` checks the actual imported wire routines inside the
-compiler: every two-byte varint/UTF-8 input, every one-byte truncation, and
-full-width/overflow/zigzag/writer boundary cases. Native address overlap,
-non-finite float bits and C/protobuf interoperability remain in the separate
-ASan/UBSan/protoc suite; the evaluator deliberately has no native addresses.
-The generated profile cannot simply be marked `#authority`: that directive
-currently covers every generated API and host-address operation in the file.
+The authoritative wire runtime is ordinary Coax in `lib/proto/wire.coax`, with
+`#authority`, bounded checks and a zero-survivor mutation gate. Bootstrap builds
+run both gates before publishing the compiler. `lib/proto/memory.coax` holds two
+small native-address wrappers covered by ABI/sanitizer tests. Shell byte copies
+embed these sources into coax0; no Python build dependency returns.
+
+`tests/proto/runtime.coax` additionally checks actual imported routines. Legacy
+schema declaration hashes characterize compatibility; independent protoc vectors
+check interoperability. The C++ descriptor importer remains trusted bootstrap
+code, not Coax-verified code. See [the evidence table](proto.md#native-importer-audit-boundary)
+for the scope and limits of each gate.
 
 ## Shared protocol
 

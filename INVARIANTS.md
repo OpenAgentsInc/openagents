@@ -125,11 +125,19 @@ Check: `coax/tests/verify.py`, compiler ASan/UBSan signed-span checks and the
 actual imported wire checks in `coax/tests/proto/runtime.coax`. Native aliasing
 and non-finite representations remain in the target-side conformance suite.
 Descriptor/runtime hashes and native generator/compiler versions are recorded
-in generated C/headers. Descriptor parsing, generation and the embedded Coax
-runtime live inside coax0; normal compilation must not invoke Python, protoc
-or helper processes or depend on adjacent runtime files. Explicit descriptor
-input reads are not permitted inside `#run`.
+in generated C/headers. The authoritative pure runtime is
+`coax/lib/proto/wire.coax`, with `#authority`; its checks and zero-survivor mutation
+gate run before publishing a bootstrap compiler. `memory.coax` only observes
+native storage overlap and delegates policy to the pure core. Physical addresses
+remain a native ABI/sanitizer boundary, outside Coax check claims. Checks and
+`#authority` are not copied into imported applications. Descriptor parsing and
+generation remain trusted C++ bootstrap code; Coax does not verify them. Shell
+byte copies embed the runtime from these Coax sources into coax0. Normal
+compilation must not invoke Python, protoc or helper processes or depend on
+adjacent runtime files. Explicit descriptor input reads are not permitted inside `#run`.
 
-Check: native pre-port source baselines, relocated-binary/no-PATH iOS C/header
-generation, native descriptor ASan/UBSan fuzzing, independent protoc vectors
-and the real iOS simulator flow in `coax/tests/proto_import.py` and app tests.
+Check: legacy schema declaration hashes characterize output compatibility, not
+correctness. Independent protoc vectors exercise interoperability. See
+`coax/proto.md` for the evidence scopes. Relocated-binary/no-PATH iOS C/header
+generation, native descriptor ASan/UBSan fuzzing and the real iOS simulator
+flow in `coax/tests/proto_import.py` and app tests.
