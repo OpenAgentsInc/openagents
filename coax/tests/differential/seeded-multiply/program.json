@@ -1,0 +1,15 @@
+{
+  "generator": "coax-small-state-v1",
+  "program": {
+    "case_index": 0,
+    "inputs": [
+      [
+        0,
+        0
+      ]
+    ],
+    "seed": 20261028,
+    "steps": []
+  },
+  "schema_version": 1
+}

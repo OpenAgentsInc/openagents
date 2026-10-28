@@ -1,0 +1,208 @@
+{
+  "compiler": {
+    "path": "/Users/christopherdavid/.codex/worktrees/coax-status-differential/openagents/coax/bin/coax",
+    "sha256": "3746fef915ddd452bab14758bd8eead5230f2efe586bf669565bfc6cb7028edd",
+    "version": {
+      "command": [
+        "/Users/christopherdavid/.codex/worktrees/coax-status-differential/openagents/coax/bin/coax",
+        "version"
+      ],
+      "outcome": "passed",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "coax0 0.13.0\n"
+    }
+  },
+  "emission": {
+    "command": [
+      "/Users/christopherdavid/.codex/worktrees/coax-status-differential/openagents/coax/bin/coax",
+      "c",
+      "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/source.coax"
+    ],
+    "outcome": "passed",
+    "returncode": 0,
+    "stderr": ""
+  },
+  "emitted_sha256": "5b5e2336805a08a5b7a3536d3be550ebe3abbb9992536ef377955ae622b54c88",
+  "evaluator": {
+    "command": [
+      "/Users/christopherdavid/.codex/worktrees/coax-status-differential/openagents/coax/bin/coax",
+      "test",
+      "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/source.coax",
+      "--json",
+      "--steps",
+      "1000000"
+    ],
+    "outcome": "passed",
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "ok   #test oracle 0 (1 case, 114 steps)\n1 check, 1 passed, 0 failed\n"
+  },
+  "expected": [
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      701,
+      0,
+      0,
+      0,
+      0,
+      -907,
+      0
+    ]
+  ],
+  "generator": "coax-small-state-v1",
+  "kind": "deliberately_seeded_emission_defect",
+  "native": [
+    {
+      "binary_sha256": "2c46a8bb3edc67f481955a48bd7f99ef678648ce3a14f6cd7fd0b8929b822517",
+      "compilation": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-pedantic-errors",
+          "-O0",
+          "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/emitted-seeded.c",
+          "-lm",
+          "-o",
+          "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/native-O0"
+        ],
+        "outcome": "passed",
+        "returncode": 0,
+        "stderr": "",
+        "stdout": ""
+      },
+      "execution": {
+        "command": [
+          "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/native-O0"
+        ],
+        "outcome": "passed",
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "20 0 0 0 0 701 0 0 0 0 -907 0\n"
+      },
+      "mismatch": "values",
+      "observed": [
+        [
+          20,
+          0,
+          0,
+          0,
+          0,
+          701,
+          0,
+          0,
+          0,
+          0,
+          -907,
+          0
+        ]
+      ],
+      "optimization": "-O0",
+      "outcome": "counterexample"
+    },
+    {
+      "binary_sha256": "c83aebd10cd7993d229618b8aec9cccbc1658d3d2f03e0e4ca1a204261248a13",
+      "compilation": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-pedantic-errors",
+          "-O2",
+          "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/emitted-seeded.c",
+          "-lm",
+          "-o",
+          "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/native-O2"
+        ],
+        "outcome": "passed",
+        "returncode": 0,
+        "stderr": "",
+        "stdout": ""
+      },
+      "execution": {
+        "command": [
+          "/private/tmp/coax-differential-20261028-final-seeded/case-0000/minimized/native-O2"
+        ],
+        "outcome": "passed",
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "20 0 0 0 0 701 0 0 0 0 -907 0\n"
+      },
+      "mismatch": "values",
+      "observed": [
+        [
+          20,
+          0,
+          0,
+          0,
+          0,
+          701,
+          0,
+          0,
+          0,
+          0,
+          -907,
+          0
+        ]
+      ],
+      "optimization": "-O2",
+      "outcome": "counterexample"
+    }
+  ],
+  "outcome": "counterexample",
+  "reduction": {
+    "attempts": 4,
+    "budget": 64,
+    "budget_exhausted": false,
+    "claim": "bounded grammar reduction; global minimality is not claimed",
+    "directory": "case-0000/minimized",
+    "original_inputs": 4,
+    "original_steps": 12,
+    "outcome": "counterexample",
+    "preserves_signature": true,
+    "remaining_inputs": 1,
+    "remaining_steps": 0
+  },
+  "schema_version": 1,
+  "seeded_defect": "checked-multiply-as-add",
+  "seeded_emitted_sha256": "f325b8e883be233cbd99c2baf28f2142485a38e301f816873b22f892c37ac4f4",
+  "semantic_profile": {
+    "emission": "coax c without --release",
+    "execution": "evaluator #test and separate native main",
+    "instrumentation": "none",
+    "integer_arithmetic": "checked",
+    "integer_type": "int (signed 64-bit)",
+    "optimization": [
+      "-O0",
+      "-O2"
+    ]
+  },
+  "source_sha256": "ae4a697be13e566afacd0b561e0d868c65f7fd37eff21f9bcfedd6b80d51a0b4",
+  "tool_sha256": "1bf08ab286ae3df01a9dcb21aaeea7fdfa42319b1eee05a37c1057888b58aadf",
+  "toolchain": {
+    "driver_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "target": {
+      "command": [
+        "/usr/bin/cc",
+        "-dumpmachine"
+      ],
+      "outcome": "passed",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "arm64-apple-darwin25.4.0\n"
+    },
+    "version": {
+      "command": [
+        "/usr/bin/cc",
+        "--version"
+      ],
+      "outcome": "passed",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n"
+    }
+  }
+}

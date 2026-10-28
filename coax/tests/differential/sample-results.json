@@ -1,0 +1,967 @@
+{
+  "bounds": {
+    "cases": 24,
+    "evaluator_steps_per_check": 1000000,
+    "input_magnitude": 12,
+    "inputs_per_case": 4,
+    "reduction_attempts_per_mismatch": 64,
+    "steps_per_case": 24,
+    "timeout_seconds_per_process": 30
+  },
+  "cases": [
+    {
+      "case_index": 0,
+      "emitted_sha256": "a5d1503af51887523cf6d9226771e03e66612fbb807234342c49f453a3f75e02",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "0adffee61c8ae96d6dce4b035774b9c964c2afb5b299124b0acb4bb539331790",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          6,
+          7
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "12a5dcf38801deb1e881b7404fa4356f965b974187032eb8c5b2796449d1a9b1",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "677e52e2d3fec193abea180e6453d65d220a1bf2c3e818c717c89b44284baa63",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "df385b506df4d06654ce0e3bb4e47ab3c750fe0a36744f327582a31c966855cc"
+    },
+    {
+      "case_index": 1,
+      "emitted_sha256": "f3ef653c6d06c02814834d68851a5b888f2910d7a869d20eb4eba8f445d99e14",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "e95c59775c2bfdf750263ca2ff8a2ed4b7f69a2f0764f036210bd5b1a7f92705",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          8,
+          8
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "e225baf18dbed2732ab02801f30aa424b2abc514d70a56ed123be5bfcee928f0",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "ed40064ac3dcd43cd0a5f564e9d651df92693c027ff1a4d7df9d1141d1e090f6",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "82d5975f554519c0d63c02234a41b26796963527b613dbbb1a77894349baf322"
+    },
+    {
+      "case_index": 2,
+      "emitted_sha256": "02fde009e9b63cde3f61201716cf9ab4002f6ebafb53a044cc91ff586a519713",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "3efe76103b46a7453d5baae8352a3d3126f6f411cfc503ed5cb99607c836cabf",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -3,
+          0
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "53edbf8ed000641244a49a27634c7f69077e645ffd899970ee1fb25762d5e591",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "a4728bf4bfed5650b4fb24ea74af48f297a967ec38e55540db512280882be785",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "d21e626b527c25887e560e2e16650a5d9f246341827e6d99b4930990510301ed"
+    },
+    {
+      "case_index": 3,
+      "emitted_sha256": "9e5ecdc83ad3489a247191187c36aa4fee2d8d8c4f0eaffa73349ce159521232",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "bfd3eeacb4ea75a2344b397b706f036db7661ba2349654149d7c096aaf0dcc5a",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -8,
+          -7
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "cb6adbc461fa0fde22f1b775c6bcef37d3c9e3a494b3e8cd574fa387474c653a",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "3fd685ce9139969c5f54b41e0c0e8b5d660204509f6000c90de2295c510eaaa1",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "d9e41df9546b7ff31eafb802f25267c90b1b537fdec9fa2166861e878d5134bb"
+    },
+    {
+      "case_index": 4,
+      "emitted_sha256": "a4d715ce3d4208eb96294cba19e13cd989e896fef14419755114c82b6e7a625e",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "d33bf02669db93cf2a16ed163d12faf2ef7a15866ad79af932d16b2a74c57c10",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -9,
+          5
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "c2a5a9d59919e394daf1f2d43ed3e9de20faa2671fd7ca63bbf692e32812207a",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "0d4f79447fd26c4868b6bb67456f36994c0e9396bf25789efc99b775c636b91a",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "cf2b5a3944e620e274377386a243718bb3b76063cb6ae0861f43f7082a1a7d29"
+    },
+    {
+      "case_index": 5,
+      "emitted_sha256": "5819941613ba8accbb920844056f76aee83b778c1f6eea138228c465a7ea3f72",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "2914fedf833e4bb83d0259b7dede3843555540e51a473939e4d852452c2dd5e1",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          11,
+          7
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "ca418731e62a4e7b83812d77e93a20f2c6616c17d23c7e3f0fd0129c7d15a74b",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "01676c6d06441b92963a612f2328930f123aa0a2aba3f8b0de4d3d307daca403",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "cfc7b285d765e909c9da11ff93403ef1d056ddb303a8964f8249890ddc8be4c9"
+    },
+    {
+      "case_index": 6,
+      "emitted_sha256": "f9b00c377c00a3a9e3be01684550f286fee6b1a9612dcabd0d16028401d02b68",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "9387464e86b88c4516699d4deb2378bdefc2c674a512119e76b4ac4a76dcaefa",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -2,
+          -8
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "317e7280f624a78f2c69ebcace37aa6400e1cc3e5b569b580a1e27391a2205f6",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "7828740219eb72e6eb9c2406604899aa561a7ef9c15a6d36d64d93bd51cdae81",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "861606d27d1295fcc456810412e5ae404ed29676236268ad630fad45d118abc2"
+    },
+    {
+      "case_index": 7,
+      "emitted_sha256": "a93a610388712fe789dfbe31b09e7bfeff9d0add9454b8b40cd11671979a8437",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "56ca2cf7d410d4a9e81237e3bd679776edce72bbf83aefa406d36ff30c365444",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -8,
+          -11
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "2a3b7954ef67bdb9dced6e155f32d0a624f6e604e2afcc58dba2f88c5d1679d5",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "80f54b61e2ff2e0c406cbc80354b8eb1cc4a392c20243d4c97c00d434cafe101",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "091f54352307421067c6fd83a543d4f371510adad08787aa22b2396594fb0ba5"
+    },
+    {
+      "case_index": 8,
+      "emitted_sha256": "bd58a5ea192796873aa28c671a070e3d33d2dd0bf325986d74591e2ffa8cd711",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "06d9fcd16dca1c50fe2fb14c0946b02c57f587862064e8edcdbbe0d63ad3bf5f",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          4,
+          -11
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "523bfb0f50501cd68e73325ba9e6118b165942666c37e76292fd40023cf4d829",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "ff07e85746bf268ebd8cc81088efd262c5e3521523dd910cf81d1c735bfc5fcd",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "490ce7888f86fee7540ec5d046e34cd31dffc10d83de40bb2a9e6e2bf063af96"
+    },
+    {
+      "case_index": 9,
+      "emitted_sha256": "6e954f424b3f88a1ab704645a325c533ba52f1db8499248b72f560c3a2067c28",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "17d8e3c2feb1f61521020d1d58e404d09cccf53ea5e74d6bea8817969e0278d5",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -3,
+          -7
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "55fa334aaaef30d03df498a921e14442549dfaf47d7c9c80dd7e7a2439529070",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "37ea1c62f51b53cf34a4919e9dd0301118e1441ce9e1046a733d8ecfc477875a",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "bd22643a5102c5a3758cf69f6ccba2b885ce4260ce0d979b4094de093a4d9622"
+    },
+    {
+      "case_index": 10,
+      "emitted_sha256": "0961cac663259637df19c693231cd41f66216ddcc6f18b22201695b972660c18",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "6c9c64816d1e583f2a9e83813cc0b9b490754f824f8b410c52026484f9e307a4",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -10,
+          11
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "3efe04f3efaa421341161ed6a67fc76d436613c7616fd03f2d4fe36646c6f965",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "ed1a6b63afb780e9401d0e36e6750351fabd3c5d3c3ebaa22ae33fbb887471a8",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "61483a2a164c6ec5abf04df1a7f1693c258302e7d0bb728cf6a2722358806274"
+    },
+    {
+      "case_index": 11,
+      "emitted_sha256": "362e3ac2dc356e48c88a86bbafd650603219b0ef715015367c5f5b6e4bd26ad8",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "668de20d4a595f7622aaaf3b03eff0bd25f99178bfc839f2461fa2a65824dae7",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -10,
+          -2
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "05e0c7fb1bd6f3e65ae9a49e5ee924de950490fc3419946ba9492126c68db236",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "8b85ffcf28fba73d44037347eb118e44221c5186c67fccb80ad3d4335d0bacfc",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "ed70d8280796f18313d43e7987a0d6873dd90ee964e3f06fb3b2fcd0d2118c31"
+    },
+    {
+      "case_index": 12,
+      "emitted_sha256": "a0628aaacecebd920184ed673633cde77efcce9f377cafdcaad9cd93eeb3d804",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "cd80a1abf71902fb61d00e1372832cb89d720ddbc849846ef7f52f7e65021c29",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          2,
+          9
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "f4d2cc72f71601e8cb869233e2ecdc0ad7c063be96c8381db350524be9add47b",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "d168763423d20db41222f6da42d38cc78c79cb4cb0f497a84109e16952f05643",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "ed717d61ffc8603abf98801125ccd3ed0c4114df39046d26ad70e9bf876f8e87"
+    },
+    {
+      "case_index": 13,
+      "emitted_sha256": "4e91f7cbb4183186f303b6a0c932cace57b51b023dd8624fa282b0030fe20311",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "3629ba0da939824d06574e94a762f918bdcff4067a24f04983ff9d71fffdcf4c",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          2,
+          -10
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "a2517da7b12381e2c38db8651167774baf824e44066a347d5c900ff75f76b604",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "eb64551545caf6fa0c2cd8a7cd0a9cd8f3cf75360fe992590ed4de37c1b8ce26",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "0be4a1d7dd5573d6700dbb1bcb1c31fac165eaee374484e029fd1a8a9d544695"
+    },
+    {
+      "case_index": 14,
+      "emitted_sha256": "3130803fa3e69c6174cb07fe44359b575d796189646bbdd94d8c888db5ed9c77",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "ed525edeb4f4b4355727d3996db59edace6e746cdd03c86050e99fdef40edbb3",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          12,
+          -2
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "33e13ef7a3d0e0aae29266d06b7223502b5a1adeb6123067c4884045998dc0ed",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "9e4b68d6adac7c7cc3cdc72a5225658298d780a595faaa2f5e0163b27f8862f8",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "a601f957e0937a85fe2bb9186d9a3a73707a386b87c3fd318b9ebe372ca35187"
+    },
+    {
+      "case_index": 15,
+      "emitted_sha256": "f1898ce722e18824d3b001ad92a680e3935f8e79e2ee16acd5913cc3b2b91619",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "c013c034062ff2d43379a8576296cb63cf25f0802b74f8e0d7643528e99e1e92",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          9,
+          9
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "f486974aab9f2253a9787e04bbd209200bd270a1b584398f8c3ec734944700f9",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "845ede5a4f7e0b8759f29dc83d7ed8716cc570e5d9dfbe4e76d4cb2ce18d9a34",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "ebf1925198f3fa37ea444cdb3681b383320228883e941a135e87ef4fba67b642"
+    },
+    {
+      "case_index": 16,
+      "emitted_sha256": "63f13a4329b5efbc69d32632989d4b1983b28b9fb2448ff2a981d6ccf392b1e8",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "4a860097bdca89d24c95e06d8c4b208f5ed8b7cd72a976c073ffcf1d43ac0630",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          8,
+          -10
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "ca3a39ddadd97927f94412b32c2a5e05c56bc5f51244baa7b93fce5e4b656384",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "daf282be7fb1437a0e2d6925406b46c275318f2667fb5746e4e7cf5523eaf5e9",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "04b8c37e8240aec49b85a03deacc6920164958d56e3950e7aacb709ae32cdcd0"
+    },
+    {
+      "case_index": 17,
+      "emitted_sha256": "b6978349f6e10171e714d309000bc2578a17875c1d1835e192f8098c4a8f4ceb",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "784f144420ea8928f305550f8a0ff8abc5bb3514a9f96d4c91fe36bf4b4f77a9",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          2,
+          -9
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "2e45d349d4be93031e70e855387f911af1d1216ef61722be35ee0e9621c73403",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "24cb1f7739acf861aeef1a37f440a2833aac9a03fbe81b847af8c94eaae03307",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "e67abbec2c38e64bc0ecccad30cf7d00a4feb731943c9ba55c33bac723a85d1f"
+    },
+    {
+      "case_index": 18,
+      "emitted_sha256": "c2706f47ad86a182e877cf8843061a124efdf72ebbb1cfc3c7851981141a4a5a",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "4d7ec0e3e8a5c899b3523b9f275255a36292fc7805b370459e9624e0459280d7",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -7,
+          10
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "3331503ca1ee3d8b0f3878f3543359ed6085136f996332555237701054e4ae12",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "1c525339b2051822b7d696f04986127c3deacfd0bb7c9061cf03a23d70c20d6b",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "8ab665f4ae8f0baef04e44a8b2e7fec75d20fb684a4da7b9f982b084ccdf1ba1"
+    },
+    {
+      "case_index": 19,
+      "emitted_sha256": "f506a4b0f7a0a5b21b8942cc080af4410415c63238af6237d271374997293a81",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "80d57ce0fc414d6e69ec44f4265738bb0e4d96454e3561b476d0294542206f3f",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          2,
+          -1
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "6bddd046eede2e1af10912c6ac647d871627bf92c67e8ed000d139d1ababc896",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "d5d6af5755b73302ec9dcfc799e3f03621f2fe4589e23983c81dcaa11c2ad293",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "070701aa20e6986cef0b8f749b86021c034c6566679cbf5645b6d148fc4c42a2"
+    },
+    {
+      "case_index": 20,
+      "emitted_sha256": "eb322f627f591daeaefbd734bdc8a65320d40249e511a0595096d303a977de1b",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "15a666ab95cf5a55e1cf83bc6da892224098712efa46f801ba855d61b0815ccf",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -9,
+          -4
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "962abfa4c49501d4045bc65d59b2d1b3a1608d9ef0162ac9cd3fe9cc615cb5ec",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "756d6118c385a859fba7b9eddf700d2c618d4b1c1c96c64b5b5e5ef75704e860",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "90d9a7b2f57daaabc26fc1b51fb9984a9d3f9a0ba80eabf959a48ae7c2078c71"
+    },
+    {
+      "case_index": 21,
+      "emitted_sha256": "91536d7416a57cea8b496f8056256a32d5b437b87c0760035c6645facb6f04e2",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "fee643ef7e4cf984143b5e042a019b9510c797f6626a26e40cb329bc31ed64e0",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          4,
+          7
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "f370f2ee52d2ff9e71cf074435a110feca5458d8245f0a612db725865205b526",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "373b6233ffa26038a32b8755553b93b8e8023c878464577110bbb69d1f8403ec",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "81a3edfd4918fad0b42dfbfe87310aa920566ae07958cd67b938ad97ad13739c"
+    },
+    {
+      "case_index": 22,
+      "emitted_sha256": "4de197b9cdd7cc2563ef68497484aee2f2ff7c837a33ba688b9c5541b5f19dad",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "56743628354b1e9963a1a6b6f4aecb75967393b2a66ee40c2bb57ce30e7599d4",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -2,
+          -10
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "94b592227fa24364efc379069640263d5f8cb44571e28bbab2122da3d08b60a3",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "9f8b8003cedfb1e8b0cbed5f55a05089d95a8fb81a678e003fbc6d104093e569",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "2f451b62f317eb9de56533d2afeb769fa75276611f29425a2e85d1c35cfe751e"
+    },
+    {
+      "case_index": 23,
+      "emitted_sha256": "9e019dd16bdbeb1f6aba49ece9bebe7b45aebddb33442ec6e2a7d0771203dd7f",
+      "evaluator_outcome": "passed",
+      "expected_sha256": "9c18065388ae3175ebf7ce416833791e3c168b4ce2b0de4eef0771414d660cbd",
+      "inputs": [
+        [
+          -8,
+          -3
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          -5,
+          9
+        ]
+      ],
+      "native": [
+        {
+          "binary_sha256": "ec7376e5d1f860e71e367e79eed02ef9fbd4a2ab2dd3f2a49cd93f554531668f",
+          "optimization": "-O0",
+          "outcome": "passed"
+        },
+        {
+          "binary_sha256": "aba791705c369c955a6c38e3e04db977373c6e4ace49422fb2bf4adc2c37b3f9",
+          "optimization": "-O2",
+          "outcome": "passed"
+        }
+      ],
+      "source_sha256": "29dce57154262f3d73ca5ba76a14ac59e909e18476e17f34ac7e9930cef163c1"
+    }
+  ],
+  "compiler": {
+    "path": "/Users/christopherdavid/.codex/worktrees/coax-status-differential/openagents/coax/bin/coax",
+    "sha256": "3746fef915ddd452bab14758bd8eead5230f2efe586bf669565bfc6cb7028edd",
+    "version": {
+      "command": [
+        "/Users/christopherdavid/.codex/worktrees/coax-status-differential/openagents/coax/bin/coax",
+        "version"
+      ],
+      "outcome": "passed",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "coax0 0.13.0\n"
+    }
+  },
+  "generator": "coax-small-state-v1",
+  "host": {
+    "machine": "arm64",
+    "system": "Darwin"
+  },
+  "kind": "bounded_differential_sample",
+  "outcome": "passed",
+  "python_version": "3.15.1",
+  "raw_result_sha256": "28c5f7a9f94d431603f03776295230c8273bc94235510d0a59f4a5d4e67b9e00",
+  "schema_version": 1,
+  "selection": {
+    "seed": 20261028,
+    "steps": 24
+  },
+  "semantic_profile": {
+    "emission": "coax c without --release",
+    "execution": "evaluator #test and separate native main",
+    "instrumentation": "none",
+    "integer_arithmetic": "checked",
+    "integer_type": "int (signed 64-bit)",
+    "optimization": [
+      "-O0",
+      "-O2"
+    ]
+  },
+  "source_dependencies": [
+    "Basic (built into compiler)"
+  ],
+  "tool_sha256": "1bf08ab286ae3df01a9dcb21aaeea7fdfa42319b1eee05a37c1057888b58aadf",
+  "toolchain": {
+    "driver_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "target": {
+      "command": [
+        "/usr/bin/cc",
+        "-dumpmachine"
+      ],
+      "outcome": "passed",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "arm64-apple-darwin25.4.0\n"
+    },
+    "version": {
+      "command": [
+        "/usr/bin/cc",
+        "--version"
+      ],
+      "outcome": "passed",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n"
+    }
+  }
+}

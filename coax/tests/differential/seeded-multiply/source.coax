@@ -1,0 +1,32 @@
+#import "Basic";
+DiffState :: struct { total: int; lanes: [4] int; }
+index :: (counter: [] int, offset: int) -> int {
+  counter[0] += 1; return (counter[0] + offset) % 4;
+}
+probe :: (a: int, b: int, out: [] int, counter: [] int) -> DiffState {
+  state: DiffState; state.total = a * 17 + b * 3;
+  return state;
+}
+#test "oracle 0" {
+  buffer0 := [6] int.[701, 0, 0, 0, 0, -907];
+  counter0: [1] int;
+  result0 := probe(0, 0, buffer0[1..<5], counter0[..]);
+  #assert result0.total == 0;
+  #assert result0.lanes[0] == 0;
+  #assert result0.lanes[1] == 0;
+  #assert result0.lanes[2] == 0;
+  #assert result0.lanes[3] == 0;
+  #assert buffer0[0] == 701;
+  #assert buffer0[1] == 0;
+  #assert buffer0[2] == 0;
+  #assert buffer0[3] == 0;
+  #assert buffer0[4] == 0;
+  #assert buffer0[5] == -907;
+  #assert counter0[0] == 0;
+}
+main :: () {
+  buffer0 := [6] int.[701, 0, 0, 0, 0, -907];
+  counter0: [1] int;
+  result0 := probe(0, 0, buffer0[1..<5], counter0[..]);
+  print("% % % % % % % % % % % %\n", result0.total, result0.lanes[0], result0.lanes[1], result0.lanes[2], result0.lanes[3], buffer0[0], buffer0[1], buffer0[2], buffer0[3], buffer0[4], buffer0[5], counter0[0]);
+}

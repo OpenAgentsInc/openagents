@@ -97,6 +97,39 @@ the host supports them. For platform effects, test the real platform:
 Keychain ownership, audio routes, backgrounding, GPU completion and remote
 command outcomes cannot be established by a pure state-machine test.
 
+### A bounded differential experiment
+
+The optional `tools/differential.py` generates valid small-integer programs
+with branches, aggregate returns, ordered writes through caller-buffer views
+and deferred cleanup. A separate Python integer/state model supplies expected
+values. Each generated source checks those expectations with evaluator
+`#test` blocks; a separate native `main` exposes the same values and buffer
+contents for comparison. The harness emits checked C once and compiles it
+with both `-O0` and `-O2`, keeping arithmetic policy fixed.
+
+From the repository root, with an already-built compiler and a new output
+directory:
+
+```sh
+python3 coax/tools/differential.py --seed 20261028 --cases 16 --output /tmp/coax-differential-run
+```
+
+Schema-1 JSON records retain source/compiler/toolchain identities, selected
+inputs, process budgets, observations and artifact hashes. A mismatch keeps
+the original and a reduced source plus a replayable recipe. Timeouts are
+inconclusive; unavailable tools or rejected generated programs are infrastructure
+errors. Missing native execution is explicitly recorded, and none of those
+outcomes passes the run. Reduction preserves the mismatch's execution stage
+and kind; its attempt budget and limits remain visible.
+
+`--seed-defect` deliberately changes multiplication to addition in the emitted
+checked helper, after the evaluator has run. The retained regression reduces
+to `a * 17 + b * 3` with `(0, 0)`: the model and evaluator expect zero while
+both corrupted native builds return 20. This tests the comparison and
+reduction path; it is not a defect in the shipped compiler. Python is needed
+only for this optional verification tool. The [verification note](../verification-differential.md)
+records the exact subset, results and untested behavior.
+
 ## The bootstrap is a trust chain
 
 The lexer, parser, type checker, source-loading policy, descriptor importer,
