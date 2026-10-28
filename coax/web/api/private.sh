@@ -72,11 +72,12 @@ call() {
 json() { python3 -I -c 'import json, sys; print(json.dumps(dict(zip(sys.argv[1::2], sys.argv[2::2]))))' "$@"; }
 need_by() { [[ -n "$by" ]] || { echo "private.sh: say who you are with --by NAME" >&2; exit 2; }; }
 link() {  # SLUG PUBKEY: a sign-in link; the token goes in the fragment, which never reaches a server or a log
-  call POST "$1" invite "$(json pubkey "$2")" | python3 -I -c '
+  call POST "$1" invite "$(json pubkey "$2")" > "$tmp/ans" || exit 1
+  python3 -I -c '
 import json, sys
 a = json.load(sys.stdin)
 print(f"{sys.argv[1]}/projects/{sys.argv[2]}#invite={a["token"]}")
-print(f"good once, until {a["expires"]}", file=sys.stderr)' "$origin" "$1"
+print(f"good once, until {a["expires"]}", file=sys.stderr)' "$origin" "$1" < "$tmp/ans"
 }
 
 case "$cmd" in
@@ -84,11 +85,14 @@ case "$cmd" in
   push)
     file="${1:?push FILE}"
     slug="$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["slug"])' "$file")"
-    base="$(call GET "$slug" state 2>/dev/null | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["version"])' || echo 0)"
+    base=0
+    if call GET "$slug" state > "$tmp/ans" 2>/dev/null; then base="$(python3 -I -c 'import json, sys; print(json.load(sys.stdin)["version"])' < "$tmp/ans")"; fi
     python3 -I -c 'import json, sys; print(json.dumps({"base": int(sys.argv[2]), "doc": json.load(open(sys.argv[1]))}))' "$file" "$base" > "$tmp/push"
-    call POST "$slug" push "$(cat "$tmp/push")" | python3 -I -c 'import json, sys; print("pushed: version", json.load(sys.stdin)["version"])' ;;
+    call POST "$slug" push "$(cat "$tmp/push")" > "$tmp/ans" || exit 1
+    python3 -I -c 'import json, sys; print("pushed: version", json.load(sys.stdin)["version"])' < "$tmp/ans" ;;
   get)
-    call GET "${1:?get SLUG}" state | python3 -I -c '
+    call GET "${1:?get SLUG}" state > "$tmp/ans" || exit 1
+    python3 -I -c '
 import json, sys
 s = json.load(sys.stdin); d = s["doc"]
 print(f"# {d["title"]} (version {s["version"]}, {s["updated_at"]} Chicago by {s["updated_by"]})\n")
@@ -118,18 +122,20 @@ for a in s["activity"][:15]: print(f"- {a["at"]} {a["by"]} ({a["kind"]}): " + a[
 print("\n## Messages\n")
 for m in s["messages"]: print(f"- #{m["id"]} {m["at"]} {m["from"]}" + (f" (re #{m["reply_to"]})" if m["reply_to"] else "") + f": {m["text"]}")
 if d.get("links"):
-    print("\n## Links\n"); [print(f"- [{l["label"]}]({l["url"]})") for l in d["links"]]' ;;
+    print("\n## Links\n"); [print(f"- [{l["label"]}]({l["url"]})") for l in d["links"]]' < "$tmp/ans" ;;
   note) need_by; call POST "${1:?note SLUG TEXT}" note "$(json kind note text "${2:?TEXT}" by "$by")" >/dev/null && echo "noted" ;;
   plan) need_by; call POST "${1:?plan SLUG FILE}" note "$(json kind plan text "$(cat "${2:?FILE}")" by "$by")" >/dev/null && echo "plan posted" ;;
   status)
     need_by
     body="$(python3 -I -c 'import json, sys; d = {"id": sys.argv[1], "status": sys.argv[2], "by": sys.argv[3]}; d.update({"note": sys.argv[4]} if sys.argv[4] else {}); print(json.dumps(d))' "${2:?ID}" "${3:?STATUS}" "$by" "$note")"
-    call POST "${1:?status SLUG ID STATUS}" status "$body" | python3 -I -c 'import json, sys; print("version", json.load(sys.stdin)["version"])' ;;
+    call POST "${1:?status SLUG ID STATUS}" status "$body" > "$tmp/ans" || exit 1
+    python3 -I -c 'import json, sys; print("version", json.load(sys.stdin)["version"])' < "$tmp/ans" ;;
   inbox)
-    call GET "${1:?inbox SLUG}" inbox | python3 -I -c '
+    call GET "${1:?inbox SLUG}" inbox > "$tmp/ans" || exit 1
+    python3 -I -c '
 import json, sys
 m = json.load(sys.stdin)
-print("nothing unanswered" if not m else "\n".join(f"#{x["id"]} {x["at"]} {x["from"]}: {x["text"]}" for x in m))' ;;
+print("nothing unanswered" if not m else "\n".join(f"#{x["id"]} {x["at"]} {x["from"]}: {x["text"]}" for x in m))' < "$tmp/ans" ;;
   reply)
     need_by
     body="$(python3 -I -c 'import json, sys; print(json.dumps({"reply_to": sys.argv[1], "text": sys.argv[2], "by": sys.argv[3]}))' "${2:?ID}" "${3:?TEXT}" "$by")"

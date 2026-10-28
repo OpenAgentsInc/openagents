@@ -68,7 +68,7 @@ for k in ("kind", "creationTimestamp", "id", "selfLink"): m.pop(k, None)
 json.dump(m, open(path, "w"))
 print(f"url map: {what} " + ("added" if changed else "already there"))
 PY
-  g compute url-maps validate --global --source "$tmp" --format 'value(validationResult.loadSucceeded)' 2>&1 | grep -q True ||
+  g compute url-maps validate --global --source "$tmp" --format 'value(result.loadSucceeded)' 2>&1 | grep -qi true ||
     { echo "lb.sh: the new url map doesn't validate" >&2; g compute url-maps validate --global --source "$tmp" >&2; exit 1; }
   g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1
   exit 0

@@ -224,8 +224,12 @@ s, b, _ = agent_push(lambda d: (d["goals"].append({"id": "g3", "text": "Try a se
                                 d["checklists"][0]["items"][0].update(status="done", evidence="all green")))
 check("an agent proposes a goal and ticks an item", s == 200 and b["version"] == v + 1, (s, b))
 v += 1
+for who in ([], ["Zed"]):
+    s, b, _ = agent(os.environ["ADMIN_KEY"], "POST", "push", {"base": v, "doc": dict(DOC, goals=DOC["goals"] + [{"id": "g4", "text": "y", "status": "agreed", "agreed_by": who}])})
+    check(f"an agreed goal names members who agreed ({who})", s == 400, (s, b))
 s, b, _ = agent(os.environ["ADMIN_KEY"], "POST", "push", {"base": v, "doc": dict(DOC, goals=DOC["goals"] + [{"id": "g4", "text": "y", "status": "agreed", "agreed_by": ["Ada"]}])})
-check("an agreed goal names every member", s == 400, (s, b))
+check("a goal one member agreed to is agreed by that member", s == 200 and b["version"] == v + 1, (s, b))
+v += 1
 s, b, _ = agent(os.environ["ADMIN_KEY"], "POST", "push", {"base": v, "doc": dict(DOC, title="Test Project 2")})
 check("a member pushes anything valid", s == 200 and b["version"] == v + 1)
 check("every push is kept", sql(f"select count(*) from projects.history where slug = '{SLUG}'") == str(v + 1))

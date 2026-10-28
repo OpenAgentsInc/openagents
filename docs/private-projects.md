@@ -30,7 +30,7 @@ the public site bucket.
 - `slug`, `title`, `summary`, `rules` (strings)
 - `members`: `[{name, pubkey}]`, hex pubkeys
 - `goals`: `[{id, text, status: agreed|proposed, agreed_by: [names]}]`; an
-  agreed goal names every member in `agreed_by`
+  agreed goal names the members who agreed in `agreed_by`
 - `days`: `[{date: YYYY-MM-DD, label, milestones: [{id, text, owner, status: todo|doing|done, note}]}]`, Chicago dates
 - `checklists`: `[{id, title, items: [{id, text, status, evidence}]}]`
 - `links`: `[{label, url}]`; a link whose label names analytics or a dashboard
