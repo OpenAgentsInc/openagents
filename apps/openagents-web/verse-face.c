@@ -12,12 +12,12 @@ static coax_t_VerseState *state_at(uint32_t state) { return (coax_t_VerseState *
 static coax_v_t_VerseState at(uint32_t state) { return (coax_v_t_VerseState){state_at(state), 1}; }
 static coax_t_Track track_state;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
-static uint8_t inbox[4096];
+static uint8_t inbox[32768];
 
 static void start_track(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr(state_at(state)->page == 1 ? "galaxy" : "landing"));
 }
-// After every call: the page's request (the join), then the Track's batch.
+// After every call: the page's request (the join, the galaxy's realms), then the Track's batch.
 static void drain(uint32_t state) {
   coax_t_VerseState *s = state_at(state);
   if (s->req_ready) {
@@ -76,6 +76,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
   if (length < 0 || (uint32_t)length > sizeof inbox) return;
   start_track(state);   // the facts come before the first frame
   coax_string bytes = {(const char *)inbox, length};
+  if (kind == 600) verse_facts(at(state), bytes);
   if (!track_message(tr(), kind, bytes)) verse_message(at(state), tr(), kind, bytes);
   drain(state);
 }

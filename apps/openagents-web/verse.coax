@@ -11,7 +11,11 @@
 //
 // The galaxy: the playtest's worlds turning on their orbits; only the
 // Haunted House opens (/realm/haunted-house). Coding is coming soon and the
-// rest are locked, as the playtest drew them. Drag turns it.
+// rest are locked, as the playtest drew them. Drag turns it. Players' own
+// realms (pt-planets) circle outside them, the newest REALMS, and each
+// opens its world (/realm/haunted-house#<id>); MAKE YOUR REALM sets one up
+// (a name, its kind, look, view and time of day) on the server
+// (/api/playtest/planets), or YOUR REALM opens the one you have.
 //
 // Panels and buttons are plates (realm.coax's look: a dark wood fill and a
 // thin bronze line, drawn by verse.wgsl), the words parchment and bronze in
@@ -21,6 +25,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "analytics.coax";
+#load "world.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 40000;
@@ -95,7 +100,29 @@ ACT_KEEP :: 4;             // host.js: keep the outbox's text in this browser
 // The landing's buttons and the galaxy's.
 BTN_FIELD :: 0; BTN_GO :: 1; BTN_ENTER :: 2;
 BTN_HOUSE :: 3; BTN_CODING :: 4;
-BUTTONS :: 5;
+BTN_REALM :: 5;                        // MAKE YOUR REALM, or YOUR REALM
+BTN_NAME :: 6; BTN_CHOICE :: 7;        // the setup: the name box, then a row per choice
+BTN_MAKE :: BTN_CHOICE + CHOICES; BTN_BACK :: BTN_MAKE + 1;
+BUTTONS :: BTN_BACK + 1;
+
+// A realm's setup, the demo's planet setup (aethyr-cpp tools/serve.py
+// PLANET_KINDS, PLANET_CHOICES): what the server keeps, and the words shown.
+CHOICES :: 4;
+CHOICE_LABEL :: [CHOICES] string.["KIND", "LOOK", "VIEW", "TIME"];
+CHOICE_COUNT :: [CHOICES] int.[3, 4, 3, 3];
+CHOICE_KEY :: [CHOICES] string.["kind", "art", "cam", "cycle"];
+CHOICE_VALUE :: [13] string.["forest", "village", "cemetery", "Low poly", "Painted", "Pixel", "Ink",
+                             "Third person", "First person", "Top down", "Day/night cycle", "Always day", "Always night"];
+CHOICE_SHOWN :: [13] string.["FOREST", "VILLAGE", "CEMETERY", "LOW POLY", "PAINTED", "PIXEL", "INK",
+                             "THIRD PERSON", "FIRST PERSON", "TOP DOWN", "DAY AND NIGHT", "ALWAYS DAY", "ALWAYS NIGHT"];
+CHOICE_AT :: [CHOICES] int.[0, 3, 7, 10];
+REALMS :: 8; REALM_ID :: 64; REALM_NAME :: 40; NAME_MAX :: 40;
+REALM_ORBIT :: 0.53f32;
+// The galaxy's requests, one at a time: the realm you have, the realms, a
+// player key for a browser that has none, and the setup's.
+WANT_MINE :: 1; WANT_LIST :: 2; WANT_PLAYER :: 4; WANT_MAKE :: 8;
+HTTP_PLAYER :: 8;          // host.js: send this browser's playtest player key
+ACT_PLAYER :: 5;           // host.js: keep the outbox as the browser's playtest player
 
 // The landing's notes under the box.
 NOTE_NONE :: 0; NOTE_BAD :: 1; NOTE_EMPTY :: 2;
@@ -119,6 +146,14 @@ VerseState :: struct {
   down: bool; down_id: int; down_x: f32; down_y: f32; drag_rot: f32; drag_tilt: f32; moved: f32;
   over: int;                 // the planet under the mouse, or the one a first tap picked (-1 none)
   toast: [96] u8; toast_n: int; toast_at: f32;
+  // players' realms, newest first, and yours
+  realm_ids: [REALMS * REALM_ID] u8; realm_id_n: [REALMS] int;
+  realm_names: [REALMS * REALM_NAME] u8; realm_name_n: [REALMS] int; realm_kind: [REALMS] int; realm_n: int;
+  mine: [REALM_ID] u8; mine_n: int; mine_name: [REALM_NAME] u8; mine_name_n: int;
+  player: [32] u8; player_n: int;  // this browser's playtest player's public id (the page facts', or a new one)
+  wants: int; want_out: int; want_id: int;   // WANT_* still to ask, the one out and its request id
+  realm_total: int; counted: bool;          // how many realms the server has, once asked
+  setup: bool; name: [NAME_MAX] u8; name_n: int; picks: [CHOICES] int; making: bool;
   // to the host: one request, the keyboard field, an action
   req_url: [REQ_URL] u8; req_url_n: int; req_body: [REQ_BODY] u8; req_body_n: int; req_flags: int; req_ready: bool;
   field: [4] f32;
@@ -135,7 +170,8 @@ verse_page :: (s: [] VerseState, page: int) #export_c {
 
 verse_reset :: (s: [] VerseState) {
   s[0].started = true;
-  s[0].press = -1; s[0].press_id = -1; s[0].hover = -1; s[0].over = -1; s[0].join_id = -1;
+  s[0].press = -1; s[0].press_id = -1; s[0].hover = -1; s[0].over = -1; s[0].join_id = -1; s[0].want_id = -1;
+  s[0].wants = WANT_MINE | WANT_LIST; s[0].picks[0] = 2;
   s[0].rot = 0.6; s[0].tilt = 0.42; s[0].nudge_at = -100; s[0].toast_at = -100;
 }
 
@@ -188,6 +224,7 @@ request :: (s: [] VerseState, url: string, flags: int) {
 }
 verse_requested :: (s: [] VerseState, id: int) #export_c {
   s[0].req_ready = false;
+  if s[0].want_id == -2 { s[0].want_id = id; if id < 0 { realm_answered(s, "0\n"); } }
   if s[0].going && s[0].join_id == -2 { s[0].join_id = id; if id < 0 { s[0].answered = true; } }
 }
 
@@ -237,8 +274,9 @@ focus :: (s: [] VerseState, t: [] Track) {
 
 // The planet p was picked (via the map or its tag).
 pick :: (s: [] VerseState, t: [] Track, p: int, via: string) {
-  open := PLANET_KIND[p] == KIND_OPEN;
-  if track_begin(t, "planet-click") { track_str(t, "planet", PLANET_ID[p]); track_str(t, "via", via); track_bool(t, "open", open); track_end(t); }
+  open := realm_kind_at(s, p) == KIND_OPEN;
+  if track_begin(t, "planet-click") { track_str(t, "planet", realm_id_at(s, p)); track_str(t, "via", via); track_bool(t, "open", open); track_end(t); }
+  if p >= PLANETS { open_realm(s, realm_id_at(s, p)); return; }
   if open {
     if s[0].next_n == 0 && s[0].action == 0 { s[0].answered = true; go_to(s, "/realm/haunted-house"); }
     return;
@@ -257,13 +295,19 @@ press_button :: (s: [] VerseState, t: [] Track, b: int) {
   if b == BTN_GO { submit(s, t); return; }
   if b == BTN_ENTER { enter(s, t); return; }
   if b == BTN_HOUSE { pick(s, t, HOUSE, "tag"); return; }
-  if b == BTN_CODING { pick(s, t, CODING, "tag"); }
+  if b == BTN_CODING { pick(s, t, CODING, "tag"); return; }
+  if b == BTN_REALM { realm_button(s, t); return; }
+  if b == BTN_NAME { s[0].focused = true; return; }
+  if b >= BTN_CHOICE && b < BTN_CHOICE + CHOICES { c := b - BTN_CHOICE; s[0].picks[c] = (s[0].picks[c] + 1) % CHOICE_COUNT[c]; return; }
+  if b == BTN_MAKE { make_realm(s, t); return; }
+  if b == BTN_BACK { s[0].setup = false; s[0].focused = false; }
 }
 
 // ---- input
 
 // A key: a code point, or a named key below zero (ui.coax KEY_*).
 verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #export_c {
+  if s[0].page == PAGE_GALAXY { return setup_key(s, t, key, mods); }
   if s[0].page != PAGE_LANDING || s[0].going { return false; }
   if key == KEY_ENTER { if s[0].focused || s[0].email_n > 0 { submit(s, t); } else { enter(s, t); } return true; }
   // with a keyboard, typing goes into the box without a click first
@@ -280,6 +324,10 @@ verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #expor
 
 // Typed or pasted text (kind 1), what this browser kept (4), and the join's answer.
 verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #export_c {
+  if kind == MSG_TEXT && s[0].page == PAGE_GALAXY { if s[0].setup { name_type(s, bytes); } return; }
+  if kind >= HTTP_KIND && kind < HTTP_KIND + HTTPS && kind - HTTP_KIND == s[0].want_id && s[0].want_out != 0 {
+    s[0].want_id = -1; realm_answered(s, bytes); return;
+  }
   if kind == MSG_TEXT {
     if s[0].page == PAGE_LANDING && !s[0].going {
       if !s[0].focused { focus(s, t); }
@@ -302,7 +350,7 @@ verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #expo
 // still answers.
 planet_at :: (s: [] VerseState, x: f32, y: f32) -> int {
   best := -1; score := 1.0e9f32;
-  for p: 0..<PLANETS {
+  for p: 0..<PLANETS + s[0].realm_n {
     q := project(s, p);
     reach := hi(q.r * 1.5, 22 * s[0].dpr);
     dx := q.x - x; dy := q.y - y;
@@ -329,11 +377,12 @@ verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kin
   b := button_at(s, x, y);
   galaxy := s[0].page == PAGE_GALAXY;
   // on the galaxy an open world under the pointer wins over a tag lying across it
-  if galaxy && b >= 0 { under := planet_at(s, x, y); if under >= 0 && PLANET_KIND[under] == KIND_OPEN { b = -1; } }
+  if galaxy && b >= 0 && !s[0].setup && b != BTN_REALM { under := planet_at(s, x, y); if under >= 0 && realm_kind_at(s, under) == KIND_OPEN { b = -1; } }
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
   if galaxy && kind == 0 && !s[0].down { s[0].over = ifx b < 0 then planet_at(s, x, y) else -1; }
   if phase == POINTER_DOWN {
     if b >= 0 { s[0].press = b; s[0].press_id = id; return true; }
+    if galaxy && s[0].setup { s[0].focused = false; return true; }
     if galaxy {
       s[0].down = true; s[0].down_id = id; s[0].down_x = x; s[0].down_y = y;
       s[0].drag_rot = s[0].rot; s[0].drag_tilt = s[0].tilt; s[0].moved = 0;
@@ -375,10 +424,13 @@ verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kin
   return kind == 0;
 }
 
-verse_wants_text :: (s: [] VerseState) -> bool #export_c { return s[0].page == PAGE_LANDING && s[0].focused && !s[0].going; }
+verse_wants_text :: (s: [] VerseState) -> bool #export_c {
+  if s[0].page == PAGE_GALAXY { return s[0].setup && s[0].focused && !s[0].making; }
+  return s[0].page == PAGE_LANDING && s[0].focused && !s[0].going;
+}
 verse_cursor :: (s: [] VerseState) -> int #export_c {
   if s[0].hover >= 0 || s[0].press >= 0 { return 1; }
-  if s[0].page == PAGE_GALAXY && s[0].over >= 0 && PLANET_KIND[s[0].over] == KIND_OPEN { return 1; }
+  if s[0].page == PAGE_GALAXY && s[0].over >= 0 && realm_kind_at(s, s[0].over) == KIND_OPEN { return 1; }
   return 0;
 }
 // What the pointer is over, for the click event.
@@ -389,7 +441,12 @@ verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c {
   if b == BTN_ENTER { return "enter"; }
   if b == BTN_HOUSE { return "house-tag"; }
   if b == BTN_CODING { return "coding-tag"; }
-  if s[0].page == PAGE_GALAXY { p := planet_at(s, x, y); if p >= 0 { return PLANET_ID[p]; } }
+  if b == BTN_REALM { return ifx s[0].mine_n > 0 then "your-realm" else "make-realm"; }
+  if b == BTN_NAME { return "realm-name"; }
+  if b >= BTN_CHOICE && b < BTN_CHOICE + CHOICES { return CHOICE_KEY[b - BTN_CHOICE]; }
+  if b == BTN_MAKE { return "realm-make"; }
+  if b == BTN_BACK { return "realm-back"; }
+  if s[0].page == PAGE_GALAXY && !s[0].setup { p := planet_at(s, x, y); if p >= 0 { return realm_id_at(s, p); } }
   return "";
 }
 verse_action :: (s: [] VerseState) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
@@ -415,12 +472,235 @@ Seen :: struct { x: f32; y: f32; r: f32; depth: f32; }
 project :: (s: [] VerseState, p: int) -> Seen {
   w := s[0].width; h := s[0].height;
   m := lo(w, h) * 0.95; cx := w * 0.5; cy := h * 0.55;
-  a := PLANET_A[p];
+  orbit := REALM_ORBIT; size := 0.024f32;
+  a := 0.35f32 + cast(f32) (p - PLANETS) * 6.2831853 / cast(f32) REALMS;
+  if p < PLANETS { a = PLANET_A[p]; orbit = PLANET_R[p]; size = PLANET_SIZE[p]; }
   if p == HOUSE { a = ifx s[0].still then 1.2f32 else s[0].time * 0.3; }
-  x := PLANET_R[p] * cos(a + s[0].rot); z := PLANET_R[p] * sin(a + s[0].rot);
+  x := orbit * cos(a + s[0].rot); z := orbit * sin(a + s[0].rot);
   depth := z * cos(s[0].tilt);
   k := 1 / (1 + depth * 0.9);
-  return Seen.{x = cx + x * m * k, y = cy + z * sin(s[0].tilt) * m * k, r = PLANET_SIZE[p] * m * k, depth = depth};
+  return Seen.{x = cx + x * m * k, y = cy + z * sin(s[0].tilt) * m * k, r = size * m * k, depth = depth};
+}
+
+// The galaxy's worlds and then players' realms (p from PLANETS).
+realm_kind_at :: (s: [] VerseState, p: int) -> int { return ifx p >= PLANETS then KIND_OPEN else PLANET_KIND[p]; }
+realm_id_at :: (s: [] VerseState, p: int) -> string {
+  if p < PLANETS { return PLANET_ID[p]; }
+  i := p - PLANETS;
+  return cast(string) s[0].realm_ids[i * REALM_ID..<i * REALM_ID + s[0].realm_id_n[i]];
+}
+realm_name_at :: (s: [] VerseState, p: int) -> string {
+  if p < PLANETS { return PLANET_NAME[p]; }
+  i := p - PLANETS;
+  return cast(string) s[0].realm_names[i * REALM_NAME..<i * REALM_NAME + s[0].realm_name_n[i]];
+}
+
+// ---- players' realms (pt-planets): the server's /api/playtest/planets
+
+KIND_TINT_R :: [3] f32.[0.45, 0.95, 0.72];   // forest, village, cemetery
+KIND_TINT_G :: [3] f32.[0.85, 0.78, 0.62];
+KIND_TINT_B :: [3] f32.[0.52, 0.45, 0.98];
+
+realm_kind_of :: (kind: string) -> int {
+  if kind == "forest" { return 0; }
+  if kind == "village" { return 1; }
+  return 2;
+}
+mine_text :: (s: [] VerseState) -> string { return cast(string) s[0].mine[0..<s[0].mine_n]; }
+name_text :: (s: [] VerseState) -> string { return cast(string) s[0].name[0..<s[0].name_n]; }
+player_text :: (s: [] VerseState) -> string { return cast(string) s[0].player[0..<s[0].player_n]; }
+
+// A world's name for the map: unescaped, printable, at most REALM_NAME bytes.
+realm_name_into :: (raw: string, out: [] u8) -> int {
+  buf: [160] u8;
+  n := world_unescape(raw, buf[..]);
+  o := 0;
+  for i: 0..<n { c := buf[i]; if c >= 32 && c < 127 && o < out.count { out[o] = c; o += 1; } }
+  return o;
+}
+
+// The page facts' player (its public id; the key stays in the browser).
+verse_facts :: (s: [] VerseState, facts: string) #export_c {
+  if !s[0].started { verse_reset(s); }
+  id := fact_of(facts, "player");
+  if !world_id_ok(id) || id.count > 32 { return; }
+  for i: 0..<id.count { s[0].player[i] = id[i]; }
+  s[0].player_n = id.count;
+}
+
+open_realm :: (s: [] VerseState, id: string) {
+  if s[0].next_n > 0 || s[0].action != 0 || !world_id_ok(id) { return; }
+  n := put(s[0].next[..], 0, "/realm/haunted-house#");
+  s[0].next_n = put(s[0].next[..], n, id);
+  s[0].answered = true; s[0].going_at = s[0].time;
+}
+
+// MAKE YOUR REALM opens the setup; YOUR REALM opens the one you have.
+realm_button :: (s: [] VerseState, t: [] Track) {
+  if s[0].mine_n > 0 {
+    if track_begin(t, "planet-click") { track_str(t, "planet", mine_text(s)); track_str(t, "via", "your-realm"); track_bool(t, "open", true); track_end(t); }
+    open_realm(s, mine_text(s));
+    return;
+  }
+  s[0].setup = true; s[0].focused = true; s[0].typed_at = s[0].time;
+  track(t, "planet-setup");
+}
+
+// CREATE: a player key first if this browser has none, then the realm.
+make_realm :: (s: [] VerseState, t: [] Track) {
+  if s[0].making { return; }
+  s[0].making = true; s[0].focused = false;
+  s[0].wants = s[0].wants | (ifx s[0].player_n > 0 then WANT_MAKE else WANT_PLAYER);
+  if track_begin(t, "planet-create") {
+    for c: 0..<CHOICES { track_str(t, CHOICE_KEY[c], CHOICE_VALUE[CHOICE_AT[c] + s[0].picks[c]]); }
+    track_end(t);
+  }
+}
+
+name_byte :: (c: int) -> int {
+  if c < 32 || c > 126 || c == '"' || c == '\\' || c == '<' || c == '>' { return -1; }
+  return c;
+}
+name_type :: (s: [] VerseState, text: string) {
+  if s[0].making { return; }
+  for i: 0..<text.count {
+    c := name_byte(cast(int) text[i]);
+    if c >= 0 && s[0].name_n < NAME_MAX { s[0].name[s[0].name_n] = cast(u8) c; s[0].name_n += 1; }
+  }
+  s[0].focused = true; s[0].typed_at = s[0].time;
+}
+
+// The galaxy's keys: the setup's name box, ENTER to create, ESCAPE to close.
+setup_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool {
+  if !s[0].setup { return false; }
+  if key == KEY_ESCAPE { s[0].setup = false; s[0].focused = false; return true; }
+  if s[0].making { return true; }
+  if key == KEY_ENTER { make_realm(s, t); return true; }
+  if !s[0].focused && key > 32 && key < 127 && mods & (MOD_CTRL | MOD_META) == 0 { s[0].focused = true; }
+  if !s[0].focused { return false; }
+  if key == KEY_BACKSPACE { if s[0].name_n > 0 { s[0].name_n -= 1; } s[0].typed_at = s[0].time; return true; }
+  if key > 0 && key < 127 && mods & (MOD_CTRL | MOD_META) == 0 {
+    buf: [4] u8; buf[0] = cast(u8) key;
+    name_type(s, cast(string) buf[0..<1]);
+    return true;
+  }
+  return false;
+}
+
+// The next of the galaxy's requests, one at a time.
+realm_ask :: (s: [] VerseState) {
+  if s[0].wants & WANT_MINE != 0 && s[0].player_n == 0 { s[0].wants -= WANT_MINE; }
+  bit := 0;
+  order := [4] int.[WANT_MINE, WANT_LIST, WANT_PLAYER, WANT_MAKE];
+  for b: 0..<4 { if s[0].wants & order[b] != 0 { bit = order[b]; break; } }
+  if bit == 0 { return; }
+  s[0].wants -= bit; s[0].want_out = bit; s[0].want_id = -2;
+  s[0].req_body_n = 0;
+  if bit == WANT_MINE { request(s, "/api/playtest/planets/mine", HTTP_ANSWER | HTTP_PLAYER); return; }
+  if bit == WANT_LIST {
+    u := s[0].req_url[..];
+    n := put(u, 0, "/api/playtest/planets?after=");
+    after := ifx s[0].counted then s[0].realm_total - REALMS else 1000000000;
+    n = put_int(u, n, ifx after < 0 then 0 else after);
+    s[0].req_url_n = n; s[0].req_flags = HTTP_ANSWER; s[0].req_ready = true;
+    return;
+  }
+  if bit == WANT_PLAYER {
+    s[0].req_body_n = put(s[0].req_body[..], 0, "{}");
+    request(s, "/api/playtest/player", HTTP_POST | HTTP_ANSWER);
+    return;
+  }
+  b := s[0].req_body[..]; n := 0;
+  n = put(b, n, "{\"user\":{\"id\":\""); n = put(b, n, player_text(s));
+  n = put(b, n, "\",\"name\":\"Guest\"},\"settings\":{\"name\":\""); n = put(b, n, name_text(s)); n = put(b, n, "\"");
+  for c: 0..<CHOICES {
+    n = put(b, n, ",\""); n = put(b, n, CHOICE_KEY[c]); n = put(b, n, "\":\"");
+    n = put(b, n, CHOICE_VALUE[CHOICE_AT[c] + s[0].picks[c]]); n = put(b, n, "\"");
+  }
+  n = put(b, n, "}}");
+  s[0].req_body_n = n;
+  request(s, "/api/playtest/planets", HTTP_POST | HTTP_ANSWER | HTTP_PLAYER);
+}
+
+realm_say :: (s: [] VerseState, text: string) { s[0].toast_n = put(s[0].toast[..], 0, text); s[0].toast_at = s[0].time; }
+
+// A planet object's id, name and kind into slot i of the map's realms.
+realm_keep :: (s: [] VerseState, t: string, obj: int, i: int) -> bool {
+  at: [1] int;
+  idn := world_field(t, obj, "id", at[..]);
+  if at[0] < 0 || !world_id_ok(t[at[0]..<at[0] + idn]) || idn > REALM_ID { return false; }
+  for k: 0..<idn { s[0].realm_ids[i * REALM_ID + k] = t[at[0] + k]; }
+  s[0].realm_id_n[i] = idn;
+  nn := world_field(t, obj, "name", at[..]);
+  s[0].realm_name_n[i] = ifx at[0] >= 0 then realm_name_into(t[at[0]..<at[0] + nn], s[0].realm_names[i * REALM_NAME..<(i + 1) * REALM_NAME]) else 0;
+  kn := world_field(t, obj, "kind", at[..]);
+  s[0].realm_kind[i] = ifx at[0] >= 0 then realm_kind_of(t[at[0]..<at[0] + kn]) else 2;
+  return true;
+}
+
+// A galaxy request's answer ("STATUS\n" and the body; "0\n" none).
+realm_answered :: (s: [] VerseState, bytes: string) {
+  w := s[0].want_out; s[0].want_out = 0; s[0].want_id = -1;
+  ok := bytes.count > 4 && bytes[0..<4] == "200\n";
+  t := ifx ok then bytes[4..<bytes.count] else "";
+  o := world_space(t, 0);
+  at: [1] int;
+  if w == WANT_MINE {
+    if !ok { return; }
+    pn := world_field(t, o, "planet", at[..]);
+    if at[0] < 0 || t[at[0]] != '{' { return; }
+    p := at[0];
+    idn := world_field(t, p, "id", at[..]);
+    if at[0] < 0 || idn > REALM_ID || !world_id_ok(t[at[0]..<at[0] + idn]) { return; }
+    for k: 0..<idn { s[0].mine[k] = t[at[0] + k]; } s[0].mine_n = idn;
+    nn := world_field(t, p, "name", at[..]);
+    s[0].mine_name_n = ifx at[0] >= 0 then realm_name_into(t[at[0]..<at[0] + nn], s[0].mine_name[..]) else 0;
+    return;
+  }
+  if w == WANT_LIST {
+    if !ok { return; }
+    nn := world_field(t, o, "n", at[..]);
+    if at[0] >= 0 { s[0].realm_total = fact_int(t[at[0]..<at[0] + nn]); }
+    if !s[0].counted { s[0].counted = true; if s[0].realm_total > 0 { s[0].wants = s[0].wants | WANT_LIST; } return; }
+    an := world_field(t, o, "planets", at[..]);
+    if at[0] < 0 || t[at[0]] != '[' { return; }
+    // newest last on the wire: the last REALMS, newest first on the map
+    starts: [64] int; count := 0;
+    i := world_space(t, at[0] + 1);
+    while i < t.count && t[i] == '{' && count < 64 {
+      e := world_value_end(t, i);
+      if e < 0 { break; }
+      starts[count] = i; count += 1;
+      i = world_space(t, e);
+      if i < t.count && t[i] == ',' { i = world_space(t, i + 1); }
+    }
+    kept := 0;
+    j := count - 1;
+    while j >= 0 && kept < REALMS { if realm_keep(s, t, starts[j], kept) { kept += 1; } j -= 1; }
+    s[0].realm_n = kept;
+    return;
+  }
+  if w == WANT_PLAYER {
+    idn := world_field(t, o, "id", at[..]);
+    if !ok || at[0] < 0 || idn > 32 || !world_id_ok(t[at[0]..<at[0] + idn]) || t.count > OUTBOX {
+      s[0].making = false; realm_say(s, "THAT DIDN'T REACH THE SERVER. TRY AGAIN."); return;
+    }
+    for k: 0..<idn { s[0].player[k] = t[at[0] + k]; } s[0].player_n = idn;
+    act(s, ACT_PLAYER, t);
+    s[0].wants = s[0].wants | WANT_MAKE;
+    return;
+  }
+  if w == WANT_MAKE {
+    s[0].making = false;
+    idn := world_field(t, o, "id", at[..]);
+    if !ok || at[0] < 0 || idn > REALM_ID || !world_id_ok(t[at[0]..<at[0] + idn]) {
+      realm_say(s, ifx bytes.count > 4 && bytes[0..<4] == "403\n" then "THAT REALM ISN'T YOURS TO SET UP" else "THAT DIDN'T REACH THE SERVER. TRY AGAIN.");
+      return;
+    }
+    for k: 0..<idn { s[0].mine[k] = t[at[0] + k]; } s[0].mine_n = idn;
+    s[0].setup = false;
+    open_realm(s, mine_text(s));
+  }
 }
 
 // ---- the look (realm.coax's): change it here
@@ -627,7 +907,10 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
     vertices = ring(out, vertices, cx, cy, r, r * sin(s[0].tilt), 72, 0.5 * k, 0.13, 1 * k, 0.93, 0.93, 0.95);
   }
   pulse := ifx s[0].still then 0.35f32 else (s[0].time / 1.6) - floor(s[0].time / 1.6);
-  for p: 0..<PLANETS {
+  // the setup covers the middle: its worlds wait behind it, unlit
+  shown_planets := ifx s[0].setup then 0 else PLANETS;
+  shown_realms := ifx s[0].setup then 0 else s[0].realm_n;
+  for p: 0..<shown_planets {
     q := project(s, p);
     if PLANET_KIND[p] == KIND_OPEN {
       if tinted_dot(out, vertices, q.x, q.y, 0.1, 3.2, q.r * 3.4, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
@@ -641,10 +924,26 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
     }
     if s[0].over == p { vertices = ring(out, vertices, q.x, q.y, q.r * 1.4 + 2 * k, q.r * 1.4 + 2 * k, 40, 0.6 * k, 0.6, 1.5 * k, 0.93, 0.93, 0.95); }
   }
+  // players' realms on the outer orbit, tinted by their kind
+  if s[0].realm_n > 0 {
+    r := REALM_ORBIT * m;
+    vertices = ring(out, vertices, cx, cy, r, r * sin(s[0].tilt), 96, 0.5 * k, 0.1, 1 * k, GOLD_R, GOLD_G, GOLD_B);
+  }
+  for i: 0..<shown_realms {
+    p := PLANETS + i; q := project(s, p); c := s[0].realm_kind[i];
+    if tinted_dot(out, vertices, q.x, q.y, 0.1, 2.4, q.r * 3.0, KIND_TINT_R[c], KIND_TINT_G[c], KIND_TINT_B[c]) { vertices += 6; }
+    if tinted_dot(out, vertices, q.x, q.y, q.r * 0.5, 1, q.r * 0.6, KIND_TINT_R[c], KIND_TINT_G[c], KIND_TINT_B[c]) { vertices += 6; }
+    if s[0].over == p { vertices = ring(out, vertices, q.x, q.y, q.r * 1.4 + 2 * k, q.r * 1.4 + 2 * k, 40, 0.6 * k, 0.6, 1.5 * k, 0.93, 0.93, 0.95); }
+  }
+  // MAKE YOUR REALM, or YOUR REALM once you have one
+  realm_label := ifx s[0].mine_n > 0 then "YOUR REALM" else "MAKE YOUR REALM";
+  rw := measure(realm_label, GAP, SPACE, false) * 8 * k + 36 * k;
+  vertices = plate_button(s, out, vertices, BTN_REALM, Box.{x0 = cx - rw * 0.5, y0 = 96 * k, x1 = cx + rw * 0.5, y1 = 124 * k}, realm_label, true);
 
   // the tags under the worlds that answer (the house opens; Coding says when)
   tcap := ifx phone then 7 * k else 8 * k;
   for which: 0..<2 {
+    if s[0].setup { break; }
     p := ifx which == 0 then HOUSE else CODING;
     i := ifx which == 0 then BTN_HOUSE else BTN_CODING;
     if s[0].over == p { continue; }
@@ -661,12 +960,13 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
     vertices = centred(d, out, vertices, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + tcap * 0.5, tcap, GAP, ifx which == 0 then ember(k, 1) else white(k, 0.9));
   }
   // the world under the pointer: its name and whether it opens
-  if s[0].over >= 0 {
+  if s[0].over >= 0 && !s[0].setup {
     p := s[0].over; q := project(s, p);
-    name := PLANET_NAME[p];
+    name := realm_name_at(s, p);
     state := "LOCKED";
-    if PLANET_KIND[p] == KIND_SOON { state = "COMING SOON"; }
-    if PLANET_KIND[p] == KIND_OPEN { state = ifx phone then "OPEN · TAP AGAIN TO ENTER" else "OPEN"; }
+    if realm_kind_at(s, p) == KIND_SOON { state = "COMING SOON"; }
+    if realm_kind_at(s, p) == KIND_OPEN { state = ifx phone then "OPEN · TAP AGAIN TO ENTER" else "OPEN"; }
+    if p >= PLANETS { state = ifx phone then "A PLAYER'S REALM · TAP AGAIN TO ENTER" else "A PLAYER'S REALM · OPEN"; }
     lw := hi(measure(name, GAP, SPACE, false) * 9 * k, measure(state, GAP, SPACE, false) * 7 * k) + 28 * k;
     bottom := q.y - q.r - 10 * k;
     b := Box.{x0 = q.x - lw * 0.5, y0 = bottom - 46 * k, x1 = q.x + lw * 0.5, y1 = bottom};
@@ -675,8 +975,9 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
     plate(s, b, 0.92, LOOK_PLAIN);
     vertices = write(d, out, vertices, name, b.x0 + 14 * k, b.y0 + 21 * k, 9 * k, GAP, SPACE, white(k, 0.97), false, false);
     vertices = write(d, out, vertices, state, b.x0 + 14 * k, b.y0 + 37 * k, 7 * k, GAP, SPACE,
-                     ifx PLANET_KIND[p] == KIND_OPEN then ember(k, 0.95) else bronze(k, 0.85), false, false);
+                     ifx realm_kind_at(s, p) == KIND_OPEN then ember(k, 0.95) else bronze(k, 0.85), false, false);
   }
+  if s[0].setup { vertices = draw_setup(s, out, vertices); }
 
   // what to do, at the bottom
   hint := ifx s[0].spun then 0.45f32 else 0.7f32;
@@ -699,6 +1000,47 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
     used: [1] f32;
     vertices = draw_wrapped(d, out, vertices, say, b.x0 + 14 * k, b.y0 + 9 * k, 8.5 * k, GAP, SPACE, white(k, shown), tw - 28 * k, 16 * k, false, true, used[..]);
   }
+  return vertices;
+}
+
+// The setup: a name, then a row per choice (a press cycles it), CREATE and CANCEL.
+setup_box :: (s: [] VerseState) -> Box {
+  k := s[0].dpr; w := column(s); cx := s[0].width * 0.5; cy := s[0].height * 0.55;
+  return Box.{x0 = cx - w * 0.5, y0 = cy - 160 * k, x1 = cx + w * 0.5, y1 = cy + 160 * k};
+}
+draw_setup :: (s: [] VerseState, out: [] f32, at: int) -> int {
+  k := s[0].dpr; d := k;
+  b := setup_box(s);
+  plate(s, b, 0.96, LOOK_PLAIN);
+  vertices := write(d, out, at, "MAKE YOUR REALM", b.x0 + 16 * k, b.y0 + 26 * k, 8 * k, WIDE, space_for(WIDE), bronze(k, 0.95), false, false);
+  vertices = write(d, out, vertices, "NAME", b.x0 + 16 * k, b.y0 + 52 * k, 7 * k, GAP, SPACE, white(k, 0.6), false, false);
+  f := Box.{x0 = b.x0 + 14 * k, y0 = b.y0 + 60 * k, x1 = b.x1 - 14 * k, y1 = b.y0 + 98 * k};
+  s[0].boxes[BTN_NAME] = f; s[0].shown[BTN_NAME] = true;
+  focused := s[0].focused && !s[0].making;
+  plate(s, f, 0.95, ifx focused || s[0].hover == BTN_NAME then LOOK_LIT else LOOK_PLAIN);
+  cap := 10 * k; base := (f.y0 + f.y1) * 0.5 + cap * 0.5; left := f.x0 + 12 * k;
+  text := name_text(s);
+  if text.count == 0 && !focused {
+    vertices = write(d, out, vertices, "A NAME FOR YOUR REALM", left, base, cap, GAP, SPACE, white(k, 0.32), false, false);
+  } else {
+    vertices = draw_fit(d, out, vertices, text, left, base, cap, GAP, SPACE, white(k, 0.97), f.x1 - f.x0 - 24 * k);
+    since := s[0].time - s[0].typed_at;
+    if focused && (s[0].still || since / 1.06 - floor(since / 1.06) < 0.5) {
+      x := floor(left + lo(measure(text, GAP, SPACE, false) * cap + GAP * 0.6 * cap, f.x1 - f.x0 - 24 * k)) + 0.5;
+      if lit(out, vertices, x, base + 2 * k, x, base - cap - 3 * k, 0.5 * k, 1, 3 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { vertices += 6; }
+    }
+  }
+  for c: 0..<CHOICES {
+    top := b.y0 + 110 * k + cast(f32) c * 38 * k;
+    vertices = write(d, out, vertices, CHOICE_LABEL[c], b.x0 + 16 * k, top + 19 * k, 7 * k, WIDE, space_for(WIDE), white(k, 0.6), false, false);
+    cb := Box.{x0 = b.x0 + 100 * k, y0 = top, x1 = b.x1 - 14 * k, y1 = top + 30 * k};
+    vertices = plate_button(s, out, vertices, BTN_CHOICE + c, cb, CHOICE_SHOWN[CHOICE_AT[c] + s[0].picks[c]], false);
+  }
+  half := (b.x1 - b.x0 - 40 * k) * 0.5;
+  make := Box.{x0 = b.x0 + 14 * k, y0 = b.y1 - 44 * k, x1 = b.x0 + 14 * k + half, y1 = b.y1 - 14 * k};
+  back := Box.{x0 = make.x1 + 12 * k, y0 = make.y0, x1 = b.x1 - 14 * k, y1 = make.y1};
+  vertices = plate_button(s, out, vertices, BTN_MAKE, make, ifx s[0].making then "MAKING..." else "CREATE", true);
+  vertices = plate_button(s, out, vertices, BTN_BACK, back, "CANCEL", false);
   return vertices;
 }
 
@@ -731,6 +1073,8 @@ verse_frame :: (s: [] VerseState, t: [] Track, out: [] f32, uniforms: [] f32, wi
       }
     }
   }
+  // the galaxy's requests, one at a time, after any action waiting
+  if s[0].page == PAGE_GALAXY && s[0].wants != 0 && s[0].want_id == -1 && !s[0].req_ready && s[0].action == 0 && s[0].next_n == 0 { realm_ask(s); }
   // GO waits for the server's answer (or WAIT_JOIN), and the keep before it
   if s[0].next_n > 0 && s[0].action == 0 && !s[0].req_ready && (s[0].answered || s[0].time - s[0].going_at > WAIT_JOIN) {
     act(s, ACT_NAVIGATE, cast(string) s[0].next[0..<s[0].next_n]);
@@ -766,13 +1110,21 @@ page_at :: (s: [] VerseState, t: [] Track, page: int, w: f32, h: f32) {
   _ := track_message(t, HOST_PAGE, facts);
   out: [6 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   drawn := verse_frame(s, t, out[..], u[..], w * 2, h * 2, 2, 0.016, true);
+  offline(s);
 }
 redraw :: (s: [] VerseState, t: [] Track, dt: f32) {
+  frame(s, t, dt);
+  offline(s);
+}
+frame :: (s: [] VerseState, t: [] Track, dt: f32) {
   out: [6 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   _ := verse_frame(s, t, out[..], u[..], s[0].width, s[0].height, s[0].dpr, dt, true);
 }
+// The galaxy's requests with no server: each fails at once.
+offline :: (s: [] VerseState) { if s[0].page == PAGE_GALAXY && s[0].req_ready && s[0].want_id == -2 { verse_requested(s, -1); } }
+url_is :: (s: [] VerseState, url: string) -> bool { return s[0].req_ready && cast(string) s[0].req_url[0..<s[0].req_url_n] == url; }
 poke :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) { _ := verse_pointer(s, t, x, y, phase, kind, id); }
-take :: (s: [] VerseState) { _ := verse_action(s); verse_action_done(s); }
+take_action :: (s: [] VerseState) { _ := verse_action(s); verse_action_done(s); }
 click :: (s: [] VerseState, t: [] Track, b: Box) {
   x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
   poke(s, t, x, y, POINTER_DOWN, 0, 1);
@@ -811,7 +1163,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert batch_has(t[..], "\"ev\":\"start\"") && batch_has(t[..], "\"how\":\"guest\"") && !s[0].req_ready;
   redraw(s[..], t[..], 0.016);
   #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
-  take(s[..]);
+  take_action(s[..]);
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   redraw(s[..], t[..], 0.016);
   #assert s[0].action == 0;
@@ -831,7 +1183,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert body == "{\"email\":\"chris@openagents.com\",\"player\":\"feedfacecafebeef\",\"sid\":\"c0123456789abcdef\",\"how\":\"form\"}";
   #assert s[0].req_flags == HTTP_POST | HTTP_ANSWER;
   verse_requested(s[..], 3);
-  take(s[..]);
+  take_action(s[..]);
   redraw(s[..], t[..], 0.016);
   #assert s[0].action == 0;   // waiting for the server
   verse_message(s[..], t[..], HTTP_KIND + 3, "200\n{\"joined\":true}");
@@ -846,7 +1198,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   verse_message(s[..], t[..], MSG_TEXT, "a@b.co");
   click(s[..], t[..], s[0].boxes[BTN_GO]);
   verse_requested(s[..], 0);
-  take(s[..]);
+  take_action(s[..]);
   for i: 0..<30 { redraw(s[..], t[..], 0.1); }
   #assert s[0].action == ACT_NAVIGATE;
 }
@@ -926,4 +1278,96 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     if tap == 0 { #assert s[0].over == HOUSE && s[0].action == 0; }
   }
   #assert s[0].action == ACT_NAVIGATE;
+}
+
+#test "the galaxy asks for your realm and the newest realms, and draws them" {
+  s: [1] VerseState; t: [1] Track;
+  s[0].page = PAGE_GALAXY;
+  verse_facts(s[..], "tab=1\nplayer=p-0123456789abcdef\naccount=");
+  #assert player_text(s[..]) == "p-0123456789abcdef";
+  track_init(t[..], "galaxy");
+  _ := track_message(t[..], HOST_PAGE, "tab=0123456789abcdef\nfresh=1\nvisitor=feedfacecafebeef\nnow=1000\nnav=50");
+  s[0].width = 2880; s[0].height = 1800; s[0].dpr = 2;
+  frame(s[..], t[..], 0.016);
+  #assert url_is(s[..], "/api/playtest/planets/mine") && s[0].req_flags == HTTP_ANSWER | HTTP_PLAYER;
+  verse_requested(s[..], 2);
+  verse_message(s[..], t[..], HTTP_KIND + 2, "200\n{\"planet\": {\"id\": \"planet-mine1\", \"name\": \"My \\\"Den\\\"\", \"kind\": \"forest\"}, \"invited\": false, \"saved\": null}");
+  #assert mine_text(s[..]) == "planet-mine1" && cast(string) s[0].mine_name[0..<s[0].mine_name_n] == "My \"Den\"";
+  frame(s[..], t[..], 0.016);
+  #assert url_is(s[..], "/api/playtest/planets?after=1000000000");
+  verse_requested(s[..], 3);
+  verse_message(s[..], t[..], HTTP_KIND + 3, "200\n{\"n\": 12, \"planets\": []}");
+  frame(s[..], t[..], 0.016);
+  #assert url_is(s[..], "/api/playtest/planets?after=4");
+  verse_requested(s[..], 4);
+  verse_message(s[..], t[..], HTTP_KIND + 4, "200\n{\"n\": 12, \"planets\": [{\"n\": 11, \"id\": \"planet-a\", \"name\": \"Old\", \"kind\": \"village\"}, {\"n\": 12, \"id\": \"planet-b\", \"name\": \"New\", \"kind\": \"cemetery\"}]}");
+  #assert s[0].realm_n == 2 && realm_id_at(s[..], PLANETS) == "planet-b" && realm_name_at(s[..], PLANETS + 1) == "Old";
+  #assert s[0].realm_kind[0] == 2 && s[0].realm_kind[1] == 1 && realm_kind_at(s[..], PLANETS) == KIND_OPEN;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := verse_frame(s[..], t[..], out[..], u[..], 2880, 1800, 2, 0, true);
+  #assert n > 0 && n < MAX_VERTICES && !s[0].req_ready && s[0].shown[BTN_REALM] && u[5] <= PLATES;
+  // a realm on the map opens its world; YOUR REALM opens yours
+  q := project(s[..], PLANETS);
+  #assert planet_at(s[..], q.x, q.y) == PLANETS;
+  poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
+  poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
+  frame(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house#planet-b";
+  take_action(s[..]);
+  click(s[..], t[..], s[0].boxes[BTN_REALM]);
+  frame(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house#planet-mine1";
+}
+
+#test "a guest with no key makes a realm: a key first, kept, then the realm, then it opens" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_GALAXY, 390, 844);
+  #assert s[0].shown[BTN_REALM] && s[0].mine_n == 0 && s[0].wants == 0;
+  click(s[..], t[..], s[0].boxes[BTN_REALM]);
+  #assert s[0].setup && verse_wants_text(s[..]) && batch_has(t[..], "planet-setup");
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := verse_frame(s[..], t[..], out[..], u[..], 780, 1688, 2, 0, true);
+  #assert n > 0 && u[5] <= PLATES && s[0].shown[BTN_NAME] && s[0].shown[BTN_MAKE] && s[0].shown[BTN_BACK];
+  for c: 0..<CHOICES { b := s[0].boxes[BTN_CHOICE + c]; #assert s[0].shown[BTN_CHOICE + c] && b.x0 >= 0 && b.x1 <= 780; }
+  verse_message(s[..], t[..], MSG_TEXT, "Ann's \"Den\"");
+  #assert name_text(s[..]) == "Ann's Den";
+  click(s[..], t[..], s[0].boxes[BTN_CHOICE]);       // kind: cemetery to forest
+  click(s[..], t[..], s[0].boxes[BTN_CHOICE + 3]);   // time: day and night to always day
+  #assert verse_key(s[..], t[..], KEY_ENTER, 0) && s[0].making;
+  frame(s[..], t[..], 0.016);
+  #assert url_is(s[..], "/api/playtest/player") && s[0].req_flags == HTTP_POST | HTTP_ANSWER;
+  verse_requested(s[..], 1);
+  verse_message(s[..], t[..], HTTP_KIND + 1, "200\n{\"id\": \"p-feed\", \"key\": \"k-secret\", \"account\": null}");
+  #assert s[0].action == ACT_PLAYER && player_text(s[..]) == "p-feed";
+  frame(s[..], t[..], 0.016);
+  #assert !s[0].req_ready;   // the key is kept before the realm is asked for
+  take_action(s[..]);
+  frame(s[..], t[..], 0.016);
+  #assert url_is(s[..], "/api/playtest/planets") && s[0].req_flags == HTTP_POST | HTTP_ANSWER | HTTP_PLAYER;
+  body := cast(string) s[0].req_body[0..<s[0].req_body_n];
+  #assert body == "{\"user\":{\"id\":\"p-feed\",\"name\":\"Guest\"},\"settings\":{\"name\":\"Ann's Den\",\"kind\":\"forest\",\"art\":\"Low poly\",\"cam\":\"Third person\",\"cycle\":\"Always day\"}}";
+  verse_requested(s[..], 2);
+  verse_message(s[..], t[..], HTTP_KIND + 2, "200\n{\"id\": \"planet-feed\", \"n\": 5, \"name\": \"Ann's Den\"}");
+  frame(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house#planet-feed";
+  #assert batch_has(t[..], "planet-create") && !batch_has(t[..], "k-secret");
+}
+
+#test "a refused realm says so, and CANCEL closes the setup" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
+  verse_facts(s[..], "player=p-1");
+  click(s[..], t[..], s[0].boxes[BTN_REALM]);
+  redraw(s[..], t[..], 0.016);
+  click(s[..], t[..], s[0].boxes[BTN_MAKE]);
+  frame(s[..], t[..], 0.016);
+  #assert url_is(s[..], "/api/playtest/planets");
+  verse_requested(s[..], 0);
+  verse_message(s[..], t[..], HTTP_KIND, "403\n{\"error\":\"not yours\"}");
+  #assert !s[0].making && s[0].setup && s[0].toast_n > 0 && s[0].mine_n == 0;
+  redraw(s[..], t[..], 0.016);
+  click(s[..], t[..], s[0].boxes[BTN_BACK]);
+  #assert !s[0].setup;
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == 0;
 }
