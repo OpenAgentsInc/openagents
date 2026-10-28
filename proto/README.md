@@ -76,11 +76,13 @@ oneofs, repeated iterators and bounded caller-buffer codecs. The
 [Nostr alpha profiles](nostr/README.md) are exercised against real fixture
 bytes, with native C ABI round trips and pinned protoc interoperability. This
 is not a signed JSON/JWS parser, signature verifier or general NIP implementation.
-The reduced iOS home has one real bounded Coax resource reader for
-`openagents.metareal.home.v1alpha1.HomeConfiguration` and writes existing
-`openagents.engine.v1.HudInvocation` messages. `metareal/test_home.py` checks
-these against canonical protoc bytes. This manually written selected-profile
-codec is not a general decoder or authority path.
+The reduced iOS home now imports the `ios-home` descriptor profile. Generated
+Coax codecs read `openagents.metareal.home.v1alpha1.HomeConfiguration` and write
+existing `openagents.engine.v1.HudInvocation` messages; the former hand-written
+wire reader/writer is removed. Screen admission stays in Coax and retains its
+closed schema-1 policy. `metareal/test_home.py` checks actual app resources,
+strict rejection rules and exact invocation bytes against protoc. Native
+sanitizer and simulator touch/rotation/resume tests cover the actual host path.
 Current C++ compiler code and Python schema checks are bootstrap infrastructure.
 The initial compiler/codec prerequisites now exist. Checked domain adapters,
 platform consumers and live service parity remain separate work. The importer

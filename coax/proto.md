@@ -35,6 +35,7 @@ Collisions, unresolved dependencies and unsupported shapes are errors.
 | `N_Event { wire: [] u8; error: u32; }` | Borrowed message view, never an owning object |
 | `N_Event_new()` | Empty builder; required fields may be added incrementally |
 | `N_Event_decode(bytes)` | Validate the complete message and nested children |
+| `N_Event_decode_minimal(bytes)` | Additionally require minimal key, length and scalar varints recursively, including packed elements, plus 0/1 booleans |
 | `N_Event_get_kind(msg)` | `{value, present, error}`; missing differs from explicit zero |
 | `N_Event_iter_tags(msg)` / `N_Event_next_tags(iterator)` | Iterator with `value`, `has_value`, `done`, `error`; first call selects the first value |
 | `N_ClientFrame_case_payload(msg)` | Presence-bearing field number of the selected oneof member |
@@ -89,7 +90,10 @@ additional domain validators.
 Duplicate known singular fields and multiple encoded members of a oneof return
 `DUPLICATE`; nested message fragments are not merged. Unknown supported wire
 fields survive decode/encode and edits byte for byte. Groups are rejected even
-when unknown. Encoding preserves original bytes and field order except edited
+when unknown. `decode_minimal` also requires known booleans to encode 0 or 1. This is an
+opt-in resource policy, not a canonical serialization
+or signing scheme; normal decode continues to accept legal non-minimal varints.
+Encoding preserves original bytes and field order except edited
 fields, which are appended. It is not a canonical serializer or hash function.
 
 | Error | Value |

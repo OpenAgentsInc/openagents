@@ -191,6 +191,7 @@ class Generator:
     def constraints(self,f,fail):
         p=self.p;self.emit('if f.wt!='+str(self.wt(f))+' { '+fail(p+'WIRE')+' }')
         if f.kind in (7,13,17):self.emit('if f.raw>4294967295 { '+fail(p+'VALUE')+' }')
+        if f.kind==8:self.emit('if canonical && f.raw>1 { '+fail(p+'VALUE')+' }')
         if f.kind==9:self.emit('if !'+p+'utf8(f.payload) { '+fail(p+'UTF8')+' }')
         if f.kind in (9,12):
             for opt,op in [(51002,'>'),(51008,'!=')]:
@@ -200,7 +201,7 @@ class Generator:
             x=self.value(f);self.emit('x:='+x+';if x!=x || x < -3.141592653589793 || x>3.141592653589793 { '+fail(p+'VALUE')+' }')
     def check(self,m):
         n=m.name;p=self.p
-        self.emit(f'{n}__check :: (wire:[] u8,depth:int,budget:int,required:bool)->{p}Check {{')
+        self.emit(f'{n}__check :: (wire:[] u8,depth:int,budget:int,required:bool,canonical:bool)->{p}Check {{')
         self.emit(f'if depth>{p}MAX_DEPTH || wire.count<0 || wire.count>{p}MAX_BYTES {{return {p}Check.{{error={p}LIMIT}};}}')
         if m.opts.get(51001):self.emit(f'if wire.count>{m.opts[51001]} {{return {p}Check.{{error={p}LIMIT}};}}')
         self.emit('left:=budget;pos:=0;')
@@ -209,7 +210,7 @@ class Generator:
         for group in sorted(real_groups):self.emit(f'one_{group}:u32=0;')
         self.emit('while pos<wire.count {')
         self.emit(f'if left<=0 {{return {p}Check.{{error={p}LIMIT}};}} left-=1;')
-        self.emit(f'f:={p}scan(wire,pos);if f.error!=0 {{return {p}Check.{{error=f.error}};}} pos=f.next;')
+        self.emit(f'f:={p}scan(wire,pos);if f.error!=0 {{return {p}Check.{{error=f.error}};}} if canonical && !{p}minimal(wire,f) {{return {p}Check.{{error={p}WIRE}};}} pos=f.next;')
         fail=lambda error:f'return {p}Check.{{error={error}}};'
         for index,f in enumerate(m.fs):
             self.emit(('if' if index==0 else 'else if')+f' f.number=={f.number} {{')
@@ -218,14 +219,16 @@ class Generator:
             pack=f.label==3 and self.wt(f)!=2
             if pack:
                 self.emit('if f.wt==2 {packed:=f.payload;at:=0;while at<packed.count {')
-                self.emit(f'if left<=0 {{'+fail(p+'LIMIT')+f'}} left-=1; f={p}scalar(packed,at,{self.wt(f)});if f.error!=0 {{'+fail('f.error')+'} at=f.next;')
+                self.emit(f'if left<=0 {{'+fail(p+'LIMIT')+f'}} left-=1; f={p}scalar(packed,at,{self.wt(f)});if f.error!=0 {{'+fail('f.error')+'}')
+                if self.wt(f)==0:self.emit(f'if canonical && {p}vsize(f.raw)!=f.next-at {{'+fail(p+'WIRE')+'}')
+                self.emit('at=f.next;')
                 self.emit(f'f.wt={self.wt(f)};')
                 self.constraints(f,fail);self.emit(f'count_{f.name}+=1;')
                 self.emit('}} else {');self.constraints(f,fail);self.emit(f'count_{f.name}+=1;');self.emit('}')
             else:
                 self.constraints(f,fail);self.emit(f'count_{f.name}+=1;')
                 if f.kind==11:
-                    self.emit(f'child:={self.typ(f)}__check(f.payload,depth+1,left,true);if child.error!=0 {{'+fail('child.error')+'} left=child.left;')
+                    self.emit(f'child:={self.typ(f)}__check(f.payload,depth+1,left,true,canonical);if child.error!=0 {{'+fail('child.error')+'} left=child.left;')
             if f.opts.get(51003):self.emit(f'if count_{f.name}>{f.opts[51003]} {{'+fail(p+'LIMIT')+'}')
             self.emit('}')
         self.emit('}')
@@ -235,8 +238,9 @@ class Generator:
     def api(self,m):
         n=m.name;p=self.p
         self.emit(f'{n}_new :: ()->{n} {{return {n}.{{}};}}')
-        self.emit(f'{n}_decode :: (wire:[] u8)->{n} {{c:={n}__check(wire,0,{p}MAX_FIELDS,true);if c.error!=0 {{return {n}.{{error=c.error}};}}return {n}.{{wire=wire}};}}')
-        self.emit(f'{n}_encode :: (msg:{n},out:[] u8)->{p}View {{if msg.error!=0 {{return {p}View.{{error=msg.error}};}} c:={n}__check(msg.wire,0,{p}MAX_FIELDS,true);if c.error!=0 {{return {p}View.{{error=c.error}};}} return {p}copy(msg.wire,out);}}')
+        self.emit(f'{n}_decode :: (wire:[] u8)->{n} {{c:={n}__check(wire,0,{p}MAX_FIELDS,true,false);if c.error!=0 {{return {n}.{{error=c.error}};}}return {n}.{{wire=wire}};}}')
+        self.emit(f'{n}_decode_minimal :: (wire:[] u8)->{n} {{c:={n}__check(wire,0,{p}MAX_FIELDS,true,true);if c.error!=0 {{return {n}.{{error=c.error}};}}return {n}.{{wire=wire}};}}')
+        self.emit(f'{n}_encode :: (msg:{n},out:[] u8)->{p}View {{if msg.error!=0 {{return {p}View.{{error=msg.error}};}} c:={n}__check(msg.wire,0,{p}MAX_FIELDS,true,false);if c.error!=0 {{return {p}View.{{error=c.error}};}} return {p}copy(msg.wire,out);}}')
         for group in sorted({f.oneof for f in m.fs if f.oneof is not None and not f.optional}):
             group_name=m.groups[group];targets=[f'f.number=={f.number}' for f in m.fs if f.oneof==group]
             self.emit(f'{n}_case_{group_name} :: (msg:{n})->{p}U32 {{checked:={n}_decode(msg.wire);if msg.error!=0 || checked.error!=0 {{return {p}U32.{{error=msg.error|checked.error}};}}pos:=0;while pos<msg.wire.count {{f:={p}scan(msg.wire,pos);pos=f.next;if '+ ' || '.join(targets)+f' {{return {p}U32.{{value=f.number,present=true}};}}}} return {p}U32.{{}};}}')
@@ -269,7 +273,7 @@ class Generator:
         for clear in (False,True):
             method='clear' if clear else operation;params=f'msg:{n},'+('' if clear else f'value:{t},')+'out:[] u8'
             self.emit(f'{n}_{method}_{f.name} :: ({params})->{n} {{')
-            self.emit(f'if msg.error!=0 {{return {n}.{{error=msg.error}};}} checked:={n}__check(msg.wire,0,{p}MAX_FIELDS,false);if checked.error!=0 {{return {n}.{{error=checked.error}};}}')
+            self.emit(f'if msg.error!=0 {{return {n}.{{error=msg.error}};}} checked:={n}__check(msg.wire,0,{p}MAX_FIELDS,false,false);if checked.error!=0 {{return {n}.{{error=checked.error}};}}')
             targets=[] if not clear and f.label==3 else ([f.number] if clear else siblings)
             if targets:self.emit('removed_fields:= ['+str(len(targets))+'] u32.['+','.join(map(str,targets))+'];')
             else:self.emit('removed_fields:[] u32;')
@@ -286,7 +290,7 @@ class Generator:
                 elif f.kind in (3,5,14,15,16):self.emit('raw=cast,trunc(u64) value;')
                 else:self.emit('raw=cast(u64) value;')
             self.emit(f'result:={p}rewrite(msg.wire,{remove},{f.number},{wt},raw,data,txt,is_text,'+('true' if clear else 'false')+',out);')
-            self.emit(f'if result.error!=0 {{return {n}.{{error=result.error}};}} final:={n}__check(result.wire,0,{p}MAX_FIELDS,false);if final.error!=0 {{return {n}.{{error=final.error}};}}return {n}.{{wire=result.wire}};}}')
+            self.emit(f'if result.error!=0 {{return {n}.{{error=result.error}};}} final:={n}__check(result.wire,0,{p}MAX_FIELDS,false,false);if final.error!=0 {{return {n}.{{error=final.error}};}}return {n}.{{wire=result.wire}};}}')
     def generate(self):
         self.emit(Path(__file__).with_name('proto_runtime.coax').read_text().replace('PB_',self.p))
         for e in self.es:

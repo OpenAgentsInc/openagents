@@ -2,13 +2,16 @@
 // and protobuf admission run in Coax. The host owns bounded memory/GPU handles.
 // Port source: the native home/graph and HUD in the engine source archive.
 
+#import_proto "../proto/descriptors/ios-home.pb" as Home;
+
 host_load :: (h: int, slot: int) -> f64 #foreign;
 host_store :: (h: int, slot: int, value: f64) #foreign;
 host_byte :: (h: int, index: int) -> int #foreign;
 host_size :: (h: int) -> int #foreign;
 host_dot :: (h: int, x: f64, y: f64, size: f64, light: f64, soft: f64, crisp: f64) #foreign;
 host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign;
-host_bar :: (h: int, x: f64, y: f64, width: f64, height: f64, press: f64, flash: f64, label_at: int, label_size: int) #foreign;
+host_bar :: (h: int, x: f64, y: f64, width: f64, height: f64, press: f64, flash: f64) #foreign;
+host_label_byte :: (h: int, index: int, value: int) #foreign;
 host_output_reset :: (h: int) #foreign;
 host_output_byte :: (h: int, value: int) #foreign;
 
@@ -38,94 +41,45 @@ random :: (h: int) -> f64 {
 }
 range :: (h: int, a: f64, b: f64) -> f64 { return a + (b-a)*random(h); }
 
-// Bounded protobuf reader state: cursor=10, error=11, label=12/13, id=14/15.
-// Known uint32/length fields use at most five bytes and canonical varints.
-read_u32 :: (h: int, end: int) -> int {
-  result := 0;
-  shift := 0;
-  while shift <= 28 {
-    cursor := get_int(h,10);
-    if cursor >= end { set_int(h,11,1); return 0; }
-    value := host_byte(h,cursor);
-    set_int(h,10,cursor+1);
-    if value < 0 || value > 255 { set_int(h,11,1); return 0; }
-    if shift == 28 && value > 15 { set_int(h,11,1); return 0; }
-    result = result | ((value & 127) << shift);
-    if value < 128 {
-      if shift > 0 && value == 0 { set_int(h,11,1); }
-      return result;
-    }
-    shift += 7;
+// The generated codec owns wire validation; this is the screen's closed
+// schema-1 admission policy. Host bytes are copied once into bounded scratch
+// storage; decoded views never escape this initialization call.
+admit_config :: (h: int) -> bool {
+  count:=host_size(h);
+  if count<1 || count>1024 {return false;}
+  scratch:[1024] u8;
+  for index:0..<count {
+    value:=host_byte(h,index);
+    if value<0 || value>255 {return false;}
+    scratch[index]=cast(u8)value;
   }
-  set_int(h,11,1); return 0;
-}
-match_span :: (h: int, at: int, size: int, text: string) -> bool {
-  if size != len(text) { return false; }
-  i := 0;
-  while i < size { if host_byte(h,at+i) != byte_at(text,i) { return false; } i += 1; }
+  config:=Home_HomeConfiguration_decode_minimal(scratch[0..<count]);
+  if config.error!=0 {return false;}
+  if !Home_HomeConfiguration_unknown(config,0).done {return false;}
+  version:=Home_HomeConfiguration_get_schema_version(config);
+  seed:=Home_HomeConfiguration_get_seed(config);
+  motes:=Home_HomeConfiguration_get_mote_count(config);
+  satellites:=Home_HomeConfiguration_get_satellite_count(config);
+  start:=Home_HomeConfiguration_get_start(config);
+  if version.value!=1 || seed.value==0 || motes.value>4096 || satellites.value>8 {return false;}
+  action:=start.value;
+  if !Home_HudAction_unknown(action,0).done {return false;}
+  id:=Home_HudAction_get_id(action);
+  label:=Home_HudAction_get_label(action);
+  enabled:=Home_HudAction_get_enabled(action);
+  shown:=Home_HudAction_get_shown(action);
+  // The old resource subset did not allow the transient pressed field at all.
+  if Home_HudAction_get_pressed(action).present {return false;}
+  if id.value!="home.start" || !enabled.value || !shown.value {return false;}
+  if label.value.count<1 || label.value.count>32 {return false;}
+  for value:label.value {if value<32 || value>126 {return false;}}
+  // The resident bridge stores label bytes, never a pointer into scratch.
+  for index:0..<33 {host_label_byte(h,index,0);}
+  for value,index:label.value {host_label_byte(h,index,cast(int)value);}
+  set_int(h,20,cast(int)seed.value);
+  set_int(h,21,cast(int)motes.value);
+  set_int(h,22,cast(int)satellites.value);
   return true;
-}
-parse_action :: (h: int, end: int) -> bool {
-  seen := 0;
-  while get_int(h,10) < end && get_int(h,11) == 0 {
-    key := read_u32(h,end);
-    if key == 10 || key == 18 {
-      bit := 1;
-      if key == 18 { bit = 2; }
-      if (seen & bit) != 0 { return false; }
-      seen = seen | bit;
-      size := read_u32(h,end);
-      at := get_int(h,10);
-      if size < 1 || size > 64 || at+size > end { return false; }
-      if key == 10 {
-        if !match_span(h,at,size,"home.start") { return false; }
-        set_int(h,14,at); set_int(h,15,size);
-      } else {
-        if size > 32 { return false; }
-        i := 0;
-        while i < size {
-          c := host_byte(h,at+i);
-          if c < 32 || c > 126 { return false; }
-          i += 1;
-        }
-        set_int(h,12,at); set_int(h,13,size);
-      }
-      set_int(h,10,at+size);
-    } else if key == 24 || key == 40 {
-      bit := 4;
-      if key == 40 { bit = 8; }
-      if (seen & bit) != 0 { return false; }
-      seen = seen | bit;
-      if read_u32(h,end) != 1 { return false; }
-    } else { return false; }
-  }
-  return seen == 15 && get_int(h,10) == end && get_int(h,11) == 0;
-}
-parse_config :: (h: int) -> bool {
-  count := host_size(h);
-  if count < 1 || count > 1024 { return false; }
-  seen := 0;
-  while get_int(h,10) < count && get_int(h,11) == 0 {
-    key := read_u32(h,count);
-    if key == 42 {
-      if (seen & 16) != 0 { return false; }
-      seen = seen | 16;
-      size := read_u32(h,count);
-      end := get_int(h,10)+size;
-      if end > count || !parse_action(h,end) { return false; }
-    } else if key == 8 || key == 16 || key == 24 || key == 32 {
-      field := key / 8;
-      bit := 1 << (field-1);
-      if (seen & bit) != 0 { return false; }
-      seen = seen | bit;
-      value := read_u32(h,count);
-      if field == 1 { if value != 1 { return false; } }
-      else if field == 2 { if value == 0 { return false; } set_int(h,20,value); }
-      else if field == 3 { if value > 4096 { return false; } set_int(h,21,value); }
-      else { if value > 8 { return false; } set_int(h,22,value); }
-    } else { return false; }
-  }
-  return seen == 31 && get_int(h,11) == 0 && get_int(h,10) == count;
 }
 
 node :: (h: int, cluster: int, x: f64, y: f64, px: f64, brightness: f64, crisp: f64, reveal: f64) -> int {
@@ -255,7 +209,7 @@ satellite :: (h: int, c: int, at: f64) -> int {
 metareal_home_capacity :: () -> int #export_c { return CELL_CAPACITY; }
 metareal_home_init :: (h: int) -> bool #export_c {
   i := 0; while i < CELL_CAPACITY { host_store(h,i,0.0); i += 1; }
-  if !parse_config(h) { return false; }
+  if !admit_config(h) { return false; }
   set_int(h,0,get_int(h,20)); host_store(h,42,0.012); host_store(h,30,-1.0);
   hub := main_graph(h); previous := -1; first := -1; i = 0;
   while i < get_int(h,22) {
@@ -403,28 +357,30 @@ metareal_home_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, s
   press := host_load(h,112); rate := 9.0; if target > press { rate = 30.0; }
   press += (target-press)*(1.0-exp(-rate*dt)); flash := host_load(h,113)*exp(-3.0*dt);
   host_store(h,112,press); host_store(h,113,flash);
-  host_bar(h,bx,by,bw,bh,press,flash,get_int(h,12),get_int(h,13));
+  host_bar(h,bx,by,bw,bh,press,flash);
 }
 
-put_varint :: (h: int, number: int) {
-  value := number;
-  while value >= 128 { host_output_byte(h,(value & 127) | 128); value = value >> 7; }
-  host_output_byte(h,value);
-}
-put_text :: (h: int, key: int, text: string) {
-  put_varint(h,key); put_varint(h,len(text)); i := 0;
-  while i < len(text) { host_output_byte(h,byte_at(text,i)); i += 1; }
-}
-invocation :: (h: int) {
-  host_output_reset(h); put_varint(h,8); put_varint(h,1); put_text(h,18,"home");
-  put_text(h,26,"home.start");
-  count := get_int(h,114); digits := 1; divisor := 1;
-  while divisor <= count/10 { divisor *= 10; digits += 1; }
-  put_varint(h,34); put_varint(h,11+digits);
-  i := 0; prefix := "home-start-";
-  while i < len(prefix) { host_output_byte(h,byte_at(prefix,i)); i += 1; }
-  while divisor > 0 { host_output_byte(h,48+(count/divisor)%10); divisor = divisor/10; }
-  put_varint(h,40); put_varint(h,count);
+invocation :: (h: int) -> bool {
+  host_output_reset(h);
+  count:=get_int(h,114);
+  if count<1 {return false;}
+  // Only request-ID formatting is local; every protobuf byte is generated.
+  request:[32] u8;prefix:="home-start-";at:=0;
+  for value:prefix {request[at]=value;at+=1;}
+  divisor:=1;
+  while divisor<=count/10 {divisor*=10;}
+  while divisor>0 {request[at]=cast(u8)(48+(count/divisor)%10);at+=1;divisor=divisor/10;}
+  first:[512] u8;second:[512] u8;output:[512] u8;
+  message:=Home_HudInvocation_new();
+  message=Home_HudInvocation_set_schema(message,1,first[..]);
+  message=Home_HudInvocation_set_world(message,"home",second[..]);
+  message=Home_HudInvocation_set_action_id(message,"home.start",first[..]);
+  message=Home_HudInvocation_set_request_id(message,cast(string)request[0..<at],second[..]);
+  message=Home_HudInvocation_set_revision(message,cast(u64)count,first[..]);
+  encoded:=Home_HudInvocation_encode(message,output[..]);
+  if encoded.error!=0 {return false;}
+  for value:encoded.wire {host_output_byte(h,cast(int)value);}
+  return true;
 }
 metareal_home_touch :: (h: int, phase: int, x: f64, y: f64) -> bool #export_c {
   down := get_int(h,110) == 1;
@@ -440,7 +396,7 @@ metareal_home_touch :: (h: int, phase: int, x: f64, y: f64) -> bool #export_c {
     set_int(h,110,0); set_int(h,111,0);
     if result == 2 {
       host_store(h,113,1.0); set_int(h,114,get_int(h,114)+1);
-      invocation(h);
+      if !invocation(h) {return false;}
       // The reduced shell has no chat/world destination yet. Start replays the
       // home while emitting the actual shared HudInvocation for future routing.
       host_store(h,31,0.0); set_int(h,3,0);

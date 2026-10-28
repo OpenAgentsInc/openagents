@@ -52,14 +52,19 @@ Coax owns its scene, animation, layout, reusable HUD touch policy and bounded
 protobuf admission. Native adapters own platform lifecycle, serialized opaque
 storage handles, packet transfer, font rasterization and Metal bindings. A
 screen does not acquire chat, network or device permissions through this port.
-The home accepts only its documented schema-1 resource subset, rejects unknown
-or duplicate fields, and emits existing HudInvocation bytes. Start currently
+The home imports the `ios-home` descriptor profile for generated
+HomeConfiguration and HudInvocation codecs. It accepts only its documented
+schema-1 resource subset, rejects unknown/duplicate fields and non-minimal
+varints, and emits existing HudInvocation bytes. Native adapters only transfer
+bytes; the resource and invocation have no second hand-written wire codec.
+Start currently
 replays the home; it does not claim to open an unported destination.
 
 Check: `coax/build.sh test`, `PROTOC=... python3 metareal/test_home.py`, the
 sanitizer harness and the iOS native touch/rotation test. Metal layout/stage
 bindings remain an explicit native boundary; the home retains its initial
-flat-storage implementation while the newer Coax data types are evaluated.
+flat-storage graph while decoded configuration views use bounded Coax scratch
+buffers. Labels are copied into resident storage before those views expire.
 There is no claim of a full engine migration or general protobuf compiler.
 
 

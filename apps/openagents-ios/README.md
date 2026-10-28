@@ -8,7 +8,7 @@ screen in this reduced shell yet.
 
 ## Build and run
 
-Requires macOS, Xcode with an iOS SDK/simulator, a C++20 host compiler, and
+Requires macOS, Xcode with an iOS SDK/simulator, a C++20 host compiler, Python 3 (standard library only), and
 XcodeGen (`xcodegen`). No package download or backend account is required.
 
 ```sh
@@ -21,13 +21,15 @@ Or open `OpenAgents.xcodeproj`, choose a simulator and Run. The checked-in
 project has a build phase that builds coax0 when needed, generates the C11
 library/header, and combines generated scalar Metal functions with native
 stage bindings. Normal app builds use the checked-in protobuf resource and
-need neither protoc nor a Python protobuf installation. Xcode compiles the
+need neither protoc nor a Python protobuf installation. The `ios-home`
+descriptor is expanded by `#import_proto` into generated Coax codecs; no
+protobuf or Python runtime is bundled with the app. Xcode compiles the
 product C for its target SDK. Metal compiles the bundled shader source at
 runtime; the optional command-line Metal toolchain component is not needed.
 
 The bundle identifier is `com.openagents.app`. This is a minimal home
 shell. Distribution continues the existing OpenAgents App Store Connect record
-at version 1.0.0; the current build is 1046.
+at version 1.0.0; the current build is 1047.
 No login, chat, worlds, network services, microphone, FM or payments code is
 restored. Their implementation can be added deliberately later.
 
@@ -35,7 +37,7 @@ restored. Their implementation can be added deliberately later.
 
 | Source | Responsibility |
 | --- | --- |
-| `../../metareal/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, protobuf reader/writer |
+| `../../metareal/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
 | `../../metareal/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |
 | `../../metareal/platform/host.c` | Bounded resident storage, generation-checked handles, packed draw packets |
 | `OpenAgents/App.swift`, `HomeViewController.swift` | UIKit lifecycle, safe areas, orientation, reduced motion, accessibility, native touch forwarding |
@@ -48,7 +50,13 @@ This is a port of the native engine home from source commit
 migration registry), not the retired OpenAgents web/mobile app. Only the
 home setup/graph/HUD ideas and the OFL Michroma font are carried over. Scene
 storage remains flat and bounded from the initial port; the newer Coax
-aggregate types have not replaced that resident storage path.
+aggregate types have not replaced that resident graph storage path. Config
+parsing and HudInvocation writing now use the generated `ios-home` profile.
+Configuration views borrow a bounded local copy; the native bridge retains
+only copied label bytes and scalar settings. No stack view escapes init.
+The closed resource policy still rejects unknown/duplicate fields and
+non-minimal varints; the general importer remains permissive about legal
+non-minimal encodings unless its minimal-varint decoder is selected.
 The default graph uses seed 42727, 4000 motes and eight satellites; exact native
 floating-point pixels/RNG draw ordering are not a compatibility contract.
 

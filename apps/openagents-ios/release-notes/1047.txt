@@ -1,0 +1,3 @@
+Home now uses generated Coax protobuf codecs for configuration and Start events.
+
+Test Start repeatedly, drag off the button to cancel, rotate, and background/resume. The animated graph and HUD should look and behave as before.

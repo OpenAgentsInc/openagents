@@ -60,6 +60,15 @@ PB_scan :: (wire:[] u8,at:int)->PB_Field {
   }
   f:=PB_scalar(wire,key.next,wt);f.number=number;f.wt=wt;f.start=at;return f;
 }
+// Optional minimal-varint policy, used by closed resource readers. The normal
+// protobuf decoder still accepts legal non-minimal encodings.
+PB_minimal :: (wire:[] u8,f:PB_Field)->bool {
+  key:=PB_var(wire,f.start);
+  if key.error!=0 || PB_vsize(key.value)!=key.next-f.start {return false;}
+  if f.wt==0 {return PB_vsize(f.raw)==f.next-key.next;}
+  if f.wt==2 {length:=PB_var(wire,key.next);return length.error==0 && PB_vsize(length.value)==length.next-key.next;}
+  return true;
+}
 PB_utf8 :: (wire:[] u8)->bool {
   at:=0;
   while at<wire.count {

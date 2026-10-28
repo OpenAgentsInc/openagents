@@ -44,6 +44,7 @@ inspect_proto :: (input:Buffer,op:u32)->u64 #export_c {
  if op==1 {return cast(u64) N_Event_get_kind(N_Event_decode(w)).value;}
  if op==2 {return N_Event_get_created_at(N_Event_decode(w)).value;}
  if op==3 {return cast(u64) X_Scalars_decode(w).error;}
+ if op==23 {return cast(u64) X_Scalars_decode_minimal(w).error;}
  s:=X_Scalars_decode(w);
  if op==4 {return X_Scalars_get_u64(s).value;}
  if op==5 {return cast,trunc(u64) X_Scalars_get_zig64(s).value;}
@@ -235,6 +236,14 @@ main :: () {a:[4] u8;b:[4] u8;
             r=run([COAX,'check',src]);self.assertNotEqual(r.returncode,0);self.assertIn(code.encode(),r.stderr)
         src.write_text('f :: (x:f32)->f32 {return f32_from_bits(f32_bits(x));}')
         self.assertIn(b'E0377',run([COAX,'metal',src]).stderr)
+
+    def test_optional_minimal_varint_policy(self):
+        for wire in (b'\xa0\x00\x00',b'\x20\x80\x00',b'\x4a\x81\x00a',b(18,b'\x0a\x81\x00a'),b(17,b'\x81\x00')):
+            self.assertEqual(self.inspect(wire,3),0)
+            self.assertEqual(self.inspect(wire,23),1)
+        self.assertEqual(self.inspect(v(8,2),3),0)
+        self.assertEqual(self.inspect(v(8,2),23),7)
+        self.assertEqual(self.inspect(self.transform(b'',2)[1],23),0)
 
     def test_aliased_and_small_output(self):
         buf=C.create_string_buffer(self.event,4096);before=buf.raw

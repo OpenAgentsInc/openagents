@@ -6,7 +6,8 @@ cd "$(dirname "$0")/../.."
 mkdir -p apps/openagents-ios/Generated
 compiler=coax/bin/coax
 if [[ ! -x "$compiler" ]] || [[ -n "$(find coax/src -type f -newer "$compiler" -print -quit)" ]]; then
-  env -u SDKROOT -u CFLAGS -u CXXFLAGS CXX="$(xcrun --sdk macosx --find clang++)" coax/build.sh
+  env -u CFLAGS -u CXXFLAGS SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+    CXX="$(xcrun --sdk macosx --find clang++)" coax/build.sh
 fi
 out=apps/openagents-ios/Generated
 "$compiler" c metareal/home.coax --library --header "$out/Home.h" > "$out/Home.c.tmp"

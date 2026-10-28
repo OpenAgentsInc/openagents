@@ -872,12 +872,14 @@ Parsing a few examples is not the expensive part.
 The protocol plan's P0 recovery runs now. Its P1 ingestion follows stage 2's
 actual type/ABI prerequisites. Version 0.4.0 ships selected descriptor imports
 and bounded codecs with Nostr/Block, scalar and protoc interoperability tests;
-product/domain parity remains open. The 0.3.0 home
-port is a narrow exception: scalar-only C ABI, opaque bounded host storage and
-a hand-written resource reader/writer verified against protoc; it does not
-claim aggregate or general ingestion support. Stage 6
-expands that foundation; it is not permission to defer the first bounded codec
-until after every compiler feature.
+product/domain parity remains open. The initial 0.3.0 home port used a
+hand-written resource codec and opaque bounded host storage. The current iOS
+home now uses generated `ios-home` codecs for configuration and invocation,
+with bounded scratch buffers and the same closed resource admission policy.
+Its scene storage and scalar host ABI remain in place. Native/protoc and
+simulator tests cover this first product consumer; broader product adoption
+remains separate. Stage 6 expands that foundation rather than deferring the
+first bounded codec until every compiler feature is complete.
 
 Stages are dependency-ordered and evidence-driven, not calendar promises.
 Each stage produces something independently testable. Platform/engine rollout

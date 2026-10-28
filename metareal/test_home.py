@@ -40,7 +40,7 @@ class HomeTests(unittest.TestCase):
             'mr_dot_count':(C.c_size_t,[C.c_int64]),'mr_line_count':(C.c_size_t,[C.c_int64]),
             'mr_dots':(C.POINTER(Dot),[C.c_int64]),'mr_lines':(C.POINTER(Line),[C.c_int64]),
             'mr_bar':(C.POINTER(Bar),[C.c_int64]),'mr_output':(C.c_void_p,[C.c_int64]),'mr_output_size':(C.c_size_t,[C.c_int64]),
-            'host_load':(C.c_double,[C.c_int64,C.c_int64]),
+            'host_load':(C.c_double,[C.c_int64,C.c_int64]),'host_label_byte':(None,[C.c_int64,C.c_int64,C.c_int64]),
             'metareal_home_capacity':(C.c_int64,[]),'metareal_home_init':(C.c_bool,[C.c_int64]),
             'metareal_home_frame':(None,[C.c_int64]+[C.c_double]*5+[C.c_bool]),
             'metareal_home_touch':(C.c_bool,[C.c_int64,C.c_int64,C.c_double,C.c_double]),
@@ -75,6 +75,31 @@ class HomeTests(unittest.TestCase):
                      config()+b'\x08\x01',config()+b'\x30\x01',config()[:-1],b'\x08\x81\x00',b'\x08\xff\xff\xff\xff\xff',b'\0'*1025]:
             with self.subTest(data=data[:12]):
                 h=self.create(data,False);self.lib.mr_destroy(h)
+    def test_closed_resource_policy_with_generated_codec(self):
+        canonical=config()
+        # Legal protobuf variants still refused by this closed resource policy.
+        malformed=[b'\x08\x81\x00'+canonical[2:], b'\x88\x00'+canonical[1:],
+                   canonical.replace(b'\x0a\x0ahome.start',b'\x0a\x8a\x00home.start'),
+                   config(action='id:"home.start" label:"Start" enabled:true shown:true pressed:false'),
+                   config(action='id:"home.start" label:"Start" enabled:true shown:true')+b'\x30\x00']
+        # Explicit pressed:false is omitted by protoc, so append it inside start.
+        good_action=proto('--encode=openagents.engine.v1.HudAction',b'id:"home.start" label:"Start" enabled:true shown:true')
+        prefix=canonical[:-(len(good_action)+2)]
+        malformed[2]=prefix+bytes([42,len(good_action)+1])+good_action.replace(b'\x0a\x0ahome.start',b'\x0a\x8a\x00home.start')
+        malformed[3]=prefix+bytes([42,len(good_action)+2])+good_action+b'\x20\x00'
+        malformed.append(prefix+bytes([42,len(good_action)])+good_action.replace(b'\x18\x01',b'\x18\x02'))
+        malformed.append(prefix+bytes([42,len(good_action)])+good_action.replace(b'\x28\x01',b'\x28\x02'))
+        for wire in malformed:
+            with self.subTest(wire=wire):self.create(wire,False);self.lib.mr_destroy(self.handles[-1])
+        for label in ('A'*33,'bad\\nlabel','bad\\000label','\\377'):
+            wire=config(action=f'id:"home.start" label:"{label}" enabled:true shown:true')
+            self.create(wire,False);self.lib.mr_destroy(self.handles[-1])
+        label='0123456789ABCDEFGHIJKLMNOPQRSTUV'
+        h=self.create(config(action=f'id:"home.start" label:"{label}" enabled:true shown:true'))
+        for frame in range(10):self.frame(h,frame)
+        self.assertEqual(self.lib.mr_bar(h).contents.label,label.encode())
+        self.lib.host_label_byte(h,33,65);self.assertFalse(self.lib.mr_ok(h))
+
     def test_finite_bounded_animation_and_resume(self):
         h=self.create()
         for i in range(721):
@@ -105,6 +130,8 @@ class HomeTests(unittest.TestCase):
             self.assertFalse(self.lib.metareal_home_touch(h,2,x,y))
             data=C.string_at(self.lib.mr_output(h),self.lib.mr_output_size(h))
             result=subprocess.run([PROTOC,'-I'+str(ROOT/'proto'),'--decode=openagents.engine.v1.HudInvocation','openagents/engine/v1/hud.proto'],input=data,capture_output=True,check=True).stdout.decode()
+            expected=f'schema:1 world:"home" action_id:"home.start" request_id:"home-start-{n}" revision:{n}'
+            self.assertEqual(data,proto('--encode=openagents.engine.v1.HudInvocation',expected.encode()))
             for text in ['schema: 1','world: "home"','action_id: "home.start"',f'request_id: "home-start-{n}"',f'revision: {n}']:self.assertIn(text,result)
         self.assertEqual(self.lib.metareal_home_presses(h),12)
     def test_generation_and_platform_bounds(self):
