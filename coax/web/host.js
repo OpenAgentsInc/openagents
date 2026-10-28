@@ -83,6 +83,11 @@
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
 // The WGSL's scene_vs/scene_fs read group 1: the storage assets, then the stores, then the texture
 // and its sampler, in that order. A WGSL with shadow_vs/shadow_fs also gets a shadow map (shadowLayout).
+// Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
+// group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested:
+//   coaxial_particle_cap(), coaxial_particles(state), coaxial_particle_bytes(state)
+//                             the emitters' memory, copied each frame to that storage buffer
+//   coaxial_particle_instances(state)  quads to draw (6 vertices each)
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 
@@ -537,7 +542,30 @@ async function loadShaders() {
     }) : null,
   ]);
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; // swapped whole, at the next frame
+  gpu.particles = sc ? await particlePipeline() : null;
   return true;
+}
+
+// The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
+async function particlePipeline() {
+  const a = assets.find((s) => s.kind === "particles"), x = engine?.exports;
+  if (!a || !x?.coaxial_particles) return null;
+  const { device, format } = gpu;
+  try {
+    const module = device.createShaderModule({ code: await (await fetch(a.url, { cache: dev ? "no-store" : "default" })).text() });
+    const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === "error");
+    if (errors.length) { say(errors.map((m) => `particles.wgsl:${m.lineNum}:${m.linePos}: ${m.message}`).join("\n"), true); return null; }
+    const group = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } }] });
+    gpu.particleBuffer ||= device.createBuffer({ size: align(Math.max(x.coaxial_particle_cap(), 16), 16), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    gpu.particleGroup = device.createBindGroup({ layout: group, entries: [{ binding: 0, resource: { buffer: gpu.particleBuffer } }] });
+    const add = { operation: "add", srcFactor: "one", dstFactor: "one" };
+    return await device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, group] }),
+      vertex: { module, entryPoint: "particle_vs" }, fragment: { module, entryPoint: "particle_fs", targets: [{ format, blend: { color: add, alpha: add } }] },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
+    });
+  } catch (e) { say(`${app}: particles: ${e.message}`, true); return null; }
 }
 
 // ---- the scene's assets and group 1
@@ -738,6 +766,12 @@ function frame(now) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
     drawScene(pass);
+    const sparks = gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
+    const bytes = sparks ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
+    if (bytes) {
+      device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes);
+      pass.setPipeline(gpu.particles); pass.setBindGroup(1, gpu.particleGroup); pass.draw(6, sparks);
+    }
   }
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   pass.end();
@@ -1011,7 +1045,7 @@ async function main() {
     observeSize();
     requestAnimationFrame(frame);
     // The heavy ones first; sounds are fetched when first played.
-    for (const a of assets) if (a.kind !== "sound" && a.kind !== "loop") loadAsset(a);
+    for (const a of assets) if (!["sound", "loop", "particles"].includes(a.kind)) loadAsset(a);
   } catch (e) {
     document.documentElement.classList.remove("gpu");
     say(`${app}: ${e.message}`, true);

@@ -1,0 +1,108 @@
+// Particle emitters: which ones a scene lights this frame, as a bounded list
+// the GPU draws in one instanced pass. A particle's own motion is
+// particle-motion.coax, run in the shader; this file only decides where the
+// emitters are, what colour and how many. An emitter is 16 floats:
+//   x y z radius   r g b flicker   kind count size speed   seed 0 0 0
+// Kinds are particle-motion.coax's: 0 embers, 1 dust, 2 fireflies.
+// The Haunted House's (realm-face.c): embers off the nearest flickering
+// flames, dust in the room you stand in, fireflies over the yard, the
+// courtyard and the garden when you are near them.
+VERSE_EMITTER_FLOATS :: 16;
+VERSE_EMITTERS :: 24;
+VERSE_PARTICLES_PER :: 64;
+VERSE_LAMP_FLOATS :: 8;
+VERSE_AREA_FLOATS :: 6;
+pe_lo :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
+pe_hi :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
+
+verse_emitter_cap :: ()->int #export_c { return VERSE_EMITTERS; }
+verse_particles_per :: ()->int #export_c { return VERSE_PARTICLES_PER; }
+
+// Writes emitter k (if it fits); the count is clamped to the per-emitter bound.
+verse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b:f32,flicker:f32,kind:f32,count:f32,size:f32,speed:f32,seed:f32)->bool #export_c {
+  if k<0 || k>=VERSE_EMITTERS || out.count<(k+1)*VERSE_EMITTER_FLOATS { return false; }
+  o:=k*VERSE_EMITTER_FLOATS;
+  out[o]=x;out[o+1]=y;out[o+2]=z;out[o+3]=radius;
+  out[o+4]=r;out[o+5]=g;out[o+6]=b;out[o+7]=flicker;
+  out[o+8]=kind;out[o+9]=pe_lo(pe_hi(count,0.0f32),cast(f32)VERSE_PARTICLES_PER);out[o+10]=size;out[o+11]=speed;
+  out[o+12]=seed;out[o+13]=0.0f32;out[o+14]=0.0f32;out[o+15]=0.0f32;
+  return true;
+}
+
+// The house's emitters for an eye at (ex, ey, ez). lamps: per light x y z
+// radius r g b flicker; areas: per area x0 z0 x1 z1 outdoor dark. Returns
+// how many it wrote.
+verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,ey:f32,ez:f32,out:[]f32)->int #export_c {
+  n:=0;
+  ln:=lamp_n;if ln*VERSE_LAMP_FLOATS>lamps.count { ln=lamps.count/VERSE_LAMP_FLOATS; }
+  an:=area_n;if an*VERSE_AREA_FLOATS>areas.count { an=areas.count/VERSE_AREA_FLOATS; }
+  // The room you stand in: dust lit by its candles; a dark room's is barely there.
+  for a:0..<an {
+    o:=a*VERSE_AREA_FLOATS;
+    if areas[o+4]>0.5f32 || ex<areas[o] || ex>areas[o+2] || ez<areas[o+1] || ez>areas[o+3] { continue; }
+    cx:=(areas[o]+areas[o+2])*0.5f32;cz:=(areas[o+1]+areas[o+3])*0.5f32;
+    r:=pe_lo(areas[o+2]-areas[o],areas[o+3]-areas[o+1])*0.5f32;
+    gain:=ifx areas[o+5]>0.5f32 then 0.35f32 else 1.0f32;
+    if verse_emitter_put(out,n,cx,0.0f32,cz,r,0.8f32*gain,0.7f32*gain,0.52f32*gain,0.0f32,1.0f32,64.0f32,0.024f32,1.0f32,cast(f32)(a+1)) { n+=1; }
+    break;
+  }
+  // Fireflies over the open ground near you.
+  for a:0..<an {
+    o:=a*VERSE_AREA_FLOATS;
+    if areas[o+4]<0.5f32 { continue; }
+    cx:=(areas[o]+areas[o+2])*0.5f32;cz:=(areas[o+1]+areas[o+3])*0.5f32;
+    dx:=ex-cx;dz:=ez-cz;
+    if dx*dx+dz*dz>30.0f32*30.0f32 { continue; }
+    r:=pe_lo(9.0f32,pe_lo(areas[o+2]-areas[o],areas[o+3]-areas[o+1])*0.5f32);
+    if verse_emitter_put(out,n,cx,0.0f32,cz,r,0.95f32,1.3f32,0.42f32,0.0f32,2.0f32,64.0f32,0.08f32,1.0f32,cast(f32)(a+11)) { n+=1; }
+  }
+  // Embers off the nearest flickering flames, nearest first.
+  taken:[64]bool;
+  for pass:0..<VERSE_EMITTERS {
+    best:=-1;bd:=30.0f32*30.0f32;
+    for i:0..<ln {
+      if i>=64 || taken[i] { continue; }
+      o:=i*VERSE_LAMP_FLOATS;
+      if lamps[o+7]<0.05f32 { continue; }
+      dx:=lamps[o]-ex;dy:=lamps[o+1]-ey;dz:=lamps[o+2]-ez;d:=dx*dx+dy*dy+dz*dz;
+      if d<bd { bd=d;best=i; }
+    }
+    if best<0 { break; }
+    taken[best]=true;
+    o:=best*VERSE_LAMP_FLOATS;
+    if !verse_emitter_put(out,n,lamps[o],lamps[o+1]-0.08f32,lamps[o+2],0.8f32,lamps[o+4]*1.6f32,lamps[o+5]*1.3f32+0.3f32,lamps[o+6]+0.1f32,lamps[o+7],0.0f32,22.0f32,0.034f32,1.0f32,cast(f32)(best+31)) { break; }
+    n+=1;
+  }
+  return n;
+}
+
+#test "an emitter that doesn't fit isn't written" {
+  out:[32]f32;
+  #assert verse_emitter_put(out[..],1,1.0f32,2.0f32,3.0f32,0.5f32,1.0f32,1.0f32,1.0f32,0.0f32,0.0f32,500.0f32,0.02f32,1.0f32,7.0f32);
+  #assert out[16]==1.0f32 && out[25]==64.0f32;
+  #assert !verse_emitter_put(out[..],2,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,1.0f32,0.0f32,0.0f32,0.0f32);
+  #assert !verse_emitter_put(out[..],-1,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,1.0f32,0.0f32,0.0f32,0.0f32);
+}
+#test "a room's dust, the yard's fireflies and the nearest flames' embers" {
+  lamps:[24]f32;
+  lamps[0]=8.0f32;lamps[1]=1.0f32;lamps[2]=22.0f32;lamps[4]=1.0f32;lamps[5]=0.55f32;lamps[6]=0.22f32;lamps[7]=0.6f32;
+  lamps[8]=60.0f32;lamps[9]=1.0f32;lamps[10]=40.0f32;lamps[15]=0.6f32;
+  lamps[16]=7.0f32;lamps[17]=1.0f32;lamps[18]=21.0f32;lamps[23]=0.0f32;
+  areas:[12]f32;
+  areas[0]=6.0f32;areas[1]=20.0f32;areas[2]=10.0f32;areas[3]=28.0f32;
+  areas[6]=-5.0f32;areas[7]=0.0f32;areas[8]=21.0f32;areas[9]=19.0f32;areas[10]=1.0f32;
+  out:[384]f32;
+  n:=verse_particles_haunt(lamps[..],3,areas[..],2,8.0f32,1.6f32,24.0f32,out[..]);
+  #assert n==3;
+  #assert out[8]==1.0f32 && out[0]==8.0f32 && out[3]==2.0f32;
+  #assert out[24]==2.0f32;
+  #assert out[40]==0.0f32 && out[32]==8.0f32;
+}
+#test "never more emitters than the bound" {
+  lamps:[512]f32;for i:0..<64 { lamps[i*8]=cast(f32)(i%8);lamps[i*8+2]=cast(f32)(i/8);lamps[i*8+7]=0.5f32; }
+  areas:[6]f32;
+  out:[384]f32;
+  #assert verse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,out[..])==VERSE_EMITTERS;
+  small:[40]f32;
+  #assert verse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,small[..])==2;
+}

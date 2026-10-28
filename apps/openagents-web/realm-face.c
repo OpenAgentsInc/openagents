@@ -34,6 +34,7 @@
 #include "Haunt.h"
 #undef coax_a12_f32
 #include "Haunt-buffer.h"
+#include "Particles.h"
 #include "analytics-face.h"
 #include <math.h>
 #include <stdbool.h>
@@ -57,6 +58,9 @@ static coax_t_HauntDraw draws[256];
 static coax_t_HauntGPUlight lights[64];
 static float walls[4096 * 6];
 static coax_t_HauntMapRect boxes[66];
+// The particles' emitters (particles.coax) and what they are chosen from.
+static float emitters[24 * 16], lamp_floats[64 * 8], area_floats[64 * 6];
+static int64_t emitter_n;
 static uint8_t document[262144];   // Haunt.pb: the house's strings point into it, so it stays
 static uint32_t document_n;
 
@@ -720,6 +724,28 @@ static void describe(void) {
   view = v;
 }
 
+// The house's lights (where this frame put them) and areas, for particles.coax to choose from.
+static void choose_particles(void) {
+  int64_t ln = house.light_count < house.lights.count ? house.light_count : house.lights.count;
+  int64_t an = house.area_count < house.areas.count ? house.area_count : house.areas.count;
+  if (ln > 64) ln = 64;
+  if (an > 64) an = 64;
+  for (int64_t i = 0; i < ln; i++) {
+    coax_t_HauntLight l = house.lights.data[i];
+    float *o = lamp_floats + i * 8, *g = lights[i].color.e, *p = lights[i].position.e;
+    bool lit = g[0] + g[1] + g[2] > 0;
+    o[0] = p[0]; o[1] = p[1]; o[2] = p[2]; o[3] = l.radius;
+    o[4] = l.color.x; o[5] = l.color.y; o[6] = l.color.z; o[7] = lit ? l.flicker : 0;
+  }
+  for (int64_t i = 0; i < an; i++) {
+    coax_t_HauntArea a = house.areas.data[i];
+    float *o = area_floats + i * 6;
+    o[0] = a.rect.x0; o[1] = a.rect.z0; o[2] = a.rect.x1; o[3] = a.rect.z1; o[4] = a.room ? 0 : 1; o[5] = a.dark ? 1 : 0;
+  }
+  emitter_n = verse_particles_haunt((coax_v_f32){lamp_floats, ln * 8}, ln, (coax_v_f32){area_floats, an * 6}, an,
+    house.eye.x, house.eye.y, house.eye.z, (coax_v_f32){emitters, 24 * 16});
+}
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   (void)state; (void)still;
@@ -746,9 +772,19 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     instance_end = 0;
     for (int64_t i = 0; i < draw_count; i++) if (draws[i].base + draws[i].instances > instance_end) instance_end = draws[i].base + draws[i].instances;
     u[24] = house.eye.x; u[25] = house.eye.y; u[26] = house.eye.z; u[27] = (float)light_count;
+    choose_particles();
     u[28] = now < house.flash_until ? 1.0f : 0.0f;
   }
   return n < 0 ? 0u : (uint32_t)n;
+}
+
+// ---- the particles the host draws after the house (particles.wgsl)
+EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof emitters; }
+EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)emitters; }
+EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { (void)state; return (uint32_t)(emitter_n * 16 * sizeof(float)); }
+EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) {
+  (void)state;
+  return opened ? (uint32_t)(emitter_n * verse_particles_per()) : 0u;
 }
 
 // ---- the scene the host draws: indexed draws over the vertices and indices,
