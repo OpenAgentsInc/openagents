@@ -18,7 +18,8 @@ from the pre-reset revision recorded in `proto/recovery.json`.
 
 The root [protocol guide](../../proto/README.md) identifies what is actually
 restored and executable. New alpha files cover experimental options and the
-first Verse world/presence projection; they do not amend Nostr, REACH or realm
+first Verse world/presence projection, native home and the first 16 Nostr
+mirror schemas; they do not amend Nostr, REACH or realm
 transports. Coax's `#import_proto` and production decoders are not implemented.
 
 The [Metareal migration](../../proto/migrations/README.md) names old IDs, new
@@ -205,10 +206,11 @@ limits.
 `nips/` has three lanes, described in `nips/README.md` and
 `nips/manifest.json`:
 
-- **`official/`**: 99 NIP specs plus the index, pinned to
-  nostr-protocol/nips at `b82211e9…`.
-- **`block/`**: 17 specs pinned to block/buzz at `781d3951…`: AA, AE, AM,
-  AO, AP, CW, DV, ER, FI, GS, IA, MP, OA, PL, PMA, RS, WP.
+- **`official/`**: 100 NIP specs plus the index, pinned to
+  nostr-protocol/nips at `400d157c…`.
+- **`block/`**: 20 specs and two JSON fixtures pinned to block/buzz at
+  `24a37060…`: AA, AE, AM, AO, AP, AR, CL, CW, DV, ER, FA, FI, GS, IA,
+  MP, OA, PL, PMA, RS, WP.
 - **`openagents/`**: 36 `NIP-*.md` drafts written here, plus
   `contracts.md`, the kind registry `README.md`, and `schemas/`.
 
@@ -647,7 +649,7 @@ The catalog tracks source implementation status separately from proto maturity.
 
 The following v1 vocabulary is a target design, not a file already shipped.
 The new `openagents.options.v1alpha1` uses the separate provisional range
-51000–51007, so it can coexist with a future reviewed v1 registration. Its
+51000–51008, so it can coexist with a future reviewed v1 registration. Its
 smaller option set and reference checks do not implement all v1 policies.
 Do not retrofit annotations onto the nine recovered schemas during recovery.
 
@@ -1525,6 +1527,14 @@ the way `nips/` vendors the specs. `proto/nostr/` does that. It is a
 mirror. The NIP text stays authoritative, and the mirror is pinned to the
 same upstream commit.
 
+The executable first slice is documented in [proto/nostr](../../proto/nostr/README.md):
+16 `v1alpha1` schemas, four selected descriptor profiles, source/hash gates,
+reference projections and one compiled Coax kind-reader proof. The v1 examples
+below describe the broader target; they are not the alpha ABI. In particular,
+actual Filter messages use presence-bearing list containers so an empty array
+cannot become an omitted condition, and signed wrappers retain original JSON.
+A general Coax importer and cryptographic/relay admission remain unimplemented.
+
 ### 11.1 Rules
 
 1. **The event is NIP-01 JSON.** `nostr.event.v1.Event` holds `content` as
@@ -1637,7 +1647,8 @@ typed view a client library exposes and the shape fixtures use.
 
 ### 11.3 Official NIP packages
 
-All 99 official NIPs are listed. "Package" identifies a proposed `nostr.nip<NN>.v1` target; it does not mean
+The current source pin contains 100 official NIPs. The table is the broader
+mirror inventory; only the first-slice packages identified above exist today. "Package" identifies a proposed `nostr.nip<NN>.v1` target; it does not mean
 a schema or implementation already exists. "Behaviour" means the NIP defines rules, not
 data, and gets a README entry instead. "OA use" marks the NIPs our specs
 build on; those packages are built first (phase P2, §36).
@@ -1738,6 +1749,7 @@ build on; those packages are built first (phase P2, §36).
 | C0 | Code snippets | `nipc0` | `CodeSnippet` (1337) | |
 | C7 | Chats | `nipc7` | `Chat` (9) | ● (Verse chat) |
 | CC | Geocaching | `nipcc` | geocache kinds | |
+| CD | Slash commands | `nipcd` | 31992 definitions, 10992 installed list; future typed slice | |
 | EE | MLS ⚠ | `nipee` deprecated | MLS key packages and messages; superseded by Marmot | |
 | F4 | Podcasts | `nipf4` | podcast kinds | |
 
@@ -1748,33 +1760,41 @@ can import them.
 
 ### 11.4 Block NIP packages
 
+The first 14 selected Block packages use alpha namespaces. The remaining v1
+entries are planned targets, not materialized schemas.
+
 | NIP | Title | Kinds | Mirror | OA use |
 | --- | --- | --- | --- | --- |
-| AA | Agent authentication | 22242 (+13534) | `nostr.block.aa.v1` | CTRL, HOST |
-| AE | Agent engrams | 30174 | `nostr.block.ae.v1` | ATIF, RUN, SESS |
-| AM | Agent turn metrics | 44200 | `nostr.block.am.v1` | ATIF, RUN |
-| AO | Agent observability | 24200 | `nostr.block.ao.v1` | ATIF, RUN, CTRL |
-| AP | Agent personas | 30175, 30178 | `nostr.block.ap.v1` | Verse |
-| CW | Channel and thread windows | 39005–39007 | `nostr.block.cw.v1` | |
-| DV | DM visibility | 30622 | `nostr.block.dv.v1` | |
+| AA | Agent authentication | 22242 (+13534) | `nostr.block.aa.v1alpha1` | CTRL, HOST |
+| AE | Agent engrams | 30174 | `nostr.block.ae.v1alpha1` | ATIF, RUN, SESS |
+| AM | Agent turn metrics | 44200 | `nostr.block.am.v1alpha1` | ATIF, RUN |
+| AO | Agent observability | 24200 | `nostr.block.ao.v1alpha1` | ATIF, RUN, CTRL |
+| AP | Agent personas | 30175, 30178 | `nostr.block.ap.v1alpha1` | Verse |
+| AR | Channel artifacts | 45010 | `nostr.block.ar.v1alpha1` | Config and work state |
+| CL | Channel identity and discovery | 39000–39002, 44100/44101 | `nostr.block.cl.v1alpha1` | System/config channels |
+| CW | Channel and thread windows | 39005–39007 | `nostr.block.cw.v1alpha1` | |
+| DV | DM visibility | 30622 | `nostr.block.dv.v1alpha1` | |
 | ER | Event reminders | 30300 | `nostr.block.er.v1` | COORD boundary |
-| FI | Federated identity | none | Behaviour | |
+| FA | Federated identity adapter | HTTP | `nostr.block.fa.v1alpha1` | Private adapter contract |
+| FI | Federated identity | JWS and HTTP values | `nostr.block.fi.v1alpha1` | Unverified assertions; runtime policy remains separate |
 | GS | Git object signing | none (git envelope) | `nostr.block.gs.v1` (`GitSignature` envelope) | Coder |
-| IA | Identity archival | 9035/9036, 8002/8003, 13535 | `nostr.block.ia.v1` | Verse |
+| IA | Identity archival | 9035/9036, 8002/8003, 13535 | `nostr.block.ia.v1alpha1` | Verse |
 | MP | Multi-repo projects | 30621 | `nostr.block.mp.v1` | WS |
-| OA | Owner attestation | `auth` tag | `nostr.block.oa.v1` (`OwnerAttestation{owner, conditions, sig}`) | AGENT, PYLON, HOST |
+| OA | Owner attestation | `auth` tag | `nostr.block.oa.v1alpha1` (`OwnerAttestation{owner, conditions, sig}`) | AGENT, PYLON, HOST |
 | PL | Push leases | 30350 | `nostr.block.pl.v1` | Coder host push leases |
 | PMA | Private managed-agent aggregate | 30179 reserved | `nostr.block.pma.v1` (reserved; readers reject kind 30179) | |
 | RS | Cross-device read state | 30078 | `nostr.block.rs.v1` | CTRL, WS |
-| WP | Workspace profile | 9033 | `nostr.block.wp.v1` | WS |
+| WP | Workspace profile | 9033 | `nostr.block.wp.v1alpha1` | WS |
 
 ### 11.5 Nostr sync
 
-`scripts/sync-nips.sh` already refreshes `nips/official/` and `nips/block/`.
-It gains one step: for every changed NIP that has a mirror package, it
-opens a tracking issue and marks the package `stale` in
-`proto/nostr/MANIFEST.json`. CI refuses to publish a `nostr.*` package
-whose manifest entry is stale.
+`scripts/sync-nips.sh` refreshes complete official/Block source trees and
+per-file hashes. `proto/nostr/MANIFEST.json` records each materialized alpha
+schema and its exact source pins/hashes. Sync reports stale mirrors; the local
+`check_nostr_sources.py`, NIP pin checks and `scripts/proto.sh check` reject
+publication until source review updates the mirror manifest. It does not file
+issues, rewrite schemas or add GitHub Actions. Runtime support is never inferred
+from a pin, a parsed DTO or a successful descriptor build.
 
 ## 12. OpenAgents NIPs: every kind and every body, mapped
 
@@ -4540,7 +4560,8 @@ wire. Register and review extension numbers before stable publication.
 
 ### 33.2 Coax is the product implementation target
 
-Before porting a feature, Coax needs the scalar widths, bytes, aggregates,
+Coax now has initial scalar widths, structs, arrays/views and a C boundary.
+Before general contract ingestion, it still needs protobuf presence/oneof lowering,
 repeated fields, explicit presence, oneofs and checked memory model used by
 its selected contracts. Then `#import_proto` consumes the selected descriptor
 closure and generates bounded codecs plus checked domain adapters.
@@ -4669,7 +4690,7 @@ a compiling graph: generate actual descriptors before starting a cutover.
 | Phase | Scope and prerequisites | Exit evidence |
 | --- | --- | --- |
 | **P0. Recover and namespace** | This recovery: root contracts, immutable baselines, source manifests, vendor modules, consumer profiles, Metareal migration and initial alpha Verse references. | Reproducible descriptors; all baseline/vendor hashes and migration tests pass. No old app workspace is resurrected. |
-| **P1. Coax contract ingestion** | Coax §20 stage 2 aggregate/bytes/presence/oneof/C ABI prerequisites, then selected `#import_proto` and bounded validation. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
+| **P1. Coax contract ingestion** | Initial widths/structs/byte views/C ABI now exist; complete presence/oneof lowering, selected `#import_proto` and bounded codecs next. The first Event-kind reader is a narrow proof, not the whole phase. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
 | **P2. Decision foundations** | Shared validation/options; selected Nostr envelope/mirrors; receipt and inference wire primitives before decision. | Fractional scores, string choices, structured rubrics, state restrictions and exact receipt refs round-trip through a real Coax/FM consumer. |
 | **P3. Runtime prerequisites** | Context→policy→capability→program; identity/attestation/skill; extension→eval; needed UI and payment reference primitives. | Compiled import graph, checked domain adapters and preserved admission/effect ownership. |
 | **P4. Execution and sessions** | Run/trace/exec/chat/session/control/workspace, then environment/work/coordination/automation/live after P2/P3 imports. | A real task, observed tool progress, result, cancellation and reconnect in the app; then actual sessions/terminals. Coax owns product logic. |
@@ -4717,7 +4738,7 @@ retain their wire encodings until separately reviewed migrations pass.
    `payment-receipt.v1.json` is superseded.
 8. Lightning Labs protos are vendored byte-exact under their own package
    names and never embedded in OpenAgents messages.
-9. All 99 official NIPs and 17 Block NIPs are listed, and every one with
+9. The current sources contain 100 official NIPs and 20 Block NIPs, and every one with
    a structured body gets a mirror package.
 10. The 2,368 schema IDs are tiered: protocol, product API, evidence.
     Evidence keeps its JSON.

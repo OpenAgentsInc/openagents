@@ -47,7 +47,8 @@ This is a port of the native engine home from source commit
 `69848ca` (the engine repository is identified in the existing Metareal
 migration registry), not the retired OpenAgents web/mobile app. Only the
 home setup/graph/HUD ideas and the OFL Michroma font are carried over. Scene
-storage is flat and bounded because coax0 does not yet have aggregate types.
+storage remains flat and bounded from the initial port; the newer Coax
+aggregate types have not replaced that resident storage path.
 The default graph uses seed 42727, 4000 motes and eight satellites; exact native
 floating-point pixels/RNG draw ordering are not a compatibility contract.
 

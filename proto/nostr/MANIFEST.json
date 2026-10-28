@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "packages": [
+    {
+      "package": "nostr.block.aa.v1alpha1",
+      "proto": "nostr/block/aa/v1alpha1/auth.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-AA.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "d759c3de0afcee58fdf2d851d24e80a8f3225bd4344be3ee072a5557560f4cdb"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.ae.v1alpha1",
+      "proto": "nostr/block/ae/v1alpha1/memory.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-AE.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "62012ebf6f07e64d4fc25c658a4d9b88766274c298ea2c29561d7c4c28925d39"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.am.v1alpha1",
+      "proto": "nostr/block/am/v1alpha1/metrics.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-AM.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "767b175cb3d78d0c67134afda4fce8807b21eca360c3288124a7ecd9d54dfd4b"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.ao.v1alpha1",
+      "proto": "nostr/block/ao/v1alpha1/observer.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-AO.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "60bf7931bea81ec80bd533b76ebb1cf5547b621e1d259b6ec69320f82f05fb8b"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.ap.v1alpha1",
+      "proto": "nostr/block/ap/v1alpha1/persona.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-AP.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "161cbd49d55022bf07052e18e1f80ec775bf5946e34d1b76f22c5d37e90bb9e2"
+        },
+        {
+          "path": "nips/block/NIP-AR.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "a94e70741d38c537377892b138679323fdacbef05bec28da066f0893592285a2"
+        },
+        {
+          "path": "nips/block/NIP-CL.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "c87cda99e66b6b951513aad0c3c5d1eb9f4a73a2a3d0f8686599a790c69f2650"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.ar.v1alpha1",
+      "proto": "nostr/block/ar/v1alpha1/artifact.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-AR.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "a94e70741d38c537377892b138679323fdacbef05bec28da066f0893592285a2"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.cl.v1alpha1",
+      "proto": "nostr/block/cl/v1alpha1/channel.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-CL.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "c87cda99e66b6b951513aad0c3c5d1eb9f4a73a2a3d0f8686599a790c69f2650"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.cw.v1alpha1",
+      "proto": "nostr/block/cw/v1alpha1/window.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-CW.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "95484fc5aaa8c088ae22c2b213607502d90475924ea171f3f344d19ac7063ca4"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.dv.v1alpha1",
+      "proto": "nostr/block/dv/v1alpha1/visibility.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-DV.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "4b319473d899154429fdc635b0b3f6b4be950cb4ed2d55618cf11f7f6b5af96f"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.fa.v1alpha1",
+      "proto": "nostr/block/fa/v1alpha1/adapter.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-FA.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "0d413c8907b18e4f9658cbfd602caf70586fc0b03d2dbc3c38f6e8377ddd08f0"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.fi.v1alpha1",
+      "proto": "nostr/block/fi/v1alpha1/identity.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-FI.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "cee5ba68e122f53a330a74d9f2370e8a657d0cf0fb7424c10f6ee8916e3b8cd9"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.ia.v1alpha1",
+      "proto": "nostr/block/ia/v1alpha1/archive.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-IA.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "d94e2467a9fbb4845ee9e91faff1762ee4fcb0f85e8f30373766f82fba2888a6"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.oa.v1alpha1",
+      "proto": "nostr/block/oa/v1alpha1/owner.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-OA.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "cfe7288c96e4a9edd88e5f2970cfec6fc22c57f7840a8ecb77e326a6cc32c74b"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.wp.v1alpha1",
+      "proto": "nostr/block/wp/v1alpha1/workspace.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-WP.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "172b8302497abfcb90e736d67d5b4489d07b468cf28d7e63efba6fa47f8e1e84"
+        }
+      ]
+    },
+    {
+      "package": "nostr.event.v1alpha1",
+      "proto": "nostr/event/v1alpha1/event.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/official/01.md",
+          "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+          "sha256": "d5c5ce2b5639eee440b5d342dbe81af42008838cb260ec04acaffaffd29dcaf7"
+        },
+        {
+          "path": "nips/official/42.md",
+          "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+          "sha256": "176458314bb0cd3b9c673b43b6bf05e4cb2354f5d56880d8d6627713d6fd4f87"
+        },
+        {
+          "path": "nips/official/50.md",
+          "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+          "sha256": "64c393e0146f11564505ba8dd73e4798a34762b0d35a02663dd678a98941240e"
+        }
+      ]
+    },
+    {
+      "package": "nostr.nip42.v1alpha1",
+      "proto": "nostr/nip42/v1alpha1/auth.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/official/42.md",
+          "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+          "sha256": "176458314bb0cd3b9c673b43b6bf05e4cb2354f5d56880d8d6627713d6fd4f87"
+        }
+      ]
+    }
+  ]
+}

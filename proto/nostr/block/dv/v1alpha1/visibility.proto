@@ -1,0 +1,8 @@
+syntax = "proto3";
+package nostr.block.dv.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-DV. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message VisibilitySnapshot { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; optional bytes owner_pubkey=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; repeated string hidden_channel_ids=3; } // Relay-signed 30622; owner-only read projection, not membership removal.

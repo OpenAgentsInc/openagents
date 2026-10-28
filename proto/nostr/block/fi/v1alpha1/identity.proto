@@ -1,0 +1,25 @@
+syntax = "proto3";
+package nostr.block.fi.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-FI. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+// Credential-bearing values: never log or publish. A parsed assertion is unverified.
+message Audience { oneof form { string single=1; AudienceList multiple=2; } }
+message AudienceList { repeated string values=1; }
+message AssertionClaims {
+  nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true];
+  optional string issuer=2 [(openagents.options.v1alpha1.required_value)=true]; optional string subject=3 [(openagents.options.v1alpha1.required_value)=true]; optional bytes nostr_pubkey=4 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true];
+  Audience audience=5 [(openagents.options.v1alpha1.required_value)=true];
+  nostr.event.v1alpha1.JsonNumber issued_at=6 [(openagents.options.v1alpha1.required_value)=true];
+  nostr.event.v1alpha1.JsonNumber expires_at=7 [(openagents.options.v1alpha1.required_value)=true];
+  nostr.event.v1alpha1.JsonNumber not_before=8;
+  optional bytes owner_pubkey=9 [(openagents.options.v1alpha1.exact_bytes)=32]; optional string client_id=10;
+}
+message Assertion { optional bytes original_compact_jws=1 [(openagents.options.v1alpha1.required_value)=true]; nostr.event.v1alpha1.JsonObject protected_header=2 [(openagents.options.v1alpha1.required_value)=true]; AssertionClaims claims=3 [(openagents.options.v1alpha1.required_value)=true]; }
+message DisconnectCommand {
+  optional bytes original_compact_jws=1;
+  nostr.event.v1alpha1.JsonObject original_body=2;
+  optional bytes target_pubkey=3 [(openagents.options.v1alpha1.exact_bytes)=32]; // JWT and HTTP request verification remain runtime gates.
+}

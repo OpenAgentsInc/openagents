@@ -1,0 +1,21 @@
+syntax = "proto3";
+package nostr.block.ao.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-AO. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message ObserverFrame {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // 24200: ephemeral, never persisted/indexed/logged.
+  optional bytes recipient=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; optional bytes agent=3 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; optional string frame=4 [(openagents.options.v1alpha1.required_value)=true]; optional string channel=5;
+}
+message Telemetry {
+  nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; // Decrypted, private, transient.
+  optional int64 seq=2 [(openagents.options.v1alpha1.required_value)=true]; optional string timestamp=3 [(openagents.options.v1alpha1.required_value)=true]; optional string kind=4 [(openagents.options.v1alpha1.required_value)=true];
+  nostr.event.v1alpha1.NullableInt64 agent_index=5;
+  nostr.event.v1alpha1.NullableString channel_id=6;
+  nostr.event.v1alpha1.NullableString session_id=7;
+  nostr.event.v1alpha1.NullableString turn_id=8;
+  nostr.event.v1alpha1.JsonObject payload=9 [(openagents.options.v1alpha1.required_value)=true];
+}
+message Control { nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; optional string type=2 [(openagents.options.v1alpha1.required_value)=true]; optional string channel_id=3; } // Defined: cancel_turn; unknown types ignored.

@@ -20,6 +20,7 @@ workspace is restored.
 
 | Root | Namespace and status |
 | --- | --- |
+| `nostr/` | 16 new alpha schemas: shared events/NIP-42 and 14 Block agent, identity and channel projections. |
 | `openagents/common/v1/` | Recovered refs, signed-original wrappers and domain-qualified errors. |
 | `openagents/engine/v1/` | Six recovered schemas: scene, agent, HUD, control, registered state and assets. Metareal and other consumers share them. |
 | `openagents/host/v1/`, `openagents/reach/v1/` | Recovered phone task/admission, binding/cursor and authenticated reach records. Existing wire types are unchanged. |
@@ -62,13 +63,18 @@ network connection or app/service. `generate` updates current descriptors and
 `data/asset-profiles.pb` and the app's checked-in `Home.pb` resource; it never modifies `compatibility/`.
 
 [modules.json](modules.json) declares `coax-foundation`, `phone-agent`,
-`metareal`, `verse` and `ios-home` profiles. Profiles select roots plus transitive imports;
+`metareal`, `verse`, `ios-home`, `nostr-event`, `block-agent`, `block-identity`
+and `block-channel` profiles. Profiles select roots plus transitive imports;
 they do not fork schemas or change field meanings. Root-owned APIs compile
 separately from each upstream vendor module, avoiding import-name collisions.
 
 ## Coax adoption
 
 Coax does **not** implement `#import_proto` or general protobuf code generation.
+The [Nostr alpha profile](nostr/README.md) provides selected descriptors and
+source-pinned projection definitions. A compiled Coax event-kind reader proves
+a narrow consumer path against the canonical protobuf fixture; it is not a
+signed JSON/JWS parser, signature verifier or general NIP implementation.
 The reduced iOS home has one real bounded Coax resource reader for
 `openagents.metareal.home.v1alpha1.HomeConfiguration` and writes existing
 `openagents.engine.v1.HudInvocation` messages. `metareal/test_home.py` checks

@@ -1,0 +1,20 @@
+syntax = "proto3";
+package nostr.block.fa.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-FA. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+// These are HTTP body/query projections, not a new transport or gRPC service.
+message LoginStart { optional string return_to=1 [(openagents.options.v1alpha1.required_value)=true]; optional string handoff_challenge=2 [(openagents.options.v1alpha1.required_value)=true]; optional string handoff_challenge_method=3 [(openagents.options.v1alpha1.required_value)=true]; }
+message CodeExchange { optional string code=1 [(openagents.options.v1alpha1.required_value)=true]; optional string handoff_secret=2 [(openagents.options.v1alpha1.required_value)=true]; }
+message Session {
+  nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true];
+  optional string session_token=2; optional string expires_at=3 [(openagents.options.v1alpha1.required_value)=true];
+  optional string email=4;
+  oneof profile { nostr.event.v1alpha1.JsonObject profile_projection=5; nostr.event.v1alpha1.Null profile_null=6; }
+  // session_token only on exchange. Profiles remain private absent explicit publication policy.
+}
+message AssertionRequest { optional string relay_url=1 [(openagents.options.v1alpha1.required_value)=true]; optional bytes nostr_pubkey=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; }
+message AssertionResponse { nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; optional bytes assertion=2 [(openagents.options.v1alpha1.required_value)=true]; optional bytes nostr_pubkey=3 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; nostr.event.v1alpha1.JsonNumber expires_at=4 [(openagents.options.v1alpha1.required_value)=true]; }
+message Denial { nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; optional string error=2 [(openagents.options.v1alpha1.required_value)=true]; } // HTTP status determines retry/session handling too.

@@ -55,4 +55,6 @@ python3 tests/compile_time.py && python3 tests/tools.py
 python_rc=$?
 python3 tests/native.py
 native_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 ]]
+python3 tests/nostr.py
+nostr_rc=$?
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 ]]

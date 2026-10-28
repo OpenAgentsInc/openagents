@@ -105,16 +105,16 @@ def build_sets(command, output):
                        for p in (ROOT/directory).rglob('*.proto'))
         if not files:
             raise ValueError('Empty module: ' + name)
-        path = compile_set(command, name, files, module['includes'], output, python=name=='owned')
-        if name == 'owned':
+        path = compile_set(command, name, files, module['includes'], output, python=name in ('owned', 'nostr'))
+        if name in ('owned', 'nostr'):
             from google.protobuf import descriptor_pb2
             descriptor = descriptor_pb2.FileDescriptorSet.FromString(path.read_bytes())
             for file in descriptor.file:
-                if file.name.startswith('openagents/'):
+                if file.name.startswith(('openagents/', 'nostr/')):
                     expected = '.'.join(Path(file.name).parts[:-1])
                     if file.package != expected:
                         raise ValueError('Namespace/path mismatch: ' + file.name)
-            artifacts['descriptors/owned.pb'] = path
+            artifacts['descriptors/'+name+'.pb'] = path
         print(f'{name}: compiled {len(files)} schemas')
     for name, roots in CONFIG['profiles'].items():
         path = compile_set(command, name, roots, ['.'], output)
@@ -178,6 +178,8 @@ def main():
         print(json.dumps(CONFIG, indent=2))
         return
     verify_recovery()
+    from check_nostr_sources import check as check_nostr_sources
+    check_nostr_sources(ROOT.parent)
     if args.mode == 'canonical-id':
         print(canonical_id(args.id))
         return

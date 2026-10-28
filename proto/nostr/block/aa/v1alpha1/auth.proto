@@ -1,0 +1,14 @@
+syntax = "proto3";
+package nostr.block.aa.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/nip42/v1alpha1/auth.proto";
+import "nostr/block/oa/v1alpha1/owner.proto";
+
+// Alpha projection of Block NIP-AA. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message AgentAuthentication {
+  nostr.nip42.v1alpha1.Authentication authentication=1 [(openagents.options.v1alpha1.required_value)=true];
+  nostr.block.oa.v1alpha1.OwnerAttestation credential=2;
+  // AA admission evaluates time clauses, not kind= clauses. Owner membership
+  // comes from live relay authority, never a membership claim in this DTO.
+}

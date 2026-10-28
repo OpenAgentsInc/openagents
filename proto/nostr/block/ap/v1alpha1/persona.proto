@@ -1,0 +1,29 @@
+syntax = "proto3";
+package nostr.block.ap.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-AP (including AR/CL-backed config). Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message PersonaEvent { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; optional string slug=2 [(openagents.options.v1alpha1.required_value)=true]; optional bool shared=3; Persona body=4 [(openagents.options.v1alpha1.required_value)=true]; } // 30175
+message Persona {
+  nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; optional string display_name=2 [(openagents.options.v1alpha1.required_value)=true];
+  nostr.event.v1alpha1.NullableString system_prompt=3;
+  nostr.event.v1alpha1.NullableString acp_command=4;
+  nostr.event.v1alpha1.NullableString avatar_url=5;
+  nostr.event.v1alpha1.NullableString runtime=6;
+  nostr.event.v1alpha1.NullableString model=7;
+  nostr.event.v1alpha1.NullableString provider=8;
+  repeated string name_pool=9;
+  nostr.event.v1alpha1.NullableString respond_to=10;
+  repeated bytes respond_to_allowlist=11 [(openagents.options.v1alpha1.exact_bytes)=32];
+  nostr.event.v1alpha1.NullableInt64 parallelism=12;
+  optional string session_policy=13; // channel/thread; this is not an executable command.
+}
+// Team share bodies are client-defined, not invented as a universal JSON schema.
+message TeamCatalog { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; optional string team_id=2 [(openagents.options.v1alpha1.required_value)=true]; optional bool shared=3; nostr.event.v1alpha1.JsonObject body=4 [(openagents.options.v1alpha1.required_value)=true]; } // 30178
+message AgentSettings { nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; optional uint32 version=2 [(openagents.options.v1alpha1.required_value)=true]; optional string agent_type=3; nostr.event.v1alpha1.JsonObject settings=4 [(openagents.options.v1alpha1.required_value)=true]; }
+message AgentInstructions { nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; optional uint32 version=2 [(openagents.options.v1alpha1.required_value)=true]; optional string text=3 [(openagents.options.v1alpha1.required_value)=true]; }
+message TeamConfig { nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; optional uint32 version=2 [(openagents.options.v1alpha1.required_value)=true]; optional string name=3 [(openagents.options.v1alpha1.required_value)=true]; optional string instructions=4 [(openagents.options.v1alpha1.required_value)=true]; optional string team_id=5; } // team_id comes from the artifact's team tag.
+// Config state is local observation; never derive absence from a failed read.
+enum ConfigState { CONFIG_STATE_UNSPECIFIED=0; CONFIG_STATE_PRESENT=1; CONFIG_STATE_INVALID=2; CONFIG_STATE_ABSENT=3; CONFIG_STATE_DELETED=4; CONFIG_STATE_UNAVAILABLE=5; }

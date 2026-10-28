@@ -1,0 +1,18 @@
+syntax = "proto3";
+package nostr.block.ae.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-AE. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message Engram {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // 30174; content stays NIP-44 ciphertext.
+  optional string blinded_identifier=2 [(openagents.options.v1alpha1.required_value)=true]; optional bytes owner_pubkey=3 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true];
+}
+message Core { optional string slug=1 [(openagents.options.v1alpha1.required_value)=true]; optional string profile=2 [(openagents.options.v1alpha1.required_value)=true]; }
+message Memory { optional string slug=1 [(openagents.options.v1alpha1.required_value)=true]; nostr.event.v1alpha1.NullableString value=2 [(openagents.options.v1alpha1.required_value)=true]; } // Explicit null is a tombstone.
+message DecryptedBody {
+  nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; // Private memory only; <=65535 plaintext bytes.
+  oneof body { Core core=2; Memory memory=3; }
+  // No slug/plaintext is exposed in the encrypted event's public tags.
+}

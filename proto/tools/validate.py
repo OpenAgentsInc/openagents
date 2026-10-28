@@ -30,6 +30,13 @@ def validate(message):
         for item in values:
             if field.type == FieldDescriptor.TYPE_MESSAGE:
                 validate(item)
+            elif field.type == FieldDescriptor.TYPE_BYTES:
+                maximum = limits.Extensions[options.max_bytes]
+                exact = limits.Extensions[options.exact_bytes]
+                if maximum and len(item) > maximum:
+                    raise ValueError('Byte limit exceeded: ' + field.full_name)
+                if exact and len(item) != exact:
+                    raise ValueError('Exact byte size mismatch: ' + field.full_name)
             elif field.type == FieldDescriptor.TYPE_STRING:
                 maximum = limits.Extensions[options.max_bytes]
                 if maximum and len(item.encode('utf-8')) > maximum:

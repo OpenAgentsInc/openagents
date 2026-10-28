@@ -207,3 +207,10 @@ interchange for every OpenAgents surface, including Verse. Source schemas and
 selected-profile descriptors live in root [proto/](../proto/README.md), beside
 `coax/`. Metareal is the engine name. Coax's future importer and bounded codecs
 must consume this source rather than defining a parallel language-only schema.
+
+The first [Nostr mirror profiles](../proto/nostr/README.md) now compile into
+selected descriptors. `examples/nostr-wire.coax` is a bounded C-ABI consumer of
+the shared Event projection's kind field. `tests/nostr.py` compiles it and reads
+a canonical source-derived protobuf fixture, including kind zero, all selected
+Block kinds, unknown fields, wide timestamps and malformed inputs. It does not
+implement general descriptor ingestion, signed JSON parsing or Nostr admission.

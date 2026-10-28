@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,7 +112,10 @@ def main():
     p.add_argument('--cache', type=Path, help='Existing Git clones under official/ and block/')
     a = p.parse_args()
     if a.offline and (a.mode != 'check' or a.latest): p.error('--offline requires check without --latest')
-    if a.mode == 'check': offline(ROOT)
+    if a.mode == 'check':
+        offline(ROOT)
+        mirror=ROOT/'proto/nostr/MANIFEST.json'
+        if mirror.exists(): subprocess.run([sys.executable,str(ROOT/'proto/tools/check_nostr_sources.py')],check=True)
     if a.offline: return
     manifest = read_manifest(ROOT)
     lock = {'schema': 1, 'sources': {}}
@@ -144,6 +148,9 @@ def main():
             (ROOT/'nips/manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
             (ROOT/'nips/upstream-lock.json').write_text(json.dumps(lock,indent=2)+'\n')
             offline(ROOT)
+            if (ROOT/'proto/nostr/MANIFEST.json').exists():
+                result=subprocess.run([sys.executable,str(ROOT/'proto/tools/check_nostr_sources.py')])
+                if result.returncode: print('NIP sync finished; mirror publication is blocked until source review updates its manifest',file=sys.stderr)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,28 @@
+syntax = "proto3";
+package nostr.block.am.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-AM. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message TurnMetricEvent { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; optional bytes owner_pubkey=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; } // 44200, NIP-44 ciphertext.
+message Usage {
+  nostr.event.v1alpha1.NullableUInt64 input_tokens=1;
+  nostr.event.v1alpha1.NullableUInt64 output_tokens=2;
+  nostr.event.v1alpha1.NullableUInt64 total_tokens=3;
+  nostr.event.v1alpha1.NullableNumber cost_usd=4;
+  optional uint64 cache_read_tokens=5; optional uint64 cache_write_tokens=6; // Omit if unavailable; null is invalid.
+}
+message PricingIdentity { optional string authority=1 [(openagents.options.v1alpha1.required_value)=true]; optional string model=2 [(openagents.options.v1alpha1.required_value)=true]; optional string cache_class=3; }
+message TurnMetric {
+  nostr.event.v1alpha1.JsonObject original=1 [(openagents.options.v1alpha1.required_value)=true]; // Private decrypted JSON, <=65535 bytes.
+  optional string harness=2 [(openagents.options.v1alpha1.required_value)=true]; optional string timestamp=3 [(openagents.options.v1alpha1.required_value)=true];
+  nostr.event.v1alpha1.NullableString model=4;
+  nostr.event.v1alpha1.NullableString channel_id=5;
+  nostr.event.v1alpha1.NullableString session_id=6;
+  nostr.event.v1alpha1.NullableString turn_id=7;
+  nostr.event.v1alpha1.NullableInt64 turn_seq=8;
+  Usage turn=9; Usage cumulative=10; optional bool delta_reliable=11;
+  PricingIdentity pricing_identity=12; optional string stop_reason=13;
+  // Cumulative requires non-null session_id/turn_seq. Unknown price != zero.
+}

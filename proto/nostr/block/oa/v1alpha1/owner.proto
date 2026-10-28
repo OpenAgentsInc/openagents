@@ -1,0 +1,9 @@
+syntax = "proto3";
+package nostr.block.oa.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+
+// Alpha projection of Block NIP-OA. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+// The exact conditions string is part of nostr:agent-auth:<agent>:<conditions>.
+// It MUST NOT be sorted, normalized, deduplicated or reconstructed from clauses.
+message OwnerAttestation { optional bytes owner_pubkey=1 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; optional string conditions=2 [(openagents.options.v1alpha1.required_value)=true]; optional bytes signature=3 [(openagents.options.v1alpha1.exact_bytes)=64, (openagents.options.v1alpha1.required_value)=true]; }

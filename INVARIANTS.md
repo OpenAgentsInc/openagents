@@ -57,5 +57,25 @@ replays the home; it does not claim to open an unported destination.
 
 Check: `coax/build.sh test`, `PROTOC=... python3 metareal/test_home.py`, the
 sanitizer harness and the iOS native touch/rotation test. Metal layout/stage
-bindings are an explicit native boundary while Coax lacks aggregate types;
-there is no claim of a full engine migration or general protobuf compiler.
+bindings remain an explicit native boundary; the home retains its initial
+flat-storage implementation while the newer Coax data types are evaluated.
+There is no claim of a full engine migration or general protobuf compiler.
+
+
+## Nostr projections cannot create authority or replace signed bytes
+
+New `nostr.*.v1alpha1` values are source-pinned projections. A SignedEvent keeps
+original JSON alongside ordered string tags and exact content; the published
+common.v1 wrapper stays intact behind an explicit adapter. JSON null, missing,
+zero and unknown fields remain distinguishable where the source requires it.
+No DTO, parsed owner claim, label, command, revision link or decoded JWS counts
+as signature verification, owner membership, relay identity, grant, CAS
+acceptance or encryption. Decrypted memory/telemetry/metrics and identity
+credentials must not be published, logged or placed in a public snapshot.
+
+Check: `proto/tools/check_nostr_sources.py` and `scripts/proto.sh check` reject
+stale mirror pins/hashes and schema inventory drift. Reference tests check real
+event ID/original round trips, unknown fields, missing/null/zero cases, token
+classes, byte bounds and selected-profile imports. Coax tests consume the actual
+Event protobuf fixture through a bounded kind-only reader; other Coax ingestion
+and all cryptographic/relay admission remain explicit unimplemented gates.

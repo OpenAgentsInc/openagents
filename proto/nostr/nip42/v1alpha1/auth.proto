@@ -1,0 +1,11 @@
+syntax = "proto3";
+package nostr.nip42.v1alpha1;
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of official NIP-42. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message Authentication {
+  nostr.event.v1alpha1.SignedEvent original=1;
+  optional string relay=2; optional string challenge=3;
+  // Exactly one relay/challenge tag; time, challenge and key verification are runtime gates.
+}

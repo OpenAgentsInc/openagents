@@ -1,0 +1,19 @@
+syntax = "proto3";
+package nostr.block.ia.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+import "nostr/block/oa/v1alpha1/owner.proto";
+
+// Alpha projection of Block NIP-IA. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message ArchiveRequest {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // 9035 archive / 9036 unarchive.
+  optional bytes target_pubkey=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; optional string reason=3; optional bytes replaced_by=4 [(openagents.options.v1alpha1.exact_bytes)=32];
+  nostr.block.oa.v1alpha1.OwnerAttestation credential=5;
+}
+message ArchiveDelta {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // Relay-signed 8002 / 8003, protected tag required.
+  optional bytes target_pubkey=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; optional string consent=3 [(openagents.options.v1alpha1.required_value)=true]; optional bytes actor_or_owner=4 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true];
+  optional bytes request_event_id=5 [(openagents.options.v1alpha1.exact_bytes)=32]; optional string reason=6; optional bytes replaced_by=7 [(openagents.options.v1alpha1.exact_bytes)=32];
+}
+message ArchiveSnapshot { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; repeated bytes archived_pubkeys=2 [(openagents.options.v1alpha1.exact_bytes)=32]; } // 13535, relay-scoped; not an access ban.

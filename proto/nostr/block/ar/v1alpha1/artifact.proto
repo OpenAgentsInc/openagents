@@ -1,0 +1,16 @@
+syntax = "proto3";
+package nostr.block.ar.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-AR. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message ArtifactRevision {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // kind 45010, regular stored revisions; <=256 tags.
+  optional uint32 version=2 [(openagents.options.v1alpha1.required_value)=true]; optional string artifact_id=3 [(openagents.options.v1alpha1.required_value)=true]; optional string home_channel=4 [(openagents.options.v1alpha1.required_value)=true];
+  optional string type=5 [(openagents.options.v1alpha1.required_value)=true]; optional string title=6; optional string operation=7 [(openagents.options.v1alpha1.required_value)=true];
+  optional bytes root=8 [(openagents.options.v1alpha1.exact_bytes)=32]; optional bytes previous=9 [(openagents.options.v1alpha1.exact_bytes)=32];
+  repeated nostr.event.v1alpha1.Tag annotations=10; // Preserve unknown tags and original order in original.event.tags.
+  // Content stays opaque in original.event.content. No universal task schema.
+  // Accepting a DTO is NOT a prev/CAS acceptance. Moves require atomic source+destination authority.
+}

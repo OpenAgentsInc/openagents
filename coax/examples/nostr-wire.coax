@@ -1,0 +1,51 @@
+// First selected-profile Coax consumer: read the kind from the protobuf Event
+// projection in proto/nostr/event/v1alpha1/event.proto. This does NOT decode
+// signed Nostr JSON, verify identity, decrypt content, or grant authority.
+// Native host lends a valid byte view. The reader never mutates it.
+// Groups and duplicate kind fields are declined in this initial profile.
+ProtoBuffer :: struct { bytes: [] u8; }
+
+var_end :: (buffer:ProtoBuffer,at:int,end:int,maximum:int)->int {
+  cursor:=at;count:=0;
+  while cursor<end && count<maximum {
+    b:=cast(int) buffer.bytes[cursor];
+    if b<0 || b>255 {return -1;}
+    cursor+=1;count+=1;
+    if maximum==10 && count==10 && b>1 {return -1;}
+    if maximum==5 && count==5 && b>15 {return -1;}
+    if b<128 {return cursor;}
+  }
+  return -1;
+}
+var32 :: (buffer:ProtoBuffer,at:int,end:int)->int {
+  next:=var_end(buffer,at,end,5);if next<0 {return -1;}
+  cursor:=at;value:=0;shift:=0;
+  while cursor<next {
+    value=value | ((cast(int) buffer.bytes[cursor]&127)<<shift);
+    cursor+=1;shift+=7;
+  }
+  return value;
+}
+nostr_projection_kind :: (buffer:ProtoBuffer)->int #export_c {
+  size:=buffer.bytes.count;if size<0 || size>1048576 {return -1;}
+  cursor:=0;kind:=-1;
+  while cursor<size {
+    field:=var32(buffer,cursor,size);next:=var_end(buffer,cursor,size,5);
+    if field<=0 || next<0 || (field>>3)==0 {return -1;}
+    cursor=next;wire:=field & 7;
+    if (field>>3)==4 {
+      if wire!=0 || kind>=0 {return -1;}
+      kind=var32(buffer,cursor,size);if kind<0 || kind>65535 {return -1;}
+    }
+    if wire==0 {cursor=var_end(buffer,cursor,size,10);}
+    else if wire==1 {cursor+=8;}
+    else if wire==5 {cursor+=4;}
+    else if wire==2 {
+      length:=var32(buffer,cursor,size);after:=var_end(buffer,cursor,size,5);
+      if length<0 || after<0 || length>size-after {return -1;}
+      cursor=after+length;
+    } else {return -1;}
+    if cursor<0 || cursor>size {return -1;}
+  }
+  return kind;
+}

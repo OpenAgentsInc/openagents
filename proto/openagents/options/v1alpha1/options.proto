@@ -30,4 +30,5 @@ extend google.protobuf.FieldOptions {
   bool required_value = 51004;
   string unit = 51005;
   string grammar = 51007;
+  uint64 exact_bytes = 51008; // Scalar/repeated byte values with a fixed external size.
 }

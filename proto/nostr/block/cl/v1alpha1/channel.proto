@@ -1,0 +1,20 @@
+syntax = "proto3";
+package nostr.block.cl.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-CL. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message ChannelIdentity {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // Relay-signed 39000..39002.
+  optional string channel_id=2 [(openagents.options.v1alpha1.required_value)=true]; optional string channel_type=3; // First t tag only; absence means unknown.
+  repeated string labels=4; // Later t tags in stored order, <=8 distinct labels.
+  optional bytes creator_pubkey=5 [(openagents.options.v1alpha1.exact_bytes)=32]; optional uint64 created_at=6; // P; creation tag only on 39000.
+}
+message ChannelMutation {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // 9007 create / 9002 edit.
+  optional string channel_type=2; Labels labels=3;
+  optional string visibility=4; optional uint64 ttl=5;
+}
+message Labels { repeated string values=1; } // Absent Labels = unchanged; present empty = clear.
+message MembershipNotice { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; optional string channel_id=2; optional bytes recipient=3 [(openagents.options.v1alpha1.exact_bytes)=32]; optional string channel_type=4; } // 44100/44101, only readable by recipient.

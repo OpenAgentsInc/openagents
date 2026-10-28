@@ -1,0 +1,18 @@
+syntax = "proto3";
+package nostr.block.cw.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-CW. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message Cursor { optional uint64 created_at=1 [(openagents.options.v1alpha1.required_value)=true]; optional bytes id=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; } // Composite: both fields or neither; not timestamp-only.
+message ChannelRequest { nostr.event.v1alpha1.Filter filter=1; optional string channel_id=2; optional bool top_level=3; optional bool include_summaries=4; optional bool include_aux=5; Cursor before=6; }
+message ThreadRequest { nostr.event.v1alpha1.Filter filter=1; optional string channel_id=2; optional bytes root=3 [(openagents.options.v1alpha1.exact_bytes)=32]; optional bool thread_window=4; optional uint32 depth_limit=5; optional bool include_aux=6; Cursor before=7; }
+message ThreadSummary { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; optional bytes row_id=2 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.required_value)=true]; optional string channel_id=3 [(openagents.options.v1alpha1.required_value)=true]; optional uint64 reply_count=4 [(openagents.options.v1alpha1.required_value)=true]; optional uint64 descendant_count=5 [(openagents.options.v1alpha1.required_value)=true]; nostr.event.v1alpha1.NullableUInt64 last_reply_at=6 [(openagents.options.v1alpha1.required_value)=true]; repeated bytes participants=7 [(openagents.options.v1alpha1.exact_bytes)=32]; }
+message Bounds {
+  nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; // 39006 channel / 39007 thread; expected relay signer required.
+  optional string channel_id=2 [(openagents.options.v1alpha1.required_value)=true]; optional bytes root=3 [(openagents.options.v1alpha1.exact_bytes)=32]; optional string binding_identifier=4;
+  optional uint32 version=5; optional string direction=6; optional bool has_more=7 [(openagents.options.v1alpha1.required_value)=true];
+  oneof next { Cursor next_cursor=8; nostr.event.v1alpha1.Null exhausted=9; }
+  // Thread binding hashes host/reader/channel/root/limits/kinds/cursor/include_aux.
+}

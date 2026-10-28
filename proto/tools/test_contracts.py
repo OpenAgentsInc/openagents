@@ -125,7 +125,7 @@ class ProtocolTests(unittest.TestCase):
     def test_consumer_profiles_are_selected(self):
         for name, roots in CONFIG['profiles'].items():
             self.assertTrue(roots)
-            self.assertTrue(all(path.startswith('openagents/') for path in roots), name)
+            self.assertTrue(all(path.startswith(('openagents/', 'nostr/')) for path in roots), name)
         self.assertFalse(any('third_party' in root for root in CONFIG['profiles']['metareal']))
 
     def test_foreign_dependency_cannot_enter_engine_profile(self):

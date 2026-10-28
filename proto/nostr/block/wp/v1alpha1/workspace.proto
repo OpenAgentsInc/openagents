@@ -1,0 +1,8 @@
+syntax = "proto3";
+package nostr.block.wp.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// Alpha projection of Block NIP-WP. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+message WorkspaceProfileCommand { nostr.event.v1alpha1.SignedEvent original=1 [(openagents.options.v1alpha1.required_value)=true]; optional string icon=2; } // 9033: missing/empty icon clears. Live relay admin/owner authorization required.

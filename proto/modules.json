@@ -50,6 +50,15 @@
       "includes": [
         "third_party/space"
       ]
+    },
+    "nostr": {
+      "roots": [
+        "nostr"
+      ],
+      "includes": [
+        "."
+      ],
+      "namespace": "nostr."
     }
   },
   "profiles": {
@@ -74,6 +83,30 @@
     ],
     "ios-home": [
       "openagents/metareal/home/v1alpha1/home.proto"
+    ],
+    "nostr-event": [
+      "nostr/event/v1alpha1/event.proto",
+      "nostr/nip42/v1alpha1/auth.proto"
+    ],
+    "block-agent": [
+      "nostr/block/aa/v1alpha1/auth.proto",
+      "nostr/block/ae/v1alpha1/memory.proto",
+      "nostr/block/ao/v1alpha1/observer.proto",
+      "nostr/block/am/v1alpha1/metrics.proto",
+      "nostr/block/ap/v1alpha1/persona.proto"
+    ],
+    "block-identity": [
+      "nostr/block/oa/v1alpha1/owner.proto",
+      "nostr/block/fi/v1alpha1/identity.proto",
+      "nostr/block/fa/v1alpha1/adapter.proto",
+      "nostr/block/ia/v1alpha1/archive.proto"
+    ],
+    "block-channel": [
+      "nostr/block/cl/v1alpha1/channel.proto",
+      "nostr/block/ar/v1alpha1/artifact.proto",
+      "nostr/block/cw/v1alpha1/window.proto",
+      "nostr/block/dv/v1alpha1/visibility.proto",
+      "nostr/block/wp/v1alpha1/workspace.proto"
     ]
   },
   "profile_namespaces": {
@@ -99,6 +132,39 @@
       "openagents.metareal.home.",
       "openagents.engine.",
       "openagents.options."
+    ],
+    "nostr-event": [
+      "nostr.event.",
+      "openagents.options.",
+      "nostr.nip42."
+    ],
+    "block-agent": [
+      "nostr.event.",
+      "openagents.options.",
+      "nostr.nip42.",
+      "nostr.block.oa.",
+      "nostr.block.aa.",
+      "nostr.block.ae.",
+      "nostr.block.ao.",
+      "nostr.block.am.",
+      "nostr.block.ap."
+    ],
+    "block-identity": [
+      "nostr.event.",
+      "openagents.options.",
+      "nostr.block.oa.",
+      "nostr.block.fi.",
+      "nostr.block.fa.",
+      "nostr.block.ia."
+    ],
+    "block-channel": [
+      "nostr.event.",
+      "openagents.options.",
+      "nostr.block.cl.",
+      "nostr.block.ar.",
+      "nostr.block.cw.",
+      "nostr.block.dv.",
+      "nostr.block.wp."
     ]
   }
 }
