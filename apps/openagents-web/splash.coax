@@ -64,7 +64,7 @@ line_cap :: (l: int) -> f32 { return ifx l == 0 then TITLE_CAP else CAP; }
 // keep a margin on a narrow phone.
 fitted_cap :: (l: int, width: f32) -> f32 { return lo(line_cap(l), width * 0.86 / text_width(l)); }
 line_start :: (l: int) -> f32 { return ifx l == 0 then TITLE_START else START; }
-line_y :: (l: int) -> f32 { return ifx l == 0 then 0.2f32 else 0.8f32; }
+line_y :: (l: int) -> f32 { return ifx l == 0 then 0.14f32 else 0.86f32; }
 
 // A glyph is one stroke through points on a 4 wide, 6 high grid, y up.
 // Writes x, y pairs into out and returns how many points.
@@ -256,10 +256,10 @@ coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   title := line_strokes(out[..], 0, 0, 1280, 900, 1, 0, true);
   #assert title > 0;
-  for v: 0..<title { #assert out[v * VERTEX_FLOATS + 1] < 300; }
+  for v: 0..<title { #assert out[v * VERTEX_FLOATS + 1] < 200; }
   all := line_strokes(out[..], title, 1, 1280, 900, 1, 0, true);
   #assert all > title;
-  for v: title..<all { #assert out[v * VERTEX_FLOATS + 1] > 600; }
+  for v: title..<all { #assert out[v * VERTEX_FLOATS + 1] > 700; }
 }
 
 #test "a small output or a missing state draws nothing" {
