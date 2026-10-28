@@ -2,7 +2,11 @@
 // Claude Agent SDK (coax/lib/agent/claude/). The runner (runner.c) starts it
 // in the turn's checkout with only ANTHROPIC_API_KEY, HOME, PATH and
 // OA_AGENT_MODEL, and writes one line:
-//   {"t":"turn","slug","turn":{id,kind,text,by},"history","version","model","budget_usd","repo","cwd"}
+//   {"t":"turn","slug","turn":{id,kind,text,by},"history","version","model","budget_usd","repo","cwd","today",
+//    "workspace":{"kind":"project","budget":"project:SLUG","tools":["project"],"write":true}}
+// The workspace is the seam for other kinds of turn: "tools" lists the tool
+// sets offered ("project" is the project tools), "write" whether Edit and
+// Write are offered in the checkout. Absent, it is a project turn.
 // The model gets the project tools, served in process (SDK MCP server
 // "project"): each call goes to the runner as {"t":"call","id","tool","args"}
 // and comes back as {"t":"reply","id","status","body"}; the runner makes it
@@ -136,6 +140,14 @@ main :: () {
   model := cl_str(targ[..], line, "model");
   cwd := cl_str(targ[..], line, "cwd");
   repo := cl_bool(line, "repo").value;
+  // The workspace: which tools this turn offers. Absent is a project turn.
+  ws := cl_raw(line, "workspace");
+  project_tools := ws.count == 0;
+  writes := ws.count == 0 || !cl_bool(ws, "write").ok || cl_bool(ws, "write").value;
+  if ws.count > 0 {
+    wt := cl_raw(ws, "tools");
+    for i: 0..<cl_count(wt) { if cl_eq(wt, cl_item(wt, i), "project") { project_tools = true; } }
+  }
   budget := cl_num(line, "budget_usd").value;
   if text.count == 0 { en_done(out[..], "failed", "", "the turn has no message", 0.0); return; }
 
@@ -173,11 +185,12 @@ main :: () {
   o[0].model = ifx model.count > 0 then model else "claude-sonnet-5-5";
   o[0].system_prompt = cast(string) sys_buf[0..<sys[0].len];
   o[0].tools_set = true;
-  if repo { for name: FILE_TOOLS { cl_add_tool(o[..], name); } }
+  if repo { for name: FILE_TOOLS { if writes || (name != "Edit" && name != "Write") { cl_add_tool(o[..], name); } } }
   for name: DENIED { cl_add_disallowed(o[..], name); }
   srv := cl_add_server(o[..], "project", "1.0.0");
   names: [8 * 40] u8;
   for k: 0..<8 {
+    if !project_tools { break; }
     r := cl_add_server_tool(o[..], srv, PROJECT_TOOLS[k], PROJECT_ABOUT[k], PROJECT_SCHEMA[k]);
     w: [1] ClOut; w[0].buf = names[k * 40..<(k + 1) * 40];
     cl_put(w[..], "mcp__project__"); cl_put(w[..], PROJECT_TOOLS[k]);
@@ -217,7 +230,7 @@ main :: () {
       path := cl_str(marg[..], ev.request.input, "file_path");
       if path.count == 0 { path = cl_str(marg[..], ev.request.input, "path"); }
       file_tool := false;
-      for name: FILE_TOOLS { if name == tool { file_tool = true; } }
+      for name: FILE_TOOLS { if name == tool && (writes || (name != "Edit" && name != "Write")) { file_tool = true; } }
       if repo && file_tool && (path.count == 0 || en_inside(path, cwd)) { cl_allow(q[..], ev.request.input, ""); }
       else {
         cl_deny(q[..], "Only the project tools, and Read, Glob, Grep, Edit and Write inside the checkout, are allowed.", false);

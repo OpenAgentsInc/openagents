@@ -594,7 +594,8 @@ static void one_turn(const char *slug, const char *next) {
          slug, turn_json, history, version, env("OA_AGENT_MODEL", "claude-sonnet-5-5"), atof(cap) - atof(spent), has_repo ? "true" : "false");
     putq(&first, co);
     char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
-    putf(&first, ",\"today\":\"%s\"}", today);
+    // the workspace: what this turn offers (docs/project-agent.md, "The runner's seam")
+    putf(&first, ",\"today\":\"%s\",\"workspace\":{\"kind\":\"project\",\"budget\":\"project:%s\",\"tools\":[\"project\"],\"write\":true}}", today, slug);
     snprintf(home, sizeof home, "%s/home", dir); mkdir(home, 0700);
     run_engine(slug, first.p, id, co, home, &answer, &error, &cost, status);
     free(first.p); free(history); free(version); free(spent); free(cap);

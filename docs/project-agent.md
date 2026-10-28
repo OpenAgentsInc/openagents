@@ -168,6 +168,26 @@ minutes. A turn that doesn't end done commits nothing.
 checks the document tools. The runner's keys are listed in
 `coax/web/api/runners.conf` so their writes are limited at 600 a minute.
 
+## The runner's seam
+
+The runner is meant to serve more than project turns (a general chat with
+read access to a repository is next). What is project-specific is kept to
+three places:
+
+- **The workspace.** The engine's first line carries
+  `"workspace":{"kind","budget","tools","write"}`. Today the runner always
+  sends `{"kind":"project","budget":"project:SLUG","tools":["project"],"write":true}`.
+  The engine offers the project tools only when `tools` lists `"project"`,
+  and Edit and Write only when `write` is true; Read, Glob and Grep are
+  offered whenever there is a checkout, always limited to it.
+- **The queue and the cap.** Turns come from `projects.api` `next`, and the
+  daily cap is counted per project (`projects.spent`). Another kind of turn
+  needs its own queue op and its own spend keyed by its budget id; the wake,
+  the turn loop, the events batching, STOP and the 15-minute limit don't
+  depend on the project.
+- **The checkout.** `OA_AGENT_REPOS` maps a slug to a repository and deploy
+  key. A read-only workspace would clone without a key and never commit.
+
 ## Deploying and checking it
 
 - `coax/web/agent/deploy.sh` builds one image and deploys `oa-agent-staging`
