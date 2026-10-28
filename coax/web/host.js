@@ -197,17 +197,18 @@ async function report({ buffer, row }, texture) {
   console.log(`coaxial probe ${w}x${h} peak ${peak} mean ${(sum / (px.length / 4)).toFixed(2)}\n${art}`);
 }
 
-// ---- development: messages from `coax serve`
+// ---- development: messages from `coax serve` (localhost only; INVARIANTS.md
+// allows this note, the one piece of HTML a page draws, in development)
 let note = null;
 function say(text, error = false) {
   (error ? console.error : console.log)(`coaxial: ${text}`);
   if (!dev) return;
-  note ||= Object.assign(document.body.appendChild(document.createElement("pre")), { role: "status" });
-  note.style.cssText = `position:fixed;left:12px;bottom:12px;margin:0;max-width:80vw;white-space:pre-wrap;font:12px ui-monospace,monospace;padding:6px 8px;border-radius:6px;background:${error ? "#3a0d0d" : "#111"};color:${error ? "#ffb4b4" : "#9a9a9a"};pointer-events:none`;
+  note ||= Object.assign(document.body.appendChild(document.createElement("pre")), { role: "status" }); // dev only
+  note.style.cssText = `position:fixed;left:12px;bottom:12px;margin:0;max-width:80vw;white-space:pre-wrap;font:12px ui-monospace,monospace;padding:6px 8px;border-radius:6px;background:${error ? "#3a0d0d" : "#111"};color:${error ? "#ffb4b4" : "#9a9a9a"};pointer-events:none`; // dev only
   note.textContent = text;
   clearTimeout(note.timer);
-  if (!error) note.timer = setTimeout(() => (note.textContent = "", note.style.display = "none"), 2500);
-  note.style.display = "block";
+  if (!error) note.timer = setTimeout(() => (note.textContent = "", note.style.display = "none"), 2500); // dev only
+  note.style.display = "block"; // dev only
 }
 
 async function fetchEngine(generation) {

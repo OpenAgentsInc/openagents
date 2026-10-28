@@ -393,3 +393,30 @@ ASan/UBSan, invalid categories/indices, cross-unit layout and expansion limits),
 and `metareal/test_haunt.sh`. The actual app's buffer admission consumes the
 reflected Haunted House stride, layer offset and compile-time scalar table.
 Metal packing and source binary compatibility remain explicit native checks.
+
+## Coaxial pages draw everything in Coax; TypeScript only for browser crypto
+
+Everything a person sees on a Coaxial page (`apps/openagents-web/`, any app
+served by `coax/web/`) is drawn by Coax on the WebGPU canvas: words, the
+graph, the 404 page, the access terminal, presentations, buttons and links.
+No visible HTML elements, no CSS-styled overlays, no DOM-built UI. The page's
+JavaScript is the generic host (`coax/web/host.js`): it owns the GPU, feeds
+input (keys, pointer, text) into the Coax module and does what the module
+asks (navigate, submit a code). TypeScript exists only where the browser's
+crypto and Nostr plumbing need it (`coax/web/unlock/`: phrase checks, NIP-44,
+NIP-59, NIP-42, key storage); it hands results to Coax as data and draws
+nothing.
+
+Allowed HTML, none of it visible to a WebGPU visitor:
+- the `<canvas>`;
+- text for search engines, agents and screen readers, clipped out of sight
+  while the GPU draws (the `.gpu main` rule);
+- the text fallback a browser without WebGPU sees instead (an owner
+  decision, 2026-10-28);
+- a zero-size, transparent `<input>` that only brings up a phone's keyboard;
+- the development-only error note `coax serve` shows on localhost.
+
+Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
+upload) refuses visible elements, inline styling of UI, and DOM-built UI in
+the app's HTML, the host and `coax/web/unlock/`.
+
