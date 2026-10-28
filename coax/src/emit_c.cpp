@@ -961,7 +961,18 @@ struct TypeWriter {
         // C needs only the element's name for a pointer; a header still
         // declares the element so the host can use it.
         if (t->elem->kind != TypeKind::struct_ || header) need(t->elem);
-        out += "typedef struct { " + c_type(t->elem) + " *data; int64_t count; } " + c_type(t) + ";\n";
+        {
+          // A view of a scalar is the same in every library, so headers
+          // from two libraries can be included together.
+          std::string def = "typedef struct { " + c_type(t->elem) + " *data; int64_t count; } " + c_type(t) + ";\n";
+          TypeKind k = t->elem->kind;
+          bool shared = k == TypeKind::integer || k == TypeKind::floating || k == TypeKind::bool_;
+          if (shared) {
+            std::string guard = "COAX_" + c_type(t) + "_DEFINED";
+            def = "#ifndef " + guard + "\n#define " + guard + "\n" + def + "#endif\n";
+          }
+          out += def;
+        }
         break;
       case TypeKind::enum_:
         done.push_back(t);
