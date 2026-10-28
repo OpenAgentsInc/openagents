@@ -75,7 +75,11 @@ check("import: awards, planets (the registry's and the Kiki flow's published one
          == "planet-mekiki65hgyv6087 village name-kiki-65hgyv,planet-avidsvazqc860682 cemetery name-kiki-david-svazqc86"
       and sql("select (invited > 0)::text || ' ' || (saved->>'at') from verse.planet_saves where planet = 'planet-avidsvazqc860682'") == "true 1793132162.5", rep)
 check("import: an automated run keeps its mark", sql("select auto from analytics.playtesters where id = '87934adead43ab54'") == "kiki-e2e")
-check("import: offered changes have their table, chat waits in demo_files",
+check("import: the rooms' chat has its table, its lines numbered in their room",
+      rep["chat"] == {"source": 1, "added": 1, "held": 1}
+      and sql("select room || ' ' || n || ' ' || name || ' ' || text || ' ' || space || ' ' || source from verse.room_chat where import_key is not null")
+         == "haunt 1 Kiki hello dev aethyr-demo-data/dev/chat-haunt.json", rep.get("chat"))
+check("import: offered changes have their table, chat is kept in demo_files too",
       sql("select count(*) from verse.log where world = 'haunt'") == "0" and rep["offers"] == {"source": 1, "added": 1, "held": 1}
       and sql("select state || ' ' || who || ' ' || source from verse.offers where world = 'haunt'") == "waiting Kiki aethyr-demo-data/dev/log-haunt.json"
       and sql("select doc->0->>'text' from verse.demo_files where path = 'aethyr-demo-data/dev/chat-haunt.json'") == "hello")

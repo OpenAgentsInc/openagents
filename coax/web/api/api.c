@@ -18,6 +18,7 @@
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
 //   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)
+//   presence and chat in a room    /api/playtest/presence/<room>, /api/playtest/chat/<room> (room.c)
 //   private projects               /projects/<slug> and /api/private/<slug>/*, members only (private.c)
 #include "api.h"
 
@@ -237,6 +238,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
   if (analytics_route(&q)) return;
   if (npc_route(&q)) return;
+  if (room_route(&q)) return;
   if (player_route(&q)) return;
   if (private_route(&q)) return;
   if (admin_route(&q)) return;

@@ -79,6 +79,11 @@ def rows(data):
                     add("world", prefix + name + "#" + w, space, {"id": w, "owner": o.get("owner"), "at": o.get("at")})
             elif name.startswith("world-"):
                 add("published", prefix + name, space, dict(doc, world=name[6:-5]))
+            elif name.startswith("chat-") and isinstance(doc, list):
+                for m in doc:
+                    if (isinstance(m, dict) and isinstance(m.get("n"), int) and isinstance(m.get("at"), (int, float))
+                            and str(m.get("text", "")).strip()):
+                        count["chat"] = count.get("chat", 0) + 1
             elif name.startswith("log-"):
                 for e in doc:
                     if e.get("state") in ("waiting", "accepted", "declined") and re.match(r"^[A-Za-z0-9_-]{1,64}$", str(e.get("id", ""))):
@@ -136,7 +141,7 @@ def main():
     added, held, kept = got["added"], got["held"], got["kept"]
     kinds = {"event": "events", "player": "players", "world": "worlds", "published": "published", "log": "log",
              "playtester": "playtesters", "answer": "survey_answers", "survey": "surveys", "file": "files", "offer": "offers",
-             "award": "awards", "planet": "planets", "planet_save": "planet_saves"}
+             "award": "awards", "planet": "planets", "planet_save": "planet_saves", "chat": "chat"}
     want = {kinds[k]: n for k, n in source.items() if k in kinds}
     want["sessions"] = len({doc["sid"] for kind, _, _, doc in out if kind == "event"})
     report = {k: {"source": want.get(k, 0), "added": added.get(k, 0), "held": held.get(k, 0)} for k in held}

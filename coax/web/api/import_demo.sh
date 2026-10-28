@@ -9,7 +9,7 @@
 #   coax/web/api/import_demo.sh --staging      oa_analytics_staging
 #   coax/web/api/import_demo.sh --production   oa_analytics
 #
-# The database must have migrations 0009 and 0010 (deploy.sh applies them on start).
+# The database must have migrations 0009 to 0013 (deploy.sh applies them on start).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 case "${1:-}" in
