@@ -1,8 +1,9 @@
 # Coax implementation roadmap
 
 Updated 2026-10-28. Baseline: **coax0 0.13.0**, including source composition,
-CPU layout reflection and the first R0 benchmark/source-debugging slice. This roadmap reconciles the technical review dated
-2026-10-28 with the code that has actually shipped.
+CPU layout reflection and the first R0 benchmark/source-debugging slice. This
+revision incorporates the follow-up technical review while retaining the
+evidence and compatibility limits of what has actually shipped.
 
 The goal is a systems language in which OpenAgents and Metareal can express
 their computation, data, protocols, tools and build policy in Coax. Runtime
@@ -21,8 +22,10 @@ are complete.
 
 ## 1. Starting point
 
-The review describes an older 0.10.0/0.11.0 snapshot. Preserve its criticism
-of missing evidence, but do not schedule existing features as new work.
+The initial review described 0.10.0/0.11.0; the follow-up used a 0.12.0
+snapshot. Preserve their criticism of missing evidence, but do not schedule
+source composition, CPU reflection or the shipped 0.13.0 debugger/benchmark
+slice as new work. The README's obsolete paynet prerequisite is already fixed.
 
 | Area | Shipped | Still missing |
 | --- | --- | --- |
@@ -46,12 +49,15 @@ guarantee follows from the current tests.
 
 ## 2. Order and dependency rules
 
-Finish R0 first. R1–R7 build the language and compiler infrastructure for the
-larger vision. Prove native GPU and browser integration in R8 before committing
-to a new backend. Effects work starts with ownership in R3; the full parallel
-and deterministic runtime is R9. Move the remaining compiler into Coax in R10,
-then complete resident compilation/reload in R11. R12 adds backends only if
-measurements justify them.
+R0 remains the adoption gate for substantial engine migrations and expansion.
+Small conformance, evidence and tooling deliveries can proceed while helping
+close that gate; a missed timing budget must not be relabeled as a pass.
+R1–R7 build the language and compiler infrastructure for the larger vision.
+Prove native GPU and browser integration in R8 before committing to a new
+backend. Effects work starts with ownership in R3; the full parallel and
+deterministic runtime is R9. Complete compiler migration in R10 and resident
+compilation/reload in R11 on their own evidence. R12 remains conditional on
+measurements.
 
 The numbers give the default priority, not an instruction to block an
 independent experiment behind unrelated features. In particular, a browser
@@ -61,21 +67,27 @@ can proceed in small pieces before R10 once each piece has its prerequisites.
 Resident compilation also does not require completed self-hosting; R10 and
 R11 may overlap once their own dependencies and trust boundaries are satisfied.
 
-| Milestone | Required foundations | First useful result |
+Every milestone must name its smallest useful delivery, exact prerequisites,
+real consumer and acceptance evidence. Unrelated work grouped under the same
+number is not a prerequisite. The slices use the existing typed graph and
+shared lowering/report formats introduced below, rather than separate compiler
+frameworks.
+
+| Milestone | First delivery and prerequisites | Expansion and additional prerequisites |
 | --- | --- | --- |
-| R0 — Evidence and debugging | Current compiler/app | A measured live engine kernel that can be debugged from Coax source |
-| R1 — Compiler graph, targets and modules | R0 baseline | Explicit declarations, target descriptions and safe source/module queries |
-| R2 — Results and complete control flow | R1 graph; retain current ABI | A real fallible native adapter expressed with typed errors and cleanup |
-| R3 — Ownership, memory and context | R2 errors; R1 targets | A bounded owning subsystem with diagnosed invalidation and explicit host lifetimes |
-| R4 — Generics and foundational libraries | R1–R3 | Reusable containers and algorithms with constraints and bounded specialization |
-| R5 — Source-aware metadata and derivation | R1 identities/targets, R4 type parameters | One generated engine registry/inspector with stable identities and provenance |
-| R6 — Typed code and storage transformations | R5 metadata, R1 scheduler | Hygienic checked generation and a measured AoS/SoA consumer |
-| R7 — Workspaces, plugins and tools | R1 manifests, R2 errors, R5/R6 checked generation | A real asset/build workflow and safe agent/editor queries |
-| R8 — Native GPU and browser proof | R1 target ABI, R3 resource ownership, R5 layouts; R7 build inputs for reproducibility | The same selected simulation/data path reaches native Metal and a browser |
-| R9 — Effects, strict math and jobs | R3 regions, R4 libraries, R1 target rules | A subsystem replays under checked effects at 1/2/4/8 workers |
-| R10 — Complete compiler migration and distribution | The data, ownership and generation facilities each compiler pass needs | Coax semantic passes and emitters with a small native effects boundary |
-| R11 — Resident compiler and transactional reload | R1/R7 dependencies, R5 stable IDs, R3 ownership; R9 quiescence when workers are used | Measured Mac edit/reload with state preservation and rollback |
-| R12 — Additional backends | Earlier adoption/target evidence and a measured backend bottleneck | A faster debug or optimized path conforming to the reference semantics |
+| R0 — Evidence and debugging | Existing compiler/app: retain the real benchmark/debugger baseline; add scoped evidence and conformance reports | Close measured adoption, device/tail/full-loop, status and independent review gates |
+| R1 — Compiler graph, targets and modules | R1a: existing typed graph and R0 baseline; declaration identities, targets, spans, basic namespaces, content identities and minimal procedure lowering | R1b: generated-work scheduling, richer module configuration and conditional dependencies |
+| R2 — Results and complete control flow | R2a: R1a and lowering; typed results/optionals, exhaustive switching, propagation and cleanup in a real adapter | R2b: argument forms, overloads, variadics and other consumer-driven ergonomics |
+| R3 — Ownership, memory and context | R3a: current typed graph; diagnose simple local-view escapes and define borrow/transfer rules | R3b: R1 targets and R2a errors; owning storage, allocators, containers and context |
+| R4 — Generics and foundational libraries | R4a: R1a and the existing borrowed-value ABI; generic copyable values and non-owning algorithms | R4b: R2a errors and R3b ownership/invalidation before generic owning containers |
+| R5 — Source-aware metadata and derivation | R5a: R1a identities/targets and shipped metadata; narrow derivation for concrete checked types | R5b: R4a type parameters for generic derivation and richer first-class type manipulation |
+| R6 — Typed code and storage transformations | R1b scheduling and relevant R5 metadata; hygienic checked generation for one consumer | Explicit AoS/SoA transformations with measured conversion and runtime costs |
+| R7 — Workspaces, plugins and tools | R7a: current syntax/check APIs for formatting/evidence; R1a for typed queries and revision-bound fixes | R7b: R1b/R2a workspaces/manifests; R5/R6 where privileged plugins actually need checked generation; then `build.coax` |
+| R8 — Native GPU and browser proof | R1 target ABI, R2/R3 host lifetimes and R5 layouts for the selected pipeline | Same pinned native/browser workload; R7 input manifests for reproducibility and broader target evidence |
+| R9 — Effects, strict math and jobs | R3 regions, R4 libraries and R1 target rules | Checked parallel execution and replay at 1/2/4/8 workers |
+| R10 — Complete compiler migration and distribution | The facilities each individual pass needs; retain independent oracles and seeds | Coax semantic passes/emitters, documented trust boundary and supported distributions |
+| R11 — Resident compiler and transactional reload | R11a: R1a interface/layout identities and a quiescent, restricted Mac host; unchanged-ABI procedure-body replacement | R11b: R1/R7 cache inputs, R3 ownership and R5 stable state identities; R9 quiescence when workers exist; migration and rollback |
+| R12 — Additional backends | Earlier adoption/target evidence and a measured backend bottleneck | Faster debug or optimized output conforming to the same semantic profiles |
 
 ### How this relates to spec section 20
 
@@ -108,13 +120,12 @@ whole-engine parity. Finish optimization/profiling, physical-device and tail
 budgets, asset/install/launch/GPU-preparation attribution, status generation
 and independent reference/gate review before closing this milestone.
 
-1. Select and freeze a kernel already called by the live app, preferably the
-   animation pose path in `HomeRenderer.swift`/`metareal/cast.coax`, or the
-   player/collision update if profiling identifies it as more representative.
-   Record inputs, expected outputs, reference source revision and algorithms.
-   Use the historical native implementation where available; otherwise require
-   independent review of a separate reference. The archived paynet pulse is a
-   later candidate until its real source/data/host path is available. A deleted
+1. Retain the frozen live pose kernel in `HomeRenderer.swift`/`metareal/cast.coax`,
+   corpus, tolerance, reference revision and algorithms. Independently review
+   its reader adaptation and assumptions before adoption sign-off. Add a new
+   reference or representative kernel only with a documented reason and its own
+   baseline; do not replace the existing comparison to hide a regression.
+   The archived paynet pulse is a later candidate until its real source/data/host path is available. A deleted
    `src/paynet` directory must not be a fictional prerequisite.
 2. Run the Coax kernel through the actual C ABI and Metal frame path. Measure
    debug/release CPU time, frame tails, copies, allocations and GPU upload cost.
@@ -127,25 +138,99 @@ and independent reference/gate review before closing this milestone.
    compile-time work, generation, C compilation, link, assets, launch and GPU
    preparation. Record generated C size and peak compiler memory. Optimize the
    actual bottleneck before assuming the C backend needs replacement.
-4. Emit original-source mappings and test native compiler errors, sanitizer
-   reports and LLDB breakpoints/stepping/call stacks across loaded units.
-   Start with line directives plus a durable source map; validate rather than
-   assuming line directives solve variable/type inspection or generated code.
+4. Retain the shipped original-source maps and regression evidence for native
+   compiler errors, sanitizer reports and LLDB stepping/values/stacks across
+   loaded units. Expand generated-code/type inspection and target coverage as
+   consumers require it; line directives alone do not complete those workflows.
 5. Define one release/status source from which CLI version, accepted-feature
    tables and book status are generated. Add a publication drift check. Keep
    implementation version, schema version and historical introduction version
-   distinct. The manual 0.12.0 corrections in these docs are not that generator.
+   distinct. Manual status corrections through 0.13.0 are not that generator.
 6. Preserve independent checks and frozen compatibility inputs. Define who
    reviews changes to invariants, oracles and verification policy, with the
    enforcement outside the compiler on owned infrastructure. An author who can
    weaken both code and checks cannot certify their own authority by compiling.
+   Review the relevant dependency graph too: moving a decision into an unmarked
+   helper must not evade review. This strengthens the external gate without
+   changing physical-file `#authority` semantics or making them transitive.
 
 **Exit:** reproducible kernel and whole-loop reports; zero unexpected output or
 allocation regressions; usable original-source native debugging; a versioned
 baseline and an independently enforced review/gate policy. If Coax worsens
 reliability or maintenance, stop feature expansion and fix that first.
 
+### Early semantic conformance delivery
+
+Separate optimization, arithmetic policy, diagnostic instrumentation and
+verification selection. This is a **versioned design/migration task**, not a
+change to shipped 0.13.0 semantics. Today `--release` couples native optimization
+with wrapping runtime integers, while compile-time arithmetic remains checked.
+The app already optimizes checked emitted C externally; expose that combination
+deliberately in compiler profiles before changing defaults.
+
+Prefer checked ordinary integer arithmetic with explicit wrapping operations
+as the eventual design, subject to compatibility review and a documented
+migration. Preserve existing programs' named legacy behavior during that
+migration. Choosing optimization must not silently select wrapping arithmetic
+for an authority component. Record all profile dimensions in module/artifact
+metadata, compatibility decisions, cache keys and evidence; define mixed-profile
+call boundaries explicitly. Verification selection must never bypass existing
+authority requirements.
+
+Add same-profile unoptimized/optimized conformance for overflow, casts, shifts,
+division edges, evaluation order and cleanup. Specify typed `f32` decimal
+rounding, including whether it rounds directly to binary32 or through binary64.
+Keep `1.0000000596046448`, exact midpoints and adjacent decimal values as
+independent-oracle fixture candidates. The current binary64-plus-f32-hint path
+is documented; this is an unresolved conformance concern, not a confirmed
+compiler bug or permission to change literal semantics silently.
+
+Generate an **optional separate native check executable** for eligible checks.
+Run pinned inputs/assertions through the evaluator and emitted unoptimized and
+optimized procedures under matching semantic policies. Compare values, specified
+traps and caller-buffer writes; record intentional compile-time/runtime profile
+differences instead of misclassifying them. The current evaluator checks remain
+required and test code stays out of shipping programs. Extend to Wasm only as
+that target's execution contract is proved.
+
+Add valid-program differential generation and reduction across arithmetic,
+branches, aggregates, views, cleanup and compile-time/runtime expressions.
+Generate only defined, supported behavior so mismatches are meaningful; malformed
+input fuzzing remains a separate activity. Deliberately seeded evaluator/emitter
+defects must be caught, and minimized mismatches retained as regressions. Keep
+independent numeric, layout and protocol oracles: agreement is not a proof.
+
+### Early evidence and authoring tools
+
+Start one versioned evidence record using existing commands before waiting for
+plugins or a resident compiler. Bind each claim to source/dependency content,
+compiler/toolchain, target, semantic profile, check/domain selection, execution
+mode, budgets, mutation policy and artifact identities. Keep distinct outcomes:
+**passed**, **counterexample**, **inconclusive**, **infrastructure error** and
+**not checked**. Missing execution or exhausted analysis is not a pass.
+
+Mutation records distinguish assertion-detected changes, specified traps,
+rejected/ill-typed candidates, resource exhaustion, infrastructure failures,
+survivors and any historical reviewed-equivalence annotations. A resource-limit
+failure is a semantic kill only when a resource/termination bound is itself the
+stated property. Equivalence is not an assertion kill or permission to add
+exemptions; retain the repository's zero-survivor authority gates. Classifications
+must expose uncertainty rather than weaken the existing gate to improve a score.
+
+Add a small frozen authoring-task corpus: change a kernel, add a field, repair a
+type error and update a protocol adapter; add invalid-lifetime tasks when that
+diagnostic exists. Pin starting revisions, tools/models and budgets. Measure
+independently accepted completion, repair iterations, unintended edits, review
+effort and elapsed edit-to-result time. Agents must not edit away the task's
+oracle. This evaluates the authoring loop alongside compiler/runtime cost.
+R7a can consume these records and existing diagnostics immediately.
+
 ## 4. R1 — Build the compiler substrate once
+
+**R1a first:** declaration identities, target descriptions, source spans,
+basic namespaces/content identities and the procedure lowering contract below.
+**R1b later:** general generated-work scheduling and richer module configuration.
+Do not make basic symbol tools wait for the entire scheduler.
 
 Replace repeated whole-program assumptions with explicit declaration work:
 names/signatures, constant/type dependencies, layouts, bodies, generated work
@@ -170,6 +255,19 @@ only the selected branch resolves/checks/emits, and self-dependent conditions
 fail. No automatic package downloads. Extend `deps` with content identities
 without mislabeling today's path inventory as a lockfile or cache key.
 
+Define an inspectable semantic lowering shared by the evaluator, analyses and
+emitters: ordered operations, control-flow edges, places/storage writes,
+cleanup, recoverable exits, fatal traps and source provenance. Start with the
+minimum necessary structure, not a new frontend or a mandatory optimizing SSA
+framework. Retain the existing checked graph as the source of truth.
+
+Pin left-to-right operands, destination-before-value assignment and exactly-once
+compound-assignment destinations. Include two potentially trapping operands
+with no explicit calls, returned-value computation before deferred mutation,
+nested cleanup/early exits and, once available, `try` propagation. The lowered
+form must explain native behavior under each supported optimization profile.
+These are conformance requirements, not assertions of existing miscompilation.
+
 **Consumer/gate:** split one real engine subsystem and the compiler graph into
 modules without weakening authority or changing behavior. Test cross-module
 cycles, private names, configuration invalidation and original diagnostics.
@@ -180,10 +278,20 @@ WebGPU host is a narrow consumer, not complete browser support.
 
 ## 5. R2 — Make fallible application code expressible
 
+**R2a first:** tagged results/optionals, exhaustive switching, propagation and
+cleanup in one real adapter. **R2b later:** richer procedures and adjacent forms
+only as consumers require them.
+
 Implement tagged unions, optionals, exhaustive `switch`, typed results,
 ignored-error diagnostics, `try` and `or_else`. Propagation must execute active
 `defer` cleanup exactly once in reverse order. Keep fatal traps distinct from
 recoverable domain errors; foreign error domains/codes must survive adapters.
+Define that distinction normatively with the implementation: recoverable errors
+execute normal cleanup, whereas fatal traps terminate according to the runtime
+contract and promise neither normal `defer` cleanup nor safe continuation.
+Expected malformed input should produce a typed error before an invariant trap.
+Do not resume execution after invalid memory access by translating traps into
+recoverable exceptions.
 
 Add multiple returns, named/default arguments, typed variadics, procedure
 values/callbacks and well-defined overload resolution in small steps. Preserve
@@ -204,11 +312,52 @@ deferred release on early exits and callbacks ending at the host boundary.
 Unsafe raw unions are not a prerequisite; admit them later only with explicit
 discriminator/layout rules and a concrete foreign-interface need.
 
+### Shared R2/R3 asynchronous host contract
+
+Define created, submitted, cancellation-requested, completed and retired states
+before adding language-level async syntax. Cancellation requests do not imply
+callback suppression or resource retirement: the adapter must establish when
+completion can no longer access input storage or callback context. Specify
+ownership while pending, owner disappearance, completion thread/queue, exactly
+once committed effects, release responsibility and generation-checked reuse.
+
+Use pure sequence checks for cancellation then late completion, duplicate
+completion, pending-owner destruction and handle reuse. A real native adapter
+must separately show no stale access, double release or duplicate committed
+effect under those orderings. No `async/await` feature is a prerequisite.
+Protocol validation binds particular bytes and relevant state revisions;
+mutating backing bytes or changing domain state can require revalidation.
+
 ## 6. R3 — Make ownership and allocation policies explicit
+
+**R3a first:** diagnose straightforward returns/escapes of local-backed views
+using the current typed graph, and define the borrow/transfer discipline.
+**R3b later:** owning allocations, containers and context after error/cleanup
+and target contracts exist. Early escape diagnostics do not establish general
+memory safety.
 
 Specify non-null/nullable pointers, address/dereference operations, initialization,
 borrows and invalidation before adding an allocator-shaped convenience API.
-Retain shallow value/view semantics. Define a conservative region discipline
+Preserve existing value copies for copyable structs/arrays and shallow borrowed
+view descriptors. Reconcile ownership before containers by defining four cases:
+
+| Category | Assignment/pass/return contract |
+| --- | --- |
+| Copyable value | Copy the value without duplicating an ownership obligation |
+| Borrowed view/reference | Copy the borrow; never extend its owner's lifetime |
+| Owning value | Transfer ownership under explicit move rules; duplication requires an explicit clone |
+| Unchecked pointer/foreign reference | State the unchecked boundary; no inferred ownership guarantee |
+
+A struct containing an owner must not become freely copyable. Specify transfer
+into fields, parameters and returns, use after transfer, and double destruction.
+Resolve `defer destroy(...)` before permitting an owner to move: reject the
+transfer, transfer/disarm the cleanup obligation explicitly, or use another
+defined rule. Never leave two apparent owners. Explicit destruction and
+`defer` can remain; automatic destructors are not required.
+
+Distinguish read-only access from immutable backing storage: another writable
+alias can invalidate decoded-view assumptions. Define writable/read-only borrows
+and retained-return rules. Define a conservative region discipline
 for admitted APIs, including subranges, overlapping views and escaping scratch.
 Unchecked pointer/foreign operations stay explicit and do not acquire a memory
 safety guarantee from an annotation.
@@ -228,9 +377,19 @@ accidentally with Swift or independently built modules.
 world or codec workflow into an owning Coax abstraction. Test allocator failure,
 growth, stale handles, reset, aliasing, background/foreground and cancellation
 under sanitizers. No hidden per-frame allocation or escaped temporary survives.
+Include transfers with pending cleanup, attempted double destruction, borrowed
+returns, stale views after growth/reset and writes through other aliases.
+For each violation state whether it is rejected statically, detected dynamically
+or remains unchecked; do not claim the last category is covered by annotations.
 Start effect summaries here; do not enable parallel execution yet.
 
 ## 7. R4 — Generics, constraints and foundational libraries
+
+**R4a first:** generic copyable values and non-owning operations over fixed
+arrays/views, using R1a identities/targets and the current borrowed ABI. They
+need neither dynamic allocation nor implicit context. Preserve the stated
+lifetime limits; this slice does not infer ownership safety. **R4b later:**
+generic owning containers require R2 errors and R3 transfer/invalidation rules.
 
 Implement `$T`/`$N` parameters, generic procedures/types and constraint checking
 with source-level instantiation traces. Specialization keys include resolved
@@ -257,7 +416,12 @@ the hook must be pure, typed and bounded, not a mutable compiler escape hatch.
 
 ## 8. R5 — Source-aware reflection and useful derivation
 
-Build on the shipped layout queries. Add first-class `Type`, borrowed `Any`,
+**R5a first:** narrow derivation over concrete, already-checked types using
+R1a identities/targets and the shipped layout queries. It does not require
+generic owning containers, general macros or full first-class type manipulation.
+**R5b later:** generic derivation needs R4a; richer reflection grows by consumer.
+
+Build on the shipped layout queries. Later add first-class `Type`, borrowed `Any`,
 declaration/field annotations, defaults, procedure signatures and later effect
 metadata through versioned records. Keep compile-time host values distinct
 from target values. Expose source identity and provenance to tools without
@@ -306,9 +470,32 @@ representation unless the workload supports the transformation.
 
 ## 10. R7 — Build workspaces, plugins and safe tooling
 
-First define isolated workspaces, staged typed events and an input manifest.
-Then add plugins through scoped handles and checked proposals. Generated work
-must converge before `complete`; a plugin cannot mark unchecked code valid.
+### R7a — Useful tools before privileged builds
+
+Ship a formatter and the R0 evidence format from current syntax/check APIs.
+Add restricted typed symbol/layout queries and structured fixes as R1a exposes
+their inputs; effect and expansion queries wait for those features, not the
+other way around. Extend existing JSON diagnostics, `layout`, `deps` and source
+maps instead of making another semantic frontend.
+
+Fixes carry exact source ranges and expected document/content identities;
+reject stale edits and evidence rather than guessing at the current buffer.
+Offer bounded, credential-free editor/agent analysis that does not implicitly
+run privileged build plugins. Distinguish analysis performed from checks not
+selected; missing generated inputs remain explicit, never invented symbols.
+This does not wait for macros, generic owning containers or `build.coax`.
+
+**Gate:** a real authoring workflow; formatter idempotence and semantic
+preservation, stale-fix/evidence rejection, useful structured diagnostics and
+restricted queries without host side effects. Use the frozen task corpus to
+measure accepted completion and repair/review effort, not a selected demo alone.
+
+### R7b — Workspaces, plugins and build programming
+
+Define isolated workspaces, staged typed events and an input manifest on R1b
+and R2a. Add plugins through scoped handles and checked proposals, taking on
+R5/R6 dependencies only where their generation actually requires them.
+Generated work must converge before `complete`; a plugin cannot mark unchecked code valid.
 Its identity/version/options/inputs participate in the dependency graph.
 
 Make file/process/environment/network capabilities explicit and deny them in
@@ -324,10 +511,9 @@ existing builds before replacing shell or project lists. Add offline package
 locks/tool provisioning and verified local caching; remote caching and signing
 need their own trust/authenticity gates. Imports never implicitly fetch code.
 
-Ship a formatter, typed symbol/layout/effect queries, expansion views and a
-safe compiler-service/LSP analysis mode. Agents should get stable diagnostics,
-dependency/provenance queries and evidence records, not scrape emitted text or
-silently execute privileged plugins. Report missing generated inputs honestly.
+Extend R7a into compiler-service/LSP operation, richer effect/expansion queries
+and workspace-aware evidence as their semantics become available. Keep its safe
+analysis path independent of privileged execution.
 
 **Consumer/gate:** generate and build one real asset/registry/app workflow.
 Test deterministic outputs, denied effects, changed-input invalidation,
@@ -432,6 +618,24 @@ R2–R7 provide enough facilities for the next compiler pass.
 
 ## 14. R11 — Resident compiler and transactional reload
 
+### R11a — Restricted procedure-body replacement
+
+Before semantic caching or general migration, use a deliberately restricted
+Mac host to replace bodies behind unchanged exports, calling conventions,
+semantic profiles and layout fingerprints. R1a interface identities and a
+defined quiescent host lifecycle are enough; plugins, full self-hosting and
+owning generic containers are not prerequisites. Keep persistent storage and
+platform resources in the resident host.
+
+Reject changed layouts/exports, escaped callbacks/code pointers, outstanding
+old frames and unsupported worker activity. Admit replacement only at an
+established safe point; rejecting an unsupported case is part of the feature.
+Retain the old callable table until candidate validation/publication succeeds.
+Measure edit-to-visible-result for an actual controller/world change. This
+experiment must show value before paying for general state migration.
+
+### R11b — Resident semantics and transactional migration
+
 Use content/declaration dependencies to build a bounded resident cache. Test
 invalidation across targets, modules, descriptors, plugins, generics and build
 options, with full-build output as the oracle. Preserve safe analysis mode.
@@ -498,6 +702,13 @@ the book and generated status reference in the same release. Preserve working
 native paths until replacement parity is demonstrated. Independent oracles and admission
 rules cannot be weakened merely to make a port green.
 
+Retain results with their source/dependency, target/profile, toolchain and
+artifact identities. Re-run affected gates when those inputs or behavior change;
+a remote commit or rebase alone is not a reason to repeat a full bootstrap or
+unrelated suite. Evidence with changed or unknown required inputs is not
+reusable. Fast edit-time selection and fuller release checks remain distinct;
+this does not waive authority gates or release policy.
+
 No phase introduces mandatory GC, hidden deep copies, exceptions, virtual
 inheritance, automatic dependency fetching or platform-signing bypasses.
 General-purpose memory safety and arbitrary formal proof are not implied by
@@ -505,15 +716,53 @@ the roadmap. The useful end state is an inspectable Coax development loop and
 real applications with explicit contracts and evidence, not every imaginable
 language feature.
 
+### Optional bounded-verification research
+
+Keep this off the critical path and outside ordinary compiler/build dependencies.
+Try an external bounded checker on one real scalar decision, length calculation
+or state transition with explicit pre/postconditions. Start without general
+heap, concurrency, host calls or broad floating-point claims. An emitted-C
+experiment is not automatically a proof of Coax semantics.
+
+Use the same evidence format: source/lowering identity, assumptions, bounds,
+tool version, execution semantics and outcome. Distinguish no counterexample
+within an explored bound from coverage of all relevant executions; check loop
+bound sufficiency explicitly. Continue only if one actual routine gets stronger
+coverage than enumeration at manageable cost. No solver/proof syntax, mandatory
+dependency or new milestone is justified before that result.
+
 ## 17. Next implementation sequence
 
-1. Record the R0 benchmark kernel/reference, input corpus and acceptance budget.
-2. Add stage timing/generated-size/allocation reports and establish the baseline
-   on the actual frame path; retain raw measurements.
-3. Implement and test original-source native debugging before increasing the
-   amount of generated/generic code developers must debug.
-4. Add release/status generation and independently enforced oracle/invariant
-   change review; keep the existing compiler/bootstrap/product gates green.
-5. Begin R1's declaration/target graph, use it for real modules and run the small
-   wasm32 feasibility test. Then proceed through the dependency table, shipping
-   consumer-sized slices rather than attempting an entire phase in one patch.
+This is a priority queue, not a serial barrier. Formatting, scoped evidence
+and simple escape diagnostics can start from current APIs while R0 measurements
+and review remain open; every slice still needs its listed prerequisites.
+
+1. **Finish the existing R0 baseline.** Profile the measured pose gap; retain
+   the frozen reference and current debugging results. Complete device/tail
+   budgets, full-loop attribution, release/status generation and independent
+   review enforcement. Do not repeat shipped kernel selection/debugging or
+   weaken a budget to close the milestone. Start scoped evidence and the
+   authoring-task corpus alongside this work.
+2. **Pin semantic profiles and native check execution.** Specify compatibility
+   and migration before changing arithmetic; expose optimized checked execution,
+   add literal/ordering vectors and run eligible checks on emitted native code.
+   Keep the optional bounded-checker experiment separate.
+3. **Deliver R1a.** Declaration/content identities, explicit targets, original
+   spans, basic namespaces and minimal inspectable procedure lowering. Use
+   differential fixtures and independent oracles to pin execution semantics;
+   R1b scheduling/configuration can follow in smaller deliveries.
+4. **Ship R7a tools early.** Formatting/evidence can use current APIs; typed
+   queries and revision-bound fixes use R1a. Restricted analysis and useful
+   diagnostics must not wait for plugins, macros or owning containers.
+5. **Deliver R2a/R3a, then owning storage.** Typed results, exhaustive cleanup,
+   simple escape diagnoses, transfer/deferred-destruction rules and one real
+   asynchronous adapter. R4a non-owning generics and R5a concrete derivation
+   can proceed on their narrower prerequisites; owning libraries wait for R3b.
+6. **Test platform and iteration assumptions early.** Extend Coaxial's existing
+   wasm32 probe and run R11a's unchanged-layout Mac replacement experiment
+   once their exact prerequisites exist. Neither implies full browser support
+   or general transactional migration.
+7. **Expand through consumers.** Complete richer generics/derivation, R7b
+   workspaces, GPU interfaces and jobs using the dependency table. Continue
+   self-hosting in reviewable slices; gate full migration/reload, optional
+   proof tooling and extra backends on their own evidence.
