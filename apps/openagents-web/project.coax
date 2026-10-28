@@ -178,22 +178,21 @@ rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light
   return at;
 }
 
-// A panel's frame: the outline with clipped corners, faint, and brighter
-// brackets on two corners, as the HUD's panels have.
+// A panel's frame: the outline, faint, with 45° cuts on the plain corners
+// (top right, bottom left) and square, bright L brackets on the highlighted
+// ones (top left, bottom right), as the HUD's panels have.
 frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
   k := ink(p, INK_ORANGE);
   v := at; f := 0.28 * p.fade;
-  xs := [9] f32.[b.x0 + cut, b.x1 - cut, b.x1, b.x1, b.x1 - cut, b.x0 + cut, b.x0, b.x0, b.x0 + cut];
-  ys := [9] f32.[b.y0, b.y0, b.y0 + cut, b.y1 - cut, b.y1, b.y1, b.y1 - cut, b.y0 + cut, b.y0];
-  for i: 0..<8 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, f); }
-  // the brackets: top left and bottom right, bright
+  xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
+  ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, f); }
+  // the brackets: square, top left and bottom right, bright
   arm := lo(36 * p.d, box_w(b) * 0.25);
-  v = rule(out, v, b.x0, b.y0 + cut + arm * 0.6, b.x0, b.y0 + cut, k, p.fade);
-  v = rule(out, v, b.x0, b.y0 + cut, b.x0 + cut, b.y0, k, p.fade);
-  v = rule(out, v, b.x0 + cut, b.y0, b.x0 + cut + arm, b.y0, k, p.fade);
-  v = rule(out, v, b.x1, b.y1 - cut - arm * 0.6, b.x1, b.y1 - cut, k, p.fade);
-  v = rule(out, v, b.x1, b.y1 - cut, b.x1 - cut, b.y1, k, p.fade);
-  v = rule(out, v, b.x1 - cut, b.y1, b.x1 - cut - arm, b.y1, k, p.fade);
+  v = rule(out, v, b.x0, b.y0 + arm * 0.6, b.x0, b.y0, k, p.fade);
+  v = rule(out, v, b.x0, b.y0, b.x0 + arm, b.y0, k, p.fade);
+  v = rule(out, v, b.x1, b.y1 - arm * 0.6, b.x1, b.y1, k, p.fade);
+  v = rule(out, v, b.x1, b.y1, b.x1 - arm, b.y1, k, p.fade);
   return v;
 }
 

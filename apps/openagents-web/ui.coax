@@ -581,23 +581,19 @@ bar :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32
   return at + 6;
 }
 
-// A HUD element: the bar, and brackets that mark its corners at a glance:
-// a bright line across each of its two cut corners and an L at each square
-// one, a little outside.
+// A HUD element: the bar, and brackets that mark its corners at a glance.
+// Highlighted corners are square: an L at top left and bottom right, a
+// little outside. The 45° cuts are only on the plain corners, top right and
+// bottom left (the shader mirrors metareal_bar in x to put them there).
 hud :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32, red: f32, green: f32, blue: f32) -> int {
   vertices := bar(out, at, b, k, press, flash, light, red, green, blue);
-  c := 14 * k;           // metareal_bar's cut
   o := 4 * k;            // the brackets' distance outside
   t := lo(10 * k, (b.y1 - b.y0) * 0.3);
   core := 0.6 * k; glow := 5 * k; l := light * 0.95;
-  // the cut corners: top left and bottom right
-  s := o * 1.4142;
-  if lit(out, vertices, b.x0 - s + c * 0.15, b.y0 + c * 0.85, b.x0 + c * 0.85, b.y0 - s + c * 0.15, core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
-  if lit(out, vertices, b.x1 + s - c * 0.15, b.y1 - c * 0.85, b.x1 - c * 0.85, b.y1 + s - c * 0.15, core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
-  // the square corners: top right and bottom left
-  xs := [2] f32.[b.x1 + o, b.x0 - o]; ys := [2] f32.[b.y0 - o, b.y1 + o];
+  // the square corners: top left and bottom right
+  xs := [2] f32.[b.x0 - o, b.x1 + o]; ys := [2] f32.[b.y0 - o, b.y1 + o];
   for i: 0..<2 {
-    dx := ifx i == 0 then -t else t; dy := ifx i == 0 then t else -t;
+    dx := ifx i == 0 then t else -t; dy := ifx i == 0 then t else -t;
     if lit(out, vertices, xs[i] + dx, ys[i], xs[i], ys[i], core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
     if lit(out, vertices, xs[i], ys[i], xs[i], ys[i] + dy, core, l, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
   }

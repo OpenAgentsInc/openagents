@@ -53,7 +53,7 @@ fn panel(p: vec2f, under: vec3f) -> vec3f {
   if (u.alpha <= 0.0) { return under; }
   let half = (u.panel.zw - u.panel.xy) * 0.5;
   let q = p - (u.panel.xy + half);
-  let inside = -coax_p_cut_distance(q.x, q.y, half.x, half.y, max(u.k, 1.0));
+  let inside = -coax_p_cut_distance(-q.x, q.y, half.x, half.y, max(u.k, 1.0));
   if (inside <= -1.0) { return under; }
   var tint = vec3f(1.0, 0.55, 0.12);
   if (u.tint > 0.5 && u.tint < 1.5) { tint = vec3f(1.0, 0.24, 0.24); }
@@ -179,7 +179,7 @@ struct V {
     // shape its half width, half height, scale and light. As iOS draws it,
     // a press shrinks the bar a little.
     let p = v.place / (1.0 - 0.03 * v.bar.x);
-    let c = metareal_bar(p.x, p.y, v.shape.x, v.shape.y, v.shape.z, u.time, v.bar.x, v.bar.y);
+    let c = metareal_bar(-p.x, p.y, v.shape.x, v.shape.y, v.shape.z, u.time, v.bar.x, v.bar.y);
     return vec4f(v.tint.rgb * c * v.shape.w * u.fade, 1.0);
   }
   if (mode > 1.5 && mode < 2.5) {

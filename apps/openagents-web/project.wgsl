@@ -45,14 +45,14 @@ fn fbm(q: vec2f) -> f32 {
   return vec4f(c, 1.0);
 }
 
-// A HUD panel's glass: dark, its corners clipped at 45°, faint scanlines and
+// A HUD panel's glass: dark, its plain corners (top right, bottom left) clipped at 45°, faint scanlines and
 // an orange glow inside its edge.
 fn panel(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   let alpha = s.y * u.fade;
   if (alpha <= 0.0) { return under; }
   let x = p.x - r.x; let y = p.y - r.y; let w = r.z - r.x; let h = r.w - r.y;
   let side = min(min(x, w - x), min(y, h - y));
-  let corner = min(min(x + y, (w - x) + y), min(x + (h - y), (w - x) + (h - y))) - s.x;
+  let corner = min((w - x) + y, x + (h - y)) - s.x;
   let inside = min(side, corner * 0.7071);
   if (inside <= 0.0) { return under; }
   let tint = vec3f(1.0, 0.55, 0.12);
