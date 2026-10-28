@@ -28,7 +28,7 @@ gcloud storage rsync -r gs://aethyr-demo-data "$work/data" --quiet >/dev/null 2>
 port=$((55800 + RANDOM % 200))
 cloud-sql-proxy "$project:us-central1:openagents-production-pg" --port "$port" \
   --token "$(gcloud auth print-access-token)" >"$work/proxy.log" 2>&1 & proxy=$!
-for _ in $(seq 30); do grep -q "ready for new connections" "$work/proxy.log" && break; sleep 0.5; done
+for _ in $(seq 30); do grep -qs "ready for new connections" "$work/proxy.log" && break; sleep 0.5; done
 # The secret is a libpq conninfo for the Cloud Run socket; here it goes through the proxy.
 url="$(gcloud secrets versions access latest --secret "$secret" --project "$project")"
 # The password goes in the environment, not on a command line.
