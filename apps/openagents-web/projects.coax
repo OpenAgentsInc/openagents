@@ -1,0 +1,808 @@
+// /projects, drawn by Coax: every project a person may see, in the HUD style
+// of /projects/coax. Each row is a project (its name, one line about it, its
+// open, ready and done tasks, who is working on it now and when it was last
+// active); a click or Enter opens its page. The filter is MINE or ALL.
+//
+// The rows are PROJECTS_ROWS (projects/list.coax, made by
+// coax/web/project/list.ts; its header says the columns). Who "me" is comes
+// from one place: the viewer's hex pubkey, sent in as message MSG_VIEWER by
+// whatever confirms it (a session the server checked, or a NIP-07 signer).
+// Until sign-in exists nothing sends it, and MINE says sign-in is needed.
+// The rules (docs/protocol/2026-10-28-projects.md, "Who sees a project"):
+//   a public project shows to everyone;
+//   a private one only to its members: the owner, a maintainer or a contributor;
+//   MINE is the projects the viewer is a member of, and it is the first
+//   choice when there are any.
+
+#load "font.coax";
+#load "projects/list.coax";
+
+VERTEX_FLOATS :: 12;
+MAX_VERTICES :: 60000;
+PANELS :: 10;
+UNIFORM_FLOATS :: 88;
+MODE_STROKE :: 0.0;
+GAP :: 0.34;
+SPACE :: 0.95;
+MAX_SHOWN :: 256;
+INBOX :: 256;
+OUTBOX :: 160;
+
+// the rows' columns
+C_SLUG :: 0; C_NAME :: 1; C_DESC :: 2; C_CONTRIB :: 3; C_VIS :: 4; C_OPEN :: 5; C_READY :: 6; C_DONE :: 7;
+C_WORKING :: 8; C_LAST :: 9; C_LAST_AT :: 10; C_PAGE :: 11; C_OWNER :: 12; C_MEMBERS :: 13;
+
+FILTER_AUTO :: 0; FILTER_MINE :: 1; FILTER_ALL :: 2;
+
+// input, as coax/web/host.js sends it
+K_ENTER :: -2; K_LEFT :: -4; K_RIGHT :: -5; K_UP :: -6; K_DOWN :: -7; K_HOME :: -8; K_END :: -9;
+P_DOWN :: 0; P_MOVE :: 1; P_UP :: 2;
+MSG_VIEWER :: 3;     // the signed-in viewer's hex pubkey; empty: signed out
+ACT_NAVIGATE :: 1;
+
+// what the pointer is on
+HIT_NONE :: -1; HIT_MINE :: -2; HIT_ALL :: -3; HIT_HOME :: -4;
+
+ProjectsState :: struct {
+  time: f32;
+  frames: int;
+  ready: bool;                       // set up on the first frame: nothing chosen, nothing under the mouse
+  width: f32; height: f32; d: f32;   // the last frame's canvas, for hit tests
+  filter: int;                       // FILTER_AUTO until the viewer picks
+  sel: int;                          // the row the keys are on (-1 none)
+  hot: int;                          // what the mouse is over: a row, a HIT_, or HIT_NONE
+  press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
+  scroll: f32;                       // device pixels the list is scrolled
+  viewer: [64] u8; viewer_n: int;
+  inbox: [INBOX] u8;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+}
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.002 { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v];
+    out[o + 3] = c[v];
+    out[o + 4] = length;
+    out[o + 5] = core;
+    out[o + 6] = light;
+    out[o + 7] = glow;
+    out[o + 8] = red;
+    out[o + 9] = green;
+    out[o + 10] = blue;
+    out[o + 11] = mode;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- ink and text
+
+Pen :: struct { d: f32; fade: f32; time: f32; }
+INK_WHITE :: 0; INK_DIM :: 1; INK_ORANGE :: 2; INK_PALE :: 3; INK_FAINT :: 4;
+ink :: (p: Pen, kind: int) -> Ink {
+  k := Ink.{core = 0.5 * p.d, light = 0.9 * p.fade, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
+  if kind == INK_DIM { k.light = 0.48 * p.fade; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
+  if kind == INK_FAINT { k.light = 0.3 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
+  if kind == INK_ORANGE { k.light = 1.0 * p.fade; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
+  if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
+  return k;
+}
+
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+put :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, at, text, x, y, cap, GAP, SPACE, k, false, false);
+}
+put_right :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return put(out, at, text, x - text_width(text, cap), y, cap, k);
+}
+fits :: (text: string, cap: f32, width: f32) -> int {
+  if text_width(text, cap) <= width { return text.count; }
+  n := 0; i := 0;
+  while i < text.count {
+    r := decode(text, i);
+    if text_width(text[0..<i + r.len], cap) > width - text_width("...", cap) { break; }
+    i += r.len; n = i;
+  }
+  return n;
+}
+put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32) -> int {
+  n := fits(text, cap, width);
+  if n >= text.count { return put(out, at, text, x, y, cap, k); }
+  v := put(out, at, text[0..<n], x, y, cap, k);
+  return put(out, v, "...", x + text_width(text[0..<n], cap) + GAP * cap, y, cap, k);
+}
+// Text wrapped to width, at most lines lines, the last cut with "..." when more is left.
+put_wrapped :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32, lines: int) -> int {
+  v := at; from := 0; n := 0;
+  next: [1] int;
+  while from < text.count && n < lines {
+    end := wrap(text, from, width / cap, GAP, SPACE, false, next[..]);
+    if n == lines - 1 && next[0] < text.count && next[0] > from { v = put_fit(out, v, text[from..<text.count], x, y + step * cast(f32) n, cap, k, width); n += 1; break; }
+    v = put(out, v, text[from..<end], x, y + step * cast(f32) n, cap, k);
+    n += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  return v;
+}
+
+// Bytes of text into buf at at; returns how many fit.
+put_text :: (buf: [] u8, at: int, text: string) -> int {
+  n := 0;
+  while n < text.count && at + n < buf.count { buf[at + n] = text[n]; n += 1; }
+  return n;
+}
+
+// ---------------------------------------------------------------- HUD pieces
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+box_w :: (b: Box) -> f32 { return b.x1 - b.x0; }
+box_h :: (b: Box) -> f32 { return b.y1 - b.y0; }
+inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light: f32) -> int {
+  if lit(out, at, ax, ay, bx, by, k.core, light, k.glow, k.red, k.green, k.blue, k.mode) { return at + 6; }
+  return at;
+}
+
+// A panel's frame, as /projects/coax draws it: faint outline, 45° cuts on the
+// plain corners, bright square brackets top left and bottom right.
+frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
+  k := ink(p, INK_ORANGE);
+  v := at; f := 0.28 * p.fade;
+  xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
+  ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, f); }
+  arm := lo(36 * p.d, box_w(b) * 0.25);
+  v = rule(out, v, b.x0, b.y0 + arm * 0.6, b.x0, b.y0, k, p.fade);
+  v = rule(out, v, b.x0, b.y0, b.x0 + arm, b.y0, k, p.fade);
+  v = rule(out, v, b.x1, b.y1 - arm * 0.6, b.x1, b.y1, k, p.fade);
+  v = rule(out, v, b.x1, b.y1, b.x1 - arm, b.y1, k, p.fade);
+  return v;
+}
+
+title_room :: (p: Pen) -> f32 { return 34 * p.d; }
+titled :: (out: [] f32, at: int, b: Box, title: string, note: string, p: Pen) -> int {
+  cap := 8 * p.d; y := b.y0 + 20 * p.d;
+  o := ink(p, INK_ORANGE);
+  v := rule(out, at, b.x0 + 12 * p.d, y - cap * 0.5, b.x0 + 18 * p.d, y - cap * 0.5, o, p.fade);
+  v = put(out, v, title, b.x0 + 24 * p.d, y, cap, o);
+  if note.count > 0 {
+    room := box_w(b) - 48 * p.d - text_width(title, cap);
+    n := fits(note, 6.5 * p.d, room);
+    v = put_right(out, v, note[0..<n], b.x1 - 14 * p.d, y, 6.5 * p.d, ink(p, INK_DIM));
+  }
+  return rule(out, v, b.x0 + 12 * p.d, y + 7 * p.d, b.x1 - 12 * p.d, y + 7 * p.d, ink(p, INK_DIM), 0.12 * p.fade);
+}
+
+chip_width :: (text: string, cap: f32, p: Pen) -> f32 { return text_width(text, cap) + 14 * p.d; }
+chip_height :: (cap: f32, p: Pen) -> f32 { return cap + 10 * p.d; }
+chip :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, p: Pen) -> int {
+  w := chip_width(text, cap, p); h := chip_height(cap, p); c := 4 * p.d;
+  top := y - cap - 5 * p.d;
+  xs := [7] f32.[x + c, x + w, x + w, x + w - c, x, x, x + c];
+  ys := [7] f32.[top, top, top + h - c, top + h, top + h, top + c, top];
+  v := at;
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, k.light * 0.55); }
+  return put(out, v, text, x + 7 * p.d, y, cap, k);
+}
+chip_box :: (text: string, x: f32, y: f32, cap: f32, p: Pen) -> Box {
+  return Box.{x0 = x, y0 = y - cap - 5 * p.d, x1 = x + chip_width(text, cap, p), y1 = y - cap - 5 * p.d + chip_height(cap, p)};
+}
+
+diamond :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: Ink, light: f32) -> int {
+  v := rule(out, at, x, y - r, x + r, y, k, light);
+  v = rule(out, v, x + r, y, x, y + r, k, light);
+  v = rule(out, v, x, y + r, x - r, y, k, light);
+  return rule(out, v, x - r, y, x, y - r, k, light);
+}
+
+// ---------------------------------------------------------------- the rows and who sees them
+
+row_start :: (text: string, row: int) -> int {
+  r := 0; i := 0;
+  while r < row && i < text.count { if text[i] == '\n' { r += 1; } i += 1; }
+  return i;
+}
+field :: (text: string, row: int, col: int) -> string {
+  i := row_start(text, row); c := 0;
+  while c < col && i < text.count && text[i] != '\n' { if text[i] == '|' { c += 1; } i += 1; }
+  j := i;
+  while j < text.count && text[j] != '|' && text[j] != '\n' { j += 1; }
+  return text[i..<j];
+}
+rows :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] == '\n' { n += 1; } }
+  if text.count > 0 && text[text.count - 1] != '\n' { n += 1; }
+  return n;
+}
+same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// Whether word is one of list's space-separated words.
+listed :: (list: string, word: string) -> bool {
+  i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != ' ' { j += 1; }
+    if same(list[i..<j], word) { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+parse :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] >= '0' && text[i] <= '9' { n = n * 10 + cast(int) (text[i] - '0'); } }
+  return n;
+}
+
+// A signed-in viewer is 64 lowercase hex digits; anything else is nobody.
+signed_in :: (viewer: string) -> bool {
+  if viewer.count != 64 { return false; }
+  for i: 0..<64 { c := viewer[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// The owner, a maintainer or a contributor.
+member :: (table: string, r: int, viewer: string) -> bool {
+  if !signed_in(viewer) { return false; }
+  return same(field(table, r, C_OWNER), viewer) || listed(field(table, r, C_MEMBERS), viewer);
+}
+// Public shows to everyone; anything else (private, or a value we don't know) only to members.
+can_see :: (table: string, r: int, viewer: string) -> bool {
+  return same(field(table, r, C_VIS), "public") || member(table, r, viewer);
+}
+mine_count :: (table: string, viewer: string) -> int {
+  n := 0;
+  for r: 0..<rows(table) { if member(table, r, viewer) { n += 1; } }
+  return n;
+}
+// The filter in force: what the viewer picked, else MINE when they have any.
+filter_in_force :: (filter: int, table: string, viewer: string) -> int {
+  if filter != FILTER_AUTO { return filter; }
+  return ifx mine_count(table, viewer) > 0 then FILTER_MINE else FILTER_ALL;
+}
+// The rows to draw, in the table's order; returns how many.
+shown :: (table: string, viewer: string, filter: int, out: [] int) -> int {
+  m := filter_in_force(filter, table, viewer); n := 0;
+  for r: 0..<rows(table) {
+    if n >= out.count { break; }
+    ok := ifx m == FILTER_MINE then member(table, r, viewer) else can_see(table, r, viewer);
+    if ok { out[n] = r; n += 1; }
+  }
+  return n;
+}
+
+viewer_of :: (s: [] ProjectsState) -> string { return cast(string) s[0].viewer[0..<s[0].viewer_n]; }
+
+// ---------------------------------------------------------------- layout
+
+Layout :: struct { wide: bool; header: Box; list: Box; mine: Box; all: Box; home: Box; row_h: f32; rows_top: f32; }
+
+WIDE :: 860.0;   // CSS pixels: the row's numbers get columns from here
+
+// Where the filter chips sit: MINE then ALL.
+FILTER_CAP :: 8.0;
+layout :: (width: f32, height: f32, d: f32) -> Layout {
+  w := width / d; h := height / d;
+  m := ifx w < 700 then 12.0f32 else 24.0f32;
+  g := ifx w < 700 then 8.0f32 else 16.0f32;
+  l: Layout;
+  l.wide = w >= WIDE;
+  head := ifx l.wide then 112.0f32 else 136.0f32;
+  l.header = Box.{x0 = m * d, y0 = m * d, x1 = (w - m) * d, y1 = (m + head) * d};
+  l.list = Box.{x0 = m * d, y0 = (m + head + g) * d, x1 = (w - m) * d, y1 = (h - m) * d};
+  p := Pen.{d = d, fade = 1, time = 0};
+  cap := FILTER_CAP * d;
+  y := ifx l.wide then l.header.y0 + 58 * d else l.header.y1 - 18 * d;
+  x := ifx l.wide then l.header.x1 - 18 * d - chip_width("MINE", cap, p) - chip_width("ALL", cap, p) - 8 * d else l.header.x0 + 18 * d;
+  l.mine = chip_box("MINE", x, y, cap, p);
+  l.all = chip_box("ALL", x + chip_width("MINE", cap, p) + 8 * d, y, cap, p);
+  l.home = Box.{x0 = l.header.x0 + 18 * d, y0 = l.header.y0 + 10 * d, x1 = l.header.x0 + 18 * d + text_width("OPENAGENTS", 7 * d), y1 = l.header.y0 + 26 * d};
+  l.row_h = (ifx l.wide then 58.0f32 else 96.0f32) * d;
+  l.rows_top = l.list.y0 + title_room(p) + (ifx l.wide then 18.0f32 else 4.0f32) * d;
+  return l;
+}
+
+// The most the list scrolls: the rows below the panel's bottom.
+max_scroll :: (l: Layout, n: int, d: f32) -> f32 {
+  return hi(0, l.rows_top + l.row_h * cast(f32) n + 8 * d - l.list.y1);
+}
+row_box :: (l: Layout, k: int, scroll: f32, d: f32) -> Box {
+  y := l.rows_top + l.row_h * cast(f32) k - scroll;
+  return Box.{x0 = l.list.x0 + 8 * d, y0 = y, x1 = l.list.x1 - 8 * d, y1 = y + l.row_h};
+}
+// A row is drawn and clickable only while it's whole inside the list.
+row_visible :: (l: Layout, b: Box) -> bool { return b.y0 >= l.rows_top - 1 && b.y1 <= l.list.y1 + 1; }
+
+glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32) {
+  if k >= PANELS { return; }
+  o := 8 + k * 8;
+  uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+  uniforms[o + 4] = cut; uniforms[o + 5] = alpha; uniforms[o + 6] = 0; uniforms[o + 7] = 0;
+}
+
+// ---------------------------------------------------------------- drawing
+
+header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: int) -> int {
+  d := p.d; v := at; b := l.header;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  x := b.x0 + 18 * d; right := b.x1 - 18 * d;
+  v = put(out, v, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, ifx hot == HIT_HOME then white else dim);
+  crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
+  v = put(out, v, "/", crumb, b.y0 + 22 * d, 7 * d, dim);
+  v = put(out, v, "PROJECTS", crumb + text_width("/", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, orange);
+  ty := b.y0 + 58 * d;
+  v = put(out, v, "PROJECTS", x, ty, 26 * d, white);
+  buf: [64] u8;
+  n := put_text(buf[..], 0, "SNAPSHOT ");
+  n += put_text(buf[..], n, PROJECTS_AT);
+  snap := cast(string) buf[0..<n];
+  cap := FILTER_CAP * d;
+  if l.wide {
+    tx := x + text_width("PROJECTS", 26 * d) + 22 * d;
+    v = put_fit(out, v, "WORK PEOPLE AND AGENTS CAN PICK UP, FROM NOSTR", tx, ty - 10 * d, 8 * d, white, l.mine.x0 - tx - 150 * d);
+    v = chip(out, v, snap, tx, ty + 12 * d, 6.5 * d, dim, p);
+  } else {
+    v = put_fit(out, v, "WORK PEOPLE AND AGENTS CAN PICK UP", x, ty + 22 * d, 7.5 * d, white, right - x);
+    v = chip(out, v, snap, l.all.x1 + 14 * d, l.mine.y1 - 5 * d, 6.5 * d, dim, p);
+  }
+  // the filter: the one in force is orange; MINE says when it needs a sign-in
+  base := l.mine.y1 - 5 * d;
+  mk := ifx m == FILTER_MINE then orange else (ifx hot == HIT_MINE then white else dim);
+  ak := ifx m == FILTER_ALL then orange else (ifx hot == HIT_ALL then white else dim);
+  v = chip(out, v, "MINE", l.mine.x0, base, cap, mk, p);
+  v = chip(out, v, "ALL", l.all.x0, base, cap, ak, p);
+  if !signed {
+    note := "SIGN-IN NEEDED FOR MINE";
+    if l.wide { v = put_right(out, v, note, l.all.x1, l.mine.y0 - 8 * d, 6 * d, dim); }
+    else { v = put_right(out, v, note, right, b.y0 + 22 * d, 6 * d, dim); }
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// One project's row: wide, its numbers in columns; narrow, stacked lines.
+draw_row :: (out: [] f32, at: int, l: Layout, b: Box, table: string, r: int, p: Pen, lit_up: bool, focused: bool) -> int {
+  d := p.d; v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT);
+  name := field(table, r, C_NAME); desc := field(table, r, C_DESC); working := field(table, r, C_WORKING);
+  last := field(table, r, C_LAST_AT);
+  x := b.x0 + 18 * d; right := b.x1 - 14 * d;
+  if lit_up || focused {
+    // the row the pointer or the keys are on: a bracket at its left and a mark
+    k := ifx focused then orange else ink(p, INK_PALE);
+    v = rule(out, v, b.x0 + 2 * d, b.y0 + 6 * d, b.x0 + 2 * d, b.y1 - 6 * d, k, p.fade);
+    v = rule(out, v, b.x0 + 2 * d, b.y0 + 6 * d, b.x0 + 8 * d, b.y0 + 6 * d, k, p.fade);
+    v = rule(out, v, b.x0 + 2 * d, b.y1 - 6 * d, b.x0 + 8 * d, b.y1 - 6 * d, k, p.fade);
+  }
+  nk := ifx lit_up || focused then orange else white;
+  counts := [3] string.[field(table, r, C_OPEN), field(table, r, C_READY), field(table, r, C_DONE)];
+  labels := [3] string.["OPEN", "READY", "DONE"];
+  if l.wide {
+    cols := 5;
+    widths := [5] f32.[60, 60, 60, 210, 110];
+    total := 0.0f32;
+    for c: 0..<cols { total += widths[c] * d; }
+    left := right - total;
+    v = put_fit(out, v, name, x, b.y0 + 24 * d, 10 * d, nk, left - x - 16 * d);
+    v = put_fit(out, v, desc, x, b.y0 + 42 * d, 6.5 * d, dim, left - x - 16 * d);
+    cx := left;
+    for c: 0..<3 {
+      k := ifx c == 1 && parse(counts[c]) > 0 then orange else white;
+      v = put(out, v, counts[c], cx, b.y0 + 33 * d, 10 * d, k);
+      cx += widths[c] * d;
+    }
+    if working.count > 0 { v = put_fit(out, v, working, cx, b.y0 + 33 * d, 7 * d, orange, widths[3] * d - 14 * d); }
+    else { v = put(out, v, "NOBODY", cx, b.y0 + 33 * d, 7 * d, faint); }
+    cx += widths[3] * d;
+    v = put(out, v, last, cx, b.y0 + 33 * d, 7 * d, dim);
+  } else {
+    v = put_fit(out, v, name, x, b.y0 + 20 * d, 11 * d, nk, right - x - text_width(last, 6.5 * d) - 12 * d);
+    v = put_right(out, v, last, right, b.y0 + 20 * d, 6.5 * d, dim);
+    v = put_wrapped(out, v, desc, x, b.y0 + 38 * d, 6.5 * d, dim, right - x, 12 * d, 2);
+    cx := x;
+    for c: 0..<3 {
+      v = put(out, v, labels[c], cx, b.y0 + 70 * d, 6 * d, dim);
+      cx += text_width(labels[c], 6 * d) + 5 * d;
+      k := ifx c == 1 && parse(counts[c]) > 0 then orange else white;
+      v = put(out, v, counts[c], cx, b.y0 + 70 * d, 8 * d, k);
+      cx += text_width(counts[c], 8 * d) + 14 * d;
+    }
+    if working.count > 0 { v = put_fit(out, v, working, x, b.y0 + 86 * d, 6.5 * d, orange, right - x); }
+    else { v = put(out, v, "NOBODY WORKING NOW", x, b.y0 + 86 * d, 6.5 * d, faint); }
+  }
+  return rule(out, v, b.x0 + 10 * d, b.y1, b.x1 - 10 * d, b.y1, dim, 0.1 * p.fade);
+}
+
+draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: string, m: int, order: [] int, n: int,
+         scroll: f32, hot: int, sel: int) -> int {
+  d := p.d; b := l.list;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
+  buf: [48] u8;
+  c := 0;
+  if n == 1 { c = put_text(buf[..], 0, "1 PROJECT"); }
+  else {
+    digits: [12] u8; k := 0; x := n;
+    if x == 0 { digits[0] = '0'; k = 1; }
+    while x > 0 && k < 12 { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+    for i: 0..<k { buf[i] = digits[k - 1 - i]; }
+    c = k + put_text(buf[..], k, " PROJECTS");
+  }
+  if l.wide && n > 0 { c += put_text(buf[..], c, "  -  ENTER OPENS"); }
+  v := titled(out, at, b, ifx m == FILTER_MINE then "MY PROJECTS" else "ALL PROJECTS", cast(string) buf[0..<c], p);
+  if l.wide && n > 0 {
+    widths := [5] f32.[60, 60, 60, 210, 110];
+    names := [5] string.["OPEN", "READY", "DONE", "WORKING NOW", "LAST ACTIVE"];
+    total := 0.0f32;
+    for k: 0..<5 { total += widths[k] * d; }
+    cx := b.x1 - 22 * d - total;
+    y := l.rows_top - 6 * d;
+    v = put(out, v, "PROJECT", b.x0 + 26 * d, y, 6 * d, dim);
+    for k: 0..<5 { v = put(out, v, names[k], cx, y, 6 * d, dim); cx += widths[k] * d; }
+  }
+  if n == 0 {
+    y := l.rows_top + 30 * d; x := b.x0 + 26 * d; w := box_w(b) - 52 * d;
+    if m == FILTER_MINE && !signed_in(viewer) {
+      v = put_fit(out, v, "SIGN IN TO SEE YOUR PROJECTS", x, y, 10 * d, white, w);
+      v = put_wrapped(out, v, "SIGN-IN ISN'T AVAILABLE YET. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
+    } else if m == FILTER_MINE {
+      v = put_fit(out, v, "NONE OF THESE ARE YOURS YET", x, y, 10 * d, white, w);
+      v = put_wrapped(out, v, "ALL SHOWS EVERY PROJECT YOU CAN SEE.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
+    } else {
+      v = put_fit(out, v, "NO PUBLIC PROJECTS YET", x, y, 10 * d, white, w);
+    }
+    return frame(out, v, b, 10 * d, p);
+  }
+  for k: 0..<n {
+    rb := row_box(l, k, scroll, d);
+    if !row_visible(l, rb) { continue; }
+    v = draw_row(out, v, l, rb, table, order[k], p, hot == k, sel == k);
+  }
+  // more below or above: a small mark at the panel's edge
+  if scroll > 1 { v = diamond(out, v, b.x1 - 20 * d, l.rows_top + 4 * d, 3 * d, ink(p, INK_ORANGE), p.fade); }
+  if scroll < max_scroll(l, n, d) - 1 { v = diamond(out, v, b.x1 - 20 * d, b.y1 - 12 * d, 3 * d, ink(p, INK_ORANGE), p.fade); }
+  return frame(out, v, b, 10 * d, p);
+}
+
+coaxial_projects_frame :: (s: [] ProjectsState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
+                           dt: f32, still: bool) -> int #export_c {
+  return projects_frame(s, PROJECTS_ROWS, out, uniforms, width, height, dpr, dt, still);
+}
+
+projects_frame :: (s: [] ProjectsState, table: string, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
+                   dt: f32, still: bool) -> int {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = HIT_NONE; s[0].sel = -1; s[0].press = HIT_NONE; }
+  s[0].time += clamp(dt, 0, 0.1);
+  s[0].frames += 1;
+  time := ifx still then 20.0f32 else s[0].time;
+  d := hi(dpr, 1);
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  fade := ifx still then 1.0f32 else ease(time / 0.9);
+  p := Pen.{d = d, fade = fade, time = time};
+  l := layout(width, height, d);
+  viewer := viewer_of(s);
+  order: [MAX_SHOWN] int;
+  n := shown(table, viewer, s[0].filter, order[..]);
+  m := filter_in_force(s[0].filter, table, viewer);
+  s[0].scroll = clamp(s[0].scroll, 0, max_scroll(l, n, d));
+  if s[0].sel >= n { s[0].sel = n - 1; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = fade;
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
+  for k: 0..<PANELS { glass(uniforms, k, l.header, 0, 0); }
+  glass(uniforms, 0, l.header, 10 * d, 0.92);
+  glass(uniforms, 1, l.list, 10 * d, 0.92);
+  v := header(out, 0, l, p, m, signed_in(viewer), s[0].hot);
+  return draw_list(out, v, l, p, table, viewer, m, order[..], n, s[0].scroll, s[0].hot, s[0].sel);
+}
+
+// ---------------------------------------------------------------- input
+
+// What's under (x, y): a row's place in the shown list, or a HIT_.
+hit :: (s: [] ProjectsState, table: string, x: f32, y: f32) -> int {
+  if s[0].d <= 0 { return HIT_NONE; }
+  l := layout(s[0].width, s[0].height, s[0].d);
+  if inside(l.mine, x, y) { return HIT_MINE; }
+  if inside(l.all, x, y) { return HIT_ALL; }
+  if inside(l.home, x, y) { return HIT_HOME; }
+  order: [MAX_SHOWN] int;
+  n := shown(table, viewer_of(s), s[0].filter, order[..]);
+  for k: 0..<n {
+    b := row_box(l, k, s[0].scroll, s[0].d);
+    if row_visible(l, b) && inside(b, x, y) && y <= l.list.y1 { return k; }
+  }
+  return HIT_NONE;
+}
+
+navigate :: (s: [] ProjectsState, url: string) {
+  if url.count == 0 || url.count > OUTBOX { return; }
+  s[0].out_n = put_text(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+
+// Opens the k-th shown row's page (a row without one does nothing).
+open_row :: (s: [] ProjectsState, table: string, k: int) {
+  order: [MAX_SHOWN] int;
+  n := shown(table, viewer_of(s), s[0].filter, order[..]);
+  if k < 0 || k >= n { return; }
+  navigate(s, field(table, order[k], C_PAGE));
+}
+
+choose :: (s: [] ProjectsState, filter: int) {
+  s[0].filter = filter; s[0].sel = -1; s[0].scroll = 0;
+}
+
+act :: (s: [] ProjectsState, table: string, target: int) {
+  if target == HIT_MINE { choose(s, FILTER_MINE); }
+  else if target == HIT_ALL { choose(s, FILTER_ALL); }
+  else if target == HIT_HOME { navigate(s, "/"); }
+  else if target >= 0 { s[0].sel = target; open_row(s, table, target); }
+}
+
+projects_pointer :: (s: [] ProjectsState, table: string, x: f32, y: f32, phase: int, kind: int) -> bool {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if phase == P_DOWN {
+    s[0].press = hit(s, table, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
+    s[0].hot = ifx kind == 0 then s[0].press else HIT_NONE;
+    return true;
+  }
+  if phase == P_MOVE {
+    if kind == 0 { s[0].hot = hit(s, table, x, y); }
+    if s[0].press != HIT_NONE || kind != 0 {
+      // a finger drags the list
+      if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
+      if s[0].dragged && kind != 0 { s[0].scroll -= y - s[0].drag_y; }
+      s[0].drag_y = y;
+    }
+    return true;
+  }
+  if phase == P_UP {
+    target := hit(s, table, x, y);
+    if !s[0].dragged && target == s[0].press && target != HIT_NONE { act(s, table, target); }
+    s[0].press = HIT_NONE;
+    if kind != 0 { s[0].hot = HIT_NONE; }
+    return true;
+  }
+  s[0].press = HIT_NONE;
+  return true;
+}
+absf :: (x: f32) -> f32 { if x < 0 { return -x; } return x; }
+
+// Keys: up and down choose a row, Enter opens it, m and a (or left and right) pick the filter.
+projects_key :: (s: [] ProjectsState, table: string, key: int) -> bool {
+  if s.count < 1 { return false; }
+  order: [MAX_SHOWN] int;
+  n := shown(table, viewer_of(s), s[0].filter, order[..]);
+  m := filter_in_force(s[0].filter, table, viewer_of(s));
+  if key == K_DOWN { s[0].sel = ifx s[0].sel < 0 then 0 else (ifx s[0].sel + 1 < n then s[0].sel + 1 else n - 1); }
+  else if key == K_UP { s[0].sel = ifx s[0].sel <= 0 then 0 else s[0].sel - 1; }
+  else if key == K_HOME { s[0].sel = 0; }
+  else if key == K_END { s[0].sel = n - 1; }
+  else if key == K_ENTER { if s[0].sel >= 0 { open_row(s, table, s[0].sel); } return true; }
+  else if key == 'm' || key == 'M' { choose(s, FILTER_MINE); return true; }
+  else if key == 'a' || key == 'A' { choose(s, FILTER_ALL); return true; }
+  else if key == K_LEFT || key == K_RIGHT { choose(s, ifx m == FILTER_MINE then FILTER_ALL else FILTER_MINE); return true; }
+  else { return false; }
+  if n == 0 { s[0].sel = -1; return true; }
+  // keep the chosen row in view
+  if s[0].d > 0 {
+    l := layout(s[0].width, s[0].height, s[0].d);
+    b := row_box(l, s[0].sel, s[0].scroll, s[0].d);
+    if b.y0 < l.rows_top { s[0].scroll -= l.rows_top - b.y0; }
+    if b.y1 > l.list.y1 { s[0].scroll += b.y1 - l.list.y1; }
+  }
+  return true;
+}
+
+// The viewer: MSG_VIEWER with a hex pubkey from the inbox signs in; an empty one signs out.
+projects_message :: (s: [] ProjectsState, kind: int, length: int) {
+  if s.count < 1 || kind != MSG_VIEWER || length < 0 || length > INBOX { return; }
+  text := cast(string) s[0].inbox[0..<length];
+  if length == 0 || !signed_in(text) { s[0].viewer_n = 0; return; }
+  for i: 0..<64 { s[0].viewer[i] = s[0].inbox[i]; }
+  s[0].viewer_n = 64;
+}
+
+coaxial_projects_pointer :: (s: [] ProjectsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+  return projects_pointer(s, PROJECTS_ROWS, x, y, phase, kind);
+}
+coaxial_projects_key :: (s: [] ProjectsState, key: int) -> bool #export_c { return projects_key(s, PROJECTS_ROWS, key); }
+coaxial_projects_wheel :: (s: [] ProjectsState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_projects_message :: (s: [] ProjectsState, kind: int, length: int) #export_c { projects_message(s, kind, length); }
+coaxial_projects_cursor :: (s: [] ProjectsState) -> int #export_c {
+  if s.count < 1 { return 0; }
+  return ifx s[0].hot != HIT_NONE then 1 else 0;
+}
+coaxial_projects_action :: (s: [] ProjectsState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_projects_action_done :: (s: [] ProjectsState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_projects_inbox_cap :: () -> int #export_c { return INBOX; }
+coaxial_projects_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_projects_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_projects_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---------------------------------------------------------------- checks
+
+ALICE :: "a11ce00000000000000000000000000000000000000000000000000000000001";
+BOB :: "b0b0000000000000000000000000000000000000000000000000000000000002";
+CAROL :: "ca401000000000000000000000000000000000000000000000000000000000003";
+OWNER :: "0000000000000000000000000000000000000000000000000000000000000abc";
+// three projects: open and public; private, with Bob a maintainer; public, Alice the owner
+FIXTURE :: "coax|Coax|A language.|open|public|71|16|8|claude-live-1, codex-coax|1793218894|10-28 15:21|/projects/coax|0000000000000000000000000000000000000000000000000000000000000abc|\nvault|Vault|Secret.|closed|private|3|1|0||1793218000|10-28 15:00|/projects/vault|0000000000000000000000000000000000000000000000000000000000000abc|b0b0000000000000000000000000000000000000000000000000000000000002\nverse|Verse|Worlds.|invited|public|19|1|0||1793217000|10-28 14:40|/projects/verse/index.md|a11ce00000000000000000000000000000000000000000000000000000000001|\n";
+
+#test "a guest sees the public projects, ALL, and MINE asks for a sign-in" {
+  order: [8] int;
+  #assert !signed_in("") && !signed_in("abc") && signed_in(ALICE) && !signed_in(CAROL);
+  #assert filter_in_force(FILTER_AUTO, FIXTURE, "") == FILTER_ALL;
+  n := shown(FIXTURE, "", FILTER_AUTO, order[..]);
+  #assert n == 2 && order[0] == 0 && order[1] == 2;
+  #assert shown(FIXTURE, "", FILTER_MINE, order[..]) == 0;
+  // a viewer that isn't 64 hex digits is nobody
+  #assert shown(FIXTURE, "B0B0000000000000000000000000000000000000000000000000000000000002", FILTER_ALL, order[..]) == 2;
+}
+
+#test "a member sees their private project, and MINE is the first choice" {
+  order: [8] int;
+  // Bob maintains the private Vault: he sees all three, and MINE (the default) is just Vault
+  #assert filter_in_force(FILTER_AUTO, FIXTURE, BOB) == FILTER_MINE;
+  #assert shown(FIXTURE, BOB, FILTER_AUTO, order[..]) == 1 && order[0] == 1;
+  #assert shown(FIXTURE, BOB, FILTER_ALL, order[..]) == 3;
+  // Alice owns Verse only: MINE is Verse, ALL is the two public ones
+  #assert shown(FIXTURE, ALICE, FILTER_AUTO, order[..]) == 1 && order[0] == 2;
+  #assert shown(FIXTURE, ALICE, FILTER_ALL, order[..]) == 2;
+  // the owner of Coax and Vault
+  #assert shown(FIXTURE, OWNER, FILTER_AUTO, order[..]) == 2 && order[0] == 0 && order[1] == 1;
+  // someone signed in with no projects: ALL by default, and MINE is empty
+  nobody := "1111111111111111111111111111111111111111111111111111111111111111";
+  #assert filter_in_force(FILTER_AUTO, FIXTURE, nobody) == FILTER_ALL && shown(FIXTURE, nobody, FILTER_MINE, order[..]) == 0;
+}
+
+#test "a private project never shows to a non-member, whatever the filter" {
+  order: [8] int;
+  viewers := [4] string.["", ALICE, "1111111111111111111111111111111111111111111111111111111111111111", BOB];
+  for v: 0..<3 {
+    for f: 0..<3 {
+      n := shown(FIXTURE, viewers[v], f, order[..]);
+      for k: 0..<n { #assert !same(field(FIXTURE, order[k], C_VIS), "private"); }
+    }
+  }
+  // a visibility we don't know counts as private
+  odd := "x|X|y|open|secret|0|0|0||0000000001|10-28 00:00||0000000000000000000000000000000000000000000000000000000000000abc|\n";
+  #assert shown(odd, "", FILTER_ALL, order[..]) == 0 && shown(odd, OWNER, FILTER_ALL, order[..]) == 1;
+}
+
+#test "the viewer arrives by message, and a bad one signs out" {
+  s: [1] ProjectsState;
+  for i: 0..<64 { s[0].inbox[i] = BOB[i]; }
+  projects_message(s[..], MSG_VIEWER, 64);
+  #assert same(viewer_of(s[..]), BOB);
+  for i: 0..<3 { s[0].inbox[i] = 'z'; }
+  projects_message(s[..], MSG_VIEWER, 3);
+  #assert s[0].viewer_n == 0;
+  for i: 0..<64 { s[0].inbox[i] = BOB[i]; }
+  projects_message(s[..], MSG_VIEWER, 64);
+  projects_message(s[..], MSG_VIEWER, 0);
+  #assert s[0].viewer_n == 0;
+}
+
+fits_in :: (b: Box, w: f32, h: f32) -> bool { return b.x0 >= 0 && b.y0 >= 0 && b.x1 <= w && b.y1 <= h && b.x1 > b.x0 && b.y1 > b.y0; }
+apart :: (a: Box, b: Box) -> bool { return a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0; }
+within :: (a: Box, b: Box) -> bool { return a.x0 >= b.x0 && a.x1 <= b.x1 && a.y0 >= b.y0 && a.y1 <= b.y1; }
+on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
+  for v: 0..<n {
+    x := out[v * VERTEX_FLOATS]; y := out[v * VERTEX_FLOATS + 1];
+    if x < -12 * d || y < -12 * d || x > w + 12 * d || y > h + 12 * d { return false; }
+  }
+  return true;
+}
+
+#test "the layout fits a desktop, a tablet and a 320 px phone" {
+  sizes := [8] f32.[1440, 900, 1080, 760, 768, 1024, 320, 568];
+  dprs := [4] f32.[1, 2, 2, 3];
+  for k: 0..<4 {
+    w := sizes[k * 2] * dprs[k]; h := sizes[k * 2 + 1] * dprs[k]; d := dprs[k];
+    l := layout(w, h, d);
+    #assert fits_in(l.header, w, h) && fits_in(l.list, w, h) && apart(l.header, l.list);
+    #assert within(l.mine, l.header) && within(l.all, l.header) && apart(l.mine, l.all) && within(l.home, l.header);
+    #assert box_h(l.list) >= 200 * d;
+    // the first row sits inside the list
+    #assert row_visible(l, row_box(l, 0, 0, d)) && within(row_box(l, 0, 0, d), l.list);
+  }
+  #assert layout(1440, 900, 1).wide && !layout(320 * 3, 568 * 3, 3).wide;
+}
+
+#test "a frame draws inside the canvas at desktop and phone sizes, within the vertex budget" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  sizes := [6] f32.[1440, 900, 768, 1024, 320, 568];
+  for f: 0..<3 {
+    for k: 0..<3 {
+      s: [1] ProjectsState;
+      s[0].filter = f;
+      w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+      n := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+      #assert n > 600 && n < MAX_VERTICES && n % 6 == 0;
+      #assert on_canvas(out[..], n, w, h, 2) && uniforms[5] == 2 && uniforms[0] == w;
+    }
+  }
+  // the real table draws too
+  s: [1] ProjectsState;
+  #assert projects_frame(s[..], PROJECTS_ROWS, out[..], uniforms[..], 1440, 900, 1, 0, true) > 600;
+  // a fresh page has nothing chosen and nothing under the mouse
+  #assert s[0].hot == HIT_NONE && s[0].sel == -1 && s[0].press == HIT_NONE;
+}
+
+#test "a click opens a row's page; the chips pick the filter; keys do the same" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for k: 0..<2 {
+    s: [1] ProjectsState;
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    l := layout(w, h, 2);
+    b := row_box(l, 1, 0, 2);
+    x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+    #assert projects_pointer(s[..], FIXTURE, x, y, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, x, y, P_UP, 0);
+    #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/projects/verse/index.md");
+    coaxial_projects_action_done(s[..]);
+    // a drag isn't a click
+    #assert projects_pointer(s[..], FIXTURE, x, y, P_DOWN, 1);
+    #assert projects_pointer(s[..], FIXTURE, x, y - 60, P_MOVE, 1);
+    #assert projects_pointer(s[..], FIXTURE, x, y, P_UP, 1);
+    #assert s[0].action == 0;
+    // MINE, signed out: nothing to open, and the frame says why
+    mx := (l.mine.x0 + l.mine.x1) * 0.5; my := (l.mine.y0 + l.mine.y1) * 0.5;
+    #assert projects_pointer(s[..], FIXTURE, mx, my, P_DOWN, 0);
+    #assert projects_pointer(s[..], FIXTURE, mx, my, P_UP, 0);
+    #assert s[0].filter == FILTER_MINE;
+    #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 300;
+    ax := (l.all.x0 + l.all.x1) * 0.5;
+    #assert projects_pointer(s[..], FIXTURE, ax, my, P_DOWN, 0);
+    #assert projects_pointer(s[..], FIXTURE, ax, my, P_UP, 0);
+    #assert s[0].filter == FILTER_ALL;
+  }
+  s: [1] ProjectsState;
+  #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true) > 0;
+  #assert projects_key(s[..], FIXTURE, K_DOWN) && s[0].sel == 0;
+  #assert projects_key(s[..], FIXTURE, K_DOWN) && projects_key(s[..], FIXTURE, K_DOWN) && s[0].sel == 1;
+  #assert projects_key(s[..], FIXTURE, K_ENTER) && same(cast(string) s[0].outbox[0..<s[0].out_n], "/projects/verse/index.md");
+  #assert projects_key(s[..], FIXTURE, 'm') && s[0].filter == FILTER_MINE && projects_key(s[..], FIXTURE, K_LEFT) && s[0].filter == FILTER_ALL;
+  #assert !projects_key(s[..], FIXTURE, 'q');
+}
+
+#test "a long list scrolls, and the chosen row stays in view" {
+  long: [4096] u8; n := 0;
+  for k: 0..<30 { n += put_text(long[..], n, "p|P|d|open|public|1|1|1||0000000001|10-28 00:00|/projects/p|0000000000000000000000000000000000000000000000000000000000000abc|\n"); }
+  table := cast(string) long[0..<n];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  s: [1] ProjectsState;
+  #assert projects_frame(s[..], table, out[..], uniforms[..], 390 * 2, 844 * 2, 2, 0, true) > 0;
+  #assert projects_key(s[..], table, K_END);
+  #assert s[0].sel == 29 && s[0].scroll > 0;
+  l := layout(390 * 2, 844 * 2, 2);
+  #assert row_visible(l, row_box(l, 29, s[0].scroll, 2));
+  coaxial_projects_wheel(s[..], -100000);
+  #assert projects_frame(s[..], table, out[..], uniforms[..], 390 * 2, 844 * 2, 2, 0, true) > 0;
+  #assert s[0].scroll == 0;
+}

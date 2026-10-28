@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the pages for the browser: build/splash.wasm, build/project.wasm and
-# build/realm.wasm.
+# Builds the pages for the browser: build/splash.wasm, build/project.wasm,
+# build/projects.wasm and build/realm.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -24,8 +24,15 @@ tools="$here/../../coax/web/project"
 fresh=(); [[ "${COAXIAL_MODE:-dev}" == release ]] || fresh=(--if-older 10)
 bun "$tools/snapshot.ts" --project coax ${fresh[@]+"${fresh[@]}"} &
 coax=$!
-bun "$tools/snapshot.ts" --project verse ${fresh[@]+"${fresh[@]}"}
+bun "$tools/snapshot.ts" --project verse ${fresh[@]+"${fresh[@]}"} &
+verse=$!
+# The /projects list: every project on the relay (kind 30621) into projects/list.coax.
+bun "$tools/list.ts" ${fresh[@]+"${fresh[@]}"}
+"$here/../../coax/web/wasm.sh" "$here/projects.coax" "$here/projects-face.c" "$here/build/projects.wasm" &
+list=$!
 wait "$coax"
+wait "$verse"
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
+wait "$list"
 wait "$splash"
 wait "$realm"
