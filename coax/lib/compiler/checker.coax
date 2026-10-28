@@ -197,7 +197,24 @@ CK_builtin_type :: (name:string)->int {
   ids:=[14] int.[11,11,8,9,10,12,13,14,15,15,6,7,2,3];for x,i:names {if x==name {return ids[i];}}return CK_NONE;
 }
 CK_intrinsic :: (name:string)->u32 #export_c {names:=[9] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
-CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[5] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[6] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+#forall "value_barrier takes a u32 or a u64 and returns its type" variant:0..<6 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ arg:=[6] int.[15,14,6,12,0,15];
+ if variant!=4 {CK_declare(c,"x",arg[variant],CK_Loc.{},"");}
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="value_barrier",head=3,tail=3};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="x"};
+ if variant==4 {nodes[3].name="missing";}
+ if variant==5 {nodes[3].next=4;nodes[2].tail=4;nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="x"};}
+ t:=CK_call(c,2,CK_Hint.{});
+ #assert CK_byte_intrinsic("value_barrier")==6 && nodes[2].byte_intrinsic==6;
+ if variant<2 {#assert t==arg[variant] && state[0].error_count==0;}
+ else {#assert t==CK_NONE && state[0].error_count==1;}
+ if variant==2 || variant==3 {#assert errors[0].code=="E0378" && errors[0].message=="value_barrier takes a u32 or a u64" && errors[0].fix=="value_barrier(cast(u64) x)";}
+ if variant==4 {#assert errors[0].code!="E0378";}
+ if variant==5 {#assert errors[0].code=="E0378" && errors[0].message=="wrong byte intrinsic argument count";}
+}
 CK_c_keyword :: (name:string)->bool #export_c {
   names:=[76] string.["auto","break","case","char","const","continue","default","do","double","else","enum","extern","float","for","goto","if","inline","int","long","register","restrict","return","short","signed","sizeof","static","struct","switch","typedef","union","unsigned","void","volatile","while","bool","true","false","class","new","delete","this","template","namespace","public","private","protected","operator","virtual","friend","typename","using","nullptr","explicit","mutable","throw","try","catch","asm","export","module","requires","concept","alignas","alignof","noexcept","constexpr","decltype","static_assert","thread_local","errno","NULL","_Bool","_Alignof","_Atomic","_Complex","_Imaginary"];
   for x:names {if x==name {return true;}}return name.count>0 && name[0]==95;
@@ -883,6 +900,12 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
   if byte!=0 {
     c.nodes[id].byte_intrinsic=byte;n:=1;if byte==1 {n=2;}
     if count!=n {CK_error(c,e.loc,"E0378","wrong byte intrinsic argument count","");return CK_NONE;}
+    if byte==6 {
+      // value_barrier(x): u32 or u64 in, the same out; the optimizer can't see through it (spec section 9)
+      t:=CK_value(c,e.head,want);if t==CK_NONE {return CK_NONE;}
+      if t!=14 && t!=15 {CK_error(c,e.loc,"E0378","value_barrier takes a u32 or a u64","value_barrier(cast(u64) x)");return CK_NONE;}
+      return t;
+    }
     target:=7;if byte==2 {target=14;}else if byte==3 {target=15;}else if byte==4 {target=6;}
     a:=e.head;while a!=CK_NONE {hint:=CK_Hint.{type=target};if byte==1 {hint=CK_Hint.{};}t:=CK_value(c,a,hint);span:=t==3 || (c.types[t].kind==CK_Kind.view && c.types[t].elem==12);
       if (byte==1 && !span) || (byte!=1 && t!=target) {CK_error(c,e.loc,"E0378","byte intrinsic argument type mismatch","");}a=c.nodes[a].next;

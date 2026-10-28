@@ -433,6 +433,16 @@ bits.
 Compile-time arithmetic is checked in every build mode (§10). This avoids
 release settings silently changing generated constants.
 
+`value_barrier(x)` takes a `u32` or a `u64` and returns it unchanged, but the
+optimizer cannot see through it: it cannot learn that the result is 0 or all
+ones, so it cannot turn a mask built from a secret back into a branch.
+Constant-time code builds its masks through it, for example
+`mask := value_barrier(0 - bit); r := b ^ ((a ^ b) & mask);`. Native C emits
+an empty `__asm__("" : "+r"(x))`; wasm32 has no such asm and calls an
+identity that is never inlined, through a volatile. At compile time it is the
+identity. `tests/constant_time.py` checks that a masked select built this way
+compiles at `clang -O2` to code with no conditional branch.
+
 Planned overloaded operators must be pure, nonallocating and nonfallible.
 Assignment, field lookup, short-circuit booleans and procedure calls are not
 overloadable. Indexing, arithmetic and comparison require specific constraints.
