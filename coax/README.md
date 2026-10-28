@@ -253,9 +253,12 @@ remain planned. See [the spec](spec.md#102-reflection-now-and-later) and the
 The bootstrap does not implement pointers, dynamic arrays, unions, `switch`,
 optionals and errors (`try`/`or_else`), generics, general reflection, macros,
 compiler plugins, context, effects, jobs, general GPU programs, a build language, a native
-backend or a resident compiler. Reserved syntax for them is diagnosed. A view
-does not keep its array alive: returning a view of a local is the same
-mistake it is in C. Native line mapping and LLDB name presentation work on the
+backend or a resident compiler. Reserved syntax for them is diagnosed. Views
+borrow storage; E0383 diagnoses direct returns of local fixed-array views,
+their simple local aliases/subranges and borrowed strings. Calls, stored
+aggregate borrows and general region lifetimes remain outside this check;
+see [the scoped verification note](verification-local-borrows.md).
+Native line mapping and LLDB name presentation work on the
 tested Mac and iOS Simulator; optimized values still follow native debugging
 limits, and no Coax expression evaluator is provided.
 

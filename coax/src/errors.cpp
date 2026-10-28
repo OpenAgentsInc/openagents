@@ -127,6 +127,8 @@ const ErrorInfo ERRORS[] = {
 
     {"E0382", "invalid reflection category", "field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout."},
 
+    {"E0383", "returned borrow may outlive local storage", "A returned view or string may borrow a local fixed array, directly or through a local alias, subrange, cast or ifx. Return the fixed array value or use caller-owned storage. This conservative local check does not establish general lifetime safety."},
+
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time step budget exceeded", "Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). Make the computation smaller or move it to run time."},
     {"E0401", "compile-time code cannot capture a runtime value", "#run code and constants see only constants and their own locals."},

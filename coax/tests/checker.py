@@ -18,7 +18,7 @@ class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset
 class Node(C.Structure):
     _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_uint64),('type',C.c_int64),('field_index',C.c_int64),('proc',C.c_int64),('constant',C.c_int64),('negative',C.c_bool),('folded',C.c_bool),('builtin_print',C.c_bool),('byte_intrinsic',C.c_uint32),('intrinsic',C.c_uint32),('mark',C.c_int64),('reached',C.c_bool),('metal_done',C.c_bool),('metal_active',C.c_bool),('skip_authority',C.c_bool)]
 class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id')]
-class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text)]
+class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool)]
 class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Text),('fix',LX.Text)]
 class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64)]
 class Options(C.Structure):_fields_=[(n,C.c_bool) for n in ('library','metal','authority')]
@@ -79,6 +79,43 @@ class Checker(unittest.TestCase):
             ok,n,t,e,s,owners=self.check(source,code=='E0377')
             self.assertFalse(ok);self.assertIn(code,[LX.raw(x.code).decode() for x in e[:s.error_count]])
             self.assertEqual(s.depth,0)
+    def test_local_backed_borrow_returns(self):
+        cases=[
+            'f :: ()->[] u8 {a:[4]u8;return a[..];}',
+            'f :: ()->[] u8 {a:[4]u8;v:=a[..];copy:=v;return copy[1..<3];}',
+            'f :: (input:[]u8)->[]u8 {a:[4]u8;v:=input;v=a[..];return v;}',
+            'f :: (input:[]u8,b:bool)->[]u8 {a:[4]u8;return ifx b then input else a[..];}',
+            'f :: ()->string {a:[4]u8;text:=cast(string)a[..];return text[1..<3];}',
+            'S :: struct {a:[4]u8;} f :: ()->[]u8 {s:S;return s.a[..];}',
+            'f :: ()->[]u8 {a:[2][4]u8;return a[1][..];}',
+            'f :: (input:[]u8,b:bool)->[]u8 {a:[4]u8;v:=input;if b {v=a[..];}return v;}',
+            'f :: ()->[]u8 {v:[]u8;a:[4]u8;v=a[..];return v;}',
+            'f :: (input:[]u8)->[]u8 {a:[4]u8;v:=a[..];v=input;return v;}',
+            'f :: ()->string {text:="";a:[4]u8;text=cast(string)a[..];return text;}',
+            'f :: (input:[4]u8)->[]u8 {copy:=input;return copy[..];}',
+        ]
+        for source in cases:
+            with self.subTest(source=source):
+                ok,n,t,e,s,owners=self.check(source)
+                self.assertFalse(ok)
+                self.assertEqual([LX.raw(x.code).decode() for x in e[:s.error_count]],['E0383'])
+    def test_borrowed_parameter_returns_remain_valid(self):
+        cases=[
+            'f :: (input:[]u8)->[]u8 {return input;}',
+            'f :: (input:[]u8)->[]u8 {v:=input;copy:=v;return copy[1..<3];}',
+            'f :: (input:[]u8)->string {return cast(string)input;}',
+            'f :: (text:string)->string {copy:=text;return copy[1..<3];}',
+            'f :: (input:[]u8,other:[]u8,b:bool)->[]u8 {return ifx b then input else other;}',
+            'S :: struct {a:[4]u8;} f :: (input:[]S)->[]u8 {return input[0].a[..];}',
+            'S :: struct {a:[]u8;} f :: (input:[]u8)->[]u8 {s:=S.{a=input};return s.a;}',
+            'f :: (input:[]u8)->[]u8 {a:=[1][]u8.[input];return a[0];}',
+            'f :: ()->[4]u8 {a:[4]u8;return a;}',
+            'f :: ()->string {return "resident";}',
+        ]
+        for source in cases:
+            with self.subTest(source=source):
+                ok,n,t,e,s,owners=self.check(source)
+                self.assertTrue(ok,[LX.raw(x.message).decode() for x in e[:s.error_count]])
     def test_ieee_arithmetic_and_binary32_against_host_oracle(self):
         rng=random.Random(985)
         unpack=lambda b:struct.unpack('>d',struct.pack('>Q',b))[0]

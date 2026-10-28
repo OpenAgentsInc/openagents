@@ -1,0 +1,6 @@
+// expect: E0383
+bad :: () -> [] u8 {
+  storage: [8] u8;
+  return storage[..];
+}
+main :: () {}

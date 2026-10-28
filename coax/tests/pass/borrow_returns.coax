@@ -1,0 +1,16 @@
+#import "Basic";
+tail :: (input: [] u8) -> [] u8 {
+  alias := input;
+  return alias[1..<alias.count];
+}
+as_text :: (input: [] u8) -> string { return cast(string) input; }
+values :: () -> [3] u8 {
+  local := [3] u8.[65, 66, 67];
+  return local;
+}
+main :: () {
+  storage := values();
+  part := tail(storage[..]);
+  part[0] = 90;
+  print("% %\n", as_text(storage[..]), part.count);
+}

@@ -156,6 +156,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0380` | procedure not exercised by a check | Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions. |
 | `E0381` | type checker resource limit | The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. |
 | `E0382` | invalid reflection category | field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout. |
+| `E0383` | returned borrow may outlive local storage | A returned view or string may borrow a local fixed array, directly or through a local alias, subrange, cast or ifx. Return the fixed array value or use caller-owned storage. This conservative local check does not establish general lifetime safety. |
 
 ## E04xx: compile-time evaluation
 

@@ -105,6 +105,13 @@ Native IEEE/layout/policy oracles and ASan/UBSan exercise actual emitted C and
 the complete bridge. The compiler suite and clean iOS simulator build remain
 separate consumer gates; mutation coverage is not a proof of soundness.
 
+E0383 adds bounded local provenance for returned array-backed views/strings.
+`CK_Local.local_backing` is checker scratch state, including conservative
+alias-assignment taint; the native bridge allocates the generated record ABI.
+It does not alter the target borrowed-view ABI. See
+[the scope and verification note](../verification-local-borrows.md) for the
+supported cases and lifetime analysis that remains unimplemented.
+
 
 ## Source-unit composition
 

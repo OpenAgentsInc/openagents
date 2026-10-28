@@ -13,11 +13,11 @@ handles, allocators, the context and temporary storage.
 Getting memory wrong is the most common way for a systems program to
 misbehave without an error message. A wrong index reads someone else's
 data. A reference to memory that has been reused reads whatever moved in.
-Coax catches the first kind every time and, today, can't catch the second
-kind at all. Knowing exactly where that line falls is the most useful thing
-this chapter can teach.
+Coax checks indexes and diagnoses some direct returns of local borrows, but
+many lifetime mistakes still need manual review. Knowing exactly where that
+line falls is the most useful thing this chapter can teach.
 
-> Note: `coax0` 0.10.0 has fixed arrays, views, strings and bounds checks,
+> Note: `coax0` 0.13.0 has fixed arrays, views, strings and bounds checks,
 > and every program in this chapter that prints something has its output
 > checked. It has no heap at all: no pointers, no dynamic arrays, no
 > allocators, no context, no scratch memory and no global variables. Those
@@ -401,8 +401,8 @@ always pass.
 ## A view doesn't keep its array alive
 
 Bounds checks catch a bad *index*. They can't catch a good index into memory
-that has gone away, and `coax0` has no other check that does. Here's the
-mistake in its simplest form.
+that has gone away. The checker also diagnoses simple returns of borrows into
+local fixed arrays. Here's the mistake in its simplest form.
 
 ```jai
 #import "Basic";
@@ -418,15 +418,16 @@ main :: () {
 }
 ```
 
-*Listing 6-4: Returning a view of a local. This compiles and is wrong.*
+*Listing 6-4: Returning a view of a local is rejected with E0383.*
 
 ```
 $ coax check dangle.coax
+error[E0383]: returned borrow may refer to a local fixed array
+  fix: return the fixed array value, or use caller-owned storage passed as a view
 ```
 
-`coax check` prints nothing and succeeds: no error. `squares` lives in
-`first_squares`'s stack frame. The view we return points into that frame,
-and the frame is reused the moment we return:
+`squares` lives in `first_squares`'s stack frame. Without the diagnostic, the
+returned view would point into that frame, which is reused after the return:
 
 ```
  while first_squares runs          after it returns
@@ -444,8 +445,19 @@ The note still says "lockers 0 through 3", but the lockers belong to someone
 else now. What `print` shows depends on what the next call happened to
 write there; it might even look right, which is the worst case, because the
 bug then waits for a change elsewhere to expose it. This is the same mistake
-it is in C, and the generated C is exactly that: a local array and a
-returned pointer into it. We won't run it.
+it is in C. The checker refuses this direct form before emitting C.
+
+The same diagnostic follows local aliases and assignments, slices, string
+casts and both `ifx` branches. It also recognizes inline array fields and
+elements of local values. A local alias keeps a may-borrow flag after an
+assignment, so a later overwrite with a parameter borrow can still be refused.
+Returning a parameter view or a string borrowed from it is valid; its caller
+must keep the storage alive. Returning an array value copies its elements.
+
+This check does not follow calls or borrows stored in aggregate fields or
+elements. It does not diagnose callees retaining a borrow, stores into caller
+memory, shorter nested-block lifetimes or aliases propagated around loop back
+edges. It is an early diagnostic, not general lifetime safety.
 
 The fix is to decide who owns the storage. If the result is small and fixed,
 return the array itself, `-> [4] int`, which copies it out. If the caller
@@ -865,7 +877,7 @@ Coax doesn't promise general memory safety. Views, foreign calls and, later,
 pointers and shared mutable data can all be misused, and no allocator design
 changes that. Here is what's actually checked.
 
-| Protection | Status in coax0 0.10.0 |
+| Protection | Status in coax0 0.13.0 |
 | --- | --- |
 | New values are zeroed or default initialized unless you write `---` | Enforced |
 | Every index and slice is bounds-checked, debug and release | Enforced (trap at run time, error for constant indexes) |
@@ -873,7 +885,7 @@ changes that. Here is what's actually checked.
 | A view is only taken of a writable array variable | Enforced (`E0366`) |
 | A view can't escape compile time | Enforced (`E0409`) |
 | Integer overflow traps in development builds | Enforced (wraps in `--release`) |
-| A view doesn't outlive its array | Not checked: returning a view of a local compiles |
+| Direct/simple-alias returns of local-array views and strings | Rejected (`E0383`); general borrow lifetimes remain unchecked |
 | Handles with generation checks for long-lived references | Planned |
 | Explicit owners and reset points; debug poisoning of freed memory | Planned |
 | Allocation as a checked effect | Planned |
@@ -894,10 +906,10 @@ through, and `cast(string)` borrows a byte array as text. Bytes from outside
 are decoded field by field and admitted once at the top.
 
 Every index and slice is checked in every build, so a bad index stops the
-program at the line that made it. What isn't checked is lifetime: a view
-doesn't keep its array alive, and returning a view of a local compiles. The
-fix is to decide who owns the storage, usually by having the caller pass in
-a view to fill.
+program at the line that made it. Simple returns of local-array borrows are
+diagnosed too, but a view still doesn't keep its array alive. General lifetime
+discipline remains the programmer's responsibility, usually by having the
+caller pass in a view to fill.
 
 Dynamic arrays, pointers, handles, allocators, the context and scratch
 memory are planned, with ownership and allocation made visible rather than

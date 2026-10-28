@@ -16,6 +16,25 @@ class NativeTests(unittest.TestCase):
             path = Path(directory)/'test.coax'; path.write_text(source)
             return subprocess.run([str(COMPILER),command,str(path),*options],capture_output=True,text=True,timeout=15)
 
+    def test_borrowed_return_storage_under_sanitizers(self):
+        source='''tail :: (input:[]u8)->[]u8 #export_c {alias:=input;return alias[1..<input.count];}
+        text :: (input:[]u8)->string #export_c {return cast(string)input;}
+        '''
+        with tempfile.TemporaryDirectory() as directory:
+            d=Path(directory);path=d/'borrow.coax';path.write_text(source)
+            r=subprocess.run([str(COMPILER),'c',str(path),'--library','--header',str(d/'borrow.h')],capture_output=True,text=True)
+            self.assertEqual(r.returncode,0,r.stderr);(d/'borrow.c').write_text(r.stdout)
+            (d/'host.c').write_text('''#include "borrow.h"
+            #include <assert.h>
+            int main(void){uint8_t a[]={65,66,67};
+              coax_v_u8 all={a,3};coax_v_u8 result=tail(all);
+              assert(result.data==a+1 && result.count==2);result.data[0]=90;
+              coax_string s=text(all);assert(s.data==(const char*)a && s.count==3 && s.data[1]==90);return 0;}
+            ''')
+            r=subprocess.run([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-fsanitize=address,undefined',str(d/'borrow.c'),str(d/'host.c'),'-lm','-o',str(d/'borrow')],capture_output=True,text=True)
+            self.assertEqual(r.returncode,0,r.stderr)
+            self.assertEqual(subprocess.run([str(d/'borrow')],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'}).returncode,0)
+
     def test_float_types_and_compile_time(self):
         source = '''#import "Basic";
         A :: #run sqrt(9.0f32); #assert A == 3.0f32;

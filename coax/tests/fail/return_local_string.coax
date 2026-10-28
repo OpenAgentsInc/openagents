@@ -1,0 +1,7 @@
+// expect: E0383
+bad :: () -> string {
+  storage: [8] u8;
+  text := cast(string) storage[..];
+  return text[1..<4];
+}
+main :: () {}

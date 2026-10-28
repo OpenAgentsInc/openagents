@@ -1,0 +1,9 @@
+// expect: E0383
+bad :: (input: [] u8, choose: bool) -> [] u8 {
+  storage: [8] u8;
+  result := input;
+  if choose { result = storage[..]; }
+  alias := result;
+  return alias[1..<4];
+}
+main :: () {}

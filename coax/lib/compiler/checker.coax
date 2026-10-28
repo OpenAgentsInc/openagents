@@ -173,7 +173,7 @@ CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
   type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;}
 CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;}
-CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;}
+CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
 CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;}
 CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;}
@@ -929,13 +929,70 @@ CK_print :: (c:CK_Context,id:int)->int {
   arg:=c.nodes[e.head].next;while arg!=0 {t:=CK_value(c,arg,CK_Hint.{});if t==1 {CK_error(c,c.nodes[arg].loc,"E0321","this call returns nothing, so it cannot be printed","");}arg=c.nodes[arg].next;}return 1;
 }
 
+#forall "local array borrow returns fail while parameter borrows survive" variant:0..<9 {
+ nodes:[32]CK_Node;types:[32]CK_Type;locals:[16]CK_Local;errors:[8]CK_Error;bytes:[2048]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=4};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,name="borrow",type=16};nodes[3]=CK_Node.{kind=CK_Tag.stmt_return,a=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_slice,a=5};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};nodes[7]=CK_Node.{kind=CK_Tag.expr_ifx,a=8,b=4,c=6};nodes[8]=CK_Node.{kind=CK_Tag.expr_bool};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_cast,a=4,d=10};nodes[10]=CK_Node.{kind=CK_Tag.type_named,name="string"};
+ nodes[11]=CK_Node.{kind=CK_Tag.stmt_var,name="v",a=4};nodes[12]=CK_Node.{kind=CK_Tag.expr_ident,name="v"};
+ nodes[13]=CK_Node.{kind=CK_Tag.stmt_assign,c=12,a=4,op=23};nodes[14]=CK_Node.{kind=CK_Tag.expr_slice,a=12};
+ CK_declare(c,"a",17,CK_Loc.{},"");CK_declare(c,"input",16,CK_Loc.{},"parameter");
+ if variant==1 || variant==2 {CK_stmt(c,11);nodes[3].a=12;if variant==2 {nodes[3].a=14;}}
+ if variant==3 {nodes[3].a=9;nodes[2].type=3;}
+ if variant==4 || variant==5 {nodes[3].a=7;if variant==5 {nodes[7].b=6;nodes[7].c=4;}}
+ if variant==6 {nodes[11].a=6;CK_stmt(c,11);CK_stmt(c,13);nodes[3].a=12;}
+ if variant==7 {nodes[3].a=6;}
+ if variant==8 {nodes[11].a=6;CK_stmt(c,11);nodes[3].a=14;}
+ CK_stmt(c,3);#assert state[0].depth==0;
+ if variant<7 {#assert state[0].error_count==1 && errors[0].code=="E0383";}
+ else {#assert state[0].error_count==0;}
+}
+// This is a local provenance check, not interprocedural lifetime inference.
+// Aggregate values own their inline storage; borrowed fields/elements need
+// separate summaries and deliberately do not inherit their container's flag.
+#forall "inline array subobjects retain local provenance; stored borrows and calls need summaries" variant:0..<8 {
+ nodes:[8]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{local_count=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ types[16]=CK_Type.{kind=CK_Kind.array};types[17]=CK_Type.{kind=CK_Kind.view};types[18]=CK_Type.{kind=CK_Kind.struct_};
+ locals[0]=CK_Local.{name="a",local_backing=true};locals[1]=CK_Local.{name="borrow"};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};nodes[3]=CK_Node.{kind=CK_Tag.expr_field,a=2,type=16};
+ if variant==1 || variant==3 {nodes[3].kind=CK_Tag.expr_index;}
+ if variant==2 || variant==3 {nodes[3].type=17;}
+ if variant==4 {nodes[2].name="borrow";}
+ if variant==5 {nodes[2].name="missing";}
+ if variant==6 {nodes[3].kind=CK_Tag.expr_call;}
+ if variant==7 {nodes[3].type=18;}
+ #assert CK_local_backed(c,3)==(variant==0 || variant==1 || variant==7);
+ #assert !CK_local_backed(c,0) && !CK_local_backed(c,1);
+ CK_taint_borrow(c,"absent",2);#assert !locals[1].local_backing;
+ locals[0].local_backing=false;locals[1].local_backing=true;nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="borrow"};
+ CK_taint_borrow(c,"a",4);#assert locals[0].local_backing;
+ state[0].depth=256;#assert !CK_local_backed(c,3) && state[0].depth==256 && state[0].fatal && errors[0].code=="E0381";
+}
+CK_local_backed :: (c:CK_Context,id:int)->bool {
+ if id<2 {return false;}e:=c.nodes[id];if !CK_enter(c,e.loc) {return false;}defer CK_leave(c);
+ if e.kind==CK_Tag.expr_ident {at:=CK_local(c,e.name);return at>=0 && c.locals[at].local_backing;}
+ if e.kind==CK_Tag.expr_slice || e.kind==CK_Tag.expr_cast {return CK_local_backed(c,e.a);}
+ if e.kind==CK_Tag.expr_ifx {return CK_local_backed(c,e.b) || CK_local_backed(c,e.c);}
+ if (e.kind==CK_Tag.expr_field || e.kind==CK_Tag.expr_index) && CK_aggregate(c,e.type) {return CK_local_backed(c,e.a);}
+ return false;
+}
+CK_taint_borrow :: (c:CK_Context,name:string,source:int) {
+ // Keep a may-borrow flag across assignments/branches. A later reassignment
+ // does not erase it; proving that overwrite safe requires flow analysis.
+ at:=CK_local(c,name);if at>=0 && CK_local_backed(c,source) {c.locals[at].local_backing=true;}
+}
 CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) {
   prev:=CK_local(c,name);
   if prev>=0 {parts:=[5] string.["'",name,"' is already declared at line ",CK_count(c,c.locals[prev].loc.line),"; Coax does not allow shadowing"];CK_error(c,loc,"E0303",CK_text(c,parts[..]),"pick another name");return;}
   if CK_find(c,CK_Tag.proc,name)!=0 {CK_error(c,loc,"E0304",CK_join3(c,"'",name,"' is already the name of a procedure"),"pick another name");return;}
   if CK_find(c,CK_Tag.constant,name)!=0 || CK_builtin_name(c,name) || CK_find(c,CK_Tag.struct_,name)!=0 || CK_find(c,CK_Tag.enum_,name)!=0 {CK_error(c,loc,"E0342",CK_join3(c,"'",name,"' is already a constant, type or intrinsic"),"pick another name");return;}
   at:=c.state[0].local_count;if at>=c.locals.count {CK_resource(c,loc);return;}
-  c.locals[at]=CK_Local.{name=name,type=ty,loc=loc,immutable=immutable};c.state[0].local_count+=1;
+  c.locals[at]=CK_Local.{name=name,type=ty,loc=loc,immutable=immutable,local_backing=CK_aggregate(c,ty) && immutable==""};c.state[0].local_count+=1;
 }
 CK_compound :: (op:u32)->u32 {ops:=[10] u32.[34,35,36,37,38,39,40,41,42,43];if op<24 || op>33 {return CK_NONE;}return ops[cast(int)op-24];}
 CK_loop :: (c:CK_Context,id:int) {c.state[0].loop_depth+=1;CK_stmt(c,id);c.state[0].loop_depth-=1;}
@@ -954,7 +1011,8 @@ CK_stmt :: (c:CK_Context,id:int) {
       fix:="";if CK_numeric(c,declared) && CK_numeric(c,init) {fix=CK_join3(c,"convert it: cast(",c.types[declared].name,") x");}else if c.types[init].kind==CK_Kind.array && c.types[declared].kind==CK_Kind.view {fix="take a view: name[..]";}
       parts:=[5] string.["'",s.name,"' is ",c.types[declared].name,CK_join2(c," but is initialized with ",c.types[init].name)];CK_error(c,c.nodes[s.a].loc,"E0325",CK_text(c,parts[..]),fix);
     }
-    t:=init;if s.d!=CK_NONE {t=declared;}c.nodes[id].type=t;CK_declare(c,s.name,t,s.loc,"");return;
+    t:=init;if s.d!=CK_NONE {t=declared;}c.nodes[id].type=t;CK_declare(c,s.name,t,s.loc,"");
+    CK_taint_borrow(c,s.name,s.a);return;
   }
   if s.kind==CK_Tag.stmt_assign {
     target_expr:=c.nodes[s.c];
@@ -965,7 +1023,8 @@ CK_stmt :: (c:CK_Context,id:int) {
       op:=CK_compound(s.op);int_only:=op>=38;shift:=op==42 || op==43;bad:=!CK_numeric(c,target);if int_only {bad=!CK_integer(c,target);}
       if bad {need:="a number";if int_only {need="an integer";}parts:=[5] string.[CK_op(s.op)," needs ",need," target, this is ",c.types[target].name];CK_error(c,s.loc,"E0326",CK_text(c,parts[..]),"");}
       else {mismatch:=t!=target;if shift {mismatch=!CK_integer(c,t);}if mismatch {parts:=[4] string.["the target is ",c.types[target].name,", given ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),"");}}
-    }else if t!=target {fix:="";if CK_numeric(c,target) && CK_numeric(c,t) {fix=CK_join3(c,"convert it: cast(",c.types[target].name,") x");}parts:=[4] string.["the target is ",c.types[target].name,", assigned ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),fix);}return;
+    }else if t!=target {fix:="";if CK_numeric(c,target) && CK_numeric(c,t) {fix=CK_join3(c,"convert it: cast(",c.types[target].name,") x");}parts:=[4] string.["the target is ",c.types[target].name,", assigned ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),fix);}
+    if target_expr.kind==CK_Tag.expr_ident {CK_taint_borrow(c,target_expr.name,s.a);}return;
   }
   if s.kind==CK_Tag.stmt_return {
     if c.state[0].defer_depth!=0 {CK_error(c,s.loc,"E0361","a deferred statement cannot return","return after the defer runs instead");return;}
@@ -973,7 +1032,8 @@ CK_stmt :: (c:CK_Context,id:int) {
     if s.a==CK_NONE {if want!=1 && want!=0 {parts:=[4] string.["'",current.name,"' must return ",c.types[want].name];CK_error(c,s.loc,"E0328",CK_text(c,parts[..]),"");}return;}
     t:=CK_value(c,s.a,CK_Hint.{type=want});
     if want==1 {CK_error(c,c.nodes[s.a].loc,"E0329",CK_join3(c,"'",current.name,"' returns nothing, but a value is returned"),CK_join3(c,"add '-> ",c.types[t].name,"' to its declaration"));}
-    else if t!=CK_NONE && want!=0 && t!=want {parts:=[5] string.["'",current.name,"' returns ",c.types[want].name,CK_join2(c,", given ",c.types[t].name)];CK_error(c,c.nodes[s.a].loc,"E0330",CK_text(c,parts[..]),"");}return;
+    else if t!=CK_NONE && want!=0 && t!=want {parts:=[5] string.["'",current.name,"' returns ",c.types[want].name,CK_join2(c,", given ",c.types[t].name)];CK_error(c,c.nodes[s.a].loc,"E0330",CK_text(c,parts[..]),"");}
+    else if (t==3 || c.types[t].kind==CK_Kind.view) && CK_local_backed(c,s.a) {CK_error(c,c.nodes[s.a].loc,"E0383","returned borrow may refer to a local fixed array","return the fixed array value, or use caller-owned storage passed as a view");}return;
   }
   if s.kind==CK_Tag.stmt_if || s.kind==CK_Tag.stmt_while {
     t:=CK_value(c,s.a,CK_Hint.{});if t!=CK_NONE && t!=2 {fix:="";if CK_numeric(c,t) {fix="compare it: x != 0";}CK_error(c,c.nodes[s.a].loc,"E0331",CK_join2(c,"condition must be bool, found ",c.types[t].name),fix);}

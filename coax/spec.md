@@ -263,6 +263,21 @@ a view parameter. A view does not extend the array's lifetime. Strings index
 to `u8` and slice to strings, and are immutable; `cast(string) bytes[..]`
 borrows a `[] u8` as text. Indices and slices are checked in every build.
 
+The checker rejects a returned view or string when local provenance identifies
+backing storage in a local fixed array (E0383). This includes inline array
+fields/elements, direct local aliases and assignments, subranges, casts and
+either `ifx` branch. A local alias keeps its may-borrow flag after reassignment,
+so even an overwritten or unreachable local borrow can be refused. Returning
+a borrowed parameter, or copying a fixed array value out, remains valid.
+
+This bounded diagnostic is not a general lifetime analysis. It does not track
+borrows stored inside aggregates, returned through calls, retained by callees,
+or escaping into caller storage, and does not compute loop fixed points or
+enforce shorter nested-block lifetimes. Those cases still require explicit
+owner/lifetime discipline. Assignment, passing and returning a view copy only
+its descriptor; the caller must keep the backing storage valid for every use.
+This slice adds no owning value transfer or destruction semantics.
+
 Implemented scalar extensions in 0.3.0 are specified in the
 [compiler reference](README.md#native-libraries-and-metal): explicit casts,
 finite compile-time math, native runtime floating arithmetic, `#foreign`
