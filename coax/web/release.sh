@@ -9,7 +9,9 @@
 #
 # Staging's smoke is the HTTP checks (smoke.sh), then the playtest flow walked
 # in headless Chrome against its golden screenshots (goldens.ts): each page
-# must start and draw, not only answer 200. Production gets the walk too.
+# must start and draw, not only answer 200, and the pages must send every
+# event of the analytics contract (analytics-contract.json); a missing one is
+# named and nothing is promoted. Production gets the walk too.
 # A visual change fails the goldens until approved: look at the shot it
 # printed, then `bun coax/web/goldens.ts https://staging.openagents.com
 # --update` and commit coax/web/goldens/ with the change.
@@ -80,7 +82,7 @@ if $stage; then
   t=$(now); "$tree/coax/web/smoke.sh" https://staging.openagents.com; lap smoke "$t"
   t=$(now)
   bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ||
-    { echo "release $commit: staging's pages don't start, draw or match their goldens; production is untouched" >&2; exit 1; }
+    { echo "release $commit: staging's pages don't start, draw, match their goldens or send the analytics contract; production is untouched" >&2; exit 1; }
   lap goldens "$t"
 fi
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s"; exit 0; }

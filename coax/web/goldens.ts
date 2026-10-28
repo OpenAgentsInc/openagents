@@ -4,6 +4,11 @@
 // ready, nothing reports an error or throws) and draw (enough lit pixels),
 // and looks like its golden screenshot. It closes the gap the HTTP smoke
 // leaves: a page that answers 200 but doesn't start, or draws nothing.
+// Every analytics batch the walk sends is read too (beacons go as fetches,
+// which the browser reports): in the house it runs in through the front
+// door, clicks and says it is leaving, and each event in analytics-contract.json must have
+// been sent by its page, or the walk fails and names what is missing
+// (INVARIANTS.md, "Analytics never lose visibility").
 // release.sh runs it on staging before promoting (goldens and all) and on
 // production after (--walk); pin.sh walks a pinned demo (--walk --root).
 //
@@ -33,6 +38,8 @@ const value = (n: string, d = "") => { const i = args.indexOf(`--${n}`); return 
 const base = (args[0] ?? "").replace(/\/$/, ""), root = value("root"), update = flag("update"), walkOnly = flag("walk")
 if (!base.startsWith("http")) { console.error("usage: bun coax/web/goldens.ts BASE [--update] [--walk] [--root /demo/NAME]"); process.exit(2) }
 const goldens = join(import.meta.dir, "goldens")
+const contract: Record<string, string[]> = JSON.parse(readFileSync(join(import.meta.dir, "analytics-contract.json"), "utf8"))
+const sent = new Set<string>()
 // The least each page draws: the share of pixels lit (a channel over 40).
 // The landing and the galaxy are words and stars on black; the house, a dark night,
 // lights about 6% (its loading screen, or one that failed, under 1%).
@@ -132,12 +139,19 @@ try {
     if (m.method === "Runtime.exceptionThrown") errors.push(p.exceptionDetails?.exception?.description?.split("\n")[0] ?? p.exceptionDetails?.text)
     if (m.method === "Runtime.consoleAPICalled" && p.type === "error") errors.push(p.args.map((a: any) => a.value ?? a.description).join(" ").slice(0, 200))
     if (m.method === "Network.requestWillBeSent" && !p.request.url.includes("/api/analytics")) inflight.add(p.requestId)
+    if (m.method === "Network.requestWillBeSent" && p.request.url.includes("/api/analytics/events") && p.request.method === "POST") {
+      const take = (body: string) => { try { for (const e of JSON.parse(body).events ?? []) sent.add(`${e.page}/${e.ev}`) } catch {} }
+      if (p.request.postData) take(p.request.postData)
+      else if (p.request.hasPostData) send("Network.getRequestPostData", { requestId: p.requestId }).then((r) => r.result?.postData && take(r.result.postData))
+    }
     if (m.method === "Network.loadingFinished" || m.method === "Network.loadingFailed") { if (inflight.delete(p.requestId) && !inflight.size) quietSince = Date.now() }
   })
   const send = (method: string, params: any = {}) => new Promise<any>((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })) })
   const evaluate = async (expression: string) => (await send("Runtime.evaluate", { expression, returnByValue: true })).result?.result?.value
   await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false })
   await send("Runtime.enable"); await send("Network.enable")
+  await send("Page.enable")
+  if (!root) await send("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })" })
   const shot = async () => Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64")
   const until = async (test: () => Promise<boolean>, ms: number) => { const end = Date.now() + ms; while (Date.now() < end) { if (await test()) return true; await Bun.sleep(200) } return false }
 
@@ -190,10 +204,27 @@ try {
       if (rows[y] > 20) {
         for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
           await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 })
-        await arrive("haunted-house")
+        if (await arrive("haunted-house") && !root) {
+          const t0 = Date.now()
+          const want = Object.entries(contract).flatMap(([page, evs]) => evs.map((ev) => `${page}/${ev}`))
+          const seen = (leave: boolean) => want.every((w) => sent.has(w) || (!leave && w.endsWith("/world-leave")))
+          for (const type of ["keyDown", "keyUp"]) {
+            if (type === "keyUp") await until(async () => sent.has("haunt/quest"), 8000)
+            await send("Input.dispatchKeyEvent", { type, key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: type === "keyDown" ? 8 : 0 })
+            await send("Input.dispatchKeyEvent", { type, key: "w", code: "KeyW", windowsVirtualKeyCode: 87, modifiers: type === "keyDown" ? 8 : 0 })
+          }
+          for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
+            await send("Input.dispatchMouseEvent", { type, x: W / 2, y: H / 3, button: "left", clickCount: 1 })
+          await until(async () => seen(false), 3000)
+          await evaluate("dispatchEvent(new Event('pagehide'))")
+          await until(async () => seen(true), 4000)
+          const missing = want.filter((w) => !sent.has(w))
+          check(!missing.length, `analytics contract: every contract event sent (${missing.length ? "missing " + missing.join(", ") : want.length + " events"}, ${((Date.now() - t0) / 1000).toFixed(1)} s)`)
+        }
       }
     }
   }
+  if (!root && !sent.size) check(false, "analytics contract: no analytics batch was sent")
   ws.close()
 } finally {
   proc.kill()

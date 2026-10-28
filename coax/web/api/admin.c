@@ -225,6 +225,11 @@ static void section(out_buf *o, PGconn *db, const char *title, const char *flags
 #define STEP_NAMES "ARRAY['visited', 'loaded', 'in a world', 'editing', 'placed', 'published', 'shared', 'invited', 'answered']"
 
 static void overview(out_buf *o, PGconn *db, const char *const *f) {
+  section(o, db, "HEALTH", "", "SURFACE|LAST EVENT|LAST HOUR|LAST DAY|CONTRACT EVENTS MISSING",
+    "SELECT surface, coalesce(" CHI("last_ms") " || ' ' || last_ev, 'never'), hour::text, day::text, "
+    "  CASE WHEN cardinality(missing) = 0 THEN 'none' ELSE 'MISSING ' || array_to_string(missing, ', ') END "
+    "FROM analytics.health(floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint) "
+    "ORDER BY cardinality(missing) = 0, surface", 0, NULL);
   section(o, db, "SUMMARY", "", "WHAT|COUNT", KEPT PLAYTESTERS
     "SELECT 'Sessions', count(*)::text FROM k "
     "UNION ALL SELECT 'Visitors', count(DISTINCT p->>'pid')::text FROM e WHERE ev = 'session-start' "

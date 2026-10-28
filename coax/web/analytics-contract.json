@@ -1,0 +1,5 @@
+{
+  "landing": ["session-start", "page-view"],
+  "galaxy": ["page-view"],
+  "haunt": ["page-view", "world-enter", "load-engine", "area", "objective", "quest", "click", "world-leave"]
+}

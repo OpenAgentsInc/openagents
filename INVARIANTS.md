@@ -508,3 +508,21 @@ public repo holds only the mechanism, never a project's contents.
 Check: `coax/web/api/test_private.py` (via `coax/web/api/test.sh`),
 `coax test apps/openagents-web/private.coax`, `coax/web/smoke.sh`. Threat
 model and residual risks: `docs/private-projects-threat-model.md`.
+
+## Analytics never lose visibility
+
+Every page keeps sending the analytics contract
+(`coax/web/analytics-contract.json`, the same rows as `analytics.contract` in
+oa-api): the landing's session-start and page-view, the galaxy's page-view,
+and the Haunted House's page-view, world-enter, load-engine, area, objective,
+quest, click and world-leave. A release never promotes a build whose staging
+walk stops sending one: `coax/web/goldens.ts` plays the journey in headless
+Chrome, runs in through the house's front door, clicks and leaves, reads
+every batch the pages send and names what is missing, and `release.sh` stops
+before production. In production the Health card on /admin/analytics shows,
+per surface, the last event, the last hour and day, and which contract
+events no page sent in a day. Changing the contract changes both lists in one
+commit.
+
+Check: `coax/web/release.sh` (staging walk), `coax/web/api/test_health.py`
+(via `coax/web/api/test.sh`), which also checks the two lists agree.
