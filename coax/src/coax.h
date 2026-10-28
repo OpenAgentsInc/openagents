@@ -67,10 +67,19 @@ struct Loc {
   int32_t line = 0, col = 0, offset = 0;
 };
 
+struct GeneratedRegion {
+  int32_t start = 0, end = 0;
+  Loc directive;
+  std::string prefix;
+};
 struct Source {
   std::string path;
   std::string text;
+  std::string original_text;
+  std::vector<GeneratedRegion> generated;
+  std::vector<std::string> import_provenance;
 };
+Loc diagnostic_loc(const Source *src, Loc loc);
 
 // Prints "path:line:col: error[Exxxx]: message", the source line, a caret,
 // and "fix: ..." when there is one; or one JSON object per line with
@@ -190,8 +199,8 @@ enum class ExprKind : uint8_t {
 enum class Intrinsic : uint8_t { none, sin, cos, tan, exp, log, sqrt, floor, abs, pow };
 Intrinsic find_intrinsic(Str name);
 
-enum class BinaryIntrinsic : uint8_t { none, bytes_overlap, f32_from_bits, f64_from_bits, f32_bits, f64_bits };
-BinaryIntrinsic find_binary_intrinsic(Str name);
+enum class ByteIntrinsic : uint8_t { none, bytes_overlap, f32_from_bits, f64_from_bits, f32_bits, f64_bits };
+ByteIntrinsic find_byte_intrinsic(Str name);
 
 struct FieldInit {
   Str name;
@@ -221,7 +230,7 @@ struct Expr {
   struct ProcDecl *proc = nullptr;      // call: resolved target (null for builtins)
   struct ConstDecl *constant = nullptr; // ident: resolved global constant
   bool builtin_print = false;
-  BinaryIntrinsic binary_intrinsic = BinaryIntrinsic::none;
+  ByteIntrinsic byte_intrinsic = ByteIntrinsic::none;
   Intrinsic intrinsic = Intrinsic::none;  // call: built-in math (proc is null)
   Value *ct = nullptr;        // ct_value: an aggregate computed at compile time
   int32_t ct_id = -1;         // ct_value: emitted as a static constant
@@ -370,6 +379,7 @@ struct CheckOutcome {
   Loc loc;                     // the failure
   std::string code, message;   // the failure's error code and message
   std::string counterexample;  // #forall: "a = 3, b = true"
+  std::vector<const ProcDecl *> executed; // procedures actually entered by this check
 };
 // Runs one check in the evaluator with its own step budget. Never prints.
 CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps);

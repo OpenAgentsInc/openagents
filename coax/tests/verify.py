@@ -4,6 +4,7 @@ print counterexamples, #authority builds run the checks, and mutation
 testing reports the changes no check notices."""
 
 import os
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -111,6 +112,61 @@ class Verify(unittest.TestCase):
         r = coax("mutate", path)
         self.assertEqual(r.returncode, 1)
         self.assertIn("make them pass first", r.stderr)
+
+    def test_nonvacuous_domains_and_extreme_bounds(self):
+        for domain,code in [('0..<0','E0379'),('3..<2','E0379'),
+                            ('-9223372036854775808..<9223372036854775807','E0400'),
+                            ('0..<16777217','E0400')]:
+            path=self.write('#forall x: '+domain+' { #assert false; }\nmain :: () {}')
+            r=coax('test',path);self.assertEqual(r.returncode,1);self.assertIn(code,r.stderr)
+        path=self.write('#forall x: 9223372036854775806..<9223372036854775807 { #assert x==9223372036854775806; }\nmain :: () {}')
+        r=coax('test',path);self.assertEqual(r.returncode,0,r.stderr)
+        # The domain is represented lazily, so even its maximum cardinality
+        # respects a tiny execution budget without first allocating 16M Values.
+        path=self.write('#forall x: 0..<16777216 { #assert x>=0; }\nmain :: () {}')
+        r=coax('test',path,'--steps','10');self.assertEqual(r.returncode,1);self.assertIn('E0400',r.stderr)
+
+    def test_authority_requires_execution_not_dead_references(self):
+        for body in ['if false { #assert f()==1; }', '#assert true || f()==1;', '#assert #run f()==1;']:
+            path=self.write('#authority; f :: ()->int { return 1; }\n#test "dead" { '+body+' }\nmain :: () {}')
+            for command in ('test','check','c','mutate'):
+                r=coax(command,path);self.assertEqual(r.returncode,1,(command,r.stdout,r.stderr));self.assertIn('E0380',r.stderr)
+            self.assertNotIn('-1 passed',coax('test',path).stdout)
+
+    def test_empty_checks_and_uncovered_mutation_cannot_go_green(self):
+        path=self.write('main :: () {}')
+        r=coax('test',path);self.assertEqual(r.returncode,1);self.assertIn('no #test or #forall',r.stderr)
+        path=self.write('f :: ()->int {return 1;} #test "empty" {#assert true;} main :: () {}')
+        r=coax('mutate',path);self.assertEqual(r.returncode,1);self.assertIn('not reached by any check: f',r.stdout)
+        path=self.write('#test "empty" {#assert true;} main :: () {}')
+        r=coax('mutate',path);self.assertEqual(r.returncode,1);self.assertIn('no reachable mutation sites',r.stdout)
+
+    def test_json_retains_counterexamples(self):
+        path=self.write('#forall x: 0..<3 { #assert x<1; } main :: () {}')
+        r=coax('test',path,'--json');self.assertEqual(r.returncode,1)
+        diagnostic=json.loads(r.stderr.strip());self.assertEqual(diagnostic['code'],'E0406')
+        self.assertIn('counterexample: x = 1',diagnostic['message'])
+
+    def test_step_argument_is_strict(self):
+        path=self.write('#test "ok" {#assert true;} main :: () {}')
+        for value in ('0','-1','abc','2x','+1','18446744073709551616',' 100'):
+            r=coax('test',path,'--steps',value);self.assertEqual(r.returncode,1);self.assertIn('positive uint64',r.stderr)
+
+    def test_money_fee_preconditions_hold_in_release(self):
+        source=(ROOT/'examples/money.coax').read_text().split('main :: ()')[0]
+        for arguments in ('-1,1000','MAX_MSAT+1,1000','1,-1','MAX_MSAT,1000001'):
+            path=self.write(source+'main :: () {fee:=fee_msat('+arguments+');}')
+            for opts in ((),('--release',)):
+                r=coax('run',path,*opts);self.assertNotEqual(r.returncode,0);self.assertIn('assertion failed',r.stderr)
+
+    def test_equivalent_marks_must_be_actual_line_comments(self):
+        for marker in ('note:="// mutant: equivalent";', '/* // mutant: equivalent */', '// mutant: equivalently'):
+            # With a line comment, put it after the weak code; string/block
+            # markers before it must not hide a surviving literal mutation.
+            line='return x+1; '+marker if marker.startswith('//') else marker+' return x+1;'
+            path=self.write('f :: (x:int)->int {'+line+'\n}\n#test "weak" {#assert f(0)>0;} main :: () {}')
+            r=coax('mutate',path);self.assertEqual(r.returncode,1,r.stderr)
+            self.assertIn('mutant survived',r.stdout);self.assertNotIn('marked equivalent',r.stdout)
 
     def test_runtime_assert_traps_in_release(self):
         path = self.write("main :: () { x := 3; #assert x == 4; }\n")

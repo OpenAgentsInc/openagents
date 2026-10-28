@@ -75,6 +75,7 @@ struct Evaluator {
   Loc fail_loc;
   std::string fail_code, fail_message;
   std::vector<Loc> calls;
+  std::vector<const ProcDecl *> executed;
   static constexpr uint32_t MAX_STEPS = 100000, MAX_DEPTH = 64;
 
   void err(Loc loc, const char *code, const std::string &message) {
@@ -93,11 +94,11 @@ struct Evaluator {
 
   bool tick(Loc loc, uint32_t cost = 1) {
     if (failed) return false;
-    steps += cost;
-    if (steps > max_steps) {
+    if (steps > max_steps || cost > max_steps - steps) {
       err(loc, "E0400", "compile-time evaluation exceeded " + std::to_string(max_steps) + " steps");
       return false;
     }
+    steps += cost;
     return true;
   }
 
@@ -474,12 +475,12 @@ struct Evaluator {
           err(e->loc, "E0408", "a constant procedure call requires #run");
           return {};
         }
-        if (e->binary_intrinsic != BinaryIntrinsic::none) {
-          if(e->binary_intrinsic == BinaryIntrinsic::bytes_overlap) {err(e->loc,"E0404","runtime storage overlap cannot execute at compile time");return {};}
+        if (e->byte_intrinsic != ByteIntrinsic::none) {
+          if(e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {err(e->loc,"E0404","runtime storage overlap cannot execute at compile time");return {};}
           Value a=expr(e->args[0],frame,allow_calls),r;r.type=e->type;
-          if(e->binary_intrinsic == BinaryIntrinsic::f32_bits){float x=(float)a.f;uint32_t b;memcpy(&b,&x,4);r.bits=b;}
-          else if(e->binary_intrinsic == BinaryIntrinsic::f64_bits){memcpy(&r.bits,&a.f,8);}
-          else if(e->binary_intrinsic == BinaryIntrinsic::f32_from_bits){uint32_t b=(uint32_t)a.bits;float x;memcpy(&x,&b,4);r.f=x;}
+          if(e->byte_intrinsic == ByteIntrinsic::f32_bits){float x=(float)a.f;uint32_t b;memcpy(&b,&x,4);r.bits=b;}
+          else if(e->byte_intrinsic == ByteIntrinsic::f64_bits){memcpy(&r.bits,&a.f,8);}
+          else if(e->byte_intrinsic == ByteIntrinsic::f32_from_bits){uint32_t b=(uint32_t)a.bits;float x;memcpy(&x,&b,4);r.f=x;}
           else {memcpy(&r.f,&a.bits,8);}
           if(is_float(r.type) && !std::isfinite(r.f)) {err(e->loc,"E0412","non-finite compile-time bit conversion");return {};}
           return r;
@@ -502,6 +503,11 @@ struct Evaluator {
           Value value = expr(e->args[i], frame, allow_calls);
           if (failed) return {};
           callee.locals.push_back({e->proc->params[i].name, std::move(value), true});
+        }
+        if (quiet) {
+          bool known = false;
+          for (const ProcDecl *p : executed) known = known || p == e->proc;
+          if (!known) executed.push_back(e->proc);
         }
         calls.push_back(e->loc);
         Value result;
@@ -825,9 +831,25 @@ struct Evaluator {
     return std::to_string((unsigned long long)v.bits);
   }
 
-  // Every value of a #forall binding, in order.
-  bool domain(const Param &prm, const Binding &b, std::vector<Value> *out) {
+  static constexpr uint64_t MAX_CASES = UINT64_C(1) << 24;
+
+  // Domains are descriptors, not arrays of Value. A wide finite range must
+  // not allocate gigabytes before either the case or step budget can fire.
+  struct Domain {
+    Type type = nullptr;
+    int64_t first = 0;
+    uint64_t count = 0;
+    Value value(uint64_t index) const {
+      uint64_t bits = type->kind == TypeKind::enum_
+          ? type->enum_decl->members[(int32_t)index].bits
+          : canon_bits(type, (uint64_t)((__int128)first + index));
+      return scalar(type, bits);
+    }
+  };
+
+  bool domain(const Param &prm, const Binding &b, Domain *out) {
     Type t = prm.type;
+    out->type = t;
     if (b.lo) {
       CtFrame empty;
       Value lo = expr(b.lo, empty, false);
@@ -835,54 +857,65 @@ struct Evaluator {
       Value hi = expr(b.hi, empty, false);
       if (failed) return false;
       int64_t l = (int64_t)lo.bits, h = (int64_t)hi.bits;
-      if (h > l && (uint64_t)(h - l) > MAX_CASES) {
+      __int128 span = (__int128)h - (__int128)l;
+      if (span <= 0) {
+        err(b.lo->loc, "E0379", "#forall requires a nonempty increasing range");
+        return false;
+      }
+      if (span > MAX_CASES) {
         err(b.lo->loc, "E0400", "#forall range has more than " + std::to_string(MAX_CASES) + " values");
         return false;
       }
-      for (int64_t i = l; i < h; i++) out->push_back(scalar(t, (uint64_t)i));
+      out->first = l;
+      out->count = (uint64_t)span;
     } else if (t == &T_BOOL) {
-      out->push_back(scalar(t, 0));
-      out->push_back(scalar(t, 1));
+      out->count = 2;
     } else if (t->kind == TypeKind::enum_) {
-      for (const EnumMember &m : t->enum_decl->members) out->push_back(scalar(t, m.bits));
+      out->count = (uint64_t)t->enum_decl->members.count;
+      if (!out->count) {
+        err(prm.loc, "E0379", "#forall cannot enumerate an empty enum");
+        return false;
+      }
     } else {
-      __int128 lo = t->is_signed ? -((__int128)1 << (t->bits - 1)) : 0;
-      __int128 hi = t->is_signed ? ((__int128)1 << (t->bits - 1)) : ((__int128)1 << t->bits);
-      for (__int128 i = lo; i < hi; i++) out->push_back(scalar(t, canon_bits(t, (uint64_t)i)));
+      out->first = t->is_signed ? -(INT64_C(1) << (t->bits - 1)) : 0;
+      out->count = UINT64_C(1) << t->bits;
     }
     return true;
   }
 
-  static constexpr uint64_t MAX_CASES = UINT64_C(1) << 24;
-
   CheckOutcome check(CheckDecl *c) {
     CheckOutcome out;
     ProcDecl *p = c->proc;
-    std::vector<std::vector<Value>> domains((size_t)p->params.count);
+    std::vector<Domain> domains((size_t)p->params.count);
     uint64_t total = 1;
     for (int32_t i = 0; i < p->params.count && !failed; i++) {
       if (!domain(p->params[i], c->domains[i], &domains[(size_t)i])) break;
-      total *= domains[(size_t)i].size();
-      if (total > MAX_CASES) err(c->loc, "E0400", "#forall has more than " + std::to_string(MAX_CASES) + " cases");
+      uint64_t count = domains[(size_t)i].count;
+      if (count > MAX_CASES / total) {
+        err(c->loc, "E0400", "#forall has more than " + std::to_string(MAX_CASES) + " cases");
+        break;
+      }
+      total *= count;
     }
     // An odometer over the bindings: the last one changes fastest.
     std::vector<size_t> at(domains.size(), 0);
     for (uint64_t n = 0; n < total && !failed; n++) {
       CtFrame frame;
-      for (size_t i = 0; i < domains.size(); i++) frame.locals.push_back({p->params[(int32_t)i].name, domains[i][at[i]], true});
+      for (size_t i = 0; i < domains.size(); i++) frame.locals.push_back({p->params[(int32_t)i].name, domains[i].value(at[i]), true});
       Value ignored;
       stmt(p->body, frame, &ignored);
       out.cases++;
       if (failed) {
         for (size_t i = 0; i < domains.size(); i++)
-          out.counterexample += (i ? ", " : "") + to_std(p->params[(int32_t)i].name) + " = " + show(domains[i][at[i]]);
+          out.counterexample += (i ? ", " : "") + to_std(p->params[(int32_t)i].name) + " = " + show(domains[i].value(at[i]));
         break;
       }
       for (size_t i = domains.size(); i-- > 0;) {
-        if (++at[i] < domains[i].size()) break;
+        if (++at[i] < domains[i].count) break;
         at[i] = 0;
       }
     }
+    out.executed = std::move(executed);
     out.passed = !failed;
     out.steps = steps;
     out.loc = fail_loc;

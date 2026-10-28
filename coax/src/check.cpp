@@ -74,10 +74,10 @@ Intrinsic find_intrinsic(Str name) {
   return Intrinsic::none;
 }
 
-BinaryIntrinsic find_binary_intrinsic(Str name) {
+ByteIntrinsic find_byte_intrinsic(Str name) {
   const char *names[] = {"", "bytes_overlap", "f32_from_bits", "f64_from_bits", "f32_bits", "f64_bits"};
-  for (int i=1; i<6; i++) if (str_eq(name,names[i])) return (BinaryIntrinsic)i;
-  return BinaryIntrinsic::none;
+  for (int i=1; i<6; i++) if (str_eq(name,names[i])) return (ByteIntrinsic)i;
+  return ByteIntrinsic::none;
 }
 
 namespace {
@@ -953,18 +953,18 @@ struct Checker {
       ix->rhs = e->args[1];
       return call_as_cast(e, Str{"int", 3}, ix);
     }
-    if (BinaryIntrinsic in = find_binary_intrinsic(e->text); in != BinaryIntrinsic::none) {
-      e->binary_intrinsic = in;
-      int n = in == BinaryIntrinsic::bytes_overlap ? 2 : 1;
-      if (e->args.count != n) { err(e->loc,"E0378","wrong binary intrinsic argument count"); return &T_INVALID; }
-      Type target = in == BinaryIntrinsic::f32_from_bits ? &T_U32 : in == BinaryIntrinsic::f64_from_bits ? &T_U64 : in == BinaryIntrinsic::f32_bits ? &T_F32 : &T_F64;
+    if (ByteIntrinsic in = find_byte_intrinsic(e->text); in != ByteIntrinsic::none) {
+      e->byte_intrinsic = in;
+      int n = in == ByteIntrinsic::bytes_overlap ? 2 : 1;
+      if (e->args.count != n) { err(e->loc,"E0378","wrong byte intrinsic argument count"); return &T_INVALID; }
+      Type target = in == ByteIntrinsic::f32_from_bits ? &T_U32 : in == ByteIntrinsic::f64_from_bits ? &T_U64 : in == ByteIntrinsic::f32_bits ? &T_F32 : &T_F64;
       for (int i=0; i<n; i++) {
-        Type t = value(e->args[i], in == BinaryIntrinsic::bytes_overlap ? nullptr : target);
+        Type t = value(e->args[i], in == ByteIntrinsic::bytes_overlap ? nullptr : target);
         bool span = t == &T_STRING || (t->kind == TypeKind::view && t->elem == &T_U8);
-        if ((in == BinaryIntrinsic::bytes_overlap && !span) || (in != BinaryIntrinsic::bytes_overlap && t != target))
-          err(e->loc,"E0378","binary intrinsic argument type mismatch");
+        if ((in == ByteIntrinsic::bytes_overlap && !span) || (in != ByteIntrinsic::bytes_overlap && t != target))
+          err(e->loc,"E0378","byte intrinsic argument type mismatch");
       }
-      return in == BinaryIntrinsic::bytes_overlap ? &T_BOOL : in == BinaryIntrinsic::f32_from_bits ? &T_F32 : in == BinaryIntrinsic::f64_from_bits ? &T_F64 : in == BinaryIntrinsic::f32_bits ? &T_U32 : &T_U64;
+      return in == ByteIntrinsic::bytes_overlap ? &T_BOOL : in == ByteIntrinsic::f32_from_bits ? &T_F32 : in == ByteIntrinsic::f64_from_bits ? &T_F64 : in == ByteIntrinsic::f32_bits ? &T_U32 : &T_U64;
     }
     if (Intrinsic in = find_intrinsic(e->text); in != Intrinsic::none) return math_call(e, in, want);
     if (str_eq(e->text, "size_of") && e->type_expr) {
@@ -1292,7 +1292,7 @@ struct Checker {
 
   bool is_builtin_name(Str name) {
     return str_eq(name, "type_name") || (has_basic && str_eq(name, "print")) || str_eq(name, "len") ||
-           str_eq(name, "byte_at") || find_binary_intrinsic(name) != BinaryIntrinsic::none || find_intrinsic(name) != Intrinsic::none;
+           str_eq(name, "byte_at") || find_byte_intrinsic(name) != ByteIntrinsic::none || find_intrinsic(name) != Intrinsic::none;
   }
 
   void check_global_names() {
@@ -1404,7 +1404,7 @@ struct Checker {
     if (!e) return;
     if (!metal_type(e->type)) return metal_fail(e->loc, std::string("a ") + type_name(e->type) + " value");
     if (e->builtin_print) return metal_fail(e->loc, "print");
-    if (e->binary_intrinsic != BinaryIntrinsic::none) return metal_fail(e->loc, "a binary storage intrinsic");
+    if (e->byte_intrinsic != ByteIntrinsic::none) return metal_fail(e->loc, "a binary storage intrinsic");
     if (e->kind == ExprKind::call && e->proc) {
       if (e->proc->foreign) return metal_fail(e->loc, "a #foreign call");
       for (const ProcDecl *q : path)

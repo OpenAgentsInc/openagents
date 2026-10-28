@@ -1,8 +1,9 @@
 # Verification in OpenAgents: Nostr, payments and Coax
 
 *Draft, 2026-10-27, revised the same day. Thinking document, not a plan of
-record. Stage V1 and the check-first loop of §9 have landed in coax0 0.5.0;
-the rest is still a proposal.*
+record. An initial V1 runner and the check-first loop of §9 landed in coax0 0.5.0,
+with nonvacuity/coverage/budget fixes in 0.5.1. V1 exit coverage is incomplete;
+the broader verification design remains a proposal.*
 
 This note asks how we make the code that carries money and signatures
 trustworthy, mainly Nostr and payments. It sets two rules:
@@ -511,8 +512,8 @@ attestations do.
 **Landed in coax0 0.5.0.** These two features turn §9's loop into
 something the compiler enforces.
 - `#authority;` at the top of a file means every procedure except `main`
-  and `#foreign` imports must be reached from a `#test` or `#forall`,
-  directly or through calls. If not, it is error E0380. Every compile of
+  and `#foreign` imports must actually execute in a `#test` or `#forall`,
+  directly or through calls. Dead branches and folded values do not count. If not, it is error E0380. Every compile of
   the file also runs its checks, so a failing check is a failed build. A
   procedure can't exist before its check does.
 - `coax mutate FILE` checks the checks. It changes the code reached from
@@ -539,7 +540,9 @@ something the compiler enforces.
   - routing fees without forming `amount * ppm`;
   - NIP-MKT deadline order.
 
-  It has 8 checks and all 37 mutants are killed.
+  Its finite checks now include full fee-domain boundary cases, and all
+  currently generated mutants are killed. This is a bounded example, not a
+  proof over production money/signature implementations.
 
 ### What we leave out
 
@@ -554,13 +557,15 @@ second toolchain for everything.
 | Stage | Work | Exit evidence |
 | --- | --- | --- |
 | V0. Inventory | List every invariant the protocol spec states: its owner, its layer and where it's checked. Mark the authority-critical code. | A table here, linked from `INVARIANTS.md` |
-| V1. Native checks | `#forall`, `#test` and `coax test` with their own budget; `#authority` and `coax mutate`; MKT deadline and amount rules as checked Coax functions. **Landed in 0.5.0**, except `assume` | `coax/build.sh test` runs `tests/verify.py`; counterexamples print as values; `examples/money.coax` kills every mutant |
+| V1. Native checks | `#forall`, `#test` and `coax test` with their own budget; `#authority` and `coax mutate`; MKT deadline and amount rules as checked Coax functions. **Initial runner landed in 0.5.0, hardened in 0.5.1**; domain-specific exit coverage, `assume` and production adoption remain open | `coax/build.sh test` runs `tests/verify.py`; counterexamples print as values; `examples/money.coax` kills every mutant |
 | V2. Money types | `distinct`, `#range`, checked arithmetic by default in authority modules; `MAX_MSAT` and checked sums | Unit mixing, out-of-range amounts and silent wrap are compile errors or traps in every build |
 | V3. Fuzzing and data | `coax fuzz` with emitted coverage, starting with `metareal/home.coax`; `#embed` with pinned Nostr, JCS and BIP vectors; sanitizer jobs through `COAX_CC` | A fuzz corpus and vector suites in the local test run |
 | V4. Machines | `state_machine` with built-in exploration and `#consistency`; Lightning attempts, x402, spend grants, ledger and MKT orders written with them | Each machine explored to a stated depth in minutes; traces kept as tests |
 | V5. Release discipline | `coax build --manifest`, independent attestation, and the evaluator-versus-C random-program check | Two builders produce identical manifests for a release |
 
-V1 has landed, apart from `assume`, which waits for the fuzz builds of V3. V2 and V4 must land before the payment code they
+V1 has an initial implementation, not a completed verification exit gate.
+`assume` still waits for the fuzz builds of V3; native/runtime parity, adequate
+input domains and actual payment/signature consumers still need evidence. V2 and V4 must land before the payment code they
 protect (protocol phase P5). V3 follows Coax aggregate and `#import_proto`
 work (Coax stage 2–3, protocol phase P1).
 
@@ -651,3 +656,30 @@ The common thread: write each invariant once, next to the code, in Coax,
 and keep it on. Bitcoin Core earns trust through many cheap checks that
 never stop running. Coax lets us build those checks into the language
 itself.
+
+## Review boundary: the initial runner and importer
+
+The 0.5.1 review closes concrete false-green cases: empty domains, dead-call
+coverage, uncovered/no-site mutation runs, invalid step arguments and lost JSON
+counterexamples. It also removes eager allocation of a Value for every domain
+member and signed subtraction overflow at extreme range bounds. These fixes do
+not make bounded testing a formal proof of unbounded production behavior.
+
+The money example now enforces its fee amount/rate domain at runtime in debug
+and release. Dividing before multiplication alone does not prevent overflow
+for arbitrary inputs. Boundary checks include the full stated money/rate caps.
+
+The proto importer remains Python standard-library **host build tooling**, not
+an iOS or Coax-program runtime. It reads explicitly imported descriptor files;
+that is a different boundary from `#run`, which still cannot perform host I/O.
+Generated C/headers now record descriptor, generator and runtime SHA-256 values
+plus Python version. This supports auditing but is not a hermetic-build claim
+or a sandbox for user-supplied host tools. A native/bootstrap replacement is
+still useful work, rather than a completed feature of this review.
+
+Finite compiler checks now exercise the imported pure wire routines, while
+native ASan/UBSan and protoc remain independent implementation oracles. A full
+three-byte input product has 2^24 cases, but running a decoder in each case
+requires more than the default 20M steps. The case cap is not a performance
+promise. Address-dependent routines cannot be proven in the current evaluator,
+so marking an entire generated profile `#authority` is not yet appropriate.

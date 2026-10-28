@@ -484,8 +484,8 @@ struct Emitter {
         fputs("coax: internal error: unevaluated #run reached the C emitter\n", stderr);
         abort();
       case ExprKind::call: {
-        if (e->binary_intrinsic != BinaryIntrinsic::none) {
-          if (e->binary_intrinsic == BinaryIntrinsic::bytes_overlap) {
+        if (e->byte_intrinsic != ByteIntrinsic::none) {
+          if (e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {
             std::string a=new_temp(c_type(e->args[0]->type)),b=new_temp(c_type(e->args[1]->type));
             return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_bytes_overlap("+a+".data, "+a+".count, "+b+".data, "+b+".count))";
           }

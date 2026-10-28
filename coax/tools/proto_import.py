@@ -5,6 +5,7 @@ Python dependency. This first importer declines maps/proto2/groups/extensions
 and duplicate singular/oneof fields rather than guessing their semantics.
 """
 import argparse
+import hashlib
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -292,7 +293,7 @@ class Generator:
             self.emit(f'result:={p}rewrite(msg.wire,{remove},{f.number},{wt},raw,data,txt,is_text,'+('true' if clear else 'false')+',out);')
             self.emit(f'if result.error!=0 {{return {n}.{{error=result.error}};}} final:={n}__check(result.wire,0,{p}MAX_FIELDS,false,false);if final.error!=0 {{return {n}.{{error=final.error}};}}return {n}.{{wire=result.wire}};}}')
     def generate(self):
-        self.emit(Path(__file__).with_name('proto_runtime.coax').read_text().replace('PB_',self.p))
+        self.emit(re.sub(r'\bPB_[A-Za-z0-9_]*\b', lambda m: self.p+m[0][3:], Path(__file__).with_name('proto_runtime.coax').read_text()))
         for e in self.es:
             for name,value in e.values:self.emit(f'{e.name}_{name} :: {value};')
             self.emit(f'{e.name}_known :: (value:s32)->bool {{return '+' || '.join('value=='+str(v) for _,v in e.values)+';}')
@@ -316,7 +317,13 @@ def main():
     with args.descriptor.open('rb') as source:raw=source.read(MAX_DESCRIPTOR+1)
     if len(raw)>MAX_DESCRIPTOR:raise ValueError('descriptor byte budget exceeded')
     ms,es,mapping=descriptor(raw,args.prefix)
-    args.output.write_text(Generator(ms,es,mapping,args.prefix).generate())
+    runtime=Path(__file__).with_name('proto_runtime.coax')
+    provenance='// coax-proto-v1 '+ ' '.join([
+        'descriptor_sha256='+hashlib.sha256(raw).hexdigest(),
+        'tool_sha256='+hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        'runtime_sha256='+hashlib.sha256(runtime.read_bytes()).hexdigest(),
+        'python='+sys.version.split()[0], 'prefix='+args.prefix])
+    args.output.write_text(provenance+'\n'+Generator(ms,es,mapping,args.prefix).generate())
 
 if __name__=='__main__':
     try:main()

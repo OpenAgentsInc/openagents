@@ -164,8 +164,22 @@ def main():
                 "attributes": {"locale": "en-US", "whatsNew": notes},
                 "relationships": {"build": {"data": {"type": "builds", "id": bid}}}}})
         call("POST", f"/v1/betaGroups/{group['id']}/relationships/builds", {"data": [{"type": "builds", "id": bid}]})
-        assigned = get(f"/v1/builds/{bid}/betaGroups", limit="50")["data"]
-        if group['id'] not in {item['id'] for item in assigned}:
+        # Apple allows adding/deleting a build's betaGroups relationship,
+        # but rejects GET_RELATED there. Read the group's supported builds
+        # collection to verify the exact build we just assigned.
+        page = get(f"/v1/betaGroups/{group['id']}/builds", limit="200")
+        assigned = False
+        while True:
+            if any(item["id"] == bid for item in page["data"]):
+                assigned = True
+                break
+            next_url = page.get("links", {}).get("next")
+            if not next_url:
+                break
+            if not next_url.startswith(API + "/"):
+                raise SystemExit("Unexpected App Store Connect pagination origin")
+            page = get(next_url[len(API):])
+        if not assigned:
             raise SystemExit("Could not verify beta group assignment")
         print("Verified build in", a.group)
         detail = get(f"/v1/builds/{bid}/buildBetaDetail")["data"]["attributes"]

@@ -5,6 +5,7 @@ PROTOC=/path/to/protoc-29.3 python3 coax/tests/proto_import.py --oracle
 also checks descriptor reproducibility and both directions with official protoc.
 """
 import ctypes as C
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -268,6 +269,26 @@ main :: () {a:[4] u8;b:[4] u8;
         self.assertEqual(run([COAX,'check',src]).returncode,0)
         env=dict(os.environ,PATH=str(COAX.parent)+os.pathsep+os.environ['PATH'])
         self.assertEqual(run(['coax','check',src],env=env).returncode,0)
+    def test_import_provenance_temporary_paths_and_generated_locations(self):
+        src=self.d/'provenance.coax'
+        descriptor=ROOT/'coax/tests/proto/types.pb'
+        src.write_text(f'#import_proto "{descriptor}" as P;\nmain :: () {{}}')
+        temp=self.d/'host temp';temp.mkdir()
+        env=dict(os.environ,TMPDIR=str(temp))
+        r=run([COAX,'c',src],env=env);self.assertEqual(r.returncode,0,r.stderr.decode())
+        first=r.stdout.splitlines()[0].decode()
+        self.assertIn('descriptor_sha256='+hashlib.sha256(descriptor.read_bytes()).hexdigest(),first)
+        self.assertIn('tool_sha256='+hashlib.sha256((ROOT/'coax/tools/proto_import.py').read_bytes()).hexdigest(),first)
+        self.assertIn('runtime_sha256='+hashlib.sha256((ROOT/'coax/tools/proto_runtime.coax').read_bytes()).hexdigest(),first)
+        self.assertIn('python=',first);self.assertEqual(list(temp.iterdir()),[])
+        # The duplicate emitted declaration is located at the import, not at
+        # a fictitious source line thousands of lines beyond this short file.
+        src.write_text(f'#import_proto "{descriptor}" as P;\nP_Scalars :: struct {{}}\nmain :: () {{}}')
+        r=run([COAX,'check',src,'--json'],env=env);self.assertEqual(r.returncode,1)
+        errors=[json.loads(line) for line in r.stderr.splitlines()]
+        self.assertTrue(any(x['line']==1 and 'generated proto import P' in x['message'] for x in errors),errors)
+        self.assertEqual(list(temp.iterdir()),[])
+
     def test_importer_rejects_unsupported_descriptors(self):
         # Descriptor fixtures are built with the wire format itself, no host protobuf dependency.
         def descriptor(message,syntax=b'proto3'):

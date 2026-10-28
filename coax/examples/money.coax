@@ -67,8 +67,24 @@ sum_amounts :: (amounts: [] int) -> Sum {
 }
 
 // A routing fee in parts per million, rounded down, without forming
-// amount * ppm, which could overflow for large amounts.
+// amount * ppm, which could overflow for large amounts. Preconditions bound
+// amount to MoneyRange and ppm to [0, 1M], even in release builds. They are
+// required: dividing first alone does not prevent overflow for arbitrary ppm.
+fee_inputs_ok :: (amount: int, ppm: int) -> bool {
+  return money_range(amount) && ppm >= 0 && ppm <= 1_000_000;
+}
+
+#test "fee input domain" {
+  #assert !fee_inputs_ok(-1, 0);
+  #assert !fee_inputs_ok(MAX_MSAT + 1, 0);
+  #assert !fee_inputs_ok(0, -1);
+  #assert !fee_inputs_ok(0, 1_000_001);
+  #assert fee_inputs_ok(0, 0);
+  #assert fee_inputs_ok(MAX_MSAT, 1_000_000);
+}
+
 fee_msat :: (amount: int, ppm: int) -> int {
+  #assert fee_inputs_ok(amount, ppm);
   return amount / 1_000_000 * ppm + amount % 1_000_000 * ppm / 1_000_000;
 }
 
@@ -78,6 +94,13 @@ fee_msat :: (amount: int, ppm: int) -> int {
 
 #forall "fees across a million" amount: 999_990..<1_000_010, ppm: 0..<30 {
   #assert fee_msat(amount, ppm * 3) == amount * (ppm * 3) / 1_000_000;
+}
+
+#test "fee contract at the full money and rate limits" {
+  #assert fee_msat(MAX_MSAT, 1_000_000) == MAX_MSAT;
+  #assert fee_msat(MAX_MSAT, 0) == 0;
+  #assert fee_msat(0, 1_000_000) == 0;
+  #assert fee_msat(1_000_001, 1_000_000) == 1_000_001;
 }
 
 // NIP-MKT terms: quote_expires_at <= order_confirm_by < delivery_due_at <

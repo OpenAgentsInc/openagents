@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.5.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.5.1's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The C++20 compiler parses and checks one source file, executes bounded
@@ -215,6 +215,24 @@ Next: the `src/paynet` pulse kernel itself, called from the engine's frame
 loop with its outputs compared and its frame cost measured, before anything in
 the app or its CMake/Xcode paths changes. See §20 of the specification for
 later metadata, build, parallelism, browser and reload gates.
+
+## Limits of the verification gates
+
+`#authority` requires actual check-time procedure execution, not just a call
+in a dead branch. It does not establish branch coverage, prove a signature
+verifier or authorize a decoded message. Finite checks quantify only over
+their stated nonempty domains. Mutation is a selected defect model; unchecked
+procedures, no mutation sites and surviving non-exempt mutants fail the command.
+Equivalent marks remain human review obligations. See `tests/verify.py` for
+false-green and signed-range regressions.
+
+`tests/proto/runtime.coax` checks the actual imported wire routines inside the
+compiler: every two-byte varint/UTF-8 input, every one-byte truncation, and
+full-width/overflow/zigzag/writer boundary cases. Native address overlap,
+non-finite float bits and C/protobuf interoperability remain in the separate
+ASan/UBSan/protoc suite; the evaluator deliberately has no native addresses.
+The generated profile cannot simply be marked `#authority`: that directive
+currently covers every generated API and host-address operation in the file.
 
 ## Shared protocol
 

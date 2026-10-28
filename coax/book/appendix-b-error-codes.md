@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.5.0 can report. This appendix is generated from the
+Every error `coax0` 0.5.1 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
@@ -127,9 +127,9 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0375` | math or string intrinsic misused | sin cos tan exp log sqrt floor abs take one float, pow two floats of one type; len takes a string, array or view; byte_at takes a string and an index. Convert integers first: f64(x). |
 | `E0376` | procedure cannot cross the C boundary | A #foreign procedure passes only integers, floats and bool, and its name must be a valid C symbol that is not main and does not start with coax_. |
 | `E0377` | outside the Metal scalar profile | coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print, #assert and #foreign calls stay in the C library. |
-| `E0378` | binary intrinsic argument mismatch | bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type. |
-| `E0379` | #forall domain cannot be enumerated | A #forall binding is enumerated completely, so it must be bool, an enum, an integer of at most 16 bits, or a lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths. |
-| `E0380` | procedure not exercised by a check | In an #authority file the check comes first: every procedure except main and #foreign imports must be called, directly or through other procedures, by some #test or #forall. Write the check, then the code. |
+| `E0378` | byte intrinsic argument mismatch | bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type. |
+| `E0379` | #forall domain cannot be enumerated | A #forall binding must be nonempty: bool, a nonempty enum, an integer of at most 16 bits, or an increasing lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths. |
+| `E0380` | procedure not exercised by a check | Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions. |
 
 ## E04xx: compile-time evaluation
 

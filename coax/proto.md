@@ -141,3 +141,25 @@ admission, HOST/REACH runtime behavior, transport clients and domain validators
 remain separate work. A decoded Event is not verified or authorized. Existing
 hand-written mobile home/protocol adapters remain until consumer parity is
 proven; this change does not deploy or replace the app.
+
+## Host tooling audit boundary
+
+Descriptor imports are explicit compiler input reads, separate from `#run`,
+which still refuses host I/O. The importer remains a Python standard-library
+bootstrap tool; relocating only the compiler binary requires an explicit
+`COAX_PROTO_TOOL` path or installing its sibling tools directory. No native
+importer or completely hermetic build is claimed.
+
+Generated C/headers carry the descriptor, generator and runtime SHA-256 values
+and Python version in a `coax-proto-v1` comment. This records the selected
+bootstrap inputs, including explicit tool overrides, without giving those
+trusted host tools sandbox or authenticity guarantees. Import temporaries use
+`TMPDIR`. Generated declaration errors point to the originating import and
+identify its prefix rather than inventing user-file line numbers past EOF.
+`ByteIntrinsic` names the compiler's byte/representation helpers.
+
+`coax test coax/tests/proto/runtime.coax` executes the actual generated wire
+routines over all two-byte varint and UTF-8 inputs and targeted wide/boundary
+vectors. Native overlap, float payload and interoperability tests remain
+separate; file-level `#authority` cannot yet exclude generated APIs or native
+address operations from its coverage requirement.

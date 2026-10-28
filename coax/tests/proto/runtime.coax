@@ -1,0 +1,60 @@
+// Finite checks on the actual imported runtime, not a copied wire decoder.
+// Buffer aliasing and floating bitcasts stay in the native ASan/protoc suite:
+// compile-time values cannot model native addresses or non-finite floats.
+#import_proto "../../../proto/descriptors/nostr-event.pb" as Wire;
+
+#forall "every two-byte varint input" bits: u16 {
+  a:=cast,trunc(u8)bits;b:=cast(u8)(bits>>8);
+  bytes:=[2] u8.[a,b];v:=Wire__pb_var(bytes[..],0);
+  if a<128 {
+    #assert v.error==0 && v.next==1 && v.value==cast(u64)a;
+  } else if b<128 {
+    #assert v.error==0 && v.next==2;
+    #assert v.value==cast(u64)(a&127)+cast(u64)b*128;
+  } else {
+    #assert v.error==Wire__pb_WIRE;
+  }
+}
+
+#forall "all one-byte truncations and UTF8" byte: u8 {
+  bytes:=[1] u8.[byte];v:=Wire__pb_var(bytes[..],0);
+  #assert (v.error==0)==(byte<128);
+  #assert Wire__pb_utf8(bytes[..])==(byte<128);
+}
+
+#forall "all two-byte UTF8 inputs" bits: u16 {
+  a:=cast,trunc(u8)bits;b:=cast(u8)(bits>>8);
+  bytes:=[2] u8.[a,b];
+  expected:=(a<128 && b<128) || (a>=194 && a<=223 && b>=128 && b<=191);
+  #assert Wire__pb_utf8(bytes[..])==expected;
+}
+
+#test "full-width varints, overflow and every truncated prefix" {
+  bytes:=[10] u8.[255,255,255,255,255,255,255,255,255,1];
+  v:=Wire__pb_var(bytes[..],0);
+  #assert v.error==0 && v.value==18446744073709551615 && v.next==10;
+  for size:0..<10 {#assert Wire__pb_var(bytes[0..<size],0).error==Wire__pb_WIRE;}
+  bytes[9]=2;#assert Wire__pb_var(bytes[..],0).error==Wire__pb_WIRE;
+  #assert Wire__pb_var(bytes[..],-1).error==Wire__pb_WIRE;
+  #assert Wire__pb_var(bytes[..],11).error==Wire__pb_WIRE;
+}
+
+#test "malformed field lengths and invalid keys" {
+  truncated:=[3] u8.[10,2,0];#assert Wire__pb_scan(truncated[..],0).error==Wire__pb_WIRE;
+  zero:=[1] u8.[0];#assert Wire__pb_scan(zero[..],0).error==Wire__pb_WIRE;
+  group:=[1] u8.[11];#assert Wire__pb_scan(group[..],0).error==Wire__pb_WIRE;
+  #assert Wire__pb_scan(zero[0..<0],0).done;
+}
+
+#test "zigzag endpoints and caller-buffer writer" {
+  minimum:s64=-9223372036854775808;maximum:s64=9223372036854775807;
+  #assert Wire__pb_sint(Wire__pb_zigzag(minimum))==minimum;
+  #assert Wire__pb_sint(Wire__pb_zigzag(maximum))==maximum;
+  #assert Wire__pb_zigzag(minimum)==18446744073709551615;
+  #assert Wire__pb_zigzag(maximum)==18446744073709551614;
+  out:[10] u8;end:=Wire__pb_put(out[..],0,18446744073709551615);
+  #assert end==10 && Wire__pb_vsize(18446744073709551615)==10;
+  decoded:=Wire__pb_var(out[0..<end],0);
+  #assert decoded.error==0 && decoded.value==18446744073709551615;
+}
+main :: () {}

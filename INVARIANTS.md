@@ -90,3 +90,20 @@ native ASan/UBSan; its explicit protoc oracle checks interoperability. Codecs
 borrow input/output storage, allocate no target memory, and reject unsupported
 descriptors and duplicate known singular/oneof fields. Domain migration and all
 cryptographic/relay admission remain explicit unimplemented gates.
+
+
+## Check gates reject vacuous and uncovered success
+
+`#forall` domains are finite and nonempty; range cardinality is computed with
+widened arithmetic and values are enumerated lazily. `#authority` requires real
+procedure execution during checks, not dead references. Empty suites,
+uncovered/no-site mutation runs and malformed step budgets cannot report a
+successful verification run. Coverage and mutation scores are not correctness
+proofs or admission authority; equivalent-mutation exemptions remain reviewed
+assumptions. JSON diagnostics retain concrete witnesses.
+
+Check: `coax/tests/verify.py`, compiler ASan/UBSan signed-span checks and the
+actual imported wire checks in `coax/tests/proto/runtime.coax`. Native aliasing
+and non-finite representations remain in the target-side conformance suite.
+Descriptor/tool/runtime hashes and Python version are recorded in generated
+C/headers; explicit host importer I/O is not permitted inside `#run`.

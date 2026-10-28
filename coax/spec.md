@@ -9,7 +9,7 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.5.0 implements procedures;
+**Implementation status matters.** Version 0.5.1 implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
@@ -497,14 +497,17 @@ refund_ok :: (paid: int, refund: int) -> bool {
   a: T, b: lo..<hi { ... }` runs its block once for every combination of its
   bindings, the last binding changing fastest. A binding is `bool`, an enum,
   an integer of at most 16 bits, or a half-open `int` range with constant
-  bounds (E0379); at most 2^24 cases. A failure reports the first
+  bounds (E0379); at most 2^24 cases. Domains must be nonempty and ranges
+  increasing. Range spans use widened arithmetic, and domains are represented
+  lazily so a large range cannot allocate millions of values before its budget. A failure reports the first
   counterexample as values.
 - `coax test FILE [--steps N]` runs every check, each with its own budget of
   20,000,000 steps unless `--steps` says otherwise. The same rules hold as in
   `#run`: no output, no host calls, overflow and bounds checked.
 - `#authority;` marks a file whose rules guard money, signatures or grants.
-  Every procedure except `main` and `#foreign` imports must be reached,
-  directly or through calls, from a check (E0380), and every compile of the
+  Every procedure except `main` and `#foreign` imports must actually execute
+  in a check, directly or through calls (E0380). Dead references, short-circuited
+  calls and pre-folded `#run` results do not count. Every compile of the
   file runs its checks: a failing check is a failed build.
 - `coax mutate FILE` changes the code reached from checks one site at a time:
   comparison boundaries (`<` and `<=`), equality, arithmetic, logical and
@@ -512,9 +515,18 @@ refund_ok :: (paid: int, refund: int) -> bool {
   negated `if`/`while` conditions, and removed assignments and calls. Each
   mutant must fail some check, under a budget of ten times the steps the
   unmutated check used. Survivors are printed with their source line; it
-  exits 1 if any survive. A reviewer may mark a line `// mutant: equivalent`
+  exits 1 if any survive, a procedure is unchecked, or there are no reachable
+  mutation sites. A reviewer may mark a line `// mutant: equivalent`
   when no input can observe the change; surviving mutants there are counted
-  apart.
+  apart. Exemptions require human justification; they are not solver results.
+
+These gates do not prove a program correct. Execution coverage is not branch
+coverage or a connection between an output and its assertion. Quantification
+covers only the stated finite instance, and mutation covers the implemented
+operators, not every possible defect. `coax test` rejects files with no checks;
+`--steps` requires a positive uint64 value. JSON failure messages retain the
+check name and concrete counterexample. The compiler requires checks to exist,
+not a particular textual or historical order of writing them.
 
 ### 10.2 Reflection now and later
 

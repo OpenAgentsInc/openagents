@@ -17,11 +17,14 @@ static constexpr uint64_t TEST_STEPS = 20000000;
 
 // Runs every check in order. Failures print as diagnostics with the check's
 // name and, for a #forall, the counterexample. verbose: one line per check.
-static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr) {
+static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr) {
   bool ok = true;
+  std::vector<const ProcDecl *> executed;
+  if (failures) *failures = 0;
   for (CheckDecl *c : file->checks) {
     CheckOutcome r = run_check(file, c, max_steps);
     if (steps) steps->push_back(r.steps);
+    executed.insert(executed.end(), r.executed.begin(), r.executed.end());
     const char *kind = c->forall ? "#forall" : "#test";
     std::string name = to_std(c->name);
     if (r.passed) {
@@ -31,25 +34,45 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       continue;
     }
     ok = false;
+    if (failures) ++*failures;
     if (verbose) {
       printf("FAIL %s %s\n", kind, name.c_str());
       fflush(stdout);
     }
-    error_at(file->src, r.loc, r.code.c_str(), r.message);
+    std::string message = r.message;
+    if (g_json_errors) {
+      message += " [" + std::string(kind) + " " + name + "]";
+      if (!r.counterexample.empty()) message += "; counterexample: " + r.counterexample;
+    }
+    error_at(file->src, r.loc, r.code.c_str(), message);
     if (!g_json_errors) {
       fprintf(stderr, "  note: in %s %s\n", kind, name.c_str());
       if (!r.counterexample.empty()) fprintf(stderr, "  counterexample: %s\n", r.counterexample.c_str());
+    }
+  }
+  if (ok && file->authority) {
+    for (const ProcDecl *p : file->procs) {
+      if (p->foreign || str_eq(p->name, "main")) continue;
+      if (std::find(executed.begin(), executed.end(), p) == executed.end()) {
+        error_at(file->src, p->loc, "E0380", "'" + to_std(p->name) + "' was never executed by a check",
+                 "calls in dead branches or pre-folded #run results do not exercise the procedure");
+        ok = false;
+      }
     }
   }
   return ok;
 }
 
 static int test_command(File *file, uint64_t max_steps) {
-  int32_t before = g_error_count;
-  bool ok = run_all_checks(file, max_steps, true);
-  int32_t failed = g_error_count - before;
+  if (!file->checks.count) {
+    fprintf(stderr, "coax: %s has no #test or #forall to run\n", file->src->path.c_str());
+    return 1;
+  }
+  int32_t failed = 0;
+  bool ok = run_all_checks(file, max_steps, true, nullptr, &failed);
   int32_t total = file->checks.count;
   printf("%d check%s, %d passed, %d failed\n", total, total == 1 ? "" : "s", total - failed, failed);
+  if (!ok && !failed) printf("authority execution coverage failed\n");
   return ok ? 0 : 1;
 }
 
@@ -193,12 +216,39 @@ struct Mutator {
 };
 
 static bool marked_equivalent(const Source *src, Loc loc) {
-  const std::string &t = src->text;
-  size_t start = std::min((size_t)loc.offset, t.size());
-  while (start > 0 && t[start - 1] != '\n') start--;
-  size_t end = t.find('\n', start);
-  return t.substr(start, end == std::string::npos ? std::string::npos : end - start).find("// mutant: equivalent") !=
-         std::string::npos;
+  const std::string &text = src->text;
+  // A mutant location is a real code token. An actual line comment on the
+  // same line can only follow it; do not mistake strings or block comments
+  // containing the marker for a reviewed exemption.
+  size_t at = std::min((size_t)loc.offset, text.size());
+  size_t end = text.find('\n', at);
+  if (end == std::string::npos) end = text.size();
+  int block = 0;
+  while (at < end) {
+    if (block) {
+      if (text.compare(at, 2, "/*") == 0) { block++; at += 2; }
+      else if (text.compare(at, 2, "*/") == 0) { block--; at += 2; }
+      else at++;
+      continue;
+    }
+    if (text[at] == '\"' || text[at] == '\'') {
+      char quote = text[at++];
+      while (at < end) {
+        if (text[at] == '\\') at = std::min(at + 2, end);
+        else if (text[at++] == quote) break;
+      }
+      continue;
+    }
+    if (text.compare(at, 2, "/*") == 0) { block++; at += 2; continue; }
+    if (text.compare(at, 2, "//") == 0) {
+      const std::string marker = "// mutant: equivalent";
+      size_t after = at + marker.size();
+      return text.compare(at, marker.size(), marker) == 0 &&
+             (after == end || text[after] == ' ' || text[after] == '\t' || text[after] == '\r');
+    }
+    at++;
+  }
+  return false;
 }
 
 static int mutate_command(Arena *arena, File *file) {
@@ -233,7 +283,8 @@ static int mutate_command(Arena *arena, File *file) {
     else survivors.push_back(&mu);
   }
   for (const Mutant *mu : survivors) {
-    printf("%s:%d:%d: mutant survived: %s\n", file->src->path.c_str(), mu->loc.line, mu->loc.col, mu->what.c_str());
+    Loc loc = diagnostic_loc(file->src, mu->loc);
+    printf("%s:%d:%d: mutant survived: %s\n", file->src->path.c_str(), loc.line, loc.col, mu->what.c_str());
     show_source(stdout, file->src, mu->loc);
   }
   std::string unreached;
@@ -248,7 +299,8 @@ static int mutate_command(Arena *arena, File *file) {
          survivors.size());
   if (equivalent) printf(", %zu marked equivalent", equivalent);
   printf("\n");
-  return survivors.empty() ? 0 : 1;
+  if (m.mutants.empty()) printf("no reachable mutation sites\n");
+  return survivors.empty() && unreached.empty() && !m.mutants.empty() ? 0 : 1;
 }
 
 }  // namespace coax

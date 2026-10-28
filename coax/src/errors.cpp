@@ -117,9 +117,9 @@ const ErrorInfo ERRORS[] = {
     {"E0376", "procedure cannot cross the C boundary", "A #foreign procedure passes only integers, floats and bool, and its name must be a valid C symbol that is not main and does not start with coax_."},
     {"E0377", "outside the Metal scalar profile", "coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print, #assert and #foreign calls stay in the C library."},
 
-    {"E0378", "binary intrinsic argument mismatch", "bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type."},
-    {"E0379", "#forall domain cannot be enumerated", "A #forall binding is enumerated completely, so it must be bool, an enum, an integer of at most 16 bits, or a lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths."},
-    {"E0380", "procedure not exercised by a check", "In an #authority file the check comes first: every procedure except main and #foreign imports must be called, directly or through other procedures, by some #test or #forall. Write the check, then the code."},
+    {"E0378", "byte intrinsic argument mismatch", "bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type."},
+    {"E0379", "#forall domain cannot be enumerated", "A #forall binding must be nonempty: bool, a nonempty enum, an integer of at most 16 bits, or an increasing lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths."},
+    {"E0380", "procedure not exercised by a check", "Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions."},
 
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time step budget exceeded", "Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). Make the computation smaller or move it to run time."},

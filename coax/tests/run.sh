@@ -61,4 +61,6 @@ python3 tests/proto_import.py
 proto_rc=$?
 python3 tests/verify.py
 verify_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 ]]
+"$COAX" test tests/proto/runtime.coax
+wire_checks_rc=$?
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 ]]
