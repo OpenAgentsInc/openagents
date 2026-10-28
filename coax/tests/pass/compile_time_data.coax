@@ -1,0 +1,50 @@
+// #run builds tables, structs and arrays that are baked into the program.
+#import "Basic";
+
+Stats :: struct { count: int; largest: int; sum: int = 0; }
+
+sieve :: () -> [64] bool {
+  composite: [64] bool;
+  composite[0] = true;
+  composite[1] = true;
+  for i: 2..<64 {
+    if composite[i] { continue; }
+    j := i * i;
+    while j < 64 { composite[j] = true; j += i; }
+  }
+  return composite;
+}
+
+COMPOSITE :: #run sieve();
+
+summarize :: (flags: [] bool) -> Stats {
+  s: Stats;
+  for f, i: flags {
+    if !f { s.count += 1; s.largest = i; s.sum += i; }
+  }
+  return s;
+}
+
+PRIMES_BELOW_64 :: #run summarize_table();
+summarize_table :: () -> Stats {
+  table := COMPOSITE;
+  return summarize(table[..]);
+}
+
+SQUARES :: #run squares();
+squares :: () -> [8] u16 {
+  out: [8] u16;
+  for i: 0..<8 { out[i] = cast(u16) (i * i); }
+  return out;
+}
+
+#assert PRIMES_BELOW_64.count == 18;
+#assert SQUARES[7] == 49;
+
+main :: () {
+  print("%\n", PRIMES_BELOW_64);
+  print("%\n", SQUARES);
+  n := 0;
+  for c, i: COMPOSITE { if !c && i > 50 { n += 1; } }
+  print("primes in 51..<64: %\n", n);
+}

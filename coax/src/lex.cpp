@@ -25,6 +25,7 @@ const char *tok_name(Tok t) {
     case Tok::ident: return "identifier";
     case Tok::keyword: return "keyword";
     case Tok::int_lit: return "integer";
+    case Tok::float_lit: return "float";
     case Tok::string_lit: return "string";
     case Tok::directive: return "directive";
     case Tok::annotation: return "annotation";
@@ -42,17 +43,28 @@ const char *tok_name(Tok t) {
     case Tok::arrow: return "'->'";
     case Tok::dot: return "'.'";
     case Tok::dotdot: return "'..'";
+    case Tok::dotdotlt: return "'..<'";
     case Tok::equal: return "'='";
     case Tok::plus_equal: return "'+='";
     case Tok::minus_equal: return "'-='";
     case Tok::star_equal: return "'*='";
     case Tok::slash_equal: return "'/='";
     case Tok::percent_equal: return "'%='";
+    case Tok::amp_equal: return "'&='";
+    case Tok::pipe_equal: return "'|='";
+    case Tok::caret_equal: return "'^='";
+    case Tok::shl_equal: return "'<<='";
+    case Tok::shr_equal: return "'>>='";
     case Tok::plus: return "'+'";
     case Tok::minus: return "'-'";
     case Tok::star: return "'*'";
     case Tok::slash: return "'/'";
     case Tok::percent: return "'%'";
+    case Tok::amp: return "'&'";
+    case Tok::pipe: return "'|'";
+    case Tok::caret: return "'^'";
+    case Tok::shl: return "'<<'";
+    case Tok::shr: return "'>>'";
     case Tok::eqeq: return "'=='";
     case Tok::noteq: return "'!='";
     case Tok::lt: return "'<'";
@@ -146,16 +158,70 @@ bool lex(Arena *arena, const Source *src, std::vector<Token> *out) {
         v = v * (uint64_t)base + (uint64_t)dv;
         digits++;
       }
-      if (i < n && (s[i] == '.' && i + 1 < n && is_digit(s[i + 1]))) {
-        error_at(src, t.loc, "E0102", "floating-point literals are not supported by coax0 yet");
-        while (i < n && (is_digit(s[i]) || s[i] == '.')) i++;
-      } else if (digits == 0) {
+      // A float has a fraction (`1.5`, never `1.` so that `0..<n` stays a
+      // range), an exponent, or both. Decimal only.
+      bool fraction = base == 10 && i + 1 < n && s[i] == '.' && is_digit(s[i + 1]);
+      bool exponent = base == 10 && i < n && (s[i] == 'e' || s[i] == 'E') &&
+                      ((i + 1 < n && is_digit(s[i + 1])) ||
+                       (i + 2 < n && (s[i + 1] == '-' || s[i + 1] == '+') && is_digit(s[i + 2])));
+      if (fraction || exponent) {
+        if (fraction) { i++; while (i < n && (is_digit(s[i]) || s[i] == '_')) i++; }
+        if (i < n && (s[i] == 'e' || s[i] == 'E')) {
+          i++;
+          if (i < n && (s[i] == '-' || s[i] == '+')) i++;
+          while (i < n && is_digit(s[i])) i++;
+        }
+        std::string digits_only;
+        for (int32_t k = start; k < i; k++)
+          if (s[k] != '_') digits_only += s[k];
+        t.kind = Tok::float_lit;
+        t.float_value = strtod(digits_only.c_str(), nullptr);
+        if (t.float_value > 1.7976931348623157e308)
+          error_at(src, t.loc, "E0109", "floating-point literal is too large for f64");
+        t.text = Str{s + start, i - start};
+        out->push_back(t);
+        continue;
+      }
+      if (digits == 0) {
         error_at(src, t.loc, "E0103", "number has no digits after its base prefix");
-      } else if (overflow || v > (uint64_t)INT64_MAX) {
-        error_at(src, t.loc, "E0104", "integer literal does not fit in int (s64)");
+      } else if (overflow) {
+        error_at(src, t.loc, "E0104", "integer literal does not fit in 64 bits");
       }
       t.kind = Tok::int_lit;
-      t.int_value = (int64_t)v;
+      t.int_value = v;
+      t.text = Str{s + start, i - start};
+      out->push_back(t);
+      continue;
+    }
+
+    if (c == '\'') {
+      // 'x': one ASCII byte, as an untyped integer literal.
+      int32_t value = -1;
+      if (i + 2 < n && s[i + 1] != '\\' && s[i + 1] != '\'' && s[i + 2] == '\'' && (unsigned char)s[i + 1] < 0x80) {
+        value = (unsigned char)s[i + 1];
+        i += 3;
+      } else if (i + 3 < n && s[i + 1] == '\\' && s[i + 3] == '\'') {
+        switch (s[i + 2]) {
+          case 'n': value = '\n'; break;
+          case 't': value = '\t'; break;
+          case 'r': value = '\r'; break;
+          case '0': value = 0; break;
+          case '\\': value = '\\'; break;
+          case '\'': value = '\''; break;
+          default: break;
+        }
+        i += 4;
+      }
+      if (value < 0) {
+        error_at(src, t.loc, "E0110", "a character literal is one ASCII character in single quotes",
+                 "write 'a', or an escape such as '\\n'; text belongs in \"strings\"");
+        i++;
+        while (i < n && s[i] != '\'' && s[i] != '\n') i++;
+        if (i < n && s[i] == '\'') i++;
+        continue;
+      }
+      t.kind = Tok::int_lit;
+      t.int_value = (uint64_t)value;
       t.text = Str{s + start, i - start};
       out->push_back(t);
       continue;
@@ -202,7 +268,16 @@ bool lex(Arena *arena, const Source *src, std::vector<Token> *out) {
     auto two = [&](char a, char b) { return c == a && i + 1 < n && s[i + 1] == b; };
     Tok k = Tok::eof;
     int32_t len = 1;
-    if (two(':', ':')) { k = Tok::coloncolon; len = 2; }
+    auto three = [&](char a, char b, char d) { return c == a && i + 2 < n && s[i + 1] == b && s[i + 2] == d; };
+    if (three('.', '.', '<')) { k = Tok::dotdotlt; len = 3; }
+    else if (three('<', '<', '=')) { k = Tok::shl_equal; len = 3; }
+    else if (three('>', '>', '=')) { k = Tok::shr_equal; len = 3; }
+    else if (two('<', '<')) { k = Tok::shl; len = 2; }
+    else if (two('>', '>')) { k = Tok::shr; len = 2; }
+    else if (two('&', '=')) { k = Tok::amp_equal; len = 2; }
+    else if (two('|', '=')) { k = Tok::pipe_equal; len = 2; }
+    else if (two('^', '=')) { k = Tok::caret_equal; len = 2; }
+    else if (two(':', ':')) { k = Tok::coloncolon; len = 2; }
     else if (two(':', '=')) { k = Tok::colonequal; len = 2; }
     else if (two('-', '>')) { k = Tok::arrow; len = 2; }
     else if (two('.', '.')) { k = Tok::dotdot; len = 2; }
@@ -237,6 +312,9 @@ bool lex(Arena *arena, const Source *src, std::vector<Token> *out) {
       case '<': k = Tok::lt; break;
       case '>': k = Tok::gt; break;
       case '!': k = Tok::bang; break;
+      case '&': k = Tok::amp; break;
+      case '|': k = Tok::pipe; break;
+      case '^': k = Tok::caret; break;
       default: break;
     }
     if (k == Tok::eof) {

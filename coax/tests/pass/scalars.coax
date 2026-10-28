@@ -1,0 +1,34 @@
+// Sized integers, floats, untyped literals, casts and bit operations.
+#import "Basic";
+
+// 32-bit FNV-1a in u64: the product stays below 2^57, so nothing overflows.
+fnv1a :: (text: string) -> u32 {
+  hash: u64 = 2166136261;
+  for byte: text {
+    hash ^= cast(u64) byte;
+    hash = (hash * 16777619) & 0xFFFF_FFFF;
+  }
+  return cast(u32) hash;
+}
+
+main :: () {
+  small: u8 = 200;
+  big: u64 = 18446744073709551615;
+  neg: s8 = -128;
+  wide := cast(s32) small + 1000;
+  print("% % % %\n", small, big, neg, wide);
+  print("% %\n", type_name(wide), type_name(small));
+
+  half := 0.5;
+  third: f32 = 1.0 / 3.0;
+  print("% % % %\n", half, third, 1.0 / 3.0, 100.0);
+  print("% % %\n", 2.5e-7, 1e21, -0.25);
+  print("% %\n", cast(int) 7.9, cast(int) -7.9);
+  print("% %\n", cast(f64) 3, cast(f32) 16777217);
+
+  mask: u32 = 0xF0F0;
+  print("% % % %\n", mask & 0xFF, mask | 0xF, mask ^ 0xFFFF, mask >> 4);
+  print("% %\n", 1 << 40, cast(s16) -1 >> 3);
+  print("%\n", cast,trunc(u8) 300);
+  print("%\n", fnv1a("coax"));
+}

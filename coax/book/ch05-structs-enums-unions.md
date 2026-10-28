@@ -1,41 +1,74 @@
 # 5. Structs, enums and unions
 
-> **Design.** `coax0` reserves `struct`, `enum`, `union` and `enum_flags`
-> and refuses them for now. Structs come first in the next compiler stage
-> (spec §20, stage 2). Syntax can change before it's built.
+> **Partly runs today.** Structs (5.1) and enums (5.3) run on `coax0`
+> 0.3.0, and their examples are checked. `using` (5.2), unions (5.4),
+> `enum_flags` and `#derive` (5.6) are *Design*: `coax0` reserves
+> `union`, `using` and `enum_flags` and refuses them. Syntax can change
+> before they're built.
 
 ## 5.1 Structs
 
 ```coax
+#import "Basic";
+
 Room :: struct {
-  name:     string;
-  rate:     int;
-  tunnels:  [..] RoomIndex;
-  selected: RoomIndex = -1;    // a field default
+  name: string;
+  rate: s32;
+  selected: s32 = -1;      // a field default
 }
+
+main :: () {
+  a: Room;                                 // defaults, and zero elsewhere
+  b := Room.{name = "AA", rate = 13};      // name the fields you set
+  print("%\n%\n", a, b);
+
+  c := b;                                  // a copy, not a reference
+  c.rate += 1;
+  c.selected = 0;
+  print("% % %\n", b.rate, c.rate, c.selected);
+}
+```
+
+```
+Room.{name = "", rate = 0, selected = -1}
+Room.{name = "AA", rate = 13, selected = -1}
+13 14 0
 ```
 
 A struct is a type, so it's declared like every other constant:
 `name :: struct { fields }`. Each field is `name: type`, optionally with a
-default.
+default. Structs are declared at the top level, in any order, like
+procedures.
 
 **Initialization has meaning.** A new `Room` gets its declared defaults,
 and zero for every field without one. So "default initialized" is the
 precise rule, not "zeroed": `selected` starts at `-1`. As with locals,
-`room: Room = ---;` opts out entirely.
+`room: Room = ---;` opts out entirely, defaults included.
 
 **Layout is what you wrote.** Fields go in declaration order with each
 field's natural alignment. The compiler doesn't reorder them to save
 padding, because then a struct's layout would change when someone adds a
-field, and a C or GPU consumer would silently break. When you want a
-different layout, you ask for it with an explicit layout mode, and you
-can always print what you got (Chapter 10).
+field, and a C or GPU consumer would silently break. `coax layout` prints
+what you got (Chapter 10). When you want a different layout, the design
+lets you ask for it with an explicit layout mode.
 
-**Copies are shallow.** Assigning a `Room` copies its fields: the string's
-pointer and count, the dynamic array's pointer, count and capacity. It
-does not copy the characters or the tunnel list. Two `Room`s can then
-share one tunnel array. That is cheap and explicit, and it is also the
-first thing to check when two objects mysteriously change together.
+**Structs are values.** Assigning a `Room`, passing one to a procedure or
+returning one copies its fields. `c.rate += 1` above changes `c` and
+leaves `b` alone. A field that is itself a view or a string copies only
+its pointer and count, not the bytes behind it: copies are shallow. In
+the design, a dynamic array field (`tunnels: [..] RoomIndex`) copies its
+pointer, count and capacity the same way, so two `Room`s can share one
+tunnel list. That is cheap and explicit, and it is also the first thing
+to check when two objects mysteriously change together.
+
+**Structs don't compare.** `a == b` on two structs is `E0311`. Equality
+of a whole struct hides choices: is padding compared, are two strings
+equal by pointer or by content, is `-0.0` equal to `0.0`? Compare the
+fields you mean. `#derive(eq)` (5.6) is the planned way to say "all of
+them".
+
+A struct can't contain itself by value (`E0353`): its size would be
+infinite.
 
 ### Literals name their fields
 
@@ -43,10 +76,22 @@ first thing to check when two objects mysteriously change together.
 start := Room.{name = "AA", rate = 0};
 ```
 
-Named fields can't be misordered. Positional literals (`v3.{1, 2, 3}`)
-are for small math types where the order is the meaning.
+A literal starts from the defaults and sets the fields it names, so
+named fields can't be misordered and a new field doesn't break old
+literals. A misspelled name is an error that lists the real ones:
 
-## 5.2 Composition with `using`
+```
+s.coax:1:46: error[E0351]: struct 'P' has no field 'y'
+  P :: struct { x: int; } main :: () { p := P.{y = 1}; }
+                                               ^
+  fix: its fields are: x
+```
+
+*Design:* positional literals (`v3.{1, 2, 3}`) for small math types
+where the order is the meaning, and inferred literals (`.{x = 1}`)
+where the type is known. Today the struct's name always comes first.
+
+## 5.2 Composition with `using` (design)
 
 ```coax
 Body :: struct { position: v3; velocity: v3; }
@@ -70,6 +115,8 @@ compiler checks it. Most engine code never needs either: it passes the
 ## 5.3 Enums
 
 ```coax
+#import "Basic";
+
 Outcome :: enum u8 {
   completed = 0;
   refused   = 1;
@@ -78,20 +125,65 @@ Outcome :: enum u8 {
   unknown   = 4;
 }
 
-Layer_Mask :: enum_flags u32 { terrain; props; characters; effects; }
+Mode :: enum u16 { idle; walking; running = 10; sprinting; }
+
+main :: () {
+  o := Outcome.refused;
+  print("% % %\n", o, o == Outcome.refused, cast(u8) o);
+  print("% % %\n", Mode.walking, Mode.sprinting, cast(u16) Mode.sprinting);
+  print("% %\n", size_of(Outcome), size_of(Mode));
+
+  code: u8 = 3;
+  print("%\n", cast(Outcome) code);       // 3 is a member: cancelled
+  code = 9;
+  print("%\n", cast(Outcome) code);       // 9 is not: this traps
+}
+```
+
+```
+refused true 1
+walking sprinting 11
+1 2
+cancelled
+examples/outcomes.coax:22: value is not a member of enum Outcome
 ```
 
 - **Every enum names its underlying type.** `enum u8` is one byte
-  everywhere.
+  everywhere. Leaving it out is `E0219`, because the width is part of
+  the layout, and a layout shouldn't depend on how many members happen
+  to exist.
+- **Members are named through the type**: `Outcome.refused`. A member
+  without a value is the previous value plus one, starting at zero, so
+  `Mode.sprinting` is `11`. Values must fit the type and be distinct
+  (`E0363`).
+- **An enum is not an integer.** It compares with `==` and `!=` against
+  its own type only, and has no ordering. Getting the number takes
+  `cast(u8) o`. Going the other way, `cast(Outcome) code` checks that the
+  number names a member and stops the program if it doesn't, in every
+  build. A bad value read from a file or a network is caught where it
+  enters, not three calls later.
+- **Enums print by name.** A log line says `refused`, not `1`.
+- **A zeroed enum is the number zero.** `o: Outcome;` is `completed`
+  because `completed = 0`. An enum with no zero member should be given
+  an explicit value wherever it's declared, since `coax0` doesn't check
+  the zero; it prints such a value as its type and number, `Name(0)`.
 - **Values that persist are written out.** Anything saved, sent over a
-  network or stored in a registry has explicit numbers, so reordering the
-  source can't change what old data means. Jai's `#specified` does this
-  as an opt-in. In Coax it's required wherever the enum crosses a
-  boundary.
-- **Flags are a different form.** `enum_flags` gives each value its own
-  bit, so `terrain | props` is meaningful.
+  network or stored in a registry has explicit numbers, as `Outcome`
+  does, so reordering the source can't change what old data means. Jai's
+  `#specified` does this as an opt-in. In Coax it's meant to be required
+  wherever the enum crosses a boundary; `coax0` doesn't enforce that yet.
 
-## 5.4 Unions are tagged
+*Design:* flags are a different form.
+
+```coax
+Layer_Mask :: enum_flags u32 { terrain; props; characters; effects; }
+```
+
+`enum_flags` gives each value its own bit, so `terrain | props` is
+meaningful. A plain enum keeps `|` off, because the result of or-ing two
+members usually names no member.
+
+## 5.4 Unions are tagged (design)
 
 ```coax
 Answer :: union {
@@ -135,7 +227,7 @@ but someone still has to decide what each field means on the wire. A
 `*Entity` field might be saved as an entity ID, as an asset reference, or
 not at all. The type can't decide that for you.
 
-## 5.6 Deriving the obvious
+## 5.6 Deriving the obvious (design)
 
 ```coax
 Grid_Key :: struct #derive(eq, hash) { x, y: int; }

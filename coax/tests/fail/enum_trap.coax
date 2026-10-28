@@ -1,0 +1,4 @@
+// expect: trap value is not a member of enum Mode
+#import "Basic";
+Mode :: enum u8 { on = 1; off = 2; }
+main :: () { n := 3; print("%\n", cast(Mode) n); }

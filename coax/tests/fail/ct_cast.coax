@@ -1,0 +1,4 @@
+// expect: E0411
+A :: #run narrow(300);
+narrow :: (n: int) -> u8 { return cast(u8) n; }
+main :: () {}

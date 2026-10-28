@@ -1,0 +1,62 @@
+// Structs with defaults, enums, fixed arrays, views and loops.
+#import "Basic";
+
+Vec2 :: struct {
+  x: f32;
+  y: f32;
+}
+
+Outcome :: enum u8 { completed; refused = 4; failed; }
+
+Body :: struct {
+  name: string = "rock";
+  position: Vec2;
+  velocity: Vec2 = Vec2.{x = 1, y = 0.5};
+  history: [3] s32;
+  outcome: Outcome = Outcome.refused;
+}
+
+step :: (b: Body, dt: f32) -> Body {
+  next := b;
+  next.position.x += next.velocity.x * dt;
+  next.position.y += next.velocity.y * dt;
+  return next;
+}
+
+sum :: (values: [] int) -> int {
+  total := 0;
+  for v: values { total += v; }
+  return total;
+}
+
+double_all :: (values: [] int) {
+  for i: 0..<values.count { values[i] *= 2; }
+}
+
+main :: () {
+  b: Body;
+  print("%\n", b);
+  b = step(step(b, 2), 2);
+  b.history[1] = 7;
+  print("% %\n", b.position, b.history);
+  print("% % %\n", Outcome.completed, b.outcome, cast(Outcome) 5);
+  print("% %\n", cast(u8) Outcome.failed, size_of(Body));
+
+  primes := [6] int.[2, 3, 5, 7, 11, 13];
+  print("% %\n", sum(primes[..]), sum(primes[1..<4]));
+  double_all(primes[2..<5]);
+  print("%\n", primes);
+  for p, i: primes {
+    if i == 1 { continue; }
+    if p > 20 { break; }
+    print("%:% ", i, p);
+  }
+  print("\n");
+
+  word := "coaxial";
+  print("% % % %\n", word.count, word[0], word[2..<4], word[..]);
+  grid: [2] [3] u8;
+  grid[1][2] = 9;
+  print("% %\n", grid, grid[1].count);
+  print("% %\n", ifx b.outcome == Outcome.refused then "refused" else "other", ifx primes[0] > 3 then 1 else 0);
+}

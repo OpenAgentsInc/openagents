@@ -1,0 +1,10 @@
+Body.{name = "rock", position = Vec2.{x = 0.0, y = 0.0}, velocity = Vec2.{x = 1.0, y = 0.5}, history = [0, 0, 0], outcome = refused}
+Vec2.{x = 4.0, y = 2.0} [0, 7, 0]
+completed refused failed
+5 48
+41 15
+[2, 3, 10, 14, 22, 13]
+0:2 2:10 3:14 
+7 99 ax coaxial
+[[0, 0, 0], [0, 0, 9]] 3
+refused 0

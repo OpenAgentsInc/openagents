@@ -1,0 +1,3 @@
+// expect: trap slice out of bounds
+#import "Basic";
+main :: () { a: [3] int; n := 4; v := a[1..<n]; print("%\n", v.count); }

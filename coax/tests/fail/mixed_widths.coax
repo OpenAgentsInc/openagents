@@ -1,0 +1,2 @@
+// expect: E0309
+main :: () { a: s32 = 1; b: int = 2; c := a + b; }

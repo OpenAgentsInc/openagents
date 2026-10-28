@@ -1,0 +1,3 @@
+// expect: E0351
+P :: struct { x: int; }
+main :: () { p: P; p.z = 1; }

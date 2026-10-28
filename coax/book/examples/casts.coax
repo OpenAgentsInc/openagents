@@ -1,0 +1,13 @@
+#import "Basic";
+
+main :: () {
+  small: u8 = 200;
+  total := cast(s32) small + 1000;      // widen first, then add as s32
+  print("% %\n", total, type_name(total));
+
+  print("% %\n", cast(int) 7.9, cast(int) -7.9);   // toward zero
+  print("% %\n", cast(f64) 3, cast(f32) 16777217); // nearest float
+
+  print("%\n", cast,trunc(u8) 300);     // keep the low 8 bits: 44
+  print("%\n", cast(u8) total);         // 1200 doesn't fit: this traps
+}

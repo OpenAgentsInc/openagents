@@ -1,0 +1,29 @@
+#import "Basic";
+
+// Count the vowels in a string, byte by byte.
+vowels :: (text: string) -> int {
+  count := 0;
+  for c: text {
+    if c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' { count += 1; }
+  }
+  return count;
+}
+
+main :: () {
+  for i: 0..<5 { print("% ", i * i); }
+  print("\n");
+
+  for i: 1..<100 {
+    if i % 7 != 0 { continue; }    // skip to the next i
+    if i > 30 { break; }           // leave the loop
+    print("% ", i);
+  }
+  print("\n");
+
+  word := "coaxial";
+  for c, i: word {
+    if c == 'x' { print("x is byte % of %\n", i, word.count); }
+  }
+  n := vowels(word);
+  print("% has % %\n", word, n, ifx n == 1 then "vowel" else "vowels");
+}

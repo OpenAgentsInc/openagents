@@ -1,0 +1,5 @@
+refused true 1
+walking sprinting 11
+1 2
+cancelled
+examples/outcomes.coax:22: value is not a member of enum Outcome

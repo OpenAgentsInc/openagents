@@ -1,0 +1,15 @@
+#import "Basic";
+
+note :: (label: string, value: int) -> int {
+  print("% ", label);
+  return value;
+}
+
+pair :: (a: int, b: int) -> int { return a * 10 + b; }
+
+main :: () {
+  total := note("a", 1) + note("b", 2) * note("c", 3);
+  print("= %\n", total);
+  p := pair(note("first", 1), note("second", 2));
+  print("= %\n", p);
+}

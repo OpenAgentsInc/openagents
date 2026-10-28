@@ -1,0 +1,3 @@
+// expect: E0353
+Node :: struct { next: Node; }
+main :: () {}

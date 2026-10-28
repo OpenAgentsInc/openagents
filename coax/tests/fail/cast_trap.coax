@@ -1,0 +1,3 @@
+// expect: trap cast out of range
+#import "Basic";
+main :: () { n := -1; print("%\n", cast(u32) n); }

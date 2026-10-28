@@ -17,7 +17,7 @@ Code code where that's the source.
 | `[N] T`, `[] T`, `[..] T` | Same three array forms |
 | `string` as a counted byte view | Same |
 | `defer` | Same, plus it runs on `try` propagation |
-| `ifx c then a else b` | Same (reserved in `coax0`) |
+| `ifx c then a else b` | Same (works in `coax0`) |
 | `$T`, `$N`, `#bake_arguments` | Same ideas, with mandatory instance reporting |
 | `using`, `#as` | Same split: `using` is naming, `#as` a declared conversion |
 | `#scope_file`, `#scope_module` | Same |

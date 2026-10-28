@@ -1,0 +1,2 @@
+// expect: E0362
+main :: () { s := cast(int) "7"; }

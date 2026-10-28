@@ -1,0 +1,32 @@
+#import "Basic";
+
+// A small float recurrence: every * and + rounds once, and none are fused.
+settle :: (steps: int) -> f32 {
+  x: f32 = 0.1;
+  v: f32 = 0;
+  for i: 0..<steps {
+    v = v * 0.9 + (1 - x) * 0.05;
+    x += v;
+  }
+  return x;
+}
+
+// xorshift32: << drops high bits, so nothing here can overflow.
+shuffle :: (seed: u32, rounds: int) -> u32 {
+  h := seed;
+  for i: 0..<rounds {
+    h ^= h << 13;
+    h ^= h >> 17;
+    h ^= h << 5;
+  }
+  return h;
+}
+
+AT_COMPILE :: #run settle(20);
+SHUFFLED :: #run shuffle(7, 100);
+
+main :: () {
+  at_run := settle(20);
+  print("% % %\n", AT_COMPILE, at_run, AT_COMPILE == at_run);
+  print("% %\n", SHUFFLED, SHUFFLED == shuffle(7, 100));
+}

@@ -1,0 +1,22 @@
+#import "Basic";
+
+Kind :: enum u8 { rock; tree; door; }
+
+// Declaration order, natural alignment: 13 bytes of padding.
+Loose :: struct {
+  kind: Kind;
+  position: f64;
+  flags: u16;
+}
+
+// The same fields, largest first: 5 bytes of padding, all at the end.
+Tight :: struct {
+  position: f64;
+  flags: u16;
+  kind: Kind;
+}
+
+main :: () {
+  print("% %\n", size_of(Loose), size_of(Tight));
+  print("% %\n", size_of([4] Loose), size_of([4] Tight));
+}

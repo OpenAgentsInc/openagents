@@ -1,8 +1,10 @@
 # 9. Compile time
 
-> **Runs today (9.1–9.5), design (9.6–9.9).** `#run`, `#assert` and
-> `type_name` work in `coax0` 0.2.0, and the examples in the first half are
-> checked. Typed code, macros, plugins and `#if` are designed (spec §10).
+> **Runs today (9.1–9.5), design (9.6–9.9).** `#run`, `#assert`,
+> `type_name` and `size_of` work in `coax0` 0.3.0, including `#run`
+> results that are structs and arrays, and the examples in the first half
+> are checked. Typed code, macros, reflection beyond `type_name` and
+> `size_of`, plugins and `#if` are designed (spec §10).
 
 Most languages draw a hard line between the program and the compiler.
 Coax draws a different line: your ordinary procedures can run while the
@@ -72,7 +74,7 @@ Look at the C that `coax c` generates and you'll find the answers, not
 the work:
 
 ```c
-coax_print(COAX_STR("% cells (%), prime #100 is %\n", 29), 3, (coax_any[]){coax_any_int(INT64_C(384)), coax_any_string(COAX_STR("large", 5)), coax_any_int(INT64_C(541))});
+{ coax_print_int(INT64_C(384)); coax_put(COAX_STR(" cells (", 8)); coax_put(COAX_STR("large", 5)); coax_put(COAX_STR("), prime #100 is ", 17)); coax_print_int(INT64_C(541)); coax_put(COAX_STR("\n", 1)); }
 ```
 
 The program starts with `384` and `541` already in it. The interpreter
@@ -101,6 +103,89 @@ s.coax:2:9: error[E0408]: a constant procedure call requires #run
 You can always see where the compiler runs your code, because it only
 does so where `#run` says. `TILES :: TILE_EDGE * TILE_EDGE;` needs no
 `#run`, because it's arithmetic on constants, not a call.
+
+### Tables and structs
+
+`#run` can return anything without a view in it: a scalar, a string, an
+enum, a struct or a fixed array. Lookup tables are the common case. The
+work runs once, while compiling, and the program starts with the table
+already built:
+
+```coax
+#import "Basic";
+
+COUNT :: 32;
+
+// The first COUNT primes, found by trial division.
+first_primes :: () -> [COUNT] u16 {
+  out: [COUNT] u16;
+  found := 0;
+  candidate := 2;
+  while found < COUNT {
+    if is_prime(candidate) {
+      out[found] = cast(u16) candidate;
+      found += 1;
+    }
+    candidate += 1;
+  }
+  return out;
+}
+
+is_prime :: (n: int) -> bool {
+  for d: 2..<n {
+    if d * d > n { break; }
+    if n % d == 0 { return false; }
+  }
+  return n >= 2;
+}
+
+Gaps :: struct { widest: u16; after: u16; twins: int; }
+
+measure :: () -> Gaps {
+  g: Gaps;
+  table := PRIMES;                  // a local copy: a view needs a variable
+  for p, i: table[1..<COUNT] {      // i counts from 0, so table[i] is the prime before p
+    gap := p - table[i];
+    if gap == 2 { g.twins += 1; }
+    if gap > g.widest { g.widest = gap; g.after = table[i]; }
+  }
+  return g;
+}
+
+PRIMES :: #run first_primes();
+GAPS :: #run measure();
+
+#assert PRIMES[COUNT - 1] == 131;
+#assert GAPS.twins == 10;
+
+main :: () {
+  print("%\n", PRIMES);
+  print("%\n", GAPS);
+}
+```
+
+```
+[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131]
+Gaps.{widest = 14, after = 113, twins = 10}
+```
+
+One constant can be computed from another: `measure` reads `PRIMES`,
+and the compiler evaluates them in dependency order, whatever order the
+file lists them in. An aggregate result becomes a `static const` in the
+generated C:
+
+```c
+static const coax_t_Gaps coax_k1 = {.widest = ((uint16_t)UINT64_C(14)), .after = ((uint16_t)UINT64_C(113)), .twins = INT64_C(10)};
+```
+
+The second `#assert` is there because the first draft of this example
+said 11. The compiler refused to build it until the claim matched the
+table. That is the use: a fact you'd otherwise check by reading output
+becomes a line the build checks every time.
+
+`coax/examples/crc32.coax` does the same for a real format: the
+256-entry CRC-32 table is a `#run` constant, and `#assert` checks it
+against the standard check value `0xCBF43926` before any C is written.
 
 ## 9.2 `#assert`
 
@@ -131,7 +216,13 @@ an assertion, use `#run` there too: `#assert #run is_prime(PRIME_100);`.
 `type_name(expression)` gives the name of the expression's type. It's
 the first, smallest piece of reflection. Its argument is type-checked but
 **never evaluated**, so `type_name(1 / 0)` is `"int"` and doesn't divide.
-Later, `type_of`, `size_of` and `type_info` describe whole structs,
+It names every type `coax0` has: `"u8"`, `"Vec2"`, `"[3] int"`,
+`"[] int"`.
+
+`size_of(T)` is the second piece. It takes a type, not a value, and is
+known while checking, so it can size an array: `buffer: [size_of(Pulse)]
+u8;`. It answers for the host the C is compiled for, which is all
+`coax0` targets. Later, `type_of` and `type_info` describe whole structs,
 including their layout on a specific target (9.7).
 
 ## 9.4 Compile time is sealed
@@ -145,7 +236,7 @@ Code running inside the compiler can compute. It can't do anything else.
   g.coax:3:25: error[E0404]: compile-time execution cannot perform output or host I/O
     greet :: () -> string { print("hi\n"); return "hello"; }
                             ^
-    note: compile-time call at g.coax:2:18
+    note: compile-time call at g.coax:2:15
   ```
 
   There are no files, processes, network, clock or randomness at compile
@@ -163,28 +254,98 @@ Code running inside the compiler can compute. It can't do anything else.
 - **Every `#run` must succeed**, even one inside a branch that never runs.
   Compile-time code is checked as part of the program, not only when it's
   reached.
-- **Only plain values come out.** A `#run` result is an `int`, `bool` or
-  `string`, and becomes a literal in the generated code. Nothing from the
-  compiler's own memory can leak into your program.
+- **Only values come out, never views.** A scalar result becomes a
+  literal in the generated code, and a struct or array becomes a static
+  constant. A view would point into the compiler's own memory, so a
+  result that contains one is refused:
+
+  ```coax
+  EVENS :: #run evens();
+
+  evens :: () -> [] int {
+    a := [4] int.[0, 2, 4, 6];
+    return a[..];              // a view of the compiler's memory
+  }
+  ```
+
+  ```
+  ct_view.coax:1:10: error[E0409]: a compile-time result cannot contain a view; views borrow memory that exists only while compiling
+    EVENS :: #run evens();
+             ^
+  ```
+
+  Return the array itself.
+- **Checks are errors, not traps.** An index, slice, cast or shift that
+  would trap at run time stops the build instead, with a note at the
+  `#run` that led there:
+
+  ```
+  ct_bounds.coax:5:15: error[E0410]: index 4 is out of bounds for 4 elements
+      return table[n];           // should be n - 1
+                  ^
+    note: compile-time call at ct_bounds.coax:1:14
+  ```
+
+  ```
+  ct_cast.coax:4:10: error[E0411]: cast to u8 is out of range
+      return cast(u8) n;
+             ^
+    note: compile-time call at ct_cast.coax:1:15
+  ```
+
+  A constant can't be half-computed, so there is no "trap and continue"
+  while compiling.
 
 ## 9.5 Compile time is bounded
 
 A loop that never ends shouldn't hang your build:
 
+```coax
+FOREVER :: #run spin();
+
+spin :: () -> int {
+  i := 0;
+  while true { i += 1; }
+  return i;
+}
 ```
-ct2.coax:5:14: error[E0400]: compile-time evaluation exceeded 100000 steps
+
+```
+spin.coax:5:21: error[E0400]: compile-time evaluation exceeded 100000 steps
     while true { i += 1; }
-               ^
-  note: compile-time call at ct2.coax:9:17
+                      ^
+  note: compile-time call at spin.coax:1:17
+```
+
+Creating an array counts too, one step per element, so a table can't
+dodge the budget by being one big declaration:
+
+```coax
+MAP :: #run blank_map();
+
+blank_map :: () -> [200000] u8 {
+  map: [200000] u8;          // 200,000 elements, one step each
+  return map;
+}
+```
+
+```
+big.coax:4:3: error[E0400]: compile-time evaluation exceeded 100000 steps
+    map: [200000] u8;          // 200,000 elements, one step each
+    ^
+  note: compile-time call at big.coax:1:13
 ```
 
 | Limit | Value | Error |
 | --- | --- | --- |
-| Evaluation work in one compile | 100,000 steps (expressions and statements visited) | `E0400` |
+| Evaluation work in one compile | 100,000 steps (expressions and statements visited, and array elements created) | `E0400` |
 | Nested compile-time calls | 64 | `E0403` |
 | Constants depending on constants | 64 deep | `E0403` |
 | Overflow or division by zero | Always an error, in debug **and** release | `E0407` |
 | Reading an uninitialized (`---`) local | Always an error | `E0405` |
+| A view in a result | Always an error | `E0409` |
+| Index or slice out of bounds | Always an error | `E0410` |
+| Cast, enum value or shift out of range | Always an error | `E0411` |
 
 The limits count work, not seconds, so a program that compiles on a fast
 laptop compiles on a slow CI machine too. Overflow is checked at compile

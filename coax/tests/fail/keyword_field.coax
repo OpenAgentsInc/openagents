@@ -1,0 +1,3 @@
+// expect: E0371
+P :: struct { int: s32; }
+main :: () {}

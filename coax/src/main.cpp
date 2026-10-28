@@ -2,16 +2,23 @@
 // so the compiler builds with one compiler invocation (performance stack
 // item 2).
 //
-//   coax run   file.coax [--release]                 compile and run
-//   coax build file.coax [-o out] [--release] [--keep-c]
-//   coax c     file.coax [--release]                 print the generated C
-//   coax check file.coax                             check without invoking C
+//   coax run     file.coax [--release]               compile and run
+//   coax build   file.coax [-o out] [--release] [--keep-c]
+//   coax lib     file.coax [-o out.o] [--release] [--keep-c]
+//                                                    an object file of the #export_c procedures
+//   coax header  file.coax [-o out.h]                the C header for those procedures
+//   coax c       file.coax [--release] [--lib]       print the generated C
+//   coax check   file.coax                           check without invoking C
+//   coax layout  file.coax                           struct and enum layouts
+//   coax explain CODE | --all [--markdown]           what an error code means
 //   coax version
 //
+// --json prints diagnostics as one JSON object per line on stderr.
 // The C compiler is $COAX_CC, or cc.
 #include "coax.h"
 
 #include "check.cpp"
+#include "errors.cpp"
 #include "eval.cpp"
 #include "emit_c.cpp"
 #include "lex.cpp"
@@ -25,9 +32,10 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.2.0";
+static const char *VERSION = "coax0 0.3.0";
 
 int32_t g_error_count = 0;
+bool g_json_errors = false;
 
 void *arena_alloc(Arena *a, size_t size) {
   size = (size + 15) & ~(size_t)15;
@@ -43,8 +51,28 @@ void *arena_alloc(Arena *a, size_t size) {
   return p;
 }
 
+static std::string json_string(const std::string &s) {
+  std::string out = "\"";
+  for (unsigned char c : s) {
+    if (c == '"' || c == '\\') { out += '\\'; out += (char)c; }
+    else if (c == '\n') out += "\\n";
+    else if (c < 0x20) {
+      char buf[8];
+      snprintf(buf, sizeof buf, "\\u%04x", c);
+      out += buf;
+    } else out += (char)c;
+  }
+  return out + "\"";
+}
+
 void error_at(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix) {
   g_error_count++;
+  if (g_json_errors) {
+    fprintf(stderr, "{\"file\": %s, \"line\": %d, \"col\": %d, \"code\": \"%s\", \"message\": %s, \"fix\": %s}\n",
+            json_string(src->path).c_str(), loc.line, loc.col, code, json_string(message).c_str(),
+            json_string(fix).c_str());
+    return;
+  }
   fprintf(stderr, "%s:%d:%d: error[%s]: %s\n", src->path.c_str(), loc.line, loc.col, code, message.c_str());
   // The source line and a caret under the column.
   const std::string &t = src->text;
@@ -97,7 +125,11 @@ static int run_process(const std::vector<std::string> &args) {
   return 1;
 }
 
-static bool compile_to_c(const char *path, const EmitOptions &opts, std::string *c_out) {
+enum class Output : uint8_t { none, c, header, layout };
+
+// lex, parse, check and evaluate; then produce the requested text.
+// library: no main is required (lib, header, and check of a file that exports).
+static bool compile(const char *path, const EmitOptions &opts, Output what, std::string *text, int library = 0) {
   Source src;
   src.path = path;
   if (!read_file(path, &src.text)) {
@@ -107,12 +139,20 @@ static bool compile_to_c(const char *path, const EmitOptions &opts, std::string 
   Arena arena;
   std::vector<Token> tokens;
   File file;
-  if (!lex(&arena, &src, &tokens) || !parse(&arena, &src, tokens, &file) || !check(&arena, &file) ||
-      !evaluate(&file)) {
-    fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
+  bool ok = lex(&arena, &src, &tokens) && parse(&arena, &src, tokens, &file);
+  if (ok) {
+    bool exports = false;
+    for (const ProcDecl *p : file.procs) exports = exports || p->export_c;
+    file.library = library == 1 || (library == 2 && exports);
+    ok = check(&arena, &file) && evaluate(&file);
+  }
+  if (!ok) {
+    if (!g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
     return false;
   }
-  if (c_out) *c_out = emit_c(&file, opts);
+  if (what == Output::c) *text = emit_c(&file, opts);
+  else if (what == Output::header) *text = emit_header(&file);
+  else if (what == Output::layout) *text = layout_report(&file);
   return true;
 }
 
@@ -125,16 +165,17 @@ static std::string strip_ext(const std::string &p) {
 
 static int build(const char *path, const std::string &exe, const EmitOptions &opts, bool keep_c) {
   std::string c;
-  if (!compile_to_c(path, opts, &c)) return 1;
+  if (!compile(path, opts, Output::c, &c, opts.library ? 1 : 0)) return 1;
   std::string c_path = exe + ".c";
   if (!write_file(c_path, c)) {
     fprintf(stderr, "coax: cannot write '%s'\n", c_path.c_str());
     return 1;
   }
   const char *cc = getenv("COAX_CC");
-  std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", "-o", exe, c_path};
-  args.insert(args.begin() + 2, opts.release ? "-O2" : "-O0");
-  if (!opts.release) args.insert(args.begin() + 3, "-g");
+  std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", opts.release ? "-O2" : "-O0"};
+  if (!opts.release) args.push_back("-g");
+  if (opts.library) args.push_back("-c");
+  args.insert(args.end(), {"-o", exe, c_path});
   int rc = run_process(args);
   if (!keep_c) unlink(c_path.c_str());
   if (rc != 0) {
@@ -146,12 +187,57 @@ static int build(const char *path, const std::string &exe, const EmitOptions &op
 
 static int usage() {
   fprintf(stderr,
-          "usage: coax run   file.coax [--release]\n"
-          "       coax build file.coax [-o out] [--release] [--keep-c]\n"
-          "       coax c     file.coax [--release]\n"
-          "       coax check file.coax\n"
-          "       coax version\n");
+          "usage: coax run     file.coax [--release]\n"
+          "       coax build   file.coax [-o out] [--release] [--keep-c]\n"
+          "       coax lib     file.coax [-o out.o] [--release] [--keep-c]\n"
+          "       coax header  file.coax [-o out.h]\n"
+          "       coax c       file.coax [--release] [--lib]\n"
+          "       coax check   file.coax\n"
+          "       coax layout  file.coax\n"
+          "       coax explain CODE | --all [--markdown]\n"
+          "       coax version\n"
+          "options: --json prints diagnostics as JSON lines\n");
   return 2;
+}
+
+static int explain(int argc, char **argv) {
+  bool all = false, markdown = false;
+  const char *code = nullptr;
+  for (int i = 2; i < argc; i++) {
+    std::string a = argv[i];
+    if (a == "--all") all = true;
+    else if (a == "--markdown") markdown = true;
+    else code = argv[i];
+  }
+  if (!all && !code) return usage();
+  if (markdown) {
+    const char *stage = "";
+    for (int32_t i = 0; i < ERROR_COUNT; i++) {
+      const ErrorInfo &e = ERRORS[i];
+      const char *s = e.code[2] == '1' ? "E01xx: lexer" : e.code[2] == '2' ? "E02xx: parser"
+                    : e.code[2] == '3' ? "E03xx: checker" : "E04xx: compile-time evaluation";
+      if (strcmp(s, stage) != 0) {
+        printf("\n## %s\n\n| Code | Meaning | What to do |\n| --- | --- | --- |\n", s);
+        stage = s;
+      }
+      std::string text = e.explanation;
+      for (size_t at = 0; (at = text.find('|', at)) != std::string::npos; at += 2) text.replace(at, 1, "\\|");
+      printf("| `%s` | %s | %s |\n", e.code, e.title, text.c_str());
+    }
+    return 0;
+  }
+  bool found = false;
+  for (int32_t i = 0; i < ERROR_COUNT; i++) {
+    const ErrorInfo &e = ERRORS[i];
+    if (!all && strcmp(e.code, code) != 0) continue;
+    printf("%s: %s\n  %s\n", e.code, e.title, e.explanation);
+    found = true;
+  }
+  if (!found) {
+    fprintf(stderr, "coax: no error code '%s'\n", code);
+    return 1;
+  }
+  return 0;
 }
 
 static int main_impl(int argc, char **argv) {
@@ -161,7 +247,10 @@ static int main_impl(int argc, char **argv) {
     puts(VERSION);
     return 0;
   }
-  if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check") return usage();
+  if (cmd == "explain") return explain(argc, argv);
+  if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
+      cmd != "layout")
+    return usage();
 
   const char *input = nullptr;
   std::string out;
@@ -171,20 +260,36 @@ static int main_impl(int argc, char **argv) {
     std::string a = argv[i];
     if (a == "--release") opts.release = true;
     else if (a == "--keep-c") keep_c = true;
+    else if (a == "--json") g_json_errors = true;
+    else if (a == "--lib") opts.library = true;
     else if (a == "-o" && i + 1 < argc) out = argv[++i];
     else if (!input && a.size() && a[0] != '-') input = argv[i];
     else return usage();
   }
   if (!input) return usage();
-  if (cmd == "check") return compile_to_c(input, opts, nullptr) ? 0 : 1;
-
-  if (cmd == "c") {
-    std::string c;
-    if (!compile_to_c(input, opts, &c)) return 1;
-    fwrite(c.data(), 1, c.size(), stdout);
+  std::string text;
+  if (cmd == "check") return compile(input, opts, Output::none, &text, 2) ? 0 : 1;
+  if (cmd == "layout") {
+    if (!compile(input, opts, Output::layout, &text, 2)) return 1;
+    fwrite(text.data(), 1, text.size(), stdout);
+    return 0;
+  }
+  if (cmd == "c" || cmd == "header") {
+    if (!compile(input, opts, cmd == "c" ? Output::c : Output::header, &text, cmd == "header" || opts.library ? 1 : 0))
+      return 1;
+    if (out.empty()) {
+      fwrite(text.data(), 1, text.size(), stdout);
+    } else if (!write_file(out, text)) {
+      fprintf(stderr, "coax: cannot write '%s'\n", out.c_str());
+      return 1;
+    }
     return 0;
   }
   if (cmd == "build") return build(input, out.empty() ? strip_ext(input) : out, opts, keep_c);
+  if (cmd == "lib") {
+    opts.library = true;
+    return build(input, out.empty() ? strip_ext(input) + ".o" : out, opts, keep_c);
+  }
 
   // run: build into a fresh temporary directory, run, clean up.
   const char *tmp = getenv("TMPDIR");

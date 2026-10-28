@@ -163,6 +163,9 @@ overflow.coax:6: integer overflow in '+'
 | Integer overflow (`+ - *`, unary `-`) | Stops, with file and line | Wraps |
 | Division or `%` by zero | Stops | Stops |
 | Smallest `int` divided by `-1` | Stops | Stops |
+| Index or slice out of bounds | Stops | Stops |
+| `cast(T)` of a value that doesn't fit | Stops | Stops |
+| Shift by a negative count or the width or more | Stops | Stops |
 
 ## 4.7 Writing for the reader who fixes it
 
@@ -177,3 +180,32 @@ they're also rules for the errors your own code reports:
 - **Give the edit.** "add ';'" or "add #import \"Basic\"; at the top of the
   file", not "check your syntax".
 - **Keep codes stable** so tools can depend on them.
+
+## 4.8 Errors for tools
+
+Two flags make errors easy for programs, and agents, to use.
+
+`--json` prints each diagnostic as one JSON object per line:
+
+```sh
+coax check program.coax --json
+```
+
+```
+{"file": "tests/fail/array_count.coax", "line": 2, "col": 19, "code": "E0358", "message": "[3] int needs 3 elements, given 2", "fix": ""}
+```
+
+`coax explain` describes any code, with the rule behind it and the usual
+fix:
+
+```sh
+coax explain E0350
+```
+
+```
+E0350: value does not fit its type
+  Untyped literals take the type their use needs, if the value fits: x: u8 = 300 does not. A float literal cannot become an integer. Use a wider type, or cast,trunc to keep the low bits.
+```
+
+`coax explain --all --markdown` prints every code, and is how
+[Appendix B](appendix-b-error-codes.md) is generated.

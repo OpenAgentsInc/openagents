@@ -1,0 +1,2 @@
+// expect: E0357
+main :: () { n := 4; a: [n] int; }

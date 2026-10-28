@@ -1,0 +1,12 @@
+#import "Basic";
+
+at :: (values: [] int, i: int) -> int {
+  return values[i];
+}
+
+main :: () {
+  scores := [3] int.[10, 20, 30];
+  print("%\n", at(scores[..], 2));
+  print("%\n", at(scores[..], 3));    // one past the end
+  print("never printed\n");
+}

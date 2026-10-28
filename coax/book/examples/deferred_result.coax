@@ -1,0 +1,11 @@
+#import "Basic";
+
+count_down :: () -> int {
+  n := 3;
+  defer n = 0;            // runs after the result is computed
+  return n * 10;
+}
+
+main :: () {
+  print("%\n", count_down());
+}

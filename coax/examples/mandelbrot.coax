@@ -1,0 +1,38 @@
+// The Mandelbrot set in ASCII: f64 arithmetic, nested ranges, ifx.
+#import "Basic";
+
+WIDTH :: 72;
+HEIGHT :: 28;
+LIMIT :: 200;
+
+// How many iterations z = z² + c takes to escape, up to LIMIT.
+escape :: (cr: f64, ci: f64) -> int {
+  zr := 0.0;
+  zi := 0.0;
+  for n: 0..<LIMIT {
+    if zr * zr + zi * zi > 4 { return n; }
+    t := zr * zr - zi * zi + cr;
+    zi = 2 * zr * zi + ci;
+    zr = t;
+  }
+  return LIMIT;
+}
+
+SHADES :: " .:-=+*#%@";
+
+main :: () {
+  inside := 0;
+  for row: 0..<HEIGHT {
+    line: [WIDTH] u8;
+    for col: 0..<WIDTH {
+      cr := -2.2 + 3.0 * cast(f64) col / WIDTH;
+      ci := -1.2 + 2.4 * cast(f64) row / HEIGHT;
+      n := escape(cr, ci);
+      if n == LIMIT { inside += 1; }
+      shade := ifx n == LIMIT then 9 else n % 9;
+      line[col] = SHADES[shade];
+    }
+    print("%\n", cast(string) line[..]);
+  }
+  print("% of % points are inside\n", inside, WIDTH * HEIGHT);
+}

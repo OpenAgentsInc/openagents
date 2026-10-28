@@ -1,6 +1,6 @@
 # Coax: language specification and implementation plan
 
-Date: 2026-10-27. Status: **working scalar bootstrap; broader language design**.
+Date: 2026-10-27. Status: **working bootstrap with data types and a C boundary; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
 end in `.coax`; the executable is `coax`; a future build entry is `build.coax`.
 
@@ -9,10 +9,15 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.2.0 implements procedures,
-`int`/`s64`, `bool`, counted byte strings, scalar control flow, immutable
-top-level constants, bounded `#run`, `#assert`, and `type_name(expression)`.
-It generates C11 and uses a host C compiler to produce executables. Other
+**Implementation status matters.** Version 0.3.0 implements procedures;
+sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
+literals and constants; structs with defaults, enums with a declared width,
+fixed arrays and views; `for` over half-open ranges and collections, `break`,
+`continue`, `defer` and `ifx`; checked casts; left-to-right operand
+evaluation; immutable top-level constants, bounded `#run` (including
+aggregate results), `#assert` and `type_name(expression)`; and `#export_c`
+with a generated C header. It generates C11 and uses a host C compiler to
+produce executables and object files. Other
 syntax below is a target design unless explicitly marked implemented. The
 [bootstrap grammar](grammar.ebnf) describes the accepted subset.
 There is no shipping engine subsystem written in Coax yet.
@@ -75,13 +80,15 @@ AST evaluator → C11 emitter → C compiler/linker → executable`.
 The compiler is C++20, built as one translation unit. It needs no LLVM,
 VM package, network access or additional language compiler. `coax check`
 stops after checking and compile-time evaluation, without invoking the C
-compiler or executing `main`. `coax c` prints the generated C.
+compiler or executing `main`. `coax c` prints the generated C. `coax lib`
+and `coax header` produce an object file and a C header for `#export_c`
+procedures; `coax layout` reports struct layouts.
 
 The evaluator uses the checked AST. Bytecode is not required to prove
 compile-time semantics; adopt an internal bytecode representation only if
 profiling justifies its implementation and debugging costs. The interpreter
 belongs to the compiler. Target programs contain native code and small C
-support helpers for strings, printing and checked arithmetic, not that
+support helpers for strings, printing, checked arithmetic, bounds and casts, not that
 interpreter. Startup and support code still exist; there is no managed heap.
 
 ### 2.2 Planned dependency scheduler
@@ -185,13 +192,17 @@ need explicit schema annotations and reviewed adapters.
   `///` documentation attachment is planned.
 - Directives start with `#`; annotations start with `@`.
 - Integer literals support decimal, hexadecimal, binary and `_` separators,
-  within the signed 64-bit bootstrap range. `-9223372036854775807 - 1`
-  expresses the minimum signed value today.
+  up to the u64 maximum. Decimal floating literals have a fraction (`1.5`,
+  never `1.`, so `0..<n` stays a range) and/or an exponent (`2e-3`).
+  Character literals `'a'` and `'\n'` are integer literals holding one ASCII
+  byte. Integer, float and character literals are untyped until used: a use
+  gives them its type if the value fits (E0350 otherwise), and with no type
+  to take, integers become `int` and floats `f64`.
 - Strings support `\n`, `\t`, `\r`, `\0`, `\\` and `\"`. They count bytes,
   may contain NUL, and need not be zero-terminated. UTF-8 is the text
   convention, not a promise that arbitrary byte strings are valid text.
 - Semicolons terminate ordinary declarations and statements.
-- Floating literals, Unicode escapes, raw strings and character literals are
+- Unicode escapes, raw strings and non-ASCII character literals are
   planned. Reserved words for later features are diagnosed rather than
   accepted with guessed semantics.
 
@@ -220,21 +231,33 @@ procedure signatures. Cycles are errors. Constants cannot be assigned or
 shadowed. Ordinary calls in constant initializers require `#run`; arithmetic
 on constants does not. Local constants and procedure values are not supported.
 
-`int` and `s64` denote the same signed 64-bit type. The other implemented types
-are `bool` and `string`; a procedure without a return annotation returns no
-value. There are no implicit numeric or boolean conversions.
+`int` and `s64` denote the same signed 64-bit type and `uint` is `u64`.
+Implemented scalars are `s8 s16 s32 s64 u8 u16 u32 u64`, `f32 f64`, `bool` and
+`string`; a procedure without a return annotation returns no value. There are
+no implicit numeric or boolean conversions. A constant made only of literals
+stays untyped, like a literal, and must fit `int` (or `f64`); `cast(T)` makes
+a typed constant.
+
+Implemented aggregates are structs with field defaults (`v: Vec2;` takes
+them; `= ---` skips them), enums with a declared width, fixed arrays `[N] T`
+(N known while checking) and views `[] T`. Arrays and structs are values:
+assignment and calls copy them. A view borrows an array variable's storage
+(`a[..]`, `a[lo..<hi]`); writes through it change the array, including through
+a view parameter. A view does not extend the array's lifetime. Strings index
+to `u8` and slice to strings, and are immutable; `cast(string) bytes[..]`
+borrows a `[] u8` as text. Indices and slices are checked in every build.
 
 ### 6.2 Planned scalar and aggregate types
 
 | Group | Target vocabulary and rule |
 | --- | --- |
-| Integers | `s8 s16 s32 s64 u8 u16 u32 u64`; `uint` is u64, not a C integer alias. |
-| Floating point | `f32 f64`, with explicit strict-mode behavior. |
+| Integers | **Implemented.** `s8 s16 s32 s64 u8 u16 u32 u64`; `uint` is u64, not a C integer alias. |
+| Floating point | **Implemented** as IEEE with no fused operations; explicit strict-mode library behavior is planned. |
 | Fixed point | `fixed32` and `fixed64`, after scale, overflow and rounding rules have vectors. |
 | Small math/SIMD | `v2 v3 v4 quat m3 m4`, integer vectors and explicit lane types. |
 | Pointers | `*T` non-null, `*T?` nullable; address-of `*x`, dereference `p.*`. |
-| Inline arrays | `[N] T`: storage belongs to the containing value. |
-| Views | `[] T`: pointer/count borrow; no ownership transfer or lifetime extension. |
+| Inline arrays | **Implemented.** `[N] T`: storage belongs to the containing value. |
+| Views | **Implemented.** `[] T`: pointer/count borrow; no ownership transfer or lifetime extension. |
 | Dynamic arrays | `[..] T`: data/count/capacity plus allocator policy; explicit growth/free. |
 | Optional | `T?`: test or unwrap before access. |
 | Distinct | `RoomIndex :: #distinct int;`: no implicit mixing with int. |
@@ -258,7 +281,13 @@ Outcome :: enum u8 { completed; refused; failed; cancelled; unknown; }
 Answer :: union { text: string; count: int; }
 ```
 
-This is target syntax. Struct fields follow declaration order and natural
+This is target syntax; `#derive`, `[..]`, `#distinct` and unions are not
+implemented. Implemented: `Name :: struct { field: T; field: T = default; }`,
+`Name.{field = value}` literals that name each field they set, and
+`Name :: enum u8 { a; b = 4; }` with `Name.a`, `==`/`!=`, printing by name,
+and `cast` to and from integers that traps on a value that names no member.
+Enum values default to the previous value plus one and must be distinct.
+Struct fields follow declaration order and natural
 alignment unless an explicit layout mode is chosen. `using` exposes an
 embedded field's members; it does not establish virtual inheritance. `#as`
 conversion relationships must be separately declared and checked. Copies
@@ -278,6 +307,11 @@ Procedures have named, typed scalar parameters and zero or one return value.
 Parameters are immutable; copy one into a local to update it. Procedures can
 refer to later procedures. Calls check arity, types and whether results are
 used. A program has `main :: ()` with no parameters or return value.
+
+Struct, array and view parameters are passed by value; a view parameter's
+elements may be written, since they belong to the caller's array.
+`name :: (...) -> T #export_c { }` gives a procedure its own C name and the C
+calling convention for `coax lib` and `coax header`.
 
 Multiple returns, named/default arguments, overloads, variadics, callbacks and
 explicit pointer mutation are planned. Passing a large value by an optimized
@@ -310,37 +344,55 @@ surface is necessary. None of these facilities exists in the bootstrap.
 
 ### 7.3 Evaluation order
 
-Compile-time operands and call arguments are evaluated left to right, with
-short-circuit boolean operators. The target language requires the same rule.
-The bootstrap C emitter does not yet lower all runtime operands to ordered
-temporaries. Until it does, sequence effectful runtime calls into separate
-locals; C's argument evaluation order is not a language guarantee. This is an
-adoption blocker for general effectful expressions, not a solved feature.
+Operands and call arguments are evaluated left to right, with
+short-circuit boolean operators and `ifx` evaluating only what they select.
+This is implemented at compile time and at run time. The C emitter stores
+operands in temporaries, in source order, whenever an operand list contains a
+call and another operand that could call or trap, so C's unspecified argument
+order never shows. An assignment evaluates its place, then its value; a
+compound assignment evaluates its place once.
 
 ## 8. Control flow
 
-Implemented: blocks, `if`/`else if`/`else`, `while`, `return`, assignments,
-compound integer assignments, and expression statements for void calls.
-Non-void procedures must return on all statically covered paths.
+Implemented: blocks, `if`/`else if`/`else`, `while`, `return`, assignments
+to variables, fields and elements, compound assignments, expression
+statements for void calls, `for i: lo..<hi`, `for x: collection` and
+`for x, i: collection` over arrays, views and strings, `break`, `continue`,
+`defer`, and `ifx condition then a else b`. Non-void procedures must return
+on all statically covered paths. Loop variables are immutable copies; an
+array is iterated in place, so writes by the body are seen by later
+iterations.
 
-Planned: `ifx condition then a else b`, `for`, exhaustive `switch`, `break`,
-`continue`, `defer`, `try` and `or_else`.
+Planned: exhaustive `switch`, `try` and `or_else`.
 
 Use half-open `0..<n` for the first range implementation. An empty range has
 zero iterations. Reverse iteration and removal need explicit invalidation
 rules before acceptance. Do not add an implicit iterator allocation.
 
-`defer` will execute cleanup at lexical-scope exit in reverse registration
-order, including return and propagated errors. A deferred block cannot return
-from its containing procedure. It is not an automatic type destructor.
+`defer` executes cleanup at lexical-scope exit in reverse registration
+order, including `return`, `break` and `continue` (implemented) and propagated
+errors (with `try`, planned). A returned value is computed before deferred
+code runs. Deferred code cannot return, break or continue out of its block
+(E0361). It is not an automatic type destructor.
 
 ## 9. Operators
 
-The bootstrap implements integer `+ - * / %`, unary `-`, comparisons,
-boolean `&& || !`, and string equality/inequality. Comparisons cannot chain.
-Runtime arithmetic traps on signed overflow in development and wraps in
-`--release`; division by zero always traps. The minimum integer divided by
-minus one traps; its remainder is zero.
+The bootstrap implements `+ - * /` on integers and floats, `%` on integers,
+unary `-` on signed integers and floats, bitwise `& | ^` and shifts `<< >>`
+on integers, comparisons, boolean `&& || !`, and equality on scalars, enums
+and strings. Bitwise operators share the precedence of `+` and `*`, as in Go.
+Comparisons cannot chain. Integer arithmetic traps on overflow (signed and
+unsigned) in development and wraps in `--release`; division by zero always
+traps. The minimum integer divided by minus one traps; its remainder is zero.
+Shifts by a negative amount or by the type's width or more trap in every
+build; `<<` discards high bits. Float arithmetic is IEEE binary32/binary64
+with one rounding per operation; the generated C disables contraction into
+fused multiply-add.
+
+`cast(T) x` converts numbers and enums and traps in every build if the value
+does not fit; float to integer truncates toward zero and traps on NaN or out
+of range. `cast,trunc(T) x` converts between integer types keeping the low
+bits.
 
 Compile-time arithmetic is checked in every build mode (§10). This avoids
 release settings silently changing generated constants.
@@ -363,8 +415,10 @@ main :: () { count := TABLE_SIZE; }
 ```
 
 `#run` evaluates its following unary expression; parenthesize a larger
-expression, for example `#run (square(16) + 2)`. Results are `int`, `bool` or
-`string` and become literals in the generated C. `#run` requires a value;
+expression, for example `#run (square(16) + 2)`. Results are scalars, strings,
+enums, structs or arrays: scalars become literals in the generated C and
+aggregates become static constants. A result cannot contain a view (E0409),
+since it would point into memory that exists only while compiling. `#run` requires a value;
 top-level void execution is not supported. `#assert` is a top-level bool
 expression that must evaluate true before C emission. Use `#run` for calls
 inside an assertion as well.
@@ -386,7 +440,7 @@ Limits for the bootstrap:
 
 | Resource | Limit and diagnostic |
 | --- | --- |
-| Evaluation work | 100,000 evaluated expression/statement visits across one compilation, E0400. |
+| Evaluation work | 100,000 steps across one compilation: each evaluated expression or statement, and each array element created, E0400. |
 | Active interpreted calls | 64, E0403; call sites are printed as bounded source notes. |
 | Active constant dependencies | 64, E0403; type-resolution dependencies also stop at 64, E0347. |
 | Constant cycles | E0340 for type dependencies; E0402 for a value cycle reached through a procedure. |
@@ -396,16 +450,20 @@ Limits for the bootstrap:
 | False assertion | E0406. |
 | Overflow or division by zero | E0407, in debug and release. |
 | Call missing `#run` | E0408. |
+| View in a result | E0409. |
+| Index or slice out of bounds | E0410. |
+| Cast, enum value or shift out of range | E0411. |
 
 The work budget counts interpreted work, not parsing, every compiler allocation
 or total wall time. It is not a complete hostile-source resource sandbox.
 Memoized constants and folded `#run` sites are not re-executed. Host pointers
 and runtime mutable state cannot be retained because this subset cannot
-construct them. Only checked scalar values cross into target initialization.
+construct them. Only checked values without views cross into target
+initialization.
 
 ### 10.2 Reflection now and later
 
-`type_name(expression)` is implemented for the three scalar types. Its operand
+`type_name(expression)` is implemented for every type. Its operand
 is typechecked but unevaluated. It returns a string constant without evaluating
 side effects or arithmetic in the operand; `type_name(1 / 0)` is `"int"`.
 Unknown names and ill-typed operands remain errors. It needs no module import.
@@ -488,7 +546,7 @@ is implicit.
 
 A foreign allocator is not redirected by changing Coax context. Context layout
 is private to its versioned runtime; independently built modules use explicit
-C ABI entry points and opaque handles. The current scalar bootstrap has no
+C ABI entry points and opaque handles. The current bootstrap has no
 implicit context convention yet.
 
 ### 11.2 Lifetimes and allocation
@@ -682,6 +740,17 @@ cache keys and editor analysis.
 
 ### 17.2 C, C++, Swift and platform support
 
+Implemented: `#export_c` procedures, `coax lib` (an object file without a C
+`main`) and `coax header`. The header declares every type the exported
+procedures use (`coax_t_Name` structs, `coax_v_T` views as `{data, count}`,
+enum constants as `COAX_Name_member`) and asserts each struct's size and
+field offsets with `_Static_assert` (or `static_assert` in C++), so a C
+compiler that disagrees with Coax's layout refuses to build. Struct field
+names cross unchanged, so C and C++ keywords are refused as field names
+(E0371). A failed check inside an exported call aborts the host process.
+`examples/pulse` links a Coax kernel into a C host and checks it against a C
+reference every frame.
+
 Use fixed-width C ABI data, explicit lengths, opaque handles and named release
 functions. `int` is s64, not C `int`. A counted Coax string is not `char *`.
 Generated headers must record size, alignment, calling convention, ownership,
@@ -704,13 +773,16 @@ slice, not just a successful Wasm link.
 
 ### 17.3 Tooling
 
-Implemented commands: `coax version`, `check`, `c`, `build` and `run`.
-`--keep-c` retains generated source for inspection. Errors have stable codes,
+Implemented commands: `coax version`, `check`, `c`, `build`, `run`, `lib`,
+`header`, `layout` (struct sizes, alignment, offsets and padding) and
+`explain` (every error code, also as the Markdown table the book uses).
+`--keep-c` retains generated source for inspection; `--json` prints
+diagnostics as JSON lines for tools and agents. Errors have stable codes,
 source locations and fix text where available; compile-time failures add call
 site notes. C debug locations still refer to generated C: source maps and
 full debugger integration are future work.
 
-Planned tools include a formatter, typed symbol/layout/effect queries,
+Planned tools include a formatter, typed symbol/effect queries,
 expansion traces and a compiler server. The editor needs a safe analysis mode
 that does not automatically execute privileged build plugins. Missing generated
 inputs must be reported honestly rather than replaced with guessed symbols.
@@ -770,7 +842,7 @@ already uses it.
 | --- | --- | --- |
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
-| 2 — Data and C boundary | Structs/defaults, fixed arrays/views, half-open `for`, `defer`, explicit mutation and fixed-width export/import. Ordered runtime operand lowering before general effectful expressions. | Field/layout/ownership vectors; one pulse kernel called by the native host; compare outputs and frame cost. |
+| 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. Not yet: importing C declarations. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. Remaining: the `src/paynet` kernel called by the native host, outputs compared and frame cost measured. |
 | 3 — Metadata and generation | Target layouts and stable declaration IDs first; reflection, derived operations and hygienic typed code next. | Generated registry or inspector with provenance, invalid generator fixtures and bounded expansion. Consider bytecode only after profiling. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |

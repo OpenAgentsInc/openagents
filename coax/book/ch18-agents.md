@@ -1,7 +1,8 @@
 # 18. Built for agents
 
-> **Partly runs today.** Stable error codes, fix lines, `coax check` and
-> readable C output work now. The formatter, query server and expansion
+> **Partly runs today.** Stable error codes, fix lines, `coax check`,
+> `--json` diagnostics, `coax explain`, `coax layout` and readable C
+> output work now. The formatter, query server and expansion
 > traces are designed (spec §17.3).
 
 Most of the code in the OpenAgents repositories is written by agents and
@@ -65,8 +66,8 @@ The rules, short enough to keep in context:
 2. Match on error codes, not messages.
 3. Don't write a feature `coax0` refuses as "not supported yet". Restructure
    instead.
-4. Sequence effectful calls into locals. `coax0` doesn't yet guarantee
-   left-to-right evaluation of runtime operands.
+4. Read diagnostics with `--json`, and run `coax explain CODE` before
+   guessing what a code means.
 5. Put computations that only need constants behind `#run`, and assert
    what they must produce with `#assert`.
 6. Read the generated C (`coax c`) when performance or behavior matters.

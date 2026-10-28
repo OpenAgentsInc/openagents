@@ -1,0 +1,3 @@
+// expect: E0366
+f :: (a: [4] int) -> int { v := a[..]; return v[0]; }
+main :: () {}

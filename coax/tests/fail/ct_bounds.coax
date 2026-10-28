@@ -1,0 +1,4 @@
+// expect: E0410
+A :: #run at(5);
+at :: (i: int) -> int { a: [4] int; return a[i]; }
+main :: () {}

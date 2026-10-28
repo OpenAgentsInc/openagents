@@ -1,0 +1,2 @@
+// expect: E0356
+main :: () { a: [2] int; b := a[true]; }

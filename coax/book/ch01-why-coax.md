@@ -170,7 +170,7 @@ Chapter by chapter, this book covers what Coax does that Jai doesn't:
 
 | Area | Coax | Chapter |
 | --- | --- | --- |
-| Checks | Overflow and division checks today; bounds and handle checks in development builds next | 2, 3 |
+| Checks | Overflow, division, bounds, cast and shift checks today; handle checks next | 2, 3 |
 | Diagnostics | Stable codes, the source line, and a fix | 4 |
 | Equality and hashing | `#derive(eq, hash)` and explicit constraints, instead of hand-written code found by name | 5, 8 |
 | Parallelism | A job's capture list is its effects, checked by the compiler and the scheduler | 11 |

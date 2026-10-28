@@ -1,0 +1,49 @@
+// Payment pulses moving along channels: the shape of the per-frame pulse
+// update in aethyr-cpp's src/paynet, written as a Coax kernel that a C host
+// calls through the generated header (spec §20, stage 2).
+//
+//   coax lib pulse.coax -o pulse.o && coax header pulse.coax -o pulse.h
+
+Pulse :: struct {
+  position: f32;  // 0 ≤ position < 1 along the current channel
+  speed: f32;     // channel lengths per second
+  channel: s32;
+  hops: s32;      // channels left to cross; 0 means it has arrived
+}
+
+CHANNELS :: 64;
+
+// The next channel a pulse takes when it leaves `channel`.
+route :: (channel: s32) -> s32 {
+  return (channel * 17 + 5) % CHANNELS;
+}
+
+// Advance every live pulse by dt seconds. A pulse that reaches the end of
+// its channel hops to the next one. Returns how many arrived this frame.
+advance_pulses :: (pulses: [] Pulse, dt: f32) -> s64 #export_c {
+  arrived: s64 = 0;
+  for i: 0..<pulses.count {
+    p := pulses[i];
+    if p.hops == 0 { continue; }
+    p.position += p.speed * dt;
+    while p.position >= 1 {
+      p.position -= 1;
+      p.channel = route(p.channel);
+      p.hops -= 1;
+      if p.hops == 0 {
+        arrived += 1;
+        break;
+      }
+    }
+    pulses[i] = p;
+  }
+  return arrived;
+}
+
+// Pulses waiting on each channel, written into counts (one per channel).
+channel_load :: (pulses: [] Pulse, counts: [] s32) #export_c {
+  for c: 0..<counts.count { counts[c] = 0; }
+  for p: pulses {
+    if p.hops > 0 { counts[p.channel] += 1; }
+  }
+}

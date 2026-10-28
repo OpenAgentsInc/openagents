@@ -86,7 +86,7 @@ statement ends with a semicolon. `print`'s first argument is a **format**.
 Each `%` in it is replaced by the next argument, which you'll see in a
 moment.
 
-## 2.4 Four ways to compile
+## 2.4 Ways to compile
 
 `coax run` compiles to a temporary folder, runs the program, and deletes
 it. There are three other commands:
@@ -102,6 +102,20 @@ coax check hello.coax            # check it, without calling the C compiler or r
 `coax check` is the fastest answer to "is this program right?". It does
 everything except generate machine code: parsing, type checking, and the
 compile-time work in Chapter 9.
+
+The full set of commands:
+
+| Command | Does |
+| --- | --- |
+| `coax run FILE` | Compile and run |
+| `coax build FILE [-o out]` | Build an executable |
+| `coax lib FILE [-o out.o]` | Build an object file of the `#export_c` procedures, with no `main` (Chapter 16) |
+| `coax header FILE [-o out.h]` | Write the C header for those procedures |
+| `coax c FILE` | Print the generated C |
+| `coax check FILE` | Check without building |
+| `coax layout FILE` | Print every struct's size, alignment and field offsets (Chapter 10) |
+| `coax explain CODE` | Explain an error code (Chapter 4) |
+| `coax version` | Print the version |
 
 Add `--release` to any of them for an optimized build. Release builds
 change one behavior you can see, in §2.6.

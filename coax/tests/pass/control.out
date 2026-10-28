@@ -1,0 +1,5 @@
+[search ...done] -> 2
+[search ....done] -> -1
+body inner-1 inner-2 w1 w2 w3 outer
+a(1) b(2) c(3) = 7
+i(1) j(2) = 21

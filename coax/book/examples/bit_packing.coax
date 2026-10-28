@@ -1,0 +1,22 @@
+#import "Basic";
+
+// Pack a color into one u32: 0xRRGGBB.
+pack :: (r: u32, g: u32, b: u32) -> u32 {
+  return r << 16 | g << 8 | b;          // << binds tighter than |, as in Go
+}
+
+ones :: (bits: u32) -> int {
+  count := 0;
+  rest := bits;
+  while rest != 0 {
+    if rest & 1 == 1 { count += 1; }    // (rest & 1) == 1, unlike C
+    rest >>= 1;
+  }
+  return count;
+}
+
+main :: () {
+  color := pack(0xFF, 0x80, 0x10);
+  print("% % %\n", color, color >> 8 & 0xFF, ones(color));
+  print("% %\n", color ^ 0xFFFFFF, 1 << 40);
+}

@@ -14,8 +14,9 @@ This book teaches the language and explains why it is the way it is.
 ## The state of things
 
 Coax is young. The first compiler, `coax0`, lives in
-[`coax/`](../README.md) at the root of the openagents repo and compiles a small subset of the language
-to C. Most of what this book describes is designed but not built yet.
+[`coax/`](../README.md) at the root of the openagents repo and compiles a growing subset of the language
+to C: scalars, structs, enums, arrays and views, `defer`, compile-time
+execution and a C boundary. Most of what this book describes is designed but not built yet.
 Every chapter says which kind it is:
 
 > **Runs today.** Every example in a chapter marked this way compiles
@@ -29,9 +30,9 @@ Every chapter says which kind it is:
 | Part | Status |
 | --- | --- |
 | I. Getting started (chapters 1–4) | Runs today |
-| II. The language (5–9) | Design, except Chapter 9's first half, which runs today |
-| III. Data and speed (10–13) | Design |
-| IV. Coax in OpenAgents (14–18) | Design |
+| II. The language (5–9) | Mixed: structs, enums, arrays, views, `defer` and Chapter 9's first half run today; each section says which |
+| III. Data and speed (10–13) | Design, except Chapter 10's layout tools |
+| IV. Coax in OpenAgents (14–18) | Design, except Chapter 16's `#export_c` and Chapter 18's tools |
 | V. Building Coax (19–20) | Runs today (19), plan (20) |
 
 The language moves faster than any one chapter. When the book and the
@@ -46,7 +47,7 @@ a bug. The specification (`coax/spec.md`) is the design of record.
   start to finish by a model as well as a person. Every rule has a reason,
   and every error code is in [Appendix B](appendix-b-error-codes.md).
 - **People who want to work on the compiler.** Chapter 19 walks through
-  `coax0`, which is about 3,000 lines of C-style C++.
+  `coax0`, which is about 5,000 lines of C-style C++.
 
 ## Conventions
 

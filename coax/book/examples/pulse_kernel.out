@@ -1,0 +1,4 @@
+arrived 1
+Pulse.{position = 0.5, speed = 2.0, channel = 22, hops = 0}
+Pulse.{position = 0.75, speed = 1.0, channel = 7, hops = 3}
+Pulse.{position = 0.75, speed = 0.5, channel = 9, hops = 0}

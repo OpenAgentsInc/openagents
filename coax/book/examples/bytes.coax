@@ -1,0 +1,16 @@
+#import "Basic";
+
+main :: () {
+  word := "coaxial";
+  print("% % % %\n", word.count, word[0], word[2..<4], type_name(word[0]));
+
+  // Strings are immutable. To change text, copy its bytes into an array.
+  buffer: [7] u8;
+  for c, i: word { buffer[i] = c; }
+  buffer[0] = 'C';
+  text := cast(string) buffer[..];       // borrows buffer's bytes
+  print("% %\n", text, text == "Coaxial");
+
+  zeros := "a\0b";
+  print("%\n", zeros.count);
+}

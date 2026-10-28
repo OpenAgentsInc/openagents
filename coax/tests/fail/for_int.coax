@@ -1,0 +1,2 @@
+// expect: E0364
+main :: () { for i: 10 { } }

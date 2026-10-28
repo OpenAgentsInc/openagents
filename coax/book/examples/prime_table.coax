@@ -1,0 +1,50 @@
+#import "Basic";
+
+COUNT :: 32;
+
+// The first COUNT primes, found by trial division.
+first_primes :: () -> [COUNT] u16 {
+  out: [COUNT] u16;
+  found := 0;
+  candidate := 2;
+  while found < COUNT {
+    if is_prime(candidate) {
+      out[found] = cast(u16) candidate;
+      found += 1;
+    }
+    candidate += 1;
+  }
+  return out;
+}
+
+is_prime :: (n: int) -> bool {
+  for d: 2..<n {
+    if d * d > n { break; }
+    if n % d == 0 { return false; }
+  }
+  return n >= 2;
+}
+
+Gaps :: struct { widest: u16; after: u16; twins: int; }
+
+measure :: () -> Gaps {
+  g: Gaps;
+  table := PRIMES;                  // a local copy: a view needs a variable
+  for p, i: table[1..<COUNT] {      // i counts from 0, so table[i] is the prime before p
+    gap := p - table[i];
+    if gap == 2 { g.twins += 1; }
+    if gap > g.widest { g.widest = gap; g.after = table[i]; }
+  }
+  return g;
+}
+
+PRIMES :: #run first_primes();
+GAPS :: #run measure();
+
+#assert PRIMES[COUNT - 1] == 131;
+#assert GAPS.twins == 10;
+
+main :: () {
+  print("%\n", PRIMES);
+  print("%\n", GAPS);
+}

@@ -1,0 +1,18 @@
+#import "Basic";
+
+Room :: struct {
+  name: string;
+  rate: s32;
+  selected: s32 = -1;      // a field default
+}
+
+main :: () {
+  a: Room;                                 // defaults, and zero elsewhere
+  b := Room.{name = "AA", rate = 13};      // name the fields you set
+  print("%\n%\n", a, b);
+
+  c := b;                                  // a copy, not a reference
+  c.rate += 1;
+  c.selected = 0;
+  print("% % %\n", b.rate, c.rate, c.selected);
+}

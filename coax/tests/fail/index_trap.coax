@@ -1,0 +1,4 @@
+// expect: trap index out of bounds
+#import "Basic";
+at :: (v: [] int, i: int) -> int { return v[i]; }
+main :: () { a: [3] int; print("%\n", at(a[..], 3)); }

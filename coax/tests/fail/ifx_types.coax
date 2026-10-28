@@ -1,0 +1,2 @@
+// expect: E0365
+main :: () { x := ifx true then 1 else "one"; }

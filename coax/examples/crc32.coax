@@ -1,0 +1,39 @@
+// CRC-32 (the zlib/PNG polynomial) with its 256-entry table computed at
+// compile time. The table is baked into the program as a static constant;
+// the program never builds it.
+#import "Basic";
+
+POLY :: cast(u32) 0xEDB88320;
+
+make_table :: () -> [256] u32 {
+  table: [256] u32;
+  for n: 0..<256 {
+    c := cast(u32) n;
+    for k: 0..<8 {
+      c = ifx c & 1 == 1 then POLY ^ (c >> 1) else c >> 1;
+    }
+    table[n] = c;
+  }
+  return table;
+}
+
+TABLE :: #run make_table();
+
+#assert TABLE[1] == 0x77073096;
+#assert TABLE[255] == 0x2D02EF8D;
+
+crc32 :: (data: string) -> u32 {
+  crc: u32 = 0xFFFF_FFFF;
+  for byte: data {
+    crc = TABLE[(crc ^ cast(u32) byte) & 0xFF] ^ (crc >> 8);
+  }
+  return crc ^ 0xFFFF_FFFF;
+}
+
+CHECK :: #run crc32("123456789");
+#assert CHECK == 0xCBF43926;
+
+main :: () {
+  print("crc32(\"123456789\") = % (computed while compiling)\n", CHECK);
+  print("crc32(quick brown fox) = %\n", crc32("The quick brown fox jumps over the lazy dog"));
+}

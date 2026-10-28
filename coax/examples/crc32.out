@@ -1,0 +1,2 @@
+crc32("123456789") = 3421780262 (computed while compiling)
+crc32(quick brown fox) = 1095738169

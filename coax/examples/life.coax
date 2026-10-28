@@ -1,0 +1,86 @@
+// Conway's Life on a fixed torus: structs holding arrays, value copies,
+// wrap-around indexing, and enum-labelled patterns.
+#import "Basic";
+
+W :: 24;
+H :: 10;
+
+Grid :: struct {
+  cells: [H] [W] bool;
+  generation: int;
+}
+
+Pattern :: enum u8 { glider; blinker; block; }
+
+place :: (g: Grid, p: Pattern, row: int, col: int) -> Grid {
+  out := g;
+  offsets: [5] [2] int;
+  n := 0;
+  if p == Pattern.glider {
+    offsets = [5] [2] int.[[2] int.[0, 1], [2] int.[1, 2], [2] int.[2, 0], [2] int.[2, 1], [2] int.[2, 2]];
+    n = 5;
+  } else if p == Pattern.blinker {
+    offsets[0] = [2] int.[0, 0];
+    offsets[1] = [2] int.[0, 1];
+    offsets[2] = [2] int.[0, 2];
+    n = 3;
+  } else {
+    offsets[0] = [2] int.[0, 0];
+    offsets[1] = [2] int.[0, 1];
+    offsets[2] = [2] int.[1, 0];
+    offsets[3] = [2] int.[1, 1];
+    n = 4;
+  }
+  for o: offsets[0..<n] {
+    out.cells[(row + o[0]) % H][(col + o[1]) % W] = true;
+  }
+  return out;
+}
+
+neighbours :: (g: Grid, row: int, col: int) -> int {
+  count := 0;
+  for dr: -1..<2 {
+    for dc: -1..<2 {
+      if dr == 0 && dc == 0 { continue; }
+      r := (row + dr + H) % H;
+      c := (col + dc + W) % W;
+      if g.cells[r][c] { count += 1; }
+    }
+  }
+  return count;
+}
+
+step :: (g: Grid) -> Grid {
+  next: Grid;
+  next.generation = g.generation + 1;
+  for row: 0..<H {
+    for col: 0..<W {
+      n := neighbours(g, row, col);
+      next.cells[row][col] = n == 3 || (n == 2 && g.cells[row][col]);
+    }
+  }
+  return next;
+}
+
+show :: (g: Grid) {
+  alive := 0;
+  for row: g.cells {
+    line: [W] u8;
+    for cell, col: row {
+      line[col] = ifx cell then '#' else '.';
+      if cell { alive += 1; }
+    }
+    print("%\n", cast(string) line[..]);
+  }
+  print("generation %, % alive\n\n", g.generation, alive);
+}
+
+main :: () {
+  g: Grid;
+  g = place(g, Pattern.glider, 0, 0);
+  g = place(g, Pattern.blinker, 2, 12);
+  g = place(g, Pattern.block, 6, 19);
+  show(g);
+  for i: 0..<4 { g = step(g); }
+  show(g);
+}

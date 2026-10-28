@@ -13,114 +13,156 @@ Commands below run from the openagents repo root.
 
 ## coax0: the Coax bootstrap compiler
 
-Coax is specified in
-[the language design](spec.md).
-The [bootstrap grammar](grammar.ebnf) describes version 0.2.0's
-accepted subset. The broader design is a plan, not a list of working features.
+Coax is specified in [the language design](spec.md). The
+[bootstrap grammar](grammar.ebnf) describes version 0.3.0's accepted subset.
+The broader design is a plan, not a list of working features.
 
-The C++20 compiler parses and checks one source file, executes bounded scalar
-compile-time work, and emits a self-contained C11 program. The host C compiler
-builds it. Generated programs include small string/print/arithmetic helpers;
-they do not contain the compiler's interpreter.
+The C++20 compiler parses and checks one source file, executes bounded
+compile-time work, and emits one self-contained C11 file. The host C compiler
+builds it into a program, or into an object file plus a generated header that
+C, C++ and Swift hosts call. Generated code includes small print, checked
+arithmetic, bounds and cast helpers; it never contains the compiler's
+interpreter.
 
 ```sh
 coax/build.sh
-coax/bin/coax version
-coax/bin/coax check coax/examples/budget.coax
-coax/bin/coax c coax/examples/budget.coax
-coax/bin/coax run coax/examples/budget.coax
-coax/bin/coax build coax/examples/budget.coax -o /tmp/coax-budget --keep-c
+coax/bin/coax run coax/examples/mandelbrot.coax
+coax/bin/coax run coax/examples/crc32.coax          # its table is built while compiling
+coax/bin/coax run coax/examples/life.coax
+coax/examples/pulse/run.sh                          # a Coax kernel inside a C host
+coax/bin/coax layout coax/examples/pulse/pulse.coax
+coax/bin/coax explain E0350
 coax/build.sh test
 ```
 
-`COAX_CC` picks the C compiler (default `cc`). `--release` requests C
-optimization and wrapping runtime integer arithmetic. `--keep-c` preserves the
-C file alongside a built executable. `check` performs typechecking and
-compile-time evaluation without invoking a C compiler or running `main`.
-Normal compilation needs C++20 and C11 tools; the tests also use Python 3.
+| Command | Does |
+| --- | --- |
+| `coax run FILE [--release]` | Compile and run |
+| `coax build FILE [-o out] [--release] [--keep-c]` | Build an executable |
+| `coax lib FILE [-o out.o] [--release]` | Build an object file of the `#export_c` procedures |
+| `coax header FILE [-o out.h]` | Write the C header for those procedures, with layout assertions |
+| `coax c FILE [--release] [--lib]` | Print the generated C |
+| `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
+| `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
+| `coax explain CODE` / `--all [--markdown]` | Explain an error code |
+| `coax version` | Print the version |
+
+`--json` prints diagnostics as one JSON object per line. `COAX_CC` picks the
+C compiler (default `cc`). `--release` turns on C optimization and wrapping
+integer arithmetic; bounds, casts, shifts and division by zero are checked in
+every build. Normal compilation needs C++20 and C11 tools; the tests also use
+Python 3.
 
 ## What works
 
 ```coax
 #import "Basic";
 
-square :: (n: int) -> int { return n * n; }
-TILE_COUNT :: #run square(16);
-#assert TILE_COUNT == 256;
-#assert type_name(TILE_COUNT) == "int";
-
-main :: () {
-  print("tiles: %\n", TILE_COUNT);
+Pulse :: struct {
+  position: f32;
+  speed: f32 = 1;
+  hops: s32;
 }
+
+advance :: (pulses: [] Pulse, dt: f32) -> s64 #export_c {
+  moved: s64 = 0;
+  for i: 0..<pulses.count {
+    if pulses[i].hops == 0 { continue; }
+    pulses[i].position += pulses[i].speed * dt;
+    moved += 1;
+  }
+  return moved;
+}
+
+SQUARES :: #run squares();
+squares :: () -> [8] u16 {
+  out: [8] u16;
+  for i: 0..<8 { out[i] = cast(u16) (i * i); }
+  return out;
+}
+#assert SQUARES[7] == 49;
 ```
 
-- Procedures `name :: (a: int, b: string) -> int { ... }`, declared in any
-  order; immutable parameters and a void `main :: ()` entry point.
-- Types `int`/`s64`, `bool` and counted byte `string`; no implicit conversions.
-- Top-level immutable constants `NAME :: expression;`, including forward
-  references and parenthesized initializers. No local constants or shadowing.
-- Locals `x := e;`, `x: int = e;`, `x: int;` (zero) and `x: int = ---;`
-  (explicitly uninitialized).
-- Blocks, `if`/`else if`/`else`, `while`, `return`, assignment and integer
-  compound assignments.
-- Integer arithmetic, boolean short-circuiting, comparisons and string
-  equality. Comparisons do not chain. Debug overflow traps; release wraps;
-  division by zero always traps.
-- `#import "Basic"` provides `print` with literal `%` format strings checked
-  against argument count; `%%` prints a percent sign.
-- `#run` computes a scalar value using ordinary checked procedures, locals,
-  loops and recursion. Results become C literals; executed host output is
-  rejected. Constant procedure calls require explicit `#run`.
-- `#assert` checks a compile-time bool. `type_name(expression)` is a scalar
-  reflection intrinsic: it typechecks but does not evaluate its operand.
-- Stable lexer/parser/checker/evaluator diagnostic codes and source locations;
-  compile-time failures include bounded call-site notes.
+- **Scalars.** `s8 s16 s32 s64 u8 u16 u32 u64` (`int` is `s64`, `uint` is
+  `u64`), `f32 f64`, `bool`, counted byte `string`. No implicit conversions.
+  Integer, float and character literals (`'a'`) and constants made only of
+  literals are untyped: they take the type their use needs if the value fits,
+  so `x: u8 = 200;` works and `x: u8 = 300;` is E0350.
+- **Operators.** Arithmetic, `& | ^ << >>`, comparisons that do not chain,
+  short-circuit `&& ||`. `cast(T) x` checks that the value fits; `cast,trunc(T)`
+  keeps the low bits; `cast(string)` borrows a `[] u8` view. Debug builds trap
+  on integer overflow and release builds wrap; floats are plain IEEE with no
+  fused operations.
+- **Data.** `Name :: struct { field: T; field: T = default; }` with defaults,
+  literals `Name.{field = value}`, field access and assignment, and value
+  copies. `Name :: enum u8 { a; b = 4; }` with `Name.a`, equality, and checked
+  casts to and from integers. Fixed arrays `[N] T` (`[3] int.[1, 2, 3]`,
+  `.count`) with value semantics, views `[] T` that borrow an array's storage
+  (`a[..]`, `a[lo..<hi]`, writable through), strings as `[]`-like byte
+  sequences (`s[i]`, `s[lo..<hi]`), and `size_of(T)`.
+- **Control.** Blocks, `if`/`else`, `while`, `for i: lo..<hi`, `for x, i:
+  array_view_or_string`, `break`, `continue`, `defer` (reverse order at every
+  exit: end of block, `return`, `break`, `continue`), `ifx c then a else b`.
+- **Order.** Operands and arguments run left to right. When an operand list
+  has a call and another operand that could call or trap, the emitter stores
+  them in order before using them.
+- **Compile time.** `#run` evaluates ordinary procedures, including arrays,
+  structs and loops; aggregate results become static constants in the C.
+  `#assert` checks a bool while compiling. `type_name(x)` typechecks without
+  evaluating. `print` while compiling is refused (E0404).
+- **The C boundary.** `#export_c` procedures keep their names, use the C
+  calling convention, and appear in `coax header`, with `_Static_assert`
+  checks that the C compiler's layout of every struct equals Coax's. Views
+  cross as `{data, count}`; `int` is `int64_t`.
+- **Diagnostics.** Stable codes with locations and fix text, `--json` for
+  tools, and `coax explain` for every code. Compile-time failures add call
+  site notes.
 
 ## Compile-time contract
 
-`#run` binds to the next unary expression. Parenthesize a larger expression:
-`#run (square(16) + 2)`. Only scalar int/bool/string values can be retained.
-No runtime local or parameter can be captured, including in a nested `#run`
-inside a procedure that another `#run` calls.
+`#run` binds to the next unary expression; parenthesize a larger one. Results
+may be scalars, strings, structs and arrays, but not views (E0409), because a
+view points at memory that exists only while compiling. No runtime local or
+parameter can be captured.
 
 There is no interpreted host I/O, process, network, clock, random, allocator or
-foreign-call API. Executing `print` fails with E0404. The driver still reads
-source and invokes its configured toolchain; it is not a process sandbox.
+foreign-call API. The driver still reads source and invokes its configured
+toolchain; it is not a process sandbox.
 
-One compilation allows 100,000 evaluated expression/statement visits, 64 active
-interpreted calls and 64 constant-dependency levels. Cycles, uninitialized
-reads, overflow and division by zero are errors in debug **and release**.
-Folded sites and constants are memoized. These are execution limits, not a
-complete parsing/allocation limit for hostile source.
-
-Inspect `coax c` output to see the actual constants. `budget.coax` emits a
-literal 64, rather than invoking an evaluator on startup.
+One compilation allows 100,000 steps (each evaluated expression or statement,
+and each array element created), 64 active interpreted calls and 64
+constant-dependency levels. Cycles, uninitialized reads, overflow, division by
+zero, bounds and bad casts are errors in debug **and release**. These are
+execution limits, not a complete limit for hostile source.
 
 ## Layout
 
 | Path | Responsibility |
 | --- | --- |
-| `src/coax.h` | Tokens, syntax tree, scalar types and declarations |
+| `src/coax.h` | Tokens, types, values, syntax tree, declarations |
 | `src/lex.cpp` | Source to tokens |
 | `src/parse.cpp` | Recursive-descent parser |
-| `src/check.cpp` | Names, types, constants, immutable parameters, returns and formats |
+| `src/check.cpp` | Types and layouts, untyped literals, names, places, returns, formats |
 | `src/eval.cpp` | Bounded typed-AST evaluator and literal folding |
-| `src/emit_c.cpp` | C11 output with small support helpers |
+| `src/emit_c.cpp` | C11 output, ordered operands, defer lowering, headers, layout reports |
+| `src/errors.cpp` | The explanation of every error code |
 | `src/main.cpp` | Driver and unity build |
 | `tests/pass/` | Exact native output in debug and release |
 | `tests/fail/` | Expected diagnostics and runtime traps |
 | `tests/compile_time.py` | Isolation, dependency, budget, error and generated-artifact checks |
+| `tests/tools.py` | Explain, JSON diagnostics, layout, libraries and headers, determinism |
+| `examples/` | Demos with expected output; `pulse/` links a Coax kernel into C |
 
 ## Limits and next work
 
-The bootstrap does not implement structs, arrays, pointers, general reflection,
-macros, compiler plugins, context, effects, shaders, a build language, a native
-backend or a resident compiler. Unsupported reserved syntax is diagnosed.
-Runtime operand lowering does not yet guarantee left-to-right execution for
-multiple effectful calls; sequence them into locals. C debug locations still
-refer to generated C.
+The bootstrap does not implement pointers, dynamic arrays, unions, `switch`,
+optionals and errors (`try`/`or_else`), generics, general reflection, macros,
+compiler plugins, context, effects, jobs, shaders, a build language, a native
+backend or a resident compiler. Reserved syntax for them is diagnosed. A view
+does not keep its array alive: returning a view of a local is the same
+mistake it is in C. C debug locations still refer to generated C.
 
-Next: data types, views, half-open loops, cleanup, ordered operand lowering and
-a tested C ABI. Prove a small `src/paynet` kernel before changing the app or
-replacing its existing C++/CMake/Xcode paths. See §20 of the specification for
+Next: the `src/paynet` pulse kernel itself, called from the engine's frame
+loop with its outputs compared and its frame cost measured, before anything in
+the app or its CMake/Xcode paths changes. See §20 of the specification for
 later metadata, build, parallelism, browser and reload gates.

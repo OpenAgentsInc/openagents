@@ -34,9 +34,23 @@ for src in tests/fail/*.coax; do
   fi
 done
 
+# examples/NAME.coax with NAME.out: the shipped demos, in both modes.
+for src in examples/*.coax; do
+  name=${src%.coax}
+  [[ -f $name.out ]] || continue
+  for mode in "" --release; do
+    got=$("$COAX" run "$src" $mode 2>&1)
+    if [[ "$got" == "$(cat "$name.out")" ]]; then pass=$((pass + 1)); else note "$src ${mode:-debug}" "output differs"; fi
+  done
+done
+
+# The C boundary: a Coax library and header linked into a C host.
+got=$(examples/pulse/run.sh 2>&1 | head -1)
+if [[ "$got" == *"matches the C reference byte for byte"* ]]; then pass=$((pass + 1)); else note pulse "$got"; fi
+
 echo "$pass passed, $fail failed"
 [[ $fail -eq 0 ]]
 fixtures_rc=$?
-python3 tests/compile_time.py
+python3 tests/compile_time.py && python3 tests/tools.py
 python_rc=$?
 [[ $fixtures_rc -eq 0 && $python_rc -eq 0 ]]

@@ -1,0 +1,29 @@
+#import "Basic";
+
+// Find the first value at or above limit. Every exit closes what was opened.
+first_at_least :: (values: [] int, limit: int) -> int {
+  print("open ");
+  defer print("close\n");
+  for v, i: values {
+    defer print("% ", i);              // runs at the end of every iteration
+    if v < 0 { continue; }
+    if v >= limit { return v; }        // v is computed, then the defers run
+  }
+  return -1;
+}
+
+nested :: () {
+  defer print("third\n");
+  {
+    defer print("second ");
+    defer print("first ");
+    print("body ");
+  }
+}
+
+main :: () {
+  data := [5] int.[3, -1, 8, 20, 1];
+  print("-> %\n", first_at_least(data[..], 10));
+  print("-> %\n", first_at_least(data[..], 99));
+  nested();
+}

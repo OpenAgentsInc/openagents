@@ -1,0 +1,43 @@
+// defer at every exit, and left-to-right evaluation of runtime operands.
+#import "Basic";
+
+note :: (label: string, value: int) -> int {
+  print("%(%) ", label, value);
+  return value;
+}
+
+find :: (values: [] int, wanted: int) -> int {
+  print("[search ");
+  defer print("done] ");
+  for v, i: values {
+    defer print(".");
+    if v == wanted { return i; }
+  }
+  return -1;
+}
+
+nested :: () {
+  defer print("outer\n");
+  {
+    defer print("inner-2 ");
+    defer print("inner-1 ");
+    print("body ");
+  }
+  i := 0;
+  while true {
+    defer print("w% ", i);
+    i += 1;
+    if i == 3 { break; }
+  }
+}
+
+main :: () {
+  values := [4] int.[5, 8, 13, 21];
+  print("-> %\n", find(values[..], 13));
+  print("-> %\n", find(values[..], 99));
+  nested();
+  total := note("a", 1) + note("b", 2) * note("c", 3);
+  print("= %\n", total);
+  pick := values[note("i", 1)] + values[note("j", 2)];
+  print("= %\n", pick);
+}

@@ -1,0 +1,4 @@
+// expect: E0409
+V :: #run view();
+view :: () -> [] int { a: [2] int; return a[..]; }
+main :: () {}

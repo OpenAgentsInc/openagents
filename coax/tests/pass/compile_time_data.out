@@ -1,0 +1,3 @@
+Stats.{count = 18, largest = 61, sum = 501}
+[0, 1, 4, 9, 16, 25, 36, 49]
+primes in 51..<64: 3
