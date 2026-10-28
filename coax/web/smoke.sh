@@ -5,7 +5,7 @@
 #   smoke.sh https://openagents.com --via 136.69.24.60   # before DNS points there
 #   smoke.sh https://openagents.com --coder              # also: coder's routes still answer
 # Checks: the page and every file it names (status, type, caching, wasm
-# magic), the hidden text agents read, HTTP to HTTPS, an unknown path, and
+# magic, no comments shipped), the hidden text agents read, HTTP to HTTPS, an unknown path, and
 # with --coder, the routes the old service keeps until it is retired
 # (docs/2026-10-28-coder-service-deprecation.md).
 set -euo pipefail
@@ -45,6 +45,7 @@ check(s == 200 and h.get("content-type", "").startswith("text/html"), f"/ is a p
 check("no-cache" in h.get("cache-control", ""), "/ is checked on every visit (no-cache)")
 html = page.decode("utf-8", "replace")
 check('data-app="splash"' in html, "/ runs the splash app")
+check("<!--" not in html and "/*" not in html, "/ ships no comments")
 check(re.search(r"<main[^>]*>\s*\S[\s\S]*?</main>", html) is not None and "<title>" in html, "/ keeps its title and the hidden text for agents")
 files = set(re.findall(r'(?:src|data-wasm|data-wgsl)="(/[^"]+)"', html))
 check(len(files) >= 3, f"/ names its host, wasm and shader ({len(files)} files)")
@@ -56,13 +57,17 @@ for f in sorted(files):
     check(s == 200 and kinds.get(ext, "") in typ, f"{f} ({s}, {typ or 'no type'})")
     if re.search(r"\.[0-9a-f]{12}\.", f):
         check("immutable" in h.get("cache-control", ""), f"{f} is cached for good")
+    if ext == ".js":
+        check(b"/*" not in body and not re.search(rb"(^|[;{}\n])\s*//", body), f"{f} ships no comments")
+    if ext == ".wgsl":
+        check(b"//" not in body and b"/*" not in body, f"{f} ships no comments")
     if ext == ".wasm":
         check(body[:4] == b"\0asm", f"{f} is a wasm module ({len(body)} bytes)")
 s, h, _ = get("/", scheme="http")
 check(s in (301, 308) and h.get("location", "").startswith("https://"), f"http:// redirects to https:// ({s})")
 for path in ("/project/coax", "/project/coax/index.md", "/project/coax/demo"):
     s, h, body = get(path)
-    ok = s == 200 and (path.endswith(".md") or b'data-app="project"' in body)
+    ok = s == 200 and (path.endswith(".md") or (b'data-app="project"' in body and b"<!--" not in body))
     check(ok, f"{path} ({s})")
 # The Haunted House: its page, its Markdown, and every asset it names (the
 # house's document, geometry and sheets; sounds and their loop).

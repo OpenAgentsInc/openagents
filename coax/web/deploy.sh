@@ -86,6 +86,10 @@ if [[ -n "${COAXIAL_UNLOCKS:-}" ]]; then
   bun "$here/unlock/inject.ts" "$stage"
 fi
 
+# No comments reach a browser: the staged pages, scripts and shaders lose them
+# here, after the hidden presentations are in.
+bun "$here/strip.ts" "$stage"
+
 if $server; then
   t=$(now)
   gcloud storage buckets describe "gs://$bucket" --project "$project" > /dev/null 2>&1 ||
