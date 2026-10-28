@@ -1,10 +1,11 @@
 # Coax-native voice: a proposal
 
-*Draft, 2026-10-28. Nothing here is built yet. The decisions at the end
-are the owner's to make; each has a recommendation.*
+*Draft, 2026-10-28. Nothing here is built yet. Decisions the owner has
+made are marked **Decided**; the rest have a recommendation.*
 
-This proposes one voice system for OpenAgents, written in Coax and run on
-machines we operate. It covers two things people will do with their
+This proposes one voice system for OpenAgents, written in Coax, with its
+media path and server on machines we operate. Speech recognition and
+speech synthesis use Google's models (owner decision, 2026-10-28). It covers two things people will do with their
 voice: talk to agents (the "just talk and see the right actions happen"
 mode from [episode 251](../transcripts/251.md)) and talk to each other in
 the Verse. It also covers a third, slower use: rendering spoken lines for
@@ -117,7 +118,7 @@ Swift host plays what Coax decided.
 
 | Machine | What it is | Relevance |
 | --- | --- | --- |
-| `oa-pylon-gpu-1` | g2-standard-8, one L4, us-central1-a, running | A first voice host, if it can be shared |
+| `oa-pylon-gpu-1` | g2-standard-8, one L4, us-central1-a, running | Not needed: speech runs on Google's models, so the voice host needs no GPU |
 | `coder-sync-1` | e2-standard-2 behind the global HTTPS load balancer, 24-hour WebSocket timeout | The pattern for a long-lived socket service |
 | `clef-decisions-h100`, `clef-decisions-a100` | GPU hosts running decision models | Not for voice; shows we can hold GPUs |
 | TPU v6e-1, asia-northeast1-b | Held permanently | Too far from US users for live audio |
@@ -135,16 +136,16 @@ Swift host plays what Coax decided.
                                                │                         │
                                   voice-wire.coax frames ── socket ──►  voice-wire.coax
                                                ▲                         │
- speaker ◄─ playback ◄─ voice-space.coax ◄──── frames ◄──────────────── ├──► ASR model (GPU)
-            gain/pan from where people stand                             ├──► TTS model (GPU)
+ speaker ◄─ playback ◄─ voice-space.coax ◄──── frames ◄──────────────── ├──► Google STT (Chirp 3)
+            gain/pan from where people stand                             ├──► Google TTS (Chirp 3 HD)
                                                                          └──► forwarder: who hears
                                             voice-floor.coax (#authority)     whom (voice-space.coax)
                                             voice-meter.coax (#authority)
 ```
 
 The same Coax libraries run on both ends. The host on each side does only
-what Coax can't: talk to the audio hardware, open sockets, and call model
-runtimes.
+what Coax can't: talk to the audio hardware, open sockets, and call
+Google's speech APIs.
 
 ### What Coax owns and what the host owns
 
@@ -159,10 +160,10 @@ runtimes.
 | Wire frames (audio, control, transcript, floor) | `voice-wire.coax` via `#import_proto` | No second hand-written codec, like the home |
 | Consent, input floors, speaking floors, media epochs | `voice-floor.coax`, `#authority` | It decides who may be heard, so it gets the wallet's rules: zero surviving mutants |
 | Who hears whom in the Verse; gain and pan | `voice-space.coax` | Grows out of `haunt.coax`'s `hh_gain`/`hh_pan` |
-| Metering GPU seconds, prices, free-tier limits | `voice-meter.coax`, `#authority` | It decides money |
+| Metering speech minutes and characters, prices, free-tier limits | `voice-meter.coax`, `#authority` | It decides money |
 | Sockets, TLS | C host on the server, Swift on the phone | TLS ends at the load balancer, like `sync.openagents.com` |
 | Codec (Opus) | Host C, if we choose Opus (decision 5) | `#foreign` can't pass views yet, so the host encodes |
-| Neural models (ASR, TTS) | A C-callable model runtime on the voice host | Coax has no SIMD, threads or GPU compute beyond the Metal scalar profile yet (decision 7) |
+| Speech recognition and synthesis | Google Cloud Speech-to-Text v2 (Chirp 3) and Text-to-Speech (Chirp 3 HD), called by the voice host | Owner decision. The phone never talks to Google directly, and Google credentials stay on the server |
 
 An audio callback runs every 10 to 20 ms on a real-time thread and must
 never block. We'd add one rule for any Coax procedure called there: it
@@ -212,19 +213,29 @@ cached by content hash. This is where higher-quality voices and, later,
 licensed cloned voices start, because a few seconds of render time
 doesn't matter there.
 
-### Where the models run
+### Where the speech models run
 
-Tier by tier, the system looks for speech models in this order:
+**Decided:** Google's models do all speech recognition and synthesis.
 
-1. **Our voice host** (an L4 to start). This is the default, and the one
-   we measure.
-2. **A Pylon**: a contributor's GPU, paid in sats. This runs the same
-   binary, later.
-3. **On the phone**, for offline use (decision 8).
+- **Speech to text:** Cloud Speech-to-Text v2 with Chirp 3, as a streaming
+  recognition with interim results. The voice host opens one stream per
+  turn. When `voice.coax` decides the turn is over, the host closes the
+  stream rather than waiting for Google's own endpointing, so the final
+  transcript comes back right away. V3 measures whether that holds.
+- **Text to speech:** Cloud Text-to-Speech with Chirp 3 HD voices,
+  streamed, so the first audio plays while the rest is still being made.
+  It was the fastest thing we ever measured for first audio (163 to
+  198 ms).
+- **Batch lines** for NPCs and films use the same voices through ordinary
+  (non-streaming) synthesis, cached by content hash.
 
-Third-party speech APIs are never in the default path. A provider can be
-an adapter behind the same frames if the owner wants a bridge while the
-owned models are tuned, but nothing depends on it.
+The voice host is the only thing that calls Google. It holds the
+credentials (a service account key in Secret Manager), meters every call,
+and forwards results to the phone in our own frames. That keeps three
+things ours even with Google doing speech: the media path, the turn and
+floor decisions, and the option of switching models later behind the same
+frames. Because no model runs on our machines, the voice host needs no
+GPU: a small CPU VM is enough.
 
 ## Latency budget
 
@@ -234,8 +245,8 @@ separate and shown in the UI.
 | Step | Target (p50) | What we had before |
 | --- | --- | --- |
 | You stop speaking → turn decided | ≤ 350 ms | Fixed 850 ms silence timer (aethyr-cpp) |
-| Turn decided → final transcript | ≤ 150 ms | Google STT, 2.2–6.2 s |
-| Reply text → first audio on the phone | ≤ 300 ms | Chirp 3 HD 163–198 ms (provider); CSM on CPU 2.7 s |
+| Turn decided → final transcript | ≤ 300 ms | Google STT, 2.2–6.2 s, while waiting on Google's own endpointing; we close the stream ourselves instead |
+| Reply text → first audio on the phone | ≤ 300 ms | Chirp 3 HD 163–198 ms to first byte |
 | You talk over it → playback stops | ≤ 100 ms | 67–110 ms (LiveKit); 2 ms acknowledgement (Rust helper) |
 | Player to player, mouth to ear, same region | ≤ 250 ms | Never measured |
 
@@ -247,7 +258,9 @@ Measurement comes first this time, and it lives in the repository:
   tests.
 - **A latency harness.** It plays the fixtures into a real voice host and
   records each step above. Results are committed under `bench/voice/` with
-  the machine, model and build named.
+  the machine, Google model and region, and build named. If the
+  final-transcript step stays over a second, that's the signal to revisit
+  the speech-to-text decision.
 - **Real phones.** Each phase ends with the owner on a physical iPhone,
   with steps in `NEEDS_OWNER.md` naming screens and taps.
 
@@ -261,8 +274,13 @@ Measurement comes first this time, and it lives in the repository:
   participants, consent and floors. Transport credentials are minted after
   admission, bound to one participant and session, short-lived, and never
   logged.
-- **Audio is not kept.** The voice host holds audio in memory for the turn
-  and drops it. Transcripts are private records (range 1100–1199), kept
+- **Audio goes to Google, and we say so.** The phone sends audio only to
+  our voice host, which streams it to Google for recognition and gets
+  speech back from Google. The first time someone turns voice on, the app
+  says plainly that Google processes their speech. Google's optional data
+  logging stays off.
+- **We don't keep audio.** The voice host holds audio in memory for the
+  turn and drops it. Transcripts are private records (range 1100–1199), kept
   only if the person chooses. Nothing becomes training data without an
   explicit, withdrawable grant.
 - **Voices are private assets.** An enrolled voice follows the MetaHuman
@@ -273,8 +291,9 @@ Measurement comes first this time, and it lives in the repository:
 
 ## Money
 
-GPU seconds cost us money, and the owner asked for free and paid tiers.
-`voice-meter.coax` counts model seconds per account and decides, under
+Google bills us per minute of audio recognized and per character
+synthesized, and the owner asked for free and paid tiers.
+`voice-meter.coax` counts both per account and decides, under
 `#authority`, whether a turn may run. Paid use settles over Lightning from
 the Spark wallet already in the app. Voice owners are paid per use for
 licensed voices through the same path. Bitcoin only, as everywhere.
@@ -295,7 +314,7 @@ Each phase ends with a measurement committed and a real-phone run.
   phone. Playback can just echo your own speech back. Exit: turn-end
   latency measured on a real iPhone.
 - **V3. Voice host with speech-to-text.** The C host plus Coax libraries on
-  the L4, frames over a WebSocket through the load balancer, partial and
+  a small VM, calling Google's streaming speech-to-text, frames over a WebSocket through the load balancer, partial and
   final transcripts on screen. Exit: harness numbers for steps 1–2.
 - **V4. Text-to-speech and the agent relay.** The first full conversation:
   talk to the Foreman in the Grid. Exit: every row of the budget measured.
@@ -304,8 +323,7 @@ Each phase ends with a measurement committed and a real-phone run.
   mouth-to-ear measured.
 - **V6. Batch lines.** NPC and film lines rendered as cached jobs.
 - **V7. Voices as assets.** Enrollment with consent, licensing, metering,
-  payouts.
-- **V8. Pylons.** The same voice host binary on contributors' GPUs.
+  payouts (see decision 13).
 
 ## Decisions to make
 
@@ -314,22 +332,15 @@ Each phase ends with a measurement committed and a real-phone run.
    them. At list prices, six 8-vCPU nodes plus an HA Redis likely cost well over $1,000 a month.
    *Recommendation: delete both now. Check `one-prod` and `one-stg`
    separately.*
-2. **Where does the voice host run first?** (a) Share `oa-pylon-gpu-1`'s
-   L4, (b) a new dedicated g2 L4 in us-central1, (c) `coderos-4080` over
-   the tailnet for development only. *Recommendation: (c) for V1 to V3
-   development, then (b) for anything the owner uses daily, so voice never
-   competes with Pylon work for one GPU.*
-3. **Speech-to-text model.** (a) Whisper (large-v3-turbo or small) through
-   whisper.cpp: C/C++, MIT, already used here for episode transcripts.
-   (b) Parakeet TDT 0.6B v3: it was faster and survived every move, but
-   needs ONNX Runtime and is CC-BY-4.0. *Recommendation: start with
-   whisper.cpp, because it fits the "Coax plus the C compiler" rule, then
-   bake off Parakeet on the V3 harness and switch only if it wins clearly.*
-4. **Text-to-speech model.** (a) Kokoro-82M: small and fast, Apache-2.0.
-   (b) CSM-1B: more natural, slower (2.7 s on CPU; GPU untested), and
-   unwatermarked. (c) Piper: very fast on CPU, plainer. *Recommendation:
-   Kokoro for live replies in V4, with CSM or a cloning model for batch
-   lines in V6. Re-measure on the L4 before committing.*
+2. **Where does the voice host run?** It needs no GPU now. (a) Alongside
+   `coder-sync-1` on that VM, (b) its own small VM in us-central1 behind
+   the same load balancer, (c) `coderos-4080` over the tailnet for
+   development only. *Recommendation: (c) while building V1 to V3, then
+   (b), so a voice bug can't take down sync and the reverse.*
+3. **Speech-to-text model.** **Decided:** Google Cloud Speech-to-Text v2,
+   Chirp 3, streaming.
+4. **Text-to-speech model.** **Decided:** Google Cloud Text-to-Speech,
+   Chirp 3 HD voices, streaming for live replies and batch for lines.
 5. **Codec.** (a) Opus in host C: the standard for a reason, with loss
    concealment and low bitrate. (b) A Coax codec (16-bit PCM or IMA-ADPCM):
    simple and fully checkable, but 64 to 256 kbps. *Recommendation: PCM
@@ -341,12 +352,8 @@ Each phase ends with a measurement committed and a real-phone run.
    *Recommendation: (a) in V1 with fixtures that show its failures, then
    (b) when the fixtures prove it's needed. Port the model into Coax once
    Coax has SIMD.*
-7. **Model runtime.** Speech models need a C-callable runtime: whisper.cpp
-   and ggml, ONNX Runtime's C API, or our own kernels in Coax later (with
-   `coax metal` and future SIMD). The Psionic repo is reference only, and
-   the in-repo copy went with the reset. *Recommendation: ggml-family C
-   libraries now, with model inference in Coax as a named later goal, not
-   a blocker.*
+7. **Model runtime.** **Decided by 3 and 4:** none. No speech model runs
+   on our machines.
 8. **On-phone speech for offline use.** (a) Apple's on-device
    SpeechAnalyzer and AVSpeechSynthesizer (what aethyr-cpp used), (b) our
    own small models on the phone through Metal, (c) no offline voice at
@@ -363,18 +370,27 @@ Each phase ends with a measurement committed and a real-phone run.
     for text. Voice adds no agent of its own.*
 11. **Free and paid tiers.** What's free (minutes per day? the basic
     voice?) and what costs sats. *Recommendation: decide the price at V4,
-    once the measured cost per minute on the L4 is known.*
+    once Google's measured cost per conversation minute is known.*
 12. **Language work for Coax.** Voice wants `#foreign` that takes views
-    (to call the codec and runtimes without the host in between), SIMD, and
+    (to call the codec without the host in between), SIMD, and
     a way to declare which procedures may run on the audio thread.
     *Recommendation: add `#foreign` views in V3, when it first blocks, and
     leave SIMD to the GPU and SIMD stages already planned in
     [the spec](../../coax/spec.md).*
+13. **Licensed and custom voices.** Voices as assets that people own and
+    license (V7) now depend on what Google allows: Google offers custom
+    voices only on its terms. (a) Build licensed voices on Google's custom
+    voice offering, (b) keep licensed voices out of scope while Google does
+    speech, (c) render licensed voices with an owned model for batch lines
+    only, as an exception to decision 4. *Recommendation: (b) for now, and
+    revisit after V4. It's the one place where the lock-in lesson
+    (OpenAI refusing Sarah's voice) applies directly.*
 
 ## What we're not doing
 
 - No LiveKit, Pipecat or other hosted media framework, in any hosting.
-- No third-party speech API in the default path.
+- No speech provider besides Google, and no audio from the phone straight
+  to Google: it goes through our voice host.
 - No peer-to-peer media or TURN.
 - No voice model that answers or acts on its own.
 - No new languages: Coax, the host C compiler, and Swift for platform
