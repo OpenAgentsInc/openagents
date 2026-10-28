@@ -16,6 +16,7 @@
 #load "graph.coax";
 #load "font.coax";
 #load "ui.coax";
+#load "analytics.coax";
 
 SplashState :: struct {
   time: f32;       // seconds since the page started, as this code counts them

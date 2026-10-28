@@ -42,6 +42,18 @@
 // 0 opened, 1 a frame (the inbox holds its bytes), 2 closed (the slot is free again), 3 an error
 // (a frame over the inbox cap is dropped and arrives as an error). The host reads no frame: what
 // they say is the app's.
+// and, optionally, HTTP to this site: one request's bytes out, its answer's bytes back. The app imports:
+//   coaxial_http(url, url_len, body, body_len, flags) -> id   flags 1 POST (else GET), 2 a beacon (it
+//                             outlives a page being left; nothing comes back), 4 the answer is wanted:
+//                             id 0..7, its answer comes as message 512 + id, "STATUS\n" then the body
+//                             (status 0: no answer); -1 when 8 are waiting or the URL isn't this site's
+// and the page itself, through the inbox (what the browser knows; the app decides what to keep):
+//   600 the page facts, key=value lines, once an engine loads: tab (a random id for this tab,
+//       sessionStorage), fresh (1 when the tab id was just made), visitor (a random id for this
+//       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
+//       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, webdriver, fcp, dcl
+//   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
+//   604 an error the page raised: message, file and line, a line each
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
 // vertices: one vec4f attribute per four floats), sharing one uniform buffer.
 //
@@ -93,7 +105,7 @@ let last = 0;
 // ---- engine: compile, check its layout, keep or start over its state
 async function loadEngine(bytes, generation) {
   const module = await WebAssembly.compile(bytes);
-  const imports = { env: { memory, ...socketImports } };
+  const imports = { env: { memory, ...socketImports, ...httpImports } };
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= wasiStub(imp.name);
@@ -130,6 +142,7 @@ async function loadEngine(bytes, generation) {
   const kept = keptText();
   if (kept) send(4, kept);
   globalThis.coaxial.ready = true;
+  if (x.coaxial_message) send(PAGE_KIND, pageFacts());
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
   return true;
 }
@@ -191,6 +204,56 @@ const socketImports = {
     setTimeout(() => socketEvent(id, SOCKET_CLOSED));
   },
 };
+
+// ---- HTTP: bytes to this site and back, nothing else
+const HTTPS = 8, HTTP_KIND = 512;
+const waiting = new Array(HTTPS).fill(false);
+function answer(id, text) {
+  const x = engine?.exports;
+  if (!x?.coaxial_message) return;
+  const bytes = new TextEncoder().encode(text);
+  send(HTTP_KIND + id, bytes.length > x.coaxial_inbox_cap() ? text.slice(0, text.indexOf("\n") + 1) : text);
+}
+const httpImports = {
+  coaxial_http(urlPtr, urlLen, bodyPtr, bodyLen, flags) {
+    const url = utf8(urlPtr, urlLen);
+    if (!url.startsWith("/") || url.startsWith("//")) return -1;   // this site only
+    const body = bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen).slice() : null;
+    const post = (flags & 1) !== 0, wanted = (flags & 4) !== 0;
+    if ((flags & 2) && navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body || ""], { type: "application/json" }))) return 0;
+    let id = 0;
+    if (wanted) { id = waiting.indexOf(false); if (id < 0) return -1; waiting[id] = true; }
+    fetch(url, { method: post ? "POST" : "GET", body: post ? body : undefined, credentials: "same-origin", cache: "no-store",
+      keepalive: !wanted && bodyLen < 60000, headers: post ? { "Content-Type": "application/json" } : {} })
+      .then(async (r) => { const t = await r.text(); if (wanted) { waiting[id] = false; answer(id, `${r.status}\n${t}`); } })
+      .catch(() => { if (wanted) { waiting[id] = false; answer(id, "0\n"); } });
+    return id;
+  },
+};
+
+// ---- the page: what the browser knows about this visit, for the app
+const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604;
+const randomId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
+function kept(store, key) {
+  try { const v = store.getItem(key); if (v) return [v, false]; const n = randomId(); store.setItem(key, n); return [n, true]; }
+  catch { return [randomId(), true]; }   // storage refused (a private window): this page only
+}
+function pageFacts() {
+  const [tab, fresh] = kept(sessionStorage, "coaxial.tab"), [visitor] = kept(localStorage, "coaxial.visitor");
+  let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
+  const nav = performance.getEntriesByType?.("navigation")?.[0], fcp = performance.getEntriesByName?.("first-contentful-paint")?.[0];
+  const clean = (v) => String(v ?? "").replace(/[\r\n]/g, " ");
+  return Object.entries({ tab, fresh: fresh ? 1 : 0, visitor, now: Date.now(), nav: performance.now().toFixed(1), url: location.href,
+    ref: document.referrer, ua: navigator.userAgent, lang: navigator.language, tz, sw: screen.width, sh: screen.height,
+    vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
+    touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
+    webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0 })
+    .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
+}
+addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
+addEventListener("pagehide", () => send(LEAVE_KIND));
+addEventListener("error", (e) => send(ERROR_KIND, `${String(e.message || "").slice(0, 200)}\n${String(e.filename || "").split("/").pop()}\n${e.lineno || 0}`));
+addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reason?.message || e.reason || "").slice(0, 200)}\npromise\n0`));
 
 // ---- GPU: device, the two pipelines from the app's WGSL, buffers
 async function startGpu() {

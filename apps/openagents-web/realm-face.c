@@ -23,6 +23,7 @@
 #include "Haunt.h"
 #undef coax_a12_f32
 #include "Haunt-buffer.h"
+#include "analytics-face.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -91,6 +92,11 @@ static const struct { const char *label, *name, *mesh; } items[5] = {
   {"GHOST", "Ghost", "Custom_Ghost"}, {"SPIDER", "Spider", "Custom_Spider"}, {"GRAVE", "Tombstone", "Custom_Tombstone_Round"},
 };
 static int64_t item_mesh[5];
+
+// What the house records (analytics.coax, realm_track): its Track and what it saw last frame.
+static coax_t_Track track_state;
+static coax_t_RealmSeen seen;
+static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 #define LINK "https://openagents.com/realm/haunted-house"
 
 static coax_v_t_Realm realm_of(void) { return (coax_v_t_Realm){&realm, 1}; }
@@ -248,6 +254,7 @@ static void pick(float x, float y) {
 
 // An edit (realm.coax OP_*) to the picked thing or the nearest zone.
 static void edit_op(int64_t op) {
+  realm_track_edit(tr(), op);
   if (op == 12) { undo(); return; }
   if (op == 13) { redo(); return; }
   if (op == 14) { house.selected = -1; return; }
@@ -285,7 +292,7 @@ static void copy_link(void) {
 }
 
 // Places edit mode's item `slot` in front of you.
-static void place(int64_t slot) {
+static void place(int64_t slot, const char *via) {
   if (slot < 0 || slot >= 5 || item_mesh[slot] < 0 || placed_n >= 1024) return;
   coax_t_HauntPoint at = verse_haunt_place_point(house);
   int64_t before = house.entity_count;
@@ -294,6 +301,7 @@ static void place(int64_t slot) {
   if (house.entity_count == before) { toast("There's no room there"); return; }
   placed_n++;
   rebuild_walls();
+  realm_track_place(tr(), text(items[slot].name), text(via));
 }
 
 // E at the quest's orb: the step it asks for.
@@ -301,7 +309,7 @@ static void do_goal(void) {
   if (!verse_haunt_at_goal(house)) return;
   switch (house.quest) {
   case 1: set_editing(true); break;
-  case 2: remember(); place(0); break;
+  case 2: remember(); place(0, "orb"); break;
   case 3: house = verse_haunt_quest(house, text("publish")); keep(true); toast("Saved in this browser"); break;
   case 4: copy_link(); house = verse_haunt_quest(house, text("share")); toast("Link copied"); break;
   case 5: house = verse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
@@ -316,6 +324,7 @@ static void send_feedback(void) {
   size_t n = typed.count < (int64_t)sizeof feedback ? (size_t)typed.count : sizeof feedback;
   memcpy(feedback, typed.data, n);
   house = verse_haunt_feedback(house, (coax_string){feedback, (int64_t)n});
+  realm_track_answer(tr(), (coax_string){feedback, (int64_t)n});
   realm_close_text(realm_of());
   toast("Thank you. The quest is complete");
 }
@@ -326,7 +335,7 @@ static void take_asks(void) {
   if (asks & 32) do_goal();
   if (asks & 64) send_feedback();
   if (asks & 128) set_editing(!house.editing);
-  if ((asks & 256) && house.editing) { remember(); place(realm.slot); }
+  if ((asks & 256) && house.editing) { remember(); place(realm.slot, "hotbar"); }
   if ((asks & 512) && house.editing) pick(realm.pick_x, realm.pick_y);
   if ((asks & 1024) && house.editing) edit_op(realm.op);
   if (asks & 1) use_nearby();
@@ -436,6 +445,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   float *u = (float *)(uintptr_t)uniforms;
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_realm_max_vertices() * coaxial_realm_vertex_floats()};
   int64_t n = realm_draw(realm_of(), view, out, (coax_v_f32){u, coaxial_realm_uniform_floats()}, w, h, scale, dt);
+  if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));
+  track_frame(tr(), dt, w, h, scale);
+  realm_track(realm_of(), (coax_v_t_RealmSeen){&seen, 1}, tr(), view, house.camera);
+  track_drain(&track_state);
   if (opened) {
     coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
     verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
@@ -467,16 +480,21 @@ EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { (void
 // thumbs', as on the phone), the wheel zooms
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   (void)state;
+  bool typing = realm_wants_text(realm_of());
   bool used = realm_key(realm_of(), view, key, mods, true);
   take_asks();   // now, inside the key event: a copy reaches the clipboard
+  track_key(tr(), key, typing);   // never what's typed into the survey box: that's its answer
+  track_drain(&track_state);
   return used ? 1u : 0u;
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) {
-  (void)state; return realm_key(realm_of(), view, key, mods, false) ? 1u : 0u;
+  (void)state; track_key_up(tr(), key); return realm_key(realm_of(), view, key, mods, false) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; realm_blur(realm_of()); sticks = verse_sticks_reset(); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; realm_blur(realm_of()); sticks = verse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   (void)state;
+  track_pointer(tr(), x, y, phase, kind, realm_button_label(realm_of(), x, y));
+  track_drain(&track_state);
   if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) { take_asks(); return 1u; }
   if (kind != 0 && opened) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
@@ -492,12 +510,14 @@ EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) {
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return realm.action == 4 ? keep_n : (uint32_t)realm.out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; realm.action = 0; realm.out_n = 0; keep_n = 0; }
 
-// In: typed or pasted text for the survey (1), the house kept last visit (4).
+// In: typed or pasted text for the survey (1), the house kept last visit (4),
+// and the host's page facts and visibility for analytics.coax (600 up).
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   (void)state;
   if (length > sizeof inbox) return;
+  if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
   if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
   if (kind == 4 && !opened) kept_n = length;   // restore_kept reads it from the inbox when the house opens
 }

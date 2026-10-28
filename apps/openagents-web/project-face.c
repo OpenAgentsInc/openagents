@@ -6,6 +6,7 @@
 // its events come back through the inbox.
 #include "project.h"
 #include <stddef.h>
+#include "analytics-face.h"
 
 #define EXPORT(name) __attribute__((export_name(name)))
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
@@ -17,6 +18,9 @@ IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
 typedef struct { coax_t_ProjectState page; coax_t_Tree tree; coax_t_Work work; coax_t_Live live; } State;
 static State *state_at(uint32_t state) { return (State *)(uintptr_t)state; }
 static coax_v_t_Live live_of(State *st) { coax_v_t_Live l = {&st->live, 1}; return l; }
+// What people do here (analytics.coax), as page "project".
+static coax_t_Track track_state;
+static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 
 // The pipe's commands, in order, into the host; then the pipe is empty.
 static void drain(State *st) {
@@ -36,6 +40,10 @@ EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { return (uint32_
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return (uint32_t)coaxial_project_inbox_cap(); }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int32_t length) {
   State *st = state_at(state);
+  int64_t cap = coaxial_project_inbox_cap();
+  _Bool mine = track_message(tr(), kind, (coax_string){(const char *)st->live.inbox.e, length < cap ? length : cap});
+  track_drain(&track_state);
+  if (mine) return;
   coaxial_project_message(live_of(st), kind, length);
   drain(st);
 }
@@ -61,6 +69,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_project_uniform_floats()};
   int64_t n = coaxial_project_frame(s, t, w, l, out, u, width, height, dpr, dt, still != 0);
   drain(st);
+  if (!track_state.page_n) track_init(tr(), track_cstr("project"));
+  track_frame(tr(), dt, width, height, dpr);
+  if (n > 0) track_loaded(tr(), track_cstr("load-landing"));
+  track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }
 
@@ -72,11 +84,17 @@ static coax_v_t_ProjectState page_of(uint32_t state) { coax_v_t_ProjectState s =
 static coax_v_t_Work work_of(uint32_t state) { coax_v_t_Work w = {&state_at(state)->work, 1}; return w; }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   (void)id;
+  track_pointer(tr(), x, y, phase, kind, track_cstr(coaxial_project_cursor(page_of(state), work_of(state)) == 1 ? "link" : ""));
+  track_drain(&track_state);
   return coaxial_project_pointer(page_of(state), work_of(state), x, y, phase, kind) ? 1u : 0u;
 }
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
+  track_key(tr(), key, 0);
+  track_drain(&track_state);
   return coaxial_project_key(page_of(state), work_of(state), key, mods) ? 1u : 0u;
 }
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { (void)state; (void)mods; track_key_up(tr(), key); return 0u; }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; track_blur(tr()); }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { coaxial_project_wheel(page_of(state), dy); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_project_cursor(page_of(state), work_of(state)); }
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) { coaxial_project_hash(page_of(state), live_of(state_at(state)), (int64_t)length); }

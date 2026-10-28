@@ -19,6 +19,7 @@
 #load "projects/verse/commits.coax";
 #load "projects/verse/work.coax";
 #load "project-live.coax";
+#load "analytics.coax";
 
 // page 0 is a real page (/projects/SLUG), 1 the demo (/projects/coax/demo).
 // The rest is the page's input: the pointer, the task open in the detail

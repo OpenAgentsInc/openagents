@@ -17,6 +17,7 @@
 
 #load "font.coax";
 #load "ui.coax";
+#load "analytics.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -688,6 +689,10 @@ draw_ask :: (r: [] Realm, out: [] f32, at: int, uniforms: [] f32) -> int {
   cancel := Box.{x0 = b.x1 - 18 * k - bw, y0 = y1 - bh, x1 = b.x1 - 18 * k, y1 = y1};
   sending := Box.{x0 = cancel.x0 - 12 * k - bw, y0 = y1 - bh, x1 = cancel.x0 - 12 * k, y1 = y1};
   vertices = hud_button(r, out, vertices, BTN_SEND, sending, "SEND", "ENTER", text.count > 0);
+  // what happens to the answer, under the box (analytics.coax)
+  said: [1] f32;
+  vertices = draw_wrapped(k, out, vertices, TRACK_DISCLOSURE, b.x0 + 4 * k, b.y1 + 8 * k, 7 * k, GAP, SPACE, white(k, 0.7),
+                          b.x1 - b.x0 - 8 * k, 14 * k, false, true, said[..]);
   return hud_button(r, out, vertices, BTN_CANCEL, cancel, "CANCEL", "ESC", false);
 }
 // The text after the last line break a wrap would make, roughly: the caret goes after it.
@@ -722,7 +727,11 @@ draw_loading :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   if lit(out, vertices, x0, y, x0 + w, y, 0.5 * k, 0.18, 2 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
   f := clamp(v.loaded, 0, 1);
   if f > 0 && lit(out, vertices, x0, y, x0 + w * f, y, 0.8 * k, 0.95, 5 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
-  return vertices;
+  // what the house saves while you're here (analytics.coax), as the playtest says it
+  dw := lo(360 * k, r[0].width - 2 * gutter(r));
+  said: [1] f32;
+  return draw_wrapped(k, out, vertices, TRACK_DISCLOSURE, cx - dw * 0.5, y + 22 * k, 7 * k, GAP, SPACE, white(k, 0.5),
+                      dw, 14 * k, false, true, said[..]);
 }
 
 // The frame: steps the clock and draws the HUD over the house. Returns the
@@ -820,6 +829,113 @@ coaxial_realm_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_realm_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_realm_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 coaxial_realm_map_max :: () -> int #export_c { return MAP_MAX; }
+
+// ---- what the house records (analytics.coax): the playtest's Haunted House
+// events, from what the HUD shows changing frame to frame
+
+RealmSeen :: struct {
+  started: bool; broke: bool;
+  room: [48] u8; room_n: int;
+  quest: int; line: [80] u8; line_n: int;
+  editing: bool; map: bool; typing: bool; camera: int;
+  with: [48] u8; with_n: int;
+  said: [80] u8; said_n: int;
+}
+seen_same :: (buf: [] u8, n: int, text: string) -> bool {
+  m := ifx text.count < buf.count then text.count else buf.count;
+  if m != n { return false; }
+  for i: 0..<m { if buf[i] != text[i] { return false; } }
+  return true;
+}
+// What the quest's step `n` was, done (the playtest's step events).
+quest_done_event :: (n: int) -> string {
+  if n == 1 { return "edit"; } if n == 2 { return "place"; } if n == 3 { return "publish"; }
+  if n == 4 { return "share"; } if n == 5 { return "fork"; } if n == 6 { return "invite"; }
+  return "";
+}
+HAUNT_WORLD :: "haunted-house";
+
+// Every frame, after realm_draw: the house's changes as events.
+realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera: int) #export_c {
+  if !t[0].ready { return; }
+  if v.failed && !s[0].broke { s[0].broke = true; track_error(t, "the house didn't load", "realm", 0); }
+  if !v.ready { return; }
+  if !s[0].started {
+    s[0].started = true; s[0].quest = v.quest; s[0].camera = camera;
+    track_world(t, HAUNT_WORLD);
+    track_loaded(t, "load-engine");
+  }
+  if !seen_same(s[0].room[..], s[0].room_n, v.title) {
+    s[0].room_n = tw_copy(s[0].room[..], 0, v.title);
+    if track_begin(t, "area") { track_str(t, "area", v.title); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+  }
+  if v.quest != s[0].quest {
+    done := quest_done_event(s[0].quest);
+    if v.quest > s[0].quest && done.count > 0 && track_begin(t, done) { track_str(t, "world", HAUNT_WORLD); track_end(t); }
+    if track_begin(t, "quest") { track_int(t, "step", v.quest); track_int(t, "n", QUEST_STEPS); track_end(t); }
+    s[0].quest = v.quest;
+  }
+  if !seen_same(s[0].line[..], s[0].line_n, v.quest_line) {
+    s[0].line_n = tw_copy(s[0].line[..], 0, v.quest_line);
+    if v.quest_line.count > 0 && track_begin(t, "objective") { track_str(t, "goal", v.quest_line); track_end(t); }
+  }
+  if v.editing != s[0].editing {
+    s[0].editing = v.editing;
+    if track_begin(t, ifx v.editing then "edit-open" else "edit-close") { track_num(t, "ms", track_now_ms(t)); track_end(t); }
+  }
+  if r[0].map != s[0].map {
+    s[0].map = r[0].map;
+    if track_begin(t, "map") { track_bool(t, "open", r[0].map); track_end(t); }
+  }
+  if camera != s[0].camera {
+    s[0].camera = camera;
+    if track_begin(t, "view") { track_int(t, "camera", camera); track_end(t); }
+  }
+  if !seen_same(s[0].with[..], s[0].with_n, v.talking) {
+    if v.talking.count > 0 { if track_begin(t, "npc") { track_str(t, "who", v.talking); track_str(t, "world", HAUNT_WORLD); track_end(t); } }
+    else if track_begin(t, "npc-end") { track_str(t, "who", cast(string) s[0].with[0..<s[0].with_n]); track_end(t); }
+    s[0].with_n = tw_copy(s[0].with[..], 0, v.talking);
+  }
+  if !seen_same(s[0].said[..], s[0].said_n, v.notice) {
+    s[0].said_n = tw_copy(s[0].said[..], 0, v.notice);
+    if v.notice.count > 0 && track_begin(t, "notice") { track_str(t, "line", v.notice); track_end(t); }
+  }
+  if r[0].typing != s[0].typing {
+    s[0].typing = r[0].typing;
+    if r[0].typing && track_begin(t, "survey-show") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+  }
+}
+// The survey's answer, sent: the words, with consent (the box says they're saved).
+realm_track_answer :: (t: [] Track, text: string) #export_c {
+  if track_begin(t, "survey-sent") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_words(t, text); track_end(t); }
+}
+// Something placed from edit mode's hotbar or the quest's orb.
+realm_track_place :: (t: [] Track, item: string, via: string) #export_c {
+  if track_begin(t, "place") { track_str(t, "item", item); track_str(t, "via", via); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+}
+// The label of the button at (x, y), for a click ("" none).
+realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
+  b := button_at(r, x, y);
+  if b == BTN_USE { return "use"; } if b == BTN_VIEW { return "view"; } if b == BTN_MAP { return "map"; }
+  if b == BTN_EXIT { return "exit"; } if b == BTN_HINT { return "hint"; } if b == BTN_BYE { return "bye"; }
+  if b == BTN_SEND { return "send"; } if b == BTN_CANCEL { return "cancel"; } if b == BTN_EDIT { return "edit"; }
+  if b == BTN_UNDO { return "undo"; } if b == BTN_REDO { return "redo"; }
+  if b >= BTN_OP { return "edit-op"; }
+  if b >= BTN_ITEM { return "item"; }
+  return "";
+}
+// An edit to the picked thing or the zone (OP_*): delete, undo and redo as
+// themselves, the rest as the playtest's build with what it did.
+realm_track_edit :: (t: [] Track, op: int) #export_c {
+  if op == OP_DROP { return; }
+  ev := ifx op == OP_DELETE then "delete" else ifx op == OP_UNDO then "undo" else ifx op == OP_REDO then "redo" else "build";
+  if track_begin(t, ev) {
+    if op < OPS { track_str(t, "op", OP_LABELS[op]); }
+    else if op >= OP_ZONE_BIGGER && op <= OP_ZONE_RESET { track_str(t, "zone", ifx op == OP_ZONE_BIGGER then "bigger" else ifx op == OP_ZONE_SMALLER then "smaller" else ifx op == OP_ZONE_ONCE then "once" else "reset"); }
+    track_str(t, "world", HAUNT_WORLD);
+    track_end(t);
+  }
+}
 
 // ---- checks
 
@@ -1056,4 +1172,21 @@ plated :: (u: [] f32, b: Box) -> f32 {
   p8 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_DOWN, 0, 1);
   p9 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_UP, 0, 1);
   #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_ZONE_ONCE && !r[0].shown[BTN_OP + 4];
+}
+
+#test "the house records the playtest's events: entering, the room, the quest's steps, the survey's words" {
+  r: [1] Realm; desk(r[..]); v := view();
+  t: [1] Track; s: [1] RealmSeen;
+  track_init(t[..], "haunt");
+  #assert track_message(t[..], HOST_PAGE, "tab=00000000000000aa\nfresh=1\nvisitor=00000000000000bb\nnow=1793200000000\nnav=10\nua=x\nvw=1280\nvh=800\ndpr=2");
+  realm_track(r[..], s[..], t[..], v, 0);
+  body := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(body, "\"ev\":\"world-enter\"") && text_has(body, "\"world\":\"haunted-house\"");
+  #assert text_has(body, "\"ev\":\"load-engine\"") && text_has(body, "{\"area\":\"Foyer\",\"world\":\"haunted-house\"}");
+  v.quest = 3; v.editing = true;
+  realm_track(r[..], s[..], t[..], v, 1);
+  realm_track_answer(t[..], "It was spooky");
+  body = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(body, "\"ev\":\"place\"") && text_has(body, "{\"step\":3,\"n\":8}") && text_has(body, "\"ev\":\"edit-open\"");
+  #assert text_has(body, "{\"camera\":1}") && text_has(body, "\"text\":\"It was spooky\",\"consent\":true");
 }

@@ -1,0 +1,526 @@
+// What people do on openagents.com, recorded the way the playtest records it
+// (aethyr-cpp tools/analytics.py and web/analytics.js; docs/verse/playtest-port.md
+// lists every event and field). Every Coaxial page loads this file and keeps
+// one Track: the page decides what happened, this file writes it as the
+// playtest's events, batches them and hands each batch to its C face, which
+// gives it to the host's HTTP import (coax/web/host.js, "HTTP"). The host
+// only moves bytes: it says what the browser knows about the visit (the
+// page facts), when the tab is hidden, shown or left, and what errors the
+// page raised; it decides nothing.
+//
+// Recorded on every page, as the playtest's pages record it:
+//   session-start  once per tab: the anonymous visitor (pid), device, screen,
+//                  browser, language, time zone, where the visit came from
+//   page-view      every page load: where it came from, the path and query
+//   load-landing / load-engine   the page ready to use (ms since the navigation)
+//   alive every 30 s while shown (ms, active ms, walked), hidden, visible,
+//   resize, page-leave / world-leave (ms, active, walked), error,
+//   click (what was pressed and where, 0-1 across the window), key (action
+//   keys outside text fields; walking keys only counted, in alive's walked)
+// and what each page adds (the Haunted House: world-enter, area, haunt,
+// talk, door, view, map). Words someone typed or said are recorded only
+// where a page takes them, with consent: true (owner decision 4.2, "save
+// everything"; the page says so where the playtest did).
+
+TRACK_URL :: "/api/analytics/events";
+TRACK_BUF :: 24576;      // the events waiting, as JSON objects
+TRACK_OUT :: 26624;      // one batch for the face to send
+TRACK_BATCH :: 20;       // events that send a batch at once
+TRACK_WAIT :: 2.0;       // seconds the first waiting event waits at limit
+TRACK_ALIVE :: 30.0;
+TRACK_RESIZE :: 0.8;     // a resize is recorded once the window stops changing
+
+// Message kinds from the host (coax/web/host.js), into the page's inbox.
+HOST_PAGE :: 600;        // the page facts: key=value lines
+HOST_HIDDEN :: 601;
+HOST_VISIBLE :: 602;
+HOST_LEAVE :: 603;       // the page is being left: the last batch goes as a beacon
+HOST_ERROR :: 604;       // msg, src and line, a line each
+HTTP_KIND :: 512;        // + id: a request's answer, "STATUS\n" then the body
+HTTPS :: 8;
+// coaxial_http flags
+HTTP_POST :: 1; HTTP_BEACON :: 2; HTTP_ANSWER :: 4;
+
+TRACK_HELD :: 8;
+
+Track :: struct {
+  ready: bool;             // the page facts arrived
+  page: [32] u8; page_n: int;
+  world: [32] u8; world_n: int;   // the world this page shows, "" none
+  sid: [40] u8; sid_n: int;
+  pid: [40] u8; pid_n: int;
+  epoch: f64;              // the browser's clock (ms) when the facts came
+  nav: f64;                // ms since the navigation then
+  t: f64;                  // seconds since the facts
+  hidden: bool; hidden_at: f64; hidden_s: f64; bg: bool;
+  walked: int; alive_at: f64;
+  w: f32; h: f32; dpr: f32; resize_at: f64; resizing: bool;
+  held: [TRACK_HELD] int;        // keys down now, so a held key counts once
+  down: bool; down_x: f32; down_y: f32; dragged: bool;
+  loaded: bool; ended: bool; automated: bool; mobile: bool;
+  fcp: f64; dcl: f64;      // the browser's first paint and DOM-ready, ms (0 unknown)
+  buf: [TRACK_BUF] u8; buf_n: int; count: int; first_at: f64;
+  cur: int; props: int; open: bool; spill: bool;   // the event being written
+  out: [TRACK_OUT] u8; out_n: int; flags: int;     // a batch for the face (sent and cleared after every call)
+}
+
+// ---- small text tools
+tw_put :: (t: [] Track, text: string) {
+  if t[0].buf_n + text.count > TRACK_BUF { t[0].spill = true; return; }
+  for i: 0..<text.count { t[0].buf[t[0].buf_n + i] = text[i]; }
+  t[0].buf_n += text.count;
+}
+tw_byte :: (t: [] Track, b: u8) {
+  if t[0].buf_n >= TRACK_BUF { t[0].spill = true; return; }
+  t[0].buf[t[0].buf_n] = b; t[0].buf_n += 1;
+}
+TRACK_HEX :: "0123456789abcdef";
+// A JSON string of at limit `limit` bytes, cut at a code point's start.
+tw_quote :: (t: [] Track, text: string, limit: int) {
+  n := text.count;
+  if n > limit { n = limit; while n > 0 && (text[n] & 0xC0) == 0x80 { n -= 1; } }
+  tw_byte(t, 34);
+  for i: 0..<n {
+    c := text[i];
+    if c == 34 || c == 92 { tw_byte(t, 92); tw_byte(t, c); }
+    else if c == 10 { tw_put(t, "\\n"); }
+    else if c < 32 { tw_put(t, "\\u00"); tw_byte(t, TRACK_HEX[cast(int) (c >> 4)]); tw_byte(t, TRACK_HEX[cast(int) (c & 15)]); }
+    else { tw_byte(t, c); }
+  }
+  tw_byte(t, 34);
+}
+tw_int :: (t: [] Track, v: int) {
+  if v < 0 { tw_byte(t, 45); tw_int(t, 0 - v); return; }
+  digits: [20] u8; n := 0; x := v;
+  while true { digits[n] = cast(u8) (48 + x % 10); n += 1; x /= 10; if x == 0 { break; } }
+  while n > 0 { n -= 1; tw_byte(t, digits[n]); }
+}
+// A number with at limit three decimals, as the playtest rounds them.
+tw_num :: (t: [] Track, v: f64) {
+  if v != v || v > 1000000000000000.0 || v < -1000000000000000.0 { tw_put(t, "0"); return; }
+  x := v; if x < 0 { tw_byte(t, 45); x = 0 - x; }
+  m := cast(int) (x * 1000 + 0.5);
+  tw_int(t, m / 1000);
+  f := m % 1000;
+  if f != 0 {
+    tw_byte(t, 46);
+    d := 100;
+    while f != 0 && d > 0 { tw_byte(t, cast(u8) (48 + f / d)); f = f % d; d /= 10; }
+  }
+}
+
+text_has :: (text: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  i := 0;
+  while i + needle.count <= text.count {
+    if cast(string) text[i..<i + needle.count] == needle { return true; }
+    i += 1;
+  }
+  return false;
+}
+// The value of key in key=value lines, or "".
+fact_of :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    j := i; while j < facts.count && facts[j] != 10 { j += 1; }
+    line := cast(string) facts[i..<j];
+    if line.count > key.count && line[key.count] == 61 && cast(string) line[0..<key.count] == key {
+      return cast(string) line[key.count + 1..<line.count];
+    }
+    i = j + 1;
+  }
+  return "";
+}
+fact_int :: (text: string) -> int {
+  v := 0;
+  for c: text { if c < 48 || c > 57 { break; } if v < 100000000000000 { v = v * 10 + cast(int) (c - 48); } }
+  return v;
+}
+fact_num :: (text: string) -> f64 {
+  at_dot := 0; while at_dot < text.count && text[at_dot] != 46 { at_dot += 1; }
+  whole := cast(f64) fact_int(text);
+  if at_dot >= text.count { return whole; }
+  frac := cast(string) text[at_dot + 1..<text.count];
+  frac_div := 1.0; v := 0.0;
+  for c: frac { if c < 48 || c > 57 { break; } if frac_div < 1000000.0 { frac_div *= 10; v = v * 10 + cast(f64) (c - 48); } }
+  return whole + v / frac_div;
+}
+// The host and path of a URL: from "//" to the next "/", and the rest up to "?" or "#".
+track_url_host :: (url: string) -> string {
+  i := 0; while i + 1 < url.count && !(url[i] == 47 && url[i + 1] == 47) { i += 1; }
+  if i + 1 >= url.count { return ""; }
+  i += 2; j := i; while j < url.count && url[j] != 47 && url[j] != 63 && url[j] != 35 { j += 1; }
+  return cast(string) url[i..<j];
+}
+track_url_path :: (url: string) -> string {
+  h := track_url_host(url); if h.count == 0 { return ""; }
+  i := 0; while i + 1 < url.count && !(url[i] == 47 && url[i + 1] == 47) { i += 1; }
+  i += 2 + h.count; j := i; while j < url.count && url[j] != 63 && url[j] != 35 { j += 1; }
+  return cast(string) url[i..<j];
+}
+track_url_query :: (url: string) -> string {
+  i := 0; while i < url.count && url[i] != 63 { i += 1; }
+  if i >= url.count { return ""; }
+  j := i + 1; while j < url.count && url[j] != 35 { j += 1; }
+  return cast(string) url[i + 1..<j];
+}
+
+track_os :: (ua: string, touch: int) -> string {
+  if text_has(ua, "iPhone") || text_has(ua, "iPod") { return "iOS"; }
+  if text_has(ua, "iPad") || (text_has(ua, "Macintosh") && touch > 1) { return "iPadOS"; }
+  if text_has(ua, "Android") { return "Android"; }
+  if text_has(ua, "Mac OS X") || text_has(ua, "Macintosh") { return "macOS"; }
+  if text_has(ua, "Windows") { return "Windows"; }
+  if text_has(ua, "CrOS") { return "ChromeOS"; }
+  if text_has(ua, "Linux") { return "Linux"; }
+  return "other";
+}
+track_browser :: (ua: string) -> string {
+  if text_has(ua, "Edg/") { return "Edge"; }
+  if text_has(ua, "OPR/") { return "Opera"; }
+  if text_has(ua, "Firefox/") || text_has(ua, "FxiOS") { return "Firefox"; }
+  if text_has(ua, "Chrome/") || text_has(ua, "CriOS") { return "Chrome"; }
+  if text_has(ua, "Safari/") { return "Safari"; }
+  return "other";
+}
+// The browser's major version, as the playtest writes it ("Chrome 152").
+track_version :: (ua: string, browser: string) -> string {
+  marks := [6] string.["Edg/", "OPR/", "Firefox/", "FxiOS/", "CriOS/", "Chrome/"];
+  for m: marks {
+    i := 0;
+    while i + m.count < ua.count {
+      if cast(string) ua[i..<i + m.count] == m {
+        j := i + m.count; k := j; while k < ua.count && ua[k] >= 48 && ua[k] <= 57 { k += 1; }
+        if k > j && (browser != "Safari") { return cast(string) ua[j..<k]; }
+      }
+      i += 1;
+    }
+  }
+  i := 0;
+  while i + 8 < ua.count {
+    if cast(string) ua[i..<i + 8] == "Version/" { j := i + 8; k := j; while k < ua.count && ua[k] >= 48 && ua[k] <= 57 { k += 1; } return cast(string) ua[j..<k]; }
+    i += 1;
+  }
+  return "";
+}
+
+// ---- writing events
+track_now_ms :: (t: [] Track) -> f64 { return t[0].nav + t[0].t * 1000; }
+track_active :: (t: [] Track) -> f64 {
+  hid := t[0].hidden_s; if t[0].hidden { hid += t[0].t - t[0].hidden_at; }
+  return track_now_ms(t) - hid * 1000;
+}
+
+// Starts an event: false when the page facts haven't come (nothing is
+// recorded before then) or the session text_has ended.
+track_begin :: (t: [] Track, ev: string) -> bool #export_c {
+  if !t[0].ready || t[0].ended || t[0].open { return false; }
+  if t[0].buf_n + 512 > TRACK_BUF { track_flush(t, 0); }
+  t[0].cur = t[0].buf_n; t[0].props = 0; t[0].open = true; t[0].spill = false;
+  if t[0].count > 0 { tw_byte(t, 44); }
+  tw_put(t, "{\"ev\":"); tw_quote(t, ev, 32);
+  tw_put(t, ",\"page\":"); tw_quote(t, cast(string) t[0].page[0..<t[0].page_n], 32);
+  tw_put(t, ",\"ct\":"); tw_int(t, cast(int) (t[0].epoch + t[0].t * 1000));
+  tw_put(t, ",\"p\":{");
+  return true;
+}
+tw_key :: (t: [] Track, k: string) { if t[0].props > 0 { tw_byte(t, 44); } tw_quote(t, k, 24); tw_byte(t, 58); t[0].props += 1; }
+track_str :: (t: [] Track, k: string, v: string) #export_c { if t[0].open { tw_key(t, k); tw_quote(t, v, 80); } }
+track_int :: (t: [] Track, k: string, v: int) #export_c { if t[0].open { tw_key(t, k); tw_int(t, v); } }
+track_num :: (t: [] Track, k: string, v: f64) #export_c { if t[0].open { tw_key(t, k); tw_num(t, v); } }
+track_bool :: (t: [] Track, k: string, v: bool) #export_c { if t[0].open { tw_key(t, k); tw_put(t, ifx v then "true" else "false"); } }
+// Words someone typed or said: kept by the server because consent is true
+// (the page tells people their words are saved).
+track_words :: (t: [] Track, text: string) #export_c {
+  if t[0].open { tw_key(t, "text"); tw_quote(t, text, 500); tw_key(t, "consent"); tw_put(t, "true"); }
+}
+track_end :: (t: [] Track) #export_c {
+  if !t[0].open { return; }
+  tw_put(t, "}}");
+  t[0].open = false;
+  if t[0].spill { t[0].buf_n = t[0].cur; return; }   // it didn't fit: dropped whole
+  if t[0].count == 0 { t[0].first_at = t[0].t; }
+  t[0].count += 1;
+  if t[0].count >= TRACK_BATCH { track_flush(t, 0); }
+}
+// An event with no properties.
+track :: (t: [] Track, ev: string) #export_c { if track_begin(t, ev) { track_end(t); } }
+
+// The waiting events as one batch for the face: {"sid", "events", "auto"}.
+track_flush :: (t: [] Track, flags: int) #export_c {
+  if t[0].count == 0 || t[0].out_n > 0 || t[0].open { return; }
+  n := 0;
+  head := "{\"sid\":\"";
+  for c: head { t[0].out[n] = c; n += 1; }
+  for i: 0..<t[0].sid_n { t[0].out[n] = t[0].sid[i]; n += 1; }
+  mid := "\",\"events\":[";
+  for c: mid { t[0].out[n] = c; n += 1; }
+  for i: 0..<t[0].buf_n { t[0].out[n] = t[0].buf[i]; n += 1; }
+  tail := ifx t[0].automated then "],\"auto\":\"webdriver\"}" else "]}";
+  for c: tail { t[0].out[n] = c; n += 1; }
+  t[0].out_n = n; t[0].flags = HTTP_POST | flags;
+  t[0].buf_n = 0; t[0].count = 0;
+}
+// The face sent the batch.
+track_sent :: (t: [] Track) #export_c { t[0].out_n = 0; t[0].flags = 0; }
+track_url :: () -> string #export_c { return TRACK_URL; }
+
+// ---- the page
+
+// Before anything: the page's name ("home", "project", "haunt", "admin").
+track_init :: (t: [] Track, page: string) #export_c {
+  t[0].page_n = 0;
+  for c: page { if t[0].page_n < 32 { t[0].page[t[0].page_n] = c; t[0].page_n += 1; } }
+}
+
+// A world the page shows: world-enter now, world-leave when it's left.
+track_world :: (t: [] Track, world: string) #export_c {
+  t[0].world_n = 0;
+  for c: world { if t[0].world_n < 32 { t[0].world[t[0].world_n] = c; t[0].world_n += 1; } }
+  if track_begin(t, "world-enter") { track_str(t, "world", world); track_end(t); }
+}
+
+// The page ready to use: load-landing or load-engine, once.
+track_loaded :: (t: [] Track, ev: string) #export_c {
+  if t[0].loaded || !t[0].ready { return; }
+  t[0].loaded = true;
+  if track_begin(t, ev) {
+    track_num(t, "ms", track_now_ms(t)); track_bool(t, "mobile", t[0].mobile);
+    if t[0].bg { track_bool(t, "bg", true); }
+    if t[0].fcp > 0 { track_num(t, "fcp", t[0].fcp); }
+    if t[0].dcl > 0 { track_num(t, "dcl", t[0].dcl); }
+    track_str(t, "page", cast(string) t[0].page[0..<t[0].page_n]);
+    track_end(t);
+  }
+}
+
+// The page facts: session-start (a new tab), page-view (every load).
+track_facts :: (t: [] Track, facts: string) {
+  t[0].ready = true;
+  tab := fact_of(facts, "tab"); visitor := fact_of(facts, "visitor");
+  t[0].sid_n = 0; t[0].sid[0] = 99; t[0].sid_n = 1;    // "c" + the tab's id
+  for c: tab { if t[0].sid_n < 40 && ((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) { t[0].sid[t[0].sid_n] = c; t[0].sid_n += 1; } }
+  while t[0].sid_n < 9 { t[0].sid[t[0].sid_n] = 48; t[0].sid_n += 1; }
+  t[0].pid_n = 0;
+  for c: visitor { if t[0].pid_n < 32 { t[0].pid[t[0].pid_n] = c; t[0].pid_n += 1; } }
+  t[0].epoch = fact_num(fact_of(facts, "now"));
+  t[0].nav = fact_num(fact_of(facts, "nav"));
+  t[0].t = 0; t[0].alive_at = 0;
+  t[0].mobile = fact_of(facts, "coarse") == "1";
+  t[0].fcp = fact_num(fact_of(facts, "fcp")); t[0].dcl = fact_num(fact_of(facts, "dcl"));
+  t[0].automated = fact_of(facts, "webdriver") == "1";
+  t[0].hidden = fact_of(facts, "hidden") == "1"; t[0].bg = t[0].hidden; t[0].hidden_at = 0;
+  ua := fact_of(facts, "ua"); url := fact_of(facts, "url"); ref := fact_of(facts, "ref");
+  // Where the visit came from: a page of this site (its path) or another site (its host).
+  came := ifx track_url_host(ref) == track_url_host(url) && ref.count > 0 then track_url_path(ref) else track_url_host(ref);
+  pid := cast(string) t[0].pid[0..<t[0].pid_n];
+  if fact_of(facts, "fresh") == "1" && track_begin(t, "session-start") {
+    browser := track_browser(ua); version := track_version(ua, browser);
+    full: [32] u8; n := tw_copy(full[..], 0, browser);
+    if version.count > 0 { n = tw_copy(full[..], n, " "); n = tw_copy(full[..], n, version); }
+    track_str(t, "pid", pid); track_str(t, "rev", "coaxial");
+    track_str(t, "os", track_os(ua, fact_int(fact_of(facts, "touch")))); track_str(t, "browser", cast(string) full[0..<n]);
+    track_bool(t, "mobile", t[0].mobile);
+    track_int(t, "sw", fact_int(fact_of(facts, "sw"))); track_int(t, "sh", fact_int(fact_of(facts, "sh")));
+    track_int(t, "vw", fact_int(fact_of(facts, "vw"))); track_int(t, "vh", fact_int(fact_of(facts, "vh")));
+    track_num(t, "dpr", fact_num(fact_of(facts, "dpr")));
+    track_str(t, "lang", fact_of(facts, "lang")); track_str(t, "tz", fact_of(facts, "tz"));
+    track_bool(t, "gpu", fact_of(facts, "gpu") == "1");
+    track_str(t, "ref", came); track_str(t, "entry", cast(string) t[0].page[0..<t[0].page_n]);
+    track_bool(t, "landing", false);
+    track_end(t);
+  }
+  if track_begin(t, "page-view") {
+    track_str(t, "pid", pid); track_str(t, "from", came); track_str(t, "path", track_url_path(url));
+    q := track_url_query(url); if q.count > 0 { track_str(t, "q", q); }
+    if ref.count > 0 { track_str(t, "referrer", ref); }
+    track_end(t);
+  }
+}
+tw_copy :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n >= buf.count { break; } buf[n] = c; n += 1; }
+  return n;
+}
+
+// A message from the host. True when it was one of this file's.
+track_message :: (t: [] Track, kind: int, bytes: string) -> bool #export_c {
+  if kind == HOST_PAGE { track_facts(t, bytes); return true; }
+  if kind == HOST_HIDDEN {
+    if !t[0].hidden { t[0].hidden = true; t[0].hidden_at = t[0].t; t[0].bg = true; }
+    if track_begin(t, "hidden") { track_num(t, "ms", track_now_ms(t)); track_end(t); }
+    track_flush(t, HTTP_BEACON);
+    return true;
+  }
+  if kind == HOST_VISIBLE {
+    if t[0].hidden { t[0].hidden = false; t[0].hidden_s += t[0].t - t[0].hidden_at; }
+    if track_begin(t, "visible") { track_num(t, "ms", track_now_ms(t)); track_end(t); }
+    return true;
+  }
+  if kind == HOST_LEAVE {
+    ev := ifx t[0].world_n > 0 then "world-leave" else "page-leave";
+    if track_begin(t, ev) { track_num(t, "ms", track_now_ms(t)); track_num(t, "active", track_active(t)); track_int(t, "walked", t[0].walked); track_end(t); }
+    track_flush(t, HTTP_BEACON);
+    return true;
+  }
+  if kind == HOST_ERROR {
+    i := 0; while i < bytes.count && bytes[i] != 10 { i += 1; }
+    msg := cast(string) bytes[0..<i];
+    rest := ifx i < bytes.count then cast(string) bytes[i + 1..<bytes.count] else "";
+    j := 0; while j < rest.count && rest[j] != 10 { j += 1; }
+    src := cast(string) rest[0..<j];
+    line := ifx j < rest.count then cast(string) rest[j + 1..<rest.count] else "";
+    track_error(t, msg, src, fact_int(line));
+    return true;
+  }
+  return false;
+}
+track_error :: (t: [] Track, msg: string, src: string, line: int) #export_c {
+  if track_begin(t, "error") { track_str(t, "msg", msg); track_str(t, "src", src); track_int(t, "line", line); track_end(t); }
+}
+
+// Every frame: the clock, alive every 30 s while shown, a resize once it
+// settles, the waiting batch after two seconds.
+track_frame :: (t: [] Track, dt: f32, w: f32, h: f32, dpr: f32) #export_c {
+  t[0].t += cast(f64) dt;
+  if !t[0].ready { return; }
+  if (w != t[0].w || h != t[0].h) {
+    if t[0].w > 0 { t[0].resizing = true; t[0].resize_at = t[0].t; }
+    t[0].w = w; t[0].h = h; t[0].dpr = dpr;
+  }
+  if t[0].resizing && t[0].t - t[0].resize_at > TRACK_RESIZE {
+    t[0].resizing = false;
+    d := ifx dpr > 0 then dpr else 1;
+    if track_begin(t, "resize") { track_int(t, "vw", cast(int) (w / d + 0.5)); track_int(t, "vh", cast(int) (h / d + 0.5)); track_end(t); }
+  }
+  if !t[0].hidden && t[0].t - t[0].alive_at >= TRACK_ALIVE {
+    t[0].alive_at = t[0].t;
+    if track_begin(t, "alive") {
+      track_num(t, "ms", track_now_ms(t)); track_num(t, "active", track_active(t)); track_int(t, "walked", t[0].walked);
+      if t[0].world_n > 0 { track_str(t, "world", cast(string) t[0].world[0..<t[0].world_n]); }
+      track_end(t);
+    }
+    t[0].walked = 0;
+  }
+  if t[0].count > 0 && t[0].t - t[0].first_at >= TRACK_WAIT { track_flush(t, 0); }
+}
+
+// ---- input
+
+track_walk_key :: (key: int) -> bool {
+  // w a s d (either case), space, the arrows, Shift
+  return key == 119 || key == 97 || key == 115 || key == 100 || key == 87 || key == 65 || key == 83 || key == 68
+    || key == 32 || key == -4 || key == -5 || key == -6 || key == -7 || key == -13;
+}
+// A key as the browser's code names it (KeyE, Digit1, Escape).
+track_key_name :: (buf: [] u8, key: int) -> int {
+  names := [13] string.["Escape", "Enter", "Backspace", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Delete", "Shift"];
+  if key < 0 && key >= -13 { return tw_copy(buf, 0, names[-1 - key]); }
+  if (key >= 97 && key <= 122) || (key >= 65 && key <= 90) {
+    n := tw_copy(buf, 0, "Key"); buf[n] = cast(u8) (ifx key >= 97 then key - 32 else key); return n + 1;
+  }
+  if key >= 48 && key <= 57 { n := tw_copy(buf, 0, "Digit"); buf[n] = cast(u8) key; return n + 1; }
+  if key > 32 && key < 127 { buf[0] = cast(u8) key; return 1; }
+  return tw_copy(buf, 0, "other");
+}
+// A key went down. typing: it went into a text field (never recorded).
+track_key :: (t: [] Track, key: int, typing: bool) #export_c {
+  for k: 0..<TRACK_HELD { if t[0].held[k] == key { return; } }    // still held: the browser's repeat
+  for k: 0..<TRACK_HELD { if t[0].held[k] == 0 { t[0].held[k] = key; break; } }
+  if typing { return; }
+  if track_walk_key(key) { t[0].walked += 1; return; }
+  name: [16] u8; n := track_key_name(name[..], key);
+  if track_begin(t, "key") {
+    track_str(t, "key", cast(string) name[0..<n]);
+    if t[0].world_n > 0 { track_str(t, "world", cast(string) t[0].world[0..<t[0].world_n]); }
+    track_end(t);
+  }
+}
+track_key_up :: (t: [] Track, key: int) #export_c { for k: 0..<TRACK_HELD { if t[0].held[k] == key { t[0].held[k] = 0; } } }
+track_blur :: (t: [] Track) #export_c { for k: 0..<TRACK_HELD { t[0].held[k] = 0; } t[0].down = false; }
+
+// The pointer, in device pixels (phase 0 down, 1 move, 2 up, 3 cancel; kind
+// 0 a mouse). A press that doesn't drag is a click: el "button" with its
+// label when it was on one of the page's buttons, else "canvas". A touch on
+// the world counts as walking, as the playtest counts it.
+track_pointer :: (t: [] Track, x: f32, y: f32, phase: int, kind: int, label: string) #export_c {
+  if phase == 0 {
+    t[0].down = true; t[0].dragged = false; t[0].down_x = x; t[0].down_y = y;
+    if kind != 0 && label.count == 0 { t[0].walked += 1; }
+  } else if phase == 1 && t[0].down {
+    slop := 8 * (ifx t[0].dpr > 0 then t[0].dpr else 1);
+    if (x - t[0].down_x) * (x - t[0].down_x) + (y - t[0].down_y) * (y - t[0].down_y) > slop * slop { t[0].dragged = true; }
+  } else if phase == 2 && t[0].down {
+    t[0].down = false;
+    if t[0].dragged { return; }
+    if track_begin(t, "click") {
+      track_str(t, "el", ifx label.count > 0 then "button" else "canvas");
+      if t[0].w > 0 && t[0].h > 0 { track_num(t, "x", cast(f64) (x / t[0].w)); track_num(t, "y", cast(f64) (y / t[0].h)); }
+      if label.count > 0 { track_str(t, "label", label); }
+      track_str(t, "by", ifx kind == 0 then "mouse" else "touch");
+      if t[0].world_n > 0 { track_str(t, "world", cast(string) t[0].world[0..<t[0].world_n]); }
+      track_end(t);
+    }
+  } else if phase == 3 { t[0].down = false; }
+}
+
+// What the playtest's pages say about saving, where they say it (Settings,
+// Privacy on main's pages).
+TRACK_DISCLOSURE :: "We save what you do here, including what you say and type, with an anonymous id. It helps the Verse understand more.";
+
+#test "a page's facts start a session and a page view; events batch into the playtest's shape" {
+  t: [1] Track;
+  track_init(t[..], "haunt");
+  #assert !track_begin(t[..], "click");   // nothing before the facts
+  facts := "tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793200000000\nnav=812.5\nua=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\nlang=en-US\ntz=America/Chicago\nsw=1512\nsh=982\nvw=1280\nvh=800\ndpr=2\ncoarse=0\ntouch=0\ngpu=1\nurl=https://openagents.com/realm/haunted-house?utm_source=x\nref=https://news.ycombinator.com/item?id=1\nhidden=0\nwebdriver=0";
+  #assert track_message(t[..], HOST_PAGE, facts);
+  #assert t[0].count == 2 && cast(string) t[0].sid[0..<t[0].sid_n] == "c0123456789abcdef";
+  body := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(body, "{\"ev\":\"session-start\",\"page\":\"haunt\",\"ct\":1793200000000,\"p\":{\"pid\":\"fedcba9876543210\",\"rev\":\"coaxial\",\"os\":\"macOS\",\"browser\":\"Chrome 152\"");
+  #assert text_has(body, "\"dpr\":2,\"lang\":\"en-US\",\"tz\":\"America/Chicago\",\"gpu\":true,\"ref\":\"news.ycombinator.com\"");
+  #assert text_has(body, "{\"ev\":\"page-view\",\"page\":\"haunt\",\"ct\":1793200000000,\"p\":{\"pid\":\"fedcba9876543210\",\"from\":\"news.ycombinator.com\",\"path\":\"/realm/haunted-house\",\"q\":\"utm_source=x\"");
+  track_world(t[..], "haunted-house");
+  track_frame(t[..], 0.5, 2560, 1600, 2);
+  track_loaded(t[..], "load-engine");
+  #assert text_has(cast(string) t[0].buf[0..<t[0].buf_n], "{\"ev\":\"load-engine\",\"page\":\"haunt\",\"ct\":1793200000500,\"p\":{\"ms\":1312.5,\"mobile\":false,\"page\":\"haunt\"}}");
+  // walking keys count once each while held; an action key is a key event
+  track_key(t[..], 119, false); track_key(t[..], 119, false); track_key_up(t[..], 119); track_key(t[..], 119, false);
+  #assert t[0].walked == 2;
+  track_key(t[..], 101, false);
+  #assert text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"p\":{\"key\":\"KeyE\",\"world\":\"haunted-house\"}}");
+  // a press without a drag is a click, where it was across the window
+  track_pointer(t[..], 1280, 400, 0, 0, ""); track_pointer(t[..], 1281, 401, 1, 0, ""); track_pointer(t[..], 1281, 401, 2, 0, "");
+  #assert text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"p\":{\"el\":\"canvas\",\"x\":0.5,\"y\":0.251,\"by\":\"mouse\"");
+  track_pointer(t[..], 10, 10, 0, 0, ""); track_pointer(t[..], 300, 10, 1, 0, ""); track_pointer(t[..], 300, 10, 2, 0, "");
+  #assert !text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"x\":0.117");
+  // words, escaped, with consent; the batch after two seconds
+  if track_begin(t[..], "prompt") { track_str(t[..], "via", "chat"); track_words(t[..], "say \"boo\"\nnow"); track_end(t[..]); }
+  #assert text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"text\":\"say \\\"boo\\\"\\nnow\",\"consent\":true");
+  track_frame(t[..], 2.0, 2560, 1600, 2);
+  out := cast(string) t[0].out[0..<t[0].out_n];
+  #assert t[0].flags == HTTP_POST && text_has(out, "{\"sid\":\"c0123456789abcdef\",\"events\":[{\"ev\":\"session-start\"") && out[out.count - 2] == 93 && out[out.count - 1] == 125;
+  #assert t[0].count == 0 && t[0].buf_n == 0;
+  track_sent(t[..]);
+  // hidden sends at once as a beacon; leaving says world-leave
+  #assert track_message(t[..], HOST_HIDDEN, "") && t[0].flags == HTTP_POST | HTTP_BEACON;
+  track_sent(t[..]);
+  #assert track_message(t[..], HOST_VISIBLE, "");
+  #assert track_message(t[..], HOST_ERROR, "boom\nhost.js\n42");
+  #assert text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"p\":{\"msg\":\"boom\",\"src\":\"host.js\",\"line\":42}}");
+  #assert track_message(t[..], HOST_LEAVE, "") && text_has(cast(string) t[0].out[0..<t[0].out_n], "\"ev\":\"world-leave\"");
+  #assert !track_message(t[..], 1, "typed");
+}
+
+#test "numbers keep three decimals; long words are cut at a code point" {
+  t: [1] Track;
+  tw_num(t[..], 0.8123); tw_byte(t[..], 32); tw_num(t[..], -2.5); tw_byte(t[..], 32); tw_num(t[..], 3.0); tw_byte(t[..], 32); tw_num(t[..], 0.0005);
+  #assert cast(string) t[0].buf[0..<t[0].buf_n] == "0.812 -2.5 3 0.001";
+  t[0].buf_n = 0;
+  tw_quote(t[..], "aé", 2);
+  #assert cast(string) t[0].buf[0..<t[0].buf_n] == "\"a\"";
+  #assert track_os("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", 5) == "iOS";
+  #assert track_browser("Mozilla/5.0 (iPhone) Version/18.0 Mobile/15E148 Safari/604.1") == "Safari";
+  #assert track_version("Mozilla/5.0 (iPhone) Version/18.0 Mobile/15E148 Safari/604.1", "Safari") == "18";
+  #assert track_url_host("https://openagents.com/a?b") == "openagents.com" && track_url_path("https://openagents.com/a/b?c#d") == "/a/b";
+  #assert track_url_query("https://x.com/p?a=1#z") == "a=1" && track_url_host("") == "";
+}
