@@ -15,6 +15,7 @@ device. It is Bitcoin only, so it fits the money rule in the
 | --- | --- |
 | [native-ios-android.md](native-ios-android.md) | The Swift and Kotlin SDK, and how it would sit in `apps/openagents-ios` |
 | [considerations.md](considerations.md) | Trust model, risks, how it fits our stack, and a recommendation |
+| [shared-words.md](shared-words.md) | How its aezeed mnemonic works, and opening it from our 12 NIP-06 words |
 
 ## The pieces
 
