@@ -1,0 +1,39 @@
+{
+  "schema": "coax.scalar-differential.v1",
+  "seed": 20261028,
+  "requests": 1000000,
+  "native_comparisons": 2000000,
+  "operations": {
+    "normalize": 199000,
+    "add": 200000,
+    "sub": 200000,
+    "mul": 200000,
+    "negate": 200000,
+    "inverse": 1000
+  },
+  "oracle": "independent Python unbounded integers and pow(a,-1,n)",
+  "elapsed_seconds": 6.468183207995025,
+  "corpus_sha256": "b3f829ec839fee92498bcdef05342a4bd2adc5cddb67d33b1865519c9d8e15af",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "compiler_version": "coax0 0.15.0",
+  "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "flags": [
+    "-std=c11",
+    "-O2",
+    "checked and --release"
+  ],
+  "source_sha256": {
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+    "coax/tests/nostr/scalar.py": "c7ae2c85ddea77c854c0937898746104acc43a48b9ee5aac9298682bd8005f74",
+    "coax/tests/nostr/scalar_candidate.py": "4a52ddd914edc2469850229c3b490d7f5bedc1c0fb418c3087df76831954b966",
+    "coax/tests/nostr/scalar_wasm.c": "1e8120981083af4cf911b999cae85c635100d65057c4922a1980e0cdd2a8295d",
+    "coax/tests/nostr/scalar_wasm.cjs": "e5d91b7651554441bd35100e19dfe3edf86767a1846927c43af4f5df9ed3b954"
+  },
+  "artifacts": {
+    "checked": "488db9622bdce92bec7961920b3d387035c0c1dbe9fa84a095315125f5bd669d",
+    "release": "47d8565e5244c2bad651756eed5a659bbcd3f43ca1023ab5da2a3ab973500337"
+  }
+}

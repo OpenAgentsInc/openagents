@@ -1,0 +1,40 @@
+// Frozen test-only big-integer fixtures, generated independently of limb code.
+#test "scalar independent carry fixture 0" {
+  a:=ScScalar.{limbs=[8]u32.[3493216576,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]};b:=ScScalar.{limbs=[8]u32.[1,0,0,0,0,0,0,0]};
+  #assert sc_equal(sc_add(a,b),ScScalar.{limbs=[8]u32.[0,0,0,0,0,0,0,0]});
+  #assert sc_equal(sc_sub(a,b),ScScalar.{limbs=[8]u32.[3493216575,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]});
+  #assert sc_equal(sc_mul(a,b),ScScalar.{limbs=[8]u32.[3493216576,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]});
+  #assert sc_equal(sc_negate(a),ScScalar.{limbs=[8]u32.[1,0,0,0,0,0,0,0]});
+}
+#test "scalar independent carry fixture 1" {
+  a:=ScScalar.{limbs=[8]u32.[3493216576,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]};b:=ScScalar.{limbs=[8]u32.[3493216576,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]};
+  #assert sc_equal(sc_add(a,b),ScScalar.{limbs=[8]u32.[3493216575,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]});
+  #assert sc_equal(sc_sub(a,b),ScScalar.{limbs=[8]u32.[0,0,0,0,0,0,0,0]});
+  #assert sc_equal(sc_mul(a,b),ScScalar.{limbs=[8]u32.[1,0,0,0,0,0,0,0]});
+  #assert sc_equal(sc_negate(a),ScScalar.{limbs=[8]u32.[1,0,0,0,0,0,0,0]});
+}
+#test "scalar independent carry fixture 2" {
+  a:=ScScalar.{limbs=[8]u32.[4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]};b:=ScScalar.{limbs=[8]u32.[4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]};
+  #assert sc_equal(sc_add(a,b),ScScalar.{limbs=[8]u32.[1603501436,2153464550,2708389768,2325890610,2,0,0,0]});
+  #assert sc_equal(sc_sub(a,b),ScScalar.{limbs=[8]u32.[0,0,0,0,0,0,0,0]});
+  #assert sc_equal(sc_mul(a,b),ScScalar.{limbs=[8]u32.[138695619,152153902,1829648624,3916583055,1540163523,3868718564,2177276869,2640780501]});
+  #assert sc_equal(sc_negate(a),ScScalar.{limbs=[8]u32.[2691465859,2141502745,1586577527,1969076685,4294967293,4294967295,4294967295,4294967295]});
+}
+#test "scalar independent carry fixture 3" {
+  a:=ScScalar.{limbs=[8]u32.[0,4294967295,0,4294967295,0,4294967295,0,4294967295]};b:=ScScalar.{limbs=[8]u32.[4294967295,0,4294967295,0,4294967295,0,4294967295,0]};
+  #assert sc_equal(sc_add(a,b),ScScalar.{limbs=[8]u32.[801750718,1076732275,1354194884,1162945305,1,0,0,0]});
+  #assert sc_equal(sc_sub(a,b),ScScalar.{limbs=[8]u32.[1,4294967294,1,4294967294,1,4294967294,1,4294967294]});
+  #assert sc_equal(sc_mul(a,b),ScScalar.{limbs=[8]u32.[1962901911,2557962260,3717181491,1684002634,1038678047,3377276123,370455565,2354056911]});
+  #assert sc_equal(sc_negate(a),ScScalar.{limbs=[8]u32.[3493216577,3218235021,2940772410,3132021991,4294967293,0,4294967295,0]});
+}
+#test "scalar independent carry fixture 4" {
+  a:=ScScalar.{limbs=[8]u32.[0,0,0,0,0,0,0,2147483648]};b:=ScScalar.{limbs=[8]u32.[1,0,0,0,0,0,0,2147483648]};
+  #assert sc_equal(sc_add(a,b),ScScalar.{limbs=[8]u32.[801750720,1076732275,1354194884,1162945305,1,0,0,0]});
+  #assert sc_equal(sc_sub(a,b),ScScalar.{limbs=[8]u32.[3493216576,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]});
+  #assert sc_equal(sc_mul(a,b),ScScalar.{limbs=[8]u32.[435549264,576404613,2208251422,2634360240,385040881,2040921465,1618061041,2807678773]});
+  #assert sc_equal(sc_negate(a),ScScalar.{limbs=[8]u32.[3493216577,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,2147483647]});
+}
+#test "scalar inverse is defined only for nonzero residue" {
+  zero:=sc_inverse(ScScalar.{});#assert !zero.ok && sc_is_zero(zero.value);
+  value:=sc_inverse(sc_small(123456789));#assert value.ok && sc_equal(value.value,ScScalar.{limbs=[8]u32.[3526042278,2341050198,308097772,1560794342,2866251951,1985467621,686867531,911563584]});
+}

@@ -1,0 +1,191 @@
+// Arithmetic modulo the secp256k1 group order, in eight little-endian u32
+// limbs. Fixed-loop arithmetic is an algorithm property, not target-level
+// constant-time approval. Borrowed bytes are copied into values at admission.
+#load "bytes.coax";
+#load "../../tests/nostr/scalar_fixtures.coax";
+#authority;
+ScScalar :: struct {limbs:[8]u32;}
+ScLoad :: struct {value:ScScalar;overflow:bool;ok:bool;}
+ScInverse :: struct {value:ScScalar;ok:bool;}
+ScWindow :: struct {value:u32;ok:bool;}
+ScDifference :: struct {value:ScScalar;borrow:u64;}
+SC_BASE :: cast(u64)4294967296;
+SC_WORD :: cast(u64)4294967295;
+SC_N :: ScScalar.{limbs=[8]u32.[3493216577,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]};
+SC_R2 :: ScScalar.{limbs=[8]u32.[1742197056,2305618452,243071096,1947506370,1540163526,3868718564,2177276869,2640780501]};
+SC_N_MINUS_TWO :: ScScalar.{limbs=[8]u32.[3493216575,3218235020,2940772411,3132021990,4294967294,4294967295,4294967295,4294967295]};
+SC_N0_INV :: cast(u64)1435021631;
+// A multiply-accumulate is scheduled as exactly one 32x32 product, one
+// existing limb and one carry. No sum of two full products fits this bound.
+SC_MAC_MAX :: SC_WORD*SC_WORD+SC_WORD+SC_WORD;
+#test "scalar accumulator bounds fit exact u64 arithmetic" {
+  #assert SC_MAC_MAX==18446744073709551615;
+  #assert SC_WORD+SC_WORD+1==8589934591;
+  #assert SC_BASE+SC_WORD==8589934591;
+  #assert ((cast(u64)SC_N.limbs[0]*SC_N0_INV)&SC_WORD)==SC_WORD;
+}
+#forall "small scalars use ordinary arithmetic before reduction" a:0..<4,b:0..<4 {
+  x:=sc_small(cast(u32)a);y:=sc_small(cast(u32)b);
+  #assert sc_equal(sc_add(x,y),sc_small(cast(u32)(a+b)));
+  #assert sc_equal(sc_mul(x,y),sc_small(cast(u32)(a*b)));
+  #assert sc_equal(sc_sub(sc_add(x,y),x),y);
+  #assert sc_equal(sc_add(x,sc_negate(x)),ScScalar.{});
+}
+#forall "every scalar limb can make equality and zero false" limb:0..<8 {
+  a:ScScalar;b:ScScalar;b.limbs[limb]=1;#assert !sc_equal(a,b) && !sc_is_zero(b);
+}
+#forall "one-bit windows visit every bit without secret indexing" limb:0..<8,bit:0..<32 {
+  a:ScScalar;a.limbs[limb]=cast(u32)1<<bit;
+  window:=sc_window(a,limb*32+bit,1);#assert window.ok && window.value==1;
+}
+#test "scalar admission distinguishes n and zero and preserves byte guards" {
+  bytes:[33]u8;for i:0..<33 {bytes[i]=165;}
+  #assert !sc_store(sc_small(1),bytes[0..<31]);
+  #assert !sc_store(SC_N,bytes[..]);for i:0..<33 {#assert bytes[i]==165;}
+  order:=[32]u8.[255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,186,174,220,230,175,72,160,59,191,210,94,140,208,54,65,65];
+  for i:0..<32 {bytes[i]=order[i];}#assert bytes[32]==165;
+  #assert !sc_load(bytes[..]).ok && !sc_load(bytes[0..<31]).ok;
+  invalid:=sc_load(bytes[0..<32]);#assert !invalid.ok && invalid.overflow && sc_is_zero(invalid.value);
+  reduced:=sc_reduce_bytes(bytes[0..<32]);#assert reduced.ok && reduced.overflow && sc_is_zero(reduced.value);
+  #assert sc_store(sc_small(1),bytes[..]);
+  loaded:=sc_load(bytes[0..<32]);#assert loaded.ok && !loaded.overflow && sc_equal(loaded.value,sc_small(1));
+  #assert !sc_reduce_bytes(bytes[0..<31]).ok;
+  #assert !sc_secret_valid(ScScalar.{}) && sc_secret_valid(sc_small(1)) && !sc_secret_valid(SC_N);
+  for i:0..<32 {bytes[i]=255;}
+  loaded=sc_reduce_bytes(bytes[0..<32]);#assert loaded.ok && loaded.overflow && !sc_is_zero(loaded.value);
+  invalid=sc_load(bytes[0..<32]);#assert !invalid.ok && invalid.overflow && sc_is_zero(invalid.value);
+}
+#test "scalar windows have public bounded positions including limb crossings" {
+  x:=ScScalar.{limbs=[8]u32.[0x89ABCDEF,0x01234567,0,0,0,0,0,0xF0000000]};
+  #assert sc_window(x,0,8).ok && sc_window(x,0,8).value==239;
+  #assert sc_window(x,28,8).value==120;
+  #assert sc_window(x,252,4).value==15;
+  #assert !sc_window(x,-1,4).ok && !sc_window(x,0,0).ok && !sc_window(x,0,9).ok;
+  #assert !sc_window(x,256,1).ok && !sc_window(x,255,2).ok;
+  #assert sc_equal(sc_select(0,sc_small(1),sc_small(2)),sc_small(2));
+  #assert sc_equal(sc_select(1,sc_small(1),sc_small(2)),sc_small(1));
+  #assert sc_equal(sc_select(2,sc_small(1),sc_small(2)),sc_small(2));
+}
+#test "scalar mathematical byte adapter admits metadata before changing output" {
+  a:[32]u8;b:[32]u8;out:[33]u8;for i:0..<33 {out[i]=165;}
+  #assert !sc_evaluate(-1,a[..],b[..],out[..]) && !sc_evaluate(6,a[..],b[..],out[..]);
+  #assert !sc_evaluate(0,a[0..<31],b[..],out[..]) && !sc_evaluate(0,a[..],b[0..<31],out[..]);
+  #assert !sc_evaluate(0,a[..],b[..],out[0..<31]);
+  #assert !sc_evaluate(5,a[..],b[..],out[..]);for i:0..<33 {#assert out[i]==165;}
+  #assert sc_store(sc_small(1),a[..]) && sc_store(sc_small(2),b[..]);
+  expected:=[5]u32.[1,3,0,2,0];
+  for op:0..<5 {
+    #assert sc_evaluate(op,a[..],b[..],out[..]);
+    result:=sc_load(out[0..<32]);#assert result.ok;
+    if op==2 {#assert sc_equal(result.value,sc_negate(sc_small(1)));}
+    else if op==4 {#assert sc_equal(result.value,sc_negate(sc_small(1)));}
+    else {#assert sc_equal(result.value,sc_small(expected[op]));}
+    #assert out[32]==165;
+  }
+  #assert sc_evaluate(1,a[..],b[..],a[..]) && sc_equal(sc_load(a[..]).value,sc_small(3));
+  #assert sc_evaluate(5,b[..],a[..],out[..]) && sc_equal(sc_load(out[0..<32]).value,sc_inverse(sc_small(2)).value);
+}
+sc_small :: (value:u32)->ScScalar {result:ScScalar;result.limbs[0]=value;return result;}
+sc_zero_bit :: (word:u32)->u64 {return ((cast(u64)word+SC_WORD)>>32)^1;}
+sc_is_zero :: (a:ScScalar)->bool #export_c {bits: u32;for i:0..<8 {bits=bits|a.limbs[i];}return sc_zero_bit(bits)==1;}
+sc_equal :: (a:ScScalar,b:ScScalar)->bool #export_c {bits:u32;for i:0..<8 {bits=bits|(a.limbs[i]^b.limbs[i]);}return sc_zero_bit(bits)==1;}
+sc_select :: (bit:u64,a:ScScalar,b:ScScalar)->ScScalar {
+  mask:=cast(u32)(cb_mask(bit)&SC_WORD);result:ScScalar;
+  for i:0..<8 {result.limbs[i]=cb_ct_select32(mask,a.limbs[i],b.limbs[i]);}return result;
+}
+sc_subtract_n :: (a:[9]u32)->ScDifference {
+  result:ScDifference;borrow:=cast(u64)0;
+  for i:0..<8 {
+    wide:=SC_BASE+cast(u64)a[i]-cast(u64)SC_N.limbs[i]-borrow;
+    result.value.limbs[i]=cast(u32)(wide&SC_WORD);borrow=1-(wide>>32);
+  }
+  result.borrow=1-((SC_BASE+cast(u64)a[8]-borrow)>>32);return result;
+}
+sc_reduce9 :: (a:[9]u32)->ScScalar {
+  difference:=sc_subtract_n(a);original:ScScalar;for i:0..<8 {original.limbs[i]=a[i];}
+  return sc_select(difference.borrow,original,difference.value);
+}
+sc_normalize :: (a:ScScalar)->ScScalar #export_c {wide:[9]u32;for i:0..<8 {wide[i]=a.limbs[i];}return sc_reduce9(wide);}
+sc_overflow :: (a:ScScalar)->bool #export_c {
+  wide:[9]u32;for i:0..<8 {wide[i]=a.limbs[i];}return sc_subtract_n(wide).borrow==0;
+}
+sc_secret_valid :: (a:ScScalar)->bool #export_c {return !sc_overflow(a) && !sc_is_zero(a);}
+sc_reduce_bytes :: (bytes:[]u8)->ScLoad #export_c {
+  if bytes.count!=32 {return ScLoad.{};}
+  raw:ScScalar;for i:0..<8 {raw.limbs[i]=cb_load_be32(bytes,(7-i)*4).value;}
+  return ScLoad.{value=sc_normalize(raw),overflow=sc_overflow(raw),ok=true};
+}
+sc_load :: (bytes:[]u8)->ScLoad #export_c {
+  loaded:=sc_reduce_bytes(bytes);loaded.ok=loaded.ok && !loaded.overflow;
+  invalid:=ifx loaded.overflow then cast(u64)1 else cast(u64)0;
+  loaded.value=sc_select(invalid,ScScalar.{},loaded.value);return loaded;
+}
+sc_store :: (a:ScScalar,bytes:[]u8)->bool #export_c {
+  if !cb_span(bytes.count,0,32) || sc_overflow(a) {return false;}
+  for i:0..<8 {stored:=cb_store_be32(bytes,(7-i)*4,a.limbs[i]);}return true;
+}
+sc_add :: (a:ScScalar,b:ScScalar)->ScScalar #export_c {
+  x:=sc_normalize(a);y:=sc_normalize(b);sum:[9]u32;carry:=cast(u64)0;
+  for i:0..<8 {wide:=cast(u64)x.limbs[i]+cast(u64)y.limbs[i]+carry;sum[i]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+  sum[8]=cast(u32)carry;return sc_reduce9(sum);
+}
+sc_sub :: (a:ScScalar,b:ScScalar)->ScScalar #export_c {
+  x:=sc_normalize(a);y:=sc_normalize(b);result:ScScalar;borrow:=cast(u64)0;
+  for i:0..<8 {wide:=SC_BASE+cast(u64)x.limbs[i]-cast(u64)y.limbs[i]-borrow;result.limbs[i]=cast(u32)(wide&SC_WORD);borrow=1-(wide>>32);}
+  mask:=cast(u32)(cb_mask(borrow)&SC_WORD);carry:=cast(u64)0;
+  for i:0..<8 {wide:=cast(u64)result.limbs[i]+cast(u64)(SC_N.limbs[i]&mask)+carry;result.limbs[i]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+  return result;
+}
+sc_negate :: (a:ScScalar)->ScScalar #export_c {return sc_sub(ScScalar.{},a);}
+sc_montgomery :: (a:ScScalar,b:ScScalar)->ScScalar {
+  // Inputs are canonical (<n). Schoolbook rows add one product per column;
+  // row i's final slot has not been written by previous rows.
+  t:[17]u32;
+  for i:0..<8 {
+    carry:=cast(u64)0;
+    for j:0..<8 {wide:=cast(u64)a.limbs[i]*cast(u64)b.limbs[j]+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+    t[i+8]=cast(u32)carry;
+  }
+  // REDC adds a multiple of n that clears one low word per round. Carry
+  // propagation visits all remaining public positions, even after carry=0.
+  for i:0..<8 {
+    factor:=(cast(u64)t[i]*SC_N0_INV)&SC_WORD;
+    // The first low word cancels modulo R's word base and is discarded.
+    // Seed its outgoing carry directly instead of storing an unused zero.
+    first:=factor*cast(u64)SC_N.limbs[0]+cast(u64)t[i];carry:=first>>32;
+    for j:1..<8 {wide:=factor*cast(u64)SC_N.limbs[j]+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+    for k:i+8..<17 {wide:=cast(u64)t[k]+carry;t[k]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+  }
+  // REDC(T)<2n for T<n²<nR, so exactly one masked subtraction suffices.
+  reduced:[9]u32;for i:0..<9 {reduced[i]=t[i+8];}return sc_reduce9(reduced);
+}
+sc_mul :: (a:ScScalar,b:ScScalar)->ScScalar #export_c {
+  x:=sc_normalize(a);y:=sc_normalize(b);return sc_montgomery(sc_montgomery(x,SC_R2),y);
+}
+sc_inverse :: (a:ScScalar)->ScInverse #export_c {
+  x:=sc_normalize(a);base:=sc_montgomery(x,SC_R2);one:=sc_small(1);acc:=sc_montgomery(one,SC_R2);
+  // The exponent and every loop/index are public constants. Both multiply
+  // candidates are computed; selection never indexes a table by scalar bits.
+  for round:0..<256 {
+    bit:=255-round;acc=sc_montgomery(acc,acc);product:=sc_montgomery(acc,base);
+    choose:=cast(u64)((SC_N_MINUS_TWO.limbs[bit/32]>>(bit%32))&1);acc=sc_select(choose,product,acc);
+  }
+  return ScInverse.{value=sc_montgomery(acc,one),ok=!sc_is_zero(x)};
+}
+sc_window :: (a:ScScalar,offset:int,width:int)->ScWindow #export_c {
+  if offset<0 || width<1 || width>8 || width>256-offset {return ScWindow.{};}
+  value:u32;for i:0..<width {at:=offset+i;value=value|(((a.limbs[at/32]>>(at%32))&1)<<i);}return ScWindow.{value=value,ok=true};
+}
+// Mathematical adapter: 0 normalize, 1 add, 2 subtract, 3 multiply, 4 negate,
+// 5 inverse. It accepts arbitrary 256-bit inputs and normalizes modulo n.
+// Inputs are fully copied before the sole output commit, so aliases are valid.
+sc_evaluate :: (op:int,a:[]u8,b:[]u8,out:[]u8)->bool #export_c {
+  if op<0 || op>5 || a.count!=32 || b.count!=32 || !cb_span(out.count,0,32) {return false;}
+  x:=sc_reduce_bytes(a).value;y:=sc_reduce_bytes(b).value;result:=x;
+  if op==1 {result=sc_add(x,y);}
+  else if op==2 {result=sc_sub(x,y);}
+  else if op==3 {result=sc_mul(x,y);}
+  else if op==4 {result=sc_negate(x);}
+  else if op==5 {inverse:=sc_inverse(x);if !inverse.ok {return false;}result=inverse.value;}
+  return sc_store(result,out);
+}
