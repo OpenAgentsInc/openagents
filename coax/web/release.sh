@@ -7,6 +7,13 @@
 #   release.sh --staging-only      # stop after staging's smoke
 #   release.sh --skip-staging --yes-skip-staging   # emergencies only: straight to production
 #
+# Staging's smoke is the HTTP checks (smoke.sh), then the playtest flow walked
+# in headless Chrome against its golden screenshots (goldens.ts): each page
+# must start and draw, not only answer 200. Production gets the walk too.
+# A visual change fails the goldens until approved: look at the shot it
+# printed, then `bun coax/web/goldens.ts https://staging.openagents.com
+# --update` and commit coax/web/goldens/ with the change.
+#
 # The build comes from a clean worktree of the ref, never from a working
 # directory other agents are editing. Production gets the files staging was
 # smoked with, copied bucket to bucket, so what passed is what ships. The
@@ -71,6 +78,10 @@ echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
   t=$(now); "$tree/coax/web/smoke.sh" https://staging.openagents.com; lap smoke "$t"
+  t=$(now)
+  bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ||
+    { echo "release $commit: staging's pages don't start, draw or match their goldens; production is untouched" >&2; exit 1; }
+  lap goldens "$t"
 fi
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s"; exit 0; }
 if ! $stage; then
@@ -101,7 +112,9 @@ fi
 t=$(now)
 via=""
 [[ "$(dig +short openagents.com A | sort | head -1)" == "$lb_ip" ]] || via="--via $lb_ip"
-if ! "$tree/coax/web/smoke.sh" https://openagents.com $via --coder; then
+walked=true
+[[ -n "$via" ]] || bun "$tree/coax/web/goldens.ts" https://openagents.com --walk || walked=false
+if ! $walked || ! "$tree/coax/web/smoke.sh" https://openagents.com $via --coder; then
   echo "release $commit: production smoke failed; rolling back to the pages from before" >&2
   "$here/rollback.sh" "$stamp"
   exit 1

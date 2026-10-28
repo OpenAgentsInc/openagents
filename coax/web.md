@@ -290,9 +290,9 @@ coax/web/rollback.sh [<time>]        # list kept releases, or put one back
 ```
 
 1. **Build once, from committed code.** A clean worktree of `origin/main` (or `--ref`), never a working directory other agents are editing.
-2. **Staging.** `deploy.sh` uploads to the staging bucket; `smoke.sh` checks the page, every file it names (status, type, caching, wasm magic), the hidden text, HTTP to HTTPS and the 404.
+2. **Staging.** `deploy.sh` uploads to the staging bucket; `smoke.sh` checks the page, every file it names (status, type, caching, wasm magic), the hidden text, HTTP to HTTPS and the 404. Then `goldens.ts` walks the playtest flow in headless Chrome (the landing, ENTER, the galaxy, a click on the Haunted House, the house): each page must start, report no error, draw, and match its golden screenshot in `coax/web/goldens/`. A visual change fails until approved: look at the shot it prints, run `bun coax/web/goldens.ts https://staging.openagents.com --update`, and commit the goldens with the change.
 3. **Promote the same bytes.** The staging bucket is copied into production's, files first and pages last, so a page never names a file that isn't there yet. Production's previous pages are kept under `releases/<time>/`.
-4. **Production smoke.** The same checks, plus the routes the old `coder` service still owns. A failure puts the previous pages back on its own.
+4. **Production smoke.** The same checks and the walk (`goldens.ts --walk`: starts and draws, no golden compare), plus the routes the old `coder` service still owns. A failure puts the previous pages back on its own.
 
 Skipping staging takes `--skip-staging --yes-skip-staging`, for emergencies.
 

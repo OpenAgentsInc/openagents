@@ -16,7 +16,9 @@
 # never deleted, so every kept pin keeps working. A demo's pages carry
 # data-root="/demo/NAME" (host.js keeps the app's links inside the demo) and
 # noindex. The API (/api/*) is shared with main: a pin freezes the pages, not
-# the server. A move whose smoke fails puts the pin before it back.
+# the server. The smoke checks every page and file, and walks the demo's
+# playtest flow in headless Chrome (goldens.ts --walk). A move whose smoke
+# fails puts the pin before it back.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
 bucket=openagentsgemini-openagents-web site=https://openagents.com
@@ -83,6 +85,8 @@ for p in pages:
     print(("  ok    " if ok else "  FAIL  ") + f"{root}/{p} ({s})"); failed += not ok
 sys.exit(1 if failed else 0)
 PY
+  # and the demo's playtest flow, walked in headless Chrome: each page starts and draws
+  bun "$here/goldens.ts" "$site" --walk --root "/demo/$name"
 }
 
 case "$1" in
