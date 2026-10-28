@@ -12,15 +12,22 @@
 //   coaxial_frame(state, vertices, uniforms, width, height, dpr, dt, still)
 //                             -> vertex count
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
-// vertices: two vec4f attributes per vertex), sharing one uniform buffer.
+// vertices: one vec4f attribute per four floats), sharing one uniform buffer.
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
+// A deploy names the files by their content (data-wasm, data-wgsl), so a CDN
+// can keep them for good; in development they are /build/APP.wasm and /APP.wgsl.
+const wasmUrl = (script && script.dataset.wasm) || `/build/${app}.wasm`;
+const wgslUrl = (script && script.dataset.wgsl) || `/${app}.wgsl`;
 const canvas = document.getElementById("coaxial");
 const dev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 const probe = dev && new URLSearchParams(location.search).has("probe"); // tests: read the frame back
+// ?probe&at=SECONDS: run the app's clock that far in 0.1 s steps before the
+// probed frame, so a headless browser can see a moment of the animation.
+const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) || 0 : 0;
 // Reduced motion draws the finished frame at once (probes use it too: headless browsers barely tick).
-const still = probe || matchMedia("(prefers-reduced-motion: reduce)").matches;
+const still = (probe && !probeAt) || matchMedia("(prefers-reduced-motion: reduce)").matches;
 let frames = 0;
 
 const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024 }); // 4 MiB, at most 64 MiB
@@ -104,7 +111,7 @@ function makeBuffers() {
 
 async function loadShaders() {
   const { device, format } = gpu;
-  const code = await (await fetch(`/${app}.wgsl`, { cache: dev ? "no-store" : "default" })).text();
+  const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
   const module = device.createShaderModule({ code });
   const info = await module.getCompilationInfo();
   const errors = info.messages.filter((m) => m.type === "error");
@@ -115,8 +122,9 @@ async function loadShaders() {
     device.createRenderPipelineAsync({ layout, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: [{ format }] } }),
     device.createRenderPipelineAsync({
       layout,
-      vertex: { module, entryPoint: "fx_vs", buffers: [{ arrayStride: stride, attributes: [
-        { shaderLocation: 0, offset: 0, format: "float32x4" }, { shaderLocation: 1, offset: 16, format: "float32x4" }] }] },
+      // one vec4f attribute per four floats of the app's vertex, in order
+      vertex: { module, entryPoint: "fx_vs", buffers: [{ arrayStride: stride, attributes:
+        Array.from({ length: Math.ceil(arena.floats / 4) }, (_, i) => ({ shaderLocation: i, offset: i * 16, format: "float32x4" })) }] },
       // max, not add: where strokes meet, their glow doesn't double
       fragment: { module, entryPoint: "fx_fs", targets: [{ format, blend: {
         color: { operation: "max", srcFactor: "one", dstFactor: "one" }, alpha: { operation: "max", srcFactor: "one", dstFactor: "one" } } }] },
@@ -136,6 +144,8 @@ function frame(now) {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   let n = 0;
   try {
+    for (let k = 0; probeAt && !gpu.probed && k < probeAt * 10; k++)
+      engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);
     n = engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
   } catch (e) { say(`${app} trapped: ${e.message}`, true); engine = null; return; }
   n = Math.min(n, arena.maxVertices);
@@ -199,7 +209,7 @@ function say(text, error = false) {
 }
 
 async function fetchEngine(generation) {
-  const response = await fetch(`/build/${app}.wasm`, { cache: dev ? "no-store" : "default" });
+  const response = await fetch(wasmUrl, { cache: dev ? "no-store" : "default" });
   return loadEngine(await response.arrayBuffer(), generation);
 }
 

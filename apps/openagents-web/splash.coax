@@ -3,7 +3,9 @@
 // wide band across the middle (graph.coax), and two lines drawn as glowing
 // strokes that write themselves on, letter by letter, then shimmer:
 // OPENAGENTS in the top third after a pause, COMING SOON in the bottom third
-// a little later.
+// a little later. Payments run the graph's links in Lightning orange and
+// Wavelength violet, and a few faint amounts float up from its clusters
+// (numbers.coax).
 // The host (coax/web/host.js) owns the GPU and calls this once a frame; this
 // file decides every number it draws: where each stroke goes, how much of it
 // is written, how bright it is, and the nebula's clock.
@@ -13,6 +15,7 @@
 // animation carries on from where it was.
 
 #load "graph.coax";
+#load "numbers.coax";
 
 SplashState :: struct {
   time: f32;       // seconds since the page started, as this code counts them
@@ -21,10 +24,16 @@ SplashState :: struct {
 
 LINES :: 2;          // OPENAGENTS, COMING SOON
 LINE_MAX :: 11;      // letters in the longest line
-MAX_POINTS :: 12;    // the longest glyph (S) has 12 points
+MAX_POINTS :: 16;    // the longest glyph (8) has 16 points
 MAX_SEGMENTS :: 160; // both lines' strokes, with room
-VERTEX_FLOATS :: 8;  // x, y, along, across, length, core, light, glow
-MAX_VERTICES :: 14400; // (MAX_SEGMENTS + GRAPH_QUADS) * 6
+VERTEX_FLOATS :: 12; // x, y, along, across, length, core, light, glow, red, green, blue, mode
+MAX_VERTICES :: 16320; // (MAX_SEGMENTS + GRAPH_QUADS + NUMBER_QUADS) * 6
+
+// How the shader draws a quad (the vertex's last float).
+MODE_STROKE :: 0.0;  // a sharp core and a soft glow: words, numbers, nodes
+MODE_LINK :: 1.0;    // a soft line, faded where it meets its nodes
+MODE_PULSE :: 2.0;   // a payment in flight: a hot head, a tail, a coloured glow
+MODE_GLOW_TEXT :: 3.0; // a stroke with a white core and a coloured glow: the amounts
 UNIFORM_FLOATS :: 8; // width, height, time, fade, still, 0, 0, 0
 
 CAP :: 11.0;         // COMING SOON's cap height, CSS pixels
@@ -81,6 +90,18 @@ glyph :: (c: u8, out: [] u8) -> int {
   if c == 'E' { p := [14] u8.[4,6, 0,6, 0,3, 3,3, 0,3, 0,0, 4,0]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
   if c == 'A' { p := [16] u8.[0,0, 0,5, 1,6, 3,6, 4,5, 4,0, 4,3, 0,3]; for k: 0..<16 { out[k] = p[k]; } n = 8; }
   if c == 'T' { p := [8] u8.[0,6, 4,6, 2,6, 2,0]; for k: 0..<8 { out[k] = p[k]; } n = 4; }
+  if c == '0' { p := [18] u8.[1,0, 3,0, 4,1, 4,5, 3,6, 1,6, 0,5, 0,1, 1,0]; for k: 0..<18 { out[k] = p[k]; } n = 9; }
+  if c == '1' { p := [6] u8.[1,5, 2,6, 2,0]; for k: 0..<6 { out[k] = p[k]; } n = 3; }
+  if c == '2' { p := [14] u8.[0,5, 1,6, 3,6, 4,5, 4,4, 0,0, 4,0]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
+  if c == '3' { p := [18] u8.[0,6, 4,6, 2,3, 3,3, 4,2, 4,1, 3,0, 1,0, 0,1]; for k: 0..<18 { out[k] = p[k]; } n = 9; }
+  if c == '4' { p := [8] u8.[3,0, 3,6, 0,2, 4,2]; for k: 0..<8 { out[k] = p[k]; } n = 4; }
+  if c == '5' { p := [18] u8.[4,6, 0,6, 0,3, 3,3, 4,2, 4,1, 3,0, 1,0, 0,1]; for k: 0..<18 { out[k] = p[k]; } n = 9; }
+  if c == '6' { p := [22] u8.[4,5, 3,6, 1,6, 0,5, 0,1, 1,0, 3,0, 4,1, 4,2, 3,3, 0,3]; for k: 0..<22 { out[k] = p[k]; } n = 11; }
+  if c == '7' { p := [6] u8.[0,6, 4,6, 1,0]; for k: 0..<6 { out[k] = p[k]; } n = 3; }
+  if c == '8' { p := [32] u8.[1,3, 0,4, 0,5, 1,6, 3,6, 4,5, 4,4, 3,3, 1,3, 0,2, 0,1, 1,0, 3,0, 4,1, 4,2, 3,3]; for k: 0..<32 { out[k] = p[k]; } n = 16; }
+  if c == '9' { p := [22] u8.[0,1, 1,0, 3,0, 4,1, 4,5, 3,6, 1,6, 0,5, 0,4, 1,3, 4,3]; for k: 0..<22 { out[k] = p[k]; } n = 11; }
+  if c == '+' { p := [10] u8.[0,3, 4,3, 2,3, 2,5, 2,1]; for k: 0..<10 { out[k] = p[k]; } n = 5; }
+  if c == '*' { p := [8] u8.[3,6, 0,3, 3,3, 1,0]; for k: 0..<8 { out[k] = p[k]; } n = 4; }   // a lightning bolt
   if c == 'S' { p := [24] u8.[4,5, 3,6, 1,6, 0,5, 0,4, 1,3, 3,3, 4,2, 4,1, 3,0, 1,0, 0,1]; for k: 0..<24 { out[k] = p[k]; } n = 12; }
   return n;
 }
@@ -88,6 +109,8 @@ glyph :: (c: u8, out: [] u8) -> int {
 // How wide a glyph is, in grid units (I is a single line).
 glyph_width :: (c: u8) -> f32 {
   if c == 'I' { return 0; }
+  if c == '1' { return 2; }
+  if c == '*' { return 3; }
   return 4;
 }
 
@@ -119,6 +142,12 @@ appeared :: (l: int, t: f32, still: bool) -> f32 {
 // vertex carries its place along and across the stroke, so the shader can
 // draw a sharp core and a soft glow from the distance to the centre line.
 quad :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32) -> bool {
+  return lit(out, at, ax, ay, bx, by, core, light, glow, 0.93, 0.93, 0.95, MODE_STROKE);
+}
+
+// A quad in a colour, drawn in one of the shader's modes.
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
   if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
   dx := bx - ax; dy := by - ay;
   length := sqrt(dx * dx + dy * dy);
@@ -139,6 +168,10 @@ quad :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, li
     out[o + 5] = core;
     out[o + 6] = light;
     out[o + 7] = glow;
+    out[o + 8] = red;
+    out[o + 9] = green;
+    out[o + 10] = blue;
+    out[o + 11] = mode;
   }
   return true;
 }
@@ -159,7 +192,7 @@ line_strokes :: (out: [] f32, at: int, l: int, width: f32, height: f32, dpr: f32
   x := (width - text_width(l) * cap) * 0.5;
   base := height * line_y(l) + cap * 0.5;      // y down on screen
   shown := appeared(l, t, still);
-  points: [24] u8;
+  points: [32] u8;
   segment := 0;
   vertices := at;
   count := line_count(l);
@@ -209,7 +242,8 @@ coaxial_splash_frame :: (s: [] SplashState, out: [] f32, uniforms: [] f32,
   // The graph dims under both lines so the words read over it.
   title := Hole.{cx = width * 0.5, cy = height * line_y(0), w = text_width(0) * fitted_cap(0, width / d) * d * 0.5, h = fitted_cap(0, width / d) * d * 0.5};
   soon := Hole.{cx = width * 0.5, cy = height * line_y(1), w = text_width(1) * CAP * d * 0.5, h = CAP * d * 0.5};
-  return words + graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, title, soon);
+  graph := graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, title, soon);
+  return words + graph + numbers_draw(out, words + graph, width, height, d, t, still);
 }
 
 coaxial_splash_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
@@ -217,7 +251,7 @@ coaxial_splash_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 #test "the words are centred and fit a narrow phone" {
-  out: [4608] f32;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   n := strokes(out[..], 320 * 3, 640 * 3, 3, 0, true);
   #assert n > 0 && n % 6 == 0;
   lowest := 1.0e9f32; highest := -1.0e9f32;

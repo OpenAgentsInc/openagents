@@ -36,26 +36,50 @@ fn fbm(q: vec2f) -> f32 {
   return vec4f(c * u.fade, 1.0);
 }
 
-// ---- the words: one quad per stroke, a sharp core and a soft glow
+// ---- the words, the graph and the amounts: one quad per stroke
 struct V {
   @builtin(position) pos: vec4f,
   @location(0) place: vec2f,   // along, across, pixels
   @location(1) shape: vec4f,   // length, core, light, glow
+  @location(2) tint: vec4f,    // red, green, blue, mode (splash.coax MODE_*)
 }
-@vertex fn fx_vs(@location(0) a: vec4f, @location(1) b: vec4f) -> V {
+@vertex fn fx_vs(@location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f) -> V {
   var o: V;
   let ndc = vec2f(a.x / u.size.x * 2.0 - 1.0, 1.0 - a.y / u.size.y * 2.0);
   o.pos = vec4f(ndc, 0.0, 1.0);
   o.place = a.zw;
   o.shape = b;
+  o.tint = c;
   return o;
 }
 @fragment fn fx_fs(v: V) -> @location(0) vec4f {
   let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   let d = length(vec2f(along, v.place.y));
+  let mode = v.tint.w;
+  if (mode > 1.5 && mode < 2.5) {
+    // A payment in flight, as the Payment Network demo draws one
+    // (aethyr-cpp src/paynet/render.cpp): a capsule glow-wide with a
+    // white-hot head, its tail fading back along the path.
+    let r = d / max(v.shape.w, 1.0);
+    if (r >= 1.0) { return vec4f(0.0, 0.0, 0.0, 1.0); }
+    let tail = select(1.0, mix(0.08, 1.0, clamp(v.place.x / v.shape.x, 0.0, 1.0)), v.shape.x > 1.0);
+    let g = exp(-r * r * 5.0) * (1.0 - r);
+    let hot = exp(-r * r * 36.0) * v.shape.y;
+    let c = (v.tint.rgb * g + vec3f(1.0, 0.95, 0.86) * hot) * tail * v.shape.z * u.fade;
+    return vec4f(c, 1.0);
+  }
   let core = 1.0 - smoothstep(v.shape.y - 0.5, v.shape.y + 0.6, d);
   let g = d / max(v.shape.w, 1.0);
   let halo = exp(-5.0 * g * g) * 0.28;
-  let light = (core + halo) * v.shape.z * u.fade;
-  return vec4f(vec3f(0.93, 0.93, 0.95) * light, 1.0);
+  if (mode > 0.5 && mode < 1.5) {
+    // A link: soft across, and faded within 8 px of its nodes.
+    let ends = smoothstep(0.0, 8.0, v.place.x) * smoothstep(0.0, 8.0, v.shape.x - v.place.x);
+    return vec4f(v.tint.rgb * (core * 0.8 + halo) * ends * v.shape.z * u.fade, 1.0);
+  }
+  if (mode > 2.5) {
+    // An amount: a near-white core in a coloured glow.
+    let c = (mix(v.tint.rgb, vec3f(1.0, 0.97, 0.92), 0.75) * core + v.tint.rgb * halo * 1.8) * v.shape.z * u.fade;
+    return vec4f(c, 1.0);
+  }
+  return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
 }

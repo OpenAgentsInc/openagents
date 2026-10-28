@@ -2,7 +2,10 @@
 // (metareal/home.coax), the same nodes, links, reveal times and pulses from
 // the same seed, laid on a tilted plane so it reads as a wide band across
 // the page instead of a disc. Nodes fade in and links grow out from them;
-// once a link is lit, pulses run along it and flash the node they reach.
+// once a link is lit, payments run along it both ways and flash the node
+// they reach, drawn as the Payment Network demo draws them (aethyr-cpp
+// src/paynet/light.cpp): a hot head with a tail, in Lightning orange or
+// Wavelength violet.
 //
 // Nothing here is kept between frames. The graph is rebuilt from its seed
 // each frame (a few hundred nodes, well under a millisecond) and the pulses
@@ -215,7 +218,16 @@ clear :: (k: Hole, x: f32, y: f32) -> f32 {
   return 0.3 + 0.7 * ease(dx + dy);
 }
 
+// The Payment Network's colours: Bitcoin's orange for Lightning, violet for
+// Wavelength, and the warm white a node flashes when a payment lands.
+GOLD_R :: 1.0;   GOLD_G :: 0.55;   GOLD_B :: 0.12;
+VIOLET_R :: 0.62; VIOLET_G :: 0.42; VIOLET_B :: 1.0;
+WARM_R :: 1.0;   WARM_G :: 0.78;   WARM_B :: 0.45;
+
 dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32) -> bool {
+  return tinted_dot(out, at, x, y, radius, light, glow, 0.93, 0.93, 0.95);
+}
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
   if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
   r := radius + glow;
   a := [6] f32.[-r, r, r, -r, r, -r];
@@ -225,6 +237,7 @@ dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32
     out[o] = x + a[v]; out[o + 1] = y + c[v];
     out[o + 2] = a[v]; out[o + 3] = c[v];
     out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
   }
   return true;
 }
@@ -250,9 +263,10 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
     nodes[i].sy = 0.5 * height - cy * 0.5 * band - (gx * sin(angle) + gy * cos(angle)) * r * FLATTEN;
   }
   vertices := at;
-  // Pulses: link i's j-th leaves at a time set by its rate and a hash, so
-  // none are stored. Each is a short bright dash and a point; arriving, it
-  // flashes its node.
+  // Payments: link i's j-th leaves at a time set by its rate and a hash, so
+  // none are stored. About half run the link backwards, so light goes back
+  // and forth; most are Lightning orange, some Wavelength violet. Each is
+  // one capsule from its tail to a hot head; arriving, it flashes its node.
   pulses := 0;
   if !still {
     for i: 0..<m {
@@ -269,20 +283,28 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
         progress := (t - leaves) / travel;
         if progress < 0 { continue; }
         bright := 0.6 + 0.4 * hash(j, i + 7);
+        back_and_forth := hash(j, i + 3) < 0.5;
         if progress >= 1 {
           since := t - (leaves + travel);
-          b := links[i].b;
+          b := ifx back_and_forth then links[i].a else links[i].b;
           nodes[b].flash = lo(1, nodes[b].flash + 0.7 * bright * exp(-since * 3.5));
           continue;
         }
         if pulses >= PULSE_CAP { continue; }
-        a := links[i].a; b := links[i].b;
+        a := ifx back_and_forth then links[i].b else links[i].a;
+        b := ifx back_and_forth then links[i].a else links[i].b;
         ax := nodes[a].sx; ay := nodes[a].sy;
         dx := nodes[b].sx - ax; dy := nodes[b].sy - ay;
-        tail := hi(0, progress - 0.12);
+        // a tail of a sixth of the link, at most 70 points, so long links don't streak
+        span := sqrt(dx * dx + dy * dy);
+        tail := hi(0, progress - lo(0.16, 70 * scale * dpr / hi(span, 1)));
         light := bright * ease(progress / 0.15) * (1 - ease((progress - 0.85) / 0.15)) * GRAPH_LIGHT * clear(hole, ax + dx * progress, ay + dy * progress) * clear(hole2, ax + dx * progress, ay + dy * progress);
-        if quad(out, vertices, ax + dx * tail, ay + dy * tail, ax + dx * progress, ay + dy * progress, 0.6 * scale * dpr, light * 0.8, 2.5 * scale * dpr) { vertices += 6; }
-        if dot(out, vertices, ax + dx * progress, ay + dy * progress, 1.6 * scale * dpr, light, 5 * scale * dpr) { vertices += 6; }
+        violet := hash(i, j + 11) < 0.3;
+        red := GOLD_R * 1.0f32; green := GOLD_G * 1.0f32; blue := GOLD_B * 1.0f32;
+        if violet { red = VIOLET_R; green = VIOLET_G; blue = VIOLET_B; }
+        // core is how hot the head burns; glow is the capsule's radius
+        if lit(out, vertices, ax + dx * tail, ay + dy * tail, ax + dx * progress, ay + dy * progress,
+               0.9, light * 1.5, 3.2 * scale * dpr, red, green, blue, MODE_PULSE) { vertices += 6; }
         pulses += 1;
       }
     }
@@ -295,7 +317,8 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
     ax := nodes[a].sx; ay := nodes[a].sy;
     bx := ax + (nodes[b].sx - ax) * f; by := ay + (nodes[b].sy - ay) * f;
     light := links[i].intensity * f * GRAPH_LIGHT * 1.6 * clear(hole, (ax + bx) * 0.5, (ay + by) * 0.5) * clear(hole2, (ax + bx) * 0.5, (ay + by) * 0.5);
-    if quad(out, vertices, ax, ay, bx, by, 0.35 * scale * dpr, light, 1.5 * scale * dpr) { vertices += 6; }
+    // thin and soft, faded at its nodes so their light stays clear
+    if lit(out, vertices, ax, ay, bx, by, 0.3 * scale * dpr, light * 0.75, 1.4 * scale * dpr, 0.86, 0.86, 0.92, MODE_LINK) { vertices += 6; }
   }
   // Nodes fade in over 0.7 s: crisp discs with a halo, or soft points.
   for i: 0..<n {
@@ -306,7 +329,10 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
     size := nodes[i].px * scale * dpr;
     light := (nodes[i].bright + nodes[i].flash * 1.8) * f * GRAPH_LIGHT * clear(hole, nodes[i].sx, nodes[i].sy) * clear(hole2, nodes[i].sx, nodes[i].sy);
     core := size * (0.06 + 0.12 * nodes[i].crisp);
-    if dot(out, vertices, nodes[i].sx, nodes[i].sy, core, light, size * 0.9) { vertices += 6; }
+    // a landing payment warms the node, as in the Payment Network
+    w := lo(nodes[i].flash, 1);
+    if tinted_dot(out, vertices, nodes[i].sx, nodes[i].sy, core, light, size * 0.9,
+                  0.93 + (WARM_R - 0.93) * w, 0.93 + (WARM_G - 0.93) * w, 0.95 + (WARM_B - 0.95) * w) { vertices += 6; }
   }
   return vertices - at;
 }
