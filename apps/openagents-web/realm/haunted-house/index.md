@@ -22,13 +22,17 @@ Eight steps, one at a time, each at an orange orb (the HUD names the step, and a
 
 A question you ask goes to our server, where Google's Gemini answers as the character: from who they are, what players taught them and the last ten lines of the conversation (`POST /api/playtest/npc/ask`). When the server can't answer (an error, the day's answers used up, or nothing back in 12 seconds), the character answers from their own lines. What you teach a character is added to what they know in this house and kept with your save.
 
+## A player's own world
+
+A link with a world's id after `#` (`/realm/haunted-house#planet-…`) opens that player's world: what its owner last published (`GET /api/playtest/world/<id>`) over the house. Its owner's edits are published when they leave edit mode or reach the quest's save step; anyone else's are offered to the owner instead (`POST /api/playtest/change/<id>`). The owner sees the newest offer waiting, with who made it, and presses ACCEPT (the world is published with it) or DECLINE (nothing changes); `GET /api/playtest/log/<id>` lists every publish and offer. Nothing is paid. `coax/web/api/realm-flow.ts` plays this in headless Chrome.
+
 ## On the screen
 
 The room you're in, the quest's progress and its step, the house's notices as haunts go off, who or what is near, a conversation, the map and the hotbar. Everything is drawn by Coax in the house's own plain look: each panel and button a dark wood plate with one thin bronze line, its words parchment, in the Filament stroke font.
 
 ## What the iOS app has that the web doesn't yet
 
-Editing characters and moving zones, publishing to a server (Save keeps the house in this browser, and the survey answer stays there until the playtest server takes it), importing and switching worlds, realms of your own, and the bloom over bright lights.
+Editing characters and moving zones, importing and switching worlds, and the bloom over bright lights. The Haunted House itself keeps your changes in this browser (and on the server once you join with an email); a player's own world is published to the server.
 
 ## Needs
 

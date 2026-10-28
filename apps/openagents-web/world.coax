@@ -1,0 +1,252 @@
+// A player's world on a realm page (pt-change-offers): the page's hash names
+// it, /api/playtest/world/<id> is what its owner published (a house save,
+// {"kind": "verse.haunt.save", "at", "bytes"}), its owner publishes edits
+// and everyone else offers them (/api/playtest/change/<id>), and the owner
+// accepts or declines the offers waiting in its log (/api/playtest/log/<id>).
+
+#load "save.coax";
+
+WORLD_HOUSE :: "haunted-house";
+WORLD_GET :: 0; WORLD_OWNER :: 1; WORLD_LOG :: 2; WORLD_CHANGE :: 3; WORLD_ACCEPT :: 4; WORLD_DECLINE :: 5;
+
+WorldOffers :: struct {
+  count: int;
+  id_at: int; id_n: int;
+  who_at: int; who_n: int;
+  summary_at: int; summary_n: int;
+}
+
+world_id_ok :: (s: string) -> bool #export_c {
+  if s.count < 1 || s.count > 64 { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    ok := (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 45 || c == 95;
+    if !ok { return false; }
+  }
+  return true;
+}
+
+world_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for k: 0..<s.count { out[at + k] = s[k]; }
+  return at + s.count;
+}
+
+world_url :: (world: string, what: int, offer: string, out: [] u8) -> int #export_c {
+  if !world_id_ok(world) { return -1; }
+  o := world_put(out, 0, ifx what == WORLD_LOG then "/api/playtest/log/" else ifx what >= WORLD_CHANGE then "/api/playtest/change/" else "/api/playtest/world/");
+  o = world_put(out, o, world);
+  if what == WORLD_OWNER { o = world_put(out, o, "/owner"); }
+  if what == WORLD_ACCEPT || what == WORLD_DECLINE {
+    if !world_id_ok(offer) { return -1; }
+    o = world_put(out, o, "/");
+    o = world_put(out, o, offer);
+    o = world_put(out, o, ifx what == WORLD_ACCEPT then "/accept" else "/decline");
+  }
+  return o;
+}
+
+world_space :: (t: string, i: int) -> int {
+  j := i;
+  while j < t.count && (t[j] == 32 || t[j] == 10 || t[j] == 13 || t[j] == 9) { j += 1; }
+  return j;
+}
+
+world_string_end :: (t: string, i: int) -> int {
+  j := i + 1;
+  while j < t.count {
+    if t[j] == 92 { j += 2; continue; }
+    if t[j] == 34 { return j + 1; }
+    j += 1;
+  }
+  return -1;
+}
+
+world_value_end :: (t: string, i: int) -> int {
+  if i >= t.count { return -1; }
+  if t[i] == 34 { return world_string_end(t, i); }
+  if t[i] != 123 && t[i] != 91 {
+    j := i;
+    while j < t.count && t[j] != 44 && t[j] != 125 && t[j] != 93 { j += 1; }
+    return j;
+  }
+  depth := 0; j := i;
+  while j < t.count {
+    c := t[j];
+    if c == 34 { j = world_string_end(t, j); if j < 0 { return -1; } continue; }
+    if c == 123 || c == 91 { depth += 1; }
+    if c == 125 || c == 93 { depth -= 1; if depth == 0 { return j + 1; } }
+    j += 1;
+  }
+  return -1;
+}
+
+// The value of key in the object at t[obj] ('{'): where it starts and its
+// length, a string's without its quotes; at -1 when it isn't there.
+world_field :: (t: string, obj: int, key: string, at: [] int) -> int {
+  at[0] = -1;
+  if obj >= t.count || t[obj] != 123 { return 0; }
+  i := world_space(t, obj + 1);
+  while i < t.count && t[i] == 34 {
+    ke := world_string_end(t, i);
+    if ke < 0 { return 0; }
+    name := t[i + 1..<ke - 1];
+    v := world_space(t, ke);
+    if v >= t.count || t[v] != 58 { return 0; }
+    v = world_space(t, v + 1);
+    ve := world_value_end(t, v);
+    if ve < 0 { return 0; }
+    if name == key {
+      if t[v] == 34 { at[0] = v + 1; return ve - v - 2; }
+      at[0] = v; return ve - v;
+    }
+    i = world_space(t, ve);
+    if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+  }
+  return 0;
+}
+
+// The offers waiting in a log answer ("STATUS\n" and the list, newest
+// first): how many, and the newest one's id, who offered it and what it does.
+world_offers :: (answer: string) -> WorldOffers #export_c {
+  w: WorldOffers;
+  if answer.count < 5 || answer[0..<4] != "200\n" { return w; }
+  i := world_space(answer, 4);
+  if i >= answer.count || answer[i] != 91 { return w; }
+  i = world_space(answer, i + 1);
+  at: [1] int;
+  while i < answer.count && answer[i] == 123 {
+    e := world_value_end(answer, i);
+    if e < 0 { return w; }
+    sn := world_field(answer, i, "state", at[..]);
+    if at[0] >= 0 && answer[at[0]..<at[0] + sn] == "waiting" {
+      idn := world_field(answer, i, "id", at[..]);
+      id_at := at[0];
+      if id_at >= 0 && world_id_ok(answer[id_at..<id_at + idn]) {
+        if w.count == 0 {
+          w.id_at = id_at; w.id_n = idn;
+          w.who_n = world_field(answer, i, "who", at[..]); w.who_at = at[0];
+          w.summary_n = world_field(answer, i, "summary", at[..]); w.summary_at = at[0];
+        }
+        w.count += 1;
+      }
+    }
+    i = world_space(answer, e);
+    if i < answer.count && answer[i] == 44 { i = world_space(answer, i + 1); }
+  }
+  return w;
+}
+
+// The owner's answer: whether this player may act as the world's owner.
+world_you :: (answer: string) -> bool #export_c {
+  if answer.count < 5 || answer[0..<4] != "200\n" { return false; }
+  t := answer[4..<answer.count];
+  at: [1] int;
+  n := world_field(t, world_space(t, 0), "you", at[..]);
+  return at[0] >= 0 && t[at[0]..<at[0] + n] == "true";
+}
+
+// A JSON string's text for the HUD: \" \\ \/ and \n as themselves, other
+// escapes dropped.
+world_unescape :: (s: string, out: [] u8) -> int #export_c {
+  o := 0; i := 0;
+  while i < s.count && o < out.count {
+    c := s[i];
+    if c == 92 && i + 1 < s.count {
+      e := s[i + 1];
+      if e == 34 || e == 92 || e == 47 { out[o] = e; o += 1; }
+      if e == 110 { out[o] = 32; o += 1; }
+      i += ifx e == 117 then 6 else 2;
+      continue;
+    }
+    out[o] = c; o += 1; i += 1;
+  }
+  return o;
+}
+
+// The published world as a save: slots like the server's progress save.
+world_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
+  s: SaveSlots;
+  if answer.count < 4 || answer[0..<4] != "200\n" { return s; }
+  body := answer[4..<answer.count];
+  t: [1] f64;
+  s.cur_n = save_server_part(body, "\"doc\": ", bytes, 0, t[..]);
+  if s.cur_n == 0 { s.cur_n = save_server_part(body, "\"doc\":", bytes, 0, t[..]); }
+  s.cur_at = t[0];
+  return s;
+}
+
+// The body that publishes the house (container c, n bytes, made at) or
+// offers it as a change: {"doc", "summary"} and, for an offer, the delta.
+world_body :: (c: [] u8, n: int, at: f64, summary: string, offer: bool, out: [] u8) -> int #export_c {
+  o := world_put(out, 0, "{\"doc\":{\"kind\":\"verse.haunt.save\",\"bytes\":\"");
+  if o < 0 { return -1; }
+  o = save_b64(c, n, out, o);
+  o = world_put(out, o, "\",\"at\":");
+  if o < 0 || o + 26 > out.count { return -1; }
+  o = save_put_number(out, o, at);
+  if o < 0 { return -1; }
+  o -= 1;
+  o = world_put(out, o, "},\"summary\":\"");
+  for i: 0..<summary.count {
+    if o < 0 || o + 2 > out.count { return -1; }
+    ch := summary[i];
+    if ch == 34 || ch == 92 { out[o] = 92; o += 1; }
+    out[o] = ifx ch < 32 then 32 else ch; o += 1;
+  }
+  o = world_put(out, o, "\"");
+  if offer { o = world_put(out, o, ",\"delta\":{\"changed\":[{\"list\":\"house\",\"item\":{\"id\":\"house\"}}]}"); }
+  return world_put(out, o, "}");
+}
+
+#test "a world's urls, and ids that are not ones" {
+  b: [128] u8;
+  n := world_url("w-0123abcd", WORLD_OWNER, "", b[..]);
+  #assert cast(string) b[0..<n] == "/api/playtest/world/w-0123abcd/owner";
+  n = world_url("w-1", WORLD_ACCEPT, "86db41f422cc", b[..]);
+  #assert cast(string) b[0..<n] == "/api/playtest/change/w-1/86db41f422cc/accept";
+  n = world_url("w-1", WORLD_LOG, "", b[..]);
+  #assert cast(string) b[0..<n] == "/api/playtest/log/w-1";
+  #assert world_url("a.b", WORLD_GET, "", b[..]) == -1 && world_url("w-1", WORLD_DECLINE, "x/y", b[..]) == -1;
+  #assert !world_id_ok("") && world_id_ok(WORLD_HOUSE);
+}
+
+#test "the newest waiting offer out of the log, past nested deltas and decided ones" {
+  given := "200\n[{\"at\": 3, \"id\": \"aaaaaaaaaaaa\", \"who\": \"Ann\", \"state\": \"declined\", \"summary\": \"no\"}, {\"at\": 2, \"by\": {\"player\": \"p-1\", \"account\": null}, \"id\": \"86db41f422cc\", \"who\": \"Bo \\\"B\\\"\", \"delta\": {\"added\": [{\"item\": {\"id\": \"x\", \"name\": \"a}b\"}}]}, \"state\": \"waiting\", \"summary\": \"Added Chest.\"}, {\"at\": 1, \"id\": \"bbbbbbbbbbbb\", \"state\": \"waiting\", \"who\": \"Cy\", \"summary\": \"\"}, {\"at\": 0, \"who\": \"kiki\", \"state\": \"published\", \"version\": 1}]";
+  w := world_offers(given);
+  #assert w.count == 2;
+  #assert given[w.id_at..<w.id_at + w.id_n] == "86db41f422cc" && given[w.summary_at..<w.summary_at + w.summary_n] == "Added Chest.";
+  name: [32] u8;
+  nn := world_unescape(given[w.who_at..<w.who_at + w.who_n], name[..]);
+  #assert cast(string) name[0..<nn] == "Bo \"B\"";
+  #assert world_offers("200\n[]").count == 0 && world_offers("404\n{\"error\":\"x\"}").count == 0;
+  #assert world_you("200\n{\"you\": true, \"open\": false}") && !world_you("200\n{\"you\": false}") && !world_you("500\nx");
+}
+
+#test "the house published and offered, and opened again from the server" {
+  p: [8] u8; c: [64] u8;
+  p[0] = 7; p[1] = 8; p[2] = 9;
+  cn := save_pack(WORLD_HOUSE, 1, p[..], 3, c[..]);
+  body: [512] u8;
+  bn := world_body(c[..], cn, 1793222723475, "Placed a \"Ghost\"", true, body[..]);
+  text := cast(string) body[0..<bn];
+  #assert text[0..<43] == "{\"doc\":{\"kind\":\"verse.haunt.save\",\"bytes\":\"";
+  #assert save_find(text, 0, "\"at\":1793222723475},\"summary\":\"Placed a \\\"Ghost\\\"\",\"delta\":{\"changed\":[") > 0 && text[bn - 5..<bn] == "}}]}}";
+  pub := world_body(c[..], cn, 5, "x", false, body[..]);
+  #assert save_find(cast(string) body[0..<pub], 0, "delta") < 0 && body[pub - 1] == 125;
+  b64 := save_find(text, 0, "\"bytes\":\"");
+  e := b64;
+  while text[e] != 34 { e += 1; }
+  answer: [512] u8; an := 0;
+  pre := "200\n{\"doc\": {\"at\": 1793222723475, \"kind\": \"verse.haunt.save\", \"bytes\": \"";
+  for k: 0..<pre.count { answer[an] = pre[k]; an += 1; }
+  for k: b64..<e { answer[an] = text[k]; an += 1; }
+  post := "\"}, \"version\": 2, \"publishedBy\": \"Bo\"}";
+  for k: 0..<post.count { answer[an] = post[k]; an += 1; }
+  bytes: [128] u8;
+  s := world_from_server(cast(string) answer[0..<an], bytes[..]);
+  #assert s.cur_n == cn && s.cur_at == 1793222723475;
+  k := save_pick(bytes[..], s, WORLD_HOUSE, 1, 1);
+  #assert k.which == 1 && bytes[k.at + 2] == 9;
+  #assert world_from_server("200\n{\"doc\": null, \"version\": 0}", bytes[..]).cur_n == 0;
+}

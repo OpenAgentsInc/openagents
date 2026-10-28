@@ -19,6 +19,7 @@
 #load "ui.coax";
 #load "analytics.coax";
 #load "save.coax";
+#load "world.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -120,6 +121,8 @@ RealmView :: struct {
   move_on: bool; ox: f32; oy: f32; pad_x: f32; pad_y: f32;
   // the map (verse_haunt_map, in the map box's pixels): x, y, width, height, kind
   map_n: int; map: [MAP_MAX * 5] f32;
+  // a player's world: the changes offered to its owner (world.coax), the newest's who and what
+  offers: int; offer_who: string; offer_what: string;
 }
 
 // ---- the controls and the HUD
@@ -141,6 +144,8 @@ ASK_EDIT :: 128;       // into or out of edit mode
 ASK_PLACE :: 256;      // place edit mode's item `slot` in front of you
 ASK_PICK :: 512;       // pick what's under (pick_x, pick_y)
 ASK_OP :: 1024;        // an edit, `op` (OP_*)
+ASK_ACCEPT :: 2048;    // the owner keeps the newest offered change
+ASK_DECLINE :: 4096;   // or turns it down
 
 // Edits (ASK_OP): to the picked thing, to the nearest zone, and undo.
 OP_LEFT :: 0; OP_RIGHT :: 1; OP_AWAY :: 2; OP_NEAR :: 3; OP_TURN :: 4; OP_BIGGER :: 5; OP_SMALLER :: 6; OP_DELETE :: 7;
@@ -156,7 +161,8 @@ BTN_ITEM :: 11;                        // then one per item
 BTN_OP :: BTN_ITEM + ITEMS;            // then the row for the picked thing or the zone: OPS of them
 OPS :: 8;
 BTN_ASK :: BTN_OP + OPS; BTN_TEACH :: BTN_ASK + 1;   // the conversation's ASK and TEACH
-BUTTONS :: BTN_TEACH + 1;
+BTN_ACCEPT :: BTN_TEACH + 1; BTN_DECLINE :: BTN_TEACH + 2;   // an offered change
+BUTTONS :: BTN_DECLINE + 1;
 
 HELP_TIME :: 9.0;      // seconds the controls stay written after you first move
 
@@ -179,7 +185,7 @@ Realm :: struct {
   op: int;              // the edit ASK_OP does
   pick_x: f32; pick_y: f32;              // where ASK_PICK picks, device pixels
   down_x: f32; down_y: f32; down_id: int; down_at: f32;   // a press that may be a click or tap
-  outbox: [64] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL
+  outbox: [160] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL
   hover: int;           // the button the mouse is over (-1 none)
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;   // this frame's plates
 }
@@ -263,6 +269,8 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_CANCEL { r[0].typing = false; }
   if b == BTN_ASK && v.talking.count > 0 { realm_open_text(r, TYPE_ASK); }
   if b == BTN_TEACH && v.talking.count > 0 { realm_open_text(r, TYPE_TEACH); }
+  if b == BTN_ACCEPT && v.offers > 0 { r[0].asks |= ASK_ACCEPT; }
+  if b == BTN_DECLINE && v.offers > 0 { r[0].asks |= ASK_DECLINE; }
   if b >= BTN_ITEM && b < BTN_ITEM + v.item_n { r[0].slot = b - BTN_ITEM; r[0].asks |= ASK_PLACE; }
   if b == BTN_UNDO { edit_op(r, OP_UNDO); }
   if b == BTN_REDO { edit_op(r, OP_REDO); }
@@ -595,6 +603,36 @@ op_box :: (r: [] Realm, i: int) -> Box {
   return Box.{x0 = x0, y0 = bottom - h, x1 = x0 + w, y1 = bottom};
 }
 
+// A change offered to your world: who, what it does, ACCEPT and DECLINE.
+offer_box :: (r: [] Realm) -> Box {
+  k := r[0].dpr; m := gutter(r);
+  w := lo(340 * k, r[0].width - 2 * m - 8 * k);
+  if phone(r) { y0 := top_bottom(r) + 70 * k; return Box.{x0 = m + 4 * k, y0 = y0, x1 = m + 4 * k + w, y1 = y0 + 118 * k}; }
+  x1 := r[0].width - m - 4 * k;
+  return Box.{x0 = x1 - w, y0 = m + 4 * k, x1 = x1, y1 = m + 4 * k + 118 * k};
+}
+draw_offer :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
+  k := r[0].dpr; b := offer_box(r);
+  plate(r, b, 0.92, LOOK_PLAIN);
+  x := b.x0 + 16 * k;
+  title: [64] u8;
+  tn := put(title[..], 0, "A CHANGE IS OFFERED");
+  if v.offers > 1 { tn = put(title[..], tn, " · "); tn = put_int(title[..], tn, v.offers); tn = put(title[..], tn, " WAITING"); }
+  vertices := draw_fit(k, out, at, cast(string) title[0..<tn], x, b.y0 + 24 * k, 9 * k, GAP, SPACE, orange(k, 0.95), b.x1 - x - 16 * k);
+  line: [400] u8;
+  ln := put(line[..], 0, ifx v.offer_who.count > 0 then v.offer_who else "Someone");
+  ln = put(line[..], ln, ": ");
+  ln = put(line[..], ln, ifx v.offer_what.count > 0 then v.offer_what else "a change to your world");
+  used: [1] f32;
+  vertices = draw_wrapped(k, out, vertices, cast(string) line[0..<ln], x, b.y0 + 46 * k, 8 * k, GAP, SPACE, white(k, 0.9),
+                          b.x1 - x - 16 * k, 16 * k, false, true, used[..]);
+  bw := (b.x1 - b.x0 - 44 * k) * 0.5; bh := 30 * k; y1 := b.y1 - 12 * k;
+  yes := Box.{x0 = x, y0 = y1 - bh, x1 = x + bw, y1 = y1};
+  no := Box.{x0 = yes.x1 + 12 * k, y0 = y1 - bh, x1 = yes.x1 + 12 * k + bw, y1 = y1};
+  vertices = hud_button(r, out, vertices, BTN_ACCEPT, yes, "ACCEPT", "", true);
+  return hud_button(r, out, vertices, BTN_DECLINE, no, "DECLINE", "", false);
+}
+
 // The survey box, where the conversation goes.
 ask_box :: (r: [] Realm) -> Box { return talk_box(r); }
 
@@ -857,6 +895,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   // the map before edit mode's rows, so their plates lie over it
   if r[0].map { vertices = draw_map(r, v, out, vertices, uniforms); }
   if v.editing { vertices = draw_edit(r, v, out, vertices); }
+  else if v.offers > 0 && !r[0].map { vertices = draw_offer(r, v, out, vertices); }
   if r[0].typing { vertices = draw_ask(r, v, out, vertices, uniforms); }
   else if v.talking.count > 0 { vertices = draw_talk(r, v, out, vertices, uniforms); }
   else if use_label(v).count > 0 {
@@ -1160,6 +1199,7 @@ realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
   if b == BTN_SEND { return "send"; } if b == BTN_CANCEL { return "cancel"; } if b == BTN_EDIT { return "edit"; }
   if b == BTN_UNDO { return "undo"; } if b == BTN_REDO { return "redo"; }
   if b == BTN_ASK { return "ask"; } if b == BTN_TEACH { return "teach"; }
+  if b == BTN_ACCEPT { return "accept"; } if b == BTN_DECLINE { return "decline"; }
   if b >= BTN_OP { return "edit-op"; }
   if b >= BTN_ITEM { return "item"; }
   return "";
@@ -1519,4 +1559,24 @@ plated :: (u: [] f32, b: Box) -> f32 {
   body = cast(string) t[0].buf[0..<t[0].buf_n];
   #assert text_has(body, "\"ev\":\"place\"") && text_has(body, "{\"step\":3,\"n\":8}") && text_has(body, "\"ev\":\"edit-open\"");
   #assert text_has(body, "{\"camera\":1}") && text_has(body, "\"text\":\"It was spooky\",\"consent\":true");
+}
+
+#test "an offered change shows its owner who and what, and ACCEPT and DECLINE ask for them" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) > 0;
+  #assert !r[0].shown[BTN_ACCEPT] && !r[0].shown[BTN_DECLINE];
+  v.offers = 2; v.offer_who = "Bo"; v.offer_what = "Changed the house";
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) > 0;
+  #assert r[0].shown[BTN_ACCEPT] && r[0].shown[BTN_DECLINE];
+  for which: 0..<2 {
+    b := r[0].boxes[ifx which == 0 then BTN_ACCEPT else BTN_DECLINE];
+    #assert realm_button_label(r[..], b.x0 + 4, b.y0 + 4) == (ifx which == 0 then "accept" else "decline");
+    #assert realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_DOWN, 0, 1);
+    #assert realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_UP, 0, 1);
+    #assert realm_take(r[..]) == (ifx which == 0 then ASK_ACCEPT else ASK_DECLINE);
+  }
+  v.editing = true;
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) > 0;
+  #assert !r[0].shown[BTN_ACCEPT];
 }

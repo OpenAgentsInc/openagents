@@ -135,6 +135,11 @@ static coax_t_RealmSeen seen;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 #define LINK "https://openagents.com/realm/haunted-house"
 
+static bool world_holds(void);
+static coax_string world_name(void);
+static bool world_send(void);
+static void world_edited(void);
+
 static coax_v_t_Realm realm_of(void) { return (coax_v_t_Realm){&realm, 1}; }
 static coax_t_HauntPoint point(coax_t_Vec3 v) { return (coax_t_HauntPoint){v.x, v.y, v.z}; }
 static coax_string text(const char *t) { return (coax_string){t, (int64_t)strlen(t)}; }
@@ -212,6 +217,7 @@ static bool server_waiting;
 static void apply_server(void) {
   if (!server_waiting || !opened) return;
   server_waiting = false;
+  if (world_holds()) return;
   coax_t_SavePick k = save_pick((coax_v_u8){server_bytes, sizeof server_bytes}, server_slots, text(SAVE_WORLD), SAVE_SCHEMA, 1);
   if (k.which == 0 || k.time <= loaded_at) return;
   bool fell_back = false; double time = 0;
@@ -230,7 +236,7 @@ static void take_server(uint32_t length) {
 // record for the host's action 4, and the container to the server for a
 // player with an email.
 static void keep(bool at_once) {
-  if (!house.dirty || realm.action || (!at_once && now - kept_at < 1.5)) return;
+  if (world_holds() || !house.dirty || realm.action || (!at_once && now - kept_at < 1.5)) return;
   int64_t n = verse_haunt_save(house, (coax_v_u8){saved, sizeof saved}, (coax_v_u8){scratch, sizeof scratch});
   if (n <= 0) return;
   int64_t cn = save_pack(text(SAVE_WORLD), SAVE_SCHEMA, (coax_v_u8){saved, n}, n, (coax_v_u8){container, sizeof container});
@@ -280,7 +286,7 @@ static void open_house(void) {
   for (int64_t i = 0; i < house.mesh_count; i++)
     if (!verse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
   rebuild_walls();
-  if (kept_n) restore_kept();
+  if (kept_n && !world_holds()) restore_kept();
   for (int i = 0; i < 5; i++) item_mesh[i] = verse_haunt_mesh(house, text(items[i].mesh));
   player = verse_player_place(7, 0, 2, 0);
   player.phi = 1.5707963f;
@@ -346,7 +352,7 @@ static void set_editing(bool on) {
   if (on == house.editing) return;
   house = verse_haunt_edit_mode(house, on);
   if (on) { edit_camera = house.camera; house.camera = 1; player.phi = 1.107f; }
-  else { house.camera = edit_camera; player.phi = house.camera == 0 ? 1.5707963f : 1.107f; house.selected = -1; }
+  else { house.camera = edit_camera; player.phi = house.camera == 0 ? 1.5707963f : 1.107f; house.selected = -1; world_edited(); }
 }
 
 // Picks what's under (x, y) on the screen, in edit mode.
@@ -419,6 +425,12 @@ static void edit_op(int64_t op) {
 static void copy_link(void) {
   memcpy(realm.outbox.e, LINK, sizeof LINK - 1);
   realm.out_n = sizeof LINK - 1;
+  coax_string w = world_name();
+  if (world_holds() && realm.out_n + 1 + w.count <= (int64_t)sizeof realm.outbox.e) {
+    realm.outbox.e[realm.out_n++] = '#';
+    memcpy(realm.outbox.e + realm.out_n, w.data, (size_t)w.count);
+    realm.out_n += w.count;
+  }
   realm.action = 2;
 }
 
@@ -441,7 +453,10 @@ static void do_goal(void) {
   switch (house.quest) {
   case 1: set_editing(true); break;
   case 2: remember(); place(0, "orb"); break;
-  case 3: house = verse_haunt_quest(house, text("publish")); keep(true); toast(has_account ? "Saved, here and on the server" : "Saved in this browser"); break;
+  case 3:
+    house = verse_haunt_quest(house, text("publish"));
+    if (world_holds()) { house.dirty = false; world_send(); break; }
+    keep(true); toast(has_account ? "Saved, here and on the server" : "Saved in this browser"); break;
   case 4: copy_link(); house = verse_haunt_quest(house, text("share")); toast("Link copied"); break;
   case 5: house = verse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
   case 6: copy_link(); house = verse_haunt_quest(house, text("invite")); toast("Invite link copied"); break;
@@ -581,6 +596,8 @@ static void send_typed(void) {
   else ask_npc(typed);
 }
 
+#include "realm-world.c"
+
 static void take_asks(void) {
   if (!opened) return;
   int64_t asks = realm_take(realm_of());
@@ -590,6 +607,8 @@ static void take_asks(void) {
   if ((asks & 256) && house.editing) { remember(); place(realm.slot, "hotbar"); }
   if ((asks & 512) && house.editing) pick(realm.pick_x, realm.pick_y);
   if ((asks & 1024) && house.editing) edit_op(realm.op);
+  if (asks & 2048) world_decide(true);
+  if (asks & 4096) world_decide(false);
   if (asks & 1) use_nearby();
   if (asks & 2) { house = verse_haunt_view(house); player.phi = house.camera == 0 ? 1.5707963f : 1.107f; }
   if ((asks & 4) && house.talking >= 0) {
@@ -639,6 +658,7 @@ static void step(float dt) {
   npc_waited();
   // A step of the quest is kept at once; other changes at most every 1.5 s.
   static int64_t quest_kept = -1;
+  world_frame();
   keep(house.quest != quest_kept);
   if (!house.dirty) quest_kept = house.quest;
   queue_sounds();
@@ -677,6 +697,7 @@ static void describe(void) {
     v.talking = house.talking >= 0 ? people[house.talking].name : (coax_string){"", 0};
     v.reply = house.reply;
     v.move_on = sticks.move_on; v.ox = sticks.ox; v.oy = sticks.oy; v.pad_x = sticks.pad_x; v.pad_y = sticks.pad_y;
+    world_describe(&v);
     v.map_n = 0;
     if (realm.map) {
       coax_t_Box b = realm_map_box(realm_of());
@@ -785,6 +806,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   }
   if (progress_ask >= 0 && kind == 512 + progress_ask) { progress_ask = -2; take_server(length); return; }
   if (npc_ask >= 0 && kind == 512 + npc_ask) { take_answer(length); return; }
+  if (world_message(kind, length)) return;
   if (kind >= 512 && kind < 520) return;   // an answer let go
 
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
