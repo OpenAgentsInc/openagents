@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Haunted House · OpenAgents</title>
+<meta name="description" content="The Haunted House, a Metareal realm you walk through in the browser: nine haunts to find, characters to talk to, doors to open. The same Coax code as the OpenAgents iOS app.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/realm/haunted-house/index.md">
+<!-- With WebGPU the GPU draws the page: hide the text before the first paint, so it never flashes. -->
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#ededed}
+body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas[data-cursor=pointer]{cursor:pointer}
+main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
+html:not(.gpu) body{overflow:auto}
+a{color:#ff8c1f}
+/* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
+.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>Haunted House</h1>
+<p>A Metareal realm you walk through: a house at night with nine haunts to set off, characters to talk to and doors to open. It runs the same Coax code as the OpenAgents iOS app (<code>metareal/haunt.coax</code>), compiled to WebAssembly and drawn with WebGPU.</p>
+<p>On a computer: W A S D or the arrow keys walk, drag the mouse to look, Space jumps, Shift runs, E opens a door or talks to whoever is near, V changes the view, M opens the map, the wheel zooms. On a phone: your left thumb walks, your right thumb looks, and a tap jumps.</p>
+<p>This page needs a browser with WebGPU (a current Chrome, Edge or Safari). Without it, this text is all there is. What the realm is, for agents: <a href="/realm/haunted-house/index.md">/realm/haunted-house/index.md</a>.</p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="realm" data-assets="
+  data:/realm/haunted-house/assets/Haunt.pb
+  storage:/realm/haunted-house/assets/Haunt.vertices
+  index:/realm/haunted-house/assets/Haunt.indices
+  layers:/realm/haunted-house/assets/haunt-layer0.jpg|/realm/haunted-house/assets/haunt-layer1.jpg|/realm/haunted-house/assets/haunt-layer2.jpg|/realm/haunted-house/assets/haunt-layer18.jpg|/realm/haunted-house/assets/haunt-layer19.jpg|/realm/haunted-house/assets/haunt-layer20.jpg|/realm/haunted-house/assets/haunt-layer21.jpg|/realm/haunted-house/assets/haunt-layer22.jpg|/realm/haunted-house/assets/haunt-layer24.jpg|/realm/haunted-house/assets/haunt-layer26.jpg|/realm/haunted-house/assets/haunt-layer27.jpg|/realm/haunted-house/assets/haunt-layer28.jpg
+  sound:boo=/realm/haunted-house/assets/haunt-boo.mp3
+  sound:boom=/realm/haunted-house/assets/haunt-boom.mp3
+  sound:bubble=/realm/haunted-house/assets/haunt-bubble.mp3
+  sound:chime=/realm/haunted-house/assets/haunt-chime.mp3
+  sound:click=/realm/haunted-house/assets/haunt-click.mp3
+  sound:creak=/realm/haunted-house/assets/haunt-creak.mp3
+  sound:hiss=/realm/haunted-house/assets/haunt-hiss.mp3
+  sound:jump=/realm/haunted-house/assets/haunt-jump.mp3
+  sound:land=/realm/haunted-house/assets/haunt-land.mp3
+  sound:slam=/realm/haunted-house/assets/haunt-slam.mp3
+  sound:step_grass_1=/realm/haunted-house/assets/haunt-step_grass_1.mp3
+  sound:step_grass_2=/realm/haunted-house/assets/haunt-step_grass_2.mp3
+  sound:step_grass_3=/realm/haunted-house/assets/haunt-step_grass_3.mp3
+  sound:step_metal_1=/realm/haunted-house/assets/haunt-step_metal_1.mp3
+  sound:step_metal_2=/realm/haunted-house/assets/haunt-step_metal_2.mp3
+  sound:step_metal_3=/realm/haunted-house/assets/haunt-step_metal_3.mp3
+  sound:step_stone_1=/realm/haunted-house/assets/haunt-step_stone_1.mp3
+  sound:step_stone_2=/realm/haunted-house/assets/haunt-step_stone_2.mp3
+  sound:step_stone_3=/realm/haunted-house/assets/haunt-step_stone_3.mp3
+  sound:step_wood_1=/realm/haunted-house/assets/haunt-step_wood_1.mp3
+  sound:step_wood_2=/realm/haunted-house/assets/haunt-step_wood_2.mp3
+  sound:step_wood_3=/realm/haunted-house/assets/haunt-step_wood_3.mp3
+  sound:thunder=/realm/haunted-house/assets/haunt-thunder.mp3
+  loop:/realm/haunted-house/assets/haunt-wind_loop.mp3"></script>
+</body>
+</html>

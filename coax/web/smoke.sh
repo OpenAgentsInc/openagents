@@ -64,6 +64,18 @@ for path in ("/project/coax", "/project/coax/index.md", "/project/coax/demo"):
     s, h, body = get(path)
     ok = s == 200 and (path.endswith(".md") or b'data-app="project"' in body)
     check(ok, f"{path} ({s})")
+# The Haunted House: its page, its Markdown, and every asset it names (the
+# house's document, geometry and sheets; sounds and their loop).
+s, h, body = get("/realm/haunted-house")
+check(s == 200 and b'data-app="realm"' in body, f"/realm/haunted-house ({s})")
+s, _, _ = get("/realm/haunted-house/index.md")
+check(s == 200, f"/realm/haunted-house/index.md ({s})")
+named = re.search(r'data-assets="([^"]*)"', body.decode("utf-8", "replace"))
+urls = re.findall(r'(/build/[^\s|"]+)', named.group(1)) if named else []
+check(len(urls) >= 16, f"/realm/haunted-house names its assets ({len(urls)})")
+for u in urls:
+    s, h, _ = get(u, method="HEAD")
+    check(s == 200 and "immutable" in h.get("cache-control", ""), f"{u} ({s})")
 if coder:
     for path, want in [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})]:
         s, _, _ = get(path)

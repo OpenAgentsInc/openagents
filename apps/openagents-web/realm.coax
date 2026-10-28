@@ -1,0 +1,643 @@
+// A Metareal realm on the web, drawn by Coax: openagents.com/realm/haunted-house
+// first. The world is metareal's own code, unchanged from the iOS app:
+// metareal/haunt.coax plays the Haunted House, player.coax walks you through
+// it and grid.coax reads a phone's thumbs, and realm-face.c binds them for
+// the browser as HauntViewController.swift does on the phone. This file is
+// everything on the screen over the world and what you do with it: the HUD
+// (the room you're in, the haunts found, a notice, who or what is near, a
+// conversation, the map, the hotbar), the controls (keys and a mouse drag on
+// a desktop, two thumbs on a phone) and what a press on the HUD does. The
+// face reads this file's intent each frame and hands back what the house
+// says (RealmView).
+//
+// Every panel and button is the Metareal HUD bar (ui.coax hud: metareal_bar,
+// square brackets on the highlighted corners, cuts on the plain ones), its
+// glass laid behind by realm.wgsl, and all text is Filament (font.coax).
+
+#load "font.coax";
+#load "ui.coax";
+
+VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
+MAX_VERTICES :: 36000;
+PANELS :: 4;
+// width, height, time, fade, still, panels, dpr, 0; the view matrix's four
+// rows; the eye and the light count; the flash, 0, 0, 0; then per panel
+// x0, y0, x1, y1, scale, alpha, tint, 0. The face writes the view, the eye,
+// the lights and the flash (metareal_grid_view, metareal_haunt_lights).
+UNIFORM_FLOATS :: 64;
+PANEL_AT :: 32;
+
+MODE_STROKE :: 0.0;    // a sharp core in a soft glow: words, rings
+MODE_LINK :: 1.0;
+MODE_PULSE :: 2.0;
+MODE_GLOW_TEXT :: 3.0;
+MODE_BAR :: 4.0;       // a Metareal HUD bar (ui.coax bar)
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+// One stroke as a quad wide enough for its glow, as splash.coax draws one.
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// A round light (a dot with a glow), as graph.coax draws a node.
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// ---- what the house says this frame (realm-face.c fills it)
+
+MAP_MAX :: 66;   // metareal_haunt_map's boxes: rooms, you and the people
+
+RealmView :: struct {
+  ready: bool;          // the house is open and drawing
+  failed: bool;         // it couldn't be loaded
+  loaded: f32;          // 0 to 1: how much of it has arrived
+  title: string;        // the room you're in
+  found: int;           // haunts set off, of
+  haunts: int;
+  notice: string;       // the house's notice, while it lasts
+  target: string;       // who or what E acts on: a person's name, "Door", or ""
+  talking: string;      // the person you're talking to ("" none)
+  reply: string;        // what they said
+  // the move stick (grid.coax Sticks), where a thumb is down
+  move_on: bool; ox: f32; oy: f32; pad_x: f32; pad_y: f32;
+  // the map (metareal_haunt_map, in the map box's pixels): x, y, width, height, kind
+  map_n: int; map: [MAP_MAX * 5] f32;
+}
+
+// ---- the controls and the HUD
+
+// Keys held, a bit each.
+HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
+HOLD_RUN :: 16; HOLD_JUMP :: 32; HOLD_USE :: 64; HOLD_VIEW :: 128; HOLD_MAP :: 256;
+KEY_SHIFT :: -13;      // host.js names Shift, so a run starts while a key is already down
+
+// What the face is asked to do, a bit each, until it takes them.
+ASK_USE :: 1;          // open the door or talk to whoever is near
+ASK_VIEW :: 2;         // the next camera
+ASK_HINT :: 4;         // ask the person you're talking to for a hint
+ASK_BYE :: 8;          // end the conversation
+ASK_EXIT :: 16;        // leave (the outbox has where to)
+
+// The buttons, drawn and hit in this order.
+BTN_USE :: 0; BTN_VIEW :: 1; BTN_MAP :: 2; BTN_EXIT :: 3; BTN_HINT :: 4; BTN_BYE :: 5;
+BUTTONS :: 6;
+
+HELP_TIME :: 9.0;      // seconds the controls stay written after you first move
+
+Realm :: struct {
+  time: f32; width: f32; height: f32; dpr: f32;
+  held: int;            // HOLD_* bits
+  touch: bool;          // the last pointer was a finger: the phone's controls show
+  looking: bool; look_id: int; lx: f32; ly: f32;   // a mouse drag looking around
+  dyaw: f32; dpitch: f32; zoom: f32;               // looked and zoomed since the face last read
+  press: int; press_id: int;                       // the button a pointer is down on (-1 none)
+  asks: int;            // ASK_* bits
+  map: bool;
+  moved_at: f32;        // when you first moved (-1 not yet)
+  boxes: [BUTTONS] Box; shown: [BUTTONS] bool;     // where each button was last drawn
+  outbox: [64] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL
+}
+
+realm_reset :: (r: [] Realm) #export_c { r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; }
+
+// Takes the asks since the last frame.
+realm_take :: (r: [] Realm) -> int #export_c { a := r[0].asks; r[0].asks = 0; return a; }
+
+// Keyboard axes: x right, y forward, -1 to 1.
+realm_key_x :: (r: [] Realm) -> f32 #export_c {
+  x := 0.0f32;
+  if r[0].held & HOLD_RIGHT != 0 { x += 1; }
+  if r[0].held & HOLD_LEFT != 0 { x -= 1; }
+  return x;
+}
+realm_key_y :: (r: [] Realm) -> f32 #export_c {
+  y := 0.0f32;
+  if r[0].held & HOLD_FORWARD != 0 { y += 1; }
+  if r[0].held & HOLD_BACK != 0 { y -= 1; }
+  return y;
+}
+
+// Which held bit a key is (0: none). Letters either case.
+hold_of :: (key: int) -> int {
+  if key == 'w' || key == 'W' || key == KEY_UP { return HOLD_FORWARD; }
+  if key == 's' || key == 'S' || key == KEY_DOWN { return HOLD_BACK; }
+  if key == 'a' || key == 'A' || key == KEY_LEFT { return HOLD_LEFT; }
+  if key == 'd' || key == 'D' || key == KEY_RIGHT { return HOLD_RIGHT; }
+  if key == KEY_SHIFT { return HOLD_RUN; }
+  if key == ' ' { return HOLD_JUMP; }
+  if key == 'e' || key == 'E' || key == KEY_ENTER { return HOLD_USE; }
+  if key == 'v' || key == 'V' { return HOLD_VIEW; }
+  if key == 'm' || key == 'M' { return HOLD_MAP; }
+  return 0;
+}
+
+// What a button does when pressed (a key or a click).
+realm_do :: (r: [] Realm, v: RealmView, b: int) {
+  if b == BTN_USE { r[0].asks |= ASK_USE; }
+  if b == BTN_HINT { r[0].asks |= ASK_HINT; }
+  if b == BTN_BYE { r[0].asks |= ASK_BYE; }
+  if b == BTN_VIEW { r[0].asks |= ASK_VIEW; }
+  if b == BTN_MAP { r[0].map = !r[0].map; }
+  if b == BTN_EXIT {
+    r[0].asks |= ASK_EXIT;
+    r[0].out_n = put(r[0].outbox[..], 0, "/");
+    r[0].action = ACT_NAVIGATE;
+  }
+}
+
+// A key down (down) or up. Returns whether it was used. A key held down
+// repeats; only its first press acts.
+realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> bool #export_c {
+  if (mods & (MOD_CTRL | MOD_META)) != 0 && down { return false; }
+  bit := hold_of(key);
+  if !down {
+    if bit == 0 { return false; }
+    r[0].held = r[0].held & (0x7fffffff - bit);
+    return true;
+  }
+  if key == KEY_ESCAPE {
+    if v.talking.count > 0 { realm_do(r, v, BTN_BYE); return true; }
+    if r[0].map { r[0].map = false; return true; }
+    return false;
+  }
+  if bit == 0 { return false; }
+  first := r[0].held & bit == 0;
+  r[0].held |= bit;
+  if (mods & MOD_SHIFT) != 0 { r[0].held |= HOLD_RUN; }
+  if bit & (HOLD_FORWARD | HOLD_BACK | HOLD_LEFT | HOLD_RIGHT) != 0 { realm_moved(r); }
+  if !first { return true; }
+  if bit == HOLD_USE {
+    if v.talking.count > 0 { realm_do(r, v, BTN_HINT); }
+    else if v.target.count > 0 { realm_do(r, v, BTN_USE); }
+  }
+  if bit == HOLD_VIEW { realm_do(r, v, BTN_VIEW); }
+  if bit == HOLD_MAP { realm_do(r, v, BTN_MAP); }
+  return true;
+}
+
+// The window lost the keyboard: nothing is held any more.
+realm_blur :: (r: [] Realm) #export_c { r[0].held = 0; r[0].looking = false; r[0].press = -1; }
+
+realm_moved :: (r: [] Realm) { if r[0].moved_at < 0 { r[0].moved_at = r[0].time; } }
+
+// The button at (x, y), of those drawn last frame (-1 none).
+button_at :: (r: [] Realm, x: f32, y: f32) -> int {
+  slop := 6 * r[0].dpr;
+  for i: 0..<BUTTONS {
+    if !r[0].shown[i] { continue; }
+    b := r[0].boxes[i];
+    if x >= b.x0 - slop && x <= b.x1 + slop && y >= b.y0 - slop && y <= b.y1 + slop { return i; }
+  }
+  return -1;
+}
+
+// The pointer in device pixels: phase 0 down, 1 move, 2 up, 3 cancel; kind
+// 0 a mouse, 1 a finger or pen; id the host's number for it. Returns
+// whether it was used here: a finger that isn't on the HUD is the face's,
+// for the thumbs (metareal_sticks_world_touch).
+realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if phase == POINTER_DOWN {
+    r[0].touch = kind != 0;
+    b := button_at(r, x, y);
+    if b >= 0 { r[0].press = b; r[0].press_id = id; return true; }
+    if kind != 0 { realm_moved(r); return false; }
+    r[0].looking = true; r[0].look_id = id; r[0].lx = x; r[0].ly = y;
+    return true;
+  }
+  if r[0].press >= 0 && id == r[0].press_id {
+    if phase == POINTER_UP && button_at(r, x, y) == r[0].press { realm_do(r, v, r[0].press); }
+    if phase != POINTER_MOVE { r[0].press = -1; r[0].press_id = -1; }
+    return true;
+  }
+  if r[0].looking && id == r[0].look_id {
+    if phase == POINTER_MOVE {
+      // as a thumb looks on the phone (grid.coax LOOK): radians per point dragged
+      k := hi(r[0].dpr, 0.5);
+      r[0].dyaw -= (x - r[0].lx) / k * LOOK_RADIANS;
+      r[0].dpitch -= (y - r[0].ly) / k * LOOK_RADIANS;
+      r[0].lx = x; r[0].ly = y;
+    } else { r[0].looking = false; }
+    return true;
+  }
+  return kind == 0;
+}
+LOOK_RADIANS :: 0.006;   // grid.coax LOOK
+
+// The wheel, in CSS pixels down: zooms the camera out (metareal_player_zoom).
+realm_wheel :: (r: [] Realm, dy: f32) #export_c { r[0].zoom += dy * 0.01; }
+
+realm_cursor :: (r: [] Realm) -> int #export_c { return ifx r[0].press >= 0 then 1 else 0; }
+
+// ---- layout, in device pixels
+
+STICK :: 56.0;   // grid.coax STICK: the move stick's radius, in points
+
+// Where the move stick rests before a thumb is down (grid.coax stick_rest_y).
+stick_rest_y :: (height: f32, k: f32) -> f32 { return height - hi(STICK * k * 2.4, height * 0.18); }
+
+gutter :: (r: [] Realm) -> f32 { return 16 * r[0].dpr; }
+phone :: (r: [] Realm) -> bool { return r[0].touch || r[0].width < 640 * r[0].dpr; }
+
+// The hotbar: VIEW, MAP, EXIT. On a desktop, along the bottom right; on a
+// phone, under the title, clear of the thumbs.
+slot_box :: (r: [] Realm, i: int) -> Box {
+  k := r[0].dpr; m := gutter(r);
+  w := ifx phone(r) then 62 * k else 76 * k;
+  h := ifx phone(r) then 34 * k else 40 * k;
+  gap := 12 * k;
+  if phone(r) {
+    x0 := m + 4 * k + cast(f32) i * (w + gap); y0 := title_box(r).y1 + 14 * k;
+    return Box.{x0 = x0, y0 = y0, x1 = x0 + w, y1 = y0 + h};
+  }
+  x1 := r[0].width - m - 4 * k - cast(f32) (2 - i) * (w + gap);
+  y0 := r[0].height - m - 4 * k - h;
+  return Box.{x0 = x1 - w, y0 = y0, x1 = x1, y1 = y0 + h};
+}
+
+// The bottom of the HUD's top: the title, and on a phone the hotbar under it.
+top_bottom :: (r: [] Realm) -> f32 { return ifx phone(r) then slot_box(r, 0).y1 else title_box(r).y1; }
+
+// The title panel at the top left: the room and the haunts found.
+title_box :: (r: [] Realm) -> Box {
+  k := r[0].dpr; m := gutter(r);
+  w := lo(320 * k, r[0].width - 2 * m - 8 * k);
+  return Box.{x0 = m + 4 * k, y0 = m + 4 * k, x1 = m + 4 * k + w, y1 = m + 4 * k + 50 * k};
+}
+
+// The conversation, at the bottom middle, above the hotbar.
+talk_box :: (r: [] Realm) -> Box {
+  k := r[0].dpr; m := gutter(r);
+  w := lo(560 * k, r[0].width - 2 * m - 8 * k);
+  bottom := ifx phone(r) then r[0].height - m - 4 * k else slot_box(r, 0).y0 - 18 * k;
+  x0 := (r[0].width - w) * 0.5;
+  return Box.{x0 = x0, y0 = bottom - 150 * k, x1 = x0 + w, y1 = bottom};
+}
+
+// The map: a square in the middle, the face draws the house's into it.
+realm_map_box :: (r: [] Realm) -> Box #export_c {
+  k := r[0].dpr;
+  top := top_bottom(r) + 24 * k;
+  bottom := ifx phone(r) then r[0].height - gutter(r) - 4 * k else slot_box(r, 0).y0 - 18 * k;
+  side := lo(lo(r[0].width - 2 * gutter(r) - 8 * k, bottom - top), 560 * k);
+  x0 := (r[0].width - side) * 0.5; y0 := top + (bottom - top - side) * 0.5;
+  return Box.{x0 = x0, y0 = y0, x1 = x0 + side, y1 = y0 + side};
+}
+
+// The prompt for E: who or what is near, at the bottom middle.
+use_box :: (r: [] Realm, v: RealmView) -> Box {
+  k := r[0].dpr;
+  cap := 10 * k;
+  w := measure(v.target, GAP, SPACE, false) * cap + ifx phone(r) then 48 * k else 82 * k;
+  bottom := ifx phone(r) then stick_rest_y(r[0].height, k) - STICK * k - 28 * k else slot_box(r, 0).y0 - 22 * k;
+  x0 := (r[0].width - w) * 0.5;
+  return Box.{x0 = x0, y0 = bottom - 40 * k, x1 = x0 + w, y1 = bottom};
+}
+
+GAP :: 0.62;      // letter gap, in cap heights
+SPACE :: 1.2;     // a space, in cap heights
+
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 4 * k, HUD_R, HUD_G, HUD_B); }
+orange :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 4 * k, ORANGE_R, ORANGE_G, ORANGE_B); }
+
+set_panel :: (uniforms: [] f32, i: int, b: Box, k: f32, alpha: f32, tint: f32) {
+  o := PANEL_AT + i * 8;
+  if o + 8 > uniforms.count { return; }
+  uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+  uniforms[o + 4] = k; uniforms[o + 5] = alpha; uniforms[o + 6] = tint; uniforms[o + 7] = 0;
+}
+
+// Text centred on x.
+centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  w := measure(text, GAP, SPACE, false) * cap;
+  return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
+}
+
+// A button: the HUD bar, its label and, on a desktop, its key.
+hud_button :: (r: [] Realm, out: [] f32, at: int, i: int, b: Box, label: string, key: string, lit_up: bool) -> int {
+  k := r[0].dpr; d := r[0].dpr;
+  r[0].boxes[i] = b; r[0].shown[i] = true;
+  press := ifx r[0].press == i then 1.0f32 else 0.0f32;
+  red: f32 = ifx lit_up then ORANGE_R else HUD_R; green: f32 = ifx lit_up then ORANGE_G else HUD_G; blue: f32 = ifx lit_up then ORANGE_B else HUD_B;
+  vertices := hud(out, at, b, k, press, 0, ifx lit_up then 1.0f32 else 0.75f32, red, green, blue);
+  cap := 8.5 * k;
+  cy := (b.y0 + b.y1) * 0.5 + cap * 0.5;
+  if key.count > 0 && !phone(r) {
+    vertices = write(d, out, vertices, key, b.x0 + 10 * k, cy, cap, GAP, SPACE, orange(k, 0.9), false, false);
+    w := measure(label, GAP, SPACE, false) * cap;
+    return write(d, out, vertices, label, b.x1 - 10 * k - w, cy, cap, GAP, SPACE, white(k, 0.9), false, false);
+  }
+  return centred(d, out, vertices, label, (b.x0 + b.x1) * 0.5, cy, cap, white(k, 0.9));
+}
+
+// Writes "HAUNTS FOUND N / M" into buf.
+found_text :: (buf: [] u8, found: int, haunts: int) -> string {
+  n := put(buf, 0, "HAUNTS FOUND ");
+  n = put_int(buf, n, found);
+  n = put(buf, n, " / ");
+  n = put_int(buf, n, haunts);
+  return cast(string) buf[0..<n];
+}
+
+// The move stick, where to put a thumb, and what it pushes.
+draw_stick :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
+  k := r[0].dpr; rad := STICK * k;
+  ox := v.ox; oy := v.oy; light := 0.35f32;
+  if !v.move_on { ox = r[0].width * 0.22; oy = stick_rest_y(r[0].height, k); light = 0.16; }
+  vertices := at;
+  for i: 0..<40 {
+    a0 := cast(f32) i * 6.2831853 / 40; a1 := cast(f32) (i + 1) * 6.2831853 / 40;
+    if lit(out, vertices, ox + cos(a0) * rad, oy + sin(a0) * rad, ox + cos(a1) * rad, oy + sin(a1) * rad,
+           0.6 * k, light, 3 * k, HUD_R, HUD_G, HUD_B, MODE_STROKE) { vertices += 6; }
+  }
+  if v.move_on && tinted_dot(out, vertices, ox + v.pad_x * rad, oy - v.pad_y * rad, 7 * k, 0.8, 6 * k, HUD_R, HUD_G, HUD_B) { vertices += 6; }
+  return vertices;
+}
+
+// The house's map: the rooms' outlines, you and the people.
+draw_map :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) -> int {
+  k := r[0].dpr; b := realm_map_box(r);
+  set_panel(uniforms, 2, b, k, 0.92, 0);
+  vertices := hud(out, at, b, k, 0, 0, 0.8, HUD_R, HUD_G, HUD_B);
+  vertices = write(k, out, vertices, "MAP", b.x0 + 14 * k, b.y0 + 22 * k, 9 * k, GAP, SPACE, orange(k, 0.9), false, false);
+  // metareal_haunt_map lays the house out from the box's top left; centre it.
+  x0 := 1e9f32; y0 := 1e9f32; x1 := -1e9f32; y1 := -1e9f32;
+  for i: 0..<v.map_n {
+    o := i * 5;
+    x0 = lo(x0, v.map[o]); y0 = lo(y0, v.map[o + 1]); x1 = hi(x1, v.map[o] + v.map[o + 2]); y1 = hi(y1, v.map[o + 1] + v.map[o + 3]);
+  }
+  dx := b.x0 + ((b.x1 - b.x0) - (x1 - x0)) * 0.5 - x0;
+  dy := b.y0 + ((b.y1 - b.y0) - (y1 - y0)) * 0.5 - y0;
+  for i: 0..<v.map_n {
+    o := i * 5;
+    x := dx + v.map[o]; y := dy + v.map[o + 1]; w := v.map[o + 2]; h := v.map[o + 3]; kind := cast(int) v.map[o + 4];
+    if kind < 2 {
+      light := ifx kind == 0 then 0.75f32 else 0.28f32;
+      xs := [5] f32.[x, x + w, x + w, x, x]; ys := [5] f32.[y, y, y + h, y + h, y];
+      for e: 0..<4 {
+        if lit(out, vertices, xs[e], ys[e], xs[e + 1], ys[e + 1], 0.5 * k, light, 2 * k, HUD_R, HUD_G, HUD_B, MODE_STROKE) { vertices += 6; }
+      }
+    } else {
+      red: f32 = ifx kind == 2 then HUD_R else ORANGE_R; green: f32 = ifx kind == 2 then HUD_G else ORANGE_G; blue: f32 = ifx kind == 2 then HUD_B else ORANGE_B;
+      if tinted_dot(out, vertices, x + w * 0.5, y + h * 0.5, hi(w, h) * 0.5, 0.95, 5 * k, red, green, blue) { vertices += 6; }
+    }
+  }
+  return vertices;
+}
+
+// The conversation: their name, what they said, HINT and BYE.
+draw_talk :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) -> int {
+  k := r[0].dpr; b := talk_box(r);
+  set_panel(uniforms, 1, b, k, 0.9, 0);
+  vertices := hud(out, at, b, k, 0, 0, 0.9, ORANGE_R, ORANGE_G, ORANGE_B);
+  x := b.x0 + 18 * k;
+  vertices = write(k, out, vertices, v.talking, x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
+  height: [1] f32;
+  vertices = draw_wrapped(k, out, vertices, v.reply, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE, white(k, 0.85),
+                          b.x1 - x - 18 * k, 17 * k, false, true, height[..]);
+  bw := ifx phone(r) then 74 * k else 92 * k; bh := 32 * k;
+  y1 := b.y1 - 14 * k;
+  bye := Box.{x0 = b.x1 - 18 * k - bw, y0 = y1 - bh, x1 = b.x1 - 18 * k, y1 = y1};
+  hint := Box.{x0 = bye.x0 - 12 * k - bw, y0 = y1 - bh, x1 = bye.x0 - 12 * k, y1 = y1};
+  vertices = hud_button(r, out, vertices, BTN_HINT, hint, "HINT", "E", true);
+  return hud_button(r, out, vertices, BTN_BYE, bye, "BYE", "ESC", false);
+}
+
+// Before the house opens: its name, LOADING and how much has arrived.
+draw_loading :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
+  k := r[0].dpr; cx := r[0].width * 0.5; cy := r[0].height * 0.5;
+  vertices := centred(k, out, at, "HAUNTED HOUSE", cx, cy - 18 * k, 16 * k, white(k, 0.95));
+  if v.failed { return centred(k, out, vertices, "THE HOUSE COULD NOT BE LOADED", cx, cy + 22 * k, 8.5 * k, orange(k, 0.9)); }
+  vertices = centred(k, out, vertices, "LOADING", cx, cy + 20 * k, 8.5 * k, white(k, 0.6));
+  w := lo(220 * k, r[0].width - 2 * gutter(r));
+  x0 := cx - w * 0.5; y := cy + 40 * k;
+  if lit(out, vertices, x0, y, x0 + w, y, 0.5 * k, 0.18, 2 * k, HUD_R, HUD_G, HUD_B, MODE_STROKE) { vertices += 6; }
+  f := clamp(v.loaded, 0, 1);
+  if f > 0 && lit(out, vertices, x0, y, x0 + w * f, y, 0.8 * k, 0.95, 5 * k, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
+  return vertices;
+}
+
+// The frame: steps the clock and draws the HUD over the house. Returns the
+// vertex count.
+realm_draw :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+  if uniforms.count < UNIFORM_FLOATS { return 0; }
+  r[0].width = width; r[0].height = height; r[0].dpr = hi(dpr, 0.5);
+  r[0].time += clamp(dt, 0, 0.1);
+  for i: 0..<BUTTONS { r[0].shown[i] = false; }
+  for i: PANEL_AT..<UNIFORM_FLOATS { uniforms[i] = 0; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = r[0].time; uniforms[3] = 1;
+  uniforms[4] = 0; uniforms[5] = PANELS; uniforms[6] = r[0].dpr; uniforms[7] = 0;
+  if !v.ready { return draw_loading(r, v, out, 0); }
+  k := r[0].dpr; d := r[0].dpr;
+  vertices := 0;
+
+  // the room you're in and the haunts found
+  t := title_box(r);
+  set_panel(uniforms, 0, t, k, 0.78, 0);
+  vertices = hud(out, vertices, t, k, 0, 0, 0.85, HUD_R, HUD_G, HUD_B);
+  room := ifx v.title.count > 0 then v.title else "HAUNTED HOUSE";
+  vertices = draw_fit(d, out, vertices, room, t.x0 + 14 * k, t.y0 + 22 * k, 10.5 * k, GAP, SPACE, white(k, 0.95), t.x1 - t.x0 - 28 * k);
+  buf: [48] u8;
+  vertices = draw_fit(d, out, vertices, found_text(buf[..], v.found, v.haunts), t.x0 + 14 * k, t.y0 + 39 * k, 7.5 * k, GAP, SPACE,
+                      orange(k, 0.85), t.x1 - t.x0 - 28 * k);
+
+  // the hotbar
+  vertices = hud_button(r, out, vertices, BTN_VIEW, slot_box(r, 0), "VIEW", "V", false);
+  vertices = hud_button(r, out, vertices, BTN_MAP, slot_box(r, 1), "MAP", "M", r[0].map);
+  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 2), "EXIT", "", false);
+
+  // the house's notice, under the title
+  if v.notice.count > 0 {
+    cap := 9 * k;
+    w := lo(measure(v.notice, GAP, SPACE, false) * cap, r[0].width - 2 * gutter(r));
+    y := top_bottom(r) + 34 * k;
+    used: [1] f32;
+    vertices = draw_wrapped(d, out, vertices, v.notice, (r[0].width - w) * 0.5, y, cap, GAP, SPACE, white(k, 0.95),
+                            w + cap, 18 * k, false, true, used[..]);
+  }
+
+  if r[0].map { vertices = draw_map(r, v, out, vertices, uniforms); }
+  if v.talking.count > 0 { vertices = draw_talk(r, v, out, vertices, uniforms); }
+  else if v.target.count > 0 {
+    b := use_box(r, v);
+    r[0].boxes[BTN_USE] = b; r[0].shown[BTN_USE] = true;
+    press := ifx r[0].press == BTN_USE then 1.0f32 else 0.0f32;
+    vertices = hud(out, vertices, b, k, press, 0, 1, ORANGE_R, ORANGE_G, ORANGE_B);
+    cap := 10 * k; cy := (b.y0 + b.y1) * 0.5 + cap * 0.5;
+    if phone(r) { vertices = centred(d, out, vertices, v.target, (b.x0 + b.x1) * 0.5, cy, cap, white(k, 0.95)); }
+    else {
+      vertices = write(d, out, vertices, "E", b.x0 + 16 * k, cy, cap, GAP, SPACE, orange(k, 0.95), false, false);
+      vertices = write(d, out, vertices, v.target, b.x0 + 46 * k, cy, cap, GAP, SPACE, white(k, 0.95), false, false);
+    }
+  }
+
+  // the controls: the thumbs on a phone, and until a while after you first
+  // move, what the keys or thumbs do
+  if phone(r) { vertices = draw_stick(r, v, out, vertices); }
+  help := ifx r[0].moved_at < 0 then 1.0f32 else 1 - ease((r[0].time - r[0].moved_at - HELP_TIME) / 1.5);
+  if help > 0 {
+    k2 := white(k, 0.55 * help);
+    if phone(r) {
+      y := stick_rest_y(r[0].height, k) + STICK * k + 24 * k;
+      vertices = centred(d, out, vertices, "LEFT THUMB MOVES", r[0].width * 0.5, y, 7.5 * k, k2);
+      vertices = centred(d, out, vertices, "RIGHT THUMB LOOKS · TAP TO JUMP", r[0].width * 0.5, y + 18 * k, 7.5 * k, k2);
+    } else {
+      vertices = write(d, out, vertices, "WASD MOVE · DRAG LOOK · SPACE JUMP · SHIFT RUN · E USE", gutter(r) + 4 * k,
+                       r[0].height - gutter(r) - 16 * k, 7.5 * k, GAP, SPACE, k2, false, false);
+    }
+  }
+  return vertices;
+}
+
+coaxial_realm_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_realm_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_realm_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_realm_map_max :: () -> int #export_c { return MAP_MAX; }
+
+// ---- checks
+
+desk :: (r: [] Realm) { r[0].width = 1440; r[0].height = 900; r[0].dpr = 2; realm_reset(r); }
+view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.found = 2; v.haunts = 9; return v; }
+
+#test "keys move, run and jump while held, and stop when let go" {
+  r: [1] Realm; desk(r[..]); v := view();
+  #assert realm_key(r[..], v, 'w', 0, true) && realm_key_y(r[..]) == 1;
+  #assert realm_key(r[..], v, KEY_LEFT, 0, true) && realm_key_x(r[..]) == -1;
+  _ := realm_key(r[..], v, KEY_SHIFT, MOD_SHIFT, true);
+  #assert r[0].held & HOLD_RUN != 0;
+  _ = realm_key(r[..], v, 'W', 0, false);
+  #assert realm_key_y(r[..]) == 0 && realm_key_x(r[..]) == -1;
+  realm_blur(r[..]);
+  #assert r[0].held == 0 && realm_key_x(r[..]) == 0;
+  #assert r[0].moved_at >= 0;
+}
+
+#test "E acts once per press, on whatever is near, and asks for a hint in a conversation" {
+  r: [1] Realm; desk(r[..]); v := view();
+  _ := realm_key(r[..], v, 'e', 0, true);
+  #assert realm_take(r[..]) == 0;                 // nothing near
+  _ = realm_key(r[..], v, 'e', 0, false);
+  v.target = "Door";
+  _ = realm_key(r[..], v, 'e', 0, true);
+  _ = realm_key(r[..], v, 'e', 0, true);          // the key repeats
+  #assert realm_take(r[..]) == ASK_USE;
+  _ = realm_key(r[..], v, 'e', 0, false);
+  v.talking = "Mortimer"; v.reply = "Welcome.";
+  _ = realm_key(r[..], v, KEY_ENTER, 0, true);
+  #assert realm_take(r[..]) == ASK_HINT;
+  #assert realm_key(r[..], v, KEY_ESCAPE, 0, true) && realm_take(r[..]) == ASK_BYE;
+}
+
+#test "V cycles the view, M opens and Escape closes the map; shortcuts with Cmd stay the browser's" {
+  r: [1] Realm; desk(r[..]); v := view();
+  _ := realm_key(r[..], v, 'v', 0, true);
+  #assert realm_take(r[..]) == ASK_VIEW;
+  _ = realm_key(r[..], v, 'm', 0, true);
+  #assert r[0].map;
+  #assert realm_key(r[..], v, KEY_ESCAPE, 0, true) && !r[0].map;
+  #assert !realm_key(r[..], v, 'v', MOD_META, true);
+  #assert !realm_key(r[..], v, 'q', 0, true);
+}
+
+#test "a mouse drag looks around; a finger off the HUD is the thumbs'" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert realm_pointer(r[..], v, 700, 400, POINTER_DOWN, 0, 1);
+  #assert realm_pointer(r[..], v, 720, 390, POINTER_MOVE, 0, 1);
+  #assert r[0].dyaw < 0 && r[0].dpitch > 0;
+  #assert realm_pointer(r[..], v, 720, 390, POINTER_UP, 0, 1) && !r[0].looking;
+  #assert !realm_pointer(r[..], v, 300, 700, POINTER_DOWN, 1, 7);
+  #assert !realm_pointer(r[..], v, 320, 690, POINTER_MOVE, 1, 7);
+}
+
+#test "the hotbar's buttons act on release over them, and EXIT goes home" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  b := slot_box(r[..], 0);
+  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5; e := slot_box(r[..], 2);
+  #assert realm_pointer(r[..], v, x, y, POINTER_DOWN, 0, 1) && r[0].press == BTN_VIEW;
+  p1 := realm_pointer(r[..], v, x, y, POINTER_UP, 0, 1);
+  #assert realm_take(r[..]) == ASK_VIEW && r[0].press == -1;
+  // dragged off before letting go: nothing
+  p2 := realm_pointer(r[..], v, x, y, POINTER_DOWN, 1, 3);
+  p3 := realm_pointer(r[..], v, x, y - 300, POINTER_UP, 1, 3);
+  #assert realm_take(r[..]) == 0;
+  p4 := realm_pointer(r[..], v, e.x0 + 4, e.y0 + 4, POINTER_DOWN, 0, 1);
+  p5 := realm_pointer(r[..], v, e.x0 + 4, e.y0 + 4, POINTER_UP, 0, 1);
+  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/";
+}
+
+#test "the HUD fits a narrow phone: title, hotbar and conversation inside the gutters" {
+  r: [1] Realm; realm_reset(r[..]); v := view();
+  v.talking = "Mortimer"; v.reply = "I have kept this house for a hundred years, and I will keep it for a hundred more.";
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  r[0].touch = true;
+  n := realm_draw(r[..], v, out[..], u[..], 1170, 2532, 3, 0.016);
+  #assert n > 0 && n < MAX_VERTICES;
+  t := title_box(r[..]); s := slot_box(r[..], 0); e := slot_box(r[..], 2); b := talk_box(r[..]);
+  #assert t.x0 >= 48 && t.x1 <= 1170 - 48 && s.y0 > t.y1 && e.x1 <= 1170 - 48;
+  #assert b.x0 >= 48 && b.x1 <= 1170 - 48 && b.y1 <= 2532 - 48;
+  for i: 0..<n { #assert out[i * VERTEX_FLOATS] > -100 && out[i * VERTEX_FLOATS] < 1270; }
+  buf: [48] u8; t2 := title_box(r[..]);
+  #assert measure(found_text(buf[..], 9, 9), GAP, SPACE, false) * 7.5 * 3 < t2.x1 - t2.x0 - 28 * 3;
+  #assert measure("RIGHT THUMB LOOKS · TAP TO JUMP", GAP, SPACE, false) * 7.5 * 3 < 1170 - 96;
+}
+
+#test "before the house opens: LOADING and how much has arrived; then the HUD" {
+  r: [1] Realm; desk(r[..]); v: RealmView; v.loaded = 0.5;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  a := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert a > 0 && !r[0].shown[BTN_VIEW];
+  v = view(); v.notice = "The sheet rises."; v.target = "Mortimer";
+  b := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert b > a && r[0].shown[BTN_VIEW] && r[0].shown[BTN_USE] && u[PANEL_AT + 5] > 0;
+}
+
+#test "the map opens over the middle and draws the rooms and you" {
+  r: [1] Realm; desk(r[..]); v := view();
+  r[0].map = true;
+  v.map_n = 2;
+  v.map[0] = 10; v.map[1] = 10; v.map[2] = 200; v.map[3] = 100; v.map[4] = 0;
+  v.map[5] = 50; v.map[6] = 50; v.map[7] = 8; v.map[8] = 8; v.map[9] = 2;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  m := realm_map_box(r[..]);
+  #assert n > 0 && m.x1 - m.x0 > 400 && m.y1 <= slot_box(r[..], 0).y0 && u[PANEL_AT + 16 + 5] > 0;
+}

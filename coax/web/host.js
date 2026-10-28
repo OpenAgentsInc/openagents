@@ -14,7 +14,11 @@
 //   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
 // and, optionally, input and output, all drawn and decided by the app:
 //   coaxial_key(state, key, mods) -> used     a code point, or a named key < 0 (KEYS)
-//   coaxial_pointer(state, x, y, phase, kind) device pixels; phase 0 down 1 move 2 up 3 cancel
+//   coaxial_key_up(state, key, mods) -> used  the same key let go (a game holds keys)
+//   coaxial_blur(state)       the page lost the keyboard: nothing is held
+//   coaxial_pointer(state, x, y, phase, kind, id) device pixels; phase 0 down 1 move 2 up 3 cancel;
+//                             kind 0 a mouse, 1 a finger or pen; id tells fingers apart
+//   coaxial_wheel(state, dy)  the wheel, CSS pixels down (the page doesn't scroll)
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
 //                             text in: kind 1 is typed or pasted text; others the page's own
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
@@ -26,6 +30,23 @@
 //                             answer with coaxial.send(kind, text)
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
 // vertices: one vec4f attribute per four floats), sharing one uniform buffer.
+//
+// A 3D scene, optionally: the page's script names its assets (data-assets,
+// space-separated KIND:URL, fetched once; content-named by a deploy):
+//   data:URL      bytes into the app's memory, where coaxial_asset(state, i, bytes) says (0: not wanted)
+//   storage:URL   a GPU storage buffer
+//   index:URL     the scene's index buffer (u32)
+//   layers:URL|URL|...  a 2D-array texture, an image a layer, sRGB, mipmapped
+//   sound:NAME=URL a sound the app plays by name;  loop:URL  one that loops from the first touch or key
+// and each one that arrives (or fails, bytes 0) is told: coaxial_asset_ready(state, i, bytes), i its
+// place in the list. The app's scene, drawn between bg and fx with a depth buffer once every GPU asset is in:
+//   coaxial_draws(state), coaxial_draw_count(state)   u32 [first, count, base instance, instances] each,
+//                             indexed draws over the index buffer
+//   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
+//                             memory copied each frame to storage buffers
+//   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
+// The WGSL's scene_vs/scene_fs read group 1: the storage assets, then the stores, then the texture
+// and its sampler, in that order.
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -52,6 +73,7 @@ let engine = null;   // { exports, layout }
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
+const assets = parseAssets((script && script.dataset.assets) || "");
 let last = 0;
 
 // ---- engine: compile, check its layout, keep or start over its state
@@ -87,6 +109,7 @@ async function loadEngine(bytes, generation) {
   }
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
   engine = { exports: x, layout };
+  for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
   // The page's scripts may talk to the app from now (action 0: ready).
   globalThis.coaxial.ready = true;
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
@@ -139,10 +162,13 @@ async function loadShaders() {
   if (errors.length) { say(errors.map((m) => `${app}.wgsl:${m.lineNum}:${m.linePos}: ${m.message}`).join("\n"), true); return false; }
   const layout = device.createPipelineLayout({ bindGroupLayouts: [gpu.layout] });
   const stride = arena.floats * 4;
-  const [bg, fx] = await Promise.all([
-    device.createRenderPipelineAsync({ layout, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: [{ format }] } }),
+  // With a scene, every pipeline in the pass shares its depth buffer; only the scene tests and writes it.
+  const scene = !!engine?.exports.coaxial_draws;
+  const flat = scene ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
+  const [bg, fx, sc] = await Promise.all([
+    device.createRenderPipelineAsync({ layout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: [{ format }] } }),
     device.createRenderPipelineAsync({
-      layout,
+      layout, ...flat,
       // one vec4f attribute per four floats of the app's vertex, in order
       vertex: { module, entryPoint: "fx_vs", buffers: [{ arrayStride: stride, attributes:
         Array.from({ length: Math.ceil(arena.floats / 4) }, (_, i) => ({ shaderLocation: i, offset: i * 16, format: "float32x4" })) }] },
@@ -150,9 +176,133 @@ async function loadShaders() {
       fragment: { module, entryPoint: "fx_fs", targets: [{ format, blend: {
         color: { operation: "max", srcFactor: "one", dstFactor: "one" }, alpha: { operation: "max", srcFactor: "one", dstFactor: "one" } } }] },
     }),
+    scene ? device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, sceneLayout()] }),
+      vertex: { module, entryPoint: "scene_vs" }, fragment: { module, entryPoint: "scene_fs", targets: [{ format }] },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
+    }) : null,
   ]);
-  gpu.bg = bg; gpu.fx = fx; // swapped whole, at the next frame
+  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; // swapped whole, at the next frame
   return true;
+}
+
+// ---- the scene's assets and group 1
+function parseAssets(text) {
+  return text.split(/\s+/).filter(Boolean).map((entry, i) => {
+    const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1);
+    if (kind === "sound") { const e = rest.indexOf("="); return { i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }; }
+    return { i, kind, url: rest, urls: rest.split("|") };
+  });
+}
+// Hands an asset that has arrived to the app (data into its memory) and tells it.
+function deliver(a) {
+  const x = engine?.exports;
+  if (!x) return;
+  if (a.kind === "data" && a.bytes) {
+    const at = x.coaxial_asset?.(arena.state, a.i, a.bytes.length) || 0;
+    if (at) new Uint8Array(memory.buffer, at, a.bytes.length).set(a.bytes);
+  }
+  x.coaxial_asset_ready?.(arena.state, a.i, a.failed ? 0 : a.size);
+}
+async function loadAsset(a) {
+  const { device } = gpu;
+  try {
+    if (a.kind === "layers") {
+      const images = await Promise.all(a.urls.map(async (u) => createImageBitmap(await (await fetch(u)).blob())));
+      const [w, h] = [images[0].width, images[0].height];
+      const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
+      const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+      for (const [layer, image] of images.entries())
+        for (let level = 0; level < levels; level++) {
+          const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
+          const source = level === 0 && image.width === w && image.height === h ? image
+            : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
+          device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]);
+        }
+      a.texture = texture; a.size = images.length;
+    } else {
+      const r = await fetch(a.url);
+      if (!r.ok) throw new Error(`${a.url}: ${r.status}`);
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      a.size = bytes.length;
+      if (a.kind === "data") a.bytes = bytes;
+      else {
+        const usage = (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST;
+        const whole = new Uint8Array(align(bytes.length, 4)); whole.set(bytes);   // writes come in 4-byte words
+        a.buffer = device.createBuffer({ size: whole.length, usage });
+        device.queue.writeBuffer(a.buffer, 0, whole);
+      }
+    }
+  } catch (e) { a.failed = true; say(`${app}: ${e.message}`, true); }
+  a.done = true;
+  deliver(a);
+  bindScene();
+}
+function sceneLayout() {
+  if (gpu.sceneLayout) return gpu.sceneLayout;
+  const x = engine.exports, entries = [];
+  const buffer = { visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } };
+  for (const a of assets) if (a.kind === "storage") entries.push({ binding: entries.length, ...buffer });
+  for (let k = 0; k < (x.coaxial_stores?.() || 0); k++) entries.push({ binding: entries.length, ...buffer });
+  if (assets.some((a) => a.kind === "layers")) {
+    entries.push({ binding: entries.length, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: "2d-array" } });
+    entries.push({ binding: entries.length, visibility: GPUShaderStage.FRAGMENT, sampler: {} });
+  }
+  return (gpu.sceneLayout = gpu.device.createBindGroupLayout({ entries }));
+}
+// Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
+function bindScene() {
+  const gpuAssets = assets.filter((a) => ["storage", "index", "layers"].includes(a.kind));
+  if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => !a.done || a.failed)) return;
+  const x = engine.exports, { device } = gpu, resources = [];
+  for (const a of assets) if (a.kind === "storage") resources.push({ buffer: a.buffer });
+  gpu.stores = [];
+  for (let k = 0; k < (x.coaxial_stores?.() || 0); k++) {
+    const buffer = device.createBuffer({ size: align(Math.max(x.coaxial_store_cap(k), 16), 16), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    gpu.stores.push(buffer); resources.push({ buffer });
+  }
+  const layers = assets.find((a) => a.kind === "layers");
+  if (layers) {
+    resources.push(layers.texture.createView({ dimension: "2d-array" }));
+    resources.push(device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", addressModeU: "repeat", addressModeV: "repeat", maxAnisotropy: 8 }));
+  }
+  gpu.index = assets.find((a) => a.kind === "index")?.buffer;
+  gpu.sceneGroup = device.createBindGroup({ layout: sceneLayout(), entries: resources.map((resource, binding) => ({ binding, resource })) });
+}
+
+// ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
+let audio = null;
+const sounds = new Map();   // name -> a decoding or decoded buffer
+function startAudio() {
+  if (audio || !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
+  try { audio = new AudioContext(); } catch { return; }
+  const loop = assets.find((a) => a.kind === "loop");
+  if (loop) decoded(loop.url).then((b) => {
+    const s = audio.createBufferSource(), g = audio.createGain();
+    s.buffer = b; s.loop = true; g.gain.value = 0.35; s.connect(g).connect(audio.destination); s.start();
+  }).catch(() => {});
+}
+function decoded(url) {
+  if (!sounds.has(url)) sounds.set(url, fetch(url).then((r) => r.arrayBuffer()).then((b) => audio.decodeAudioData(b)));
+  return sounds.get(url);
+}
+let playing = 0;
+function playSounds(x) {
+  const n = x.coaxial_sounds_len(arena.state);
+  if (!n || !audio) return;
+  const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice());
+  for (const line of text.split("\n")) {
+    const [name, gain, pan] = line.split(" ");
+    const a = assets.find((s) => s.kind === "sound" && s.name === name);
+    if (!a || playing >= 16) continue;
+    decoded(a.url).then((b) => {
+      const s = audio.createBufferSource(), g = audio.createGain(), p = audio.createStereoPanner();
+      s.buffer = b; g.gain.value = Number(gain) || 0; p.pan.value = Math.max(-1, Math.min(1, Number(pan) || 0));
+      s.connect(g).connect(p).connect(audio.destination); playing++; s.onended = () => playing--; s.start();
+    }).catch(() => {});
+  }
 }
 
 // ---- the canvas's size in device pixels: exactly its CSS box times the
@@ -189,12 +339,28 @@ function frame(now) {
   } catch (e) { say(`${app} trapped: ${e.message}`, true); engine = null; return; }
   n = Math.min(n, arena.maxVertices);
   const { device, context } = gpu;
+  const x = engine.exports;
   device.queue.writeBuffer(gpu.uniformBuffer, 0, new Float32Array(memory.buffer, arena.uniforms, arena.uniformFloats));
   if (n) device.queue.writeBuffer(gpu.vertexBuffer, 0, new Float32Array(memory.buffer, arena.vertices, n * arena.floats));
+  const draws = gpu.scene && gpu.sceneGroup ? x.coaxial_draw_count(arena.state) : 0;
+  if (draws) gpu.stores.forEach((buffer, k) => {
+    const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
+    if (bytes) device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes);
+  });
+  if (gpu.scene && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h)) {
+    gpu.depth?.destroy();
+    gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  }
   const encoder = device.createCommandEncoder();
-  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
+  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
+    ...(gpu.scene ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
   pass.setPipeline(gpu.bg); pass.draw(3);
+  if (draws) {
+    pass.setPipeline(gpu.scene); pass.setBindGroup(1, gpu.sceneGroup); pass.setIndexBuffer(gpu.index, "uint32");
+    const list = new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4);
+    for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) pass.drawIndexed(list[i * 4 + 1], list[i * 4 + 3], list[i * 4], 0, list[i * 4 + 2]);
+  }
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   pass.end();
   const texture = context.getCurrentTexture();
@@ -202,12 +368,13 @@ function frame(now) {
   device.queue.submit([encoder.finish()]);
   document.documentElement.classList.add("gpu");
   if (readback) report(readback, texture);
+  if (x.coaxial_sounds) playSounds(x);
   after(false);
 }
 
 // ---- input: keys, the pointer and typed text go to the app; its actions come out
 const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
-  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12 };
+  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13 };
 const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports[name](arena.state, ...args) : 0);
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
@@ -285,18 +452,32 @@ function focusField() {
   field.setSelectionRange(1, 1);
 }
 
+const keyOf = (e) => KEYS[e.key] ?? ([...e.key].length === 1 ? e.key.codePointAt(0) : 0);
+const modsOf = (e) => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
 addEventListener("keydown", (e) => {
   if (!engine || e.isComposing) return;
+  startAudio();
   const named = KEYS[e.key];
   // Paste is the browser's: it lands in the field, whose input event brings the text.
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") return;
   if (!named && e.target === field && !e.metaKey && !e.ctrlKey) return;   // typed text comes by the input event
-  const key = named ?? ([...e.key].length === 1 ? e.key.codePointAt(0) : 0);
+  const key = keyOf(e);
   if (!key) return;
-  const mods = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
-  if (call("coaxial_key", key, mods)) e.preventDefault();
+  if (call("coaxial_key", key, modsOf(e))) e.preventDefault();
   after(true);
 });
+addEventListener("keyup", (e) => {
+  if (!engine?.exports.coaxial_key_up || e.isComposing) return;
+  const key = keyOf(e);
+  if (key && call("coaxial_key_up", key, modsOf(e))) e.preventDefault();
+});
+addEventListener("blur", () => call("coaxial_blur"));
+addEventListener("visibilitychange", () => { if (document.hidden) call("coaxial_blur"); });
+canvas.addEventListener("wheel", (e) => {
+  if (!engine?.exports.coaxial_wheel) return;
+  e.preventDefault();
+  call("coaxial_wheel", e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1));
+}, { passive: false });
 addEventListener("paste", (e) => {
   if (e.target === field || !engine) return;
   const text = e.clipboardData?.getData("text") || "";
@@ -307,7 +488,8 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
     if (!engine) return;
     const dpr = scale();
     if (phase !== 1) touched = e.pointerType !== "mouse";
-    call("coaxial_pointer", e.clientX * dpr, e.clientY * dpr, phase, e.pointerType === "mouse" ? 0 : 1);
+    if (phase === 0) startAudio();
+    call("coaxial_pointer", e.clientX * dpr, e.clientY * dpr, phase, e.pointerType === "mouse" ? 0 : 1, e.pointerId);
     after(phase === 2, phase === 2);
   });
 
@@ -396,6 +578,8 @@ async function main() {
     if (!(await startGpu())) { document.documentElement.classList.remove("gpu"); return; }
     observeSize();
     requestAnimationFrame(frame);
+    // The heavy ones first; sounds are fetched when first played.
+    for (const a of assets) if (a.kind !== "sound" && a.kind !== "loop") loadAsset(a);
   } catch (e) {
     document.documentElement.classList.remove("gpu");
     say(`${app}: ${e.message}`, true);

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the pages for the browser: build/splash.wasm and build/project.wasm.
+# Builds the pages for the browser: build/splash.wasm, build/project.wasm and
+# build/realm.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -7,6 +8,14 @@ mkdir -p "$here/build"
 (cd "$here/../.." && python3 coax/web/wgsl.py metareal/light.coax metareal_bar --into apps/openagents-web/splash.wgsl)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
 splash=$!
+# The realms: metareal's house, player and thumbs, each its own library as on
+# iOS, under realm.coax's HUD; the house's light from metareal itself.
+(cd "$here/../.." && python3 coax/web/wgsl.py metareal/light.coax metareal_bar metareal_tone --into apps/openagents-web/realm.wgsl \
+  && python3 coax/web/wgsl.py metareal/haunt-light.coax metareal_haunt_ambient metareal_haunt_attenuate metareal_haunt_shade --into apps/openagents-web/realm.wgsl)
+m="$here/../../metareal"
+"$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
+  "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" &
+realm=$!
 # The project page's tasks, read from Nostr into project/coax/work.coax: a
 # release always reads afresh, a dev build when the snapshot is ten minutes old.
 # (Unreachable relay: the last snapshot stays.)
@@ -16,3 +25,4 @@ fresh=(); [[ "${COAXIAL_MODE:-dev}" == release ]] || fresh=(--if-older 10)
 bun "$tools/snapshot.ts" --project coax ${fresh[@]+"${fresh[@]}"}
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
 wait "$splash"
+wait "$realm"

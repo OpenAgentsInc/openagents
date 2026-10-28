@@ -62,6 +62,12 @@ for f in pages:
         wasm = put(os.path.join(app, "build", name + ".wasm"), f"build/{name}.wasm")
         wgsl = put(os.path.join(app, name + ".wgsl"), f"build/{name}.wgsl")
         rest = m.group(1)
+        # A scene's assets (data-assets): each URL named by its content too,
+        # under /build/ (the page's directory's assets/ in development).
+        def asset(u):
+            stem = u.group(2)[1:]
+            return u.group(1) + put(os.path.join(app, stem), "build/" + stem)
+        rest = re.sub(r'data-assets="[^"]*"', lambda a: re.sub(r'([:|=])(/[^\s|"]+)', asset, a.group(0)), rest)
         return f'<script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'
     text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+"([^>]*)>', tag, text)
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)

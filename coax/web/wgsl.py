@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # WGSL from Coax, for now: `coax metal` emits a scalar f32/bool Metal library
-# (straight-line C: locals, if/else, return, and comma sequences that assign
-# temporaries), and this rewrites the functions a page names, with everything
-# they call, as WGSL. Coaxial pages then call the same light functions the
-# iOS stages do (metareal/light.coax). Until Coax emits WGSL itself
-# (coax/web.md); anything outside that shape is refused, not guessed.
+# (straight-line C: locals, if/else, return, ?: choices, and comma sequences
+# that assign temporaries), and this rewrites the functions a page names,
+# with everything they call, as WGSL. Coaxial pages then call the same light
+# functions the iOS stages do (metareal/light.coax). Until Coax emits WGSL
+# itself (coax/web.md); anything outside that shape is refused, not guessed.
 #
 #   wgsl.py FILE.coax NAME...            prints the WGSL
 #   wgsl.py FILE.coax NAME... --into F   replaces F's block between
@@ -74,7 +74,13 @@ class Expr:
             self.hoist.append(f"{name} = {value};")
             return name
         self.i = start
-        return self.binary(0)
+        return self.choice()
+    def choice(self):
+        # c ? a : b. WGSL's select evaluates both; these are pure scalar math.
+        c = self.binary(0)
+        if self.peek() != ("op", "?"): return c
+        self.take("?"); a = self.choice(); self.take(":"); b = self.choice()
+        return f"select({b}, {a}, {c})"
     def binary(self, level):
         if level == len(self.PREC): return self.unary()
         e = self.binary(level + 1)
