@@ -5,7 +5,7 @@
 // the browser as HauntViewController.swift does on the phone. This file is
 // everything on the screen over the world and what you do with it: the HUD
 // (the room you're in, the quest, a notice, who or what is near, a
-// conversation, the map, the hotbar, edit mode and the survey box), the controls (keys and a mouse drag on
+// conversation and its typed questions and lessons, the map, the hotbar, edit mode and the survey box), the controls (keys and a mouse drag on
 // a desktop, two thumbs on a phone) and what a press on the HUD does. The
 // face reads this file's intent each frame and hands back what the house
 // says (RealmView).
@@ -87,7 +87,13 @@ tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, gl
 MAP_MAX :: 66;   // verse_haunt_map's boxes: rooms, you and the people
 ITEMS :: 5;      // edit mode's hotbar: short names (the face's), so a phone fits them
 QUEST_STEPS :: 8;
-TYPED_MAX :: 480;  // the survey's answer, in bytes
+TYPED_MAX :: 480;  // what's typed (the survey's answer, a question, a lesson), in bytes
+// What the typed box is for: the survey's answer, a question for whoever
+// you're talking to, or something to teach them.
+TYPE_SURVEY :: 0; TYPE_ASK :: 1; TYPE_TEACH :: 2;
+MEMORY_LINES :: 10;   // the conversation a character is reminded of (the server's last ten lines)
+MEMORY_LINE :: 400;   // bytes of a line kept
+HAUNT_NAME :: "Haunted House";   // the world, as a character names it
 
 RealmView :: struct {
   ready: bool;          // the house is open and drawing
@@ -130,7 +136,7 @@ ASK_HINT :: 4;         // ask the person you're talking to for a hint
 ASK_BYE :: 8;          // end the conversation
 ASK_EXIT :: 16;        // leave (the outbox has where to)
 ASK_GOAL :: 32;        // do the quest's step at its orb
-ASK_SEND :: 64;        // send the survey's answer (typed)
+ASK_SEND :: 64;        // send what's typed (realm_typing_for: the survey's answer, a question, a lesson)
 ASK_EDIT :: 128;       // into or out of edit mode
 ASK_PLACE :: 256;      // place edit mode's item `slot` in front of you
 ASK_PICK :: 512;       // pick what's under (pick_x, pick_y)
@@ -149,7 +155,8 @@ BTN_SEND :: 6; BTN_CANCEL :: 7; BTN_EDIT :: 8; BTN_UNDO :: 9; BTN_REDO :: 10;
 BTN_ITEM :: 11;                        // then one per item
 BTN_OP :: BTN_ITEM + ITEMS;            // then the row for the picked thing or the zone: OPS of them
 OPS :: 8;
-BUTTONS :: BTN_OP + OPS;
+BTN_ASK :: BTN_OP + OPS; BTN_TEACH :: BTN_ASK + 1;   // the conversation's ASK and TEACH
+BUTTONS :: BTN_TEACH + 1;
 
 HELP_TIME :: 9.0;      // seconds the controls stay written after you first move
 
@@ -164,7 +171,10 @@ Realm :: struct {
   map: bool;
   moved_at: f32;        // when you first moved (-1 not yet)
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool;     // where each button was last drawn
-  typing: bool; typed: [TYPED_MAX] u8; typed_n: int;   // the survey box, open, and its answer
+  typing: bool; typed: [TYPED_MAX] u8; typed_n: int;   // the typed box, open, and what's in it
+  typing_for: int;      // TYPE_*: what the typed box is for
+  // the conversation so far, a line each: "p " what you asked, "n " what they said
+  memory: [MEMORY_LINES * (MEMORY_LINE + 3)] u8; memory_n: int; memory_lines: int;
   slot: int;            // the item ASK_PLACE places
   op: int;              // the edit ASK_OP does
   pick_x: f32; pick_y: f32;              // where ASK_PICK picks, device pixels
@@ -176,9 +186,12 @@ Realm :: struct {
 
 realm_reset :: (r: [] Realm) #export_c { r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; r[0].hover = -1; }
 
-// The survey box: open it (the face does, at the last step's orb), what's
-// typed, and closing it.
-realm_ask_text :: (r: [] Realm) #export_c { r[0].typing = true; r[0].typed_n = 0; }
+// The typed box: the survey's (the face opens it at the last step's orb),
+// or a question or a lesson for whoever you're talking to (ASK, TEACH);
+// what's typed, and closing it.
+realm_ask_text :: (r: [] Realm) #export_c { realm_open_text(r, TYPE_SURVEY); }
+realm_open_text :: (r: [] Realm, kind: int) #export_c { r[0].typing = true; r[0].typing_for = kind; r[0].typed_n = 0; }
+realm_typing_for :: (r: [] Realm) -> int #export_c { return r[0].typing_for; }
 realm_typed :: (r: [] Realm) -> string #export_c { return cast(string) r[0].typed[0..<r[0].typed_n]; }
 realm_close_text :: (r: [] Realm) #export_c { r[0].typing = false; }
 realm_wants_text :: (r: [] Realm) -> bool #export_c { return r[0].typing; }
@@ -248,6 +261,8 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_EDIT { r[0].asks |= ASK_EDIT; }
   if b == BTN_SEND && r[0].typed_n > 0 { r[0].asks |= ASK_SEND; }
   if b == BTN_CANCEL { r[0].typing = false; }
+  if b == BTN_ASK && v.talking.count > 0 { realm_open_text(r, TYPE_ASK); }
+  if b == BTN_TEACH && v.talking.count > 0 { realm_open_text(r, TYPE_TEACH); }
   if b >= BTN_ITEM && b < BTN_ITEM + v.item_n { r[0].slot = b - BTN_ITEM; r[0].asks |= ASK_PLACE; }
   if b == BTN_UNDO { edit_op(r, OP_UNDO); }
   if b == BTN_REDO { edit_op(r, OP_REDO); }
@@ -318,6 +333,8 @@ realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> boo
     r[0].held = r[0].held & (0x7fffffff - bit);
     return true;
   }
+  // In a conversation, T asks them something.
+  if v.talking.count > 0 && (key == 't' || key == 'T') { realm_do(r, v, BTN_ASK); return true; }
   if key == KEY_ESCAPE {
     if v.talking.count > 0 { realm_do(r, v, BTN_BYE); return true; }
     if r[0].map { r[0].map = false; return true; }
@@ -629,21 +646,30 @@ draw_map :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   return vertices;
 }
 
-// The conversation: their name, what they said, HINT and BYE.
+// The conversation: their name, what they said, ASK, TEACH, HINT and BYE.
 draw_talk :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) -> int {
   k := r[0].dpr; b := talk_box(r);
+  x := b.x0 + 18 * k;
+  // a long answer makes the box taller, up to the top of the HUD
+  need: [1] f32;
+  _ := draw_wrapped(k, out, at, v.reply, x, 0, 8.5 * k, GAP, SPACE, white(k, 0), b.x1 - x - 18 * k, 17 * k, false, false, need[..]);
+  b.y0 = hi(lo(b.y0, b.y1 - need[0] - 104 * k), top_bottom(r) + 12 * k);
   plate(r, b, 0.92, LOOK_PLAIN);
   vertices := at;
-  x := b.x0 + 18 * k;
   vertices = write(k, out, vertices, v.talking, x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
   height: [1] f32;
   vertices = draw_wrapped(k, out, vertices, v.reply, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE, white(k, 0.85),
                           b.x1 - x - 18 * k, 17 * k, false, true, height[..]);
-  bw := ifx phone(r) then 74 * k else 92 * k; bh := 32 * k;
+  gap := ifx phone(r) then 8 * k else 12 * k;
+  bw := lo(ifx phone(r) then 74 * k else 92 * k, (b.x1 - b.x0 - 36 * k - 3 * gap) / 4); bh := 32 * k;
   y1 := b.y1 - 14 * k;
   bye := Box.{x0 = b.x1 - 18 * k - bw, y0 = y1 - bh, x1 = b.x1 - 18 * k, y1 = y1};
-  hint := Box.{x0 = bye.x0 - 12 * k - bw, y0 = y1 - bh, x1 = bye.x0 - 12 * k, y1 = y1};
-  vertices = hud_button(r, out, vertices, BTN_HINT, hint, "HINT", "E", true);
+  hint := Box.{x0 = bye.x0 - gap - bw, y0 = y1 - bh, x1 = bye.x0 - gap, y1 = y1};
+  teach := Box.{x0 = hint.x0 - gap - bw, y0 = y1 - bh, x1 = hint.x0 - gap, y1 = y1};
+  asking := Box.{x0 = teach.x0 - gap - bw, y0 = y1 - bh, x1 = teach.x0 - gap, y1 = y1};
+  vertices = hud_button(r, out, vertices, BTN_ASK, asking, "ASK", "T", true);
+  vertices = hud_button(r, out, vertices, BTN_TEACH, teach, "TEACH", "", false);
+  vertices = hud_button(r, out, vertices, BTN_HINT, hint, "HINT", "E", false);
   return hud_button(r, out, vertices, BTN_BYE, bye, "BYE", "ESC", false);
 }
 
@@ -693,15 +719,25 @@ draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   return vertices;
 }
 
-// The survey: the question, what's typed with a caret, SEND and CANCEL.
-draw_ask :: (r: [] Realm, out: [] f32, at: int, uniforms: [] f32) -> int {
+// What a question to a character, and a lesson, do with your words.
+ASK_DISCLOSURE :: "Your question goes to our server, and Google's Gemini answers as the character. We save the question and the answer.";
+TEACH_DISCLOSURE :: "They remember it in this house: it is kept with your save.";
+
+// The typed box: the survey's question, or whom you ask or teach; what's
+// typed with a caret, SEND (ASK, TEACH) and CANCEL.
+draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) -> int {
   k := r[0].dpr; b := ask_box(r);
   plate(r, b, 0.92, LOOK_PLAIN);
   vertices := at;
   x := b.x0 + 18 * k;
-  vertices = write(k, out, vertices, "TELL US HOW IT WENT", x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
+  kind := r[0].typing_for;
+  title: [96] u8;
+  tn := put(title[..], 0, ifx kind == TYPE_ASK then "ASK " else ifx kind == TYPE_TEACH then "TEACH " else "TELL US HOW IT WENT");
+  if kind != TYPE_SURVEY { tn = put(title[..], tn, v.talking); }
+  vertices = write(k, out, vertices, cast(string) title[0..<tn], x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
   text := realm_typed(r);
-  shown := ifx text.count > 0 then text else "Type here";
+  empty := ifx kind == TYPE_ASK then "Type your question" else ifx kind == TYPE_TEACH then "Something true in this house they should know" else "Type here";
+  shown := ifx text.count > 0 then text else empty;
   used: [1] f32;
   vertices = draw_wrapped(k, out, vertices, shown, x, b.y0 + 38 * k, 8.5 * k, GAP, SPACE, white(k, ifx text.count > 0 then 0.9f32 else 0.4f32),
                           b.x1 - x - 18 * k, 17 * k, false, true, used[..]);
@@ -714,10 +750,12 @@ draw_ask :: (r: [] Realm, out: [] f32, at: int, uniforms: [] f32) -> int {
   y1 := b.y1 - 14 * k;
   cancel := Box.{x0 = b.x1 - 18 * k - bw, y0 = y1 - bh, x1 = b.x1 - 18 * k, y1 = y1};
   sending := Box.{x0 = cancel.x0 - 12 * k - bw, y0 = y1 - bh, x1 = cancel.x0 - 12 * k, y1 = y1};
-  vertices = hud_button(r, out, vertices, BTN_SEND, sending, "SEND", "ENTER", text.count > 0);
-  // what happens to the answer, under the box (analytics.coax)
+  vertices = hud_button(r, out, vertices, BTN_SEND, sending, ifx kind == TYPE_ASK then "ASK" else ifx kind == TYPE_TEACH then "TEACH" else "SEND",
+                        "ENTER", text.count > 0);
+  // what happens to the words, under the box (analytics.coax)
   said: [1] f32;
-  vertices = draw_wrapped(k, out, vertices, TRACK_DISCLOSURE, b.x0 + 4 * k, b.y1 + 8 * k, 7 * k, GAP, SPACE, white(k, 0.7),
+  disclosure := ifx kind == TYPE_ASK then ASK_DISCLOSURE else ifx kind == TYPE_TEACH then TEACH_DISCLOSURE else TRACK_DISCLOSURE;
+  vertices = draw_wrapped(k, out, vertices, disclosure, b.x0 + 4 * k, b.y1 + 8 * k, 7 * k, GAP, SPACE, white(k, 0.7),
                           b.x1 - b.x0 - 8 * k, 14 * k, false, true, said[..]);
   return hud_button(r, out, vertices, BTN_CANCEL, cancel, "CANCEL", "ESC", false);
 }
@@ -819,7 +857,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   // the map before edit mode's rows, so their plates lie over it
   if r[0].map { vertices = draw_map(r, v, out, vertices, uniforms); }
   if v.editing { vertices = draw_edit(r, v, out, vertices); }
-  if r[0].typing { vertices = draw_ask(r, out, vertices, uniforms); }
+  if r[0].typing { vertices = draw_ask(r, v, out, vertices, uniforms); }
   else if v.talking.count > 0 { vertices = draw_talk(r, v, out, vertices, uniforms); }
   else if use_label(v).count > 0 {
     b := use_box(r, v);
@@ -940,7 +978,7 @@ realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera:
   }
   if r[0].typing != s[0].typing {
     s[0].typing = r[0].typing;
-    if r[0].typing && track_begin(t, "survey-show") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+    if r[0].typing && r[0].typing_for == TYPE_SURVEY && track_begin(t, "survey-show") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_end(t); }
   }
 }
 // The survey's answer, sent: the words, with consent (the box says they're saved).
@@ -960,14 +998,145 @@ realm_answer_body :: (t: [] Track, text: string, out: [] u8) -> int #export_c {
   o = realm_put(out, o, "{\"rid\":\""); o = realm_put(out, o, cast(string) t[0].pid[0..<t[0].pid_n]);
   o = realm_put(out, o, "\",\"q\":\"howItWent\",\"n\":1,\"of\":1,\"sid\":\""); o = realm_put(out, o, cast(string) t[0].sid[0..<t[0].sid_n]);
   o = realm_put(out, o, "\",\"a\":\"");
-  for i: 0..<text.count {
-    c := text[i];
-    if c == 34 || c == 92 { o = realm_put(out, o, "\\"); o = realm_put(out, o, text[i..<i + 1]); }
-    else if c < 32 { o = realm_put(out, o, "\\u00"); o = realm_put(out, o, TRACK_HEX[cast(int) (c >> 4)..<cast(int) (c >> 4) + 1]); o = realm_put(out, o, TRACK_HEX[cast(int) (c & 15)..<cast(int) (c & 15) + 1]); }
-    else { o = realm_put(out, o, text[i..<i + 1]); }
-  }
+  o = json_put_str(out, o, text);
   o = realm_put(out, o, "\"}");
   return ifx o > out.count then -1 else o;
+}
+// A JSON string's contents, escaped, into out from o (realm_put's overflow rule).
+json_put_str :: (out: [] u8, o: int, text: string) -> int {
+  p := o;
+  for i: 0..<text.count {
+    c := text[i];
+    if c == 34 || c == 92 { p = realm_put(out, p, "\\"); p = realm_put(out, p, text[i..<i + 1]); }
+    else if c < 32 { p = realm_put(out, p, "\\u00"); p = realm_put(out, p, TRACK_HEX[cast(int) (c >> 4)..<cast(int) (c >> 4) + 1]); p = realm_put(out, p, TRACK_HEX[cast(int) (c & 15)..<cast(int) (c & 15) + 1]); }
+    else { p = realm_put(out, p, text[i..<i + 1]); }
+  }
+  return p;
+}
+
+// ---- talking to a character (pt-character-chat): the conversation they're
+// reminded of, the question for the server and their answer out of its reply
+
+// The conversation, remembered for the character's next answer: forgotten
+// when a new one starts; a line kept to MEMORY_LINE bytes (whole
+// characters) on one line; the oldest goes after MEMORY_LINES.
+realm_forget :: (r: [] Realm) #export_c { r[0].memory_n = 0; r[0].memory_lines = 0; }
+realm_remember :: (r: [] Realm, from_them: bool, text: string) #export_c {
+  n := text.count;
+  if n > MEMORY_LINE { n = MEMORY_LINE; while n > 0 && text[n] & 0xC0 == 0x80 { n -= 1; } }
+  if n == 0 { return; }
+  if r[0].memory_lines >= MEMORY_LINES { memory_drop(r); }
+  m := r[0].memory_n;
+  r[0].memory[m] = ifx from_them then cast(u8) 110 else cast(u8) 112;   // n, p
+  r[0].memory[m + 1] = 32;
+  for i: 0..<n { c := text[i]; r[0].memory[m + 2 + i] = ifx c < 32 then cast(u8) 32 else c; }
+  r[0].memory[m + 2 + n] = 10;
+  r[0].memory_n = m + n + 3; r[0].memory_lines += 1;
+}
+memory_drop :: (r: [] Realm) {
+  e := 0;
+  while e < r[0].memory_n && r[0].memory[e] != 10 { e += 1; }
+  e += 1;
+  for i: e..<r[0].memory_n { r[0].memory[i - e] = r[0].memory[i]; }
+  r[0].memory_n -= e; r[0].memory_lines -= 1;
+}
+// The question for the server (/api/playtest/npc/ask, pt-chat-endpoint): who
+// they are (name, role, what players taught them, their greeting), the
+// world, the conversation so far and the question. Its length in out, -1
+// when it doesn't fit.
+realm_npc_body :: (r: [] Realm, name: string, role: string, knowledge: string, greet: string, question: string, out: [] u8) -> int #export_c {
+  o := realm_put(out, 0, "{\"npc\":{\"name\":\""); o = json_put_str(out, o, name);
+  o = realm_put(out, o, "\",\"role\":\""); o = json_put_str(out, o, role);
+  o = realm_put(out, o, "\",\"knowledge\":\""); o = json_put_str(out, o, knowledge);
+  o = realm_put(out, o, "\",\"greet\":\""); o = json_put_str(out, o, greet);
+  o = realm_put(out, o, "\"},\"world\":\""); o = json_put_str(out, o, HAUNT_NAME);
+  o = realm_put(out, o, "\",\"history\":[");
+  at := 0;
+  while at < r[0].memory_n {
+    e := at;
+    while e < r[0].memory_n && r[0].memory[e] != 10 { e += 1; }
+    if at > 0 { o = realm_put(out, o, ","); }
+    o = realm_put(out, o, ifx r[0].memory[at] == 110 then "{\"from\":\"npc\",\"text\":\"" else "{\"from\":\"player\",\"text\":\"");
+    o = json_put_str(out, o, cast(string) r[0].memory[at + 2..<e]);
+    o = realm_put(out, o, "\"}");
+    at = e + 1;
+  }
+  o = realm_put(out, o, "],\"question\":\""); o = json_put_str(out, o, question);
+  o = realm_put(out, o, "\"}");
+  return ifx o > out.count then -1 else o;
+}
+hex4 :: (s: string, at: int) -> int {
+  v := 0;
+  for j: 0..<4 {
+    c := cast(int) s[at + j];
+    d := ifx c >= 48 && c <= 57 then c - 48 else ifx c >= 97 && c <= 102 then c - 87 else ifx c >= 65 && c <= 70 then c - 55 else -1;
+    if d < 0 { return -1; }
+    v = v * 16 + d;
+  }
+  return v;
+}
+json_space :: (c: u8) -> bool { return c == 32 || c == 9 || c == 10 || c == 13; }
+// The character's words in the server's answer ({"text": "...", "model": ...}),
+// unescaped into out, on one line. Their length, or -1 when there are none.
+realm_npc_text :: (body: string, out: [] u8) -> int #export_c {
+  key := "\"text\"";
+  i := 0;
+  while i + key.count <= body.count && body[i..<i + key.count] != key { i += 1; }
+  if i + key.count > body.count { return -1; }
+  i += key.count;
+  while i < body.count && json_space(body[i]) { i += 1; }
+  if i >= body.count || body[i] != 58 { return -1; }
+  i += 1;
+  while i < body.count && json_space(body[i]) { i += 1; }
+  if i >= body.count || body[i] != 34 { return -1; }
+  i += 1;
+  n := 0;
+  while i < body.count && body[i] != 34 {
+    c := body[i];
+    if c != 92 {
+      if n >= out.count { return -1; }
+      out[n] = ifx c < 32 then cast(u8) 32 else c; n += 1; i += 1;
+      continue;
+    }
+    if i + 1 >= body.count { return -1; }
+    e := body[i + 1];
+    i += 2;
+    if e == 117 {   // \uXXXX; a surrogate pair is one character
+      if i + 4 > body.count { return -1; }
+      u := hex4(body, i);
+      i += 4;
+      if u < 0 { return -1; }
+      if u >= 0xD800 && u < 0xDC00 && i + 6 <= body.count && body[i] == 92 && body[i + 1] == 117 {
+        low := hex4(body, i + 2);
+        if low >= 0xDC00 && low < 0xE000 { u = 0x10000 + (u - 0xD800) * 1024 + (low - 0xDC00); i += 6; }
+      }
+      if u < 32 { u = 32; }
+      if n + 4 > out.count { return -1; }
+      buf: [4] u8;
+      k := utf8(buf[..], u);
+      for j: 0..<k { out[n] = buf[j]; n += 1; }
+      continue;
+    }
+    if n >= out.count { return -1; }
+    out[n] = ifx e == 110 || e == 116 || e == 114 || e == 98 || e == 102 then cast(u8) 32 else e;
+    n += 1;
+  }
+  if i >= body.count || n == 0 { return -1; }
+  return n;
+}
+// A question to a character, and whether the server answered it (else their own lines did).
+realm_track_ask :: (t: [] Track, who: string, question: string, ok: bool) #export_c {
+  if track_begin(t, "prompt") {
+    track_str(t, "via", "npc"); track_str(t, "who", who); track_bool(t, "ok", ok); track_str(t, "world", HAUNT_WORLD);
+    track_words(t, question); track_end(t);
+  }
+}
+// Something taught to a character.
+realm_track_teach :: (t: [] Track, who: string, lesson: string) #export_c {
+  if track_begin(t, "prompt") {
+    track_str(t, "via", "npc"); track_str(t, "who", who); track_bool(t, "teach", true); track_bool(t, "ok", true);
+    track_str(t, "world", HAUNT_WORLD); track_words(t, lesson); track_end(t);
+  }
 }
 #test "the survey's answer goes to the server's feedback with the visitor and the session" {
   t: [1] Track;
@@ -990,6 +1159,7 @@ realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
   if b == BTN_EXIT { return "exit"; } if b == BTN_HINT { return "hint"; } if b == BTN_BYE { return "bye"; }
   if b == BTN_SEND { return "send"; } if b == BTN_CANCEL { return "cancel"; } if b == BTN_EDIT { return "edit"; }
   if b == BTN_UNDO { return "undo"; } if b == BTN_REDO { return "redo"; }
+  if b == BTN_ASK { return "ask"; } if b == BTN_TEACH { return "teach"; }
   if b >= BTN_OP { return "edit-op"; }
   if b >= BTN_ITEM { return "item"; }
   return "";
@@ -1211,7 +1381,71 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert realm_take(r[..]) == 0;                 // nothing typed: nothing sent
 }
 
+#test "in a conversation, T asks and TEACH teaches in the typed box; Escape goes back to them" {
+  r: [1] Realm; desk(r[..]); v := view();
+  #assert !realm_key(r[..], v, 't', 0, true);   // nobody to ask
+  _ := realm_key(r[..], v, 't', 0, false);
+  v.talking = "Mortimer"; v.reply = "Welcome.";
+  #assert realm_key(r[..], v, 'T', 0, true) && realm_wants_text(r[..]) && realm_typing_for(r[..]) == TYPE_ASK;
+  _ = realm_key(r[..], v, 'T', 0, false);
+  for c: "Hi" { _ = realm_key(r[..], v, cast(int) c, 0, true); }
+  _ = realm_key(r[..], v, KEY_ENTER, 0, true);
+  #assert realm_take(r[..]) == ASK_SEND && realm_typed(r[..]) == "Hi";
+  _ = realm_key(r[..], v, KEY_ESCAPE, 0, true);
+  #assert !realm_wants_text(r[..]) && realm_take(r[..]) == 0;   // back with them: the conversation goes on
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) > 0;
+  #assert r[0].shown[BTN_ASK] && r[0].shown[BTN_TEACH] && r[0].shown[BTN_HINT] && r[0].shown[BTN_BYE];
+  b := r[0].boxes[BTN_TEACH];
+  #assert realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_DOWN, 0, 1);
+  #assert realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_UP, 0, 1);
+  #assert realm_wants_text(r[..]) && realm_typing_for(r[..]) == TYPE_TEACH;
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) > 0;
+  #assert r[0].shown[BTN_SEND] && r[0].shown[BTN_CANCEL] && !r[0].shown[BTN_ASK];
+  #assert realm_button_label(r[..], b.x0 + 4, b.y0 + 4) != "teach";   // the box covers them now
+  realm_ask_text(r[..]);
+  #assert realm_typing_for(r[..]) == TYPE_SURVEY;
+}
+
+#test "a question goes to the server with who they are, what they were taught, the last ten lines and the question" {
+  r: [1] Realm; desk(r[..]);
+  realm_remember(r[..], true, "Good evening.");
+  realm_remember(r[..], false, "Who \"are\" you?\nTell me");
+  out: [1024] u8;
+  n := realm_npc_body(r[..], "Mortimer", "the butler", "The key is under the rug.", "Good evening.", "Where is the key?", out[..]);
+  #assert cast(string) out[0..<n] == "{\"npc\":{\"name\":\"Mortimer\",\"role\":\"the butler\",\"knowledge\":\"The key is under the rug.\",\"greet\":\"Good evening.\"},\"world\":\"Haunted House\",\"history\":[{\"from\":\"npc\",\"text\":\"Good evening.\"},{\"from\":\"player\",\"text\":\"Who \\\"are\\\" you? Tell me\"}],\"question\":\"Where is the key?\"}";
+  for i: 0..<12 { realm_remember(r[..], i % 2 == 0, ifx i == 11 then "last" else "line"); }
+  #assert r[0].memory_lines == MEMORY_LINES && r[0].memory_n == MEMORY_LINES * 7 && r[0].memory[r[0].memory_n - 4] == 97;
+  small: [32] u8;
+  #assert realm_npc_body(r[..], "Mortimer", "", "", "", "hi", small[..]) == -1;
+  realm_forget(r[..]);
+  n = realm_npc_body(r[..], "A", "", "", "", "hi", out[..]);
+  #assert cast(string) out[0..<n] == "{\"npc\":{\"name\":\"A\",\"role\":\"\",\"knowledge\":\"\",\"greet\":\"\"},\"world\":\"Haunted House\",\"history\":[],\"question\":\"hi\"}";
+  // a long line is kept to MEMORY_LINE bytes, never half a character
+  long: [MEMORY_LINE + 1] u8;
+  for i: 0..<MEMORY_LINE - 1 { long[i] = 97; }
+  long[MEMORY_LINE - 1] = 0xC3; long[MEMORY_LINE] = 0xA9;
+  realm_remember(r[..], false, cast(string) long[0..<MEMORY_LINE + 1]);
+  #assert r[0].memory_n == MEMORY_LINE - 1 + 3;
+  realm_remember(r[..], false, "");
+  #assert r[0].memory_lines == 1;
+}
+
+#test "the character's words come out of the server's answer, unescaped, on one line" {
+  out: [64] u8;
+  n := realm_npc_text("{\"text\": \"Good \\\"evening\\\".\\nCaf\\u00e9 \\ud83d\\ude00\", \"model\": \"gemini-3.8-flash\"}", out[..]);
+  #assert n == 26 && cast(string) out[0..<16] == "Good \"evening\". " && out[19] == 0xC3 && out[20] == 0xA9 && out[22] == 0xF0 && out[25] == 0x80;
+  #assert realm_npc_text("{\"text\":\"Hello.\"}", out[..]) == 6;
+  #assert realm_npc_text("{\"error\": \"the day's answers are used up\"}", out[..]) == -1;
+  #assert realm_npc_text("{\"text\": \"never ends", out[..]) == -1;
+  #assert realm_npc_text("{\"text\": \"\"}", out[..]) == -1;
+  #assert realm_npc_text("", out[..]) == -1;
+  small: [4] u8;
+  #assert realm_npc_text("{\"text\":\"too long\"}", small[..]) == -1;
+}
+
 #test "edit mode: a click picks, a drag looks; keys and buttons edit the picked thing, the zone, undo" {
+
   r: [1] Realm; desk(r[..]); v := view(); v.editing = true; v.item_n = 2; v.items[0] = "JACK"; v.items[1] = "CANDLE";
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   d0 := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);

@@ -19,6 +19,13 @@
 // also saves on the server (/api/playtest/progress/haunted-house/main, with
 // the host's player key); on the next visit, in any browser, the newer of
 // the two opens. A save that doesn't open falls back to the last good one.
+//
+// Talking: a typed question (ASK) goes to the server (/api/playtest/npc/ask,
+// with the player key), which answers as the character from who they are,
+// what players taught them and the conversation so far. When it can't (an
+// error, the day's answers used up, nothing back in NPC_WAIT seconds) the
+// house's own lines answer (verse_haunt_ask). What you TEACH a character is
+// added to what they know and kept with the house's save.
 #include "realm.h"
 #include "Player.h"
 #include "Grid.h"
@@ -100,6 +107,20 @@ static char post[SNAP * 2];
 static char feedback[512];         // the survey's answer, kept with the house
 static char placed[1024][16];      // ids of what you placed: "placed-N"
 static int placed_n;
+#define NPC_URL "/api/playtest/npc/ask"
+#define NPC_WAIT 12.0              // seconds before the house's own lines answer instead
+#define HTTP_ASK 13                // coaxial_http: a POST (1), an answer wanted (4), the player key (8)
+static int32_t npc_ask = -1;       // the question's request (-1 none waiting)
+static double npc_asked_at;
+static int64_t npc_who = -1;       // whom it was asked of
+static char question[512];
+static size_t question_n;
+static char answer_text[1024];     // their answer: house.reply points here
+static uint8_t npc_body[12288];
+#define TAUGHT 16
+static char taught[TAUGHT][4096];  // what characters were taught: their knowledge points here
+static int64_t talking_was = -1;   // the conversation the realm remembers
+static coax_string greet;          // what they said first
 
 // Edit mode's hotbar: short names (the HUD's) and the house's mesh for each.
 static const struct { const char *label, *name, *mesh; } items[5] = {
@@ -269,6 +290,7 @@ static void open_house(void) {
 }
 
 static void do_goal(void);
+static void follow_talk(void);
 
 // E: talk to whoever is near, else the quest's orb, else open the door
 // (activateNearby, with the orb before the door so a door beside it
@@ -447,21 +469,137 @@ static void send_feedback(void) {
   toast("Thank you. The quest is complete");
 }
 
+// ---- talking (realm.coax realm_npc_body, realm_npc_text)
+
+// A new conversation (or none): the realm forgets the last, a question
+// still out is let go, and the typed box for whoever it was closes.
+static void follow_talk(void) {
+  if (house.talking == talking_was) return;
+  talking_was = house.talking;
+  realm_forget(realm_of());
+  npc_ask = -1;
+  if (realm_wants_text(realm_of()) && realm_typing_for(realm_of()) != 0) realm_close_text(realm_of());
+  greet = house.talking >= 0 ? house.reply : (coax_string){"", 0};
+  if (house.talking >= 0) realm_remember(realm_of(), true, greet);
+}
+
+// The house's own lines answer.
+static void npc_scripted(void) {
+  house = verse_haunt_ask(house, (coax_string){question, (int64_t)question_n});
+  if (house.talking >= 0) realm_remember(realm_of(), true, house.reply);
+  follow_talk();   // "bye" ends it
+}
+
+static void ask_npc(coax_string typed) {
+  if (house.talking < 0 || house.talking >= house.people_count) return;
+  question_n = typed.count < (int64_t)sizeof question ? (size_t)typed.count : sizeof question;
+  memcpy(question, typed.data, question_n);
+  coax_string q = {question, (int64_t)question_n};
+  coax_t_HauntPerson p = people[house.talking];
+  int64_t n = realm_npc_body(realm_of(), p.name, p.role, p.knowledge, greet, q, (coax_v_u8){npc_body, sizeof npc_body});
+  realm_remember(realm_of(), false, q);
+  npc_ask = n > 0 ? coaxial_http((uint32_t)(uintptr_t)NPC_URL, sizeof NPC_URL - 1, (uint32_t)(uintptr_t)npc_body, (uint32_t)n, HTTP_ASK) : -1;
+  if (npc_ask < 0) { realm_track_ask(tr(), p.name, q, false); npc_scripted(); return; }
+  npc_who = house.talking;
+  npc_asked_at = now;
+  house.reply = text("...");   // they think
+}
+
+// The server's answer ("STATUS\n" then the body): their words, else their own lines.
+static void take_answer(uint32_t length) {
+  npc_ask = -1;
+  if (npc_who < 0 || npc_who >= house.people_count) return;
+  const char *p = (const char *)inbox, *nl = memchr(p, '\n', length);
+  int status = 0;
+  for (const char *c = p; nl && c < nl && *c >= '0' && *c <= '9'; c++) status = status * 10 + (*c - '0');
+  bool ok = false;
+  if (status == 200 && house.talking == npc_who) {
+    int64_t n = realm_npc_text((coax_string){nl + 1, (int64_t)(p + length - nl - 1)}, (coax_v_u8){(uint8_t *)answer_text, sizeof answer_text});
+    if (n > 0) { house.reply = (coax_string){answer_text, n}; realm_remember(realm_of(), true, house.reply); ok = true; }
+  }
+  realm_track_ask(tr(), people[npc_who].name, (coax_string){question, (int64_t)question_n}, ok);
+  if (!ok && house.talking == npc_who) npc_scripted();
+}
+
+// Nothing back in time: their own lines, and a late answer is let go.
+static void npc_waited(void) {
+  if (npc_ask < 0 || now - npc_asked_at < NPC_WAIT) return;
+  npc_ask = -1;
+  if (npc_who >= 0 && npc_who < house.people_count) realm_track_ask(tr(), people[npc_who].name, (coax_string){question, (int64_t)question_n}, false);
+  if (house.talking == npc_who) npc_scripted();
+}
+
+// TEACH: the lesson is added to what they know (a sentence of its own),
+// into the buffer their knowledge is in, else one nobody's is in; undo takes it back.
+static void teach(int64_t who, coax_string lesson) {
+  int64_t a = 0, b = lesson.count;
+  while (a < b && lesson.data[a] == ' ') a++;
+  while (b > a && lesson.data[b - 1] == ' ') b--;
+  if (a == b || who < 0 || who >= house.people_count) return;
+  static char next[4096];
+  coax_string had = people[who].knowledge;
+  size_t m = had.count > 0 ? (size_t)had.count : 0;
+  if (m > sizeof next - 2) m = sizeof next - 2;
+  memcpy(next, had.data, m);
+  if (m) next[m++] = ' ';
+  size_t k = (size_t)(b - a) < sizeof next - 1 - m ? (size_t)(b - a) : sizeof next - 1 - m;
+  memcpy(next + m, lesson.data + a, k);
+  m += k;
+  char last = next[m - 1];
+  if (last != '.' && last != '!' && last != '?') next[m++] = '.';
+  int slot = -1;
+  for (int s = 0; s < TAUGHT && slot < 0; s++) {
+    int64_t users = 0; bool theirs = false;
+    for (int64_t i = 0; i < house.people_count; i++)
+      if (people[i].knowledge.data >= taught[s] && people[i].knowledge.data < taught[s] + sizeof taught[s]) { users++; theirs |= i == who; }
+    if (theirs && users == 1) slot = s;
+  }
+  for (int s = 0; s < TAUGHT && slot < 0; s++) {
+    bool used = false;
+    for (int64_t i = 0; i < house.people_count; i++)
+      if (people[i].knowledge.data >= taught[s] && people[i].knowledge.data < taught[s] + sizeof taught[s]) used = true;
+    if (!used) slot = s;
+  }
+  if (slot < 0) { toast("They can't take in any more today"); return; }
+  memcpy(taught[slot], next, m);
+  remember();
+  house = verse_haunt_teach(house, who, (coax_string){taught[slot], (int64_t)m});
+  realm_track_teach(tr(), people[who].name, (coax_string){lesson.data + a, b - a});
+  static char said[160];
+  snprintf(said, sizeof said, "%.*s will remember that", (int)people[who].name.count, people[who].name.data);
+  toast(said);
+}
+
+// What's typed, sent: the survey's answer, a question or a lesson.
+static void send_typed(void) {
+  int64_t kind = realm_typing_for(realm_of());
+  if (kind == 0) { send_feedback(); return; }
+  coax_string typed = realm_typed(realm_of());
+  realm_close_text(realm_of());
+  if (house.talking < 0) return;
+  if (kind == 2) teach(house.talking, typed);
+  else ask_npc(typed);
+}
+
 static void take_asks(void) {
   if (!opened) return;
   int64_t asks = realm_take(realm_of());
   if (asks & 32) do_goal();
-  if (asks & 64) send_feedback();
+  if (asks & 64) send_typed();
   if (asks & 128) set_editing(!house.editing);
   if ((asks & 256) && house.editing) { remember(); place(realm.slot, "hotbar"); }
   if ((asks & 512) && house.editing) pick(realm.pick_x, realm.pick_y);
   if ((asks & 1024) && house.editing) edit_op(realm.op);
   if (asks & 1) use_nearby();
   if (asks & 2) { house = verse_haunt_view(house); player.phi = house.camera == 0 ? 1.5707963f : 1.107f; }
-  if ((asks & 4) && house.talking >= 0) house = verse_haunt_talk(house, house.talking, 1);
+  if ((asks & 4) && house.talking >= 0) {
+    house = verse_haunt_talk(house, house.talking, 1);
+    realm_remember(realm_of(), true, house.reply);
+  }
   if (asks & 8) house = verse_haunt_talk(house, -1, 0);
   // Walked away: the conversation ends.
   if (house.talking >= 0 && !verse_haunt_reach(house, house.talking)) house = verse_haunt_talk(house, -1, 0);
+  follow_talk();
 }
 
 // The sounds the house asked for this frame, a line each: name gain pan.
@@ -498,6 +636,7 @@ static void step(float dt) {
   coax_t_Vec3 eye = verse_player_view_eye(player, house.camera);
   house = verse_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
   take_asks();
+  npc_waited();
   // A step of the quest is kept at once; other changes at most every 1.5 s.
   static int64_t quest_kept = -1;
   keep(house.quest != quest_kept);
@@ -645,6 +784,9 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
       progress_ask = coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, 0, 0, HTTP_ANSWER_PLAYER);
   }
   if (progress_ask >= 0 && kind == 512 + progress_ask) { progress_ask = -2; take_server(length); return; }
+  if (npc_ask >= 0 && kind == 512 + npc_ask) { take_answer(length); return; }
+  if (kind >= 512 && kind < 520) return;   // an answer let go
+
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
   if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
   if (kind == 4 && !opened) take_kept(length);   // restore_kept opens it with the house
