@@ -154,14 +154,23 @@ cl_element :: (text: string, outer: ClSlice, index: int) -> ClSlice {
   return ClSlice.{ok = true, tok = v.tok, from = v.from + outer.from, to = v.to + outer.from};
 }
 
-// A dotted path from the root object ("rate_limit_info.resetsAt").
+cl_digits :: (s: string) -> bool {
+  if s.count == 0 || s.count > 9 { return false; }
+  for c: s { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+
+// A dotted path from the root ("rate_limit_info.resetsAt"); a number
+// segment indexes an array ("tools.0.name").
 cl_at :: (text: string, path: string) -> ClSlice {
   r: ClSlice;
   v := cl_root(text);
   start := 0;
   for i: 0..<path.count + 1 {
     if i == path.count || path[i] == '.' {
-      v = cl_member(text, v, path[start..<i]);
+      seg := path[start..<i];
+      if v.ok && v.tok == JSON_ARRAY && cl_digits(seg) { v = cl_element(text, v, json_int(seg).value); }
+      else { v = cl_member(text, v, seg); }
       if !v.ok { return r; }
       start = i + 1;
     }

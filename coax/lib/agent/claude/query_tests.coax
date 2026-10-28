@@ -1,0 +1,334 @@
+// The control protocol both ways, from the crate's query.rs and mcp.rs
+// tests: scripted CLI frames go through cl_feed and the frames the SDK
+// writes back are checked. Run with
+// coax test --library coax/lib/agent/claude/query_tests.coax.
+
+#load "claude.coax";
+
+Fx :: struct {
+  arena: [16384] u8;
+  out: [16384] u8;
+  line: [16] u8;
+}
+
+fx_query :: (q: [] ClQuery, f: [] Fx) { cl_init(q, f[0].line[..], f[0].arena[..], f[0].out[..]); }
+
+// The frames written since the last call, cleared.
+fx_take :: (q: [] ClQuery, copy: [] u8) -> string {
+  s := cl_outbox(q);
+  n := cl_copy(copy, s);
+  cl_outbox_clear(q);
+  return cast(string) copy[0..<n];
+}
+
+fx_calc :: (o: [] ClOptions) {
+  s := cl_add_server(o, "calc", "1.0.0");
+  o[0].servers[s].timeout_ms = 30000;
+  t := cl_add_server_tool(o, s, "add", "Add two numbers", "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}");
+}
+
+fx_mcp :: (id: string, server: string, message: string, buf: [] u8) -> string {
+  w: [1] ClOut; w[0].buf = buf; o := w[..];
+  cl_put(o, "{\"type\":\"control_request\",\"request_id\":"); cl_put_string(o, id);
+  cl_put(o, ",\"request\":{\"subtype\":\"mcp_message\",\"server_name\":"); cl_put_string(o, server);
+  cl_put(o, ",\"message\":"); cl_put(o, message); cl_put(o, "}}");
+  return cast(string) buf[0..<w[0].len];
+}
+
+#test "initialize names SDK servers and their timeouts, not --mcp-config" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions; fx_calc(o[..]); q[0].options = o[0];
+  #assert cl_begin(q[..], "hi", false) == "";
+  c: [8192] u8; init := fx_take(q[..], c[..]);
+  #assert cl_eq(init, cl_at(init, "request.subtype"), "initialize") && cl_eq(init, cl_at(init, "request_id"), "sdk-0");
+  #assert cl_eq(init, cl_at(init, "request.sdkMcpServers.0"), "calc") && cl_count(cl_raw(init, "request.sdkMcpServers")) == 1;
+  #assert cl_int(init, "request.sdkMcpServerConfigs.calc.timeout").value == 30000;
+  #assert !cl_at(init, "request.sdkMcpServerManifests").ok && !cl_at(init, "request.hooks").ok;
+  a: [1] ClArgs; abuf: [8192] u8; a[0].buf = abuf[..]; s: [4096] u8;
+  cl_build_args(q[0].options, a[..], s[..]);
+  for i: 0..<a[0].count { #assert cl_arg_at(a[..], i) != "--mcp-config"; }
+}
+
+#test "SDK MCP manifests ride in initialize when asked" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions; fx_calc(o[..]); o[0].sdk_mcp_manifests = true; q[0].options = o[0];
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8; init := fx_take(q[..], c[..]);
+  #assert cl_eq(init, cl_at(init, "request.sdkMcpServerManifests.calc.initializeResult.serverInfo.name"), "calc");
+  #assert cl_eq(init, cl_at(init, "request.sdkMcpServerManifests.calc.toolsListResult.tools.0.name"), "add");
+}
+
+#test "an SDK MCP server answers initialize, notifications, list and call over mcp_message" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions; fx_calc(o[..]); q[0].options = o[0];
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8; fb: [2048] u8;
+  init := fx_take(q[..], c[..]);
+
+  ev := cl_feed(q[..], fx_mcp("cli-mcp-0", "calc", "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"claude-code\",\"version\":\"2.1.296\"}}}", fb[..]));
+  #assert ev.kind == ClEventKind.none;
+  r := fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.subtype"), "success") && cl_eq(r, cl_at(r, "response.request_id"), "cli-mcp-0");
+  #assert cl_int(r, "response.response.mcp_response.id").value == 0;
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.result.protocolVersion"), "2025-06-18");
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.result.serverInfo.name"), "calc");
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.result.serverInfo.version"), "1.0.0");
+  #assert cl_bool(r, "response.response.mcp_response.result.capabilities.tools.listChanged").ok;
+
+  ev = cl_feed(q[..], fx_mcp("cli-mcp-1", "calc", "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", fb[..]));
+  r = fx_take(q[..], c[..]);
+  #assert cl_raw(r, "response.response.mcp_response") == CL_MCP_ACK;
+
+  ev = cl_feed(q[..], fx_mcp("cli-mcp-2", "calc", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}", fb[..]));
+  r = fx_take(q[..], c[..]);
+  #assert cl_int(r, "response.response.mcp_response.id").value == 1;
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.result.tools.0.name"), "add");
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.result.tools.0.inputSchema.required.0"), "a");
+  #assert !cl_at(r, "response.response.mcp_response.result.tools.0._meta").ok;
+
+  ev = cl_feed(q[..], fx_mcp("cli-mcp-3", "calc", "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"add\",\"arguments\":{\"a\":2,\"b\":3}}}", fb[..]));
+  #assert ev.kind == ClEventKind.tool_call && ev.server == 0 && ev.tool == 0;
+  #assert cl_int(ev.arguments, "a").value == 2 && cl_int(ev.arguments, "b").value == 3;
+  #assert cl_outbox(q[..]).count == 0;
+  cl_tool_text(q[..], "5", false);
+  r = fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.request_id"), "cli-mcp-3") && cl_int(r, "response.response.mcp_response.id").value == 2;
+  #assert cl_raw(r, "response.response.mcp_response.result") == "{\"content\":[{\"type\":\"text\",\"text\":\"5\"}]}";
+
+  ev = cl_feed(q[..], fx_mcp("cli-mcp-4", "nope", "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}", fb[..]));
+  r = fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.subtype"), "error");
+  #assert cl_eq(r, cl_at(r, "response.error"), "MCP server error: SDK MCP server not found: nope");
+}
+
+#test "an unknown protocol version gets the newest; unknown tools and methods are JSON-RPC errors" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions; fx_calc(o[..]); q[0].options = o[0];
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8; fb: [2048] u8;
+  init := fx_take(q[..], c[..]);
+  ev := cl_feed(q[..], fx_mcp("m0", "calc", "{\"jsonrpc\":\"2.0\",\"id\":\"x\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"1999-01-01\"}}", fb[..]));
+  r := fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.id"), "x");
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.result.protocolVersion"), CL_MCP_PROTOCOL_VERSION);
+  ev = cl_feed(q[..], fx_mcp("m1", "calc", "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"mul\"}}", fb[..]));
+  #assert ev.kind == ClEventKind.none;
+  r = fx_take(q[..], c[..]);
+  #assert cl_int(r, "response.response.mcp_response.error.code").value == CL_MCP_INVALID_PARAMS;
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.error.message"), "Tool mul not found");
+  #assert !cl_at(r, "response.response.mcp_response.result").ok;
+  ev = cl_feed(q[..], fx_mcp("m2", "calc", "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/list\",\"params\":{}}", fb[..]));
+  r = fx_take(q[..], c[..]);
+  #assert cl_int(r, "response.response.mcp_response.error.code").value == CL_MCP_METHOD_NOT_FOUND;
+  #assert cl_eq(r, cl_at(r, "response.response.mcp_response.error.message"), "Method not found: resources/list");
+  ev = cl_feed(q[..], fx_mcp("m3", "calc", "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"ping\"}", fb[..]));
+  r = fx_take(q[..], c[..]);
+  #assert cl_raw(r, "response.response.mcp_response.result") == "{}";
+  ev = cl_feed(q[..], fx_mcp("m4", "calc", "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"tools/list\"}", fb[..]));
+  r = fx_take(q[..], c[..]);
+  #assert cl_raw(r, "response.response.mcp_response") == CL_MCP_ACK;
+  ev = cl_feed(q[..], fx_mcp("m5", "calc", "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}", fb[..]));
+  r = fx_take(q[..], c[..]);
+  #assert cl_raw(r, "response.response.mcp_response") == CL_MCP_ACK;
+}
+
+#test "tool listings carry annotations and _meta; results carry images and isError" {
+  o: [1] ClOptions;
+  s := cl_add_server(o[..], "calc", "1.2.3");
+  o[0].servers[s].instructions = "Use add for sums.";
+  t := cl_add_server_tool(o[..], s, "fail", "Always fails", "{\"type\":\"object\"}");
+  o[0].servers[s].tools[t].always_load = true;
+  o[0].servers[s].tools[t].search_hint = "failure";
+  o[0].servers[s].tools[t].annotations = "{\"readOnlyHint\":true}";
+  b: [4096] u8; out: [1] ClOut; out[0].buf = b[..];
+  cl_put_mcp_tools_list(out[..], o[0].servers[s]);
+  l := cast(string) b[0..<out[0].len];
+  #assert cl_bool(l, "tools.0._meta.anthropic/alwaysLoad").value && cl_eq(l, cl_at(l, "tools.0._meta.anthropic/searchHint"), "failure");
+  #assert cl_bool(l, "tools.0.annotations.readOnlyHint").value;
+  out[0].len = 0;
+  cl_put_mcp_initialize(out[..], o[0].servers[s], "");
+  l = cast(string) b[0..<out[0].len];
+  #assert cl_eq(l, cl_at(l, "instructions"), "Use add for sums.") && cl_eq(l, cl_at(l, "serverInfo.version"), "1.2.3");
+  out[0].len = 0;
+  cl_put_tool_text(out[..], "no", true);
+  #assert cast(string) b[0..<out[0].len] == "{\"content\":[{\"type\":\"text\",\"text\":\"no\"}],\"isError\":true}";
+  blocks: [512] u8; bo: [1] ClOut; bo[0].buf = blocks[..];
+  cl_put(bo[..], "["); cl_tool_image_block(bo[..], "iVBORw0KGgo=", "image/png"); cl_put(bo[..], ","); cl_text_block(bo[..], "a pixel"); cl_put(bo[..], "]");
+  out[0].len = 0;
+  cl_put_tool_result(out[..], cast(string) blocks[0..<bo[0].len], false, "");
+  #assert cast(string) b[0..<out[0].len] == "{\"content\":[{\"type\":\"image\",\"data\":\"iVBORw0KGgo=\",\"mimeType\":\"image/png\"},{\"type\":\"text\",\"text\":\"a pixel\"}]}";
+  name: [64] u8; no: [1] ClOut; no[0].buf = name[..];
+  cl_put_tool_name(no[..], "calc", "add");
+  #assert cast(string) name[0..<no[0].len] == "mcp__calc__add";
+}
+
+#test "an unanswered tool call goes back as an isError result" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions; fx_calc(o[..]); q[0].options = o[0];
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8; fb: [2048] u8;
+  init := fx_take(q[..], c[..]);
+  ev := cl_feed(q[..], fx_mcp("m9", "calc", "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"add\"}}", fb[..]));
+  #assert ev.kind == ClEventKind.tool_call && ev.arguments == "{}";
+  ev = cl_feed(q[..], "{\"type\":\"keep_alive\"}");
+  r := fx_take(q[..], c[..]);
+  #assert cl_bool(r, "response.response.mcp_response.result.isError").value && cl_int(r, "response.response.mcp_response.id").value == 9;
+}
+
+#test "hooks register as hook_N, events sorted by name, and the host's answer is the reply" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions;
+  cl_add_hook(o[..], "PreToolUse", "Bash", 5.0);
+  cl_add_hook(o[..], "PostToolUse", "", 0.0);
+  cl_add_hook(o[..], "PreToolUse", "Read", 0.0);
+  q[0].options = o[0];
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8;
+  init := fx_take(q[..], c[..]);
+  #assert cl_eq(init, cl_at(init, "request.hooks.PostToolUse.0.hookCallbackIds.0"), "hook_0");
+  #assert !cl_at(init, "request.hooks.PostToolUse.0.matcher").ok;
+  #assert cl_eq(init, cl_at(init, "request.hooks.PreToolUse.0.matcher"), "Bash");
+  #assert cl_eq(init, cl_at(init, "request.hooks.PreToolUse.0.hookCallbackIds.0"), "hook_1");
+  #assert near_f(cl_num(init, "request.hooks.PreToolUse.0.timeout").value, 5.0);
+  #assert cl_eq(init, cl_at(init, "request.hooks.PreToolUse.1.hookCallbackIds.0"), "hook_2");
+
+  ev := cl_feed(q[..], "{\"type\":\"control_request\",\"request_id\":\"cli-hook-1\",\"request\":{\"subtype\":\"hook_callback\",\"callback_id\":\"hook_1\",\"tool_use_id\":\"tu-1\",\"input\":{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}}}");
+  #assert ev.kind == ClEventKind.hook && ev.hook == 0 && ev.request.tool_use_id == "tu-1";
+  #assert cl_eq(ev.arguments, cl_at(ev.arguments, "hook_event_name"), "PreToolUse");
+  h: ClHookOutput;
+  h.hook_specific_output = "{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"no shell\"}";
+  cl_hook_reply(q[..], h);
+  r := fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.subtype"), "success") && cl_eq(r, cl_at(r, "response.request_id"), "cli-hook-1");
+  #assert cl_eq(r, cl_at(r, "response.response.hookSpecificOutput.permissionDecision"), "deny");
+
+  ev = cl_feed(q[..], "{\"type\":\"control_request\",\"request_id\":\"cli-hook-2\",\"request\":{\"subtype\":\"hook_callback\",\"callback_id\":\"hook_99\",\"input\":{}}}");
+  #assert ev.kind == ClEventKind.none;
+  r = fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.subtype"), "error");
+  #assert cl_eq(r, cl_at(r, "response.error"), "hook callback failed: no hook callback found for ID: hook_99");
+}
+
+#test "hook output serializes the TS SyncHookJSONOutput names" {
+  b: [1024] u8; o: [1] ClOut; o[0].buf = b[..];
+  h: ClHookOutput;
+  h.continue_set = true; h.continue_execution = false; h.suppress_output = true;
+  h.stop_reason = "done"; h.decision = "block"; h.system_message = "note"; h.reason = "why";
+  cl_put_hook_output(o[..], h);
+  #assert cast(string) b[0..<o[0].len] == "{\"continue\":false,\"suppressOutput\":true,\"stopReason\":\"done\",\"decision\":\"block\",\"systemMessage\":\"note\",\"reason\":\"why\"}";
+}
+
+#test "a control cancel after the host answered writes nothing more" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions; cl_add_hook(o[..], "PreToolUse", "", 0.0); q[0].options = o[0];
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8;
+  init := fx_take(q[..], c[..]);
+  ev := cl_feed(q[..], "{\"type\":\"control_request\",\"request_id\":\"slow\",\"request\":{\"subtype\":\"hook_callback\",\"callback_id\":\"hook_0\",\"input\":{}}}");
+  #assert ev.kind == ClEventKind.hook;
+  cl_hook_answer(q[..], "{\"async\":true}");
+  r := fx_take(q[..], c[..]);
+  #assert cl_bool(r, "response.response.async").value;
+  ev = cl_feed(q[..], "{\"type\":\"control_cancel_request\",\"request_id\":\"slow\"}");
+  #assert ev.kind == ClEventKind.none && cl_outbox(q[..]).count == 0 && q[0].pending == ClEventKind.none;
+}
+
+#test "can_use_tool goes to the host with a permission handler, and is refused without one" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8;
+  init := fx_take(q[..], c[..]);
+  perm := "{\"type\":\"control_request\",\"request_id\":\"cli-perm-1\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"tu-9\"}}";
+  ev := cl_feed(q[..], perm);
+  #assert ev.kind == ClEventKind.none;
+  r := fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.error"), "invalid protocol message: canUseTool callback is not provided");
+
+  f2: [1] Fx; p: [1] ClQuery; fx_query(p[..], f2[..]);
+  p[0].options.permission_handler = true;
+  #assert cl_begin(p[..], "", true) == "";
+  init = fx_take(p[..], c[..]);
+  ev = cl_feed(p[..], perm);
+  #assert ev.kind == ClEventKind.permission && ev.request.tool_name == "Bash" && ev.request.tool_use_id == "tu-9";
+  cl_deny(p[..], "no shell here", false);
+  r = fx_take(p[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.request_id"), "cli-perm-1");
+  #assert cl_raw(r, "response.response") == "{\"behavior\":\"deny\",\"message\":\"no shell here\"}";
+  ev = cl_feed(p[..], perm);
+  cl_allow(p[..], ev.request.input, "");
+  r = fx_take(p[..], c[..]);
+  #assert cl_raw(r, "response.response") == "{\"behavior\":\"allow\",\"updatedInput\":{\"command\":\"ls\"}}";
+}
+
+#test "an oversized permission answer goes out as a deny" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  q[0].options.permission_handler = true;
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8;
+  init := fx_take(q[..], c[..]);
+  ev := cl_feed(q[..], "{\"type\":\"control_request\",\"request_id\":\"cli-perm-big\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\",\"input\":{},\"tool_use_id\":\"tu-big\"}}");
+  #assert ev.kind == ClEventKind.permission;
+  // 4096 directories in one update: 4097 entries.
+  big: [40000] u8; bo: [1] ClOut; bo[0].buf = big[..];
+  cl_put(bo[..], "[{\"type\":\"addDirectories\",\"destination\":\"session\",\"directories\":[");
+  for i: 0..<CL_MAX_UPDATED_PERMISSIONS { if i > 0 { cl_put(bo[..], ","); } cl_put(bo[..], "\"/d\""); }
+  cl_put(bo[..], "]}]");
+  #assert !bo[0].failed;
+  cl_allow(q[..], "{}", cast(string) big[0..<bo[0].len]);
+  r := fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "response.response.behavior"), "deny");
+  #assert cl_eq(r, cl_at(r, "response.response.message"), "Permission answer denied: updatedPermissions holds 4097 entries, over the limit of 4096");
+}
+
+#test "set_model and set_permission_mode go out as control requests" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8;
+  init := fx_take(q[..], c[..]);
+  n := cl_set_model(q[..], "claude-haiku-5-5");
+  r := fx_take(q[..], c[..]);
+  #assert n == 1 && r == "{\"type\":\"control_request\",\"request_id\":\"sdk-1\",\"request\":{\"subtype\":\"set_model\",\"model\":\"claude-haiku-5-5\"}}\n";
+  n = cl_set_model(q[..], "");
+  r = fx_take(q[..], c[..]);
+  #assert cl_is_null(r, cl_at(r, "request.model"));
+  n = cl_set_permission_mode(q[..], ClPermissionMode.accept_edits);
+  r = fx_take(q[..], c[..]);
+  #assert n == 3 && cl_eq(r, cl_at(r, "request.subtype"), "set_permission_mode") && cl_eq(r, cl_at(r, "request.mode"), "acceptEdits");
+  n = cl_interrupt(q[..]);
+  r = fx_take(q[..], c[..]);
+  #assert cl_eq(r, cl_at(r, "request.subtype"), "interrupt");
+  ev := cl_feed(q[..], "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"sdk-3\"}}");
+  #assert ev.kind == ClEventKind.control_result && ev.response.sdk_number == 3 && ev.response.ok;
+}
+
+#test "a prompt query sends initialize first and the prompt once it is answered" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  #assert cl_begin(q[..], "hello", false) == "";
+  c: [8192] u8;
+  init := fx_take(q[..], c[..]);
+  #assert cl_eq(init, cl_at(init, "request.subtype"), "initialize");
+  ev := cl_feed(q[..], "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"sdk-0\",\"response\":{\"models\":[],\"commands\":[]}}}");
+  #assert ev.kind == ClEventKind.initialized;
+  u := fx_take(q[..], c[..]);
+  #assert cl_eq(u, cl_at(u, "type"), "user") && cl_eq(u, cl_at(u, "message.content"), "hello");
+}
+
+#test "a failed initialize fails the query" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  #assert cl_begin(q[..], "hello", false) == "";
+  ev := cl_feed(q[..], "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"sdk-0\",\"error\":\"nope\"}}");
+  #assert ev.kind == ClEventKind.failed && cl_error(q[..]) == "initialization failed: nope";
+}
+
+#test "options the TS SDK rejects" {
+  o: [1] ClOptions;
+  s := cl_add_server(o[..], "calc", "1");
+  o[0].mcp_servers = "{\"calc\":{\"type\":\"stdio\",\"command\":\"calc\"}}";
+  #assert cl_validate(o[0]) != "";
+  p: [1] ClOptions; cl_add_hook(p[..], "NotAHook", "", 0.0);
+  #assert cl_validate(p[0]) != "";
+  r: [1] ClOptions; r[0].permission_handler = true; r[0].permission_prompt_tool_name = "mcp__x__y";
+  #assert cl_validate(r[0]) != "";
+}
+
+near_f :: (a: f64, b: f64) -> bool { return abs(a - b) < 0.001; }

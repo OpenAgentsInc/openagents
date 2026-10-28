@@ -1,0 +1,165 @@
+// In-process SDK MCP servers (mcp.rs): the answers to the MCP JSON-RPC
+// messages the CLI sends a ClServer inside mcp_message requests. initialize,
+// ping and tools/list are answered here; a tools/call becomes a host event
+// (query.coax) and the host's result goes back with cl_put_tool_result.
+// The model sees a tool as mcp__<server>__<tool> (cl_put_tool_name).
+
+#load "options.coax";
+
+CL_MCP_PROTOCOL_VERSION :: "2025-11-25";
+CL_MCP_VERSIONS :: [5] string.["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
+CL_MCP_METHOD_NOT_FOUND :: -32601;
+CL_MCP_INVALID_PARAMS :: -32602;
+
+// The CLI keeps this many characters of a tool description sent up front and
+// of server instructions, and of one loaded through tool search (0.3.296).
+CL_MCP_DESCRIPTION_LIMIT :: 4096;
+CL_MCP_DEFERRED_DESCRIPTION_LIMIT :: 16384;
+
+// The empty acknowledgement for a notification or a response.
+CL_MCP_ACK :: "{\"jsonrpc\":\"2.0\",\"result\":{},\"id\":0}";
+
+cl_mcp_version_known :: (v: string) -> bool {
+  versions := CL_MCP_VERSIONS;
+  for k: 0..<5 { if versions[k] == v { return true; } }
+  return false;
+}
+
+// mcp__<server>__<tool>
+cl_put_tool_name :: (o: [] ClOut, server: string, tool: string) {
+  cl_put(o, "mcp__"); cl_put(o, server); cl_put(o, "__"); cl_put(o, tool);
+}
+
+// The server's tool with this name, or -1.
+cl_server_tool :: (s: ClServer, name: string) -> int {
+  for k: 0..<s.tool_count { if s.tools[k].name == name { return k; } }
+  return -1;
+}
+
+// The initialize result for a client asking for version requested ("" for none).
+cl_put_mcp_initialize :: (o: [] ClOut, s: ClServer, requested: string) {
+  cl_put(o, "{\"protocolVersion\":");
+  cl_put_string(o, ifx cl_mcp_version_known(requested) then requested else CL_MCP_PROTOCOL_VERSION);
+  cl_put(o, ",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":");
+  cl_put_string(o, s.name); cl_put(o, ",\"version\":"); cl_put_string(o, s.version); cl_put(o, "}");
+  if s.instructions.count > 0 { cl_put(o, ",\"instructions\":"); cl_put_string(o, s.instructions); }
+  cl_put(o, "}");
+}
+
+cl_put_mcp_tool :: (o: [] ClOut, t: ClTool, server_always_load: bool) {
+  cl_put(o, "{\"name\":"); cl_put_string(o, t.name);
+  cl_put(o, ",\"description\":"); cl_put_string(o, t.description);
+  cl_put(o, ",\"inputSchema\":"); cl_put(o, ifx t.input_schema.count > 0 then t.input_schema else "{\"type\":\"object\"}");
+  if t.annotations.count > 0 { cl_put(o, ",\"annotations\":"); cl_put(o, t.annotations); }
+  always := t.always_load || server_always_load;
+  if t.search_hint.count > 0 || always {
+    cl_put(o, ",\"_meta\":{");
+    if t.search_hint.count > 0 { cl_put(o, "\"anthropic/searchHint\":"); cl_put_string(o, t.search_hint); }
+    if always { if t.search_hint.count > 0 { cl_put(o, ","); } cl_put(o, "\"anthropic/alwaysLoad\":true"); }
+    cl_put(o, "}");
+  }
+  cl_put(o, "}");
+}
+
+cl_put_mcp_tools_list :: (o: [] ClOut, s: ClServer) {
+  cl_put(o, "{\"tools\":[");
+  for k: 0..<s.tool_count { if k > 0 { cl_put(o, ","); } cl_put_mcp_tool(o, s.tools[k], s.always_load); }
+  cl_put(o, "]}");
+}
+
+// The initialize.sdkMcpServerManifests entry: the server's own initialize
+// and tools/list results, so the CLI skips those round trips.
+cl_put_mcp_manifest :: (o: [] ClOut, s: ClServer) {
+  cl_put(o, "{\"initializeResult\":"); cl_put_mcp_initialize(o, s, "");
+  cl_put(o, ",\"toolsListResult\":"); cl_put_mcp_tools_list(o, s); cl_put(o, "}");
+}
+
+// A CallToolResult with one text block.
+cl_put_tool_text :: (o: [] ClOut, text: string, is_error: bool) {
+  cl_put(o, "{\"content\":[{\"type\":\"text\",\"text\":"); cl_put_string(o, text); cl_put(o, "}]");
+  if is_error { cl_put(o, ",\"isError\":true"); }
+  cl_put(o, "}");
+}
+
+// A CallToolResult from content blocks (a JSON array of {"type":"text",...}
+// or {"type":"image","data":...,"mimeType":...}), and structuredContent ("" for none).
+cl_put_tool_result :: (o: [] ClOut, content: string, is_error: bool, structured: string) {
+  cl_put(o, "{\"content\":"); cl_put(o, ifx content.count > 0 then content else "[]");
+  if is_error { cl_put(o, ",\"isError\":true"); }
+  if structured.count > 0 { cl_put(o, ",\"structuredContent\":"); cl_put(o, structured); }
+  cl_put(o, "}");
+}
+
+// {"type":"image","data":D,"mimeType":M}, a content block of a tool result.
+cl_tool_image_block :: (o: [] ClOut, base64: string, mime_type: string) {
+  cl_put(o, "{\"type\":\"image\",\"data\":"); cl_put_string(o, base64);
+  cl_put(o, ",\"mimeType\":"); cl_put_string(o, mime_type); cl_put(o, "}");
+}
+
+cl_put_rpc_error :: (o: [] ClOut, id: string, code: int, a: string, b: string, c: string) {
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id);
+  cl_put(o, ",\"error\":{\"code\":"); cl_put_int(o, code);
+  cl_put(o, ",\"message\":\""); cl_put_escaped(o, a); cl_put_escaped(o, b); cl_put_escaped(o, c); cl_put(o, "\"}}");
+}
+
+// Appends s escaped as JSON string content, without quotes.
+cl_put_escaped :: (o: [] ClOut, s: string) {
+  if o[0].failed { return; }
+  at := o[0].len;
+  n := json_write_string(o[0].buf, at, s);
+  if n < 0 { o[0].failed = true; return; }
+  for i: at..<n - 2 { o[0].buf[i] = o[0].buf[i + 1]; }
+  o[0].len = n - 2;
+}
+
+// What one MCP message asks of a server.
+ClMcpCall :: struct {
+  reply: bool;        // a request: it has a method and a non-null id
+  id: string;         // the id, raw JSON
+  method: string;
+  tool: int;          // tools/call: the tool, or -1
+  name: string;       //   the tool name asked for
+  has_name: bool;
+  arguments: string;  //   the arguments, raw JSON ({} when absent or null)
+}
+
+cl_mcp_call_of :: (ar: [] ClArena, s: ClServer, message: string) -> ClMcpCall {
+  c: ClMcpCall; c.tool = -1;
+  id := cl_find(message, "id");
+  m := cl_find(message, "method");
+  c.reply = id.ok && !cl_is_null(message, id) && m.ok && m.tok == JSON_STRING;
+  if !c.reply { return c; }
+  c.id = cl_json(message, id);
+  c.method = cl_text(ar, message, m);
+  if c.method != "tools/call" { return c; }
+  params := cl_raw(message, "params");
+  n := cl_find(params, "name");
+  c.has_name = n.ok && n.tok == JSON_STRING;
+  if !c.has_name { return c; }
+  c.name = cl_text(ar, params, n);
+  c.tool = cl_server_tool(s, c.name);
+  a := cl_find(params, "arguments");
+  c.arguments = ifx !a.ok || cl_is_null(params, a) then "{}" else cl_json(params, a);
+  return c;
+}
+
+// The JSON-RPC answer to everything but a tools/call that reaches a tool,
+// which the host answers. Returns false for that case, writing nothing.
+cl_put_mcp_answer :: (o: [] ClOut, ar: [] ClArena, s: ClServer, message: string, c: ClMcpCall) -> bool {
+  if !c.reply { cl_put(o, CL_MCP_ACK); return true; }
+  if c.method == "tools/call" {
+    if !c.has_name { cl_put_rpc_error(o, c.id, CL_MCP_INVALID_PARAMS, "tools/call needs a tool name", "", ""); return true; }
+    if c.tool < 0 { cl_put_rpc_error(o, c.id, CL_MCP_INVALID_PARAMS, "Tool ", c.name, " not found"); return true; }
+    return false;
+  }
+  if c.method == "initialize" || c.method == "ping" || c.method == "tools/list" {
+    cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, c.id); cl_put(o, ",\"result\":");
+    if c.method == "initialize" { cl_put_mcp_initialize(o, s, cl_str(ar, message, "params.protocolVersion")); }
+    else if c.method == "ping" { cl_put(o, "{}"); }
+    else { cl_put_mcp_tools_list(o, s); }
+    cl_put(o, "}");
+    return true;
+  }
+  cl_put_rpc_error(o, c.id, CL_MCP_METHOD_NOT_FOUND, "Method not found: ", c.method, "");
+  return true;
+}

@@ -1,8 +1,11 @@
-// Live smoke against the installed claude CLI (examples/smoke.rs): the
-// initialize handshake and one short turn on the owner's Claude Code login,
-// never an API key. Nothing is saved (--no-session-persistence), no settings
-// files load and no tools are offered. Then a kill: a fake CLI that leaves a
-// grandchild running, killed as a group. Run it with smoke.sh.
+// Live smoke against the installed claude CLI (examples/smoke.rs), on the
+// owner's Claude Code login, never an API key. Nothing is saved
+// (--no-session-persistence) and no settings files load. Three queries:
+// one short turn with no tools; a turn that calls the in-process SDK MCP
+// tool calc.add (with a PreToolUse hook answered by the host); and a turn
+// whose Bash call the host's permission handler denies, checked by the file
+// Bash would have made not being there. Before them, a kill: a fake CLI
+// that leaves a grandchild running, killed as a group. Run it with smoke.sh.
 
 #import "Basic";
 #load "claude.coax";
@@ -70,6 +73,109 @@ pong :: (b: Buffers, model: string) -> bool {
   return success && unknown == 0 && invalid == 0;
 }
 
+// Options every live query shares.
+live_options :: (o: [] ClOptions, model: string, turns: int) {
+  o[0].model = model;
+  o[0].max_turns = turns;
+  o[0].persist_session = false;
+  o[0].setting_sources_set = true;
+  cl_remove_env(o, "ANTHROPIC_API_KEY");
+}
+
+// Runs a query to its end, answering events with answer(); prints the result.
+Tally :: struct {
+  unknown: int; invalid: int; success: bool; result: [512] u8; result_len: int;
+  tool_calls: int; hooks: int; permissions: int; denials: int; sum_ok: bool;
+}
+
+// The in-process tool: calc.add, answered by the host.
+CALC_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}";
+
+drive :: (q: [] ClQuery, p: [] ClProcess, t: [] Tally) -> bool {
+  while true {
+    ev := cl_next(q, p);
+    if ev.kind == ClEventKind.end { break; }
+    if ev.kind == ClEventKind.failed { print("failed: %\n", cl_error(q)); return false; }
+    if ev.kind == ClEventKind.invalid { t[0].invalid += 1; continue; }
+    if ev.kind == ClEventKind.tool_call {
+      t[0].tool_calls += 1;
+      tool := q[0].options.servers[ev.server].tools[ev.tool];
+      a := cl_num(ev.arguments, "a"); b := cl_num(ev.arguments, "b");
+      sum := int(a.value + b.value);
+      print("tool_call: mcp__%__% arguments=%\n", q[0].options.servers[ev.server].name, tool.name, ev.arguments);
+      digits: [32] u8; d := json_write_int(digits[..], 0, sum);
+      t[0].sum_ok = t[0].sum_ok || (a.ok && b.ok && sum == 6912);
+      cl_tool_text(q, cast(string) digits[0..<d], false);
+      continue;
+    }
+    if ev.kind == ClEventKind.hook {
+      t[0].hooks += 1;
+      print("hook: % for %\n", q[0].options.hooks[ev.hook].event, cl_raw(ev.arguments, "tool_name"));
+      h: ClHookOutput; h.continue_set = true; h.continue_execution = true;
+      cl_hook_reply(q, h);
+      continue;
+    }
+    if ev.kind == ClEventKind.permission {
+      t[0].permissions += 1;
+      print("permission: % % -> deny\n", ev.request.tool_name, ev.request.input);
+      cl_deny(q, "The smoke denies this tool.", false);
+      continue;
+    }
+    if ev.kind != ClEventKind.message { continue; }
+    m := ev.message;
+    if m.kind == ClKind.unknown { t[0].unknown += 1; print("unknown message: type=% subtype=%\n", m.type_name, cl_raw(m.line, "subtype")); continue; }
+    if m.kind == ClKind.result {
+      r := cl_result_of(q[0].ar[..], m);
+      t[0].denials = cl_count(r.permission_denials);
+      print("result: % turns=% cost_usd=% terminal_reason=% denials=% text=%\n", m.subtype, r.num_turns, r.total_cost_usd, r.terminal_reason, t[0].denials, r.result);
+      t[0].success = r.kind == ClResultKind.success && !r.is_error;
+      t[0].result_len = cl_copy(t[0].result[..], r.result);
+    }
+  }
+  return true;
+}
+
+calc_tool :: (b: Buffers, model: string) -> bool {
+  q: [1] ClQuery; new_query(q[..], b);
+  o: [1] ClOptions;
+  live_options(o[..], model, 4);
+  o[0].tools_set = true;
+  s := cl_add_server(o[..], "calc", "1.0.0");
+  k := cl_add_server_tool(o[..], s, "add", "Add two numbers and return the sum.", CALC_SCHEMA);
+  cl_add_allowed(o[..], "mcp__calc__add");
+  cl_add_hook(o[..], "PreToolUse", "mcp__calc__add", 0.0);
+  q[0].options = o[0];
+  p: [1] ClProcess;
+  problem := cl_start(q[..], p[..], "Use the mcp__calc__add tool to add 1234 and 5678. Then reply with only the number it returned.", false, b.scratch);
+  if problem.count > 0 { print("start: %\n", problem); return false; }
+  defer cl_close(p[..]);
+  t: [1] Tally;
+  if !drive(q[..], p[..], t[..]) { return false; }
+  text := cast(string) t[0].result[0..<t[0].result_len];
+  has := false;
+  for i: 0..<text.count - 3 { if text.count >= 4 && text[i..<i + 4] == "6912" { has = true; } }
+  print("calc: tool calls=% hooks=% sum ok=% answer has 6912=% unknown=% invalid=%\n", t[0].tool_calls, t[0].hooks, t[0].sum_ok, has, t[0].unknown, t[0].invalid);
+  return t[0].success && t[0].tool_calls >= 1 && t[0].sum_ok && t[0].hooks >= 1 && has && t[0].unknown == 0 && t[0].invalid == 0;
+}
+
+deny_bash :: (b: Buffers, model: string, dir: string) -> bool {
+  q: [1] ClQuery; new_query(q[..], b);
+  o: [1] ClOptions;
+  live_options(o[..], model, 3);
+  cl_add_tool(o[..], "Bash");
+  o[0].permission_handler = true;
+  o[0].cwd = dir;
+  q[0].options = o[0];
+  p: [1] ClProcess;
+  problem := cl_start(q[..], p[..], "Run this exact shell command with the Bash tool: touch smoke-denied.txt. If it is denied, reply with the single word: denied", false, b.scratch);
+  if problem.count > 0 { print("start: %\n", problem); return false; }
+  defer cl_close(p[..]);
+  t: [1] Tally;
+  if !drive(q[..], p[..], t[..]) { return false; }
+  print("deny: permission requests=% denials=% unknown=% invalid=%\n", t[0].permissions, t[0].denials, t[0].unknown, t[0].invalid);
+  return t[0].success && t[0].permissions >= 1 && t[0].denials >= 1 && t[0].unknown == 0 && t[0].invalid == 0;
+}
+
 // A fake CLI that forks a grandchild into its group and waits: killing the
 // query must stop both.
 kill_group :: (b: Buffers, fake: string) -> bool {
@@ -99,6 +205,12 @@ main :: () {
   fake := cl_getenv("SMOKE_FAKE_CLI", fake_buf[..]);
   ok := true;
   if fake.count > 0 { ok = kill_group(b, fake) && ok; }
-  if cl_getenv("SMOKE_SKIP_LIVE", model_buf[64..<128]).count == 0 { ok = pong(b, model) && ok; }
+  dir_buf: [1024] u8;
+  dir := cl_getenv("SMOKE_DIR", dir_buf[..]);
+  if cl_getenv("SMOKE_SKIP_LIVE", model_buf[64..<128]).count == 0 {
+    ok = pong(b, model) && ok;
+    ok = calc_tool(b, model) && ok;
+    if dir.count > 0 { ok = deny_bash(b, model, dir) && ok; }
+  }
   print("%\n", ifx ok then "smoke: ok" else "smoke: FAILED");
 }

@@ -13,9 +13,11 @@ to Coax. Like the crate, it ports the stream-json wire protocol of the
 | `messages.coax` | Frame classification and the typed stream messages |
 | `control.coax` | Control frames the SDK writes, and readers for what the CLI sends |
 | `options.coax` | `QueryOptions`: CLI flags and environment |
-| `query.coax` | The query as a state machine over lines |
+| `mcp.coax` | In-process SDK MCP servers: initialize, ping, tools/list, tools/call |
+| `query.coax` | The query as a state machine over lines; the control protocol both ways |
 | `transport.coax` | The child process, through `coax/platform/process-native.c` |
 | `tests.coax` | The crate's `protocol/tests.rs` fixtures |
+| `query_tests.coax` | The crate's `query.rs` and `mcp.rs` control tests, scripted through `cl_feed` |
 | `smoke.coax`, `smoke.sh` | The live smoke against the installed CLI |
 
 ## How it differs from the crate, by design
@@ -66,6 +68,42 @@ Text that isn't JSON is an `invalid` event (the crate's
   `PermissionMode` value sets. It does not check integer widths (`u32`)
   or reject duplicate keys; the first occurrence of a key wins.
 
+## Control protocol
+
+The SDK's own requests: `initialize` (sent first; a prompt query sends its
+prompt once it is answered), `interrupt`, `set_model` (`""` sends
+`model: null`) and `set_permission_mode`, plus `cl_request` for any other
+subtype with its members as JSON. Each returns its `sdk-N`; the answer is a
+`control_result` event whose `response.sdk_number` is N.
+
+`initialize` carries what the crate's `initialize_request` does for these
+options:
+
+- `hooks`: one matcher per `cl_add_hook`, grouped by event, events sorted by
+  name and registration order within one, ids `hook_0`, `hook_1`, ... in
+  that order (`HookRegistry::register`); `matcher` and `timeout` only when
+  set.
+- `sdkMcpServers` (names), `sdkMcpServerConfigs` (`{"timeout": ms}` for
+  servers with one) and, with `sdk_mcp_manifests`, `sdkMcpServerManifests`
+  (each server's `initializeResult` and `toolsListResult`). SDK servers never
+  go into `--mcp-config`, and `cl_validate` refuses one whose name is also in
+  `mcp_servers`.
+
+The CLI's requests, each answered before the next line is read:
+
+| Request | Event | Host answer | Unanswered, or no handler |
+| --- | --- | --- | --- |
+| `can_use_tool` | `permission`, when `options.permission_handler` (which sends `--permission-prompt-tool=stdio`) | `cl_allow(q, input, updated_permissions)`, `cl_deny(q, message, interrupt)` | "canUseTool callback is not provided" |
+| `hook_callback` | `hook`, `ev.hook` is the index in `options.hooks`, `ev.arguments` the hook input | `cl_hook_reply` (a `ClHookOutput`), `cl_hook_answer` (raw `HookJSONOutput`, `{"async":true}` included), `cl_hook_fail` | an unknown id: "no hook callback found for ID: X" |
+| `mcp_message` `tools/call` to a known tool | `tool_call`, `ev.server`, `ev.tool`, `ev.arguments` (`{}` when absent or null) | `cl_tool_text(q, text, is_error)`, `cl_tool_answer(q, content, is_error, structured)` | an `isError` result |
+| other `mcp_message` | none: `initialize` (a supported `protocolVersion` echoed, else 2025-11-25), `ping`, `tools/list` (with `annotations` and `_meta` `anthropic/alwaysLoad` and `anthropic/searchHint`); an unknown tool -32602 "Tool X not found", an unknown method -32601; notifications, responses and null ids get `{"jsonrpc":"2.0","result":{},"id":0}` | | an unknown server: "SDK MCP server not found: X" |
+| `elicitation`, `request_user_dialog`, `oauth_token_refresh`, `host_auth_token_refresh` | none | | the crate's no-handler answers: decline, silence, errors |
+
+An allow whose `updatedPermissions` holds more than 4096 entries (updates
+plus their rules or directories) goes out as a deny saying so
+(`PermissionResult::within_limits`). The model and `allowed_tools` name an
+SDK tool `mcp__<server>__<tool>` (`cl_put_tool_name`).
+
 ## Transport
 
 `coax/platform/process-native.c` holds the effects, reached through
@@ -99,17 +137,43 @@ foreign procedure, so strings cross one byte per call):
   inbound control frames, plus drift cases (a known type missing a
   required field, a priority outside its set, a modelled control subtype
   without its fields) and escaped strings.
+- `coax/bin/coax test --library coax/lib/agent/claude/query_tests.coax`:
+  the crate's control tests (initialize hooks and SDK server fields,
+  manifests, mcp_message initialize/notification/list/call/unknown server,
+  JSON-RPC errors, hook ids and replies, unknown hook ids, permission with
+  and without a handler, the oversized permission answer, set_model,
+  set_permission_mode, interrupt, a failed initialize, option validation).
 - `coax/lib/agent/claude/smoke.sh`: a fake CLI that forks a grandchild into
   its group is killed, and the whole group is gone; then one Haiku turn
   through the installed CLI on the owner's login with no API key, no tools,
   no settings files and no session saved. On 2026-10-28 with Claude Code
   2.1.312 it completed the handshake (13 models, 55 commands,
   `claude_code_version` 2.1.312) and a `success` result (`completed`,
-  "pong", $0.0015) with no unknown messages and no invalid lines.
+  "pong", $0.0015) with no unknown messages and no invalid lines. Then two
+  more Haiku queries: one called the in-process tool `mcp__calc__add` with
+  `{"a":1234,"b":5678}` after a host-answered `PreToolUse` hook, and
+  answered "6912"; in the other the host's permission handler denied
+  `Bash` (`touch smoke-denied.txt`), the result counted one permission
+  denial, and the file was not made.
 
 ## Deferred
 
 - Everything the crate lists as deferred in its own PARITY.md.
+- Typed wrappers for the other outbound control subtypes (`set_max_thinking_tokens`,
+  `mcp_server_status`, `rewind_files`, settings, tasks, usage, reloads, ...):
+  they go through `cl_request` with their members as JSON.
+- Host events for `elicitation`, `request_user_dialog` and the token
+  refreshes: they get the crate's no-handler answers.
+- `pending_permission_requests` carried in a `control_response` is read
+  (`ClResponse`) but not dispatched again as permission events.
+- A `control_cancel_request` cannot stop a host answer: the host answers
+  before the next line is read, so the answer is already written.
+- One callback per hook matcher; `decisionClassification` and `toolUseID`
+  are not set on permission answers.
+- Options not mapped yet: agents, sandbox, output format (`--json-schema`),
+  thinking and effort, plugins, and the `initialize` fields title, skills,
+  plan-mode instructions, tool aliases, prompt suggestions, agent progress
+  summaries, subagent text, dialog kinds and the stop affordance.
 - Typed readers for nested arrays (slash commands, plugins, MCP server
   statuses, persisted files) stay raw JSON with `cl_count` and `cl_item`;
   `cl_mcp_status` and `cl_background_task` read the two the SDK needs.

@@ -8,7 +8,7 @@
 // What a ClEvent borrows (the message, the request) lives in the query's
 // line and arena and is valid until the next cl_feed.
 
-#load "options.coax";
+#load "mcp.coax";
 
 CL_ID_MAX :: 256;
 
@@ -89,16 +89,6 @@ cl_fail :: (q: [] ClQuery, a: string, b: string) -> ClEvent {
   return ClEvent.{kind = ClEventKind.failed};
 }
 
-// Appends s escaped as JSON string content, without quotes.
-cl_put_escaped :: (o: [] ClOut, s: string) {
-  if o[0].failed { return; }
-  at := o[0].len;
-  n := json_write_string(o[0].buf, at, s);
-  if n < 0 { o[0].failed = true; return; }
-  for i: at..<n - 2 { o[0].buf[i] = o[0].buf[i + 1]; }
-  o[0].len = n - 2;
-}
-
 // An error answer whose text is a + b.
 cl_answer_error :: (q: [] ClQuery, id_json: string, a: string, b: string) {
   o := q[0].out[..];
@@ -107,9 +97,84 @@ cl_answer_error :: (q: [] ClQuery, id_json: string, a: string, b: string) {
   cl_put(o, ",\"error\":\""); cl_put_escaped(o, a); cl_put_escaped(o, b); cl_put(o, "\"}}\n");
 }
 
-// The members of the initialize request after its subtype.
+// Bytewise order of two strings.
+cl_less :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+
+// The hooks in callback-id order: events sorted by name, registration order
+// within one (HookRegistry::register). order[N] is the hook behind hook_N.
+cl_hook_order :: (o: ClOptions, order: [] int) -> int {
+  n := 0;
+  for k: 0..<o.hook_count {
+    at := n;
+    while at > 0 && cl_less(o.hooks[k].event, o.hooks[order[at - 1]].event) { order[at] = order[at - 1]; at -= 1; }
+    order[at] = k; n += 1;
+  }
+  return n;
+}
+
+// Which of options.hooks a callback id names, or -1.
+cl_hook_of_id :: (o: ClOptions, id: string) -> int {
+  if id.count < 6 || id[0..<5] != "hook_" { return -1; }
+  for i: 5..<id.count { if id[i] < '0' || id[i] > '9' { return -1; } }
+  if id.count > 5 + 1 && id[5] == '0' { return -1; }
+  v := json_int(id[5..<id.count]);
+  if !v.ok || v.value < 0 || v.value >= o.hook_count { return -1; }
+  order: [CL_HOOKS] int;
+  n := cl_hook_order(o, order[..]);
+  return order[v.value];
+}
+
+// The members of the initialize request after its subtype: hooks and the
+// SDK MCP servers (options.rs initialize_request).
 cl_initialize_fields :: (q: [] ClQuery, o: [] ClOut) {
-  cl_put(o, "");
+  p := q[0].options;
+  first := true;
+  if p.hook_count > 0 {
+    order: [CL_HOOKS] int;
+    n := cl_hook_order(p, order[..]);
+    cl_put(o, "\"hooks\":{");
+    for i: 0..<n {
+      h := p.hooks[order[i]];
+      opens := i == 0 || h.event != p.hooks[order[i - 1]].event;
+      if opens {
+        if i > 0 { cl_put(o, "],"); }
+        cl_put_string(o, h.event); cl_put(o, ":[");
+      } else { cl_put(o, ","); }
+      cl_put(o, "{");
+      if h.matcher.count > 0 { cl_put(o, "\"matcher\":"); cl_put_string(o, h.matcher); cl_put(o, ","); }
+      cl_put(o, "\"hookCallbackIds\":[\"hook_"); cl_put_int(o, i); cl_put(o, "\"]");
+      if h.timeout > 0 { cl_put(o, ",\"timeout\":"); cl_put_f64(o, h.timeout); }
+      cl_put(o, "}");
+    }
+    cl_put(o, "]}");
+    first = false;
+  }
+  if p.server_count > 0 {
+    if !first { cl_put(o, ","); }
+    cl_put(o, "\"sdkMcpServers\":[");
+    for k: 0..<p.server_count { if k > 0 { cl_put(o, ","); } cl_put_string(o, p.servers[k].name); }
+    cl_put(o, "]");
+    timed := 0;
+    for k: 0..<p.server_count {
+      if p.servers[k].timeout_ms <= 0 { continue; }
+      cl_put(o, ifx timed == 0 then ",\"sdkMcpServerConfigs\":{" else ",");
+      cl_put_string(o, p.servers[k].name); cl_put(o, ":{\"timeout\":"); cl_put_int(o, p.servers[k].timeout_ms); cl_put(o, "}");
+      timed += 1;
+    }
+    if timed > 0 { cl_put(o, "}"); }
+    if p.sdk_mcp_manifests {
+      cl_put(o, ",\"sdkMcpServerManifests\":{");
+      for k: 0..<p.server_count {
+        if k > 0 { cl_put(o, ","); }
+        cl_put_string(o, p.servers[k].name); cl_put(o, ":"); cl_put_mcp_manifest(o, p.servers[k]);
+      }
+      cl_put(o, "}");
+    }
+  }
 }
 
 // Start: check the options and queue the initialize request. The prompt
@@ -145,13 +210,138 @@ cl_request :: (q: [] ClQuery, subtype: string, fields: string) -> int {
 
 cl_interrupt :: (q: [] ClQuery) -> int { return cl_request(q, "interrupt", ""); }
 
+// set_model; "" returns to the default model (model: null).
+cl_set_model :: (q: [] ClQuery, model: string) -> int {
+  f: [1] ClOut; buf: [1024] u8; f[0].buf = buf[..];
+  cl_put(f[..], "\"model\":");
+  if model.count > 0 { cl_put_string(f[..], model); } else { cl_put(f[..], "null"); }
+  if f[0].failed { return -1; }
+  return cl_request(q, "set_model", cast(string) buf[0..<f[0].len]);
+}
+
+cl_set_permission_mode :: (q: [] ClQuery, mode: ClPermissionMode) -> int {
+  if mode == ClPermissionMode.unset { return -1; }
+  f: [1] ClOut; buf: [64] u8; f[0].buf = buf[..];
+  cl_put(f[..], "\"mode\":"); cl_put_string(f[..], cl_permission_mode_name(mode));
+  return cl_request(q, "set_permission_mode", cast(string) buf[0..<f[0].len]);
+}
+
+cl_pending_id :: (q: [] ClQuery) -> string { return cast(string) q[0].pending_id[0..<q[0].pending_id_len]; }
+
+// {"type":"control_response","response":{"subtype":"success","request_id":ID,"response":
+cl_success_open :: (q: [] ClQuery, id_json: string) {
+  o := q[0].out[..];
+  cl_put(o, "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":");
+  cl_put(o, id_json); cl_put(o, ",\"response\":");
+}
+cl_success_close :: (q: [] ClQuery) { cl_put(q[0].out[..], "}}\n"); }
+
+// The answer to a tools/call: {"mcp_response":{"jsonrpc":"2.0","id":ID,"result":
+cl_tool_open :: (q: [] ClQuery) -> bool {
+  if q[0].pending != ClEventKind.tool_call { return false; }
+  cl_success_open(q, cl_pending_id(q));
+  o := q[0].out[..];
+  cl_put(o, "{\"mcp_response\":{\"jsonrpc\":\"2.0\",\"id\":");
+  cl_put(o, cast(string) q[0].pending_mcp_id[0..<q[0].pending_mcp_id_len]);
+  cl_put(o, ",\"result\":");
+  return true;
+}
+cl_tool_close :: (q: [] ClQuery) { cl_put(q[0].out[..], "}}"); cl_success_close(q); q[0].pending = ClEventKind.none; }
+
+// ---- the host's answers to permission, hook and tool_call events
+
+// Allow the tool, with its input (the event's request.input to leave it as
+// it is) and updatedPermissions (a JSON array, or ""). An answer whose
+// updatedPermissions is over CL_MAX_UPDATED_PERMISSIONS goes out as a deny.
+cl_allow :: (q: [] ClQuery, updated_input: string, updated_permissions: string) {
+  if q[0].pending != ClEventKind.permission { return; }
+  cl_success_open(q, cl_pending_id(q));
+  entries := ifx updated_permissions.count > 0 then cl_permission_entries(updated_permissions) else 0;
+  if entries > CL_MAX_UPDATED_PERMISSIONS { cl_permission_over_limit(q[0].out[..], entries, ""); }
+  else { cl_permission_allow(q[0].out[..], ifx updated_input.count > 0 then updated_input else "{}", updated_permissions, ""); }
+  cl_success_close(q);
+  q[0].pending = ClEventKind.none;
+}
+
+cl_deny :: (q: [] ClQuery, message: string, interrupt: bool) {
+  if q[0].pending != ClEventKind.permission { return; }
+  cl_success_open(q, cl_pending_id(q));
+  cl_permission_deny(q[0].out[..], message, interrupt, "");
+  cl_success_close(q);
+  q[0].pending = ClEventKind.none;
+}
+
+// What a hook returns (SyncHookJSONOutput); unset members are left out.
+ClHookOutput :: struct {
+  continue_set: bool; continue_execution: bool;
+  suppress_output: bool;
+  stop_reason: string;
+  decision: string;            // approve or block
+  system_message: string;
+  terminal_sequence: string;
+  reason: string;
+  hook_specific_output: string;   // JSON, such as {"hookEventName":"PreToolUse","permissionDecision":"deny"}
+}
+
+cl_put_hook_output :: (o: [] ClOut, h: ClHookOutput) {
+  cl_put(o, "{");
+  n := 0;
+  if h.continue_set { cl_put(o, "\"continue\":"); cl_put_bool(o, h.continue_execution); n += 1; }
+  if h.suppress_output { if n > 0 { cl_put(o, ","); } cl_put(o, "\"suppressOutput\":true"); n += 1; }
+  if h.stop_reason.count > 0 { if n > 0 { cl_put(o, ","); } cl_put(o, "\"stopReason\":"); cl_put_string(o, h.stop_reason); n += 1; }
+  if h.decision.count > 0 { if n > 0 { cl_put(o, ","); } cl_put(o, "\"decision\":"); cl_put_string(o, h.decision); n += 1; }
+  if h.system_message.count > 0 { if n > 0 { cl_put(o, ","); } cl_put(o, "\"systemMessage\":"); cl_put_string(o, h.system_message); n += 1; }
+  if h.terminal_sequence.count > 0 { if n > 0 { cl_put(o, ","); } cl_put(o, "\"terminalSequence\":"); cl_put_string(o, h.terminal_sequence); n += 1; }
+  if h.reason.count > 0 { if n > 0 { cl_put(o, ","); } cl_put(o, "\"reason\":"); cl_put_string(o, h.reason); n += 1; }
+  if h.hook_specific_output.count > 0 { if n > 0 { cl_put(o, ","); } cl_put(o, "\"hookSpecificOutput\":"); cl_put(o, h.hook_specific_output); n += 1; }
+  cl_put(o, "}");
+}
+
+cl_hook_reply :: (q: [] ClQuery, h: ClHookOutput) {
+  if q[0].pending != ClEventKind.hook { return; }
+  cl_success_open(q, cl_pending_id(q));
+  cl_put_hook_output(q[0].out[..], h);
+  cl_success_close(q);
+  q[0].pending = ClEventKind.none;
+}
+
+// A hook answer as raw HookJSONOutput JSON ({"async":true} included).
+cl_hook_answer :: (q: [] ClQuery, output: string) {
+  if q[0].pending != ClEventKind.hook { return; }
+  cl_success_open(q, cl_pending_id(q));
+  cl_put(q[0].out[..], ifx output.count > 0 then output else "{}");
+  cl_success_close(q);
+  q[0].pending = ClEventKind.none;
+}
+
+// A hook that failed: the CLI gets an error answer.
+cl_hook_fail :: (q: [] ClQuery, error: string) {
+  if q[0].pending != ClEventKind.hook { return; }
+  cl_answer_error(q, cl_pending_id(q), "hook callback failed: ", error);
+  q[0].pending = ClEventKind.none;
+}
+
+// A tool result with one text block; is_error for a failed call.
+cl_tool_text :: (q: [] ClQuery, text: string, is_error: bool) {
+  if !cl_tool_open(q) { return; }
+  cl_put_tool_text(q[0].out[..], text, is_error);
+  cl_tool_close(q);
+}
+
+// A tool result from content blocks (JSON array) and structuredContent ("" for none).
+cl_tool_answer :: (q: [] ClQuery, content: string, is_error: bool, structured: string) {
+  if !cl_tool_open(q) { return; }
+  cl_put_tool_result(q[0].out[..], content, is_error, structured);
+  cl_tool_close(q);
+}
+
 // The answer the SDK owes for a request the host left unanswered.
 cl_settle_pending :: (q: [] ClQuery) {
   if q[0].pending == ClEventKind.none { return; }
-  id := cast(string) q[0].pending_id[0..<q[0].pending_id_len];
+  if q[0].pending == ClEventKind.tool_call { cl_tool_text(q, "the host did not answer the tool call", true); return; }
+  id := cl_pending_id(q);
   if q[0].pending == ClEventKind.permission { cl_answer_error(q, id, "invalid protocol message: ", "canUseTool callback is not provided"); }
-  else if q[0].pending == ClEventKind.hook { cl_answer_error(q, id, "hook callback failed: ", "the host did not answer"); }
-  else { cl_answer_error(q, id, "MCP server error: ", "the host did not answer the tool call"); }
+  else { cl_answer_error(q, id, "hook callback failed: ", "the host did not answer"); }
   q[0].pending = ClEventKind.none;
 }
 
@@ -160,28 +350,63 @@ cl_hold :: (q: [] ClQuery, kind: ClEventKind, id_json: string) {
   q[0].pending_id_len = cl_copy(q[0].pending_id[..], id_json);
 }
 
+cl_server_of :: (o: ClOptions, name: string) -> int {
+  for k: 0..<o.server_count { if o.servers[k].name == name { return k; } }
+  return -1;
+}
+
 // A control request from the CLI.
 cl_on_request :: (q: [] ClQuery, ev: ClEvent) -> ClEvent {
   r := ev.request;
-  if r.id_json.count > CL_ID_MAX { return ClEvent.{kind = ClEventKind.none}; }
+  none := ClEvent.{kind = ClEventKind.none};
+  if r.id_json.count > CL_ID_MAX { return none; }
   if r.subtype == "can_use_tool" {
-    cl_answer_error(q, r.id_json, "invalid protocol message: ", "canUseTool callback is not provided");
-    return ClEvent.{kind = ClEventKind.none};
+    if !q[0].options.permission_handler {
+      cl_answer_error(q, r.id_json, "invalid protocol message: ", "canUseTool callback is not provided");
+      return none;
+    }
+    cl_hold(q, ClEventKind.permission, r.id_json);
+    e := ev; e.kind = ClEventKind.permission;
+    return e;
   }
   if r.subtype == "hook_callback" {
-    cl_answer_error(q, r.id_json, "hook callback failed: no hook callback found for ID: ", r.callback_id);
-    return ClEvent.{kind = ClEventKind.none};
+    k := cl_hook_of_id(q[0].options, r.callback_id);
+    if k < 0 {
+      cl_answer_error(q, r.id_json, "hook callback failed: no hook callback found for ID: ", r.callback_id);
+      return none;
+    }
+    cl_hold(q, ClEventKind.hook, r.id_json);
+    e := ev; e.kind = ClEventKind.hook; e.hook = k; e.arguments = r.input;
+    return e;
   }
   if r.subtype == "mcp_message" {
-    cl_answer_error(q, r.id_json, "MCP server error: SDK MCP server not found: ", r.server_name);
-    return ClEvent.{kind = ClEventKind.none};
+    s := cl_server_of(q[0].options, r.server_name);
+    if s < 0 {
+      cl_answer_error(q, r.id_json, "MCP server error: SDK MCP server not found: ", r.server_name);
+      return none;
+    }
+    server := q[0].options.servers[s];
+    c := cl_mcp_call_of(q[0].ar[..], server, r.mcp_message);
+    if c.reply && c.method == "tools/call" && c.tool >= 0 && c.id.count <= CL_ID_MAX {
+      cl_hold(q, ClEventKind.tool_call, r.id_json);
+      q[0].pending_mcp_id_len = cl_copy(q[0].pending_mcp_id[..], c.id);
+      e := ev; e.kind = ClEventKind.tool_call; e.server = s; e.tool = c.tool; e.arguments = c.arguments;
+      return e;
+    }
+    cl_success_open(q, r.id_json);
+    cl_put(q[0].out[..], "{\"mcp_response\":");
+    done := cl_put_mcp_answer(q[0].out[..], q[0].ar[..], server, r.mcp_message, c);
+    if !done { cl_put_rpc_error(q[0].out[..], c.id, CL_MCP_INVALID_PARAMS, "the tool call id does not fit", "", ""); }
+    cl_put(q[0].out[..], "}");
+    cl_success_close(q);
+    return none;
   }
-  if r.subtype == "elicitation" { cl_control_success(q[0].out[..], r.id_json, "{\"action\":\"decline\"}"); return ClEvent.{kind = ClEventKind.none}; }
-  if r.subtype == "request_user_dialog" { return ClEvent.{kind = ClEventKind.none}; }
-  if r.subtype == "oauth_token_refresh" { cl_answer_error(q, r.id_json, "invalid protocol message: ", "getOAuthToken callback is not provided"); return ClEvent.{kind = ClEventKind.none}; }
-  if r.subtype == "host_auth_token_refresh" { cl_answer_error(q, r.id_json, "invalid protocol message: ", "getHostAuthToken callback is not provided"); return ClEvent.{kind = ClEventKind.none}; }
+  if r.subtype == "elicitation" { cl_control_success(q[0].out[..], r.id_json, "{\"action\":\"decline\"}"); return none; }
+  if r.subtype == "request_user_dialog" { return none; }
+  if r.subtype == "oauth_token_refresh" { cl_answer_error(q, r.id_json, "invalid protocol message: ", "getOAuthToken callback is not provided"); return none; }
+  if r.subtype == "host_auth_token_refresh" { cl_answer_error(q, r.id_json, "invalid protocol message: ", "getHostAuthToken callback is not provided"); return none; }
   cl_answer_error(q, r.id_json, "invalid protocol message: unsupported control request subtype: ", r.subtype);
-  return ClEvent.{kind = ClEventKind.none};
+  return none;
 }
 
 // One stdout line (without its newline).

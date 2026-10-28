@@ -3,7 +3,7 @@
 # It runs on the Claude Code login (ANTHROPIC_API_KEY is removed from the
 # child), never opens a browser, saves no session and loads no settings.
 #
-#   coax/lib/agent/claude/smoke.sh                  # the kill check, then one live turn
+#   coax/lib/agent/claude/smoke.sh                  # the kill check, then the live queries
 #   SMOKE_SKIP_LIVE=1 coax/lib/agent/claude/smoke.sh  # the kill check only
 #   SMOKE_MODEL=sonnet coax/lib/agent/claude/smoke.sh
 set -euo pipefail
@@ -19,6 +19,8 @@ echo '{"type":"keep_alive"}'
 wait
 FAKE
 chmod +x "$work/fake-claude"
-export BROWSER=/usr/bin/true NO_OPEN_BROWSER=1 SMOKE_FAKE_CLI="$work/fake-claude"
+mkdir "$work/deny"
+export BROWSER=/usr/bin/true NO_OPEN_BROWSER=1 SMOKE_FAKE_CLI="$work/fake-claude" SMOKE_DIR="$work/deny"
 "$work/smoke" | tee "$work/out"
+if [ -e "$work/deny/smoke-denied.txt" ]; then echo "deny: Bash ran after all"; exit 1; fi
 tail -1 "$work/out" | grep -q '^smoke: ok$'
