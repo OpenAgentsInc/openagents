@@ -223,3 +223,49 @@ check("an offer without its world needs one to accept",
 check("a built-in world's offers are the site's to decide",
       pt("POST", "change/haunted-house", {"delta": change}, key=visitor["key"])[0] == 200
       and pt("POST", f"change/haunted-house/{pt('GET', 'log/haunted-house')[1][0]['id']}/accept", {"doc": proposed}, key=owner["key"])[0] == 403)
+
+# ---- a player's realm (pt-planets): award, set up, reopen; the galaxy lists it
+status, g = pt("POST", "player", {})
+_, before = pt("GET", "planets")
+check("making a planet needs a player key", pt("POST", "planets", {"user": {"id": g["id"], "name": "Ann"}, "settings": {}})[0] == 403)
+check("and the user and settings", pt("POST", "planets", {"user": {"id": "a b"}, "settings": {}}, key=g["key"])[0] == 400
+      and pt("POST", "planets", {"user": {"id": g["id"]}}, key=g["key"])[0] == 400)
+settings = {"name": "  Moonbog  ", "kind": "cemetery", "art": "Ink", "cam": "Top down", "cycle": "Always night"}
+status, planet = pt("POST", "planets", {"user": {"id": g["id"], "name": "Ann"}, "settings": settings}, key=g["key"])
+check("a guest is awarded a realm and sets it up", status == 200 and planet["id"].startswith("planet-") and planet["name"] == "Moonbog"
+      and planet["owner"] == "Ann" and planet["kind"] == "cemetery" and planet["art"] == "Ink" and planet["cam"] == "Top down"
+      and planet["cycle"] == "Always night" and planet["n"] > before["n"] and "ownerId" not in planet and planet["made"] == planet["at"], planet)
+pid = planet["id"]
+check("the award is the same planet, made once", pt("POST", "award", {"user": g["id"]}) == (200, {"planet": pid}))
+check("an award for someone new is theirs", pt("POST", "award", {"user": "name-bo-123"})[1]["planet"].startswith("planet-nameb"))
+status, mine = pt("GET", "planets/mine", key=g["key"])
+check("it reopens after a reload: planets/mine", status == 200 and mine == {"planet": planet, "invited": False, "saved": None}, mine)
+check("it is a world its player owns", pt("GET", f"world/{pid}/owner", key=g["key"])[1]["you"] is True and pid in pt("GET", "player", key=g["key"])[1]["worlds"])
+status, fresh = pt("GET", "planets?after=" + str(before["n"]))
+check("the galaxy lists the new realm", status == 200 and fresh["planets"] == [planet] and fresh["n"] == planet["n"], fresh)
+check("one planet by id", pt("GET", "planets/" + pid) == (200, planet) and pt("GET", "planets/nope")[0] == 404)
+status, again = pt("POST", "planets", {"user": {"id": g["id"], "name": "Ann"}, "settings": {"name": "", "kind": "moon", "art": "Neon"}}, key=g["key"])
+check("set up again: the same planet, a later number, the defaults where a choice isn't one", status == 200 and again["id"] == pid
+      and again["n"] > planet["n"] and again["name"] == "My planet" and again["kind"] == "forest" and again["art"] == "Low poly"
+      and again["made"] == planet["made"], again)
+check("after its number the galaxy sees nothing new", pt("GET", "planets?after=" + str(again["n"]))[1]["planets"] == [])
+status, thief = pt("POST", "player", {})
+check("someone else can't set it up", pt("POST", "planets", {"user": {"id": g["id"], "name": "X"}, "settings": settings}, key=thief["key"]) [0] == 403)
+check("nobody's planet: planets/mine is empty, keeping is a 404",
+      pt("GET", "planets/mine", key=thief["key"])[1] == {"planet": None, "invited": False, "saved": None}
+      and pt("POST", "planets/mine", {"invited": True}, key=thief["key"])[0] == 404)
+check("a saved copy must be a world record", pt("POST", "planets/mine", {"doc": [1]}, key=g["key"])[0] == 400)
+status, kept = pt("POST", "planets/mine", {"doc": {"kind": "verse.world.v1", "id": pid}, "invited": True}, key=g["key"])
+check("the owner keeps a copy and the invite", status == 200 and kept["id"] == pid and kept["invited"] is True and kept["at"] > 0, kept)
+status, mine = pt("GET", "planets/mine", key=g["key"])
+check("and gets them back", mine["invited"] is True and mine["saved"]["doc"] == {"kind": "verse.world.v1", "id": pid}, mine)
+pt("POST", "planets/mine", {"doc": None}, key=g["key"])
+check("a null doc drops the copy, the invite stays", pt("GET", "planets/mine", key=g["key"])[1]["saved"] is None
+      and pt("GET", "planets/mine", key=g["key"])[1]["invited"] is True)
+status, raw, _ = call("GET", "/api/planets?after=" + str(before["n"]))
+check("legacy /api/planets answers like the playtest's", status == 200 and json.loads(raw)["planets"][-1]["id"] == pid, raw)
+status, raw, _ = call("POST", "/api/award", json.dumps({"user": g["id"]}).encode(), {"Content-Type": "application/json"})
+check("legacy /api/award", status == 200 and json.loads(raw) == {"planet": pid}, raw)
+status, raw, _ = call("GET", "/api/planets/mine", headers={"X-Verse-Player": g["key"]})
+check("legacy /api/planets/mine", status == 200 and json.loads(raw)["planet"]["id"] == pid, raw)
+check("legacy paths stop at what moved", call("GET", "/api/planetsx")[0] == 404 and call("GET", "/api/world/x")[0] == 404)

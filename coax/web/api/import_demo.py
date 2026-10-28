@@ -85,6 +85,26 @@ def rows(data):
                         count["offer"] = count.get("offer", 0) + 1
                     if e.get("state") in ("published", "reset") and isinstance(e.get("version"), int):
                         add("log", "%s%s#%d@%r" % (prefix, name, e["version"], e["at"]), space, dict(e, world=name[4:-5]))
+    # Awards, planets and saved copies: what verse.planets_from_demo() keeps.
+    users, planets, published, saves = set(), set(), set(), 0
+    for prefix in ("", "dev/"):
+        base = os.path.join(data, prefix)
+        ok = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+        if os.path.exists(os.path.join(base, "awards.json")):
+            with open(os.path.join(base, "awards.json"), encoding="utf-8") as f:
+                users |= {u for u, p in json.load(f).items() if ok.match(u) and isinstance(p, str) and ok.match(p)}
+        if os.path.exists(os.path.join(base, "planets.json")):
+            with open(os.path.join(base, "planets.json"), encoding="utf-8") as f:
+                planets |= {k for k, v in (json.load(f).get("planets") or {}).items()
+                            if ok.match(k) and isinstance(v, dict) and ok.match(str(v.get("id", ""))) and isinstance(v.get("at"), (int, float))}
+        for path in glob.glob(os.path.join(base, "world-planet-*.json")):
+            with open(path, encoding="utf-8") as f:
+                w = json.load(f)
+            pl = (w.get("doc") or {}).get("planet") if isinstance(w.get("doc"), dict) else None
+            if isinstance(pl, dict) and isinstance(w.get("publishedAt"), (int, float)) and os.path.basename(path) == "world-%s.json" % pl.get("id"):
+                published.add(pl["id"])
+        saves += len(glob.glob(os.path.join(base, "planet-save-*.json")))
+    count["award"], count["planet"], count["planet_save"] = len(users), len(planets | published), saves
     for (space, _), (key, rec) in sorted(surveys.items()):
         add("survey", key, space, rec)
     return out, count
@@ -115,7 +135,8 @@ def main():
         got[what][kind] = int(n)
     added, held, kept = got["added"], got["held"], got["kept"]
     kinds = {"event": "events", "player": "players", "world": "worlds", "published": "published", "log": "log",
-             "playtester": "playtesters", "answer": "survey_answers", "survey": "surveys", "file": "files", "offer": "offers"}
+             "playtester": "playtesters", "answer": "survey_answers", "survey": "surveys", "file": "files", "offer": "offers",
+             "award": "awards", "planet": "planets", "planet_save": "planet_saves"}
     want = {kinds[k]: n for k, n in source.items() if k in kinds}
     want["sessions"] = len({doc["sid"] for kind, _, _, doc in out if kind == "event"})
     report = {k: {"source": want.get(k, 0), "added": added.get(k, 0), "held": held.get(k, 0)} for k in held}

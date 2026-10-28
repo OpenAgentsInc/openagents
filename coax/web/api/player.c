@@ -23,6 +23,8 @@
 //   GET/POST /api/playtest/progress/<world>/<name>   an account's save {current, previous}, each
 //                                             {bytes (base64 AESV), at (ms)}; 409 when a later one is there
 //   POST /api/playtest/progress/<world>/<name>/erase
+//   POST /api/playtest/change/<id>[/<cid>/accept|decline]   offered changes (0010_verse_offers.sql)
+//   POST /api/playtest/award, GET/POST /api/playtest/planets[/mine|/<id>]   a player's realm (0011_verse_planets.sql)
 //   POST /api/playtest/survey/answer, /api/playtest/survey   feedback (below)
 //
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
@@ -203,8 +205,11 @@ bool player_route(const request *q) {
   char *who = malloc(wcap);
   char ek[400], ea[160];
   esc(ek, sizeof ek, key); esc(ea, sizeof ea, autom);
-  size_t wn = (size_t)snprintf(who, wcap, "{\"key\":\"%s\",\"auto\":\"%s\",\"npub\":\"%s\",\"site\":%s,\"good\":%s", ek, ea, npub,
-                               site ? "true" : "false", good ? "true" : "false");
+  char after[24] = "";
+  if (api_query(q, "after", after, sizeof after))
+    for (char *c = after; *c; c++) if (*c < '0' || *c > '9') { after[0] = 0; break; }
+  size_t wn = (size_t)snprintf(who, wcap, "{\"key\":\"%s\",\"auto\":\"%s\",\"npub\":\"%s\",\"site\":%s,\"good\":%s,\"after\":\"%s\"", ek, ea, npub,
+                               site ? "true" : "false", good ? "true" : "false", after);
   if (b64 && good) wn += (size_t)snprintf(who + wn, wcap - wn, ",\"bytes\":\"%s\"", b64);   // base64 needs no escaping
   snprintf(who + wn, wcap - wn, "}");
   if (dec) PQclear(dec);

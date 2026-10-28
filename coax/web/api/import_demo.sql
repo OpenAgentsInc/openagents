@@ -117,6 +117,13 @@ SELECT 'added', 'files', count(*) FROM n;
 
 -- The offered changes in the edit logs just kept (0010_verse_offers.sql).
 SELECT 'added', 'offers', verse.offers_from_demo();
+-- Awards, planets and planets' saved copies (0011_verse_planets.sql).
+CREATE TEMP TABLE had ON COMMIT DROP AS SELECT (SELECT count(*) FROM verse.awards) AS a, (SELECT count(*) FROM verse.planets) AS p,
+  (SELECT count(*) FROM verse.planet_saves) AS s;
+SELECT 'added', 'realms', verse.planets_from_demo();
+SELECT 'added', 'awards', (SELECT count(*) FROM verse.awards) - a FROM had
+UNION ALL SELECT 'added', 'planets', (SELECT count(*) FROM verse.planets) - p FROM had
+UNION ALL SELECT 'added', 'planet_saves', (SELECT count(*) FROM verse.planet_saves) - s FROM had;
 
 -- What the database now holds from the demo, and the worlds openagents.com
 -- had already published itself (kept, not overwritten).
@@ -132,6 +139,9 @@ UNION ALL SELECT 'held', 'survey_answers', count(*) FROM analytics.survey_answer
 UNION ALL SELECT 'held', 'surveys', count(*) FROM analytics.surveys WHERE source LIKE 'aethyr-demo-data/%'
 UNION ALL SELECT 'held', 'files', count(*) FROM verse.demo_files
 UNION ALL SELECT 'held', 'offers', count(*) FROM verse.offers WHERE source LIKE 'aethyr-demo-data/%'
+UNION ALL SELECT 'held', 'awards', count(*) FROM verse.awards WHERE source LIKE 'aethyr-demo-data/%'
+UNION ALL SELECT 'held', 'planets', count(*) FROM verse.planets WHERE source LIKE 'aethyr-demo-data/%'
+UNION ALL SELECT 'held', 'planet_saves', count(*) FROM verse.planet_saves WHERE source LIKE 'aethyr-demo-data/%'
 UNION ALL SELECT 'kept', 'published', count(*) FROM verse.published x
   WHERE x.source IS NULL AND x.world IN (SELECT doc->>'world' FROM demo WHERE kind = 'published');
 COMMIT;

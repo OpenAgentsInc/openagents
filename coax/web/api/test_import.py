@@ -43,6 +43,14 @@ put("survey-answers/20261027T010101-aaaaaa-785b94c923a58916.json",
 form = {"id": "9e8b379b7df36aac", "at": 1793025610.37, "answers": {"v": 2, "easy": "4"}, "auto": "kiki-e2e"}
 put("surveys/20261026T144010-fdef15-9e8b379b7df36aac.json", form)
 put("survey.json", [form, dict(form, id="05a01ba97cecf20e")])
+put("awards.json", {"name-kiki-65hgyv": "planet-mekiki65hgyv6087"})
+put("world-planet-mekiki65hgyv6087.json", {"doc": {"kind": "verse.world.v1", "planet": {"id": "planet-mekiki65hgyv6087", "name": "kiki's Village",
+    "kind": "village", "art": "Pixel", "cam": "Top down", "cycle": "Always day", "owner": "kiki"}}, "version": 1, "publishedBy": "kiki", "publishedAt": 1793024148.5})
+put("dev/awards.json", {"name-kiki-david-svazqc86": "planet-avidsvazqc860682"})
+put("dev/planets.json", {"n": 1, "planets": {"planet-avidsvazqc860682": {"id": "planet-avidsvazqc860682", "name": "binulbadreet", "owner": "Kiki David",
+    "ownerId": "name-kiki-david-svazqc86", "kind": "cemetery", "at": 1793132162.0, "art": "Low poly", "cam": "Third person", "cycle": "Always night",
+    "made": 1793132162.0, "n": 1}}})
+put("dev/planet-save-planet-avidsvazqc860682.json", {"saved": {"doc": {"format": "aethyr.record"}, "at": 1793132162.5}, "invited": 1793132170.0})
 put("dev/chat-haunt.json", [{"n": 1, "name": "Kiki", "text": "hello", "at": 1793132100.0, "sid": "smvdemo0001xyz"}])
 # A world openagents.com published itself keeps its own version.
 sql("INSERT INTO verse.published (world, doc, version, published_by, published_at) VALUES ('taken', '{\"mine\":true}', 7, 'site', 1)")
@@ -50,9 +58,9 @@ sql("INSERT INTO verse.published (world, doc, version, published_by, published_a
 code, rep, err = run_import()
 check("import: counts match source and destination", code == 0 and rep["events"]["held"] == 3 and rep["sessions"]["held"] == 2
       and rep["players"]["held"] == 1 and rep["worlds"]["held"] == 1 and rep["log"]["held"] == 1 and rep["playtesters"]["held"] == 1
-      and rep["survey_answers"]["held"] == 1 and rep["surveys"]["held"] == 2 and rep["files"]["held"] == 8, (code, rep, err))
+      and rep["survey_answers"]["held"] == 1 and rep["surveys"]["held"] == 2 and rep["files"]["held"] == 13, (code, rep, err))
 check("import: a world openagents.com published is kept", sql("select version || ' ' || coalesce(source, '-') from verse.published where world = 'taken'") == "7 -"
-      and rep["published"] == {"source": 2, "added": 1, "held": 1, "kept": 1}, rep.get("published"))
+      and rep["published"] == {"source": 3, "added": 2, "held": 2, "kept": 1}, rep.get("published"))
 check("import: events keep their space, source file and line, and the demo's words",
       sql("select string_agg(space || ' ' || import_key, ',' order by import_key) from analytics.events where import_key is not null")
       == "dev aethyr-demo-data/dev/events/20261027T010101-aaaaaa-000001.jsonl:000001,"
@@ -61,6 +69,11 @@ check("import: events keep their space, source file and line, and the demo's wor
 check("import: a session's first and last seen, events and robot agent",
       sql("select first_ms || ' ' || last_ms || ' ' || events || ' ' || agent || ' ' || space from analytics.sessions where sid = 'kiki-c843929384becaa5-b711f85a'")
       == "1793025588457 1793025589000 2 headlesschrome kiki")
+check("import: awards, planets (the registry's and the Kiki flow's published ones) and a planet's saved copy",
+      rep["awards"] == {"source": 2, "added": 2, "held": 2} and rep["planets"]["held"] == 2 and rep["planet_saves"]["held"] == 1
+      and sql("select string_agg(id || ' ' || kind || ' ' || owner_id, ',' order by at) from verse.planets where source like 'aethyr-demo-data/%'")
+         == "planet-mekiki65hgyv6087 village name-kiki-65hgyv,planet-avidsvazqc860682 cemetery name-kiki-david-svazqc86"
+      and sql("select (invited > 0)::text || ' ' || (saved->>'at') from verse.planet_saves where planet = 'planet-avidsvazqc860682'") == "true 1793132162.5", rep)
 check("import: an automated run keeps its mark", sql("select auto from analytics.playtesters where id = '87934adead43ab54'") == "kiki-e2e")
 check("import: offered changes have their table, chat waits in demo_files",
       sql("select count(*) from verse.log where world = 'haunt'") == "0" and rep["offers"] == {"source": 1, "added": 1, "held": 1}
