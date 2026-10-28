@@ -279,6 +279,29 @@ Voice is a good early proof that the model holds: the 20 ms frame engine,
 its jitter buffer and frame decisions run unchanged, and the browser joins
 the same voice host the phone uses.
 
+## Releasing
+
+One command ships openagents.com, and it always goes through staging:
+
+```sh
+coax/web/release.sh                  # origin/main → staging → smoke → production → smoke
+coax/web/release.sh --staging-only   # stop after staging
+coax/web/rollback.sh [<time>]        # list kept releases, or put one back
+```
+
+1. **Build once, from committed code.** A clean worktree of `origin/main` (or `--ref`), never a working directory other agents are editing.
+2. **Staging.** `deploy.sh` uploads to the staging bucket; `smoke.sh` checks the page, every file it names (status, type, caching, wasm magic), the hidden text, HTTP to HTTPS and the 404.
+3. **Promote the same bytes.** The staging bucket is copied into production's, files first and pages last, so a page never names a file that isn't there yet. Production's previous pages are kept under `releases/<time>/`.
+4. **Production smoke.** The same checks, plus the routes the old `coder` service still owns. A failure puts the previous pages back on its own.
+
+Skipping staging takes `--skip-staging --yes-skip-staging`, for emergencies.
+
+**Routing.** One global load balancer (`coaxial-openagents-web-staging`, IP 136.69.24.60) serves both hosts:
+- staging.openagents.com goes to the staging bucket;
+- openagents.com sends `/`, `/favicon.svg`, `/build/*` and `/coaxial/*` to the production bucket, and everything else to the Cloud Run `coder` service until it is retired ([deprecation plan](../docs/2026-10-28-coder-service-deprecation.md)).
+
+Moving a route off `coder` is one path rule. DNS for openagents.com is a single A record at Cloudflare. The records it replaced (Cloud Run's four A and four AAAA) are kept in `~/work/.secrets/openagents-com-dns-before-coaxial.json`.
+
 ## Phases
 
 Each phase ends with something running and measured. Phase numbers are this
