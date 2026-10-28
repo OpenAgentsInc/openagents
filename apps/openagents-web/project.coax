@@ -13,7 +13,9 @@
 
 #load "font.coax";
 #load "project/coax/commits.coax";
+#load "project/coax/work.coax";
 
+// page 0 is the real page (/project/coax), 1 the demo (/project/coax/demo).
 ProjectState :: struct {
   time: f32;
   frames: int;
@@ -72,7 +74,7 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
 
 // ---------------------------------------------------------------- the palette and the pen
 
-Pen :: struct { d: f32; fade: f32; time: f32; }
+Pen :: struct { d: f32; fade: f32; time: f32; demo: bool; }
 
 // The four inks of the page: white text, dim text, Bitcoin orange (#ff8c1f)
 // and the pale orange of something in review.
@@ -283,6 +285,145 @@ claimed_tasks :: () -> int {
 // The agents at work (placeholders): name | task | branch.
 AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 
+// ---------------------------------------------------------------- the real work (from the relay)
+
+// WORK_ITEMS (project/coax/work.coax, made by coax/web/project/snapshot.ts
+// from the project's Nostr events): one row an item, fields
+//   alias | kind | status | title | labels | size | sats | parent | blocked by | rank | slug
+// where parent and blocked by are aliases. Read once into Work: the queue's
+// order is computed here, never stored as numbers. Ready tasks (every
+// blocker resolved or closed) come first by rank, then waiting ones by rank.
+// A task ranked above an open blocker is shown with a warning: it moved
+// ahead of what it waits on, and stays waiting until that's done.
+MAX_ITEMS :: 128;
+KIND_INITIATIVE :: 0; KIND_MILESTONE :: 1; KIND_TASK :: 2;
+WS_OPEN :: 0; WS_RESOLVED :: 1; WS_CLOSED :: 2; WS_DRAFT :: 3;
+
+Work :: struct {
+  read: bool;
+  n: int;
+  start: [MAX_ITEMS] int;     // each row's first byte
+  kind: [MAX_ITEMS] int;
+  status: [MAX_ITEMS] int;
+  parent: [MAX_ITEMS] int;    // a row, or -1
+  ready: [MAX_ITEMS] bool;
+  waits: [MAX_ITEMS] int;     // an open blocker's row, or -1
+  ahead: [MAX_ITEMS] int;     // an open blocker ranked below this task, or -1
+  queue: [MAX_ITEMS] int;     // open tasks: ready by rank, then waiting by rank
+  queued: int;
+  ready_n: int;
+  done_n: int;
+  tasks: int;
+  milestones: [MAX_ITEMS] int;   // milestone rows by rank
+  milestone_n: int;
+  initiative: int;
+}
+
+cell :: (text: string, start: int, col: int) -> string {
+  i := start; c := 0;
+  while c < col && i < text.count && text[i] != '\n' { if text[i] == '|' { c += 1; } i += 1; }
+  j := i;
+  while j < text.count && text[j] != '|' && text[j] != '\n' { j += 1; }
+  return text[i..<j];
+}
+// Byte order: ranks are base-62 digits in ASCII order.
+before :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+work_kind :: (s: string) -> int {
+  if same(s, "initiative") { return KIND_INITIATIVE; }
+  if same(s, "milestone") { return KIND_MILESTONE; }
+  return KIND_TASK;
+}
+work_status :: (s: string) -> int {
+  if same(s, "resolved") { return WS_RESOLVED; }
+  if same(s, "closed") { return WS_CLOSED; }
+  if same(s, "draft") { return WS_DRAFT; }
+  return WS_OPEN;
+}
+finished :: (w: [] Work, r: int) -> bool { return w[0].status[r] == WS_RESOLVED || w[0].status[r] == WS_CLOSED; }
+row_of :: (w: [] Work, text: string, alias: string) -> int {
+  if alias.count == 0 { return -1; }
+  for r: 0..<w[0].n { if same(cell(text, w[0].start[r], 0), alias) { return r; } }
+  return -1;
+}
+item :: (w: [] Work, text: string, r: int, col: int) -> string { return cell(text, w[0].start[r], col); }
+
+// Rows sorted by rank, in place (insertion sort: at most MAX_ITEMS).
+by_rank :: (w: [] Work, text: string, order: [] int, n: int) {
+  for i: 1..<n {
+    k := order[i]; j := i - 1;
+    while j >= 0 && before(item(w, text, k, 9), item(w, text, order[j], 9)) { order[j + 1] = order[j]; j -= 1; }
+    order[j + 1] = k;
+  }
+}
+
+read_work :: (w: [] Work, text: string) {
+  w[0].read = true;
+  n := 0; i := 0;
+  while i < text.count && n < MAX_ITEMS {
+    w[0].start[n] = i; n += 1;
+    while i < text.count && text[i] != '\n' { i += 1; }
+    i += 1;
+  }
+  w[0].n = n;
+  w[0].initiative = -1;
+  for r: 0..<n {
+    w[0].kind[r] = work_kind(cell(text, w[0].start[r], 1));
+    w[0].status[r] = work_status(cell(text, w[0].start[r], 2));
+    if w[0].kind[r] == KIND_INITIATIVE && w[0].initiative < 0 { w[0].initiative = r; }
+  }
+  for r: 0..<n { w[0].parent[r] = row_of(w, text, cell(text, w[0].start[r], 7)); }
+  // readiness: every blocker done; the first open one is what it waits on
+  for r: 0..<n {
+    w[0].waits[r] = -1; w[0].ahead[r] = -1;
+    blockers := cell(text, w[0].start[r], 8);
+    a := 0;
+    while a < blockers.count {
+      b := a;
+      while b < blockers.count && blockers[b] != ' ' { b += 1; }
+      k := row_of(w, text, blockers[a..<b]);
+      if k >= 0 && !finished(w, k) {
+        if w[0].waits[r] < 0 { w[0].waits[r] = k; }
+        if w[0].ahead[r] < 0 && before(cell(text, w[0].start[r], 9), cell(text, w[0].start[k], 9)) { w[0].ahead[r] = k; }
+      }
+      a = b + 1;
+    }
+    w[0].ready[r] = w[0].kind[r] == KIND_TASK && w[0].status[r] == WS_OPEN && w[0].waits[r] < 0;
+  }
+  // the queue: ready tasks by rank, then the rest still to do by rank
+  ready: [MAX_ITEMS] int; rest: [MAX_ITEMS] int;
+  rn := 0; sn := 0; tasks := 0; done := 0; mn := 0;
+  for r: 0..<n {
+    if w[0].kind[r] == KIND_MILESTONE { w[0].milestones[mn] = r; mn += 1; }
+    if w[0].kind[r] != KIND_TASK { continue; }
+    tasks += 1;
+    if finished(w, r) { done += 1; continue; }
+    if w[0].ready[r] { ready[rn] = r; rn += 1; } else { rest[sn] = r; sn += 1; }
+  }
+  by_rank(w, text, ready[..], rn);
+  by_rank(w, text, rest[..], sn);
+  by_rank(w, text, w[0].milestones[..], mn);
+  for k: 0..<rn { w[0].queue[k] = ready[k]; }
+  for k: 0..<sn { w[0].queue[rn + k] = rest[k]; }
+  w[0].queued = rn + sn; w[0].ready_n = rn; w[0].done_n = done; w[0].tasks = tasks; w[0].milestone_n = mn;
+}
+
+// A milestone's tasks: how many, done and ready.
+Progress :: struct { total: int; done: int; ready: int; }
+progress :: (w: [] Work, m: int) -> Progress {
+  p: Progress;
+  for r: 0..<w[0].n {
+    if w[0].kind[r] != KIND_TASK || w[0].parent[r] != m { continue; }
+    p.total += 1;
+    if finished(w, r) { p.done += 1; }
+    if w[0].ready[r] { p.ready += 1; }
+  }
+  return p;
+}
+
 // The tree's branches: the subfolders of coax/ a commit mostly touched.
 branch_index :: (name: string) -> int {
   if same(name, "src") { return 1; }
@@ -400,7 +541,7 @@ PLOT :: 3.2;   // the plot's half size, grid units
 GRID :: 12;    // grid lines each way from the centre
 
 // The Grid's floor, the plot, the tree, the queue's beacon and the agents.
-scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool) -> int {
+scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting: int) -> int {
   angle := 0.62 + (ifx still then 0.0f32 else p.time * 0.045);
   // the readouts take the top of the box; the world stays under them
   view := Box.{x0 = b.x0, y0 = b.y0 + 44 * p.d, x1 = b.x1, y1 = b.y1};
@@ -487,12 +628,13 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool) -> int 
     label := 6.5 * p.d;
     v = put(out, v, "TASK QUEUE", bs.x + 13 * p.d, bs.y - 2 * p.d, label, orange);
     buf: [24] u8;
-    m := number(open_tasks(), false, buf[..]);
+    m := number(ifx p.demo then open_tasks() else waiting, false, buf[..]);
     v = put(out, v, cast(string) buf[0..<m], bs.x + 13 * p.d, bs.y + 9 * p.d, label, white);
-    v = put(out, v, "OPEN", bs.x + 13 * p.d + text_width(cast(string) buf[0..<m], label) + SPACE * label, bs.y + 9 * p.d, label, dim);
+    v = put(out, v, ifx p.demo then "OPEN" else "READY", bs.x + 13 * p.d + text_width(cast(string) buf[0..<m], label) + SPACE * label, bs.y + 9 * p.d, label, dim);
   }
   // the agents: out from the beacon to their branch, work there, come back
-  for a: 0..<rows(AGENTS) {
+  // (samples: only the demo has them until claims are real)
+  for a: 0..<(ifx p.demo then rows(AGENTS) else 0) {
     target := t[0].last[branch_index(field(AGENTS, a, 2))];
     if target < 0 || shown < n { continue; }
     node := add(t[0].at[target], v3(0.35 * cos(cast(f32) a * 2.1), 0.5 + 0.2 * cast(f32) a, 0.35 * sin(cast(f32) a * 2.1)));
@@ -593,7 +735,9 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool) -> int {
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
   x := b.x0 + 18 * d; right := b.x1 - 18 * d;
   v = put(out, v, "OPENAGENTS / PROJECTS /", x, b.y0 + 22 * d, 7 * d, dim);
-  v = put(out, v, "COAX", x + text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, orange);
+  crumb := x + text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d;
+  v = put(out, v, "COAX", crumb, b.y0 + 22 * d, 7 * d, orange);
+  if p.demo { v = put(out, v, "/ DEMO", crumb + text_width("COAX", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, ink(p, INK_PALE)); }
   title := 26 * d;
   ty := b.y0 + 58 * d;
   v = put(out, v, "COAX", x, ty, title, white);
@@ -602,32 +746,48 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool) -> int {
   if wide {
     tx := x + text_width("COAX", title) + 22 * d;
     v = put_fit(out, v, tag, tx, ty - 10 * d, 8 * d, white, right - tx - 330 * d);
-    v = put(out, v, "HOME OPENAGENTS/COAX/  ·  PLOT 12,-4 ON THE GRID  ·  OWNER OPENAGENTS", tx, ty + 6 * d, 6.5 * d, dim);
+    line := ifx p.demo then "HOME OPENAGENTS/COAX/  ·  PLOT 12,-4 ON THE GRID  ·  OWNER OPENAGENTS" else "HOME OPENAGENTS/COAX/  ·  TASKS FROM NOSTR  ·  OWNER OPENAGENTS";
+    v = put_fit(out, v, line, tx, ty + 6 * d, 6.5 * d, dim, right - tx);
     chips_y = ty - 8 * d;
   } else {
     lines: [1] int;
     v = put_wrapped(out, v, tag, x, ty + 22 * d, 7.5 * d, white, right - x, 13 * d, 3, lines[..]);
     chips_y = ty + 22 * d + 13 * d * cast(f32) lines[0] + 14 * d;
   }
-  // the chips: open for contributions (pulsing), the licence
+  // the chips: open for contributions (pulsing), the licence, and the data's
+  // source: SAMPLE DATA on the demo, the snapshot's time on the real page
   cap := 7 * d;
   open := "OPEN FOR CONTRIBUTIONS";
   lic := "APACHE-2.0";
+  buf: [48] u8;
+  m := put_text(buf[..], 0, "SNAPSHOT ");
+  m += put_text(buf[..], m, WORK_SNAPSHOT_AT);
+  source := ifx p.demo then "DEMO · SAMPLE DATA" else cast(string) buf[0..<m];
+  third := chip_width(source, cap, p) + 8 * d;
   cx := ifx wide then right - chip_width(open, cap, p) - chip_width(lic, cap, p) - 8 * d else x;
+  if wide { cx = cx - third; }
   v = chip(out, v, open, cx, chips_y, cap, orange, p);
   beat := 0.5 + 0.5 * sin(p.time * 2.4);
   v = diamond(out, v, cx - 8 * d, chips_y - cap * 0.5, 2 * d, orange, beat * p.fade);
   v = chip(out, v, lic, cx + chip_width(open, cap, p) + 8 * d, chips_y, cap, dim, p);
+  sx := cx + chip_width(open, cap, p) + chip_width(lic, cap, p) + 16 * d;
+  if !wide && sx + chip_width(source, cap, p) > right { sx = x; chips_y = chips_y + cap + 16 * d; }
+  v = chip(out, v, source, sx, chips_y, cap, ifx p.demo then ink(p, INK_PALE) else dim, p);
   return frame(out, v, b, 10 * d, p);
 }
 
 // The readouts over the scene: commits, contributors, lines, open tasks, agents at work.
-stats :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
+stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d; v := at;
   dim := ink(p, INK_DIM); white := ink(p, INK_WHITE); orange := ink(p, INK_ORANGE);
   labels := [5] string.["COMMITS", "CONTRIBUTORS", "LINES", "OPEN TASKS", "AGENTS AT WORK"];
   short := [5] string.["COMMITS", "PEOPLE", "LINES", "OPEN", "AGENTS"];
   values := [5] int.[PROJECT_COMMITS, PROJECT_AUTHORS, PROJECT_LINES, open_tasks(), rows(AGENTS)];
+  if !p.demo {
+    // the real page counts the relay's tasks: ready to take, and still to do
+    labels[3] = "READY"; short[3] = "READY"; values[3] = w[0].ready_n;
+    labels[4] = "TASKS TO DO"; short[4] = "TO DO"; values[4] = w[0].queued;
+  }
   each := (box_w(b) - 28 * d) / 5;
   cap := clamp(each / 6.5, 8 * d, 15 * d);
   small := clamp(each / 11, 5.5 * d, 7 * d);
@@ -863,19 +1023,207 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   return frame(out, v, b, 10 * d, p);
 }
 
+// ---------------------------------------------------------------- the real page's panels
+
+// The queue from the relay: ready tasks first by rank, then the ones still
+// waiting, by rank. Each row: its alias (from its event id, never a number
+// that order could change), its title, its state, and under it the
+// milestone, labels, size and suggested reward, or what it waits on.
+real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
+  d := p.d;
+  text := WORK_ITEMS;
+  buf: [64] u8;
+  o := number(w[0].ready_n, false, buf[..]);
+  o += put_text(buf[..], o, " READY · ");
+  o += number(w[0].queued - w[0].ready_n, false, buf[o..<buf.count]);
+  o += put_text(buf[..], o, " WAITING");
+  v := titled(out, at, b, "TASK QUEUE", cast(string) buf[0..<o], p);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  x := b.x0 + 16 * d; right := b.x1 - 14 * d;
+  y := b.y0 + title_room(p) + 14 * d;
+  cap := 7.5 * d; small := 6 * d;
+  if w[0].n == 0 {
+    v = put(out, v, "NO TASKS PUBLISHED YET", x, y + 6 * d, cap, white);
+    lines: [1] int;
+    v = put_wrapped(out, v, "The queue fills from the project's events on the relay.", x, y + 24 * d, small, dim, right - x, 11 * d, 3, lines[..]);
+    return frame(out, v, b, 10 * d, p);
+  }
+  tall := box_h(b) > 560 * d && box_w(b) > 340 * d;
+  bottom := b.y1 - 30 * d;
+  idw := text_width("#0000", cap) + 10 * d;
+  shown := 0;
+  for k: 0..<w[0].queued {
+    r := w[0].queue[k];
+    if k == w[0].ready_n && k > 0 {
+      // the waiting tasks start here
+      if y + 26 * d > bottom { break; }
+      v = rule(out, v, x, y - 6 * d, x + 6 * d, y - 6 * d, dim, p.fade);
+      v = put(out, v, "WAITING ON OTHER TASKS", x + 12 * d, y - 2 * d, small, dim);
+      y += 16 * d;
+    }
+    if y + 14 * d > bottom { break; }
+    ready := w[0].ready[r];
+    state := ifx ready then "READY" else ifx w[0].status[r] == WS_DRAFT then "DRAFT" else "WAITING";
+    sw := chip_width(state, small, p);
+    am := put_text(buf[..], 0, "#");
+    am += put_text(buf[..], am, item(w, text, r, 0));
+    v = put(out, v, cast(string) buf[0..<am], x, y, cap, ifx ready then orange else dim);
+    v = chip(out, v, state, right - sw, y, small, ifx ready then orange else dim, p);
+    title := item(w, text, r, 3);
+    lines := 1;
+    if tall {
+      drawn: [1] int;
+      v = put_wrapped(out, v, title, x + idw, y, cap, ifx ready then white else ink(p, INK_DIM), right - sw - 10 * d - x - idw, 12 * d, 2, drawn[..]);
+      lines = drawn[0];
+    } else {
+      v = put_fit(out, v, title, x + idw, y, cap, ifx ready then white else ink(p, INK_DIM), right - sw - 10 * d - x - idw);
+    }
+    meta := y + 12 * d * cast(f32) (lines - 1) + 13 * d;
+    m := 0;
+    if ready || w[0].waits[r] < 0 {
+      ms := w[0].parent[r];
+      if ms >= 0 { m += put_text(buf[..], m, item(w, text, ms, 3)); m += put_text(buf[..], m, "  ·  "); }
+      size := item(w, text, r, 5);
+      if size.count > 0 { m += put_text(buf[..], m, "SIZE "); m += put_text(buf[..], m, size); }
+      v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw - 70 * d);
+      sats := parse(item(w, text, r, 6));
+      if sats > 0 {
+        sb: [24] u8;
+        n := number(sats, true, sb[..]);
+        n += put_text(sb[..], n, " SATS");
+        v = put_right(out, v, cast(string) sb[0..<n], right, meta, small, pale);
+      }
+    } else {
+      m += put_text(buf[..], m, "WAITS ON #");
+      m += put_text(buf[..], m, item(w, text, w[0].waits[r], 0));
+      m += put_text(buf[..], m, " ");
+      m += put_text(buf[..], m, item(w, text, w[0].waits[r], 3));
+      v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw);
+    }
+    if w[0].ahead[r] >= 0 {
+      // moved above what it waits on: allowed, and said
+      meta += 11 * d;
+      wm := put_text(buf[..], 0, "! RANKED ABOVE ITS BLOCKER #");
+      wm += put_text(buf[..], wm, item(w, text, w[0].ahead[r], 0));
+      v = put(out, v, cast(string) buf[0..<wm], x + idw, meta, small, pale);
+    }
+    v = rule(out, v, x, meta + 8 * d, right, meta + 8 * d, dim, 0.07 * p.fade);
+    y = meta + 23 * d;
+    shown += 1;
+  }
+  more := w[0].queued - shown;
+  mb: [64] u8;
+  mm := 0;
+  if more > 0 { mm = number(more, false, mb[..]); mm += put_text(mb[..], mm, " MORE · "); }
+  mm += put_text(mb[..], mm, "EVERY TASK: /PROJECT/COAX/INDEX.MD");
+  v = put_fit(out, v, cast(string) mb[0..<mm], x, b.y1 - 14 * d, small, dim, right - x);
+  return frame(out, v, b, 10 * d, p);
+}
+
+// The plan: the initiative and its milestones in order, each with its tasks
+// done and ready; then the latest events from the relay.
+plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
+  d := p.d;
+  text := WORK_ITEMS;
+  v := titled(out, at, b, "MILESTONES", "FROM NOSTR", p);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  x := b.x0 + 16 * d; right := b.x1 - 14 * d;
+  y := b.y0 + title_room(p) + 12 * d;
+  cap := 6.5 * d; small := 5.5 * d;
+  if w[0].initiative >= 0 {
+    lines: [1] int;
+    v = put_wrapped(out, v, item(w, text, w[0].initiative, 3), x, y, 7 * d, white, right - x, 12 * d, 2, lines[..]);
+    y += 12 * d * cast(f32) lines[0] + 8 * d;
+  }
+  if w[0].milestone_n == 0 { v = put(out, v, "NO MILESTONES YET", x, y, cap, dim); }
+  for k: 0..<w[0].milestone_n {
+    if y + 16 * d > b.y1 - 10 * d { break; }
+    m := w[0].milestones[k];
+    pr := progress(w, m);
+    v = put_fit(out, v, item(w, text, m, 3), x, y, cap, ifx pr.ready > 0 then white else dim, right - x - 96 * d);
+    buf: [32] u8;
+    n := number(pr.done, false, buf[..]);
+    n += put_text(buf[..], n, "/");
+    n += number(pr.total, false, buf[n..<buf.count]);
+    v = put_right(out, v, cast(string) buf[0..<n], right, y, cap, dim);
+    if pr.ready > 0 {
+      rb: [16] u8;
+      rn := number(pr.ready, false, rb[..]);
+      rn += put_text(rb[..], rn, " READY");
+      v = put_right(out, v, cast(string) rb[0..<rn], right - 34 * d, y, small, orange);
+    }
+    // the bar: done of total
+    by := y + 6 * d; bx1 := right;
+    v = rule(out, v, x, by, bx1, by, dim, 0.1 * p.fade);
+    if pr.total > 0 && pr.done > 0 {
+      bar := orange; bar.core = 1.1 * d; bar.glow = 3 * d;
+      v = rule(out, v, x, by, x + (bx1 - x) * cast(f32) pr.done / cast(f32) pr.total, by, bar, 0.75 * p.fade);
+    }
+    y += 22 * d;
+  }
+  // the latest events, if there's room
+  if y + 40 * d < b.y1 - 10 * d && rows(WORK_LOG) > 0 {
+    y += 8 * d;
+    v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, orange, p.fade);
+    v = put(out, v, "LATEST", x + 12 * d, y, small, orange);
+    y += 16 * d;
+    for r: 0..<rows(WORK_LOG) {
+      if y > b.y1 - 12 * d { break; }
+      v = put(out, v, field(WORK_LOG, r, 0), x, y, small, dim);
+      v = put_fit(out, v, field(WORK_LOG, r, 1), x + 64 * d, y, small, pale, right - x - 64 * d);
+      y += 13 * d;
+    }
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// For agents, on the real page: where the project's events are and how to
+// take a task today. Claims and paid rewards come with the projects API.
+real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
+  d := p.d;
+  v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  x := b.x0 + 16 * d; right := b.x1 - 14 * d;
+  y := b.y0 + title_room(p) + 12 * d;
+  cap := 6.5 * d; step := ifx compact then 13 * d else 17 * d;
+  lead := 52 * d;
+  if !compact {
+    lines: [1] int;
+    v = put_wrapped(out, v, "Take the top ready task: its issue says what to build, the checks that must pass and the files it writes. Reply on the issue to say you're on it, then open a pull request.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
+    y += 12 * d * cast(f32) lines[0] + 10 * d;
+  }
+  for r: 0..<rows(WORK_STEPS) {
+    if y > b.y1 - 10 * d { break; }
+    v = put(out, v, field(WORK_STEPS, r, 0), x, y, cap, orange);
+    v = put_fit(out, v, field(WORK_STEPS, r, 1), x + lead, y, cap, white, right - x - lead);
+    y += step;
+  }
+  if !compact && y + 34 * d < b.y1 - 10 * d {
+    lines: [1] int;
+    v = put_wrapped(out, v, "Suggested rewards are not offers yet: leased claims and payment in sats come with the projects API.", x, y + 8 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
+    y += 8 * d + 11 * d * cast(f32) lines[0] + 12 * d;
+  }
+  if !compact && y + 24 * d < b.y1 - 10 * d {
+    v = put(out, v, "PROJECT", x, y, cap, dim);
+    v = put_fit(out, v, WORK_NADDR, x + lead, y, 5.5 * d, dim, right - x - lead);
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
 // ---------------------------------------------------------------- the frame
 
-coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, out: [] f32, uniforms: [] f32,
+coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, out: [] f32, uniforms: [] f32,
                           width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
-  if s.count < 1 || t.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if s.count < 1 || t.count < 1 || w.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
   s[0].frames += 1;
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
   if t[0].n == 0 { grow(t, PROJECT_HISTORY); }
+  if !w[0].read { read_work(w, WORK_ITEMS); }
   fade := ifx still then 1.0f32 else ease(time / 1.1);
-  p := Pen.{d = d, fade = fade, time = time};
+  p := Pen.{d = d, fade = fade, time = time, demo = s[0].page == 1};
   l := layout(width, height, d);
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = fade;
   uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 0; uniforms[6] = 0; uniforms[7] = 0;
@@ -887,13 +1235,20 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, out: [] f32, uniforms:
   panels := 3;
   if l.activity_on { glass(uniforms, 3, l.activity, cut, 0.92, 0); panels = 4; }
   uniforms[5] = cast(f32) panels;
-  v := scene(out, 0, l.scene, p, t, still);
+  v := scene(out, 0, l.scene, p, t, still, w[0].ready_n);
   v = scene_hud(out, v, l.scene, p, l.columns);
-  v = stats(out, v, l.scene, p);
+  v = stats(out, v, l.scene, p, w);
   v = header(out, v, l.header, p, l.wide);
-  v = queue(out, v, l.queue, p);
-  if l.activity_on { v = activity(out, v, l.activity, p); }
-  v = agents(out, v, l.agents, p, !l.wide && !l.columns);
+  compact := !l.wide && !l.columns;
+  if p.demo {
+    v = queue(out, v, l.queue, p);
+    if l.activity_on { v = activity(out, v, l.activity, p); }
+    v = agents(out, v, l.agents, p, compact);
+  } else {
+    v = real_queue(out, v, l.queue, p, w);
+    if l.activity_on { v = plan(out, v, l.activity, p, w); }
+    v = real_agents(out, v, l.agents, p, compact);
+  }
   return v;
 }
 
@@ -964,13 +1319,17 @@ on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
   uniforms: [UNIFORM_FLOATS] f32;
   s: [1] ProjectState;
   t: [1] Tree;
+  work: [1] Work;
   sizes := [6] f32.[1440, 900, 768, 1024, 320, 568];
-  for k: 0..<3 {
-    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
-    n := coaxial_project_frame(s[..], t[..], out[..], uniforms[..], w, h, 2, 0, true);
-    #assert n > 3000 && n < MAX_VERTICES && n % 6 == 0;
-    #assert on_canvas(out[..], n, w, h, 2);
-    #assert uniforms[5] >= 3 && uniforms[0] == w;
+  for page: 0..<2 {
+    s[0].page = page;
+    for k: 0..<3 {
+      w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+      n := coaxial_project_frame(s[..], t[..], work[..], out[..], uniforms[..], w, h, 2, 0, true);
+      #assert n > 3000 && n < MAX_VERTICES && n % 6 == 0;
+      #assert on_canvas(out[..], n, w, h, 2);
+      #assert uniforms[5] >= 3 && uniforms[0] == w;
+    }
   }
 }
 
@@ -987,4 +1346,53 @@ on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
   m := queue(out[..], 0, small, p);
   #assert m < n;
   for v: 0..<m { #assert out[v * VERTEX_FLOATS + 1] <= 132; }
+}
+
+// A made-up project: an initiative, a milestone, and tasks where c waits on
+// b, b is done, d waits on e (open), and d is ranked above e.
+FIXTURE :: "i1|initiative|open|Init||||||0V|init\nm1|milestone|open|First|||||i1|1V|m-first\nb1|task|resolved|Bee||S|100|m1||3|b\nc1|task|open|Cee||M|200|m1|b1|5|c\nd1|task|open|Dee||S|0|m1|e1|6|d\ne1|task|open|Eee||L|0|m1||7|e\nf1|task|open|Eff||S|0|m1||4|f\ng1|task|draft|Gee||S|0|m1||2|g\n";
+
+#test "the real queue: ready tasks first by rank, then waiting ones, done ones out" {
+  w: [1] Work;
+  read_work(w[..], FIXTURE);
+  #assert w[0].n == 8 && w[0].tasks == 6 && w[0].done_n == 1 && w[0].milestone_n == 1 && w[0].initiative == 0;
+  // ready: f (rank 4), c (5, its blocker b is done), e (7); then waiting: g (draft, 2), d (6, waits on e)
+  #assert w[0].ready_n == 3 && w[0].queued == 5;
+  names := [5] string.["f1", "c1", "e1", "g1", "d1"];
+  for k: 0..<5 { #assert same(item(w[..], FIXTURE, w[0].queue[k], 0), names[k]); }
+  #assert w[0].ready[3] && !w[0].ready[4] && !w[0].ready[7];
+  #assert w[0].waits[4] == 5 && w[0].waits[3] == -1;
+  pr := progress(w[..], 1);
+  #assert pr.total == 6 && pr.done == 1 && pr.ready == 3;
+}
+
+#test "a task ranked above an open blocker is flagged, and stays waiting" {
+  w: [1] Work;
+  read_work(w[..], FIXTURE);
+  // d (rank 6) waits on e (rank 7): ranked above it
+  #assert w[0].ahead[4] == 5 && !w[0].ready[4];
+  // c (rank 5) waits on b, which is done: no flag
+  #assert w[0].ahead[3] == -1;
+  // ranks compare as bytes: "1z" < "2", "V" < "a", "a" < "aV"
+  #assert before("1z", "2") && before("V", "a") && before("a", "aV") && !before("b", "aV");
+  e: [1] Work;
+  read_work(e[..], "");
+  #assert e[0].n == 0 && e[0].queued == 0;
+}
+
+#test "the real queue draws inside its panel, and an empty one says so" {
+  out: [60000 * VERTEX_FLOATS] f32;
+  p := Pen.{d = 1, fade = 1, time = 20, demo = false};
+  w: [1] Work;
+  read_work(w[..], WORK_ITEMS);
+  b := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
+  n := real_queue(out[..], 0, b, p, w[..]);
+  #assert n > 600;
+  for v: 0..<n { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  e: [1] Work;
+  read_work(e[..], "");
+  m := real_queue(out[..], 0, b, p, e[..]);
+  #assert m > 60 && m < n;
+  q := plan(out[..], 0, b, p, w[..]);
+  for v: 0..<q { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
 }

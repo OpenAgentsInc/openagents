@@ -1,0 +1,18 @@
+{
+  "slug": "coax",
+  "name": "Coax",
+  "description": "A systems language for real-time code. It compiles to C11, then to native code and wasm.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "coax/",
+  "contributions": "open",
+  "license": "Apache-2.0",
+  "pubkey": "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575"
+}

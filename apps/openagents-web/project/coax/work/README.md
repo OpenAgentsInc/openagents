@@ -29,16 +29,22 @@ numbered by hand.
 }
 ```
 
+Publish with `bun coax/web/project/publish.ts publish` (the project key is
+at `~/work/.secrets/openagents-project-coax.key`). Each item becomes a
+NIP-34 kind-1621 issue. The protocol doc has the event model.
+
 Rules:
-- **Identity is the slug.** The publisher maps each slug to a stable work-item
-  id (and the `d` tag of its addressable records), so republishing replaces
-  rather than duplicates. Renaming a slug makes a new task.
+- **Identity is the slug.** Each issue carries a `slug` tag, and the
+  publisher finds the existing issue by it. Republishing changes nothing when
+  fields match, and sends a kind-1111 revision when they differ, so there
+  are never duplicates. Renaming a slug makes a new task.
 - **No order numbers.** Queue order is computed: dependencies first
   (`blocked_by` is a DAG; the generator refuses cycles), then the project's
   order record, which holds a fractional rank key per task. Moving one task
   rewrites one key; nothing else renumbers.
-- **Display aliases** (like `CX-12`) are assigned by the page from creation
-  order and are inert; never refer to a task by alias in code or acceptance.
+- **Display aliases** (like `#3f2a`) are the leading hex of the issue's event
+  id, lengthened only on collision. They are stable and inert: never refer to
+  a task by alias in code or acceptance.
 - **Acceptance is literal.** Every entry is a command, a vector file or an
   observable result a reviewer can check without asking the author.
 
