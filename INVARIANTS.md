@@ -445,7 +445,8 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   while the GPU draws (the `.gpu main` rule);
 - the text fallback a browser without WebGPU sees instead (an owner
   decision, 2026-10-28);
-- a zero-size, transparent `<input>` that only brings up a phone's keyboard;
+- an invisible `<input>` over a Coax-drawn text field (the rect Coax reports),
+  for the keyboard, paste and the context menu; it draws nothing itself;
 - the development-only error note `coax serve` shows on localhost.
 
 Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every

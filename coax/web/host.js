@@ -18,6 +18,7 @@
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
 //                             text in: kind 1 is typed or pasted text; others the page's own
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
+//   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
 //   coaxial_cursor(state)     0 the default, 1 a link
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
 //                             out: 1 navigates to the outbox's URL; others go to the page's
@@ -191,7 +192,7 @@ function frame(now) {
 const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
   Home: -8, End: -9, PageUp: -10, PageDown: -11 };
 const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports[name](arena.state, ...args) : 0);
-let field = null;   // INVARIANTS.md: the keyboard field, a zero-size input that brings up a phone's keyboard
+let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
 
 function send(kind, text = "") {
@@ -214,6 +215,7 @@ function after(gesture, tap = false) {
   const want = call("coaxial_wants_text") === 1;
   if (want && document.activeElement !== field ? gesture || !touched : want && tap && touched) focusField();
   else if (!want && field && document.activeElement === field) field.blur();
+  if (field) placeField(want);
   const code = call("coaxial_action");
   if (code) {
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_outbox(arena.state), x.coaxial_outbox_len(arena.state)).slice());
@@ -225,12 +227,26 @@ function after(gesture, tap = false) {
   if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;
 }
 
+// Puts the field over the box the app draws it in, so a paste or a right
+// click there lands in it; off to one side when nothing takes text.
+function placeField(want) {
+  const x = engine.exports;
+  const r = want && x.coaxial_field ? new Float32Array(memory.buffer, x.coaxial_field(arena.state), 4) : [0, 0, 0, 0];
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const box = r[2] > r[0] ? [r[0] / dpr, r[1] / dpr, (r[2] - r[0]) / dpr, (r[3] - r[1]) / dpr] : [0, 0, 1, 1];
+  const key = box.map(Math.round).join();
+  if (field.dataset.at === key) return;
+  field.dataset.at = key;
+  field.style.left = `${box[0]}px`; field.style.top = `${box[1]}px`; // keyboard field
+  field.style.width = `${box[2]}px`; field.style.height = `${box[3]}px`; // keyboard field
+}
+
 function focusField() {
   if (!field) {
     field = document.createElement("input"); // keyboard field
     for (const [k, v] of Object.entries({ "aria-label": "Typed text", autocomplete: "off", autocapitalize: "off",
       autocorrect: "off", spellcheck: "false", enterkeyhint: "go" })) field.setAttribute(k, v);
-    field.style.cssText = "position:fixed;left:0;bottom:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:16px"; // keyboard field
+    field.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;outline:0;opacity:0;background:transparent;color:transparent;caret-color:transparent;font-size:16px"; // keyboard field
     // The field holds one space, so a phone's delete always has something to delete.
     const flush = () => {
       const v = field.value;
@@ -252,7 +268,9 @@ function focusField() {
 addEventListener("keydown", (e) => {
   if (!engine || e.isComposing) return;
   const named = KEYS[e.key];
-  if (!named && e.target === field) return;   // the field's input event brings the text
+  // Paste is the browser's: it lands in the field, whose input event brings the text.
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") return;
+  if (!named && e.target === field && !e.metaKey && !e.ctrlKey) return;   // typed text comes by the input event
   const key = named ?? ([...e.key].length === 1 ? e.key.codePointAt(0) : 0);
   if (!key) return;
   const mods = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);

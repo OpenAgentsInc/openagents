@@ -75,6 +75,7 @@ Ui :: struct {
   down: bool; down_x: f32; down_y: f32; down_at: f32; moved: bool; touch: bool; held: bool;
   px: f32; py: f32;
   button: Box;           // the key prompt's OPEN, as last drawn
+  field: Box;            // the text field taking typing, as last drawn (zero: none)
   // the host's mailboxes
   inbox: [INBOX_CAP] u8;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
@@ -468,6 +469,7 @@ draw_terminal :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   if term != TERM_GRANTED {
     end := x + measure(shown, 0.3, 0.6, false) * cap + ifx shown.count > 0 then 4 * d else 0.0f32;
     vertices = caret(out, vertices, end, base, cap, d, u);
+    u[0].field = Box.{x0 = x - 8 * d, x1 = right, y0 = base - cap - 10 * d, y1 = base + 10 * d};
   }
   // the status line
   status: [128] u8; n := 0;
@@ -643,6 +645,7 @@ draw_prompt :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   y += used[0] + 20 * d;
   // the field: one dot per character, never the key itself
   field := Box.{x0 = x, x1 = b.x1 - 20 * d, y0 = y, y1 = y + 36 * d};
+  if !checking { u[0].field = field; }
   vertices = outline(out, vertices, field, 6 * d, ink(0.5 * d, 0.4 * a, 4 * d, 0.6, 0.6, 0.66));
   key := cast(string) u[0].key[0..<u[0].key_n];
   chars := 0; i := 0;
@@ -708,6 +711,7 @@ draw_status :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
 // Everything above the scene, from vertex at. Sets the panel uniforms.
 ui_draw :: (u: [] Ui, out: [] f32, at: int, uniforms: [] f32) -> int {
   for i: 8..<16 { uniforms[i] = 0; }
+  u[0].field = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   vertices := draw_home(u, out, at);
   if u[0].term != TERM_CLOSED || u[0].vis > 0 { return draw_terminal(u, out, vertices, uniforms); }
   what := u[0].show;

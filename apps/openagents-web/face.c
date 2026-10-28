@@ -47,6 +47,8 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   coaxial_splash_message(ui_of(state), kind, length);
 }
 EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return coaxial_splash_wants_text(ui_of(state)) ? 1u : 0u; }
+// The text field taking typing, in device pixels: x0, y0, x1, y1 (all zero: none).
+EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)&state_at(state)->ui.field; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_splash_cursor(ui_of(state)); }
 
 // Output: an action code and its text in the outbox; done empties it.
