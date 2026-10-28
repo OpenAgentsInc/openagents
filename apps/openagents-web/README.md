@@ -4,7 +4,9 @@ The website, drawn by Coax on WebGPU. The framework is specified in
 [coax/web.md](../../coax/web.md).
 
 Today this is the splash: `splash.coax` lays out and animates the words,
-`splash.wgsl` draws them over the nebula, `face.c` exports the Coax
+`graph.coax` is the iOS home's graph (from `metareal/home.coax`, same seed)
+fading in behind them as a wide band, `splash.wgsl` draws both over the
+nebula, `face.c` exports the Coax
 procedures to the browser, and `index.html` / `index.md` carry the same
 words as text for search engines, screen readers and browsers without
 WebGPU.
@@ -23,5 +25,8 @@ change reloads the page. Build errors show in the page's corner with the
 
 `http://127.0.0.1:8800/?probe` reads one frame back from the GPU and prints
 its middle to the console, for checking a render in a headless browser.
+
+A new `.coax` file is watched from the next `coax serve` start; until then,
+save `splash.coax` to rebuild.
 
 Needs upstream LLVM: `brew install llvm lld wasi-libc wasi-runtimes`.

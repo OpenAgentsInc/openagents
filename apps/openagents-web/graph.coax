@@ -1,0 +1,351 @@
+// The graph behind the splash: the iOS home's animated graph
+// (metareal/home.coax), the same nodes, links, reveal times and pulses from
+// the same seed, laid on a tilted plane so it reads as a wide band across
+// the page instead of a disc. Nodes fade in and links grow out from them;
+// once a link is lit, pulses run along it and flash the node they reach.
+//
+// Nothing here is kept between frames. The graph is rebuilt from its seed
+// each frame (a few hundred nodes, well under a millisecond) and the pulses
+// are a function of time, so the splash's state stays two numbers and a code
+// swap never has a graph to migrate.
+
+GNode :: struct {
+  x: f32; y: f32;      // place in the cluster, cluster radii
+  cluster: int;        // 0 the main graph, 1 to SATELLITES the satellites
+  px: f32;             // size, in points of a 600 point short side
+  bright: f32;
+  crisp: f32;          // 0 a soft point, 1 a crisp disc
+  reveal: f32;         // seconds when it starts to fade in
+  sx: f32; sy: f32;    // on screen this frame, device pixels
+  flash: f32;          // pulses arriving
+}
+GLink :: struct {
+  a: int; b: int;
+  intensity: f32;
+  travel: f32;         // seconds a pulse takes
+  reveal: f32;         // seconds when it starts to grow
+  rate: f32;           // pulses a second, once lit
+}
+Graph :: struct { n: int; m: int; rng: int; full: bool; }
+
+GRAPH_SEED :: 42727;   // the iOS home's (metareal/home.textproto)
+SATELLITES :: 8;
+NODE_CAP :: 1024;
+LINK_CAP :: 1024;
+PULSE_CAP :: 96;
+GRAPH_QUADS :: 2240;   // NODE_CAP + LINK_CAP + 2 * PULSE_CAP
+WIDEN :: 1.35;         // the main graph's width over the iOS disc's
+FLATTEN :: 0.36;       // the plane's tilt: height over width of a circle on it
+GRAPH_LIGHT :: 0.55;   // the graph stays behind the words
+MAIN_SPIN :: 0.012;    // radians a second
+SATELLITE_SPIN :: 0.05;
+
+// Xorshift32, the same sequence as the iOS home.
+random :: (g: [] Graph) -> f32 {
+  a := g[0].rng;
+  a = (a ^ (a << 13)) & 4294967295;
+  a = a ^ (a >> 17);
+  a = (a ^ (a << 5)) & 4294967295;
+  g[0].rng = a;
+  return cast(f32) (a >> 8) / 16777216.0;
+}
+range :: (g: [] Graph, a: f32, b: f32) -> f32 { return a + (b - a) * random(g); }
+
+node :: (g: [] Graph, nodes: [] GNode, cluster: int, x: f32, y: f32, px: f32, bright: f32, crisp: f32, reveal: f32) -> int {
+  n := g[0].n;
+  if n >= nodes.count { g[0].full = true; return 0; }
+  nodes[n] = GNode.{x = x, y = y, cluster = cluster, px = px, bright = bright, crisp = crisp, reveal = reveal};
+  g[0].n = n + 1;
+  return n;
+}
+polar :: (g: [] Graph, nodes: [] GNode, c: int, radius: f32, degrees: f32, px: f32, bright: f32, crisp: f32, reveal: f32) -> int {
+  a := degrees * 0.017453293;
+  return node(g, nodes, c, radius * cos(a), radius * sin(a), px, bright, crisp, reveal);
+}
+link :: (g: [] Graph, links: [] GLink, a: int, b: int, intensity: f32, travel: f32, reveal: f32, rate: f32) {
+  m := g[0].m;
+  if m >= links.count { g[0].full = true; return; }
+  links[m] = GLink.{a = a, b = b, intensity = intensity, travel = travel, reveal = reveal, rate = rate};
+  g[0].m = m + 1;
+}
+nearest :: (nodes: [] GNode, id: int, from: int, to: int) -> int {
+  best := from; distance := 100000.0f32;
+  for i: from..<to {
+    dx := nodes[i].x - nodes[id].x; dy := nodes[i].y - nodes[id].y;
+    d := dx * dx + dy * dy;
+    if d < distance { distance = d; best = i; }
+  }
+  return best;
+}
+arc :: (g: [] Graph, nodes: [] GNode, c: int, cx: f32, cy: f32, r: f32, from: f32, to: f32, dots: int,
+        px: f32, bright: f32, crisp: f32, at: f32, sweep: f32) -> int {
+  start := g[0].n;
+  for i: 0..<dots {
+    k := cast(f32) i / cast(f32) (dots - 1);
+    angle := (from + (to - from) * k) * 0.017453293;
+    tint := random(g);   // the original's tint draw, kept so the sequence matches
+    id := node(g, nodes, c, cx + r * cos(angle), cy + r * sin(angle), px, bright * (0.8 + 0.4 * random(g)), crisp, at + sweep * k);
+  }
+  return start;
+}
+sheaf :: (g: [] Graph, nodes: [] GNode, links: [] GLink, start: int, targets: int, target_end: int, intensity: f32, rate: f32) {
+  for i: start..<g[0].n { link(g, links, i, nearest(nodes, i, targets, target_end), intensity, 2, nodes[i].reveal + 0.3, rate); }
+}
+fan :: (g: [] Graph, nodes: [] GNode, links: [] GLink, start: int, focus: int, intensity: f32, rate: f32) {
+  for i: start..<g[0].n { link(g, links, i, focus, intensity, 2.5, nodes[i].reveal + 0.3, rate); }
+}
+
+main_graph :: (g: [] Graph, nodes: [] GNode, links: [] GLink) -> int {
+  hub := node(g, nodes, 0, 0, 0, 22, 1.9, 1, 0.2);
+  angles := [8] f32.[22, 64, 112, 152, 198, 236, 292, 332];
+  grey_from := g[0].n;
+  for i: 0..<8 {
+    r := range(g, 0.15, 0.31);
+    id := polar(g, nodes, 0, r, angles[i] + range(g, -8, 8), 10, 0.30, 1, 0.45 + r * 2);
+    link(g, links, hub, id, 0.16, 1, 0.35 + r * 2, 0.3);
+  }
+  grey_to := g[0].n;
+  c1 := node(g, nodes, 0, 0.20, 0, 9, 0.32, 1, 0.7);
+  c2 := node(g, nodes, 0, 0.42, -0.01, 9, 1, 1, 0.9);
+  focus := node(g, nodes, 0, 0.64, -0.01, 5, 1.5, 1, 1.1);
+  link(g, links, hub, c1, 0.22, 1, 0.6, 1.2); link(g, links, c1, c2, 0.22, 1, 0.8, 1.2); link(g, links, c2, focus, 0.22, 1, 1.0, 1.2);
+  for i: 0..<6 { _ := node(g, nodes, 0, 0.46 + 0.03 * cast(f32) i, -0.01 + range(g, -0.008, 0.008), 2.5, 0.7, 0.3, 1.2 + 0.05 * cast(f32) i); }
+  d1 := node(g, nodes, 0, 0.03, -0.30, 9, 0.32, 1, 0.8);
+  down := node(g, nodes, 0, 0.02, -0.60, 9, 1, 1, 1.1);
+  link(g, links, hub, d1, 0.2, 1, 0.7, 0.8); link(g, links, d1, down, 0.2, 1, 0.9, 0.8);
+  xs := [3] f32.[0.22, 0.26, 0.12]; ys := [3] f32.[0.36, -0.34, 0.50];
+  for i: 0..<3 {
+    id := node(g, nodes, 0, xs[i], ys[i], 8, 0.9, 1, 1.3);
+    link(g, links, nearest(nodes, id, grey_from, grey_to), id, 0.14, 1, 1.2, 0.25);
+  }
+  agents := arc(g, nodes, 0, 0, 0, 0.44, 100, 252, 24, 7.5, 0.9, 0.8, 1.2, 1.0);
+  agent_end := g[0].n; sheaf(g, nodes, links, agents, grey_from, grey_to, 0.10, 0.05);
+  a := arc(g, nodes, 0, 0, 0, 0.60, 104, 160, 30, 3.6, 0.6, 0.8, 2.0, 0.6); sheaf(g, nodes, links, a, agents, agent_end, 0.045, 0.015);
+  a = arc(g, nodes, 0, 0, 0, 0.60, 166, 214, 26, 3.6, 0.6, 0.8, 2.4, 0.5); sheaf(g, nodes, links, a, agents, agent_end, 0.045, 0.015);
+  a = arc(g, nodes, 0, 0, 0, 0.60, 220, 262, 24, 3.6, 0.6, 0.8, 2.8, 0.5); sheaf(g, nodes, links, a, agents, agent_end, 0.045, 0.015);
+  a = arc(g, nodes, 0, 0, 0, 0.80, 68, 106, 16, 5.5, 0.8, 0.8, 2.6, 0.5); fan(g, nodes, links, a, agent_end - 1, 0.05, 0.03);
+  a = arc(g, nodes, 0, 0, 0, 0.86, 240, 292, 44, 4.5, 0.75, 0.8, 3.0, 0.8); fan(g, nodes, links, a, down, 0.028, 0.02);
+  a = arc(g, nodes, 0, 0.24, 0, 0.70, -62, 62, 76, 3.0, 0.6, 0.8, 3.2, 1.0); fan(g, nodes, links, a, focus, 0.03, 0.025);
+  a = arc(g, nodes, 0, 0, 0, 0.64, 22, 92, 46, 3.0, 0.45, 0.8, 2.2, 0.7);
+  a = arc(g, nodes, 0, 0, 0, 0.64, 300, 332, 14, 3.0, 0.45, 0.8, 3.0, 0.4);
+  for i: 0..<40 {
+    r := range(g, 0.08, 0.56);
+    _ := polar(g, nodes, 0, r, range(g, 0, 360), 2.5, range(g, 0.3, 0.7), 0.3, 1.0 + r * 3);
+  }
+  return hub;
+}
+
+satellite :: (g: [] Graph, nodes: [] GNode, links: [] GLink, c: int, at: f32) -> int {
+  hub := node(g, nodes, c, 0, 0, 13, 1.4, 1, at);
+  inner := g[0].n;
+  count := 2 + cast(int) range(g, 0, 2); turn := range(g, 0, 360);
+  for i: 0..<count {
+    radius := range(g, 0.16, 0.28);
+    angle := turn + 360 * cast(f32) i / cast(f32) count + range(g, -20, 20);
+    n := polar(g, nodes, c, radius, angle, 9, 0.3, 1, at + 0.2);
+    link(g, links, hub, n, 0.15, 1, at + 0.1, 0.2);
+  }
+  inner_end := g[0].n; agents := inner_end;
+  count = 3 + cast(int) range(g, 0, 3);
+  for i: 0..<count {
+    r := range(g, 0.42, 0.6); angle := range(g, 0, 360); _ := range(g, -1, 0.2);
+    n := polar(g, nodes, c, r, angle, 8, 0.85, 1, at + 0.4);
+    link(g, links, hub, n, 0.12, 1, at + 0.35, 0.12);
+    // each agent connects through its nearest inner node, as the original
+    if g[0].m > 0 { links[g[0].m - 1].a = nearest(nodes, n, inner, inner_end); }
+  }
+  agent_end := g[0].n;
+  for i: 0..<2 {
+    from := range(g, 0, 360); span := range(g, 60, 130); _ := range(g, -1, 0.6);
+    radius := range(g, 0.82, 0.96);
+    start := arc(g, nodes, c, 0, 0, radius, from, from + span, cast(int) (span / 6), 4, 0.7, 0.8, at + 0.6, 0.6);
+    sheaf(g, nodes, links, start, agents, agent_end, 0.04, 0.01);
+  }
+  for i: 0..<6 { _ := polar(g, nodes, c, range(g, 0.1, 0.7), range(g, 0, 360), 2.5, 0.5, 0.3, at + 0.5); }
+  return hub;
+}
+
+// Builds the whole graph into nodes and links. Returns false if it didn't fit.
+graph_build :: (g: [] Graph, nodes: [] GNode, links: [] GLink) -> bool {
+  if g.count < 1 { return false; }
+  g[0] = Graph.{rng = GRAPH_SEED};
+  hub := main_graph(g, nodes, links);
+  previous := -1; first := -1;
+  for i: 0..<SATELLITES {
+    at := 6 + 0.55 * cast(f32) i;
+    n := satellite(g, nodes, links, i + 1, at);
+    link(g, links, hub, n, 0.07, 1, at - 0.2, 0.25);
+    if previous >= 0 { link(g, links, previous, n, 0.05, 1, at + 0.2, 0.1); }
+    if first < 0 { first = n; }
+    previous = n;
+  }
+  link(g, links, previous, first, 0.05, 1, 6 + 0.55 * cast(f32) SATELLITES, 0.1);
+  return !g[0].full;
+}
+
+// A satellite's centre, in half-canvas units from the middle. The iOS home
+// rings them around its graph; here four flank it on each side, so the
+// whole reads left to right.
+satellite_angle :: (c: int) -> f32 {
+  a := [8] f32.[-50, -17, 17, 50, 130, 163, 197, 230];
+  if c < 1 || c > 8 { return 0; }
+  return a[c - 1] * 0.017453293;
+}
+satellite_x :: (c: int) -> f32 { return 0.86 * cos(satellite_angle(c)); }
+satellite_y :: (c: int) -> f32 { return 0.62 * sin(satellite_angle(c)); }
+spin :: (c: int) -> f32 {
+  if c == 0 { return MAIN_SPIN; }
+  if (c & 1) == 1 { return -SATELLITE_SPIN; }   // the original's i = c - 1 even
+  return SATELLITE_SPIN;
+}
+
+// A hash of two integers to 0..1, for pulse times.
+hash :: (a: int, b: int) -> f32 {
+  h := (a * 374761393 + b * 668265263) & 4294967295;
+  h = ((h ^ (h >> 13)) * 1274126177) & 4294967295;
+  h = h ^ (h >> 16);
+  return cast(f32) (h & 16777215) / 16777216.0;
+}
+
+// How much the words dim the graph at (x, y): 1 far from them, 0.3 under them.
+Hole :: struct { cx: f32; cy: f32; w: f32; h: f32; }
+clear :: (k: Hole, x: f32, y: f32) -> f32 {
+  dx := hi(abs(x - k.cx) - k.w, 0) / (k.h * 5);
+  dy := hi(abs(y - k.cy) - k.h, 0) / (k.h * 3);
+  return 0.3 + 0.7 * ease(dx + dy);
+}
+
+dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+  }
+  return true;
+}
+
+// Draws the graph at time t into out from vertex at. Returns the vertices written.
+graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, still: bool, hole: Hole) -> int {
+  g: [1] Graph; nodes: [NODE_CAP] GNode; links: [LINK_CAP] GLink;
+  if !graph_build(g[..], nodes[..], links[..]) { return 0; }
+  n := g[0].n; m := g[0].m;
+  // Wide and flat: the main graph's radius from the height, capped so its
+  // widest arc stays on a phone held upright.
+  radius := lo(height * 0.5, width * 0.5 / (0.86 * WIDEN)) * (0.98 - 0.36 * ease((t - 4.5) / 6.5));
+  scale := lo(width, height) / 600;
+  band := lo(height, width * 0.7);   // a band, even on a phone held upright
+  for i: 0..<n {
+    c := nodes[i].cluster;
+    angle := ifx still then 0.0f32 else spin(c) * t;
+    r := ifx c == 0 then radius * WIDEN else radius * 0.3;
+    cx := ifx c == 0 then 0.0f32 else satellite_x(c);
+    cy := ifx c == 0 then 0.0f32 else satellite_y(c);
+    gx := nodes[i].x; gy := nodes[i].y;
+    nodes[i].sx = (0.5 + cx * 0.5) * width + (gx * cos(angle) - gy * sin(angle)) * r;
+    nodes[i].sy = 0.5 * height - cy * 0.5 * band - (gx * sin(angle) + gy * cos(angle)) * r * FLATTEN;
+  }
+  vertices := at;
+  // Pulses: link i's j-th leaves at a time set by its rate and a hash, so
+  // none are stored. Each is a short bright dash and a point; arriving, it
+  // flashes its node.
+  pulses := 0;
+  if !still {
+    for i: 0..<m {
+      rate := links[i].rate; travel := links[i].travel;
+      start := links[i].reveal + 1;
+      if rate <= 0 || t < start { continue; }
+      phase := hash(i, 0);
+      k := cast(int) floor((t - start) * rate + phase);
+      back := cast(int) ((travel + 1.5) * rate) + 2;
+      for d: 0..<back {
+        j := k - d;
+        if j < 0 { break; }
+        leaves := start + (cast(f32) j - phase + 0.6 * hash(i, j + 1)) / rate;
+        progress := (t - leaves) / travel;
+        if progress < 0 { continue; }
+        bright := 0.6 + 0.4 * hash(j, i + 7);
+        if progress >= 1 {
+          since := t - (leaves + travel);
+          b := links[i].b;
+          nodes[b].flash = lo(1, nodes[b].flash + 0.7 * bright * exp(-since * 3.5));
+          continue;
+        }
+        if pulses >= PULSE_CAP { continue; }
+        a := links[i].a; b := links[i].b;
+        ax := nodes[a].sx; ay := nodes[a].sy;
+        dx := nodes[b].sx - ax; dy := nodes[b].sy - ay;
+        tail := hi(0, progress - 0.12);
+        light := bright * ease(progress / 0.15) * (1 - ease((progress - 0.85) / 0.15)) * GRAPH_LIGHT * clear(hole, ax + dx * progress, ay + dy * progress);
+        if quad(out, vertices, ax + dx * tail, ay + dy * tail, ax + dx * progress, ay + dy * progress, 0.6 * scale * dpr, light * 0.8, 2.5 * scale * dpr) { vertices += 6; }
+        if dot(out, vertices, ax + dx * progress, ay + dy * progress, 1.6 * scale * dpr, light, 5 * scale * dpr) { vertices += 6; }
+        pulses += 1;
+      }
+    }
+  }
+  // Links grow out from their first node over 0.9 s.
+  for i: 0..<m {
+    f := ease((t - links[i].reveal) / 0.9);
+    if f <= 0 { continue; }
+    a := links[i].a; b := links[i].b;
+    ax := nodes[a].sx; ay := nodes[a].sy;
+    bx := ax + (nodes[b].sx - ax) * f; by := ay + (nodes[b].sy - ay) * f;
+    light := links[i].intensity * f * GRAPH_LIGHT * 1.6 * clear(hole, (ax + bx) * 0.5, (ay + by) * 0.5);
+    if quad(out, vertices, ax, ay, bx, by, 0.35 * scale * dpr, light, 1.5 * scale * dpr) { vertices += 6; }
+  }
+  // Nodes fade in over 0.7 s: crisp discs with a halo, or soft points.
+  for i: 0..<n {
+    f := ease((t - nodes[i].reveal) / 0.7);
+    if f <= 0 { continue; }
+    // The iOS dot: a crisp node is a small bright disc in a wide faint
+    // halo; a soft one is a point of light.
+    size := nodes[i].px * scale * dpr;
+    light := (nodes[i].bright + nodes[i].flash * 1.8) * f * GRAPH_LIGHT * clear(hole, nodes[i].sx, nodes[i].sy);
+    core := size * (0.06 + 0.12 * nodes[i].crisp);
+    if dot(out, vertices, nodes[i].sx, nodes[i].sy, core, light, size * 0.9) { vertices += 6; }
+  }
+  return vertices - at;
+}
+
+#test "the graph is the iOS home's and fits" {
+  g: [1] Graph; nodes: [NODE_CAP] GNode; links: [LINK_CAP] GLink;
+  #assert graph_build(g[..], nodes[..], links[..]);
+  #assert g[0].n > 400 && g[0].m > 400;
+  for i: 0..<g[0].m { #assert links[i].a >= 0 && links[i].a < g[0].n && links[i].b >= 0 && links[i].b < g[0].n; }
+  // the same seed builds the same graph
+  h: [1] Graph; again: [NODE_CAP] GNode; more: [LINK_CAP] GLink;
+  #assert graph_build(h[..], again[..], more[..]) && h[0].n == g[0].n && again[g[0].n - 1].x == nodes[g[0].n - 1].x;
+}
+
+#test "the graph is wider than it is tall, and stays on the canvas" {
+  out: [GRAPH_QUADS * 6 * VERTEX_FLOATS] f32;
+  hole := Hole.{cx = 640, cy = 400, w = 100, h = 11};
+  n := graph_draw(out[..], 0, 1280, 800, 1, 20, true, hole);
+  #assert n > 0 && n % 6 == 0;
+  left := 1.0e9f32; right := -1.0e9f32; top := 1.0e9f32; bottom := -1.0e9f32;
+  for v: 0..<n {
+    x := out[v * VERTEX_FLOATS]; y := out[v * VERTEX_FLOATS + 1];   // quad corners, halo included
+    left = lo(left, x); right = hi(right, x); top = lo(top, y); bottom = hi(bottom, y);
+  }
+  #assert right - left > 2 * (bottom - top);
+  #assert left > -60 && right < 1340 && top > 0 && bottom < 800;
+}
+
+#test "nothing shows before the first node, and pulses only move in time" {
+  out: [GRAPH_QUADS * 6 * VERTEX_FLOATS] f32;
+  hole := Hole.{cx = 640, cy = 400, w = 100, h = 11};
+  #assert graph_draw(out[..], 0, 1280, 800, 1, 0, false, hole) == 0;
+  late := graph_draw(out[..], 0, 1280, 800, 1, 30, false, hole);
+  done := graph_draw(out[..], 0, 1280, 800, 1, 30, true, hole);
+  #assert late >= done && late <= GRAPH_QUADS * 6;
+}
+
+#test "the words keep a dim hole in the graph" {
+  hole := Hole.{cx = 640, cy = 400, w = 100, h = 11};
+  #assert clear(hole, 640, 400) < 0.31;
+  #assert clear(hole, 100, 100) > 0.99;
+}

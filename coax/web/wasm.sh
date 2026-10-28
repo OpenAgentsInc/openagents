@@ -30,5 +30,5 @@ wait "$coax_pid"
 link_opt=(); [[ "$mode" == dev ]] || link_opt=("$opt")
 "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" ${link_opt[@]+"${link_opt[@]}"} \
   -mexec-model=reactor -o "$out.tmp" "$work/$name.o" "$work/$name.face.o" \
-  -Wl,--import-memory,--max-memory=67108864,--export=__heap_base,--gc-sections,--strip-debug
+  -Wl,--import-memory,--max-memory=67108864,-z,stack-size=1048576,--export=__heap_base,--gc-sections,--strip-debug
 mv "$out.tmp" "$out"   # the server never serves a half-written module

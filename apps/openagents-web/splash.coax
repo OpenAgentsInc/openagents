@@ -1,6 +1,7 @@
 // The openagents.com splash, drawn by Coax. The page is one WebGPU canvas:
 // a slow nebula behind (splash.wgsl) and the words COMING SOON drawn as
-// glowing strokes that write themselves on, letter by letter, then shimmer.
+// glowing strokes that write themselves on, letter by letter, then shimmer,
+// over the iOS home's graph fading in as a wide band (graph.coax).
 // The host (coax/web/host.js) owns the GPU and calls this once a frame; this
 // file decides every number it draws: where each stroke goes, how much of it
 // is written, how bright it is, and the nebula's clock.
@@ -8,6 +9,8 @@
 // State lives in the host's memory (a SplashState it allocates and keeps),
 // so the dev server can swap this code in while the page runs and the
 // animation carries on from where it was.
+
+#load "graph.coax";
 
 SplashState :: struct {
   time: f32;       // seconds since the page started, as this code counts them
@@ -18,7 +21,7 @@ TEXT_COUNT :: 11;    // "COMING SOON"
 MAX_POINTS :: 12;    // the longest glyph (S) has 12 points
 MAX_SEGMENTS :: 96;  // all of COMING SOON's strokes, with room
 VERTEX_FLOATS :: 8;  // x, y, along, across, length, core, light, glow
-MAX_VERTICES :: 576; // MAX_SEGMENTS * 6
+MAX_VERTICES :: 14016; // (MAX_SEGMENTS + GRAPH_QUADS) * 6
 UNIFORM_FLOATS :: 8; // width, height, time, fade, still, 0, 0, 0
 
 CAP :: 11.0;         // cap height, CSS pixels
@@ -158,7 +161,10 @@ coaxial_splash_frame :: (s: [] SplashState, out: [] f32, uniforms: [] f32,
   uniforms[3] = ifx still then 1.0f32 else ease(t / FADE);
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
   uniforms[5] = 0; uniforms[6] = 0; uniforms[7] = 0;
-  return strokes(out, width, height, hi(dpr, 1), t, still);
+  d := hi(dpr, 1);
+  words := strokes(out, width, height, d, t, still);
+  hole := Hole.{cx = width * 0.5, cy = height * 0.5, w = text_width() * CAP * d * 0.5, h = CAP * d * 0.5};
+  return words + graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, hole);
 }
 
 coaxial_splash_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
@@ -166,8 +172,8 @@ coaxial_splash_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 #test "the words are centred and fit a narrow phone" {
-  out: [4608] f32; u: [8] f32; s: [1] SplashState;
-  n := coaxial_splash_frame(s[..], out[..], u[..], 320 * 3, 640 * 3, 3, 0, true);
+  out: [4608] f32;
+  n := strokes(out[..], 320 * 3, 640 * 3, 3, 0, true);
   #assert n > 0 && n % 6 == 0;
   lowest := 1.0e9f32; highest := -1.0e9f32;
   for v: 0..<n {
@@ -179,13 +185,12 @@ coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 }
 
 #test "nothing is written before the start, everything after" {
-  out: [4608] f32; u: [8] f32; s: [1] SplashState;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [8] f32; s: [1] SplashState;
   #assert coaxial_splash_frame(s[..], out[..], u[..], 1280, 800, 1, 0, false) == 0;
+  #assert strokes(out[..], 1280, 800, 1, 10, false) == strokes(out[..], 1280, 800, 1, 0, true);
   s[0].time = 10;
   all := coaxial_splash_frame(s[..], out[..], u[..], 1280, 800, 1, 0, false);
-  t: [1] SplashState;
-  #assert all == coaxial_splash_frame(t[..], out[..], u[..], 1280, 800, 1, 0, true);
-  #assert u[3] == 1 && all <= MAX_VERTICES;
+  #assert u[3] == 1 && all > strokes(out[..], 1280, 800, 1, 10, false) && all <= MAX_VERTICES;
 }
 
 #test "strokes start in order" {
