@@ -24,8 +24,10 @@
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
 //   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
 //   coaxial_cursor(state)     0 the default, 1 a link
+//   coaxial_hash(state, length) the location's hash (without '#') in the inbox, at load and on every change
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
-//                             out: 1 navigates to the outbox's URL, 2 copies its text; others go to the page's
+//                             out: 1 navigates to the outbox's URL, 2 copies its text, 3 makes it the
+//                             location's hash (empty: none), in place; others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
 // and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
@@ -73,7 +75,7 @@ const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) |
 const still = (probe && !probeAt) || matchMedia("(prefers-reduced-motion: reduce)").matches;
 let frames = 0;
 // Development tests only: ?probe&do=STEPS runs input before the probed frame,
-// steps split by ";": "kTEXT" types keys, "K-2" a named key, "m16:TEXT" a
+// steps split by ";": "kTEXT" types keys, "K-2" a named key, "c40,120" clicks at CSS pixels, "m16:TEXT" a
 // message, "t1.5" runs the clock that many seconds.
 const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "";
 
@@ -119,6 +121,7 @@ async function loadEngine(bytes, generation) {
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
   engine = { exports: x, layout };
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
+  sendHash();
   // The page's scripts may talk to the app from now (action 0: ready).
   globalThis.coaxial.ready = true;
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
@@ -441,6 +444,19 @@ function send(kind, text = "") {
 }
 globalThis.coaxial = { send, ready: false };
 
+// The location's hash, for an app that opens something by it (a link straight to it).
+function sendHash() {
+  const x = engine?.exports;
+  if (!x?.coaxial_hash || !x.coaxial_inbox) return;
+  let hash = location.hash.slice(1);
+  try { hash = decodeURIComponent(hash); } catch {}
+  const bytes = new TextEncoder().encode(hash).subarray(0, x.coaxial_inbox_cap());
+  new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
+  x.coaxial_hash(arena.state, bytes.length);
+  after(false);
+}
+addEventListener("hashchange", sendHash);
+
 // After input or a frame: focus or free the keyboard field, carry out an
 // action, set the cursor. gesture: inside an input event, where a phone
 // lets a field bring up its keyboard; tap: a touch just ended, which focuses
@@ -460,6 +476,8 @@ function after(gesture, tap = false) {
     // A copy or cut: the app chose the text (never a masked field's); this runs
     // inside the key event, so the browser lets it reach the clipboard.
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});
+    // The app's own place in the page (the hash), replaced so Back still leaves the page.
+    else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
   const cursor = ["", "pointer"][call("coaxial_cursor")] || "";
@@ -550,6 +568,8 @@ function runProbe(w, h, dpr) {
     const op = step[0], arg = step.slice(1);
     if (op === "k") for (const c of arg) call("coaxial_key", c.codePointAt(0), 0);
     if (op === "K") call("coaxial_key", Number(arg), 0);
+    // "cX,Y": a click (pointer down and up) at CSS pixels X, Y
+    if (op === "c") { const [cx, cy] = arg.split(",").map(Number); for (const ph of [0, 2]) call("coaxial_pointer", cx * dpr, cy * dpr, ph, 0, 1); }
     if (op === "m") { const i = arg.indexOf(":"); send(Number(i < 0 ? arg : arg.slice(0, i)), i < 0 ? "" : arg.slice(i + 1)); }
     if (op === "t") for (let k = 0; k < Number(arg) * 10; k++)
       engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);

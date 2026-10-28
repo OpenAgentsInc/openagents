@@ -63,3 +63,24 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   drain(st);
   return n < 0 ? 0u : (uint32_t)n;
 }
+
+// Input (host.js): the pointer, keys and the wheel open, scroll and close a
+// task's detail; the location's hash comes in through the inbox (shared with
+// the relay's frames: the host fills it for one call at a time) and goes out
+// as action 3 with the open task's alias in the outbox.
+static coax_v_t_ProjectState page_of(uint32_t state) { coax_v_t_ProjectState s = {&state_at(state)->page, 1}; return s; }
+static coax_v_t_Work work_of(uint32_t state) { coax_v_t_Work w = {&state_at(state)->work, 1}; return w; }
+EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
+  (void)id;
+  return coaxial_project_pointer(page_of(state), work_of(state), x, y, phase, kind) ? 1u : 0u;
+}
+EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
+  return coaxial_project_key(page_of(state), work_of(state), key, mods) ? 1u : 0u;
+}
+EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { coaxial_project_wheel(page_of(state), dy); }
+EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_project_cursor(page_of(state), work_of(state)); }
+EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) { coaxial_project_hash(page_of(state), live_of(state_at(state)), (int64_t)length); }
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)coaxial_project_action(page_of(state)); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)&state_at(state)->page.outbox; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)state_at(state)->page.out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { coaxial_project_action_done(page_of(state)); }

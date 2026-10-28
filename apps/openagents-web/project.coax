@@ -17,14 +17,39 @@
 #load "project-live.coax";
 
 // page 0 is the real page (/projects/coax), 1 the demo (/projects/coax/demo).
+// The rest is the page's input: the pointer, the task open in the detail
+// panel and what the last frame drew there, for the pointer to find.
 ProjectState :: struct {
   time: f32;
   frames: int;
   page: int;
+  width: f32; height: f32; dpr: f32;   // the last frame's canvas, device pixels
+  // the pointer, device pixels; touch when the last one was a finger or pen
+  px: f32; py: f32; touch: bool; pointed: bool;
+  down: bool; down_x: f32; down_y: f32; moved: bool; drag_scroll: f32;
+  pick: int;                 // the task the keys are on: its row + 1, 0 for none
+  keys_moved: bool;          // the keys moved last (the pick shows), not the pointer
+  open: int;                 // the task in the detail panel: its row + 1, 0 when closed
+  scroll: f32; scroll_max: f32;
+  // what the detail panel drew last
+  panel: Box; close: Box;
+  link_n: int; link_box: [MAX_LINKS] Box; link_row: [MAX_LINKS] int;
+  // the open task's text, decoded from WORK_DETAILS (undetail)
+  body: [DETAIL_BODY] u8; body_n: int;
+  checks: [DETAIL_LIST] u8; checks_n: int;
+  notes: [DETAIL_BODY] u8; notes_n: int;
+  event: [64] u8; event_n: int;
+  claimed: [24] u8; claimed_n: int;
+  // the location's hash: the task a link asks for (in), the task open now (outbox out)
+  want: [16] u8; want_n: int; wanted: bool;
+  action: int; outbox: [16] u8; out_n: int;
 }
+MAX_LINKS :: 48;
+DETAIL_BODY :: 16384;
+DETAIL_LIST :: 4096;
 
 VERTEX_FLOATS :: 12;   // x, y, along, across, length, core, light, glow, red, green, blue, mode
-MAX_VERTICES :: 150000;
+MAX_VERTICES :: 240000;  // the page is ~120K at 1440 px; an open detail adds up to ~70K
 PANELS :: 10;
 UNIFORM_FLOATS :: 88;  // width, height, time, fade, still, panels, 0, 0, then per panel x0, y0, x1, y1, cut, alpha, tint, 0
 
@@ -330,6 +355,17 @@ Work :: struct {
   text: string;              // the WORK_ITEMS it was read from
   plans: string;              // WORK_PLANS: alias | mark (x done, > doing, o to do) | step
   plan_info: string;          // WORK_PLAN_INFO: alias | done | steps | plan updated | claimed | latest note
+  details: string;            // WORK_DETAILS: alias | event id | claimed at | body | acceptance | notes (escaped: undetail)
+  view: QueueView;            // what the queue drew last, for the pointer
+}
+
+// The queue's rows as the last frame drew them, and what they light: the
+// row under a mouse, the one the keys are on and the one that's open (rows
+// + 1, 0 for none; px, py the pointer, hover false for a finger).
+MAX_HITS :: 64;
+QueueView :: struct {
+  hit_n: int; hit_box: [MAX_HITS] Box; hit_row: [MAX_HITS] int;
+  px: f32; py: f32; hover: bool; pick: int; open: int;
 }
 
 // A task's row in a table keyed by alias (column 0), or -1.
@@ -1161,6 +1197,38 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
 // its state, and under it who is on it, the commit, or the milestone and
 // size, or what it waits on.
 SEC_WORKING :: 0; SEC_DONE :: 1; SEC_READY :: 2; SEC_WAITING :: 3;
+
+// What the queue shows, in order: in progress, just finished, ready,
+// waiting. Fills order (rows) and sect (SEC_*); returns how many.
+queue_order :: (w: [] Work, order: [] int, sect: [] int) -> int {
+  count := 0; cap := lo_int(order.count, sect.count);
+  for k: 0..<w[0].queued {
+    if k == w[0].working_n {
+      for j: 0..<w[0].recent_n { if count < cap { order[count] = w[0].recent[j]; sect[count] = SEC_DONE; count += 1; } }
+    }
+    if count >= cap { break; }
+    order[count] = w[0].queue[k];
+    sect[count] = ifx k < w[0].working_n then SEC_WORKING else ifx k < w[0].working_n + w[0].ready_n then SEC_READY else SEC_WAITING;
+    count += 1;
+  }
+  if w[0].queued == w[0].working_n {
+    for j: 0..<w[0].recent_n { if count < cap { order[count] = w[0].recent[j]; sect[count] = SEC_DONE; count += 1; } }
+  }
+  return count;
+}
+lo_int :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+
+// A row's outline, its plain corners cut at 45° (as the panels' are), and
+// a bright bar down its left: the row under the pointer, the keys' or the
+// open one.
+lit_row :: (out: [] f32, at: int, b: Box, light: f32, p: Pen) -> int {
+  k := ink(p, INK_ORANGE); c := 6 * p.d; v := at;
+  xs := [7] f32.[b.x0, b.x1 - c, b.x1, b.x1, b.x0 + c, b.x0, b.x0];
+  ys := [7] f32.[b.y0, b.y0, b.y0 + c, b.y1, b.y1, b.y1 - c, b.y0];
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, 0.4 * light * p.fade); }
+  bar := k; bar.core = 1.2 * p.d;
+  return rule(out, v, b.x0 + 2 * p.d, b.y0 + c, b.x0 + 2 * p.d, b.y1 - 4 * p.d, bar, light * p.fade);
+}
 real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d;
   text := w[0].text;
@@ -1183,21 +1251,9 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     v = put_wrapped(out, v, "The queue fills from the project's events on the relay.", x, y + 24 * d, small, dim, right - x, 11 * d, 3, lines[..]);
     return frame(out, v, b, 10 * d, p);
   }
-  // what's shown, in order: in progress, just finished, ready, waiting
   order: [MAX_ITEMS] int; sect: [MAX_ITEMS] int;
-  count := 0;
-  for k: 0..<w[0].queued {
-    if k == w[0].working_n {
-      for j: 0..<w[0].recent_n { if count < MAX_ITEMS { order[count] = w[0].recent[j]; sect[count] = SEC_DONE; count += 1; } }
-    }
-    if count >= MAX_ITEMS { break; }
-    order[count] = w[0].queue[k];
-    sect[count] = ifx k < w[0].working_n then SEC_WORKING else ifx k < w[0].working_n + w[0].ready_n then SEC_READY else SEC_WAITING;
-    count += 1;
-  }
-  if w[0].queued == w[0].working_n {
-    for j: 0..<w[0].recent_n { if count < MAX_ITEMS { order[count] = w[0].recent[j]; sect[count] = SEC_DONE; count += 1; } }
-  }
+  count := queue_order(w, order[..], sect[..]);
+  w[0].view.hit_n = 0;
   tall := box_h(b) > 560 * d && box_w(b) > 340 * d;
   bottom := b.y1 - 30 * d;
   idw := text_width("#0000", cap) + 10 * d;
@@ -1287,6 +1343,12 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
       v = put(out, v, cast(string) buf[0..<wm], x + idw, meta, small, pale);
     }
     v = rule(out, v, x, meta + 8 * d, right, meta + 8 * d, dim, 0.07 * p.fade);
+    // the row, for the pointer; lit when it's under a mouse, the keys' or open
+    row := Box.{x0 = b.x0 + 6 * d, y0 = y - cap - 7 * d, x1 = b.x1 - 6 * d, y1 = meta + 8 * d};
+    vw := w[0].view;
+    if vw.hit_n < MAX_HITS { w[0].view.hit_box[vw.hit_n] = row; w[0].view.hit_row[vw.hit_n] = r; w[0].view.hit_n = vw.hit_n + 1; }
+    if vw.open == r + 1 { v = lit_row(out, v, row, 1.0, p); }
+    else if vw.pick == r + 1 || (vw.hover && inside(row, vw.px, vw.py)) { v = lit_row(out, v, row, 0.6, p); }
     y = meta + 23 * d;
     shown += 1;
   }
@@ -1294,7 +1356,7 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   mb: [64] u8;
   mm := 0;
   if more > 0 { mm = number(more, false, mb[..]); mm += put_text(mb[..], mm, " MORE · "); }
-  mm += put_text(mb[..], mm, "EVERY TASK: /PROJECT/COAX/INDEX.MD");
+  mm += put_text(mb[..], mm, "EVERY TASK: /PROJECTS/COAX/INDEX.MD");
   v = put_fit(out, v, cast(string) mb[0..<mm], x, b.y1 - 14 * d, small, dim, right - x);
   return frame(out, v, b, 10 * d, p);
 }
@@ -1412,6 +1474,520 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activi
   return frame(out, v, b, 10 * d, p);
 }
 
+// ---------------------------------------------------------------- a task's detail
+
+// A WORK_DETAILS field decoded into buf, as coax/web/project/details.ts
+// escapes it: "\\" a backslash, "\n" a newline, "\p" a '|', "\." the next
+// item of a list (ITEM_BREAK) and "\:" the next part of an item
+// (PART_BREAK). Returns the bytes written; what doesn't fit is dropped.
+ITEM_BREAK :: 30; PART_BREAK :: 31;
+undetail :: (src: string, buf: [] u8) -> int {
+  n := 0; i := 0;
+  while i < src.count && n < buf.count {
+    c := src[i]; i += 1;
+    if c == '\\' && i < src.count {
+      e := src[i]; i += 1;
+      if e == 'n' { c = '\n'; }
+      else if e == 'p' { c = '|'; }
+      else if e == '.' { c = cast(u8) ITEM_BREAK; }
+      else if e == ':' { c = cast(u8) PART_BREAK; }
+      else { c = e; }
+    }
+    buf[n] = c; n += 1;
+  }
+  return n;
+}
+// The pieces of decoded text between sep bytes: how many (0 for none), and the k-th.
+pieces :: (text: string, sep: int) -> int {
+  if text.count == 0 { return 0; }
+  n := 1;
+  for i: 0..<text.count { if cast(int) text[i] == sep { n += 1; } }
+  return n;
+}
+piece :: (text: string, sep: int, k: int) -> string {
+  i := 0; c := 0;
+  while c < k && i < text.count { if cast(int) text[i] == sep { c += 1; } i += 1; }
+  j := i;
+  while j < text.count && cast(int) text[j] != sep { j += 1; }
+  return text[i..<j];
+}
+
+// The first byte of the row keyed by alias (column 0) in a table, or -1: one
+// pass over the table, as WORK_DETAILS is long.
+keyed_start :: (table: string, alias: string) -> int {
+  i := 0;
+  while i < table.count {
+    j := i;
+    while j < table.count && table[j] != '|' && table[j] != '\n' { j += 1; }
+    if same(table[i..<j], alias) { return i; }
+    while j < table.count && table[j] != '\n' { j += 1; }
+    i = j + 1;
+  }
+  return -1;
+}
+
+ACT_HASH :: 3;   // host.js: the location's hash becomes the outbox's text
+tell :: (s: [] ProjectState, text: string) {
+  s[0].action = ACT_HASH;
+  s[0].out_n = put_text(s[0].outbox[..], 0, text[0..<lo_int(text.count, 16)]);
+}
+
+// Opens row r's detail: its text decoded once, the panel at its top, and the
+// location's hash naming it.
+open_task :: (s: [] ProjectState, w: [] Work, r: int) {
+  if r < 0 || r >= w[0].n { return; }
+  s[0].open = r + 1; s[0].pick = r + 1; s[0].scroll = 0; s[0].scroll_max = 0; s[0].link_n = 0;
+  s[0].body_n = 0; s[0].checks_n = 0; s[0].notes_n = 0; s[0].event_n = 0; s[0].claimed_n = 0;
+  alias := item(w, w[0].text, r, 0);
+  dt := w[0].details;
+  k := keyed_start(dt, alias);
+  if k >= 0 {
+    event := cell(dt, k, 1); claimed := cell(dt, k, 2);
+    s[0].event_n = put_text(s[0].event[..], 0, event[0..<lo_int(event.count, 64)]);
+    s[0].claimed_n = put_text(s[0].claimed[..], 0, claimed[0..<lo_int(claimed.count, 24)]);
+    s[0].body_n = undetail(cell(dt, k, 3), s[0].body[..]);
+    s[0].checks_n = undetail(cell(dt, k, 4), s[0].checks[..]);
+    s[0].notes_n = undetail(cell(dt, k, 5), s[0].notes[..]);
+  }
+  tell(s, alias);
+}
+close_task :: (s: [] ProjectState) {
+  s[0].open = 0; s[0].link_n = 0; s[0].scroll = 0;
+  tell(s, "");
+}
+
+// What a row is now, as its chip says, and the chip's ink.
+state_label :: (w: [] Work, r: int) -> string {
+  if w[0].kind[r] == KIND_MILESTONE { return "MILESTONE"; }
+  if w[0].kind[r] == KIND_INITIATIVE { return "INITIATIVE"; }
+  if w[0].status[r] == WS_RESOLVED { return "DONE"; }
+  if w[0].status[r] == WS_CLOSED { return "CLOSED"; }
+  if w[0].claimed[r] { return "IN PROGRESS"; }
+  if w[0].ready[r] { return "READY"; }
+  if w[0].status[r] == WS_DRAFT { return "DRAFT"; }
+  return "WAITING";
+}
+state_hue :: (w: [] Work, r: int, p: Pen) -> Ink {
+  if w[0].kind[r] == KIND_TASK && w[0].claimed[r] { return ink(p, INK_WHITE); }
+  if w[0].ready[r] { return ink(p, INK_ORANGE); }
+  return ink(p, INK_DIM);
+}
+
+// Whether row r waits on row k: k's alias is in r's blocked-by.
+waits_on :: (w: [] Work, r: int, k: int) -> bool {
+  blockers := item(w, w[0].text, r, 8); alias := item(w, w[0].text, k, 0);
+  a := 0;
+  while a < blockers.count {
+    b := a;
+    while b < blockers.count && blockers[b] != ' ' { b += 1; }
+    if same(blockers[a..<b], alias) { return true; }
+    a = b + 1;
+  }
+  return false;
+}
+
+// Where the detail goes: over the scene's column on a wide screen, the
+// whole screen (inside a margin) otherwise.
+detail_box :: (l: Layout, width: f32, height: f32, d: f32) -> Box {
+  if l.wide { return l.scene; }
+  m := (ifx width / d < TWO then 6.0f32 else 14.0f32) * d;
+  return Box.{x0 = m, y0 = m, x1 = width - m, y1 = height - m};
+}
+
+// Text in the detail's scrolled body: wrapped to width, every line counted,
+// only the lines between top and bottom drawn. y is the first baseline;
+// the result's y the one after the last line.
+Flow :: struct { v: int; y: f32; }
+in_view :: (y: f32, cap: f32, top: f32, bottom: f32) -> bool { return y - cap >= top && y <= bottom; }
+flow :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32,
+         top: f32, bottom: f32) -> Flow {
+  v := at; from := 0; yy := y;
+  next: [1] int;
+  while from < text.count {
+    end := wrap(text, from, width / cap, GAP, SPACE, false, next[..]);
+    if in_view(yy, cap, top, bottom) { v = put(out, v, text[from..<end], x, yy, cap, k); }
+    yy += step;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  return Flow.{v = v, y = yy};
+}
+
+// A section's name in the detail: an orange tick, the name and a faint rule.
+section :: (out: [] f32, at: int, name: string, x: f32, y: f32, right: f32, top: f32, bottom: f32, p: Pen) -> int {
+  if !in_view(y, 6 * p.d, top, bottom) { return at; }
+  o := ink(p, INK_ORANGE);
+  v := rule(out, at, x, y - 3 * p.d, x + 6 * p.d, y - 3 * p.d, o, p.fade);
+  v = put(out, v, name, x + 12 * p.d, y, 6 * p.d, o);
+  sx := x + 18 * p.d + text_width(name, 6 * p.d);
+  if sx < right { v = rule(out, v, sx, y - 3 * p.d, right, y - 3 * p.d, ink(p, INK_DIM), 0.1 * p.fade); }
+  return v;
+}
+
+// One task related to the open one: its alias (a link to its own detail),
+// title and state, on a line.
+related :: (out: [] f32, at: int, s: [] ProjectState, w: [] Work, k: int, x: f32, y: f32, right: f32,
+            top: f32, bottom: f32, p: Pen) -> int {
+  d := p.d; cap := 7 * d; v := at;
+  if !in_view(y, cap, top, bottom) { return v; }
+  buf: [24] u8;
+  n := put_text(buf[..], 0, "#");
+  n += put_text(buf[..], n, item(w, w[0].text, k, 0));
+  tag := cast(string) buf[0..<n];
+  tw := text_width(tag, cap);
+  link := Box.{x0 = x - 4 * d, y0 = y - cap - 6 * d, x1 = x + tw + 4 * d, y1 = y + 6 * d};
+  hot := !s[0].touch && s[0].pointed && inside(link, s[0].px, s[0].py);
+  v = put(out, v, tag, x, y, cap, ink(p, ifx hot then INK_WHITE else INK_ORANGE));
+  // underlined, as a link is
+  v = rule(out, v, x, y + 3 * d, x + tw, y + 3 * d, ink(p, INK_ORANGE), (ifx hot then 0.9f32 else 0.45f32) * p.fade);
+  if s[0].link_n < MAX_LINKS { s[0].link_box[s[0].link_n] = link; s[0].link_row[s[0].link_n] = k; s[0].link_n += 1; }
+  st := state_label(w, k); small := 5.5 * d;
+  sw := text_width(st, small);
+  v = put_right(out, v, st, right, y, small, state_hue(w, k, p));
+  tx := x + text_width("#00000", cap) + 6 * d;
+  return put_fit(out, v, item(w, w[0].text, k, 3), tx, y, 6.5 * d, ink(p, INK_PALE), right - sw - 10 * d - tx);
+}
+
+// The open task, drawn into b: its alias, state and CLOSE, its title and
+// facts, then a body that scrolls: who's on it, the plan, the description,
+// the acceptance checks, what it waits on and what waits on it, the notes
+// and the event. Records the panel, CLOSE and the links for the pointer.
+detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work) -> int {
+  d := p.d; text := w[0].text; r := s[0].open - 1;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE); faint := ink(p, INK_FAINT);
+  s[0].panel = b; s[0].link_n = 0;
+  narrow := box_w(b) < 440 * d;
+  pad := (ifx narrow then 16.0f32 else 24.0f32) * d;
+  x := b.x0 + pad; right := b.x1 - pad;
+  v := at;
+  buf: [160] u8;
+  // the head: the alias, its state and CLOSE
+  y := b.y0 + 30 * d;
+  big := 11 * d; small := 6.5 * d;
+  n := put_text(buf[..], 0, "#");
+  n += put_text(buf[..], n, item(w, text, r, 0));
+  v = rule(out, v, b.x0 + 10 * d, y - big * 0.5, x - 6 * d, y - big * 0.5, orange, p.fade);
+  v = put(out, v, cast(string) buf[0..<n], x, y, big, orange);
+  sx := x + text_width(cast(string) buf[0..<n], big) + 14 * d;
+  st := state_label(w, r);
+  v = chip(out, v, st, sx, y - 1 * d, small, state_hue(w, r, p), p);
+  if w[0].kind[r] == KIND_TASK && w[0].claimed[r] {
+    beat := 0.55 + 0.45 * sin(p.time * 2.4);
+    v = diamond(out, v, sx + chip_width(st, small, p) + 9 * d, y - 1 * d - small * 0.5, 2 * d, orange, beat * p.fade);
+  }
+  cw := chip_width("CLOSE", small, p);
+  cx := right - cw;
+  close := Box.{x0 = cx - 30 * d, y0 = b.y0, x1 = b.x1, y1 = y + 14 * d};
+  hot := !s[0].touch && s[0].pointed && inside(close, s[0].px, s[0].py);
+  ck := ink(p, ifx hot then INK_ORANGE else INK_PALE);
+  v = chip(out, v, "CLOSE", cx, y - 1 * d, small, ck, p);
+  // an X before it, and ESC for a keyboard
+  xc := cx - 12 * d; yc := y - 1 * d - small * 0.5; xr := 3.5 * d;
+  v = rule(out, v, xc - xr, yc - xr, xc + xr, yc + xr, ck, p.fade);
+  v = rule(out, v, xc - xr, yc + xr, xc + xr, yc - xr, ck, p.fade);
+  if !s[0].touch && !narrow { v = put_right(out, v, "ESC", xc - 10 * d, y - 1 * d, 5.5 * d, faint); }
+  s[0].close = close;
+  // the title
+  y += 30 * d;
+  tcap := (ifx narrow then 9.5f32 else 11.0f32) * d; tstep := tcap + 7 * d;
+  lines: [1] int;
+  v = put_wrapped(out, v, item(w, text, r, 3), x, y, tcap, white, right - x, tstep, 4, lines[..]);
+  y += tstep * cast(f32) (lines[0] - 1) + 18 * d;
+  // the facts: size, labels, milestone
+  m := 0;
+  size := item(w, text, r, 5);
+  if size.count > 0 { m += put_text(buf[..], m, "SIZE "); m += put_text(buf[..], m, size); }
+  labels := item(w, text, r, 4);
+  if labels.count > 0 { if m > 0 { m += put_text(buf[..], m, " · "); } m += put_text(buf[..], m, labels); }
+  ms := w[0].parent[r];
+  if ms >= 0 {
+    if m > 0 { m += put_text(buf[..], m, " · "); }
+    m += put_text(buf[..], m, ifx w[0].kind[ms] == KIND_INITIATIVE then "INITIATIVE #" else "MILESTONE #");
+    m += put_text(buf[..], m, item(w, text, ms, 0)); m += put_text(buf[..], m, " "); m += put_text(buf[..], m, item(w, text, ms, 3));
+  }
+  if m > 0 {
+    v = put_wrapped(out, v, cast(string) buf[0..<m], x, y, small, dim, right - x, 12 * d, 3, lines[..]);
+    y += 12 * d * cast(f32) (lines[0] - 1) + 10 * d;
+  }
+  v = rule(out, v, b.x0 + 12 * d, y, b.x1 - 12 * d, y, dim, 0.14 * p.fade);
+  // the body scrolls between top and bottom
+  top := y + 4 * d; bottom := b.y1 - 14 * d;
+  s[0].scroll = clamp(s[0].scroll, 0, s[0].scroll_max);
+  y = top + 22 * d - s[0].scroll;
+  body := 7 * d; step := 12.5 * d; gap := 26 * d;
+  alias := item(w, text, r, 0);
+  tw := right - x;
+  // who's on it, or what finished it
+  if w[0].kind[r] == KIND_TASK && (w[0].claimed[r] || finished(w, r)) {
+    v = section(out, v, ifx finished(w, r) then "FINISHED" else "ON IT", x, y, right, top, bottom, p);
+    y += 18 * d;
+    m = 0;
+    if finished(w, r) {
+      hash := item(w, text, r, 11);
+      m += put_text(buf[..], m, ifx hash.count > 0 then "DONE IN COMMIT " else ifx w[0].status[r] == WS_CLOSED then "CLOSED" else "RESOLVED");
+      m += put_text(buf[..], m, hash);
+    } else {
+      m += put_text(buf[..], m, item(w, text, r, 6));
+      if s[0].claimed_n > 0 { m += put_text(buf[..], m, "  SINCE "); m += put_text(buf[..], m, cast(string) s[0].claimed[0..<s[0].claimed_n]); }
+    }
+    f := flow(out, v, cast(string) buf[0..<m], x, y, body, white, tw, step, top, bottom);
+    v = f.v; y = f.y - step + gap;
+  }
+  // the worker's plan
+  plans := w[0].plans; total := 0;
+  for k: 0..<rows(plans) { if same(field(plans, k, 0), alias) { total += 1; } }
+  if total > 0 {
+    done := 0;
+    for k: 0..<rows(plans) { if same(field(plans, k, 0), alias) && same(field(plans, k, 1), "x") { done += 1; } }
+    m = number(done, false, buf[..]); m += put_text(buf[..], m, " OF "); m += number(total, false, buf[m..<buf.count]); m += put_text(buf[..], m, " DONE");
+    v = section(out, v, "PLAN", x, y, right, top, bottom, p);
+    if in_view(y, small, top, bottom) { v = put_right(out, v, cast(string) buf[0..<m], right, y, 5.5 * d, dim); }
+    y += 18 * d;
+    for k: 0..<rows(plans) {
+      if !same(field(plans, k, 0), alias) { continue; }
+      mark := field(plans, k, 1);
+      if in_view(y, body, top, bottom) { v = step_mark(out, v, mark, x + 3 * d, y - body * 0.45, p); }
+      now := same(mark, ">");
+      lead := 14.0f32 * d;
+      if now && in_view(y, body, top, bottom) { v = put(out, v, "NOW", x + lead, y, 5.5 * d, orange); lead += 26 * d; }
+      tint := ifx now then white else ifx same(mark, "x") then dim else pale;
+      f := flow(out, v, field(plans, k, 2), x + lead, y, body, tint, tw - lead, step, top, bottom);
+      v = f.v; y = f.y + 2 * d;
+    }
+    y += gap - step;
+  }
+  // the description: "## " lines are headings, "- " lines bullets
+  v = section(out, v, "DESCRIPTION", x, y, right, top, bottom, p);
+  y += 18 * d;
+  text_body := cast(string) s[0].body[0..<s[0].body_n];
+  if text_body.count == 0 {
+    if in_view(y, body, top, bottom) { v = put(out, v, "NO DESCRIPTION", x, y, body, dim); }
+    y += step;
+  }
+  i := 0;
+  while i < text_body.count {
+    j := i;
+    while j < text_body.count && text_body[j] != '\n' { j += 1; }
+    line := text_body[i..<j];
+    i = j + 1;
+    if line.count == 0 { y += step * 0.55; continue; }
+    if line.count > 2 && line[0] == '#' {
+      h := 0;
+      while h < line.count && (line[h] == '#' || line[h] == ' ') { h += 1; }
+      y += 4 * d;
+      if in_view(y, small, top, bottom) { v = put_fit(out, v, line[h..<line.count], x, y, small, orange, tw); }
+      y += step + 2 * d;
+      continue;
+    }
+    if line.count > 2 && (line[0] == '-' || line[0] == '*') && line[1] == ' ' {
+      if in_view(y, body, top, bottom) { v = diamond(out, v, x + 3 * d, y - body * 0.45, 1.8 * d, orange, 0.8 * p.fade); }
+      f := flow(out, v, line[2..<line.count], x + 14 * d, y, body, pale, tw - 14 * d, step, top, bottom);
+      v = f.v; y = f.y + 2 * d;
+      continue;
+    }
+    f := flow(out, v, line, x, y, body, pale, tw, step, top, bottom);
+    v = f.v; y = f.y;
+  }
+  y += gap - step;
+  // the acceptance checks
+  checks := cast(string) s[0].checks[0..<s[0].checks_n];
+  nc := pieces(checks, ITEM_BREAK);
+  if nc > 0 {
+    v = section(out, v, "ACCEPTANCE", x, y, right, top, bottom, p);
+    y += 18 * d;
+    passed := finished(w, r);
+    for k: 0..<nc {
+      if in_view(y, body, top, bottom) { v = step_mark(out, v, ifx passed then "x" else "o", x + 3 * d, y - body * 0.45, p); }
+      f := flow(out, v, piece(checks, ITEM_BREAK, k), x + 14 * d, y, body, ifx passed then dim else white, tw - 14 * d, step, top, bottom);
+      v = f.v; y = f.y + 3 * d;
+    }
+    y += gap - step;
+  }
+  // what it waits on, and what waits on it
+  v = section(out, v, "WAITS ON", x, y, right, top, bottom, p);
+  y += 18 * d;
+  any := false;
+  for k: 0..<w[0].n {
+    if !waits_on(w, r, k) { continue; }
+    v = related(out, v, s, w, k, x, y, right, top, bottom, p); y += 16 * d; any = true;
+  }
+  if !any { if in_view(y, body, top, bottom) { v = put(out, v, "NOTHING", x, y, small, dim); } y += 16 * d; }
+  y += gap - 16 * d;
+  v = section(out, v, "WAITED ON BY", x, y, right, top, bottom, p);
+  y += 18 * d;
+  any = false;
+  for k: 0..<w[0].n {
+    if !waits_on(w, k, r) { continue; }
+    v = related(out, v, s, w, k, x, y, right, top, bottom, p); y += 16 * d; any = true;
+  }
+  if !any { if in_view(y, body, top, bottom) { v = put(out, v, "NOTHING", x, y, small, dim); } y += 16 * d; }
+  y += gap - 16 * d;
+  // the notes, oldest first, each with its time in Chicago
+  notes := cast(string) s[0].notes[0..<s[0].notes_n];
+  nn := pieces(notes, ITEM_BREAK);
+  m = put_text(buf[..], 0, "NOTES");
+  if nn > 0 { m += put_text(buf[..], m, " ("); m += number(nn, false, buf[m..<buf.count]); m += put_text(buf[..], m, ")"); }
+  v = section(out, v, cast(string) buf[0..<m], x, y, right, top, bottom, p);
+  if in_view(y, small, top, bottom) { v = put_right(out, v, "CHICAGO TIME", right, y, 5.5 * d, dim); }
+  y += 18 * d;
+  if nn == 0 { if in_view(y, body, top, bottom) { v = put(out, v, "NO NOTES YET", x, y, small, dim); } y += step; }
+  for k: 0..<nn {
+    one := piece(notes, ITEM_BREAK, k);
+    when := piece(one, PART_BREAK, 0); by := piece(one, PART_BREAK, 1);
+    if in_view(y, small, top, bottom) {
+      v = put(out, v, when, x, y, small, dim);
+      if by.count > 0 { v = put_fit(out, v, by, x + text_width(when, small) + 10 * d, y, small, orange, right - x - text_width(when, small) - 10 * d); }
+    }
+    y += 13 * d;
+    f := flow(out, v, piece(one, PART_BREAK, 2), x + 8 * d, y, body, pale, tw - 8 * d, step, top, bottom);
+    v = f.v; y = f.y + 6 * d;
+  }
+  y += gap - step;
+  // the event the task is
+  v = section(out, v, "NOSTR EVENT", x, y, right, top, bottom, p);
+  y += 18 * d;
+  f := flow(out, v, cast(string) s[0].event[0..<s[0].event_n], x, y, 5.5 * d, dim, tw, 11 * d, top, bottom);
+  v = f.v; y = f.y;
+  // how far it scrolls, and where it is
+  s[0].scroll_max = hi(0, y + s[0].scroll - bottom);
+  if s[0].scroll_max > 0 {
+    bx := b.x1 - 7 * d; span := bottom - top;
+    v = rule(out, v, bx, top, bx, bottom, dim, 0.12 * p.fade);
+    seen_part := span / (span + s[0].scroll_max);
+    t0 := top + (span - span * seen_part) * s[0].scroll / s[0].scroll_max;
+    thumb := orange; thumb.core = 1.1 * d;
+    v = rule(out, v, bx, t0, bx, t0 + span * seen_part, thumb, 0.8 * p.fade);
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// ---------------------------------------------------------------- input
+
+POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_UP :: -6; KEY_DOWN :: -7; KEY_HOME :: -8; KEY_END :: -9;
+KEY_PAGE_UP :: -10; KEY_PAGE_DOWN :: -11;
+
+// The queue row under (x, y) as the last frame drew it, or -1.
+row_at :: (w: [] Work, x: f32, y: f32) -> int {
+  for k: 0..<w[0].view.hit_n { if inside(w[0].view.hit_box[k], x, y) { return w[0].view.hit_row[k]; } }
+  return -1;
+}
+link_at :: (s: [] ProjectState, x: f32, y: f32) -> int {
+  if s[0].open == 0 { return -1; }
+  for k: 0..<s[0].link_n { if inside(s[0].link_box[k], x, y) { return s[0].link_row[k]; } }
+  return -1;
+}
+
+// A click (a press let go where it was pressed): CLOSE or outside the
+// panel closes it, a link opens its task, a queue row opens its own.
+click :: (s: [] ProjectState, w: [] Work, x: f32, y: f32) -> bool {
+  if s[0].open > 0 {
+    if inside(s[0].close, x, y) { close_task(s); return true; }
+    k := link_at(s, x, y);
+    if k >= 0 { open_task(s, w, k); return true; }
+    if inside(s[0].panel, x, y) { return true; }
+  }
+  r := row_at(w, x, y);
+  if r >= 0 { s[0].keys_moved = false; if s[0].open != r + 1 { open_task(s, w, r); } return true; }
+  if s[0].open > 0 { close_task(s); return true; }
+  return false;
+}
+
+// The keys move through the queue in the order it's shown.
+step_pick :: (s: [] ProjectState, w: [] Work, by: int) {
+  order: [MAX_ITEMS] int; sect: [MAX_ITEMS] int;
+  count := queue_order(w, order[..], sect[..]);
+  if count == 0 { return; }
+  at := -1;
+  for k: 0..<count { if order[k] + 1 == s[0].pick { at = k; } }
+  // the first press shows where the keys are; the next ones move them
+  if at < 0 { at = ifx by > 0 then 0 else count - 1; } else if s[0].keys_moved || s[0].open > 0 { at = clamp_int(at + by, 0, count - 1); }
+  s[0].pick = order[at] + 1; s[0].keys_moved = true;
+}
+clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
+
+coaxial_project_pointer :: (s: [] ProjectState, w: [] Work, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+  if s.count < 1 || w.count < 1 || s[0].page != 0 || !w[0].read { return false; }
+  d := hi(s[0].dpr, 1);
+  s[0].px = x; s[0].py = y; s[0].pointed = true;
+  if phase == POINTER_DOWN {
+    s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; s[0].touch = kind != 0;
+    s[0].drag_scroll = s[0].scroll;
+    return s[0].open > 0;
+  }
+  if phase == POINTER_MOVE {
+    if kind == 0 && !s[0].down { s[0].touch = false; s[0].keys_moved = false; }
+    if s[0].down && abs(x - s[0].down_x) + abs(y - s[0].down_y) > 8 * d { s[0].moved = true; }
+    // a drag in the open panel scrolls it
+    if s[0].down && s[0].moved && s[0].open > 0 && inside(s[0].panel, s[0].down_x, s[0].down_y) {
+      s[0].scroll = clamp(s[0].drag_scroll - (y - s[0].down_y), 0, s[0].scroll_max);
+      return true;
+    }
+    return false;
+  }
+  if phase == POINTER_CANCEL || !s[0].down { s[0].down = false; return false; }
+  s[0].down = false;
+  if s[0].moved { return s[0].open > 0; }
+  return click(s, w, x, y);
+}
+
+coaxial_project_key :: (s: [] ProjectState, w: [] Work, key: int, mods: int) -> bool #export_c {
+  if s.count < 1 || w.count < 1 || s[0].page != 0 || !w[0].read || (mods & 10) != 0 { return false; }
+  open := s[0].open > 0;
+  if key == KEY_ESCAPE {
+    if open { close_task(s); return true; }
+    if s[0].keys_moved { s[0].keys_moved = false; return true; }
+    return false;
+  }
+  if key == KEY_UP || key == KEY_DOWN {
+    step_pick(s, w, ifx key == KEY_UP then -1 else 1);
+    if open { open_task(s, w, s[0].pick - 1); }
+    return true;
+  }
+  if (key == KEY_ENTER || key == ' ') && !open {
+    if s[0].pick > 0 && s[0].keys_moved { open_task(s, w, s[0].pick - 1); return true; }
+    return false;
+  }
+  if open {
+    page := hi(box_h(s[0].panel) * 0.75, 40);
+    if key == KEY_PAGE_DOWN || key == ' ' { s[0].scroll = clamp(s[0].scroll + page, 0, s[0].scroll_max); return true; }
+    if key == KEY_PAGE_UP { s[0].scroll = clamp(s[0].scroll - page, 0, s[0].scroll_max); return true; }
+    if key == KEY_HOME { s[0].scroll = 0; return true; }
+    if key == KEY_END { s[0].scroll = s[0].scroll_max; return true; }
+  }
+  return false;
+}
+
+// The wheel, CSS pixels down: scrolls the open panel.
+coaxial_project_wheel :: (s: [] ProjectState, dy: f32) #export_c {
+  if s.count < 1 || s[0].open == 0 { return; }
+  s[0].scroll = clamp(s[0].scroll + dy * hi(s[0].dpr, 1), 0, s[0].scroll_max);
+}
+
+// The pointer's cursor: 1 (a link) over a row, a related task or CLOSE.
+coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
+  if s.count < 1 || w.count < 1 || s[0].page != 0 || s[0].touch || !s[0].pointed { return 0; }
+  x := s[0].px; y := s[0].py;
+  if s[0].open > 0 {
+    if inside(s[0].close, x, y) || link_at(s, x, y) >= 0 { return 1; }
+    if inside(s[0].panel, x, y) { return 0; }
+  }
+  return ifx row_at(w, x, y) >= 0 then 1 else 0;
+}
+
+// The location's hash, n bytes in the inbox the relay's frames share
+// (host.js, at load and on every change): the task to open, or none. Read
+// at the next frame, once the work is.
+coaxial_project_hash :: (s: [] ProjectState, l: [] Live, n: int) #export_c {
+  if s.count < 1 || l.count < 1 { return; }
+  k := clamp_int(n, 0, 32);
+  from := ifx k > 0 && l[0].inbox[0] == '#' then 1 else 0;
+  s[0].want_n = put_text(s[0].want[..], 0, cast(string) l[0].inbox[from..<lo_int(k, from + 16)]);
+  s[0].wanted = true;
+}
+coaxial_project_action :: (s: [] ProjectState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_project_action_done :: (s: [] ProjectState) #export_c { if s.count > 0 { s[0].action = 0; } }
+
 // ---------------------------------------------------------------- the frame
 
 coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live, out: [] f32, uniforms: [] f32,
@@ -1425,10 +2001,27 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
   if t[0].n == 0 { grow(t, PROJECT_HISTORY); }
-  if !w[0].read { read_work(w, WORK_ITEMS); w[0].plans = WORK_PLANS; w[0].plan_info = WORK_PLAN_INFO; }
+  if !w[0].read { read_work(w, WORK_ITEMS); w[0].plans = WORK_PLANS; w[0].plan_info = WORK_PLAN_INFO; w[0].details = WORK_DETAILS; }
+  s[0].width = width; s[0].height = height; s[0].dpr = d;
+  // the task a link (the location's hash) asks for, once the work is read
+  if s[0].wanted {
+    s[0].wanted = false;
+    want := cast(string) s[0].want[0..<s[0].want_n];
+    k := row_of(w, w[0].text, want);
+    if want.count == 0 { s[0].open = 0; } else if k >= 0 && s[0].open != k + 1 { open_task(s, w, k); }
+  }
   fade := ifx still then 1.0f32 else ease(time / 1.1);
   p := Pen.{d = d, fade = fade, time = time, demo = s[0].page == 1};
   l := layout(width, height, d);
+  // the open task: over the scene on a wide screen, the whole screen otherwise
+  open := !p.demo && s[0].open > 0 && s[0].open <= w[0].n;
+  full := open && !l.wide;
+  db := detail_box(l, width, height, d);
+  w[0].view.hit_n = 0;
+  w[0].view.px = s[0].px; w[0].view.py = s[0].py;
+  w[0].view.hover = s[0].pointed && !s[0].touch && !s[0].keys_moved;
+  w[0].view.pick = ifx s[0].keys_moved then s[0].pick else 0;
+  w[0].view.open = ifx open then s[0].open else 0;
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = fade;
   uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 0; uniforms[6] = 0; uniforms[7] = 0;
   for k: 0..<PANELS { glass(uniforms, k, l.header, 0, 0, 0); }
@@ -1438,10 +2031,21 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
   glass(uniforms, 2, l.agents, cut, 0.92, 0);
   panels := 3;
   if l.activity_on { glass(uniforms, 3, l.activity, cut, 0.92, 0); panels = 4; }
+  if open { glass(uniforms, panels, db, cut, 0.97, 0); panels += 1; }
+  if full {
+    // the detail is the screen: its glass alone, and nothing drawn under it
+    for k: 0..<PANELS { glass(uniforms, k, l.header, 0, 0, 0); }
+    glass(uniforms, 0, db, cut, 0.97, 0);
+    uniforms[5] = 1;
+    return detail(out, 0, db, p, s, w);
+  }
   uniforms[5] = cast(f32) panels;
-  v := scene(out, 0, l.scene, p, t, still, w[0].ready_n);
-  v = scene_hud(out, v, l.scene, p, l.columns);
-  v = stats(out, v, l.scene, p, w);
+  v := 0;
+  if !open {
+    v = scene(out, v, l.scene, p, t, still, w[0].ready_n);
+    v = scene_hud(out, v, l.scene, p, l.columns);
+    v = stats(out, v, l.scene, p, w);
+  }
   v = header(out, v, l.header, p, l.wide, lv);
   compact := !l.wide && !l.columns;
   if p.demo {
@@ -1452,6 +2056,7 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
     v = real_queue(out, v, l.queue, p, w);
     if l.activity_on { v = plan(out, v, l.activity, p, w); }
     v = real_agents(out, v, l.agents, p, compact, !l.activity_on);
+    if open { v = detail(out, v, db, p, s, w); }
   }
   return v;
 }
@@ -1668,4 +2273,274 @@ FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply
   for v: 0..<k { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
   a := real_agents(out[..], 0, b, p, false, true);
   for v: 0..<a { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+}
+
+// ---------------------------------------------------------------- checks: a task's detail
+
+#test "WORK_DETAILS fields decode as details.ts escapes them" {
+  buf: [256] u8;
+  // details.ts escapeDetail("a|b\nc\\d \\. e")
+  n := undetail("a\\pb\\nc\\\\d \\\\. e", buf[..]);
+  #assert same(cast(string) buf[0..<n], "a|b\nc\\d \\. e");
+  // escapeList([["10-28 14:52 CDT", "w1", "took it | now"], ["10-28 15:00 CDT", "", "x\\:y"]])
+  m := undetail("10-28 14:52 CDT\\:w1\\:took it \\p now\\.10-28 15:00 CDT\\:\\:x\\\\:y", buf[..]);
+  list := cast(string) buf[0..<m];
+  #assert pieces(list, ITEM_BREAK) == 2 && pieces("", ITEM_BREAK) == 0;
+  one := piece(list, ITEM_BREAK, 0); two := piece(list, ITEM_BREAK, 1);
+  #assert same(piece(one, PART_BREAK, 0), "10-28 14:52 CDT") && same(piece(one, PART_BREAK, 1), "w1") && same(piece(one, PART_BREAK, 2), "took it | now");
+  #assert same(piece(two, PART_BREAK, 1), "") && same(piece(two, PART_BREAK, 2), "x\\:y");
+  // a buffer too small keeps what fits
+  small: [4] u8;
+  #assert undetail("abcdef", small[..]) == 4;
+  // the snapshot: one row an item, six fields each, keyed by the items' aliases
+  w: [1] Work;
+  read_work(w[..], WORK_ITEMS);
+  #assert rows(WORK_DETAILS) == w[0].n;
+  for r: 0..<w[0].n {
+    k := keyed_start(WORK_DETAILS, item(w[..], WORK_ITEMS, r, 0));
+    #assert k >= 0 && cell(WORK_DETAILS, k, 1).count == 64;
+    bars := 0; i := k;
+    while i < WORK_DETAILS.count && WORK_DETAILS[i] != '\n' { if WORK_DETAILS[i] == '|' { bars += 1; } i += 1; }
+    #assert bars == 5;
+  }
+  #assert keyed_start("ab|1\nb|2\n", "b") == 5 && keyed_start("ab|1\n", "a") == -1;
+}
+
+// A page's state and work after one frame at a size (device pixels, dpr 2).
+Page :: struct { s: [1] ProjectState; t: [1] Tree; w: [1] Work; l: [1] Live; }
+PAGE_OUT :: MAX_VERTICES * VERTEX_FLOATS;
+draw_page :: (g: [] Page, out: [] f32, w: f32, h: f32) -> int {
+  uniforms: [UNIFORM_FLOATS] f32;
+  return coaxial_project_frame(g[0].s[..], g[0].t[..], g[0].w[..], g[0].l[..], out, uniforms[..], w, h, 2, 0, true);
+}
+poke :: (g: [] Page, x: f32, y: f32, phase: int, kind: int) {
+  used := coaxial_project_pointer(g[0].s[..], g[0].w[..], x, y, phase, kind);
+}
+tap :: (g: [] Page, x: f32, y: f32, kind: int) -> bool {
+  poke(g, x, y, POINTER_DOWN, kind);
+  return coaxial_project_pointer(g[0].s[..], g[0].w[..], x, y, POINTER_UP, kind);
+}
+mid_x :: (b: Box) -> f32 { return (b.x0 + b.x1) * 0.5; }
+mid_y :: (b: Box) -> f32 { return (b.y0 + b.y1) * 0.5; }
+// Every vertex of out[from..<to] within b, give or take a glow.
+within :: (out: [] f32, from: int, to: int, b: Box, d: f32) -> bool {
+  for v: from..<to {
+    x := out[v * VERTEX_FLOATS]; y := out[v * VERTEX_FLOATS + 1];
+    if x < b.x0 - 12 * d || y < b.y0 - 12 * d || x > b.x1 + 12 * d || y > b.y1 + 12 * d { return false; }
+  }
+  return true;
+}
+
+#test "the queue's rows are found by the pointer on a desktop and a phone, and a click opens each" {
+  out: [PAGE_OUT] f32;
+  sizes := [4] f32.[1440, 900, 320, 568];
+  for k: 0..<2 {
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    g: [1] Page;
+    _ := draw_page(g[..], out[..], w, h);
+    l := layout(w, h, 2);
+    vw := g[0].w[0].view;
+    #assert vw.hit_n >= ifx k == 0 then 3 else 1;
+    for i: 0..<vw.hit_n {
+      b := vw.hit_box[i];
+      // inside the queue's panel, one under another, apart
+      #assert b.x0 >= l.queue.x0 && b.x1 <= l.queue.x1 && b.y0 >= l.queue.y0 && b.y1 <= l.queue.y1;
+      if i > 0 { #assert b.y0 >= vw.hit_box[i - 1].y1; }
+      #assert row_at(g[0].w[..], mid_x(b), mid_y(b)) == vw.hit_row[i];
+      #assert row_at(g[0].w[..], mid_x(b), b.y0 + 1) == vw.hit_row[i] && row_at(g[0].w[..], mid_x(b), b.y1 - 1) == vw.hit_row[i];
+    }
+    // off the rows: nothing
+    #assert row_at(g[0].w[..], mid_x(l.header), mid_y(l.header)) == -1;
+    // a mouse over a row: a pointer cursor; over the header: the default
+    poke(g[..], mid_x(vw.hit_box[0]), mid_y(vw.hit_box[0]), POINTER_MOVE, 0);
+    #assert coaxial_project_cursor(g[0].s[..], g[0].w[..]) == 1;
+    poke(g[..], mid_x(l.header), mid_y(l.header), POINTER_MOVE, 0);
+    #assert coaxial_project_cursor(g[0].s[..], g[0].w[..]) == 0;
+    // a tap on each row opens it and names it in the hash
+    for i: 0..<vw.hit_n {
+      g[0].s[0].open = 0;
+      b := vw.hit_box[i];
+      #assert tap(g[..], mid_x(b), mid_y(b), k);
+      #assert g[0].s[0].open == vw.hit_row[i] + 1 && g[0].s[0].action == ACT_HASH;
+      #assert same(cast(string) g[0].s[0].outbox[0..<g[0].s[0].out_n], item(g[0].w[..], g[0].w[0].text, vw.hit_row[i], 0));
+      coaxial_project_action_done(g[0].s[..]);
+    }
+    // a drag isn't a click
+    g[0].s[0].open = 0;
+    b := vw.hit_box[0];
+    poke(g[..], mid_x(b), mid_y(b), POINTER_DOWN, 1);
+    poke(g[..], mid_x(b), mid_y(b) + 60, POINTER_MOVE, 1);
+    poke(g[..], mid_x(b), mid_y(b) + 60, POINTER_UP, 1);
+    #assert g[0].s[0].open == 0;
+  }
+}
+
+#test "the detail opens and closes: CLOSE, a click outside, Esc, and the keys move through the queue" {
+  out: [PAGE_OUT] f32;
+  w := 1440.0f32 * 2; h := 900.0f32 * 2;
+  g: [1] Page;
+  _ := draw_page(g[..], out[..], w, h);
+  vw := g[0].w[0].view;
+  r := vw.hit_row[0];
+  #assert tap(g[..], mid_x(vw.hit_box[0]), mid_y(vw.hit_box[0]), 0) && g[0].s[0].open == r + 1;
+  _ = draw_page(g[..], out[..], w, h);
+  l := layout(w, h, 2);
+  // wide: over the scene's column, the queue still there beside it
+  #assert same_box(g[0].s[0].panel, l.scene) && g[0].w[0].view.hit_n > 0;
+  // a click inside the panel keeps it; CLOSE closes it and clears the hash
+  #assert tap(g[..], mid_x(l.scene), l.scene.y1 - 20, 0) && g[0].s[0].open == r + 1;
+  c := g[0].s[0].close;
+  #assert inside(l.scene, mid_x(c), mid_y(c));
+  poke(g[..], mid_x(c), mid_y(c), POINTER_MOVE, 0);
+  #assert coaxial_project_cursor(g[0].s[..], g[0].w[..]) == 1;
+  #assert tap(g[..], mid_x(c), mid_y(c), 0) && g[0].s[0].open == 0 && g[0].s[0].out_n == 0 && g[0].s[0].action == ACT_HASH;
+  // another row's click switches to it; a click outside both closes
+  #assert tap(g[..], mid_x(vw.hit_box[0]), mid_y(vw.hit_box[0]), 0);
+  #assert tap(g[..], mid_x(vw.hit_box[1]), mid_y(vw.hit_box[1]), 0) && g[0].s[0].open == vw.hit_row[1] + 1;
+  #assert tap(g[..], mid_x(l.header), mid_y(l.header), 0) && g[0].s[0].open == 0;
+}
+
+#test "the keys move through the queue and open it; the location's hash opens a task" {
+  out: [PAGE_OUT] f32;
+  w := 1440.0f32 * 2; h := 900.0f32 * 2;
+  g: [1] Page;
+  _ := draw_page(g[..], out[..], w, h);
+  vw := g[0].w[0].view;
+  l := layout(w, h, 2);
+  // a click on the second row, then closed: the keys start there
+  #assert tap(g[..], mid_x(vw.hit_box[1]), mid_y(vw.hit_box[1]), 0);
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_ESCAPE, 0) && g[0].s[0].open == 0;
+  // the keys: down picks the first shown, down again the next, Enter opens, Esc closes
+  // (the first press shows the keys where the last click left them: the second row)
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_DOWN, 0) && g[0].s[0].pick == vw.hit_row[1] + 1;
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_DOWN, 0) && g[0].s[0].pick == vw.hit_row[2] + 1;
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_UP, 0) && coaxial_project_key(g[0].s[..], g[0].w[..], KEY_UP, 0);
+  #assert g[0].s[0].pick == vw.hit_row[0] + 1;
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_ENTER, 0) && g[0].s[0].open == vw.hit_row[0] + 1;
+  // with it open, down opens the next
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_DOWN, 0) && g[0].s[0].open == vw.hit_row[1] + 1;
+  // a fresh page: down picks the first row shown
+  f: [1] Page;
+  _ = draw_page(f[..], out[..], w, h);
+  #assert coaxial_project_key(f[0].s[..], f[0].w[..], KEY_DOWN, 0) && f[0].s[0].pick == vw.hit_row[0] + 1;
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_ESCAPE, 0) && g[0].s[0].open == 0;
+  #assert !coaxial_project_key(g[0].s[..], g[0].w[..], 'c', 8);   // the browser's keys stay the browser's
+  // the hash opens a task straight away, and an empty one closes it
+  alias := item(g[0].w[..], g[0].w[0].text, vw.hit_row[2], 0);
+  n := put_text(g[0].l[0].inbox[..], 0, "#");
+  n += put_text(g[0].l[0].inbox[..], n, alias);
+  coaxial_project_hash(g[0].s[..], g[0].l[..], n);
+  _ = draw_page(g[..], out[..], w, h);
+  #assert g[0].s[0].open == vw.hit_row[2] + 1;
+  coaxial_project_hash(g[0].s[..], g[0].l[..], 0);
+  _ = draw_page(g[..], out[..], w, h);
+  #assert g[0].s[0].open == 0;
+  // the demo's placeholder queue opens nothing
+  d: [1] Page;
+  d[0].s[0].page = 1;
+  _ = draw_page(d[..], out[..], w, h);
+  #assert !tap(d[..], mid_x(l.queue), mid_y(l.queue), 0) && d[0].s[0].open == 0;
+}
+same_box :: (a: Box, b: Box) -> bool { return a.x0 == b.x0 && a.y0 == b.y0 && a.x1 == b.x1 && a.y1 == b.y1; }
+
+// The tasks worth drawing: the one with the longest body, the one with the
+// most notes, and the first in progress (its plan), as rows.
+samples :: (w: [] Work, pick: [] int) -> int {
+  long := -1; most := 0; chatty := -1; notes := 0;
+  for r: 0..<w[0].n {
+    if w[0].kind[r] != KIND_TASK { continue; }
+    k := keyed_start(WORK_DETAILS, item(w, WORK_ITEMS, r, 0));
+    if cell(WORK_DETAILS, k, 3).count > most { most = cell(WORK_DETAILS, k, 3).count; long = r; }
+    if cell(WORK_DETAILS, k, 5).count > notes { notes = cell(WORK_DETAILS, k, 5).count; chatty = r; }
+  }
+  n := 0;
+  if long >= 0 { pick[n] = long; n += 1; }
+  if chatty >= 0 && chatty != long { pick[n] = chatty; n += 1; }
+  if w[0].working_n > 0 && w[0].queue[0] != long && w[0].queue[0] != chatty { pick[n] = w[0].queue[0]; n += 1; }
+  return n;
+}
+
+detail_fits :: (size_w: f32, size_h: f32, most: int) -> bool {
+  out: [PAGE_OUT] f32;
+  w := size_w * 2; h := size_h * 2;
+  g: [1] Page;
+  _ := draw_page(g[..], out[..], w, h);
+  l := layout(w, h, 2);
+  db := detail_box(l, w, h, 2);
+  pick: [3] int;
+  for i: 0..<lo_int(most, samples(g[0].w[..], pick[..])) {
+    open_task(g[0].s[..], g[0].w[..], pick[i]);
+    for end: 0..<2 {
+      // drawn at its top, then scrolled to its end
+      if end == 1 { g[0].s[0].scroll = g[0].s[0].scroll_max; }
+      n := draw_page(g[..], out[..], w, h);
+      if n < 300 || n >= MAX_VERTICES || n % 6 != 0 || !on_canvas(out[..], n, w, h, 2) { return false; }
+      // below the wide layout the detail is the screen: all that's drawn
+      if !l.wide && !within(out[..], 0, n, db, 2) { return false; }
+      if l.wide && !same_box(g[0].s[0].panel, l.scene) { return false; }
+    }
+  }
+  return true;
+}
+
+#test "a task's detail draws inside its panel within the vertex budget, scrolled or not: desktop" {
+  #assert detail_fits(1440, 900, 2);
+}
+#test "a task's detail draws inside its panel within the vertex budget, scrolled or not: tablet and phone" {
+  #assert detail_fits(768, 1024, 3) && detail_fits(320, 568, 3);
+}
+
+#test "a long body scrolls with the wheel, a drag and the keys; a blocker's alias opens it" {
+  out: [PAGE_OUT] f32;
+  w := 320.0f32 * 2; h := 568.0f32 * 2;
+  g: [1] Page;
+  _ := draw_page(g[..], out[..], w, h);
+  // the task with the longest body, and one that waits on another
+  long := -1; most := 0; waiting := -1;
+  for r: 0..<g[0].w[0].n {
+    if g[0].w[0].kind[r] != KIND_TASK { continue; }
+    k := keyed_start(WORK_DETAILS, item(g[0].w[..], WORK_ITEMS, r, 0));
+    if cell(WORK_DETAILS, k, 3).count > most { most = cell(WORK_DETAILS, k, 3).count; long = r; }
+    if waiting < 0 && g[0].w[0].waits[r] >= 0 { waiting = r; }
+  }
+  #assert long >= 0 && waiting >= 0;
+  open_task(g[0].s[..], g[0].w[..], long);
+  _ = draw_page(g[..], out[..], w, h);
+  #assert g[0].s[0].scroll_max > 0 && g[0].w[0].view.hit_n == 0;   // full screen: no rows under it
+  coaxial_project_wheel(g[0].s[..], 100);
+  #assert g[0].s[0].scroll == 200;
+  coaxial_project_wheel(g[0].s[..], -1000);
+  #assert g[0].s[0].scroll == 0;
+  coaxial_project_wheel(g[0].s[..], 1000000);
+  #assert g[0].s[0].scroll == g[0].s[0].scroll_max;
+  #assert coaxial_project_key(g[0].s[..], g[0].w[..], KEY_HOME, 0) && g[0].s[0].scroll == 0;
+  // a finger drags it up
+  p := g[0].s[0].panel;
+  poke(g[..], mid_x(p), p.y1 - 100, POINTER_DOWN, 1);
+  poke(g[..], mid_x(p), p.y1 - 400, POINTER_MOVE, 1);
+  #assert g[0].s[0].scroll == hi(0, lo(300, g[0].s[0].scroll_max));
+  poke(g[..], mid_x(p), p.y1 - 400, POINTER_UP, 1);
+  #assert g[0].s[0].open == long + 1;   // a drag doesn't close it
+  // the blocker's alias is a link to its own detail
+  open_task(g[0].s[..], g[0].w[..], waiting);
+  _ = draw_page(g[..], out[..], w, h);
+  blocker := g[0].w[0].waits[waiting];
+  found := -1;
+  for k: 0..<g[0].s[0].link_n { if g[0].s[0].link_row[k] == blocker { found = k; } }
+  if found < 0 {
+    // below the fold: scroll till it shows
+    for step: 0..<40 {
+      if found >= 0 { break; }
+      coaxial_project_wheel(g[0].s[..], 200);
+      _ = draw_page(g[..], out[..], w, h);
+      for k: 0..<g[0].s[0].link_n { if g[0].s[0].link_row[k] == blocker { found = k; } }
+    }
+  }
+  #assert found >= 0;
+  lb := g[0].s[0].link_box[found];
+  #assert tap(g[..], mid_x(lb), mid_y(lb), 1) && g[0].s[0].open == blocker + 1 && g[0].s[0].scroll == 0;
+  // and the phone's CLOSE closes it
+  _ = draw_page(g[..], out[..], w, h);
+  c := g[0].s[0].close;
+  #assert tap(g[..], mid_x(c), mid_y(c), 1) && g[0].s[0].open == 0;
 }
