@@ -1,0 +1,260 @@
+{
+  "schema": "coax.pbkdf2-conformance.v1",
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "wasm_compiler": "Homebrew clang version 23.1.4",
+  "flags": [
+    "-std=c11",
+    "-O2",
+    "checked and --release",
+    "COAX_PBKDF2_TEST_OBSERVE (fixture only)"
+  ],
+  "legacy_profile": {
+    "KDF": "PBKDF2-HMAC-SHA256",
+    "rounds": 210000,
+    "salt_bytes": 16,
+    "key_bytes": 32,
+    "phrase": "already normalized lowercase ASCII alphanumeric",
+    "phrase_bytes": [
+      4,
+      40
+    ],
+    "envelope": "existing AES-GCM 256 / 12-byte IV unchanged"
+  },
+  "source_sha256": {
+    "coax/lib/crypto/pbkdf2.coax": "7302038002cf2eac67c8b9bcd143295bb794e2eb951aec9208ee2340d1cd8df0",
+    "coax/lib/crypto/pbkdf2-memory.coax": "398a187b4e0dd8f32c2ad62d90418d156e8171f7ee9b08a16031d94a0d94de68",
+    "coax/lib/crypto/pbkdf2-worker.coax": "ac4b1ee6e1961af10b46e2147473bdaf5d4fc404c0c44d00569cde040a0fe7ab",
+    "coax/tests/nostr/pbkdf2_rfc.coax": "75dd81927cdaf3e121ab3b8ae3bb6dd6f97885f5f43c405c4cb0167694ff2ec4",
+    "coax/lib/crypto/platform/pbkdf2-worker.c": "f3dac944df793a8d7b90fefc4816ca53bbd043400d038124c5f9f5ee74b34918",
+    "coax/lib/crypto/platform/pbkdf2-worker.js": "813f4efefb4ba52b6d2c557d2ce5fda015f529142b8b98260e289750d3d4f808",
+    "coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+    "coax/lib/crypto/platform/zeroize.h": "1bb0d7d87793eace4c9b7592b5a99ab7d19e499f0c14afeb324e0533995fb3c3",
+    "coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+    "coax/lib/crypto/hmac.coax": "b8a73c54d4f0b14b05e93942a3ecca3730accf9ca3ff4617274192e2a8470685",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/web/unlock/gate.ts": "1b0bf4992651c16f3df7bf1c9e0d553280ca64287d9d7ec2b7c031ba48ef1105",
+    "coax/tests/vectors/upstream/rfc/rfc7914.txt": "df55932f8b6a5d271f36a634d91a25903724e189ba6c120bf7257cd47f10b197",
+    "tools/coax-nostr/pbkdf2/test_pbkdf2.py": "bc037b9d33e4bed9729fce30623875edfb1908317c47b028a63e3315182fa910",
+    "tools/coax-nostr/pbkdf2/browser.html": "7c9db3a27f32dbd678cbcd24b71bf24bb20f34ebfed37333aee6c107176c9fd1",
+    "tools/coax-nostr/pbkdf2/browser.ts": "e3f0a9cd04ca662afb5673e3a007f1c2aeea649ba5be32b56e79bae154be8cc5",
+    "tools/coax-nostr/pbkdf2/rejection-worker.js": "71725af783e0481abc5ef6b342b4d4ef938c9681032ff3fe0f4012507364a3dc"
+  },
+  "native_artifacts": {
+    "checked": "51679ae6ae3686386ca2eed6ca30b0e6ce28f03fd81e7d69093214e5fa6826e2",
+    "release": "a1c5ae00d71de3eceda720cddda45bf1b3a5c327f2a4bd91f2e6babb05cb75ef"
+  },
+  "browser": [
+    {
+      "target": "headless Chrome dedicated worker / wasm32",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+      "rfc": [
+        {
+          "type": "done",
+          "id": 1,
+          "completed": 2,
+          "total": 2,
+          "maxChunkMs": 0.09999999403953552,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 0.5,
+          "frames": 0,
+          "maxFrameGapMs": null,
+          "updates": 0,
+          "cancelLatencyMs": null
+        },
+        {
+          "type": "done",
+          "id": 2,
+          "completed": 160000,
+          "total": 160000,
+          "maxChunkMs": 0.6000000238418579,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 132.09999999403954,
+          "frames": 8,
+          "maxFrameGapMs": 16.700000000000017,
+          "updates": 39,
+          "cancelLatencyMs": null
+        }
+      ],
+      "gate": [
+        {
+          "type": "done",
+          "id": 3,
+          "completed": 210000,
+          "total": 210000,
+          "maxChunkMs": 0.4000000059604645,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 165.7999999821186,
+          "frames": 10,
+          "maxFrameGapMs": 16.700000000000045,
+          "updates": 51,
+          "cancelLatencyMs": null,
+          "budget": 256
+        },
+        {
+          "type": "done",
+          "id": 4,
+          "completed": 210000,
+          "total": 210000,
+          "maxChunkMs": 0.20000001788139343,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 173.19999998807907,
+          "frames": 10,
+          "maxFrameGapMs": 16.700000000000045,
+          "updates": 51,
+          "cancelLatencyMs": null,
+          "budget": 64
+        }
+      ],
+      "cancelled": {
+        "type": "cancelled",
+        "id": 5,
+        "completed": 4352,
+        "total": 210000,
+        "maxChunkMs": 0.30000001192092896,
+        "cleanup": 0,
+        "clean": 1,
+        "elapsedMs": 3.4000000059604645,
+        "frames": 0,
+        "maxFrameGapMs": null,
+        "updates": 1,
+        "cancelLatencyMs": 0.19999998807907104
+      },
+      "refused": {
+        "type": "error",
+        "error": 2,
+        "clean": 1
+      },
+      "abiOverflowRefused": true,
+      "rejectionCleanup": {
+        "cases": [
+          "uninitialized",
+          "one valid password / invalid salt",
+          "invalid password / one valid salt",
+          "invalid input view",
+          "invalid scalar ABI",
+          "unknown message",
+          "oversized received input",
+          "busy worker"
+        ],
+        "receivedInputsZeroBeforeResponse": true,
+        "noKeyReleased": true
+      },
+      "renderFixture": "requestAnimationFrame canvas2d, no engine/device timing claim",
+      "mode": "checked",
+      "artifact_sha256": "4ed03f6819f154b864c22aa5afd393f1c0bc2cd156f00414f9ee26d3931fb008"
+    },
+    {
+      "target": "headless Chrome dedicated worker / wasm32",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+      "rfc": [
+        {
+          "type": "done",
+          "id": 1,
+          "completed": 2,
+          "total": 2,
+          "maxChunkMs": 0,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 0.7000000178813934,
+          "frames": 0,
+          "maxFrameGapMs": null,
+          "updates": 0,
+          "cancelLatencyMs": null
+        },
+        {
+          "type": "done",
+          "id": 2,
+          "completed": 160000,
+          "total": 160000,
+          "maxChunkMs": 0.5999999940395355,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 100.7000000178814,
+          "frames": 6,
+          "maxFrameGapMs": 16.700000000000017,
+          "updates": 39,
+          "cancelLatencyMs": null
+        }
+      ],
+      "gate": [
+        {
+          "type": "done",
+          "id": 3,
+          "completed": 210000,
+          "total": 210000,
+          "maxChunkMs": 0.4000000059604645,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 125.59999999403954,
+          "frames": 8,
+          "maxFrameGapMs": 16.700000000000017,
+          "updates": 51,
+          "cancelLatencyMs": null,
+          "budget": 256
+        },
+        {
+          "type": "done",
+          "id": 4,
+          "completed": 210000,
+          "total": 210000,
+          "maxChunkMs": 0.20000001788139343,
+          "cleanup": 0,
+          "clean": 1,
+          "elapsedMs": 132.7999999821186,
+          "frames": 8,
+          "maxFrameGapMs": 16.700000000000045,
+          "updates": 51,
+          "cancelLatencyMs": null,
+          "budget": 64
+        }
+      ],
+      "cancelled": {
+        "type": "cancelled",
+        "id": 5,
+        "completed": 4352,
+        "total": 210000,
+        "maxChunkMs": 0.20000001788139343,
+        "cleanup": 0,
+        "clean": 1,
+        "elapsedMs": 2.600000023841858,
+        "frames": 0,
+        "maxFrameGapMs": null,
+        "updates": 1,
+        "cancelLatencyMs": 0.20000001788139343
+      },
+      "refused": {
+        "type": "error",
+        "error": 2,
+        "clean": 1
+      },
+      "abiOverflowRefused": true,
+      "rejectionCleanup": {
+        "cases": [
+          "uninitialized",
+          "one valid password / invalid salt",
+          "invalid password / one valid salt",
+          "invalid input view",
+          "invalid scalar ABI",
+          "unknown message",
+          "oversized received input",
+          "busy worker"
+        ],
+        "receivedInputsZeroBeforeResponse": true,
+        "noKeyReleased": true
+      },
+      "renderFixture": "requestAnimationFrame canvas2d, no engine/device timing claim",
+      "mode": "release",
+      "artifact_sha256": "1e206a699f50e1e8277bd7065e650162d64779a15798aaf952ab5a4fc76ebe5a"
+    }
+  ],
+  "scope": "primitive and dedicated-worker fixture; legacy gate/envelope unchanged; identified caller-buffer cleanup only"
+}

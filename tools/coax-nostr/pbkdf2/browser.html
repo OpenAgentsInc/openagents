@@ -1,0 +1,61 @@
+<!doctype html><meta charset="utf-8"><canvas width="640" height="360"></canvas>
+<script>
+// Headless timing fixture, not a product page or an engine performance claim.
+const frames=[],context=document.querySelector('canvas').getContext('2d');
+function frame(time){frames.push(time);context.fillStyle=`rgb(${Math.floor(time/10)%255},20,20)`;context.fillRect(0,0,640,360);requestAnimationFrame(frame);}requestAnimationFrame(frame);
+async function rejectedInputs(){
+ const worker=new Worker('/rejection-worker.js'),pending=new Map();let readyResolve,readyReject,id=100;
+ worker.onerror=event=>{const error=Error(event.message);readyReject?.(error);for(const p of pending.values())p.reject(error);};
+ worker.onmessage=event=>{const m=event.data;if(m.type==='ready'){readyResolve();return;}const p=pending.get(m.id);if(!p)throw Error('Unknown rejection-test response');if(m.type==='progress'){p.progress?.(m);return;}pending.delete(m.id);p.resolve(m);};
+ const buffer=()=>new Uint8Array([65,66,67,68]).buffer;
+ const request=(data,transfers,progress)=>{const token=++id;return new Promise((resolve,reject)=>{pending.set(token,{resolve,reject,progress});worker.postMessage({type:'derive',id:token,rounds:210000,length:32,gate:true,...data},transfers);});};
+ const checked=[];
+ async function refuses(label,data,transfers,count,error){const response=await request(data,transfers);if(response.type!=='error'||response.error!==error||response.observedInputBuffers!==count||!response.observedInputZero||'key'in response)throw Error(`Rejected inputs not cleared before response: ${label}`);checked.push(label);}
+ let a=buffer(),b=buffer();await refuses('uninitialized',{password:a,salt:b},[a,b],2,'busy');
+ await new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;worker.postMessage({type:'init',url:'/worker.wasm'});});
+ a=buffer();await refuses('one valid password / invalid salt',{password:a,salt:'invalid'},[a],1,'ABI');
+ b=buffer();await refuses('invalid password / one valid salt',{password:'invalid',salt:b},[b],1,'ABI');
+ a=new Uint8Array(buffer());b=buffer();await refuses('invalid input view',{password:a,salt:b},[a.buffer,b],2,'ABI');
+ a=buffer();b=buffer();await refuses('invalid scalar ABI',{password:a,salt:b,rounds:NaN},[a,b],2,'ABI');
+ a=buffer();b=buffer();await refuses('unknown message',{type:'unknown',password:a,salt:b},[a,b],2,'busy');
+ a=new Uint8Array(1025).fill(65).buffer;b=buffer();await refuses('oversized received input',{password:a,salt:b,gate:false,rounds:1},[a,b],2,2);
+ let progressResolve;const firstProgress=new Promise(resolve=>progressResolve=resolve);
+ const ownerPassword=new TextEncoder().encode('openagents').buffer,ownerSalt=new Uint8Array(16).buffer;let ownerId=id+1;
+ const owner=request({password:ownerPassword,salt:ownerSalt,gate:false,rounds:1000000},[ownerPassword,ownerSalt],()=>progressResolve());
+ await firstProgress;a=buffer();b=buffer();await refuses('busy worker',{password:a,salt:b},[a,b],2,'busy');
+ worker.postMessage({type:'cancel',id:ownerId});const stopped=await owner;
+ if(stopped.type!=='cancelled'||stopped.cleanup!==0||!stopped.clean||'key'in stopped)throw Error('Busy rejection damaged active owner cleanup');
+ worker.terminate();return {cases:checked,receivedInputsZeroBeforeResponse:true,noKeyReleased:true};
+}
+window.run=async()=>{
+ const rejectionCleanup=await rejectedInputs();
+ const worker=new Worker('/worker.js');let readyResolve;const ready=new Promise(r=>readyResolve=r),pending=new Map();
+ worker.onmessage=event=>{const m=event.data;if(m.type==='ready'){readyResolve();return;}const p=pending.get(m.id);if(!p)throw Error('Unexpected worker message');
+  if(m.type==='progress'){if(m.completed<=p.last)throw Error('Progress did not advance');p.last=m.completed;p.updates++;if(p.cancel&&!p.cancelAt){p.cancelAt=performance.now();worker.postMessage({type:'cancel',id:m.id});}return;}
+  pending.delete(m.id);const end=performance.now(),during=frames.filter(x=>x>=p.start&&x<=end),gaps=during.slice(1).map((x,i)=>x-during[i]);
+  p.resolve({...m,elapsedMs:end-p.start,frames:during.length,maxFrameGapMs:gaps.length?Math.max(...gaps):null,updates:p.updates,cancelLatencyMs:p.cancelAt?end-p.cancelAt:null});};
+ worker.postMessage({type:'init',url:'/worker.wasm'});await ready;
+ const bytes=s=>new TextEncoder().encode(s),hex=x=>Array.from(new Uint8Array(x),b=>b.toString(16).padStart(2,'0')).join('');
+ async function expected(password,salt,rounds,length){const key=await crypto.subtle.importKey('raw',password,'PBKDF2',false,['deriveBits']);return hex(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt,iterations:rounds},key,length*8));}
+ let id=0;
+ function derive(password,salt,rounds,length,options={}){const token=++id;return new Promise(resolve=>{pending.set(token,{resolve,start:performance.now(),last:0,updates:0,cancel:options.cancel});worker.postMessage({type:'derive',id:token,password:password.buffer,salt:salt.buffer,rounds,length,...options},[password.buffer,salt.buffer]);});}
+ const cases=[];
+ for(const [password,salt,rounds,length] of [['passwd','salt',1,64],['Password','NaCl',80000,64]]){
+  const want=await expected(bytes(password),bytes(salt),rounds,length);const result=await derive(bytes(password),bytes(salt),rounds,length);
+  if(result.type!=='done'||hex(result.key)!==want||!result.clean||result.cleanup!==0)throw Error('RFC/WebCrypto disagreement or dirty cleanup');new Uint8Array(result.key).fill(0);delete result.key;cases.push(result);}
+ const salt=new Uint8Array(Array.from({length:16},(_,i)=>i)),password=bytes('openagents'),want=await expected(password,salt,210000,32);
+ const gate=[];
+ for(const budget of [256,64]){
+  const result=await derive(bytes('openagents'),salt.slice(),210000,32,{gate:true,budget});
+  if(result.type!=='done'||hex(result.key)!==want||result.completed!==210000||result.total!==210000||!result.clean||result.cleanup!==0)throw Error('Legacy gate profile disagreement');
+  if(result.frames<2||result.maxFrameGapMs>1000)throw Error('Main render fixture did not stay responsive');
+  new Uint8Array(result.key).fill(0);delete result.key;gate.push({...result,budget});}
+ const cancelled=await derive(bytes('openagents'),salt.slice(),210000,32,{gate:true,cancel:true});
+ if(cancelled.type!=='cancelled'||cancelled.completed>=cancelled.total||cancelled.cleanup!==0||!cancelled.clean||'key'in cancelled)throw Error('Cancellation released output or missed cleanup');
+ const refused=await derive(bytes('ABCD'),salt.slice(),210000,32,{gate:true});
+ if(refused.type!=='error'||refused.error!==2||refused.cleanup!==0||!refused.clean||'key'in refused)throw Error('Invalid phrase did not clean/refuse');
+ const overflow=await derive(bytes('openagents'),salt.slice(),4294967296+210000,32,{gate:true});
+ if(overflow.type!=='error'||overflow.error!=='ABI'||'key'in overflow)throw Error('Wasm scalar coercion accepted oversized original integer');
+ worker.terminate();return {target:'headless Chrome dedicated worker / wasm32',userAgent:navigator.userAgent,rfc:cases,gate,cancelled,refused:{type:refused.type,error:refused.error,clean:refused.clean},abiOverflowRefused:true,rejectionCleanup,renderFixture:'requestAnimationFrame canvas2d, no engine/device timing claim'};
+};
+</script>

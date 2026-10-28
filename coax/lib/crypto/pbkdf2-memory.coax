@@ -1,0 +1,7 @@
+// Pointer-range observations only. Coax owns work, output and phase policy.
+#load "pbkdf2.coax";
+pbkdf2_init :: (state:[]u8,password:[]u8,salt:[]u8,rounds:int,length:int)->u32 #export_c {return pb_init_checked(state,password,salt,rounds,length,bytes_overlap(state,password)||bytes_overlap(state,salt));}
+pbkdf2_gate_init :: (state:[]u8,password:[]u8,salt:[]u8)->u32 #export_c {return pb_gate_init_checked(state,password,salt,bytes_overlap(state,password)||bytes_overlap(state,salt));}
+pbkdf2_step :: (state:[]u8,budget:int)->PbProgress #export_c {return pb_step_checked(state,budget);}
+pbkdf2_result :: (state:[]u8,out:[]u8)->u32 #export_c {return pb_result_checked(state,out,bytes_overlap(state,out));}
+pbkdf2_cancel :: (state:[]u8)->u32 #export_c {return pb_cancel_checked(state);}

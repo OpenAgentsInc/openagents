@@ -1,0 +1,199 @@
+// Resumable PBKDF2-HMAC-SHA256. No platform scheduling or retained input views.
+// Caller state holds secret derivatives until the platform explicitly erases it.
+#load "hmac.coax";
+#load "../../tests/nostr/pbkdf2_rfc.coax";
+#authority;
+PB_OK :: 0;
+PB_BAD_STATE :: 1;
+PB_BAD_INPUT :: 2;
+PB_BAD_OUTPUT :: 3;
+PB_PHASE :: 4;
+PB_ALIAS :: 5;
+PB_WORK :: 6;
+PB_BUDGET :: 7;
+PB_CANCELLED :: 8;
+PB_ACTIVE :: 1;
+PB_DONE :: 2;
+PB_STOPPED :: 3;
+PB_STATE_BYTES :: 832;
+PB_MAX_WORK :: 1000000;
+PB_MAX_OUTPUT :: 256;
+PB_MAX_INPUT :: 1024;
+PB_MAX_STEP :: 1024;
+PbProgress :: struct {error:u32;phase:u32;completed:int;total:int;}
+
+#test "PBKDF2 public work and output budgets have exact boundaries" {
+  #assert pbkdf2_state_size()==832 && pbkdf2_worker_budget()==256;
+  #assert pb_request(0,0,1,1)==0 && pb_request(1024,1024,1000000,32)==0;
+  #assert pb_request(0,0,125000,256)==0;
+  #assert pb_request(-1,0,1,1)==PB_BAD_INPUT && pb_request(1025,0,1,1)==PB_BAD_INPUT;
+  #assert pb_request(0,-1,1,1)==PB_BAD_INPUT && pb_request(0,1025,1,1)==PB_BAD_INPUT;
+  #assert pb_request(0,0,0,1)==PB_WORK && pb_request(0,0,1000001,1)==PB_WORK;
+  #assert pb_request(0,0,125001,256)==PB_WORK;
+  #assert pb_request(0,0,1,0)==PB_BAD_OUTPUT && pb_request(0,0,1,257)==PB_BAD_OUTPUT;
+  #assert pb_budget(0)==PB_BUDGET && pb_budget(-1)==PB_BUDGET && pb_budget(1025)==PB_BUDGET;
+  #assert pb_budget(1)==0 && pb_budget(1024)==0;
+  #assert pb_blocks(1)==1 && pb_blocks(31)==1 && pb_blocks(32)==1 && pb_blocks(33)==2 && pb_blocks(256)==8;
+}
+#forall "legacy gate accepts only already normalized ASCII bytes" byte:0..<256 {
+  password:=[4]u8.[97,98,99,cast(u8)byte];
+  expected:=(byte>=97 && byte<=122)||(byte>=48 && byte<=57);
+  #assert pb_gate_admit(password[..],16)==cast(u32)(ifx expected then PB_OK else PB_BAD_INPUT);
+}
+#test "legacy phrase profile is fixed and is not a format migration" {
+  password:[41]u8;for i:0..<41 {password[i]=97;}
+  #assert pb_gate_admit(password[0..<4],16)==0 && pb_gate_admit(password[0..<40],16)==0;
+  #assert pb_gate_admit(password[0..<3],16)==PB_BAD_INPUT && pb_gate_admit(password[..],16)==PB_BAD_INPUT;
+  #assert pb_gate_admit(password[0..<4],15)==PB_BAD_INPUT && pb_gate_admit(password[0..<4],17)==PB_BAD_INPUT;
+  state:[832]u8;salt:[16]u8;
+  #assert pb_gate_init_checked(state[..],password[0..<4],salt[..],false)==0;
+  #assert pbkdf2_info(state[..]).total==210000 && pb_word(state[..],12)==32;
+  #assert pb_gate_init_checked(state[..],password[0..<3],salt[..],false)==PB_BAD_INPUT;
+  #assert pbkdf2_worker_request(4,16,210000,32,256,true)==0;
+  #assert pbkdf2_worker_request(40,16,210000,32,256,true)==0;
+  #assert pbkdf2_worker_request(4,16,1,32,256,true)==PB_BAD_INPUT;
+  #assert pbkdf2_worker_request(4,16,210000,64,256,true)==PB_BAD_INPUT;
+  #assert pbkdf2_worker_request(3,16,210000,32,256,true)==PB_BAD_INPUT;
+  #assert pbkdf2_worker_request(41,16,210000,32,256,true)==PB_BAD_INPUT;
+  #assert pbkdf2_worker_request(4,15,210000,32,256,true)==PB_BAD_INPUT;
+  #assert pbkdf2_worker_request(0,0,1,1,1,false)==0;
+  #assert pbkdf2_worker_request(1025,0,1,1,1,false)==PB_BAD_INPUT;
+  #assert pbkdf2_worker_request(0,0,1,1,0,false)==PB_BUDGET;
+}
+#test "resumable PBKDF2 refuses invalid phases aliases and budgets transactionally" {
+  state:[832]u8;password:[1]u8;salt:[1]u8;out:[33]u8;for i:0..<33 {out[i]=165;}
+  #assert pbkdf2_info(state[..]).error==PB_BAD_STATE;
+  #assert pb_init_checked(state[0..<831],password[..],salt[..],2,32,false)==PB_BAD_STATE;
+  #assert pb_init_checked(state[..],password[..],salt[..],2,32,true)==PB_ALIAS;
+  #assert pb_init_checked(state[..],password[..],salt[..],0,32,false)==PB_WORK;
+  #assert pb_init_checked(state[..],password[..],salt[..],2,32,false)==0;
+  for i:512..<832 {#assert state[i]==0;}
+  before:=state;#assert pb_step_checked(state[..],0).error==PB_BUDGET;
+  #assert pb_result_checked(state[..],out[..],false)==PB_PHASE;
+  for i:0..<832 {#assert state[i]==before[i];}
+  p:=pb_step_checked(state[..],1);#assert p.error==0 && p.completed==1 && p.total==2 && p.phase==PB_ACTIVE;
+  p=pb_step_checked(state[..],1024);#assert p.error==0 && p.completed==2 && p.phase==PB_DONE;
+  before=state;p=pb_step_checked(state[..],1);#assert p.error==0 && p.completed==2;
+  for i:0..<832 {#assert state[i]==before[i];}
+  #assert pb_result_checked(state[..],out[0..<31],false)==PB_BAD_OUTPUT;
+  #assert pb_result_checked(state[..],out[..],true)==PB_ALIAS;
+  #assert pb_result_checked(state[..],out[..],false)==0 && out[32]==165;
+  #assert pb_result_checked(state[..],out[0..<32],false)==0;
+  #assert pb_cancel_checked(state[..])==0 && pbkdf2_info(state[..]).phase==PB_STOPPED;
+  #assert pb_step_checked(state[..],1).error==PB_CANCELLED && pb_result_checked(state[..],out[..],false)==PB_CANCELLED;
+  #assert pb_cancel_checked(state[..])==0;
+  #assert pb_commit(state[..],out[..])==PB_BAD_STATE;
+}
+#test "malformed PBKDF2 context metadata never advances" {
+  s:[832]u8;password:[1]u8;salt:[1]u8;
+  #assert pb_step_checked(s[..],1).error==PB_BAD_STATE && pb_cancel_checked(s[..])==PB_BAD_STATE;
+  #assert pbkdf2_info(s[0..<831]).error==PB_BAD_STATE;
+  #assert pb_result_checked(s[..],salt[..],false)==PB_BAD_STATE;
+  #assert pb_init_checked(s[..],password[..],salt[..],2,32,false)==0;good:=s;
+  s[0]=0;#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  s[4]=0;#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  s[5]=4;#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  stored:=cb_store_be32(s[..],8,0);#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  stored=cb_store_be32(s[..],16,2);#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  stored=cb_store_be32(s[..],20,1);#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  stored=cb_store_be32(s[..],24,2);#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  s[5]=PB_DONE;#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  s[64]=0;#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  s[288]=0;#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  s[5]=PB_STOPPED;stored=cb_store_be32(s[..],20,1);stored=cb_store_be32(s[..],24,1);#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  digest:[32]u8;#assert hmac_sha256_final_checked(s[64..<288],digest[..],false)==0;
+  #assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  #assert hmac_sha256_final_checked(s[288..<512],digest[..],false)==0;
+  #assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  #assert hmac_sha256_update_checked(s[64..<288],password[..],false)==0;
+  #assert pbkdf2_info(s[..]).error==PB_BAD_STATE;s=good;
+  stored=cb_store_be32(s[..],28,2);#assert pbkdf2_info(s[..]).error==PB_BAD_STATE;
+}
+
+pbkdf2_state_size :: ()->int #export_c {return PB_STATE_BYTES;}
+pbkdf2_worker_budget :: ()->int #export_c {return 256;}
+pbkdf2_worker_request :: (password:int,salt:int,rounds:int,length:int,budget:int,gate:bool)->u32 #export_c {
+  if gate && (password<4 || password>40 || salt!=16 || rounds!=210000 || length!=32) {return PB_BAD_INPUT;}
+  status:=pb_request(password,salt,rounds,length);if status!=0 {return status;}return pb_budget(budget);
+}
+pb_blocks :: (length:int)->int {return (length+31)/32;}
+pb_request :: (password:int,salt:int,rounds:int,length:int)->u32 {
+  if password<0 || password>PB_MAX_INPUT {return PB_BAD_INPUT;}return pb_params(salt,rounds,length);
+}
+pb_params :: (salt:int,rounds:int,length:int)->u32 {
+  if salt<0 || salt>PB_MAX_INPUT {return PB_BAD_INPUT;}
+  if length<1 || length>PB_MAX_OUTPUT {return PB_BAD_OUTPUT;}
+  // Divide before multiplying: even hostile int64 metadata cannot overflow.
+  if rounds<1 || rounds>PB_MAX_WORK/pb_blocks(length) {return PB_WORK;}return PB_OK;
+}
+pb_budget :: (budget:int)->u32 {return ifx budget<1 || budget>PB_MAX_STEP then PB_BUDGET else PB_OK;}
+pb_gate_admit :: (password:[]u8,salt:int)->u32 {
+  if password.count<4 || password.count>40 || salt!=16 {return PB_BAD_INPUT;}
+  for b:password {if !((b>=97 && b<=122)||(b>=48 && b<=57)) {return PB_BAD_INPUT;}}return PB_OK;
+}
+pb_word :: (state:[]u8,at:int)->int {return cast(int)cb_load_be32(state,at).value;}
+pb_commit :: (source:[]u8,out:[]u8)->u32 {return ifx cb_copy_checked(source,out,false) then PB_OK else PB_BAD_STATE;}
+pb_init_checked :: (state:[]u8,password:[]u8,salt:[]u8,rounds:int,length:int,overlap:bool)->u32 {
+  if state.count!=PB_STATE_BYTES {return PB_BAD_STATE;}
+  status:=pb_request(password.count,salt.count,rounds,length);if status!=0 {return status;}
+  if overlap {return PB_ALIAS;}
+  work:[832]u8;work[0]=80;work[1]=66;work[2]=50;work[3]=54;work[4]=1;work[5]=PB_ACTIVE;
+  stored:=cb_store_be32(work[..],8,cast(u32)rounds);stored=cb_store_be32(work[..],12,cast(u32)length);
+  stored=cb_store_be32(work[..],16,cast(u32)pb_blocks(length));stored=cb_store_be32(work[..],28,cast(u32)salt.count);
+  status=hmac_sha256_init_checked(work[64..<288],password,false);if status!=0 {return status;}
+  for i:0..<224 {work[288+i]=work[64+i];}
+  status=hmac_sha256_update_checked(work[288..<512],salt,false);if status!=0 {return status;}
+  return pb_commit(work[..],state);
+}
+pb_gate_init_checked :: (state:[]u8,password:[]u8,salt:[]u8,overlap:bool)->u32 {
+  status:=pb_gate_admit(password,salt.count);if status!=0 {return status;}
+  return pb_init_checked(state,password,salt,210000,32,overlap);
+}
+pbkdf2_info :: (state:[]u8)->PbProgress #export_c {
+  if state.count!=PB_STATE_BYTES {return PbProgress.{error=PB_BAD_STATE};}
+  if state[0]!=80 || state[1]!=66 || state[2]!=50 || state[3]!=54 || state[4]!=1 {return PbProgress.{error=PB_BAD_STATE};}
+  rounds:=pb_word(state,8);length:=pb_word(state,12);blocks:=pb_word(state,16);block:=pb_word(state,20);round:=pb_word(state,24);salt:=pb_word(state,28);
+  if pb_params(salt,rounds,length)!=0 || blocks!=pb_blocks(length) || block>blocks || round>=rounds {return PbProgress.{error=PB_BAD_STATE};}
+  phase:=cast(u32)state[5];
+  if phase<PB_ACTIVE || phase>PB_STOPPED {return PbProgress.{error=PB_BAD_STATE};}
+  if phase==PB_ACTIVE && block==blocks {return PbProgress.{error=PB_BAD_STATE};}
+  if block==blocks && round!=0 {return PbProgress.{error=PB_BAD_STATE};}
+  if phase==PB_DONE && block!=blocks {return PbProgress.{error=PB_BAD_STATE};}
+  base:=hmac_sha256_info(state[64..<288]);salted:=hmac_sha256_info(state[288..<512]);
+  if base.error!=0 {return PbProgress.{error=base.error};}
+  if salted.error!=0 {return PbProgress.{error=salted.error};}
+  if base.phase!=SHA_ACTIVE || salted.phase!=SHA_ACTIVE || base.total!=0 || salted.total!=cast(u64)salt {return PbProgress.{error=PB_BAD_STATE};}
+  return PbProgress.{phase=phase,completed=block*rounds+round,total=blocks*rounds};
+}
+pb_step_checked :: (state:[]u8,budget:int)->PbProgress {
+  if pb_budget(budget)!=0 {return PbProgress.{error=PB_BUDGET};}
+  info:=pbkdf2_info(state);if info.error!=0 {return info;}
+  if info.phase==PB_STOPPED {info.error=PB_CANCELLED;return info;}
+  work:[832]u8;for i:0..<832 {work[i]=state[i];}
+  rounds:=pb_word(work[..],8);block:=pb_word(work[..],20);round:=pb_word(work[..],24);
+  for step:0..<budget {
+    if block==pb_word(work[..],16) {break;}
+    hmac:[224]u8;at:=ifx round==0 then 288 else 64;for i:0..<224 {hmac[i]=work[at+i];}
+    status:u32;
+    if round==0 {counter:[4]u8;stored:=cb_store_be32(counter[..],0,cast(u32)(block+1));status=hmac_sha256_update_checked(hmac[..],counter[..],false);}
+    else {status=hmac_sha256_update_checked(hmac[..],work[512..<544],false);}
+    if status!=0 {return PbProgress.{error=status};}
+    digest:[32]u8;status=hmac_sha256_final_checked(hmac[..],digest[..],false);if status!=0 {return PbProgress.{error=status};}
+    for i:0..<32 {work[512+i]=digest[i];work[544+i]=ifx round==0 then digest[i] else work[544+i]^digest[i];}
+    round=round+1;
+    if round==rounds {for i:0..<32 {work[576+block*32+i]=work[544+i];}block=block+1;round=0;}
+  }
+  stored:=cb_store_be32(work[..],20,cast(u32)block);stored=cb_store_be32(work[..],24,cast(u32)round);
+  if block==pb_word(work[..],16) {work[5]=PB_DONE;}
+  status:=pb_commit(work[..],state);if status!=0 {return PbProgress.{error=status};}return pbkdf2_info(state);
+}
+pb_result_checked :: (state:[]u8,out:[]u8,overlap:bool)->u32 {
+  info:=pbkdf2_info(state);if info.error!=0 {return info.error;}
+  if info.phase==PB_STOPPED {return PB_CANCELLED;}
+  if info.phase!=PB_DONE {return PB_PHASE;}
+  length:=pb_word(state,12);if !cb_span(out.count,0,length) {return PB_BAD_OUTPUT;}
+  if overlap {return PB_ALIAS;}for i:0..<length {out[i]=state[576+i];}return PB_OK;
+}
+pb_cancel_checked :: (state:[]u8)->u32 {
+  info:=pbkdf2_info(state);if info.error!=0 {return info.error;}state[5]=PB_STOPPED;return PB_OK;
+}

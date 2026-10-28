@@ -1,0 +1,4 @@
+// One generated policy header for the optional Wasm worker's primitive and
+// identified-buffer erasure boundary. This does not replace the web gate.
+#load "pbkdf2-memory.coax";
+#load "zeroize.coax";
