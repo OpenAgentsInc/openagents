@@ -1,0 +1,2 @@
+# Coax has no Linguist grammar yet; Jai is its closest relative on GitHub.
+*.coax linguist-language=Jai
