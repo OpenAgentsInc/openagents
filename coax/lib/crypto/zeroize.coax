@@ -1,0 +1,198 @@
+// Admission and bookkeeping only. Platform zeroize.c performs observable
+// erasure of identified caller buffers; this model never contains secret bytes.
+#authority;
+ZERO_OK :: 0;
+ZERO_CAPACITY :: 1;
+ZERO_RANGE :: 2;
+ZERO_ADDRESS :: 3;
+ZERO_ALIAS :: 4;
+ZERO_STATE :: 5;
+ZERO_EFFECT :: 6;
+ZERO_UNKNOWN :: 7;
+ZERO_REASON :: 8;
+ZERO_PENDING :: 9;
+ZERO_LIMIT :: 1048576;
+ZERO_SLOTS :: 8;
+ZERO_OPEN :: 0;
+ZERO_CLOSING :: 1;
+ZERO_CLOSED :: 2;
+ZeroRecord :: struct {id:u64;capacity:int;secret:int;}
+ZeroScope :: struct {records:[8]ZeroRecord;count:int;phase:u32;pending:u32;error:u32;reason:u32;}
+ZeroChange :: struct {scope:ZeroScope;error:u32;slot:int;}
+
+#forall "erasure spans obey an independent small public range model" capacity:0..<10,offset:-1..<12,length:-1..<12,present:bool {
+  valid:=offset>=0 && length>=0 && offset<=capacity;
+  if valid {valid=offset+length<=capacity;}
+  expected:=ifx !valid then ZERO_RANGE else ifx length>0 && !present then ZERO_ADDRESS else ZERO_OK;
+  #assert zero_admit(capacity,offset,length,present)==cast(u32)expected;
+}
+#test "erasure public metadata is bounded before pointer effects" {
+  #assert zero_limit()==1048576;
+  #assert zero_admit(-1,0,0,true)==ZERO_CAPACITY && zero_admit(1048577,0,0,true)==ZERO_CAPACITY;
+  #assert zero_admit(1048576,0,1048576,true)==ZERO_OK;
+  #assert zero_admit(0,0,0,false)==ZERO_OK;
+  #assert zero_admit(4,9223372036854775807,1,true)==ZERO_RANGE;
+  #assert zero_admit(4,0,9223372036854775807,true)==ZERO_RANGE;
+  #assert zero_admit(4,-9223372036854775808,0,true)==ZERO_RANGE;
+}
+#test "registration bounds every explicit copy and preserves its high water" {
+  s:ZeroScope;#assert zero_scope_status(s)==ZERO_PENDING;
+  #assert zero_scope_register(s,0,8,4,true,false).error==ZERO_UNKNOWN && zero_scope_register(s,0,8,4,true,false).slot==-1;
+  #assert zero_scope_register(s,1,8,-1,true,false).error==ZERO_RANGE;
+  #assert zero_scope_register(s,1,8,4,false,false).error==ZERO_ADDRESS;
+  #assert zero_scope_register(s,1,1,0,false,false).error==ZERO_ADDRESS;
+  #assert zero_scope_register(s,1,8,4,true,true).error==ZERO_ALIAS;
+  c:=zero_scope_register(s,1,8,4,true,false);#assert c.error==0 && c.slot==0;s=c.scope;
+  #assert zero_scope_register(s,1,8,4,true,false).error==ZERO_UNKNOWN;
+  c=zero_scope_register(s,2,8,0,true,false);#assert c.error==0 && c.slot==1;s=c.scope;
+  #assert zero_scope_slot(s,1)==0 && zero_scope_slot(s,2)==1 && zero_scope_slot(s,9)==-1;
+  #assert zero_scope_copy(s,1,9,4,false).error==ZERO_UNKNOWN;
+  #assert zero_scope_copy(s,9,2,4,false).error==ZERO_UNKNOWN;
+  #assert zero_scope_copy(s,1,2,-1,false).error==ZERO_RANGE;
+  #assert zero_scope_copy(s,1,2,5,false).error==ZERO_RANGE;
+  #assert zero_scope_copy(s,1,2,4,true).error==ZERO_ALIAS;
+  #assert zero_scope_copy(s,1,2,1,true).error==ZERO_ALIAS;
+  #assert zero_scope_copy(s,1,1,0,true).error==0;
+  #assert zero_scope_copy(s,1,2,0,false).scope.records[1].secret==0;
+  c=zero_scope_copy(s,1,2,4,false);#assert c.error==0 && c.slot==1;s=c.scope;
+  #assert s.records[1].secret==8;
+  c=zero_scope_copy(s,1,2,1,false);#assert c.error==0 && c.scope.records[1].secret==8;
+  small:=zero_scope_register(s,3,1,0,true,false).scope;
+  #assert zero_scope_copy(small,1,3,2,false).error==ZERO_RANGE;
+  #assert zero_scope_copy(small,1,3,1,false).error==0 && zero_scope_copy(small,1,3,1,false).scope.records[2].secret==1;
+  #assert zero_scope_reset(s).error==ZERO_STATE;
+}
+#forall "success error and cancellation require every wipe acknowledgement" reason:0..<3 {
+  s:ZeroScope;s=zero_scope_register(s,1,8,4,true,false).scope;s=zero_scope_register(s,2,8,0,true,false).scope;
+  s=zero_scope_copy(s,1,2,4,false).scope;c:=zero_scope_begin(s,cast(u32)reason);s=c.scope;
+  #assert c.error==0 && s.reason==cast(u32)reason && s.phase==ZERO_CLOSING && s.pending==3;
+  #assert !zero_scope_complete(s) && zero_scope_pending(s,0)==4 && zero_scope_pending(s,1)==8;
+  #assert zero_scope_pending(s,-1)==0 && zero_scope_pending(s,2)==0;
+  #assert zero_scope_pending(s,31)==0 && zero_scope_pending(s,32)==0;
+  #assert zero_scope_register(s,3,1,1,true,false).error==ZERO_STATE;
+  #assert zero_scope_copy(s,1,2,1,false).error==ZERO_STATE;
+  #assert zero_scope_ack(s,9,0).error==ZERO_UNKNOWN;
+  c=zero_scope_ack(s,1,77);s=c.scope;#assert c.error==ZERO_EFFECT && s.pending==3 && zero_scope_status(s)==ZERO_EFFECT;
+  s=zero_scope_ack(s,2,0).scope;#assert s.pending==1 && !zero_scope_complete(s) && zero_scope_pending(s,1)==0;
+  #assert zero_scope_ack(s,2,0).error==ZERO_STATE;
+  s=zero_scope_begin(s,cast(u32)reason).scope;#assert s.error==0 && s.pending==1;
+  s=zero_scope_ack(s,1,0).scope;#assert zero_scope_complete(s) && zero_scope_status(s)==0 && zero_scope_pending(s,0)==0;
+  #assert zero_scope_begin(s,cast(u32)reason).scope.phase==ZERO_CLOSED;
+  #assert zero_scope_ack(s,1,0).error==ZERO_STATE;
+  c=zero_scope_reset(s);#assert c.error==0 && c.scope.count==0 && c.scope.phase==ZERO_OPEN;
+}
+#test "empty scopes close without inventing erasure and registration has eight slots" {
+  s:ZeroScope;#assert zero_scope_begin(s,3).error==ZERO_REASON;
+  empty:=zero_scope_register(s,1,0,0,false,false);#assert empty.error==0;
+  #assert zero_scope_complete(zero_scope_begin(empty.scope,0).scope);
+  for i:0..<8 {c:=zero_scope_register(s,cast(u64)(i+1),1,1,true,false);#assert c.error==0;s=c.scope;}
+  bad:=s;bad.count=9;#assert !zero_scope_valid(bad);
+  #assert zero_scope_register(s,9,1,1,true,false).error==ZERO_CAPACITY;
+  s=zero_scope_begin(s,0).scope;#assert s.pending==255;
+  for i:0..<8 {s=zero_scope_ack(s,cast(u64)(i+1),0).scope;}
+  #assert zero_scope_complete(s);
+  retry:=zero_scope_register(ZeroScope.{},1,1,1,true,false).scope;retry=zero_scope_begin(retry,1).scope;
+  retry=zero_scope_ack(retry,1,6).scope;retry=zero_scope_ack(retry,1,0).scope;#assert zero_scope_complete(retry);
+}
+#test "malformed bookkeeping cannot produce a clean result" {
+  bad:ZeroScope;bad.count=-1;#assert !zero_scope_valid(bad) && zero_scope_slot(bad,1)==-1;
+  #assert zero_scope_register(bad,1,1,1,true,false).error==ZERO_STATE;
+  #assert zero_scope_copy(bad,1,2,1,false).error==ZERO_STATE;
+  #assert zero_scope_begin(bad,0).error==ZERO_STATE;
+  #assert zero_scope_ack(bad,1,0).error==ZERO_STATE;
+  #assert zero_scope_pending(bad,0)==0 && zero_scope_status(bad)==ZERO_STATE && !zero_scope_complete(bad);
+  bad=ZeroScope.{};bad.count=9;#assert !zero_scope_valid(bad);
+  bad=ZeroScope.{};bad.phase=3;#assert !zero_scope_valid(bad);
+  bad=ZeroScope.{};bad.error=7;#assert !zero_scope_valid(bad);
+  bad=ZeroScope.{};bad.reason=3;#assert !zero_scope_valid(bad);
+  bad=ZeroScope.{};bad.pending=1;#assert !zero_scope_valid(bad);
+  bad=ZeroScope.{};bad.phase=ZERO_CLOSING;#assert !zero_scope_valid(bad);
+  bad=ZeroScope.{};bad.error=ZERO_EFFECT;#assert !zero_scope_valid(bad);
+  bad=zero_scope_register(ZeroScope.{},1,1,0,true,false).scope;bad.pending=1;bad.phase=ZERO_CLOSING;#assert !zero_scope_valid(bad);
+  bad=zero_scope_register(ZeroScope.{},1,1,1,true,false).scope;bad.pending=2;bad.phase=ZERO_CLOSING;#assert !zero_scope_valid(bad);
+  #assert zero_scope_ack(bad,9,0).error==ZERO_STATE;
+  bad=zero_scope_register(ZeroScope.{},1,1,1,true,false).scope;bad=zero_scope_register(bad,2,1,0,true,false).scope;
+  bad.pending=2;bad.phase=ZERO_CLOSING;#assert !zero_scope_valid(bad);
+  bad=zero_scope_register(ZeroScope.{},1,1,1,true,false).scope;bad.records[0].secret=2;#assert !zero_scope_valid(bad);
+  bad=zero_scope_register(ZeroScope.{},1,1,1,true,false).scope;bad.records[0].id=0;#assert !zero_scope_valid(bad);
+  bad=zero_scope_register(ZeroScope.{},1,1,1,true,false).scope;bad=zero_scope_register(bad,2,1,1,true,false).scope;bad.records[1].id=1;#assert !zero_scope_valid(bad);
+}
+
+zero_limit :: ()->int #export_c {return ZERO_LIMIT;}
+zero_admit :: (capacity:int,offset:int,length:int,present:bool)->u32 #export_c {
+  if capacity<0 || capacity>ZERO_LIMIT {return ZERO_CAPACITY;}
+  if offset<0 || length<0 || offset>capacity {return ZERO_RANGE;}
+  if length>capacity-offset {return ZERO_RANGE;}
+  if length>0 && !present {return ZERO_ADDRESS;}
+  return ZERO_OK;
+}
+zero_scope_valid :: (s:ZeroScope)->bool #export_c {
+  if s.count<0 || s.count>ZERO_SLOTS || s.phase>ZERO_CLOSED || s.reason>2 {return false;}
+  if s.error!=0 && s.error!=ZERO_EFFECT {return false;}
+  allowed:=(cast(u32)1<<s.count)-1;
+  if (s.pending&(cast(u32)4294967295^allowed))!=0 {return false;}
+  if s.phase==ZERO_CLOSING {if s.pending==0 {return false;}}
+  else {if s.pending!=0 || s.error!=0 {return false;}}
+  for i:0..<s.count {
+    r:=s.records[i];if r.id==0 || zero_admit(r.capacity,0,r.secret,true)!=0 {return false;}
+    if r.secret==0 && (s.pending&(cast(u32)1<<i))!=0 {return false;}
+    for j:0..<i {if s.records[j].id==r.id {return false;}}
+  }
+  return true;
+}
+zero_reject :: (s:ZeroScope,error:u32)->ZeroChange {return ZeroChange.{scope=s,error=error,slot=-1};}
+zero_find :: (s:ZeroScope,id:u64)->int {for i:0..<s.count {if s.records[i].id==id {return i;}}return -1;}
+zero_scope_slot :: (s:ZeroScope,id:u64)->int #export_c {if !zero_scope_valid(s) {return -1;}return zero_find(s,id);}
+zero_scope_register :: (s:ZeroScope,id:u64,capacity:int,secret:int,present:bool,overlap:bool)->ZeroChange #export_c {
+  if !zero_scope_valid(s) || s.phase!=ZERO_OPEN {return zero_reject(s,ZERO_STATE);}
+  if s.count==ZERO_SLOTS {return zero_reject(s,ZERO_CAPACITY);}
+  if id==0 || zero_find(s,id)>=0 {return zero_reject(s,ZERO_UNKNOWN);}
+  status:=zero_admit(capacity,0,secret,true);if status!=0 {return zero_reject(s,status);}
+  if capacity>0 && !present {return zero_reject(s,ZERO_ADDRESS);}
+  if overlap {return zero_reject(s,ZERO_ALIAS);}
+  next:=s;next.records[s.count]=ZeroRecord.{id=id,capacity=capacity,secret=secret};next.count=s.count+1;
+  return ZeroChange.{scope=next,slot=s.count};
+}
+zero_scope_copy :: (s:ZeroScope,source:u64,destination:u64,length:int,overlap:bool)->ZeroChange #export_c {
+  if !zero_scope_valid(s) || s.phase!=ZERO_OPEN {return zero_reject(s,ZERO_STATE);}
+  from:=zero_find(s,source);to:=zero_find(s,destination);
+  if from<0 || to<0 {return zero_reject(s,ZERO_UNKNOWN);}
+  if length<0 || length>s.records[from].secret || length>s.records[to].capacity {return zero_reject(s,ZERO_RANGE);}
+  if length>0 && overlap {return zero_reject(s,ZERO_ALIAS);}
+  // A copy destination is exclusive scratch: any nonempty copy makes its
+  // entire registered capacity dirty, avoiding untracked partial-copy tails.
+  next:=s;if length>0 {next.records[to].secret=next.records[to].capacity;}
+  return ZeroChange.{scope=next,slot=to};
+}
+zero_scope_begin :: (s:ZeroScope,reason:u32)->ZeroChange #export_c {
+  if !zero_scope_valid(s) {return zero_reject(s,ZERO_STATE);}
+  if reason>2 {return zero_reject(s,ZERO_REASON);}
+  next:=s;next.error=0;
+  if s.phase==ZERO_OPEN {
+    next.reason=reason;for i:0..<s.count {if s.records[i].secret>0 {next.pending=next.pending|(cast(u32)1<<i);}}
+    next.phase=ifx next.pending==0 then ZERO_CLOSED else ZERO_CLOSING;
+  }
+  return ZeroChange.{scope=next};
+}
+zero_scope_ack :: (s:ZeroScope,id:u64,status:u32)->ZeroChange #export_c {
+  if !zero_scope_valid(s) || s.phase!=ZERO_CLOSING {return zero_reject(s,ZERO_STATE);}
+  slot:=zero_find(s,id);if slot<0 {return zero_reject(s,ZERO_UNKNOWN);}
+  bit:=cast(u32)1<<slot;if (s.pending&bit)==0 {return zero_reject(s,ZERO_STATE);}
+  next:=s;
+  if status!=0 {next.error=ZERO_EFFECT;return ZeroChange.{scope=next,error=ZERO_EFFECT,slot=slot};}
+  next.pending=next.pending&(cast(u32)4294967295^bit);if next.pending==0 {next.phase=ZERO_CLOSED;next.error=0;}
+  return ZeroChange.{scope=next,slot=slot};
+}
+zero_scope_pending :: (s:ZeroScope,slot:int)->int #export_c {
+  if !zero_scope_valid(s) || slot<0 || slot>=32 {return 0;}
+  if (s.pending&(cast(u32)1<<slot))==0 {return 0;}return s.records[slot].secret;
+}
+zero_scope_status :: (s:ZeroScope)->u32 #export_c {
+  if !zero_scope_valid(s) {return ZERO_STATE;}
+  if s.error!=0 {return ZERO_EFFECT;}
+  return ifx s.phase==ZERO_CLOSED then ZERO_OK else ZERO_PENDING;
+}
+zero_scope_complete :: (s:ZeroScope)->bool #export_c {return zero_scope_status(s)==ZERO_OK;}
+zero_scope_reset :: (s:ZeroScope)->ZeroChange #export_c {
+  if !zero_scope_complete(s) {return zero_reject(s,ZERO_STATE);}return ZeroChange.{};
+}

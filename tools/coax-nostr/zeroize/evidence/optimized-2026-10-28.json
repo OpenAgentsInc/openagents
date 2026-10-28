@@ -1,0 +1,145 @@
+{
+  "schema": "coax.zeroize-artifact-observations.v1",
+  "scope": "identified registered caller buffers only",
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "wasm_compiler": "Homebrew clang version 23.1.4",
+  "wasm_disassembler": "wasm-dis version 132",
+  "source_sha256": {
+    "coax/lib/crypto/zeroize.coax": "158c6a3eb2c8139a1ac6059201dc26aae052b358cab580121335f774235df16c",
+    "coax/lib/crypto/platform/zeroize.c": "7f1767b1bd35a577a43b0c076e561fb7737f2bbe31bc89e903064bd457b9081a",
+    "coax/lib/crypto/platform/zeroize.h": "1bb0d7d87793eace4c9b7592b5a99ab7d19e499f0c14afeb324e0533995fb3c3",
+    "tools/coax-nostr/zeroize/probe.c": "f1e755d395a9f4607ddb55df9097d6c1a246c01d71dfa94bcb3c48549de7eb40",
+    "tools/coax-nostr/zeroize/functional.c": "04ea4d3fb7b15bcd356ee969455c900602537777a430328debbe19dd302f3d6b",
+    "tools/coax-nostr/zeroize/wasm.cjs": "74b002d4e66faf3ef36d88ee0e10c4c739dd63fc59b058649a43370a88d43809",
+    "tools/coax-nostr/zeroize/test_zeroize.py": "6e97581827fc6e5fb350164669c4b0d8daf6f62ec3f8107de1e9ef9eccf90004"
+  },
+  "artifacts": [
+    {
+      "target": "wasm32-wasip1 Node/V8/WASI",
+      "mode": "checked",
+      "O3": true,
+      "LTO": false,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 8,
+      "functional": {
+        "target": "wasm32-wasip1",
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "ranges": 2145,
+        "scopes": 3,
+        "max_bytes": 1048576
+      },
+      "functional_artifact_sha256": "a76f8e82d6afd7a96c18f8d0dfca799fbd0abab6c26e66654c9b6a706d860843",
+      "artifact_sha256": "d82c5bb430a1e7dcd46066806ee69a108e4bed203dd534c175ca9742b1a41c13",
+      "disassembly_sha256": "069f3f5b4175ad3a52f774facb139cdbd753b7c693b2ffa7ae4c33063a8c8832"
+    },
+    {
+      "target": "wasm32-wasip1 Node/V8/WASI",
+      "mode": "checked",
+      "O3": true,
+      "LTO": true,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 64,
+      "functional": {
+        "target": "wasm32-wasip1",
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "ranges": 2145,
+        "scopes": 3,
+        "max_bytes": 1048576
+      },
+      "functional_artifact_sha256": "98a5407cf4cdc42e1b2e774819c45c10eca22072add8bd3d6d0756ce53e77cc8",
+      "artifact_sha256": "40182d965db6238a14d0bf8878c27a788725e3a903628164f0c6d17d2bbc7857",
+      "disassembly_sha256": "962601c3d4acbaa8fcc60e585ea27a6ac05f3759edf57e326d68afd7b8998ecf"
+    },
+    {
+      "target": "wasm32-wasip1 Node/V8/WASI",
+      "mode": "release",
+      "O3": true,
+      "LTO": false,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 8,
+      "functional": {
+        "target": "wasm32-wasip1",
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "ranges": 2145,
+        "scopes": 3,
+        "max_bytes": 1048576
+      },
+      "functional_artifact_sha256": "a76f8e82d6afd7a96c18f8d0dfca799fbd0abab6c26e66654c9b6a706d860843",
+      "artifact_sha256": "d82c5bb430a1e7dcd46066806ee69a108e4bed203dd534c175ca9742b1a41c13",
+      "disassembly_sha256": "069f3f5b4175ad3a52f774facb139cdbd753b7c693b2ffa7ae4c33063a8c8832"
+    },
+    {
+      "target": "wasm32-wasip1 Node/V8/WASI",
+      "mode": "release",
+      "O3": true,
+      "LTO": true,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 64,
+      "functional": {
+        "target": "wasm32-wasip1",
+        "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+        "ranges": 2145,
+        "scopes": 3,
+        "max_bytes": 1048576
+      },
+      "functional_artifact_sha256": "98a5407cf4cdc42e1b2e774819c45c10eca22072add8bd3d6d0756ce53e77cc8",
+      "artifact_sha256": "40182d965db6238a14d0bf8878c27a788725e3a903628164f0c6d17d2bbc7857",
+      "disassembly_sha256": "962601c3d4acbaa8fcc60e585ea27a6ac05f3759edf57e326d68afd7b8998ecf"
+    },
+    {
+      "target": "Apple arm64",
+      "mode": "checked",
+      "O3": true,
+      "LTO": false,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 1,
+      "artifact_sha256": "475a0ad7ccf7a76414b844d1858bc4969125914559e7dfc970f2b357ceec2986",
+      "disassembly_sha256": "abfeacc40cb2bd5d4674e2d4c3d04e67b79db7c4fd00de2eaac1b71139a65d40"
+    },
+    {
+      "target": "Apple arm64",
+      "mode": "checked",
+      "O3": true,
+      "LTO": true,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 64,
+      "artifact_sha256": "d575e7a70b6d27d2bc4582cda1522ebd3d8f6963646d0f43220c4efd053f9922",
+      "disassembly_sha256": "cbd19a595c7c3531e8cf91e1ec8e2f0b04146ec271ee30899b1057fefa3687d0"
+    },
+    {
+      "target": "Apple arm64",
+      "mode": "release",
+      "O3": true,
+      "LTO": false,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 1,
+      "artifact_sha256": "bf43d80efce2a9924ff85fd25d984706b7fe86dd7135742012d3c7c97afbbce5",
+      "disassembly_sha256": "9eb77d478d3caa07721e80027570e7be0506d895a1ba8bb98f18bff86c4fa6ff"
+    },
+    {
+      "target": "Apple arm64",
+      "mode": "release",
+      "O3": true,
+      "LTO": true,
+      "probe_buffer_post_wipe_observation": false,
+      "zero_byte_store_instructions": 64,
+      "artifact_sha256": "7738e68f18fe500ce770a449b158d3f013170158013a00cf82464c6be9ab2cf4",
+      "disassembly_sha256": "0fc12657185d0e9e7911ec526ccbb53d0905453e5b7a63ea09bbf4b6232dc671"
+    }
+  ],
+  "native_functional_libraries": {
+    "checked": "7e4a49db03c44d601d0242d620f73d5759f33be800d2bb66ee4d062e5b0e62c7",
+    "checked-lto": "ec9eef049b2f94d16f5c902e8fd5bf929ca5971b4353061f1abee2096ea7b3da",
+    "release": "7a39132624871eb490827cf8791fb1666cfd8b5b5b2d3375e9b80746447f05f3",
+    "release-lto": "bd295c865b770e007cde89979e35a7f472c5f3e1faca25cd2366438aa957eeac"
+  },
+  "excluded": [
+    "registers",
+    "unregistered/hidden compiler and ABI copies",
+    "OS/swap/snapshots",
+    "physical device certification"
+  ]
+}
