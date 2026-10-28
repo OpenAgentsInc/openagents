@@ -55,6 +55,16 @@ Haunt :: struct {
 #test "portal requires proximity; no accidental teleport at spawn" {
  #assert (!verse_haunt_portal(0,0));#assert (verse_haunt_portal(-1.5,10));#assert (!verse_haunt_portal(-1.5,14));
 }
+#test "walking in through the front door, on either side of it, advances the quest" {
+ rooms:=[2]HauntArea.[HauntArea.{rect=HauntRect.{x0= -5.4,z0=0.45,x1=21.4,z1=19.55}},HauntArea.{rect=HauntRect.{x0=6,z0=20,x1=10,z1=28},room=true}];
+ for x:[3]f32.[6.5,7,7.9] {
+  s:Haunt;s.ok=true;s.areas=rooms[..];s.area_count=2;
+  z:f32=2;t:f64=0;
+  while z<23 && s.quest==0 {p:=hh_p(x,0,z);s=verse_haunt_advance(s,t,p,p,0,0.05,true);z+=0.05;t+=1.0/60;}
+  #assert s.quest==1 && z<20.2 && verse_haunt_step_line(s)=="Edit the hall: walk to the orb";
+ }
+ s:Haunt;s.ok=true;s.areas=rooms[..];s.area_count=2;p:=hh_p(6.5,0,19);s=verse_haunt_advance(s,0,p,p,0,0,true);#assert s.quest==0;
+}
 #test "quest advances only the current action and stops at eight" {
  #assert (hh_quest(0,"edit")==0);#assert (hh_quest(1,"edit")==2);#assert (hh_quest(2,"place")==3);#assert (hh_quest(7,"survey")==8);#assert (hh_quest(8,"survey")==8);
 }
@@ -169,7 +179,10 @@ verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f
  next:=s;next.time=t;next.player=player;next.eye=eye;next.heading=heading;next.sound_count=0;
  if !s.ok{return next;}
  next=hh_people_step(next,hh_clamp(cast(f32)(t-s.time),0,0.1));
- if next.quest==0 && hh_len(player,hh_p(8,0,21.6))<1.4 {next.quest=1;next.dirty=true;}
+ // Walked in: at the orange light, or anywhere in the room it is in (the
+ // light's 1.4 m reach misses a player who comes through the door's left side).
+ light:=hh_p(8,0,21.6);
+ if next.quest==0 && (hh_len(player,light)<1.4 || (verse_haunt_area(s,player)>=0 && verse_haunt_area(s,player)==verse_haunt_area(s,light))) {next.quest=1;next.dirty=true;}
  for i:0..<s.zone_count {
   z:=s.zones[i];inside:=hh_inside(z,hh_p(player.x,player.y+1,player.z));bit:=cast(u32)1<<i;
   if inside && hh_can_fire((s.fired&bit)!=0,z.once,z.entered) {

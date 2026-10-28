@@ -78,7 +78,7 @@ static uint8_t live[2][SNAP];
 static int live_k;
 static int64_t edit_camera;   // the view before edit mode (it shows you in third person)
 static char kept[262144];
-static uint32_t kept_n;            // hex waiting for the house to open (0 none)
+static uint32_t kept_n;            // the kept house's bytes waiting for it to open (0 none)
 static uint32_t keep_n;            // hex in `kept` for the host to keep now
 static double kept_at = -10;
 static uint8_t inbox[262144];      // the host's messages: typed text, the kept house (hex)
@@ -127,10 +127,12 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 
 static void rebuild_walls(void) { wall_count = verse_haunt_walls(house, (coax_v_f32){walls, 4096 * 6}); }
 
-// The house kept on an earlier visit, if it is still valid for this one.
+// The house kept on an earlier visit (message 4), read out of the inbox as
+// it arrives: later messages (the page facts, 600) reuse the inbox before the
+// house opens. kept_n: its bytes in `restored`, 0 none.
 static int hex(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; }
-static void restore_kept(void) {
-  uint32_t n = kept_n / 2;
+static void take_kept(uint32_t length) {
+  uint32_t n = length / 2;
   kept_n = 0;
   if (n == 0 || n > sizeof restored) return;
   for (uint32_t i = 0; i < n; i++) {
@@ -138,7 +140,12 @@ static void restore_kept(void) {
     if (a < 0 || b < 0) return;
     restored[i] = (uint8_t)(a * 16 + b);
   }
-  coax_v_u8 bytes = {restored, n};
+  kept_n = n;
+}
+// When the house opens: the kept house, if it is still valid for this one.
+static void restore_kept(void) {
+  coax_v_u8 bytes = {restored, kept_n};
+  kept_n = 0;
   if (!verse_haunt_save_valid(house, bytes)) return;
   house = verse_haunt_restore(house, bytes);
   rebuild_walls();
@@ -520,6 +527,6 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));   // the facts come before the first frame
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
   if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
-  if (kind == 4 && !opened) kept_n = length;   // restore_kept reads it from the inbox when the house opens
+  if (kind == 4 && !opened) take_kept(length);   // restore_kept opens it with the house
 }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { (void)state; return realm_wants_text(realm_of()) ? 1 : 0; }
