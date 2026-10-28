@@ -26,6 +26,12 @@ release. The tools run on the machine that holds the project key
    the checkout is busy. Follow the repo's AGENTS.md and INVARIANTS.md. Run
    every acceptance check named in the task, plus `coax test` for each Coax
    file you touched.
+   Other agents share the main checkout: never stash, reset or autostash
+   their files (not even `git pull --rebase --autostash` to push). If the
+   checkout is dirty in anything but your own files, commit and push from a
+   worktree of `origin/main`, and run `publish.ts` from one too when your
+   checkout lags the tools (copy `state/<slug>.json` and link
+   `node_modules` into it).
 5. **Post your plan and keep it current.** Right after claiming, write the
    steps you'll take: `bun publish.ts plan SLUG set "step" "step" ...`. As you
    work, `plan SLUG start N` marks the step you're on (one at a time),
