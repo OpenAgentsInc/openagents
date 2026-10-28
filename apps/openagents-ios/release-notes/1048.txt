@@ -1,0 +1,3 @@
+Start opens the Grid with you as an animated character: idle, walking, running and jumping blend smoothly. Robots patrol the ring, and the Foreman stands by the start.
+
+Test: tap Start, walk with the left stick, push it further to run, tap the right side to jump, and drag right to look around for the robots. Rotate and background/resume.
