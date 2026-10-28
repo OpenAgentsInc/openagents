@@ -16,6 +16,7 @@
 
 #load "font.coax";
 #load "projects/list.coax";
+#load "analytics.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 60000;

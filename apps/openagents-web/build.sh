@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm and build/realm.wasm.
+# build/projects.wasm, build/realm.wasm and build/admin.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -34,5 +34,7 @@ wait "$coax"
 wait "$verse"
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
 wait "$list"
+# /admin/analytics: the projects list's HUD over the admins' numbers.
+"$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm"
 wait "$splash"
 wait "$realm"

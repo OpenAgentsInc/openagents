@@ -18,8 +18,13 @@ port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))
 "$pg/bin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null
 "$pg/bin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
 export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analytics"
-# The test admin: a fixed key that signs only here.
-export OA_ADMIN_PUBKEYS="${OA_TEST_ADMIN_PUBKEY:-}"
+# The signer (sign.c), and two throwaway keys: an admin and someone else.
+$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/sign" "$here/sign.c" \
+  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
+export SIGN="$work/sign" ADMIN_KEY="$work/admin.key" OTHER_KEY="$work/other.key"
+export OA_ADMIN_PUBKEYS="$("$SIGN" --new "$ADMIN_KEY")"
+"$SIGN" --new "$OTHER_KEY" >/dev/null
 OA_API_ORIGIN="http://127.0.0.1:$api_port" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
 API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }

@@ -27,7 +27,8 @@ for svc in oa-api-staging oa-api; do
   args=(); for h in "${headers[@]}"; do args+=(--custom-request-header "$h"); done
   g compute backend-services update "$svc" --global "${args[@]}" >/dev/null
 done
-# The path rules (the map read as JSON, which import takes as YAML): /api/ in each host's matcher, at the next free priority.
+# The path rules (the map read as JSON, which import takes as YAML): /api/ in each host's matcher, at the next
+# free priority, and /admin/analytics to the site in production.
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
 g compute url-maps describe "$map" --global --format json > "$tmp"
 python3 -I - "$tmp" "$project" <<'PY'
@@ -44,6 +45,17 @@ for pm in m["pathMatchers"]:
     rules.append({"priority": max([r["priority"] for r in rules] or [0]) + 1, "matchRules": [{"prefixMatch": "/api/"}],
                   "service": f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendServices/{svc}"})
     changed = True
+# /admin/analytics (admin.coax) is a Coaxial page: in production it goes to the
+# site's bucket with the other Coax pages, not to the coder service's /admin.
+for pm in m["pathMatchers"]:
+    if pm["name"] != "production": continue
+    for rule in pm.get("routeRules", []):
+        if not rule.get("service", "").endswith("/coaxial-openagents-web"): continue
+        have = {r.get("fullPathMatch") or r.get("prefixMatch") for r in rule.get("matchRules", [])}
+        for match in ({"fullPathMatch": "/admin/analytics"}, {"prefixMatch": "/admin/analytics/"}):
+            if next(iter(match.values())) not in have:
+                rule["matchRules"].append(match); changed = True
+                print("url map: production " + next(iter(match.values())) + " to the site")
 for k in ("kind", "creationTimestamp", "id", "selfLink"): m.pop(k, None)   # read-only: import refuses them
 json.dump(m, open(path, "w"))
 print("url map: /api/ rules added" if changed else "url map: /api/ rules already there")

@@ -1,0 +1,63 @@
+# The admin dashboard's routes (pt-dashboard): only a signed-in admin sees anything. test.py runs this file.
+import base64
+
+
+def signed(key, method, url):
+    return subprocess.run([os.environ["SIGN"], "--key", key, method, url], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def login(key, origin=API):
+    auth = urllib.parse.quote(signed(key, "GET", origin + "/api/admin/login"), safe="")
+    return call("GET", "/api/admin/login?auth=" + auth)
+
+
+import urllib.parse
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+urllib.request.install_opener(urllib.request.build_opener(NoRedirect))
+admin, other = os.environ["ADMIN_KEY"], os.environ["OTHER_KEY"]
+reports = "/api/admin/analytics?view=overview&days=0&space=all&auto=1"
+
+status, body, _ = call("GET", reports)
+check("signed out: a 401 and no numbers", status == 401 and b"Sessions" not in body, body)
+status, body, _ = call("GET", reports, headers={"Cookie": "oa_admin=" + "0" * 64})
+check("a made-up session: a 401", status == 401)
+status, body, _ = login(other)
+check("someone not on the list can't sign in", status == 403 and b"Set-Cookie" not in body, body)
+status, body, _ = call("GET", reports, headers={"Authorization": "Nostr " + signed(other, "GET", API + reports)})
+check("someone not on the list can't sign a request either", status == 403 and b"Sessions" not in body, body)
+
+auth = urllib.parse.quote(signed(admin, "GET", API + "/api/admin/login"), safe="")
+status, body, headers = call("GET", "/api/admin/login?auth=" + auth)
+cookie = headers.get("Set-Cookie", "")
+check("an admin signs in: a session cookie and on to the dashboard",
+      status == 303 and headers.get("Location") == "/admin/analytics" and cookie.startswith("oa_admin=")
+      and "HttpOnly" in cookie and "Secure" in cookie and "SameSite=Strict" in cookie and "Path=/api/admin" in cookie, (status, headers))
+check("the same signed sign-in can't be used twice", call("GET", "/api/admin/login?auth=" + auth)[0] == 401)
+check("a sign-in signed for another site is refused", login(admin, "https://evil.example")[0] == 401)
+token = cookie.split(";")[0]
+check("only the token's hash is kept", sql("select count(*) from analytics.admin_sessions where token_sha256 = '" + token.split("=")[1] + "'") == "0")
+
+status, body, _ = call("GET", reports, headers={"Cookie": token})
+text = body.decode()
+check("the admin sees the reports", status == 200 and "#SUMMARY||WHAT|COUNT" in text and "#FUNNEL|" in text and "#WHAT THEY SAID AND TYPED|s|" in text, text[:300])
+check("the reports count the captured sessions", "Sessions|4" in text and "It was spooky" in text, text[:600])
+check("automated sessions can be left out", "Sessions|2" in call("GET", reports.replace("auto=1", "auto=0"), headers={"Cookie": token})[1].decode())
+status, body, _ = call("GET", "/api/admin/analytics?view=sessions&days=0", headers={"Cookie": token})
+check("the sessions list", status == 200 and "#SESSIONS|s|" in body.decode() and sid in body.decode(), body[:300])
+status, body, _ = call("GET", "/api/admin/analytics?view=session&sid=" + sid, headers={"Cookie": token})
+lines = body.decode().split("#TIMELINE")[1].splitlines()[1:]
+check("a session's timeline, in order, with its words", [l.split("|")[2] for l in lines] == ["session-start", "world-enter", "area", "prompt", "survey-sent"]
+      and "text It was spooky" in lines[-1] and "Address|203.0.113.9" in body.decode(), body.decode())
+check("a bad session id is a 400", call("GET", "/api/admin/analytics?view=session&sid=x'y", headers={"Cookie": token})[0] == 400)
+signed_url = API + "/api/admin/analytics?view=overview"
+h = {"Authorization": "Nostr " + signed(admin, "GET", signed_url)}
+check("an admin's signed request works once", call("GET", "/api/admin/analytics?view=overview", headers=h)[0] == 200
+      and call("GET", "/api/admin/analytics?view=overview", headers=h)[0] == 401)
+call("GET", "/api/admin/logout", headers={"Cookie": token})
+check("signed out: the session is gone", call("GET", reports, headers={"Cookie": token})[0] == 401)

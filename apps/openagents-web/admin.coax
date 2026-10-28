@@ -1,0 +1,479 @@
+// /admin/analytics, drawn by Coax: what people did on openagents.com and in
+// the playtest, for admins only. The numbers are oa-api's (coax/web/api/admin.c,
+// GET /api/admin/analytics), fetched through the host's HTTP import with the
+// admin's session cookie; this page decides nothing about who may see them.
+// Until an answer says otherwise nothing is drawn but LOADING, and a 401 or
+// 403 draws ADMINS ONLY and nothing else.
+//
+// The answer is sections: "#TITLE|FLAGS|COLUMN|..." then a "value|value|..."
+// line a row. Small sections sit side by side on a wide screen; a long one
+// (more than four columns, or rows that open a session) spans the width.
+// FLAGS "s": a row's first value is a session id, and a click opens its
+// timeline. The filters: OVERVIEW or SESSIONS, the days, the space (openagents.com
+// is WEB; KIKI and DEV are the playtest's two), and AUTOMATED (count robots
+// and test runs too). Escape goes back from a session.
+
+#load "projects.coax";
+
+AD_MAX_VERTICES :: 240000;
+AD_INBOX :: 1048576;       // the host's messages: an answer is "STATUS\n" then the rows
+AD_DATA :: 1048576;
+AD_ROWS :: 4096;
+AD_SECTIONS :: 16;
+AD_COLS :: 12;
+AD_ASK :: 512;
+AD_ROW :: 17.0;            // CSS pixels a row
+AD_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
+AD_NAVIGATE :: 1;
+
+AD_OVERVIEW :: 0; AD_SESSIONS :: 1; AD_SESSION :: 2;
+AD_CHIPS :: 13;
+AD_CHIP_LABELS :: [13] string.["OVERVIEW", "SESSIONS", "1 DAY", "7 DAYS", "30 DAYS", "ALL TIME", "ALL", "WEB", "KIKI", "DEV",
+                              "AUTOMATED", "BACK", "SIGN OUT"];
+AD_DAYS :: [4] string.["1", "7", "30", "0"];
+AD_SPACES :: [4] string.["all", "web", "kiki", "dev"];
+AD_CHIP :: 100000;         // hot: AD_CHIP + a chip, or a row's index, or -1
+
+AdminState :: struct {
+  time: f32; ready: bool;
+  width: f32; height: f32; d: f32;
+  view: int; days: int; space: int; autos: bool;
+  sid: [96] u8; sid_n: int;
+  status: int;                 // -1 nothing asked yet, 0 waiting, else the last answer's HTTP status
+  ask: [AD_ASK] u8; ask_n: int;   // a request for the face to send
+  scroll: f32; hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
+  outbox: [64] u8; out_n: int; action: int;
+  data: [AD_DATA] u8; data_n: int;
+  sec_n: int;
+  sec_head: [AD_SECTIONS] int; sec_end: [AD_SECTIONS] int;   // the "#" line
+  sec_first: [AD_SECTIONS] int; sec_rows: [AD_SECTIONS] int; sec_cols: [AD_SECTIONS] int;
+  sec_weight: [AD_SECTIONS * AD_COLS] f32;
+  row_at: [AD_ROWS] int; row_end: [AD_ROWS] int; row_n: int;
+  inbox: [AD_INBOX] u8;
+}
+
+// ---- the answer's rows
+
+// The col-th value of the line data[from..<to].
+ad_cell :: (s: [] AdminState, from: int, to: int, col: int) -> string {
+  i := from; c := 0;
+  while c < col && i < to { if s[0].data[i] == '|' { c += 1; } i += 1; }
+  j := i;
+  while j < to && s[0].data[j] != '|' { j += 1; }
+  return cast(string) s[0].data[i..<j];
+}
+ad_count_cols :: (s: [] AdminState, from: int, to: int) -> int {
+  c := 1;
+  for i: from..<to { if s[0].data[i] == '|' { c += 1; } }
+  return c;
+}
+
+// Indexes the rows in data: the sections, their rows, each column's share.
+ad_index :: (s: [] AdminState) {
+  s[0].sec_n = 0; s[0].row_n = 0;
+  at := 0; n := s[0].data_n;
+  while at < n {
+    stop := at;
+    while stop < n && s[0].data[stop] != '\n' { stop += 1; }
+    if s[0].data[at] == '#' {
+      if s[0].sec_n < AD_SECTIONS {
+        k := s[0].sec_n;
+        s[0].sec_head[k] = at + 1; s[0].sec_end[k] = stop;
+        s[0].sec_first[k] = s[0].row_n; s[0].sec_rows[k] = 0;
+        cols := ad_count_cols(s, at + 1, stop) - 2;
+        s[0].sec_cols[k] = ifx cols > AD_COLS then AD_COLS else ifx cols < 1 then 1 else cols;
+        for c: 0..<AD_COLS { s[0].sec_weight[k * AD_COLS + c] = cast(f32) ad_cell(s, at + 1, stop, c + 2).count; }
+        s[0].sec_n += 1;
+      }
+    } else if s[0].sec_n > 0 && stop > at && s[0].row_n < AD_ROWS {
+      k := s[0].sec_n - 1;
+      s[0].row_at[s[0].row_n] = at; s[0].row_end[s[0].row_n] = stop;
+      s[0].row_n += 1; s[0].sec_rows[k] += 1;
+      for c: 0..<s[0].sec_cols[k] {
+        clen := cast(f32) ad_cell(s, at, stop, c).count;
+        if clen > s[0].sec_weight[k * AD_COLS + c] { s[0].sec_weight[k * AD_COLS + c] = clen; }
+      }
+    }
+    at = stop + 1;
+  }
+  for k: 0..<s[0].sec_n {
+    for c: 0..<AD_COLS { s[0].sec_weight[k * AD_COLS + c] = clamp(s[0].sec_weight[k * AD_COLS + c], 4, 48) + 2; }
+  }
+}
+ad_title :: (s: [] AdminState, k: int) -> string { return ad_cell(s, s[0].sec_head[k], s[0].sec_end[k], 0); }
+ad_opens :: (s: [] AdminState, k: int) -> bool {
+  flags := ad_cell(s, s[0].sec_head[k], s[0].sec_end[k], 1);
+  for c: flags { if c == 's' { return true; } }
+  return false;
+}
+ad_wide_section :: (s: [] AdminState, k: int) -> bool { return s[0].sec_cols[k] > 4 || ad_opens(s, k); }
+
+// ---- asking oa-api
+
+ad_put :: (s: [] AdminState, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < AD_ASK { s[0].ask[n] = c; n += 1; } }
+  return n;
+}
+ad_ask :: (s: [] AdminState) {
+  n := ad_put(s, 0, "/api/admin/analytics?view=");
+  if s[0].view == AD_SESSION {
+    n = ad_put(s, n, "session&sid=");
+    n = ad_put(s, n, cast(string) s[0].sid[0..<s[0].sid_n]);
+  } else {
+    n = ad_put(s, n, ifx s[0].view == AD_SESSIONS then "sessions" else "overview");
+    n = ad_put(s, n, "&days="); n = ad_put(s, n, AD_DAYS[s[0].days]);
+    n = ad_put(s, n, "&space="); n = ad_put(s, n, AD_SPACES[s[0].space]);
+    n = ad_put(s, n, ifx s[0].autos then "&auto=1" else "&auto=0");
+  }
+  s[0].ask_n = n;
+  if s[0].status != -1 { s[0].status = ifx s[0].status == 200 then 1 else 0; }   // 1: showing the last answer while the next comes
+  else { s[0].status = 0; }
+}
+// The face sent it.
+coaxial_admin_asked :: (s: [] AdminState) #export_c { s[0].ask_n = 0; }
+
+// An answer: "STATUS\n" then the rows.
+ad_answer :: (s: [] AdminState, bytes: string) {
+  i := 0; code := 0;
+  while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
+  if i < bytes.count && bytes[i] == '\n' { i += 1; }
+  s[0].status = ifx code == 0 then 599 else code;
+  if code != 200 { s[0].data_n = 0; ad_index(s); return; }
+  n := 0;
+  while i < bytes.count && n < AD_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+  s[0].data_n = n;
+  ad_index(s);
+  s[0].hot = -1;
+}
+
+// ---- layout
+
+AdLayout :: struct { head: Box; top: f32; chips: [AD_CHIPS] Box; shown: [AD_CHIPS] bool; }
+
+ad_layout :: (s: [] AdminState) -> AdLayout {
+  d := s[0].d; w := s[0].width / d;
+  m := ifx w < 700 then 12.0f32 else 24.0f32;
+  l: AdLayout;
+  p := Pen.{d = d, fade = 1, time = 0};
+  cap := 7.5 * d;
+  x0 := (m + 18) * d; right := (w - m - 18) * d;
+  x := x0; y := (m + 76) * d;
+  for i: 0..<AD_CHIPS {
+    l.shown[i] = (i != 11 || s[0].view == AD_SESSION) && (s[0].view != AD_SESSION || i < 2 || i > 10);
+    if !l.shown[i] { continue; }
+    gap := ifx i == 2 || i == 6 || i == 10 || i == 12 then 22.0f32 else 6.0f32;   // the groups apart
+    cw := chip_width(AD_CHIP_LABELS[i], cap, p);
+    if x > x0 { x += gap * d; }
+    if x + cw > right && x > x0 { x = x0; y += 26 * d; }
+    l.chips[i] = chip_box(AD_CHIP_LABELS[i], x, y, cap, p);
+    x += cw;
+  }
+  l.head = Box.{x0 = m * d, y0 = m * d, x1 = (w - m) * d, y1 = y + 16 * d};
+  l.top = l.head.y1 + 12 * d;
+  return l;
+}
+
+// Where each section's panel goes, before scrolling; returns the content's height.
+ad_place :: (s: [] AdminState, l: AdLayout, boxes: [] Box) -> f32 {
+  d := s[0].d; w := s[0].width / d;
+  m := ifx w < 700 then 12.0f32 else 24.0f32;
+  g := 12.0f32 * d;
+  cols := ifx w >= 1400 then 3 else ifx w >= 900 then 2 else 1;
+  left := m * d; full := (w - 2 * m) * d;
+  cw := (full - g * cast(f32) (cols - 1)) / cast(f32) cols;
+  bottom: [3] f32;
+  for c: 0..<3 { bottom[c] = l.top; }
+  for k: 0..<s[0].sec_n {
+    nrows := hi(cast(f32) s[0].sec_rows[k], 1);
+    h := (34 + 22 + AD_ROW * nrows + 12) * d;
+    if ad_wide_section(s, k) || cols == 1 {
+      y := bottom[0];
+      for c: 1..<cols { y = hi(y, bottom[c]); }
+      boxes[k] = Box.{x0 = left, y0 = y, x1 = left + full, y1 = y + h};
+      for c: 0..<cols { bottom[c] = y + h + g; }
+    } else {
+      best := 0;
+      for c: 1..<cols { if bottom[c] < bottom[best] - 0.5 { best = c; } }
+      x := left + cast(f32) best * (cw + g);
+      boxes[k] = Box.{x0 = x, y0 = bottom[best], x1 = x + cw, y1 = bottom[best] + h};
+      bottom[best] += h + g;
+    }
+  }
+  most := l.top;
+  for c: 0..<cols { most = hi(most, bottom[c]); }
+  return most - l.top;
+}
+
+ad_row_y :: (b: Box, d: f32, r: int) -> f32 { return b.y0 + (34 + 22) * d + AD_ROW * d * cast(f32) r; }
+
+// ---- drawing
+
+ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> int {
+  d := p.d; b := l.head;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  x := b.x0 + 18 * d;
+  v := put(out, at, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, dim);
+  crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
+  v = put(out, v, "/ ADMIN", crumb, b.y0 + 22 * d, 7 * d, dim);
+  v = put(out, v, "ANALYTICS", x, b.y0 + 54 * d, 22 * d, white);
+  note := ifx s[0].status == 0 || s[0].status == 1 then "LOADING" else ifx s[0].view == AD_SESSION then "ONE SESSION" else "CHICAGO TIME";
+  v = put_right(out, v, note, b.x1 - 18 * d, b.y0 + 22 * d, 6.5 * d, ifx s[0].status <= 1 then orange else dim);
+  if s[0].view == AD_SESSION {
+    v = put_fit(out, v, cast(string) s[0].sid[0..<s[0].sid_n], x + text_width("ANALYTICS", 22 * d) + 20 * d, b.y0 + 54 * d, 8 * d, orange,
+                b.x1 - x - text_width("ANALYTICS", 22 * d) - 40 * d);
+  }
+  cap := 7.5 * d;
+  for i: 0..<AD_CHIPS {
+    if !l.shown[i] { continue; }
+    on := (i == 0 && s[0].view == AD_OVERVIEW) || (i == 1 && s[0].view == AD_SESSIONS) || (i >= 2 && i <= 5 && s[0].days == i - 2)
+       || (i >= 6 && i <= 9 && s[0].space == i - 6) || (i == 10 && s[0].autos);
+    k := ifx on then orange else ifx s[0].hot == AD_CHIP + i then white else dim;
+    v = chip(out, v, AD_CHIP_LABELS[i], l.chips[i].x0, l.chips[i].y1 - 5 * d, cap, k, p);
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+ad_section :: (out: [] f32, at: int, s: [] AdminState, k: int, b: Box, top: f32, p: Pen) -> int {
+  d := p.d; v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT);
+  nrows := s[0].sec_rows[k]; cols := s[0].sec_cols[k];
+  if b.y0 >= top {
+    buf: [24] u8;
+    note := ifx nrows == 0 then "" else cast(string) buf[0..<ad_number(buf[..], nrows, ifx nrows == 1 then " ROW" else " ROWS")];
+    v = titled(out, v, b, ad_title(s, k), note, p);
+  }
+  inner := box_w(b) - 28 * d;
+  total := 0.0f32;
+  for c: 0..<cols { total += s[0].sec_weight[k * AD_COLS + c]; }
+  xs: [AD_COLS + 1] f32;
+  xs[0] = b.x0 + 14 * d;
+  for c: 0..<cols { xs[c + 1] = xs[c] + inner * s[0].sec_weight[k * AD_COLS + c] / total; }
+  hy := b.y0 + 48 * d;
+  if hy - 8 * d >= top && hy < s[0].height {
+    for c: 0..<cols { v = put_fit(out, v, ad_cell(s, s[0].sec_head[k], s[0].sec_end[k], c + 2), xs[c], hy, 6 * d, dim, xs[c + 1] - xs[c] - 8 * d); }
+  }
+  if nrows == 0 {
+    y := ad_row_y(b, d, 0) + 12 * d;
+    if y - 10 * d >= top && y < s[0].height { v = put(out, v, "NOTHING YET", xs[0], y, 7 * d, faint); }
+  }
+  opens := ad_opens(s, k);
+  for r: 0..<nrows {
+    y0 := ad_row_y(b, d, r);
+    if y0 < top { continue; }
+    if y0 > s[0].height { break; }
+    i := s[0].sec_first[k] + r;
+    lit_up := opens && s[0].hot == i;
+    for c: 0..<cols {
+      text := ad_cell(s, s[0].row_at[i], s[0].row_end[i], c);
+      ik := ifx lit_up then orange else ifx c == 0 && opens then ink(p, INK_PALE) else ifx c == 0 then white else dim;
+      v = put_fit(out, v, text, xs[c], y0 + 12 * d, 7 * d, ik, xs[c + 1] - xs[c] - 8 * d);
+    }
+    if lit_up { v = rule(out, v, b.x0 + 4 * d, y0 + 2 * d, b.x0 + 4 * d, y0 + 15 * d, orange, p.fade); }
+  }
+  if b.y0 >= top && b.y1 <= s[0].height + 40 * d { v = frame(out, v, b, 10 * d, p); }
+  return v;
+}
+
+// A count and its word into buf: how many bytes.
+ad_number :: (buf: [] u8, n: int, word: string) -> int {
+  digits: [20] u8; k := 0; x := n;
+  if x == 0 { digits[0] = '0'; k = 1; }
+  while x > 0 && k < 20 { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  o := 0;
+  for i: 0..<k { if o < buf.count { buf[o] = digits[k - 1 - i]; o += 1; } }
+  for c: word { if o < buf.count { buf[o] = c; o += 1; } }
+  return o;
+}
+
+coaxial_admin_frame :: (s: [] AdminState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].days = 1; s[0].status = -1; }
+  if s[0].status == -1 { ad_ask(s); }
+  s[0].time += clamp(dt, 0, 0.1);
+  time := ifx still then 20.0f32 else s[0].time;
+  d := hi(dpr, 1);
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  p := Pen.{d = d, fade = ifx still then 1.0f32 else ease(time / 0.6), time = time};
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = p.fade;
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
+  for k: 0..<PANELS { glass(uniforms, k, Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}, 0, 0); }
+  // nobody's numbers until oa-api says this is an admin
+  if s[0].status == 0 || s[0].status == 401 || s[0].status == 403 || s[0].status >= 500 || (s[0].status != 200 && s[0].status != 1) {
+    word := ifx s[0].status == 0 then "LOADING" else ifx s[0].status == 401 || s[0].status == 403 then "ADMINS ONLY" else "NOT AVAILABLE NOW";
+    cap := 12 * d;
+    return put(out, 0, word, (width - text_width(word, cap)) * 0.5, height * 0.5, cap, ink(p, ifx s[0].status == 0 then INK_DIM else INK_WHITE));
+  }
+  l := ad_layout(s);
+  boxes: [AD_SECTIONS] Box;
+  content := ad_place(s, l, boxes[..]);
+  s[0].scroll = clamp(s[0].scroll, 0, hi(0, content - (height - l.top) + 24 * d));
+  glass(uniforms, 0, l.head, 10 * d, 0.92);
+  v := ad_header(out, 0, s, l, p);
+  panel := 1;
+  for k: 0..<s[0].sec_n {
+    b := boxes[k];
+    b.y0 -= s[0].scroll; b.y1 -= s[0].scroll;
+    if b.y1 < l.top || b.y0 > height { continue; }
+    if panel < PANELS { glass(uniforms, panel, Box.{x0 = b.x0, y0 = hi(b.y0, l.top), x1 = b.x1, y1 = b.y1}, 10 * d, 0.92); panel += 1; }
+    v = ad_section(out, v, s, k, b, l.top, p);
+  }
+  return v;
+}
+
+// ---- input
+
+// What's under (x, y): AD_CHIP + a chip, a row that opens a session, or -1.
+ad_hit :: (s: [] AdminState, x: f32, y: f32) -> int {
+  if s[0].d <= 0 || s[0].status != 200 { return -1; }
+  l := ad_layout(s);
+  for i: 0..<AD_CHIPS { if l.shown[i] && inside(l.chips[i], x, y) { return AD_CHIP + i; } }
+  if y < l.top { return -1; }
+  boxes: [AD_SECTIONS] Box;
+  content := ad_place(s, l, boxes[..]);
+  d := s[0].d;
+  for k: 0..<s[0].sec_n {
+    if !ad_opens(s, k) { continue; }
+    b := boxes[k];
+    b.y0 -= s[0].scroll; b.y1 -= s[0].scroll;
+    if x < b.x0 || x > b.x1 { continue; }
+    for r: 0..<s[0].sec_rows[k] {
+      y0 := ad_row_y(b, d, r);
+      if y >= y0 && y < y0 + AD_ROW * d { return s[0].sec_first[k] + r; }
+    }
+  }
+  return -1;
+}
+
+ad_open_session :: (s: [] AdminState, row: int) {
+  id := ad_cell(s, s[0].row_at[row], s[0].row_end[row], 0);
+  if id.count == 0 || id.count > 96 { return; }
+  for i: 0..<id.count { s[0].sid[i] = id[i]; }
+  s[0].sid_n = id.count;
+  s[0].view = AD_SESSION; s[0].scroll = 0;
+  ad_ask(s);
+}
+ad_back :: (s: [] AdminState) {
+  if s[0].view != AD_SESSION { return; }
+  s[0].view = AD_SESSIONS; s[0].scroll = 0;
+  ad_ask(s);
+}
+
+ad_act :: (s: [] AdminState, target: int) {
+  if target >= 0 && target < AD_CHIP { ad_open_session(s, target); return; }
+  i := target - AD_CHIP;
+  if i == 0 || i == 1 { s[0].view = i; }
+  else if i >= 2 && i <= 5 { s[0].days = i - 2; }
+  else if i >= 6 && i <= 9 { s[0].space = i - 6; }
+  else if i == 10 { s[0].autos = !s[0].autos; }
+  else if i == 11 { ad_back(s); return; }
+  else if i == 12 {
+    url := "/api/admin/logout";
+    for c: 0..<url.count { s[0].outbox[c] = url[c]; }
+    s[0].out_n = url.count; s[0].action = AD_NAVIGATE;
+    return;
+  } else { return; }
+  s[0].scroll = 0;
+  ad_ask(s);
+}
+
+coaxial_admin_pointer :: (s: [] AdminState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if phase == P_DOWN {
+    s[0].press = ad_hit(s, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
+    s[0].hot = ifx kind == 0 then s[0].press else -1;
+    return true;
+  }
+  if phase == P_MOVE {
+    if kind == 0 { s[0].hot = ad_hit(s, x, y); }
+    if kind != 0 || s[0].press != -1 {
+      if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
+      if s[0].dragged && kind != 0 { s[0].scroll -= y - s[0].drag_y; }
+      s[0].drag_y = y;
+    }
+    return true;
+  }
+  if phase == P_UP {
+    target := ad_hit(s, x, y);
+    if !s[0].dragged && target == s[0].press && target != -1 { ad_act(s, target); }
+    s[0].press = -1;
+    if kind != 0 { s[0].hot = -1; }
+    return true;
+  }
+  s[0].press = -1;
+  return true;
+}
+
+coaxial_admin_key :: (s: [] AdminState, key: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if key == -1 || key == -3 { ad_back(s); return true; }    // Escape, Backspace
+  if key == K_DOWN { s[0].scroll += 40 * d; return true; }
+  if key == K_UP { s[0].scroll -= 40 * d; return true; }
+  if key == -11 { s[0].scroll += s[0].height * 0.8; return true; }   // Page Down
+  if key == -10 { s[0].scroll -= s[0].height * 0.8; return true; }   // Page Up
+  if key == K_HOME { s[0].scroll = 0; return true; }
+  if key == K_END { s[0].scroll = 1000000000; return true; }
+  return false;
+}
+coaxial_admin_wheel :: (s: [] AdminState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_admin_message :: (s: [] AdminState, kind: int, length: int) #export_c {
+  if s.count < 1 || kind < AD_HTTP || kind >= AD_HTTP + 8 || length < 0 || length > AD_INBOX { return; }
+  ad_answer(s, cast(string) s[0].inbox[0..<length]);
+}
+coaxial_admin_cursor :: (s: [] AdminState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
+coaxial_admin_action :: (s: [] AdminState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_admin_action_done :: (s: [] AdminState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_admin_inbox_cap :: () -> int #export_c { return AD_INBOX; }
+coaxial_admin_max_vertices :: () -> int #export_c { return AD_MAX_VERTICES; }
+
+// ---- checks
+
+AD_FIXTURE :: "200\n#SUMMARY||WHAT|COUNT\nSessions|4\nVisitors|3\n#SESSIONS|s|SESSION|STARTED|SPACE|FIRST PAGE|EVENTS|MINUTES|FURTHEST|PLACE|DEVICE|AUTOMATED\nc00000000000000a1|10-28 15:52|web|haunt|5|0.4|answered|US Chicago|macOS Chrome|\n#ERRORS||MESSAGE|WHERE|TIMES|LAST\n";
+
+#test "nothing but LOADING, then ADMINS ONLY for anyone the server refuses" {
+  s: [1] AdminState;
+  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
+  #assert s[0].status == 0 && s[0].ask_n > 0 && n > 0;   // LOADING
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=overview&days=7&space=all&auto=0";
+  ad_answer(s[..], "401\n{\"error\":\"sign in as an admin\"}");
+  #assert s[0].status == 401 && s[0].sec_n == 0 && s[0].data_n == 0;
+  #assert ad_hit(s[..], 100, 100) == -1;   // nothing to press, not even the filters
+}
+
+#test "an admin's answer is drawn as sections; a session's row opens its timeline; Escape goes back" {
+  s: [1] AdminState;
+  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, false);
+  coaxial_admin_asked(s[..]);
+  ad_answer(s[..], AD_FIXTURE);
+  #assert s[0].status == 200 && s[0].sec_n == 3 && s[0].row_n == 3;
+  #assert ad_title(s[..], 1) == "SESSIONS" && ad_opens(s[..], 1) && !ad_opens(s[..], 0) && s[0].sec_cols[1] == 10;
+  #assert ad_cell(s[..], s[0].row_at[2], s[0].row_end[2], 6) == "answered";
+  n := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, false);
+  #assert n > 0;
+  // the session row, inside its panel
+  l := ad_layout(s[..]);
+  boxes: [AD_SECTIONS] Box;
+  h := ad_place(s[..], l, boxes[..]);
+  y := ad_row_y(boxes[1], 2, 0) + 8;
+  #assert ad_hit(s[..], boxes[1].x0 + 40, y) == 2;
+  p1 := coaxial_admin_pointer(s[..], boxes[1].x0 + 40, y, P_DOWN, 0);
+  p2 := coaxial_admin_pointer(s[..], boxes[1].x0 + 40, y, P_UP, 0);
+  #assert s[0].view == AD_SESSION && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=session&sid=c00000000000000a1";
+  k := coaxial_admin_key(s[..], -1);
+  #assert s[0].view == AD_SESSIONS && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=sessions&days=7&space=all&auto=0";
+}
+
+#test "the filters ask again; SIGN OUT goes to the logout" {
+  s: [1] AdminState;
+  out: [AD_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, false);
+  ad_answer(s[..], AD_FIXTURE);
+  ad_act(s[..], AD_CHIP + 4); ad_act(s[..], AD_CHIP + 8); ad_act(s[..], AD_CHIP + 10);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/analytics?view=overview&days=30&space=kiki&auto=1";
+  ad_act(s[..], AD_CHIP + 12);
+  #assert s[0].action == AD_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/api/admin/logout";
+}
