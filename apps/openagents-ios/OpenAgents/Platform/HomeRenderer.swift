@@ -4,13 +4,66 @@ import CoreText
 
 private struct ViewUniform { var size: SIMD2<Float>; var time: Float; var scale: Float }
 private struct BarUniform { var rect: SIMD4<Float>; var state: SIMD4<Float> }
+private struct CastUniform { var rows: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>); var size: SIMD2<Float>; var scale: Float; var pad: Float }
+
+/// The Grid's cast for one frame: the view matrix by rows
+/// (metareal_grid_view) and a call that writes every joint's palette entry
+/// into the buffer it is given (metareal_cast_pose, metareal_cast_robots_pose).
+struct CastFrame {
+    var view: [Float]
+    var pose: (coax_v_t_Joint) -> Bool
+}
+
+/// Cast.bin's buffers on the GPU, at the offsets metareal_cast_open admitted,
+/// and the character's texture layers.
+final class CastAssets {
+    let cast: coax_t_Cast
+    fileprivate let bodyVertices: MTLBuffer, bodyIndices: MTLBuffer
+    fileprivate let robotVertices: MTLBuffer, robotFaces: MTLBuffer, robotLines: MTLBuffer
+    fileprivate let sheets: MTLTexture
+    fileprivate var palettes: [MTLBuffer] = []
+    init(device: MTLDevice, queue: MTLCommandQueue, bytes: Data, cast: coax_t_Cast, layers: [URL]) throws {
+        guard cast.ok, cast.size == bytes.count else { throw HomeError.resource("Cast.bin") }
+        self.cast = cast
+        func buffer(_ b: coax_t_Buffer, _ stride: Int) throws -> MTLBuffer {
+            let made = bytes.withUnsafeBytes { device.makeBuffer(bytes: $0.baseAddress! + Int(b.offset), length: Int(b.count) * stride, options: .storageModeShared) }
+            guard let made else { throw HomeError.resource("Cast buffers") }
+            return made
+        }
+        bodyVertices = try buffer(cast.body_vertices, 64); bodyIndices = try buffer(cast.body_indices, 4)
+        robotVertices = try buffer(cast.robot_vertices, 64); robotFaces = try buffer(cast.robot_faces, 4)
+        robotLines = try buffer(cast.robot_lines, 4)
+        let side = 1024
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: side, height: side, mipmapped: true)
+        d.textureType = .type2DArray; d.arrayLength = layers.count; d.usage = .shaderRead; d.storageMode = .shared
+        guard let sheets = device.makeTexture(descriptor: d) else { throw HomeError.resource("Cast textures") }
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        for (slice, url) in layers.enumerated() {
+            guard let image = UIImage(contentsOfFile: url.path)?.cgImage else { throw HomeError.resource(url.lastPathComponent) }
+            let drawn = pixels.withUnsafeMutableBytes { data -> Bool in
+                guard let c = CGContext(data: data.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return false }
+                c.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side)); return true
+            }
+            guard drawn else { throw HomeError.resource(url.lastPathComponent) }
+            pixels.withUnsafeBytes { sheets.replace(region: MTLRegionMake2D(0, 0, side, side), mipmapLevel: 0, slice: slice, withBytes: $0.baseAddress!, bytesPerRow: side * 4, bytesPerImage: side * side * 4) }
+        }
+        guard let command = queue.makeCommandBuffer(), let blit = command.makeBlitCommandEncoder() else { throw HomeError.resource("Cast textures") }
+        blit.generateMipmaps(for: sheets); blit.endEncoding(); command.commit()
+        self.sheets = sheets
+        let length = Int(metareal_cast_palette(cast)) * MemoryLayout<coax_t_Joint>.stride
+        for _ in 0..<3 {
+            guard let palette = device.makeBuffer(length: length, options: .storageModeShared) else { throw HomeError.resource("Cast palette") }
+            palettes.append(palette)
+        }
+    }
+}
 
 /// Metal resource binding and bulk transfers only. Product visual functions are
 /// emitted from metareal/light.coax; scene packets come from home.coax or
 /// grid.coax.
 final class HomeRenderer {
     private let layer: CAMetalLayer
-    private let device: MTLDevice
     private let queue: MTLCommandQueue
     private let sky: MTLRenderPipelineState
     private let dots: MTLRenderPipelineState
@@ -18,6 +71,12 @@ final class HomeRenderer {
     private let bloom: MTLRenderPipelineState
     private let composite: MTLRenderPipelineState
     private let bar: MTLRenderPipelineState
+    private let castFaces: MTLRenderPipelineState
+    private let castLines: MTLRenderPipelineState
+    private let flat: MTLDepthStencilState
+    private let solid: MTLDepthStencilState
+    private let behind: MTLDepthStencilState
+    private var depth: MTLTexture?
     private let available = DispatchSemaphore(value: 3)
     private var ring = 0
     private var dotBuffers: [MTLBuffer] = []
@@ -29,16 +88,21 @@ final class HomeRenderer {
     private var labelKey = ""
     private var font: CTFont
     private var epoch: Double?
+    var device: MTLDevice { gpu }
+    var commandQueue: MTLCommandQueue { queue }
+    private var gpu: MTLDevice
 
     init(layer: CAMetalLayer) throws {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { throw HomeError.resource("Metal unavailable") }
-        self.layer = layer; self.device = device; self.queue = queue
+        self.layer = layer; self.gpu = device; self.queue = queue
         layer.device = device; layer.pixelFormat = .bgra8Unorm; layer.framebufferOnly = true; layer.isOpaque = true
         guard let source = Bundle.main.url(forResource: "HomeShaders", withExtension: "txt") else { throw HomeError.resource("HomeShaders.txt") }
         let library = try device.makeLibrary(source: String(contentsOf: source, encoding: .utf8), options: nil)
-        func pipeline(_ vertex: String, _ fragment: String, _ format: MTLPixelFormat, additive: Bool = false, alpha: Bool = false) throws -> MTLRenderPipelineState {
+        // The scene pass has depth, for the cast; the screen passes don't.
+        func pipeline(_ vertex: String, _ fragment: String, _ format: MTLPixelFormat, additive: Bool = false, alpha: Bool = false, scene: Bool = false) throws -> MTLRenderPipelineState {
             let d = MTLRenderPipelineDescriptor(); d.vertexFunction = library.makeFunction(name: vertex); d.fragmentFunction = library.makeFunction(name: fragment)
             d.colorAttachments[0].pixelFormat = format
+            if scene { d.depthAttachmentPixelFormat = .depth32Float }
             if additive || alpha {
                 let a = d.colorAttachments[0]!
                 a.isBlendingEnabled = true; a.rgbBlendOperation = .add; a.alphaBlendOperation = .add
@@ -47,12 +111,22 @@ final class HomeRenderer {
             }
             return try device.makeRenderPipelineState(descriptor: d)
         }
-        sky = try pipeline("screen_vertex", "sky_fragment", .rgba16Float)
-        dots = try pipeline("dot_vertex", "dot_fragment", .rgba16Float, additive: true)
-        lines = try pipeline("line_vertex", "line_fragment", .rgba16Float, additive: true)
+        sky = try pipeline("screen_vertex", "sky_fragment", .rgba16Float, scene: true)
+        dots = try pipeline("dot_vertex", "dot_fragment", .rgba16Float, additive: true, scene: true)
+        lines = try pipeline("line_vertex", "line_fragment", .rgba16Float, additive: true, scene: true)
         bloom = try pipeline("screen_vertex", "bloom_fragment", .rgba16Float)
         composite = try pipeline("screen_vertex", "composite_fragment", .bgra8Unorm)
         bar = try pipeline("bar_vertex", "bar_fragment", .bgra8Unorm, alpha: true)
+        castFaces = try pipeline("cast_vertex", "cast_fragment", .rgba16Float, scene: true)
+        castLines = try pipeline("cast_line_vertex", "line_fragment", .rgba16Float, additive: true, scene: true)
+        func depthState(_ compare: MTLCompareFunction, write: Bool) throws -> MTLDepthStencilState {
+            let d = MTLDepthStencilDescriptor(); d.depthCompareFunction = compare; d.isDepthWriteEnabled = write
+            guard let state = device.makeDepthStencilState(descriptor: d) else { throw HomeError.resource("Metal depth") }
+            return state
+        }
+        flat = try depthState(.always, write: false)
+        solid = try depthState(.less, write: true)
+        behind = try depthState(.lessEqual, write: false)
         for _ in 0..<3 {
             guard let a = device.makeBuffer(length: 8192 * MemoryLayout<MRDot>.stride, options: .storageModeShared), let b = device.makeBuffer(length: 8192 * MemoryLayout<MRLine>.stride, options: .storageModeShared) else { throw HomeError.resource("Metal buffers") }
             dotBuffers.append(a); lineBuffers.append(b)
@@ -69,6 +143,9 @@ final class HomeRenderer {
             return device.makeTexture(descriptor: d)
         }
         scene = texture(Int(size.width), Int(size.height))
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: max(1, Int(size.width)), height: max(1, Int(size.height)), mipmapped: false)
+        d.usage = .renderTarget; d.storageMode = .memoryless
+        depth = gpu.makeTexture(descriptor: d)
         blurA = texture(Int(size.width)/4, Int(size.height)/4)
         blurB = texture(Int(size.width)/4, Int(size.height)/4)
     }
@@ -87,13 +164,13 @@ final class HomeRenderer {
         guard made else { return nil }
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: w, height: h, mipmapped: false)
         desc.usage = .shaderRead
-        guard let texture = device.makeTexture(descriptor: desc) else { return nil }
+        guard let texture = gpu.makeTexture(descriptor: desc) else { return nil }
         bytes.withUnsafeBytes { texture.replace(region: MTLRegionMake2D(0,0,w,h), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: w) }
         return texture
     }
-    func draw(handle: Int64, time: Double) {
+    func draw(handle: Int64, time: Double, cast assets: CastAssets? = nil, frame castFrame: CastFrame? = nil) {
         guard available.wait(timeout: .now()) == .success else { return }
-        guard let scene, let blurA, let blurB, let drawable = layer.nextDrawable(), let command = queue.makeCommandBuffer(), let rawBar = mr_bar(handle)?.pointee else { available.signal(); return }
+        guard let scene, let depth, let blurA, let blurB, let drawable = layer.nextDrawable(), let command = queue.makeCommandBuffer(), let rawBar = mr_bar(handle)?.pointee else { available.signal(); return }
         let scale = Float(layer.contentsScale)
         let text: String = withUnsafePointer(to: rawBar.label) { pointer in pointer.withMemoryRebound(to: CChar.self, capacity: 33) { String(cString: $0) } }
         let key = "\(scale):\(text)"
@@ -105,18 +182,32 @@ final class HomeRenderer {
         let dotBuffer = dotBuffers[ring], lineBuffer = lineBuffers[ring]; ring = (ring+1)%3
         if dotCount > 0, let source = mr_dots(handle) { memcpy(dotBuffer.contents(),source,dotCount*MemoryLayout<MRDot>.stride) }
         if lineCount > 0, let source = mr_lines(handle) { memcpy(lineBuffer.contents(),source,lineCount*MemoryLayout<MRLine>.stride) }
-        func encoder(_ texture: MTLTexture) -> MTLRenderCommandEncoder? {
+        func encoder(_ texture: MTLTexture, depth: MTLTexture? = nil) -> MTLRenderCommandEncoder? {
             let pass = MTLRenderPassDescriptor(); pass.colorAttachments[0].texture = texture
             pass.colorAttachments[0].loadAction = .clear; pass.colorAttachments[0].storeAction = .store
+            if let depth {
+                pass.depthAttachment.texture = depth; pass.depthAttachment.loadAction = .clear
+                pass.depthAttachment.clearDepth = 1; pass.depthAttachment.storeAction = .dontCare
+            }
             return command.makeRenderCommandEncoder(descriptor: pass)
         }
-        guard let e = encoder(scene) else { available.signal(); return }
+        // Coax writes this frame's palette before the GPU reads it.
+        var palette: MTLBuffer?
+        if let assets, let castFrame, castFrame.view.count == 16 {
+            let buffer = assets.palettes[ring]
+            let joints = coax_v_t_Joint(data: buffer.contents().bindMemory(to: coax_t_Joint.self, capacity: buffer.length / MemoryLayout<coax_t_Joint>.stride),
+                                        count: Int64(buffer.length / MemoryLayout<coax_t_Joint>.stride))
+            if castFrame.pose(joints) { palette = buffer }
+        }
+        guard let e = encoder(scene, depth: depth) else { available.signal(); return }
+        e.setDepthStencilState(flat)
         e.setRenderPipelineState(sky); e.setFragmentBytes(&view,length: MemoryLayout<ViewUniform>.stride,index:0)
         e.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
         e.setRenderPipelineState(lines); e.setVertexBuffer(lineBuffer,offset:0,index:0); e.setVertexBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:1)
         if lineCount > 0 { e.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6,instanceCount:lineCount) }
         e.setRenderPipelineState(dots); e.setVertexBuffer(dotBuffer,offset:0,index:0)
         if dotCount > 0 { e.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6,instanceCount:dotCount) }
+        if let assets, let castFrame, let palette { drawCast(e, assets, castFrame.view, palette, view) }
         e.endEncoding()
         func blurPass(_ input: MTLTexture, _ output: MTLTexture, _ direction: SIMD2<Float>) {
             guard let e = encoder(output) else { return }; var direction = direction
@@ -141,5 +232,30 @@ final class HomeRenderer {
             semaphore.signal()
         }
         command.present(drawable); command.commit()
+    }
+    /// You, then each robot's faces and line art, each with its own run of
+    /// the palette: yours first, then `bones` joints per robot.
+    private func drawCast(_ e: MTLRenderCommandEncoder, _ assets: CastAssets, _ m: [Float], _ palette: MTLBuffer, _ screen: ViewUniform) {
+        let joint = MemoryLayout<coax_t_Joint>.stride
+        var u = CastUniform(rows: (SIMD4(m[0], m[1], m[2], m[3]), SIMD4(m[4], m[5], m[6], m[7]), SIMD4(m[8], m[9], m[10], m[11]), SIMD4(m[12], m[13], m[14], m[15])),
+                            size: screen.size, scale: screen.scale, pad: 0)
+        let c = assets.cast
+        e.setRenderPipelineState(castFaces); e.setDepthStencilState(solid)
+        e.setVertexBytes(&u, length: MemoryLayout<CastUniform>.stride, index: 2)
+        e.setFragmentTexture(assets.sheets, index: 0)
+        e.setVertexBuffer(assets.bodyVertices, offset: 0, index: 0); e.setVertexBuffer(palette, offset: 0, index: 1)
+        e.drawIndexedPrimitives(type: .triangle, indexCount: Int(c.body_indices.count), indexType: .uint32, indexBuffer: assets.bodyIndices, indexBufferOffset: 0)
+        let robots = Int(metareal_cast_robots(c))
+        e.setVertexBuffer(assets.robotVertices, offset: 0, index: 0)
+        for r in 0..<robots {
+            e.setVertexBuffer(palette, offset: (Int(c.joints) + r * Int(c.bones)) * joint, index: 1)
+            e.drawIndexedPrimitives(type: .triangle, indexCount: Int(c.robot_faces.count), indexType: .uint32, indexBuffer: assets.robotFaces, indexBufferOffset: 0)
+        }
+        e.setRenderPipelineState(castLines); e.setDepthStencilState(behind)
+        e.setVertexBuffer(assets.robotLines, offset: 0, index: 3)
+        for r in 0..<robots {
+            e.setVertexBuffer(palette, offset: (Int(c.joints) + r * Int(c.bones)) * joint, index: 1)
+            e.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: Int(c.robot_lines.count) / 2)
+        }
     }
 }

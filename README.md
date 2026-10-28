@@ -25,7 +25,9 @@ built on:
     exist today.
 - **Metareal** ([`metareal/`](metareal/)) is the engine. The home scene, its
   graph, its HUD and its resource admission are Coax (`home.coax`), and so is
-  its shader math (`light.coax`). A thin C and Swift layer owns storage and
+  its shader math (`light.coax`). Start opens the Grid (`grid.coax`), where
+  you walk (`player.coax`) as an animated character among patrolling robots
+  (`cast.coax`). A thin C and Swift layer owns storage and
   the GPU. **Verse** is the world and experience being built on Metareal
   ([Verse protocol](docs/verse/openagents-verse-protocol.md),
   [engine notes](docs/verse/metareal-engine.md)).

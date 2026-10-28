@@ -39,3 +39,53 @@ metareal_bar :: (x:f32,y:f32,w:f32,h:f32,k:f32,t:f32,press:f32,flash:f32)->f32 #
 metareal_label :: (mask:f32,flash:f32)->f32 #export_c { return mask*(0.94f32+0.06f32*flash); }
 metareal_tone :: (light:f32)->f32 #export_c { return 1.0f32-exp(-light*1.35f32); }
 metareal_bloom :: (center:f32,near:f32,far:f32)->f32 #export_c { return center*0.4f32+near*0.24f32+far*0.06f32; }
+// The Grid's cast (metareal/cast.coax). Colours arrive as display values
+// (sRGB, as aethyr's art stores them); the scene is light the tone curve
+// maps back to the screen.
+metareal_decode :: (v:f32)->f32 #export_c {
+  if v<=0.04045f32 { return v/12.92f32; }
+  return pow((v+0.055f32)/1.055f32,2.4f32);
+}
+metareal_encode :: (c:f32)->f32 #export_c {
+  x:=sat(c);
+  if x<=0.0031308f32 { return x*12.92f32; }
+  return 1.055f32*pow(x,1.0f32/2.4f32)-0.055f32;
+}
+// The light whose tone is the display value v: the inverse of metareal_tone.
+metareal_unlit :: (v:f32)->f32 #export_c { return -log(1.0f32-lo(sat(v),0.98f32))/1.35f32; }
+// aethyr's Grid light on a surface facing (nx, ny, nz): a sun of 0.9 from
+// (0.3, 0.9, 0.35), and a sky of 0.32 over a ground of 0.05.
+metareal_lit :: (nx:f32,ny:f32,nz:f32)->f32 #export_c {
+  n:=sqrt(nx*nx+ny*ny+nz*nz);
+  if n<=0.0f32 { return 0.32f32; }
+  sun:=hi(0.0f32,(0.3f32*nx+0.9f32*ny+0.35f32*nz)/(n*1.0111874f32));
+  up:=ny/n*0.5f32+0.5f32;
+  return 0.9f32*sun+0.05f32+(0.32f32-0.05f32)*up;
+}
+// A lit character's colour channel: its linear albedo under that light,
+// shown as the display value aethyr would show.
+metareal_character :: (albedo:f32,light:f32)->f32 #export_c { return metareal_unlit(metareal_encode(albedo*light)); }
+
+within :: (a:f32,b:f32,t:f32)->bool { return abs(a-b)<=t; }
+#test "display values round trip through linear light" {
+  for i: 0..<11 { v:=f32(i)/10.0f32; #assert within(metareal_encode(metareal_decode(v)),v,0.0001f32); }
+  #assert metareal_decode(0.0f32)==0.0f32 && within(metareal_decode(1.0f32),1.0f32,0.00001f32);
+  #assert within(metareal_decode(0.5f32),0.21404f32,0.0001f32) && within(metareal_decode(0.04f32),0.04f32/12.92f32,0.000001f32);
+  #assert metareal_encode(2.0f32)==metareal_encode(1.0f32) && metareal_encode(-1.0f32)==0.0f32;
+  #assert within(metareal_encode(0.002f32),0.002f32*12.92f32,0.000001f32);
+}
+#test "unlit light tones back to its display value" {
+  for i: 0..<10 { v:=f32(i)/10.0f32; #assert within(metareal_tone(metareal_unlit(v)),v,0.0001f32); }
+  #assert within(metareal_tone(metareal_unlit(1.0f32)),0.98f32,0.0001f32);
+  #assert metareal_unlit(-1.0f32)==0.0f32;
+}
+#test "the sun and sky light a surface as aethyr's Grid" {
+  // Facing the sun: all of it, and most of the sky.
+  #assert within(metareal_lit(0.3f32,0.9f32,0.35f32),0.9f32+0.05f32+0.27f32*(0.9f32/1.0111874f32*0.5f32+0.5f32),0.0001f32);
+  // Straight down: no sun, the ground only.
+  #assert within(metareal_lit(0.0f32,-2.0f32,0.0f32),0.05f32,0.00001f32);
+  // Straight up, unnormalized.
+  #assert within(metareal_lit(0.0f32,3.0f32,0.0f32),0.9f32*0.9f32/1.0111874f32+0.32f32,0.0001f32);
+  #assert metareal_lit(0.0f32,0.0f32,0.0f32)==0.32f32;
+  #assert within(metareal_character(0.5f32,1.0f32),metareal_unlit(metareal_encode(0.5f32)),0.000001f32);
+}

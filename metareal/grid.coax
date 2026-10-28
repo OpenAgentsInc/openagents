@@ -1,8 +1,8 @@
 // The Grid: the bare Verse world, as aethyr-cpp's src/grid.cpp draws it. A
 // ground of lines every 4 m out to 264 m, brighter on the street lines every
 // 24 m, fading into the black field from 6 m to 110 m, with a ring at your
-// feet. You walk it with metareal/player.coax; a wire figure stands in for
-// the character until the character's model is ported.
+// feet. You walk it with metareal/player.coax; your character and the robots
+// are metareal/cast.coax's, drawn by the host with metareal_grid_view.
 //
 // The lines are projected here and drawn as the home's screen-space line
 // packets, so the Grid shares the home's line, bloom and tone stages. The
@@ -25,7 +25,7 @@ FOG_START :: 6.0;
 FOG_END :: 110.0;
 MINOR :: 0.24;          // a line's light, before the fog
 STREET :: 0.55;         // the street lines, midway between 24 m lots
-FIGURE :: 0.9;          // the stand-in character
+FAR :: 300.0;           // the depth range's far end, metres
 FOVY :: 1.05;           // radians, as aethyr's Grid
 NEAR :: 0.05;
 LINES :: 56;            // most lines one axis can show: 2 FOG_END / SPACING + 1
@@ -178,7 +178,7 @@ ground_line :: (h: int, c: Camera, offset: f32, along_z: bool, at: f32, light: f
   }
 }
 
-// ---- The figure ----
+// ---- The ring ----
 
 ring :: (h: int, c: Camera, center: Vec3, radius: f32, count: int, light: f32, width: f32) {
   for i: 0..<count {
@@ -190,20 +190,25 @@ ring :: (h: int, c: Camera, center: Vec3, radius: f32, count: int, light: f32, w
   }
 }
 
-// A wire capsule where you stand, with a short line out the way you face.
-figure :: (h: int, c: Camera, feet: Vec3, face: f32, width: f32) {
-  ring(h, c, feet, 0.7, 32, f32(STREET), width);
-  for level: 0..<3 {
-    ring(h, c, v3(feet.x, feet.y + 0.15 + f32(level) * 0.7, feet.z), 0.3, 16, f32(FIGURE), width);
-  }
-  for i: 0..<6 {
-    a := f32(i) * f32(PI) / 3;
-    x := feet.x + cos(a) * 0.3; z := feet.z + sin(a) * 0.3;
-    line_out(h, piece(c, v3(x, feet.y + 0.15, z), v3(x, feet.y + 1.55, z)), f32(FIGURE), f32(FIGURE), width);
-  }
-  chest := v3(feet.x, feet.y + 1.2, feet.z);
-  nose := v3(feet.x + sin(face) * 0.6, feet.y + 1.2, feet.z + cos(face) * 0.6);
-  line_out(h, piece(c, chest, nose), f32(FIGURE), f32(FIGURE) * 1.4, width);
+// The camera as a 4x4 matrix, by rows, from the world to Metal's clip
+// space: the same screen position as `project`, and depth 0 at NEAR to 1 at
+// FAR, so the host's depth-tested meshes line up with the lines drawn here.
+metareal_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+                       width: f32, height: f32, out: [] f32) -> bool #export_c {
+  if !(width > 0) || !(height > 0) || out.count < 16 { return false; }
+  c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
+  // x and y: the view's right and up, scaled so x / z * focal pixels from
+  // the centre is the edge at width / 2; z: depth times z; w: z.
+  depth := f32(FAR / (FAR - NEAR));
+  row(out, 0, c.right, 2 * c.focal / width, 0, c.eye);
+  row(out, 1, c.up, 2 * c.focal / height, 0, c.eye);
+  row(out, 2, c.fwd, depth, -f32(NEAR) * depth, c.eye);
+  row(out, 3, c.fwd, 1, 0, c.eye);
+  return true;
+}
+row :: (out: [] f32, i: int, axis: Vec3, k: f32, add: f32, eye: Vec3) {
+  out[i * 4] = axis.x * k; out[i * 4 + 1] = axis.y * k; out[i * 4 + 2] = axis.z * k;
+  out[i * 4 + 3] = -dot(axis, eye) * k + add;
 }
 
 // ---- Touch ----
@@ -310,10 +315,10 @@ sticks_out :: (h: int, s: Sticks, width: f32, height: f32, k: f32) {
 
 // ---- The frame ----
 
-// Draws the Grid seen from eye looking at at, with you at feet facing face,
+// Draws the Grid seen from eye looking at at, with you at feet,
 // into a width by height view (pixels, scale pixels per point).
 metareal_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
-                        feet_x: f32, feet_y: f32, feet_z: f32, face: f32,
+                        feet_x: f32, feet_y: f32, feet_z: f32,
                         width: f32, height: f32, scale: f32) #export_c {
   if !(width > 0) || !(height > 0) { return; }
   k := hi(scale, 0.5);
@@ -323,7 +328,7 @@ metareal_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, a
   for i: xs.first..<xs.end { ground_line(h, c, f32(i) * f32(SPACING), true, feet.z, shade(i), 0.8 * k); }
   zs := lines_near(feet.z);
   for i: zs.first..<zs.end { ground_line(h, c, f32(i) * f32(SPACING), false, feet.x, shade(i), 0.8 * k); }
-  figure(h, c, feet, face, 1.1 * k);
+  ring(h, c, feet, 0.7, 32, f32(STREET), 1.1 * k);
   sticks_out(h, s, width, height, k);
 }
 
@@ -461,9 +466,8 @@ behind :: () -> Camera { return camera(v3(0, 2, -4), v3(0, 1.5, 0), 1000, 2000);
 }
 
 #test "one frame stays inside the host's 8192 line packets" {
-  // Two axes of LINES lines in PIECES pieces, the figure, and the stick.
-  figure_lines := 32 + 3 * 16 + 6 + 1;
-  #assert 2 * LINES * PIECES + figure_lines + 32 < 8192;
+  // Two axes of LINES lines in PIECES pieces, the ring, and the stick.
+  #assert 2 * LINES * PIECES + 32 + 32 < 8192;
   #assert LINES == int(2 * FOG_END / SPACING) + 1 && PIECES == int(2 * FOG_END / SEGMENT) + 2;
 }
 
@@ -536,6 +540,37 @@ lift :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return meta
 #test "the middle of the screen is the look side" {
   #assert press(metareal_sticks_reset(), 1, 500, 1000, 0).look_on;
   #assert press(metareal_sticks_reset(), 1, 499, 1000, 0).move_on;
+}
+
+// A world point through the view matrix, to pixels and depth.
+clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
+  x := m[0] * p.x + m[1] * p.y + m[2] * p.z + m[3];
+  y := m[4] * p.x + m[5] * p.y + m[6] * p.z + m[7];
+  z := m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11];
+  w := m[12] * p.x + m[13] * p.y + m[14] * p.z + m[15];
+  return v3((x / w + 1) * width / 2, (1 - y / w) * height / 2, z / w);
+}
+
+#forall "the view matrix puts points where the lines go, with depth 0 at NEAR and 1 at FAR" ix: -3..<4, iz: 1..<6 {
+  m: [16] f32;
+  #assert metareal_grid_view(1, 2.5, -4, 0.5, 1.4, 0.3, 1170, 2532, m[..]);
+  c := camera(v3(1, 2.5, -4), v3(0.5, 1.4, 0.3), 1170, 2532);
+  p := v3(f32(ix) * 0.7, f32(iz) * 0.3, f32(iz) * 1.3);
+  s := project(c, view(c, p));
+  g := clip(m[..], p, 1170, 2532);
+  #assert near(g.x, s.x, 0.01) && near(g.y, s.y, 0.01);
+  vz := view(c, p).z;
+  #assert near(g.z, f32(FAR / (FAR - NEAR)) * (1 - f32(NEAR) / vz), 0.00001);
+  ahead := c.fwd;
+  n := clip(m[..], v3(1 + ahead.x * f32(NEAR), 2.5 + ahead.y * f32(NEAR), -4 + ahead.z * f32(NEAR)), 1170, 2532);
+  f := clip(m[..], v3(1 + ahead.x * f32(FAR), 2.5 + ahead.y * f32(FAR), -4 + ahead.z * f32(FAR)), 1170, 2532);
+  #assert near(n.z, 0, 0.00001) && near(f.z, 1, 0.00001);
+}
+
+#test "no view for an empty screen or a short matrix" {
+  m: [16] f32;
+  #assert !metareal_grid_view(0, 2, -4, 0, 1, 0, 0, 100, m[..]) && !metareal_grid_view(0, 2, -4, 0, 1, 0, 100, 0, m[..]);
+  #assert !metareal_grid_view(0, 2, -4, 0, 1, 0, 100, 100, m[0..<15]);
 }
 
 #test "near" { #assert near(1, 1.5, 0.5) && !near(1, 1.6, 0.5); }

@@ -60,14 +60,20 @@ varints, and emits existing HudInvocation bytes. Native adapters only transfer
 bytes; the resource and invocation have no second hand-written wire codec.
 Start opens the Grid. `metareal/grid.coax` owns its projection, line art and
 move/look/jump touch policy; `metareal/player.coax` owns walking and the
-camera. The native adapter only routes the Start invocation there and passes
-numbers between the two libraries each frame. The Grid has no buildings,
-robots, peers or network use yet.
+camera; `metareal/cast.coax` admits the bundled `Cast.bin`, blends your
+character's clips and poses you and the robots. The native adapter only routes
+the Start invocation there, passes numbers between the libraries each frame
+and binds the buffers Coax admitted. A cast whose offsets, indices, joints or
+floats fail admission is refused, not drawn. The Grid has no buildings, peers
+or network use yet.
 
-Check: `coax/build.sh test`, `coax test metareal/grid.coax` and
-`metareal/player.coax`, `PROTOC=... python3 metareal/test_home.py`, the
-sanitizer harness and the iOS UI test (Start opens the Grid, the stick walks
-you forward, rotation and backgrounding keep it). Metal layout/stage
+Check: `coax/build.sh test`, `coax test metareal/grid.coax`,
+`metareal/player.coax` and `metareal/cast.coax`, `metareal/test_cast.sh` (the
+real Cast.bin under ASan/UBSan, with corrupted copies refused),
+`PROTOC=... python3 metareal/test_home.py`, the sanitizer harness and the iOS
+UI tests (Start opens the Grid, you stand idle, the stick walks you forward,
+a jump plays its clips, the Foreman stands by the start, rotation and
+backgrounding keep it). Metal layout/stage
 bindings remain an explicit native boundary; the home retains its initial
 flat-storage graph while decoded configuration views use bounded Coax scratch
 buffers. Labels are copied into resident storage before those views expire.

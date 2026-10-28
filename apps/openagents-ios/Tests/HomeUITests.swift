@@ -21,11 +21,20 @@ final class HomeUITests: XCTestCase {
         XCTAssertTrue(grid.waitForExistence(timeout: 5))
         XCTAssertFalse(start.exists)
         XCTAssertEqual(grid.value as? String, "0.0 0.0")
+        // Your character stands idle, animated by metareal/cast.coax.
+        let you = app.otherElements["grid.you"]
+        XCTAssertTrue(you.waitForExistence(timeout: 5))
+        XCTAssertEqual(you.value as? String, "idle")
+        let arrival = XCTAttachment(screenshot: app.screenshot())
+        arrival.name = "Arriving in the Grid"; arrival.lifetime = .keepAlways; add(arrival)
 
         // The left stick pushed up walks you forward, along +Z.
         let thumb = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.8))
         thumb.press(forDuration: 0.05, thenDragTo: thumb.withOffset(CGVector(dx: 0, dy: -80)),
                     withVelocity: .default, thenHoldForDuration: 2)
+        // Let go: the walk fades back to idle.
+        let stood = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in you.value as? String == "idle" }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [stood], timeout: 5), .completed, "you: \(you.value ?? "")")
         let walked = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard let parts = (grid.value as? String)?.split(separator: " "), parts.count == 2,
                   let x = Double(parts[0]), let z = Double(parts[1]) else { return false }
@@ -34,6 +43,14 @@ final class HomeUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [walked], timeout: 5), .completed, "at \(grid.value ?? "")")
         let world = XCTAttachment(screenshot: app.screenshot())
         world.name = "The Grid"; world.lifetime = .keepAlways; add(world)
+        // A tap on the right jumps: the jump's clips, then idle again.
+        var clips = Set<String>()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).tap()
+        let landed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            if let clip = you.value as? String { clips.insert(clip) }
+            return clips.contains("landing") && you.value as? String == "idle"
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [landed], timeout: 5), .completed, "clips: \(clips)")
 
         XCUIDevice.shared.orientation = .landscapeLeft
         let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in grid.frame.width > 600 }, object: nil)
@@ -43,6 +60,23 @@ final class HomeUITests: XCTestCase {
         app.activate()
         XCTAssertTrue(grid.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Home unavailable"].exists)
+        app.terminate()
+    }
+
+    func testTheForemanStandsByTheStart() {
+        let app = XCUIApplication()
+        app.launch()
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20))
+        start.tap()
+        let you = app.otherElements["grid.you"]
+        XCTAssertTrue(you.waitForExistence(timeout: 5))
+        // Look a little left, toward the Foreman at (2.8, 2.5).
+        let look = app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
+        look.press(forDuration: 0.05, thenDragTo: look.withOffset(CGVector(dx: -70, dy: 0)))
+        XCTAssertEqual(you.value as? String, "idle")
+        let robots = XCTAttachment(screenshot: app.screenshot())
+        robots.name = "The Foreman"; robots.lifetime = .keepAlways; add(robots)
         app.terminate()
     }
 }

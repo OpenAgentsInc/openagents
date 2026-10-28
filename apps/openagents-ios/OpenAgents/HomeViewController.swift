@@ -10,7 +10,8 @@ private final class Surface: UIView {
 
 /// Native lifecycle/input adapter. Coax owns the screen and all touch policy.
 /// Start opens the Grid: metareal/grid.coax draws it and reads the fingers,
-/// metareal/player.coax walks it, and this file passes numbers between them.
+/// metareal/player.coax walks it, metareal/cast.coax animates you and the
+/// robots, and this file passes numbers between them.
 final class HomeViewController: UIViewController {
     private var surface: Surface { view as! Surface }
     private var renderer: HomeRenderer?
@@ -30,6 +31,12 @@ final class HomeViewController: UIViewController {
     private var nextTouchSlot: Int64 = 0
     private var lastTick: Double?
     private var gridElement: UIAccessibilityElement?
+    private var youElement: UIAccessibilityElement?
+    // Cast.bin, admitted by metareal_cast_open; its bytes stay put for every call.
+    private var castBytes: UnsafeMutableRawBufferPointer?
+    private var cast: CastAssets?
+    private var anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false)
+    private var gridStart: Double?
     private var inGrid: Bool { gridHandle != 0 }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
@@ -164,8 +171,29 @@ final class HomeViewController: UIViewController {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         enterGrid()
     }
+    private func loadCast() throws -> CastAssets {
+        guard let renderer, let url = Bundle.main.url(forResource: "Cast", withExtension: "bin") else { throw HomeError.resource("Cast.bin") }
+        let data = try Data(contentsOf: url)
+        let bytes = UnsafeMutableRawBufferPointer.allocate(byteCount: data.count, alignment: 16)
+        data.copyBytes(to: bytes)
+        castBytes = bytes
+        let cast = metareal_cast_open(castView(bytes))
+        let layers = try [5, 9, 10, 11, 12, 16].map { layer -> URL in
+            guard let url = Bundle.main.url(forResource: "cast-layer\(layer)", withExtension: "jpg") else { throw HomeError.resource("cast-layer\(layer).jpg") }
+            return url
+        }
+        return try CastAssets(device: renderer.device, queue: renderer.commandQueue, bytes: data, cast: cast, layers: layers)
+    }
+    private func castView(_ bytes: UnsafeMutableRawBufferPointer) -> coax_v_u8 {
+        coax_v_u8(data: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: Int64(bytes.count))
+    }
     private func enterGrid() {
         guard !inGrid else { return }
+        if cast == nil {
+            do { cast = try loadCast() } catch { NSLog("OpenAgents: the Grid's cast is unavailable: %@", String(describing: error)) }
+        }
+        anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false)
+        gridStart = nil
         var config: UInt8 = 0
         gridHandle = mr_create(&config, 1, 1)
         guard gridHandle != 0 else { NSLog("OpenAgents: no storage for the Grid"); return }
@@ -179,7 +207,12 @@ final class HomeViewController: UIViewController {
         element.accessibilityIdentifier = "grid.world"
         element.accessibilityFrameInContainerSpace = view.bounds
         gridElement = element
-        view.accessibilityElements = [element]
+        let you = UIAccessibilityElement(accessibilityContainer: surface)
+        you.accessibilityLabel = "You"
+        you.accessibilityIdentifier = "grid.you"
+        you.accessibilityFrameInContainerSpace = CGRect(x: view.bounds.midX - 30, y: view.bounds.midY - 60, width: 60, height: 120)
+        youElement = you
+        view.accessibilityElements = cast == nil ? [element] : [element, you]
         UIAccessibility.post(notification: .screenChanged, argument: element)
         NSLog("OpenAgents: entered the Grid")
     }
@@ -189,11 +222,30 @@ final class HomeViewController: UIViewController {
         sticks = metareal_sticks_used(sticks)
         player = metareal_player_advance(player, frame)
         let eye = metareal_player_eye(player), at = metareal_player_at(player), feet = metareal_player_feet(player)
+        let face = metareal_player_face(player)
+        let width = Float(lastSize.width), height = Float(lastSize.height)
         mr_clear_frame(gridHandle)
         metareal_grid_frame(gridHandle, sticks, eye.x, eye.y, eye.z, at.x, at.y, at.z, feet.x, feet.y, feet.z,
-                            metareal_player_face(player), Float(lastSize.width), Float(lastSize.height), Float(surface.metalLayer.contentsScale))
+                            width, height, Float(surface.metalLayer.contentsScale))
         guard mr_ok(gridHandle) else { suspend(); NSLog("OpenAgents: invalid Grid draw packet"); return }
-        renderer?.draw(handle: gridHandle, time: timestamp)
+        var castFrame: CastFrame?
+        if let cast, let bytes = castBytes {
+            if gridStart == nil { gridStart = timestamp }
+            let now = timestamp - (gridStart ?? timestamp), b = castView(bytes), c = cast.cast
+            anim = metareal_cast_update(b, c, anim, metareal_player_act(player), player.vel.y > 0, now)
+            var matrix = [Float](repeating: 0, count: 16)
+            let viewed = matrix.withUnsafeMutableBufferPointer { metareal_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, coax_v_f32(data: $0.baseAddress, count: 16)) }
+            let anim = anim
+            if viewed {
+                castFrame = CastFrame(view: matrix) { out in
+                    metareal_cast_pose(b, c, anim, now, feet.x, feet.y, feet.z, face, out) && metareal_cast_robots_pose(b, c, now, out)
+                }
+            }
+            let names = ["idle", "walking", "running", "jump start", "jump loop", "landing"]
+            let name = names[min(Int(anim.move), names.count - 1)]
+            if youElement?.accessibilityValue != name { youElement?.accessibilityValue = name }
+        }
+        renderer?.draw(handle: gridHandle, time: timestamp, cast: cast, frame: castFrame)
         let place = String(format: "%.1f %.1f", feet.x, feet.z)
         if gridElement?.accessibilityValue != place { gridElement?.accessibilityValue = place }
     }
@@ -233,7 +285,11 @@ final class HomeViewController: UIViewController {
         if inGrid { return routeGrid(touches, 3) }
         if let touch = trackedTouch { route(3, touch) }; trackedTouch = nil
     }
-    deinit { clock?.invalidate(); NotificationCenter.default.removeObserver(self); mr_destroy(handle); if gridHandle != 0 { mr_destroy(gridHandle) } }
+    deinit {
+        clock?.invalidate(); NotificationCenter.default.removeObserver(self); mr_destroy(handle)
+        if gridHandle != 0 { mr_destroy(gridHandle) }
+        castBytes?.deallocate()
+    }
 }
 private final class HomeActionElement: UIAccessibilityElement {
     var activate: (() -> Bool)?
