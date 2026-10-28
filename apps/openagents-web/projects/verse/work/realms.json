@@ -1,0 +1,662 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "realms-port",
+    "title": "Port the realms: Ice Cream Man, Dead Gears, Everglade",
+    "body": "Bring the demo's other worlds to openagents.com in Coax, each opening from the galaxy, and build Everglade, the forest city.",
+    "spec": "docs/verse/realms-port.md",
+    "labels": [
+      "realms"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "rl-shared",
+      "title": "Realms: one realm page for every world",
+      "body": "The realm page hosts any realm; asset packs; every realm in the release checks.",
+      "parent": "realms-port"
+    },
+    {
+      "slug": "icm",
+      "title": "Ice Cream Man on openagents.com",
+      "body": "The seeded house game, rules checked against the Rust traces.",
+      "parent": "realms-port"
+    },
+    {
+      "slug": "dg",
+      "title": "Dead Gears on openagents.com",
+      "body": "The ship survival game on a Coax ECS.",
+      "parent": "realms-port"
+    },
+    {
+      "slug": "eg",
+      "title": "Everglade, the forest city",
+      "body": "A designed MMORPG hub with quests, characters and a companion.",
+      "parent": "realms-port"
+    },
+    {
+      "slug": "rl-later",
+      "title": "More worlds: Sandbox, the Grid, Medieval Town",
+      "body": "After the three above.",
+      "parent": "realms-port"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "rl-realm-host",
+      "parent": "rl-shared",
+      "title": "One realm page that hosts any realm",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Today /realm/haunted-house is the only realm page. Make the realm page take a realm id so /realm/<slug> loads that realm's world module, assets, HUD and save slot, and the galaxy opens each realm from its orbit. The Haunted House keeps working unchanged.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/realm.coax",
+        "apps/openagents-web/verse.coax"
+      ],
+      "acceptance": [
+        "/realm/haunted-house passes its goldens unchanged",
+        "A second fixture realm opens from the galaxy and from its URL",
+        "Each realm saves under its own slot"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "rl-realm-goldens",
+        "icm-mesh",
+        "dg-ship",
+        "eg-design",
+        "rl-sandbox",
+        "rl-grid",
+        "rl-medieval"
+      ]
+    },
+    {
+      "slug": "rl-asset-packs",
+      "parent": "rl-shared",
+      "title": "Asset packs for realms: kits compiled for the web",
+      "size": "M",
+      "labels": [
+        "realms",
+        "assets"
+      ],
+      "body": "A pack format and compiler for realm art: meshes, textures and sounds from CC0 kits (Quaternius Stylized Nature, Medieval Village, Fantasy Props, in ~/work/aethyr-cpp) compiled to compact packs the page streams on entry, with a size budget per realm and licences recorded. See the demo's tools/split_assets.py and the old Everglade pack compiler at 0b401561a0^:crates/verse-zone-everglade.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "verse/",
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "A pack loads on entering a realm with a progress line and stays under its budget",
+        "Licences are listed for every asset in a pack"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "eg-buildings"
+      ]
+    },
+    {
+      "slug": "rl-realm-goldens",
+      "parent": "rl-shared",
+      "title": "Each realm in the release walk and goldens",
+      "size": "S",
+      "labels": [
+        "realms",
+        "release"
+      ],
+      "body": "Extend coax/web/goldens.ts so every live realm is opened from the galaxy, starts, draws and matches its golden on staging, and starts and draws on production.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "coax/web/goldens.ts"
+      ],
+      "acceptance": [
+        "A blank or broken realm fails the release on staging"
+      ],
+      "blocked_by": [
+        "rl-realm-host"
+      ],
+      "blocks": [
+        "icm-launch",
+        "dg-launch",
+        "eg-launch"
+      ]
+    },
+    {
+      "slug": "icm-rules",
+      "parent": "icm",
+      "title": "Ice Cream Man: the rules in Coax, step for step",
+      "size": "L",
+      "labels": [
+        "realms",
+        "ice-cream-man"
+      ],
+      "body": "Port the game's rules (src/icecream/rules.cpp and rules.h in ~/work/aethyr-demo (read only), itself a step-for-step port of OpenAgents' Rust game in third_party/icecream) to Coax, deterministic and seeded. Check it against the Rust build's recorded input traces (tools/icecream-trace) frame by frame.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Every recorded trace replays to the same state as the Rust build",
+        "Rules run with no rendering, under coax test"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "icm-world"
+      ]
+    },
+    {
+      "slug": "icm-mesh",
+      "parent": "icm",
+      "title": "Ice Cream Man: the procedural house and models",
+      "size": "M",
+      "labels": [
+        "realms",
+        "ice-cream-man"
+      ],
+      "body": "Port src/icecream/mesh.cpp: the seeded house, rooms, furniture and models, drawn by the Verse renderer.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "The same seed builds the same house as the demo (side-by-side shots)"
+      ],
+      "blocked_by": [
+        "rl-realm-host"
+      ],
+      "blocks": [
+        "icm-world"
+      ]
+    },
+    {
+      "slug": "icm-world",
+      "parent": "icm",
+      "title": "Ice Cream Man: play it in the browser",
+      "size": "L",
+      "labels": [
+        "realms",
+        "ice-cream-man"
+      ],
+      "body": "Port src/icecream/world.cpp and camera.cpp: the shared player controller, the game's camera, interactions and the play loop driving the Coax rules.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "A full round can be played start to end on desktop and phone",
+        "Inputs recorded in the browser replay identically in the rules tests"
+      ],
+      "blocked_by": [
+        "icm-rules",
+        "icm-mesh"
+      ],
+      "blocks": [
+        "icm-hud"
+      ]
+    },
+    {
+      "slug": "icm-hud",
+      "parent": "icm",
+      "title": "Ice Cream Man: HUD, prompts and the end card",
+      "size": "M",
+      "labels": [
+        "realms",
+        "ice-cream-man"
+      ],
+      "body": "Time, the hot bar, prompts and the end card, drawn in Coax in the house's fantasy button style.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Every prompt in the demo has its counterpart",
+        "Phone layout at 390 px"
+      ],
+      "blocked_by": [
+        "icm-world"
+      ],
+      "blocks": [
+        "icm-launch"
+      ]
+    },
+    {
+      "slug": "icm-launch",
+      "parent": "icm",
+      "title": "Ice Cream Man live on openagents.com",
+      "size": "S",
+      "labels": [
+        "realms",
+        "ice-cream-man"
+      ],
+      "body": "/realm/ice-cream-man, its galaxy orbit, saves, analytics events, the share card and its golden; then a side-by-side with the demo for the owner's parity sign-off.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Opens from the galaxy on production",
+        "Owner signs off parity (NEEDS_OWNER entry)"
+      ],
+      "blocked_by": [
+        "icm-hud",
+        "rl-realm-goldens"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "dg-ecs",
+      "parent": "dg",
+      "title": "Dead Gears: an entity system in Coax",
+      "size": "M",
+      "labels": [
+        "realms",
+        "dead-gears"
+      ],
+      "body": "Port the engine ECS Dead Gears runs on (src/ecs/ and docs/ecs.md in ~/work/aethyr-demo (read only)): entities, components and deterministic systems, with per-system timing.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "200 entities step within 2 ms of CPU a frame on a laptop (wasm)",
+        "Same inputs give the same state"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "dg-rules"
+      ]
+    },
+    {
+      "slug": "dg-rules",
+      "parent": "dg",
+      "title": "Dead Gears: combat, waves and repairs",
+      "size": "L",
+      "labels": [
+        "realms",
+        "dead-gears"
+      ],
+      "body": "Port src/dead_gears_rules.cpp: the cutter, Sever/Head/Core modes, reload, cover, Lift/Throw with telekinetic power, Stun, three waves, repairs at the reactor, and the swept collisions (#19, #80).\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "The demo's native rules tests pass as coax tests",
+        "A thrown crate or brute bolt never passes through cover"
+      ],
+      "blocked_by": [
+        "dg-ecs"
+      ],
+      "blocks": [
+        "dg-creatures"
+      ]
+    },
+    {
+      "slug": "dg-ship",
+      "parent": "dg",
+      "title": "Dead Gears: the ship",
+      "size": "M",
+      "labels": [
+        "realms",
+        "dead-gears"
+      ],
+      "body": "Port src/dead_gears.cpp's original ship geometry into the realm's static scene, with cover, cargo, bolts and the reactor.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Side-by-side shots match the demo's ship"
+      ],
+      "blocked_by": [
+        "rl-realm-host"
+      ],
+      "blocks": [
+        "dg-creatures",
+        "dg-light"
+      ]
+    },
+    {
+      "slug": "dg-creatures",
+      "parent": "dg",
+      "title": "Dead Gears: crawlers, hounds, reavers and brutes",
+      "size": "M",
+      "labels": [
+        "realms",
+        "dead-gears"
+      ],
+      "body": "The procedural box figures for engineers and creatures, limbs that sever, heads that keep crawling, and the support engineer who walks over to repair.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Every creature type and the severed parts draw and animate",
+        "200 mutants via ?spawn=200 stay smooth on a laptop"
+      ],
+      "blocked_by": [
+        "dg-rules",
+        "dg-ship"
+      ],
+      "blocks": [
+        "dg-play"
+      ]
+    },
+    {
+      "slug": "dg-play",
+      "parent": "dg",
+      "title": "Dead Gears: controls, HUD and touch",
+      "size": "M",
+      "labels": [
+        "realms",
+        "dead-gears"
+      ],
+      "body": "Keyboard (WASD, F fire, R reload, C cover, E repair, Q mode, G lift/throw, T stun, Esc pause) and touch buttons, the HUD, pause and backgrounding freeze, Again.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "A full three-wave game can be won and lost on desktop and phone"
+      ],
+      "blocked_by": [
+        "dg-creatures"
+      ],
+      "blocks": [
+        "dg-launch"
+      ]
+    },
+    {
+      "slug": "dg-light",
+      "parent": "dg",
+      "title": "Dead Gears: the day and the alarms",
+      "size": "S",
+      "labels": [
+        "realms",
+        "dead-gears"
+      ],
+      "body": "Each wave later in the day (afternoon, golden hour, dusk), sun through the roof lattice, wall strips, lamps, alarms, muzzle flash and bolts as lights.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "?hour= holds an hour; shots per wave"
+      ],
+      "blocked_by": [
+        "dg-ship",
+        "verse-moonlight"
+      ],
+      "blocks": [
+        "dg-launch"
+      ]
+    },
+    {
+      "slug": "dg-launch",
+      "parent": "dg",
+      "title": "Dead Gears live on openagents.com",
+      "size": "S",
+      "labels": [
+        "realms",
+        "dead-gears"
+      ],
+      "body": "/realm/dead-gears with saves at each wave and repair, analytics, share card, galaxy orbit and golden.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Opens from the galaxy on production",
+        "A reload continues the fight where it was"
+      ],
+      "blocked_by": [
+        "dg-play",
+        "dg-light",
+        "rl-realm-goldens"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-design",
+      "parent": "eg",
+      "title": "Everglade: the city plan and blockout",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "The forest city from docs/realms.md in ~/work/aethyr-demo (read only) and the old Everglade doc and map (0b401561a0^:docs/verse/everglade.md, everglade-map.svg): gate and palisade, commons with fountain, quest board and crier, market, inn, guild halls, temple and observatory, paths out. A blockout realm you can walk, with the map checked in.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "The blockout is walkable end to end",
+        "The plan doc names every district and landmark"
+      ],
+      "blocked_by": [
+        "rl-realm-host"
+      ],
+      "blocks": [
+        "eg-forest",
+        "eg-buildings"
+      ]
+    },
+    {
+      "slug": "eg-forest",
+      "parent": "eg",
+      "title": "Everglade: ground, forest and paths",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "Terrain, walkable paths and a forest ring built on the engine's terrain and foliage.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "The city sits in a forest you can't walk out of except by the paths",
+        "Frame time holds on the phone"
+      ],
+      "blocked_by": [
+        "eg-design",
+        "verse-terrain-paths"
+      ],
+      "blocks": [
+        "eg-launch"
+      ]
+    },
+    {
+      "slug": "eg-buildings",
+      "parent": "eg",
+      "title": "Everglade: the buildings and landmarks",
+      "size": "L",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "Gate and walls, the commons, market stalls, smithy, alchemist, general store, the inn with its common room, the guild halls, the temple and the observatory, from the Medieval Village and Fantasy Props kits.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Every landmark in the plan stands in the realm",
+        "Doors and interiors where the plan says"
+      ],
+      "blocked_by": [
+        "eg-design",
+        "rl-asset-packs"
+      ],
+      "blocks": [
+        "eg-people",
+        "eg-launch"
+      ]
+    },
+    {
+      "slug": "eg-people",
+      "parent": "eg",
+      "title": "Everglade: shopkeepers and cats who remember you",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "The city's characters, cats among them, on the character chat with memory: shopkeepers, the crier, guild masters. They remember a returning player.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "A character recalls something a player told it on an earlier visit"
+      ],
+      "blocked_by": [
+        "eg-buildings",
+        "verse-quadruped"
+      ],
+      "blocks": [
+        "eg-quests"
+      ]
+    },
+    {
+      "slug": "eg-quests",
+      "parent": "eg",
+      "title": "Everglade: the quest board and first quests",
+      "size": "L",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "A quest system (data an agent can write), the quest board, and three starter quests out to the deep wood, the ruins and the river crossing; one quest earns the bird companion.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Three quests can be taken, done and handed in",
+        "Quest state is saved per player"
+      ],
+      "blocked_by": [
+        "eg-people"
+      ],
+      "blocks": [
+        "eg-companion",
+        "eg-launch"
+      ]
+    },
+    {
+      "slug": "eg-companion",
+      "parent": "eg",
+      "title": "Everglade: the bird flock with ribbons",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "A flock that follows you, trailing ribbons, earned from a quest.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "The flock follows smoothly on the phone"
+      ],
+      "blocked_by": [
+        "eg-quests",
+        "verse-particles"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-launch",
+      "parent": "eg",
+      "title": "Everglade live on openagents.com",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade"
+      ],
+      "body": "/realm/everglade, the galaxy orbit, analytics, share card and golden. Everglade is the same for everyone; players can't edit it.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Opens from the galaxy on production",
+        "Edit mode is off in Everglade"
+      ],
+      "blocked_by": [
+        "eg-forest",
+        "eg-buildings",
+        "eg-quests",
+        "rl-realm-goldens"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "rl-sandbox",
+      "parent": "rl-later",
+      "title": "The Sandbox realm",
+      "size": "M",
+      "labels": [
+        "realms"
+      ],
+      "body": "Port the demo's Sandbox (web/sandbox.html in ~/work/aethyr-demo (read only)): open ground where every edit tool works, one shared published Sandbox, and one-sentence set pieces chosen by a typed planner.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Opens from the galaxy; edits are kept and published"
+      ],
+      "blocked_by": [
+        "rl-realm-host"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "rl-grid",
+      "parent": "rl-later",
+      "title": "The Grid realm",
+      "size": "M",
+      "labels": [
+        "realms"
+      ],
+      "body": "Port the demo's Grid world (src/grid_world.cpp, web/grid.js in ~/work/aethyr-demo (read only)).\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Opens from the galaxy on production"
+      ],
+      "blocked_by": [
+        "rl-realm-host"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "rl-medieval",
+      "parent": "rl-later",
+      "title": "Medieval Town",
+      "size": "M",
+      "labels": [
+        "realms"
+      ],
+      "body": "Port the demo's Medieval Town, or fold it into Everglade if Everglade covers it; decide in the task.\n\nPlan: `docs/verse/realms-port.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Decision written; realm live or folded"
+      ],
+      "blocked_by": [
+        "rl-realm-host"
+      ],
+      "blocks": []
+    }
+  ]
+}
