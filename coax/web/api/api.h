@@ -33,3 +33,4 @@ bool admin_route(const request *q);
 bool admin_is(const char *pubkey);        // a pubkey in OA_ADMIN_PUBKEYS
 bool player_route(const request *q);      // player.c
 bool npc_route(const request *q);         // npc.c
+bool private_route(const request *q);     // private.c

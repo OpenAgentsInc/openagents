@@ -1,0 +1,944 @@
+// A private project's page, drawn by Coax (coax/web/api/private.c serves it
+// at /projects/<slug> to members; docs/private-projects.md). It holds nothing
+// of the project until oa-api answers with the member's session cookie: the
+// page's own files are generic and public. The locked page (data-page 1, or
+// any answer but 200) draws only PRIVATE PROJECT and how to get in.
+//
+// Panels: GOALS (agreed, with who agreed, and PROPOSED), TODAY (a day's
+// milestones in Chicago time, with the days before and after), CHECKLIST
+// (done, doing, todo, with evidence), ANALYTICS (the live numbers and the
+// old dashboard), AGENTS (what they did, newest first) and MESSAGES (the
+// thread and a field to write to the agents). The state comes again every
+// 30 s and when the tab is shown again; LIVE says the last answer is fresh.
+//
+// The state is lines (migrations/0007_private_projects.sql, projects.lines):
+// "KIND|value|...", KIND one of Y P T G D M C I A X N S L.
+// A sign-in link carries its token in the hash (#invite=...): the page clears
+// the hash, trades the token for the session cookie, and loads again.
+
+#load "projects.coax";
+
+PV_MAX_VERTICES :: 240000;
+PV_INBOX :: 262144;
+PV_DATA :: 262144;
+PV_LINES :: 2048;
+PV_URL :: 256;
+PV_BODY :: 6144;
+PV_TEXT :: 1500;           // bytes a message may hold
+PV_HITS :: 24;
+PV_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
+PV_TYPED :: 1; PV_PAGE_TEXT :: 2; PV_SHOWN :: 602;
+PV_NAVIGATE :: 1; PV_SET_HASH :: 3;
+PV_REFRESH :: 30.0;        // seconds between reads of the state
+PV_FRESH :: 75.0;          // an answer this old or newer is LIVE
+POST_MESSAGE :: 1; POST_REDEEM :: 2; POST_LOGOUT :: 3;
+H_HOME :: 1; H_PROJECTS :: 2; H_SIGNOUT :: 3; H_PREV :: 4; H_NEXT :: 5; H_FIELD :: 6; H_SEND :: 7; H_LINK :: 8;
+K_BACK :: -3; K_ESC :: -1;
+
+PrivateState :: struct {
+  time: f32; ready: bool;
+  width: f32; height: f32; d: f32;
+  page: int;                     // 0 the member's shell, 1 locked
+  slug: [64] u8; slug_n: int;
+  status: int;                   // -1 nothing asked, 0 waiting for the first answer, else its HTTP status
+  live: bool; since: f32;        // the last good answer's time
+  asked_at: f32;
+  ask: [PV_URL] u8; ask_n: int; ask_id: int;           // a read for the face to send; the id it's waiting on, or -1
+  post: [PV_URL] u8; post_n: int; post_id: int; post_kind: int;
+  body: [PV_BODY] u8; body_n: int;
+  token: [80] u8; token_n: int;  // a sign-in link's token, until it's traded
+  note: [64] u8; note_n: int; note_at: f32;   // a short word after a send: SENT, NOT SENT
+  day: int;                      // the day shown: an index into the days, -1 today's
+  scroll: f32; content: f32;
+  hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
+  typing: bool; text: [PV_TEXT] u8; text_n: int;
+  field: [4] f32;                // where the message field is drawn, device pixels (the host's keyboard field goes there)
+  hit_box: [PV_HITS] Box; hit_id: [PV_HITS] int; hit_n: int;
+  link: [PV_URL] u8; link_n: int;
+  outbox: [PV_URL] u8; out_n: int; action: int;
+  data: [PV_DATA] u8; data_n: int;
+  line_at: [PV_LINES] int; line_end: [PV_LINES] int; line_n: int;
+  inbox: [PV_INBOX] u8;
+}
+
+// ---------------------------------------------------------------- the lines
+
+pv_line :: (s: [] PrivateState, i: int) -> string { return cast(string) s[0].data[s[0].line_at[i]..<s[0].line_end[i]]; }
+pv_kind :: (s: [] PrivateState, i: int) -> u8 { return s[0].data[s[0].line_at[i]]; }
+// The col-th value of a line (0 is its kind).
+pv_cell :: (s: [] PrivateState, i: int, col: int) -> string {
+  from := s[0].line_at[i]; to := s[0].line_end[i];
+  k := from; c := 0;
+  while c < col && k < to { if s[0].data[k] == '|' { c += 1; } k += 1; }
+  if c < col { return ""; }
+  j := k;
+  while j < to && s[0].data[j] != '|' { j += 1; }
+  return cast(string) s[0].data[k..<j];
+}
+pv_index :: (s: [] PrivateState) {
+  s[0].line_n = 0;
+  at := 0; n := s[0].data_n;
+  while at < n {
+    stop := at;
+    while stop < n && s[0].data[stop] != '\n' { stop += 1; }
+    if stop > at + 1 && s[0].data[at + 1] == '|' && s[0].line_n < PV_LINES {
+      s[0].line_at[s[0].line_n] = at; s[0].line_end[s[0].line_n] = stop; s[0].line_n += 1;
+    }
+    at = stop + 1;
+  }
+}
+// The first line of a kind, or -1.
+pv_first :: (s: [] PrivateState, kind: u8) -> int {
+  for i: 0..<s[0].line_n { if pv_kind(s, i) == kind { return i; } }
+  return -1;
+}
+pv_count :: (s: [] PrivateState, kind: u8) -> int {
+  n := 0;
+  for i: 0..<s[0].line_n { if pv_kind(s, i) == kind { n += 1; } }
+  return n;
+}
+// The k-th line of a kind, or -1.
+pv_nth :: (s: [] PrivateState, kind: u8, k: int) -> int {
+  n := 0;
+  for i: 0..<s[0].line_n { if pv_kind(s, i) == kind { if n == k { return i; } n += 1; } }
+  return -1;
+}
+pv_today :: (s: [] PrivateState) -> string { t := pv_first(s, 'T'); return ifx t < 0 then "" else pv_cell(s, t, 1); }
+// The day shown: the one chosen, else today's, else the next after today, else the last.
+pv_day :: (s: [] PrivateState) -> int {
+  n := pv_count(s, 'D');
+  if n == 0 { return -1; }
+  if s[0].day >= 0 && s[0].day < n { return s[0].day; }
+  today := pv_today(s);
+  for k: 0..<n { if pv_cell(s, pv_nth(s, 'D', k), 1) == today { return k; } }
+  for k: 0..<n { if pv_less(today, pv_cell(s, pv_nth(s, 'D', k), 1)) { return k; } }
+  return n - 1;
+}
+pv_less :: (a: string, b: string) -> bool {
+  m := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<m { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+
+// ---------------------------------------------------------------- asking oa-api
+
+pv_put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < buf.count { buf[n] = c; n += 1; } }
+  return n;
+}
+pv_slug :: (s: [] PrivateState) -> string { return cast(string) s[0].slug[0..<s[0].slug_n]; }
+pv_ask :: (s: [] PrivateState) {
+  if s[0].page != 0 || s[0].slug_n == 0 || s[0].ask_id >= 0 { return; }
+  n := pv_put(s[0].ask[..], 0, "/projects/");
+  n = pv_put(s[0].ask[..], n, pv_slug(s));
+  s[0].ask_n = pv_put(s[0].ask[..], n, "/api/state");
+  s[0].asked_at = s[0].time;
+  if s[0].status == -1 { s[0].status = 0; }
+}
+// A JSON string's contents into buf.
+pv_json :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text {
+    if n + 7 >= buf.count { return n; }
+    if c == '"' || c == '\\' { buf[n] = '\\'; buf[n + 1] = c; n += 2; }
+    else if c < 32 { buf[n] = ' '; n += 1; }
+    else { buf[n] = c; n += 1; }
+  }
+  return n;
+}
+pv_post :: (s: [] PrivateState, op: string, kind: int, key: string, value: string) {
+  n := pv_put(s[0].post[..], 0, "/projects/");
+  n = pv_put(s[0].post[..], n, pv_slug(s));
+  n = pv_put(s[0].post[..], n, "/api/");
+  s[0].post_n = pv_put(s[0].post[..], n, op);
+  b := pv_put(s[0].body[..], 0, "{");
+  if key.count > 0 {
+    b = pv_put(s[0].body[..], b, "\""); b = pv_put(s[0].body[..], b, key); b = pv_put(s[0].body[..], b, "\":\"");
+    b = pv_json(s[0].body[..], b, value);
+    b = pv_put(s[0].body[..], b, "\"");
+  }
+  s[0].body_n = pv_put(s[0].body[..], b, "}");
+  s[0].post_kind = kind; s[0].post_id = -1;
+}
+// The face sent them, and which answer each waits for.
+coaxial_private_asked :: (s: [] PrivateState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
+coaxial_private_posted :: (s: [] PrivateState, id: int) #export_c { if s.count > 0 { s[0].post_n = 0; s[0].post_id = id; } }
+pv_say :: (s: [] PrivateState, word: string) { s[0].note_n = pv_put(s[0].note[..], 0, word); s[0].note_at = s[0].time; }
+pv_go :: (s: [] PrivateState, url: string) { s[0].out_n = pv_put(s[0].outbox[..], 0, url); s[0].action = PV_NAVIGATE; }
+pv_go_page :: (s: [] PrivateState) {
+  n := pv_put(s[0].outbox[..], 0, "/projects/");
+  s[0].out_n = pv_put(s[0].outbox[..], n, pv_slug(s)); s[0].action = PV_NAVIGATE;
+}
+
+// An answer: "STATUS\n" then the body.
+pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
+  i := 0; code := 0;
+  while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
+  if i < bytes.count && bytes[i] == '\n' { i += 1; }
+  if id == s[0].ask_id {
+    s[0].ask_id = -1;
+    if code == 200 {
+      n := 0;
+      while i < bytes.count && n < PV_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+      s[0].data_n = n; pv_index(s);
+      s[0].status = 200; s[0].live = true; s[0].since = s[0].time;
+    } else if code == 0 || code >= 500 {
+      s[0].live = false;                       // offline: what was shown stays
+      if s[0].status == 0 { s[0].status = 599; }
+    } else {
+      s[0].status = code; s[0].data_n = 0; s[0].line_n = 0; s[0].live = false;   // the session is gone: nothing stays
+    }
+    return;
+  }
+  if id != s[0].post_id { return; }
+  s[0].post_id = -1;
+  kind := s[0].post_kind; s[0].post_kind = 0;
+  if kind == POST_MESSAGE {
+    if code == 200 { s[0].text_n = 0; pv_say(s, "SENT"); pv_ask(s); }
+    else { pv_say(s, ifx code == 429 then "SLOW DOWN" else "NOT SENT"); }
+  } else if kind == POST_REDEEM {
+    if code == 200 { pv_go_page(s); } else { pv_say(s, "THAT LINK WAS USED OR HAS EXPIRED"); }
+  } else if kind == POST_LOGOUT {
+    pv_go_page(s);
+  }
+}
+
+// ---------------------------------------------------------------- layout and text
+
+PvFlow :: struct { y: f32; v: int; }
+pv_ink :: (p: Pen, kind: int) -> Ink { return ink(p, kind); }
+pv_chrome :: (p: Pen, kind: int) -> Ink { k := ink(p, kind); k.sans = false; return k; }
+BODY :: 7.5;     // small text's cap, CSS pixels (the sans)
+STEP :: 15.0;    // its line
+
+// Wrapped text, at most lines lines; drawn when draw and between top and the bottom of the screen.
+pv_text :: (s: [] PrivateState, out: [] f32, f: PvFlow, text: string, x: f32, width: f32, cap: f32, k: Ink, lines: int, draw: bool, top: f32) -> PvFlow {
+  d := s[0].d; step := STEP * d * cap / BODY;
+  r := f; from := 0; n := 0;
+  next: [1] int;
+  while from < text.count && n < lines {
+    end := wrap_ink(text, from, width, cap * d, GAP, SPACE, k, next[..]);
+    base := r.y + step * 0.8;
+    show := draw && base > top && base - step < s[0].height;
+    if n == lines - 1 && next[0] < text.count && next[0] > from {
+      if show { r.v = put_fit(out, r.v, text[from..<text.count], x, base, cap * d, k, width); }
+      r.y += step; n += 1; break;
+    }
+    if show { r.v = put(out, r.v, text[from..<end], x, base, cap * d, k); }
+    r.y += step; n += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  return r;
+}
+pv_hit :: (s: [] PrivateState, b: Box, id: int) {
+  if s[0].hit_n >= PV_HITS { return; }
+  s[0].hit_box[s[0].hit_n] = b; s[0].hit_id[s[0].hit_n] = id; s[0].hit_n += 1;
+}
+pv_chip :: (s: [] PrivateState, out: [] f32, v: int, label: string, x: f32, y: f32, id: int, on: bool, p: Pen, draw: bool, top: f32) -> int {
+  cap := 7 * p.d;
+  b := chip_box(label, x, y, cap, p);
+  if !draw || b.y0 < top || b.y0 > s[0].height { return v; }
+  pv_hit(s, b, id);
+  k := ifx on then pv_chrome(p, INK_ORANGE) else ifx s[0].hot == id then pv_chrome(p, INK_WHITE) else pv_chrome(p, INK_DIM);
+  return chip(out, v, label, x, y, cap, k, p);
+}
+// A marker for todo, doing and done.
+pv_mark :: (out: [] f32, v: int, status: string, x: f32, y: f32, p: Pen) -> int {
+  r := 3.2 * p.d;
+  if status == "done" { w := diamond(out, v, x, y, r, ink(p, INK_ORANGE), p.fade); return diamond(out, w, x, y, r * 0.45, ink(p, INK_ORANGE), p.fade); }
+  if status == "doing" { return diamond(out, v, x, y, r, ink(p, INK_WHITE), p.fade); }
+  return diamond(out, v, x, y, r, ink(p, INK_FAINT), p.fade * 0.8);
+}
+pv_number :: (buf: [] u8, at: int, n: int) -> int {
+  digits: [20] u8; k := 0; x := n;
+  if x == 0 { digits[0] = '0'; k = 1; }
+  while x > 0 && k < 20 { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  o := at;
+  for i: 0..<k { if o < buf.count { buf[o] = digits[k - 1 - i]; o += 1; } }
+  return o;
+}
+pv_upper :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < buf.count { buf[n] = ifx c >= 'a' && c <= 'z' then c - 32 else c; n += 1; } }
+  return n;
+}
+
+// ---------------------------------------------------------------- the panels
+// Each lays its content out from y down in [x0, x1] and draws it when draw;
+// the same call measures it (draw false).
+
+pv_goals :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  n := pv_count(s, 'G');
+  if n == 0 { return pv_text(s, out, r, "No goals yet.", x0, x1 - x0, BODY, ink(p, INK_FAINT), 1, draw, top); }
+  for k: 0..<n {
+    i := pv_nth(s, 'G', k);
+    proposed := pv_cell(s, i, 2) == "proposed";
+    if draw && r.y > top && r.y < s[0].height { r.v = diamond(out, r.v, x0 + 4 * d, r.y + 7 * d, 3.2 * d, ink(p, ifx proposed then INK_ORANGE else INK_WHITE), p.fade); }
+    r = pv_text(s, out, r, pv_cell(s, i, 4), x0 + 16 * d, x1 - x0 - 16 * d, BODY, ink(p, INK_WHITE), 3, draw, top);
+    buf: [160] u8;
+    m := ifx proposed then pv_put(buf[..], 0, "PROPOSED") else pv_upper(buf[..], pv_put(buf[..], 0, "AGREED · "), pv_cell(s, i, 3));
+    sub := r; sub.y -= 1 * d;
+    r = pv_text(s, out, sub, cast(string) buf[0..<m], x0 + 16 * d, x1 - x0 - 16 * d, 6, ifx proposed then pv_chrome(p, INK_ORANGE) else ink(p, INK_DIM), 1, draw, top);
+    r.y += 7 * d;
+  }
+  return r;
+}
+
+pv_days :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  k := pv_day(s);
+  if k < 0 { return pv_text(s, out, r, "No days planned yet.", x0, x1 - x0, BODY, ink(p, INK_FAINT), 1, draw, top); }
+  di := pv_nth(s, 'D', k);
+  date := pv_cell(s, di, 1);
+  // the day, its counts and the days either side
+  buf: [96] u8;
+  done := 0; doing := 0; todo := 0;
+  for i: 0..<s[0].line_n {
+    if pv_kind(s, i) != 'M' || pv_cell(s, i, 1) != date { continue; }
+    st := pv_cell(s, i, 3);
+    if st == "done" { done += 1; } else if st == "doing" { doing += 1; } else { todo += 1; }
+  }
+  m := pv_put(buf[..], 0, pv_cell(s, di, 2));
+  if date == pv_today(s) { m = pv_put(buf[..], m, " · TODAY"); }
+  y := r.y + 12 * d;
+  if draw && y > top && y < s[0].height { r.v = put(out, r.v, cast(string) buf[0..<m], x0, y, 7 * d, pv_chrome(p, INK_WHITE)); }
+  cx := x1;
+  if k + 1 < pv_count(s, 'D') { cx -= chip_width("NEXT >", 7 * d, p); r.v = pv_chip(s, out, r.v, "NEXT >", cx, y, H_NEXT, false, p, draw, top); cx -= 6 * d; }
+  if k > 0 { cx -= chip_width("< PREV", 7 * d, p); r.v = pv_chip(s, out, r.v, "< PREV", cx, y, H_PREV, false, p, draw, top); }
+  m = pv_number(buf[..], 0, done); m = pv_put(buf[..], m, " DONE   ");
+  m = pv_number(buf[..], m, doing); m = pv_put(buf[..], m, " DOING   ");
+  m = pv_number(buf[..], m, todo); m = pv_put(buf[..], m, " TODO");
+  y2 := y + 17 * d;
+  if draw && y2 > top && y2 < s[0].height { r.v = put(out, r.v, cast(string) buf[0..<m], x0, y2, 6 * d, pv_chrome(p, INK_DIM)); }
+  r.y = y2 + 10 * d;
+  for i: 0..<s[0].line_n {
+    if pv_kind(s, i) != 'M' || pv_cell(s, i, 1) != date { continue; }
+    st := pv_cell(s, i, 3);
+    if draw && r.y > top && r.y < s[0].height { r.v = pv_mark(out, r.v, st, x0 + 4 * d, r.y + 7 * d, p); }
+    r = pv_text(s, out, r, pv_cell(s, i, 5), x0 + 16 * d, x1 - x0 - 16 * d, BODY, ink(p, ifx st == "done" then INK_DIM else INK_WHITE), 3, draw, top);
+    sub: [200] u8;
+    q := pv_upper(sub[..], 0, st);
+    if pv_cell(s, i, 4).count > 0 { q = pv_put(sub[..], q, " · "); q = pv_upper(sub[..], q, pv_cell(s, i, 4)); }
+    line := r; line.y -= 1 * d;
+    r = pv_text(s, out, line, cast(string) sub[0..<q], x0 + 16 * d, x1 - x0 - 16 * d, 6, ifx st == "doing" then pv_chrome(p, INK_ORANGE) else ink(p, INK_DIM), 1, draw, top);
+    if pv_cell(s, i, 6).count > 0 { r = pv_text(s, out, r, pv_cell(s, i, 6), x0 + 16 * d, x1 - x0 - 16 * d, 6.5, ink(p, INK_FAINT), 2, draw, top); }
+    r.y += 6 * d;
+  }
+  return r;
+}
+
+pv_checklist :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  if pv_count(s, 'I') == 0 { return pv_text(s, out, r, "Nothing to check yet.", x0, x1 - x0, BODY, ink(p, INK_FAINT), 1, draw, top); }
+  states := [3] string.["done", "doing", "todo"];
+  for c: 0..<s[0].line_n {
+    if pv_kind(s, c) != 'C' { continue; }
+    list := pv_cell(s, c, 1);
+    if pv_count(s, 'C') > 1 { r = pv_text(s, out, r, pv_cell(s, c, 2), x0, x1 - x0, 6.5, pv_chrome(p, INK_DIM), 1, draw, top); r.y += 2 * d; }
+    for g: 0..<3 {
+      for i: 0..<s[0].line_n {
+        if pv_kind(s, i) != 'I' || pv_cell(s, i, 1) != list || pv_cell(s, i, 3) != states[g] { continue; }
+        if draw && r.y > top && r.y < s[0].height { r.v = pv_mark(out, r.v, states[g], x0 + 4 * d, r.y + 7 * d, p); }
+        r = pv_text(s, out, r, pv_cell(s, i, 4), x0 + 16 * d, x1 - x0 - 16 * d, BODY, ink(p, ifx g == 0 then INK_DIM else INK_WHITE), 3, draw, top);
+        if pv_cell(s, i, 5).count > 0 { r = pv_text(s, out, r, pv_cell(s, i, 5), x0 + 16 * d, x1 - x0 - 16 * d, 6.5, ink(p, INK_FAINT), 2, draw, top); }
+        r.y += 6 * d;
+      }
+    }
+  }
+  return r;
+}
+
+// The link to show beside the numbers: the document's first link that names a dashboard or analytics.
+pv_dashboard :: (s: [] PrivateState) -> int {
+  for i: 0..<s[0].line_n {
+    if pv_kind(s, i) != 'L' { continue; }
+    label := pv_cell(s, i, 1); url := pv_cell(s, i, 2);
+    if pv_has(label, "nalytics") || pv_has(label, "ashboard") || pv_has(url, "analytics") { return i; }
+  }
+  return -1;
+}
+pv_has :: (text: string, word: string) -> bool {
+  if word.count == 0 || word.count > text.count { return false; }
+  for i: 0..<text.count - word.count + 1 { if text[i..<i + word.count] == word { return true; } }
+  return false;
+}
+
+pv_numbers :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  c1 := x1 - 86 * d; c2 := x1 - 8 * d;
+  y := r.y + 10 * d;
+  if draw && y > top && y < s[0].height {
+    r.v = put_right(out, r.v, "TODAY", c1, y, 6 * d, pv_chrome(p, INK_DIM));
+    r.v = put_right(out, r.v, "7 DAYS", c2, y, 6 * d, pv_chrome(p, INK_DIM));
+  }
+  r.y = y + 6 * d;
+  for i: 0..<s[0].line_n {
+    if pv_kind(s, i) != 'N' { continue; }
+    base := r.y + STEP * d * 0.8;
+    if draw && base > top && base - STEP * d < s[0].height {
+      r.v = put_fit(out, r.v, pv_cell(s, i, 1), x0, base, BODY * d, ink(p, INK_WHITE), c1 - x0 - 60 * d);
+      r.v = put_right(out, r.v, pv_cell(s, i, 2), c1, base, BODY * d, ink(p, INK_WHITE));
+      r.v = put_right(out, r.v, pv_cell(s, i, 3), c2, base, BODY * d, ink(p, INK_DIM));
+    }
+    r.y += STEP * d;
+  }
+  src := pv_first(s, 'S');
+  r.y += 6 * d;
+  if src >= 0 { r = pv_text(s, out, r, pv_cell(s, src, 1), x0, x1 - x0, 6.5, ink(p, INK_FAINT), 3, draw, top); }
+  l := pv_dashboard(s);
+  if l >= 0 {
+    r.y += 4 * d;
+    url := pv_cell(s, l, 2);
+    base := r.y + STEP * d * 0.8;
+    k := ifx s[0].hot == H_LINK then ink(p, INK_WHITE) else ink(p, INK_PALE);
+    r = pv_text(s, out, r, pv_cell(s, l, 1), x0, x1 - x0, BODY, k, 1, draw, top);
+    r = pv_text(s, out, r, url, x0, x1 - x0, 6.5, k, 1, draw, top);
+    if draw && base > top && base < s[0].height {
+      pv_hit(s, Box.{x0 = x0, y0 = base - 12 * d, x1 = x1, y1 = r.y}, H_LINK);
+      s[0].link_n = pv_put(s[0].link[..], 0, url);
+    }
+  }
+  return r;
+}
+
+pv_agents :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  n := pv_count(s, 'A');
+  if n == 0 { return pv_text(s, out, r, "No agent has posted yet.", x0, x1 - x0, BODY, ink(p, INK_FAINT), 1, draw, top); }
+  many := ifx n > 14 then 14 else n;
+  for k: 0..<many {
+    i := pv_nth(s, 'A', k);
+    buf: [120] u8;
+    m := pv_upper(buf[..], 0, pv_cell(s, i, 3)); m = pv_put(buf[..], m, " · "); m = pv_upper(buf[..], m, pv_cell(s, i, 4));
+    base := r.y + 10 * d;
+    if draw && base > top && base < s[0].height {
+      kind := pv_cell(s, i, 4);
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, ifx kind == "plan" then pv_chrome(p, INK_ORANGE) else pv_chrome(p, INK_DIM), x1 - x0 - 90 * d);
+      r.v = put_right(out, r.v, pv_cell(s, i, 2), x1, base, 6.5 * d, ink(p, INK_FAINT));
+    }
+    r.y += 13 * d;
+    r = pv_text(s, out, r, pv_cell(s, i, 5), x0, x1 - x0, BODY, ink(p, INK_WHITE), 3, draw, top);
+    r.y += 7 * d;
+  }
+  return r;
+}
+
+pv_messages :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  n := pv_count(s, 'X');
+  first := ifx n > 8 then n - 8 else 0;
+  if n == 0 { r = pv_text(s, out, r, "No messages yet. Write one to the agents below.", x0, x1 - x0, BODY, ink(p, INK_FAINT), 2, draw, top); r.y += 4 * d; }
+  // newest last, as a thread reads; replies indented under what they answer
+  for k: first..<n {
+    i := pv_nth(s, 'X', k);
+    reply := pv_cell(s, i, 5).count > 0;
+    x := ifx reply then x0 + 14 * d else x0;
+    buf: [120] u8;
+    m := pv_upper(buf[..], 0, pv_cell(s, i, 3));
+    base := r.y + 10 * d;
+    if draw && base > top && base < s[0].height {
+      if reply { r.v = rule(out, r.v, x0 + 4 * d, r.y + 3 * d, x0 + 4 * d, r.y + 24 * d, ink(p, INK_DIM), 0.4 * p.fade); }
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x, base, 6 * d, pv_chrome(p, ifx reply then INK_DIM else INK_ORANGE), x1 - x - 90 * d);
+      r.v = put_right(out, r.v, pv_cell(s, i, 2), x1, base, 6.5 * d, ink(p, INK_FAINT));
+    }
+    r.y += 13 * d;
+    r = pv_text(s, out, r, pv_cell(s, i, 4), x, x1 - x, BODY, ink(p, INK_WHITE), 4, draw, top);
+    r.y += 7 * d;
+  }
+  // the field: what's typed, drawn here; the host's keyboard field sits over it
+  send_w := chip_width("SEND", 7 * d, p);
+  fb := Box.{x0 = x0, y0 = r.y + 4 * d, x1 = x1 - send_w - 10 * d, y1 = r.y + 34 * d};
+  if draw && fb.y1 > top && fb.y0 < s[0].height {
+    k := ifx s[0].typing then ink(p, INK_ORANGE) else ink(p, INK_DIM);
+    r.v = rule(out, r.v, fb.x0, fb.y1, fb.x1, fb.y1, k, ifx s[0].typing then 0.9 * p.fade else 0.45 * p.fade);
+    r.v = rule(out, r.v, fb.x0, fb.y0 + 8 * d, fb.x0, fb.y1, k, 0.3 * p.fade);
+    tx := fb.x0 + 8 * d; base := fb.y1 - 10 * d; room := box_w(fb) - 20 * d;
+    white := ink(p, INK_WHITE);
+    caret_x := tx;
+    if s[0].text_n == 0 {
+      if !s[0].typing { r.v = put_fit(out, r.v, "Message the agents", tx, base, BODY * d, ink(p, INK_FAINT), room); }
+    } else {
+      // the end of what's typed, as much as fits
+      text := cast(string) s[0].text[0..<s[0].text_n];
+      from := 0;
+      while from < text.count && ink_width(text[from..<text.count], BODY * d, GAP, SPACE, white) > room {
+        from += decode(text, from).len;
+      }
+      r.v = put(out, r.v, text[from..<text.count], tx, base, BODY * d, white);
+      caret_x = tx + ink_width(text[from..<text.count], BODY * d, GAP, SPACE, white) + 1.5 * d;
+    }
+    if s[0].typing && (cast(int) (s[0].time * 2)) % 2 == 0 {
+      r.v = rule(out, r.v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_ORANGE), p.fade);
+    }
+    pv_hit(s, fb, H_FIELD);
+    s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1;
+    r.v = pv_chip(s, out, r.v, "SEND", x1 - send_w, fb.y1 - 6 * d, H_SEND, s[0].text_n > 0 && s[0].typing, p, draw, top);
+  }
+  r.y = fb.y1 + 6 * d;
+  if s[0].note_n > 0 && s[0].time - s[0].note_at < 4 {
+    r = pv_text(s, out, r, cast(string) s[0].note[0..<s[0].note_n], x0, x1 - x0, 6, pv_chrome(p, INK_ORANGE), 1, draw, top);
+  }
+  return r;
+}
+
+PV_PANELS :: 6;
+PV_GOALS :: 0; PV_TODAY :: 1; PV_CHECK :: 2; PV_NUMBERS :: 3; PV_AGENTS :: 4; PV_MESSAGES :: 5;
+PV_TITLES :: [6] string.["GOALS", "TODAY", "CHECKLIST", "ANALYTICS", "AGENTS", "MESSAGES"];
+
+pv_panel :: (s: [] PrivateState, out: [] f32, k: int, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  if k == PV_GOALS { return pv_goals(s, out, f, x0, x1, p, draw, top); }
+  if k == PV_TODAY { return pv_days(s, out, f, x0, x1, p, draw, top); }
+  if k == PV_CHECK { return pv_checklist(s, out, f, x0, x1, p, draw, top); }
+  if k == PV_NUMBERS { return pv_numbers(s, out, f, x0, x1, p, draw, top); }
+  if k == PV_AGENTS { return pv_agents(s, out, f, x0, x1, p, draw, top); }
+  return pv_messages(s, out, f, x0, x1, p, draw, top);
+}
+// A panel's title note: counts.
+pv_note :: (s: [] PrivateState, k: int, buf: [] u8) -> int {
+  if k == PV_GOALS {
+    a := 0; q := 0;
+    for i: 0..<s[0].line_n { if pv_kind(s, i) == 'G' { if pv_cell(s, i, 2) == "proposed" { q += 1; } else { a += 1; } } }
+    m := pv_number(buf, 0, a); m = pv_put(buf, m, " AGREED");
+    if q > 0 { m = pv_put(buf, m, " · "); m = pv_number(buf, m, q); m = pv_put(buf, m, " PROPOSED"); }
+    return m;
+  }
+  if k == PV_CHECK {
+    a := 0; b := 0; c := 0;
+    for i: 0..<s[0].line_n {
+      if pv_kind(s, i) != 'I' { continue; }
+      st := pv_cell(s, i, 3);
+      if st == "done" { a += 1; } else if st == "doing" { b += 1; } else { c += 1; }
+    }
+    m := pv_number(buf, 0, a); m = pv_put(buf, m, " DONE · "); m = pv_number(buf, m, b); m = pv_put(buf, m, " DOING · ");
+    m = pv_number(buf, m, c); return pv_put(buf, m, " TODO");
+  }
+  if k == PV_NUMBERS { return pv_put(buf, 0, "LIVE · CHICAGO"); }
+  if k == PV_AGENTS { return pv_put(buf, 0, "NEWEST FIRST"); }
+  if k == PV_MESSAGES { return pv_put(buf, 0, "TO THE AGENTS"); }
+  return 0;
+}
+
+// Which panels go in which column, top to bottom, for 1, 2 or 3 columns.
+pv_column :: (cols: int, k: int) -> int {
+  if cols == 3 { return ifx k == PV_GOALS || k == PV_TODAY then 0 else ifx k == PV_CHECK || k == PV_NUMBERS then 1 else 2; }
+  if cols == 2 { return ifx k == PV_GOALS || k == PV_TODAY || k == PV_NUMBERS then 0 else 1; }
+  return 0;
+}
+PV_ORDER_3 :: [6] int.[0, 1, 2, 3, 5, 4];
+PV_ORDER_1 :: [6] int.[0, 1, 5, 2, 3, 4];
+
+// ---------------------------------------------------------------- the frame
+
+pv_header :: (s: [] PrivateState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
+  d := p.d; v := v0;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM);
+  x := b.x0 + 18 * d; right := b.x1 - 18 * d;
+  cy := b.y0 + 22 * d;
+  v = put(out, v, "OPENAGENTS", x, cy, 7 * d, ifx s[0].hot == H_HOME then white else dim);
+  w1 := text_width("OPENAGENTS", 7 * d);
+  pv_hit(s, Box.{x0 = x - 4 * d, y0 = cy - 14 * d, x1 = x + w1 + 4 * d, y1 = cy + 6 * d}, H_HOME);
+  crumb := x + w1 + SPACE * 7 * d;
+  v = put(out, v, "/", crumb, cy, 7 * d, dim);
+  px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
+  v = put(out, v, "PROJECTS", px, cy, 7 * d, ifx s[0].hot == H_PROJECTS then white else pv_chrome(p, INK_ORANGE));
+  pv_hit(s, Box.{x0 = px - 4 * d, y0 = cy - 14 * d, x1 = px + text_width("PROJECTS", 7 * d) + 4 * d, y1 = cy + 6 * d}, H_PROJECTS);
+  pi := pv_first(s, 'P');
+  wide := box_w(b) > 700 * d;
+  // the chips on the right: LIVE or OFFLINE, and SIGN OUT
+  so := chip_width("SIGN OUT", 7 * d, p);
+  v = pv_chip(s, out, v, "SIGN OUT", right - so, cy, H_SIGNOUT, false, p, true, 0);
+  live := s[0].live && s[0].time - s[0].since < PV_FRESH;
+  word := ifx live then "LIVE" else "OFFLINE";
+  lw := chip_width(word, 7 * d, p);
+  cap := 7 * d;
+  v = chip(out, v, word, right - so - 8 * d - lw, cy, cap, ifx live then pv_chrome(p, INK_ORANGE) else dim, p);
+  if pi >= 0 {
+    title := pv_cell(s, pi, 1);
+    ty := b.y0 + 56 * d;
+    tcap := ifx wide then 22 * d else 16 * d;
+    v = put_fit(out, v, title, x, ty, tcap, white, right - x);
+    buf: [160] u8;
+    m := pv_put(buf[..], 0, "VERSION "); m = pv_put(buf[..], m, pv_cell(s, pi, 3));
+    m = pv_put(buf[..], m, " · UPDATED "); m = pv_upper(buf[..], m, pv_cell(s, pi, 4));
+    m = pv_put(buf[..], m, " · "); m = pv_upper(buf[..], m, pv_cell(s, pi, 5));
+    yi := pv_first(s, 'Y');
+    if yi >= 0 { m = pv_put(buf[..], m, " · YOU: "); m = pv_upper(buf[..], m, pv_cell(s, yi, 1)); }
+    sum := PvFlow.{y = ty + 8 * d, v = v};
+    sum = pv_text(s, out, sum, pv_cell(s, pi, 2), x, right - x, BODY, ink(p, INK_DIM), 2, true, 0);
+    v = sum.v;
+    v = put_fit(out, v, cast(string) buf[0..<m], x, sum.y + 10 * d, 6 * d, dim, right - x);
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+pv_header_h :: (s: [] PrivateState, w: f32) -> f32 {
+  d := s[0].d;
+  pi := pv_first(s, 'P');
+  if pi < 0 { return 40 * d; }
+  p := Pen.{d = d, fade = 1, time = 0};
+  f := pv_text(s, out_none(), PvFlow.{y = 0, v = 0}, pv_cell(s, pi, 2), 0, w - 36 * d, BODY, ink(p, INK_DIM), 2, false, 0);
+  return 56 * d + 8 * d + f.y + 22 * d;
+}
+out_none :: () -> [] f32 { e: [] f32; return e; }
+
+// The locked page: nothing but what it is and how to get in.
+pv_locked :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
+  d := p.d; w := s[0].width; h := s[0].height;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM);
+  a := "PRIVATE PROJECT"; b := "ASK A MEMBER FOR A SIGN-IN LINK";
+  cap := ifx w / d < 520 then 9 * d else 12 * d;
+  v := put(out, 0, a, (w - text_width(a, cap)) * 0.5, h * 0.5 - 8 * d, cap, white);
+  c2 := cap * 0.62;
+  v = put(out, v, b, (w - text_width(b, c2)) * 0.5, h * 0.5 + 18 * d, c2, dim);
+  if s[0].note_n > 0 {
+    n := cast(string) s[0].note[0..<s[0].note_n];
+    v = put(out, v, n, (w - text_width(n, 6 * d)) * 0.5, h * 0.5 + 44 * d, 6 * d, pv_chrome(p, INK_ORANGE));
+  }
+  m := ifx w / d < 700 then 12.0f32 else 24.0f32;
+  x := (m + 18) * d; cy := (m + 22) * d;
+  v = put(out, v, "OPENAGENTS", x, cy, 7 * d, ifx s[0].hot == H_HOME then white else dim);
+  w1 := text_width("OPENAGENTS", 7 * d);
+  pv_hit(s, Box.{x0 = x - 4 * d, y0 = cy - 14 * d, x1 = x + w1 + 4 * d, y1 = cy + 6 * d}, H_HOME);
+  crumb := x + w1 + SPACE * 7 * d;
+  v = put(out, v, "/", crumb, cy, 7 * d, dim);
+  px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
+  v = put(out, v, "PROJECTS", px, cy, 7 * d, ifx s[0].hot == H_PROJECTS then white else pv_chrome(p, INK_ORANGE));
+  pv_hit(s, Box.{x0 = px - 4 * d, y0 = cy - 14 * d, x1 = px + text_width("PROJECTS", 7 * d) + 4 * d, y1 = cy + 6 * d}, H_PROJECTS);
+  return v;
+}
+
+pv_shows_project :: (s: [] PrivateState) -> bool { return s[0].page == 0 && s[0].line_n > 0 && (s[0].status == 200 || s[0].status >= 500); }
+
+coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].day = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; }
+  s[0].time += clamp(dt, 0, 0.1);
+  // a sign-in link's token, once the slug is known: trade it for the cookie
+  if s[0].token_n > 0 && s[0].slug_n > 0 && s[0].post_kind == 0 {
+    pv_post(s, "redeem", POST_REDEEM, "token", cast(string) s[0].token[0..<s[0].token_n]);
+    s[0].token_n = 0;
+  }
+  if s[0].page == 0 && s[0].post_kind != POST_REDEEM && s[0].status != 404 && s[0].status != 401 && s[0].status != 403 &&
+     (s[0].status == -1 || s[0].time - s[0].asked_at >= PV_REFRESH) { pv_ask(s); }
+  time := ifx still then 20.0f32 else s[0].time;
+  d := hi(dpr, 1);
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  s[0].hit_n = 0;
+  p := Pen.{d = d, fade = ifx still then 1.0f32 else ease(time / 0.6), time = time};
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = p.fade;
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
+  for k: 0..<PANELS { glass(uniforms, k, Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}, 0, 0); }
+  if !pv_shows_project(s) {
+    s[0].typing = false;
+    if s[0].page == 0 && (s[0].status <= 0) {
+      word := "LOADING";
+      return put(out, 0, word, (width - text_width(word, 10 * d)) * 0.5, height * 0.5, 10 * d, pv_chrome(p, INK_DIM));
+    }
+    return pv_locked(s, out, p);
+  }
+  w := width / d;
+  m := ifx w < 700 then 12.0f32 else 24.0f32;
+  g := 12 * d;
+  head := Box.{x0 = m * d, y0 = m * d, x1 = width - m * d, y1 = m * d + pv_header_h(s, width - 2 * m * d)};
+  glass(uniforms, 0, head, 10 * d, 0.92);
+  v := pv_header(s, out, 0, head, p);
+  top := head.y1 + g;
+  cols := ifx w >= 1100 then 3 else ifx w >= 700 then 2 else 1;
+  full := width - 2 * m * d;
+  cw := (full - g * cast(f32) (cols - 1)) / cast(f32) cols;
+  bottom: [3] f32;
+  for c: 0..<3 { bottom[c] = top - s[0].scroll; }
+  order := ifx cols == 1 then PV_ORDER_1 else PV_ORDER_3;
+  panel := 1;
+  inner := 14 * d;
+  for j: 0..<PV_PANELS {
+    k := order[j];
+    c := pv_column(cols, k);
+    x0 := m * d + cast(f32) c * (cw + g);
+    b := Box.{x0 = x0, y0 = bottom[c], x1 = x0 + cw, y1 = 0};
+    measured := pv_panel(s, out, k, PvFlow.{y = b.y0 + title_room(p) + 6 * d, v = 0}, b.x0 + inner, b.x1 - inner, p, false, 0);
+    b.y1 = measured.y + 12 * d;
+    bottom[c] = b.y1 + g;
+    if b.y1 < top || b.y0 > height { continue; }
+    if panel < PANELS { glass(uniforms, panel, Box.{x0 = b.x0, y0 = hi(b.y0, top), x1 = b.x1, y1 = b.y1}, 10 * d, 0.92); panel += 1; }
+    if b.y0 >= top {
+      buf: [64] u8;
+      n := pv_note(s, k, buf[..]);
+      title := PV_TITLES[k];
+      if k == PV_TODAY { di := pv_nth(s, 'D', pv_day(s)); if di >= 0 && pv_cell(s, di, 1) != pv_today(s) { title = "MILESTONES"; } }
+      v = titled(out, v, b, title, cast(string) buf[0..<n], p);
+    }
+    drawn := pv_panel(s, out, k, PvFlow.{y = b.y0 + title_room(p) + 6 * d, v = v}, b.x0 + inner, b.x1 - inner, p, true, top);
+    v = drawn.v;
+    if b.y0 >= top && b.y1 <= height + 40 * d { v = frame(out, v, b, 10 * d, p); }
+  }
+  most := bottom[0];
+  for c: 1..<cols { most = hi(most, bottom[c]); }
+  s[0].content = most + s[0].scroll - top;
+  s[0].scroll = clamp(s[0].scroll, 0, hi(0, s[0].content - (height - top)));
+  return v;
+}
+
+// ---------------------------------------------------------------- input
+
+pv_hit_at :: (s: [] PrivateState, x: f32, y: f32) -> int {
+  for i: 0..<s[0].hit_n { if inside(s[0].hit_box[i], x, y) { return s[0].hit_id[i]; } }
+  return -1;
+}
+pv_send :: (s: [] PrivateState) {
+  if s[0].text_n == 0 || s[0].post_kind != 0 { return; }
+  text := cast(string) s[0].text[0..<s[0].text_n];
+  a := trim_lead(text);
+  if a >= text.count { return; }
+  pv_post(s, "message", POST_MESSAGE, "text", text[a..<text.count]);
+}
+trim_lead :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
+pv_act :: (s: [] PrivateState, target: int) {
+  if target != H_FIELD && target != H_SEND { s[0].typing = false; }
+  if target == H_HOME { pv_go(s, "/"); }
+  else if target == H_PROJECTS { pv_go(s, "/projects"); }
+  else if target == H_SIGNOUT { if s[0].post_kind == 0 { pv_post(s, "logout", POST_LOGOUT, "", ""); } }
+  else if target == H_PREV { s[0].day = pv_day(s) - 1; if s[0].day < 0 { s[0].day = 0; } }
+  else if target == H_NEXT { s[0].day = pv_day(s) + 1; if s[0].day >= pv_count(s, 'D') { s[0].day = pv_count(s, 'D') - 1; } }
+  else if target == H_FIELD { s[0].typing = true; }
+  else if target == H_SEND { pv_send(s); }
+  else if target == H_LINK && s[0].link_n > 0 { pv_go(s, cast(string) s[0].link[0..<s[0].link_n]); }
+}
+
+coaxial_private_pointer :: (s: [] PrivateState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if phase == P_DOWN {
+    s[0].press = pv_hit_at(s, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
+    s[0].hot = ifx kind == 0 then s[0].press else -1;
+    return true;
+  }
+  if phase == P_MOVE {
+    if kind == 0 { s[0].hot = pv_hit_at(s, x, y); }
+    if kind != 0 || s[0].press != -1 {
+      if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
+      if s[0].dragged && kind != 0 { s[0].scroll -= y - s[0].drag_y; }
+      s[0].drag_y = y;
+    }
+    return true;
+  }
+  if phase == P_UP {
+    target := pv_hit_at(s, x, y);
+    if !s[0].dragged {
+      if target == s[0].press && target != -1 { pv_act(s, target); }
+      else if target == -1 { s[0].typing = false; }
+    }
+    s[0].press = -1;
+    if kind != 0 { s[0].hot = -1; }
+    return true;
+  }
+  s[0].press = -1;
+  return true;
+}
+
+// Typed text into the field: line breaks become spaces; nothing past the cap.
+pv_type :: (s: [] PrivateState, text: string) {
+  for c: text {
+    if s[0].text_n >= PV_TEXT { return; }
+    s[0].text[s[0].text_n] = ifx c == '\n' || c == '\r' || c == '\t' then ' ' else c;
+    s[0].text_n += 1;
+  }
+}
+coaxial_private_key :: (s: [] PrivateState, key: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if s[0].typing {
+    if key == K_ENTER { pv_send(s); return true; }
+    if key == K_ESC { s[0].typing = false; return true; }
+    if key == K_BACK {
+      if s[0].text_n > 0 {
+        n := s[0].text_n - 1;
+        while n > 0 && (s[0].text[n] & 0xC0) == 0x80 { n -= 1; }   // a whole UTF-8 character
+        s[0].text_n = n;
+      }
+      return true;
+    }
+    if key >= 32 {
+      buf: [4] u8;
+      n := encode(cast(u32) key, buf[..], 0);
+      pv_type(s, cast(string) buf[0..<n]);
+      return true;
+    }
+    return false;
+  }
+  if key == K_DOWN { s[0].scroll += 40 * d; return true; }
+  if key == K_UP { s[0].scroll -= 40 * d; return true; }
+  if key == -11 { s[0].scroll += s[0].height * 0.8; return true; }
+  if key == -10 { s[0].scroll -= s[0].height * 0.8; return true; }
+  if key == K_HOME { s[0].scroll = 0; return true; }
+  if key == K_END { s[0].scroll = 1000000000; return true; }
+  if key == K_LEFT { pv_act(s, H_PREV); return true; }
+  if key == K_RIGHT { pv_act(s, H_NEXT); return true; }
+  return false;
+}
+coaxial_private_wheel :: (s: [] PrivateState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_c {
+  if s.count < 1 || length < 0 || length > PV_INBOX { return; }
+  text := cast(string) s[0].inbox[0..<length];
+  if kind >= PV_HTTP && kind < PV_HTTP + 8 { pv_answer(s, kind - PV_HTTP, text); return; }
+  if kind == PV_TYPED { if s[0].typing { pv_type(s, text); } return; }
+  if kind == PV_PAGE_TEXT {
+    ok := text.count > 0 && text.count <= 64;
+    for c: text { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { ok = false; } }
+    if ok { s[0].slug_n = pv_put(s[0].slug[..], 0, text); }
+    return;
+  }
+  if kind == PV_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
+}
+// The location's hash: a sign-in link's "invite=<token>". It's cleared at once.
+coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
+  if s.count < 1 || length < 7 || length > 200 { return; }
+  text := cast(string) s[0].inbox[0..<length];
+  if text[0..<7] != "invite=" { return; }
+  t := text[7..<text.count];
+  if t.count != 64 { return; }
+  for c: t { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return; } }
+  s[0].token_n = pv_put(s[0].token[..], 0, t);
+  s[0].out_n = 0; s[0].action = PV_SET_HASH;
+}
+coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 then 0 else 1; } }
+coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && pv_shows_project(s); }
+coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
+coaxial_private_action :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_private_action_done :: (s: [] PrivateState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_private_inbox_cap :: () -> int #export_c { return PV_INBOX; }
+coaxial_private_max_vertices :: () -> int #export_c { return PV_MAX_VERTICES; }
+
+// ---------------------------------------------------------------- checks
+
+PV_FIXTURE :: "200\nY|Ada|member\nP|Test|A test project.|3|Oct 28 15:52|Ada\nT|2026-10-28|15:55\nG|g1|agreed|Ada, Bea|Ship it\nG|g2|proposed||Try another\nD|2026-10-27|TUE OCT 27\nM|2026-10-27|m0|done|Ada|Yesterday's|\nD|2026-10-28|WED OCT 28\nM|2026-10-28|m1|doing|Ada|Write it|started\nM|2026-10-28|m2|todo|Bea|Read it|\nD|2026-10-29|THU OCT 29\nC|c1|Before\nI|c1|i1|done|Tests|green\nI|c1|i2|todo|Deck|\nA|5|Oct 28 15:50|Bot|plan|1. read 2. write\nX|1|Oct 28 15:40|Ada|Look at the deck|\nX|2|Oct 28 15:41|Bot|On it|1\nN|Sessions|4|20\nS|Live from openagents.com.\nL|Old analytics|https://example.com/analytics.html\n";
+
+pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
+  return coaxial_private_frame(s, out, u, w, h, 2, 0.016, true);
+}
+
+#test "the locked page asks nothing and draws only what it is" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 1);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert n > 0 && s[0].ask_n == 0 && s[0].post_n == 0 && s[0].line_n == 0;
+  #assert pv_hit_at(s[..], 100, 450) == -1;
+}
+
+#test "a member's page asks for the state, draws its panels, and a 404 locks it again" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 0);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n0 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/projects/proj/api/state";
+  coaxial_private_asked(s[..], 3);
+  pv_answer(s[..], 3, PV_FIXTURE);
+  #assert s[0].status == 200 && s[0].live && pv_count(s[..], 'G') == 2 && pv_count(s[..], 'D') == 3;
+  #assert pv_day(s[..]) == 1 && pv_cell(s[..], pv_first(s[..], 'P'), 1) == "Test";
+  #assert pv_dashboard(s[..]) >= 0;
+  n := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert n > 2000 && s[0].hit_n > 4;
+  pv_act(s[..], H_NEXT);
+  #assert pv_day(s[..]) == 2;
+  pv_act(s[..], H_PREV); pv_act(s[..], H_PREV); pv_act(s[..], H_PREV);
+  #assert pv_day(s[..]) == 0;
+  // 30 s on, it reads again; a 404 then shows nothing of the project
+  s[0].time += 31;
+  again := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].ask_n > 0;
+  coaxial_private_asked(s[..], 4);
+  pv_answer(s[..], 4, "404\n{\"error\": \"not found\"}");
+  #assert s[0].line_n == 0 && s[0].data_n == 0 && !pv_shows_project(s[..]);
+}
+
+#test "a phone draws one column of the same panels" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 0);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].day = -1; s[0].status = 0; s[0].ask_id = 0; s[0].post_id = -1;
+  pv_answer(s[..], 0, PV_FIXTURE);
+  phone := pv_fresh(s[..], out[..], u[..], 780, 1688);
+  #assert phone > 1000 && s[0].content > 0;
+}
+
+#test "an answer that never came keeps what was shown, OFFLINE" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 0);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n0 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 0);
+  pv_answer(s[..], 0, PV_FIXTURE);
+  s[0].asked_at = -100;
+  n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "0\n");
+  #assert !s[0].live && pv_shows_project(s[..]) && pv_count(s[..], 'X') == 2;
+}
+
+#test "typing and sending a message, escaped as JSON" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 0);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n0 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 0);
+  pv_answer(s[..], 0, PV_FIXTURE);
+  n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert !coaxial_private_wants_text(s[..]);
+  pv_act(s[..], H_FIELD);
+  #assert coaxial_private_wants_text(s[..]);
+  typed := "say \"hi\"\n";
+  for i: 0..<typed.count { s[0].inbox[i] = typed[i]; }
+  coaxial_private_message(s[..], PV_TYPED, typed.count);
+  k1 := coaxial_private_key(s[..], 'x');
+  k2 := coaxial_private_key(s[..], K_BACK);
+  #assert cast(string) s[0].text[0..<s[0].text_n] == "say \"hi\" ";
+  k3 := coaxial_private_key(s[..], K_ENTER);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/message";
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"text\":\"say \\\"hi\\\" \"}";
+  coaxial_private_posted(s[..], 5);
+  pv_answer(s[..], 5, "200\n{\"id\": 9}");
+  #assert s[0].text_n == 0 && s[0].ask_n > 0;
+}
+
+#test "a sign-in link's token clears the hash, is traded once, then the page loads again" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 1);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  h := "invite=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  for i: 0..<h.count { s[0].inbox[i] = h[i]; }
+  coaxial_private_hash(s[..], h.count);
+  #assert s[0].action == PV_SET_HASH && s[0].out_n == 0;
+  coaxial_private_action_done(s[..]);
+  n := pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/redeem" && s[0].token_n == 0;
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"token\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}";
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, "200\n{\"ok\": true}");
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/projects/proj";
+  bad := "invite=nothex";
+  for i: 0..<bad.count { s[0].inbox[i] = bad[i]; }
+  coaxial_private_action_done(s[..]);
+  coaxial_private_hash(s[..], bad.count);
+  #assert s[0].token_n == 0 && s[0].action == 0;
+}

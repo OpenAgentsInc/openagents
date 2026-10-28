@@ -5,7 +5,8 @@
 #   smoke.sh https://openagents.com --via 136.69.24.60   # before DNS points there
 #   smoke.sh https://openagents.com --coder              # also: coder's routes still answer
 # Checks: the page and every file it names (status, type, caching, wasm
-# magic, no comments shipped), the hidden text agents read, HTTP to HTTPS, an unknown path, and
+# magic, no comments shipped), the hidden text agents read, HTTP to HTTPS, an unknown path, an unknown
+# private project (the locked page; its API says only not found), and
 # with --coder, the routes the old service keeps until it is retired
 # (docs/2026-10-28-coder-service-deprecation.md).
 set -euo pipefail
@@ -132,6 +133,14 @@ for path, (s, h, body) in zip(verse, s_verse):
 # The link-preview card those tags name: a JPEG, served without a script.
 cs, ch, cb = get("/verse/og-verse.jpg")
 check(cs == 200 and ch.get("content-type", "").startswith("image/jpeg") and cb[:3] == b"\xff\xd8\xff", f"/verse/og-verse.jpg is the card ({cs}, {ch.get('content-type')})")
+# Private projects (docs/private-projects.md): the generic locked page, and
+# a slug nobody made answers like one nobody may see: 404, no name, no data.
+if not coder:
+    nobody = uuid.uuid4().hex[:20]
+    (s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/projects/private", f"/projects/{nobody}", f"/api/private/{nobody}/state"])
+    check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="1"' in b1, f"/projects/private is the locked page ({s1})")
+    check(s2 == 404 and b"Private project" in b2 and b'data-page="1"' in b2 and nobody.encode() not in b2.split(b"<script", 1)[0], f"an unknown private slug gets the locked page ({s2})")
+    check(s3 == 404 and b3 == b'{"error": "not found"}' and "no-store" in h3.get("cache-control", ""), f"an unknown private slug's API says only not found ({s3})")
 print(f"smoke {base}{' via ' + via if via else ''}: " + ("passed" if not failed else f"{len(failed)} failed"))
 sys.exit(1 if failed else 0)
 PY

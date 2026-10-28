@@ -28,7 +28,7 @@
 //   coaxial_cursor(state)     0 the default, 1 a link
 //   coaxial_hash(state, length) the location's hash (without '#') in the inbox, at load and on every change
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
-//                             out: 1 navigates to the outbox's URL (under data-root, if the page has one), 2 copies its text, 3 makes it the
+//                             out: 1 navigates to the outbox's URL (under data-root, if the page has one; or an https:// URL), 2 copies its text, 3 makes it the
 //                             location's hash (empty: none), in place, 4 keeps it in this browser (one
 //                             text per app, in IndexedDB, else localStorage; given back on the next visit as
 //                             message 4), 5 keeps it as the browser's playtest player ({key, id, account},
@@ -629,7 +629,7 @@ function after(gesture, tap = false) {
   if (code) {
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_outbox(arena.state), x.coaxial_outbox_len(arena.state)).slice());
     call("coaxial_action_done");
-    if (code === 1) { if (text.startsWith("/")) location.assign(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
+    if (code === 1) { if (text.startsWith("https://")) location.assign(text); else if (text.startsWith("/")) location.assign(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
     // A copy or cut: the app chose the text (never a masked field's); this runs
     // inside the key event, so the browser lets it reach the clipboard.
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});

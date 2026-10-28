@@ -8,10 +8,71 @@
 # as headers (geography, RTT, TLS, the client's address in X-Forwarded-For),
 # which pt-capture records. Every other path keeps its rule (the coder
 # service still gets what nothing else matches).
+#
+# Private projects (private.c, docs/private-projects.md):
+#   lb.sh private-route SLUG   /projects/SLUG and /projects/SLUG/* on both hosts -> the API
+#                              (the slug comes from whoever runs it, never from this repository)
+#   lb.sh private-pages        any other /projects/* that the site doesn't have answers with the
+#                              site's locked private page (/projects/private/), 404, so a slug
+#                              nobody routed looks like one you may not see
 set -euo pipefail
 project=openagentsgemini region=us-central1 map=coaxial-openagents-web-staging
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 g() { gcloud "$@" --project "$project" --quiet; }
+if [[ "${1:-}" == private-route || "${1:-}" == private-pages ]]; then
+  what="$1" slug="${2:-}"
+  [[ "$what" == private-pages || "$slug" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || { echo "lb.sh: private-route SLUG (lowercase letters, digits, -)" >&2; exit 2; }
+  [[ "$slug" != private ]] || { echo "lb.sh: 'private' is the site's locked page" >&2; exit 2; }
+  tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+  g compute url-maps describe "$map" --global --format json > "$tmp"
+  python3 -I - "$tmp" "$project" "$what" "$slug" <<'PY'
+import json, sys
+path, project, what, slug = sys.argv[1:]
+m = json.load(open(path))
+base = f"https://www.googleapis.com/compute/v1/projects/{project}/global/"
+api = {"production": "oa-api", "staging": "oa-api-staging"}
+site = {"production": "coaxial-openagents-web", "staging": "coaxial-openagents-web-staging"}
+changed = False
+def site_rule(rules):   # the production rule that sends /projects/ to the site's bucket, if any
+    return next((r for r in rules if r.get("service", "").endswith("/" + site["production"])
+                 and any(x.get("prefixMatch") == "/projects/" for x in r.get("matchRules", []))), None)
+def room_before(rules, limit):   # a free priority below limit (everyone's spread out when there is none)
+    used = {r["priority"] for r in rules}
+    if limit is None: return max(used | {0}) + 10
+    free = [p for p in range(limit - 1, -1, -1) if p not in used]
+    if not free:
+        for r in rules: r["priority"] = r["priority"] * 10 + 10
+        return limit * 10 + 9
+    return free[0]
+for pm in m["pathMatchers"]:
+    name = pm["name"]
+    if name not in api: continue
+    rules = pm.setdefault("routeRules", [])
+    if what == "private-route":
+        want = [{"fullPathMatch": f"/projects/{slug}"}, {"prefixMatch": f"/projects/{slug}/"}]
+        if any(r.get("matchRules") == want for r in rules): continue
+        anchor = next((r for r in rules if r.get("customErrorResponsePolicy") and any(x.get("prefixMatch") == "/projects/" for x in r["matchRules"])), None) or site_rule(rules)
+        p = room_before(rules, anchor["priority"] if anchor else None)
+        rules.append({"priority": p, "matchRules": want, "service": base + "backendServices/" + api[name]})
+    else:
+        if any(r.get("customErrorResponsePolicy") for r in rules): continue
+        anchor = site_rule(rules)
+        p = room_before(rules, anchor["priority"] if anchor else None)
+        bucket = base + "backendBuckets/" + site[name]
+        rules.append({"priority": p, "matchRules": [{"prefixMatch": "/projects/"}], "service": bucket,
+                      "customErrorResponsePolicy": {"errorService": bucket, "errorResponseRules": [
+                          {"matchResponseCodes": ["404"], "path": "/projects/private/index.html", "overrideResponseCode": 404}]}})
+    rules.sort(key=lambda r: r["priority"])
+    changed = True
+for k in ("kind", "creationTimestamp", "id", "selfLink"): m.pop(k, None)
+json.dump(m, open(path, "w"))
+print(f"url map: {what} " + ("added" if changed else "already there"))
+PY
+  g compute url-maps validate --global --source "$tmp" --format 'value(validationResult.loadSucceeded)' 2>&1 | grep -q True ||
+    { echo "lb.sh: the new url map doesn't validate" >&2; g compute url-maps validate --global --source "$tmp" >&2; exit 1; }
+  g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1
+  exit 0
+fi
 headers=(
   "X-Client-Region:{client_region}" "X-Client-Subdivision:{client_region_subdivision}"
   "X-Client-City:{client_city}" "X-Client-Latlong:{client_city_lat_long}"

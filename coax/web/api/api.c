@@ -18,6 +18,7 @@
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
 //   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)
+//   private projects               /projects/<slug> and /api/private/<slug>/*, members only (private.c)
 #include "api.h"
 
 #include <arpa/inet.h>
@@ -70,7 +71,8 @@ static const char *reason(int status) {
   switch (status) {
     case 200: return "OK"; case 204: return "No Content"; case 303: return "See Other";
     case 400: return "Bad Request"; case 401: return "Unauthorized"; case 403: return "Forbidden";
-    case 404: return "Not Found"; case 405: return "Method Not Allowed"; case 409: return "Conflict"; case 413: return "Payload Too Large";
+    case 404: return "Not Found"; case 405: return "Method Not Allowed"; case 409: return "Conflict"; case 413: return "Payload Too Large"; case 429: return "Too Many Requests";
+    case 500: return "Internal Server Error";
     case 503: return "Service Unavailable"; default: return "Error";
   }
 }
@@ -78,7 +80,7 @@ static const char *reason(int status) {
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n) {
   char head[2048];
   int h = snprintf(head, sizeof head,
-                   "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\n"
+                   "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store, private\r\n"
                    "X-Content-Type-Options: nosniff\r\n%sConnection: close\r\n\r\n",
                    status, reason(status), type, n, extra_headers ? extra_headers : "");
   send_all(fd, head, (size_t)h);
@@ -236,6 +238,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (analytics_route(&q)) return;
   if (npc_route(&q)) return;
   if (player_route(&q)) return;
+  if (private_route(&q)) return;
   if (admin_route(&q)) return;
   api_json(cl->fd, 404, "{\"error\":\"not found\"}");
 }

@@ -490,3 +490,21 @@ Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
 upload) refuses visible elements, inline styling of UI, and DOM-built UI in
 the app's HTML, the host and `coax/web/unlock/`.
 
+
+## Private projects answer non-members with nothing
+
+A private project's contents (`docs/private-projects.md`) reach only its
+members and the agents they register, from oa-api with a session cookie or a
+NIP-98 signature. Anyone else, and any slug nobody made, gets the same 404
+bytes from the API and a generic locked page that names nothing. Answers are
+`no-store, private`; the oa-api backends have Cloud CDN off. Tokens are
+stored only as hashes; sign-in links are single use, 24 hours, bound to one
+member and carried in the URL fragment; sessions last 30 days. State-changing
+requests are POSTs with a same-site Origin or a signature, and rate limited.
+Agents never change agreed goals, members or the title, mint links or register
+agents. Contents never go to the public relay or the site bucket, and the
+public repo holds only the mechanism, never a project's contents.
+
+Check: `coax/web/api/test_private.py` (via `coax/web/api/test.sh`),
+`coax test apps/openagents-web/private.coax`, `coax/web/smoke.sh`. Threat
+model and residual risks: `docs/private-projects-threat-model.md`.
