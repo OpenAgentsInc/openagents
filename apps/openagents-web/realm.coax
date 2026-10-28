@@ -20,6 +20,7 @@
 #load "analytics.coax";
 #load "save.coax";
 #load "world.coax";
+#load "room.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -91,7 +92,7 @@ QUEST_STEPS :: 8;
 TYPED_MAX :: 480;  // what's typed (the survey's answer, a question, a lesson), in bytes
 // What the typed box is for: the survey's answer, a question for whoever
 // you're talking to, or something to teach them.
-TYPE_SURVEY :: 0; TYPE_ASK :: 1; TYPE_TEACH :: 2;
+TYPE_SURVEY :: 0; TYPE_ASK :: 1; TYPE_TEACH :: 2; TYPE_CHAT :: 3;
 MEMORY_LINES :: 10;   // the conversation a character is reminded of (the server's last ten lines)
 MEMORY_LINE :: 400;   // bytes of a line kept
 HAUNT_NAME :: "Haunted House";   // the world, as a character names it
@@ -123,6 +124,13 @@ RealmView :: struct {
   map_n: int; map: [MAP_MAX * 5] f32;
   // a player's world: the changes offered to its owner (world.coax), the newest's who and what
   offers: int; offer_who: string; offer_what: string;
+  // the room (room.coax): the camera (verse_grid_view's rows), everyone else
+  // here (a name and where they are drawn: x, y, z, yaw), how many in all,
+  // and the chat's last lines, oldest first
+  has_view: bool; camera: [16] f32;
+  others: int; other_name: [ROOM_OTHERS] string; other_at: [ROOM_OTHERS * 4] f32;
+  here: int; room_full: bool; unread: int;
+  lines: int; line_name: [ROOM_LINES] string; line_text: [ROOM_LINES] string; line_mine: [ROOM_LINES] bool;
 }
 
 // ---- the controls and the HUD
@@ -162,7 +170,8 @@ BTN_OP :: BTN_ITEM + ITEMS;            // then the row for the picked thing or t
 OPS :: 8;
 BTN_ASK :: BTN_OP + OPS; BTN_TEACH :: BTN_ASK + 1;   // the conversation's ASK and TEACH
 BTN_ACCEPT :: BTN_TEACH + 1; BTN_DECLINE :: BTN_TEACH + 2;   // an offered change
-BUTTONS :: BTN_DECLINE + 1;
+BTN_CHAT :: BTN_DECLINE + 1; BTN_SAY :: BTN_CHAT + 1;          // the hotbar's CHAT, and the chat's SAY
+BUTTONS :: BTN_SAY + 1;
 
 HELP_TIME :: 9.0;      // seconds the controls stay written after you first move
 
@@ -175,6 +184,7 @@ Realm :: struct {
   press: int; press_id: int;                       // the button a pointer is down on (-1 none)
   asks: int;            // ASK_* bits
   map: bool;
+  chat: bool;           // the room's chat is open
   moved_at: f32;        // when you first moved (-1 not yet)
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool;     // where each button was last drawn
   typing: bool; typed: [TYPED_MAX] u8; typed_n: int;   // the typed box, open, and what's in it
@@ -269,6 +279,12 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_CANCEL { r[0].typing = false; }
   if b == BTN_ASK && v.talking.count > 0 { realm_open_text(r, TYPE_ASK); }
   if b == BTN_TEACH && v.talking.count > 0 { realm_open_text(r, TYPE_TEACH); }
+  if b == BTN_CHAT {
+    r[0].chat = !r[0].chat;
+    if r[0].chat { realm_open_text(r, TYPE_CHAT); }
+    else if r[0].typing && r[0].typing_for == TYPE_CHAT { r[0].typing = false; }
+  }
+  if b == BTN_SAY { r[0].chat = true; realm_open_text(r, TYPE_CHAT); }
   if b == BTN_ACCEPT && v.offers > 0 { r[0].asks |= ASK_ACCEPT; }
   if b == BTN_DECLINE && v.offers > 0 { r[0].asks |= ASK_DECLINE; }
   if b >= BTN_ITEM && b < BTN_ITEM + v.item_n { r[0].slot = b - BTN_ITEM; r[0].asks |= ASK_PLACE; }
@@ -343,6 +359,8 @@ realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> boo
   }
   // In a conversation, T asks them something.
   if v.talking.count > 0 && (key == 't' || key == 'T') { realm_do(r, v, BTN_ASK); return true; }
+  // C opens the room's chat to say something, and closes it.
+  if key == 'c' || key == 'C' { realm_do(r, v, BTN_CHAT); return true; }
   if key == KEY_ESCAPE {
     if v.talking.count > 0 { realm_do(r, v, BTN_BYE); return true; }
     if r[0].map { r[0].map = false; return true; }
@@ -451,13 +469,13 @@ stick_rest_y :: (height: f32, k: f32) -> f32 { return height - hi(STICK * k * 2.
 gutter :: (r: [] Realm) -> f32 { return 16 * r[0].dpr; }
 phone :: (r: [] Realm) -> bool { return r[0].touch || r[0].width < 640 * r[0].dpr; }
 
-// The hotbar: VIEW, MAP, EDIT, EXIT. On a desktop, along the bottom right; on a
+// The hotbar: VIEW, MAP, EDIT, CHAT, EXIT. On a desktop, along the bottom right; on a
 // phone, under the title, clear of the thumbs.
 slot_box :: (r: [] Realm, i: int) -> Box {
   k := r[0].dpr; m := gutter(r);
-  w := ifx phone(r) then 62 * k else 76 * k;
+  gap := ifx phone(r) then 8 * k else 12 * k;
+  w := ifx phone(r) then lo(62 * k, (r[0].width - 2 * m - 8 * k - cast(f32) (SLOTS - 1) * gap) / cast(f32) SLOTS) else 76 * k;
   h := ifx phone(r) then 34 * k else 40 * k;
-  gap := 12 * k;
   if phone(r) {
     x0 := m + 4 * k + cast(f32) i * (w + gap); y0 := title_box(r).y1 + 14 * k;
     return Box.{x0 = x0, y0 = y0, x1 = x0 + w, y1 = y0 + h};
@@ -467,7 +485,7 @@ slot_box :: (r: [] Realm, i: int) -> Box {
   return Box.{x0 = x1 - w, y0 = y0, x1 = x1, y1 = y0 + h};
 }
 
-SLOTS :: 4;
+SLOTS :: 5;
 
 // The bottom of the HUD's top: the title, and on a phone the hotbar under it.
 top_bottom :: (r: [] Realm) -> f32 { return ifx phone(r) then slot_box(r, 0).y1 else title_box(r).y1; }
@@ -631,6 +649,153 @@ draw_offer :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   no := Box.{x0 = yes.x1 + 12 * k, y0 = y1 - bh, x1 = yes.x1 + 12 * k + bw, y1 = y1};
   vertices = hud_button(r, out, vertices, BTN_ACCEPT, yes, "ACCEPT", "", true);
   return hud_button(r, out, vertices, BTN_DECLINE, no, "DECLINE", "", false);
+}
+
+// ---- the room (room.coax): everyone else here, and its chat
+
+// Where a point of the world is on the screen (the camera's rows: clip =
+// row · (x, y, z, 1)), in device pixels; w is its depth, under 0.3 behind you.
+Spot :: struct { x: f32; y: f32; w: f32; }
+realm_spot :: (v: RealmView, x: f32, y: f32, z: f32, width: f32, height: f32) -> Spot {
+  m := v.camera;
+  cx := m[0] * x + m[1] * y + m[2] * z + m[3];
+  cy := m[4] * x + m[5] * y + m[6] * z + m[7];
+  cw := m[12] * x + m[13] * y + m[14] * z + m[15];
+  if cw < 0.3 { return Spot.{x = 0, y = 0, w = cw}; }
+  return Spot.{x = (cx / cw * 0.5 + 0.5) * width, y = (0.5 - cy / cw * 0.5) * height, w = cw};
+}
+
+OTHER_HEIGHT :: 1.7;   // metres, feet to the top of the head
+OTHER_FAR :: 40.0;     // metres: further off, nobody is drawn
+
+// Everyone else here: a pale figure where they stand, their name over it on a plate.
+draw_others :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
+  if !v.has_view { return at; }
+  k := r[0].dpr; vertices := at;
+  for i: 0..<v.others {
+    x := v.other_at[i * 4]; y := v.other_at[i * 4 + 1]; z := v.other_at[i * 4 + 2];
+    feet := realm_spot(v, x, y, z, r[0].width, r[0].height);
+    top := realm_spot(v, x, y + OTHER_HEIGHT, z, r[0].width, r[0].height);
+    if feet.w < 0.3 || top.w < 0.3 || feet.w > OTHER_FAR { continue; }
+    h := feet.y - top.y;
+    if h < 6 * k || feet.x < -h || feet.x > r[0].width + h { continue; }
+    hr := h * 0.12; hx := top.x; hy := top.y + hr;
+    light := 0.75f32; glow := hi(2 * k, h * 0.03); core := hi(0.5 * k, h * 0.008);
+    for s: 0..<18 {
+      a0 := cast(f32) s * 6.2831853 / 18; a1 := cast(f32) (s + 1) * 6.2831853 / 18;
+      if lit(out, vertices, hx + cos(a0) * hr, hy + sin(a0) * hr, hx + cos(a1) * hr, hy + sin(a1) * hr, core, light, glow, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+    }
+    sy := hy + hr * 1.5; sw := h * 0.13; bw := h * 0.2;
+    bx := feet.x; by := feet.y;
+    xs := [7] f32.[hx - sw, bx - bw, bx - bw * 0.5, bx, bx + bw * 0.5, bx + bw, hx + sw];
+    ys := [7] f32.[sy, by, by - h * 0.06, by, by - h * 0.06, by, sy];
+    for e: 0..<6 {
+      if lit(out, vertices, xs[e], ys[e], xs[e + 1], ys[e + 1], core, light, glow, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+    }
+    if lit(out, vertices, hx - sw, sy, hx + sw, sy, core, light * 0.6, glow, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+    name := ifx v.other_name[i].count > 0 then v.other_name[i] else "Guest";
+    cap := 7.5 * k;
+    w := lo(measure(name, GAP, SPACE, false) * cap, 160 * k);
+    tag := Box.{x0 = hx - w * 0.5 - 10 * k, y0 = top.y - 30 * k, x1 = hx + w * 0.5 + 10 * k, y1 = top.y - 8 * k};
+    if r[0].plate_n < PLATES - 8 { plate(r, tag, 0.85, LOOK_PLAIN); }
+    vertices = draw_fit(k, out, vertices, name, tag.x0 + 10 * k, (tag.y0 + tag.y1) * 0.5 + cap * 0.5, cap, GAP, SPACE, white(k, 0.95), w + 1);
+  }
+  return vertices;
+}
+
+// The chat shows while it's open and nothing else holds the middle: not in
+// a conversation, edit mode, the map or another typed box.
+chat_shown :: (r: [] Realm, v: RealmView) -> bool {
+  if !r[0].chat || v.editing || r[0].map || v.talking.count > 0 { return false; }
+  return !r[0].typing || r[0].typing_for == TYPE_CHAT;
+}
+
+// The chat: on a desktop at the bottom left, above the controls; on a
+// phone under the top of the HUD.
+CHAT_LINE :: 15.0;
+chat_box :: (r: [] Realm) -> Box {
+  k := r[0].dpr; m := gutter(r);
+  if phone(r) {
+    y0 := top_bottom(r) + 40 * k;
+    return Box.{x0 = m + 4 * k, y0 = y0, x1 = r[0].width - m - 4 * k, y1 = y0 + lo(250 * k, r[0].height * 0.4)};
+  }
+  w := lo(330 * k, r[0].width - 2 * m - 8 * k);
+  y1 := r[0].height - m - 68 * k;
+  return Box.{x0 = m + 4 * k, y0 = hi(y1 - 260 * k, top_bottom(r) + 40 * k), x1 = m + 4 * k + w, y1 = y1};
+}
+
+// Who is here, the last lines said (as many as fit, newest last), and SAY,
+// or what you're typing with SEND and CANCEL.
+draw_chat :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
+  k := r[0].dpr; b := chat_box(r);
+  typing := r[0].typing && r[0].typing_for == TYPE_CHAT;
+  x := b.x0 + 16 * k; width := b.x1 - x - 16 * k;
+  title: [64] u8;
+  tn := put(title[..], 0, "CHAT");
+  if v.room_full { tn = put(title[..], tn, " · THE HOUSE IS FULL"); }
+  else if v.here > 1 { tn = put(title[..], tn, " · "); tn = put_int(title[..], tn, v.here); tn = put(title[..], tn, " HERE"); }
+  else if v.here == 1 { tn = put(title[..], tn, " · ONLY YOU HERE"); }
+  line: [ROOM_NAME + ROOM_TEXT + 4] u8;
+  cap := 7.5 * k; lead := CHAT_LINE * k;
+  // the lines that fit, from the newest back
+  room := b.y1 - b.y0 - 34 * k - 54 * k;
+  first := v.lines; used := 0.0f32;
+  while first > 0 {
+    ln := chat_line(line[..], v, first - 1);
+    h := cast(f32) line_total(cast(string) line[0..<ln], cap, width, GAP, SPACE, false) * lead + 4 * k;
+    if used + h > room && first < v.lines { break; }
+    used += h; first -= 1;
+  }
+  top := hi(b.y0, b.y1 - 54 * k - used - 34 * k);
+  box := Box.{x0 = b.x0, y0 = top, x1 = b.x1, y1 = b.y1};
+  plate(r, box, 0.9, LOOK_PLAIN);
+  vertices := write(k, out, at, cast(string) title[0..<tn], x, top + 22 * k, 9 * k, GAP, SPACE, orange(k, 0.95), false, false);
+  y := top + 32 * k;
+  if v.lines == 0 { vertices = write(k, out, vertices, "Nobody has said anything here yet.", x, y + cap, cap, GAP, SPACE, white(k, 0.5), false, false); }
+  for i: first..<v.lines {
+    ln := chat_line(line[..], v, i);
+    h: [1] f32;
+    vertices = draw_wrapped(k, out, vertices, cast(string) line[0..<ln], x, y, cap, GAP, SPACE,
+                            ifx v.line_mine[i] then orange(k, 0.85) else white(k, 0.9), width, lead, false, true, h[..]);
+    y += hi(h[0], lead) + 4 * k;
+  }
+  bh := 30 * k; y1 := b.y1 - 12 * k;
+  if !typing { return hud_button(r, out, vertices, BTN_SAY, Box.{x0 = x, y0 = y1 - bh, x1 = b.x1 - 16 * k, y1 = y1}, "SAY SOMETHING", "C", false); }
+  bw := ifx phone(r) then 70 * k else 74 * k;
+  cancel := Box.{x0 = b.x1 - 16 * k - bw, y0 = y1 - bh, x1 = b.x1 - 16 * k, y1 = y1};
+  sending := Box.{x0 = cancel.x0 - 8 * k - bw, y0 = y1 - bh, x1 = cancel.x0 - 8 * k, y1 = y1};
+  text := realm_typed(r);
+  room_w := sending.x0 - 10 * k - x;
+  shown := ifx text.count > 0 then chat_tail(text, cap, room_w) else "Say something";
+  vertices = draw_fit(k, out, vertices, shown, x, (sending.y0 + sending.y1) * 0.5 + cap * 0.5, cap, GAP, SPACE,
+                      white(k, ifx text.count > 0 then 0.95f32 else 0.4f32), room_w);
+  if sin(r[0].time * 6) > -0.2 {
+    cx := x + ifx text.count > 0 then lo(measure(chat_tail(text, cap, room_w), GAP, SPACE, false) * cap, room_w) + 3 * k else 0.0f32;
+    cy := (sending.y0 + sending.y1) * 0.5;
+    if lit(out, vertices, cx, cy - 8 * k, cx, cy + 6 * k, 0.6 * k, 0.9, 3 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+  }
+  vertices = hud_button(r, out, vertices, BTN_SEND, sending, "SEND", "", text.count > 0);
+  vertices = hud_button(r, out, vertices, BTN_CANCEL, cancel, "CANCEL", "", false);
+  said: [1] f32;
+  return draw_wrapped(k, out, vertices, CHAT_DISCLOSURE, b.x0 + 4 * k, b.y1 + 8 * k, 6.5 * k, GAP, SPACE, white(k, 0.7),
+                      b.x1 - b.x0 - 8 * k, 13 * k, false, true, said[..]);
+}
+CHAT_DISCLOSURE :: "Everyone in this house sees what you say here, and we keep it.";
+
+// "Name: what they said" into buf.
+chat_line :: (buf: [] u8, v: RealmView, i: int) -> int {
+  n := put(buf, 0, ifx v.line_name[i].count > 0 then v.line_name[i] else "Guest");
+  n = put(buf, n, ": ");
+  return put(buf, n, v.line_text[i]);
+}
+// The end of what's typed that fits in width pixels, so the caret stays in sight.
+chat_tail :: (text: string, cap: f32, width: f32) -> string {
+  a := 0;
+  while a < text.count && measure(text[a..<text.count], GAP, SPACE, false) * cap > width {
+    a += 1;
+    while a < text.count && text[a] & 0xC0 == 0x80 { a += 1; }
+  }
+  return text[a..<text.count];
 }
 
 // The survey box, where the conversation goes.
@@ -879,7 +1044,8 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   vertices = hud_button(r, out, vertices, BTN_VIEW, slot_box(r, 0), "VIEW", "V", false);
   vertices = hud_button(r, out, vertices, BTN_MAP, slot_box(r, 1), "MAP", "M", r[0].map);
   vertices = hud_button(r, out, vertices, BTN_EDIT, slot_box(r, 2), "EDIT", "B", v.editing);
-  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 3), "EXIT", "", false);
+  vertices = hud_button(r, out, vertices, BTN_CHAT, slot_box(r, 3), "CHAT", "C", r[0].chat || v.unread > 0);
+  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 4), "EXIT", "", false);
 
   // the house's notice, under the title
   if v.notice.count > 0 {
@@ -892,11 +1058,15 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   }
 
   if v.quest > 0 && v.quest < QUEST_STEPS && v.goal.count == 0 && abs(v.bearing) > 0.55 { vertices = draw_way(r, v, out, vertices); }
+  vertices = draw_others(r, v, out, vertices);
   // the map before edit mode's rows, so their plates lie over it
   if r[0].map { vertices = draw_map(r, v, out, vertices, uniforms); }
   if v.editing { vertices = draw_edit(r, v, out, vertices); }
   else if v.offers > 0 && !r[0].map { vertices = draw_offer(r, v, out, vertices); }
-  if r[0].typing { vertices = draw_ask(r, v, out, vertices, uniforms); }
+  chatting := chat_shown(r, v);
+  if chatting { vertices = draw_chat(r, v, out, vertices); }
+  if r[0].typing && r[0].typing_for == TYPE_CHAT && !chatting { r[0].typing = false; }
+  if r[0].typing { if r[0].typing_for != TYPE_CHAT { vertices = draw_ask(r, v, out, vertices, uniforms); } }
   else if v.talking.count > 0 { vertices = draw_talk(r, v, out, vertices, uniforms); }
   else if use_label(v).count > 0 {
     b := use_box(r, v);
@@ -921,12 +1091,12 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
       vertices = centred(d, out, vertices, "LEFT THUMB MOVES", r[0].width * 0.5, y, 7.5 * k, k2);
       vertices = centred(d, out, vertices, "RIGHT THUMB LOOKS · TAP TO JUMP", r[0].width * 0.5, y + 18 * k, 7.5 * k, k2);
     } else {
-      vertices = write(d, out, vertices, "WASD MOVE · DRAG LOOK · SPACE JUMP · SHIFT RUN · E USE · B EDIT", gutter(r) + 4 * k,
+      vertices = write(d, out, vertices, "WASD MOVE · DRAG LOOK · SPACE JUMP · SHIFT RUN · E USE · B EDIT · C CHAT", gutter(r) + 4 * k,
                        r[0].height - gutter(r) - 16 * k, 7.5 * k, GAP, SPACE, k2, false, false);
     }
     // what the house saves (analytics.coax), while the controls show and
     // nothing else is up: on a plate above the controls (a phone: above the stick)
-    if !v.editing && !r[0].typing && v.talking.count == 0 && !r[0].map {
+    if !v.editing && !r[0].typing && v.talking.count == 0 && !r[0].map && !chatting {
       said: [1] f32;
       dw := lo(420 * k, r[0].width - 2 * gutter(r) - 24 * k);
       vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, 0, 0, 6.5 * k, GAP, SPACE, white(k, 0), dw, 13 * k, false, false, said[..]);
@@ -1177,6 +1347,14 @@ realm_track_teach :: (t: [] Track, who: string, lesson: string) #export_c {
     track_str(t, "world", HAUNT_WORLD); track_words(t, lesson); track_end(t);
   }
 }
+// A line said in the room's chat.
+realm_track_chat :: (t: [] Track, room: string, text: string) #export_c {
+  if track_begin(t, "chat") { track_str(t, "room", room); track_str(t, "world", HAUNT_WORLD); track_words(t, text); track_end(t); }
+}
+// Who is in the room: when you come in, and whenever the number here changes.
+realm_track_presence :: (t: [] Track, room: string, here: int, full: bool) #export_c {
+  if track_begin(t, "presence") { track_str(t, "room", room); track_int(t, "here", here); track_bool(t, "full", full); track_end(t); }
+}
 #test "the survey's answer goes to the server's feedback with the visitor and the session" {
   t: [1] Track;
   track_init(t[..], "haunt");
@@ -1200,6 +1378,7 @@ realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
   if b == BTN_UNDO { return "undo"; } if b == BTN_REDO { return "redo"; }
   if b == BTN_ASK { return "ask"; } if b == BTN_TEACH { return "teach"; }
   if b == BTN_ACCEPT { return "accept"; } if b == BTN_DECLINE { return "decline"; }
+  if b == BTN_CHAT { return "chat"; } if b == BTN_SAY { return "say"; }
   if b >= BTN_OP { return "edit-op"; }
   if b >= BTN_ITEM { return "item"; }
   return "";
@@ -1302,7 +1481,7 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   r[0].touch = true;
   n := realm_draw(r[..], v, out[..], u[..], 1170, 2532, 3, 0.016);
   #assert n > 0 && n < MAX_VERTICES;
-  t := title_box(r[..]); s := slot_box(r[..], 0); e := slot_box(r[..], 3); b := talk_box(r[..]);
+  t := title_box(r[..]); s := slot_box(r[..], 0); e := slot_box(r[..], SLOTS - 1); b := talk_box(r[..]);
   #assert t.x0 >= 48 && t.x1 <= 1170 - 48 && s.y0 > t.y1 && e.x1 <= 1170 - 48;
   #assert b.x0 >= 48 && b.x1 <= 1170 - 48 && b.y1 <= 2532 - 48;
   for i: 0..<n { #assert out[i * VERTEX_FLOATS] > -100 && out[i * VERTEX_FLOATS] < 1270; }
@@ -1579,4 +1758,79 @@ plated :: (u: [] f32, b: Box) -> f32 {
   v.editing = true;
   _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) > 0;
   #assert !r[0].shown[BTN_ACCEPT];
+}
+
+#test "C opens the room's chat to say something; Enter sends it, Escape stops typing, C closes it" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 2880, 1800, 2, 0.016) > 0;
+  #assert r[0].shown[BTN_CHAT] && !r[0].shown[BTN_SAY] && realm_button_label(r[..], r[0].boxes[BTN_CHAT].x0 + 4, r[0].boxes[BTN_CHAT].y0 + 4) == "chat";
+  #assert realm_key(r[..], v, 'c', 0, true) && r[0].chat && realm_wants_text(r[..]) && realm_typing_for(r[..]) == TYPE_CHAT;
+  _ = realm_key(r[..], v, 'c', 0, false);
+  for c: "Boo!" { _ = realm_key(r[..], v, cast(int) c, 0, true); }
+  #assert realm_typed(r[..]) == "Boo!" && realm_key_y(r[..]) == 0;   // the keys type, nobody walks
+  v.here = 2; v.lines = 2; v.line_name[0] = "Kiki"; v.line_text[0] = "hello"; v.line_name[1] = "Guest 0A1B"; v.line_text[1] = "hi"; v.line_mine[1] = true;
+  _ = realm_draw(r[..], v, out[..], u[..], 2880, 1800, 2, 0.016) > 0;
+  #assert r[0].shown[BTN_SEND] && r[0].shown[BTN_CANCEL] && !r[0].shown[BTN_SAY];
+  b := chat_box(r[..]); t := talk_box(r[..]);
+  #assert b.x0 >= 32 && b.x1 < t.x0 && b.y1 < 1800 - 32;
+  _ = realm_key(r[..], v, KEY_ENTER, 0, true);
+  #assert realm_take(r[..]) == ASK_SEND && realm_typing_for(r[..]) == TYPE_CHAT;
+  realm_close_text(r[..]);
+  _ = realm_draw(r[..], v, out[..], u[..], 2880, 1800, 2, 0.016) > 0;
+  #assert r[0].chat && r[0].shown[BTN_SAY] && !r[0].shown[BTN_SEND];
+  s := r[0].boxes[BTN_SAY];
+  #assert realm_pointer(r[..], v, s.x0 + 4, s.y0 + 4, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, s.x0 + 4, s.y0 + 4, POINTER_UP, 0, 1);
+  #assert realm_wants_text(r[..]) && realm_typing_for(r[..]) == TYPE_CHAT;
+  _ = realm_key(r[..], v, KEY_ESCAPE, 0, true);
+  #assert !realm_wants_text(r[..]) && r[0].chat;
+  _ = realm_key(r[..], v, KEY_ESCAPE, 0, false);
+  #assert realm_key(r[..], v, 'C', 0, true) && !r[0].chat;
+  // a conversation, edit mode or the map holds the middle: the chat steps aside, and its typing stops
+  r[0].chat = true; realm_open_text(r[..], TYPE_CHAT); v.talking = "Mortimer"; v.reply = "Yes?";
+  _ = realm_draw(r[..], v, out[..], u[..], 2880, 1800, 2, 0.016) > 0;
+  #assert !realm_wants_text(r[..]) && r[0].shown[BTN_ASK] && !r[0].shown[BTN_SAY];
+}
+
+#test "everyone else here is drawn where they stand, named on a plate; nobody behind you" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  a := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  plates := r[0].plate_n;
+  v.has_view = true;
+  v.camera[0] = 1; v.camera[5] = 1; v.camera[10] = 1; v.camera[14] = 1;
+  v.others = 1; v.other_name[0] = "Guest 0A1B"; v.other_at[0] = 0; v.other_at[1] = -1; v.other_at[2] = 5;
+  p := realm_spot(v, 0, -1, 5, 1440, 900);
+  #assert p.x == 720 && abs(p.y - 540) < 0.01 && p.w == 5;
+  b := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert b > a + 100 && r[0].plate_n == plates + 1;
+  over := false;
+  for i: 0..<r[0].plate_n { tag := r[0].plates[i]; if tag.x0 < 720 && tag.x1 > 720 && tag.y1 < p.y && tag.y1 > p.y - 400 { over = true; } }
+  #assert over;
+  v.other_at[2] = -5;
+  #assert realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) == a && r[0].plate_n == plates;
+  v.other_at[2] = 80;
+  #assert realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016) == a;   // too far off
+}
+
+#test "a phone fits five hotbar slots and the chat inside the gutters" {
+  r: [1] Realm; realm_reset(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  r[0].touch = true; r[0].chat = true;
+  v.lines = 1; v.line_name[0] = "Kiki"; v.line_text[0] = "Is anyone else in the cellar? I hear footsteps and somebody laughing.";
+  _ := realm_draw(r[..], v, out[..], u[..], 1125, 2436, 3, 0.016) > 0;
+  #assert slot_box(r[..], 0).x0 >= 48 && slot_box(r[..], SLOTS - 1).x1 <= 1125 - 48 && r[0].shown[BTN_CHAT] && r[0].shown[BTN_EXIT];
+  c := chat_box(r[..]);
+  #assert c.x0 >= 48 && c.x1 <= 1125 - 48 && c.y0 > slot_box(r[..], 0).y1 && r[0].shown[BTN_SAY];
+}
+
+#test "the room's events: a line said, with its words, and who is here" {
+  t: [1] Track;
+  track_init(t[..], "haunt");
+  #assert track_message(t[..], HOST_PAGE, "tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793200000000\nnav=1");
+  realm_track_presence(t[..], ROOM_HOUSE, 2, false);
+  realm_track_chat(t[..], ROOM_HOUSE, "anyone here?");
+  body := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(body, "\"ev\":\"presence\"") && text_has(body, "\"room\":\"haunted-house\",\"here\":2,\"full\":false");
+  #assert text_has(body, "\"ev\":\"chat\"") && text_has(body, "\"text\":\"anyone here?\",\"consent\":true");
 }

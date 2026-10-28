@@ -102,6 +102,7 @@ static uint8_t slot_bytes[2 * SNAP + 1024], server_bytes[2 * SNAP + 1024], conta
 static coax_t_SaveSlots slots;     // the browser's two saves, in slot_bytes
 static double loaded_at;           // when the save that opened was made (ms), 0 none
 static bool has_account;           // the player joined with an email: saves go to the server too
+static bool has_player, facts_seen; // the facts named a player key (the host sends it), and came
 static int32_t progress_ask = -1;  // the server's save, asked for
 static char post[SNAP * 2];
 static char feedback[512];         // the survey's answer, kept with the house
@@ -139,6 +140,7 @@ static bool world_holds(void);
 static coax_string world_name(void);
 static bool world_send(void);
 static void world_edited(void);
+static void room_say(coax_string typed);
 
 static coax_v_t_Realm realm_of(void) { return (coax_v_t_Realm){&realm, 1}; }
 static coax_t_HauntPoint point(coax_t_Vec3 v) { return (coax_t_HauntPoint){v.x, v.y, v.z}; }
@@ -264,6 +266,7 @@ static void read_account(uint32_t length) {
     const char *nl = memchr(line, '\n', (size_t)(end - line));
     if (!nl) nl = end;
     if (nl - line > 8 && !memcmp(line, "account=", 8)) has_account = true;
+    if (nl - line > 7 && !memcmp(line, "player=", 7)) has_player = true;
     line = nl + 1;
   }
 }
@@ -493,7 +496,8 @@ static void follow_talk(void) {
   talking_was = house.talking;
   realm_forget(realm_of());
   npc_ask = -1;
-  if (realm_wants_text(realm_of()) && realm_typing_for(realm_of()) != 0) realm_close_text(realm_of());
+  int64_t typing_for = realm_typing_for(realm_of());
+  if (realm_wants_text(realm_of()) && (typing_for == 1 || typing_for == 2)) realm_close_text(realm_of());
   greet = house.talking >= 0 ? house.reply : (coax_string){"", 0};
   if (house.talking >= 0) realm_remember(realm_of(), true, greet);
 }
@@ -591,12 +595,14 @@ static void send_typed(void) {
   if (kind == 0) { send_feedback(); return; }
   coax_string typed = realm_typed(realm_of());
   realm_close_text(realm_of());
+  if (kind == 3) { room_say(typed); return; }
   if (house.talking < 0) return;
   if (kind == 2) teach(house.talking, typed);
   else ask_npc(typed);
 }
 
 #include "realm-world.c"
+#include "realm-room.c"
 
 static void take_asks(void) {
   if (!opened) return;
@@ -659,6 +665,7 @@ static void step(float dt) {
   // A step of the quest is kept at once; other changes at most every 1.5 s.
   static int64_t quest_kept = -1;
   world_frame();
+  room_frame(dt);
   keep(house.quest != quest_kept);
   if (!house.dirty) quest_kept = house.quest;
   queue_sounds();
@@ -698,6 +705,7 @@ static void describe(void) {
     v.reply = house.reply;
     v.move_on = sticks.move_on; v.ox = sticks.ox; v.oy = sticks.oy; v.pad_x = sticks.pad_x; v.pad_y = sticks.pad_y;
     world_describe(&v);
+    room_describe(&v);
     v.map_n = 0;
     if (realm.map) {
       coax_t_Box b = realm_map_box(realm_of());
@@ -801,12 +809,14 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));   // the facts come before the first frame
   if (kind == 600) {   // the facts: a player with an email has a save on the server too
     read_account(length);
+    facts_seen = true;
     if (has_account && progress_ask < 0)
       progress_ask = coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, 0, 0, HTTP_ANSWER_PLAYER);
   }
   if (progress_ask >= 0 && kind == 512 + progress_ask) { progress_ask = -2; take_server(length); return; }
   if (npc_ask >= 0 && kind == 512 + npc_ask) { take_answer(length); return; }
   if (world_message(kind, length)) return;
+  if (room_message(kind, length)) return;
   if (kind >= 512 && kind < 520) return;   // an answer let go
 
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }

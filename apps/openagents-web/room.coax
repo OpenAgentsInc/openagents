@@ -1,0 +1,297 @@
+// Who else is in a realm, and its chat (pt-presence-chat): the page posts
+// where you are about every second to /api/playtest/presence/<room> and is
+// answered with everyone else seen in the last six seconds and the chat's
+// lines after the last one it has; a line you say goes to
+// /api/playtest/chat/<room>. The room is the world's id (coax/web/api/room.c,
+// migrations/0014_verse_rooms.sql). This file keeps what the server said,
+// eases each player from where they were drawn to where they are now, and
+// writes the requests.
+
+#load "world.coax";
+
+ROOM_OTHERS :: 15;   // a room holds 16
+ROOM_ID :: 24;
+ROOM_NAME :: 40;
+ROOM_LINES :: 6;     // the chat lines kept for the panel
+ROOM_TEXT :: 500;
+ROOM_EVERY :: 1.0;   // seconds between posts: others show within two
+ROOM_HOUSE :: "haunted-house";
+
+RoomState :: struct {
+  joined: bool;          // the server has answered once
+  full: bool;            // the room was full last time
+  others: int;
+  id: [ROOM_OTHERS * ROOM_ID] u8; id_n: [ROOM_OTHERS] int;
+  name: [ROOM_OTHERS * ROOM_NAME] u8; name_n: [ROOM_OTHERS] int;
+  to: [ROOM_OTHERS * 4] f32;      // where each is: x, y, z, yaw
+  at: [ROOM_OTHERS * 4] f32;      // where each is drawn, easing towards it
+  lines: int;                     // in the ring, up to ROOM_LINES
+  head: int;                      // the oldest line's place in the ring
+  line_name: [ROOM_LINES * ROOM_NAME] u8; line_name_n: [ROOM_LINES] int;
+  line_text: [ROOM_LINES * ROOM_TEXT] u8; line_text_n: [ROOM_LINES] int;
+  line_mine: [ROOM_LINES] bool;
+  last: int;                      // the number of the last line read
+  unread: int;                    // lines from others since the panel was last open
+  heard: int;                     // lines from others in the last answer
+}
+
+room_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for k: 0..<s.count { out[at + k] = s[k]; }
+  return at + s.count;
+}
+
+// /api/playtest/presence/<room> (chat false) or /api/playtest/chat/<room>.
+room_url :: (room: string, chat: bool, out: [] u8) -> int #export_c {
+  if !world_id_ok(room) { return -1; }
+  o := room_put(out, 0, ifx chat then "/api/playtest/chat/" else "/api/playtest/presence/");
+  return room_put(out, o, room);
+}
+
+// A number with two decimals, for a position (metres) or an angle.
+room_put_num :: (out: [] u8, at: int, v: f32) -> int {
+  o := at;
+  x := v;
+  if !(x == x) || x > 9999 || x < -9999 { x = 0; }
+  if x < 0 { o = room_put(out, o, "-"); x = -x; }
+  c := cast(int) (x * 100 + 0.5);
+  o = room_put_int(out, o, c / 100);
+  o = room_put(out, o, ".");
+  if c % 100 < 10 { o = room_put(out, o, "0"); }
+  return room_put_int(out, o, c % 100);
+}
+room_put_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 { return -1; }
+  digits: [20] u8; n := 0; x := v;
+  if x == 0 { digits[0] = 48; n = 1; }
+  while x > 0 && n < 20 { digits[n] = cast(u8) (48 + x % 10); x = x / 10; n += 1; }
+  o := at;
+  for k: 0..<n { if o >= out.count { return -1; } out[o] = digits[n - 1 - k]; o += 1; }
+  return o;
+}
+
+// Where you are, and the last line read: {"x","y","z","yaw","after"}.
+room_presence_body :: (x: f32, y: f32, z: f32, yaw: f32, after: int, out: [] u8) -> int #export_c {
+  o := room_put(out, 0, "{\"x\":"); o = room_put_num(out, o, x);
+  o = room_put(out, o, ",\"y\":"); o = room_put_num(out, o, y);
+  o = room_put(out, o, ",\"z\":"); o = room_put_num(out, o, z);
+  o = room_put(out, o, ",\"yaw\":"); o = room_put_num(out, o, yaw);
+  o = room_put(out, o, ",\"after\":"); o = room_put_int(out, o, ifx after > 0 then after else 0);
+  return room_put(out, o, "}");
+}
+
+// A line to say: {"text", "sid"}, the text cut to ROOM_TEXT bytes.
+room_chat_body :: (text: string, sid: string, out: [] u8) -> int #export_c {
+  o := room_put(out, 0, "{\"text\":\"");
+  for i: 0..<text.count {
+    if i >= ROOM_TEXT || o < 0 { break; }
+    c := text[i];
+    if c == 34 || c == 92 { o = room_put(out, o, "\\"); o = room_put(out, o, text[i..<i + 1]); }
+    else if c < 32 { o = room_put(out, o, " "); }
+    else { o = room_put(out, o, text[i..<i + 1]); }
+  }
+  o = room_put(out, o, "\",\"sid\":\"");
+  o = room_put(out, o, sid);
+  return room_put(out, o, "\"}");
+}
+
+// A JSON number (sign, decimals, an exponent), 0 when it isn't one.
+room_num :: (t: string) -> f32 {
+  i := 0; neg := false;
+  if i < t.count && t[i] == 45 { neg = true; i += 1; }
+  v := 0.0f64; seen := false;
+  while i < t.count && t[i] >= 48 && t[i] <= 57 { v = v * 10 + cast(f64) (t[i] - 48); i += 1; seen = true; }
+  if i < t.count && t[i] == 46 {
+    i += 1; d := 0.1f64;
+    while i < t.count && t[i] >= 48 && t[i] <= 57 { v += cast(f64) (t[i] - 48) * d; d *= 0.1; i += 1; seen = true; }
+  }
+  if i < t.count && (t[i] == 101 || t[i] == 69) {
+    i += 1; down := false; e := 0;
+    if i < t.count && (t[i] == 45 || t[i] == 43) { down = t[i] == 45; i += 1; }
+    while i < t.count && t[i] >= 48 && t[i] <= 57 { if e < 400 { e = e * 10 + cast(int) (t[i] - 48); } i += 1; }
+    if down { for k: 0..<e { v *= 0.1; if v == 0 { break; } } }
+    else { if e > 6 { return 0; } for k: 0..<e { v *= 10; } }
+  }
+  if !seen || v > 100000 { return 0; }
+  return cast(f32) (ifx neg then -v else v);
+}
+room_int :: (t: string) -> int {
+  v := 0;
+  for c: t { if c < 48 || c > 57 { break; } if v < 1000000000 { v = v * 10 + cast(int) (c - 48); } }
+  return v;
+}
+
+// A field's text (a string's, unescaped) into out at its slot; the bytes written.
+room_text :: (t: string, obj: int, key: string, out: [] u8, at: int, cap: int) -> int {
+  where: [1] int;
+  n := world_field(t, obj, key, where[..]);
+  if where[0] < 0 || n <= 0 { return 0; }
+  return world_unescape(t[where[0]..<where[0] + n], out[at..<at + cap]);
+}
+room_field_num :: (t: string, obj: int, key: string) -> f32 {
+  where: [1] int;
+  n := world_field(t, obj, key, where[..]);
+  if where[0] < 0 { return 0; }
+  return room_num(t[where[0]..<where[0] + n]);
+}
+
+// An array field's elements: calls each with the object's start. Returns
+// where the array starts ('['), or -1.
+room_array :: (t: string, obj: int, key: string) -> int {
+  where: [1] int;
+  _ := world_field(t, obj, key, where[..]);
+  if where[0] < 0 || where[0] >= t.count || t[where[0]] != 91 { return -1; }
+  return where[0];
+}
+
+// The server's answer to a post ("STATUS\n" and the body): who is here and
+// the lines since. Returns the status (0: no answer).
+room_take :: (s: [] RoomState, answer: string) -> int #export_c {
+  nl := 0;
+  while nl < answer.count && answer[nl] != 10 { nl += 1; }
+  status := room_int(answer[0..<nl]);
+  s[0].heard = 0;
+  if status == 429 { s[0].full = true; s[0].others = 0; return status; }
+  if status != 200 || nl >= answer.count { return status; }
+  t := answer[nl + 1..<answer.count];
+  obj := world_space(t, 0);
+  if obj >= t.count || t[obj] != 123 { return 0; }
+  s[0].full = false;
+  // who is here: kept in the server's order, each easing on from where they were drawn
+  was_id: [ROOM_OTHERS * ROOM_ID] u8; was_n: [ROOM_OTHERS] int; was_at: [ROOM_OTHERS * 4] f32;
+  was := s[0].others;
+  for i: 0..<was { was_n[i] = s[0].id_n[i]; for k: 0..<ROOM_ID { was_id[i * ROOM_ID + k] = s[0].id[i * ROOM_ID + k]; } for k: 0..<4 { was_at[i * 4 + k] = s[0].at[i * 4 + k]; } }
+  n := 0;
+  a := room_array(t, obj, "others");
+  if a >= 0 {
+    i := world_space(t, a + 1);
+    while i < t.count && t[i] == 123 && n < ROOM_OTHERS {
+      e := world_value_end(t, i);
+      if e < 0 { break; }
+      s[0].id_n[n] = room_text(t, i, "id", s[0].id[..], n * ROOM_ID, ROOM_ID);
+      s[0].name_n[n] = room_text(t, i, "name", s[0].name[..], n * ROOM_NAME, ROOM_NAME);
+      s[0].to[n * 4] = room_field_num(t, i, "x"); s[0].to[n * 4 + 1] = room_field_num(t, i, "y");
+      s[0].to[n * 4 + 2] = room_field_num(t, i, "z"); s[0].to[n * 4 + 3] = room_field_num(t, i, "yaw");
+      found := -1;
+      for j: 0..<was {
+        if found < 0 && was_n[j] == s[0].id_n[n] && cast(string) was_id[j * ROOM_ID..<j * ROOM_ID + was_n[j]] == cast(string) s[0].id[n * ROOM_ID..<n * ROOM_ID + s[0].id_n[n]] { found = j; }
+      }
+      for k: 0..<4 { s[0].at[n * 4 + k] = ifx found >= 0 then was_at[found * 4 + k] else s[0].to[n * 4 + k]; }
+      n += 1;
+      i = world_space(t, e);
+      if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+    }
+  }
+  s[0].others = n;
+  // the lines after the last one read, oldest first
+  m := room_array(t, obj, "messages");
+  if m >= 0 {
+    i := world_space(t, m + 1);
+    while i < t.count && t[i] == 123 {
+      e := world_value_end(t, i);
+      if e < 0 { break; }
+      num := cast(int) room_field_num(t, i, "n");
+      if num > s[0].last {
+        slot := (s[0].head + s[0].lines) % ROOM_LINES;
+        if s[0].lines == ROOM_LINES { slot = s[0].head; s[0].head = (s[0].head + 1) % ROOM_LINES; } else { s[0].lines += 1; }
+        s[0].line_name_n[slot] = room_text(t, i, "name", s[0].line_name[..], slot * ROOM_NAME, ROOM_NAME);
+        s[0].line_text_n[slot] = room_text(t, i, "text", s[0].line_text[..], slot * ROOM_TEXT, ROOM_TEXT);
+        where: [1] int;
+        mn := world_field(t, i, "mine", where[..]);
+        s[0].line_mine[slot] = where[0] >= 0 && t[where[0]..<where[0] + mn] == "true";
+        if !s[0].line_mine[slot] && s[0].joined { s[0].unread += 1; s[0].heard += 1; }
+        s[0].last = num;
+      }
+      i = world_space(t, e);
+      if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+    }
+  }
+  last := cast(int) room_field_num(t, obj, "last");
+  if last > s[0].last && s[0].joined { s[0].last = last; }
+  if !s[0].joined && last > s[0].last { s[0].last = last; }
+  s[0].joined = true;
+  return status;
+}
+
+// Eases everyone towards where they are: most of the way in a quarter second.
+room_ease :: (s: [] RoomState, dt: f32) #export_c {
+  k := dt * 8;
+  if k > 1 { k = 1; }
+  if k < 0 { k = 0; }
+  for i: 0..<s[0].others {
+    for c: 0..<3 { s[0].at[i * 4 + c] += (s[0].to[i * 4 + c] - s[0].at[i * 4 + c]) * k; }
+    d := s[0].to[i * 4 + 3] - s[0].at[i * 4 + 3];
+    while d > 3.14159265 { d -= 6.2831853; }
+    while d < -3.14159265 { d += 6.2831853; }
+    s[0].at[i * 4 + 3] += d * k;
+  }
+}
+
+room_other_name :: (s: [] RoomState, i: int) -> string #export_c { return cast(string) s[0].name[i * ROOM_NAME..<i * ROOM_NAME + s[0].name_n[i]]; }
+// The k-th line kept, oldest first.
+room_line_name :: (s: [] RoomState, k: int) -> string #export_c {
+  slot := (s[0].head + k) % ROOM_LINES;
+  return cast(string) s[0].line_name[slot * ROOM_NAME..<slot * ROOM_NAME + s[0].line_name_n[slot]];
+}
+room_line_mine :: (s: [] RoomState, k: int) -> bool #export_c { return s[0].line_mine[(s[0].head + k) % ROOM_LINES]; }
+room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
+  slot := (s[0].head + k) % ROOM_LINES;
+  return cast(string) s[0].line_text[slot * ROOM_TEXT..<slot * ROOM_TEXT + s[0].line_text_n[slot]];
+}
+
+#test "a room's urls and bodies" {
+  b: [256] u8;
+  n := room_url(ROOM_HOUSE, false, b[..]);
+  #assert cast(string) b[0..<n] == "/api/playtest/presence/haunted-house";
+  n = room_url("w-1", true, b[..]);
+  #assert cast(string) b[0..<n] == "/api/playtest/chat/w-1";
+  #assert room_url("a/b", true, b[..]) == -1;
+  n = room_presence_body(1.5, 0, -2.25, 3.14159, 7, b[..]);
+  #assert cast(string) b[0..<n] == "{\"x\":1.50,\"y\":0.00,\"z\":-2.25,\"yaw\":3.14,\"after\":7}";
+  n = room_chat_body("say \"boo\"\n", "c0123", b[..]);
+  #assert cast(string) b[0..<n] == "{\"text\":\"say \\\"boo\\\" \",\"sid\":\"c0123\"}";
+  small: [8] u8;
+  #assert room_chat_body("hello there", "c", small[..]) == -1;
+}
+
+#test "numbers out of the server's JSON" {
+  #assert room_num("1.5") == 1.5 && room_num("-2") == -2 && room_num("0.25") == 0.25;
+  #assert room_num("1e-05") < 0.001 && room_num("3e+2") == 300 && room_num("1e+30") == 0 && room_num("x") == 0;
+}
+
+#test "who is here and what was said, the next answer easing them on" {
+  s: [1] RoomState;
+  a := "200\n{\"you\": {\"id\": \"p-1\", \"name\": \"Guest 0001\"}, \"last\": 9, \"others\": [{\"x\": 1.5, \"y\": 0, \"z\": -2, \"id\": \"p-2\", \"yaw\": 0.5, \"name\": \"Guest \\\"B\\\"\"}], \"messages\": [{\"n\": 8, \"at\": 1.0, \"mine\": false, \"name\": \"Kiki\", \"text\": \"hello\"}, {\"n\": 9, \"at\": 2.0, \"mine\": true, \"name\": \"Guest 0001\", \"text\": \"hi {there}\"}]}";
+  #assert room_take(s[..], a) == 200;
+  #assert s[0].others == 1 && room_other_name(s[..], 0) == "Guest \"B\"" && s[0].to[0] == 1.5 && s[0].to[2] == -2 && s[0].at[0] == 1.5;
+  #assert s[0].lines == 2 && room_line_name(s[..], 0) == "Kiki" && room_line_text(s[..], 1) == "hi {there}" && s[0].line_mine[1];
+  #assert s[0].last == 9 && s[0].unread == 0;   // what was said before you came isn't unread
+  b := "200\n{\"last\": 10, \"others\": [{\"id\": \"p-3\", \"name\": \"C\", \"x\": 9, \"y\": 0, \"z\": 9, \"yaw\": 0}, {\"id\": \"p-2\", \"name\": \"B\", \"x\": 3.5, \"y\": 0, \"z\": -2, \"yaw\": 0.5}], \"messages\": [{\"n\": 10, \"name\": \"C\", \"text\": \"boo\", \"mine\": false}]}";
+  #assert room_take(s[..], b) == 200;
+  #assert s[0].others == 2 && s[0].at[4] == 1.5 && s[0].to[4] == 3.5 && s[0].at[0] == 9;   // B eases on from where it was; C starts where it is
+  room_ease(s[..], 0.0625);
+  #assert s[0].at[4] > 1.5 && s[0].at[4] < 3.5;
+  room_ease(s[..], 1);
+  #assert s[0].at[4] == 3.5;
+  #assert s[0].unread == 1 && s[0].heard == 1 && s[0].last == 10 && room_line_text(s[..], 2) == "boo";
+  #assert room_take(s[..], "200\n{\"last\": 10, \"others\": [], \"messages\": []}") == 200 && s[0].others == 0 && s[0].lines == 3;
+  #assert room_take(s[..], "429\n{\"error\": \"the room is full\"}") == 429 && s[0].full;
+  #assert room_take(s[..], "0\n") == 0;
+}
+
+#test "the panel keeps the last six lines" {
+  s: [1] RoomState;
+  _ := room_take(s[..], "200\n{\"last\": 0, \"others\": [], \"messages\": []}");
+  for i: 1..<10 {
+    buf: [160] u8;
+    o := room_put(buf[..], 0, "200\n{\"last\": ");
+    o = room_put_int(buf[..], o, i);
+    o = room_put(buf[..], o, ", \"others\": [], \"messages\": [{\"n\": ");
+    o = room_put_int(buf[..], o, i);
+    o = room_put(buf[..], o, ", \"name\": \"N\", \"text\": \"line ");
+    o = room_put_int(buf[..], o, i);
+    o = room_put(buf[..], o, "\", \"mine\": false}]}");
+    _ = room_take(s[..], cast(string) buf[0..<o]);
+  }
+  #assert s[0].lines == ROOM_LINES && room_line_text(s[..], 0) == "line 4" && room_line_text(s[..], 5) == "line 9" && s[0].unread == 9;
+}
