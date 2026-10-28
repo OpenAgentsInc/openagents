@@ -135,6 +135,8 @@ WORK_SNAPSHOT_AT :: ${lit(chicago(at))};
 WORK_RELAY :: ${lit(config.relay)};
 WORK_NADDR :: ${lit(address)};
 WORK_NPUB :: ${lit(npub)};
+WORK_PUBKEY :: ${lit(pubkey)};
+WORK_SLUG :: ${lit(config.slug)};
 WORK_ITEMS :: ${lit(rows)};
 WORK_LOG :: ${lit(log)};
 WORK_PLANS :: ${lit(plans)};

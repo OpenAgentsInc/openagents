@@ -18,7 +18,8 @@ POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
 
 // Messages in (coaxial_message) and actions out (coaxial_action). Below 16
 // they're the host's; from 16 they're the unlock glue's, and
-// coax/web/unlock/gate.ts and page.ts use the same numbers.
+// coax/web/unlock/gate.ts and page.ts use the same numbers. From 256 they're
+// the host's socket events (socket.coax), which this page doesn't open.
 MSG_TEXT :: 1;          // typed or pasted text, UTF-8
 MSG_ARMED :: 16;        // this page has hidden presentations: the terminal may open
 MSG_REFUSED :: 17;      // the code matched nothing

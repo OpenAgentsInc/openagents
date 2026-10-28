@@ -28,6 +28,15 @@
 //                             out: 1 navigates to the outbox's URL, 2 copies its text; others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
+// and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
+// imports from "env":
+//   coaxial_socket_open(url, url_len) -> id   0..3, or -1 when 4 are open or the URL is refused
+//   coaxial_socket_send(id, ptr, len)         one text frame (UTF-8); dropped unless that socket is open
+//   coaxial_socket_close(id)
+// and hears back through the inbox: coaxial_message(state, 256 + 4 * id + event, length), event
+// 0 opened, 1 a frame (the inbox holds its bytes), 2 closed (the slot is free again), 3 an error
+// (a frame over the inbox cap is dropped and arrives as an error). The host reads no frame: what
+// they say is the app's.
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
 // vertices: one vec4f attribute per four floats), sharing one uniform buffer.
 //
@@ -79,7 +88,7 @@ let last = 0;
 // ---- engine: compile, check its layout, keep or start over its state
 async function loadEngine(bytes, generation) {
   const module = await WebAssembly.compile(bytes);
-  const imports = { env: { memory } };
+  const imports = { env: { memory, ...socketImports } };
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= wasiStub(imp.name);
@@ -130,6 +139,49 @@ function wasiStub(name) {
 }
 
 const align = (n, a) => Math.ceil(n / a) * a;
+
+// ---- sockets: bytes between a WebSocket and the app, nothing else
+const SOCKETS = 4, SOCKET_KIND = 256;
+const SOCKET_OPENED = 0, SOCKET_FRAME = 1, SOCKET_CLOSED = 2, SOCKET_ERROR = 3;
+const sockets = new Array(SOCKETS).fill(null);
+const utf8 = (ptr, len) => new TextDecoder().decode(new Uint8Array(memory.buffer, ptr, len).slice());
+// An event for socket id: its bytes go in the inbox, as typed text does.
+function socketEvent(id, event, text = "") {
+  const x = engine?.exports;
+  if (!x?.coaxial_message) return;
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length > x.coaxial_inbox_cap()) { socketEvent(id, SOCKET_ERROR, "frame over the inbox cap"); return; }
+  new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
+  x.coaxial_message(arena.state, SOCKET_KIND + 4 * id + event, bytes.length);
+  after(false);
+}
+const socketImports = {
+  coaxial_socket_open(ptr, len) {
+    const id = sockets.indexOf(null);
+    if (id < 0) return -1;
+    let ws;
+    try { ws = new WebSocket(utf8(ptr, len)); } catch { return -1; }
+    sockets[id] = ws;
+    const mine = () => sockets[id] === ws;   // a closed socket says nothing more
+    ws.onopen = () => mine() && socketEvent(id, SOCKET_OPENED);
+    ws.onmessage = (m) => mine() && typeof m.data === "string" && socketEvent(id, SOCKET_FRAME, m.data);
+    ws.onerror = () => mine() && socketEvent(id, SOCKET_ERROR);
+    ws.onclose = () => { if (mine()) { sockets[id] = null; socketEvent(id, SOCKET_CLOSED); } };
+    return id;
+  },
+  coaxial_socket_send(id, ptr, len) {
+    const ws = sockets[id];
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(utf8(ptr, len));
+  },
+  coaxial_socket_close(id) {
+    const ws = sockets[id];
+    if (!ws) return;
+    sockets[id] = null;
+    ws.close();
+    // The app hears it a turn later, never inside its own call.
+    setTimeout(() => socketEvent(id, SOCKET_CLOSED));
+  },
+};
 
 // ---- GPU: device, the two pipelines from the app's WGSL, buffers
 async function startGpu() {

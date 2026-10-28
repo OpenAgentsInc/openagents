@@ -1,0 +1,68 @@
+// The host's WebSocket byte pipe, the Coax side (coax/web/host.js,
+// "sockets"). A page asks for sockets by queueing commands in a Pipe; its C
+// face drains the queue after every call into the host's imports
+// (coaxial_socket_open, coaxial_socket_send, coaxial_socket_close) and tells
+// the page which id an open got. What comes back arrives in the page's
+// inbox as message kind 256 + 4 * id + event. The host reads no frame:
+// parsing them is the page's.
+
+SOCKETS :: 4;
+SOCKET_KIND :: 256;
+SOCKET_OPENED :: 0; SOCKET_FRAME :: 1; SOCKET_CLOSED :: 2; SOCKET_ERROR :: 3;
+PIPE_OPEN :: 1; PIPE_SEND :: 2; PIPE_CLOSE :: 3;
+PIPE_COMMANDS :: 32;
+PIPE_CAP :: 16384;
+
+Pipe :: struct {
+  n: int;                          // commands queued
+  op: [PIPE_COMMANDS] int;
+  id: [PIPE_COMMANDS] int;         // the socket (ignored for an open)
+  from: [PIPE_COMMANDS] int;       // its bytes in buf: a URL or a frame
+  len: [PIPE_COMMANDS] int;
+  used: int;
+  buf: [PIPE_CAP] u8;
+}
+
+// A message kind from the host as a socket event, or -1 when it isn't one.
+SocketEvent :: struct { id: int; event: int; }
+socket_event :: (kind: int) -> SocketEvent {
+  k := kind - SOCKET_KIND;
+  if k < 0 || k >= 4 * SOCKETS { return SocketEvent.{id = -1, event = -1}; }
+  return SocketEvent.{id = k / 4, event = k % 4};
+}
+
+// Queues a command with its bytes. False when the queue or its buffer is full
+// (nothing is queued then: a frame is never cut).
+pipe_put :: (p: [] Pipe, op: int, id: int, text: string) -> bool {
+  if p[0].n >= PIPE_COMMANDS || p[0].used + text.count > PIPE_CAP { return false; }
+  k := p[0].n;
+  p[0].op[k] = op; p[0].id[k] = id; p[0].from[k] = p[0].used; p[0].len[k] = text.count;
+  for i: 0..<text.count { p[0].buf[p[0].used + i] = text[i]; }
+  p[0].used += text.count;
+  p[0].n += 1;
+  return true;
+}
+pipe_open :: (p: [] Pipe, url: string) -> bool { return pipe_put(p, PIPE_OPEN, -1, url); }
+pipe_send :: (p: [] Pipe, id: int, bytes: string) -> bool { return pipe_put(p, PIPE_SEND, id, bytes); }
+pipe_close :: (p: [] Pipe, id: int) -> bool { return pipe_put(p, PIPE_CLOSE, id, ""); }
+// The face carried every command out.
+pipe_drained :: (p: [] Pipe) { p[0].n = 0; p[0].used = 0; }
+pipe_bytes :: (p: [] Pipe, k: int) -> string { return cast(string) p[0].buf[p[0].from[k]..<p[0].from[k] + p[0].len[k]]; }
+
+#test "socket events decode from message kinds; a pipe queues commands and refuses what doesn't fit" {
+  #assert socket_event(256).id == 0 && socket_event(256).event == SOCKET_OPENED;
+  #assert socket_event(256 + 4 * 2 + 1).id == 2 && socket_event(256 + 4 * 2 + 1).event == SOCKET_FRAME;
+  #assert socket_event(256 + 15).id == 3 && socket_event(256 + 15).event == SOCKET_ERROR;
+  #assert socket_event(1).id == -1 && socket_event(255).id == -1 && socket_event(272).id == -1 && socket_event(18).id == -1;
+  p: [1] Pipe;
+  #assert pipe_open(p[..], "wss://relay.example") && pipe_send(p[..], 1, "[\"REQ\",\"a\",{}]") && pipe_close(p[..], 1);
+  #assert p[0].n == 3 && p[0].op[0] == PIPE_OPEN && p[0].op[1] == PIPE_SEND && p[0].id[1] == 1 && p[0].op[2] == PIPE_CLOSE;
+  #assert pipe_bytes(p[..], 0) == "wss://relay.example" && pipe_bytes(p[..], 1) == "[\"REQ\",\"a\",{}]" && pipe_bytes(p[..], 2) == "";
+  pipe_drained(p[..]);
+  #assert p[0].n == 0 && p[0].used == 0;
+  // a frame bigger than the buffer is refused whole
+  big: [PIPE_CAP + 1] u8;
+  #assert !pipe_send(p[..], 0, cast(string) big[..]) && p[0].n == 0;
+  for k: 0..<PIPE_COMMANDS { #assert pipe_close(p[..], 0); }
+  #assert !pipe_close(p[..], 0) && p[0].n == PIPE_COMMANDS;
+}

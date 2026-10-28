@@ -14,6 +14,7 @@
 #load "font.coax";
 #load "project/coax/commits.coax";
 #load "project/coax/work.coax";
+#load "project-live.coax";
 
 // page 0 is the real page (/project/coax), 1 the demo (/project/coax/demo).
 ProjectState :: struct {
@@ -860,7 +861,7 @@ glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
 
 // ---------------------------------------------------------------- the panels
 
-header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool) -> int {
+header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, lv: [] Live) -> int {
   d := p.d; v := at;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
   x := b.x0 + 18 * d; right := b.x1 - 18 * d;
@@ -889,9 +890,10 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool) -> int {
   cap := 7 * d;
   open := "OPEN FOR CONTRIBUTIONS";
   lic := "APACHE-2.0";
-  buf: [48] u8;
+  buf: [64] u8;
   m := put_text(buf[..], 0, "SNAPSHOT ");
   m += put_text(buf[..], m, WORK_SNAPSHOT_AT);
+  if lv[0].frames > 0 { m += put_text(buf[..], m, " · "); m += number(lv[0].frames, false, buf[m..<buf.count]); m += put_text(buf[..], m, " FRAMES"); }
   source := ifx p.demo then "DEMO · SAMPLE DATA" else cast(string) buf[0..<m];
   third := chip_width(source, cap, p) + 8 * d;
   cx := ifx wide then right - chip_width(open, cap, p) - chip_width(lic, cap, p) - 8 * d else x;
@@ -1412,12 +1414,14 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activi
 
 // ---------------------------------------------------------------- the frame
 
-coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, out: [] f32, uniforms: [] f32,
+coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live, out: [] f32, uniforms: [] f32,
                           width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
-  if s.count < 1 || t.count < 1 || w.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if s.count < 1 || t.count < 1 || w.count < 1 || lv.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
   s[0].frames += 1;
+  // the real page holds its socket to the relay; the demo keeps its samples
+  if s[0].page == 0 { live_tick(lv, s[0].time, WORK_RELAY); }
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
   if t[0].n == 0 { grow(t, PROJECT_HISTORY); }
@@ -1438,7 +1442,7 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, out: [] f3
   v := scene(out, 0, l.scene, p, t, still, w[0].ready_n);
   v = scene_hud(out, v, l.scene, p, l.columns);
   v = stats(out, v, l.scene, p, w);
-  v = header(out, v, l.header, p, l.wide);
+  v = header(out, v, l.header, p, l.wide, lv);
   compact := !l.wide && !l.columns;
   if p.demo {
     v = queue(out, v, l.queue, p);
@@ -1451,6 +1455,18 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, out: [] f3
   }
   return v;
 }
+
+// The host's messages: the relay socket's events (project-live.coax).
+coaxial_project_message :: (l: [] Live, kind: int, length: int) #export_c {
+  if l.count < 1 { return; }
+  live_message(l, kind, length, WORK_PUBKEY, WORK_SLUG);
+}
+// The face carried out the pipe's open: the host's socket id, or -1.
+coaxial_project_opened :: (l: [] Live, id: int) #export_c {
+  if l.count < 1 { return; }
+  live_opened(l, id);
+}
+coaxial_project_inbox_cap :: () -> int #export_c { return LIVE_INBOX; }
 
 coaxial_project_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_project_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
@@ -1520,12 +1536,13 @@ on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
   s: [1] ProjectState;
   t: [1] Tree;
   work: [1] Work;
+  live: [1] Live;
   sizes := [6] f32.[1440, 900, 768, 1024, 320, 568];
   for page: 0..<2 {
     s[0].page = page;
     for k: 0..<3 {
       w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
-      n := coaxial_project_frame(s[..], t[..], work[..], out[..], uniforms[..], w, h, 2, 0, true);
+      n := coaxial_project_frame(s[..], t[..], work[..], live[..], out[..], uniforms[..], w, h, 2, 0, true);
       #assert n > 3000 && n < MAX_VERTICES && n % 6 == 0;
       #assert on_canvas(out[..], n, w, h, 2);
       #assert uniforms[5] >= 3 && uniforms[0] == w;

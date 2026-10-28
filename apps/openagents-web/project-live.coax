@@ -1,0 +1,167 @@
+// The project page's line to its relay: one WebSocket (socket.coax, the
+// host's byte pipe), opened when the page starts, subscribed to the
+// project's events and kept open, reconnected with backoff when it drops.
+
+#load "socket.coax";
+
+LIVE_INBOX :: 262144;   // the largest frame the page takes, bytes
+LIVE_IDLE :: 0;         // not started
+LIVE_CONNECTING :: 1;   // the socket is opening
+LIVE_SYNCING :: 2;      // open, the stored events are arriving
+LIVE_LIVE :: 3;         // every subscription reached EOSE: new events land as they're published
+LIVE_OFFLINE :: 4;      // closed; connecting again at retry_at
+CONNECT_WAIT :: 10.0;   // seconds an open may take before it's given up
+BACKOFF_FIRST :: 1.0;
+BACKOFF_MOST :: 30.0;
+
+Live :: struct {
+  pipe: [1] Pipe;        // a one-element array, so procedures can take it as a view
+  inbox: [LIVE_INBOX] u8;
+  state: int;
+  sock: int;             // the socket's id + 1; 0: none
+  asked_at: f32;         // when the open was asked for, page seconds
+  retry_at: f32;
+  backoff: f32;
+  now: f32;
+  frames: int;           // frames this connection
+  connects: int;
+}
+
+live_offline :: (l: [] Live) {
+  l[0].state = LIVE_OFFLINE;
+  l[0].sock = 0;
+  if l[0].backoff < BACKOFF_FIRST { l[0].backoff = BACKOFF_FIRST; }
+  l[0].retry_at = l[0].now + l[0].backoff;
+  l[0].backoff = ifx l[0].backoff * 2 > BACKOFF_MOST then BACKOFF_MOST else l[0].backoff * 2;
+}
+
+// Every frame: open the socket when it's time, give up an open that hangs.
+live_tick :: (l: [] Live, now: f32, url: string) {
+  l[0].now = now;
+  if l[0].state == LIVE_IDLE || (l[0].state == LIVE_OFFLINE && now >= l[0].retry_at) {
+    if pipe_open(l[0].pipe[..], url) {
+      l[0].state = LIVE_CONNECTING; l[0].asked_at = now; l[0].sock = 0; l[0].connects += 1;
+    }
+  }
+  if l[0].state == LIVE_CONNECTING && now - l[0].asked_at > CONNECT_WAIT {
+    if l[0].sock > 0 { if pipe_close(l[0].pipe[..], l[0].sock - 1) {} }
+    live_offline(l);
+  }
+}
+
+// The face opened the socket the pipe asked for: id, or -1 when the host refused.
+live_opened :: (l: [] Live, id: int) {
+  if l[0].state != LIVE_CONNECTING { return; }
+  if id < 0 { live_offline(l); return; }
+  l[0].sock = id + 1;
+}
+
+// ---- subscriptions: one filter each (relay.openagents.com answers a REQ
+// with several filters only in part), all by the project key
+SUBS :: 4;
+SUB_ORDER :: 0; SUB_ISSUES :: 1; SUB_COMMENTS :: 2; SUB_STATUS :: 3;
+SUB_IDS :: [SUBS] string.["order", "issues", "comments", "status"];
+REQ_CAP :: 512;
+
+live_text :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n >= buf.count { return buf.count + 1; } buf[n] = text[i]; n += 1; }
+  return n;
+}
+
+// The REQ for subscription k: the project's queue order, its issues, the
+// comments and the statuses its key signed.
+live_req :: (buf: [] u8, k: int, pubkey: string, slug: string) -> int {
+  n := live_text(buf, 0, "[\"REQ\",\"");
+  n = live_text(buf, n, SUB_IDS[k]);
+  n = live_text(buf, n, "\",{\"kinds\":[");
+  if k == SUB_ORDER { n = live_text(buf, n, "30623"); }
+  if k == SUB_ISSUES { n = live_text(buf, n, "1621"); }
+  if k == SUB_COMMENTS { n = live_text(buf, n, "1111"); }
+  if k == SUB_STATUS { n = live_text(buf, n, "1630,1631,1632,1633"); }
+  n = live_text(buf, n, "],\"authors\":[\"");
+  n = live_text(buf, n, pubkey);
+  n = live_text(buf, n, "\"]");
+  if k == SUB_ORDER { n = live_text(buf, n, ",\"#d\":[\""); n = live_text(buf, n, slug); n = live_text(buf, n, "\"]"); }
+  if k == SUB_ISSUES {
+    n = live_text(buf, n, ",\"#a\":[\"30621:"); n = live_text(buf, n, pubkey); n = live_text(buf, n, ":");
+    n = live_text(buf, n, slug); n = live_text(buf, n, "\"]");
+  }
+  return live_text(buf, n, "}]");
+}
+
+live_subscribe :: (l: [] Live, pubkey: string, slug: string) {
+  for k: 0..<SUBS {
+    buf: [REQ_CAP] u8;
+    n := live_req(buf[..], k, pubkey, slug);
+    if n <= REQ_CAP { if pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) {} }
+  }
+}
+
+// A message from the host: an event on the page's socket.
+live_message :: (l: [] Live, kind: int, length: int, pubkey: string, slug: string) {
+  e := socket_event(kind);
+  if e.id < 0 || l[0].sock != e.id + 1 || length < 0 || length > LIVE_INBOX { return; }
+  if e.event == SOCKET_OPENED && l[0].state == LIVE_CONNECTING {
+    l[0].state = LIVE_SYNCING; l[0].frames = 0;
+    live_subscribe(l, pubkey, slug);
+  } else if e.event == SOCKET_FRAME {
+    l[0].frames += 1;
+  } else if e.event == SOCKET_CLOSED {
+    live_offline(l);
+  }
+}
+
+LIVE_TEST_KEY :: "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
+
+// The host as a test sees it: bytes into the inbox, then the message.
+fake_message :: (l: [] Live, id: int, event: int, text: string) {
+  for i: 0..<text.count { l[0].inbox[i] = text[i]; }
+  live_message(l, SOCKET_KIND + 4 * id + event, text.count, LIVE_TEST_KEY, "coax");
+}
+
+#test "the page opens its socket, subscribes when it opens, counts frames, and reconnects with backoff when it closes" {
+  l: [1] Live;
+  live_tick(l[..], 0.5, "wss://relay.openagents.com");
+  #assert l[0].state == LIVE_CONNECTING && l[0].pipe[0].n == 1 && l[0].pipe[0].op[0] == PIPE_OPEN;
+  #assert pipe_bytes(l[0].pipe[..], 0) == "wss://relay.openagents.com";
+  pipe_drained(l[0].pipe[..]);
+  live_opened(l[..], 2);
+  #assert l[0].sock == 3;
+  // another socket's events and messages that aren't socket events are not ours
+  fake_message(l[..], 1, SOCKET_OPENED, "");
+  live_message(l[..], 18, 0, LIVE_TEST_KEY, "coax");
+  #assert l[0].state == LIVE_CONNECTING && l[0].pipe[0].n == 0;
+  fake_message(l[..], 2, SOCKET_OPENED, "");
+  #assert l[0].state == LIVE_SYNCING && l[0].pipe[0].n == SUBS;
+  for k: 0..<SUBS { #assert l[0].pipe[0].op[k] == PIPE_SEND && l[0].pipe[0].id[k] == 2; }
+  #assert pipe_bytes(l[0].pipe[..], 0) == "[\"REQ\",\"order\",{\"kinds\":[30623],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],\"#d\":[\"coax\"]}]";
+  #assert pipe_bytes(l[0].pipe[..], 1) == "[\"REQ\",\"issues\",{\"kinds\":[1621],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],\"#a\":[\"30621:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax\"]}]";
+  #assert pipe_bytes(l[0].pipe[..], 3) == "[\"REQ\",\"status\",{\"kinds\":[1630,1631,1632,1633],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"]}]";
+  pipe_drained(l[0].pipe[..]);
+  fake_message(l[..], 2, SOCKET_FRAME, "[\"EOSE\",\"order\"]");
+  fake_message(l[..], 2, SOCKET_FRAME, "[\"NOTICE\",\"hi\"]");
+  #assert l[0].frames == 2;
+  // an error alone changes nothing; the close that follows takes it offline
+  fake_message(l[..], 2, SOCKET_ERROR, "");
+  #assert l[0].state == LIVE_SYNCING;
+  fake_message(l[..], 2, SOCKET_CLOSED, "");
+  #assert l[0].state == LIVE_OFFLINE && l[0].sock == 0 && l[0].retry_at == 1.5;
+  live_tick(l[..], 1.4, "wss://relay.openagents.com");
+  #assert l[0].state == LIVE_OFFLINE && l[0].pipe[0].n == 0;
+  live_tick(l[..], 1.6, "wss://relay.openagents.com");
+  #assert l[0].state == LIVE_CONNECTING && l[0].pipe[0].n == 1 && l[0].connects == 2;
+  pipe_drained(l[0].pipe[..]);
+  // the host refuses (four sockets open): offline again, waiting twice as long
+  live_opened(l[..], -1);
+  #assert l[0].state == LIVE_OFFLINE && l[0].retry_at == 1.6 + 2;
+  // an open that hangs is given up after CONNECT_WAIT, and its socket closed
+  live_tick(l[..], 4.0, "wss://relay.openagents.com");
+  pipe_drained(l[0].pipe[..]);
+  live_opened(l[..], 0);
+  live_tick(l[..], 4.0 + CONNECT_WAIT + 0.1, "wss://relay.openagents.com");
+  #assert l[0].state == LIVE_OFFLINE && l[0].pipe[0].n == 1 && l[0].pipe[0].op[0] == PIPE_CLOSE && l[0].pipe[0].id[0] == 0;
+  // the backoff stops growing at BACKOFF_MOST
+  for k: 0..<10 { live_offline(l[..]); }
+  #assert l[0].backoff == BACKOFF_MOST;
+}
