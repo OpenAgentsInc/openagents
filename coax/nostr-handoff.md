@@ -55,9 +55,7 @@ another release. Stop on a failed gate, inspect the owner change, and retry
 only after its cause is fixed; never bypass or silently update another owner's
 golden. Independent work can continue while a valid release holds the lock.
 
-## Original handoff snapshot
-
-### Phone fast path coordination
+## Phone fast path coordination
 
 The owner assigned a Claude agent the temporary NIP-98 phone sign-in fast path:
 one-use `/signin` challenge, an iOS signature, the page session and member phone
@@ -73,6 +71,8 @@ four-module quiet zone and dark Coax quads without smoothing. Native/Wasm exact
 reference grids and the actual iOS Vision rendered-frame scanner pass. Physical
 camera optics remain part of the device sign-in owner step, not an inferred
 result. See `coax/lib/qr/README.md` for the API and scoped evidence.
+
+## Original handoff snapshot
 
 These lists are historical. The live queue and current execution update above
 supersede their status; retain them as the starting evidence.

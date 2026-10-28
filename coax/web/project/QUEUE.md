@@ -47,6 +47,12 @@ release. The tools run on the machine that holds the project key
      `--no-verify`, the commit message names the task alias), then
      `bun publish.ts done SLUG --commit HASH`. That marks the issue resolved
      and links the commit.
+     Read HASH from `git rev-parse --verify HEAD` in the source worktree and
+     check `git merge-base --is-ancestor HASH origin/main` after pushing.
+     Never expand a short hash by hand. The publisher currently checks only
+     hash syntax, so a nonexistent or unpushed hash can otherwise become a
+     signed completion link. Correct a mistaken completion openly: reopen,
+     explain the metadata error and resolve with the verified pushed hash.
    - Blocked: `bun publish.ts note SLUG "blocked: why"` and
      `bun publish.ts release SLUG`. Name what would unblock it.
    - The task is wrong or too big: say so in a note, propose the split or the
