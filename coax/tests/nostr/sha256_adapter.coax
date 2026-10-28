@@ -1,0 +1,3 @@
+// Actual algorithm adapter for the shared native vector runner SPI.
+#load "../../lib/crypto/sha256-memory.coax";
+vector_digest :: (input: [] u8,out: [] u8) -> bool #export_c {return sha256_hash(input,out)==SHA_OK;}

@@ -1,0 +1,104 @@
+{
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "cpu": "Apple M5 Max",
+  "method": "Warm kernel-only throughput; 7 samples, native32x1MiB and Wasm8x1MiB per sample; input first byte varies each iteration and digest bytes feed an observable sink. MB=1000000 bytes. No UI/network or cold-start measurement.",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "sources": {
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/tests/nostr/sha256_wasm.c": "abaca5bb51ca573061d1e471e01827ec5f9cd3ee0c37edfb7a34a671b049bf6e",
+    "coax/tests/nostr/sha256_wasm.cjs": "5615beeae6ba6f155a8419153d5970e640a50e116eb930cd0af046451b102095",
+    "coax/tests/nostr/sha256_adapter.coax": "27c6d880b0c522a6d577698926412e26ca5fa3bd9ba279664609c01c9372c075"
+  },
+  "nist_sources": {
+    "SHA256ShortMsg.rsp": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c",
+    "SHA256LongMsg.rsp": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974"
+  },
+  "measurements": [
+    {
+      "target": "wasm32-wasip1",
+      "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+      "nist_rows": 129,
+      "streams": 36,
+      "tags": 12,
+      "large_stream_chunk_sizes": 129,
+      "payload_bytes": 1048576,
+      "mb_per_second": [
+        189.86662383735802,
+        191.37836344255595,
+        193.81509420884188,
+        192.9341494337807,
+        192.8635496630518,
+        189.67682930358845,
+        193.55552949775083
+      ],
+      "digest_sink": 166,
+      "profile": "checked",
+      "optimization": "O2",
+      "module_sha256": "bcc9c72345394660a35cca4cb1b35398e805ce41a7c976405e6a78be3deb540e",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "target": "wasm32-wasip1",
+      "engine": "Node v26.12.1 V8 14.6.202.34-node.40",
+      "nist_rows": 129,
+      "streams": 36,
+      "tags": 12,
+      "large_stream_chunk_sizes": 129,
+      "payload_bytes": 1048576,
+      "mb_per_second": [
+        267.1095243212692,
+        274.65623965366257,
+        269.84802622470227,
+        271.3998721264771,
+        271.84989062626624,
+        268.96118258931574,
+        271.72623900678514
+      ],
+      "digest_sink": 166,
+      "profile": "release",
+      "optimization": "O2",
+      "module_sha256": "1888b60bdfc67d9b8de659780e6c7a9ed846200f19cad6eba077f6d1d46afd09",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "target": "native-c11",
+      "profile": "checked",
+      "optimization": "O2",
+      "chunk_sizes": 129,
+      "payload_bytes": 1048576,
+      "mb_per_second": [
+        282.176314,
+        277.724795,
+        277.137576,
+        285.644996,
+        287.111484,
+        287.835574,
+        288.350065
+      ],
+      "digest_sink": 98
+    },
+    {
+      "target": "native-c11",
+      "profile": "release",
+      "optimization": "O2",
+      "chunk_sizes": 129,
+      "payload_bytes": 1048576,
+      "mb_per_second": [
+        332.284608,
+        305.326187,
+        311.780417,
+        329.841363,
+        329.423629,
+        334.490674,
+        338.608729
+      ],
+      "digest_sink": 98
+    }
+  ]
+}

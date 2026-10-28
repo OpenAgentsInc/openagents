@@ -1,0 +1,245 @@
+// Streaming SHA-256 over caller-owned byte state. Temporary dependency: the
+// unchanged compiler-fingerprint module owns the single compression kernel.
+// This reuse does not qualify that old API for admission/signing or alter its
+// provenance. Moving the kernel later requires an explicit compiler migration.
+#load "bytes.coax";
+#load "../proto/fingerprint.coax";
+#authority;
+SHA_OK :: cast(u32) 0;
+SHA_BAD_STATE :: cast(u32) 1;
+SHA_BAD_INPUT :: cast(u32) 2;
+SHA_BAD_OUTPUT :: cast(u32) 3;
+SHA_PHASE :: cast(u32) 4;
+SHA_ALIAS :: cast(u32) 5;
+SHA_LENGTH :: cast(u32) 6;
+SHA_BAD_TAG :: cast(u32) 7;
+SHA_STATE_BYTES :: 112;
+SHA_MAX_TOTAL :: cast(u64) 2305843009213693951;
+SHA_MAX_TAG :: 1024;
+SHA_ACTIVE :: cast(u32) 1;
+SHA_FINAL :: cast(u32) 2;
+SHA_IV :: #run S_seed(0);
+Sha256Info :: struct { error: u32; phase: u32; total: u64; buffered: u32; }
+Sha256Work :: struct { h: [8] u32; block: [64] u8; total: u64; used: int; phase: u32; ok: bool; }
+
+#test "stream hash empty and abc are published SHA-256 values" {
+  s: [112] u8; out: [40] u8; hex: [64] u8;
+  #assert sha256_state_size() == 112 && sha256_init(s[..]) == SHA_OK;
+  #assert sha256_final_checked(s[..], out[..], false) == SHA_OK;
+  d: S_Digest;
+  for i: 0..<8 { d.words[i] = cb_load_be32(out[..], i * 4).value; }
+  #assert S_hex(d, hex[..]) && cast(string) hex[..] == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  #assert sha256_init(s[..]) == SHA_OK;
+  input := [3] u8.[97, 98, 99];
+  #assert sha256_update_checked(s[..], input[..], false) == SHA_OK;
+  #assert sha256_info(s[..]).total == 3 && sha256_info(s[..]).buffered == 3;
+  #assert sha256_final_checked(s[..], out[..], false) == SHA_OK;
+  for i: 0..<8 { d.words[i] = cb_load_be32(out[..], i * 4).value; }
+  #assert S_hex(d, hex[..]) && cast(string) hex[..] == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  old := s;
+  #assert sha256_final_checked(s[..], out[..], false) == SHA_OK;
+  for i: 0..<112 { #assert s[i] == old[i]; }
+  #assert sha256_info(s[..]).phase == SHA_FINAL && sha256_info(s[..]).buffered == 0;
+}
+#forall "stream chunk partitions agree with the independently exercised legacy path" which: 0..<12, chunk_index: 0..<3 {
+  lengths := [12] int.[0, 1, 55, 56, 63, 64, 65, 119, 120, 127, 128, 129];
+  chunks := [3] int.[1, 7, 64]; n := lengths[which]; chunk := chunks[chunk_index];
+  input: [129] u8; for i: 0..<129 { input[i] = cast(u8) i; }
+  s: [112] u8; out: [32] u8;
+  #assert sha256_init(s[..]) == SHA_OK;
+  at := 0;
+  while at < n { take := ifx n - at < chunk then n - at else chunk;
+    #assert sha256_update_checked(s[..], input[at..<at + take], false) == SHA_OK;
+    at += take;
+  }
+  #assert sha256_info(s[..]).total == cast(u64) n && sha256_info(s[..]).buffered == cast(u32) (n % 64);
+  #assert sha256_final_checked(s[..], out[..], false) == SHA_OK;
+  reference := S_hash(cast(string) input[0..<n]);
+  for i: 0..<8 { #assert cb_load_be32(out[..], i * 4).value == reference.words[i]; }
+}
+#test "refusals preserve state and output; initialization is explicit" {
+  s: [113] u8; input := [1] u8.[7]; out: [33] u8;
+  for i: 0..<113 { s[i] = 165; }
+  for i: 0..<33 { out[i] = 165; }
+  #assert sha256_info(s[0..<112]).error == SHA_BAD_STATE;
+  #assert sha256_init(s[0..<111]) == SHA_BAD_STATE && sha256_init(s[..]) == SHA_BAD_STATE;
+  #assert sha256_update_checked(s[0..<112], input[..], false) == SHA_BAD_STATE;
+  #assert sha256_final_checked(s[0..<112], out[..], false) == SHA_BAD_STATE;
+  for i: 0..<113 { #assert s[i] == 165; }
+  #assert sha256_init(s[0..<112]) == SHA_OK; before := s;
+  #assert sha256_update_checked(s[0..<112], input[..], true) == SHA_ALIAS;
+  #assert sha256_final_checked(s[0..<112], out[0..<31], false) == SHA_BAD_OUTPUT;
+  #assert sha256_final_checked(s[0..<112], out[..], true) == SHA_ALIAS;
+  #assert sha256_update_checked(s[0..<112], input[0..<0], true) == SHA_OK;
+  for i: 0..<113 { #assert s[i] == before[i]; }
+  #assert sha256_final_checked(s[0..<112], out[..], false) == SHA_OK && out[32] == 165;
+  #assert sha256_update_checked(s[0..<112], input[..], false) == SHA_PHASE;
+  #assert sha256_hash_checked(input[..], out[..], true) == SHA_ALIAS;
+  #assert sha256_hash_checked(input[..], out[0..<31], false) == SHA_BAD_OUTPUT;
+  h: [7] u32; #assert sha256_emit(h[..], out[..]) == SHA_BAD_OUTPUT;
+  h8: [8] u32; #assert sha256_emit(h8[..], out[0..<31]) == SHA_BAD_OUTPUT;
+  work: Sha256Work; #assert sha256_pack(work, s[0..<111]) == SHA_BAD_STATE;
+}
+#forall "every header byte is validated" field: 0..<8 {
+  s: [112] u8; input := [1] u8.[1];
+  #assert sha256_init(s[..]) == SHA_OK;
+  s[field] ^= 255; before := s;
+  #assert sha256_info(s[..]).error == SHA_BAD_STATE;
+  #assert sha256_update_checked(s[..], input[..], false) == SHA_BAD_STATE;
+  for i: 0..<112 { #assert s[i] == before[i]; }
+}
+#test "counter and phase limits do not require gigantic inputs" {
+  s: [112] u8; input := [1] u8.[1]; out: [32] u8;
+  #assert sha256_init(s[..]) == SHA_OK;
+  #assert cb_store_be64(s[..], 8, SHA_MAX_TOTAL + 1);
+  #assert sha256_info(s[..]).error == SHA_BAD_STATE;
+  #assert sha256_init(s[..]) == SHA_OK; s[7] = 1;
+  #assert sha256_info(s[..]).error == SHA_BAD_STATE;
+  s[5] = 2; #assert sha256_info(s[..]).error == SHA_BAD_STATE;
+  #assert sha256_init(s[..]) == SHA_OK;
+  #assert cb_store_be64(s[..], 8, SHA_MAX_TOTAL); s[7] = 63; before := s;
+  #assert sha256_update_checked(s[..], input[..], false) == SHA_LENGTH;
+  for i: 0..<112 { #assert s[i] == before[i]; }
+  #assert sha256_final_checked(s[..], out[..], false) == SHA_OK;
+  for i: 104..<111 { #assert s[i] == 255; } #assert s[111] == 248;
+}
+#forall "BIP-340 tagged abc agrees with frozen independent fixtures" tag_id: 0..<3 {
+  expected := [3] string.["e290869901ce310396cca6611e7c0fc4e2c70b7f13a82c681e4dcd07a3fb164b", "000beb2c0c2b6cebe3a7e17e283816c2cd4a02e148ea65e9f218d8007d35de4b", "770a5b7e7c304bbcc3ea107343ff951dd404312ef418db0c3b94e2ebfbb50087"];
+  input := [3] u8.[97,98,99]; out: [32] u8; hex: [64] u8;
+  #assert sha256_bip340_checked(tag_id, input[..], out[..], false) == SHA_OK;
+  d: S_Digest; for i: 0..<8 { d.words[i] = cb_load_be32(out[..], i * 4).value; }
+  #assert S_hex(d, hex[..]) && cast(string) hex[..] == expected[tag_id];
+}
+#test "one-shot and tagged preflight are explicit" {
+  input: [1] u8; out: [32] u8;
+  #assert sha256_hash_checked(input[..], out[..], false) == SHA_OK;
+  reference:=S_hash(cast(string)input[..]);
+  for i:0..<8 {#assert cb_load_be32(out[..],i*4).value==reference.words[i];}
+  #assert sha256_tagged_checked("", input[..], out[..], true) == SHA_ALIAS;
+  #assert sha256_tagged_checked("", input[..], out[0..<31], false) == SHA_BAD_OUTPUT;
+  #assert sha256_bip340_checked(-1, input[..], out[..], false) == SHA_BAD_TAG;
+  #assert sha256_bip340_checked(3, input[..], out[..], false) == SHA_BAD_TAG;
+  #assert sha256_bip340_name(-1) == "" && sha256_bip340_name(3) == "";
+}
+#test "wide byte counters serialize without loss" {
+  s:[112]u8;input:=[1]u8.[1];
+  #assert sha256_init(s[..])==SHA_OK;
+  #assert cb_store_be64(s[..],8,0x0123456789ABCDEF);s[7]=47;
+  #assert sha256_info(s[..]).total==0x0123456789ABCDEF;
+  #assert sha256_update_checked(s[..],input[..],false)==SHA_OK;
+  #assert sha256_info(s[..]).total==0x0123456789ABCDF0 && s[8]==1 && s[15]==240;
+}
+#test "metadata preflight covers bad lengths without forged byte views" {
+  #assert sha256_input_ok(0) && sha256_input_ok(1048576) && !sha256_input_ok(1048577) && !sha256_input_ok(-1);
+  #assert sha256_tag_ok(0) && sha256_tag_ok(1024) && !sha256_tag_ok(1025) && !sha256_tag_ok(-1);
+  #assert sha256_request(-1,32,false) == SHA_BAD_INPUT && sha256_request(1048577,32,false) == SHA_BAD_INPUT;
+  #assert sha256_request(0,31,false) == SHA_BAD_OUTPUT && sha256_request(0,-1,false) == SHA_BAD_OUTPUT;
+  #assert sha256_request(0,32,true) == SHA_ALIAS && sha256_request(0,32,false) == SHA_OK;
+  #assert sha256_update_limit(SHA_MAX_TOTAL + 1,0) == SHA_BAD_STATE;
+  #assert sha256_update_limit(0,-1) == SHA_BAD_INPUT && sha256_update_limit(0,1048577) == SHA_BAD_INPUT;
+  #assert sha256_update_limit(SHA_MAX_TOTAL,0) == SHA_OK && sha256_update_limit(SHA_MAX_TOTAL,1) == SHA_LENGTH;
+  #assert sha256_update_limit(SHA_MAX_TOTAL - 1,1) == SHA_OK;
+  long_tag: [1025] u8; input: [1] u8; out: [32] u8;
+  #assert sha256_tagged_checked(cast(string)long_tag[..],input[..],out[..],false) == SHA_BAD_TAG;
+}
+
+sha256_state_size :: () -> int #export_c { return SHA_STATE_BYTES; }
+sha256_input_ok :: (n: int) -> bool { return n >= 0 && n <= CB_MAX_BYTES; }
+sha256_tag_ok :: (n: int) -> bool { return n >= 0 && n <= SHA_MAX_TAG; }
+sha256_request :: (input: int, output: int, overlap: bool) -> u32 {
+  if !sha256_input_ok(input) { return SHA_BAD_INPUT; }
+  if !cb_span(output,0,32) { return SHA_BAD_OUTPUT; }
+  if overlap { return SHA_ALIAS; }
+  return SHA_OK;
+}
+sha256_update_limit :: (total: u64, count: int) -> u32 #export_c {
+  if total > SHA_MAX_TOTAL { return SHA_BAD_STATE; }
+  if !sha256_input_ok(count) { return SHA_BAD_INPUT; }
+  if cast(u64)count > SHA_MAX_TOTAL - total { return SHA_LENGTH; }
+  return SHA_OK;
+}
+sha256_unpack :: (state: [] u8) -> Sha256Work {
+  w: Sha256Work;
+  if state.count != SHA_STATE_BYTES { return w; }
+  if state[0] != 'S' || state[1] != '2' || state[2] != '5' || state[3] != '6' || state[4] != 1 || state[6] != 0 { return w; }
+  w.phase = cast(u32)state[5]; w.used = cast(int)state[7]; w.total = cb_load_be64(state,8).value;
+  if (w.phase != SHA_ACTIVE && w.phase != SHA_FINAL) || w.total > SHA_MAX_TOTAL { return w; }
+  // These phase/count relationships also bound used to 0..63.
+  if w.phase == SHA_ACTIVE && cast(u64)w.used != w.total % 64 { return w; }
+  if w.phase == SHA_FINAL && w.used != 0 { return w; }
+  for i: 0..<8 { w.h[i] = cb_load_be32(state,16 + i * 4).value; }
+  for i: 0..<64 { w.block[i] = state[48 + i]; }
+  w.ok = true; return w;
+}
+sha256_pack :: (w: Sha256Work, state: [] u8) -> u32 {
+  if state.count != SHA_STATE_BYTES { return SHA_BAD_STATE; }
+  state[0]='S';state[1]='2';state[2]='5';state[3]='6';state[4]=1;state[5]=cast(u8)w.phase;state[6]=0;state[7]=cast(u8)w.used;
+  for i: 0..<8 { state[8+i] = cast(u8)((w.total >> ((7-i)*8)) & 255); }
+  for i: 0..<8 { for j: 0..<4 { state[16+i*4+j] = cast(u8)((w.h[i] >> ((3-j)*8)) & 255); } }
+  for i: 0..<64 { state[48+i] = w.block[i]; }
+  return SHA_OK;
+}
+sha256_emit :: (h: [] u32, out: [] u8) -> u32 {
+  if h.count != 8 || !cb_span(out.count,0,32) { return SHA_BAD_OUTPUT; }
+  for i: 0..<8 { for j: 0..<4 { out[i*4+j] = cast(u8)((h[i] >> ((3-j)*8)) & 255); } }
+  return SHA_OK;
+}
+sha256_init :: (state: [] u8) -> u32 #export_c {
+  w: Sha256Work;w.h=SHA_IV.words;w.phase=SHA_ACTIVE;
+  return sha256_pack(w,state);
+}
+sha256_info :: (state: [] u8) -> Sha256Info #export_c {
+  w:=sha256_unpack(state);if !w.ok { return Sha256Info.{error=SHA_BAD_STATE}; }
+  return Sha256Info.{phase=w.phase,total=w.total,buffered=cast(u32)w.used};
+}
+sha256_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
+  w:=sha256_unpack(state);if !w.ok { return SHA_BAD_STATE; }
+  if w.phase != SHA_ACTIVE { return SHA_PHASE; }
+  status:=sha256_update_limit(w.total,input.count);if status != SHA_OK { return status; }
+  if input.count > 0 && overlap { return SHA_ALIAS; }
+  for byte:input {
+    w.block[w.used]=byte;w.used+=1;
+    if w.used == 64 { S_compress(w.h[..],cast(string)w.block[..],0,w.block.count);w.used=0; }
+  }
+  w.total+=cast(u64)input.count;
+  return sha256_pack(w,state);
+}
+sha256_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
+  w:=sha256_unpack(state);if !w.ok { return SHA_BAD_STATE; }
+  if !cb_span(out.count,0,32) { return SHA_BAD_OUTPUT; }
+  if overlap { return SHA_ALIAS; }
+  if w.phase == SHA_FINAL { return sha256_emit(w.h[..],out); }
+  w.block[w.used]=128;
+  for i:w.used+1..<64 { w.block[i]=0; }
+  if w.used >= 56 { S_compress(w.h[..],cast(string)w.block[..],0,w.block.count);for i:0..<64 {w.block[i]=0;} }
+  bits:=w.total*8;
+  for i:0..<8 {w.block[56+i]=cast(u8)((bits>>((7-i)*8))&255);}
+  S_compress(w.h[..],cast(string)w.block[..],0,w.block.count);w.used=0;w.phase=SHA_FINAL;
+  status:=sha256_emit(w.h[..],out);if status != SHA_OK {return status;}
+  return sha256_pack(w,state);
+}
+sha256_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
+  status:=sha256_request(input.count,out.count,overlap);if status != SHA_OK {return status;}
+  state:[112]u8;
+  status=sha256_init(state[..]);if status != SHA_OK {return status;}
+  status=sha256_update_checked(state[..],input,false);if status != SHA_OK {return status;}
+  return sha256_final_checked(state[..],out,false);
+}
+sha256_tagged_checked :: (tag: string, input: [] u8, out: [] u8, overlap: bool) -> u32 {
+  if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
+  status:=sha256_request(input.count,out.count,overlap);if status != SHA_OK {return status;}
+  digest:=S_hash(tag);if digest.error != 0 {return digest.error;}
+  tag_hash:[32]u8;status=sha256_emit(digest.words[..],tag_hash[..]);if status != SHA_OK {return status;}
+  state:[112]u8;status=sha256_init(state[..]);if status != SHA_OK {return status;}
+  status=sha256_update_checked(state[..],tag_hash[..],false);if status != SHA_OK {return status;}
+  status=sha256_update_checked(state[..],tag_hash[..],false);if status != SHA_OK {return status;}
+  status=sha256_update_checked(state[..],input,false);if status != SHA_OK {return status;}
+  return sha256_final_checked(state[..],out,false);
+}
+sha256_bip340_name :: (tag: int) -> string {
+  if tag == 0 {return "BIP0340/aux";}if tag == 1 {return "BIP0340/nonce";}if tag == 2 {return "BIP0340/challenge";}return "";
+}
+sha256_bip340_checked :: (tag: int, input: [] u8, out: [] u8, overlap: bool) -> u32 {
+  if tag < 0 || tag > 2 {return SHA_BAD_TAG;}
+  return sha256_tagged_checked(sha256_bip340_name(tag),input,out,overlap);
+}
