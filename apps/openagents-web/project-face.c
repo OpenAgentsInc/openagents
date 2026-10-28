@@ -41,6 +41,7 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return (uint32_t)
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int32_t length) {
   State *st = state_at(state);
   int64_t cap = coaxial_project_inbox_cap();
+  if (!track_state.page_n) track_init(tr(), track_cstr("project"));   // the facts come before the first frame
   _Bool mine = track_message(tr(), kind, (coax_string){(const char *)st->live.inbox.e, length < cap ? length : cap});
   track_drain(&track_state);
   if (mine) return;

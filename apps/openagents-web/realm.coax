@@ -821,6 +821,12 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
       vertices = write(d, out, vertices, "WASD MOVE · DRAG LOOK · SPACE JUMP · SHIFT RUN · E USE · B EDIT", gutter(r) + 4 * k,
                        r[0].height - gutter(r) - 16 * k, 7.5 * k, GAP, SPACE, k2, false, false);
     }
+    // what the house saves (analytics.coax), while the controls show: under the title
+    said: [1] f32;
+    dw := lo(420 * k, r[0].width - 2 * gutter(r));
+    tb := title_box(r);
+    vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, tb.x0 + 4 * k, top_bottom(r) + 64 * k + ifx v.notice.count > 0 then 24 * k else 0.0f32,
+                            6.5 * k, GAP, SPACE, white(k, 0.4 * help), dw, 13 * k, false, true, said[..]);
   }
   return vertices;
 }

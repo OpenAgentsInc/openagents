@@ -517,6 +517,7 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   (void)state;
   if (length > sizeof inbox) return;
+  if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));   // the facts come before the first frame
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
   if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
   if (kind == 4 && !opened) kept_n = length;   // restore_kept reads it from the inbox when the house opens
