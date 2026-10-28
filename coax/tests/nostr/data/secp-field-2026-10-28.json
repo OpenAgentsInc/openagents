@@ -1,0 +1,74 @@
+{
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "isolated_bound_traps": 20,
+  "modes": [
+    {
+      "artifact_sha256": "30a961aaa74f69dc9babbd1ae8fde93012043362f18777505b5159f94e33e758",
+      "flags": [
+        "-std=c11",
+        "-O2",
+        "-shared",
+        "-fPIC"
+      ],
+      "generated_c_sha256": "ae1319c94df725dcab11cea69742231b802b69ba441bf49750f07e070af7023a",
+      "mode": "checked",
+      "target": "native-c11"
+    },
+    {
+      "artifact_sha256": "888029a2c98bf4b5320eefc2554a13a95cfb7d32aaa1fbeb68a66cf0db07bd15",
+      "flags": [
+        "-std=c11",
+        "-O2",
+        "-shared",
+        "-fPIC"
+      ],
+      "generated_c_sha256": "1774a784016b8814c971f6760bd15500beb01d20b40f6221446ebc0d62e5b320",
+      "mode": "release",
+      "target": "native-c11"
+    }
+  ],
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "native_oracle_comparisons": 17940,
+  "native_unsigned256_cases_per_mode": 1794,
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "raw_limb_cases_per_mode": 600,
+  "raw_oracle_comparisons": 6000,
+  "sanitized_native_cases": 4096,
+  "schema": "coax.secp-field-repr.v1",
+  "scope": "normalize/load/store/strict/add/sub/negate/equality only; public deterministic fixtures; no field multiplication, constant-time, one-hour fuzz or security approval claim",
+  "seed": 20261028,
+  "seeded_fault": "emitted reduction977\u2192976 detected at admitted magnitude8",
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "e0988ad236eba95615787ebaf6503e44ab5c55f432b23bdd50aa23541d937532",
+    "coax/tests/nostr/secp_field.py": "e2449aa8475c32d4fbcfe17fea520b3fb502555897412e7d1a82b2bb4d93143f",
+    "coax/tests/nostr/secp_field_wasm.c": "8adcea049f059a481130470e3a88f1208283ba38a08f6e7fa2d4a9091b801ce9",
+    "coax/tests/nostr/secp_field_wasm.cjs": "c4e3887022fa76ce32892845cf8ae4ceda98fe56907fc1dda1dccb2a3de6f84b",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9"
+  },
+  "wasm": [
+    {
+      "artifact_sha256": "d801c65ea732297e4454acaacaf8c6b18ae63d4b8702b0ac7cbec04754bef64f",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "checked",
+      "operations": 1028,
+      "optimization": "O2, no LTO",
+      "raw_cases": 184,
+      "target": "wasm32-wasip1",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "artifact_sha256": "8cbe95b1cc2a547a1defe8d46a8b7706a3d444ea0b83af4de26a46e4347f60a4",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "release",
+      "operations": 1028,
+      "optimization": "O2, no LTO",
+      "raw_cases": 184,
+      "target": "wasm32-wasip1",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    }
+  ]
+}

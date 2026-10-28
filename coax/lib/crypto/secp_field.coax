@@ -1,0 +1,207 @@
+// secp256k1 field representation, p = 2^256 - 2^32 - 977.
+// Ten little-endian u64 limbs: nine 26-bit limbs and one 22-bit limb.
+// Runtime inputs admit each digit <=8 times its mask. Operations return
+// canonical magnitude1 values. No multiplication, variable-time optimization,
+// secret-taint enforcement or target constant-time guarantee is claimed here.
+#load "bytes.coax";
+#authority;
+SF_MASK26 :: cast(u64) 67108863;
+SF_MASK22 :: cast(u64) 4194303;
+SF_MAGNITUDE :: 8;
+SecpField :: struct { limb: [10] u64; }
+SecpFieldResult :: struct { value: SecpField; ok: bool; }
+// Explicit, always-present debug representation: conditional fields are not
+// implemented. This validation is diagnostic instrumentation, not a secret API.
+SecpFieldDebug :: struct { value: SecpField; magnitude: int; normalized: bool; }
+SF_P :: [10] u64.[67107887, 67108799, 67108863, 67108863, 67108863,
+  67108863, 67108863, 67108863, 67108863, 4194303];
+
+#test "zero one p-minus-one and maximum256 load modulo p" {
+  bytes: [32] u8; zero: SecpField;
+  #assert sf_load(bytes[..]).ok && sf_equal_mask(sf_load(bytes[..]).value, zero) == CB_MAX64;
+  bytes[31] = 1; one := sf_load(bytes[..]).value;
+  #assert one.limb[0] == 1 && sf_store(one, bytes[..]);
+  for i: 0..<31 { #assert bytes[i] == 0; }
+  #assert bytes[31] == 1;
+  p: SecpField; p.limb = SF_P;
+  #assert sf_equal_mask(sf_normalize(p), zero) == CB_MAX64;
+  minus := sf_negate(one); #assert sf_store(minus, bytes[..]);
+  for i: 0..<27 { #assert bytes[i] == 255; }
+  #assert bytes[27] == 254 && bytes[28] == 255 && bytes[29] == 255 && bytes[30] == 252 && bytes[31] == 46;
+  #assert sf_load_strict(bytes[..]).ok;
+  bytes[31] = 47; #assert !sf_load_strict(bytes[..]).ok;
+  #assert sf_equal_mask(sf_load_strict(bytes[..]).value, zero) == CB_MAX64;
+  for i: 0..<32 { bytes[i] = 255; }
+  maximum := sf_load(bytes[..]); #assert maximum.ok;
+  #assert maximum.value.limb[0] == 976 && maximum.value.limb[1] == 64;
+  for i: 2..<10 { #assert maximum.value.limb[i] == 0; }
+  #assert !sf_load_strict(bytes[..]).ok;
+  for i: 0..<10 { #assert sf_load_strict(bytes[..]).value.limb[i] == 0; }
+}
+#forall "every limb-boundary bit round-trips and cancels under addition" bit: 0..<256 {
+  a: SecpField; zero: SecpField; bytes: [32] u8;
+  a.limb[bit / 26] = cast(u64) 1 << (bit % 26);
+  #assert sf_store(a, bytes[..]) && sf_load_strict(bytes[..]).ok;
+  #assert sf_equal_mask(sf_load(bytes[..]).value, a) == CB_MAX64;
+  #assert sf_equal_mask(a, zero) == 0 && sf_equal_mask(zero, a) == 0;
+  #assert sf_equal_mask(sf_add(a, sf_negate(a)), zero) == CB_MAX64;
+  #assert sf_equal_mask(sf_subtract(a, a), zero) == CB_MAX64;
+  #assert bytes[31 - bit / 8] == cast(u8) (cast(u64) 1 << (bit % 8));
+}
+#test "canonical arithmetic crosses p without checked underflow" {
+  zero: SecpField; one: SecpField; one.limb[0] = 1;
+  two: SecpField; two.limb[0] = 2;
+  #assert sf_equal_mask(sf_add(one, one), two) == CB_MAX64;
+  #assert sf_equal_mask(sf_negate(zero), zero) == CB_MAX64;
+  #assert sf_equal_mask(sf_add(sf_negate(one), one), zero) == CB_MAX64;
+  #assert sf_equal_mask(sf_add(sf_negate(one), sf_negate(one)), sf_negate(two)) == CB_MAX64;
+  #assert sf_equal_mask(sf_subtract(zero, one), sf_negate(one)) == CB_MAX64;
+}
+#forall "all admitted magnitudes fold to the same independently small residue" magnitude: 1..<9 {
+  a: SecpField; expected: SecpField;
+  for i: 0..<9 { a.limb[i] = cast(u64) magnitude * SF_MASK26; }
+  a.limb[9] = cast(u64) magnitude * SF_MASK22;
+  expected.limb[0] = cast(u64) magnitude * 976;
+  expected.limb[1] = cast(u64) magnitude * 64;
+  #assert sf_equal_mask(sf_normalize(a), expected) == CB_MAX64;
+  #assert sf_equal_mask(sf_add(a, a), sf_add(expected, expected)) == CB_MAX64;
+  d: SecpFieldDebug; d.value = a; d.magnitude = magnitude;
+  normalized := sf_debug_normalize(d);
+  #assert normalized.magnitude == 1 && normalized.normalized && sf_debug_valid(normalized);
+  #assert sf_equal_mask(normalized.value, expected) == CB_MAX64;
+  sum := sf_debug_add(d, d); negative := sf_debug_negate(d);
+  #assert sum.magnitude == 1 && sum.normalized && sf_equal_mask(sum.value, sf_add(expected, expected)) == CB_MAX64;
+  #assert negative.magnitude == 1 && negative.normalized && sf_equal_mask(negative.value, sf_negate(expected)) == CB_MAX64;
+}
+#forall "diagnostic bounds reject an actual limb-bound violation" index: 0..<10, magnitude: 1..<9 {
+  d: SecpFieldDebug; d.magnitude = magnitude;
+  limit := cast(u64) magnitude * (ifx index == 9 then SF_MASK22 else SF_MASK26);
+  d.value.limb[index] = limit; #assert sf_debug_valid(d);
+  d.value.limb[index] = limit + 1; #assert !sf_debug_valid(d);
+}
+#test "normalized debug metadata and public wire lengths are checked" {
+  d: SecpFieldDebug; #assert !sf_debug_valid(d);
+  d.magnitude = -1; #assert !sf_debug_valid(d);
+  d.magnitude = 9; #assert !sf_debug_valid(d);
+  d.magnitude = 1; d.normalized = true; #assert sf_debug_valid(d);
+  d.value.limb = SF_P; d.value.limb[0] -= 1; #assert sf_debug_valid(d);
+  d.value.limb = SF_P; #assert !sf_debug_valid(d);
+  d.normalized = false; #assert sf_debug_valid(d);
+  d.magnitude = 2; d.normalized = true; #assert !sf_debug_valid(d);
+  bytes: [33] u8; for i: 0..<33 { bytes[i] = 165; } before := bytes; a: SecpField;
+  #assert !sf_load(bytes[..]).ok && !sf_load(bytes[0..<31]).ok && !sf_load(bytes[0..<0]).ok;
+  #assert !sf_load_strict(bytes[..]).ok;
+  #assert !sf_store(a, bytes[..]) && !sf_store(a, bytes[0..<31]);
+  for i: 0..<33 { #assert bytes[i] == before[i]; }
+}
+
+// Internal fixed-length carry pass. Each caller supplies its own ten limbs.
+sf_carry :: (digits: [] u64) -> u64 {
+  #assert digits.count == 10;
+  for i: 0..<9 {
+    carry := digits[i] >> 26;
+    digits[i] &= SF_MASK26;
+    digits[i + 1] += carry;
+  }
+  carry := digits[9] >> 22;
+  digits[9] &= SF_MASK22;
+  return carry;
+}
+sf_normalize :: (value: SecpField) -> SecpField #export_c {
+  r := value;
+  // Initial carry <=7. Low folding additions <=7*977 and 7*64; all
+  // accumulators are <2^30. The next top carry <=1. If it is1, the masked
+  // top digit is0, so the final pass cannot overflow bit256 again.
+  carry := sf_carry(r.limb[..]);
+  r.limb[0] += carry * 977; r.limb[1] += carry * 64;
+  carry = sf_carry(r.limb[..]);
+  r.limb[0] += carry * 977; r.limb[1] += carry * 64;
+  carry = sf_carry(r.limb[..]);
+  #assert carry == 0; // proven for admitted magnitude<=8; not a secret decision
+  // Now r<2^256. Adding c=2^32+977 overflows exactly when r>=p;
+  // the low256 bits are then r-p. Select without a secret comparison.
+  candidate := r;
+  candidate.limb[0] += 977; candidate.limb[1] += 64;
+  choose := cb_mask(sf_carry(candidate.limb[..]));
+  for i: 0..<10 { r.limb[i] = cb_ct_select64(choose, candidate.limb[i], r.limb[i]); }
+  return r;
+}
+sf_load :: (bytes: [] u8) -> SecpFieldResult #export_c {
+  r: SecpFieldResult;
+  if bytes.count != 32 { return r; }
+  for i: 0..<32 {
+    at := i * 8; digit := at / 26; shift := at % 26;
+    value := cast(u64) bytes[31 - i];
+    r.value.limb[digit] |= (value << shift) & SF_MASK26;
+    // A non-spilling byte contributes zero. The last byte's next digit wraps
+    // to0, also with a zero contribution; every address depends only on i.
+    r.value.limb[(digit + 1) % 10] |= value >> (26 - shift);
+  }
+  r.value = sf_normalize(r.value); r.ok = true; return r;
+}
+sf_store :: (value: SecpField, bytes: [] u8) -> bool #export_c {
+  if bytes.count != 32 { return false; }
+  r := sf_normalize(value);
+  for i: 0..<32 {
+    at := i * 8; digit := at / 26; shift := at % 26;
+    word := r.limb[digit] >> shift;
+    // Unneeded next-digit bits lie above bit7 and are removed below.
+    word |= r.limb[(digit + 1) % 10] << (26 - shift);
+    bytes[31 - i] = cast(u8) (word & 255);
+  }
+  return true;
+}
+sf_load_strict :: (bytes: [] u8) -> SecpFieldResult #export_c {
+  r := sf_load(bytes);
+  if !r.ok { return r; }
+  canonical: [32] u8;
+  stored := sf_store(r.value, canonical[..]);
+  same := cb_ct_equal(bytes, canonical[..]);
+  r.ok = same == CB_MAX64;
+  for i: 0..<10 { r.value.limb[i] &= same; }
+  return r;
+}
+sf_add :: (a: SecpField, b: SecpField) -> SecpField #export_c {
+  x := sf_normalize(a); y := sf_normalize(b);
+  for i: 0..<10 { x.limb[i] += y.limb[i]; }
+  return sf_normalize(x);
+}
+sf_negate :: (a: SecpField) -> SecpField #export_c {
+  x := sf_normalize(a);
+  // Each 2*p digit >= every canonical input digit. No unsigned borrow
+  // or wrapping arithmetic is needed; this represents2p-x before reduction.
+  for i: 0..<10 { x.limb[i] = SF_P[i] + SF_P[i] - x.limb[i]; }
+  return sf_normalize(x);
+}
+sf_subtract :: (a: SecpField, b: SecpField) -> SecpField #export_c { return sf_add(a, sf_negate(b)); }
+sf_equal_mask :: (a: SecpField, b: SecpField) -> u64 #export_c {
+  x := sf_normalize(a); y := sf_normalize(b); diff: u64;
+  for i: 0..<10 { diff |= x.limb[i] ^ y.limb[i]; }
+  // diff<=2^26-1, hence diff+mask<2^27 and bit26 means nonzero.
+  return cb_mask(((diff + SF_MASK26) >> 26) ^ 1);
+}
+sf_debug_valid :: (d: SecpFieldDebug) -> bool #export_c {
+  if d.magnitude < 1 || d.magnitude > SF_MAGNITUDE { return false; }
+  for i: 0..<10 {
+    mask := ifx i == 9 then SF_MASK22 else SF_MASK26;
+    if d.value.limb[i] > cast(u64) d.magnitude * mask { return false; }
+  }
+  if d.normalized {
+    if d.magnitude != 1 { return false; }
+    candidate := d.value;
+    candidate.limb[0] += 977; candidate.limb[1] += 64;
+    return sf_carry(candidate.limb[..]) == 0;
+  }
+  return true;
+}
+sf_debug_normalize :: (d: SecpFieldDebug) -> SecpFieldDebug #export_c {
+  #assert sf_debug_valid(d);
+  r := d; r.value = sf_normalize(d.value); r.magnitude = 1; r.normalized = true; return r;
+}
+sf_debug_add :: (a: SecpFieldDebug, b: SecpFieldDebug) -> SecpFieldDebug #export_c {
+  x := sf_debug_normalize(a); y := sf_debug_normalize(b);
+  x.value = sf_add(x.value, y.value); return x;
+}
+sf_debug_negate :: (a: SecpFieldDebug) -> SecpFieldDebug #export_c {
+  x := sf_debug_normalize(a); x.value = sf_negate(x.value); return x;
+}
