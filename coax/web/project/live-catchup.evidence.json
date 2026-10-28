@@ -1,0 +1,32 @@
+{
+  "schema": "coax.project-catchup-evidence.v1",
+  "date": "2026-10-28",
+  "compiler": "coax0 0.15.0",
+  "sources": {
+    "apps/openagents-web/project-live.coax": "f1b326a394cd53c92a093cf0363f5e790df31fcc047ec7a58df0c1ee273179ad",
+    "apps/openagents-web/project-fold.coax": "41d85a1a7fe6b2c56e552354b239de2e4c1b96ba7950e8ff8163eb877f1012f4",
+    "apps/openagents-web/project.coax": "7899bc89e18c235162bbcf6ec9583aa89202fb0d6cef6121584564c97a045623",
+    "coax/web/project/live-catchup.test.ts": "fb2904f8c86a5a20689493b7c92f10d38f49b3bf207a72a0e95c63b531296723"
+  },
+  "coax_checks": 40,
+  "native_browser_fixture_tests": 7,
+  "fixture": {
+    "count": 155,
+    "workers": 2,
+    "state": 3,
+    "frames": 10,
+    "queries": 26,
+    "tableParity": true
+  },
+  "public_capture": {
+    "relay": "wss://relay.openagents.com",
+    "rows": 156,
+    "workers": 4,
+    "state": 3,
+    "pages": 21,
+    "capturedEvents": 477,
+    "verifiedIssues": 156,
+    "tableParity": true
+  },
+  "scope": "Bounded relay-trusted display; no local signature verification, universal completeness or authority claim"
+}

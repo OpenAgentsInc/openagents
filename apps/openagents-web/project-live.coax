@@ -1,157 +1,287 @@
-// The project page's line to its relay: one WebSocket (socket.coax, the
-// host's byte pipe), opened when the page starts, subscribed to the
-// project's events and kept open after EOSE, reconnected with backoff when
-// it drops. Its frames are read and folded in Coax (project-fold.coax);
-// once every subscription has reached EOSE the page draws the fold, and
-// every event after that redraws it.
-
+// Relay-trusted display catch-up. Stable watches stay open while bounded
+// historical pages and exact known-ID repairs build a candidate view. Only a
+// complete bounded candidate replaces the last display; EOSE is not a global
+// completeness proof and CLOSED never substitutes for it. BIP-340 is separate.
 #load "socket.coax";
 #load "project-fold.coax";
-
-LIVE_INBOX :: 262144;   // the largest frame the page takes, bytes
-LIVE_IDLE :: 0;         // not started
-LIVE_CONNECTING :: 1;   // the socket is opening
-LIVE_SYNCING :: 2;      // open, the stored events are arriving
-LIVE_LIVE :: 3;         // every subscription reached EOSE: new events land as they're published
-LIVE_OFFLINE :: 4;      // closed; connecting again at retry_at
-CONNECT_WAIT :: 10.0;   // seconds an open may take before it's given up
-BACKOFF_FIRST :: 1.0;
-BACKOFF_MOST :: 30.0;
+LIVE_INBOX :: 262144;
+LIVE_IDLE :: 0; LIVE_CONNECTING :: 1; LIVE_SYNCING :: 2; LIVE_LIVE :: 3; LIVE_OFFLINE :: 4;
+CONNECT_WAIT :: 10.0; BACKOFF_FIRST :: 1.0; BACKOFF_MOST :: 30.0;
+CATCHUP_WAIT :: 20.0;
+CATCHUP_PAGES :: 256;
+CATCHUP_LIMIT :: 200;
+CATCHUP_IDS :: 8;
+SUBS :: 5;
+SUB_ORDER :: 0; SUB_ISSUES :: 1; SUB_COMMENTS :: 2; SUB_STATUS :: 3; SUB_REPO :: 4;
+SUB_IDS :: [SUBS] string.["project", "issues", "comments", "status", "repo"];
+REQ_CAP :: 1024;
 
 Live :: struct {
-  pipe: [1] Pipe;        // a one-element array, so procedures can take it as a view
-  inbox: [LIVE_INBOX] u8;
-  state: int;
-  sock: int;             // the socket's id + 1; 0: none
-  asked_at: f32;         // when the open was asked for, page seconds
-  retry_at: f32;
-  backoff: f32;
-  now: f32;
-  frames: int;           // frames this connection
-  connects: int;
-  // which project: its key and d, from the page (MSG_PAGE_TEXT)
-  key: [64] u8; key_n: int;
-  slug: [64] u8; slug_n: int;
-  // its events, their fold and the tables drawn from it
-  store: [1] Store;
-  fold: [1] Fold;
-  tables: [1] Tables;
-  ended: int;            // bits: the subscriptions that reached EOSE (or were closed) this connection
-  dirty: bool;           // events arrived since the last fold
-  folds: int;
+  pipe: [1] Pipe; inbox: [LIVE_INBOX] u8;
+  state: int; sock: int; asked_at: f32; retry_at: f32; backoff: f32; now: f32;
+  frames: int; connects: int;
+  key: [64] u8; key_n: int; slug: [64] u8; slug_n: int;
+  store: [1] Store; fold: [1] Fold; tables: [1] Tables;
+  candidate: [1] Tables;              // never aliases the currently displayed tables
+  ended: int; dirty: bool; folds: int;
+  catching: bool; stage: int; pages: int;
+  query: int; serial: int; query_id: [64] u8; query_n: int;
+  history_peak: int;
+  until: int; page_min: int; page_count: int; page_min_count: int; page_at: f32;
+  batch: [CATCHUP_IDS] int; batch_n: int;
+  known: [FOLD_ISSUES * 64] u8; known_n: int;
+  incomplete: int;                   // 1 error/refusal, 2 tie, 3 budget, 4 missing ID, 5 output/capacity
 }
-
 live_key :: (l: [] Live) -> string { return cast(string) l[0].key[0..<l[0].key_n]; }
 live_slug :: (l: [] Live) -> string { return cast(string) l[0].slug[0..<l[0].slug_n]; }
+live_qid :: (l: [] Live) -> string { return cast(string) l[0].query_id[0..<l[0].query_n]; }
+live_known_id :: (l: [] Live, k: int) -> string { return cast(string) l[0].known[k * 64..<k * 64 + 64]; }
 
-// The page names its project: "KEY SLUG" (64 hex digits, a space, its d).
 live_project :: (l: [] Live, text: string) -> bool {
-  sp := 0;
-  while sp < text.count && text[sp] != ' ' { sp += 1; }
-  key := text[0..<sp];
-  slug := trimmed(text[(ifx sp < text.count then sp + 1 else sp)..<text.count]);
+  sp := 0; while sp < text.count && text[sp] != ' ' { sp += 1; }
+  key := text[0..<sp]; slug := trimmed(text[(ifx sp < text.count then sp + 1 else sp)..<text.count]);
   if key.count != 64 || !hex_lower(key) || slug.count == 0 || slug.count > 64 { return false; }
+  if !equal(key, live_key(l)) || !equal(slug, live_slug(l)) {
+    if l[0].sock > 0 { if pipe_close(l[0].pipe[..], l[0].sock - 1) {} }
+    l[0].sock = 0; l[0].state = LIVE_IDLE; l[0].dirty = false; l[0].known_n = 0;
+  }
   for i: 0..<64 { l[0].key[i] = key[i]; }
   for i: 0..<slug.count { l[0].slug[i] = slug[i]; }
-  l[0].key_n = 64; l[0].slug_n = slug.count;
-  return true;
+  l[0].key_n = 64; l[0].slug_n = slug.count; return true;
 }
-
 live_offline :: (l: [] Live) {
-  l[0].state = LIVE_OFFLINE;
-  l[0].sock = 0;
+  l[0].state = LIVE_OFFLINE; l[0].sock = 0; l[0].dirty = false; l[0].query = 0;
   if l[0].backoff < BACKOFF_FIRST { l[0].backoff = BACKOFF_FIRST; }
   l[0].retry_at = l[0].now + l[0].backoff;
   l[0].backoff = ifx l[0].backoff * 2 > BACKOFF_MOST then BACKOFF_MOST else l[0].backoff * 2;
 }
-
-// Every frame: open the socket when it's time, give up an open that hangs.
+live_incomplete :: (l: [] Live, why: int) {
+  if l[0].sock > 0 { if pipe_close(l[0].pipe[..], l[0].sock - 1) {} }
+  l[0].incomplete = why; live_offline(l);
+}
 live_tick :: (l: [] Live, now: f32, url: string) {
   l[0].now = now;
-  if l[0].key_n == 0 { return; }   // no project named yet
+  if l[0].key_n == 0 { return; }
   if l[0].state == LIVE_IDLE || (l[0].state == LIVE_OFFLINE && now >= l[0].retry_at) {
     if pipe_open(l[0].pipe[..], url) {
       l[0].state = LIVE_CONNECTING; l[0].asked_at = now; l[0].sock = 0; l[0].connects += 1;
     }
   }
-  if l[0].state == LIVE_CONNECTING && now - l[0].asked_at > CONNECT_WAIT {
-    if l[0].sock > 0 { if pipe_close(l[0].pipe[..], l[0].sock - 1) {} }
-    live_offline(l);
-  }
+  if l[0].state == LIVE_CONNECTING && now - l[0].asked_at > CONNECT_WAIT { live_incomplete(l, 1); }
+  if l[0].state == LIVE_SYNCING && now - l[0].page_at > CATCHUP_WAIT { live_incomplete(l, 3); }
 }
-
-// The face opened the socket the pipe asked for: id, or -1 when the host refused.
 live_opened :: (l: [] Live, id: int) {
   if l[0].state != LIVE_CONNECTING { return; }
   if id < 0 { live_offline(l); return; }
   l[0].sock = id + 1;
 }
-
-// ---- subscriptions: one filter each (relay.openagents.com answers a REQ
-// with several filters only in part), all by the project key
-SUBS :: 5;
-SUB_ORDER :: 0; SUB_ISSUES :: 1; SUB_COMMENTS :: 2; SUB_STATUS :: 3; SUB_REPO :: 4;
-SUB_IDS :: [SUBS] string.["project", "issues", "comments", "status", "repo"];
-REQ_CAP :: 512;
-
 live_text :: (buf: [] u8, at: int, text: string) -> int {
-  n := at;
-  for i: 0..<text.count { if n >= buf.count { return buf.count + 1; } buf[n] = text[i]; n += 1; }
-  return n;
+  if at < 0 || at > buf.count { return buf.count + 1; }
+  n := at; for i: 0..<text.count { if n >= buf.count { return buf.count + 1; } buf[n] = text[i]; n += 1; } return n;
 }
-
-// The REQ for subscription k: the project and its queue order, its issues,
-// and the comments, statuses and repository its key signed.
-live_req :: (buf: [] u8, k: int, pubkey: string, slug: string) -> int {
-  n := live_text(buf, 0, "[\"REQ\",\"");
-  n = live_text(buf, n, SUB_IDS[k]);
-  n = live_text(buf, n, "\",{\"kinds\":[");
+// Generation 1 keeps the captured fixture's stable watch names. Later socket
+// generations use new names, so delayed frames on a reused host slot cannot land.
+live_watch_id :: (buf: [] u8, k: int, generation: int) -> int {
+  n := 0;
+  if generation > 1 { n = live_text(buf, n, "g"); n = int_into(buf, n, generation, 1); n = live_text(buf, n, "-"); }
+  return live_text(buf, n, SUB_IDS[k]);
+}
+live_filter :: (buf: [] u8, at: int, k: int, pubkey: string, slug: string) -> int {
+  n := live_text(buf, at, "{\"kinds\":[");
   if k == SUB_ORDER { n = live_text(buf, n, "30621,30623"); }
   if k == SUB_REPO { n = live_text(buf, n, "30617"); }
   if k == SUB_ISSUES { n = live_text(buf, n, "1621"); }
   if k == SUB_COMMENTS { n = live_text(buf, n, "1111"); }
   if k == SUB_STATUS { n = live_text(buf, n, "1630,1631,1632,1633"); }
-  n = live_text(buf, n, "],\"authors\":[\"");
-  n = live_text(buf, n, pubkey);
-  n = live_text(buf, n, "\"]");
+  n = live_text(buf, n, "],\"authors\":[\""); n = live_text(buf, n, pubkey); n = live_text(buf, n, "\"]");
   if k == SUB_ORDER { n = live_text(buf, n, ",\"#d\":[\""); n = live_text(buf, n, slug); n = live_text(buf, n, "\"]"); }
   if k == SUB_ISSUES {
-    n = live_text(buf, n, ",\"#a\":[\"30621:"); n = live_text(buf, n, pubkey); n = live_text(buf, n, ":");
-    n = live_text(buf, n, slug); n = live_text(buf, n, "\"]");
+    n = live_text(buf, n, ",\"#a\":[\"30621:"); n = live_text(buf, n, pubkey);
+    n = live_text(buf, n, ":"); n = live_text(buf, n, slug); n = live_text(buf, n, "\"]");
   }
-  return live_text(buf, n, "}]");
+  return n;
 }
-
+live_kind :: (k: int, kind: int) -> bool {
+  return (k == SUB_ORDER && (kind == KIND_PROJECT || kind == KIND_ORDER)) ||
+    (k == SUB_REPO && kind == KIND_REPO) || (k == SUB_ISSUES && kind == KIND_ISSUE) ||
+    (k == SUB_COMMENTS && kind == KIND_COMMENT) || (k == SUB_STATUS && kind >= 1630 && kind <= 1633);
+}
+live_req :: (buf: [] u8, k: int, pubkey: string, slug: string) -> int {
+  n := live_text(buf, 0, "[\"REQ\",\""); n = live_text(buf, n, SUB_IDS[k]); n = live_text(buf, n, "\",");
+  n = live_filter(buf, n, k, pubkey, slug); return live_text(buf, n, "}]");
+}
 live_subscribe :: (l: [] Live) {
-  pubkey := live_key(l); slug := live_slug(l);
   for k: 0..<SUBS {
-    buf: [REQ_CAP] u8;
-    n := live_req(buf[..], k, pubkey, slug);
-    if n <= REQ_CAP { if pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) {} }
+    buf: [REQ_CAP] u8; id: [64] u8;
+    sn := live_watch_id(id[..], k, l[0].connects);
+    n := live_text(buf[..], 0, "[\"REQ\",\""); n = live_text(buf[..], n, cast(string) id[0..<sn]); n = live_text(buf[..], n, "\",");
+    n = live_filter(buf[..], n, k, live_key(l), live_slug(l)); n = live_text(buf[..], n, "}]");
+    if n > REQ_CAP { live_incomplete(l, 3); return; }
+    if !pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) { live_incomplete(l, 3); return; }
   }
 }
-
-// A message from the host: an event on the page's socket.
-live_message :: (l: [] Live, kind: int, length: int) {
-  e := socket_event(kind);
-  if e.id < 0 || l[0].sock != e.id + 1 || length < 0 || length > LIVE_INBOX { return; }
-  if e.event == SOCKET_OPENED && l[0].state == LIVE_CONNECTING {
-    // a fresh connection reads everything again; the page keeps drawing the
-    // last fold until this one's subscriptions have all ended
-    l[0].state = LIVE_SYNCING; l[0].frames = 0; l[0].ended = 0;
-    store_clear(l[0].store[..]);
-    live_subscribe(l);
-  } else if e.event == SOCKET_FRAME {
-    l[0].frames += 1;
-    fr := read_frame(l[0].store[..], cast(string) l[0].inbox[0..<length], live_key(l));
-    if fr.type == FRAME_EOSE || fr.type == FRAME_CLOSED {
-      for k: 0..<SUBS { if json_is(fr.sub, SUB_IDS[k]) { l[0].ended |= 1 << k; } }
-      if l[0].ended == (1 << SUBS) - 1 && l[0].state == LIVE_SYNCING { l[0].state = LIVE_LIVE; l[0].dirty = true; l[0].backoff = BACKOFF_FIRST; }
-    }
-    if fr.kept >= 0 && l[0].state == LIVE_LIVE { l[0].dirty = true; }
-  } else if e.event == SOCKET_CLOSED {
-    live_offline(l);
+live_known_add :: (l: [] Live, id: string) -> bool {
+  if id.count != 64 || !hex_lower(id) { return false; }
+  for k: 0..<l[0].known_n { if equal(live_known_id(l, k), id) { return true; } }
+  if l[0].known_n >= FOLD_ISSUES { return false; }
+  for i: 0..<64 { l[0].known[l[0].known_n * 64 + i] = id[i]; }
+  l[0].known_n += 1; return true;
+}
+// The verified build-time snapshot supplies a lower bound of immutable roots.
+// A relay cannot erase them by omitting both the roots and a newer order item.
+live_seed_known :: (l: [] Live, details: string) -> bool {
+  row := 0;
+  while row < details.count {
+    end := row; while end < details.count && details[end] != 10 { end += 1; }
+    start := row; while start < end && details[start] != '|' { start += 1; }
+    start += 1; stop := start; while stop < end && details[stop] != '|' { stop += 1; }
+    if start >= end || !live_known_add(l, details[start..<stop]) { return false; }
+    row = end + 1;
   }
+  return true;
+}
+live_scoped_issue :: (l: [] Live, e: int) -> bool {
+  st := l[0].store[..];
+  if e < 0 || st[0].kind[e] != KIND_ISSUE { return false; }
+  for t: st[0].tag0[e]..<st[0].tag0[e] + st[0].tags[e] {
+    if st[0].tag_len[t] > 1 && equal(element(st, t, 0), "a") {
+      coord := element(st, t, 1);
+      if is_coord(coord, live_slug(l)) && equal(coord[6..<70], live_key(l)) { return true; }
+    }
+  }
+  return false;
+}
+// Keep the known set across reconnects; an omitted old root cannot disappear.
+live_collect_known :: (l: [] Live) -> bool {
+  st := l[0].store[..]; order := -1; roots := 0;
+  for e: 0..<st[0].n {
+    if st[0].kind[e] == KIND_ORDER && tag_has(st, e, "d", live_slug(l)) && newer(st, e, order) { order = e; }
+    if live_scoped_issue(l, e) { roots += 1; if roots > FOLD_ISSUES || !live_known_add(l, event_id(st, e)) { return false; } }
+  }
+  if order < 0 { return false; }
+  for t: st[0].tag0[order]..<st[0].tag0[order] + st[0].tags[order] {
+    if st[0].tag_len[t] > 1 && equal(element(st, t, 0), "item") { if !live_known_add(l, element(st, t, 1)) { return false; } }
+  }
+  return true;
+}
+live_query_close :: (l: [] Live) -> bool {
+  buf: [96] u8; n := live_text(buf[..], 0, "[\"CLOSE\",\""); n = live_text(buf[..], n, live_qid(l)); n = live_text(buf[..], n, "\"]");
+  return n <= buf.count && pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]);
+}
+live_query_send :: (l: [] Live, ids: bool) {
+  if l[0].pages >= CATCHUP_PAGES { live_incomplete(l, 3); return; }
+  l[0].pages += 1; l[0].serial += 1;
+  q := l[0].query_id[..]; n := live_text(q, 0, "catchup-"); n = int_into(q, n, l[0].connects, 1); n = live_text(q, n, "-"); n = int_into(q, n, l[0].serial, 1);
+  l[0].query_n = n; l[0].query = ifx ids then 2 else 1;
+  l[0].page_min = -1; l[0].page_count = 0; l[0].page_min_count = 0; l[0].page_at = l[0].now;
+  buf: [REQ_CAP] u8; n = live_text(buf[..], 0, "[\"REQ\",\""); n = live_text(buf[..], n, live_qid(l)); n = live_text(buf[..], n, "\",");
+  if ids {
+    n = live_text(buf[..], n, "{\"authors\":[\""); n = live_text(buf[..], n, live_key(l)); n = live_text(buf[..], n, "\"],\"kinds\":[1621],\"ids\":[");
+    for k: 0..<l[0].batch_n {
+      if k > 0 { n = live_text(buf[..], n, ","); }
+      n = live_text(buf[..], n, "\""); n = live_text(buf[..], n, live_known_id(l, l[0].batch[k])); n = live_text(buf[..], n, "\"");
+    }
+    n = live_text(buf[..], n, "]");
+  } else {
+    k := ifx l[0].stage == 0 then SUB_ISSUES else ifx l[0].stage == 1 then SUB_COMMENTS else SUB_STATUS;
+    n = live_filter(buf[..], n, k, live_key(l), live_slug(l));
+    if l[0].until >= 0 { n = live_text(buf[..], n, ",\"until\":"); n = int_into(buf[..], n, l[0].until, 1); }
+  }
+  n = live_text(buf[..], n, ",\"limit\":"); n = int_into(buf[..], n, CATCHUP_LIMIT, 1); n = live_text(buf[..], n, "}]");
+  if n > REQ_CAP || !pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) { live_incomplete(l, 3); }
+}
+live_prepare :: (l: [] Live) {
+  l[0].dirty = false;
+  if !live_collect_known(l) { live_incomplete(l, 5); return; }
+  l[0].batch_n = 0;
+  for k: 0..<l[0].known_n {
+    e := store_find(l[0].store[..], live_known_id(l, k));
+    if !live_scoped_issue(l, e) && l[0].batch_n < CATCHUP_IDS { l[0].batch[l[0].batch_n] = k; l[0].batch_n += 1; }
+  }
+  if l[0].batch_n > 0 { l[0].state = LIVE_SYNCING; l[0].stage = 3; live_query_send(l, true); return; }
+  fold(l[0].store[..], l[0].fold[..], live_slug(l));
+  write_tables(l[0].store[..], l[0].fold[..], l[0].candidate[..]);
+  if !l[0].candidate[0].complete { live_incomplete(l, 5); return; }
+  l[0].state = LIVE_LIVE; l[0].dirty = true; l[0].backoff = BACKOFF_FIRST;
+}
+live_page_end :: (l: [] Live) {
+  if !live_query_close(l) { live_incomplete(l, 3); return; }
+  if l[0].query == 2 {
+    made_progress := false;
+    for k: 0..<l[0].batch_n { if live_scoped_issue(l, store_find(l[0].store[..], live_known_id(l, l[0].batch[k]))) { made_progress = true; } }
+    l[0].query = 0;
+    if !made_progress { live_incomplete(l, 4); return; }
+    live_prepare(l); return;
+  }
+  l[0].query = 0;
+  if l[0].page_count > l[0].history_peak { l[0].history_peak = l[0].page_count; }
+  if l[0].page_count == 0 {
+    l[0].stage += 1; l[0].until = -1; l[0].history_peak = 0;
+    if l[0].stage >= 3 { live_prepare(l); } else { live_query_send(l, false); }
+    return;
+  }
+  oldest := l[0].page_min;
+  if oldest < 0 || (l[0].until >= 0 && oldest > l[0].until) { live_incomplete(l, 1); return; }
+  if oldest == l[0].until {
+    // Inclusive until repeats its boundary. A multi-event stalled cohort
+    // cannot be safely skipped on a relay with an unknown cap.
+    if l[0].page_count > 1 || l[0].history_peak < 2 { live_incomplete(l, 2); return; }
+    if oldest == 0 { l[0].stage += 1; l[0].until = -1; l[0].history_peak = 0; }
+    else { l[0].until = oldest - 1; }
+  } else { l[0].until = oldest; }
+  if l[0].stage >= 3 { live_prepare(l); } else { live_query_send(l, false); }
+}
+live_message :: (l: [] Live, kind: int, length: int) {
+  se := socket_event(kind);
+  if se.id < 0 || l[0].sock != se.id + 1 || length < 0 || length > LIVE_INBOX { return; }
+  if se.event == SOCKET_OPENED && l[0].state == LIVE_CONNECTING {
+    l[0].state = LIVE_SYNCING; l[0].frames = 0; l[0].ended = 0; l[0].dirty = false; l[0].catching = false;
+    l[0].query = 0; l[0].stage = 0; l[0].pages = 0; l[0].until = -1; l[0].history_peak = 0; l[0].incomplete = 0; l[0].page_at = l[0].now;
+    store_clear(l[0].store[..]); live_subscribe(l); return;
+  }
+  if se.event == SOCKET_CLOSED { live_offline(l); return; }
+  if se.event == SOCKET_ERROR { live_incomplete(l, 1); return; }
+  if se.event != SOCKET_FRAME || (l[0].state != LIVE_SYNCING && l[0].state != LIVE_LIVE) { return; }
+  text := cast(string) l[0].inbox[0..<length]; head := frame_head(text); watch := -1;
+  for k: 0..<SUBS {
+    id: [64] u8; n := live_watch_id(id[..], k, l[0].connects);
+    if equal(head.sub, cast(string) id[0..<n]) { watch = k; }
+  }
+  query := l[0].query > 0 && equal(head.sub, live_qid(l));
+  if watch < 0 && !query { return; }  // reject stale/unknown subscriptions BEFORE storage
+  l[0].frames += 1;
+  if head.type == FRAME_CLOSED { live_incomplete(l, 1); return; }
+  fr := read_frame(l[0].store[..], text, live_key(l));
+  if fr.type == FRAME_EOSE {
+    if query { live_page_end(l); return; }
+    l[0].ended |= 1 << watch;
+    if l[0].ended == (1 << SUBS) - 1 && !l[0].catching {
+      l[0].catching = true; l[0].stage = 0; l[0].until = -1; live_query_send(l, false);
+    }
+    return;
+  }
+  if fr.type != FRAME_EVENT { return; }
+  if fr.event < 0 {
+    if l[0].state == LIVE_SYNCING || l[0].store[0].overflow { live_incomplete(l, 1); }
+    return;
+  }
+  if l[0].store[0].kind[fr.event] == KIND_ISSUE && !live_scoped_issue(l, fr.event) { live_incomplete(l, 1); return; }
+  if query {
+    at := l[0].store[0].at[fr.event];
+    if l[0].query == 2 {
+      admitted := false;
+      for k: 0..<l[0].batch_n { if equal(event_id(l[0].store[..], fr.event), live_known_id(l, l[0].batch[k])) { admitted = true; } }
+      if !admitted || !live_scoped_issue(l, fr.event) { live_incomplete(l, 1); return; }
+    } else {
+      k := ifx l[0].stage == 0 then SUB_ISSUES else ifx l[0].stage == 1 then SUB_COMMENTS else SUB_STATUS;
+      if !live_kind(k, l[0].store[0].kind[fr.event]) || (l[0].until >= 0 && at > l[0].until) { live_incomplete(l, 1); return; }
+    }
+    l[0].page_count += 1;
+    if l[0].page_min < 0 || at < l[0].page_min { l[0].page_min = at; l[0].page_min_count = 1; }
+    else if at == l[0].page_min { l[0].page_min_count += 1; }
+  }
+  if watch >= 0 && !live_kind(watch, l[0].store[0].kind[fr.event]) { live_incomplete(l, 1); return; }
+  if fr.kept >= 0 && l[0].state == LIVE_LIVE { live_prepare(l); }
 }
 
 LIVE_TEST_KEY :: "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
@@ -188,10 +318,11 @@ fake_message :: (l: [] Live, id: int, event: int, text: string) {
   pipe_drained(l[0].pipe[..]);
   fake_message(l[..], 2, SOCKET_FRAME, "[\"EOSE\",\"project\"]");
   fake_message(l[..], 2, SOCKET_FRAME, "[\"NOTICE\",\"hi\"]");
-  #assert l[0].frames == 2 && l[0].ended == 1 && l[0].state == LIVE_SYNCING;
-  // an error alone changes nothing; the close that follows takes it offline
+  #assert l[0].frames == 1 && l[0].ended == 1 && l[0].state == LIVE_SYNCING;
+  // an error preserves the last display and closes the generation immediately
   fake_message(l[..], 2, SOCKET_ERROR, "");
-  #assert l[0].state == LIVE_SYNCING;
+  #assert l[0].state == LIVE_OFFLINE;
+  pipe_drained(l[0].pipe[..]);
   fake_message(l[..], 2, SOCKET_CLOSED, "");
   #assert l[0].state == LIVE_OFFLINE && l[0].sock == 0 && l[0].retry_at == 1.5;
   live_tick(l[..], 1.4, "wss://relay.openagents.com");
@@ -224,7 +355,30 @@ feed_transcript :: (l: [] Live, id: int, text: string) {
   }
 }
 
-#test "the page goes live at the last EOSE, and every event after it asks for a fold" {
+// Test-only history oracle over the captured store: explicitly provide each
+// requested timestamp page and its eventual empty tail. Unknown requested roots
+// cannot be invented, so exact-ID repair still refuses an incomplete capture.
+finish_fixture_backfill :: (l: [] Live, id: int) {
+  for attempt: 0..<32 {
+    if l[0].query == 0 { break; }
+    if l[0].query == 1 {
+      l[0].page_count = 0; l[0].page_min = -1;
+      for e: 0..<l[0].store[0].n {
+        kind := l[0].store[0].kind[e]; at := l[0].store[0].at[e];
+        wanted := (l[0].stage == 0 && live_scoped_issue(l, e)) || (l[0].stage == 1 && kind == KIND_COMMENT) || (l[0].stage == 2 && kind >= 1630 && kind <= 1633);
+        if wanted && (l[0].until < 0 || at <= l[0].until) {
+          l[0].page_count += 1;
+          if l[0].page_min < 0 || at < l[0].page_min { l[0].page_min = at; }
+        }
+      }
+    }
+    buf: [128] u8; n := live_text(buf[..], 0, "[\"EOSE\",\"");
+    n = live_text(buf[..], n, live_qid(l)); n = live_text(buf[..], n, "\"]");
+    pipe_drained(l[0].pipe[..]); fake_message(l, id, SOCKET_FRAME, cast(string) buf[0..<n]);
+  }
+}
+
+#test "bounded history completes before the page goes live, and later events update its candidate" {
   l: [1] Live;
   #assert live_project(l[..], "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575 coax");
   live_tick(l[..], 0.1, "wss://relay.openagents.com");
@@ -232,6 +386,8 @@ feed_transcript :: (l: [] Live, id: int, text: string) {
   live_opened(l[..], 0);
   fake_message(l[..], 0, SOCKET_OPENED, "");
   feed_transcript(l[..], 0, COAX_RELAY);
+  #assert l[0].state == LIVE_SYNCING && !l[0].dirty;
+  finish_fixture_backfill(l[..], 0);
   #assert l[0].state == LIVE_LIVE && l[0].dirty && l[0].store[0].n > 100 && l[0].store[0].dropped == 0;
   l[0].dirty = false;
   // a frame for another key is dropped; a new event of ours marks the page dirty
@@ -247,4 +403,21 @@ feed_transcript :: (l: [] Live, id: int, text: string) {
   live_opened(l[..], 1);
   fake_message(l[..], 1, SOCKET_OPENED, "");
   #assert l[0].store[0].n == 0 && l[0].state == LIVE_SYNCING && l[0].ended == 0;
+}
+
+#test "a capped initial EOSE cannot replace the last display before bounded backfill" {
+  l: [1] Live;
+  #assert live_project(l[..], "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575 coax");
+  live_tick(l[..], 0.1, "wss://relay.example"); pipe_drained(l[0].pipe[..]);
+  live_opened(l[..], 0); fake_message(l[..], 0, SOCKET_OPENED, ""); pipe_drained(l[0].pipe[..]);
+  feed_transcript(l[..], 0, COAX_RELAY);
+  #assert l[0].state == LIVE_SYNCING && !l[0].dirty && l[0].pipe[0].n > 0;
+}
+#test "a refused subscription never counts as successful catchup" {
+  l: [1] Live;
+  #assert live_project(l[..], "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575 coax");
+  live_tick(l[..], 0.1, "wss://relay.example"); pipe_drained(l[0].pipe[..]);
+  live_opened(l[..], 0); fake_message(l[..], 0, SOCKET_OPENED, ""); pipe_drained(l[0].pipe[..]);
+  fake_message(l[..], 0, SOCKET_FRAME, "[\"CLOSED\",\"issues\",\"auth-required: sign in\"]");
+  #assert l[0].state == LIVE_OFFLINE && !l[0].dirty;
 }

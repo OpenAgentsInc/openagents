@@ -366,6 +366,7 @@ AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 // A task ranked above an open blocker is shown with a warning: it moved
 // ahead of what it waits on, and stays waiting until that's done.
 MAX_ITEMS :: 256;   // bounded combined roadmap + Nostr queue; seed check prevents truncation
+#assert MAX_ITEMS == FOLD_ISSUES; // a live fold cannot silently exceed the page's row capacity
 RECENT :: 3;
 KIND_INITIATIVE :: 0; KIND_MILESTONE :: 1; KIND_TASK :: 2;
 WS_OPEN :: 0; WS_RESOLVED :: 1; WS_CLOSED :: 2; WS_DRAFT :: 3;
@@ -2186,10 +2187,12 @@ choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
   k := 0;
   if s[0].page == 0 && lv[0].key_n > 0 { k = baked_index(live_slug(lv)); }
   else if s[0].page == 0 && !live_project_of(lv, baked(0)) { k = -1; }
+  if s[0].page == 0 && k >= 0 && !equal(live_key(lv), baked(k).pubkey) { k = -1; }
   w[0].baked = k;
   if k >= 0 {
     b := baked(k);
     read_work(w, b.items);
+    if s[0].page == 0 && !live_seed_known(lv, b.details) { live_incomplete(lv, 5); }
     w[0].plans = b.plans; w[0].plan_info = b.plan_info; w[0].details = b.details; w[0].log = b.log; w[0].steps = b.steps; w[0].naddr = b.naddr;
     w[0].slug = b.slug; w[0].name = b.name; w[0].description = b.description; w[0].license = b.license;
     w[0].path = b.path; w[0].repo = b.repo;
@@ -2224,8 +2227,8 @@ Head :: struct { text: string; at: int; }
 live_apply :: (lv: [] Live, w: [] Work) {
   lv[0].dirty = false; lv[0].folds += 1;
   st := lv[0].store[..]; tb := lv[0].tables[..];
-  fold(st, lv[0].fold[..], live_slug(lv));
-  write_tables(st, lv[0].fold[..], tb);
+  // The catch-up path validated all candidate outputs before setting dirty.
+  tb[0] = lv[0].candidate[0];
   read_work(w, cast(string) tb[0].items[0..<tb[0].items_n]);
   w[0].log = cast(string) tb[0].log[0..<tb[0].log_n];
   w[0].plans = cast(string) tb[0].plans[0..<tb[0].plans_n];
@@ -2762,14 +2765,15 @@ page_says :: (lv: [] Live, text: string) {
   coaxial_project_opened(lv[..], 0);
   fake_message(lv[..], 0, SOCKET_OPENED, "");
   feed_transcript(lv[..], 0, COAX_RELAY);
+  #assert lv[0].state == LIVE_SYNCING && !lv[0].dirty;
+  finish_fixture_backfill(lv[..], 0);
   n = coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
-  #assert n > 3000 && w[0].live == LIVE_LIVE && lv[0].folds == 1;
-  #assert same(w[0].text, COAX_RELAY_ITEMS) && same(w[0].log, COAX_RELAY_LOG) && same(w[0].plans, COAX_RELAY_PLANS) && same(w[0].details, COAX_RELAY_DETAILS);
-  #assert same(w[0].name, "Coax") && same(w[0].license, "Apache-2.0") && same(w[0].path, "coax/") && same(w[0].repo, "OpenAgents");
-  // the socket drops: OFFLINE, and the last fold stays drawn
-  fake_message(lv[..], 0, SOCKET_CLOSED, "");
-  n = coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
-  #assert w[0].live == LIVE_OFFLINE && same(w[0].text, COAX_RELAY_ITEMS);
+  // This historical capture is older than the current baked queue. Missing
+  // immutable roots must retain the full snapshot, never shrink it to the
+  // old fixture just because its watches sent EOSE.
+  #assert n > 3000 && w[0].live == LIVE_OFFLINE && lv[0].folds == 0;
+  #assert same(w[0].text, COAX_WORK_ITEMS) && same(w[0].details, COAX_WORK_DETAILS);
+  #assert same(w[0].name, "Coax") && same(w[0].license, "Apache-2.0") && same(w[0].path, "coax/");
   // another baked project, and one this build doesn't know
   s2: [1] ProjectState; t2: [1] Tree; w2: [1] Work; l2: [1] Live;
   page_says(l2[..], "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18 verse");

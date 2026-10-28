@@ -31,6 +31,8 @@ TASK_PLAN :: "openagents.task-plan.v1";
 // byte arena. A tag is a run of elements; an element is a run of bytes.
 Store :: struct {
   n: int; used: int; tag_n: int; el_n: int;
+  overflow: bool;
+  last: int;                         // new or duplicate event from the last frame, -1 on refusal
   dropped: int;                      // refused: malformed, another key, over a limit
   key: [STORE_EVENTS] int;           // the id's first 15 hex digits
   id: [STORE_EVENTS] int;            // the id's 64 hex digits in bytes
@@ -43,7 +45,7 @@ Store :: struct {
   bytes: [STORE_BYTES] u8;
 }
 
-store_clear :: (s: [] Store) { s[0].n = 0; s[0].used = 0; s[0].tag_n = 0; s[0].el_n = 0; s[0].dropped = 0; }
+store_clear :: (s: [] Store) { s[0].n = 0; s[0].used = 0; s[0].tag_n = 0; s[0].el_n = 0; s[0].dropped = 0; s[0].last = -1; s[0].overflow = false; }
 
 // A string in the arena.
 Ref :: struct { from: int; len: int; }
@@ -83,7 +85,7 @@ store_find :: (s: [] Store, id: string) -> int {
 store_string :: (s: [] Store, j: [] Json) -> Ref {
   r := Ref.{from = s[0].used, len = -1};
   n := json_unescape(json_text(j), s[0].bytes[s[0].used..<STORE_BYTES]);
-  if n < 0 { return r; }
+  if n < 0 { s[0].overflow = true; return r; }
   s[0].used += n; r.len = n;
   return r;
 }
@@ -92,7 +94,8 @@ store_string :: (s: [] Store, j: [] Json) -> Ref {
 // kind the page reads, and new. Anything malformed or over a limit is
 // dropped whole. Returns the event's index, or -1.
 store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
-  if s[0].n >= STORE_EVENTS { s[0].dropped += 1; return -1; }
+  s[0].last = -1;
+  if s[0].n >= STORE_EVENTS { s[0].overflow = true; s[0].dropped += 1; return -1; }
   used := s[0].used; tag_n := s[0].tag_n; el_n := s[0].el_n;
   e := s[0].n;
   have := 0;   // bits: id, pubkey, kind, created_at, tags, content
@@ -107,6 +110,7 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
     if v == JSON_ERROR { ok = false; break; }
     if json_is(k, "id") {
       id := json_text(j);
+      if s[0].used + 64 > STORE_BYTES { s[0].overflow = true; }
       if v != JSON_STRING || id.count != 64 || !hex_lower(id) || s[0].used + 64 > STORE_BYTES { ok = false; break; }
       s[0].id[e] = s[0].used;
       for i: 0..<64 { s[0].bytes[s[0].used + i] = id[i]; }
@@ -129,12 +133,14 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
       while ok {
         a := json_next(j);
         if a == JSON_ARRAY_END { break; }
+        if s[0].tag_n >= STORE_TAGS { s[0].overflow = true; }
         if a != JSON_ARRAY || s[0].tag_n >= STORE_TAGS { ok = false; break; }
         tg := s[0].tag_n; s[0].tag_n += 1;
         s[0].tag_el[tg] = s[0].el_n; s[0].tag_len[tg] = 0;
         while ok {
           b := json_next(j);
           if b == JSON_ARRAY_END { break; }
+          if s[0].el_n >= STORE_ELEMS { s[0].overflow = true; }
           if b != JSON_STRING || s[0].el_n >= STORE_ELEMS { ok = false; break; }
           r := store_string(s, j);
           if r.len < 0 { ok = false; break; }
@@ -150,13 +156,15 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
   }
   kind := s[0].kind[e];
   wanted := kind == KIND_REPO || kind == KIND_PROJECT || kind == KIND_ISSUE || kind == KIND_COMMENT || kind == KIND_ORDER || (kind >= 1630 && kind <= 1633);
-  if !ok || (have & 31) != 31 || !wanted || store_find(s, event_id(s, e)) >= 0 {
+  duplicate := ifx ok && (have & 31) == 31 then store_find(s, event_id(s, e)) else -1;
+  if !ok || (have & 31) != 31 || !wanted || duplicate >= 0 {
     // already kept, or refused: the arena gives the bytes back
     if !ok || (have & 31) != 31 || !wanted { s[0].dropped += 1; }
     s[0].used = used; s[0].tag_n = tag_n; s[0].el_n = el_n;
+    if ok && wanted && duplicate >= 0 { s[0].last = duplicate; }
     return -1;
   }
-  s[0].n += 1;
+  s[0].n += 1; s[0].last = e;
   return e;
 }
 
@@ -478,6 +486,7 @@ fold_one :: (s: [] Store, f: [] Fold, r: int) {
 ITEMS_CAP :: 131072; LOG_CAP :: 16384; PLANS_CAP :: 16384; INFO_CAP :: 16384; SCRATCH_CAP :: 70000;
 
 Tables :: struct {
+  complete: bool;
   items: [ITEMS_CAP] u8; items_n: int;
   log: [LOG_CAP] u8; log_n: int;
   plans: [PLANS_CAP] u8; plans_n: int;
@@ -634,6 +643,7 @@ KIND_NAMES :: [3] string.["initiative", "milestone", "task"];
 
 // The rows of WORK_ITEMS, WORK_LOG, WORK_PLANS and WORK_PLAN_INFO.
 write_tables :: (s: [] Store, f: [] Fold, t: [] Tables) {
+  t[0].complete = true;
   n := f[0].n;
   // issues by rank (stable), and the tasks in progress
   for r: 0..<n {
@@ -686,6 +696,7 @@ write_tables :: (s: [] Store, f: [] Fold, t: [] Tables) {
     m = json_raw(out, m, "|"); if done_issue(f, r) { m = int_into(out, m, f[0].status_at[r], 10); }
     m = json_raw(out, m, "\n");
   }
+  if m < 0 { t[0].complete = false; }
   t[0].items_n = ifx m < 0 then 0 else m;
   write_log(s, f, t);
   write_plans(s, f, t);
@@ -751,12 +762,13 @@ write_log :: (s: [] Store, f: [] Fold, t: [] Tables) {
     n = json_raw(w, n, " - ");
     title := tag_value(s, f[0].fields[r], "subject");
     n = cell_into(w, n, ifx title.ok then str(s, title.ref) else "");
-    if n < 0 { continue; }
+    if n < 0 { t[0].complete = false; continue; }
     m = chicago_into(out, m, f[0].log_at[best], true);
     m = json_raw(out, m, "|");
     m = cell_into(out, m, cast(string) w[0..<n]);
     m = json_raw(out, m, "\n");
   }
+  if m < 0 { t[0].complete = false; }
   t[0].log_n = ifx m < 0 then 0 else m;
 }
 
@@ -785,6 +797,7 @@ write_plans :: (s: [] Store, f: [] Fold, t: [] Tables) {
     if f[0].note[r] >= 0 { q = cell_into(info, q, trimmed(content_of(s, f[0].note[r]))); }
     q = json_raw(info, q, "\n");
   }
+  if m < 0 || q < 0 { t[0].complete = false; }
   t[0].plans_n = ifx m < 0 then 0 else m;
   t[0].info_n = ifx q < 0 then 0 else q;
 }
@@ -1006,7 +1019,7 @@ write_details :: (s: [] Store, f: [] Fold, t: [] Tables) {
     }
     m = json_raw(out, m, "\n");
     // a row that doesn't fit is left out, never cut
-    if m < 0 { m = row; break; }
+    if m < 0 { t[0].complete = false; m = row; break; }
   }
   t[0].details_n = m;
 }
@@ -1014,25 +1027,47 @@ write_details :: (s: [] Store, f: [] Fold, t: [] Tables) {
 // ---------------------------------------------------------------- frames
 
 FRAME_OTHER :: 0; FRAME_EVENT :: 1; FRAME_EOSE :: 2; FRAME_CLOSED :: 3;
-Frame :: struct { type: int; sub: string; kept: int; }
+Frame :: struct { type: int; sub: string; kept: int; event: int; }
 
-// A relay frame: an EVENT's event goes in the store (kept: its index, or -1);
-// EOSE and CLOSED name their subscription (its raw JSON string).
-read_frame :: (s: [] Store, text: string, pubkey: string) -> Frame {
-  fr := Frame.{type = FRAME_OTHER, sub = "", kept = -1};
-  j: [1] Json;
-  json_start(j[..], text);
+// Read just the envelope before a caller admits its connection/subscription.
+// EOSE/CLOSED must be complete valid frames, never an arbitrary array prefix.
+frame_head :: (text: string) -> Frame {
+  fr := Frame.{type = FRAME_OTHER, sub = "", kept = -1, event = -1};
+  j: [1] Json; json_start(j[..], text);
   if json_next(j[..]) != JSON_ARRAY || json_next(j[..]) != JSON_STRING { return fr; }
   what := json_text(j[..]);
   event := json_is(what, "EVENT"); eose := json_is(what, "EOSE"); closed := json_is(what, "CLOSED");
   if !event && !eose && !closed { return fr; }
   if json_next(j[..]) != JSON_STRING { return fr; }
   fr.sub = json_text(j[..]);
-  if eose { fr.type = FRAME_EOSE; return fr; }
-  if closed { fr.type = FRAME_CLOSED; return fr; }
-  fr.type = FRAME_EVENT;
+  if event { fr.type = FRAME_EVENT; return fr; }
+  if closed && json_next(j[..]) != JSON_STRING { return fr; }
+  // The deployed relay adds ["finish"] metadata to EOSE. Validate and
+  // ignore bounded trailing values; they never prove completeness.
+  tail := json_next(j[..]);
+  while tail != JSON_ARRAY_END {
+    if tail == JSON_ERROR || tail == JSON_END || !json_skip(j[..]) { return fr; }
+    tail = json_next(j[..]);
+  }
+  if json_next(j[..]) != JSON_END { return fr; }
+  fr.type = ifx eose then FRAME_EOSE else FRAME_CLOSED;
+  return fr;
+}
+
+// The caller already admitted the frame's subscription before this mutates
+// storage. Duplicate frames still expose their stored event for paging bounds.
+read_frame :: (s: [] Store, text: string, pubkey: string) -> Frame {
+  fr := frame_head(text);
+  if fr.type != FRAME_EVENT { return fr; }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_ARRAY || json_next(j[..]) != JSON_STRING || json_next(j[..]) != JSON_STRING { return fr; }
   if json_next(j[..]) != JSON_OBJECT { s[0].dropped += 1; return fr; }
-  fr.kept = store_event(s, j[..], pubkey);
+  n := s[0].n; used := s[0].used; tags := s[0].tag_n; elems := s[0].el_n;
+  fr.kept = store_event(s, j[..], pubkey); fr.event = s[0].last;
+  if json_next(j[..]) != JSON_ARRAY_END || json_next(j[..]) != JSON_END {
+    s[0].n = n; s[0].used = used; s[0].tag_n = tags; s[0].el_n = elems;
+    s[0].last = -1; s[0].dropped += 1; fr.kept = -1; fr.event = -1;
+  }
   return fr;
 }
 
