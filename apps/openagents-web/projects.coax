@@ -49,10 +49,11 @@ ACT_NAVIGATE :: 1;
 ACT_HASH :: 3;       // the location's hash: "new" while the drop area is open
 ACT_PICK :: 20;      // open the browser's file picker
 ACT_SIGNIN :: 22;    // sign in with the browser's Nostr signer
+ACT_DRAFT :: 23;     // ask the agent to read the drop and draft the project
 K_ESCAPE :: -1;
 
 // what the pointer is on
-HIT_NONE :: -1; HIT_MINE :: -2; HIT_ALL :: -3; HIT_HOME :: -4; HIT_NEW :: -5; HIT_CLOSE :: -6; HIT_ZONE :: -7; HIT_SIGNIN :: -8;
+HIT_NONE :: -1; HIT_MINE :: -2; HIT_ALL :: -3; HIT_HOME :: -4; HIT_NEW :: -5; HIT_CLOSE :: -6; HIT_ZONE :: -7; HIT_SIGNIN :: -8; HIT_DRAFT :: -9;
 
 ProjectsState :: struct {
   time: f32;
@@ -506,9 +507,20 @@ draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: st
 
 // ---------------------------------------------------------------- NEW PROJECT: the drop area
 
-// The drop's state: row 0 "S|signed|signer|dragging|note", then "F|name|kind|bytes|permille|status|note".
+// The drop's state: row 0 "S|signed|signer|dragging|note", then "F|name|kind|bytes|permille|status|note" a
+// file, and "D|status|name|line|milestones|tasks|mechanics|questions|needs|note" for its draft (rc-read-drop).
 drops_of :: (s: [] ProjectsState) -> string { return cast(string) s[0].drops[0..<s[0].drops_n]; }
 drop_flag :: (text: string, col: int) -> bool { return rows(text) > 0 && same(field(text, 0, 0), "S") && same(field(text, 0, col), "1"); }
+// The draft's row, or -1.
+draft_row :: (text: string) -> int {
+  for r: 1..<rows(text) { if same(field(text, r, 0), "D") { return r; } }
+  return -1;
+}
+drop_kept :: (text: string) -> int {
+  n := 0;
+  for r: 1..<rows(text) { if same(field(text, r, 0), "F") && same(field(text, r, 5), "kept") { n += 1; } }
+  return n;
+}
 drop_files :: (text: string) -> int {
   n := 0;
   for r: 1..<rows(text) { if same(field(text, r, 0), "F") { n += 1; } }
@@ -551,8 +563,9 @@ drop_progress :: (status: string, permille: int) -> f32 {
   return 0;
 }
 
-DropLayout :: struct { panel: Box; close: Box; zone: Box; signin: Box; rows_top: f32; row_h: f32; fit: int; }
-drop_layout :: (l: Layout, d: f32) -> DropLayout {
+DropLayout :: struct { panel: Box; close: Box; zone: Box; signin: Box; draft: Box; ask: Box; rows_top: f32; row_h: f32; fit: int; }
+DRAFT_ROOM :: 86.0;
+drop_layout :: (l: Layout, d: f32, drafted: bool) -> DropLayout {
   p := Pen.{d = d, fade = 1, time = 0};
   k: DropLayout;
   b := l.list;
@@ -567,7 +580,11 @@ drop_layout :: (l: Layout, d: f32) -> DropLayout {
   k.signin = chip_box("SIGN IN WITH NOSTR", cx - sw * 0.5, k.zone.y0 + zh * 0.5 + 34 * d, 9 * d, p);
   k.rows_top = k.zone.y1 + 22 * d;
   k.row_h = (ifx l.wide then 34.0f32 else 44.0f32) * d;
-  k.fit = int(hi(0, (b.y1 - 30 * d - k.rows_top) / k.row_h));
+  bottom := b.y1 - 30 * d - (ifx drafted then DRAFT_ROOM * d else 0.0f32);
+  k.fit = int(hi(0, (bottom - k.rows_top) / k.row_h));
+  k.draft = Box.{x0 = b.x0 + 18 * d, y0 = b.y1 - 30 * d - DRAFT_ROOM * d + 6 * d, x1 = b.x1 - 18 * d, y1 = b.y1 - 30 * d};
+  ac := 8 * d;
+  k.ask = chip_box("READ MY DROP", b.x1 - 26 * d - chip_width("READ MY DROP", ac, p), b.y1 - 12 * d, ac, p);
   return k;
 }
 
@@ -611,7 +628,7 @@ put_center_wrapped :: (out: [] f32, at: int, text: string, cx: f32, y: f32, cap:
 }
 
 draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -> int {
-  d := p.d; k := drop_layout(l, d); b := k.panel;
+  d := p.d; dr := draft_row(text); k := drop_layout(l, d, dr >= 0); b := k.panel;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
   signed := drop_flag(text, 1); signer := drop_flag(text, 2); dragging := drop_flag(text, 3);
   v := titled(out, at, b, "NEW PROJECT", "", p);
@@ -680,13 +697,48 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
     if first > 0 { fc += put_text(fb[..], fc, ", "); fc += put_int(fb[..], fc, first); fc += put_text(fb[..], fc, " EARLIER NOT SHOWN"); }
   }
   v = put(out, v, cast(string) fb[0..<fc], x, b.y1 - 14 * d, 6 * d, dim);
+  if can_ask(text) { v = chip(out, v, "READ MY DROP", k.ask.x0, k.ask.y1 - 5 * d, 8 * d, ifx hot == HIT_DRAFT then white else orange, p); }
+  if dr >= 0 { v = draw_draft(out, v, k.draft, p, text, dr, l.wide); }
   return frame(out, v, b, 10 * d, p);
+}
+
+// READ MY DROP shows once something is kept, and not while the agent reads.
+can_ask :: (text: string) -> bool {
+  if !drop_flag(text, 1) || drop_kept(text) == 0 { return false; }
+  r := draft_row(text);
+  return r < 0 || !same(field(text, r, 1), "reading");
+}
+
+// The draft, in short: what the agent made of the drop. rc-review shows all of it.
+draw_draft :: (out: [] f32, at: int, b: Box, p: Pen, text: string, r: int, wide: bool) -> int {
+  d := p.d; v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  v = rule(out, v, b.x0, b.y0, b.x1, b.y0, dim, 0.2 * p.fade);
+  x := b.x0 + 8 * d; w := box_w(b) - 16 * d; y := b.y0 + 20 * d;
+  status := field(text, r, 1);
+  if same(status, "reading") {
+    v = put(out, v, "READING YOUR DROP", x, y, 9 * d, orange);
+    return put_wrapped(out, v, "An agent is reading every file and drafting the card, the design, the roadmap and what the engine needs. This takes a minute or two.",
+                       x, y + 18 * d, 6.5 * d, dim, w, 12 * d, 3);
+  }
+  if same(status, "failed") {
+    v = put(out, v, "THE DRAFT DIDN'T WORK", x, y, 9 * d, pale);
+    return put_wrapped(out, v, field(text, r, 9), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, 2);
+  }
+  v = put(out, v, "DRAFT", x, y, 7 * d, orange);
+  v = put_fit(out, v, field(text, r, 2), x + text_width("DRAFT", 7 * d) + 14 * d, y, 11 * d, white, w - text_width("DRAFT", 7 * d) - 14 * d);
+  v = put_wrapped(out, v, field(text, r, 3), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, ifx wide then 1 else 2);
+  sb: [160] u8; c := 0;
+  labels := [5] string.[" MILESTONES  ", " TASKS  ", " MECHANICS  ", " OPEN QUESTIONS  ", " ENGINE NEEDS"];
+  for i: 0..<5 { c += put_text(sb[..], c, field(text, r, 4 + i)); c += put_text(sb[..], c, labels[i]); }
+  return put_fit(out, v, cast(string) sb[0..<c], x, y + (ifx wide then 38.0f32 else 50.0f32) * d, 6.5 * d, orange, w);
 }
 
 // What's under (x, y) in the drop area.
 drop_hit :: (l: Layout, d: f32, text: string, x: f32, y: f32) -> int {
-  k := drop_layout(l, d);
+  k := drop_layout(l, d, draft_row(text) >= 0);
   if inside(k.close, x, y) { return HIT_CLOSE; }
+  if can_ask(text) && inside(k.ask, x, y) { return HIT_DRAFT; }
   if !drop_flag(text, 1) && drop_flag(text, 2) && inside(k.signin, x, y) { return HIT_SIGNIN; }
   if inside(k.zone, x, y) { return HIT_ZONE; }
   return HIT_NONE;
@@ -782,6 +834,7 @@ act :: (s: [] ProjectsState, table: string, target: int) {
   else if target == HIT_CLOSE { open_drop(s, false); }
   else if target == HIT_ZONE { ask_host(s, ACT_PICK); }
   else if target == HIT_SIGNIN { ask_host(s, ACT_SIGNIN); }
+  else if target == HIT_DRAFT { ask_host(s, ACT_DRAFT); }
   else if target == HIT_MINE { choose(s, FILTER_MINE); open_drop(s, false); }
   else if target == HIT_ALL { choose(s, FILTER_ALL); open_drop(s, false); }
   else if target == HIT_HOME { navigate(s, "/"); }
@@ -1091,7 +1144,7 @@ drop_message :: (s: [] ProjectsState, text: string) {
     coaxial_projects_action_done(s[..]);
     // signed out: the zone still picks files, which wait for the sign-in
     #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 300;
-    dl := drop_layout(l, 2);
+    dl := drop_layout(l, 2, false);
     #assert within(dl.zone, l.list) && within(dl.close, l.list) && apart(dl.close, dl.zone) && dl.fit >= 3;
     zx := (dl.zone.x0 + dl.zone.x1) * 0.5; zy := dl.zone.y0 + 10;
     #assert projects_pointer(s[..], FIXTURE, zx, zy, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, zx, zy, P_UP, 0);
@@ -1147,4 +1200,35 @@ drop_message :: (s: [] ProjectsState, text: string) {
   // too long a message is dropped, not cut
   projects_message(s[..], MSG_DROPS, INBOX + 1);
   #assert drop_files(drops_of(s[..])) == 40;
+}
+
+#test "READ MY DROP asks for a draft once a file is kept, and the draft shows in short" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for k: 0..<2 {
+    s: [1] ProjectsState;
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    s[0].drop_open = true;
+    #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    drop_message(s[..], "S|1|0|0|\nF|notes.md|document|20|0|queued|\n");
+    #assert !can_ask(drops_of(s[..]));
+    drop_message(s[..], DROPS_FIXTURE);
+    #assert can_ask(drops_of(s[..]));
+    l := layout(w, h, 2);
+    dl := drop_layout(l, 2, false);
+    #assert within(dl.ask, l.list) && apart(dl.ask, dl.zone);
+    ax := (dl.ask.x0 + dl.ask.x1) * 0.5; ay := (dl.ask.y0 + dl.ask.y1) * 0.5;
+    #assert projects_pointer(s[..], FIXTURE, ax, ay, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, ax, ay, P_UP, 0);
+    #assert s[0].action == ACT_DRAFT;
+    coaxial_projects_action_done(s[..]);
+    drop_message(s[..], "S|1|0|0|\nF|notes.md|document|20|1000|kept|\nD|reading|||0|0|0|0|0|\n");
+    #assert !can_ask(drops_of(s[..])) && draft_row(drops_of(s[..])) == 2;
+    #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 600;
+    drop_message(s[..], "S|1|0|0|\nF|notes.md|document|20|1000|kept|\nD|ready|Planetary Villa|A world on the Verse with game expansions.|9|31|28|7|12|\n");
+    nv := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+    #assert nv > 900 && nv < MAX_VERTICES && on_canvas(out[..], nv, w, h, 2);
+    dd := drop_layout(l, 2, true);
+    #assert within(dd.draft, l.list) && dd.draft.y0 > dd.rows_top + dd.row_h && apart(dd.draft, dd.ask);
+  }
 }

@@ -1,10 +1,10 @@
 const STATE_KIND = 40, VIEWER_KIND = 3;
-const ACT_PICK = 20, ACT_SIGNIN = 22;
+const ACT_PICK = 20, ACT_SIGNIN = 22, ACT_DRAFT = 23;
 const PARALLEL = 3;
 
 export function startDrops({ send }) {
   const files = [];
-  let signed = "", dragging = false, dropId = "", making = null, depth = 0, note = "";
+  let signed = "", dragging = false, dropId = "", making = null, depth = 0, note = "", draft = null, resumed = false;
   const picker = Object.assign(document.createElement("input"), { type: "file", multiple: true });
   picker.hidden = true;
   document.body.appendChild(picker);
@@ -14,7 +14,47 @@ export function startDrops({ send }) {
   function push() {
     const lines = [`S|${signed ? 1 : 0}|${signer() ? 1 : 0}|${dragging ? 1 : 0}|${clean(note)}`];
     for (const f of files.slice(-40)) lines.push(`F|${clean(f.name).slice(0, 80)}|${f.kind}|${f.bytes}|${f.permille}|${f.status}|${clean(f.note).slice(0, 60)}`);
+    if (draft) lines.push(draftLine(draft));
     send(STATE_KIND, lines.join("\n"));
+  }
+
+  function draftLine(x) {
+    const d = x.draft || {}, ms = d.roadmap?.milestones || [];
+    const tasks = ms.reduce((n, m) => n + (m.tasks?.length || 0), 0);
+    return `D|${x.status}|${clean(d.card?.name).slice(0, 80)}|${clean(d.card?.line).slice(0, 200)}|${ms.length}|${tasks}|${d.mechanics?.length || 0}|${d.design?.open_questions?.length || 0}|${d.engine_needs?.length || 0}|${clean(x.note).slice(0, 120)}`;
+  }
+
+  async function get(url) {
+    const r = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+    return r.ok ? r.json() : null;
+  }
+
+  async function resume() {
+    if (resumed || dropId) return;
+    resumed = true;
+    try {
+      const list = await get("/api/drops");
+      const open = list?.drops?.find((d) => d.status === "open" && d.files > 0);
+      if (!open || dropId) return;
+      dropId = open.id;
+      const d = await get(`/api/drops/${open.id}`);
+      for (const f of d?.files || []) if (f.status !== "uploading" && f.status !== "waiting")
+        files.push({ file: null, name: f.name, kind: f.kind, bytes: f.bytes, permille: 1000, status: f.status === "scanned" ? "kept" : "refused", note: f.note });
+      const x = await get(`/api/drops/${open.id}/draft`);
+      if (x && x.status !== "none") draft = x;
+    } catch {}
+    push();
+  }
+
+  async function read() {
+    if (!dropId || draft?.status === "reading") return;
+    draft = { status: "reading", note: "" };
+    push();
+    try {
+      const [, x] = await post(`/api/drops/${dropId}/draft`, {});
+      draft = x && x.status ? x : { status: "failed", note: x?.error || "no answer" };
+    } catch { draft = { status: "failed", note: "no answer" }; }
+    push();
   }
 
   async function me() {
@@ -26,7 +66,7 @@ export function startDrops({ send }) {
     } catch { signed = ""; }
     if (signed) send(VIEWER_KIND, signed);
     push();
-    if (signed) pump();
+    if (signed) { pump(); resume(); }
   }
 
   async function signin() {
@@ -108,6 +148,7 @@ export function startDrops({ send }) {
     if (code === 0) { push(); if (signed) send(VIEWER_KIND, signed); }
     else if (code === ACT_PICK) picker.click();
     else if (code === ACT_SIGNIN) signin();
+    else if (code === ACT_DRAFT) read();
   });
   setTimeout(push, 1500);
   me();
