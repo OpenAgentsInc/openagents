@@ -46,7 +46,7 @@ From the identity work (#11992, #11995, #12004; profile frozen in IDR-00):
 - **Nostr identity (NIP-06):** BIP-32 at `m/44'/1237'/0'/0/0`
   ([nips/official/06.md](../../nips/official/06.md)).
 - **Spark wallet:** the same words, given to Breez (Spark derives at
-  `m/44'/0'/0'/0/0`).
+  `m/8797555'/{account}'`, account 1 on mainnet).
 - On iOS the words' entropy is Keychain item `com.openagents.app.spark`,
   account `seed-v1`, this device only. It is reused, never regenerated or
   overwritten. A restore replaces the wallet and the identity together.
