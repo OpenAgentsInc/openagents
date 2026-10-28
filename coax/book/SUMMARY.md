@@ -48,6 +48,10 @@
 * [25. What verification establishes](ch25-verification-boundaries.md)
 * [26. A complete boundary](ch26-a-complete-boundary.md)
 
+## Part VII. A case study
+
+* [27. Building a voice system in pieces](ch27-case-study-voice.md)
+
 ## Appendices
 
 * [A. Keywords, directives and types](appendix-a-keywords.md)

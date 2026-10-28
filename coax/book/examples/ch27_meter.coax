@@ -1,0 +1,75 @@
+#import "Basic";
+
+// One 20 ms frame at 16 kHz.
+FRAME :: 320;
+
+// Power (0..1 of full scale squared) to dBFS, with -120 for silence.
+db_from_power :: (p: f64) -> f32 {
+  if p <= 0.000000000001 { return -120.0; }
+  db := f32(4.342944819032518 * log(p));
+  if db < -120.0 { return -120.0; }
+  if db > 0.0 { return 0.0; }
+  return db;
+}
+
+Levels :: struct { rms_db: f32; peak_db: f32; zcr: f32; }
+
+// RMS and peak in dBFS, and the fraction of neighbouring samples that
+// change sign: a cheap cue for voicing.
+measure :: (x: [] s16) -> Levels {
+  l: Levels;
+  if x.count == 0 { l.rms_db = -120; l.peak_db = -120; return l; }
+  p: f64 = 0;
+  peak := 0;
+  crossings := 0;
+  sign := 0;
+  for i: 0..<x.count {
+    v := cast(int) x[i];
+    p += f64(v * v);
+    a := ifx v < 0 then -v else v;
+    if a > peak { peak = a; }
+    if v != 0 {
+      now := ifx v > 0 then 1 else -1;
+      if sign != 0 && now != sign { crossings += 1; }
+      sign = now;
+    }
+  }
+  full: f64 = 32768.0 * 32768.0;
+  l.rms_db = db_from_power(p / f64(x.count) / full);
+  l.peak_db = db_from_power(f64(peak * peak) / full);
+  l.zcr = ifx x.count > 1 then f32(crossings) / f32(x.count - 1) else 0.0;
+  return l;
+}
+
+// Fill a frame with a sine at `hz`, amplitude `amp` (0..1 of full scale).
+tone :: (out: [] s16, hz: f32, amp: f32) {
+  for i: 0..<out.count {
+    out[i] = cast(s16) int(amp * 32767.0 * sin(2.0 * 3.14159265 * hz * f32(i) / 16000.0));
+  }
+}
+
+#test "silence, full scale and a quiet tone" {
+  x: [FRAME] s16;
+  l := measure(x[..]);
+  #assert l.rms_db == -120.0 && l.peak_db == -120.0 && l.zcr == 0.0;
+  for i: 0..<FRAME { x[i] = ifx i % 2 == 0 then 32767 else -32767; }
+  l = measure(x[..]);
+  #assert l.rms_db > -0.01 && l.zcr == 1.0;
+  // 0.1 of full scale: -20 dBFS peak, 3 dB lower RMS for a sine.
+  tone(x[..], 900.0, 0.1);
+  l = measure(x[..]);
+  #assert abs(l.peak_db + 20.0) < 0.1 && abs(l.rms_db + 23.0) < 0.1;
+  #assert measure(x[0..<0]).rms_db == -120.0;
+}
+
+main :: () {
+  x: [FRAME] s16;
+  l := measure(x[..]);
+  print("silence:        rms % dBFS, peak % dBFS, zcr %\n", l.rms_db, l.peak_db, l.zcr);
+  tone(x[..], 300.0, 0.1);
+  l = measure(x[..]);
+  print("300 Hz at 0.1:  rms % dBFS, peak % dBFS, zcr %\n", l.rms_db, l.peak_db, l.zcr);
+  tone(x[..], 3000.0, 0.5);
+  l = measure(x[..]);
+  print("3 kHz at 0.5:   rms % dBFS, peak % dBFS, zcr %\n", l.rms_db, l.peak_db, l.zcr);
+}

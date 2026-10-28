@@ -1,0 +1,6 @@
+rms -60.0 dBFS over a -60.0 dBFS floor: speech 0.00023053659
+rms -52.0 dBFS over a -60.0 dBFS floor: speech 0.091236666
+rms -48.0 dBFS over a -60.0 dBFS floor: speech 0.4830516
+rms -40.0 dBFS over a -60.0 dBFS floor: speech 0.95909256
+rms -25.0 dBFS over a -60.0 dBFS floor: speech 0.99975604
+the same -25 dBFS as hiss (zcr 0.6): speech 0.24993901

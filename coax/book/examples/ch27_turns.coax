@@ -1,0 +1,75 @@
+#import "Basic";
+
+IDLE :: 1;
+SPEAKING :: 2;
+TRAILING :: 3;
+
+EV_START :: 1;
+EV_END :: 2;
+
+MIN_SPEECH :: 3;   // frames of speech before a turn starts
+END_SILENCE :: 3;  // frames of silence that end it
+
+Turn :: struct {
+  state: int = IDLE;
+  run: int;      // speech frames in a row while idle
+  silence: int;  // silence frames in a row while in a turn
+}
+
+Step :: struct { t: Turn; ev: int; }
+
+// One 20 ms frame: was it speech?
+step :: (t0: Turn, speech: bool) -> Step {
+  o: Step;
+  o.t = t0;
+  if o.t.state == IDLE {
+    if !speech { o.t.run = 0; return o; }
+    o.t.run += 1;
+    if o.t.run < MIN_SPEECH { return o; }
+    o.t.state = SPEAKING;
+    o.ev = EV_START;
+    return o;
+  }
+  if speech {
+    o.t.state = SPEAKING;
+    o.t.silence = 0;
+    return o;
+  }
+  o.t.state = TRAILING;
+  o.t.silence += 1;
+  if o.t.silence >= END_SILENCE {
+    o.t = Turn.{};
+    o.ev = EV_END;
+  }
+  return o;
+}
+
+// Every 12-frame pattern of speech and silence: starts and ends alternate,
+// a start comes only after MIN_SPEECH speech frames in a row, and an end
+// only after END_SILENCE silent ones.
+#forall "starts and ends pair up" pattern: 0..<4096 {
+  t: Turn;
+  open := false;
+  run := 0;
+  quiet := 0;
+  for i: 0..<12 {
+    speech := (pattern >> i) & 1 == 1;
+    if speech { run += 1; quiet = 0; } else { run = 0; quiet += 1; }
+    o := step(t, speech);
+    if o.ev == EV_START { #assert !open && run >= MIN_SPEECH; open = true; }
+    if o.ev == EV_END { #assert open && quiet >= END_SILENCE; open = false; }
+    #assert open == (o.t.state != IDLE);
+    t = o.t;
+  }
+}
+
+main :: () {
+  frames := "..ss.sss.ss....s..";
+  t: Turn;
+  for i: 0..<frames.count {
+    o := step(t, frames[i] == 's');
+    t = o.t;
+    if o.ev == EV_START { print("frame %: turn starts\n", i); }
+    if o.ev == EV_END { print("frame %: turn ends\n", i); }
+  }
+}

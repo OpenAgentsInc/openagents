@@ -1,0 +1,3 @@
+silence:        rms -120.0 dBFS, peak -120.0 dBFS, zcr 0.0
+300 Hz at 0.1:  rms -23.012287 dBFS, peak -20.002121 dBFS, zcr 0.03448276
+3 kHz at 0.5:   rms -9.03153 dBFS, peak -6.02113 dBFS, zcr 0.37304077

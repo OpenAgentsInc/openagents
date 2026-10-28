@@ -1,0 +1,5 @@
+-6 dB: kept, gain now -6.0 dB
++30 dB: kept, gain now 12.0 dB
+-3 dB due by frame 39: dropped, past its deadline
+-3 dB for epoch 0: dropped, stale epoch
+-3 dB at confidence 0.2: dropped, confidence too low

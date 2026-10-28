@@ -1,0 +1,13 @@
+push seq 0 epoch 1: kept
+push seq 2 epoch 1: kept
+push seq 1 epoch 1: kept
+push seq 1 epoch 1: refused
+play: 100
+play: 200
+push seq 4 epoch 1: kept
+play: 300
+play: 0
+push seq 9 epoch 2: kept
+push seq 5 epoch 1: refused
+play: 900
+replays match: true

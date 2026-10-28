@@ -1,0 +1,94 @@
+#import "Basic";
+
+SLOTS :: 4;
+
+// A packet is one value standing in for 20 ms of audio.
+Slot :: struct { used: bool; seq: u32; value: s16; }
+
+Jitter :: struct {
+  slots: [SLOTS] Slot;
+  epoch: u64 = 1;
+  next: u32;      // the sequence to play next
+  based: bool;    // `next` was set by the first packet
+  depth: u32;
+}
+
+flush :: (j: [] Jitter) {
+  for i: 0..<SLOTS { j[0].slots[i].used = false; }
+  j[0].depth = 0;
+  j[0].based = false;
+}
+
+// Admit a packet, or refuse it: stale epoch, too old, too far ahead, or a
+// duplicate. A newer epoch throws away everything buffered.
+push :: (j: [] Jitter, seq: u32, epoch: u64, value: s16) -> bool {
+  if epoch < j[0].epoch { return false; }
+  if epoch > j[0].epoch { j[0].epoch = epoch; flush(j); }
+  if !j[0].based { j[0].next = seq; j[0].based = true; }
+  if seq < j[0].next || cast(u64) seq >= cast(u64) j[0].next + SLOTS { return false; }
+  k := cast(int) (seq % SLOTS);
+  if j[0].slots[k].used { return false; }
+  j[0].slots[k] = Slot.{used = true, seq = seq, value = value};
+  j[0].depth += 1;
+  return true;
+}
+
+// Play one packet's worth. A missing packet plays silence and is skipped.
+pop :: (j: [] Jitter) -> s16 {
+  k := cast(int) (j[0].next % SLOTS);
+  out: s16 = 0;
+  if j[0].slots[k].used && j[0].slots[k].seq == j[0].next {
+    out = j[0].slots[k].value;
+    j[0].slots[k].used = false;
+    j[0].depth -= 1;
+  }
+  j[0].next += 1;
+  return out;
+}
+
+// A trace: what arrived, in arrival order, and when we played.
+// kind 0 = a packet (seq, epoch, value); kind 1 = play one.
+Event :: struct { kind: int; seq: u32; epoch: u64; value: s16; }
+
+TRACE :: [12] Event.[
+  Event.{kind = 0, seq = 0, epoch = 1, value = 100},
+  Event.{kind = 0, seq = 2, epoch = 1, value = 300},   // arrives before 1
+  Event.{kind = 0, seq = 1, epoch = 1, value = 200},
+  Event.{kind = 0, seq = 1, epoch = 1, value = 999},   // a duplicate
+  Event.{kind = 1},
+  Event.{kind = 1},
+  Event.{kind = 0, seq = 4, epoch = 1, value = 500},   // 3 never comes
+  Event.{kind = 1},
+  Event.{kind = 1},
+  Event.{kind = 0, seq = 9, epoch = 2, value = 900},   // barge-in: a new epoch
+  Event.{kind = 0, seq = 5, epoch = 1, value = 600},   // late audio of the old one
+  Event.{kind = 1},
+];
+
+// Replay the trace; return what played, folded into one number.
+replay :: (verbose: bool) -> u32 {
+  j: [1] Jitter;
+  h: u32 = 2166136261;
+  for i: 0..<TRACE.count {
+    e := TRACE[i];
+    if e.kind == 0 {
+      ok := push(j[..], e.seq, e.epoch, e.value);
+      if verbose { print("push seq % epoch %: %\n", e.seq, e.epoch, ifx ok then "kept" else "refused"); }
+    } else {
+      v := pop(j[..]);
+      if verbose { print("play: %\n", v); }
+      h = cast(u32) ((cast(u64) (h ^ cast(u32) (cast(int) v + 32768)) * 16777619) % 4294967296);
+    }
+  }
+  return h;
+}
+
+#test "the same trace plays the same audio" {
+  #assert replay(false) == replay(false);
+}
+
+main :: () {
+  first := replay(true);
+  second := replay(false);
+  print("replays match: %\n", first == second);
+}

@@ -1,0 +1,99 @@
+#import "Basic";
+
+HAS_GAIN :: 1;
+HAS_DEADLINE :: 2;
+HAS_EPOCH :: 4;
+
+Decision :: struct {
+  has: u32;       // which optional fields were sent
+  gain_db: f32;   // clamped to -24..12
+  epoch: u64;     // the media epoch it was made for
+  deadline: u32;  // ignore it after this frame sequence
+  confidence: f32;
+}
+
+Stream :: struct {
+  epoch: u64 = 1;
+  next: u32;      // the next frame's sequence
+  gain_db: f32;   // the gain audio flows under now
+}
+
+clampf :: (x: f32, low: f32, high: f32) -> f32 {
+  if x != x { return low; }
+  if x < low { return low; }
+  if x > high { return high; }
+  return x;
+}
+
+// Clamp what was sent; a NaN gain counts as not sent.
+clamp :: (d0: Decision) -> Decision {
+  d := d0;
+  if (d.has & HAS_GAIN) != 0 {
+    if d.gain_db != d.gain_db { d.has &= 7 ^ HAS_GAIN; d.gain_db = 0; }
+    else { d.gain_db = clampf(d.gain_db, -24.0, 12.0); }
+  } else { d.gain_db = 0; }
+  d.confidence = clampf(d.confidence, 0.0, 1.0);
+  return d;
+}
+
+// The one gate. 0: kept. Otherwise why it was dropped.
+DROP_CONFIDENCE :: 1;
+DROP_EPOCH :: 2;
+DROP_LATE :: 3;
+gate :: (s: [] Stream, d0: Decision) -> int {
+  d := clamp(d0);
+  if d.confidence < 0.5 { return DROP_CONFIDENCE; }
+  if (d.has & HAS_EPOCH) != 0 && d.epoch != s[0].epoch { return DROP_EPOCH; }
+  if (d.has & HAS_DEADLINE) != 0 && s[0].next > d.deadline { return DROP_LATE; }
+  if (d.has & HAS_GAIN) != 0 { s[0].gain_db = d.gain_db; }
+  return 0;
+}
+
+#forall "whatever arrives, the gain stays in range" g: -40..<40, has: 0..<8, late: 0..<3 {
+  s: [1] Stream;
+  s[0].next = 10;
+  d: Decision;
+  d.has = cast(u32) has;
+  d.gain_db = f32(g);
+  d.epoch = 1;
+  d.deadline = cast(u32) (8 + late);
+  d.confidence = 1.0;
+  why := gate(s[..], d);
+  #assert s[0].gain_db >= -24.0 && s[0].gain_db <= 12.0;
+  #assert (why == DROP_LATE) == ((has & HAS_DEADLINE) != 0 && late < 2);
+  if why != 0 || (has & HAS_GAIN) == 0 { #assert s[0].gain_db == 0.0; }
+}
+
+#test "NaN is not a gain" {
+  s: [1] Stream;
+  d: Decision;
+  d.has = HAS_GAIN;
+  d.gain_db = 0.0f32 / 0.0f32;
+  d.confidence = 1.0;
+  #assert gate(s[..], d) == 0 && s[0].gain_db == 0.0;
+}
+
+show :: (s: [] Stream, label: string, d: Decision) {
+  why := gate(s, d);
+  if why == 0 { print("%: kept, gain now % dB\n", label, s[0].gain_db); }
+  if why == DROP_CONFIDENCE { print("%: dropped, confidence too low\n", label); }
+  if why == DROP_EPOCH { print("%: dropped, stale epoch\n", label); }
+  if why == DROP_LATE { print("%: dropped, past its deadline\n", label); }
+}
+
+main :: () {
+  s: [1] Stream;
+  s[0].next = 40;
+  d: Decision;
+  d.confidence = 0.9;
+  d.has = HAS_GAIN; d.gain_db = -6.0;
+  show(s[..], "-6 dB", d);
+  d.gain_db = 30.0;
+  show(s[..], "+30 dB", d);
+  d.has = HAS_GAIN | HAS_DEADLINE; d.gain_db = -3.0; d.deadline = 39;
+  show(s[..], "-3 dB due by frame 39", d);
+  d.has = HAS_GAIN | HAS_EPOCH; d.epoch = 0;
+  show(s[..], "-3 dB for epoch 0", d);
+  d.has = HAS_GAIN; d.confidence = 0.2;
+  show(s[..], "-3 dB at confidence 0.2", d);
+}

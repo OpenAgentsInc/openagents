@@ -1,0 +1,3 @@
+grant 1 before consent: may hear 1 = false
+consent, then grant 1:  may hear 1 = true
+1 withdraws consent:    may hear 1 = false, holder -1

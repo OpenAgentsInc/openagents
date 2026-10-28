@@ -551,6 +551,10 @@ Each phase ends with a measurement committed and a real-phone run.
 - No new languages: Coax, the host C compiler, and Swift for platform
   effects.
 
+## Code
+
+A guided walk through the built pieces, with runnable examples, is Chapter 27 of the Coax book: [Building a voice system in pieces](../../coax/book/ch27-case-study-voice.md).
+
 ## Reading the history
 
 The full audit and the code it describes are in history:

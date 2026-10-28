@@ -1,0 +1,44 @@
+#import "Basic";
+
+clampf :: (x: f32, low: f32, high: f32) -> f32 {
+  if x != x { return low; }
+  if x < low { return low; }
+  if x > high { return high; }
+  return x;
+}
+
+sigmoid :: (x: f32) -> f32 {
+  y := clampf(x, -30.0, 30.0);
+  return 1.0 / (1.0 + exp(-y));
+}
+
+// How likely a frame is speech, from three measurements: how far it sits
+// above the noise floor, how loud it is at all, and how often it crosses
+// zero (hiss crosses far more often than a voice).
+speech_likelihood :: (rms: f32, noise: f32, zcr: f32) -> f32 {
+  p_snr := sigmoid((rms - noise - 10.0) / 2.0);
+  p_abs := sigmoid((rms + 50.0) / 3.0);
+  p_z := ifx zcr <= 0.3 then 1.0 else clampf(1.0 - (zcr - 0.3) * 2.5, 0.2, 1.0);
+  return clampf(p_snr * p_abs * p_z, 0.0, 1.0);
+}
+
+#forall "a probability that rises with level" rms: -120..<1, noise: -90..<-19 {
+  p := speech_likelihood(f32(rms), f32(noise), 0.1);
+  #assert p >= 0.0 && p <= 1.0;
+  #assert speech_likelihood(f32(rms) + 1.0, f32(noise), 0.1) >= p;
+}
+
+#test "voice, hiss and the floor" {
+  #assert speech_likelihood(-25.0, -60.0, 0.1) > 0.95;
+  #assert speech_likelihood(-60.0, -60.0, 0.1) < 0.01;
+  #assert speech_likelihood(-25.0, -60.0, 0.6) < speech_likelihood(-25.0, -60.0, 0.1);
+}
+
+main :: () {
+  noise: f32 = -60.0;
+  levels := [5] f32.[-60.0, -52.0, -48.0, -40.0, -25.0];
+  for i: 0..<5 {
+    print("rms % dBFS over a % dBFS floor: speech %\n", levels[i], noise, speech_likelihood(levels[i], noise, 0.1));
+  }
+  print("the same -25 dBFS as hiss (zcr 0.6): speech %\n", speech_likelihood(-25.0, noise, 0.6));
+}

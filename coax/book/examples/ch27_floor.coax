@@ -1,0 +1,73 @@
+// Chapter 27: who may be heard, decided from consent and one floor holder.
+#import "Basic";
+#authority;
+
+SLOTS :: 4;
+
+Floor :: struct {
+  consent: [SLOTS] bool;
+  holder: s32 = -1;   // the slot holding the floor; -1 = nobody
+}
+
+// Withdrawing consent also takes the floor back.
+floor_consent :: (f: Floor, slot: s32, yes: bool) -> Floor {
+  g := f;
+  if slot < 0 || slot >= SLOTS { return g; }
+  g.consent[cast(int) slot] = yes;
+  if !yes && g.holder == slot { g.holder = -1; }
+  return g;
+}
+
+// Only a consenting slot can be granted the floor; -1 releases it.
+floor_grant :: (f: Floor, slot: s32) -> Floor {
+  g := f;
+  if slot == -1 { g.holder = -1; return g; }
+  if slot < 0 || slot >= SLOTS { return g; }
+  if !g.consent[cast(int) slot] { return g; }
+  g.holder = slot;
+  return g;
+}
+
+may_hear :: (f: Floor, slot: s32) -> bool {
+  if slot < 0 || slot >= SLOTS { return false; }
+  return f.consent[cast(int) slot] && f.holder == slot;
+}
+
+// Every three-step sequence of operations on slots -1..4, checked against
+// a model written the obvious way. Ops: 0 consent, 1 withdraw, 2 grant.
+#forall "the floor matches its model" o1: 0..<3, s1: -1..<5, o2: 0..<3, s2: -1..<5, o3: 0..<3, s3: -1..<5 {
+  f: Floor;
+  consent: [SLOTS] bool;
+  holder := -1;
+  for step: 0..<3 {
+    op := ifx step == 0 then o1 else ifx step == 1 then o2 else o3;
+    s := ifx step == 0 then s1 else ifx step == 1 then s2 else s3;
+    inside := s >= 0 && s < SLOTS;
+    if op == 0 {
+      f = floor_consent(f, cast(s32) s, true);
+      if inside { consent[s] = true; }
+    } else if op == 1 {
+      f = floor_consent(f, cast(s32) s, false);
+      if inside { consent[s] = false; if holder == s { holder = -1; } }
+    } else {
+      f = floor_grant(f, cast(s32) s);
+      if s == -1 { holder = -1; } else if inside && consent[s] { holder = s; }
+    }
+    #assert f.holder == cast(s32) holder;
+    for k: -1..<5 {
+      want := k >= 0 && k < SLOTS && consent[k] && holder == k;
+      #assert may_hear(f, cast(s32) k) == want;
+    }
+  }
+}
+
+main :: () {
+  f: Floor;
+  f = floor_grant(f, 1);
+  print("grant 1 before consent: may hear 1 = %\n", may_hear(f, 1));
+  f = floor_consent(f, 1, true);
+  f = floor_grant(f, 1);
+  print("consent, then grant 1:  may hear 1 = %\n", may_hear(f, 1));
+  f = floor_consent(f, 1, false);
+  print("1 withdraws consent:    may hear 1 = %, holder %\n", may_hear(f, 1), f.holder);
+}
