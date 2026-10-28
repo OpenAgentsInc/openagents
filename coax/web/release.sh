@@ -38,8 +38,9 @@ project=openagentsgemini
 staging_bucket=$project-openagents-web-staging prod_bucket=$project-openagents-web
 lb_ip=136.69.24.60
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
-now() { python3 -c 'import time; print(time.time())'; }
-lap() { printf '  %-10s %5.1f s\n' "$1" "$(python3 -c "print($(now) - $2)")"; }
+now() { [[ -n "${EPOCHREALTIME:-}" ]] && echo "${EPOCHREALTIME//[.,]/}" || echo $(( $(date +%s) * 1000000 )); }   # microseconds
+secs() { printf '%d.%d' $(( $1 / 1000000 )) $(( $1 % 1000000 / 100000 )); }
+lap() { printf '  %-10s %5s s\n' "$1" "$(secs $(( $(now) - $2 )))"; }
 start=$(now)
 
 # One release at a time on this machine: a second one waits, since both
@@ -68,7 +69,7 @@ if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
   t=$(now); "$here/smoke.sh" https://staging.openagents.com; lap smoke "$t"
 fi
-$prod || { echo "release $commit: staging only, done in $(python3 -c "print(round($(now) - $start, 1))") s"; exit 0; }
+$prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s"; exit 0; }
 if ! $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web > /dev/null; lap build "$t"
 fi
@@ -77,13 +78,19 @@ fi
 # nothing points at them yet), then the pages that name them.
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 if $stage; then
+  # The backup and the files copy touch different objects, so they run
+  # together; the pages wait for both.
   t=$(now)
-  gcloud storage cp "gs://$prod_bucket/*.html" "gs://$prod_bucket/*.md" "gs://$prod_bucket/releases/$stamp/" --quiet > /dev/null 2>&1 || true
+  { gcloud storage cp "gs://$prod_bucket/*.html" "gs://$prod_bucket/*.md" "gs://$prod_bucket/releases/$stamp/" --quiet > /dev/null 2>&1 || true
+    echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null; } &
+  backup=$!
   gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '.*\.(html|md)$|^releases/' --quiet > /dev/null
+  wait $backup
   gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '^releases/' --quiet > /dev/null
   lap promote "$t"
+else
+  echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null
 fi
-echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null
 
 t=$(now)
 via=""
@@ -94,4 +101,4 @@ if ! "$here/smoke.sh" https://openagents.com $via --coder; then
   exit 1
 fi
 lap smoke "$t"
-echo "release $commit: live on openagents.com in $(python3 -c "print(round($(now) - $start, 1))") s (rollback: coax/web/rollback.sh $stamp)"
+echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s (rollback: coax/web/rollback.sh $stamp)"

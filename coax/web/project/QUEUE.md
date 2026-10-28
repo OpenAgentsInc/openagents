@@ -53,7 +53,7 @@ release. The tools run on the machine that holds the project key
      fix in the note, and release it. Only the taskmaster edits the work file
      (`apps/openagents-web/project/coax/work/nostr.json`) and republishes.
 8. **Show it.** Run `coax/web/release.sh` from the repo root after each
-   claim and each done (about 25 s; it builds a clean worktree of
+   claim and each done (about 15 s; it builds a clean worktree of
    `origin/main`, reads the relay afresh, deploys staging, smokes it,
    promotes and smokes production). The page shows the claim as IN PROGRESS
    with your name, the finished task under JUST FINISHED with its commit, and

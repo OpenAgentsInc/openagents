@@ -19,8 +19,8 @@ app="$(cd "$1" && pwd)"; service="$2"
 project=openagentsgemini region=us-central1
 bucket="$project-$service"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
-now() { python3 -c 'import time; print(time.time())'; }
-lap() { printf '  %-8s %4.1f s\n' "$1" "$(python3 -c "print($(now) - $2)")"; }
+now() { [[ -n "${EPOCHREALTIME:-}" ]] && echo "${EPOCHREALTIME//[.,]/}" || echo $(( $(date +%s) * 1000000 )); }   # microseconds
+lap() { local d=$(( $(now) - $2 )); printf '  %-8s %4s s\n' "$1" "$(( d / 1000000 )).$(( d % 1000000 / 100000 ))"; }
 
 "$here/check-visuals.sh" "$app"   # INVARIANTS.md: everything visible is Coax
 t=$(now); COAXIAL_MODE=release "$app/build.sh"; lap build "$t"
