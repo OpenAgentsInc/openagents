@@ -20,6 +20,7 @@
 //   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)
 //   presence and chat in a room    /api/playtest/presence/<room>, /api/playtest/chat/<room> (room.c)
 //   private projects               /projects/<slug> and /api/private/<slug>/*, members only (private.c)
+//   drops for a new project        /api/drops/*, private to who dropped them (drops.c)
 #include "api.h"
 
 #include <arpa/inet.h>
@@ -241,6 +242,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (room_route(&q)) return;
   if (player_route(&q)) return;
   if (private_route(&q)) return;
+  if (drops_route(&q)) return;
   if (admin_route(&q)) return;
   api_json(cl->fd, 404, "{\"error\":\"not found\"}");
 }

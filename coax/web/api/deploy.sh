@@ -33,8 +33,8 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
 admins="$(grep -v '^#' "$here/admins.conf" | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 
-deploy() {  # service secret host agent-projects-secret runner-service
-  local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_AGENT_RUNNER_PUBKEYS=$runners@OA_API_ORIGIN=https://$3" wake
+deploy() {  # service secret host agent-projects-secret runner-service drops-folder
+  local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_AGENT_RUNNER_PUBKEYS=$runners@OA_API_ORIGIN=https://$3@OA_DROPS_BUCKET=openagentsgemini-project-drops@OA_DROPS_PREFIX=$6" wake
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"
@@ -50,6 +50,6 @@ deploy() {  # service secret host agent-projects-secret runner-service
   done
   echo "  FAIL  https://$3/api/playtest/health: $body"; return 1
 }
-deploy oa-api-staging oa-analytics-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging
-$prod && deploy oa-api oa-analytics-database-url openagents.com oa-agent-projects oa-agent
+deploy oa-api-staging oa-analytics-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging
+$prod && deploy oa-api oa-analytics-database-url openagents.com oa-agent-projects oa-agent production
 echo "api: deployed $image"

@@ -130,8 +130,10 @@ static void login(const request *q, PGconn *db) {
   PQclear(r);
   if (!ok) { api_json(q->fd, 503, "{\"error\":\"no session\"}"); return; }
   char headers[512];
-  snprintf(headers, sizeof headers, "Location: /admin/analytics\r\nSet-Cookie: oa_admin=%s; Path=/api/admin; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n",
-           token, SESSION_HOURS * 3600);
+  // The same session opens /api/drops (drops.c), so an admin can drop files for a new project.
+  snprintf(headers, sizeof headers, "Location: /admin/analytics\r\nSet-Cookie: oa_admin=%s; Path=/api/admin; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
+           "Set-Cookie: oa_admin=%s; Path=/api/drops; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n",
+           token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600);
   api_log("admin signed in: %.12s", ev.pubkey);
   api_respond(q->fd, 303, "text/plain", headers, "", 0);
 }
@@ -149,7 +151,8 @@ static void logout(const request *q, PGconn *db) {
                            1, NULL, v, NULL, NULL, 0));
     }
   }
-  api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: oa_admin=; Path=/api/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);
+  api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: oa_admin=; Path=/api/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
+              "Set-Cookie: oa_admin=; Path=/api/drops; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);
 }
 
 // ---- the reports
