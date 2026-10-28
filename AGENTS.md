@@ -16,7 +16,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `apps/openagents-ios/` | The only app: a UIKit and Metal shell around the Coax home. Bundle `com.openagents.app` |
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |
-| `docs/verification/`, `docs/lightning/`, `docs/verse/` | Verification plan, the Breez Spark wallet plan, Verse and the Metareal engine |
+| `docs/verification/`, `docs/lightning/`, `docs/verse/`, `docs/voice/` | Verification plan, the Breez Spark wallet plan, Verse and the Metareal engine, the Coax-native voice proposal |
 | `nips/` | Official, external and OpenAgents NIPs, pinned |
 
 ## Rules
