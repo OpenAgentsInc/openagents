@@ -4,7 +4,7 @@
   "initiative": {
     "slug": "coax-nostr",
     "title": "Coax Nostr: our own Nostr stack, crypto included, in Coax",
-    "body": "Every Nostr integration on openagents.com runs in Coax: SHA-256, secp256k1, BIP-340, ECDH, NIP-44, NIP-59, events, bech32, relay client. Specification: coax/nostr.md.",
+    "body": "Build shared Coax Nostr crypto, verified clients and runtime authority for web, iOS, native tools and Verse. Source-pinned schemas/codecs and TypeScript-backed snapshots exist; the socket byte pipe is shipped, while Coax crypto, live folding and admission remain open. Named profiles and evidence govern support, with independent review before production secrets or retirement. Specification: coax/nostr.md.",
     "spec": "coax/nostr.md",
     "labels": [
       "nostr",
@@ -14,9 +14,33 @@
   },
   "milestones": [
     {
+      "slug": "m-assurance",
+      "title": "Profiles, assurance and production gates",
+      "body": "Named limits, independent vectors/oracles, entropy, erasure, secret-path evidence and independent review. Foundation work starts first; production approval is a later gate, not a block on test-key development.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "compiler",
+      "title": "Coax compiler prerequisites",
+      "body": "Small compiler features and fixes the stack wants; none blocks M0–M2.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m6-relay",
+      "title": "A relay client in the page",
+      "body": "Host random, socket and storage imports; the relay state machine with NIP-42 AUTH.",
+      "parent": "coax-nostr"
+    },
+    {
       "slug": "m0-hashes",
       "title": "Hashes and ciphers",
       "body": "Byte helpers, SHA-256, HMAC, HKDF, PBKDF2, ChaCha20, hex and base64 in Coax, each against its official vectors.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m5-events",
+      "title": "Events and encodings",
+      "body": "Bounded JSON, exact read-only NIP-01 hash/verify first; signed-event construction is separate. Bech32, safe integer-only JCS and envelope contracts remain explicit.",
       "parent": "coax-nostr"
     },
     {
@@ -32,6 +56,12 @@
       "parent": "coax-nostr"
     },
     {
+      "slug": "m8-project-live",
+      "title": "The project page goes live",
+      "body": "Extend shipped socket/frame plumbing into a live task fold, then local verification before authoritative use. Informational work notices are distinct from fenced worker claims.",
+      "parent": "coax-nostr"
+    },
+    {
       "slug": "m3-sign-ecdh",
       "title": "Signing and ECDH",
       "body": "Fixed-base comb, constant-time ladder, BIP-340 signing and x-only ECDH, with timing evidence.",
@@ -44,40 +74,64 @@
       "parent": "coax-nostr"
     },
     {
-      "slug": "m5-events",
-      "title": "Events and encodings",
-      "body": "Bounded JSON, NIP-01 events, filters, bech32 and NIP-19, JCS and the 3188 artifact envelope.",
+      "slug": "m-client-state",
+      "title": "Durable clients and signer interfaces",
+      "body": "Verified event lifecycle, offline state, multi-relay catch-up, optional relay discovery and correlated signer requests.",
       "parent": "coax-nostr"
     },
     {
-      "slug": "m6-relay",
-      "title": "A relay client in the page",
-      "body": "Host random, socket and storage imports; the relay state machine with NIP-42 AUTH.",
-      "parent": "coax-nostr"
-    },
-    {
-      "slug": "m7-no-typescript",
-      "title": "Replace the TypeScript",
-      "body": "The hidden deck opens with no TypeScript: opener, gate, sealer and injector in Coax; the INVARIANTS change.",
-      "parent": "coax-nostr"
-    },
-    {
-      "slug": "m8-project-live",
-      "title": "The project page goes live",
-      "body": "/project/coax reads its project, tasks and order from the relay and signs claims in the page.",
-      "parent": "coax-nostr"
-    },
-    {
-      "slug": "compiler",
-      "title": "Coax compiler prerequisites",
-      "body": "Small compiler features and fixes the stack wants; none blocks M0–M2.",
+      "slug": "m-projections",
+      "title": "Real Coax domain adapters",
+      "body": "Use existing generated proto codecs with source evidence and policy; expand missing definitions only for real consumers.",
       "parent": "coax-nostr"
     },
     {
       "slug": "m9-phone-sign-in",
       "title": "Sign in to the website with your phone",
       "parent": "coax-nostr",
-      "body": "The deliverable: open openagents.com/signin, scan its QR code with the OpenAgents mobile app, approve, and the website is signed in as your Nostr key. The key never leaves the phone. NIP-46 (Nostr Connect) between page and phone over relay.openagents.com, NIP-98 HTTP auth to the server, no WorkOS. The same Coax Nostr library runs on the phone (compiled to C), in the page (wasm) and on the server (native)."
+      "body": "Shared iOS vectors, device-only Keychain software-key custody, NIP-46 permissions/lifecycle, QR and NIP-98 sessions. Throwaway tests first; production identity waits for review."
+    },
+    {
+      "slug": "m-block-identity",
+      "title": "Block ownership and federated identity",
+      "body": "OA/AA current owner admission, selected asymmetric JWS/JWKS profiles, FI community policy and FA credential sessions.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m-host-reach",
+      "title": "HOST, REACH and real delegated work",
+      "body": "Scoped original grants, fresh authenticated routes, fenced worker claims, truthful task journals and a real Linux Codex task from the app.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m-block-channel",
+      "title": "Channels, artifacts and archive consent",
+      "body": "Live membership/visibility, CW bounded completeness, AR transactional history and IA consent.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m-agent-data",
+      "title": "Private agent data and optional messaging",
+      "body": "AE/AP/AO/AM privacy and exact state; separately scoped NIP-17 private conversations.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m7-no-typescript",
+      "title": "Replace the TypeScript",
+      "body": "Reviewed versioned unlock migration, native tools and idempotent project publisher; retire working TypeScript only after production cutover and rollback evidence.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m-key-backup",
+      "title": "Optional encrypted key backup",
+      "body": "NIP-49 primitives, normalization and bounded owner-approved ncryptsec import/export.",
+      "parent": "coax-nostr"
+    },
+    {
+      "slug": "m-conformance",
+      "title": "Consumer conformance and support publication",
+      "body": "Advertise only target/profile behavior backed by executable positive and negative evidence.",
+      "parent": "coax-nostr"
     }
   ],
   "tasks": [
@@ -90,17 +144,17 @@
         "compiler",
         "bug"
       ],
-      "body": "`t[0].count[b] += 1` on an array field reached through a view generates C that does not compile (found building the project page). Fix the emitter and add a regression test.",
+      "body": "Shipped in e2f8432ea2: compound assignment through indexed views now emits a C lvalue even when the index calls a procedure. Preserve its focused native regression. This task is resolved; it does not establish general compiler correctness.",
       "files": [
         "coax/src/emit_c.cpp",
         "coax/tests/"
       ],
       "acceptance": [
-        "A test with `t[0].count[b] += 1` (and -=, *=, |=) through a view compiles and runs under ASan",
-        "coax/tests pass"
+        "The committed view/index-call regression in e2f8432ea2 compiles and runs; retain the test on affected emitter changes"
       ],
       "blocked_by": [],
-      "blocks": []
+      "blocks": [],
+      "status": "resolved"
     },
     {
       "slug": "coax-intrinsic-value-barrier",
@@ -111,18 +165,20 @@
         "compiler",
         "crypto"
       ],
-      "body": "Add `value_barrier(x: u64) -> u64` (and u32) that the optimizer cannot see through: native emits `__asm__(\"\" : \"+r\"(x))`, wasm32 emits a call to a non-inlined identity. Document it in coax/spec.md §9.",
+      "body": "Shipped in b9a5f216f0: optimizer-opaque u32/u64 identity, native register barrier and Wasm non-inlined fallback, checked evaluator/checker behavior and focused codegen tests. Preserve its focused regressions. This does not establish whole-library constant time or secure erasure.",
       "files": [
         "coax/src/",
         "coax/spec.md",
         "coax/tests/"
       ],
       "acceptance": [
-        "Generated C for a masked select compiled with clang -O2 contains no conditional branch on the masked value (checked by objdump in a test script)",
-        "coax/tests pass"
+        "Retain committed constant_time.py and checker/evaluator regressions from b9a5f216f0; crypto-secret-codegen separately validates full algorithms and target profiles"
       ],
       "blocked_by": [],
-      "blocks": []
+      "blocks": [
+        "crypto-secure-zero"
+      ],
+      "status": "resolved"
     },
     {
       "slug": "coax-intrinsic-wrapping-ops",
@@ -189,6 +245,39 @@
       "blocks": []
     },
     {
+      "slug": "nostr-support-profiles",
+      "parent": "m-assurance",
+      "title": "Named support profiles, limits and source evidence",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Define core-read/write, phone-signer, openagents-host, Block identity/channel/private-agent and optional backup profiles. Record target/source pins, implementation/evidence, original/decoded/frame/tag/queue/storage limits and compatibility. Reconcile existing proto vs proposed JSON vs socket limits without claiming universal Nostr limits.",
+      "files": [
+        "coax/nostr.md",
+        "proto/nostr/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Machine-readable matrix rejects unsupported advertised support and inconsistent consumer bounds",
+        "Boundary fixtures demonstrate clean refusals; profiles name real consumers and optional official NIPs"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "crypto-bytes",
+        "crypto-secret-lint",
+        "nostr-json-profile-hardening",
+        "crypto-entropy-contract",
+        "host-storage-pipe",
+        "signer-interface",
+        "unlock-gate-format",
+        "nostr-proto-adapters",
+        "fi-jwks-policy",
+        "nostr-client-discovery"
+      ]
+    },
+    {
       "slug": "crypto-bytes",
       "parent": "m0-hashes",
       "title": "Byte helpers: big/little-endian loads, constant-time equality, select and zeroize",
@@ -196,22 +285,24 @@
       "labels": [
         "crypto"
       ],
-      "body": "coax/lib/crypto/bytes.coax: load/store be32/le32/be64/le64, ct_eq over views (returns a mask), ct_select for u32/u64 and views, zeroize through the value barrier (a #foreign no-op until the intrinsic lands).",
+      "body": "Bounded endian loads/stores, ct_eq returning a mask and ct_select for words/views. Explicit checked-safe mask arithmetic in both modes, no unsigned underflow depending on --release. Secure erasure is a separate contract (crypto-secure-zero), not a foreign no-op or register barrier claim.",
       "files": [
         "coax/lib/crypto/bytes.coax"
       ],
       "acceptance": [
-        "#test covers every helper at boundaries",
-        "coax mutate coax/lib/crypto/bytes.coax: no surviving mutants"
+        "Boundary/capacity/alias/endianness and both mask values pass #test and emitted checked/optimized native tests",
+        "Zero surviving mutants in the helpers; independently seeded wrong selection is detected"
       ],
-      "blocked_by": [],
+      "blocked_by": [
+        "nostr-support-profiles"
+      ],
       "blocks": [
-        "crypto-chacha20",
-        "crypto-ct-timing-harness",
         "crypto-sha256",
-        "nostr-json",
+        "crypto-chacha20",
         "secp-field-repr",
-        "secp-scalar"
+        "secp-scalar",
+        "crypto-ct-timing-harness",
+        "crypto-secure-zero"
       ]
     },
     {
@@ -223,18 +314,19 @@
         "crypto",
         "tests"
       ],
-      "body": "Create coax/tests/vectors/ with the files listed in coax/nostr.md §9.1 (NIST SHA-256 subset, RFC 4231, 5869, 7914, 8439, BIP-340 CSV, Wycheproof ecdh_secp256k1, NIP-44 vectors, BIP-173) and SOURCES.md recording URL, retrieval date and SHA-256 of each.",
+      "body": "Pin the official vectors listed in coax/nostr.md §9 with upstream URL, revision/license, retrieval date and SHA-256. Keep upstream bytes; distinguish adapted Wycheproof/derived fixtures and record source hashes. BIP-340 has 19 rows including variable-message cases.",
       "files": [
         "coax/tests/vectors/",
         "coax/tests/vectors/SOURCES.md"
       ],
       "acceptance": [
-        "Every file in SOURCES.md matches its recorded SHA-256 (a check script)",
-        "No file is modified from upstream"
+        "A check detects modified/missing upstream vector files and source/hash mismatch",
+        "Derived cases retain original input identity and reproducible adapter description"
       ],
       "blocked_by": [],
       "blocks": [
-        "crypto-vector-runner"
+        "crypto-vector-runner",
+        "secp-libsecp-harness"
       ]
     },
     {
@@ -253,15 +345,17 @@
         "tools/coax-nostr/vectors/"
       ],
       "acceptance": [
-        "Runs on macOS with the existing toolchain",
-        "Fails loudly on a single wrong row (tested by corrupting one expected value in a temp copy)"
+        "Native Coax-to-C vector runners use ASan/UBSan and report each row/input hash",
+        "Corrupting one expected result and one actual algorithm result in temporary copies both fail; no comparison only to our generated output"
       ],
       "blocked_by": [
         "crypto-vectors-pinned"
       ],
       "blocks": [
+        "crypto-sha256",
         "crypto-chacha20",
-        "crypto-sha256"
+        "crypto-target-conformance",
+        "nip49-primitives"
       ]
     },
     {
@@ -272,15 +366,14 @@
       "labels": [
         "crypto"
       ],
-      "body": "coax/lib/crypto/sha256.coax: init/update/final over views, one-shot sha256, and tagged_hash(tag, msg) = SHA256(SHA256(tag)||SHA256(tag)||msg) with the three BIP-340 tags' prefixes precomputed with #run.",
+      "body": "Streaming init/update/final, one-shot and BIP-340 tagged hashes. Extract/generalize the checked algorithm from coax/lib/proto/fingerprint.coax without changing compiler provenance bytes; that module explicitly was not an admission/signature API. Avoid a second uncoordinated SHA implementation.",
       "files": [
         "coax/lib/crypto/sha256.coax"
       ],
       "acceptance": [
-        "NIST subset and the 1 MiB split-at-every-chunk test pass in the vector runner",
-        "#test: empty, \"abc\", tagged hash of BIP0340/challenge known value",
-        "coax mutate: no surviving mutants",
-        "≥ 150 MB/s in wasm32, ≥ 300 MB/s native (bench printed)"
+        "NIST vectors, padding and streaming chunk boundaries agree with an independent oracle",
+        "Existing compiler fingerprint fixtures retain their exact digests if shared helpers change",
+        "Zero surviving mutants; emitted checked/optimized parity; native/Wasm throughput is measured with target/profile metadata"
       ],
       "blocked_by": [
         "crypto-bytes",
@@ -288,8 +381,8 @@
       ],
       "blocks": [
         "crypto-hmac-hkdf",
-        "nostr-envelope",
-        "schnorr-verify"
+        "schnorr-verify",
+        "nostr-envelope"
       ]
     },
     {
@@ -315,6 +408,7 @@
       "blocks": [
         "crypto-pbkdf2",
         "nip44-v2",
+        "unlock-gate-format",
         "unlock-gate-coax"
       ]
     },
@@ -331,14 +425,15 @@
         "coax/lib/crypto/pbkdf2.coax"
       ],
       "acceptance": [
-        "RFC 7914 §11 vectors pass",
-        "210,000 rounds take under 400 ms in wasm32 in Chrome"
+        "RFC 7914 §11 vectors, iteration/output bounds and error cleanup pass",
+        "Measure the declared 210000-round gate profile on real Wasm; bounded work does not block rendering, with slower-device behavior explicit"
       ],
       "blocked_by": [
         "crypto-hmac-hkdf"
       ],
       "blocks": [
-        "unlock-gate-coax"
+        "unlock-gate-coax",
+        "crypto-target-conformance"
       ]
     },
     {
@@ -364,7 +459,9 @@
       ],
       "blocks": [
         "nip44-v2",
-        "unlock-gate-coax"
+        "unlock-gate-format",
+        "unlock-gate-coax",
+        "nip49-primitives"
       ]
     },
     {
@@ -387,9 +484,38 @@
       ],
       "blocked_by": [],
       "blocks": [
+        "nostr-event",
         "nip44-v2",
         "nostr-bech32",
-        "nostr-event"
+        "fi-jws-verifier"
+      ]
+    },
+    {
+      "slug": "crypto-secret-lint",
+      "parent": "m-assurance",
+      "title": "Enforce the supported secret-path and variable-time boundary",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Specify and implement a narrow inspectable source/dataflow policy for secret entry points. Reject unsupported constructs, secret branches/indices and calls to public-only _vartime code. Do not advertise #secret syntax before it exists.",
+      "files": [
+        "coax/lib/crypto/",
+        "tools/coax-nostr/secret-check/",
+        "coax/spec.md"
+      ],
+      "acceptance": [
+        "Negative fixtures for secret branch/index/callee and unsupported flow are rejected",
+        "Accepted masked operations execute in checked/optimized modes; scope and gaps are documented"
+      ],
+      "blocked_by": [
+        "nostr-support-profiles"
+      ],
+      "blocks": [
+        "secp-mult-base",
+        "secp-mult-const",
+        "crypto-secret-codegen"
       ]
     },
     {
@@ -401,7 +527,7 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "coax/lib/crypto/secp_field.coax: the representation, set_b32 (refusing ≥ p where asked), get_b32, normalize (constant time), add, negate with magnitude parameter, mul_int, is_zero, equal. Debug magnitude/normalized tracking.",
+      "body": "10x26 field representation, checked magnitude/normalization discipline, load/store, normalize, add/negate and equality. Use an explicit debug representation if conditional fields are not implemented; do not claim #if exists. Bound masks and all secret-path choices in both compiler modes.",
       "files": [
         "coax/lib/crypto/secp_field.coax"
       ],
@@ -414,6 +540,33 @@
       ],
       "blocks": [
         "secp-field-mul"
+      ]
+    },
+    {
+      "slug": "secp-libsecp-harness",
+      "parent": "m1-field-scalar",
+      "title": "A differential harness against libsecp256k1",
+      "size": "M",
+      "labels": [
+        "crypto",
+        "tests",
+        "tools"
+      ],
+      "body": "Pin and inspect libsecp source/license/hash before explicitly reviewed harness builds. Public APIs do not expose arbitrary field/scalar internals: choose a reviewed pinned white-box adapter or independent big-integer oracle for those operations. ECDH comparisons use a custom raw-x callback, never the default compressed-point hash.",
+      "files": [
+        "tools/coax-nostr/fuzz/"
+      ],
+      "acceptance": [
+        "Field/scalar/point/Schnorr/raw-x ECDH adapter contracts and pinned identities are documented",
+        "Seeded field carry and ECDH default-hash faults are detected by the harness",
+        "A bounded differential smoke passes; milestone runs retain one-hour seed/artifact evidence"
+      ],
+      "blocked_by": [
+        "crypto-vectors-pinned"
+      ],
+      "blocks": [
+        "secp-field-mul",
+        "secp-scalar"
       ]
     },
     {
@@ -430,9 +583,9 @@
         "coax/lib/crypto/secp_field.coax"
       ],
       "acceptance": [
-        "The bound #assert fails to compile if the admitted magnitude is raised to 9 (documented negative check)",
-        "1,000,000 random products match a native libsecp256k1 harness",
-        "coax mutate: no surviving mutants"
+        "Compile-time bounds cover every actual product/accumulator/carry/fold at admitted magnitudes; a deliberately exceeding bound fails (do not assume magnitude 9 alone overflows)",
+        "1000000 random products plus limb/carry edges match the pinned independent oracle",
+        "Zero surviving mutants and emitted sanitizer checks"
       ],
       "blocked_by": [
         "secp-field-repr",
@@ -475,13 +628,14 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "coax/lib/crypto/secp_scalar.coax: set_b32 with overflow flag, get_b32, add, mul, negate, inverse, is_zero, constant-time cond_negate, and bit/window extraction for multiplication.",
+      "body": "8x32 scalar arithmetic modulo n with explicit split-product/carry scheduling and compile-time bounds for each accumulator: one 32x32 product fits u64 but a sum may overflow. Canonical load/store, overflow/zero checks, add/mul/negate/inverse and windows; secret-path reduction is branch/index independent.",
       "files": [
         "coax/lib/crypto/secp_scalar.coax"
       ],
       "acceptance": [
-        "Edge values (0, 1, n−1, n, 2^256−1) and 1,000,000 random ops match the libsecp harness",
-        "coax mutate: no surviving mutants"
+        "Compile-time bound checks cover multiplication/reduction intermediates; seeded carry loss is caught",
+        "0, 1, n-1, n, 2^256-1 and 1000000 random operations match the independent oracle",
+        "Checked/optimized results agree; zero surviving mutants"
       ],
       "blocked_by": [
         "crypto-bytes",
@@ -489,30 +643,6 @@
       ],
       "blocks": [
         "secp-group"
-      ]
-    },
-    {
-      "slug": "secp-libsecp-harness",
-      "parent": "m1-field-scalar",
-      "title": "A differential harness against libsecp256k1",
-      "size": "M",
-      "labels": [
-        "crypto",
-        "tests",
-        "tools"
-      ],
-      "body": "tools/coax-nostr/fuzz/: fetch libsecp256k1 at a pinned tag (verify tarball hash), build it with the harness only, expose field/scalar/point/schnorr/ecdh comparisons to C drivers that call our modules. Never vendored into the tree.",
-      "files": [
-        "tools/coax-nostr/fuzz/"
-      ],
-      "acceptance": [
-        "`tools/coax-nostr/fuzz/run.sh field 60` runs 60 s with no disagreement on a correct build and finds a planted bug",
-        "Tarball hash pinned and checked"
-      ],
-      "blocked_by": [],
-      "blocks": [
-        "secp-field-mul",
-        "secp-scalar"
       ]
     },
     {
@@ -524,23 +654,22 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "coax/lib/crypto/secp_group.coax: infinity handling, gej_double, gej_add_ge (mixed), gej_add, ge_set_gej, set_xo (lift x with even y, BIP-340), is_valid_xo, and constant-time table selection ge_table_select.",
+      "body": "Affine/Jacobian points, lifts and validation, add/double/mixed operations and masked table selection. Specify complete formulas or masked exceptional handling for secret paths including P=Q, P=-Q, infinity and invalid points; verification-only variable-time helpers are separate.",
       "files": [
         "coax/lib/crypto/secp_group.coax"
       ],
       "acceptance": [
-        "Generator multiples 1..1000 match the harness",
-        "Doubling/adding at infinity and P + (−P) correct",
-        "coax mutate: no surviving mutants"
+        "Independent generator/random points and infinity/P=Q/P=-Q/invalid-lift cases match",
+        "Secret-path exceptional inputs never select secret branches/indices; zero surviving mutants"
       ],
       "blocked_by": [
         "secp-field-inv-sqrt",
         "secp-scalar"
       ],
       "blocks": [
+        "secp-mult-verify",
         "secp-mult-base",
-        "secp-mult-const",
-        "secp-mult-verify"
+        "secp-mult-const"
       ]
     },
     {
@@ -564,7 +693,8 @@
         "secp-group"
       ],
       "blocks": [
-        "schnorr-verify"
+        "schnorr-verify",
+        "secp-glv"
       ]
     },
     {
@@ -576,14 +706,14 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "coax/lib/crypto/schnorr.coax: verify(sig64, msg32, xonly32) per BIP-340, refusing r ≥ p, s ≥ n and invalid public keys.",
+      "body": "General byte-view BIP-340 verification plus a Nostr wrapper for a 32-byte event ID. Refuse invalid lifts, r>=p, s>=n and malformed lengths. Read-only verification does not depend on signing, keys, AUTH or erasure.",
       "files": [
         "coax/lib/crypto/schnorr.coax"
       ],
       "acceptance": [
-        "Every verification row of BIP-340 test-vectors.csv (pass and fail) matches",
-        "1 hour of differential fuzzing vs libsecp with no disagreement",
-        "Verify ≤ 600 µs in wasm32 in Chrome, ≤ 100 µs native (bench)"
+        "All 19 official verification rows including message lengths 0, 1, 17 and 100 match",
+        "A one-hour differential run vs pinned libsecp retains seeds and regressions",
+        "Record native/Wasm verify time and actual target/profile; performance cannot waive correctness"
       ],
       "blocked_by": [
         "secp-mult-verify",
@@ -591,8 +721,95 @@
       ],
       "blocks": [
         "nostr-event",
-        "schnorr-sign",
-        "verify-one-real-event"
+        "schnorr-sign"
+      ]
+    },
+    {
+      "slug": "nostr-json",
+      "parent": "m5-events",
+      "title": "Bounded JSON pull parser and writer",
+      "size": "L",
+      "labels": [
+        "nostr"
+      ],
+      "body": "Shipped in 8f23a77f35: bounded Coax JSON pull parser/writer, UTF-8 and escape handling, fixed input/depth/string limits, 267 JSONTestSuite cases and captured-relay native trapping-allocator tests. Its json_int admits ±2^53 and duplicate object keys are not domain-policy checked. New profile/duplicate/safe-integer hardening is a separate task, not a claim that this parser did not ship.",
+      "files": [
+        "coax/lib/nostr/json.coax"
+      ],
+      "acceptance": [
+        "Retain the committed JSONTestSuite/captured-relay/native no-allocation regressions from 8f23a77f35",
+        "Coax event-domain conformance and new consumer limits are explicitly not established by this resolved parser task"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "nostr-json-profile-hardening"
+      ],
+      "status": "resolved"
+    },
+    {
+      "slug": "nostr-json-profile-hardening",
+      "parent": "m5-events",
+      "title": "JSON consumer profiles, duplicate keys and safe integer admission",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax",
+        "security"
+      ],
+      "body": "Build on the shipped parser without reopening its completed task. Enforce per-consumer decoded/raw limits and duplicate-key refusal in signed event/JWS/envelope domains; narrow safe-integer projection to 2^53-1 where required. Preserve raw/original numeric bytes and choose explicit error/unknown policy.",
+      "files": [
+        "coax/lib/nostr/json.coax",
+        "coax/lib/nostr/adapters/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Duplicate escaped/equivalent object keys and ambiguous security-critical fields refuse in domain adapters",
+        "±(2^53-1), ±2^53, raw numeric retention and mismatched content/frame/proto limits follow the selected profile",
+        "Existing parser vectors remain compatible except explicitly versioned consumer admission"
+      ],
+      "blocked_by": [
+        "nostr-json",
+        "nostr-support-profiles"
+      ],
+      "blocks": [
+        "nostr-event",
+        "nostr-jcs",
+        "project-page-live",
+        "fi-jws-verifier"
+      ]
+    },
+    {
+      "slug": "nostr-event",
+      "parent": "m5-events",
+      "title": "NIP-01 events: serialize, id, sign, verify and field rules",
+      "size": "M",
+      "labels": [
+        "nostr"
+      ],
+      "body": "Read-only parse, exact NIP-01 canonical ID serialization/hash and BIP-340 verification with profile limits. Preserve original JSON, ordered tags, unknown fields and exact content. Freshness is consumer admission, not signature validity. Signing moves to nostr-event-sign so verified public reads do not wait for secret-key features.",
+      "files": [
+        "coax/lib/nostr/event.coax"
+      ],
+      "acceptance": [
+        "Escape/non-ASCII/astral/empty-tag preimages match independent event-hash implementations",
+        "Altered fields/ID/signature, invalid point, malformed/duplicate keys and capacity refusals have negative vectors",
+        "The task dependency closure contains no signing, keys or NIP-42 task"
+      ],
+      "blocked_by": [
+        "nostr-json-profile-hardening",
+        "schnorr-verify",
+        "nostr-hex-base64"
+      ],
+      "blocks": [
+        "verify-one-real-event",
+        "nostr-event-sign",
+        "nostr-filter",
+        "nostr-relay-state-machine",
+        "ios-coax-nostr-native",
+        "server-nip98-session",
+        "project-page-verify",
+        "nostr-proto-adapters",
+        "nostr-event-store"
       ]
     },
     {
@@ -604,18 +821,46 @@
         "web",
         "nostr"
       ],
-      "body": "A dev-only probe page under apps/openagents-web loads one event JSON baked at build time (fetched from relay.openagents.com by the build), recomputes its id with a minimal serializer, verifies the signature and draws VERIFIED or REFUSED.",
+      "body": "Dev-only real-event probe using the actual shared canonical event reader/ID serializer/verifier, not a second minimal implementation. Baked public fixture, no signing or production key dependency.",
       "files": [
         "apps/openagents-web/"
       ],
       "acceptance": [
-        "Probe screenshot shows VERIFIED for a real event and REFUSED when one hex digit of sig is changed",
-        "check-visuals.sh passes"
+        "ID/content/signature tampering and out-of-profile input show REFUSED; an independently verified real fixture shows VERIFIED",
+        "Visuals check passes; no signing dependency in this task closure"
       ],
       "blocked_by": [
-        "schnorr-verify"
+        "nostr-event"
       ],
       "blocks": []
+    },
+    {
+      "slug": "crypto-ct-timing-harness",
+      "parent": "m3-sign-ecdh",
+      "title": "A dudect-style constant-time timing harness",
+      "size": "M",
+      "labels": [
+        "crypto",
+        "tests",
+        "tools"
+      ],
+      "body": "tools/coax-nostr/timing/: fixed-vs-random class runs with Welch's t-test, native (Apple silicon and x86-64) and a wasm32 report mode.",
+      "files": [
+        "tools/coax-nostr/timing/"
+      ],
+      "acceptance": [
+        "Seeded secret-branch/index leakage is detected with retained class counts/statistics and noise conditions",
+        "Declared native arm64/x86-64 runs record at least 10^6 samples and t statistics; no-detected-leak is never labelled a proof",
+        "Wasm browser results are reported by engine/tier/flags with no universal timing guarantee"
+      ],
+      "blocked_by": [
+        "crypto-bytes"
+      ],
+      "blocks": [
+        "secp-mult-base",
+        "secp-mult-const",
+        "crypto-independent-review"
+      ]
     },
     {
       "slug": "secp-mult-base",
@@ -631,13 +876,14 @@
         "coax/lib/crypto/secp_mult.coax"
       ],
       "acceptance": [
-        "100,000 random k match the harness",
-        "Timing harness |t| < 4.5 over 10^6 runs, fixed vs random k, native",
-        "Release wasm grows by ≤ 40 KB"
+        "100000 random scalars and boundary scalars match the independent oracle",
+        "Record actual table-generation budget and emitted table/stack size",
+        "Timing probe reports no detected leakage for the declared native profile; generated-code audit remains separate"
       ],
       "blocked_by": [
         "secp-group",
-        "crypto-ct-timing-harness"
+        "crypto-ct-timing-harness",
+        "crypto-secret-lint"
       ],
       "blocks": [
         "schnorr-sign"
@@ -657,15 +903,49 @@
         "coax/lib/crypto/secp_mult.coax"
       ],
       "acceptance": [
-        "100,000 random (k, P) match the harness",
-        "Timing harness |t| < 4.5, native"
+        "100000 random scalar/peer pairs and exceptional points match",
+        "Secret branches/indices are forbidden by the documented source scope; timing probe records methodology without claiming proof"
       ],
       "blocked_by": [
         "secp-group",
-        "crypto-ct-timing-harness"
+        "crypto-ct-timing-harness",
+        "crypto-secret-lint"
       ],
       "blocks": [
         "crypto-ecdh-xonly"
+      ]
+    },
+    {
+      "slug": "crypto-secure-zero",
+      "parent": "m-assurance",
+      "title": "Secure erasure and bounded secret-copy contract",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Define secure_zero with observable stores and bounded scratch/copy/ABI rules. A value barrier alone does not preserve erasure. Inspect optimized/LTO objects with no post-wipe test observation; cover errors, cancellation and aliases.",
+      "files": [
+        "coax/lib/crypto/zeroize.coax",
+        "coax/src/emit_c.cpp",
+        "tools/coax-nostr/zeroize/"
+      ],
+      "acceptance": [
+        "Native/Wasm optimized artifacts retain required wipe stores under declared toolchains",
+        "Injected omitted wipe/early-return/copy escape fails; unsupported erasure guarantees are explicit"
+      ],
+      "blocked_by": [
+        "crypto-bytes",
+        "coax-intrinsic-value-barrier"
+      ],
+      "blocks": [
+        "schnorr-sign",
+        "crypto-ecdh-xonly",
+        "nostr-keys",
+        "unlock-gate-coax",
+        "crypto-secret-codegen",
+        "ios-key-custody",
+        "nip49-primitives"
       ]
     },
     {
@@ -677,24 +957,24 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "sign(msg32, seckey32, aux32) per BIP-340 (negate key for odd y, tagged nonce from aux, zero-nonce refusal), keypair and xonly_pubkey; zeroizes every secret buffer.",
+      "body": "General byte-view BIP-340 sign(message,seckey32,aux32), with a Nostr 32-byte wrapper. Validate 1<=key<n, parity normalization, auxiliary randomness, zero nonce refusal and final self-verification. Caller-owned bounded scratch and failure wiping; no partial signature released.",
       "files": [
         "coax/lib/crypto/schnorr.coax"
       ],
       "acceptance": [
-        "Every signing row of BIP-340 test-vectors.csv matches byte for byte",
-        "Secret scratch is all zero after return (#test reads it)",
-        "Timing |t| < 4.5 native",
-        "Sign ≤ 300 µs wasm32"
+        "All official signing rows match byte for byte including non-32-byte messages",
+        "Invalid/zero key, zero nonce and injected self-verification failure release no signature and wipe owned scratch",
+        "Checked/optimized/native/Wasm results agree; timing is no-detected-leak evidence, not proof"
       ],
       "blocked_by": [
         "secp-mult-base",
-        "schnorr-verify"
+        "schnorr-verify",
+        "crypto-secure-zero"
       ],
       "blocks": [
-        "nip59-seal-wrap",
-        "nostr-keys",
-        "nostr-nip42"
+        "nostr-event-sign",
+        "ios-coax-nostr-native",
+        "crypto-secret-codegen"
       ]
     },
     {
@@ -706,45 +986,21 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "coax/lib/crypto/ecdh.coax: shared_x(seckey, xonly_pub) = x(k·P) as NIP-44 requires (unhashed x coordinate).",
+      "body": "Validated raw shared x for NIP-44: refuse invalid peer points/scalars/infinity. The libsecp oracle must supply the raw-x callback; default secp256k1_ecdh hashes a compressed point and is the wrong oracle.",
       "files": [
         "coax/lib/crypto/ecdh.coax"
       ],
       "acceptance": [
-        "NIP-44 get_conversation_key vectors' shared points match",
-        "Wycheproof ecdh_secp256k1 adapted cases pass",
-        "Timing |t| < 4.5 native"
+        "Official conversation-key and labelled adapted Wycheproof cases agree with independent raw-x computation",
+        "Seeded use of the default libsecp hash callback is detected; error paths wipe scratch"
       ],
       "blocked_by": [
-        "secp-mult-const"
+        "secp-mult-const",
+        "crypto-secure-zero"
       ],
       "blocks": [
-        "nip44-v2"
-      ]
-    },
-    {
-      "slug": "crypto-ct-timing-harness",
-      "parent": "m3-sign-ecdh",
-      "title": "A dudect-style constant-time timing harness",
-      "size": "M",
-      "labels": [
-        "crypto",
-        "tests",
-        "tools"
-      ],
-      "body": "tools/coax-nostr/timing/: fixed-vs-random class runs with Welch's t-test, native (Apple silicon and x86-64) and a wasm32 report mode.",
-      "files": [
-        "tools/coax-nostr/timing/"
-      ],
-      "acceptance": [
-        "Flags a deliberately branching ct_eq (|t| > 10) and passes the real ct_eq (|t| < 4.5)"
-      ],
-      "blocked_by": [
-        "crypto-bytes"
-      ],
-      "blocks": [
-        "secp-mult-base",
-        "secp-mult-const"
+        "nip44-v2",
+        "crypto-secret-codegen"
       ]
     },
     {
@@ -756,14 +1012,14 @@
         "nostr",
         "crypto"
       ],
-      "body": "coax/lib/nostr/nip44.coax: conversation_key (HKDF-extract with salt \"nip44-v2\"), message_keys (HKDF-expand 76 bytes), calc_padded_len, pad/unpad, encrypt (random 32-byte nonce from the caller), decrypt with constant-time MAC check over nonce||ciphertext.",
+      "body": "Pinned NIP-44 v2 conversation/message keys, padding and ChaCha20/HMAC. MAC authenticates nonce||ciphertext before plaintext release; caller supplies fresh entropy. Support the six-byte prefix at >=65536 or explicitly refuse it under a named bounded profile. Outer event verification is mandatory at the signed-event integration boundary.",
       "files": [
         "coax/lib/nostr/nip44.coax"
       ],
       "acceptance": [
-        "Every valid and invalid case of nip44.vectors.json passes",
-        "Decrypting a NIP-07 signer's ciphertext and vice versa (a manual check recorded in the PR)",
-        "coax mutate: no surviving mutants"
+        "All upstream valid/invalid vectors and 65535/65536/65537 extended-prefix boundary fixtures pass or produce the advertised capacity refusal",
+        "Wrong MAC/version/nonce/padding/alias/capacity never releases plaintext; zero surviving mutants",
+        "Independent encrypt/decrypt interoperability in both directions, with no production key"
       ],
       "blocked_by": [
         "crypto-hmac-hkdf",
@@ -772,7 +1028,44 @@
         "nostr-hex-base64"
       ],
       "blocks": [
-        "nip59-seal-wrap"
+        "nip59-seal-wrap",
+        "ios-coax-nostr-native",
+        "crypto-target-conformance",
+        "crypto-secret-codegen",
+        "nip46-signer",
+        "agent-private-data",
+        "agent-observer-ephemeral"
+      ]
+    },
+    {
+      "slug": "nostr-event-sign",
+      "parent": "m5-events",
+      "title": "Build signed events over the verified event core",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Separate event building/signing from nostr-event read-only verification. Caller provides explicit aux/nonce entropy; bind identity/body/preimage and verify produced signature before release. No browser-host dependency in pure module.",
+      "files": [
+        "coax/lib/nostr/event.coax",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "10000 independent signed-event round trips agree including Unicode and empty fields",
+        "Bad signer output, invalid key and partial failure release no event or secret scratch"
+      ],
+      "blocked_by": [
+        "nostr-event",
+        "schnorr-sign"
+      ],
+      "blocks": [
+        "nip59-seal-wrap",
+        "nostr-nip42",
+        "signer-interface",
+        "crypto-target-conformance",
+        "nip46-signer",
+        "host-grants"
       ]
     },
     {
@@ -788,19 +1081,69 @@
         "coax/lib/nostr/nip59.coax"
       ],
       "acceptance": [
-        "Opens wraps made by today's coax/web/unlock/seal.ts and by nostr-effect nip44+pure",
-        "Wraps it makes open with nostr-effect nip44+pure",
-        "Refuses a rumor whose pubkey differs from the seal's"
+        "Independent wrap/seal interoperability in both directions, including the existing test deck",
+        "Reject altered outer signature, bad seal signature, rumor identity mismatch, missing recipient and oversized private payload",
+        "Fresh wrap keys/nonces/timestamp policy and failure cleanup are covered"
       ],
       "blocked_by": [
         "nip44-v2",
-        "schnorr-sign",
-        "nostr-event"
+        "nostr-event-sign"
       ],
       "blocks": [
-        "coax-nostr-cli",
         "open-sealed-deck-native",
-        "unlock-opener-coax"
+        "unlock-opener-coax",
+        "coax-nostr-cli",
+        "crypto-target-conformance",
+        "nostr-private-messaging"
+      ]
+    },
+    {
+      "slug": "nostr-jcs",
+      "parent": "m5-events",
+      "title": "RFC 8785 canonical JSON for contract digests",
+      "size": "M",
+      "labels": [
+        "nostr"
+      ],
+      "body": "Explicit integer-only RFC8785 envelope profile: UTF-16 member ordering, exact string rules and safe-integer bounds, preserving original input. Refuse floats/out-of-range integers instead of claiming general JCS support.",
+      "files": [
+        "coax/lib/nostr/jcs.coax"
+      ],
+      "acceptance": [
+        "Independent integer-only/astral-key/safe-number boundary fixtures agree",
+        "Unsupported numeric values refuse; existing test-deck envelope digest remains byte-identical"
+      ],
+      "blocked_by": [
+        "nostr-json-profile-hardening"
+      ],
+      "blocks": [
+        "nostr-envelope"
+      ]
+    },
+    {
+      "slug": "nostr-envelope",
+      "parent": "m5-events",
+      "title": "The 3188 artifact envelope",
+      "size": "S",
+      "labels": [
+        "nostr"
+      ],
+      "body": "coax/lib/nostr/envelope.coax: build and check openagents.artifact-envelope.v1 (inline body, digest = SHA-256 of JCS bytes, 1 MiB cap) per nips/openagents/contracts.md.",
+      "files": [
+        "coax/lib/nostr/envelope.coax"
+      ],
+      "acceptance": [
+        "Builds byte-identical envelopes to coax/web/unlock/lib.ts for the test deck",
+        "Refuses a digest mismatch and an oversize body"
+      ],
+      "blocked_by": [
+        "nostr-jcs",
+        "crypto-sha256"
+      ],
+      "blocks": [
+        "open-sealed-deck-native",
+        "unlock-opener-coax",
+        "coax-nostr-cli"
       ]
     },
     {
@@ -823,57 +1166,8 @@
         "nip59-seal-wrap",
         "nostr-envelope"
       ],
-      "blocks": []
-    },
-    {
-      "slug": "nostr-json",
-      "parent": "m5-events",
-      "title": "Bounded JSON pull parser and writer",
-      "size": "L",
-      "labels": [
-        "nostr"
-      ],
-      "body": "coax/lib/nostr/json.coax: tokens with byte ranges, depth 16, string unescape into caller buffers (all JSON escapes, surrogate pairs), integer parsing to 2^53, refusal of anything over limits; writer appending to a caller buffer.",
-      "files": [
-        "coax/lib/nostr/json.coax"
-      ],
-      "acceptance": [
-        "JSONTestSuite y_/n_ cases relevant to RFC 8259 (pinned subset) behave correctly",
-        "No allocation (checked by building with a trapping allocator)",
-        "Parses every event the relay returns for the coax project (fixture captured from relay.openagents.com)"
-      ],
-      "blocked_by": [],
       "blocks": [
-        "nostr-event",
-        "nostr-jcs"
-      ]
-    },
-    {
-      "slug": "nostr-event",
-      "parent": "m5-events",
-      "title": "NIP-01 events: serialize, id, sign, verify and field rules",
-      "size": "M",
-      "labels": [
-        "nostr"
-      ],
-      "body": "coax/lib/nostr/event.coax: parse an event object, the exact NIP-01 id serialization and escaping, compute id, sign (fill pubkey/id/sig), verify (recompute id, check sig), the ingest field rules of coax/nostr.md §7.2.",
-      "files": [
-        "coax/lib/nostr/event.coax"
-      ],
-      "acceptance": [
-        "Serialization fixtures with every escape class and astral characters match nostr-effect's getEventHash",
-        "Events signed here verify in nostr-effect and vice versa (differential, 10,000 random events)"
-      ],
-      "blocked_by": [
-        "nostr-json",
-        "schnorr-verify",
-        "nostr-hex-base64"
-      ],
-      "blocks": [
-        "nip59-seal-wrap",
-        "nostr-filter",
-        "nostr-nip42",
-        "nostr-relay-state-machine"
+        "nostr-production-cutover"
       ]
     },
     {
@@ -906,68 +1200,49 @@
       "labels": [
         "nostr"
       ],
-      "body": "coax/lib/nostr/bech32.coax: BIP-173 bech32 encode/decode with NIP-19 length limits; npub/nsec/note and nprofile/nevent/naddr TLV; unknown TLV types ignored; nsec decodes into a SecretSlot.",
+      "body": "BIP-173 bech32 (not bech32m) and NIP-19 npub/nsec/note/TLV entities with source-specific limits and unknown-type handling. Decode nsec only into caller-owned secret buffers, with explicit lifecycle supplied by keys.coax.",
       "files": [
         "coax/lib/nostr/bech32.coax"
       ],
       "acceptance": [
-        "BIP-173 valid and invalid vectors pass",
-        "NIP-19 examples round-trip; nostr-effect Nip19 agrees on 10,000 random entities"
+        "BIP-173 valid/invalid vectors and NIP-19 examples agree with independent codecs",
+        "10000 random entities plus unknown TLV/length/capacity cases agree; nsec never logged"
       ],
       "blocked_by": [
         "nostr-hex-base64"
       ],
       "blocks": [
-        "nostr-keys"
+        "nostr-keys",
+        "ios-coax-nostr-native",
+        "nip49-backup"
       ]
     },
     {
-      "slug": "nostr-jcs",
-      "parent": "m5-events",
-      "title": "RFC 8785 canonical JSON for contract digests",
+      "slug": "crypto-entropy-contract",
+      "parent": "m-assurance",
+      "title": "CSPRNG contract across native, iOS and browser",
       "size": "M",
       "labels": [
-        "nostr"
+        "nostr",
+        "coax"
       ],
-      "body": "coax/lib/nostr/jcs.coax: canonicalize objects of strings, integers, booleans, null, arrays and objects; member order by UTF-16 code units; refuse floats.",
+      "body": "Define explicit entropy/auxiliary inputs, errors and test injection. OS/browser adapters fail closed, chunk browser requests and never substitute clock/PRNG bytes. Low-level Coax algorithms remain host-independent.",
       "files": [
-        "coax/lib/nostr/jcs.coax"
+        "coax/lib/crypto/",
+        "apps/openagents-ios/",
+        "coax/web/host.js"
       ],
       "acceptance": [
-        "RFC 8785 examples (integer-only) and astral-key ordering cases pass",
-        "Digest of today's sealed test deck envelope matches lib.ts"
+        "Native/iOS/browser absence/short/invalid-span/oversize cases fail without output",
+        "Deterministic entropy is only available through test adapters"
       ],
       "blocked_by": [
-        "nostr-json"
+        "nostr-support-profiles"
       ],
       "blocks": [
-        "nostr-envelope"
-      ]
-    },
-    {
-      "slug": "nostr-envelope",
-      "parent": "m5-events",
-      "title": "The 3188 artifact envelope",
-      "size": "S",
-      "labels": [
-        "nostr"
-      ],
-      "body": "coax/lib/nostr/envelope.coax: build and check openagents.artifact-envelope.v1 (inline body, digest = SHA-256 of JCS bytes, 1 MiB cap) per nips/openagents/contracts.md.",
-      "files": [
-        "coax/lib/nostr/envelope.coax"
-      ],
-      "acceptance": [
-        "Builds byte-identical envelopes to coax/web/unlock/lib.ts for the test deck",
-        "Refuses a digest mismatch and an oversize body"
-      ],
-      "blocked_by": [
-        "nostr-jcs",
-        "crypto-sha256"
-      ],
-      "blocks": [
+        "host-random-import",
         "coax-nostr-cli",
-        "open-sealed-deck-native",
-        "unlock-opener-coax"
+        "ios-coax-nostr-native"
       ]
     },
     {
@@ -984,10 +1259,12 @@
         "coax/web/host.js"
       ],
       "acceptance": [
-        "A probe page draws 64 random hex characters that change per load",
-        "check-visuals.sh passes"
+        "Browser CSPRNG adapter fills requested lengths including >65536 through chunking",
+        "Unavailable entropy/invalid spans fail closed with no clock/Math.random fallback; deterministic injection exists only in test API"
       ],
-      "blocked_by": [],
+      "blocked_by": [
+        "crypto-entropy-contract"
+      ],
       "blocks": [
         "relay-in-page"
       ]
@@ -1001,19 +1278,21 @@
         "web",
         "host"
       ],
-      "body": "socket_open(url), socket_send(id, ptr, len), socket_close(id); open/frame/close/error delivered through the inbox as new message kinds; at most 4 sockets; text frames only.",
+      "body": "Shipped in df008f96a4: generic host socket open/send/close, bounded text frames and open/frame/close/error inbox messages. socket.coax and project-live.coax exercise subscriptions, reconnect and a real frame counter. Task rows still use verified build-time snapshots; parsed live folding, Coax signature verification and NIP-42 readiness remain separate open tasks.",
       "files": [
         "coax/web/host.js",
         "apps/openagents-web/ui.coax"
       ],
       "acceptance": [
-        "A probe page connects to relay.openagents.com, sends a REQ and draws the frame count",
-        "Closing and errors arrive as inbox messages (#test with a fake inbox)"
+        "Retain the socket.coax and project-live.coax scripted inbox/open/frame/close/error checks from df008f96a4",
+        "The committed real-page frame counter probe connects to relay.openagents.com; no live task-fold claim is implied"
       ],
       "blocked_by": [],
       "blocks": [
-        "relay-in-page"
-      ]
+        "relay-in-page",
+        "project-page-live"
+      ],
+      "status": "resolved"
     },
     {
       "slug": "host-storage-pipe",
@@ -1029,38 +1308,15 @@
         "coax/web/host.js"
       ],
       "acceptance": [
-        "Put, reload, get returns the same bytes in a probe page",
-        "Works when IndexedDB is unavailable (reports unavailable)"
-      ],
-      "blocked_by": [],
-      "blocks": [
-        "nostr-keys"
-      ]
-    },
-    {
-      "slug": "nostr-relay-state-machine",
-      "parent": "m6-relay",
-      "title": "The relay client state machine",
-      "size": "L",
-      "labels": [
-        "nostr"
-      ],
-      "body": "coax/lib/nostr/relay.coax per coax/nostr.md §8: connection states, backoff, subscriptions, EOSE, CLOSED reasons, OK handling, duplicate suppression, verification before delivery, AUTH-before-REQ queueing.",
-      "files": [
-        "coax/lib/nostr/relay.coax"
-      ],
-      "acceptance": [
-        "#test drives it with scripted relay transcripts: auth-required, CLOSED auth-required then success, duplicate events, bad signatures dropped and counted, backoff timing",
-        "No I/O inside the module (it compiles without the host)"
+        "Put/reload/get/delete generation-safe byte transfers pass",
+        "Unavailable/quota/oversize/cancelled/late response states refuse cleanly; deleted records do not reappear"
       ],
       "blocked_by": [
-        "nostr-event",
-        "nostr-filter",
-        "nostr-nip42"
+        "nostr-support-profiles"
       ],
       "blocks": [
-        "coax-nostr-cli",
-        "relay-in-page"
+        "nostr-keys",
+        "nostr-event-store"
       ]
     },
     {
@@ -1071,19 +1327,79 @@
       "labels": [
         "nostr"
       ],
-      "body": "coax/lib/nostr/nip42.coax: build the kind 22242 event for (challenge, relay URL) and sign it locally or hand it to the NIP-07 signer.",
+      "body": "Bound kind22242 AUTH builder and signer handoff for current relay/challenge/connection generation. Proof of possession does not grant channel or host-operation authority.",
       "files": [
         "coax/lib/nostr/nip42.coax"
       ],
       "acceptance": [
-        "Events verify in nostr-effect and match its Nip42 builder's tags"
+        "Independent tags/signatures match; old challenge/relay/generation responses are refused"
+      ],
+      "blocked_by": [
+        "nostr-event-sign"
+      ],
+      "blocks": [
+        "nostr-relay-state-machine",
+        "block-owner-admission"
+      ]
+    },
+    {
+      "slug": "nostr-relay-state-machine",
+      "parent": "m6-relay",
+      "title": "The relay client state machine",
+      "size": "L",
+      "labels": [
+        "nostr"
+      ],
+      "body": "Pure bounded verified client machine with connection/subscription generations, REQ/CLOSE/EVENT/OK/EOSE/CLOSED/NOTICE/AUTH, acknowledgement deadlines, cancellation, duplicate suppression and capped jittered reconnect. AUTH-required retry is once per authenticated generation. EOSE/short page never claims completeness; public reads need not wait for AUTH when the relay permits them.",
+      "files": [
+        "coax/lib/nostr/relay.coax"
+      ],
+      "acceptance": [
+        "Scripted transcripts cover ACK true/false/timeout, AUTH/reconnect, stale generations, duplicates, unknown subscriptions, queue overflow and forged events",
+        "No host I/O inside Coax state machine; profile limits have clean refusal states"
       ],
       "blocked_by": [
         "nostr-event",
-        "schnorr-sign"
+        "nostr-filter",
+        "nostr-nip42"
       ],
       "blocks": [
-        "nostr-relay-state-machine"
+        "relay-in-page",
+        "coax-nostr-cli",
+        "nip46-signer",
+        "nostr-multirelay"
+      ]
+    },
+    {
+      "slug": "signer-interface",
+      "parent": "m-client-state",
+      "title": "Correlated local, NIP-07 and phone signer requests",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Shared signer request/result/cancel contract with requested identity/body/target/scope, bounded IDs/deadlines, verified output and explicit approvals. Pure decisions with thin NIP-07 effect adapter; supports test keys before production approval.",
+      "files": [
+        "coax/lib/nostr/keys.coax",
+        "coax/web/host.js",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Independent/fake signer output tampering, wrong identity/body, duplicate/late replies and denial are refused",
+        "Local test slot and NIP-07 adapter implement same bounded lifecycle; no default persistent browser nsec"
+      ],
+      "blocked_by": [
+        "nostr-event-sign",
+        "nostr-support-profiles"
+      ],
+      "blocks": [
+        "nostr-keys",
+        "nip46-signer",
+        "ios-key-custody",
+        "claim-from-page",
+        "nip49-backup",
+        "nostr-private-messaging"
       ]
     },
     {
@@ -1095,22 +1411,23 @@
         "nostr",
         "web"
       ],
-      "body": "coax/lib/nostr/keys.coax: SecretSlot with forget(), import from nsec or hex, the stored record format, and the signer interface the page calls (local slot or NIP-07 through host imports: pubkey, sign, nip44 decrypt).",
+      "body": "SecretSlot/forget and versioned key records. Prefer phone/NIP-46 or NIP-07 signer; explicit local browser slots are ephemeral by default. No new plaintext nsec IndexedDB persistence. Durable encrypted exports wait for the optional NIP-49 task; document legacy unlock-store migration.",
       "files": [
         "coax/lib/nostr/keys.coax",
         "coax/web/host.js"
       ],
       "acceptance": [
-        "A pasted key survives reload via storage; forget() zeroes the slot and deletes the record",
-        "With a NIP-07 extension present, signing goes through it (manual check recorded)"
+        "Ephemeral slot import/forget and all error paths wipe bounded owned buffers; no key in logs/public state",
+        "Returned signer output is correlated and verified for identity/body/scope",
+        "Legacy storage migration/deletion failure states are explicit; no plaintext-persistence default"
       ],
       "blocked_by": [
         "host-storage-pipe",
         "nostr-bech32",
-        "schnorr-sign"
+        "signer-interface",
+        "crypto-secure-zero"
       ],
       "blocks": [
-        "claim-from-page",
         "relay-in-page"
       ]
     },
@@ -1138,8 +1455,8 @@
         "nostr-keys"
       ],
       "blocks": [
-        "project-page-live",
-        "unlock-opener-coax"
+        "unlock-opener-coax",
+        "nip46-client-page"
       ]
     },
     {
@@ -1170,6 +1487,34 @@
       ]
     },
     {
+      "slug": "unlock-gate-format",
+      "parent": "m7-no-typescript",
+      "title": "Review a versioned phrase-gate format and migration",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Specify KDF/salt/domain-separated keys/nonces, authenticated version/length/MAC input, failure/capacity/work limits and old/new readers. Keep existing AES-GCM until independently reviewed replacement and rollback. No unproven same-security claim.",
+      "files": [
+        "coax/nostr.md",
+        "docs/protocol/",
+        "coax/web/unlock/"
+      ],
+      "acceptance": [
+        "Independent format review pins exact bytes/algorithms and resolves findings before implementation",
+        "Immutable old/new/wrong-MAC/nonce/version vectors and staged rollback window documented"
+      ],
+      "blocked_by": [
+        "nostr-support-profiles",
+        "crypto-hmac-hkdf",
+        "crypto-chacha20"
+      ],
+      "blocks": [
+        "unlock-gate-coax"
+      ]
+    },
+    {
       "slug": "unlock-gate-coax",
       "parent": "m7-no-typescript",
       "title": "The phrase gate in Coax, without AES",
@@ -1178,21 +1523,25 @@
         "web",
         "crypto"
       ],
-      "body": "Replace gate.ts: salted SHA-256 check, PBKDF2 (210,000 rounds) to a ChaCha20 key and an HMAC key, encrypt-then-MAC pointer (coax/nostr.md §10.3), all in Coax; the terminal raises the check.",
+      "body": "Implement only the independently reviewed versioned phrase-gate format, authenticated framing/domain separation/nonces/KDF bounds and dual-reader migration specified by unlock-gate-format. Existing AES-GCM adapter remains until cutover/rollback evidence exists.",
       "files": [
         "apps/openagents-web/",
         "coax/web/unlock/gate.ts"
       ],
       "acceptance": [
-        "A refused phrase and the real phrase behave as today on staging with gate.ts removed",
-        "No WebCrypto call remains in the page (grep check in check-visuals.sh)"
+        "Pinned old/new fixtures, wrong phrase/MAC/version/nonce/length, oversize work and failure cleanup pass",
+        "Staging replacement preserves access during the declared window; rollback restores old readers/entries"
       ],
       "blocked_by": [
+        "unlock-gate-format",
         "crypto-pbkdf2",
         "crypto-chacha20",
-        "crypto-hmac-hkdf"
+        "crypto-hmac-hkdf",
+        "crypto-secure-zero"
       ],
       "blocks": [
+        "coax-nostr-cli",
+        "nostr-production-cutover",
         "invariant-coax-only"
       ]
     },
@@ -1217,11 +1566,524 @@
       "blocked_by": [
         "nip59-seal-wrap",
         "nostr-envelope",
-        "nostr-relay-state-machine"
+        "nostr-relay-state-machine",
+        "crypto-entropy-contract",
+        "unlock-gate-coax"
+      ],
+      "blocks": [
+        "publish-project-events",
+        "invariant-coax-only"
+      ]
+    },
+    {
+      "slug": "publish-project-events",
+      "parent": "m8-project-live",
+      "title": "Publish the Coax project and its tasks as Nostr events",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "projects"
+      ],
+      "body": "Replace the already-working TS publisher with native Coax tooling. Preserve every existing issue ID/slug, signed revision/status/plan history and project order. First publication has already shipped; this task is implementation migration, not creating duplicate issues.",
+      "files": [
+        "tools/coax-nostr/",
+        "apps/openagents-web/projects/coax/work/"
+      ],
+      "acceptance": [
+        "Readback signatures/IDs/fields agree with current publisher; existing issue IDs do not change",
+        "Second publish emits nothing; comments/plans/resolved states survive migration"
+      ],
+      "blocked_by": [
+        "coax-nostr-cli"
+      ],
+      "blocks": [
+        "invariant-coax-only"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "ios",
+        "crypto"
+      ],
+      "files": [
+        "apps/openagents-ios/project.yml",
+        "apps/openagents-ios/Tests/"
+      ],
+      "blocks": [
+        "crypto-target-conformance",
+        "ios-key-custody"
+      ],
+      "slug": "ios-coax-nostr-native",
+      "title": "The Coax Nostr library runs on iOS against the same vectors",
+      "size": "M",
+      "body": "Build the Coax Nostr modules (hashes, secp256k1, Schnorr, ECDH, NIP-44, events, bech32) as C for iOS arm64 and the simulator through the app's Generated/ build step, and run the shared vector files in the iOS test target. Report sign and verify times on a device.",
+      "acceptance": [
+        "Same BIP-340/NIP-44/event files pass via generated C on simulator and actual iOS arm64 when available",
+        "Entropy/ABI/lifetime/alias/error tests and simulator timings recorded; physical-device evidence is separately recorded, never inferred"
+      ],
+      "blocked_by": [
+        "schnorr-sign",
+        "nip44-v2",
+        "nostr-event",
+        "nostr-bech32",
+        "crypto-entropy-contract"
+      ]
+    },
+    {
+      "slug": "crypto-target-conformance",
+      "parent": "m-assurance",
+      "title": "One vector corpus on native, Wasm and iOS",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Execute the same pinned full-vector corpus and malformed-input cases through actual emitted checked/optimized C, Chrome/Safari/Firefox Wasm and iOS C ABI. Device unavailable is an explicit owner step, not silently passed.",
+      "files": [
+        "tools/coax-nostr/vectors.sh",
+        "coax/tests/nostr/",
+        "apps/openagents-ios/Tests/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Artifact/input hashes and per-target results agree; seeded wrong output is detected",
+        "Simulator and physical-device results are separate; missing required targets prevent cutover"
+      ],
+      "blocked_by": [
+        "crypto-vector-runner",
+        "nostr-event-sign",
+        "nip44-v2",
+        "nip59-seal-wrap",
+        "ios-coax-nostr-native",
+        "crypto-pbkdf2"
+      ],
+      "blocks": [
+        "crypto-independent-review"
+      ]
+    },
+    {
+      "slug": "crypto-secret-codegen",
+      "parent": "m-assurance",
+      "title": "Inspect secret-path lowering on real targets",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Audit generated objects for scalar multiplication, sign, ECDH, MAC compare and erasure across arm64/x86-64 and wasm profiles. Pin compiler/toolchain/flags/LTO/artifact hashes; browser JIT results are bounded observations.",
+      "files": [
+        "tools/coax-nostr/codegen/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Seeded branch/index/removed-wipe faults fail the inspection pipeline",
+        "Target/profile reports identify unsupported claims and record real browser execution"
+      ],
+      "blocked_by": [
+        "schnorr-sign",
+        "crypto-ecdh-xonly",
+        "nip44-v2",
+        "crypto-secure-zero",
+        "crypto-secret-lint"
+      ],
+      "blocks": [
+        "crypto-independent-review"
+      ]
+    },
+    {
+      "slug": "crypto-independent-review",
+      "parent": "m-assurance",
+      "title": "Independent review before production cryptography",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Independent reviewers assess arithmetic bounds, group exceptions, nonce/signing, serialization, protocols, erasure and compiler/host boundaries. Resolve findings and pin exact reviewed source/artifact evidence. Self-review and mutation/timing scores are not substitutes.",
+      "files": [
+        "docs/verification/",
+        "coax/nostr.md"
+      ],
+      "acceptance": [
+        "Review report names independent reviewers and reviewed hashes; no unresolved blocking findings",
+        "Changing reviewed crypto/compiler/ABI inputs invalidates the affected approval rather than silently inheriting it"
+      ],
+      "blocked_by": [
+        "crypto-target-conformance",
+        "crypto-secret-codegen",
+        "crypto-ct-timing-harness"
+      ],
+      "blocks": [
+        "nostr-production-cutover"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "nip46",
+        "crypto",
+        "mobile"
+      ],
+      "files": [
+        "coax/lib/nostr/nip46.coax",
+        "coax/tests/nostr/"
+      ],
+      "blocks": [
+        "nip46-session-lifecycle",
+        "ios-scan-to-sign-in",
+        "nip46-client-page"
+      ],
+      "slug": "nip46-signer",
+      "title": "NIP-46 remote signer (bunker side) in Coax",
+      "size": "L",
+      "body": "NIP-46 bunker side with distinct client/remote-signer/user identities, one-use connect secret and correlated kind24133 requests. Semantic permissions include kind+target+operation/scope/expiry, not a blanket kind allowlist. Unsupported NIP-04 methods return explicit errors.",
+      "acceptance": [
+        "Independent client connect/get_public_key/sign_event/ping/nip44 round trips pass",
+        "Wrong/reused secret, identity confusion, ungranted target/scope, replay and altered returned event are refused",
+        "No production identity involved in development tests"
+      ],
+      "blocked_by": [
+        "nip44-v2",
+        "nostr-event-sign",
+        "nostr-relay-state-machine",
+        "signer-interface"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "ios",
+        "keys"
+      ],
+      "files": [
+        "apps/openagents-ios/OpenAgents/"
+      ],
+      "blocks": [
+        "ios-scan-to-sign-in"
+      ],
+      "slug": "ios-key-custody",
+      "title": "The phone holds the user's Nostr key in the Keychain",
+      "size": "M",
+      "body": "Device-only Keychain storage, owner-approved create/import/export and per-operation/session user-presence policy. Coax secp256k1 software signing briefly exposes bounded secret memory; do not claim Secure Enclave isolation. Tests use throwaway keys. Production identity rollout waits for nostr-production-cutover.",
+      "acceptance": [
+        "Simulator tests exercise create/import/sign/forget, denial and background timeout with throwaway keys",
+        "Device-only Keychain/user-presence settings and bounded key/copy wiping are inspected; no secret logs",
+        "Device owner step and production cutover prerequisite are recorded"
+      ],
+      "blocked_by": [
+        "ios-coax-nostr-native",
+        "signer-interface",
+        "crypto-secure-zero"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "web",
+        "qr"
+      ],
+      "files": [
+        "coax/lib/qr/",
+        "coax/tests/qr/"
+      ],
+      "blocks": [
+        "ios-scan-to-sign-in",
+        "web-sign-in-page"
+      ],
+      "slug": "coax-qr-encoder",
+      "title": "QR code encoder in Coax",
+      "size": "M",
+      "body": "Byte mode, error correction M, versions 1 to 15, mask selection by the standard penalty rules; output a module grid the page draws as HUD strokes or quads.",
+      "acceptance": [
+        "Matches a reference encoder's module grids for 20 fixed strings including a 300-byte nostrconnect URI",
+        "A phone camera (the iOS scanner test) decodes a rendered code"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "nip46-session-lifecycle",
+      "parent": "m9-phone-sign-in",
+      "title": "NIP-46 permissions, revocation and phone suspension",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Bound semantic method/kind/target/scope permissions, replay/correlation, one-use connect, switch_relays/logout, denial/expiry, foreground approval and suspended-phone timeout. Client/signer/user identities remain distinct.",
+      "files": [
+        "coax/lib/nostr/nip46.coax",
+        "apps/openagents-ios/Tests/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Independent transcript tests cover reused secret, revoked permission, replay, switched relay and logout",
+        "Suspension/resume/late approval cannot sign an expired or differently scoped request"
+      ],
+      "blocked_by": [
+        "nip46-signer"
+      ],
+      "blocks": [
+        "ios-scan-to-sign-in",
+        "nip46-client-page"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "ios",
+        "nip46"
+      ],
+      "files": [
+        "apps/openagents-ios/OpenAgents/",
+        "apps/openagents-ios/Tests/"
+      ],
+      "blocks": [
+        "phone-sign-in-e2e"
+      ],
+      "slug": "ios-scan-to-sign-in",
+      "title": "Scan a sign-in code with the phone and approve",
+      "size": "M",
+      "body": "The app's QR scanner recognises nostrconnect:// codes, shows the site and what it asks for in an approval sheet, and on approval runs the NIP-46 signer for that session; the session shows in Settings and can be ended there.",
+      "acceptance": [
+        "Fixture QR opens owner approval; untrusted site metadata cannot grant permission",
+        "Deny/end-session/replay/suspension are tested; foreground resumption cannot approve an expired request"
+      ],
+      "blocked_by": [
+        "nip46-signer",
+        "ios-key-custody",
+        "coax-qr-encoder",
+        "nip46-session-lifecycle"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "nip46",
+        "web"
+      ],
+      "files": [
+        "coax/lib/nostr/nip46.coax",
+        "apps/openagents-web/"
+      ],
+      "blocks": [
+        "web-sign-in-page"
+      ],
+      "slug": "nip46-client-page",
+      "title": "NIP-46 client in the page",
+      "size": "M",
+      "body": "The page side of Nostr Connect: an ephemeral client key, the nostrconnect:// URI (relay, secret, perms, name, url), waiting for the signer's connect, then get_public_key and sign_event requests over the page's relay client.",
+      "acceptance": [
+        "In-memory independent client/signer round trips verify distinct signer/user keys and get_public_key",
+        "Relay switching/logout, duplicate IDs, timeout and late response behavior are explicit; ephemeral key wiped on sign-out"
+      ],
+      "blocked_by": [
+        "nip46-signer",
+        "relay-in-page",
+        "nip46-session-lifecycle"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "server",
+        "auth"
+      ],
+      "files": [
+        "coax/lib/nostr/nip98.coax",
+        "tools/coax-nostr/server/"
+      ],
+      "blocks": [
+        "server-session-lifecycle"
+      ],
+      "slug": "server-nip98-session",
+      "title": "The server verifies NIP-98 HTTP auth and issues a session",
+      "size": "M",
+      "body": "A native Coax server route POST /auth/nostr takes a NIP-98 kind 27235 event (url, method, payload hash, created_at within 60 s, unused id), verifies it with the Coax verifier, and sets an HttpOnly, Secure, SameSite=Strict session cookie bound to the pubkey. Admin pubkeys come from config. No WorkOS.",
+      "acceptance": [
+        "Valid throwaway login accepted; wrong URL/method/body/time/signature rejected",
+        "Replay reservation is atomic across workers and restart for the acceptance window",
+        "Bounded request/replay parsing has deterministic refusal; no key material in cookie"
+      ],
+      "blocked_by": [
+        "nostr-event"
+      ]
+    },
+    {
+      "slug": "server-session-lifecycle",
+      "parent": "m9-phone-sign-in",
+      "title": "NIP-98 session expiry, revocation and CSRF policy",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Complete production HTTP sessions after signed login: atomic replay window across restarts/workers, fixation/CSRF policy, scoped roles, cookie rotation, expiry, logout/revocation and cleanup. Login does not imply administration.",
+      "files": [
+        "coax/lib/nostr/nip98.coax",
+        "tools/coax-nostr/server/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Concurrent replay accepts once; restart within window cannot replay",
+        "Wrong-origin/CSRF/fixation/stale cookie and revoked role fail; valid sign-out removes authorization"
+      ],
+      "blocked_by": [
+        "server-nip98-session"
+      ],
+      "blocks": [
+        "web-sign-in-page",
+        "phone-sign-in-e2e",
+        "claim-from-page"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "web",
+        "auth"
+      ],
+      "files": [
+        "apps/openagents-web/",
+        "coax/tests/nostr/"
+      ],
+      "blocks": [
+        "phone-sign-in-e2e"
+      ],
+      "slug": "web-sign-in-page",
+      "title": "openagents.com/signin: the QR and the signed-in state",
+      "size": "M",
+      "body": "A Coaxial page draws the QR (HUD, Filament), waits for the phone, then asks it to sign the NIP-98 event and posts it to /auth/nostr. Shows who is signed in (npub, short) and sign out. Plain text in the hidden main for agents.",
+      "acceptance": [
+        "Actual browser waiting/denied/signed-in/signed-out states pass with throwaway phone signer",
+        "User private key never enters browser memory; returned signatures are independently verified; visuals pass"
+      ],
+      "blocked_by": [
+        "nip46-client-page",
+        "coax-qr-encoder",
+        "server-session-lifecycle"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "web",
+        "auth"
+      ],
+      "files": [
+        "apps/openagents-ios/Tests/",
+        "coax/tests/nostr/",
+        "docs/verification/"
+      ],
+      "blocks": [
+        "nostr-production-cutover",
+        "host-codex-e2e"
+      ],
+      "slug": "phone-sign-in-e2e",
+      "title": "End to end: sign in to openagents.com with the phone",
+      "size": "M",
+      "body": "The deliverable test: the iOS simulator scans the QR shown by the page (fixture image of the live page's code), approves, and the page reaches the signed-in state with the server session bound to the phone's pubkey. Device run is an owner step in NEEDS_OWNER.md.",
+      "acceptance": [
+        "Simulator plus browser and local relay/server pass happy path, refusal, replay and sign-out",
+        "Staging sign-in uses throwaway identity and exact origin/session binding",
+        "Physical-device approval/background evidence goes to NEEDS_OWNER.md; real identity requires production cutover"
+      ],
+      "blocked_by": [
+        "ios-scan-to-sign-in",
+        "web-sign-in-page",
+        "server-session-lifecycle"
+      ]
+    },
+    {
+      "slug": "project-page-live",
+      "parent": "m8-project-live",
+      "title": "/project/coax reads its project, tasks and order from the relay",
+      "size": "L",
+      "labels": [
+        "web",
+        "projects"
+      ],
+      "body": "Extend the shipped socket/frame probe: parse bounded relay JSON, retain project-scoped events and fold issues/revisions/status/comments/plans/order in Coax. Reconnect/catch-up with missing dependencies explicit. Existing signature-verified snapshot is first paint. Until project-page-verify, live rows are explicitly relay-trusted provisional data, cannot overwrite verified state or feed authority/claims; LIVE means socket state only.",
+      "files": [
+        "apps/openagents-web/project.coax",
+        "apps/openagents-web/projects/coax/"
+      ],
+      "acceptance": [
+        "Throwaway signed claim/plan/status/order on a local relay redraws the page within 2s without release; captured fixtures agree with model.ts",
+        "Provisional and verified snapshot states stay distinct; malformed/out-of-scope/missing/deferred events never become authoritative",
+        "Reconnect, partial EOSE, capacity and old-generation tests pass; check-visuals passes"
+      ],
+      "blocked_by": [
+        "host-socket-pipe",
+        "nostr-json-profile-hardening"
+      ],
+      "blocks": [
+        "project-page-verify"
+      ]
+    },
+    {
+      "slug": "project-page-verify",
+      "parent": "m8-project-live",
+      "title": "The live project page verifies every event in Coax",
+      "size": "M",
+      "labels": [
+        "web",
+        "crypto",
+        "nostr"
+      ],
+      "body": "Verify each live event ID/signature and author/project scope in Coax before verified folding/storage. Bound pending work and spend <=4ms/frame; refuse/count forged events. Production verified mode consumes no relay-trusted provisional rows and has no signing/keys/AUTH dependency.",
+      "files": [
+        "apps/openagents-web/project.coax"
+      ],
+      "acceptance": [
+        "A forged event via test relay never enters verified rows or downstream decisions; refusal/pending counts are visible",
+        "Signed project changes show in verified rows without release, with explicit incomplete/offline states",
+        "Actual Wasm browser transcript agrees with independent TS fold after verification"
+      ],
+      "blocked_by": [
+        "project-page-live",
+        "nostr-event"
+      ],
+      "blocks": [
+        "nostr-production-cutover",
+        "claim-from-page",
+        "secp-glv"
+      ]
+    },
+    {
+      "slug": "nostr-production-cutover",
+      "parent": "m-assurance",
+      "title": "Reviewed production-secret rollout and recoverable retirement",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Gate production identities and removal of working paths on independent review, required target/device evidence, real consumer tests, versioned migration flags and rollback. Test-key development remains unblocked; production identity is never silently introduced.",
+      "files": [
+        "docs/verification/",
+        "coax/nostr.md",
+        "coax/web/deploy.sh"
+      ],
+      "acceptance": [
+        "Reviewed source/artifact identities, required owner evidence and staged real-consumer results are pinned",
+        "Rollout/rollback is exercised and changed trusted inputs invalidate affected approvals",
+        "No self-approved review or unavailable target is counted as passed"
+      ],
+      "blocked_by": [
+        "crypto-independent-review",
+        "phone-sign-in-e2e",
+        "project-page-verify",
+        "open-sealed-deck-native",
+        "unlock-gate-coax"
       ],
       "blocks": [
         "invariant-coax-only",
-        "publish-project-events"
+        "nostr-conformance-release"
       ]
     },
     {
@@ -1240,69 +2102,195 @@
         "coax/web/unlock/"
       ],
       "acceptance": [
-        "check-visuals.sh passes on all pages and fails on a planted extra script",
-        "coax/web/unlock/ is gone"
+        "Every old crypto/tool consumer has a verified replacement and rollback evidence before deletion",
+        "Check detects extra script/import/WebCrypto paths and seeded hidden dependency; coax/web/unlock retired only after cutover"
       ],
       "blocked_by": [
         "unlock-opener-coax",
         "unlock-gate-coax",
-        "coax-nostr-cli"
+        "coax-nostr-cli",
+        "publish-project-events",
+        "nostr-production-cutover"
       ],
       "blocks": []
     },
     {
-      "slug": "publish-project-events",
-      "parent": "m8-project-live",
-      "title": "Publish the Coax project and its tasks as Nostr events",
+      "slug": "nostr-proto-adapters",
+      "parent": "m-projections",
+      "title": "Source-preserving Coax proto and domain adapters",
       "size": "M",
       "labels": [
         "nostr",
-        "projects"
+        "coax"
       ],
-      "body": "Use coax-nostr publish to sign the kind 30621 project (with path and contributions tags per docs/protocol/2026-10-28-projects.md), its work items from this file, and the queue order record, with the project key.",
+      "body": "Use existing generated root proto codecs in real domains; preserve original Nostr/JWS/HOST bytes, compare projections and enforce bounds/presence/unknown policy. DTOs grant no authority and protobuf bytes never replace signature preimages.",
       "files": [
-        "tools/coax-nostr/",
-        "apps/openagents-web/projects/coax/work/"
+        "coax/lib/nostr/adapters/",
+        "proto/nostr/",
+        "proto/tools/",
+        "coax/tests/nostr/"
       ],
       "acceptance": [
-        "Events fetched back from relay.openagents.com verify and match this file",
-        "Re-publishing is idempotent (same d tags replace)"
+        "Actual source fixtures round-trip original bytes through generated codecs; mismatched projections refuse",
+        "Policy tests show decoded owner/verified-like unknown flags cannot authorize an effect"
       ],
       "blocked_by": [
-        "coax-nostr-cli"
+        "nostr-event",
+        "nostr-support-profiles"
       ],
       "blocks": [
-        "project-page-live"
+        "host-grants",
+        "block-owner-admission",
+        "coord-fenced-claims",
+        "block-missing-projections",
+        "block-channel-policy",
+        "agent-private-data"
       ]
     },
     {
-      "slug": "project-page-live",
-      "parent": "m8-project-live",
-      "title": "/project/coax reads its project, tasks and order from the relay",
-      "size": "L",
+      "slug": "fi-jwks-policy",
+      "parent": "m-block-identity",
+      "title": "FI issuer, audience, algorithm and authenticated JWKS policy",
+      "size": "M",
       "labels": [
-        "web",
-        "projects"
+        "nostr",
+        "coax"
       ],
-      "body": "The real project page holds a WebSocket to relay.openagents.com and redraws as events arrive: no snapshots, no release needed to show a claim, a plan, a note, a status or a reorder. The host only moves bytes (host-socket-pipe); Coax parses the relay's JSON, keeps the project's events (REQ with authors = the project key; the relay checks signatures until project-page-verify lands), folds them the way coax/web/project/model.ts does (issues, revisions, statuses, claims, releases, plans, notes, commits, the order record) into the tables project.coax draws, and redraws. Subscriptions stay open after EOSE so new events land live; reconnect with backoff; the header shows LIVE, CONNECTING or OFFLINE instead of a snapshot time. The build-time tables stay only as the first paint until the socket's first EOSE. The demo page keeps its samples.",
+      "body": "Select exact supported asymmetric algorithms and key-source transports before adding crypto. Bind community Host, issuer, audience, token class/time/TTL; bounded kid/key lookup, pinned authenticated JWKS rotation/cache/revocation and SSRF rules. HOST JOSE profile may reuse primitives but not identity authority.",
       "files": [
-        "apps/openagents-web/project.coax",
-        "apps/openagents-web/projects/coax/"
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/fi/",
+        "docs/protocol/"
       ],
       "acceptance": [
-        "A claim, a plan update and a done published with publish.ts show on the production page within 2 s, with no release",
-        "Moving a task (publish.ts move) reorders the live page within 2 s",
-        "#test: the Coax fold of a captured relay transcript equals model.ts fold() of the same events (same rows, order, plans, log)",
-        "Killing the socket shows OFFLINE, and it reconnects with backoff",
-        "No TypeScript beyond the host byte pipe; check-visuals passes"
+        "Unknown issuer/community, symmetric/none/confused algorithms and unavailable policy fail closed before network lookup",
+        "JWKS redirect/rebinding/stale/oversize/revoked-key fixtures deny under declared transport policy"
       ],
       "blocked_by": [
-        "host-socket-pipe",
-        "nostr-json"
+        "nostr-support-profiles"
+      ],
+      "blocks": [
+        "fi-jws-verifier"
+      ]
+    },
+    {
+      "slug": "fi-jws-verifier",
+      "parent": "m-block-identity",
+      "title": "Selected JWS crypto and exact assertion verification",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Implement only the reviewed FI/HOST asymmetric algorithm profiles (P-256, Ed25519 or RSA as explicitly selected). Bounded compact JWS and base64url parser preserves exact signing input; verify signatures before using claims. This is outside Schnorr-only Nostr core.",
+      "files": [
+        "coax/lib/crypto/",
+        "coax/lib/nostr/block/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Independent official/negative vectors for selected algorithms and JOSE encodings pass on each advertised target",
+        "Algorithm/key confusion, malformed tokens, wrong audience/class/time and unverified claims never authorize",
+        "No unsupported JWT algorithm is advertised"
+      ],
+      "blocked_by": [
+        "fi-jwks-policy",
+        "nostr-json-profile-hardening",
+        "nostr-hex-base64"
+      ],
+      "blocks": [
+        "host-grants",
+        "fa-adapter-sessions"
+      ]
+    },
+    {
+      "slug": "host-grants",
+      "parent": "m-host-reach",
+      "title": "HOST invitation and grant admission before effects",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Verify original signed invitations/grants with explicit selected signature/JOSE profile; issuer/audience/host/operation scope, redemption, expiry, revocation epochs and replay. No relay/tailnet membership substitutes for grant authority. Its JOSE allowlist is explicitly selected and reviewed, not inferred from FI or Nostr key possession.",
+      "files": [
+        "coax/lib/nostr/host/",
+        "proto/openagents/host/",
+        "nips/openagents/NIP-HOST.md"
+      ],
+      "acceptance": [
+        "Wrong host/audience/scope, expired/revoked/replayed grant and unavailable policy refuse before effect",
+        "A valid least-privilege throwaway grant admits one bounded operation; original evidence is retained"
+      ],
+      "blocked_by": [
+        "nostr-proto-adapters",
+        "nostr-event-sign",
+        "fi-jws-verifier"
+      ],
+      "blocks": [
+        "coord-fenced-claims",
+        "reach-freshness",
+        "agent-observer-ephemeral"
+      ]
+    },
+    {
+      "slug": "block-owner-admission",
+      "parent": "m-block-identity",
+      "title": "Block OA owner proofs and AA agent membership",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Verify exact owner-attestation conditions, current owner roles, key possession and AA membership policy. Community admission is independent of host grants; revocation applies to both owner and agent.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Altered/reordered condition, wrong owner, revoked/banned owner/agent and stale proof refuse",
+        "Independent source fixtures exercise direct vs virtual membership and timestamp-vs-kind login policy"
+      ],
+      "blocked_by": [
+        "nostr-proto-adapters",
+        "nostr-nip42"
+      ],
+      "blocks": [
+        "coord-fenced-claims",
+        "fa-adapter-sessions",
+        "block-channel-policy",
+        "agent-private-data",
+        "agent-observer-ephemeral"
+      ]
+    },
+    {
+      "slug": "coord-fenced-claims",
+      "parent": "m-host-reach",
+      "title": "Authenticated worker claims with atomic resources and fences",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Implement WORK/COORD/CAP/POL resource/grant admission with worker keys, all-or-none revision CAS, fences, renew/release, expiry and reconciliation. Preserve old project-key display-name comments as historical notices only.",
+      "files": [
+        "coax/lib/nostr/host/",
+        "proto/openagents/coordination/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Two authenticated workers racing overlapping files get exactly one grant; stale fence cannot commit",
+        "Lease expiry/reconnect/revocation reconciles before reassignment; display-name comments grant nothing"
+      ],
+      "blocked_by": [
+        "nostr-proto-adapters",
+        "host-grants",
+        "block-owner-admission"
       ],
       "blocks": [
         "claim-from-page",
-        "secp-glv"
+        "host-task-journal"
       ]
     },
     {
@@ -1315,17 +2303,19 @@
         "projects",
         "nostr"
       ],
-      "body": "A signed-in visitor (local key or NIP-07) claims an OPEN task: the page builds the claim request, signs it, sends it to the coordinator endpoint and shows the lease.",
+      "body": "A signed-in authenticated worker requests an atomic COORD claim and displays its actual lease/fence. Existing project-key claim comments are informational history, not evidence of the worker identity. No claim before verified task state/admission.",
       "files": [
         "apps/openagents-web/"
       ],
       "acceptance": [
-        "A claim made in the page appears on another browser within 5 s",
-        "The claim is refused cleanly when another claim holds the task"
+        "Two workers race for overlapping resources: exactly one grant, the other clean refusal",
+        "Renew/release/expiry and stale fence are tested; accepted claim appears on another browser within 5s"
       ],
       "blocked_by": [
-        "project-page-live",
-        "nostr-keys"
+        "project-page-verify",
+        "signer-interface",
+        "coord-fenced-claims",
+        "server-session-lifecycle"
       ],
       "blocks": []
     },
@@ -1339,245 +2329,595 @@
         "secp256k1",
         "performance"
       ],
-      "body": "Split scalars with the secp256k1 endomorphism in ecmult_vartime; measure verify on the live project page.",
+      "body": "Optional GLV scalar decomposition only after actual verification arithmetic and a verified real-page benchmark exist. Not a blocker for core integration.",
       "files": [
         "coax/lib/crypto/secp_mult.coax"
       ],
       "acceptance": [
-        "Differential fuzz 1 hour clean",
-        "Verify at least 1.3× faster in wasm32 (bench)"
+        "One-hour differential fuzz is clean with retained evidence",
+        "Record before/after Wasm verify distribution and size; accept optimization only with measured benefit"
       ],
       "blocked_by": [
-        "project-page-live"
+        "secp-mult-verify",
+        "project-page-verify"
       ],
       "blocks": []
     },
     {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "mobile",
-        "ios",
-        "crypto"
-      ],
-      "files": [
-        "apps/openagents-ios/project.yml",
-        "apps/openagents-ios/Tests/"
-      ],
-      "blocks": [],
-      "slug": "ios-coax-nostr-native",
-      "title": "The Coax Nostr library runs on iOS against the same vectors",
+      "slug": "nostr-event-store",
+      "parent": "m-client-state",
+      "title": "Verified event storage, replacement, deletion and expiration",
       "size": "M",
-      "body": "Build the Coax Nostr modules (hashes, secp256k1, Schnorr, ECDH, NIP-44, events, bech32) as C for iOS arm64 and the simulator through the app's Generated/ build step, and run the shared vector files in the iOS test target. Report sign and verify times on a device.",
-      "acceptance": [
-        "BIP-340, NIP-44 and event vectors pass in the iOS simulator test target",
-        "The same vector files the wasm and native builds use, byte for byte",
-        "Sign and verify timings recorded in a note (simulator; device when the owner runs it)"
-      ],
-      "blocked_by": [
-        "schnorr-sign",
-        "nip44-v2",
-        "nostr-event"
-      ]
-    },
-    {
-      "parent": "m9-phone-sign-in",
       "labels": [
-        "mobile",
-        "ios",
-        "keys"
+        "nostr",
+        "coax"
       ],
+      "body": "Persist immutable originals plus bounded indexes. Implement NIP-01 replacement/ties, NIP-09 authorized deletion and NIP-40 expiration, schema migration and crash/reload without resurrecting records or leaking private data.",
       "files": [
-        "apps/openagents-ios/OpenAgents/"
+        "coax/lib/nostr/store.coax",
+        "coax/tests/nostr/"
       ],
-      "blocks": [],
-      "slug": "ios-key-custody",
-      "title": "The phone holds the user's Nostr key in the Keychain",
-      "size": "M",
-      "body": "Create or import a key (nsec) on the phone; store it in the Keychain, this device only, unlocked by Face ID or passcode for each signature; never synced, logged or sent. Export only on an explicit owner action. Signing goes through the Coax library with the key wiped after use.",
       "acceptance": [
-        "A UI test creates a key, signs an event and verifies it with the Coax verifier",
-        "The Keychain item is ThisDeviceOnly with user presence required",
-        "No key bytes in logs (test greps the simulator log)"
+        "Reordered/duplicate/same-time/invalid-deletion/expired transcripts converge with independent expected state",
+        "Restart/migration/quotas preserve originals and tombstones; unverified events cannot enter store"
       ],
       "blocked_by": [
-        "ios-coax-nostr-native"
-      ]
-    },
-    {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "nip46",
-        "crypto",
-        "mobile"
-      ],
-      "files": [],
-      "blocks": [],
-      "slug": "nip46-signer",
-      "title": "NIP-46 remote signer (bunker side) in Coax",
-      "size": "L",
-      "body": "Kind 24133 requests and responses encrypted with NIP-44 between the client's key and the signer's key; methods connect (with the secret from the QR), get_public_key, sign_event, ping, nip44_encrypt/decrypt. Every sign_event needs the user's approval unless the session granted that kind. Shared Coax module, used by the phone.",
-      "acceptance": [
-        "Round trips against the NIP-46 examples and a nostr-effect NIP-46 client in a native test",
-        "A wrong or reused connect secret is refused",
-        "Requests outside the granted permissions are refused"
-      ],
-      "blocked_by": [
-        "nip44-v2",
         "nostr-event",
-        "nostr-relay-state-machine"
+        "host-storage-pipe"
+      ],
+      "blocks": [
+        "nostr-multirelay",
+        "reach-freshness",
+        "block-channel-pagination",
+        "block-artifact-cas",
+        "agent-private-data"
       ]
     },
     {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "nip46",
-        "web"
-      ],
-      "files": [],
-      "blocks": [],
-      "slug": "nip46-client-page",
-      "title": "NIP-46 client in the page",
-      "size": "M",
-      "body": "The page side of Nostr Connect: an ephemeral client key, the nostrconnect:// URI (relay, secret, perms, name, url), waiting for the signer's connect, then get_public_key and sign_event requests over the page's relay client.",
-      "acceptance": [
-        "Native test: the page client and the Coax signer complete connect and a sign_event over an in-memory relay",
-        "The client key is ephemeral and wiped at sign-out"
-      ],
-      "blocked_by": [
-        "nip46-signer",
-        "relay-in-page"
-      ]
-    },
-    {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "web",
-        "qr"
-      ],
-      "files": [],
-      "blocks": [],
-      "slug": "coax-qr-encoder",
-      "title": "QR code encoder in Coax",
-      "size": "M",
-      "body": "Byte mode, error correction M, versions 1 to 15, mask selection by the standard penalty rules; output a module grid the page draws as HUD strokes or quads.",
-      "acceptance": [
-        "Matches a reference encoder's module grids for 20 fixed strings including a 300-byte nostrconnect URI",
-        "A phone camera (the iOS scanner test) decodes a rendered code"
-      ],
-      "blocked_by": []
-    },
-    {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "mobile",
-        "ios",
-        "nip46"
-      ],
-      "files": [],
-      "blocks": [],
-      "slug": "ios-scan-to-sign-in",
-      "title": "Scan a sign-in code with the phone and approve",
-      "size": "M",
-      "body": "The app's QR scanner recognises nostrconnect:// codes, shows the site and what it asks for in an approval sheet, and on approval runs the NIP-46 signer for that session; the session shows in Settings and can be ended there.",
-      "acceptance": [
-        "Simulator UI test: a fixture QR image opens the approval sheet; approve connects to a local relay",
-        "Ending the session in Settings makes later requests fail"
-      ],
-      "blocked_by": [
-        "nip46-signer",
-        "ios-key-custody",
-        "coax-qr-encoder"
-      ]
-    },
-    {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "server",
-        "auth"
-      ],
-      "files": [],
-      "blocks": [],
-      "slug": "server-nip98-session",
-      "title": "The server verifies NIP-98 HTTP auth and issues a session",
-      "size": "M",
-      "body": "A native Coax server route POST /auth/nostr takes a NIP-98 kind 27235 event (url, method, payload hash, created_at within 60 s, unused id), verifies it with the Coax verifier, and sets an HttpOnly, Secure, SameSite=Strict session cookie bound to the pubkey. Admin pubkeys come from config. No WorkOS.",
-      "acceptance": [
-        "Tests: valid event accepted; wrong url, method, stale time, replayed id and bad signature refused",
-        "The cookie carries no key material and expires"
-      ],
-      "blocked_by": [
-        "schnorr-verify",
-        "nostr-event"
-      ]
-    },
-    {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "web",
-        "auth"
-      ],
-      "files": [],
-      "blocks": [],
-      "slug": "web-sign-in-page",
-      "title": "openagents.com/signin: the QR and the signed-in state",
-      "size": "M",
-      "body": "A Coaxial page draws the QR (HUD, Filament), waits for the phone, then asks it to sign the NIP-98 event and posts it to /auth/nostr. Shows who is signed in (npub, short) and sign out. Plain text in the hidden main for agents.",
-      "acceptance": [
-        "check-visuals passes; real-Chrome screenshots of waiting and signed-in states",
-        "The page never holds the user's secret key"
-      ],
-      "blocked_by": [
-        "nip46-client-page",
-        "coax-qr-encoder",
-        "server-nip98-session"
-      ]
-    },
-    {
-      "parent": "m9-phone-sign-in",
-      "labels": [
-        "mobile",
-        "web",
-        "auth"
-      ],
-      "files": [],
-      "blocks": [],
-      "slug": "phone-sign-in-e2e",
-      "title": "End to end: sign in to openagents.com with the phone",
-      "size": "M",
-      "body": "The deliverable test: the iOS simulator scans the QR shown by the page (fixture image of the live page's code), approves, and the page reaches the signed-in state with the server session bound to the phone's pubkey. Device run is an owner step in NEEDS_OWNER.md.",
-      "acceptance": [
-        "Simulator plus headless page run passes against a local relay and server",
-        "Staging run passes against relay.openagents.com",
-        "Device step recorded for the owner"
-      ],
-      "blocked_by": [
-        "ios-scan-to-sign-in",
-        "web-sign-in-page"
-      ]
-    },
-    {
-      "slug": "project-page-verify",
-      "parent": "m8-project-live",
-      "title": "The live project page verifies every event in Coax",
+      "slug": "nostr-multirelay",
+      "parent": "m-client-state",
+      "title": "Multi-relay catch-up and durable offline outbox",
       "size": "M",
       "labels": [
-        "web",
-        "crypto",
-        "nostr"
+        "nostr",
+        "coax"
       ],
-      "body": "Once Schnorr verification lands, the live page checks every event's id and signature in Coax before folding it (≤ 4 ms of verification per frame, the rest queued), and stops relying on the relay's check.",
+      "body": "Merge verified state across relays; bounded catch-up, duplicate suppression, publish ACK/refusal/unknown status, reconnect and idempotent offline retry. EOSE/short/tied-timestamp pages never prove completeness.",
       "files": [
-        "apps/openagents-web/project.coax"
+        "coax/lib/nostr/relay.coax",
+        "coax/lib/nostr/store.coax",
+        "coax/tests/nostr/"
       ],
       "acceptance": [
-        "Unverified events never appear; a count of rows still checking is shown",
-        "A forged event injected through a test relay is refused and counted"
+        "Partition/restart/refusal/late-ACK and timestamp-tie tests preserve unknown vs accepted outcomes",
+        "Missing dependencies/relay disagreement are surfaced; no duplicate effects or false completeness"
       ],
       "blocked_by": [
-        "project-page-live",
-        "schnorr-verify",
-        "nostr-event"
+        "nostr-event-store",
+        "nostr-relay-state-machine"
       ],
+      "blocks": [
+        "host-task-journal",
+        "nostr-client-discovery",
+        "nostr-private-messaging"
+      ]
+    },
+    {
+      "slug": "reach-freshness",
+      "parent": "m-host-reach",
+      "title": "REACH generations, route freshness and direct identity",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Validate route/advertisement generation and epoch monotonicity, expiry, rollback protection and authenticated direct-channel binding. Host authorization stays independent of reachable addresses.",
+      "files": [
+        "coax/lib/nostr/host/",
+        "proto/openagents/reach/",
+        "nips/openagents/NIP-REACH.md"
+      ],
+      "acceptance": [
+        "Reordered old routes, rolled-back epochs, expired advert and wrong peer identity refuse",
+        "Reconnect/direct and relay fallback preserve identity and never broaden the operation grant"
+      ],
+      "blocked_by": [
+        "host-grants",
+        "nostr-event-store"
+      ],
+      "blocks": [
+        "host-task-journal"
+      ]
+    },
+    {
+      "slug": "host-task-journal",
+      "parent": "m-host-reach",
+      "title": "Bounded task delegation, progress, result and PR evidence",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Bind WORK/CTX inputs, CAP/POL grants and RUN/SESS journal to one admitted attempt with stable errors/correlation. Preserve original evidence and distinguish running/unknown/failed/completed under reconnect and duplicate delivery.",
+      "files": [
+        "coax/lib/nostr/host/",
+        "apps/openagents-ios/",
+        "proto/openagents/"
+      ],
+      "acceptance": [
+        "Journal replay/restart converges and cannot execute duplicate requests",
+        "Revocation mid-run stops new authorized effects and retains truthful partial/unknown result/PR state"
+      ],
+      "blocked_by": [
+        "coord-fenced-claims",
+        "reach-freshness",
+        "nostr-multirelay"
+      ],
+      "blocks": [
+        "host-codex-e2e"
+      ]
+    },
+    {
+      "slug": "host-codex-e2e",
+      "parent": "m-host-reach",
+      "title": "Real Linux Codex task through admitted phone-to-host flow",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Throwaway scoped identity/grant in app -> HOST/REACH over Tailscale -> real Linux Codex task -> streamed progress/result/PR -> fenced completion. Production rollout remains a separate cutover gate.",
+      "files": [
+        "apps/openagents-ios/",
+        "coax/lib/nostr/host/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "App launch shows actual Linux task progress and resulting PR/evidence",
+        "Revoked/expired/wrong-scope/replayed request performs no new operation; disconnect outcome remains truthful",
+        "Retain reproducible local/staging evidence and explicit owner/device steps"
+      ],
+      "blocked_by": [
+        "host-task-journal",
+        "phone-sign-in-e2e"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "fa-adapter-sessions",
+      "parent": "m-block-identity",
+      "title": "FA origin-bound code exchange and credential sessions",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Implement adapter login/code exchange/assertion requests with origin/redirect/secret/session binding and bounded retries. FI/FA credentials and identity metadata remain private.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/fa/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Wrong origin/redirect/code/replayed secret/token class/session expiry refuse",
+        "Credentials never enter public discovery, errors or snapshots"
+      ],
+      "blocked_by": [
+        "fi-jws-verifier",
+        "block-owner-admission"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "block-missing-projections",
+      "parent": "m-projections",
+      "title": "Consumer-backed GS, MP, PL and RS proto projections",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Add currently absent Block projections and remaining supported official behavior shapes only for named consumers; preserve pins, originals, presence/unknowns and immutable published snapshots. Reserved ER/PMA remain unsupported.",
+      "files": [
+        "proto/nostr/",
+        "proto/tools/",
+        "coax/lib/nostr/adapters/"
+      ],
+      "acceptance": [
+        "Source/hash/profile closure and protoc interoperability pass for new alpha packages",
+        "NIP-GS git signing and project MP/PL/RS consumers have explicit acceptance; reserved text does not advertise runtime"
+      ],
+      "blocked_by": [
+        "nostr-proto-adapters"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "block-channel-policy",
+      "parent": "m-block-channel",
+      "title": "CL, DV and WP membership and visibility policy",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Live channel/member/owner read-write admission, viewer-private hidden-channel state and profile commands. Visibility is not membership revocation; unknown metadata never authorizes.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/cl/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Cross-owner/channel/private/system/unlisted/hidden cases fail closed correctly",
+        "Revocation changes next read/write decision and private visibility never reaches public snapshot"
+      ],
+      "blocked_by": [
+        "block-owner-admission",
+        "nostr-proto-adapters"
+      ],
+      "blocks": [
+        "block-channel-pagination",
+        "block-artifact-cas"
+      ]
+    },
+    {
+      "slug": "block-channel-pagination",
+      "parent": "m-block-channel",
+      "title": "CW composite cursors and bounded completeness",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Timestamp+ID cursors, row/depth/window budgets, bound request/signer evidence, ordering and explicit exhaustion. Missing bounds or short relay pages never prove completion.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/cw/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Tied timestamps, reply depth, moving windows and missing pages return deterministic continuation",
+        "Wrong viewer/request/relay evidence refuses; no private row leaks through pagination"
+      ],
+      "blocked_by": [
+        "block-channel-policy",
+        "nostr-event-store"
+      ],
+      "blocks": [
+        "block-archive-consent"
+      ]
+    },
+    {
+      "slug": "block-artifact-cas",
+      "parent": "m-block-channel",
+      "title": "AR revisions, idempotence and authoritative history",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Transactional create/update/move/delete with exact original evidence, prev/root identity, idempotence, read visibility and retention. A decoded revision does not pass CAS.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/ar/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Concurrent prev revisions admit once; duplicate same revision is idempotent",
+        "Wrong root/home/owner/stale prev, deleted and invisible records refuse; replay preserves history"
+      ],
+      "blocked_by": [
+        "block-channel-policy",
+        "nostr-event-store"
+      ],
+      "blocks": [
+        "block-archive-consent",
+        "agent-persona-config"
+      ]
+    },
+    {
+      "slug": "block-archive-consent",
+      "parent": "m-block-channel",
+      "title": "IA archive consent and private workspace lifecycle",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Implement request/delta/snapshot archive semantics with actor/owner/request binding, consent and relay-scoped UI state. Archiving does not transfer authorship, revoke access or replace channel policy.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/ia/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Wrong actor/owner/request, absent consent and reordered snapshot/delta cases refuse",
+        "Two clients converge without leaking private archive state"
+      ],
+      "blocked_by": [
+        "block-artifact-cas",
+        "block-channel-pagination"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "agent-private-data",
+      "parent": "m-agent-data",
+      "title": "AE encrypted memories and tombstones",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Enforce owner-bound encrypted AE memory, blinded addressing, null tombstones and private plaintext lifetime. Signature precedes decryption; original encrypted evidence remains available for replay.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/ae/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Independent source fixtures cover valid/tombstone/missing/wrong owner and replay",
+        "Decrypted body never enters public snapshots or logs; errors wipe owned scratch"
+      ],
+      "blocked_by": [
+        "nip44-v2",
+        "nostr-proto-adapters",
+        "block-owner-admission",
+        "nostr-event-store"
+      ],
+      "blocks": [
+        "agent-persona-config",
+        "agent-metrics-exact"
+      ]
+    },
+    {
+      "slug": "agent-persona-config",
+      "parent": "m-agent-data",
+      "title": "AP persona, settings and configuration resolution",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Resolve nullable/missing/deleted/unavailable persona/settings/team config with versioned AR-backed snapshots and portable command policy. Unknown or unavailable configuration cannot grant execution.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/ap/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Source fixtures cover null/missing/deleted/unknown config and revision changes",
+        "Untrusted persona/command fields cannot broaden CAP/POL/HOST authority"
+      ],
+      "blocked_by": [
+        "agent-private-data",
+        "block-artifact-cas"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "agent-observer-ephemeral",
+      "parent": "m-agent-data",
+      "title": "AO ephemeral control and observation without durable logs",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Recipient-bound seq/time/correlation/direction checks and bounded live observation. Ephemeral frames are not persisted, indexed or logged, including debug/error paths. Controls require separate operation authority.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/ao/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Wrong recipient/direction/replay/unknown control refuses; authorized observer reconnect respects consent",
+        "Persistence/log interception proves plaintext observer frames never enter storage or public telemetry"
+      ],
+      "blocked_by": [
+        "nip44-v2",
+        "block-owner-admission",
+        "host-grants"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "agent-metrics-exact",
+      "parent": "m-agent-data",
+      "title": "AM exact private counters and pricing identity",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Preserve exact usage/cost decimals, omitted-vs-zero cache fields, cumulative turn/session sequence and independent pricing identity. Metrics are private facts, not inferred payments or grants.",
+      "files": [
+        "coax/lib/nostr/block/",
+        "proto/nostr/block/am/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Large counters/decimal/source omissions and duplicate/out-of-order cumulative metrics retain exact values",
+        "No float rounding, inferred price or plaintext public snapshot leakage"
+      ],
+      "blocked_by": [
+        "agent-private-data"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "nip49-primitives",
+      "parent": "m-key-backup",
+      "title": "Optional NIP-49 KDF, cipher and normalization primitives",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "scrypt/Salsa20/8, HChaCha20/XChaCha20 and Poly1305 plus exact NFKC normalization contract, bounded memory/work and erasure. Only required for the optional encrypted-backup profile.",
+      "files": [
+        "coax/lib/crypto/",
+        "coax/tests/vectors/",
+        "tools/coax-nostr/"
+      ],
+      "acceptance": [
+        "Independent vectors and normalization cases pass across advertised native/iOS/Wasm targets",
+        "Untrusted memory/KDF parameters refuse within declared budget; error paths wipe buffers"
+      ],
+      "blocked_by": [
+        "crypto-chacha20",
+        "crypto-secure-zero",
+        "crypto-vector-runner"
+      ],
+      "blocks": [
+        "nip49-backup"
+      ]
+    },
+    {
+      "slug": "nip49-backup",
+      "parent": "m-key-backup",
+      "title": "Owner-approved encrypted NIP-49 key import and export",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Standard ncryptsec framing and device/browser/native adapters; never substitute a homemade key-wrap format. Explicit approval and resource limits, no public key-backup publication or default plaintext IndexedDB.",
+      "files": [
+        "coax/lib/nostr/keys.coax",
+        "apps/openagents-ios/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Official cross-implementation encrypt/decrypt plus wrong password/version/capacity/normalization vectors pass",
+        "Owner denial and failure leave no private output or persisted plaintext; optional profile is separately advertised"
+      ],
+      "blocked_by": [
+        "nip49-primitives",
+        "nostr-bech32",
+        "signer-interface"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "nostr-client-discovery",
+      "parent": "m-client-state",
+      "title": "Consumer-backed relay discovery and optional client NIPs",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Add NIP-11 relay capabilities and NIP-65 discovery profiles after core merging; enumerate other official NIPs only with actual consumers. Relay metadata and advertised support are untrusted hints, never authority.",
+      "files": [
+        "coax/lib/nostr/",
+        "proto/nostr/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Malformed/stale/conflicting relay metadata and unsupported features produce bounded fallback/refusal",
+        "Support matrix identifies implemented optional behavior and independent negative fixtures"
+      ],
+      "blocked_by": [
+        "nostr-multirelay",
+        "nostr-support-profiles"
+      ],
+      "blocks": [
+        "nostr-conformance-release"
+      ]
+    },
+    {
+      "slug": "nostr-private-messaging",
+      "parent": "m-agent-data",
+      "title": "Optional NIP-17 private conversation profile",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Define actual app private messaging over NIP-44/59 with recipient binding, replay/duplicate handling, bounded private history, relay selection and privacy limits; no claim of forward secrecy.",
+      "files": [
+        "coax/lib/nostr/",
+        "apps/openagents-ios/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Independent two-client send/receive/offline/tamper and recipient-isolation cases pass",
+        "Private bodies never appear in public project data or telemetry; unsupported messaging profiles remain hidden"
+      ],
+      "blocked_by": [
+        "nip59-seal-wrap",
+        "nostr-multirelay",
+        "signer-interface"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "nostr-conformance-release",
+      "parent": "m-conformance",
+      "title": "Advertised Nostr profiles match executable conformance",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax"
+      ],
+      "body": "Publish per-profile/target/source/evidence support matrix, version migrations and deliberate unsupported features. Schema/text inventory cannot satisfy runtime evidence. Host/channel production cutover must add domain-specific review, not inherit crypto approval as authorization proof.",
+      "files": [
+        "coax/nostr.md",
+        "docs/verification/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Native/browser/iOS profile consumers and negative authority/privacy/replay cases pass with pinned artifacts",
+        "A planted advertised-but-unimplemented feature fails release; optional backup/messaging only advertised with own evidence",
+        "New HOST/FI algorithms, authority policies and optional NIP-49 primitives require their own independent source/artifact review before production; initial core-crypto approval is not inherited"
+      ],
+      "blocked_by": [
+        "nostr-production-cutover",
+        "host-codex-e2e",
+        "fa-adapter-sessions",
+        "block-missing-projections",
+        "block-archive-consent",
+        "agent-persona-config",
+        "agent-observer-ephemeral",
+        "agent-metrics-exact",
+        "nostr-client-discovery"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "coax-ct-view-diagnostic",
+      "parent": "compiler",
+      "title": "Restore the E0409 compile-time view diagnostic regression",
+      "size": "S",
+      "labels": [
+        "compiler",
+        "tests"
+      ],
+      "body": "The handoff reports fail/ct_view.coax now hits E0383 for a local returned borrow before it can exercise E0409. Replace the fixture with a safe borrowed-parameter case that still reaches E0409. Do not just change the expected diagnostic or weaken the lifetime check.",
+      "files": [
+        "coax/tests/fail/ct_view.coax",
+        "coax/tests/"
+      ],
+      "acceptance": [
+        "Focused fixture reaches E0409 for a non-local-borrow compile-time view",
+        "Existing E0383 local-return cases remain refused; run only affected diagnostic tests"
+      ],
+      "blocked_by": [],
       "blocks": []
     }
   ]

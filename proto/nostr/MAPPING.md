@@ -55,9 +55,22 @@ Synthetic negative vectors cover duplicate/missing fields, malformed keys,
 filter emptiness, null/zero, large counters, plaintext limits, token classes,
 owner mismatch, artifact prev shape, channel metadata and profile isolation.
 
+The selected descriptor profiles already import into Coax typed wire views,
+presence/oneof accessors, repeated iterators and bounded caller-buffer codecs.
+`coax/tests/proto_import.py` exercises these against native C ABI fixtures,
+sanitizers and pinned protoc, including unknown retention and strict duplicate
+policy. This establishes supported wire-codec behavior, not NIP conformance.
+
 The reference projector only implements the subsets exercised by those tests.
-It is not a complete normative NIP validator or native product adapter. Remaining
-work includes full field/unknown-field validation, crypto/decryption and signed
-proofs, general Coax descriptor ingestion, presence/oneof lowering and codecs, actual transport parity, live
-admission/read policy, bounded pagination and transactional storage. Those are
-required before claiming implementation support or advertising a NIP.
+Remaining work includes complete domain/unknown-field validation, signed
+JSON/JWS proofs, encryption/decryption, actual transport parity, live
+admission/read policy, bounded pagination and transactional storage. No decoded
+owner claim, channel label, revision or command is authority by itself. HOST
+grants and REACH freshness stay independent of relay membership and routing.
+
+The [Coax Nostr plan](../../coax/nostr.md) and its
+[task seed](../../apps/openagents-web/projects/coax/work/nostr.json) cover the
+shared stack and later runtime adapters. Keep schema coverage, codec support,
+cryptographic verification and product conformance as separate status fields.
+The existing alpha adapter limits above remain unchanged; new consumer limits
+need explicit profiles and boundary refusals, not an in-place schema rewrite.

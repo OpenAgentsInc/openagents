@@ -20,7 +20,7 @@ workspace is restored.
 
 | Root | Namespace and status |
 | --- | --- |
-| `nostr/` | 16 new alpha schemas: shared events/NIP-42 and 14 external agent, identity and channel projections. |
+| `nostr/` | Source-pinned alpha projections: shared events/NIP-42 and selected external agent, identity and channel contracts, with generated Coax codecs. See the [coverage and runtime boundaries](nostr/README.md). |
 | `openagents/common/v1/` | Recovered refs, signed-original wrappers and domain-qualified errors. |
 | `openagents/engine/v1/` | Six recovered schemas: scene, agent, HUD, control, registered state and assets. Verse and other consumers share them. |
 | `openagents/host/v1/`, `openagents/reach/v1/` | Recovered phone task/admission, binding/cursor and authenticated reach records. Existing wire types are unchanged. |
@@ -29,15 +29,15 @@ workspace is restored.
 | `openagents/verse/presence/v1alpha1/` | New transient presence projection using engine geometry. No change to NIP-MV, REACH or realm wire. |
 | `third_party/lightninglabs/` | Byte-exact LND, Taproot Assets, Loop and Lightning Terminal release schemas, under their own packages/licenses. |
 | `third_party/space/` | Recovered provider-neutral intermediate-key broker contract under its original namespace. |
-| `nostr/` | Mirror plan and source authority; no invented compiled Nostr mirrors yet. |
-| `compatibility/` | Nine immutable pre-reset descriptor/catalog snapshots. |
+| `compatibility/` | Immutable published descriptor/catalog baselines; new baselines do not replace earlier bytes. |
 | `descriptors/` | Reproducible current owned/profile descriptor sets, including imports. |
 | `migrations/` | Explicit engine-rename reader aliases, canonical IDs and transition rules. |
 
-There are 12 owned schemas and 38 vendor schemas. The owned nine published
-schemas and their Nanopb `.options` are recovered without changes. New alpha
-contracts are prototypes, not stable APIs. Vendor roots are separate modules;
-they never inherit owned namespaces or allocation annotations.
+[modules.json](modules.json) is the registry of current module roots and
+selected profiles; `scripts/proto.sh list` reports that inventory. Recovered
+published schemas and their Nanopb `.options` retain their original contract.
+New alpha contracts are prototypes, not stable APIs. Vendor roots are separate
+modules; they never inherit owned namespaces or allocation annotations.
 
 ## Check and generate
 
@@ -62,16 +62,16 @@ catalog migration, and checks generated outputs for drift. It creates no
 network connection or app/service. `generate` updates current descriptors and
 `data/asset-profiles.pb` and the app's checked-in `Home.pb` resource; it never modifies `compatibility/`.
 
-[modules.json](modules.json) declares `coax-foundation`, `phone-agent`,
-`metareal`, `verse`, `ios-home`, `nostr-event`, `block-agent`, `block-identity`
-and `block-channel` profiles. Profiles select roots plus transitive imports;
-they do not fork schemas or change field meanings. Root-owned APIs compile
-separately from each upstream vendor module, avoiding import-name collisions.
+Profiles in [modules.json](modules.json) select roots plus transitive imports;
+they do not fork schemas or change field meanings. Engine paths now live under
+`verse/`; published namespaces and descriptor/profile identifiers retain their
+registered spelling. Root-owned APIs compile separately from each upstream
+vendor module, avoiding import-name collisions.
 
 ## Coax adoption
 
-Coax 0.4.0 implements [`#import_proto`](../coax/proto.md) for selected proto3
-descriptor closures. It generates actual Coax typed wire views, presence,
+Coax has supported [`#import_proto`](../coax/proto.md) for selected proto3
+descriptor closures since 0.4.0. It generates actual Coax typed wire views, presence,
 oneofs, repeated iterators and bounded caller-buffer codecs. The
 [Nostr alpha profiles](nostr/README.md) are exercised against real fixture
 bytes, with native C ABI round trips and pinned protoc interoperability. This
@@ -83,13 +83,21 @@ wire reader/writer is removed. Screen admission stays in Coax and retains its
 closed schema-1 policy. `verse/test_home.py` checks actual app resources,
 strict rejection rules and exact invocation bytes against protoc. Native
 sanitizer and simulator touch/rotation/resume tests cover the actual host path.
-Current C++ compiler code and Python schema checks are bootstrap infrastructure.
-The initial compiler/codec prerequisites now exist. Checked domain adapters,
-platform consumers and live service parity remain separate work. The importer
-is native C++ inside coax0 with an embedded Coax wire runtime; neither
-normal compilation nor generated target code needs Python/protobuf libraries.
-Test/reference and schema maintenance tools remain separate. See its contract for strict duplicate/oneof policy,
-unsupported shapes and memory budgets.
+The descriptor parser, validator and source generator are checked Coax in
+`coax/lib/proto/importer.coax`; fingerprinting is Coax in
+`coax/lib/proto/fingerprint.coax`, and the wire runtime is Coax source. They
+compile to C11 inside the Python-free bootstrap. The C++ importer bridge
+supplies file I/O and requested buffer allocation, with no C++ parser,
+generator or hash fallback. Neither normal compilation nor generated target
+code needs Python/protobuf libraries. Explicit test/reference and schema
+maintenance tooling remains separate.
+
+Further domain adapters, platform consumers and live service parity remain
+separate work. See the [importer contract](../coax/proto.md) for strict
+duplicate/oneof policy, unsupported shapes and memory budgets, and the
+[Coax Nostr plan](../coax/nostr.md) for crypto/client/authority integration.
+No generated Nostr view substitutes for signed-original verification or
+domain admission.
 
 The Python alpha validator is a fixture/reference checker, not app admission.
 Production consumers still need limits before untrusted allocation, recursive

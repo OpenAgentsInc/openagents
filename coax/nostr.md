@@ -1,503 +1,498 @@
-# Coax Nostr: our own Nostr stack, crypto included, in Coax
+# Coax Nostr: shared crypto, clients and authority
 
-Proposal, 2026-10-28. Status: specification and task breakdown; nothing below
-is built yet. The work is organized as the first real project on
-`/projects/coax`; the tasks live in
+Plan, reconciled 2026-10-28 against remote main `1357c44a52`. The implementation
+is incremental: the target is one reusable Coax stack for web, iOS, native tools
+and Verse. This document is not a claim that the target already exists.
+
+The executable work breakdown is
 [`apps/openagents-web/projects/coax/work/nostr.json`](../apps/openagents-web/projects/coax/work/nostr.json).
+Published task slugs and event IDs stay stable. `blocked_by` defines readiness;
+`blocks` is its derived inverse. Milestone names group work, not a requirement to
+finish every optional optimization before another group starts. The Coax language
+roadmap remains the project's first initiative; this is its Nostr initiative.
 
-Every Nostr integration on openagents.com runs in Coax: hashing, secp256k1,
-BIP-340 Schnorr signatures, ECDH, NIP-44 encryption, NIP-59 gift wraps, event
-serialization and verification, bech32 keys, relay connections and NIP-42
-auth. The browser contributes randomness, a socket, storage and the clipboard,
-and draws nothing. The same Coax modules compile to C for native tools (the
-deck sealer, the event publisher, fuzzers) and to wasm32 for the page.
+## 1. Baseline and scope
 
-Today the hidden-presentation path (`coax/web/unlock/`) does this in
-TypeScript with nostr-effect and @noble/hashes. That was a shortcut. This
-document replaces it, a level deeper than nostr-effect or our Rust crates go:
-those stand on `@noble/*` and `libsecp256k1`; this stands on nothing but Coax.
+### 1.1 Already shipped
 
-## 1. Goals and non-goals
-
-Goals:
-- **One implementation, two targets.** The same `.coax` sources run natively
-  (C11) and in the browser (wasm32), bit-for-bit identical on every vector.
-- **Correct first, then fast, then constant-time to the limit the platform
-  allows**, with the limits written down (section 6).
-- **No allocation, bounded everything.** Every buffer has a declared capacity;
-  every parser has a maximum input; nothing grows.
-- **Evidence per module:** official vectors, differential fuzzing against
-  independent implementations, `#test` checks and mutation gates.
-- **The page reads, verifies and writes real Nostr events** with no
-  TypeScript left in the browser path (section 11, M7).
-
-Non-goals for this project:
-- ECDSA (Nostr uses BIP-340 Schnorr only), BIP-32/39 wallets (the wallet has
-  its own stack), MuSig2 (immortal has it natively; a later project).
-- NIP-04 (deprecated DM encryption; never implement it).
-- A relay. `immortal` is our relay; this is a client stack.
-- Hardware-grade side-channel resistance in a browser (section 6 says why).
-
-## 2. What we're replacing, and what stays
-
-| Today | Where | Becomes |
+| Evidence | What it establishes | What it does not establish |
 | --- | --- | --- |
-| `nostr-effect/nip44` (encrypt, decrypt, conversation key) | `coax/web/unlock/lib.ts` | `coax/lib/nostr/nip44.coax` |
-| `nostr-effect/pure` (finalize, verify, getPublicKey, id hash) | `lib.ts` | `crypto/schnorr.coax`, `nostr/event.coax` |
-| `@noble/hashes` sha256, randomBytes | `lib.ts` | `crypto/sha256.coax`, host `random` import |
-| Hand-built seal (13) and wrap (1059) | `lib.ts` | `nostr/nip59.coax` |
-| 3188 artifact envelope with JCS digest | `lib.ts` | `nostr/envelope.coax`, `nostr/jcs.coax` |
-| Relay socket, NIP-42 AUTH, REQ | `page.ts` | `nostr/relay.coax` (state machine), host socket pipe |
-| Key kept in IndexedDB | `page.ts` | `nostr/keys.coax` (format), host storage pipe |
-| Phrase check: salted SHA-256, PBKDF2 + AES-GCM pointer | `gate.ts`, `inject.ts` | PBKDF2-HMAC-SHA256 + ChaCha20 + HMAC (section 10.3), no AES |
-| Sealing a deck (bun) | `seal.ts` | `coax-nostr seal` (native, same modules) |
-| Injecting unlock entries (bun) | `inject.ts` | `coax-nostr gate` (native) |
+| `nips/manifest.json`, `nips/upstream-lock.json` | Pinned source inventory: 100 official, 20 Block, 36 OpenAgents NIPs | Runtime support for every specification |
+| `proto/nostr/README.md`, descriptors, generated Coax codecs | 16 alpha schemas, bounded wire views, presence/oneofs/repeats, unknown retention and protoc interoperability | Signature verification, decryption, membership or executable authority |
+| `coax/lib/proto/fingerprint.coax` | Checked SHA-256 for compiler fingerprints | A qualified streaming crypto API or approved signing path |
+| `coax/web/project/{publish,model,snapshot,relay}.ts` | Real signed project events, NIP-42, verified build-time snapshots, task comments/plans/statuses | Coax crypto, independently authenticated workers or fenced claims |
+| `coax/web/unlock/` | Working TypeScript NIP-44/59 encrypted-deck path | Completed Coax migration |
+| `e2f8432ea2` | Compound assignments through indexed views emit valid C | General compiler correctness |
+| `b9a5f216f0` | u32/u64 `value_barrier` and focused native/Wasm codegen tests | Constant-time or secure-erasure proof |
+| `8f23a77f35` | Bounded Coax JSON parser/writer and captured-relay/JSONTestSuite tests | Duplicate-key/domain admission or safe-integer profile reconciliation |
+| `df008f96a4`, `socket.coax`, `project-live.coax` | Host WebSocket byte pipe, subscriptions, frame counter and reconnect probe | Parsed live task folding, Coax event verification or AUTH readiness |
 
-nostr-effect stays where it is useful: as an **independent oracle** in
-differential tests (it uses @noble/curves, a different implementation), and in
-the TypeScript services that aren't Coaxial pages. It leaves the browser.
+The socket probe can run while task rows remain the last verified build-time
+snapshot. A frame count or EOSE is not proof of verified or complete task data.
+The first Coax Nostr JSON module exists; the cryptographic library, iOS signer,
+HOST admission and Nostr-backed channel runtime remain open. The task-detail UI
+and plural `/projects/<slug>` route also shipped; old `/project/*` redirects. Later
+implementation commits must update the evidence and resolve only their own tasks.
 
-## 3. Layers and modules
+### 1.2 Supported profiles, not an unlimited promise
 
-```
-coax/lib/crypto/            no Nostr knowledge; reusable by Verse, wallet tools
-  bytes.coax                  ct_eq, ct_select, zeroize, load/store be32/le32/be64
-  sha256.coax                 SHA-256, streaming + one-shot; tagged hash helper
-  hmac.coax                   HMAC-SHA256 (RFC 2104)
-  hkdf.coax                   HKDF-SHA256 extract/expand (RFC 5869)
-  pbkdf2.coax                 PBKDF2-HMAC-SHA256 (gate only)
-  chacha20.coax               ChaCha20 block + stream (RFC 8439 §2.3–2.4)
-  secp_field.coax             F_p, 10×26 limbs (section 4)
-  secp_scalar.coax            Z_n, 8×32 limbs
-  secp_group.coax             affine, Jacobian; add, double, mixed add; ct table select
-  secp_mult.coax              fixed-base comb (sign), wNAF dual-mult (verify), ct ladder (ecdh)
-  schnorr.coax                BIP-340 sign, verify, x-only keys, tagged hashes
-  ecdh.coax                   x-only ECDH shared x (what NIP-44 uses)
+`nostr-support-profiles` defines a machine-readable support/limits matrix with
+source pin, target, implementation state, consumer and acceptance evidence:
+
+| Profile | Minimum scope | Boundary |
+| --- | --- | --- |
+| `core-read` | NIP-01 JSON/events/filters, BIP-340 verification, NIP-19, basic relay flow | No secrets or write authority |
+| `core-write` | Signing, CSPRNG, NIP-42, NIP-44/59, signer interface | Production secrets require the review/cutover gate |
+| `phone-signer` | Keychain custody, NIP-46 and NIP-98 website sign-in | Approval and background availability are explicit |
+| `openagents-host` | Original HOST grants, REACH freshness, WORK/COORD/CAP/POL/CTX/RUN | Network membership never grants execution |
+| `block-identity` | OA/AA/FI/FA, community/issuer/audience and revocation | Algorithm allowlist is deployment policy |
+| `block-channel` | CL/DV/CW/AR/IA/WP and required GS/MP/PL/RS projections | Read/write authority and completeness remain live decisions |
+| `agent-private` | AE/AP/AO/AM privacy, configuration and exact counters | No plaintext public snapshots or durable observer logs |
+| `key-backup` (optional) | NIP-49 encrypted import/export | Separate memory/KDF/normalization budget |
+
+Additional official NIPs (for example deletion, expiration, relay discovery,
+private messaging and search) enter only with a named consumer and conformance
+fixtures. Importing all NIP text does not advertise all NIPs. BIP-32/39 wallet
+derivation, ECDSA and MuSig2 are separate wallet/Bitcoin scopes. We are building a
+client, not replacing the existing relay. TLS stays in OS/browser transports.
+
+## 2. Architecture and compatibility
+
+`coax/lib/crypto/` knows nothing about Nostr. `coax/lib/nostr/` contains pure
+bounded codecs, event handling and protocol state machines. Domain adapters load
+selected root `proto/` profiles. Web, iOS, native tools and Verse reuse those
+sources. Host languages perform effects: entropy, sockets/TLS, Keychain, storage,
+clipboard, camera/QR acquisition and GPU/input bindings.
+
+Every output uses caller-owned bounded storage and a status result. A view does
+not own or extend its input's lifetime. No module retains a global secret. Native
+C ABI adapters must state aliasing, capacity, lifetime and cancellation rules;
+these are not established by Coax's limited local-borrow diagnostic.
+
+Nostr signing preimages remain exact NIP-01 JSON, never protobuf bytes or JCS.
+Protobuf is the internal interchange/projection contract. Retain original signed
+JSON, ordered tags and exact content, compare projections to originals, and keep
+unknown fields/presence. No transported `verified` Boolean creates authority.
+JWS uses its original signing input; owner attestations retain their original
+condition strings. Published proto snapshots and upstream NIP copies stay frozen.
+
+The existing TypeScript libraries remain the working path and independent test
+oracles until the cutover gate. New product computation is Coax; tests may use
+pinned independent libraries/tooling. There is no Python dependency in ordinary
+compiler/app generation. Reconciliation changes no runtime or published schema.
+
+## 3. Modules and consumers
+
+```text
+coax/lib/crypto/
+  bytes.coax              endian loads/stores, checked lengths, ct equality/select
+  zeroize.coax            explicit secure-erasure contract and caller scratch
+  sha256.coax             streaming/one-shot, BIP-340 tagged hashes
+  hmac.coax, hkdf.coax     HMAC-SHA256 and HKDF-SHA256
+  pbkdf2.coax             phrase-gate KDF only
+  chacha20.coax           RFC 8439 block/stream, caller nonce/counter
+  secp_field.coax         F_p, bounded 10x26 limbs
+  secp_scalar.coax        Z_n, 8x32 limbs with proven carry schedule
+  secp_group.coax         points, complete secret-path exceptional handling
+  secp_mult.coax          public verify path; secret fixed/variable-base paths
+  schnorr.coax            general-message BIP-340, Nostr 32-byte wrapper
+  ecdh.coax               validated x-only peer, raw shared x
 coax/lib/nostr/
-  hex.coax, base64.coax       bounded codecs
-  bech32.coax                 BIP-173 bech32 (not bech32m); NIP-19 npub/nsec/note/nprofile/nevent/naddr TLV
-  json.coax                   bounded pull parser + writer, no allocation (section 7)
-  event.coax                  NIP-01 event: serialize for id, compute id, sign, verify, field bounds
-  filter.coax                 REQ filters: build, and match locally
-  jcs.coax                    RFC 8785 canonical JSON for the contracts' digests
-  nip44.coax                  v2: conversation key, message keys, pad, encrypt, decrypt
-  nip59.coax                  rumor, seal (13), gift wrap (1059), unwrap with checks
-  envelope.coax               openagents.artifact-envelope.v1 inside kind 3188
-  nip42.coax                  AUTH event (22242) for a challenge and relay URL
-  relay.coax                  client protocol state machine (section 8)
-  keys.coax                   secret key format, storage record, NIP-07 adapter shape
-coax/web/
-  host.js                     generic imports (section 5); no crypto, no Nostr
-apps/openagents-web/          pages #load what they use
-tools/coax-nostr/             native CLI: keygen, seal, gate, publish, verify, fetch
+  hex.coax, base64.coax, bech32.coax
+  json.coax, event.coax, filter.coax
+  nip44.coax, nip59.coax, nip42.coax, nip46.coax, nip98.coax
+  jcs.coax, envelope.coax, keys.coax
+  relay.coax, store.coax  connection and persistent event lifecycle decisions
+  adapters/              proto/domain mappings and source-evidence checks
+  host/                  HOST/REACH and coordination policy
+  block/                 identity, channels, artifacts and private-agent policy
+coax/web/host.js          generic effects, never Nostr policy or UI
+apps/openagents-ios/     Keychain/network/camera effects; Coax state and decisions
+verse/                   the same verified projections and authority path
+tools/coax-nostr/       native keygen, verify, fetch, publish, seal and gate
 ```
 
-Rules:
-- `crypto/` never `#load`s `nostr/`. `nostr/` never touches the host directly;
-  pages pass bytes between the host inbox/outbox and these modules.
-- Every public procedure takes caller-owned output views and returns a status
-  enum; nothing returns pointers into internal buffers that outlive the call.
-- Secrets live only in caller-provided buffers that the caller zeroizes
-  (section 6.4). No module keeps a global secret.
-- Each module has its own `#test` block, a vector runner (section 9) and is
-  listed in `coax/tests` mutation gates once complete.
+Names above describe planned modules; they are not installed APIs. A bounded
+profile can split files further without changing task identity. Native CLI test
+keys and fixtures must be separate from production identities.
 
-How the page uses it (the project page reading its own events, M8):
+## 4. Arithmetic and compiler prerequisites
 
-```
-page boots → host opens wss://relay.openagents.com (socket import)
-relay.coax: OPEN → send REQ(filter: kind 30621 #d coax, kind 1621 #a project…)
-host inbox → relay.coax parses frames (json.coax) → EVENT
-event.coax: recompute id (sha256 of the NIP-01 serialization), check sig (schnorr.coax)
-  → verified events go to the page's store (fixed arrays), unverified are dropped and counted
-EOSE → page draws the task queue from verified events, verification spread across frames
-```
+Use 10x26 field limbs in `u64`: widening products fit without `u128`. Prove
+bounds for each actual accumulator and carry/fold schedule, including admitted
+non-normalized magnitudes and reduction by p = 2^256 - 2^32 - 977. Record
+normalization/magnitude preconditions per operation; checks reject violations.
+A negative bound test must exceed the actual proven bound, not assume magnitude
+9 necessarily overflows. Fixed-chain inversion/square root precedes optional
+public-data variable-time optimization.
 
-## 4. Arithmetic: 10×26 limbs, no new compiler features required
+Scalar 8x32 products individually fit `u64`; sums of several do not necessarily
+fit. Specify split products/carries and prove bounds before implementation.
+Group operations must cover infinity, P=Q, P=-Q, invalid lifts/peers, and secret
+paths without exceptional secret branches. Verification may use explicitly named
+`_vartime` operations on public data only.
 
-Coax has `u64` and no `u128`. In development builds integer overflow traps;
-in `--release` it wraps (spec §9). `<<` discards high bits; `cast,trunc`
-keeps low bits. wasm32 has native 64-bit integer operations but no widening
-64×64→128 multiply; clang lowers `__int128` multiplication on wasm32 to a
-`__multi3` libcall.
+Checked and optimized builds must agree on defined crypto arithmetic. The old
+`0 - (bit & 1)` mask underflows checked unsigned arithmetic: use an explicitly
+specified wrapping helper or an equivalent checked-safe construction. Widen-and-
+truncate/mask helpers remain valid until intrinsics land. No secret index or
+unchecked-access escape hatch is introduced.
 
-**Decision: field elements are 10 limbs of 26 bits in `u64` (the
-`libsecp256k1` 10×26 representation), scalars are 8 limbs of 32 bits.**
-
-Why:
-- **No compiler work blocks it.** Every product of two 26-bit limbs fits in 52
-  bits; a schoolbook row of ten products plus carries stays under 2^62. All
-  arithmetic is ordinary checked `u64` arithmetic, so the development build's
-  overflow traps become a free bounds checker: if a magnitude bound is wrong,
-  a debug test traps instead of silently corrupting a signature.
-- **It is the fast choice on wasm32.** Each limb product is one `i64.mul`. A
-  5×52 layout needs 128-bit products, which cost four 32×32 multiplies plus
-  carry handling (or a libcall) on wasm32 until the wide-arithmetic proposal
-  (`i64.mul_wide_u`) ships everywhere.
-- **It has a reference to compare against:** libsecp256k1's
-  `field_10x26_impl.h` documents the magnitude rules; we derive our own code
-  and bounds from the math (no code copied, section 10) and differential-test
-  against it.
-
-Native code would be ~1.5× faster with 5×52 and `__int128`. That is a later
-optimization behind a `mul_wide(a, b: u64) -> (hi, lo: u64)` intrinsic
-(C: `unsigned __int128`; wasm32: four-multiply split now, `i64.mul_wide_u`
-when available). It is listed as optional task
-`coax-intrinsic-mul-wide` and is not on the critical path.
-
-**Magnitudes.** Each field element carries, in debug builds only, a magnitude
-and a normalized flag (libsecp's discipline): addition sums magnitudes,
-multiplication requires inputs at most 8 and yields 1, negation needs the
-magnitude as a parameter. In release builds these fields are compiled out
-(`#if` on build mode, or a separate debug struct). The worst-case bounds for
-`mul` and `sqr` are checked at compile time with `#run`/`#assert` over the
-constants (the largest accumulator given the largest admitted magnitude),
-so the bound proof is part of the build, not a comment.
-
-**Reduction.** p = 2^256 − 2^32 − 977. Reduce with the identity
-2^256 ≡ 2^32 + 977 (mod p): fold the high half of a 20-limb product back
-times 0x3D10 and 0x400 in the 26-bit layout. Final normalization to the
-canonical value is constant-time (a masked subtraction of p).
-
-**Inversion and square root.** Use Fermat (a^(p−2) and a^((p+1)/4)) with
-fixed addition chains: constant-time, simple, about 270 squarings plus 15
-multiplies. Variable-time inversion (safegcd) is a later optimization for
-verify-only paths, where inputs are public.
-
-**Scalars mod n.** 8×32-bit limbs in `u64` words, Barrett-free reduction
-using n's special form (2^256 − n is 129 bits), constant-time.
-
-**Endianness and bytes.** All external encodings are big-endian 32-byte
-strings (BIP-340, NIP-01 hex). Load/store helpers in `bytes.coax` assemble
-limbs from bytes explicitly; never reinterpret memory. wasm is little-endian,
-native targets may be either; explicit shifts make that irrelevant.
-
-**Bounds checks.** Coax keeps dynamic-index bounds traps in release (spec
-§10.1.1). In crypto code all indexes are loop counters or constants, never
-secret, so a bounds check is a predictable compare-and-branch on public
-data: harmless to constant time, a few percent of speed. Fixed-size arrays
-(`[10] u64`) with constant indexes are checked at compile time. Do not add
-an unchecked-index escape hatch for crypto.
-
-## 5. The host boundary
-
-The browser does five things for Coax and nothing else. `host.js` exposes
-them as generic imports any Coaxial page may use:
-
-| Import | Direction | Contract |
+| Prerequisite | Reconciled status | Gate |
 | --- | --- | --- |
-| `random(ptr, len)` | host → wasm | fills from `crypto.getRandomValues`; called for every nonce source, key generation and padding randomness; traps the page if unavailable |
-| socket pipe | both | `socket_open(url)`, `socket_send(id, ptr, len)` (text frame), `socket_close(id)`; frames and open/close/error events arrive in the existing inbox as message kinds |
-| storage pipe | both | `store_put(key, ptr, len)`, `store_get(key)`, `store_delete(key)` over IndexedDB, bytes only, results via the inbox |
-| clipboard | both | already exists for text fields (copy/paste only) |
-| NIP-07 (optional) | both | if `window.nostr` exists: `signer_pubkey`, `signer_sign(event json)`, `signer_nip44_decrypt(peer, ct)`; results via the inbox |
+| Checked integers, fixed arrays/views, `#load`, `#run` | Implemented; actual table budgets still need measurement | Existing compiler plus emitted-target tests |
+| Compound assignment through a view | Fixed in `e2f8432ea2` | Preserve focused regression |
+| `value_barrier` | Shipped in `b9a5f216f0` | Scoped code-generation tests, not a constant-time guarantee |
+| Secure erasure | Missing independent contract | Optimized stores/copies and failure-path tests |
+| Wrapping ops/rotates | Missing convenience intrinsics | Helpers must work in both modes; no release-only safety |
+| `mul_wide` | Optional native optimization | Not required for 10x26 |
+| Debug magnitude layout | Conditional fields planned | Explicit debug representation is allowed; no false `#if` claim |
+| Secret/variable-time enforcement | Missing | `crypto-secret-lint`; `#secret` is not accepted syntax today |
 
-Everything else, every byte of crypto, JSON and protocol, is Coax. NIP-07
-is an *optional signer*: when the visitor has a signer extension holding the
-key, the page asks it to sign or decrypt instead of holding a secret itself.
-The page still verifies everything the signer returns.
+## 5. Host effects and key custody
 
-**INVARIANTS change (lands with M7):** the rule "Coaxial pages draw
-everything in Coax; TypeScript only for browser crypto" becomes "Coaxial
-pages draw and compute everything in Coax". The host is the only
-JavaScript: GPU, input, the five imports above, navigation. No TypeScript
-or npm dependency ships to a Coaxial page. `check-visuals.sh` gains a check
-that the deployed page loads no script besides the content-named `host.js`.
-Until M7 lands, the current wording stands, and `coax/web/unlock/` is the
-only exception.
+The socket pipe already exists. Extend its bounds, errors, queue overflow,
+connection generations and cancellation only through explicit contracts. Browser
+WebSockets do not expose arbitrary handshake headers; the FI/HOST transport
+profile must select supported carriage rather than assume header injection.
 
-TypeScript leaves entirely when M7's tasks are done: the page opener, the
-gate, the sealer and the injector are all Coax (native CLI for the latter
-two), `coax/web/unlock/` is deleted, and deploy no longer runs bun.
+Entropy adapters use OS CSPRNGs / `crypto.getRandomValues` (chunked at 65,536
+bytes), fail closed when unavailable, and never substitute clocks or PRNGs.
+Native/iOS adapters share the failure contract; pure algorithms receive explicit
+entropy/auxiliary bytes. Tests inject deterministic bytes only through test APIs.
 
-## 6. Constant time, side channels and the threat model
+Storage adapters move opaque bytes with namespace/version, quota, failure,
+crash/reload, generation and deletion semantics. Local IndexedDB failure is a
+reported state. Default identity custody is the phone or an external signer;
+plaintext `nsec` persistence in IndexedDB is not the default. Browser local keys
+are explicit ephemeral slots; durable encrypted import/export waits for NIP-49.
+The existing unlock-key store is a legacy migration concern, not an endorsement.
 
-### 6.1 What the platforms promise
+A signer abstraction supports phone/NIP-46, NIP-07 and a local test/ephemeral
+slot. Verify and correlate returned events, enforce requested identity/kind/body,
+show approvals, cancel requests and reject late/duplicate responses. Keychain
+records are device-only with explicit user-presence policy. Software secp256k1
+signing briefly exposes key bytes in app memory; Keychain protection is not a
+promise of hardware-isolated signing. An iOS app may be
+suspended: pending requests time out or await foreground approval, never assume
+an always-running phone signer. Forget/logout revokes sessions and wipes owned
+scratch; storage deletion and memory erasure are separate outcomes.
 
-- **Native (C via clang, Apple silicon and x86-64):** integer `mul`, `add`,
-  shifts and bitwise ops are data-independent in time on the cores we ship
-  to. The risk is the compiler turning mask arithmetic back into branches;
-  we block that with a value barrier (6.3).
-- **wasm32 in V8, JavaScriptCore and SpiderMonkey:** wasm gives *no*
-  timing guarantees. In practice `i64.mul` and bitwise ops compile to the
-  same machine instructions, and the JIT doesn't speculate on integer values.
-  But tiers change, and nothing is promised. We write constant-time code, test
-  it natively, and do not claim the browser path is side-channel resistant.
-- **Everything shares the page's process with JavaScript.** Another script
-  on the page (an extension, an XSS) can read wasm memory directly. Timing is
-  not the weakest point in a browser; script injection is.
+## 6. Secret handling and security evidence
 
-### 6.2 Threat model, stated plainly
+No branch, loop bound, address/table index or early comparison exit depends on a
+secret. Scalar multiplication scans tables with masks. Check intermediate bounds
+and validate scalar 1..n-1 and peer points. BIP-340 includes parity normalization,
+auxiliary randomness, zero-nonce refusal and self-verification before a signature
+is released. Error paths do not release partial signatures/plaintext.
 
-| Attacker | In scope | Defense |
-| --- | --- | --- |
-| A relay or network sees our events | yes | signatures, NIP-44 AEAD-like encrypt-then-MAC, NIP-59 metadata hiding |
-| A malicious relay sends crafted events | yes | bounded parsing, full verification before use, refusals counted |
-| A remote party timing our signing over the network | yes | constant-time scalar multiplication and nonce handling |
-| Another tab or site via cache timing | partially | constant-time code; browser site isolation does the rest |
-| Script on our own page (XSS, extension) | no | CSP, no third-party script, NIP-07 so keys can stay in the signer |
-| Physical, power, EM | no | out of scope |
+A value barrier prevents some optimizer reasoning; it does not prove constant
+time, preserve all erasure stores, or erase hidden array/struct/ABI copies. A
+foreign identity call is not a universal fallback under whole-program analysis.
+`crypto-secure-zero` defines observable erasure at the host/compiler boundary,
+allowed secret copies, caller scratch and failure cleanup. Inspect real optimized
+objects, including builds where no test reads the wiped buffer afterward.
 
-### 6.3 Rules for secret-handling code
+`crypto-secret-lint` must state its supported source/taint scope and fail closed
+for unsupported constructs in marked secret entry points. Names ending
+`_vartime` alone enforce nothing. Do not claim a language effect/taint system
+exists before its implementation and negative tests.
 
-- **No branch on a secret.** No `if`, `&&`, `||`, `ifx` or loop bound that
-  depends on secret bits. Use `ct_select(mask, a, b)` with `mask` all-ones or
-  zero, built by `0 - (bit & 1)`.
-- **No secret index.** Table lookups (the precomputed points in scalar
-  multiplication) scan every entry and select with masks.
-- **No early exit on secret comparison.** `ct_eq` over the full length for
-  MACs, tags and checks; it returns a mask.
-- **Value barrier.** A `#no_inline` procedure that returns its argument
-  through a volatile-like path stops clang from re-deriving branches from
-  masks. Coax prerequisite: `value_barrier(x: u64) -> u64` as a compiler
-  intrinsic emitting `__asm__("" : "+r"(x))` on native and an opaque call on
-  wasm (task `coax-intrinsic-value-barrier`). Until it exists, crypto code
-  calls a `#foreign` no-op C function, which also works.
-- **Variable-time is allowed only on public data:** verification (public key,
-  message and signature are public), parsing, and the variable-time inversion
-  used in verify. Each such procedure's name ends in `_vartime`, and a lint
-  refuses calling a `_vartime` procedure from a module tagged `#secret`.
-- **Nonces:** BIP-340's deterministic nonce with auxiliary randomness
-  (32 bytes from `random`), never a counter, never reused.
+`crypto-secret-codegen` records target, compiler/toolchain version, flags,
+optimization/LTO mode and generated artifact hashes. Inspect arm64 and x86-64
+branches/addresses/erasure; inspect and execute wasm32 across Chrome, Safari and
+Firefox tiers where available. Browser/JIT timing has no general guarantee.
+Script injection/extensions can read page memory; CSP, no third-party scripts
+and external key custody remain separate protections. Physical/power/EM attacks
+are outside this profile. Do not describe arbitrary future CPUs as constant time.
 
-### 6.4 Zeroizing
+Dudect-style fixed/random secret classes, Welch t statistics and at least 10^6
+samples are leakage probes: |t| < 4.5 means no leak detected in that run, not a
+proof. Record methodology/noise and prove the harness detects seeded leaks.
+Source checks, mutation scores, fixed-point bootstrap and timings do not prove
+cryptographic security or compiler soundness.
 
-Every buffer that held a secret key, nonce, shared secret, conversation key,
-message key or plaintext of a private record is zeroized before the
-procedure that owns it returns, through `zeroize(view)`, which writes through
-the value barrier so the stores aren't eliminated. Keys in long-lived state
-(a page that keeps a pasted key) live in one `SecretSlot` with an explicit
-`forget()`. Tests check that the slot and the scratch buffers are zero after
-each operation (inspectable because Coax tests can read state).
+`crypto-independent-review` requires independent arithmetic/protocol/compiler-
+boundary review with findings resolved and evidence pinned. `nostr-production-
+cutover` is the gate for production keys and retirement, not a prerequisite to
+writing/testing algorithms with throwaway keys. Keep the working path until that
+gate passes. No task may resolve it by recording its own unreviewed approval.
 
-## 7. JSON, events and canonical forms
+## 7. JSON, events, encodings and limits
 
-### 7.1 Bounded JSON
+`nostr-support-profiles` records per-consumer original-frame, decoded-content,
+tag/cardinality, depth, output, pending verification and event-store budgets.
+The old proposal used 1 MiB JSON, 64 KiB strings, 2,000 tags x16; current proto
+reference limits include 524,288 original JSON bytes, 262,144 content bytes,
+2,048 tags x64 and 1 MiB protobuf. These are distinct consumer limits, not
+universal Nostr rules. Boundary adapters refuse cleanly rather than truncate or
+advertise wider support. The existing socket inbox is 262,144 bytes.
 
-A pull parser over a byte view with a token stack of fixed depth (16) and no
-allocation: it yields tokens with byte ranges; string values are unescaped
-on demand into caller buffers. Limits: input 1 MiB (the artifact envelope's
-maximum body), depth 16, string 64 KiB, 2,000 tags of 16 elements. Over any
-limit, the parser refuses the whole frame; it never truncates. Numbers are
-accepted only as integers in the safe range (2^53) unless a caller asks for
-the raw text; NIP-01 needs only `created_at` and `kind`.
+The shipped bounded pull parser/writer covers UTF-8, escaping and surrogate
+pairs. `nostr-json-profile-hardening` adds consumer rules and tests duplicate
+object keys, nesting, integer overflow and output exhaustion. Choose an explicit
+fail-closed duplicate-key policy. Safe integer projection is bounded by
+2^53-1; retain numeric text/original bytes where another contract needs more.
+The shipped `json_int` accepts +/-2^53; consumer safe-integer admission must
+narrow this explicitly rather than assume the existing parser already does so.
+Full event validation, including unknown-field policy, precedes durable use.
 
-The writer appends to a caller buffer and fails if it would overflow.
+`nostr-event` handles parse, canonical NIP-01 serialization, ID recomputation
+and BIP-340 verification. `nostr-event-sign` separately builds signed events.
+That separation keeps read-only verification independent of signing/keys/AUTH.
+Test every escape class and non-ASCII against independent implementations; do
+not use JCS as the Nostr event preimage or silently rewrite signed originals.
+Freshness/future limits belong to the consumer profile, not signature validity.
 
-### 7.2 NIP-01 serialization and id
+BIP-340 accepts byte-view messages, including lengths 0, 1, 17 and 100 in the
+19 pinned official vectors; a Nostr wrapper requires exactly 32-byte event IDs.
+Strict lowercase exact-size ID/pubkey/signature admission, invalid curve points,
+r>=p, s>=n and altered event fields get independent negative fixtures.
 
-The id is SHA-256 of the UTF-8 serialization of
-`[0,<pubkey hex>,<created_at>,<kind>,<tags>,<content>]` with no whitespace
-and NIP-01's exact escaping: `\n` `\"` `\\` `\r` `\t` `\b` `\f` escaped,
-everything else, including other control characters and non-ASCII, written
-as raw UTF-8. This is not JCS and not JSON.stringify; the vectors pin it.
-Verification recomputes the id from the parsed fields, compares it to `id`
-in constant time is unnecessary (public), then verifies `sig` over the id.
+NIP-19 uses BIP-173 bech32, not bech32m, with NIP-19 TLV length rules. Unknown
+TLVs follow the pinned source policy. Hex/base64 decoders reject invalid padding,
+noncanonical encodings where required, and insufficient buffers.
 
-Field rules on ingest: `id`, `pubkey`, `sig` lowercase hex of exact length,
-`kind` 0…65535, `created_at` within the page's window (configurable; default
-accepts anything ≥ 0 and ≤ now + 15 min), tags arrays of strings only.
+JCS contract digests sort UTF-16 code units. The initial envelope profile is an
+explicit integer-only RFC 8785 subset, with safe-number bounds; reject floats
+until a complete interoperable number renderer exists. Digest the specified
+original/canonical representation, not a lossy proto reconstruction.
 
-### 7.3 JCS for contract digests
+## 8. Relay and persistent state
 
-The OpenAgents contracts use RFC 8785 for canonical object digests (the 3188
-envelope's `digest`). JCS sorts member names by UTF-16 code units (not
-bytes), serializes numbers in the ECMAScript form, and escapes strings
-minimally. Our envelope bodies contain only strings, integers, booleans,
-arrays and objects; `jcs.coax` supports exactly that and refuses floats,
-so the number rule reduces to integers. Sorting by UTF-16 units needs a
-comparator that decodes UTF-8 to code points and compares surrogate pairs as
-UTF-16 would; vectors include astral-plane keys.
+Read-only live connectivity goes first. `project-page-live` parses/folds bounded
+frames and may show explicitly relay-trusted provisional rows on the configured
+project relay. Keep them distinct from verified snapshots; no authoritative
+claim, write, grant or production-cutover decision consumes provisional data.
+The production verified profile depends on `project-page-verify`: recompute ID,
+verify signature, enforce author/project scope, then fold/store. Apply a bounded
+verification queue and at most 4 ms/frame; forged events are refused and counted.
 
-### 7.4 Bech32 and NIP-19
+The generic relay machine covers OPEN/CONNECTING/CLOSED/BACKOFF, AUTH states,
+EVENT/REQ/CLOSE/AUTH, EVENT/OK/EOSE/CLOSED/NOTICE/AUTH replies, acknowledgement
+timeouts, cancellation, capped jittered backoff and connection generations. Each
+subscription has bounded IDs/filters/events; frames from old/unknown connections
+or subscriptions are ignored. NIP-42 proof is bound to the current challenge,
+relay and connection; reauthenticate after reconnect. AUTH-required CLOSED
+requeues once after successful AUTH. Do not rely on one relay's poison-before-
+AUTH behavior as a universal protocol rule.
 
-BIP-173 bech32 (NIP-19 does not use bech32m), with NIP-19's raised length
-limit for TLV entities. `npub`, `nsec`, `note` are bare 32 bytes;
-`nprofile`, `nevent`, `naddr` are TLV with types 0–3. Unknown TLV types are
-ignored, as NIP-19 requires. `nsec` decoding writes straight into a
-`SecretSlot`.
+The store handles verified immutable originals plus indexes, duplicates,
+replaceable/addressable-event ordering and same-time tie rules, authorized
+deletions/tombstones, expiration and schema migration. Never resurrect deleted
+records on reconnect. EOSE does not prove completeness; short pages, tied
+timestamps, missing dependencies, paginated catch-up and relay disagreements are
+explicit states. A count/connection chip must not claim a complete synchronized
+project. Multi-relay merge/outbox rules distinguish published, acknowledged,
+refused and unknown outcomes and survive offline restart without duplicate acts.
 
-## 8. The relay client
+## 9. Correctness, oracles and target evidence
 
-`relay.coax` is a pure state machine: it takes inbox events (socket opened,
-text frame, closed, error, tick) and produces outbox actions (send frame,
-close, reconnect after N ms). No I/O inside.
+Pin source URL, revision/license, retrieval date and SHA-256 for every vector
+file. Keep upstream bytes; label derived adapters and their input hashes.
 
-States per connection: `CLOSED → CONNECTING → OPEN → (AUTH_PENDING →
-AUTHED)`, with `BACKOFF` after errors (1 s, 2 s, 4 s … capped at 60 s, with
-jitter from `random`).
-
-Messages: client `EVENT`, `REQ`, `CLOSE`, `AUTH`; relay `EVENT`, `OK`,
-`EOSE`, `CLOSED`, `NOTICE`, `AUTH`. Rules:
-- **AUTH before REQ when the relay requires it.** relay.openagents.com
-  answers a REQ sent before AUTH with `CLOSED auth-required` and the
-  connection then refuses later REQs; the state machine waits for the AUTH
-  challenge, signs the 22242 event (or asks the NIP-07 signer), waits for
-  `OK`, then sends queued REQs. A `CLOSED` with `auth-required:` re-queues
-  that subscription once after authenticating.
-- Subscription ids are short random strings; at most 16 open per
-  connection; events for unknown ids are dropped.
-- Every `EVENT` is verified (7.2) before it's delivered; duplicates (same id)
-  are delivered once.
-- `EOSE` is a signal, not proof of completeness (NIP-WORK says the same).
-- Outgoing `EVENT` waits for `OK`; `OK false` reasons are surfaced to the
-  page by prefix (`duplicate:`, `blocked:`, `rate-limited:`, `invalid:`,
-  `auth-required:`, `restricted:`, `error:`).
-
-## 9. Correctness and verification
-
-### 9.1 Vectors (pinned, checked in under `coax/tests/vectors/`)
-
-| Module | Vectors |
+| Module | Required evidence |
 | --- | --- |
-| sha256 | NIST CAVP SHA256ShortMsg/LongMsg (a subset), the empty and "abc" strings, a 1 MiB stream split at every chunk size 1–129 |
-| hmac | RFC 4231 test cases 1–7 (SHA-256 columns) |
-| hkdf | RFC 5869 test cases 1–3 |
-| pbkdf2 | RFC 7914 §11 PBKDF2-HMAC-SHA256 vectors |
-| chacha20 | RFC 8439 §2.3.2, §2.4.2, A.1, A.2 |
-| secp field/scalar | generated edge values (0, 1, p−1, p, 2^256−1, values near limb boundaries) checked against a native libsecp256k1 harness |
-| schnorr | BIP-340 `test-vectors.csv` (all 19 rows, including the failing ones) |
-| ecdh | Wycheproof `ecdh_secp256k1_test.json` adapted to x-only shared x, plus NIP-44's conversation-key vectors |
-| nip44 | the official `nip44.vectors.json` (valid: get_conversation_key, get_message_keys, calc_padded_len, encrypt_decrypt, encrypt_decrypt_long_msg; invalid: every case) |
-| nip59 | fixtures produced by nostr-effect's nip44 + pure (not its nip59, which has the MAC bug) and by our seal.ts, opened by ours; ours opened by them |
-| event | NIP-01 serialization fixtures with every escape class, astral characters, empty tags, 2,000 tags |
-| bech32/NIP-19 | BIP-173 valid/invalid strings; NIP-19 examples; TLV with unknown types |
-| jcs | RFC 8785 appendix examples restricted to integers, plus UTF-16 ordering cases |
-| envelope | today's sealed test deck, byte-for-byte, and its digest |
+| SHA-256 | NIST short/long subset, padding boundaries and split streaming |
+| HMAC/HKDF/PBKDF2 | RFC 4231, 5869, 7914 vectors and output bounds |
+| ChaCha20 | RFC 8439 vectors, counters/exhaustion, alias/failure policy |
+| Field/scalar/group | independent big-integer oracle or pinned reviewed white-box libsecp harness; edge/carry/magnitude/exception cases |
+| BIP-340 | All 19 official rows, valid/invalid and variable message lengths; sign self-verification |
+| ECDH | validated peers, raw-x oracle callback, NIP-44 conversation keys and labelled adapted Wycheproof inputs |
+| NIP-44 | every valid/invalid source vector, MAC-before-plaintext, padding/version/alias/boundary cases |
+| NIP-59 | independent implementations in both directions, wrap/seal verification and rumor identity |
+| Events/JSON/NIP-19/JCS | independent preimages, malformed JSON/UTF-8, TLV/escaping/UTF-16 ordering and capacity cases |
+| Domain protocols | revoked/expired/replayed/out-of-order evidence, missing authority, privacy and completeness refusals |
 
-Each file records where it came from and its SHA-256 in
-`coax/tests/vectors/SOURCES.md`. Vector runners are native C test programs
-built from the Coax modules (`coax c` → clang with sanitizers), because some
-vectors are too heavy for the compile-time evaluator's step budget; small
-cases also run as `#test` so `coax test` exercises them.
+The public libsecp API does not expose arbitrary field/scalar internals: pick
+and document the actual oracle interface. Its default ECDH API hashes the
+compressed shared point; NIP-44 needs raw x through a reviewed callback, not the
+default digest. No comparison against our own generated output is an independent
+oracle. Downloaded source is inspected and built only in an explicitly reviewed,
+pinned harness; never execute unreviewed install/build scripts on this Mac.
 
-### 9.2 Differential fuzzing
+Small `#test`/`#forall` checks and zero-survivor mutation gates accompany modules;
+authority/policy files use `#authority`. Native emitted C runs under ASan/UBSan;
+independent differential fuzzing pins seeds and retains minimized regressions.
+A seeded algorithm, serialization and oracle fault must be caught. Run actual
+emitted vectors in checked/optimized C, wasm32 browser engines, iOS simulator
+and physical devices when available. Device evidence is an owner step, not a
+simulator claim. Hash inputs/artifacts and rerun only affected evidence; unrelated
+remote commits or rebases do not justify rerunning the compiler/app suites.
 
-`tools/coax-nostr/fuzz/` links the Coax modules (native) with:
-- **libsecp256k1** (pinned release tag, built from the upstream source only
-  inside the fuzz harness; never shipped, never copied into our tree): field
-  ops through the scalar/point API, Schnorr sign/verify, x-only ECDH;
-- **nostr-effect** (via a bun subprocess oracle) for NIP-44, event ids and
-  NIP-19.
+Performance figures are provisional budgets, not facts: SHA-256 300 MB/s native
+/150 MB/s Wasm, ChaCha20 500/250 MB/s, verify 100/600 us, sign 60/300 us,
+ECDH 80/400 us and cached 1 KiB NIP-44 decrypt 10/40 us. Record hardware,
+profiles, allocation/stack/table costs, distributions and complete consumer loop.
+GLV, batch verification, 5x52 limbs and larger tables wait for measured need;
+they never block first interoperable verification.
 
-Every input that disagrees becomes a regression vector. A fuzz run of one
-hour per module with no disagreement is a milestone gate.
+## 10. Encryption, migration and retirement
 
-### 9.3 Checks inside the code
+NIP-44 v2 uses raw-x ECDH, HKDF, ChaCha20 and HMAC over nonce||ciphertext.
+Validate the outer event before decrypting and authenticate before releasing
+plaintext. The pinned NIP supports the six-byte extended length prefix at
+65,536 bytes and beyond. Test 65,535/65,536/65,537; a bounded profile may refuse
+larger messages explicitly, not misdecode the extended form. Test unsupported
+versions, zero/oversized lengths, malformed padding, wrong MAC and nonce reuse
+policy. NIP-44 is not a promise of forward secrecy or post-compromise security.
 
-- `#test` per module with the small vectors and invariants (round-trips,
-  `decrypt(encrypt(x)) == x`, sign-then-verify, tamper-then-refuse).
-- `coax mutate` over each crypto module: every mutant must fail a check.
-  Mutation survivors in constant-time selection code mean the tests don't
-  distinguish the two branches; fix the tests.
-- Compile-time bound proofs for field arithmetic (section 4).
-- Debug-build magnitude tracking (section 4) on every field op.
+NIP-59 checks the gift-wrap signature, decrypts, checks seal signature and rumor
+identity, and generates fresh wrap keys/timestamps/entropy. Encrypted payloads
+and private plaintext never enter public task snapshots, logs or observer stores.
 
-### 9.4 Constant-time evidence
+The existing phrase gate uses PBKDF2 + AES-GCM. Keep that path until
+`unlock-gate-format` specifies and independently reviews a versioned replacement:
+KDF parameters/limits, salt, independent keys/domain separation, nonce generation,
+exact MAC input/AAD/framing, authenticated version/length, error behavior and
+rollback. Do not assert that a new ChaCha20/HMAC composition has "the same
+security" or is "NIP-44 minus ECDH" without that definition and review.
 
-A native timing harness (dudect-style: fixed vs random secret classes,
-Welch's t-test over 10^6 runs) for `schnorr_sign`, `ecdh`, `nip44_decrypt`
-and `ct_eq`. |t| < 4.5 after 10^6 samples is the gate, on Apple silicon and
-x86-64. The wasm build is measured too, and results are reported, not gated
-(section 6.1).
+Use immutable format/version fixtures, old/new readers for a documented window,
+staged regeneration and rollback tests. `unlock-gate-coax` implements only the
+reviewed format. PBKDF2 workload remains bounded and measured; it must not freeze
+the render loop. No AES implementation is needed for core Nostr; keeping an
+existing host adapter temporarily is not a protocol regression.
 
-## 10. Supply chain and the unlock gate
+`nostr-production-cutover` pins independent review, target vectors, real-consumer
+staging tests, rollout flags/compatibility and rollback. Only then retire the
+working crypto path. `invariant-coax-only` changes INVARIANTS and removes browser
+TypeScript dependencies after all consumers, including project tools, have actual
+replacements. A check must detect hidden imports as well as extra script tags;
+merely drawing everything in Coax is not proof that crypto is Coax.
 
-### 10.1 Our code only
+## 11. Dependency order and exit consumers
 
-No third-party code is copied into `coax/lib`. Reference implementations
-(libsecp256k1, @noble/curves, nostr-effect) are read for understanding and
-used as test oracles; the math is written from the specs (SEC 2, BIP-340,
-RFCs, NIPs). Vector files are pinned by hash. The fuzz harness fetches
-libsecp256k1 at a pinned tag and verifies its tarball hash.
+Stable milestone slugs retain their identity; their old numeric prefixes are
+historical identifiers. Read `blocked_by`, not a milestone number, for readiness.
 
-### 10.2 Build and size
-
-Release wasm for the whole stack, including precomputed tables, should stay
-under 120 KB (the fixed-base comb table is the largest piece: 64 KB for a
-4-bit, 64-teeth layout; a smaller 32 KB variant is acceptable on the page).
-Tables are generated at compile time with `#run`, not checked in as data.
-
-### 10.3 The phrase gate without AES
-
-Today the gate encrypts a pointer with PBKDF2 + AES-GCM (WebCrypto). Coax
-gets no AES: the new gate uses PBKDF2-HMAC-SHA256 (210,000 rounds) to derive
-64 bytes, splits them into a ChaCha20 key and an HMAC key, and seals the
-pointer encrypt-then-MAC, exactly NIP-44's construction minus ECDH. Same
-security for this use, one less primitive. `coax-nostr gate` writes the
-entries at deploy; old entries are regenerated on the next deploy, so there is
-no compatibility period.
-
-## 11. Rollout
-
-| Milestone | Delivers | Consumer that proves it |
+| Delivery order | Work | Exit evidence |
 | --- | --- | --- |
-| M0 Hashes and ciphers | bytes, sha256, hmac, hkdf, pbkdf2, chacha20, hex, base64 | vectors; the gate's KDF |
-| M1 Field and scalar | secp_field (10×26), secp_scalar, inversion, sqrt | edge vectors vs libsecp |
-| M2 Group and verify | points, wNAF dual multiplication, BIP-340 verify | BIP-340 verify rows; the page verifies one real event |
-| M3 Sign and ECDH | fixed-base comb, ct ladder, BIP-340 sign, x-only ECDH | BIP-340 sign rows; timing harness |
-| M4 NIP-44 and NIP-59 | v2 encrypt/decrypt, seal, wrap, unwrap | official vectors; opens today's sealed deck |
-| M5 Events and encodings | JSON, NIP-01 event, filters, bech32/NIP-19, JCS, envelope | event fixtures; envelope digest of today's deck |
-| M6 Relay client in the page | host socket/storage/random imports, relay state machine, NIP-42 | the page subscribes to relay.openagents.com with AUTH |
-| M7 Replace the TypeScript | page opener, gate, sealer and injector in Coax; INVARIANTS change; delete `coax/web/unlock/` | the hidden deck opens with no TypeScript |
-| M8 Project page live | `/projects/coax` reads its project, tasks and order from the relay; claims signed in the page | the real project page |
+| Foundation (parallel) | Profiles/limits, pins/runners/oracles; existing socket plus bounded JSON and storage; compiler prerequisites only where required | Queue DAG/negative gates, real frame probe, independent vectors |
+| Read-only verification | Hashes, field/scalar/group, BIP-340 verify, event parse/hash/verify | One real event and forged refusal, no signing dependency |
+| Verified live project | Coax task fold then local verification, bounded store and replay | Live changes without release; forged/out-of-scope rows never enter verified state |
+| Signing/encryption | Entropy, erasure, secret-path/codegen evidence, sign, ECDH, NIP-44/59 | Cross-implementation outputs and failure cleanup using throwaway keys |
+| Durable clients | Event lifecycle, offline outbox, multi-relay catch-up; source-preserving proto/domain adapters | Restart/reorder/partition/deletion and privacy tests |
+| Phone sign-in (M9) | iOS shared vectors, custody, NIP-46, QR, NIP-98 sessions and revocation | Local + staging browser/phone sign-in and explicit device step |
+| Host and work | HOST grants, REACH, worker identities, atomic fenced claims and task journal | Real Linux Codex task, progress/result/PR, refused revoked/replayed grant |
+| Identity/channels/private data | Block OA/AA/FI/FA, CL/DV/CW/AR/IA/WP, AE/AP/AO/AM and missing projections | Cross-client authority, CAS, privacy and pagination tests |
+| Production migration | Independent review and cutover; native project/unlock tooling, format migration and rollback | Same real consumers, then removal of old paths |
+| Optional breadth | NIP-49, consumer-backed additional NIPs; GLV/batch/native optimization | Separate advertised profiles and measured need |
 
-The order matters: the unlock deck is the first real consumer (it already
-exercises NIP-44, NIP-59, NIP-42, the envelope and key storage end to end,
-and has a working TypeScript version to compare against). The project page
-reading real events comes next. Signing claims from the page comes last,
-because it is the only path where a bug costs someone else's work.
+M9 already exists in the queue and is not a newly discovered feature. The
+previous M0-M8-only table and unlock-first prose are superseded by this order.
+The early live fold may be developed before verification, but that does not
+waive verification for authoritative use or require signing to read public data.
 
-## 12. Performance targets
+## 12. Phone signer and website sessions
 
-| Operation | Native (Apple M-series) | wasm32 in Chrome |
-| --- | --- | --- |
-| SHA-256 | ≥ 300 MB/s | ≥ 150 MB/s |
-| ChaCha20 | ≥ 500 MB/s | ≥ 250 MB/s |
-| BIP-340 verify | ≤ 100 µs | ≤ 600 µs |
-| BIP-340 sign | ≤ 60 µs | ≤ 300 µs |
-| x-only ECDH | ≤ 80 µs | ≤ 400 µs |
-| NIP-44 decrypt, 1 KB, keys cached | ≤ 10 µs | ≤ 40 µs |
+Implement NIP-46 client and bunker sides with distinct client, remote-signer and
+user keys; call `get_public_key` after connect. One-use connect secrets,
+authenticated response correlation, granted kinds/methods, bounded requests,
+replay/expiry, disconnect/logout, relay switching, approval and suspension are
+part of the contract. Untrusted site metadata is display-only. Unsupported
+legacy NIP-04 methods return an explicit error; this profile does not add NIP-04.
 
-These are first targets for the 10×26 build without GLV. GLV endomorphism
-decomposition (roughly 1.5× faster verify) is a follow-up task.
+NIP-98 server validation binds exact URL, method and payload, time window and an
+unused event ID. Replay reservation must be atomic across workers/restarts for
+the acceptance window. Sessions need fixation protection, CSRF policy, scoped
+roles, rotation, expiry, sign-out/revocation and bounded cleanup; a signed login
+never implicitly grants project administration. Cookies contain no secrets.
 
-**Page budget.** The project page verifies up to 500 events on load. At
-0.6 ms each that is 300 ms of CPU, too long for one frame, so verification
-runs incrementally: at most 4 ms per frame while drawing, with
-already-verified rows shown first. The page draws immediately from verified
-rows and fills in as verification completes. If verification can't keep up
-(a slow phone), the page never shows an unverified event as verified; it
-shows the count still checking. Batch verification (one multi-scalar
-multiplication for many signatures) is a later optimization.
+Run simulator/browser fixtures with throwaway keys against a local relay, then
+staging. Production keys remain behind the cutover gate. Device-only Keychain and
+foreground approval behavior require owner evidence recorded in NEEDS_OWNER.md
+when those tasks are implemented.
 
-## 13. Coax compiler prerequisites found
+## 13. Runtime authority and OpenAgents integration
 
-| Need | Status | Task |
-| --- | --- | --- |
-| u64 checked arithmetic, `cast,trunc`, shifts that discard high bits | exists | none |
-| Fixed-size arrays and views | exists | none |
-| `#load` for module composition | exists (0.11.0) | none |
-| `#run`/`#assert` compile-time bound proofs and table generation | exists, step budget may need raising for the comb table | `coax-run-step-budget` (check only) |
-| A value barrier | missing; `#foreign` no-op works meanwhile | `coax-intrinsic-value-barrier` |
-| Explicit wrapping `u32` add/rotate for SHA-256 and ChaCha20 | missing; computing in `u64` and masking works | `coax-intrinsic-wrapping-ops` (optional) |
-| `mul_wide` 64×64→128 | missing; not needed for 10×26 | `coax-intrinsic-mul-wide` (optional, native speed) |
-| A known compound-assignment bug (`t[0].count[b] += 1` through a view emits invalid C) | open | `coax-fix-compound-assign-view` |
-| Build-mode conditional for debug-only magnitude fields | partial (`#if` planned, spec §10.5) | `coax-debug-only-fields` |
+`nostr-proto-adapters` maps selected alpha profiles to real Coax domain values,
+preserves original signed/framed inputs and rejects projection mismatches.
+Expand missing official/Block definitions in root `proto/` only alongside their
+consumers, pin/source review, compatibility and protoc gates. Codecs do not turn
+an owner string, JWS claim or channel label into authorization.
 
-## 14. Open questions
+HOST verifies original invitation/grant signatures, issuer/audience, host and
+operation scope, expiry, redemption, epochs/revocation and request replay before
+any effect. REACH validates route generations/epochs, identity, rollback
+freshness and authenticated direct-channel binding. NIP-42 proves key possession
+to a relay; FI community membership, tailnet routing and host execution are
+separate decisions. Refuse closed when evidence/configuration is unavailable.
 
-1. **Where should keys live on the page?** v1 keeps today's model: a pasted
-   key in IndexedDB, or a NIP-07 signer. Encrypting it at rest with a
-   passphrase (NIP-49 `ncryptsec`: scrypt + XChaCha20-Poly1305) would need
-   three more primitives. Recommendation: do NIP-49 after M8, as its own task
-   set, and prefer NIP-07 for anyone who has a signer.
-2. **Publishing identity for the project's own events.** Which key signs the
-   `kind:30621` project and its tasks: the openagents organization key, or a
-   project key registered under NIP-OA? Recommendation: a project key, owned
-   by the org key, so it can be rotated without touching the org.
-3. **Workers.** Verification could run in a Web Worker on a second wasm
-   instance. That adds a second host surface. Recommendation: not until the
-   per-frame budget proves insufficient on a real phone.
-4. **Batch verify and GLV.** Both are worth it for pages with thousands of
-   events. Recommendation: after M8, measured on the project page first.
+COORD claims use authenticated worker keys and owner admission, atomic revision
+checks, all-or-none resources, fencing tokens, lease renewal/release and expiry
+reconciliation. The current project-key `["claim", NAME]` comments remain
+informational and readable as history; they are not migrated into forged worker
+signatures or accepted as live fenced grants. WORK/CAP/POL/CTX bound what may be
+run; RUN/SESS progress/result references keep evidence and errors stable.
+
+`host-codex-e2e` exercises phone/app -> admitted HOST/REACH connection -> real
+Linux Codex task -> progress/result/PR -> fenced completion. Duplicate delivery,
+revocation during a run, disconnected/unknown result and refusal of unauthorized
+commands are required failures, not just a happy-path connectivity probe.
+
+## 14. Block identity, channels and private-agent state
+
+OA attestations preserve exact signed conditions and check current owner roles;
+AA key possession and membership follow the configured community policy. FI
+requires bounded compact JWS parsing plus exact issuer/audience/community/token-
+class binding, time/TTL checks, algorithm allowlist, key selection, authenticated
+JWKS retrieval, rotation, stale-cache and revocation behavior. Select supported
+asymmetric algorithms before implementing P-256/Ed25519/RSA; secp256k1/Schnorr
+alone does not implement FI. Deny `none`, symmetric/confused algorithms and
+untrusted network destinations. FA origin/session/code exchange is a distinct
+credential-bearing flow, not public profile metadata.
+
+CL/DV/WP implement channel membership/visibility and owner controls. CW uses
+composite timestamp+ID cursors, bounded rows/depth and explicit exhaustion; a
+missing page never proves an empty channel. AR revisions implement CAS,
+idempotence/history/move/deletion; IA archive consent is not revocation.
+GS/MP/PL/RS projections/behaviors enter named profiles with actual consumers;
+ER/PMA or other reserved proposals remain unadvertised until specified.
+
+AE memory/tombstones, AP persona/config resolution, AO ephemeral observation and
+AM exact usage/pricing identity each retain their private lifetime and logging
+rules. AO is never persisted as ordinary history. A summary or converted proto
+must not leak decrypted bodies/credentials into public snapshots or telemetry.
+
+## 15. Optional key backup and broader compatibility
+
+NIP-49 requires scrypt (including its Salsa20/8 machinery), HChaCha20/XChaCha20,
+Poly1305, Unicode NFKC normalization, authenticated framing, bounded KDF memory
+and cleanup. Untrusted KDF parameters cannot request arbitrary device memory.
+Native/iOS/web adapters must agree on normalization and display owner approval
+for export/import. This remains optional and is not replaced by a new homemade
+key-wrap format. Browser plaintext-key persistence is not a shortcut around it.
+
+`nostr-conformance-release` records profile/target support and negative evidence,
+including supported optional official NIPs, signer interoperability, storage
+migration and privacy limits. It rejects advertised support whose runtime gate
+is missing. No promise to implement every NIP or every JWT algorithm is implied.
+
+## 16. Ownership, queue maintenance and scoped checks
+
+The [handoff](nostr-handoff.md) assigns this entire Nostr initiative, its plan,
+work seed and signed queue order to this Codex chat. R0-R12 remains a separate
+initiative with its existing worker. Use maximum safe parallelism on independent
+tasks, signed claims/plans/notes and reviewed completion evidence. The live-page
+worker finishes its in-flight task; preserve its work and reconcile the final
+commit without claiming Coax cryptographic verification.
+
+The handoff also records the E0409 `ct_view` regression masked by E0383. Track
+it as `coax-ct-view-diagnostic`: preserve the intended diagnostic coverage rather
+than changing its expected error. No compiler implementation is changed by this
+plan update.
+
+Preserve all published slugs, root issue IDs, comments, worker plans and resolved
+statuses. Reconcile the shipped compound-assignment, socket, value-barrier and JSON
+tasks with their commits; do not resolve broader live/crypto tasks from partial plumbing. Rank
+changes use the publisher's signed order record, not manually assigned numbers.
+New tasks require concrete files, acceptance evidence and an acyclic dependency
+closure. Keep the page's bounded item capacity above the combined initiatives.
+
+For plan/seed-only updates run `bun test coax/web/project/nostr-plan.test.ts`,
+existing model/rank/publisher tests and a dry run against the real relay. Publish
+idempotent revisions/new tasks, read back and verify, then regenerate the project
+snapshot and release through staging/smoke if the snapshot page needs refreshing.
+Do not rerun compiler/bootstrap/iOS suites for Markdown or unrelated rebases.
+Changes to the page capacity require its focused Coax checks.

@@ -48,5 +48,17 @@ Rules:
   observable result a reviewer can check without asking the author.
 
 Files:
-- `nostr.json`: the Coax Nostr initiative (spec: `coax/nostr.md`), 51 tasks
-  across ten milestones.
+- `coax.json`: the language roadmap initiative.
+- `nostr.json`: the Coax Nostr initiative (spec: `coax/nostr.md`), reconciled
+  with shipped commits and expanded to include runtime authority, private data,
+  phone sign-in and optional key backup. Counts come from the seed, not this text.
+
+Run `bun test coax/web/project/nostr-plan.test.ts` from the repository root
+before publication. It checks both initiatives together, stable task identities,
+acyclic dependencies and inverse `blocks`, read-only/signing separation, production
+gates, and the Coax page's bounded capacity. Keep worker comments/plans and resolved
+statuses; do not reset them when revising a task.
+
+Dependency-first seed order is publication order, not a replacement for signed
+ranks. Existing ranks stay intact. A taskmaster uses the documented `move` command
+to place new prerequisite tasks near their consumers without renumbering issues.

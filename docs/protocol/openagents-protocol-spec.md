@@ -20,8 +20,8 @@ The root [protocol guide](../../proto/README.md) identifies what is actually
 restored and executable. New alpha files cover experimental options and the
 first Verse world/presence projection, native home and the first 16 Nostr
 mirror schemas; they do not amend Nostr, REACH or realm
-transports. Coax 0.4.0 now implements selected proto3 descriptor imports and
-bounded caller-buffer codecs; [the importer contract](../../coax/proto.md)
+transports. Coax has supported selected proto3 descriptor imports and
+bounded caller-buffer codecs since 0.4.0; [the importer contract](../../coax/proto.md)
 records supported shapes, strict duplicate semantics and native/protoc tests.
 Product adapters, domain validation and live admission remain separate gates.
 
@@ -32,12 +32,16 @@ snapshots and original signed records retain their bytes. Only the typed
 asset-profile catalog migration is automated here; other contract, bridge
 and signature transitions require actual consumer gates.
 
-Status: **design and migration plan**, reconciled 2026-10-27. Four recovered packages
+Status: **design and migration plan**, status reconciled 2026-10-28. Four recovered packages
 previously shipped: `openagents.engine.v1`, `openagents.common.v1`,
 `openagents.host.v1`, and `openagents.reach.v1`. Their checked-in schemas,
-options, descriptors, and consumers are the compatibility baseline (§2.6).
-This recovery adds schema tooling, initial alpha contracts and an offline ID
-migration. It restores no app/service runtime and adds no Coax decoder yet.
+options and descriptors are the compatibility baseline (§2.6); the former
+consumers remain historical evidence. The recovery added schema tooling,
+initial alpha contracts and an offline ID migration. Subsequent work shipped
+the Coax importer and generated codecs used by the current native home. It
+did not restore the former phone agent, HOST/REACH admission services or cloud
+runtime. The [Coax Nostr plan](../../coax/nostr.md) tracks the shared stack and
+runtime adapters separately from schema availability.
 
 Examples labeled **shipped** reproduce existing contracts. Other `.proto`
 blocks are incomplete design sketches, with provisional numbers for new
@@ -189,6 +193,12 @@ those bytes; it never re-encodes them (§3, principle 4).
 
 ## 2. What exists today
 
+Sections 2.1–2.5 retain the pre-reset inventory and implementation labels as
+historical provenance. Paths into deleted crates and former live consumers
+are not installed services. Section 2.6 and the root protocol guide identify
+the current executable subset; selected alpha Nostr codecs are described in
+Section 11.
+
 ### 2.1 Protobuf
 
 | Package | Where | Consumers | Status |
@@ -217,7 +227,10 @@ limits.
 - **`openagents/`**: 36 `NIP-*.md` drafts written here, plus
   `contracts.md`, the kind registry `README.md`, and `schemas/`.
 
-If an identifier exists in two lanes, `official` wins.
+Keep the lanes and their source namespaces distinct. Matching identifiers do
+not merge their meanings or silently select one schema. A consumer selects an
+explicit source profile, and official wire semantics remain authoritative for
+the official protocol.
 
 ### 2.3 JSON Schemas and schema IDs
 
@@ -1528,18 +1541,29 @@ message Upload { optional string id = 1; optional uint64 bytes = 2; optional uin
 
 ## 11. `nostr.*`: the whole Nostr protocol as typed mirrors
 
-The owner wants the full Nostr protocol represented as proto definitions,
-the way `nips/` vendors the specs. `proto/nostr/` does that. It is a
-mirror. The NIP text stays authoritative, and the mirror is pinned to the
-same upstream commit.
+The target is to represent structured Nostr contracts as proto projections,
+the way `nips/` vendors source specifications. `proto/nostr/` currently covers
+the selected alpha slice below, not all vendored NIPs. NIP text and original
+signed bytes stay authoritative; every implemented mirror is pinned to its
+source commit and hash.
 
 The executable first slice is documented in [proto/nostr](../../proto/nostr/README.md):
-16 `v1alpha1` schemas, four selected descriptor profiles, source/hash gates,
-reference projections and one compiled Coax kind-reader proof. The v1 examples
-below describe the broader target; they are not the alpha ABI. In particular,
+16 `v1alpha1` schemas, source/hash gates, a combined Nostr descriptor and four
+selected profiles (`nostr-event`, `block-agent`, `block-identity`,
+`block-channel`). Coax imports those descriptor closures into generated wire
+views and bounded codecs, including presence, oneofs and repeated fields.
+Native C ABI, sanitizer and protoc interoperability fixtures supplement the
+original narrow kind-reader proof. The v1 examples below describe the broader
+target; they are not the alpha ABI. In particular,
 actual Filter messages use presence-bearing list containers so an empty array
 cannot become an omitted condition, and signed wrappers retain original JSON.
-A general Coax importer and cryptographic/relay admission remain unimplemented.
+Supported descriptor ingestion is implemented; full protobuf language support
+is not claimed. Signed JSON/JWS parsing, cryptographic verification,
+encryption, domain validation and live admission are separate runtime gates.
+The [Coax Nostr plan](../../coax/nostr.md) and its
+[task seed](../../apps/openagents-web/project/coax/work/nostr.json) sequence
+those consumers. A mirrored NIP, a generated codec, a verified event and an
+authorized operation are four different levels of support.
 
 ### 11.1 Rules
 

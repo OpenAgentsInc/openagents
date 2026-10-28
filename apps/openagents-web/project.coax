@@ -323,7 +323,7 @@ AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 // ones by rank; the latest finished tasks are kept apart.
 // A task ranked above an open blocker is shown with a warning: it moved
 // ahead of what it waits on, and stays waiting until that's done.
-MAX_ITEMS :: 128;
+MAX_ITEMS :: 256;   // bounded combined roadmap + Nostr queue; seed check prevents truncation
 RECENT :: 3;
 KIND_INITIATIVE :: 0; KIND_MILESTONE :: 1; KIND_TASK :: 2;
 WS_OPEN :: 0; WS_RESOLVED :: 1; WS_CLOSED :: 2; WS_DRAFT :: 3;
@@ -2261,6 +2261,7 @@ FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply
   p := Pen.{d = 1, fade = 1, time = 20, demo = false};
   w: [1] Work;
   read_work(w[..], WORK_ITEMS);
+  #assert rows(WORK_ITEMS) <= MAX_ITEMS && w[0].n == rows(WORK_ITEMS);
   b := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
   n := real_queue(out[..], 0, b, p, w[..]);
   #assert n > 600;
