@@ -49,6 +49,9 @@ check("the service's token goes with it", seen[-1]["auth"] == "Bearer test-token
 check("the demo's prompt: who, where, role, greeting, the rules and the controls",
       system.startswith("You are Mortimer, a character in Haunted House, a small 3D world in the Verse") and "Your role: the butler. " in system
       and "You greet people with: Good evening. " in system and "one to three short, plain sentences" in system and "B opens edit mode" in system, system)
+check("the web's controls: ASK, TEACH, HINT and BYE in a conversation, not the old demo's",
+      "ASK (or T) to type a question" in system and "TEACH to type something" in system and "HINT (or E)" in system
+      and "BYE (or Esc)" in system and "X is delete mode" not in system and "teach <name>" not in system, system)
 check("what players taught it", system.endswith("What players have taught you (true in this world):\nThe cellar key is under the rug."))
 check("the memory: a speaker's lines run together, the model's first line dropped, the question last",
       sent["contents"] == [{"role": "user", "parts": [{"text": "Hello\nAnyone home?"}]}, {"role": "model", "parts": [{"text": "Only me."}]},
