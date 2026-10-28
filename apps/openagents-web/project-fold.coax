@@ -36,6 +36,7 @@ Store :: struct {
   dropped: int;                      // refused: malformed, another key, over a limit
   key: [STORE_EVENTS] int;           // the id's first 15 hex digits
   id: [STORE_EVENTS] int;            // the id's 64 hex digits in bytes
+  author: [STORE_EVENTS] int;        // its pubkey's 64 hex digits in bytes, kept only by a store for any key
   kind: [STORE_EVENTS] int;
   at: [STORE_EVENTS] int;            // created_at
   tag0: [STORE_EVENTS] int; tags: [STORE_EVENTS] int;
@@ -116,7 +117,19 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
       for i: 0..<64 { s[0].bytes[s[0].used + i] = id[i]; }
       s[0].used += 64; s[0].key[e] = hex_key(id); have |= 1;
     } else if json_is(k, "pubkey") {
-      if v != JSON_STRING || !equal(json_text(j), pubkey) { ok = false; break; }
+      // ANY_KEY keeps every signer's events (the links' store) and remembers who
+      any := equal(pubkey, ANY_KEY);
+      if v != JSON_STRING { ok = false; break; }
+      if any && (json_text(j).count != 64 || !hex_lower(json_text(j))) { ok = false; break; }
+      if !any && !equal(json_text(j), pubkey) { ok = false; break; }
+      s[0].author[e] = -1;
+      if any {
+        if s[0].used + 64 > STORE_BYTES { s[0].overflow = true; ok = false; break; }
+        pk := json_text(j);
+        s[0].author[e] = s[0].used;
+        for i: 0..<64 { s[0].bytes[s[0].used + i] = pk[i]; }
+        s[0].used += 64;
+      }
       have |= 2;
     } else if json_is(k, "kind") || json_is(k, "created_at") {
       n := json_int(json_text(j));
@@ -166,6 +179,13 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
   }
   s[0].n += 1; s[0].last = e;
   return e;
+}
+
+ANY_KEY :: "*";
+// The signer of event e in a store for any key, or "".
+author_of :: (s: [] Store, e: int) -> string {
+  if s[0].author[e] < 0 { return ""; }
+  return cast(string) s[0].bytes[s[0].author[e]..<s[0].author[e] + 64];
 }
 
 // ---------------------------------------------------------------- tags

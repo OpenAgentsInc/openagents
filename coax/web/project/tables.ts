@@ -18,11 +18,12 @@ export const plain = (s: string) => s.replace(/[×]/g, "x").replace(/[–—]/g,
   .replace(/[“”]/g, '"').replace(/[→]/g, "->").replace(/[·]/g, "-").replace(/[…]/g, "...").replace(/[−]/g, "-").replace(/[≤]/g, "<=").replace(/[≥]/g, ">=").replace(/[≠]/g, "!=").replace(/[←]/g, "<-").replace(/[≡]/g, "=").replace(/[^\x20-\x7e]/g, "")
 export const cell = (s: string) => plain(s).replace(/[|\n\r]/g, " ").replace(/\s+/g, " ").trim()
 
-export function tables(f: Folded) {
+// waiting: this project's issues that wait on another project's (links.ts), by id
+export function tables(f: Folded, waiting_on_others: Set<string> = new Set()) {
   const by = new Map(f.issues.map((i) => [i.id, i]))
   const done = (i: Issue | undefined) => !!i && (i.status === "resolved" || i.status === "closed")
   const tasks = f.issues.filter((i) => i.kind === "task")
-  const isReady = (i: Issue) => i.status === "open" && i.blocked_by.every((b) => done(by.get(b)))
+  const isReady = (i: Issue) => i.status === "open" && i.blocked_by.every((b) => done(by.get(b))) && !waiting_on_others.has(i.id)
   const rankOrder = (a: Issue, b: Issue) => ((a.rank || "~") < (b.rank || "~") ? -1 : (a.rank || "~") > (b.rank || "~") ? 1 : 0)
   const working = tasks.filter((i) => !done(i) && i.claimed_by).sort(rankOrder)
   const ready = tasks.filter((i) => isReady(i) && !i.claimed_by).sort(rankOrder)

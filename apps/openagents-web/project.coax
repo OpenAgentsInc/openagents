@@ -48,7 +48,7 @@ ProjectState :: struct {
   claimed: [24] u8; claimed_n: int;
   // the location's hash: the task a link asks for (in), the task open now (outbox out)
   want: [16] u8; want_n: int; wanted: bool;
-  action: int; outbox: [16] u8; out_n: int;
+  action: int; outbox: [160] u8; out_n: int;
   chosen: bool;      // the project is picked (at the first frame)
 }
 MAX_LINKS :: 48;
@@ -66,6 +66,7 @@ Baked :: struct {
   slug: string; pubkey: string; relay: string; naddr: string;
   name: string; description: string; license: string; path: string; repo: string; owner: string;
   items: string; log: string; plans: string; plan_info: string; details: string; steps: string;
+  links: string;   // WORK_LINKS: work across projects (project-links.coax)
   history: string; commits: int; authors: int; lines: int;
 }
 // The baked project with this slug, or -1.
@@ -404,6 +405,9 @@ Work :: struct {
   owner: string;              // who owns it (project.json owner), the header says
   dstart: [MAX_ITEMS] int;    // each row's line in details (index_details), or -1
   dlines: int;                // the lines in details
+  links: string;              // WORK_LINKS: alias | needs or by | project d | its alias | its status | its title
+  far: [MAX_ITEMS] int;       // the first open need of another project's issue: its line in links, or -1
+  links_buf: [LINKS_CAP] u8;  // links, when they come from the relay (live_links_end)
   baked: int;                 // the baked project it started from, or -1
   // the line to the relay, for the header's chip
   live: int;                  // LIVE_* (project-live.coax)
@@ -539,6 +543,18 @@ work_status :: (s: string) -> int {
   if same(s, "draft") { return WS_DRAFT; }
   return WS_OPEN;
 }
+// A need of another project's issue holds until that issue is resolved or closed.
+link_open :: (status: string) -> bool { return !same(status, "resolved") && !same(status, "closed"); }
+// A project's name from its d, as the page writes it: PLANETARY VILLA.
+put_project :: (buf: [] u8, at: int, d: string) -> int {
+  n := 0;
+  while n < d.count && at + n < buf.count {
+    c := d[n];
+    buf[at + n] = ifx c == '-' then ' ' else (ifx c >= 'a' && c <= 'z' then cast(u8) (c - 32) else c);
+    n += 1;
+  }
+  return n;
+}
 finished :: (w: [] Work, r: int) -> bool { return w[0].status[r] == WS_RESOLVED || w[0].status[r] == WS_CLOSED; }
 row_of :: (w: [] Work, text: string, alias: string) -> int {
   if alias.count == 0 { return -1; }
@@ -573,7 +589,16 @@ read_work :: (w: [] Work, text: string) {
     w[0].status[r] = work_status(cell(text, w[0].start[r], 2));
     if w[0].kind[r] == KIND_INITIATIVE && w[0].initiative < 0 { w[0].initiative = r; }
   }
-  for r: 0..<n { w[0].parent[r] = row_of(w, text, cell(text, w[0].start[r], 7)); }
+  for r: 0..<n { w[0].parent[r] = row_of(w, text, cell(text, w[0].start[r], 7)); w[0].far[r] = -1; }
+  // what another project's issue still has to do first
+  lt := w[0].links; li := 0;
+  while li < lt.count {
+    if same(cell(lt, li, 1), "needs") && link_open(cell(lt, li, 4)) {
+      k := row_of(w, text, cell(lt, li, 0));
+      if k >= 0 && w[0].far[k] < 0 { w[0].far[k] = li; }
+    }
+    li = next_row(lt, li);
+  }
   // readiness: every blocker done; the first open one is what it waits on
   for r: 0..<n {
     w[0].waits[r] = -1; w[0].ahead[r] = -1;
@@ -589,7 +614,7 @@ read_work :: (w: [] Work, text: string) {
       }
       a = b + 1;
     }
-    w[0].ready[r] = w[0].kind[r] == KIND_TASK && w[0].status[r] == WS_OPEN && w[0].waits[r] < 0;
+    w[0].ready[r] = w[0].kind[r] == KIND_TASK && w[0].status[r] == WS_OPEN && w[0].waits[r] < 0 && w[0].far[r] < 0;
     w[0].claimed[r] = w[0].kind[r] == KIND_TASK && !finished(w, r) && cell(text, w[0].start[r], 6).count > 0;
   }
   // the queue: tasks in progress, then ready ones by rank, then the rest
@@ -1427,11 +1452,21 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
       m += put_text(buf[..], m, hash);
       if ms >= 0 { m += put_text(buf[..], m, "  ·  "); m += put_text(buf[..], m, item(w, text, ms, 3)); }
       v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw);
-    } else if sc == SEC_READY || w[0].waits[r] < 0 {
+    } else if sc == SEC_READY || (w[0].waits[r] < 0 && w[0].far[r] < 0) {
       if ms >= 0 { m += put_text(buf[..], m, item(w, text, ms, 3)); m += put_text(buf[..], m, "  ·  "); }
       size := item(w, text, r, 5);
       if size.count > 0 { m += put_text(buf[..], m, "SIZE "); m += put_text(buf[..], m, size); }
       v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw - 70 * d);
+    } else if w[0].waits[r] < 0 {
+      // it waits on another project's issue
+      fl := w[0].far[r]; lt := w[0].links;
+      m += put_text(buf[..], m, "WAITS ON ");
+      m += put_project(buf[..], m, cell(lt, fl, 2));
+      m += put_text(buf[..], m, " #");
+      m += put_text(buf[..], m, cell(lt, fl, 3));
+      m += put_text(buf[..], m, " ");
+      m += put_text(buf[..], m, cell(lt, fl, 5));
+      v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw);
     } else {
       m += put_text(buf[..], m, "WAITS ON #");
       m += put_text(buf[..], m, item(w, text, w[0].waits[r], 0));
@@ -1790,6 +1825,61 @@ related :: (out: [] f32, at: int, s: [] ProjectState, w: [] Work, k: int, x: f32
   return put_fit(out, v, item(w, w[0].text, k, 3), tx, y, 6.5 * d, ink(p, INK_PALE), right - sw - 10 * d - tx);
 }
 
+// Another project's issue the open one needs, or that needs it (line fl of
+// links): VERSE #d981 or NEEDED BY PLANETARY VILLA #a3b5, a link to that
+// project's page open on it, then its title and state.
+far_related :: (out: [] f32, at: int, s: [] ProjectState, w: [] Work, fl: int, x: f32, y: f32, right: f32,
+                top: f32, bottom: f32, p: Pen) -> int {
+  d := p.d; cap := 7 * d; v := at; lt := w[0].links;
+  if !in_view(y, cap, top, bottom) { return v; }
+  buf: [96] u8;
+  n := 0;
+  if same(cell(lt, fl, 1), "by") { n = put_text(buf[..], 0, "NEEDED BY "); }
+  n += put_project(buf[..], n, cell(lt, fl, 2));
+  n += put_text(buf[..], n, " #");
+  n += put_text(buf[..], n, cell(lt, fl, 3));
+  tag := cast(string) buf[0..<n];
+  tw := text_width(tag, cap);
+  link := Box.{x0 = x - 4 * d, y0 = y - cap - 6 * d, x1 = x + tw + 4 * d, y1 = y + 6 * d};
+  hot := !s[0].touch && s[0].pointed && inside(link, s[0].px, s[0].py);
+  v = put(out, v, tag, x, y, cap, ink(p, ifx hot then INK_WHITE else INK_ORANGE));
+  v = rule(out, v, x, y + 3 * d, x + tw, y + 3 * d, ink(p, INK_ORANGE), (ifx hot then 0.9f32 else 0.45f32) * p.fade);
+  if s[0].link_n < MAX_LINKS { s[0].link_box[s[0].link_n] = link; s[0].link_row[s[0].link_n] = -2 - fl; s[0].link_n += 1; }
+  st := far_label(cell(lt, fl, 4)); small := 5.5 * d;
+  sw := text_width(st, small);
+  v = put_right(out, v, st, right, y, small, ink(p, ifx link_open(cell(lt, fl, 4)) then INK_DIM else INK_PALE));
+  tx := x + tw + 10 * d;
+  return put_fit(out, v, cell(lt, fl, 5), tx, y, 6.5 * d, ink(p, INK_PALE), right - sw - 10 * d - tx);
+}
+far_label :: (status: string) -> string {
+  if same(status, "resolved") { return "DONE"; }
+  if same(status, "closed") { return "CLOSED"; }
+  if same(status, "draft") { return "DRAFT"; }
+  if same(status, "missing") { return "NOT FOUND"; }
+  return "OPEN";
+}
+// Where a link to another project's issue goes: /projects/<d>#<alias>.
+far_url :: (s: [] ProjectState, w: [] Work, fl: int) -> int {
+  lt := w[0].links;
+  n := put_text(s[0].outbox[..], 0, "/projects/");
+  n += put_text(s[0].outbox[..], n, cell(lt, fl, 2));
+  n += put_text(s[0].outbox[..], n, "#");
+  n += put_text(s[0].outbox[..], n, cell(lt, fl, 3));
+  return n;
+}
+// The lines of links about row r in direction dir, drawn one under another.
+far_rows :: (out: [] f32, at: int, s: [] ProjectState, w: [] Work, r: int, dir: string, x: f32, y: [] f32, right: f32,
+             top: f32, bottom: f32, p: Pen) -> int {
+  v := at; lt := w[0].links; li := 0; alias := item(w, w[0].text, r, 0);
+  while li < lt.count {
+    if same(cell(lt, li, 1), dir) && same(cell(lt, li, 0), alias) {
+      v = far_related(out, v, s, w, li, x, y[0], right, top, bottom, p); y[0] += 16 * p.d; y[1] = 1;
+    }
+    li = next_row(lt, li);
+  }
+  return v;
+}
+
 // The open task, drawn into b: its alias, state and CLOSE, its title and
 // facts, then a body that scrolls: who's on it, the plan, the description,
 // the acceptance checks, what it waits on and what waits on it, the notes
@@ -1958,6 +2048,8 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
     if !waits_on(w, r, k) { continue; }
     v = related(out, v, s, w, k, x, y, right, top, bottom, p); y += 16 * d; any = true;
   }
+  fy: [2] f32; fy[0] = y; fy[1] = 0;
+  v = far_rows(out, v, s, w, r, "needs", x, fy[..], right, top, bottom, p); y = fy[0]; if fy[1] > 0 { any = true; }
   if !any { if in_view(y, body, top, bottom) { v = put(out, v, "NOTHING", x, y, small, dim); } y += 16 * d; }
   y += gap - 16 * d;
   v = section(out, v, "WAITED ON BY", x, y, right, top, bottom, p);
@@ -1967,6 +2059,8 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
     if !waits_on(w, k, r) { continue; }
     v = related(out, v, s, w, k, x, y, right, top, bottom, p); y += 16 * d; any = true;
   }
+  fy[0] = y; fy[1] = 0;
+  v = far_rows(out, v, s, w, r, "by", x, fy[..], right, top, bottom, p); y = fy[0]; if fy[1] > 0 { any = true; }
   if !any { if in_view(y, body, top, bottom) { v = put(out, v, "NOTHING", x, y, small, dim); } y += 16 * d; }
   y += gap - 16 * d;
   // the notes, oldest first, each with its time in Chicago
@@ -2045,6 +2139,7 @@ click :: (s: [] ProjectState, w: [] Work, x: f32, y: f32) -> bool {
     if inside(s[0].close, x, y) { close_task(s); return true; }
     k := link_at(s, x, y);
     if k >= 0 { open_task(s, w, k); return true; }
+    if k <= -2 { s[0].action = ACT_NAVIGATE; s[0].out_n = far_url(s, w, -2 - k); return true; }
     if inside(s[0].panel, x, y) { return true; }
   }
   r := row_at(w, x, y);
@@ -2130,7 +2225,7 @@ coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
   x := s[0].px; y := s[0].py;
   if crumb_at(s, x, y).count > 0 { return 1; }
   if s[0].open > 0 {
-    if inside(s[0].close, x, y) || link_at(s, x, y) >= 0 { return 1; }
+    if inside(s[0].close, x, y) || link_at(s, x, y) != -1 { return 1; }
     if inside(s[0].panel, x, y) { return 0; }
   }
   return ifx row_at(w, x, y) >= 0 then 1 else 0;
@@ -2164,6 +2259,7 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
     live_tick(lv, s[0].time, ifx w[0].baked >= 0 then baked(w[0].baked).relay else DEFAULT_RELAY);
     w[0].live = lv[0].state;
     if lv[0].dirty { live_apply(lv, w); }
+    if lv[0].link_ready { live_links_apply(lv, w); }
   }
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
@@ -2239,6 +2335,7 @@ choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
   w[0].baked = k;
   if k >= 0 {
     b := baked(k);
+    w[0].links = b.links;
     read_work(w, b.items);
     w[0].plans = b.plans; w[0].plan_info = b.plan_info; w[0].details = b.details; w[0].log = b.log; w[0].steps = b.steps; w[0].naddr = b.naddr;
     index_details(w);
@@ -2247,7 +2344,7 @@ choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
     w[0].path = b.path; w[0].repo = b.repo; w[0].owner = b.owner;
     grow(t, b.history);
   } else {
-    read_work(w, "");
+    w[0].links = ""; read_work(w, "");
     w[0].slug = live_slug(lv); w[0].name = live_slug(lv);
     grow(t, "");
   }
@@ -2290,6 +2387,15 @@ live_apply :: (lv: [] Live, w: [] Work) {
   h = head_put(lv, w, pe, "license", 1, h.at, w[0].license); w[0].license = h.text;
   h = head_put(lv, w, pe, "path", 2, h.at, w[0].path); w[0].path = h.text;
   h = head_put(lv, w, re, "name", 1, h.at, w[0].repo); w[0].repo = h.text;
+}
+
+// Work across projects came back from the relay: draw its table.
+live_links_apply :: (lv: [] Live, w: [] Work) {
+  lv[0].link_ready = false;
+  n := lv[0].link_n;
+  for i: 0..<n { w[0].links_buf[i] = lv[0].link_out[i]; }
+  w[0].links = cast(string) w[0].links_buf[0..<n];
+  read_work(w, w[0].text);
 }
 
 // The host's messages: the relay socket's events (project-live.coax).
@@ -2797,6 +2903,70 @@ detail_fits :: (size_w: f32, size_h: f32, most: int) -> bool {
   _ = draw_page(g[..], out[..], w, h);
   c := g[0].s[0].close;
   #assert tap(g[..], mid_x(c), mid_y(c), 1) && g[0].s[0].open == 0;
+}
+
+#test "another project's open need keeps a task waiting; a resolved or closed one doesn't" {
+  w: [1] Work;
+  w[0].links = "c1|needs|verse|d981|open|The galaxy\ne1|needs|verse|abcd|resolved|Done\ne1|needs|verse|abce|closed|Closed\nf1|by|planetary-villa|a3b5|open|Wants f\n";
+  read_work(w[..], FIXTURE);
+  // c1 was ready (its blocker b1 is done): now it waits on Verse's d981; e1's needs are done
+  #assert !w[0].ready[3] && w[0].far[3] == 0 && w[0].waits[3] == -1;
+  #assert w[0].ready[5] && w[0].far[5] == -1 && w[0].far[6] == -1;
+  #assert w[0].ready_n == 1;
+  // a page with no links is as it was
+  e: [1] Work;
+  read_work(e[..], FIXTURE);
+  #assert e[0].ready[3] && e[0].far[3] == -1 && e[0].ready_n == 2;
+  buf: [32] u8;
+  n := put_project(buf[..], 0, "planetary-villa");
+  #assert same(cast(string) buf[0..<n], "PLANETARY VILLA") && same(far_label("missing"), "NOT FOUND") && !link_open("resolved") && link_open("missing");
+}
+
+#test "a task's detail lists what it needs from other projects and who needs it, and each opens that project's page on it" {
+  out: [PAGE_OUT] f32;
+  w := 1440.0f32 * 2; h := 900.0f32 * 2;
+  g: [1] Page;
+  _ := draw_page(g[..], out[..], w, h);
+  // two tasks: one needs Verse's #d981 (and a done one), the other is needed by Planetary Villa's #a3b5
+  a := -1; b := -1;
+  for r: 0..<g[0].w[0].n {
+    if g[0].w[0].kind[r] != KIND_TASK || finished(g[0].w[..], r) || g[0].w[0].waits[r] >= 0 { continue; }
+    if a < 0 { a = r; } else if b < 0 { b = r; }
+  }
+  #assert a >= 0 && b >= 0;
+  lb: [256] u8;
+  m := put_text(lb[..], 0, item(g[0].w[..], g[0].w[0].text, a, 0)); m += put_text(lb[..], m, "|needs|verse|d981|open|The galaxy\n");
+  m += put_text(lb[..], m, item(g[0].w[..], g[0].w[0].text, a, 0)); m += put_text(lb[..], m, "|needs|verse|abcd|resolved|Done one\n");
+  m += put_text(lb[..], m, item(g[0].w[..], g[0].w[0].text, b, 0)); m += put_text(lb[..], m, "|by|planetary-villa|a3b5|open|Wants it\n");
+  g[0].w[0].links = cast(string) lb[0..<m];
+  read_work(g[0].w[..], g[0].w[0].text);
+  #assert !g[0].w[0].ready[a] && g[0].w[0].far[a] >= 0;
+  // the queue says what it waits on, and draws inside its panel
+  n := draw_page(g[..], out[..], w, h);
+  #assert n > 3000 && n <= MAX_VERTICES;
+  wanted := [2] string.["/projects/verse#d981", "/projects/planetary-villa#a3b5"];
+  picks := [2] int.[a, b];
+  for i: 0..<2 {
+    open_task(g[0].s[..], g[0].w[..], picks[i]);
+    found := -1;
+    for step: 0..<40 {
+      _ = draw_page(g[..], out[..], w, h);
+      for k: 0..<g[0].s[0].link_n { if found < 0 && g[0].s[0].link_row[k] <= -2 { found = k; } }
+      if found >= 0 { break; }
+      coaxial_project_wheel(g[0].s[..], 200);
+    }
+    #assert found >= 0;
+    // a needs two: both drawn, the open one first
+    if i == 0 {
+      far := 0;
+      for k: 0..<g[0].s[0].link_n { if g[0].s[0].link_row[k] <= -2 { far += 1; } }
+      #assert far == 2;
+    }
+    lk := g[0].s[0].link_box[found];
+    #assert tap(g[..], mid_x(lk), mid_y(lk), 0) && g[0].s[0].action == ACT_NAVIGATE;
+    #assert same(cast(string) g[0].s[0].outbox[0..<g[0].s[0].out_n], wanted[i]);
+    g[0].s[0].action = 0;
+  }
 }
 
 page_says :: (lv: [] Live, text: string) {

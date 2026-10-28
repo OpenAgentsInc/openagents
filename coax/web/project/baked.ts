@@ -46,7 +46,7 @@ if (import.meta.main) {
     loads.push(`#load "${slug}/commits.coax";`, `#load "${slug}/work.coax";`)
     const W = `${P}_WORK_`
     const fields = ["slug", "pubkey", "relay", "naddr", "name", "description", "license", "path", "repo", "items", "log", "plans",
-      "plan_info", "details", "steps"].map((f) => `${f} = ${W}${f.toUpperCase()}`)
+      "plan_info", "details", "steps", "links"].map((f) => `${f} = ${W}${f.toUpperCase()}`)
     const entry = `Baked.{${fields.join(", ")}, owner = ${lit(owner)},\n      history = ${P}_HISTORY, commits = ${P}_COMMITS, authors = ${P}_AUTHORS, lines = ${P}_LINES}`
     cases.push(k === list.length - 1 ? `  return ${entry};` : `  if k == ${k} { return ${entry}; }`)
   })

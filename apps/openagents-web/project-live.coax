@@ -4,6 +4,7 @@
 // completeness proof and CLOSED never substitutes for it. BIP-340 is separate.
 #load "socket.coax";
 #load "project-fold.coax";
+#load "project-links.coax";
 LIVE_INBOX :: 262144;
 LIVE_IDLE :: 0; LIVE_CONNECTING :: 1; LIVE_SYNCING :: 2; LIVE_LIVE :: 3; LIVE_OFFLINE :: 4;
 CONNECT_WAIT :: 10.0; BACKOFF_FIRST :: 1.0; BACKOFF_MOST :: 30.0;
@@ -31,7 +32,16 @@ Live :: struct {
   batch: [CATCHUP_IDS] int; batch_n: int;
   known: [FOLD_ISSUES * 64] u8; known_n: int;
   incomplete: int;                   // 1 error/refusal, 2 tie, 3 budget, 4 missing ID, 5 output/capacity
+  // work across projects (project-links.coax): once the page is live, two
+  // asks for any key's events, folded into the LINKS table the page draws
+  links: [1] Store; link_roots: [1] LinkRoots;
+  link_stage: int;                   // LINK_*
+  link_serial: int; link_id: [64] u8; link_id_n: int; link_done_at: f32;
+  link_out: [LINKS_CAP] u8; link_n: int; link_ready: bool;
 }
+LINK_IDLE :: 0; LINK_FIRST :: 1; LINK_SECOND :: 2; LINK_DONE :: 3;
+LINK_EVERY :: 60.0;       // seconds between asks while live
+LINK_REQ_CAP :: 12288;
 live_key :: (l: [] Live) -> string { return cast(string) l[0].key[0..<l[0].key_n]; }
 live_slug :: (l: [] Live) -> string { return cast(string) l[0].slug[0..<l[0].slug_n]; }
 live_qid :: (l: [] Live) -> string { return cast(string) l[0].query_id[0..<l[0].query_n]; }
@@ -69,6 +79,7 @@ live_tick :: (l: [] Live, now: f32, url: string) {
   }
   if l[0].state == LIVE_CONNECTING && now - l[0].asked_at > CONNECT_WAIT { live_incomplete(l, 1); }
   if l[0].state == LIVE_SYNCING && now - l[0].page_at > CATCHUP_WAIT { live_incomplete(l, 3); }
+  if l[0].state == LIVE_LIVE && l[0].link_stage == LINK_DONE && now - l[0].link_done_at > LINK_EVERY { live_links_ask(l); }
 }
 live_opened :: (l: [] Live, id: int) {
   if l[0].state != LIVE_CONNECTING { return; }
@@ -206,6 +217,7 @@ live_prepare :: (l: [] Live) {
   write_tables(l[0].store[..], l[0].fold[..], l[0].candidate[..]);
   if !l[0].candidate[0].complete { live_incomplete(l, 5); return; }
   l[0].state = LIVE_LIVE; l[0].dirty = true; l[0].backoff = BACKOFF_FIRST;
+  if l[0].link_stage == LINK_IDLE { live_links_ask(l); }
 }
 live_page_end :: (l: [] Live) {
   if !live_query_close(l) { live_incomplete(l, 3); return; }
@@ -240,7 +252,7 @@ live_message :: (l: [] Live, kind: int, length: int) {
   if se.event == SOCKET_OPENED && l[0].state == LIVE_CONNECTING {
     l[0].state = LIVE_SYNCING; l[0].frames = 0; l[0].ended = 0; l[0].dirty = false; l[0].catching = false;
     l[0].query = 0; l[0].stage = 0; l[0].pages = 0; l[0].until = -1; l[0].history_peak = 0; l[0].incomplete = 0; l[0].page_at = l[0].now;
-    store_clear(l[0].store[..]); live_subscribe(l); return;
+    store_clear(l[0].store[..]); l[0].link_stage = LINK_IDLE; live_subscribe(l); return;
   }
   if se.event == SOCKET_CLOSED { live_offline(l); return; }
   if se.event == SOCKET_ERROR { live_incomplete(l, 1); return; }
@@ -251,6 +263,7 @@ live_message :: (l: [] Live, kind: int, length: int) {
     if equal(head.sub, cast(string) id[0..<n]) { watch = k; }
   }
   query := l[0].query > 0 && equal(head.sub, live_qid(l));
+  if watch < 0 && !query && live_link_frame(l, text, head) { return; }
   if watch < 0 && !query { return; }  // reject stale/unknown subscriptions BEFORE storage
   l[0].frames += 1;
   if head.type == FRAME_CLOSED { live_incomplete(l, 1); return; }
@@ -285,6 +298,110 @@ live_message :: (l: [] Live, kind: int, length: int) {
   }
   if watch >= 0 && !live_kind(watch, l[0].store[0].kind[fr.event]) { live_incomplete(l, 1); return; }
   if fr.kept >= 0 && l[0].state == LIVE_LIVE { live_prepare(l); }
+}
+
+// ---------------------------------------------------------------- work across projects
+
+link_qid :: (l: [] Live) -> string { return cast(string) l[0].link_id[0..<l[0].link_id_n]; }
+// The issues this project's current fields need: their needs tags, one per id (at most LINK_ROOTS).
+link_needed :: (l: [] Live, ids: [] int) -> int {
+  st := l[0].store[..]; f := l[0].fold[..]; n := 0;
+  for r: 0..<f[0].n {
+    fe := f[0].fields[r];
+    for t: st[0].tag0[fe]..<st[0].tag0[fe] + st[0].tags[fe] {
+      if !is_need(st, t) || n >= ids.count { continue; }
+      dup := false;
+      for k: 0..<n { if equal(element(st, ids[k], 1), element(st, t, 1)) { dup = true; } }
+      if !dup { ids[n] = t; n += 1; }
+    }
+  }
+  return n;
+}
+link_ids :: (buf: [] u8, at: int, l: [] Live, needed: [] int, nn: int) -> int {
+  n := live_text(buf, at, "[");
+  for k: 0..<nn { if k > 0 { n = live_text(buf, n, ","); } n = live_text(buf, n, "\""); n = live_text(buf, n, element(l[0].store[..], needed[k], 1)); n = live_text(buf, n, "\""); }
+  return live_text(buf, n, "]");
+}
+// The first ask: the issues needed, and every issue or revision citing this project.
+live_links_ask :: (l: [] Live) {
+  store_clear(l[0].links[..]);
+  l[0].link_serial += 1;
+  q := l[0].link_id[..]; n := live_text(q, 0, "links-"); n = int_into(q, n, l[0].connects, 1); n = live_text(q, n, "-"); n = int_into(q, n, l[0].link_serial, 1);
+  l[0].link_id_n = n;
+  needed: [LINK_ROOTS] int; nn := link_needed(l, needed[..]);
+  buf: [LINK_REQ_CAP] u8;
+  n = live_text(buf[..], 0, "[\"REQ\",\""); n = live_text(buf[..], n, link_qid(l)); n = live_text(buf[..], n, "\",");
+  if nn > 0 { n = live_text(buf[..], n, "{\"kinds\":[1621],\"ids\":"); n = link_ids(buf[..], n, l, needed[..], nn); n = live_text(buf[..], n, "},"); }
+  n = live_text(buf[..], n, "{\"kinds\":[1621,1111],\"#q\":[\"30621:"); n = live_text(buf[..], n, live_key(l));
+  n = live_text(buf[..], n, ":"); n = live_text(buf[..], n, live_slug(l)); n = live_text(buf[..], n, "\"]}]");
+  l[0].link_stage = LINK_FIRST;
+  if n > LINK_REQ_CAP || !pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) { live_links_end(l, false); }
+}
+// The second ask: roots that didn't come back, and every root's comments and
+// statuses (as links.ts secondAsk): the roots are the issues needed, the
+// issues by other keys, and the roots their revisions name.
+LinkIds :: struct { n: int; id: [LINK_ROOTS * 64] u8; missing: [LINK_ROOTS] bool; }
+link_add :: (x: [] LinkIds, id: string, missing: bool) {
+  if id.count != 64 || !hex_lower(id) || x[0].n >= LINK_ROOTS { return; }
+  for k: 0..<x[0].n { if equal(cast(string) x[0].id[k * 64..<k * 64 + 64], id) { return; } }
+  for i: 0..<64 { x[0].id[x[0].n * 64 + i] = id[i]; }
+  x[0].missing[x[0].n] = missing; x[0].n += 1;
+}
+link_list :: (buf: [] u8, at: int, x: [] LinkIds, only_missing: bool) -> int {
+  n := live_text(buf, at, "["); first := true;
+  for k: 0..<x[0].n {
+    if only_missing && !x[0].missing[k] { continue; }
+    if !first { n = live_text(buf, n, ","); }
+    first = false;
+    n = live_text(buf, n, "\""); n = live_text(buf, n, cast(string) x[0].id[k * 64..<k * 64 + 64]); n = live_text(buf, n, "\"");
+  }
+  return live_text(buf, n, "]");
+}
+live_links_more :: (l: [] Live) {
+  ls := l[0].links[..];
+  needed: [LINK_ROOTS] int; nn := link_needed(l, needed[..]);
+  x: [1] LinkIds;
+  for k: 0..<nn { link_add(x[..], element(l[0].store[..], needed[k], 1), false); }
+  mn := 0;
+  for e: 0..<ls[0].n {
+    if equal(author_of(ls, e), live_key(l)) { continue; }
+    if ls[0].kind[e] == KIND_ISSUE { link_add(x[..], event_id(ls, e), false); continue; }
+    if ls[0].kind[e] != KIND_COMMENT || !tag_has(ls, e, "revision", ISSUE_REVISION) { continue; }
+    tg := tag_named(ls, e, "E");
+    if tg < 0 || ls[0].tag_len[tg] < 2 { continue; }
+    id := element(ls, tg, 1);
+    gone := store_find(ls, id) < 0;
+    if gone { mn += 1; }
+    link_add(x[..], id, gone);
+  }
+  if x[0].n == 0 { live_links_end(l, true); return; }
+  buf: [LINK_REQ_CAP] u8;
+  n := live_text(buf[..], 0, "[\"REQ\",\""); n = live_text(buf[..], n, link_qid(l)); n = live_text(buf[..], n, "\",");
+  if mn > 0 { n = live_text(buf[..], n, "{\"kinds\":[1621],\"ids\":"); n = link_list(buf[..], n, x[..], true); n = live_text(buf[..], n, "},"); }
+  n = live_text(buf[..], n, "{\"kinds\":[1111],\"#E\":"); n = link_list(buf[..], n, x[..], false);
+  n = live_text(buf[..], n, "},{\"kinds\":[1630,1631,1632,1633],\"#e\":"); n = link_list(buf[..], n, x[..], false);
+  n = live_text(buf[..], n, "}]");
+  l[0].link_stage = LINK_SECOND;
+  if n > LINK_REQ_CAP || !pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) { live_links_end(l, false); }
+}
+// The asks are over: the table, when they answered, for the page to draw.
+live_links_end :: (l: [] Live, answered: bool) {
+  l[0].link_stage = LINK_DONE; l[0].link_done_at = l[0].now;
+  if !answered { return; }
+  n := write_links(l[0].store[..], l[0].fold[..], l[0].candidate[0].order[..], l[0].links[..], live_key(l), live_slug(l), l[0].link_roots[..], l[0].link_out[..]);
+  if n >= 0 && n <= LINKS_CAP { l[0].link_n = n; l[0].link_ready = true; }
+}
+// A frame on the asks' subscription: kept for any key; EOSE moves to the next ask.
+// Whether it was theirs. A bad event is only left out: the work's own view never depends on it.
+live_link_frame :: (l: [] Live, text: string, head: Frame) -> bool {
+  if (l[0].link_stage != LINK_FIRST && l[0].link_stage != LINK_SECOND) || !equal(head.sub, link_qid(l)) { return false; }
+  if head.type == FRAME_CLOSED { live_links_end(l, false); return true; }
+  fr := read_frame(l[0].links[..], text, ANY_KEY);
+  if fr.type != FRAME_EOSE { return true; }
+  buf: [96] u8; n := live_text(buf[..], 0, "[\"CLOSE\",\""); n = live_text(buf[..], n, link_qid(l)); n = live_text(buf[..], n, "\"]");
+  if n <= buf.count && pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) {}
+  if l[0].link_stage == LINK_FIRST { live_links_more(l); } else { live_links_end(l, true); }
+  return true;
 }
 
 LIVE_TEST_KEY :: "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
@@ -406,6 +523,64 @@ finish_fixture_backfill :: (l: [] Live, id: int) {
   live_opened(l[..], 1);
   fake_message(l[..], 1, SOCKET_OPENED, "");
   #assert l[0].store[0].n == 0 && l[0].state == LIVE_SYNCING && l[0].ended == 0;
+}
+
+// Whether text has part in it.
+has_part :: (text: string, part: string) -> bool {
+  for i: 0..<text.count - part.count + 1 { if equal(text[i..<i + part.count], part) { return true; } }
+  return false;
+}
+// The fixture's frames for the other projects, on the asks' subscription.
+feed_links :: (l: [] Live, id: int, text: string) {
+  i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != 10 { e += 1; }
+    line := text[i..<e];
+    // ["EVENT","links",{...}]: the same event on this ask's id
+    buf: [8192] u8; n := live_text(buf[..], 0, "[\"EVENT\",\""); n = live_text(buf[..], n, link_qid(l)); n = live_text(buf[..], n, "\""); n = live_text(buf[..], n, line[16..<line.count]);
+    if n <= buf.count { fake_message(l, id, SOCKET_FRAME, cast(string) buf[0..<n]); }
+    i = e + 1;
+  }
+}
+link_eose :: (l: [] Live, id: int) {
+  buf: [128] u8; n := live_text(buf[..], 0, "[\"EOSE\",\""); n = live_text(buf[..], n, link_qid(l)); n = live_text(buf[..], n, "\"]");
+  pipe_drained(l[0].pipe[..]); fake_message(l, id, SOCKET_FRAME, cast(string) buf[0..<n]);
+}
+
+#test "live, the page asks the relay for work across projects in two asks, and folds the answers as links.ts does" {
+  l: [1] Live;
+  b: [64 + 7] u8; n := live_text(b[..], 0, LINKS_FIX_KEY); n = live_text(b[..], n, " alpha");
+  #assert live_project(l[..], cast(string) b[0..<n]);
+  live_tick(l[..], 0.1, "wss://relay.example");
+  pipe_drained(l[0].pipe[..]);
+  live_opened(l[..], 0);
+  fake_message(l[..], 0, SOCKET_OPENED, "");
+  // the project's own events, folded: what catch-up leaves when the page goes live
+  read_frames(l[0].store[..], LINKS_FIX_OURS, LINKS_FIX_KEY);
+  fold(l[0].store[..], l[0].fold[..], "alpha");
+  write_tables(l[0].store[..], l[0].fold[..], l[0].candidate[..]);
+  l[0].state = LIVE_LIVE;
+  pipe_drained(l[0].pipe[..]);
+  live_links_ask(l[..]);
+  #assert l[0].link_stage == LINK_FIRST && l[0].pipe[0].n == 1;
+  first := pipe_bytes(l[0].pipe[..], 0);
+  #assert has_part(first, "{\"kinds\":[1621,1111],\"#q\":[\"30621:") && has_part(first, ":alpha\"]}]") && has_part(first, "{\"kinds\":[1621],\"ids\":[\"") && has_part(first, "\"abababababab");
+  // a frame on a subscription the page never opened is left alone
+  #assert !live_link_frame(l[..], "[\"EOSE\",\"links-9-9\"]", frame_head("[\"EOSE\",\"links-9-9\"]"));
+  feed_links(l[..], 0, LINKS_FIX_FAR);
+  #assert l[0].links[0].n == 13 && l[0].store[0].n == 6;
+  link_eose(l[..], 0);
+  #assert l[0].link_stage == LINK_SECOND && l[0].pipe[0].n == 2;   // CLOSE, then the second ask
+  second := pipe_bytes(l[0].pipe[..], 1);
+  #assert has_part(second, "\"#E\":[") && has_part(second, "\"#e\":[") && !has_part(second, "\"kinds\":[1621],\"ids\"");
+  link_eose(l[..], 0);
+  #assert l[0].link_stage == LINK_DONE && l[0].link_ready && equal(cast(string) l[0].link_out[0..<l[0].link_n], LINKS_FIX_TABLE);
+  // asked again a minute on, from an empty store; a reconnect starts over
+  live_tick(l[..], 0.2 + LINK_EVERY, "wss://relay.example");
+  #assert l[0].link_stage == LINK_FIRST && l[0].links[0].n == 0;
+  fake_message(l[..], 0, SOCKET_CLOSED, "");
+  #assert l[0].state == LIVE_OFFLINE;
 }
 
 #test "a capped initial EOSE cannot replace the last display before bounded backfill" {

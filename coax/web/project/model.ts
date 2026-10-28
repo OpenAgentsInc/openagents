@@ -40,8 +40,12 @@ export interface WorkItem {
   sats?: number
   parent?: string
   blocked_by?: string[]
+  needs?: string[]        // "<project slug>:<item slug>": work another project must finish first
   status?: Status
 }
+
+/** Another project's issue this one waits on: its event id and its project's coordinate (30621:<pk>:<d>). */
+export interface Need { id: string; coord: string }
 
 export interface ProjectConfig {
   slug: string
@@ -64,6 +68,7 @@ export interface Fields {
   sats: number
   parent: string          // an issue id, or ""
   blocked_by: string[]    // issue ids
+  needs: Need[]           // other projects' issues ("needs" tags)
 }
 
 export interface Issue extends Fields {
@@ -130,6 +135,12 @@ export function fieldTags(f: Fields): string[][] {
   if (f.size) t.push(["size", f.size])
   if (f.parent) t.push(["parent", f.parent])
   for (const b of f.blocked_by) t.push(["blocked-by", b])
+  // a need on another project's issue, and once per project a NIP-22 citation
+  // of that project's address, so its page finds who needs it with one #q
+  // value; readers act on "needs" only (docs/protocol/2026-10-28-projects.md)
+  const needs = f.needs ?? []
+  for (const n of needs) t.push(["needs", n.id, n.coord])
+  for (const c of [...new Set(needs.map((n) => n.coord))]) t.push(["q", c])
   return t
 }
 
@@ -146,6 +157,8 @@ export function fieldsFrom(tags: string[][], content: string): Fields {
     sats: Number(one("reward") || 0),
     parent: one("parent"),
     blocked_by: tags.filter((t) => t[0] === "blocked-by").map((t) => t[1]),
+    needs: tags.filter((t) => t[0] === "needs" && /^[0-9a-f]{64}$/.test(t[1] ?? "") && /^30621:[0-9a-f]{64}:[a-z0-9][a-z0-9-]{0,63}$/.test(t[2] ?? ""))
+      .map((t) => ({ id: t[1], coord: t[2] })),
   }
 }
 
@@ -162,7 +175,7 @@ export interface Seed {
   initiative: { slug: string; title: string; body: string; spec?: string; labels?: string[] }
   milestones: { slug: string; title: string; body: string; parent?: string; labels?: string[] }[]
   tasks: { slug: string; parent?: string; title: string; size?: string; sats?: number; labels?: string[]; body: string;
-           files?: string[]; acceptance?: string[]; blocked_by?: string[]; status?: Status }[]
+           files?: string[]; acceptance?: string[]; blocked_by?: string[]; needs?: string[]; status?: Status }[]
 }
 export function seedItems(s: Seed): WorkItem[] {
   const i = s.initiative
@@ -174,7 +187,7 @@ export function seedItems(s: Seed): WorkItem[] {
     if (t.acceptance?.length) body += "\n\n## Acceptance\n\n" + t.acceptance.map((a) => `- ${a}`).join("\n")
     if (t.files?.length) body += "\n\n## Files\n\n" + t.files.map((f) => `- \`${f}\``).join("\n")
     out.push({ slug: t.slug, kind: "task", title: t.title, body, labels: t.labels ?? [], size: t.size, sats: t.sats,
-      parent: t.parent, blocked_by: t.blocked_by ?? [], status: t.status })
+      parent: t.parent, blocked_by: t.blocked_by ?? [], needs: t.needs ?? [], status: t.status })
   }
   return out
 }
@@ -193,6 +206,7 @@ export function checkWork(items: WorkItem[]): WorkItem[] {
   for (const it of items) {
     if (it.parent && !by.has(it.parent)) throw new Error(`${it.slug}: unknown parent ${it.parent}`)
     for (const b of it.blocked_by ?? []) if (!by.has(b)) throw new Error(`${it.slug}: unknown blocker ${b}`)
+    for (const n of it.needs ?? []) if (!/^[a-z0-9][a-z0-9-]{0,63}:[a-z0-9][a-z0-9-]{0,63}$/.test(n)) throw new Error(`${it.slug}: bad need ${n} (project:slug)`)
   }
   topo(items)
   return items

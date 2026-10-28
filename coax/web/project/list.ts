@@ -82,7 +82,19 @@ try {
     const done = (i: Issue | undefined) => !!i && (i.status === "resolved" || i.status === "closed")
     const by = new Map(f.issues.map((i) => [i.id, i]))
     const tasks = f.issues.filter((i) => i.kind === "task")
-    const ready = tasks.filter((i) => i.status === "open" && !i.claimed_by && i.blocked_by.every((b) => done(by.get(b))))
+    // work from other projects (links.ts): a need counts until its issue, by its own key, is resolved or closed
+    const needed = [...new Set(tasks.flatMap((i) => i.needs.map((n) => n.id)))]
+    const farDone = new Set<string>()
+    if (needed.length) {
+      const far = (await relay.all([{ kinds: [KIND_ISSUE], ids: needed }, { kinds: [1630, 1631, 1632, 1633], "#e": needed }])).filter((e) => verifyEvent(e))
+      for (const root of far.filter((e) => e.kind === KIND_ISSUE)) {
+        const last = far.filter((e) => e.kind >= 1630 && e.pubkey === root.pubkey && e.tags.some((t) => t[0] === "e" && t[1] === root.id))
+          .sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0]
+        if (last && (last.kind === 1631 || last.kind === 1632)) farDone.add(root.id)
+      }
+    }
+    const ready = tasks.filter((i) => i.status === "open" && !i.claimed_by && i.blocked_by.every((b) => done(by.get(b))) &&
+      i.needs.every((n) => farDone.has(n.id)))
     const working = [...new Set(tasks.filter((i) => !done(i) && i.claimed_by).map((i) => i.claimed_by))]
     // the site's page for it: only when the site's own copy of the project names this signer
     let page = ""

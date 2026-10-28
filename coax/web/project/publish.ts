@@ -44,6 +44,8 @@ import { aliases, checkWork, fieldTags, filters, fold, followups, ISSUE_REVISION
   type Fields, type Folded, type Issue, type ProjectConfig, type Status, type Step, type WorkItem, WORK_SCHEMA, SEED_SCHEMA, seedItems,
   parsePlan, planDone, planText, TASK_PLAN } from "./model"
 import { placed, rebalance, spread, spreadBetween } from "./rank"
+import { firstAsk, linkTable, secondAsk, stillNeeded } from "./links"
+import { tables } from "./tables"
 
 const ROOT = join(import.meta.dir, "../../..")
 const args = process.argv.slice(2)
@@ -103,11 +105,50 @@ async function send(relay: Relay, e: Event, what: string) {
 
 const sameTags = (e: Event | null, tags: string[][]) => !!e && JSON.stringify(e.tags) === JSON.stringify(tags)
 
-function wanted(it: WorkItem, ids: Map<string, string>): Fields {
+function wanted(it: WorkItem, ids: Map<string, string>, far: Map<string, { id: string; coord: string }> = new Map()): Fields {
   return {
     kind: it.kind, title: it.title, body: it.body.trim() + "\n", labels: it.labels ?? [], size: it.size ?? "",
     sats: it.sats ?? 0, parent: it.parent ? ids.get(it.parent)! : "", blocked_by: (it.blocked_by ?? []).map((b) => ids.get(b)!),
+    needs: (it.needs ?? []).map((n) => far.get(n)!),
   }
+}
+
+/** Every "<project>:<slug>" the work needs, as the other project's issue id and address, read from the relay. */
+async function farIssues(relay: Relay, work: WorkItem[]): Promise<Map<string, { id: string; coord: string }>> {
+  const out = new Map<string, { id: string; coord: string }>()
+  const wants = [...new Set(work.flatMap((it) => it.needs ?? []))]
+  for (const other of [...new Set(wants.map((w) => w.split(":")[0]))]) {
+    if (other === slug) throw new Error(`a need on ${other} is in this project: use blocked_by`)
+    const oc: ProjectConfig & { pubkey?: string } = await Bun.file(join(ROOT, "apps/openagents-web/projects", other, "project.json")).json()
+    const opk = oc.pubkey ?? ""
+    if (!/^[0-9a-f]{64}$/.test(opk)) throw new Error(`${other}/project.json has no pubkey`)
+    const r = oc.relay === relayUrl ? relay : await Relay.open(oc.relay, null)
+    const f = fold(opk, oc, await r.all(filters(opk, oc)))
+    if (r !== relay) r.close()
+    for (const w of wants.filter((w) => w.startsWith(other + ":"))) {
+      const i = f.issues.find((x) => x.slug === w.slice(other.length + 1))
+      if (!i) throw new Error(`no issue ${w} on the relay (publish ${other} first)`)
+      out.set(w, { id: i.id, coord: projectCoord(opk, oc) })
+    }
+  }
+  return out
+}
+
+/** This project's issues still waiting on another project's, by id (links.ts). */
+async function waitingOnOthers(relay: Relay, f: Folded): Promise<Set<string>> {
+  if (!f.issues.some((i) => i.needs.length)) return new Set()
+  const events = await relay.all(firstAsk(f, pk, config))
+  const second = secondAsk(f, events, pk)
+  if (second.length) events.push(...await relay.all(second))
+  const t = tables(f)
+  const rows = linkTable(f, pk, config, events, [...f.issues].sort(t.rankOrder).map((i) => i.id), t.alias)
+  const out = new Set<string>()
+  for (const row of rows.split("\n").filter(Boolean)) {
+    const [a, dir, , , status] = row.split("|")
+    const i = f.issues.find((x) => t.alias.get(x.id) === a)
+    if (i && dir === "needs" && stillNeeded(status)) out.add(i.id)
+  }
+  return out
 }
 
 function issueEvent(f: Fields, itemSlug: string) {
@@ -155,8 +196,9 @@ async function publishAll(relay: Relay) {
   if (!sameTags(f.project, projT)) await send(relay, signer.sign({ kind: KIND_PROJECT, content: "", tags: projT }), `project ${config.slug}`)
   const ids = new Map(f.issues.map((i) => [i.slug, i.id]))
   const bySlug = new Map(f.issues.map((i) => [i.slug, i]))
+  const far = await farIssues(relay, work)
   for (const it of topo(work)) {
-    const want = wanted(it, ids)
+    const want = wanted(it, ids, far)
     const have = bySlug.get(it.slug)
     if (!have) {
       const e = issueEvent(want, it.slug)
@@ -217,16 +259,19 @@ async function respread(relay: Relay, seed: boolean) {
 
 const finished = (i: Issue) => i.status === "resolved" || i.status === "closed"
 
-/** Where an item stands in the queue: 0 ready, 1 waiting (a draft or an open blocker), 2 done, 3 not a task. */
+/** Where an item stands in the queue: 0 ready, 1 waiting (a draft, an open blocker, or another project's
+ * issue it needs that isn't done), 2 done, 3 not a task. */
+let outside = new Set<string>()
 function standing(f: Folded, i: Issue): number {
   if (i.kind !== "task") return 3
   if (finished(i)) return 2
-  if (i.status === "draft") return 1
+  if (i.status === "draft" || outside.has(i.id)) return 1
   return i.blocked_by.every((b) => { const k = f.issues.find((o) => o.id === b); return !k || finished(k) }) ? 0 : 1
 }
 
 async function list(relay: Relay) {
   const f = await load(relay)
+  outside = await waitingOnOthers(relay, f)
   const a = aliases(f.issues.map((i) => i.id))
   const rows = [...f.issues].sort((x, y) => standing(f, x) - standing(f, y) || ((x.rank || "~") < (y.rank || "~") ? -1 : 1))
   const word = ["ready", "waiting", "done", ""]
@@ -258,6 +303,7 @@ function commentEvent(issue: Issue, content: string, tags: string[][], alt: stri
 
 async function show(relay: Relay, what: string) {
   const f = await load(relay)
+  outside = await waitingOnOthers(relay, f)
   const i = find(f, what)
   const a = aliases(f.issues.map((x) => x.id))
   const name = (id: string) => { const k = f.issues.find((x) => x.id === id); return k ? `#${a.get(id)} ${k.slug} (${k.status})` : id.slice(0, 8) }
@@ -266,6 +312,7 @@ async function show(relay: Relay, what: string) {
   console.log(i.title)
   if (i.parent) console.log(`in ${name(i.parent)}`)
   if (i.blocked_by.length) console.log(`waits on ${i.blocked_by.map(name).join(", ")}`)
+  if (i.needs.length) console.log(`needs from other projects: ${i.needs.map((n) => `${n.coord.slice(71)} ${n.id.slice(0, 8)}`).join(", ")}${outside.has(i.id) ? " (not done yet)" : " (all done)"}`)
   console.log(i.claimed_by ? `claimed by ${i.claimed_by} at ${new Date(i.claimed_at * 1000).toISOString()}` : "not claimed")
   if (i.commit) console.log(`done in ${i.commit}`)
   console.log(`\n${i.body.trim()}\n`)
@@ -279,6 +326,7 @@ async function show(relay: Relay, what: string) {
 async function claim(relay: Relay, what: string, by: string) {
   if (!by) throw new Error("usage: claim SLUG --by NAME")
   const f = await load(relay)
+  outside = await waitingOnOthers(relay, f)
   const i = find(f, what)
   if (i.kind !== "task") throw new Error(`${i.slug} is a ${i.kind}; only tasks are claimed`)
   if (finished(i)) throw new Error(`${i.slug} is already ${i.status}`)

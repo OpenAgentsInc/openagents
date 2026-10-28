@@ -1,0 +1,194 @@
+// Work across projects, folded in Coax as coax/web/project/links.ts folds
+// it: a waiting issue carries ["needs", <id>, "30621:<key>:<d>"] (and one
+// ["q", "30621:<key>:<d>"] per project it needs), and the page reads the
+// other projects' issues, revisions and statuses into a store for any key
+// (ANY_KEY). write_links makes the LINKS table:
+//
+//   alias | needs or by | project d | its alias | its status | its title
+//
+// for each of this project's issues in WORK_ITEMS order: what it needs (tag
+// order; "missing" when that issue didn't come back), then who needs it (by
+// project d, then id). Only a root's own key counts for its revisions and
+// statuses, and a root counts for the project its key and "a" tag name. The
+// check below holds it to links.ts's bytes on the same fixture.
+
+LINK_ROOTS :: 48;       // roots followed at most, as links.ts
+LINKS_CAP :: 16384;
+
+// A project address with a valid d: 30621:<64 hex>:<[a-z0-9][a-z0-9-]{0,63}>.
+valid_coord :: (a: string) -> bool {
+  if a.count < 72 || a.count > 71 + 64 || !starts(a, "30621:") || a[70] != ':' || !hex_lower(a[6..<70]) { return false; }
+  for i: 71..<a.count {
+    c := a[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '-' && i > 71);
+    if !ok { return false; }
+  }
+  return true;
+}
+// The tag naming the project root e is filed under: its first ["a", 30621:<e's own key>:<d>], or -1.
+root_coord :: (s: [] Store, e: int) -> int {
+  me := author_of(s, e);
+  if me.count != 64 { return -1; }
+  for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+    if s[0].tag_len[t] > 1 && equal(element(s, t, 0), "a") {
+      a := element(s, t, 1);
+      if valid_coord(a) && equal(a[6..<70], me) { return t; }
+    }
+  }
+  return -1;
+}
+// Whether tag t is a well-formed need: ["needs", <64 hex>, <address>].
+is_need :: (s: [] Store, t: int) -> bool {
+  return s[0].tag_len[t] > 2 && equal(element(s, t, 0), "needs") && element(s, t, 1).count == 64 && hex_lower(element(s, t, 1)) && valid_coord(element(s, t, 2));
+}
+tagged :: (s: [] Store, e: int, name: string, value: string) -> bool { return tag_has(s, e, name, value); }
+
+LinkRoots :: struct {
+  n: int;
+  root: [LINK_ROOTS] int; coord: [LINK_ROOTS] int;    // the event, its "a" tag
+  fields: [LINK_ROOTS] int; status: [LINK_ROOTS] int;  // the current fields (latest revision, or the root); the status event or -1
+  alias: [LINK_ROOTS] int;
+}
+
+link_roots :: (ls: [] Store, ours: string, lr: [] LinkRoots) {
+  lr[0].n = 0;
+  for e: 0..<ls[0].n {
+    if ls[0].kind[e] != KIND_ISSUE || lr[0].n >= LINK_ROOTS { continue; }
+    t := root_coord(ls, e);
+    if t < 0 || equal(element(ls, t, 1), ours) { continue; }
+    k := lr[0].n; lr[0].n += 1;
+    lr[0].root[k] = e; lr[0].coord[k] = t; lr[0].fields[k] = e; lr[0].status[k] = -1;
+  }
+  for k: 0..<lr[0].n {
+    e := lr[0].root[k]; me := author_of(ls, e); id := event_id(ls, e);
+    revised := false;
+    for x: 0..<ls[0].n {
+      if !equal(author_of(ls, x), me) { continue; }
+      kx := ls[0].kind[x];
+      if kx == KIND_COMMENT && tagged(ls, x, "revision", ISSUE_REVISION) && tagged(ls, x, "E", id) && (!revised || newer(ls, x, lr[0].fields[k])) {
+        lr[0].fields[k] = x; revised = true;
+      }
+      if kx >= 1630 && kx <= 1633 && tagged(ls, x, "e", id) && newer(ls, x, lr[0].status[k]) { lr[0].status[k] = x; }
+    }
+  }
+  // aliases among the roots of the same project: four hex digits, more on a clash
+  for k: 0..<lr[0].n {
+    n := 4; a := event_id(ls, lr[0].root[k]);
+    for o: 0..<lr[0].n {
+      if o == k || !equal(element(ls, lr[0].coord[o], 1), element(ls, lr[0].coord[k], 1)) { continue; }
+      b := event_id(ls, lr[0].root[o]);
+      while n < 64 && equal(a[0..<n], b[0..<n]) { n += 1; }
+    }
+    lr[0].alias[k] = n;
+  }
+}
+link_find :: (ls: [] Store, lr: [] LinkRoots, id: string) -> int {
+  for k: 0..<lr[0].n { if equal(event_id(ls, lr[0].root[k]), id) { return k; } }
+  return -1;
+}
+link_d :: (ls: [] Store, lr: [] LinkRoots, k: int) -> string { c := element(ls, lr[0].coord[k], 1); return c[71..<c.count]; }
+link_status :: (ls: [] Store, lr: [] LinkRoots, k: int) -> string {
+  return ifx lr[0].status[k] < 0 then "open" else STATUS_NAME[ls[0].kind[lr[0].status[k]] - 1630];
+}
+// Whether root k's current fields need our issue id.
+link_needs :: (ls: [] Store, lr: [] LinkRoots, k: int, id: string, ours: string) -> bool {
+  fe := lr[0].fields[k];
+  for t: ls[0].tag0[fe]..<ls[0].tag0[fe] + ls[0].tags[fe] {
+    if is_need(ls, t) && equal(element(ls, t, 1), id) && equal(element(ls, t, 2), ours) { return true; }
+  }
+  return false;
+}
+// One row's tail: | d | alias | status | title, then the newline.
+link_row :: (ls: [] Store, lr: [] LinkRoots, k: int, out: [] u8, at: int) -> int {
+  m := json_raw(out, at, "|"); m = json_raw(out, m, link_d(ls, lr, k));
+  m = json_raw(out, m, "|"); m = json_raw(out, m, event_id(ls, lr[0].root[k])[0..<lr[0].alias[k]]);
+  m = json_raw(out, m, "|"); m = json_raw(out, m, link_status(ls, lr, k));
+  title := tag_value(ls, lr[0].fields[k], "subject");
+  m = json_raw(out, m, "|"); m = cell_into(out, m, ifx title.ok then str(ls, title.ref) else "");
+  return json_raw(out, m, "\n");
+}
+
+// The LINKS table into out: its length, or -1 when it doesn't fit.
+// order: this project's issues (fold rows) in WORK_ITEMS order (Tables.order).
+write_links :: (s: [] Store, f: [] Fold, order: [] int, ls: [] Store, pubkey: string, slug: string, lr: [] LinkRoots, out: [] u8) -> int {
+  cb: [140] u8;
+  cn := json_raw(cb[..], 0, "30621:"); cn = json_raw(cb[..], cn, pubkey); cn = json_raw(cb[..], cn, ":"); cn = json_raw(cb[..], cn, slug);
+  if cn < 0 { return -1; }
+  ours := cast(string) cb[0..<cn];
+  link_roots(ls, ours, lr);
+  m := 0;
+  for k: 0..<f[0].n {
+    r := order[k]; fe := f[0].fields[r]; id := event_id(s, f[0].root[r]);
+    for t: s[0].tag0[fe]..<s[0].tag0[fe] + s[0].tags[fe] {
+      if !is_need(s, t) { continue; }
+      m = alias_into(s, f, out, m, r); m = json_raw(out, m, "|needs");
+      o := link_find(ls, lr, element(s, t, 1));
+      if o >= 0 && equal(element(ls, lr[0].coord[o], 1), element(s, t, 2)) { m = link_row(ls, lr, o, out, m); }
+      else {
+        c := element(s, t, 2);
+        m = json_raw(out, m, "|"); m = json_raw(out, m, c[71..<c.count]);
+        m = json_raw(out, m, "|"); m = json_raw(out, m, element(s, t, 1)[0..<4]); m = json_raw(out, m, "|missing|\n");
+      }
+    }
+    // who needs it, by project d, then id
+    by: [LINK_ROOTS] int; bn := 0;
+    for o: 0..<lr[0].n {
+      if !link_needs(ls, lr, o, id, ours) { continue; }
+      j := bn; bn += 1;
+      while j > 0 && link_before(ls, lr, o, by[j - 1]) { by[j] = by[j - 1]; j -= 1; }
+      by[j] = o;
+    }
+    for j: 0..<bn { m = alias_into(s, f, out, m, r); m = json_raw(out, m, "|by"); m = link_row(ls, lr, by[j], out, m); }
+  }
+  return m;
+}
+link_before :: (ls: [] Store, lr: [] LinkRoots, a: int, b: int) -> bool {
+  x := link_d(ls, lr, a); y := link_d(ls, lr, b);
+  if !equal(x, y) { return before_text(x, y); }
+  return before_text(event_id(ls, lr[0].root[a]), event_id(ls, lr[0].root[b]));
+}
+before_text :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+
+#load "../../coax/lib/nostr/fixtures/links.coax";
+
+// Every frame of a transcript into a store, kept for key.
+read_frames :: (s: [] Store, text: string, key: string) {
+  i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != 10 { e += 1; }
+    _ := read_frame(s, text[i..<e], key);
+    i = e + 1;
+  }
+}
+
+#test "the links of the fixture equal links.ts's, byte for byte: needs in tag order, who needs it by project, impostors dropped" {
+  s: [1] Store; f: [1] Fold; t: [1] Tables; ls: [1] Store; lr: [1] LinkRoots;
+  out: [LINKS_CAP] u8;
+  read_frames(s[..], LINKS_FIX_OURS, LINKS_FIX_KEY);
+  #assert s[0].n == 6 && s[0].dropped == 0;
+  fold(s[..], f[..], "alpha");
+  write_tables(s[..], f[..], t[..]);
+  read_frames(ls[..], LINKS_FIX_FAR, ANY_KEY);
+  #assert ls[0].n == 13 && ls[0].dropped == 0 && author_of(ls[..], 0).count == 64;
+  n := write_links(s[..], f[..], t[0].order[..], ls[..], LINKS_FIX_KEY, "alpha", lr[..], out[..]);
+  #assert n > 0 && first_difference(cast(string) out[0..<n], LINKS_FIX_TABLE) == "";
+  #assert equal(cast(string) out[0..<n], LINKS_FIX_TABLE);
+  // the impostor's issue under beta's address is no root of beta's
+  #assert lr[0].n == 6;
+  // a store for one key never keeps another's, and never records an author
+  #assert s[0].author[0] == -1;
+}
+
+#test "a project address must be well formed to count" {
+  k := "1111111111111111111111111111111111111111111111111111111111111111";
+  #assert valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:verse");
+  #assert !valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:-verse");
+  #assert !valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:Verse");
+  #assert !valid_coord("30621:111:verse") && !valid_coord("30617:1111111111111111111111111111111111111111111111111111111111111111:verse");
+  #assert k.count == 64;
+}
