@@ -4,7 +4,14 @@
 // links it) and see it through the free orbit (verse/camera.coax Orbit),
 // which turns with a mouse drag, the arrow keys or your right thumb, zooms
 // with the wheel, swings in behind you as you walk, and pulls in where a
-// tree or a hedge is in the way.
+// tree, a hedge or a hill is in the way. The ground is verse/terrain.coax's:
+// rolling hills in a shallow bowl, levelled where the garden's paths run,
+// and a dog that follows you by those paths.
+//
+// The player walks on a flat floor and is drawn at the ground's height
+// where it stands: a step over a hill is a step over the flat, so the
+// controller needs nothing new, and everything else (the dog, the camera,
+// what is drawn) stands on the real ground.
 //
 // This file is the page: the garden's layout, the controls, the HUD, and
 // what the scene draws (garden.wgsl): a ground of cells (store 0, its
@@ -16,6 +23,7 @@
 #load "font.coax";
 #load "analytics.coax";
 #load "../../verse/camera.coax";
+#load "../../verse/terrain.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 12000;
@@ -33,11 +41,13 @@ U_PATH_INFO :: U_PATH + PATHS * 4;
 U_PLATE :: U_PATH_INFO + 4;
 UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
 
-// The ground: CELLS a side of CELL metres, centred on the origin.
+// The ground: CELLS a side of CELL metres, centred on the origin (terrain.coax Ground's).
 CELLS :: 64;
 CELL :: 1.5;
 GROUND_POINTS :: (CELLS + 1) * (CELLS + 1);
 EDGE :: -48.0;         // CELLS * CELL / 2, west and south
+BOUND :: 44.0;         // metres from the middle you may walk
+PATH_HALF :: 0.9;      // a path's half width
 
 // The shapes garden.wgsl draws, and how many of each one frame holds.
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
@@ -80,6 +90,7 @@ Garden :: struct {
   key_x: f32; key_y: f32; run: bool; jump: bool;
   // You, as the player last drew you.
   feet: Point; face: f32; act: int; stride: f32;
+  dog: Follower; dog_stride: f32;
   // The scene.
   heights: [GROUND_POINTS] f32;
   objects: [OBJECTS * OBJECT_FLOATS] f32;
@@ -94,25 +105,45 @@ Garden :: struct {
 
 // ---- the garden's layout
 
+// The paths: a ring round the plaza, the way in from the south, and
+// branches to the pond (east), the orchard (north) and the meadow (west),
+// joined by two loops (terrain.coax nodes and links).
+NODES :: 20;
+NODE_XZ :: [40] f32.[
+  0, 7,  4.95, 4.95,  7, 0,  4.95, -4.95,  0, -7,  -4.95, -4.95,  -7, 0,  -4.95, 4.95,
+  0, -22,  14, 3,  21, 1.5,  -3, 14,  -10, 19,  -19, 17,  -14, -4,  -21, -12,  12, 12,  4, 16,  9, -14,  16, -7
+];
+LINKS :: 22;
+LINK_AB :: [44] int.[
+  0, 1,  1, 2,  2, 3,  3, 4,  4, 5,  5, 6,  6, 7,  7, 0,
+  4, 8,  2, 9,  9, 10,  0, 11,  11, 12,  12, 13,  6, 14,  14, 15,  9, 16,  16, 17,  17, 11,  8, 18,  18, 19,  19, 9
+];
+// Level ground: the plaza and the pond's bed (terrain.coax FLAT).
+FLAT_DISCS :: [8] f32.[0, 0, 9, 0,   27, 0, 4.5, -0.7];
+POND_X :: 27.0; POND_Z :: 0.0; POND_R :: 4.0; POND_LEVEL :: -0.2;
+
 // Trees: x, z, trunk height, canopy radius.
-TREES :: 10;
-TREE :: [40] f32.[
-  -9, 4, 2.4, 1.7,   -12, -6, 2.0, 1.5,   10, 8, 2.6, 1.9,   13, -3, 2.2, 1.6,   4, 15, 2.4, 1.8,
-  -5, -16, 2.1, 1.5,  17, 13, 2.8, 2.0,   -16, 11, 2.5, 1.8,  8, -13, 2.2, 1.6,  -20, -2, 2.6, 1.9
+TREES :: 12;
+TREE :: [48] f32.[
+  -11, 6, 2.4, 1.7,   -13, -9, 2.0, 1.5,   10, 7.5, 2.6, 1.9,   12, -2, 2.2, 1.6,   4, 21, 2.4, 1.8,
+  -6, -16, 2.1, 1.5,  20, 15, 2.8, 2.0,   -18, 10, 2.5, 1.8,  6, -21, 2.2, 1.6,  -24, -1, 2.6, 1.9,
+  25, 9, 2.4, 1.7,   -9, 26, 2.7, 1.9
 ];
 // Hedges: min x, z, max x, z, height.
 HEDGES :: 7;
 HEDGE :: [35] f32.[
-  -6.5, 5.2, -2.2, 6.0, 1.1,    2.2, 5.2, 6.5, 6.0, 1.1,
-  -6.5, -6.0, -2.2, -5.2, 1.1,  2.2, -6.0, 6.5, -5.2, 1.1,
-  -22, 19, -8, 20, 1.7,          8, 19, 22, 20, 1.7,
-  20, -10, 21, 4, 1.5
+  -9, 9.2, -4.5, 10, 1.1,    5, 9.2, 9, 10, 1.1,
+  -9, -10, -4.5, -9.2, 1.1,  4.5, -10, 9, -9.2, 1.1,
+  -26, 22, -13, 23, 1.7,      32, -12, 33, 12, 1.6,
+  -31, -21, -21, -20, 1.5
 ];
 // Flower beds: x, z, radius, then a colour 0 red, 1 gold, 2 white.
 BEDS :: 6;
-BED :: [24] f32.[ -4, 9, 1.4, 0,   4, 9, 1.4, 1,   -9, -9, 1.2, 2,   11, 2, 1.3, 0,   -14, 4, 1.1, 1,   6, -9, 1.2, 2 ];
+BED :: [24] f32.[ 3, 3, 1.0, 0,   -3, 3, 1.0, 1,   -3, -3, 1.0, 2,   3, -3, 1.0, 0,   -11, 2, 1.1, 1,   9.5, -5, 1.1, 2 ];
 FLOWER_RGB :: [9] f32.[0.86, 0.2, 0.22,  0.95, 0.74, 0.2,  0.95, 0.94, 0.9];
-SPAWN_X :: 0.0; SPAWN_Z :: -11.0;
+SPAWN_X :: 0.0; SPAWN_Z :: -18.0;
+DOG_X :: 1.5; DOG_Z :: -15.5;
+DOG_STOP :: 2.2;     // metres short of you the dog stops
 
 // ---- small things
 
@@ -153,30 +184,43 @@ coaxial_garden_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_garden_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_garden_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
+ground :: () -> Ground { g: Ground; g.n = CELLS; g.cell = CELL; g.west = EDGE; g.south = EDGE; return g; }
 garden_start :: (s: [] Garden) {
   s[0].started = true;
-  s[0].feet = v3(f32(SPAWN_X), 0, f32(SPAWN_Z));
+  nodes := NODE_XZ; links := LINK_AB; flats := FLAT_DISCS;
+  ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
+  s[0].feet = v3(f32(SPAWN_X), ground_at(s, f32(SPAWN_X), f32(SPAWN_Z)), f32(SPAWN_Z));
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
-  for i: 0..<GROUND_POINTS { s[0].heights[i] = 0; }
+  s[0].dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
   build_scenery(s);
 }
 
 // The player's walls and the camera's scenery, from the layout.
 build_scenery :: (s: [] Garden) {
   w := 0; sp := 0; bx := 0;
+  // The player's walls are on its flat floor; the camera's scenery stands on the ground.
   for t: 0..<TREES {
     x := TREE[t * 4]; z := TREE[t * 4 + 1]; h := TREE[t * 4 + 2]; r := TREE[t * 4 + 3];
+    g := ground_at(s, x, z);
     if w < WALLS { put6(s[0].walls[..], w, x - 0.28, 0, z - 0.28, x + 0.28, h + r, z + 0.28); w += 1; }
-    if bx < BOXES { put6(s[0].boxes[..], bx, x - 0.25, 0, z - 0.25, x + 0.25, h, z + 0.25); bx += 1; }
-    if sp < SPHERES { k := sp * 4; s[0].spheres[k] = x; s[0].spheres[k + 1] = h + r * 0.75; s[0].spheres[k + 2] = z; s[0].spheres[k + 3] = r * 0.9; sp += 1; }
+    if bx < BOXES { put6(s[0].boxes[..], bx, x - 0.25, g - 1, z - 0.25, x + 0.25, g + h, z + 0.25); bx += 1; }
+    if sp < SPHERES { k := sp * 4; s[0].spheres[k] = x; s[0].spheres[k + 1] = g + h + r * 0.75; s[0].spheres[k + 2] = z; s[0].spheres[k + 3] = r * 0.9; sp += 1; }
   }
   for i: 0..<HEDGES {
     k := i * 5;
+    g := ground_at(s, (HEDGE[k] + HEDGE[k + 2]) / 2, (HEDGE[k + 1] + HEDGE[k + 3]) / 2);
     if w < WALLS { put6(s[0].walls[..], w, HEDGE[k], 0, HEDGE[k + 1], HEDGE[k + 2], HEDGE[k + 4], HEDGE[k + 3]); w += 1; }
-    if bx < BOXES { put6(s[0].boxes[..], bx, HEDGE[k], 0, HEDGE[k + 1], HEDGE[k + 2], HEDGE[k + 4], HEDGE[k + 3]); bx += 1; }
+    if bx < BOXES { put6(s[0].boxes[..], bx, HEDGE[k], g - 1, HEDGE[k + 1], HEDGE[k + 2], g + HEDGE[k + 4], HEDGE[k + 3]); bx += 1; }
   }
-  // The pedestal in the middle.
+  // The pedestal in the middle, the pond, and the edge of the garden.
   if w < WALLS { put6(s[0].walls[..], w, -0.45, 0, -0.45, 0.45, 0.9, 0.45); w += 1; }
+  if w < WALLS { put6(s[0].walls[..], w, f32(POND_X - POND_R) + 0.3, 0, f32(POND_Z - POND_R) + 0.3, f32(POND_X + POND_R) - 0.3, 3, f32(POND_Z + POND_R) - 0.3); w += 1; }
+  b := f32(BOUND);
+  if w + 4 <= WALLS {
+    put6(s[0].walls[..], w, -b - 2, 0, -b - 2, b + 2, 9, -b); put6(s[0].walls[..], w + 1, -b - 2, 0, b, b + 2, 9, b + 2);
+    put6(s[0].walls[..], w + 2, -b - 2, 0, -b, -b, 9, b); put6(s[0].walls[..], w + 3, b, 0, -b, b + 2, 9, b);
+    w += 4;
+  }
   s[0].wall_n = w; s[0].sphere_n = sp; s[0].box_n = bx;
 }
 
@@ -307,13 +351,13 @@ shadow :: (s: [] Garden, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) 
   s[0].shadow_n = n + 1;
 }
 
-ground_at :: (s: [] Garden, x: f32, z: f32) -> f32 { return 0; }
+ground_at :: (s: [] Garden, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
 
 scenery :: (s: [] Garden, u: [] f32) {
   for t: 0..<TREES {
     x := TREE[t * 4]; z := TREE[t * 4 + 1]; h := TREE[t * 4 + 2]; r := TREE[t * 4 + 3];
     g := ground_at(s, x, z);
-    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + h * 0.5, z), 0, 0, 0.42, h, 0.42, 0.36, 0.25, 0.16);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + h * 0.5 - 0.3, z), 0, 0, 0.42, h + 0.6, 0.42, 0.36, 0.25, 0.16);
     shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.7, z), f32(t), 0, r * 2, r * 1.8, r * 2, 0.24, 0.45 + 0.03 * f32(t % 3), 0.2);
     shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.5, g + h + r * 0.25, z - r * 0.3), 0, 0, r * 1.3, r * 1.2, r * 1.3, 0.28, 0.5, 0.22);
     shadow(s, u, x, z, r * 1.3, 0.55);
@@ -321,23 +365,28 @@ scenery :: (s: [] Garden, u: [] f32) {
   for i: 0..<HEDGES {
     k := i * 5;
     x0 := HEDGE[k]; z0 := HEDGE[k + 1]; x1 := HEDGE[k + 2]; z1 := HEDGE[k + 3]; h := HEDGE[k + 4];
-    shape(s, SHAPE_BOX, LOOK_LEAVES, v3((x0 + x1) / 2, h / 2, (z0 + z1) / 2), 0, 0, x1 - x0, h, z1 - z0, 0.2, 0.38, 0.17);
+    g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+    shape(s, SHAPE_BOX, LOOK_LEAVES, v3((x0 + x1) / 2, g + h / 2 - 0.3, (z0 + z1) / 2), 0, 0, x1 - x0, h + 0.6, z1 - z0, 0.2, 0.38, 0.17);
   }
   for b: 0..<BEDS {
     x := BED[b * 4]; z := BED[b * 4 + 1]; r := BED[b * 4 + 2]; c := cast(int) BED[b * 4 + 3];
-    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, 0.06, z), 0, 0, r * 2, 0.16, r * 2, 0.36, 0.27, 0.2);
+    g := ground_at(s, x, z);
+    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.02, z), 0, 0, r * 2, 0.24, r * 2, 0.36, 0.27, 0.2);
     for f: 0..<9 {
       a := f32(f) * 2.399 + f32(b);
       d := r * 0.8 * sqrt((f32(f) + 0.5) / 9);
       fx := x + cos(a) * d; fz := z + sin(a) * d;
-      shape(s, SHAPE_BOX, LOOK_MATTE, v3(fx, 0.32, fz), a, 0, 0.035, 0.4, 0.035, 0.25, 0.5, 0.2);
-      shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(fx, 0.55, fz), 0, 0, 0.2, 0.16, 0.2, FLOWER_RGB[c * 3], FLOWER_RGB[c * 3 + 1], FLOWER_RGB[c * 3 + 2]);
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(fx, g + 0.32, fz), a, 0, 0.035, 0.4, 0.035, 0.25, 0.5, 0.2);
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(fx, g + 0.55, fz), 0, 0, 0.2, 0.16, 0.2, FLOWER_RGB[c * 3], FLOWER_RGB[c * 3 + 1], FLOWER_RGB[c * 3 + 2]);
     }
   }
   // The pedestal in the middle of the plaza.
-  shape(s, SHAPE_BOX, LOOK_STONE, v3(0, 0.45, 0), 0, 0, 0.8, 0.9, 0.8, 0.72, 0.68, 0.6);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(0, 0.4, 0), 0, 0, 0.8, 1.0, 0.8, 0.72, 0.68, 0.6);
   shape(s, SHAPE_BOX, LOOK_STONE, v3(0, 0.93, 0), 0, 0, 0.95, 0.08, 0.95, 0.78, 0.74, 0.66);
   shadow(s, u, 0, 0, 0.8, 0.5);
+  // The pond.
+  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(f32(POND_X), f32(POND_LEVEL) - 0.3, f32(POND_Z)), 0, 0, f32(POND_R) * 2, 0.6, f32(POND_R) * 2, 0.25, 0.45, 0.55);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(f32(POND_X), f32(POND_LEVEL) - 0.35, f32(POND_Z)), 0, 0, f32(POND_R) * 2 + 0.5, 0.6, f32(POND_R) * 2 + 0.5, 0.5, 0.47, 0.42);
 }
 
 // You: a figure in a blue coat, its legs and arms swinging with your stride.
@@ -399,12 +448,11 @@ horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
   return (1 - cy / cw) * 0.5 * height;
 }
 
-// How far along the camera's ray it may go before the ground: the eye
-// keeps half a metre above it.
+// How far along the camera's ray it may go before the ground: the ray is
+// cast half a metre lower, so the eye keeps that far above the ground.
 ground_room :: (s: [] Garden, r: OrbitRay) -> f32 {
-  if r.dir.y >= 0 { return r.far; }
-  above := r.from.y - ground_at(s, r.from.x, r.from.z) - 0.5;
-  return hi(above / -r.dir.y, 0);
+  lifted := add(r.from, v3(0, -0.5, 0));
+  return verse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
 // The free orbit this frame: it follows you (feet as drawn) and swings in
@@ -418,6 +466,59 @@ camera_frame :: (s: [] Garden, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   o = verse_orbit_limit(o, room, dt);
   s[0].orbit = o;
   return verse_orbit_shot(o);
+}
+
+// The paths for the ground's shader: a piece per link.
+paths :: (u: [] f32) {
+  n := 0;
+  for i: 0..<LINKS {
+    if n >= PATHS { break; }
+    a := LINK_AB[i * 2]; b := LINK_AB[i * 2 + 1];
+    k := U_PATH + n * 4;
+    u[k] = NODE_XZ[a * 2]; u[k + 1] = NODE_XZ[a * 2 + 1]; u[k + 2] = NODE_XZ[b * 2]; u[k + 3] = NODE_XZ[b * 2 + 1];
+    n += 1;
+  }
+  u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(PATH_HALF);
+}
+
+// The dog follows you by the paths and stops a little short of you.
+dog_frame :: (s: [] Garden, u: [] f32, you: Point, dt: f32) {
+  nodes := NODE_XZ; links := LINK_AB;
+  s[0].dog = verse_follower_step(s[0].dog, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, f32(DOG_STOP), dt);
+  s[0].dog_stride += flat_length(s[0].dog.vel) * dt / 0.9;
+  dog(s, u, s[0].dog.pos, s[0].dog.face, s[0].dog_stride, s[0].dog.walking);
+}
+
+// A dog: a golden body, its head up, its legs trotting when it walks.
+dog :: (s: [] Garden, u: [] f32, feet: Point, face: f32, stride: f32, walking: bool) {
+  ahead := v3(sin(face), 0, cos(face));
+  right := v3(-cos(face), 0, sin(face));
+  swing := ifx walking then sin(stride * 3.2) * 0.55 else 0.0f32;
+  bob := ifx walking then abs(cos(stride * 3.2)) * 0.03 else 0.0f32;
+  body := add(feet, v3(0, 0.5 + bob, 0));
+  coat := v3(0.78, 0.55, 0.3);
+  shape(s, SHAPE_SPHERE, LOOK_MATTE, body, face, 0, 0.34, 0.32, 0.8, coat.x, coat.y, coat.z);
+  chest := add(body, add(times(ahead, 0.3), v3(0, 0.06, 0)));
+  shape(s, SHAPE_SPHERE, LOOK_MATTE, chest, face, 0, 0.32, 0.34, 0.36, coat.x, coat.y, coat.z);
+  head := add(body, add(times(ahead, 0.5), v3(0, 0.26, 0)));
+  shape(s, SHAPE_SPHERE, LOOK_MATTE, head, face, 0, 0.26, 0.25, 0.28, coat.x, coat.y, coat.z);
+  shape(s, SHAPE_BOX, LOOK_MATTE, add(head, add(times(ahead, 0.17), v3(0, -0.04, 0))), face, 0, 0.12, 0.1, 0.16, 0.85, 0.66, 0.42);
+  shape(s, SHAPE_SPHERE, LOOK_MATTE, add(head, add(times(ahead, 0.26), v3(0, -0.01, 0))), 0, 0, 0.05, 0.05, 0.05, 0.1, 0.08, 0.07);
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(head, add(times(right, 0.1 * sign), v3(0, 0.08, -0.02))), face, -0.3, 0.06, 0.16, 0.1, 0.55, 0.36, 0.2);
+    for end: 0..<2 {
+      along := ifx end == 0 then 0.24f32 else -0.24f32;
+      a := ifx end == 0 then swing * sign else -swing * sign;
+      hip := add(add(feet, v3(0, 0.42, 0)), add(times(ahead, along), times(right, 0.1 * sign)));
+      down := v3(sin(face) * sin(a), -cos(a), cos(face) * sin(a));
+      shape(s, SHAPE_BOX, LOOK_MATTE, add(hip, times(down, 0.21)), face, a, 0.08, 0.42, 0.09, coat.x * 0.9, coat.y * 0.9, coat.z * 0.9);
+    }
+  }
+  tail := add(body, add(times(ahead, -0.42), v3(0, 0.14, 0)));
+  wag := ifx walking then sin(stride * 6) * 0.4 else sin(f32(s[0].time) * 3) * 0.25;
+  shape(s, SHAPE_CYLINDER, LOOK_MATTE, tail, face + wag, -0.9, 0.06, 0.3, 0.06, coat.x, coat.y, coat.z);
+  shadow(s, u, feet.x, feet.z, 0.45, 0.5);
 }
 
 // ---- the HUD
@@ -497,6 +598,7 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   scenery(s, u);
   figure(s, u, shown, face, s[0].stride, act);
+  dog_frame(s, u, shown, t);
   for kind: 0..<5 {
     d := kind * 4;
     s[0].draws[d] = 0;
@@ -513,7 +615,7 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
   sun := unit_or(v3(0.45, 0.8, 0.32), v3(0, 1, 0));
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z;
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(CELL); u[U_GROUND + 2] = f32(EDGE); u[U_GROUND + 3] = f32(EDGE);
-  u[U_PATH_INFO] = 0; u[U_PATH_INFO + 1] = 0.8;
+  paths(u);
 
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
   u[5] = f32(s[0].plate_n);
@@ -550,16 +652,17 @@ garden_store_cap :: (k: int) -> int #export_c {
   for i: 0..<4 { cx += u[U_VIEW + i] * p[i]; cy += u[U_VIEW + 4 + i] * p[i]; cw += u[U_VIEW + 12 + i] * p[i]; }
   #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
   // Stand just in front of a tree, looking away from it: the eye stays clear of its trunk and canopy.
-  g[0].orbit = verse_orbit_start(v3(-9, 0, 6.2), 0);
+  spot := v3(-11, ground_at(g[..], -11, 8.2), 8.2);
+  g[0].orbit = verse_orbit_start(spot, 0);
   shot := verse_orbit_shot(g[0].orbit);
-  for i: 0..<120 { shot = camera_frame(g[..], v3(-9, 0, 6.2), 0, 0, 1.0 / 60.0); }
-  trunk := v3(-9, shot.eye.y, 4);
+  for i: 0..<40 { shot = camera_frame(g[..], spot, 0, 0, 1.0 / 20.0); }
+  trunk := v3(-11, shot.eye.y, 6);
   #assert length(sub(shot.eye, trunk)) > 0.25 + f32(FREE_CLEAR) - 0.01;
-  #assert shot.eye.y > 0.4;
+  #assert shot.eye.y > ground_at(g[..], shot.eye.x, shot.eye.z) + 0.3;
   #assert g[0].orbit.shown < verse_orbit_ray(g[0].orbit).far - 1;
   // Turned the other way, nothing is behind: it backs out to the full distance.
   g[0].orbit = verse_orbit_look(g[0].orbit, f32(PI), 0);
-  for i: 0..<300 { shot = camera_frame(g[..], v3(-9, 0, 6.2), 0, 0, 1.0 / 60.0); }
+  for i: 0..<60 { shot = camera_frame(g[..], spot, 0, 0, 0.1); }
   #assert near(g[0].orbit.shown, verse_orbit_ray(g[0].orbit).far, 0.05);
 }
 
@@ -585,6 +688,40 @@ garden_store_cap :: (k: int) -> int #export_c {
   #assert g[0].held == 0;
   // The player walks by the camera: theta is opposite the way it looks.
   #assert near(wrap_angle(garden_player_theta(g[..]) - g[0].orbit.yaw), -f32(PI), 0.0001);
+}
+
+#test "trees, hedges, beds and the pond keep off the paths" {
+  nodes := NODE_XZ; links := LINK_AB;
+  for t: 0..<TREES {
+    #assert verse_path_nearest(nodes[..], links[..], TREE[t * 4], TREE[t * 4 + 1]).d > f32(PATH_HALF) + 0.6;
+  }
+  for b: 0..<BEDS {
+    #assert verse_path_nearest(nodes[..], links[..], BED[b * 4], BED[b * 4 + 1]).d > f32(PATH_HALF) + BED[b * 4 + 2] + 0.2;
+  }
+  for i: 0..<HEDGES {
+    k := i * 5;
+    for a: 0..<5 {
+      for c: 0..<5 {
+        x := lerp(HEDGE[k], HEDGE[k + 2], f32(a) / 4); z := lerp(HEDGE[k + 1], HEDGE[k + 3], f32(c) / 4);
+        #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(PATH_HALF) + 0.2;
+      }
+    }
+  }
+  #assert verse_path_nearest(nodes[..], links[..], f32(POND_X), f32(POND_Z)).d > f32(POND_R) + f32(PATH_HALF);
+  // You start on the path in from the south, the dog beside you.
+  #assert verse_path_nearest(nodes[..], links[..], f32(SPAWN_X), f32(SPAWN_Z)).d < 0.01;
+  #assert LINKS <= PATHS;
+}
+
+#test "the ground is built: the plaza is level, the hills roll, and you stand on it" {
+  g: [1] Garden;
+  garden_start(g[..]);
+  #assert near(ground_at(g[..], 2, 1), 0, 0.01) && near(ground_at(g[..], -5, -5), 0, 0.05);
+  lowest := 1000.0f32; highest := -1000.0f32;
+  for i: 0..<9 { h := ground_at(g[..], -36 + f32(i) * 9, 30); lowest = lo(lowest, h); highest = hi(highest, h); }
+  #assert highest - lowest > 0.8;
+  #assert near(g[0].feet.y, ground_at(g[..], f32(SPAWN_X), f32(SPAWN_Z)), 0.0001);
+  #assert near(g[0].dog.pos.y, ground_at(g[..], f32(DOG_X), f32(DOG_Z)), 0.0001);
 }
 
 #test "the hint fits a phone" {

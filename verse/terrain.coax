@@ -1,0 +1,455 @@
+// The ground of an open realm, its garden paths, and how characters follow
+// those paths to where they are going.
+//
+// The ground is a heightfield: Ground's n cells a side, cell metres each,
+// from its south-west corner, with (n + 1) * (n + 1) heights by rows from
+// the south. Each cell is two triangles split from its south-west corner
+// to its north-east one, as the GPU draws it, so verse_terrain_height is
+// exactly the surface that is drawn. verse_terrain_build fills the heights
+// from rolling hills that rise toward the edge, levelled where the paths
+// run and on flats (plazas, ponds).
+//
+// Paths are a graph: nodes (x, z each) and links (two node numbers each);
+// every link is a strip half metres either side of its line. A follower
+// (Follower) walks to a target by the paths when that is the shorter way,
+// counting a metre over grass as OFF_PATH metres on a path, and straight
+// over the grass for the last stretch. It needs no memory of its route:
+// verse_route_next picks the next point from where it stands.
+//   coax/bin/coax test --library verse/terrain.coax
+
+#load "space.coax";
+
+Ground :: struct { n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48; }
+
+HILL :: 1.6;           // metres: the rolling hills' height
+RIM_FROM :: 32.0;      // metres from the middle where the ground starts rising
+RIM :: 0.022;          // and how steeply (metres per metre squared)
+PATH_LEVEL :: 0.4;     // a path runs at this share of the hills under it
+PATH_BLEND :: 3.0;     // metres beyond a path's edge the ground eases back to the hills
+FLAT :: 4;             // numbers per flat: x, z, radius, level
+NODE :: 2;             // numbers per node: x, z
+LINK :: 2;             // numbers per link: two nodes
+MAX_NODES :: 48;
+OFF_PATH :: 2.2;       // a metre over grass costs this much
+ARRIVE :: 0.8;         // metres: at a node, it heads for the next one
+DIRECT :: 5.0;         // metres: this near the target, it walks straight there
+FOLLOW_WALK :: 2.6;    // m/s
+FOLLOW_RUN :: 5.2;     // m/s, when the target is far off
+FOLLOW_FAR :: 9.0;     // metres: far off
+FOLLOW_ACCEL :: 14.0;  // m/s^2
+FOLLOW_TURN :: 9.0;    // per second: turning to face its way
+RAY_STEP :: 0.35;      // metres between the ray's samples
+
+ground_points :: (g: Ground) -> int { return (g.n + 1) * (g.n + 1); }
+
+// The hills the ground would have with no paths or flats: rolling, and
+// rising toward the edge so a realm sits in a shallow bowl.
+verse_terrain_hills :: (x: f32, z: f32) -> f32 #export_c {
+  h := f32(HILL) * (0.55 * sin(x * 0.11 + 0.3) * cos(z * 0.093 - 0.4)
+                  + 0.3 * sin(x * 0.23 - z * 0.17 + 1.1)
+                  + 0.15 * sin(z * 0.31 + x * 0.07));
+  r := sqrt(x * x + z * z);
+  if r > f32(RIM_FROM) { h += (r - f32(RIM_FROM)) * (r - f32(RIM_FROM)) * f32(RIM); }
+  return h;
+}
+
+// The nearest point on a link's line, and how far it is (flat).
+Near :: struct { x: f32; z: f32; d: f32; link: int; }
+
+nearest_on :: (ax: f32, az: f32, bx: f32, bz: f32, x: f32, z: f32) -> Near {
+  dx := bx - ax; dz := bz - az;
+  size := dx * dx + dz * dz;
+  t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
+  n: Near;
+  n.x = ax + dx * t; n.z = az + dz * t;
+  n.d = sqrt((x - n.x) * (x - n.x) + (z - n.z) * (z - n.z));
+  n.link = -1;
+  return n;
+}
+
+link_ok :: (nodes: [] f32, links: [] int, i: int) -> bool {
+  a := links[i * LINK]; b := links[i * LINK + 1];
+  m := nodes.count / NODE;
+  return a >= 0 && b >= 0 && a < m && b < m && a != b;
+}
+
+// The nearest point on any path.
+verse_path_nearest :: (nodes: [] f32, links: [] int, x: f32, z: f32) -> Near #export_c {
+  best: Near;
+  best.d = 1000000; best.link = -1; best.x = x; best.z = z;
+  most := 1000000000000.0f32;
+  m := nodes.count / NODE;
+  for i: 0..<links.count / LINK {
+    a := links[i * LINK]; b := links[i * LINK + 1];
+    if a < 0 || b < 0 || a >= m || b >= m || a == b { continue; }
+    ax := nodes[a * NODE]; az := nodes[a * NODE + 1];
+    dx := nodes[b * NODE] - ax; dz := nodes[b * NODE + 1] - az;
+    size := dx * dx + dz * dz;
+    t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
+    px := ax + dx * t; pz := az + dz * t;
+    d2 := (x - px) * (x - px) + (z - pz) * (z - pz);
+    if d2 < most { most = d2; best.x = px; best.z = pz; best.link = i; }
+  }
+  if best.link >= 0 { best.d = sqrt(most); }
+  return best;
+}
+
+smooth :: (e0: f32, e1: f32, x: f32) -> f32 { t := clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); }
+
+// The ground's height at x, z before it is sampled into the heightfield.
+shaped :: (nodes: [] f32, links: [] int, half: f32, flats: [] f32, x: f32, z: f32) -> f32 {
+  h := verse_terrain_hills(x, z);
+  p := verse_path_nearest(nodes, links, x, z);
+  if p.link >= 0 {
+    k := smooth(half + 0.2, half + 0.2 + f32(PATH_BLEND), p.d);
+    h = lerp(verse_terrain_hills(p.x, p.z) * f32(PATH_LEVEL), h, k);
+  }
+  for i: 0..<flats.count / FLAT {
+    fx := flats[i * FLAT]; fz := flats[i * FLAT + 1]; r := flats[i * FLAT + 2]; level := flats[i * FLAT + 3];
+    d := sqrt((x - fx) * (x - fx) + (z - fz) * (z - fz));
+    h = lerp(level, h, smooth(r, r + f32(PATH_BLEND), d));
+  }
+  return h;
+}
+
+// Fills heights for g; false when there isn't room for them.
+verse_terrain_build :: (g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32, flats: [] f32) -> bool #export_c {
+  if g.n < 1 || heights.count < ground_points(g) { return false; }
+  for j: 0..<g.n + 1 {
+    for i: 0..<g.n + 1 {
+      heights[j * (g.n + 1) + i] = shaped(nodes, links, half, flats, g.west + f32(i) * g.cell, g.south + f32(j) * g.cell);
+    }
+  }
+  return true;
+}
+
+ground_point :: (g: Ground, heights: [] f32, i: int, j: int) -> f32 {
+  ci := ifx i < 0 then 0 else ifx i > g.n then g.n else i;
+  cj := ifx j < 0 then 0 else ifx j > g.n then g.n else j;
+  k := cj * (g.n + 1) + ci;
+  if k < 0 || k >= heights.count { return 0; }
+  return heights[k];
+}
+
+// Where x, z falls: its cell and how far across it (0 to 1 each way).
+Spot :: struct { i: int; j: int; fx: f32; fz: f32; }
+ground_spot :: (g: Ground, x: f32, z: f32) -> Spot {
+  s: Spot;
+  gx := clamp((x - g.west) / g.cell, 0, f32(g.n) - 0.0001);
+  gz := clamp((z - g.south) / g.cell, 0, f32(g.n) - 0.0001);
+  if !finite(gx) { gx = 0; }
+  if !finite(gz) { gz = 0; }
+  s.i = cast(int) floor(gx); s.j = cast(int) floor(gz);
+  s.fx = gx - f32(s.i); s.fz = gz - f32(s.j);
+  return s;
+}
+
+// The height of the drawn surface at x, z (the edge's beyond it).
+verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c {
+  if g.n < 1 || g.cell <= 0 { return 0; }
+  s := ground_spot(g, x, z);
+  h00 := ground_point(g, heights, s.i, s.j); h10 := ground_point(g, heights, s.i + 1, s.j);
+  h01 := ground_point(g, heights, s.i, s.j + 1); h11 := ground_point(g, heights, s.i + 1, s.j + 1);
+  if s.fx >= s.fz { return h00 + (h10 - h00) * s.fx + (h11 - h10) * s.fz; }
+  return h00 + (h11 - h01) * s.fx + (h01 - h00) * s.fz;
+}
+
+// The surface's upward normal at x, z.
+verse_terrain_normal :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #export_c {
+  if g.n < 1 || g.cell <= 0 { return v3(0, 1, 0); }
+  s := ground_spot(g, x, z);
+  h00 := ground_point(g, heights, s.i, s.j); h10 := ground_point(g, heights, s.i + 1, s.j);
+  h01 := ground_point(g, heights, s.i, s.j + 1); h11 := ground_point(g, heights, s.i + 1, s.j + 1);
+  sx := 0.0f32; sz := 0.0f32;
+  if s.fx >= s.fz { sx = h10 - h00; sz = h11 - h10; } else { sx = h11 - h01; sz = h01 - h00; }
+  return unit_or(v3(-sx / g.cell, 1, -sz / g.cell), v3(0, 1, 0));
+}
+
+// How far along a ray (dir a unit vector) before it meets the ground, up
+// to far.
+verse_terrain_ray :: (g: Ground, heights: [] f32, from: Point, dir: Point, far: f32) -> f32 #export_c {
+  if !finite3(from) || !finite3(dir) || !(far > 0) { return 0; }
+  if from.y <= verse_terrain_height(g, heights, from.x, from.z) { return 0; }
+  t := 0.0f32;
+  while t < far {
+    next := lo(t + f32(RAY_STEP), far);
+    p := add(from, times(dir, next));
+    if p.y <= verse_terrain_height(g, heights, p.x, p.z) {
+      // Between t (above) and next (below): halve it down.
+      a := t; b := next;
+      for k: 0..<12 {
+        m := (a + b) / 2;
+        q := add(from, times(dir, m));
+        if q.y <= verse_terrain_height(g, heights, q.x, q.z) { b = m; } else { a = m; }
+      }
+      return a;
+    }
+    t = next;
+  }
+  return far;
+}
+
+// ---- Following the paths
+
+node_at :: (nodes: [] f32, k: int) -> Point { return v3(nodes[k * NODE], 0, nodes[k * NODE + 1]); }
+flat_gap :: (a: Point, b: Point) -> f32 { return sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)); }
+
+// What it costs to reach `to` from each node: over the paths to some
+// node, then straight over the grass. Filled into cost (one per node).
+costs :: (nodes: [] f32, links: [] int, to: Point, cost: [] f32) -> int {
+  m := lo(f32(nodes.count / NODE), f32(lo(f32(MAX_NODES), f32(cost.count))));
+  count := cast(int) m;
+  done: [MAX_NODES] bool;
+  for k: 0..<count { cost[k] = flat_gap(node_at(nodes, k), to) * f32(OFF_PATH); done[k] = false; }
+  // Dijkstra over at most MAX_NODES nodes: settle the cheapest, relax its links.
+  for round: 0..<count {
+    best := -1;
+    for k: 0..<count { if !done[k] && (best < 0 || cost[k] < cost[best]) { best = k; } }
+    if best < 0 { break; }
+    done[best] = true;
+    for i: 0..<links.count / LINK {
+      if !link_ok(nodes, links, i) { continue; }
+      a := links[i * LINK]; b := links[i * LINK + 1];
+      if a >= count || b >= count { continue; }
+      other := ifx a == best then b else ifx b == best then a else -1;
+      if other < 0 || done[other] { continue; }
+      through := cost[best] + flat_gap(node_at(nodes, a), node_at(nodes, b));
+      if through < cost[other] { cost[other] = through; }
+    }
+  }
+  return count;
+}
+
+// Whether a link touching node k is under you: then going to k is along a path.
+on_link_to :: (nodes: [] f32, links: [] int, half: f32, from: Point, k: int) -> bool {
+  for i: 0..<links.count / LINK {
+    if !link_ok(nodes, links, i) { continue; }
+    a := links[i * LINK]; b := links[i * LINK + 1];
+    if a != k && b != k { continue; }
+    n := nearest_on(nodes[a * NODE], nodes[a * NODE + 1], nodes[b * NODE], nodes[b * NODE + 1], from.x, from.z);
+    if n.d <= half { return true; }
+  }
+  return false;
+}
+
+// The point to walk toward now, from `from`, to reach `to`.
+verse_route_next :: (nodes: [] f32, links: [] int, half: f32, from: Point, to: Point) -> Point #export_c {
+  if flat_gap(from, to) <= f32(DIRECT) { return to; }
+  cost: [MAX_NODES] f32;
+  count := costs(nodes, links, to, cost[..]);
+  best := flat_gap(from, to) * f32(OFF_PATH);
+  pick := -1;
+  for k: 0..<count {
+    n := node_at(nodes, k);
+    gap := flat_gap(from, n);
+    if gap <= f32(ARRIVE) { continue; }
+    way := ifx on_link_to(nodes, links, half, from, k) then gap else gap * f32(OFF_PATH);
+    if way + cost[k] < best - 0.001 { best = way + cost[k]; pick = k; }
+  }
+  if pick < 0 { return to; }
+  return node_at(nodes, pick);
+}
+
+Follower :: struct {
+  pos: Point;           // its feet, on the ground
+  vel: Point;           // flat
+  face: f32;            // the yaw it faces
+  walking: bool;
+}
+
+verse_follower_place :: (g: Ground, heights: [] f32, x: f32, z: f32, face: f32) -> Follower #export_c {
+  f: Follower;
+  f.pos = v3(x, verse_terrain_height(g, heights, x, z), z);
+  f.face = ifx finite(face) then wrap_angle(face) else 0.0f32;
+  return f;
+}
+
+// A step toward `to` by the paths, stopping `stop` metres short of it.
+verse_follower_step :: (f: Follower, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
+                        to: Point, stop: f32, dt: f32) -> Follower #export_c {
+  next := f;
+  t := ifx finite(dt) then clamp(dt, 0, 0.1) else 0.0f32;
+  if !finite3(to) || !finite3(f.pos) || t <= 0 { return next; }
+  away := flat_gap(f.pos, to);
+  want := v3(0, 0, 0);
+  if away > stop {
+    aim := verse_route_next(nodes, links, half, f.pos, to);
+    dir := sub(aim, f.pos); dir.y = 0;
+    dir = unit_or(dir, v3(0, 0, 0));
+    speed := ifx away > f32(FOLLOW_FAR) then f32(FOLLOW_RUN) else f32(FOLLOW_WALK);
+    // Ease in to stop where it should, not past it.
+    speed = lo(speed, (away - stop) * 2.5 + 0.4);
+    want = times(dir, speed);
+  }
+  dv := sub(want, f.vel); dv.y = 0;
+  change := length(dv);
+  most := f32(FOLLOW_ACCEL) * t;
+  if change > most { dv = times(dv, most / change); }
+  next.vel = add(f.vel, dv);
+  next.vel.y = 0;
+  next.pos = add(f.pos, times(next.vel, t));
+  next.pos.y = verse_terrain_height(g, heights, next.pos.x, next.pos.z);
+  speed_now := flat_length(next.vel);
+  next.walking = speed_now > 0.2;
+  if speed_now > 0.2 {
+    next.face = wrap_angle(f.face + wrap_angle(yaw_of(next.vel.x, next.vel.z) - f.face) * settle(f32(FOLLOW_TURN), t));
+  }
+  return next;
+}
+
+// ---- Checks
+
+// A small garden: a square of paths with a tail to the south.
+TEST_NODES :: [10] f32.[-10, -10, 10, -10, 10, 10, -10, 10, 0, -25];
+TEST_LINKS :: [10] int.[0, 1, 1, 2, 2, 3, 3, 0, 0, 4];
+TEST_FLATS :: [4] f32.[0, 0, 6, 0.2];
+
+// A coarser ground than a realm's, so the checks stay quick.
+TG :: 16;
+TP :: (TG + 1) * (TG + 1);
+tg :: () -> Ground { g: Ground; g.n = TG; g.cell = 4; g.west = -32; g.south = -32; return g; }
+built :: (heights: [] f32) -> bool {
+  g := tg();
+  n := TEST_NODES; l := TEST_LINKS; f := TEST_FLATS;
+  return verse_terrain_build(g, heights, n[..], l[..], 0.9, f[..]);
+}
+
+#test "the ground is built only where it fits" {
+  g := tg();
+  small: [10] f32;
+  n := TEST_NODES; l := TEST_LINKS; f := TEST_FLATS;
+  #assert !verse_terrain_build(g, small[..], n[..], l[..], 0.9, f[..]);
+  big: [TP] f32;
+  #assert built(big[..]);
+}
+
+#test "the height is the drawn surface: exact at every grid point" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  for j: 0..<TG + 1 {
+    for i: 0..<TG + 1 {
+      x := g.west + f32(i) * g.cell; z := g.south + f32(j) * g.cell;
+      #assert near(verse_terrain_height(g, h[..], x, z), h[j * (TG + 1) + i], 0.001);
+    }
+  }
+}
+
+#test "the surface is continuous and has no cliffs" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  for i: 0..<20 {
+    for j: 0..<20 {
+      x := -30 + f32(i) * 3.07; z := -30 + f32(j) * 2.93;
+      a := verse_terrain_height(g, h[..], x, z);
+      #assert abs(a - verse_terrain_height(g, h[..], x + 0.01, z)) < 0.01;
+      #assert abs(a - verse_terrain_height(g, h[..], x, z + 0.01)) < 0.01;
+      n := verse_terrain_normal(g, h[..], x, z);
+      #assert n.y > 0.6 && near(length(n), 1, 0.0001);
+    }
+  }
+}
+
+#test "paths are level across and gentle along" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  for k: 0..<41 {
+    x := -10 + f32(k) * 0.5;
+    mid := verse_terrain_height(g, h[..], x, -10);
+    // Across the strip it barely changes.
+    #assert abs(verse_terrain_height(g, h[..], x, -10.6) - mid) < 0.12;
+    #assert abs(verse_terrain_height(g, h[..], x, -9.4) - mid) < 0.12;
+    if k > 0 { #assert abs(mid - verse_terrain_height(g, h[..], x - 0.5, -10)) < 0.12; }
+  }
+  // The flat in the middle is at its level.
+  #assert near(verse_terrain_height(g, h[..], 0.5, 0.5), 0.2, 0.06);
+}
+
+#test "the ground rises toward the edge, and off the edge holds" {
+  #assert verse_terrain_hills(46, 0) > verse_terrain_hills(20, 0) + 1.5;
+  #assert verse_terrain_hills(31, 0) > verse_terrain_hills(20, 0) - 3;
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  #assert near(verse_terrain_height(g, h[..], 500, 0), verse_terrain_height(g, h[..], 31.999, 0), 0.05);
+  #assert finite(verse_terrain_height(g, h[..], f32(0.0 / 0.0), 3));
+  flat: Ground; flat.n = 0;
+  #assert verse_terrain_height(flat, h[..], 1, 1) == 0;
+}
+
+#test "a ray stops at the ground, just above it" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  from := v3(0, 6, 0);
+  down := verse_terrain_ray(g, h[..], from, v3(0, -1, 0), 20);
+  #assert near(from.y - down, verse_terrain_height(g, h[..], 0, 0), 0.01);
+  // Level and high, it never meets it.
+  #assert verse_terrain_ray(g, h[..], from, v3(1, 0, 0), 20) == 20;
+  slant := unit_or(v3(1, -0.4, 0.3), v3(0, -1, 0));
+  d := verse_terrain_ray(g, h[..], from, slant, 40);
+  p := add(from, times(slant, d));
+  #assert d < 40 && p.y >= verse_terrain_height(g, h[..], p.x, p.z) - 0.001 && p.y - verse_terrain_height(g, h[..], p.x, p.z) < 0.05;
+  // Starting under it: no room.
+  #assert verse_terrain_ray(g, h[..], v3(0, -5, 0), v3(0, 1, 0), 10) == 0;
+}
+
+#test "the route goes by the paths when that is shorter, and straight when near" {
+  n := TEST_NODES; l := TEST_LINKS;
+  // Near: straight there.
+  to := v3(2, 0, -9);
+  #assert same(verse_route_next(n[..], l[..], 0.9, v3(0, 0, -9), to), to, 0);
+  // On the south path, going to the far corner: up the path to node 0 first.
+  a := verse_route_next(n[..], l[..], 0.9, v3(0, 0, -24), v3(10, 0, 10));
+  #assert same(a, v3(-10, 0, -10), 0);
+  // At node 0 it heads on along the square, not back.
+  b := verse_route_next(n[..], l[..], 0.9, v3(-10, 0, -10), v3(10, 0, 10));
+  #assert same(b, v3(10, 0, -10), 0) || same(b, v3(-10, 0, 10), 0);
+  // Part way along a link it keeps on to its far end.
+  c := verse_route_next(n[..], l[..], 0.9, v3(-8.9, 0, -10), v3(10, 0, -10.5));
+  #assert same(c, v3(10, 0, -10), 0);
+  // Off in the grass with the target across it: straight over.
+  d := verse_route_next(n[..], l[..], 0.9, v3(-5, 0, 0), v3(5, 0, 0));
+  #assert same(d, v3(5, 0, 0), 0);
+}
+
+#forall "a follower gets there from anywhere" s: 0..<6 {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  n := TEST_NODES; l := TEST_LINKS;
+  starts := [12] f32.[0, -25, -10, -10, 10, 10, 3, 3, -14, 6, 12, -14];
+  ends := [12] f32.[10, 10, 0, -24, -10, 10, 0, 0, 10, -10, -12, 4];
+  f := verse_follower_place(g, h[..], starts[s * 2], starts[s * 2 + 1], 0);
+  e := 5 - s;
+  to := v3(ends[e * 2], 0, ends[e * 2 + 1]);
+  steps := 0;
+  while steps < 400 && flat_gap(f.pos, to) > 1.6 {
+    f = verse_follower_step(f, g, h[..], n[..], l[..], 0.9, to, 1.5, 0.1);
+    #assert finite3(f.pos) && near(f.pos.y, verse_terrain_height(g, h[..], f.pos.x, f.pos.z), 0.0001);
+    #assert flat_length(f.vel) <= f32(FOLLOW_RUN) + 0.001;
+    steps += 1;
+  }
+  #assert flat_gap(f.pos, to) <= 1.6;
+  // It settles and stops.
+  for k: 0..<20 { f = verse_follower_step(f, g, h[..], n[..], l[..], 0.9, to, 1.5, 0.1); }
+  #assert flat_length(f.vel) < 0.3 && flat_gap(f.pos, to) > 0.9;
+}
+
+#test "from the south tail to the far corner it keeps to the paths" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  n := TEST_NODES; l := TEST_LINKS;
+  f := verse_follower_place(g, h[..], 0, -25, 0);
+  to := v3(10, 0, 10);
+  off := 0;
+  for k: 0..<400 {
+    f = verse_follower_step(f, g, h[..], n[..], l[..], 0.9, to, 1.5, 1.0 / 15.0);
+    if flat_gap(f.pos, to) > f32(DIRECT) && verse_path_nearest(n[..], l[..], f.pos.x, f.pos.z).d > 1.4 { off += 1; }
+  }
+  #assert flat_gap(f.pos, to) < 1.7;
+  #assert off < 8;
+}
