@@ -523,7 +523,7 @@ async function loadShaders() {
   const flat = scene ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
   const shadows = scene && /fn\s+shadow_vs\b/.test(code);
   const post = scene && /fn\s+post_fs\b/.test(code);
-  const lit = post ? [{ format: "rgba16float" }, { format: "rgba8unorm" }] : [{ format }];
+  const lit = post ? [{ format: "rgba16float" }, { format: "rgba16float" }] : [{ format }];
   const sceneGroups = scene ? [gpu.layout, sceneLayout(), ...(shadows ? [shadowLayout()] : [])] : [];
   const [bg, fx, sc, sh, bl, po] = await Promise.all([
     device.createRenderPipelineAsync({ layout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
@@ -578,7 +578,7 @@ async function particlePipeline(post) {
     return await device.createRenderPipelineAsync({
       layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, group] }),
       vertex: { module, entryPoint: "particle_vs" }, fragment: { module, entryPoint: "particle_fs", targets: post
-        ? [{ format: "rgba16float", blend: { color: add, alpha: add } }, { format: "rgba8unorm", writeMask: 0 }]
+        ? [{ format: "rgba16float", blend: { color: add, alpha: add } }, { format: "rgba16float", writeMask: 0 }]
         : [{ format, blend: { color: add, alpha: add } }] },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
@@ -667,7 +667,7 @@ function shadowLayout() {
   return gpu.shadowLayout;
 }
 // The post pass, when the WGSL has post_fs: bg_fs and scene_fs draw light (rgba16float, its alpha
-// the share of it that blooms) and a second target, aux (rgba8unorm), instead of the screen;
+// the share of it that blooms) and a second target, aux (rgba16float), instead of the screen;
 // bloom_fs runs five times, each pass's group 1 a source, a sampler and its vec4f (x, y the
 // blur's step in source texels, z 0 to take the bright parts, 1 to blur, w how many source
 // texels a target texel spans): the bright parts to a quarter of the size, blurred across and
@@ -695,7 +695,7 @@ function postTargets(w, h) {
   const { device } = gpu, use = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
   for (const t of gpu.postTextures || []) t.destroy();
   const make = (tw, th, format) => device.createTexture({ size: [Math.max(1, tw), Math.max(1, th)], format, usage: use });
-  const light = make(w, h, "rgba16float"), aux = make(w, h, "rgba8unorm");
+  const light = make(w, h, "rgba16float"), aux = make(w, h, "rgba16float");
   const q0 = make(Math.ceil(w / 4), Math.ceil(h / 4), "rgba16float"), q1 = make(q0.width, q0.height, "rgba16float");
   const e0 = make(Math.ceil(w / 8), Math.ceil(h / 8), "rgba16float"), e1 = make(e0.width, e0.height, "rgba16float");
   gpu.depth?.destroy();

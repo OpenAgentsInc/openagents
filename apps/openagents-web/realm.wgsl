@@ -65,8 +65,9 @@ struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
 
 // ---- the house: each draw a mesh's indices over the shared vertices, one
 // instance per object (Stages.metal haunt_vertex, haunt_fragment). A vertex
-// is 48 bytes: position, normal, uv, a colour whose alpha is its sheet, and
-// three reserved words.
+// is 48 bytes: position, normal, uv, a colour whose alpha is its sheet, its
+// outline cut (verse/look.coax verse_outline_strength; 0 a full outline) and
+// two reserved words.
 struct Instance { r0: vec4f, r1: vec4f, r2: vec4f, material: vec4f }
 struct Light { position: vec4f, color: vec4f }
 @group(1) @binding(0) var<storage, read> vertices: array<u32>;
@@ -83,6 +84,8 @@ struct S {
   @location(3) tint: vec3f,
   @location(4) glow: f32,
   @location(5) @interpolate(flat) slice: u32,
+  @location(6) cut: f32,
+  @location(7) @interpolate(flat) material: u32,
 }
 fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
 
@@ -147,6 +150,9 @@ fn moonlit(w: vec3f, n: vec3f) -> f32 {
   o.tint = colour.rgb * m.material.rgb;
   o.glow = m.material.a;
   o.slice = vertices[b + 8u] >> 24u;
+  o.cut = word(b + 9u);
+  let tint = vec3u(clamp(m.material.rgb, vec3f(0.0), vec3f(1.0)) * 255.0);
+  o.material = (o.slice * 37u + tint.r * 3u + tint.g * 5u + tint.b * 11u) & 127u;
   return o;
 }
 @fragment fn scene_fs(s: S) -> Lit {
@@ -172,7 +178,8 @@ fn moonlit(w: vec3f, n: vec3f) -> f32 {
                 verse_haunt_shade(colour.g, lit.g, s.glow, d, 1.0, f),
                 verse_haunt_shade(colour.b, lit.b, s.glow, d, 2.0, f));
   let share = verse_haunt_bloom_share(max(c.r, max(c.g, c.b)), s.glow);
-  return Lit(vec4f(c, share), vec4f(n * 0.5 + 0.5, 0.0));
+  let ink = u32(round(verse_outline_strength(s.cut, s.glow) * 15.0));
+  return Lit(vec4f(c, share), vec4f(n, f32(s.material * 16u + ink)));
 }
 
 // ---- the post pass (host.js postLayouts): the light's bright share, blurred at a quarter and an
@@ -204,10 +211,37 @@ struct Step { v: vec4f }
 @group(1) @binding(3) var post_aux: texture_2d<f32>;
 @group(1) @binding(4) var post_depth: texture_depth_2d;
 @group(1) @binding(5) var post_lin: sampler;
+// Outlines (verse/look.coax): the depth's second difference, creases between neighbours' normals
+// and changes of material, inked as strongly as the nearer surface's material asks.
+fn outlined(p: vec2i, light: vec3f) -> vec3f {
+  let a = textureLoad(post_aux, p, 0);
+  let tag = u32(round(a.a));
+  let strength = f32(tag & 15u) / 15.0;
+  if (strength <= 0.0) { return light; }
+  let o = i32(max(1.0, floor(u.size.y / 800.0)));
+  let top = vec2i(textureDimensions(post_depth)) - 1;
+  let at = array(vec2i(-o, 0), vec2i(o, 0), vec2i(0, -o), vec2i(0, o));
+  let dc = textureLoad(post_depth, p, 0);
+  var d: array<f32, 4>;
+  var edge = 0.0;
+  for (var k = 0; k < 4; k++) {
+    let q = clamp(p + at[k], vec2i(0), top);
+    d[k] = textureLoad(post_depth, q, 0);
+    let b = textureLoad(post_aux, q, 0);
+    if (d[k] < 1.0) {
+      edge = max(edge, verse_outline_crease(dot(a.rgb, b.rgb)));
+      let other = u32(round(b.a)) >> 4u;
+      if (other != tag >> 4u && dc <= d[k] + 0.00001 && (tag >> 4u) > other) { edge = max(edge, 0.7); }
+    }
+  }
+  let lap = max(abs(d[0] + d[1] - 2.0 * dc), abs(d[2] + d[3] - 2.0 * dc));
+  edge = max(edge, verse_outline_depth(lap, dc));
+  return vec3f(verse_outline_ink(light.r, edge * strength), verse_outline_ink(light.g, edge * strength), verse_outline_ink(light.b, edge * strength));
+}
 @fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = vec2i(pos.xy);
   let uv = pos.xy / u.size;
-  let light = textureLoad(post_light, p, 0).rgb;
+  let light = outlined(p, textureLoad(post_light, p, 0).rgb);
   let near = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb;
   let far = textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb;
   let c = vec3f(verse_haunt_glow(light.r, near.r, far.r), verse_haunt_glow(light.g, near.g, far.g), verse_haunt_glow(light.b, near.b, far.b));
@@ -406,3 +440,45 @@ struct V {
   let halo = exp(-5.0 * g * g) * 0.28;
   return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
 }
+
+// ---- generated: verse/look.coax (verse_outline_depth, verse_outline_crease, verse_outline_strength, verse_outline_ink) by coax/web/wgsl.py; do not edit
+fn coax_p_lk_max(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a > l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn coax_p_lk_min(l_a: f32, l_b: f32) -> f32 {
+  if ((l_a < l_b))
+  {
+    return l_a;
+  }
+  return l_b;
+}
+fn coax_p_lk_ramp(l_a: f32, l_b: f32, l_x: f32) -> f32 {
+  var l_t: f32 = coax_p_lk_min(1.0, coax_p_lk_max(0.0, ((l_x - l_a) / (l_b - l_a))));
+  return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
+}
+fn verse_outline_depth(l_lap: f32, l_depth: f32) -> f32 {
+  var coax_t0: f32;
+  var coax_t1: f32;
+  coax_t0 = abs(l_lap);
+  coax_t1 = coax_p_lk_max((1.0 - l_depth), 9.99999997e-07);
+  var l_jump: f32 = (coax_t0 / coax_t1);
+  return coax_p_lk_ramp(0.0399999991, 0.119999997, l_jump);
+}
+fn verse_outline_crease(l_facing: f32) -> f32 {
+  return coax_p_lk_ramp(0.75, 0.550000012, l_facing);
+}
+fn verse_outline_strength(l_cut: f32, l_glow: f32) -> f32 {
+  var coax_t2: f32;
+  var coax_t3: f32;
+  coax_t2 = coax_p_lk_max(0.0, (1.0 - coax_p_lk_max(l_cut, 0.0)));
+  coax_t3 = (1.0 - coax_p_lk_ramp(0.25, 0.600000024, l_glow));
+  return (coax_t2 * coax_t3);
+}
+fn verse_outline_ink(l_light: f32, l_edge: f32) -> f32 {
+  return (l_light * (1.0 - (0.819999993 * coax_p_lk_min(1.0, coax_p_lk_max(0.0, l_edge)))));
+}
+// ---- end generated

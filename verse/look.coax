@@ -1,0 +1,45 @@
+// The Verse look: stylized outlines, as plain f32 functions the realms' WGSL
+// calls (coax/web/wgsl.py). An outline is ink along where the depth jumps,
+// the surface turns sharply or the material changes, as strong as the
+// material asks (a glowing one asks for none).
+lk_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}
+lk_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}
+lk_ramp :: (a:f32,b:f32,x:f32)->f32 {t:=lk_min(1.0f32,lk_max(0.0f32,(x-a)/(b-a)));return t*t*(3.0f32-2.0f32*t);}
+// A depth edge from the depth's second difference across a pixel (zero on any
+// flat surface, since depth is affine in screen space there), over how far
+// the pixel is from the far plane: roughly the relative jump in distance.
+verse_outline_depth :: (lap:f32,depth:f32)->f32 #export_c {
+ jump:=abs(lap)/lk_max(1.0f32-depth,0.000001f32);
+ return lk_ramp(0.04f32,0.12f32,jump);
+}
+// A crease where neighbouring normals turn more than about 50°.
+verse_outline_crease :: (facing:f32)->f32 #export_c {return lk_ramp(0.75f32,0.55f32,facing);}
+// The material's strength: its outline cut (a vertex's tenth word, 0 for a
+// full outline), none where it glows.
+verse_outline_strength :: (cut:f32,glow:f32)->f32 #export_c {
+ return lk_max(0.0f32,1.0f32-lk_max(cut,0.0f32))*(1.0f32-lk_ramp(0.25f32,0.6f32,glow));
+}
+// Ink: the light under an edge of that weight, darkened toward black.
+verse_outline_ink :: (light:f32,edge:f32)->f32 #export_c {return light*(1.0f32-0.82f32*lk_min(1.0f32,lk_max(0.0f32,edge)));}
+#test "flat surfaces have no depth edge, a jump does" {
+ #assert verse_outline_depth(0.0f32,0.99f32)==0.0f32;
+ #assert verse_outline_depth(0.0003f32,0.99f32)==0.0f32;
+ #assert verse_outline_depth(0.003f32,0.99f32)>0.9f32;
+ #assert verse_outline_depth(0.0f32,1.0f32)==0.0f32;
+}
+#test "creases ink sharp turns only" {
+ #assert verse_outline_crease(1.0f32)==0.0f32;
+ #assert verse_outline_crease(0.9f32)==0.0f32;
+ #assert verse_outline_crease(0.0f32)==1.0f32;
+}
+#test "glowing materials and cut ones ask for no outline" {
+ #assert verse_outline_strength(0.0f32,0.0f32)==1.0f32;
+ #assert verse_outline_strength(1.0f32,0.0f32)==0.0f32;
+ #assert verse_outline_strength(0.0f32,1.0f32)==0.0f32;
+ #assert verse_outline_strength(0.5f32,0.0f32)==0.5f32;
+}
+#test "ink darkens, never brightens or goes negative" {
+ #assert verse_outline_ink(0.5f32,0.0f32)==0.5f32;
+ #assert verse_outline_ink(0.5f32,1.0f32)<0.1f32;
+ #assert verse_outline_ink(0.5f32,9.0f32)>=0.0f32;
+}
