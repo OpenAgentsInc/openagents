@@ -55,6 +55,8 @@ python3 tests/compile_time.py && python3 tests/tools.py
 python_rc=$?
 python3 tests/native.py
 native_rc=$?
+python3 tests/lexer.py
+lexer_rc=$?
 python3 tests/nostr.py
 nostr_rc=$?
 python3 tests/proto_import.py
@@ -69,4 +71,4 @@ wire_core_rc=$?
 importer_checks_rc=$?
 "$COAX" test lib/proto/fingerprint.coax && "$COAX" mutate lib/proto/fingerprint.coax
 fingerprint_checks_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $lexer_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]

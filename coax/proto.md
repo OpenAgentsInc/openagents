@@ -1,4 +1,4 @@
-# Descriptor imports in coax0 0.7.1
+# Descriptor imports in coax0 0.8.0
 
 `#import_proto` generates real Coax declarations from a binary
 `google.protobuf.FileDescriptorSet`. Root `proto/` remains the schema source.
@@ -22,7 +22,9 @@ Coax-requested buffer allocation only. `lib/proto/fingerprint.coax` owns
 SHA-256, runtime-boundary extraction and the complete provenance/source
 envelope. There is no C++ hash, formatter or source-assembly fallback.
 
-`coax/build.sh` builds a temporary stage0 compiler with proto imports disabled.
+`coax/build.sh` builds a temporary stage0 compiler with proto imports disabled
+using the generated Coax lexer seed. The lexer source must reproduce its
+checked-in C/header exactly and pass its own authority/mutation gates.
 Stage0 checks and mutation-tests the fingerprint module, importer and wire
 core, then concatenates the two compiler modules and emits one C11
 library/header. The host C compiler compiles it, and the C++20 frontend links it into the final compiler. Both stages must emit identical C

@@ -1,0 +1,1066 @@
+// Coax source bytes to tokens, diagnostics and decoded literals.
+// No host calls or heap allocation. The native adapter supplies bounded storage.
+#authority;
+LX_Mul :: struct {value:u64;overflow:bool;}
+
+LX_mul :: (value:u64,digit:u64,base:u64)->LX_Mul {
+  lo:=cast(u64)cast,trunc(u32)value*base+digit;
+  hi:=(value>>32)*base+(lo>>32);
+  return LX_Mul.{value=(cast(u64)cast,trunc(u32)hi<<32) | cast(u64)cast,trunc(u32)lo,overflow=hi>4294967295};
+}
+// Fixed-width unsigned limbs, modulo 2^(32*count). Decimal conversion retains
+// at most 800 significant digits; its largest scaled operand is below 4096 bits.
+LX_big_mul :: (a:[] u32,digit:u32) {
+  carry:=cast(u64)digit;for i:0..<a.count {v:=cast(u64)a[i]*10+carry;a[i]=cast,trunc(u32)v;carry=v>>32;}
+}
+LX_big_bits :: (a:[] u32)->int {
+  n:=a.count;while n>0 {n-=1;if a[n]!=0 {v:=a[n];bits:=0;while v!=0 {bits+=1;v=v>>1;}return n*32+bits;}}return 0;
+}
+LX_limb :: (a:[] u32,index:int,shift:int)->u32 {
+  word:=shift/32;bit:=shift%32;at:=index-word;v:u32=0;
+  if at>=0 && at<a.count {v=a[at]<<bit;}
+  if bit!=0 && at>0 && at-1<a.count {v=v | (a[at-1]>>(32-bit));}return v;
+}
+LX_big_shift :: (a:[] u32,shift:int) {i:=a.count;while i>0 {i-=1;a[i]=LX_limb(a,i,shift);}}
+LX_words :: (bits:int)->int {return (bits+31)/32;}
+LX_compare_scaled :: (a:[] u32,left:int,b:[] u32,right:int)->int {
+  ab:=LX_big_bits(a);bb:=LX_big_bits(b);if ab!=0 {ab+=left;}if bb!=0 {bb+=right;}
+  if ab<bb {return -1;}if ab>bb {return 1;}
+  words:=LX_words(ab);for j:0..<words {i:=words-1-j;x:=LX_limb(a,i,left);y:=LX_limb(b,i,right);if x<y {return -1;}if x>y {return 1;}}return 0;
+}
+LX_big_cmp :: (a:[] u32,b:[] u32,shift:int)->int {return LX_compare_scaled(a,0,b,shift);}
+LX_Shifts :: struct {positive:int;negative:int;}
+LX_signed_shift :: (n:int)->LX_Shifts {
+  // Split a bounded signed shift without two equivalent zero-shift branches.
+  mask:=n>>63;return LX_Shifts.{positive=n & (mask ^ -1),negative=(-n) & mask};
+}
+LX_binary_exp :: (n:[] u32,d:[] u32)->int {
+  exponent:=LX_big_bits(n)-LX_big_bits(d);shift:=LX_signed_shift(exponent);
+  if LX_compare_scaled(n,shift.negative,d,shift.positive)<0 {exponent-=1;}return exponent;
+}
+LX_Format :: struct {scale:int;subnormal:bool;}
+LX_format :: (exponent:int)->LX_Format {
+  if exponent< -1022 {return LX_Format.{scale=1074,subnormal=true};}
+  return LX_Format.{scale=52-exponent};
+}
+LX_big_sub :: (a:[] u32,b:[] u32,shift:int) {
+  borrow:u64=0;
+  for i:0..<a.count {v:=cast(u64)a[i];need:=cast(u64)LX_limb(b,i,shift)+borrow;
+    if v<need {a[i]=cast(u32)(4294967296+v-need);borrow=1;}else {a[i]=cast(u32)(v-need);borrow=0;}}
+}
+LX_exp :: (value:int,digit:int,limit:int)->int {if value>(limit-digit)/10 {return limit;}return value*10+digit;}
+LX_Decimal :: struct {significant:int;kept:int;fraction:int;sticky:bool;exponent:int;}
+LX_exp_limit :: (length:int)->int {return length+2048;}
+LX_read_decimal :: (text:string,numerator:[] u32)->LX_Decimal {
+  significant:=0;kept:=0;fraction:=0;after_dot:=false;sticky:=false;at:=0;
+  while at<text.count {
+    c:=text[at];if c==101 || c==69 {break;}at+=1;
+    if c==46 {after_dot=true;continue;}if c==95 {continue;}
+    digit:=cast(int)c-48;if after_dot {fraction+=1;}
+    if significant==0 && digit==0 {continue;}significant+=1;
+    if kept<800 {LX_big_mul(numerator,cast(u32)digit);kept+=1;}else if digit!=0 {sticky=true;}
+  }
+  exponent:=0;negative:=false;
+  at+=1;if at<text.count && (text[at]==43 || text[at]==45) {negative=text[at]==45;at+=1;}
+  while at<text.count {exponent=LX_exp(exponent,cast(int)text[at]-48,LX_exp_limit(text.count));at+=1;}
+  if negative {exponent=-exponent;}
+  return LX_Decimal.{significant=significant,kept=kept,fraction=fraction,sticky=sticky,exponent=exponent};
+}
+LX_divide53 :: (numerator:[] u32,denominator:[] u32)->u64 {
+  quotient:u64=0;
+  for j:0..<53 {bit:=52-j;if LX_big_cmp(numerator,denominator,bit)>=0 {LX_big_sub(numerator,denominator,bit);quotient=quotient | (cast(u64)1<<bit);}}
+  return quotient;
+}
+LX_decimal :: (text:string)->u64 #export_c {
+  numerator:[128] u32;denominator:[128] u32;denominator[0]=1;
+  parsed:=LX_read_decimal(text,numerator[..]);
+  significant:=parsed.significant;fraction:=parsed.fraction;kept:=parsed.kept;exponent:=parsed.exponent;sticky:=parsed.sticky;
+  if significant==0 {return 0;}
+  position:=significant-fraction+exponent;
+  if position>309 {return 0x7ff0000000000000;}if position< -323 {return 0;}
+  decimal_exp:=position-kept;
+  for i:0..<decimal_exp {LX_big_mul(numerator[..],0);}
+  for i:0..< -decimal_exp {LX_big_mul(denominator[..],0);}
+  binary_exp:=LX_binary_exp(numerator[..],denominator[..]);
+  if binary_exp>1023 {return 0x7ff0000000000000;}
+  format:=LX_format(binary_exp);shift:=LX_signed_shift(format.scale);
+  LX_big_shift(numerator[..],shift.positive);LX_big_shift(denominator[..],shift.negative);
+  quotient:=LX_divide53(numerator[..],denominator[..]);
+  cmp:=LX_big_cmp(denominator[..],numerator[..],1);
+  if cmp<0 || (cmp==0 && ((quotient&1)!=0 || sticky)) {quotient+=1;}
+  if format.subnormal {return quotient;}
+  if quotient==9007199254740992 {binary_exp+=1;}
+  return (cast(u64)(binary_exp+1023)<<52) | (quotient&4503599627370495);
+}
+
+LX_Kind :: enum u8 {
+  k_eof = 0;
+  k_ident = 1;
+  k_keyword = 2;
+  k_int_lit = 3;
+  k_float_lit = 4;
+  k_string_lit = 5;
+  k_directive = 6;
+  k_annotation = 7;
+  k_lparen = 8;
+  k_rparen = 9;
+  k_lbrace = 10;
+  k_rbrace = 11;
+  k_lbracket = 12;
+  k_rbracket = 13;
+  k_comma = 14;
+  k_semicolon = 15;
+  k_colon = 16;
+  k_coloncolon = 17;
+  k_colonequal = 18;
+  k_arrow = 19;
+  k_dot = 20;
+  k_dotdot = 21;
+  k_dotdotlt = 22;
+  k_equal = 23;
+  k_plus_equal = 24;
+  k_minus_equal = 25;
+  k_star_equal = 26;
+  k_slash_equal = 27;
+  k_percent_equal = 28;
+  k_amp_equal = 29;
+  k_pipe_equal = 30;
+  k_caret_equal = 31;
+  k_shl_equal = 32;
+  k_shr_equal = 33;
+  k_plus = 34;
+  k_minus = 35;
+  k_star = 36;
+  k_slash = 37;
+  k_percent = 38;
+  k_amp = 39;
+  k_pipe = 40;
+  k_caret = 41;
+  k_shl = 42;
+  k_shr = 43;
+  k_eqeq = 44;
+  k_noteq = 45;
+  k_lt = 46;
+  k_le = 47;
+  k_gt = 48;
+  k_ge = 49;
+  k_andand = 50;
+  k_oror = 51;
+  k_bang = 52;
+}
+LX_Loc :: struct {line:int;column:int;offset:int;}
+LX_Token :: struct {kind:LX_Kind;text_begin:int;text_end:int;loc:LX_Loc;int_value:u64;float_value:u64;float_bits:int;decoded:bool;decoded_count:int;}
+LX_Diagnostic :: struct {code:string;message:string;fix:string;loc:LX_Loc;}
+LX_Item :: struct {has_token:bool;token:LX_Token;diagnostic:LX_Diagnostic;}
+LX_State :: struct {pos:int;line:int;line_start:int;mode:int;start:int;start_line:int;start_column:int;decoded_count:int;}
+LX_Caps :: struct {decoded:int;diagnostic:int;}
+LX_keyword :: (t:string)->bool {
+  words:=[41] string.["struct","union","enum","enum_flags","if","else","ifx","then","while","for","break","continue","return","defer","switch","case","using","cast","xx","inline","no_inline","job","pure","strict","deterministic","shader","try","or_else","push_context","null","true","false","it","it_index","size_of","type_of","type_info","Type","Code","remove","constraint"];
+  for w:words {if t==w {return true;}}return false;
+}
+LX_name :: (kind:u32)->string #export_c {
+  words:=[53] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'"];
+  index:=cast(int)kind;if index>=words.count {return "?";}return words[index];
+}
+LX_source :: (count:int)->bool {return count>=0 && count<=2147483646;}
+LX_begin :: (count:int)->LX_State #export_c {s:=LX_State.{line=1};if !LX_source(count) {s.mode=2;}return s;}
+LX_capacities :: (count:int)->LX_Caps #export_c {if !LX_source(count) {return LX_Caps.{diagnostic=64};}return LX_Caps.{decoded=count+1,diagnostic=64};}
+LX_start :: (s:[] LX_State) {s[0].start=s[0].pos;s[0].start_line=s[0].line;s[0].start_column=s[0].pos-s[0].line_start+1;}
+LX_location :: (s:[] LX_State,at:int)->LX_Loc {return LX_Loc.{line=s[0].line,column=at-s[0].line_start+1,offset=at};}
+LX_saved :: (s:[] LX_State)->LX_Loc {return LX_Loc.{line=s[0].start_line,column=s[0].start_column,offset=s[0].start};}
+LX_alpha :: (c:u8)->bool {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
+LX_digit :: (c:u8)->bool {return c>=48 && c<=57;}
+LX_ident :: (c:u8)->bool {return LX_alpha(c) || LX_digit(c);}
+LX_at :: (text:string,at:int)->u8 {if at<0 || at>=text.count {return 0;}return text[at];}
+LX_has :: (text:string,at:int,pattern:string)->bool {return at>=0 && at<=text.count && pattern.count<=text.count-at && text[at..<at+pattern.count]==pattern;}
+LX_newline :: (s:[] LX_State) {s[0].line+=1;s[0].line_start=s[0].pos+1;}
+LX_escape :: (c:u8,character:bool)->int {
+  if c==110 {return 10;}if c==116 {return 9;}if c==114 {return 13;}if c==48 {return 0;}if c==92 {return 92;}
+  if character && c==39 {return 39;}if !character && c==34 {return 34;}return -1;
+}
+LX_static :: (tag:int,loc:LX_Loc)->LX_Diagnostic {
+  d:=LX_Diagnostic.{loc=loc};
+  if tag==1 {d.code="E0101";d.message="block comment is never closed";d.fix="add '*/'";}
+  else if tag==3 {d.code="E0103";d.message="number has no digits after its base prefix";}
+  else if tag==4 {d.code="E0104";d.message="integer literal does not fit in 64 bits";}
+  else if tag==6 {d.code="E0106";d.message="string is never closed";d.fix="add '\"' before the end of the line";}
+  else if tag==7 {d.code="E0107";d.message="non-ASCII character outside a string or comment";d.fix="identifiers are ASCII only (spec §5)";}
+  else if tag==9 {d.code="E0109";d.message="a floating-point literal can only be followed by f32 or f64";}
+  else if tag==12 {d.code="E0109";d.message="floating-point literal is too large for f64";}
+  else if tag==13 {d.code="E0109";d.message="floating-point literal is too large for f32";}
+  else if tag==10 {d.code="E0110";d.message="a character literal is one ASCII character in single quotes";d.fix="write 'a', or an escape such as '\\n'; text belongs in \"strings\"";}
+  else {d.code="E0111";d.message="lexer storage budget exceeded";}
+  return d;
+}
+LX_dynamic :: (escape:bool,byte:u8,loc:LX_Loc,out:[] u8)->LX_Diagnostic {
+  prefix:="unexpected character '";d:=LX_Diagnostic.{code="E0108",loc=loc};
+  if escape {prefix="unknown escape '\\";d.code="E0105";d.fix="use one of \\n \\t \\r \\0 \\\\ \\\"";}
+  if out.count<prefix.count+2 {return LX_static(11,loc);}
+  for c,i:prefix {out[i]=c;}out[prefix.count]=byte;out[prefix.count+1]=39;d.message=cast(string)out[0..<prefix.count+2];
+  return d;
+}
+LX_item :: (s:[] LX_State,kind:LX_Kind)->LX_Item {return LX_Item.{has_token=true,token=LX_Token.{kind=kind,text_begin=s[0].start,text_end=s[0].pos,loc=LX_saved(s)}};}
+LX_error :: (s:[] LX_State,tag:int)->LX_Item {return LX_Item.{diagnostic=LX_static(tag,LX_saved(s))};}
+LX_eof :: (text:string,s:[] LX_State)->LX_Item {return LX_Item.{has_token=true,token=LX_Token.{kind=LX_Kind.k_eof,text_begin=text.count,text_end=text.count,loc=LX_location(s,text.count)}};}
+LX_store :: (s:[] LX_State,out:[] u8,byte:u8)->bool {if s[0].decoded_count>=out.count {s[0].mode=3;return false;}out[s[0].decoded_count]=byte;s[0].decoded_count+=1;return true;}
+LX_string :: (text:string,s:[] LX_State,out:[] u8,message:[] u8)->LX_Item {
+  closed:=false;
+  while s[0].pos<text.count {
+    c:=text[s[0].pos];if c==34 {closed=true;s[0].pos+=1;break;}if c==10 {break;}
+    if c==92 && s[0].pos+1<text.count {
+      byte:=text[s[0].pos+1];s[0].pos+=2;value:=LX_escape(byte,false);
+      if value<0 {return LX_Item.{diagnostic=LX_dynamic(true,byte,LX_location(s,s[0].pos-2),message)};}
+      if !LX_store(s,out,cast(u8)value) {return LX_error(s,11);}continue;
+    }
+    if !LX_store(s,out,c) {return LX_error(s,11);}s[0].pos+=1;
+  }
+  s[0].mode=0;r:=LX_item(s,LX_Kind.k_string_lit);r.token.decoded=true;r.token.decoded_count=s[0].decoded_count;
+  if !closed {r.diagnostic=LX_static(6,LX_saved(s));}return r;
+}
+LX_character :: (text:string,s:[] LX_State)->LX_Item {
+  at:=s[0].pos;value:= -1;
+  if at+2<text.count && text[at+1]!=92 && text[at+1]!=39 && text[at+2]==39 && text[at+1]<128 {value=cast(int)text[at+1];s[0].pos+=3;}
+  else if at+3<text.count && text[at+1]==92 && text[at+3]==39 {value=LX_escape(text[at+2],true);s[0].pos+=4;}
+  if value<0 {
+    s[0].pos+=1;while s[0].pos<text.count && text[s[0].pos]!=39 && text[s[0].pos]!=10 {s[0].pos+=1;}
+    if s[0].pos<text.count && text[s[0].pos]==39 {s[0].pos+=1;}return LX_error(s,10);
+  }
+  r:=LX_item(s,LX_Kind.k_int_lit);r.token.int_value=cast(u64)value;return r;
+}
+LX_exponent :: (text:string,at:int)->bool {
+  if LX_at(text,at)!=101 && LX_at(text,at)!=69 {return false;}
+  return LX_digit(LX_at(text,at+1)) || ((LX_at(text,at+1)==43 || LX_at(text,at+1)==45) && LX_digit(LX_at(text,at+2)));
+}
+LX_value_digit :: (c:u8,base:int)->int {
+  if LX_digit(c) {return cast(int)c-48;}
+  if base==16 && c>=97 && c<=102 {return cast(int)c-97+10;}
+  if base==16 && c>=65 && c<=70 {return cast(int)c-65+10;}return -1;
+}
+LX_number :: (text:string,s:[] LX_State)->LX_Item {
+  base:=10;value:u64=0;overflow:=false;have_digits:=false;
+  if LX_has(text,s[0].pos,"0x") {base=16;s[0].pos+=2;}else if LX_has(text,s[0].pos,"0b") {base=2;s[0].pos+=2;}
+  while s[0].pos<text.count {
+    c:=text[s[0].pos];if c==95 {s[0].pos+=1;continue;}
+    d:=LX_value_digit(c,base);if d<0 || d>=base {break;}
+    acc:=LX_mul(value,cast(u64)d,cast(u64)base);value=acc.value;overflow=overflow || acc.overflow;have_digits=true;s[0].pos+=1;
+  }
+  fraction:=base==10 && LX_at(text,s[0].pos)==46 && LX_digit(LX_at(text,s[0].pos+1));
+  exponent:=base==10 && LX_exponent(text,s[0].pos);
+  if fraction || exponent {
+    if fraction {s[0].pos+=2;while s[0].pos<text.count && (LX_digit(text[s[0].pos]) || text[s[0].pos]==95) {s[0].pos+=1;}}
+    if LX_at(text,s[0].pos)==101 || LX_at(text,s[0].pos)==69 {
+      s[0].pos+=1;if LX_at(text,s[0].pos)==43 || LX_at(text,s[0].pos)==45 {s[0].pos+=1;}
+      while s[0].pos<text.count && LX_digit(text[s[0].pos]) {s[0].pos+=1;}
+    }
+    bits:=LX_decimal(text[s[0].start..<s[0].pos]);typed:=0;
+    if LX_has(text,s[0].pos,"f32") {typed=32;s[0].pos+=3;}else if LX_has(text,s[0].pos,"f64") {typed=64;s[0].pos+=3;}
+    tag:=0;
+    if s[0].pos<text.count && LX_ident(text[s[0].pos]) {tag=9;while s[0].pos<text.count && LX_ident(text[s[0].pos]) {s[0].pos+=1;}}
+    else if bits==0x7ff0000000000000 {tag=12;}else if typed==32 && bits>=0x47effffff0000000 {tag=13;}
+    r:=LX_item(s,LX_Kind.k_float_lit);r.token.float_value=bits;r.token.float_bits=typed;
+    if tag!=0 {r.diagnostic=LX_static(tag,LX_saved(s));}return r;
+  }
+  r:=LX_item(s,LX_Kind.k_int_lit);r.token.int_value=value;
+  if !have_digits {r.diagnostic=LX_static(3,LX_saved(s));}else if overflow {r.diagnostic=LX_static(4,LX_saved(s));}return r;
+}
+LX_punctuation :: (text:string,at:int)->LX_Token {
+  three:=[3] string.["..<","<<=",">>="];
+  tk:=[3] LX_Kind.[LX_Kind.k_dotdotlt,LX_Kind.k_shl_equal,LX_Kind.k_shr_equal];
+  for p,i:three {if LX_has(text,at,p) {return LX_Token.{kind=tk[i],text_end=3};}}
+  two:=[20] string.["<<",">>","&=","|=","^=","::",":=","->","..","==","!=","<=",">=","&&","||","+=","-=","*=","/=","%="];
+  kinds:=[20] LX_Kind.[LX_Kind.k_shl,LX_Kind.k_shr,LX_Kind.k_amp_equal,LX_Kind.k_pipe_equal,LX_Kind.k_caret_equal,LX_Kind.k_coloncolon,LX_Kind.k_colonequal,LX_Kind.k_arrow,LX_Kind.k_dotdot,LX_Kind.k_eqeq,LX_Kind.k_noteq,LX_Kind.k_le,LX_Kind.k_ge,LX_Kind.k_andand,LX_Kind.k_oror,LX_Kind.k_plus_equal,LX_Kind.k_minus_equal,LX_Kind.k_star_equal,LX_Kind.k_slash_equal,LX_Kind.k_percent_equal];
+  for p,i:two {if LX_has(text,at,p) {return LX_Token.{kind=kinds[i],text_end=2};}}
+  one:="(){}[],;:.=+-*/%<>!&|^";
+  single:=[22] LX_Kind.[LX_Kind.k_lparen,LX_Kind.k_rparen,LX_Kind.k_lbrace,LX_Kind.k_rbrace,LX_Kind.k_lbracket,LX_Kind.k_rbracket,LX_Kind.k_comma,LX_Kind.k_semicolon,LX_Kind.k_colon,LX_Kind.k_dot,LX_Kind.k_equal,LX_Kind.k_plus,LX_Kind.k_minus,LX_Kind.k_star,LX_Kind.k_slash,LX_Kind.k_percent,LX_Kind.k_lt,LX_Kind.k_gt,LX_Kind.k_bang,LX_Kind.k_amp,LX_Kind.k_pipe,LX_Kind.k_caret];
+  c:=LX_at(text,at);for b,i:one {if c==b {return LX_Token.{kind=single[i],text_end=1};}}return LX_Token.{};
+}
+LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #export_c {
+  if s[0].mode==2 {s[0].mode=3;return LX_Item.{diagnostic=LX_static(11,LX_location(s,0))};}
+  if s[0].mode==3 {return LX_eof(text,s);}
+  if s[0].mode==1 {return LX_string(text,s,decoded,message);}
+  while s[0].pos<text.count {
+    c:=text[s[0].pos];if c==10 {LX_newline(s);s[0].pos+=1;continue;}
+    if c==32 || c==9 || c==13 {s[0].pos+=1;continue;}
+    if LX_has(text,s[0].pos,"//") {while s[0].pos<text.count && text[s[0].pos]!=10 {s[0].pos+=1;}continue;}
+    LX_start(s);
+    if LX_has(text,s[0].pos,"/*") {
+      depth:=1;s[0].pos+=2;
+      while s[0].pos<text.count && depth>0 {
+        if LX_has(text,s[0].pos,"/*") {depth+=1;s[0].pos+=2;continue;}
+        if LX_has(text,s[0].pos,"*/") {depth-=1;s[0].pos+=2;continue;}
+        if text[s[0].pos]==10 {LX_newline(s);}s[0].pos+=1;
+      }
+      if depth>0 {return LX_error(s,1);}continue;
+    }
+    if LX_alpha(c) {while s[0].pos<text.count && LX_ident(text[s[0].pos]) {s[0].pos+=1;}
+      r:=LX_item(s,LX_Kind.k_ident);if LX_keyword(text[r.token.text_begin..<r.token.text_end]) {r.token.kind=LX_Kind.k_keyword;}return r;}
+    if (c==35 || c==64) && LX_alpha(LX_at(text,s[0].pos+1)) {
+      s[0].pos+=1;begin:=s[0].pos;while s[0].pos<text.count && LX_ident(text[s[0].pos]) {s[0].pos+=1;}
+      kind:=LX_Kind.k_directive;if c==64 {kind=LX_Kind.k_annotation;}r:=LX_item(s,kind);r.token.text_begin=begin;return r;
+    }
+    if LX_digit(c) {return LX_number(text,s);}
+    if c==39 {return LX_character(text,s);}
+    if c==34 {s[0].pos+=1;s[0].mode=1;s[0].decoded_count=0;return LX_string(text,s,decoded,message);}
+    p:=LX_punctuation(text,s[0].pos);
+    if p.kind!=LX_Kind.k_eof {s[0].pos+=p.text_end;return LX_item(s,p.kind);}
+    s[0].pos+=1;if c>=128 {return LX_error(s,7);}return LX_Item.{diagnostic=LX_dynamic(false,c,LX_saved(s),message)};
+  }return LX_eof(text,s);
+}
+
+#test "integer accumulator wraps and reports overflow" {
+  r:=LX_mul(1844674407370955161,5,10);#assert r.value==18446744073709551615 && !r.overflow;
+  r=LX_mul(1844674407370955161,6,10);#assert r.value==0 && r.overflow;
+  r=LX_mul(0,0,2);#assert r.value==0 && !r.overflow;
+  r=LX_mul(1152921504606846975,15,16);#assert r.value==18446744073709551615 && !r.overflow;
+}
+
+#forall "ASCII byte classes" c:u8 {
+  alpha:=false;digit:=false;for x:"ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz" {if c==x {alpha=true;}}
+  for x:"0123456789" {if c==x {digit=true;}}
+  #assert LX_alpha(c)==alpha && LX_digit(c)==digit && LX_ident(c)==(alpha || digit);
+}
+
+#test "source and lookahead bounds" {
+  #assert LX_source(0) && LX_source(2147483646) && !LX_source(-1) && !LX_source(2147483647);
+  #assert LX_capacities(0).decoded==1 && LX_capacities(2147483646).decoded==2147483647;
+  #assert LX_capacities(-1).decoded==0 && LX_capacities(-1).diagnostic==64;
+  #assert LX_capacities(0).diagnostic==64;
+  #assert LX_at("ab",-1)==0 && LX_at("ab",2)==0 && LX_at("ab",0)==97;
+  #assert LX_has("abc",0,"ab") && LX_has("abc",2,"c") && !LX_has("abc",2,"cd");
+  #assert !LX_has("abc",-1,"a") && !LX_has("abc",4,"") && LX_has("abc",3,"");
+  decoded:[1] u8;message:[64] u8;state:=[1] LX_State.[LX_begin(-1)];
+  r:=LX_next("",state[..],decoded[..],message[..]);#assert r.diagnostic.code=="E0111" && !r.has_token;
+  r=LX_next("",state[..],decoded[..],message[..]);#assert r.has_token && r.token.kind==LX_Kind.k_eof;
+}
+
+#test "tokens retain directive spans and physical locations" {
+  text:=" // comment\n/* a\n/* b */ c */ #forall @align thing_9 struct\n";
+  state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.diagnostic.code=="" && r.token.kind==LX_Kind.k_directive;
+  #assert text[r.token.text_begin..<r.token.text_end]=="forall" && r.token.loc.line==3 && r.token.loc.column==14;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_annotation && text[r.token.text_begin..<r.token.text_end]=="align";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && text[r.token.text_begin..<r.token.text_end]=="thing_9";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_keyword && text[r.token.text_begin..<r.token.text_end]=="struct";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_eof && r.token.loc.line==4 && r.token.loc.column==1 && r.token.loc.offset==text.count;
+}
+
+#test "string escapes and error recovery preserve the token" {
+  text:="\"a\\qb\\n\"";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert !r.has_token && r.diagnostic.code=="E0105" && r.diagnostic.loc.offset==2 && r.diagnostic.loc.column==3;
+  #assert r.diagnostic.message=="unknown escape '\\q'";
+  r=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.diagnostic.code=="" && r.token.kind==LX_Kind.k_string_lit && r.token.decoded && r.token.decoded_count==3;
+  #assert cast(string)decoded[0..<3]=="ab\n" && r.token.text_begin==0 && r.token.text_end==text.count;
+  state[0]=LX_begin(2);r=LX_next("\"x",state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.decoded_count==1 && r.diagnostic.code=="E0106";
+  state[0]=LX_begin(5);r=LX_next("/*\nxx",state[..],decoded[..],message[..]);
+  #assert !r.has_token && r.diagnostic.code=="E0101" && r.diagnostic.loc.line==1 && r.diagnostic.loc.column==1;
+  state[0]=LX_begin(3);r=LX_next("\"x\"",state[..],decoded[0..<0],message[..]);
+  #assert r.diagnostic.code=="E0111" && state[0].mode==3;
+  r=LX_next("\"x\"",state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_eof && r.has_token;
+}
+
+#test "escape vocabulary distinguishes chars and strings" {
+  #assert LX_escape(110,false)==10 && LX_escape(116,false)==9 && LX_escape(114,true)==13 && LX_escape(48,true)==0 && LX_escape(92,true)==92;
+  #assert LX_escape(39,true)==39 && LX_escape(39,false)== -1 && LX_escape(34,false)==34 && LX_escape(34,true)== -1;
+  #assert LX_escape(113,false)== -1;
+  message:[64] u8;loc:=LX_Loc.{line=2,column=3,offset=4};
+  d:=LX_dynamic(false,63,loc,message[..]);#assert d.code=="E0108" && d.message=="unexpected character '?'" && d.loc.offset==4;
+  d=LX_dynamic(false,63,loc,message[0..<0]);#assert d.code=="E0111";
+  d=LX_static(7,loc);#assert d.code=="E0107" && d.fix=="identifiers are ASCII only (spec §5)";
+}
+
+#test "exponent recognition and radix digit boundaries" {
+  #assert LX_exponent("e2",0) && LX_exponent("E+3",0) && LX_exponent("e-3",0);
+  #assert !LX_exponent("E+",0) && !LX_exponent("E",0) && !LX_exponent("x3",0);
+  #assert LX_value_digit(48,10)==0 && LX_value_digit(57,10)==9 && LX_value_digit(65,16)==10 && LX_value_digit(70,16)==15;
+  #assert LX_value_digit(97,16)==10 && LX_value_digit(102,16)==15 && LX_value_digit(103,16)== -1 && LX_value_digit(65,10)== -1;
+  #assert LX_exp(99,9,1000)==999 && LX_exp(100,1,1000)==1000;
+}
+
+#test "integer and character token 0" {
+  text:="0";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==0 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 1" {
+  text:="0xffffFFFF";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==4294967295 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 2" {
+  text:="0b101";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==5 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 3" {
+  text:="1_234";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==1234 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 4" {
+  text:="0x__";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="E0103";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==0 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 5" {
+  text:="18446744073709551616_0";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="E0104";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==0 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 6" {
+  text:="'a'";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==97 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 7" {
+  text:="'\\n'";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==10 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 8" {
+  text:="'\\0'";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==0 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 9" {
+  text:="'\\''";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="";
+  #assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==39 && r.token.text_end==text.count;
+}
+
+#test "integer and character token 10" {
+  text:="'ab'";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "token spelling eof" {#assert LX_name(cast(u32)LX_Kind.k_eof)=="end of file";}
+
+#test "token spelling ident" {#assert LX_name(cast(u32)LX_Kind.k_ident)=="identifier";}
+
+#test "token spelling keyword" {#assert LX_name(cast(u32)LX_Kind.k_keyword)=="keyword";}
+
+#test "token spelling int_lit" {#assert LX_name(cast(u32)LX_Kind.k_int_lit)=="integer";}
+
+#test "token spelling float_lit" {#assert LX_name(cast(u32)LX_Kind.k_float_lit)=="float";}
+
+#test "token spelling string_lit" {#assert LX_name(cast(u32)LX_Kind.k_string_lit)=="string";}
+
+#test "token spelling directive" {#assert LX_name(cast(u32)LX_Kind.k_directive)=="directive";}
+
+#test "token spelling annotation" {#assert LX_name(cast(u32)LX_Kind.k_annotation)=="annotation";}
+
+#test "token spelling lparen" {#assert LX_name(cast(u32)LX_Kind.k_lparen)=="'('";}
+
+#test "punctuation lparen" {p:=LX_punctuation("(",0);#assert p.kind==LX_Kind.k_lparen && p.text_end==1;}
+
+#test "token spelling rparen" {#assert LX_name(cast(u32)LX_Kind.k_rparen)=="')'";}
+
+#test "punctuation rparen" {p:=LX_punctuation(")",0);#assert p.kind==LX_Kind.k_rparen && p.text_end==1;}
+
+#test "token spelling lbrace" {#assert LX_name(cast(u32)LX_Kind.k_lbrace)=="'{'";}
+
+#test "punctuation lbrace" {p:=LX_punctuation("{",0);#assert p.kind==LX_Kind.k_lbrace && p.text_end==1;}
+
+#test "token spelling rbrace" {#assert LX_name(cast(u32)LX_Kind.k_rbrace)=="'}'";}
+
+#test "punctuation rbrace" {p:=LX_punctuation("}",0);#assert p.kind==LX_Kind.k_rbrace && p.text_end==1;}
+
+#test "token spelling lbracket" {#assert LX_name(cast(u32)LX_Kind.k_lbracket)=="'['";}
+
+#test "punctuation lbracket" {p:=LX_punctuation("[",0);#assert p.kind==LX_Kind.k_lbracket && p.text_end==1;}
+
+#test "token spelling rbracket" {#assert LX_name(cast(u32)LX_Kind.k_rbracket)=="']'";}
+
+#test "punctuation rbracket" {p:=LX_punctuation("]",0);#assert p.kind==LX_Kind.k_rbracket && p.text_end==1;}
+
+#test "token spelling comma" {#assert LX_name(cast(u32)LX_Kind.k_comma)=="','";}
+
+#test "punctuation comma" {p:=LX_punctuation(",",0);#assert p.kind==LX_Kind.k_comma && p.text_end==1;}
+
+#test "token spelling semicolon" {#assert LX_name(cast(u32)LX_Kind.k_semicolon)=="';'";}
+
+#test "punctuation semicolon" {p:=LX_punctuation(";",0);#assert p.kind==LX_Kind.k_semicolon && p.text_end==1;}
+
+#test "token spelling colon" {#assert LX_name(cast(u32)LX_Kind.k_colon)=="':'";}
+
+#test "punctuation colon" {p:=LX_punctuation(":",0);#assert p.kind==LX_Kind.k_colon && p.text_end==1;}
+
+#test "token spelling coloncolon" {#assert LX_name(cast(u32)LX_Kind.k_coloncolon)=="'::'";}
+
+#test "punctuation coloncolon" {p:=LX_punctuation("::",0);#assert p.kind==LX_Kind.k_coloncolon && p.text_end==2;}
+
+#test "token spelling colonequal" {#assert LX_name(cast(u32)LX_Kind.k_colonequal)=="':='";}
+
+#test "punctuation colonequal" {p:=LX_punctuation(":=",0);#assert p.kind==LX_Kind.k_colonequal && p.text_end==2;}
+
+#test "token spelling arrow" {#assert LX_name(cast(u32)LX_Kind.k_arrow)=="'->'";}
+
+#test "punctuation arrow" {p:=LX_punctuation("->",0);#assert p.kind==LX_Kind.k_arrow && p.text_end==2;}
+
+#test "token spelling dot" {#assert LX_name(cast(u32)LX_Kind.k_dot)=="'.'";}
+
+#test "punctuation dot" {p:=LX_punctuation(".",0);#assert p.kind==LX_Kind.k_dot && p.text_end==1;}
+
+#test "token spelling dotdot" {#assert LX_name(cast(u32)LX_Kind.k_dotdot)=="'..'";}
+
+#test "punctuation dotdot" {p:=LX_punctuation("..",0);#assert p.kind==LX_Kind.k_dotdot && p.text_end==2;}
+
+#test "token spelling dotdotlt" {#assert LX_name(cast(u32)LX_Kind.k_dotdotlt)=="'..<'";}
+
+#test "punctuation dotdotlt" {p:=LX_punctuation("..<",0);#assert p.kind==LX_Kind.k_dotdotlt && p.text_end==3;}
+
+#test "token spelling equal" {#assert LX_name(cast(u32)LX_Kind.k_equal)=="'='";}
+
+#test "punctuation equal" {p:=LX_punctuation("=",0);#assert p.kind==LX_Kind.k_equal && p.text_end==1;}
+
+#test "token spelling plus_equal" {#assert LX_name(cast(u32)LX_Kind.k_plus_equal)=="'+='";}
+
+#test "punctuation plus_equal" {p:=LX_punctuation("+=",0);#assert p.kind==LX_Kind.k_plus_equal && p.text_end==2;}
+
+#test "token spelling minus_equal" {#assert LX_name(cast(u32)LX_Kind.k_minus_equal)=="'-='";}
+
+#test "punctuation minus_equal" {p:=LX_punctuation("-=",0);#assert p.kind==LX_Kind.k_minus_equal && p.text_end==2;}
+
+#test "token spelling star_equal" {#assert LX_name(cast(u32)LX_Kind.k_star_equal)=="'*='";}
+
+#test "punctuation star_equal" {p:=LX_punctuation("*=",0);#assert p.kind==LX_Kind.k_star_equal && p.text_end==2;}
+
+#test "token spelling slash_equal" {#assert LX_name(cast(u32)LX_Kind.k_slash_equal)=="'/='";}
+
+#test "punctuation slash_equal" {p:=LX_punctuation("/=",0);#assert p.kind==LX_Kind.k_slash_equal && p.text_end==2;}
+
+#test "token spelling percent_equal" {#assert LX_name(cast(u32)LX_Kind.k_percent_equal)=="'%='";}
+
+#test "punctuation percent_equal" {p:=LX_punctuation("%=",0);#assert p.kind==LX_Kind.k_percent_equal && p.text_end==2;}
+
+#test "token spelling amp_equal" {#assert LX_name(cast(u32)LX_Kind.k_amp_equal)=="'&='";}
+
+#test "punctuation amp_equal" {p:=LX_punctuation("&=",0);#assert p.kind==LX_Kind.k_amp_equal && p.text_end==2;}
+
+#test "token spelling pipe_equal" {#assert LX_name(cast(u32)LX_Kind.k_pipe_equal)=="'|='";}
+
+#test "punctuation pipe_equal" {p:=LX_punctuation("|=",0);#assert p.kind==LX_Kind.k_pipe_equal && p.text_end==2;}
+
+#test "token spelling caret_equal" {#assert LX_name(cast(u32)LX_Kind.k_caret_equal)=="'^='";}
+
+#test "punctuation caret_equal" {p:=LX_punctuation("^=",0);#assert p.kind==LX_Kind.k_caret_equal && p.text_end==2;}
+
+#test "token spelling shl_equal" {#assert LX_name(cast(u32)LX_Kind.k_shl_equal)=="'<<='";}
+
+#test "punctuation shl_equal" {p:=LX_punctuation("<<=",0);#assert p.kind==LX_Kind.k_shl_equal && p.text_end==3;}
+
+#test "token spelling shr_equal" {#assert LX_name(cast(u32)LX_Kind.k_shr_equal)=="'>>='";}
+
+#test "punctuation shr_equal" {p:=LX_punctuation(">>=",0);#assert p.kind==LX_Kind.k_shr_equal && p.text_end==3;}
+
+#test "token spelling plus" {#assert LX_name(cast(u32)LX_Kind.k_plus)=="'+'";}
+
+#test "punctuation plus" {p:=LX_punctuation("+",0);#assert p.kind==LX_Kind.k_plus && p.text_end==1;}
+
+#test "token spelling minus" {#assert LX_name(cast(u32)LX_Kind.k_minus)=="'-'";}
+
+#test "punctuation minus" {p:=LX_punctuation("-",0);#assert p.kind==LX_Kind.k_minus && p.text_end==1;}
+
+#test "token spelling star" {#assert LX_name(cast(u32)LX_Kind.k_star)=="'*'";}
+
+#test "punctuation star" {p:=LX_punctuation("*",0);#assert p.kind==LX_Kind.k_star && p.text_end==1;}
+
+#test "token spelling slash" {#assert LX_name(cast(u32)LX_Kind.k_slash)=="'/'";}
+
+#test "punctuation slash" {p:=LX_punctuation("/",0);#assert p.kind==LX_Kind.k_slash && p.text_end==1;}
+
+#test "token spelling percent" {#assert LX_name(cast(u32)LX_Kind.k_percent)=="'%'";}
+
+#test "punctuation percent" {p:=LX_punctuation("%",0);#assert p.kind==LX_Kind.k_percent && p.text_end==1;}
+
+#test "token spelling amp" {#assert LX_name(cast(u32)LX_Kind.k_amp)=="'&'";}
+
+#test "punctuation amp" {p:=LX_punctuation("&",0);#assert p.kind==LX_Kind.k_amp && p.text_end==1;}
+
+#test "token spelling pipe" {#assert LX_name(cast(u32)LX_Kind.k_pipe)=="'|'";}
+
+#test "punctuation pipe" {p:=LX_punctuation("|",0);#assert p.kind==LX_Kind.k_pipe && p.text_end==1;}
+
+#test "token spelling caret" {#assert LX_name(cast(u32)LX_Kind.k_caret)=="'^'";}
+
+#test "punctuation caret" {p:=LX_punctuation("^",0);#assert p.kind==LX_Kind.k_caret && p.text_end==1;}
+
+#test "token spelling shl" {#assert LX_name(cast(u32)LX_Kind.k_shl)=="'<<'";}
+
+#test "punctuation shl" {p:=LX_punctuation("<<",0);#assert p.kind==LX_Kind.k_shl && p.text_end==2;}
+
+#test "token spelling shr" {#assert LX_name(cast(u32)LX_Kind.k_shr)=="'>>'";}
+
+#test "punctuation shr" {p:=LX_punctuation(">>",0);#assert p.kind==LX_Kind.k_shr && p.text_end==2;}
+
+#test "token spelling eqeq" {#assert LX_name(cast(u32)LX_Kind.k_eqeq)=="'=='";}
+
+#test "punctuation eqeq" {p:=LX_punctuation("==",0);#assert p.kind==LX_Kind.k_eqeq && p.text_end==2;}
+
+#test "token spelling noteq" {#assert LX_name(cast(u32)LX_Kind.k_noteq)=="'!='";}
+
+#test "punctuation noteq" {p:=LX_punctuation("!=",0);#assert p.kind==LX_Kind.k_noteq && p.text_end==2;}
+
+#test "token spelling lt" {#assert LX_name(cast(u32)LX_Kind.k_lt)=="'<'";}
+
+#test "punctuation lt" {p:=LX_punctuation("<",0);#assert p.kind==LX_Kind.k_lt && p.text_end==1;}
+
+#test "token spelling le" {#assert LX_name(cast(u32)LX_Kind.k_le)=="'<='";}
+
+#test "punctuation le" {p:=LX_punctuation("<=",0);#assert p.kind==LX_Kind.k_le && p.text_end==2;}
+
+#test "token spelling gt" {#assert LX_name(cast(u32)LX_Kind.k_gt)=="'>'";}
+
+#test "punctuation gt" {p:=LX_punctuation(">",0);#assert p.kind==LX_Kind.k_gt && p.text_end==1;}
+
+#test "token spelling ge" {#assert LX_name(cast(u32)LX_Kind.k_ge)=="'>='";}
+
+#test "punctuation ge" {p:=LX_punctuation(">=",0);#assert p.kind==LX_Kind.k_ge && p.text_end==2;}
+
+#test "token spelling andand" {#assert LX_name(cast(u32)LX_Kind.k_andand)=="'&&'";}
+
+#test "punctuation andand" {p:=LX_punctuation("&&",0);#assert p.kind==LX_Kind.k_andand && p.text_end==2;}
+
+#test "token spelling oror" {#assert LX_name(cast(u32)LX_Kind.k_oror)=="'||'";}
+
+#test "punctuation oror" {p:=LX_punctuation("||",0);#assert p.kind==LX_Kind.k_oror && p.text_end==2;}
+
+#test "token spelling bang" {#assert LX_name(cast(u32)LX_Kind.k_bang)=="'!'";}
+
+#test "punctuation bang" {p:=LX_punctuation("!",0);#assert p.kind==LX_Kind.k_bang && p.text_end==1;}
+
+#test "reserved struct" {#assert LX_keyword("struct") && !LX_keyword("struct_");}
+
+#test "reserved union" {#assert LX_keyword("union") && !LX_keyword("union_");}
+
+#test "reserved enum" {#assert LX_keyword("enum") && !LX_keyword("enum_");}
+
+#test "reserved enum_flags" {#assert LX_keyword("enum_flags") && !LX_keyword("enum_flags_");}
+
+#test "reserved if" {#assert LX_keyword("if") && !LX_keyword("if_");}
+
+#test "reserved else" {#assert LX_keyword("else") && !LX_keyword("else_");}
+
+#test "reserved ifx" {#assert LX_keyword("ifx") && !LX_keyword("ifx_");}
+
+#test "reserved then" {#assert LX_keyword("then") && !LX_keyword("then_");}
+
+#test "reserved while" {#assert LX_keyword("while") && !LX_keyword("while_");}
+
+#test "reserved for" {#assert LX_keyword("for") && !LX_keyword("for_");}
+
+#test "reserved break" {#assert LX_keyword("break") && !LX_keyword("break_");}
+
+#test "reserved continue" {#assert LX_keyword("continue") && !LX_keyword("continue_");}
+
+#test "reserved return" {#assert LX_keyword("return") && !LX_keyword("return_");}
+
+#test "reserved defer" {#assert LX_keyword("defer") && !LX_keyword("defer_");}
+
+#test "reserved switch" {#assert LX_keyword("switch") && !LX_keyword("switch_");}
+
+#test "reserved case" {#assert LX_keyword("case") && !LX_keyword("case_");}
+
+#test "reserved using" {#assert LX_keyword("using") && !LX_keyword("using_");}
+
+#test "reserved cast" {#assert LX_keyword("cast") && !LX_keyword("cast_");}
+
+#test "reserved xx" {#assert LX_keyword("xx") && !LX_keyword("xx_");}
+
+#test "reserved inline" {#assert LX_keyword("inline") && !LX_keyword("inline_");}
+
+#test "reserved no_inline" {#assert LX_keyword("no_inline") && !LX_keyword("no_inline_");}
+
+#test "reserved job" {#assert LX_keyword("job") && !LX_keyword("job_");}
+
+#test "reserved pure" {#assert LX_keyword("pure") && !LX_keyword("pure_");}
+
+#test "reserved strict" {#assert LX_keyword("strict") && !LX_keyword("strict_");}
+
+#test "reserved deterministic" {#assert LX_keyword("deterministic") && !LX_keyword("deterministic_");}
+
+#test "reserved shader" {#assert LX_keyword("shader") && !LX_keyword("shader_");}
+
+#test "reserved try" {#assert LX_keyword("try") && !LX_keyword("try_");}
+
+#test "reserved or_else" {#assert LX_keyword("or_else") && !LX_keyword("or_else_");}
+
+#test "reserved push_context" {#assert LX_keyword("push_context") && !LX_keyword("push_context_");}
+
+#test "reserved null" {#assert LX_keyword("null") && !LX_keyword("null_");}
+
+#test "reserved true" {#assert LX_keyword("true") && !LX_keyword("true_");}
+
+#test "reserved false" {#assert LX_keyword("false") && !LX_keyword("false_");}
+
+#test "reserved it" {#assert LX_keyword("it") && !LX_keyword("it_");}
+
+#test "reserved it_index" {#assert LX_keyword("it_index") && !LX_keyword("it_index_");}
+
+#test "reserved size_of" {#assert LX_keyword("size_of") && !LX_keyword("size_of_");}
+
+#test "reserved type_of" {#assert LX_keyword("type_of") && !LX_keyword("type_of_");}
+
+#test "reserved type_info" {#assert LX_keyword("type_info") && !LX_keyword("type_info_");}
+
+#test "reserved Type" {#assert LX_keyword("Type") && !LX_keyword("Type_");}
+
+#test "reserved Code" {#assert LX_keyword("Code") && !LX_keyword("Code_");}
+
+#test "reserved remove" {#assert LX_keyword("remove") && !LX_keyword("remove_");}
+
+#test "reserved constraint" {#assert LX_keyword("constraint") && !LX_keyword("constraint_");}
+
+#forall "one-byte source classification and progress" byte:u8 {
+  bytes:=[1] u8.[byte];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(1)];decoded:[4] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  if LX_alpha(byte) {#assert r.has_token && r.token.kind==LX_Kind.k_ident && r.token.text_begin==0 && r.token.text_end==1;}
+  else if LX_digit(byte) {#assert r.has_token && r.token.kind==LX_Kind.k_int_lit && r.token.int_value==cast(u64)(byte-48);}
+  else if byte==10 {#assert r.has_token && r.token.kind==LX_Kind.k_eof && r.token.loc.line==2 && r.token.loc.column==1;}
+  else if byte==9 || byte==13 || byte==32 {#assert r.has_token && r.token.kind==LX_Kind.k_eof && r.token.loc.line==1 && r.token.loc.column==2;}
+  else if byte==34 {#assert r.has_token && r.token.kind==LX_Kind.k_string_lit && r.diagnostic.code=="E0106";}
+  else if byte==39 {#assert !r.has_token && r.diagnostic.code=="E0110";}
+  else if byte>=128 {#assert !r.has_token && r.diagnostic.code=="E0107";}
+  else {
+    punctuation:="(){}[],;:.=+-*/%<>!&|^";found:=false;
+    for c:punctuation {if c==byte {found=true;}}
+    if found {#assert r.has_token && r.diagnostic.code=="" && r.token.text_begin==0 && r.token.text_end==1;}
+    else {#assert !r.has_token && r.diagnostic.code=="E0108";}
+  }
+  if !r.has_token || r.token.kind!=LX_Kind.k_eof {r=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && r.token.kind==LX_Kind.k_eof && r.diagnostic.code=="";}
+}
+
+#test "consecutive strings reset decoded storage and return EOF" {
+  text:="\"a\" \"\\n\\r\\t\\0\\\\\\\"\"";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.decoded_count==1 && decoded[0]==97;
+  r=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_string_lit && r.diagnostic.code=="" && r.token.decoded && r.token.decoded_count==6;
+  #assert decoded[0]==10 && decoded[1]==13 && decoded[2]==9 && decoded[3]==0 && decoded[4]==92 && decoded[5]==34;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && r.token.kind==LX_Kind.k_eof && r.diagnostic.code=="";
+}
+
+#test "physical newline ends a string and preserves following token locations" {
+  text:="\"x\ny";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && r.diagnostic.code=="E0106" && r.token.text_end==2 && r.token.decoded_count==1;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && r.token.loc.offset==3 && r.token.loc.line==2 && r.token.loc.column==1;
+  state[0]=LX_begin(3);r=LX_next("\"a\\",state[..],decoded[..],message[..]);
+  #assert r.has_token && r.diagnostic.code=="E0106" && r.token.decoded_count==2 && decoded[1]==92;
+  state[0]=LX_begin(4);r=LX_next("\"ab\"",state[..],decoded[0..<1],message[..]);#assert r.diagnostic.code=="E0111" && !r.has_token;
+}
+
+#test "radix boundaries, fractional separators and f32 rounding overflow" {
+  text:="0b102 0x1G 1.2_5E-2 1e39f32 1e309";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.int_value==2 && r.token.text_end==4 && r.diagnostic.code=="";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.int_value==2 && r.token.text_begin==4;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.int_value==1 && text[r.token.text_begin..<r.token.text_end]=="0x1";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert text[r.token.text_begin..<r.token.text_end]=="G";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.float_value==0x3f8999999999999a && r.diagnostic.code=="";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.message=="floating-point literal is too large for f32";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.message=="floating-point literal is too large for f64";
+  #assert LX_value_digit(71,16)== -1;
+  #assert LX_name(53)=="?";
+}
+
+#test "nonempty source cannot resume after a resource failure" {
+  state:=[1] LX_State.[LX_begin(-1)];decoded:[1] u8;message:[64] u8;
+  r:=LX_next("A",state[..],decoded[..],message[..]);#assert !r.has_token && r.diagnostic.code=="E0111" && state[0].mode==3;
+  #assert r.diagnostic.loc.line==1 && r.diagnostic.loc.column==1 && r.diagnostic.loc.offset==0;
+  r=LX_next("A",state[..],decoded[..],message[..]);#assert r.has_token && r.token.kind==LX_Kind.k_eof;
+}
+
+#test "diagnostic contract 1" {d:=LX_static(1,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0101" && d.message=="block comment is never closed" && d.fix=="add '*/'" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 3" {d:=LX_static(3,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0103" && d.message=="number has no digits after its base prefix" && d.fix=="" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 4" {d:=LX_static(4,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0104" && d.message=="integer literal does not fit in 64 bits" && d.fix=="" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 6" {d:=LX_static(6,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0106" && d.message=="string is never closed" && d.fix=="add '\"' before the end of the line" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 7" {d:=LX_static(7,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0107" && d.message=="non-ASCII character outside a string or comment" && d.fix=="identifiers are ASCII only (spec §5)" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 9" {d:=LX_static(9,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0109" && d.message=="a floating-point literal can only be followed by f32 or f64" && d.fix=="" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 12" {d:=LX_static(12,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0109" && d.message=="floating-point literal is too large for f64" && d.fix=="" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 13" {d:=LX_static(13,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0109" && d.message=="floating-point literal is too large for f32" && d.fix=="" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 10" {d:=LX_static(10,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0110" && d.message=="a character literal is one ASCII character in single quotes" && d.fix=="write 'a', or an escape such as '\\n'; text belongs in \"strings\"" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "diagnostic contract 11" {d:=LX_static(11,LX_Loc.{line=3,column=4,offset=5});#assert d.code=="E0111" && d.message=="lexer storage budget exceeded" && d.fix=="" && d.loc.line==3 && d.loc.column==4 && d.loc.offset==5;}
+
+#test "exact dynamic diagnostic capacity 5" {out:[19] u8;d:=LX_dynamic(true,113,LX_Loc.{},out[..]);#assert d.message=="unknown escape '\\q'";d=LX_dynamic(true,113,LX_Loc.{},out[0..<18]);#assert d.code=="E0111";}
+
+#test "exact dynamic diagnostic capacity 8" {out:[24] u8;d:=LX_dynamic(false,63,LX_Loc.{},out[..]);#assert d.message=="unexpected character '?'";d=LX_dynamic(false,63,LX_Loc.{},out[0..<23]);#assert d.code=="E0111";}
+
+#test "character recovery 0" {bytes:=[2] u8.[39,39];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==2 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "character recovery 1" {bytes:=[2] u8.[39,97];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==2 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "character recovery 2" {bytes:=[4] u8.[39,92,113,39];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==5 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "character recovery 3" {bytes:=[6] u8.[39,92,113,39,32,120];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==6 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "character recovery 4" {bytes:=[5] u8.[39,97,98,10,120];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==3 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+  decoded:[8] u8;r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && r.token.loc.line==2 && r.token.loc.column==1 && r.token.loc.offset==4;
+}
+
+#test "character recovery 5" {bytes:=[4] u8.[39,97,39,120];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==3 && r.has_token==true;
+  #assert r.token.int_value==97 && r.diagnostic.code=="";
+}
+
+#test "character recovery 6" {bytes:=[3] u8.[39,10,39];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==3 && r.has_token==true;
+  #assert r.token.int_value==10 && r.diagnostic.code=="";
+}
+
+#test "character recovery 7" {bytes:=[3] u8.[39,128,39];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==3 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "character recovery 8" {bytes:=[3] u8.[39,39,39];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==2 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "character recovery 9" {bytes:=[3] u8.[39,92,39];text:=cast(string)bytes[..];state:=[1] LX_State.[LX_begin(text.count)];message:[64] u8;r:=LX_character(text,state[..]);
+  #assert state[0].pos==3 && r.has_token==false;
+  #assert r.diagnostic.code=="E0110";
+}
+
+#test "punctuation stream advances by longest match" {text:="( ..< <<= ) := || ! &= ^";state:=[1] LX_State.[LX_begin(text.count)];decoded:[1] u8;message:[64] u8;
+  rlparen:=LX_next(text,state[..],decoded[..],message[..]);#assert rlparen.has_token && rlparen.token.kind==LX_Kind.k_lparen && rlparen.diagnostic.code=="";
+  rdotdotlt:=LX_next(text,state[..],decoded[..],message[..]);#assert rdotdotlt.has_token && rdotdotlt.token.kind==LX_Kind.k_dotdotlt && rdotdotlt.diagnostic.code=="";
+  rshl_equal:=LX_next(text,state[..],decoded[..],message[..]);#assert rshl_equal.has_token && rshl_equal.token.kind==LX_Kind.k_shl_equal && rshl_equal.diagnostic.code=="";
+  rrparen:=LX_next(text,state[..],decoded[..],message[..]);#assert rrparen.has_token && rrparen.token.kind==LX_Kind.k_rparen && rrparen.diagnostic.code=="";
+  rcolonequal:=LX_next(text,state[..],decoded[..],message[..]);#assert rcolonequal.has_token && rcolonequal.token.kind==LX_Kind.k_colonequal && rcolonequal.diagnostic.code=="";
+  roror:=LX_next(text,state[..],decoded[..],message[..]);#assert roror.has_token && roror.token.kind==LX_Kind.k_oror && roror.diagnostic.code=="";
+  rbang:=LX_next(text,state[..],decoded[..],message[..]);#assert rbang.has_token && rbang.token.kind==LX_Kind.k_bang && rbang.diagnostic.code=="";
+  ramp_equal:=LX_next(text,state[..],decoded[..],message[..]);#assert ramp_equal.has_token && ramp_equal.token.kind==LX_Kind.k_amp_equal && ramp_equal.diagnostic.code=="";
+  rcaret:=LX_next(text,state[..],decoded[..],message[..]);#assert rcaret.has_token && rcaret.token.kind==LX_Kind.k_caret && rcaret.diagnostic.code=="";
+}
+
+#test "word counts, scaled comparisons and exact quotients" {
+  #assert LX_words(0)==0 && LX_words(1)==1 && LX_words(31)==1 && LX_words(32)==1 && LX_words(33)==2 && LX_words(64)==2 && LX_words(65)==3;
+  a:=[3] u32.[0,2,0];b:=[3] u32.[0,3,0];
+  #assert LX_compare_scaled(a[..],0,b[..],0)== -1;
+  #assert LX_limb(a[..],4,1)==0;
+  a[0]=7;a[1]=0;b[0]=7;b[1]=0;q:=LX_divide53(a[..],b[..]);#assert q==1 && LX_big_bits(a[..])==0;
+  a[0]=15;b[0]=7;q=LX_divide53(a[..],b[..]);#assert q==2 && a[0]==1;
+  #assert LX_decimal("2e308")==0x7ff0000000000000;
+}
+
+#test "comments end at exact source and adjacent delimiter boundaries" {
+  decoded:[1] u8;message:[64] u8;
+  text:="//abc";state:=[1] LX_State.[LX_begin(text.count)];r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && r.token.kind==LX_Kind.k_eof && r.diagnostic.code=="";
+  text="//x\nA";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && r.token.loc.line==2 && r.token.loc.column==1;
+  text="/**/A";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && r.token.loc.offset==4 && r.diagnostic.code=="";
+  text="/*/**/*/A";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && r.token.loc.offset==8 && r.diagnostic.code=="";
+}
+
+#test "single letter directives and error recovery keep the next byte" {
+  decoded:[4] u8;message:[64] u8;
+  text:="#x";state:=[1] LX_State.[LX_begin(text.count)];r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_directive && r.token.text_begin==1 && r.token.text_end==2 && r.diagnostic.code=="";
+  text="@x";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_annotation && r.diagnostic.code=="";
+  text="?A";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.code=="E0108";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && r.token.loc.offset==1 && r.diagnostic.code=="";
+}
+
+#test "range punctuation is never a fractional part" {
+  text:="1. 2..<3";state:=[1] LX_State.[LX_begin(text.count)];decoded:[1] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_int_lit && r.token.int_value==1;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_dot;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_int_lit && r.token.int_value==2;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_dotdotlt;
+  text="1.0e;";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x3ff0000000000000 && r.token.text_end==4;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_semicolon;
+}
+
+#test "escaped quote at EOF and escaped-storage exhaustion" {
+  decoded:[8] u8;message:[64] u8;text:="\"a\\\"";state:=[1] LX_State.[LX_begin(text.count)];
+  r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && r.diagnostic.code=="E0106" && r.token.decoded_count==2 && decoded[1]==34;
+  text="\"\\n\"";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[0..<0],message[..]);#assert !r.has_token && r.diagnostic.code=="E0111";
+  d:=LX_dynamic(true,113,LX_Loc.{},message[..]);#assert d.fix=="use one of \\n \\t \\r \\0 \\\\ \\\"";
+}
+
+#test "f32 overflow midpoint 0" {text:="340282356779733661637539395458142568448.0f32";state:=[1] LX_State.[LX_begin(text.count)];decoded:[1] u8;message:[64] u8;r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && r.token.float_value==0x47effffff0000000 && r.diagnostic.code=="E0109";}
+
+#test "f32 overflow midpoint 1" {text:="340282356779733623858607532500980858880.0f32";state:=[1] LX_State.[LX_begin(text.count)];decoded:[1] u8;message:[64] u8;r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && r.token.float_value==0x47efffffefffffff && r.diagnostic.code=="";}
+
+#test "float token 0" {
+  text:="1.25";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x3ff4000000000000 && r.token.float_bits==0 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="";
+}
+
+#test "float token 1" {
+  text:="1e2";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x4059000000000000 && r.token.float_bits==0 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="";
+}
+
+#test "float token 2" {
+  text:="1.0f32";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x3ff0000000000000 && r.token.float_bits==32 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="";
+}
+
+#test "float token 3" {
+  text:="1.0f64";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x3ff0000000000000 && r.token.float_bits==64 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="";
+}
+
+#test "float token 4" {
+  text:="1e309";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x7ff0000000000000 && r.token.float_bits==0 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="E0109";
+}
+
+#test "float token 5" {
+  text:="1e39f32";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x48078287f49c4a1d && r.token.float_bits==32 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="E0109";
+}
+
+#test "float token 6" {
+  text:="1.0foo";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x3ff0000000000000 && r.token.float_bits==0 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="E0109";
+}
+
+#test "float token 7" {
+  text:="1.0e+";state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.token.kind==LX_Kind.k_float_lit && r.token.float_value==0x3ff0000000000000 && r.token.float_bits==0 && r.token.text_end==text.count+0;
+  #assert r.diagnostic.code=="";
+}
+
+#test "decimal conversion basic and ties to even" {
+  #assert LX_decimal("0.0")==0 && LX_decimal("1.0")==0x3ff0000000000000;
+  #assert LX_decimal("0.1")==0x3fb999999999999a;
+  #assert LX_decimal("1_2.5")==0x4029000000000000;
+  #assert LX_decimal("9007199254740993.0")==0x4340000000000000;
+  #assert LX_decimal("9007199254740995.0")==0x4340000000000002;
+}
+
+#test "decimal exponent and boundary 0" {#assert LX_decimal("1e-324")==0x0;}
+
+#test "decimal exponent and boundary 1" {#assert LX_decimal("2.4703282292062327e-324")==0x0;}
+
+#test "decimal exponent and boundary 2" {#assert LX_decimal("2.4703282292062328e-324")==0x1;}
+
+#test "decimal exponent and boundary 3" {#assert LX_decimal("4.9406564584124654e-324")==0x1;}
+
+#test "decimal exponent and boundary 4" {#assert LX_decimal("2.2250738585072014e-308")==0x10000000000000;}
+
+#test "decimal exponent and boundary 5" {#assert LX_decimal("1.7976931348623157e308")==0x7fefffffffffffff;}
+
+#test "decimal exponent and boundary 6" {#assert LX_decimal("1.7976931348623158e308")==0x7fefffffffffffff;}
+
+#test "decimal exponent and boundary 7" {#assert LX_decimal("1.7976931348623159e308")==0x7ff0000000000000;}
+
+#test "decimal exponent and boundary 8" {#assert LX_decimal("1e309")==0x7ff0000000000000;}
+
+#test "decimal exponent and boundary 9" {#assert LX_decimal("1e-99999")==0x0;}
+
+#test "decimal exponent and boundary 10" {#assert LX_decimal("0e99999")==0x0;}
+
+#test "decimal exponent and boundary 11" {#assert LX_decimal("1e+2")==0x4059000000000000;}
+
+#test "decimal exponent and boundary 12" {#assert LX_decimal("1e-2")==0x3f847ae147ae147b;}
+
+#test "decimal exponent and boundary 13" {#assert LX_decimal("0.99999999999999999")==0x3ff0000000000000;}
+
+#test "decimal exponent and boundary 14" {#assert LX_decimal("1.99999999999999999")==0x4000000000000000;}
+
+#test "decimal exponent and boundary 15" {#assert LX_decimal("1e")==0x3ff0000000000000;}
+
+#test "decimal exponent and boundary 16" {#assert LX_decimal("1.2e+")==0x3ff3333333333333;}
+
+#test "limbs, modular borrow and comparison boundaries" {
+  a:=[3] u32.[0,0x89abcdef,0];b:[3] u32;
+  #assert LX_big_bits(b[..])==0 && LX_big_bits(a[..])==64;
+  #assert LX_limb(a[..],3,0)==0 && LX_limb(a[..],4,32)==0;
+  #assert LX_limb(a[..],2,1)==1 && LX_limb(a[..],2,31)==0x44d5e6f7;
+  #assert LX_big_cmp(b[..],b[..],3)==0;
+  #assert LX_big_cmp(a[..],b[..],0)==1 && LX_big_cmp(b[..],a[..],0)== -1;
+  b[0]=1;#assert LX_big_cmp(b[..],b[..],0)==0 && LX_big_cmp(b[..],b[..],1)== -1;
+  a[0]=0;a[1]=1;a[2]=0;LX_big_sub(a[..],b[..],0);#assert a[0]==4294967295 && a[1]==0;
+  for i:0..<3 {a[i]=0;}a[0]=1;LX_big_shift(a[..],32);#assert a[0]==0 && a[1]==1;
+  #assert LX_big_cmp(a[..],b[..],32)==0 && LX_big_cmp(a[..],b[..],31)==1;
+  a[0]=1;#assert LX_big_cmp(a[..],b[..],32)==1;
+}
+
+#test "binary exponent and IEEE format plans" {
+  a:=[2] u32.[1,0];b:=[2] u32.[1,0];
+  #assert LX_binary_exp(a[..],b[..])==0;b[0]=2;#assert LX_binary_exp(a[..],b[..])== -1;
+  b[0]=4;#assert LX_binary_exp(a[..],b[..])== -2;a[0]=3;#assert LX_binary_exp(a[..],b[..])== -1;
+  a[0]=8;b[0]=1;#assert LX_binary_exp(a[..],b[..])==3;
+  #assert LX_format(-1023).subnormal && LX_format(-1023).scale==1074;
+  #assert !LX_format(-1022).subnormal && LX_format(-1022).scale==1074;
+  #assert LX_format(52).scale==0 && LX_format(53).scale== -1;
+  #assert LX_decimal("9e308")==0x7ff0000000000000;
+  #assert LX_decimal("1E2")==0x4059000000000000;
+}
+
+#forall "signed binary scales" n:-1074..<1075 {
+  s:=LX_signed_shift(n);#assert s.positive>=0 && s.negative>=0;
+  #assert s.positive-s.negative==n && s.positive*s.negative==0;
+}
+
+#test "decimal records retain bounded precision and a sticky remainder" {
+  n:[128] u32;p:=LX_read_decimal("001.200e-2",n[..]);
+  #assert p.significant==4 && p.kept==4 && p.fraction==3 && p.exponent== -2 && !p.sticky && n[0]==1200;
+  #assert LX_exp_limit(0)==2048 && LX_exp_limit(20)==2068;
+  for i:0..<128 {n[i]=0;}p=LX_read_decimal("1e999999999999999",n[..]);#assert p.exponent==2065;
+  bytes:[801] u8;for i:0..<801 {bytes[i]=48;}bytes[0]=49;bytes[800]=49;
+  for i:0..<128 {n[i]=0;}p=LX_read_decimal(cast(string)bytes[..],n[..]);
+  #assert p.significant==801 && p.kept==800 && p.sticky;
+  bytes[800]=48;for i:0..<128 {n[i]=0;}p=LX_read_decimal(cast(string)bytes[..],n[..]);#assert !p.sticky;
+}

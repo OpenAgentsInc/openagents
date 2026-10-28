@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.7.1 can report. This appendix is generated from the
+Every error `coax0` 0.8.0 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
@@ -14,9 +14,13 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 
 ## E01xx: lexer
 
+
+## E01xx: lexer
+
 | Code | Meaning | What to do |
 | --- | --- | --- |
 | `E0101` | block comment is never closed | A /* comment has no matching */ before the end of the file. Block comments nest, so every /* inside needs its own */. |
+| `E0102` | retired in 0.3.0 | Was: floating-point literals are not supported. Floats arrived in 0.3.0. |
 | `E0103` | number has no digits after its base prefix | 0x and 0b must be followed by at least one digit of that base. |
 | `E0104` | integer literal does not fit in 64 bits | Integer literals go up to 18446744073709551615 (the u64 maximum). Where the literal is used, it must also fit that type. |
 | `E0105` | unknown escape in a string | Strings support \n \t \r \0 \\ and \". Unicode and hex escapes are planned. |
@@ -25,6 +29,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0108` | unexpected character | The character starts no token in Coax. |
 | `E0109` | bad floating-point literal | The literal rounds to infinity (the largest f64 is about 1.8e308, the largest f32 about 3.4e38), or it is followed by something other than an f32 or f64 suffix. |
 | `E0110` | invalid character literal | A character literal is one ASCII character or escape in single quotes ('a', '\n', '\''). It is an integer literal holding that byte, so it fits u8. |
+| `E0111` | lexer source or storage limit | Source must fit signed 32-bit byte offsets and one-based EOF locations. Native lexer buffers must meet the Coax capacity contract. |
 
 ## E02xx: parser
 
@@ -40,6 +45,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0208` | expected a name | A parameter, field, member or loop variable name was expected here. |
 | `E0209` | expected a module name after #import | Write #import "Basic"; |
 | `E0210` | directive not supported here | The directive is unknown or not implemented in this position. Procedures accept #export_c; files accept #import and #assert; expressions accept #run. |
+| `E0211` | retired in 0.2.0 | Was: only procedures can be declared at the top level. Top-level constants arrived in 0.2.0. |
 | `E0212` | global variables are not supported | Top-level mutable state is not part of coax0. Use constants, or pass state explicitly. |
 | `E0213` | expected a top-level declaration | The top level holds #import, #assert and declarations 'name :: ...'. |
 | `E0214` | unknown cast modifier | The only modifier is trunc: cast,trunc(u8) x keeps the low bits instead of checking that the value fits. |
@@ -155,29 +161,5 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | --- | --- | --- |
 | `E0501` | invalid proto import | Use #import_proto "profile.pb" as Prefix; with an exact FileDescriptorSet path relative to the source file. |
 | `E0502` | proto descriptor rejected | The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated. |
-| `E0504` | proto imports are CPU-only | Generated binary codecs are CPU code and cannot be compiled as Metal shaders. |
-
-## Retired
-
-| Code | Status | Previous meaning |
-| --- | --- | --- |
-| `E0102` | retired in 0.3.0 | Was: floating-point literals are not supported. Floats arrived in 0.3.0. |
-| `E0211` | retired in 0.2.0 | Was: only procedures can be declared at the top level. Top-level constants arrived in 0.2.0. |
 | `E0503` | retired in 0.6.0 | Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0. |
-
-## Run-time traps
-
-These are not compile errors: a program stops with a message and the source
-line. Each one stops it in every build mode, except integer overflow, which
-wraps in `--release`.
-
-| Message | Cause |
-| --- | --- |
-| `integer overflow in '+'` (and `'-'`, `'*'`, `'/'`, unary `'-'`) | Debug builds only; release wraps |
-| `division by zero`, `division by zero in '%'` | A zero divisor |
-| `index out of bounds` | An index outside an array, view or string |
-| `slice out of bounds` | A slice `lo..<hi` with `lo < 0`, `hi < lo` or `hi > count` |
-| `cast out of range` | `cast(T)` of a value that `T` cannot hold, or of a NaN |
-| `value is not a member of enum NAME` | `cast(Enum)` of an integer that names no member |
-| `shift amount out of range` | A shift by less than 0, or by the type's width or more |
-| `assertion failed` | An `#assert` statement whose condition is false; it is checked in debug and release |
+| `E0504` | proto imports are CPU-only | Generated binary codecs are CPU code and cannot be compiled as Metal shaders. |

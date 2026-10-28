@@ -167,3 +167,28 @@ correctness. Independent protoc vectors exercise interoperability. See
 `coax/proto.md` for the evidence scopes. Relocated-binary/no-PATH iOS C/header
 generation, native descriptor ASan/UBSan fuzzing and the real iOS simulator
 flow in `coax/tests/proto_import.py` and app tests.
+
+
+## The compiler lexer is Coax with an explicit generated seed
+
+`coax/lib/compiler/lexer.coax` is the authored lexer, including keyword/operator
+selection, locations, recovery, decoded strings, diagnostic text, integer
+accumulation and decimal-to-binary64 conversion. `coax/src/lex.cpp` only supplies
+owned storage and copies the Coax result into the C++ parser ABI; it has no
+native scanning or numeric-conversion fallback. Token ordinal ABI agreement is
+checked when compiling the bridge.
+
+A checked-in generated C/header seed builds the first frontend. Normal builds
+must regenerate that seed exactly from the Coax source, pass its authority and
+zero-survivor mutation gates, and reproduce the final compiler modules before
+publication. Refreshing the seed is an explicit operation with a previously
+trusted compiler. The seed, C++ parser/checker/evaluator/emitter, host/toolchain
+and native ABI remain trusted; fixed points and finite checks are not proofs of
+bootstrap security or of the whole compiler. Normal bootstrap and iOS code
+generation remain Python-free.
+
+Check: `coax test coax/lib/compiler/lexer.coax`, `coax mutate` on that file,
+`coax/build.sh test`, and `coax/tests/lexer.py` (compiled Coax ABI/recovery,
+independent exact-decimal and binary64 midpoint oracles, ASan/UBSan byte-pair and
+random-input fuzzing). The real iOS Home/Grid/animation tests exercise product
+code compiled through the Coax lexer.

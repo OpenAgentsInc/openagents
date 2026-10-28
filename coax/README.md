@@ -14,10 +14,10 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.7.1's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.8.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
-The C++20 compiler parses and checks one source file, executes bounded
+The Coax lexer feeds a C++20 parser/checker that processes one source file and executes bounded
 compile-time work, and emits one self-contained C11 file. The host C compiler
 builds it into a program, or into an object file plus a generated header that
 C, C++ and Swift hosts call. Generated code includes small print, checked
@@ -57,7 +57,7 @@ coax/build.sh test
 C compiler (default `cc`). `--release` turns on C optimization and wrapping
 integer arithmetic; bounds, casts, shifts and division by zero are checked in
 every build. Normal compilation, including proto imports and iOS code generation, needs
-C++20 and C11 tools. The native importer and its embedded Coax runtime ship in
+C++20 and C11 tools. The checked Coax importer and its embedded wire runtime ship in
 the compiler binary; no interpreter or helper installation is needed. Tests
 and schema maintenance still use Python 3. `COAX_HOST_TARGET` can supply an
 explicit host triple for bootstrap builds inside a cross-target environment;
@@ -221,6 +221,21 @@ Next: the `src/paynet` pulse kernel itself, called from the engine's frame
 loop with its outputs compared and its frame cost measured, before anything in
 the app or its CMake/Xcode paths changes. See §20 of the specification for
 later metadata, build, parallelism, browser and reload gates.
+
+## Coax lexer and bootstrap seed
+
+`lib/compiler/lexer.coax` owns byte classification, keywords, longest-match
+operators, nested comments, escapes, source locations, recovery, numeric
+conversion and diagnostic text. `src/lex.cpp` only adapts tokens, owned strings,
+locations and diagnostics to the existing C++ parser ABI. Binary64 values cross
+that ABI as raw bits copied into the parser's existing double field; the host
+does not parse numbers.
+
+The first compiler uses the generated C seed in `bootstrap/`. Normal builds
+rebuild that C/header from Coax and refuse a mismatch, run checks/mutation gates,
+link the regenerated lexer with the Coax importer/fingerprints, then check final
+self-regeneration before publishing. A seed refresh is explicit and uses an
+already trusted compiler. See [the bootstrap contract](bootstrap/README.md).
 
 ## Limits of the verification gates
 

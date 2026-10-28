@@ -39,6 +39,8 @@ class Tools(unittest.TestCase):
             if source.name == "errors.cpp":
                 continue
             used |= set(re.findall(r'"(E0\d{3})"', source.read_text()))
+        for source in (ROOT / "lib").rglob("*.coax"):
+            used |= set(re.findall(r'"(E0\d{3})"', source.read_text()))
         listed = set(re.findall(r"^(E0\d{3}):", coax("explain", "--all").stdout, re.M))
         self.assertFalse(used - listed, f"codes without an explanation: {sorted(used - listed)}")
         result = coax("explain", "E0350")

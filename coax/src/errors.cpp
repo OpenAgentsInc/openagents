@@ -19,6 +19,7 @@ const ErrorInfo ERRORS[] = {
     {"E0108", "unexpected character", "The character starts no token in Coax."},
     {"E0109", "bad floating-point literal", "The literal rounds to infinity (the largest f64 is about 1.8e308, the largest f32 about 3.4e38), or it is followed by something other than an f32 or f64 suffix."},
     {"E0110", "invalid character literal", "A character literal is one ASCII character or escape in single quotes ('a', '\\n', '\\''). It is an integer literal holding that byte, so it fits u8."},
+    {"E0111", "lexer source or storage limit", "Source must fit signed 32-bit byte offsets and one-based EOF locations. Native lexer buffers must meet the Coax capacity contract."},
 
     // ---- E02xx: parser ----
     {"E0201", "expected a token", "The parser needed a specific token here, usually ';', ')' or '}'. For a missing ';' the caret points right after the previous token."},
