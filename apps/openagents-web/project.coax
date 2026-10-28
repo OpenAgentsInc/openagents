@@ -1880,7 +1880,20 @@ link_at :: (s: [] ProjectState, x: f32, y: f32) -> int {
 
 // A click (a press let go where it was pressed): CLOSE or outside the
 // panel closes it, a link opens its task, a queue row opens its own.
+// The header's crumbs: OPENAGENTS goes home, PROJECTS to the list.
+ACT_NAVIGATE :: 1;   // host.js: go to the outbox's URL
+crumb_at :: (s: [] ProjectState, x: f32, y: f32) -> string {
+  d := hi(s[0].dpr, 1); h := layout(s[0].width, s[0].height, d).header;
+  x0 := h.x0 + 18 * d;
+  if y < h.y0 + 10 * d || y > h.y0 + 27 * d { return ""; }
+  if x >= x0 && x <= x0 + text_width("OPENAGENTS", 7 * d) { return "/"; }
+  if x >= x0 + text_width("OPENAGENTS /", 7 * d) && x <= x0 + text_width("OPENAGENTS / PROJECTS", 7 * d) { return "/projects"; }
+  return "";
+}
+
 click :: (s: [] ProjectState, w: [] Work, x: f32, y: f32) -> bool {
+  go := crumb_at(s, x, y);
+  if go.count > 0 { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, go); return true; }
   if s[0].open > 0 {
     if inside(s[0].close, x, y) { close_task(s); return true; }
     k := link_at(s, x, y);
@@ -1968,6 +1981,7 @@ coaxial_project_wheel :: (s: [] ProjectState, dy: f32) #export_c {
 coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
   if s.count < 1 || w.count < 1 || s[0].page != 0 || s[0].touch || !s[0].pointed { return 0; }
   x := s[0].px; y := s[0].py;
+  if crumb_at(s, x, y).count > 0 { return 1; }
   if s[0].open > 0 {
     if inside(s[0].close, x, y) || link_at(s, x, y) >= 0 { return 1; }
     if inside(s[0].panel, x, y) { return 0; }
@@ -2372,6 +2386,26 @@ within :: (out: [] f32, from: int, to: int, b: Box, d: f32) -> bool {
     poke(g[..], mid_x(b), mid_y(b) + 60, POINTER_MOVE, 1);
     poke(g[..], mid_x(b), mid_y(b) + 60, POINTER_UP, 1);
     #assert g[0].s[0].open == 0;
+  }
+}
+
+#test "the header's crumbs go home and back to the project list" {
+  out: [PAGE_OUT] f32;
+  sizes := [4] f32.[1440, 900, 320, 568];
+  for k: 0..<2 {
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    g: [1] Page;
+    _ := draw_page(g[..], out[..], w, h);
+    hb := layout(w, h, 2).header;
+    x0 := hb.x0 + 36; y := hb.y0 + 36;
+    px := x0 + text_width("OPENAGENTS / ", 14) + text_width("PROJECTS", 14) * 0.5;
+    poke(g[..], px, y, POINTER_MOVE, 0);
+    #assert coaxial_project_cursor(g[0].s[..], g[0].w[..]) == 1;
+    #assert tap(g[..], px, y, k) && g[0].s[0].action == ACT_NAVIGATE;
+    #assert same(cast(string) g[0].s[0].outbox[0..<g[0].s[0].out_n], "/projects");
+    coaxial_project_action_done(g[0].s[..]);
+    #assert tap(g[..], x0 + 10, y, k) && same(cast(string) g[0].s[0].outbox[0..<g[0].s[0].out_n], "/");
+    #assert same(crumb_at(g[0].s[..], x0 + 10, hb.y0 + 80), "");
   }
 }
 
