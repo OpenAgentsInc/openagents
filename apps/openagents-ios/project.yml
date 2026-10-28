@@ -50,8 +50,8 @@ targets:
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/VoiceMeter.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
-      - path: ../../metareal/platform/host.c
-      - path: ../../metareal/platform/voice.c
+      - path: ../../verse/platform/host.c
+      - path: ../../verse/platform/voice.c
       - path: Generated/HomeShaders.txt
         buildPhase: resources
     dependencies:
@@ -74,7 +74,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents listens while voice is on, so you can talk to agents hands-free."
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_OBJC_BRIDGING_HEADER: OpenAgents/Platform/Bridge.h
-        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metareal/platform"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../verse/platform"]
         GCC_OPTIMIZATION_LEVEL: "2"
       configs:
         # Voice test recordings (OpenAgents/Voice/Fixtures) ship in Debug only.

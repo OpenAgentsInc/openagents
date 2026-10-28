@@ -1,6 +1,6 @@
 #import "Basic";
 
-// From metareal/home.coax, the native home screen of the OpenAgents iOS app.
+// From verse/home.coax, the native home screen of the OpenAgents iOS app.
 minimum :: (a: f64, b: f64) -> f64 { if a < b { return a; } return b; }
 maximum :: (a: f64, b: f64) -> f64 { if a > b { return a; } return b; }
 clamp :: (a: f64, low: f64, high: f64) -> f64 { return minimum(high, maximum(low, a)); }

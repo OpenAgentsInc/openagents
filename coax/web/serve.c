@@ -36,7 +36,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "../../metareal/voice-host/ws.h"
+#include "../../verse/voice-host/ws.h"
 
 #define MAX_CLIENTS 64
 #define MAX_WATCH 256

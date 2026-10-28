@@ -106,8 +106,8 @@ lap upload "$t"
 if $server; then
   t=$(now)
   mkdir -p "$stage/image/server"
-  cp "$here/serve.c" "$here/../../metareal/voice-host/ws.c" "$here/../../metareal/voice-host/ws.h" "$stage/image/server/"
-  sed -i '' 's#"../../metareal/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c"
+  cp "$here/serve.c" "$here/../../verse/voice-host/ws.c" "$here/../../verse/voice-host/ws.h" "$stage/image/server/"
+  sed -i '' 's#"../../verse/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c"
   cp "$here/Dockerfile" "$stage/image/"
   image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/coaxial-serve:$(date +%Y%m%d-%H%M%S)"
   gcloud builds submit "$stage/image" --project "$project" --region "$region" --tag "$image" --quiet \

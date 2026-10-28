@@ -1,7 +1,7 @@
 import Foundation
 import LocalAuthentication
 
-/// metareal/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
+/// verse/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
 /// import the header's cast macros). The header's layout checks pin Flow.
 enum Pay { static let idle: coax_t_Pay = 0, quoted: coax_t_Pay = 1, sending: coax_t_Pay = 2, succeeded: coax_t_Pay = 3, notSent: coax_t_Pay = 4, unknown: coax_t_Pay = 5 }
 enum Verdict { static let send: coax_t_Verdict = 0, overCap: coax_t_Verdict = 1, overLimit: coax_t_Verdict = 2, expired: coax_t_Verdict = 3, badAmount: coax_t_Verdict = 4, busy: coax_t_Verdict = 5 }
@@ -23,13 +23,13 @@ enum Money {
         let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
         return f.string(from: NSNumber(value: Double(sats) / 100_000_000 * rate)).map { "≈ " + $0 }
     }
-    /// Digits typed into an amount field, kept through metareal_wallet_digit:
+    /// Digits typed into an amount field, kept through verse_wallet_digit:
     /// nil when it isn't a whole number of sats or passes all the bitcoin.
     static func typed(_ text: String) -> UInt64? {
         var sats: Int64 = 0
         for c in text where c != "," && c != " " {
             guard let d = c.wholeNumberValue, c.isASCII else { return nil }
-            sats = metareal_wallet_digit(sats, Int64(d))
+            sats = verse_wallet_digit(sats, Int64(d))
             if sats < 0 { return nil }
         }
         return UInt64(sats)

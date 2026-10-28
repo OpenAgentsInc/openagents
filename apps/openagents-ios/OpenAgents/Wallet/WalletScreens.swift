@@ -4,7 +4,7 @@ import CoreImage.CIFilterBuiltins
 
 // The wallet's screens (UIKit, per docs/lightning/coax-integration.md):
 // the balance and activity, sending, receiving and a payment's details.
-// SparkHost does the work; metareal/wallet.coax decides each send.
+// SparkHost does the work; verse/wallet.coax decides each send.
 
 private enum Look {
     static let ink = UIColor(white: 1, alpha: 0.92)
@@ -370,7 +370,7 @@ final class SendViewController: WalletForm {
     }
 
     private func typed() {
-        // The keypad goes through metareal_wallet_digit; anything else is cut.
+        // The keypad goes through verse_wallet_digit; anything else is cut.
         if let text = amount.text, !text.isEmpty, Money.typed(text) == nil { amount.text = String(text.dropLast()) }
     }
 
@@ -412,7 +412,7 @@ final class SendViewController: WalletForm {
         let chosen = amount.isHidden ? nil : Money.typed(amount.text ?? "")
         if !amount.isHidden, (chosen ?? 0) == 0 { return fail("Enter an amount in sats.") }
         if case .withdraw(_, let low, let high) = destination {
-            guard metareal_wallet_amount_ok(Int64(chosen!), Int64(low), Int64(high), 2_100_000_000_000_000) else {
+            guard verse_wallet_amount_ok(Int64(chosen!), Int64(low), Int64(high), 2_100_000_000_000_000) else {
                 return fail("Choose an amount between \(Money.text(low)) and \(Money.text(high)).")
             }
             return busy(onward) { [self] in
@@ -421,7 +421,7 @@ final class SendViewController: WalletForm {
             }
         }
         if case .lnurl(_, let low, let high, _) = destination,
-           !metareal_wallet_amount_ok(Int64(chosen!), Int64(low), Int64(high), 2_100_000_000_000_000) {
+           !verse_wallet_amount_ok(Int64(chosen!), Int64(low), Int64(high), 2_100_000_000_000_000) {
             return fail("Choose an amount between \(Money.text(low)) and \(Money.text(high)).")
         }
         let note = comment.isHidden ? nil : comment.text
@@ -438,13 +438,13 @@ final class SendViewController: WalletForm {
 }
 
 /// The last step before money leaves: recipient, amount, fee and total,
-/// with anything unusual called out. metareal/wallet.coax decides whether
+/// with anything unusual called out. verse/wallet.coax decides whether
 /// the confirmed quote may be paid.
 final class ReviewViewController: WalletForm {
     private let host: SparkHost
     private var quote: SparkHost.Quote
     private let spendable: UInt64
-    private var flow = metareal_wallet_step(metareal_wallet_start(), PayEvent.quote)
+    private var flow = verse_wallet_step(verse_wallet_start(), PayEvent.quote)
     private let key = UUID().uuidString.lowercased()
     private var speed = 1
     private let fee = Look.label()
@@ -494,7 +494,7 @@ final class ReviewViewController: WalletForm {
     }
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if isMovingFromParent { flow = metareal_wallet_step(flow, PayEvent.cancel) }
+        if isMovingFromParent { flow = verse_wallet_step(flow, PayEvent.cancel) }
     }
 
     private func render() {
@@ -504,8 +504,8 @@ final class ReviewViewController: WalletForm {
         totalDollars.text = Money.dollars(sum, rate)
         total.accessibilityIdentifier = "send.total"
         var notes: [String] = []
-        if metareal_wallet_fee_high(Int64(quote.amount), Int64(quote.fee)) { notes.append("The fee is more than a tenth of the amount.") }
-        if let expires = quote.expires, metareal_wallet_expiring(Int64(Date().timeIntervalSince1970), Int64(expires.timeIntervalSince1970)) {
+        if verse_wallet_fee_high(Int64(quote.amount), Int64(quote.fee)) { notes.append("The fee is more than a tenth of the amount.") }
+        if let expires = quote.expires, verse_wallet_expiring(Int64(Date().timeIntervalSince1970), Int64(expires.timeIntervalSince1970)) {
             notes.append("This request expires in under a minute.")
         }
         if quote.speeds.count == 3 { notes.append(["Fast: about 10 minutes.", "Normal: about 30 minutes.", "Slow: an hour or more."][speed]) }
@@ -516,11 +516,11 @@ final class ReviewViewController: WalletForm {
     private func confirm() {
         let now = Int64(Date().timeIntervalSince1970)
         let expires = quote.expires.map { Int64($0.timeIntervalSince1970) } ?? Int64.max
-        let verdict = metareal_wallet_may_send(flow.state, Int64(quote.amount), Int64(quote.fee), Int64(quote.fee), Int64(spendable), now, expires)
+        let verdict = verse_wallet_may_send(flow.state, Int64(quote.amount), Int64(quote.fee), Int64(quote.fee), Int64(spendable), now, expires)
         switch verdict {
         case Verdict.send: break
         case Verdict.expired:
-            flow = metareal_wallet_step(flow, PayEvent.expire)
+            flow = verse_wallet_step(flow, PayEvent.expire)
             return fail("This quote has expired. Go back and start again.")
         case Verdict.overLimit: return fail("There isn't enough in your wallet for this payment and its fee.")
         case Verdict.badAmount: return fail("This amount can't be sent.")
@@ -528,13 +528,13 @@ final class ReviewViewController: WalletForm {
         }
         busy(send) { [self] in
             guard await OwnerCheck.confirm("Send \(Money.text(quote.amount))") else { return }
-            flow = metareal_wallet_step(flow, PayEvent.confirm)
+            flow = verse_wallet_step(flow, PayEvent.confirm)
             guard flow.state == Pay.sending else { return }
             let outcome = await host.send(key: key, speed: speed)
             switch outcome {
-            case .sent: flow = metareal_wallet_step(flow, PayEvent.sent)
-            case .notSent: flow = metareal_wallet_step(flow, PayEvent.failed)
-            case .waiting: flow = metareal_wallet_step(flow, PayEvent.timedOut)
+            case .sent: flow = verse_wallet_step(flow, PayEvent.sent)
+            case .notSent: flow = verse_wallet_step(flow, PayEvent.failed)
+            case .waiting: flow = verse_wallet_step(flow, PayEvent.timedOut)
             }
             let result: ResultViewController.Result
             switch outcome {

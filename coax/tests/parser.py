@@ -104,7 +104,7 @@ class Parser(unittest.TestCase):
         flags=['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         LX.checked([os.environ.get('CC','cc'),'-std=c11',*flags,'-c',ROOT/'bin/proto_importer.c','-o',obj])
         LX.checked([os.environ.get('CXX','c++'),'-std=c++20',*flags,'-I',ROOT/'bin',ROOT/'src/main.cpp',obj,'-o',exe])
-        for source in (ROOT/'lib/compiler/parser.coax',ROOT/'lib/compiler/checker.coax',ROOT.parent/'metareal/home.coax',ROOT.parent/'metareal/grid.coax'):
+        for source in (ROOT/'lib/compiler/parser.coax',ROOT/'lib/compiler/checker.coax',ROOT.parent/'verse/home.coax',ROOT.parent/'verse/grid.coax'):
             LX.checked([exe,'check',source],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
         # Wide source with a deep semantic dependency chain: the parser's
         # grammar bound is not involved, and no partial typed tree may escape.

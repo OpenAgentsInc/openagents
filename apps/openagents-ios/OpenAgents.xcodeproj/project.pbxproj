@@ -306,7 +306,7 @@
 				0003C41E79E3C2F240E09456 /* voice.c */,
 			);
 			name = platform;
-			path = ../../metareal/platform;
+			path = ../../verse/platform;
 			sourceTree = "<group>";
 		};
 		3A9C812E2B5DC80E1443A532 /* Fixtures */ = {
@@ -688,7 +688,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../metareal/platform",
+					"$(SRCROOT)/../../verse/platform",
 				);
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
@@ -782,7 +782,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../metareal/platform",
+					"$(SRCROOT)/../../verse/platform",
 				);
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;

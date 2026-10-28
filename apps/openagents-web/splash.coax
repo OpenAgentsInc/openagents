@@ -35,7 +35,7 @@ MODE_STROKE :: 0.0;  // a sharp core and a soft glow: words, nodes
 MODE_LINK :: 1.0;    // a soft line, faded where it meets its nodes
 MODE_PULSE :: 2.0;   // a payment in flight: a hot head, a tail, a coloured glow
 MODE_GLOW_TEXT :: 3.0; // a stroke with a white core and a coloured glow: the amounts
-MODE_BAR :: 4.0;    // a Metareal HUD bar (ui.coax bar): metareal_bar's glass, cuts, edge, sweep and glow
+MODE_BAR :: 4.0;    // a Verse HUD bar (ui.coax bar): verse_bar's glass, cuts, edge, sweep and glow
 UNIFORM_FLOATS :: 16; // width, height, time, fade, still, scene, 0, 0, then the panel (ui.coax): x0, y0, x1, y1, scale, alpha, tint, 0
 
 CAP :: 11.0;         // COMING SOON's cap height, CSS pixels

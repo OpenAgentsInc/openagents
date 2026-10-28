@@ -1,0 +1,895 @@
+// The Grid: the bare Verse world, as aethyr-cpp's src/grid.cpp draws it. A
+// ground of lines every 4 m out to 264 m, brighter on the street lines every
+// 24 m, fading into the black field from 6 m to 110 m, with a ring at your
+// feet. You walk it with verse/player.coax; your character and the robots
+// are verse/cast.coax's, drawn by the host with verse_grid_view.
+//
+// aethyr's Pylon terminal stands 4 m ahead of where you start ("The
+// terminal" below).
+//
+// The lines are projected here and drawn as the home's screen-space line
+// packets, so the Grid shares the home's line, bloom and tone stages. The
+// host keeps a Sticks value for the touch controls and passes it back on
+// every call:
+//
+//   - a finger that starts on the left half is the move stick, from where it
+//     touched down; pushed well past the ring, you run;
+//   - a finger that starts on the right half looks around;
+//   - a quick tap on the right half jumps;
+//   - the hotbar, aethyr's HUD slots above the move stick, has one slot:
+//     dance. A finger that starts on it presses it; lifted on it (or near,
+//     as aethyr's buttons allow), you dance, or stop. The slot stays lit
+//     while you dance.
+
+host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign;
+host_dot :: (h: int, x: f64, y: f64, size: f64, light: f64, soft: f64, crisp: f64) #foreign;
+host_slot :: (h: int, x: f64, y: f64, width: f64, height: f64, press: f64, flash: f64, selected: f64, icon: f64) #foreign;
+
+PI :: 3.14159265;
+EDGE :: 264.0;          // the grid's edge, metres from the centre
+SPACING :: 4.0;         // line spacing
+SEGMENT :: 8.0;         // lines are drawn in pieces this long, so they fade
+FOG_START :: 6.0;
+FOG_END :: 110.0;
+MINOR :: 0.24;          // a line's light, before the fog
+STREET :: 0.55;         // the street lines, midway between 24 m lots
+FAR :: 300.0;           // the depth range's far end, metres
+FOVY :: 1.05;           // radians, as aethyr's Grid
+NEAR :: 0.05;
+LINES :: 56;            // most lines one axis can show: 2 FOG_END / SPACING + 1
+PIECES :: 29;           // most pieces one line can show: 2 FOG_END / SEGMENT + 2
+STICK :: 56.0;          // the move stick's radius, in points
+RUN_PAST :: 1.25;       // pushed this far past the ring, you run
+LOOK :: 0.006;          // radians per point dragged, as aethyr's drag look
+TAP_TIME :: 0.3;        // seconds: a touch shorter than this, that
+TAP_TRAVEL :: 10.0;     // moved less than this many points, is a tap
+SLOT :: 46.0;           // a hotbar slot's size in points, as aethyr's on a phone
+SLOT_EDGE :: 16.0;      // from the screen's left edge
+SLOT_GAP :: 16.0;       // above the move stick's ring
+SLOT_SLOP :: 0.6;       // a lift this far off the slot (times its size) still counts
+DANCE :: 1;             // the dance slot's icon
+
+Vec3 :: struct { x: f32; y: f32; z: f32; }
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+smooth :: (a: f32, b: f32, x: f32) -> f32 { t := clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
+sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+cross :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+length :: (a: Vec3) -> f32 { return sqrt(dot(a, a)); }
+unit :: (a: Vec3) -> Vec3 {
+  n := length(a);
+  if n == 0 { return v3(0, 0, 1); }
+  return v3(a.x / n, a.y / n, a.z / n);
+}
+lerp :: (a: Vec3, b: Vec3, t: f32) -> Vec3 { return v3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
+
+// ---- The camera ----
+
+Camera :: struct {
+  eye: Vec3;
+  right: Vec3;          // screen x, in the world
+  up: Vec3;             // screen up
+  fwd: Vec3;            // into the screen
+  focal: f32;           // pixels per unit of x / z
+  cx: f32;
+  cy: f32;
+  width: f32;
+  height: f32;
+}
+
+camera :: (eye: Vec3, at: Vec3, width: f32, height: f32) -> Camera {
+  c: Camera;
+  c.eye = eye;
+  c.fwd = unit(sub(at, eye));
+  c.right = unit(cross(c.fwd, v3(0, 1, 0)));
+  c.up = cross(c.right, c.fwd);
+  c.focal = height / 2 / tan(f32(FOVY / 2));
+  c.cx = width / 2;
+  c.cy = height / 2;
+  c.width = width;
+  c.height = height;
+  return c;
+}
+
+// A world point in the camera's frame: x right, y up, z ahead.
+view :: (c: Camera, p: Vec3) -> Vec3 {
+  d := sub(p, c.eye);
+  return v3(dot(d, c.right), dot(d, c.up), dot(d, c.fwd));
+}
+
+// A point ahead of the camera on the screen, in pixels from the top left.
+Screen :: struct { x: f32; y: f32; }
+project :: (c: Camera, v: Vec3) -> Screen {
+  return Screen.{x = c.cx + v.x / v.z * c.focal, y = c.cy - v.y / v.z * c.focal};
+}
+
+// A world segment on the screen, cut where it passes behind the near plane,
+// with how far along the segment each end now is.
+Piece :: struct { a: Screen; b: Screen; ta: f32; tb: f32; on: bool; }
+
+piece :: (c: Camera, a: Vec3, b: Vec3) -> Piece {
+  out: Piece;
+  va := view(c, a); vb := view(c, b);
+  if va.z < f32(NEAR) && vb.z < f32(NEAR) { return out; }
+  out.tb = 1;
+  ca := va; cb := vb;
+  if va.z < f32(NEAR) { out.ta = (f32(NEAR) - va.z) / (vb.z - va.z); ca = lerp(va, vb, out.ta); }
+  if vb.z < f32(NEAR) { out.tb = (f32(NEAR) - va.z) / (vb.z - va.z); cb = lerp(va, vb, out.tb); }
+  out.a = project(c, ca);
+  out.b = project(c, cb);
+  // Off one side of the screen altogether.
+  if out.a.x < 0 && out.b.x < 0 { return out; }
+  if out.a.y < 0 && out.b.y < 0 { return out; }
+  if out.a.x > c.width && out.b.x > c.width { return out; }
+  if out.a.y > c.height && out.b.y > c.height { return out; }
+  out.on = true;
+  return out;
+}
+
+// ---- The ground ----
+
+// How much of a line's light the fog leaves at this distance from the eye.
+fog :: (d: f32) -> f32 { return 1 - smooth(FOG_START, FOG_END, d); }
+
+// Line i sits at i * SPACING; the street lines are the ones midway between
+// 24 m lots, at 12 m plus a multiple of 24.
+street :: (i: int) -> bool { return ((i % 6) + 6) % 6 == 3; }
+shade :: (i: int) -> f32 { return ifx street(i) then f32(STREET) else f32(MINOR); }
+
+// The lines one axis shows around `at`: those within FOG_END, inside the
+// edge. Returns the first and one past the last line number.
+Range :: struct { first: int; end: int; }
+lines_near :: (at: f32) -> Range {
+  n := int(EDGE / SPACING);
+  first := int(floor((at - f32(FOG_END)) / f32(SPACING)));
+  last := int(floor((at + f32(FOG_END)) / f32(SPACING)));
+  if (at - f32(FOG_END)) / f32(SPACING) > f32(first) { first += 1; }
+  if first < -n { first = -n; }
+  if last > n { last = n; }
+  r: Range;
+  r.first = first;
+  r.end = ifx last >= first then last + 1 else first;
+  return r;
+}
+
+// The pieces along one line, from `at` - FOG_END to `at` + FOG_END inside
+// the edge, starting on a multiple of SEGMENT.
+pieces_near :: (at: f32) -> Range {
+  first := int(floor(hi(at - f32(FOG_END), -f32(EDGE)) / f32(SEGMENT)));
+  end := int(floor(lo(at + f32(FOG_END), f32(EDGE)) / f32(SEGMENT))) + 1;
+  r: Range;
+  r.first = first;
+  r.end = ifx end > first then end else first;
+  return r;
+}
+
+line_out :: (h: int, p: Piece, la: f32, lb: f32, width: f32) {
+  if !p.on { return; }
+  a := la + (lb - la) * p.ta;
+  b := la + (lb - la) * p.tb;
+  host_line(h, f64(p.a.x), f64(p.a.y), f64(p.b.x), f64(p.b.y), f64(a), f64(b), f64(width));
+}
+
+// One ground line through the world, along z when `along_z` (at x = offset)
+// or along x (at z = offset), near `at`.
+ground_line :: (h: int, c: Camera, offset: f32, along_z: bool, at: f32, light: f32, width: f32, pushed: f32) {
+  r := pieces_near(at);
+  for k: r.first..<r.end {
+    s := hi(f32(k) * f32(SEGMENT), -f32(EDGE));
+    e := lo(s + f32(SEGMENT), f32(EDGE));
+    if e <= s { continue; }
+    a := ifx along_z then v3(offset, 0, s) else v3(s, 0, offset);
+    b := ifx along_z then v3(offset, 0, e) else v3(e, 0, offset);
+    la := light * fog(length(sub(a, c.eye)) - pushed);
+    lb := light * fog(length(sub(b, c.eye)) - pushed);
+    if la + lb <= 0.002 { continue; }
+    line_out(h, piece(c, a, b), la, lb, width);
+  }
+}
+
+// ---- The ring ----
+
+ring :: (h: int, c: Camera, center: Vec3, radius: f32, count: int, light: f32, width: f32) {
+  for i: 0..<count {
+    a0 := f32(i) * f32(2 * PI) / f32(count);
+    a1 := f32(i + 1) * f32(2 * PI) / f32(count);
+    a := v3(center.x + cos(a0) * radius, center.y, center.z + sin(a0) * radius);
+    b := v3(center.x + cos(a1) * radius, center.y, center.z + sin(a1) * radius);
+    line_out(h, piece(c, a, b), light, light, width);
+  }
+}
+
+// The camera as a 4x4 matrix, by rows, from the world to Metal's clip
+// space: the same screen position as `project`, and depth 0 at NEAR to 1 at
+// FAR, so the host's depth-tested meshes line up with the lines drawn here.
+verse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+                       width: f32, height: f32, out: [] f32) -> bool #export_c {
+  if !(width > 0) || !(height > 0) || out.count < 16 { return false; }
+  c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
+  // x and y: the view's right and up, scaled so x / z * focal pixels from
+  // the centre is the edge at width / 2; z: depth times z; w: z.
+  depth := f32(FAR / (FAR - NEAR));
+  row(out, 0, c.right, 2 * c.focal / width, 0, c.eye);
+  row(out, 1, c.up, 2 * c.focal / height, 0, c.eye);
+  row(out, 2, c.fwd, depth, -f32(NEAR) * depth, c.eye);
+  row(out, 3, c.fwd, 1, 0, c.eye);
+  return true;
+}
+row :: (out: [] f32, i: int, axis: Vec3, k: f32, add: f32, eye: Vec3) {
+  out[i * 4] = axis.x * k; out[i * 4 + 1] = axis.y * k; out[i * 4 + 2] = axis.z * k;
+  out[i * 4 + 3] = -dot(axis, eye) * k + add;
+}
+
+// ---- The terminal ----
+//
+// aethyr's shared Pylon terminal (src/grid_world.cpp, addGridArt), ahead of
+// where you start: a desk 2.8 m wide, 1 m tall and 1 m deep at (0, 0, 4),
+// and a screen 2.4 by 1.4 m, 0.2 m deep, standing on it. Like aethyr's
+// addBox, each box is dark faces (0.008) edged in light (0.35). The host
+// draws them as the cast's flat meshes (64-byte vertices, depth tested;
+// verse/cast.coax has the layout) and player.coax treats them as walls.
+
+PROPS :: 2;               // boxes
+CORNERS :: 8;
+PROP_VERTICES :: 32;      // each box's corners twice: faces, then edges
+PROP_FACES :: 72;         // 6 quads a box, 2 triangles each
+PROP_LINES :: 48;         // 12 edges a box
+WALL :: 6;                // numbers per wall: min x, y, z, max x, y, z
+FACE_SHADE :: 0.008;
+EDGE_SHADE :: 0.35;
+
+// Box i: its centre at the floor, and its width, height and depth.
+Prop :: struct { x: f32; y: f32; z: f32; w: f32; h: f32; d: f32; }
+prop :: (i: int) -> Prop {
+  if i == 0 { return Prop.{x = 0, y = 0, z = 4, w = 2.8, h = 1, d = 1}; }
+  return Prop.{x = 0, y = 1, z = 4, w = 2.4, h = 1.4, d = 0.2};
+}
+// Corner k (bit 0 x, bit 1 y, bit 2 z), as addBox numbers them.
+corner :: (b: Prop, k: int) -> Vec3 {
+  return v3(b.x + ifx (k & 1) != 0 then b.w / 2 else -b.w / 2, b.y + ifx (k & 2) != 0 then b.h else 0,
+            b.z + ifx (k & 4) != 0 then b.d / 2 else -b.d / 2);
+}
+// A linear shade as the display byte aethyr's art stores (sRGB).
+display_byte :: (v: f32) -> int {
+  c := clamp(v, 0, 1);
+  e := ifx c <= 0.0031308 then c * 12.92 else 1.055 * pow(c, 1.0f32 / 2.4) - 0.055;
+  return int(floor(e * 255 + 0.5));
+}
+put_u32 :: (b: [] u8, at: int, v: u32) {
+  b[at] = cast(u8) (v & 255); b[at + 1] = cast(u8) ((v >> 8) & 255);
+  b[at + 2] = cast(u8) ((v >> 16) & 255); b[at + 3] = cast(u8) ((v >> 24) & 255);
+}
+put_f32 :: (b: [] u8, at: int, v: f32) { put_u32(b, at, f32_bits(v)); }
+prop_vertex :: (b: [] u8, i: int, p: Vec3, tone: int) {
+  at := i * 64;
+  for k: 0..<64 { b[at + k] = 0; }
+  put_f32(b, at, p.x); put_f32(b, at + 4, p.y); put_f32(b, at + 8, p.z);
+  put_f32(b, at + 16, 1);                                  // the normal: up
+  put_f32(b, at + 32, 1);                                  // all on joint 0
+  b[at + 52] = cast(u8) tone; b[at + 53] = cast(u8) tone; b[at + 54] = cast(u8) tone;
+  b[at + 55] = 255;                                        // flat, no texture
+}
+
+verse_grid_prop_vertices :: () -> int #export_c { return PROP_VERTICES; }
+verse_grid_prop_faces :: () -> int #export_c { return PROP_FACES; }
+verse_grid_prop_lines :: () -> int #export_c { return PROP_LINES; }
+
+// The terminal's vertices (64 bytes each), triangles and edge pairs, into
+// buffers of at least those sizes. Their joint is the identity.
+verse_grid_props :: (vertices: [] u8, faces: [] u32, lines: [] u32) -> bool #export_c {
+  if vertices.count < PROP_VERTICES * 64 || faces.count < PROP_FACES || lines.count < PROP_LINES { return false; }
+  quads: [24] int;
+  q := 0;
+  quads[0] = 0; quads[1] = 2; quads[2] = 3; quads[3] = 1;  quads[4] = 4; quads[5] = 5; quads[6] = 7; quads[7] = 6;
+  quads[8] = 0; quads[9] = 1; quads[10] = 5; quads[11] = 4; quads[12] = 2; quads[13] = 6; quads[14] = 7; quads[15] = 3;
+  quads[16] = 0; quads[17] = 4; quads[18] = 6; quads[19] = 2; quads[20] = 1; quads[21] = 3; quads[22] = 7; quads[23] = 5;
+  f := 0; l := 0;
+  for i: 0..<PROPS {
+    b := prop(i);
+    face := i * 2 * CORNERS; edge := face + CORNERS;
+    for k: 0..<CORNERS {
+      prop_vertex(vertices, face + k, corner(b, k), display_byte(FACE_SHADE));
+      prop_vertex(vertices, edge + k, corner(b, k), display_byte(EDGE_SHADE));
+    }
+    for k: 0..<6 {
+      a := quads[k * 4]; c := quads[k * 4 + 2];
+      faces[f] = cast(u32) (face + a); faces[f + 1] = cast(u32) (face + quads[k * 4 + 1]); faces[f + 2] = cast(u32) (face + c);
+      faces[f + 3] = cast(u32) (face + a); faces[f + 4] = cast(u32) (face + c); faces[f + 5] = cast(u32) (face + quads[k * 4 + 3]);
+      f += 6;
+    }
+    // An edge from each corner along each axis it can go up.
+    for a: 0..<CORNERS {
+      for bit: 0..<3 {
+        m := 1 << bit;
+        if (a & m) == 0 {
+          lines[l] = cast(u32) (edge + a); lines[l + 1] = cast(u32) (edge + (a | m));
+          l += 2;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+// The terminal's boxes as walls for player.coax: WALL numbers each.
+verse_grid_walls :: (out: [] f32) -> int #export_c {
+  if out.count < PROPS * WALL { return 0; }
+  for i: 0..<PROPS {
+    b := prop(i);
+    lo3 := corner(b, 0); hi3 := corner(b, 7);
+    out[i * WALL] = lo3.x; out[i * WALL + 1] = lo3.y; out[i * WALL + 2] = lo3.z;
+    out[i * WALL + 3] = hi3.x; out[i * WALL + 4] = hi3.y; out[i * WALL + 5] = hi3.z;
+  }
+  return PROPS;
+}
+
+// ---- Touch ----
+
+Sticks :: struct {
+  // The move stick: the finger's slot and where it touched down.
+  move_on: bool;
+  move_slot: int;
+  ox: f32;
+  oy: f32;
+  // The look finger: its slot, where it was last, where and when it began,
+  // and whether it has travelled far enough not to be a tap.
+  look_on: bool;
+  look_slot: int;
+  lx: f32;
+  ly: f32;
+  sx: f32;
+  sy: f32;
+  since: f64;
+  travelled: bool;
+  // What the controller reads: the stick in [-1, 1] (x right, y forward),
+  // run, the look turned since the last frame, and a jump to make.
+  pad_x: f32;
+  pad_y: f32;
+  run: bool;
+  dyaw: f32;
+  dpitch: f32;
+  jump: bool;
+  // The hotbar: the finger on the dance slot, whether it is still over it,
+  // and a dance asked for this frame, and when (for the slot's flash).
+  slot_on: bool;
+  slot_finger: int;
+  slot_over: bool;
+  dance: bool;
+  danced_at: f64 = -100;
+}
+
+// Where the move stick rests: its centre, before a thumb is down.
+stick_rest_y :: (height: f32, k: f32) -> f32 { return height - hi(f32(STICK) * k * 2.4, height * 0.18); }
+
+// The dance slot's box, in pixels: left, top, size.
+Slot :: struct { x: f32; y: f32; size: f32; }
+dance_slot :: (height: f32, k: f32) -> Slot {
+  size := f32(SLOT) * k;
+  return Slot.{x = f32(SLOT_EDGE) * k, y = stick_rest_y(height, k) - f32(STICK) * k - f32(SLOT_GAP) * k - size, size = size};
+}
+on_slot :: (b: Slot, x: f32, y: f32, slop: f32) -> bool {
+  return x >= b.x - slop && x <= b.x + b.size + slop && y >= b.y - slop && y <= b.y + b.size + slop;
+}
+
+// A touch: its slot (the host's number for the finger), phase (0 began, 1
+// moved, 2 ended, 3 cancelled), where in pixels, the view's width and
+// height in pixels, pixels per point, and the time in seconds.
+sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32, height: f32,
+                          scale: f32, now: f64, hotbar:bool) -> Sticks {
+  next := s;
+  k := hi(scale, 0.5);
+  hot := dance_slot(height, k);
+  if phase == 0 {
+    if hotbar && on_slot(hot, x, y, 0) {
+      if !s.slot_on { next.slot_on = true; next.slot_finger = slot; next.slot_over = true; }
+    } else if x < width / 2 {
+      if !s.move_on {
+        next.move_on = true; next.move_slot = slot;
+        next.ox = x; next.oy = y;
+      }
+    } else if !s.look_on {
+      next.look_on = true; next.look_slot = slot;
+      next.lx = x; next.ly = y; next.sx = x; next.sy = y;
+      next.since = now; next.travelled = false;
+    }
+    return next;
+  }
+  if s.slot_on && slot == s.slot_finger {
+    over := on_slot(hot, x, y, hot.size * f32(SLOT_SLOP));
+    if phase == 1 { next.slot_over = over; return next; }
+    if phase == 2 && over { next.dance = true; next.danced_at = now; }
+    next.slot_on = false; next.slot_over = false;
+    return next;
+  }
+  if s.move_on && slot == s.move_slot {
+    if phase == 1 {
+      r := f32(STICK) * k;
+      dx := (x - s.ox) / r; dy := (s.oy - y) / r;
+      d := sqrt(dx * dx + dy * dy);
+      next.run = d > f32(RUN_PAST);
+      if d > 1 { dx = dx / d; dy = dy / d; }
+      next.pad_x = dx; next.pad_y = dy;
+    } else {
+      next.move_on = false; next.pad_x = 0; next.pad_y = 0; next.run = false;
+    }
+    return next;
+  }
+  if s.look_on && slot == s.look_slot {
+    if phase == 1 {
+      next.dyaw -= (x - s.lx) / k * f32(LOOK);
+      next.dpitch -= (y - s.ly) / k * f32(LOOK);
+      next.lx = x; next.ly = y;
+      tx := (x - s.sx) / k; ty := (y - s.sy) / k;
+      if tx * tx + ty * ty > f32(TAP_TRAVEL * TAP_TRAVEL) { next.travelled = true; }
+    } else {
+      if phase == 2 && !s.travelled && now - s.since < TAP_TIME { next.jump = true; }
+      next.look_on = false;
+    }
+  }
+  return next;
+}
+
+// After the controller has read a frame's controls: the look and the jump
+// are spent; the stick stays held.
+verse_sticks_used :: (s: Sticks) -> Sticks #export_c {
+  next := s;
+  next.dyaw = 0; next.dpitch = 0; next.jump = false; next.dance = false;
+  return next;
+}
+
+// After a pause: no fingers are down.
+verse_sticks_reset :: () -> Sticks #export_c { s: Sticks; return s; }
+
+sticks_out :: (h: int, s: Sticks, width: f32, height: f32, k: f32) {
+  r := f32(STICK) * k;
+  ox := s.ox; oy := s.oy; light := 0.35f32;
+  // Where to put your thumb, before it is down.
+  if !s.move_on { ox = width * 0.22; oy = stick_rest_y(height, k); light = 0.14; }
+  for i: 0..<32 {
+    a0 := f32(i) * f32(2 * PI) / 32; a1 := f32(i + 1) * f32(2 * PI) / 32;
+    host_line(h, f64(ox + cos(a0) * r), f64(oy + sin(a0) * r), f64(ox + cos(a1) * r), f64(oy + sin(a1) * r),
+              f64(light), f64(light), f64(k));
+  }
+  if s.move_on {
+    host_dot(h, f64(ox + s.pad_x * r), f64(oy - s.pad_y * r), f64(9 * k), 0.8, 0.6, 0.5);
+  }
+}
+
+// The hotbar: the dance slot, pressed while the finger is on it, lit while
+// you dance, flashing as it is used.
+hotbar_out :: (h: int, s: Sticks, height: f32, k: f32, dancing: bool, now: f64) {
+  b := dance_slot(height, k);
+  held := ifx s.slot_on && s.slot_over then 1.0f32 else 0.0f32;
+  flash := ifx now >= s.danced_at then exp(-f32(now - s.danced_at) * 3) else 0.0f32;
+  host_slot(h, f64(b.x), f64(b.y), f64(b.size), f64(b.size), f64(held), f64(flash), ifx dancing then 1.0 else 0.0, f64(DANCE));
+}
+
+// ---- The frame ----
+
+// How far the fog is pushed out: an eye further from you than the follow
+// camera (verse/camera.coax's overview and dolly) sees the ground lit as
+// the follow camera would, so from high up the Grid is a lit disc around you.
+FOLLOW :: 6.0;
+reach :: (eye: Vec3, feet: Vec3) -> f32 { return hi(0, length(sub(eye, feet)) - f32(FOLLOW)); }
+
+// Draws the Grid seen from eye looking at at, with you at feet,
+// into a width by height view (pixels, scale pixels per point), and, when
+// `controls` (you are playing, not watching the overview or the dolly), the
+// sticks and the hotbar, lit if you are dancing, at `now` seconds.
+verse_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+                        feet_x: f32, feet_y: f32, feet_z: f32,
+                        width: f32, height: f32, scale: f32, dancing: bool, now: f64, controls: bool) #export_c {
+  if !(width > 0) || !(height > 0) { return; }
+  k := hi(scale, 0.5);
+  c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
+  feet := v3(feet_x, feet_y, feet_z);
+  out := reach(c.eye, feet);
+  xs := lines_near(feet.x);
+  for i: xs.first..<xs.end { ground_line(h, c, f32(i) * f32(SPACING), true, feet.z, shade(i), 0.8 * k, out); }
+  zs := lines_near(feet.z);
+  for i: zs.first..<zs.end { ground_line(h, c, f32(i) * f32(SPACING), false, feet.x, shade(i), 0.8 * k, out); }
+  ring(h, c, feet, 0.7, 32, f32(STREET), 1.1 * k);
+  if !controls { return; }
+  sticks_out(h, s, width, height, k);
+  hotbar_out(h, s, height, k, dancing, now);
+}
+
+// ---- Checks ----
+
+near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
+behind :: () -> Camera { return camera(v3(0, 2, -4), v3(0, 1.5, 0), 1000, 2000); }
+
+#test "what the camera looks at is the middle of the screen" {
+  c := behind();
+  s := project(c, view(c, v3(0, 1.5, 0)));
+  #assert near(s.x, 500, 0.01) && near(s.y, 1000, 0.01);
+  // The frame is orthonormal.
+  #assert near(length(c.fwd), 1, 0.00001) && near(length(c.right), 1, 0.00001) && near(length(c.up), 1, 0.00001);
+  #assert near(dot(c.fwd, c.right), 0, 0.00001) && near(dot(c.up, c.right), 0, 0.00001) && near(dot(c.up, c.fwd), 0, 0.00001);
+  #assert c.up.y > 0;
+}
+
+#test "looking along +Z, +X is on the left and +Y is up" {
+  c := behind();
+  left := project(c, view(c, v3(1, 1.5, 0)));
+  #assert left.x < 499;
+  high := project(c, view(c, v3(0, 2.5, 0)));
+  #assert high.y < 999;
+  // FOVY is the view's height: a point FOVY / 2 above the axis is on the
+  // top edge, and the same angle to the side is as many pixels across.
+  o := camera(v3(0, 0, 0), v3(0, 0, 1), 1000, 2000);
+  t := tan(f32(FOVY / 2));
+  #assert near(project(o, view(o, v3(0, 10 * t, 10))).y, 0, 0.01);
+  #assert near(project(o, view(o, v3(-5 * t, 0, 10))).x, 1000, 0.01);
+}
+
+#test "vector helpers" {
+  a := v3(1, 2, 3); b := v3(4, 6, 11);
+  d := sub(b, a);
+  #assert d.x == 3 && d.y == 4 && d.z == 8;
+  m := lerp(a, b, 0.25);
+  #assert m.x == 1.75 && m.y == 3 && m.z == 5;
+  x := cross(a, v3(4, 5, 6));
+  #assert x.x == -3 && x.y == 6 && x.z == -3;
+  #assert dot(a, b) == 49 && length(v3(2, 3, 6)) == 7;
+  u := unit(v3(0, 3, 4));
+  #assert near(u.y, 0.6, 0.000001) && near(u.z, 0.8, 0.000001);
+  z := unit(v3(0, 0, 0));
+  #assert z.z == 1;
+}
+
+#test "a camera looking straight down still has a frame" {
+  c := camera(v3(0, 5, 0), v3(0, 0, 0), 100, 100);
+  #assert near(length(c.right), 1, 0.00001) && near(length(c.up), 1, 0.00001);
+}
+
+#forall "a piece behind the near plane is cut there" ia: -3..<4, ib: -3..<4 {
+  c := camera(v3(0, 1, 0), v3(0, 1, 1), 1000, 1000);
+  a := v3(0.2, 1, f32(ia)); b := v3(-0.2, 1, f32(ib));
+  p := piece(c, a, b);
+  za := view(c, a).z; zb := view(c, b).z;
+  if za < f32(NEAR) && zb < f32(NEAR) { #assert !p.on; }
+  else {
+    #assert p.on;
+    #assert p.ta >= 0 && p.ta <= p.tb && p.tb <= 1;
+    if za >= f32(NEAR) { #assert p.ta == 0; }
+    if zb >= f32(NEAR) { #assert p.tb == 1; }
+    // Where it was cut is on the near plane.
+    if za < f32(NEAR) { #assert near(view(c, lerp(a, b, p.ta)).z, NEAR, 0.0001); }
+    if zb < f32(NEAR) { #assert near(view(c, lerp(a, b, p.tb)).z, NEAR, 0.0001); }
+    // The screen ends are where those points project.
+    sa := project(c, view(c, lerp(a, b, p.ta))); sb := project(c, view(c, lerp(a, b, p.tb)));
+    #assert near(p.a.x, sa.x, 0.5) && near(p.a.y, sa.y, 0.5) && near(p.b.x, sb.x, 0.5) && near(p.b.y, sb.y, 0.5);
+  }
+}
+
+#test "a piece with one end on the near plane is kept, uncut there" {
+  c := camera(v3(0, 0, 0), v3(0, 0, 1), 1000, 1000);
+  p := piece(c, v3(0, 0, NEAR), v3(0.01, 0, -1));
+  #assert p.on && p.ta == 0 && p.tb < 1;
+  q := piece(c, v3(0.01, 0, -1), v3(0, 0, NEAR));
+  #assert q.on && q.ta > 0 && q.tb == 1;
+}
+
+#test "pieces off one side of the screen are dropped" {
+  c := camera(v3(0, 1, 0), v3(0, 1, 1), 1000, 1000);
+  #assert piece(c, v3(-1, 1, 1), v3(1, 1, 1)).on;
+  #assert !piece(c, v3(50, 1, 1), v3(60, 1, 1)).on;     // far left
+  #assert !piece(c, v3(-50, 1, 1), v3(-60, 1, 1)).on;   // far right
+  #assert !piece(c, v3(0, 50, 1), v3(1, 60, 1)).on;     // above
+  #assert !piece(c, v3(0, -50, 1), v3(1, -60, 1)).on;   // below
+  // Across the screen from one side to the other stays.
+  #assert piece(c, v3(50, 1, 1), v3(-50, 1, 1)).on;
+  #assert piece(c, v3(0, 50, 1), v3(0, -50, 1)).on;
+}
+
+#forall "the fog fades from FOG_START to FOG_END" d: 0..<130 {
+  f := fog(f32(d));
+  if d <= 6 { #assert f == 1; }
+  if d >= 110 { #assert f == 0; }
+  #assert f >= 0 && f <= 1;
+  #assert fog(f32(d + 1)) <= f;
+  if d > 6 && d < 110 { #assert f > 0 && f < 1; }
+}
+
+#forall "street lines are midway between the 24 m lots" i: -70..<70 {
+  p := i * 4;
+  is_street := ((p - 12) % 24 + 24) % 24 == 0;
+  #assert street(i) == is_street;
+  #assert shade(i) == ifx is_street then f32(STREET) else f32(MINOR);
+}
+
+#forall "the lines near you are the ones within FOG_END, inside the edge" k: -40..<41 {
+  at := f32(k) * 7.3;
+  r := lines_near(at);
+  #assert r.end - r.first <= LINES && r.end >= r.first;
+  #assert r.first >= -66 && r.end <= 67;
+  for i: r.first..<r.end { #assert abs(f32(i) * 4 - at) <= f32(FOG_END); }
+  // Just outside the range is either too far or past the edge.
+  if r.first > -66 { #assert at - f32(r.first - 1) * 4 > f32(FOG_END); }
+  if r.end < 67 { #assert f32(r.end) * 4 - at > f32(FOG_END); }
+}
+
+#test "at the edge, one line or none" {
+  one := lines_near(372);
+  #assert one.first == 66 && one.end == 67;
+  none := lines_near(400);
+  #assert none.end == none.first;
+}
+
+#forall "a line's pieces cover what you can see of it, inside the edge" k: -40..<41 {
+  at := f32(k) * 7.3;
+  r := pieces_near(at);
+  #assert r.end - r.first <= PIECES && r.end >= r.first;
+  start := f32(r.first) * f32(SEGMENT); stop := f32(r.end) * f32(SEGMENT);
+  #assert start <= hi(at - f32(FOG_END), -f32(EDGE));
+  #assert stop >= lo(at + f32(FOG_END), f32(EDGE));
+  #assert start >= -f32(EDGE) - f32(SEGMENT) && stop <= f32(EDGE) + f32(SEGMENT);
+}
+
+#test "one frame stays inside the host's 8192 line packets" {
+  // Two axes of LINES lines in PIECES pieces, the ring, and the stick (the
+  // hotbar's one slot is a packet of its own, of 8).
+  #assert 2 * LINES * PIECES + 32 + 32 < 8192;
+  #assert LINES == int(2 * FOG_END / SPACING) + 1 && PIECES == int(2 * FOG_END / SEGMENT) + 2;
+}
+
+press :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return verse_sticks_touch(s, slot, 0, x, y, 1000, 2000, 2, now); }
+drag :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return verse_sticks_touch(s, slot, 1, x, y, 1000, 2000, 2, now); }
+lift :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return verse_sticks_touch(s, slot, 2, x, y, 1000, 2000, 2, now); }
+
+#test "a finger on the left is the move stick" {
+  s := press(verse_sticks_reset(), 1, 200, 1500, 0);
+  #assert s.move_on && !s.look_on && s.move_slot == 1;
+  // Up a full radius (56 points at scale 2): forward, at full stick.
+  s = drag(s, 1, 200, 1500 - 112, 0.1);
+  #assert near(s.pad_x, 0, 0.00001) && near(s.pad_y, 1, 0.00001) && !s.run;
+  // Right half a radius.
+  s = drag(s, 1, 256, 1500, 0.2);
+  #assert near(s.pad_x, 0.5, 0.00001) && near(s.pad_y, 0, 0.00001);
+  // Past the ring: still unit length; well past it, you run.
+  s = drag(s, 1, 200 + 112 * 1.2, 1500, 0.3);
+  #assert near(s.pad_x, 1, 0.00001) && !s.run;
+  #assert !drag(s, 1, 200 + 140, 1500, 0.3).run;    // exactly RUN_PAST
+  s = drag(s, 1, 200 + 112 * 1.3, 1500 - 50, 0.3);
+  #assert near(s.pad_x * s.pad_x + s.pad_y * s.pad_y, 1, 0.0001) && s.run;
+  s = lift(s, 1, 0, 0, 0.4);
+  #assert !s.move_on && s.pad_x == 0 && s.pad_y == 0 && !s.run;
+}
+
+#test "a finger on the right looks; drag right turns right, drag up looks up" {
+  s := press(verse_sticks_reset(), 2, 800, 1000, 0);
+  #assert s.look_on && !s.move_on && s.look_slot == 2;
+  s = drag(s, 2, 900, 1000, 0.1);
+  #assert near(s.dyaw, -100 / 2 * f32(LOOK), 0.00001) && s.dpitch == 0;
+  s = drag(s, 2, 900, 960, 0.2);
+  #assert near(s.dpitch, 40 / 2 * f32(LOOK), 0.00001);
+  s = drag(s, 2, 900, 940, 0.2);
+  #assert near(s.dpitch, 60 / 2 * f32(LOOK), 0.00001);
+  // Spent once the controller reads them; the finger stays down.
+  s = verse_sticks_used(s);
+  #assert s.dyaw == 0 && s.dpitch == 0 && s.look_on;
+  s = drag(s, 2, 910, 960, 0.3);
+  #assert near(s.dyaw, -10 / 2 * f32(LOOK), 0.00001);
+}
+
+#test "a quick tap on the right jumps; a drag or a hold doesn't" {
+  s := lift(press(verse_sticks_reset(), 3, 800, 1000, 5), 3, 802, 1000, 5.1);
+  #assert s.jump && !s.look_on;
+  s = verse_sticks_used(s);
+  #assert !s.jump;
+  // Moved more than TAP_TRAVEL points.
+  t := press(verse_sticks_reset(), 3, 800, 1000, 5);
+  t = drag(t, 3, 800 + 2 * 11, 1000, 5.05);
+  #assert !lift(t, 3, 800, 1000, 5.1).jump;
+  // Moved less than TAP_TRAVEL points, or exactly that far, any way: still a tap.
+  tap := press(verse_sticks_reset(), 3, 800, 1000, 5);
+  #assert lift(drag(tap, 3, 800 + 2 * 9, 1000, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert lift(drag(tap, 3, 800, 1000 - 2 * 9, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert lift(drag(tap, 3, 800 + 2 * 6, 1000 + 2 * 8, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert !lift(drag(tap, 3, 800, 1000 + 2 * 11, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert !lift(drag(tap, 3, 800 + 2 * 8, 1000 - 2 * 8, 5.05), 3, 800, 1000, 5.1).jump;
+  // A drag, lifted, leaves no trace on the next tap.
+  after := lift(drag(tap, 3, 900, 1000, 5.05), 3, 900, 1000, 5.1);
+  #assert lift(press(after, 4, 800, 1000, 6), 4, 800, 1000, 6.1).jump;
+  // Exactly TAP_TIME is too long.
+  #assert !lift(press(verse_sticks_reset(), 3, 800, 1000, 0), 3, 800, 1000, 0.3).jump;
+  // Held too long.
+  #assert !lift(press(verse_sticks_reset(), 3, 800, 1000, 5), 3, 800, 1000, 5.35).jump;
+  // Cancelled.
+  #assert !verse_sticks_touch(press(verse_sticks_reset(), 3, 800, 1000, 5), 3, 3, 800, 1000, 1000, 2000, 2, 5.1).jump;
+}
+
+#test "the middle of the screen is the look side" {
+  #assert press(verse_sticks_reset(), 1, 500, 1000, 0).look_on;
+  #assert press(verse_sticks_reset(), 1, 499, 1000, 0).move_on;
+}
+
+// A world point through the view matrix, to pixels and depth.
+clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
+  x := m[0] * p.x + m[1] * p.y + m[2] * p.z + m[3];
+  y := m[4] * p.x + m[5] * p.y + m[6] * p.z + m[7];
+  z := m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11];
+  w := m[12] * p.x + m[13] * p.y + m[14] * p.z + m[15];
+  return v3((x / w + 1) * width / 2, (1 - y / w) * height / 2, z / w);
+}
+
+#forall "the view matrix puts points where the lines go, with depth 0 at NEAR and 1 at FAR" ix: -3..<4, iz: 1..<6 {
+  m: [16] f32;
+  #assert verse_grid_view(1, 2.5, -4, 0.5, 1.4, 0.3, 1170, 2532, m[..]);
+  c := camera(v3(1, 2.5, -4), v3(0.5, 1.4, 0.3), 1170, 2532);
+  p := v3(f32(ix) * 0.7, f32(iz) * 0.3, f32(iz) * 1.3);
+  s := project(c, view(c, p));
+  g := clip(m[..], p, 1170, 2532);
+  #assert near(g.x, s.x, 0.01) && near(g.y, s.y, 0.01);
+  vz := view(c, p).z;
+  #assert near(g.z, f32(FAR / (FAR - NEAR)) * (1 - f32(NEAR) / vz), 0.00001);
+  ahead := c.fwd;
+  n := clip(m[..], v3(1 + ahead.x * f32(NEAR), 2.5 + ahead.y * f32(NEAR), -4 + ahead.z * f32(NEAR)), 1170, 2532);
+  f := clip(m[..], v3(1 + ahead.x * f32(FAR), 2.5 + ahead.y * f32(FAR), -4 + ahead.z * f32(FAR)), 1170, 2532);
+  #assert near(n.z, 0, 0.00001) && near(f.z, 1, 0.00001);
+}
+
+#test "no view for an empty screen or a short matrix" {
+  m: [16] f32;
+  #assert !verse_grid_view(0, 2, -4, 0, 1, 0, 0, 100, m[..]) && !verse_grid_view(0, 2, -4, 0, 1, 0, 100, 0, m[..]);
+  #assert !verse_grid_view(0, 2, -4, 0, 1, 0, 100, 100, m[0..<15]);
+}
+
+#test "near" { #assert near(1, 1.5, 0.5) && !near(1, 1.6, 0.5); }
+
+#test "each finger keeps its own job" {
+  s := press(verse_sticks_reset(), 1, 200, 1500, 0);
+  s = press(s, 2, 800, 1000, 0);
+  #assert s.move_on && s.look_on;
+  // A second finger on the left is ignored; so are its moves and lift.
+  s = press(s, 3, 300, 1500, 0);
+  #assert s.move_slot == 1;
+  s = drag(s, 3, 300, 1000, 0.1);
+  #assert s.pad_y == 0 && s.dyaw == 0;
+  s = lift(s, 3, 300, 1000, 0.1);
+  #assert s.move_on && s.look_on;
+  // The look finger moving doesn't move the stick, and the other way round.
+  s = drag(s, 2, 850, 1000, 0.1);
+  #assert s.pad_x == 0 && s.dyaw < 0;
+  s = drag(s, 1, 200, 1400, 0.1);
+  #assert s.pad_y > 0;
+  // A second finger on the right while looking is ignored.
+  t := press(s, 4, 900, 900, 0.2);
+  #assert t.look_slot == 2 && t.lx == s.lx;
+}
+
+#test "touches at a small scale still count in points" {
+  s := verse_sticks_touch(verse_sticks_reset(), 1, 0, 100, 500, 1000, 2000, 0, 0);
+  s = verse_sticks_touch(s, 1, 1, 100 + 28, 500, 1000, 2000, 0, 0);
+  // Scale is taken as at least 0.5: a 56-point radius is 28 pixels.
+  #assert near(s.pad_x, 1, 0.00001);
+}
+
+#test "the terminal is aethyr's two boxes, ahead of the start" {
+  vertices: [2048] u8;
+  faces: [72] u32;
+  lines: [48] u32;
+  #assert verse_grid_props(vertices[..], faces[..], lines[..]);
+  // The desk's first corner, and the screen's last, from their vertices.
+  #assert f32_from_bits(cast(u32) vertices[0] | (cast(u32) vertices[1] << 8) | (cast(u32) vertices[2] << 16) | (cast(u32) vertices[3] << 24)) == -1.4;
+  at := (16 + 7) * 64;
+  top := cast(u32) vertices[at + 4] | (cast(u32) vertices[at + 5] << 8) | (cast(u32) vertices[at + 6] << 16) | (cast(u32) vertices[at + 7] << 24);
+  #assert f32_from_bits(top) == 2.4;
+  // Dark faces, light edges, flat.
+  #assert vertices[52] == 22 && vertices[8 * 64 + 52] == 160 && vertices[55] == 255 && vertices[8 * 64 + 55] == 255;
+  // Every index in range: faces on face corners, lines on edge corners.
+  for i: 0..<72 {
+    v := cast(int) faces[i];
+    #assert v < 32 && v % 16 < 8;
+  }
+  for i: 0..<48 {
+    v := cast(int) lines[i];
+    #assert v < 32 && v % 16 >= 8;
+  }
+  // Each edge joins corners one axis apart.
+  for i: 0..<24 {
+    d := cast(int) (lines[i * 2 + 1] - lines[i * 2]);
+    #assert d == 1 || d == 2 || d == 4;
+  }
+  // Short buffers: nothing.
+  #assert !verse_grid_props(vertices[0..<2047], faces[..], lines[..]);
+  #assert !verse_grid_props(vertices[..], faces[0..<71], lines[..]);
+  #assert !verse_grid_props(vertices[..], faces[..], lines[0..<47]);
+}
+
+#test "the terminal's walls" {
+  out: [12] f32;
+  #assert verse_grid_walls(out[..]) == 2;
+  #assert out[0] == -1.4 && out[1] == 0 && out[2] == 3.5 && out[3] == 1.4 && out[4] == 1 && out[5] == 4.5;
+  #assert out[6] == -1.2 && out[7] == 1 && near(out[8], 3.9, 0.00001) && out[9] == 1.2 && near(out[10], 2.4, 0.00001) && near(out[11], 4.1, 0.00001);
+  #assert verse_grid_walls(out[0..<11]) == 0;
+  #assert display_byte(0) == 0 && display_byte(1) == 255 && display_byte(2) == 255 && display_byte(0.001) == 3;
+}
+
+#test "the dance slot sits above the move stick, at aethyr's phone size" {
+  // A 1000 x 2000 pixel view at 2 pixels a point: the stick rests at
+  // 2000 - 360, its ring 112 high; the slot 92 square, 32 above that.
+  b := dance_slot(2000, 2);
+  #assert b.size == 92 && b.x == 32 && b.y == 1640 - 112 - 32 - 92;
+  // Clear of the stick's ring, and on the left.
+  #assert b.y + b.size < stick_rest_y(2000, 2) - 112 && b.x + b.size < 1000 * 0.22 - 112 + 92;
+}
+
+#test "a tap on the dance slot asks for the dance, once" {
+  b := dance_slot(2000, 2);
+  x := b.x + 40; y := b.y + 40;
+  s := press(verse_sticks_reset(), 4, x, y, 1);
+  #assert s.slot_on && s.slot_over && !s.move_on && !s.look_on && !s.dance;
+  s = lift(s, 4, x, y, 1.1);
+  #assert s.dance && !s.slot_on && s.danced_at == 1.1;
+  #assert !verse_sticks_used(s).dance && verse_sticks_used(s).danced_at == 1.1;
+}
+
+#test "the dance slot: slid off and lifted, nothing; near enough still counts" {
+  b := dance_slot(2000, 2);
+  x := b.x + 40; y := b.y + 40;
+  s := press(verse_sticks_reset(), 4, x, y, 1);
+  s = drag(s, 4, x + 200, y, 1.1);
+  #assert s.slot_on && !s.slot_over;
+  #assert !lift(s, 4, x + 200, y, 1.2).dance;
+  // Back within 0.6 of its size: over again, and it counts.
+  s = drag(s, 4, b.x + b.size + 50, y, 1.2);
+  #assert s.slot_over && lift(s, 4, b.x + b.size + 50, y, 1.3).dance;
+  // Cancelled: nothing.
+  t := verse_sticks_touch(press(verse_sticks_reset(), 4, x, y, 1), 4, 3, x, y, 1000, 2000, 2, 1.1);
+  #assert !t.dance && !t.slot_on;
+}
+
+#test "the dance slot's finger doesn't move or look, and others still do" {
+  b := dance_slot(2000, 2);
+  s := press(verse_sticks_reset(), 4, b.x + 40, b.y + 40, 1);
+  s = drag(s, 4, b.x + 40, b.y - 300, 1.1);
+  #assert s.pad_x == 0 && s.pad_y == 0 && s.dyaw == 0;
+  // A thumb on the stick meanwhile, and a look finger.
+  s = press(s, 5, 200, 1700, 1.1);
+  s = press(s, 6, 800, 1000, 1.1);
+  #assert s.move_on && s.look_on && s.slot_on;
+  // A second finger on the slot while one is there is not another press.
+  u := press(s, 7, b.x + 10, b.y + 10, 1.2);
+  #assert u.slot_finger == 4 && u.move_on && u.look_on;
+  // Just outside the slot, it's the stick.
+  v := press(verse_sticks_reset(), 8, b.x + b.size + 1, b.y + 40, 1);
+  #assert v.move_on && !v.slot_on;
+}
+
+#test "from high up the ground near you is lit as the follow camera sees it" {
+  feet := v3(0, 0, 0);
+  // The follow camera, 4.4 m back: the fog is not pushed out.
+  #assert reach(v3(0, 2.6, -4.2), feet) == 0;
+  // The overview, 62 m out and 38 m up: a line beside you is lit, one 100 m
+  // off is nearly gone, as from the follow camera.
+  eye := v3(0, 38, 62);
+  out := reach(eye, feet);
+  #assert near(out, length(eye) - f32(FOLLOW), 0.001);
+  #assert fog(length(sub(v3(4, 0, 0), eye)) - out) > 0.99;
+  #assert fog(length(sub(v3(0, 0, -100), eye)) - out) < 0.05;
+}
+
+// The Haunted House portal is geometry in the Grid. Its screen projection
+// also supplies the platform's accessible hit target and floating name.
+verse_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,height:f32,scale:f32) -> Screen #export_c {
+ c:=camera(v3(ex,ey,ez),v3(ax,ay,az),width,height);
+ for i:0..<32 {
+  a:=f32(i)*f32(PI)/32;b:=f32(i+1)*f32(PI)/32;
+  pa:=v3(-1.5+cos(a)*1.2,1.6+sin(a)*1.2,10);pb:=v3(-1.5+cos(b)*1.2,1.6+sin(b)*1.2,10);
+  line_out(h,piece(c,pa,pb),0.9,0.9,scale*1.2);
+ }
+ line_out(h,piece(c,v3(-2.7,0,10),v3(-2.7,1.6,10)),0.9,0.9,scale*1.2);
+ line_out(h,piece(c,v3(-0.3,0,10),v3(-0.3,1.6,10)),0.9,0.9,scale*1.2);
+ marker:=view(c,v3(-1.5,3.2,10));if marker.z<0.05{return Screen.{x= -10000,y= -10000};}
+ return project(c,marker);
+}
+verse_grid_controls :: (h:int,s:Sticks,width:f32,height:f32,scale:f32) #export_c {sticks_out(h,s,width,height,hi(scale,0.5));}
+
+verse_sticks_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,true);}
+verse_sticks_world_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,false);}

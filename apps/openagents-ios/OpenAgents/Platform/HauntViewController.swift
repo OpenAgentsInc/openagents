@@ -17,8 +17,8 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
     private var handle: Int64 = 0
     private var lastTick: Double?
     private var epoch: Double?
-    private var player = metareal_player_place(7, 0, 2, 0)
-    private var sticks = metareal_sticks_reset()
+    private var player = verse_player_place(7, 0, 2, 0)
+    private var sticks = verse_sticks_reset()
     private var fingers: [ObjectIdentifier: Int64] = [:]
     private var nextFinger: Int64 = 0
     private var began: [ObjectIdentifier: CGPoint] = [:]
@@ -89,39 +89,39 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         display.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         display.add(to: .main, forMode: .common); clock = display; assets?.startAudio(); lastTick = nil
     }
-    @objc private func suspend() { clock?.invalidate(); clock = nil; sticks = metareal_sticks_reset(); fingers = [:]; began = [:]; lastTick = nil; assets?.stopAudio(); assets?.save() }
-    @objc private func zoom(_ gesture: UIPinchGestureRecognizer) { player = metareal_player_zoom(player, Float((1 - gesture.scale)*4)); gesture.scale = 1; sticks = metareal_sticks_reset() }
+    @objc private func suspend() { clock?.invalidate(); clock = nil; sticks = verse_sticks_reset(); fingers = [:]; began = [:]; lastTick = nil; assets?.stopAudio(); assets?.save() }
+    @objc private func zoom(_ gesture: UIPinchGestureRecognizer) { player = verse_player_zoom(player, Float((1 - gesture.scale)*4)); gesture.scale = 1; sticks = verse_sticks_reset() }
     @objc private func tick(_ link: CADisplayLink) {
         guard let assets, size.width > 0, size.height > 0 else { return }
         let now = link.timestamp; if epoch == nil { epoch = now }; let time = now - (epoch ?? now)
         let dt = Float(min(max(now - (lastTick ?? now), 0), 0.1)); lastTick = now
         let was = player.pos
-        player = metareal_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
-        sticks = metareal_sticks_used(sticks)
+        player = verse_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
+        sticks = verse_sticks_used(sticks)
         player = assets.wallBytes.withUnsafeMutableBufferPointer { wall in
-            metareal_player_advance_among(player, dt, coax_v_f32(data: nil, count: 0), coax_v_f32(data: wall.baseAddress, count: Int64(assets.wallCount*6)))
+            verse_player_advance_among(player, dt, coax_v_f32(data: nil, count: 0), coax_v_f32(data: wall.baseAddress, count: Int64(assets.wallCount*6)))
         }
-        let constrained = metareal_haunt_constrain(assets.state, hauntPoint(was), hauntPoint(player.pos))
-        player = metareal_player_constrain(player, constrained.x, constrained.z)
-        let eye = metareal_player_view_eye(player, assets.state.camera), at = metareal_player_view_at(player, assets.state.camera)
-        let feet = metareal_player_feet(player)
+        let constrained = verse_haunt_constrain(assets.state, hauntPoint(was), hauntPoint(player.pos))
+        player = verse_player_constrain(player, constrained.x, constrained.z)
+        let eye = verse_player_view_eye(player, assets.state.camera), at = verse_player_view_at(player, assets.state.camera)
+        let feet = verse_player_feet(player)
         lastEye = hauntPoint(eye); lastAt = hauntPoint(at)
         let distance = hypot(feet.x-was.x, feet.z-was.z)
-        assets.state.facing = metareal_player_face(player)
-        assets.state = metareal_haunt_advance(assets.state, time, hauntPoint(feet), lastEye, player.theta, distance, player.on_ground)
+        assets.state.facing = verse_player_face(player)
+        assets.state = verse_haunt_advance(assets.state, time, hauntPoint(feet), lastEye, player.theta, distance, player.on_ground)
         assets.playSounds()
         var matrix = [Float](repeating: 0, count: 16)
-        _ = matrix.withUnsafeMutableBufferPointer { metareal_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, Float(size.width), Float(size.height), coax_v_f32(data: $0.baseAddress, count: 16)) }
+        _ = matrix.withUnsafeMutableBufferPointer { verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, Float(size.width), Float(size.height), coax_v_f32(data: $0.baseAddress, count: 16)) }
         mr_clear_frame(handle)
-        metareal_grid_controls(handle, sticks, Float(size.width), Float(size.height), Float(surface.metalLayer.contentsScale))
+        verse_grid_controls(handle, sticks, Float(size.width), Float(size.height), Float(surface.metalLayer.contentsScale))
         renderer?.draw(handle: handle, time: time, haunt: assets, houseView: matrix)
-        let area = metareal_haunt_area(assets.state, hauntPoint(feet))
+        let area = verse_haunt_area(assets.state, hauntPoint(feet))
         let name = area >= 0 ? hauntText(assets.state.areas.data![Int(area)].name) : "Haunted House"
         worldElement?.accessibilityValue = String(format: "%@ %.1f %.1f · %lld objects", name, feet.x, feet.z, assets.state.entity_count)
         titleLabel.text = name.uppercased()
-        goal.text = hauntText(metareal_haunt_goal_name(assets.state))
+        goal.text = hauntText(verse_haunt_goal_name(assets.state))
         notice.text = time < assets.state.toast_until ? hauntText(assets.state.toast) : nil
-        let person = metareal_haunt_near(assets.state), door = metareal_haunt_door(assets.state)
+        let person = verse_haunt_near(assets.state), door = verse_haunt_door(assets.state)
         let target = assets.state.editing && assets.state.selected >= 0 ? hauntText(assets.state.entities.data![Int(assets.state.selected)].name) : person >= 0 ? hauntText(assets.state.people.data![Int(person)].name) : door >= 0 ? "Door" : ""
         interact.setTitle(target, for: .normal); interact.isHidden = target.isEmpty
         if assets.state.dirty && fingers.isEmpty && Int(time*10)%20 == 0 { assets.save() }
@@ -132,7 +132,7 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
             let id = ObjectIdentifier(touch), p = touch.location(in: view)
             if phase == 0 { fingers[id] = nextFinger; nextFinger += 1; began[id] = p }
             guard let slot = fingers[id] else { continue }
-            sticks = metareal_sticks_world_touch(sticks, slot, phase, Float(p.x*scale), Float(p.y*scale), Float(size.width), Float(size.height), Float(scale), touch.timestamp)
+            sticks = verse_sticks_world_touch(sticks, slot, phase, Float(p.x*scale), Float(p.y*scale), Float(size.width), Float(size.height), Float(scale), touch.timestamp)
             if phase == 2, let start = began[id], hypot(start.x-p.x,start.y-p.y) < 8, assets?.state.editing == true {
                 pick(p); sticks.jump = false
             }
@@ -145,33 +145,33 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { route(touches, 3) }
     private func pick(_ point: CGPoint) {
         guard let a = assets else { return }
-        let direction = metareal_haunt_ray(lastEye,lastAt,Float(point.x),Float(point.y),Float(view.bounds.width),Float(view.bounds.height))
-        a.state = metareal_haunt_select(a.state,metareal_haunt_pick(a.state,lastEye,direction))
+        let direction = verse_haunt_ray(lastEye,lastAt,Float(point.x),Float(point.y),Float(view.bounds.width),Float(view.bounds.height))
+        a.state = verse_haunt_select(a.state,verse_haunt_pick(a.state,lastEye,direction))
         if a.state.selected >= 0 { editSelected() }
     }
     private func activateNearby() {
         guard let a = assets else { return }
         if a.state.editing && a.state.selected >= 0 { editSelected(); return }
-        let person = metareal_haunt_near(a.state)
-        if person >= 0 { a.state = metareal_haunt_talk(a.state, person, 0); openTalk(); return }
-        let door = metareal_haunt_door(a.state)
-        if door >= 0 { a.remember(); a.state = metareal_haunt_edit(a.state,door,9,0); a.rebuildWalls(); a.save() }
+        let person = verse_haunt_near(a.state)
+        if person >= 0 { a.state = verse_haunt_talk(a.state, person, 0); openTalk(); return }
+        let door = verse_haunt_door(a.state)
+        if door >= 0 { a.remember(); a.state = verse_haunt_edit(a.state,door,9,0); a.rebuildWalls(); a.save() }
     }
-    private func cycleView() { guard let a = assets else { return }; a.state = metareal_haunt_view(a.state); player.phi = a.state.camera == 0 ? .pi/2 : 1.107; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    private func cycleView() { guard let a = assets else { return }; a.state = verse_haunt_view(a.state); player.phi = a.state.camera == 0 ? .pi/2 : 1.107; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     private func leave() { suspend(); closed?() }
     private func showFailure(_ message: String) {
         let alert = UIAlertController(title: "Haunted House", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Grid", style: .default) { [weak self] _ in self?.leave() }); present(alert, animated: true)
     }
     private func menu(_ title: String, _ rows: [SceneRow]) {
-        sticks = metareal_sticks_reset(); fingers = [:]; began = [:]
+        sticks = verse_sticks_reset(); fingers = [:]; began = [:]
         let panel = SceneList(title: title, rows: rows)
         let nav = UINavigationController(rootViewController: panel); nav.overrideUserInterfaceStyle = .dark
         if let sheet = nav.sheetPresentationController { sheet.detents = [.medium(), .large()]; sheet.prefersGrabberVisible = true }
         present(nav, animated: true)
     }
     private func openEdit() {
-        guard let a = assets else { return }; a.state = metareal_haunt_edit_mode(a.state,true)
+        guard let a = assets else { return }; a.state = verse_haunt_edit_mode(a.state,true)
         menu("Edit", [
             SceneRow("Objects", "", { [weak self] in self?.objectList() }),
             SceneRow("Add", "", { [weak self] in self?.catalogue() }),
@@ -179,21 +179,21 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
             SceneRow("Characters", "", { [weak self] in self?.peopleList() }),
             SceneRow("Zones", "", { [weak self] in self?.zonesList() }),
             SceneRow("World", "", { [weak self] in self?.worldMenu() }),
-            SceneRow("Done", "", { a.state = metareal_haunt_edit_mode(a.state,false); a.save() })
+            SceneRow("Done", "", { a.state = verse_haunt_edit_mode(a.state,false); a.save() })
         ])
     }
     private func objectList() {
         guard let a = assets else { return }
         let rows = (0..<Int(a.state.entity_count)).filter { !a.state.entities.data![$0].fixed || a.state.entities.data![$0].motion == 5 }.map { i in
             let e = a.state.entities.data![i]
-            return SceneRow(hauntText(e.name), hauntText(e.id), { [weak self] in a.state = metareal_haunt_select(a.state,Int64(i)); self?.editSelected() })
+            return SceneRow(hauntText(e.name), hauntText(e.id), { [weak self] in a.state = verse_haunt_select(a.state,Int64(i)); self?.editSelected() })
         }
         menu("Objects", rows)
     }
     private func editSelected() {
         guard let a = assets, a.state.selected >= 0 else { return }
         let i = a.state.selected, e = a.state.entities.data![Int(i)]
-        func edit(_ op: Int64, _ value: Float) { a.remember(); a.state = metareal_haunt_edit(a.state,i,op,value); a.rebuildWalls(); a.save() }
+        func edit(_ op: Int64, _ value: Float) { a.remember(); a.state = verse_haunt_edit(a.state,i,op,value); a.rebuildWalls(); a.save() }
         menu(hauntText(e.name), [SceneRow("←", "", { edit(0,-0.5) }), SceneRow("→", "", { edit(0,0.5) }), SceneRow("Forward", "", { edit(2,0.5) }), SceneRow("Back", "", { edit(2,-0.5) }), SceneRow("Up", "", { edit(1,0.25) }), SceneRow("Down", "", { edit(1,-0.25) }), SceneRow("Turn", "", { edit(3,.pi/4) }), SceneRow("Larger", "", { edit(4,1.2) }), SceneRow("Smaller", "", { edit(4,1/1.2) }), SceneRow("Warm", "", { edit(5,0) }), SceneRow("Cool", "", { edit(8,0) }), SceneRow("Hide / show", "", { edit(6,0) }), SceneRow("Remove", "", { edit(7,0) })])
     }
     private func catalogue() {
@@ -201,8 +201,8 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         menu("Add", (0..<Int(a.state.mesh_count)).map { i in
             let m = a.state.meshes.data![i]
             return SceneRow(hauntText(m.name), "", {
-                a.remember(); let point = metareal_haunt_place_point(a.state)
-                a.state = metareal_haunt_add(a.state,Int64(i),a.retain("placed-" + UUID().uuidString),m.name,point.x,point.z)
+                a.remember(); let point = verse_haunt_place_point(a.state)
+                a.state = verse_haunt_add(a.state,Int64(i),a.retain("placed-" + UUID().uuidString),m.name,point.x,point.z)
                 a.rebuildWalls(); a.save()
             })
         })
@@ -218,7 +218,7 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         for (title, figure) in [("Tunic","Custom_Fig_Guest0"),("Dress","Custom_Fig_Guest4")] {
             alert.addAction(UIAlertAction(title: title, style: .default) { _ in
                 a.remember()
-                a.state = metareal_haunt_add_person(a.state,a.retain("person-"+UUID().uuidString),a.retain(alert.textFields?.first?.text ?? ""),a.retain(figure),a.retain(Data(repeating:0,count:8192)),a.retain(Data(repeating:0,count:8192)))
+                a.state = verse_haunt_add_person(a.state,a.retain("person-"+UUID().uuidString),a.retain(alert.textFields?.first?.text ?? ""),a.retain(figure),a.retain(Data(repeating:0,count:8192)),a.retain(Data(repeating:0,count:8192)))
                 a.rebuildWalls(); a.save()
             })
         }
@@ -228,50 +228,50 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         guard let a = assets else { return }
         let p = a.state.people.data![Int(index)]
         let actions: [(String,Int64)] = [("Follow",0),("Wander",1),("Guard",2),("Stay",3),("Flee",4),("Move here",5),("Look",7),("Remove",6)]
-        menu(hauntText(p.name), [SceneRow("Teach", "", { [weak self] in self?.teach(index) })] + actions.map { title, op in SceneRow(title,"",{ a.remember();a.state=metareal_haunt_person_action(a.state,index,op);a.rebuildWalls();a.save() }) })
+        menu(hauntText(p.name), [SceneRow("Teach", "", { [weak self] in self?.teach(index) })] + actions.map { title, op in SceneRow(title,"",{ a.remember();a.state=verse_haunt_person_action(a.state,index,op);a.rebuildWalls();a.save() }) })
     }
     private func teach(_ index: Int64) {
         guard let a = assets else { return }
         let alert = UIAlertController(title: "Teach", message: nil, preferredStyle: .alert)
         alert.addTextField { $0.placeholder = "What should they know?" }
-        alert.addAction(UIAlertAction(title:"Save",style:.default) { _ in a.remember();a.state=metareal_haunt_teach(a.state,index,a.retain(alert.textFields?.first?.text ?? ""));a.save() })
+        alert.addAction(UIAlertAction(title:"Save",style:.default) { _ in a.remember();a.state=verse_haunt_teach(a.state,index,a.retain(alert.textFields?.first?.text ?? ""));a.save() })
         alert.addAction(UIAlertAction(title:"Cancel",style:.cancel));present(alert,animated:true)
     }
     private func openTalk() {
-        sticks = metareal_sticks_reset(); fingers = [:]; began = [:]
+        sticks = verse_sticks_reset(); fingers = [:]; began = [:]
         guard let a = assets else { return }
         if a.state.talking < 0 {
-            let near = metareal_haunt_near(a.state)
+            let near = verse_haunt_near(a.state)
             guard near >= 0 else { notice.text = "Walk up to a character."; return }
-            a.state = metareal_haunt_talk(a.state,near,0)
+            a.state = verse_haunt_talk(a.state,near,0)
         }
         let person = a.state.people.data![Int(a.state.talking)]
         let alert = UIAlertController(title: hauntText(person.name), message: hauntText(a.state.reply), preferredStyle: .alert)
         alert.addTextField { $0.placeholder = "Ask…"; $0.accessibilityIdentifier = "haunt.question" }
         alert.addAction(UIAlertAction(title: "Ask", style: .default) { [weak self] _ in
-            a.state = metareal_haunt_ask(a.state,a.retain(alert.textFields?.first?.text ?? "")); self?.openTalk()
+            a.state = verse_haunt_ask(a.state,a.retain(alert.textFields?.first?.text ?? "")); self?.openTalk()
         })
-        alert.addAction(UIAlertAction(title: "Hint", style: .default) { [weak self] _ in a.state = metareal_haunt_talk(a.state,a.state.talking,1); self?.openTalk() })
-        alert.addAction(UIAlertAction(title: "Teach", style: .default) { _ in a.remember(); a.state = metareal_haunt_teach(a.state,a.state.talking,a.retain(alert.textFields?.first?.text ?? "")); a.save() })
-        alert.addAction(UIAlertAction(title: "Bye", style: .cancel) { _ in a.state = metareal_haunt_talk(a.state,-1,0) })
+        alert.addAction(UIAlertAction(title: "Hint", style: .default) { [weak self] _ in a.state = verse_haunt_talk(a.state,a.state.talking,1); self?.openTalk() })
+        alert.addAction(UIAlertAction(title: "Teach", style: .default) { _ in a.remember(); a.state = verse_haunt_teach(a.state,a.state.talking,a.retain(alert.textFields?.first?.text ?? "")); a.save() })
+        alert.addAction(UIAlertAction(title: "Bye", style: .cancel) { _ in a.state = verse_haunt_talk(a.state,-1,0) })
         present(alert, animated: true)
     }
     private func zonesList() {
         guard let a = assets else { return }
         menu("Zones", (0..<Int(a.state.zone_count)).map { i in SceneRow(hauntText(a.state.zones.data![i].name), "", { [weak self] in
-            self?.menu("Zone", [SceneRow("Once / repeat", "", { a.state = metareal_haunt_zone_edit(a.state,Int64(i),0,0) }), SceneRow("Larger", "", { a.state = metareal_haunt_zone_edit(a.state,Int64(i),1,0.5) }), SceneRow("Smaller", "", { a.state = metareal_haunt_zone_edit(a.state,Int64(i),1,-0.5) }), SceneRow("Rearm", "", { a.state = metareal_haunt_zone_edit(a.state,Int64(i),2,0) })])
+            self?.menu("Zone", [SceneRow("Once / repeat", "", { a.state = verse_haunt_zone_edit(a.state,Int64(i),0,0) }), SceneRow("Larger", "", { a.state = verse_haunt_zone_edit(a.state,Int64(i),1,0.5) }), SceneRow("Smaller", "", { a.state = verse_haunt_zone_edit(a.state,Int64(i),1,-0.5) }), SceneRow("Rearm", "", { a.state = verse_haunt_zone_edit(a.state,Int64(i),2,0) })])
         }) })
     }
     private func worldMenu() {
         guard let a = assets else { return }
-        menu("World", [SceneRow("Worlds", "", { [weak self] in self?.worlds() }), SceneRow("Create", "", { [weak self] in self?.newWorld() }), SceneRow("Save", "", { a.state = metareal_haunt_quest(a.state,a.retain("publish")); a.save() }), SceneRow("Share", "", { [weak self] in self?.share() }), SceneRow("Import", "", { [weak self] in self?.importFile() }), SceneRow("Reset", "", { [weak self] in self?.confirmReset() })])
+        menu("World", [SceneRow("Worlds", "", { [weak self] in self?.worlds() }), SceneRow("Create", "", { [weak self] in self?.newWorld() }), SceneRow("Save", "", { a.state = verse_haunt_quest(a.state,a.retain("publish")); a.save() }), SceneRow("Share", "", { [weak self] in self?.share() }), SceneRow("Import", "", { [weak self] in self?.importFile() }), SceneRow("Reset", "", { [weak self] in self?.confirmReset() })])
     }
     private func share() {
         guard let a = assets else { return }
         do {
             let url = try a.exportWorld(), sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
             sheet.popoverPresentationController?.sourceView = hotbar
-            sheet.completionWithItemsHandler = { _, completed, _, _ in if completed { a.state = metareal_haunt_quest(a.state,a.retain(a.state.quest == 6 ? "invite" : "share")); a.save() } }
+            sheet.completionWithItemsHandler = { _, completed, _, _ in if completed { a.state = verse_haunt_quest(a.state,a.retain(a.state.quest == 6 ? "invite" : "share")); a.save() } }
             present(sheet, animated: true)
         } catch { showFailure(error.localizedDescription) }
     }
@@ -284,8 +284,8 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
     }
     private func openQuest() {
         guard let a = assets else { return }
-        menu("Make it yours", [SceneRow(hauntText(metareal_haunt_goal_name(a.state)), "", { [weak self] in
-            switch a.state.quest { case 1,2: self?.openEdit(); case 3: a.state = metareal_haunt_quest(a.state,a.retain("publish")); a.save(); case 4,6: self?.share(); case 5: self?.newWorld(); case 7: self?.survey(); default: break }
+        menu("Make it yours", [SceneRow(hauntText(verse_haunt_goal_name(a.state)), "", { [weak self] in
+            switch a.state.quest { case 1,2: self?.openEdit(); case 3: a.state = verse_haunt_quest(a.state,a.retain("publish")); a.save(); case 4,6: self?.share(); case 5: self?.newWorld(); case 7: self?.survey(); default: break }
         })])
     }
     private func worlds() {
@@ -303,7 +303,7 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         guard let a = assets else { return }
         let alert = UIAlertController(title: "How was it?", message: nil, preferredStyle: .alert)
         alert.addTextField { $0.placeholder = "Feedback" }
-        alert.addAction(UIAlertAction(title: "Save", style: .default) { _ in a.state = metareal_haunt_feedback(a.state,a.retain(alert.textFields?.first?.text ?? "")); a.save() })
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { _ in a.state = verse_haunt_feedback(a.state,a.retain(alert.textFields?.first?.text ?? "")); a.save() })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel)); present(alert, animated: true)
     }
     private func openMap() {
@@ -339,7 +339,7 @@ private final class MapSurface: UIView {
     override func draw(_ rect: CGRect) {
         guard let c=UIGraphicsGetCurrentContext() else { return }
         var boxes = [coax_t_HauntMapRect](repeating: coax_t_HauntMapRect(), count: 66)
-        let count = boxes.withUnsafeMutableBufferPointer { metareal_haunt_map(assets.state,Float(bounds.width),Float(bounds.height),coax_v_t_HauntMapRect(data:$0.baseAddress,count:Int64($0.count))) }
+        let count = boxes.withUnsafeMutableBufferPointer { verse_haunt_map(assets.state,Float(bounds.width),Float(bounds.height),coax_v_t_HauntMapRect(data:$0.baseAddress,count:Int64($0.count))) }
         c.setLineWidth(1)
         for i in 0..<Int(count) { let b=boxes[i];let rect=CGRect(x:CGFloat(b.x),y:CGFloat(b.y),width:CGFloat(b.width),height:CGFloat(b.height))
             if b.kind<2 { c.setStrokeColor(UIColor(white:1,alpha:b.kind==0 ? 0.8:0.3).cgColor);c.stroke(rect) }

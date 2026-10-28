@@ -18,19 +18,19 @@ for name in home player grid cast camera wallet haunt hud benchmarks; do
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
   debug_flags=()
   if [[ "${CONFIGURATION:-Debug}" == Debug ]]; then debug_flags+=(--debug-info --source-map "$out/$base.map.json"); fi
-  "$compiler" c "metareal/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
+  "$compiler" c "verse/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
-"$compiler" c metareal/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"
+"$compiler" c verse/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"
 # Voice: the engine, its wire codecs and the floor/meter authorities, under
-# names that cannot collide with metareal/platform/voice.h on a
+# names that cannot collide with verse/platform/voice.h on a
 # case-insensitive disk (so the engine is VoiceEngine, not Voice). Floor and
 # meter are #authority: their checks run in this compile.
 for pair in voice:VoiceEngine voice-wire:VoiceWire voice-floor:VoiceFloor voice-meter:VoiceMeter; do
-  "$compiler" c "metareal/${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
+  "$compiler" c "verse/${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
   mv "$out/${pair##*:}.c.tmp" "$out/${pair##*:}.c"
 done
-"$compiler" metal metareal/light.coax > "$out/HomeShaders.txt.tmp"
-"$compiler" metal metareal/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
+"$compiler" metal verse/light.coax > "$out/HomeShaders.txt.tmp"
+"$compiler" metal verse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"

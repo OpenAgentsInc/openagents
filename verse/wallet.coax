@@ -1,0 +1,253 @@
+// The wallet's payment rules (docs/lightning/coax-integration.md). Swift
+// talks to Breez's Spark SDK and hands this file plain numbers: amounts,
+// fees, times and what the SDK reported. This file decides whether a quote
+// may be paid, how a payment's state moves, what the keypad holds and when
+// a warning shows. Words and keys never come here.
+//   coax/bin/coax test verse/wallet.coax
+//   coax/bin/coax mutate verse/wallet.coax
+#import "Basic";
+#authority;
+
+// All the bitcoin there will ever be, in satoshis.
+MAX_SAT :: 2_100_000_000_000_000;
+
+// ---- Amounts ----
+
+// The SDK counts satoshis; payment.v1 counts millisatoshis.
+verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
+  if sat < 0 || sat > MAX_SAT { return -1; }
+  return sat * 1000;
+}
+
+#forall "sats to msat" sat: -3..<40 {
+  m := verse_wallet_sat_to_msat(sat);
+  if sat < 0 { #assert m == -1; } else { #assert m == sat * 1000; }
+}
+
+#test "sats to msat at the top" {
+  #assert verse_wallet_sat_to_msat(MAX_SAT) == MAX_SAT * 1000;
+  #assert verse_wallet_sat_to_msat(MAX_SAT + 1) == -1;
+  #assert verse_wallet_sat_to_msat(0) == 0;
+}
+
+// The fewest whole sats at or above a millisatoshi bound (an LNURL's
+// minSendable), and the most at or below one (its maxSendable); -1 for a
+// bound that is negative or past all the bitcoin there is.
+verse_wallet_msat_up :: (msat: int) -> int #export_c {
+  if msat < 0 || msat > MAX_SAT * 1000 { return -1; }
+  return (msat + 999) / 1000;
+}
+verse_wallet_msat_down :: (msat: int) -> int #export_c {
+  if msat < 0 || msat > MAX_SAT * 1000 { return -1; }
+  return msat / 1000;
+}
+
+#forall "msat bounds" msat: -3..<4010 {
+  up := verse_wallet_msat_up(msat);
+  down := verse_wallet_msat_down(msat);
+  if msat < 0 { #assert up == -1 && down == -1; }
+  else {
+    #assert up * 1000 >= msat && (up - 1) * 1000 < msat;
+    #assert down * 1000 <= msat && (down + 1) * 1000 > msat;
+  }
+}
+
+#test "msat bounds at the top" {
+  #assert verse_wallet_msat_up(MAX_SAT * 1000) == MAX_SAT;
+  #assert verse_wallet_msat_up(MAX_SAT * 1000 + 1) == -1;
+  #assert verse_wallet_msat_down(MAX_SAT * 1000 + 1) == -1;
+  #assert verse_wallet_msat_down(MAX_SAT * 1000) == MAX_SAT;
+}
+
+// Whether an amount is one the recipient takes: at least one sat, within
+// what it says it accepts (0 for no bound), and within what is spendable.
+verse_wallet_amount_ok :: (amount: int, low: int, high: int, spendable: int) -> bool #export_c {
+  if amount <= 0 || amount > MAX_SAT { return false; }
+  if amount < low { return false; }
+  if high > 0 && amount > high { return false; }
+  return amount <= spendable;
+}
+
+#forall "amounts" amount: -1..<7, low: 0..<4, high: 0..<6, spendable: 0..<7 {
+  ok := verse_wallet_amount_ok(amount, low, high, spendable);
+  #assert ok == (amount >= 1 && amount >= low && (high == 0 || amount <= high) && amount <= spendable);
+}
+
+#test "amounts at the top" {
+  #assert verse_wallet_amount_ok(MAX_SAT, 0, 0, MAX_SAT);
+  #assert !verse_wallet_amount_ok(MAX_SAT + 1, 0, 0, MAX_SAT + 1);
+}
+
+// ---- The keypad ----
+
+// A digit typed after `sats`; -1 if it would pass all the bitcoin there is
+// or isn't a digit. A leading zero stays zero.
+verse_wallet_digit :: (sats: int, digit: int) -> int #export_c {
+  if digit < 0 || digit > 9 || sats < 0 { return -1; }
+  if sats > (MAX_SAT - digit) / 10 { return -1; }
+  return sats * 10 + digit;
+}
+verse_wallet_backspace :: (sats: int) -> int #export_c {
+  if sats < 0 { return -1; }
+  return sats / 10;
+}
+
+#forall "the keypad" sats: -1..<40, digit: -1..<11 {
+  next := verse_wallet_digit(sats, digit);
+  if digit < 0 || digit > 9 || sats < 0 { #assert next == -1; }
+  else { #assert next == sats * 10 + digit && verse_wallet_backspace(next) == sats; }
+  #assert verse_wallet_backspace(sats) == (ifx sats < 0 then -1 else sats / 10);
+}
+
+#test "the keypad at the top" {
+  top := MAX_SAT / 10;
+  #assert verse_wallet_digit(top, 0) == MAX_SAT;
+  #assert verse_wallet_digit(top, 1) == -1;
+  #assert verse_wallet_digit(top + 1, 0) == -1;
+  #assert verse_wallet_digit(top - 1, 9) == MAX_SAT - 1;
+}
+
+// ---- Warnings ----
+
+// A fee above a tenth of the amount is shown as high on the review screen.
+// (fee > amount / 10 is fee * 10 > amount in whole sats, without overflow.)
+verse_wallet_fee_high :: (amount: int, fee: int) -> bool #export_c {
+  return fee > amount / 10;
+}
+
+#forall "high fees" amount: 0..<60, fee: 0..<12 {
+  #assert verse_wallet_fee_high(amount, fee) == (fee * 10 > amount);
+}
+
+#test "high fees past all the bitcoin" {
+  #assert verse_wallet_fee_high(MAX_SAT, MAX_SAT + 1);
+  #assert verse_wallet_fee_high(MAX_SAT, MAX_SAT / 10 + 1);
+  #assert !verse_wallet_fee_high(MAX_SAT, MAX_SAT / 10);
+}
+
+// An invoice about to lapse: less than a minute left, or already gone.
+verse_wallet_expiring :: (now: int, expires: int) -> bool #export_c {
+  return expires - now < 60;
+}
+
+#forall "expiring" now: 0..<5, left: -2..<70 {
+  #assert verse_wallet_expiring(now, now + left) == (left < 60);
+}
+
+// ---- Sending ----
+
+Pay :: enum u8 { idle; quoted; sending; succeeded; not_sent; unknown; }
+Verdict :: enum u8 { send; over_cap; over_limit; expired; bad_amount; busy; }
+
+// Whether a confirmed quote may be paid. Every input comes from the host:
+// the fee may not pass `cap` (what the review screen showed), and the
+// amount and fee together may not pass `left` (what is spendable).
+verse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
+                             now: int, expires: int) -> Verdict #export_c {
+  if state != Pay.quoted { return Verdict.busy; }
+  if amount <= 0 || fee < 0 || amount > MAX_SAT { return Verdict.bad_amount; }
+  if now >= expires { return Verdict.expired; }
+  if fee > cap { return Verdict.over_cap; }
+  if amount > left - fee { return Verdict.over_limit; }
+  return Verdict.send;
+}
+
+#forall "may_send" state: Pay, amount: -1..<6, fee: -1..<4, cap: 0..<3, left: 0..<8, late: bool {
+  v := verse_wallet_may_send(state, amount, fee, cap, left, ifx late then 10 else 9, 10);
+  if state != Pay.quoted { #assert v == Verdict.busy; }
+  else if amount <= 0 || fee < 0 { #assert v == Verdict.bad_amount; }
+  else if late { #assert v == Verdict.expired; }
+  else if fee > cap { #assert v == Verdict.over_cap; }
+  else if amount + fee > left { #assert v == Verdict.over_limit; }
+  else { #assert v == Verdict.send; }
+}
+
+#test "may_send near all the bitcoin" {
+  #assert verse_wallet_may_send(Pay.quoted, MAX_SAT, 0, 0, MAX_SAT, 0, 1) == Verdict.send;
+  #assert verse_wallet_may_send(Pay.quoted, MAX_SAT, 1, 1, MAX_SAT, 0, 1) == Verdict.over_limit;
+  #assert verse_wallet_may_send(Pay.quoted, MAX_SAT + 1, 0, 0, MAX_SAT + 1, 0, 1) == Verdict.bad_amount;
+}
+
+// What happened. The host steps the flow with each event in turn.
+Event :: enum u8 {
+  quote;      // prepareSendPayment returned a quote
+  confirm;    // the person confirmed and may_send said send
+  cancel;     // the person backed out
+  expire;     // the quote lapsed on screen
+  sent;       // the SDK (or a later event) reported the payment complete
+  failed;     // the SDK reported it failed before any money moved
+  timed_out;  // no answer, an error after the call, or still pending
+  done;       // the person closed the result
+}
+
+// One payment: its state, which quote it is on, and how many times
+// sendPayment was called for that quote.
+Flow :: struct { state: Pay; quote: int; sends: int; }
+
+verse_wallet_start :: () -> Flow #export_c { return Flow.{state = Pay.idle, quote = 0, sends = 0}; }
+
+// How the payment moves. One send per quote; an unknown outcome waits for
+// the SDK, never becoming a failure or a second send; a finished payment
+// stays finished until the person closes it.
+verse_wallet_step :: (f: Flow, e: Event) -> Flow #export_c {
+  next := f;
+  if e == Event.quote {
+    if f.state == Pay.idle || f.state == Pay.quoted || f.state == Pay.not_sent {
+      next.state = Pay.quoted; next.quote = f.quote + 1; next.sends = 0;
+    }
+  } else if e == Event.confirm {
+    if f.state == Pay.quoted && f.sends == 0 { next.state = Pay.sending; next.sends = 1; }
+  } else if e == Event.cancel || e == Event.expire {
+    if f.state == Pay.quoted { next.state = Pay.idle; }
+  } else if e == Event.sent {
+    if f.state == Pay.sending || f.state == Pay.unknown { next.state = Pay.succeeded; }
+  } else if e == Event.failed {
+    if f.state == Pay.sending || f.state == Pay.unknown { next.state = Pay.not_sent; }
+  } else if e == Event.timed_out {
+    if f.state == Pay.sending { next.state = Pay.unknown; }
+  } else if e == Event.done {
+    if f.state == Pay.succeeded || f.state == Pay.not_sent { next.state = Pay.idle; }
+  }
+  return next;
+}
+
+#test "a fresh payment" {
+  f := verse_wallet_start();
+  #assert f.state == Pay.idle && f.quote == 0 && f.sends == 0;
+}
+
+#forall "each step" state: Pay, e: Event, sends: 0..<2 {
+  f := Flow.{state = state, quote = 3, sends = sends};
+  n := verse_wallet_step(f, e);
+  if e == Event.quote {
+    if state == Pay.idle || state == Pay.quoted || state == Pay.not_sent { #assert n.state == Pay.quoted && n.quote == 4 && n.sends == 0; }
+    else { #assert n.state == state && n.quote == 3 && n.sends == sends; }
+  } else {
+    #assert n.quote == 3;
+    if e == Event.confirm && state == Pay.quoted && sends == 0 { #assert n.state == Pay.sending && n.sends == 1; }
+    else { #assert n.sends == sends; }
+    if e == Event.confirm && !(state == Pay.quoted && sends == 0) { #assert n.state == state; }
+    if e == Event.cancel || e == Event.expire { #assert n.state == (ifx state == Pay.quoted then Pay.idle else state); }
+    if e == Event.sent { #assert n.state == (ifx state == Pay.sending || state == Pay.unknown then Pay.succeeded else state); }
+    if e == Event.failed { #assert n.state == (ifx state == Pay.sending || state == Pay.unknown then Pay.not_sent else state); }
+    if e == Event.timed_out { #assert n.state == (ifx state == Pay.sending then Pay.unknown else state); }
+    if e == Event.done { #assert n.state == (ifx state == Pay.succeeded || state == Pay.not_sent then Pay.idle else state); }
+  }
+}
+
+// Every sequence of four events from the start: at most one send per
+// quote; an unknown outcome is never shown as a failure without the SDK
+// saying so; a success is never undone except by closing it.
+#forall "every four events" a: Event, b: Event, c: Event, d: Event {
+  events := [4] Event.[a, b, c, d];
+  f := verse_wallet_start();
+  for e: events {
+    before := f;
+    f = verse_wallet_step(f, e);
+    #assert f.sends <= 1;
+    if f.state == Pay.sending || f.state == Pay.unknown { #assert f.sends == 1; }
+    if before.state == Pay.unknown && f.state == Pay.not_sent { #assert e == Event.failed; }
+    if before.state == Pay.succeeded { #assert f.state == Pay.succeeded || e == Event.done; }
+    if f.quote == before.quote && before.sends == 1 { #assert f.sends == 1; }
+  }
+}

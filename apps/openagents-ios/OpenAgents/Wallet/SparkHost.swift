@@ -7,7 +7,7 @@ import BreezSdkSpark
 ///
 /// This is the only file that imports BreezSdkSpark
 /// (docs/lightning/coax-integration.md). It does the effects (Keychain, SDK
-/// calls, events) and hands the screens plain values; metareal/wallet.coax
+/// calls, events) and hands the screens plain values; verse/wallet.coax
 /// decides whether a quote may be paid and how a payment moves. It never
 /// writes, replaces or shows the seed.
 actor SparkHost {
@@ -324,8 +324,8 @@ actor SparkHost {
             if a.network != .bitcoin { return .unsupported("This Spark address is for a test network.") }
             return .spark(address: a.address, amount: nil)
         case .lnurlWithdraw(let d):
-            return .withdraw(note: d.defaultDescription, low: UInt64(max(0, metareal_wallet_msat_up(Int64(clamping: d.minWithdrawable)))),
-                             high: UInt64(max(0, metareal_wallet_msat_down(Int64(clamping: d.maxWithdrawable)))))
+            return .withdraw(note: d.defaultDescription, low: UInt64(max(0, verse_wallet_msat_up(Int64(clamping: d.minWithdrawable)))),
+                             high: UInt64(max(0, verse_wallet_msat_down(Int64(clamping: d.maxWithdrawable)))))
         case .bolt12Offer, .bolt12Invoice, .bolt12InvoiceRequest:
             return .unsupported("This is a BOLT12 offer. Ask for a Lightning invoice or address instead.")
         case .lnurlAuth:
@@ -340,8 +340,8 @@ actor SparkHost {
     }
 
     private func lnurl(_ name: String, _ d: LnurlPayRequestDetails) -> Destination {
-        .lnurl(name: name, low: UInt64(max(1, metareal_wallet_msat_up(Int64(clamping: d.minSendable)))),
-               high: UInt64(max(0, metareal_wallet_msat_down(Int64(clamping: d.maxSendable)))), comment: Int(d.commentAllowed))
+        .lnurl(name: name, low: UInt64(max(1, verse_wallet_msat_up(Int64(clamping: d.minSendable)))),
+               high: UInt64(max(0, verse_wallet_msat_down(Int64(clamping: d.maxSendable)))), comment: Int(d.commentAllowed))
     }
 
     /// A quote for the request last parsed. `amount` is required unless the

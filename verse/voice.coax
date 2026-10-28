@@ -1,0 +1,1574 @@
+// The voice engine (docs/voice/coax-native-voice.md). Every 20 ms frame of
+// uplink audio comes here as plain samples: it is resampled to 16 kHz,
+// measured (levels, noise floor, speech likelihood, zero crossings), run
+// through the turn machine (start, trailing silence, end, hold, maximum
+// length) and barge-in, and described as FrameFeatures. The default per-frame
+// policy turns those measurements into FrameDecisions, and every decision,
+// ours or a decider's, goes through one gate: clamps, epoch, deadline,
+// confidence floor. Downlink audio gets the gain/duck/pause state and a
+// deterministic jitter buffer. No words, keys or I/O come here; the C face is
+// verse/platform/voice.h and voice.c.
+//   coax/bin/coax test verse/voice.coax
+//   coax/bin/coax c verse/voice.coax --library --header Voice.h
+
+// ---------------------------------------------------------------- constants
+
+FRAME :: 320;            // samples in a 20 ms frame at 16 kHz
+FRAME_MS :: 20;
+MAX_IN :: 960;           // samples in a 20 ms frame at 48 kHz
+HIST :: 128;             // resampler history, input samples
+PREROLL :: 32;           // frames of pre-roll kept for a turn's onset (640 ms)
+ONSET_GAP :: 2;          // quiet frames an onset may contain and still count
+ONSET_SPAN :: 25;        // frames an onset may take to confirm (500 ms)
+JSLOTS :: 16;            // jitter buffer packets
+JMAX :: 4800;            // samples in one jitter packet (200 ms at 24 kHz)
+TAIL :: 160;             // samples of the last packet kept for concealment
+FADE :: 640;             // concealment fades to silence over this many samples
+
+// Events, as OA_EV_* in voice.h.
+EV_TURN_START :: 1;
+EV_TURN_END :: 2;
+EV_BARGE_IN :: 4;
+EV_FORWARD :: 8;
+EV_DECISION :: 16;
+EV_EPOCH :: 32;
+EV_TOO_LONG :: 64;
+EV_DROPPED :: 128;
+EV_UNDERRUN :: 256;
+EV_ALL :: 511;
+
+// Enums numbered exactly as proto/openagents/voice/v1alpha1/voice.proto.
+STREAM_UPLINK :: 1;
+STREAM_DOWNLINK :: 2;
+TURN_IDLE :: 1;
+TURN_SPEAKING :: 2;
+TURN_TRAILING :: 3;
+TURN_ENDED :: 4;
+PLAY_SILENT :: 1;
+PLAY_PLAYING :: 2;
+PLAY_DUCKED :: 3;
+PLAY_PAUSED :: 4;
+ACT_NONE :: 0;
+ACT_HOLD :: 1;
+ACT_END :: 2;
+ACT_BARGE :: 3;
+ACT_DUCK :: 4;
+ACT_PAUSE :: 5;
+ACT_RESUME :: 6;
+ACT_DROP :: 7;
+
+// FrameDecision presence bits, as OA_DECISION_HAS_* in voice.h.
+HAS_GAIN :: 1;
+HAS_DUCK :: 2;
+HAS_RATE :: 4;
+HAS_HOLD :: 8;
+HAS_CONFIDENCE :: 16;
+HAS_DEADLINE :: 32;
+HAS_APPLY_FROM :: 64;
+HAS_EPOCH :: 128;
+
+// ---------------------------------------------------------------- types
+
+VoiceConfig :: struct {
+  end_silence_ms: u32 = 700;
+  min_speech_ms: u32 = 160;
+  max_turn_ms: u32 = 30000;
+  confidence_floor: f32 = 0.5;
+  speech_threshold: f32 = 0.6;
+  jitter_target: u32 = 2;
+}
+
+VoiceFeatures :: struct {
+  stream: u32;
+  sequence: u32;
+  media_epoch: u64;
+  rms_db: f32;
+  peak_db: f32;
+  speech: f32;
+  noise_db: f32;
+  turn_state: u32;
+  playback_state: u32;
+  speech_ms: u32;
+  silence_ms: u32;
+  zero_crossings: f32;
+}
+
+VoiceDecision :: struct {
+  has: u32;
+  stream: u32;
+  apply_from: u32;
+  epoch: u64;
+  action: u32;
+  gain_db: f32;
+  duck_db: f32;
+  rate: f32;
+  hold_ms: u32;
+  confidence: f32;
+  deadline: u32;
+}
+
+Turn :: struct {
+  state: u32 = TURN_IDLE;
+  run: u32;          // speech frames in the onset being confirmed
+  gap: u32;          // consecutive quiet frames inside that onset
+  cand: u32;         // frames since the onset rose above the floor
+  speech_ms: u32;
+  silence_ms: u32;
+  turn_ms: u32;
+  hold_ms: u32;      // extra trailing silence granted by HOLD_TURN
+  held: bool;        // the policy already held this trailing stretch
+  trail_sum: f32;    // speech likelihood summed over the trailing stretch
+  trail_frames: u32;
+}
+
+TurnOut :: struct { t: Turn; ev: u32; }
+
+Slot :: struct {
+  used: bool;
+  seq: u32;
+  n: u32;
+  data: [JMAX] s16;
+}
+
+Jitter :: struct {
+  slots: [JSLOTS] Slot;
+  next: u32;          // the sequence playing (or next to play)
+  offset: u32;        // samples already played from it
+  depth: u32;         // packets buffered
+  primed: bool;       // playout running
+  based: bool;        // `next` has been set by a push
+  missing: u32;       // samples concealed for the current gap
+  tail: [TAIL] s16;   // the last samples played, for concealment
+  tail_pos: u32;
+  last_n: u32;        // length of the last packet played
+}
+
+VoiceState :: struct {
+  input_rate: u32 = 16000;
+  in_n: u32 = 320;
+  cfg: VoiceConfig;
+  epoch: u64 = 1;
+  up_seq: u32;
+  down_seq: u32;
+  hist: [HIST] s16;
+  noise_db: f32 = -50;
+  turn: Turn;
+  playing: bool;
+  recent_play: u32;   // uplink frames left in which downlink audio counts as playing
+  barge_run: u32;
+  barge_lock: bool;
+  down_env: f32 = -120; // recent reply level, held and decaying, dBFS
+  echo_db: f32 = 0;     // how loud the reply comes back in the mic, relative to down_env
+  ducked: bool;
+  auto_duck: bool;    // the duck came from our own policy, so it may resume it
+  paused: bool;
+  duck_db: f32 = 12;
+  gain_db: f32;
+  rate: f32 = 1;
+  cur_gain: f32 = 1;
+  quiet_frames: u32;
+  drop_now: bool;
+  end_now: bool;
+  pend: [3] VoiceDecision;
+  pend_on: [3] bool;
+  pend_epoch: [3] u64;
+  pend_self: [3] bool;  // the pending decision is the built-in policy's
+  last: VoiceDecision;
+  has_last: bool;
+  ring: [PREROLL * FRAME] s16;
+  preroll_n: u32;
+  preroll: [PREROLL * FRAME] s16;
+  jit: Jitter;
+}
+
+// ---------------------------------------------------------------- small math
+
+lo32 :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+hi32 :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+clampf :: (x: f32, low: f32, high: f32) -> f32 {
+  if x != x { return low; }
+  return lo32(high, hi32(low, x));
+}
+clampu :: (x: u32, low: u32, high: u32) -> u32 {
+  if x < low { return low; }
+  if x > high { return high; }
+  return x;
+}
+addsat :: (a: u32, b: u32) -> u32 {
+  if a > 4294967295 - b { return 4294967295; }
+  return a + b;
+}
+next_seq :: (a: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + 1); }
+sigmoid :: (x: f32) -> f32 {
+  y := clampf(x, -30.0, 30.0);
+  return 1.0 / (1.0 + exp(-y));
+}
+// Round and saturate a sample; NaN is silence.
+to_s16 :: (y: f32) -> s16 {
+  if y != y { return 0; }
+  if y >= 32767.0 { return 32767; }
+  if y <= -32768.0 { return -32768; }
+  r := ifx y >= 0.0 then y + 0.5 else y - 0.5;
+  return cast(s16) int(r);
+}
+db_from_power :: (p: f64) -> f32 {
+  if p <= 0.000000000001 { return -120.0; }
+  return clampf(f32(4.342944819032518 * log(p)), -120.0, 0.0);
+}
+lin_from_db :: (db: f32) -> f32 { return exp(db * 0.11512925464970229f32); }
+
+#test "small math" {
+  #assert clampf(5.0, 0.0, 1.0) == 1.0 && clampf(-5.0, 0.0, 1.0) == 0.0 && clampf(0.25, 0.0, 1.0) == 0.25;
+  nan := 0.0f32 / 0.0f32;
+  #assert clampf(nan, -24.0, 12.0) == -24.0;
+  #assert to_s16(nan) == 0 && to_s16(40000.0) == 32767 && to_s16(-40000.0) == -32768;
+  #assert to_s16(1.5) == 2 && to_s16(-1.5) == -2 && to_s16(0.4) == 0;
+  #assert addsat(4294967290, 10) == 4294967295 && addsat(3, 4) == 7;
+  #assert next_seq(4294967295) == 0 && next_seq(7) == 8;
+  #assert clampu(3, 5, 9) == 5 && clampu(12, 5, 9) == 9 && clampu(7, 5, 9) == 7;
+  #assert sigmoid(0.0) == 0.5 && sigmoid(100.0) > 0.999 && sigmoid(-100.0) < 0.001;
+  #assert db_from_power(0.0) == -120.0 && db_from_power(1.0) == 0.0;
+  #assert abs(db_from_power(0.01) + 20.0) < 0.001;
+  #assert abs(lin_from_db(-20.0) - 0.1) < 0.0001 && abs(lin_from_db(0.0) - 1.0) < 0.000001;
+}
+
+// ---------------------------------------------------------------- resampling
+
+// A Blackman-windowed sinc low-pass, sampled in units of OUTPUT (16 kHz)
+// samples, so one table serves every input rate: cutoff 0.4 of the output
+// rate (6.4 kHz), 16 output samples each side. Built while compiling.
+KHALF :: 16;
+KRES :: 32;
+KN :: 513;
+CUTOFF :: 0.4;
+PI :: 3.141592653589793;
+
+kernel_at :: (t: f64) -> f64 {
+  if t >= 16.0 { return 0.0; }
+  s := ifx t < 0.000001 then 2.0 * CUTOFF else sin(2.0 * PI * CUTOFF * t) / (PI * t);
+  w := 0.42 + 0.5 * cos(PI * t / 16.0) + 0.08 * cos(2.0 * PI * t / 16.0);
+  return s * w;
+}
+make_kernel :: () -> [KN] f32 {
+  k: [KN] f32;
+  for i: 0..<KN { k[i] = f32(kernel_at(f64(i) / f64(KRES))); }
+  return k;
+}
+KERNEL :: #run make_kernel();
+#assert KERNEL[0] > 0.79 && KERNEL[0] < 0.81;
+#assert KERNEL[KN - 1] == 0.0;
+
+kernel :: (t: f32) -> f32 {
+  a := ifx t < 0.0 then -t else t;
+  x := a * 32.0;
+  if x >= 512.0 { return 0.0; }
+  i := int(x);
+  f := x - f32(i);
+  return KERNEL[i] + (KERNEL[i + 1] - KERNEL[i]) * f;
+}
+
+#test "kernel table" {
+  #assert kernel(0.0) == KERNEL[0];
+  #assert kernel(-1.0) == kernel(1.0);
+  #assert kernel(16.0) == 0.0 && kernel(40.0) == 0.0;
+  // Zero-ish at the sinc's nulls (t = 1.25 is the first for cutoff 0.4).
+  #assert abs(kernel(1.25)) < 0.01;
+  // DC gain over unit-spaced taps is 1.
+  sum: f32 = 0;
+  for i: -16..<17 { sum += kernel(f32(i)); }
+  #assert abs(sum - 1.0) < 0.01;
+}
+
+rate_ok :: (rate: u32) -> u32 {
+  if rate == 24000 || rate == 44100 || rate == 48000 { return rate; }
+  return 16000;
+}
+frame_samples :: (rate: u32) -> u32 { return rate_ok(rate) / 50; }
+
+#test "input rates" {
+  #assert frame_samples(16000) == 320 && frame_samples(24000) == 480;
+  #assert frame_samples(44100) == 882 && frame_samples(48000) == 960;
+  #assert frame_samples(8000) == 320 && frame_samples(0) == 320 && frame_samples(96000) == 320;
+}
+
+// One frame at the state's input rate into 320 samples at 16 kHz. Every
+// output sample centers the kernel KHALF output samples (in input time) back,
+// so the history holds what the window needs and frames join seamlessly.
+resample :: (s: [] VoiceState, pcm: [] s16, out: [] s16) {
+  n := cast(int) s[0].in_n;
+  if s[0].in_n == 320 {
+    for i: 0..<FRAME { out[i] = pcm[i]; }
+    return;
+  }
+  work: [HIST + MAX_IN] f32 = ---;
+  for i: 0..<HIST { work[i] = f32(s[0].hist[i]); }
+  for i: 0..<n { work[HIST + i] = f32(pcm[i]); }
+  r := f32(n) / 320.0;
+  span := 16.0 * r;
+  for k: 0..<FRAME {
+    c := f32(HIST) - span + f32(k) * r;
+    first := int(c - span) + 1;
+    last := int(c + span);
+    acc: f32 = 0;
+    ws: f32 = 0;
+    for i: first..<last + 1 {
+      w := kernel((f32(i) - c) / r);
+      acc += w * work[i];
+      ws += w;
+    }
+    out[k] = to_s16(ifx ws > 0.000001 then acc / ws else 0.0);
+  }
+  for i: 0..<HIST { s[0].hist[i] = to_s16(work[n + i]); }
+}
+
+// Test signals.
+tone :: (out: [] s16, rate: f32, hz: f32, amp: f32, start: int) {
+  for i: 0..<out.count { out[i] = to_s16(amp * sin(2.0 * 3.14159265 * hz * f32(start + i) / rate)); }
+}
+rms_of :: (x: [] s16, from: int) -> f32 {
+  p: f64 = 0;
+  for i: from..<x.count { v := f64(x[i]); p += v * v; }
+  return f32(sqrt(p / f64(x.count - from)));
+}
+
+resample_gain :: (rate: u32, hz: f32) -> f32 {
+  s: [1] VoiceState;
+  s[0].input_rate = rate;
+  s[0].in_n = frame_samples(rate);
+  n := cast(int) s[0].in_n;
+  pcm: [MAX_IN] s16;
+  out: [FRAME] s16;
+  // Two frames: the first fills the history.
+  tone(pcm[0..<n], f32(rate), hz, 10000.0, 0);
+  resample(s[..], pcm[0..<n], out[..]);
+  tone(pcm[0..<n], f32(rate), hz, 10000.0, n);
+  resample(s[..], pcm[0..<n], out[..]);
+  return rms_of(out[..], 0) / (10000.0 * 0.70710678);
+}
+
+#test "16 kHz passes through exactly" {
+  s: [1] VoiceState;
+  pcm: [FRAME] s16;
+  out: [FRAME] s16;
+  for i: 0..<FRAME { pcm[i] = cast(s16) (i * 97 - 15000); }
+  resample(s[..], pcm[..], out[..]);
+  for i: 0..<FRAME { #assert out[i] == pcm[i]; }
+}
+
+#test "48 kHz: speech band kept, above the cutoff removed" {
+  #assert abs(resample_gain(48000, 1000.0) - 1.0) < 0.06;
+  #assert abs(resample_gain(48000, 3000.0) - 1.0) < 0.06;
+  #assert resample_gain(48000, 12000.0) < 0.03;
+}
+#test "44.1 kHz" {
+  #assert abs(resample_gain(44100, 1000.0) - 1.0) < 0.06;
+  #assert resample_gain(44100, 11000.0) < 0.03;
+}
+#test "24 kHz" {
+  #assert abs(resample_gain(24000, 1000.0) - 1.0) < 0.06;
+  #assert resample_gain(24000, 10000.0) < 0.03;
+}
+#test "DC survives every rate" {
+  for which: 0..<3 {
+    rate: u32 = ifx which == 0 then 24000 else ifx which == 1 then 44100 else 48000;
+    s: [1] VoiceState;
+    s[0].input_rate = rate;
+    s[0].in_n = frame_samples(rate);
+    n := cast(int) s[0].in_n;
+    pcm: [MAX_IN] s16;
+    out: [FRAME] s16;
+    for i: 0..<n { pcm[i] = 1234; }
+    resample(s[..], pcm[0..<n], out[..]);
+    resample(s[..], pcm[0..<n], out[..]);
+    for i: 0..<FRAME { #assert out[i] == 1234; }
+  }
+}
+
+// ---------------------------------------------------------------- levels
+
+Levels :: struct { rms_db: f32; peak_db: f32; zcr: f32; }
+
+measure :: (x: [] s16) -> Levels {
+  p: f64 = 0;
+  peak := 0;
+  crossings := 0;
+  sign := 0;
+  for i: 0..<x.count {
+    v := cast(int) x[i];
+    p += f64(v * v);
+    a := ifx v < 0 then -v else v;
+    if a > peak { peak = a; }
+    if v != 0 {
+      now := ifx v > 0 then 1 else -1;
+      if sign != 0 && now != sign { crossings += 1; }
+      sign = now;
+    }
+  }
+  full: f64 = 32768.0 * 32768.0;
+  l: Levels;
+  if x.count == 0 { l.rms_db = -120; l.peak_db = -120; return l; }
+  l.rms_db = db_from_power(p / f64(x.count) / full);
+  l.peak_db = db_from_power(f64(peak * peak) / full);
+  l.zcr = ifx x.count > 1 then f32(crossings) / f32(x.count - 1) else 0.0;
+  return l;
+}
+
+#test "levels" {
+  x: [FRAME] s16;
+  l := measure(x[..]);
+  #assert l.rms_db == -120.0 && l.peak_db == -120.0 && l.zcr == 0.0;
+  for i: 0..<FRAME { x[i] = ifx i % 2 == 0 then 32767 else -32767; }
+  l = measure(x[..]);
+  #assert l.rms_db > -0.01 && l.peak_db > -0.01 && l.zcr == 1.0;
+  tone(x[..], 16000.0, 900.0, 3276.8, 0);
+  l = measure(x[..]);
+  // 0.1 of full scale is -20 dBFS peak, -23 dBFS RMS; 900 Hz crosses 1800 times a second.
+  #assert abs(l.peak_db + 20.0) < 0.1 && abs(l.rms_db + 23.01) < 0.1;
+  #assert abs(l.zcr - 0.1125) < 0.01;
+  #assert measure(x[0..<0]).rms_db == -120.0;
+}
+
+// ---------------------------------------------------------------- noise floor and speech
+
+// The floor follows quiet frames down fast and rises slowly (at most
+// 0.12 dB a frame) only while nobody is speaking, inside -90..-20 dBFS.
+noise_next :: (noise: f32, rms: f32, speaking: bool) -> f32 {
+  n := noise;
+  if rms < n { n += (rms - n) * 0.3; }
+  else if !speaking { n += lo32(rms - n, 6.0) * 0.02; }
+  return clampf(n, -90.0, -20.0);
+}
+
+// The echo estimate: the mic level over the reply level while the reply
+// plays. It falls quickly to what the room and the echo canceller really
+// leak, and rises slowly (0.2 dB a frame), so someone talking over the reply
+// stays well above it. It starts at 0 dB (no cancellation at all), so the
+// first reply can't cut itself off either.
+ECHO_MARGIN_DB :: 9.0;
+echo_next :: (echo: f32, diff: f32) -> f32 {
+  e := echo;
+  if diff < e { e += (diff - e) * 0.2; } else { e += lo32(diff - e, 0.2); }
+  return clampf(e, -60.0, 6.0);
+}
+
+// Speech likelihood from SNR over the floor, absolute level and voicing.
+speech_likelihood :: (rms: f32, noise: f32, zcr: f32) -> f32 {
+  p_snr := sigmoid((rms - noise - 10.0) / 2.0);
+  p_abs := sigmoid((rms + 50.0) / 3.0);
+  // High zero crossings mean noise, unless the frame stands far above the
+  // floor: then it is an unvoiced consonant (the s of "Let's"), which is speech.
+  voiced := ifx zcr <= 0.3 then 1.0 else hi32(0.2, 1.0 - (zcr - 0.3) * 2.5);
+  p_z := hi32(voiced, sigmoid((rms - noise - 20.0) / 3.0));
+  return clampf(p_snr * p_abs * p_z, 0.0, 1.0);
+}
+
+#test "noise floor" {
+  n: f32 = -50;
+  for i: 0..<20 { n = noise_next(n, -70.0, false); }
+  #assert n < -69.9;
+  m := n;
+  for i: 0..<50 { m = noise_next(m, -30.0, true); }
+  #assert m == n;
+  for i: 0..<50 { m = noise_next(m, -30.0, false); }
+  #assert m > n && m < n + 6.1;
+  #assert noise_next(-90.0, -120.0, false) == -90.0 && noise_next(-20.0, 0.0, false) == -20.0;
+}
+
+#forall "speech likelihood is a probability, rising with level" rms: -120..<1, noise: -90..<-19 {
+  p := speech_likelihood(f32(rms), f32(noise), 0.1);
+  #assert p >= 0.0 && p <= 1.0;
+  #assert speech_likelihood(f32(rms) + 1.0, f32(noise), 0.1) >= p;
+}
+
+#test "speech likelihood" {
+  #assert speech_likelihood(-25.0, -60.0, 0.1) > 0.95;
+  #assert speech_likelihood(-60.0, -60.0, 0.1) < 0.01;
+  #assert speech_likelihood(-25.0, -60.0, 0.6) < speech_likelihood(-25.0, -60.0, 0.1);
+  #assert speech_likelihood(-56.0, -90.0, 0.1) < 0.2;
+}
+
+// ---------------------------------------------------------------- the turn machine
+
+// One frame of the turn machine. `speech`: this frame is speech. `end_now`:
+// an END_TURN decision applies to this frame.
+turn_step :: (t0: Turn, speech: bool, above: bool, p: f32, end_now: bool, end_silence: u32, min_speech: u32, max_turn: u32) -> TurnOut {
+  o: TurnOut;
+  o.t = t0;
+  if o.t.state == TURN_ENDED { o.t = Turn.{turn_ms = t0.turn_ms}; }
+  if o.t.state == TURN_IDLE {
+    // An onset starts at the first frame above the floor and is confirmed
+    // by min_speech of speech frames; up to ONSET_GAP quiet frames in a row
+    // (stops, the closure before a consonant) don't break it, and it must
+    // confirm within ONSET_SPAN frames.
+    if !speech && !above {
+      if o.t.cand == 0 { return o; }
+      o.t.gap = addsat(o.t.gap, 1);
+      o.t.cand = addsat(o.t.cand, 1);
+      if o.t.gap > ONSET_GAP { o.t = Turn.{turn_ms = o.t.turn_ms}; }
+      return o;
+    }
+    o.t.cand = addsat(o.t.cand, 1);
+    o.t.gap = 0;
+    if speech { o.t.run = addsat(o.t.run, 1); }
+    if o.t.cand > ONSET_SPAN { o.t = Turn.{turn_ms = o.t.turn_ms, run = ifx speech then 1 else 0, cand = 1}; }
+    if o.t.run * FRAME_MS < min_speech { return o; }
+    o.t.state = TURN_SPEAKING;
+    o.t.speech_ms = o.t.run * FRAME_MS;
+    o.t.turn_ms = o.t.speech_ms;
+    o.ev = EV_TURN_START | EV_FORWARD;
+    if end_now { o.ev |= EV_TURN_END; o.t.state = TURN_ENDED; }
+    return o;
+  }
+  o.ev = EV_FORWARD;
+  o.t.turn_ms = addsat(o.t.turn_ms, FRAME_MS);
+  if speech {
+    o.t.state = TURN_SPEAKING;
+    o.t.speech_ms = addsat(o.t.speech_ms, FRAME_MS);
+    o.t.silence_ms = 0;
+    o.t.hold_ms = 0;
+    o.t.held = false;
+    o.t.trail_sum = 0;
+    o.t.trail_frames = 0;
+  } else {
+    o.t.state = TURN_TRAILING;
+    o.t.silence_ms = addsat(o.t.silence_ms, FRAME_MS);
+    o.t.trail_sum += p;
+    o.t.trail_frames = addsat(o.t.trail_frames, 1);
+  }
+  if o.t.turn_ms >= max_turn { o.ev |= EV_TURN_END | EV_TOO_LONG; o.t.state = TURN_ENDED; return o; }
+  if end_now || o.t.silence_ms >= addsat(end_silence, o.t.hold_ms) {
+    o.ev |= EV_TURN_END;
+    o.t.state = TURN_ENDED;
+  }
+  return o;
+}
+
+// Every 12-frame speech pattern, with a 3-frame minimum, a 3-frame end and a
+// 10-frame cap: starts and ends pair up; a start needs 3 speech frames since
+// the onset began, where more than 2 quiet frames in a row (or a turn's end)
+// begin a new onset; an end needs the silence or the cap; only turn frames
+// forward.
+#forall "turn machine" pattern: 0..<4096 {
+  t: Turn;
+  open := false;
+  count := 0;
+  quiet := 0;
+  frames := 0;
+  for i: 0..<12 {
+    speech := (pattern >> i) & 1 == 1;
+    o := turn_step(t, speech, speech, 0.0, false, 60, 60, 200);
+    was_open := open;
+    if speech { quiet = 0; } else { quiet += 1; }
+    if !open {
+      if speech { count += 1; }
+      if quiet > 2 { count = 0; }
+    }
+    if (o.ev & EV_TURN_START) != 0 { #assert !open && speech && count >= 3; open = true; frames = count - 1; }
+    if open { frames += 1; }
+    #assert ((o.ev & EV_FORWARD) != 0) == open;
+    if (o.ev & EV_TURN_END) != 0 {
+      #assert open;
+      #assert quiet >= 3 || frames >= 10;
+      #assert ((o.ev & EV_TOO_LONG) != 0) == (frames >= 10);
+      open = false;
+      count = 0;
+      quiet = 0;
+    }
+    if was_open && open && !((o.ev & EV_TURN_END) != 0) { #assert quiet < 3 && frames < 10; }
+    if !was_open && !open { #assert count < 3; }
+    t = o.t;
+    #assert t.state == TURN_IDLE || t.state == TURN_SPEAKING || t.state == TURN_TRAILING || t.state == TURN_ENDED;
+  }
+}
+
+#test "an onset: above-floor frames lead, gaps are bridged, slow onsets expire" {
+  // Two above-floor frames, a gap of two, then speech: one onset 7 frames long.
+  t: Turn;
+  t = turn_step(t, false, true, 0.0, false, 700, 60, 30000).t;
+  t = turn_step(t, false, true, 0.0, false, 700, 60, 30000).t;
+  t = turn_step(t, false, false, 0.0, false, 700, 60, 30000).t;
+  t = turn_step(t, false, false, 0.0, false, 700, 60, 30000).t;
+  #assert t.cand == 4 && t.gap == 2 && t.run == 0;
+  t = turn_step(t, true, true, 1.0, false, 700, 60, 30000).t;
+  t = turn_step(t, true, true, 1.0, false, 700, 60, 30000).t;
+  o := turn_step(t, true, true, 1.0, false, 700, 60, 30000);
+  #assert (o.ev & EV_TURN_START) != 0 && o.t.cand == 7;
+  // Three quiet frames end an unconfirmed onset.
+  u: Turn;
+  u = turn_step(u, true, true, 1.0, false, 700, 60, 30000).t;
+  for i: 0..<3 { u = turn_step(u, false, false, 0.0, false, 700, 60, 30000).t; }
+  #assert u.cand == 0 && u.run == 0;
+  // Above-floor frames alone never confirm, and the window slides.
+  w: Turn;
+  for i: 0..<40 { w = turn_step(w, false, true, 0.0, false, 700, 60, 30000).t; #assert w.state == TURN_IDLE; }
+  #assert w.cand <= 25;
+  w = turn_step(w, true, true, 1.0, false, 700, 60, 30000).t;
+  w = turn_step(w, true, true, 1.0, false, 700, 60, 30000).t;
+  #assert w.state == TURN_IDLE && w.run == 2;
+}
+
+#test "hold extends the end, END_TURN ends now" {
+  t: Turn;
+  for i: 0..<5 { t = turn_step(t, true, true, 1.0, false, 100, 60, 10000).t; }
+  #assert t.state == TURN_SPEAKING && t.speech_ms == 100;
+  o := turn_step(t, false, false, 0.0, false, 100, 60, 10000);
+  #assert o.t.state == TURN_TRAILING && o.t.silence_ms == 20;
+  o.t.hold_ms = 100;
+  for i: 0..<8 { o = turn_step(o.t, false, false, 0.0, false, 100, 60, 10000); #assert (o.ev & EV_TURN_END) == 0; }
+  o = turn_step(o.t, false, false, 0.0, false, 100, 60, 10000);
+  #assert (o.ev & EV_TURN_END) != 0 && o.t.silence_ms == 200;
+  o = turn_step(o.t, false, false, 0.0, false, 100, 60, 10000);
+  #assert o.t.state == TURN_IDLE && o.ev == 0;
+  for i: 0..<3 { o = turn_step(o.t, true, true, 1.0, false, 100, 60, 10000); }
+  #assert o.t.state == TURN_SPEAKING;
+  o = turn_step(o.t, true, true, 1.0, true, 100, 60, 10000);
+  #assert (o.ev & EV_TURN_END) != 0 && o.t.state == TURN_ENDED;
+  // A start frame that is also told to end closes at once.
+  u: Turn;
+  u.run = 2;
+  o = turn_step(u, true, true, 1.0, true, 100, 60, 10000);
+  #assert (o.ev & (EV_TURN_START | EV_TURN_END)) == (EV_TURN_START | EV_TURN_END);
+  // Speech resuming in the trailing stretch clears the hold.
+  v := turn_step(t, false, false, 0.5, false, 100, 60, 10000).t;
+  v.hold_ms = 300;
+  v.held = true;
+  v = turn_step(v, true, true, 1.0, false, 100, 60, 10000).t;
+  #assert v.hold_ms == 0 && !v.held && v.silence_ms == 0 && v.trail_frames == 0;
+}
+
+// ---------------------------------------------------------------- decisions
+
+// The shape of a decision the gate admits: a known stream, an action that
+// belongs on it, and nothing else.
+action_fits :: (stream: u32, action: u32) -> bool {
+  if action == ACT_NONE || action == ACT_BARGE { return stream == STREAM_UPLINK || stream == STREAM_DOWNLINK; }
+  if stream == STREAM_UPLINK { return action == ACT_HOLD || action == ACT_END || action == ACT_DROP; }
+  if stream == STREAM_DOWNLINK { return action == ACT_DUCK || action == ACT_PAUSE || action == ACT_RESUME; }
+  return false;
+}
+
+#forall "actions fit streams" stream: 0..<4, action: 0..<9 {
+  ok := action_fits(cast(u32) stream, cast(u32) action);
+  ups := action == 0 || action == 1 || action == 2 || action == 3 || action == 7;
+  downs := action == 0 || action == 3 || action == 4 || action == 5 || action == 6;
+  #assert ok == ((stream == 1 && ups) || (stream == 2 && downs));
+}
+
+// Clamp every numeric field as the proto says. NaN fields count as omitted.
+clamp_decision :: (d0: VoiceDecision) -> VoiceDecision {
+  d := d0;
+  d.has &= 255;
+  if (d.has & HAS_GAIN) != 0 { if d.gain_db != d.gain_db { d.has &= 255 ^ HAS_GAIN; d.gain_db = 0; } else { d.gain_db = clampf(d.gain_db, -24.0, 12.0); } } else { d.gain_db = 0; }
+  if (d.has & HAS_DUCK) != 0 { if d.duck_db != d.duck_db { d.has &= 255 ^ HAS_DUCK; d.duck_db = 0; } else { d.duck_db = clampf(d.duck_db, 0.0, 40.0); } } else { d.duck_db = 0; }
+  if (d.has & HAS_RATE) != 0 { if d.rate != d.rate { d.has &= 255 ^ HAS_RATE; d.rate = 0; } else { d.rate = clampf(d.rate, 0.8, 1.25); } } else { d.rate = 0; }
+  if (d.has & HAS_HOLD) != 0 { d.hold_ms = clampu(d.hold_ms, 0, 2000); } else { d.hold_ms = 0; }
+  if (d.has & HAS_CONFIDENCE) != 0 { d.confidence = clampf(d.confidence, 0.0, 1.0); } else { d.confidence = 1.0; }
+  return d;
+}
+
+#forall "decision clamps" g: -30..<20, h: 0..<25, has: 0..<32 {
+  d: VoiceDecision;
+  d.has = cast(u32) has;
+  d.gain_db = f32(g);
+  d.duck_db = f32(g);
+  d.rate = f32(g) / 20.0;
+  d.hold_ms = cast(u32) (h * 100);
+  d.confidence = f32(g) / 30.0;
+  c := clamp_decision(d);
+  #assert c.has == cast(u32) has;
+  if (has & 1) != 0 { #assert c.gain_db >= -24.0 && c.gain_db <= 12.0 && (c.gain_db == f32(g) || g < -24 || g > 12); } else { #assert c.gain_db == 0.0; }
+  if (has & 2) != 0 { #assert c.duck_db >= 0.0 && c.duck_db <= 40.0; } else { #assert c.duck_db == 0.0; }
+  if (has & 4) != 0 { #assert c.rate >= 0.8 && c.rate <= 1.25; } else { #assert c.rate == 0.0; }
+  if (has & 8) != 0 { #assert c.hold_ms <= 2000 && (c.hold_ms == cast(u32) (h * 100) || h > 20); } else { #assert c.hold_ms == 0; }
+  if (has & 16) != 0 { #assert c.confidence >= 0.0 && c.confidence <= 1.0; } else { #assert c.confidence == 1.0; }
+}
+
+#test "NaN fields are omitted" {
+  nan := 0.0f32 / 0.0f32;
+  d: VoiceDecision;
+  d.has = HAS_GAIN | HAS_DUCK | HAS_RATE | HAS_CONFIDENCE;
+  d.gain_db = nan; d.duck_db = nan; d.rate = nan; d.confidence = nan;
+  c := clamp_decision(d);
+  #assert c.has == HAS_CONFIDENCE && c.gain_db == 0.0 && c.confidence == 0.0;
+  d.has = 4096 | HAS_GAIN;
+  d.gain_db = 3.0;
+  #assert clamp_decision(d).has == HAS_GAIN;
+}
+
+stream_next :: (s: [] VoiceState, stream: u32) -> u32 {
+  return ifx stream == STREAM_UPLINK then s[0].up_seq else s[0].down_seq;
+}
+
+// Cut playback: a new media epoch, nothing buffered, no duck or pause, and
+// pending decisions of the old epoch die with it.
+cut :: (s: [] VoiceState) {
+  s[0].epoch = s[0].epoch + 1;
+  jitter_flush(s);
+  s[0].playing = false;
+  s[0].recent_play = 0;
+  s[0].ducked = false;
+  s[0].auto_duck = false;
+  s[0].paused = false;
+  s[0].quiet_frames = 0;
+}
+
+// The one gate every decision passes. True if kept.
+decide :: (s: [] VoiceState, d0: VoiceDecision) -> bool {
+  if !action_fits(d0.stream, d0.action) { return false; }
+  d := clamp_decision(d0);
+  if d.confidence < s[0].cfg.confidence_floor { return false; }
+  if (d.has & HAS_EPOCH) != 0 && d.epoch != s[0].epoch { return false; }
+  at := stream_next(s, d.stream);
+  if (d.has & HAS_DEADLINE) != 0 && at > d.deadline { return false; }
+  if (d.has & HAS_APPLY_FROM) == 0 || d.apply_from < at { d.apply_from = at; }
+  if d.action == ACT_BARGE && d.apply_from == at {
+    cut(s);
+    return true;
+  }
+  i := cast(int) d.stream;
+  s[0].pend[i] = d;
+  s[0].pend_on[i] = true;
+  s[0].pend_epoch[i] = s[0].epoch;
+  s[0].pend_self[i] = false;
+  return true;
+}
+
+// Apply a pending decision whose time has come. Returns EV_BARGE_IN|EV_EPOCH
+// if it cut playback.
+apply_due :: (s: [] VoiceState, stream: u32) -> u32 {
+  i := cast(int) stream;
+  if !s[0].pend_on[i] { return 0; }
+  d := s[0].pend[i];
+  if s[0].pend_epoch[i] != s[0].epoch { s[0].pend_on[i] = false; return 0; }
+  if stream_next(s, stream) < d.apply_from { return 0; }
+  s[0].pend_on[i] = false;
+  if d.action == ACT_BARGE { cut(s); return EV_BARGE_IN | EV_EPOCH; }
+  if stream == STREAM_UPLINK {
+    if d.action == ACT_HOLD { s[0].turn.hold_ms = d.hold_ms; }
+    if d.action == ACT_END { s[0].end_now = true; }
+    if d.action == ACT_DROP { s[0].drop_now = true; }
+    return 0;
+  }
+  if (d.has & HAS_GAIN) != 0 { s[0].gain_db = d.gain_db; }
+  if (d.has & HAS_RATE) != 0 { s[0].rate = d.rate; }
+  if d.action == ACT_DUCK {
+    s[0].ducked = true;
+    s[0].auto_duck = s[0].pend_self[i];
+    s[0].duck_db = ifx (d.has & HAS_DUCK) != 0 then d.duck_db else 12.0;
+  }
+  if d.action == ACT_PAUSE { s[0].paused = true; }
+  if d.action == ACT_RESUME { s[0].paused = false; s[0].ducked = false; s[0].auto_duck = false; }
+  return 0;
+}
+
+// ---------------------------------------------------------------- jitter buffer
+
+jitter_flush :: (s: [] VoiceState) {
+  for i: 0..<JSLOTS { s[0].jit.slots[i].used = false; }
+  s[0].jit.depth = 0;
+  s[0].jit.primed = false;
+  s[0].jit.based = false;
+  s[0].jit.offset = 0;
+  s[0].jit.missing = 0;
+}
+
+// Admit one packet. Dropped: stale epoch, too long, too old, too far ahead,
+// or a duplicate. A newer epoch replaces everything buffered.
+jitter_push :: (s: [] VoiceState, seq: u32, epoch: u64, pcm: [] s16) -> bool {
+  if pcm.count < 1 || pcm.count > JMAX { return false; }
+  if epoch != 0 && epoch < s[0].epoch { return false; }
+  if epoch > s[0].epoch { s[0].epoch = epoch; jitter_flush(s); }
+  if !s[0].jit.based || (s[0].jit.depth == 0 && !s[0].jit.primed) {
+    s[0].jit.next = seq;
+    s[0].jit.offset = 0;
+    s[0].jit.based = true;
+  }
+  // Before playout starts, an earlier packet that arrived late rebases the
+  // buffer if everything buffered still fits the window from it.
+  if seq < s[0].jit.next && !s[0].jit.primed && s[0].jit.next - seq < JSLOTS {
+    fits := true;
+    for i: 0..<JSLOTS {
+      if s[0].jit.slots[i].used && cast(u64) s[0].jit.slots[i].seq >= cast(u64) seq + JSLOTS { fits = false; }
+    }
+    if fits { s[0].jit.next = seq; s[0].jit.offset = 0; }
+  }
+  if seq < s[0].jit.next { return false; }
+  if cast(u64) seq >= cast(u64) s[0].jit.next + JSLOTS { return false; }
+  k := cast(int) (seq % JSLOTS);
+  if s[0].jit.slots[k].used { return false; }
+  s[0].jit.slots[k].used = true;
+  s[0].jit.slots[k].seq = seq;
+  s[0].jit.slots[k].n = cast(u32) pcm.count;
+  for i: 0..<pcm.count { s[0].jit.slots[k].data[i] = pcm[i]; }
+  s[0].jit.depth += 1;
+  return true;
+}
+
+// Fill out in sequence order. Playout starts once jitter_target packets are
+// buffered; a missing packet is concealed (the last 10 ms repeated, fading
+// to silence over 40 ms of samples), and skipped once a packet's worth of
+// samples has been concealed while later packets wait. An empty buffer
+// re-primes.
+jitter_pop :: (s: [] VoiceState, out: [] s16) -> u32 {
+  ev: u32 = 0;
+  for i: 0..<out.count {
+    if !s[0].jit.primed && s[0].jit.depth >= s[0].cfg.jitter_target && s[0].jit.depth > 0 { s[0].jit.primed = true; s[0].jit.missing = 0; }
+    if !s[0].jit.primed { out[i] = 0; ev = EV_UNDERRUN; continue; }
+    k := cast(int) (s[0].jit.next % JSLOTS);
+    if s[0].jit.slots[k].used && s[0].jit.slots[k].seq == s[0].jit.next {
+      v := s[0].jit.slots[k].data[cast(int) s[0].jit.offset];
+      out[i] = v;
+      s[0].jit.tail[cast(int) s[0].jit.tail_pos] = v;
+      s[0].jit.tail_pos = (s[0].jit.tail_pos + 1) % TAIL;
+      s[0].jit.missing = 0;
+      s[0].jit.offset += 1;
+      if s[0].jit.offset >= s[0].jit.slots[k].n {
+        s[0].jit.last_n = s[0].jit.slots[k].n;
+        s[0].jit.slots[k].used = false;
+        s[0].jit.depth -= 1;
+        s[0].jit.next = next_seq(s[0].jit.next);
+        s[0].jit.offset = 0;
+      }
+      continue;
+    }
+    ev = EV_UNDERRUN;
+    m := s[0].jit.missing;
+    fade := ifx m >= FADE then 0.0 else 1.0 - f32(m) / f32(FADE);
+    out[i] = to_s16(f32(s[0].jit.tail[cast(int) ((s[0].jit.tail_pos + m) % TAIL)]) * fade);
+    s[0].jit.missing = addsat(m, 1);
+    if s[0].jit.depth == 0 {
+      if s[0].jit.missing >= FADE { s[0].jit.primed = false; }
+    } else if s[0].jit.missing >= hi_u(s[0].jit.last_n, 320) {
+      s[0].jit.next = next_seq(s[0].jit.next);
+      s[0].jit.offset = 0;
+      s[0].jit.missing = 0;
+    }
+  }
+  return ev;
+}
+hi_u :: (a: u32, b: u32) -> u32 { return ifx a > b then a else b; }
+
+skip :: (s: [] VoiceState, r: [] Rng, kind: int, frames: int, t0: int) { run := feed(s, r, kind, frames, t0); #assert run.forwards >= 0; }
+down :: (s: [] VoiceState, p: [] s16) -> u32 { nf: [1] VoiceFeatures; return verse_voice_downlink(s, p, 16000, nf[0..<0]); }
+fresh :: (rate: u32) -> [1] VoiceState {
+  s: [1] VoiceState;
+  verse_voice_init(s[..], rate);
+  return s;
+}
+packet :: (out: [] s16, value: int) { for i: 0..<out.count { out[i] = cast(s16) value; } }
+
+#test "jitter: in order, primed at the target" {
+  s := fresh(16000);
+  p: [100] s16;
+  o: [100] s16;
+  packet(p[..], 1); #assert jitter_push(s[..], 10, 1, p[..]);
+  #assert jitter_pop(s[..], o[..]) == EV_UNDERRUN && o[0] == 0;
+  packet(p[..], 2); #assert jitter_push(s[..], 11, 1, p[..]);
+  #assert s[0].jit.depth == 2;
+  #assert jitter_pop(s[..], o[..]) == 0 && o[0] == 1 && o[99] == 1;
+  #assert jitter_pop(s[..], o[..]) == 0 && o[0] == 2;
+  #assert s[0].jit.depth == 0 && s[0].jit.next == 12;
+}
+
+#test "jitter: reorder, duplicate, old, far, stale, too long" {
+  s := fresh(16000);
+  p: [50] s16;
+  o: [50] s16;
+  packet(p[..], 3); #assert jitter_push(s[..], 5, 1, p[..]);
+  packet(p[..], 5); #assert jitter_push(s[..], 7, 1, p[..]);
+  packet(p[..], 4); #assert jitter_push(s[..], 6, 1, p[..]);
+  #assert !jitter_push(s[..], 6, 1, p[..]);
+  #assert !jitter_push(s[..], 5 + 16, 1, p[..]);
+  #assert jitter_push(s[..], 5 + 15, 1, p[..]);
+  #assert !jitter_push(s[..], 8, 0 + 0, p[0..<0]);
+  big: [JMAX + 1] s16;
+  #assert !jitter_push(s[..], 8, 1, big[..]);
+  #assert jitter_pop(s[..], o[..]) <= EV_UNDERRUN; #assert o[0] == 3;
+  #assert !jitter_push(s[..], 4, 1, p[..]);
+  #assert jitter_pop(s[..], o[..]) <= EV_UNDERRUN; #assert o[0] == 4;
+  #assert jitter_pop(s[..], o[..]) <= EV_UNDERRUN; #assert o[0] == 5;
+  s[0].epoch = 3;
+  #assert !jitter_push(s[..], 8, 2, p[..]);
+  // A newer epoch replaces what was buffered and rebases.
+  packet(p[..], 9); #assert jitter_push(s[..], 100, 4, p[..]);
+  #assert s[0].epoch == 4 && s[0].jit.depth == 1 && s[0].jit.next == 100;
+  // Unstamped (epoch 0) audio counts as current.
+  #assert jitter_push(s[..], 101, 0, p[..]);
+}
+
+#test "jitter: a late first packet rebases before playout, not after" {
+  s := fresh(16000);
+  p: [50] s16;
+  o: [50] s16;
+  packet(p[..], 2); #assert jitter_push(s[..], 11, 1, p[..]);
+  packet(p[..], 1); #assert jitter_push(s[..], 10, 1, p[..]);
+  #assert s[0].jit.next == 10 && s[0].jit.depth == 2;
+  // Too far back for what is buffered: refused.
+  packet(p[..], 9); #assert jitter_push(s[..], 25, 1, p[..]);
+  #assert !jitter_push(s[..], 9, 1, p[..]) && s[0].jit.next == 10;
+  #assert jitter_pop(s[..], o[..]) == 0 && o[0] == 1;
+  // Once playing, earlier packets are too old.
+  #assert !jitter_push(s[..], 10, 1, p[..]);
+}
+
+#test "jitter: a gap is concealed, faded, then skipped" {
+  s := fresh(16000);
+  p: [400] s16;
+  o: [400] s16;
+  packet(p[..], 1000); #assert jitter_push(s[..], 0, 1, p[..]);
+  packet(p[..], 2000); #assert jitter_push(s[..], 2, 1, p[..]);
+  #assert jitter_pop(s[..], o[..]) == 0 && o[399] == 1000;
+  #assert jitter_pop(s[..], o[..]) == EV_UNDERRUN;
+  #assert o[0] == 1000 && o[399] < 1000 && o[399] > 0;
+  #assert jitter_pop(s[..], o[..]) == 0 && o[0] == 2000;
+  // End of stream: concealment fades to silence, then the buffer re-primes.
+  long: [1000] s16;
+  #assert jitter_pop(s[..], long[..]) == EV_UNDERRUN;
+  #assert long[999] == 0 && !s[0].jit.primed;
+}
+
+#test "jitter: the same pushes give the same output" {
+  a := fresh(16000);
+  b := fresh(16000);
+  p: [37] s16;
+  oa: [64] s16;
+  ob: [64] s16;
+  for round: 0..<40 {
+    for i: 0..<37 { p[i] = cast(s16) ((round * 131 + i * 17) % 2000 - 1000); }
+    seq := cast(u32) ((round * 7) % 23);
+    ra := jitter_push(a[..], seq, 1, p[..]);
+    rb := jitter_push(b[..], seq, 1, p[..]);
+    #assert ra == rb;
+    #assert jitter_pop(a[..], oa[..]) == jitter_pop(b[..], ob[..]);
+    for i: 0..<64 { #assert oa[i] == ob[i]; }
+  }
+}
+
+// ---------------------------------------------------------------- the engine
+
+verse_voice_init :: (s: [] VoiceState, rate: u32) #export_c {
+  fresh_state: VoiceState;
+  s[0] = fresh_state;
+  s[0].input_rate = rate_ok(rate);
+  s[0].in_n = frame_samples(rate);
+}
+
+verse_voice_configure :: (s: [] VoiceState, c: VoiceConfig) #export_c {
+  if c.end_silence_ms != 0 { s[0].cfg.end_silence_ms = clampu(c.end_silence_ms, 200, 3000); }
+  if c.min_speech_ms != 0 { s[0].cfg.min_speech_ms = clampu(c.min_speech_ms, 40, 2000); }
+  if c.max_turn_ms != 0 { s[0].cfg.max_turn_ms = clampu(c.max_turn_ms, 1000, 120000); }
+  if c.confidence_floor != 0.0 { s[0].cfg.confidence_floor = clampf(c.confidence_floor, 0.0, 1.0); }
+  if c.speech_threshold != 0.0 { s[0].cfg.speech_threshold = clampf(c.speech_threshold, 0.05, 0.95); }
+  if c.jitter_target != 0 { s[0].cfg.jitter_target = clampu(c.jitter_target, 1, 8); }
+}
+
+verse_voice_config :: (s: [] VoiceState) -> VoiceConfig #export_c { return s[0].cfg; }
+verse_voice_input_frame_samples :: (s: [] VoiceState) -> u32 #export_c { return s[0].in_n; }
+
+#test "configure clamps and keeps zeros" {
+  s := fresh(48000);
+  #assert verse_voice_input_frame_samples(s[..]) == 960;
+  c: VoiceConfig;
+  c.end_silence_ms = 0; c.min_speech_ms = 0; c.max_turn_ms = 0;
+  c.confidence_floor = 0.0; c.speech_threshold = 0.0; c.jitter_target = 0;
+  verse_voice_configure(s[..], c);
+  d := verse_voice_config(s[..]);
+  #assert d.end_silence_ms == 700 && d.min_speech_ms == 160 && d.max_turn_ms == 30000;
+  #assert d.confidence_floor == 0.5 && d.speech_threshold == 0.6 && d.jitter_target == 2;
+  c.end_silence_ms = 1; c.min_speech_ms = 99999; c.max_turn_ms = 5; c.confidence_floor = 7.0;
+  c.speech_threshold = 0.01; c.jitter_target = 50;
+  verse_voice_configure(s[..], c);
+  d = verse_voice_config(s[..]);
+  #assert d.end_silence_ms == 200 && d.min_speech_ms == 2000 && d.max_turn_ms == 1000;
+  #assert d.confidence_floor == 1.0 && d.speech_threshold == 0.05 && d.jitter_target == 8;
+}
+
+playback_state :: (s: [] VoiceState) -> u32 {
+  if s[0].paused { return PLAY_PAUSED; }
+  if !(s[0].playing || s[0].recent_play > 0) { return PLAY_SILENT; }
+  return ifx s[0].ducked then PLAY_DUCKED else PLAY_PLAYING;
+}
+
+// The built-in policy's decision, if any, for this frame. It goes through
+// the same gate as anyone's.
+self_decide :: (s: [] VoiceState, stream: u32, action: u32, extra: u32, value: f32, hold: u32, confidence: f32) -> bool {
+  d: VoiceDecision;
+  d.has = HAS_CONFIDENCE | HAS_EPOCH | HAS_APPLY_FROM | extra;
+  d.stream = stream;
+  d.action = action;
+  d.epoch = s[0].epoch;
+  d.apply_from = stream_next(s, stream);
+  if stream == STREAM_UPLINK { d.apply_from = next_seq(s[0].up_seq); }
+  d.duck_db = value;
+  d.hold_ms = hold;
+  d.confidence = confidence;
+  if !decide(s, d) { return false; }
+  if d.action != ACT_BARGE { s[0].pend_self[cast(int) stream] = true; }
+  s[0].last = clamp_decision(d);
+  s[0].has_last = true;
+  return true;
+}
+
+// One uplink frame. Returns EV_* bits.
+verse_voice_uplink :: (s: [] VoiceState, pcm: [] s16, out: [] s16, f: [] VoiceFeatures) -> u32 #export_c {
+  ev: u32 = 0;
+  if pcm.count < cast(int) s[0].in_n { return 0; }
+  ev |= apply_due(s, STREAM_UPLINK);
+  frame: [FRAME] s16;
+  resample(s, pcm, frame[..]);
+  if out.count >= FRAME { for i: 0..<FRAME { out[i] = frame[i]; } }
+  l := measure(frame[..]);
+  in_turn := s[0].turn.state == TURN_SPEAKING || s[0].turn.state == TURN_TRAILING;
+  p := speech_likelihood(l.rms_db, s[0].noise_db, l.zcr);
+  speech := p >= s[0].cfg.speech_threshold;
+  above := l.rms_db > s[0].noise_db + 6.0;
+  s[0].noise_db = noise_next(s[0].noise_db, l.rms_db, speech || (in_turn && s[0].turn.state == TURN_SPEAKING));
+  playing := playback_state(s) == PLAY_PLAYING || playback_state(s) == PLAY_DUCKED;
+  // Our own reply leaks back into the mic, even through echo cancellation on
+  // a loudspeaker. While it plays, a frame is someone talking only if it
+  // stands well over the leak we expect (echo_next), so the reply never cuts
+  // itself off or becomes a turn of its own.
+  hearing := playing && s[0].down_env > -90.0;
+  if hearing { s[0].echo_db = echo_next(s[0].echo_db, l.rms_db - s[0].down_env); }
+  if hearing && l.rms_db <= s[0].down_env + s[0].echo_db + ECHO_MARGIN_DB {
+    speech = false; above = false; p = lo32(p, 0.29);
+  }
+
+  o := turn_step(s[0].turn, speech, above, p, s[0].end_now, s[0].cfg.end_silence_ms, s[0].cfg.min_speech_ms, s[0].cfg.max_turn_ms);
+  s[0].end_now = false;
+  ev |= o.ev;
+  if (o.ev & EV_TURN_START) != 0 {
+    // Pre-roll: the onset frames before this one plus one leading frame.
+    have := ifx s[0].up_seq < PREROLL then s[0].up_seq else PREROLL;
+    want := ifx o.t.cand < PREROLL then o.t.cand else PREROLL;
+    frames := ifx want < have then want else have;
+    s[0].preroll_n = frames * FRAME;
+    for j: 0..<cast(int) frames {
+      from := cast(int) ((cast(u64) s[0].up_seq + PREROLL - cast(u64) frames + cast(u64) j) % PREROLL);
+      for i: 0..<FRAME { s[0].preroll[j * FRAME + i] = s[0].ring[from * FRAME + i]; }
+    }
+  }
+  if (o.ev & EV_TURN_END) != 0 { s[0].barge_lock = false; }
+  s[0].turn = o.t;
+
+  // Barge-in: speech over playback for the minimum speech time, once.
+  decided := false;
+  if playing && speech && !s[0].barge_lock {
+    s[0].barge_run = addsat(s[0].barge_run, 1);
+    if s[0].barge_run * FRAME_MS >= s[0].cfg.min_speech_ms {
+      if self_decide(s, STREAM_DOWNLINK, ACT_BARGE, 0, 0.0, 0, 1.0) {
+        ev |= EV_BARGE_IN | EV_EPOCH | EV_DECISION;
+        decided = true;
+        s[0].barge_lock = true;
+        s[0].barge_run = 0;
+      }
+    }
+  } else if !speech { s[0].barge_run = 0; }
+  if s[0].barge_lock && s[0].turn.state == TURN_IDLE && !speech { s[0].barge_lock = false; }
+
+  // Duck playback when near-speech energy shows up over it; resume after
+  // 200 ms of quiet, but only a duck this policy made.
+  pending_down := s[0].pend_on[STREAM_DOWNLINK];
+  if !decided && !pending_down && playing && !s[0].ducked && !s[0].paused && (p >= 0.3 || s[0].barge_run > 0) {
+    if self_decide(s, STREAM_DOWNLINK, ACT_DUCK, HAS_DUCK, 12.0, 0, 0.9) {
+      ev |= EV_DECISION;
+      decided = true;
+      s[0].quiet_frames = 0;
+    }
+  }
+  if !decided && !pending_down && s[0].ducked && s[0].auto_duck {
+    if p < 0.2 { s[0].quiet_frames = addsat(s[0].quiet_frames, 1); } else { s[0].quiet_frames = 0; }
+    if s[0].quiet_frames >= 10 && self_decide(s, STREAM_DOWNLINK, ACT_RESUME, 0, 0.0, 0, 0.9) {
+      ev |= EV_DECISION;
+      decided = true;
+    }
+  }
+  // Hold the turn when the trailing silence still carries near-speech energy
+  // (a breath, a hesitation) as the end approaches.
+  if !decided && s[0].turn.state == TURN_TRAILING && !s[0].turn.held && s[0].turn.trail_frames > 0 {
+    near_end := addsat(s[0].turn.silence_ms, 100) >= s[0].cfg.end_silence_ms;
+    mean := s[0].turn.trail_sum / f32(s[0].turn.trail_frames);
+    if near_end && mean >= 0.15 {
+      if self_decide(s, STREAM_UPLINK, ACT_HOLD, HAS_HOLD, 0.0, 400, 0.8) {
+        ev |= EV_DECISION;
+        s[0].turn.held = true;
+      }
+    }
+  }
+
+  if s[0].drop_now {
+    s[0].drop_now = false;
+    if (ev & EV_FORWARD) != 0 { ev = (ev & (EV_ALL ^ EV_FORWARD)) | EV_DROPPED; }
+  }
+
+  slot := cast(int) (s[0].up_seq % PREROLL);
+  for i: 0..<FRAME { s[0].ring[slot * FRAME + i] = frame[i]; }
+
+  if f.count >= 1 {
+    f[0] = VoiceFeatures.{stream = STREAM_UPLINK, sequence = s[0].up_seq, media_epoch = s[0].epoch,
+      rms_db = l.rms_db, peak_db = l.peak_db, speech = p, noise_db = s[0].noise_db,
+      turn_state = s[0].turn.state, playback_state = playback_state(s),
+      speech_ms = s[0].turn.speech_ms, silence_ms = s[0].turn.silence_ms, zero_crossings = l.zcr};
+  }
+  s[0].up_seq = next_seq(s[0].up_seq);
+  if s[0].recent_play > 0 { s[0].recent_play -= 1; }
+  s[0].down_env = hi32(s[0].down_env - 0.6, -120.0);
+  return ev;
+}
+
+verse_voice_preroll :: (s: [] VoiceState, out: [] s16) -> u32 #export_c {
+  n := ifx cast(int) s[0].preroll_n < out.count then cast(int) s[0].preroll_n else out.count;
+  n = n - n % FRAME;
+  for i: 0..<n { out[i] = s[0].preroll[i]; }
+  return cast(u32) n;
+}
+
+// Reply audio about to play: the gain/duck/pause state, ramped per sample
+// with a ~4 ms one-pole so changes never click.
+verse_voice_downlink :: (s: [] VoiceState, pcm: [] s16, rate: u32, f: [] VoiceFeatures) -> u32 #export_c {
+  ev := apply_due(s, STREAM_DOWNLINK);
+  if pcm.count > 0 { s[0].recent_play = 10; }
+  target_db := s[0].gain_db - (ifx s[0].ducked then s[0].duck_db else 0.0);
+  target := ifx s[0].paused then 0.0 else lin_from_db(target_db);
+  r := ifx rate < 8000 then 8000.0 else ifx rate > 96000 then 96000.0 else f32(rate);
+  a := 1.0 / (r * 0.003);
+  g := s[0].cur_gain;
+  for i: 0..<pcm.count {
+    g += (target - g) * a;
+    if target == 0.0 && g < 0.001 { g = 0; }
+    pcm[i] = to_s16(f32(pcm[i]) * g);
+  }
+  s[0].cur_gain = clampf(g, 0.0, 4.0);
+  if target == 0.0 && s[0].cur_gain < 0.001 { s[0].cur_gain = 0; }
+  l := measure(pcm);
+  if pcm.count > 0 { s[0].down_env = hi32(s[0].down_env, l.rms_db); }
+  if f.count >= 1 {
+    f[0] = VoiceFeatures.{stream = STREAM_DOWNLINK, sequence = s[0].down_seq, media_epoch = s[0].epoch,
+      rms_db = l.rms_db, peak_db = l.peak_db, speech = 0.0, noise_db = s[0].noise_db,
+      turn_state = s[0].turn.state, playback_state = playback_state(s),
+      speech_ms = s[0].turn.speech_ms, silence_ms = s[0].turn.silence_ms, zero_crossings = l.zcr};
+  }
+  s[0].down_seq = next_seq(s[0].down_seq);
+  return ev;
+}
+
+verse_voice_decide :: (s: [] VoiceState, d: VoiceDecision) -> bool #export_c { return decide(s, d); }
+verse_voice_last_decision :: (s: [] VoiceState, out: [] VoiceDecision) -> bool #export_c {
+  if !s[0].has_last || out.count < 1 { return false; }
+  out[0] = s[0].last;
+  return true;
+}
+verse_voice_playing :: (s: [] VoiceState, playing: bool) #export_c {
+  s[0].playing = playing;
+  if !playing { s[0].recent_play = 0; }
+}
+verse_voice_epoch :: (s: [] VoiceState) -> u64 #export_c { return s[0].epoch; }
+verse_voice_set_epoch :: (s: [] VoiceState, epoch: u64) -> u64 #export_c {
+  if epoch > s[0].epoch { s[0].epoch = epoch; jitter_flush(s); }
+  return s[0].epoch;
+}
+verse_voice_cut :: (s: [] VoiceState) -> u64 #export_c { cut(s); return s[0].epoch; }
+verse_voice_cancel_turn :: (s: [] VoiceState) #export_c {
+  s[0].turn = Turn.{};
+  s[0].end_now = false;
+  s[0].pend_on[STREAM_UPLINK] = false;
+}
+verse_voice_gain_db :: (s: [] VoiceState) -> f32 #export_c {
+  if s[0].paused { return -120.0; }
+  return s[0].gain_db - (ifx s[0].ducked then s[0].duck_db else 0.0);
+}
+verse_voice_playback_rate :: (s: [] VoiceState) -> f32 #export_c { return s[0].rate; }
+verse_voice_turn_state :: (s: [] VoiceState) -> u32 #export_c { return s[0].turn.state; }
+verse_voice_playback_state :: (s: [] VoiceState) -> u32 #export_c { return playback_state(s); }
+verse_voice_uplink_sequence :: (s: [] VoiceState) -> u32 #export_c { return s[0].up_seq; }
+verse_voice_downlink_sequence :: (s: [] VoiceState) -> u32 #export_c { return s[0].down_seq; }
+verse_voice_turn_ms :: (s: [] VoiceState) -> u32 #export_c { return s[0].turn.turn_ms; }
+verse_voice_jitter_push :: (s: [] VoiceState, seq: u32, epoch: u64, pcm: [] s16) -> bool #export_c { return jitter_push(s, seq, epoch, pcm); }
+verse_voice_jitter_pop :: (s: [] VoiceState, out: [] s16) -> u32 #export_c { return jitter_pop(s, out); }
+verse_voice_jitter_depth :: (s: [] VoiceState) -> u32 #export_c { return s[0].jit.depth; }
+verse_voice_jitter_flush :: (s: [] VoiceState) #export_c { jitter_flush(s); }
+verse_voice_state_bytes :: () -> int #export_c { return size_of(VoiceState); }
+
+// ---------------------------------------------------------------- engine checks
+
+// A deterministic generator for test signals.
+Rng :: struct { x: u32 = 2463534242; }
+rng_next :: (r: [] Rng) -> f32 {
+  a := r[0].x;
+  a = a ^ (cast,trunc(u32) (cast(u64) a << 13));
+  a = a ^ (a >> 17);
+  a = a ^ (cast,trunc(u32) (cast(u64) a << 5));
+  r[0].x = a;
+  return f32(a) / 2147483648.0 - 1.0;
+}
+
+// Feed `frames` frames of one kind: 0 silence (faint noise), 1 a 300 Hz
+// tone at -20 dBFS, 2 speech-like noise (low-passed noise, syllable-rate
+// modulated) at about -25 dBFS. Returns the OR of all events and counts.
+Run :: struct { ev: u32; starts: int; ends: int; forwards: int; barges: int; decisions: int; }
+feed :: (s: [] VoiceState, r: [] Rng, kind: int, frames: int, t0: int) -> Run {
+  run: Run;
+  pcm: [FRAME] s16;
+  out: [FRAME] s16;
+  f: [1] VoiceFeatures;
+  lp: f32 = 0;
+  for k: 0..<frames {
+    for i: 0..<FRAME {
+      n := rng_next(r);
+      t := f32((t0 + k) * FRAME + i);
+      v: f32 = 0;
+      if kind == 0 { v = n * 30.0; }
+      if kind == 1 { v = 3276.8 * sin(2.0 * 3.14159265 * 300.0 * t / 16000.0); }
+      if kind == 2 {
+        lp += (n - lp) * 0.25;
+        env := 0.6 + 0.4 * sin(2.0 * 3.14159265 * 4.0 * t / 16000.0);
+        v = lp * 9000.0 * env;
+      }
+      pcm[i] = to_s16(v);
+    }
+    e := verse_voice_uplink(s, pcm[..], out[..], f[..]);
+    #assert f[0].sequence == cast(u32) (t0 + k) && f[0].stream == STREAM_UPLINK;
+    #assert f[0].speech >= 0.0 && f[0].speech <= 1.0 && f[0].rms_db >= -120.0 && f[0].rms_db <= 0.0;
+    run.ev |= e;
+    if (e & EV_TURN_START) != 0 { run.starts += 1; }
+    if (e & EV_TURN_END) != 0 { run.ends += 1; }
+    if (e & EV_FORWARD) != 0 { run.forwards += 1; }
+    if (e & EV_BARGE_IN) != 0 { run.barges += 1; }
+    if (e & EV_DECISION) != 0 { run.decisions += 1; }
+  }
+  return run;
+}
+
+#test "silence is not a turn" {
+  s := fresh(16000);
+  r: [1] Rng;
+  run := feed(s[..], r[..], 0, 60, 0);
+  #assert run.starts == 0 && run.forwards == 0 && run.ev == 0;
+  #assert s[0].noise_db < -60.0;
+}
+
+#test "a tone burst is one turn, with pre-roll" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 30, 0);
+  a := feed(s[..], r[..], 1, 25, 30);
+  #assert a.starts == 1 && a.ends == 0;
+  // Started on the 8th speech frame (160 ms): 18 frames forwarded.
+  #assert a.forwards == 18;
+  pre: [PREROLL * FRAME] s16;
+  #assert verse_voice_preroll(s[..], pre[..]) == 8 * FRAME;
+  b := feed(s[..], r[..], 0, 40, 55);
+  #assert b.ends == 1 && b.starts == 0;
+  // 700 ms of silence ends it: 35 trailing frames forward, the last is the end.
+  #assert b.forwards == 35;
+  #assert verse_voice_turn_ms(s[..]) == 160 + 17 * 20 + 35 * 20;
+  #assert verse_voice_turn_state(s[..]) == TURN_IDLE;
+}
+
+#test "speech-like noise is a turn" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 25, 0);
+  a := feed(s[..], r[..], 2, 40, 25);
+  #assert a.starts == 1;
+  b := feed(s[..], r[..], 0, 60, 65);
+  #assert b.ends == 1;
+}
+
+#test "a too-short blip is not a turn" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 30, 0);
+  a := feed(s[..], r[..], 1, 5, 30);
+  b := feed(s[..], r[..], 0, 20, 35);
+  #assert a.starts == 0 && b.starts == 0 && a.forwards + b.forwards == 0;
+}
+
+#test "max turn length ends the turn" {
+  s := fresh(16000);
+  c: VoiceConfig;
+  c.max_turn_ms = 1000;
+  verse_voice_configure(s[..], c);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 20, 0);
+  a := feed(s[..], r[..], 1, 70, 20);
+  #assert a.starts >= 1 && a.ends >= 1 && (a.ev & EV_TOO_LONG) != 0;
+}
+
+#test "barge-in: speech over playback cuts it once, with a new epoch" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 30, 0);
+  verse_voice_playing(s[..], true);
+  #assert verse_voice_playback_state(s[..]) == PLAY_PLAYING;
+  e0 := verse_voice_epoch(s[..]);
+  a := feed(s[..], r[..], 1, 30, 30);
+  #assert a.barges == 1 && verse_voice_epoch(s[..]) == e0 + 1;
+  #assert (a.ev & EV_EPOCH) != 0 && (a.ev & EV_DECISION) != 0;
+  #assert verse_voice_playback_state(s[..]) == PLAY_SILENT;
+  last: [1] VoiceDecision;
+  #assert verse_voice_last_decision(s[..], last[..]);
+  // The playback came back during the same turn: no second barge-in.
+  verse_voice_playing(s[..], true);
+  b := feed(s[..], r[..], 1, 20, 60);
+  #assert b.barges == 0;
+}
+
+// Uplink frames of `kind` with a reply packet at `reply` (constant sample value) before each.
+over_reply :: (s: [] VoiceState, r: [] Rng, kind: int, reply: int, frames: int, t0: int) -> Run {
+  run: Run;
+  q: [FRAME] s16;
+  for k: 0..<frames {
+    packet(q[..], reply);
+    #assert down(s, q[..]) >= 0;
+    a := feed(s, r, kind, 1, t0 + k);
+    run.ev |= a.ev; run.starts += a.starts; run.barges += a.barges; run.decisions += a.decisions;
+  }
+  return run;
+}
+
+#test "the reply's own echo is not speech; talking over it still barges in" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 30, 0);
+  verse_voice_playing(s[..], true);
+  // The reply at -20 dBFS comes back at -20 dBFS: no echo cancellation at all.
+  a := over_reply(s[..], r[..], 1, 3277, 60, 30);
+  #assert a.barges == 0 && a.starts == 0 && a.decisions == 0;
+  #assert verse_voice_playback_state(s[..]) == PLAY_PLAYING;
+  // With a working canceller the reply leaks back faintly; someone talking
+  // at the reply's level over it is a barge-in.
+  t := fresh(16000);
+  skip(t[..], r[..], 0, 30, 0);
+  verse_voice_playing(t[..], true);
+  c := over_reply(t[..], r[..], 0, 3277, 40, 30);
+  #assert c.barges == 0 && c.starts == 0 && t[0].echo_db < -20.0;
+  b := over_reply(t[..], r[..], 1, 3277, 20, 70);
+  #assert b.barges == 1;
+  // Learned leak is about 0 dB; a real canceller's -25 dB is learned down fast.
+  s2 := fresh(16000);
+  #assert s2[0].echo_db == 0.0;
+  e: f32 = 0;
+  for i: 0..<25 { e = echo_next(e, -25.0); }
+  #assert e < -24.0 && echo_next(e, 20.0) <= e + 0.2001;
+}
+
+#test "the policy ducks near speech and resumes after quiet" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 30, 0);
+  verse_voice_playing(s[..], true);
+  a := feed(s[..], r[..], 1, 2, 30);
+  #assert a.decisions == 1 && !s[0].ducked;
+  q: [16] s16;
+  #assert down(s[..], q[..]) == 0 && s[0].ducked && s[0].auto_duck;
+  last: [1] VoiceDecision;
+  #assert verse_voice_last_decision(s[..], last[..]);
+  #assert last[0].action == ACT_DUCK && last[0].stream == STREAM_DOWNLINK && last[0].duck_db == 12.0;
+  #assert verse_voice_playback_state(s[..]) == PLAY_DUCKED;
+  #assert verse_voice_gain_db(s[..]) == -12.0;
+  b := feed(s[..], r[..], 0, 15, 32);
+  #assert b.decisions == 1 && s[0].ducked;
+  #assert down(s[..], q[..]) == 0 && !s[0].ducked;
+  #assert verse_voice_last_decision(s[..], last[..]) && last[0].action == ACT_RESUME;
+  // A duck someone else asked for is not ours to resume.
+  d: VoiceDecision;
+  d.stream = STREAM_DOWNLINK; d.action = ACT_DUCK;
+  #assert verse_voice_decide(s[..], d) && down(s[..], q[..]) == 0 && s[0].ducked && !s[0].auto_duck;
+  c := feed(s[..], r[..], 0, 15, 47);
+  #assert c.decisions == 0 && s[0].ducked;
+}
+
+#test "the policy holds a hesitant ending" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 30, 0);
+  skip(s[..], r[..], 1, 20, 30);
+  // A trailing stretch at a near-speech level (well over the floor, under
+  // the threshold) earns a 400 ms hold.
+  s[0].turn.trail_sum = 0;
+  pcm: [FRAME] s16;
+  f: [1] VoiceFeatures;
+  decisions := 0;
+  ended := 0;
+  frames := 0;
+  for k: 0..<80 {
+    for i: 0..<FRAME { pcm[i] = to_s16(rng_next(r[..]) * 30.0 + 120.0 * sin(2.0 * 3.14159265 * 200.0 * f32(i) / 16000.0)); }
+    e := verse_voice_uplink(s[..], pcm[..], pcm[0..<0], f[..]);
+    if (e & EV_DECISION) != 0 { decisions += 1; }
+    if (e & EV_TURN_END) != 0 { ended = 1; break; }
+    frames += 1;
+  }
+  #assert decisions == 1 && ended == 1;
+  #assert frames >= 35 + 15;
+}
+
+#test "decisions: floor, epoch, deadline, stream, apply_from" {
+  s := fresh(16000);
+  d: VoiceDecision;
+  d.stream = STREAM_DOWNLINK; d.action = ACT_DUCK;
+  d.has = HAS_CONFIDENCE; d.confidence = 0.4;
+  #assert !verse_voice_decide(s[..], d);
+  d.confidence = 0.5;
+  #assert verse_voice_decide(s[..], d);
+  d.has = HAS_EPOCH; d.epoch = 7;
+  #assert !verse_voice_decide(s[..], d);
+  d.epoch = 1;
+  #assert verse_voice_decide(s[..], d);
+  s[0].down_seq = 10;
+  d.has = HAS_DEADLINE; d.deadline = 9;
+  #assert !verse_voice_decide(s[..], d);
+  d.deadline = 10;
+  #assert verse_voice_decide(s[..], d);
+  d.stream = STREAM_UPLINK;
+  #assert !verse_voice_decide(s[..], d);
+  d.stream = 0; d.action = ACT_NONE;
+  #assert !verse_voice_decide(s[..], d);
+  d.stream = STREAM_DOWNLINK; d.action = 9;
+  #assert !verse_voice_decide(s[..], d);
+  // Applied from its sequence on, not before; the old epoch's pending dies.
+  t := fresh(16000);
+  g: VoiceDecision;
+  g.stream = STREAM_DOWNLINK; g.has = HAS_GAIN | HAS_APPLY_FROM; g.gain_db = -6.0; g.apply_from = 2;
+  #assert verse_voice_decide(t[..], g);
+  p: [10] s16;
+  #assert down(t[..], p[..]) <= EV_ALL;
+  #assert t[0].gain_db == 0.0;
+  #assert down(t[..], p[..]) <= EV_ALL;
+  #assert t[0].gain_db == 0.0;
+  #assert down(t[..], p[..]) <= EV_ALL;
+  #assert t[0].gain_db == -6.0;
+  g.apply_from = 9;
+  g.gain_db = 3.0;
+  #assert verse_voice_decide(t[..], g);
+  #assert verse_voice_cut(t[..]) == 2;
+  for i: 0..<10 { #assert down(t[..], p[..]) <= EV_ALL; }
+  #assert t[0].gain_db == -6.0;
+  // A late apply_from applies on the next frame.
+  g.has = HAS_GAIN | HAS_APPLY_FROM; g.apply_from = 0; g.gain_db = 6.0;
+  #assert verse_voice_decide(t[..], g);
+  #assert down(t[..], p[..]) <= EV_ALL;
+  #assert t[0].gain_db == 6.0;
+}
+
+#test "decisions on the uplink: hold, end, drop, barge-in" {
+  s := fresh(16000);
+  r: [1] Rng;
+  skip(s[..], r[..], 0, 30, 0);
+  skip(s[..], r[..], 1, 12, 30);
+  d: VoiceDecision;
+  d.stream = STREAM_UPLINK; d.action = ACT_DROP;
+  #assert verse_voice_decide(s[..], d);
+  a := feed(s[..], r[..], 1, 1, 42);
+  #assert (a.ev & EV_DROPPED) != 0 && a.forwards == 0;
+  d.action = ACT_HOLD; d.has = HAS_HOLD; d.hold_ms = 5000;
+  #assert verse_voice_decide(s[..], d);
+  skip(s[..], r[..], 0, 1, 43);
+  #assert s[0].turn.hold_ms == 2000;
+  d.action = ACT_END; d.has = 0;
+  #assert verse_voice_decide(s[..], d);
+  b := feed(s[..], r[..], 0, 1, 44);
+  #assert b.ends == 1;
+  e := verse_voice_epoch(s[..]);
+  d.action = ACT_BARGE; d.stream = STREAM_DOWNLINK;
+  #assert verse_voice_decide(s[..], d) && verse_voice_epoch(s[..]) == e + 1;
+  // Pause silences the downlink; resume brings it back.
+  d.action = ACT_PAUSE;
+  #assert verse_voice_decide(s[..], d);
+  p: [400] s16;
+  packet(p[..], 10000);
+  #assert down(s[..], p[..]) <= EV_ALL;
+  #assert p[399] == 0 && verse_voice_playback_state(s[..]) == PLAY_PAUSED && verse_voice_gain_db(s[..]) == -120.0;
+  d.action = ACT_RESUME;
+  #assert verse_voice_decide(s[..], d);
+  packet(p[..], 10000);
+  #assert down(s[..], p[..]) <= EV_ALL;
+  #assert p[399] > 9900;
+  d.action = ACT_NONE; d.has = HAS_RATE; d.rate = 3.0;
+  #assert verse_voice_decide(s[..], d);
+  #assert down(s[..], p[0..<0]) <= EV_ALL;
+  #assert verse_voice_playback_rate(s[..]) == 1.25;
+  verse_voice_cancel_turn(s[..]);
+  #assert verse_voice_turn_state(s[..]) == TURN_IDLE;
+}
+
+#test "downlink duck ramps to -12 dB" {
+  s := fresh(16000);
+  d: VoiceDecision;
+  d.stream = STREAM_DOWNLINK; d.action = ACT_DUCK;
+  #assert verse_voice_decide(s[..], d);
+  p: [800] s16;
+  f: [1] VoiceFeatures;
+  packet(p[..], 10000);
+  #assert verse_voice_downlink(s[..], p[..], 16000, f[..]) <= EV_ALL;
+  #assert p[0] > 9000 && abs(f32(p[799]) - 2511.9) < 30.0;
+  #assert f[0].stream == STREAM_DOWNLINK && f[0].sequence == 0 && f[0].playback_state == PLAY_DUCKED;
+  #assert verse_voice_downlink_sequence(s[..]) == 1 && verse_voice_uplink_sequence(s[..]) == 0;
+}
+
+#test "epochs only move forward" {
+  s := fresh(16000);
+  #assert verse_voice_set_epoch(s[..], 0) == 1 && verse_voice_set_epoch(s[..], 5) == 5 && verse_voice_set_epoch(s[..], 3) == 5;
+  #assert verse_voice_cut(s[..]) == 6;
+  p: [10] s16;
+  #assert verse_voice_jitter_push(s[..], 0, 6, p[..]) && verse_voice_jitter_depth(s[..]) == 1;
+  verse_voice_jitter_flush(s[..]);
+  #assert verse_voice_jitter_depth(s[..]) == 0;
+  o: [10] s16;
+  #assert verse_voice_jitter_pop(s[..], o[..]) == EV_UNDERRUN;
+  #assert verse_voice_state_bytes() == size_of(VoiceState);
+  verse_voice_playing(s[..], false);
+  #assert verse_voice_playback_state(s[..]) == PLAY_SILENT;
+}
+
+// ---------------------------------------------------------------- worst-case frames
+// One call each of every per-frame procedure at its most expensive input,
+// so `coax test --steps N` bounds the cost of a frame.
+
+#test "worst case: uplink frame at 48 kHz" {
+  s := fresh(48000);
+  r: [1] Rng;
+  pcm: [MAX_IN] s16;
+  out: [FRAME] s16;
+  f: [1] VoiceFeatures;
+  verse_voice_playing(s[..], true);
+  s[0].turn.state = TURN_TRAILING;
+  s[0].turn.silence_ms = 600;
+  s[0].turn.trail_frames = 1;
+  s[0].turn.trail_sum = 1.0;
+  for i: 0..<MAX_IN { pcm[i] = to_s16(rng_next(r[..]) * 20000.0); }
+  #assert verse_voice_uplink(s[..], pcm[..], out[..], f[..]) <= EV_ALL;
+}
+
+#test "worst case: uplink frame at 44.1 kHz" {
+  s := fresh(44100);
+  pcm: [882] s16;
+  out: [FRAME] s16;
+  f: [1] VoiceFeatures;
+  tone(pcm[..], 44100.0, 300.0, 9000.0, 0);
+  #assert verse_voice_uplink(s[..], pcm[..], out[..], f[..]) <= EV_ALL;
+}
+
+#test "worst case: downlink 200 ms at 24 kHz" {
+  s := fresh(16000);
+  pcm: [JMAX] s16;
+  f: [1] VoiceFeatures;
+  tone(pcm[..], 24000.0, 300.0, 9000.0, 0);
+  #assert verse_voice_downlink(s[..], pcm[..], 24000, f[..]) <= EV_ALL;
+}
+
+#test "worst case: jitter push and pop of a full packet" {
+  s := fresh(16000);
+  pcm: [JMAX] s16;
+  #assert verse_voice_jitter_push(s[..], 0, 1, pcm[..]);
+  #assert verse_voice_jitter_push(s[..], 2, 1, pcm[..]);
+  #assert verse_voice_jitter_pop(s[..], pcm[..]) <= EV_ALL;
+  #assert verse_voice_jitter_pop(s[..], pcm[..]) <= EV_ALL;
+}
+
+#test "worst case: decide" {
+  s := fresh(16000);
+  d: VoiceDecision;
+  d.stream = STREAM_DOWNLINK; d.action = ACT_DUCK; d.has = 255; d.epoch = 1; d.confidence = 1.0;
+  #assert verse_voice_decide(s[..], d);
+}

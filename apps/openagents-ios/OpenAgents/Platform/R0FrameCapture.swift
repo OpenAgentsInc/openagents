@@ -15,8 +15,8 @@ final class R0FrameCapture {
     private var publishScheduled = false
     private(set) var finished = false
     var currentFrame: Int { nextFrame - 1 }
-    private let warmup = Int(metareal_bench_plan().warmup)
-    private let count = Int(metareal_bench_plan().samples)
+    private let warmup = Int(verse_bench_plan().warmup)
+    private let count = Int(verse_bench_plan().samples)
     static func clock() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
     private init() {}
     func beginFrame(active: Bool) -> Int {
@@ -52,7 +52,7 @@ final class R0FrameCapture {
         for (name, raw) in captured {
             var values = raw, scratch = [Double](repeating: 0, count: raw.count)
             let stat = values.withUnsafeMutableBufferPointer { values in scratch.withUnsafeMutableBufferPointer { out in
-                metareal_bench_stats(coax_v_f64(data: values.baseAddress, count: Int64(values.count)), coax_v_f64(data: out.baseAddress, count: Int64(out.count)))
+                verse_bench_stats(coax_v_f64(data: values.baseAddress, count: Int64(values.count)), coax_v_f64(data: out.baseAddress, count: Int64(out.count)))
             } }
             metrics[name] = ["ok": stat.ok, "count": stat.count, "mean_ns": stat.mean, "median_ns": stat.median, "p95_ns": stat.p95, "cv": stat.cv, "samples_ns": raw]
         }
@@ -64,7 +64,7 @@ final class R0FrameCapture {
         let report: [String: Any] = ["schema_version": 1, "environment": environment, "os": UIDevice.current.systemVersion,
             "warmup_frames": warmup, "requested_samples": count, "completed_commands": submitted, "gpu_errors": failures,
             "gpu_clock_available": captured["gpu"] != nil, "metrics": metrics,
-            "workload": "metareal_bench_frame drives normal Grid input; real display timestamps and Metal path"]
+            "workload": "verse_bench_frame drives normal Grid input; real display timestamps and Metal path"]
         do {
             let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("R0-frame.json")
             try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]).write(to: url, options: .atomic)

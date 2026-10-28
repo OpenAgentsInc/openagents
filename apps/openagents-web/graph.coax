@@ -1,5 +1,5 @@
 // The graph behind the splash: the iOS home's animated graph
-// (metareal/home.coax), the same nodes, links, reveal times and pulses from
+// (verse/home.coax), the same nodes, links, reveal times and pulses from
 // the same seed, laid on a tilted plane so it reads as a wide band across
 // the page instead of a disc. Nodes fade in and links grow out from them;
 // once a link is lit, payments run along it both ways and flash the node
@@ -30,7 +30,7 @@ GLink :: struct {
 }
 Graph :: struct { n: int; m: int; rng: int; full: bool; }
 
-GRAPH_SEED :: 42727;   // the iOS home's (metareal/home.textproto)
+GRAPH_SEED :: 42727;   // the iOS home's (verse/home.textproto)
 SATELLITES :: 8;
 NODE_CAP :: 1024;
 LINK_CAP :: 1024;

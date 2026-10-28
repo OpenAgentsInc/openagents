@@ -38,8 +38,8 @@ logs="$here/build/voice-sim"
 mkdir -p "$logs"
 
 # The host agent's recordings are the app's test recordings.
-if compgen -G "$repo/metareal/voice-host/fixtures/*.wav" > /dev/null; then
-  cp "$repo"/metareal/voice-host/fixtures/*.wav "$here/OpenAgents/Voice/Fixtures/"
+if compgen -G "$repo/verse/voice-host/fixtures/*.wav" > /dev/null; then
+  cp "$repo"/verse/voice-host/fixtures/*.wav "$here/OpenAgents/Voice/Fixtures/"
 fi
 
 echo "== build"
@@ -61,7 +61,7 @@ trap stop_host EXIT
 
 start_host() { # $1 = log name, rest = run.sh flags
   local name="$1"; shift
-  "$repo/metareal/voice-host/run.sh" --listen "127.0.0.1:$port" "$@" > "$logs/host-$name.log" 2>&1 &
+  "$repo/verse/voice-host/run.sh" --listen "127.0.0.1:$port" "$@" > "$logs/host-$name.log" 2>&1 &
   host_pid=$!
   for _ in $(seq 1 300); do
     if nc -z 127.0.0.1 "$port" 2>/dev/null; then return 0; fi

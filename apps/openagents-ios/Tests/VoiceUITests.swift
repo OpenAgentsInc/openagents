@@ -1,6 +1,6 @@
 import XCTest
 
-/// Voice in the Grid against a real voice host (metareal/voice-host), with a
+/// Voice in the Grid against a real voice host (verse/voice-host), with a
 /// bundled recording streamed through the same uplink path as the microphone
 /// (`-OAVoiceFixture`). Run by apps/openagents-ios/tools/voice-sim-test.sh,
 /// which starts the host and passes these through TEST_RUNNER_ variables:

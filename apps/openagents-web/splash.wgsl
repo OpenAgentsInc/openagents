@@ -4,7 +4,7 @@
 // stroke's place, width, light and glow.
 //
 // Temporary: hand-written WGSL until Coax emits WGSL (coax/web.md), except
-// the HUD bar, which is metareal/light.coax's metareal_bar (the iOS Start
+// the HUD bar, which is verse/light.coax's verse_bar (the iOS Start
 // bar's light, Stages.metal bar_fragment) converted by coax/web/wgsl.py at
 // build time into the block below. The nebula is the previous
 // openagents.com splash's, unchanged.
@@ -46,7 +46,7 @@ fn fbm(q: vec2f) -> f32 {
 }
 
 // The panel behind the terminal, a prompt or a slide: dark glass in
-// metareal_bar's shape (its two 45° cuts), faint scanlines and an inner glow
+// verse_bar's shape (its two 45° cuts), faint scanlines and an inner glow
 // in the state's colour. The bar itself, edge and sweep, is drawn over it
 // as a MODE_BAR quad.
 fn panel(p: vec2f, under: vec3f) -> vec3f {
@@ -65,7 +65,7 @@ fn panel(p: vec2f, under: vec3f) -> vec3f {
   return mix(under, glass, clamp(u.alpha, 0.0, 1.0) * smoothstep(-0.5, 1.0, inside));
 }
 
-// ---- generated: metareal/light.coax (metareal_bar) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/light.coax (verse_bar) by coax/web/wgsl.py; do not edit
 fn coax_p_hi(l_a: f32, l_b: f32) -> f32 {
   if ((l_a > l_b))
   {
@@ -113,7 +113,7 @@ fn coax_p_smooth(l_a: f32, l_b: f32, l_x: f32) -> f32 {
   var l_t: f32 = coax_p_sat(((l_x - l_a) / (l_b - l_a)));
   return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
 }
-fn metareal_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_press: f32, l_flash: f32) -> f32 {
+fn verse_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_press: f32, l_flash: f32) -> f32 {
   var coax_t24: f32;
   var coax_t25: f32;
   var coax_t26: f32;
@@ -179,7 +179,7 @@ struct V {
     // shape its half width, half height, scale and light. As iOS draws it,
     // a press shrinks the bar a little.
     let p = v.place / (1.0 - 0.03 * v.bar.x);
-    let c = metareal_bar(-p.x, p.y, v.shape.x, v.shape.y, v.shape.z, u.time, v.bar.x, v.bar.y);
+    let c = verse_bar(-p.x, p.y, v.shape.x, v.shape.y, v.shape.z, u.time, v.bar.x, v.bar.y);
     return vec4f(v.tint.rgb * c * v.shape.w * u.fade, 1.0);
   }
   if (mode > 1.5 && mode < 2.5) {

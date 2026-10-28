@@ -1,0 +1,566 @@
+// The voice wire (docs/voice/coax-native-voice.md): one
+// openagents.voice.v1alpha1.Frame per WebSocket binary message. The codecs
+// are generated from the committed descriptor, so there is no second
+// hand-written codec; this file only maps the C face's plain structs
+// (verse/platform/voice.h) onto them. Bounds (max_bytes, the 16 KiB
+// frame, UTF-8) are the descriptor's and are enforced by the generated code.
+// Scalars and strings that are zero or empty are omitted on encode; a
+// FrameDecision carries explicit presence bits instead.
+//   coax/bin/coax test verse/voice-wire.coax
+#import_proto "../proto/descriptors/voice.pb" as V;
+
+MAX_FRAME :: 16384;
+
+WSpeaker :: struct { id: string; role: s32; profile: string; profile_revision: u32; entity: string; }
+WUtterance :: struct { id: string; speaker: string; text: string; priority: u32; interruptible: bool; spatial: bool; batch: bool; }
+WMeter :: struct { recognized_ms: u64; synthesized_chars: u64; free_ms_left: u64; free_chars_left: u64; owed_msat: u64; }
+WHello :: struct {
+  protocol: u32; client: s32; has_speaker: bool; speaker: WSpeaker; route: string;
+  input_sample_rate: u32; output_sample_rate: u32; codec: s32; profile: string; token: string; observe: bool;
+}
+WWelcome :: struct {
+  protocol: u32; session: string; input_sample_rate: u32; output_sample_rate: u32;
+  provider: string; has_meter: bool; meter: WMeter; max_turn_ms: u32;
+}
+WAudio :: struct { turn: string; sequence: u32; sample_rate: u32; codec: s32; data: [] u8; media_epoch: u64; utterance: string; }
+WControl :: struct { kind: s32; turn: string; played_samples: u64; media_epoch: u64; utterance: string; at_ms: u64; }
+WTurnEvent :: struct { turn: string; speaker: string; phase: s32; text: string; played_samples: u64; media_epoch: u64; }
+WSpeech :: struct {
+  has_utterance: bool; utterance: WUtterance; has_speaker: bool; speaker: WSpeaker;
+  sample_rate: u32; media_epoch: u64; turn: string;
+}
+WRoute :: struct { turn: string; target: string; reason: string; }
+WError :: struct { code: s32; message: string; turn: string; }
+WFeatures :: struct {
+  stream: s32; sequence: u32; media_epoch: u64; rms_db: f32; peak_db: f32; speech: f32; noise_db: f32;
+  turn_state: s32; playback_state: s32; speech_ms: u32; silence_ms: u32; zero_crossings: f32;
+}
+// Presence bits as OA_DECISION_HAS_* in voice.h.
+HAS_GAIN :: 1;
+HAS_DUCK :: 2;
+HAS_RATE :: 4;
+HAS_HOLD :: 8;
+HAS_CONFIDENCE :: 16;
+HAS_DEADLINE :: 32;
+HAS_APPLY_FROM :: 64;
+HAS_EPOCH :: 128;
+WDecision :: struct {
+  has: u32; stream: s32; apply_from: u32; epoch: u64; action: s32; gain_db: f32; duck_db: f32;
+  rate: f32; hold_ms: u32; confidence: f32; decider: string; deadline: u32;
+}
+// One Frame; `kind` is the oneof field number (OA_MSG_* in voice.h).
+WMsg :: struct {
+  kind: u32;
+  hello: WHello; welcome: WWelcome; audio: WAudio; control: WControl; turn_event: WTurnEvent;
+  speech: WSpeech; route: WRoute; meter: WMeter; error: WError; features: WFeatures; decision: WDecision;
+}
+
+// ---------------------------------------------------------------- encode
+// Each builder alternates two scratch buffers: an edit reads one and writes
+// the other, as the generated API requires.
+
+pick :: (k: int, a: [] u8, b: [] u8) -> [] u8 { return ifx k % 2 == 0 then a else b; }
+
+enc_speaker :: (w: WSpeaker, a: [] u8, b: [] u8) -> V_Speaker {
+  m := V_Speaker_new(); k := 0;
+  if w.id.count > 0 { m = V_Speaker_set_id(m, w.id, pick(k, a, b)); k += 1; }
+  if w.role != 0 { m = V_Speaker_set_role(m, w.role, pick(k, a, b)); k += 1; }
+  if w.profile.count > 0 { m = V_Speaker_set_profile(m, w.profile, pick(k, a, b)); k += 1; }
+  if w.profile_revision != 0 { m = V_Speaker_set_profile_revision(m, w.profile_revision, pick(k, a, b)); k += 1; }
+  if w.entity.count > 0 { m = V_Speaker_set_entity(m, w.entity, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_utterance :: (w: WUtterance, a: [] u8, b: [] u8) -> V_Utterance {
+  m := V_Utterance_new(); k := 0;
+  if w.id.count > 0 { m = V_Utterance_set_id(m, w.id, pick(k, a, b)); k += 1; }
+  if w.speaker.count > 0 { m = V_Utterance_set_speaker(m, w.speaker, pick(k, a, b)); k += 1; }
+  if w.text.count > 0 { m = V_Utterance_set_text(m, w.text, pick(k, a, b)); k += 1; }
+  if w.priority != 0 { m = V_Utterance_set_priority(m, w.priority, pick(k, a, b)); k += 1; }
+  if w.interruptible { m = V_Utterance_set_interruptible(m, true, pick(k, a, b)); k += 1; }
+  if w.spatial { m = V_Utterance_set_spatial(m, true, pick(k, a, b)); k += 1; }
+  if w.batch { m = V_Utterance_set_batch(m, true, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_meter :: (w: WMeter, a: [] u8, b: [] u8) -> V_Meter {
+  m := V_Meter_new(); k := 0;
+  if w.recognized_ms != 0 { m = V_Meter_set_recognized_ms(m, w.recognized_ms, pick(k, a, b)); k += 1; }
+  if w.synthesized_chars != 0 { m = V_Meter_set_synthesized_chars(m, w.synthesized_chars, pick(k, a, b)); k += 1; }
+  if w.free_ms_left != 0 { m = V_Meter_set_free_ms_left(m, w.free_ms_left, pick(k, a, b)); k += 1; }
+  if w.free_chars_left != 0 { m = V_Meter_set_free_chars_left(m, w.free_chars_left, pick(k, a, b)); k += 1; }
+  if w.owed_msat != 0 { m = V_Meter_set_owed_msat(m, w.owed_msat, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_hello :: (w: WHello, a: [] u8, b: [] u8, c: [] u8, d: [] u8) -> V_Hello {
+  m := V_Hello_new(); k := 0;
+  if w.protocol != 0 { m = V_Hello_set_protocol(m, w.protocol, pick(k, a, b)); k += 1; }
+  if w.client != 0 { m = V_Hello_set_client(m, w.client, pick(k, a, b)); k += 1; }
+  if w.has_speaker { m = V_Hello_set_speaker(m, enc_speaker(w.speaker, c, d), pick(k, a, b)); k += 1; }
+  if w.route.count > 0 { m = V_Hello_set_route(m, w.route, pick(k, a, b)); k += 1; }
+  if w.input_sample_rate != 0 { m = V_Hello_set_input_sample_rate(m, w.input_sample_rate, pick(k, a, b)); k += 1; }
+  if w.output_sample_rate != 0 { m = V_Hello_set_output_sample_rate(m, w.output_sample_rate, pick(k, a, b)); k += 1; }
+  if w.codec != 0 { m = V_Hello_set_codec(m, w.codec, pick(k, a, b)); k += 1; }
+  if w.profile.count > 0 { m = V_Hello_set_profile(m, w.profile, pick(k, a, b)); k += 1; }
+  if w.token.count > 0 { m = V_Hello_set_token(m, w.token, pick(k, a, b)); k += 1; }
+  if w.observe { m = V_Hello_set_observe(m, true, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_welcome :: (w: WWelcome, a: [] u8, b: [] u8, c: [] u8, d: [] u8) -> V_Welcome {
+  m := V_Welcome_new(); k := 0;
+  if w.protocol != 0 { m = V_Welcome_set_protocol(m, w.protocol, pick(k, a, b)); k += 1; }
+  if w.session.count > 0 { m = V_Welcome_set_session(m, w.session, pick(k, a, b)); k += 1; }
+  if w.input_sample_rate != 0 { m = V_Welcome_set_input_sample_rate(m, w.input_sample_rate, pick(k, a, b)); k += 1; }
+  if w.output_sample_rate != 0 { m = V_Welcome_set_output_sample_rate(m, w.output_sample_rate, pick(k, a, b)); k += 1; }
+  if w.provider.count > 0 { m = V_Welcome_set_provider(m, w.provider, pick(k, a, b)); k += 1; }
+  if w.has_meter { m = V_Welcome_set_meter(m, enc_meter(w.meter, c, d), pick(k, a, b)); k += 1; }
+  if w.max_turn_ms != 0 { m = V_Welcome_set_max_turn_ms(m, w.max_turn_ms, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_audio :: (w: WAudio, a: [] u8, b: [] u8) -> V_Audio {
+  m := V_Audio_new(); k := 0;
+  if w.turn.count > 0 { m = V_Audio_set_turn(m, w.turn, pick(k, a, b)); k += 1; }
+  if w.sequence != 0 { m = V_Audio_set_sequence(m, w.sequence, pick(k, a, b)); k += 1; }
+  if w.sample_rate != 0 { m = V_Audio_set_sample_rate(m, w.sample_rate, pick(k, a, b)); k += 1; }
+  if w.codec != 0 { m = V_Audio_set_codec(m, w.codec, pick(k, a, b)); k += 1; }
+  if w.data.count > 0 { m = V_Audio_set_data(m, w.data, pick(k, a, b)); k += 1; }
+  if w.media_epoch != 0 { m = V_Audio_set_media_epoch(m, w.media_epoch, pick(k, a, b)); k += 1; }
+  if w.utterance.count > 0 { m = V_Audio_set_utterance(m, w.utterance, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_control :: (w: WControl, a: [] u8, b: [] u8) -> V_Control {
+  m := V_Control_new(); k := 0;
+  if w.kind != 0 { m = V_Control_set_kind(m, w.kind, pick(k, a, b)); k += 1; }
+  if w.turn.count > 0 { m = V_Control_set_turn(m, w.turn, pick(k, a, b)); k += 1; }
+  if w.played_samples != 0 { m = V_Control_set_played_samples(m, w.played_samples, pick(k, a, b)); k += 1; }
+  if w.media_epoch != 0 { m = V_Control_set_media_epoch(m, w.media_epoch, pick(k, a, b)); k += 1; }
+  if w.utterance.count > 0 { m = V_Control_set_utterance(m, w.utterance, pick(k, a, b)); k += 1; }
+  if w.at_ms != 0 { m = V_Control_set_at_ms(m, w.at_ms, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_turn_event :: (w: WTurnEvent, a: [] u8, b: [] u8) -> V_TurnEvent {
+  m := V_TurnEvent_new(); k := 0;
+  if w.turn.count > 0 { m = V_TurnEvent_set_turn(m, w.turn, pick(k, a, b)); k += 1; }
+  if w.speaker.count > 0 { m = V_TurnEvent_set_speaker(m, w.speaker, pick(k, a, b)); k += 1; }
+  if w.phase != 0 { m = V_TurnEvent_set_phase(m, w.phase, pick(k, a, b)); k += 1; }
+  if w.text.count > 0 { m = V_TurnEvent_set_text(m, w.text, pick(k, a, b)); k += 1; }
+  if w.played_samples != 0 { m = V_TurnEvent_set_played_samples(m, w.played_samples, pick(k, a, b)); k += 1; }
+  if w.media_epoch != 0 { m = V_TurnEvent_set_media_epoch(m, w.media_epoch, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_speech :: (w: WSpeech, a: [] u8, b: [] u8, c: [] u8, d: [] u8, e: [] u8, f: [] u8) -> V_Speech {
+  m := V_Speech_new(); k := 0;
+  if w.has_utterance { m = V_Speech_set_utterance(m, enc_utterance(w.utterance, c, d), pick(k, a, b)); k += 1; }
+  if w.has_speaker { m = V_Speech_set_speaker(m, enc_speaker(w.speaker, e, f), pick(k, a, b)); k += 1; }
+  if w.sample_rate != 0 { m = V_Speech_set_sample_rate(m, w.sample_rate, pick(k, a, b)); k += 1; }
+  if w.media_epoch != 0 { m = V_Speech_set_media_epoch(m, w.media_epoch, pick(k, a, b)); k += 1; }
+  if w.turn.count > 0 { m = V_Speech_set_turn(m, w.turn, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_route :: (w: WRoute, a: [] u8, b: [] u8) -> V_Route {
+  m := V_Route_new(); k := 0;
+  if w.turn.count > 0 { m = V_Route_set_turn(m, w.turn, pick(k, a, b)); k += 1; }
+  if w.target.count > 0 { m = V_Route_set_target(m, w.target, pick(k, a, b)); k += 1; }
+  if w.reason.count > 0 { m = V_Route_set_reason(m, w.reason, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_error :: (w: WError, a: [] u8, b: [] u8) -> V_Error {
+  m := V_Error_new(); k := 0;
+  if w.code != 0 { m = V_Error_set_code(m, w.code, pick(k, a, b)); k += 1; }
+  if w.message.count > 0 { m = V_Error_set_message(m, w.message, pick(k, a, b)); k += 1; }
+  if w.turn.count > 0 { m = V_Error_set_turn(m, w.turn, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_features :: (w: WFeatures, a: [] u8, b: [] u8) -> V_FrameFeatures {
+  m := V_FrameFeatures_new(); k := 0;
+  if w.stream != 0 { m = V_FrameFeatures_set_stream(m, w.stream, pick(k, a, b)); k += 1; }
+  if w.sequence != 0 { m = V_FrameFeatures_set_sequence(m, w.sequence, pick(k, a, b)); k += 1; }
+  if w.media_epoch != 0 { m = V_FrameFeatures_set_media_epoch(m, w.media_epoch, pick(k, a, b)); k += 1; }
+  if w.rms_db != 0.0 { m = V_FrameFeatures_set_rms_db(m, w.rms_db, pick(k, a, b)); k += 1; }
+  if w.peak_db != 0.0 { m = V_FrameFeatures_set_peak_db(m, w.peak_db, pick(k, a, b)); k += 1; }
+  if w.speech != 0.0 { m = V_FrameFeatures_set_speech(m, w.speech, pick(k, a, b)); k += 1; }
+  if w.noise_db != 0.0 { m = V_FrameFeatures_set_noise_db(m, w.noise_db, pick(k, a, b)); k += 1; }
+  if w.turn_state != 0 { m = V_FrameFeatures_set_turn_state(m, w.turn_state, pick(k, a, b)); k += 1; }
+  if w.playback_state != 0 { m = V_FrameFeatures_set_playback_state(m, w.playback_state, pick(k, a, b)); k += 1; }
+  if w.speech_ms != 0 { m = V_FrameFeatures_set_speech_ms(m, w.speech_ms, pick(k, a, b)); k += 1; }
+  if w.silence_ms != 0 { m = V_FrameFeatures_set_silence_ms(m, w.silence_ms, pick(k, a, b)); k += 1; }
+  if w.zero_crossings != 0.0 { m = V_FrameFeatures_set_zero_crossings(m, w.zero_crossings, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+enc_decision :: (w: WDecision, a: [] u8, b: [] u8) -> V_FrameDecision {
+  m := V_FrameDecision_new(); k := 0;
+  if w.stream != 0 { m = V_FrameDecision_set_stream(m, w.stream, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_APPLY_FROM) != 0 { m = V_FrameDecision_set_apply_from_sequence(m, w.apply_from, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_EPOCH) != 0 { m = V_FrameDecision_set_media_epoch(m, w.epoch, pick(k, a, b)); k += 1; }
+  if w.action != 0 { m = V_FrameDecision_set_action(m, w.action, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_GAIN) != 0 { m = V_FrameDecision_set_gain_db(m, w.gain_db, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_DUCK) != 0 { m = V_FrameDecision_set_duck_db(m, w.duck_db, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_RATE) != 0 { m = V_FrameDecision_set_playback_rate(m, w.rate, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_HOLD) != 0 { m = V_FrameDecision_set_hold_ms(m, w.hold_ms, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_CONFIDENCE) != 0 { m = V_FrameDecision_set_confidence(m, w.confidence, pick(k, a, b)); k += 1; }
+  if w.decider.count > 0 { m = V_FrameDecision_set_decider(m, w.decider, pick(k, a, b)); k += 1; }
+  if (w.has & HAS_DEADLINE) != 0 { m = V_FrameDecision_set_deadline_sequence(m, w.deadline, pick(k, a, b)); k += 1; }
+  return m;
+}
+
+// Encode one Frame into out. Bytes written, or 0 (unknown kind, a bound
+// broken, invalid UTF-8, or not enough room).
+verse_voice_wire_encode :: (msgs: [] WMsg, out: [] u8) -> int #export_c {
+  if msgs.count < 1 { return 0; }
+  w := msgs[0];
+  a: [MAX_FRAME] u8;
+  b: [MAX_FRAME] u8;
+  c: [1024] u8;
+  d: [1024] u8;
+  e: [1024] u8;
+  f: [1024] u8;
+  fr := V_Frame_new();
+  k := w.kind;
+  if k == 1 { fr = V_Frame_set_hello(fr, enc_hello(w.hello, a[..], b[..], c[..], d[..]), out); }
+  else if k == 2 { fr = V_Frame_set_welcome(fr, enc_welcome(w.welcome, a[..], b[..], c[..], d[..]), out); }
+  else if k == 3 { fr = V_Frame_set_audio(fr, enc_audio(w.audio, a[..], b[..]), out); }
+  else if k == 4 { fr = V_Frame_set_control(fr, enc_control(w.control, a[..], b[..]), out); }
+  else if k == 5 { fr = V_Frame_set_turn_event(fr, enc_turn_event(w.turn_event, a[..], b[..]), out); }
+  else if k == 6 { fr = V_Frame_set_speech(fr, enc_speech(w.speech, a[..], b[..], c[..], d[..], e[..], f[..]), out); }
+  else if k == 7 { fr = V_Frame_set_route(fr, enc_route(w.route, a[..], b[..]), out); }
+  else if k == 8 { fr = V_Frame_set_meter(fr, enc_meter(w.meter, a[..], b[..]), out); }
+  else if k == 9 { fr = V_Frame_set_error(fr, enc_error(w.error, a[..], b[..]), out); }
+  else if k == 10 { fr = V_Frame_set_features(fr, enc_features(w.features, a[..], b[..]), out); }
+  else if k == 11 { fr = V_Frame_set_decision(fr, enc_decision(w.decision, a[..], b[..]), out); }
+  else { return 0; }
+  if fr.error != 0 { return 0; }
+  return fr.wire.count;
+}
+
+// ---------------------------------------------------------------- decode
+// Every getter reports its own error; one bad field fails the whole frame.
+
+Ok :: struct { bad: bool; }
+st :: (ok: [] Ok, v: V__pb_String) -> string { if v.error != 0 { ok[0].bad = true; } return v.value; }
+by :: (ok: [] Ok, v: V__pb_Bytes) -> [] u8 { if v.error != 0 { ok[0].bad = true; } return v.value; }
+u32v :: (ok: [] Ok, v: V__pb_U32) -> u32 { if v.error != 0 { ok[0].bad = true; } return v.value; }
+u64v :: (ok: [] Ok, v: V__pb_U64) -> u64 { if v.error != 0 { ok[0].bad = true; } return v.value; }
+s32v :: (ok: [] Ok, v: V__pb_S32) -> s32 { if v.error != 0 { ok[0].bad = true; } return v.value; }
+f32v :: (ok: [] Ok, v: V__pb_F32) -> f32 { if v.error != 0 { ok[0].bad = true; } return v.value; }
+boolv :: (ok: [] Ok, v: V__pb_Bool) -> bool { if v.error != 0 { ok[0].bad = true; } return v.value; }
+// Presence bit for an optional FrameDecision field.
+bit :: (present: bool, b: u32) -> u32 { return ifx present then b else 0; }
+
+dec_speaker :: (ok: [] Ok, m: V_Speaker) -> WSpeaker {
+  w: WSpeaker;
+  w.id = st(ok, V_Speaker_get_id(m));
+  w.role = s32v(ok, V_Speaker_get_role(m));
+  w.profile = st(ok, V_Speaker_get_profile(m));
+  w.profile_revision = u32v(ok, V_Speaker_get_profile_revision(m));
+  w.entity = st(ok, V_Speaker_get_entity(m));
+  return w;
+}
+
+dec_utterance :: (ok: [] Ok, m: V_Utterance) -> WUtterance {
+  w: WUtterance;
+  w.id = st(ok, V_Utterance_get_id(m));
+  w.speaker = st(ok, V_Utterance_get_speaker(m));
+  w.text = st(ok, V_Utterance_get_text(m));
+  w.priority = u32v(ok, V_Utterance_get_priority(m));
+  w.interruptible = boolv(ok, V_Utterance_get_interruptible(m));
+  w.spatial = boolv(ok, V_Utterance_get_spatial(m));
+  w.batch = boolv(ok, V_Utterance_get_batch(m));
+  return w;
+}
+
+dec_meter :: (ok: [] Ok, m: V_Meter) -> WMeter {
+  w: WMeter;
+  w.recognized_ms = u64v(ok, V_Meter_get_recognized_ms(m));
+  w.synthesized_chars = u64v(ok, V_Meter_get_synthesized_chars(m));
+  w.free_ms_left = u64v(ok, V_Meter_get_free_ms_left(m));
+  w.free_chars_left = u64v(ok, V_Meter_get_free_chars_left(m));
+  w.owed_msat = u64v(ok, V_Meter_get_owed_msat(m));
+  return w;
+}
+
+dec_body :: (ok: [] Ok, fr: V_Frame, k: u32, w: [] WMsg) {
+  if k == 1 {
+    o := V_Frame_get_hello(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].hello.protocol = u32v(ok, V_Hello_get_protocol(m));
+    w[0].hello.client = s32v(ok, V_Hello_get_client(m));
+    sp := V_Hello_get_speaker(m);
+    if sp.error != 0 { ok[0].bad = true; }
+    w[0].hello.has_speaker = sp.present;
+    if sp.present { w[0].hello.speaker = dec_speaker(ok, sp.value); }
+    w[0].hello.route = st(ok, V_Hello_get_route(m));
+    w[0].hello.input_sample_rate = u32v(ok, V_Hello_get_input_sample_rate(m));
+    w[0].hello.output_sample_rate = u32v(ok, V_Hello_get_output_sample_rate(m));
+    w[0].hello.codec = s32v(ok, V_Hello_get_codec(m));
+    w[0].hello.profile = st(ok, V_Hello_get_profile(m));
+    w[0].hello.token = st(ok, V_Hello_get_token(m));
+    w[0].hello.observe = boolv(ok, V_Hello_get_observe(m));
+  } else if k == 2 {
+    o := V_Frame_get_welcome(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].welcome.protocol = u32v(ok, V_Welcome_get_protocol(m));
+    w[0].welcome.session = st(ok, V_Welcome_get_session(m));
+    w[0].welcome.input_sample_rate = u32v(ok, V_Welcome_get_input_sample_rate(m));
+    w[0].welcome.output_sample_rate = u32v(ok, V_Welcome_get_output_sample_rate(m));
+    w[0].welcome.provider = st(ok, V_Welcome_get_provider(m));
+    me := V_Welcome_get_meter(m);
+    if me.error != 0 { ok[0].bad = true; }
+    w[0].welcome.has_meter = me.present;
+    if me.present { w[0].welcome.meter = dec_meter(ok, me.value); }
+    w[0].welcome.max_turn_ms = u32v(ok, V_Welcome_get_max_turn_ms(m));
+  } else if k == 3 {
+    o := V_Frame_get_audio(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].audio.turn = st(ok, V_Audio_get_turn(m));
+    w[0].audio.sequence = u32v(ok, V_Audio_get_sequence(m));
+    w[0].audio.sample_rate = u32v(ok, V_Audio_get_sample_rate(m));
+    w[0].audio.codec = s32v(ok, V_Audio_get_codec(m));
+    w[0].audio.data = by(ok, V_Audio_get_data(m));
+    w[0].audio.media_epoch = u64v(ok, V_Audio_get_media_epoch(m));
+    w[0].audio.utterance = st(ok, V_Audio_get_utterance(m));
+  } else if k == 4 {
+    o := V_Frame_get_control(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].control.kind = s32v(ok, V_Control_get_kind(m));
+    w[0].control.turn = st(ok, V_Control_get_turn(m));
+    w[0].control.played_samples = u64v(ok, V_Control_get_played_samples(m));
+    w[0].control.media_epoch = u64v(ok, V_Control_get_media_epoch(m));
+    w[0].control.utterance = st(ok, V_Control_get_utterance(m));
+    w[0].control.at_ms = u64v(ok, V_Control_get_at_ms(m));
+  } else if k == 5 {
+    o := V_Frame_get_turn_event(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].turn_event.turn = st(ok, V_TurnEvent_get_turn(m));
+    w[0].turn_event.speaker = st(ok, V_TurnEvent_get_speaker(m));
+    w[0].turn_event.phase = s32v(ok, V_TurnEvent_get_phase(m));
+    w[0].turn_event.text = st(ok, V_TurnEvent_get_text(m));
+    w[0].turn_event.played_samples = u64v(ok, V_TurnEvent_get_played_samples(m));
+    w[0].turn_event.media_epoch = u64v(ok, V_TurnEvent_get_media_epoch(m));
+  } else if k == 6 {
+    o := V_Frame_get_speech(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    u := V_Speech_get_utterance(m);
+    if u.error != 0 { ok[0].bad = true; }
+    w[0].speech.has_utterance = u.present;
+    if u.present { w[0].speech.utterance = dec_utterance(ok, u.value); }
+    sp := V_Speech_get_speaker(m);
+    if sp.error != 0 { ok[0].bad = true; }
+    w[0].speech.has_speaker = sp.present;
+    if sp.present { w[0].speech.speaker = dec_speaker(ok, sp.value); }
+    w[0].speech.sample_rate = u32v(ok, V_Speech_get_sample_rate(m));
+    w[0].speech.media_epoch = u64v(ok, V_Speech_get_media_epoch(m));
+    w[0].speech.turn = st(ok, V_Speech_get_turn(m));
+  } else if k == 7 {
+    o := V_Frame_get_route(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].route.turn = st(ok, V_Route_get_turn(m));
+    w[0].route.target = st(ok, V_Route_get_target(m));
+    w[0].route.reason = st(ok, V_Route_get_reason(m));
+  } else if k == 8 {
+    o := V_Frame_get_meter(fr); if o.error != 0 { ok[0].bad = true; return; }
+    w[0].meter = dec_meter(ok, o.value);
+  } else if k == 9 {
+    o := V_Frame_get_error(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].error.code = s32v(ok, V_Error_get_code(m));
+    w[0].error.message = st(ok, V_Error_get_message(m));
+    w[0].error.turn = st(ok, V_Error_get_turn(m));
+  } else if k == 10 {
+    o := V_Frame_get_features(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    w[0].features.stream = s32v(ok, V_FrameFeatures_get_stream(m));
+    w[0].features.sequence = u32v(ok, V_FrameFeatures_get_sequence(m));
+    w[0].features.media_epoch = u64v(ok, V_FrameFeatures_get_media_epoch(m));
+    w[0].features.rms_db = f32v(ok, V_FrameFeatures_get_rms_db(m));
+    w[0].features.peak_db = f32v(ok, V_FrameFeatures_get_peak_db(m));
+    w[0].features.speech = f32v(ok, V_FrameFeatures_get_speech(m));
+    w[0].features.noise_db = f32v(ok, V_FrameFeatures_get_noise_db(m));
+    w[0].features.turn_state = s32v(ok, V_FrameFeatures_get_turn_state(m));
+    w[0].features.playback_state = s32v(ok, V_FrameFeatures_get_playback_state(m));
+    w[0].features.speech_ms = u32v(ok, V_FrameFeatures_get_speech_ms(m));
+    w[0].features.silence_ms = u32v(ok, V_FrameFeatures_get_silence_ms(m));
+    w[0].features.zero_crossings = f32v(ok, V_FrameFeatures_get_zero_crossings(m));
+  } else if k == 11 {
+    o := V_Frame_get_decision(fr); if o.error != 0 { ok[0].bad = true; return; }
+    m := o.value;
+    has: u32 = 0;
+    w[0].decision.stream = s32v(ok, V_FrameDecision_get_stream(m));
+    af := V_FrameDecision_get_apply_from_sequence(m); has |= bit(af.present, HAS_APPLY_FROM);
+    w[0].decision.apply_from = u32v(ok, af);
+    ep := V_FrameDecision_get_media_epoch(m); has |= bit(ep.present, HAS_EPOCH);
+    w[0].decision.epoch = u64v(ok, ep);
+    w[0].decision.action = s32v(ok, V_FrameDecision_get_action(m));
+    g := V_FrameDecision_get_gain_db(m); has |= bit(g.present, HAS_GAIN);
+    w[0].decision.gain_db = f32v(ok, g);
+    du := V_FrameDecision_get_duck_db(m); has |= bit(du.present, HAS_DUCK);
+    w[0].decision.duck_db = f32v(ok, du);
+    ra := V_FrameDecision_get_playback_rate(m); has |= bit(ra.present, HAS_RATE);
+    w[0].decision.rate = f32v(ok, ra);
+    ho := V_FrameDecision_get_hold_ms(m); has |= bit(ho.present, HAS_HOLD);
+    w[0].decision.hold_ms = u32v(ok, ho);
+    co := V_FrameDecision_get_confidence(m); has |= bit(co.present, HAS_CONFIDENCE);
+    w[0].decision.confidence = f32v(ok, co);
+    w[0].decision.decider = st(ok, V_FrameDecision_get_decider(m));
+    de := V_FrameDecision_get_deadline_sequence(m); has |= bit(de.present, HAS_DEADLINE);
+    w[0].decision.deadline = u32v(ok, de);
+    w[0].decision.has = has;
+  } else {
+    ok[0].bad = true;
+  }
+}
+
+// Decode one Frame. Strings and bytes borrow from `input`. False when the
+// frame is malformed, over a bound, or has no body.
+verse_voice_wire_decode :: (input: [] u8, msgs: [] WMsg) -> bool #export_c {
+  if msgs.count < 1 || input.count > MAX_FRAME { return false; }
+  empty: WMsg;
+  msgs[0] = empty;
+  fr := V_Frame_decode(input);
+  if fr.error != 0 { return false; }
+  c := V_Frame_case_body(fr);
+  if c.error != 0 || !c.present { return false; }
+  ok: [1] Ok;
+  dec_body(ok[..], fr, c.value, msgs);
+  if ok[0].bad { msgs[0] = empty; return false; }
+  msgs[0].kind = c.value;
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+
+// The setters need a runtime address check (bytes_overlap), so encoding runs
+// only natively: verse/test_voice.sh round-trips every kind through the C
+// face and has protoc decode each encoded frame. These checks decode those
+// exact protoc-verified frames.
+
+dec :: (b: [] u8, out: [] WMsg) -> bool { return verse_voice_wire_decode(b, out); }
+
+#test "hello" {
+  b := [93] u8.[10,91,8,1,16,1,26,35,10,11,110,112,117,98,49,112,108,97,121,101,114,16,1,26,6,99,104,97,114,111,110,32,2,42,8,101,110,116,105,116,121,58,55,34,13,97,103,101,110,116,58,102,111,114,101,109,97,110,40,128,247,2,48,192,187,1,56,1,66,6,99,104,97,114,111,110,74,13,115,101,115,115,105,111,110,45,116,111,107,101,110,80,1];
+  o: [1] WMsg;
+  #assert dec(b[..], o[..]) && o[0].kind == 1;
+  h := o[0].hello;
+  #assert h.protocol == 1 && h.client == 1 && h.has_speaker && h.speaker.id == "npub1player" && h.speaker.role == 1;
+  #assert h.speaker.profile == "charon" && h.speaker.profile_revision == 2 && h.speaker.entity == "entity:7";
+  #assert h.route == "agent:foreman" && h.input_sample_rate == 48000 && h.output_sample_rate == 24000;
+  #assert h.codec == 1 && h.profile == "charon" && h.token == "session-token" && h.observe;
+}
+
+#test "welcome" {
+  b := [41] u8.[18,39,8,1,18,3,115,45,49,24,128,125,32,192,187,1,42,5,108,111,99,97,108,50,12,8,176,9,16,34,24,144,198,36,32,230,38,56,176,234,1];
+  o: [1] WMsg;
+  #assert dec(b[..], o[..]) && o[0].kind == 2;
+  w := o[0].welcome;
+  #assert w.protocol == 1 && w.session == "s-1" && w.input_sample_rate == 16000 && w.output_sample_rate == 24000;
+  #assert w.provider == "local" && w.has_meter && w.max_turn_ms == 30000;
+  #assert w.meter.recognized_ms == 1200 && w.meter.synthesized_chars == 34 && w.meter.free_ms_left == 598800;
+  #assert w.meter.free_chars_left == 4966 && w.meter.owed_msat == 0;
+}
+
+#test "audio borrows its bytes" {
+  // Frame{audio{turn "t", sequence 2, data 01 02 03, media_epoch 5}}
+  b := [17] u8.[26, 15, 10, 1, 116, 16, 2, 42, 3, 1, 2, 3, 48, 5, 58, 1, 117];
+  o: [1] WMsg;
+  #assert dec(b[..], o[..]) && o[0].kind == 3;
+  a := o[0].audio;
+  #assert a.turn == "t" && a.sequence == 2 && a.data.count == 3 && a.data[2] == 3 && a.media_epoch == 5 && a.utterance == "u";
+  #assert a.sample_rate == 0 && a.codec == 0;
+  b[11] = 9;
+  #assert o[0].audio.data[2] == 9;
+}
+
+#test "control, turn event, route, meter, error" {
+  o: [1] WMsg;
+  c := [29] u8.[34,27,8,4,18,6,116,117,114,110,45,49,24,128,247,2,32,3,42,5,117,116,116,45,49,48,135,173,75];
+  #assert dec(c[..], o[..]) && o[0].kind == 4;
+  k := o[0].control;
+  #assert k.kind == 4 && k.turn == "turn-1" && k.played_samples == 48000 && k.media_epoch == 3 && k.utterance == "utt-1" && k.at_ms == 1234567;
+  t := [49] u8.[42,47,10,6,116,117,114,110,45,49,18,11,110,112,117,98,49,112,108,97,121,101,114,24,3,34,18,119,104,97,116,39,115,32,116,104,101,32,119,101,97,116,104,101,114,40,7,48,3];
+  #assert dec(t[..], o[..]) && o[0].kind == 5;
+  e := o[0].turn_event;
+  #assert e.turn == "turn-1" && e.speaker == "npub1player" && e.phase == 3 && e.text == "what's the weather" && e.played_samples == 7 && e.media_epoch == 3;
+  r := [32] u8.[58,30,10,6,116,117,114,110,45,49,18,13,97,103,101,110,116,58,102,111,114,101,109,97,110,26,5,102,108,111,111,114];
+  #assert dec(r[..], o[..]) && o[0].kind == 7;
+  #assert o[0].route.turn == "turn-1" && o[0].route.target == "agent:foreman" && o[0].route.reason == "floor";
+  m := [11] u8.[66,9,8,193,207,36,16,137,39,40,31];
+  #assert dec(m[..], o[..]) && o[0].kind == 8;
+  #assert o[0].meter.recognized_ms == 600001 && o[0].meter.synthesized_chars == 5001 && o[0].meter.owed_msat == 31;
+  #assert o[0].meter.free_ms_left == 0 && o[0].meter.free_chars_left == 0;
+  x := [31] u8.[74,29,8,3,18,17,102,114,101,101,32,116,105,101,114,32,117,115,101,100,32,117,112,26,6,116,117,114,110,45,49];
+  #assert dec(x[..], o[..]) && o[0].kind == 9;
+  #assert o[0].error.code == 3 && o[0].error.message == "free tier used up" && o[0].error.turn == "turn-1";
+}
+
+#test "speech" {
+  b := [105] u8.[50,103,10,58,10,5,117,116,116,45,49,18,13,97,103,101,110,116,58,102,111,114,101,109,97,110,26,28,89,111,117,32,115,97,105,100,58,32,119,104,97,116,39,115,32,116,104,101,32,119,101,97,116,104,101,114,32,2,40,1,56,1,18,27,10,13,97,103,101,110,116,58,102,111,114,101,109,97,110,16,3,26,6,99,104,97,114,111,110,32,1,24,192,187,1,32,3,42,6,116,117,114,110,45,49];
+  o: [1] WMsg;
+  #assert dec(b[..], o[..]) && o[0].kind == 6;
+  s := o[0].speech;
+  #assert s.has_utterance && s.utterance.id == "utt-1" && s.utterance.speaker == "agent:foreman";
+  #assert s.utterance.text == "You said: what's the weather" && s.utterance.priority == 2;
+  #assert s.utterance.interruptible && !s.utterance.spatial && s.utterance.batch;
+  #assert s.has_speaker && s.speaker.id == "agent:foreman" && s.speaker.role == 3 && s.speaker.profile == "charon";
+  #assert s.speaker.profile_revision == 1 && s.speaker.entity == "" && s.sample_rate == 24000 && s.media_epoch == 3 && s.turn == "turn-1";
+}
+
+#test "features and decision, with presence" {
+  o: [1] WMsg;
+  f := [43] u8.[82,41,8,1,16,77,24,3,37,0,0,252,193,45,0,0,68,193,53,0,0,64,63,61,0,0,128,194,64,3,72,3,80,180,6,88,140,1,101,0,0,0,62];
+  #assert dec(f[..], o[..]) && o[0].kind == 10;
+  x := o[0].features;
+  #assert x.stream == 1 && x.sequence == 77 && x.media_epoch == 3 && x.rms_db == -31.5 && x.peak_db == -12.25;
+  #assert x.speech == 0.75 && x.noise_db == -64.0 && x.turn_state == 3 && x.playback_state == 3;
+  #assert x.speech_ms == 820 && x.silence_ms == 140 && x.zero_crossings == 0.125;
+  d := [46] u8.[90,44,8,2,16,0,24,0,32,4,45,0,0,0,0,53,0,0,64,65,61,205,204,140,63,64,0,77,102,102,102,63,82,10,118,111,105,99,101,46,99,111,97,120,88,12];
+  #assert dec(d[..], o[..]) && o[0].kind == 11;
+  y := o[0].decision;
+  // Explicit zeros survive because presence is carried.
+  #assert y.has == 255 && y.stream == 2 && y.apply_from == 0 && y.epoch == 0 && y.action == 4;
+  #assert y.gain_db == 0.0 && y.duck_db == 12.0 && y.rate == 1.1 && y.hold_ms == 0 && y.confidence == 0.9;
+  #assert y.decider == "voice.coax" && y.deadline == 12;
+  // Only a hold: one presence bit.
+  h := [5] u8.[90, 3, 64, 144, 3];
+  #assert dec(h[..], o[..]) && o[0].decision.has == HAS_HOLD && o[0].decision.hold_ms == 400;
+}
+
+#test "malformed and out-of-bounds frames are refused" {
+  o: [1] WMsg;
+  none: [1] u8;
+  #assert !dec(none[0..<0], o[..]);
+  junk := [3] u8.[255, 255, 255];
+  #assert !dec(junk[..], o[..]) && o[0].kind == 0;
+  // Two bodies (control, then route).
+  two := [6] u8.[34, 2, 8, 6, 58, 0];
+  #assert !dec(two[..], o[..]);
+  // The same body twice.
+  twice := [8] u8.[34, 2, 8, 6, 34, 2, 8, 7];
+  #assert !dec(twice[..], o[..]);
+  one := [4] u8.[34, 2, 8, 6];
+  #assert dec(one[..], o[..]) && o[0].kind == 4 && o[0].control.kind == 6;
+  #assert !dec(one[..], o[0..<0]);
+  big: [MAX_FRAME + 1] u8;
+  #assert !dec(big[..], o[..]);
+  // A body with a bad field fails the frame: invalid UTF-8 in TurnEvent.text.
+  bad := [6] u8.[42, 4, 34, 2, 195, 40];
+  #assert !dec(bad[..], o[..]) && o[0].kind == 0;
+  // TurnEvent.text over its 600-byte bound.
+  long: [607] u8;
+  long[0] = 42; long[1] = 220; long[2] = 4; long[3] = 34; long[4] = 217; long[5] = 4;
+  for i: 6..<607 { long[i] = 'a'; }
+  #assert !dec(long[..], o[..]);
+  long[4] = 216; long[2] = 4; long[1] = 219;
+  #assert dec(long[0..<606], o[..]) && o[0].turn_event.text.count == 600;
+  // An empty body still names its kind.
+  empty := [2] u8.[66, 0];
+  #assert dec(empty[..], o[..]) && o[0].kind == 8 && o[0].meter.recognized_ms == 0;
+}

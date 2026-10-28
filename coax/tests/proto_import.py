@@ -323,11 +323,11 @@ main :: () {a:[4] u8;b:[4] u8;
         env=dict(os.environ,PATH=str(empty_path),COAX_PROTO_TOOL='/no/tool',COAX_PROTO_PYTHON='/no/python',TMPDIR='/no/tmp')
         # Actual iOS source, not just a synthetic empty message. Both C and
         # header generation must work from the relocated binary with PATH empty.
-        source=ROOT/'metareal/home.coax';header=isolated/'Home.h'
+        source=ROOT/'verse/home.coax';header=isolated/'Home.h'
         r=run([executable,'c',source,'--library','--header',header],env=env)
         self.assertEqual(r.returncode,0,r.stderr.decode())
         self.assertIn(b'generator=coax0-coax-v1',r.stdout)
-        self.assertIn(b'metareal_home_init',header.read_bytes())
+        self.assertIn(b'verse_home_init',header.read_bytes())
         fixture=ROOT/'coax/tests/proto/types.pb';generated=isolated/'types.coax'
         r=run([executable,'proto',fixture,'--prefix','Alone','-o',generated],env=env)
         self.assertEqual(r.returncode,0,r.stderr.decode());self.assertIn(b'Alone_Scalars',generated.read_bytes())

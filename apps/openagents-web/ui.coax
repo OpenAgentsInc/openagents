@@ -2,8 +2,8 @@
 // (INVARIANTS.md, "Coaxial pages draw everything in Coax"): the access
 // terminal that takes a typed code, the presentation a code opens (a key
 // prompt the first time on a device, then the slides), and the not-found
-// page's HOME. Every panel, field and button is the Metareal HUD bar
-// (metareal/light.coax metareal_bar, the iOS Start bar's light, drawn by
+// page's HOME. Every panel, field and button is the Verse HUD bar
+// (verse/light.coax verse_bar, the iOS Start bar's light, drawn by
 // splash.wgsl), and all text is Filament (font.coax). The host
 // (coax/web/host.js) passes keys, the pointer and typed or pasted text in
 // and carries actions out; coax/web/unlock does the crypto and answers with
@@ -560,7 +560,7 @@ write :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f3
   return draw_text(out, at, text, x, base, cap, gap, space, s, rich, bold);
 }
 
-// A Metareal HUD bar over box b: metareal_bar's glass, cut corners, edge,
+// A Verse HUD bar over box b: verse_bar's glass, cut corners, edge,
 // sweep and glow at scale k (device pixels per point), lit light in a
 // colour. press and flash are the bar's own: pressed, and lit up.
 bar :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32, red: f32, green: f32, blue: f32) -> int {
@@ -585,7 +585,7 @@ bar :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32
 // A HUD element: the bar, and brackets that mark its corners at a glance.
 // Highlighted corners are square: an L at top left and bottom right, a
 // little outside. The 45° cuts are only on the plain corners, top right and
-// bottom left (the shader mirrors metareal_bar in x to put them there).
+// bottom left (the shader mirrors verse_bar in x to put them there).
 hud :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32, red: f32, green: f32, blue: f32) -> int {
   vertices := bar(out, at, b, k, press, flash, light, red, green, blue);
   o := 4 * k;            // the brackets' distance outside
@@ -602,7 +602,7 @@ hud :: (out: [] f32, at: int, b: Box, k: f32, press: f32, flash: f32, light: f32
 }
 
 // The dark glass the shader lays behind the panel taking the eye (the
-// terminal, a prompt, a slide), in metareal_bar's shape (uniforms 8 to 14).
+// terminal, a prompt, a slide), in verse_bar's shape (uniforms 8 to 14).
 panel :: (uniforms: [] f32, b: Box, k: f32, alpha: f32, tint: f32) {
   uniforms[8] = b.x0; uniforms[9] = b.y0; uniforms[10] = b.x1; uniforms[11] = b.y1;
   uniforms[12] = k; uniforms[13] = alpha; uniforms[14] = tint;

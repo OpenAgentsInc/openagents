@@ -1,7 +1,7 @@
 import XCTest
 
 final class HomeUITests: XCTestCase {
-    /// Start's dolly (metareal/camera.coax) has landed behind you.
+    /// Start's dolly (verse/camera.coax) has landed behind you.
     private func arrived(_ app: XCUIApplication, within timeout: TimeInterval = 15) -> Bool {
         let grid = app.otherElements["grid.world"]
         let landed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -44,7 +44,7 @@ final class HomeUITests: XCTestCase {
         XCTAssertTrue(balance.exists)
         XCTAssertGreaterThan(balance.frame.minX, app.frame.width / 2, "the balance sits top right")
         XCTAssertLessThan(balance.frame.minY, 120)
-        // Your character stands idle, animated by metareal/cast.coax.
+        // Your character stands idle, animated by verse/cast.coax.
         let you = app.otherElements["grid.you"]
         XCTAssertTrue(you.waitForExistence(timeout: 5))
         XCTAssertEqual(you.value as? String, "idle")

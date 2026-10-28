@@ -54,7 +54,7 @@ final class HauntAssets {
         let vertexData = try resource("Haunt", "vertices"), indexData = try resource("Haunt", "indices")
         let layers = [0, 1, 2, 18, 19, 20, 21, 22, 24, 26, 27, 28]
         let valid = vertexData.withUnsafeBytes { v in indexData.withUnsafeBytes { i in
-            metareal_haunt_buffer_ok(coax_v_u8(data: UnsafeMutablePointer(mutating: v.bindMemory(to: UInt8.self).baseAddress), count: Int64(v.count)), coax_v_u8(data: UnsafeMutablePointer(mutating: i.bindMemory(to: UInt8.self).baseAddress), count: Int64(i.count)), Int64(layers.count))
+            verse_haunt_buffer_ok(coax_v_u8(data: UnsafeMutablePointer(mutating: v.bindMemory(to: UInt8.self).baseAddress), count: Int64(v.count)), coax_v_u8(data: UnsafeMutablePointer(mutating: i.bindMemory(to: UInt8.self).baseAddress), count: Int64(i.count)), Int64(layers.count))
         } }
         guard valid, let vertices = vertexData.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
               let indices = indexData.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else { throw HomeError.resource("Haunted House geometry") }
@@ -95,24 +95,24 @@ final class HauntAssets {
         state.actions = coax_v_t_HauntAction(data: storage(coax_t_HauntAction.self, count: 256), count: 256)
         state.pending = coax_v_t_HauntEvent(data: storage(coax_t_HauntEvent.self, count: 256), count: 256)
         state.talking = -1; state.selected = -1; state.holding = -1; state.was_ground = true
-        state = metareal_haunt_open(retain(try resource("Haunt", "pb")), state)
+        state = verse_haunt_open(retain(try resource("Haunt", "pb")), state)
         guard state.ok else { throw HomeError.resource("Haunted House document") }
         for i in 0..<Int(state.mesh_count) { let mesh = state.meshes.data![i]
-            guard metareal_haunt_draw_range(Int64(mesh.first), Int64(mesh.count), Int64(indexData.count / 4)) else { throw HomeError.resource("House draw range") }
+            guard verse_haunt_draw_range(Int64(mesh.first), Int64(mesh.count), Int64(indexData.count / 4)) else { throw HomeError.resource("House draw range") }
         }
-        if let fileSize = try? saveURL.resourceValues(forKeys: [.fileSizeKey]).fileSize, fileSize <= 262144, let saved = try? Data(contentsOf: saveURL) { state = metareal_haunt_restore(state, retain(saved)) }
+        if let fileSize = try? saveURL.resourceValues(forKeys: [.fileSizeKey]).fileSize, fileSize <= 262144, let saved = try? Data(contentsOf: saveURL) { state = verse_haunt_restore(state, retain(saved)) }
         rebuildWalls()
     }
     func rebuildWalls() {
-        wallCount = wallBytes.withUnsafeMutableBufferPointer { Int(metareal_haunt_walls(state, coax_v_f32(data: $0.baseAddress, count: Int64($0.count)))) }
+        wallCount = wallBytes.withUnsafeMutableBufferPointer { Int(verse_haunt_walls(state, coax_v_f32(data: $0.baseAddress, count: Int64($0.count)))) }
     }
     func snapshot() -> Data? {
-        let n = metareal_haunt_save(state, coax_v_u8(data: output, count: 262144), coax_v_u8(data: scratch, count: 262144))
+        let n = verse_haunt_save(state, coax_v_u8(data: output, count: 262144), coax_v_u8(data: scratch, count: 262144))
         return n > 0 ? Data(bytes: output, count: Int(n)) : nil
     }
     func remember() { if let data = snapshot() { undoStates.append(data); if undoStates.count > 30 { undoStates.removeFirst() }; redoStates.removeAll() } }
-    func undo() { guard let data = undoStates.popLast() else { return }; if let now = snapshot() { redoStates.append(now) }; state = metareal_haunt_restore(state, retain(data)); rebuildWalls(); save() }
-    func redo() { guard let data = redoStates.popLast() else { return }; if let now = snapshot() { undoStates.append(now) }; state = metareal_haunt_restore(state, retain(data)); rebuildWalls(); save() }
+    func undo() { guard let data = undoStates.popLast() else { return }; if let now = snapshot() { redoStates.append(now) }; state = verse_haunt_restore(state, retain(data)); rebuildWalls(); save() }
+    func redo() { guard let data = redoStates.popLast() else { return }; if let now = snapshot() { undoStates.append(now) }; state = verse_haunt_restore(state, retain(data)); rebuildWalls(); save() }
     func save() {
         guard let data = snapshot() else { failure = "Could not encode this world."; return }
         do { try data.write(to: saveURL, options: .atomic); state.dirty = false } catch { failure = "Could not save this world." }
@@ -123,13 +123,13 @@ final class HauntAssets {
         guard (values.fileSize ?? 262145) <= 262144 else { throw HomeError.resource("World file too large") }
         let data = try Data(contentsOf: url)
         let bytes = retain(data)
-        guard metareal_haunt_save_valid(state, bytes) else { throw HomeError.resource("Unsupported or damaged world file") }
+        guard verse_haunt_save_valid(state, bytes) else { throw HomeError.resource("Unsupported or damaged world file") }
         remember()
-        state = metareal_haunt_restore(state, bytes); rebuildWalls(); save()
+        state = verse_haunt_restore(state, bytes); rebuildWalls(); save()
     }
     func createWorld(_ title: String) {
         let id = UUID().uuidString
-        let next = metareal_haunt_fork(state,retain(title),retain(id))
+        let next = verse_haunt_fork(state,retain(title),retain(id))
         guard hauntText(next.instance_id) == id else { failure = "Choose a shorter world name."; return }
         save()
         saveURL = saveURL.deletingLastPathComponent().appendingPathComponent("HauntedHouse-"+id+".pb")
@@ -140,14 +140,14 @@ final class HauntAssets {
         let paths = (try? FileManager.default.contentsOfDirectory(at:saveURL.deletingLastPathComponent(),includingPropertiesForKeys:[.fileSizeKey])) ?? []
         return paths.filter { $0.lastPathComponent.hasPrefix("HauntedHouse-") && $0.pathExtension == "pb" }.compactMap { url in
             guard let size = try? url.resourceValues(forKeys:[.fileSizeKey]).fileSize, size <= 262144, let data = try? Data(contentsOf:url) else { return nil }
-            let name = data.withUnsafeBytes { bytes in hauntText(metareal_haunt_saved_title(coax_v_u8(data:UnsafeMutablePointer(mutating:bytes.bindMemory(to:UInt8.self).baseAddress),count:Int64(bytes.count)))) }
+            let name = data.withUnsafeBytes { bytes in hauntText(verse_haunt_saved_title(coax_v_u8(data:UnsafeMutablePointer(mutating:bytes.bindMemory(to:UInt8.self).baseAddress),count:Int64(bytes.count)))) }
             return name.isEmpty ? nil : (url,name)
         }
     }
     func switchWorld(_ url: URL) throws {
         let data = try Data(contentsOf:url), bytes = retain(data)
-        guard metareal_haunt_save_valid(state,bytes) else { throw HomeError.resource("Unsupported world") }
-        save();state = metareal_haunt_restore(state,bytes);saveURL=url
+        guard verse_haunt_save_valid(state,bytes) else { throw HomeError.resource("Unsupported world") }
+        save();state = verse_haunt_restore(state,bytes);saveURL=url
         UserDefaults.standard.set(url.lastPathComponent,forKey:"haunt.active");undoStates=[];redoStates=[];rebuildWalls()
     }
     func exportWorld() throws -> URL {
@@ -161,7 +161,7 @@ final class HauntAssets {
         state = coax_t_Haunt(); state.meshes = views.meshes; state.entities = views.entities; state.areas = views.areas; state.walks = views.walks; state.lights = views.lights; state.people = views.people; state.zones = views.zones; state.actions = views.actions; state.pending = views.pending
         state.talking = -1; state.selected = -1; state.holding = -1; state.was_ground = true
         let data = try Data(contentsOf: Bundle.main.url(forResource: "Haunt", withExtension: "pb")!)
-        state = metareal_haunt_open(retain(data), state); rebuildWalls(); save()
+        state = verse_haunt_open(retain(data), state); rebuildWalls(); save()
     }
     func startAudio() {
         do {

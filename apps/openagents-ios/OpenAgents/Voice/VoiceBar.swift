@@ -19,7 +19,7 @@ final class VoiceBar: UIView {
 
     static var defaultHost: String? {
         #if targetEnvironment(simulator)
-        return "ws://127.0.0.1:8787" // the Mac's voice host: metareal/voice-host/run.sh
+        return "ws://127.0.0.1:8787" // the Mac's voice host: verse/voice-host/run.sh
         #else
         return nil
         #endif

@@ -23,7 +23,7 @@ final class EngineHotbar: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         for (i, b) in controls.enumerated() {
-            let r = metareal_hud_slot(Float(bounds.width), Float(bounds.height), Float(bottomInset), Int64(i), Int64(controls.count))
+            let r = verse_hud_slot(Float(bounds.width), Float(bounds.height), Float(bottomInset), Int64(i), Int64(controls.count))
             b.frame = CGRect(x: CGFloat(r.x), y: CGFloat(r.y), width: CGFloat(r.width), height: CGFloat(r.height))
         }
     }

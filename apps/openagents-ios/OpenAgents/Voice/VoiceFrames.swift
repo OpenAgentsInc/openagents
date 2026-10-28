@@ -1,7 +1,7 @@
 import Foundation
 
 /// The voice wire in Swift: builds `oa_voice_msg` values and encodes them
-/// with `oa_voice_encode` (metareal/platform/voice.h, voice-wire.coax), and
+/// with `oa_voice_encode` (verse/platform/voice.h, voice-wire.coax), and
 /// turns decoded frames into Swift values. No protobuf is written by hand
 /// here. Not thread-safe: the voice worker owns one.
 final class VoiceWire {

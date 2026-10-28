@@ -3,7 +3,7 @@
 # (straight-line C: locals, if/else, return, ?: choices, and comma sequences
 # that assign temporaries), and this rewrites the functions a page names,
 # with everything they call, as WGSL. Coaxial pages then call the same light
-# functions the iOS stages do (metareal/light.coax). Until Coax emits WGSL
+# functions the iOS stages do (verse/light.coax). Until Coax emits WGSL
 # itself (coax/web.md); anything outside that shape is refused, not guessed.
 #
 #   wgsl.py FILE.coax NAME...            prints the WGSL
