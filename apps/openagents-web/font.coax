@@ -203,7 +203,7 @@ measure :: (text: string, gap: f32, space: f32, rich: bool) -> f32 {
 // font.md "Small sizes": no glow, a core about one device pixel wide, and
 // every stroke's ends on device-pixel centres, so its lines land whole on
 // pixels instead of smearing across two.
-Ink :: struct { core: f32; light: f32; glow: f32; red: f32; green: f32; blue: f32; mode: f32; scale: f32 = 0; }
+Ink :: struct { core: f32; light: f32; glow: f32; red: f32; green: f32; blue: f32; mode: f32; scale: f32 = 0; sans: bool = false; }
 SMALL_TEXT :: 12.0;
 
 // A device-pixel centre: where a small stroke's end goes.
@@ -215,6 +215,7 @@ pixel_centre :: (x: f32) -> f32 { return floor(x) + 0.5; }
 // Returns the new vertex count; text that runs out of room stops drawing.
 draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, space: f32,
               k: Ink, rich: bool, bold: bool) -> int {
+  if uses_sans(k, cap) { return draw_sans(out, at, text, x, base, cap, k); }
   points: [FONT_MAX_POINTS * 2] u8;
   unit := cap / 12;              // device pixels per half unit
   vertices := at; i := 0; after := false; strong := bold; pen := x;
@@ -360,4 +361,138 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
   // without a scale nothing changes (the splash's inks)
   plain := Ink.{core = 1, light = 0.8, glow = 6, red = 1, green = 1, blue = 1, mode = 0};
   #assert draw_text(out[..], 0, "EH", 10.3, 40.7, 15, 0.3, 1, plain, false, false) == n && out[7] == 6;
+}
+
+// ---------------------------------------------------------------- the system sans
+
+// Small text on the project pages is set in the system's sans (Helvetica or
+// Arial, which share their widths), drawn from a glyph atlas the host
+// rasterizes (coax/web/host.js, "the sans atlas"): titles and the HUD's
+// chrome stay in Filament. Widths are the fonts' advance widths in
+// thousandths of an em; text is laid out here, so both sides agree on them.
+SANS_GLYPHS :: 111;
+SANS_COLUMNS :: 16; SANS_ROWS :: 7;
+SANS_CELL :: 96.0;          // a cell, atlas texels at the top level
+SANS_EM :: 64.0;            // the font size the top level is drawn at
+SANS_LEFT :: 16.0;          // the pen's x in its cell
+SANS_BASE :: 72.0;          // the baseline's y in its cell
+SANS_CAP :: 0.716;          // cap height, ems
+SANS_SCALE :: 1.3;          // sans text's cap height against the Filament cap it stands in for
+SANS_MAX_CAP :: 9.0;        // CSS pixels: Filament from this cap height up (titles)
+MODE_SANS :: 4.0;
+// The atlas's characters after ASCII 32..126, in order (host.js has the same list).
+SANS_EXTRA :: [16] u32.[183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
+SANS_WIDTH :: [111] u16.[
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+  278, 556, 1000, 222, 222, 333, 333, 350, 1000, 1000, 556, 584, 584, 549, 549, 549
+];
+
+// Whether text at cap (device pixels) in ink k is set in the sans.
+uses_sans :: (k: Ink, cap: f32) -> bool {
+  return k.sans && (k.scale <= 0 || cap < SANS_MAX_CAP * k.scale);
+}
+
+// A code point's place in the atlas, or -1.
+sans_index :: (code: u32) -> int {
+  if code >= 32 && code <= 126 { return cast(int) code - 32; }
+  for k: 0..<16 { if SANS_EXTRA[k] == code { return 95 + k; } }
+  return -1;
+}
+
+// The em of sans text standing in for Filament capitals cap pixels tall.
+sans_em :: (cap: f32) -> f32 { return cap * SANS_SCALE / SANS_CAP; }
+
+// How wide text is in the sans at em pixels.
+sans_width :: (text: string, em: f32) -> f32 {
+  w := 0.0f32; i := 0;
+  while i < text.count {
+    d := decode(text, i); i += d.len;
+    g := sans_index(d.code);
+    if g < 0 { g = sans_index('?'); }
+    w += cast(f32) SANS_WIDTH[g] / 1000 * em;
+  }
+  return w;
+}
+
+// How wide text is in ink k at cap, whichever face it's set in.
+ink_width :: (text: string, cap: f32, gap: f32, space: f32, k: Ink) -> f32 {
+  if uses_sans(k, cap) { return sans_width(text, sans_em(cap)); }
+  return measure(text, gap, space, false) * cap;
+}
+
+// Draws text in the sans, its baseline's left end at x, base: one textured
+// quad a glyph (place = the atlas coordinates, shape.x = the em in pixels for
+// the shader's mip level, shape.z = brightness). Returns the vertex count.
+draw_sans :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  em := sans_em(cap);
+  s := em / SANS_EM;
+  w := SANS_CELL * cast(f32) SANS_COLUMNS; h := SANS_CELL * cast(f32) SANS_ROWS;
+  y0 := floor(base + 0.5) - SANS_BASE * s;
+  v := at; pen := x; i := 0;
+  while i < text.count {
+    d := decode(text, i); i += d.len;
+    g := sans_index(d.code);
+    if g < 0 { g = sans_index('?'); }
+    advance := cast(f32) SANS_WIDTH[g] / 1000 * em;
+    if d.code != 32 {
+      if (v + 6) * VERTEX_FLOATS > out.count { return v; }
+      cx := cast(f32) (g % SANS_COLUMNS) * SANS_CELL; cy := cast(f32) (g / SANS_COLUMNS) * SANS_CELL;
+      x0 := pen - SANS_LEFT * s; x1 := x0 + SANS_CELL * s; y1 := y0 + SANS_CELL * s;
+      qx := [6] f32.[x0, x1, x1, x0, x1, x0];
+      qy := [6] f32.[y0, y0, y1, y0, y1, y1];
+      ux := [6] f32.[cx, cx + SANS_CELL, cx + SANS_CELL, cx, cx + SANS_CELL, cx];
+      uy := [6] f32.[cy, cy, cy + SANS_CELL, cy, cy + SANS_CELL, cy + SANS_CELL];
+      for q: 0..<6 {
+        o := (v + q) * VERTEX_FLOATS;
+        out[o] = qx[q]; out[o + 1] = qy[q];
+        out[o + 2] = ux[q] / w; out[o + 3] = uy[q] / h;
+        out[o + 4] = em; out[o + 5] = 0; out[o + 6] = k.light; out[o + 7] = 0;
+        out[o + 8] = k.red; out[o + 9] = k.green; out[o + 10] = k.blue; out[o + 11] = MODE_SANS;
+      }
+      v += 6;
+    }
+    pen += advance;
+  }
+  return v;
+}
+
+// wrap, measured in device pixels in ink k at cap, so sans text wraps by its own widths.
+wrap_ink :: (text: string, from: int, width: f32, cap: f32, gap: f32, space: f32, k: Ink, next: [] int) -> int {
+  if !uses_sans(k, cap) { return wrap(text, from, width / cap, gap, space, false, next); }
+  i := from; end := from; w := 0.0f32;
+  sp := sans_width(" ", sans_em(cap));
+  while i < text.count {
+    if text[i] == '\n' { end = i; next[0] = i + 1; return end; }
+    j := i;
+    while j < text.count && text[j] != ' ' && text[j] != '\n' { j += 1; }
+    word := ink_width(text[i..<j], cap, gap, space, k);
+    lead := ifx end > from then sp else 0.0f32;
+    if end > from && w + lead + word > width { next[0] = i; return end; }
+    if end == from && word > width {
+      q := i; fit := q;
+      while q < j {
+        d := decode(text, q);
+        if ink_width(text[i..<q + d.len], cap, gap, space, k) > width && fit > i { break; }
+        q += d.len; fit = q;
+      }
+      next[0] = fit; return fit;
+    }
+    w += lead + word; end = j; i = j;
+    while i < text.count && text[i] == ' ' { i += 1; }
+  }
+  next[0] = text.count;
+  return end;
+}
+
+#test "the sans covers ASCII and its extras, in the host's order" {
+  #assert SANS_GLYPHS == 95 + 16 && SANS_COLUMNS * SANS_ROWS >= SANS_GLYPHS;
+  #assert sans_index('A') == 33 && sans_index(' ') == 0 && sans_index('~') == 94;
+  #assert sans_index(8212) == 97 && sans_index(8800) == 110 && sans_index(9731) == -1;
+  #assert SANS_WIDTH[sans_index('M')] == 833 && SANS_WIDTH[sans_index('i')] == 222;
+  #assert sans_width("HI", 1000) == 1000;
 }

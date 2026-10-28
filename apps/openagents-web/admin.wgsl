@@ -11,6 +11,9 @@ struct U {
   panels: array<vec4f, 20>,   // per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0
 }
 @group(0) @binding(0) var<uniform> u: U;
+// The system sans for small text: the host's glyph atlas (coax/web/host.js, "the sans atlas").
+@group(0) @binding(1) var sans_atlas: texture_2d<f32>;
+@group(0) @binding(2) var sans_sampler: sampler;
 
 @vertex fn bg_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = array(vec2f(-1.0, -3.0), vec2f(-1.0, 1.0), vec2f(3.0, 1.0));
@@ -81,6 +84,12 @@ struct V {
   return o;
 }
 @fragment fn fx_fs(v: V) -> @location(0) vec4f {
+  if (v.tint.w > 3.5) {
+    // A sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels.
+    let lod = clamp(log2(64.0 / max(v.shape.x, 1.0)), 0.0, 4.0);
+    let a = pow(textureSampleLevel(sans_atlas, sans_sampler, v.place, lod).a, 0.85);
+    return vec4f(v.tint.rgb * a * min(v.shape.z * 1.15, 1.0) * u.fade, 1.0);
+  }
   let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   let d = length(vec2f(along, v.place.y));
   let mode = v.tint.w;

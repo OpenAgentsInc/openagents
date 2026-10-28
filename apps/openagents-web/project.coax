@@ -150,6 +150,8 @@ ink :: (p: Pen, kind: int) -> Ink {
   if kind == INK_FAINT { k.light = 0.3 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
   if kind == INK_ORANGE { k.light = 1.0 * p.fade; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
   if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
+  // small text is set in the system sans; titles, orange labels and the chrome stay in Filament
+  k.sans = kind != INK_ORANGE;
   return k;
 }
 
@@ -162,16 +164,16 @@ put :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) ->
 
 // Text ending at x.
 put_right :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
-  return put(out, at, text, x - text_width(text, cap), y, cap, k);
+  return put(out, at, text, x - ink_width(text, cap, GAP, SPACE, k), y, cap, k);
 }
 
 // How many bytes of text fit in width (device pixels) at cap.
-fits :: (text: string, cap: f32, width: f32) -> int {
-  if text_width(text, cap) <= width { return text.count; }
+fits :: (text: string, cap: f32, width: f32, k: Ink) -> int {
+  if ink_width(text, cap, GAP, SPACE, k) <= width { return text.count; }
   n := 0; i := 0;
   while i < text.count {
     d := decode(text, i);
-    if text_width(text[0..<i + d.len], cap) > width - text_width("...", cap) { break; }
+    if ink_width(text[0..<i + d.len], cap, GAP, SPACE, k) > width - ink_width("...", cap, GAP, SPACE, k) { break; }
     i += d.len; n = i;
   }
   return n;
@@ -179,10 +181,10 @@ fits :: (text: string, cap: f32, width: f32) -> int {
 
 // Text cut to width, with "..." when it was cut.
 put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32) -> int {
-  n := fits(text, cap, width);
+  n := fits(text, cap, width, k);
   if n >= text.count { return put(out, at, text, x, y, cap, k); }
   v := put(out, at, text[0..<n], x, y, cap, k);
-  return put(out, v, "...", x + text_width(text[0..<n], cap) + GAP * cap, y, cap, k);
+  return put(out, v, "...", x + ink_width(text[0..<n], cap, GAP, SPACE, k) + (ifx uses_sans(k, cap) then 0.0f32 else GAP * cap), y, cap, k);
 }
 
 // Text wrapped to width from baseline y, lines step apart, at most lines
@@ -192,7 +194,7 @@ put_wrapped :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k:
   v := at; from := 0; n := 0;
   next: [1] int;
   while from < text.count && n < lines {
-    end := wrap(text, from, width / cap, GAP, SPACE, false, next[..]);
+    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
     v = put(out, v, text[from..<end], x, y + step * cast(f32) n, cap, k);
     n += 1;
     if next[0] <= from { break; }
@@ -271,7 +273,7 @@ titled :: (out: [] f32, at: int, b: Box, title: string, note: string, p: Pen) ->
   v = put(out, v, title, b.x0 + 24 * p.d, y, cap, o);
   if note.count > 0 {
     room := box_w(b) - 48 * p.d - text_width(title, cap);
-    n := fits(note, 6.5 * p.d, room);
+    n := fits(note, 6.5 * p.d, room, ink(p, INK_DIM));
     v = put_right(out, v, note[0..<n], b.x1 - 14 * p.d, y, 6.5 * p.d, ink(p, INK_DIM));
   }
   v = rule(out, v, b.x0 + 12 * p.d, y + 7 * p.d, b.x1 - 12 * p.d, y + 7 * p.d, ink(p, INK_DIM), 0.12 * p.fade);
@@ -287,7 +289,8 @@ chip :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, p
   ys := [7] f32.[top, top, top + h - c, top + h, top + h, top + c, top];
   v := at;
   for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, k.light * 0.55); }
-  return put(out, v, text, x + 7 * p.d, y, cap, k);
+  f := k; f.sans = false;   // chips are chrome: Filament
+  return put(out, v, text, x + 7 * p.d, y, cap, f);
 }
 
 // A small diamond, as nodes and dots are drawn.
@@ -980,6 +983,7 @@ glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
 header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int {
   d := p.d; v := at;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  white.sans = false; dim.sans = false;   // the top bar is Filament
   x := b.x0 + 18 * d; right := b.x1 - 18 * d;
   // the project's name, line and home: from its 30621 event and its repository
   name := ifx p.demo then "COAX" else w[0].name;
@@ -1033,6 +1037,7 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int 
 stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work, t: [] Tree) -> int {
   d := p.d; v := at;
   dim := ink(p, INK_DIM); white := ink(p, INK_WHITE); orange := ink(p, INK_ORANGE);
+  dim.sans = false; white.sans = false;   // the stats are chrome: Filament
   labels := [5] string.["COMMITS", "CONTRIBUTORS", "LINES", "OPEN TASKS", "AGENTS AT WORK"];
   short := [5] string.["COMMITS", "PEOPLE", "LINES", "OPEN", "AGENTS"];
   k := ifx p.demo || w[0].baked < 0 then 0 else w[0].baked;
@@ -1697,7 +1702,7 @@ flow :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, w
   v := at; from := 0; yy := y;
   next: [1] int;
   while from < text.count {
-    end := wrap(text, from, width / cap, GAP, SPACE, false, next[..]);
+    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
     if in_view(yy, cap, top, bottom) { v = put(out, v, text[from..<end], x, yy, cap, k); }
     yy += step;
     if next[0] <= from { break; }

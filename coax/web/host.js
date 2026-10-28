@@ -275,11 +275,52 @@ function makeBuffers() {
   gpu.vertexBuffer = device.createBuffer({ size: arena.maxVertices * arena.floats * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
   gpu.layout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} }] });
   gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [{ binding: 0, resource: { buffer: gpu.uniformBuffer } }] });
+  if (gpu.sans) useSans();
+}
+
+// The sans atlas: a page whose shader declares sans_atlas (binding 1) and
+// sans_sampler (binding 2) gets the system sans rasterized here, so small text
+// reads like the rest of the web. Characters: ASCII 32..126, then SANS_EXTRA;
+// 16 columns of 96-texel cells, the pen at x 16 and the baseline at y 72 of
+// each, drawn at 64 px; every mip level is drawn at its own size rather than
+// downsampled. Coax lays the text out with the same fonts' widths
+// (apps/openagents-web/font.coax, "the system sans"), so this list, the cell
+// and the font must match it.
+const SANS_EXTRA = [183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
+const SANS_FONT = 'Helvetica, Arial, "Liberation Sans", "Nimbus Sans", sans-serif';
+function sansAtlas(device) {
+  const codes = [...Array.from({ length: 95 }, (_, i) => 32 + i), ...SANS_EXTRA];
+  const cols = 16, rows = Math.ceil(codes.length / cols), cell = 96, levels = 5;
+  const texture = device.createTexture({ size: [cols * cell, rows * cell], format: "rgba8unorm", mipLevelCount: levels,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+  for (let level = 0; level < levels; level++) {
+    const c = cell >> level, w = cols * c, h = rows * c;
+    const canvas = new OffscreenCanvas(w, h), g = canvas.getContext("2d");
+    g.fillStyle = "#fff"; g.textBaseline = "alphabetic";
+    g.font = `${64 / (1 << level)}px ${SANS_FONT}`;
+    codes.forEach((code, i) => g.fillText(String.fromCodePoint(code), (i % cols) * c + 16 / (1 << level), Math.floor(i / cols) * c + 72 / (1 << level)));
+    device.queue.copyExternalImageToTexture({ source: canvas }, { texture, mipLevel: level, premultipliedAlpha: true }, [w, h]);
+  }
+  return texture;
+}
+function useSans() {
+  const { device } = gpu;
+  gpu.sans ||= sansAtlas(device);
+  const both = GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT;
+  gpu.layout = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: both, buffer: {} },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+    { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} }] });
+  gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [
+    { binding: 0, resource: { buffer: gpu.uniformBuffer } },
+    { binding: 1, resource: gpu.sans.createView() },
+    { binding: 2, resource: device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" }) }] });
 }
 
 async function loadShaders() {
   const { device, format } = gpu;
   const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
+  if (/var\s+sans_atlas\b/.test(code)) useSans();
   const module = device.createShaderModule({ code });
   const info = await module.getCompilationInfo();
   const errors = info.messages.filter((m) => m.type === "error");

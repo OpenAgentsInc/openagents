@@ -103,6 +103,8 @@ ink :: (p: Pen, kind: int) -> Ink {
   if kind == INK_FAINT { k.light = 0.3 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
   if kind == INK_ORANGE { k.light = 1.0 * p.fade; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
   if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
+  // small text is set in the system sans; titles, orange labels and the chrome stay in Filament
+  k.sans = kind != INK_ORANGE;
   return k;
 }
 
@@ -111,30 +113,30 @@ put :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) ->
   return draw_text(out, at, text, x, y, cap, GAP, SPACE, k, false, false);
 }
 put_right :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
-  return put(out, at, text, x - text_width(text, cap), y, cap, k);
+  return put(out, at, text, x - ink_width(text, cap, GAP, SPACE, k), y, cap, k);
 }
-fits :: (text: string, cap: f32, width: f32) -> int {
-  if text_width(text, cap) <= width { return text.count; }
+fits :: (text: string, cap: f32, width: f32, k: Ink) -> int {
+  if ink_width(text, cap, GAP, SPACE, k) <= width { return text.count; }
   n := 0; i := 0;
   while i < text.count {
     r := decode(text, i);
-    if text_width(text[0..<i + r.len], cap) > width - text_width("...", cap) { break; }
+    if ink_width(text[0..<i + r.len], cap, GAP, SPACE, k) > width - ink_width("...", cap, GAP, SPACE, k) { break; }
     i += r.len; n = i;
   }
   return n;
 }
 put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32) -> int {
-  n := fits(text, cap, width);
+  n := fits(text, cap, width, k);
   if n >= text.count { return put(out, at, text, x, y, cap, k); }
   v := put(out, at, text[0..<n], x, y, cap, k);
-  return put(out, v, "...", x + text_width(text[0..<n], cap) + GAP * cap, y, cap, k);
+  return put(out, v, "...", x + ink_width(text[0..<n], cap, GAP, SPACE, k) + (ifx uses_sans(k, cap) then 0.0f32 else GAP * cap), y, cap, k);
 }
 // Text wrapped to width, at most lines lines, the last cut with "..." when more is left.
 put_wrapped :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32, lines: int) -> int {
   v := at; from := 0; n := 0;
   next: [1] int;
   while from < text.count && n < lines {
-    end := wrap(text, from, width / cap, GAP, SPACE, false, next[..]);
+    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
     if n == lines - 1 && next[0] < text.count && next[0] > from { v = put_fit(out, v, text[from..<text.count], x, y + step * cast(f32) n, cap, k, width); n += 1; break; }
     v = put(out, v, text[from..<end], x, y + step * cast(f32) n, cap, k);
     n += 1;
@@ -187,7 +189,7 @@ titled :: (out: [] f32, at: int, b: Box, title: string, note: string, p: Pen) ->
   v = put(out, v, title, b.x0 + 24 * p.d, y, cap, o);
   if note.count > 0 {
     room := box_w(b) - 48 * p.d - text_width(title, cap);
-    n := fits(note, 6.5 * p.d, room);
+    n := fits(note, 6.5 * p.d, room, ink(p, INK_DIM));
     v = put_right(out, v, note[0..<n], b.x1 - 14 * p.d, y, 6.5 * p.d, ink(p, INK_DIM));
   }
   return rule(out, v, b.x0 + 12 * p.d, y + 7 * p.d, b.x1 - 12 * p.d, y + 7 * p.d, ink(p, INK_DIM), 0.12 * p.fade);
@@ -202,7 +204,8 @@ chip :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, p
   ys := [7] f32.[top, top, top + h - c, top + h, top + h, top + c, top];
   v := at;
   for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, k.light * 0.55); }
-  return put(out, v, text, x + 7 * p.d, y, cap, k);
+  f := k; f.sans = false;   // chips are chrome: Filament
+  return put(out, v, text, x + 7 * p.d, y, cap, f);
 }
 chip_box :: (text: string, x: f32, y: f32, cap: f32, p: Pen) -> Box {
   return Box.{x0 = x, y0 = y - cap - 5 * p.d, x1 = x + chip_width(text, cap, p), y1 = y - cap - 5 * p.d + chip_height(cap, p)};
@@ -347,6 +350,7 @@ glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32) {
 header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: int) -> int {
   d := p.d; v := at; b := l.header;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  white.sans = false; dim.sans = false;   // the top bar is Filament
   x := b.x0 + 18 * d; right := b.x1 - 18 * d;
   v = put(out, v, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, ifx hot == HIT_HOME then white else dim);
   crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
