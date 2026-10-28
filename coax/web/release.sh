@@ -42,9 +42,23 @@ now() { python3 -c 'import time; print(time.time())'; }
 lap() { printf '  %-10s %5.1f s\n' "$1" "$(python3 -c "print($(now) - $2)")"; }
 start=$(now)
 
+# One release at a time on this machine: a second one waits, since both
+# rewrite the staging bucket and promote from it. A lock left by a dead
+# release is taken over.
+lock="${TMPDIR:-/tmp}/coaxial-release.lock"
+until mkdir "$lock" 2>/dev/null; do
+  holder="$(cat "$lock/pid" 2>/dev/null || true)"
+  if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$lock"; continue; fi
+  echo "release: waiting for release ${holder:-?} to finish"; sleep 5
+done
+echo $$ > "$lock/pid"
+tree=""
+cleanup() { [[ -z "$tree" ]] || git -C "$repo" worktree remove --force "$tree" 2>/dev/null || true; rm -rf "$lock"; }
+trap cleanup EXIT
+
 git -C "$repo" fetch -q origin main
 commit="$(git -C "$repo" rev-parse --short "$ref")"
-tree="$(mktemp -d)/release"; trap 'git -C "$repo" worktree remove --force "$tree" 2>/dev/null || true' EXIT
+tree="$(mktemp -d)/release"
 git -C "$repo" worktree add -q --detach "$tree" "$commit"
 echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 # The compiler is built per worktree; reuse this checkout's if the tree has none.
