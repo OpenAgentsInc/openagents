@@ -1,0 +1,30 @@
+// A test-only adapter for the existing compiler fingerprint hash. This is not
+// the production crypto-sha256 suite or a signing/admission implementation.
+#load "../../../coax/lib/proto/fingerprint.coax";
+#authority;
+VECTOR_MAX :: 65536;
+#test "vector adapter bounds reject before output and hash binary bytes" {
+  out:[32]u8;empty:[1]u8;
+  #assert !vector_allowed(-1,32) && !vector_allowed(65537,32);
+  #assert !vector_allowed(0,31) && vector_allowed(0,32) && vector_allowed(65536,32);
+  #assert vector_digest(empty[0..<0],out[..]);
+  expected:=[32]u8.[227,176,196,66,152,252,28,20,154,251,244,200,153,111,185,36,39,174,65,228,100,155,147,76,164,149,153,27,120,82,184,85];
+  for i:0..<32 {#assert out[i]==expected[i];}
+  before:=out;
+  #assert !vector_digest(empty[..],out[0..<31]);
+  for i:0..<32 {#assert out[i]==before[i];}
+}
+vector_allowed :: (count:int,capacity:int)->bool {
+  return count>=0 && count<=VECTOR_MAX && capacity>=32;
+}
+vector_digest :: (input:[]u8,out:[]u8)->bool #export_c {
+  if !vector_allowed(input.count,out.count) {return false;}
+  digest:=S_hash(cast(string)input);
+  for i:0..<8 {
+    out[i*4]=cast,trunc(u8)(digest.words[i]>>24);
+    out[i*4+1]=cast,trunc(u8)(digest.words[i]>>16);
+    out[i*4+2]=cast,trunc(u8)(digest.words[i]>>8);
+    out[i*4+3]=cast,trunc(u8)digest.words[i];
+  }
+  return true;
+}
