@@ -1,4 +1,4 @@
-# The project agent's document tools (migration 0016): milestone_edit,
+# The project agent's document tools (migration 0018): milestone_edit,
 # goal_propose and patch (document_patch), each one new document version from
 # the version the agent read, recorded under the turn, refused outside a
 # running turn, on an unapproved project or to anyone but the project's

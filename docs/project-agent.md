@@ -149,7 +149,7 @@ The runner maps each to oa-api:
 | `goal_propose` | `goal_propose`: a new proposed goal, or a change to a goal; a change to an agreed goal is a new proposed goal with `replaces`, and the agreed goal stays |
 | `document_patch` | `patch`: RFC 6902 add, remove, replace, move and test |
 
-`milestone_edit`, `goal_propose` and `patch` (migration 0016) carry the
+`milestone_edit`, `goal_propose` and `patch` (migration 0018) carry the
 version the agent read (`base`), build the new document and save it through
 `push`, so the same rules hold: only an approved project's runner or agent,
 only inside a running turn, never the title, the members or an agreed goal,
