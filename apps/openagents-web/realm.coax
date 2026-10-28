@@ -100,6 +100,8 @@ RealmView :: struct {
   editing: bool;        // edit mode
   items: [ITEMS] string; item_n: int;   // what edit mode's hotbar places, slot 1 up
   selected: string;     // in edit mode, the thing picked ("" none)
+  person: bool;         // it is a character
+  mind: string;         // then what they do: STAYS, FOLLOWS, WANDERS, GUARDS, FLEES
   zone: string;         // in edit mode with nothing picked, the zone nearest ("" none)
   zone_once: bool;      // it goes off once
   can_undo: bool; can_redo: bool;
@@ -137,6 +139,8 @@ ASK_OP :: 1024;        // an edit, `op` (OP_*)
 OP_LEFT :: 0; OP_RIGHT :: 1; OP_AWAY :: 2; OP_NEAR :: 3; OP_TURN :: 4; OP_BIGGER :: 5; OP_SMALLER :: 6; OP_DELETE :: 7;
 OP_ZONE_BIGGER :: 8; OP_ZONE_SMALLER :: 9; OP_ZONE_ONCE :: 10; OP_ZONE_RESET :: 11;
 OP_UNDO :: 12; OP_REDO :: 13; OP_DROP :: 14;   // OP_DROP: let go of the picked thing
+OP_MIND :: 15; OP_HERE :: 16;                  // a character: what they do next, come to where you look
+OP_ZONE_LEFT :: 17; OP_ZONE_RIGHT :: 18; OP_ZONE_AWAY :: 19; OP_ZONE_NEAR :: 20;
 
 // The buttons, drawn and hit in this order.
 BTN_USE :: 0; BTN_VIEW :: 1; BTN_MAP :: 2; BTN_EXIT :: 3; BTN_HINT :: 4; BTN_BYE :: 5;
@@ -248,8 +252,8 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_REDO { edit_op(r, OP_REDO); }
   if b >= BTN_OP && b < BTN_OP + OPS {
     k := b - BTN_OP;
-    if v.selected.count > 0 { edit_op(r, k); }
-    else if v.zone.count > 0 && k < 4 { edit_op(r, OP_ZONE_BIGGER + k); }
+    if v.selected.count > 0 { edit_op(r, row_op(v, k)); }
+    else if v.zone.count > 0 { edit_op(r, row_op(v, k)); }
   }
   if b == BTN_EXIT {
     r[0].asks |= ASK_EXIT;
@@ -260,12 +264,27 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
 
 edit_op :: (r: [] Realm, op: int) { r[0].op = op; r[0].asks |= ASK_OP; }
 
+// The edit button k of the row does: a thing's, a character's or the zone's.
+row_op :: (v: RealmView, k: int) -> int {
+  if v.selected.count == 0 { return ifx k < 4 then OP_ZONE_LEFT + k else OP_ZONE_BIGGER + k - 4; }
+  if !v.person || k < 5 { return k; }
+  return ifx k == 5 then OP_MIND else ifx k == 6 then OP_HERE else OP_DELETE;
+}
+
 // Edit mode's keys for the picked thing: arrows move it (from where you
 // look), R turns it, + and - resize it, Delete or Backspace removes it; Z
 // undoes and Y redoes any edit. Returns the edit, or -1.
 edit_key :: (v: RealmView, key: int) -> int {
   if key == 'z' || key == 'Z' { return OP_UNDO; }
   if key == 'y' || key == 'Y' { return OP_REDO; }
+  if v.selected.count == 0 && v.zone.count > 0 {
+    if key == KEY_LEFT { return OP_ZONE_LEFT; }
+    if key == KEY_RIGHT { return OP_ZONE_RIGHT; }
+    if key == KEY_UP { return OP_ZONE_AWAY; }
+    if key == KEY_DOWN { return OP_ZONE_NEAR; }
+    if key == '+' || key == '=' { return OP_ZONE_BIGGER; }
+    if key == '-' || key == '_' { return OP_ZONE_SMALLER; }
+  }
   if v.selected.count == 0 { return -1; }
   if key == KEY_LEFT { return OP_LEFT; }
   if key == KEY_RIGHT { return OP_RIGHT; }
@@ -628,7 +647,8 @@ draw_talk :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32)
 }
 
 OP_LABELS :: [OPS] string.["LEFT", "RIGHT", "AWAY", "NEAR", "TURN", "BIGGER", "SMALLER", "DELETE"];
-ZONE_LABELS :: [4] string.["BIGGER", "SMALLER", "ONCE", "RESET"];
+PERSON_LABELS :: [OPS] string.["LEFT", "RIGHT", "AWAY", "NEAR", "TURN", "", "HERE", "REMOVE"];
+ZONE_LABELS :: [OPS] string.["LEFT", "RIGHT", "AWAY", "NEAR", "BIGGER", "SMALLER", "ONCE", "RESET"];
 
 // Edit mode: EDITING over the middle; the picked thing (or the nearest
 // zone) with its edits; the hotbar with a number key each, UNDO, REDO, DONE.
@@ -638,6 +658,8 @@ draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   vertices := centred(d, out, at, "EDITING", r[0].width * 0.5, y, 12 * k, orange(k, 0.95));
   hint := ifx phone(r) then "TAP A THING TO PICK IT · A SLOT PLACES ONE" else "CLICK A THING TO PICK IT · 1 TO 5 PLACE · Z UNDO · B OR ESC TO PLAY";
   if v.selected.count > 0 && !phone(r) { hint = "ARROWS MOVE IT · R TURNS · + AND - RESIZE · DELETE REMOVES · ESC LETS GO"; }
+  if v.person && !phone(r) { hint = "ARROWS MOVE THEM · R TURNS THEM · DELETE REMOVES THEM · ESC LETS GO"; }
+  if v.selected.count == 0 && v.zone.count > 0 && !phone(r) { hint = "ARROWS MOVE THE ZONE · + AND - RESIZE IT · CLICK A THING TO PICK IT"; }
   vertices = centred(d, out, vertices, hint, r[0].width * 0.5, y + 20 * k, 7.5 * k, white(k, 0.7));
   buf: [2] u8;
   for i: 0..<v.item_n {
@@ -652,18 +674,21 @@ draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   if name.count == 0 { return vertices; }
   row := op_box(r, 0);
   label := ifx v.selected.count > 0 then name else "ZONE";
-  if v.selected.count == 0 { row = op_box(r, 2); }
   vertices = write(d, out, vertices, label, row.x0, row.y0 - 10 * k, 8.5 * k, GAP, SPACE, orange(k, 0.95), false, false);
   if v.selected.count == 0 {
     vertices = write(d, out, vertices, v.zone, row.x0 + measure(label, GAP, SPACE, false) * 8.5 * k + 14 * k, row.y0 - 10 * k, 8.5 * k, GAP, SPACE, white(k, 0.9), false, false);
-    for i: 0..<4 {
+    for i: 0..<OPS {
       text := ZONE_LABELS[i];
-      if i == 2 { text = ifx v.zone_once then "ONCE" else "ALWAYS"; }
-      vertices = hud_button(r, out, vertices, BTN_OP + i, op_box(r, i + 2), text, "", i == 2 && v.zone_once);
+      if i == 6 { text = ifx v.zone_once then "ONCE" else "ALWAYS"; }
+      vertices = hud_button(r, out, vertices, BTN_OP + i, op_box(r, i), text, "", i == 6 && v.zone_once);
     }
     return vertices;
   }
-  for i: 0..<OPS { vertices = hud_button(r, out, vertices, BTN_OP + i, op_box(r, i), OP_LABELS[i], "", i == OP_DELETE); }
+  for i: 0..<OPS {
+    text := ifx v.person then PERSON_LABELS[i] else OP_LABELS[i];
+    if v.person && i == 5 { text = v.mind; }
+    vertices = hud_button(r, out, vertices, BTN_OP + i, op_box(r, i), text, "", i == OP_DELETE);
+  }
   return vertices;
 }
 
@@ -937,6 +962,8 @@ realm_track_edit :: (t: [] Track, op: int) #export_c {
   ev := ifx op == OP_DELETE then "delete" else ifx op == OP_UNDO then "undo" else ifx op == OP_REDO then "redo" else "build";
   if track_begin(t, ev) {
     if op < OPS { track_str(t, "op", OP_LABELS[op]); }
+    else if op == OP_MIND || op == OP_HERE { track_str(t, "person", ifx op == OP_MIND then "mind" else "here"); }
+    else if op >= OP_ZONE_LEFT && op <= OP_ZONE_NEAR { track_str(t, "zone", ZONE_LABELS[op - OP_ZONE_LEFT]); }
     else if op >= OP_ZONE_BIGGER && op <= OP_ZONE_RESET { track_str(t, "zone", ifx op == OP_ZONE_BIGGER then "bigger" else ifx op == OP_ZONE_SMALLER then "smaller" else ifx op == OP_ZONE_ONCE then "once" else "reset"); }
     track_str(t, "world", HAUNT_WORLD);
     track_end(t);
@@ -1174,10 +1201,34 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_TURN;
   v.selected = ""; v.zone = "Potion shelves";
   d2 := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
-  z := op_box(r[..], 4);
+  z := op_box(r[..], 6);
   p8 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_DOWN, 0, 1);
   p9 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_UP, 0, 1);
-  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_ZONE_ONCE && !r[0].shown[BTN_OP + 4];
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_ZONE_ONCE;
+  z = op_box(r[..], 0);
+  p10 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_DOWN, 0, 1);
+  p11 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_UP, 0, 1);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_ZONE_LEFT;
+  k5 := realm_key(r[..], v, KEY_UP, 0, true);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_ZONE_AWAY && r[0].held == 0;   // a zone near: arrows move it
+  k6 := realm_key(r[..], v, '+', 0, true);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_ZONE_BIGGER;
+}
+
+#test "edit mode: a picked character's row moves them, changes what they do, calls them over, removes them" {
+  r: [1] Realm; desk(r[..]); v := view(); v.editing = true; v.selected = "Mortimer"; v.person = true; v.mind = "STAYS";
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  d0 := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  ops := [OPS] int.[OP_LEFT, OP_RIGHT, OP_AWAY, OP_NEAR, OP_TURN, OP_MIND, OP_HERE, OP_DELETE];
+  for i: 0..<OPS {
+    b := op_box(r[..], i);
+    #assert plated(u[..], b) >= 0;
+    p1 := realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_DOWN, 0, 1);
+    p2 := realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_UP, 0, 1);
+    #assert realm_take(r[..]) == ASK_OP && r[0].op == ops[i];
+  }
+  k1 := realm_key(r[..], v, KEY_DOWN, 0, true);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_NEAR;
 }
 
 #test "the house records the playtest's events: entering, the room, the quest's steps, the survey's words" {

@@ -259,27 +259,54 @@ static void pick(float x, float y) {
   house = verse_haunt_select(house, verse_haunt_pick(house, point(eye), ray));
 }
 
-// An edit (realm.coax OP_*) to the picked thing or the nearest zone.
+// What a character does (their brain), as the row's word, and the action
+// (verse_haunt_person_action) for what they do next: stay, follow, wander,
+// guard, flee, and round again.
+static int brain_is(coax_string b, const char *t) { return b.count == (int64_t)strlen(t) && memcmp(b.data, t, (size_t)b.count) == 0; }
+static const char *mind_word(coax_string b) {
+  return brain_is(b, "follower") ? "FOLLOWS" : brain_is(b, "townsfolk") ? "WANDERS" : brain_is(b, "guard") ? "GUARDS" : brain_is(b, "critter") ? "FLEES" : "STAYS";
+}
+static int64_t mind_next(coax_string b) {
+  return brain_is(b, "follower") ? 1 : brain_is(b, "townsfolk") ? 2 : brain_is(b, "guard") ? 4 : brain_is(b, "critter") ? 3 : 0;
+}
+
+// An edit (realm.coax OP_*) to the picked thing, character or the nearest zone.
 static void edit_op(int64_t op) {
   realm_track_edit(tr(), op);
   if (op == 12) { undo(); return; }
   if (op == 13) { redo(); return; }
   if (op == 14) { house.selected = -1; return; }
-  if (op >= 8 && op <= 11) {
+  // Moves go from where you look: left and right across the view, away and near along it.
+  int64_t way = op >= 17 && op <= 20 ? op - 17 : op;
+  float h = house.heading, fx = -sinf(h), fz = -cosf(h), step = 0.25f;
+  float dx = way == 0 ? fz : way == 1 ? -fz : way == 2 ? fx : way == 3 ? -fx : 0;
+  float dz = way == 0 ? -fx : way == 1 ? fx : way == 2 ? fz : way == 3 ? -fz : 0;
+  if ((op >= 8 && op <= 11) || (op >= 17 && op <= 20)) {
     int64_t z = verse_haunt_zone_near(house);
     if (z < 0) return;
     remember();
+    if (op >= 17) {
+      if (dx != 0) house = verse_haunt_zone_edit(house, z, 3, dx * step);
+      if (dz != 0) house = verse_haunt_zone_edit(house, z, 4, dz * step);
+      return;
+    }
     static const int64_t zone_op[4] = {1, 1, 0, 2};
     house = verse_haunt_zone_edit(house, z, zone_op[op - 8], op == 8 ? 0.25f : op == 9 ? -0.25f : 0);
     return;
   }
   int64_t i = house.selected;
   if (i < 0 || i >= house.entity_count) return;
+  int64_t person = verse_haunt_person_of(house, i);
   remember();
-  // Moves go from where you look: left and right across the view, away and near along it.
-  float h = house.heading, fx = -sinf(h), fz = -cosf(h), step = 0.25f;
-  float dx = op == 0 ? fz : op == 1 ? -fz : op == 2 ? fx : op == 3 ? -fx : 0;
-  float dz = op == 0 ? -fx : op == 1 ? fx : op == 2 ? fz : op == 3 ? -fz : 0;
+  // A character (HauntViewController.characterMenu): what they do next, come
+  // to where you look, or leave.
+  if (person >= 0 && (op == 15 || op == 16 || op == 7)) {
+    if (op == 15) house = verse_haunt_person_action(house, person, mind_next(people[person].brain));
+    if (op == 16) house = verse_haunt_person_action(house, person, 5);
+    if (op == 7) { house = verse_haunt_person_action(house, person, 6); house.selected = -1; }
+    rebuild_walls();
+    return;
+  }
   if (op <= 3) {
     if (dx != 0) house = verse_haunt_edit(house, i, 0, dx * step);
     if (dz != 0) house = verse_haunt_edit(house, i, 2, dz * step);
@@ -413,6 +440,9 @@ static void describe(void) {
     bool picked = house.editing && house.selected >= 0 && house.selected < house.entity_count;
     v.selected = picked ? entities[house.selected].name : (coax_string){"", 0};
     if (picked && v.selected.count == 0) v.selected = text("Thing");
+    int64_t who = picked ? verse_haunt_person_of(house, house.selected) : -1;
+    v.person = who >= 0;
+    if (who >= 0) { v.selected = people[who].name; v.mind = text(mind_word(people[who].brain)); }
     int64_t zone = house.editing && !picked ? verse_haunt_zone_near(house) : -1;
     v.zone = zone >= 0 ? zones[zone].name : (coax_string){"", 0};
     v.zone_once = zone >= 0 && zones[zone].once;
