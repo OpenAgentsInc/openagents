@@ -1,0 +1,167 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "coax",
+  "initiative": {
+    "slug": "project-agent",
+    "title": "A project's agent on its page",
+    "body": "Members talk to a project's agent on the project page and it makes targeted, approved edits to the project. Runs on a Coax port of the Claude Agent SDK on our hosted agent runner.",
+    "spec": "docs/project-agent.md",
+    "labels": [
+      "agent"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "pa-agent",
+      "title": "Talk to the project agent on the page",
+      "body": "The Coax Claude Agent SDK, the runner, oa-api sessions and the page panel.",
+      "parent": "project-agent"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "sdk-transport",
+      "parent": "pa-agent",
+      "title": "Coax Claude Agent SDK: transport and messages",
+      "size": "L",
+      "labels": [
+        "agent",
+        "sdk",
+        "coax"
+      ],
+      "body": "Port the transport and stream messages of the Rust crate claude_agent_sdk (0b401561a0^:crates/claude_agent_sdk) to Coax: spawn `claude` with stream-json in and out in its own process group through a C shim in coax/platform/, read lines, parse every SDKMessage type into typed values, unknown types kept raw.\n\nSpec: `docs/project-agent.md`.",
+      "files": [
+        "coax/lib/agent/claude/",
+        "coax/platform/"
+      ],
+      "acceptance": [
+        "Recorded stream-json fixtures from the crate's tests parse the same way",
+        "A live smoke runs one query against the installed CLI and prints the result and cost",
+        "Killing a query stops the whole process group"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "sdk-control"
+      ]
+    },
+    {
+      "slug": "sdk-control",
+      "parent": "pa-agent",
+      "title": "Coax Claude Agent SDK: control protocol, permissions and SDK MCP tools",
+      "size": "L",
+      "labels": [
+        "agent",
+        "sdk",
+        "coax"
+      ],
+      "body": "initialize, can_use_tool, hook_callback, mcp_message, interrupt, set_model and set_permission_mode, both ways; QueryOptions into flags and initialize fields; an in-process SDK MCP server for typed tools.\n\nSpec: `docs/project-agent.md`.",
+      "files": [
+        "coax/lib/agent/claude/"
+      ],
+      "acceptance": [
+        "The live smoke calls one in-process MCP tool and denies a built-in tool through the permission callback",
+        "Control fixtures from the crate's tests pass"
+      ],
+      "blocked_by": [
+        "sdk-transport"
+      ],
+      "blocks": [
+        "pa-runner"
+      ]
+    },
+    {
+      "slug": "pa-api",
+      "parent": "pa-agent",
+      "title": "oa-api: agent sessions, events, queue and approvals",
+      "size": "M",
+      "labels": [
+        "agent",
+        "api"
+      ],
+      "body": "Session and event tables shaped like openagents.agent.managed.v1, a member message queue, pending approvals with time limits, an approved-projects list, and a signed wake call to the runner. Members use their session cookie; the runner uses the project's agent key.\n\nSpec: `docs/project-agent.md`.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A non-approved project's agent routes answer the same not found",
+        "An approval times out to deny",
+        "Tests in test.sh"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "pa-runner",
+        "pa-panel"
+      ]
+    },
+    {
+      "slug": "pa-runner",
+      "parent": "pa-agent",
+      "title": "oa-agent runner on Cloud Run",
+      "size": "M",
+      "labels": [
+        "agent",
+        "cloud"
+      ],
+      "body": "Container with the claude CLI and the Coax SDK binary, the project MCP tools from the spec, built-in tools off, the Anthropic key from Secret Manager in the child environment only, a daily spend cap and one turn at a time per project. Scale to zero.\n\nSpec: `docs/project-agent.md`.",
+      "files": [
+        "coax/web/agent/"
+      ],
+      "acceptance": [
+        "A wake runs one turn and streams its events to oa-api on staging",
+        "The key appears in no log, event or response",
+        "Over the cap, the turn refuses and the page says why"
+      ],
+      "blocked_by": [
+        "sdk-control",
+        "pa-api"
+      ],
+      "blocks": [
+        "pa-launch"
+      ]
+    },
+    {
+      "slug": "pa-panel",
+      "parent": "pa-agent",
+      "title": "The AGENT panel on a project page",
+      "size": "M",
+      "labels": [
+        "agent",
+        "web"
+      ],
+      "body": "Conversation, text box, a working line, STOP, and diff cards for each edit with ALLOW/DENY and NEEDS BOTH for goals; drawn in Coax; polling while a turn runs.\n\nSpec: `docs/project-agent.md`.",
+      "files": [
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "A member's message gets an answer and an approved edit on staging, desktop and phone (headless shots)",
+        "A denied edit leaves the document unchanged"
+      ],
+      "blocked_by": [
+        "pa-api"
+      ],
+      "blocks": [
+        "pa-launch"
+      ]
+    },
+    {
+      "slug": "pa-launch",
+      "parent": "pa-agent",
+      "title": "Project agent live for the first approved project",
+      "size": "S",
+      "labels": [
+        "agent"
+      ],
+      "body": "End to end on production for the first approved project, with the spend cap set.\n\nSpec: `docs/project-agent.md`.",
+      "files": [],
+      "acceptance": [
+        "Both members can talk to it on production",
+        "The edit log shows each change with the message that caused it"
+      ],
+      "blocked_by": [
+        "pa-runner",
+        "pa-panel"
+      ],
+      "blocks": []
+    }
+  ]
+}
