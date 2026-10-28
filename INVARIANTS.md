@@ -24,7 +24,7 @@ These checks do not claim that deleted runtime admission code is installed.
 ## Metareal rename has explicit readers and versions
 
 Legacy IDs live in the migration registry, frozen evidence and byte-exact
-recovered NIP source specifications. Current
+recovered or upstream NIP source specifications. Current
 asset catalogs use canonical IDs; their other required data is unchanged.
 Migrations preserve original input, unknown fields and signatures, reject
 collisions and never reinterpret an old signature under a new domain. Other
@@ -34,6 +34,10 @@ Check: real frozen asset catalog round trip, idempotence, collision tests and
 signature-domain refusal in `proto/tools/test_contracts.py`.
 The NIP recovery source/tree identity is recorded in `proto/nostr/recovery.json`;
 restoring historical text does not restore its retired implementation mandates.
+Current official/Block mirrors may advance beyond that historical tree only
+with exact upstream pins and per-file hashes; `nips/openagents` is not synced.
+Check both online pin parity (`scripts/check-nips-pin.sh --latest`) and offline
+inventory/hash parity (`--offline`), including non-Markdown fixtures.
 
 ## No GitHub-hosted CI
 

@@ -25,8 +25,9 @@ need neither protoc nor a Python protobuf installation. Xcode compiles the
 product C for its target SDK. Metal compiles the bundled shader source at
 runtime; the optional command-line Metal toolchain component is not needed.
 
-The bundle identifier is `com.openagents.app`. This is a local development
-shell, version 0.1.0 (1); no archive, upload or TestFlight release is included.
+The bundle identifier is `com.openagents.app`. This is a minimal home
+shell. Distribution continues the existing OpenAgents App Store Connect record
+at version 1.0.0; the current build is 1046.
 No login, chat, worlds, network services, microphone, FM or payments code is
 restored. Their implementation can be added deliberately later.
 
@@ -76,3 +77,26 @@ unknown/duplicate/truncated resource rejection, bounded finite draw packets,
 deterministic initialization, reduced motion, resume, stale handles, cancelled
 presses and exact-once invocations. UI tests launch the real Metal app and tap
 the rendered HUD through the native touch path in portrait and landscape.
+
+## TestFlight
+
+The rebuild retains `com.openagents.app`, team HQWSG26L43 and the existing app
+icon. Increment `CURRENT_PROJECT_VERSION` above the record's highest build,
+then regenerate the Xcode project. The release path targets only OpenAgents.
+Credentials come from the owner's local `~/work/.secrets/appstoreconnect.env`
+or ASC_API_* environment variables; private keys, tokens, profiles and output
+archives stay outside the repository.
+
+```sh
+apps/openagents-ios/release.sh /absolute/fresh/output-directory
+# Once Apple reports VALID, set notes and assign the existing internal group:
+python3 apps/openagents-ios/tools/app_store.py status --build 1046
+python3 apps/openagents-ios/tools/app_store.py testflight --build 1046 \
+  --group Owner --notes-file apps/openagents-ios/release-notes/1046.txt
+```
+
+The API commands require ASC_API_* variables in the current environment. The
+release script uses manual distribution signing, preserves the checked-in
+version/build during export and uploads the exported IPA. It returns after
+upload; status and group assignment are explicit steps. It never creates
+testers or external groups and never submits a public App Store release.

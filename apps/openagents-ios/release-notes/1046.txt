@@ -1,0 +1,3 @@
+OpenAgents rebuilt in Coax. Animated home, interactive graph, and Start HUD.
+
+Tap nodes to light them. Start replays the animation. Test portrait, landscape, background/resume, and Reduce Motion. This build contains the new home shell.

@@ -11,14 +11,16 @@ root [`nips/`](../../nips/README.md):
 
 | Lane | Recovered source |
 | --- | --- |
-| [Official](../../nips/official/README.md) | 99 Nostr specifications and their index |
-| [Block](../../nips/block/README.md) | 17 extension specifications and their index |
+| [Official](../../nips/official/README.md) | 100 Nostr specifications and their index |
+| [Block](../../nips/block/README.md) | 20 extension specifications, two JSON fixture files and a local index |
 | [OpenAgents](../../nips/openagents/README.md) | 36 specifications, shared contracts and 33 JSON Schemas |
 
-The full 191-file tree matches pre-nuke commit `853417f290` exactly, including
-the [upstream manifest](../../nips/manifest.json). Its source commit and Git tree
-identity are recorded in [recovery.json](recovery.json). No compiled `nostr.*`
-mirror is claimed yet.
+The original 191-file recovery matched pre-nuke commit `853417f290` exactly.
+Its source commit and Git tree identity remain in [recovery.json](recovery.json).
+The current official/Block lanes now advance to the commits in the
+[upstream manifest](../../nips/manifest.json), verified against upstream and
+[per-file hashes](../../nips/upstream-lock.json). The OpenAgents lane is
+unchanged. No compiled `nostr.*` mirror is claimed yet.
 The recovered common/HOST/REACH contracts already carry original signed JSON,
 refs and exact native operation data without inventing a second authority path.
 

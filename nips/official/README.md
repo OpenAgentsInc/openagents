@@ -107,14 +107,15 @@ NIPs listed here are not a protocol checklist. Nothing forces any software to im
 - [NIP-98: HTTP Auth](98.md)
 - [NIP-99: Classified Listings](99.md)
 - [NIP-A0: Voice Messages](A0.md)
+- [NIP-A3: payto: Payment Targets](A3.md)
 - [NIP-A4: Public Messages](A4.md)
 - [NIP-B0: Web Bookmarks](B0.md)
 - [NIP-B7: Blossom](B7.md)
 - ~~[NIP-BE: Nostr BLE Communications Protocol](BE.md) --- **unrecommended**: only implemented once and unclear whether it works, requires review~~
 - [NIP-C0: Code Snippets](C0.md)
 - [NIP-C7: Chats](C7.md)
-- [NIP-A3: payto: Payment Targets](A3.md)
 - [NIP-CC: Geocaching](CC.md)
+- [NIP-CD: Slash Commands](CD.md)
 - ~~[NIP-EE: E2EE Messaging using MLS Protocol](EE.md) --- **unrecommended**: superseded by the [Marmot Protocol](https://github.com/marmot-protocol/marmot)~~
 - [NIP-F4: Podcasts](F4.md)
 
@@ -216,6 +217,7 @@ This table is not exhaustive. For a machine-readable registry of all known event
 | `10015`       | Interests list                  | [51](51.md)                            |
 | `10019`       | Nutzap Mint Recommendation      | [61](61.md)                            |
 | `10020`       | Media follows                   | [51](51.md)                            |
+| `10021`       | Favorite follow sets            | [51](51.md)                            |
 | `10030`       | User emoji list                 | [51](51.md)                            |
 | `10040`       | Trusted Service Providers       | [85](85.md)                            |
 | `10050`       | Relay list to receive DMs       | [51](51.md), [17](17.md)               |
@@ -228,6 +230,7 @@ This table is not exhaustive. For a machine-readable registry of all known event
 | `10154`       | Podcast Metadata                | [F4](F4.md)                            |
 | `10166`       | Relay Monitor Announcement      | [66](66.md)                            |
 | `10312`       | Room Presence                   | [53](53.md)                            |
+| `10992`       | Installed slash commands        | [51](51.md), [CD](CD.md)               |
 | `13194`       | Wallet Info                     | [47](47.md)                            |
 | `13534`       | Membership Lists                | [43](43.md)                            |
 | `5128`        | nsite manifest snapshot         | [5A](5A.md)                            |
@@ -286,6 +289,7 @@ This table is not exhaustive. For a machine-readable registry of all known event
 | `31925`       | Calendar Event RSVP             | [52](52.md)                            |
 | `31989`       | Handler recommendation          | [89](89.md)                            |
 | `31990`       | Handler information             | [89](89.md)                            |
+| `31992`       | Slash command definition        | [CD](CD.md)                            |
 | `32267`       | Software Application            |                                        |
 | `33534`       | Role Definition                 | [43](43.md)                            |
 | `34235`       | Addressable Video Event         | [71](71.md)                            |
