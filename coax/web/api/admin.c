@@ -50,6 +50,7 @@ static bool is_admin(const char *pubkey) {
   for (int i = 0; i < admin_count; i++) if (!strcmp(admins[i], pubkey)) return true;
   return false;
 }
+bool admin_is(const char *pubkey) { return is_admin(pubkey); }
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
 
 // A signed event used once only: false when it was seen before.

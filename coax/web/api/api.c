@@ -16,6 +16,7 @@
 //   GET  /api/playtest/health      a database round trip
 //   POST /api/analytics/events     a page's analytics batch (analytics.ingest in SQL)
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
+//   the playtest's player routes   players, guests, saves and published worlds (player.c)
 #include "api.h"
 
 #include <arpa/inet.h>
@@ -68,7 +69,7 @@ static const char *reason(int status) {
   switch (status) {
     case 200: return "OK"; case 204: return "No Content"; case 303: return "See Other";
     case 400: return "Bad Request"; case 401: return "Unauthorized"; case 403: return "Forbidden";
-    case 404: return "Not Found"; case 405: return "Method Not Allowed"; case 413: return "Payload Too Large";
+    case 404: return "Not Found"; case 405: return "Method Not Allowed"; case 409: return "Conflict"; case 413: return "Payload Too Large";
     case 503: return "Service Unavailable"; default: return "Error";
   }
 }
@@ -225,6 +226,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   else q.query = "";
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
   if (analytics_route(&q)) return;
+  if (player_route(&q)) return;
   if (admin_route(&q)) return;
   api_json(cl->fd, 404, "{\"error\":\"not found\"}");
 }

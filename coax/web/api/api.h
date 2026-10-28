@@ -29,3 +29,5 @@ const char *api_query(const request *q, const char *name, char *out, size_t cap)
 bool analytics_route(const request *q);   // analytics.c
 void admin_init(void);                    // admin.c
 bool admin_route(const request *q);
+bool admin_is(const char *pubkey);        // a pubkey in OA_ADMIN_PUBKEYS
+bool player_route(const request *q);      // player.c
