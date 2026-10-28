@@ -72,6 +72,12 @@
       "title": "Coax compiler prerequisites",
       "body": "Small compiler features and fixes the stack wants; none blocks M0–M2.",
       "parent": "coax-nostr"
+    },
+    {
+      "slug": "m9-phone-sign-in",
+      "title": "Sign in to the website with your phone",
+      "parent": "coax-nostr",
+      "body": "The deliverable: open openagents.com/signin, scan its QR code with the OpenAgents mobile app, approve, and the website is signed in as your Nostr key. The key never leaves the phone. NIP-46 (Nostr Connect) between page and phone over relay.openagents.com, NIP-98 HTTP auth to the server, no WorkOS. The same Coax Nostr library runs on the phone (compiled to C), in the page (wasm) and on the server (native)."
     }
   ],
   "tasks": [
@@ -1344,6 +1350,209 @@
         "project-page-live"
       ],
       "blocks": []
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "ios",
+        "crypto"
+      ],
+      "files": [
+        "apps/openagents-ios/project.yml",
+        "apps/openagents-ios/Tests/"
+      ],
+      "blocks": [],
+      "slug": "ios-coax-nostr-native",
+      "title": "The Coax Nostr library runs on iOS against the same vectors",
+      "size": "M",
+      "body": "Build the Coax Nostr modules (hashes, secp256k1, Schnorr, ECDH, NIP-44, events, bech32) as C for iOS arm64 and the simulator through the app's Generated/ build step, and run the shared vector files in the iOS test target. Report sign and verify times on a device.",
+      "acceptance": [
+        "BIP-340, NIP-44 and event vectors pass in the iOS simulator test target",
+        "The same vector files the wasm and native builds use, byte for byte",
+        "Sign and verify timings recorded in a note (simulator; device when the owner runs it)"
+      ],
+      "blocked_by": [
+        "schnorr-sign",
+        "nip44-v2",
+        "nostr-event"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "ios",
+        "keys"
+      ],
+      "files": [
+        "apps/openagents-ios/OpenAgents/"
+      ],
+      "blocks": [],
+      "slug": "ios-key-custody",
+      "title": "The phone holds the user's Nostr key in the Keychain",
+      "size": "M",
+      "body": "Create or import a key (nsec) on the phone; store it in the Keychain, this device only, unlocked by Face ID or passcode for each signature; never synced, logged or sent. Export only on an explicit owner action. Signing goes through the Coax library with the key wiped after use.",
+      "acceptance": [
+        "A UI test creates a key, signs an event and verifies it with the Coax verifier",
+        "The Keychain item is ThisDeviceOnly with user presence required",
+        "No key bytes in logs (test greps the simulator log)"
+      ],
+      "blocked_by": [
+        "ios-coax-nostr-native"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "nip46",
+        "crypto",
+        "mobile"
+      ],
+      "files": [],
+      "blocks": [],
+      "slug": "nip46-signer",
+      "title": "NIP-46 remote signer (bunker side) in Coax",
+      "size": "L",
+      "body": "Kind 24133 requests and responses encrypted with NIP-44 between the client's key and the signer's key; methods connect (with the secret from the QR), get_public_key, sign_event, ping, nip44_encrypt/decrypt. Every sign_event needs the user's approval unless the session granted that kind. Shared Coax module, used by the phone.",
+      "acceptance": [
+        "Round trips against the NIP-46 examples and a nostr-effect NIP-46 client in a native test",
+        "A wrong or reused connect secret is refused",
+        "Requests outside the granted permissions are refused"
+      ],
+      "blocked_by": [
+        "nip44-v2",
+        "nostr-event",
+        "nostr-relay-state-machine"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "nip46",
+        "web"
+      ],
+      "files": [],
+      "blocks": [],
+      "slug": "nip46-client-page",
+      "title": "NIP-46 client in the page",
+      "size": "M",
+      "body": "The page side of Nostr Connect: an ephemeral client key, the nostrconnect:// URI (relay, secret, perms, name, url), waiting for the signer's connect, then get_public_key and sign_event requests over the page's relay client.",
+      "acceptance": [
+        "Native test: the page client and the Coax signer complete connect and a sign_event over an in-memory relay",
+        "The client key is ephemeral and wiped at sign-out"
+      ],
+      "blocked_by": [
+        "nip46-signer",
+        "relay-in-page"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "web",
+        "qr"
+      ],
+      "files": [],
+      "blocks": [],
+      "slug": "coax-qr-encoder",
+      "title": "QR code encoder in Coax",
+      "size": "M",
+      "body": "Byte mode, error correction M, versions 1 to 15, mask selection by the standard penalty rules; output a module grid the page draws as HUD strokes or quads.",
+      "acceptance": [
+        "Matches a reference encoder's module grids for 20 fixed strings including a 300-byte nostrconnect URI",
+        "A phone camera (the iOS scanner test) decodes a rendered code"
+      ],
+      "blocked_by": []
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "ios",
+        "nip46"
+      ],
+      "files": [],
+      "blocks": [],
+      "slug": "ios-scan-to-sign-in",
+      "title": "Scan a sign-in code with the phone and approve",
+      "size": "M",
+      "body": "The app's QR scanner recognises nostrconnect:// codes, shows the site and what it asks for in an approval sheet, and on approval runs the NIP-46 signer for that session; the session shows in Settings and can be ended there.",
+      "acceptance": [
+        "Simulator UI test: a fixture QR image opens the approval sheet; approve connects to a local relay",
+        "Ending the session in Settings makes later requests fail"
+      ],
+      "blocked_by": [
+        "nip46-signer",
+        "ios-key-custody",
+        "coax-qr-encoder"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "server",
+        "auth"
+      ],
+      "files": [],
+      "blocks": [],
+      "slug": "server-nip98-session",
+      "title": "The server verifies NIP-98 HTTP auth and issues a session",
+      "size": "M",
+      "body": "A native Coax server route POST /auth/nostr takes a NIP-98 kind 27235 event (url, method, payload hash, created_at within 60 s, unused id), verifies it with the Coax verifier, and sets an HttpOnly, Secure, SameSite=Strict session cookie bound to the pubkey. Admin pubkeys come from config. No WorkOS.",
+      "acceptance": [
+        "Tests: valid event accepted; wrong url, method, stale time, replayed id and bad signature refused",
+        "The cookie carries no key material and expires"
+      ],
+      "blocked_by": [
+        "schnorr-verify",
+        "nostr-event"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "web",
+        "auth"
+      ],
+      "files": [],
+      "blocks": [],
+      "slug": "web-sign-in-page",
+      "title": "openagents.com/signin: the QR and the signed-in state",
+      "size": "M",
+      "body": "A Coaxial page draws the QR (HUD, Filament), waits for the phone, then asks it to sign the NIP-98 event and posts it to /auth/nostr. Shows who is signed in (npub, short) and sign out. Plain text in the hidden main for agents.",
+      "acceptance": [
+        "check-visuals passes; real-Chrome screenshots of waiting and signed-in states",
+        "The page never holds the user's secret key"
+      ],
+      "blocked_by": [
+        "nip46-client-page",
+        "coax-qr-encoder",
+        "server-nip98-session"
+      ]
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "labels": [
+        "mobile",
+        "web",
+        "auth"
+      ],
+      "files": [],
+      "blocks": [],
+      "slug": "phone-sign-in-e2e",
+      "title": "End to end: sign in to openagents.com with the phone",
+      "size": "M",
+      "body": "The deliverable test: the iOS simulator scans the QR shown by the page (fixture image of the live page's code), approves, and the page reaches the signed-in state with the server session bound to the phone's pubkey. Device run is an owner step in NEEDS_OWNER.md.",
+      "acceptance": [
+        "Simulator plus headless page run passes against a local relay and server",
+        "Staging run passes against relay.openagents.com",
+        "Device step recorded for the owner"
+      ],
+      "blocked_by": [
+        "ios-scan-to-sign-in",
+        "web-sign-in-page"
+      ]
     }
   ]
 }
