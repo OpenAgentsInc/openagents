@@ -34,9 +34,11 @@ native kernel, is separate work.
 | The browser host | `coax/web/host.js`: WebGPU, the frame clock, state in one `WebAssembly.Memory`, code and shader swaps, the dev error note, the `?probe` frame readback | Works for apps with one uniform block and one vertex stream |
 | Coax → Wasm | `coax/web/wasm.sh`: `coax c` → clang wasm32-wasip1 → wasm-ld; dev (`-O1`, parallel) and release (`-O2`) | The splash is 24 KB (release) |
 | Dev server | `coax/web/serve.c` + `serve.sh` (`coax serve`): static files, a watcher, rebuilds, `/coaxial/live` | Measured: an engine rebuild in 118–135 ms, shader and page messages, compiler errors with the `.coax` location |
+| Staging deploy | `coax/web/deploy.sh APP SERVICE` (`coax deploy`, for now): release build, `serve --static` in a Debian slim container via Cloud Build, Cloud Run `openagents-web-staging` (us-central1, scales to zero), domain mapping `staging.openagents.com` | Serving the splash at https://staging.openagents.com |
 
 Not built: `coax wgsl` (shaders are hand-written WGSL for now), the
-production server and `coax deploy`, Markdown docs and blog drawn on the GPU,
+production deploy (GCS and Cloud CDN behind the existing load balancer),
+the Filament font (`font.md`), Markdown docs and blog drawn on the GPU,
 compression and content-hashed URLs, and a `coax serve` subcommand inside the
 compiler itself (today it's `coax/web/serve.sh`).
 

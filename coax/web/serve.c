@@ -9,9 +9,13 @@
 // A failed build sends "error" with the compiler's output; the tab keeps
 // running the last good engine.
 //
-//   serve APP_DIR [--listen HOST:PORT] [--build CMD]
-// Defaults: 127.0.0.1:8800, build command APP_DIR/build.sh.
-// Development only: no TLS, no auth, no caching.
+//   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static]
+// Defaults: 127.0.0.1:8800, build command APP_DIR/build.sh, the host files
+// next to this binary's directory (coax/web/).
+//
+// --static is production: no building, no watching, no live channel; files
+// are served as they are, cacheable for five minutes. It listens on
+// 0.0.0.0:$PORT when PORT is set (Cloud Run). TLS is the platform's.
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -44,6 +48,13 @@ static client clients[MAX_CLIENTS];
 static watched files[MAX_WATCH];
 static int file_count;
 static char app_dir[1024], host_dir[1024], build_cmd[2048];
+static bool static_mode;
+
+#ifdef __APPLE__
+#define MTIME(st) ((st).st_mtimespec)
+#else
+#define MTIME(st) ((st).st_mtim)
+#endif
 
 static double now_ms(void) {
   struct timeval tv; gettimeofday(&tv, NULL);
@@ -87,10 +98,10 @@ static void send_all(int fd, const void *data, size_t n) {
 static void respond(int fd, int status, const char *reason, const char *type, const void *body, size_t n) {
   char head[512];
   int h = snprintf(head, sizeof head,
-                   "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\n"
+                   "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: %s\r\n"
                    "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n"
                    "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
-                   status, reason, type, n);
+                   status, reason, type, n, static_mode && status == 200 ? "public, max-age=300" : "no-store");
   send_all(fd, head, (size_t)h);
   if (n) send_all(fd, body, n);
 }
@@ -144,7 +155,7 @@ static void handle_request(client *c) {
   if (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET")) {
     respond(c->fd, 405, "Method Not Allowed", "text/plain", "GET only\n", 9); drop(c); return;
   }
-  if (!strcmp(url, "/coaxial/live")) {
+  if (!strcmp(url, "/coaxial/live") && !static_mode) {
     char resp[512];
     size_t n = ws_server_handshake(c->buf, c->n, resp, sizeof resp);
     if (!n) { respond(c->fd, 400, "Bad Request", "text/plain", "", 0); drop(c); return; }
@@ -190,7 +201,7 @@ static void scan_dir(const char *dir, bool add) {
       struct stat st;
       if (stat(path, &st)) continue;
       snprintf(files[file_count].path, sizeof files[0].path, "%s", path);
-      files[file_count++].mtime = st.st_mtimespec;
+      files[file_count++].mtime = MTIME(st);
     }
   }
   closedir(d);
@@ -245,8 +256,8 @@ static void check_changes(void) {
   for (int i = 0; i < file_count; i++) {
     struct stat st;
     if (stat(files[i].path, &st)) continue;
-    if (st.st_mtimespec.tv_sec == files[i].mtime.tv_sec && st.st_mtimespec.tv_nsec == files[i].mtime.tv_nsec) continue;
-    files[i].mtime = st.st_mtimespec;
+    if (MTIME(st).tv_sec == files[i].mtime.tv_sec && MTIME(st).tv_nsec == files[i].mtime.tv_nsec) continue;
+    files[i].mtime = MTIME(st);
     const char *p = files[i].path;
     if (ends_with(p, ".coax") || ends_with(p, ".c") || ends_with(p, ".h")) engine = true;
     else if (ends_with(p, ".wgsl")) shaders = true;
@@ -260,20 +271,28 @@ static void check_changes(void) {
 
 int main(int argc, char **argv) {
   const char *listen_spec = "127.0.0.1:8800";
-  const char *app = NULL, *cmd = NULL;
+  const char *app = NULL, *cmd = NULL, *hosts = NULL;
+  static char port_spec[64];
+  if (getenv("PORT")) { snprintf(port_spec, sizeof port_spec, "0.0.0.0:%s", getenv("PORT")); listen_spec = port_spec; }
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_spec = argv[++i];
+    else if (!strcmp(argv[i], "--host-dir") && i + 1 < argc) hosts = argv[++i];
+    else if (!strcmp(argv[i], "--static")) static_mode = true;
     else if (!strcmp(argv[i], "--build") && i + 1 < argc) cmd = argv[++i];
     else if (!app) app = argv[i];
     else { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }
   }
   if (!app || !realpath(app, app_dir)) { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }
-  char self[1024];
-  if (!realpath(argv[0], self)) { fprintf(stderr, "serve: cannot find itself\n"); return 2; }
-  // The binary lives in coax/web/build/; the host files in coax/web/.
-  char *slash = strrchr(self, '/'); *slash = 0;
-  slash = strrchr(self, '/'); *slash = 0;
-  snprintf(host_dir, sizeof host_dir, "%s", self);
+  if (hosts) {
+    if (!realpath(hosts, host_dir)) { fprintf(stderr, "serve: no host directory %s\n", hosts); return 2; }
+  } else {
+    // The binary lives in coax/web/build/; the host files in coax/web/.
+    char self[1024];
+    if (!realpath(argv[0], self)) { fprintf(stderr, "serve: cannot find itself\n"); return 2; }
+    char *slash = strrchr(self, '/'); *slash = 0;
+    slash = strrchr(self, '/'); *slash = 0;
+    snprintf(host_dir, sizeof host_dir, "%s", self);
+  }
   if (cmd) snprintf(build_cmd, sizeof build_cmd, "%s", cmd);
   else snprintf(build_cmd, sizeof build_cmd, "'%s/build.sh'", app_dir);
 
@@ -289,14 +308,15 @@ int main(int argc, char **argv) {
     return 1;
   }
   for (int i = 0; i < MAX_CLIENTS; i++) clients[i].fd = -1;
-  scan_dir(app_dir, true);
-  scan_dir(host_dir, true);
-
-  static char log[REQ_MAX / 2];
-  double ms;
-  if (!build(log, sizeof log, &ms)) logf_("first build failed in %.0f ms:\n%s", ms, log);
-  else logf_("first build in %.0f ms", ms);
-  printf("coax serve: http://%s:%d/  (app %s, watching %d files)\n", host, port, app_dir, file_count);
+  if (!static_mode) {
+    scan_dir(app_dir, true);
+    scan_dir(host_dir, true);
+    static char log[REQ_MAX / 2];
+    double ms;
+    if (!build(log, sizeof log, &ms)) logf_("first build failed in %.0f ms:\n%s", ms, log);
+    else logf_("first build in %.0f ms", ms);
+  }
+  printf("coax serve: http://%s:%d/  (app %s, %s)\n", host, port, app_dir, static_mode ? "static" : "watching");
   fflush(stdout);
 
   double last_scan = now_ms();
@@ -321,7 +341,7 @@ int main(int argc, char **argv) {
         on_readable(&clients[map[k]]);
       }
     }
-    if (now_ms() - last_scan >= 50) { last_scan = now_ms(); check_changes(); }
+    if (!static_mode && now_ms() - last_scan >= 50) { last_scan = now_ms(); check_changes(); }
   }
   return 0;
 }

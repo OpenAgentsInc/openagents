@@ -7,6 +7,7 @@ Everything Coax lives in this folder, at the root of the openagents repo.
 | [`spec.md`](spec.md) | The language specification and implementation plan |
 | [`ROADMAP.md`](ROADMAP.md) | What to build next, dependencies, real consumers and completion gates for the full language |
 | [`web.md`](web.md) | Proposal: the Coax web framework for openagents.com (Coaxial), with open questions |
+| [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
 | [`book/`](book/README.md) | *The Coax Programming Language*, source for the published book |
 | `src/`, `build.sh`, `tests/`, `examples/` | `coax0`, the bootstrap compiler |
