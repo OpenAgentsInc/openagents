@@ -3,9 +3,7 @@
 // wide band across the middle (graph.coax), and two lines drawn as glowing
 // strokes that write themselves on, letter by letter, then shimmer:
 // OPENAGENTS in the top third after a pause, COMING SOON in the bottom third
-// a little later. Payments run the graph's links in Bitcoin orange, and a
-// few faint amounts float up from its clusters
-// (numbers.coax).
+// a little later. Payments run the graph's links in Bitcoin orange.
 // The host (coax/web/host.js) owns the GPU and calls this once a frame; this
 // file decides every number it draws: where each stroke goes, how much of it
 // is written, how bright it is, and the nebula's clock.
@@ -15,7 +13,6 @@
 // animation carries on from where it was.
 
 #load "graph.coax";
-#load "numbers.coax";
 
 SplashState :: struct {
   time: f32;       // seconds since the page started, as this code counts them
@@ -28,10 +25,10 @@ LINE_MAX :: 11;      // letters in the longest line
 MAX_POINTS :: 16;    // the longest glyph (8) has 16 points
 MAX_SEGMENTS :: 160; // both lines' strokes, with room
 VERTEX_FLOATS :: 12; // x, y, along, across, length, core, light, glow, red, green, blue, mode
-MAX_VERTICES :: 16320; // (MAX_SEGMENTS + GRAPH_QUADS + NUMBER_QUADS) * 6
+MAX_VERTICES :: 14400; // (MAX_SEGMENTS + GRAPH_QUADS) * 6
 
 // How the shader draws a quad (the vertex's last float).
-MODE_STROKE :: 0.0;  // a sharp core and a soft glow: words, numbers, nodes
+MODE_STROKE :: 0.0;  // a sharp core and a soft glow: words, nodes
 MODE_LINK :: 1.0;    // a soft line, faded where it meets its nodes
 MODE_PULSE :: 2.0;   // a payment in flight: a hot head, a tail, a coloured glow
 MODE_GLOW_TEXT :: 3.0; // a stroke with a white core and a coloured glow: the amounts
@@ -268,7 +265,7 @@ coaxial_splash_frame :: (s: [] SplashState, out: [] f32, uniforms: [] f32,
   title := Hole.{cx = width * 0.5, cy = height * line_y(first), w = text_width(first) * fitted_cap(first, width / d) * d * 0.5, h = fitted_cap(first, width / d) * d * 0.5};
   soon := Hole.{cx = width * 0.5, cy = height * line_y(first + 1), w = text_width(first + 1) * CAP * d * 0.5, h = CAP * d * 0.5};
   graph := graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, title, soon);
-  return words + graph + numbers_draw(out, words + graph, width, height, d, t, still);
+  return words + graph;
 }
 
 coaxial_splash_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
