@@ -110,18 +110,21 @@ status, raw, _ = call("POST", P + "world/haunted-house", body,
                       {"Content-Type": "application/json", "Authorization": nip98(os.environ["OTHER_KEY"], "POST", "world/haunted-house", body)})
 check("someone else's signature does not own it", status == 403)
 
-# ---- join by email; progress follows the email
+# ---- join by email: never verified, so it never opens anyone else's account
 slot = "progress/haunted-house/main"
 check("a guest keeps no progress on the server", pt("GET", slot, key=guest["key"])[0] == 403)
 check("a bad email is a 400", pt("POST", "join", {"email": "not-an-email"}, key=guest["key"])[0] == 400)
 status, joined = pt("POST", "join", {"email": " Kiki@Example.com ", "player": "v123", "sid": "s1", "how": "email"}, key=guest["key"])
-check("join by email links the guest's key", status == 200 and joined["joined"] and joined["player"]["key"] == guest["key"]
-      and joined["player"]["account"].startswith("e-"), joined)
+check("join by email gives the guest's key an account of its own", status == 200 and joined["joined"] and joined["player"]["key"] == guest["key"]
+      and joined["player"]["account"].startswith("g-"), joined)
 acct = joined["player"]["account"]
 check("the join is a playtester row, the email lower-cased",
       sql("select email||' '||player||' '||sid||' '||how from analytics.playtesters where sid='s1'") == "kiki@example.com v123 s1 email")
+check("the account keeps no email", sql(f"select coalesce(email, '-') from verse.accounts where id='{acct}'") == "-")
 check("no route shows the email", b"kiki@example.com" not in json.dumps([pt("GET", "player", key=guest["key"]), pt("GET", f"world/{wid}/owner")]).encode())
-check("the guest's world is the account's now", pt("GET", "player", key=guest["key"])[1] == {"id": guest["id"], "account": acct, "worlds": [wid]})
+check("the guest's world is still theirs", pt("GET", "player", key=guest["key"])[1] == {"id": guest["id"], "account": acct, "worlds": [wid]})
+check("joining again keeps the key and its account",
+      pt("POST", "join", {"email": "kiki@example.com", "how": "email"}, key=guest["key"])[1]["player"] == {"key": guest["key"], "id": guest["id"], "account": acct})
 
 check("progress starts empty", pt("GET", slot, key=guest["key"]) == (200, {"current": None, "previous": None}))
 s1, s2 = save(b"first save, room 1"), save(b"second save, room 2")
@@ -132,22 +135,18 @@ status, kept = pt("POST", slot, {"bytes": b64(s1), "at": 1000}, key=guest["key"]
 check("a save is kept", status == 200 and kept == {"current": {"bytes": b64(s1), "at": 1000}, "previous": None}, kept)
 status, kept = pt("POST", slot, {"bytes": b64(s2), "at": 2000}, key=guest["key"])
 check("the next keeps the last good one", kept == {"current": {"bytes": b64(s2), "at": 2000}, "previous": {"bytes": b64(s1), "at": 1000}}, kept)
-
-status, other_browser = pt("POST", "join", {"email": "kiki@example.com", "how": "email"}, key=other["key"])
-check("the same email in another browser: that key joins the account",
-      other_browser["player"]["key"] == other["key"] and other_browser["player"]["account"] == acct, other_browser)
-status, there = pt("GET", slot, key=other["key"])
-check("progress follows the email to the other browser", status == 200 and there["current"]["bytes"] == b64(s2), there)
-status, late = pt("POST", slot, {"bytes": b64(s1), "at": 1500}, key=other["key"])
+status, late = pt("POST", slot, {"bytes": b64(s1), "at": 1500}, key=guest["key"])
 check("an older save than the one there is a 409 with what is there", status == 409 and late["current"]["at"] == 2000, late)
 
-status, third = pt("POST", "player", {})
-pt("POST", "join", {"email": "someone@else.org", "how": "email"}, key=third["key"])
-status, moved = pt("POST", "join", {"email": "kiki@example.com", "how": "email"}, key=third["key"])
-check("a key on one account never moves: a fresh key for the other",
-      moved["player"]["key"] != third["key"] and moved["player"]["account"] == acct, moved)
-check("erase", pt("POST", slot + "/erase", {}, key=guest["key"]) == (200, {"erased": True})
-      and pt("GET", slot, key=guest["key"])[1] == {"current": None, "previous": None})
+status, other_browser = pt("POST", "join", {"email": "kiki@example.com", "how": "email"}, key=other["key"])
+check("the same email typed in another browser opens nothing of the first's",
+      other_browser["player"]["key"] == other["key"] and other_browser["player"]["account"] not in (None, acct), other_browser)
+check("its progress is its own", pt("GET", slot, key=other["key"]) == (200, {"current": None, "previous": None}))
+check("nor its worlds", pt("GET", "player", key=other["key"])[1]["worlds"] == [])
+sql("insert into verse.accounts (id, email, created_ms) values ('e-legacy', 'legacy@example.com', 0)")
+status, legacy = pt("POST", "join", {"email": "legacy@example.com", "how": "email"})
+check("an email's account from the demo is never handed out", status == 200 and legacy["player"]["account"] not in (None, "e-legacy"), legacy)
+check("erase", pt("POST", slot + "/erase", {}, key=other["key"]) == (200, {"erased": True}))
 
 # ---- a Nostr key is an account too
 nbody = b"{}"

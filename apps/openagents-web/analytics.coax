@@ -40,6 +40,7 @@ HTTP_KIND :: 512;        // + id: a request's answer, "STATUS\n" then the body
 HTTPS :: 8;
 // coaxial_http flags
 HTTP_POST :: 1; HTTP_BEACON :: 2; HTTP_ANSWER :: 4;
+TRACK_KEY :: 8;
 
 TRACK_HELD :: 8;
 
@@ -258,7 +259,7 @@ track_flush :: (t: [] Track, flags: int) #export_c {
   for i: 0..<t[0].buf_n { t[0].out[n] = t[0].buf[i]; n += 1; }
   tail := ifx t[0].automated then "],\"auto\":\"webdriver\"}" else "]}";
   for c: tail { t[0].out[n] = c; n += 1; }
-  t[0].out_n = n; t[0].flags = HTTP_POST | flags;
+  t[0].out_n = n; t[0].flags = HTTP_POST | TRACK_KEY | flags;
   t[0].buf_n = 0; t[0].count = 0;
 }
 // The face sent the batch.
@@ -498,11 +499,11 @@ TRACK_DISCLOSURE :: "We save what you do here, including what you say and type, 
   #assert text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"text\":\"say \\\"boo\\\"\\nnow\",\"consent\":true");
   track_frame(t[..], 2.0, 2560, 1600, 2);
   out := cast(string) t[0].out[0..<t[0].out_n];
-  #assert t[0].flags == HTTP_POST && text_has(out, "{\"sid\":\"c0123456789abcdef\",\"events\":[{\"ev\":\"session-start\"") && out[out.count - 2] == 93 && out[out.count - 1] == 125;
+  #assert t[0].flags == HTTP_POST | TRACK_KEY && text_has(out, "{\"sid\":\"c0123456789abcdef\",\"events\":[{\"ev\":\"session-start\"") && out[out.count - 2] == 93 && out[out.count - 1] == 125;
   #assert t[0].count == 0 && t[0].buf_n == 0;
   track_sent(t[..]);
   // hidden sends at once as a beacon; leaving says world-leave
-  #assert track_message(t[..], HOST_HIDDEN, "") && t[0].flags == HTTP_POST | HTTP_BEACON;
+  #assert track_message(t[..], HOST_HIDDEN, "") && t[0].flags == HTTP_POST | TRACK_KEY | HTTP_BEACON;
   track_sent(t[..]);
   #assert track_message(t[..], HOST_VISIBLE, "");
   #assert track_message(t[..], HOST_ERROR, "boom\nhost.js\n42");

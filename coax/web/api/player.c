@@ -9,7 +9,9 @@
 //   GET  /api/playtest/player                 {id, account, worlds} for the sent key
 //   POST /api/playtest/join                   {email, player, sid, how}: join by email, never
 //                                             verified (a format check); kept as a playtester and
-//                                             the key linked to the email's account -> {joined, player}
+//                                             the key given an account of its own -> {joined, player}
+//   POST /api/playtest/signin                 {sid}, NIP-98 signed: the key, its worlds, realm, saves
+//                                             and sessions move to the pubkey's account -> {player, moved}
 //   POST /api/playtest/worlds                 a new world owned by the player -> {id}
 //   GET  /api/playtest/world/<id>             the published world {doc, version, publishedBy,
 //                                             publishedAt}, or {doc: null, version: 0}: a link opens it

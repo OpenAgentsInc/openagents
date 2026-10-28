@@ -42,7 +42,7 @@ static void cookie_auto(const char *cookies, char *out, size_t cap) {
 static void ingest(const request *q) {
   if (q->body_len == 0 || q->body_len > 256 * 1024) { api_json(q->fd, 400, "{\"error\":\"no batch\"}"); return; }
   char ip[128], ua[512], host[256], automation[64], cookies[2048], auth[4096], tmp[256];
-  char region[64], subdivision[64], city[128], latlong[64], rtt[32], tls[64], device[64];
+  char region[64], subdivision[64], city[128], latlong[64], rtt[32], tls[64], device[64], player[160];
   api_header(q, "X-Forwarded-For", ip, sizeof ip);
   char *comma = strchr(ip, ','); if (comma) *comma = 0;   // the first address is the visitor's
   api_header(q, "User-Agent", ua, sizeof ua);
@@ -56,6 +56,7 @@ static void ingest(const request *q) {
   api_header(q, "X-Client-Rtt", rtt, sizeof rtt);
   api_header(q, "X-Client-Tls", tls, sizeof tls);
   api_header(q, "X-Client-Device", device, sizeof device);
+  api_header(q, "X-Verse-Player", player, sizeof player);
 
   // A NIP-98 signed batch: the session is that pubkey's. A bad signature is refused.
   char npub[65] = "";
@@ -87,6 +88,7 @@ static void ingest(const request *q) {
   n = field(ctx, n, sizeof ctx, "rtt", rtt);
   n = field(ctx, n, sizeof ctx, "tls", tls);
   n = field(ctx, n, sizeof ctx, "device", device);
+  n = field(ctx, n, sizeof ctx, "key", player);
   if (n + 2 < sizeof ctx) { ctx[n++] = '}'; ctx[n] = 0; }
 
   PGconn *db = api_db();
