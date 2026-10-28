@@ -12,6 +12,10 @@
 //   /api/private/<slug>/<op>              the same for agents and members' tools, NIP-98 signed:
 //        GET state (JSON), GET inbox, POST push {base, doc}, note {kind, text, by},
 //        status {id, status, note, by}, message {text, reply_to, by}, invite {pubkey}, agent {pubkey, name, role}
+//   The project's agent (docs/project-agent.md; migrations/0012_project_agent.sql), on both paths:
+//        GET talk (lines on the page, else JSON); POST ask {text}, stop {turn}, undo {turn}, agree {goal} (members);
+//        POST next, event, end (the runner's key). Only projects in OA_AGENT_PROJECTS have them; elsewhere the same 404.
+//        A new turn wakes the runner (OA_AGENT_WAKE_URL) before the answer goes back.
 //
 // Anyone who may not read a project, signed in or not, and any slug that
 // doesn't exist get the same answer: 404, the same body, after the same
@@ -19,10 +23,13 @@
 #include "api.h"
 #include "nostr.h"
 #include <ctype.h>
+#include <curl/curl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define COOKIE "oa_project"
 #define SESSION_DAYS 30
@@ -112,6 +119,82 @@ static void shell(const request *q, const char *slug, bool member) {
   api_respond(q->fd, member ? 200 : 404, "text/html; charset=utf-8", PRIVATE_HEADERS, html, (size_t)n);
 }
 
+// ---- the project's agent: which projects have one, its daily cap, and waking the runner
+// OA_AGENT_PROJECTS  approved slugs, comma separated (server config, never in this repository)
+// OA_AGENT_DAILY_USD the cap per project per Chicago day (10)
+// OA_AGENT_WAKE_URL  the runner's wake endpoint; OA_AGENT_WAKE_TOKEN a bearer to send instead of
+//                    the metadata server's identity token for it (tests)
+static bool agent_on(const char *slug) {
+  const char *list = getenv("OA_AGENT_PROJECTS");
+  size_t n = strlen(slug);
+  for (const char *p = list; p && *p; ) {
+    while (*p == ',' || *p == ' ') p++;
+    size_t k = strcspn(p, ", ");
+    if (k == n && n && !strncmp(p, slug, n)) return true;
+    p += k;
+  }
+  return false;
+}
+static const char *agent_cap(void) { const char *c = getenv("OA_AGENT_DAILY_USD"); return c && *c ? c : "10"; }
+
+typedef struct { char *p; size_t n; } wbuf;
+static size_t wtake(char *data, size_t size, size_t n, void *user) {
+  wbuf *b = user; size_t k = size * n;
+  if (b->n + k > 8192) return 0;
+  char *p = realloc(b->p, b->n + k + 1);
+  if (!p) return 0;
+  memcpy(p + b->n, data, k); b->p = p; b->n += k; b->p[b->n] = 0;
+  return k;
+}
+// The runner's identity token for its URL (Cloud Run checks it), from the metadata server.
+static bool wake_token(const char *url, char *out, size_t cap) {
+  const char *given = getenv("OA_AGENT_WAKE_TOKEN");
+  if (given && *given) { snprintf(out, cap, "%s", given); return true; }
+  char audience[512], meta[700];
+  const char *host = strstr(url, "://");
+  size_t k = host ? (size_t)(host + 3 - url) + strcspn(host + 3, "/") : strlen(url);
+  snprintf(audience, sizeof audience, "%.*s", (int)k, url);
+  snprintf(meta, sizeof meta, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=%s", audience);
+  CURL *h = curl_easy_init();
+  if (!h) return false;
+  wbuf b = {0};
+  struct curl_slist *hd = curl_slist_append(NULL, "Metadata-Flavor: Google");
+  curl_easy_setopt(h, CURLOPT_URL, meta);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, wtake);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 5L);
+  bool ok = curl_easy_perform(h) == CURLE_OK && b.p && b.n + 1 < cap;
+  if (ok) snprintf(out, cap, "%s", b.p);
+  curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
+  return ok;
+}
+// Tells the runner a project has a turn waiting. It answers at once and
+// works on its own; whatever it says, the turn stays queued until it takes it.
+static long agent_wake(const char *slug) {
+  const char *url = getenv("OA_AGENT_WAKE_URL");
+  if (!url || !*url) return 0;
+  char tok[4096], auth[4200], body[128];
+  if (!wake_token(url, tok, sizeof tok)) { api_log("agent wake: no token"); return 0; }
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+  snprintf(body, sizeof body, "{\"slug\":\"%s\"}", slug);
+  CURL *h = curl_easy_init();
+  if (!h) return 0;
+  wbuf b = {0};
+  long status = 0;
+  struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: application/json");
+  curl_easy_setopt(h, CURLOPT_URL, url);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDS, body);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, wtake);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 20L);
+  if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
+  api_log("agent wake %ld", status);
+  return status;
+}
+
 bool private_route(const request *q) {
   const char *p = q->path, *rest;
   bool page_api = false;
@@ -173,18 +256,19 @@ bool private_route(const request *q) {
     api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
   }
 
-  char who[400];
-  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"session\":\"%s\",\"admin\":%s,\"format\":\"%s\"}", pubkey, token,
-           pubkey[0] && admin_is(pubkey) ? "true" : "false", page_api ? "lines" : "json");
+  char who[480];
+  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"session\":\"%s\",\"admin\":%s,\"format\":\"%s\",\"agent_on\":%s,\"cap_usd\":\"%.16s\"}",
+           pubkey, token, pubkey[0] && admin_is(pubkey) ? "true" : "false", page_api ? "lines" : "json",
+           agent_on(slug) ? "true" : "false", agent_cap());
   char *body = malloc(q->body_len + 3);
   if (!body) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"memory\"}", 18); return true; }
   if (post && q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *what = page ? "shell" : op;
   // GETs read; everything else is a POST.
-  bool reads = !strcmp(what, "shell") || !strcmp(what, "state") || !strcmp(what, "inbox");
+  bool reads = !strcmp(what, "shell") || !strcmp(what, "state") || !strcmp(what, "inbox") || !strcmp(what, "talk");
   if (reads == post) { free(body); no(q); return true; }
   const char *v[4] = {what, slug, body, who};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'body', coalesce(x->>'cookie', '') FROM projects.api($1, $2, $3::jsonb, $4::jsonb) x",
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'body', coalesce(x->>'cookie', ''), coalesce(x->>'wake', 'false') = 'true' FROM projects.api($1, $2, $3::jsonb, $4::jsonb) x",
                              4, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
@@ -206,7 +290,18 @@ bool private_route(const request *q) {
   else if (!strcmp(what, "logout") && status == 200)
     snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " COOKIE "=; Path=/projects/%s; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", slug);
   else snprintf(headers, sizeof headers, PRIVATE_HEADERS);
-  bool lines = page_api && !strcmp(what, "state") && status == 200;
+  bool lines = page_api && (!strcmp(what, "state") || !strcmp(what, "talk")) && status == 200;
+  bool wake = status == 200 && !strcmp(PQgetvalue(r, 0, 3), "t");
+  if (wake) {   // a child wakes the runner, then answers; the parent goes on
+    signal(SIGCHLD, SIG_IGN);
+    pid_t pid = fork();
+    if (pid == 0) {
+      agent_wake(slug);
+      api_respond(q->fd, status, lines ? "text/plain; charset=utf-8" : "application/json", headers, out, strlen(out));
+      _exit(0);
+    }
+    if (pid > 0) { api_log("private %s %d%s%.8s", what, status, pubkey[0] ? " by " : "", pubkey); PQclear(r); return true; }
+  }
   api_respond(q->fd, status, lines ? "text/plain; charset=utf-8" : "application/json", headers, out, strlen(out));
   if (status != 404) api_log("private %s %d%s%.8s", what, status, pubkey[0] ? " by " : "", pubkey);
   PQclear(r);

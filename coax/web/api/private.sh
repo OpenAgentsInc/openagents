@@ -12,7 +12,8 @@
 #   private.sh reply SLUG ID TEXT --by NAME      answer one
 #   private.sh message SLUG TEXT --by NAME       a new message on the thread
 #   private.sh invite SLUG PUBKEY                a one-time sign-in link for that member (24 hours)
-#   private.sh agent SLUG PUBKEY NAME [--remove] register (or remove) an agent key
+#   private.sh agent SLUG PUBKEY NAME [--remove|--runner]  register (or remove) an agent key; --runner: the project's hosted agent
+#   private.sh talk SLUG                         the project agent's conversation: each turn, its edits and commit
 #   private.sh open SLUG                         sign yourself in and open the page in the default browser
 #   private.sh pubkey                            the key's public key
 #   private.sh new-key FILE                      a new key in FILE (chmod 600); prints only its public key
@@ -22,7 +23,7 @@
 # owner's member key, the rest to the agent key.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-origin=https://openagents.com key="${OA_PRIVATE_KEY:-}" by="" note="" remove=false
+origin=https://openagents.com key="${OA_PRIVATE_KEY:-}" by="" note="" remove=false runner=false
 args=()
 while (($#)); do
   case "$1" in
@@ -31,13 +32,14 @@ while (($#)); do
     --by) by="$2"; shift 2 ;;
     --note) note="$2"; shift 2 ;;
     --remove) remove=true; shift ;;
+    --runner) runner=true; shift ;;
     *) args+=("$1"); shift ;;
   esac
 done
 set -- ${args[@]+"${args[@]}"}
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  push|invite|agent|open) key="${key:-$HOME/work/.secrets/openagents-analytics-admin.key}" ;;
+  push|invite|agent|open|talk) key="${key:-$HOME/work/.secrets/openagents-analytics-admin.key}" ;;
   *) key="${key:-$HOME/work/.secrets/openagents-agent-private.key}" ;;
 esac
 sign="${XDG_CACHE_HOME:-$HOME/.cache}/oa-admin/sign"
@@ -143,8 +145,20 @@ print("nothing unanswered" if not m else "\n".join(f"#{x["id"]} {x["at"]} {x["fr
   message) need_by; call POST "${1:?message SLUG TEXT}" message "$(json text "${2:?TEXT}" by "$by")" >/dev/null && echo "sent" ;;
   invite) link "${1:?invite SLUG PUBKEY}" "${2:?PUBKEY}" ;;
   agent)
-    role=agent; $remove && role=none
+    role=agent; $remove && role=none; $runner && role=runner
     call POST "${1:?agent SLUG PUBKEY NAME}" agent "$(json pubkey "${2:?PUBKEY}" name "${3:?NAME}" role "$role")" >/dev/null && echo "agent $role: ${3}" ;;
+  talk)
+    call GET "${1:?talk SLUG}" talk > "$tmp/ans" || exit 1
+    python3 -I -c '
+import json, sys
+t = json.load(sys.stdin)
+print(f"spent today ${t["spent"]} of ${t["cap"]}\n")
+for x in t["turns"]:
+    print(f"#{x["id"]} {x["at"]} {x["by"]} ({x["kind"]}, {x["status"]}): {x["text"]}")
+    for e in x["events"]:
+        if e["type"] in ("agent.edit", "agent.commit"): print(f"    {e["type"]}: " + (e["data"].get("line") or e["data"].get("sha", "")))
+    if x["answer"]: print("  agent: " + x["answer"].replace("\n", " / "))
+    if x["error"]: print("  error: " + x["error"])' < "$tmp/ans" ;;
   open) open "$(link "${1:?open SLUG}" "$("$sign" --key "$key" --pubkey)" 2>/dev/null)" ;;
-  *) sed -n '2,23p' "$0"; exit 2 ;;
+  *) sed -n '2,25p' "$0"; exit 2 ;;
 esac

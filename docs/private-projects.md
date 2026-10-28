@@ -15,12 +15,12 @@ the public site bucket.
 
 | Piece | Where |
 | --- | --- |
-| Storage and rules | `coax/web/api/migrations/0007_private_projects.sql` (schema `projects`, function `projects.api`) |
+| Storage and rules | `coax/web/api/migrations/0007_private_projects.sql` (schema `projects`, function `projects.api`); the project's agent in `0012_project_agent.sql` |
 | HTTP routes | `coax/web/api/private.c` |
 | Page | `apps/openagents-web/private.coax`, `private-face.c`, `private.wgsl`, the generic locked page `apps/openagents-web/projects/private/` |
 | Tool | `coax/web/api/private.sh` |
 | Routing | `coax/web/api/lb.sh private-route SLUG`, `lb.sh private-pages` |
-| Checks | `coax/web/api/test_private.py` (run by `coax/web/api/test.sh`), `coax test apps/openagents-web/private.coax`, `coax/web/smoke.sh` |
+| Checks | `coax/web/api/test_private.py` and `test_private_agent.py` (run by `coax/web/api/test.sh`), `coax test apps/openagents-web/private.coax`, `coax/web/smoke.sh` |
 | Threat model | `docs/private-projects-threat-model.md` |
 
 ## The document
@@ -42,14 +42,26 @@ pushed in between.
 
 ## Who may do what
 
-| | member | agent | anyone else |
-| --- | --- | --- | --- |
-| read the state | yes | yes | 404 |
-| push the document | yes | only milestone/item status and notes, and new *proposed* goals | 404 |
-| change or remove agreed goals, members, title | yes | 403 | 404 |
-| post notes and plans, messages and replies | yes | yes | 404 |
-| set a milestone's or item's status | yes | yes | 404 |
-| mint sign-in links, register agents | yes | 403 | 404 |
+| | member | agent | the project's agent (runner) | anyone else |
+| --- | --- | --- | --- | --- |
+| read the state | yes | yes | yes | 404 |
+| push the document | yes | only milestone/item status and notes, and new *proposed* goals | anything but the title, the members and agreed goals, only inside a running turn | 404 |
+| change or remove agreed goals, members, title | yes | 403 | 403 | 404 |
+| post notes and plans, messages and replies | yes | yes | inside a turn | 404 |
+| set a milestone's or item's status | yes | yes | inside a turn | 404 |
+| mint sign-in links, register agents | yes | 403 | 403 | 404 |
+| talk to the project's agent, stop a turn, UNDO TURN, agree to a proposed goal | yes (approved projects) | 404 | 403 | 404 |
+
+The project's agent ([project-agent.md](project-agent.md)) is a key a member
+registers with `private.sh agent SLUG PUBKEY NAME --runner`. Only projects in
+oa-api's server config (`OA_AGENT_PROJECTS`, from Secret Manager at deploy
+time) have one; for any other project its routes answer the same 404 as a
+project that doesn't exist. Every turn records the member message that caused
+it, each document edit as a diff under it, and its commit; UNDO TURN restores
+the version from before the turn as a new version (refused while a later
+change sits on top) and has the runner push `git revert` of the turn's commit.
+A proposed goal becomes agreed when every member has pressed AGREE on its
+current text.
 
 The first push of a new slug is allowed only from a key in
 `coax/web/api/admins.conf`, and must list that key as a member.
