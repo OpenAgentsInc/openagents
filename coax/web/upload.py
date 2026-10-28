@@ -1,0 +1,57 @@
+"""Uploads a staged site to a bucket fast: one listing, then only the files
+whose bytes changed, in parallel. Content-named assets go first (cached for
+good), then the pages (checked on every visit), then stale objects go.
+
+    upload.py STAGE BUCKET TOKEN    (STAGE holds assets/ and site/)
+"""
+import base64, concurrent.futures as cf, hashlib, json, mimetypes, os, sys, urllib.parse, urllib.request
+
+stage, bucket, token = sys.argv[1:]
+api = "https://storage.googleapis.com/storage/v1/b/" + bucket
+up = "https://storage.googleapis.com/upload/storage/v1/b/" + bucket
+auth = {"Authorization": "Bearer " + token}
+types = {".wasm": "application/wasm", ".wgsl": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8",
+         ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
+
+def call(url, method="GET", body=None, headers={}):
+    req = urllib.request.Request(url, data=body, method=method, headers={**auth, **headers})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read() or b"{}")
+
+def listing():
+    have, page = {}, None
+    while True:
+        q = {"fields": "items(name,md5Hash),nextPageToken"} | ({"pageToken": page} if page else {})
+        r = call(api + "/o?" + urllib.parse.urlencode(q))
+        have |= {o["name"]: o["md5Hash"] for o in r.get("items", [])}
+        page = r.get("nextPageToken")
+        if not page: return have
+
+def files(root):
+    for d, _, fs in os.walk(root):
+        for f in fs:
+            p = os.path.join(d, f)
+            yield os.path.relpath(p, root), p
+
+def put(name, path, cache):
+    data = open(path, "rb").read()
+    meta = {"name": name, "cacheControl": cache,
+            "contentType": types.get(os.path.splitext(name)[1]) or mimetypes.guess_type(name)[0] or "application/octet-stream"}
+    b = "coaxial-upload"
+    body = (f"--{b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{json.dumps(meta)}\r\n"
+            f"--{b}\r\nContent-Type: {meta['contentType']}\r\n\r\n").encode() + data + f"\r\n--{b}--".encode()
+    call(up + "/o?uploadType=multipart", "POST", body, {"Content-Type": f"multipart/related; boundary={b}"})
+    return name
+
+def md5(path): return base64.b64encode(hashlib.md5(open(path, "rb").read()).digest()).decode()
+
+have = listing()
+pool = cf.ThreadPoolExecutor(16)
+sent = []
+for root, cache in (("assets", "public, max-age=31536000, immutable"), ("site", "no-cache")):
+    todo = [(n, p) for n, p in files(os.path.join(stage, root)) if have.get(n) != md5(p) and not (root == "site" and os.path.exists(os.path.join(stage, "assets", n)))]
+    sent += list(pool.map(lambda np: put(np[0], np[1], cache), todo))
+keep = {n for n, _ in files(os.path.join(stage, "site"))}
+stale = [n for n in have if n not in keep]
+list(pool.map(lambda n: call(api + "/o/" + urllib.parse.quote(n, safe=""), "DELETE"), stale))
+print(f"  sent {len(sent)}, removed {len(stale)}, unchanged {len(keep) - len(sent)}")

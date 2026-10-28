@@ -9,12 +9,13 @@
 // A failed build sends "error" with the compiler's output; the tab keeps
 // running the last good engine.
 //
-//   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static]
+//   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static] [--cache SECONDS]
 // Defaults: 127.0.0.1:8800, build command APP_DIR/build.sh, the host files
 // next to this binary's directory (coax/web/).
 //
 // --static is production: no building, no watching, no live channel; files
-// are served as they are, cacheable for five minutes. It listens on
+// are served as they are, cacheable for five minutes (--cache SECONDS; 0
+// means browsers check back every time). It listens on
 // 0.0.0.0:$PORT when PORT is set (Cloud Run). TLS is the platform's.
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -49,6 +50,7 @@ static watched files[MAX_WATCH];
 static int file_count;
 static char app_dir[1024], host_dir[1024], build_cmd[2048];
 static bool static_mode;
+static char cache_control[64] = "public, max-age=300";
 
 #ifdef __APPLE__
 #define MTIME(st) ((st).st_mtimespec)
@@ -101,7 +103,7 @@ static void respond(int fd, int status, const char *reason, const char *type, co
                    "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: %s\r\n"
                    "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n"
                    "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
-                   status, reason, type, n, static_mode && status == 200 ? "public, max-age=300" : "no-store");
+                   status, reason, type, n, static_mode && status == 200 ? cache_control : "no-store");
   send_all(fd, head, (size_t)h);
   if (n) send_all(fd, body, n);
 }
@@ -278,6 +280,11 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_spec = argv[++i];
     else if (!strcmp(argv[i], "--host-dir") && i + 1 < argc) hosts = argv[++i];
     else if (!strcmp(argv[i], "--static")) static_mode = true;
+    else if (!strcmp(argv[i], "--cache") && i + 1 < argc) {
+      int seconds = atoi(argv[++i]);
+      if (seconds > 0) snprintf(cache_control, sizeof cache_control, "public, max-age=%d", seconds);
+      else snprintf(cache_control, sizeof cache_control, "no-cache");
+    }
     else if (!strcmp(argv[i], "--build") && i + 1 < argc) cmd = argv[++i];
     else if (!app) app = argv[i];
     else { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }
