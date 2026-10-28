@@ -10,8 +10,10 @@ arrive, what each step has to prove before the next one starts, and the
 points at which the plan says to stop.
 
 > Note: This chapter follows section 20 of `coax/spec.md`. The stages there
-> are ordered by what depends on what, and each one is gated by evidence.
-> None of them has a date.
+> are gated by evidence. The detailed [implementation roadmap](https://github.com/OpenAgentsInc/openagents/blob/main/coax/ROADMAP.md)
+> gives the current execution order, dependencies, consumers and exit gates.
+> The stage numbers here remain coarse topic identifiers, not a requirement
+> to finish unrelated work in numerical order. None has a date.
 
 ## Where things stand
 
@@ -69,7 +71,7 @@ counts as done, and where each one is today.
 | --- | --- | --- | --- |
 | 0. Bootstrap semantics | Lexer, parser, checker, C emitter, documented scalar grammar | Pass and fail fixtures, checked formats, overflow behavior | Done |
 | 1. Compile-time scalars | Constants, `#run`, `#assert`, `type_name`, `coax check`, bounded evaluation; later the checks (`#test`, `#forall`, `#authority`, `coax test`, `coax mutate`) | Dependencies, cycles, limits, refusal of captures and I/O, the same errors in debug and release, literal output | Done |
-| 2. Data and the C boundary | Structs with defaults, enums, fixed arrays and views, `for`, `defer`, `ifx`, checked casts, ordered operands, `#export_c` with headers and layout assertions, `#foreign` | A pulse kernel called by the native host, outputs compared and frame cost measured | Mostly done; see below |
+| 2. Data and the C boundary | Structs with defaults, enums, fixed arrays and views, `for`, `defer`, `ifx`, checked casts, ordered operands, `#export_c` with headers and layout assertions, `#foreign` | A real engine kernel called by the native host, outputs independently compared and frame cost measured | Mostly done; see below |
 | 3. Metadata and generation | CPU type/field/enum metadata ships; stable declaration IDs, richer reflection, `#derive` and hygienic typed code follow | Checked compile-time inspector, independent C oracle and real Haunted House layout consumer; alternate targets and general derived registries remain gated | Started in 0.12.0 |
 | 4. Build workspaces and tools | Dependency scheduler, capabilities, input manifests, compiler events, then plugins and `build.coax` | One real asset or registry workflow; generated CMake and Xcode lists match the hand-written ones before replacing them | Source graph and `deps` prerequisites ship; workspaces, plugins and `build.coax` remain planned |
 | 5. Effects and deterministic jobs | Region and alias model, effect summaries, strict math, scheduler integration | A real subsystem replays identically at 1, 2, 4 and 8 workers; bad effects and aliases are refused | Not started |
@@ -97,15 +99,17 @@ Stage 2 is the stage that decides whether Coax is worth continuing, so it's
 worth being precise about what's missing.
 
 Two things are done. `coax/examples/pulse` links a Coax pulse kernel into a
-C host and matches a C reference byte for byte at the same frame cost, and
+C host and matches a C reference byte for byte on every frame, and
 the iOS home runs its scene and HUD logic in Coax over the scalar C ABI.
 
 Two things are not. `coax0` can't import C headers; `#foreign` declares
-scalar C functions one at a time. And the stage's real target, the
-`src/paynet` pulse update from the Metareal source archive, hasn't been
-ported. That update moves up to 100,000 payment pulses a second along
-channels and renders them on Metal. It's small, hot and self-contained,
-which makes it a fair test. To pass, the Coax version has to show:
+scalar C functions one at a time. More importantly, the live app still needs
+a measured kernel comparison against a frozen independent native reference.
+Roadmap R0 selects a current animation or movement/collision frame path and
+records its workload and acceptance budget. The originally proposed
+`src/paynet` update is an archive candidate, not a directory in the current
+tree; its source, data and host path must be recovered before it can serve as
+the benchmark. The selected Coax kernel has to show:
 
 - the same output as the existing C++ update for the same input, edge
   cases included;
@@ -114,7 +118,8 @@ which makes it a fair test. To pass, the Coax version has to show:
 - exact determinism where the subsystem needs it;
 - a verified layout and bounds for the Metal pipeline that reads its data;
 - frame time within an agreed budget, on the same hardware;
-- the iOS and browser paths still working.
+- the real iOS frame path still working, with browser support established
+  separately by its own later vertical slice.
 
 Frame-time parity against the old engine hasn't been measured yet for the
 iOS home either. Until it is, "Coax is as fast as the C++ it replaced" is a
@@ -144,7 +149,7 @@ paying those costs for features nobody measured.
 These are the questions the spec lists as undecided. Each one will be
 answered by building something, not by argument.
 
-1. Which pulse-kernel ABI and data set best prove stage 2?
+1. Which live engine kernel, ABI, frozen reference and data set best prove R0/stage 2?
 2. Which region and alias model makes field effects trustworthy, without
    promising safety for arbitrary pointer graphs?
 3. What stable IDs separate compiler declarations, engine registrations,
@@ -163,11 +168,11 @@ answered by building something, not by argument.
 
 `coax0` today is a small, working compiler: an explicit source graph in, C out, with
 compile-time evaluation, checks, a C boundary and protobuf imports, and
-real code in the iOS app built with it. The rest of the language is a plan
-in nine stages, each with evidence it must produce and two places where the
-plan says to stop. The next concrete step is finishing stage 2 with the
-`src/paynet` kernel, and that result decides how much of the rest gets
-built.
+real code in the iOS app built with it. The stages above summarize the larger
+plan; the detailed roadmap expands them into dependency-gated milestones.
+The next concrete step is R0: measured live engine adoption, source-aware
+native debugging and independent verification gates. That evidence decides
+how much of the broader language and compiler machinery is worth building.
 
 If you want to help, Chapter 20 shows where the code lives and how it's
 tested, and the appendices that follow collect the reference material:

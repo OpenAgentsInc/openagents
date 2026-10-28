@@ -5,8 +5,9 @@ Everything Coax lives in this folder, at the root of the openagents repo.
 | Path | What |
 | --- | --- |
 | [`spec.md`](spec.md) | The language specification and implementation plan |
+| [`ROADMAP.md`](ROADMAP.md) | What to build next, dependencies, real consumers and completion gates for the full language |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
-| [`book/`](book/README.md) | *The Coax Programming Language*, a GitBook draft |
+| [`book/`](book/README.md) | *The Coax Programming Language*, source for the published book |
 | `src/`, `build.sh`, `tests/`, `examples/` | `coax0`, the bootstrap compiler |
 
 Commands below run from the openagents repo root.

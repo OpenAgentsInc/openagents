@@ -1,4 +1,4 @@
-# Descriptor imports in coax0 0.10.0
+# Descriptor imports in coax0
 
 `#import_proto` generates real Coax declarations from a binary
 `google.protobuf.FileDescriptorSet`. Root `proto/` remains the schema source.
@@ -26,8 +26,9 @@ envelope. There is no C++ hash, formatter or source-assembly fallback.
 using generated Coax lexer, parser and checker seeds. Each source must reproduce its
 checked-in C/header exactly and pass its own authority/mutation gates.
 Stage0 checks and mutation-tests the fingerprint module, importer and wire
-core, then concatenates the lexer, parser, checker, fingerprint and importer modules and emits one C11
-library/header. The host C compiler compiles it, and the C++20 frontend links it into the final compiler. Both stages must emit identical C
+core, then loads the explicit `lib/compiler/compiler.coax` source graph and
+emits one C11 library/header. The host C compiler compiles it, and the C++20
+frontend links it into the final compiler. Both stages must emit identical C
 for the importer before publication. There is no old parser or generator
 fallback, descriptor C seed, Python step or protoc build dependency.
 

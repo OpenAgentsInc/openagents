@@ -1,6 +1,6 @@
 # Coax: language specification and implementation plan
 
-Date: 2026-10-27. Status: **working bootstrap with data types and a C boundary; broader language design**.
+Updated: 2026-10-28. Status: **working 0.12.0 bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
 end in `.coax`; the executable is `coax`; a future build entry is `build.coax`.
 
@@ -9,7 +9,7 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.10.0 implements procedures;
+**Implementation status matters.** Version 0.12.0 implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
@@ -23,6 +23,11 @@ restricted f32/bool Metal library emitter. It generates C11 and uses a host C co
 produce executables and object files. Other
 syntax below is a target design unless explicitly marked implemented. The
 [bootstrap grammar](grammar.ebnf) describes the accepted subset.
+Source composition (`#load`, `coax deps`) shipped in 0.11.0. Schema-1 CPU
+layout queries (`type_info`, `field_info`, `enum_info`) and compile-time
+metadata tables shipped in 0.12.0. Neither completes general modules,
+first-class types or arbitrary code generation. The [roadmap](ROADMAP.md)
+orders the remaining work and its evidence gates.
 The reduced native iOS home now runs scene/HUD logic and scalar shader math in
 Coax; native adapters own storage and GPU resources. Fixed-scalar C ABI exports,
 foreign imports and a restricted f32/bool Metal library emitter are implemented.
@@ -994,16 +999,20 @@ budget with ordinary checked computation, assert it, and print the result.
 The emitted C contains the computed literal. It does not invoke an evaluator
 on startup or alter the shipping engine.
 
-The later representative engine slice is `src/paynet`'s pulse update: explicit
-SoA storage, a checked update loop, derived GPU upload layout, and a C ABI
-called from the resident native host. Required evidence is:
+The next representative engine slice is selected and frozen in
+[roadmap R0](ROADMAP.md): an actual live
+frame kernel, its input corpus and an independent native reference. The
+historical `src/paynet` pulse update remains a candidate only after its
+reference source/data/host path is recovered; that directory is not present
+in the current tree. Required evidence is:
 
 - Same input and output as the existing C++ update, including edge cases.
 - No hidden frame allocations; explicit scratch and ownership boundaries.
 - Exact deterministic results where the existing subsystem requires them.
 - Native Metal pipeline receives verified layout and bounds.
 - Frame time within an agreed budget, compared on the same hardware.
-- iOS and browser paths remain functional with independent target proofs.
+- The real iOS path remains functional; browser support requires its own
+  later vertical-slice proof rather than being inferred from native parity.
 
 This example determines which structs, arrays, loops and FFI features to add
 next. Do not implement the whole target language before proving a subsystem.
@@ -1028,6 +1037,14 @@ Parsing a few examples is not the expensive part.
 
 ## 20. Implementation order and exit gates
 
+The detailed [implementation roadmap](ROADMAP.md) is the execution plan for
+the full vision. It starts with measured native adoption and source debugging,
+then expands the language and tools through dependency-gated milestones.
+The stage numbers below remain coarse topic identifiers used by existing
+plans; they do not require an unrelated subsystem to wait for every lower
+number. In particular, target/browser evidence must precede new backend work,
+and the first GPU/browser slice need not wait for complete parallel jobs.
+
 The protocol plan's P0 recovery runs now. Its P1 ingestion follows stage 2's
 actual type/ABI prerequisites. Version 0.4.0 ships selected descriptor imports
 and bounded codecs with Nostr/external, scalar and protoc interoperability tests;
@@ -1045,7 +1062,7 @@ inventory needed by later build workspaces. It does not implement package
 resolution, visibility, reflection, plugins or the stage-4 build program, and
 does not complete the remaining stage-2 engine/ABI evidence.
 
-Stages are dependency-ordered and evidence-driven, not calendar promises.
+Work follows explicit dependencies and evidence gates, not calendar promises.
 Each stage produces something independently testable. Platform/engine rollout
 happens only after its own gate; a bootstrap compiler does not mean the app
 already uses it. The reduced home now uses the tested scalar subset; it does
@@ -1056,7 +1073,7 @@ engine remains unmeasured.
 | --- | --- | --- |
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. In 0.5.0, checks: `#test`, `#forall`, `#authority`, `coax test` and `coax mutate`. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
-| 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. Remaining: the `src/paynet` kernel called by the native host, outputs compared and frame cost measured. |
+| 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. Remaining: a live engine kernel called by the native host, independently compared and measured under roadmap R0. |
 | 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; Metareal derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |
@@ -1083,7 +1100,7 @@ programs or compiler plugins.
 
 ## 22. Open questions
 
-1. Which pulse-kernel ABI and representative data set best prove stage 2?
+1. Which live engine kernel, ABI, pinned reference and data set best prove R0/stage 2?
 2. Which region/alias model is sufficient for field/range effects without
    overpromising safety for arbitrary pointer graphs?
 3. What stable IDs distinguish compiler declarations, engine registrations,
