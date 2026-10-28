@@ -1,0 +1,21 @@
+{
+  "schema": "coax.secp-oracle-source.v1",
+  "repository": "https://github.com/bitcoin-core/secp256k1",
+  "release": "v0.8.0",
+  "tag_object": "18f07c42218765cd46148d74d9fe575795f56dce",
+  "commit": "6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+  "retrieved": "2026-10-28",
+  "archive_url": "https://codeload.github.com/bitcoin-core/secp256k1/tar.gz/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+  "archive_sha256": "3fe9fd705f4fdf2fe90d6e04b6c1fedd7e8f244a119315886f6468f52c2dfc33",
+  "archive_bytes": 2440876,
+  "license": "MIT",
+  "license_url": "https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/COPYING",
+  "reviewed_inputs": {
+    "COPYING": "a735999c7e5649df6fcda6fb06ab97435851c392b1b93494ae8725f37441632f",
+    "CMakeLists.txt": "271f586387382ff1c970e159399d99bff14e1ac4d6e842cf60fd1bbb693a1db3",
+    "src/secp256k1.c": "c9eff089d8cd7c5b3a843bf5ca1cc9d3fdac3a4a84b7d446e5a53e2bbd0d712a",
+    "src/util.h": "1ae020ca4feba019413b549de263e7c07c656fa1f9edd6b63cc563943ae4097b",
+    "src/modules/ecdh/main_impl.h": "36646341e69ae46be9d1fd67860eea3819f00c7f8707020d1bc89ed3f1f88e3a",
+    "include/secp256k1_schnorrsig.h": "9b72c2199046d815df533d61a0287c1f4ca73cdef2195666c0c57d284e0c84cc"
+  }
+}

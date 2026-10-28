@@ -1,0 +1,52 @@
+{
+  "mode": "oracle-plumbing-smoke",
+  "seed": 20261028,
+  "generated_cases": 411,
+  "comparisons": 438,
+  "failures": 0,
+  "candidate": null,
+  "schema": "coax.secp-differential-report.v1",
+  "elapsed_seconds": 0.6840052909974474,
+  "build": {
+    "schema": "coax.secp-oracle-build.v1",
+    "source_commit": "6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+    "archive_sha256": "3fe9fd705f4fdf2fe90d6e04b6c1fedd7e8f244a119315886f6468f52c2dfc33",
+    "source_tree_sha256": "13f6a9a8b9c12fb3f7079aaba555fdb50b18edd1b7d108f8af58c96047c77c33",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "target": "macOS-26.4-arm64-arm-64bit-Mach-O",
+    "flags": [
+      "-std=c11",
+      "-O2",
+      "-fPIC",
+      "-shared",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Wno-unused-function",
+      "-DECMULT_WINDOW_SIZE=15",
+      "-DCOMB_BLOCKS=11",
+      "-DCOMB_TEETH=6",
+      "-DENABLE_MODULE_ECDH",
+      "-DENABLE_MODULE_EXTRAKEYS",
+      "-DENABLE_MODULE_SCHNORRSIG",
+      "-I/Users/christopherdavid/.codex/worktrees/coax-nostr-vectors/openagents/tools/coax-nostr/fuzz/.cache/source/include",
+      "-I/Users/christopherdavid/.codex/worktrees/coax-nostr-vectors/openagents/tools/coax-nostr/fuzz/.cache/source/src"
+    ],
+    "units": {
+      "src/secp256k1.c": "c9eff089d8cd7c5b3a843bf5ca1cc9d3fdac3a4a84b7d446e5a53e2bbd0d712a",
+      "src/precomputed_ecmult.c": "1fba19c482de09f566ed9e7bf6a526e4edb59a1cf38218e3ab413000a0e0deda",
+      "src/precomputed_ecmult_gen.c": "c0a7af0884b7b07962be67e9da674e0d75a8d412d116153b8eae2a9e5527d401",
+      "oracle.c": "552eee1f5dfe5c275b141750bd8df255b437cefd0b6529cb719455d60465fe47"
+    },
+    "adapter_sha256": "552eee1f5dfe5c275b141750bd8df255b437cefd0b6529cb719455d60465fe47",
+    "artifact_sha256": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+    "artifact": "/Users/christopherdavid/.codex/worktrees/coax-nostr-vectors/openagents/tools/coax-nostr/fuzz/.cache/build/libsecp_oracle.dylib"
+  },
+  "candidate_inputs": {},
+  "harness_sha256": {
+    "oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9",
+    "differential.py": "5efc7136ef3b33ba5c6c22bdda9d51a65557889ae07a4a06ca339dbda49aa141"
+  },
+  "vector_sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d",
+  "regressions_sha256": null
+}
