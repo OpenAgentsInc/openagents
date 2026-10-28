@@ -99,6 +99,22 @@ class NativeTests(unittest.TestCase):
                 self.assertEqual(r.returncode,0,r.stderr)
                 self.assertEqual(subprocess.run([str(d/'test')]).returncode,0)
 
+    def test_compound_assignment_through_a_view_under_sanitizers(self):
+        # tests/pass/compound_view.coax: places whose indexes call functions
+        # stay C lvalues; the program is pedantic C11 and clean under ASan/UBSan.
+        source=(ROOT/'tests/pass/compound_view.coax')
+        want=(ROOT/'tests/pass/compound_view.out').read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            d=Path(directory)
+            r=subprocess.run([str(COMPILER),'c',str(source)],capture_output=True,text=True,timeout=30)
+            self.assertEqual(r.returncode,0,r.stderr)
+            (d/'test.c').write_text(r.stdout)
+            r=subprocess.run([os.environ.get('CC','cc'),'-std=c11','-pedantic-errors','-O1','-g','-fsanitize=address,undefined',
+                              '-fno-omit-frame-pointer','-fno-sanitize-recover=all',str(d/'test.c'),'-lm','-o',str(d/'test')],capture_output=True,text=True)
+            self.assertEqual(r.returncode,0,r.stderr)
+            run=subprocess.run([str(d/'test')],capture_output=True,text=True,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
+            self.assertEqual(run.returncode,0,run.stderr);self.assertEqual(run.stdout,want)
+
     def test_bit_semantics(self):
         source='''#import "Basic";
         #assert (1 << 4 | 3) == 19;

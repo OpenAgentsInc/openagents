@@ -356,8 +356,10 @@ struct Emitter {
   }
 
   // Evaluate operands left to right when order is observable; build() gets
-  // the C text for each operand.
-  template <class F> std::string ordered(const std::vector<Operand> &ops, F build) {
+  // the C text for each operand. A place (an lvalue in Coax) stays one in C:
+  // a comma expression is not, so its address is taken inside it,
+  // `(*(t = ..., &(place)))`, and it can be assigned to or addressed again.
+  template <class F> std::string ordered(const std::vector<Operand> &ops, F build, bool place = false) {
     int calls = 0, nontrivial = 0;
     for (const Operand &o : ops) {
       if (has_call(o.e)) calls++;
@@ -384,6 +386,7 @@ struct Emitter {
         texts.push_back(t);
       }
     }
+    if (place) return "(*(" + prefix + "&(" + build(texts) + ")))";
     return "(" + prefix + build(texts) + ")";
   }
 
@@ -543,10 +546,10 @@ struct Emitter {
         if (lt->kind == TypeKind::view)
           return ordered({{e->lhs, false}, {e->rhs, false}}, [&](const std::vector<std::string> &t) {
             return "(*coax_elem_" + tag(lt) + "(" + t[0] + ", " + t[1] + ", " + line + "))";
-          });
+          }, true);
         return ordered({{e->lhs, is_place(e->lhs)}, {e->rhs, false}}, [&](const std::vector<std::string> &t) {
           return "(" + t[0] + ").e[coax_index(" + t[1] + ", " + std::to_string(lt->length) + ", " + line + ")]";
-        });
+        }, is_place(e));
       }
       case ExprKind::slice: {
         Type lt = e->lhs->type;

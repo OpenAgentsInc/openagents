@@ -1,0 +1,32 @@
+#import "Basic";
+// Compound assignment (and plain assignment) to a place reached through a
+// view, where the place's indexes call functions: the place is evaluated
+// once, left to right, and stays a C lvalue. (The project page's
+// `t[0].count[b] += 1` once produced C that did not compile.)
+BR :: 4;
+V2 :: struct { x: f32; y: f32; }
+Tree :: struct { n: int; at: [BR] V2; count: [BR] int; bits: [BR] u64; }
+idx :: (c: [] int, i: int) -> int { c[0] += 1; return i % BR; }
+grow :: (t: [] Tree, c: [] int, n: int) {
+  for i: 0..<n { b := i % BR; t[0].count[b] += 1; }
+  for i: 0..<n { t[0].count[idx(c, i)] += 1; }
+  for i: 0..<n { t[idx(c, 0)].count[idx(c, i)] -= 3; }
+  t[0].count[idx(c, 2)] *= 7;
+  t[0].count[idx(c, 2)] /= 2;
+  t[0].count[idx(c, 2)] %= 5;
+  t[0].at[1].x += 1.5;
+  t[0].at[idx(c, 1)].y -= 2;
+  t[0].bits[idx(c, 3)] |= 0xF0;
+  t[0].bits[idx(c, 3)] &= 0x30;
+  t[0].bits[idx(c, 3)] ^= 1;
+  t[0].bits[idx(c, 3)] <<= 2;
+  t[0].bits[idx(c, 3)] >>= 1;
+  t[idx(c, 0)].n = idx(c, 3) + 40;
+  t[0].count[idx(c, 3)] = t[0].count[idx(c, 0)] + 100;
+}
+main :: () {
+  t: [1] Tree; c: [1] int;
+  grow(t[..], c[..], 10);
+  print("% % % %\n", t[0].count[0], t[0].count[1], t[0].count[2], t[0].count[3]);
+  print("% % % % %\n", t[0].bits[3], t[0].at[1].x, t[0].at[1].y, t[0].n, c[0]);
+}

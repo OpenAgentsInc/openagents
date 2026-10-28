@@ -502,8 +502,7 @@ grow :: (t: [] Tree, history: string) {
   if n > MAX_COMMITS { n = MAX_COMMITS; }
   t[0].n = n;
   for b: 0..<BRANCHES { t[0].last[b] = -1; t[0].count[b] = 0; }
-  // (written out: coax0's C for += on an array field through a view doesn't compile)
-  for i: 0..<n { b := branch_index(field(history, i, 2)); t[0].count[b] = t[0].count[b] + 1; }
+  for i: 0..<n { b := branch_index(field(history, i, 2)); t[0].count[b] += 1; }
   seen: [BRANCHES] int;
   for i: 0..<n {
     b := branch_index(field(history, i, 2));
