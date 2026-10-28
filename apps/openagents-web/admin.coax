@@ -215,7 +215,7 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
   x := b.x0 + 18 * d;
   v := put(out, at, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, dim);
-  crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
+  crumb := x + ink_width("OPENAGENTS", 7 * d, GAP, SPACE, dim) + SPACE * 7 * d;  // dim ink is the sans: measure it as drawn
   v = put(out, v, "/ ADMIN", crumb, b.y0 + 22 * d, 7 * d, dim);
   v = put(out, v, "ANALYTICS", x, b.y0 + 54 * d, 22 * d, white);
   note := ifx s[0].status == 0 || s[0].status == 1 then "LOADING" else ifx s[0].view == AD_SESSION then "ONE SESSION" else "CHICAGO TIME";
