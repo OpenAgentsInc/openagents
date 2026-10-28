@@ -198,8 +198,16 @@ measure :: (text: string, gap: f32, space: f32, rich: bool) -> f32 {
 }
 
 // How text is drawn: the stroke's half width, brightness and glow reach
-// (device pixels), its colour and the shader mode.
-Ink :: struct { core: f32; light: f32; glow: f32; red: f32; green: f32; blue: f32; mode: f32; }
+// (device pixels), its colour and the shader mode. Scale is device pixels per
+// CSS pixel; when it's given, text under SMALL_TEXT CSS pixels follows
+// font.md "Small sizes": no glow, a core about one device pixel wide, and
+// every stroke's ends on device-pixel centres, so its lines land whole on
+// pixels instead of smearing across two.
+Ink :: struct { core: f32; light: f32; glow: f32; red: f32; green: f32; blue: f32; mode: f32; scale: f32 = 0; }
+SMALL_TEXT :: 12.0;
+
+// A device-pixel centre: where a small stroke's end goes.
+pixel_centre :: (x: f32) -> f32 { return floor(x) + 0.5; }
 
 // Draws text with the left end of its baseline at x, base (device pixels,
 // y down) and capitals cap pixels tall, from vertex at. Rich text draws
@@ -218,8 +226,11 @@ draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, g
     if c < 32 { continue; }
     if after { pen += gap * cap; }
     n := glyph(c, points[..]);
+    small := k.scale > 0 && cap < SMALL_TEXT * k.scale;
     core := ifx strong then k.core * 1.5 else k.core;
+    glow := k.glow;
     light := ifx strong then hi(k.light, lo(1, k.light * 1.35)) else k.light;
+    if small { core = ifx strong then 0.85f32 else 0.6f32; glow = 1; light = lo(1, light * 1.2); }
     red := ifx strong then 1.0f32 else k.red;
     green := ifx strong then 1.0f32 else k.green;
     blue := ifx strong then 1.0f32 else k.blue;
@@ -229,7 +240,8 @@ draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, g
       ay := base - (cast(f32) points[(p - 1) * 2 + 1] - 2) * unit;
       bx := pen + cast(f32) points[p * 2] * unit;
       by := base - (cast(f32) points[p * 2 + 1] - 2) * unit;
-      if lit(out, vertices, ax, ay, bx, by, core, light, k.glow, red, green, blue, k.mode) { vertices += 6; }
+      if small { ax = pixel_centre(ax); ay = pixel_centre(ay); bx = pixel_centre(bx); by = pixel_centre(by); }
+      if lit(out, vertices, ax, ay, bx, by, core, light, glow, red, green, blue, k.mode) { vertices += 6; }
     }
     pen += glyph_width(c) * cap;
     after = true;
@@ -330,4 +342,22 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
   long := "ABCDEFGHIJ";
   end = wrap(long[..], 0, 3, 0.3, 0.7, false, next[..]);
   #assert end > 0 && end < 10 && measure(long[0..<end], 0.3, 0.7, false) <= 3;
+}
+
+#test "small text with a scale lands on device-pixel centres, without glow" {
+  out: [600 * 12] f32;
+  k := Ink.{core = 1, light = 0.8, glow = 6, red = 1, green = 1, blue = 1, mode = 0, scale = 2};
+  // 7.5 CSS pixels at 2x: small. Each quad's first corner is its start, back by core + glow along and across.
+  n := draw_text(out[..], 0, "EH", 10.3, 40.7, 15, 0.3, 1, k, false, false);
+  #assert n > 0;
+  for q: 0..<n / 6 {
+    o := q * 6 * 12;
+    #assert out[o + 7] == 1 && out[o + 5] == 0.6;   // glow, core
+  }
+  // the same text large keeps its glow and core
+  m := draw_text(out[..], 0, "EH", 10.3, 140.7, 40, 0.3, 1, k, false, false);
+  #assert m == n && out[7] == 6 && out[5] == 1;
+  // without a scale nothing changes (the splash's inks)
+  plain := Ink.{core = 1, light = 0.8, glow = 6, red = 1, green = 1, blue = 1, mode = 0};
+  #assert draw_text(out[..], 0, "EH", 10.3, 40.7, 15, 0.3, 1, plain, false, false) == n && out[7] == 6;
 }

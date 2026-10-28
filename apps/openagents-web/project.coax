@@ -78,7 +78,7 @@ Pen :: struct { d: f32; fade: f32; time: f32; }
 // and the pale orange of something in review.
 INK_WHITE :: 0; INK_DIM :: 1; INK_ORANGE :: 2; INK_PALE :: 3; INK_FAINT :: 4;
 ink :: (p: Pen, kind: int) -> Ink {
-  k := Ink.{core = 0.5 * p.d, light = 0.9 * p.fade, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE};
+  k := Ink.{core = 0.5 * p.d, light = 0.9 * p.fade, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
   if kind == INK_DIM { k.light = 0.48 * p.fade; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
   if kind == INK_FAINT { k.light = 0.3 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
   if kind == INK_ORANGE { k.light = 1.0 * p.fade; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }

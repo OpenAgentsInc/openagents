@@ -155,14 +155,31 @@ async function loadShaders() {
   return true;
 }
 
+// ---- the canvas's size in device pixels: exactly its CSS box times the
+// display's scale, from ResizeObserver's device-pixel box where the browser
+// has one, so the GPU draws every device pixel and nothing is stretched (a
+// buffer a little smaller than the screen, scaled up, blurs thin strokes).
+let devicePixels = null;   // [width, height], or null until observed
+function observeSize() {
+  const take = ([e]) => {
+    const s = e.devicePixelContentBoxSize?.[0];
+    devicePixels = s ? [s.inlineSize, s.blockSize]
+      : [Math.round(e.contentRect.width * devicePixelRatio), Math.round(e.contentRect.height * devicePixelRatio)];
+  };
+  try { new ResizeObserver(take).observe(canvas, { box: "device-pixel-content-box" }); }
+  catch { new ResizeObserver(take).observe(canvas); }
+}
+// Device pixels per CSS pixel, as the canvas is actually drawn.
+const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.clientWidth : devicePixelRatio || 1);
+
 // ---- the frame
 function frame(now) {
   requestAnimationFrame(frame);
   if (!engine || !gpu?.bg) return;
   const dt = last ? (now - last) / 1000 : 0; last = now;
-  const dpr = Math.min(devicePixelRatio || 1, 2);
-  const w = Math.max(1, Math.floor(canvas.clientWidth * dpr)), h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+  const [w, h] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const dpr = scale();
   let n = 0;
   try {
     for (let k = 0; probeAt && !gpu.probed && k < probeAt * 10; k++)
@@ -232,7 +249,7 @@ function after(gesture, tap = false) {
 function placeField(want) {
   const x = engine.exports;
   const r = want && x.coaxial_field ? new Float32Array(memory.buffer, x.coaxial_field(arena.state), 4) : [0, 0, 0, 0];
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = scale();
   const box = r[2] > r[0] ? [r[0] / dpr, r[1] / dpr, (r[2] - r[0]) / dpr, (r[3] - r[1]) / dpr] : [0, 0, 1, 1];
   const key = box.map(Math.round).join();
   if (field.dataset.at === key) return;
@@ -285,7 +302,7 @@ addEventListener("paste", (e) => {
 for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup", 2], ["pointercancel", 3]])
   addEventListener(type, (e) => {
     if (!engine) return;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const dpr = scale();
     if (phase !== 1) touched = e.pointerType !== "mouse";
     call("coaxial_pointer", e.clientX * dpr, e.clientY * dpr, phase, e.pointerType === "mouse" ? 0 : 1);
     after(phase === 2, phase === 2);
@@ -374,6 +391,7 @@ async function main() {
     await fetchEngine(++wanted);
     // No usable WebGPU after all: show the page's text, as written.
     if (!(await startGpu())) { document.documentElement.classList.remove("gpu"); return; }
+    observeSize();
     requestAnimationFrame(frame);
   } catch (e) {
     document.documentElement.classList.remove("gpu");
