@@ -840,11 +840,9 @@
       "acceptance": [
         "JSONTestSuite y_/n_ cases relevant to RFC 8259 (pinned subset) behave correctly",
         "No allocation (checked by building with a trapping allocator)",
-        "Fuzz 1 hour against a reference parser in the native harness with no crash"
+        "Parses every event the relay returns for the coax project (fixture captured from relay.openagents.com)"
       ],
-      "blocked_by": [
-        "crypto-bytes"
-      ],
+      "blocked_by": [],
       "blocks": [
         "nostr-event",
         "nostr-jcs"
@@ -1286,18 +1284,21 @@
         "web",
         "projects"
       ],
-      "body": "The real project page subscribes to the project, its tasks and the order record, verifies incrementally (≤ 4 ms per frame), and draws the queue from verified events only; the demo page keeps baked data.",
+      "body": "The real project page holds a WebSocket to relay.openagents.com and redraws as events arrive: no snapshots, no release needed to show a claim, a plan, a note, a status or a reorder. The host only moves bytes (host-socket-pipe); Coax parses the relay's JSON, keeps the project's events (REQ with authors = the project key; the relay checks signatures until project-page-verify lands), folds them the way coax/web/project/model.ts does (issues, revisions, statuses, claims, releases, plans, notes, commits, the order record) into the tables project.coax draws, and redraws. Subscriptions stay open after EOSE so new events land live; reconnect with backoff; the header shows LIVE, CONNECTING or OFFLINE instead of a snapshot time. The build-time tables stay only as the first paint until the socket's first EOSE. The demo page keeps its samples.",
       "files": [
         "apps/openagents-web/project.coax",
         "apps/openagents-web/project/coax/"
       ],
       "acceptance": [
-        "Moving a task in the order record and republishing reorders the live page without a deploy",
-        "Unverified events never appear; a count of rows still checking is shown"
+        "A claim, a plan update and a done published with publish.ts show on the production page within 2 s, with no release",
+        "Moving a task (publish.ts move) reorders the live page within 2 s",
+        "#test: the Coax fold of a captured relay transcript equals model.ts fold() of the same events (same rows, order, plans, log)",
+        "Killing the socket shows OFFLINE, and it reconnects with backoff",
+        "No TypeScript beyond the host byte pipe; check-visuals passes"
       ],
       "blocked_by": [
-        "relay-in-page",
-        "publish-project-events"
+        "host-socket-pipe",
+        "nostr-json"
       ],
       "blocks": [
         "claim-from-page",
@@ -1553,6 +1554,31 @@
         "ios-scan-to-sign-in",
         "web-sign-in-page"
       ]
+    },
+    {
+      "slug": "project-page-verify",
+      "parent": "m8-project-live",
+      "title": "The live project page verifies every event in Coax",
+      "size": "M",
+      "labels": [
+        "web",
+        "crypto",
+        "nostr"
+      ],
+      "body": "Once Schnorr verification lands, the live page checks every event's id and signature in Coax before folding it (≤ 4 ms of verification per frame, the rest queued), and stops relying on the relay's check.",
+      "files": [
+        "apps/openagents-web/project.coax"
+      ],
+      "acceptance": [
+        "Unverified events never appear; a count of rows still checking is shown",
+        "A forged event injected through a test relay is refused and counted"
+      ],
+      "blocked_by": [
+        "project-page-live",
+        "schnorr-verify",
+        "nostr-event"
+      ],
+      "blocks": []
     }
   ]
 }
