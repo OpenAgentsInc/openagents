@@ -16,6 +16,11 @@
 //                                            site's origin), then says it's done
 //   POST /api/drops/<d>/files/<f>/done       the scan: the bucket's size and first 4 KiB, judged by
 //                                            drops.scan; a refused file's object is deleted -> {file}
+//   POST /api/drops/<d>/draft                an agent reads the drop's kept files and drafts the project
+//                                            (rc-read-drop, 0017_project_drafts.sql): Gemini on Vertex AI
+//                                            reads them from the bucket; the answer waits for the draft
+//                                            -> {status: ready|failed, note, draft}
+//   GET  /api/drops/<d>/draft                the last draft {status: none|reading|ready|failed, ...}
 //
 // Who asks: a NIP-98 signature (each event once), else the oa_drops cookie,
 // else the admin sign-in's cookie (admin.c sets it for /api/drops too). A
@@ -25,6 +30,8 @@
 //   OA_DROPS_PREFIX  this environment's folder in it (staging, production; default dev)
 //   OA_DROPS_GCS     the storage API's origin (tests point it at a fake)
 //   OA_DROPS_TOKEN   a token to send instead of the metadata server's (tests)
+//   OA_DRAFT_MODEL   the drafting model (gemini-3.8-flash, on the global endpoint)
+//   OA_DRAFT_URL     its generateContent URL (tests point it at a fake)
 #include "api.h"
 #include "nostr.h"
 #include <ctype.h>
@@ -361,6 +368,52 @@ static void file_done(const request *q, PGconn *db, const char *pk, const char *
   _exit(0);
 }
 
+// In the child: asks the model for the draft, keeps it, answers.
+static void draft_child(int fd, const char *drop, const char *request) {
+  const char *model = env_or("OA_DRAFT_MODEL", "gemini-3.8-flash");
+  char url[512], tok[4096], auth[4200], http[16], took[16];
+  const char *given = getenv("OA_DRAFT_URL");
+  if (given && *given) snprintf(url, sizeof url, "%s", given);
+  else snprintf(url, sizeof url, "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/google/models/%s:generateContent", model);
+  long status = 0;
+  buf b = {0};
+  double t0 = api_now_ms();
+  if (token(tok, sizeof tok)) {
+    CURL *h = curl_easy_init();
+    snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+    struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: application/json");
+    curl_easy_setopt(h, CURLOPT_URL, url);
+    curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
+    curl_easy_setopt(h, CURLOPT_POSTFIELDS, request);
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
+    curl_easy_setopt(h, CURLOPT_TIMEOUT, 280L);
+    if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+    curl_slist_free_all(hd); curl_easy_cleanup(h);
+  } else api_log("drops: no token for the model");
+  if (status != 200) api_log("drops: the model answered %ld", status);
+  snprintf(http, sizeof http, "%ld", status);
+  snprintf(took, sizeof took, "%d", (int)(api_now_ms() - t0));
+  PGconn *c = api_db_new();
+  if (!c) { api_json(fd, 503, "{\"error\":\"no database\"}"); free(b.p); return; }
+  const char *v[5] = {drop, http, b.p ? b.p : "", model, took};
+  reply(fd, ask(c, Q("drops.draft_done($1, $2::int, $3, $4, $5::int)"), 5, v));
+  PQfinish(c); free(b.p);
+}
+
+static void draft(const request *q, PGconn *db, const char *pk, const char *drop) {
+  const char *v[3] = {pk, drop, env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text, coalesce((x->'request')::text, '') FROM drops.draft_start($1, $2, $3) x",
+                             3, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("drops: draft sql"); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  if (status != 200) { api_json(q->fd, status, PQgetvalue(r, 0, 1)); PQclear(r); return; }
+  char *request = strdup(PQgetvalue(r, 0, 2));
+  PQclear(r);
+  if (in_child()) { draft_child(q->fd, drop, request); free(request); _exit(0); }
+  free(request);
+}
+
 static bool id_ok(const char *s, char lead) {
   if (s[0] != lead || s[1] != '-' || strlen(s) != 18) return false;
   for (int i = 2; i < 18; i++) if (!isxdigit((unsigned char)s[i])) return false;
@@ -411,6 +464,11 @@ bool drops_route(const request *q) {
     return true;
   }
   if (!strcmp(slash, "/files") && post) { add_file(q, db, pk, admin, drop); return true; }
+  if (!strcmp(slash, "/draft")) {
+    if (post) draft(q, db, pk, drop);
+    else reply(q->fd, ask(db, Q("drops.draft_get($1, $2)"), 2, (const char *[]){pk, drop}));
+    return true;
+  }
   if (!strncmp(slash, "/files/", 7) && sscanf(slash + 7, "%19[^/]/%15s", file, tail) == 2 && id_ok(file, 'f') && !strcmp(tail, "done") && post) {
     file_done(q, db, pk, drop, file);
     return true;

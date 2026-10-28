@@ -4,7 +4,12 @@
 import http.server, threading, urllib.parse
 
 GCS = "http://127.0.0.1:" + os.environ["GCS_PORT"]
-bucket = {"objects": {}, "sessions": {}, "opened": []}
+bucket = {"objects": {}, "sessions": {}, "opened": [], "asked": [], "draft": {
+    "card": {"name": "Planetary Villa", "slug": "Planetary Villa!", "line": "A world on the Verse.", "owner": "Kiki", "cover": "", "art_direction": "Moonlit, low-poly."},
+    "mechanics": ["glowing flowers"], "design": {"markdown": "# Planetary Villa", "open_questions": ["How many flowers?"]},
+    "roadmap": {"initiative": {"slug": "pv", "title": "PV", "body": "b"}, "milestones": [{"slug": "m", "title": "Flowers", "body": "b", "tasks": [
+        {"slug": "t", "title": "Pick flowers", "body": "b", "size": "S", "acceptance": ["Pick a flower: it is in your hand"], "mechanics": ["glowing flowers"], "needs": []}]}]},
+    "assets": [], "to_make": [], "engine_needs": [{"slug": "verse-glow", "title": "Glow", "why": "flowers glow", "reuses": True}]}}
 
 
 class FakeGcs(http.server.BaseHTTPRequestHandler):
@@ -25,6 +30,11 @@ class FakeGcs(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
+        if u.path == "/model":
+            req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            bucket["asked"].append(req)
+            return self.answer(200, json.dumps({"candidates": [{"content": {"parts": [
+                {"text": "thinking", "thought": True}, {"text": json.dumps(bucket["draft"])}]}}]}).encode())
         q = urllib.parse.parse_qs(u.query)
         if self.headers.get("Authorization") != "Bearer test-gcs" or u.path != "/upload/storage/v1/b/drops-test/o":
             return self.answer(403)
@@ -201,6 +211,25 @@ check("drops: the admin sign-in link opens /api/drops too", len(admin_drop) == 1
 if admin_drop:
     check("drops: with that cookie the admin sees their drops",
           dcall("GET", "/api/drops", cookie=admin_drop[0].split(";")[0])[1]["drops"][0]["id"] == d)
+check("drops: a drop with nothing kept has nothing to read",
+      dcall("POST", f"/api/drops/{dcall('POST', '/api/drops', {}, cookie=jar)[1]['id']}/draft", {}, cookie=jar)[0] == 409)
+check("drops: no draft yet", dcall("GET", f"/api/drops/{d}/draft", cookie=jar)[1] == {"status": "none"})
+status, drafted, _ = dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)
+asked = bucket["asked"][-1] if bucket["asked"] else {}
+parts = asked.get("contents", [{}])[0].get("parts", [])
+check("drops: the model reads the kept files from the bucket, with the schema and the engine's tasks",
+      any(p.get("fileData", {}).get("fileUri", "").startswith("gs://drops-test/test/") and p["fileData"]["mimeType"] == "text/plain" for p in parts)
+      and not any("cover" in json.dumps(p) and "fileData" in p for p in parts)
+      and asked["generationConfig"]["responseMimeType"] == "application/json" and "verse-quadruped" in asked["systemInstruction"]["parts"][0]["text"], asked)
+check("drops: the draft is kept, its slug made a slug", status == 200 and drafted["status"] == "ready"
+      and drafted["draft"]["card"]["slug"] == "planetary-villa" and drafted["model"] == "gemini-3.8-flash", drafted)
+check("drops: and read back", dcall("GET", f"/api/drops/{d}/draft", cookie=jar)[1]["draft"]["roadmap"]["milestones"][0]["title"] == "Flowers")
+check("drops: someone else can't read or start it", dcall("GET", f"/api/drops/{d}/draft", cookie=mjar)[0] == 404
+      and dcall("POST", f"/api/drops/{d}/draft", {}, cookie=mjar)[0] == 404)
+bucket["draft"]["roadmap"]["milestones"][0]["tasks"][0]["acceptance"] = []
+status, refused_draft, _ = dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)
+check("drops: a draft with a task no one could check is refused, and the good one kept",
+      status == 502 and refused_draft["status"] == "failed" and "acceptance" in refused_draft["note"] and refused_draft["draft"]["card"]["slug"] == "planetary-villa", refused_draft)
 status, _, oh = dcall("POST", "/api/drops/signout", {}, cookie=jar)
 check("drops: signing out ends the session", status == 200 and "Max-Age=0" in oh.get("Set-Cookie", "") and dcall("GET", "/api/drops/me", cookie=jar)[0] == 401)
 gcs_server.shutdown()
