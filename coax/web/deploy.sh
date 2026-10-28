@@ -8,6 +8,8 @@
 #                                       # (re)create the service and its bucket
 #
 # COAXIAL_UNLOCKS adds hidden presentations to index.html (unlock/README.md).
+# COAXIAL_STAGE_TO=DIR builds and stages into DIR (assets/, site/) and stops
+# there, uploading nothing: pin.sh ships a pinned demo from it.
 #
 # The first deploy of a service needs --server, then a domain mapping:
 #   gcloud beta run domain-mappings create --service SERVICE --domain HOST --region us-central1
@@ -89,6 +91,7 @@ fi
 # No comments reach a browser: the staged pages, scripts and shaders lose them
 # here, after the hidden presentations are in.
 bun "$here/strip.ts" "$stage"
+if [[ -n "${COAXIAL_STAGE_TO:-}" ]]; then mkdir -p "$COAXIAL_STAGE_TO" && cp -R "$stage/assets" "$stage/site" "$COAXIAL_STAGE_TO/"; exit 0; fi
 
 if $server; then
   t=$(now)

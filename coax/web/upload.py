@@ -3,10 +3,14 @@ whose bytes changed, in parallel. Content-named assets go first (cached for
 good), then the pages (checked on every visit), then stale objects go.
 
     upload.py STAGE BUCKET TOKEN    (STAGE holds assets/ and site/)
+    upload.py STAGE BUCKET TOKEN PREFIX
+        the pages go under PREFIX/ and only PREFIX/'s stale objects go; the
+        content-named assets go to the bucket's root, as always (pin.sh)
 """
 import base64, concurrent.futures as cf, hashlib, json, mimetypes, os, sys, urllib.parse, urllib.request
 
-stage, bucket, token = sys.argv[1:]
+stage, bucket, token = sys.argv[1:4]
+prefix = sys.argv[4].strip("/") + "/" if len(sys.argv) > 4 else ""
 api = "https://storage.googleapis.com/storage/v1/b/" + bucket
 up = "https://storage.googleapis.com/upload/storage/v1/b/" + bucket
 auth = {"Authorization": "Bearer " + token}
@@ -33,14 +37,14 @@ def files(root):
             p = os.path.join(d, f)
             yield os.path.relpath(p, root), p
 
-def object_name(name):
+def object_name(name, site=False):
     # x.page is the page for the bare path x (deploy.sh): /projects/coax.
-    return name[:-5] if name.endswith(".page") else name
+    return (prefix if site else "") + (name[:-5] if name.endswith(".page") else name)
 
-def put(name, path, cache):
+def put(name, path, cache, site=False):
     data = open(path, "rb").read()
     kind = ".html" if name.endswith(".page") else os.path.splitext(name)[1]
-    name = object_name(name)
+    name = object_name(name, site)
     meta = {"name": name, "cacheControl": cache,
             "contentType": types.get(kind) or mimetypes.guess_type(name)[0] or "application/octet-stream"}
     b = "coaxial-upload"
@@ -55,9 +59,10 @@ have = listing()
 pool = cf.ThreadPoolExecutor(16)
 sent = []
 for root, cache in (("assets", "public, max-age=31536000, immutable"), ("site", "no-cache")):
-    todo = [(n, p) for n, p in files(os.path.join(stage, root)) if have.get(object_name(n)) != md5(p) and not (root == "site" and os.path.exists(os.path.join(stage, "assets", n)))]
-    sent += list(pool.map(lambda np: put(np[0], np[1], cache), todo))
-keep = {object_name(n) for n, _ in files(os.path.join(stage, "site"))}
-stale = [n for n in have if n not in keep]
+    site = root == "site"
+    todo = [(n, p) for n, p in files(os.path.join(stage, root)) if have.get(object_name(n, site)) != md5(p) and not (site and os.path.exists(os.path.join(stage, "assets", n)))]
+    sent += list(pool.map(lambda np: put(np[0], np[1], cache, site), todo))
+keep = {object_name(n, True) for n, _ in files(os.path.join(stage, "site"))}
+stale = [n for n in have if n not in keep and n.startswith(prefix)]
 list(pool.map(lambda n: call(api + "/o/" + urllib.parse.quote(n, safe=""), "DELETE"), stale))
 print(f"  sent {len(sent)}, removed {len(stale)}, unchanged {len(keep) - len(sent)}")

@@ -14,6 +14,9 @@
 # bucket; rollback.sh <time> puts them back. A failed production smoke rolls
 # back on its own.
 #
+# Pinned demos (pin.sh) live in the production bucket under demo/ and
+# demo-releases/; a release never writes there, and checks it didn't.
+#
 # Routing (one load balancer, coaxial-openagents-web-staging):
 #   staging.openagents.com → the staging bucket
 #   openagents.com         → the production bucket for / and the Coax files
@@ -77,6 +80,8 @@ fi
 # Promote: keep production's current pages, copy files first (content-named,
 # nothing points at them yet), then the pages that name them.
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+demos() { gcloud storage ls -L "gs://$prod_bucket/demo/**" 2>/dev/null | grep -E '^gs://|Hash \(md5\)' || true; }
+demos_before="$(demos)"
 if $stage; then
   # The backup and the files copy touch different objects, so they run
   # together; the pages wait for both.
@@ -84,14 +89,15 @@ if $stage; then
   { gcloud storage cp "gs://$prod_bucket/*.html" "gs://$prod_bucket/*.md" "gs://$prod_bucket/releases/$stamp/" --quiet > /dev/null 2>&1 || true
     echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null; } &
   backup=$!
-  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '.*\.(html|md)$|^releases/' --quiet > /dev/null
+  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '.*\.(html|md)$|^releases/|^demo/|^demo-releases/' --quiet > /dev/null
   wait $backup
-  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '^releases/' --quiet > /dev/null
+  gcloud storage rsync -r "gs://$staging_bucket" "gs://$prod_bucket" --exclude '^releases/|^demo/|^demo-releases/' --quiet > /dev/null
   lap promote "$t"
 else
   echo "$commit $stamp" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/COMMIT" --quiet > /dev/null
 fi
 
+[[ "$(demos)" == "$demos_before" ]] || { echo "release $commit: a pinned demo changed (demo/ in $prod_bucket); it must not" >&2; exit 1; }
 t=$(now)
 via=""
 [[ "$(dig +short openagents.com A | sort | head -1)" == "$lb_ip" ]] || via="--via $lb_ip"
