@@ -19,8 +19,8 @@ NP_CAPABILITY_NAMES :: [15] string.["wire-codec", "json-shape", "event-verify", 
 NP_MEASURE_NAMES :: [NP_MEASURES] string.["frame_bytes", "original_json_bytes", "decoded_content_bytes", "raw_string_bytes", "tag_count", "values_per_tag", "depth", "output_bytes", "pending_verification", "stored_events", "stored_bytes", "protobuf_bytes"];
 NP_EVIDENCE_SOURCE :: [3] string.["coax/lib/proto/importer.coax", "coax/lib/nostr/json.coax", "apps/openagents-web/project-live.coax"];
 NP_EVIDENCE_CHECKS :: [3] string.["coax/tests/proto_import.py", "coax/lib/nostr/json.coax", "apps/openagents-web/project-live.coax"];
-NP_EVIDENCE_COMMIT :: [3] string.["8a81dc727e", "2ace224626", "f4b21878c72ef439d67d0389fa9b409682256b6c"];
-NP_EVIDENCE_SHA256 :: [3] string.["3a9a7e61eab567ae3a3f9dcbe04046962d0c84e9fe9aa74324172f396f2ae432", "3fcb17e95fd242ef68eeb1a6f0db703df5a5d98629c4075722b00dd41033ce42", "f1b326a394cd53c92a093cf0363f5e790df31fcc047ec7a58df0c1ee273179ad"];
+NP_EVIDENCE_COMMIT :: [3] string.["8a81dc727e", "a165c9bc26a5aeb95a371a137583425ec6948398", "f4b21878c72ef439d67d0389fa9b409682256b6c"];
+NP_EVIDENCE_SHA256 :: [3] string.["3a9a7e61eab567ae3a3f9dcbe04046962d0c84e9fe9aa74324172f396f2ae432", "a690a5120f604081d3df465df56a98d8e17aeb9fa1aad9baec5dcb239d839874", "f1b326a394cd53c92a093cf0363f5e790df31fcc047ec7a58df0c1ee273179ad"];
 NP_EVIDENCE_CAPABILITY :: [3] u32.[1, 2, 32];
 NP_EVIDENCE_TARGET :: [3] int.[0, 0, 2];
 
