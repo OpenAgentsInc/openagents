@@ -63,3 +63,4 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   track_message(tr(), kind, bytes);
   track_drain(&track_state);
 }
+EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) { coaxial_chars_hash(chars_of(state), (int64_t)length); }

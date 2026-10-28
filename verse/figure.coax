@@ -195,8 +195,8 @@ verse_figure_shape_fix :: (s: Shape) -> Shape #export_c {
 
 // ---- the rigs
 
-joint :: (k: Skeleton, j: int, parent: int, at: Fv) -> Skeleton { r := k; r.parent[j] = parent; r.offset[j] = at; return r; }
-bone :: (k: Skeleton, a: int, b: int, ra: f32, rb: f32, region: int) -> Skeleton {
+rig_joint :: (k: Skeleton, j: int, parent: int, at: Fv) -> Skeleton { r := k; r.parent[j] = parent; r.offset[j] = at; return r; }
+rig_bone :: (k: Skeleton, a: int, b: int, ra: f32, rb: f32, region: int) -> Skeleton {
   r := k;
   if r.parts >= MAX_PARTS { return r; }
   r.part[r.parts] = Part.{a = a, b = b, ra = ra, rb = rb, region = region}; r.parts += 1;
@@ -207,41 +207,41 @@ person :: (s: Shape) -> Skeleton {
   k: Skeleton; k.rig = Rig.person; k.joints = PERSON_JOINTS;
   z := s.size; L := s.legs * z; B := s.body * z; g := s.girth * z; h := s.head * z;
   thigh := 0.43 * L; shin := 0.43 * L;
-  k = joint(k, P_HIPS, -1, fv(0, thigh + shin + 0.09 * z, 0));
-  k = joint(k, P_SPINE, P_HIPS, fv(0, 0.12 * B, 0));
-  k = joint(k, P_CHEST, P_SPINE, fv(0, 0.22 * B, 0));
-  k = joint(k, P_NECK, P_CHEST, fv(0, 0.2 * B, 0));
-  k = joint(k, P_HEAD, P_NECK, fv(0, 0.1 * z, 0.01 * z));
-  k = joint(k, P_CROWN, P_HEAD, fv(0, 0.1 * h, 0.015 * h));
+  k = rig_joint(k, P_HIPS, -1, fv(0, thigh + shin + 0.09 * z, 0));
+  k = rig_joint(k, P_SPINE, P_HIPS, fv(0, 0.12 * B, 0));
+  k = rig_joint(k, P_CHEST, P_SPINE, fv(0, 0.22 * B, 0));
+  k = rig_joint(k, P_NECK, P_CHEST, fv(0, 0.2 * B, 0));
+  k = rig_joint(k, P_HEAD, P_NECK, fv(0, 0.1 * z, 0.01 * z));
+  k = rig_joint(k, P_CROWN, P_HEAD, fv(0, 0.1 * h, 0.015 * h));
   for side: 0..<2 {
     sx: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
     sh := ifx side == 0 then P_L_SHOULDER else P_R_SHOULDER;
-    k = joint(k, sh, P_CHEST, fv(sx * 0.18 * g, 0.17 * B, 0));
-    k = joint(k, sh + 1, sh, fv(0, -0.28 * z, 0));
-    k = joint(k, sh + 2, sh + 1, fv(0, -0.26 * z, 0));
+    k = rig_joint(k, sh, P_CHEST, fv(sx * 0.18 * g, 0.17 * B, 0));
+    k = rig_joint(k, sh + 1, sh, fv(0, -0.28 * z, 0));
+    k = rig_joint(k, sh + 2, sh + 1, fv(0, -0.26 * z, 0));
     hip := ifx side == 0 then P_L_HIP else P_R_HIP;
-    k = joint(k, hip, P_HIPS, fv(sx * 0.1 * g, -0.03 * z, 0));
-    k = joint(k, hip + 1, hip, fv(0, -thigh, 0));
-    k = joint(k, hip + 2, hip + 1, fv(0, -shin, 0));
-    k = joint(k, hip + 3, hip + 2, fv(0, -0.02 * z, 0.13 * z));
+    k = rig_joint(k, hip, P_HIPS, fv(sx * 0.1 * g, -0.03 * z, 0));
+    k = rig_joint(k, hip + 1, hip, fv(0, -thigh, 0));
+    k = rig_joint(k, hip + 2, hip + 1, fv(0, -shin, 0));
+    k = rig_joint(k, hip + 3, hip + 2, fv(0, -0.02 * z, 0.13 * z));
   }
-  k = bone(k, P_HIPS, P_L_HIP, 0.11 * g, 0.085 * g, REGION_BODY);
-  k = bone(k, P_HIPS, P_R_HIP, 0.11 * g, 0.085 * g, REGION_BODY);
-  k = bone(k, P_HIPS, P_SPINE, 0.12 * g, 0.115 * g, REGION_BODY);
-  k = bone(k, P_SPINE, P_CHEST, 0.115 * g, 0.14 * g, REGION_BODY);
-  k = bone(k, P_CHEST, P_NECK, 0.14 * g, 0.07 * g, REGION_BODY);
-  k = bone(k, P_L_SHOULDER, P_R_SHOULDER, 0.065 * g, 0.065 * g, REGION_BODY);
-  k = bone(k, P_NECK, P_HEAD, 0.05 * g, 0.055 * g, REGION_BODY);
-  k = bone(k, P_HEAD, P_CROWN, 0.09 * h, 0.1 * h, REGION_HEAD);
+  k = rig_bone(k, P_HIPS, P_L_HIP, 0.11 * g, 0.085 * g, REGION_BODY);
+  k = rig_bone(k, P_HIPS, P_R_HIP, 0.11 * g, 0.085 * g, REGION_BODY);
+  k = rig_bone(k, P_HIPS, P_SPINE, 0.12 * g, 0.115 * g, REGION_BODY);
+  k = rig_bone(k, P_SPINE, P_CHEST, 0.115 * g, 0.14 * g, REGION_BODY);
+  k = rig_bone(k, P_CHEST, P_NECK, 0.14 * g, 0.07 * g, REGION_BODY);
+  k = rig_bone(k, P_L_SHOULDER, P_R_SHOULDER, 0.065 * g, 0.065 * g, REGION_BODY);
+  k = rig_bone(k, P_NECK, P_HEAD, 0.05 * g, 0.055 * g, REGION_BODY);
+  k = rig_bone(k, P_HEAD, P_CROWN, 0.09 * h, 0.1 * h, REGION_HEAD);
   for side: 0..<2 {
     sh := ifx side == 0 then P_L_SHOULDER else P_R_SHOULDER;
-    k = bone(k, sh, sh + 1, 0.055 * g, 0.045 * g, REGION_UPPER);
-    k = bone(k, sh + 1, sh + 2, 0.045 * g, 0.035 * g, REGION_LOWER);
-    k = bone(k, sh + 2, sh + 2, 0.045 * z, 0.045 * z, REGION_LOWER);
+    k = rig_bone(k, sh, sh + 1, 0.055 * g, 0.045 * g, REGION_UPPER);
+    k = rig_bone(k, sh + 1, sh + 2, 0.045 * g, 0.035 * g, REGION_LOWER);
+    k = rig_bone(k, sh + 2, sh + 2, 0.045 * z, 0.045 * z, REGION_LOWER);
     hip := ifx side == 0 then P_L_HIP else P_R_HIP;
-    k = bone(k, hip, hip + 1, 0.08 * g, 0.056 * g, REGION_UPPER);
-    k = bone(k, hip + 1, hip + 2, 0.055 * g, 0.04 * g, REGION_LOWER);
-    k = bone(k, hip + 2, hip + 3, 0.045 * z, 0.04 * z, REGION_LOWER);
+    k = rig_bone(k, hip, hip + 1, 0.08 * g, 0.056 * g, REGION_UPPER);
+    k = rig_bone(k, hip + 1, hip + 2, 0.055 * g, 0.04 * g, REGION_LOWER);
+    k = rig_bone(k, hip + 2, hip + 3, 0.045 * z, 0.04 * z, REGION_LOWER);
   }
   k.blend = 0.035 * z;
   return k;
@@ -251,59 +251,59 @@ animal :: (s: Shape) -> Skeleton {
   k: Skeleton; k.rig = Rig.animal; k.joints = ANIMAL_JOINTS;
   z := s.size; L := s.legs * z; B := s.body * z; g := s.girth * z; h := s.head * z; e := s.ear_size * h; t := s.tail * z; f := s.fluff * z;
   paw := 0.035 * z;
-  k = joint(k, A_PELVIS, -1, fv(0, 0.05 * z + 0.46 * L + paw, -0.22 * B));
-  k = joint(k, A_SPINE, A_PELVIS, fv(0, 0.02 * z, 0.22 * B));
-  k = joint(k, A_CHEST, A_SPINE, fv(0, -0.01 * z, 0.22 * B));
-  k = joint(k, A_NECK, A_CHEST, fv(0, 0.1 * z, 0.1 * z));
-  k = joint(k, A_HEAD, A_NECK, fv(0, 0.1 * z, 0.06 * z));
-  k = joint(k, A_NOSE, A_HEAD, fv(0, -0.03 * h, 0.14 * h * s.snout));
-  k = joint(k, A_L_EYE, A_HEAD, fv(0.037 * h, 0.03 * h, 0.06 * h));
-  k = joint(k, A_R_EYE, A_HEAD, fv(-0.037 * h, 0.03 * h, 0.06 * h));
+  k = rig_joint(k, A_PELVIS, -1, fv(0, 0.05 * z + 0.46 * L + paw, -0.22 * B));
+  k = rig_joint(k, A_SPINE, A_PELVIS, fv(0, 0.02 * z, 0.22 * B));
+  k = rig_joint(k, A_CHEST, A_SPINE, fv(0, -0.01 * z, 0.22 * B));
+  k = rig_joint(k, A_NECK, A_CHEST, fv(0, 0.1 * z, 0.1 * z));
+  k = rig_joint(k, A_HEAD, A_NECK, fv(0, 0.1 * z, 0.06 * z));
+  k = rig_joint(k, A_NOSE, A_HEAD, fv(0, -0.03 * h, 0.14 * h * s.snout));
+  k = rig_joint(k, A_L_EYE, A_HEAD, fv(0.037 * h, 0.03 * h, 0.06 * h));
+  k = rig_joint(k, A_R_EYE, A_HEAD, fv(-0.037 * h, 0.03 * h, 0.06 * h));
   for side: 0..<2 {
     sx: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
     ear := ifx side == 0 then A_L_EAR else A_R_EAR;
-    k = joint(k, ear, A_HEAD, fv(sx * 0.05 * h, 0.06 * h, -0.03 * h));
-    k = joint(k, ear + 1, ear, fv_times(fv_mix(fv(sx * 0.015, 0.085, -0.01), fv(sx * 0.04, -0.07, 0.02), s.ears), e));
+    k = rig_joint(k, ear, A_HEAD, fv(sx * 0.05 * h, 0.06 * h, -0.03 * h));
+    k = rig_joint(k, ear + 1, ear, fv_times(fv_mix(fv(sx * 0.015, 0.085, -0.01), fv(sx * 0.04, -0.07, 0.02), s.ears), e));
     front := ifx side == 0 then A_LF else A_RF;
-    k = joint(k, front, A_CHEST, fv(sx * 0.08 * g, -0.06 * z, 0.02 * z));
-    k = joint(k, front + 1, front, fv(0, -0.2 * L, -0.03 * L));
-    k = joint(k, front + 2, front + 1, fv(0, -0.18 * L, 0.02 * L));
-    k = joint(k, front + 3, front + 2, fv(0, -0.08 * L, 0));
-    k = joint(k, front + 4, front + 3, fv(0, 0, 0.055 * z));
+    k = rig_joint(k, front, A_CHEST, fv(sx * 0.08 * g, -0.06 * z, 0.02 * z));
+    k = rig_joint(k, front + 1, front, fv(0, -0.2 * L, -0.03 * L));
+    k = rig_joint(k, front + 2, front + 1, fv(0, -0.18 * L, 0.02 * L));
+    k = rig_joint(k, front + 3, front + 2, fv(0, -0.08 * L, 0));
+    k = rig_joint(k, front + 4, front + 3, fv(0, 0, 0.055 * z));
     hind := ifx side == 0 then A_LH else A_RH;
-    k = joint(k, hind, A_PELVIS, fv(sx * 0.08 * g, -0.05 * z, 0));
-    k = joint(k, hind + 1, hind, fv(0, -0.18 * L, 0.06 * L));
-    k = joint(k, hind + 2, hind + 1, fv(0, -0.17 * L, -0.1 * L));
-    k = joint(k, hind + 3, hind + 2, fv(0, -0.11 * L, 0.02 * L));
-    k = joint(k, hind + 4, hind + 3, fv(0, 0, 0.055 * z));
+    k = rig_joint(k, hind, A_PELVIS, fv(sx * 0.08 * g, -0.05 * z, 0));
+    k = rig_joint(k, hind + 1, hind, fv(0, -0.18 * L, 0.06 * L));
+    k = rig_joint(k, hind + 2, hind + 1, fv(0, -0.17 * L, -0.1 * L));
+    k = rig_joint(k, hind + 3, hind + 2, fv(0, -0.11 * L, 0.02 * L));
+    k = rig_joint(k, hind + 4, hind + 3, fv(0, 0, 0.055 * z));
   }
-  k = joint(k, A_TAIL, A_PELVIS, fv(0, 0.03 * z, -0.08 * z));
-  k = joint(k, A_TAIL_2, A_TAIL, fv(0, 0.05 * t, -0.1 * t));
-  k = joint(k, A_TAIL_3, A_TAIL_2, fv(0, 0.04 * t, -0.1 * t));
-  k = joint(k, A_TAIL_TIP, A_TAIL_3, fv(0, 0.02 * t, -0.09 * t));
+  k = rig_joint(k, A_TAIL, A_PELVIS, fv(0, 0.03 * z, -0.08 * z));
+  k = rig_joint(k, A_TAIL_2, A_TAIL, fv(0, 0.05 * t, -0.1 * t));
+  k = rig_joint(k, A_TAIL_3, A_TAIL_2, fv(0, 0.04 * t, -0.1 * t));
+  k = rig_joint(k, A_TAIL_TIP, A_TAIL_3, fv(0, 0.02 * t, -0.09 * t));
 
-  k = bone(k, A_PELVIS, A_SPINE, 0.105 * g, 0.115 * g, REGION_BODY);
-  k = bone(k, A_SPINE, A_CHEST, 0.115 * g, 0.125 * g, REGION_BODY);
-  k = bone(k, A_CHEST, A_NECK, 0.1 * g, 0.07 * g, REGION_BODY);
-  k = bone(k, A_NECK, A_HEAD, 0.07 * g, 0.085 * h, REGION_HEAD);
-  k = bone(k, A_HEAD, A_NOSE, 0.075 * h, 0.035 * h, REGION_MUZZLE);
-  k = bone(k, A_NOSE, A_NOSE, 0.022 * h, 0.022 * h, REGION_NOSE);
-  k = bone(k, A_L_EYE, A_L_EYE, 0.016 * h, 0.016 * h, REGION_EYE);
-  k = bone(k, A_R_EYE, A_R_EYE, 0.016 * h, 0.016 * h, REGION_EYE);
-  k = bone(k, A_L_EAR, A_L_EAR_TIP, 0.03 * e, 0.01 * e, REGION_EAR);
-  k = bone(k, A_R_EAR, A_R_EAR_TIP, 0.03 * e, 0.01 * e, REGION_EAR);
+  k = rig_bone(k, A_PELVIS, A_SPINE, 0.105 * g, 0.115 * g, REGION_BODY);
+  k = rig_bone(k, A_SPINE, A_CHEST, 0.115 * g, 0.125 * g, REGION_BODY);
+  k = rig_bone(k, A_CHEST, A_NECK, 0.1 * g, 0.07 * g, REGION_BODY);
+  k = rig_bone(k, A_NECK, A_HEAD, 0.07 * g, 0.085 * h, REGION_HEAD);
+  k = rig_bone(k, A_HEAD, A_NOSE, 0.075 * h, 0.035 * h, REGION_MUZZLE);
+  k = rig_bone(k, A_NOSE, A_NOSE, 0.022 * h, 0.022 * h, REGION_NOSE);
+  k = rig_bone(k, A_L_EYE, A_L_EYE, 0.016 * h, 0.016 * h, REGION_EYE);
+  k = rig_bone(k, A_R_EYE, A_R_EYE, 0.016 * h, 0.016 * h, REGION_EYE);
+  k = rig_bone(k, A_L_EAR, A_L_EAR_TIP, 0.03 * e, 0.01 * e, REGION_EAR);
+  k = rig_bone(k, A_R_EAR, A_R_EAR_TIP, 0.03 * e, 0.01 * e, REGION_EAR);
   if s.tail > 0.05 {
-    k = bone(k, A_TAIL, A_TAIL_2, 0.032 * f, 0.03 * f, REGION_TAIL);
-    k = bone(k, A_TAIL_2, A_TAIL_3, 0.03 * f, 0.025 * f, REGION_TAIL);
-    k = bone(k, A_TAIL_3, A_TAIL_TIP, 0.025 * f, 0.01 * f, REGION_TAIL);
+    k = rig_bone(k, A_TAIL, A_TAIL_2, 0.032 * f, 0.03 * f, REGION_TAIL);
+    k = rig_bone(k, A_TAIL_2, A_TAIL_3, 0.03 * f, 0.025 * f, REGION_TAIL);
+    k = rig_bone(k, A_TAIL_3, A_TAIL_TIP, 0.025 * f, 0.01 * f, REGION_TAIL);
   }
   for leg: 0..<4 {
     top := A_LF + leg * 5;
     hind := leg >= 2;
-    k = bone(k, top, top + 1, ifx hind then 0.072 * g else 0.058 * g, 0.042 * z, REGION_UPPER);
-    k = bone(k, top + 1, top + 2, 0.036 * z, 0.029 * z, REGION_LOWER);
-    k = bone(k, top + 2, top + 3, 0.029 * z, 0.03 * z, REGION_LOWER);
-    k = bone(k, top + 3, top + 4, paw, 0.032 * z, REGION_LOWER);
+    k = rig_bone(k, top, top + 1, ifx hind then 0.072 * g else 0.058 * g, 0.042 * z, REGION_UPPER);
+    k = rig_bone(k, top + 1, top + 2, 0.036 * z, 0.029 * z, REGION_LOWER);
+    k = rig_bone(k, top + 2, top + 3, 0.029 * z, 0.03 * z, REGION_LOWER);
+    k = rig_bone(k, top + 3, top + 4, paw, 0.032 * z, REGION_LOWER);
   }
   k.blend = 0.03 * z;
   return k;

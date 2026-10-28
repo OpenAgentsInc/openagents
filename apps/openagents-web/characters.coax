@@ -2,15 +2,19 @@
 // engine's figures (verse/figure.coax) in a night garden, drawn by
 // characters.wgsl. Two shadow visitors (soft silhouettes, black, fuzzy at
 // the edge and lit only at the rim) and a lit one to compare; tap or click
-// a figure to choose it, then its gait (STAND, WALK, RUN) and its look
-// (SOFT or LIT). Drag turns the view, the wheel zooms.
+// a figure to choose it, then its gait (STAND, WALK, RUN), its look (SOFT
+// or LIT) and an emote (verse/motion.coax: WAVE, BOW, CHEER, SHRUG,
+// DANCE), played over its gait. A motion an agent writes comes in the
+// link: /realm/characters#motion=<the document>; it is checked, and plays
+// on a figure of its rig, or the page says why it was refused. Drag turns
+// the view, the wheel zooms.
 //
 // State lives in the host's memory (a Chars the face keeps), so the dev
 // server can swap this code in while the page runs.
 
 #load "font.coax";
 #load "analytics.coax";
-#load "../../verse/figure.coax";
+#load "../../verse/motion.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -39,7 +43,11 @@ TARGET_Y :: 0.75;      // the height the view turns round
 
 // The buttons.
 BTN_STAND :: 0; BTN_WALK :: 1; BTN_RUN :: 2; BTN_LOOK :: 3;
-BUTTONS :: 4;
+BTN_EMOTE :: 4;        // then one per emote the chosen figure's rig has
+EMOTES :: 6;
+BUTTONS :: BTN_EMOTE + EMOTES;
+MOTIONS :: 16;         // the motion library: the engine's own, then the one from the link
+NOTICE :: 9.0;         // seconds a notice shows
 
 Walker :: struct {
   name: string;
@@ -53,6 +61,8 @@ Walker :: struct {
   angle: f32;              // round the ring, radians
   radius: f32 = RING;
   bound: [4] f32;
+  now: Play;               // the emote playing
+  last: Play;              // the one fading out under it
 }
 
 Chars :: struct {
@@ -69,6 +79,10 @@ Chars :: struct {
   eye: Fv; right: Fv; up: Fv; ahead: Fv; tv: f32 = 0.45;
   plate_n: int; plates: [PLATES] Box; plate_alpha: [PLATES] f32; plate_look: [PLATES] f32;
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool;
+  motions: [MOTIONS] Motion; motion_n: int;
+  linked: int = -1;          // the library's slot for the motion from the link
+  pending: [INBOX] u8; pending_n: int;   // a link's motion, until the cast is built
+  notice: [256] u8; notice_n: int; notice_until: f32; notice_bad: bool;
   inbox: [INBOX] u8;
 }
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
@@ -147,7 +161,12 @@ build :: (c: [] Chars) {
   guest: Shape; guest.coat = fv(0.34, 0.12, 0.08); guest.marks = fv(0.2, 0.17, 0.14); guest.girth = 1.05;
   c[0].figs[2] = walker("A GUEST", guest, Place.{x = 0.8, z = -0.6, yaw = -0.4});
   c[0].fig_n = 3;
+  for i: 0..<3 { c[0].figs[i].now = Play.{}; c[0].figs[i].last = Play.{}; }
+  c[0].motion_n = 0;
+  for i: 0..<PERSON_MOTIONS { if verse_motion_read(c[0].motions[c[0].motion_n..<c[0].motion_n + 1], PERSON_MOTION_TEXT[i]) { c[0].motion_n += 1; } }
+  c[0].linked = -1;
   c[0].built = true;
+  if c[0].pending_n > 0 { take_link(c, cast(string) c[0].pending[0..<c[0].pending_n]); c[0].pending_n = 0; }
 }
 
 set_gait :: (c: [] Chars, i: int, g: Gait) {
@@ -173,10 +192,108 @@ step :: (w: Walker, dt: f32) -> Walker {
   }
   return r;
 }
-pose_of :: (w: Walker, clock: f32) -> Pose {
+gait_pose :: (w: Walker, clock: f32) -> Pose {
   now := verse_figure_gait(w.shape.rig, w.gait, w.phase, clock);
   if w.since >= FADE_GAIT { return now; }
   return verse_figure_blend(verse_figure_gait(w.shape.rig, w.was, w.phase, clock), now, smooth01(w.since / FADE_GAIT));
+}
+// The gait, then the emote fading out, then the one playing, over it.
+pose_of :: (c: [] Chars, w: Walker) -> Pose {
+  p := gait_pose(w, c[0].time);
+  for play: [2] Play.[w.last, w.now] {
+    if play.motion < 0 || play.motion >= c[0].motion_n { continue; }
+    m := c[0].motions[play.motion..<play.motion + 1];
+    if m[0].rig != w.shape.rig { continue; }
+    p = verse_motion_over(m, play, p, c[0].time);
+  }
+  return p;
+}
+
+// ---- emotes
+
+// The library's motions for a rig, in order: which slot is the n-th.
+emote_slot :: (c: [] Chars, rig: Rig, n: int) -> int {
+  k := 0;
+  for i: 0..<c[0].motion_n {
+    if c[0].motions[i].rig != rig { continue; }
+    if k == n { return i; }
+    k += 1;
+  }
+  return -1;
+}
+// Plays motion slot on figure i: the one playing fades out under it. The
+// same loop again stops it.
+emote :: (c: [] Chars, i: int, slot: int) {
+  if i < 0 || i >= c[0].fig_n || slot < 0 || slot >= c[0].motion_n { return; }
+  if c[0].motions[slot].rig != c[0].figs[i].shape.rig { return; }
+  w := c[0].figs[i];
+  now := c[0].time;
+  m := c[0].motions[slot..<slot + 1];
+  if w.now.motion == slot && w.now.stop < 0 && !verse_motion_done(m, w.now, now) && m[0].mode != MODE_ONCE {
+    w.now.stop = now; c[0].figs[i] = w; return;
+  }
+  if w.now.motion >= 0 && w.now.stop < 0 { w.now.stop = now; }
+  w.last = w.now;
+  w.now = Play.{motion = slot, start = now};
+  c[0].figs[i] = w;
+}
+// Ends finished plays.
+settle :: (c: [] Chars, i: int) {
+  w := c[0].figs[i];
+  for k: 0..<2 {
+    play := ifx k == 0 then w.last else w.now;
+    if play.motion < 0 { continue; }
+    if play.motion >= c[0].motion_n || verse_motion_done(c[0].motions[play.motion..<play.motion + 1], play, c[0].time) {
+      if k == 0 { w.last = Play.{}; } else { w.now = Play.{}; }
+    }
+  }
+  c[0].figs[i] = w;
+}
+playing :: (c: [] Chars, i: int, slot: int) -> bool {
+  w := c[0].figs[i];
+  return w.now.motion == slot && w.now.stop < 0;
+}
+say :: (c: [] Chars, a: string, b: string, bad: bool) {
+  n := motion_put(c[0].notice[..], 0, a); n = motion_put(c[0].notice[..], n, b);
+  c[0].notice_n = n; c[0].notice_until = c[0].time + NOTICE; c[0].notice_bad = bad;
+}
+// The link's hash is a motion document, its first space an = if the writer
+// likes (#motion=nod; rig person; ...): it is read into the library's last
+// slot and plays on the chosen figure, or the first of its rig.
+take_link :: (c: [] Chars, hash: string) {
+  key := "motion";
+  if hash.count <= key.count + 1 || hash[0..<key.count] != key || (hash[key.count] != '=' && hash[key.count] != ' ') { return; }
+  doc: [INBOX] u8;
+  n := 0;
+  for ch: hash { if n < INBOX { doc[n] = ch; n += 1; } }
+  doc[key.count] = ' ';
+  text := cast(string) doc[0..<n];
+  slot := ifx c[0].linked >= 0 then c[0].linked else c[0].motion_n;
+  if slot >= MOTIONS { return; }
+  m := c[0].motions[slot..<slot + 1];
+  if !verse_motion_read(m, text) {
+    say(c, "YOUR MOTION WAS REFUSED · ", verse_motion_error(m), true);
+    if c[0].linked < 0 { blank: Motion; m[0] = blank; }
+    else { for i: 0..<c[0].fig_n { if c[0].figs[i].now.motion == slot { c[0].figs[i].now = Play.{}; } if c[0].figs[i].last.motion == slot { c[0].figs[i].last = Play.{}; } } c[0].linked = -1; c[0].motion_n = slot; }
+    return;
+  }
+  if c[0].linked < 0 { c[0].linked = slot; c[0].motion_n = slot + 1; }
+  who := -1;
+  if c[0].figs[c[0].chosen].shape.rig == m[0].rig { who = c[0].chosen; }
+  for i: 0..<c[0].fig_n { if who < 0 && c[0].figs[i].shape.rig == m[0].rig { who = i; } }
+  if who < 0 { say(c, "YOUR MOTION IS FOR A RIG NOT HERE · ", verse_motion_name(m), true); return; }
+  c[0].chosen = who;
+  emote(c, who, slot);
+  say(c, "PLAYING YOUR MOTION · ", verse_motion_name(m), false);
+}
+coaxial_chars_hash :: (c: [] Chars, length: int) #export_c {
+  n := clamp(cast(f32) length, 0, cast(f32) INBOX);
+  count := cast(int) n;
+  if !c[0].built {
+    for i: 0..<count { c[0].pending[i] = c[0].inbox[i]; }
+    c[0].pending_n = count; return;
+  }
+  take_link(c, cast(string) c[0].inbox[0..<count]);
 }
 
 // ---- the view
@@ -221,7 +338,7 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
   c[0].width = width; c[0].height = height; c[0].dpr = hi(dpr, 0.5);
   if c[0].idle > 6 { c[0].yaw += 0.05 * step_dt; }
   if phone(c) && c[0].frames == 1 { c[0].dist = 7.5; }
-  for i: 0..<c[0].fig_n { c[0].figs[i] = step(c[0].figs[i], step_dt); }
+  for i: 0..<c[0].fig_n { c[0].figs[i] = step(c[0].figs[i], step_dt); settle(c, i); }
   view(c);
 
   for i: 0..<u.count { u[i] = 0; }
@@ -236,7 +353,7 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
     w := c[0].figs[i];
     if (i + 1) * FIG_FLOATS > FIGS * FIG_FLOATS { break; }
     bones := u[BONE_AT + i * MAX_PARTS * BONE_FLOATS ..< BONE_AT + (i + 1) * MAX_PARTS * BONE_FLOATS];
-    n := verse_figure_place(w.skel, pose_of(w, c[0].time), w.at, bones, c[0].figs[i].bound[..]);
+    n := verse_figure_place(w.skel, pose_of(c, w), w.at, bones, c[0].figs[i].bound[..]);
     o := FIG_AT + i * FIG_FLOATS;
     b := c[0].figs[i].bound;
     u[o] = b[0]; u[o + 1] = b[1]; u[o + 2] = b[2]; u[o + 3] = b[3];
@@ -256,13 +373,27 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
   vertices = words(out, vertices, "CHARACTERS", m, m + 14 * k, 14 * k, ink_of(k, 1, true));
   w := c[0].figs[c[0].chosen];
   vertices = words(out, vertices, w.name, m, m + 36 * k, 9 * k, ink_of(k, 0.95, false));
-  hint := ifx phone(c) then "TAP A FIGURE · DRAG TO TURN" else "CLICK A FIGURE TO CHOOSE IT · DRAG TO TURN · 1 2 3 GAIT · L LOOK";
+  hint := ifx phone(c) then "TAP A FIGURE · DRAG TO TURN" else "CLICK A FIGURE TO CHOOSE IT · DRAG TO TURN · 1 2 3 GAIT · L LOOK · 4 TO 9 EMOTES";
   vertices = words(out, vertices, hint, m, m + 54 * k, 6.5 * k, ink_of(k, 0.55, false));
-  labels := [BUTTONS] string.["STAND", "WALK", "RUN", ""];
+  if c[0].notice_n > 0 && c[0].time < c[0].notice_until {
+    // on a phone, two lines: what happened, then why
+    note := cast(string) c[0].notice[0..<c[0].notice_n];
+    cut := -1;
+    for i: 0..<note.count - 2 { if cut < 0 && note[i] == ' ' && note[i + 1] == 0xC2 && note[i + 2] == 0xB7 { cut = i; } }
+    room := width - 2 * m;
+    if phone(c) && cut > 0 && cut + 4 < note.count {
+      a := note[0..<cut]; b := note[cut + 4..<note.count];
+      vertices = words(out, vertices, a, m, m + 74 * k, lo(7 * k, room / hi(measure(a, GAP, SPACE, false), 0.001)), ink_of(k, 0.95, !c[0].notice_bad));
+      vertices = words(out, vertices, b, m, m + 88 * k, lo(7 * k, room / hi(measure(b, GAP, SPACE, false), 0.001)), ink_of(k, 0.95, !c[0].notice_bad));
+    } else {
+      vertices = words(out, vertices, note, m, m + 74 * k, lo(7 * k, room / hi(measure(note, GAP, SPACE, false), 0.001)), ink_of(k, 0.95, !c[0].notice_bad));
+    }
+  }
+  labels := [4] string.["STAND", "WALK", "RUN", ""];
   bw := ifx phone(c) then lo(84 * k, (width - 2 * m - 3 * 8 * k) / 4) else 92 * k;
   bh := 34 * k; gap := 8 * k;
   x := (width - (bw * 4 + gap * 3)) * 0.5; y := height - m - bh;
-  for i: 0..<BUTTONS {
+  for i: 0..<BTN_EMOTE {
     b := Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + bh};
     if i == BTN_LOOK {
       label := ifx w.shape.look == LOOK_SOFT then "SOFT" else "LIT";
@@ -273,6 +404,20 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
       vertices = button(c, out, vertices, i, b, labels[i], w.gait == g);
     }
     x += bw + gap;
+  }
+  // the chosen figure's emotes, a row above
+  emotes := 0;
+  for e: 0..<EMOTES { if emote_slot(c, w.shape.rig, e) >= 0 { emotes += 1; } }
+  if emotes > 0 {
+    ew := lo(bw, (width - 2 * m - cast(f32) (emotes - 1) * gap) / cast(f32) emotes);
+    ex := (width - (ew * cast(f32) emotes + gap * cast(f32) (emotes - 1))) * 0.5;
+    ey := y - bh - gap;
+    for e: 0..<emotes {
+      slot := emote_slot(c, w.shape.rig, e);
+      label := ifx slot == c[0].linked then "YOURS" else ifx w.shape.rig == Rig.person && e < PERSON_MOTIONS then PERSON_MOTION_LABELS[e] else verse_motion_name(c[0].motions[slot..<slot + 1]);
+      vertices = button(c, out, vertices, BTN_EMOTE + e, Box.{x0 = ex, y0 = ey, x1 = ex + ew, y1 = ey + bh}, label, playing(c, c[0].chosen, slot));
+      ex += ew + gap;
+    }
   }
   for p: 0..<c[0].plate_n {
     o := PANEL_AT + p * 8; b := c[0].plates[p];
@@ -289,6 +434,9 @@ act :: (c: [] Chars, i: int) {
   if i == BTN_STAND { set_gait(c, c[0].chosen, Gait.stand); }
   else if i == BTN_WALK { set_gait(c, c[0].chosen, Gait.walk); }
   else if i == BTN_RUN { set_gait(c, c[0].chosen, Gait.run); }
+  else if i >= BTN_EMOTE && i < BTN_EMOTE + EMOTES {
+    emote(c, c[0].chosen, emote_slot(c, c[0].figs[c[0].chosen].shape.rig, i - BTN_EMOTE));
+  }
   else if i == BTN_LOOK {
     s := c[0].figs[c[0].chosen].shape;
     s.look = ifx s.look == LOOK_SOFT then LOOK_LIT else LOOK_SOFT;
@@ -342,6 +490,7 @@ coaxial_chars_key :: (c: [] Chars, key: int, mods: int) -> bool #export_c {
   if key == '2' { act(c, BTN_WALK); return true; }
   if key == '3' { act(c, BTN_RUN); return true; }
   if key == 'l' || key == 'L' { act(c, BTN_LOOK); return true; }
+  if key >= '4' && key <= '9' { act(c, BTN_EMOTE + key - '4'); return true; }
   if key == 9 || key == -5 { c[0].chosen = (c[0].chosen + 1) % (ifx c[0].fig_n > 0 then c[0].fig_n else 1); return true; }
   if key == -4 { c[0].chosen = (c[0].chosen + c[0].fig_n - 1) % (ifx c[0].fig_n > 0 then c[0].fig_n else 1); return true; }
   return false;
@@ -352,7 +501,7 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >
   cs: [1] Chars; c := cs[..];
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
-  #assert n > 0 && c[0].fig_n == 3 && u[4] == 3 && u[5] == 4;
+  #assert n > 0 && c[0].fig_n == 3 && u[4] == 3 && u[5] == 4 + PERSON_MOTIONS;
   #assert u[FIG_AT + 7] == 1 && u[FIG_AT + FIG_FLOATS * 2 + 7] == 0 && u[FIG_AT + 16] > 15;
   x0 := c[0].figs[1].at.x;
   c[0].chosen = 1;
@@ -377,4 +526,27 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >
   px := (sx + 1) * 0.5 * 1280; py := (1 - sy) * 0.5 * 800;
   #assert coaxial_chars_pointer(c, px, py, 0, 0, 1) && coaxial_chars_pointer(c, px, py, 2, 0, 1);
   #assert c[0].chosen == 2;
+}
+#test "an emote plays over the gait and fades; a motion from the link plays or says why not" {
+  cs: [1] Chars; c := cs[..];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for i: 0..<12 { c[0].inbox[i] = "motion=bogus"[i]; }
+  coaxial_chars_hash(c, 12);
+  n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert c[0].motion_n == PERSON_MOTIONS && c[0].notice_bad && c[0].shown[BTN_EMOTE + 4];
+  #assert coaxial_chars_key(c, '4', 0) && c[0].figs[0].now.motion == 0;
+  c[0].time += 0.6;
+  w := c[0].figs[0];
+  p := pose_of(c, w);
+  #assert p.turn[P_R_SHOULDER].z < -1.5;
+  c[0].time += 3; settle(c, 0);
+  #assert c[0].figs[0].now.motion == -1;
+  text := "motion=nod; rig person; seconds 1; loop; at 0; head 20 0 0; at 0.5; head -20 0 0";
+  for i: 0..<text.count { c[0].inbox[i] = text[i]; }
+  coaxial_chars_hash(c, text.count);
+  #assert !c[0].notice_bad && c[0].linked == PERSON_MOTIONS && c[0].figs[c[0].chosen].now.motion == PERSON_MOTIONS;
+  bad := "motion nod; rig person; seconds 1; at 0; head 99 0 0";
+  for i: 0..<bad.count { c[0].inbox[i] = bad[i]; }
+  coaxial_chars_hash(c, bad.count);
+  #assert c[0].notice_bad && c[0].linked == -1 && c[0].motion_n == PERSON_MOTIONS;
 }

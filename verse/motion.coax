@@ -1,0 +1,377 @@
+// Verse motions: emotes and other moves as small keyframe documents that an
+// agent can write from a description ("she always spins twice before lying
+// down") and the engine checks, plays and blends over a figure's gait
+// (verse/figure.coax). A motion is text, a statement a line (or separated
+// by ';', so one fits in a link):
+//
+//   motion wave            its name: a-z, 0-9, _ and -, at most 32
+//   rig person             person or animal (figure.coax's joint names)
+//   seconds 2.4            how long, 0.1 to 30
+//   once | loop | hold     after the last key: fade out, start over, or keep the pose
+//   fade 0.25              seconds to blend in and out (0 to 2; 0.25 if left out)
+//   at 0.4                 a key, seconds from the start, each later than the last
+//   right_shoulder 0 0 -150   a joint's pitch, yaw and roll in degrees, under the last key
+//   lift 0 0.1 0           the whole figure moved, metres, under the last key
+//   # anything after a hash is a note
+//
+// Between two keys a joint eases from one turn to the next; a joint is
+// moved only by the keys that name it, so a wave moves the arm and leaves
+// the legs walking. Every turn is checked against its joint's limits
+// (verse_figure_limit) and refused with the line and the allowed range,
+// never bent to fit: the writer gets the reason and tries again.
+//   coax/bin/coax test verse/motion.coax --library
+
+#load "figure.coax";
+
+MAX_KEYS :: 32;
+MAX_ENTRIES :: 256;
+MAX_TEXT :: 8192;
+MOTION_NAME :: 32;
+MOTION_ERROR :: 160;
+LIFT :: -1;            // an entry that moves the whole figure, not a joint
+MODE_ONCE :: 0; MODE_LOOP :: 1; MODE_HOLD :: 2;
+
+MotionEntry :: struct { joint: int; turn: Fv; }
+MotionKey :: struct { at: f32; first: int; count: int; }
+Motion :: struct {
+  ok: bool;
+  name: [MOTION_NAME] u8; name_n: int;
+  rig: Rig;
+  seconds: f32;
+  mode: int;
+  fade: f32 = 0.25;
+  key_n: int; keys: [MAX_KEYS] MotionKey;
+  entry_n: int; entries: [MAX_ENTRIES] MotionEntry;
+  uses: [MAX_JOINTS] bool; lifts: bool;
+  error: [MOTION_ERROR] u8; error_n: int;
+  line: int;   // the line an error is on (from 1); 0 none
+}
+
+verse_motion_name :: (m: [] Motion) -> string #export_c { return cast(string) m[0].name[0..<m[0].name_n]; }
+verse_motion_error :: (m: [] Motion) -> string #export_c { return cast(string) m[0].error[0..<m[0].error_n]; }
+
+// ---- reading
+
+MotionWord :: struct { at: int; end: int; }
+motion_blank :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r'; }
+// The words of text[from..<to], up to out.count of them.
+motion_words :: (text: string, from: int, to: int, out: [] MotionWord) -> int {
+  n := 0; i := from;
+  while i < to {
+    while i < to && motion_blank(text[i]) { i += 1; }
+    if i >= to { break; }
+    s := i;
+    while i < to && !motion_blank(text[i]) { i += 1; }
+    if n < out.count { out[n] = MotionWord.{at = s, end = i}; }
+    n += 1;
+  }
+  return n;
+}
+MotionNumber :: struct { ok: bool; v: f32; }
+// A decimal motion_number: an optional sign, digits, an optional point and digits.
+motion_number :: (s: string) -> MotionNumber {
+  i := 0; sign: f64 = 1; v: f64 = 0; digits := 0;
+  if i < s.count && (s[i] == '-' || s[i] == '+') { if s[i] == '-' { sign = -1; } i += 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { if digits < 9 { v = v * 10 + cast(f64) (s[i] - '0'); } digits += 1; i += 1; }
+  if i < s.count && s[i] == '.' {
+    i += 1; scale: f64 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { if digits < 12 { v += scale * cast(f64) (s[i] - '0'); scale *= 0.1; } digits += 1; i += 1; }
+  }
+  if digits == 0 || i != s.count || digits > 12 { return MotionNumber.{}; }
+  return MotionNumber.{ok = true, v = cast(f32) (sign * v)};
+}
+motion_name_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > MOTION_NAME { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') { return false; } }
+  return true;
+}
+
+motion_put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < buf.count { buf[n] = c; n += 1; } }
+  return n;
+}
+motion_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 0 { return motion_put_int(buf, motion_put(buf, at, "-"), -v); }
+  digits: [20] u8; n := 0; x := v;
+  while true { digits[n] = cast(u8) ('0' + x % 10); n += 1; x = x / 10; if x == 0 || n >= 20 { break; } }
+  r := at;
+  while n > 0 { n -= 1; if r < buf.count { buf[r] = digits[n]; r += 1; } }
+  return r;
+}
+motion_refuse :: (m: [] Motion, line: int, a: string, b: string, c: string) -> bool {
+  m[0].ok = false; m[0].line = line;
+  n := motion_put(m[0].error[..], 0, "line ");
+  n = motion_put_int(m[0].error[..], n, line);
+  n = motion_put(m[0].error[..], n, ": ");
+  n = motion_put(m[0].error[..], n, a); n = motion_put(m[0].error[..], n, b); n = motion_put(m[0].error[..], n, c);
+  m[0].error_n = n;
+  return false;
+}
+motion_degrees :: (r: f32) -> int { return cast(int) floor(r * 180 / PI + 0.5); }
+// "-5..155" for a limit range in radians.
+motion_range :: (buf: [] u8, r: Fv) -> string {
+  n := motion_put_int(buf, 0, motion_degrees(r.x)); n = motion_put(buf, n, ".."); n = motion_put_int(buf, n, motion_degrees(r.y));
+  return cast(string) buf[0..<n];
+}
+
+// Reads and checks a motion; m[0].ok says whether it may play, and if not
+// m[0].error says why, starting with its line.
+verse_motion_read :: (m: [] Motion, text: string) -> bool #export_c {
+  blank: Motion; m[0] = blank;
+  if text.count > MAX_TEXT { return motion_refuse(m, 0, "a motion is at most 8192 bytes", "", ""); }
+  has_name := false; has_rig := false; has_seconds := false;
+  line := 0; i := 0;
+  toks: [8] MotionWord;
+  while i < text.count {
+    line += 1;
+    s := i;
+    while i < text.count && text[i] != '\n' && text[i] != ';' { i += 1; }
+    e := i; i += 1;
+    stop := s; while stop < e && text[stop] != '#' { stop += 1; }
+    n := motion_words(text, s, stop, toks[..]);
+    if n == 0 { continue; }
+    word := text[toks[0].at..<toks[0].end];
+    arg := ifx n > 1 then text[toks[1].at..<toks[1].end] else "";
+    if word == "motion" {
+      if n != 2 || !motion_name_ok(arg) { return motion_refuse(m, line, "motion needs one name of a-z, 0-9, _ and -, at most 32 long", "", ""); }
+      m[0].name_n = motion_put(m[0].name[..], 0, arg); has_name = true;
+    } else if word == "rig" {
+      if n != 2 || (arg != "person" && arg != "animal") { return motion_refuse(m, line, "rig is person or animal", "", ""); }
+      m[0].rig = ifx arg == "animal" then Rig.animal else Rig.person; has_rig = true;
+      if m[0].entry_n > 0 { return motion_refuse(m, line, "rig comes before the keys", "", ""); }
+    } else if word == "seconds" {
+      v := motion_number(arg);
+      if n != 2 || !v.ok || v.v < 0.1 || v.v > 30 { return motion_refuse(m, line, "seconds is a motion_number from 0.1 to 30", "", ""); }
+      m[0].seconds = v.v; has_seconds = true;
+    } else if word == "fade" {
+      v := motion_number(arg);
+      if n != 2 || !v.ok || v.v < 0 || v.v > 2 { return motion_refuse(m, line, "fade is a motion_number of seconds from 0 to 2", "", ""); }
+      m[0].fade = v.v;
+    } else if word == "once" || word == "loop" || word == "hold" {
+      if n != 1 { return motion_refuse(m, line, word, " takes nothing after it", ""); }
+      m[0].mode = ifx word == "loop" then MODE_LOOP else ifx word == "hold" then MODE_HOLD else MODE_ONCE;
+    } else if word == "at" {
+      v := motion_number(arg);
+      if n != 2 || !v.ok { return motion_refuse(m, line, "at needs one time in seconds", "", ""); }
+      if !has_seconds { return motion_refuse(m, line, "seconds comes before the keys", "", ""); }
+      if v.v < 0 || v.v > m[0].seconds { return motion_refuse(m, line, "a key is at 0 to the motion's seconds", "", ""); }
+      if m[0].key_n > 0 && v.v <= m[0].keys[m[0].key_n - 1].at { return motion_refuse(m, line, "each key is later than the last", "", ""); }
+      if m[0].key_n >= MAX_KEYS { return motion_refuse(m, line, "a motion has at most 32 keys", "", ""); }
+      m[0].keys[m[0].key_n] = MotionKey.{at = v.v, first = m[0].entry_n, count = 0}; m[0].key_n += 1;
+    } else {
+      if !has_rig { return motion_refuse(m, line, "rig comes before the keys", "", ""); }
+      if m[0].key_n == 0 { return motion_refuse(m, line, word, " is not under a key (at)", ""); }
+      joint := LIFT;
+      if word != "lift" {
+        joint = verse_figure_joint_named(m[0].rig, word);
+        if joint < 0 { return motion_refuse(m, line, word, " is not a joint of this rig, nor a statement", ""); }
+      }
+      if n != 4 { return motion_refuse(m, line, word, " needs three numbers", ""); }
+      x := motion_number(text[toks[1].at..<toks[1].end]); y := motion_number(text[toks[2].at..<toks[2].end]); z := motion_number(text[toks[3].at..<toks[3].end]);
+      if !x.ok || !y.ok || !z.ok { return motion_refuse(m, line, word, " needs three numbers", ""); }
+      t := fv(x.v, y.v, z.v);
+      if joint == LIFT {
+        if abs(t.x) > 1.5 || abs(t.z) > 1.5 || t.y < -1 || t.y > 1.5 { return motion_refuse(m, line, "lift is at most 1.5 m across and along, from -1 to 1.5 m up", "", ""); }
+      } else {
+        t = fv(x.v * PI / 180, y.v * PI / 180, z.v * PI / 180);
+        l := verse_figure_limit(m[0].rig, joint);
+        buf: [32] u8;
+        if !within(t.x, l.pitch) { return motion_refuse(m, line, word, " pitch is outside ", motion_range(buf[..], l.pitch)); }
+        if !within(t.y, l.yaw) { return motion_refuse(m, line, word, " yaw is outside ", motion_range(buf[..], l.yaw)); }
+        if !within(t.z, l.roll) { return motion_refuse(m, line, word, " roll is outside ", motion_range(buf[..], l.roll)); }
+      }
+      k := m[0].key_n - 1;
+      first := m[0].keys[k].first;
+      for q: first..<m[0].entry_n { if m[0].entries[q].joint == joint { return motion_refuse(m, line, word, " is named twice under one key", ""); } }
+      if m[0].entry_n >= MAX_ENTRIES { return motion_refuse(m, line, "a motion has at most 256 joint lines", "", ""); }
+      m[0].entries[m[0].entry_n] = MotionEntry.{joint = joint, turn = t}; m[0].entry_n += 1;
+      m[0].keys[k].count += 1;
+      if joint == LIFT { m[0].lifts = true; } else { m[0].uses[joint] = true; }
+    }
+  }
+  if !has_name { return motion_refuse(m, line, "a motion starts with its name: motion NAME", "", ""); }
+  if !has_rig { return motion_refuse(m, line, "a motion names its rig: rig person or rig animal", "", ""); }
+  if !has_seconds { return motion_refuse(m, line, "a motion says how long it is: seconds N", "", ""); }
+  if m[0].key_n == 0 || m[0].entry_n == 0 { return motion_refuse(m, line, "a motion needs at least one key with a joint under it", "", ""); }
+  m[0].ok = true;
+  return true;
+}
+
+// ---- playing
+
+// Where joint (or LIFT) is at t seconds into the motion, eased between the
+// keys that name it.
+motion_channel :: (m: [] Motion, joint: int, t: f32) -> Fv {
+  prev := -1; next := -1;
+  for k: 0..<m[0].key_n {
+    key := m[0].keys[k];
+    has := false;
+    for q: key.first..<key.first + key.count { if m[0].entries[q].joint == joint { has = true; } }
+    if !has { continue; }
+    if key.at <= t { prev = k; } else if next < 0 { next = k; }
+  }
+  if prev < 0 && next < 0 { return fv(0, 0, 0); }
+  first := ifx prev >= 0 then prev else next;
+  last := first;
+  for k: 0..<m[0].key_n { for q: m[0].keys[k].first..<m[0].keys[k].first + m[0].keys[k].count { if m[0].entries[q].joint == joint { last = k; } } }
+  a := ifx prev >= 0 then prev else last;
+  b := ifx next >= 0 then next else first;
+  ta := m[0].keys[a].at; tb := m[0].keys[b].at;
+  if m[0].mode == MODE_LOOP {
+    if prev < 0 { ta -= m[0].seconds; }
+    if next < 0 { tb += m[0].seconds; }
+  } else {
+    if prev < 0 { return motion_turn_at(m, b, joint); }
+    if next < 0 { return motion_turn_at(m, a, joint); }
+  }
+  if a == b && tb <= ta { return motion_turn_at(m, a, joint); }
+  w := smooth01((t - ta) / hi(tb - ta, 0.0001));
+  return fv_mix(motion_turn_at(m, a, joint), motion_turn_at(m, b, joint), w);
+}
+motion_turn_at :: (m: [] Motion, k: int, joint: int) -> Fv {
+  key := m[0].keys[k];
+  for q: key.first..<key.first + key.count { if m[0].entries[q].joint == joint { return m[0].entries[q].turn; } }
+  return fv(0, 0, 0);
+}
+
+// A motion playing: when it started and, once asked to, when it began to stop.
+Play :: struct { motion: int = -1; start: f32; stop: f32 = -1; }
+
+// How far into the motion a play is at now (seconds; a loop wraps).
+verse_motion_time :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c {
+  t := hi(0, now - p.start);
+  if m[0].mode == MODE_LOOP { return t - m[0].seconds * floor(t / m[0].seconds); }
+  return lo(t, m[0].seconds);
+}
+// How much of the motion shows now: 0 to 1, fading in from its start and
+// out at its end (once) or from when it was asked to stop.
+verse_motion_weight :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c {
+  if !m[0].ok || p.motion < 0 { return 0; }
+  t := now - p.start;
+  if t < 0 { return 0; }
+  fade := hi(m[0].fade, 0.0001);
+  w := smooth01(t / fade);
+  if m[0].mode == MODE_ONCE { w = lo(w, smooth01((m[0].seconds - t) / fade)); }
+  if p.stop >= 0 { w = lo(w, smooth01(1 - (now - p.stop) / fade)); }
+  return clamp(w, 0, 1);
+}
+// Whether a play has finished: a once past its end, or anything stopped and faded out.
+verse_motion_done :: (m: [] Motion, p: Play, now: f32) -> bool #export_c {
+  if !m[0].ok || p.motion < 0 { return true; }
+  if p.stop >= 0 && now - p.stop >= m[0].fade { return true; }
+  return m[0].mode == MODE_ONCE && now - p.start >= m[0].seconds;
+}
+// The base pose with the motion over it, at weight w (0 the base, 1 the
+// motion), joint by joint, only the joints it names; the result held to
+// every joint's limits.
+verse_motion_apply :: (m: [] Motion, base: Pose, t: f32, w: f32) -> Pose #export_c {
+  r := base;
+  if !m[0].ok || w <= 0 { return r; }
+  k := clamp(w, 0, 1);
+  for j: 0..<MAX_JOINTS {
+    if !m[0].uses[j] { continue; }
+    r.turn[j] = verse_figure_turn_hold(m[0].rig, j, fv_mix(base.turn[j], motion_channel(m, j, t), k));
+  }
+  if m[0].lifts { r.lift = fv_mix(base.lift, motion_channel(m, LIFT, t), k); }
+  return r;
+}
+// A play on top of a pose, at now.
+verse_motion_over :: (m: [] Motion, p: Play, base: Pose, now: f32) -> Pose #export_c {
+  return verse_motion_apply(m, base, verse_motion_time(m, p, now), verse_motion_weight(m, p, now));
+}
+
+// ---- the engine's own motions: the same documents an agent writes.
+
+PERSON_MOTIONS :: 5;
+PERSON_MOTION_TEXT :: [5] string.[
+  "motion wave; rig person; seconds 2.6; once; fade 0.3; at 0; right_shoulder 0 0 -20; right_elbow -10 0 0; at 0.5; right_shoulder -10 0 -150; right_elbow -45 0 0; head 0 0 -8; at 0.85; right_shoulder -10 0 -125; at 1.2; right_shoulder -10 0 -152; at 1.55; right_shoulder -10 0 -125; at 1.9; right_shoulder -10 0 -150; right_elbow -45 0 0; head 0 0 -8; at 2.6; right_shoulder 0 0 -10; right_elbow -10 0 0; head 0 0 0",
+  "motion bow; rig person; seconds 2.4; once; fade 0.3; at 0; spine 0 0 0; chest 0 0 0; neck 0 0 0; hips 0 0 0; at 0.7; spine 40 0 0; chest 18 0 0; neck 18 0 0; hips -8 0 0; left_shoulder 22 0 8; right_shoulder 22 0 -8; at 1.5; spine 40 0 0; chest 18 0 0; neck 18 0 0; hips -8 0 0; at 2.4; spine 0 0 0; chest 0 0 0; neck 0 0 0; hips 0 0 0; left_shoulder 0 0 5; right_shoulder 0 0 -5",
+  "motion cheer; rig person; seconds 2.0; once; fade 0.2; at 0; left_shoulder 0 0 10; right_shoulder 0 0 -10; lift 0 0 0; at 0.35; left_shoulder -10 0 160; right_shoulder -10 0 -160; left_elbow -15 0 0; right_elbow -15 0 0; lift 0 -0.08 0; left_knee 30 0 0; right_knee 30 0 0; at 0.6; lift 0 0.22 0; left_knee 5 0 0; right_knee 5 0 0; at 0.85; lift 0 -0.05 0; left_knee 25 0 0; right_knee 25 0 0; at 1.1; lift 0 0.18 0; left_knee 5 0 0; right_knee 5 0 0; left_shoulder -10 0 165; right_shoulder -10 0 -165; at 1.4; lift 0 0 0; at 2.0; left_shoulder 0 0 8; right_shoulder 0 0 -8; left_elbow -10 0 0; right_elbow -10 0 0; left_knee 0 0 0; right_knee 0 0 0",
+  "motion shrug; rig person; seconds 1.8; once; fade 0.25; at 0; left_shoulder 0 0 5; right_shoulder 0 0 -5; left_elbow -10 0 0; right_elbow -10 0 0; head 0 0 0; at 0.5; left_shoulder -10 30 35; right_shoulder -10 -30 -35; left_elbow -95 0 0; right_elbow -95 0 0; head 0 0 14; chest 0 0 0; at 1.2; left_shoulder -10 30 35; right_shoulder -10 -30 -35; head 0 0 14; at 1.8; left_shoulder 0 0 5; right_shoulder 0 0 -5; left_elbow -10 0 0; right_elbow -10 0 0; head 0 0 0",
+  "motion dance; rig person; seconds 2; loop; fade 0.4; at 0; hips 0 -15 0; chest 0 25 -6; left_shoulder -30 0 120; right_shoulder 20 0 -40; left_elbow -60 0 0; right_elbow -80 0 0; lift 0 -0.04 0; left_knee 25 0 0; right_knee 10 0 0; at 0.5; lift 0 0.02 0; left_knee 5 0 0; right_knee 5 0 0; at 1; hips 0 15 0; chest 0 -25 6; left_shoulder 20 0 40; right_shoulder -30 0 -120; left_elbow -80 0 0; right_elbow -60 0 0; lift 0 -0.04 0; left_knee 10 0 0; right_knee 25 0 0; at 1.5; lift 0 0.02 0; left_knee 5 0 0; right_knee 5 0 0"
+];
+PERSON_MOTION_LABELS :: [5] string.["WAVE", "BOW", "CHEER", "SHRUG", "DANCE"];
+
+// ---- checks
+
+#test "a motion is read, its keys and joints in order" {
+  ms: [1] Motion; m := ms[..];
+  #assert verse_motion_read(m, "motion nod\nrig person\nseconds 1\n# a note\nat 0\n  head 0 0 0\nat 0.5   # half way\n  head 30 0 0\n  lift 0 0.1 0\nat 1\n  head 0 0 0\n");
+  #assert verse_motion_name(m) == "nod" && m[0].key_n == 3 && m[0].entry_n == 4 && m[0].uses[P_HEAD] && m[0].lifts && !m[0].uses[P_NECK];
+  #assert m[0].mode == MODE_ONCE && m[0].seconds == 1 && m[0].fade == 0.25;
+  #assert verse_motion_read(m, "motion x-1; rig animal; seconds 2; loop; at 0; tail 0 30 0");
+  #assert m[0].rig == Rig.animal && m[0].mode == MODE_LOOP;
+}
+#test "every built-in motion reads" {
+  ms: [1] Motion; m := ms[..];
+  for i: 0..<PERSON_MOTIONS { #assert verse_motion_read(m, PERSON_MOTION_TEXT[i]); }
+}
+#test "a motion out of bounds is refused, with its line and the range" {
+  ms: [1] Motion; m := ms[..];
+  #assert !verse_motion_read(m, "motion bad\nrig person\nseconds 1\nat 0\nleft_knee -40 0 0");
+  #assert verse_motion_error(m) == "line 5: left_knee pitch is outside -5..155" && m[0].line == 5;
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 0; elbow 0 0 0");
+  #assert verse_motion_error(m) == "line 5: elbow is not a joint of this rig, nor a statement";
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 0.5; head 0 0 0; at 0.5; head 1 0 0");
+  #assert verse_motion_error(m) == "line 6: each key is later than the last";
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 2; head 0 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; head 0 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 0; head 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 0; head 0 0 x");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 0; head 0 0 0; head 1 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 0; lift 0 3 0");
+  #assert !verse_motion_read(m, "motion Bad; rig person; seconds 1; at 0; head 0 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 40; at 0; head 0 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1");
+  #assert !verse_motion_read(m, "rig person; seconds 1; at 0; head 0 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig cat; seconds 1; at 0; head 0 0 0");
+  #assert !verse_motion_read(m, "motion bad; rig person; seconds 1; at 0; head 0 0 0; at 1; head 0 0 1e9");
+}
+#test "numbers read as decimals and nothing else" {
+  #assert motion_number("12").v == 12 && motion_number("-0.5").v == -0.5 && motion_number("+3.25").v == 3.25 && motion_number(".5").v == 0.5;
+  #assert !motion_number("").ok && !motion_number("-").ok && !motion_number("1.2.3").ok && !motion_number("1e3").ok && !motion_number("nan").ok && !motion_number("12345678901234").ok;
+}
+#test "a joint eases between the keys that name it, and only it moves" {
+  ms: [1] Motion; m := ms[..];
+  #assert verse_motion_read(m, "motion nod; rig person; seconds 2; at 0; head 0 0 0; at 1; neck 10 0 0; at 2; head 40 0 0");
+  base: Pose; base.turn[P_L_KNEE] = fv(0.5, 0, 0);
+  p := verse_motion_apply(m, base, 1, 1);
+  #assert abs(p.turn[P_HEAD].x - 20 * PI / 180) < 0.001 && p.turn[P_L_KNEE].x == 0.5;
+  #assert abs(verse_motion_apply(m, base, 2, 1).turn[P_HEAD].x - 40 * PI / 180) < 0.001;
+  #assert abs(verse_motion_apply(m, base, 1.5, 0.5).turn[P_NECK].x - 5 * PI / 180) < 0.001;
+  #assert verse_motion_apply(m, base, 1, 0).turn[P_HEAD].x == 0;
+}
+#test "a loop wraps from its last key round to its first" {
+  ms: [1] Motion; m := ms[..];
+  #assert verse_motion_read(m, "motion wag; rig animal; seconds 1; loop; at 0.25; tail 0 40 0; at 0.75; tail 0 -40 0");
+  base: Pose;
+  #assert abs(verse_motion_apply(m, base, 0, 1).turn[A_TAIL].y) < 0.001;
+  #assert abs(verse_motion_apply(m, base, 0.5, 1).turn[A_TAIL].y) < 0.001;
+  #assert verse_motion_apply(m, base, 0.25, 1).turn[A_TAIL].y > 0.69;
+  p := Play.{motion = 0, start = 10};
+  #assert abs(verse_motion_time(m, p, 12.5) - 0.5) < 0.001 && !verse_motion_done(m, p, 100);
+}
+#test "a play fades in, out at its end, and out when stopped" {
+  ms: [1] Motion; m := ms[..];
+  #assert verse_motion_read(m, "motion hop; rig person; seconds 2; fade 0.5; at 0; lift 0 0 0; at 1; lift 0 0.3 0; at 2; lift 0 0 0");
+  p := Play.{motion = 0, start = 1};
+  #assert verse_motion_weight(m, p, 1) == 0 && verse_motion_weight(m, p, 1.25) == 0.5 && verse_motion_weight(m, p, 2) == 1;
+  #assert verse_motion_weight(m, p, 2.75) == 0.5 && verse_motion_done(m, p, 3) && !verse_motion_done(m, p, 2.9);
+  base: Pose;
+  #assert abs(verse_motion_over(m, p, base, 2).lift.y - 0.3) < 0.001;
+  q := Play.{motion = 0, start = 0, stop = 1};
+  #assert abs(verse_motion_weight(m, q, 1.25) - 0.5) < 0.001 && verse_motion_done(m, q, 1.5);
+  h := m; h[0].mode = MODE_HOLD;
+  #assert verse_motion_weight(h, p, 50) == 1 && !verse_motion_done(h, p, 50);
+}
+#test "every built-in motion stays inside the limits at every moment" {
+  ms: [1] Motion; m := ms[..];
+  for i: 0..<PERSON_MOTIONS {
+    #assert verse_motion_read(m, PERSON_MOTION_TEXT[i]);
+    for s: 0..<12 {
+      p := verse_motion_apply(m, Pose.{}, m[0].seconds * cast(f32) s / 11, 1);
+      for j: 0..<PERSON_JOINTS { #assert verse_figure_turn_ok(Rig.person, j, p.turn[j]); }
+    }
+  }
+}
