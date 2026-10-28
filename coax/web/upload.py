@@ -11,7 +11,7 @@ api = "https://storage.googleapis.com/storage/v1/b/" + bucket
 up = "https://storage.googleapis.com/upload/storage/v1/b/" + bucket
 auth = {"Authorization": "Bearer " + token}
 types = {".wasm": "application/wasm", ".wgsl": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8",
-         ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
+         ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".jpg": "image/jpeg"}
 
 def call(url, method="GET", body=None, headers={}):
     req = urllib.request.Request(url, data=body, method=method, headers={**auth, **headers})

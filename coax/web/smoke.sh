@@ -127,6 +127,11 @@ for path, (s, h, body) in zip(verse, s_verse):
             for f in sorted(set(re.findall(rb'(?:data-wasm|data-wgsl)="(/[^"]+)"', body))):
                 fs, fh, fb = get(f.decode())
                 check(fs == 200 and (not f.endswith(b".wasm") or fb[:4] == b"\0asm"), f"{path}: {f.decode()} ({fs})")
+        cards = re.findall(rb'<meta (?:property="og:image"|name="twitter:image") content="https://openagents\.com(/[^"]+)">', body)
+        check(len(cards) == 2 and b'name="twitter:card" content="summary_large_image"' in body, f"{path} names its link-preview card")
+# The link-preview card those tags name: a JPEG, served without a script.
+cs, ch, cb = get("/verse/og-verse.jpg")
+check(cs == 200 and ch.get("content-type", "").startswith("image/jpeg") and cb[:3] == b"\xff\xd8\xff", f"/verse/og-verse.jpg is the card ({cs}, {ch.get('content-type')})")
 print(f"smoke {base}{' via ' + via if via else ''}: " + ("passed" if not failed else f"{len(failed)} failed"))
 sys.exit(1 if failed else 0)
 PY

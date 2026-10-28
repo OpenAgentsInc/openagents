@@ -44,13 +44,13 @@ def put(src, rel):
 host_url = put(host, "coaxial/host.js")
 os.makedirs(site, exist_ok=True)
 # Pages at any depth (projects/coax/index.html is /projects/coax): pages, their
-# Markdown twins and icons. Work files, builds and sources stay behind.
+# Markdown twins, icons and link-preview cards (.jpg). Work files, builds and sources stay behind.
 pages = []
 for root, dirs, files in os.walk(app):
     dirs[:] = sorted(d for d in dirs if d not in ("build", "work", "node_modules") and not d.startswith("."))
     for f in sorted(files):
         rel = os.path.relpath(os.path.join(root, f), app)
-        if f == "README.md" or not f.endswith((".html", ".md", ".svg")): continue
+        if f == "README.md" or not f.endswith((".html", ".md", ".svg", ".jpg")): continue
         pages.append(rel)
 for f in pages:
     path = os.path.join(app, f)
