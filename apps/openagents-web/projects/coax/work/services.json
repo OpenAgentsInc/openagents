@@ -1,0 +1,211 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "coax",
+  "initiative": {
+    "slug": "coaxial-services",
+    "title": "Coaxial services: email, print and schedules",
+    "body": "Server-side services for Coaxial sites: email through Resend, scheduled jobs, Coax linked into the API, a Coax PDF writer, and project digests (a daily standup) sent each morning.",
+    "spec": "docs/coaxial-services.md",
+    "labels": [
+      "services"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "svc-digest",
+      "title": "A daily digest by email and on paper",
+      "body": "Everything a project needs to send its standup each morning, laid out by Coax for the page, the email and a printed page.",
+      "parent": "coaxial-services"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "svc-email-resend",
+      "parent": "svc-digest",
+      "title": "Send email from the API service through Resend",
+      "size": "M",
+      "labels": [
+        "services",
+        "email"
+      ],
+      "body": "oa-api sends email through Resend (https://api.resend.com/emails) from `OpenAgents <no-reply@openagents.com>`, with the key from Secret Manager `openagents-resend-api-key` (the same secret the old Rust service used, crates/openagents-web/src/cloud/magic_email.rs before the reset). HTML and plain-text bodies, attachments, an idempotency key per message, retries with backoff, a send log without bodies, and a List-Unsubscribe header. Staging sends only to an allowlist.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A test email with a PDF attachment reaches the owner from staging",
+        "A repeated send with the same idempotency key delivers once",
+        "No key, address list or body appears in logs"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "svc-digest-send"
+      ]
+    },
+    {
+      "slug": "svc-schedules",
+      "parent": "svc-digest",
+      "title": "Morning schedules: Cloud Scheduler calls the API at a local time",
+      "size": "S",
+      "labels": [
+        "services",
+        "schedules"
+      ],
+      "body": "Authenticated scheduled jobs: Cloud Scheduler (time zone America/Chicago, so daylight saving is handled) calls an oa-api job endpoint with an OIDC token; the endpoint refuses anything else. Jobs are idempotent per day, and a missed run can be re-run by hand.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A job set for 7:00 Chicago runs at 7:00 on both sides of the November 1 daylight-saving change in a dry run",
+        "An unauthenticated call to the job endpoint is refused"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "svc-digest-send"
+      ]
+    },
+    {
+      "slug": "svc-coax-in-api",
+      "parent": "svc-digest",
+      "title": "Link Coax into the API service",
+      "size": "M",
+      "labels": [
+        "services",
+        "coax"
+      ],
+      "body": "Coax emits C, and oa-api is C: build Coax modules into the service so server-side layout (the email, the PDF) runs the same Coax code as the page. A small C bridge, the build in the API's Dockerfile, and coax tests in the API's test run.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "oa-api calls a Coax function and its result is checked by a test",
+        "The Docker build compiles the Coax modules from source"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "svc-pdf",
+        "svc-digest-model"
+      ]
+    },
+    {
+      "slug": "svc-pdf",
+      "parent": "svc-digest",
+      "title": "A PDF writer in Coax",
+      "size": "L",
+      "labels": [
+        "services",
+        "coax",
+        "print"
+      ],
+      "body": "Write one-page PDFs from Coax: Filament as vector strokes, small text in Helvetica (a PDF base font with the same widths the pages' sans uses, so layout matches), lines, boxes and checkboxes, US Letter and A4. Bounded output, no external libraries.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/lib/"
+      ],
+      "acceptance": [
+        "A generated PDF passes `qpdf --check` and prints on one page",
+        "Its text is selectable and its strokes stay sharp when zoomed"
+      ],
+      "blocked_by": [
+        "svc-coax-in-api"
+      ],
+      "blocks": [
+        "svc-digest-render"
+      ]
+    },
+    {
+      "slug": "svc-digest-model",
+      "parent": "svc-digest",
+      "title": "A project digest: yesterday, today, blockers, numbers",
+      "size": "M",
+      "labels": [
+        "services",
+        "projects"
+      ],
+      "body": "Assemble a day's digest for any project, public or private: what was done and not done yesterday (from statuses, commits and notes), today's milestones and stretch goals, blockers and decisions waiting, a few analytics deltas, and what agents did and plan. One data shape for the page, the email and the PDF.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "The digest for a fixture project matches a golden file",
+        "Items not done yesterday are carried over or returned to the backlog, never dropped"
+      ],
+      "blocked_by": [
+        "svc-coax-in-api"
+      ],
+      "blocks": [
+        "svc-digest-render"
+      ]
+    },
+    {
+      "slug": "svc-digest-render",
+      "parent": "svc-digest",
+      "title": "The digest laid out for the page, the email and a printed page",
+      "size": "M",
+      "labels": [
+        "services",
+        "print",
+        "email"
+      ],
+      "body": "One Coax layout, three outputs: a section on the project page, an HTML email with a plain-text part, and a one-page PDF in the same fixed order every day, with checkboxes and space for handwriting.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/web/api/",
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "Email, PDF and page show the same sections in the same order",
+        "The PDF never runs past one page; overflow says how much more is on the page"
+      ],
+      "blocked_by": [
+        "svc-pdf",
+        "svc-digest-model"
+      ],
+      "blocks": [
+        "svc-digest-send"
+      ]
+    },
+    {
+      "slug": "svc-digest-send",
+      "parent": "svc-digest",
+      "title": "Send the digest every morning to members",
+      "size": "S",
+      "labels": [
+        "services",
+        "email"
+      ],
+      "body": "A daily job per project that has a digest set: recipients are members only, each can pause with a link, failures show on the project page.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Members get the email with the PDF at the set local time",
+        "A paused member gets nothing; a non-member can never be a recipient"
+      ],
+      "blocked_by": [
+        "svc-email-resend",
+        "svc-schedules",
+        "svc-digest-render"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "svc-sprints",
+      "parent": "svc-digest",
+      "title": "Sprints, backlog, stretch goals and a priority-change log for private projects",
+      "size": "M",
+      "labels": [
+        "services",
+        "projects"
+      ],
+      "body": "Extend openagents.private-project.v1: sprints (goal, dates, who agreed, review and retro notes), an ordered backlog, stretch and carried-over milestones, done-with-evidence, a log of priority changes (what, why, proposed by, agreed by), and a limit on work in progress. Agent keys may add proposals but not change a sprint goal.\n\nDesign: `docs/coaxial-services.md`.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Schema documented and validated on push",
+        "An agent push that changes a sprint goal is refused"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    }
+  ]
+}
