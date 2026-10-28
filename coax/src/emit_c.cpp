@@ -216,6 +216,22 @@ static uint64_t coax_rotl_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u
 static uint64_t coax_rotr_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a>>k)|(a<<((64u-k)&63u)));}
 )COAXRT";
 
+// Uses the named Coax record declared in Types; inserted only when used.
+static const char *WIDE_RUNTIME = R"COAXRT(
+static coax_t_CoaxU64Product coax_mul_wide(uint64_t a,uint64_t b) {
+#if defined(__SIZEOF_INT128__) && !defined(__wasm__)
+  unsigned __int128 p=(unsigned __int128)a*b;
+  return (coax_t_CoaxU64Product){(uint64_t)(p>>64),(uint64_t)p};
+#else
+  uint64_t a0=(uint32_t)a,a1=a>>32,b0=(uint32_t)b,b1=b>>32;
+  uint64_t p00=a0*b0,p01=a0*b1,p10=a1*b0,p11=a1*b1;
+  uint64_t carry=(p00>>32)+(uint32_t)p01+(uint32_t)p10;
+  return (coax_t_CoaxU64Product){p11+(p01>>32)+(p10>>32)+(carry>>32),
+                              (p00&UINT64_C(0xffffffff))|(carry<<32)};
+#endif
+}
+)COAXRT";
+
 namespace {
 
 // A unique, kind-prefixed spelling of a type for generated names.
@@ -338,6 +354,7 @@ struct Emitter {
   std::vector<std::string> temps;           // declarations at the top of the current function
   std::vector<const Expr *> ct_values;      // compile-time aggregates, emitted as static constants
   bool wrapping = false;
+  bool wide = false;
   bool barrier = false;                       // value_barrier is used: emit its helpers
   std::vector<std::vector<const Stmt *>> defers;  // per open block
   std::vector<size_t> loop_scopes;          // defers.size() when each open loop began
@@ -543,6 +560,11 @@ struct Emitter {
           if (e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {
             std::string a=new_temp(c_type(e->args[0]->type)),b=new_temp(c_type(e->args[1]->type));
             return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_bytes_overlap("+a+".data, "+a+".count, "+b+".data, "+b+".count))";
+          }
+          if (e->byte_intrinsic == ByteIntrinsic::mul_wide) {
+            wide=true;
+            std::string a=new_temp("uint64_t"),b=new_temp("uint64_t");
+            return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_mul_wide("+a+", "+b+"))";
           }
           if (e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
             wrapping=true;
@@ -1238,6 +1260,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   if (em.wrapping) s += WRAP_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;
+  if (em.wide) s += WIDE_RUNTIME;
   s += view_helpers();
   if (!em.ct_values.empty()) {
     s += "\n/* Values computed at compile time */\n";

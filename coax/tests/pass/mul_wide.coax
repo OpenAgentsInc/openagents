@@ -1,0 +1,3 @@
+#import "Basic";
+P :: #run mul_wide(cast(u64)18446744073709551615, cast(u64)18446744073709551615);
+main :: () { print("% %\n",P.hi,P.lo); }

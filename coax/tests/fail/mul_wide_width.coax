@@ -1,0 +1,2 @@
+// expect: E0378
+main :: () { product:=mul_wide(cast(u32)1,cast(u64)2); }

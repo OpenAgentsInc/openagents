@@ -197,7 +197,7 @@ CK_builtin_type :: (name:string)->int {
   ids:=[14] int.[11,11,8,9,10,12,13,14,15,15,6,7,2,3];for x,i:names {if x==name {return ids[i];}}return CK_NONE;
 }
 CK_intrinsic :: (name:string)->u32 #export_c {names:=[9] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
-CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[11] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
 #forall "value_barrier takes a u32 or a u64 and returns its type" variant:0..<6 {
  nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
@@ -237,6 +237,27 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[11] string.["bytes_ov
   if v==8 {#assert errors[0].code=="E0378" && errors[0].message=="wrapping operand widths must match";}
   if v==5 || v==9 {#assert errors[0].code!="E0378";}
   if v==6 || v==7 {#assert errors[0].code=="E0378" && errors[0].message=="wrong byte intrinsic argument count";}
+}
+#forall "mul_wide admits two u64 values and returns its named pair" variant:0..<12 {
+ nodes:[16]CK_Node;types:[17]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=5};
+ nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="CoaxU64Product",type=16};types[16]=CK_Type.{kind=CK_Kind.struct_,name="CoaxU64Product",size=16,alignment=8,decl=5};
+ arg:=[12]int.[15,14,11,6,15,15,15,15,15,15,15,2];
+ CK_declare(c,"a",arg[variant],CK_Loc.{},"");CK_declare(c,"b",ifx variant==8 then 14 else 15,CK_Loc.{},"");
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="mul_wide",head=3,tail=4};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="a",next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="b"};
+ if variant==4 {nodes[3].name="missing";}if variant==5 {nodes[4].name="missing";}
+ if variant==6 {nodes[2].head=0;nodes[2].tail=0;}
+ if variant==7 {nodes[4].next=6;nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};nodes[2].tail=6;}
+ if variant==9 {nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=7,next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=9};}
+ if variant==10 {nodes[1].head=0;}
+ t:=CK_call(c,2,CK_Hint.{});
+ #assert CK_byte_intrinsic("mul_wide")==12 && nodes[2].byte_intrinsic==12;
+ if variant==0 || variant==9 {#assert t==16 && state[0].error_count==0;}
+ else {#assert t==0 && state[0].error_count==1;}
+ if variant==1 || variant==2 || variant==3 || variant==8 || variant==11 {#assert errors[0].code=="E0378" && errors[0].message=="mul_wide takes two u64 operands";}
+ if variant==10 {#assert errors[0].code=="E0378" && errors[0].message=="mul_wide result type is unavailable";}
 }
 CK_c_keyword :: (name:string)->bool #export_c {
   names:=[76] string.["auto","break","case","char","const","continue","default","do","double","else","enum","extern","float","for","goto","if","inline","int","long","register","restrict","return","short","signed","sizeof","static","struct","switch","typedef","union","unsigned","void","volatile","while","bool","true","false","class","new","delete","this","template","namespace","public","private","protected","operator","virtual","friend","typename","using","nullptr","explicit","mutable","throw","try","catch","asm","export","module","requires","concept","alignas","alignof","noexcept","constexpr","decltype","static_assert","thread_local","errno","NULL","_Bool","_Alignof","_Atomic","_Complex","_Imaginary"];
@@ -923,6 +944,15 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
   if byte!=0 {
     c.nodes[id].byte_intrinsic=byte;n:=1;if byte==1 || byte>=7 {n=2;}
     if count!=n {CK_error(c,e.loc,"E0378","wrong byte intrinsic argument count","");return CK_NONE;}
+    if byte==12 {
+      a:=e.head;while a!=0 {
+        t:=CK_value(c,a,CK_Hint.{type=15});if t==0 {return 0;}
+        if t!=15 {CK_error(c,e.loc,"E0378","mul_wide takes two u64 operands","");return 0;}a=c.nodes[a].next;
+      }
+      result:=CK_find(c,CK_Tag.struct_,"CoaxU64Product");
+      if result==0 {CK_error(c,e.loc,"E0378","mul_wide result type is unavailable","");return 0;}
+      return c.nodes[result].type;
+    }
     if byte>=7 {
       t:=CK_value(c,e.head,want);if t==CK_NONE {return CK_NONE;}
       if t!=14 && t!=15 {CK_error(c,e.loc,"E0378","wrapping operations take matching u32 or u64 operands","");return CK_NONE;}

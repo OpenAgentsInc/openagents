@@ -479,6 +479,11 @@ struct Evaluator {
           if(e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {err(e->loc,"E0404","runtime storage overlap cannot execute at compile time");return {};}
           Value a=expr(e->args[0],frame,allow_calls),r;r.type=e->type;
           if(e->byte_intrinsic == ByteIntrinsic::value_barrier){r.bits=a.bits;return r;}
+          if(e->byte_intrinsic == ByteIntrinsic::mul_wide) {
+            Value b=expr(e->args[1],frame,allow_calls);
+            unsigned __int128 product=(unsigned __int128)a.bits*b.bits;
+            r=zero(e->type,e->loc);(*r.agg)[0].bits=(uint64_t)(product>>64);(*r.agg)[1].bits=(uint64_t)product;return r;
+          }
           if(e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
             Value b=expr(e->args[1],frame,allow_calls);
             unsigned width=e->type==&T_U32?32:64,k=(unsigned)(b.bits&(width-1));

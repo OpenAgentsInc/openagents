@@ -217,6 +217,36 @@ PS_list_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int,close
  nodes[2]=PS_Node.{kind=PS_Tag.expr_call,name="type_info",d=3};
  PS_meta_types(nodes[..],state[..],out[..],0);#assert state[0].used==1;
 }
+#forall "wide product schema is injected once for a call or named result" variant:0..<5 {
+ nodes:[32]PS_Node;state:=[1]PS_State.[PS_State.{used=3}];out:[256]u8;
+ nodes[1]=PS_Node.{kind=PS_Tag.decl_file};
+ nodes[2]=PS_Node.{kind=PS_Tag.expr_call,name="mul_wide"};nodes[3]=nodes[2];
+ if variant==1 {nodes[2]=PS_Node.{kind=PS_Tag.type_named,name="CoaxU64Product"};nodes[3].name="other";}
+ if variant==2 {nodes[2].name="other";nodes[3].name="other";}
+ if variant==3 {nodes[2].kind=PS_Tag.expr_ident;nodes[3].kind=PS_Tag.expr_ident;}
+ if variant==4 {state[0].used=2;nodes[2].name="other";}
+ PS_wide_type(nodes[..],state[..],out[..],1);
+ if variant<2 {
+  d:=nodes[1].head;#assert nodes[d].kind==PS_Tag.decl_struct_ && nodes[d].name=="CoaxU64Product";
+  hi:=nodes[d].head;lo:=nodes[hi].next;
+  #assert nodes[hi].name=="hi" && nodes[lo].name=="lo" && nodes[lo].next==0;
+  #assert nodes[nodes[hi].a].name=="u64" && nodes[nodes[lo].a].name=="u64";
+  #assert state[0].used==8 && nodes[d].next==0 && state[0].code=="";
+ } else {#assert state[0].used==(ifx variant==4 then 2 else 3) && nodes[1].head==0;}
+}
+#test "wide schema scans the first used node and ignores stale spare nodes" {
+ nodes:[16]PS_Node;state:=[1]PS_State.[PS_State.{used=1}];out:[256]u8;
+ nodes[1]=PS_Node.{kind=PS_Tag.expr_call,name="mul_wide"};
+ PS_wide_type(nodes[..],state[..],out[..],0);
+ #assert state[0].used==6 && nodes[nodes[0].head].name=="CoaxU64Product";
+}
+#test "normal parsing publishes the wide result schema beside the source declarations" {
+ tokens:=[10]PS_Token.[PS_Token.{kind=1,text="p"},PS_Token.{kind=17},PS_Token.{kind=1,text="mul_wide"},PS_Token.{kind=8},PS_Token.{kind=3,value=1},PS_Token.{kind=14},PS_Token.{kind=3,value=2},PS_Token.{kind=9},PS_Token.{kind=15},PS_Token.{}];
+ nodes:[64]PS_Node;state:[1]PS_State;out:[256]u8;
+ parsed:=PS_parse("",tokens[..],nodes[..],state[..],out[..]);
+ #assert parsed.ok && state[0].code=="";
+ d:=nodes[nodes[1].head].next;#assert d!=0 && nodes[d].kind==PS_Tag.decl_struct_ && nodes[d].name=="CoaxU64Product";
+}
 PS_meta_kind :: (name:string)->int {
  if name=="type_info" {return 1;}if name=="field_info" {return 2;}if name=="enum_info" {return 3;}return 0;
 }
@@ -239,6 +269,15 @@ PS_meta_types :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) {
    enames:=[6]string.["schema_version","index","name","value_bits","bits","is_signed"];
    etypes:=[6]string.["u32","int","string","u64","int","bool"];
    PS_meta_record(n,s,out,root,n[i].loc,"CoaxEnumInfo",enames[..],etypes[..]);return;
+  }
+ }
+}
+
+PS_wide_type :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) {
+ for i:1..<s[0].used+1 {
+  if (n[i].kind==PS_Tag.expr_call && n[i].name=="mul_wide") || (n[i].kind==PS_Tag.type_named && n[i].name=="CoaxU64Product") {
+   names:=[2]string.["hi","lo"];types:=[2]string.["u64","u64"];
+   PS_meta_record(n,s,out,root,n[i].loc,"CoaxU64Product",names[..],types[..]);return;
   }
  }
 }
@@ -457,7 +496,7 @@ PS_parse :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->
     else {PS_fail(s,out,v.loc,"E0213","expected '#import' or a declaration 'name :: ...' at the top level","");break;}
     PS_link(n,root,id);
   }
-  if s[0].code=="" {PS_meta_types(n,s,out,root);}
+  if s[0].code=="" {PS_meta_types(n,s,out,root);PS_wide_type(n,s,out,root);}
   return PS_Result.{ok=s[0].code=="",root=root};
 }
 // Source import syntax/admission belongs to the parser; native code reads files.

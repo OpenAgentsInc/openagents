@@ -1,7 +1,7 @@
 # Appendix A. Keywords, directives, types and current status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.15.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.16.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -85,6 +85,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `bytes_overlap(a, b)` | Whether two byte views or strings share memory | works | — |
 | `add_wrap(a, b)` `sub_wrap(a, b)` `mul_wrap(a, b)` | Matching u32/u64 arithmetic modulo the word width, including checked and compile-time execution | works | 0.15.0 |
 | `rotl(a, count)` `rotr(a, count)` | Matching u32/u64 rotation; count reduced modulo the word width | works | 0.15.0 |
+| `mul_wide(a, b)` | Two u64 operands produce CoaxU64Product with hi/lo halves; native128-bit and portable wasm32 lowering | works | 0.16.0 |
 | `value_barrier(x)` | u32/u64 identity opaque to native optimization; compiler identity; backend-specific evidence is required for constant-time claims | works | — |
 
 ## Conversions

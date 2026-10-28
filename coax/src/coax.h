@@ -207,7 +207,7 @@ enum class ExprKind : uint8_t {
 enum class Intrinsic : uint8_t { none, sin, cos, tan, exp, log, sqrt, floor, abs, pow };
 Intrinsic find_intrinsic(Str name);
 
-enum class ByteIntrinsic : uint8_t { none, bytes_overlap, f32_from_bits, f64_from_bits, f32_bits, f64_bits, value_barrier, add_wrap, sub_wrap, mul_wrap, rotl, rotr };
+enum class ByteIntrinsic : uint8_t { none, bytes_overlap, f32_from_bits, f64_from_bits, f32_bits, f64_bits, value_barrier, add_wrap, sub_wrap, mul_wrap, rotl, rotr, mul_wide };
 ByteIntrinsic find_byte_intrinsic(Str name);
 
 struct FieldInit {

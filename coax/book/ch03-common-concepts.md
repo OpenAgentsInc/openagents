@@ -1305,6 +1305,23 @@ The same file declares its sizes as top-level constants, such as
 `NODES :: 256;`, and walks its buffers with the same `while` and `for`
 loops you've seen in this chapter.
 
+## Keeping both halves of a product
+
+Coax0.16.0 adds `mul_wide` for two64-bit unsigned words:
+
+```coax
+product := mul_wide(cast(u64)18446744073709551615, cast(u64)2);
+// product.hi == 1; product.lo == 18446744073709551614
+```
+
+The result is a `CoaxU64Product` with named `hi` and `lo` fields. Ordinary
+multiplication retains its existing overflow rules. Use this primitive when
+you need the exact two-word product, including during `#run`; it does not
+introduce a general128-bit integer type. Arguments run once, left to right.
+The native backend uses128-bit arithmetic and wasm32 combines four smaller
+products. Platform code generation and cryptographic constant-time assurance
+remain separate questions.
+
 ## Summary
 
 That was a lot of ground. You can now declare variables in each of the

@@ -1,0 +1,6 @@
+#import "Basic";
+// The two halves of (2^64-1) *2, without losing the high word.
+main :: () {
+  product := mul_wide(cast(u64)18446744073709551615, cast(u64)2);
+  print("hi=% lo=%\n", product.hi, product.lo);
+}

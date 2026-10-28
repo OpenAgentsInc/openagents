@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.15.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.16.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -450,6 +450,21 @@ width and reduce the count modulo that width. A zero or full-width count
 returns `a`; there is no shift-by-width undefined behavior. Operands execute
 once, left to right. These CPU intrinsics lower to C11 and wasm32; the Metal
 scalar profile continues to reject integer/storage intrinsics.
+
+`mul_wide(a, b)` takes two `u64` operands and returns the compiler-owned
+`CoaxU64Product` record (`hi:u64`, then `lo:u64`). It represents the exact
+128-bit unsigned product as two64-bit halves, in both checked and wrapping
+profiles and under `#run`. This does not add general128-bit values or tuple
+return syntax. Literals are admitted with the usual u64 range checks;
+other operand widths are refused. Arguments execute once, left to right.
+The named result schema is available when the type or intrinsic is used;
+conflicting source definitions are refused. Its C ABI is a16-byte record of
+two u64 fields. Native targets with128-bit C arithmetic use that operation;
+wasm32 uses four32-bit partial products and explicit carries. Neither path
+allocates, and unused programs gain no helper or result declaration. Metal
+continues to refuse integer/storage intrinsics. This local record layout is
+not a wire format; interchange still uses explicitly versioned schemas.
+
 
 `value_barrier(x)` takes a `u32` or a `u64` and returns it unchanged, but the
 optimizer cannot see through it: it cannot learn that the result is 0 or all
