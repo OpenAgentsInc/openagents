@@ -110,6 +110,9 @@
     ],
     "haunt": [
       "openagents/metareal/haunt/v1alpha1/haunt.proto"
+    ],
+    "voice": [
+      "openagents/voice/v1alpha1/voice.proto"
     ]
   },
   "profile_namespaces": {
@@ -171,6 +174,10 @@
     ],
     "haunt": [
       "openagents.metareal.haunt."
+    ],
+    "voice": [
+      "openagents.voice.",
+      "openagents.options."
     ]
   }
 }

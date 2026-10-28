@@ -1,0 +1,372 @@
+syntax = "proto3";
+package openagents.voice.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Coax-native voice (docs/voice/coax-native-voice.md). Two halves:
+//
+// 1. Primitives shared by every speaker: players, NPCs, agents, narrators and
+//    films. A new character is data (a VoiceProfile, a Speaker and a Route),
+//    never a new code path.
+// 2. The voice wire: one Frame per WebSocket binary message between a client
+//    (the phone, the web app, the dev console) and the voice host. The voice
+//    host is the only party that talks to a speech provider; clients never
+//    see provider credentials.
+//
+// Audio is mono, signed 16-bit little-endian PCM unless a frame names another
+// codec. Sample counts are per channel. A media epoch increases whenever
+// playback is cut (barge-in, cancel), so late audio from an older epoch is
+// dropped instead of played.
+
+// ---------------------------------------------------------------- primitives
+
+// A named, versioned voice. A published revision never changes; a new sound
+// is a new revision.
+message VoiceProfile {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_DOCUMENT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 1024;
+  optional string id = 1 [(openagents.options.v1alpha1.required_value) = true,
+                          (openagents.options.v1alpha1.max_bytes) = 64,
+                          (openagents.options.v1alpha1.grammar) = "nonempty-no-nul"];
+  optional uint32 revision = 2 [(openagents.options.v1alpha1.required_value) = true];
+  // The provider's voice name, e.g. "en-US-Chirp3-HD-Charon".
+  optional string provider_voice = 3 [(openagents.options.v1alpha1.max_bytes) = 96];
+  // BCP-47, e.g. "en-US".
+  optional string language = 4 [(openagents.options.v1alpha1.max_bytes) = 16];
+  // 0.25 to 2.0; omitted means 1.0.
+  optional float speaking_rate = 5;
+  // Semitones, -20 to 20.
+  optional float pitch = 6 [(openagents.options.v1alpha1.unit) = "semitone"];
+  // -96 to 16.
+  optional float volume_gain_db = 7 [(openagents.options.v1alpha1.unit) = "dB"];
+  // A short direction note for people choosing voices; never sent to a model
+  // as an instruction.
+  optional string style = 8 [(openagents.options.v1alpha1.max_bytes) = 160];
+}
+
+// The profiles a world, app or account may use.
+message VoiceCatalog {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_DOCUMENT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 65536;
+  repeated VoiceProfile profiles = 1 [(openagents.options.v1alpha1.max_count) = 64];
+}
+
+enum SpeakerRole {
+  SPEAKER_ROLE_UNSPECIFIED = 0;
+  SPEAKER_ROLE_PLAYER = 1;
+  SPEAKER_ROLE_NPC = 2;
+  SPEAKER_ROLE_AGENT = 3;
+  SPEAKER_ROLE_NARRATOR = 4;
+}
+
+// Anything that speaks or listens.
+message Speaker {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RUNTIME;
+  option (openagents.options.v1alpha1.max_message_bytes) = 512;
+  // A player's public key, an NPC id or an agent id.
+  optional string id = 1 [(openagents.options.v1alpha1.required_value) = true,
+                          (openagents.options.v1alpha1.max_bytes) = 128,
+                          (openagents.options.v1alpha1.grammar) = "nonempty-no-nul"];
+  SpeakerRole role = 2;
+  optional string profile = 3 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint32 profile_revision = 4;
+  // The world entity the voice comes from. Empty means a flat voice.
+  optional string entity = 5 [(openagents.options.v1alpha1.max_bytes) = 128];
+}
+
+// Something a speaker says.
+message Utterance {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RUNTIME;
+  option (openagents.options.v1alpha1.max_message_bytes) = 1024;
+  optional string id = 1 [(openagents.options.v1alpha1.required_value) = true,
+                          (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string speaker = 2 [(openagents.options.v1alpha1.max_bytes) = 128];
+  // At most 600 bytes, the same bound as an NPC reply.
+  optional string text = 3 [(openagents.options.v1alpha1.max_bytes) = 600];
+  // Higher interrupts lower.
+  optional uint32 priority = 4;
+  optional bool interruptible = 5;
+  optional bool spatial = 6;
+  // Render ahead and cache instead of speaking live.
+  optional bool batch = 7;
+}
+
+// Audio made for an utterance. The key is SHA-256 over the profile id,
+// revision and text, so the same line is never synthesized twice.
+message Render {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RUNTIME;
+  option (openagents.options.v1alpha1.max_message_bytes) = 256;
+  optional bytes key = 1 [(openagents.options.v1alpha1.exact_bytes) = 32];
+  optional string utterance = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint32 sample_rate = 3 [(openagents.options.v1alpha1.unit) = "Hz"];
+  optional uint64 samples = 4;
+}
+
+enum TurnPhase {
+  TURN_PHASE_UNSPECIFIED = 0;
+  TURN_PHASE_STARTED = 1;
+  TURN_PHASE_PARTIAL = 2;
+  TURN_PHASE_FINAL = 3;
+  TURN_PHASE_INTERRUPTED = 4;
+  TURN_PHASE_ENDED = 5;
+}
+
+// What happened in a turn.
+message TurnEvent {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RUNTIME;
+  option (openagents.options.v1alpha1.max_message_bytes) = 1024;
+  optional string turn = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string speaker = 2 [(openagents.options.v1alpha1.max_bytes) = 128];
+  TurnPhase phase = 3;
+  optional string text = 4 [(openagents.options.v1alpha1.max_bytes) = 600];
+  // For TURN_PHASE_INTERRUPTED: how much of the reply had been played.
+  optional uint64 played_samples = 5;
+  optional uint64 media_epoch = 6;
+}
+
+// Where a final transcript goes. Chosen by explicit binding (whose floor it
+// is, who the speaker faces), never by reading the words.
+message Route {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RUNTIME;
+  option (openagents.options.v1alpha1.max_message_bytes) = 256;
+  optional string turn = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  // An agent id, an NPC id, or "players".
+  optional string target = 2 [(openagents.options.v1alpha1.max_bytes) = 128];
+  // "floor", "facing", "default". Never parsed from speech.
+  optional string reason = 3 [(openagents.options.v1alpha1.max_bytes) = 32];
+}
+
+// ---------------------------------------------------------------- the wire
+
+enum Codec {
+  CODEC_UNSPECIFIED = 0;
+  CODEC_PCM_S16LE = 1;
+  CODEC_OPUS = 2;  // Reserved for player voice (decision 5); not sent yet.
+}
+
+enum Client {
+  CLIENT_UNSPECIFIED = 0;
+  CLIENT_IOS = 1;
+  CLIENT_WEB = 2;
+  CLIENT_DEV = 3;
+}
+
+// First frame from a client.
+message Hello {
+  optional uint32 protocol = 1 [(openagents.options.v1alpha1.required_value) = true];
+  Client client = 2;
+  Speaker speaker = 3;
+  // The agent, NPC or "players" the client's turns go to by default.
+  optional string route = 4 [(openagents.options.v1alpha1.max_bytes) = 128];
+  // What the client sends and wants back.
+  optional uint32 input_sample_rate = 5 [(openagents.options.v1alpha1.unit) = "Hz"];
+  optional uint32 output_sample_rate = 6 [(openagents.options.v1alpha1.unit) = "Hz"];
+  Codec codec = 7;
+  // The voice the client's replies should use.
+  optional string profile = 8 [(openagents.options.v1alpha1.max_bytes) = 64];
+  // Opaque session credential; the voice host checks it. Never logged.
+  optional string token = 9 [(openagents.options.v1alpha1.max_bytes) = 256];
+  // Send this client every frame's FrameFeatures and FrameDecision (for
+  // the dev console, a decider, or recording a trace).
+  optional bool observe = 10;
+}
+
+// The voice host's answer to Hello.
+message Welcome {
+  optional uint32 protocol = 1;
+  optional string session = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint32 input_sample_rate = 3 [(openagents.options.v1alpha1.unit) = "Hz"];
+  optional uint32 output_sample_rate = 4 [(openagents.options.v1alpha1.unit) = "Hz"];
+  // Which speech provider serves this session: "google" or "local".
+  optional string provider = 5 [(openagents.options.v1alpha1.max_bytes) = 32];
+  Meter meter = 6;
+  // The longest single turn the host accepts.
+  optional uint32 max_turn_ms = 7 [(openagents.options.v1alpha1.unit) = "ms"];
+}
+
+// A chunk of audio, either direction.
+message Audio {
+  optional string turn = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint32 sequence = 2;
+  optional uint32 sample_rate = 3 [(openagents.options.v1alpha1.unit) = "Hz"];
+  Codec codec = 4;
+  // At most 200 ms of 24 kHz s16 audio.
+  optional bytes data = 5 [(openagents.options.v1alpha1.max_bytes) = 9600];
+  optional uint64 media_epoch = 6;
+  // Downlink only: which utterance this audio speaks.
+  optional string utterance = 7 [(openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+enum ControlKind {
+  CONTROL_KIND_UNSPECIFIED = 0;
+  // Client: speech began (voice.coax decided); uplink audio for this turn follows.
+  CONTROL_KIND_TURN_START = 1;
+  // Client: the turn is over (voice.coax decided); finalize the transcript now.
+  CONTROL_KIND_TURN_END = 2;
+  // Client: the person talked over playback; stop sending reply audio.
+  CONTROL_KIND_BARGE_IN = 3;
+  // Client: how far playback has got, for interruption accounting.
+  CONTROL_KIND_PLAYBACK = 4;
+  // Either: drop the current turn.
+  CONTROL_KIND_CANCEL = 5;
+  CONTROL_KIND_PING = 6;
+  CONTROL_KIND_PONG = 7;
+  // Host: an utterance starts (Speech) or has been fully sent.
+  CONTROL_KIND_SPEECH_END = 8;
+}
+
+message Control {
+  ControlKind kind = 1;
+  optional string turn = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint64 played_samples = 3;
+  optional uint64 media_epoch = 4;
+  optional string utterance = 5 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint64 at_ms = 6 [(openagents.options.v1alpha1.unit) = "ms"];
+}
+
+// Host: an utterance is about to be spoken; its Audio frames follow.
+message Speech {
+  Utterance utterance = 1;
+  Speaker speaker = 2;
+  optional uint32 sample_rate = 3 [(openagents.options.v1alpha1.unit) = "Hz"];
+  optional uint64 media_epoch = 4;
+  // In reply to which turn.
+  optional string turn = 5 [(openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// What speech has cost this account. voice-meter.coax is the authority;
+// this is its report.
+message Meter {
+  optional uint64 recognized_ms = 1 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional uint64 synthesized_chars = 2;
+  optional uint64 free_ms_left = 3 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional uint64 free_chars_left = 4;
+  // Millisatoshis owed beyond the free tier.
+  optional uint64 owed_msat = 5 [(openagents.options.v1alpha1.unit) = "msat"];
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_PROTOCOL = 1;      // malformed or out-of-order frame
+  ERROR_CODE_UNAUTHORIZED = 2;  // bad token
+  ERROR_CODE_LIMIT = 3;         // free tier or budget exhausted
+  ERROR_CODE_PROVIDER = 4;      // the speech provider failed
+  ERROR_CODE_TOO_LONG = 5;      // a turn exceeded max_turn_ms
+  ERROR_CODE_INTERNAL = 6;
+}
+
+message Error {
+  ErrorCode code = 1;
+  optional string message = 2 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional string turn = 3 [(openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// ---------------------------------------------------------------- frame decisions
+//
+// Every 20 ms frame, in either direction, can be observed and steered. The
+// client and the voice host compute FrameFeatures for each frame with
+// voice.coax. A decider (voice.coax's own policy, or a decision model reached
+// through the Decisions API) answers with a FrameDecision for some later
+// frame. A decision is never awaited: audio keeps flowing under the last
+// decision until a new one arrives, and a decision that comes in after its
+// deadline is dropped. So a slow or absent decider can only fail to steer,
+// never stall audio.
+
+enum Stream {
+  STREAM_UNSPECIFIED = 0;
+  STREAM_UPLINK = 1;    // what the speaker says
+  STREAM_DOWNLINK = 2;  // what the speaker hears
+}
+
+enum TurnState {
+  TURN_STATE_UNSPECIFIED = 0;
+  TURN_STATE_IDLE = 1;
+  TURN_STATE_SPEAKING = 2;
+  TURN_STATE_TRAILING = 3;   // silence after speech, end of turn not yet decided
+  TURN_STATE_ENDED = 4;
+}
+
+enum PlaybackState {
+  PLAYBACK_STATE_UNSPECIFIED = 0;
+  PLAYBACK_STATE_SILENT = 1;
+  PLAYBACK_STATE_PLAYING = 2;
+  PLAYBACK_STATE_DUCKED = 3;
+  PLAYBACK_STATE_PAUSED = 4;
+}
+
+// What voice.coax measured on one frame. Pure measurements; no words.
+message FrameFeatures {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_TELEMETRY;
+  option (openagents.options.v1alpha1.max_message_bytes) = 256;
+  Stream stream = 1;
+  optional uint32 sequence = 2;
+  optional uint64 media_epoch = 3;
+  // Frame energy, dBFS (-120 to 0), and peak.
+  optional float rms_db = 4 [(openagents.options.v1alpha1.unit) = "dBFS"];
+  optional float peak_db = 5 [(openagents.options.v1alpha1.unit) = "dBFS"];
+  // Speech likelihood, 0 to 1.
+  optional float speech = 6;
+  // Estimated noise floor, dBFS.
+  optional float noise_db = 7 [(openagents.options.v1alpha1.unit) = "dBFS"];
+  TurnState turn_state = 8;
+  PlaybackState playback_state = 9;
+  optional uint32 speech_ms = 10 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional uint32 silence_ms = 11 [(openagents.options.v1alpha1.unit) = "ms"];
+  // Zero-crossing rate per sample, 0 to 1: a cheap voicing cue.
+  optional float zero_crossings = 12;
+}
+
+enum FrameAction {
+  FRAME_ACTION_UNSPECIFIED = 0;  // keep doing what we're doing
+  FRAME_ACTION_HOLD_TURN = 1;    // the speaker isn't done; extend end-of-turn
+  FRAME_ACTION_END_TURN = 2;     // the speaker is done; end the turn now
+  FRAME_ACTION_BARGE_IN = 3;     // stop playback, the speaker is talking over it
+  FRAME_ACTION_DUCK = 4;         // lower playback by duck_db
+  FRAME_ACTION_PAUSE = 5;        // pause playback
+  FRAME_ACTION_RESUME = 6;       // resume or un-duck playback
+  FRAME_ACTION_DROP = 7;         // don't forward this frame (noise, echo)
+}
+
+// A bounded micro-change to a stream, from apply_from_sequence onward.
+message FrameDecision {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_INTENT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 256;
+  Stream stream = 1;
+  optional uint32 apply_from_sequence = 2;
+  optional uint64 media_epoch = 3;
+  FrameAction action = 4;
+  // Gain change in dB, clamped to -24..12.
+  optional float gain_db = 5 [(openagents.options.v1alpha1.unit) = "dB"];
+  // For DUCK: how far down, clamped to 0..40.
+  optional float duck_db = 6 [(openagents.options.v1alpha1.unit) = "dB"];
+  // Playback rate, clamped to 0.8..1.25. Omitted means unchanged.
+  optional float playback_rate = 7;
+  // For HOLD_TURN: extra silence to wait before ending the turn, 0..2000.
+  optional uint32 hold_ms = 8 [(openagents.options.v1alpha1.unit) = "ms"];
+  // 0 to 1. Below the receiver's floor, the decision is ignored.
+  optional float confidence = 9;
+  // Who decided: "voice.coax", "decisions:<model>".
+  optional string decider = 10 [(openagents.options.v1alpha1.max_bytes) = 64];
+  // Ignore this decision if it arrives after this frame sequence.
+  optional uint32 deadline_sequence = 11;
+}
+
+// One WebSocket binary message.
+message Frame {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RUNTIME;
+  option (openagents.options.v1alpha1.max_message_bytes) = 16384;
+  option (openagents.options.v1alpha1.contract) = "openagents.voice.frame.v1alpha1";
+  oneof body {
+    Hello hello = 1;
+    Welcome welcome = 2;
+    Audio audio = 3;
+    Control control = 4;
+    TurnEvent turn_event = 5;
+    Speech speech = 6;
+    Route route = 7;
+    Meter meter = 8;
+    Error error = 9;
+    FrameFeatures features = 10;
+    FrameDecision decision = 11;
+  }
+}
