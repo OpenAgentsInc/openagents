@@ -34,8 +34,12 @@ runtime; the optional command-line Metal toolchain component is not needed.
 The bundle identifier is `com.openagents.app`. This is a minimal home
 shell. Distribution continues the existing OpenAgents App Store Connect record
 at version 1.0.0; the current build is 1047.
-No login, chat, worlds, network services, microphone, FM or payments code is
-restored. Their implementation can be added deliberately later.
+The home shows the balance of the person's existing Spark wallet. It opens
+the wallet from the Keychain seed the earlier app saved and only reads the
+balance, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
+`Package.resolved`). See [`docs/lightning/`](../../docs/lightning/README.md).
+No login, chat, worlds, microphone or FM code is restored, and no payments
+are sent or received yet.
 
 ## Ownership
 

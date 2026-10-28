@@ -18,6 +18,9 @@ final class HomeViewController: UIViewController {
     private var startElement: UIAccessibilityElement?
     private var lastSize = CGSize.zero
     private var invocationCount: Int64 = 0
+    private let wallet = SparkWallet()
+    private let balanceLabel = UILabel()
+    private var walletTask: Task<Void, Never>?
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override func loadView() { view = Surface(); view.backgroundColor = .black; view.isMultipleTouchEnabled = false }
@@ -36,7 +39,8 @@ final class HomeViewController: UIViewController {
             element.accessibilityValue = "0"
             element.activate = { [weak self] in self?.activateAccessibleButton() ?? false }
             startElement = element
-            view.accessibilityElements = [element]
+            setUpBalance()
+            view.accessibilityElements = [balanceLabel, element]
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(resume), name: UIApplication.didBecomeActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(motionChanged), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
@@ -67,13 +71,54 @@ final class HomeViewController: UIViewController {
     @objc private func suspend() {
         clock?.invalidate(); clock = nil; trackedTouch = nil
         metareal_home_resume(handle)
+        walletTask?.cancel(); walletTask = nil
+        Task { [wallet] in await wallet.disconnect() }
     }
     @objc private func resume() {
+        refreshBalance()
         guard renderer != nil, clock == nil else { return }
         metareal_home_resume(handle)
         let link = CADisplayLink(target: DisplayTarget(owner: self), selector: #selector(DisplayTarget.tick(_:)))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 60)
         link.add(to: .main, forMode: .common); clock = link
+    }
+    private func setUpBalance() {
+        balanceLabel.translatesAutoresizingMaskIntoConstraints = false
+        balanceLabel.textColor = UIColor(white: 1, alpha: 0.85)
+        balanceLabel.font = UIFont(name: "Michroma", size: 17) ?? .monospacedDigitSystemFont(ofSize: 17, weight: .regular)
+        balanceLabel.textAlignment = .center
+        balanceLabel.numberOfLines = 0
+        balanceLabel.accessibilityIdentifier = "wallet.balance"
+        view.addSubview(balanceLabel)
+        NSLayoutConstraint.activate([
+            balanceLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+            balanceLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            balanceLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+        ])
+        show(.opening)
+    }
+    private func refreshBalance() {
+        guard walletTask == nil, balanceLabel.superview != nil else { return }
+        walletTask = Task { [weak self, wallet] in
+            let state = await wallet.balance()
+            await MainActor.run {
+                guard let self, !Task.isCancelled else { return }
+                self.show(state); self.walletTask = nil
+            }
+        }
+    }
+    private func show(_ state: SparkWallet.State) {
+        switch state {
+        case .opening: balanceLabel.text = "Opening your wallet…"
+        case .balance(let sats):
+            let number = NumberFormatter(); number.numberStyle = .decimal
+            balanceLabel.text = "₿" + (number.string(from: NSNumber(value: sats)) ?? String(sats))
+            NSLog("OpenAgents wallet: balance shown (%llu sats)", sats)
+        case .noWallet: balanceLabel.text = "No wallet on this phone yet."
+        case .locked: balanceLabel.text = "Your wallet is locked. Unlock your phone, then reopen OpenAgents."
+        case .unreadable: balanceLabel.text = "The wallet saved on this phone can't be read. It has been left as it is."
+        case .failed(let message): balanceLabel.text = message
+        }
     }
     @objc private func motionChanged() { metareal_home_resume(handle) }
     fileprivate func frame(_ link: CADisplayLink) { updateScene(at: link.timestamp) }

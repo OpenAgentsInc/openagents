@@ -8,13 +8,19 @@
 
 /* Begin PBXBuildFile section */
 		28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */; };
+		370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00755E361D10FD9EA268AF3 /* BIP39.swift */; };
 		3D33289F296E68FB9545BEE1 /* Michroma-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */; };
 		40EBE76A352087D40B6D5955 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B73CC5A17FE246BB0A3643 /* App.swift */; };
+		414AAE983A6CE10602E30984 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 00B098BC3A77B9FE2543DB88 /* bip39-english.txt */; };
 		425686EF9F339C9F8AF36F0B /* HomeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D9CCE7A321B824A05570718 /* HomeRenderer.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
+		471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC1295D990A18154D988C5E /* WalletKeychain.swift */; };
+		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */ = {isa = PBXBuildFile; fileRef = 75264437CFF5986509BFE1BF /* michroma-ofl.txt */; };
+		9BF3729D9AA0003DCFBD3935 /* SparkWallet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0FF528DE884B29DAA6D4D6 /* SparkWallet.swift */; };
 		9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */ = {isa = PBXBuildFile; fileRef = A8590DE7BE9F641F9A440194 /* Home.pb */; };
 		AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */; };
+		BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD722D77A3244F05AAF6E9AA /* BreezKey.swift */; };
 		E042C58657667D51A54A789B /* HomeShaders.txt in Resources */ = {isa = PBXBuildFile; fileRef = BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */; };
 		F4F275877B25EE6C8FCD494C /* Home.c in Sources */ = {isa = PBXBuildFile; fileRef = CA34DB580151D40597358639 /* Home.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		F5D72357EDBC9C2C7A705B08 /* host.c in Sources */ = {isa = PBXBuildFile; fileRef = 4B5B3339D798BBE8F8C653F5 /* host.c */; };
@@ -31,7 +37,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		00B098BC3A77B9FE2543DB88 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
 		0D9CCE7A321B824A05570718 /* HomeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRenderer.swift; sourceTree = "<group>"; };
+		0EC1295D990A18154D988C5E /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
 		1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewController.swift; sourceTree = "<group>"; };
 		4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeUITests.swift; sourceTree = "<group>"; };
 		4B5B3339D798BBE8F8C653F5 /* host.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = host.c; sourceTree = "<group>"; };
@@ -42,15 +50,30 @@
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A8590DE7BE9F641F9A440194 /* Home.pb */ = {isa = PBXFileReference; path = Home.pb; sourceTree = "<group>"; };
+		AD722D77A3244F05AAF6E9AA /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
 		BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = HomeShaders.txt; sourceTree = "<group>"; };
 		C66F7AEEF75B7AFDC508706C /* Bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridge.h; sourceTree = "<group>"; };
 		CA34DB580151D40597358639 /* Home.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Home.c; sourceTree = "<group>"; };
+		D00755E361D10FD9EA268AF3 /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
+		EE0FF528DE884B29DAA6D4D6 /* SparkWallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkWallet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		EAD68FE7753AB46CBC2F55C3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		00BFE8813FC6529C85B1547B /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				00B098BC3A77B9FE2543DB88 /* bip39-english.txt */,
 				A8590DE7BE9F641F9A440194 /* Home.pb */,
 				75264437CFF5986509BFE1BF /* michroma-ofl.txt */,
 				7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */,
@@ -84,6 +107,17 @@
 			path = Tests;
 			sourceTree = "<group>";
 		};
+		9A66F17929CA2AB167552B4E /* Wallet */ = {
+			isa = PBXGroup;
+			children = (
+				D00755E361D10FD9EA268AF3 /* BIP39.swift */,
+				AD722D77A3244F05AAF6E9AA /* BreezKey.swift */,
+				EE0FF528DE884B29DAA6D4D6 /* SparkWallet.swift */,
+				0EC1295D990A18154D988C5E /* WalletKeychain.swift */,
+			);
+			path = Wallet;
+			sourceTree = "<group>";
+		};
 		A399D11B8F0035506E68EDB0 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -110,6 +144,7 @@
 				1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */,
 				A7B7CA3CC18D3E4990CFBB72 /* Platform */,
 				00BFE8813FC6529C85B1547B /* Resources */,
+				9A66F17929CA2AB167552B4E /* Wallet */,
 			);
 			path = OpenAgents;
 			sourceTree = "<group>";
@@ -135,6 +170,7 @@
 				3F79C09B618CB9409299A799 /* Generate Coax product code */,
 				3021F9601449A7901737DC0B /* Sources */,
 				9EB07DEE9BD5341EBD04A0A2 /* Resources */,
+				EAD68FE7753AB46CBC2F55C3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -142,6 +178,7 @@
 			);
 			name = OpenAgents;
 			packageProductDependencies = (
+				6A07344B6842FB168B7EEED5 /* BreezSdkSpark */,
 			);
 			productName = OpenAgents;
 			productReference = 8229C5D27BC40A99010E48D9 /* OpenAgents.app */;
@@ -194,6 +231,9 @@
 			);
 			mainGroup = FBEEA9C0EAC50ADFE9507F40;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A399D11B8F0035506E68EDB0 /* Products */;
 			projectDirPath = "";
@@ -214,6 +254,7 @@
 				9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */,
 				E042C58657667D51A54A789B /* HomeShaders.txt in Resources */,
 				3D33289F296E68FB9545BEE1 /* Michroma-Regular.ttf in Resources */,
+				414AAE983A6CE10602E30984 /* bip39-english.txt in Resources */,
 				891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -248,9 +289,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				40EBE76A352087D40B6D5955 /* App.swift in Sources */,
+				370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */,
+				BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */,
 				F4F275877B25EE6C8FCD494C /* Home.c in Sources */,
 				425686EF9F339C9F8AF36F0B /* HomeRenderer.swift in Sources */,
 				AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */,
+				9BF3729D9AA0003DCFBD3935 /* SparkWallet.swift in Sources */,
+				471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */,
 				F5D72357EDBC9C2C7A705B08 /* host.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -524,6 +569,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/breez/breez-sdk-spark-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.27.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6A07344B6842FB168B7EEED5 /* BreezSdkSpark */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */;
+			productName = BreezSdkSpark;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D73FDB66A38EC188DC701EB0 /* Project object */;
 }

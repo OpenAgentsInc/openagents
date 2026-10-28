@@ -3,6 +3,10 @@ options:
   bundleIdPrefix: com.openagents
   deploymentTarget:
     iOS: "18.0"
+packages:
+  BreezSdkSpark:
+    url: https://github.com/breez/breez-sdk-spark-swift.git
+    exactVersion: 0.27.2
 settings:
   base:
     DEVELOPMENT_TEAM: HQWSG26L43
@@ -23,6 +27,8 @@ targets:
       - path: ../../metareal/platform/host.c
       - path: Generated/HomeShaders.txt
         buildPhase: resources
+    dependencies:
+      - package: BreezSdkSpark
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app

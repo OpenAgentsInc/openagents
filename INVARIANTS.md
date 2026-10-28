@@ -51,7 +51,8 @@ production credentials or network download.
 Coax owns its scene, animation, layout, reusable HUD touch policy and bounded
 protobuf admission. Native adapters own platform lifecycle, serialized opaque
 storage handles, packet transfer, font rasterization and Metal bindings. A
-screen does not acquire chat, network or device permissions through this port.
+screen does not acquire chat or device permissions through this port. The only
+network use is the read-only Spark wallet below.
 The home imports the `ios-home` descriptor profile for generated
 HomeConfiguration and HudInvocation codecs. It accepts only its documented
 schema-1 resource subset, rejects unknown/duplicate fields and non-minimal
@@ -67,6 +68,24 @@ flat-storage graph while decoded configuration views use bounded Coax scratch
 buffers. Labels are copied into resident storage before those views expire.
 There is no claim of a full engine migration or general protobuf compiler.
 
+
+## The iOS wallet seed is read, never written
+
+`apps/openagents-ios/OpenAgents/Wallet/` opens the person's existing Spark
+wallet from the Keychain item the earlier apps wrote (generic password,
+service `com.openagents.app.spark`, account `seed-v1`, 16 or 32 bytes of
+BIP-39 entropy, default access group). The app has no code that adds,
+updates or deletes that item, and never makes a seed. A missing, locked or
+wrong-length item is reported on screen and left as it is. The entropy
+becomes English BIP-39 words only to open Breez Spark on mainnet with no
+passphrase; the words are never logged, stored elsewhere or passed to Coax.
+The word list is checked against its published SHA-256 before use. The
+wallet only reads the balance; sending, receiving and backup are later work
+(`docs/lightning/`).
+
+Check: `apps/openagents-ios/tools/test-bip39.sh` (published BIP-39 vectors), the
+iOS UI test (a phone with no wallet shows that and changes nothing), and the
+owner's device showing the existing balance.
 
 ## Nostr projections cannot create authority or replace signed bytes
 
