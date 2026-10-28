@@ -2,8 +2,8 @@
 // a slow nebula behind (splash.wgsl), the iOS home's graph fading in as a
 // wide band across the middle (graph.coax), and two lines drawn as glowing
 // strokes that write themselves on, letter by letter, then shimmer:
-// OPENAGENTS in the top third after a pause, COMING SOON in the bottom third
-// a little later. Payments run the graph's links in Bitcoin orange.
+// OPENAGENTS in the top third after a pause, COMING SOON just under it a
+// little later. Payments run the graph's links in Bitcoin orange.
 // The host (coax/web/host.js) owns the GPU and calls this once a frame; this
 // file decides every number it draws: where each stroke goes, how much of it
 // is written, how bright it is, and the nebula's clock.
@@ -84,7 +84,7 @@ line_start :: (l: int) -> f32 {
   if l == 3 { return 1.0; }
   return ifx l == 0 then TITLE_START else START;
 }
-line_y :: (l: int) -> f32 { return ifx l % 2 == 0 then 0.14f32 else 0.86f32; }
+line_y :: (l: int) -> f32 { return ifx l % 2 == 0 then 0.14f32 else 0.205f32; }
 
 // A glyph is one stroke through points on a 4 wide, 6 high grid, y up.
 // Writes x, y pairs into out and returns how many points.
@@ -318,14 +318,14 @@ coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   #assert text_width(0) * fitted_cap(0, 280) <= 280 * 0.87;
 }
 
-#test "the title sits in the top third, COMING SOON in the bottom third" {
+#test "the title sits in the top third, COMING SOON just under it" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   title := line_strokes(out[..], 0, 0, 1280, 900, 1, 0, true);
   #assert title > 0;
   for v: 0..<title { #assert out[v * VERTEX_FLOATS + 1] < 200; }
   all := line_strokes(out[..], title, 1, 1280, 900, 1, 0, true);
   #assert all > title;
-  for v: title..<all { #assert out[v * VERTEX_FLOATS + 1] > 700; }
+  for v: title..<all { #assert out[v * VERTEX_FLOATS + 1] > 160 && out[v * VERTEX_FLOATS + 1] < 210; }
 }
 
 #test "a small output or a missing state draws nothing" {
