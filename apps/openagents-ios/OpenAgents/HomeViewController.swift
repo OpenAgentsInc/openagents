@@ -37,6 +37,10 @@ final class HomeViewController: UIViewController {
     private var cast: CastAssets?
     private var anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false)
     private var gridStart: Double?
+    // This frame's palette (the robots posed before you move) and the robots'
+    // body capsules from it, which you collide with.
+    private var palette: [coax_t_Joint] = []
+    private var bodies: [Float] = []
     private var inGrid: Bool { gridHandle != 0 }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
@@ -178,6 +182,8 @@ final class HomeViewController: UIViewController {
         data.copyBytes(to: bytes)
         castBytes = bytes
         let cast = metareal_cast_open(castView(bytes))
+        palette = Array(repeating: coax_t_Joint(), count: Int(metareal_cast_palette(cast)))
+        bodies = Array(repeating: 0, count: Int(metareal_cast_robots(cast) * cast.robot_bodies.count) * 7)
         let layers = try [5, 9, 10, 11, 12, 16].map { layer -> URL in
             guard let url = Bundle.main.url(forResource: "cast-layer\(layer)", withExtension: "jpg") else { throw HomeError.resource("cast-layer\(layer).jpg") }
             return url
@@ -220,7 +226,23 @@ final class HomeViewController: UIViewController {
         let frame = Float(min(max(timestamp - (lastTick ?? timestamp), 0), 0.25)); lastTick = timestamp
         player = metareal_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
         sticks = metareal_sticks_used(sticks)
-        player = metareal_player_advance(player, frame)
+        // The robots move first; then you, among their bodies.
+        var placed = 0, posed = false
+        if let cast, let bytes = castBytes {
+            if gridStart == nil { gridStart = timestamp }
+            let now = timestamp - (gridStart ?? timestamp), b = castView(bytes), c = cast.cast
+            placed = palette.withUnsafeMutableBufferPointer { joints in
+                let view = coax_v_t_Joint(data: joints.baseAddress, count: Int64(joints.count))
+                posed = metareal_cast_robots_pose(b, c, now, view)
+                guard posed else { return 0 }
+                return bodies.withUnsafeMutableBufferPointer {
+                    Int(metareal_cast_bodies(b, c, view, coax_v_f32(data: $0.baseAddress, count: Int64($0.count))))
+                }
+            }
+        }
+        player = bodies.withUnsafeMutableBufferPointer {
+            metareal_player_advance_among(player, frame, coax_v_f32(data: $0.baseAddress, count: Int64(placed * 7)))
+        }
         let eye = metareal_player_eye(player), at = metareal_player_at(player), feet = metareal_player_feet(player)
         let face = metareal_player_face(player)
         let width = Float(lastSize.width), height = Float(lastSize.height)
@@ -230,15 +252,16 @@ final class HomeViewController: UIViewController {
         guard mr_ok(gridHandle) else { suspend(); NSLog("OpenAgents: invalid Grid draw packet"); return }
         var castFrame: CastFrame?
         if let cast, let bytes = castBytes {
-            if gridStart == nil { gridStart = timestamp }
             let now = timestamp - (gridStart ?? timestamp), b = castView(bytes), c = cast.cast
             anim = metareal_cast_update(b, c, anim, metareal_player_act(player), player.vel.y > 0, now)
             var matrix = [Float](repeating: 0, count: 16)
             let viewed = matrix.withUnsafeMutableBufferPointer { metareal_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, coax_v_f32(data: $0.baseAddress, count: 16)) }
-            let anim = anim
-            if viewed {
+            let anim = anim, robots = palette, joints = Int(c.joints)
+            if viewed && posed {
                 castFrame = CastFrame(view: matrix) { out in
-                    metareal_cast_pose(b, c, anim, now, feet.x, feet.y, feet.z, face, out) && metareal_cast_robots_pose(b, c, now, out)
+                    guard out.count >= robots.count, metareal_cast_pose(b, c, anim, now, feet.x, feet.y, feet.z, face, out) else { return false }
+                    robots.withUnsafeBufferPointer { (out.data! + joints).update(from: $0.baseAddress! + joints, count: robots.count - joints) }
+                    return true
                 }
             }
             let names = ["idle", "walking", "running", "jump start", "jump loop", "landing"]

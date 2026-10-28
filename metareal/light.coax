@@ -66,6 +66,20 @@ metareal_lit :: (nx:f32,ny:f32,nz:f32)->f32 #export_c {
 // shown as the display value aethyr would show.
 metareal_character :: (albedo:f32,light:f32)->f32 #export_c { return metareal_unlit(metareal_encode(albedo*light)); }
 
+// A robot's line art, `distance` metres from the eye (its depth), on a
+// screen of `scale` pixels a point. Its width in pixels: half a point near,
+// thinning to a quarter of a point from 8 m, never under a pixel. Its light:
+// the tint's at 0.7, fading as the floor's lines do from 6 m to 110 m, and
+// dimmer as a far robot's lines crowd into a few pixels.
+metareal_cast_line_width :: (scale:f32,distance:f32)->f32 #export_c {
+  near:=lo(1.0f32,4.0f32/hi(distance,4.0f32));
+  return hi(scale*0.5f32*hi(near,0.5f32),1.0f32);
+}
+metareal_cast_line_light :: (tint:f32,distance:f32)->f32 #export_c {
+  crowd:=hi(lo(1.0f32,6.0f32/hi(distance,0.001f32)),0.3f32);
+  return metareal_unlit(tint)*0.7f32*(1.0f32-smooth(6.0f32,110.0f32,distance))*crowd;
+}
+
 within :: (a:f32,b:f32,t:f32)->bool { return abs(a-b)<=t; }
 #test "display values round trip through linear light" {
   for i: 0..<11 { v:=f32(i)/10.0f32; #assert within(metareal_encode(metareal_decode(v)),v,0.0001f32); }
@@ -88,4 +102,19 @@ within :: (a:f32,b:f32,t:f32)->bool { return abs(a-b)<=t; }
   #assert within(metareal_lit(0.0f32,3.0f32,0.0f32),0.9f32*0.9f32/1.0111874f32+0.32f32,0.0001f32);
   #assert metareal_lit(0.0f32,0.0f32,0.0f32)==0.32f32;
   #assert within(metareal_character(0.5f32,1.0f32),metareal_unlit(metareal_encode(0.5f32)),0.000001f32);
+}
+#forall "robot lines thin and dim with distance, never under a pixel" i: 0..<60, k: 1..<4 {
+  d:=f32(i)*2.0f32; e:=d+2.0f32; scale:=f32(k);
+  #assert metareal_cast_line_width(scale,e)<=metareal_cast_line_width(scale,d) && metareal_cast_line_width(scale,e)>=1.0f32;
+  #assert metareal_cast_line_light(0.5f32,e)<=metareal_cast_line_light(0.5f32,d);
+}
+#test "robot line widths and light at their ends" {
+  #assert metareal_cast_line_width(3.0f32,1.0f32)==1.5f32 && metareal_cast_line_width(3.0f32,4.0f32)==1.5f32;
+  #assert metareal_cast_line_width(3.0f32,8.0f32)==1.0f32 && metareal_cast_line_width(3.0f32,6.0f32)==1.0f32;
+  #assert metareal_cast_line_width(6.0f32,8.0f32)==1.5f32 && metareal_cast_line_width(6.0f32,100.0f32)==1.5f32;
+  #assert metareal_cast_line_width(1.0f32,0.0f32)==1.0f32;
+  #assert within(metareal_cast_line_light(0.5f32,3.0f32),metareal_unlit(0.5f32)*0.7f32,0.00001f32);
+  #assert within(metareal_cast_line_light(0.5f32,12.0f32),metareal_unlit(0.5f32)*0.7f32*(1.0f32-smooth(6.0f32,110.0f32,12.0f32))*0.5f32,0.00001f32);
+  #assert metareal_cast_line_light(0.5f32,30.0f32)==metareal_unlit(0.5f32)*0.7f32*(1.0f32-smooth(6.0f32,110.0f32,30.0f32))*0.3f32;
+  #assert metareal_cast_line_light(0.5f32,110.0f32)==0.0f32 && metareal_cast_line_light(0.0f32,1.0f32)==0.0f32;
 }

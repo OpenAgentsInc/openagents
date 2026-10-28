@@ -77,6 +77,33 @@ final class HomeUITests: XCTestCase {
         XCTAssertEqual(you.value as? String, "idle")
         let robots = XCTAttachment(screenshot: app.screenshot())
         robots.name = "The Foreman"; robots.lifetime = .keepAlways; add(robots)
+
+        // Turn to its left leg, at (2.78, 3.62), 0.66 rad round from ahead
+        // (0.006 rad a point), and walk at it: the leg stops you short of it.
+        look.press(forDuration: 0.05, thenDragTo: look.withOffset(CGVector(dx: -30, dy: 0)))
+        let grid = app.otherElements["grid.world"]
+        var nearest = Double.infinity
+        let leg = (x: 2.78, z: 3.62)
+        let watch = { () -> Void in
+            if let parts = (grid.value as? String)?.split(separator: " "), parts.count == 2,
+               let x = Double(parts[0]), let z = Double(parts[1]) {
+                nearest = min(nearest, ((x - leg.x) * (x - leg.x) + (z - leg.z) * (z - leg.z)).squareRoot())
+            }
+        }
+        let thumb = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.8))
+        // A walk (inside the run ring), long enough to reach it with time
+        // to spare against it.
+        thumb.press(forDuration: 0.05, thenDragTo: thumb.withOffset(CGVector(dx: 0, dy: -50)),
+                    withVelocity: .default, thenHoldForDuration: 1.8)
+        watch()
+        let stood = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in watch(); return you.value as? String == "idle" }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [stood], timeout: 5), .completed)
+        watch()
+        // It came close (the value is to 0.1 m), and never inside the leg.
+        XCTAssertGreaterThan(nearest, 0.45, "at \(grid.value ?? "")")
+        XCTAssertLessThan(nearest, 1.3, "never reached the leg: at \(grid.value ?? "")")
+        let blocked = XCTAttachment(screenshot: app.screenshot())
+        blocked.name = "Stopped by the Foreman"; blocked.lifetime = .keepAlways; add(blocked)
         app.terminate()
     }
 }

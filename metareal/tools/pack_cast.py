@@ -211,7 +211,47 @@ def robot(assets):
         patrol_rows.append(struct.pack("<2I", len(samples), n))
         samples.extend(data[i * 20:(i + 1) * 20] for i in range(n))
     setup = struct.pack("<If2f", bones, rate, scale, 0)
-    return verts, faces, lines, clip_rows, frames, patrol_rows, samples, setup
+    return verts, faces, lines, clip_rows, frames, patrol_rows, samples, setup, bodies(verts, faces)
+
+
+def bodies(verts, faces):
+    """One capsule per robot bone round the faces that bone moves, in the
+    model's bind space: along the points' longest axis, wide enough to hold
+    every point. Bones thinner than 3 cm (the fingers) sit inside the hand's
+    and get none."""
+    points = {}
+    for i in set(faces):
+        p = struct.unpack_from("<3f", verts[i], 0)
+        j = struct.unpack_from("<4B", verts[i], 48)
+        w = struct.unpack_from("<4f", verts[i], 32)
+        points.setdefault(j[w.index(max(w))], []).append(p)
+    rows = []
+    for bone in sorted(points):
+        ps = points[bone]
+        n = len(ps)
+        c = [sum(p[k] for p in ps) / n for k in range(3)]
+        d = [[p[k] - c[k] for k in range(3)] for p in ps]
+        cov = [[sum(v[a] * v[b] for v in d) for b in range(3)] for a in range(3)]
+        axis = [1.0, 0.7, 0.3]
+        for _ in range(64):
+            axis = [sum(cov[a][b] * axis[b] for b in range(3)) for a in range(3)]
+            l = math.sqrt(sum(x * x for x in axis))
+            if l == 0:
+                axis = [0.0, 1.0, 0.0]
+                break
+            axis = [x / l for x in axis]
+        t = [sum(v[k] * axis[k] for k in range(3)) for v in d]
+        r = max(math.sqrt(max(sum(x * x for x in v) - tv * tv, 0)) for v, tv in zip(d, t))
+        if r < 0.03:
+            continue
+        lo, hi = min(t), max(t)
+        # The caps hold the ends: the segment stops a radius short of each.
+        a, b = lo + r, hi - r
+        if a > b:
+            a = b = (lo + hi) / 2
+        ends = [[c[k] + axis[k] * e for k in range(3)] for e in (a, b)]
+        rows.append(struct.pack("<3ff3fI", *ends[0], r, *ends[1], bone))
+    return rows
 
 
 def write(out, buffers):
@@ -234,7 +274,7 @@ def main():
     assets, out = sys.argv[1], sys.argv[2]
     verts, index = character(assets)
     joints, fps, bones, clip_rows, poses = skeleton_and_clips(assets)
-    rv, rf, rl, rc, rframes, rp, rs, setup = robot(assets)
+    rv, rf, rl, rc, rframes, rp, rs, setup, rb = robot(assets)
     u32 = lambda xs: [struct.pack("<I", x) for x in xs]
     write(os.path.join(out, "Cast.bin"), [
         ("skeleton", 16, bones),
@@ -250,12 +290,13 @@ def main():
         ("robot_frames", 32, rframes),
         ("patrols", 8, rp),
         ("patrol_samples", 20, rs),
+        ("robot_bodies", 32, rb),
     ])
     for layer in LAYERS:
         shutil.copyfile(os.path.join(assets, f"layer{layer}.jpg"), os.path.join(out, f"cast-layer{layer}.jpg"))
     print("joints", joints, "fps", fps, "body vertices", len(verts), "indices", len(index),
           "poses", len(poses), "robot vertices", len(rv), "faces", len(rf), "lines", len(rl),
-          "robot frames", len(rframes), "patrols", len(rp))
+          "robot frames", len(rframes), "patrols", len(rp), "bodies", len(rb))
     for name in ("scene.bin", "anims.bin", "skeleton.bin", "grid.bin"):
         print(name, hashlib.sha256(open(os.path.join(assets, name), "rb").read()).hexdigest())
 

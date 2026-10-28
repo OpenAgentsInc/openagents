@@ -85,7 +85,8 @@ fragment float4 cast_fragment(CastOut in [[stage_in]],texture2d_array<float> she
   return float4(metareal_character(albedo.r*t.r,light),metareal_character(albedo.g*t.g,light),metareal_character(albedo.b*t.b,light),1);
 }
 // A robot's line art: each pair of indices a screen-space quad, depth tested
-// against the faces, so lines behind the robot are hidden.
+// against the faces, so lines behind the robot are hidden; its width and
+// light by distance come from metareal/light.coax.
 vertex LineOut cast_line_vertex(uint id [[vertex_id]],uint inst [[instance_id]],const device CastVertex* vertices [[buffer(0)]],const device Joint* palette [[buffer(1)]],constant CastView& v [[buffer(2)]],const device uint* pairs [[buffer(3)]]) {
   CastVertex va=vertices[pairs[inst*2]],vb=vertices[pairs[inst*2+1]];
   float4 a=viewed(skinned(va,palette).p,v),b=viewed(skinned(vb,palette).p,v);
@@ -93,8 +94,9 @@ vertex LineOut cast_line_vertex(uint id [[vertex_id]],uint inst [[instance_id]],
   if(a.w<.05||b.w<.05)return {float4(0,0,2,1),0,0,0,0};
   float2 sa=a.xy/a.w*v.size*.5,sb=b.xy/b.w*v.size*.5;
   float2 d=sb-sa;float2 n=float2(-d.y,d.x)/max(length(d),.001);
-  float2 p=mix(sa,sb,t)+n*uv.y*1.1*v.scale*2.;
+  float w=metareal_cast_line_width(v.scale,mix(a.w,b.w,t));
+  float2 p=mix(sa,sb,t)+n*uv.y*w*2.;
   float z=mix(a.z/a.w,b.z/b.w,t)-.0004;
-  float light=metareal_unlit(va.tint.r/255.);
-  return {float4(p/(v.size*.5),z,1),uv.y,t,light,light};
+  float tint=va.tint.r/255.;
+  return {float4(p/(v.size*.5),z,1),uv.y,t,metareal_cast_line_light(tint,a.w),metareal_cast_line_light(tint,b.w)};
 }

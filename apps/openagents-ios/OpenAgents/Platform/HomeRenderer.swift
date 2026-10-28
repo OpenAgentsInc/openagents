@@ -99,15 +99,17 @@ final class HomeRenderer {
         guard let source = Bundle.main.url(forResource: "HomeShaders", withExtension: "txt") else { throw HomeError.resource("HomeShaders.txt") }
         let library = try device.makeLibrary(source: String(contentsOf: source, encoding: .utf8), options: nil)
         // The scene pass has depth, for the cast; the screen passes don't.
-        func pipeline(_ vertex: String, _ fragment: String, _ format: MTLPixelFormat, additive: Bool = false, alpha: Bool = false, scene: Bool = false) throws -> MTLRenderPipelineState {
+        func pipeline(_ vertex: String, _ fragment: String, _ format: MTLPixelFormat, additive: Bool = false, alpha: Bool = false, brightest: Bool = false, scene: Bool = false) throws -> MTLRenderPipelineState {
             let d = MTLRenderPipelineDescriptor(); d.vertexFunction = library.makeFunction(name: vertex); d.fragmentFunction = library.makeFunction(name: fragment)
             d.colorAttachments[0].pixelFormat = format
             if scene { d.depthAttachmentPixelFormat = .depth32Float }
-            if additive || alpha {
+            if additive || alpha || brightest {
                 let a = d.colorAttachments[0]!
                 a.isBlendingEnabled = true; a.rgbBlendOperation = .add; a.alphaBlendOperation = .add
                 a.sourceRGBBlendFactor = .one; a.destinationRGBBlendFactor = additive ? .one : .oneMinusSourceAlpha
                 a.sourceAlphaBlendFactor = .one; a.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+                // Where many lines meet, the brightest shows, not their sum.
+                if brightest { a.rgbBlendOperation = .max; a.alphaBlendOperation = .max }
             }
             return try device.makeRenderPipelineState(descriptor: d)
         }
@@ -118,7 +120,7 @@ final class HomeRenderer {
         composite = try pipeline("screen_vertex", "composite_fragment", .bgra8Unorm)
         bar = try pipeline("bar_vertex", "bar_fragment", .bgra8Unorm, alpha: true)
         castFaces = try pipeline("cast_vertex", "cast_fragment", .rgba16Float, scene: true)
-        castLines = try pipeline("cast_line_vertex", "line_fragment", .rgba16Float, additive: true, scene: true)
+        castLines = try pipeline("cast_line_vertex", "line_fragment", .rgba16Float, brightest: true, scene: true)
         func depthState(_ compare: MTLCompareFunction, write: Bool) throws -> MTLDepthStencilState {
             let d = MTLDepthStencilDescriptor(); d.depthCompareFunction = compare; d.isDepthWriteEnabled = write
             guard let state = device.makeDepthStencilState(descriptor: d) else { throw HomeError.resource("Metal depth") }

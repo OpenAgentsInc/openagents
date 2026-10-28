@@ -13,10 +13,14 @@
 // the root, so a cross-fade keeps every bone its length. The robots replay
 // their recorded patrols and play their walk and idle clips; the Foreman
 // stands by the start, three times their size.
+//
+// Each robot bone has a capsule round the faces it moves (pack_cast.py fits
+// them in the bind pose). metareal_cast_bodies places them with the palette
+// the robots were drawn with, so what you bump into is what you see.
 
 PI :: 3.14159265;
 MAGIC :: 0x3143524D;      // "MRC1"
-BUFFERS :: 13;
+BUFFERS :: 14;
 MAX_JOINTS :: 65;         // the character's skeleton
 MAX_BONES :: 96;          // most bones a robot may have
 SLOTS :: 6;               // the character's texture layers
@@ -31,6 +35,8 @@ FOREMAN_Z :: 2.5;
 FOREMAN_YAW :: -1.079;
 FOREMAN_SIZE :: 3.0;      // times a robot's size
 IDLE :: 1;                // the robots' idle clip
+WIDEST :: 2.0;            // the widest body capsule, in a robot's metres
+BODY :: 7;                // numbers per placed body: two ends and a radius
 
 Vec3 :: struct { x: f32; y: f32; z: f32; }
 Quat :: struct { x: f32; y: f32; z: f32; w: f32 = 1; }
@@ -59,6 +65,7 @@ Cast :: struct {
   robot_frames: Buffer;   // per frame and bone: rotation, translation
   patrols: Buffer;        // per robot: first sample, sample count
   patrol_samples: Buffer; // x, z, yaw, clip, clip time
+  robot_bodies: Buffer;   // per capsule: one end, radius, the other end, bone
 }
 
 // A joint's skinning transform as three rows of a 3x4 matrix, placed in the
@@ -228,9 +235,10 @@ metareal_cast_open :: (b: [] u8) -> Cast #export_c {
   c.robot_frames = entry(b, 10, "robot_frames", 32, c.robot_clips.end);
   c.patrols = entry(b, 11, "patrols", 8, c.robot_frames.end);
   c.patrol_samples = entry(b, 12, "patrol_samples", 20, c.patrols.end);
+  c.robot_bodies = entry(b, 13, "robot_bodies", 32, c.patrol_samples.end);
   if !c.skeleton.ok || !c.clips.ok || !c.poses.ok || !c.body_vertices.ok || !c.body_indices.ok || !c.robot_setup.ok ||
      !c.robot_vertices.ok || !c.robot_faces.ok || !c.robot_lines.ok || !c.robot_clips.ok || !c.robot_frames.ok ||
-     !c.patrols.ok || !c.patrol_samples.ok { return bad; }
+     !c.patrols.ok || !c.patrol_samples.ok || !c.robot_bodies.ok { return bad; }
 
   // The character: parents before their children, finite bind positions,
   // six clips inside the poses, and every vertex and index in range.
@@ -263,6 +271,13 @@ metareal_cast_open :: (b: [] u8) -> Cast #export_c {
     for k: 0..<5 { if !finite(f32_at(b, at + k * 4)) { return bad; } }
     clip := f32_at(b, at + 12);
     if !(clip >= 0) || int(clip) >= c.robot_clips.count || f32(int(clip)) != clip { return bad; }
+  }
+  // At most a capsule a bone, each on a bone, finite and of a sane width.
+  if c.robot_bodies.count > c.bones { return bad; }
+  for i: 0..<c.robot_bodies.count {
+    at := c.robot_bodies.offset + i * 32;
+    for k: 0..<7 { if !finite(f32_at(b, at + k * 4)) { return bad; } }
+    if !between(f32_at(b, at + 12), WIDEST) || int_at(b, at + 28) >= c.bones { return bad; }
   }
   c.size = b.count;
   c.ok = true;
@@ -482,6 +497,39 @@ metareal_cast_robots_pose :: (b: [] u8, c: Cast, now: f64, out: [] Joint) -> boo
   return true;
 }
 
+// A bind-pose point carried by a palette joint.
+moved :: (j: Joint, p: Vec3) -> Vec3 {
+  return v3(j.m[0] * p.x + j.m[1] * p.y + j.m[2] * p.z + j.m[3],
+            j.m[4] * p.x + j.m[5] * p.y + j.m[6] * p.z + j.m[7],
+            j.m[8] * p.x + j.m[9] * p.y + j.m[10] * p.z + j.m[11]);
+}
+
+// Every robot's body capsules as metareal_cast_robots_pose placed them in
+// `palette`: BODY numbers each (one end, the other, the radius), robot by
+// robot, into out. Returns how many capsules, or 0 if out or the palette is
+// short.
+metareal_cast_bodies :: (b: [] u8, c: Cast, palette: [] Joint, out: [] f32) -> int #export_c {
+  if !c.ok || b.count != c.size || palette.count < metareal_cast_palette(c) { return 0; }
+  n := metareal_cast_robots(c) * c.robot_bodies.count;
+  if out.count < n * BODY { return 0; }
+  k := 0;
+  for r: 0..<metareal_cast_robots(c) {
+    for i: 0..<c.robot_bodies.count {
+      at := c.robot_bodies.offset + i * 32;
+      j := palette[c.joints + r * c.bones + int_at(b, at + 28)];
+      a := moved(j, vec_at(b, at));
+      e := moved(j, vec_at(b, at + 16));
+      // The joint's scale: its first column's length.
+      size := sqrt(j.m[0] * j.m[0] + j.m[4] * j.m[4] + j.m[8] * j.m[8]);
+      out[k] = a.x; out[k + 1] = a.y; out[k + 2] = a.z;
+      out[k + 3] = e.x; out[k + 4] = e.y; out[k + 5] = e.z;
+      out[k + 6] = f32_at(b, at + 12) * size;
+      k += BODY;
+    }
+  }
+  return n;
+}
+
 // ---- Checks ----
 //
 // A small cast built here: a two-joint skeleton (a root at the origin and a
@@ -539,7 +587,7 @@ child_at :: (f: f32) -> Rigid {
 
 // Offsets of the small cast's buffers, as `small` lays them out.
 Layout :: struct { poses: int; clips: int; skeleton: int; body_vertices: int; body_indices: int; setup: int;
-                   robot_vertices: int; robot_clips: int; robot_frames: int; patrols: int; samples: int; size: int; }
+                   robot_vertices: int; robot_clips: int; robot_frames: int; patrols: int; samples: int; bodies: int; size: int; }
 
 // The clips: frame counts 4, 2, 2, 3, 2, 3 (idle, walk, sprint, jump
 // start, loop, land), 16 frames in all.
@@ -560,6 +608,7 @@ small :: (b: [] u8) -> Layout {
   l.robot_frames = at; at = table(b, 10, "robot_frames", 32, 8, at);
   l.patrols = at; at = table(b, 11, "patrols", 8, 3, at);
   l.samples = at; at = table(b, 12, "patrol_samples", 20, 6, at);
+  l.bodies = at; at = table(b, 13, "robot_bodies", 32, 1, at);
   l.size = at;
   put32(b, l.skeleton, -1); put32(b, l.skeleton + 16, 0);
   putf(b, l.skeleton + 20, B.x); putf(b, l.skeleton + 24, B.y);
@@ -602,6 +651,9 @@ small :: (b: [] u8) -> Layout {
   at3 := l.samples + 4 * 20;
   putf(b, at3, 5); putf(b, at3 + 4, 5); putf(b, at3 + 12, f32(IDLE));
   putf(b, at3 + 20, -5); putf(b, at3 + 24, 5);   // patrol 2 stands at (-5, 5) in the walk
+  // One body: bone 1's capsule from (0, 0.2, 0.1) to (0, 1, 0.1), 0.25 wide.
+  putf(b, l.bodies + 4, 0.2); putf(b, l.bodies + 8, 0.1); putf(b, l.bodies + 12, 0.25);
+  putf(b, l.bodies + 20, 1); putf(b, l.bodies + 24, 0.1); put32(b, l.bodies + 28, 1);
   return l;
 }
 
@@ -614,6 +666,7 @@ small :: (b: [] u8) -> Layout {
   #assert c.poses.count == 32 && c.body_vertices.count == 3 && c.robot_lines.count == 2;
   #assert c.poses.offset == l.poses && c.patrol_samples.offset == l.samples;
   #assert c.skeleton.end == l.skeleton + 32 && c.patrol_samples.end == l.samples + 120;
+  #assert c.robot_bodies.offset == l.bodies && c.robot_bodies.count == 1 && c.robot_bodies.end == l.size;
   #assert metareal_cast_robots(c) == 4 && metareal_cast_palette(c) == 2 + 4 * 2;
   // Trailing bytes are allowed; the Cast remembers what it was admitted from.
   #assert metareal_cast_open(bytes[..]).ok && metareal_cast_open(bytes[..]).size == 4096;
@@ -633,8 +686,8 @@ small :: (b: [] u8) -> Layout {
 #test "a damaged table is refused" {
   bytes: [4096] u8;
   l := small(bytes[..]);
-  #assert !metareal_cast_open(bytes[0..<l.samples + 119]).ok;       // cut short
-  #assert metareal_cast_open(bytes[0..<l.samples + 120]).ok;
+  #assert !metareal_cast_open(bytes[0..<l.size - 1]).ok;             // cut short
+  #assert metareal_cast_open(bytes[0..<l.size]).ok;
   #assert !metareal_cast_open(bytes[0..<100]).ok && !metareal_cast_open(bytes[0..<16 + BUFFERS * 32 - 1]).ok;
   copy := bytes; copy[0] = 0;                                       // magic
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
@@ -646,7 +699,7 @@ small :: (b: [] u8) -> Layout {
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[16 + 32 * 2 + 5] = 'x';                        // past its name
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
-  copy = bytes; copy[16 + 32 * 12 + 15] = 'x';                      // the last name's last byte
+  copy = bytes; copy[16 + 32 * 13 + 15] = 'x';                      // the last name's last byte
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 3 + 24, 60);              // stride
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
@@ -655,7 +708,7 @@ small :: (b: [] u8) -> Layout {
   copy = bytes; put32(copy[..], 16 + 32 * 12 + 16, l.samples + 4);  // not on 16 bytes, its samples moved too
   for k: 0..<l.size - l.samples - 4 { copy[l.samples + 4 + k] = bytes[l.samples + k]; }
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
-  copy = bytes; put32(copy[..], 16 + 32 * 12 + 16, l.samples + 16); // moved past the end
+  copy = bytes; put32(copy[..], 16 + 32 * 13 + 16, l.bodies + 16);  // moved past the end
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 12 + 16, l.patrols);      // overlaps the one before
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
@@ -737,6 +790,18 @@ small :: (b: [] u8) -> Layout {
   copy = bytes; putf(copy[..], l.samples, 2000000);                  // the first sample's x
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.samples + 5 * 20 + 16, 2000000);    // the last sample's time
+  #assert !metareal_cast_open(copy[0..<l.size]).ok;
+  copy = bytes; put32(copy[..], l.bodies + 28, 2);                   // a body on no bone
+  #assert !metareal_cast_open(copy[0..<l.size]).ok;
+  copy = bytes; putf(copy[..], l.bodies + 12, 0);                    // no width
+  #assert !metareal_cast_open(copy[0..<l.size]).ok;
+  copy = bytes; putf(copy[..], l.bodies + 12, 2.5);                  // too wide
+  #assert !metareal_cast_open(copy[0..<l.size]).ok;
+  copy = bytes; putf(copy[..], l.bodies + 12, 2);
+  #assert metareal_cast_open(copy[0..<l.size]).ok;
+  copy = bytes; putf(copy[..], l.bodies, 2000000);                   // the first end
+  #assert !metareal_cast_open(copy[0..<l.size]).ok;
+  copy = bytes; putf(copy[..], l.bodies + 24, -2000000);             // the other end's last number
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
 }
 
@@ -946,10 +1011,6 @@ opened :: (bytes: [] u8) -> Cast { return metareal_cast_open(bytes); }
 }
 
 // Where joint j puts a bind-pose point, from the palette.
-moved :: (j: Joint, p: Vec3) -> Vec3 {
-  return v3(j.m[0] * p.x + j.m[1] * p.y + j.m[2] * p.z + j.m[3], j.m[4] * p.x + j.m[5] * p.y + j.m[6] * p.z + j.m[7],
-            j.m[8] * p.x + j.m[9] * p.y + j.m[10] * p.z + j.m[11]);
-}
 TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
 
 #test "a pose is the clip's frame, placed where you stand" {
@@ -1038,6 +1099,34 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   // Between the last sample (1, 0.5) and the first (0, 0), at 1.75 s.
   #assert metareal_cast_robots_pose(b, c, 1.75, out[..]);
   #assert close(moved(out[3], v3(0, 0, 0)), v3(0.5, 0, 0.25), 0.0001);
+}
+
+#test "the robots' bodies are placed as they are drawn" {
+  bytes: [4096] u8;
+  l := small(bytes[..]);
+  b := bytes[0..<l.size]; c := opened(b);
+  palette: [10] Joint;
+  #assert metareal_cast_robots_pose(b, c, 0, palette[..]);
+  out: [28] f32;
+  #assert metareal_cast_bodies(b, c, palette[..], out[..]) == 4;
+  // Patrol 1 stands at (5, 5) facing +Z at twice the size: bone 1's capsule
+  // from (0, 0.2, 0.1) to (0, 1, 0.1), 0.25 wide, is twice as long and wide.
+  #assert close(v3(out[7], out[8], out[9]), v3(5, 0.4, 5.2), 0.0001);
+  #assert close(v3(out[10], out[11], out[12]), v3(5, 2, 5.2), 0.0001) && near(out[13], 0.5, 0.0001);
+  // The Foreman is six times as big, standing at its place.
+  #assert near(out[27], 1.5, 0.0001) && near(out[25], 6, 0.0001);
+  #assert close(v3(out[21], 0, out[23]), v3(f32(FOREMAN_X) + sin(f32(FOREMAN_YAW)) * 0.6, 0, f32(FOREMAN_Z) + cos(f32(FOREMAN_YAW)) * 0.6), 0.0001);
+  // Each one's own bone: patrol 0's walk turns bone 1, not bone 0.
+  #assert metareal_cast_robots_pose(b, c, 0.25, palette[..]);
+  #assert metareal_cast_bodies(b, c, palette[..], out[..]) == 4;
+  #assert close(v3(out[0], out[1], out[2]), moved(palette[3], v3(0, 0.2, 0.1)), 0.0001);
+  #assert close(v3(out[3], out[4], out[5]), moved(palette[3], v3(0, 1, 0.1)), 0.0001);
+  // Too little room, a short palette or other bytes: none.
+  #assert metareal_cast_bodies(b, c, palette[..], out[0..<27]) == 0;
+  #assert metareal_cast_bodies(b, c, palette[0..<9], out[..]) == 0;
+  #assert metareal_cast_bodies(bytes[0..<l.size - 16], c, palette[..], out[..]) == 0;
+  closed: Cast;
+  #assert metareal_cast_bodies(b, closed, palette[..], out[..]) == 0;
 }
 
 #test "times just under a loop's start round to its last frame" {

@@ -64,15 +64,21 @@ camera; `metareal/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
 and binds the buffers Coax admitted. A cast whose offsets, indices, joints or
-floats fail admission is refused, not drawn. The Grid has no buildings, peers
-or network use yet.
+floats fail admission is refused, not drawn. You collide with the robots
+through `player.coax`: a capsule per robot bone, placed by `cast.coax` from
+the same palette the robots are drawn with, pushes you out sideways and keeps
+the camera in front of it. Robot line art takes its width and light by
+distance from `light.coax`. The Grid has no buildings, peers or network use
+yet.
 
 Check: `coax/build.sh test`, `coax test metareal/grid.coax`,
 `metareal/player.coax` and `metareal/cast.coax`, `metareal/test_cast.sh` (the
-real Cast.bin under ASan/UBSan, with corrupted copies refused),
+real Cast.bin under ASan/UBSan, with corrupted copies refused, and you
+walking into the Foreman's leg and stopping),
 `PROTOC=... python3 metareal/test_home.py`, the sanitizer harness and the iOS
 UI tests (Start opens the Grid, you stand idle, the stick walks you forward,
-a jump plays its clips, the Foreman stands by the start, rotation and
+a jump plays its clips, the Foreman stands by the start and its leg stops
+you, rotation and
 backgrounding keep it). Metal layout/stage
 bindings remain an explicit native boundary; the home retains its initial
 flat-storage graph while decoded configuration views use bounded Coax scratch

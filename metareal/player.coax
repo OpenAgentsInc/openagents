@@ -10,11 +10,14 @@
 // every call. Controls arrive in the shape of engine.v1 InputIntent.
 //
 // The world answers three questions: the floor under your feet, how far you
-// may move before a wall, and how far the camera may sit before something is
-// in the way. For now World stands in for collision: a flat floor at
-// `ground`, no walls, and `room` metres of camera room. The exported calls
-// use the bare Grid, World{}. The populated Grid's collision replaces the
-// three procedures under "The world" and nothing else.
+// may move before something is in the way, and how far the camera may sit
+// before something is in the way. World is a flat floor at `ground`, `room`
+// metres of camera room, and the robots' bodies: capsules that move with
+// them (metareal/cast.coax places them each frame). You are a capsule too,
+// RADIUS wide and HEIGHT tall, as aethyr's characters (src/physics): a body
+// pushes you out sideways and stops the part of your speed that goes into
+// it, and pulls the camera in front of it. Buildings come later and change
+// only the procedures under "The world".
 //
 // Changes from aethyr: the fixed step is 1/64 s instead of 1/60 s, so step
 // counts are exact; a stick inside the dead zone is no input (aethyr walked
@@ -43,13 +46,19 @@ DEAD_ZONE :: 0.2;       // stick travel that counts as no input
 STEP :: 0.015625;       // the fixed gameplay step, 1/64 s
 MAX_STEPS :: 8;         // steps one frame may run; the rest is dropped
 MAX_FRAME :: 0.25;      // the longest frame time that counts
+RADIUS :: 0.3;          // your capsule, as aethyr's kRadius
+HEIGHT :: 1.8;
+BODY :: 7;              // numbers per body: one end, the other, the radius
+PASSES :: 3;            // push-outs per step, for bodies that touch
+CAM_CLEAR :: 0.2;       // how far the camera keeps from a body
 
 Vec3 :: struct { x: f32; y: f32; z: f32; }
 
-// The stand-in world: a flat floor and the camera's room.
+// A flat floor, the camera's room, and the bodies (BODY numbers each).
 World :: struct {
   ground: f32 = 0;
   room: f32 = 1000;
+  bodies: [] f32;
 }
 
 // What the character is doing, for the animation that comes later. The
@@ -117,17 +126,126 @@ atan2 :: (y: f32, x: f32) -> f32 {
 // ---- The world ----
 
 floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 { return w.ground; }
-// Moves p horizontally by (dx, dz), stopping at walls, and zeroes the blocked
-// parts of its velocity. There are no walls yet.
+
+v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
+add :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
+sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+times :: (a: Vec3, k: f32) -> Vec3 { return v3(a.x * k, a.y * k, a.z * k); }
+dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+// Body i, if it is whole and finite.
+Body :: struct { a: Vec3; b: Vec3; r: f32; ok: bool; }
+body :: (w: World, i: int) -> Body {
+  out: Body;
+  k := i * BODY;
+  for j: 0..<BODY { if !finite(w.bodies[k + j]) { return out; } }
+  out.a = v3(w.bodies[k], w.bodies[k + 1], w.bodies[k + 2]);
+  out.b = v3(w.bodies[k + 3], w.bodies[k + 4], w.bodies[k + 5]);
+  out.r = w.bodies[k + 6];
+  out.ok = out.r > 0;
+  return out;
+}
+
+// The closest points of segments p0-p1 and q0-p1 (either may be a point):
+// how far along each (0 to 1), and the points (Ericson, Real-Time Collision
+// Detection, 5.1.9).
+Closest :: struct { s: f32; t: f32; p: Vec3; q: Vec3; }
+closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest {
+  d1 := sub(p1, p0); d2 := sub(q1, q0); r := sub(p0, q0);
+  a := dot(d1, d1); e := dot(d2, d2); f := dot(d2, r);
+  out: Closest;
+  tiny := 0.000001f32;
+  if a <= tiny && e <= tiny {
+  } else if a <= tiny {
+    out.t = clamp(f / e, 0, 1);
+  } else {
+    c := dot(d1, r);
+    if e <= tiny {
+      out.s = clamp(-c / a, 0, 1);
+    } else {
+      b := dot(d1, d2);
+      denom := a * e - b * b;
+      if denom > tiny * a * e { out.s = clamp((b * f - c * e) / denom, 0, 1); }
+      out.t = (b * out.s + f) / e;
+      if out.t < 0 { out.t = 0; out.s = clamp(-c / a, 0, 1); }
+      else if out.t > 1 { out.t = 1; out.s = clamp((b - c) / a, 0, 1); }
+    }
+  }
+  out.p = add(p0, times(d1, out.s));
+  out.q = add(q0, times(d2, out.t));
+  return out;
+}
+
+// Your capsule's axis, feet at `feet`.
+shin :: (feet: Vec3) -> Vec3 { return v3(feet.x, feet.y + f32(RADIUS), feet.z); }
+crown :: (feet: Vec3) -> Vec3 { return v3(feet.x, feet.y + f32(HEIGHT - RADIUS), feet.z); }
+
+// Moves p horizontally by (dx, dz), then out of every body it overlaps,
+// sideways, and zeroes the part of its velocity going into one. Standing
+// right under or on a body's axis, you go back the way you came (or to -Z).
 move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player {
   next := p;
   next.pos.x += dx;
   next.pos.z += dz;
+  n := w.bodies.count / BODY;
+  for pass: 0..<PASSES {
+    pushed := false;
+    for i: 0..<n {
+      bd := body(w, i);
+      if !bd.ok { continue; }
+      c := closest(shin(next.pos), crown(next.pos), bd.a, bd.b);
+      need := bd.r + f32(RADIUS);
+      dy := c.p.y - c.q.y;
+      if abs(dy) >= need { continue; }
+      hx := c.p.x - c.q.x; hz := c.p.z - c.q.z;
+      h := sqrt(hx * hx + hz * hz);
+      reach := sqrt(need * need - dy * dy);
+      if h >= reach { continue; }
+      if h < 0.0001 {
+        hx = -dx; hz = -dz;
+        h = sqrt(hx * hx + hz * hz);
+        if h < 0.0001 { hx = 0; hz = -1; h = 1; }
+        hx = hx / h * 0.0001; hz = hz / h * 0.0001; h = 0.0001;
+      }
+      ux := hx / h; uz := hz / h;
+      next.pos.x += ux * (reach - h);
+      next.pos.z += uz * (reach - h);
+      into := next.vel.x * ux + next.vel.z * uz;
+      if into < 0 { next.vel.x -= ux * into; next.vel.z -= uz * into; }
+      pushed = true;
+    }
+    if !pushed { break; }
+  }
   return next;
 }
-// How far the camera may sit from target along offset before something is
-// in the way, up to max.
-camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 { return lo(w.room, max); }
+
+// How far the camera may sit from target along offset (a unit direction)
+// before something is in the way, up to max: the room, and CAM_CLEAR short
+// of the nearest body the line crosses.
+camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 {
+  room := lo(w.room, max);
+  far := add(target, times(offset, max));
+  for i: 0..<w.bodies.count / BODY {
+    bd := body(w, i);
+    if !bd.ok { continue; }
+    c := closest(target, far, bd.a, bd.b);
+    gap := sub(c.p, c.q);
+    d2 := dot(gap, gap);
+    r := bd.r + f32(CAM_CLEAR);
+    if d2 >= r * r { continue; }
+    // The line enters the widened body about this far before the closest
+    // point: further when it crosses the axis at a slant.
+    axis := sub(bd.b, bd.a);
+    size := dot(axis, axis);
+    slant := 1.0f32;
+    if size > 0.000001 {
+      along := dot(axis, offset);
+      slant = sqrt(hi(1 - along * along / size, 0.04));
+    }
+    room = lo(room, hi(c.s * max - sqrt(r * r - d2) / slant, 0));
+  }
+  return room;
+}
 
 // ---- The controller ----
 
@@ -309,6 +427,14 @@ advance_in :: (w: World, p: Player, frame: f32) -> Player {
 
 metareal_player_advance :: (p: Player, frame: f32) -> Player #export_c {
   w: World;
+  return advance_in(w, p, frame);
+}
+
+// The same among bodies: BODY numbers each, as metareal_cast_bodies writes
+// them; a partial last one is ignored.
+metareal_player_advance_among :: (p: Player, frame: f32, bodies: [] f32) -> Player #export_c {
+  w: World;
+  w.bodies = bodies;
   return advance_in(w, p, frame);
 }
 
@@ -705,4 +831,142 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   #assert m.x == 1 && m.y == 2 && m.z == 4;
   #assert finite(999999) && !finite(1000000) && !finite(-1000000);
   #assert near(1, 1.5, 0.5) && !near(1, 1.6, 0.5);
+}
+
+// ---- Bodies ----
+
+// A body standing 2 m ahead (+Z): a post 0.2 m wide from the floor to 3 m.
+POST :: 7;
+post :: (out: [] f32, x: f32, z: f32, r: f32) {
+  out[0] = x; out[1] = 0; out[2] = z; out[3] = x; out[4] = 3; out[5] = z; out[6] = r;
+}
+
+#forall "closest points are no further apart than any other pair" i: 0..<6, j: 0..<6 {
+  p0 := v3(0, 0, 0); p1 := v3(1, f32(i) * 0.4 - 1, 0.5);
+  q0 := v3(f32(j) * 0.3 - 0.5, 1, -0.2); q1 := v3(0.4, f32(j) * -0.2, f32(i) * 0.1 + 0.7);
+  if i == 5 { p1 = p0; }          // a point
+  if j == 5 { q1 = q0; }
+  c := closest(p0, p1, q0, q1);
+  #assert c.s >= 0 && c.s <= 1 && c.t >= 0 && c.t <= 1;
+  g := sub(c.p, c.q); best := dot(g, g);
+  for a: 0..<21 {
+    for b: 0..<21 {
+      u := add(p0, times(sub(p1, p0), f32(a) / 20));
+      v := add(q0, times(sub(q1, q0), f32(b) / 20));
+      h := sub(u, v);
+      #assert best <= dot(h, h) + 0.00001;
+    }
+  }
+}
+
+#test "parallel segments meet where they overlap" {
+  c := closest(v3(0, 0, 0), v3(0, 2, 0), v3(1, 1, 0), v3(1, 3, 0));
+  #assert near(c.p.x, 0, 0.00001) && near(c.q.x, 1, 0.00001) && near(c.p.y, c.q.y, 0.00001) && c.p.y >= 1 && c.p.y <= 2;
+  d := closest(v3(0, 0, 0), v3(0, 0, 0), v3(1, 1, 0), v3(1, 1, 0));
+  #assert d.s == 0 && d.t == 0 && d.q.x == 1;
+}
+
+#test "you walk up to a body and stop at its edge" {
+  bodies: [POST] f32;
+  post(bodies[..], 0, 2, 0.2);
+  w: World;
+  w.bodies = bodies[..];
+  p := held(metareal_player_place(0, 0, 0, 0), 0, 1, false);
+  for i: 0..<48 { p = step(w, p, STEP); }
+  #assert near(p.pos.z, 2 - 0.2 - f32(RADIUS), 0.0001) && near(p.pos.x, 0, 0.0001);
+  // What went into it stopped; you still face it, pressing. (Held long
+  // enough, the smallest drift slides you round it, as round bodies do.)
+  #assert near(p.vel.z, 0, 0.0001) && p.act == Act.walking;
+  // Sideways along it still goes.
+  p = held(p, 1, 0, false);
+  for i: 0..<64 { p = step(w, p, STEP); }
+  #assert p.pos.x < -0.5 && near(p.pos.z, 1.5, 0.01);
+}
+
+#test "a body moving into you pushes you" {
+  bodies: [POST] f32;
+  w: World;
+  w.bodies = bodies[..];
+  p := metareal_player_place(0, 0, 0, 0);
+  for i: 0..<20 {
+    post(bodies[..], 0, 1 - f32(i) * 0.05, 0.4);
+    p = step(w, p, STEP);
+  }
+  // The post's at z = 0.05 now: you are a radius and its width behind it.
+  #assert near(p.pos.z, 0.05 - 0.4 - f32(RADIUS), 0.0001);
+}
+
+#test "a body passes over your head and under your feet" {
+  bodies: [14] f32;
+  // A bar across at 2.3 m and a ball at 0.2 m, 1 m ahead.
+  bodies[0] = -2; bodies[1] = 2.3; bodies[2] = 1; bodies[3] = 2; bodies[4] = 2.3; bodies[5] = 1; bodies[6] = 0.2;
+  bodies[7] = 0; bodies[8] = 0.2; bodies[9] = 1; bodies[10] = 0; bodies[11] = 0.2; bodies[12] = 1; bodies[13] = 0.2;
+  w: World;
+  w.bodies = bodies[0..<7];
+  p := metareal_player_place(0, 0, 1, 0);
+  #assert move_across(w, p, 0, 0).pos.z == 1;   // under the bar
+  w.bodies = bodies[..];
+  q := move_across(w, p, 0, 0);                 // on the ball: back off it
+  #assert near(q.pos.z, 1 - sqrt(0.5f32 * 0.5 - 0.1 * 0.1), 0.0001);   // clear of it at your shin, 0.1 m above its centre
+  // Jumping clear over it (its own: the bar would hit your head).
+  w.bodies = bodies[7..<14];
+  p.pos.y = 0.45;
+  #assert move_across(w, p, 0, 0).pos.z == 1;
+  p.pos.y = 0.39;
+  #assert move_across(w, p, 0, 0).pos.z < 1;
+}
+
+#test "standing on a body's axis, you go back the way you came" {
+  bodies: [POST] f32;
+  post(bodies[..], 1, 1, 0.2);
+  w: World;
+  w.bodies = bodies[..];
+  p := metareal_player_place(1, 0, 0.5, 0);
+  q := move_across(w, p, 0, 0.5);
+  #assert near(q.pos.x, 1, 0.0001) && near(q.pos.z, 0.5, 0.0001);
+  q = move_across(w, metareal_player_place(1, 0, 1, 0), 0, 0);
+  #assert near(q.pos.z, 0.5, 0.0001);
+}
+
+#test "the camera stops short of a body behind you" {
+  bodies: [POST] f32;
+  post(bodies[..], 0, -2, 0.3);
+  w: World;
+  w.bodies = bodies[..];
+  p := metareal_player_place(0, 0, 0, 0);
+  // Straight back, level: CAM_CLEAR and its width before it.
+  room := camera_room(w, v3(0, 1, 0), v3(0, 0, -1), 4);
+  #assert near(room, 2 - 0.3 - f32(CAM_CLEAR), 0.0001);
+  // A slanted line crossing the upright post stops sooner along itself.
+  slant := camera_room(w, v3(0, 1, 0), v3(0, 0.6, -0.8), 4);
+  #assert slant < 2 / 0.8 && slant > 0;
+  // Off to the side, or behind the camera, it is not in the way.
+  #assert camera_room(w, v3(0, 1, 0), v3(1, 0, 0), 4) == 4;
+  #assert camera_room(w, v3(0, 1, 0), v3(0, 0, 1), 4) == 4;
+  // Too close for any room: none, and the step keeps CAM_WALL_MIN.
+  #assert camera_room(w, v3(0, 1, -1.6), v3(0, 0, -1), 4) == 0;
+  q := step(w, p, STEP);
+  #assert q.dist < f32(CAM_MAX);
+}
+
+#test "bodies with bad numbers, and a partial one, are skipped" {
+  bodies: [10] f32;
+  post(bodies[..], 0, 0, 0.5);
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  w.bodies = bodies[..];
+  #assert move_across(w, p, 0, 0).pos.z != 0;
+  bodies[6] = 0;
+  #assert move_across(w, p, 0, 0).pos.z == 0;    // no width
+  for k: 0..<7 {
+    post(bodies[..], 0, 0, 0.5);
+    bodies[k] = 2000000;
+    #assert move_across(w, p, 0, 0).pos.z == 0 && camera_room(w, v3(0, 1, 2), v3(0, 0, -1), 4) == 4;
+  }
+  post(bodies[..], 0, 0, 0.5);
+  w.bodies = bodies[0..<6];
+  #assert move_across(w, p, 0, 0).pos.z == 0;
+  // The exported call reads them.
+  stand := metareal_player_advance_among(metareal_player_place(0, 0, 0.2, 0), STEP, bodies[0..<7]);
+  #assert near(stand.pos.z, 0.8, 0.0001);
 }
