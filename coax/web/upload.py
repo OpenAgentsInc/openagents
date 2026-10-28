@@ -33,10 +33,16 @@ def files(root):
             p = os.path.join(d, f)
             yield os.path.relpath(p, root), p
 
+def object_name(name):
+    # x.page is the page for the bare path x (deploy.sh): /project/coax.
+    return name[:-5] if name.endswith(".page") else name
+
 def put(name, path, cache):
     data = open(path, "rb").read()
+    kind = ".html" if name.endswith(".page") else os.path.splitext(name)[1]
+    name = object_name(name)
     meta = {"name": name, "cacheControl": cache,
-            "contentType": types.get(os.path.splitext(name)[1]) or mimetypes.guess_type(name)[0] or "application/octet-stream"}
+            "contentType": types.get(kind) or mimetypes.guess_type(name)[0] or "application/octet-stream"}
     b = "coaxial-upload"
     body = (f"--{b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{json.dumps(meta)}\r\n"
             f"--{b}\r\nContent-Type: {meta['contentType']}\r\n\r\n").encode() + data + f"\r\n--{b}--".encode()
@@ -49,9 +55,9 @@ have = listing()
 pool = cf.ThreadPoolExecutor(16)
 sent = []
 for root, cache in (("assets", "public, max-age=31536000, immutable"), ("site", "no-cache")):
-    todo = [(n, p) for n, p in files(os.path.join(stage, root)) if have.get(n) != md5(p) and not (root == "site" and os.path.exists(os.path.join(stage, "assets", n)))]
+    todo = [(n, p) for n, p in files(os.path.join(stage, root)) if have.get(object_name(n)) != md5(p) and not (root == "site" and os.path.exists(os.path.join(stage, "assets", n)))]
     sent += list(pool.map(lambda np: put(np[0], np[1], cache), todo))
-keep = {n for n, _ in files(os.path.join(stage, "site"))}
+keep = {object_name(n) for n, _ in files(os.path.join(stage, "site"))}
 stale = [n for n in have if n not in keep]
 list(pool.map(lambda n: call(api + "/o/" + urllib.parse.quote(n, safe=""), "DELETE"), stale))
 print(f"  sent {len(sent)}, removed {len(stale)}, unchanged {len(keep) - len(sent)}")

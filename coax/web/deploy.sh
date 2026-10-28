@@ -43,9 +43,18 @@ def put(src, rel):
     return "/" + named
 host_url = put(host, "coaxial/host.js")
 os.makedirs(site, exist_ok=True)
-for f in sorted(os.listdir(app)):
+# Pages at any depth (project/coax/index.html is /project/coax): pages, their
+# Markdown twins and icons. Work files, builds and sources stay behind.
+pages = []
+for root, dirs, files in os.walk(app):
+    dirs[:] = sorted(d for d in dirs if d not in ("build", "work", "node_modules") and not d.startswith("."))
+    for f in sorted(files):
+        rel = os.path.relpath(os.path.join(root, f), app)
+        if f == "README.md" or not f.endswith((".html", ".md", ".svg")): continue
+        pages.append(rel)
+for f in pages:
     path = os.path.join(app, f)
-    if not os.path.isfile(path) or f == "README.md" or not f.endswith((".html", ".md", ".svg")): continue
+    os.makedirs(os.path.dirname(os.path.join(site, f)) or site, exist_ok=True)
     text = open(path, encoding="utf-8").read() if f.endswith(".html") else None
     if text is None: shutil.copy(path, os.path.join(site, f)); continue
     def tag(m):
@@ -56,6 +65,10 @@ for f in sorted(os.listdir(app)):
         return f'<script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'
     text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+"([^>]*)>', tag, text)
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)
+    # A directory's page also answers at the bare path (/project/coax), which
+    # the bucket can't map to index.html on its own; upload.py serves it as HTML.
+    if os.path.basename(f) == "index.html" and os.path.dirname(f):
+        shutil.copy(os.path.join(site, f), os.path.join(site, os.path.dirname(f) + ".page"))
 PY
 
 # Hidden presentations (unlock/), when COAXIAL_UNLOCKS names any: from the

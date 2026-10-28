@@ -60,6 +60,10 @@ for f in sorted(files):
         check(body[:4] == b"\0asm", f"{f} is a wasm module ({len(body)} bytes)")
 s, h, _ = get("/", scheme="http")
 check(s in (301, 308) and h.get("location", "").startswith("https://"), f"http:// redirects to https:// ({s})")
+for path in ("/project/coax", "/project/coax/index.md", "/project/coax/demo"):
+    s, h, body = get(path)
+    ok = s == 200 and (path.endswith(".md") or b'data-app="project"' in body)
+    check(ok, f"{path} ({s})")
 if coder:
     for path, want in [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})]:
         s, _, _ = get(path)
