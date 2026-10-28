@@ -99,7 +99,6 @@ export function fieldTags(f: Fields): string[][] {
   if (f.kind !== "task") t.push(["t", f.kind])
   for (const l of f.labels) t.push(["t", l])
   if (f.size) t.push(["size", f.size])
-  if (f.sats > 0) t.push(["reward", String(f.sats), "sat"])
   if (f.parent) t.push(["parent", f.parent])
   for (const b of f.blocked_by) t.push(["blocked-by", b])
   return t
@@ -122,7 +121,9 @@ export function fieldsFrom(tags: string[][], content: string): Fields {
 }
 
 export function sameFields(a: Fields, b: Fields): boolean {
-  return JSON.stringify(fieldTags(a)) === JSON.stringify(fieldTags(b)) && a.body === b.body
+  // sats: rewards were dropped (owner, 2026-10-28); older issues still carry a
+  // reward tag, and a revision without one clears it.
+  return JSON.stringify(fieldTags(a)) === JSON.stringify(fieldTags(b)) && a.body === b.body && (a.sats || 0) === (b.sats || 0)
 }
 
 /** A seed file (project/<slug>/work/README.md, openagents.project-work-seed.v1) as work items. A task's

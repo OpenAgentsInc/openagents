@@ -18,7 +18,6 @@ numbered by hand.
     "parent": "m1-field-scalar",           // milestone slug
     "title": "…",                          // no numbers; display aliases are assigned by the page
     "size": "S" | "M" | "L",               // one agent, one sitting: S < 2 h, M ≈ half a day, L ≈ a day
-    "sats": 6000,                          // suggested reward; terms live in the order, not here
     "labels": ["crypto", "secp256k1"],
     "body": "What to build, interfaces, constraints",
     "files": ["paths the task will write"],  // the claim's write resources

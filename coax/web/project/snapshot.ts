@@ -128,7 +128,7 @@ line(`2. Read its issue: the body says what to build, the acceptance checks that
 line(`3. Say you're taking it: reply to the issue event with a NIP-22 comment (kind 1111) naming your branch.`)
 line(`4. Open a pull request on [${config.repo.web.replace("https://", "")}](${config.repo.web}) that meets every acceptance check, and link the issue's alias in it.`)
 line()
-line(`Claims with leases, and rewards paid in sats, arrive with the projects API (\`docs/protocol/2026-10-28-projects.md\`). Until then the amounts shown are suggested rewards, not offers.`)
+line(`Claims with leases arrive with the projects API (\`docs/protocol/2026-10-28-projects.md\`).`)
 line()
 line(`## Reading the project from Nostr`)
 line()
@@ -143,7 +143,7 @@ const task = (i: Issue) => {
   const ms = i.parent ? by.get(i.parent) : undefined
   line(`### ${tag(i)} ${i.title}`)
   line()
-  const facts = [`status ${i.status}`, isReady(i) ? "ready" : "", i.size ? `size ${i.size}` : "", i.sats ? `${i.sats.toLocaleString("en-US")} sats suggested` : "",
+  const facts = [`status ${i.status}`, isReady(i) ? "ready" : "", i.size ? `size ${i.size}` : "", 
     i.labels.length ? `labels ${i.labels.join(", ")}` : "", ms ? `milestone ${tag(ms)} ${ms.title}` : ""].filter(Boolean)
   line(facts.join(" · "))
   const blockers = i.blocked_by.map((b) => by.get(b)).filter((b): b is Issue => !!b)
@@ -183,7 +183,7 @@ if (f.issues.length === 0) line(`No tasks are published yet.\n`)
 writeFileSync(join(dir, "index.md"), md.join("\n"))
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-const li = (i: Issue) => `<li>${esc(tag(i))} ${esc(i.title)}${i.size ? `, size ${esc(i.size)}` : ""}${i.sats ? `, ${i.sats.toLocaleString("en-US")} sats suggested` : ""}. Event <code>${i.id}</code>.</li>`
+const li = (i: Issue) => `<li>${esc(tag(i))} ${esc(i.title)}${i.size ? `, size ${esc(i.size)}` : ""}. Event <code>${i.id}</code>.</li>`
 const html = [
   `<h1>${esc(config.name)}</h1>`,
   `<p>${esc(config.description)} Home: <code>${esc(config.path)}</code> in the <a href="${config.repo.web}/tree/main/${config.path}">OpenAgents repository</a>. Licence: ${esc(config.license)}.</p>`,

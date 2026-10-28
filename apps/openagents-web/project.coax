@@ -881,12 +881,9 @@ queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
         v = put_fit(out, v, title, x + idw, y, cap, ifx done then dim else white, right - sw - 10 * d - x - idw);
       }
       meta := y + 12 * d * cast(f32) (lines - 1) + 13 * d;
-      // labels, the reward and who has it
+      // labels and who has it
       m := 0;
       m += put_text(buf[..], m, field(TASKS, r, 3));
-      m += put_text(buf[..], m, "  ·  ");
-      m += number(parse(field(TASKS, r, 4)), false, buf[m..<buf.count]);
-      m += put_text(buf[..], m, " SATS");
       v = put(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim);
       who := field(TASKS, r, 5);
       if who.count > 0 { v = put_right(out, v, who, right, meta, small, ifx done then dim else pale); }
@@ -983,7 +980,7 @@ activity :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
 
 // For agents: how to read the project and pull work from it.
 AGENT_STEPS :: "READ|/project/coax/index.md\nSHOW|openagents project show coax\nLIST|openagents tasks --project coax\nCLAIM|openagents task claim CX-101\nSUBMIT|openagents task submit CX-101\nAPI|GET /v1/projects/coax/tasks?state=open\n|POST /v1/projects/coax/tasks/CX-101/claim\n";
-POLICY :: "WHO|any registered agent key\nLOAD|one task at a time\nLEASE|2 hours, renewable\nWHERE|a branch per task\nGATE|a maintainer reviews the pull request\nPAID|sats over Lightning on acceptance\n";
+POLICY :: "WHO|any registered agent key\nLOAD|one task at a time\nLEASE|2 hours, renewable\nWHERE|a branch per task\nGATE|a maintainer reviews the pull request\n";
 agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   d := p.d;
   v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
@@ -994,7 +991,7 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   lead := 52 * d;
   if !compact {
     lines: [1] int;
-    v = put_wrapped(out, v, "This project takes work from people and agents. Pull an open task, claim it, push a commit that meets its acceptance, and the claim's bounty settles in bitcoin.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
+    v = put_wrapped(out, v, "This project takes work from people and agents. Pull an open task, claim it, push a commit that meets its acceptance, and a maintainer reviews it.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
     y += 12 * d * cast(f32) lines[0] + 10 * d;
   }
   for r: 0..<rows(AGENT_STEPS) {
@@ -1028,7 +1025,7 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
 // The queue from the relay: ready tasks first by rank, then the ones still
 // waiting, by rank. Each row: its alias (from its event id, never a number
 // that order could change), its title, its state, and under it the
-// milestone, labels, size and suggested reward, or what it waits on.
+// milestone, labels and size, or what it waits on.
 real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d;
   text := WORK_ITEMS;
@@ -1086,13 +1083,6 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
       size := item(w, text, r, 5);
       if size.count > 0 { m += put_text(buf[..], m, "SIZE "); m += put_text(buf[..], m, size); }
       v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw - 70 * d);
-      sats := parse(item(w, text, r, 6));
-      if sats > 0 {
-        sb: [24] u8;
-        n := number(sats, true, sb[..]);
-        n += put_text(sb[..], n, " SATS");
-        v = put_right(out, v, cast(string) sb[0..<n], right, meta, small, pale);
-      }
     } else {
       m += put_text(buf[..], m, "WAITS ON #");
       m += put_text(buf[..], m, item(w, text, w[0].waits[r], 0));
@@ -1178,7 +1168,7 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
 }
 
 // For agents, on the real page: where the project's events are and how to
-// take a task today. Claims and paid rewards come with the projects API.
+// take a task today. Claims come with the projects API.
 real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   d := p.d;
   v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
@@ -1197,11 +1187,6 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
     v = put(out, v, field(WORK_STEPS, r, 0), x, y, cap, orange);
     v = put_fit(out, v, field(WORK_STEPS, r, 1), x + lead, y, cap, white, right - x - lead);
     y += step;
-  }
-  if !compact && y + 34 * d < b.y1 - 10 * d {
-    lines: [1] int;
-    v = put_wrapped(out, v, "Suggested rewards are not offers yet: leased claims and payment in sats come with the projects API.", x, y + 8 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
-    y += 8 * d + 11 * d * cast(f32) lines[0] + 12 * d;
   }
   if !compact && y + 24 * d < b.y1 - 10 * d {
     v = put(out, v, "PROJECT", x, y, cap, dim);

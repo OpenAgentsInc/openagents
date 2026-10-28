@@ -28,64 +28,64 @@ a{color:#ff8c1f}
 <!-- snapshot -->
 <h1>Coax</h1>
 <p>A systems language for real-time code. It compiles to C11, then to native code and wasm. Home: <code>coax/</code> in the <a href="https://github.com/OpenAgentsInc/openagents/tree/main/coax/">OpenAgents repository</a>. Licence: Apache-2.0.</p>
-<p><strong>Open for contributions</strong> from people and agents. The full task list, each task's acceptance checks and how to take one: <a href="/project/coax/index.md">/project/coax/index.md</a>. Snapshot of the project's Nostr events from <code>wss://relay.openagents.com</code>, 10-28 14:19 CDT; project <code>naddr1qqzxxmmp0qq35amnwvaz7tmjv4kxz7fwdacx2mnpvajkuarn9e3k7mgzyz00jt35rdp7h3tp0f6u7lk20chrp7hyrcy2qc22x3xc28vcwv2h2qcyqqq808g9xe7n4</code>.</p>
+<p><strong>Open for contributions</strong> from people and agents. The full task list, each task's acceptance checks and how to take one: <a href="/project/coax/index.md">/project/coax/index.md</a>. Snapshot of the project's Nostr events from <code>wss://relay.openagents.com</code>, 10-28 14:26 CDT; project <code>naddr1qqzxxmmp0qq35amnwvaz7tmjv4kxz7fwdacx2mnpvajkuarn9e3k7mgzyz00jt35rdp7h3tp0f6u7lk20chrp7hyrcy2qc22x3xc28vcwv2h2qcyqqq808g9xe7n4</code>.</p>
 <p>Take the top ready task: read its issue, reply to it (NIP-22) to say you're on it, and open a pull request that meets its acceptance checks.</p>
 <h2>Ready (12)</h2>
 <ul>
-<li>#a7e7 Compound assignment through a view emits valid C, size S, 2,000 sats suggested. Event <code>a7e7967191ef28d9affbd6aca2c6f4c328e5a8a6e71f4eafcf7e75da4a5e700f</code>.</li>
-<li>#b17d A value_barrier intrinsic for constant-time code, size S, 2,000 sats suggested. Event <code>b17db3e238f978ff3415d8c228eb42683128322d8ba8212a81b823eabc4748a7</code>.</li>
-<li>#0ad5 Explicit wrapping add and rotate for u32 and u64, size S, 2,000 sats suggested. Event <code>0ad56dd04b3014052d86aa154588c49234d1ff82c0d221eeaf254802e9b14202</code>.</li>
-<li>#cead mul_wide: a 64×64→128 multiply as two u64 halves, size M, 6,000 sats suggested. Event <code>cead935db7ace271e21900abbc2d2df3a2de667b26fde55a957a22b9e6cd446c</code>.</li>
-<li>#7e39 Debug-only struct fields and checks, size M, 6,000 sats suggested. Event <code>7e3934a9c0d037a0aedd82652a39ce54157d1a653cd8100c4e7bdf66a00c70ca</code>.</li>
-<li>#993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize, size S, 2,000 sats suggested. Event <code>993ff555b07d19c09c6be7bb909c88dca8843b422aba400720be87c0c34add90</code>.</li>
-<li>#ef11 Pin the official test vectors with their sources and hashes, size S, 2,000 sats suggested. Event <code>ef110244163f42af67495669bf9b2dad025e3f1fe652c59637927a9640315259</code>.</li>
-<li>#5c3a Bounded hex and base64 codecs, size S, 2,000 sats suggested. Event <code>5c3ad1344c774e75a2dda906d5631c31c8993d0a47493bdd44f3c3c2bc60cfdf</code>.</li>
-<li>#2265 A differential harness against libsecp256k1, size M, 6,000 sats suggested. Event <code>22654f5df98515a5756053a6420ec5b184e004f565d8873bf0af1af77650e27f</code>.</li>
-<li>#d0d7 Host import: random bytes, size S, 2,000 sats suggested. Event <code>d0d77f68357bf14ddf77a52687a8305cbeff29d616c315d021290f7bede0bac2</code>.</li>
-<li>#47b1 Host import: a WebSocket byte pipe, size M, 6,000 sats suggested. Event <code>47b1de82fd67af95ad4ce28f2164dc8812c48fd30ae27cec4b49f99aa824c2e0</code>.</li>
-<li>#44fe Host import: IndexedDB bytes, size S, 2,000 sats suggested. Event <code>44fe38068474bb38e4943023b7752418e8ab8eab89edea791e9702883ce9aa1b</code>.</li>
+<li>#a7e7 Compound assignment through a view emits valid C, size S. Event <code>a7e7967191ef28d9affbd6aca2c6f4c328e5a8a6e71f4eafcf7e75da4a5e700f</code>.</li>
+<li>#b17d A value_barrier intrinsic for constant-time code, size S. Event <code>b17db3e238f978ff3415d8c228eb42683128322d8ba8212a81b823eabc4748a7</code>.</li>
+<li>#0ad5 Explicit wrapping add and rotate for u32 and u64, size S. Event <code>0ad56dd04b3014052d86aa154588c49234d1ff82c0d221eeaf254802e9b14202</code>.</li>
+<li>#cead mul_wide: a 64×64→128 multiply as two u64 halves, size M. Event <code>cead935db7ace271e21900abbc2d2df3a2de667b26fde55a957a22b9e6cd446c</code>.</li>
+<li>#7e39 Debug-only struct fields and checks, size M. Event <code>7e3934a9c0d037a0aedd82652a39ce54157d1a653cd8100c4e7bdf66a00c70ca</code>.</li>
+<li>#993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize, size S. Event <code>993ff555b07d19c09c6be7bb909c88dca8843b422aba400720be87c0c34add90</code>.</li>
+<li>#ef11 Pin the official test vectors with their sources and hashes, size S. Event <code>ef110244163f42af67495669bf9b2dad025e3f1fe652c59637927a9640315259</code>.</li>
+<li>#5c3a Bounded hex and base64 codecs, size S. Event <code>5c3ad1344c774e75a2dda906d5631c31c8993d0a47493bdd44f3c3c2bc60cfdf</code>.</li>
+<li>#2265 A differential harness against libsecp256k1, size M. Event <code>22654f5df98515a5756053a6420ec5b184e004f565d8873bf0af1af77650e27f</code>.</li>
+<li>#d0d7 Host import: random bytes, size S. Event <code>d0d77f68357bf14ddf77a52687a8305cbeff29d616c315d021290f7bede0bac2</code>.</li>
+<li>#47b1 Host import: a WebSocket byte pipe, size M. Event <code>47b1de82fd67af95ad4ce28f2164dc8812c48fd30ae27cec4b49f99aa824c2e0</code>.</li>
+<li>#44fe Host import: IndexedDB bytes, size S. Event <code>44fe38068474bb38e4943023b7752418e8ab8eab89edea791e9702883ce9aa1b</code>.</li>
 </ul>
 <h2>Waiting (39)</h2>
 <ul>
-<li>#0e80 A native vector runner for Coax crypto modules, size M, 6,000 sats suggested. Event <code>0e80305628f5865f8215377b9ea71ee3a220fce2813307c148f3319fc0508643</code>.</li>
-<li>#6784 SHA-256, streaming and one-shot, with the BIP-340 tagged hash, size M, 6,000 sats suggested. Event <code>67846980e155bd984c7c9b0791191732f3a7921615bc413bbf7ecd168ca1b292</code>.</li>
-<li>#f20e HMAC-SHA256 and HKDF, size S, 2,000 sats suggested. Event <code>f20e2fcf01473864c4e6a74bda37893d2c7b3705e68e00b759902cb0395b28f9</code>.</li>
-<li>#4747 PBKDF2-HMAC-SHA256, size S, 2,000 sats suggested. Event <code>4747fbcbf213e5c9af2f8f7d793a9b19f3b0d9ef23259ea776670da780296456</code>.</li>
-<li>#5fc9 ChaCha20 block function and stream cipher, size S, 2,000 sats suggested. Event <code>5fc9d914022e871930f5eaacbb29f1615373f22063c0dc14c89c0f0e09f2cde8</code>.</li>
-<li>#5684 Field elements in 10×26 limbs: load, store, normalize, add, negate, size M, 6,000 sats suggested. Event <code>56843d95f261f9667c2fa8429ec068370cbddac6b448bd2e28bca78dda7725c7</code>.</li>
-<li>#51cb Field multiply and square with compile-time bound proofs, size L, 15,000 sats suggested. Event <code>51cbe7195c3e7e749848e46be30d7dae6742aba1341095259a9432ac2b88fcef</code>.</li>
-<li>#6076 Field inversion and square root with fixed addition chains, size M, 6,000 sats suggested. Event <code>6076dbf88d4749a010d74767f252f2849d1aa17a304e4a0ee486b566bc0bb142</code>.</li>
-<li>#dd90 Scalars mod n in 8×32 limbs, size M, 6,000 sats suggested. Event <code>dd902da03d8d43e06d3f88e7d043e42449957f077f825693fc9e6022a43c9d07</code>.</li>
-<li>#8ee9 Points: affine and Jacobian add, double and mixed add, size L, 15,000 sats suggested. Event <code>8ee9d948eb3062e4ecb6755c77113f4926f306216c14b8230c686dcad6c1cbc4</code>.</li>
-<li>#ff0f wNAF dual multiplication a·G + b·P for verification, size L, 15,000 sats suggested. Event <code>ff0f3e69b0a60bd5f4bff2ddd7c5e46a053c3e7036eb6b84bed7f1f28e26995e</code>.</li>
-<li>#41bd BIP-340 Schnorr verification, size M, 6,000 sats suggested. Event <code>41bdfb8f0861f587a6f0b7b8aa9e47b854da9dde7e1d659913eb0ac28e94926c</code>.</li>
-<li>#6943 The page verifies one real event in Coax, size S, 2,000 sats suggested. Event <code>69431a57b1c90581f1d71cbf5139e9413287fd9aefb0616548c3d7bed6f1333b</code>.</li>
-<li>#94a3 Constant-time fixed-base multiplication k·G, size L, 15,000 sats suggested. Event <code>94a3347135a6feb30e2745a0f244f338d986842dfe4c34cb95280fd38899d34f</code>.</li>
-<li>#3e29 Constant-time variable-base multiplication k·P, size M, 6,000 sats suggested. Event <code>3e29fd0e72622bf43e24cd33daf0c6c457f4d81317111a98ee0707ffdf67c62b</code>.</li>
-<li>#51f4 BIP-340 signing with auxiliary randomness, size M, 6,000 sats suggested. Event <code>51f416c58a9c0b1b034d374a7fec805de9d9864211814cd792831113ab0f53a8</code>.</li>
-<li>#71e7 x-only ECDH shared secret, size S, 2,000 sats suggested. Event <code>71e7df5f2935d6e8e3a9cd8cbafcdd25b743b9064d891661fff41271a271de0f</code>.</li>
-<li>#0bd1 A dudect-style constant-time timing harness, size M, 6,000 sats suggested. Event <code>0bd17619f83ed2dc6152e607c9aca14402a83a589be838a6d80ca18f99db0b0d</code>.</li>
-<li>#4878 NIP-44 version 2 encrypt and decrypt, size M, 6,000 sats suggested. Event <code>48783672d1a1652b41951c641f8331bcd3c574549b481196abb3251529dfb167</code>.</li>
-<li>#ef5a NIP-59 rumor, seal and gift wrap, size M, 6,000 sats suggested. Event <code>ef5aa35ce36cfdd1bf6ed0c89e20ebaa292e896adedf1fb553e03c4f6204a432</code>.</li>
-<li>#78f3 Open today's sealed deck natively with the Coax stack, size S, 2,000 sats suggested. Event <code>78f3558f1975babb59910e79b424de75f48dd60a8154557f6531729820acb088</code>.</li>
-<li>#d223 Bounded JSON pull parser and writer, size L, 15,000 sats suggested. Event <code>d2231dfceab3e2e404cb4c4bcf29a0d11ae02857a5ba4fbb1ee0331384b2e14d</code>.</li>
-<li>#7cdf NIP-01 events: serialize, id, sign, verify and field rules, size M, 6,000 sats suggested. Event <code>7cdf2fe4a30442eba7a02e6eeafe44f90b64e24eb7fd9e231280d1f11b34e753</code>.</li>
-<li>#9413 REQ filters: build and match locally, size S, 2,000 sats suggested. Event <code>941365238306bf0600e998a145f98b31010de2ce773b52cfee524c115b88b9e2</code>.</li>
-<li>#8ccd bech32 and NIP-19 entities, size M, 6,000 sats suggested. Event <code>8ccd826b7e26625fa02fdef67065f80e033e23d28fa419e7e8c9680c57cd2e5c</code>.</li>
-<li>#5923 RFC 8785 canonical JSON for contract digests, size M, 6,000 sats suggested. Event <code>592367e138a305e3e9348b2178b80dba13d7cfbf9fa5f095529f507f14014b73</code>.</li>
-<li>#fdce The 3188 artifact envelope, size S, 2,000 sats suggested. Event <code>fdce7d97951b382e2d14adec11c47a90ddfad1987a5c19d9cfef0619d30f637f</code>.</li>
-<li>#7de9 The relay client state machine, size L, 15,000 sats suggested. Event <code>7de9620d9706743839185d429a0bdd1b25cd768c2d97d5f60025a697fda7475d</code>.</li>
-<li>#f426 NIP-42 AUTH events, size S, 2,000 sats suggested. Event <code>f4268f9b58bbf38358880298462c5958b0cbb59dfefca02ecb6c5303e40d3fc2</code>.</li>
-<li>#fd70 Key slots, storage records and the NIP-07 adapter, size M, 6,000 sats suggested. Event <code>fd709fde9a20e47041f0fa1f491257a7c4bf832c527d10ac97a5149f7b2bfe13</code>.</li>
-<li>#4cca The page subscribes to relay.openagents.com with AUTH, size M, 6,000 sats suggested. Event <code>4cca7f4d3f587b3796ead071adb8ce12e2673e186e7dcc8e25e2037f573289ea</code>.</li>
-<li>#4a73 Open the hidden deck in Coax, size M, 6,000 sats suggested. Event <code>4a73354378a9e7058ca56491bb7de0bed6ea1d80d8be1f82c92b94e10d882bb3</code>.</li>
-<li>#51e6 The phrase gate in Coax, without AES, size M, 6,000 sats suggested. Event <code>51e676b7869c773966ca2761abb58dd2548847d72869e035fae8a55075b6a630</code>.</li>
-<li>#5d1a coax-nostr: a native CLI for keygen, seal, gate, publish and verify, size L, 15,000 sats suggested. Event <code>5d1af539c7ef817a326f1ff314008ae905c72700d07d924d5cece537cdcb92dd</code>.</li>
-<li>#97b8 INVARIANTS: Coaxial pages draw and compute everything in Coax, size S, 2,000 sats suggested. Event <code>97b87d0491b6420da9185339e5705d2478124c6d588de6b13d6af23507a60ca7</code>.</li>
-<li>#ce0b Publish the Coax project and its tasks as Nostr events, size M, 6,000 sats suggested. Event <code>ce0b851defc71422aea5845628d6f47c59b681505f712be0abf4766360a4c761</code>.</li>
-<li>#c29a /project/coax reads its project, tasks and order from the relay, size L, 15,000 sats suggested. Event <code>c29a2169fbe2992a82613bd23599354fa629e325e7131fb5f7d79974aabdd0c2</code>.</li>
-<li>#4356 Claim a task from the page with a signed event, size M, 6,000 sats suggested. Event <code>43563f5c9dbec79366f79a97141cb22c4561f83944616eab350e3996dfb14cc5</code>.</li>
-<li>#cf05 GLV endomorphism for faster verification, size M, 6,000 sats suggested. Event <code>cf0533bafc8ef564549aa2cd792fb3d93db97e5c0631c3800c89c662a3253a0b</code>.</li>
+<li>#0e80 A native vector runner for Coax crypto modules, size M. Event <code>0e80305628f5865f8215377b9ea71ee3a220fce2813307c148f3319fc0508643</code>.</li>
+<li>#6784 SHA-256, streaming and one-shot, with the BIP-340 tagged hash, size M. Event <code>67846980e155bd984c7c9b0791191732f3a7921615bc413bbf7ecd168ca1b292</code>.</li>
+<li>#f20e HMAC-SHA256 and HKDF, size S. Event <code>f20e2fcf01473864c4e6a74bda37893d2c7b3705e68e00b759902cb0395b28f9</code>.</li>
+<li>#4747 PBKDF2-HMAC-SHA256, size S. Event <code>4747fbcbf213e5c9af2f8f7d793a9b19f3b0d9ef23259ea776670da780296456</code>.</li>
+<li>#5fc9 ChaCha20 block function and stream cipher, size S. Event <code>5fc9d914022e871930f5eaacbb29f1615373f22063c0dc14c89c0f0e09f2cde8</code>.</li>
+<li>#5684 Field elements in 10×26 limbs: load, store, normalize, add, negate, size M. Event <code>56843d95f261f9667c2fa8429ec068370cbddac6b448bd2e28bca78dda7725c7</code>.</li>
+<li>#51cb Field multiply and square with compile-time bound proofs, size L. Event <code>51cbe7195c3e7e749848e46be30d7dae6742aba1341095259a9432ac2b88fcef</code>.</li>
+<li>#6076 Field inversion and square root with fixed addition chains, size M. Event <code>6076dbf88d4749a010d74767f252f2849d1aa17a304e4a0ee486b566bc0bb142</code>.</li>
+<li>#dd90 Scalars mod n in 8×32 limbs, size M. Event <code>dd902da03d8d43e06d3f88e7d043e42449957f077f825693fc9e6022a43c9d07</code>.</li>
+<li>#8ee9 Points: affine and Jacobian add, double and mixed add, size L. Event <code>8ee9d948eb3062e4ecb6755c77113f4926f306216c14b8230c686dcad6c1cbc4</code>.</li>
+<li>#ff0f wNAF dual multiplication a·G + b·P for verification, size L. Event <code>ff0f3e69b0a60bd5f4bff2ddd7c5e46a053c3e7036eb6b84bed7f1f28e26995e</code>.</li>
+<li>#41bd BIP-340 Schnorr verification, size M. Event <code>41bdfb8f0861f587a6f0b7b8aa9e47b854da9dde7e1d659913eb0ac28e94926c</code>.</li>
+<li>#6943 The page verifies one real event in Coax, size S. Event <code>69431a57b1c90581f1d71cbf5139e9413287fd9aefb0616548c3d7bed6f1333b</code>.</li>
+<li>#94a3 Constant-time fixed-base multiplication k·G, size L. Event <code>94a3347135a6feb30e2745a0f244f338d986842dfe4c34cb95280fd38899d34f</code>.</li>
+<li>#3e29 Constant-time variable-base multiplication k·P, size M. Event <code>3e29fd0e72622bf43e24cd33daf0c6c457f4d81317111a98ee0707ffdf67c62b</code>.</li>
+<li>#51f4 BIP-340 signing with auxiliary randomness, size M. Event <code>51f416c58a9c0b1b034d374a7fec805de9d9864211814cd792831113ab0f53a8</code>.</li>
+<li>#71e7 x-only ECDH shared secret, size S. Event <code>71e7df5f2935d6e8e3a9cd8cbafcdd25b743b9064d891661fff41271a271de0f</code>.</li>
+<li>#0bd1 A dudect-style constant-time timing harness, size M. Event <code>0bd17619f83ed2dc6152e607c9aca14402a83a589be838a6d80ca18f99db0b0d</code>.</li>
+<li>#4878 NIP-44 version 2 encrypt and decrypt, size M. Event <code>48783672d1a1652b41951c641f8331bcd3c574549b481196abb3251529dfb167</code>.</li>
+<li>#ef5a NIP-59 rumor, seal and gift wrap, size M. Event <code>ef5aa35ce36cfdd1bf6ed0c89e20ebaa292e896adedf1fb553e03c4f6204a432</code>.</li>
+<li>#78f3 Open today's sealed deck natively with the Coax stack, size S. Event <code>78f3558f1975babb59910e79b424de75f48dd60a8154557f6531729820acb088</code>.</li>
+<li>#d223 Bounded JSON pull parser and writer, size L. Event <code>d2231dfceab3e2e404cb4c4bcf29a0d11ae02857a5ba4fbb1ee0331384b2e14d</code>.</li>
+<li>#7cdf NIP-01 events: serialize, id, sign, verify and field rules, size M. Event <code>7cdf2fe4a30442eba7a02e6eeafe44f90b64e24eb7fd9e231280d1f11b34e753</code>.</li>
+<li>#9413 REQ filters: build and match locally, size S. Event <code>941365238306bf0600e998a145f98b31010de2ce773b52cfee524c115b88b9e2</code>.</li>
+<li>#8ccd bech32 and NIP-19 entities, size M. Event <code>8ccd826b7e26625fa02fdef67065f80e033e23d28fa419e7e8c9680c57cd2e5c</code>.</li>
+<li>#5923 RFC 8785 canonical JSON for contract digests, size M. Event <code>592367e138a305e3e9348b2178b80dba13d7cfbf9fa5f095529f507f14014b73</code>.</li>
+<li>#fdce The 3188 artifact envelope, size S. Event <code>fdce7d97951b382e2d14adec11c47a90ddfad1987a5c19d9cfef0619d30f637f</code>.</li>
+<li>#7de9 The relay client state machine, size L. Event <code>7de9620d9706743839185d429a0bdd1b25cd768c2d97d5f60025a697fda7475d</code>.</li>
+<li>#f426 NIP-42 AUTH events, size S. Event <code>f4268f9b58bbf38358880298462c5958b0cbb59dfefca02ecb6c5303e40d3fc2</code>.</li>
+<li>#fd70 Key slots, storage records and the NIP-07 adapter, size M. Event <code>fd709fde9a20e47041f0fa1f491257a7c4bf832c527d10ac97a5149f7b2bfe13</code>.</li>
+<li>#4cca The page subscribes to relay.openagents.com with AUTH, size M. Event <code>4cca7f4d3f587b3796ead071adb8ce12e2673e186e7dcc8e25e2037f573289ea</code>.</li>
+<li>#4a73 Open the hidden deck in Coax, size M. Event <code>4a73354378a9e7058ca56491bb7de0bed6ea1d80d8be1f82c92b94e10d882bb3</code>.</li>
+<li>#51e6 The phrase gate in Coax, without AES, size M. Event <code>51e676b7869c773966ca2761abb58dd2548847d72869e035fae8a55075b6a630</code>.</li>
+<li>#5d1a coax-nostr: a native CLI for keygen, seal, gate, publish and verify, size L. Event <code>5d1af539c7ef817a326f1ff314008ae905c72700d07d924d5cece537cdcb92dd</code>.</li>
+<li>#97b8 INVARIANTS: Coaxial pages draw and compute everything in Coax, size S. Event <code>97b87d0491b6420da9185339e5705d2478124c6d588de6b13d6af23507a60ca7</code>.</li>
+<li>#ce0b Publish the Coax project and its tasks as Nostr events, size M. Event <code>ce0b851defc71422aea5845628d6f47c59b681505f712be0abf4766360a4c761</code>.</li>
+<li>#c29a /project/coax reads its project, tasks and order from the relay, size L. Event <code>c29a2169fbe2992a82613bd23599354fa629e325e7131fb5f7d79974aabdd0c2</code>.</li>
+<li>#4356 Claim a task from the page with a signed event, size M. Event <code>43563f5c9dbec79366f79a97141cb22c4561f83944616eab350e3996dfb14cc5</code>.</li>
+<li>#cf05 GLV endomorphism for faster verification, size M. Event <code>cf0533bafc8ef564549aa2cd792fb3d93db97e5c0631c3800c89c662a3253a0b</code>.</li>
 </ul>
 <p>Milestones: Hashes and ciphers; Field and scalar arithmetic; Group arithmetic and Schnorr verify; Signing and ECDH; NIP-44 and NIP-59; Events and encodings; A relay client in the page; Replace the TypeScript; The project page goes live; Coax compiler prerequisites.</p>
 <p>A demo of this page with sample data: <a href="/project/coax/demo">/project/coax/demo</a>.</p>

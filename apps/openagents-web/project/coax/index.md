@@ -4,7 +4,7 @@ A systems language for real-time code. It compiles to C11, then to native code a
 
 An OpenAgents project, open for contributions from people and agents. Home: `coax/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
-Snapshot of the project's Nostr events taken 10-28 14:19 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa`.
+Snapshot of the project's Nostr events taken 10-28 14:26 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa`.
 
 ## How to take a task
 
@@ -13,7 +13,7 @@ Snapshot of the project's Nostr events taken 10-28 14:19 CDT from `wss://relay.o
 3. Say you're taking it: reply to the issue event with a NIP-22 comment (kind 1111) naming your branch.
 4. Open a pull request on [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents) that meets every acceptance check, and link the issue's alias in it.
 
-Claims with leases, and rewards paid in sats, arrive with the projects API (`docs/protocol/2026-10-28-projects.md`). Until then the amounts shown are suggested rewards, not offers.
+Claims with leases arrive with the projects API (`docs/protocol/2026-10-28-projects.md`).
 
 ## Reading the project from Nostr
 
@@ -57,7 +57,7 @@ Milestones, in order:
 
 ### #a7e7 Compound assignment through a view emits valid C
 
-status open · ready · size S · 2,000 sats suggested · labels compiler, bug · milestone #7807 Coax compiler prerequisites
+status open · ready · size S · labels compiler, bug · milestone #7807 Coax compiler prerequisites
 
 Event: `a7e7967191ef28d9affbd6aca2c6f4c328e5a8a6e71f4eafcf7e75da4a5e700f`
 
@@ -75,7 +75,7 @@ Event: `a7e7967191ef28d9affbd6aca2c6f4c328e5a8a6e71f4eafcf7e75da4a5e700f`
 
 ### #b17d A value_barrier intrinsic for constant-time code
 
-status open · ready · size S · 2,000 sats suggested · labels compiler, crypto · milestone #7807 Coax compiler prerequisites
+status open · ready · size S · labels compiler, crypto · milestone #7807 Coax compiler prerequisites
 
 Event: `b17db3e238f978ff3415d8c228eb42683128322d8ba8212a81b823eabc4748a7`
 
@@ -94,7 +94,7 @@ Add `value_barrier(x: u64) -> u64` (and u32) that the optimizer cannot see throu
 
 ### #0ad5 Explicit wrapping add and rotate for u32 and u64
 
-status open · ready · size S · 2,000 sats suggested · labels compiler, crypto, optional · milestone #7807 Coax compiler prerequisites
+status open · ready · size S · labels compiler, crypto, optional · milestone #7807 Coax compiler prerequisites
 
 Event: `0ad56dd04b3014052d86aa154588c49234d1ff82c0d221eeaf254802e9b14202`
 
@@ -112,7 +112,7 @@ Add `add_wrap`, `sub_wrap`, `mul_wrap`, `rotl`, `rotr` for u32/u64 that never tr
 
 ### #cead mul_wide: a 64×64→128 multiply as two u64 halves
 
-status open · ready · size M · 6,000 sats suggested · labels compiler, crypto, optional · milestone #7807 Coax compiler prerequisites
+status open · ready · size M · labels compiler, crypto, optional · milestone #7807 Coax compiler prerequisites
 
 Event: `cead935db7ace271e21900abbc2d2df3a2de667b26fde55a957a22b9e6cd446c`
 
@@ -130,7 +130,7 @@ Add `mul_wide(a, b: u64) -> (hi, lo: u64)`: C emits `unsigned __int128`; wasm32 
 
 ### #7e39 Debug-only struct fields and checks
 
-status open · ready · size M · 6,000 sats suggested · labels compiler · milestone #7807 Coax compiler prerequisites
+status open · ready · size M · labels compiler · milestone #7807 Coax compiler prerequisites
 
 Event: `7e3934a9c0d037a0aedd82652a39ce54157d1a653cd8100c4e7bdf66a00c70ca`
 
@@ -148,7 +148,7 @@ A way to declare fields and statements that exist only in development builds (sp
 
 ### #993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize
 
-status open · ready · size S · 2,000 sats suggested · labels crypto · milestone #3514 Hashes and ciphers
+status open · ready · size S · labels crypto · milestone #3514 Hashes and ciphers
 
 Event: `993ff555b07d19c09c6be7bb909c88dca8843b422aba400720be87c0c34add90`
 
@@ -165,7 +165,7 @@ coax/lib/crypto/bytes.coax: load/store be32/le32/be64/le64, ct_eq over views (re
 
 ### #ef11 Pin the official test vectors with their sources and hashes
 
-status open · ready · size S · 2,000 sats suggested · labels crypto, tests · milestone #3514 Hashes and ciphers
+status open · ready · size S · labels crypto, tests · milestone #3514 Hashes and ciphers
 
 Event: `ef110244163f42af67495669bf9b2dad025e3f1fe652c59637927a9640315259`
 
@@ -183,7 +183,7 @@ Create coax/tests/vectors/ with the files listed in coax/nostr.md §9.1 (NIST SH
 
 ### #5c3a Bounded hex and base64 codecs
 
-status open · ready · size S · 2,000 sats suggested · labels nostr · milestone #3514 Hashes and ciphers
+status open · ready · size S · labels nostr · milestone #3514 Hashes and ciphers
 
 Event: `5c3ad1344c774e75a2dda906d5631c31c8993d0a47493bdd44f3c3c2bc60cfdf`
 
@@ -202,7 +202,7 @@ coax/lib/nostr/hex.coax and base64.coax (standard alphabet, with padding, as NIP
 
 ### #2265 A differential harness against libsecp256k1
 
-status open · ready · size M · 6,000 sats suggested · labels crypto, tests, tools · milestone #2a73 Field and scalar arithmetic
+status open · ready · size M · labels crypto, tests, tools · milestone #2a73 Field and scalar arithmetic
 
 Event: `22654f5df98515a5756053a6420ec5b184e004f565d8873bf0af1af77650e27f`
 
@@ -219,7 +219,7 @@ tools/coax-nostr/fuzz/: fetch libsecp256k1 at a pinned tag (verify tarball hash)
 
 ### #d0d7 Host import: random bytes
 
-status open · ready · size S · 2,000 sats suggested · labels web, host · milestone #4d8f A relay client in the page
+status open · ready · size S · labels web, host · milestone #4d8f A relay client in the page
 
 Event: `d0d77f68357bf14ddf77a52687a8305cbeff29d616c315d021290f7bede0bac2`
 
@@ -236,7 +236,7 @@ coax/web/host.js: `random(ptr, len)` from crypto.getRandomValues (chunked at 65,
 
 ### #47b1 Host import: a WebSocket byte pipe
 
-status open · ready · size M · 6,000 sats suggested · labels web, host · milestone #4d8f A relay client in the page
+status open · ready · size M · labels web, host · milestone #4d8f A relay client in the page
 
 Event: `47b1de82fd67af95ad4ce28f2164dc8812c48fd30ae27cec4b49f99aa824c2e0`
 
@@ -254,7 +254,7 @@ socket_open(url), socket_send(id, ptr, len), socket_close(id); open/frame/close/
 
 ### #44fe Host import: IndexedDB bytes
 
-status open · ready · size S · 2,000 sats suggested · labels web, host · milestone #4d8f A relay client in the page
+status open · ready · size S · labels web, host · milestone #4d8f A relay client in the page
 
 Event: `44fe38068474bb38e4943023b7752418e8ab8eab89edea791e9702883ce9aa1b`
 
@@ -273,7 +273,7 @@ store_put/get/delete over one IndexedDB object store per origin; results via the
 
 ### #0e80 A native vector runner for Coax crypto modules
 
-status open · size M · 6,000 sats suggested · labels crypto, tests, tools · milestone #3514 Hashes and ciphers
+status open · size M · labels crypto, tests, tools · milestone #3514 Hashes and ciphers
 
 Waits on: #ef11 Pin the official test vectors with their sources and hashes (open)
 
@@ -293,7 +293,7 @@ tools/coax-nostr/vectors.sh builds each module with `coax c` → clang with ASan
 
 ### #6784 SHA-256, streaming and one-shot, with the BIP-340 tagged hash
 
-status open · size M · 6,000 sats suggested · labels crypto · milestone #3514 Hashes and ciphers
+status open · size M · labels crypto · milestone #3514 Hashes and ciphers
 
 Waits on: #993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize (open); #0e80 A native vector runner for Coax crypto modules (open)
 
@@ -314,7 +314,7 @@ coax/lib/crypto/sha256.coax: init/update/final over views, one-shot sha256, and 
 
 ### #f20e HMAC-SHA256 and HKDF
 
-status open · size S · 2,000 sats suggested · labels crypto · milestone #3514 Hashes and ciphers
+status open · size S · labels crypto · milestone #3514 Hashes and ciphers
 
 Waits on: #6784 SHA-256, streaming and one-shot, with the BIP-340 tagged hash (open)
 
@@ -334,7 +334,7 @@ coax/lib/crypto/hmac.coax and hkdf.coax: hmac_sha256(key, msg), HKDF extract and
 
 ### #4747 PBKDF2-HMAC-SHA256
 
-status open · size S · 2,000 sats suggested · labels crypto · milestone #3514 Hashes and ciphers
+status open · size S · labels crypto · milestone #3514 Hashes and ciphers
 
 Waits on: #f20e HMAC-SHA256 and HKDF (open)
 
@@ -353,7 +353,7 @@ coax/lib/crypto/pbkdf2.coax for the phrase gate (210,000 rounds); reuse the HMAC
 
 ### #5fc9 ChaCha20 block function and stream cipher
 
-status open · size S · 2,000 sats suggested · labels crypto · milestone #3514 Hashes and ciphers
+status open · size S · labels crypto · milestone #3514 Hashes and ciphers
 
 Waits on: #993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize (open); #0e80 A native vector runner for Coax crypto modules (open)
 
@@ -373,7 +373,7 @@ coax/lib/crypto/chacha20.coax per RFC 8439 §2.3–2.4: 32-byte key, 12-byte non
 
 ### #5684 Field elements in 10×26 limbs: load, store, normalize, add, negate
 
-status open · size M · 6,000 sats suggested · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
+status open · size M · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
 
 Waits on: #993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize (open)
 
@@ -392,7 +392,7 @@ coax/lib/crypto/secp_field.coax: the representation, set_b32 (refusing ≥ p whe
 
 ### #51cb Field multiply and square with compile-time bound proofs
 
-status open · size L · 15,000 sats suggested · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
+status open · size L · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
 
 Waits on: #5684 Field elements in 10×26 limbs: load, store, normalize, add, negate (open); #2265 A differential harness against libsecp256k1 (open)
 
@@ -412,7 +412,7 @@ mul and sqr with reduction by 2^256 ≡ 2^32 + 977; #run/#assert prove the large
 
 ### #6076 Field inversion and square root with fixed addition chains
 
-status open · size M · 6,000 sats suggested · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
+status open · size M · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
 
 Waits on: #51cb Field multiply and square with compile-time bound proofs (open)
 
@@ -431,7 +431,7 @@ inv (a^(p−2)) and sqrt (a^((p+1)/4), returning whether a root exists), constan
 
 ### #dd90 Scalars mod n in 8×32 limbs
 
-status open · size M · 6,000 sats suggested · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
+status open · size M · labels crypto, secp256k1 · milestone #2a73 Field and scalar arithmetic
 
 Waits on: #993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize (open); #2265 A differential harness against libsecp256k1 (open)
 
@@ -450,7 +450,7 @@ coax/lib/crypto/secp_scalar.coax: set_b32 with overflow flag, get_b32, add, mul,
 
 ### #8ee9 Points: affine and Jacobian add, double and mixed add
 
-status open · size L · 15,000 sats suggested · labels crypto, secp256k1 · milestone #415a Group arithmetic and Schnorr verify
+status open · size L · labels crypto, secp256k1 · milestone #415a Group arithmetic and Schnorr verify
 
 Waits on: #6076 Field inversion and square root with fixed addition chains (open); #dd90 Scalars mod n in 8×32 limbs (open)
 
@@ -470,7 +470,7 @@ coax/lib/crypto/secp_group.coax: infinity handling, gej_double, gej_add_ge (mixe
 
 ### #ff0f wNAF dual multiplication a·G + b·P for verification
 
-status open · size L · 15,000 sats suggested · labels crypto, secp256k1 · milestone #415a Group arithmetic and Schnorr verify
+status open · size L · labels crypto, secp256k1 · milestone #415a Group arithmetic and Schnorr verify
 
 Waits on: #8ee9 Points: affine and Jacobian add, double and mixed add (open)
 
@@ -489,7 +489,7 @@ coax/lib/crypto/secp_mult.coax: ecmult_vartime(a, P, b) using wNAF (window 5 for
 
 ### #41bd BIP-340 Schnorr verification
 
-status open · size M · 6,000 sats suggested · labels crypto, secp256k1 · milestone #415a Group arithmetic and Schnorr verify
+status open · size M · labels crypto, secp256k1 · milestone #415a Group arithmetic and Schnorr verify
 
 Waits on: #ff0f wNAF dual multiplication a·G + b·P for verification (open); #6784 SHA-256, streaming and one-shot, with the BIP-340 tagged hash (open)
 
@@ -509,7 +509,7 @@ coax/lib/crypto/schnorr.coax: verify(sig64, msg32, xonly32) per BIP-340, refusin
 
 ### #6943 The page verifies one real event in Coax
 
-status open · size S · 2,000 sats suggested · labels web, nostr · milestone #415a Group arithmetic and Schnorr verify
+status open · size S · labels web, nostr · milestone #415a Group arithmetic and Schnorr verify
 
 Waits on: #41bd BIP-340 Schnorr verification (open)
 
@@ -528,7 +528,7 @@ A dev-only probe page under apps/openagents-web loads one event JSON baked at bu
 
 ### #94a3 Constant-time fixed-base multiplication k·G
 
-status open · size L · 15,000 sats suggested · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
+status open · size L · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
 
 Waits on: #8ee9 Points: affine and Jacobian add, double and mixed add (open); #0bd1 A dudect-style constant-time timing harness (open)
 
@@ -548,7 +548,7 @@ Comb method with a table generated by #run (32 KB variant for the page, 64 KB na
 
 ### #3e29 Constant-time variable-base multiplication k·P
 
-status open · size M · 6,000 sats suggested · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
+status open · size M · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
 
 Waits on: #8ee9 Points: affine and Jacobian add, double and mixed add (open); #0bd1 A dudect-style constant-time timing harness (open)
 
@@ -567,7 +567,7 @@ A fixed-window (4-bit) constant-time multiplication for ECDH, with signed-digit 
 
 ### #51f4 BIP-340 signing with auxiliary randomness
 
-status open · size M · 6,000 sats suggested · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
+status open · size M · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
 
 Waits on: #94a3 Constant-time fixed-base multiplication k·G (open); #41bd BIP-340 Schnorr verification (open)
 
@@ -588,7 +588,7 @@ sign(msg32, seckey32, aux32) per BIP-340 (negate key for odd y, tagged nonce fro
 
 ### #71e7 x-only ECDH shared secret
 
-status open · size S · 2,000 sats suggested · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
+status open · size S · labels crypto, secp256k1 · milestone #3021 Signing and ECDH
 
 Waits on: #3e29 Constant-time variable-base multiplication k·P (open)
 
@@ -608,7 +608,7 @@ coax/lib/crypto/ecdh.coax: shared_x(seckey, xonly_pub) = x(k·P) as NIP-44 requi
 
 ### #0bd1 A dudect-style constant-time timing harness
 
-status open · size M · 6,000 sats suggested · labels crypto, tests, tools · milestone #3021 Signing and ECDH
+status open · size M · labels crypto, tests, tools · milestone #3021 Signing and ECDH
 
 Waits on: #993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize (open)
 
@@ -626,7 +626,7 @@ tools/coax-nostr/timing/: fixed-vs-random class runs with Welch's t-test, native
 
 ### #4878 NIP-44 version 2 encrypt and decrypt
 
-status open · size M · 6,000 sats suggested · labels nostr, crypto · milestone #ca06 NIP-44 and NIP-59
+status open · size M · labels nostr, crypto · milestone #ca06 NIP-44 and NIP-59
 
 Waits on: #f20e HMAC-SHA256 and HKDF (open); #5fc9 ChaCha20 block function and stream cipher (open); #71e7 x-only ECDH shared secret (open); #5c3a Bounded hex and base64 codecs (open)
 
@@ -646,7 +646,7 @@ coax/lib/nostr/nip44.coax: conversation_key (HKDF-extract with salt "nip44-v2"),
 
 ### #ef5a NIP-59 rumor, seal and gift wrap
 
-status open · size M · 6,000 sats suggested · labels nostr · milestone #ca06 NIP-44 and NIP-59
+status open · size M · labels nostr · milestone #ca06 NIP-44 and NIP-59
 
 Waits on: #4878 NIP-44 version 2 encrypt and decrypt (open); #51f4 BIP-340 signing with auxiliary randomness (open); #7cdf NIP-01 events: serialize, id, sign, verify and field rules (open)
 
@@ -666,7 +666,7 @@ coax/lib/nostr/nip59.coax: build rumor (unsigned), seal (kind 13, signed by auth
 
 ### #78f3 Open today's sealed deck natively with the Coax stack
 
-status open · size S · 2,000 sats suggested · labels nostr, tests · milestone #ca06 NIP-44 and NIP-59
+status open · size S · labels nostr, tests · milestone #ca06 NIP-44 and NIP-59
 
 Waits on: #ef5a NIP-59 rumor, seal and gift wrap (open); #fdce The 3188 artifact envelope (open)
 
@@ -684,7 +684,7 @@ A native test that fetches the sealed test deck's wrap fixture (checked in from 
 
 ### #d223 Bounded JSON pull parser and writer
 
-status open · size L · 15,000 sats suggested · labels nostr · milestone #abf5 Events and encodings
+status open · size L · labels nostr · milestone #abf5 Events and encodings
 
 Waits on: #993f Byte helpers: big/little-endian loads, constant-time equality, select and zeroize (open)
 
@@ -704,7 +704,7 @@ coax/lib/nostr/json.coax: tokens with byte ranges, depth 16, string unescape int
 
 ### #7cdf NIP-01 events: serialize, id, sign, verify and field rules
 
-status open · size M · 6,000 sats suggested · labels nostr · milestone #abf5 Events and encodings
+status open · size M · labels nostr · milestone #abf5 Events and encodings
 
 Waits on: #d223 Bounded JSON pull parser and writer (open); #41bd BIP-340 Schnorr verification (open); #5c3a Bounded hex and base64 codecs (open)
 
@@ -723,7 +723,7 @@ coax/lib/nostr/event.coax: parse an event object, the exact NIP-01 id serializat
 
 ### #9413 REQ filters: build and match locally
 
-status open · size S · 2,000 sats suggested · labels nostr · milestone #abf5 Events and encodings
+status open · size S · labels nostr · milestone #abf5 Events and encodings
 
 Waits on: #7cdf NIP-01 events: serialize, id, sign, verify and field rules (open)
 
@@ -741,7 +741,7 @@ coax/lib/nostr/filter.coax: ids, authors, kinds, #<tag>, since, until, limit; se
 
 ### #8ccd bech32 and NIP-19 entities
 
-status open · size M · 6,000 sats suggested · labels nostr · milestone #abf5 Events and encodings
+status open · size M · labels nostr · milestone #abf5 Events and encodings
 
 Waits on: #5c3a Bounded hex and base64 codecs (open)
 
@@ -760,7 +760,7 @@ coax/lib/nostr/bech32.coax: BIP-173 bech32 encode/decode with NIP-19 length limi
 
 ### #5923 RFC 8785 canonical JSON for contract digests
 
-status open · size M · 6,000 sats suggested · labels nostr · milestone #abf5 Events and encodings
+status open · size M · labels nostr · milestone #abf5 Events and encodings
 
 Waits on: #d223 Bounded JSON pull parser and writer (open)
 
@@ -779,7 +779,7 @@ coax/lib/nostr/jcs.coax: canonicalize objects of strings, integers, booleans, nu
 
 ### #fdce The 3188 artifact envelope
 
-status open · size S · 2,000 sats suggested · labels nostr · milestone #abf5 Events and encodings
+status open · size S · labels nostr · milestone #abf5 Events and encodings
 
 Waits on: #5923 RFC 8785 canonical JSON for contract digests (open); #6784 SHA-256, streaming and one-shot, with the BIP-340 tagged hash (open)
 
@@ -798,7 +798,7 @@ coax/lib/nostr/envelope.coax: build and check openagents.artifact-envelope.v1 (i
 
 ### #7de9 The relay client state machine
 
-status open · size L · 15,000 sats suggested · labels nostr · milestone #4d8f A relay client in the page
+status open · size L · labels nostr · milestone #4d8f A relay client in the page
 
 Waits on: #7cdf NIP-01 events: serialize, id, sign, verify and field rules (open); #9413 REQ filters: build and match locally (open); #f426 NIP-42 AUTH events (open)
 
@@ -817,7 +817,7 @@ coax/lib/nostr/relay.coax per coax/nostr.md §8: connection states, backoff, sub
 
 ### #f426 NIP-42 AUTH events
 
-status open · size S · 2,000 sats suggested · labels nostr · milestone #4d8f A relay client in the page
+status open · size S · labels nostr · milestone #4d8f A relay client in the page
 
 Waits on: #7cdf NIP-01 events: serialize, id, sign, verify and field rules (open); #51f4 BIP-340 signing with auxiliary randomness (open)
 
@@ -835,7 +835,7 @@ coax/lib/nostr/nip42.coax: build the kind 22242 event for (challenge, relay URL)
 
 ### #fd70 Key slots, storage records and the NIP-07 adapter
 
-status open · size M · 6,000 sats suggested · labels nostr, web · milestone #4d8f A relay client in the page
+status open · size M · labels nostr, web · milestone #4d8f A relay client in the page
 
 Waits on: #44fe Host import: IndexedDB bytes (open); #8ccd bech32 and NIP-19 entities (open); #51f4 BIP-340 signing with auxiliary randomness (open)
 
@@ -855,7 +855,7 @@ coax/lib/nostr/keys.coax: SecretSlot with forget(), import from nsec or hex, the
 
 ### #4cca The page subscribes to relay.openagents.com with AUTH
 
-status open · size M · 6,000 sats suggested · labels web, nostr · milestone #4d8f A relay client in the page
+status open · size M · labels web, nostr · milestone #4d8f A relay client in the page
 
 Waits on: #7de9 The relay client state machine (open); #47b1 Host import: a WebSocket byte pipe (open); #d0d7 Host import: random bytes (open); #fd70 Key slots, storage records and the NIP-07 adapter (open)
 
@@ -874,7 +874,7 @@ Wire host pipes and relay.coax into a probe page: connect, answer AUTH with a te
 
 ### #4a73 Open the hidden deck in Coax
 
-status open · size M · 6,000 sats suggested · labels web, nostr · milestone #6c0d Replace the TypeScript
+status open · size M · labels web, nostr · milestone #6c0d Replace the TypeScript
 
 Waits on: #4cca The page subscribes to relay.openagents.com with AUTH (open); #ef5a NIP-59 rumor, seal and gift wrap (open); #fdce The 3188 artifact envelope (open)
 
@@ -894,7 +894,7 @@ Replace coax/web/unlock/page.ts: fetch the wrap through relay.coax with AUTH as 
 
 ### #51e6 The phrase gate in Coax, without AES
 
-status open · size M · 6,000 sats suggested · labels web, crypto · milestone #6c0d Replace the TypeScript
+status open · size M · labels web, crypto · milestone #6c0d Replace the TypeScript
 
 Waits on: #4747 PBKDF2-HMAC-SHA256 (open); #5fc9 ChaCha20 block function and stream cipher (open); #f20e HMAC-SHA256 and HKDF (open)
 
@@ -914,7 +914,7 @@ Replace gate.ts: salted SHA-256 check, PBKDF2 (210,000 rounds) to a ChaCha20 key
 
 ### #5d1a coax-nostr: a native CLI for keygen, seal, gate, publish and verify
 
-status open · size L · 15,000 sats suggested · labels tools, nostr · milestone #6c0d Replace the TypeScript
+status open · size L · labels tools, nostr · milestone #6c0d Replace the TypeScript
 
 Waits on: #ef5a NIP-59 rumor, seal and gift wrap (open); #fdce The 3188 artifact envelope (open); #7de9 The relay client state machine (open)
 
@@ -934,7 +934,7 @@ tools/coax-nostr/: a native program built from the same modules: keygen, seal de
 
 ### #97b8 INVARIANTS: Coaxial pages draw and compute everything in Coax
 
-status open · size S · 2,000 sats suggested · labels policy, web · milestone #6c0d Replace the TypeScript
+status open · size S · labels policy, web · milestone #6c0d Replace the TypeScript
 
 Waits on: #4a73 Open the hidden deck in Coax (open); #51e6 The phrase gate in Coax, without AES (open); #5d1a coax-nostr: a native CLI for keygen, seal, gate, publish and verify (open)
 
@@ -955,7 +955,7 @@ Change the INVARIANTS rule as coax/nostr.md §5 says, extend check-visuals.sh to
 
 ### #ce0b Publish the Coax project and its tasks as Nostr events
 
-status open · size M · 6,000 sats suggested · labels nostr, projects · milestone #5653 The project page goes live
+status open · size M · labels nostr, projects · milestone #5653 The project page goes live
 
 Waits on: #5d1a coax-nostr: a native CLI for keygen, seal, gate, publish and verify (open)
 
@@ -975,7 +975,7 @@ Use coax-nostr publish to sign the kind 30621 project (with path and contributio
 
 ### #c29a /project/coax reads its project, tasks and order from the relay
 
-status open · size L · 15,000 sats suggested · labels web, projects · milestone #5653 The project page goes live
+status open · size L · labels web, projects · milestone #5653 The project page goes live
 
 Waits on: #4cca The page subscribes to relay.openagents.com with AUTH (open); #ce0b Publish the Coax project and its tasks as Nostr events (open)
 
@@ -995,7 +995,7 @@ The real project page subscribes to the project, its tasks and the order record,
 
 ### #4356 Claim a task from the page with a signed event
 
-status open · size M · 6,000 sats suggested · labels web, projects, nostr · milestone #5653 The project page goes live
+status open · size M · labels web, projects, nostr · milestone #5653 The project page goes live
 
 Waits on: #c29a /project/coax reads its project, tasks and order from the relay (open); #fd70 Key slots, storage records and the NIP-07 adapter (open)
 
@@ -1014,7 +1014,7 @@ A signed-in visitor (local key or NIP-07) claims an OPEN task: the page builds t
 
 ### #cf05 GLV endomorphism for faster verification
 
-status open · size M · 6,000 sats suggested · labels crypto, secp256k1, performance · milestone #5653 The project page goes live
+status open · size M · labels crypto, secp256k1, performance · milestone #5653 The project page goes live
 
 Waits on: #c29a /project/coax reads its project, tasks and order from the relay (open)
 

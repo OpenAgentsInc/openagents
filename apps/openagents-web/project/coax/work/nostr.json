@@ -80,7 +80,6 @@
       "parent": "compiler",
       "title": "Compound assignment through a view emits valid C",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "compiler",
         "bug"
@@ -102,7 +101,6 @@
       "parent": "compiler",
       "title": "A value_barrier intrinsic for constant-time code",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "compiler",
         "crypto"
@@ -125,7 +123,6 @@
       "parent": "compiler",
       "title": "Explicit wrapping add and rotate for u32 and u64",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "compiler",
         "crypto",
@@ -148,7 +145,6 @@
       "parent": "compiler",
       "title": "mul_wide: a 64×64→128 multiply as two u64 halves",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "compiler",
         "crypto",
@@ -171,7 +167,6 @@
       "parent": "compiler",
       "title": "Debug-only struct fields and checks",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "compiler"
       ],
@@ -192,7 +187,6 @@
       "parent": "m0-hashes",
       "title": "Byte helpers: big/little-endian loads, constant-time equality, select and zeroize",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "crypto"
       ],
@@ -219,7 +213,6 @@
       "parent": "m0-hashes",
       "title": "Pin the official test vectors with their sources and hashes",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "crypto",
         "tests"
@@ -243,7 +236,6 @@
       "parent": "m0-hashes",
       "title": "A native vector runner for Coax crypto modules",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "tests",
@@ -271,7 +263,6 @@
       "parent": "m0-hashes",
       "title": "SHA-256, streaming and one-shot, with the BIP-340 tagged hash",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto"
       ],
@@ -300,7 +291,6 @@
       "parent": "m0-hashes",
       "title": "HMAC-SHA256 and HKDF",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "crypto"
       ],
@@ -327,7 +317,6 @@
       "parent": "m0-hashes",
       "title": "PBKDF2-HMAC-SHA256",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "crypto"
       ],
@@ -351,7 +340,6 @@
       "parent": "m0-hashes",
       "title": "ChaCha20 block function and stream cipher",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "crypto"
       ],
@@ -378,7 +366,6 @@
       "parent": "m0-hashes",
       "title": "Bounded hex and base64 codecs",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "nostr"
       ],
@@ -404,7 +391,6 @@
       "parent": "m1-field-scalar",
       "title": "Field elements in 10×26 limbs: load, store, normalize, add, negate",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -429,7 +415,6 @@
       "parent": "m1-field-scalar",
       "title": "Field multiply and square with compile-time bound proofs",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -456,7 +441,6 @@
       "parent": "m1-field-scalar",
       "title": "Field inversion and square root with fixed addition chains",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -481,7 +465,6 @@
       "parent": "m1-field-scalar",
       "title": "Scalars mod n in 8×32 limbs",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -507,7 +490,6 @@
       "parent": "m1-field-scalar",
       "title": "A differential harness against libsecp256k1",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "tests",
@@ -532,7 +514,6 @@
       "parent": "m2-verify",
       "title": "Points: affine and Jacobian add, double and mixed add",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -561,7 +542,6 @@
       "parent": "m2-verify",
       "title": "wNAF dual multiplication a·G + b·P for verification",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -586,7 +566,6 @@
       "parent": "m2-verify",
       "title": "BIP-340 Schnorr verification",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -615,7 +594,6 @@
       "parent": "m2-verify",
       "title": "The page verifies one real event in Coax",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "web",
         "nostr"
@@ -638,7 +616,6 @@
       "parent": "m3-sign-ecdh",
       "title": "Constant-time fixed-base multiplication k·G",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -665,7 +642,6 @@
       "parent": "m3-sign-ecdh",
       "title": "Constant-time variable-base multiplication k·P",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -691,7 +667,6 @@
       "parent": "m3-sign-ecdh",
       "title": "BIP-340 signing with auxiliary randomness",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -721,7 +696,6 @@
       "parent": "m3-sign-ecdh",
       "title": "x-only ECDH shared secret",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "crypto",
         "secp256k1"
@@ -747,7 +721,6 @@
       "parent": "m3-sign-ecdh",
       "title": "A dudect-style constant-time timing harness",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "tests",
@@ -773,7 +746,6 @@
       "parent": "m4-nip44-nip59",
       "title": "NIP-44 version 2 encrypt and decrypt",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "nostr",
         "crypto"
@@ -802,7 +774,6 @@
       "parent": "m4-nip44-nip59",
       "title": "NIP-59 rumor, seal and gift wrap",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "nostr"
       ],
@@ -831,7 +802,6 @@
       "parent": "m4-nip44-nip59",
       "title": "Open today's sealed deck natively with the Coax stack",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "nostr",
         "tests"
@@ -854,7 +824,6 @@
       "parent": "m5-events",
       "title": "Bounded JSON pull parser and writer",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "nostr"
       ],
@@ -880,7 +849,6 @@
       "parent": "m5-events",
       "title": "NIP-01 events: serialize, id, sign, verify and field rules",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "nostr"
       ],
@@ -909,7 +877,6 @@
       "parent": "m5-events",
       "title": "REQ filters: build and match locally",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "nostr"
       ],
@@ -932,7 +899,6 @@
       "parent": "m5-events",
       "title": "bech32 and NIP-19 entities",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "nostr"
       ],
@@ -956,7 +922,6 @@
       "parent": "m5-events",
       "title": "RFC 8785 canonical JSON for contract digests",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "nostr"
       ],
@@ -980,7 +945,6 @@
       "parent": "m5-events",
       "title": "The 3188 artifact envelope",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "nostr"
       ],
@@ -1007,7 +971,6 @@
       "parent": "m6-relay",
       "title": "Host import: random bytes",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "web",
         "host"
@@ -1030,7 +993,6 @@
       "parent": "m6-relay",
       "title": "Host import: a WebSocket byte pipe",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "web",
         "host"
@@ -1054,7 +1016,6 @@
       "parent": "m6-relay",
       "title": "Host import: IndexedDB bytes",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "web",
         "host"
@@ -1077,7 +1038,6 @@
       "parent": "m6-relay",
       "title": "The relay client state machine",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "nostr"
       ],
@@ -1104,7 +1064,6 @@
       "parent": "m6-relay",
       "title": "NIP-42 AUTH events",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "nostr"
       ],
@@ -1128,7 +1087,6 @@
       "parent": "m6-relay",
       "title": "Key slots, storage records and the NIP-07 adapter",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "nostr",
         "web"
@@ -1157,7 +1115,6 @@
       "parent": "m6-relay",
       "title": "The page subscribes to relay.openagents.com with AUTH",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "web",
         "nostr"
@@ -1186,7 +1143,6 @@
       "parent": "m7-no-typescript",
       "title": "Open the hidden deck in Coax",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "web",
         "nostr"
@@ -1214,7 +1170,6 @@
       "parent": "m7-no-typescript",
       "title": "The phrase gate in Coax, without AES",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "web",
         "crypto"
@@ -1242,7 +1197,6 @@
       "parent": "m7-no-typescript",
       "title": "coax-nostr: a native CLI for keygen, seal, gate, publish and verify",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "tools",
         "nostr"
@@ -1271,7 +1225,6 @@
       "parent": "m7-no-typescript",
       "title": "INVARIANTS: Coaxial pages draw and compute everything in Coax",
       "size": "S",
-      "sats": 2000,
       "labels": [
         "policy",
         "web"
@@ -1298,7 +1251,6 @@
       "parent": "m8-project-live",
       "title": "Publish the Coax project and its tasks as Nostr events",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "nostr",
         "projects"
@@ -1324,7 +1276,6 @@
       "parent": "m8-project-live",
       "title": "/project/coax reads its project, tasks and order from the relay",
       "size": "L",
-      "sats": 15000,
       "labels": [
         "web",
         "projects"
@@ -1352,7 +1303,6 @@
       "parent": "m8-project-live",
       "title": "Claim a task from the page with a signed event",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "web",
         "projects",
@@ -1377,7 +1327,6 @@
       "parent": "m8-project-live",
       "title": "GLV endomorphism for faster verification",
       "size": "M",
-      "sats": 6000,
       "labels": [
         "crypto",
         "secp256k1",
