@@ -156,3 +156,26 @@ status, raw, _ = call("POST", P + "player", nbody, {"Content-Type": "application
 check("a NIP-98 signed request is its pubkey's account", status == 200 and json.loads(raw)["account"].startswith("n-"), raw)
 check("unknown playtest paths are 404s", pt("GET", "nothing")[0] == 404 and pt("GET", "world/" + wid + "/x/y/z")[0] == 404)
 check("a PUT is a 405", call("PUT", P + "player")[0] == 405)
+
+# ---- feedback (pt-feedback): one answer a record, with its session
+ans = {"rid": "0123456789abcdef", "q": "howItWent", "a": "  Spooky, but the door stuck.  ", "n": 1, "of": 1,
+       "player": guest["id"], "sid": "c0123456789abcdef", "joinedAs": "kiki@example.com"}
+check("an answer is kept", pt("POST", "survey/answer", ans, headers={"X-Verse-Automation": "api-test"}) == (200, {"saved": True}))
+check("as the demo keeps it: trimmed, with its session and the automation mark",
+      sql("select concat_ws('|', a #>> '{}', sid, q, n || '/' || \"of\", auto, skip::text) from analytics.survey_answers where rid='0123456789abcdef' and q='howItWent'")
+      == "Spooky, but the door stuck.|c0123456789abcdef|howItWent|1/1|api-test|false", sql("select concat_ws('|', a #>> '{}', sid, q, n || '/' || \"of\", auto, skip::text) from analytics.survey_answers where q='howItWent'"))
+check("choices are kept as a list", pt("POST", "survey/answer", {**ans, "q": "liked", "a": ["walking", "x" * 200, 3]})[0] == 200
+      and sql("select a::text from analytics.survey_answers where q='liked'") == '["walking", "' + "x" * 80 + '"]')
+check("an empty answer is a skip", pt("POST", "survey/answer", {**ans, "q": "email", "a": "  "})[0] == 200
+      and sql("select skip::text || coalesce(a::text, '-') from analytics.survey_answers where q='email'") == "true-")
+check("a bad respondent or question is a 400",
+      pt("POST", "survey/answer", {**ans, "rid": "nope"})[0] == 400 and pt("POST", "survey/answer", {**ans, "q": "1bad"})[0] == 400)
+check("an answer that is an object is a 400", pt("POST", "survey/answer", {**ans, "a": {"x": 1}})[0] == 400)
+check("the whole form is kept too", pt("POST", "survey", {"fun": 5, "email": "x@y.z"}) == (200, {})
+      and sql("select answers->>'fun' from analytics.surveys order by at desc limit 1") == "5")
+check("a GET is a 405", pt("GET", "survey/answer")[0] == 405)
+status, raw, _ = call("GET", reports, headers={"Authorization": "Nostr " + signed(os.environ["ADMIN_KEY"], "GET", API + reports)})
+section = raw.decode().split("#SURVEY ANSWERS|")[-1].split("\n#")[0]
+check("the dashboard shows each answer with its session, which opens",
+      status == 200 and section.startswith("s|SESSION|WHEN|QUESTION|ANSWER") and "\nc0123456789abcdef|" in section
+      and "|howItWent|Spooky, but the door stuck." in section, section[:300])

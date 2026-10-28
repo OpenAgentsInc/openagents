@@ -23,6 +23,7 @@
 //   GET/POST /api/playtest/progress/<world>/<name>   an account's save {current, previous}, each
 //                                             {bytes (base64 AESV), at (ms)}; 409 when a later one is there
 //   POST /api/playtest/progress/<world>/<name>/erase
+//   POST /api/playtest/survey/answer, /api/playtest/survey   feedback (below)
 //
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
 // Nostr) adds that pubkey's account, and an admin's signature (OA_ADMIN_PUBKEYS)
@@ -91,6 +92,33 @@ static bool first_use(PGconn *db, const nostr_event *ev) {
   return ok;
 }
 
+// Feedback (pt-feedback): POST /api/playtest/survey/answer, one answer
+// {rid, q, a, skip, n, of, player, sid, user, joinedAs}, and POST
+// /api/playtest/survey, the whole form; verse.feedback keeps them
+// (migrations/0006_verse_feedback.sql) with the session they came from.
+static void feedback(const request *q, PGconn *db, const char *parts) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST feedback\"}"); return; }
+  char autom[64];
+  automation(q, autom, sizeof autom);
+  char *body = malloc(q->body_len + 3);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
+  const char *v[3] = {parts, body, autom};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.feedback($1::text[], $2::jsonb, $3) x",
+                             3, NULL, v, NULL, NULL, 0);
+  free(body);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("feedback: %s", PQerrorMessage(db));
+    PQclear(r);
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    return;
+  }
+  api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+  PQclear(r);
+}
+
 bool player_route(const request *q) {
   if (strncmp(q->path, PREFIX, strlen(PREFIX)) || !strcmp(q->path, "/api/playtest/health")) return false;
   if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
@@ -112,6 +140,7 @@ bool player_route(const request *q) {
   }
   parts[pn++] = '}'; parts[pn] = 0;
   if (!segs || segs > 4) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  if (!strncmp(rest, "survey", 6) && (rest[6] == 0 || rest[6] == '/')) { feedback(q, db, parts); return true; }
 
   char key[160], autom[64], auth[4096], npub[65] = "";
   bool site = false;

@@ -257,8 +257,8 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "FROM e WHERE ev = 'error' GROUP BY 1, 2 ORDER BY max(ms) DESC LIMIT 20", 3, f);
   section(o, db, "WHAT THEY SAID AND TYPED", "s", "SESSION|WHEN|WHERE|WORDS", KEPT
     "SELECT sid, " CHI("ms") ", ev, p->>'text' FROM e WHERE p ? 'text' ORDER BY ms DESC LIMIT 100", 3, f);
-  section(o, db, "SURVEY ANSWERS", "", "WHEN|QUESTION|ANSWER",
-    "SELECT " CHI("CASE WHEN at < 1e11 THEN at * 1000 ELSE at END") ", q, coalesce(a #>> '{}', '') || CASE WHEN skip THEN ' (skipped)' ELSE '' END "
+  section(o, db, "SURVEY ANSWERS", "s", "SESSION|WHEN|QUESTION|ANSWER",
+    "SELECT coalesce(sid, ''), " CHI("CASE WHEN at < 1e11 THEN at * 1000 ELSE at END") ", q, coalesce(a #>> '{}', '') || CASE WHEN skip THEN ' (skipped)' ELSE '' END "
     "FROM analytics.survey_answers WHERE (CASE WHEN at < 1e11 THEN at * 1000 ELSE at END) >= $1::bigint AND ($2 = 'all' OR space = $2) "
     "ORDER BY at DESC LIMIT 100", 2, f);
 }

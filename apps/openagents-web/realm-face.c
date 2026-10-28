@@ -427,6 +427,25 @@ static void do_goal(void) {
   }
 }
 
+// The survey's answer to the server's feedback (/api/playtest/survey/answer,
+// pt-feedback), as the demo keeps one: this browser's visitor id as the
+// respondent, the question, the words and this visit's session.
+#define ANSWER_URL "/api/playtest/survey/answer"
+static void post_answer(size_t n) {
+  static char body[2048];
+  size_t o = (size_t)snprintf(body, sizeof body, "{\"rid\":\"%.*s\",\"q\":\"howItWent\",\"n\":1,\"of\":1,\"sid\":\"%.*s\",\"a\":\"",
+                              (int)track_state.pid_n, (const char *)track_state.pid.e, (int)track_state.sid_n, (const char *)track_state.sid.e);
+  for (size_t i = 0; i < n && o + 8 < sizeof body; i++) {
+    unsigned char c = (unsigned char)feedback[i];
+    if (c == '"' || c == '\\') { body[o++] = '\\'; body[o++] = (char)c; }
+    else if (c < 0x20) o += (size_t)snprintf(body + o, sizeof body - o, "\\u%04x", c);
+    else body[o++] = (char)c;
+  }
+  if (o + 3 > sizeof body) return;
+  body[o++] = '"'; body[o++] = '}';
+  coaxial_http((uint32_t)(uintptr_t)ANSWER_URL, sizeof ANSWER_URL - 1, (uint32_t)(uintptr_t)body, (uint32_t)o, 1);
+}
+
 // The survey's answer: kept with the house, and the quest is done.
 static void send_feedback(void) {
   coax_string typed = realm_typed(realm_of());
@@ -434,6 +453,7 @@ static void send_feedback(void) {
   memcpy(feedback, typed.data, n);
   house = verse_haunt_feedback(house, (coax_string){feedback, (int64_t)n});
   realm_track_answer(tr(), (coax_string){feedback, (int64_t)n});
+  post_answer(n);
   realm_close_text(realm_of());
   toast("Thank you. The quest is complete");
 }
