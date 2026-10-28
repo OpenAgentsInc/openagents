@@ -1,7 +1,7 @@
 # Coax-native voice: a proposal
 
-*Draft, 2026-10-28. Nothing here is built yet. Decisions the owner has
-made are marked **Decided**; the rest have a recommendation.*
+*Draft, 2026-10-28. Nothing here is built yet. The owner decided all
+thirteen questions on 2026-10-28; each is marked **Decided** below.*
 
 This proposes one voice system for OpenAgents, written in Coax, with its
 media path and server on machines we operate. Speech recognition and
@@ -43,9 +43,10 @@ In the owner's own words, across the transcripts:
 The audit is long. These are the lessons that shape the design:
 
 1. **Hosted media servers cost more than they returned.** Self-hosted
-   LiveKit took 13.7 to 15.2 s to the first audio. Its GKE cluster is still
-   running two months after its code was deleted (checked today:
-   `oa-livekit-prod`, 6 nodes, plus the `oa-livekit-redis` HA instance).
+   LiveKit took 13.7 to 15.2 s to the first audio. Its GKE cluster
+   (`oa-livekit-prod`, 6 nodes) and `oa-livekit-redis` HA instance kept
+   running for three months after the code was deleted, until we deleted
+   them on 2026-10-28.
 2. **Chained cloud speech-to-text was slow.** Google STT finals took 2.2 to
    6.2 s. Local models were fast and worked first time: whisper.cpp and
    Parakeet TDT both did, with no account and no audio leaving the machine.
@@ -123,7 +124,7 @@ Swift host plays what Coax decided.
 | `clef-decisions-h100`, `clef-decisions-a100` | GPU hosts running decision models | Not for voice; shows we can hold GPUs |
 | TPU v6e-1, asia-northeast1-b | Held permanently | Too far from US users for live audio |
 | `coderos-4080`, `macbook-pro-m5` | The owner's machines | Development and the first measurements |
-| `oa-livekit-prod`, `oa-livekit-redis` | Leftover LiveKit, running | Should be deleted (decision 1) |
+| `oa-livekit-prod`, `oa-livekit-redis` | Leftover LiveKit | Deleted 2026-10-28 (decision 1) |
 
 ## The design
 
@@ -170,6 +171,88 @@ never block. We'd add one rule for any Coax procedure called there: it
 must have a `#test` that runs it on a worst-case frame under
 `coax test --steps`, so its cost is bounded and checked on every build.
 
+### Voice primitives: one set for every speaker
+
+**Decided:** many different players, NPCs and agents will speak and
+listen, so the system has no special case for any of them. It's a small
+set of primitives that every surface reuses, defined in the protocol so
+they're reliable across the phone, the voice host, world documents and
+other clients.
+
+Anything that speaks or listens is a **speaker**. A player, an NPC, an
+agent, a narrator and a film's voiceover are all speakers that differ only
+in their bindings:
+
+| Primitive | What it is | Where it lives |
+| --- | --- | --- |
+| `VoiceProfile` | A named, versioned voice: the Google voice, language, speaking rate, pitch, volume and a short style note. Published revisions never change; a new sound is a new revision | `openagents.voice.v1` (new) |
+| `VoiceCatalog` | The profiles a world, app or account may use, with limits | `openagents.voice.v1` |
+| `Speaker` | Who is speaking: a player's key, an NPC id or an agent id, its role, its profile, and the world entity its voice comes from (or none, for a flat narrator) | `openagents.voice.v1` |
+| `Utterance` | Something a speaker says: text, speaker, priority, whether it can be interrupted, spatial or flat, and live or batch | `openagents.voice.v1` |
+| `Render` | The audio made for an utterance, keyed by a hash of profile revision and text, so the same line is never synthesized twice | `openagents.voice.v1` |
+| `TurnEvent` | What happened in a turn: started, partial text, final text, interrupted (with how far playback got), ended | `openagents.voice.v1` |
+| `Route` | Where a final transcript goes: an agent, an NPC's brain, or other players. Chosen by explicit binding (whose floor it is, who you're facing), never by reading the words | `openagents.voice.v1` |
+| Consent, floors, participants, media epochs | Who may be heard and when | `openagents.live.v1` (exists) |
+| `Voice` in a world document | An NPC's voice and lines. Gains a `VoiceProfile` reference beside its existing `LineSet` | `verse.doc.v1` (exists) |
+| `SpatialAudioZone` | Areas where voices carry or stop | `verse.media.v1` (exists) |
+
+A sketch of the new package (field numbers and limits get settled in V1,
+with compatibility snapshots like every published contract):
+
+```proto
+package openagents.voice.v1;
+
+message VoiceProfile {
+  optional string id = 1;              // stable, e.g. "foreman"
+  optional uint32 revision = 2;        // published revisions are immutable
+  optional string provider_voice = 3;  // the Google Chirp 3 HD voice name
+  optional string language = 4;        // BCP-47, e.g. "en-US"
+  optional float speaking_rate = 5;    // 0.25-2.0, default 1.0
+  optional float pitch = 6;            // semitones, -20..20
+  optional float volume_gain_db = 7;   // -96..16
+  optional string style = 8;           // short direction note, <= 160 bytes
+}
+message VoiceCatalog { repeated VoiceProfile profiles = 1; } // <= 64
+
+enum SpeakerRole { SPEAKER_ROLE_UNSPECIFIED = 0; SPEAKER_ROLE_PLAYER = 1;
+  SPEAKER_ROLE_NPC = 2; SPEAKER_ROLE_AGENT = 3; SPEAKER_ROLE_NARRATOR = 4; }
+message Speaker {
+  optional string id = 1;              // player pubkey, NPC id or agent id
+  SpeakerRole role = 2;
+  optional string profile = 3;         // VoiceProfile id
+  optional uint32 profile_revision = 4;
+  optional string entity = 5;          // world entity the voice comes from; empty = flat
+}
+
+message Utterance {
+  optional string id = 1;
+  optional string speaker = 2;
+  optional string text = 3;            // <= 600 bytes, like an NPC AskReply
+  optional uint32 priority = 4;        // higher interrupts lower
+  optional bool interruptible = 5;
+  optional bool spatial = 6;
+  optional bool batch = 7;             // render ahead and cache, not live
+}
+message Render { optional bytes key = 1; optional string utterance = 2;
+  optional uint32 sample_rate = 3; optional uint64 samples = 4; }
+
+enum TurnPhase { TURN_PHASE_UNSPECIFIED = 0; TURN_PHASE_STARTED = 1;
+  TURN_PHASE_PARTIAL = 2; TURN_PHASE_FINAL = 3; TURN_PHASE_INTERRUPTED = 4;
+  TURN_PHASE_ENDED = 5; }
+message TurnEvent { optional string turn = 1; optional string speaker = 2;
+  TurnPhase phase = 3; optional string text = 4;
+  optional uint64 played_samples = 5; optional uint64 media_epoch = 6; }
+
+message Route { optional string turn = 1; optional string target = 2;
+  optional string reason = 3; }        // e.g. "floor", "facing"; never parsed from speech
+```
+
+The Coax side gets these as generated codecs through `#import_proto`, so
+`voice.coax` and the voice host share one definition, the way the home
+shares `HudInvocation`. A new character in the Verse is then just data: a
+`VoiceProfile` in the world's catalog, a `Speaker` bound to its entity,
+and a `Route` to whatever brain answers for it.
+
 ### Talking to an agent
 
 1. You tap the voice toggle once. The phone captures, and `voice.coax`
@@ -187,9 +270,11 @@ must have a `#test` that runs it on a worst-case frame under
    tells the host how far playback got, as NIP-LIVE requires. The agent
    hears that it was interrupted.
 
-In the Grid this has an obvious home: walk up to the Foreman and talk.
-Being near an agent's body can be what grants the input floor, so
-proximity becomes the push-to-talk button.
+The same flow serves any speaker. In the Grid, walking up to the Foreman
+and talking is one binding: being near its body grants the input floor,
+and its `Route` goes to its agent. A global voice toggle is another
+binding of the same primitives, routed to your default agent. Neither is
+built into the system.
 
 ### Talking to each other in the Verse
 
@@ -302,10 +387,10 @@ licensed voices through the same path. Bitcoin only, as everywhere.
 
 Each phase ends with a measurement committed and a real-phone run.
 
-- **V0. Clean up.** Delete `oa-livekit-prod` and `oa-livekit-redis` after
-  the owner confirms. Check whether `one-prod` and `one-stg` still serve
-  anything.
-- **V1. The Coax core and its tests.** `voice.coax` (frames, resampler,
+- **V0. Clean up.** Done 2026-10-28: LiveKit's cluster, Redis and
+  addresses deleted.
+- **V1. The protocol and the Coax core.** `openagents.voice.v1` in
+  `proto/` with compatibility snapshots, then `voice.coax` (frames, resampler,
   levels, VAD, end of turn, barge-in, jitter buffer), checked on recorded
   fixtures. No network, no models. Exit: replay checks pass, every
   audio-thread procedure has a bounded step test.
@@ -325,66 +410,54 @@ Each phase ends with a measurement committed and a real-phone run.
 - **V7. Voices as assets.** Enrollment with consent, licensing, metering,
   payouts (see decision 13).
 
-## Decisions to make
+## Decisions
 
-1. **Delete the leftover LiveKit infrastructure?** `oa-livekit-prod` (6
-   nodes) and `oa-livekit-redis` (HA) are running with no code behind
-   them. At list prices, six 8-vCPU nodes plus an HA Redis likely cost well over $1,000 a month.
-   *Recommendation: delete both now. Check `one-prod` and `one-stg`
-   separately.*
-2. **Where does the voice host run?** It needs no GPU now. (a) Alongside
-   `coder-sync-1` on that VM, (b) its own small VM in us-central1 behind
-   the same load balancer, (c) `coderos-4080` over the tailnet for
-   development only. *Recommendation: (c) while building V1 to V3, then
-   (b), so a voice bug can't take down sync and the reverse.*
+1. **Delete the leftover LiveKit infrastructure?** **Decided and done,
+   2026-10-28:** `oa-livekit-prod` (6 nodes) and `oa-livekit-redis` (HA)
+   deleted, with the LiveKit program's reserved addresses. `one-prod` and
+   `one-stg` belong to a different application and were left alone.
+2. **Where does the voice host run?** **Decided:** develop on
+   `coderos-4080`, then a dedicated small VM in us-central1 behind the
+   existing load balancer, separate from `coder-sync-1`.
 3. **Speech-to-text model.** **Decided:** Google Cloud Speech-to-Text v2,
    Chirp 3, streaming.
 4. **Text-to-speech model.** **Decided:** Google Cloud Text-to-Speech,
    Chirp 3 HD voices, streaming for live replies and batch for lines.
-5. **Codec.** (a) Opus in host C: the standard for a reason, with loss
-   concealment and low bitrate. (b) A Coax codec (16-bit PCM or IMA-ADPCM):
-   simple and fully checkable, but 64 to 256 kbps. *Recommendation: PCM
-   frames for the agent path in V3/V4 (one stream, a decent network), and
-   Opus in the host before player voice in V5.*
-6. **Turn detection.** (a) Energy and silence rules only: fully Coax,
-   deterministic, worse at telling "um" from "done". (b) Add a small
-   learned turn model (Silero VAD, smart-turn) through the host runtime.
-   *Recommendation: (a) in V1 with fixtures that show its failures, then
-   (b) when the fixtures prove it's needed. Port the model into Coax once
-   Coax has SIMD.*
+5. **Codec.** **Decided:** raw 16 kHz 16-bit frames for talking to
+   agents (V3, V4), with no codec; Opus in host C before player voice
+   (V5), where bandwidth and packet loss matter.
+6. **Turn detection.** **Decided:** energy and silence rules in Coax
+   first, tested on recorded speech that shows where they fail. A small
+   learned turn model comes only when those recordings prove it's needed.
+   Google's own endpointing is never what ends a turn.
 7. **Model runtime.** **Decided by 3 and 4:** none. No speech model runs
    on our machines.
-8. **On-phone speech for offline use.** (a) Apple's on-device
-   SpeechAnalyzer and AVSpeechSynthesizer (what aethyr-cpp used), (b) our
-   own small models on the phone through Metal, (c) no offline voice at
-   first. *Recommendation: (c) until V4 works, then (a) as an explicit
-   offline mode, because the Khala app removed Apple's TTS after one day.*
-9. **Transport.** (a) WebSocket over TLS through the existing load
-   balancer, (b) QUIC datagrams on our own UDP endpoint. *Recommendation:
-   (a) through V4. It works on every network and we already run one.
-   Decide on (b) with V5 numbers, since TCP stalls hurt group voice more
-   than one-to-one.*
-10. **Which agent answers?** The voice layer relays; something must be on
-    the other end now that the old chat stack is gone. *Recommendation:
-    the Foreman in the Grid, through whatever agent endpoint the app adopts
-    for text. Voice adds no agent of its own.*
-11. **Free and paid tiers.** What's free (minutes per day? the basic
-    voice?) and what costs sats. *Recommendation: decide the price at V4,
-    once Google's measured cost per conversation minute is known.*
-12. **Language work for Coax.** Voice wants `#foreign` that takes views
-    (to call the codec without the host in between), SIMD, and
-    a way to declare which procedures may run on the audio thread.
-    *Recommendation: add `#foreign` views in V3, when it first blocks, and
-    leave SIMD to the GPU and SIMD stages already planned in
-    [the spec](../../coax/spec.md).*
-13. **Licensed and custom voices.** Voices as assets that people own and
-    license (V7) now depend on what Google allows: Google offers custom
-    voices only on its terms. (a) Build licensed voices on Google's custom
-    voice offering, (b) keep licensed voices out of scope while Google does
-    speech, (c) render licensed voices with an owned model for batch lines
-    only, as an exception to decision 4. *Recommendation: (b) for now, and
-    revisit after V4. It's the one place where the lock-in lesson
-    (OpenAI refusing Sarah's voice) applies directly.*
+8. **Offline voice.** **Decided:** none. Voice needs a connection, and
+   the toggle says so when there isn't one. One speech path, one voice.
+9. **Transport.** **Decided:** WebSocket over TLS through the existing
+   load balancer for agent voice. Player voice is measured in V5, and we
+   move to QUIC datagrams only if TCP stalls show up there.
+10. **Which agent answers?** **Decided:** no single one. Many players,
+    NPCs and agents will speak, so voice is a set of reusable primitives
+    in a new `openagents.voice.v1` package (see
+    [Voice primitives](#voice-primitives-one-set-for-every-speaker)).
+    Which brain answers is a `Route` binding, chosen per speaker.
+11. **Free and paid tiers.** **Decided:** free while only the owner and
+    testers use it. After V4 measures what a real conversation minute
+    costs on Google, we set a free daily allowance and a sats price per
+    minute beyond it.
+12. **Language work for Coax.** **Decided:** two additions. `#foreign`
+    imports that take views, so Coax can call the Opus codec with sample
+    buffers directly (added in V3, when it first blocks). And a marker
+    for procedures that may run on the real-time audio thread, checked by
+    the compiler on top of the bounded step tests. SIMD stays on the
+    spec's existing schedule; 16 kHz mono doesn't need it.
+
+13. **Licensed and custom voices.** **Decided:** out of scope for now.
+    We ship with Google's stock Chirp 3 HD voices and revisit after V4.
+    Owning voices is the one place where the lock-in lesson (OpenAI
+    refusing Sarah's voice) applies directly, so it comes back when we
+    get there.
 
 ## What we're not doing
 
