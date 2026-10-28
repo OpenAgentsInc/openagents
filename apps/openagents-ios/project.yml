@@ -24,6 +24,10 @@ targets:
         excludes: [Platform/Stages.metal]
       - path: Generated/Home.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/Player.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/Grid.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: ../../metareal/platform/host.c
       - path: Generated/HomeShaders.txt
         buildPhase: resources

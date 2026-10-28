@@ -397,8 +397,8 @@ metareal_home_touch :: (h: int, phase: int, x: f64, y: f64) -> bool #export_c {
     if result == 2 {
       host_store(h,113,1.0); set_int(h,114,get_int(h,114)+1);
       if !invocation(h) {return false;}
-      // The reduced shell has no chat/world destination yet. Start replays the
-      // home while emitting the actual shared HudInvocation for future routing.
+      // The host routes this HudInvocation to the Grid (metareal/grid.coax).
+      // The home replays behind it.
       host_store(h,31,0.0); set_int(h,3,0);
       i := 0; while i < get_int(h,2) { host_store(h,LINKS+i*LINK_STRIDE+6,0.0); i += 1; }
       return true;

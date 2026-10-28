@@ -2,9 +2,11 @@
 
 A minimal native home, ported from the engine's native iOS app into **Coax**.
 It opens directly onto the monochrome animated graph, drifting dust and
-chamfered HUD bar. Touch nodes to light them; **Start** replays the animation
-and emits an actual `openagents.engine.v1.HudInvocation`. There is no next
-screen in this reduced shell yet.
+chamfered HUD bar. Touch nodes to light them; **Start** emits an actual
+`openagents.engine.v1.HudInvocation` and opens **the Grid**, the bare Verse
+world: ground lines out to 264 m and a wire figure standing in for your
+character. Drag on the left half to walk (push past the ring to run), drag on
+the right half to look, and tap the right half to jump.
 
 ## Build and run
 
@@ -38,17 +40,19 @@ The home shows the balance of the person's existing Spark wallet. It opens
 the wallet from the Keychain seed the earlier app saved and only reads the
 balance, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
 `Package.resolved`). See [`docs/lightning/`](../../docs/lightning/README.md).
-No login, chat, worlds, microphone or FM code is restored, and no payments
-are sent or received yet.
+No login, chat, microphone or FM code is restored, the Grid has no buildings,
+robots or other players yet, and no payments are sent or received yet.
 
 ## Ownership
 
 | Source | Responsibility |
 | --- | --- |
 | `../../metareal/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
+| `../../metareal/grid.coax` | The Grid: projecting and fading its ground lines, the stand-in figure, the move/look/jump touch policy |
+| `../../metareal/player.coax` | Walking, running, jumping and the third-person camera, ported from aethyr-cpp |
 | `../../metareal/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |
 | `../../metareal/platform/host.c` | Bounded resident storage, generation-checked handles, packed draw packets |
-| `OpenAgents/App.swift`, `HomeViewController.swift` | UIKit lifecycle, safe areas, orientation, reduced motion, accessibility, native touch forwarding |
+| `OpenAgents/App.swift`, `HomeViewController.swift` | UIKit lifecycle, safe areas, orientation, reduced motion, accessibility, native touch forwarding; routes Start to the Grid and passes numbers between `grid.coax` and `player.coax` each frame |
 | `OpenAgents/Platform/` | CAMetalLayer/Metal resources, triple-buffer transfers, CoreText glyph raster, texture/stage bindings |
 | `../../proto/openagents/metareal/home/v1alpha1/` | HomeConfiguration in the root protocol tree; imports the existing engine HudAction |
 | `../../metareal/home.textproto` | Human-readable resource; `scripts/proto.sh generate` produces `Home.pb` |

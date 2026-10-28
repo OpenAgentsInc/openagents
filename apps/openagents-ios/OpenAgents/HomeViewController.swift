@@ -9,6 +9,8 @@ private final class Surface: UIView {
 }
 
 /// Native lifecycle/input adapter. Coax owns the screen and all touch policy.
+/// Start opens the Grid: metareal/grid.coax draws it and reads the fingers,
+/// metareal/player.coax walks it, and this file passes numbers between them.
 final class HomeViewController: UIViewController {
     private var surface: Surface { view as! Surface }
     private var renderer: HomeRenderer?
@@ -21,6 +23,14 @@ final class HomeViewController: UIViewController {
     private let wallet = SparkWallet()
     private let balanceLabel = UILabel()
     private var walletTask: Task<Void, Never>?
+    private var gridHandle: Int64 = 0
+    private var player = metareal_player_place(0, 0, 0, 0)
+    private var sticks = metareal_sticks_reset()
+    private var gridTouches: [ObjectIdentifier: Int64] = [:]
+    private var nextTouchSlot: Int64 = 0
+    private var lastTick: Double?
+    private var gridElement: UIAccessibilityElement?
+    private var inGrid: Bool { gridHandle != 0 }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override func loadView() { view = Surface(); view.backgroundColor = .black; view.isMultipleTouchEnabled = false }
@@ -63,6 +73,7 @@ final class HomeViewController: UIViewController {
             surface.metalLayer.drawableSize = size
             renderer?.resize(size)
             lastSize = size
+            gridElement?.accessibilityFrameInContainerSpace = view.bounds
             metareal_home_resume(handle)
             trackedTouch = nil
             updateScene(at: CACurrentMediaTime())
@@ -71,6 +82,7 @@ final class HomeViewController: UIViewController {
     @objc private func suspend() {
         clock?.invalidate(); clock = nil; trackedTouch = nil
         metareal_home_resume(handle)
+        sticks = metareal_sticks_reset(); gridTouches = [:]; lastTick = nil
         walletTask?.cancel(); walletTask = nil
         Task { [wallet] in await wallet.disconnect() }
     }
@@ -124,6 +136,7 @@ final class HomeViewController: UIViewController {
     fileprivate func frame(_ link: CADisplayLink) { updateScene(at: link.timestamp) }
     private func updateScene(at timestamp: Double) {
         guard renderer != nil, lastSize.width > 0, lastSize.height > 0 else { return }
+        if inGrid { return updateGrid(at: timestamp) }
         let scale = surface.metalLayer.contentsScale
         mr_clear_frame(handle)
         metareal_home_frame(handle, timestamp, lastSize.width, lastSize.height, scale, view.safeAreaInsets.bottom * scale, UIAccessibility.isReduceMotionEnabled)
@@ -149,6 +162,52 @@ final class HomeViewController: UIViewController {
             NSLog("Metareal home.start #%lld (%ld protobuf bytes)", invocationCount, invocation.count)
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        enterGrid()
+    }
+    private func enterGrid() {
+        guard !inGrid else { return }
+        var config: UInt8 = 0
+        gridHandle = mr_create(&config, 1, 1)
+        guard gridHandle != 0 else { NSLog("OpenAgents: no storage for the Grid"); return }
+        player = metareal_player_place(0, 0, 0, 0)
+        sticks = metareal_sticks_reset(); gridTouches = [:]; lastTick = nil; trackedTouch = nil
+        view.isMultipleTouchEnabled = true
+        balanceLabel.isHidden = true
+        let element = UIAccessibilityElement(accessibilityContainer: surface)
+        element.accessibilityLabel = "The Grid"
+        element.accessibilityHint = "Drag on the left to walk, drag on the right to look, tap on the right to jump."
+        element.accessibilityIdentifier = "grid.world"
+        element.accessibilityFrameInContainerSpace = view.bounds
+        gridElement = element
+        view.accessibilityElements = [element]
+        UIAccessibility.post(notification: .screenChanged, argument: element)
+        NSLog("OpenAgents: entered the Grid")
+    }
+    private func updateGrid(at timestamp: Double) {
+        let frame = Float(min(max(timestamp - (lastTick ?? timestamp), 0), 0.25)); lastTick = timestamp
+        player = metareal_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
+        sticks = metareal_sticks_used(sticks)
+        player = metareal_player_advance(player, frame)
+        let eye = metareal_player_eye(player), at = metareal_player_at(player), feet = metareal_player_feet(player)
+        mr_clear_frame(gridHandle)
+        metareal_grid_frame(gridHandle, sticks, eye.x, eye.y, eye.z, at.x, at.y, at.z, feet.x, feet.y, feet.z,
+                            metareal_player_face(player), Float(lastSize.width), Float(lastSize.height), Float(surface.metalLayer.contentsScale))
+        guard mr_ok(gridHandle) else { suspend(); NSLog("OpenAgents: invalid Grid draw packet"); return }
+        renderer?.draw(handle: gridHandle, time: timestamp)
+        let place = String(format: "%.1f %.1f", feet.x, feet.z)
+        if gridElement?.accessibilityValue != place { gridElement?.accessibilityValue = place }
+    }
+    private func routeGrid(_ touches: Set<UITouch>, _ phase: Int64) {
+        let scale = surface.metalLayer.contentsScale
+        for touch in touches {
+            let id = ObjectIdentifier(touch)
+            if phase == 0 { gridTouches[id] = nextTouchSlot; nextTouchSlot += 1 }
+            guard let slot = gridTouches[id] else { continue }
+            let point = touch.location(in: view)
+            sticks = metareal_sticks_touch(sticks, slot, phase, Float(point.x * scale), Float(point.y * scale),
+                                           Float(lastSize.width), Float(scale), touch.timestamp)
+            if phase >= 2 { gridTouches[id] = nil }
+        }
     }
     private func activateAccessibleButton() -> Bool {
         guard let bar = mr_bar(handle)?.pointee, bar.width > 0 else { return false }
@@ -158,19 +217,23 @@ final class HomeViewController: UIViewController {
         return false
     }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if inGrid { return routeGrid(touches, 0) }
         guard trackedTouch == nil, let touch = touches.first else { return }
         trackedTouch = touch; route(0, touch)
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if inGrid { return routeGrid(touches, 1) }
         if let touch = trackedTouch, touches.contains(touch) { route(1, touch) }
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if inGrid { return routeGrid(touches, 2) }
         if let touch = trackedTouch, touches.contains(touch) { route(2, touch); trackedTouch = nil }
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if inGrid { return routeGrid(touches, 3) }
         if let touch = trackedTouch { route(3, touch) }; trackedTouch = nil
     }
-    deinit { clock?.invalidate(); NotificationCenter.default.removeObserver(self); mr_destroy(handle) }
+    deinit { clock?.invalidate(); NotificationCenter.default.removeObserver(self); mr_destroy(handle); if gridHandle != 0 { mr_destroy(gridHandle) } }
 }
 private final class HomeActionElement: UIAccessibilityElement {
     var activate: (() -> Bool)?

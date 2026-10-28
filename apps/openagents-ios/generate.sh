@@ -12,8 +12,12 @@ if [[ ! -x "$compiler" || coax/build.sh -nt "$compiler" || apps/openagents-ios/g
     COAX_HOST_TARGET="$(uname -m)-apple-macosx11.0" coax/build.sh
 fi
 out=apps/openagents-ios/Generated
-"$compiler" c metareal/home.coax --library --header "$out/Home.h" > "$out/Home.c.tmp"
-mv "$out/Home.c.tmp" "$out/Home.c"
+for name in home player grid; do
+  # Home, Player, Grid: one C library and header each.
+  base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
+  "$compiler" c "metareal/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
+  mv "$out/$base.c.tmp" "$out/$base.c"
+done
 "$compiler" metal metareal/light.coax > "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"

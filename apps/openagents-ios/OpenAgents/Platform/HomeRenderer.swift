@@ -6,7 +6,8 @@ private struct ViewUniform { var size: SIMD2<Float>; var time: Float; var scale:
 private struct BarUniform { var rect: SIMD4<Float>; var state: SIMD4<Float> }
 
 /// Metal resource binding and bulk transfers only. Product visual functions are
-/// emitted from metareal/light.coax; scene packets come from home.coax.
+/// emitted from metareal/light.coax; scene packets come from home.coax or
+/// grid.coax.
 final class HomeRenderer {
     private let layer: CAMetalLayer
     private let device: MTLDevice
@@ -126,10 +127,14 @@ final class HomeRenderer {
         guard let final = encoder(drawable.texture) else { available.signal(); return }
         final.setRenderPipelineState(composite); final.setFragmentTexture(scene,index:0); final.setFragmentTexture(blurB,index:1)
         final.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
-        var button = BarUniform(rect: SIMD4(rawBar.x,rawBar.y,rawBar.width,rawBar.height),state: SIMD4(rawBar.press,rawBar.flash,0,0))
-        final.setRenderPipelineState(bar); final.setVertexBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:0); final.setVertexBytes(&button,length:MemoryLayout<BarUniform>.stride,index:1)
-        final.setFragmentBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:0); final.setFragmentBytes(&button,length:MemoryLayout<BarUniform>.stride,index:1); final.setFragmentTexture(labelTexture,index:0)
-        final.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6); final.endEncoding()
+        // A scene without a HUD bar (the Grid) draws none.
+        if rawBar.width > 0 {
+            var button = BarUniform(rect: SIMD4(rawBar.x,rawBar.y,rawBar.width,rawBar.height),state: SIMD4(rawBar.press,rawBar.flash,0,0))
+            final.setRenderPipelineState(bar); final.setVertexBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:0); final.setVertexBytes(&button,length:MemoryLayout<BarUniform>.stride,index:1)
+            final.setFragmentBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:0); final.setFragmentBytes(&button,length:MemoryLayout<BarUniform>.stride,index:1); final.setFragmentTexture(labelTexture,index:0)
+            final.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
+        }
+        final.endEncoding()
         let semaphore = available
         command.addCompletedHandler { buffer in
             if let error = buffer.error { NSLog("Metareal GPU: %@",error.localizedDescription) }

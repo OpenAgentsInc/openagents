@@ -40,7 +40,8 @@ built on:
 - **Nostr** is the open transport. [`nips/`](nips/README.md) pins the
   official and external NIPs we follow, next to our own.
 - **The iOS app** ([`apps/openagents-ios/`](apps/openagents-ios/README.md))
-  is a minimal native home: the animated graph and HUD, running in Coax. It
+  is a minimal native home: the animated graph and HUD, running in Coax.
+  Start opens the Grid, the bare Verse world, to walk around in. It
   ships to the owner's TestFlight group as `com.openagents.app`.
 
 ## What's next

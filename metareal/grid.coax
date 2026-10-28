@@ -1,0 +1,569 @@
+// The Grid: the bare Verse world, as aethyr-cpp's src/grid.cpp draws it. A
+// ground of lines every 4 m out to 264 m, brighter on the street lines every
+// 24 m, fading into the black field from 6 m to 110 m, with a ring at your
+// feet. You walk it with metareal/player.coax; a wire figure stands in for
+// the character until the character's model is ported.
+//
+// The lines are projected here and drawn as the home's screen-space line
+// packets, so the Grid shares the home's line, bloom and tone stages. The
+// host keeps a Sticks value for the touch controls and passes it back on
+// every call:
+//
+//   - a finger that starts on the left half is the move stick, from where it
+//     touched down; pushed well past the ring, you run;
+//   - a finger that starts on the right half looks around;
+//   - a quick tap on the right half jumps.
+
+host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign;
+host_dot :: (h: int, x: f64, y: f64, size: f64, light: f64, soft: f64, crisp: f64) #foreign;
+
+PI :: 3.14159265;
+EDGE :: 264.0;          // the grid's edge, metres from the centre
+SPACING :: 4.0;         // line spacing
+SEGMENT :: 8.0;         // lines are drawn in pieces this long, so they fade
+FOG_START :: 6.0;
+FOG_END :: 110.0;
+MINOR :: 0.24;          // a line's light, before the fog
+STREET :: 0.55;         // the street lines, midway between 24 m lots
+FIGURE :: 0.9;          // the stand-in character
+FOVY :: 1.05;           // radians, as aethyr's Grid
+NEAR :: 0.05;
+LINES :: 56;            // most lines one axis can show: 2 FOG_END / SPACING + 1
+PIECES :: 29;           // most pieces one line can show: 2 FOG_END / SEGMENT + 2
+STICK :: 56.0;          // the move stick's radius, in points
+RUN_PAST :: 1.25;       // pushed this far past the ring, you run
+LOOK :: 0.006;          // radians per point dragged, as aethyr's drag look
+TAP_TIME :: 0.3;        // seconds: a touch shorter than this, that
+TAP_TRAVEL :: 10.0;     // moved less than this many points, is a tap
+
+Vec3 :: struct { x: f32; y: f32; z: f32; }
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+smooth :: (a: f32, b: f32, x: f32) -> f32 { t := clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
+sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+cross :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+length :: (a: Vec3) -> f32 { return sqrt(dot(a, a)); }
+unit :: (a: Vec3) -> Vec3 {
+  n := length(a);
+  if n == 0 { return v3(0, 0, 1); }
+  return v3(a.x / n, a.y / n, a.z / n);
+}
+lerp :: (a: Vec3, b: Vec3, t: f32) -> Vec3 { return v3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
+
+// ---- The camera ----
+
+Camera :: struct {
+  eye: Vec3;
+  right: Vec3;          // screen x, in the world
+  up: Vec3;             // screen up
+  fwd: Vec3;            // into the screen
+  focal: f32;           // pixels per unit of x / z
+  cx: f32;
+  cy: f32;
+  width: f32;
+  height: f32;
+}
+
+camera :: (eye: Vec3, at: Vec3, width: f32, height: f32) -> Camera {
+  c: Camera;
+  c.eye = eye;
+  c.fwd = unit(sub(at, eye));
+  c.right = unit(cross(c.fwd, v3(0, 1, 0)));
+  c.up = cross(c.right, c.fwd);
+  c.focal = height / 2 / tan(f32(FOVY / 2));
+  c.cx = width / 2;
+  c.cy = height / 2;
+  c.width = width;
+  c.height = height;
+  return c;
+}
+
+// A world point in the camera's frame: x right, y up, z ahead.
+view :: (c: Camera, p: Vec3) -> Vec3 {
+  d := sub(p, c.eye);
+  return v3(dot(d, c.right), dot(d, c.up), dot(d, c.fwd));
+}
+
+// A point ahead of the camera on the screen, in pixels from the top left.
+Screen :: struct { x: f32; y: f32; }
+project :: (c: Camera, v: Vec3) -> Screen {
+  return Screen.{x = c.cx + v.x / v.z * c.focal, y = c.cy - v.y / v.z * c.focal};
+}
+
+// A world segment on the screen, cut where it passes behind the near plane,
+// with how far along the segment each end now is.
+Piece :: struct { a: Screen; b: Screen; ta: f32; tb: f32; on: bool; }
+
+piece :: (c: Camera, a: Vec3, b: Vec3) -> Piece {
+  out: Piece;
+  va := view(c, a); vb := view(c, b);
+  if va.z < f32(NEAR) && vb.z < f32(NEAR) { return out; }
+  out.tb = 1;
+  ca := va; cb := vb;
+  if va.z < f32(NEAR) { out.ta = (f32(NEAR) - va.z) / (vb.z - va.z); ca = lerp(va, vb, out.ta); }
+  if vb.z < f32(NEAR) { out.tb = (f32(NEAR) - va.z) / (vb.z - va.z); cb = lerp(va, vb, out.tb); }
+  out.a = project(c, ca);
+  out.b = project(c, cb);
+  // Off one side of the screen altogether.
+  if out.a.x < 0 && out.b.x < 0 { return out; }
+  if out.a.y < 0 && out.b.y < 0 { return out; }
+  if out.a.x > c.width && out.b.x > c.width { return out; }
+  if out.a.y > c.height && out.b.y > c.height { return out; }
+  out.on = true;
+  return out;
+}
+
+// ---- The ground ----
+
+// How much of a line's light the fog leaves at this distance from the eye.
+fog :: (d: f32) -> f32 { return 1 - smooth(FOG_START, FOG_END, d); }
+
+// Line i sits at i * SPACING; the street lines are the ones midway between
+// 24 m lots, at 12 m plus a multiple of 24.
+street :: (i: int) -> bool { return ((i % 6) + 6) % 6 == 3; }
+shade :: (i: int) -> f32 { return ifx street(i) then f32(STREET) else f32(MINOR); }
+
+// The lines one axis shows around `at`: those within FOG_END, inside the
+// edge. Returns the first and one past the last line number.
+Range :: struct { first: int; end: int; }
+lines_near :: (at: f32) -> Range {
+  n := int(EDGE / SPACING);
+  first := int(floor((at - f32(FOG_END)) / f32(SPACING)));
+  last := int(floor((at + f32(FOG_END)) / f32(SPACING)));
+  if (at - f32(FOG_END)) / f32(SPACING) > f32(first) { first += 1; }
+  if first < -n { first = -n; }
+  if last > n { last = n; }
+  r: Range;
+  r.first = first;
+  r.end = ifx last >= first then last + 1 else first;
+  return r;
+}
+
+// The pieces along one line, from `at` - FOG_END to `at` + FOG_END inside
+// the edge, starting on a multiple of SEGMENT.
+pieces_near :: (at: f32) -> Range {
+  first := int(floor(hi(at - f32(FOG_END), -f32(EDGE)) / f32(SEGMENT)));
+  end := int(floor(lo(at + f32(FOG_END), f32(EDGE)) / f32(SEGMENT))) + 1;
+  r: Range;
+  r.first = first;
+  r.end = ifx end > first then end else first;
+  return r;
+}
+
+line_out :: (h: int, p: Piece, la: f32, lb: f32, width: f32) {
+  if !p.on { return; }
+  a := la + (lb - la) * p.ta;
+  b := la + (lb - la) * p.tb;
+  host_line(h, f64(p.a.x), f64(p.a.y), f64(p.b.x), f64(p.b.y), f64(a), f64(b), f64(width));
+}
+
+// One ground line through the world, along z when `along_z` (at x = offset)
+// or along x (at z = offset), near `at`.
+ground_line :: (h: int, c: Camera, offset: f32, along_z: bool, at: f32, light: f32, width: f32) {
+  r := pieces_near(at);
+  for k: r.first..<r.end {
+    s := hi(f32(k) * f32(SEGMENT), -f32(EDGE));
+    e := lo(s + f32(SEGMENT), f32(EDGE));
+    if e <= s { continue; }
+    a := ifx along_z then v3(offset, 0, s) else v3(s, 0, offset);
+    b := ifx along_z then v3(offset, 0, e) else v3(e, 0, offset);
+    la := light * fog(length(sub(a, c.eye)));
+    lb := light * fog(length(sub(b, c.eye)));
+    if la + lb <= 0.002 { continue; }
+    line_out(h, piece(c, a, b), la, lb, width);
+  }
+}
+
+// ---- The figure ----
+
+ring :: (h: int, c: Camera, center: Vec3, radius: f32, count: int, light: f32, width: f32) {
+  for i: 0..<count {
+    a0 := f32(i) * f32(2 * PI) / f32(count);
+    a1 := f32(i + 1) * f32(2 * PI) / f32(count);
+    a := v3(center.x + cos(a0) * radius, center.y, center.z + sin(a0) * radius);
+    b := v3(center.x + cos(a1) * radius, center.y, center.z + sin(a1) * radius);
+    line_out(h, piece(c, a, b), light, light, width);
+  }
+}
+
+// A wire capsule where you stand, with a short line out the way you face.
+figure :: (h: int, c: Camera, feet: Vec3, face: f32, width: f32) {
+  ring(h, c, feet, 0.7, 32, f32(STREET), width);
+  for level: 0..<3 {
+    ring(h, c, v3(feet.x, feet.y + 0.15 + f32(level) * 0.7, feet.z), 0.3, 16, f32(FIGURE), width);
+  }
+  for i: 0..<6 {
+    a := f32(i) * f32(PI) / 3;
+    x := feet.x + cos(a) * 0.3; z := feet.z + sin(a) * 0.3;
+    line_out(h, piece(c, v3(x, feet.y + 0.15, z), v3(x, feet.y + 1.55, z)), f32(FIGURE), f32(FIGURE), width);
+  }
+  chest := v3(feet.x, feet.y + 1.2, feet.z);
+  nose := v3(feet.x + sin(face) * 0.6, feet.y + 1.2, feet.z + cos(face) * 0.6);
+  line_out(h, piece(c, chest, nose), f32(FIGURE), f32(FIGURE) * 1.4, width);
+}
+
+// ---- Touch ----
+
+Sticks :: struct {
+  // The move stick: the finger's slot and where it touched down.
+  move_on: bool;
+  move_slot: int;
+  ox: f32;
+  oy: f32;
+  // The look finger: its slot, where it was last, where and when it began,
+  // and whether it has travelled far enough not to be a tap.
+  look_on: bool;
+  look_slot: int;
+  lx: f32;
+  ly: f32;
+  sx: f32;
+  sy: f32;
+  since: f64;
+  travelled: bool;
+  // What the controller reads: the stick in [-1, 1] (x right, y forward),
+  // run, the look turned since the last frame, and a jump to make.
+  pad_x: f32;
+  pad_y: f32;
+  run: bool;
+  dyaw: f32;
+  dpitch: f32;
+  jump: bool;
+}
+
+// A touch: its slot (the host's number for the finger), phase (0 began, 1
+// moved, 2 ended, 3 cancelled), where in pixels, the view's width in pixels,
+// pixels per point, and the time in seconds.
+metareal_sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32,
+                          scale: f32, now: f64) -> Sticks #export_c {
+  next := s;
+  k := hi(scale, 0.5);
+  if phase == 0 {
+    if x < width / 2 {
+      if !s.move_on {
+        next.move_on = true; next.move_slot = slot;
+        next.ox = x; next.oy = y;
+      }
+    } else if !s.look_on {
+      next.look_on = true; next.look_slot = slot;
+      next.lx = x; next.ly = y; next.sx = x; next.sy = y;
+      next.since = now; next.travelled = false;
+    }
+    return next;
+  }
+  if s.move_on && slot == s.move_slot {
+    if phase == 1 {
+      r := f32(STICK) * k;
+      dx := (x - s.ox) / r; dy := (s.oy - y) / r;
+      d := sqrt(dx * dx + dy * dy);
+      next.run = d > f32(RUN_PAST);
+      if d > 1 { dx = dx / d; dy = dy / d; }
+      next.pad_x = dx; next.pad_y = dy;
+    } else {
+      next.move_on = false; next.pad_x = 0; next.pad_y = 0; next.run = false;
+    }
+    return next;
+  }
+  if s.look_on && slot == s.look_slot {
+    if phase == 1 {
+      next.dyaw -= (x - s.lx) / k * f32(LOOK);
+      next.dpitch -= (y - s.ly) / k * f32(LOOK);
+      next.lx = x; next.ly = y;
+      tx := (x - s.sx) / k; ty := (y - s.sy) / k;
+      if tx * tx + ty * ty > f32(TAP_TRAVEL * TAP_TRAVEL) { next.travelled = true; }
+    } else {
+      if phase == 2 && !s.travelled && now - s.since < TAP_TIME { next.jump = true; }
+      next.look_on = false;
+    }
+  }
+  return next;
+}
+
+// After the controller has read a frame's controls: the look and the jump
+// are spent; the stick stays held.
+metareal_sticks_used :: (s: Sticks) -> Sticks #export_c {
+  next := s;
+  next.dyaw = 0; next.dpitch = 0; next.jump = false;
+  return next;
+}
+
+// After a pause: no fingers are down.
+metareal_sticks_reset :: () -> Sticks #export_c { s: Sticks; return s; }
+
+sticks_out :: (h: int, s: Sticks, width: f32, height: f32, k: f32) {
+  r := f32(STICK) * k;
+  ox := s.ox; oy := s.oy; light := 0.35f32;
+  // Where to put your thumb, before it is down.
+  if !s.move_on { ox = width * 0.22; oy = height - hi(r * 2.4, height * 0.18); light = 0.14; }
+  for i: 0..<32 {
+    a0 := f32(i) * f32(2 * PI) / 32; a1 := f32(i + 1) * f32(2 * PI) / 32;
+    host_line(h, f64(ox + cos(a0) * r), f64(oy + sin(a0) * r), f64(ox + cos(a1) * r), f64(oy + sin(a1) * r),
+              f64(light), f64(light), f64(k));
+  }
+  if s.move_on {
+    host_dot(h, f64(ox + s.pad_x * r), f64(oy - s.pad_y * r), f64(9 * k), 0.8, 0.6, 0.5);
+  }
+}
+
+// ---- The frame ----
+
+// Draws the Grid seen from eye looking at at, with you at feet facing face,
+// into a width by height view (pixels, scale pixels per point).
+metareal_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+                        feet_x: f32, feet_y: f32, feet_z: f32, face: f32,
+                        width: f32, height: f32, scale: f32) #export_c {
+  if !(width > 0) || !(height > 0) { return; }
+  k := hi(scale, 0.5);
+  c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
+  feet := v3(feet_x, feet_y, feet_z);
+  xs := lines_near(feet.x);
+  for i: xs.first..<xs.end { ground_line(h, c, f32(i) * f32(SPACING), true, feet.z, shade(i), 0.8 * k); }
+  zs := lines_near(feet.z);
+  for i: zs.first..<zs.end { ground_line(h, c, f32(i) * f32(SPACING), false, feet.x, shade(i), 0.8 * k); }
+  figure(h, c, feet, face, 1.1 * k);
+  sticks_out(h, s, width, height, k);
+}
+
+// ---- Checks ----
+
+near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
+behind :: () -> Camera { return camera(v3(0, 2, -4), v3(0, 1.5, 0), 1000, 2000); }
+
+#test "what the camera looks at is the middle of the screen" {
+  c := behind();
+  s := project(c, view(c, v3(0, 1.5, 0)));
+  #assert near(s.x, 500, 0.01) && near(s.y, 1000, 0.01);
+  // The frame is orthonormal.
+  #assert near(length(c.fwd), 1, 0.00001) && near(length(c.right), 1, 0.00001) && near(length(c.up), 1, 0.00001);
+  #assert near(dot(c.fwd, c.right), 0, 0.00001) && near(dot(c.up, c.right), 0, 0.00001) && near(dot(c.up, c.fwd), 0, 0.00001);
+  #assert c.up.y > 0;
+}
+
+#test "looking along +Z, +X is on the left and +Y is up" {
+  c := behind();
+  left := project(c, view(c, v3(1, 1.5, 0)));
+  #assert left.x < 499;
+  high := project(c, view(c, v3(0, 2.5, 0)));
+  #assert high.y < 999;
+  // FOVY is the view's height: a point FOVY / 2 above the axis is on the
+  // top edge, and the same angle to the side is as many pixels across.
+  o := camera(v3(0, 0, 0), v3(0, 0, 1), 1000, 2000);
+  t := tan(f32(FOVY / 2));
+  #assert near(project(o, view(o, v3(0, 10 * t, 10))).y, 0, 0.01);
+  #assert near(project(o, view(o, v3(-5 * t, 0, 10))).x, 1000, 0.01);
+}
+
+#test "vector helpers" {
+  a := v3(1, 2, 3); b := v3(4, 6, 11);
+  d := sub(b, a);
+  #assert d.x == 3 && d.y == 4 && d.z == 8;
+  m := lerp(a, b, 0.25);
+  #assert m.x == 1.75 && m.y == 3 && m.z == 5;
+  x := cross(a, v3(4, 5, 6));
+  #assert x.x == -3 && x.y == 6 && x.z == -3;
+  #assert dot(a, b) == 49 && length(v3(2, 3, 6)) == 7;
+  u := unit(v3(0, 3, 4));
+  #assert near(u.y, 0.6, 0.000001) && near(u.z, 0.8, 0.000001);
+  z := unit(v3(0, 0, 0));
+  #assert z.z == 1;
+}
+
+#test "a camera looking straight down still has a frame" {
+  c := camera(v3(0, 5, 0), v3(0, 0, 0), 100, 100);
+  #assert near(length(c.right), 1, 0.00001) && near(length(c.up), 1, 0.00001);
+}
+
+#forall "a piece behind the near plane is cut there" ia: -3..<4, ib: -3..<4 {
+  c := camera(v3(0, 1, 0), v3(0, 1, 1), 1000, 1000);
+  a := v3(0.2, 1, f32(ia)); b := v3(-0.2, 1, f32(ib));
+  p := piece(c, a, b);
+  za := view(c, a).z; zb := view(c, b).z;
+  if za < f32(NEAR) && zb < f32(NEAR) { #assert !p.on; }
+  else {
+    #assert p.on;
+    #assert p.ta >= 0 && p.ta <= p.tb && p.tb <= 1;
+    if za >= f32(NEAR) { #assert p.ta == 0; }
+    if zb >= f32(NEAR) { #assert p.tb == 1; }
+    // Where it was cut is on the near plane.
+    if za < f32(NEAR) { #assert near(view(c, lerp(a, b, p.ta)).z, NEAR, 0.0001); }
+    if zb < f32(NEAR) { #assert near(view(c, lerp(a, b, p.tb)).z, NEAR, 0.0001); }
+    // The screen ends are where those points project.
+    sa := project(c, view(c, lerp(a, b, p.ta))); sb := project(c, view(c, lerp(a, b, p.tb)));
+    #assert near(p.a.x, sa.x, 0.5) && near(p.a.y, sa.y, 0.5) && near(p.b.x, sb.x, 0.5) && near(p.b.y, sb.y, 0.5);
+  }
+}
+
+#test "a piece with one end on the near plane is kept, uncut there" {
+  c := camera(v3(0, 0, 0), v3(0, 0, 1), 1000, 1000);
+  p := piece(c, v3(0, 0, NEAR), v3(0.01, 0, -1));
+  #assert p.on && p.ta == 0 && p.tb < 1;
+  q := piece(c, v3(0.01, 0, -1), v3(0, 0, NEAR));
+  #assert q.on && q.ta > 0 && q.tb == 1;
+}
+
+#test "pieces off one side of the screen are dropped" {
+  c := camera(v3(0, 1, 0), v3(0, 1, 1), 1000, 1000);
+  #assert piece(c, v3(-1, 1, 1), v3(1, 1, 1)).on;
+  #assert !piece(c, v3(50, 1, 1), v3(60, 1, 1)).on;     // far left
+  #assert !piece(c, v3(-50, 1, 1), v3(-60, 1, 1)).on;   // far right
+  #assert !piece(c, v3(0, 50, 1), v3(1, 60, 1)).on;     // above
+  #assert !piece(c, v3(0, -50, 1), v3(1, -60, 1)).on;   // below
+  // Across the screen from one side to the other stays.
+  #assert piece(c, v3(50, 1, 1), v3(-50, 1, 1)).on;
+  #assert piece(c, v3(0, 50, 1), v3(0, -50, 1)).on;
+}
+
+#forall "the fog fades from FOG_START to FOG_END" d: 0..<130 {
+  f := fog(f32(d));
+  if d <= 6 { #assert f == 1; }
+  if d >= 110 { #assert f == 0; }
+  #assert f >= 0 && f <= 1;
+  #assert fog(f32(d + 1)) <= f;
+  if d > 6 && d < 110 { #assert f > 0 && f < 1; }
+}
+
+#forall "street lines are midway between the 24 m lots" i: -70..<70 {
+  p := i * 4;
+  is_street := ((p - 12) % 24 + 24) % 24 == 0;
+  #assert street(i) == is_street;
+  #assert shade(i) == ifx is_street then f32(STREET) else f32(MINOR);
+}
+
+#forall "the lines near you are the ones within FOG_END, inside the edge" k: -40..<41 {
+  at := f32(k) * 7.3;
+  r := lines_near(at);
+  #assert r.end - r.first <= LINES && r.end >= r.first;
+  #assert r.first >= -66 && r.end <= 67;
+  for i: r.first..<r.end { #assert abs(f32(i) * 4 - at) <= f32(FOG_END); }
+  // Just outside the range is either too far or past the edge.
+  if r.first > -66 { #assert at - f32(r.first - 1) * 4 > f32(FOG_END); }
+  if r.end < 67 { #assert f32(r.end) * 4 - at > f32(FOG_END); }
+}
+
+#test "at the edge, one line or none" {
+  one := lines_near(372);
+  #assert one.first == 66 && one.end == 67;
+  none := lines_near(400);
+  #assert none.end == none.first;
+}
+
+#forall "a line's pieces cover what you can see of it, inside the edge" k: -40..<41 {
+  at := f32(k) * 7.3;
+  r := pieces_near(at);
+  #assert r.end - r.first <= PIECES && r.end >= r.first;
+  start := f32(r.first) * f32(SEGMENT); stop := f32(r.end) * f32(SEGMENT);
+  #assert start <= hi(at - f32(FOG_END), -f32(EDGE));
+  #assert stop >= lo(at + f32(FOG_END), f32(EDGE));
+  #assert start >= -f32(EDGE) - f32(SEGMENT) && stop <= f32(EDGE) + f32(SEGMENT);
+}
+
+#test "one frame stays inside the host's 8192 line packets" {
+  // Two axes of LINES lines in PIECES pieces, the figure, and the stick.
+  figure_lines := 32 + 3 * 16 + 6 + 1;
+  #assert 2 * LINES * PIECES + figure_lines + 32 < 8192;
+  #assert LINES == int(2 * FOG_END / SPACING) + 1 && PIECES == int(2 * FOG_END / SEGMENT) + 2;
+}
+
+press :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return metareal_sticks_touch(s, slot, 0, x, y, 1000, 2, now); }
+drag :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return metareal_sticks_touch(s, slot, 1, x, y, 1000, 2, now); }
+lift :: (s: Sticks, slot: int, x: f32, y: f32, now: f64) -> Sticks { return metareal_sticks_touch(s, slot, 2, x, y, 1000, 2, now); }
+
+#test "a finger on the left is the move stick" {
+  s := press(metareal_sticks_reset(), 1, 200, 1500, 0);
+  #assert s.move_on && !s.look_on && s.move_slot == 1;
+  // Up a full radius (56 points at scale 2): forward, at full stick.
+  s = drag(s, 1, 200, 1500 - 112, 0.1);
+  #assert near(s.pad_x, 0, 0.00001) && near(s.pad_y, 1, 0.00001) && !s.run;
+  // Right half a radius.
+  s = drag(s, 1, 256, 1500, 0.2);
+  #assert near(s.pad_x, 0.5, 0.00001) && near(s.pad_y, 0, 0.00001);
+  // Past the ring: still unit length; well past it, you run.
+  s = drag(s, 1, 200 + 112 * 1.2, 1500, 0.3);
+  #assert near(s.pad_x, 1, 0.00001) && !s.run;
+  #assert !drag(s, 1, 200 + 140, 1500, 0.3).run;    // exactly RUN_PAST
+  s = drag(s, 1, 200 + 112 * 1.3, 1500 - 50, 0.3);
+  #assert near(s.pad_x * s.pad_x + s.pad_y * s.pad_y, 1, 0.0001) && s.run;
+  s = lift(s, 1, 0, 0, 0.4);
+  #assert !s.move_on && s.pad_x == 0 && s.pad_y == 0 && !s.run;
+}
+
+#test "a finger on the right looks; drag right turns right, drag up looks up" {
+  s := press(metareal_sticks_reset(), 2, 800, 1000, 0);
+  #assert s.look_on && !s.move_on && s.look_slot == 2;
+  s = drag(s, 2, 900, 1000, 0.1);
+  #assert near(s.dyaw, -100 / 2 * f32(LOOK), 0.00001) && s.dpitch == 0;
+  s = drag(s, 2, 900, 960, 0.2);
+  #assert near(s.dpitch, 40 / 2 * f32(LOOK), 0.00001);
+  s = drag(s, 2, 900, 940, 0.2);
+  #assert near(s.dpitch, 60 / 2 * f32(LOOK), 0.00001);
+  // Spent once the controller reads them; the finger stays down.
+  s = metareal_sticks_used(s);
+  #assert s.dyaw == 0 && s.dpitch == 0 && s.look_on;
+  s = drag(s, 2, 910, 960, 0.3);
+  #assert near(s.dyaw, -10 / 2 * f32(LOOK), 0.00001);
+}
+
+#test "a quick tap on the right jumps; a drag or a hold doesn't" {
+  s := lift(press(metareal_sticks_reset(), 3, 800, 1000, 5), 3, 802, 1000, 5.1);
+  #assert s.jump && !s.look_on;
+  s = metareal_sticks_used(s);
+  #assert !s.jump;
+  // Moved more than TAP_TRAVEL points.
+  t := press(metareal_sticks_reset(), 3, 800, 1000, 5);
+  t = drag(t, 3, 800 + 2 * 11, 1000, 5.05);
+  #assert !lift(t, 3, 800, 1000, 5.1).jump;
+  // Moved less than TAP_TRAVEL points, or exactly that far, any way: still a tap.
+  tap := press(metareal_sticks_reset(), 3, 800, 1000, 5);
+  #assert lift(drag(tap, 3, 800 + 2 * 9, 1000, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert lift(drag(tap, 3, 800, 1000 - 2 * 9, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert lift(drag(tap, 3, 800 + 2 * 6, 1000 + 2 * 8, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert !lift(drag(tap, 3, 800, 1000 + 2 * 11, 5.05), 3, 800, 1000, 5.1).jump;
+  #assert !lift(drag(tap, 3, 800 + 2 * 8, 1000 - 2 * 8, 5.05), 3, 800, 1000, 5.1).jump;
+  // A drag, lifted, leaves no trace on the next tap.
+  after := lift(drag(tap, 3, 900, 1000, 5.05), 3, 900, 1000, 5.1);
+  #assert lift(press(after, 4, 800, 1000, 6), 4, 800, 1000, 6.1).jump;
+  // Exactly TAP_TIME is too long.
+  #assert !lift(press(metareal_sticks_reset(), 3, 800, 1000, 0), 3, 800, 1000, 0.3).jump;
+  // Held too long.
+  #assert !lift(press(metareal_sticks_reset(), 3, 800, 1000, 5), 3, 800, 1000, 5.35).jump;
+  // Cancelled.
+  #assert !metareal_sticks_touch(press(metareal_sticks_reset(), 3, 800, 1000, 5), 3, 3, 800, 1000, 1000, 2, 5.1).jump;
+}
+
+#test "the middle of the screen is the look side" {
+  #assert press(metareal_sticks_reset(), 1, 500, 1000, 0).look_on;
+  #assert press(metareal_sticks_reset(), 1, 499, 1000, 0).move_on;
+}
+
+#test "near" { #assert near(1, 1.5, 0.5) && !near(1, 1.6, 0.5); }
+
+#test "each finger keeps its own job" {
+  s := press(metareal_sticks_reset(), 1, 200, 1500, 0);
+  s = press(s, 2, 800, 1000, 0);
+  #assert s.move_on && s.look_on;
+  // A second finger on the left is ignored; so are its moves and lift.
+  s = press(s, 3, 300, 1500, 0);
+  #assert s.move_slot == 1;
+  s = drag(s, 3, 300, 1000, 0.1);
+  #assert s.pad_y == 0 && s.dyaw == 0;
+  s = lift(s, 3, 300, 1000, 0.1);
+  #assert s.move_on && s.look_on;
+  // The look finger moving doesn't move the stick, and the other way round.
+  s = drag(s, 2, 850, 1000, 0.1);
+  #assert s.pad_x == 0 && s.dyaw < 0;
+  s = drag(s, 1, 200, 1400, 0.1);
+  #assert s.pad_y > 0;
+  // A second finger on the right while looking is ignored.
+  t := press(s, 4, 900, 900, 0.2);
+  #assert t.look_slot == 2 && t.lx == s.lx;
+}
+
+#test "touches at a small scale still count in points" {
+  s := metareal_sticks_touch(metareal_sticks_reset(), 1, 0, 100, 500, 1000, 0, 0);
+  s = metareal_sticks_touch(s, 1, 1, 100 + 28, 500, 1000, 0, 0);
+  // Scale is taken as at least 0.5: a 56-point radius is 28 pixels.
+  #assert near(s.pad_x, 1, 0.00001);
+}

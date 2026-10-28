@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */; };
+		35A3B13C150F78FD4C9E753E /* Grid.c in Sources */ = {isa = PBXBuildFile; fileRef = 3BE259AB44E619C281EC401B /* Grid.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00755E361D10FD9EA268AF3 /* BIP39.swift */; };
 		3D33289F296E68FB9545BEE1 /* Michroma-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */; };
 		40EBE76A352087D40B6D5955 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B73CC5A17FE246BB0A3643 /* App.swift */; };
@@ -16,6 +17,7 @@
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC1295D990A18154D988C5E /* WalletKeychain.swift */; };
 		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
+		83FD88F53E028589CEE45BCA /* Player.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EA8BD95327E6ECD1A97B685 /* Player.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */ = {isa = PBXBuildFile; fileRef = 75264437CFF5986509BFE1BF /* michroma-ofl.txt */; };
 		9BF3729D9AA0003DCFBD3935 /* SparkWallet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0FF528DE884B29DAA6D4D6 /* SparkWallet.swift */; };
 		9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */ = {isa = PBXBuildFile; fileRef = A8590DE7BE9F641F9A440194 /* Home.pb */; };
@@ -41,6 +43,8 @@
 		0D9CCE7A321B824A05570718 /* HomeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRenderer.swift; sourceTree = "<group>"; };
 		0EC1295D990A18154D988C5E /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
 		1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewController.swift; sourceTree = "<group>"; };
+		1EA8BD95327E6ECD1A97B685 /* Player.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Player.c; sourceTree = "<group>"; };
+		3BE259AB44E619C281EC401B /* Grid.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Grid.c; sourceTree = "<group>"; };
 		4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeUITests.swift; sourceTree = "<group>"; };
 		4B5B3339D798BBE8F8C653F5 /* host.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = host.c; sourceTree = "<group>"; };
 		73B73CC5A17FE246BB0A3643 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
@@ -93,8 +97,10 @@
 		5B366C12F710C7D176CACD52 /* Generated */ = {
 			isa = PBXGroup;
 			children = (
+				3BE259AB44E619C281EC401B /* Grid.c */,
 				CA34DB580151D40597358639 /* Home.c */,
 				BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */,
+				1EA8BD95327E6ECD1A97B685 /* Player.c */,
 			);
 			path = Generated;
 			sourceTree = "<group>";
@@ -291,9 +297,11 @@
 				40EBE76A352087D40B6D5955 /* App.swift in Sources */,
 				370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */,
 				BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */,
+				35A3B13C150F78FD4C9E753E /* Grid.c in Sources */,
 				F4F275877B25EE6C8FCD494C /* Home.c in Sources */,
 				425686EF9F339C9F8AF36F0B /* HomeRenderer.swift in Sources */,
 				AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */,
+				83FD88F53E028589CEE45BCA /* Player.c in Sources */,
 				9BF3729D9AA0003DCFBD3935 /* SparkWallet.swift in Sources */,
 				471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */,
 				F5D72357EDBC9C2C7A705B08 /* host.c in Sources */,
