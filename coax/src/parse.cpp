@@ -63,9 +63,13 @@ struct Parser {
     switch (k) {
       case Tok::oror: return 1;
       case Tok::andand: return 2;
-      case Tok::eqeq: case Tok::noteq: case Tok::lt: case Tok::le: case Tok::gt: case Tok::ge: return 3;
-      case Tok::plus: case Tok::minus: return 4;
-      case Tok::star: case Tok::slash: case Tok::percent: return 5;
+      case Tok::bitor_: return 3;
+      case Tok::bitxor_: return 4;
+      case Tok::bitand_: return 5;
+      case Tok::eqeq: case Tok::noteq: case Tok::lt: case Tok::le: case Tok::gt: case Tok::ge: return 6;
+      case Tok::shl: case Tok::shr: return 7;
+      case Tok::plus: case Tok::minus: return 8;
+      case Tok::star: case Tok::slash: case Tok::percent: return 9;
       default: return 0;
     }
   }
@@ -80,7 +84,7 @@ struct Parser {
       Expr *rhs = expr(p + 1);
       if (!rhs) return nullptr;
       // Comparisons do not chain: `a < b < c` is an error, not a surprise.
-      if (p == 3 && precedence(peek().kind) == 3) {
+      if (p == 6 && precedence(peek().kind) == 6) {
         fail(peek().loc, "E0203", "comparisons cannot be chained", "split it with '&&'");
         return nullptr;
       }
@@ -126,6 +130,12 @@ struct Parser {
       case Tok::int_lit:
         e->kind = ExprKind::int_lit;
         e->int_value = t.int_value;
+        next();
+        return e;
+      case Tok::real_lit:
+        e->kind = ExprKind::real_lit;
+        e->real_value = t.real_value;
+        e->type = t.float32 ? Type::f32_ : Type::f64_;
         next();
         return e;
       case Tok::string_lit:
@@ -295,7 +305,8 @@ struct Parser {
     for (int i = 0; peek(i).kind != Tok::eof; i++) {
       if (peek(i).kind == Tok::lparen) depth++;
       if (peek(i).kind == Tok::rparen && --depth == 0)
-        return peek(i + 1).kind == Tok::lbrace || peek(i + 1).kind == Tok::arrow;
+        return peek(i + 1).kind == Tok::lbrace || peek(i + 1).kind == Tok::arrow ||
+               peek(i + 1).kind == Tok::directive;
     }
     return false;
   }
@@ -328,6 +339,19 @@ struct Parser {
       if (!parse_type(&p->ret_text, &p->ret_loc)) return nullptr;
     }
     p->params = to_slice(arena, params);
+    if (peek().kind == Tok::directive) {
+      Token directive = next();
+      if (str_eq(directive.text, "foreign")) {
+        p->foreign = true;
+        if (!expect(Tok::semicolon, "after #foreign")) return nullptr;
+        return p;
+      }
+      if (!str_eq(directive.text, "export_c")) {
+        fail(directive.loc, "E0214", "unsupported procedure directive");
+        return nullptr;
+      }
+      p->exported = true;
+    }
     if (!(p->body = block())) return nullptr;
     return p;
   }

@@ -59,16 +59,21 @@ its original include roots, checks all published descriptor baselines,
 compiles each consumer profile, tests alpha presence/bounds and the real legacy
 catalog migration, and checks generated outputs for drift. It creates no
 network connection or app/service. `generate` updates current descriptors and
-`data/asset-profiles.pb`; it never modifies `compatibility/`.
+`data/asset-profiles.pb` and the app's checked-in `Home.pb` resource; it never modifies `compatibility/`.
 
 [modules.json](modules.json) declares `coax-foundation`, `phone-agent`,
-`metareal` and `verse` profiles. Profiles select roots plus transitive imports;
+`metareal`, `verse` and `ios-home` profiles. Profiles select roots plus transitive imports;
 they do not fork schemas or change field meanings. Root-owned APIs compile
 separately from each upstream vendor module, avoiding import-name collisions.
 
 ## Coax adoption
 
-Coax does **not** implement `#import_proto` or production protobuf decoders yet.
+Coax does **not** implement `#import_proto` or general protobuf code generation.
+The reduced iOS home has one real bounded Coax resource reader for
+`openagents.metareal.home.v1alpha1.HomeConfiguration` and writes existing
+`openagents.engine.v1.HudInvocation` messages. `metareal/test_home.py` checks
+these against canonical protoc bytes. This manually written selected-profile
+codec is not a general decoder or authority path.
 Current C++ compiler code and Python schema checks are bootstrap infrastructure.
 The next compiler prerequisites are aggregates, fixed-width values, bytes,
 repeated fields, explicit presence and oneofs, followed by bounded codecs and

@@ -1,0 +1,5 @@
+schema_version: 1
+seed: 42727
+mote_count: 4000
+satellite_count: 8
+start { id: "home.start" label: "Start" enabled: true shown: true }

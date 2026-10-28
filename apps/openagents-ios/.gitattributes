@@ -1,0 +1,3 @@
+OpenAgents/Resources/*.pb binary
+# Keep the upstream OFL notice byte-for-byte, including its trailing spaces.
+OpenAgents/Resources/michroma-ofl.txt -whitespace

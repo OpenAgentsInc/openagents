@@ -71,6 +71,9 @@
     ],
     "verse": [
       "openagents/verse/presence/v1alpha1/presence.proto"
+    ],
+    "ios-home": [
+      "openagents/metareal/home/v1alpha1/home.proto"
     ]
   },
   "profile_namespaces": {
@@ -89,6 +92,11 @@
     ],
     "verse": [
       "openagents.verse.",
+      "openagents.engine.",
+      "openagents.options."
+    ],
+    "ios-home": [
+      "openagents.metareal.home.",
       "openagents.engine.",
       "openagents.options."
     ]

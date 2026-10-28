@@ -1,14 +1,16 @@
-(* Coax 0.2.0 accepted subset. Planned language syntax is not in this grammar.
+(* Coax 0.3.0 accepted subset. Planned language syntax is not in this grammar.
    Lexing: ASCII identifiers (excluding reserved keywords), signed-range
    integer tokens in decimal/hex/binary with separators, escaped byte strings,
    whitespace, line comments and nested block comments. A unary minus is a
    separate token. Type names are syntactically identifiers/reserved words;
-   the checker currently accepts int/s64, bool and string only. *)
+   the checker accepts int/s64, f32, f64, bool and string. Real literals
+   require decimal digits then a fractional part and/or exponent, with an
+   optional f32/f64 suffix; an unsuffixed real is f64. *)
 
 file = { import | procedure | constant | assertion } ;
 import = "#import", string, ";" ;
 procedure = identifier, "::", "(", [ parameters ], ")",
-            [ "->", type ], block ;
+            [ "->", type ], ( block | "#export_c", block | "#foreign", ";" ) ;
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
@@ -28,19 +30,27 @@ while = "while", expression, block ;
 
 expression = disjunction ;
 disjunction = conjunction, { "||", conjunction } ;
-conjunction = comparison, { "&&", comparison } ;
+conjunction = bit_or, { "&&", bit_or } ;
+bit_or = bit_xor, { "|", bit_xor } ;
+bit_xor = bit_and, { "^", bit_and } ;
+bit_and = comparison, { "&", comparison } ;
 (* Comparisons do not chain, including mixed equality/ordering. *)
-comparison = sum, [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ), sum ] ;
+comparison = shift, [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ), shift ] ;
+shift = sum, { ( "<<" | ">>" ), sum } ;
 sum = product, { ( "+" | "-" ), product } ;
 product = unary, { ( "*" | "/" | "%" ), unary } ;
 unary = ( "-" | "!" | "#run" ), unary | primary ;
-primary = integer | string | "true" | "false" |
+primary = integer | real | string | "true" | "false" |
           identifier, [ "(", [ arguments ], ")" ] |
           "(", expression, ")" ;
 arguments = expression, { ",", expression }, [ "," ] ;
 
 (* Semantics also require unique names, no shadowing, immutable parameters
-   and constants, correctly typed calls/returns, a void zero-argument main,
+   and constants, correctly typed calls/returns, a void zero-argument main
+   (optional for --library),
    no unused expression results, literal checked print formats, and bounded
    compile-time execution. print is provided by Basic; type_name is an
-   unevaluated but typechecked scalar intrinsic. *)
+   unevaluated but typechecked scalar intrinsic. Casts f32/f64/int, scalar
+   math sin/cos/tan/exp/log/sqrt/floor/abs/pow, and len/byte_at are intrinsic.
+   The Metal library profile admits only f32/bool, no foreign calls, loops
+   or recursive call graphs. *)

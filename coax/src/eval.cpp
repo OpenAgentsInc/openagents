@@ -3,6 +3,7 @@
 // contain only integers, booleans and source-backed byte strings, never host
 // addresses or resources that could leak into a target executable.
 #include "coax.h"
+#include <cmath>
 
 namespace coax {
 namespace {
@@ -11,6 +12,7 @@ struct CtValue {
   Type type = Type::void_;
   int64_t integer = 0;
   Str string;
+  double real = 0;
 };
 
 struct CtLocal {
@@ -59,6 +61,8 @@ struct Evaluator {
     e->type = value.type;
     e->int_value = value.integer;
     e->text = value.string;
+    e->real_value = value.real;
+    if (is_real(value.type)) { e->kind = ExprKind::real_lit; return; }
     e->kind = value.type == Type::int_ ? ExprKind::int_lit :
               value.type == Type::bool_ ? ExprKind::bool_lit : ExprKind::string_lit;
   }
@@ -87,6 +91,14 @@ struct Evaluator {
     int64_t result = 0;
     bool overflow = false;
     switch (op) {
+      case Tok::bitand_: result = a & b; break;
+      case Tok::bitor_: result = a | b; break;
+      case Tok::bitxor_: result = a ^ b; break;
+      case Tok::shl: case Tok::shr:
+        if (b < 0 || b > 63) { err(loc, "E0407", "shift count must be in 0..63"); return {}; }
+        if (op == Tok::shl) result = (int64_t)((uint64_t)a << b);
+        else { uint64_t bits = (uint64_t)a >> b; if (a < 0 && b) bits |= UINT64_MAX << (64 - b); result = (int64_t)bits; }
+        break;
       case Tok::plus: overflow = __builtin_add_overflow(a, b, &result); break;
       case Tok::minus: overflow = __builtin_sub_overflow(a, b, &result); break;
       case Tok::star: overflow = __builtin_mul_overflow(a, b, &result); break;
@@ -104,9 +116,57 @@ struct Evaluator {
     return {Type::int_, result, {}};
   }
 
+  CtValue floating(Type type, double value, Loc loc) {
+    if (type == Type::f32_) value = (double)(float)value;
+    if (!std::isfinite(value)) err(loc, "E0407", "non-finite compile-time floating-point result");
+    return {type, 0, {}, value};
+  }
+
+  CtValue real_op(Tok op, CtValue a, CtValue b, Loc loc) {
+    double v = op == Tok::plus ? a.real + b.real : op == Tok::minus ? a.real - b.real :
+               op == Tok::star ? a.real * b.real : a.real / b.real;
+    return floating(a.type, v, loc);
+  }
+
+  CtValue intrinsic(Expr *e, CtFrame &frame, bool allow_calls) {
+    CtValue a = expr(e->args[0], frame, allow_calls);
+    CtValue b;
+    if (e->args.count == 2) b = expr(e->args[1], frame, allow_calls);
+    if (failed) return {};
+    Intrinsic kind = e->intrinsic;
+    if (kind == Intrinsic::len) return {Type::int_, a.string.count, {}};
+    if (kind == Intrinsic::byte_at) {
+      if (b.integer < 0 || b.integer >= a.string.count) { err(e->loc, "E0407", "byte index out of bounds"); return {}; }
+      return {Type::int_, (unsigned char)a.string.data[b.integer], {}};
+    }
+    double value = a.type == Type::int_ ? (double)a.integer : a.real;
+    if (kind == Intrinsic::integer) {
+      if (a.type == Type::int_) return a;
+      if (!std::isfinite(value) || value < -9223372036854775808.0 || value >= 9223372036854775808.0) {
+        err(e->loc, "E0407", "floating-point value does not fit in int"); return {};
+      }
+      return {Type::int_, (int64_t)value, {}};
+    }
+    if (kind == Intrinsic::f32 || kind == Intrinsic::f64) return floating(e->type, value, e->loc);
+    switch (kind) {
+      case Intrinsic::sin: value = std::sin(value); break;
+      case Intrinsic::cos: value = std::cos(value); break;
+      case Intrinsic::tan: value = std::tan(value); break;
+      case Intrinsic::exp: value = std::exp(value); break;
+      case Intrinsic::log: value = std::log(value); break;
+      case Intrinsic::sqrt: value = std::sqrt(value); break;
+      case Intrinsic::floor: value = std::floor(value); break;
+      case Intrinsic::abs: value = std::fabs(value); break;
+      case Intrinsic::pow: value = std::pow(value, b.real); break;
+      default: break;
+    }
+    return floating(e->type, value, e->loc);
+  }
+
   CtValue expr(Expr *e, CtFrame &frame, bool allow_calls) {
     if (!tick(e->loc)) return {};
     switch (e->kind) {
+      case ExprKind::real_lit: return {e->type, 0, {}, e->real_value};
       case ExprKind::int_lit:
       case ExprKind::bool_lit:
       case ExprKind::string_lit: return {e->type, e->int_value, e->text};
@@ -130,7 +190,8 @@ struct Evaluator {
           err(e->loc, "E0408", "a constant procedure call requires #run");
           return {};
         }
-        if (e->builtin_print) {
+        if (e->intrinsic != Intrinsic::none) return intrinsic(e, frame, allow_calls);
+        if (e->builtin_print || (e->proc && e->proc->foreign)) {
           err(e->loc, "E0404", "compile-time execution cannot perform output or host I/O");
           return {};
         }
@@ -154,6 +215,7 @@ struct Evaluator {
         CtValue a = expr(e->lhs, frame, allow_calls);
         if (failed) return {};
         if (e->op == Tok::bang) return {Type::bool_, !a.integer, {}};
+        if (is_real(a.type)) return floating(a.type, -a.real, e->loc);
         if (a.integer == INT64_MIN) { err(e->loc, "E0407", "integer overflow during compile-time evaluation"); return {}; }
         return {Type::int_, -a.integer, {}};
       }
@@ -167,15 +229,18 @@ struct Evaluator {
         bool result = false;
         switch (e->op) {
           case Tok::plus: case Tok::minus: case Tok::star: case Tok::slash: case Tok::percent:
+            if (is_real(a.type)) return real_op(e->op, a, b, e->loc);
+            return integer_op(e->op, a.integer, b.integer, e->loc);
+          case Tok::bitand_: case Tok::bitor_: case Tok::bitxor_: case Tok::shl: case Tok::shr:
             return integer_op(e->op, a.integer, b.integer, e->loc);
           case Tok::eqeq: case Tok::noteq:
-            result = a.type == Type::string_ ? str_eq(a.string, b.string) : a.integer == b.integer;
+            result = a.type == Type::string_ ? str_eq(a.string, b.string) : is_real(a.type) ? a.real == b.real : a.integer == b.integer;
             if (e->op == Tok::noteq) result = !result;
             break;
-          case Tok::lt: result = a.integer < b.integer; break;
-          case Tok::le: result = a.integer <= b.integer; break;
-          case Tok::gt: result = a.integer > b.integer; break;
-          case Tok::ge: result = a.integer >= b.integer; break;
+          case Tok::lt: result = is_real(a.type) ? a.real < b.real : a.integer < b.integer; break;
+          case Tok::le: result = is_real(a.type) ? a.real <= b.real : a.integer <= b.integer; break;
+          case Tok::gt: result = is_real(a.type) ? a.real > b.real : a.integer > b.integer; break;
+          case Tok::ge: result = is_real(a.type) ? a.real >= b.real : a.integer >= b.integer; break;
           case Tok::andand: case Tok::oror: result = b.integer != 0; break;
           default: break;
         }
@@ -212,7 +277,8 @@ struct Evaluator {
           if (!local->initialized) { err(s->loc, "E0405", "compile-time read of an uninitialized variable"); return false; }
           Tok op = s->op == Tok::plus_equal ? Tok::plus : s->op == Tok::minus_equal ? Tok::minus :
                    s->op == Tok::star_equal ? Tok::star : s->op == Tok::slash_equal ? Tok::slash : Tok::percent;
-          value = integer_op(op, local->value.integer, value.integer, s->loc);
+          value = is_real(local->value.type) ? real_op(op, local->value, value, s->loc) :
+                  integer_op(op, local->value.integer, value.integer, s->loc);
         }
         local->value = value;
         local->initialized = true;

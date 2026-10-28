@@ -25,7 +25,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.2.0";
+static const char *VERSION = "coax0 0.3.0";
 
 int32_t g_error_count = 0;
 
@@ -97,7 +97,7 @@ static int run_process(const std::vector<std::string> &args) {
   return 1;
 }
 
-static bool compile_to_c(const char *path, const EmitOptions &opts, std::string *c_out) {
+static bool compile_to_c(const char *path, const EmitOptions &opts, std::string *c_out, const char *header_path = nullptr) {
   Source src;
   src.path = path;
   if (!read_file(path, &src.text)) {
@@ -107,12 +107,16 @@ static bool compile_to_c(const char *path, const EmitOptions &opts, std::string 
   Arena arena;
   std::vector<Token> tokens;
   File file;
-  if (!lex(&arena, &src, &tokens) || !parse(&arena, &src, tokens, &file) || !check(&arena, &file) ||
+  if (!lex(&arena, &src, &tokens) || !parse(&arena, &src, tokens, &file) || !check(&arena, &file, opts.library, opts.metal) ||
       !evaluate(&file)) {
     fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
     return false;
   }
   if (c_out) *c_out = emit_c(&file, opts);
+  if (header_path && !write_file(header_path, emit_header(&file))) {
+    fprintf(stderr, "coax: cannot write header '%s'\n", header_path);
+    return false;
+  }
   return true;
 }
 
@@ -134,6 +138,8 @@ static int build(const char *path, const std::string &exe, const EmitOptions &op
   const char *cc = getenv("COAX_CC");
   std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", "-o", exe, c_path};
   args.insert(args.begin() + 2, opts.release ? "-O2" : "-O0");
+  if (opts.library) args.push_back("-c");
+  else args.push_back("-lm");
   if (!opts.release) args.insert(args.begin() + 3, "-g");
   int rc = run_process(args);
   if (!keep_c) unlink(c_path.c_str());
@@ -149,7 +155,9 @@ static int usage() {
           "usage: coax run   file.coax [--release]\n"
           "       coax build file.coax [-o out] [--release] [--keep-c]\n"
           "       coax c     file.coax [--release]\n"
-          "       coax check file.coax\n"
+          "       coax check file.coax [--library]\n"
+          "       coax c file.coax --library [--header out.h]\n"
+          "       coax metal file.coax\n"
           "       coax version\n");
   return 2;
 }
@@ -161,30 +169,33 @@ static int main_impl(int argc, char **argv) {
     puts(VERSION);
     return 0;
   }
-  if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check") return usage();
+  if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "metal") return usage();
 
   const char *input = nullptr;
-  std::string out;
+  std::string out, header;
   EmitOptions opts;
   bool keep_c = false;
   for (int i = 2; i < argc; i++) {
     std::string a = argv[i];
     if (a == "--release") opts.release = true;
+    else if (a == "--library") opts.library = true;
+    else if (a == "--header" && i + 1 < argc) header = argv[++i];
     else if (a == "--keep-c") keep_c = true;
     else if (a == "-o" && i + 1 < argc) out = argv[++i];
     else if (!input && a.size() && a[0] != '-') input = argv[i];
     else return usage();
   }
-  if (!input) return usage();
+  if (!input || (!header.empty() && cmd != "c") || (opts.library && cmd == "run")) return usage();
+  if (cmd == "metal") { opts.library = true; opts.metal = true; }
   if (cmd == "check") return compile_to_c(input, opts, nullptr) ? 0 : 1;
 
-  if (cmd == "c") {
+  if (cmd == "c" || cmd == "metal") {
     std::string c;
-    if (!compile_to_c(input, opts, &c)) return 1;
+    if (!compile_to_c(input, opts, &c, header.empty() ? nullptr : header.c_str())) return 1;
     fwrite(c.data(), 1, c.size(), stdout);
     return 0;
   }
-  if (cmd == "build") return build(input, out.empty() ? strip_ext(input) : out, opts, keep_c);
+  if (cmd == "build") return build(input, out.empty() ? strip_ext(input) + (opts.library ? ".o" : "") : out, opts, keep_c);
 
   // run: build into a fresh temporary directory, run, clean up.
   const char *tmp = getenv("TMPDIR");

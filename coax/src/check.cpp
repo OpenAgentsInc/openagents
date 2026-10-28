@@ -11,14 +11,23 @@ const char *type_name(Type t) {
     case Type::int_: return "int";
     case Type::bool_: return "bool";
     case Type::string_: return "string";
+    case Type::f32_: return "f32";
+    case Type::f64_: return "f64";
   }
   return "?";
+}
+
+Intrinsic find_intrinsic(Str name) {
+  const char *names[] = {"", "f32", "f64", "int", "sin", "cos", "tan", "exp", "log", "sqrt", "floor", "abs", "pow", "len", "byte_at"};
+  for (int i = 1; i < int(sizeof(names) / sizeof(names[0])); i++)
+    if (str_eq(name, names[i])) return Intrinsic(i);
+  return Intrinsic::none;
 }
 
 namespace {
 
 // Types the spec names (§6.2) that coax0 does not implement yet.
-const char *LATER_TYPES[] = {"s8", "s16", "s32", "u8", "u16", "u32", "u64", "uint", "f32", "f64",
+const char *LATER_TYPES[] = {"s8", "s16", "s32", "u8", "u16", "u32", "u64", "uint",
                              "fixed32", "fixed64", "v2", "v3", "v4", "quat", "m3", "m4", "Any"};
 
 struct Local {
@@ -36,6 +45,7 @@ struct Checker {
   std::vector<Local> locals;
   ProcDecl *current = nullptr;
   uint32_t constant_depth = 0;
+  bool library = false, metal = false;
 
   void err(Loc loc, const char *code, const std::string &msg, const std::string &fix = "") {
     error_at(src, loc, code, msg, fix);
@@ -43,6 +53,8 @@ struct Checker {
 
   Type resolve_type(Str text, Loc loc) {
     if (str_eq(text, "int") || str_eq(text, "s64")) return Type::int_;
+    if (str_eq(text, "f32")) return Type::f32_;
+    if (str_eq(text, "f64")) return Type::f64_;
     if (str_eq(text, "bool")) return Type::bool_;
     if (str_eq(text, "string")) return Type::string_;
     for (const char *t : LATER_TYPES)
@@ -104,7 +116,7 @@ struct Checker {
       err(loc, "E0304", "'" + to_std(name) + "' is already the name of a procedure", "pick another name");
       return false;
     }
-    if (find_constant(name) || str_eq(name, "type_name")) {
+    if (find_constant(name) || str_eq(name, "type_name") || find_intrinsic(name) != Intrinsic::none) {
       err(loc, "E0342", "'" + to_std(name) + "' is already a constant or intrinsic", "pick another name");
       return false;
     }
@@ -116,6 +128,8 @@ struct Checker {
 
   Type expr(Expr *e) {
     e->type = expr_inner(e);
+    if (metal && (e->type == Type::int_ || e->type == Type::f64_ || e->type == Type::string_ || e->builtin_print))
+      err(e->loc, "E0351", "unsupported expression in Metal scalar library");
     return e->type;
   }
 
@@ -124,6 +138,7 @@ struct Checker {
       case ExprKind::int_lit: return Type::int_;
       case ExprKind::bool_lit: return Type::bool_;
       case ExprKind::string_lit: return Type::string_;
+      case ExprKind::real_lit: return e->type;
       case ExprKind::run: {
         Type t = expr(e->lhs);
         if (t == Type::void_) err(e->loc, "E0341", "#run must produce a value");
@@ -146,8 +161,8 @@ struct Checker {
       case ExprKind::unary: {
         Type t = expr(e->lhs);
         if (t == Type::invalid) return t;
-        if (e->op == Tok::minus && t != Type::int_) {
-          err(e->loc, "E0307", std::string("'-' needs an int, found ") + type_name(t));
+        if (e->op == Tok::minus && !is_number(t)) {
+          err(e->loc, "E0307", std::string("'-' needs a number, found ") + type_name(t));
           return Type::invalid;
         }
         if (e->op == Tok::bang && t != Type::bool_) {
@@ -162,22 +177,28 @@ struct Checker {
         if (a == Type::invalid || b == Type::invalid) return Type::invalid;
         switch (e->op) {
           case Tok::plus: case Tok::minus: case Tok::star: case Tok::slash: case Tok::percent:
-            if (a != Type::int_ || b != Type::int_) {
+            if (!is_number(a) || a != b || (e->op == Tok::percent && a != Type::int_)) {
               err(e->loc, "E0309",
-                  std::string(tok_name(e->op)) + " needs two ints, found " + type_name(a) + " and " + type_name(b),
+                  std::string(tok_name(e->op)) + " needs matching numeric types (integer for %), found " + type_name(a) + " and " + type_name(b),
                   a == Type::string_ ? "build strings with print's % formatting" : "");
+              return Type::invalid;
+            }
+            return a;
+          case Tok::bitand_: case Tok::bitor_: case Tok::bitxor_: case Tok::shl: case Tok::shr:
+            if (a != Type::int_ || b != Type::int_) {
+              err(e->loc, "E0348", "bit operations need two integers");
               return Type::invalid;
             }
             return Type::int_;
           case Tok::lt: case Tok::le: case Tok::gt: case Tok::ge:
-            if (a != Type::int_ || b != Type::int_) {
-              err(e->loc, "E0310", std::string(tok_name(e->op)) + " compares ints, found " + type_name(a) +
+            if (!is_number(a) || a != b) {
+              err(e->loc, "E0310", std::string(tok_name(e->op)) + " compares matching numeric types, found " + type_name(a) +
                                        " and " + type_name(b));
               return Type::invalid;
             }
             return Type::bool_;
           case Tok::eqeq: case Tok::noteq:
-            if (a != b) {
+            if (a != b || a == Type::void_) {
               err(e->loc, "E0311", std::string("cannot compare ") + type_name(a) + " with " + type_name(b),
                   "there are no implicit conversions in Coax");
               return Type::invalid;
@@ -198,7 +219,31 @@ struct Checker {
     return Type::invalid;
   }
 
+  Type intrinsic_call(Expr *e, Intrinsic intrinsic) {
+    e->intrinsic = intrinsic;
+    int count = intrinsic == Intrinsic::pow || intrinsic == Intrinsic::byte_at ? 2 : 1;
+    if (e->args.count != count) {
+      err(e->loc, "E0349", "wrong intrinsic argument count");
+      return Type::invalid;
+    }
+    Type a = expr(e->args[0]);
+    Type b = count == 2 ? expr(e->args[1]) : Type::invalid;
+    if (intrinsic == Intrinsic::len || intrinsic == Intrinsic::byte_at) {
+      if (a != Type::string_ || (count == 2 && b != Type::int_))
+        err(e->loc, "E0349", "string intrinsic requires a string and an integer index where applicable");
+      return Type::int_;
+    }
+    if (intrinsic == Intrinsic::f32 || intrinsic == Intrinsic::f64 || intrinsic == Intrinsic::integer) {
+      if (!is_number(a)) err(e->loc, "E0349", "numeric casts require a number");
+      return intrinsic == Intrinsic::f32 ? Type::f32_ : intrinsic == Intrinsic::f64 ? Type::f64_ : Type::int_;
+    }
+    if (!is_real(a) || (count == 2 && b != a)) err(e->loc, "E0349", "math intrinsic needs matching floating-point arguments");
+    return a;
+  }
+
   Type call(Expr *e) {
+    Intrinsic builtin = find_intrinsic(e->text);
+    if (builtin != Intrinsic::none) return intrinsic_call(e, builtin);
     if (str_eq(e->text, "type_name")) {
       if (e->args.count != 1) {
         err(e->loc, "E0343", "type_name needs exactly one expression");
@@ -323,6 +368,8 @@ struct Checker {
               "'" + to_std(s->name) + "' is " + type_name(declared) + " but is initialized with " + type_name(init));
         }
         s->type = s->type_text.count ? declared : init;
+        if (metal && (s->type == Type::int_ || s->type == Type::f64_ || s->type == Type::string_))
+          err(s->loc, "E0351", "unsupported Metal local type");
         declare(s->name, s->type, s->loc);
         break;
       }
@@ -339,8 +386,9 @@ struct Checker {
           err(s->loc, "E0344", "parameters cannot be assigned", "copy it into a local variable");
           break;
         }
+        s->type = l->type;
         if (t == Type::invalid || l->type == Type::invalid) break;
-        if (s->op != Tok::equal && l->type != Type::int_) {
+        if (s->op != Tok::equal && (!is_number(l->type) || (s->op == Tok::percent_equal && l->type != Type::int_))) {
           err(s->loc, "E0326", std::string(tok_name(s->op)) + " needs an int variable, '" + to_std(s->name) +
                                    "' is " + type_name(l->type));
         } else if (t != l->type) {
@@ -367,6 +415,7 @@ struct Checker {
       }
       case StmtKind::if_:
       case StmtKind::while_: {
+        if (metal && s->kind == StmtKind::while_) err(s->loc, "E0351", "loops are not supported in the initial Metal scalar profile");
         Type t = expr(s->expr);
         if (t != Type::invalid && t != Type::bool_)
           err(s->expr->loc, "E0331", std::string("condition must be bool, found ") + type_name(t),
@@ -390,6 +439,28 @@ struct Checker {
     }
   }
 
+  void gpu_expr(const Expr *e, std::unordered_map<const ProcDecl *, int> &seen, int depth) {
+    if (!e) return;
+    if (e->kind == ExprKind::call && e->proc) gpu_proc(e->proc, seen, depth + 1);
+    if (e->kind == ExprKind::binary || e->kind == ExprKind::unary || e->kind == ExprKind::run) {
+      gpu_expr(e->lhs, seen, depth); gpu_expr(e->rhs, seen, depth);
+    }
+    if (e->kind == ExprKind::call) for (Expr *arg : e->args) gpu_expr(arg, seen, depth);
+  }
+  void gpu_stmt(const Stmt *s, std::unordered_map<const ProcDecl *, int> &seen, int depth) {
+    if (!s) return;
+    gpu_expr(s->expr, seen, depth);
+    for (Stmt *child : s->body) gpu_stmt(child, seen, depth);
+    gpu_stmt(s->then_, seen, depth); gpu_stmt(s->else_, seen, depth);
+  }
+  void gpu_proc(const ProcDecl *p, std::unordered_map<const ProcDecl *, int> &seen, int depth) {
+    if (seen[p] == 2) return;
+    if (seen[p] == 1 || depth >= 64) { err(p->loc, "E0351", "recursive or excessively deep Metal call graph"); return; }
+    seen[p] = 1;
+    gpu_stmt(p->body, seen, depth);
+    seen[p] = 2;
+  }
+
   bool run() {
     int32_t before = g_error_count;
     for (const Import &im : file->imports) {
@@ -407,17 +478,27 @@ struct Checker {
           err(p->loc, "E0334",
               "procedure '" + to_std(p->name) + "' is already declared at line " +
                   std::to_string(file->procs[j]->loc.line));
-      if ((str_eq(p->name, "print") && has_basic) || str_eq(p->name, "type_name"))
+      if ((str_eq(p->name, "print") && has_basic) || str_eq(p->name, "type_name") || find_intrinsic(p->name) != Intrinsic::none)
         err(p->loc, "E0335", "'" + to_std(p->name) + "' is already a builtin", "pick another name");
       for (Param &prm : p->params) prm.type = resolve_type(prm.type_text, prm.type_loc);
       if (p->ret_text.count) p->ret = resolve_type(p->ret_text, p->ret_loc);
+      if (p->foreign || p->exported) {
+        if (p->ret == Type::string_) err(p->loc, "E0350", "C ABI supports fixed scalar types only");
+        for (const Param &prm : p->params)
+          if (prm.type == Type::string_) err(prm.loc, "E0350", "C ABI supports fixed scalar types only");
+        const char *keywords[] = {"auto", "char", "const", "double", "enum", "extern", "float", "long", "register", "restrict", "short", "signed", "sizeof", "static", "struct", "typedef", "union", "unsigned", "void", "volatile", "namespace", "class", "template"};
+        for (const char *word : keywords)
+          if (str_eq(p->name, word)) err(p->loc, "E0350", "C ABI name is a reserved keyword");
+        if (to_std(p->name).rfind("coax_", 0) == 0) err(p->loc, "E0350", "coax_ is reserved for compiler helpers");
+      }
+      if (metal && p->foreign) err(p->loc, "E0351", "Metal scalar libraries cannot call host foreign functions");
     }
     for (int32_t i = 0; i < file->constants.count; i++) {
       ConstDecl *c = file->constants[i];
       for (int32_t j = 0; j < i; j++)
         if (str_eq(c->name, file->constants[j]->name))
           err(c->loc, "E0345", "duplicate constant '" + to_std(c->name) + "'");
-      if (find_proc(c->name) || str_eq(c->name, "type_name") || (has_basic && str_eq(c->name, "print")))
+      if (find_proc(c->name) || str_eq(c->name, "type_name") || find_intrinsic(c->name) != Intrinsic::none || (has_basic && str_eq(c->name, "print")))
         err(c->loc, "E0345", "constant '" + to_std(c->name) + "' conflicts with a procedure or intrinsic");
     }
     for (ConstDecl *c : file->constants) constant_type(c);
@@ -426,12 +507,13 @@ struct Checker {
       if (t != Type::invalid && t != Type::bool_) err(a->loc, "E0346", "#assert requires bool");
     }
     ProcDecl *entry = find_proc(Str{"main", 4});
-    if (!entry) {
+    if (!entry && !library) {
       err(Loc{1, 1, 0}, "E0336", "the program has no 'main'", "add main :: () { ... }");
-    } else if (entry->params.count || entry->ret != Type::void_) {
+    } else if (entry && (entry->foreign || entry->exported || entry->params.count || entry->ret != Type::void_)) {
       err(entry->loc, "E0337", "'main' takes no parameters and returns nothing in coax0", "main :: () { ... }");
     }
     for (ProcDecl *p : file->procs) {
+      if (p->foreign) continue;
       current = p;
       locals.clear();
       for (const Param &prm : p->params) declare(prm.name, prm.type, prm.loc, true);
@@ -440,14 +522,24 @@ struct Checker {
         err(p->loc, "E0338", "'" + to_std(p->name) + "' can reach its end without returning " + type_name(p->ret),
             "add a return at the end");
     }
+    if (metal) {
+      std::unordered_map<const ProcDecl *, int> seen;
+      for (ProcDecl *p : file->procs) {
+        if (p->ret == Type::int_ || p->ret == Type::f64_ || p->ret == Type::string_) err(p->loc, "E0351", "Metal scalar library supports f32 and bool only");
+        for (const Param &prm : p->params)
+          if (prm.type == Type::int_ || prm.type == Type::f64_ || prm.type == Type::string_) err(prm.loc, "E0351", "unsupported Metal parameter type");
+        gpu_proc(p, seen, 0);
+      }
+    }
     return g_error_count == before;
   }
 };
 
 }  // namespace
 
-bool check(Arena *arena, File *file) {
+bool check(Arena *arena, File *file, bool library, bool metal) {
   Checker c{arena, file, file->src};
+  c.library = library; c.metal = metal;
   return c.run();
 }
 

@@ -186,6 +186,13 @@ def main():
         output = Path(directory)
         artifacts = build_sets(command, output)
         artifacts['data/asset-profiles.pb'] = check_contracts(output)
+        # Resource generation uses the same freshly compiled owned schema.
+        from google.protobuf import text_format
+        from openagents.metareal.home.v1alpha1.home_pb2 import HomeConfiguration
+        home = text_format.Parse((ROOT.parent/'metareal/home.textproto').read_text(), HomeConfiguration())
+        home_path = output/'Home.pb'
+        home_path.write_bytes(home.SerializeToString(deterministic=True))
+        artifacts['../apps/openagents-ios/OpenAgents/Resources/Home.pb'] = home_path
         if args.mode == 'migrate-profile-catalog':
             from openagents.engine.v1.assets_pb2 import AssetProfileCatalog
             from google.protobuf.message import DecodeError

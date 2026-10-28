@@ -9,6 +9,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace coax {
 
@@ -79,12 +80,13 @@ extern int32_t g_error_count;
 // ---- Lexer ----
 
 enum class Tok : uint8_t {
-  eof, ident, keyword, int_lit, string_lit, directive, annotation,
+  eof, ident, keyword, int_lit, real_lit, string_lit, directive, annotation,
   lparen, rparen, lbrace, rbrace, lbracket, rbracket,
   comma, semicolon, colon, coloncolon, colonequal, arrow, dot, dotdot,
   equal, plus_equal, minus_equal, star_equal, slash_equal, percent_equal,
   plus, minus, star, slash, percent,
   eqeq, noteq, lt, le, gt, ge, andand, oror, bang,
+  bitand_, bitor_, bitxor_, shl, shr,
 };
 
 struct Token {
@@ -92,6 +94,8 @@ struct Token {
   Loc loc;
   Str text;           // identifier, keyword, directive name (without '#'), or raw literal
   int64_t int_value = 0;
+  double real_value = 0;
+  bool float32 = false;
   Str string_value;   // string literal after escapes
 };
 
@@ -100,18 +104,23 @@ const char *tok_name(Tok t);
 
 // ---- Types ----
 
-enum class Type : uint8_t { invalid, void_, int_, bool_, string_ };
+enum class Type : uint8_t { invalid, void_, int_, bool_, string_, f32_, f64_ };
+inline bool is_real(Type t) { return t == Type::f32_ || t == Type::f64_; }
+inline bool is_number(Type t) { return t == Type::int_ || is_real(t); }
 const char *type_name(Type t);
 
 // ---- Syntax tree ----
 
-enum class ExprKind : uint8_t { int_lit, bool_lit, string_lit, ident, call, unary, binary, run };
+enum class ExprKind : uint8_t { int_lit, real_lit, bool_lit, string_lit, ident, call, unary, binary, run };
+enum class Intrinsic : uint8_t { none, f32, f64, integer, sin, cos, tan, exp, log, sqrt, floor, abs, pow, len, byte_at };
+Intrinsic find_intrinsic(Str name);
 
 struct Expr {
   ExprKind kind;
   Loc loc;
   Type type = Type::invalid;  // set by the checker
   int64_t int_value = 0;      // int_lit, bool_lit
+  double real_value = 0;
   Str text;                   // ident name, string literal value, call name
   Tok op = Tok::eof;          // unary, binary
   Expr *lhs = nullptr, *rhs = nullptr;  // unary uses lhs
@@ -119,6 +128,8 @@ struct Expr {
   struct ProcDecl *proc = nullptr;      // call: resolved target (null for builtins)
   struct ConstDecl *constant = nullptr; // ident: resolved global constant
   bool builtin_print = false;
+  Intrinsic intrinsic = Intrinsic::none;
+  int32_t temporary = -1; // emitter-only ordered operand reference
 };
 
 enum class StmtKind : uint8_t { block, expr, var, assign, ret, if_, while_ };
@@ -153,6 +164,7 @@ struct ProcDecl {
   Loc ret_loc;
   Type ret = Type::void_;
   Stmt *body = nullptr;
+  bool foreign = false, exported = false;
 };
 
 struct Import {
@@ -180,13 +192,15 @@ bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, Fi
 
 // ---- Checker and C emitter ----
 
-bool check(Arena *arena, File *file);
+bool check(Arena *arena, File *file, bool library = false, bool metal = false);
 // Bounded, side-effect-free AST evaluation; no host I/O or foreign calls.
 bool evaluate(File *file);
 
 struct EmitOptions {
   bool release = false;  // release: integer overflow wraps; debug: it traps
+  bool library = false, metal = false;
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
+std::string emit_header(const File *file);
 
 }  // namespace coax

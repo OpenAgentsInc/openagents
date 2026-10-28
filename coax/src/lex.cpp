@@ -2,6 +2,8 @@
 // directives (#name), annotations (@name), and the reserved keywords of
 // the spec's §5 (reserved now, even where coax0 does not implement them).
 #include "coax.h"
+#include <cmath>
+#include <cerrno>
 
 namespace coax {
 
@@ -25,6 +27,7 @@ const char *tok_name(Tok t) {
     case Tok::ident: return "identifier";
     case Tok::keyword: return "keyword";
     case Tok::int_lit: return "integer";
+    case Tok::real_lit: return "floating-point number";
     case Tok::string_lit: return "string";
     case Tok::directive: return "directive";
     case Tok::annotation: return "annotation";
@@ -62,6 +65,11 @@ const char *tok_name(Tok t) {
     case Tok::andand: return "'&&'";
     case Tok::oror: return "'||'";
     case Tok::bang: return "'!'";
+    case Tok::bitand_: return "'&'";
+    case Tok::bitor_: return "'|'";
+    case Tok::bitxor_: return "'^'";
+    case Tok::shl: return "'<<'";
+    case Tok::shr: return "'>>'";
   }
   return "?";
 }
@@ -146,10 +154,35 @@ bool lex(Arena *arena, const Source *src, std::vector<Token> *out) {
         v = v * (uint64_t)base + (uint64_t)dv;
         digits++;
       }
-      if (i < n && (s[i] == '.' && i + 1 < n && is_digit(s[i + 1]))) {
-        error_at(src, t.loc, "E0102", "floating-point literals are not supported by coax0 yet");
-        while (i < n && (is_digit(s[i]) || s[i] == '.')) i++;
-      } else if (digits == 0) {
+      bool real = base == 10 && i < n &&
+          ((s[i] == '.' && i + 1 < n && is_digit(s[i + 1])) || s[i] == 'e' || s[i] == 'E');
+      if (real) {
+        if (s[i] == '.') { i++; while (i < n && (is_digit(s[i]) || s[i] == '_')) i++; }
+        if (i < n && (s[i] == 'e' || s[i] == 'E')) {
+          i++;
+          if (i < n && (s[i] == '+' || s[i] == '-')) i++;
+          int exp_start = i;
+          while (i < n && is_digit(s[i])) i++;
+          if (i == exp_start) error_at(src, t.loc, "E0102", "exponent needs digits");
+        }
+        int end = i;
+        if (i + 3 <= n && memcmp(s + i, "f32", 3) == 0) { t.float32 = true; i += 3; }
+        else if (i + 3 <= n && memcmp(s + i, "f64", 3) == 0) i += 3;
+        std::string number;
+        for (int j = start; j < end; j++) if (s[j] != '_') number += s[j];
+        errno = 0;
+        char *parsed = nullptr;
+        t.real_value = strtod(number.c_str(), &parsed);
+        if (t.float32) t.real_value = (double)(float)t.real_value;
+        if (!parsed || *parsed || !std::isfinite(t.real_value))
+          error_at(src, t.loc, "E0102", "floating-point literal is not finite or representable");
+        if (i < n && is_ident_start(s[i])) error_at(src, t.loc, "E0102", "invalid floating-point suffix");
+        t.kind = Tok::real_lit;
+        t.text = Str{s + start, i - start};
+        out->push_back(t);
+        continue;
+      }
+      if (digits == 0) {
         error_at(src, t.loc, "E0103", "number has no digits after its base prefix");
       } else if (overflow || v > (uint64_t)INT64_MAX) {
         error_at(src, t.loc, "E0104", "integer literal does not fit in int (s64)");
@@ -210,6 +243,8 @@ bool lex(Arena *arena, const Source *src, std::vector<Token> *out) {
     else if (two('!', '=')) { k = Tok::noteq; len = 2; }
     else if (two('<', '=')) { k = Tok::le; len = 2; }
     else if (two('>', '=')) { k = Tok::ge; len = 2; }
+    else if (two('<', '<')) { k = Tok::shl; len = 2; }
+    else if (two('>', '>')) { k = Tok::shr; len = 2; }
     else if (two('&', '&')) { k = Tok::andand; len = 2; }
     else if (two('|', '|')) { k = Tok::oror; len = 2; }
     else if (two('+', '=')) { k = Tok::plus_equal; len = 2; }
@@ -237,6 +272,9 @@ bool lex(Arena *arena, const Source *src, std::vector<Token> *out) {
       case '<': k = Tok::lt; break;
       case '>': k = Tok::gt; break;
       case '!': k = Tok::bang; break;
+        case '&': k = Tok::bitand_; break;
+        case '|': k = Tok::bitor_; break;
+        case '^': k = Tok::bitxor_; break;
       default: break;
     }
     if (k == Tok::eof) {

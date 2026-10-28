@@ -5,12 +5,23 @@ import unittest
 from google.protobuf import descriptor_pb2
 from openagents.engine.v1.assets_pb2 import AssetProfileCatalog
 from openagents.verse.presence.v1alpha1.presence_pb2 import PresenceSnapshot
+from openagents.metareal.home.v1alpha1.home_pb2 import HomeConfiguration
 from compatibility import check, parse
 from protocol import ROOT, REGISTRY, CONFIG, canonical_id, migrate_catalog, check_profile
 from validate import decode_presence, validate
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_home_profile_and_explicit_zero(self):
+        value = HomeConfiguration(schema_version=1, seed=42727, mote_count=0, satellite_count=0)
+        value.start.id = 'home.start'
+        value.start.label = 'Start'
+        value.start.enabled = value.start.shown = True
+        validate(value)
+        value.ClearField('mote_count')
+        with self.assertRaises(ValueError):
+            validate(value)
+
     def snapshot(self):
         value = PresenceSnapshot(observed_at_ms=0)
         value.world.world_id = 'grid'

@@ -12,7 +12,10 @@ stays `openagents.engine.*`; world, simulation and product contracts use
 
 The current OpenAgents checkout contains Coax and the recovered protocol
 foundation. The native engine implementation and previous app are historical
-migration sources, not code reintroduced by this recovery. The source archive
+migration sources. A reduced [native iOS home](../../apps/openagents-ios/README.md)
+now ports graph/HUD behavior and scalar shader math into Coax, with a thin
+native storage/Metal adapter. The rest of the engine and app are not restored.
+The source archive
 and renamed identifiers are recorded in
 [the migration registry](../../proto/migrations/metareal-v1.json).
 

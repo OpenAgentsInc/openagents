@@ -1,0 +1,41 @@
+// Scalar visual functions shared by native numerical tests and Metal stages.
+// Stage binding, texture sampling and vector packing belong to the driver.
+lo :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
+hi :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
+sat :: (a:f32)->f32 { return lo(1.0f32,hi(0.0f32,a)); }
+smooth :: (a:f32,b:f32,x:f32)->f32 { t:=sat((x-a)/(b-a));return t*t*(3.0f32-2.0f32*t); }
+metareal_sky :: (x:f32,y:f32)->f32 #export_c {
+  r:=sqrt(x*x+y*y); return 0.006f32+0.018f32*exp(-r*r*1.8f32);
+}
+metareal_dot :: (x:f32,y:f32,light:f32,soft:f32,crisp:f32)->f32 #export_c {
+  r2:=x*x+y*y;
+  if r2>=1.0f32 { return 0.0f32; }
+  r:=sqrt(r2);
+  point:=exp(-r2*10.0f32)+0.12f32*exp(-r2*3.0f32);
+  disc:=(1.0f32-smooth(0.55f32,1.0f32,r))*0.9f32+0.1f32*exp(-r2*4.0f32);
+  a:=(point+(disc-point)*soft)*(1.0f32-smooth(0.85f32,1.0f32,r2));
+  node:=(1.0f32-smooth(0.40f32,0.5f32,r))+0.22f32*exp(-r2*7.0f32)*(1.0f32-smooth(0.7f32,1.0f32,r));
+  return light*(a*1.6f32+(node-a*1.6f32)*crisp);
+}
+metareal_line :: (across:f32,along:f32,a:f32,b:f32)->f32 #export_c {
+  return (a+(b-a)*sat(along))*exp(-across*across*4.0f32);
+}
+cut_distance :: (x:f32,y:f32,w:f32,h:f32,k:f32)->f32 {
+  dx:=abs(x)-w;dy:=abs(y)-h;
+  box:=sqrt(hi(dx,0.0f32)*hi(dx,0.0f32)+hi(dy,0.0f32)*hi(dy,0.0f32))+lo(hi(dx,dy),0.0f32);
+  return hi(box,(abs(x+y)-(w+h-14.0f32*k))*0.70710678f32);
+}
+metareal_bar :: (x:f32,y:f32,w:f32,h:f32,k:f32,t:f32,press:f32,flash:f32)->f32 #export_c {
+  d:=cut_distance(x,y,w,h,k);
+  inside:=1.0f32-smooth(-0.5f32,0.5f32,d);
+  edge:=1.0f32-smooth(0.5f32*k,1.6f32*k,abs(d));
+  phase:=t/6.0f32-floor(t/6.0f32);
+  sweep:=exp(-pow(((x+y*0.6f32)/w-(-1.6f32+3.2f32*phase/0.22f32))/0.10f32,2.0f32));
+  if phase>0.22f32 { sweep=0.0f32; }
+  glass:=(0.035f32+0.025f32*(1.0f32-y/h)+0.10f32*press+0.10f32*sweep)*inside;
+  glow:=exp(-hi(d,0.0f32)/(9.0f32*k))*(1.0f32-inside)*(0.10f32+0.30f32*flash);
+  return glass+edge*(0.65f32+0.5f32*flash)+glow;
+}
+metareal_label :: (mask:f32,flash:f32)->f32 #export_c { return mask*(0.94f32+0.06f32*flash); }
+metareal_tone :: (light:f32)->f32 #export_c { return 1.0f32-exp(-light*1.35f32); }
+metareal_bloom :: (center:f32,near:f32,far:f32)->f32 #export_c { return center*0.4f32+near*0.24f32+far*0.06f32; }

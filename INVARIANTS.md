@@ -40,3 +40,18 @@ restoring historical text does not restore its retired implementation mandates.
 Protocol and compiler checks run locally or on owned infrastructure. Do not
 add GitHub Actions workflows. A schema check needs no running service,
 production credentials or network download.
+
+## The reduced iOS home has one product implementation
+
+Coax owns its scene, animation, layout, reusable HUD touch policy and bounded
+protobuf admission. Native adapters own platform lifecycle, serialized opaque
+storage handles, packet transfer, font rasterization and Metal bindings. A
+screen does not acquire chat, network or device permissions through this port.
+The home accepts only its documented schema-1 resource subset, rejects unknown
+or duplicate fields, and emits existing HudInvocation bytes. Start currently
+replays the home; it does not claim to open an unported destination.
+
+Check: `coax/build.sh test`, `PROTOC=... python3 metareal/test_home.py`, the
+sanitizer harness and the iOS native touch/rotation test. Metal layout/stage
+bindings are an explicit native boundary while Coax lacks aggregate types;
+there is no claim of a full engine migration or general protobuf compiler.

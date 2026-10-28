@@ -9,13 +9,16 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.2.0 implements procedures,
-`int`/`s64`, `bool`, counted byte strings, scalar control flow, immutable
+**Implementation status matters.** Version 0.3.0 implements procedures,
+`int`/`s64`, `f32`, `f64`, `bool`, counted byte strings, scalar control flow, immutable
 top-level constants, bounded `#run`, `#assert`, and `type_name(expression)`.
 It generates C11 and uses a host C compiler to produce executables. Other
 syntax below is a target design unless explicitly marked implemented. The
 [bootstrap grammar](grammar.ebnf) describes the accepted subset.
-There is no shipping engine subsystem written in Coax yet.
+The reduced native iOS home now runs scene/HUD logic and scalar shader math in
+Coax; native adapters own storage and GPU resources. Fixed-scalar C ABI exports,
+foreign imports and a restricted f32/bool Metal library emitter are implemented.
+This does not complete the broader engine, protocol importer or GPU design.
 
 Contents:
 
@@ -221,8 +224,13 @@ shadowed. Ordinary calls in constant initializers require `#run`; arithmetic
 on constants does not. Local constants and procedure values are not supported.
 
 `int` and `s64` denote the same signed 64-bit type. The other implemented types
-are `bool` and `string`; a procedure without a return annotation returns no
+are `f32`, `f64`, `bool` and `string`; a procedure without a return annotation returns no
 value. There are no implicit numeric or boolean conversions.
+
+Implemented scalar extensions in 0.3.0 are specified in the
+[compiler reference](README.md#native-and-metal-slice-030): explicit casts,
+finite compile-time math, native runtime floating arithmetic, counted byte
+operations and checked shift counts. Runtime operands evaluate left to right.
 
 ### 6.2 Planned scalar and aggregate types
 
@@ -363,7 +371,7 @@ main :: () { count := TABLE_SIZE; }
 ```
 
 `#run` evaluates its following unary expression; parenthesize a larger
-expression, for example `#run (square(16) + 2)`. Results are `int`, `bool` or
+expression, for example `#run (square(16) + 2)`. Results are `int`, `f32`, `f64`, `bool` or
 `string` and become literals in the generated C. `#run` requires a value;
 top-level void execution is not supported. `#assert` is a top-level bool
 expression that must evaluate true before C emission. Use `#run` for calls
@@ -405,7 +413,7 @@ construct them. Only checked scalar values cross into target initialization.
 
 ### 10.2 Reflection now and later
 
-`type_name(expression)` is implemented for the three scalar types. Its operand
+`type_name(expression)` is implemented for the scalar types. Its operand
 is typechecked but unevaluated. It returns a string constant without evaluating
 side effects or arithmetic in the operand; `type_name(1 / 0)` is `"int"`.
 Unknown names and ill-typed operands remain errors. It needs no module import.
@@ -625,7 +633,9 @@ Validate offsets, strides, alignment and upload lengths for each pipeline.
 GPU resources remain resident host objects with explicit queue/fence ownership.
 Replacing a shader creates a new pipeline between frames, retires old resources
 after completion, and cannot reinterpret a live buffer under an incompatible
-layout. None of this is implemented by the scalar compiler.
+layout. The initial Metal emitter only handles scalar f32/bool visual functions;
+native stage wrappers supply vector packing and resource binding. The general
+GPU design in this section remains planned.
 
 ## 16. Builds, iteration and hot reload
 
@@ -778,14 +788,19 @@ Parsing a few examples is not the expensive part.
 ## 20. Implementation order and exit gates
 
 The protocol plan's P0 recovery runs now. Its P1 ingestion follows stage 2's
-actual type/ABI prerequisites, before decision or app-domain ports. Stage 6
+actual type/ABI prerequisites for general generated codecs. The 0.3.0 home
+port is a narrow exception: scalar-only C ABI, opaque bounded host storage and
+a hand-written resource reader/writer verified against protoc; it does not
+claim aggregate or general ingestion support. Stage 6
 expands that foundation; it is not permission to defer the first bounded codec
 until after every compiler feature.
 
 Stages are dependency-ordered and evidence-driven, not calendar promises.
 Each stage produces something independently testable. Platform/engine rollout
 happens only after its own gate; a bootstrap compiler does not mean the app
-already uses it.
+already uses it. The reduced home now uses the tested scalar subset; it does
+not satisfy all of stage 2 or stage 6. Frame-time parity against the prior
+engine remains unmeasured.
 
 | Stage | Work and prerequisites | Exit evidence |
 | --- | --- | --- |
@@ -813,8 +828,8 @@ platform code-signing bypass. There is no claim of general memory safety,
 whole-engine migration, automatic GPU compilation or fully hermetic builds.
 
 The bootstrap intentionally rejects unsupported reserved syntax. It does not
-pretend to implement pointer ownership, floats, structs, macros, effects,
-context, shaders or general compiler plugins.
+pretend to implement pointer ownership, structs, macros, effects,
+context, general GPU programs or compiler plugins.
 
 ## 22. Open questions
 
