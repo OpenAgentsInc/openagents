@@ -27,7 +27,8 @@
 //   coaxial_hash(state, length) the location's hash (without '#') in the inbox, at load and on every change
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
 //                             out: 1 navigates to the outbox's URL, 2 copies its text, 3 makes it the
-//                             location's hash (empty: none), in place; others go to the page's
+//                             location's hash (empty: none), in place, 4 keeps it in this browser (one
+//                             text per app, given back on the next visit as message 4); others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
 // and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
@@ -123,6 +124,8 @@ async function loadEngine(bytes, generation) {
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
   sendHash();
   // The page's scripts may talk to the app from now (action 0: ready).
+  const kept = keptText();
+  if (kept) send(4, kept);
   globalThis.coaxial.ready = true;
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
   return true;
@@ -434,6 +437,10 @@ const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
 
+// What the app kept in this browser (action 4): storage can be refused, so it is only a convenience.
+const keptKey = `coaxial.${app}.kept`;
+function keptText() { try { return localStorage.getItem(keptKey) || ""; } catch { return ""; } }
+
 function send(kind, text = "") {
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
@@ -478,6 +485,7 @@ function after(gesture, tap = false) {
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});
     // The app's own place in the page (the hash), replaced so Back still leaves the page.
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
+    else if (code === 4) { try { localStorage.setItem(keptKey, text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
   const cursor = ["", "pointer"][call("coaxial_cursor")] || "";

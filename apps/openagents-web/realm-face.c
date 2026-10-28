@@ -11,6 +11,10 @@
 // 0 the house's document (Haunt.pb, into memory here), 1 its vertices and
 // 2 its indices (GPU buffers), 3 its texture sheets (a GPU texture array);
 // the sounds come by name.
+//
+// The house is kept in this browser (the host's action 4, message 4 on the
+// next visit): verse_haunt_save's bytes as hex, whenever it changed. That is
+// the quest's Save step on the web until the playtest server keeps saves.
 #include "realm.h"
 #include "Player.h"
 #include "Grid.h"
@@ -58,8 +62,30 @@ static uint32_t index_count;
 static char sounds[2048];
 static uint32_t sounds_n;
 
+// Kept in this browser: the save's bytes (strings of a restored house point
+// into them, so they stay), the hex the host keeps, and its scratch.
+static uint8_t saved[131072], scratch[131072], restored[131072];
+static char kept[262144];
+static uint32_t kept_n;            // hex waiting for the house to open (0 none)
+static uint32_t keep_n;            // hex in `kept` for the host to keep now
+static double kept_at = -10;
+static uint8_t inbox[262144];      // the host's messages: typed text, the kept house (hex)
+static char feedback[512];         // the survey's answer, kept with the house
+static char placed[1024][16];      // ids of what you placed: "placed-N"
+static int placed_n;
+
+// Edit mode's hotbar: short names (the HUD's) and the house's mesh for each.
+static const struct { const char *label, *name, *mesh; } items[5] = {
+  {"JACK", "Jack-o'-lantern", "Custom_JackOLantern"}, {"CANDLE", "Candlestick", "CandleStick"},
+  {"GHOST", "Ghost", "Custom_Ghost"}, {"SPIDER", "Spider", "Custom_Spider"}, {"GRAVE", "Tombstone", "Custom_Tombstone_Round"},
+};
+static int64_t item_mesh[5];
+#define LINK "https://openagents.com/realm/haunted-house"
+
 static coax_v_t_Realm realm_of(void) { return (coax_v_t_Realm){&realm, 1}; }
 static coax_t_HauntPoint point(coax_t_Vec3 v) { return (coax_t_HauntPoint){v.x, v.y, v.z}; }
+static coax_string text(const char *t) { return (coax_string){t, (int64_t)strlen(t)}; }
+static void toast(const char *t) { house.toast = text(t); house.toast_until = now + 3.5; }
 
 // The arena's state is unused: everything lives here, and a new build starts over.
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) { return (uint32_t)(sizeof(coax_t_Haunt) * 31u + sizeof(coax_t_Realm)); }
@@ -84,6 +110,39 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 
 static void rebuild_walls(void) { wall_count = verse_haunt_walls(house, (coax_v_f32){walls, 4096 * 6}); }
 
+// The house kept on an earlier visit, if it is still valid for this one.
+static int hex(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; }
+static void restore_kept(void) {
+  uint32_t n = kept_n / 2;
+  kept_n = 0;
+  if (n == 0 || n > sizeof restored) return;
+  for (uint32_t i = 0; i < n; i++) {
+    int a = hex((char)inbox[2 * i]), b = hex((char)inbox[2 * i + 1]);
+    if (a < 0 || b < 0) return;
+    restored[i] = (uint8_t)(a * 16 + b);
+  }
+  coax_v_u8 bytes = {restored, n};
+  if (!verse_haunt_save_valid(house, bytes)) return;
+  house = verse_haunt_restore(house, bytes);
+  rebuild_walls();
+  for (int64_t i = 0; i < house.entity_count; i++)   // placed ids go on from the highest kept
+    if (entities[i].id.count > 7 && memcmp(entities[i].id.data, "placed-", 7) == 0) placed_n++;
+}
+
+// Keeps the house in this browser when it changed (at most every 1.5 s,
+// unless now), as hex for the host's action 4.
+static void keep(bool at_once) {
+  if (!house.dirty || realm.action || (!at_once && now - kept_at < 1.5)) return;
+  int64_t n = verse_haunt_save(house, (coax_v_u8){saved, sizeof saved}, (coax_v_u8){scratch, sizeof scratch});
+  if (n <= 0 || (uint64_t)n * 2 > sizeof kept) return;
+  static const char digits[] = "0123456789abcdef";
+  for (int64_t i = 0; i < n; i++) { kept[2 * i] = digits[saved[i] >> 4]; kept[2 * i + 1] = digits[saved[i] & 15]; }
+  keep_n = (uint32_t)(n * 2);
+  realm.action = 4;
+  house.dirty = false;
+  kept_at = now;
+}
+
 // The house opens once its document and geometry are here (HauntAssets.init).
 static void open_house(void) {
   coax_t_Haunt s = {0};
@@ -102,22 +161,77 @@ static void open_house(void) {
   for (int64_t i = 0; i < house.mesh_count; i++)
     if (!verse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
   rebuild_walls();
+  if (kept_n) restore_kept();
+  for (int i = 0; i < 5; i++) item_mesh[i] = verse_haunt_mesh(house, text(items[i].mesh));
   player = verse_player_place(7, 0, 2, 0);
   player.phi = 1.5707963f;
   sticks = verse_sticks_reset();
   opened = true;
 }
 
-// E: talk to whoever is near, or open the door (activateNearby).
+static void do_goal(void);
+
+// E: talk to whoever is near, else the quest's orb, else open the door
+// (activateNearby, with the orb before the door so a door beside it
+// never hides it).
 static void use_nearby(void) {
   int64_t person = verse_haunt_near(house);
   if (person >= 0) { house = verse_haunt_talk(house, person, 0); return; }
+  if (verse_haunt_at_goal(house)) { do_goal(); return; }
   int64_t door = verse_haunt_door(house);
   if (door >= 0) { house = verse_haunt_edit(house, door, 9, 0); rebuild_walls(); }
 }
 
+// Copies the house's link (the host's action 2).
+static void copy_link(void) {
+  memcpy(realm.outbox.e, LINK, sizeof LINK - 1);
+  realm.out_n = sizeof LINK - 1;
+  realm.action = 2;
+}
+
+// Places edit mode's item `slot` in front of you.
+static void place(int64_t slot) {
+  if (slot < 0 || slot >= 5 || item_mesh[slot] < 0 || placed_n >= 1024) return;
+  coax_t_HauntPoint at = verse_haunt_place_point(house);
+  int64_t before = house.entity_count;
+  snprintf(placed[placed_n], sizeof placed[0], "placed-%d", placed_n);
+  house = verse_haunt_add(house, item_mesh[slot], text(placed[placed_n]), text(items[slot].name), at.x, at.z);
+  if (house.entity_count == before) { toast("There's no room there"); return; }
+  placed_n++;
+  rebuild_walls();
+}
+
+// E at the quest's orb: the step it asks for.
+static void do_goal(void) {
+  if (!verse_haunt_at_goal(house)) return;
+  switch (house.quest) {
+  case 1: house = verse_haunt_edit_mode(house, true); break;
+  case 2: place(0); break;
+  case 3: house = verse_haunt_quest(house, text("publish")); keep(true); toast("Saved in this browser"); break;
+  case 4: copy_link(); house = verse_haunt_quest(house, text("share")); toast("Link copied"); break;
+  case 5: house = verse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
+  case 6: copy_link(); house = verse_haunt_quest(house, text("invite")); toast("Invite link copied"); break;
+  case 7: realm_ask_text(realm_of()); break;
+  }
+}
+
+// The survey's answer: kept with the house, and the quest is done.
+static void send_feedback(void) {
+  coax_string typed = realm_typed(realm_of());
+  size_t n = typed.count < (int64_t)sizeof feedback ? (size_t)typed.count : sizeof feedback;
+  memcpy(feedback, typed.data, n);
+  house = verse_haunt_feedback(house, (coax_string){feedback, (int64_t)n});
+  realm_close_text(realm_of());
+  toast("Thank you. The quest is complete");
+}
+
 static void take_asks(void) {
+  if (!opened) return;
   int64_t asks = realm_take(realm_of());
+  if (asks & 32) do_goal();
+  if (asks & 64) send_feedback();
+  if (asks & 128) house = verse_haunt_edit_mode(house, !house.editing);
+  if (asks & 256) place(realm.slot);
   if (asks & 1) use_nearby();
   if (asks & 2) { house = verse_haunt_view(house); player.phi = house.camera == 0 ? 1.5707963f : 1.107f; }
   if ((asks & 4) && house.talking >= 0) house = verse_haunt_talk(house, house.talking, 1);
@@ -160,6 +274,10 @@ static void step(float dt) {
   coax_t_Vec3 eye = verse_player_view_eye(player, house.camera);
   house = verse_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
   take_asks();
+  // A step of the quest is kept at once; other changes at most every 1.5 s.
+  static int64_t quest_kept = -1;
+  keep(house.quest != quest_kept);
+  if (!house.dirty) quest_kept = house.quest;
   queue_sounds();
 }
 
@@ -171,12 +289,17 @@ static void describe(void) {
     coax_t_Vec3 feet = verse_player_feet(player);
     int64_t area = verse_haunt_area(house, point(feet));
     v.title = area >= 0 ? areas[area].name : (coax_string){"Haunted House", 13};
-    v.haunts = house.zone_count;
-    uint32_t mask = house.zone_count >= 32 ? 0xffffffffu : (1u << house.zone_count) - 1;
-    v.found = __builtin_popcount(house.fired & mask);
+    bool goal = verse_haunt_at_goal(house);
+    v.quest = house.quest;
+    v.quest_line = verse_haunt_step_line(house);
+    v.goal = goal ? verse_haunt_goal_prompt(house) : (coax_string){"", 0};
+    v.bearing = verse_haunt_goal_bearing(house);
+    v.editing = house.editing;
+    v.item_n = 0;
+    for (int i = 0; i < 5; i++) if (item_mesh[i] >= 0) v.items.e[v.item_n++] = text(items[i].label);
     v.notice = now < house.toast_until ? house.toast : (coax_string){"", 0};
     int64_t person = verse_haunt_near(house), door = verse_haunt_door(house);
-    v.target = person >= 0 ? people[person].name : door >= 0 ? (coax_string){"Door", 4} : (coax_string){"", 0};
+    v.target = person >= 0 ? people[person].name : !goal && door >= 0 ? (coax_string){"Door", 4} : (coax_string){"", 0};
     v.talking = house.talking >= 0 ? people[house.talking].name : (coax_string){"", 0};
     v.reply = house.reply;
     v.move_on = sticks.move_on; v.ox = sticks.ox; v.oy = sticks.oy; v.pad_x = sticks.pad_x; v.pad_y = sticks.pad_y;
@@ -238,7 +361,10 @@ EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { (void
 // ---- input: keys held and let go, the pointer (a finger off the HUD is the
 // thumbs', as on the phone), the wheel zooms
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
-  (void)state; return realm_key(realm_of(), view, key, mods, true) ? 1u : 0u;
+  (void)state;
+  bool used = realm_key(realm_of(), view, key, mods, true);
+  take_asks();   // now, inside the key event: a copy reaches the clipboard
+  return used ? 1u : 0u;
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) {
   (void)state; return realm_key(realm_of(), view, key, mods, false) ? 1u : 0u;
@@ -246,15 +372,28 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; realm_blur(realm_of()); sticks = verse_sticks_reset(); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   (void)state;
-  if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) return 1u;
+  if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) { take_asks(); return 1u; }
   if (kind != 0 && opened) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { (void)state; realm_wheel(realm_of(), dy); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { (void)state; return (int32_t)realm_cursor(realm_of()); }
 
-// Output: EXIT's navigation.
+// Output: EXIT's navigation, a copied link, the house to keep.
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return (int32_t)realm.action; }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)realm.outbox.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return (uint32_t)realm.out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; realm.action = 0; realm.out_n = 0; }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) {
+  (void)state; return (uint32_t)(uintptr_t)(realm.action == 4 ? (void *)kept : (void *)realm.outbox.e);
+}
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return realm.action == 4 ? keep_n : (uint32_t)realm.out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; realm.action = 0; realm.out_n = 0; keep_n = 0; }
+
+// In: typed or pasted text for the survey (1), the house kept last visit (4).
+EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
+EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
+EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
+  (void)state;
+  if (length > sizeof inbox) return;
+  if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
+  if (kind == 4 && !opened) kept_n = length;   // restore_kept reads it from the inbox when the house opens
+}
+EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { (void)state; return realm_wants_text(realm_of()) ? 1 : 0; }

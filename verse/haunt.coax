@@ -368,6 +368,43 @@ verse_haunt_goal :: (s:Haunt)->HauntPoint #export_c {
  if s.quest==0 || s.quest==3{return hh_p(8,0,21.6);}if s.quest==1 || s.quest==2{return hh_p(8,0,25.4);}if s.quest==5{return hh_p(13,0,4);}if s.quest==6{return hh_p(2,0,4);}if s.quest==7{return hh_p(7,0,10);}return hh_p(7,0,4);
 }
 verse_haunt_goal_name :: (s:Haunt)->string #export_c {if s.quest==0{return "Explore";}if s.quest==1{return "Edit";}if s.quest==2{return "Place";}if s.quest==3{return "Save";}if s.quest==4{return "Share";}if s.quest==5{return "Create";}if s.quest==6{return "Invite";}if s.quest==7{return "Survey";}return "Complete";}
+// The quest, Make it yours, as a player meets it: a sentence for the step,
+// and at its orange orb (in reach and in front, as for a person) the prompt
+// that does it (standing in the orb counts whichever way you look). The bearing is the goal's angle from the look direction,
+// its sign the side, for a glow at the screen's edge.
+verse_haunt_step_line :: (s:Haunt)->string #export_c {
+ if s.quest==0{return "Walk in through the front door";}if s.quest==1{return "Edit the hall: walk to the orb";}if s.quest==2{return "Place something in the hall";}
+ if s.quest==3{return "Save your house at the orb";}if s.quest==4{return "Share your house: the orb in the yard";}if s.quest==5{return "Make the house your own";}
+ if s.quest==6{return "Invite a friend: the orb by the gate";}if s.quest==7{return "Tell us how it went";}return "Quest complete";
+}
+verse_haunt_goal_prompt :: (s:Haunt)->string #export_c {
+ if s.quest==1{return "Edit the hall";}if s.quest==2{return "Place something here";}if s.quest==3{return "Save your house";}if s.quest==4{return "Copy the link";}
+ if s.quest==5{return "Make it yours";}if s.quest==6{return "Copy the invite";}if s.quest==7{return "Tell us how it went";}return "";
+}
+verse_haunt_at_goal :: (s:Haunt)->bool #export_c {
+ if s.quest<1 || s.quest>7{return false;}g:=verse_haunt_goal(s);dx:=g.x-s.player.x;dz:=g.z-s.player.z;
+ d:=dx*dx+dz*dz;return d<1.2*1.2 || (d<2.4*2.4 && hh_aim(s,g)>HH_AIM);
+}
+verse_haunt_goal_bearing :: (s:Haunt)->f32 #export_c {
+ g:=verse_haunt_goal(s);dx:=g.x-s.player.x;dz:=g.z-s.player.z;fx:=-sin(s.heading);fz:=-cos(s.heading);
+ return hh_atan2(fx*dz-fz*dx,fx*dx+fz*dz);
+}
+#test "the quest's orb answers only in reach and in front, and points the way" {
+ s:Haunt;s.quest=1;s.player=hh_p(8,0,23.4);s.heading=3.14159265;
+ #assert verse_haunt_at_goal(s) && verse_haunt_goal_prompt(s)=="Edit the hall";
+ #assert abs(verse_haunt_goal_bearing(s))<0.01;
+ s.heading=0;#assert !verse_haunt_at_goal(s) && abs(verse_haunt_goal_bearing(s))>3.1;
+ s.heading=3.14159265-1.57079633;a:=verse_haunt_goal_bearing(s);s.heading=3.14159265+1.57079633;#assert abs(a)>1.5 && abs(a+verse_haunt_goal_bearing(s))<0.01;
+ s.heading=3.14159265;s.player=hh_p(8,0,18);#assert !verse_haunt_at_goal(s);
+ s.heading=0;s.player=hh_p(8.5,0,25);#assert verse_haunt_at_goal(s);
+ s.quest=0;s.player=hh_p(8,0,23.4);#assert !verse_haunt_at_goal(s) && verse_haunt_goal_prompt(s)=="";
+ s.quest=8;#assert !verse_haunt_at_goal(s) && verse_haunt_step_line(s)=="Quest complete";
+}
+#test "the quest runs from walking in to complete, a step at a time" {
+ s:Haunt;steps:=[8]string.["walk-in","edit","place","publish","share","realm","invite","survey"];
+ for i:0..<8 {#assert s.quest==i;#assert verse_haunt_step_line(s).count>0;s=verse_haunt_quest(s,steps[(i+1)%8]);#assert s.quest==i;s=verse_haunt_quest(s,steps[i]);}
+ #assert s.quest==8 && verse_haunt_goal_prompt(s)=="";
+}
 verse_haunt_place_point :: (s:Haunt)->HauntPoint #export_c {return hh_p(s.player.x-sin(s.heading)*2,0,s.player.z-cos(s.heading)*2);}
 verse_haunt_view :: (s:Haunt)->Haunt #export_c {next:=s;next.camera=(s.camera+1)%3;return next;}
 verse_haunt_edit_mode :: (s:Haunt,active:bool)->Haunt #export_c {next:=s;next.editing=active;if active {next.quest=hh_quest(s.quest,"edit");}next.dirty=true;return next;}
