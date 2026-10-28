@@ -187,10 +187,12 @@ module yet. When it lands:
 
 ## Order of work
 
-1. `SparkHost.swift` and screens with no Coax logic, to prove the SDK opens
-   from the existing Keychain item on device.
-2. `metareal/wallet.coax` with `#authority`. Move every decision Swift made
-   in step 1 into it, check-first.
+1. Done 2026-10-28: `SparkHost.swift` and the screens (`Wallet/WalletScreens.swift`).
+2. Done 2026-10-28: `metareal/wallet.coax` with `#authority`: units, LNURL
+   bounds, the keypad, the high-fee and expiry warnings, `may_send`, and the
+   payment state machine `metareal_wallet_step` (it replaced `after_send`),
+   with a `#forall` over every four-event sequence. `coax mutate`: 155 of
+   155 mutants killed.
 3. Exit-data backup and the recoverable-funds display.
 4. `wallet_records.coax` once `payment.v1` exists.
 5. Lightning address and LNURL, then agent spend grants through

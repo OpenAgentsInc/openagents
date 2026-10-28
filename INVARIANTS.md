@@ -52,7 +52,7 @@ Coax owns its scene, animation, layout, reusable HUD touch policy and bounded
 protobuf admission. Native adapters own platform lifecycle, serialized opaque
 storage handles, packet transfer, font rasterization and Metal bindings. A
 screen does not acquire chat or device permissions through this port. The only
-network use is the read-only Spark wallet below.
+network use is the Spark wallet below.
 The home imports the `ios-home` descriptor profile for generated
 HomeConfiguration and HudInvocation codecs. It accepts only its documented
 schema-1 resource subset, rejects unknown/duplicate fields and non-minimal
@@ -93,7 +93,7 @@ buffers. Labels are copied into resident storage before those views expire.
 There is no claim of a full engine migration or general protobuf compiler.
 
 
-## The iOS wallet seed is read, never written
+## The iOS wallet seed is read, never written; sends go through Coax
 
 `apps/openagents-ios/OpenAgents/Wallet/` opens the person's existing Spark
 wallet from the Keychain item the earlier apps wrote (generic password,
@@ -103,13 +103,35 @@ updates or deletes that item, and never makes a seed. A missing, locked or
 wrong-length item is reported on screen and left as it is. The entropy
 becomes English BIP-39 words only to open Breez Spark on mainnet with no
 passphrase; the words are never logged, stored elsewhere or passed to Coax.
-The word list is checked against its published SHA-256 before use. The
-wallet only reads the balance; sending, receiving and backup are later work
-(`docs/lightning/`).
+The word list is checked against its published SHA-256 before use.
 
-Check: `apps/openagents-ios/tools/test-bip39.sh` (published BIP-39 vectors), the
-iOS UI test (a phone with no wallet shows that and changes nothing), and the
-owner's device showing the existing balance.
+The wallet sends and receives (Lightning invoices and addresses, LNURL,
+on-chain, Spark). `Wallet/SparkHost.swift` is the only file that imports the
+SDK and hands the screens plain values. `metareal/wallet.coax` is
+`#authority` and compiled into the app, so its checks run on every build. It
+decides each send: `metareal_wallet_may_send` passes a quote only while its
+payment is quoted, before it expires, with the fee no more than the review
+screen showed, and with amount plus fee within what is spendable. The payment
+moves only through `metareal_wallet_step`:
+- one `sendPayment` per quote, under one idempotency key;
+- an unknown outcome waits for the SDK and is never shown as a failure;
+- a finished payment stays finished until the person closes it.
+
+The phone's owner check (Face ID, Touch ID or passcode) comes last, before
+the send. SDK errors are shown in words, never as the SDK's own text. Backup
+of the words and exit data are later work (`docs/lightning/`).
+
+Model-boundary exception: Debug builds launched with
+`OPENAGENTS_THROWAWAY_WALLET=1` (the wallet UI test only) open a fresh wallet
+from random words held in memory for that launch, in its own folder, never
+the Keychain. Release builds compile this path out.
+
+Check: `apps/openagents-ios/tools/test-bip39.sh` (published BIP-39 vectors);
+`coax test` and `coax mutate metareal/wallet.coax` (0 survivors); the iOS UI
+tests (a phone with no wallet shows that and changes nothing, and
+`WalletUITests` against mainnet with a throwaway wallet: every kind of
+request is made, sends are parsed and quoted, and an empty wallet's send is
+refused in words); and the owner's device showing the existing balance.
 
 ## Nostr projections cannot create authority or replace signed bytes
 

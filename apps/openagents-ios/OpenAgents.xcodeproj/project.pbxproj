@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		167FF29401030EEEBAF05EF9 /* Cast.c in Sources */ = {isa = PBXBuildFile; fileRef = 14A5AEE208B95F199A14645E /* Cast.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
+		1A440D16806FE261B821F982 /* WalletScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52FBE5EE627E3362DB400F23 /* WalletScreens.swift */; };
 		26A051AF597CE318F9BFD252 /* cast-layer5.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A0E91A4368889291453CA5E9 /* cast-layer5.jpg */; };
 		28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */; };
 		2F7550EF7E1770994106353D /* Cast.bin in Resources */ = {isa = PBXBuildFile; fileRef = 06BB7B8BF39C34AF7C7ACAE5 /* Cast.bin */; };
@@ -20,14 +21,17 @@
 		425686EF9F339C9F8AF36F0B /* HomeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D9CCE7A321B824A05570718 /* HomeRenderer.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC1295D990A18154D988C5E /* WalletKeychain.swift */; };
+		502E6C47D6754A400252B96D /* WalletRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1041A12F3949F189557F595D /* WalletRules.swift */; };
 		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
+		7C03BECB12D4D71352A3A98D /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DCA95D29E37C09C798B337E /* SparkHost.swift */; };
 		83FD88F53E028589CEE45BCA /* Player.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EA8BD95327E6ECD1A97B685 /* Player.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		882DE814F326D410CE807EA2 /* cast-layer16.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1F408C8FDC3DB39479826802 /* cast-layer16.jpg */; };
 		891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */ = {isa = PBXBuildFile; fileRef = 75264437CFF5986509BFE1BF /* michroma-ofl.txt */; };
-		9BF3729D9AA0003DCFBD3935 /* SparkWallet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0FF528DE884B29DAA6D4D6 /* SparkWallet.swift */; };
 		9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */ = {isa = PBXBuildFile; fileRef = A8590DE7BE9F641F9A440194 /* Home.pb */; };
 		A007E91AC2431354B09B57F2 /* cast-layer12.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B39219FCD634F147CEECDE36 /* cast-layer12.jpg */; };
+		A203994108226A5200DF11E6 /* WalletUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED5025FC8A374A284612812 /* WalletUITests.swift */; };
 		AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */; };
+		B5B1AF1B14C0810ADDFF3B1F /* Wallet.c in Sources */ = {isa = PBXBuildFile; fileRef = 4176C3BB15A8996C7FB6B383 /* Wallet.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		B846A94D0DF0DDDAD61A67FA /* cast-layer10.jpg in Resources */ = {isa = PBXBuildFile; fileRef = FF206467CC283E67E24BBD6E /* cast-layer10.jpg */; };
 		BA35BAB96B0D3158F066A2E2 /* cast-layer11.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */; };
 		BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD722D77A3244F05AAF6E9AA /* BreezKey.swift */; };
@@ -51,15 +55,19 @@
 		06BB7B8BF39C34AF7C7ACAE5 /* Cast.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = Cast.bin; sourceTree = "<group>"; };
 		0D9CCE7A321B824A05570718 /* HomeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRenderer.swift; sourceTree = "<group>"; };
 		0EC1295D990A18154D988C5E /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
+		1041A12F3949F189557F595D /* WalletRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletRules.swift; sourceTree = "<group>"; };
 		1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewController.swift; sourceTree = "<group>"; };
 		14A5AEE208B95F199A14645E /* Cast.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Cast.c; sourceTree = "<group>"; };
 		1EA8BD95327E6ECD1A97B685 /* Player.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Player.c; sourceTree = "<group>"; };
 		1F408C8FDC3DB39479826802 /* cast-layer16.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer16.jpg"; sourceTree = "<group>"; };
 		2470A951A569419B3A288638 /* cast-layer9.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer9.jpg"; sourceTree = "<group>"; };
 		253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer11.jpg"; sourceTree = "<group>"; };
+		2DCA95D29E37C09C798B337E /* SparkHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkHost.swift; sourceTree = "<group>"; };
 		3BE259AB44E619C281EC401B /* Grid.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Grid.c; sourceTree = "<group>"; };
+		4176C3BB15A8996C7FB6B383 /* Wallet.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Wallet.c; sourceTree = "<group>"; };
 		4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeUITests.swift; sourceTree = "<group>"; };
 		4B5B3339D798BBE8F8C653F5 /* host.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = host.c; sourceTree = "<group>"; };
+		52FBE5EE627E3362DB400F23 /* WalletScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletScreens.swift; sourceTree = "<group>"; };
 		73B73CC5A17FE246BB0A3643 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		75264437CFF5986509BFE1BF /* michroma-ofl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "michroma-ofl.txt"; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -74,7 +82,7 @@
 		C66F7AEEF75B7AFDC508706C /* Bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridge.h; sourceTree = "<group>"; };
 		CA34DB580151D40597358639 /* Home.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Home.c; sourceTree = "<group>"; };
 		D00755E361D10FD9EA268AF3 /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
-		EE0FF528DE884B29DAA6D4D6 /* SparkWallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkWallet.swift; sourceTree = "<group>"; };
+		EED5025FC8A374A284612812 /* WalletUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletUITests.swift; sourceTree = "<group>"; };
 		FF206467CC283E67E24BBD6E /* cast-layer10.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer10.jpg"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -125,6 +133,7 @@
 				CA34DB580151D40597358639 /* Home.c */,
 				BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */,
 				1EA8BD95327E6ECD1A97B685 /* Player.c */,
+				4176C3BB15A8996C7FB6B383 /* Wallet.c */,
 			);
 			path = Generated;
 			sourceTree = "<group>";
@@ -133,6 +142,7 @@
 			isa = PBXGroup;
 			children = (
 				4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */,
+				EED5025FC8A374A284612812 /* WalletUITests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -142,8 +152,10 @@
 			children = (
 				D00755E361D10FD9EA268AF3 /* BIP39.swift */,
 				AD722D77A3244F05AAF6E9AA /* BreezKey.swift */,
-				EE0FF528DE884B29DAA6D4D6 /* SparkWallet.swift */,
+				2DCA95D29E37C09C798B337E /* SparkHost.swift */,
 				0EC1295D990A18154D988C5E /* WalletKeychain.swift */,
+				1041A12F3949F189557F595D /* WalletRules.swift */,
+				52FBE5EE627E3362DB400F23 /* WalletScreens.swift */,
 			);
 			path = Wallet;
 			sourceTree = "<group>";
@@ -321,6 +333,8 @@
 				"$(SRCROOT)/Generated/Grid.h",
 				"$(SRCROOT)/Generated/Cast.c",
 				"$(SRCROOT)/Generated/Cast.h",
+				"$(SRCROOT)/Generated/Wallet.c",
+				"$(SRCROOT)/Generated/Wallet.h",
 				"$(SRCROOT)/Generated/HomeShaders.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -343,8 +357,11 @@
 				425686EF9F339C9F8AF36F0B /* HomeRenderer.swift in Sources */,
 				AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */,
 				83FD88F53E028589CEE45BCA /* Player.c in Sources */,
-				9BF3729D9AA0003DCFBD3935 /* SparkWallet.swift in Sources */,
+				7C03BECB12D4D71352A3A98D /* SparkHost.swift in Sources */,
+				B5B1AF1B14C0810ADDFF3B1F /* Wallet.c in Sources */,
 				471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */,
+				502E6C47D6754A400252B96D /* WalletRules.swift in Sources */,
+				1A440D16806FE261B821F982 /* WalletScreens.swift in Sources */,
 				F5D72357EDBC9C2C7A705B08 /* host.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -354,6 +371,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */,
+				A203994108226A5200DF11E6 /* WalletUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -382,6 +400,8 @@
 				);
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents asks for Face ID before it sends bitcoin.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -471,6 +491,8 @@
 				);
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents asks for Face ID before it sends bitcoin.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

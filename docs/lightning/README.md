@@ -1,8 +1,8 @@
 # Lightning
 
-*Notes from 2026-10-27. Nothing in the current tree sends or receives
-Lightning payments. These files plan bringing a wallet back to
-`apps/openagents-ios`.*
+*Notes from 2026-10-27. Since 2026-10-28 `apps/openagents-ios` sends and
+receives through `Wallet/SparkHost.swift` and `metareal/wallet.coax`, steps 1
+and 2 of the order of work in [coax-integration.md](coax-integration.md).*
 
 **Decision: the first wallet is Breez's Spark SDK, on mainnet, inside the
 iOS app.** Swift talks to the SDK. Coax holds the payment rules and is

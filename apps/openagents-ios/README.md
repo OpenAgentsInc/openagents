@@ -41,12 +41,21 @@ scanning waits for them even when `Generated/` starts empty.
 The bundle identifier is `com.openagents.app`. This is a minimal home
 shell. Distribution continues the existing OpenAgents App Store Connect record
 at version 1.0.0; the current build is 1047.
-The home shows the balance of the person's existing Spark wallet. It opens
-the wallet from the Keychain seed the earlier app saved and only reads the
-balance, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
+The home shows the balance of the person's existing Spark wallet; tapping
+it opens the wallet. You can:
+- receive with one QR for Lightning and on-chain together, or with a
+  Lightning invoice, an on-chain address or a Spark address;
+- send to a Lightning invoice, a Lightning address or LNURL, a bitcoin
+  address (fast, normal or slow fee) or a Spark address, by paste or scan;
+- take LNURL withdrawals, claim on-chain deposits, and see activity and each
+  payment's details.
+
+Every send goes through a review screen and the phone's owner check, and
+`metareal/wallet.coax` decides whether it may go. The wallet opens from the
+Keychain seed the earlier app saved, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
 `Package.resolved`). See [`docs/lightning/`](../../docs/lightning/README.md).
 No login, chat, microphone or FM code is restored, the Grid has no buildings,
-robots or other players yet, and no payments are sent or received yet.
+robots or other players yet.
 
 ## Ownership
 

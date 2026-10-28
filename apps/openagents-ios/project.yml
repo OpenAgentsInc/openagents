@@ -30,6 +30,8 @@ targets:
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Cast.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/Wallet.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: ../../metareal/platform/host.c
       - path: Generated/HomeShaders.txt
         buildPhase: resources
@@ -47,6 +49,8 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: OpenAgents
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSCameraUsageDescription: "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes."
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "OpenAgents asks for Face ID before it sends bitcoin."
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_OBJC_BRIDGING_HEADER: OpenAgents/Platform/Bridge.h
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metareal/platform"]
@@ -64,6 +68,8 @@ targets:
           - $(SRCROOT)/Generated/Grid.h
           - $(SRCROOT)/Generated/Cast.c
           - $(SRCROOT)/Generated/Cast.h
+          - $(SRCROOT)/Generated/Wallet.c
+          - $(SRCROOT)/Generated/Wallet.h
           - $(SRCROOT)/Generated/HomeShaders.txt
   OpenAgentsUITests:
     type: bundle.ui-testing

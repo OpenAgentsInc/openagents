@@ -21,8 +21,9 @@ final class HomeViewController: UIViewController {
     private var startElement: UIAccessibilityElement?
     private var lastSize = CGSize.zero
     private var invocationCount: Int64 = 0
-    private let wallet = SparkWallet()
+    private let wallet = SparkHost()
     private let balanceLabel = UILabel()
+    private let walletButton = UIButton(type: .custom)
     private var walletTask: Task<Void, Never>?
     private var gridHandle: Int64 = 0
     private var player = metareal_player_place(0, 0, 0, 0)
@@ -64,8 +65,9 @@ final class HomeViewController: UIViewController {
             element.activate = { [weak self] in self?.activateAccessibleButton() ?? false }
             startElement = element
             setUpBalance()
-            view.accessibilityElements = [balanceLabel, element]
+            view.accessibilityElements = [balanceLabel, walletButton, element]
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.didEnterBackgroundNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(resume), name: UIApplication.didBecomeActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(motionChanged), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
             resume()
@@ -97,6 +99,11 @@ final class HomeViewController: UIViewController {
         clock?.invalidate(); clock = nil; trackedTouch = nil
         metareal_home_resume(handle)
         sticks = metareal_sticks_reset(); gridTouches = [:]; lastTick = nil
+    }
+    // Face ID and the camera prompt resign active; only leaving the app
+    // closes the wallet (receiving still works: the SSP holds Lightning).
+    @objc private func background() {
+        guard presentedViewController == nil else { return }
         walletTask?.cancel(); walletTask = nil
         Task { [wallet] in await wallet.disconnect() }
     }
@@ -116,7 +123,19 @@ final class HomeViewController: UIViewController {
         balanceLabel.numberOfLines = 0
         balanceLabel.accessibilityIdentifier = "wallet.balance"
         view.addSubview(balanceLabel)
+        // The balance opens the wallet once there is one.
+        walletButton.translatesAutoresizingMaskIntoConstraints = false
+        walletButton.accessibilityIdentifier = "wallet.open"
+        walletButton.accessibilityLabel = "Wallet"
+        walletButton.accessibilityHint = "Send and receive bitcoin."
+        walletButton.isEnabled = false
+        walletButton.addAction(UIAction { [weak self] _ in self?.openWallet() }, for: .touchUpInside)
+        view.addSubview(walletButton)
         NSLayoutConstraint.activate([
+            walletButton.topAnchor.constraint(equalTo: balanceLabel.topAnchor, constant: -12),
+            walletButton.bottomAnchor.constraint(equalTo: balanceLabel.bottomAnchor, constant: 12),
+            walletButton.leadingAnchor.constraint(equalTo: balanceLabel.leadingAnchor),
+            walletButton.trailingAnchor.constraint(equalTo: balanceLabel.trailingAnchor),
             balanceLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
             balanceLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             balanceLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
@@ -133,7 +152,18 @@ final class HomeViewController: UIViewController {
             }
         }
     }
-    private func show(_ state: SparkWallet.State) {
+    private func openWallet() {
+        let screen = WalletViewController(host: wallet)
+        // The wallet closed: show the balance it may have changed.
+        screen.closed = { [weak self] in self?.refreshBalance() }
+        let sheet = UINavigationController(rootViewController: screen)
+        sheet.overrideUserInterfaceStyle = .dark
+        sheet.view.tintColor = .white
+        present(sheet, animated: true)
+    }
+    private func show(_ state: SparkHost.State) {
+        if case .balance = state { walletButton.isEnabled = true } else { walletButton.isEnabled = false }
+        defer { walletButton.accessibilityValue = balanceLabel.text }
         switch state {
         case .opening: balanceLabel.text = "Opening your wallet…"
         case .balance(let sats):
