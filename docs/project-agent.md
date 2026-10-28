@@ -4,14 +4,18 @@ Status: draft, October 28. Goal: working end to end today for one approved
 private project, then other approved projects.
 
 A member opens a project page, types to the project's agent, and the agent
-answers and makes targeted edits to the project: milestones, statuses,
-notes, plans and the project document itself. Every edit it makes is shown,
-signed and logged. Edits that need a member's yes wait on the page for it.
+answers and makes targeted edits to the project. It can change milestones,
+statuses, notes, plans, the project document itself and the files in the
+project's linked repository.
+
+Edits apply at once, with no per-edit approvals. Every agent turn can be
+rolled back instead: one turn becomes one commit and one document version,
+and UNDO TURN reverts both.
 
 The agent runs on our hosted agent infrastructure. A Coax port of the Claude
 Agent SDK drives the `claude` CLI. For now the agent is powered by our
-Anthropic API key; connecting a member's own Claude or Codex harness comes
-later.
+Anthropic API key (Secret Manager `openagents-anthropic-api-key`) on Claude
+Sonnet 5.5. Connecting a member's own Claude or Codex harness comes later.
 
 ## What a member sees
 
@@ -21,12 +25,15 @@ later.
   - while the agent works, one line saying what it is doing ("reading the
     milestones", "editing day 10-29");
   - a STOP button.
-- **Edits, as they happen.** Each one shows as a small diff card ("day 10-29:
-  *Start the deck* → doing") with who asked and when.
-  - An edit that needs approval shows ALLOW and DENY. The agent waits.
-  - An edit to an agreed goal shows NEEDS BOTH and waits for both members'
-    yes. Today's rule stays: agents propose goals, they never change agreed
-    ones.
+- **Edits, as they happen.** Each one shows as a small diff card, with who
+  asked and when:
+  - a document edit, such as "day 10-29: *Start the deck* → doing";
+  - a repository change, as the files changed and its commit.
+
+  Each turn ends with an UNDO TURN button.
+- **Goals keep their own rule.** The agent proposes a goal or a change to
+  one, and it applies only when the members agree, as today. That is the
+  project's rule, not a per-edit approval.
 - **One shared conversation per project.** Both members see everything the
   agent was asked and did. It is the project's agent, not one person's.
 
@@ -36,24 +43,45 @@ Tools are offered to the model as in-process SDK MCP tools served by the
 runner, not as shell access. Each tool calls oa-api with the project's agent
 key, so the server enforces the same rules it enforces for any agent:
 
-| Tool | What | Approval |
-| --- | --- | --- |
-| `project_get` | The whole project as text, and as JSON with its version | none |
-| `project_note` | A note on the thread | none |
-| `project_plan` | The agent's plan for a milestone | none |
-| `milestone_status` | todo / doing / done / dropped, with evidence | none |
-| `milestone_edit` | Add, move, reword or carry over a milestone or backlog item | one member |
-| `checklist_status` | A checklist item's status and evidence | none |
-| `goal_propose` | A new goal, or a change to one, as `proposed` | both members to accept |
-| `document_patch` | A targeted JSON patch to the project document, against the version it read | one member |
+| Tool | What |
+| --- | --- |
+| `project_get` | The whole project as text, and as JSON with its version |
+| `project_note` | A note on the thread |
+| `project_plan` | The agent's plan for a milestone |
+| `milestone_status` | todo / doing / done / dropped, with evidence |
+| `milestone_edit` | Add, move, reword or carry over a milestone or backlog item |
+| `checklist_status` | A checklist item's status and evidence |
+| `goal_propose` | A new goal, or a change to one, as `proposed`; it applies when the members agree |
+| `document_patch` | A targeted JSON patch to the project document, against the version it read |
 
-- The CLI's built-in tools are off: no Bash, file, web or Task tools. The
-  permission callback refuses anything not in the table, so the agent can
-  edit only its own project.
+- **Repository files.** If the project links a repository, the CLI's `Read`,
+  `Glob`, `Grep`, `Edit` and `Write` tools are allowed. The permission
+  callback limits them to paths inside that turn's checkout.
+- **Everything else is refused:** Bash, web, Task and any path outside the
+  checkout. The agent can change only its own project.
 - Every write carries the version the agent read. A stale write is refused
   and the agent reads again.
 - Each edit records the member message that caused it, so "why did this
   change?" has an answer.
+
+## Rollback: one turn, one commit, one version
+
+- **A fresh checkout per turn.** At the start of a turn, the runner makes a
+  shallow clone of the project's repository's `main` into a fresh temporary
+  directory. The model never runs git.
+- **One commit per turn.** At the end of the turn, the runner commits every
+  changed file as one commit and pushes to `main`. The message reads "agent
+  turn <id>: <first line of the member's message>". The runner pulls with
+  rebase first. If a member's own commit conflicts, the turn's changes are
+  not pushed, and the panel says so and shows the diff.
+- **Document edits** in the same turn are recorded under the turn's id;
+  oa-api already keeps every document version.
+- **UNDO TURN** does two things, and is itself one turn:
+  - restores the document to the version before the turn;
+  - pushes `git revert` of the turn's commit.
+- **Write access.** It comes from a deploy key the runner reads from Secret
+  Manager, one per linked repository, named in oa-api's approved-projects
+  list. The key never enters the model's context or the checkout.
 
 ## How it fits together
 
@@ -78,12 +106,12 @@ page (Coax, wasm) ──► oa-api ──► agent runner (Cloud Run) ──► 
 - **The runner** is a Cloud Run service, `oa-agent`, with scale to zero.
   1. When a member sends a message, oa-api calls the runner with a signed
      wake request.
-  2. The runner reads the queue, runs one turn of the SDK, streams events
-     back to oa-api, and exits idle.
-  3. A permission request becomes a `requires_action` event. The runner
-     waits on oa-api for the member's answer, with a time limit; no answer
-     means deny.
-- **The page** sends messages and approvals through oa-api with the
+  2. The runner reads the queue, checks out the repository, runs one turn
+     of the SDK, and streams events back to oa-api.
+  3. It commits, pushes and exits idle.
+  4. Permission requests are decided by the callback's rules alone; no one
+     is asked.
+- **The page** sends messages and UNDO TURN through oa-api with the
   member's existing session cookie. It gets events by polling oa-api every
   2 seconds while a turn runs, and every 30 seconds otherwise. A live socket
   can come later.
@@ -137,12 +165,13 @@ protocol, not the npm package:
   can read it. It never reaches oa-api's responses, the page, logs or the
   model's context.
 - **Spend:**
-  - a daily cap per project in dollars, from the CLI's reported cost,
-    enforced by the runner;
+  - $10 a day per project, from the CLI's reported cost, enforced by the
+    runner;
   - max turns per message;
   - one turn at a time per project.
-- **No shell, no files, no network** for the model. Its only effects are the
-  project tools above.
+- **No shell and no network** for the model. Its only effects are:
+  - the project tools above;
+  - file edits inside its own checkout, which the runner commits.
 - **Private contents** reach Anthropic's API as model input. Members are
   told so on the panel once.
 - **Logs** keep event types, tool names and costs. They never keep message
@@ -157,7 +186,7 @@ protocol, not the npm package:
    approved-projects list and a signed wake call.
 4. `oa-agent` runner: container with the CLI, the SDK binary, the project
    tools and the secret, deployed to staging.
-5. The page's AGENT panel, with diff cards and ALLOW/DENY.
+5. The page's AGENT panel, with diff cards and UNDO TURN.
 6. End-to-end on staging, then production, then a phone check.
 
 Later:
@@ -165,5 +194,4 @@ Later:
 - a live socket instead of polling;
 - the native app view;
 - end-to-end encrypted projects, where the runner holds a member-granted
-  key;
-- edits to a project's repository files.
+  key.

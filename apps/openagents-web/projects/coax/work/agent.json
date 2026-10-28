@@ -78,13 +78,13 @@
         "agent",
         "api"
       ],
-      "body": "Session and event tables shaped like openagents.agent.managed.v1, a member message queue, pending approvals with time limits, an approved-projects list, and a signed wake call to the runner. Members use their session cookie; the runner uses the project's agent key.\n\nSpec: `docs/project-agent.md`.",
+      "body": "Session and event tables shaped like openagents.agent.managed.v1, a member message queue, turn records for UNDO TURN, an approved-projects list, and a signed wake call to the runner. Members use their session cookie; the runner uses the project's agent key.\n\nSpec: `docs/project-agent.md`.",
       "files": [
         "coax/web/api/"
       ],
       "acceptance": [
         "A non-approved project's agent routes answer the same not found",
-        "An approval times out to deny",
+        "UNDO TURN restores the document version from before the turn",
         "Tests in test.sh"
       ],
       "blocked_by": [],
@@ -102,12 +102,13 @@
         "agent",
         "cloud"
       ],
-      "body": "Container with the claude CLI and the Coax SDK binary, the project MCP tools from the spec, built-in tools off, the Anthropic key from Secret Manager in the child environment only, a daily spend cap and one turn at a time per project. Scale to zero.\n\nSpec: `docs/project-agent.md`.",
+      "body": "Container with the claude CLI and the Coax SDK binary, the project MCP tools from the spec, Read/Glob/Grep/Edit/Write limited to a per-turn checkout of the linked repository (Bash and web off), one commit per turn pushed with a deploy key from Secret Manager, Claude Sonnet 5.5, the Anthropic key from Secret Manager in the child environment only, a daily spend cap and one turn at a time per project. Scale to zero.\n\nSpec: `docs/project-agent.md`.",
       "files": [
         "coax/web/agent/"
       ],
       "acceptance": [
         "A wake runs one turn and streams its events to oa-api on staging",
+        "A turn that edits a file pushes one commit; UNDO TURN pushes its revert",
         "The key appears in no log, event or response",
         "Over the cap, the turn refuses and the page says why"
       ],
@@ -128,13 +129,13 @@
         "agent",
         "web"
       ],
-      "body": "Conversation, text box, a working line, STOP, and diff cards for each edit with ALLOW/DENY and NEEDS BOTH for goals; drawn in Coax; polling while a turn runs.\n\nSpec: `docs/project-agent.md`.",
+      "body": "Conversation, text box, a working line, STOP, and diff cards for each document edit and commit, UNDO TURN, and NEEDS BOTH on proposed goals; drawn in Coax; polling while a turn runs.\n\nSpec: `docs/project-agent.md`.",
       "files": [
         "apps/openagents-web/"
       ],
       "acceptance": [
-        "A member's message gets an answer and an approved edit on staging, desktop and phone (headless shots)",
-        "A denied edit leaves the document unchanged"
+        "A member's message gets an answer and an applied edit on staging, desktop and phone (headless shots)",
+        "UNDO TURN puts the document and the repository back"
       ],
       "blocked_by": [
         "pa-api"
