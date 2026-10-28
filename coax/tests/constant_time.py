@@ -13,11 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 COMPILER = ROOT / 'bin/coax'
 SOURCE = '''
 ct_select :: (bit: u64, a: u64, b: u64) -> u64 #export_c {
-  mask := value_barrier(0 - bit);
+  mask := value_barrier(sub_wrap(cast(u64) 0, bit));
   return b ^ ((a ^ b) & mask);
 }
 ct_select32 :: (bit: u32, a: u32, b: u32) -> u32 #export_c {
-  mask := value_barrier(0 - bit);
+  mask := value_barrier(sub_wrap(cast(u32) 0, bit));
   return b ^ ((a ^ b) & mask);
 }
 #assert #run value_barrier(cast(u64) 7) == 7;
@@ -56,6 +56,14 @@ class ConstantTime(unittest.TestCase):
             (d/'host.c').write_text('#include "ct.h"\nint main(void){return ct_select(1,5,9)==5 && ct_select(0,5,9)==9 && ct_select32(1,5,9)==5 && ct_select32(0,5,9)==9 ? 0 : 1;}')
             r = subprocess.run([cc, '-std=c11', '-O2', str(d/'ct.c'), str(d/'host.c'), '-o', str(d/'host')], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(subprocess.run([str(d/'host')]).returncode, 0)
+
+    def test_checked_masked_select_does_not_underflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            d = Path(directory)
+            self.build(d)
+            (d/'host.c').write_text('#include "ct.h"\nint main(void){return ct_select(1,5,9)==5 && ct_select(0,5,9)==9 && ct_select32(1,5,9)==5 && ct_select32(0,5,9)==9 ? 0 : 1;}')
+            subprocess.run(['clang', '-std=c11', '-O2', str(d/'ct.c'), str(d/'host.c'), '-o', str(d/'host')], check=True, capture_output=True)
             self.assertEqual(subprocess.run([str(d/'host')]).returncode, 0)
 
     def test_wasm32_calls_an_identity_that_is_never_inlined(self):

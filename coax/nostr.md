@@ -26,10 +26,17 @@ roadmap remains the project's first initiative; this is its Nostr initiative.
 | `b9a5f216f0` | u32/u64 `value_barrier` and focused native/Wasm codegen tests | Constant-time or secure-erasure proof |
 | `8f23a77f35` | Bounded Coax JSON parser/writer and captured-relay/JSONTestSuite tests | Duplicate-key/domain admission or safe-integer profile reconciliation |
 | `df008f96a4`, `socket.coax`, `project-live.coax` | Host WebSocket byte pipe, subscriptions, frame counter and reconnect probe | Parsed live task folding, Coax event verification or AUTH readiness |
+| `2ace224626` | Live relay parsing/folding, details and project-agnostic page updates | Local signature verification, complete catch-up or fenced claims |
+| `9c556d7c05` | Pinned upstream crypto vectors and integrity/provenance checks | Algorithm conformance |
+| `bc88057ec1` | Bounded Coax hex and canonical padded base64 with native oracle/sanitizer checks | Full Nostr event admission |
+| `54ea8f5626` | Canonical Coax profiles, generated matrix and bounded preflight policy | Truth of untrusted measurements or completed crypto profiles |
 
-The socket probe can run while task rows remain the last verified build-time
-snapshot. A frame count or EOSE is not proof of verified or complete task data.
-The first Coax Nostr JSON module exists; the cryptographic library, iOS signer,
+
+The live fold now replaces the first-paint snapshot after subscription EOSE,
+trusting the configured relay until local verification lands. A frame count,
+LIVE chip or EOSE is not proof of verified or complete task data. Catch-up across
+relay caps and fail-closed CLOSED/partial states remain explicit work.
+Coax JSON, codecs and profile modules exist; the cryptographic library, iOS signer,
 HOST admission and Nostr-backed channel runtime remain open. The task-detail UI
 and plural `/projects/<slug>` route also shipped; old `/project/*` redirects. Later
 implementation commits must update the evidence and resolve only their own tasks.
@@ -144,7 +151,7 @@ unchecked-access escape hatch is introduced.
 | Compound assignment through a view | Fixed in `e2f8432ea2` | Preserve focused regression |
 | `value_barrier` | Shipped in `b9a5f216f0` | Scoped code-generation tests, not a constant-time guarantee |
 | Secure erasure | Missing independent contract | Optimized stores/copies and failure-path tests |
-| Wrapping ops/rotates | Missing convenience intrinsics | Helpers must work in both modes; no release-only safety |
+| Wrapping ops/rotates | Implemented in Coax 0.15.0 | Matching u32/u64 operands; checked/optimized/compile-time/native/Wasm evidence |
 | `mul_wide` | Optional native optimization | Not required for 10x26 |
 | Debug magnitude layout | Conditional fields planned | Explicit debug representation is allowed; no false `#if` claim |
 | Secret/variable-time enforcement | Missing | `crypto-secret-lint`; `#secret` is not accepted syntax today |

@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.15.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -438,18 +438,32 @@ does not fit; float to integer truncates toward zero and traps on NaN or out
 of range. `cast,trunc(T) x` converts between integer types keeping the low
 bits.
 
-Compile-time arithmetic is checked in every build mode (§10). This avoids
+Ordinary compile-time arithmetic is checked in every build mode (§10). This avoids
 release settings silently changing generated constants.
+
+`add_wrap(a, b)`, `sub_wrap(a, b)` and `mul_wrap(a, b)` accept two
+matching `u32` or `u64` operands and return their sum, difference or product
+modulo 2^32 or 2^64. They wrap in checked builds, `--release` and compile-time
+execution; ordinary operators retain their existing overflow rules.
+`rotl(a, count)` and `rotr(a, count)` use the same matching unsigned operand
+width and reduce the count modulo that width. A zero or full-width count
+returns `a`; there is no shift-by-width undefined behavior. Operands execute
+once, left to right. These CPU intrinsics lower to C11 and wasm32; the Metal
+scalar profile continues to reject integer/storage intrinsics.
 
 `value_barrier(x)` takes a `u32` or a `u64` and returns it unchanged, but the
 optimizer cannot see through it: it cannot learn that the result is 0 or all
 ones, so it cannot turn a mask built from a secret back into a branch.
 Constant-time code builds its masks through it, for example
-`mask := value_barrier(0 - bit); r := b ^ ((a ^ b) & mask);`. Native C emits
+`mask := value_barrier(sub_wrap(cast(u64) 0, bit)); r := b ^ ((a ^ b) & mask);`
+for a `u64` bit. Native C emits
 an empty `__asm__("" : "+r"(x))`; wasm32 has no such asm and calls an
 identity that is never inlined, through a volatile. At compile time it is the
-identity. `tests/constant_time.py` checks that a masked select built this way
-compiles at `clang -O2` to code with no conditional branch.
+identity. This obstructs specific optimizer transformations; it does not prove
+whole-program constant time or secure erasure. `tests/constant_time.py` records
+masked-select native/Wasm evidence. `tests/wrapping.py` checks defined wrap/rotate
+semantics against an independent integer oracle, including actual Wasm execution
+and native sanitizers.
 
 Planned overloaded operators must be pure, nonallocating and nonfallible.
 Assignment, field lookup, short-circuit booleans and procedure calls are not

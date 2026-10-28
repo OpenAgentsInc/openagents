@@ -203,6 +203,19 @@ static inline uint32_t coax_value_barrier_u32(uint32_t x){__asm__("" : "+r"(x));
 #endif
 )COAXRT";
 
+static const char *WRAP_RUNTIME = R"COAXRT(
+static uint32_t coax_add_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a+b);}
+static uint32_t coax_sub_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a-b);}
+static uint32_t coax_mul_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a*b);}
+static uint32_t coax_rotl_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a<<k)|(a>>((32u-k)&31u)));}
+static uint32_t coax_rotr_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a>>k)|(a<<((32u-k)&31u)));}
+static uint64_t coax_add_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a+b);}
+static uint64_t coax_sub_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a-b);}
+static uint64_t coax_mul_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a*b);}
+static uint64_t coax_rotl_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a<<k)|(a>>((64u-k)&63u)));}
+static uint64_t coax_rotr_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a>>k)|(a<<((64u-k)&63u)));}
+)COAXRT";
+
 namespace {
 
 // A unique, kind-prefixed spelling of a type for generated names.
@@ -324,6 +337,7 @@ struct Emitter {
   int32_t temp_count = 0;
   std::vector<std::string> temps;           // declarations at the top of the current function
   std::vector<const Expr *> ct_values;      // compile-time aggregates, emitted as static constants
+  bool wrapping = false;
   bool barrier = false;                       // value_barrier is used: emit its helpers
   std::vector<std::vector<const Stmt *>> defers;  // per open block
   std::vector<size_t> loop_scopes;          // defers.size() when each open loop began
@@ -529,6 +543,11 @@ struct Emitter {
           if (e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {
             std::string a=new_temp(c_type(e->args[0]->type)),b=new_temp(c_type(e->args[1]->type));
             return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_bytes_overlap("+a+".data, "+a+".count, "+b+".data, "+b+".count))";
+          }
+          if (e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
+            wrapping=true;
+            std::string a=new_temp(c_type(e->type)),b=new_temp(c_type(e->type));
+            return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_"+to_std(e->text)+(e->type==&T_U32?"_u32(":"_u64(")+a+", "+b+"))";
           }
           if (e->byte_intrinsic == ByteIntrinsic::value_barrier) barrier = true;
           if (e->byte_intrinsic == ByteIntrinsic::value_barrier)
@@ -1216,6 +1235,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file);
   if (em.barrier) s += BARRIER_RUNTIME;
+  if (em.wrapping) s += WRAP_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;
   s += view_helpers();

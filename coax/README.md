@@ -1,7 +1,7 @@
 # Coax
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.15.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
@@ -146,6 +146,9 @@ squares :: () -> [8] u16 {
   them in order before using them.
 - **Compile time.** `#run` evaluates ordinary procedures, including arrays,
   structs and loops; aggregate results become static constants in the C.
+  Explicit `add_wrap`, `sub_wrap`, `mul_wrap`, `rotl` and `rotr` on matching
+  `u32`/`u64` values have the same modular behavior in checked, optimized and
+  compile-time execution. Rotation counts wrap modulo the word width.
   Math intrinsics (`sin cos tan exp log sqrt floor abs pow`) and the
   conversions `int(x)`, `f32(x)` work there too, and must give finite results.
   `#assert` checks a bool while compiling. `type_name(x)` typechecks without

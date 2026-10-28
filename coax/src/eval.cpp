@@ -479,6 +479,20 @@ struct Evaluator {
           if(e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {err(e->loc,"E0404","runtime storage overlap cannot execute at compile time");return {};}
           Value a=expr(e->args[0],frame,allow_calls),r;r.type=e->type;
           if(e->byte_intrinsic == ByteIntrinsic::value_barrier){r.bits=a.bits;return r;}
+          if(e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
+            Value b=expr(e->args[1],frame,allow_calls);
+            unsigned width=e->type==&T_U32?32:64,k=(unsigned)(b.bits&(width-1));
+            switch(e->byte_intrinsic) {
+              case ByteIntrinsic::add_wrap:r.bits=a.bits+b.bits;break;
+              case ByteIntrinsic::sub_wrap:r.bits=a.bits-b.bits;break;
+              case ByteIntrinsic::mul_wrap:r.bits=a.bits*b.bits;break;
+              case ByteIntrinsic::rotl:r.bits=(a.bits<<k)|(a.bits>>((width-k)&(width-1)));break;
+              case ByteIntrinsic::rotr:r.bits=(a.bits>>k)|(a.bits<<((width-k)&(width-1)));break;
+              default:break;
+            }
+            if(width==32)r.bits&=UINT32_MAX;
+            return r;
+          }
           if(e->byte_intrinsic == ByteIntrinsic::f32_bits){float x=(float)a.f;uint32_t b;memcpy(&b,&x,4);r.bits=b;}
           else if(e->byte_intrinsic == ByteIntrinsic::f64_bits){memcpy(&r.bits,&a.f,8);}
           else if(e->byte_intrinsic == ByteIntrinsic::f32_from_bits){uint32_t b=(uint32_t)a.bits;float x;memcpy(&x,&b,4);r.f=x;}
