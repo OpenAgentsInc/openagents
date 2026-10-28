@@ -1,0 +1,182 @@
+// Who may be heard (docs/voice/coax-native-voice.md, "Identity, consent and
+// privacy"). The voice host maps each participant to a small slot and each
+// route target (an agent, an NPC, "players") to a small id; this file
+// decides, from consent and explicit grants only, whose audio is heard, where
+// a transcript goes, and which media epoch is current. Never from words.
+//   coax/bin/coax test metareal/voice-floor.coax
+//   coax/bin/coax mutate metareal/voice-floor.coax
+#authority;
+
+SLOTS :: 8;
+MAX_EPOCH :: cast(u64) 18446744073709551615;
+
+Floor :: struct {
+  consent: [SLOTS] bool;
+  target: [SLOTS] u32;   // 0 = unbound
+  holder: s32 = -1;      // the slot holding the input floor, -1 = none
+  epoch: u64 = 1;
+}
+
+slot_ok :: (slot: u32) -> bool { return slot < SLOTS; }
+
+metareal_voice_floor_init :: (f: [] Floor) #export_c {
+  fresh: Floor;
+  f[0] = fresh;
+}
+
+// Consent, recorded or withdrawn. Withdrawing also unbinds the slot and takes
+// back its floor: nothing of a participant who said no is heard or routed.
+metareal_voice_floor_consent :: (f: [] Floor, slot: u32, consent: bool) -> bool #export_c {
+  if !slot_ok(slot) { return false; }
+  i := cast(int) slot;
+  f[0].consent[i] = consent;
+  if !consent {
+    f[0].target[i] = 0;
+    if f[0].holder == cast(s32) slot { f[0].holder = -1; }
+  }
+  return true;
+}
+
+// A route only by explicit binding, and only for a consenting participant.
+metareal_voice_floor_bind :: (f: [] Floor, slot: u32, target: u32) -> bool #export_c {
+  if !slot_ok(slot) { return false; }
+  i := cast(int) slot;
+  if target == 0 { f[0].target[i] = 0; return true; }
+  if !f[0].consent[i] { return false; }
+  f[0].target[i] = target;
+  return true;
+}
+
+// One holder at a time; -1 releases. Granting needs consent.
+metareal_voice_floor_grant :: (f: [] Floor, slot: s32) -> bool #export_c {
+  if slot == -1 { f[0].holder = -1; return true; }
+  if slot < 0 || slot >= SLOTS { return false; }
+  if !f[0].consent[cast(int) slot] { return false; }
+  f[0].holder = slot;
+  return true;
+}
+
+metareal_voice_floor_may_hear :: (f: [] Floor, slot: u32) -> bool #export_c {
+  if !slot_ok(slot) { return false; }
+  return f[0].consent[cast(int) slot] && f[0].holder == cast(s32) slot;
+}
+
+metareal_voice_floor_route :: (f: [] Floor, slot: u32) -> u32 #export_c {
+  if !slot_ok(slot) { return 0; }
+  i := cast(int) slot;
+  if !f[0].consent[i] { return 0; }
+  return f[0].target[i];
+}
+
+metareal_voice_floor_epoch :: (f: [] Floor) -> u64 #export_c { return f[0].epoch; }
+
+// Epochs only move forward; at the top they stay there.
+metareal_voice_floor_bump :: (f: [] Floor) -> u64 #export_c {
+  if f[0].epoch < MAX_EPOCH { f[0].epoch += 1; }
+  return f[0].epoch;
+}
+
+metareal_voice_floor_epoch_ok :: (f: [] Floor, epoch: u64) -> bool #export_c { return epoch == f[0].epoch; }
+
+// ---------------------------------------------------------------- checks
+
+// A reference model, written the obvious way inline (helpers would be
+// mutated too), run against the floor over every three-step sequence of
+// operations on three slots. Operation codes: 0..2 consent slot, 3..5
+// withdraw slot, 6..8 bind slot to 7, 9..11 unbind slot, 12..14 grant slot,
+// 15 release, 16 grant 8 (bad), 17 consent slot 8 (bad), 18 bind slot 9 (bad).
+OPS :: 19;
+
+#forall "the floor matches its model" a: 0..<OPS, b: 0..<OPS, c: 0..<OPS {
+  f: [1] Floor;
+  metareal_voice_floor_init(f[..]);
+  consent: [3] bool;
+  target: [3] u32;
+  holder := -1;
+  for step: 0..<4 {
+    for s: 0..<3 {
+      #assert metareal_voice_floor_may_hear(f[..], cast(u32) s) == (consent[s] && holder == s);
+      #assert metareal_voice_floor_route(f[..], cast(u32) s) == (ifx consent[s] then target[s] else cast(u32) 0);
+    }
+    if step == 3 { break; }
+    op := ifx step == 0 then a else ifx step == 1 then b else c;
+    s := op % 3;
+    if op < 3 {
+      consent[s] = true;
+      #assert metareal_voice_floor_consent(f[..], cast(u32) s, true);
+    } else if op < 6 {
+      consent[s] = false; target[s] = 0;
+      if holder == s { holder = -1; }
+      #assert metareal_voice_floor_consent(f[..], cast(u32) s, false);
+    } else if op < 9 {
+      ok := consent[s];
+      if ok { target[s] = 7; }
+      #assert metareal_voice_floor_bind(f[..], cast(u32) s, 7) == ok;
+    } else if op < 12 {
+      target[s] = 0;
+      #assert metareal_voice_floor_bind(f[..], cast(u32) s, 0);
+    } else if op < 15 {
+      ok := consent[s];
+      if ok { holder = s; }
+      #assert metareal_voice_floor_grant(f[..], cast(s32) s) == ok;
+    } else if op == 15 {
+      holder = -1;
+      #assert metareal_voice_floor_grant(f[..], -1);
+    } else if op == 16 {
+      #assert !metareal_voice_floor_grant(f[..], 8);
+    } else if op == 17 {
+      #assert !metareal_voice_floor_consent(f[..], 8, true);
+    } else {
+      #assert !metareal_voice_floor_bind(f[..], 9, 7);
+    }
+    #assert f[0].holder == cast(s32) holder;
+  }
+}
+
+#forall "bad slots" slot: 0..<20 {
+  f: [1] Floor;
+  metareal_voice_floor_init(f[..]);
+  ok := slot < 8;
+  #assert slot_ok(cast(u32) slot) == ok;
+  #assert metareal_voice_floor_consent(f[..], cast(u32) slot, true) == ok;
+  #assert metareal_voice_floor_bind(f[..], cast(u32) slot, 3) == ok;
+  #assert metareal_voice_floor_grant(f[..], cast(s32) slot) == ok;
+  #assert metareal_voice_floor_may_hear(f[..], cast(u32) slot) == ok;
+  #assert metareal_voice_floor_route(f[..], cast(u32) slot) == (ifx ok then 3 else cast(u32) 0);
+}
+
+#test "the top slot and negative grants" {
+  f: [1] Floor;
+  metareal_voice_floor_init(f[..]);
+  #assert metareal_voice_floor_consent(f[..], 7, true) && metareal_voice_floor_grant(f[..], 7);
+  #assert metareal_voice_floor_may_hear(f[..], 7) && f[0].holder == 7;
+  #assert !metareal_voice_floor_grant(f[..], -2) && f[0].holder == 7;
+  #assert !metareal_voice_floor_grant(f[..], 8) && f[0].holder == 7;
+  #assert metareal_voice_floor_bind(f[..], 7, 4294967295) && metareal_voice_floor_route(f[..], 7) == 4294967295;
+  #assert metareal_voice_floor_consent(f[..], 7, false) && f[0].holder == -1 && f[0].target[7] == 0;
+  // Withdrawing someone else's consent leaves the holder alone.
+  #assert metareal_voice_floor_consent(f[..], 1, true) && metareal_voice_floor_grant(f[..], 1);
+  #assert metareal_voice_floor_consent(f[..], 2, false) && f[0].holder == 1;
+  #assert metareal_voice_floor_consent(f[..], 0, false) && f[0].holder == 1;
+  // A holder that never consented is never heard (storage forced).
+  f[0].holder = 3;
+  #assert !metareal_voice_floor_may_hear(f[..], 3);
+  f[0].target[3] = 5;
+  #assert metareal_voice_floor_route(f[..], 3) == 0;
+}
+
+#test "epochs move forward and stop at the top" {
+  f: [1] Floor;
+  metareal_voice_floor_init(f[..]);
+  #assert metareal_voice_floor_epoch(f[..]) == 1;
+  #assert metareal_voice_floor_epoch_ok(f[..], 1) && !metareal_voice_floor_epoch_ok(f[..], 0) && !metareal_voice_floor_epoch_ok(f[..], 2);
+  #assert metareal_voice_floor_bump(f[..]) == 2 && metareal_voice_floor_epoch(f[..]) == 2;
+  #assert metareal_voice_floor_epoch_ok(f[..], 2) && !metareal_voice_floor_epoch_ok(f[..], 1);
+  f[0].epoch = MAX_EPOCH - 1;
+  #assert metareal_voice_floor_bump(f[..]) == MAX_EPOCH;
+  #assert metareal_voice_floor_bump(f[..]) == MAX_EPOCH;
+  f[0].consent[2] = true;
+  f[0].holder = 2;
+  metareal_voice_floor_init(f[..]);
+  #assert f[0].epoch == 1 && f[0].holder == -1 && !f[0].consent[2];
+}

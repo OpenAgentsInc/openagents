@@ -12,7 +12,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | Path | What |
 | --- | --- |
 | `coax/` | Coax, the language everything is being built in. It holds the specification (`spec.md`), the grammar, a book, and `coax0`, the C++20 bootstrap compiler that emits C11 |
-| `metareal/` | The engine, written in Coax: `home.coax` (scene, HUD, resource admission), `light.coax` (shader math emitted as Metal), `grid.coax` (the Grid that Start opens: ground ring, view matrix, touch controls, the terminal ahead of the spawn and the hotbar's dance slot), `player.coax` (the walking controller, collision with the robots' bodies and the terminal, and the third-person camera, ported from aethyr-cpp), `camera.coax` (the home's overview orbit and Start's dolly down to you), `wallet.coax` (the Spark wallet's payment rules, `#authority`), `cast.coax` (your skinned character, its clip blending, and the robots and their body capsules, read from `Cast.bin`; `tools/pack_cast.py` packs it from aethyr-cpp assets), `haunt.coax` (the complete local Haunted House gameplay/editor/document path), `haunt-buffer.coax` (`#authority` GPU span gate), `hud.coax` (reusable hotbar layout), and `platform/host.c` |
+| `metareal/` | The engine, written in Coax: `home.coax` (scene, HUD, resource admission), `light.coax` (shader math emitted as Metal), `grid.coax` (the Grid that Start opens: ground ring, view matrix, touch controls, the terminal ahead of the spawn and the hotbar's dance slot), `player.coax` (the walking controller, collision with the robots' bodies and the terminal, and the third-person camera, ported from aethyr-cpp), `camera.coax` (the home's overview orbit and Start's dolly down to you), `wallet.coax` (the Spark wallet's payment rules, `#authority`), `cast.coax` (your skinned character, its clip blending, and the robots and their body capsules, read from `Cast.bin`; `tools/pack_cast.py` packs it from aethyr-cpp assets), `haunt.coax` (the complete local Haunted House gameplay/editor/document path), `haunt-buffer.coax` (`#authority` GPU span gate), `hud.coax` (reusable hotbar layout), the voice engine (`voice.coax`: resampling to 16 kHz, levels, noise floor, VAD, end of turn, barge-in, jitter buffer, gain/duck/rate, per-frame FrameFeatures and FrameDecisions; `voice-wire.coax`: Frame codecs from `voice.pb`; `voice-floor.coax`: consent, input floor, media epochs, `#authority`; `voice-meter.coax`: free tier and pricing, `#authority`), `platform/voice.h` (the voice C contract) and `platform/voice.c`, and `platform/host.c` |
 | `apps/openagents-ios/` | The only app: a UIKit and Metal shell around the Coax home. Bundle `com.openagents.app` |
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |
@@ -50,6 +50,7 @@ coax/bin/coax mutate FILE                   # are the checks sharp?
 scripts/proto.sh check                      # schemas (needs PROTOC and PROTO_PYTHON)
 python3 metareal/test_home.py               # the home against real protobuf
 metareal/test_sanitized.sh                  # ASan/UBSan harness
+metareal/test_voice.sh [WAV...]             # voice engine, wire, floor, meter through voice.h (ASan/UBSan, protoc)
 apps/openagents-ios/build.sh                # the app, for the simulator
 ```
 
