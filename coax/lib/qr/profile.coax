@@ -1,0 +1,60 @@
+// The initial QR consumer: byte mode, error correction M, versions1..15.
+// This is resource admission, never authentication of the encoded contents.
+#authority;
+QR_ECC :: [16]int.[0,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24];
+QR_BLOCKS :: [16]int.[0,1,1,1,2,2,4,4,4,5,5,5,8,9,9,10];
+QrAdmission :: struct {status:int;version:int;size:int;count:int;}
+QrResult :: struct {status:int;version:int;size:int;count:int;mask:int;penalty:int;}
+
+#forall "all byte capacity transitions select the smallest version" length:-1..<414 {
+  capacities:=[15]int.[14,26,42,62,84,106,122,152,180,213,251,287,331,362,412];
+  expected:=0;for v:0..<15 {if expected==0 && length>=0 && length<=capacities[v] {expected=v+1;}}
+  p:=qr_admit(length,5929,-1,false);
+  #assert (p.status==0)==(expected!=0);
+  if expected!=0 {#assert p.version==expected && p.size==17+4*expected && p.count==p.size*p.size;}
+  else {#assert p.status==1 && p.version==0 && p.size==0 && p.count==0;}
+}
+#forall "output capacity has an exact readable boundary" version:1..<16 {
+  length:=qr_capacity(version);size:=17+version*4;
+  #assert qr_admit(length,size*size,-1,false).status==0;
+  p:=qr_admit(length,size*size-1,-1,false);#assert p.status==2 && p.count==0;
+}
+#forall "only automatic or eight standard masks are admitted" mask:-2..<10 {
+ #assert (qr_admit(0,441,mask,false).status==0)==(mask>=-1 && mask<=7);
+}
+#test "negative capacity and physical alias refuse before writing" {
+ #assert qr_admit(0,-1,-1,false).status==2;
+ #assert qr_admit(0,441,-1,true).status==4;
+ #assert qr_admit(413,5929,-1,false).status==1;
+ #assert qr_admit(0,5929,8,false).status==3;
+ #assert qr_admit(0,441,-1,false).count==441;
+ #assert qr_admit(412,5929,7,false).count==5929;
+}
+#test "raw and data codeword geometry includes version information" {
+ raw:=[15]int.[26,44,70,100,134,172,196,242,292,346,404,466,532,581,655];
+ data:=[15]int.[16,28,44,64,86,108,124,154,182,216,254,290,334,365,415];
+ for i:0..<15 {#assert qr_raw_modules(i+1)/8==raw[i] && qr_data_words(i+1)==data[i];}
+}
+#forall "internal geometry requires a supported public version" version:-1..<18 {
+ #assert qr_version_valid(version)==(version>=1 && version<=15);
+}
+
+qr_version_valid :: (version:int)->bool {return version>=1 && version<=15;}
+qr_raw_modules :: (version:int)->int {
+ #assert qr_version_valid(version);
+ bits:=(16*version+128)*version+64;
+ if version>=2 {align:=version/7+2;bits-=(25*align-10)*align-55;if version>=7 {bits-=36;}}
+ return bits;
+}
+qr_data_words :: (version:int)->int {return qr_raw_modules(version)/8-QR_ECC[version]*QR_BLOCKS[version];}
+// The4-bit mode plus8/16-bit count consumes exactly two/three whole bytes
+// when rounding payload capacity down. No partial-byte capacity is exposed.
+qr_capacity :: (version:int)->int {return qr_data_words(version)-(ifx version<10 then 2 else 3);}
+qr_admit :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export_c {
+ if length<0 || length>412 {return QrAdmission.{status=1};}
+ if mask< -1 || mask>7 {return QrAdmission.{status=3};}
+ if overlap {return QrAdmission.{status=4};}
+ version:=1;while length>qr_capacity(version) {version+=1;}
+ size:=17+4*version;if capacity<size*size {return QrAdmission.{status=2};}
+ return QrAdmission.{version=version,size=size,count=size*size};
+}

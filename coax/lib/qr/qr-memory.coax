@@ -1,0 +1,8 @@
+// Actual span alias observation; all encoding and admission stays in Coax.
+#load "qr.coax";
+qr_encode :: (input:[]u8,out:[]u8)->QrResult #export_c {
+ return qr_encode_checked(input,out,-1,bytes_overlap(input,out));
+}
+qr_encode_mask :: (input:[]u8,out:[]u8,mask:int)->QrResult #export_c {
+ return qr_encode_checked(input,out,mask,bytes_overlap(input,out));
+}

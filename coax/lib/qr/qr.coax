@@ -1,0 +1,173 @@
+// QR Model2 byte mode / M, versions1..15. Reference math and mask convention:
+// Project Nayuki (MIT); see LICENSE-NAYUKI. No text normalization or signing.
+#load "profile.coax";
+QrWork :: struct {cells:[5929]u8;function:[5929]u8;data:[655]u8;code:[655]u8;}
+
+#forall "QR field multiplication has byte identities" value:0..<256 {
+ #assert qr_gf(cast(u8)value,0)==0 && qr_gf(cast(u8)value,1)==cast(u8)value;
+ #assert qr_gf(2,cast(u8)value)==qr_gf(cast(u8)value,2);
+}
+#test "standard metadata and alignment coordinates are explicit" {
+ #assert qr_gf(128,2)==29 && qr_format_bits(0)==0x5412 && qr_version_bits(7)==0x7C94;
+ #assert qr_alignment(15,0)==6 && qr_alignment(15,1)==26 && qr_alignment(15,2)==48 && qr_alignment(15,3)==70;
+ #assert qr_alignment(7,1)==22 && qr_alignment(2,1)==18;
+}
+#test "finder penalty includes scaled patterns and both light margins" {
+ h:=[7]int.[4,1,1,3,1,1,4];#assert qr_patterns(h[..])==2;
+ h[0]=1;#assert qr_patterns(h[..])==1;
+ h[6]=1;#assert qr_patterns(h[..])==0;
+ h=[7]int.[8,2,2,6,2,2,8];#assert qr_patterns(h[..])==2;
+ h[3]=5;#assert qr_patterns(h[..])==0;
+}
+
+qr_gf :: (left:u8,right:u8)->u8 {
+ a:=cast(int)left;b:=cast(int)right;r:=0;
+ for i:0..<8 {if (b&1)!=0 {r^=a;}b=b>>1;a=a<<1;if (a&256)!=0 {a^=285;}}
+ return cast(u8)r;
+}
+qr_write_bits :: (out:[]u8,start:int,width:int,value:int)->int {
+ for i:0..<width {at:=start+i;out[at/8]|=cast(u8)(((value>>(width-1-i))&1)<<(7-at%8));}
+ return start+width;
+}
+qr_payload :: (s:[]QrWork,input:[]u8,version:int) {
+ data:=s[0].data[..];limit:=qr_data_words(version);
+ at:=qr_write_bits(data,0,4,4);at=qr_write_bits(data,at,ifx version<10 then 8 else 16,input.count);
+ for b:input {at=qr_write_bits(data,at,8,cast(int)b);}
+ at=qr_write_bits(data,at,qr_min(4,limit*8-at),0);
+ at=qr_write_bits(data,at,(8-at%8)%8,0);
+ pad:=236;while at<limit*8 {at=qr_write_bits(data,at,8,pad);pad^=253;}
+}
+qr_ecc :: (s:[]QrWork,version:int) {
+ degree:=QR_ECC[version];blocks:=QR_BLOCKS[version];raw:=qr_raw_modules(version)/8;
+ short:=raw/blocks;short_count:=blocks-raw%blocks;short_data:=short-degree;
+ divisor:[30]u8;divisor[degree-1]=1;root:u8=1;
+ for i:0..<degree {
+  for j:0..<degree {divisor[j]=qr_gf(divisor[j],root);if j+1<degree {divisor[j]^=divisor[j+1];}}
+  root=qr_gf(root,2);
+ }
+ rows:[820]u8;cursor:=0;
+ for block:0..<blocks {
+  length:=short_data+(ifx block<short_count then 0 else 1);remainder:[30]u8;
+  for i:0..<length {
+   byte:=s[0].data[cursor];cursor+=1;rows[block*82+i]=byte;factor:=byte^remainder[0];
+   for j:0..<degree-1 {remainder[j]=remainder[j+1];}remainder[degree-1]=0;
+   for j:0..<degree {remainder[j]^=qr_gf(divisor[j],factor);}
+  }
+  for i:0..<degree {rows[block*82+short_data+1+i]=remainder[i];}
+ }
+ at:=0;
+ for i:0..<short+1 {for block:0..<blocks {
+  if i!=short_data || block>=short_count {s[0].code[at]=rows[block*82+i];at+=1;}
+ }}
+ #assert at==raw && cursor==qr_data_words(version);
+}
+qr_set :: (s:[]QrWork,size:int,x:int,y:int,dark:bool) {
+ s[0].cells[y*size+x]=cast(u8)(ifx dark then 1 else 0);s[0].function[y*size+x]=1;
+}
+qr_format_bits :: (mask:int)->int {
+ r:=mask;for i:0..<10 {r=(r<<1)^((r>>9)*1335);}return ((mask<<10)|r)^21522;
+}
+qr_format :: (s:[]QrWork,size:int,mask:int) {
+ bits:=qr_format_bits(mask);
+ for i:0..<6 {qr_set(s,size,8,i,((bits>>i)&1)!=0);}
+ qr_set(s,size,8,7,((bits>>6)&1)!=0);qr_set(s,size,8,8,((bits>>7)&1)!=0);qr_set(s,size,7,8,((bits>>8)&1)!=0);
+ for i:9..<15 {qr_set(s,size,14-i,8,((bits>>i)&1)!=0);}
+ for i:0..<8 {qr_set(s,size,size-1-i,8,((bits>>i)&1)!=0);}
+ for i:8..<15 {qr_set(s,size,8,size-15+i,((bits>>i)&1)!=0);}
+ qr_set(s,size,8,size-8,true);
+}
+qr_version_bits :: (version:int)->int {
+ r:=version;for i:0..<12 {r=(r<<1)^((r>>11)*7973);}return (version<<12)|r;
+}
+qr_alignment :: (version:int,index:int)->int {
+ if index==0 {return 6;}
+ count:=version/7+2;step:=(version*8+count*3+5)/(count*4-4)*2;
+ return version*4+10-(count-1-index)*step;
+}
+qr_functions :: (s:[]QrWork,version:int,size:int) {
+ for i:0..<size {qr_set(s,size,6,i,i%2==0);qr_set(s,size,i,6,i%2==0);}
+ for corner:0..<3 {
+  cx:=ifx corner==1 then size-4 else 3;cy:=ifx corner==2 then size-4 else 3;
+  for dy:-4..<5 {for dx:-4..<5 {
+   x:=cx+dx;y:=cy+dy;if x>=0 && x<size && y>=0 && y<size {distance:=qr_max(qr_abs(dx),qr_abs(dy));qr_set(s,size,x,y,distance!=2 && distance!=4);}
+  }}
+ }
+ if version>1 {
+  count:=version/7+2;
+  for i:0..<count {for j:0..<count {
+   if !((i==0 && j==0)||(i==0 && j==count-1)||(i==count-1 && j==0)) {
+    cx:=qr_alignment(version,i);cy:=qr_alignment(version,j);
+    for dy:-2..<3 {for dx:-2..<3 {qr_set(s,size,cx+dx,cy+dy,qr_max(qr_abs(dx),qr_abs(dy))!=1);}}
+   }
+  }}
+ }
+ qr_format(s,size,0);
+ if version>=7 {bits:=qr_version_bits(version);for i:0..<18 {x:=size-11+i%3;y:=i/3;dark:=((bits>>i)&1)!=0;qr_set(s,size,x,y,dark);qr_set(s,size,y,x,dark);}}
+}
+qr_place :: (s:[]QrWork,size:int,version:int) {
+ bit:=0;limit:=qr_raw_modules(version)/8*8;right:=size-1;
+ while right>=1 {
+  if right==6 {right-=1;}
+  for vertical:0..<size {for j:0..<2 {
+   x:=right-j;y:=ifx ((right+1)&2)==0 then size-1-vertical else vertical;at:=y*size+x;
+   if s[0].function[at]==0 && bit<limit {s[0].cells[at]=cast(u8)((s[0].code[bit/8]>>(7-bit%8))&1);bit+=1;}
+  }}right-=2;
+ }
+ #assert bit==limit;
+}
+qr_mask_bit :: (mask:int,x:int,y:int)->bool {
+ if mask==0 {return (x+y)%2==0;}if mask==1 {return y%2==0;}if mask==2 {return x%3==0;}if mask==3 {return (x+y)%3==0;}
+ if mask==4 {return (x/3+y/2)%2==0;}if mask==5 {return x*y%2+x*y%3==0;}
+ if mask==6 {return (x*y%2+x*y%3)%2==0;}return ((x+y)%2+x*y%3)%2==0;
+}
+qr_apply_mask :: (s:[]QrWork,size:int,mask:int) {
+ for y:0..<size {for x:0..<size {at:=y*size+x;if s[0].function[at]==0 && qr_mask_bit(mask,x,y) {s[0].cells[at]^=1;}}}
+}
+qr_history :: (history:[]int,run:int,size:int) {
+ value:=run;if history[0]==0 {value+=size;}
+ for i:0..<6 {history[6-i]=history[5-i];}history[0]=value;
+}
+qr_patterns :: (h:[]int)->int {
+ n:=h[1];core:=n>0 && h[2]==n && h[3]==n*3 && h[4]==n && h[5]==n;
+ a:=core && h[0]>=n*4 && h[6]>=n;b:=core && h[6]>=n*4 && h[0]>=n;
+ return (ifx a then 1 else 0)+(ifx b then 1 else 0);
+}
+qr_line_penalty :: (modules:[]u8,size:int,line:int,column:bool)->int {
+ color:u8=0;run:=0;score:=0;history:[7]int;
+ for i:0..<size {
+  at:=ifx column then i*size+line else line*size+i;
+  if modules[at]==color {run+=1;if run==5 {score+=3;}else if run>5 {score+=1;}}
+  else {qr_history(history[..],run,size);if color==0 {score+=qr_patterns(history[..])*40;}color=modules[at];run=1;}
+ }
+ if color!=0 {qr_history(history[..],run,size);run=0;}
+ qr_history(history[..],run+size,size);return score+qr_patterns(history[..])*40;
+}
+qr_penalty :: (modules:[]u8,size:int)->int #export_c {
+ score:=0;dark:=0;
+ for i:0..<size {score+=qr_line_penalty(modules,size,i,false)+qr_line_penalty(modules,size,i,true);}
+ for y:0..<size {for x:0..<size {
+  at:=y*size+x;dark+=cast(int)modules[at];
+  if x+1<size && y+1<size && modules[at]==modules[at+1] && modules[at]==modules[at+size] && modules[at]==modules[at+size+1] {score+=3;}
+ }}
+ total:=size*size;score+=((qr_abs(dark*20-total*10)+total-1)/total-1)*10;return score;
+}
+qr_encode_checked :: (input:[]u8,out:[]u8,mask:int,overlap:bool)->QrResult {
+ admission:=qr_admit(input.count,out.count,mask,overlap);if admission.status!=0 {return QrResult.{status=admission.status};}
+ work:[1]QrWork;version:=admission.version;size:=admission.size;
+ qr_payload(work[..],input,version);qr_ecc(work[..],version);qr_functions(work[..],version,size);qr_place(work[..],size,version);
+ selected:=mask;best:=2147483647;
+ if mask== -1 {
+  for candidate:0..<8 {
+   qr_apply_mask(work[..],size,candidate);qr_format(work[..],size,candidate);score:=qr_penalty(work[0].cells[..],size);
+   if score<best {best=score;selected=candidate;}qr_apply_mask(work[..],size,candidate);
+  }
+ }
+ qr_apply_mask(work[..],size,selected);qr_format(work[..],size,selected);
+ if mask!= -1 {best=qr_penalty(work[0].cells[..],size);}
+ for i:0..<admission.count {out[i]=work[0].cells[i];}
+ return QrResult.{version=version,size=size,count=admission.count,mask=selected,penalty=best};
+}
+
+qr_abs :: (value:int)->int {return ifx value<0 then -value else value;}
+qr_min :: (a:int,b:int)->int {return ifx a<b then a else b;}
+qr_max :: (a:int,b:int)->int {return ifx a>b then a else b;}

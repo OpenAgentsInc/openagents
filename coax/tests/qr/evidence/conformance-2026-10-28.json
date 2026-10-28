@@ -1,0 +1,92 @@
+{
+  "coax_checks": {
+    "killed": 74,
+    "loaded": 9,
+    "mutants": 74,
+    "policy": 6,
+    "survived": 0
+  },
+  "compiler": "coax0 0.16.0",
+  "compiler_sha256": "46d332386114ff213a2083440469332742915ea99b2506a9619730420fda2719",
+  "fixed_reference_grids_per_mode": 20,
+  "focused_tests": 4,
+  "ios_scanner": "pending; source delivery only, no physical camera or sign-in claim",
+  "modes": [
+    {
+      "flags": [
+        "-std=c11",
+        "-O2"
+      ],
+      "generated_c_sha256": "f23f48cf494e788f85fa7f930a5c7ce32b10cc27b3e27f1fafece9e3f2cdbe55",
+      "name": "checked",
+      "object_sha256": "c3005cd41234c05742c894f64bccd753630bb162b7297e4a8fa04df177f3327a"
+    },
+    {
+      "flags": [
+        "-std=c11",
+        "-O2"
+      ],
+      "generated_c_sha256": "bf0920949bfd04be7eb3f1135eed361a72d4eeb276a8b29c21e6db76d39729f7",
+      "name": "release",
+      "object_sha256": "17dfc695466e56359157c02dfa84a6aa114e8170f8b5e6775723f9fd64ef48eb"
+    }
+  ],
+  "reference_sha256": "161bf7a1b06c77484dac4a8111ba400dea68e4abbb7fd0dda058861924f66eff",
+  "sanitizer": {
+    "binary_sha256": "72b30452c25e4db4642cc64e3de7bc31bbc3073a4d28787d5fef32535d2570ed",
+    "flags": [
+      "-O1",
+      "-g",
+      "-fsanitize=address,undefined"
+    ],
+    "grids": 20,
+    "input_sha256": "36b3ed39d5b7efd2e819e91b0af1de5a40f56ebb54024e270d9343fa2397b4b3"
+  },
+  "schema": "coax.qr-evidence.v1",
+  "scope": "Byte-mode M versions1..15 only; no authentication, camera optics, ECI or numeric segmentation claim",
+  "sources": {
+    "coax/lib/qr/LICENSE-NAYUKI": "febcfd0c6e04537458cc4923d8abf05c68bb5b1aa1b29359f20033c48e1cb737",
+    "coax/lib/qr/README.md": "9008ef1e0bc43acd8ce597d0984cb5cef11416f6d97d63a3287ce8278b3aa0c8",
+    "coax/lib/qr/profile.coax": "d2704bd42b30d003e5484c5935788c420c48ccff90d25db03c48e1e4389aab13",
+    "coax/lib/qr/qr-memory.coax": "a4b683419ea1ce220f625f6c0849a5c64f4f80a37a6b449f3156d2eea72b125d",
+    "coax/lib/qr/qr.coax": "cd2b9c40ead18b83a54580945424d443a884e468caaa7433224d4c348fafd253",
+    "coax/tests/qr/capture_reference.ts": "8b8e59e89c9edbd421cb20d1f69afa2c70e1acfcf24ecb6f7c16d050851e3ecd",
+    "coax/tests/qr/reference-2026-10-28.json": "161bf7a1b06c77484dac4a8111ba400dea68e4abbb7fd0dda058861924f66eff",
+    "coax/tests/qr/test_qr.py": "9b7ed55d06c10030a0dc3c1d52c39ca2ab32ba5dfdb2bf51638fc59bc72fa58f",
+    "coax/tests/qr/wasm.c": "9fca9c7df3c5e1875d039339baaaf2e86f2c5c46c3dd517fb6c56d4f9d55e1bc",
+    "coax/tests/qr/wasm.cjs": "172ab94fcde0e9c6c7745d3b86d460c9440f83eb46d422e1a79c261e41b0c696"
+  },
+  "versions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "wasm": [
+    {
+      "artifact_sha256": "17e421cf72dfbe5e23ce7bc9a198e429b2095fd3676413b779bd954f4075282d",
+      "engine": "Bun1.4.0 V8-compatible Wasm API; not a browser timing report",
+      "failures": 0,
+      "grids": 20,
+      "mode": "checked"
+    },
+    {
+      "artifact_sha256": "cfd9845fb54d351c01fdd6acb5e1338f5e7b1ea737e2d9b6841c34a17df08a8e",
+      "engine": "Bun1.4.0 V8-compatible Wasm API; not a browser timing report",
+      "failures": 0,
+      "grids": 20,
+      "mode": "release"
+    }
+  ]
+}
