@@ -12,7 +12,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | Path | What |
 | --- | --- |
 | `coax/` | Coax, the language everything is being built in. It holds the specification (`spec.md`), the grammar, a book, and `coax0`, the C++20 bootstrap compiler that emits C11 |
-| `metareal/` | The engine, written in Coax: `home.coax` (scene, HUD, resource admission), `light.coax` (shader math emitted as Metal), and `platform/host.c` |
+| `metareal/` | The engine, written in Coax: `home.coax` (scene, HUD, resource admission), `light.coax` (shader math emitted as Metal), `player.coax` (the walking controller and third-person camera, ported from aethyr-cpp; not in the app yet), and `platform/host.c` |
 | `apps/openagents-ios/` | The only app: a UIKit and Metal shell around the Coax home. Bundle `com.openagents.app` |
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |

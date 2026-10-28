@@ -1,0 +1,708 @@
+// The player controller every walkable Metareal world uses, starting with the
+// Grid: a port of aethyr-cpp's src/player_core.cpp, itself a port of
+// three-player-controller (github.com/hh-hang/three-player-controller, MIT).
+// It covers walking, running, gravity, jumping and the third-person camera.
+// First person, top down, the front view, animation clips, sounds and dust
+// come later.
+//
+// Units are metres and seconds; +Y is up, and yaw 0 faces +Z, as in
+// openagents.engine.v1. The host keeps a Player value and passes it back on
+// every call. Controls arrive in the shape of engine.v1 InputIntent.
+//
+// The world answers three questions: the floor under your feet, how far you
+// may move before a wall, and how far the camera may sit before something is
+// in the way. For now World stands in for collision: a flat floor at
+// `ground`, no walls, and `room` metres of camera room. The exported calls
+// use the bare Grid, World{}. The populated Grid's collision replaces the
+// three procedures under "The world" and nothing else.
+//
+// Changes from aethyr: the fixed step is 1/64 s instead of 1/60 s, so step
+// counts are exact; a stick inside the dead zone is no input (aethyr walked
+// at full speed on any stick drift).
+
+PI :: 3.14159265;
+TAU :: 6.2831853;
+
+WALK :: 3.5;            // m/s
+RUN :: 7.5;
+GRAVITY :: 24.0;        // m/s^2
+JUMP :: 7.5;            // m/s up: a 1.17 m peak
+ACCEL :: 60.0;          // m/s^2, speeding up and slowing down alike
+TURN_RATE :: 10.0;      // how fast the character turns to face its way
+RIDE_HEIGHT :: 0.4;     // higher than this above the floor is falling
+STEP_SMOOTH :: 10.0;
+LOOK_AT_HEIGHT :: 1.52; // the camera's target above the feet
+CAM_MAX :: 4.4;
+CAM_WALL_MIN :: 0.35;   // closest a wall pushes the camera in
+CAM_LERP :: 0.18;       // per 1/60 s, as the library tuned it
+SPRING_TIME :: 0.1;
+PHI_MIN :: 0.1;         // the camera's angle down from straight up
+PHI_MAX :: 3.04159265;  // PI - PHI_MIN
+BEHIND_PHI :: 1.10714872; // atan2(400, 200): behind you and above
+DEAD_ZONE :: 0.2;       // stick travel that counts as no input
+STEP :: 0.015625;       // the fixed gameplay step, 1/64 s
+MAX_STEPS :: 8;         // steps one frame may run; the rest is dropped
+MAX_FRAME :: 0.25;      // the longest frame time that counts
+
+Vec3 :: struct { x: f32; y: f32; z: f32; }
+
+// The stand-in world: a flat floor and the camera's room.
+World :: struct {
+  ground: f32 = 0;
+  room: f32 = 1000;
+}
+
+// What the character is doing, for the animation that comes later. The
+// host reads it as metareal_player_act's number.
+Act :: enum u8 { idle; walking; running; airborne; }
+
+Player :: struct {
+  pos: Vec3;            // feet, after the last step
+  vel: Vec3;
+  face: f32;            // yaw the character faces
+  on_ground: bool = true;
+  act: Act = Act.idle;
+  // The orbit camera: theta around +Y from +Z, phi down from +Y, and its
+  // distance from the spring-followed target.
+  theta: f32 = PI;
+  phi: f32 = BEHIND_PHI;
+  dist: f32 = CAM_MAX;
+  max_dist: f32 = CAM_MAX;
+  target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
+  spring_vel: Vec3;
+  // The controls held now.
+  key_x: f32;
+  key_y: f32;
+  pad_x: f32;
+  pad_y: f32;
+  run: bool;
+  jump_held: bool;
+  // Fixed steps: time not yet stepped, and where the last step began, so the
+  // frame shows a point between the last two steps.
+  carry: f32;
+  prev_pos: Vec3;
+  prev_target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
+  prev_face: f32;
+  prev_dist: f32 = CAM_MAX;
+}
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+mix3 :: (a: Vec3, b: Vec3, t: f32) -> Vec3 {
+  return Vec3.{x = mix(a.x, b.x, t), y = mix(a.y, b.y, t), z = mix(a.z, b.z, t)};
+}
+finite :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+
+// An angle in [-PI, PI).
+wrap_angle :: (a: f32) -> f32 { return a - f32(TAU) * floor((a + f32(PI)) / f32(TAU)); }
+
+// atan on [0, 1], within 2e-5 rad.
+atan_unit :: (t: f32) -> f32 {
+  s := t * t;
+  return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
+}
+
+// The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin.
+atan2 :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  a := ifx ay > ax then f32(PI / 2) - atan_unit(ax / ay) else atan_unit(ay / ax);
+  if x < 0 { a = f32(PI) - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+
+// ---- The world ----
+
+floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 { return w.ground; }
+// Moves p horizontally by (dx, dz), stopping at walls, and zeroes the blocked
+// parts of its velocity. There are no walls yet.
+move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player {
+  next := p;
+  next.pos.x += dx;
+  next.pos.z += dz;
+  return next;
+}
+// How far the camera may sit from target along offset before something is
+// in the way, up to max.
+camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 { return lo(w.room, max); }
+
+// ---- The controller ----
+
+look_at :: (p: Player) -> Vec3 { return Vec3.{x = p.pos.x, y = p.pos.y + f32(LOOK_AT_HEIGHT), z = p.pos.z}; }
+
+orbit_offset :: (p: Player) -> Vec3 {
+  return Vec3.{x = sin(p.phi) * sin(p.theta), y = cos(p.phi), z = sin(p.phi) * cos(p.theta)};
+}
+
+place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Player {
+  p: Player;
+  p.pos = Vec3.{x = x, y = y, z = z};
+  p.face = wrap_angle(yaw);
+  p.theta = wrap_angle(yaw + f32(PI));
+  p.on_ground = y - floor_at(w, x, z, y) <= f32(RIDE_HEIGHT);
+  p.target = look_at(p);
+  p.prev_pos = p.pos;
+  p.prev_target = p.target;
+  p.prev_face = p.face;
+  return p;
+}
+
+// Stands at feet facing yaw, with the camera behind.
+metareal_player_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player #export_c {
+  w: World;
+  return place_in(w, x, y, z, yaw);
+}
+
+// This frame's controls, as InputIntent carries them: keyboard axes (-1, 0,
+// 1), stick axes in [-1, 1] (x right, y forward), run and jump held, and look
+// deltas in radians (positive turns left and looks up). Jump acts when it is
+// first pressed; the look turns the camera at once.
+metareal_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
+                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #export_c {
+  next := p;
+  next.key_x = clamp(key_x, -1, 1);
+  next.key_y = clamp(key_y, -1, 1);
+  next.pad_x = clamp(pad_x, -1, 1);
+  next.pad_y = clamp(pad_y, -1, 1);
+  if !finite(key_x) { next.key_x = 0; }
+  if !finite(key_y) { next.key_y = 0; }
+  if !finite(pad_x) || !finite(pad_y) { next.pad_x = 0; next.pad_y = 0; }
+  next.run = run;
+  pressed := jump && !p.jump_held;
+  next.jump_held = jump;
+  if pressed && next.on_ground {
+    next.vel.y = JUMP;
+    next.on_ground = false;
+  }
+  if finite(dyaw) { next.theta = wrap_angle(next.theta + dyaw); }
+  if finite(dpitch) { next.phi = clamp(next.phi + dpitch, PHI_MIN, PHI_MAX); }
+  return next;
+}
+
+// The way the controls push in the world, unit length when `on`.
+Wish :: struct { x: f32; z: f32; on: bool; }
+
+// Stick when it is past the dead zone, else keys, turned from the camera's
+// frame into the world's.
+wish :: (p: Player) -> Wish {
+  ax := p.key_x; ay := p.key_y;
+  if sqrt(p.pad_x * p.pad_x + p.pad_y * p.pad_y) > f32(DEAD_ZONE) { ax = p.pad_x; ay = p.pad_y; }
+  size := sqrt(ax * ax + ay * ay);
+  w: Wish;
+  if size == 0 { return w; }
+  mx := ax / size; mz := -ay / size;
+  // Turn local -Z onto the camera's flat forward. The camera sits at theta
+  // around the target, so its flat forward is -(sin theta, cos theta).
+  c := cos(p.theta); s := sin(p.theta);
+  w.x = mx * c + mz * s;
+  w.z = -mx * s + mz * c;
+  w.on = true;
+  return w;
+}
+
+// The library's spring: a critically damped follow of dest, per axis. It
+// returns the new position in x and the new velocity in y.
+spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> Vec3 {
+  omega := f32(2.0 / SPRING_TIME);
+  x := omega * dt;
+  e := 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  change := cur - dest;
+  temp := (vel + omega * change) * dt;
+  v := (vel - omega * temp) * e;
+  o := dest + (change + temp) * e;
+  if (dest - cur > 0) == (o > dest) { o = dest; v = 0; }
+  return Vec3.{x = o, y = v, z = 0};
+}
+
+spring :: (p: Player, dest: Vec3, dt: f32) -> Player {
+  next := p;
+  a := spring_axis(p.target.x, p.spring_vel.x, dest.x, dt);
+  b := spring_axis(p.target.y, p.spring_vel.y, dest.y, dt);
+  c := spring_axis(p.target.z, p.spring_vel.z, dest.z, dt);
+  next.target = Vec3.{x = a.x, y = b.x, z = c.x};
+  next.spring_vel = Vec3.{x = a.y, y = b.y, z = c.y};
+  return next;
+}
+
+// One fixed step.
+step :: (w: World, p: Player, dt: f32) -> Player {
+  next := p;
+  dir := wish(p);
+  speed := ifx p.run then f32(RUN) else f32(WALK);
+
+  // Horizontal velocity steps toward the wish at a fixed rate.
+  dx := dir.x * speed - next.vel.x;
+  dz := dir.z * speed - next.vel.z;
+  diff := sqrt(dx * dx + dz * dz);
+  if diff > 0 {
+    applied := lo(diff, f32(ACCEL) * dt);
+    next.vel.x += dx / diff * applied;
+    next.vel.z += dz / diff * applied;
+  }
+  next = move_across(w, next, next.vel.x * dt, next.vel.z * dt);
+
+  // Gravity and the floor.
+  ground := floor_at(w, next.pos.x, next.pos.z, next.pos.y);
+  above := next.pos.y - ground;
+  falls := true;
+  if above <= f32(RIDE_HEIGHT) && next.vel.y <= 0 {
+    if next.on_ground {
+      // Standing: ease onto the floor.
+      next.vel.y = 0;
+      next.pos.y += (ground - next.pos.y) * lo(1, f32(STEP_SMOOTH) * dt);
+      falls = false;
+    } else if above + next.vel.y * dt <= 0 {
+      // Lands this step.
+      next.vel.y = 0;
+      next.pos.y = ground;
+      next.on_ground = true;
+      falls = false;
+    }
+  }
+  if falls {
+    next.vel.y -= f32(GRAVITY) * dt;
+    next.on_ground = false;
+  }
+  next.pos.y = hi(next.pos.y + next.vel.y * dt, ground - 0.05);
+
+  // Turn toward where you are going.
+  if dir.on {
+    want := atan2(dir.x, dir.z);
+    next.face = wrap_angle(next.face + wrap_angle(want - next.face) * lo(1, f32(TURN_RATE) * dt));
+  }
+
+  // Follow on the spring, and pull in at once where something is in the
+  // way; back out gently.
+  next = spring(next, look_at(next), dt);
+  room := hi(f32(CAM_WALL_MIN), camera_room(w, next.target, orbit_offset(next), next.max_dist));
+  if room < next.dist { next.dist = room; }
+  else { next.dist += (room - next.dist) * (1 - pow(f32(1 - CAM_LERP), dt * 60)); }
+
+  if !next.on_ground { next.act = Act.airborne; }
+  else if !dir.on { next.act = Act.idle; }
+  else if p.run { next.act = Act.running; }
+  else { next.act = Act.walking; }
+  return next;
+}
+
+// Advances by a frame's time in fixed steps. At most MAX_STEPS run, and a
+// longer backlog is dropped, so a stall never makes a frame slower.
+advance_in :: (w: World, p: Player, frame: f32) -> Player {
+  next := p;
+  if finite(frame) { next.carry += clamp(frame, 0, MAX_FRAME); }
+  n := 0;
+  while next.carry >= f32(STEP) && n < MAX_STEPS {
+    next.prev_pos = next.pos;
+    next.prev_target = next.target;
+    next.prev_face = next.face;
+    next.prev_dist = next.dist;
+    next = step(w, next, STEP);
+    next.carry -= STEP;
+    n += 1;
+  }
+  if next.carry >= f32(STEP) { next.carry = 0; }
+  return next;
+}
+
+metareal_player_advance :: (p: Player, frame: f32) -> Player #export_c {
+  w: World;
+  return advance_in(w, p, frame);
+}
+
+// How far this frame is between the last two steps, in [0, 1].
+alpha :: (p: Player) -> f32 { return clamp(p.carry / f32(STEP), 0, 1); }
+
+// The feet and facing to draw this frame.
+metareal_player_feet :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_pos, p.pos, alpha(p)); }
+metareal_player_face :: (p: Player) -> f32 #export_c {
+  return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
+}
+// The camera this frame: what it looks at, and where it is. A wall pulls the
+// camera in at once, so it is never shown further out than the last step.
+metareal_player_at :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_target, p.target, alpha(p)); }
+metareal_player_eye :: (p: Player) -> Vec3 #export_c {
+  at := metareal_player_at(p);
+  o := orbit_offset(p);
+  d := lo(mix(p.prev_dist, p.dist, alpha(p)), p.dist);
+  return Vec3.{x = at.x + o.x * d, y = at.y + o.y * d, z = at.z + o.z * d};
+}
+metareal_player_act :: (p: Player) -> int #export_c { return cast(int) cast(u8) p.act; }
+
+// ---- Checks ----
+
+near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
+flat_speed :: (p: Player) -> f32 { return sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z); }
+held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
+  return metareal_player_input(p, key_x, key_y, 0, 0, run, false, 0, 0);
+}
+
+#forall "atan2 points the right way" ix: -4..<5, iy: -4..<5 {
+  x := f32(ix) * 0.5; y := f32(iy) * 0.5;
+  a := atan2(y, x);
+  #assert a >= -f32(PI) && a <= f32(PI);
+  r := sqrt(x * x + y * y);
+  if r == 0 { #assert a == 0; }
+  else {
+    #assert near(cos(a) * r, x, 0.0001 * r);
+    #assert near(sin(a) * r, y, 0.0001 * r);
+  }
+}
+
+#test "atan2 behind is +PI, not -PI" {
+  #assert atan2(0, -1) == f32(PI);
+  #assert atan2(-0.5, -1) < 0;
+}
+
+#forall "atan_unit is close everywhere" i: 0..<101 {
+  t := f32(i) / 100;
+  #assert near(tan(atan_unit(t)), t, 0.00004);
+}
+
+#forall "wrap_angle keeps the direction" k: -30..<31 {
+  a := f32(k) * 0.7;
+  w := wrap_angle(a);
+  #assert w >= -f32(PI) && w < f32(PI);
+  #assert near(sin(w), sin(a), 0.0005) && near(cos(w), cos(a), 0.0005);
+}
+
+#test "placing sets every part of you" {
+  w: World;
+  w.ground = 2;
+  p := place_in(w, 1, 2.25, -3, 0.5);
+  #assert p.pos.x == 1 && p.pos.y == 2.25 && p.pos.z == -3;
+  #assert p.face == 0.5 && near(p.theta, 0.5 - f32(PI), 0.000001);
+  #assert p.on_ground;
+  #assert p.target.x == 1 && near(p.target.y, 3.77, 0.000001) && p.target.z == -3;
+  #assert p.prev_pos.x == 1 && p.prev_pos.y == 2.25 && p.prev_target.y == p.target.y && p.prev_face == 0.5;
+  // Higher than RIDE_HEIGHT over this floor is in the air.
+  #assert !place_in(w, 0, 2.41, 0, 0).on_ground;
+  #assert place_in(w, 0, 0.3, 0, 0).on_ground;
+  q := metareal_player_place(0, 0.4, 0, 0);
+  #assert q.on_ground && !metareal_player_place(0, 0.41, 0, 0).on_ground;
+}
+
+#forall "speed never passes the top, and changes no faster than ACCEL" ix: -3..<4, iy: -3..<4, run: bool {
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  p = metareal_player_input(p, 0, 0, f32(ix) * 0.5, f32(iy) * 0.5, run, false, 0, 0);
+  top := ifx run then f32(RUN) else f32(WALK);
+  for i: 0..<90 {
+    before := p.vel;
+    p = step(w, p, STEP);
+    #assert flat_speed(p) <= top + 0.001;
+    dvx := p.vel.x - before.x; dvz := p.vel.z - before.z;
+    #assert sqrt(dvx * dvx + dvz * dvz) <= f32(ACCEL * STEP) + 0.001;
+    #assert p.on_ground && p.pos.y == 0;
+  }
+  // A held stick past the dead zone reaches the top speed.
+  if ix * ix + iy * iy > 0 { #assert near(flat_speed(p), top, 0.001); }
+  else { #assert flat_speed(p) == 0; }
+}
+
+#forall "a stick inside the dead zone doesn't move you" ix: -3..<4, iy: -3..<4 {
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  p = metareal_player_input(p, 0, 0, f32(ix) * 0.04, f32(iy) * 0.04, false, false, 0, 0);
+  for i: 0..<30 { p = step(w, p, STEP); }
+  #assert p.pos.x == 0 && p.pos.z == 0 && p.act == Act.idle;
+}
+
+#test "the dead zone ends at DEAD_ZONE" {
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  #assert step(w, metareal_player_input(p, 0, 0, 0, 0.2, false, false, 0, 0), STEP).vel.z == 0;
+  #assert step(w, metareal_player_input(p, 0, 0, 0, 0.21, false, false, 0, 0), STEP).vel.z > 0;
+  // Past it, the stick wins over the keys.
+  q := step(w, metareal_player_input(p, 0, -1, 0, 0.5, false, false, 0, 0), STEP);
+  #assert q.vel.z > 0;
+}
+
+#forall "forward is the way you face" k: -4..<5 {
+  w: World;
+  yaw := f32(k) * 0.75;
+  p := held(metareal_player_place(0, 0, 0, yaw), 0, 1, false);
+  for i: 0..<64 { p = step(w, p, STEP); }
+  // One second at walking speed, less the time to get up to it.
+  d := sqrt(p.pos.x * p.pos.x + p.pos.z * p.pos.z);
+  #assert d > 3.3 && d <= f32(WALK);
+  #assert near(p.pos.x / d, sin(yaw), 0.001) && near(p.pos.z / d, cos(yaw), 0.001);
+  #assert near(wrap_angle(p.face - yaw), 0, 0.001);
+  #assert p.act == Act.walking;
+}
+
+#test "the character turns to where it moves, at TURN_RATE" {
+  w: World;
+  // Right with the camera behind: walk toward -X.
+  p := held(metareal_player_place(0, 0, 0, 0), 1, 0, false);
+  q := step(w, p, STEP);
+  want := -f32(PI) / 2;
+  #assert near(q.face, want * f32(TURN_RATE * STEP), 0.0001);
+  for i: 0..<120 { q = step(w, q, STEP); }
+  #assert near(q.face, want, 0.001);
+  #assert q.vel.x < 0 && near(q.vel.z, 0, 0.0001);
+  // Letting go keeps the facing.
+  r := step(w, held(q, 0, 0, false), STEP);
+  #assert r.face == q.face;
+}
+
+#forall "a jump goes up 1.17 m and lands back on the floor" run: bool, ix: -1..<2 {
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  p = metareal_player_input(p, f32(ix), 0, 0, 0, run, true, 0, 0);
+  #assert !p.on_ground && p.vel.y == f32(JUMP);
+  peak := 0.0f32;
+  steps := 0;
+  while !p.on_ground && steps < 120 {
+    p = step(w, p, STEP);
+    if !p.on_ground { #assert p.act == Act.airborne; }
+    // Holding jump in the air never jumps again.
+    p = metareal_player_input(p, f32(ix), 0, 0, 0, run, true, 0, 0);
+    peak = hi(peak, p.pos.y);
+    #assert p.pos.y >= -0.05;
+    steps += 1;
+  }
+  #assert p.on_ground && p.pos.y == 0 && p.vel.y == 0;
+  #assert near(peak, f32(JUMP * JUMP / (2 * GRAVITY)), 0.07);
+  // About 2 JUMP / GRAVITY, 0.63 s.
+  #assert steps >= 38 && steps <= 42;
+  #assert p.act != Act.airborne;
+}
+
+#test "jump acts on the press, not the hold, and only from the ground" {
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  p = metareal_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
+  for i: 0..<5 { p = step(w, p, STEP); }
+  vy := p.vel.y;
+  // Released and pressed again in the air: nothing.
+  p = metareal_player_input(p, 0, 0, 0, 0, false, false, 0, 0);
+  p = metareal_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
+  #assert p.vel.y == vy;
+  while !p.on_ground { p = step(w, p, STEP); }
+  // Still held after landing: no jump until it is pressed again.
+  p = metareal_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
+  #assert p.on_ground;
+  p = metareal_player_input(p, 0, 0, 0, 0, false, false, 0, 0);
+  p = metareal_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
+  #assert !p.on_ground && p.vel.y == f32(JUMP);
+}
+
+#test "placed in the air, you fall to the floor" {
+  w: World;
+  p := metareal_player_place(0, 3, 0, 0);
+  #assert !p.on_ground;
+  p = step(w, p, STEP);
+  #assert p.vel.y == -f32(GRAVITY * STEP) && p.act == Act.airborne;
+  for i: 0..<64 { p = step(w, p, STEP); }
+  #assert p.on_ground && p.pos.y == 0;
+}
+
+#test "standing eases onto a floor within RIDE_HEIGHT" {
+  w: World;
+  w.ground = 0.04;
+  p := metareal_player_place(0, 0, 0, 0);
+  p.vel.y = -3;
+  q := step(w, p, STEP);
+  #assert q.on_ground && q.vel.y == 0;
+  #assert near(q.pos.y, 0.04 * f32(STEP_SMOOTH * STEP), 0.000001);
+  // Exactly RIDE_HEIGHT above still stands, and eases down.
+  w.ground = 0;
+  r := step(w, metareal_player_place(0, 0.4, 0, 0), STEP);
+  #assert r.on_ground && r.vel.y == 0 && near(r.pos.y, 0.4 * (1 - f32(STEP_SMOOTH * STEP)), 0.000001);
+}
+
+#test "walking off a ledge falls" {
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  w.ground = -2;
+  q := step(w, p, STEP);
+  #assert !q.on_ground && q.vel.y == -f32(GRAVITY * STEP) && q.act == Act.airborne;
+}
+
+#test "a fall that reaches the floor exactly lands" {
+  w: World;
+  p := metareal_player_place(0, 0.25, 0, 0);
+  p.on_ground = false;
+  p.vel.y = -1;
+  q := step(w, p, 0.25);
+  #assert q.on_ground && q.pos.y == 0 && q.vel.y == 0;
+}
+
+#forall "the camera stays in its orbit" iy: -5..<6, ip: -5..<6 {
+  p := metareal_player_place(0, 0, 0, 0);
+  p = metareal_player_input(p, 0, 1, 0, 0, true, false, f32(iy) * 0.9, f32(ip) * 0.9);
+  #assert p.phi >= f32(PHI_MIN) && p.phi <= f32(PHI_MAX);
+  #assert p.theta >= -f32(PI) && p.theta < f32(PI);
+  for i: 0..<20 {
+    p = metareal_player_advance(p, 0.02);
+    eye := metareal_player_eye(p); at := metareal_player_at(p);
+    #assert finite(eye.x) && finite(eye.y) && finite(eye.z);
+    ex := eye.x - at.x; ey := eye.y - at.y; ez := eye.z - at.z;
+    d := sqrt(ex * ex + ey * ey + ez * ez);
+    #assert d >= f32(CAM_WALL_MIN) - 0.001 && d <= p.max_dist + 0.001;
+  }
+}
+
+#test "looking turns the camera by the deltas" {
+  p := metareal_player_place(0, 0, 0, 0);
+  q := metareal_player_input(p, 0, 0, 0, 0, false, false, 0.3, 0.2);
+  #assert near(q.theta, wrap_angle(f32(PI) + 0.3), 0.000001);
+  #assert near(q.phi, f32(BEHIND_PHI) + 0.2, 0.000001);
+}
+
+#test "the eye sits dist along the orbit from the target" {
+  p := metareal_player_place(2, 0, 1, 1);
+  at := metareal_player_at(p);
+  eye := metareal_player_eye(p);
+  o := orbit_offset(p);
+  #assert near(eye.x - at.x, o.x * p.dist, 0.00001);
+  #assert near(eye.y - at.y, o.y * p.dist, 0.00001);
+  #assert near(eye.z - at.z, o.z * p.dist, 0.00001);
+  // Behind you and above.
+  #assert (eye.x - at.x) * sin(1.0f32) + (eye.z - at.z) * cos(1.0f32) < -1 && eye.y > at.y + 1;
+}
+
+#test "the camera pulls in at once and backs out gently" {
+  w: World;
+  w.room = 2;
+  p := metareal_player_place(0, 0, 0, 0);
+  q := step(w, p, STEP);
+  #assert q.dist == 2;
+  // A wall closer than CAM_WALL_MIN still leaves that much.
+  w.room = 0.1;
+  #assert step(w, p, STEP).dist == f32(CAM_WALL_MIN);
+  // Room again: out by CAM_LERP of the gap per 1/60 s.
+  w.room = 1000;
+  r := step(w, q, STEP);
+  gap := f32(CAM_MAX) - 2;
+  #assert near(r.dist, 2 + gap * (1 - pow(f32(1 - CAM_LERP), f32(STEP * 60))), 0.00001);
+  #assert r.dist > 2 && r.dist < f32(CAM_MAX);
+  // Exactly the room it has: it stays.
+  w.room = 2;
+  #assert step(w, q, STEP).dist == 2;
+}
+
+#test "the camera's target follows you on the spring" {
+  w: World;
+  p := held(metareal_player_place(0, 0, 0, 0), 0, 1, false);
+  for i: 0..<64 { p = step(w, p, STEP); }
+  // It trails while you walk, never runs ahead, and settles once you stop.
+  #assert p.target.z < p.pos.z && p.target.z > p.pos.z - 1;
+  p = held(p, 0, 0, false);
+  for i: 0..<128 { p = step(w, p, STEP); }
+  t := look_at(p);
+  #assert near(p.target.x, t.x, 0.001) && near(p.target.y, t.y, 0.001) && near(p.target.z, t.z, 0.001);
+}
+
+// The spring from rest, one step, against the exact critically damped
+// follow: 1 - (1 + x) e^-x of the way, at speed omega x e^-x.
+#forall "the spring is critically damped" k: 1..<8 {
+  dt := f32(k) * 0.005;
+  x := f32(2.0 / SPRING_TIME) * dt;
+  a := spring_axis(0, 0, 1, dt);
+  #assert near(a.x, 1 - (1 + x) * exp(-x), 0.002);
+  #assert near(a.y, f32(2.0 / SPRING_TIME) * x * exp(-x), 0.05);
+}
+
+#test "the spring never overshoots" {
+  // Coming from above or below fast enough to pass: it stops at the target.
+  b := spring_axis(0.999, 50, 1, STEP);
+  #assert b.x == 1 && b.y == 0;
+  c := spring_axis(1.001, -50, 1, STEP);
+  #assert c.x == 1 && c.y == 0;
+  // Short of it from below a negative target: it keeps going.
+  d := spring_axis(-2, 0, -1, STEP);
+  #assert d.x > -2 && d.x < -1 && d.y > 0;
+  // At the target but moving: it moves on.
+  e := spring_axis(1, 5, 1, STEP);
+  #assert e.x > 1 && e.y != 0;
+}
+
+#forall "bad numbers never get in" which: 0..<4 {
+  bad := ifx which == 0 then 1.0f32 / 0.0f32 else ifx which == 1 then -1.0f32 / 0.0f32 else 0.0f32 / 0.0f32;
+  if which == 3 { bad = 2000000.0; }
+  p := metareal_player_place(0, 0, 0, 0);
+  q := metareal_player_input(p, bad, bad, bad, 0.5, false, false, bad, bad);
+  #assert q.key_x == 0 && q.key_y == 0 && q.pad_x == 0 && q.pad_y == 0;
+  #assert q.theta == p.theta && q.phi == p.phi;
+  q = metareal_player_input(p, 0, 0, 0.5, bad, false, false, 0, 0);
+  #assert q.pad_x == 0 && q.pad_y == 0;
+  q = metareal_player_advance(q, bad);
+  #assert q.carry == 0;
+  q = metareal_player_advance(q, 0.1);
+  #assert finite(q.pos.x) && finite(q.pos.z) && finite(q.carry);
+}
+
+#test "frames run whole steps and show the point between" {
+  p := held(metareal_player_place(0, 0, 0, 0), 0, 1, false);
+  // A frame of exactly one step runs it.
+  one := metareal_player_advance(p, STEP);
+  #assert one.carry == 0 && one.pos.z > 0;
+  // A negative frame counts as none.
+  #assert metareal_player_advance(p, -1).carry == 0;
+  p = metareal_player_advance(p, f32(STEP) * 1.5);
+  #assert alpha(p) == 0.5;
+  f := metareal_player_feet(p);
+  #assert f.z > p.prev_pos.z && f.z < p.pos.z;
+  #assert near(f.z, (p.prev_pos.z + p.pos.z) / 2, 0.0001);
+  // A long stall runs at most MAX_STEPS and keeps no backlog, even one step.
+  w: World;
+  s := p;
+  for i: 0..<MAX_STEPS { s = step(w, s, STEP); }
+  q := metareal_player_advance(p, 10);
+  #assert q.carry == 0 && q.pos.z == s.pos.z;
+  r := metareal_player_place(0, 0, 0, 0);
+  r.carry = 0;
+  #assert metareal_player_advance(r, f32(STEP) * (MAX_STEPS + 1)).carry == 0;
+}
+
+#test "each step remembers where it began" {
+  w: World;
+  w.room = 3;
+  p := held(metareal_player_place(0, 0, 0, 0), 1, 1, false);
+  p = advance_in(w, p, STEP);
+  q := advance_in(w, p, STEP);
+  #assert q.prev_pos.x == p.pos.x && q.prev_pos.z == p.pos.z;
+  #assert q.prev_target.z == p.target.z && q.prev_face == p.face && q.prev_dist == p.dist;
+  #assert q.prev_face != q.face && q.prev_pos.z != q.pos.z;
+}
+
+#test "the facing shown turns the short way" {
+  p := metareal_player_place(0, 0, 0, 3.1);
+  p.prev_face = 3.1;
+  p.face = -3.1;
+  p.carry = f32(STEP) / 2;
+  #assert abs(metareal_player_face(p)) > 3.1;
+}
+
+#test "the act names what you are doing" {
+  w: World;
+  p := metareal_player_place(0, 0, 0, 0);
+  #assert p.act == Act.idle && metareal_player_act(p) == 0;
+  #assert metareal_player_act(step(w, held(p, 0, 1, false), STEP)) == 1;
+  #assert metareal_player_act(step(w, held(p, 0, 1, true), STEP)) == 2;
+}
+
+#test "the stand-in world" {
+  w: World;
+  w.ground = 1.5;
+  #assert floor_at(w, 5, -7, 2) == 1.5;
+  p := metareal_player_place(0, 0, 0, 0);
+  p.vel = Vec3.{x = 1, y = 0, z = 2};
+  q := move_across(w, p, 1.5, -2);
+  #assert q.pos.x == 1.5 && q.pos.z == -2 && q.vel.x == 1 && q.vel.z == 2;
+  w.room = 2;
+  #assert camera_room(w, p.pos, orbit_offset(p), 3) == 2 && camera_room(w, p.pos, orbit_offset(p), 1) == 1;
+}
+
+#test "the helpers" {
+  #assert clamp(5, -1, 1) == 1 && clamp(-5, -1, 1) == -1 && clamp(0.5, -1, 1) == 0.5;
+  #assert mix(2, 4, 0.25) == 2.5;
+  m := mix3(Vec3.{x = 0, y = 0, z = 0}, Vec3.{x = 2, y = 4, z = 8}, 0.5);
+  #assert m.x == 1 && m.y == 2 && m.z == 4;
+  #assert finite(999999) && !finite(1000000) && !finite(-1000000);
+  #assert near(1, 1.5, 0.5) && !near(1, 1.6, 0.5);
+}
