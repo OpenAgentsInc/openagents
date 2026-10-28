@@ -681,7 +681,7 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   // what to do, at the bottom
   hint := ifx s[0].spun then 0.45f32 else 0.7f32;
   line1 := "DRAG TO TURN THE GALAXY";
-  line2 := ifx phone then "TAP THE ORANGE PLANET, THE HAUNTED HOUSE" else "CLICK THE ORANGE PLANET, THE HAUNTED HOUSE, TO ENTER";
+  line2 := ifx phone then "TAP THE ORANGE PLANET TO ENTER" else "CLICK THE ORANGE PLANET, THE HAUNTED HOUSE, TO ENTER";
   hc := lo(fit_cap(line1, 7.5 * k, GAP, w - 32 * k), fit_cap(line2, 7.5 * k, GAP, w - 32 * k));
   vertices = centred(d, out, vertices, line1, cx, h - 74 * k, hc, GAP, white(k, hint));
   vertices = centred(d, out, vertices, line2, cx, h - 56 * k, hc, GAP, white(k, hint));
