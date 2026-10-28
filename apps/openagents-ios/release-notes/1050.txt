@@ -1,0 +1,3 @@
+A computer terminal now stands just ahead of where you arrive in the Grid. Its desk is solid: you stop at it, and you can jump up onto it. A hotbar button on the left, above the walking stick, makes you dance; it lights while you dance, and walking or jumping stops the dance.
+
+Test: walk up to the terminal and jump onto the desk; tap the music-note button, then walk away.
