@@ -1150,3 +1150,29 @@ desk :: (out: [] f32) {
   #assert move_across(w, p, 0, 0).pos.z != 4;
   #assert metareal_player_advance_among(metareal_player_place(0, 0, 3.4, 0), STEP, walls[0..<0], walls[..]).pos.z < 3.21;
 }
+
+// Camera modes are shared engine behaviour, so worlds do not reimplement
+// orientation in their native adapters. Mode 0 first, 1 third, 2 top down.
+#test "first-person eye is in your head and looks along the orbit heading" {
+ p:=metareal_player_place(7,0,2,0);p.phi=f32(PI/2);
+ e:=metareal_player_view_eye(p,0);a:=metareal_player_view_at(p,0);
+ #assert near(e.x,7,0.001) && near(e.y,1.6,0.001) && near(e.z,2,0.001);
+ #assert a.z>e.z && near(a.x,e.x,0.001);
+}
+metareal_player_view_eye :: (p:Player,mode:int)->Vec3 #export_c {
+ feet:=metareal_player_feet(p);
+ if mode==0 {return Vec3.{x=feet.x,y=feet.y+1.6,z=feet.z};}
+ if mode==2 {return Vec3.{x=feet.x,y=feet.y+22,z=feet.z-0.01};}
+ return metareal_player_eye(p);
+}
+metareal_player_view_at :: (p:Player,mode:int)->Vec3 #export_c {
+ if mode==0 {eye:=metareal_player_view_eye(p,0);o:=orbit_offset(p);return Vec3.{x=eye.x-o.x,y=eye.y-o.y,z=eye.z-o.z};}
+ if mode==2{return metareal_player_feet(p);}return metareal_player_at(p);
+}
+metareal_player_zoom :: (p:Player,delta:f32)->Player #export_c {next:=p;if finite(delta){next.max_dist=clamp(p.max_dist+delta,1,20);}return next;}
+metareal_player_constrain :: (p:Player,x:f32,z:f32)->Player #export_c {
+ next:=p;dx:=x-p.pos.x;dz:=z-p.pos.z;
+ if dx!=0 {next.pos.x=x;next.prev_pos.x=x;next.target.x+=dx;next.prev_target.x+=dx;next.vel.x=0;}
+ if dz!=0 {next.pos.z=z;next.prev_pos.z=z;next.target.z+=dz;next.prev_target.z+=dz;next.vel.z=0;}
+ return next;
+}

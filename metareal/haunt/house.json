@@ -1,0 +1,3360 @@
+{
+  "kind": "verse.world.v1",
+  "id": "haunted-house",
+  "title": "Haunted House",
+  "owner": "OpenAgents",
+  "arrival": {
+    "x": 7,
+    "z": 2,
+    "yaw": 180
+  },
+  "foliage": [
+    {
+      "name": "forest-edge",
+      "seed": 1357525074,
+      "species": [
+        {
+          "model": "Custom_Tree_Pine",
+          "weight": 1
+        }
+      ],
+      "density": 1,
+      "scale": [
+        0.9,
+        1.7
+      ],
+      "randomYaw": true,
+      "align": 0,
+      "spacing": 3.1,
+      "jitter": 0.4,
+      "areas": [
+        {
+          "kind": "band",
+          "rect": [
+            -6.5,
+            -0.5,
+            22.5,
+            48.5
+          ],
+          "inner": 1,
+          "outer": 9
+        },
+        {
+          "kind": "band",
+          "rect": [
+            0.39999999999999997,
+            47,
+            10,
+            54.8
+          ],
+          "inner": 0.8,
+          "outer": 9
+        }
+      ],
+      "exclude": {
+        "rects": [
+          0.6,
+          47.5,
+          9.8,
+          54.8
+        ],
+        "circles": [
+          7,
+          -1.6,
+          2.4
+        ],
+        "paths": [],
+        "pathWidth": 1
+      },
+      "avoidMask": 0,
+      "avoidRadius": 0.3,
+      "collide": true,
+      "tint": [
+        0.28,
+        0.72,
+        0.36
+      ],
+      "tintJitter": 0.12,
+      "drawDistance": [
+        60,
+        80,
+        95
+      ],
+      "densityTier": [
+        1,
+        1,
+        1
+      ],
+      "role": "trees",
+      "style": "lowpoly"
+    },
+    {
+      "name": "forest-edge-dead",
+      "seed": 3299110991,
+      "species": [
+        {
+          "model": "Custom_Tree_Dead",
+          "weight": 1
+        }
+      ],
+      "density": 1,
+      "scale": [
+        0.9,
+        1.7
+      ],
+      "randomYaw": true,
+      "align": 0,
+      "spacing": 3.4,
+      "jitter": 0.4,
+      "areas": [
+        {
+          "kind": "band",
+          "rect": [
+            -6.5,
+            -0.5,
+            22.5,
+            48.5
+          ],
+          "inner": 1,
+          "outer": 9
+        },
+        {
+          "kind": "band",
+          "rect": [
+            0.39999999999999997,
+            47,
+            10,
+            54.8
+          ],
+          "inner": 0.8,
+          "outer": 9
+        }
+      ],
+      "exclude": {
+        "rects": [
+          0.6,
+          47.5,
+          9.8,
+          54.8
+        ],
+        "circles": [
+          7,
+          -1.6,
+          2.4
+        ],
+        "paths": [],
+        "pathWidth": 1
+      },
+      "avoidMask": 0,
+      "avoidRadius": 0.3,
+      "collide": true,
+      "tint": [
+        0.7,
+        0.45,
+        0.3
+      ],
+      "tintJitter": 0.12,
+      "drawDistance": [
+        60,
+        80,
+        95
+      ],
+      "densityTier": [
+        1,
+        1,
+        1
+      ],
+      "role": "trees",
+      "style": "lowpoly"
+    },
+    {
+      "name": "forest-deep",
+      "seed": 3657076505,
+      "species": [
+        {
+          "model": "Custom_Tree_Pine",
+          "weight": 1
+        }
+      ],
+      "density": 1,
+      "scale": [
+        0.9,
+        1.7
+      ],
+      "randomYaw": true,
+      "align": 0,
+      "spacing": 3.4,
+      "jitter": 0.4,
+      "areas": [
+        {
+          "kind": "band",
+          "rect": [
+            -6.5,
+            -0.5,
+            22.5,
+            48.5
+          ],
+          "inner": 9,
+          "outer": 30
+        },
+        {
+          "kind": "band",
+          "rect": [
+            0.39999999999999997,
+            47,
+            10,
+            54.8
+          ],
+          "inner": 0.8,
+          "outer": 10
+        }
+      ],
+      "exclude": {
+        "rects": [
+          0.6,
+          47.5,
+          9.8,
+          54.8
+        ],
+        "circles": [
+          7,
+          -1.6,
+          2.4
+        ],
+        "paths": [],
+        "pathWidth": 1
+      },
+      "avoidMask": 0,
+      "avoidRadius": 0.3,
+      "collide": true,
+      "tint": [
+        0.28,
+        0.72,
+        0.36
+      ],
+      "tintJitter": 0.12,
+      "drawDistance": [
+        50,
+        70,
+        85
+      ],
+      "densityTier": [
+        0.45,
+        0.75,
+        1
+      ],
+      "role": "trees",
+      "style": "lowpoly"
+    },
+    {
+      "name": "forest-deep-dead",
+      "seed": 971623922,
+      "species": [
+        {
+          "model": "Custom_Tree_Dead",
+          "weight": 1
+        }
+      ],
+      "density": 1,
+      "scale": [
+        0.9,
+        1.7
+      ],
+      "randomYaw": true,
+      "align": 0,
+      "spacing": 3.8,
+      "jitter": 0.4,
+      "areas": [
+        {
+          "kind": "band",
+          "rect": [
+            -6.5,
+            -0.5,
+            22.5,
+            48.5
+          ],
+          "inner": 9,
+          "outer": 30
+        },
+        {
+          "kind": "band",
+          "rect": [
+            0.39999999999999997,
+            47,
+            10,
+            54.8
+          ],
+          "inner": 0.8,
+          "outer": 10
+        }
+      ],
+      "exclude": {
+        "rects": [
+          0.6,
+          47.5,
+          9.8,
+          54.8
+        ],
+        "circles": [
+          7,
+          -1.6,
+          2.4
+        ],
+        "paths": [],
+        "pathWidth": 1
+      },
+      "avoidMask": 0,
+      "avoidRadius": 0.3,
+      "collide": true,
+      "tint": [
+        0.7,
+        0.45,
+        0.3
+      ],
+      "tintJitter": 0.12,
+      "drawDistance": [
+        50,
+        70,
+        85
+      ],
+      "densityTier": [
+        0.45,
+        0.75,
+        1
+      ],
+      "role": "trees",
+      "style": "lowpoly"
+    },
+    {
+      "name": "yard-trees",
+      "seed": 1649041549,
+      "species": [
+        {
+          "model": "Custom_Tree_Dead",
+          "weight": 1
+        }
+      ],
+      "density": 0.1,
+      "scale": [
+        1,
+        1
+      ],
+      "randomYaw": true,
+      "align": 0,
+      "spacing": 1,
+      "jitter": 0,
+      "areas": [
+        {
+          "kind": "points",
+          "points": [
+            3,
+            6,
+            13,
+            7.5,
+            2,
+            15.5,
+            14,
+            15,
+            -2,
+            3.5,
+            18,
+            2.5,
+            19,
+            12,
+            -3,
+            11,
+            8,
+            34,
+            7.5,
+            52.5
+          ],
+          "scales": [
+            1,
+            1.15,
+            1.3,
+            1,
+            1.15,
+            1.3,
+            1,
+            1.15,
+            1.2,
+            1.1
+          ]
+        }
+      ],
+      "exclude": {
+        "rects": [],
+        "circles": [],
+        "paths": [],
+        "pathWidth": 1
+      },
+      "avoidMask": 0,
+      "avoidRadius": 0.3,
+      "collide": true,
+      "tint": [
+        0.7,
+        0.45,
+        0.3
+      ],
+      "tintJitter": 0,
+      "drawDistance": [
+        60,
+        90,
+        120
+      ],
+      "densityTier": [
+        1,
+        1,
+        1
+      ],
+      "role": "trees",
+      "style": "lowpoly"
+    }
+  ],
+  "look": {
+    "sky": [
+      0.025,
+      0.03,
+      0.065
+    ],
+    "fog": [
+      0.035,
+      0.04,
+      0.07
+    ],
+    "fogDensity": 0.011,
+    "far": 110,
+    "moon": 0.75,
+    "moonDir": [
+      -0.55,
+      0.55,
+      -0.62
+    ],
+    "ambientSky": [
+      0.08,
+      0.09,
+      0.15
+    ],
+    "ambientGround": [
+      0.03,
+      0.025,
+      0.02
+    ],
+    "grade": 0,
+    "gradeDark": [
+      0.01,
+      0.01,
+      0.025
+    ],
+    "gradeMid": [
+      0.22,
+      0.2,
+      0.26
+    ],
+    "gradeLight": [
+      1,
+      0.86,
+      0.66
+    ],
+    "vignette": 0.5,
+    "exposure": 1.3,
+    "characterLod": 2,
+    "wind": [
+      0.6,
+      -0.8,
+      1.2,
+      0.8
+    ]
+  },
+  "areas": [
+    {
+      "id": "yard",
+      "name": "Yard",
+      "kind": "outdoor",
+      "rect": [
+        -5.4,
+        0.45,
+        21.4,
+        19.55
+      ]
+    },
+    {
+      "id": "entry-hall",
+      "name": "Entry hall",
+      "kind": "room",
+      "rect": [
+        6,
+        20,
+        10,
+        28
+      ],
+      "storeys": 2,
+      "walls": "brick"
+    },
+    {
+      "id": "southwest-room",
+      "name": "Southwest room",
+      "kind": "room",
+      "rect": [
+        -6,
+        20,
+        2,
+        28
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "west-front-room",
+      "name": "West front room",
+      "kind": "room",
+      "rect": [
+        2,
+        20,
+        6,
+        28
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "east-front-room",
+      "name": "East front room",
+      "kind": "room",
+      "rect": [
+        10,
+        20,
+        14,
+        28
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "southeast-room",
+      "name": "Southeast room",
+      "kind": "room",
+      "rect": [
+        14,
+        20,
+        22,
+        28
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "parlor",
+      "name": "Parlor",
+      "kind": "room",
+      "rect": [
+        14,
+        28,
+        22,
+        36
+      ],
+      "storeys": 2
+    },
+    {
+      "id": "east-room",
+      "name": "East room",
+      "kind": "room",
+      "rect": [
+        14,
+        36,
+        22,
+        40
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "northeast-room",
+      "name": "Northeast room",
+      "kind": "room",
+      "rect": [
+        14,
+        40,
+        22,
+        48
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "north-room",
+      "name": "North room",
+      "kind": "room",
+      "rect": [
+        6,
+        40,
+        14,
+        48
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "back-hall",
+      "name": "Back hall",
+      "kind": "room",
+      "rect": [
+        2,
+        40,
+        6,
+        48
+      ],
+      "storeys": 1,
+      "dark": true
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "kind": "room",
+      "rect": [
+        -6,
+        40,
+        2,
+        48
+      ],
+      "storeys": 1,
+      "floor": "Floor_RedBrick"
+    },
+    {
+      "id": "long-hall",
+      "name": "Long hall",
+      "kind": "room",
+      "rect": [
+        -2,
+        28,
+        2,
+        40
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "gallery",
+      "name": "Gallery",
+      "kind": "room",
+      "rect": [
+        -6,
+        28,
+        -2,
+        40
+      ],
+      "storeys": 1
+    },
+    {
+      "id": "courtyard",
+      "name": "Courtyard",
+      "kind": "outdoor",
+      "rect": [
+        2.45,
+        28.45,
+        13.55,
+        39.55
+      ]
+    },
+    {
+      "id": "garden",
+      "name": "Back garden",
+      "kind": "outdoor",
+      "rect": [
+        1.4,
+        48.45,
+        9,
+        54
+      ],
+      "exit": true
+    }
+  ],
+  "doors": [
+    {
+      "id": "front-door",
+      "cell": [
+        6,
+        20
+      ],
+      "side": "s",
+      "leaf": "open"
+    },
+    {
+      "id": "entry-north",
+      "cell": [
+        6,
+        26
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "entry-west",
+      "cell": [
+        6,
+        22
+      ],
+      "side": "w",
+      "leaf": "open"
+    },
+    {
+      "id": "entry-east",
+      "cell": [
+        8,
+        22
+      ],
+      "side": "e",
+      "leaf": "open",
+      "swing": "out"
+    },
+    {
+      "id": "front-west",
+      "cell": [
+        2,
+        22
+      ],
+      "side": "w",
+      "leaf": "open"
+    },
+    {
+      "id": "front-east",
+      "cell": [
+        12,
+        22
+      ],
+      "side": "e",
+      "leaf": "open"
+    },
+    {
+      "id": "front-east-court",
+      "cell": [
+        10,
+        26
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "parlor-south",
+      "cell": [
+        16,
+        26
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "parlor-north",
+      "cell": [
+        16,
+        34
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "east-room-north",
+      "cell": [
+        16,
+        38
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "northeast-west",
+      "cell": [
+        14,
+        42
+      ],
+      "side": "w",
+      "leaf": "open"
+    },
+    {
+      "id": "north-room-court",
+      "cell": [
+        8,
+        40
+      ],
+      "side": "s",
+      "leaf": "open"
+    },
+    {
+      "id": "north-room-west",
+      "cell": [
+        6,
+        42
+      ],
+      "side": "w",
+      "leaf": "open"
+    },
+    {
+      "id": "kitchen-east",
+      "cell": [
+        0,
+        42
+      ],
+      "side": "e",
+      "leaf": "open"
+    },
+    {
+      "id": "back-door",
+      "cell": [
+        4,
+        46
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "hall-south",
+      "cell": [
+        0,
+        26
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "hall-north",
+      "cell": [
+        0,
+        38
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "gallery-south",
+      "cell": [
+        -4,
+        26
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "gallery-north",
+      "cell": [
+        -4,
+        38
+      ],
+      "side": "n",
+      "leaf": "open"
+    },
+    {
+      "id": "side-door-1",
+      "cell": [
+        -2,
+        30
+      ],
+      "side": "w",
+      "leaf": "closed",
+      "walk": false
+    },
+    {
+      "id": "side-door-2",
+      "cell": [
+        0,
+        34
+      ],
+      "side": "e",
+      "leaf": "closed",
+      "walk": false,
+      "bangs": true
+    }
+  ],
+  "objects": [
+    {
+      "id": "ground",
+      "name": "Ground",
+      "mesh": "Custom_Ground",
+      "x": 8,
+      "y": -0.03,
+      "z": 28,
+      "yaw": 0,
+      "scale": 170,
+      "tint": [
+        0.085,
+        0.08,
+        0.06
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s-5",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -5,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s-3",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -3,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s-1",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -1,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s1",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s3",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 3,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s5",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 5,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s9",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 9,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s11",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 11,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s13",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 13,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s15",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 15,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s17",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 17,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s19",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 19,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-s21",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 21,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "gate",
+      "name": "Gate",
+      "mesh": "Prop_MetalFence_Simple",
+      "x": 7,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.34,
+        0.3,
+        0.3
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w1",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 1,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e1",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 1,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w3",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 3,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e3",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 3,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w5",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 5,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e5",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 5,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w7",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 7,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e7",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 7,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w9",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 9,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e9",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 9,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w11",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 11,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e11",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 11,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w13",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 13,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e13",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 13,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w15",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 15,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e15",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 15,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w17",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 17,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e17",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 17,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-w19",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": -6,
+      "y": 0,
+      "z": 19,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "fence-e19",
+      "name": "Iron fence",
+      "mesh": "Prop_MetalFence_Ornament",
+      "x": 22,
+      "y": 0,
+      "z": 19,
+      "yaw": 90,
+      "scale": 1,
+      "tint": [
+        0.28,
+        0.24,
+        0.24
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path0",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 1,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path2",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 3,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path4",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 5,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path6",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 7,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path8",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 9,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path10",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 11,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path12",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 13,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path14",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 15,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path16",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 17,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "path18",
+      "name": "Path",
+      "mesh": "Floor_Brick",
+      "x": 7,
+      "y": -0.005,
+      "z": 19,
+      "yaw": 0,
+      "scale": 1,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ],
+      "fixed": true
+    },
+    {
+      "id": "tombstone-1",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Round",
+      "x": 4.5,
+      "y": 0,
+      "z": 10.5,
+      "yaw": 160,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "tombstone-2",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Cross",
+      "x": 11.5,
+      "y": 0,
+      "z": 11,
+      "yaw": 200,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "tombstone-3",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Slab",
+      "x": 12.8,
+      "y": 0,
+      "z": 9,
+      "yaw": 185,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "tombstone-4",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Round",
+      "x": 1.5,
+      "y": 0,
+      "z": 8.5,
+      "yaw": 175,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "tombstone-5",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Slab",
+      "x": 15.5,
+      "y": 0,
+      "z": 11.5,
+      "yaw": 190,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "pumpkin-left",
+      "name": "Jack-o'-lantern",
+      "mesh": "Custom_JackOLantern",
+      "x": 5.6,
+      "y": 0,
+      "z": 19.2,
+      "yaw": 180,
+      "scale": 1,
+      "light": {
+        "kind": "pumpkin",
+        "color": [
+          1,
+          0.5,
+          0.12
+        ],
+        "radius": 3,
+        "flicker": 0.6,
+        "at": [
+          0,
+          0.3,
+          0
+        ]
+      }
+    },
+    {
+      "id": "pumpkin-right",
+      "name": "Jack-o'-lantern",
+      "mesh": "Custom_JackOLantern",
+      "x": 8.4,
+      "y": 0,
+      "z": 19.2,
+      "yaw": 180,
+      "scale": 1.2,
+      "light": {
+        "kind": "pumpkin",
+        "color": [
+          1,
+          0.5,
+          0.12
+        ],
+        "radius": 3,
+        "flicker": 0.6,
+        "at": [
+          0,
+          0.3,
+          0
+        ]
+      }
+    },
+    {
+      "id": "pumpkin-low",
+      "name": "Jack-o'-lantern",
+      "mesh": "Custom_JackOLantern",
+      "x": 9.6,
+      "y": 0,
+      "z": 18.5,
+      "yaw": 200,
+      "scale": 0.8
+    },
+    {
+      "id": "pumpkin-plain",
+      "name": "Pumpkin",
+      "mesh": "Custom_Pumpkin",
+      "x": 4.9,
+      "y": 0,
+      "z": 18.7,
+      "yaw": 30,
+      "scale": 1
+    },
+    {
+      "id": "lantern-left",
+      "name": "Wall torch",
+      "mesh": "Torch_Metal",
+      "x": 5.6,
+      "y": 1.35,
+      "z": 19.72,
+      "yaw": 180,
+      "scale": 1,
+      "tags": [
+        "lantern"
+      ],
+      "flames": [
+        [
+          0,
+          0.62,
+          0.02
+        ]
+      ],
+      "light": {
+        "kind": "lantern",
+        "color": [
+          1,
+          0.66,
+          0.34
+        ],
+        "radius": 5,
+        "flicker": 0.3,
+        "at": [
+          0,
+          0.8,
+          -0.4
+        ]
+      }
+    },
+    {
+      "id": "lantern-right",
+      "name": "Wall torch",
+      "mesh": "Torch_Metal",
+      "x": 8.4,
+      "y": 1.35,
+      "z": 19.72,
+      "yaw": 180,
+      "scale": 1,
+      "tags": [
+        "lantern"
+      ],
+      "flames": [
+        [
+          0,
+          0.62,
+          0.02
+        ]
+      ],
+      "light": {
+        "kind": "lantern",
+        "color": [
+          1,
+          0.66,
+          0.34
+        ],
+        "radius": 5,
+        "flicker": 0.3,
+        "at": [
+          0,
+          0.8,
+          -0.4
+        ]
+      }
+    },
+    {
+      "id": "moon",
+      "name": "Moon",
+      "mesh": "Custom_Moon",
+      "x": 36,
+      "y": 22,
+      "z": 52,
+      "yaw": 0,
+      "scale": 5,
+      "glow": 0.2,
+      "fixed": true
+    },
+    {
+      "id": "rug-entry",
+      "name": "Rug",
+      "mesh": "Custom_Rug",
+      "x": 8,
+      "y": 0,
+      "z": 24.2,
+      "yaw": 0,
+      "scale": 0.95
+    },
+    {
+      "id": "portrait-1",
+      "name": "Portrait",
+      "mesh": "Custom_Portrait",
+      "x": 6.36,
+      "y": 1.2,
+      "z": 23,
+      "yaw": 90,
+      "scale": 1
+    },
+    {
+      "id": "portrait-2",
+      "name": "Portrait",
+      "mesh": "Custom_Portrait",
+      "x": 9.64,
+      "y": 1.2,
+      "z": 25.2,
+      "yaw": -90,
+      "scale": 1
+    },
+    {
+      "id": "portrait-3",
+      "name": "Portrait",
+      "mesh": "Custom_Portrait",
+      "x": 6.36,
+      "y": 1.2,
+      "z": 26.4,
+      "yaw": 90,
+      "scale": 1
+    },
+    {
+      "id": "coat-stand-1",
+      "name": "Coat stand",
+      "mesh": "Custom_CoatStand",
+      "x": 9.55,
+      "y": 0,
+      "z": 24.65,
+      "yaw": -90,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "stand-entry-1",
+      "name": "Side table",
+      "mesh": "Nightstand_Shelf",
+      "x": 9.62,
+      "y": 0,
+      "z": 21,
+      "yaw": -90,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "candles-entry-1",
+      "name": "Candles",
+      "mesh": "CandleStick_Triple",
+      "x": 9.62,
+      "y": 1.22,
+      "z": 21,
+      "yaw": -90,
+      "scale": 1,
+      "flames": [
+        [
+          -0.17,
+          0.4,
+          0
+        ],
+        [
+          0,
+          0.47,
+          0
+        ],
+        [
+          0.17,
+          0.4,
+          0
+        ]
+      ],
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 4.5,
+        "flicker": 0.4,
+        "at": [
+          0,
+          1.8,
+          0
+        ]
+      }
+    },
+    {
+      "id": "stand-entry-2",
+      "name": "Side table",
+      "mesh": "Nightstand_Shelf",
+      "x": 9.62,
+      "y": 0,
+      "z": 27.2,
+      "yaw": -90,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "candles-entry-2",
+      "name": "Candles",
+      "mesh": "CandleStick_Triple",
+      "x": 9.62,
+      "y": 1.22,
+      "z": 27.2,
+      "yaw": -90,
+      "scale": 1,
+      "flames": [
+        [
+          -0.17,
+          0.4,
+          0
+        ],
+        [
+          0,
+          0.47,
+          0
+        ],
+        [
+          0.17,
+          0.4,
+          0
+        ]
+      ],
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 4.5,
+        "flicker": 0.5,
+        "at": [
+          0,
+          1.8,
+          0
+        ]
+      }
+    },
+    {
+      "id": "cobweb-1",
+      "name": "Cobweb",
+      "mesh": "Custom_Cobweb",
+      "x": 9.66,
+      "y": 3.08,
+      "z": 27.66,
+      "yaw": 180,
+      "scale": 0.8
+    },
+    {
+      "id": "rug-parlor",
+      "name": "Rug",
+      "mesh": "Custom_Rug",
+      "x": 18,
+      "y": 0,
+      "z": 32,
+      "yaw": 0,
+      "scale": 1.45
+    },
+    {
+      "id": "table-parlor",
+      "name": "Table",
+      "mesh": "Table_Large",
+      "x": 18,
+      "y": 0,
+      "z": 31.4,
+      "yaw": 0,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "candles-table",
+      "name": "Candles",
+      "mesh": "CandleStick_Triple",
+      "x": 18,
+      "y": 0.81,
+      "z": 31.4,
+      "yaw": 0,
+      "scale": 1,
+      "flames": [
+        [
+          -0.17,
+          0.4,
+          0
+        ],
+        [
+          0,
+          0.47,
+          0
+        ],
+        [
+          0.17,
+          0.4,
+          0
+        ]
+      ],
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 4,
+        "flicker": 0.5,
+        "at": [
+          0,
+          1.4,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chair-table-1",
+      "name": "Chair",
+      "mesh": "Chair_1",
+      "x": 17,
+      "y": 0,
+      "z": 30.55,
+      "yaw": 0,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "chair-table-2",
+      "name": "Chair",
+      "mesh": "Chair_1",
+      "x": 19,
+      "y": 0,
+      "z": 32.3,
+      "yaw": 180,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "chandelier",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": 18,
+      "y": 1.6600000000000001,
+      "z": 31.4,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.3,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "gramophone-1",
+      "name": "Gramophone",
+      "mesh": "Custom_Gramophone",
+      "x": 21.3,
+      "y": 0,
+      "z": 30.2,
+      "yaw": -90,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "armchair-1",
+      "name": "Armchair",
+      "mesh": "Custom_Armchair",
+      "x": 20.3,
+      "y": 0,
+      "z": 33.6,
+      "yaw": 163.61045966596524,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "rocker-1",
+      "name": "Rocking chair",
+      "mesh": "Chair_1",
+      "x": 15.4,
+      "y": 0,
+      "z": 32.4,
+      "yaw": 120,
+      "scale": 1,
+      "block": true,
+      "tags": [
+        "rocking"
+      ]
+    },
+    {
+      "id": "clock-1",
+      "name": "Grandfather clock",
+      "mesh": "Custom_Clock",
+      "x": 14.55,
+      "y": 0,
+      "z": 29,
+      "yaw": 90,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "bookcase-parlor",
+      "name": "Bookcase",
+      "mesh": "Bookcase_2",
+      "x": 20.4,
+      "y": 0,
+      "z": 35.45,
+      "yaw": 180,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "candelabra-1",
+      "name": "Candelabra",
+      "mesh": "CandleStick_Stand",
+      "x": 21.1,
+      "y": 0,
+      "z": 35.1,
+      "yaw": 225,
+      "scale": 1,
+      "flames": [
+        [
+          0,
+          1.31,
+          0
+        ]
+      ],
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 5.5,
+        "flicker": 0.6,
+        "at": [
+          0,
+          1.5,
+          0
+        ]
+      }
+    },
+    {
+      "id": "candelabra-2",
+      "name": "Candelabra",
+      "mesh": "CandleStick_Stand",
+      "x": 14.9,
+      "y": 0,
+      "z": 35.1,
+      "yaw": 135,
+      "scale": 1,
+      "flames": [
+        [
+          0,
+          1.31,
+          0
+        ]
+      ],
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 5,
+        "flicker": 0.6,
+        "at": [
+          0,
+          1.5,
+          0
+        ]
+      }
+    },
+    {
+      "id": "ghost-parlor",
+      "name": "Ghost",
+      "mesh": "Custom_Ghost",
+      "x": 15.6,
+      "y": 0.35,
+      "z": 34.4,
+      "yaw": 150,
+      "scale": 1,
+      "glow": 0.35,
+      "tint": [
+        0.85,
+        0.9,
+        1.05
+      ],
+      "tags": [
+        "ghost"
+      ]
+    },
+    {
+      "id": "runner-1",
+      "name": "Runner",
+      "mesh": "Custom_Rug",
+      "x": 0,
+      "y": 0,
+      "z": 31.5,
+      "yaw": 0,
+      "scale": 0.9
+    },
+    {
+      "id": "runner-2",
+      "name": "Runner",
+      "mesh": "Custom_Rug",
+      "x": 0,
+      "y": 0,
+      "z": 36.5,
+      "yaw": 0,
+      "scale": 0.9
+    },
+    {
+      "id": "portrait-hall",
+      "name": "Portrait",
+      "mesh": "Custom_Portrait",
+      "x": -1.64,
+      "y": 1.2,
+      "z": 33,
+      "yaw": 90,
+      "scale": 1
+    },
+    {
+      "id": "moon-window-light",
+      "name": "Moonlight",
+      "mesh": null,
+      "x": 1.6,
+      "y": 0,
+      "z": 37,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "window",
+        "color": [
+          0.45,
+          0.55,
+          0.85
+        ],
+        "radius": 4,
+        "flicker": 0,
+        "at": [
+          0,
+          2,
+          0
+        ],
+        "intensity": 0.35
+      }
+    },
+    {
+      "id": "candle-hall",
+      "name": "Candle",
+      "mesh": "CandleStick",
+      "x": 1.3,
+      "y": 0,
+      "z": 38.9,
+      "yaw": 0,
+      "scale": 1,
+      "flames": [
+        [
+          0,
+          0.16,
+          0
+        ]
+      ],
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 3,
+        "flicker": 0.7,
+        "at": [
+          0,
+          0.5,
+          0
+        ]
+      }
+    },
+    {
+      "id": "cauldron-1",
+      "name": "Cauldron",
+      "mesh": "Cauldron",
+      "x": -2.6,
+      "y": 0,
+      "z": 43.6,
+      "yaw": 0,
+      "scale": 1,
+      "block": true,
+      "tint": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "light": {
+        "kind": "cauldron",
+        "color": [
+          0.35,
+          1,
+          0.3
+        ],
+        "radius": 5,
+        "flicker": 0.35,
+        "at": [
+          0,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "id": "cauldron-brew",
+      "name": "Brew",
+      "mesh": "Custom_Moon",
+      "x": -2.6,
+      "y": 0.42,
+      "z": 43.6,
+      "yaw": 0,
+      "scale": 0.3,
+      "tint": [
+        0.3,
+        1.1,
+        0.25
+      ],
+      "glow": 0.3,
+      "tags": [
+        "bubbling"
+      ]
+    },
+    {
+      "id": "counter-1",
+      "name": "Counter",
+      "mesh": "Workbench",
+      "x": -3,
+      "y": 0,
+      "z": 47.15,
+      "yaw": 180,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "cat-1",
+      "name": "Black cat",
+      "mesh": "Custom_Cat",
+      "x": -3.7,
+      "y": 0.89,
+      "z": 47.1,
+      "yaw": 180,
+      "scale": 1,
+      "tags": [
+        "cat"
+      ]
+    },
+    {
+      "id": "pumpkin-counter",
+      "name": "Jack-o'-lantern",
+      "mesh": "Custom_JackOLantern",
+      "x": -2.3,
+      "y": 0.89,
+      "z": 47.1,
+      "yaw": 200,
+      "scale": 1,
+      "light": {
+        "kind": "pumpkin",
+        "color": [
+          1,
+          0.5,
+          0.12
+        ],
+        "radius": 3.5,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.3,
+          0
+        ]
+      }
+    },
+    {
+      "id": "potions-1",
+      "name": "Potion shelf",
+      "mesh": "Shelf_Small_Bottles",
+      "x": -5.55,
+      "y": 1.15,
+      "z": 42.5,
+      "yaw": 90,
+      "scale": 1
+    },
+    {
+      "id": "potions-2",
+      "name": "Potion shelf",
+      "mesh": "Shelf_Small_Bottles",
+      "x": -5.55,
+      "y": 1.15,
+      "z": 44.5,
+      "yaw": 90,
+      "scale": 1
+    },
+    {
+      "id": "barrel-kitchen",
+      "name": "Barrel",
+      "mesh": "Barrel",
+      "x": -5.15,
+      "y": 0,
+      "z": 46.9,
+      "yaw": 0,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "crate-kitchen",
+      "name": "Crate",
+      "mesh": "Crate_Wooden",
+      "x": -5,
+      "y": 0,
+      "z": 40.9,
+      "yaw": 15,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "broom-1",
+      "name": "Broom",
+      "mesh": "Custom_Broom",
+      "x": 1.3499999999999996,
+      "y": 0,
+      "z": 47.35,
+      "yaw": 225,
+      "scale": 1
+    },
+    {
+      "id": "table-kitchen",
+      "name": "Kitchen table",
+      "mesh": "Table_Large",
+      "x": -0.40000000000000036,
+      "y": 0,
+      "z": 44.8,
+      "yaw": 90,
+      "scale": 0.75,
+      "block": true
+    },
+    {
+      "id": "pot-kitchen",
+      "name": "Pot",
+      "mesh": "Pot_1",
+      "x": -0.40000000000000036,
+      "y": 0.61,
+      "z": 44.3,
+      "yaw": 0,
+      "scale": 1
+    },
+    {
+      "id": "mug-kitchen",
+      "name": "Mug",
+      "mesh": "Mug",
+      "x": -0.5,
+      "y": 0.61,
+      "z": 45.5,
+      "yaw": 0,
+      "scale": 1
+    },
+    {
+      "id": "candle-kitchen",
+      "name": "Candles",
+      "mesh": "CandleStick",
+      "x": -0.25,
+      "y": 0.61,
+      "z": 45,
+      "yaw": 0,
+      "scale": 1,
+      "flames": [
+        [
+          0,
+          0.16,
+          0
+        ]
+      ],
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 3.5,
+        "flicker": 0.6,
+        "at": [
+          0,
+          0.9,
+          0
+        ]
+      }
+    },
+    {
+      "id": "potion-fresh",
+      "name": "Fresh potion",
+      "mesh": "Potion_2",
+      "x": -0.5999999999999996,
+      "y": 0.61,
+      "z": 44.75,
+      "yaw": 0,
+      "scale": 1,
+      "glow": 0.35,
+      "tint": [
+        0.6,
+        1.2,
+        0.5
+      ]
+    },
+    {
+      "id": "sheet-1",
+      "name": "Hanging sheet",
+      "mesh": "Custom_Sheet",
+      "x": 4,
+      "y": 0,
+      "z": 45.2,
+      "yaw": 0,
+      "scale": 1,
+      "tags": [
+        "sheet"
+      ]
+    },
+    {
+      "id": "ghost-sheet",
+      "name": "Ghost",
+      "mesh": "Custom_Ghost",
+      "x": 4,
+      "y": 0.3,
+      "z": 45.2,
+      "yaw": 180,
+      "scale": 1,
+      "glow": 0.5,
+      "tint": [
+        0.85,
+        0.9,
+        1.05
+      ],
+      "tags": [
+        "ghost",
+        "hidden"
+      ]
+    },
+    {
+      "id": "cobweb-2",
+      "name": "Cobweb",
+      "mesh": "Custom_Cobweb",
+      "x": 2.34,
+      "y": 3.08,
+      "z": 47.66,
+      "yaw": 180,
+      "scale": 0.9
+    },
+    {
+      "id": "crate-back",
+      "name": "Crate",
+      "mesh": "Crate_Wooden",
+      "x": 5.300000000000001,
+      "y": 0,
+      "z": 40.8,
+      "yaw": -20,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "tombstone-back",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Cross",
+      "x": 3.1999999999999993,
+      "y": 0,
+      "z": 52,
+      "yaw": 10,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "pumpkin-back",
+      "name": "Jack-o'-lantern",
+      "mesh": "Custom_JackOLantern",
+      "x": 5.6,
+      "y": 0,
+      "z": 49.4,
+      "yaw": 160,
+      "scale": 1,
+      "light": {
+        "kind": "pumpkin",
+        "color": [
+          1,
+          0.5,
+          0.12
+        ],
+        "radius": 3.5,
+        "flicker": 0.6,
+        "at": [
+          0,
+          0.3,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-southwest-room",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": -2,
+      "y": 1.6600000000000001,
+      "z": 24,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-west-front-room",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": 4,
+      "y": 1.6600000000000001,
+      "z": 24,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-east-front-room",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": 12,
+      "y": 1.6600000000000001,
+      "z": 24,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-southeast-room",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": 18,
+      "y": 1.6600000000000001,
+      "z": 24,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-east-room",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": 18,
+      "y": 1.6600000000000001,
+      "z": 38,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-northeast-room",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": 18,
+      "y": 1.6600000000000001,
+      "z": 44,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-north-room",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": 10,
+      "y": 1.6600000000000001,
+      "z": 44,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "chandelier-gallery",
+      "name": "Chandelier",
+      "mesh": "Chandelier",
+      "x": -4,
+      "y": 1.6600000000000001,
+      "z": 34,
+      "yaw": 0,
+      "scale": 1,
+      "light": {
+        "kind": "candle",
+        "color": [
+          1,
+          0.55,
+          0.22
+        ],
+        "radius": 6,
+        "flicker": 0.5,
+        "at": [
+          0,
+          0.6,
+          0
+        ]
+      }
+    },
+    {
+      "id": "tombstone-court-1",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Round",
+      "x": 4.5,
+      "y": 0,
+      "z": 37.5,
+      "yaw": 120,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "tombstone-court-2",
+      "name": "Tombstone",
+      "mesh": "Custom_Tombstone_Slab",
+      "x": 11.5,
+      "y": 0,
+      "z": 37,
+      "yaw": 230,
+      "scale": 1,
+      "block": true
+    },
+    {
+      "id": "bench-court",
+      "name": "Bench",
+      "mesh": "Bench",
+      "x": 5,
+      "y": 0,
+      "z": 31,
+      "yaw": 45,
+      "scale": 1,
+      "block": true,
+      "tint": [
+        0.6,
+        0.5,
+        0.45
+      ]
+    },
+    {
+      "id": "pumpkin-court-1",
+      "name": "Jack-o'-lantern",
+      "mesh": "Custom_JackOLantern",
+      "x": 5.8,
+      "y": 0,
+      "z": 28.9,
+      "yaw": 20,
+      "scale": 1,
+      "light": {
+        "kind": "pumpkin",
+        "color": [
+          1,
+          0.5,
+          0.12
+        ],
+        "radius": 3,
+        "flicker": 0.6,
+        "at": [
+          0,
+          0.3,
+          0
+        ]
+      }
+    },
+    {
+      "id": "pumpkin-court-2",
+      "name": "Jack-o'-lantern",
+      "mesh": "Custom_JackOLantern",
+      "x": 10.2,
+      "y": 0,
+      "z": 39.1,
+      "yaw": 160,
+      "scale": 1,
+      "light": {
+        "kind": "pumpkin",
+        "color": [
+          1,
+          0.5,
+          0.12
+        ],
+        "radius": 3,
+        "flicker": 0.6,
+        "at": [
+          0,
+          0.3,
+          0
+        ]
+      }
+    }
+  ],
+  "npcs": [
+    {
+      "id": "mortimer",
+      "name": "Mortimer",
+      "role": "caretaker",
+      "seed": 7,
+      "x": 9.6,
+      "z": 3.2,
+      "yaw": 200,
+      "clip": "Idle_Lantern_Loop",
+      "tint": [
+        0.75,
+        0.62,
+        0.5
+      ],
+      "area": "yard",
+      "lines": {
+        "greet": [
+          "Evening. The house takes visitors after dark. The front door is open.",
+          "Mind the steps. The pumpkins bite."
+        ],
+        "hint": [
+          "My yard could use a hand. Press Edit and add a tombstone, a few pumpkins, some low fog, or new trees.",
+          "Press Edit and you can change anything in here, or add a character and teach it what to say.",
+          "Walk all the way through. The way out is past the kitchen."
+        ],
+        "ask": [
+          "Since you are editing: this yard wants something. A new tombstone? Pumpkins along the path? Low fog? Or change the trees."
+        ],
+        "answer": [
+          "I only keep the yard. What happens inside is the house's business.",
+          "Agatha is in the kitchen, if you are brave."
+        ],
+        "emote": [
+          "*raises his lantern*",
+          "*sweeps a leaf off a tombstone*"
+        ]
+      }
+    },
+    {
+      "id": "agatha",
+      "name": "Agatha",
+      "role": "witch",
+      "seed": 23,
+      "x": -1.4,
+      "z": 42.5,
+      "yaw": -47.48955292199913,
+      "clip": "Spell_Simple_Idle_Loop",
+      "tint": [
+        0.42,
+        0.34,
+        0.5
+      ],
+      "area": "kitchen",
+      "lines": {
+        "greet": [
+          "Come in, come in. Mind the cat.",
+          "Ah, a guest. The brew is nearly ready."
+        ],
+        "hint": [
+          "Place something from the inventory. Then revert and try another idea.",
+          "The back door is through the hall on your right."
+        ],
+        "answer": [
+          "My cauldron takes requests.",
+          "The ghost in the parlor talks too much."
+        ],
+        "emote": [
+          "*stirs the cauldron*",
+          "*cackles*"
+        ]
+      }
+    }
+  ],
+  "voices": {
+    "ghost-parlor": {
+      "name": "Ghost",
+      "lines": {
+        "greet": [
+          "Oooh, a visitor. Mind the cold spots.",
+          "Welcome to the parlor. Nobody stays long."
+        ],
+        "hint": [
+          "Open Edit and try the lanterns. I like them orange.",
+          "Publish when you like it. Then the whole Verse can visit."
+        ],
+        "answer": [
+          "I only remember this house.",
+          "Ask the witch about the cauldron."
+        ],
+        "emote": [
+          "*floats through the table*",
+          "*the candles flicker*"
+        ]
+      }
+    },
+    "cat-1": {
+      "name": "Black Cat",
+      "lines": {
+        "greet": [
+          "Mrrp."
+        ],
+        "hint": [
+          "*stares at the cauldron, then at you*"
+        ],
+        "answer": [
+          "Mrrrow.",
+          "*ignores you*"
+        ],
+        "emote": [
+          "*hisses*"
+        ]
+      }
+    }
+  },
+  "zones": [
+    {
+      "Transform": {
+        "pos": [
+          -4.4,
+          1.25,
+          43.5
+        ]
+      },
+      "Trigger": {
+        "id": "zone-potions",
+        "name": "Potion shelves",
+        "shape": "box",
+        "half": [
+          0.85,
+          1.25,
+          2
+        ],
+        "when": "enter",
+        "once": true,
+        "do": [
+          {
+            "op": "show",
+            "target": "potion-fresh"
+          },
+          {
+            "op": "play",
+            "name": "bubble"
+          },
+          {
+            "op": "toast",
+            "text": "Something bubbles. A fresh potion stands on the kitchen table."
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          -1.425,
+          1.25,
+          43.5
+        ]
+      },
+      "Trigger": {
+        "id": "zone-cauldron",
+        "name": "Cauldron",
+        "shape": "box",
+        "half": [
+          0.675,
+          1.25,
+          0.8
+        ],
+        "when": "enter",
+        "once": true,
+        "do": [
+          {
+            "op": "morph",
+            "target": "cauldron-brew",
+            "name": "Custom_Ghost",
+            "value": 0.6
+          },
+          {
+            "op": "play",
+            "name": "boom"
+          },
+          {
+            "op": "toast",
+            "text": "The brew heaves up out of the cauldron as a ghost."
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          8,
+          1,
+          24
+        ]
+      },
+      "Trigger": {
+        "id": "trigger-entry-hall-footsteps",
+        "name": "Entry hall: footsteps",
+        "shape": "sphere",
+        "radius": 2,
+        "once": true,
+        "do": [
+          {
+            "op": "toast",
+            "text": "Creak"
+          },
+          {
+            "op": "play",
+            "name": "creak",
+            "target": "you",
+            "at": [
+              1.5,
+              3.2,
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          18,
+          1,
+          32
+        ]
+      },
+      "Trigger": {
+        "id": "trigger-parlor-dim",
+        "name": "Parlor: dim",
+        "shape": "sphere",
+        "radius": 2,
+        "once": true,
+        "do": [
+          {
+            "op": "light",
+            "name": "dim",
+            "at": [
+              18,
+              1.5,
+              32
+            ],
+            "size": [
+              4,
+              3,
+              4
+            ],
+            "value": 0.85,
+            "duration": 2
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          0,
+          1.25,
+          34
+        ]
+      },
+      "Trigger": {
+        "id": "trigger-long-hall-lightning",
+        "name": "Long hall: lightning",
+        "shape": "box",
+        "half": [
+          2,
+          1.25,
+          6
+        ],
+        "once": true,
+        "do": [
+          {
+            "op": "fx",
+            "name": "lightning",
+            "at": [
+              0,
+              3.5,
+              34
+            ]
+          },
+          {
+            "op": "play",
+            "name": "thunder",
+            "flat": true,
+            "delay": 0.65
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          0,
+          1,
+          34
+        ]
+      },
+      "Trigger": {
+        "id": "trigger-long-hall-slam",
+        "name": "Long hall: slam",
+        "shape": "sphere",
+        "radius": 2,
+        "once": true,
+        "do": [
+          {
+            "op": "call",
+            "name": "swing",
+            "target": "side-door-2",
+            "value": 1.4,
+            "duration": 0.9
+          },
+          {
+            "op": "play",
+            "name": "slam",
+            "target": "side-door-2",
+            "at": [
+              0,
+              1.2,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          -3.7,
+          1.25,
+          46.45
+        ]
+      },
+      "Trigger": {
+        "id": "trigger-kitchen-hiss",
+        "name": "Kitchen: hiss",
+        "shape": "box",
+        "half": [
+          2.2,
+          1.25,
+          1.55
+        ],
+        "once": true,
+        "do": [
+          {
+            "op": "call",
+            "name": "hop",
+            "target": "cat-1",
+            "value": 0.25,
+            "duration": 0.5
+          },
+          {
+            "op": "play",
+            "name": "hiss",
+            "target": "cat-1",
+            "at": [
+              0,
+              0.3,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          4,
+          1.25,
+          45.2
+        ]
+      },
+      "Trigger": {
+        "id": "trigger-back-hall-ghost",
+        "name": "Back hall: ghost",
+        "shape": "box",
+        "half": [
+          1.8,
+          1.25,
+          1.8
+        ],
+        "once": true,
+        "do": [
+          {
+            "op": "hide",
+            "target": "sheet-1"
+          },
+          {
+            "op": "show",
+            "target": "ghost-sheet"
+          },
+          {
+            "op": "play",
+            "name": "boo",
+            "target": "ghost-sheet",
+            "at": [
+              0,
+              1.2,
+              0
+            ]
+          },
+          {
+            "op": "fx",
+            "name": "magic_sparkle",
+            "target": "ghost-sheet",
+            "at": [
+              0,
+              0.6,
+              0
+            ]
+          },
+          {
+            "op": "call",
+            "name": "fly",
+            "target": "ghost-sheet",
+            "duration": 4
+          },
+          {
+            "op": "toast",
+            "text": "Boo"
+          }
+        ]
+      }
+    },
+    {
+      "Transform": {
+        "pos": [
+          5.2,
+          1.25,
+          51.225
+        ]
+      },
+      "Trigger": {
+        "id": "trigger-garden-exit",
+        "name": "Back garden: exit",
+        "shape": "box",
+        "half": [
+          3.8,
+          1.25,
+          2.775
+        ],
+        "once": true,
+        "do": [
+          {
+            "op": "toast",
+            "text": "Escaped"
+          },
+          {
+            "op": "play",
+            "name": "chime",
+            "flat": true,
+            "value": 0.8
+          }
+        ]
+      }
+    }
+  ]
+}

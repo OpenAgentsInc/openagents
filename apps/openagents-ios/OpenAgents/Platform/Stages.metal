@@ -115,3 +115,26 @@ fragment float4 slot_fragment(SlotOut in [[stage_in]],constant View& v [[buffer(
   float glow=metareal_slot_glow(in.p.x,in.p.y,e.x,e.y,v.scale,s.state.y,s.state.z);
   return float4(float3(g+glow),clamp(a,0.,1.));
 }
+
+// Metareal rigid-world binding: transforms, light values and draw groups are
+// produced by Coax. The vertex layout is Resource's documented 48-byte span.
+struct HauntVertex {packed_float3 p;packed_float3 n;float2 uv;uchar4 color;packed_uint3 reserved;};
+struct HauntInstance {float4 r0;float4 r1;float4 r2;float4 material;};
+struct HauntLight {float4 position;float4 color;};
+struct HauntView {float4 r0;float4 r1;float4 r2;float4 r3;float4 eyeTime;float4 options;};
+struct HauntOut {float4 position [[position]];float3 world;float3 normal;float2 uv;float3 tint;float glow;uint slice [[flat]];};
+vertex HauntOut haunt_vertex(uint id [[vertex_id]],uint instance [[instance_id]],const device HauntVertex* vertices [[buffer(0)]],const device HauntInstance* objects [[buffer(1)]],constant HauntView& v [[buffer(2)]]) {
+ HauntVertex a=vertices[id];HauntInstance m=objects[instance];float4 p=float4(float3(a.p),1);float3 n=float3(a.n);
+ float3 w=float3(dot(m.r0,p),dot(m.r1,p),dot(m.r2,p));float4 wp=float4(w,1);
+ return {float4(dot(v.r0,wp),dot(v.r1,wp),dot(v.r2,wp),dot(v.r3,wp)),w,normalize(float3(dot(m.r0.xyz,n),dot(m.r1.xyz,n),dot(m.r2.xyz,n))),a.uv,float3(a.color.rgb)/255.*m.material.rgb,m.material.a,uint(a.color.a)};
+}
+fragment float4 haunt_fragment(HauntOut in [[stage_in]],texture2d_array<float> sheets [[texture(0)]],constant HauntView& v [[buffer(0)]],const device HauntLight* lights [[buffer(1)]]) {
+ constexpr sampler s(filter::linear,mip_filter::linear,address::repeat);
+ float4 tex=sheets.sample(s,in.uv,in.slice);if(tex.a<.35)discard_fragment();
+ float3 n=normalize(in.normal);float moon=max(0.,dot(n,normalize(float3(-.55,.55,-.62))));
+ float3 lit=float3(metareal_haunt_ambient(n.y,0),metareal_haunt_ambient(n.y,1),metareal_haunt_ambient(n.y,2))+moon*float3(.5625,.6375,.8625)*.48;
+ for(uint i=0;i<uint(v.options.x);++i){HauntLight l=lights[i];float3 delta=l.position.xyz-in.world;float d=length(delta);float lambert=max(.08,dot(n,delta/max(d,.001)));lit+=l.color.rgb*metareal_haunt_attenuate(d,l.position.w)*lambert*2.2;}
+ float3 color=tex.rgb*in.tint;float d=length(v.eyeTime.xyz-in.world);float flash=v.options.y;
+ return float4(metareal_haunt_shade(color.r,lit.r,in.glow,d,0,flash),metareal_haunt_shade(color.g,lit.g,in.glow,d,1,flash),metareal_haunt_shade(color.b,lit.b,in.glow,d,2,flash),1);
+}
+fragment float4 haunt_sky_fragment(ScreenOut in [[stage_in]]) {return float4(mix(float3(.025,.03,.065),float3(.035,.04,.07),in.uv.y),1);}

@@ -4,6 +4,7 @@ import CoreText
 
 private struct ViewUniform { var size: SIMD2<Float>; var time: Float; var scale: Float }
 private struct BarUniform { var rect: SIMD4<Float>; var state: SIMD4<Float> }
+private struct HauntUniform { var rows: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>); var eyeTime: SIMD4<Float>; var options: SIMD4<Float> }
 private struct CastUniform { var rows: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>); var size: SIMD2<Float>; var scale: Float; var pad: Float }
 
 /// The Grid's cast for one frame: the view matrix by rows
@@ -89,6 +90,8 @@ final class HomeRenderer {
     private let composite: MTLRenderPipelineState
     private let bar: MTLRenderPipelineState
     private let slot: MTLRenderPipelineState
+    private let hauntFaces: MTLRenderPipelineState
+    private let hauntSky: MTLRenderPipelineState
     private let castFaces: MTLRenderPipelineState
     private let castLines: MTLRenderPipelineState
     private let flat: MTLDepthStencilState
@@ -138,6 +141,8 @@ final class HomeRenderer {
         composite = try pipeline("screen_vertex", "composite_fragment", .bgra8Unorm)
         bar = try pipeline("bar_vertex", "bar_fragment", .bgra8Unorm, alpha: true)
         slot = try pipeline("slot_vertex", "slot_fragment", .bgra8Unorm, alpha: true)
+        hauntFaces = try pipeline("haunt_vertex", "haunt_fragment", .rgba16Float, scene: true)
+        hauntSky = try pipeline("screen_vertex", "haunt_sky_fragment", .rgba16Float, scene: true)
         castFaces = try pipeline("cast_vertex", "cast_fragment", .rgba16Float, scene: true)
         castLines = try pipeline("cast_line_vertex", "line_fragment", .rgba16Float, brightest: true, scene: true)
         func depthState(_ compare: MTLCompareFunction, write: Bool) throws -> MTLDepthStencilState {
@@ -191,7 +196,7 @@ final class HomeRenderer {
     }
     /// Draws `handle`'s scene, with the HUD bar from `bar` (the home's Start
     /// bar over the Grid's overview) or else from `handle`.
-    func draw(handle: Int64, time: Double, cast assets: CastAssets? = nil, frame castFrame: CastFrame? = nil, bar barHandle: Int64? = nil) {
+    func draw(handle: Int64, time: Double, cast assets: CastAssets? = nil, frame castFrame: CastFrame? = nil, bar barHandle: Int64? = nil, haunt: HauntAssets? = nil, houseView: [Float]? = nil) {
         guard available.wait(timeout: .now()) == .success else { return }
         guard let scene, let depth, let blurA, let blurB, let drawable = layer.nextDrawable(), let command = queue.makeCommandBuffer(), let rawBar = mr_bar(barHandle ?? handle)?.pointee else { available.signal(); return }
         let scale = Float(layer.contentsScale)
@@ -224,13 +229,14 @@ final class HomeRenderer {
         }
         guard let e = encoder(scene, depth: depth) else { available.signal(); return }
         e.setDepthStencilState(flat)
-        e.setRenderPipelineState(sky); e.setFragmentBytes(&view,length: MemoryLayout<ViewUniform>.stride,index:0)
+        e.setRenderPipelineState(haunt == nil ? sky : hauntSky); e.setFragmentBytes(&view,length: MemoryLayout<ViewUniform>.stride,index:0)
         e.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
         e.setRenderPipelineState(lines); e.setVertexBuffer(lineBuffer,offset:0,index:0); e.setVertexBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:1)
         if lineCount > 0 { e.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6,instanceCount:lineCount) }
         e.setRenderPipelineState(dots); e.setVertexBuffer(dotBuffer,offset:0,index:0)
         if dotCount > 0 { e.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6,instanceCount:dotCount) }
-        if let assets, let castFrame, let palette { drawCast(e, assets, castFrame.view, palette, view) }
+        if let haunt, let houseView { drawHaunt(e, haunt, houseView, ring, time) }
+        else if let assets, let castFrame, let palette { drawCast(e, assets, castFrame.view, palette, view) }
         e.endEncoding()
         func blurPass(_ input: MTLTexture, _ output: MTLTexture, _ direction: SIMD2<Float>) {
             guard let e = encoder(output) else { return }; var direction = direction
@@ -265,6 +271,22 @@ final class HomeRenderer {
             semaphore.signal()
         }
         command.present(drawable); command.commit()
+    }
+    private func drawHaunt(_ e: MTLRenderCommandEncoder, _ assets: HauntAssets, _ m: [Float], _ frame: Int, _ time: Double) {
+        guard m.count == 16 else { return }
+        let instances = assets.instances[frame], lights = assets.lightBuffers[frame]
+        let count = metareal_haunt_instances(assets.state, time, coax_v_t_HauntInstance(data: instances.contents().assumingMemoryBound(to: coax_t_HauntInstance.self), count: 4096), coax_v_t_HauntDraw(data: assets.drawPackets, count: 256))
+        let lightCount = metareal_haunt_lights(assets.state, time, coax_v_t_HauntGPUlight(data: lights.contents().assumingMemoryBound(to: coax_t_HauntGPUlight.self), count: 64))
+        let eye = assets.state.eye
+        var u = HauntUniform(rows: (SIMD4(m[0],m[1],m[2],m[3]), SIMD4(m[4],m[5],m[6],m[7]), SIMD4(m[8],m[9],m[10],m[11]), SIMD4(m[12],m[13],m[14],m[15])), eyeTime: SIMD4(eye.x,eye.y,eye.z,Float(time)), options: SIMD4(Float(lightCount),time < assets.state.flash_until ? 1 : 0,0,0))
+        e.setRenderPipelineState(hauntFaces); e.setDepthStencilState(solid); e.setCullMode(.none)
+        e.setVertexBuffer(assets.vertices, offset: 0, index: 0); e.setVertexBuffer(instances, offset: 0, index: 1)
+        e.setVertexBytes(&u, length: MemoryLayout<HauntUniform>.stride, index: 2)
+        e.setFragmentBytes(&u, length: MemoryLayout<HauntUniform>.stride, index: 0)
+        e.setFragmentBuffer(lights, offset: 0, index: 1); e.setFragmentTexture(assets.sheets, index: 0)
+        for i in 0..<Int(count) { let d = assets.drawPackets[i]
+            e.drawIndexedPrimitives(type: .triangle, indexCount: Int(d.count), indexType: .uint32, indexBuffer: assets.indices, indexBufferOffset: Int(d.first)*4, instanceCount: Int(d.instances), baseVertex: 0, baseInstance: Int(d.base))
+        }
     }
     /// You, then each robot's faces and line art, each with its own run of
     /// the palette: yours first, then `bones` joints per robot.

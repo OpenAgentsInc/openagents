@@ -1,0 +1,62 @@
+syntax = "proto3";
+package openagents.metareal.haunt.v1alpha1;
+
+// Offline world documents. No signature, identity or publication authority is
+// conferred by a decoded world. Metres, radians, linear RGB; +Y up, +Z forward.
+message Vec3 { float x = 1; float y = 2; float z = 3; }
+message Mesh {
+  string name = 1;
+  uint32 first_index = 2;
+  uint32 index_count = 3;
+  Vec3 minimum = 4;
+  Vec3 maximum = 5;
+}
+message Entity {
+  string id = 1;
+  string name = 2;
+  uint32 mesh = 3;
+  Vec3 position = 4;
+  float yaw = 5;
+  float scale = 6;
+  Vec3 tint = 7;
+  float glow = 8;
+  bool hidden = 9;
+  bool fixed = 10;
+  bool solid = 11;
+  // 0 still, 1 rocking, 2 ghost, 3 bubbling, 4 flame, 5 door, 6 foliage.
+  uint32 motion = 12;
+  string parent = 13;
+}
+message Rect { float x0 = 1; float z0 = 2; float x1 = 3; float z1 = 4; }
+message Area { string id = 1; string name = 2; Rect rect = 3; bool room = 4; bool dark = 5; uint32 surface = 6; }
+message Light { Vec3 position = 1; Vec3 color = 2; float radius = 3; float flicker = 4; float intensity = 5; string parent = 6; }
+message Person { string id = 1; string name = 2; string role = 3; Vec3 position = 4; repeated string greet = 5; repeated string hint = 6; repeated string answer = 7; repeated string emote = 8; string knowledge = 9; float range = 10; string brain = 11; repeated Vec3 route = 12; }
+message Action {
+  string op = 1; string target = 2; string name = 3; string text = 4;
+  Vec3 at = 5; Vec3 size = 6; float value = 7; float duration = 8;
+  float delay = 9; bool flat = 10; float volume = 11;
+}
+message Zone { string id = 1; string name = 2; Vec3 position = 3; Vec3 half = 4; float radius = 5; bool sphere = 6; bool once = 7; repeated Action actions = 8; }
+message Resource {
+  uint32 version = 1; string world_id = 2; string title = 3; string source_commit = 4;
+  // Rigid vertices: 8 little-endian floats (position, normal, UV), RGBA
+  // linear vertex colour with texture-array slice in A, 12 reserved zero bytes.
+  // 48-byte stride. Indices: little-endian uint32 triangle indices.
+  string vertices_resource = 5; string indices_resource = 6; repeated Mesh meshes = 7;
+  repeated Entity entities = 8; repeated Area areas = 9;
+  repeated Rect walk = 10; repeated Rect blocks = 11;
+  repeated Light lights = 12; repeated Person people = 13; repeated Zone zones = 14;
+  Vec3 arrival = 15; float arrival_yaw = 16;
+  repeated uint32 texture_layers = 17;
+  uint32 vertex_count = 18; uint32 index_count = 19;
+}
+// Editable entity overrides plus quest/scare state, tied to the exact
+// bundled world revision. Borrowed strings must remain resident while used.
+// Sharing exports this document as a file; it is not a server publication.
+message Save {
+  uint32 version = 1; string world_id = 2; string source_commit = 3;
+  repeated Entity entities = 4; uint32 fired_zones = 5; uint32 quest_step = 6;
+  string title = 7; repeated Person people = 8;
+  repeated Zone zones = 9;
+  string instance_id = 10; string feedback = 11;
+}

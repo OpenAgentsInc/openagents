@@ -1,0 +1,27 @@
+{
+  "source_commit": "69848ca",
+  "scene_sha256": "5d55d2d476af7bea5039d103412477e0744c2a66e45d48f5402758c9120c8144",
+  "resource_sha256": "6ff7a2536f11f75999936bcee126e13652abd4bd43ea0894112a035fbde99f9e",
+  "entities": 1645,
+  "meshes": 87,
+  "areas": 16,
+  "walk_rectangles": 35,
+  "lights": 26,
+  "people": 4,
+  "zones": 9,
+  "texture_layers": [
+    0,
+    1,
+    2,
+    18,
+    19,
+    20,
+    21,
+    22,
+    24,
+    26,
+    27,
+    28
+  ],
+  "attribution": "Quaternius CC0 modular dungeon/village kits; custom Haunted House art OpenAgents Inc."
+}

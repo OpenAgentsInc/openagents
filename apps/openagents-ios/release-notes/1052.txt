@@ -1,0 +1,5 @@
+Haunted House is now in Metareal/Coax. Tap the lit Haunted House portal in the Grid, or walk through it.
+
+Original house and forest, furnishings, Mortimer and Agatha, ghost/cat conversations, all nine scares, spatial sound, first/third/top cameras and a compact engine hotbar. Edit objects, add/teach characters, adjust zones, undo/redo, save personal world copies and share/import world files. The map opens only when asked. Return to the Grid from the hotbar.
+
+Local world sharing works offline; the retired public publishing/paid-offer service and cloud NPC endpoint are not connected in this rebuild.

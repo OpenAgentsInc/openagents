@@ -1,0 +1,6 @@
+Engine sounds (assets/audio/*.mp3)
+
+Every clip is synthesized from noise and sine partials by tools/gen-sounds.py
+in this repository; no recordings or third-party samples are used. The
+script and its output are dedicated to the public domain under CC0 1.0
+Universal (https://creativecommons.org/publicdomain/zero/1.0/).

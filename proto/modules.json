@@ -107,6 +107,9 @@
       "nostr/block/cw/v1alpha1/window.proto",
       "nostr/block/dv/v1alpha1/visibility.proto",
       "nostr/block/wp/v1alpha1/workspace.proto"
+    ],
+    "haunt": [
+      "openagents/metareal/haunt/v1alpha1/haunt.proto"
     ]
   },
   "profile_namespaces": {
@@ -165,6 +168,9 @@
       "nostr.block.cw.",
       "nostr.block.dv.",
       "nostr.block.wp."
+    ],
+    "haunt": [
+      "openagents.metareal.haunt."
     ]
   }
 }

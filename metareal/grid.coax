@@ -378,13 +378,13 @@ on_slot :: (b: Slot, x: f32, y: f32, slop: f32) -> bool {
 // A touch: its slot (the host's number for the finger), phase (0 began, 1
 // moved, 2 ended, 3 cancelled), where in pixels, the view's width and
 // height in pixels, pixels per point, and the time in seconds.
-metareal_sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32, height: f32,
-                          scale: f32, now: f64) -> Sticks #export_c {
+sticks_touch :: (s: Sticks, slot: int, phase: int, x: f32, y: f32, width: f32, height: f32,
+                          scale: f32, now: f64, hotbar:bool) -> Sticks {
   next := s;
   k := hi(scale, 0.5);
   hot := dance_slot(height, k);
   if phase == 0 {
-    if on_slot(hot, x, y, 0) {
+    if hotbar && on_slot(hot, x, y, 0) {
       if !s.slot_on { next.slot_on = true; next.slot_finger = slot; next.slot_over = true; }
     } else if x < width / 2 {
       if !s.move_on {
@@ -874,3 +874,22 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
   #assert fog(length(sub(v3(4, 0, 0), eye)) - out) > 0.99;
   #assert fog(length(sub(v3(0, 0, -100), eye)) - out) < 0.05;
 }
+
+// The Haunted House portal is geometry in the Grid. Its screen projection
+// also supplies the platform's accessible hit target and floating name.
+metareal_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,height:f32,scale:f32) -> Screen #export_c {
+ c:=camera(v3(ex,ey,ez),v3(ax,ay,az),width,height);
+ for i:0..<32 {
+  a:=f32(i)*f32(PI)/32;b:=f32(i+1)*f32(PI)/32;
+  pa:=v3(-1.5+cos(a)*1.2,1.6+sin(a)*1.2,10);pb:=v3(-1.5+cos(b)*1.2,1.6+sin(b)*1.2,10);
+  line_out(h,piece(c,pa,pb),0.9,0.9,scale*1.2);
+ }
+ line_out(h,piece(c,v3(-2.7,0,10),v3(-2.7,1.6,10)),0.9,0.9,scale*1.2);
+ line_out(h,piece(c,v3(-0.3,0,10),v3(-0.3,1.6,10)),0.9,0.9,scale*1.2);
+ marker:=view(c,v3(-1.5,3.2,10));if marker.z<0.05{return Screen.{x= -10000,y= -10000};}
+ return project(c,marker);
+}
+metareal_grid_controls :: (h:int,s:Sticks,width:f32,height:f32,scale:f32) #export_c {sticks_out(h,s,width,height,hi(scale,0.5));}
+
+metareal_sticks_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,true);}
+metareal_sticks_world_touch :: (s:Sticks,slot:int,phase:int,x:f32,y:f32,width:f32,height:f32,scale:f32,now:f64)->Sticks #export_c {return sticks_touch(s,slot,phase,x,y,width,height,scale,now,false);}

@@ -14,6 +14,8 @@ private final class Surface: UIView {
 /// robots, and this file passes numbers between them.
 final class HomeViewController: UIViewController {
     private var surface: Surface { view as! Surface }
+    private var house: HauntViewController?
+    private let housePortal = UIButton(type: .custom)
     private var renderer: HomeRenderer?
     private var clock: CADisplayLink?
     private var handle: Int64 = 0
@@ -74,6 +76,14 @@ final class HomeViewController: UIViewController {
             startElement = element
             setUpBalance()
             setUpGrid()
+            housePortal.setTitle("Haunted House", for: .normal)
+            housePortal.titleLabel?.font = UIFont(name: "Michroma", size: 10)
+            housePortal.setTitleColor(.white, for: .normal)
+            housePortal.accessibilityIdentifier = "grid.haunt"
+            housePortal.accessibilityLabel = "Haunted House portal"
+            housePortal.isHidden = true
+            housePortal.addAction(UIAction { [weak self] _ in self?.enterHouse() }, for: .touchUpInside)
+            view.addSubview(housePortal)
             view.accessibilityElements = [element]
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -118,7 +128,7 @@ final class HomeViewController: UIViewController {
     }
     @objc private func resume() {
         refreshBalance()
-        guard renderer != nil, clock == nil else { return }
+        guard house == nil, renderer != nil, clock == nil else { return }
         metareal_home_resume(handle)
         let link = CADisplayLink(target: DisplayTarget(owner: self), selector: #selector(DisplayTarget.tick(_:)))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 60)
@@ -291,7 +301,7 @@ final class HomeViewController: UIViewController {
         sticks = metareal_sticks_reset(); gridTouches = [:]
         view.isMultipleTouchEnabled = true
         balanceLabel.isHidden = false; walletButton.isHidden = false
-        view.accessibilityElements = [gridElement, youElement, danceElement, walletButton].compactMap { $0 }.filter { $0 !== youElement || cast != nil }
+        view.accessibilityElements = [gridElement, youElement, danceElement, walletButton, housePortal].compactMap { $0 }.filter { $0 !== youElement || cast != nil }
         UIAccessibility.post(notification: .screenChanged, argument: gridElement)
         NSLog("OpenAgents: entered the Grid")
     }
@@ -340,6 +350,9 @@ final class HomeViewController: UIViewController {
         mr_clear_frame(gridHandle)
         metareal_grid_frame(gridHandle, sticks, eye.x, eye.y, eye.z, at.x, at.y, at.z, feet.x, feet.y, feet.z,
                             width, height, Float(scale), anim.dance, timestamp, playing)
+        let portal = metareal_grid_portal(gridHandle, eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, Float(scale))
+        housePortal.isHidden = !playing || !portal.x.isFinite || !portal.y.isFinite || portal.x < 0 || portal.x > width || portal.y < 0 || portal.y > height
+        housePortal.frame = CGRect(x: CGFloat(portal.x)/scale - 85, y: CGFloat(portal.y)/scale - 35, width: 170, height: 44)
         // Over the overview, the home's Start bar.
         var bar: Int64?
         if case .overview = stage {
@@ -377,8 +390,25 @@ final class HomeViewController: UIViewController {
         }
         renderer?.draw(handle: gridHandle, time: timestamp, cast: cast, frame: castFrame, bar: bar)
         guard playing else { return }
+        if metareal_haunt_portal(feet.x, feet.z) { enterHouse(); return }
         let place = String(format: "%.1f %.1f", feet.x, feet.z)
         if gridElement?.accessibilityValue != place { gridElement?.accessibilityValue = place }
+    }
+    private func enterHouse() {
+        guard house == nil, playing, let window = view.window else { return }
+        suspend()
+        let screen = HauntViewController(); house = screen
+        // Each world owns the window's full Metal surface. Nesting Metal
+        // layers inside the suspended Grid clips their rotation snapshots.
+        screen.closed = { [self, weak screen, weak window] in
+            screen?.closed = nil
+            self.house = nil
+            self.player = metareal_player_place(-1.5, 0, 7, .pi)
+            window?.rootViewController = self
+            self.resume()
+        }
+        window.rootViewController = screen
+        UIAccessibility.post(notification: .screenChanged, argument: screen.view)
     }
     private func routeGrid(_ touches: Set<UITouch>, _ phase: Int64) {
         let scale = surface.metalLayer.contentsScale

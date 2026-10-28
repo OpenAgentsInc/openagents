@@ -8,6 +8,13 @@ world: ground lines out to 264 m and a wire figure standing in for your
 character. Drag on the left half to walk (push past the ring to run), drag on
 the right half to look, and tap the right half to jump.
 
+The Grid's **Haunted House** arch opens the native house world. It includes
+its original rooms, props, NPCs, scares, spatial audio, first/third/top views,
+compact engine hotbar, object/character/zone editing and local proto saves.
+The World menu creates personal copies, imports/shares actual world files,
+and switches between saved copies. Public server publishing is not restored;
+see [the world contract](../../docs/protocol/metareal-haunt.md).
+
 ## Build and run
 
 Requires macOS, Xcode with an iOS SDK/simulator, a C++20 host compiler, and
@@ -117,6 +124,14 @@ unknown/duplicate/truncated resource rejection, bounded finite draw packets,
 deterministic initialization, reduced motion, resume, stale handles, cancelled
 presses and exact-once invocations. UI tests launch the real Metal app and tap
 the rendered HUD through the native touch path in portrait and landscape.
+
+Haunted House regression checks:
+
+```sh
+metareal/test_haunt.sh
+# Set PROTOC/PROTO_PYTHON to the pinned proto toolchain for the independent oracle.
+# Native UI: -only-testing:OpenAgentsUITests/HauntUITests
+```
 
 ## TestFlight
 

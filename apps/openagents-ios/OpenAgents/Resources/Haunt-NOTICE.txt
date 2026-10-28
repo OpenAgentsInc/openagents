@@ -1,0 +1,10 @@
+Haunted House
+Original house layout, custom low-poly art and synthesized sound effects:
+OpenAgents Inc. Source revision 69848ca, aethyr-cpp. Apache-2.0 source;
+synthesized sound recordings dedicated to CC0 1.0 Universal.
+
+Modular dungeon/village props and textures: Quaternius, CC0 1.0 Universal.
+https://quaternius.com/
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The app's Coax implementation is Metareal. No prior web runtime is bundled.

@@ -275,3 +275,40 @@ layout and policy expectations; actual emitted checker under ASan/UBSan),
 complete compiler bridge sanitizers in `coax/tests/parser.py`, protoc
 interoperability and the actual iOS Home/Grid/animation tests from empty
 generated outputs.
+
+## Haunted House is a native Metareal world
+
+The Grid's lit arch at (-1.5, 0, 10) enters Haunted House by tapping its name
+or walking through it. Each world owns the window's full Metal surface; it
+is not a modal web view. Grid returns to the same app, with the home, cast
+and wallet intact. The scene's decisions, geometry packets, motion, trigger
+schedule, footsteps/spatial sound, dialogue, teaching/character behaviours,
+quest, editing and protobuf documents are in `metareal/haunt.coax`.
+`hud.coax` supplies reusable hotbar layout; `haunt-light.coax` emits the
+material math as Metal. Native code binds lifecycle, fixed-capacity memory,
+GPU buffers, UIKit/accessibility forms, audio clips and local file/share I/O.
+
+The original current content (source 69848ca, not the older frozen house)
+keeps all 120 objects, 21 doors, 13 rooms and three outdoor areas, the plain
+roofs, pine/dead-tree forest without ground cover, Mortimer/Agatha and the
+ghost/cat voices. All nine scare zones, including delayed thunder, the brew
+morph and sheet ghost, run locally. This introduces no new network service,
+account, microphone permission or payment path. Local copies and invitations
+are actual proto files, not claims of a public-world publish. The retired
+web public-world/owner/change-offer APIs and cloud NPC endpoint remain explicit
+service parity gaps; see `docs/protocol/metareal-haunt.md`.
+
+`proto/openagents/metareal/haunt/v1alpha1` defines resource metadata and
+editable snapshots. Geometry is separately bounded; every vertex/index and
+draw range passes the Coax `#authority` buffer gate before upload/drawing.
+Unknown identities in an imported save grant no authority. The matching base
+revision, bounded finite overrides and unique IDs are checked before a save
+changes the live scene. The platform retains bytes for every borrowed view;
+undo rebuilds the base, then applies a complete override snapshot. Background
+stops audio/input and saves; returning discards the world's native allocations.
+
+Check: `metareal/test_haunt.sh` (Coax checks, 109/109 buffer-gate mutants killed,
+ASan/UBSan and real assets; with `PROTOC`/`PROTO_PYTHON`, source content parity
+and official protobuf writer interoperability in both directions), Grid/player
+checks, `HauntUITests` (real Metal portal, conversation, placement, save/reenter,
+cameras/map/rotation/reset) and the existing `HomeUITests`.
