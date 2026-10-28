@@ -45,7 +45,12 @@ remote commit does not justify repeating the compiler/app suites.
   staging, smokes it, promotes and smokes production, and rolls back on its
   own if production fails. From a worktree, copy `coax/bin/coax` in first.
 
-## Done
+## Original handoff snapshot
+
+These lists are historical. The live queue and current execution update above
+supersede their status; retain them as the starting evidence.
+
+### Done
 
 | Task | Commit |
 |---|---|
@@ -60,7 +65,7 @@ remote commit does not justify repeating the compiler/app suites.
 main. The checker's `#test`/`#forall` 554 passed, and mutation killed
 3777/3777.
 
-## In flight
+### In flight
 
 - **#c29a project-page-live** (`claude-live-1`): the page reads its
   project, tasks and order from the relay. The WebSocket fold has landed.
@@ -69,7 +74,7 @@ main. The checker's `#test`/`#forall` 554 passed, and mutation killed
   build-time snapshot. When the live fold refills the tables it has to fill
   `w[0].details` too. The escaping is in `coax/web/project/details.ts`.
 
-## Ready next, by queue order
+### Ready next, by queue order
 
 These Nostr-side tasks are ready: #993f crypto-bytes, #ef11
 crypto-vectors-pinned, #5c3a nostr-hex-base64, #2265 secp-libsecp-harness,
@@ -78,7 +83,7 @@ coax-qr-encoder. The intrinsics #0ad5 (wrapping ops) and #cead (mul_wide) gate
 the secp field work. The rest waits on these. `bun publish.ts list` is the
 truth.
 
-## Known problems
+### Known problems
 
 - **`coax/tests/run.sh`: 88 pass, 1 fails.** `tests/fail/ct_view.coax`
   expects E0409, but E0383 (returned borrow of a local array, added in

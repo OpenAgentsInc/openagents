@@ -212,7 +212,7 @@
         "crypto",
         "optional"
       ],
-      "body": "Add `mul_wide(a, b: u64) -> (hi, lo: u64)`: C emits `unsigned __int128`; wasm32 emits a four-multiply split. Enables a 5\u00d752 field on native later.",
+      "body": "Add mul_wide(a,b:u64) returning the compiler-owned CoaxU64Product {hi:u64,lo:u64}. Current Coax has named records rather than general tuple returns. Native C uses unsigned __int128; wasm32 uses four32-bit partial products. Checked and wrapping modes, compile-time evaluation and left-to-right once-only argument evaluation share the same exact result. Enables later5x52 native field optimization; the current10x26 field arithmetic can proceed with bounded u64 schedules.",
       "files": [
         "coax/src/",
         "coax/spec.md"
@@ -578,7 +578,7 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "mul and sqr with reduction by 2^256 \u2261 2^32 + 977; #run/#assert prove the largest accumulator stays below 2^64 for inputs of magnitude \u2264 8.",
+      "body": "mul and sqr with reduction by 2^256 \u2261 2^32 + 977; #run/#assert prove the largest accumulator stays below 2^64 for inputs of magnitude \u2264 8. The selected10x26 implementation proves a bounded u64 convolution/fold schedule; mul_wide is reserved for a later5x52 optimization and is not required for this representation.",
       "files": [
         "coax/lib/crypto/secp_field.coax"
       ],
@@ -1021,7 +1021,8 @@
       "acceptance": [
         "All upstream valid/invalid vectors and 65535/65536/65537 extended-prefix boundary fixtures pass or produce the advertised capacity refusal",
         "Wrong MAC/version/nonce/padding/alias/capacity never releases plaintext; zero surviving mutants",
-        "Independent encrypt/decrypt interoperability in both directions, with no production key"
+        "Independent encrypt/decrypt interoperability in both directions, with no production key",
+        "Every advertised payload maximum closes the real encrypt/base64/event-write/event-read/decrypt path, or refuses before emitting an event its selected reader cannot admit; raw-string, content, frame and crypto limits cannot silently disagree."
       ],
       "blocked_by": [
         "crypto-hmac-hkdf",
@@ -2942,7 +2943,7 @@
         "compiler",
         "tests"
       ],
-      "body": "The handoff reports fail/ct_view.coax now hits E0383 for a local returned borrow before it can exercise E0409. Replace the fixture with a safe borrowed-parameter case that still reaches E0409. Do not just change the expected diagnostic or weaken the lifetime check.",
+      "body": "Resolved by cfc36f3ab7: ct_view now returns a safe empty view with no local-array borrow, still reaching E0409. Existing E0383 local-return fixtures remain refused in both modes. The expected diagnostic and lifetime protection were preserved.",
       "files": [
         "coax/tests/fail/ct_view.coax",
         "coax/tests/"
