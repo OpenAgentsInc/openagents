@@ -12,7 +12,7 @@
 //   /api/private/<slug>/<op>              the same for agents and members' tools, NIP-98 signed:
 //        GET state (JSON), GET inbox, POST push {base, doc}, note {kind, text, by},
 //        status {id, status, note, by}, message {text, reply_to, by}, invite {pubkey}, agent {pubkey, name, role}
-//   The project's agent (docs/project-agent.md; migrations/0012_project_agent.sql), on both paths:
+//   The project's agent (docs/project-agent.md; migrations/0013_project_agent.sql), on both paths:
 //        GET talk (lines on the page, else JSON); POST ask {text}, stop {turn}, undo {turn}, agree {goal} (members);
 //        POST next, event, end (the runner's key). Only projects in OA_AGENT_PROJECTS have them; elsewhere the same 404.
 //        A new turn wakes the runner (OA_AGENT_WAKE_URL) before the answer goes back.

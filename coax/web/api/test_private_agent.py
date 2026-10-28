@@ -1,4 +1,4 @@
-# A project's agent (docs/project-agent.md, migrations/0012_project_agent.sql):
+# A project's agent (docs/project-agent.md, migrations/0013_project_agent.sql):
 # only approved projects have one, members talk to it, the runner key takes
 # turns and edits inside them, and UNDO TURN puts the document back.
 # test.py runs this file after test_private.py; its helpers come from there.

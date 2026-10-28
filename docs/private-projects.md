@@ -15,7 +15,7 @@ the public site bucket.
 
 | Piece | Where |
 | --- | --- |
-| Storage and rules | `coax/web/api/migrations/0007_private_projects.sql` (schema `projects`, function `projects.api`); the project's agent in `0012_project_agent.sql` |
+| Storage and rules | `coax/web/api/migrations/0007_private_projects.sql` (schema `projects`, function `projects.api`); the project's agent in `0013_project_agent.sql` |
 | HTTP routes | `coax/web/api/private.c` |
 | Page | `apps/openagents-web/private.coax`, `private-face.c`, `private.wgsl`, the generic locked page `apps/openagents-web/projects/private/` |
 | Tool | `coax/web/api/private.sh` |
