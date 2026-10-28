@@ -67,7 +67,7 @@ echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 
 if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
-  t=$(now); "$here/smoke.sh" https://staging.openagents.com; lap smoke "$t"
+  t=$(now); "$tree/coax/web/smoke.sh" https://staging.openagents.com; lap smoke "$t"
 fi
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s"; exit 0; }
 if ! $stage; then
@@ -95,7 +95,7 @@ fi
 t=$(now)
 via=""
 [[ "$(dig +short openagents.com A | sort | head -1)" == "$lb_ip" ]] || via="--via $lb_ip"
-if ! "$here/smoke.sh" https://openagents.com $via --coder; then
+if ! "$tree/coax/web/smoke.sh" https://openagents.com $via --coder; then
   echo "release $commit: production smoke failed; rolling back to the pages from before" >&2
   "$here/rollback.sh" "$stamp"
   exit 1
