@@ -1,0 +1,30 @@
+// Deliberately public fixtures. The last two must leak; none holds a key.
+#load "model.coax";
+
+#test "fixed work agrees with an independent wrapping integer fixture" {
+  empty:[]u64;
+  #assert ct_fixed(0,empty)==0xb1136585b70348e5;
+  #assert ct_branch(0,empty)==0;
+  #assert ct_branch(1,empty)!=0;
+  table:=[4]u64.[0,2,3,1];
+  #assert ct_index(0,table[..])==0;
+  #assert ct_index(1,table[..])==2;
+}
+
+ct_fixed :: (input:u64,table:[]u64)->u64 #export_c {
+  r:=input;
+  for i:0..<32 {r=add_wrap(mul_wrap(rotl(r,7),6364136223846793005),1442695040888963407);}
+  return r;
+}
+ct_branch :: (input:u64,table:[]u64)->u64 #export_c {
+  r:=input;
+  if (input&1)!=0 {
+    for i:0..<256 {r=add_wrap(mul_wrap(rotl(r,7),6364136223846793005),1442695040888963407);}
+  }
+  return r;
+}
+ct_index :: (input:u64,table:[]u64)->u64 #export_c {
+  at:=cast(int)(input%cast(u64)table.count);
+  for i:0..<64 {at=cast(int)(table[at]%cast(u64)table.count);}
+  return cast(u64)at;
+}

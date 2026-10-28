@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>Public timing fixture</title>
+<script type="module">
+// Explicit test instrumentation only; no production UI or imported secrets.
+window.completed=(async()=>{
+ const denied=()=>{throw Error('Unexpected timing fixture effect');};
+ const{instance}=await WebAssembly.instantiateStreaming(fetch('/timing.wasm'),{wasi_snapshot_preview1:{fd_fdstat_get:denied,fd_seek:denied,fd_write:denied,proc_exit:denied}});
+ const x=instance.exports;x._initialize?.();const n=x.count();
+ const report={userAgent:navigator.userAgent,crossOriginIsolated,timer:'performance.now; nanoseconds rounded from milliseconds; no baseline subtraction',batch:8,samples:n,runs:[]};
+ if(!crossOriginIsolated)throw Error('High-resolution timer isolation required');
+ let resolution=Infinity,previous=performance.now();
+ for(let i=0;i<20000;i++){let v=performance.now();if(v>previous)resolution=Math.min(resolution,v-previous);previous=v;}
+ report.observedTimerStepNs=Math.round(resolution*1e6);
+ for(const[index,name]of['fixed','branch','index'].entries()){
+  x.prepare(index);for(let i=0;i<20000;i++)x.sample(i);
+  const times=new Float64Array(x.memory.buffer,x.times(),n),start=performance.now();
+  for(let i=0;i<n;i++){const a=performance.now();x.sample(i);times[i]=Math.round((performance.now()-a)*1e6);}
+  const acquisitionMs=performance.now()-start,status=x.finish();if(status<0)throw Error('Coax observation refusal');
+  const names=['n0','n1','mean0','mean1','variance0','variance1','t','degenerate'],coax={status};
+  names.forEach((key,i)=>coax[key]=i===7?Boolean(x.metric(i)):x.metric(i));
+  const bytes=new Uint8Array(x.memory.buffer,x.raw(),x.raw_size()).slice();
+  const response=await fetch('/raw/'+name,{method:'POST',body:bytes});if(!response.ok)throw Error('Raw retention failed');
+  report.runs.push({fixture:name,coax,acquisitionMs});
+ }
+ return report;
+})();
+</script>

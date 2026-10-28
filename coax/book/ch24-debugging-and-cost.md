@@ -222,3 +222,25 @@ use. Inspect tails and memory as well as medians. R0 remains open for
 physical-device/tail budgets, full-loop evidence, status generation and
 independent reference/gate review. The benchmark README and `docs/verification/`
 retain both the original miss and the follow-up, including their actual inputs.
+
+## Timing evidence for secret paths
+
+Fast code and constant-time code are different properties. The Nostr timing
+harness at `tools/coax-nostr/timing/` compares fixed and seeded random public
+inputs with Welch's t-test. Coax owns moments, bounds and classification;
+platform code observes clocks and invokes emitted callbacks. Deliberately
+leaky branch and memory-index controls check that the experiment can detect
+those differences on the selected target.
+
+The retained run has a million observations per fixture on native arm64,
+native x86-64 and real Chrome/Wasm, with exact class counts, raw-row hashes,
+compiler flags, timer resolution and noise statistics. Browser results name
+the engine and requested tier. Test tooling recomputes the statistics through
+an independent two-pass calculation. Instrumented sanitizer timings stay
+separate from optimized release timings.
+
+`no-difference-detected` is an observation under that experiment's inputs,
+noise and threshold. It does not establish constant time for another target,
+optimizer, JIT tier, secret distribution or algorithm. Source restrictions,
+generated-object inspection, erasure, independent review and key custody remain
+separate gates. See the [harness method and scoped evidence](../../tools/coax-nostr/timing/README.md).

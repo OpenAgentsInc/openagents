@@ -31,6 +31,15 @@ roadmap remains the project's first initiative; this is its Nostr initiative.
 | `bc88057ec1` | Bounded Coax hex and canonical padded base64 with native oracle/sanitizer checks | Full Nostr event admission |
 | `54ea8f5626` | Canonical Coax profiles, generated matrix and bounded preflight policy | Truth of untrusted measurements or completed crypto profiles |
 
+The current execution also has streaming SHA-256, HMAC/HKDF, bounded codecs,
+field/scalar arithmetic, exact-chain field inverse/root, resumable PBKDF2,
+identified-buffer erasure and integer-profile JCS. Each slice retains its own
+native/Wasm/oracle/mutation evidence; that is not a completed Nostr client or
+approval for production secrets. The timing controls in
+[`tools/coax-nostr/timing/`](../tools/coax-nostr/timing/README.md) record real
+million-observation arm64, x86-64 and Chrome/Wasm runs, including deliberately
+leaky branch/index fixtures. No-detection is scoped evidence, never proof.
+
 
 The live fold now stages candidate tables and performs bounded history/known-root
 catch-up before replacing the first-paint snapshot. `f4b21878c7` matched all five
@@ -166,9 +175,9 @@ unchecked-access escape hatch is introduced.
 | Checked integers, fixed arrays/views, `#load`, `#run` | Implemented; actual table budgets still need measurement | Existing compiler plus emitted-target tests |
 | Compound assignment through a view | Fixed in `e2f8432ea2` | Preserve focused regression |
 | `value_barrier` | Shipped in `b9a5f216f0` | Scoped code-generation tests, not a constant-time guarantee |
-| Secure erasure | Missing independent contract | Optimized stores/copies and failure-path tests |
+| Secure erasure | Explicit identified-buffer/copy contract shipped in `487c01091f` | Optimized stores/copies and failure-path tests; hidden copies and consumer adoption remain separate |
 | Wrapping ops/rotates | Implemented in Coax 0.15.0 | Matching u32/u64 operands; checked/optimized/compile-time/native/Wasm evidence |
-| `mul_wide` | Optional native optimization | Not required for 10x26 |
+| `mul_wide` | Shipped in Coax 0.16.0 as a named hi/lo record | Exact native/fallback/Wasm/compile-time tests; not required for 10x26 |
 | Debug magnitude layout | Conditional fields planned | Explicit debug representation is allowed; no false `#if` claim |
 | Secret/variable-time enforcement | Missing | `crypto-secret-lint`; `#secret` is not accepted syntax today |
 

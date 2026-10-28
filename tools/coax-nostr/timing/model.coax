@@ -1,0 +1,112 @@
+// Statistics/admission for observed public timings. Inputs are measurements,
+// never cryptographic authority; no outcome certifies constant-time behavior.
+#authority;
+CT_MIN :: 1000000;
+CT_MAX :: 2000000;
+CT_TICKS :: 1000000000.0;
+CT_THRESHOLD :: 10.0;
+CT_DETECTED :: 1;
+CT_NONE :: 2;
+CT_SHORT :: 3;
+CT_INVALID :: 4;
+CT_FLAT :: 5;
+CtMoment :: struct {n:int;mean:f64;m2:f64;}
+CtStats :: struct {a:CtMoment;b:CtMoment;error:bool;}
+CtResult :: struct {status:int;n0:int;n1:int;mean0:f64;mean1:f64;variance0:f64;variance1:f64;t:f64;degenerate:bool;}
+
+#test "online moments match a small independent integer fixture" {
+  s:[1]CtStats;
+  for x:[4]int.[1,2,3,4] {#assert ct_observe(s[..],0,cast(f64)x);}
+  for x:[3]int.[4,8,12] {#assert ct_observe(s[..],1,cast(f64)x);}
+  #assert s[0].a.n==4 && s[0].a.mean==2.5 && s[0].a.m2==5;
+  #assert s[0].b.n==3 && s[0].b.mean==8 && s[0].b.m2==32;
+  #assert ct_result(s[0]).status==CT_SHORT;
+}
+#test "measurement errors stick and never become favorable outcomes" {
+  s:[1]CtStats;
+  #assert !ct_observe(s[..],-1,1) && s[0].error && ct_result(s[0]).status==CT_INVALID;
+  #assert !ct_observe(s[..],0,1) && s[0].a.n==0;
+  s[0]=CtStats.{};#assert !ct_observe(s[..],2,1);
+  s[0]=CtStats.{};#assert !ct_observe(s[..],0,-1);
+  s[0]=CtStats.{};#assert !ct_observe(s[..],1,1000000001);
+  s[0]=CtStats.{};#assert ct_observe(s[..],0,0) && ct_observe(s[..],1,1000000000);
+  s[0]=CtStats.{a=CtMoment.{n=2000000},b=CtMoment.{}};#assert !ct_observe(s[..],0,1);
+  bad:=CtStats.{a=CtMoment.{n=-1}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=2000001}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=1,mean=-1}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=1,mean=1000000001}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=1,m2=1}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=0,mean=1}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=0,m2=1}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=2,m2=-1}};#assert ct_result(bad).status==CT_INVALID;
+  bad=CtStats.{a=CtMoment.{n=2,m2=2000000000000000512.0}};#assert ct_result(bad).status==CT_INVALID;
+}
+#test "count and Welch threshold boundaries are explicit" {
+  v:=124999750000.0;
+  s:=CtStats.{a=CtMoment.{n=500000,mean=100,m2=v},b=CtMoment.{n=500000,mean=110,m2=v}};
+  r:=ct_result(s);#assert r.status==CT_DETECTED && r.n0==500000 && r.n1==500000 && r.t == -10;
+  #assert r.mean0==100 && r.mean1==110 && r.variance0==250000 && r.variance1==250000 && !r.degenerate;
+  s.b.mean=109;#assert ct_result(s).status==CT_NONE && ct_result(s).t == -9;
+  s.b.mean=90;#assert ct_result(s).status==CT_DETECTED && ct_result(s).t==10;
+  s.b.mean=91;#assert ct_result(s).status==CT_NONE && ct_result(s).t==9;
+  s.a.n=499999;#assert ct_result(s).status==CT_SHORT;
+  s=CtStats.{a=CtMoment.{n=1},b=CtMoment.{n=999999}};#assert ct_result(s).status==CT_SHORT;
+  s=CtStats.{a=CtMoment.{n=999999},b=CtMoment.{n=1}};#assert ct_result(s).status==CT_SHORT;
+  s=CtStats.{a=CtMoment.{n=500000},b=CtMoment.{n=500000}};#assert ct_result(s).status==CT_FLAT && ct_result(s).degenerate;
+  s.b.mean=1;#assert ct_result(s).status==CT_DETECTED && ct_result(s).degenerate && ct_result(s).t==0;
+  s=CtStats.{a=CtMoment.{n=1000000,mean=1,m2=1},b=CtMoment.{n=1000001,mean=1,m2=1}};#assert ct_result(s).status==CT_INVALID;
+}
+#forall "all result labels deny proof language" status:0..<7 {
+ names:=[7]string.["invalid","detected","no-difference-detected","insufficient","invalid","no-variation","invalid"];
+ #assert ct_status_name(status)==names[status];
+}
+
+#test "resource and moment upper boundaries are inclusive" {
+ #assert ct_moment_valid(CtMoment.{n=2,mean=1000000000,m2=2000000000000000000.0});
+ #assert ct_moment_valid(CtMoment.{n=2000000,mean=1});
+ s:[1]CtStats;s[0]=CtStats.{a=CtMoment.{n=1999999,mean=1}};
+ #assert ct_observe(s[..],0,1) && s[0].a.n==2000000;
+ v:=499999500000.0;r:=ct_result(CtStats.{a=CtMoment.{n=1000000,mean=100,m2=v},b=CtMoment.{n=1000000,mean=110,m2=v}});
+ #assert r.status==CT_DETECTED && r.n0==1000000 && r.n1==1000000 && r.t == -10;
+ r=ct_result(CtStats.{error=true,a=CtMoment.{n=1,mean=1}});#assert r.status==CT_INVALID && r.n0==0 && r.n1==0 && r.mean0==0 && r.mean1==0;
+}
+
+#test "independent validation and non-unit Welch denominator cannot be bypassed" {
+ #assert !ct_moment_valid(CtMoment.{n=-1}) && !ct_moment_valid(CtMoment.{n=2000001});
+ s:[1]CtStats;s[0]=CtStats.{a=CtMoment.{n=1000000},b=CtMoment.{n=1000000}};
+ #assert !ct_observe(s[..],1,1) && s[0].a.n==1000000 && s[0].b.n==1000000;
+ r:=ct_result(CtStats.{a=CtMoment.{n=2,mean=100,m2=2},b=CtMoment.{n=999998,mean=101,m2=999997}});#assert r.status==CT_NONE;
+ r=ct_result(CtStats.{a=CtMoment.{n=999998,mean=100,m2=999997},b=CtMoment.{n=2,mean=101,m2=2}});#assert r.status==CT_NONE;
+ v:=499999000000.0;r=ct_result(CtStats.{a=CtMoment.{n=500000,mean=100,m2=v},b=CtMoment.{n=500000,mean=120,m2=v}});
+ #assert r.status==CT_DETECTED && r.t == -10 && r.variance0==1000000 && r.variance1==1000000;
+}
+
+ct_range :: (value:f64,upper:f64)->bool {return value>=0 && value<=upper;}
+ct_moment_valid :: (m:CtMoment)->bool {
+  if m.n<0 || m.n>CT_MAX {return false;}
+  if !ct_range(m.mean,CT_TICKS) || !ct_range(m.m2,cast(f64)m.n*CT_TICKS*CT_TICKS) {return false;}
+  if m.n==0 {return m.mean==0 && m.m2==0;}
+  return m.n!=1 || m.m2==0;
+}
+ct_observe :: (s:[]CtStats,group:int,elapsed:f64)->bool #export_c {
+  if s[0].error {return false;}
+  if group<0 || group>1 || !ct_range(elapsed,CT_TICKS) || !ct_moment_valid(s[0].a) || !ct_moment_valid(s[0].b) || s[0].a.n+s[0].b.n>=CT_MAX {s[0].error=true;return false;}
+  m:=ifx group==0 then s[0].a else s[0].b;m.n+=1;
+  delta:=elapsed-m.mean;m.mean+=delta/cast(f64)m.n;m.m2+=delta*(elapsed-m.mean);
+  if group==0 {s[0].a=m;}else{s[0].b=m;}return true;
+}
+ct_result :: (s:CtStats)->CtResult #export_c {
+  r:=CtResult.{status=CT_INVALID};
+  if s.error || !ct_moment_valid(s.a) || !ct_moment_valid(s.b) || s.a.n+s.b.n>CT_MAX {return r;}
+  r.n0=s.a.n;r.n1=s.b.n;r.mean0=s.a.mean;r.mean1=s.b.mean;
+  if s.a.n+s.b.n<CT_MIN || s.a.n<2 || s.b.n<2 {r.status=CT_SHORT;return r;}
+  r.variance0=s.a.m2/cast(f64)(s.a.n-1);r.variance1=s.b.m2/cast(f64)(s.b.n-1);
+  denominator:=r.variance0/cast(f64)s.a.n+r.variance1/cast(f64)s.b.n;
+  if denominator==0 {r.degenerate=true;r.status=ifx s.a.mean==s.b.mean then CT_FLAT else CT_DETECTED;return r;}
+  r.t=(s.a.mean-s.b.mean)/sqrt(denominator);
+  r.status=ifx abs(r.t)>=CT_THRESHOLD then CT_DETECTED else CT_NONE;return r;
+}
+ct_status_name :: (status:int)->string #export_c {
+ if status==CT_DETECTED {return "detected";}if status==CT_NONE {return "no-difference-detected";}if status==CT_SHORT {return "insufficient";}if status==CT_FLAT {return "no-variation";}return "invalid";
+}
+main :: () {}

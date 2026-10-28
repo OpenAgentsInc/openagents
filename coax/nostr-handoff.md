@@ -19,8 +19,12 @@ page capacity is256; TS pagination and Coax bounded catch-up no longer mistake
 short capped responses for complete history. Vectors, native vector runner,
 profiles, byte helpers, wrapping intrinsics, SHA-256, hex/base64, Bech32/NIP-19,
 entropy, random import and byte storage have shipped in scoped slices. Structural
-JSON admission is shipped (`a165c9bc26`); the existing decoder mutation closure
-is being closed separately. Actual signed queue comments/plans/statuses and
+JSON admission is shipped (`a165c9bc26`); decoder mutation closure is complete
+in `2bf22a148e` (971/971 mutants). Coax0.16 adds `mul_wide`; field multiplication,
+inverse/root, scalars, HMAC/HKDF, PBKDF2, secure wiping and integer-profile JCS
+retain separate correctness evidence. The public timing harness records actual
+million-observation Mac/Linux/browser controls without approving secret use.
+Actual signed queue comments/plans/statuses and
 `coax/nostr.md` record evidence and remaining gates.
 
 Read-only event verification is still distinct from signing. Full profiles,
@@ -44,6 +48,12 @@ remote commit does not justify repeating the compiler/app suites.
   builds a clean worktree of `origin/main`, re-reads the relay, deploys
   staging, smokes it, promotes and smokes production, and rolls back on its
   own if production fails. From a worktree, copy `coax/bin/coax` in first.
+
+Release now also walks the real pages against approved headless goldens. It
+can take longer than the original fifteen-second estimate, especially behind
+another release. Stop on a failed gate, inspect the owner change, and retry
+only after its cause is fixed; never bypass or silently update another owner's
+golden. Independent work can continue while a valid release holds the lock.
 
 ## Original handoff snapshot
 
