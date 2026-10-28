@@ -41,7 +41,7 @@ assertions (16.4); the rest is *Design*.
 One C function at a time works today. `#foreign` declares a symbol the host
 links in, by its exact name:
 
-```coax
+```jai
 host_load :: (h: int, slot: int) -> f64 #foreign;
 host_store :: (h: int, slot: int, value: f64) #foreign;
 ```
@@ -55,7 +55,7 @@ the host's definitions against Coax's signatures. The native iOS home
 
 Importing whole headers is design:
 
-```coax
+```jai
 #import_c "stb_image.h";
 ```
 
@@ -83,7 +83,7 @@ This is the kernel from `coax/examples/pulse`, the shape of the
 per-frame pulse update in the engine's `src/paynet`. The book's copy
 adds a `main` so it also runs on its own:
 
-```coax
+```jai
 // The kernel from examples/pulse/pulse.coax, with a main so it also runs alone.
 #import "Basic";
 

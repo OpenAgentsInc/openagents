@@ -60,7 +60,7 @@ Python 3.
 
 ## What works
 
-```coax
+```jai
 #import "Basic";
 
 Pulse :: struct {

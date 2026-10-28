@@ -18,7 +18,7 @@ line that can fail says so.
 
 ## 7.1 Errors are values (design)
 
-```coax
+```jai
 Read_Error :: enum u8 { not_found = 1; too_large = 2; denied = 3; }
 
 read_file :: (path: string, max_bytes: int) -> (string, Read_Error?) { ... }
@@ -35,7 +35,7 @@ is always a bug.
 
 ## 7.2 `try` and `or_else` (design)
 
-```coax
+```jai
 load_level :: (path: string) -> (Level, Load_Error?) {
   text := try read_file(path, 1 << 20);      // on error: return it to our caller
   level := parse_level(text) or_else empty_level();  // on error: use a fallback
@@ -60,7 +60,7 @@ should say whose rule was broken.
 
 ## 7.4 `defer`
 
-```coax
+```jai
 #import "Basic";
 
 // Find the first value at or above limit. Every exit closes what was opened.
@@ -111,7 +111,7 @@ is the first released: `first` prints before `second`.
 the deferred code, then returns. A defer can't change a value that's
 already on its way out:
 
-```coax
+```jai
 #import "Basic";
 
 count_down :: () -> int {
@@ -153,7 +153,7 @@ won't run it. Durable state needs its own crash consistency.
 In the design, `defer` pairs with resources and `try`, and an error
 propagated by `try` runs pending defers on the way out too:
 
-```coax
+```jai
 f := try open_file(path);
 defer close_file(f);
 
@@ -167,7 +167,7 @@ defer unlock(*world.mutex);
 
 A trap stops the program with the file, the line and what went wrong:
 
-```coax
+```jai
 #import "Basic";
 
 at :: (values: [] int, i: int) -> int {
@@ -219,7 +219,7 @@ corruption, and Coax doesn't pretend otherwise.
 
 ## 7.6 Multiple results (design)
 
-```coax
+```jai
 divmod :: (a: int, b: int) -> (quotient: int, remainder: int) {
   return a / b, a % b;
 }

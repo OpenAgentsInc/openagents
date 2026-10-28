@@ -13,7 +13,7 @@ This is the idea from Jai that the rest of the language leans on most.
 
 ## 9.1 `#run`
 
-```coax
+```jai
 #import "Basic";
 
 // Computed while compiling. The program only contains the answers.
@@ -86,13 +86,13 @@ program.
 `#run` applies to the expression right after it: a call, a name, or a
 parenthesized expression. To run something larger, put it in parentheses:
 
-```coax
+```jai
 TOTAL :: #run (cells_in_grid(24, 16) + 2);
 ```
 
 ### Calls in constants need `#run`
 
-```coax
+```jai
 AREA :: square(4);
 ```
 
@@ -111,7 +111,7 @@ enum, a struct or a fixed array. Lookup tables are the common case. The
 work runs once, while compiling, and the program starts with the table
 already built:
 
-```coax
+```jai
 #import "Basic";
 
 COUNT :: 32;
@@ -189,7 +189,7 @@ against the standard check value `0xCBF43926` before any C is written.
 
 ## 9.2 `#assert`
 
-```coax
+```jai
 #assert CELLS == 384;
 ```
 
@@ -209,7 +209,7 @@ an assertion, use `#run` there too: `#assert #run is_prime(PRIME_100);`.
 
 ## 9.3 `type_name`
 
-```coax
+```jai
 #assert type_name(SIZE_CLASS) == "string";
 ```
 
@@ -300,7 +300,7 @@ Code running inside the compiler can compute. It can't do anything else.
 
 A loop that never ends shouldn't hang your build:
 
-```coax
+```jai
 FOREVER :: #run spin();
 
 spin :: () -> int {
@@ -320,7 +320,7 @@ spin.coax:5:21: error[E0400]: compile-time evaluation exceeded 100000 steps
 Creating an array counts too, one step per element, so a table can't
 dodge the budget by being one big declaration:
 
-```coax
+```jai
 MAP :: #run blank_map();
 
 blank_map :: () -> [200000] u8 {
@@ -360,7 +360,7 @@ The evaluator that runs `#run` also runs checks: `#test` and `#forall`.
 They are written before the code they check, and they are never part of
 the program.
 
-```coax
+```jai
 #import "Basic";
 #authority;
 
@@ -458,7 +458,7 @@ expression without evaluating it. `#insert` puts code into the program,
 and `#expand` makes a procedure into a macro that expands at its call
 site:
 
-```coax
+```jai
 assert_eq :: (a: Code, b: Code) #expand {
   va := #insert a;
   vb := #insert b;
@@ -510,7 +510,7 @@ unchecked casts, and a capability model for any file or process work.
 
 ## 9.10 Conditional compilation (design)
 
-```coax
+```jai
 #if TARGET_IS_IOS { ... } else { ... }
 ```
 

@@ -14,7 +14,7 @@ mismatched offset doesn't crash. It draws garbage.
 
 ## 13.2 Shared declarations
 
-```coax
+```jai
 Instance :: struct @gpu { model: m4; color: v4; }
 ```
 
@@ -26,7 +26,7 @@ is recorded on both sides.
 
 ## 13.3 Shader procedures (if the experiment says so)
 
-```coax
+```jai
 node_vs :: (v: Vertex_In, @instance inst: Instance, @uniform frame: Frame_Uniforms) -> Vertex_Out
            shader vertex {
   out: Vertex_Out;

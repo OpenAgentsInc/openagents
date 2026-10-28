@@ -11,7 +11,7 @@ part of the language, with the same care as its syntax.
 
 Here's a program with four mistakes:
 
-```coax
+```jai
 #import "Basic";
 
 half :: (n: int) -> int {
@@ -81,7 +81,7 @@ real, and you want all of them at once.
 A missing semicolon is reported where the semicolon belongs, not at the
 next thing the parser happens to see:
 
-```coax
+```jai
 main :: () {
   x := 1
   y := 2;
@@ -123,7 +123,7 @@ When the error happens while the compiler is running your code (Chapter
 9), the message points at the failing line and then lists how the
 compiler got there:
 
-```coax
+```jai
 #import "Basic";
 
 SLOTS :: #run slots_for(40);

@@ -35,7 +35,7 @@ Two of the causes above are fixed in every program `coax0` compiles.
 **Operands run left to right.** Arguments, operands and indices are
 evaluated in source order, at compile time and at run time:
 
-```coax
+```jai
 #import "Basic";
 
 note :: (label: string, value: int) -> int {
@@ -86,7 +86,7 @@ changes only the optimization level and integer overflow.
 
 ## 12.3 `strict` (design)
 
-```coax
+```jai
 step_ice_cream :: (s: *Sim, input: Input) strict { ... }
 ```
 
@@ -102,7 +102,7 @@ drops it.
 
 ## 12.4 `deterministic` (design)
 
-```coax
+```jai
 replay_step :: (w: *World, input: Input) deterministic strict { ... }
 ```
 
@@ -139,7 +139,7 @@ Coax:
 
 The last point is what lets a `#run` result stand in for a run-time one:
 
-```coax
+```jai
 #import "Basic";
 
 // A small float recurrence: every * and + rounds once, and none are fused.
@@ -198,6 +198,6 @@ a replay. Record real input, run it on two architectures at 1, 2, 4 and
 8 workers, and compare outputs byte for byte. In Coax that is meant to
 be one declaration:
 
-```coax
+```jai
 #test replay "fixtures/icecream/*.trace" step_ice_cream;
 ```

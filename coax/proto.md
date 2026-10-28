@@ -5,7 +5,7 @@
 The checked-in `proto/descriptors/*.pb` files include each profile's dependency
 closure; `scripts/proto.sh` regenerates and checks them with pinned protoc.
 
-```coax
+```jai
 #import_proto "../../proto/descriptors/nostr-event.pb" as N;
 ```
 

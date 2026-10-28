@@ -4,7 +4,7 @@
 
 ## 8.1 Type parameters
 
-```coax
+```jai
 max :: (a: $T/Ordered, b: T) -> T {
   return ifx a > b then a else b;
 }
@@ -20,7 +20,7 @@ object and no vtable.
 
 `$N` does the same for a compile-time value:
 
-```coax
+```jai
 Pool :: struct ($T: Type, $N: int) {
   items: [N] T;
   free:  [N] u32;
@@ -35,7 +35,7 @@ particles: Pool(Particle, 4096);
 `/Ordered` is a **constraint**: the operations a type must have for the
 procedure's body to make sense.
 
-```coax
+```jai
 Hashable :: constraint ($T) {
   hash: (T) -> u64;
   eq:   (T, T) -> bool;
@@ -81,7 +81,7 @@ are free.
 
 ## 8.4 Baking arguments
 
-```coax
+```jai
 draw_64 :: #bake_arguments draw(limit = 64);
 ```
 
@@ -104,7 +104,7 @@ first, and a separate `#modify` will have to show it's needed.
 
 ## 8.6 Operators
 
-```coax
+```jai
 operator + :: (a: Money, b: Money) -> Money pure { ... }
 ```
 

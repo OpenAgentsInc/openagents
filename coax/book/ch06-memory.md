@@ -19,7 +19,7 @@ or lost.
 | `[] T` | A **view**: a pointer and a count, borrowing someone else's elements | Only the pointer and count are copied |
 | `[..] T` | A **dynamic array**: pointer, count, capacity and an allocator | Only the descriptor is copied |
 
-```coax
+```jai
 corners: [4] v3;                 // 4 × 12 bytes, inside whatever holds it
 visible: [] Entity_Id = ids[0..<count];   // a view of part of another array
 pending: [..] Pulse;             // grows with array_add, freed with free
@@ -28,7 +28,7 @@ pending: [..] Pulse;             // grows with array_add, freed with free
 The first two forms run today, with your own element types. Dynamic
 arrays are *Design*.
 
-```coax
+```jai
 #import "Basic";
 
 sum :: (values: [] int) -> int {
@@ -138,7 +138,7 @@ freed memory.
 
 A `string` is a view of bytes: a pointer and a count.
 
-```coax
+```jai
 #import "Basic";
 
 main :: () {
@@ -189,7 +189,7 @@ Coaxial true
 
 ## 6.3 Pointers (design)
 
-```coax
+```jai
 value := 7;
 p: *int = *value;      // prefix * takes an address
 p.* = 9;               // postfix .* dereferences: value is now 9
@@ -207,7 +207,7 @@ borrow checker. It reduces how often you need a raw pointer at all.
 
 ## 6.4 Handles instead of long-lived pointers (design)
 
-```coax
+```jai
 door: Handle(Entity);
 if e := world.get(door) { e.open = true; }
 ```
@@ -249,7 +249,7 @@ allocator, a scratch arena and a logger. Libraries allocate through it,
 so the caller decides where their memory comes from without every
 function taking an allocator parameter:
 
-```coax
+```jai
 build_level :: (desc: Level_Desc) -> Level { ... }   // allocates through context
 
 push_context .{allocator = level_arena} {
@@ -280,7 +280,7 @@ What it costs, and what Coax adds:
 The scratch arena in the context is for memory that only has to last a
 moment: a formatted string, a temporary list, a sort buffer.
 
-```coax
+```jai
 names := format_list(entities, allocator = context.scratch);
 draw_label(names);
 // ... once per frame, the frame loop calls reset_scratch()

@@ -221,7 +221,7 @@ from a parenthesized constant expression. `COUNT :: (40 + 2);` is a constant.
 
 ### 6.1 Implemented declarations
 
-```coax
+```jai
 COUNT :: 64;
 LABEL :: "visible";
 square :: (n: int) -> int { return n * n; }
@@ -284,7 +284,7 @@ container does not free separately owned allocations unless its explicit
 
 ### 6.3 Structs, enums and unions
 
-```coax
+```jai
 Room :: struct #derive(eq, hash) {
   name: string;
   tunnels: [..] RoomIndex;
@@ -419,7 +419,7 @@ An overload cannot hide an I/O operation or an allocation behind math syntax.
 
 ### 10.1 Implemented `#run` and `#assert`
 
-```coax
+```jai
 square :: (n: int) -> int { return n * n; }
 TABLE_SIZE :: #run square(16);
 #assert TABLE_SIZE == 256;
@@ -479,7 +479,7 @@ initialization.
 Checks are written before the code they check, and run in the same evaluator
 as `#run`. They are never part of the generated program.
 
-```coax
+```jai
 #authority;
 refund_ok :: (paid: int, refund: int) -> bool {
   return refund >= 0 && refund <= paid;

@@ -6,7 +6,7 @@
 
 ## 15.1 The build is a program
 
-```coax
+```jai
 #import "Build";
 
 build :: () {

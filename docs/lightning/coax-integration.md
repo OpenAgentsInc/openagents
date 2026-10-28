@@ -60,7 +60,7 @@ A first cut of the send decision and the outcome mapping. It is checked
 with `coax0 0.5.1`: `coax test` passes 5 checks, and `coax mutate` catches
 33 of 33 mutants.
 
-```coax
+```jai
 #import "Basic";
 #authority;
 

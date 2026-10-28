@@ -18,7 +18,7 @@ Chapter 6.
 Coax has one declaration form, `name: type = value`, and three
 shorthands for it:
 
-```coax
+```jai
 #import "Basic";
 
 main :: () {
@@ -54,7 +54,7 @@ And for constants, the one you've seen already:
 - **`name :: value`** binds a constant. Procedures are constants, and so
   are values declared at the top of a file:
 
-```coax
+```jai
 #import "Basic";
 
 TILE_EDGE :: 16;
@@ -90,7 +90,7 @@ when it earns it.
 
 ### No shadowing
 
-```coax
+```jai
 x := 1;
 {
   x := 2;   // error[E0303]: 'x' is already declared at line 1; Coax does not allow shadowing
@@ -118,7 +118,7 @@ Every type has one width everywhere. `int` is always 64 bits, on every target,
 and `uint` is `u64`, not whatever C's `unsigned` happens to be. Code
 that crosses into C (Chapter 16) writes the width it means.
 
-```coax
+```jai
 #import "Basic";
 
 MAX_PLAYERS :: 200;          // untyped: no type until it's used
@@ -160,7 +160,7 @@ won't change meaning when `fixed32` arrives.
 
 ### Literals are untyped
 
-```coax
+```jai
 a := 1_000_000;       // underscores are ignored
 b := 0xff;            // hexadecimal
 c := 0b1010;          // binary
@@ -171,7 +171,7 @@ e := '\n';            // a character: the integer 10
 A literal has no type until it's used. Where the context needs a type,
 the literal takes it, if the value fits:
 
-```coax
+```jai
 x: u8 = 200;          // fine
 y: u8 = 300;          // error[E0350]: 300 does not fit in u8
 z: s8 = -129;         // error[E0350]: -129 does not fit in s8
@@ -191,7 +191,7 @@ with a string's bytes (Chapter 6).
 
 ### No implicit conversions
 
-```coax
+```jai
 x: int = "five";      // error[E0325]: 'x' is int but is initialized with string
 b := 1 == true;       // error[E0311]: cannot compare integer literal with bool
 if 1 { }              // error[E0331]: condition must be bool, found int
@@ -214,7 +214,7 @@ or it doesn't happen.
 
 ### Casts
 
-```coax
+```jai
 #import "Basic";
 
 main :: () {
@@ -254,7 +254,7 @@ costs a compare, and the release build keeps it.
 
 ## 3.3 Procedures
 
-```coax
+```jai
 #import "Basic";
 
 main :: () {
@@ -308,7 +308,7 @@ recursion uses the C stack.
 
 ## 3.4 Control flow
 
-```coax
+```jai
 #import "Basic";
 
 // How many steps does n take to reach 1?
@@ -375,7 +375,7 @@ below 10000, 6171 takes the most steps: 261
 The bit operators bind the way Go's do: `&` and the shifts with `*`,
 `|` and `^` with `+`, and all of them tighter than comparison.
 
-```coax
+```jai
 #import "Basic";
 
 // Pack a color into one u32: 0xRRGGBB.
@@ -419,7 +419,7 @@ the one integer operation that discards bits without a trap or a
 `while` is enough for any loop, but most loops count or walk a
 collection, and `for` says that directly:
 
-```coax
+```jai
 #import "Basic";
 
 // Count the vowels in a string, byte by byte.
@@ -479,7 +479,7 @@ exhaustive `switch`. `coax0` reserves `switch` and refuses it.
 
 `print` is how a `coax0` program talks:
 
-```coax
+```jai
 print("% has % lives\n", name, lives);   // each % takes the next value
 print("100%% sure\n");                   // %% prints a %
 ```
@@ -502,7 +502,7 @@ Coax, a print that compiles prints what it says.
 
 ## 3.7 Comments
 
-```coax
+```jai
 // to the end of the line
 /* a block, which /* can nest */ inside another */
 ```

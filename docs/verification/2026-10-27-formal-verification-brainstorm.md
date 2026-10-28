@@ -205,7 +205,7 @@ The money rule (§26.1) is already partly enforced by construction:
 
 Follow `MoneyRange` exactly:
 
-```coax
+```jai
 MAX_MSAT :: 21_000_000 * 100_000_000 * 1000;   // 2.1e18, fits s64
 Msat :: distinct s64 #range(0, MAX_MSAT);
 ```
@@ -399,7 +399,7 @@ swapped.
 
 **Landed in coax0 0.5.0** (`coax test`, spec §10.1.1, book §9.6).
 
-```coax
+```jai
 #forall a: u8, b: u8 {
   #assert merge(a, b) == merge(b, a);
 }
@@ -426,7 +426,7 @@ swapped.
 
 ### 7.4 `#consistency`: whole-structure checks
 
-```coax
+```jai
 check_ledger :: (l: Ledger) #consistency { ... }
 ```
 
@@ -440,7 +440,7 @@ next to the structure it checks.
 
 ### 7.5 `state_machine` declarations with built-in exploration
 
-```coax
+```jai
 Attempt :: state_machine {
   states: created, sent, unknown, succeeded, failed;
   created -> sent        when pay;

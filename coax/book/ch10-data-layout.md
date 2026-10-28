@@ -13,7 +13,7 @@ visible, checkable choice.
 
 ## 10.1 AoS, SoA and blocks (design)
 
-```coax
+```jai
 Pulse :: struct { t: f32; speed: f32; edge: u32; }
 
 pulses_aos: [..] Pulse;          // t speed edge | t speed edge | ...
@@ -30,7 +30,7 @@ pulses_blk: SOA(4) [..] Pulse;   // [t×4 speed×4 edge×4] [t×4 speed×4 edge�
 `SOA` is a storage choice made where the array is declared. Loops still
 read `it.t` and `it.speed`, and the compiler generates the accessors:
 
-```coax
+```jai
 for pulses_soa { it.t = min(it.t + it.speed * dt, 1.0); }
 ```
 
@@ -71,7 +71,7 @@ There is no universal padding assumption.
 Fields are laid out in the order you wrote them, each at its natural
 alignment. Order decides padding:
 
-```coax
+```jai
 #import "Basic";
 
 Kind :: enum u8 { rock; tree; door; }
@@ -158,7 +158,7 @@ that names the field.
 of the layout that shaders, headers and saved data record, so a mismatch
 is caught before the GPU reads garbage:
 
-```coax
+```jai
 #run print_layout(Pulse, target = .ios_arm64);
 ```
 
@@ -171,7 +171,7 @@ Pulse  (ios_arm64)  size 12  align 4  fingerprint 6f1c…
 
 ## 10.4 Hot and cold fields (design)
 
-```coax
+```jai
 Entity :: struct {
   position: v3 @hot;
   velocity: v3 @hot;
@@ -186,7 +186,7 @@ with generated accessors, and it shows up in the layout report.
 
 ## 10.5 SIMD from layout (design)
 
-```coax
+```jai
 for_simd pulses_blk { it.t = min(it.t + it.speed * dt, 1.0); }
 ```
 

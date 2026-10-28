@@ -35,7 +35,7 @@ export PATH="$PWD/coax/bin:$PATH"
 
 Make a file called `hello.coax`:
 
-```coax
+```jai
 #import "Basic";
 
 main :: () {
@@ -55,7 +55,7 @@ Hello, world!
 
 ## 2.3 What each line means
 
-```coax
+```jai
 #import "Basic";
 ```
 
@@ -65,7 +65,7 @@ into this file. `Basic` is the module with `print`, and in `coax0` it is
 the only module. Nothing is imported unless you ask for it, so a file's
 first lines say what it depends on.
 
-```coax
+```jai
 main :: () {
 ```
 
@@ -77,7 +77,7 @@ There's no return type, so `main` returns nothing. Every program has one
 The same `name :: value` form declares every constant in Coax:
 procedures, types and numbers. Chapter 3 shows the others.
 
-```coax
+```jai
   print("Hello, world!\n");
 ```
 
@@ -163,7 +163,7 @@ hides nothing is easier to trust.
 
 ## 2.6 A second program
 
-```coax
+```jai
 #import "Basic";
 
 main :: () {

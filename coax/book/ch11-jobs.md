@@ -17,7 +17,7 @@ Coax makes that declaration part of the language.
 
 ## 11.2 Jobs declare their effects
 
-```coax
+```jai
 move :: (dt: f32) job [write transforms.position, read velocities] {
   for_parallel transforms grain 1024 {
     it.position += velocities[it_index] * dt;
@@ -46,7 +46,7 @@ entry a mode, `read` or `write`, and makes the list a contract:
 
 ## 11.3 Splitting a loop
 
-```coax
+```jai
 for_parallel transforms grain 1024 { ... }
 ```
 
@@ -57,7 +57,7 @@ the arrays it writes, so writes must be indexed by `it_index`. A write to
 
 ## 11.4 Deterministic merges
 
-```coax
+```jai
 total := for_parallel pulses grain 4096 reduce(sum) { yield it.value; }
 ```
 

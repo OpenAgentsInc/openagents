@@ -14,7 +14,7 @@ is the defining contract for all surfaces. Public `.proto` files in root
 [proto/](../../proto/README.md) and their descriptors define interchange.
 Coax will consume them (this syntax is still planned):
 
-```coax
+```jai
 #import_proto "openagents/engine/v1/state.proto";
 ```
 

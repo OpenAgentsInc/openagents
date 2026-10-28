@@ -8,7 +8,7 @@
 
 ## 5.1 Structs
 
-```coax
+```jai
 #import "Basic";
 
 Room :: struct {
@@ -72,7 +72,7 @@ infinite.
 
 ### Literals name their fields
 
-```coax
+```jai
 start := Room.{name = "AA", rate = 0};
 ```
 
@@ -93,7 +93,7 @@ where the type is known. Today the struct's name always comes first.
 
 ## 5.2 Composition with `using` (design)
 
-```coax
+```jai
 Body :: struct { position: v3; velocity: v3; }
 
 Player :: struct {
@@ -114,7 +114,7 @@ compiler checks it. Most engine code never needs either: it passes the
 
 ## 5.3 Enums
 
-```coax
+```jai
 #import "Basic";
 
 Outcome :: enum u8 {
@@ -175,7 +175,7 @@ examples/outcomes.coax:22: value is not a member of enum Outcome
 
 *Design:* flags are a different form.
 
-```coax
+```jai
 Layer_Mask :: enum_flags u32 { terrain; props; characters; effects; }
 ```
 
@@ -185,7 +185,7 @@ members usually names no member.
 
 ## 5.4 Unions are tagged (design)
 
-```coax
+```jai
 Answer :: union {
   noul:   struct { noul: f64; };
   choice: struct { choice: u32; confidence: f64; };
@@ -229,7 +229,7 @@ not at all. The type can't decide that for you.
 
 ## 5.6 Deriving the obvious (design)
 
-```coax
+```jai
 Grid_Key :: struct #derive(eq, hash) { x, y: int; }
 
 visited: Table(Grid_Key, int);
