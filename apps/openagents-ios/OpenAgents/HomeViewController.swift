@@ -46,6 +46,14 @@ final class HomeViewController: UIViewController {
     private var palette: [coax_t_Joint] = []
     private var bodies: [Float] = []
     private var inGrid: Bool { gridHandle != 0 }
+    /// The home is the Grid seen from high above (metareal/camera.coax's
+    /// overview) under the Start bar; Start dollies the camera down to you,
+    /// and then you play.
+    private enum Stage { case overview, arriving(coax_t_Dolly), playing }
+    private var stage = Stage.overview
+    private var playing: Bool { if case .playing = stage { return true }; return false }
+    private var overviewEpoch: Double?
+    private var lastShot: coax_t_Shot?
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override func loadView() { view = Surface(); view.backgroundColor = .black; view.isMultipleTouchEnabled = false }
@@ -65,7 +73,8 @@ final class HomeViewController: UIViewController {
             element.activate = { [weak self] in self?.activateAccessibleButton() ?? false }
             startElement = element
             setUpBalance()
-            view.accessibilityElements = [balanceLabel, walletButton, element]
+            setUpGrid()
+            view.accessibilityElements = [element]
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.didEnterBackgroundNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(resume), name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -118,27 +127,28 @@ final class HomeViewController: UIViewController {
     private func setUpBalance() {
         balanceLabel.translatesAutoresizingMaskIntoConstraints = false
         balanceLabel.textColor = UIColor(white: 1, alpha: 0.85)
-        balanceLabel.font = UIFont(name: "Michroma", size: 17) ?? .monospacedDigitSystemFont(ofSize: 17, weight: .regular)
-        balanceLabel.textAlignment = .center
-        balanceLabel.numberOfLines = 0
+        balanceLabel.font = UIFont(name: "Michroma", size: 12) ?? .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        balanceLabel.textAlignment = .right
+        // Shown on the Grid once you play, not over the home's overview.
+        balanceLabel.isHidden = true; walletButton.isHidden = true
+        balanceLabel.numberOfLines = 1
         balanceLabel.accessibilityIdentifier = "wallet.balance"
         view.addSubview(balanceLabel)
         // The balance opens the wallet once there is one.
         walletButton.translatesAutoresizingMaskIntoConstraints = false
         walletButton.accessibilityIdentifier = "wallet.open"
         walletButton.accessibilityLabel = "Wallet"
-        walletButton.accessibilityHint = "Send and receive bitcoin."
         walletButton.isEnabled = false
         walletButton.addAction(UIAction { [weak self] _ in self?.openWallet() }, for: .touchUpInside)
         view.addSubview(walletButton)
         NSLayoutConstraint.activate([
-            walletButton.topAnchor.constraint(equalTo: balanceLabel.topAnchor, constant: -12),
-            walletButton.bottomAnchor.constraint(equalTo: balanceLabel.bottomAnchor, constant: 12),
-            walletButton.leadingAnchor.constraint(equalTo: balanceLabel.leadingAnchor),
-            walletButton.trailingAnchor.constraint(equalTo: balanceLabel.trailingAnchor),
-            balanceLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
-            balanceLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            walletButton.topAnchor.constraint(equalTo: balanceLabel.topAnchor, constant: -14),
+            walletButton.bottomAnchor.constraint(equalTo: balanceLabel.bottomAnchor, constant: 14),
+            walletButton.leadingAnchor.constraint(equalTo: balanceLabel.leadingAnchor, constant: -14),
+            walletButton.trailingAnchor.constraint(equalTo: balanceLabel.trailingAnchor, constant: 14),
+            balanceLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14),
             balanceLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            balanceLabel.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, multiplier: 0.6),
         ])
         show(.opening)
     }
@@ -163,18 +173,21 @@ final class HomeViewController: UIViewController {
     }
     private func show(_ state: SparkHost.State) {
         if case .balance = state { walletButton.isEnabled = true } else { walletButton.isEnabled = false }
-        defer { walletButton.accessibilityValue = balanceLabel.text }
+        // The corner stays small: a figure, or a dash with the reason spoken.
+        let reason: String
         switch state {
-        case .opening: balanceLabel.text = "Opening your wallet…"
+        case .opening: reason = "Opening your wallet…"
         case .balance(let sats):
-            let number = NumberFormatter(); number.numberStyle = .decimal
-            balanceLabel.text = "₿" + (number.string(from: NSNumber(value: sats)) ?? String(sats))
+            reason = "Send and receive bitcoin."
             NSLog("OpenAgents wallet: balance shown (%llu sats)", sats)
-        case .noWallet: balanceLabel.text = "No wallet on this phone yet."
-        case .locked: balanceLabel.text = "Your wallet is locked. Unlock your phone, then reopen OpenAgents."
-        case .unreadable: balanceLabel.text = "The wallet saved on this phone can't be read. It has been left as it is."
-        case .failed(let message): balanceLabel.text = message
+        case .noWallet: reason = "No wallet on this phone yet."
+        case .locked: reason = "Your wallet is locked. Unlock your phone, then reopen OpenAgents."
+        case .unreadable: reason = "The wallet saved on this phone can't be read. It has been left as it is."
+        case .failed(let message): reason = message
         }
+        if case .balance(let sats) = state { balanceLabel.text = "₿" + String(sats) } else { balanceLabel.text = "₿–" }
+        walletButton.accessibilityValue = balanceLabel.text
+        walletButton.accessibilityHint = reason
     }
     @objc private func motionChanged() { metareal_home_resume(handle) }
     fileprivate func frame(_ link: CADisplayLink) { updateScene(at: link.timestamp) }
@@ -206,7 +219,7 @@ final class HomeViewController: UIViewController {
             NSLog("Metareal home.start #%lld (%ld protobuf bytes)", invocationCount, invocation.count)
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        enterGrid()
+        beginArrival()
     }
     private func loadCast() throws -> CastAssets {
         guard let renderer, let url = Bundle.main.url(forResource: "Cast", withExtension: "bin") else { throw HomeError.resource("Cast.bin") }
@@ -226,7 +239,8 @@ final class HomeViewController: UIViewController {
     private func castView(_ bytes: UnsafeMutableRawBufferPointer) -> coax_v_u8 {
         coax_v_u8(data: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: Int64(bytes.count))
     }
-    private func enterGrid() {
+    /// The Grid, its cast and you, made at launch so the home can show them.
+    private func setUpGrid() {
         guard !inGrid else { return }
         if cast == nil {
             do { cast = try loadCast() } catch { NSLog("OpenAgents: the Grid's cast is unavailable: %@", String(describing: error)) }
@@ -240,9 +254,7 @@ final class HomeViewController: UIViewController {
         walls = Array(repeating: 0, count: 64)
         let wallCount = walls.withUnsafeMutableBufferPointer { Int(metareal_grid_walls(coax_v_f32(data: $0.baseAddress, count: Int64($0.count)))) }
         walls = Array(walls.prefix(wallCount * 6))
-        sticks = metareal_sticks_reset(); gridTouches = [:]; lastTick = nil; trackedTouch = nil
-        view.isMultipleTouchEnabled = true
-        balanceLabel.isHidden = true
+        sticks = metareal_sticks_reset(); gridTouches = [:]; lastTick = nil
         let element = UIAccessibilityElement(accessibilityContainer: surface)
         element.accessibilityLabel = "The Grid"
         element.accessibilityHint = "Drag on the left to walk, drag on the right to look, tap on the right to jump."
@@ -260,15 +272,37 @@ final class HomeViewController: UIViewController {
         you.accessibilityIdentifier = "grid.you"
         you.accessibilityFrameInContainerSpace = CGRect(x: view.bounds.midX - 30, y: view.bounds.midY - 60, width: 60, height: 120)
         youElement = you
-        view.accessibilityElements = cast == nil ? [element, dance] : [element, you, dance]
+    }
+    /// Start: the camera leaves the overview where it is and dollies down.
+    private func beginArrival() {
+        guard inGrid, case .overview = stage, let element = gridElement else { return }
+        let now = CACurrentMediaTime()
+        let from = lastShot ?? metareal_camera_overview(0)
+        stage = .arriving(metareal_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
+        trackedTouch = nil
+        element.accessibilityValue = "arriving"
+        view.accessibilityElements = [element] + [youElement].compactMap { cast == nil ? nil : $0 }
         UIAccessibility.post(notification: .screenChanged, argument: element)
+        NSLog("OpenAgents: arriving in the Grid")
+    }
+    /// The dolly is over: the sticks, the hotbar and your balance appear.
+    private func arrive() {
+        stage = .playing
+        sticks = metareal_sticks_reset(); gridTouches = [:]
+        view.isMultipleTouchEnabled = true
+        balanceLabel.isHidden = false; walletButton.isHidden = false
+        view.accessibilityElements = [gridElement, youElement, danceElement, walletButton].compactMap { $0 }.filter { $0 !== youElement || cast != nil }
+        UIAccessibility.post(notification: .screenChanged, argument: gridElement)
         NSLog("OpenAgents: entered the Grid")
     }
+    private func point(_ v: coax_t_Vec3) -> coax_t_Point { coax_t_Point(x: v.x, y: v.y, z: v.z) }
     private func updateGrid(at timestamp: Double) {
         let frame = Float(min(max(timestamp - (lastTick ?? timestamp), 0), 0.25)); lastTick = timestamp
-        player = metareal_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
-        if sticks.dance || danceRequested { anim = metareal_cast_dance(anim); danceRequested = false }
-        sticks = metareal_sticks_used(sticks)
+        if playing {
+            player = metareal_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
+            if sticks.dance || danceRequested { anim = metareal_cast_dance(anim); danceRequested = false }
+            sticks = metareal_sticks_used(sticks)
+        }
         // The robots move first; then you, among their bodies.
         var placed = 0, posed = false
         if let cast, let bytes = castBytes {
@@ -287,12 +321,36 @@ final class HomeViewController: UIViewController {
             metareal_player_advance_among(player, frame, coax_v_f32(data: b.baseAddress, count: Int64(placed * 7)),
                                           coax_v_f32(data: w.baseAddress, count: Int64(w.count)))
         } }
-        let eye = metareal_player_eye(player), at = metareal_player_at(player), feet = metareal_player_feet(player)
-        let face = metareal_player_face(player)
-        let width = Float(lastSize.width), height = Float(lastSize.height)
+        let feet = metareal_player_feet(player), face = metareal_player_face(player)
+        // The camera: the overview, the dolly down to you, or your own.
+        let follow = coax_t_Shot(eye: point(metareal_player_eye(player)), at: point(metareal_player_at(player)))
+        var shot = follow
+        switch stage {
+        case .overview:
+            if overviewEpoch == nil { overviewEpoch = timestamp }
+            shot = metareal_camera_overview(timestamp - (overviewEpoch ?? timestamp))
+        case .arriving(let d):
+            shot = metareal_camera_dolly(d, timestamp, follow)
+            if metareal_camera_dolly_done(d, timestamp) { arrive() }
+        case .playing: break
+        }
+        lastShot = shot
+        let eye = shot.eye, at = shot.at
+        let width = Float(lastSize.width), height = Float(lastSize.height), scale = surface.metalLayer.contentsScale
         mr_clear_frame(gridHandle)
         metareal_grid_frame(gridHandle, sticks, eye.x, eye.y, eye.z, at.x, at.y, at.z, feet.x, feet.y, feet.z,
-                            width, height, Float(surface.metalLayer.contentsScale), anim.dance, timestamp)
+                            width, height, Float(scale), anim.dance, timestamp, playing)
+        // Over the overview, the home's Start bar.
+        var bar: Int64?
+        if case .overview = stage {
+            mr_clear_frame(handle)
+            metareal_home_hud_frame(handle, timestamp, lastSize.width, lastSize.height, scale, view.safeAreaInsets.bottom * scale)
+            guard mr_ok(handle) else { suspend(); NSLog("OpenAgents: invalid home draw packet"); return }
+            bar = handle
+            if let b = mr_bar(handle)?.pointee {
+                startElement?.accessibilityFrameInContainerSpace = CGRect(x: CGFloat(b.x)/scale, y: CGFloat(b.y)/scale, width: CGFloat(b.width)/scale, height: CGFloat(b.height)/scale)
+            }
+        }
         if let slots = mr_slots(gridHandle), mr_slot_count(gridHandle) > 0 {
             let s = slots[0], k = surface.metalLayer.contentsScale
             let rect = CGRect(x: CGFloat(s.x) / k, y: CGFloat(s.y) / k, width: CGFloat(s.width) / k, height: CGFloat(s.height) / k)
@@ -317,7 +375,8 @@ final class HomeViewController: UIViewController {
             let name = names[min(Int(anim.move), names.count - 1)]
             if youElement?.accessibilityValue != name { youElement?.accessibilityValue = name }
         }
-        renderer?.draw(handle: gridHandle, time: timestamp, cast: cast, frame: castFrame)
+        renderer?.draw(handle: gridHandle, time: timestamp, cast: cast, frame: castFrame, bar: bar)
+        guard playing else { return }
         let place = String(format: "%.1f %.1f", feet.x, feet.z)
         if gridElement?.accessibilityValue != place { gridElement?.accessibilityValue = place }
     }
@@ -341,20 +400,26 @@ final class HomeViewController: UIViewController {
         return false
     }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if inGrid { return routeGrid(touches, 0) }
+        if playing { return routeGrid(touches, 0) }
+        // A touch during the dolly hurries it.
+        if case .arriving(let d) = stage {
+            let follow = coax_t_Shot(eye: point(metareal_player_eye(player)), at: point(metareal_player_at(player)))
+            stage = .arriving(metareal_camera_dolly_hurry(d, CACurrentMediaTime(), follow))
+            return
+        }
         guard trackedTouch == nil, let touch = touches.first else { return }
         trackedTouch = touch; route(0, touch)
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if inGrid { return routeGrid(touches, 1) }
+        if playing { return routeGrid(touches, 1) }
         if let touch = trackedTouch, touches.contains(touch) { route(1, touch) }
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if inGrid { return routeGrid(touches, 2) }
+        if playing { return routeGrid(touches, 2) }
         if let touch = trackedTouch, touches.contains(touch) { route(2, touch); trackedTouch = nil }
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if inGrid { return routeGrid(touches, 3) }
+        if playing { return routeGrid(touches, 3) }
         if let touch = trackedTouch { route(3, touch) }; trackedTouch = nil
     }
     deinit {

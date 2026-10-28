@@ -15,6 +15,15 @@ int main(int argc,char**argv){
       assert(mr_output_size(h)>0&&mr_output_size(h)<512);
     }
   }
+  // The Start bar alone, as drawn over the Grid's overview: laid out with no
+  // graph, and pressing it still starts.
+  for(int i=0;i<240;i++){
+    mr_clear_frame(h);metareal_home_hud_frame(h,30+i/60.,1206,2622,3,102);assert(mr_ok(h));
+    assert(mr_dot_count(h)==0&&mr_line_count(h)==0);
+    const MRBar*b=mr_bar(h);assert(b->width>1000&&b->y+b->height<=2622-102);
+    if(i==120){double x=b->x+b->width/2,y=b->y+b->height/2;
+      assert(!metareal_home_touch(h,0,x,y));assert(metareal_home_touch(h,2,x,y));}
+  }
   mr_destroy(h);assert(!mr_ok(h));
   // All bounded parser prefixes, plus malformed continuation/length noise.
   for(size_t i=1;i<n;i++){

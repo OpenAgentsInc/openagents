@@ -17,8 +17,13 @@ final class WalletUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["OPENAGENTS_THROWAWAY_WALLET"] = "1"
         app.launch()
+        // The balance shows once you are in the Grid.
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20))
+        start.tap()
         let open = app.buttons["wallet.open"]
         XCTAssertTrue(open.waitForExistence(timeout: 20))
+        XCTAssertTrue(wait(30) { !open.label.contains(",") && open.value.map { "\($0)".hasPrefix("₿") } == true }, "\(open.value ?? "")")
         XCTAssertTrue(wait(90) { open.isEnabled }, "balance: \(app.staticTexts["wallet.balance"].label)")
         open.tap()
         let total = app.buttons["wallet.total"]

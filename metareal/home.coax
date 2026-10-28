@@ -349,6 +349,20 @@ metareal_home_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, s
       host_dot(h,ax+dx*progress,ay+dy*progress,4.0*px_scale,light*1.2,0.15,0.0); i += 1;
     }
   }
+  hud_out(h,dt,width,height,scale,safe_bottom);
+}
+
+// The Start bar alone: laid out at the bottom, pressed and flashing. The
+// home draws it over its graph; the Grid's overview (metareal/camera.coax)
+// draws it over the Grid.
+metareal_home_hud_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe_bottom: f64) #export_c {
+  if width < 1.0 || height < 1.0 || scale < 1.0 || width > 16384.0 || height > 16384.0 { return; }
+  last := host_load(h,30); dt := 0.0; if last >= 0.0 { dt = clamp(now-last,0.0,0.1); }
+  host_store(h,30,now);
+  hud_out(h,dt,width,height,scale,safe_bottom);
+}
+
+hud_out :: (h: int, dt: f64, width: f64, height: f64, scale: f64, safe_bottom: f64) {
   bx := 20.0*scale; bh := 58.0*scale; bw := maximum(0.0,width-40.0*scale);
   by := maximum(0.0,height-maximum(0.0,safe_bottom)-18.0*scale-bh);
   host_store(h,100,width); host_store(h,101,height); host_store(h,102,scale);

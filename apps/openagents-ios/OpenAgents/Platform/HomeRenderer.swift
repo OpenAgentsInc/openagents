@@ -189,9 +189,11 @@ final class HomeRenderer {
         bytes.withUnsafeBytes { texture.replace(region: MTLRegionMake2D(0,0,w,h), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: w) }
         return texture
     }
-    func draw(handle: Int64, time: Double, cast assets: CastAssets? = nil, frame castFrame: CastFrame? = nil) {
+    /// Draws `handle`'s scene, with the HUD bar from `bar` (the home's Start
+    /// bar over the Grid's overview) or else from `handle`.
+    func draw(handle: Int64, time: Double, cast assets: CastAssets? = nil, frame castFrame: CastFrame? = nil, bar barHandle: Int64? = nil) {
         guard available.wait(timeout: .now()) == .success else { return }
-        guard let scene, let depth, let blurA, let blurB, let drawable = layer.nextDrawable(), let command = queue.makeCommandBuffer(), let rawBar = mr_bar(handle)?.pointee else { available.signal(); return }
+        guard let scene, let depth, let blurA, let blurB, let drawable = layer.nextDrawable(), let command = queue.makeCommandBuffer(), let rawBar = mr_bar(barHandle ?? handle)?.pointee else { available.signal(); return }
         let scale = Float(layer.contentsScale)
         let text: String = withUnsafePointer(to: rawBar.label) { pointer in pointer.withMemoryRebound(to: CChar.self, capacity: 33) { String(cString: $0) } }
         let key = "\(scale):\(text)"

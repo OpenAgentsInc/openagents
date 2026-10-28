@@ -27,6 +27,7 @@
 		83FD88F53E028589CEE45BCA /* Player.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EA8BD95327E6ECD1A97B685 /* Player.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		882DE814F326D410CE807EA2 /* cast-layer16.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1F408C8FDC3DB39479826802 /* cast-layer16.jpg */; };
 		891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */ = {isa = PBXBuildFile; fileRef = 75264437CFF5986509BFE1BF /* michroma-ofl.txt */; };
+		9B64E81CED3EE607C7477FCD /* Camera.c in Sources */ = {isa = PBXBuildFile; fileRef = 94FB25EB951B7C4EB8547F7A /* Camera.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */ = {isa = PBXBuildFile; fileRef = A8590DE7BE9F641F9A440194 /* Home.pb */; };
 		A007E91AC2431354B09B57F2 /* cast-layer12.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B39219FCD634F147CEECDE36 /* cast-layer12.jpg */; };
 		A203994108226A5200DF11E6 /* WalletUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED5025FC8A374A284612812 /* WalletUITests.swift */; };
@@ -74,6 +75,7 @@
 		7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Michroma-Regular.ttf"; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		94FB25EB951B7C4EB8547F7A /* Camera.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Camera.c; sourceTree = "<group>"; };
 		A0E91A4368889291453CA5E9 /* cast-layer5.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer5.jpg"; sourceTree = "<group>"; };
 		A8590DE7BE9F641F9A440194 /* Home.pb */ = {isa = PBXFileReference; path = Home.pb; sourceTree = "<group>"; };
 		AD722D77A3244F05AAF6E9AA /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
@@ -128,6 +130,7 @@
 		5B366C12F710C7D176CACD52 /* Generated */ = {
 			isa = PBXGroup;
 			children = (
+				94FB25EB951B7C4EB8547F7A /* Camera.c */,
 				14A5AEE208B95F199A14645E /* Cast.c */,
 				3BE259AB44E619C281EC401B /* Grid.c */,
 				CA34DB580151D40597358639 /* Home.c */,
@@ -333,6 +336,8 @@
 				"$(SRCROOT)/Generated/Grid.h",
 				"$(SRCROOT)/Generated/Cast.c",
 				"$(SRCROOT)/Generated/Cast.h",
+				"$(SRCROOT)/Generated/Camera.c",
+				"$(SRCROOT)/Generated/Camera.h",
 				"$(SRCROOT)/Generated/Wallet.c",
 				"$(SRCROOT)/Generated/Wallet.h",
 				"$(SRCROOT)/Generated/HomeShaders.txt",
@@ -351,6 +356,7 @@
 				40EBE76A352087D40B6D5955 /* App.swift in Sources */,
 				370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */,
 				BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */,
+				9B64E81CED3EE607C7477FCD /* Camera.c in Sources */,
 				167FF29401030EEEBAF05EF9 /* Cast.c in Sources */,
 				35A3B13C150F78FD4C9E753E /* Grid.c in Sources */,
 				F4F275877B25EE6C8FCD494C /* Home.c in Sources */,
@@ -391,7 +397,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1050;
+				CURRENT_PROJECT_VERSION = 1051;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -482,7 +488,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1050;
+				CURRENT_PROJECT_VERSION = 1051;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (

@@ -1,6 +1,15 @@
 import XCTest
 
 final class HomeUITests: XCTestCase {
+    /// Start's dolly (metareal/camera.coax) has landed behind you.
+    private func arrived(_ app: XCUIApplication, within timeout: TimeInterval = 15) -> Bool {
+        let grid = app.otherElements["grid.world"]
+        let landed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            grid.exists && (grid.value as? String).map { $0 != "arriving" } == true
+        }, object: nil)
+        return XCTWaiter.wait(for: [landed], timeout: timeout) == .completed
+    }
+
     func testStartOpensTheGridAndTheStickWalks() {
         let app = XCUIApplication()
         app.launch()
@@ -13,14 +22,27 @@ final class HomeUITests: XCTestCase {
         start.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: outside)
         XCTAssertEqual(start.value as? String, "0")
+        // The home is the Grid from high above, under Start; no balance yet.
+        XCTAssertFalse(app.buttons["wallet.open"].exists)
         let home = XCTAttachment(screenshot: app.screenshot())
-        home.name = "Coax home"; home.lifetime = .keepAlways; add(home)
+        home.name = "The Grid from above"; home.lifetime = .keepAlways; add(home)
 
         start.tap()
         let grid = app.otherElements["grid.world"]
         XCTAssertTrue(grid.waitForExistence(timeout: 5))
         XCTAssertFalse(start.exists)
+        XCTAssertEqual(grid.value as? String, "arriving")
+        Thread.sleep(forTimeInterval: 3.5)
+        let swoop = XCTAttachment(screenshot: app.screenshot())
+        swoop.name = "The dolly coming down"; swoop.lifetime = .keepAlways; add(swoop)
+        // It takes its time, then lands behind you, where you play.
+        XCTAssertEqual(grid.value as? String, "arriving")
+        XCTAssertTrue(arrived(app))
         XCTAssertEqual(grid.value as? String, "0.0 0.0")
+        let balance = app.buttons["wallet.open"]
+        XCTAssertTrue(balance.exists)
+        XCTAssertGreaterThan(balance.frame.minX, app.frame.width / 2, "the balance sits top right")
+        XCTAssertLessThan(balance.frame.minY, 120)
         // Your character stands idle, animated by metareal/cast.coax.
         let you = app.otherElements["grid.you"]
         XCTAssertTrue(you.waitForExistence(timeout: 5))
@@ -71,6 +93,10 @@ final class HomeUITests: XCTestCase {
         start.tap()
         let you = app.otherElements["grid.you"]
         XCTAssertTrue(you.waitForExistence(timeout: 5))
+        // A tap during the dolly hurries it down.
+        Thread.sleep(forTimeInterval: 1)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).tap()
+        XCTAssertTrue(arrived(app, within: 4), "a tap hurries the dolly")
         let terminal = XCTAttachment(screenshot: app.screenshot())
         terminal.name = "The terminal ahead"; terminal.lifetime = .keepAlways; add(terminal)
         // The hotbar's one slot dances, like the robots.
@@ -106,6 +132,7 @@ final class HomeUITests: XCTestCase {
         start.tap()
         let you = app.otherElements["grid.you"]
         XCTAssertTrue(you.waitForExistence(timeout: 5))
+        XCTAssertTrue(arrived(app))
         // Look a little left, toward the Foreman at (2.8, 2.5).
         let look = app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
         look.press(forDuration: 0.05, thenDragTo: look.withOffset(CGVector(dx: -70, dy: 0)))

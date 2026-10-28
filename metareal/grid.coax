@@ -176,7 +176,7 @@ line_out :: (h: int, p: Piece, la: f32, lb: f32, width: f32) {
 
 // One ground line through the world, along z when `along_z` (at x = offset)
 // or along x (at z = offset), near `at`.
-ground_line :: (h: int, c: Camera, offset: f32, along_z: bool, at: f32, light: f32, width: f32) {
+ground_line :: (h: int, c: Camera, offset: f32, along_z: bool, at: f32, light: f32, width: f32, pushed: f32) {
   r := pieces_near(at);
   for k: r.first..<r.end {
     s := hi(f32(k) * f32(SEGMENT), -f32(EDGE));
@@ -184,8 +184,8 @@ ground_line :: (h: int, c: Camera, offset: f32, along_z: bool, at: f32, light: f
     if e <= s { continue; }
     a := ifx along_z then v3(offset, 0, s) else v3(s, 0, offset);
     b := ifx along_z then v3(offset, 0, e) else v3(e, 0, offset);
-    la := light * fog(length(sub(a, c.eye)));
-    lb := light * fog(length(sub(b, c.eye)));
+    la := light * fog(length(sub(a, c.eye)) - pushed);
+    lb := light * fog(length(sub(b, c.eye)) - pushed);
     if la + lb <= 0.002 { continue; }
     line_out(h, piece(c, a, b), la, lb, width);
   }
@@ -470,21 +470,30 @@ hotbar_out :: (h: int, s: Sticks, height: f32, k: f32, dancing: bool, now: f64) 
 
 // ---- The frame ----
 
+// How far the fog is pushed out: an eye further from you than the follow
+// camera (metareal/camera.coax's overview and dolly) sees the ground lit as
+// the follow camera would, so from high up the Grid is a lit disc around you.
+FOLLOW :: 6.0;
+reach :: (eye: Vec3, feet: Vec3) -> f32 { return hi(0, length(sub(eye, feet)) - f32(FOLLOW)); }
+
 // Draws the Grid seen from eye looking at at, with you at feet,
-// into a width by height view (pixels, scale pixels per point), and the
-// hotbar, lit if you are dancing, at `now` seconds.
+// into a width by height view (pixels, scale pixels per point), and, when
+// `controls` (you are playing, not watching the overview or the dolly), the
+// sticks and the hotbar, lit if you are dancing, at `now` seconds.
 metareal_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
                         feet_x: f32, feet_y: f32, feet_z: f32,
-                        width: f32, height: f32, scale: f32, dancing: bool, now: f64) #export_c {
+                        width: f32, height: f32, scale: f32, dancing: bool, now: f64, controls: bool) #export_c {
   if !(width > 0) || !(height > 0) { return; }
   k := hi(scale, 0.5);
   c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
   feet := v3(feet_x, feet_y, feet_z);
+  out := reach(c.eye, feet);
   xs := lines_near(feet.x);
-  for i: xs.first..<xs.end { ground_line(h, c, f32(i) * f32(SPACING), true, feet.z, shade(i), 0.8 * k); }
+  for i: xs.first..<xs.end { ground_line(h, c, f32(i) * f32(SPACING), true, feet.z, shade(i), 0.8 * k, out); }
   zs := lines_near(feet.z);
-  for i: zs.first..<zs.end { ground_line(h, c, f32(i) * f32(SPACING), false, feet.x, shade(i), 0.8 * k); }
+  for i: zs.first..<zs.end { ground_line(h, c, f32(i) * f32(SPACING), false, feet.x, shade(i), 0.8 * k, out); }
   ring(h, c, feet, 0.7, 32, f32(STREET), 1.1 * k);
+  if !controls { return; }
   sticks_out(h, s, width, height, k);
   hotbar_out(h, s, height, k, dancing, now);
 }
@@ -851,4 +860,17 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
   // Just outside the slot, it's the stick.
   v := press(metareal_sticks_reset(), 8, b.x + b.size + 1, b.y + 40, 1);
   #assert v.move_on && !v.slot_on;
+}
+
+#test "from high up the ground near you is lit as the follow camera sees it" {
+  feet := v3(0, 0, 0);
+  // The follow camera, 4.4 m back: the fog is not pushed out.
+  #assert reach(v3(0, 2.6, -4.2), feet) == 0;
+  // The overview, 62 m out and 38 m up: a line beside you is lit, one 100 m
+  // off is nearly gone, as from the follow camera.
+  eye := v3(0, 38, 62);
+  out := reach(eye, feet);
+  #assert near(out, length(eye) - f32(FOLLOW), 0.001);
+  #assert fog(length(sub(v3(4, 0, 0), eye)) - out) > 0.99;
+  #assert fog(length(sub(v3(0, 0, -100), eye)) - out) < 0.05;
 }

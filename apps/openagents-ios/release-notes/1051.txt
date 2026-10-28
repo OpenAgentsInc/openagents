@@ -1,0 +1,3 @@
+The app now opens on the Grid seen from high above, slowly circling. Tap Start and the camera glides down to land behind your character; tap again to hurry it. Once you land, your bitcoin balance sits small in the top right corner. Tap it to open the wallet, where you can send and receive bitcoin over Lightning, on-chain and Spark.
+
+Test: watch the opening view, tap Start and let the camera land; tap the balance to open the wallet. The wallet's send flows have not yet been tried with real money, so use small amounts.

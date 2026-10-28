@@ -12,8 +12,8 @@ if [[ ! -x "$compiler" || coax/build.sh -nt "$compiler" || apps/openagents-ios/g
     COAX_HOST_TARGET="$(uname -m)-apple-macosx11.0" coax/build.sh
 fi
 out=apps/openagents-ios/Generated
-for name in home player grid cast wallet; do
-  # Home, Player, Grid, Cast, Wallet: one C library and header each. Wallet
+for name in home player grid cast camera wallet; do
+  # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
   # is #authority, so its checks run in this compile and a failure stops it.
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
   "$compiler" c "metareal/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"

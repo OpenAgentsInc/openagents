@@ -58,7 +58,14 @@ HomeConfiguration and HudInvocation codecs. It accepts only its documented
 schema-1 resource subset, rejects unknown/duplicate fields and non-minimal
 varints, and emits existing HudInvocation bytes. Native adapters only transfer
 bytes; the resource and invocation have no second hand-written wire codec.
-Start opens the Grid. `metareal/grid.coax` owns its projection, line art and
+The home is the Grid seen from high above, slowly orbiting, with only the Start
+bar over it (`metareal_home_hud_frame`). Start dollies the camera down to land
+behind you; `metareal/camera.coax` owns the overview orbit and the dolly path
+(eased, from behind and above, never below where it lands, a cut under
+reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
+only once it lands. The balance sits top right as whole sats with no grouping
+(`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
+`metareal/grid.coax` owns its projection, line art and
 move/look/jump touch policy; `metareal/player.coax` owns walking and the
 camera; `metareal/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
@@ -77,7 +84,7 @@ jumping, and keeps the camera out of it. The hotbar is aethyr's HUD slot:
 Dance_Loop while you stand); walking or jumping ends it. The Grid has no
 buildings, peers or network use yet.
 
-Check: `coax/build.sh test`, `coax test metareal/grid.coax`,
+Check: `coax/build.sh test`, `coax test metareal/grid.coax`, `metareal/camera.coax`,
 `metareal/player.coax` and `metareal/cast.coax`, `metareal/test_cast.sh` (the
 real Cast.bin under ASan/UBSan, with corrupted copies refused, and you
 walking into the Foreman's leg and stopping),

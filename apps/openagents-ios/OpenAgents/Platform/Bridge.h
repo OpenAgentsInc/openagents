@@ -4,3 +4,4 @@
 #include "Grid.h"
 #include "Cast.h"
 #include "Wallet.h"
+#include "Camera.h"

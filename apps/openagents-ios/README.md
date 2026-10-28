@@ -40,9 +40,10 @@ scanning waits for them even when `Generated/` starts empty.
 
 The bundle identifier is `com.openagents.app`. This is a minimal home
 shell. Distribution continues the existing OpenAgents App Store Connect record
-at version 1.0.0; the current build is 1047.
-The home shows the balance of the person's existing Spark wallet; tapping
-it opens the wallet. You can:
+at version 1.0.0; the current build is 1051.
+The home is the Grid from high above under a Start bar; Start dollies the
+camera down to your character. Once there, the balance of the person's
+existing Spark wallet sits top right; tapping it opens the wallet. You can:
 - receive with one QR for Lightning and on-chain together, or with a
   Lightning invoice, an on-chain address or a Spark address;
 - send to a Lightning invoice, a Lightning address or LNURL, a bitcoin
@@ -54,8 +55,8 @@ Every send goes through a review screen and the phone's owner check, and
 `metareal/wallet.coax` decides whether it may go. The wallet opens from the
 Keychain seed the earlier app saved, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
 `Package.resolved`). See [`docs/lightning/`](../../docs/lightning/README.md).
-No login, chat, microphone or FM code is restored, the Grid has no buildings,
-robots or other players yet.
+No login, chat, microphone or FM code is restored; the Grid has no buildings
+or other players yet.
 
 ## Ownership
 
@@ -63,6 +64,7 @@ robots or other players yet.
 | --- | --- |
 | `../../metareal/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
 | `../../metareal/grid.coax` | The Grid: projecting and fading its ground ring, the view matrix, the move/look/jump touch policy |
+| `../../metareal/camera.coax` | The home's overview orbit and Start's dolly down to you |
 | `../../metareal/player.coax` | Walking, running, jumping, bumping into the robots and the terminal, and the third-person camera, ported from aethyr-cpp |
 | `../../metareal/cast.coax` | Your character (skinned, idle/walk/run/jump/dance clips cross-faded) and the six robots, including the Foreman by the start, with a body capsule per robot bone that you collide with; reads and checks `Cast.bin` |
 | `OpenAgents/Resources/Cast.bin`, `cast-layer*.jpg` | Packed by `../../metareal/tools/pack_cast.py` from aethyr-cpp assets (Quaternius models, CC0) |

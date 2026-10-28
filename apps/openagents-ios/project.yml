@@ -30,6 +30,8 @@ targets:
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Cast.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/Camera.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Wallet.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: ../../metareal/platform/host.c
@@ -42,7 +44,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1050"
+        CURRENT_PROJECT_VERSION: "1051"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
@@ -68,6 +70,8 @@ targets:
           - $(SRCROOT)/Generated/Grid.h
           - $(SRCROOT)/Generated/Cast.c
           - $(SRCROOT)/Generated/Cast.h
+          - $(SRCROOT)/Generated/Camera.c
+          - $(SRCROOT)/Generated/Camera.h
           - $(SRCROOT)/Generated/Wallet.c
           - $(SRCROOT)/Generated/Wallet.h
           - $(SRCROOT)/Generated/HomeShaders.txt
