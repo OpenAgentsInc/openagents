@@ -12,11 +12,13 @@ if [[ ! -x "$compiler" || coax/build.sh -nt "$compiler" || apps/openagents-ios/g
     COAX_HOST_TARGET="$(uname -m)-apple-macosx11.0" coax/build.sh
 fi
 out=apps/openagents-ios/Generated
-for name in home player grid cast camera wallet haunt hud; do
+for name in home player grid cast camera wallet haunt hud benchmarks; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
   # is #authority, so its checks run in this compile and a failure stops it.
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
-  "$compiler" c "metareal/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
+  debug_flags=()
+  if [[ "${CONFIGURATION:-Debug}" == Debug ]]; then debug_flags+=(--debug-info --source-map "$out/$base.map.json"); fi
+  "$compiler" c "metareal/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
 "$compiler" c metareal/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"

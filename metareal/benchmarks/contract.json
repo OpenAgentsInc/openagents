@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/OpenAgentsInc/aethyr-cpp",
+  "commit": "47f431ba99524a219faa2e11d2adee20388440b6",
+  "files": {
+    "anim/anim.cpp": "89f19789ed5f09e7597a5a1d8ffd86bec4d4ca42842f2959724aac13649daa60",
+    "anim/anim.h": "9941024631e14ee74bb5cb89e0143d28134effa75b24e1652374df7d5ce9fad0",
+    "vec3.h": "f4970f19ec9ef86fb3e0d788c07f582a9b652da78918ddb29e151493689f9250"
+  },
+  "asset": "apps/openagents-ios/OpenAgents/Resources/Cast.bin",
+  "asset_sha256": "2e7d976b00d0a8dd5d65c45fef83af0b57f7533f666d7e587b035cfea1abb596",
+  "frames_per_repeat": 540,
+  "repeats": 9,
+  "absolute_palette_tolerance": 0.0002,
+  "proposed_median_regression_limit": 1.05,
+  "budget_status": "proposal, not an owner-approved performance gate",
+  "adaptations": [
+    "The original reference files stay byte-exact. At build time only Data::skin is replaced with the reviewed MRC1 f32 accessor: the asset already stores decoded, normalized skin transforms.",
+    "The adapter constructs the same explicit clip phases/full-body cross-fade from supplied Anim values. It places reference rigid transforms into the target palette using rotated basis vectors.",
+    "evaluateAll, frame selection and blending are the pinned native code; its temporary vector allocation is measured, not removed. The Coax admission and reference MRC1 reader are separate."
+  ],
+  "warmup_frames": 180,
+  "reader_adapter_sha256": "716d13bec209b512041b9a8ab859dc97e9260b134c19145945dfa7feee1dbfd6"
+}

@@ -8,7 +8,7 @@ COAX=../bin/coax
 tmp=$(mktemp -d)
 trap 'find "$tmp" -depth -delete' EXIT
 fail=0
-for src in examples/*.coax; do
+for src in examples/*.coax examples/ch24_debug/main.coax; do
   name=${src%.coax}
   if [[ -f $name.out ]]; then
     expected_status=0

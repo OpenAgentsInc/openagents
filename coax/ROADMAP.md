@@ -1,7 +1,7 @@
 # Coax implementation roadmap
 
-Updated 2026-10-28. Baseline: **coax0 0.12.0**, including source composition
-and CPU layout reflection. This roadmap reconciles the technical review dated
+Updated 2026-10-28. Baseline: **coax0 0.13.0**, including source composition,
+CPU layout reflection and the first R0 benchmark/source-debugging slice. This roadmap reconciles the technical review dated
 2026-10-28 with the code that has actually shipped.
 
 The goal is a systems language in which OpenAgents and Metareal can express
@@ -30,16 +30,16 @@ of missing evidence, but do not schedule existing features as new work.
 | Compile-time work | Constants, bounded `#run`, assertions, finite checks, execution coverage for authority units, mutation testing | Typed quotation/insertion, general declaration generation, plugins and a dependency scheduler |
 | Source graph | Checked `#load`, physical-file ownership, bounded graphs, original-file diagnostics/traps, `coax deps` | Namespaces/visibility, parameterized modules, content manifests, packages and incremental invalidation |
 | Reflection | Schema-1 CPU type/field/enum records; constant projections and `#run` tables; a real Haunted House layout consumer | First-class types, stable declaration identity, richer metadata, alternate-target layouts and derivation |
-| Compiler | Coax lexer/parser/checker/source policy, descriptor importer, wire runtime and fingerprinting; explicit reproducible seeds | Coax evaluator, verifier/mutator, emitters and driver; native source debugging and a resident compiler |
+| Compiler | Coax lexer/parser/checker/source policy, descriptor importer, wire runtime and fingerprinting; explicit reproducible seeds | Coax evaluator, verifier/mutator, emitters and driver; complete debugger/type integration and a resident compiler |
 | Native product | Actual iOS scene/HUD, Grid, movement, animation, wallet rules, Haunted House and voice logic | Measured whole-frame parity against a frozen native reference, broader platform/ABI evidence and complete product migration |
 | Protocols | Selected proto3 descriptor imports, bounded borrowed codecs and real app consumers | Remaining consumer/domain admission paths and consumer-justified schema features |
 | GPU/platforms | Scalar visual functions emitted as Metal; native stage wrappers; Mac build host and iOS integration | Shared GPU resource declarations, general shader profiles, browser vertical slice and evidence for other targets |
-| Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics and retained generated C | Capability-aware `build.coax`, safe editor analysis, cache, transactional reload and additional backends |
+| Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps and phase timings | Capability-aware `build.coax`, safe editor analysis, cache, transactional reload and additional backends |
 
 The [source-unit evidence](../docs/verification/coax-source-units-2026-10-28.md)
 and [reflection evidence](../docs/verification/coax-layout-reflection-2026-10-28.md)
 record recent results and their limits. Native runtime traps already retain
-source ownership; native debugger stepping still uses generated C. The pulse
+source ownership; native debugger stepping and name maps now reach Coax files. The pulse
 example establishes native behavior parity, not a measured full-engine speed
 claim. No cross-platform floating-point, race-freedom or general memory-safety
 guarantee follows from the current tests.
@@ -92,8 +92,21 @@ parallel runtime or a custom backend makes them expensive to change.
 
 ## 3. R0 — Establish the adoption gate now
 
-**Build next:** an instrumented real engine kernel and source-aware native
-debugging. These establish whether expanding Coax improves actual work.
+**Started in 0.13.0.** The real cast pose, robots/body capsules and player
+collision have a repeatable C ABI harness. A pinned historical native pose
+evaluator supplies a separate algorithmic reference over the actual app asset;
+the Debug iOS capture exercises the real Grid and Metal command buffers.
+Original-source breakpoints, stepping, values, stacks, diagnostics and sanitizer
+traces are tested on Mac LLDB, with an actual Simulator app attachment too.
+See [methodology](../metareal/benchmarks/README.md), [debugging](DEBUGGING.md) and
+[retained results](../docs/verification/coax-r0-2026-10-28.md).
+
+**R0 remains open.** Output tolerance and observed zero-allocation checks pass;
+the initial optimized pose comparison misses the proposed 5% median budget.
+The current measurements are Mac/Simulator evidence, not phone performance or
+whole-engine parity. Finish optimization/profiling, physical-device and tail
+budgets, asset/install/launch/GPU-preparation attribution, status generation
+and independent reference/gate review before closing this milestone.
 
 1. Select and freeze a kernel already called by the live app, preferably the
    animation pose path in `HomeRenderer.swift`/`metareal/cast.coax`, or the

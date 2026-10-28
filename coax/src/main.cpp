@@ -30,6 +30,10 @@
 
 #include <filesystem>
 #include <cerrno>
+#include <chrono>
+#include <map>
+#include <sstream>
+#include <iomanip>
 #include <set>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -39,7 +43,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.12.0";
+static const char *VERSION = "coax0 0.13.0";
 
 int32_t g_error_count = 0;
 bool g_json_errors = false;
@@ -58,7 +62,7 @@ void *arena_alloc(Arena *a, size_t size) {
   return p;
 }
 
-static std::string json_string(const std::string &s) {
+std::string json_string(const std::string &s) {
   std::string out = "\"";
   for (unsigned char c : s) {
     if (c == '"' || c == '\\') { out += '\\'; out += (char)c; }
@@ -143,6 +147,26 @@ static int run_process(const std::vector<std::string> &args) {
   return 1;
 }
 
+// Monotonic clock observations are host effects, never interpreted #run work.
+struct NativeTimings {
+  std::string path,source_map;
+  std::map<std::string,double> seconds;
+  size_t generated_bytes=0;
+  std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
+} g_timings;
+struct TimedPhase {
+  const char *name;
+  std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
+  ~TimedPhase() {if(!g_timings.path.empty())g_timings.seconds[name]+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();}
+};
+static int finish_profile(int status) {
+  if(g_timings.path.empty()) return status;
+  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"seconds\":{";
+  bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
+  out<<(first?"":",")<<"\"total\":"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-g_timings.start).count()<<"}}\n";
+  if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
+}
+
 // Descriptor parsing and code generation run inside the compiler.
 // Generated declarations are appended after user text to preserve user locations.
 static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Token> &tokens) {
@@ -196,26 +220,27 @@ enum class Output : uint8_t { none, c, header, layout, deps };
 // the build. run_checks is false for coax test and mutate, which run them.
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks = true) {
-  if (!load_sources(arena, src, path)) return false;
+  {TimedPhase phase{"load"};if (!load_sources(arena, src, path)) return false;}
   std::vector<Token> tokens;
-  bool ok = lex(arena, src, &tokens);
+  bool ok;{TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);}
   if (ok) {
     size_t before = src->text.size();
-    ok = import_protos(src, opts, tokens);
+    {TimedPhase phase{"imports"};ok=import_protos(src, opts, tokens);}
     if (ok && src->text.size() != before) {
       tokens.clear();
-      ok = lex(arena, src, &tokens);
+      TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);
     }
   }
-  if (ok) ok = parse(arena, src, tokens, file);
+  if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file);}
   if (ok) {
     bool exports = false;
     for (const ProcDecl *p : file->procs) exports = exports || p->export_c;
     file->library = library == 1 || (library == 2 && exports);
     file->metal = opts.metal;
-    ok = check(arena, file) && evaluate(file);
+    {TimedPhase phase{"check"};ok=check(arena,file);}
+    if(ok) {TimedPhase phase{"evaluate"};ok=evaluate(file);}
   }
-  if (ok && run_checks && file->authority) ok = run_all_checks(file, TEST_STEPS, false);
+  if (ok) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_all_checks(file,TEST_STEPS,false);}
   if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
   return ok;
 }
@@ -226,7 +251,9 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   Arena arena;
   File file;
   if (!front_end(path, &src, &arena, &file, opts, library)) return false;
-  if (what == Output::c) *text = emit_c(&file, opts);
+  TimedPhase phase{"emit"};
+  if(!g_timings.source_map.empty() && !write_file(g_timings.source_map,emit_debug_map(&file))) {fprintf(stderr,"coax: cannot write source map '%s'\n",g_timings.source_map.c_str());return false;}
+  if (what == Output::c) {*text=emit_c(&file,opts);g_timings.generated_bytes=text->size();}
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
   else if (what == Output::deps) {
@@ -240,6 +267,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   std::string provenance;
   for (const std::string &line : src.import_provenance) provenance += line + "\n";
   if (what == Output::c || what == Output::header) *text = provenance + *text;
+  if (what==Output::c)g_timings.generated_bytes=text->size();
   if (header_path && !write_file(*header_path, provenance + emit_header(&file))) {
     fprintf(stderr, "coax: cannot write '%s'\n", header_path->c_str());
     return false;
@@ -264,11 +292,19 @@ static int build(const char *path, const std::string &exe, const EmitOptions &op
   }
   const char *cc = getenv("COAX_CC");
   std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", opts.release ? "-O2" : "-O0"};
-  if (!opts.release) args.push_back("-g");
-  if (opts.library) args.push_back("-c");
-  args.insert(args.end(), {"-o", exe, c_path});
-  if (!opts.library) args.push_back("-lm");
-  int rc = run_process(args);
+  if (!opts.release || opts.debug_info) args.push_back("-g");
+  args.push_back("-ffp-contract=off");
+  std::string object=opts.library?exe:exe+".o";
+  args.insert(args.end(),{"-c","-o",object,c_path});
+  int rc;
+  {TimedPhase phase{"native_compile"};rc=run_process(args);}
+  if(rc==0 && !opts.library) {
+    std::vector<std::string> link={cc&&*cc?cc:"cc",object,"-o",exe,"-lm"};
+    if(!opts.release || opts.debug_info) link.push_back("-g");
+    TimedPhase phase{"link"};rc=run_process(link);
+  }
+  // Darwin's debug map references the object. Keep it for source debugging.
+  if(!opts.library && !opts.debug_info)unlink(object.c_str());
   if (!keep_c) unlink(c_path.c_str());
   if (rc != 0) {
     fprintf(stderr, "coax: the C compiler failed on generated code (exit %d); this is a coax bug\n", rc);
@@ -293,7 +329,7 @@ static int usage() {
           "       coax mutate  file.coax\n"
           "       coax explain CODE | --all [--markdown]\n"
           "       coax version\n"
-          "options: --json prints diagnostics as JSON lines\n");
+          "options: --json prints diagnostics as JSON lines\n       --debug-info maps native code to original Coax source\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
   return 2;
 }
 
@@ -357,6 +393,9 @@ static int main_impl(int argc, char **argv) {
   for (int i = 2; i < argc; i++) {
     std::string a = argv[i];
     if (a == "--release") opts.release = true;
+    else if(a=="--debug-info")opts.debug_info=true;
+    else if(a=="--source-map" && i+1<argc){g_timings.source_map=argv[++i];opts.debug_info=true;}
+    else if(a=="--timings" && i+1<argc)g_timings.path=argv[++i];
     else if (a == "--steps" && i + 1 < argc && cmd == "test") {
       const char *value = argv[++i];
       bool digits = *value != '\0';
@@ -378,6 +417,11 @@ static int main_impl(int argc, char **argv) {
     else return usage();
   }
   if (!input || (!header.empty() && cmd != "c")) return usage();
+#ifdef COAX_BOOTSTRAP_IMPORTER
+  if(!g_timings.source_map.empty()){fprintf(stderr,"coax: source maps require the final compiler, not build-only stage0\n");return 1;}
+#endif
+  if((opts.debug_info || !g_timings.source_map.empty()) && cmd!="c" && cmd!="build" && cmd!="lib" && cmd!="run")return usage();
+  if (cmd=="build" || cmd=="lib" || cmd=="run") opts.debug_info=opts.debug_info || !opts.release;
   if (cmd == "proto") {
     if (proto_prefix.empty()) return usage();
     proto::Result result = proto::import_file(input, proto_prefix, VERSION);
@@ -447,4 +491,4 @@ static int main_impl(int argc, char **argv) {
 
 }  // namespace coax
 
-int main(int argc, char **argv) { return coax::main_impl(argc, argv); }
+int main(int argc, char **argv) { return coax::finish_profile(coax::main_impl(argc, argv)); }

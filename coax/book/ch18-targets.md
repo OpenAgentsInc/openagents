@@ -71,11 +71,12 @@ in. The app starts and runs on devices through TestFlight, which covers
 startup and the end-to-end program. Swift calls Coax and Coax calls the
 host's C in `metareal/platform/host.c`, and the UI tests launch the real
 app in the simulator and tap the rendered HUD through the native touch
-path, which exercises both directions. Debugging is the gap. The generated C has no `#line`
-directives yet, so a crash in Coax code shows up in the debugger as a line
-of `Camera.c`, not of `camera.coax`. Source maps and full debugger
-integration are future work (spec §17.3), and until they exist, `coax0`
-doesn't call iOS a supported target, even though the app depends on it.
+path, which exercises both directions. Version 0.13.0 adds `#line` mappings
+and hashed name/type maps. The actual Simulator app has been attached in LLDB
+at `metareal_cast_pose` in `cast.coax`, with Coax variable names and a stack
+through Swift. Chapter 24 explains the commands and limits. This is useful
+source-debugging evidence, but does not establish a complete physical-device
+symbolication workflow, every ABI case or a general supported-target matrix.
 
 ## Apple native, first
 
@@ -290,8 +291,9 @@ iOS app compiles and ships through Xcode.
 A target is supported when its runtime, ABI in both directions, debugging
 and a real end-to-end program all have evidence, not when a compiler can
 emit code for its CPU. Today the build Mac is the tested host, and the
-iPhone runs Coax through Xcode compiling the generated C, with debugging
-still pointing at C instead of Coax. The generated C asks for a hosted C
+iPhone runs Coax through Xcode compiling the generated C. Original-source
+line mapping and LLDB names are verified on Mac and iOS Simulator; physical
+device debugging and broader ABI cases still need their own evidence. The generated C asks for a hosted C
 library, `abort`, the overflow builtins and an honored `FP_CONTRACT`
 pragma, and its layout assertions encode a 64-bit Apple layout, which is
 exactly why they fire on 32-bit x86. The browser needs its own runtime and

@@ -1,0 +1,82 @@
+// R0 workloads and statistics. Native adapters observe clocks and transport
+// samples; fixtures and reported quantile/validation rules live here.
+#authority;
+BenchFrame :: struct {now:f64;act:int;rising:bool;dance:bool;pad_y:f32;run:bool;x:f32;y:f32;z:f32;face:f32;}
+BenchPlan :: struct {warmup:int;samples:int;}
+#test "the frame capture has a fixed warmup and one complete workload cycle" {
+ p:=metareal_bench_plan();#assert p.warmup==180 && p.samples==540;
+}
+metareal_bench_plan :: ()->BenchPlan #export_c {return BenchPlan.{warmup=180,samples=540};}
+BenchStats :: struct {ok:bool;count:int;mean:f64;median:f64;p95:f64;minimum:f64;maximum:f64;cv:f64;}
+#forall "the live workload covers all six movement phases" phase:0..<6 {
+ a:=metareal_bench_frame(phase*90);
+ #assert a.now==f64(phase)*1.5 && a.x==f32(phase*90)*0.002;
+ #assert a.y==0 && a.z== -2 && a.face==f32(phase*90)*0.001;
+ expected:=[6]int.[0,1,2,3,0,0];#assert a.act==expected[phase];
+ expected_pad:=[6]f32.[0,1,1,0,0,0];#assert a.pad_y==expected_pad[phase] && a.run==(phase==2);
+ #assert a.rising==(phase==3);#assert a.dance==(phase==5);
+ b:=metareal_bench_frame(phase*90+1);#assert !b.dance;
+ #assert b.rising==(phase==3);#assert b.now==f64(phase*90+1)/60;
+}
+#test "fixture cycles and jump edge are explicit" {
+ #assert metareal_bench_frame(270+14).rising && !metareal_bench_frame(270+15).rising;
+ #assert metareal_bench_frame(540).act==0 && metareal_bench_frame(630).act==1;
+}
+metareal_bench_frame :: (frame:int)->BenchFrame #export_c {
+ phase:=(frame/90)%6;
+ act:=phase;if phase>3 {act=0;}
+ return BenchFrame.{now=f64(frame)/60,act=act,rising=phase==3 && frame%90<15,dance=phase==5 && frame%90==0,pad_y=ifx phase==1 || phase==2 then 1 else 0,run=phase==2,x=f32(frame)*0.002,z= -2,face=f32(frame)*0.001};
+}
+#forall "statistics pin every rank for small constant sequences" count:1..<17 {
+ values:[16]f64;scratch:[16]f64;
+ for i:0..<count {values[i]=f64(count-i);}
+ s:=metareal_bench_stats(values[0..<count],scratch[..]);
+ #assert s.ok && s.count==count && s.minimum==1 && s.maximum==f64(count);
+ #assert s.mean==f64(count+1)/2 && s.median==f64(count+1)/2;
+ #assert s.p95==f64((count*95+99)/100);
+ #assert s.cv>=0;
+ #assert scratch[0]==1 && scratch[count-1]==f64(count);
+}
+#test "stats validate capacities, bounds, ties and dispersion" {
+ values:=[4]f64.[10,10,10,10];scratch:[4]f64;
+ s:=metareal_bench_stats(values[..],scratch[..]);#assert s.ok && s.cv==0 && s.median==10 && s.p95==10;
+ #assert !metareal_bench_stats(values[0..<0],scratch[..]).ok;
+ #assert !metareal_bench_stats(values[..],scratch[0..<3]).ok;
+ values[0]= -1;#assert !metareal_bench_stats(values[..],scratch[..]).ok;
+ values[0]=1000000000001;#assert !metareal_bench_stats(values[..],scratch[..]).ok;
+ values[0]=1000000000000;#assert metareal_bench_stats(values[..],scratch[..]).ok;
+ values[0]=0;s=metareal_bench_stats(values[..],scratch[..]);#assert s.ok && s.minimum==0 && s.mean==7.5 && s.cv>0;
+ values=[4]f64.[0,0,0,0];#assert metareal_bench_stats(values[..],scratch[..]).cv==0;
+}
+#test "counts bound rank arithmetic and work before touching storage" {
+ #assert bench_count_ok(1,1) && bench_count_ok(65536,65536);
+ #assert !bench_count_ok(0,1) && !bench_count_ok(-1,1) && !bench_count_ok(65537,65537) && !bench_count_ok(2,1);
+ values:=[2]f64.[1,3];scratch:[2]f64;
+ #assert metareal_bench_stats(values[..],scratch[..]).cv==0.5;
+}
+bench_count_ok :: (count:int,scratch:int)->bool {return count>=1 && count<=65536 && scratch>=count;}
+#forall "nearest-rank boundaries are fixed by the reporting contract" pick:0..<3 {
+ counts:=[3]int.[20,100,101];ranks:=[3]f64.[19,95,96];n:=counts[pick];
+ values:[101]f64;scratch:[101]f64;for i:0..<n {values[i]=f64(n-i);}
+ #assert metareal_bench_stats(values[0..<n],scratch[..]).p95==ranks[pick];
+}
+#test "equal clock samples retain linear insertion work within the check budget" {
+ values:[2048]f64;scratch:[2048]f64;
+ result:=metareal_bench_stats(values[..],scratch[..]);#assert result.ok && result.mean==0 && result.p95==0;
+}
+metareal_bench_stats :: (values:[]f64,scratch:[]f64)->BenchStats #export_c {
+ n:=values.count;
+ if !bench_count_ok(n,scratch.count) {return BenchStats.{};}
+ sum:f64=0;
+ for i:0..<n {
+  x:=values[i];if !(x>=0 && x<=1000000000000) {return BenchStats.{};}
+  sum+=x;scratch[i]=x;
+  at:=i;
+  while at>0 && scratch[at]<scratch[at-1] {temp:=scratch[at];scratch[at]=scratch[at-1];scratch[at-1]=temp;at-=1;}
+ }
+ median:=scratch[n/2];if n%2==0 {median=(scratch[n/2-1]+median)/2;}
+ mean:=sum/f64(n);variance:f64=0;
+ for i:0..<n {delta:=values[i]-mean;variance+=delta*delta;}
+ cv:f64=0;if mean>0 {cv=sqrt(variance/f64(n))/mean;}
+ return BenchStats.{ok=true,count=n,mean=mean,median=median,p95=scratch[(n*95+99)/100-1],minimum=scratch[0],maximum=scratch[n-1],cv=cv};
+}

@@ -329,6 +329,17 @@ final class HomeViewController: UIViewController {
     }
     private func point(_ v: coax_t_Vec3) -> coax_t_Point { coax_t_Point(x: v.x, y: v.y, z: v.z) }
     private func updateGrid(at timestamp: Double) {
+        #if DEBUG
+        let capture = R0FrameCapture.shared
+        let captureFrame = capture?.beginFrame(active: playing) ?? -1
+        let frameClock = capture == nil ? 0 : R0FrameCapture.clock()
+        defer { capture?.endFrame(captureFrame, since: frameClock) }
+        if captureFrame >= 0 {
+            let input = metareal_bench_frame(Int64(captureFrame))
+            sticks.pad_y = input.pad_y
+            sticks.run = input.run; sticks.jump = input.rising; sticks.dance = input.dance
+        }
+        #endif
         let frame = Float(min(max(timestamp - (lastTick ?? timestamp), 0), 0.25)); lastTick = timestamp
         if playing {
             player = metareal_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
@@ -336,6 +347,9 @@ final class HomeViewController: UIViewController {
             sticks = metareal_sticks_used(sticks)
         }
         // The robots move first; then you, among their bodies.
+        #if DEBUG
+        let robotsClock = capture == nil ? 0 : R0FrameCapture.clock()
+        #endif
         var placed = 0, posed = false
         if let cast, let bytes = castBytes {
             if gridStart == nil { gridStart = timestamp }
@@ -349,10 +363,17 @@ final class HomeViewController: UIViewController {
                 }
             }
         }
+        #if DEBUG
+        capture?.elapsed("robots_and_bodies", frame: captureFrame, since: robotsClock)
+        let playerClock = capture == nil ? 0 : R0FrameCapture.clock()
+        #endif
         player = bodies.withUnsafeMutableBufferPointer { b in walls.withUnsafeMutableBufferPointer { w in
             metareal_player_advance_among(player, frame, coax_v_f32(data: b.baseAddress, count: Int64(placed * 7)),
                                           coax_v_f32(data: w.baseAddress, count: Int64(w.count)))
         } }
+        #if DEBUG
+        capture?.elapsed("player_update", frame: captureFrame, since: playerClock)
+        #endif
         let feet = metareal_player_feet(player), face = metareal_player_face(player)
         // The camera: the overview, the dolly down to you, or your own.
         let follow = coax_t_Shot(eye: point(metareal_player_eye(player)), at: point(metareal_player_at(player)))
@@ -413,6 +434,9 @@ final class HomeViewController: UIViewController {
         renderer?.draw(handle: gridHandle, time: timestamp, cast: cast, frame: castFrame, bar: bar)
         guard playing else { return }
         if metareal_haunt_portal(feet.x, feet.z) { enterHouse(); return }
+        #if DEBUG
+        if capture?.finished == true { gridElement?.accessibilityValue = "benchmark.complete"; return }
+        #endif
         let place = String(format: "%.1f %.1f", feet.x, feet.z)
         if gridElement?.accessibilityValue != place { gridElement?.accessibilityValue = place }
     }

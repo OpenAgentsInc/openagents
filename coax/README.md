@@ -17,7 +17,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.12.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.13.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The lexer, parser and type checker are Coax compiled to C11. The native
@@ -68,6 +68,15 @@ and schema maintenance still use Python 3. `COAX_HOST_TARGET` can supply an
 explicit host triple for bootstrap builds inside a cross-target environment;
 the iOS generator selects the Mac triple and SDK. Compiler builds publish the
 new binary atomically.
+
+Version 0.13.0 adds native source debugging and phase reports:
+`--debug-info`, `--source-map FILE` and `--timings FILE`. Debug executable and
+library builds map to original Coax files by default. Plain `coax c` opts in
+explicitly, so bootstrap output stays reproducible. The optional LLDB helper
+shows authored names and checks source hashes. See [DEBUGGING.md](DEBUGGING.md)
+for commands, artifacts and current limits. The [R0 engine harness](../metareal/benchmarks/README.md)
+uses the real cast and a pinned native evaluator; [retained evidence](../docs/verification/coax-r0-2026-10-28.md)
+records correctness and the performance gap.
 
 ## What works
 
@@ -246,12 +255,15 @@ optionals and errors (`try`/`or_else`), generics, general reflection, macros,
 compiler plugins, context, effects, jobs, general GPU programs, a build language, a native
 backend or a resident compiler. Reserved syntax for them is diagnosed. A view
 does not keep its array alive: returning a view of a local is the same
-mistake it is in C. C debug locations still refer to generated C.
+mistake it is in C. Native line mapping and LLDB name presentation work on the
+tested Mac and iOS Simulator; optimized values still follow native debugging
+limits, and no Coax expression evaluator is provided.
 
-Next: the `src/paynet` pulse kernel itself, called from the engine's frame
-loop with its outputs compared and its frame cost measured, before anything in
-the app or its CMake/Xcode paths changes. See §20 of the specification for
-later metadata, build, parallelism, browser and reload gates.
+Next: finish [roadmap R0](ROADMAP.md)'s measured adoption gate. The real pose
+comparison and Metal frame capture now run, but a missed proposed performance
+budget, physical-device measurements, release/status generation and independent
+review enforcement remain open. See §20 of the specification for later
+metadata, build, parallelism, browser and reload gates.
 
 ## Coax frontend and bootstrap seeds
 

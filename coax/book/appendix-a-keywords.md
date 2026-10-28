@@ -1,9 +1,9 @@
 # Appendix A. Keywords, directives and types
 
 This appendix lists every keyword, directive, intrinsic, literal form and
-type the Coax design names, and says whether `coax0` 0.12.0 accepts it.
+type the Coax design names, and says whether `coax0` 0.13.0 accepts it.
 
-- **works**: implemented and tested in `coax0` 0.12.0.
+- **works**: implemented and tested in `coax0` 0.13.0.
 - **reserved**: the word is reserved, and `coax0` refuses it with "not
   supported by coax0 yet" (E0204 for keywords, E0210 for directives, E0301
   for types) rather than guessing what it means.

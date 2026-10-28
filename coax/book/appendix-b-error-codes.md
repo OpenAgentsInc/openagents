@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-This appendix lists every error code `coax0` 0.12.0 can report. The tables
+This appendix lists every error code `coax0` 0.13.0 can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
 compiler's own table from `coax/src/errors.cpp`; when that table changes,
 regenerate this appendix from it rather than editing the rows by hand. In

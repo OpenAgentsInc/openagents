@@ -1,5 +1,37 @@
 # Invariants
 
+## Native debug maps and performance reports are scoped observations
+
+Coax 0.13.0 can map emitted C statements to original physical Coax files.
+Schema-1 maps retain source hashes and authored procedure/variable names;
+the optional LLDB presenter refuses stale files and distinguishes separate
+libraries by physical owner. Plain C emission stays unchanged without the
+debug option, preserving exact seeds. Native debug objects must be retained
+where the linker references them. This is not a Coax expression evaluator,
+complete type encoding, shader map or device-support guarantee.
+
+Driver clocks, file reports, native compilation and linking are host effects,
+never new `#run` capabilities. The checked Coax fingerprint implementation owns
+map SHA-256. Timings and source maps do not certify compiler correctness.
+
+Check: `coax/tests/debugging.py` uses actual Mac LLDB, native diagnostics and
+sanitizer stacks, including multi-statement lowering and loaded units.
+The live Simulator cast breakpoint reaches Coax through the Swift renderer.
+
+The R0 workload and statistical policy live in `metareal/benchmarks.coax`,
+with authority checks and a zero-survivor mutation gate. The external harness
+pins historical native source, its explicit reader adaptation and the real
+app corpus before comparison; timing policy is separate from output and
+allocation assertions. A successful correctness run must not be reported as
+meeting a failed proposed timing budget. Measured allocation hooks have a
+documented scope; Simulator clocks are not physical-phone performance.
+
+Check: `metareal/benchmarks/run.py` compares every player palette element,
+independently recomputes ranks/medians, observes kernel allocation calls and
+runs under ASan/UBSan. `R0UITests` drives the normal Grid/Metal path; inspect
+retained frame counts and command errors too. Reference-adapter review,
+independently enforced adoption gates and device/tail budgets remain open.
+
 ## One protocol for all OpenAgents surfaces
 
 Root `proto/` and the OpenAgents Protocol specification define interchange for

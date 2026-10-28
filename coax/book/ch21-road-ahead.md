@@ -17,7 +17,7 @@ points at which the plan says to stop.
 
 ## Where things stand
 
-`coax0` 0.12.0 compiles bounded source graphs to C11 using `#load`. It has sized
+`coax0` 0.13.0 compiles bounded source graphs to C11 using `#load`. It has sized
 integers, floats, `bool` and strings; structs with defaults, enums with a
 declared width, fixed arrays and views; `for`, `defer` and `ifx`; checked
 casts and left-to-right evaluation; constants, `#run` and `#assert` with
@@ -71,7 +71,7 @@ counts as done, and where each one is today.
 | --- | --- | --- | --- |
 | 0. Bootstrap semantics | Lexer, parser, checker, C emitter, documented scalar grammar | Pass and fail fixtures, checked formats, overflow behavior | Done |
 | 1. Compile-time scalars | Constants, `#run`, `#assert`, `type_name`, `coax check`, bounded evaluation; later the checks (`#test`, `#forall`, `#authority`, `coax test`, `coax mutate`) | Dependencies, cycles, limits, refusal of captures and I/O, the same errors in debug and release, literal output | Done |
-| 2. Data and the C boundary | Structs with defaults, enums, fixed arrays and views, `for`, `defer`, `ifx`, checked casts, ordered operands, `#export_c` with headers and layout assertions, `#foreign` | A real engine kernel called by the native host, outputs independently compared and frame cost measured | Mostly done; see below |
+| 2. Data and the C boundary | Structs with defaults, enums, fixed arrays and views, `for`, `defer`, `ifx`, checked casts, ordered operands, `#export_c` with headers and layout assertions, `#foreign` | A real engine kernel called by the native host, outputs independently compared and frame cost measured | R0 benchmark/debugging slice ships; adoption gate remains open |
 | 3. Metadata and generation | CPU type/field/enum metadata ships; stable declaration IDs, richer reflection, `#derive` and hygienic typed code follow | Checked compile-time inspector, independent C oracle and real Haunted House layout consumer; alternate targets and general derived registries remain gated | Started in 0.12.0 |
 | 4. Build workspaces and tools | Dependency scheduler, capabilities, input manifests, compiler events, then plugins and `build.coax` | One real asset or registry workflow; generated CMake and Xcode lists match the hand-written ones before replacing them | Source graph and `deps` prerequisites ship; workspaces, plugins and `build.coax` remain planned |
 | 5. Effects and deterministic jobs | Region and alias model, effect summaries, strict math, scheduler integration | A real subsystem replays identically at 1, 2, 4 and 8 workers; bad effects and aliases are refused | Not started |
@@ -102,28 +102,32 @@ Two things are done. `coax/examples/pulse` links a Coax pulse kernel into a
 C host and matches a C reference byte for byte on every frame, and
 the iOS home runs its scene and HUD logic in Coax over the scalar C ABI.
 
-Two things are not. `coax0` can't import C headers; `#foreign` declares
-scalar C functions one at a time. More importantly, the live app still needs
-a measured kernel comparison against a frozen independent native reference.
-Roadmap R0 selects a current animation or movement/collision frame path and
-records its workload and acceptance budget. The originally proposed
-`src/paynet` update is an archive candidate, not a directory in the current
-tree; its source, data and host path must be recovered before it can serve as
-the benchmark. The selected Coax kernel has to show:
+C-header import remains unimplemented; `#foreign` declares scalar C functions
+one at a time. R0 now measures a real engine path: the app's 65-joint cast
+pose against a pinned historical native evaluator, plus robot/body capsules
+and player collision. The separate native MRC1 reader and f32 adaptation are
+explicit assumptions. The animation state supplied to both evaluators is
+shared, so this is pose parity, not independent state-machine parity.
 
-- the same output as the existing C++ update for the same input, edge
-  cases included;
-- no hidden allocations per frame, with scratch memory and ownership
-  explicit;
-- exact determinism where the subsystem needs it;
-- a verified layout and bounds for the Metal pipeline that reads its data;
-- frame time within an agreed budget, on the same hardware;
-- the real iOS frame path still working, with browser support established
-  separately by its own later vertical slice.
+Raw reports include matching native flags, three arithmetic/optimization
+profiles, repeated timings, allocation counts, compiler phases and peak RSS.
+The real Debug iOS Grid also records CPU stages and completed-command GPU
+clocks. Palette tolerance and zero observed kernel heap allocations pass;
+the initial optimized comparison misses the proposed 5% median budget.
+No full-frame speed comparison against the old engine or physical-phone
+performance result follows from the Mac/Simulator runs.
 
-Frame-time parity against the old engine hasn't been measured yet for the
-iOS home either. Until it is, "Coax is as fast as the C++ it replaced" is a
-goal, not a result.
+Original Coax breakpoints, stepping, names and loaded-file stacks work in
+Mac LLDB and the live Simulator pose can be inspected through Swift. Chapter
+24 shows the commands and limits. R0 still requires profiling/optimization,
+physical-device and full development-loop evidence, agreed tail budgets,
+release/status generation and independent review/gate enforcement. That gate
+stays open instead of calling a working benchmark a performance success.
+
+The originally proposed `src/paynet` update remains an archive candidate.
+It is not present in today's tree, and is not a prerequisite to measuring the
+live cast path. The detailed roadmap and retained verification reports are
+the place to follow R0's remaining evidence.
 
 ## When to stop
 
@@ -149,7 +153,7 @@ paying those costs for features nobody measured.
 These are the questions the spec lists as undecided. Each one will be
 answered by building something, not by argument.
 
-1. Which live engine kernel, ABI, frozen reference and data set best prove R0/stage 2?
+1. Which pose costs explain the current gap, and which device/tail budget should close R0/stage 2?
 2. Which region and alias model makes field effects trustworthy, without
    promising safety for arbitrary pointer graphs?
 3. What stable IDs separate compiler declarations, engine registrations,
@@ -170,8 +174,8 @@ answered by building something, not by argument.
 compile-time evaluation, checks, a C boundary and protobuf imports, and
 real code in the iOS app built with it. The stages above summarize the larger
 plan; the detailed roadmap expands them into dependency-gated milestones.
-The next concrete step is R0: measured live engine adoption, source-aware
-native debugging and independent verification gates. That evidence decides
+The current step is finishing R0: the benchmark and source debugger ship,
+while performance and independent verification gates remain open. That evidence decides
 how much of the broader language and compiler machinery is worth building.
 
 If you want to help, Chapter 20 shows where the code lives and how it's

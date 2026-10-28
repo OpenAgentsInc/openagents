@@ -197,6 +197,11 @@ final class HomeRenderer {
     /// Draws `handle`'s scene, with the HUD bar from `bar` (the home's Start
     /// bar over the Grid's overview) or else from `handle`.
     func draw(handle: Int64, time: Double, cast assets: CastAssets? = nil, frame castFrame: CastFrame? = nil, bar barHandle: Int64? = nil, haunt: HauntAssets? = nil, houseView: [Float]? = nil) {
+        #if DEBUG
+        let capture = R0FrameCapture.shared
+        let captureFrame = capture?.currentFrame ?? -1
+        let encodeClock = capture == nil ? 0 : R0FrameCapture.clock()
+        #endif
         guard available.wait(timeout: .now()) == .success else { return }
         guard let scene, let depth, let blurA, let blurB, let drawable = layer.nextDrawable(), let command = queue.makeCommandBuffer(), let rawBar = mr_bar(barHandle ?? handle)?.pointee else { available.signal(); return }
         let scale = Float(layer.contentsScale)
@@ -208,8 +213,14 @@ final class HomeRenderer {
         var view = ViewUniform(size: SIMD2(Float(scene.width),Float(scene.height)), time: Float(time - epoch!), scale: scale)
         let dotCount = mr_dot_count(handle), lineCount = mr_line_count(handle)
         let dotBuffer = dotBuffers[ring], lineBuffer = lineBuffers[ring]; ring = (ring+1)%3
+        #if DEBUG
+        let copyClock = capture == nil ? 0 : R0FrameCapture.clock()
+        #endif
         if dotCount > 0, let source = mr_dots(handle) { memcpy(dotBuffer.contents(),source,dotCount*MemoryLayout<MRDot>.stride) }
         if lineCount > 0, let source = mr_lines(handle) { memcpy(lineBuffer.contents(),source,lineCount*MemoryLayout<MRLine>.stride) }
+        #if DEBUG
+        capture?.elapsed("buffer_copy", frame: captureFrame, since: copyClock)
+        #endif
         func encoder(_ texture: MTLTexture, depth: MTLTexture? = nil) -> MTLRenderCommandEncoder? {
             let pass = MTLRenderPassDescriptor(); pass.colorAttachments[0].texture = texture
             pass.colorAttachments[0].loadAction = .clear; pass.colorAttachments[0].storeAction = .store
@@ -225,7 +236,13 @@ final class HomeRenderer {
             let buffer = assets.palettes[ring]
             let joints = coax_v_t_Joint(data: buffer.contents().bindMemory(to: coax_t_Joint.self, capacity: buffer.length / MemoryLayout<coax_t_Joint>.stride),
                                         count: Int64(buffer.length / MemoryLayout<coax_t_Joint>.stride))
+            #if DEBUG
+            let poseClock = capture == nil ? 0 : R0FrameCapture.clock()
+            #endif
             if castFrame.pose(joints) { palette = buffer }
+            #if DEBUG
+            capture?.elapsed("pose_and_palette_copy", frame: captureFrame, since: poseClock)
+            #endif
         }
         guard let e = encoder(scene, depth: depth) else { available.signal(); return }
         e.setDepthStencilState(flat)
@@ -268,9 +285,15 @@ final class HomeRenderer {
         let semaphore = available
         command.addCompletedHandler { buffer in
             if let error = buffer.error { NSLog("Metareal GPU: %@",error.localizedDescription) }
+            #if DEBUG
+            capture?.gpu(buffer, frame: captureFrame)
+            #endif
             semaphore.signal()
         }
         command.present(drawable); command.commit()
+        #if DEBUG
+        capture?.elapsed("render_encode", frame: captureFrame, since: encodeClock)
+        #endif
     }
     private func drawHaunt(_ e: MTLRenderCommandEncoder, _ assets: HauntAssets, _ m: [Float], _ frame: Int, _ time: Double) {
         guard m.count == 16 else { return }

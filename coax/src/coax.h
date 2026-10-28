@@ -372,7 +372,11 @@ bool evaluate(File *file);
 // Whether an expression contains a procedure call (whose effects order can observe).
 bool has_call(const Expr *e);
 
+std::string json_string(const std::string &s);
+std::string emit_debug_map(const File *file);
+
 struct EmitOptions {
+  bool debug_info = false; // opt-in original-source native line tables
   bool release = false;  // release: integer overflow wraps; debug: it traps
   bool library = false;  // no C main; #export_c procedures are the interface
   bool metal = false;    // Metal Shading Language instead of C

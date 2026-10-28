@@ -12,6 +12,7 @@
 #include <cmath>
 #include <algorithm>
 #include <functional>
+#include <filesystem>
 
 namespace coax {
 
@@ -285,6 +286,17 @@ struct Operand {
   bool lvalue;
 };
 
+std::string escape_path(const std::string &path);
+
+std::string debug_path(const Source *src, Loc loc) {
+  return std::filesystem::absolute(source_point(src,loc).path).lexically_normal().string();
+}
+
+std::string debug_line(const File *file, Loc loc) {
+  auto point=source_point(file->src,loc);
+  return "#line "+std::to_string(point.loc.line)+" \""+escape_path(debug_path(file->src,loc))+"\"\n";
+}
+
 struct Emitter {
   const File *file;
   EmitOptions opts;
@@ -297,8 +309,13 @@ struct Emitter {
   std::vector<size_t> loop_scopes;          // defers.size() when each open loop began
   const ProcDecl *current = nullptr;
   bool ret_temp = false;
+  Loc debug_location{};
+  bool mapping_active=false;
 
-  void line_start() { out.append((size_t)indent * 2, ' '); }
+  void line_start() {
+    if(opts.debug_info && mapping_active)out+=debug_line(file,debug_location);
+    out.append((size_t)indent * 2,' ');
+  }
   void line(const std::string &s) {
     line_start();
     out += s;
@@ -789,6 +806,8 @@ struct Emitter {
   }
 
   void stmt(const Stmt *s) {
+    struct Restore {Loc &target;Loc old;~Restore(){target=old;}} restore{debug_location,debug_location};
+    debug_location=s->loc;
     switch (s->kind) {
       case StmtKind::block: block_body(s); break;
       case StmtKind::expr:
@@ -812,6 +831,7 @@ struct Emitter {
         if (s->expr) line("coax_ret = " + ex(s->expr) + ";");
         ret_temp = ret_temp || s->expr;
         emit_defers_from(0);
+        if (opts.debug_info) out+=debug_line(file,s->loc);
         line(s->expr ? "return coax_ret;" : "return;");
         break;
       case StmtKind::break_:
@@ -903,6 +923,7 @@ struct Emitter {
   std::string function(const ProcDecl *p) {
     if (p->foreign) return "";
     current = p;
+    mapping_active=true;debug_location=p->loc;
     out.clear();
     temps.clear();
     ret_temp = false;
@@ -917,11 +938,12 @@ struct Emitter {
     std::vector<const Stmt *> mine = defers.back();
     defers.pop_back();
     for (size_t i = mine.size(); i-- > 0;) stmt(mine[i]);
-    std::string body = out;
-    std::string s = "\n" + prototype(p) + " {\n";
+    std::string body = out;mapping_active=false;
+    std::string s = "\n" + (opts.debug_info ? debug_line(file,p->loc) : "") + prototype(p) + " {\n";
     if (ret_temp) s += "  " + c_type(p->ret) + " coax_ret;\n";
     for (const std::string &t : temps) s += "  " + t + "\n";
     s += body + "}\n";
+    if (opts.debug_info) s+="#line 1 \"<coax-generated>\"\n";
     return s;
   }
 };
@@ -1293,3 +1315,45 @@ std::string layout_report(const File *file) {
 }
 
 }  // namespace coax
+
+namespace coax {
+static std::string debug_source_hash(const std::string &text) {
+#ifndef COAX_BOOTSTRAP_IMPORTER
+  uint8_t out[64];auto digest=S_hash({text.data(),(int64_t)text.size()});
+  if(S_hex(digest,{out,64}))return std::string((char*)out,64);
+#endif
+  return ""; // build-only stage0 refuses --source-map; no native hash fallback
+}
+std::string emit_debug_map(const File *file) {
+  Emitter em{file,{}};
+  std::string out="{\"schema_version\":1,\"sources\":[";
+  bool first=true;
+  for (const auto &unit:file->src->units) {out+=(first?"":",")+json_string(unit->canonical);first=false;}
+  out+="],\"source_hashes\":{";first=true;
+  for(const auto &unit:file->src->units) {out+=(first?"":",")+json_string(unit->canonical)+":"+json_string(debug_source_hash(unit->text));first=false;}
+  out+="},\"functions\":[";first=true;
+  for (const auto *p:file->procs) {
+    if(p->foreign) continue;
+    auto point=source_point(file->src,p->loc);
+    out+=(first?"":",")+std::string("{\"name\":")+json_string(to_std(p->name))+",\"c_name\":"+json_string(em.proc_name(p))+",\"file\":"+json_string(debug_path(file->src,p->loc))+",\"line\":"+std::to_string(point.loc.line)+",\"variables\":[";first=false;
+    bool variable_first=true;
+    auto variable=[&](Str name,Type type,Loc loc,const char *role) {
+      auto at=source_point(file->src,loc);
+      out+=(variable_first?"":",")+std::string("{\"name\":")+json_string(to_std(name))+",\"c_name\":"+json_string(em.local_name(name))+",\"type\":"+json_string(type->name)+",\"role\":"+json_string(role)+",\"line\":"+std::to_string(at.loc.line)+"}";variable_first=false;
+    };
+    for(const auto &arg:p->params) variable(arg.name,arg.type,arg.loc,"parameter");
+    std::function<void(const Stmt*)> walk=[&](const Stmt *s) {
+      if(!s) return;
+      if(s->kind==StmtKind::var) variable(s->name,s->type,s->loc,"local");
+      if(s->kind==StmtKind::for_range || s->kind==StmtKind::for_each) {
+        variable(s->name,s->type,s->loc,"loop");
+        if(s->name2.count) variable(s->name2,T_INT,s->name2_loc,"loop");
+      }
+      for(const auto *child:s->body) walk(child);
+      walk(s->then_);walk(s->else_);
+    };
+    walk(p->body);out+="]}";
+  }
+  return out+"]}\n";
+}
+} // namespace coax

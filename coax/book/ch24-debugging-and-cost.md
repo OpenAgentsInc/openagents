@@ -4,37 +4,68 @@ Readable C output is useful only if you know how to follow a failure into
 it and back to the Coax source. This chapter gives a working path for the
 current compiler, then explains what to measure before calling code fast.
 
-## Keep the generated program
+## Step through the original source
 
-For a standalone example, ask the compiler to keep its C:
-
-```sh
-coax/bin/coax build coax/book/examples/ch23_requests.coax --keep-c -o /tmp/coax-request-demo
-```
-
-The normal debug build uses the host C compiler with debug information.
-For a library, generate the C and header explicitly, then compile them
-with the host and the flags you need. The capstone's `run.sh` does exactly
-that, so it can enable sanitizers for both the library and its host.
-
-`coax0` does not yet emit Coax-to-C debugger source mappings. A debugger
-will normally show generated C, and native compiler errors refer to that
-C too. Preserve the matching `.coax`, generated C, header and compiler
-revision when investigating a failure. Do not edit the C as a fix: it
-will be generated again.
-
-On a Mac, you can open the standalone executable in LLDB:
+Version 0.13.0 maps generated native code back to physical Coax files. Build
+this two-file example from the repository root:
 
 ```sh
-lldb /tmp/coax-request-demo
+coax/bin/coax build coax/book/examples/ch24_debug/main.coax \
+  -o /tmp/coax-debug --keep-c --source-map /tmp/coax-debug.map.json \
+  --timings /tmp/coax-debug.timings.json
+lldb /tmp/coax-debug
 ```
 
-Inside LLDB, use `breakpoint set --name request_complete`, `run`, `bt`
-and `frame variable`. An exported procedure keeps its C symbol; an
-internal procedure generally has a generated name such as
-`coax_p_main`. At optimization level `-O2`, inlining and removed locals
-can make this harder. Reproduce in a debug build first, then confirm the
-fix with optimized code too.
+The loaded procedure is small enough to inspect directly:
+
+<!-- checked-source: examples/ch24_debug/adjust.coax -->
+```coax
+twice :: (value:int)->int {
+  total:=value*2;
+  total+=2;
+  return total;
+}
+```
+
+In LLDB, replace the checkout path with your own absolute path:
+
+```text
+command script import /absolute/openagents/coax/tools/coax_lldb.py
+coax-map /tmp/coax-debug.map.json
+breakpoint set --file adjust.coax --line 3
+run
+coax-vars
+coax-bt
+thread step-over
+coax-vars
+continue
+```
+
+Before the step, `value` is 20 and `total` is 40. Afterward, `total` is 42.
+The stack shows `twice` in `adjust.coax`, called by `main` in `main.coax`.
+The optional helper presents authored names and Coax type labels. Ordinary
+`bt` and `frame variable` remain useful, showing the native C names/types.
+
+`--source-map` writes schema-1 names, locations and SHA-256 source hashes and
+implies `--debug-info`. The helper refuses files changed since compilation.
+Default debug `build`, `lib` and `run` commands enable original-file line
+mapping. Plain `coax c` opts in explicitly, preserving reproducible bootstrap
+C without absolute paths. Custom native builds also need `-g` when compiling
+the mapped C. Release builds can request mapping explicitly.
+
+This is not a Coax expression evaluator or complete native type visualizer.
+Inlining and optimized-out variables follow the native debugger. Generated
+helpers do not acquire invented source provenance. Keep matching sources,
+maps, objects and executable/dSYM together; Darwin's debug map needs the
+object file retained by the driver. Maps contain absolute checkout paths.
+Do not edit generated C as a fix: it will be generated again.
+
+The regression suite uses real Mac LLDB sessions, including stepping after a
+statement lowered to several C statements. It also checks escaped paths,
+source-hash refusal, duplicate private names in separate libraries, native
+compiler diagnostics and sanitizer stacks. The running iOS Simulator app was
+attached at `metareal_cast_pose` in `cast.coax` with a stack through Swift.
+That does not establish every device/target debugging workflow.
 
 A Coax trap, an AddressSanitizer report and a compiler diagnostic describe
 different failures. A bounds trap is a runtime violation of a checked
@@ -113,6 +144,20 @@ Separate at least four measurements:
 3. CPU frame or operation time, including boundary copies.
 4. GPU time, upload/synchronization cost and end-to-end latency.
 
+The driver can record its own phases without changing program stdout:
+
+```sh
+coax/bin/coax build coax/book/examples/ch24_debug/main.coax \
+  -o /tmp/coax-debug --timings /tmp/coax-debug.timings.json
+```
+
+The report separates load, lex, proto imports, parse, check, evaluation,
+authority checks, emit, native C compilation and link, with status and emitted
+byte count. Only executed phases appear. Source discovery's physical-file
+syntax validation is included in load; later lex/parse buckets describe the
+combined program. Emit includes source-map hashing/writing when requested.
+These are host clock observations, not new capabilities available to `#run`.
+
 A quick shell timing is useful for tool iteration. Use repeated runs and
 report the distribution, not just the fastest sample. A frame-time
 comparison should include warm-up, sustained load and tail latency.
@@ -138,3 +183,32 @@ Keep timing thresholds in a separate target-specific harness, with enough
 tolerance for noise and an explicit workload. Do not make a finite
 `#forall` claim a frame-rate guarantee: it runs in the compiler's evaluator,
 not in the phone's renderer.
+
+## A real engine baseline
+
+The repository's `metareal/benchmarks/` harness uses the app's actual cast,
+with 65 player joints and 402 robot joints. It compares player palette values
+against a pinned historical native evaluator, measures robots/body capsules
+and movement/collision, records allocation calls, and retains raw samples,
+compiler phases, peak compiler RSS and generated sizes. Run it with:
+
+```sh
+python3 metareal/benchmarks/run.py --output /tmp/coax-r0 --repeats 9
+python3 metareal/benchmarks/run.py --output /tmp/coax-r0-asan --repeats 1 --sanitize
+```
+
+The benchmark separates checked `-O0`, app-style checked `-O2` and wrapping
+release `-O2` profiles. Both sides receive matching native flags. A Debug
+app launched with `-OABenchmark` also records the normal Grid's CPU stages,
+host buffer copies, Metal encoding and completed-command GPU clocks in
+`Documents/R0-frame.json`. Simulator clocks are not iPhone performance.
+
+The first comparison agrees within the frozen palette tolerance and observes
+zero Coax kernel heap allocations, but misses the proposed 5% median timing
+budget. Correctness success is not speed parity. The default harness reports
+the miss; `--enforce-budget` makes it a failing performance gate. Inspect the
+reference adaptation, variance and exact evidence before changing either the
+implementation or the budget. R0 remains open for profiling/optimization,
+physical-device and full-loop evidence, status generation and independent
+review enforcement. The benchmark README and `docs/verification/` in the
+repository record that scope and the retained results.

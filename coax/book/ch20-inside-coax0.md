@@ -14,7 +14,7 @@ message points where it does. It also shows that the discipline the earlier
 chapters recommend (bounded storage, one owner, checks written next to the
 code) is the same discipline the compiler is written in.
 
-> Note: Everything in this chapter describes `coax0` 0.12.0 as it is in
+> Note: Everything in this chapter describes `coax0` 0.13.0 as it is in
 > `coax/src/`, `coax/lib/compiler/` and `coax/bootstrap/`.
 
 ## A map of the source
@@ -884,3 +884,17 @@ include authority checks and mutation gates for the new paths. Metareal's
 Haunted House buffer admission derives its stride and scalar table through
 these queries. Metal's packed vertex declaration is still an explicit
 platform boundary, not a second reflection target.
+
+## Observing compilation and native execution
+
+Version 0.13.0 adds original-source `#line` output, schema-1 hashed name/location
+maps and host phase reports. `--timings FILE` observes load, lex, imports,
+parse, check, evaluate, authority checks and emit; native builds also separate
+C compilation from linking. The monotonic clock lives in the driver. It is
+not exposed to `#run` and does not change compile-time determinism.
+
+The mapping emitter and timing driver remain part of the trusted C++ compiler
+boundary. Source hashes reuse the checked Coax fingerprint implementation.
+Debug builds can now be stepped through Coax files, with an optional LLDB
+helper presenting authored names; Chapter 24 gives the runnable example.
+A hashed map detects stale files, not a compromised compiler or false oracle.

@@ -3,6 +3,7 @@
 #include "Player.h"
 #include "Grid.h"
 #include "Cast.h"
+#include "Benchmarks.h"
 #include "Wallet.h"
 #include "Camera.h"
 // The compiler's fixed-array typedefs are local to each emitted library.

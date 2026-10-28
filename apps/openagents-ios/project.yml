@@ -30,6 +30,8 @@ targets:
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Cast.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/Benchmarks.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Camera.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Wallet.c

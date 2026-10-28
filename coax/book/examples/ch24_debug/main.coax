@@ -1,0 +1,7 @@
+#import "Basic";
+#load "adjust.coax";
+main :: () {
+  answer:=twice(20);
+  #assert answer==42;
+  print("%\n",answer);
+}

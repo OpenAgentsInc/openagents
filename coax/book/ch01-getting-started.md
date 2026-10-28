@@ -37,7 +37,7 @@ Let's make sure it worked:
 
 ```sh
 $ coax/bin/coax version
-coax0 0.12.0
+coax0 0.13.0
 ```
 
 If you see a version, you're set. The rest of the book writes `coax` for
@@ -212,9 +212,10 @@ Hello, world!
 ```
 
 Use `-o` to choose the name: `coax build hello.coax -o greet`. On macOS
-you'll also see a `hello.dSYM` folder appear. That holds debug
-information, because ordinary builds include it so a debugger can show
-you your Coax source lines.
+the driver retains a `hello.o` file: Darwin's debug map needs that object.
+Ordinary debug builds include line mappings so a debugger can show your Coax
+source lines. Keep the object with the executable, or package the matching
+symbols with your native toolchain. Chapter 24 shows source maps and LLDB.
 
 ### `coax c`
 

@@ -1,0 +1,5 @@
+twice :: (value:int)->int {
+  total:=value*2;
+  total+=2;
+  return total;
+}
