@@ -1,0 +1,106 @@
+// Release metadata validation only. Displayed status is a reviewed claim,
+// not authority to execute code or proof that a feature is correct.
+#authority;
+ReleaseFeature :: struct {id:string;section:string;name:string;meaning:string;status:string;introduced:string;}
+
+#test "release and schema identities have different domains" {
+  #assert RM_version_valid("0.14.0") && RM_version_valid("1.2.999");
+  #assert !RM_version_valid("") && !RM_version_valid("1") && !RM_version_valid("1.2") && !RM_version_valid("1.2.3.4");
+  #assert !RM_version_valid("01.2.3") && !RM_version_valid("1.02.3") && !RM_version_valid("1.2.03");
+  #assert !RM_version_valid("1.2.x") && !RM_version_valid("1.2.1000") && !RM_version_valid("1..2");
+  #assert !RM_version_valid(".1.2") && !RM_version_valid("1.2.") && !RM_version_valid("1.2.3-rc1");
+  #assert RM_version_code("0.14.0")==14000 && RM_version_code("1.2.3")==1002003;
+  #assert RM_version_code("bad")== -1;
+}
+RM_version_valid :: (v:string)->bool #export_c {
+  dots:=0;digits:=0;value:=0;
+  for c,i:v {
+    if c=='.' {
+      if digits==0 {return false;}
+      dots+=1;digits=0;value=0;
+    } else {
+      if c<'0' || c>'9' || (digits>0 && v[i-digits]=='0') {return false;}
+      digits+=1;value=value*10+int(c)-int('0');
+      if value>999 {return false;}
+    }
+  }
+  return dots==2 && digits>0;
+}
+RM_version_code :: (v:string)->int #export_c {
+  if !RM_version_valid(v) {return -1;}
+  out:=0;value:=0;
+  for c:v {if c=='.' {out=out*1000+value;value=0;} else {value=value*10+int(c)-int('0');}}
+  return out*1000+value;
+}
+#test "catalogue fields cannot break generated rows or raw C literals" {
+  #assert RM_text_valid("a `quoted` field / x",false) && RM_text_valid("quote \" and \\ slash",false);
+  #assert !RM_text_valid("",false) && RM_text_valid("",true);
+  #assert !RM_text_valid("a\nb",false) && !RM_text_valid("a\tb",false) && !RM_text_valid("a\0b",false);
+  #assert !RM_text_valid("aCOAX_RELEASEb",false);
+  #assert RM_state_valid("works") && RM_state_valid("partial") && RM_state_valid("reserved") && RM_state_valid("designed");
+  #assert !RM_state_valid("passed") && !RM_state_valid("");
+}
+RM_text_valid :: (s:string,empty:bool)->bool #export_c {
+  if s.count==0 {return empty;}
+  for c:s {if c<32 || c==127 {return false;}}
+  marker:="COAX_RELEASE";
+  for i:0..<s.count {
+    if i+marker.count<=s.count {
+      same:=true;for k:0..<marker.count {if s[i+k]!=marker[k] {same=false;}}
+      if same {return false;}
+    }
+  }
+  return true;
+}
+RM_state_valid :: (s:string)->bool #export_c {return s=="works" || s=="partial" || s=="reserved" || s=="designed";}
+#test "every admitted section has a rendered table" {
+  #assert RM_section_valid("Keywords") && RM_section_valid("Directives") && RM_section_valid("Intrinsics");
+  #assert RM_section_valid("Conversions") && RM_section_valid("Literals") && RM_section_valid("Types") && RM_section_valid("Capabilities");
+  #assert !RM_section_valid("") && !RM_section_valid("Hidden");
+}
+RM_section_valid :: (s:string)->bool #export_c {
+  return s=="Keywords" || s=="Directives" || s=="Intrinsics" || s=="Conversions" || s=="Literals" || s=="Types" || s=="Capabilities";
+}
+#test "only implemented status has an optional historical introduction" {
+  r:=ReleaseFeature.{id="load",section="Directives",name="#load",meaning="source units",status="works",introduced="0.11.0"};
+  #assert RM_row_valid(r,"0.14.0");r.introduced="";#assert RM_row_valid(r,"0.14.0");
+  r.introduced="0.15.0";#assert !RM_row_valid(r,"0.14.0");r.introduced="bad";#assert !RM_row_valid(r,"0.14.0");
+  r.introduced="0.11.0";r.status="designed";#assert !RM_row_valid(r,"0.14.0");
+  r.introduced="";#assert RM_row_valid(r,"0.14.0");r.status="partial";#assert RM_row_valid(r,"0.14.0");
+  r.status="unknown";#assert !RM_row_valid(r,"0.14.0");r.status="works";
+  r.id="";#assert !RM_row_valid(r,"0.14.0");r.id="load";
+  r.section="";#assert !RM_row_valid(r,"0.14.0");r.section="Directives";
+  r.name="";#assert !RM_row_valid(r,"0.14.0");r.name="#load";
+  r.meaning="";#assert RM_row_valid(r,"0.14.0");
+  #assert !RM_row_valid(r,"bad");
+}
+RM_row_valid :: (r:ReleaseFeature,version:string)->bool #export_c {
+  if !RM_version_valid(version) || !RM_text_valid(r.id,false) || !RM_section_valid(r.section) || !RM_text_valid(r.name,false) || !RM_text_valid(r.meaning,true) || !RM_state_valid(r.status) {return false;}
+  if r.introduced=="" {return true;}
+  return (r.status=="works" || r.status=="partial") && RM_version_valid(r.introduced) && RM_version_code(r.introduced)<=RM_version_code(version);
+}
+#test "catalogues reject duplicate identities, invalid rows and vacuous claims" {
+  rows:=[2]ReleaseFeature.[ReleaseFeature.{id="a",section="Types",name="int",status="works"},ReleaseFeature.{id="b",section="Types",name="bool",status="works"}];
+  #assert RM_catalogue_valid(rows[..],"0.14.0",1);
+  #assert !RM_catalogue_valid(rows[0..<0],"0.14.0",1) && !RM_catalogue_valid(rows[..],"0.14.0",0);
+  #assert !RM_catalogue_valid(rows[..],"0.14.0",2);
+  rows[1].id="a";#assert !RM_catalogue_valid(rows[..],"0.14.0",1);
+  rows[1].id="b";rows[1].name="";#assert !RM_catalogue_valid(rows[..],"0.14.0",1);
+}
+RM_catalogue_valid :: (rows:[]ReleaseFeature,version:string,schema:int)->bool #export_c {
+  if schema!=1 || rows.count==0 {return false;}
+  for i:0..<rows.count {
+    if !RM_row_valid(rows[i],version) {return false;}
+    for j:0..<i {if rows[i].id==rows[j].id {return false;}}
+  }
+  return true;
+}
+
+#test "release boundary and first-row witnesses remain explicit" {
+  #assert RM_version_valid("999.999.999") && !RM_version_valid("1.2.:");
+  #assert !RM_text_valid("COAX_RELEASE",false) && RM_text_valid("DOAX_RELEASE",false);
+  del:=[1]u8.[127];#assert !RM_text_valid(cast(string) del[..],false);
+  r:=ReleaseFeature.{id="equal",section="Capabilities",name="test",status="partial",introduced="0.14.0"};
+  #assert RM_row_valid(r,"0.14.0");
+  rows:=[1]ReleaseFeature.[r];rows[0].name="";#assert !RM_catalogue_valid(rows[..],"0.14.0",1);
+}

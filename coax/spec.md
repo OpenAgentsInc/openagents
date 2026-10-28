@@ -1,6 +1,9 @@
 # Coax: language specification and implementation plan
 
-Updated: 2026-10-28. Status: **working 0.13.0 bootstrap; broader language design**.
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
+Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
 end in `.coax`; the executable is `coax`; a future build entry is `build.coax`.
 
@@ -9,7 +12,7 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.13.0 implements procedures;
+**Implementation status matters.** The current bootstrap implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
@@ -28,6 +31,11 @@ layout queries (`type_info`, `field_info`, `enum_info`) and compile-time
 metadata tables shipped in 0.12.0. Neither completes general modules,
 first-class types or arbitrary code generation. The [roadmap](ROADMAP.md)
 orders the remaining work and its evidence gates.
+The current version and accepted-feature tables are generated from
+[`release.coax`](release.coax). `coax status --json` exposes inventory schema 1;
+bootstrap, app generation and book publication reject source/snapshot/binary
+drift. This display catalogue is separate from protocol schemas and semantic
+verification. See [release workflow](RELEASE.md).
 The reduced native iOS home now runs scene/HUD logic and scalar shader math in
 Coax; native adapters own storage and GPU resources. Fixed-scalar C ABI exports,
 foreign imports and a restricted f32/bool Metal library emitter are implemented.

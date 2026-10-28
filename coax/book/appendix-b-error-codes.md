@@ -1,6 +1,9 @@
 # Appendix B. Error codes
 
-This appendix lists every error code `coax0` 0.13.0 can report. The tables
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
+This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
 compiler's own table from `coax/src/errors.cpp`; when that table changes,
 regenerate this appendix from it rather than editing the rows by hand. In

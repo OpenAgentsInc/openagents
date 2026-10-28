@@ -54,7 +54,7 @@
 
 ## Appendices
 
-* [A. Keywords, directives and types](appendix-a-keywords.md)
+* [A. Keywords, directives, types and status](appendix-a-keywords.md)
 * [B. Error codes](appendix-b-error-codes.md)
 * [C. Coax for Jai programmers](appendix-c-jai.md)
 * [D. Coax for C++ programmers](appendix-d-cpp.md)

@@ -6,11 +6,12 @@ cd "$(dirname "$0")/../.."
 # Product output is ordinary C11, compiled by Xcode for the actual target SDK.
 mkdir -p apps/openagents-ios/Generated
 compiler=coax/bin/coax
-if [[ ! -x "$compiler" || coax/build.sh -nt "$compiler" || apps/openagents-ios/generate.sh -nt "$compiler" ]] || [[ -n "$(find coax/src coax/lib coax/bootstrap -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.c' -o -name '*.inc' -o -name '*.coax' \) -newer "$compiler" -print -quit)" ]]; then
+if [[ coax/release.coax -nt "$compiler" || coax/release-model.coax -nt "$compiler" || ! -x "$compiler" || coax/build.sh -nt "$compiler" || apps/openagents-ios/generate.sh -nt "$compiler" ]] || [[ -n "$(find coax/src coax/lib coax/bootstrap -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.c' -o -name '*.inc' -o -name '*.coax' \) -newer "$compiler" -print -quit)" ]]; then
   env -u CFLAGS -u CXXFLAGS SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
     CXX="$(xcrun --sdk macosx --find clang++)" \
     COAX_HOST_TARGET="$(uname -m)-apple-macosx11.0" coax/build.sh
 fi
+COAX_RELEASE_COMPILER="$PWD/$compiler" scripts/coax-release.sh --check --binary "$PWD/$compiler"
 out=apps/openagents-ios/Generated
 for name in home player grid cast camera wallet haunt hud benchmarks; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet

@@ -1,5 +1,16 @@
 # 21. The road ahead
 
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
+
+Release/status generation now ships: one Coax catalogue supplies the CLI,
+accepted-feature reference and current book status, with build and publication
+drift checks. Optional bounded differential probes also compare evaluator and
+checked native results and reduce failures. Those deliveries leave R0's physical
+device/frame-tail, full development-loop and independent review gates open.
+See [current status](appendix-a-keywords.md), [release workflow](https://github.com/OpenAgentsInc/openagents/blob/main/coax/RELEASE.md)
+and [differential evidence](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md).
 Most of this book has had two kinds of material in it: what `coax0` does
 today, which you can run, and what the specification plans, which is
 marked as not yet available. This chapter is about the second kind. The
@@ -17,7 +28,7 @@ points at which the plan says to stop.
 
 ## Where things stand
 
-`coax0` 0.13.0 compiles bounded source graphs to C11 using `#load`. It has sized
+The current compiler compiles bounded source graphs to C11 using `#load`. It has sized
 integers, floats, `bool` and strings; structs with defaults, enums with a
 declared width, fixed arrays and views; `for`, `defer` and `ifx`; checked
 casts and left-to-right evaluation; constants, `#run` and `#assert` with
@@ -124,7 +135,7 @@ Original Coax breakpoints, stepping, names and loaded-file stacks work in
 Mac LLDB and the live Simulator pose can be inspected through Swift. Chapter
 24 shows the commands and limits. The pose median fix supplies one part of
 R0's adoption evidence. Physical-device and full development-loop evidence,
-agreed tail budgets, release/status generation and independent review/gate
+agreed tail budgets and independent review/gate
 enforcement still remain before the milestone closes.
 
 The originally proposed `src/paynet` update remains an archive candidate.

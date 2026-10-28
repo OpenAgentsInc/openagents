@@ -1,11 +1,14 @@
 # 22. Organizing a larger program
 
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
 type, what crosses a boundary, and which parts a build is allowed to
 replace together.
 
-`coax0` 0.13.0 provides source-unit composition with `#load`. You can share
+The current compiler provides source-unit composition with `#load`. You can share
 actual declarations and keep diagnostics and checks tied to their physical
 files. General directory modules, visibility and package management remain
 planned. A source graph today has one declaration namespace.

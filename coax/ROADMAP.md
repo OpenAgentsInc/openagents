@@ -1,6 +1,9 @@
 # Coax implementation roadmap
 
-Updated 2026-10-28. Baseline: **coax0 0.13.0**, including source composition,
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
+Updated 2026-10-28. Baseline: the current compiler above, including source composition,
 CPU layout reflection and the first R0 benchmark/source-debugging slice. This
 revision incorporates the follow-up technical review while retaining the
 evidence and compatibility limits of what has actually shipped.
@@ -75,7 +78,7 @@ frameworks.
 
 | Milestone | First delivery and prerequisites | Expansion and additional prerequisites |
 | --- | --- | --- |
-| R0 — Evidence and debugging | Existing compiler/app: retain the real benchmark/debugger baseline; add scoped evidence and conformance reports | Close measured adoption, device/tail/full-loop, status and independent review gates |
+| R0 — Evidence and debugging | Real benchmark/debugger baseline, generated release/status and bounded differential probes shipped; extend scoped evidence | Close measured adoption, device/tail/full-loop and independent review gates |
 | R1 — Compiler graph, targets and modules | R1a: existing typed graph and R0 baseline; declaration identities, targets, spans, basic namespaces, content identities and minimal procedure lowering | R1b: generated-work scheduling, richer module configuration and conditional dependencies |
 | R2 — Results and complete control flow | R2a: R1a and lowering; typed results/optionals, exhaustive switching, propagation and cleanup in a real adapter | R2b: argument forms, overloads, variadics and other consumer-driven ergonomics |
 | R3 — Ownership, memory and context | R3a: current typed graph; diagnose simple local-view escapes and define borrow/transfer rules | R3b: R1 targets and R2a errors; owning storage, allocators, containers and context |
@@ -123,7 +126,7 @@ are unchanged. See [the follow-up evidence](../docs/verification/coax-r0-pose-20
 These remain Mac/Simulator observations, not phone performance or whole-engine
 parity. Debug variance includes a retained large outlier; a passing median
 is not a frame-tail guarantee. Finish physical-device/tail budgets, complete
-asset/install/launch/GPU-preparation attribution, status generation and
+asset/install/launch/GPU-preparation attribution and
 independent reference/gate review before closing R0.
 
 1. Retain the frozen live pose kernel in `HomeRenderer.swift`/`verse/cast.coax`,
@@ -148,10 +151,14 @@ independent reference/gate review before closing R0.
    compiler errors, sanitizer reports and LLDB stepping/values/stacks across
    loaded units. Expand generated-code/type inspection and target coverage as
    consumers require it; line directives alone do not complete those workflows.
-5. Define one release/status source from which CLI version, accepted-feature
-   tables and book status are generated. Add a publication drift check. Keep
-   implementation version, schema version and historical introduction version
-   distinct. Manual status corrections through 0.13.0 are not that generator.
+5. **Shipped in 0.14.0:** [`release.coax`](release.coax) generates the CLI
+   version/status, accepted-feature tables and current book status. Bootstrap,
+   iOS generation and book publication check source/snapshot/binary drift.
+   Implementation version, inventory schema and historical introduction versions
+   remain separate. See [workflow](RELEASE.md) and
+   [evidence](../docs/verification/coax-release-status-2026-10-28.md). Status is
+   reviewed metadata, not independent semantic proof; unmanaged historical prose
+   still needs review.
 6. Preserve independent checks and frozen compatibility inputs. Define who
    reviews changes to invariants, oracles and verification policy, with the
    enforcement outside the compiler on owned infrastructure. An author who can
@@ -199,8 +206,17 @@ differences instead of misclassifying them. The current evaluator checks remain
 required and test code stays out of shipping programs. Extend to Wasm only as
 that target's execution contract is proved.
 
-Add valid-program differential generation and reduction across arithmetic,
-branches, aggregates, views, cleanup and compile-time/runtime expressions.
+**First bounded differential slice shipped:** optional
+[`tools/differential.py`](tools/differential.py) generates supported checked
+integer/state programs, compares a separate model with evaluator and native
+`-O0`/`-O2` results, and reduces mismatches. The retained sample covers arithmetic,
+branches, aggregates, caller-owned view writes and reverse cleanup. A deliberate
+emitter defect is detected and reduced. See [evidence and limits](verification-differential.md).
+Overflow/trap edges, floating point, `#run` materialization, arbitrary native
+check lowering and other targets remain outside this slice.
+
+Extend valid-program differential generation and reduction across those
+remaining expressions and profiles.
 Generate only defined, supported behavior so mismatches are meaningful; malformed
 input fuzzing remains a separate activity. Deliberately seeded evaluator/emitter
 defects must be caught, and minimized mismatches retained as regressions. Keep
@@ -749,9 +765,10 @@ and review remain open; every slice still needs its listed prerequisites.
 
 1. **Finish the existing R0 baseline.** Retain the closed pose median gap,
    frozen reference and current debugging results. Complete device/tail
-   budgets, full-loop attribution, release/status generation and independent
+   budgets, full-loop attribution and independent
    review enforcement. Do not repeat shipped kernel selection/debugging or
-   weaken a budget to close the milestone. Start scoped evidence and the
+   release/status generation, or weaken a budget to close the milestone. Extend
+   the shipped bounded differential tooling; start scoped evidence and the
    authoring-task corpus alongside this work.
 2. **Pin semantic profiles and native check execution.** Specify compatibility
    and migration before changing arithmetic; expose optimized checked execution,

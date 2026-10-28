@@ -1,5 +1,8 @@
 # 6. Arrays, strings, memory and the context
 
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
 Every value in a program lives somewhere in memory, and somebody decides
 when that memory is reused. In a garbage-collected language you rarely have
 to think about it. Coax has no garbage collector and no destructors, so the
@@ -17,7 +20,7 @@ Coax checks indexes and diagnoses some direct returns of local borrows, but
 many lifetime mistakes still need manual review. Knowing exactly where that
 line falls is the most useful thing this chapter can teach.
 
-> Note: `coax0` 0.13.0 has fixed arrays, views, strings and bounds checks,
+> Note: the current compiler has fixed arrays, views, strings and bounds checks,
 > and every program in this chapter that prints something has its output
 > checked. It has no heap at all: no pointers, no dynamic arrays, no
 > allocators, no context, no scratch memory and no global variables. Those
@@ -877,7 +880,7 @@ Coax doesn't promise general memory safety. Views, foreign calls and, later,
 pointers and shared mutable data can all be misused, and no allocator design
 changes that. Here is what's actually checked.
 
-| Protection | Status in coax0 0.13.0 |
+| Protection | Current status |
 | --- | --- |
 | New values are zeroed or default initialized unless you write `---` | Enforced |
 | Every index and slice is bounds-checked, debug and release | Enforced (trap at run time, error for constant indexes) |

@@ -37,6 +37,11 @@ gate() {
   cat "$work/gate.log" >&2
   return 1
 }
+# Validate release metadata before expensive compiler gates. Stage0 uses the
+# checked-in header seed; final publication must match the canonical Coax data.
+gate "$work/stage0" test release-model.coax
+gate "$work/stage0" mutate release-model.coax
+COAX_RELEASE_COMPILER="$PWD/$work/stage0" ../scripts/coax-release.sh --check
 gate "$work/stage0" test lib/compiler/lexer.coax
 gate "$work/stage0" mutate lib/compiler/lexer.coax
 "$work/stage0" c lib/compiler/lexer.coax --library --header "$work/lexer.h" > "$work/lexer.c"
@@ -90,6 +95,7 @@ cmp bootstrap/checker.h "$work/final-checker.h"
 "$work/coax" c lib/compiler/sources.coax --library --header "$work/final-sources.h" > "$work/final-sources.c"
 cmp bootstrap/sources.c "$work/final-sources.c"
 cmp bootstrap/sources.h "$work/final-sources.h"
+COAX_RELEASE_COMPILER="$PWD/$work/coax" ../scripts/coax-release.sh --check --binary "$PWD/$work/coax"
 # Publish only a fully checked build. C/header remain available for native tests.
 cp "$work/lexer.c" bin/lexer.c
 cp "$work/lexer.h" bin/lexer.h

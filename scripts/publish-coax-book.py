@@ -62,6 +62,9 @@ def main():
     parser.add_argument("--token-file", type=Path, help="local env file defining GITBOOK_TOKEN")
     parser.add_argument("--change-request", help="resume a previously printed draft ID")
     args = parser.parse_args()
+    # Fail locally before token reads or draft creation if source/book/CLI drift.
+    subprocess.run([str(ROOT / "scripts/coax-release.sh"), "--check", "--binary",
+                    str(ROOT / "coax/bin/coax")], cwd=ROOT, check=True)
     token = token_from_file(args.token_file) if args.token_file else os.environ.get("GITBOOK_TOKEN")
     if not token:
         parser.error("set GITBOOK_TOKEN or supply --token-file")

@@ -422,6 +422,29 @@ capstone and real iOS HUD consume loaded policy/types. `coax deps` is a checked
 path inventory, not a lockfile, content cache key or native build manifest.
 
 
+## Release status has one authored source and explicit limits
+
+`coax/release.coax` owns the current compiler version and reviewed feature
+catalogue. Coax renders the embedded CLI metadata, JSON inventory, accepted
+feature reference and explicitly managed current-version regions. The
+`#authority` validation model checks metadata shape/identity; it does not prove
+feature semantics or grant runtime authority. Implementation, inventory schema,
+historical introduction and public protocol versions remain separate.
+
+Generated snapshots are reviewed bootstrap inputs. Normal bootstrap compares
+them with fresh output, then compares the final binary before publishing it.
+App generation and book publication refuse drift; the publisher checks before
+reading credentials or creating a draft. Unmanaged historical prose is never
+rewritten by version-value substitution and still needs review. Normal builds
+and generation remain Python-free.
+
+Check: `coax test/mutate coax/release-model.coax` (zero survivors),
+`scripts/coax-release.sh --check --binary coax/bin/coax`, and
+`coax/tests/release.py` (snapshot repair, version-domain separation, invalid
+metadata, managed regions, stale binaries, real acceptance probes and
+publication rejection before credentials/network). Workflow and limits:
+`coax/RELEASE.md`.
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser

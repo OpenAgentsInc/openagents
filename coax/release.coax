@@ -1,0 +1,162 @@
+// Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
+#import "Basic";
+#load "release-model.coax";
+IMPLEMENTATION_VERSION :: "0.14.0";
+STATUS_SCHEMA_VERSION :: 1;
+CATALOGUE :: [92]ReleaseFeature.[
+  ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.return",section="Keywords",name="`return`",meaning="Return from a procedure",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.true",section="Keywords",name="`true` `false`",meaning="`bool` literals",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.ifx",section="Keywords",name="`ifx` `then`",meaning="Conditional expression: `ifx c then a else b`",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.defer",section="Keywords",name="`defer`",meaning="Run at scope exit, in reverse order, on every exit",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.struct",section="Keywords",name="`struct` `enum`",meaning="Type declarations: `Name :: struct { ... }`, `Name :: enum u8 { ... }`",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.cast",section="Keywords",name="`cast`",meaning="`cast(T) x` (checked), `cast,trunc(T) x` (keeps the low bits)",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.size-of",section="Keywords",name="`size_of`",meaning="`size_of(T)`: the C size in bytes, as an untyped integer",status="works",introduced=""},
+  ReleaseFeature.{id="keywords.union",section="Keywords",name="`union` `enum_flags`",meaning="Tagged unions; flag sets",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.switch",section="Keywords",name="`switch` `case`",meaning="Exhaustive selection",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.using",section="Keywords",name="`using`",meaning="Bring an embedded field's members into scope",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.try",section="Keywords",name="`try` `or_else`",meaning="Propagate or handle an error result",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.null",section="Keywords",name="`null`",meaning="The empty optional pointer",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.push-context",section="Keywords",name="`push_context`",meaning="Change the implicit context for a block",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.remove",section="Keywords",name="`remove`",meaning="Remove the current element during iteration",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.it",section="Keywords",name="`it` `it_index`",meaning="Implicit element and index names inside `for` (Coax names them instead: `for x, i: ...`)",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.xx",section="Keywords",name="`xx`",meaning="Integer-width autocast",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.constraint",section="Keywords",name="`constraint`",meaning="Declare a generic constraint",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.inline",section="Keywords",name="`inline` `no_inline`",meaning="Inlining control at a definition or call",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.type-info",section="Keywords",name="`type_info`",meaning="CPU type layout metadata, schema 1",status="works",introduced="0.12.0"},
+  ReleaseFeature.{id="keywords.type-of",section="Keywords",name="`type_of`",meaning="First-class type reflection",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.type",section="Keywords",name="`Type` `Code`",meaning="Meta types",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.job",section="Keywords",name="`job` `pure`",meaning="Jobs and effect markers",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.strict",section="Keywords",name="`strict` `deterministic`",meaning="Floating-point and determinism markers",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.shader",section="Keywords",name="`shader`",meaning="GPU procedure",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.import-basic",section="Directives",name="`#import \"Basic\";`",meaning="Import a module; `Basic` is the only one",status="works",introduced=""},
+  ReleaseFeature.{id="directives.run-expr",section="Directives",name="`#run expr`",meaning="Evaluate at compile time",status="works",introduced=""},
+  ReleaseFeature.{id="directives.assert-expr",section="Directives",name="`#assert expr;`",meaning="A compile-time `bool` check at the top level; an always-on check as a statement",status="works",introduced=""},
+  ReleaseFeature.{id="directives.test-name",section="Directives",name="`#test \"name\" { }`",meaning="A check run by `coax test`, never compiled into the program",status="works",introduced="0.5.0"},
+  ReleaseFeature.{id="directives.forall-a-t-b-lo-hi",section="Directives",name="`#forall a: T, b: lo..<hi { }` (optionally `#forall \"name\" ...`)",meaning="A check over every combination of its bindings",status="works",introduced="0.5.0"},
+  ReleaseFeature.{id="directives.authority",section="Directives",name="`#authority;`",meaning="Every procedure in the file needs a check; checks run on every build",status="works",introduced="0.5.0"},
+  ReleaseFeature.{id="directives.export-c",section="Directives",name="`#export_c`",meaning="After a procedure's signature: give it its own C name and the C calling convention (`coax lib`, `coax header`)",status="works",introduced=""},
+  ReleaseFeature.{id="directives.foreign",section="Directives",name="`#foreign`",meaning="After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool`",status="works",introduced=""},
+  ReleaseFeature.{id="directives.import-proto-file-pb-as-prefix",section="Directives",name="`#import_proto \"file.pb\" as Prefix;`",meaning="Generate types and bounded codecs from a protobuf descriptor set (CPU code only)",status="works",introduced=""},
+  ReleaseFeature.{id="directives.load-part-coax",section="Directives",name="`#load \"part.coax\";`",meaning="Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority",status="works",introduced="0.11.0"},
+  ReleaseFeature.{id="directives.if",section="Directives",name="`#if`",meaning="Conditional compilation",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.insert",section="Directives",name="`#insert` `#expand` `#text` `#location`",meaning="Typed code and macros",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.derive",section="Directives",name="`#derive(...)`",meaning="Generate operations from fields",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.bake-arguments",section="Directives",name="`#bake_arguments`",meaning="Explicit partial specialization",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.distinct",section="Directives",name="`#distinct`",meaning="A new type with the same representation",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.as",section="Directives",name="`#as`",meaning="Declared conversion to an embedded field",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.import-c",section="Directives",name="`#import_c` `#c_call` `#no_context`",meaning="C header import and calling conventions",status="reserved",introduced=""},
+  ReleaseFeature.{id="directives.scope-file",section="Directives",name="`#scope_file` `#scope_module` `#scope_export`",meaning="Visibility",status="reserved",introduced=""},
+  ReleaseFeature.{id="intrinsics.print-format",section="Intrinsics",name="`print(format, ...)`",meaning="Print with `%` slots checked at compile time; needs `#import \"Basic\"`",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.type-name-expr",section="Intrinsics",name="`type_name(expr)`",meaning="The expression's type name as a string; the operand isn't evaluated",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.size-of-t",section="Intrinsics",name="`size_of(T)`",meaning="The type's size in bytes (bootstrap LP64 CPU layout)",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.type-info-t",section="Intrinsics",name="`type_info(T)`",meaning="Type name, kind, layout and counts as `CoaxTypeInfo`",status="works",introduced="0.12.0"},
+  ReleaseFeature.{id="intrinsics.field-info-t-i",section="Intrinsics",name="`field_info(T, i)`",meaning="Struct field name, type and layout as `CoaxFieldInfo`",status="works",introduced="0.12.0"},
+  ReleaseFeature.{id="intrinsics.enum-info-t-i",section="Intrinsics",name="`enum_info(T, i)`",meaning="Enum member name and underlying bits as `CoaxEnumInfo`",status="works",introduced="0.12.0"},
+  ReleaseFeature.{id="intrinsics.len-x",section="Intrinsics",name="`len(x)`",meaning="The length of a string, array or view (the same as `.count`)",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.byte-at-s-i",section="Intrinsics",name="`byte_at(s, i)`",meaning="The byte at index `i` of a string",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.sin",section="Intrinsics",name="`sin` `cos` `tan` `exp` `log` `sqrt` `floor` `abs`",meaning="One float argument, same type back",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.pow-a-b",section="Intrinsics",name="`pow(a, b)`",meaning="Two floats of one type",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.f32-bits-x",section="Intrinsics",name="`f32_bits(x)` `f64_bits(x)`",meaning="A float's bit pattern as `u32` or `u64`",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.f32-from-bits-b",section="Intrinsics",name="`f32_from_bits(b)` `f64_from_bits(b)`",meaning="The reverse",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.bytes-overlap-a-b",section="Intrinsics",name="`bytes_overlap(a, b)`",meaning="Whether two byte views or strings share memory",status="works",introduced=""},
+  ReleaseFeature.{id="intrinsics.value-barrier",section="Intrinsics",name="`value_barrier(x)`",meaning="u32/u64 identity opaque to native optimization; compiler identity; backend-specific evidence is required for constant-time claims",status="works",introduced=""},
+  ReleaseFeature.{id="conversions.cast-t-x",section="Conversions",name="`cast(T) x`",meaning="Convert between numbers, or between an enum and an integer; traps if the value doesn't fit",status="works",introduced=""},
+  ReleaseFeature.{id="conversions.cast-trunc-t-x",section="Conversions",name="`cast,trunc(T) x`",meaning="Convert between integer types, keeping the low bits",status="works",introduced=""},
+  ReleaseFeature.{id="conversions.t-x",section="Conversions",name="`T(x)` for a number type",meaning="The same as `cast(T) x`: `int(x)`, `f64(x)`, `u8(x)`",status="works",introduced=""},
+  ReleaseFeature.{id="conversions.cast-string-v",section="Conversions",name="`cast(string) v`",meaning="Borrow a `[] u8` view as a string",status="works",introduced=""},
+  ReleaseFeature.{id="conversions.xx-x",section="Conversions",name="`xx x`",meaning="Automatic integer-width conversion",status="reserved",introduced=""},
+  ReleaseFeature.{id="literals.integer",section="Literals",name="Integer",meaning="`42`, `0xFF`, `0b1010`, `1_000_000` (up to the `u64` maximum)",status="works",introduced=""},
+  ReleaseFeature.{id="literals.float",section="Literals",name="Float",meaning="`1.5`, `2e-3`, `6.02e23`; with a suffix, `1.5f32`, `1.5f64`",status="works",introduced=""},
+  ReleaseFeature.{id="literals.character",section="Literals",name="Character",meaning="`'a'`, `'\\n'` (one ASCII byte, an integer literal)",status="works",introduced=""},
+  ReleaseFeature.{id="literals.string",section="Literals",name="String",meaning="`\"text\\n\"`, with the escapes `\\n \\t \\r \\0 \\\\ \\\"`",status="works",introduced=""},
+  ReleaseFeature.{id="literals.struct",section="Literals",name="Struct",meaning="`Vec2.{x = 1, y = 2}`",status="works",introduced=""},
+  ReleaseFeature.{id="literals.array",section="Literals",name="Array",meaning="`[3] int.[1, 2, 3]`",status="works",introduced=""},
+  ReleaseFeature.{id="literals.enum-member",section="Literals",name="Enum member",meaning="`Outcome.completed`",status="works",introduced=""},
+  ReleaseFeature.{id="literals.uninitialized",section="Literals",name="Uninitialized",meaning="`buf: [128] u8 = ---;`",status="works",introduced=""},
+  ReleaseFeature.{id="literals.inferred-struct-literal",section="Literals",name="Inferred struct literal",meaning="`.{x = 1}` without the name",status="designed",introduced=""},
+  ReleaseFeature.{id="types.int",section="Types",name="`int` (the same type as `s64`), `s8 s16 s32 u8 u16 u32 u64`, `uint` (the same as `u64`)",meaning="",status="works",introduced=""},
+  ReleaseFeature.{id="types.f32-f64",section="Types",name="`f32 f64`",meaning="",status="works",introduced=""},
+  ReleaseFeature.{id="types.bool",section="Types",name="`bool`, `string`",meaning="",status="works",introduced=""},
+  ReleaseFeature.{id="types.structs-and-enums",section="Types",name="structs and enums",meaning="",status="works",introduced=""},
+  ReleaseFeature.{id="types.n-t",section="Types",name="`[N] T` fixed arrays, `[] T` views",meaning="",status="works",introduced=""},
+  ReleaseFeature.{id="types.dynamic-array",section="Types",name="`[..] T` dynamic arrays",meaning="(E0301)",status="reserved",introduced=""},
+  ReleaseFeature.{id="types.fixed32-fixed64",section="Types",name="`fixed32 fixed64`",meaning="(E0301)",status="reserved",introduced=""},
+  ReleaseFeature.{id="types.v2-v3-v4-quat-m3-m4",section="Types",name="`v2 v3 v4 quat m3 m4`",meaning="(E0301)",status="reserved",introduced=""},
+  ReleaseFeature.{id="types.any",section="Types",name="`Any`",meaning="(E0301); planned for tools and logging only",status="reserved",introduced=""},
+  ReleaseFeature.{id="types.pointer-optional-handle",section="Types",name="`*T`, `*T?`, `T?`, `Handle(T)`, lane types",meaning="",status="designed",introduced=""},
+  ReleaseFeature.{id="source.units",section="Capabilities",name="`#load` / `coax deps`",meaning="Bounded source composition and input inventory",status="works",introduced="0.11.0"},
+  ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
+  ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
+  ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},
+  ReleaseFeature.{id="release.status",section="Capabilities",name="Release/status generation",meaning="Canonical Coax catalogue, CLI status and build/publication drift gate",status="works",introduced="0.14.0"},
+  ReleaseFeature.{id="tools.differential",section="Capabilities",name="Differential conformance tooling",meaning="Optional bounded evaluator/native tests with independent oracle and reduced witnesses",status="partial",introduced="0.14.0"},
+  ReleaseFeature.{id="ownership.full",section="Capabilities",name="General ownership",meaning="Transfer, destruction and complete region/lifetime rules remain planned",status="designed",introduced=""},
+  ReleaseFeature.{id="target.apple",section="Capabilities",name="Apple C11 host",meaning="Tested Apple LP64 host; target support requires runtime/ABI/debugging evidence",status="partial",introduced=""},
+  ReleaseFeature.{id="target.browser",section="Capabilities",name="Coaxial browser path",meaning="Current Wasm/WebGPU consumers; general target layout/runtime/debugging remain incomplete",status="partial",introduced=""},
+];
+
+#test "the authored catalogue passes its validation model" {
+  rows:=CATALOGUE;#assert RM_catalogue_valid(rows[..],IMPLEMENTATION_VERSION,STATUS_SCHEMA_VERSION);
+}
+emit_json_string :: (s:string) {
+  print("\"");
+  for i:0..<s.count {
+    if s[i]=='"' {print("\\\"");}
+    else if s[i]=='\\' {print("\\\\");}
+    else {print("%",s[i..<i+1]);}
+  }
+  print("\"");
+}
+emit_md :: (s:string) {
+  for i:0..<s.count {if s[i]=='|' {print("\\|");} else {print("%",s[i..<i+1]);}}
+}
+emit_json :: (rows:[]ReleaseFeature) {
+  print("{\"schema_version\":%,\"implementation_version\":\"%\",\"compiler\":\"coax0\",\"features\":[",STATUS_SCHEMA_VERSION,IMPLEMENTATION_VERSION);
+  for r,i:rows {
+    if i>0 {print(",");}
+    print("{\"id\":");emit_json_string(r.id);print(",\"section\":");emit_json_string(r.section);
+    print(",\"name\":");emit_json_string(r.name);print(",\"meaning\":");emit_json_string(r.meaning);
+    print(",\"status\":");emit_json_string(r.status);print(",\"introduced\":");
+    if r.introduced=="" {print("null");} else {emit_json_string(r.introduced);}
+    print("}");
+  }
+  print("]}\n");
+}
+emit_tables :: (rows:[]ReleaseFeature) {
+  sections:=[7]string.["Keywords","Directives","Intrinsics","Conversions","Literals","Types","Capabilities"];
+  for section:sections {
+    print("\n## %\n\n| Name | Meaning | Status | Introduced |\n| --- | --- | --- | --- |\n",section);
+    for r:rows {
+      if r.section==section {
+        print("| ");emit_md(r.name);print(" | ");emit_md(r.meaning);print(" | % | ",r.status);
+        if r.introduced=="" {print("—");} else {print("%",r.introduced);}
+        print(" |\n");
+      }
+    }
+  }
+}
+emit_document :: (rows:[]ReleaseFeature,book:bool) {
+  if book {print("# Appendix A. Keywords, directives, types and current status\n\n");}
+  else {print("# Coax release and implementation status\n\n");}
+  print("<!-- Generated from coax/release.coax; do not edit this snapshot. -->\n");
+  print("Current compiler: **coax0 %**. Status inventory schema: **%**.\n\n",IMPLEMENTATION_VERSION,STATUS_SCHEMA_VERSION);
+  print("`works` means the bounded feature is implemented; `partial` records its limits.\n`reserved` is recognized and refused; `designed` is planned syntax. A status claim\nis reviewed metadata, not a proof, permission or complete target-support claim.\n\n");
+  print("Introduced is the historical implementation version when recorded; — means\nunrecorded or unimplemented. It is independent of this release and inventory\nschema. Keep signed protocol/schema identities in their own version domains.\n");
+  emit_tables(rows);
+  print("\nAnnotations such as `@range` and `@unit` are lexed but not accepted yet.\nThe accepted grammar and focused implementation tests remain separate evidence\nfor these reviewed status claims.\n");
+}
+main :: () {
+  rows:=CATALOGUE;#assert RM_catalogue_valid(rows[..],IMPLEMENTATION_VERSION,STATUS_SCHEMA_VERSION);
+  print("@@coax-file coax/src/release.h\n#pragma once\n// Generated from coax/release.coax; do not edit.\n");
+  print("static constexpr char COAX_RELEASE_VERSION[] = \"coax0 %\";\n",IMPLEMENTATION_VERSION);
+  print("static constexpr char COAX_RELEASE_STATUS_JSON[] = R\"COAX_RELEASE(");emit_json(rows[..]);print(")COAX_RELEASE\";\n");
+  print("static constexpr char COAX_RELEASE_STATUS_MARKDOWN[] = R\"COAX_RELEASE(");emit_document(rows[..],false);print(")COAX_RELEASE\";\n@@coax-end\n");
+  print("@@coax-file coax/release-status.json\n");emit_json(rows[..]);print("@@coax-end\n");
+  print("@@coax-file coax/STATUS.md\n");emit_document(rows[..],false);print("@@coax-end\n");
+  print("@@coax-file coax/book/appendix-a-keywords.md\n");emit_document(rows[..],true);print("@@coax-end\n");
+  print("@@coax-file coax/generated/current.md\nCurrent compiler: **coax0 %**. Status inventory schema: **%**.\n@@coax-end\n",IMPLEMENTATION_VERSION,STATUS_SCHEMA_VERSION);
+  print("@@coax-file coax/generated/version-example.md\n```sh\n$ coax/bin/coax version\ncoax0 %\n```\n@@coax-end\n",IMPLEMENTATION_VERSION);
+}

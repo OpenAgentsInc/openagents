@@ -1,5 +1,8 @@
 # Getting started
 
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
 Let's get Coax running. In this chapter we'll build the compiler, write
 the traditional first program, and look at the different ways the
 compiler can handle it: running it, building an executable, printing the
@@ -35,10 +38,12 @@ compiler. [Chapter 20](ch20-inside-coax0.md) walks through all of this.
 
 Let's make sure it worked:
 
+<!-- coax-release:version-example:start -->
 ```sh
 $ coax/bin/coax version
-coax0 0.13.0
+coax0 0.14.0
 ```
+<!-- coax-release:version-example:end -->
 
 If you see a version, you're set. The rest of the book writes `coax` for
 `coax/bin/coax`. To type it that way yourself, add the folder to your

@@ -127,7 +127,7 @@ checked helper, after the evaluator has run. The retained regression reduces
 to `a * 17 + b * 3` with `(0, 0)`: the model and evaluator expect zero while
 both corrupted native builds return 20. This tests the comparison and
 reduction path; it is not a defect in the shipped compiler. Python is needed
-only for this optional verification tool. The [verification note](../verification-differential.md)
+only for this optional verification tool. The [verification note](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md)
 records the exact subset, results and untested behavior.
 
 ## The bootstrap is a trust chain

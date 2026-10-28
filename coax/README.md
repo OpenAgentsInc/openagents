@@ -1,11 +1,16 @@
 # Coax
 
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
 | Path | What |
 | --- | --- |
 | [`spec.md`](spec.md) | The language specification and implementation plan |
 | [`ROADMAP.md`](ROADMAP.md) | What to build next, dependencies, real consumers and completion gates for the full language |
+| [`STATUS.md`](STATUS.md), [`RELEASE.md`](RELEASE.md) | Generated current status and the single-source release/drift workflow |
+| [`verification-differential.md`](verification-differential.md) | Optional bounded evaluator/native conformance probes and reduction |
 | [`web.md`](web.md) | Proposal: the Coax web framework for openagents.com (Coaxial), with open questions |
 | [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
@@ -17,7 +22,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.13.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes the accepted subset.
 The broader design is a plan, not a list of working features.
 
 The lexer, parser and type checker are Coax compiled to C11. The native
@@ -57,6 +62,7 @@ coax/build.sh test
 | `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails |
 | `coax explain CODE` / `--all [--markdown]` | Explain an error code |
 | `coax version` | Print the version |
+| `coax status [--json]` | Print the release catalogue as Markdown or inventory-schema-1 JSON |
 
 `--json` prints diagnostics as one JSON object per line. `COAX_CC` picks the
 C compiler (default `cc`). `--release` turns on C optimization and wrapping
@@ -68,6 +74,12 @@ and schema maintenance still use Python 3. `COAX_HOST_TARGET` can supply an
 explicit host triple for bootstrap builds inside a cross-target environment;
 the iOS generator selects the Mac triple and SDK. Compiler builds publish the
 new binary atomically.
+
+The version and feature tables come from [`release.coax`](release.coax).
+`scripts/coax-release.sh --check --binary coax/bin/coax` refuses drift between
+the source, generated docs and installed compiler. Bootstrap, iOS generation and
+book publication run this gate; [`RELEASE.md`](RELEASE.md) explains updates and
+the distinction between release, inventory and historical feature versions.
 
 Version 0.13.0 adds native source debugging and phase reports:
 `--debug-info`, `--source-map FILE` and `--timings FILE`. Debug executable and
@@ -266,7 +278,9 @@ limits, and no Coax expression evaluator is provided.
 Next: finish [roadmap R0](ROADMAP.md)'s measured adoption gate. The real pose
 comparison and Metal frame capture now run, and the pose rewrite passes the
 proposed median budget. Physical-device/frame-tail measurements, full-loop
-attribution, release/status generation and independent review remain open. See §20 of the specification for later
+attribution and independent review remain open. Release/status generation and
+publication drift checks now ship; bounded differential probes are available
+as optional verification tooling. See §20 of the specification for later
 metadata, build, parallelism, browser and reload gates.
 
 ## Coax frontend and bootstrap seeds

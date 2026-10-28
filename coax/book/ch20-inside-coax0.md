@@ -1,5 +1,18 @@
 # 20. Inside coax0
 
+<!-- coax-release:current:start -->
+Current compiler: **coax0 0.14.0**. Status inventory schema: **1**.
+<!-- coax-release:current:end -->
+
+The driver embeds the version and status from a generated header. The authored
+catalogue and renderer are Coax in [`release.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/release.coax); its
+validation model has authority checks and a zero-survivor mutation gate.
+`coax status` prints Markdown and `coax status --json` prints inventory schema 1.
+Bootstrap checks the generated snapshots and final binary before publication;
+app generation and book publication refuse the same drift. Historical feature
+introductions keep their own versions. See [the release workflow](https://github.com/OpenAgentsInc/openagents/blob/main/coax/RELEASE.md)
+for regeneration and the boundary between consistent metadata and semantic
+evidence.
 So far we've used `coax` as a black box: we hand it a `.coax` file and get a
 program, a C file or an error back. In this chapter we open the box. We'll
 take one small program and follow it through every stage of the compiler,
@@ -14,7 +27,7 @@ message points where it does. It also shows that the discipline the earlier
 chapters recommend (bounded storage, one owner, checks written next to the
 code) is the same discipline the compiler is written in.
 
-> Note: Everything in this chapter describes `coax0` 0.13.0 as it is in
+> Note: Everything in this chapter describes the current compiler as it is in
 > `coax/src/`, `coax/lib/compiler/` and `coax/bootstrap/`.
 
 ## A map of the source
