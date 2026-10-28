@@ -1,0 +1,188 @@
+// Authority over decoder observations; source spans/UTF-8 decoding stay in json.coax.
+// Inputs are truthful token/depth/range observations, not caller authorization.
+#authority;
+JA_OK :: 0; JA_POLICY :: 1; JA_SIZE :: 2; JA_JSON :: 3;
+JA_STRING :: 4; JA_DUPLICATE :: 5; JA_KEYS :: 6; JA_WORK :: 7; JA_NUMBER :: 8;
+JA_SAFE :: 9007199254740991;
+JsonSafeInt :: struct {ok:bool;value:int;}
+JsonPolicy :: struct {
+  domain:int;input:int;frame:int;proto:int;raw:int;decoded:int;
+  content:int;depth:int;keys:int;key_bytes:int;work:int;
+}
+JsonKey :: struct {scope:int;from:int;count:int;}
+JsonAdmission :: struct {
+  policy:JsonPolicy;error:int;finished:bool;pending:int;used:int;count:int;work:int;
+  scopes:[16]int;keys:[1024]JsonKey;arena:[65536]u8;
+}
+
+#test "the three policy identities and budgets are explicit" {
+  for d:0..<3 {
+    p:=ja_policy(d);
+    #assert p.domain==d && p.depth==16 && p.keys==1024 && p.key_bytes==65536 && p.work==1048576;
+    #assert p.raw==65536 && p.decoded==65536;
+    #assert p.input==(ifx d==0 then 262144 else ifx d==1 then 65536 else 524288);
+    #assert p.frame==(ifx d==0 then 262144 else 0) && p.proto==(ifx d==2 then 1048576 else 0);
+    #assert p.content==(ifx d==1 then 0 else 65536);
+    #assert ja_policy_valid(p);
+  }
+  #assert ja_field("content",1)==0 && ja_field("exp",0)==0 && ja_field("x",2)==0;
+  #assert ja_field("content",0)==1 && ja_field("content",2)==1;
+  #assert ja_field("kind",0)==2 && ja_field("created_at",2)==2;
+  #assert ja_field("exp",1)==2 && ja_field("iat",1)==2 && ja_field("nbf",1)==2;
+}
+#forall "policy fields can narrow but not disappear or enlarge" d:0..<3,field:0..<10 {
+  p:=ja_policy(d);values:=[10]int.[p.input,p.raw,p.decoded,p.content,p.depth,p.keys,p.key_bytes,p.work,p.frame,p.proto];
+  original:=values[field];values[field]=original+1;#assert !ja_policy_valid(ja_with_limits(p,values[..]));
+  values[field]=-1;#assert !ja_policy_valid(ja_with_limits(p,values[..]));
+  values[field]=0;#assert ja_policy_valid(ja_with_limits(p,values[..]))==(original==0);
+}
+#test "integer boundaries never project the neighboring unsafe values" {
+  #assert ja_integer("9007199254740991").ok && ja_integer("9007199254740991").value==9007199254740991;
+  #assert ja_integer("-9007199254740991").value==-9007199254740991;
+  #assert ja_integer("0").ok && ja_integer("-0").ok && ja_integer("-0").value==0;
+  #assert ja_integer("-1").ok && ja_integer("-1").value==-1 && !ja_integer(":").ok;
+  for s:[12]string.["", "-", "+1", "01", "-01", "1.0", "1e0", "9007199254740992", "-9007199254740992", "99999999999999999", "a", "/"] {#assert !ja_integer(s).ok;}
+}
+#test "start independently admits original frame and proto observations" {
+  p:=ja_policy(0);#assert ja_start(262144,p,262144,0).error==JA_OK;
+  #assert ja_start(262145,p,262145,0).error==JA_SIZE;
+  #assert ja_start(2,p,1,0).error==JA_SIZE && ja_start(2,p,262145,0).error==JA_SIZE;
+  #assert ja_start(2,p,-1,0).error==JA_SIZE && ja_start(2,p,2,1).error==JA_SIZE;
+  #assert ja_start(2,ja_policy(1),1,0).error==JA_SIZE;
+  #assert ja_start(2,ja_policy(2),0,1048576).error==JA_OK;
+  #assert ja_start(2,ja_policy(2),0,1048577).error==JA_SIZE && ja_start(2,ja_policy(2),0,-1).error==JA_SIZE;
+  #assert ja_start(-1,p,2,0).error==JA_SIZE && ja_start(2,ja_policy(-1),2,0).error==JA_POLICY;
+  p.input=1;#assert !ja_policy_valid(p);p=ja_policy(0);p.decoded=1;#assert !ja_policy_valid(p);
+  p=ja_policy(0);p.frame=1;#assert !ja_policy_valid(p);#assert !ja_policy_valid(ja_policy(3));
+}
+#test "token transitions retain exact object identity and bounded keys" {
+  s:[1]JsonAdmission;s[0]=ja_start(64,ja_policy(0),64,0);bytes:=[3]u8.[97,98,99];
+  ja_feed(s[..],1,1,false,7,"",bytes[..],0);#assert s[0].scopes[0]==7;
+  ja_feed(s[..],5,1,true,8,"abc",bytes[..],3);
+  #assert s[0].count==1 && s[0].used==3 && s[0].keys[0].scope==7 && s[0].keys[0].from==0 && s[0].keys[0].count==3;
+  #assert s[0].arena[0]==97 && s[0].arena[1]==98 && s[0].arena[2]==99;
+  ja_feed(s[..],6,1,false,9,"1",bytes[..],0);#assert s[0].pending==0;
+  ja_feed(s[..],1,2,false,11,"",bytes[..],0);#assert s[0].scopes[1]==11;
+  ja_feed(s[..],5,2,true,12,"abc",bytes[..],3);#assert s[0].error==JA_OK && s[0].work==1;
+  ja_feed(s[..],5,2,true,13,"abc",bytes[..],3);#assert s[0].error==JA_DUPLICATE && s[0].work==6;
+  ja_feed(s[..],0,0,false,14,"",bytes[..],0);#assert s[0].error==JA_DUPLICATE && !s[0].finished;
+}
+#test "terminal parser errors and malformed observations refuse" {
+  s:[1]JsonAdmission;buf:[1]u8;
+  for token:[3]int.[-1,-2,10] {s[0]=ja_start(1,ja_policy(0),1,0);ja_feed(s[..],token,0,false,0,"",buf[..],0);#assert s[0].error==JA_JSON;}
+  s[0]=ja_start(1,ja_policy(0),1,0);ja_feed(s[..],0,0,false,0,"",buf[..],0);#assert s[0].finished && s[0].error==JA_OK;
+  s[0]=ja_start(1,ja_policy(0),1,0);ja_feed(s[..],5,0,true,0,"",buf[..],0);#assert s[0].error==JA_JSON;
+  s[0]=ja_start(1,ja_policy(0),1,0);ja_feed(s[..],1,17,false,0,"",buf[..],0);#assert s[0].error==JA_SIZE;
+  s[0]=ja_start(1,ja_policy(0),1,0);ja_feed(s[..],1,0,false,0,"",buf[..],0);#assert s[0].error==JA_SIZE;
+  s[0]=ja_start(1,ja_policy(0),1,0);ja_feed(s[..],5,-1,false,0,"",buf[..],0);#assert s[0].error==JA_SIZE;
+}
+#test "string, content, key and comparison budgets include their exact boundary" {
+  p:=ja_policy(0);p.raw=3;p.decoded=3;p.content=3;s:[1]JsonAdmission;buf:=[4]u8.[97,98,99,100];
+  s[0]=ja_start(64,p,64,0);ja_feed(s[..],5,0,false,0,"abc",buf[..],3);#assert s[0].error==JA_OK;
+  ja_feed(s[..],5,0,false,0,"abcd",buf[..],4);#assert s[0].error==JA_STRING;
+  s[0]=ja_start(64,p,64,0);ja_feed(s[..],5,0,false,0,"abc",buf[..],4);#assert s[0].error==JA_STRING;
+  s[0]=ja_start(64,p,64,0);ja_feed(s[..],5,0,false,0,"abc",buf[..],-1);#assert s[0].error==JA_STRING;
+  s[0]=ja_start(64,p,64,0);s[0].pending=1;ja_feed(s[..],5,0,false,0,"abc",buf[..],3);#assert s[0].error==JA_OK;
+  p.content=2;s[0]=ja_start(64,p,64,0);s[0].pending=1;ja_feed(s[..],5,0,false,0,"abc",buf[..],3);#assert s[0].error==JA_STRING;
+  p=ja_policy(0);p.keys=1;p.key_bytes=3;
+  s[0]=ja_start(64,p,64,0);ja_feed(s[..],1,1,false,9,"",buf[..],0);ja_feed(s[..],5,1,true,10,"abc",buf[..],3);#assert s[0].error==JA_OK;
+  p.key_bytes=10;s[0].policy=p;ja_feed(s[..],5,1,true,11,"a",buf[..],1);#assert s[0].error==JA_KEYS;
+  p.keys=2;p.key_bytes=3;s[0]=ja_start(64,p,64,0);ja_feed(s[..],1,1,false,9,"",buf[..],0);ja_feed(s[..],5,1,true,10,"ab",buf[..],2);ja_feed(s[..],5,1,true,11,"ab",buf[..],2);#assert s[0].error==JA_KEYS;
+  p.key_bytes=10;p.work=1;s[0]=ja_start(64,p,64,0);ja_feed(s[..],1,1,false,9,"",buf[..],0);ja_feed(s[..],5,1,true,10,"a",buf[..],1);ja_feed(s[..],5,1,true,11,"a",buf[..],1);#assert s[0].error==JA_WORK;
+  p.work=2;s[0]=ja_start(64,p,64,0);ja_feed(s[..],1,1,false,9,"",buf[..],0);ja_feed(s[..],5,1,true,10,"a",buf[..],1);ja_feed(s[..],5,1,true,11,"a",buf[..],1);#assert s[0].error==JA_DUPLICATE && s[0].work==2;
+}
+#test "field class controls only the immediate value" {
+  s:[1]JsonAdmission;buf:=[7]u8.[99,111,110,116,101,110,116];
+  s[0]=ja_start(64,ja_policy(0),64,0);ja_feed(s[..],1,1,false,0,"",buf[..],0);ja_feed(s[..],5,1,true,1,"content",buf[..],7);#assert s[0].pending==1;
+  ja_feed(s[..],3,2,false,2,"",buf[..],0);#assert s[0].pending==0;
+  for token:[2]int.[5,6] {s[0]=ja_start(64,ja_policy(0),64,0);s[0].pending=2;ja_feed(s[..],token,0,false,0,"9007199254740992",buf[..],0);#assert s[0].error==JA_NUMBER;}
+  s[0]=ja_start(64,ja_policy(0),64,0);s[0].pending=2;ja_feed(s[..],6,0,false,0,"1",buf[..],0);#assert s[0].error==JA_OK && s[0].pending==0;
+}
+
+#test "decoder and work observations exercise exact independent boundaries" {
+  p:=ja_policy(0);s:[1]JsonAdmission;buf:=[3]u8.[97,98,99];
+  #assert ja_start(0,p,0,0).error==JA_OK;
+  s[0]=ja_start(1,p,1,0);ja_feed(s[..],9,0,false,0,"null",buf[..],0);#assert s[0].error==JA_OK;
+  s[0]=ja_start(1,p,1,0);ja_feed(s[..],1,16,false,0,"",buf[..],0);#assert s[0].error==JA_OK;
+  s[0]=ja_start(1,p,1,0);ja_feed(s[..],6,1,true,0,"1",buf[..],0);#assert s[0].error==JA_JSON;
+  s[0]=ja_start(1,p,1,0);ja_feed(s[..],5,0,false,0,"ab",buf[0..<1],2);#assert s[0].error==JA_STRING;
+  p.work=1;s[0]=ja_start(64,p,64,0);ja_feed(s[..],1,1,false,0,"",buf[..],0);
+  ja_feed(s[..],5,1,true,1,"a",buf[..],1);
+  ja_feed(s[..],5,1,true,2,"ab",buf[..],2);#assert s[0].error==JA_OK && s[0].work==1;
+  ja_feed(s[..],5,1,true,3,"abc",buf[..],3);#assert s[0].error==JA_WORK;
+  p.work=10;s[0]=ja_start(64,p,64,0);ja_feed(s[..],1,1,false,0,"",buf[..],0);
+  ja_feed(s[..],5,1,true,1,"a",buf[..],1);ja_feed(s[..],5,1,true,2,"b",buf[1..<2],1);
+  #assert s[0].error==JA_OK && s[0].work==2 && s[0].count==2;
+}
+
+ja_policy :: (domain:int)->JsonPolicy #export_c {
+  p:=JsonPolicy.{domain=domain,input=262144,frame=262144,raw=65536,decoded=65536,content=65536,depth=16,keys=1024,key_bytes=65536,work=1048576};
+  if domain==1 {p.input=65536;p.frame=0;p.content=0;}
+  if domain==2 {p.input=524288;p.frame=0;p.proto=1048576;}
+  return p;
+}
+// The supplied fields are fixed-order policy data, not observations from JSON.
+ja_with_limits :: (p:JsonPolicy,v:[]int)->JsonPolicy {
+  q:=p;q.input=v[0];q.raw=v[1];q.decoded=v[2];q.content=v[3];q.depth=v[4];q.keys=v[5];q.key_bytes=v[6];q.work=v[7];q.frame=v[8];q.proto=v[9];return q;
+}
+ja_policy_valid :: (p:JsonPolicy)->bool #export_c {
+  if p.domain<0 || p.domain>2 {return false;}
+  base:=ja_policy(p.domain);
+  values:=[10]int.[p.input,p.raw,p.decoded,p.content,p.depth,p.keys,p.key_bytes,p.work,p.frame,p.proto];
+  maxima:=[10]int.[base.input,base.raw,base.decoded,base.content,base.depth,base.keys,base.key_bytes,base.work,base.frame,base.proto];
+  for i:0..<10 {if values[i]<0 || values[i]>maxima[i] || (values[i]==0 && maxima[i]!=0) {return false;}}
+  return p.raw<=p.input && p.decoded<=p.raw && p.content<=p.decoded && (p.frame==0 || p.input<=p.frame);
+}
+ja_integer :: (raw:string)->JsonSafeInt #export_c {
+  if raw.count==0 {return JsonSafeInt.{};}
+  i:=0;negative:=false;if raw[0]=='-' {negative=true;i=1;}
+  if i>=raw.count {return JsonSafeInt.{};}
+  if raw[i]=='0' && raw.count-i>1 {return JsonSafeInt.{};}
+  value:=0;while i<raw.count {b:=raw[i];if b<'0' || b>'9' {return JsonSafeInt.{};}digit:=cast(int)(b-'0');if value>(JA_SAFE-digit)/10 {return JsonSafeInt.{};}value=value*10+digit;i+=1;}
+  return JsonSafeInt.{ok=true,value=ifx negative then -value else value};
+}
+ja_field :: (key:string,domain:int)->int {
+  if domain==1 {if key=="exp" || key=="iat" || key=="nbf" {return 2;}return 0;}
+  if key=="kind" || key=="created_at" {return 2;}
+  if key=="content" {return 1;}return 0;
+}
+
+ja_start :: (input:int,p:JsonPolicy,frame:int,proto:int)->JsonAdmission {
+  s:JsonAdmission;s.policy=p;
+  if !ja_policy_valid(p) {s.error=JA_POLICY;return s;}
+  if input<0 || input>p.input || frame<0 || proto<0 || proto>p.proto {s.error=JA_SIZE;return s;}
+  if p.frame==0 {if frame!=0 {s.error=JA_SIZE;}}
+  else if frame<input || frame>p.frame {s.error=JA_SIZE;}
+  return s;
+}
+// Token numbers are the shipped JSON pull-parser ABI; position is the opening
+// object's original byte offset, stable and unique within one input document.
+ja_feed :: (s:[]JsonAdmission,token:int,depth:int,key:bool,position:int,raw:string,decoded:[]u8,n:int) {
+  if s[0].error!=JA_OK {return;}
+  if token<0 || token>9 {s[0].error=JA_JSON;return;}
+  if token==0 {s[0].finished=true;return;}
+  p:=s[0].policy;
+  if depth<0 || depth>p.depth || (token==1 && depth==0) {s[0].error=JA_SIZE;return;}
+  if key && (token!=5 || depth==0) {s[0].error=JA_JSON;return;}
+  if token==1 {s[0].scopes[depth-1]=position;}
+  if token==5 {
+    if raw.count>p.raw || n<0 || n>p.decoded || n>decoded.count {s[0].error=JA_STRING;return;}
+    if key {
+      if s[0].count>=p.keys || n>p.key_bytes-s[0].used {s[0].error=JA_KEYS;return;}
+      for k:0..<s[0].count {
+        s[0].work+=1;if s[0].work>p.work {s[0].error=JA_WORK;return;}
+        other:=s[0].keys[k];
+        if other.scope!=s[0].scopes[depth-1] || other.count!=n {continue;}
+        same:=true;
+        for b:0..<n {s[0].work+=1;if s[0].work>p.work {s[0].error=JA_WORK;return;}if s[0].arena[other.from+b]!=decoded[b] {same=false;break;}}
+        if same {s[0].error=JA_DUPLICATE;return;}
+      }
+      s[0].keys[s[0].count]=JsonKey.{scope=s[0].scopes[depth-1],from=s[0].used,count=n};s[0].count+=1;
+      for b:0..<n {s[0].arena[s[0].used+b]=decoded[b];}s[0].used+=n;
+      s[0].pending=ja_field(cast(string)decoded[0..<n],p.domain);return;
+    }
+    if s[0].pending==1 && n>p.content {s[0].error=JA_STRING;return;}
+  }
+  if s[0].pending==2 && (token!=6 || !ja_integer(raw).ok) {s[0].error=JA_NUMBER;return;}
+  s[0].pending=0;
+}

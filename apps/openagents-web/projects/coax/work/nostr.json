@@ -22,7 +22,7 @@
     {
       "slug": "compiler",
       "title": "Coax compiler prerequisites",
-      "body": "Small compiler features and fixes the stack wants; none blocks M0–M2.",
+      "body": "Small compiler features and fixes the stack wants; none blocks M0\u2013M2.",
       "parent": "coax-nostr"
     },
     {
@@ -46,7 +46,7 @@
     {
       "slug": "m1-field-scalar",
       "title": "Field and scalar arithmetic",
-      "body": "secp256k1 field elements (10×26) and scalars mod n, with inversion and square root, proven bounds and differential tests.",
+      "body": "secp256k1 field elements (10\u00d726) and scalars mod n, with inversion and square root, proven bounds and differential tests.",
       "parent": "coax-nostr"
     },
     {
@@ -205,14 +205,14 @@
     {
       "slug": "coax-intrinsic-mul-wide",
       "parent": "compiler",
-      "title": "mul_wide: a 64×64→128 multiply as two u64 halves",
+      "title": "mul_wide: a 64\u00d764\u2192128 multiply as two u64 halves",
       "size": "M",
       "labels": [
         "compiler",
         "crypto",
         "optional"
       ],
-      "body": "Add `mul_wide(a, b: u64) -> (hi, lo: u64)`: C emits `unsigned __int128`; wasm32 emits a four-multiply split. Enables a 5×52 field on native later.",
+      "body": "Add `mul_wide(a, b: u64) -> (hi, lo: u64)`: C emits `unsigned __int128`; wasm32 emits a four-multiply split. Enables a 5\u00d752 field on native later.",
       "files": [
         "coax/src/",
         "coax/spec.md"
@@ -232,7 +232,7 @@
       "labels": [
         "compiler"
       ],
-      "body": "A way to declare fields and statements that exist only in development builds (spec §10.5 conditional compilation, the minimal slice), so field elements can carry magnitudes in debug and not in release.",
+      "body": "A way to declare fields and statements that exist only in development builds (spec \u00a710.5 conditional compilation, the minimal slice), so field elements can carry magnitudes in debug and not in release.",
       "files": [
         "coax/src/",
         "coax/spec.md"
@@ -280,7 +280,7 @@
     {
       "slug": "crypto-bytes",
       "parent": "m0-hashes",
-      "title": "Byte helpers: big/little-endian loads, constant-time equality, select and zeroize",
+      "title": "Byte helpers: big/little-endian loads, constant-time equality and select",
       "size": "S",
       "labels": [
         "crypto"
@@ -314,7 +314,7 @@
         "crypto",
         "tests"
       ],
-      "body": "Pin the official vectors listed in coax/nostr.md §9 with upstream URL, revision/license, retrieval date and SHA-256. Keep upstream bytes; distinguish adapted Wycheproof/derived fixtures and record source hashes. BIP-340 has 19 rows including variable-message cases.",
+      "body": "Pin the official vectors listed in coax/nostr.md \u00a79 with upstream URL, revision/license, retrieval date and SHA-256. Keep upstream bytes; distinguish adapted Wycheproof/derived fixtures and record source hashes. BIP-340 has 19 rows including variable-message cases.",
       "files": [
         "coax/tests/vectors/",
         "coax/tests/vectors/SOURCES.md"
@@ -339,7 +339,7 @@
         "tests",
         "tools"
       ],
-      "body": "tools/coax-nostr/vectors.sh builds each module with `coax c` → clang with ASan/UBSan and runs a C driver per vector file, reporting pass/fail per row. Heavy vectors run here; small ones also run as #test.",
+      "body": "tools/coax-nostr/vectors.sh builds each module with `coax c` \u2192 clang with ASan/UBSan and runs a C driver per vector file, reporting pass/fail per row. Heavy vectors run here; small ones also run as #test.",
       "files": [
         "tools/coax-nostr/vectors.sh",
         "tools/coax-nostr/vectors/"
@@ -399,7 +399,7 @@
         "coax/lib/crypto/hkdf.coax"
       ],
       "acceptance": [
-        "RFC 4231 cases 1–7 and RFC 5869 cases 1–3 pass",
+        "RFC 4231 cases 1\u20137 and RFC 5869 cases 1\u20133 pass",
         "coax mutate: no surviving mutants"
       ],
       "blocked_by": [
@@ -425,7 +425,7 @@
         "coax/lib/crypto/pbkdf2.coax"
       ],
       "acceptance": [
-        "RFC 7914 §11 vectors, iteration/output bounds and error cleanup pass",
+        "RFC 7914 \u00a711 vectors, iteration/output bounds and error cleanup pass",
         "Measure the declared 210000-round gate profile on real Wasm; bounded work does not block rendering, with slower-device behavior explicit"
       ],
       "blocked_by": [
@@ -444,14 +444,14 @@
       "labels": [
         "crypto"
       ],
-      "body": "coax/lib/crypto/chacha20.coax per RFC 8439 §2.3–2.4: 32-byte key, 12-byte nonce, 32-bit counter; xor stream into caller buffer.",
+      "body": "coax/lib/crypto/chacha20.coax per RFC 8439 \u00a72.3\u20132.4: 32-byte key, 12-byte nonce, 32-bit counter; xor stream into caller buffer.",
       "files": [
         "coax/lib/crypto/chacha20.coax"
       ],
       "acceptance": [
-        "RFC 8439 §2.3.2, §2.4.2, A.1 and A.2 pass",
+        "RFC 8439 \u00a72.3.2, \u00a72.4.2, A.1 and A.2 pass",
         "coax mutate: no surviving mutants",
-        "≥ 250 MB/s in wasm32"
+        "\u2265 250 MB/s in wasm32"
       ],
       "blocked_by": [
         "crypto-bytes",
@@ -478,7 +478,7 @@
         "coax/lib/nostr/base64.coax"
       ],
       "acceptance": [
-        "RFC 4648 §10 vectors pass",
+        "RFC 4648 \u00a710 vectors pass",
         "Every invalid NIP-44 base64 case is refused",
         "coax mutate: no surviving mutants"
       ],
@@ -521,7 +521,7 @@
     {
       "slug": "secp-field-repr",
       "parent": "m1-field-scalar",
-      "title": "Field elements in 10×26 limbs: load, store, normalize, add, negate",
+      "title": "Field elements in 10\u00d726 limbs: load, store, normalize, add, negate",
       "size": "M",
       "labels": [
         "crypto",
@@ -532,7 +532,7 @@
         "coax/lib/crypto/secp_field.coax"
       ],
       "acceptance": [
-        "#test round-trips for 0, 1, p−1, 2^256−1 mod p and limb-boundary values",
+        "#test round-trips for 0, 1, p\u22121, 2^256\u22121 mod p and limb-boundary values",
         "Magnitude violations trap in debug builds (negative tests)"
       ],
       "blocked_by": [
@@ -578,7 +578,7 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "mul and sqr with reduction by 2^256 ≡ 2^32 + 977; #run/#assert prove the largest accumulator stays below 2^64 for inputs of magnitude ≤ 8.",
+      "body": "mul and sqr with reduction by 2^256 \u2261 2^32 + 977; #run/#assert prove the largest accumulator stays below 2^64 for inputs of magnitude \u2264 8.",
       "files": [
         "coax/lib/crypto/secp_field.coax"
       ],
@@ -604,12 +604,12 @@
         "crypto",
         "secp256k1"
       ],
-      "body": "inv (a^(p−2)) and sqrt (a^((p+1)/4), returning whether a root exists), constant time, plus inv_vartime for public inputs (may initially call inv).",
+      "body": "inv (a^(p\u22122)) and sqrt (a^((p+1)/4), returning whether a root exists), constant time, plus inv_vartime for public inputs (may initially call inv).",
       "files": [
         "coax/lib/crypto/secp_field.coax"
       ],
       "acceptance": [
-        "a·inv(a) = 1 for 100,000 random a; sqrt(a²) = ±a; non-residues refused",
+        "a\u00b7inv(a) = 1 for 100,000 random a; sqrt(a\u00b2) = \u00b1a; non-residues refused",
         "Matches libsecp harness on edge values"
       ],
       "blocked_by": [
@@ -622,7 +622,7 @@
     {
       "slug": "secp-scalar",
       "parent": "m1-field-scalar",
-      "title": "Scalars mod n in 8×32 limbs",
+      "title": "Scalars mod n in 8\u00d732 limbs",
       "size": "M",
       "labels": [
         "crypto",
@@ -675,7 +675,7 @@
     {
       "slug": "secp-mult-verify",
       "parent": "m2-verify",
-      "title": "wNAF dual multiplication a·G + b·P for verification",
+      "title": "wNAF dual multiplication a\u00b7G + b\u00b7P for verification",
       "size": "L",
       "labels": [
         "crypto",
@@ -732,7 +732,7 @@
       "labels": [
         "nostr"
       ],
-      "body": "Shipped in 8f23a77f35: bounded Coax JSON pull parser/writer, UTF-8 and escape handling, fixed input/depth/string limits, 267 JSONTestSuite cases and captured-relay native trapping-allocator tests. Its json_int admits ±2^53 and duplicate object keys are not domain-policy checked. New profile/duplicate/safe-integer hardening is a separate task, not a claim that this parser did not ship.",
+      "body": "Shipped in 8f23a77f35: bounded Coax JSON pull parser/writer, UTF-8 and escape handling, fixed input/depth/string limits, 267 JSONTestSuite cases and captured-relay native trapping-allocator tests. Its json_int admits \u00b12^53 and duplicate object keys are not domain-policy checked. New profile/duplicate/safe-integer hardening is a separate task, not a claim that this parser did not ship.",
       "files": [
         "coax/lib/nostr/json.coax"
       ],
@@ -742,7 +742,8 @@
       ],
       "blocked_by": [],
       "blocks": [
-        "nostr-json-profile-hardening"
+        "nostr-json-profile-hardening",
+        "nostr-json-parser-checks"
       ],
       "status": "resolved"
     },
@@ -764,7 +765,7 @@
       ],
       "acceptance": [
         "Duplicate escaped/equivalent object keys and ambiguous security-critical fields refuse in domain adapters",
-        "±(2^53-1), ±2^53, raw numeric retention and mismatched content/frame/proto limits follow the selected profile",
+        "\u00b1(2^53-1), \u00b12^53, raw numeric retention and mismatched content/frame/proto limits follow the selected profile",
         "Existing parser vectors remain compatible except explicitly versioned consumer admission"
       ],
       "blocked_by": [
@@ -781,7 +782,7 @@
     {
       "slug": "nostr-event",
       "parent": "m5-events",
-      "title": "NIP-01 events: serialize, id, sign, verify and field rules",
+      "title": "NIP-01 events: parse, serialize IDs and verify",
       "size": "M",
       "labels": [
         "nostr"
@@ -798,7 +799,8 @@
       "blocked_by": [
         "nostr-json-profile-hardening",
         "schnorr-verify",
-        "nostr-hex-base64"
+        "nostr-hex-base64",
+        "nostr-json-parser-checks"
       ],
       "blocks": [
         "verify-one-real-event",
@@ -865,7 +867,7 @@
     {
       "slug": "secp-mult-base",
       "parent": "m3-sign-ecdh",
-      "title": "Constant-time fixed-base multiplication k·G",
+      "title": "Constant-time fixed-base multiplication k\u00b7G",
       "size": "L",
       "labels": [
         "crypto",
@@ -892,7 +894,7 @@
     {
       "slug": "secp-mult-const",
       "parent": "m3-sign-ecdh",
-      "title": "Constant-time variable-base multiplication k·P",
+      "title": "Constant-time variable-base multiplication k\u00b7P",
       "size": "M",
       "labels": [
         "crypto",
@@ -1114,7 +1116,8 @@
         "Unsupported numeric values refuse; existing test-deck envelope digest remains byte-identical"
       ],
       "blocked_by": [
-        "nostr-json-profile-hardening"
+        "nostr-json-profile-hardening",
+        "nostr-json-parser-checks"
       ],
       "blocks": [
         "nostr-envelope"
@@ -1183,7 +1186,7 @@
         "coax/lib/nostr/filter.coax"
       ],
       "acceptance": [
-        "#test matrix of filter × event matches NIP-01 semantics"
+        "#test matrix of filter \u00d7 event matches NIP-01 semantics"
       ],
       "blocked_by": [
         "nostr-event"
@@ -2021,8 +2024,8 @@
         "nostr-json-profile-hardening"
       ],
       "blocks": [
-        "project-page-verify",
-        "project-live-catchup"
+        "project-live-catchup",
+        "project-page-verify"
       ],
       "status": "resolved"
     },
@@ -2125,7 +2128,7 @@
         "policy",
         "web"
       ],
-      "body": "Change the INVARIANTS rule as coax/nostr.md §5 says, extend check-visuals.sh to refuse any page script besides host.js and any WebCrypto use, delete coax/web/unlock/, remove bun from deploy.",
+      "body": "Change the INVARIANTS rule as coax/nostr.md \u00a75 says, extend check-visuals.sh to refuse any page script besides host.js and any WebCrypto use, delete coax/web/unlock/, remove bun from deploy.",
       "files": [
         "INVARIANTS.md",
         "coax/web/check-visuals.sh",
@@ -2226,7 +2229,8 @@
       "blocked_by": [
         "fi-jwks-policy",
         "nostr-json-profile-hardening",
-        "nostr-hex-base64"
+        "nostr-hex-base64",
+        "nostr-json-parser-checks"
       ],
       "blocks": [
         "host-grants",
@@ -2949,6 +2953,36 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "nostr-json-parser-checks",
+      "parent": "m5-events",
+      "title": "Close the shipped JSON decoder mutation gaps",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "tests",
+        "security"
+      ],
+      "body": "The original parser ships and its independent vectors remain useful. Reaching its full decoder/writer closure from a new authority consumer exposes existing mutation survivors. Strengthen state-reuse, exact boundary, UTF-8/escape and writer checks; simplify semantically redundant branches with independent parity evidence. Do not mark equivalents or manufacture scope filters to hide survivors. Keep the separate admission policy and original bytes intact.",
+      "files": [
+        "coax/lib/nostr/json.coax",
+        "coax/tests/nostr/json_corpus.coax",
+        "coax/tests/nostr/json_admission.py"
+      ],
+      "acceptance": [
+        "The actual decoder/writer check closure has zero surviving mutants with no equivalence exemptions",
+        "Pinned JSONTestSuite and explicit captured-relay/native trapping allocator regressions pass",
+        "Independent parser/admission sanitizer cases preserve original source and documented generic integer compatibility"
+      ],
+      "blocked_by": [
+        "nostr-json"
+      ],
+      "blocks": [
+        "nostr-event",
+        "nostr-jcs",
+        "fi-jws-verifier"
+      ]
     }
   ]
 }

@@ -107,16 +107,10 @@ class Profiles(unittest.TestCase):
             fn = getattr(cls.lib, name); fn.argtypes = [C.c_int64] * (2 if name == 'np_capabilities' else 1); fn.restype = C.c_uint32
         cls.lib.np_can_advertise.argtypes = [C.c_int64, C.c_int64, C.c_uint32]; cls.lib.np_can_advertise.restype = C.c_bool
         cls.lib.np_safe_integer.argtypes = [C.c_int64]; cls.lib.np_safe_integer.restype = C.c_bool
-        # Exercise the actual shipped JSON reader together with the new policy.
-        # Its heavy transcript checks exceed the compiler's emission budget in
-        # this combined unit. Copy the exact runtime prefix, not a rewritten
-        # parser; the full JSON suite belongs to its owning task.
-        json_runtime = cls.dir/'json_runtime.coax'
-        original = (ROOT/'coax/lib/nostr/json.coax').read_text()
-        assert original.count('// ---- checks') == 1
-        json_runtime.write_text(original.split('// ---- checks', 1)[0])
+        # Exercise the actual shipped parser. Heavy captured-relay integration
+        # now lives in an explicit driver, so no runtime-prefix copy is needed.
         bridge = cls.dir/'json_profile.coax'
-        bridge.write_text(f'#load {json.dumps(str(SOURCE))};\n#load "json_runtime.coax";\n' + '''
+        bridge.write_text(f'#load {json.dumps(str(SOURCE))};\n#load {json.dumps(str(ROOT / "coax/lib/nostr/json.coax"))};\n' + '''
 np_json_projection :: (text: string) -> int #export_c {
   parsed := json_int(text);
   if !parsed.ok { return 0; }

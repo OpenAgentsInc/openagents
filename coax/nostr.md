@@ -32,14 +32,27 @@ roadmap remains the project's first initiative; this is its Nostr initiative.
 | `54ea8f5626` | Canonical Coax profiles, generated matrix and bounded preflight policy | Truth of untrusted measurements or completed crypto profiles |
 
 
-The live fold now replaces the first-paint snapshot after subscription EOSE,
-trusting the configured relay until local verification lands. A frame count,
-LIVE chip or EOSE is not proof of verified or complete task data. Catch-up across
-relay caps and fail-closed CLOSED/partial states remain explicit work.
-Coax JSON, codecs and profile modules exist; the cryptographic library, iOS signer,
-HOST admission and Nostr-backed channel runtime remain open. The task-detail UI
-and plural `/projects/<slug>` route also shipped; old `/project/*` redirects. Later
-implementation commits must update the evidence and resolve only their own tasks.
+The live fold now stages candidate tables and performs bounded history/known-root
+catch-up before replacing the first-paint snapshot. `f4b21878c7` matched all five
+tables of a verified public capture (156 issues/four workers) even with an
+artificial37-event relay cap. Refusal, timeout, output exhaustion and ambiguous
+stalled timestamp cohorts retain the previous view. This remains scoped relay
+trust until local verification lands, not proof that an arbitrary relay omitted
+nothing. The plural `/projects/<slug>` route and task details are shipped.
+
+Further foundations include crypto bytes (`4fcef5f7c1`), bounded Bech32/NIP-19
+(`c29005554f`), the explicit native vector runner (`1b269c7ae3`), streaming SHA-256
+(`3189fb89db`) and the entropy contract (`7ba394d365`). These do not complete a
+production crypto/signing profile. Entropy has Mac, iOS Simulator and actual
+browser evidence; its Linux branch has not run in the recorded test environment.
+
+The new structural JSON adapter/policy and its scope are documented in
+[`docs/verification/coax-nostr-json-admission-2026-10-28.md`](../docs/verification/coax-nostr-json-admission-2026-10-28.md).
+It preserves generic parser behavior and original bytes while refusing decoded
+key ambiguity, unsafe selected integers and explicit consumer-budget violations.
+The existing decoder/writer has mutation coverage gaps; the separate
+`nostr-json-parser-checks` task gates completion of event/JCS/JWS verification.
+No survivor exemptions or hidden parser replacements qualify it.
 
 ### 1.2 Supported profiles, not an unlimited promise
 

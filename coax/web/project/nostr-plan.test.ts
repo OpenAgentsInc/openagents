@@ -52,3 +52,8 @@ test("full integration includes profiles, grants, identity, channels, private da
     expect(tasks.get(slug).body).toContain(commit)
   }
 })
+
+test("decoder mutation coverage remains a separate gate from structural policy", () => {
+  for (const slug of ["nostr-event", "nostr-jcs", "fi-jws-verifier"]) expect(reaches(slug, "nostr-json-parser-checks")).toBe(true)
+  expect(tasks.get("nostr-json").status).toBe("resolved")
+})

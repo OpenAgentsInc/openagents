@@ -1,0 +1,100 @@
+// Decoder orchestration only. All admission decisions live in json-policy.coax.
+// Caller retains the original bytes; no parse/re-encode preimage is produced.
+#load "../json.coax";
+#load "json-policy.coax";
+
+#test "escaped equivalent keys refuse within one object and not across objects" {
+  p := ja_policy(0);
+  #assert ja_admit("{\"a\":1,\"\\u0061\":2}",p,21,0) == JA_DUPLICATE;
+  #assert ja_admit("{\"é\":1,\"\\u00e9\":2}",p,24,0) == JA_DUPLICATE;
+  #assert ja_admit("{\"x\":{\"a\":1},\"a\":2}",p,32,0) == JA_OK;
+  #assert ja_admit("[{\"a\":1},{\"a\":2}]",p,32,0) == JA_OK;
+  #assert ja_admit("{\"\":1,\"\":2}",p,32,0) == JA_DUPLICATE;
+  #assert ja_admit("{\"a\\u0000\":1,\"a\\u0000\":2}",p,64,0) == JA_DUPLICATE;
+  #assert ja_admit("{\"a\":1,\"ab\":2}",p,32,0) == JA_OK;
+  #assert ja_admit("{\"a\":1,\"b\":2}",p,32,0) == JA_OK;
+  #assert ja_admit("{\"x\":{\"a\":1,\"a\":2}}",p,64,0) == JA_DUPLICATE;
+}
+#test "safe integer projection is selected by domain, preserving other raw numbers" {
+  p := ja_policy(0);
+  #assert ja_admit("{\"kind\":9007199254740991}",p,64,0) == JA_OK;
+  #assert ja_admit("{\"created_at\":-9007199254740991}",p,64,0) == JA_OK;
+  #assert ja_admit("{\"kind\":9007199254740992}",p,64,0) == JA_NUMBER;
+  #assert ja_admit("{\"created_at\":-9007199254740992}",p,64,0) == JA_NUMBER;
+  #assert ja_admit("{\"kind\":1.0}",p,64,0) == JA_NUMBER;
+  #assert ja_admit("{\"kind\":\"1\"}",p,64,0) == JA_NUMBER;
+  #assert ja_admit("{\"\\u006bind\":1e0}",p,64,0) == JA_NUMBER;
+  #assert ja_admit("{\"unknown\":1e999,\"exp\":9007199254740992}",p,64,0) == JA_OK;
+  #assert ja_admit("{\"exp\":9007199254740992}",ja_policy(1),0,0) == JA_NUMBER;
+  #assert ja_admit("{\"kind\":1e999}",ja_policy(1),0,0) == JA_OK;
+  #assert ja_integer("-0").ok && ja_integer("-0").value == 0;
+  #assert !ja_integer("9007199254740992").ok && !ja_integer("-9007199254740992").ok;
+  #assert !ja_integer("1.0").ok && !ja_integer("1e0").ok;
+  #assert json_int("9007199254740992").ok; // Existing generic parser contract stays intact.
+}
+#test "all decoded strings must be Unicode scalars and content has an independent bound" {
+  p := ja_policy(0); p.content=2;
+  #assert ja_admit("{\"content\":\"é\"}",p,64,0) == JA_OK;
+  #assert ja_admit("{\"content\":\"\\u00e9a\"}",p,64,0) == JA_STRING;
+  #assert ja_admit("{\"\\u0063ontent\":\"abc\"}",p,64,0) == JA_STRING;
+  #assert ja_admit("{\"unknown\":\"abc\"}",p,64,0) == JA_OK;
+  #assert ja_admit("{\"unknown\":\"\\ud800\"}",p,64,0) == JA_STRING;
+  #assert ja_admit("{\"\\udc00\":1}",p,64,0) == JA_STRING;
+  #assert ja_admit("{\"x\":\"\\ud83d\\ude00\"}",p,64,0) == JA_OK;
+  p.raw=3; p.decoded=3; #assert ja_admit("\"abcd\"",p,64,0) == JA_STRING;
+  p.raw=65536; p.decoded=2; #assert ja_admit("\"abc\"",p,64,0) == JA_STRING;
+}
+#test "consumer frame, original and protobuf budgets do not silently substitute for each other" {
+  p := ja_policy(0); p.input=2; p.raw=2; p.decoded=2; p.content=2;
+  #assert ja_admit("{}",p,2,0) == JA_OK;
+  #assert ja_admit(" {}",p,3,0) == JA_SIZE;
+  #assert ja_admit("{}",p,1,0) == JA_SIZE;
+  #assert ja_admit("{}",p,262145,0) == JA_SIZE;
+  #assert ja_admit("{}",p,2,1) == JA_SIZE;
+  #assert ja_admit("{}",ja_policy(1),1,0) == JA_SIZE;
+  #assert ja_admit("{}",ja_policy(2),0,1048576) == JA_OK;
+  #assert ja_admit("{}",ja_policy(2),0,1048577) == JA_SIZE;
+  #assert ja_admit("{}",ja_policy(2),0,-1) == JA_SIZE;
+  p=ja_policy(0); p.depth=1;
+  #assert ja_admit("{}",p,64,0) == JA_OK;
+  #assert ja_admit("[{}]",p,64,0) == JA_SIZE;
+  #assert ja_admit("[1,]",p,64,0) == JA_JSON;
+}
+#test "key storage and comparison work fail explicitly instead of skipping duplicates" {
+  p:=ja_policy(0); p.keys=1;
+  #assert ja_admit("{\"a\":1}",p,64,0)==JA_OK;
+  #assert ja_admit("{\"a\":1,\"b\":2}",p,64,0)==JA_KEYS;
+  p=ja_policy(0);p.key_bytes=1;
+  #assert ja_admit("{\"a\":1}",p,64,0)==JA_OK;
+  #assert ja_admit("{\"ab\":1}",p,64,0)==JA_KEYS;
+  p=ja_policy(0);p.work=1;
+  #assert ja_admit("{\"a\":1,\"b\":2}",p,64,0)==JA_WORK;
+  p.work=2; #assert ja_admit("{\"a\":1,\"b\":2}",p,64,0)==JA_OK;
+}
+// Structural policy coverage is also checked independently below.
+#forall "every profile budget can narrow but cannot disappear or enlarge" domain:0..<3, field:0..<10 {
+  p:=ja_policy(domain); #assert ja_policy_valid(p);
+  values:=[10]int.[p.input,p.raw,p.decoded,p.content,p.depth,p.keys,p.key_bytes,p.work,p.frame,p.proto];
+  original:=values[field]; values[field]=original+1;
+  bad:=ja_with_limits(p,values[..]); #assert !ja_policy_valid(bad);
+  values[field]=-1; #assert !ja_policy_valid(ja_with_limits(p,values[..]));
+  values[field]=0; #assert ja_policy_valid(ja_with_limits(p,values[..])) == (original==0);
+}
+#test "unknown domain and malformed budget descriptors refuse before parsing" {
+  #assert !ja_policy_valid(ja_policy(-1)) && !ja_policy_valid(ja_policy(3));
+  #assert ja_admit("{}",ja_policy(-1),0,0)==JA_POLICY;
+  p:=ja_policy(0);p.input=1; #assert !ja_policy_valid(p);
+  p=ja_policy(0);p.decoded=1; #assert !ja_policy_valid(p);
+  p=ja_policy(0);p.frame=1; #assert !ja_policy_valid(p);
+}
+
+ja_admit :: (text:string,p:JsonPolicy,frame_bytes:int,proto_bytes:int)->int #export_c {
+  state:[1]JsonAdmission;state[0]=ja_start(text.count,p,frame_bytes,proto_bytes);
+  j:[1]Json;json_start(j[..],text);decoded:[65536]u8;
+  while !state[0].finished && state[0].error==JA_OK {
+    token:=json_next(j[..]);raw:=json_text(j[..]);n:=0;
+    if token==JSON_STRING {n=json_unescape(raw,decoded[..]);}
+    ja_feed(state[..],token,j[0].depth,j[0].key,j[0].from,raw,decoded[..],n);
+  }
+  return state[0].error;
+}

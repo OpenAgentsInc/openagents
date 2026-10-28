@@ -1,0 +1,39 @@
+// Explicit captured-relay integration gate, outside authority consumer imports.
+#load "../../lib/nostr/json.coax";
+#load "../../lib/nostr/fixtures/coax_relay.coax";
+
+// Every frame relay.openagents.com sent for the coax project's subscriptions
+// parses, and each EVENT's event carries the NIP-01 fields.
+#test "every frame of the captured relay transcript parses" {
+  text := COAX_RELAY;
+  frames := 0; events := 0; i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    one := text[i..<e];
+    #assert json_valid(one);
+    j: [1] Json;
+    json_start(j[..], one);
+    #assert json_next(j[..]) == JSON_ARRAY && json_next(j[..]) == JSON_STRING;
+    if json_is(json_text(j[..]), "EVENT") {
+      #assert json_next(j[..]) == JSON_STRING && json_next(j[..]) == JSON_OBJECT;
+      fields := 0;
+      while json_next(j[..]) == JSON_STRING {
+        k := json_text(j[..]);
+        t := json_next(j[..]);
+        if json_is(k, "id") || json_is(k, "pubkey") || json_is(k, "sig") { #assert t == JSON_STRING; fields += 1; }
+        if json_is(k, "kind") || json_is(k, "created_at") { #assert t == JSON_NUMBER && json_int(json_text(j[..])).ok; fields += 1; }
+        if json_is(k, "content") { #assert t == JSON_STRING; buf: [JSON_MAX_STRING] u8; #assert json_unescape(json_text(j[..]), buf[..]) >= 0; fields += 1; }
+        if json_is(k, "tags") { #assert t == JSON_ARRAY; fields += 1; }
+        #assert json_skip(j[..]);
+      }
+      #assert fields == 7;
+      events += 1;
+    }
+    frames += 1;
+    i = e + 1;
+  }
+  #assert frames == COAX_RELAY_FRAMES && events > 100;
+}
+
+main :: () {}

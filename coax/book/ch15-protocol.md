@@ -601,15 +601,42 @@ never a second schema that someone can quietly edit.
 
 ## Signed bytes are sacred
 
-Nostr events and other signed records are verified over their original
-bytes. Coax never re-serializes a signed record to check its signature
-or to hash it. Protobuf's serialization isn't canonical: the same
-message can be encoded in more than one valid way. Coax's encoder
-preserves the original bytes and order of every field you didn't
-touch, and appends edited fields at the end, which is useful but still
-not a canonical form. So the original JSON or content-addressed bytes
-keep their own representation and their own validation, and a decoded
-event is not a verified event.
+Nostr and other signed records retain their protocol-defined signing input.
+NIP-01 hashes the prescribed JSON array reconstructed from admitted event
+fields, preserving content and tag order. JWS verifies its original encoded
+signing input. Neither uses a protobuf encoding as its preimage. Protobuf
+serialization is not canonical, so a decoded event is not a verified event.
+Keep original input alongside its projection and check agreement at the domain
+boundary.
+
+### JSON admission before domain verification
+
+`coax/lib/nostr/adapters/json-admission.coax` is a structural adapter over the
+real bounded JSON parser. Its authority policy refuses duplicate decoded keys,
+including `"kind"` beside `"\\u006bind"`, invalid Unicode scalar strings and
+profile limit violations. Selected event integers and JWS time fields must fit
+±(2^53−1); unknown numeric bytes remain untouched. The older generic `json_int`
+helper keeps its documented ±2^53 range.
+
+```coax
+#load "../../coax/lib/nostr/adapters/json-admission.coax";
+#import "Basic";
+main :: () {
+    original := "{\"kind\":1,\"created_at\":1761686400}";
+    error := ja_admit(original, ja_policy(0), original.count, 0);
+    print("JSON admission: %\n", error);
+}
+```
+
+The three profiles cover event JSON, JWS payload JSON and envelope JSON. They
+bound source, frame, decoded strings, content and protobuf bytes separately;
+one larger budget never enlarges another. A caller can narrow a policy.
+Successful structural admission still needs domain shape, signature and
+permission checks. The decoder's historical mutation coverage gap is tracked
+separately; a zero-survivor policy run is not a claim about every parser path.
+See the repository's
+[admission evidence](../../docs/verification/coax-nostr-json-admission-2026-10-28.md)
+for limits, commands and the remaining consumer gates.
 
 ## Four kinds of version
 
