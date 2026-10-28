@@ -947,6 +947,38 @@ realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera:
 realm_track_answer :: (t: [] Track, text: string) #export_c {
   if track_begin(t, "survey-sent") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_words(t, text); track_end(t); }
 }
+realm_put :: (out: [] u8, o: int, s: string) -> int {
+  if o + s.count > out.count { return out.count + 1; }
+  for i: 0..<s.count { out[o + i] = s[i]; }
+  return o + s.count;
+}
+// The survey's answer for the server's feedback (/api/playtest/survey/answer,
+// pt-feedback), as the demo keeps one: this browser's visitor id as the
+// respondent, the question, this visit's session and the words. Its length in out.
+realm_answer_body :: (t: [] Track, text: string, out: [] u8) -> int #export_c {
+  o := 0;
+  o = realm_put(out, o, "{\"rid\":\""); o = realm_put(out, o, cast(string) t[0].pid[0..<t[0].pid_n]);
+  o = realm_put(out, o, "\",\"q\":\"howItWent\",\"n\":1,\"of\":1,\"sid\":\""); o = realm_put(out, o, cast(string) t[0].sid[0..<t[0].sid_n]);
+  o = realm_put(out, o, "\",\"a\":\"");
+  for i: 0..<text.count {
+    c := text[i];
+    if c == 34 || c == 92 { o = realm_put(out, o, "\\"); o = realm_put(out, o, text[i..<i + 1]); }
+    else if c < 32 { o = realm_put(out, o, "\\u00"); o = realm_put(out, o, TRACK_HEX[cast(int) (c >> 4)..<cast(int) (c >> 4) + 1]); o = realm_put(out, o, TRACK_HEX[cast(int) (c & 15)..<cast(int) (c & 15) + 1]); }
+    else { o = realm_put(out, o, text[i..<i + 1]); }
+  }
+  o = realm_put(out, o, "\"}");
+  return ifx o > out.count then -1 else o;
+}
+#test "the survey's answer goes to the server's feedback with the visitor and the session" {
+  t: [1] Track;
+  track_init(t[..], "haunt");
+  #assert track_message(t[..], HOST_PAGE, "tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793200000000\nnav=1");
+  out: [256] u8;
+  n := realm_answer_body(t[..], "so \"spooky\"\nloved it", out[..]);
+  #assert cast(string) out[0..<n] == "{\"rid\":\"fedcba9876543210\",\"q\":\"howItWent\",\"n\":1,\"of\":1,\"sid\":\"c0123456789abcdef\",\"a\":\"so \\\"spooky\\\"\\u000aloved it\"}";
+  small: [16] u8;
+  #assert realm_answer_body(t[..], "x", small[..]) == -1;
+}
 // Something placed from edit mode's hotbar or the quest's orb.
 realm_track_place :: (t: [] Track, item: string, via: string) #export_c {
   if track_begin(t, "place") { track_str(t, "item", item); track_str(t, "via", via); track_str(t, "world", HAUNT_WORLD); track_end(t); }
