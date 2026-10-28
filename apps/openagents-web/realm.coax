@@ -18,6 +18,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "analytics.coax";
+#load "save.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;

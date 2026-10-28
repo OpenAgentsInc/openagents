@@ -12,9 +12,13 @@
 // 2 its indices (GPU buffers), 3 its texture sheets (a GPU texture array);
 // the sounds come by name.
 //
-// The house is kept in this browser (the host's action 4, message 4 on the
-// next visit): verse_haunt_save's bytes as hex, whenever it changed. That is
-// the quest's Save step on the web until the playtest server keeps saves.
+// The house is saved (save.coax) whenever it changed: verse_haunt_save's
+// bytes in an AESV container with a CRC, kept in this browser as the current
+// save and the last good one (the host's action 4 into IndexedDB, message 4
+// on the next visit). A player who joined with an email (the facts' account)
+// also saves on the server (/api/playtest/progress/haunted-house/main, with
+// the host's player key); on the next visit, in any browser, the newer of
+// the two opens. A save that doesn't open falls back to the last good one.
 #include "realm.h"
 #include "Player.h"
 #include "Grid.h"
@@ -77,11 +81,22 @@ static int history_n, history_at;
 static uint8_t live[2][SNAP];
 static int live_k;
 static int64_t edit_camera;   // the view before edit mode (it shows you in third person)
-static char kept[262144];
+#define SAVE_WORLD "haunted-house"
+#define SAVE_SCHEMA 1              // the house's save in this build; save.coax migrates older ones forward
+#define PROGRESS_URL "/api/playtest/progress/haunted-house/main"
+#define HTTP_ANSWER_PLAYER 12      // coaxial_http: an answer wanted (4), the player key sent (8)
+// A save is under SNAP (32 KB, as undo's); the record holds two in base64.
+static char kept[131072];          // the record for the host to keep (save.coax), keep_n of it
 static uint32_t kept_n;            // the kept house's bytes waiting for it to open (0 none)
-static uint32_t keep_n;            // hex in `kept` for the host to keep now
+static uint32_t keep_n;            // the record's length when the host is to keep it now
 static double kept_at = -10;
-static uint8_t inbox[262144];      // the host's messages: typed text, the kept house (hex)
+static uint8_t inbox[262144];      // the host's messages: typed text, the kept record, the server's save
+static uint8_t slot_bytes[2 * SNAP + 1024], server_bytes[2 * SNAP + 1024], container[SNAP + 512];
+static coax_t_SaveSlots slots;     // the browser's two saves, in slot_bytes
+static double loaded_at;           // when the save that opened was made (ms), 0 none
+static bool has_account;           // the player joined with an email: saves go to the server too
+static int32_t progress_ask = -1;  // the server's save, asked for
+static char post[SNAP * 2];
 static char feedback[512];         // the survey's answer, kept with the house
 static char placed[1024][16];      // ids of what you placed: "placed-N"
 static int placed_n;
@@ -127,44 +142,103 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 
 static void rebuild_walls(void) { wall_count = verse_haunt_walls(house, (coax_v_f32){walls, 4096 * 6}); }
 
-// The house kept on an earlier visit (message 4), read out of the inbox as
+// The record kept on an earlier visit (message 4), read out of the inbox as
 // it arrives: later messages (the page facts, 600) reuse the inbox before the
-// house opens. kept_n: its bytes in `restored`, 0 none.
-static int hex(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; }
+// house opens. kept_n: 1 when there is one to open with the house.
 static void take_kept(uint32_t length) {
-  uint32_t n = length / 2;
-  kept_n = 0;
-  if (n == 0 || n > sizeof restored) return;
-  for (uint32_t i = 0; i < n; i++) {
-    int a = hex((char)inbox[2 * i]), b = hex((char)inbox[2 * i + 1]);
-    if (a < 0 || b < 0) return;
-    restored[i] = (uint8_t)(a * 16 + b);
-  }
-  kept_n = n;
+  slots = save_read((coax_string){(const char *)inbox, length}, (coax_v_u8){slot_bytes, sizeof slot_bytes});
+  kept_n = slots.cur_n || slots.prev_n ? 1 : 0;
 }
-// When the house opens: the kept house, if it is still valid for this one.
-static void restore_kept(void) {
-  coax_v_u8 bytes = {restored, kept_n};
-  kept_n = 0;
-  if (!verse_haunt_save_valid(house, bytes)) return;
-  house = verse_haunt_restore(house, bytes);
-  rebuild_walls();
+static double wall_ms(void) { return track_state.epoch + track_state.t * 1000.0; }
+static void count_placed(void) {
+  placed_n = 0;
   for (int64_t i = 0; i < house.entity_count; i++)   // placed ids go on from the highest kept
     if (entities[i].id.count > 7 && memcmp(entities[i].id.data, "placed-", 7) == 0) placed_n++;
 }
+// Opens the house from saved bytes (the current save, else the last good
+// one, whose house is valid for this one); true when one opened.
+static bool open_save(uint8_t *bytes, size_t cap, coax_t_SaveSlots s, bool *fell_back, double *time) {
+  coax_v_u8 all = {bytes, (int64_t)cap};
+  for (int from = 1; from <= 2; from++) {
+    coax_t_SavePick k = save_pick(all, s, text(SAVE_WORLD), SAVE_SCHEMA, from);
+    if (k.which == 0 || k.count > (int64_t)sizeof restored) return false;
+    memcpy(restored, bytes + k.at, (size_t)k.count);
+    coax_v_u8 payload = {restored, k.count};
+    if (!verse_haunt_save_valid(house, payload)) { if (k.which == 2) return false; continue; }
+    house = verse_haunt_restore(house, payload);
+    rebuild_walls();
+    count_placed();
+    *fell_back = k.which == 2;
+    *time = k.time;
+    if (k.schema < SAVE_SCHEMA) house.dirty = true;   // an older save: kept again as this build's
+    return true;
+  }
+  return false;
+}
+// When the house opens: the kept house, if it is still valid for this one.
+static void restore_kept(void) {
+  kept_n = 0;
+  bool fell_back = false; double time = 0;
+  if (!open_save(slot_bytes, sizeof slot_bytes, slots, &fell_back, &time)) return;
+  loaded_at = time;
+  if (fell_back) { toast("Your last save didn't open; the one before it is back"); house.dirty = true; }
+}
+// The server's save (its answer to progress_ask): opens when it is newer
+// than what this browser opened, and is kept here as the current save.
+// It may come before the house opens: read now, opened with the house.
+static coax_t_SaveSlots server_slots;
+static bool server_waiting;
+static void apply_server(void) {
+  if (!server_waiting || !opened) return;
+  server_waiting = false;
+  coax_t_SavePick k = save_pick((coax_v_u8){server_bytes, sizeof server_bytes}, server_slots, text(SAVE_WORLD), SAVE_SCHEMA, 1);
+  if (k.which == 0 || k.time <= loaded_at) return;
+  bool fell_back = false; double time = 0;
+  if (!open_save(server_bytes, sizeof server_bytes, server_slots, &fell_back, &time)) return;
+  loaded_at = time;
+  house.dirty = true;
+  toast("Your saved house is back");
+}
+static void take_server(uint32_t length) {
+  server_slots = save_from_server((coax_string){(const char *)inbox, length}, (coax_v_u8){server_bytes, sizeof server_bytes});
+  server_waiting = true;
+  apply_server();
+}
 
-// Keeps the house in this browser when it changed (at most every 1.5 s,
-// unless now), as hex for the host's action 4.
+// Saves the house when it changed (at most every 1.5 s, unless now): the
+// record for the host's action 4, and the container to the server for a
+// player with an email.
 static void keep(bool at_once) {
   if (!house.dirty || realm.action || (!at_once && now - kept_at < 1.5)) return;
   int64_t n = verse_haunt_save(house, (coax_v_u8){saved, sizeof saved}, (coax_v_u8){scratch, sizeof scratch});
-  if (n <= 0 || (uint64_t)n * 2 > sizeof kept) return;
-  static const char digits[] = "0123456789abcdef";
-  for (int64_t i = 0; i < n; i++) { kept[2 * i] = digits[saved[i] >> 4]; kept[2 * i + 1] = digits[saved[i] & 15]; }
-  keep_n = (uint32_t)(n * 2);
+  if (n <= 0) return;
+  int64_t cn = save_pack(text(SAVE_WORLD), SAVE_SCHEMA, (coax_v_u8){saved, n}, n, (coax_v_u8){container, sizeof container});
+  if (cn <= 0) return;
+  double at = wall_ms();
+  int64_t rn = save_record((coax_v_u8){container, cn}, cn, at, (coax_v_u8){slot_bytes, sizeof slot_bytes}, slots,
+                           text(SAVE_WORLD), SAVE_SCHEMA, (coax_v_u8){(uint8_t *)kept, sizeof kept});
+  if (rn <= 0) return;
+  slots = save_read((coax_string){kept, rn}, (coax_v_u8){slot_bytes, sizeof slot_bytes});
+  keep_n = (uint32_t)rn;
   realm.action = 4;
   house.dirty = false;
   kept_at = now;
+  loaded_at = at;
+  if (has_account) {
+    int64_t pn = save_post_body((coax_v_u8){container, cn}, cn, at, (coax_v_u8){(uint8_t *)post, sizeof post});
+    if (pn > 0) coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, (uint32_t)(uintptr_t)post, (uint32_t)pn, 1 | 8);
+  }
+}
+
+// The page facts' account (a line "account=..."): the player joined with an email.
+static void read_account(uint32_t length) {
+  const char *p = (const char *)inbox, *end = p + length;
+  for (const char *line = p; line < end;) {
+    const char *nl = memchr(line, '\n', (size_t)(end - line));
+    if (!nl) nl = end;
+    if (nl - line > 8 && !memcmp(line, "account=", 8)) has_account = true;
+    line = nl + 1;
+  }
 }
 
 // The house opens once its document and geometry are here (HauntAssets.init).
@@ -191,6 +265,7 @@ static void open_house(void) {
   player.phi = 1.5707963f;
   sticks = verse_sticks_reset();
   opened = true;
+  apply_server();   // the server's save, if it came first and is newer
 }
 
 static void do_goal(void);
@@ -344,7 +419,7 @@ static void do_goal(void) {
   switch (house.quest) {
   case 1: set_editing(true); break;
   case 2: remember(); place(0, "orb"); break;
-  case 3: house = verse_haunt_quest(house, text("publish")); keep(true); toast("Saved in this browser"); break;
+  case 3: house = verse_haunt_quest(house, text("publish")); keep(true); toast(has_account ? "Saved, here and on the server" : "Saved in this browser"); break;
   case 4: copy_link(); house = verse_haunt_quest(house, text("share")); toast("Link copied"); break;
   case 5: house = verse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
   case 6: copy_link(); house = verse_haunt_quest(house, text("invite")); toast("Invite link copied"); break;
@@ -555,6 +630,12 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   (void)state;
   if (length > sizeof inbox) return;
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));   // the facts come before the first frame
+  if (kind == 600) {   // the facts: a player with an email has a save on the server too
+    read_account(length);
+    if (has_account && progress_ask < 0)
+      progress_ask = coaxial_http((uint32_t)(uintptr_t)PROGRESS_URL, sizeof PROGRESS_URL - 1, 0, 0, HTTP_ANSWER_PLAYER);
+  }
+  if (progress_ask >= 0 && kind == 512 + progress_ask) { progress_ask = -2; take_server(length); return; }
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) { track_drain(&track_state); return; }
   if (kind == 1) realm_type(realm_of(), (coax_string){(const char *)inbox, length});
   if (kind == 4 && !opened) take_kept(length);   // restore_kept opens it with the house

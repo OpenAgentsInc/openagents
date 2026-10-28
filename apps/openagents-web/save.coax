@@ -1,0 +1,396 @@
+// Saves of a realm, as the engine keeps them (aethyr-cpp docs/save.md): a
+// versioned snapshot in an AESV container with a CRC-32, in two slots, the
+// current save and the last good one. A load tries the current save, then
+// the previous one, so a corrupted save falls back to the last good one.
+// The page keeps the record in this browser (IndexedDB, through the host's
+// action 4), and a player who joined with an email also on the server
+// (/api/playtest/progress, coax/web/api/player.c), which checks the same
+// container; the newer of the two wins.
+//
+// The container (docs/save.md "The binary format"):
+//   "AESV", container version (2), layer (2: player progress), 2 reserved,
+//   schema (u32 LE), varint + the world id, varint + the payload, CRC-32 LE
+//   of everything before it.
+// The record the browser keeps, a line each:
+//   verse-save 1 / the current save's time (ms) / its container, base64 /
+//   the previous save's time / its container, base64 (both may be empty)
+// Migrations forward: a record from before containers (the house's save as
+// bare hex, what the page kept until now) opens as schema 0 and is kept
+// again as a container of this build's schema. A newer schema than this
+// build knows is refused, never guessed at.
+
+SAVE_VERSION :: 2;
+SAVE_PROGRESS :: 2;
+SAVE_HEAD :: "verse-save 1\n";
+
+SAVE_POLY :: cast(u32) 0xEDB88320;
+save_crc_table :: () -> [256] u32 {
+  table: [256] u32;
+  for n: 0..<256 {
+    c := cast(u32) n;
+    for k: 0..<8 { c = ifx c & 1 == 1 then SAVE_POLY ^ (c >> 1) else c >> 1; }
+    table[n] = c;
+  }
+  return table;
+}
+SAVE_CRC :: #run save_crc_table();
+
+save_crc32 :: (b: [] u8, n: int) -> u32 {
+  crc: u32 = 0xFFFF_FFFF;
+  for i: 0..<n { crc = SAVE_CRC[cast(int) ((crc ^ cast(u32) b[i]) & 0xFF)] ^ (crc >> 8); }
+  return crc ^ 0xFFFF_FFFF;
+}
+
+save_varint :: (out: [] u8, at: int, v: int) -> int {
+  x := v; i := at;
+  while true {
+    if i >= out.count { return -1; }
+    if x < 128 { out[i] = cast(u8) x; return i + 1; }
+    out[i] = cast(u8) ((x & 127) | 128); x = x >> 7; i += 1;
+  }
+  return -1;
+}
+
+// payload packed into out as a progress container; its length, or -1 when it doesn't fit.
+save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) -> int #export_c {
+  if out.count < 16 + world.count + n || n < 0 || n > payload.count { return -1; }
+  out[0] = 65; out[1] = 69; out[2] = 83; out[3] = 86;
+  out[4] = SAVE_VERSION; out[5] = SAVE_PROGRESS; out[6] = 0; out[7] = 0;
+  for k: 0..<4 { out[8 + k] = cast(u8) ((schema >> (8 * k)) & 255); }
+  i := save_varint(out, 12, world.count);
+  if i < 0 || i + world.count > out.count { return -1; }
+  for k: 0..<world.count { out[i + k] = world[k]; }
+  i = save_varint(out, i + world.count, n);
+  if i < 0 || i + n + 4 > out.count { return -1; }
+  for k: 0..<n { out[i + k] = payload[k]; }
+  i += n;
+  crc := save_crc32(out, i);
+  for k: 0..<4 { out[i + k] = cast(u8) ((crc >> cast(u32) (8 * k)) & 255); }
+  return i + 4;
+}
+
+SaveOpened :: struct { ok: bool; schema: int; at: int; count: int; }   // the payload: bytes[at..<at+count]
+
+save_read_varint :: (b: [] u8, n: int, at: [] int) -> int {
+  v := 0; shift := 0;
+  while at[0] < n && shift < 35 {
+    c := cast(int) b[at[0]]; at[0] += 1;
+    v = v | ((c & 127) << shift);
+    if c < 128 { return v; }
+    shift += 7;
+  }
+  return -1;
+}
+
+// A container's payload, when its magic, version, layer, CRC and world are
+// right and its schema is one this build knows (at most max_schema).
+save_open :: (b: [] u8, n: int, world: string, max_schema: int) -> SaveOpened #export_c {
+  no: SaveOpened;
+  if n < 18 || n > b.count || b[0] != 65 || b[1] != 69 || b[2] != 83 || b[3] != 86 { return no; }
+  if (b[4] != 1 && b[4] != 2) || b[5] != SAVE_PROGRESS { return no; }
+  want := cast(u32) b[n - 4] | (cast(u32) b[n - 3] << 8) | (cast(u32) b[n - 2] << 16) | (cast(u32) b[n - 1] << 24);
+  if save_crc32(b, n - 4) != want { return no; }
+  schema := cast(int) b[8] | (cast(int) b[9] << 8) | (cast(int) b[10] << 16) | (cast(int) b[11] << 24);
+  if schema > max_schema { return no; }
+  at: [1] int; at[0] = 12;
+  wn := save_read_varint(b, n - 4, at[..]);
+  if wn != world.count || at[0] + wn > n - 4 { return no; }
+  for k: 0..<wn { if b[at[0] + k] != world[k] { return no; } }
+  at[0] += wn;
+  pn := save_read_varint(b, n - 4, at[..]);
+  if pn < 0 || at[0] + pn != n - 4 { return no; }
+  return SaveOpened.{ok = true, schema = schema, at = at[0], count = pn};
+}
+
+// ---- base64 (RFC 4648, padded), for the record and the server
+SAVE_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+save_b64_digit :: (c: u8) -> int {
+  if c >= 65 && c <= 90 { return cast(int) c - 65; }
+  if c >= 97 && c <= 122 { return cast(int) c - 71; }
+  if c >= 48 && c <= 57 { return cast(int) c + 4; }
+  if c == 43 { return 62; }
+  if c == 47 { return 63; }
+  return -1;
+}
+save_b64 :: (b: [] u8, n: int, out: [] u8, at: int) -> int {
+  i := 0; o := at;
+  while i < n {
+    if o + 4 > out.count { return -1; }
+    a := cast(int) b[i];
+    c1 := ifx i + 1 < n then cast(int) b[i + 1] else 0;
+    c2 := ifx i + 2 < n then cast(int) b[i + 2] else 0;
+    out[o] = SAVE_B64[a >> 2];
+    out[o + 1] = SAVE_B64[((a & 3) << 4) | (c1 >> 4)];
+    out[o + 2] = ifx i + 1 < n then SAVE_B64[((c1 & 15) << 2) | (c2 >> 6)] else 61;
+    out[o + 3] = ifx i + 2 < n then SAVE_B64[c2 & 63] else 61;
+    i += 3; o += 4;
+  }
+  return o;
+}
+// text's base64 into out from at; the bytes written, or -1 when it isn't base64.
+save_unb64 :: (text: string, out: [] u8, at: int) -> int {
+  if text.count % 4 != 0 { return -1; }
+  o := at; i := 0;
+  while i < text.count {
+    d: [4] int;
+    for k: 0..<4 { d[k] = ifx text[i + k] == 61 && i + 4 == text.count && k >= 2 then -2 else save_b64_digit(text[i + k]); }
+    if d[0] < 0 || d[1] < 0 || d[2] == -1 || d[3] == -1 || (d[2] == -2 && d[3] != -2) { return -1; }
+    take := ifx d[2] == -2 then 1 else ifx d[3] == -2 then 2 else 3;
+    if o + take > out.count { return -1; }
+    out[o] = cast(u8) ((d[0] << 2) | (d[1] >> 4));
+    if take > 1 { out[o + 1] = cast(u8) (((d[1] & 15) << 4) | (d[2] >> 2)); }
+    if take > 2 { out[o + 2] = cast(u8) (((d[2] & 3) << 6) | d[3]); }
+    o += take; i += 4;
+  }
+  return o - at;
+}
+
+// ---- the two slots
+SaveSlots :: struct {
+  cur: int; cur_n: int; cur_at: f64;     // the current save: bytes[cur..<cur+cur_n]
+  prev: int; prev_n: int; prev_at: f64;  // the last good one
+  legacy: bool;                          // a bare-hex save from before containers (cur, schema 0)
+}
+
+save_line :: (text: string, at: [] int) -> string {
+  s := at[0];
+  while at[0] < text.count && text[at[0]] != 10 { at[0] += 1; }
+  line := text[s..<at[0]];
+  if at[0] < text.count { at[0] += 1; }
+  return line;
+}
+save_number :: (s: string) -> f64 {
+  v: f64 = 0; seen := false;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == 46 { break; }
+    if c < 48 || c > 57 { return -1; }
+    v = v * 10 + cast(f64) (cast(int) c - 48); seen = true;
+  }
+  return ifx seen then v else -1;
+}
+save_hex :: (c: u8) -> int { return ifx c >= 48 && c <= 57 then cast(int) c - 48 else ifx c >= 97 && c <= 102 then cast(int) c - 87 else -1; }
+
+// The record the browser kept, decoded into bytes: the current save first,
+// the previous after it. A part that doesn't decode is left out (n 0).
+save_read :: (text: string, bytes: [] u8) -> SaveSlots #export_c {
+  s: SaveSlots;
+  if text.count >= SAVE_HEAD.count && text[0..<SAVE_HEAD.count] == SAVE_HEAD {
+    at: [1] int; at[0] = SAVE_HEAD.count;
+    s.cur_at = save_number(save_line(text, at[..]));
+    n := save_unb64(save_line(text, at[..]), bytes, 0);
+    if n > 0 { s.cur_n = n; } else { s.cur_n = 0; }
+    s.prev = s.cur_n;
+    s.prev_at = save_number(save_line(text, at[..]));
+    m := save_unb64(save_line(text, at[..]), bytes, s.prev);
+    if m > 0 { s.prev_n = m; }
+    return s;
+  }
+  // before containers: the save as bare hex
+  if text.count == 0 || text.count % 2 != 0 || text.count / 2 > bytes.count { return s; }
+  for i: 0..<text.count / 2 {
+    a := save_hex(text[2 * i]); b := save_hex(text[2 * i + 1]);
+    if a < 0 || b < 0 { return s; }
+    bytes[i] = cast(u8) (a * 16 + b);
+  }
+  s.cur_n = text.count / 2; s.legacy = true; s.cur_at = 0;
+  return s;
+}
+
+// The record for a new current save `cur`: the old current becomes the
+// previous one when it was a good container, else the old previous stays.
+// old: the slots' bytes; its length into out, or -1 when it doesn't fit.
+save_record :: (cur: [] u8, n: int, at: f64, old: [] u8, s: SaveSlots, world: string, max_schema: int, out: [] u8) -> int #export_c {
+  o := 0;
+  head := SAVE_HEAD;
+  if out.count < head.count + 64 { return -1; }
+  for k: 0..<head.count { out[k] = head[k]; }
+  o = head.count;
+  o = save_put_number(out, o, at); if o < 0 { return -1; }
+  o = save_b64(cur, n, out, o); if o < 0 || o >= out.count { return -1; }
+  out[o] = 10; o += 1;
+  keep_cur := !s.legacy && s.cur_n > 0 && save_open(old[s.cur..<s.cur + s.cur_n], s.cur_n, world, max_schema).ok;
+  keep_prev := s.prev_n > 0 && save_open(old[s.prev..<s.prev + s.prev_n], s.prev_n, world, max_schema).ok;
+  if keep_cur {
+    o = save_put_number(out, o, s.cur_at); if o < 0 { return -1; }
+    o = save_b64(old[s.cur..<s.cur + s.cur_n], s.cur_n, out, o);
+  } else if keep_prev {
+    o = save_put_number(out, o, s.prev_at); if o < 0 { return -1; }
+    o = save_b64(old[s.prev..<s.prev + s.prev_n], s.prev_n, out, o);
+  } else {
+    if o + 1 > out.count { return -1; }
+    out[o] = 10; o += 1;
+  }
+  if o < 0 || o >= out.count { return -1; }
+  out[o] = 10;
+  return o + 1;
+}
+save_put_number :: (out: [] u8, at: int, v: f64) -> int {
+  digits: [24] u8; n := 0;
+  x := cast(int) (ifx v < 0 then 0 else v);
+  if x == 0 { digits[0] = 48; n = 1; }
+  while x > 0 && n < 24 { digits[n] = cast(u8) (48 + x % 10); x = x / 10; n += 1; }
+  if at + n + 1 > out.count { return -1; }
+  for k: 0..<n { out[at + k] = digits[n - 1 - k]; }
+  out[at + n] = 10;
+  return at + n + 1;
+}
+
+SavePick :: struct { which: int; at: int; count: int; schema: int; time: f64; }   // which: 0 none, 1 current, 2 previous
+// The save to load, trying the current one first (from `from`: 1, or 2 when
+// the current one opened but its house didn't), then the last good one.
+save_pick :: (bytes: [] u8, s: SaveSlots, world: string, max_schema: int, from: int) -> SavePick #export_c {
+  none: SavePick;
+  if from <= 1 && s.cur_n > 0 {
+    if s.legacy { return SavePick.{which = 1, at = s.cur, count = s.cur_n, schema = 0, time = 0}; }
+    o := save_open(bytes[s.cur..<s.cur + s.cur_n], s.cur_n, world, max_schema);
+    if o.ok { return SavePick.{which = 1, at = s.cur + o.at, count = o.count, schema = o.schema, time = s.cur_at}; }
+  }
+  if s.prev_n > 0 {
+    o := save_open(bytes[s.prev..<s.prev + s.prev_n], s.prev_n, world, max_schema);
+    if o.ok { return SavePick.{which = 2, at = s.prev + o.at, count = o.count, schema = o.schema, time = s.prev_at}; }
+  }
+  return none;
+}
+
+// ---- the server: {"current": {"at", "bytes"}, "previous": ...} into the same slots
+save_find :: (text: string, from: int, what: string) -> int {
+  if what.count == 0 { return -1; }
+  i := from;
+  while i + what.count <= text.count {
+    if text[i..<i + what.count] == what { return i + what.count; }
+    i += 1;
+  }
+  return -1;
+}
+save_server_part :: (text: string, key: string, bytes: [] u8, at: int, time: [] f64) -> int {
+  k := save_find(text, 0, key);
+  if k < 0 || k + 1 > text.count || text[k] != 123 { return 0; }
+  end := k;
+  while end < text.count && text[end] != 125 { end += 1; }
+  part := text[k..<end];
+  b := save_find(part, 0, "\"bytes\": \"");
+  if b < 0 { b = save_find(part, 0, "\"bytes\":\""); }
+  t := save_find(part, 0, "\"at\": ");
+  if t < 0 { t = save_find(part, 0, "\"at\":"); }
+  if b < 0 || t < 0 { return 0; }
+  e := b;
+  while e < part.count && part[e] != 34 { e += 1; }
+  q := t;
+  while q < part.count && ((part[q] >= 48 && part[q] <= 57) || part[q] == 46) { q += 1; }
+  time[0] = save_number(part[t..<q]);
+  n := save_unb64(part[b..<e], bytes, at);
+  return ifx n > 0 then n else 0;
+}
+// The server's answer ("STATUS\n" then the body) as slots; none when it isn't a 200.
+save_from_server :: (answer: string, bytes: [] u8) -> SaveSlots #export_c {
+  s: SaveSlots;
+  if answer.count < 4 || answer[0..<4] != "200\n" { return s; }
+  body := answer[4..<answer.count];
+  t: [1] f64;
+  s.cur_n = save_server_part(body, "\"current\": ", bytes, 0, t[..]);
+  if s.cur_n == 0 { s.cur_n = save_server_part(body, "\"current\":", bytes, 0, t[..]); }
+  s.cur_at = t[0];
+  s.prev = s.cur_n;
+  s.prev_n = save_server_part(body, "\"previous\": ", bytes, s.prev, t[..]);
+  if s.prev_n == 0 { s.prev_n = save_server_part(body, "\"previous\":", bytes, s.prev, t[..]); }
+  s.prev_at = t[0];
+  return s;
+}
+
+// The body that saves a container on the server: {"bytes": base64, "at": ms}.
+save_post_body :: (c: [] u8, n: int, at: f64, out: [] u8) -> int #export_c {
+  head := "{\"bytes\":\"";
+  if out.count < head.count + 40 { return -1; }
+  for k: 0..<head.count { out[k] = head[k]; }
+  o := save_b64(c, n, out, head.count);
+  tail := "\",\"at\":";
+  if o < 0 || o + tail.count + 26 > out.count { return -1; }
+  for k: 0..<tail.count { out[o + k] = tail[k]; }
+  o = save_put_number(out, o + tail.count, at);
+  if o < 0 { return -1; }
+  out[o - 1] = 125;   // the number's line end becomes the closing brace
+  return o;
+}
+
+#test "a save packs into an AESV container that opens again, and a corrupted save falls back to the last good one" {
+  payload := "the house: room 3, two haunts found";
+  p: [64] u8;
+  for k: 0..<payload.count { p[k] = payload[k]; }
+  a: [128] u8; b: [128] u8;
+  an := save_pack("haunted-house", 1, p[..], payload.count, a[..]);
+  #assert an == 12 + 1 + 13 + 1 + payload.count + 4;
+  #assert a[0] == 65 && a[4] == 2 && a[5] == 2 && a[8] == 1;
+  o := save_open(a[..], an, "haunted-house", 1);
+  #assert o.ok && o.count == payload.count && cast(string) a[o.at..<o.at + o.count] == payload;
+  #assert !save_open(a[..], an, "dead-gears", 1).ok;              // another world's save
+  #assert !save_open(a[..], an, "haunted-house", 0).ok;           // newer than this build
+  // the zlib check value: crc32("123456789")
+  nine: [9] u8;
+  for k: 0..<9 { nine[k] = cast(u8) (49 + k); }
+  #assert save_crc32(nine[..], 9) == 0xCBF43926;
+  // two saves in the record, then the current one corrupted
+  p[0] = 84; p[1] = 72; p[2] = 69;
+  bn := save_pack("haunted-house", 1, p[..], payload.count, b[..]);
+  empty: [1] u8; none: SaveSlots;
+  r1: [1024] u8;
+  n1 := save_record(a[..], an, 1000, empty[..], none, "haunted-house", 1, r1[..]);
+  slots: [512] u8;
+  s1 := save_read(cast(string) r1[0..<n1], slots[..]);
+  #assert s1.cur_n == an && s1.prev_n == 0 && s1.cur_at == 1000;
+  r2: [1024] u8;
+  n2 := save_record(b[..], bn, 2000, slots[..], s1, "haunted-house", 1, r2[..]);
+  back: [512] u8;
+  s2 := save_read(cast(string) r2[0..<n2], back[..]);
+  #assert s2.cur_n == bn && s2.prev_n == an && s2.cur_at == 2000 && s2.prev_at == 1000;
+  k := save_pick(back[..], s2, "haunted-house", 1, 1);
+  #assert k.which == 1 && k.time == 2000 && back[k.at] == 84;
+  back[s2.cur + 20] = back[s2.cur + 20] ^ 1;                     // a flipped bit in the current save
+  k = save_pick(back[..], s2, "haunted-house", 1, 1);
+  #assert k.which == 2 && k.time == 1000 && cast(string) back[k.at..<k.at + k.count] == payload;
+  // a current save whose house didn't open: the last good one
+  #assert save_pick(back[..], s2, "haunted-house", 1, 2).which == 2;
+  // the bad one is never kept as the previous: a new save keeps the last good one
+  r3: [1024] u8;
+  n3 := save_record(a[..], an, 3000, back[..], s2, "haunted-house", 1, r3[..]);
+  again: [512] u8;
+  s3 := save_read(cast(string) r3[0..<n3], again[..]);
+  #assert s3.prev_n == an && s3.prev_at == 1000;
+  // both broken: nothing to load
+  back[s2.prev + 3] = 0;
+  #assert save_pick(back[..], s2, "haunted-house", 1, 1).which == 0;
+}
+
+#test "migrations forward: the bare-hex save from before containers opens as schema 0" {
+  bytes: [16] u8;
+  s := save_read("0a0b0cff", bytes[..]);
+  #assert s.legacy && s.cur_n == 4 && bytes[3] == 255;
+  k := save_pick(bytes[..], s, "haunted-house", 1, 1);
+  #assert k.which == 1 && k.schema == 0 && k.count == 4;
+  #assert save_read("0a0", bytes[..]).cur_n == 0 && save_read("zz", bytes[..]).cur_n == 0;
+}
+
+#test "the server's answer and body: base64 both ways, the newer save known by its time" {
+  p: [8] u8; c: [64] u8;
+  p[0] = 1; p[1] = 2; p[2] = 250;
+  cn := save_pack("haunted-house", 1, p[..], 3, c[..]);
+  body: [256] u8;
+  bn := save_post_body(c[..], cn, 1793222723475, body[..]);
+  text := cast(string) body[0..<bn];
+  #assert text[0..<10] == "{\"bytes\":\"" && text[bn - 21..<bn] == "\",\"at\":1793222723475}";
+  b64 := text[10..<bn - 21];
+  answer: [512] u8; an := 0;
+  pre := "200\n{\"current\": {\"at\": 1793222723475, \"bytes\": \"";
+  for k: 0..<pre.count { answer[an] = pre[k]; an += 1; }
+  for k: 0..<b64.count { answer[an] = b64[k]; an += 1; }
+  post := "\"}, \"previous\": null}";
+  for k: 0..<post.count { answer[an] = post[k]; an += 1; }
+  bytes: [128] u8;
+  s := save_from_server(cast(string) answer[0..<an], bytes[..]);
+  #assert s.cur_n == cn && s.cur_at == 1793222723475 && s.prev_n == 0;
+  k := save_pick(bytes[..], s, "haunted-house", 1, 1);
+  #assert k.which == 1 && bytes[k.at + 2] == 250;
+  #assert save_from_server("403\n{\"error\":\"join\"}", bytes[..]).cur_n == 0;
+  out: [8] u8;
+  #assert save_unb64("Zm9vYg==", out[..], 0) == 4 && out[3] == 98 && save_unb64("Zm9=", out[..], 0) == 2 && save_unb64("Z===", out[..], 0) == -1;
+}

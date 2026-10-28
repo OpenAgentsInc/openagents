@@ -30,7 +30,9 @@
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
 //                             out: 1 navigates to the outbox's URL, 2 copies its text, 3 makes it the
 //                             location's hash (empty: none), in place, 4 keeps it in this browser (one
-//                             text per app, given back on the next visit as message 4); others go to the page's
+//                             text per app, in IndexedDB, else localStorage; given back on the next visit as
+//                             message 4), 5 keeps it as the browser's playtest player ({key, id, account},
+//                             localStorage verse.player, which the landing's join writes too); others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
 // and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
@@ -46,12 +48,14 @@
 //   coaxial_http(url, url_len, body, body_len, flags) -> id   flags 1 POST (else GET), 2 a beacon (it
 //                             outlives a page being left; nothing comes back), 4 the answer is wanted:
 //                             id 0..7, its answer comes as message 512 + id, "STATUS\n" then the body
-//                             (status 0: no answer); -1 when 8 are waiting or the URL isn't this site's
+//                             (status 0: no answer); 8 sends the browser's playtest player key
+//                             (X-Verse-Player); -1 when 8 are waiting or the URL isn't this site's
 // and the page itself, through the inbox (what the browser knows; the app decides what to keep):
 //   600 the page facts, key=value lines, once an engine loads: tab (a random id for this tab,
 //       sessionStorage), fresh (1 when the tab id was just made), visitor (a random id for this
 //       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
-//       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, webdriver, fcp, dcl
+//       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, webdriver, fcp, dcl, player and account (the
+//       playtest player's public id and account, "" none; never its key)
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
@@ -112,6 +116,8 @@ async function loadEngine(bytes, generation) {
   }
   const instance = await WebAssembly.instantiate(module, imports);
   if (generation !== wanted) return false; // a newer build was asked for meanwhile
+  const kept = await keptRead;   // before the first frame, so a kept world opens with it
+  if (generation !== wanted) return false;
   const x = instance.exports;
   x._initialize?.();
   const layout = x.coaxial_layout();
@@ -139,7 +145,6 @@ async function loadEngine(bytes, generation) {
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
   sendHash();
   // The page's scripts may talk to the app from now (action 0: ready).
-  const kept = keptText();
   if (kept) send(4, kept);
   globalThis.coaxial.ready = true;
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
@@ -223,8 +228,11 @@ const httpImports = {
     if ((flags & 2) && navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body || ""], { type: "application/json" }))) return 0;
     let id = 0;
     if (wanted) { id = waiting.indexOf(false); if (id < 0) return -1; waiting[id] = true; }
+    const headers = post ? { "Content-Type": "application/json" } : {};
+    const who = flags & 8 ? player() : null;
+    if (who) headers["X-Verse-Player"] = who.key;
     fetch(url, { method: post ? "POST" : "GET", body: post ? body : undefined, credentials: "same-origin", cache: "no-store",
-      keepalive: !wanted && bodyLen < 60000, headers: post ? { "Content-Type": "application/json" } : {} })
+      keepalive: !wanted && bodyLen < 60000, headers })
       .then(async (r) => { const t = await r.text(); if (wanted) { waiting[id] = false; answer(id, `${r.status}\n${t}`); } })
       .catch(() => { if (wanted) { waiting[id] = false; answer(id, "0\n"); } });
     return id;
@@ -247,7 +255,8 @@ function pageFacts() {
     ref: document.referrer, ua: navigator.userAgent, lang: navigator.language, tz, sw: screen.width, sh: screen.height,
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
-    webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0 })
+    webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
+    player: player()?.id || "", account: player()?.account || "" })
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
@@ -544,9 +553,40 @@ const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
 
-// What the app kept in this browser (action 4): storage can be refused, so it is only a convenience.
+// What the app kept in this browser (action 4): IndexedDB (database coaxial, store kept, the app's
+// name), else localStorage. Storage can be refused, so it is only a convenience. A text kept in
+// localStorage before IndexedDB is read once and moves over at the next keep.
 const keptKey = `coaxial.${app}.kept`;
-function keptText() { try { return localStorage.getItem(keptKey) || ""; } catch { return ""; } }
+let keptDb = null;
+const keptRead = (async () => {
+  keptDb = await new Promise((ok) => {
+    try { const r = indexedDB.open("coaxial", 1); r.onupgradeneeded = () => r.result.createObjectStore("kept"); r.onsuccess = () => ok(r.result); r.onerror = r.onblocked = () => ok(null); }
+    catch { ok(null); }
+  });
+  let text = "";
+  if (keptDb) text = await new Promise((ok) => {
+    try { const q = keptDb.transaction("kept").objectStore("kept").get(app); q.onsuccess = () => ok(typeof q.result === "string" ? q.result : ""); q.onerror = () => ok(""); }
+    catch { ok(""); }
+  });
+  if (!text) { try { text = localStorage.getItem(keptKey) || ""; } catch {} }
+  return text;
+})();
+function keep(text) {
+  if (keptDb) {
+    try {
+      const t = keptDb.transaction("kept", "readwrite");
+      t.objectStore("kept").put(text, app);
+      t.oncomplete = () => { try { localStorage.removeItem(keptKey); } catch {} };
+      return;
+    } catch {}
+  }
+  try { localStorage.setItem(keptKey, text); } catch {}
+}
+// The browser's playtest player: {key, id, account} from the landing's join or a guest's key.
+function player() {
+  try { const p = JSON.parse(localStorage.getItem("verse.player") || "null"); return p && typeof p.key === "string" ? p : null; }
+  catch { return null; }
+}
 
 function send(kind, text = "") {
   const x = engine?.exports;
@@ -592,7 +632,8 @@ function after(gesture, tap = false) {
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});
     // The app's own place in the page (the hash), replaced so Back still leaves the page.
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
-    else if (code === 4) { try { localStorage.setItem(keptKey, text); } catch {} }
+    else if (code === 4) keep(text);
+    else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
   const cursor = ["", "pointer"][call("coaxial_cursor")] || "";
