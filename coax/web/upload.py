@@ -15,7 +15,8 @@ api = "https://storage.googleapis.com/storage/v1/b/" + bucket
 up = "https://storage.googleapis.com/upload/storage/v1/b/" + bucket
 auth = {"Authorization": "Bearer " + token}
 types = {".wasm": "application/wasm", ".wgsl": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8",
-         ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".jpg": "image/jpeg"}
+         ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".jpg": "image/jpeg",
+         ".json": "application/json"}
 
 def call(url, method="GET", body=None, headers={}):
     req = urllib.request.Request(url, data=body, method=method, headers={**auth, **headers})
@@ -38,12 +39,13 @@ def files(root):
             yield os.path.relpath(p, root), p
 
 def object_name(name, site=False):
-    # x.page is the page for the bare path x (deploy.sh): /projects/coax.
+    # x.page is the page for the bare path x (deploy.sh): /projects/coax; x.wellknown is JSON at x.
+    if name.endswith(".wellknown"): return (prefix if site else "") + name[:-10]
     return (prefix if site else "") + (name[:-5] if name.endswith(".page") else name)
 
 def put(name, path, cache, site=False):
     data = open(path, "rb").read()
-    kind = ".html" if name.endswith(".page") else os.path.splitext(name)[1]
+    kind = ".html" if name.endswith(".page") else ".json" if name.endswith(".wellknown") else os.path.splitext(name)[1]
     name = object_name(name, site)
     meta = {"name": name, "cacheControl": cache,
             "contentType": types.get(kind) or mimetypes.guess_type(name)[0] or "application/octet-stream"}

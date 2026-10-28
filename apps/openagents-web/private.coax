@@ -20,6 +20,14 @@
 // "KIND|value|...", KIND one of Y P T G D M C I A X N S L.
 // A sign-in link carries its token in the hash (#invite=...): the page clears
 // the hash, trades the token for the session cookie, and loads again.
+//
+// Phones (docs/phone-sign-in.md): LINK A PHONE in the header opens a QR the
+// OpenAgents app scans to add the phone's key to this member. Page 2 is
+// /signin: a QR of a one-time challenge (oa-api /api/auth/challenge) the app
+// approves, polled every 2 s until the site session comes, then who is signed
+// in and their projects. The QR's poll token stays in this page. The QR's
+// module grid comes from coax/lib/qr (qr_encode, its own library), which
+// private-face.c calls when qr_want is set.
 
 #load "projects.coax";
 
@@ -41,15 +49,22 @@ PV_NAVIGATE :: 1; PV_SET_HASH :: 3;
 PV_REFRESH :: 30.0;        // seconds between reads of the state
 PV_FRESH :: 75.0;          // an answer this old or newer is LIVE
 POST_MESSAGE :: 1; POST_REDEEM :: 2; POST_LOGOUT :: 3; POST_ASK :: 4; POST_STOP :: 5; POST_UNDO :: 6; POST_AGREE :: 7;
-ASK_STATE :: 1; ASK_TALK :: 2;
+POST_CHALLENGE :: 8; POST_POLL :: 9; POST_LINK :: 10; POST_SITE_OUT :: 11;
+ASK_STATE :: 1; ASK_TALK :: 2; ASK_ME :: 3;
+PV_POLL :: 2.0;            // seconds between polls of a shown code
+PV_CODE_LIFE :: 300.0;     // a code is good this long (signin.api)
+PV_QR :: 5929;             // every QR version's grid (coax/lib/qr)
+CODE_NONE :: 0; CODE_ASKING :: 1; CODE_SHOWN :: 2; CODE_DONE :: 3; CODE_EXPIRED :: 4; CODE_FAILED :: 5;
 H_HOME :: 1; H_PROJECTS :: 2; H_SIGNOUT :: 3; H_PREV :: 4; H_NEXT :: 5; H_FIELD :: 6; H_SEND :: 7; H_LINK :: 8; H_AFIELD :: 9; H_ASK :: 10;
+H_LINKPHONE :: 11; H_CLOSE :: 12; H_NEWCODE :: 13; H_SITE_OUT :: 14;
 H_UNDO :: 100; H_STOP :: 140; H_AGREE :: 200;   // + the turn's (or goal's) index
+H_MINE :: 300;                                  // + a project's index on /signin
 K_BACK :: -3; K_ESC :: -1;
 
 PrivateState :: struct {
   time: f32; ready: bool;
   width: f32; height: f32; d: f32;
-  page: int;                     // 0 the member's shell, 1 locked
+  page: int;                     // 0 the member's shell, 1 locked, 2 /signin
   slug: [64] u8; slug_n: int;
   status: int;                   // -1 nothing asked, 0 waiting for the first answer, else its HTTP status
   live: bool; since: f32;        // the last good answer's time
@@ -76,6 +91,13 @@ PrivateState :: struct {
   outbox: [PV_URL] u8; out_n: int; action: int;
   data: [PV_DATA] u8; data_n: int;
   line_at: [PV_LINES] int; line_end: [PV_LINES] int; line_n: int;
+  // a phone code: /signin's sign-in, or LINK A PHONE's
+  code_state: int; code_at: f32; polled_at: f32;
+  code_url: [PV_URL] u8; code_n: int;
+  poll: [80] u8; poll_n: int;
+  qr: [PV_QR] u8; qr_size: int; qr_want: bool;
+  linking: bool;                 // page 0: LINK A PHONE is open
+  me_status: int; me_at: f32;    // page 2: -1 not asked, 0 waiting, 200 signed in, 401 not, else offline
   inbox: [PV_INBOX] u8;
 }
 
@@ -231,6 +253,15 @@ pv_post :: (s: [] PrivateState, op: string, kind: int, key: string, value: strin
   n = pv_put(s[0].post[..], n, pv_slug(s));
   n = pv_put(s[0].post[..], n, "/api/");
   s[0].post_n = pv_put(s[0].post[..], n, op);
+  pv_body(s, kind, key, value);
+}
+// A post to the sign-in routes (/api/auth/OP).
+pv_post_auth :: (s: [] PrivateState, op: string, kind: int, key: string, value: string) {
+  n := pv_put(s[0].post[..], 0, "/api/auth/");
+  s[0].post_n = pv_put(s[0].post[..], n, op);
+  pv_body(s, kind, key, value);
+}
+pv_body :: (s: [] PrivateState, kind: int, key: string, value: string) {
   b := pv_put(s[0].body[..], 0, "{");
   if key.count > 0 {
     b = pv_put(s[0].body[..], b, "\""); b = pv_put(s[0].body[..], b, key); b = pv_put(s[0].body[..], b, "\":\"");
@@ -264,7 +295,7 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     } else if code == 404 { s[0].tstatus = 404; s[0].tdata_n = 0; s[0].tline_n = 0; }   // no agent here
     return;
   }
-  if id == s[0].ask_id {
+  if id == s[0].ask_id && s[0].ask_kind != ASK_ME {
     s[0].ask_id = -1;
     if code == 200 {
       n := 0;
@@ -279,9 +310,30 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     }
     return;
   }
+  if id == s[0].ask_id && s[0].ask_kind == ASK_ME {
+    s[0].ask_id = -1;
+    if code == 200 {
+      n := 0;
+      while i < bytes.count && n < PV_DATA { s[0].data[n] = bytes[i]; n += 1; i += 1; }
+      s[0].data_n = n; pv_index(s); s[0].me_status = 200;
+    } else {
+      s[0].me_status = ifx code == 401 then 401 else 599; s[0].data_n = 0; s[0].line_n = 0;
+    }
+    s[0].me_at = s[0].time;
+    return;
+  }
   if id != s[0].post_id { return; }
   s[0].post_id = -1;
   kind := s[0].post_kind; s[0].post_kind = 0;
+  if kind == POST_CHALLENGE || kind == POST_LINK { pv_got_code(s, code, bytes, i); return; }
+  if kind == POST_POLL {
+    s[0].polled_at = s[0].time;
+    if code == 404 { s[0].code_state = CODE_EXPIRED; }
+    else if code == 200 && pv_has(bytes, "signed-in") { s[0].code_state = CODE_DONE; s[0].me_status = -1; }
+    else if code == 200 && pv_has(bytes, "linked") { s[0].code_state = CODE_DONE; }
+    return;
+  }
+  if kind == POST_SITE_OUT { s[0].me_status = -1; s[0].code_state = CODE_NONE; s[0].data_n = 0; s[0].line_n = 0; return; }
   if kind == POST_MESSAGE {
     if code == 200 { s[0].text_n = 0; pv_say(s, "SENT"); pv_ask(s); }
     else { pv_say(s, ifx code == 429 then "SLOW DOWN" else "NOT SENT"); }
@@ -316,6 +368,216 @@ pv_error :: (bytes: string, i: int) -> string {
   return "NOT DONE";
 }
 pv_say_agent :: (s: [] PrivateState, word: string) { s[0].anote_n = pv_put(s[0].anote[..], 0, word); s[0].anote_at = s[0].time; }
+
+// ---------------------------------------------------------------- phone codes
+
+// A JSON answer's string value for key ("key": "value"), or "".
+pv_value :: (bytes: string, from: int, key: string) -> string {
+  k := from;
+  while k + key.count + 2 <= bytes.count {
+    if bytes[k] == '"' && bytes[k + 1..<k + 1 + key.count] == key && bytes[k + 1 + key.count] == '"' {
+      a := k + key.count + 2;
+      while a < bytes.count && (bytes[a] == ' ' || bytes[a] == ':') { a += 1; }
+      if a >= bytes.count || bytes[a] != '"' { return ""; }
+      a += 1; b := a;
+      while b < bytes.count && bytes[b] != '"' { b += 1; }
+      return bytes[a..<b];
+    }
+    k += 1;
+  }
+  return "";
+}
+// The challenge's answer: its URL into the QR, its poll token kept for polling.
+pv_got_code :: (s: [] PrivateState, code: int, bytes: string, i: int) {
+  url := pv_value(bytes, i, "url"); poll := pv_value(bytes, i, "poll");
+  if code != 200 || url.count < 20 || url.count > PV_URL || poll.count != 64 {
+    s[0].code_state = CODE_FAILED;
+    if code == 429 { pv_say(s, "TOO MANY CODES: WAIT A MINUTE"); }
+    return;
+  }
+  s[0].code_n = pv_put(s[0].code_url[..], 0, url);
+  s[0].poll_n = pv_put(s[0].poll[..], 0, poll);
+  s[0].qr_want = true; s[0].qr_size = 0;
+}
+// The face encoded code_url into qr: status 0 and the grid's side, else a refusal.
+coaxial_private_qr :: (s: [] PrivateState, status: int, size: int) #export_c {
+  if s.count < 1 || !s[0].qr_want { return; }
+  s[0].qr_want = false;
+  if status != 0 || size < 21 || size * size > PV_QR { s[0].code_state = CODE_FAILED; s[0].qr_size = 0; return; }
+  s[0].qr_size = size;
+  s[0].code_state = CODE_SHOWN; s[0].code_at = s[0].time; s[0].polled_at = s[0].time;
+}
+pv_new_code :: (s: [] PrivateState) {
+  if s[0].post_kind != 0 { return; }
+  s[0].code_state = CODE_ASKING; s[0].qr_size = 0;
+  if s[0].page == 2 { pv_post_auth(s, "challenge", POST_CHALLENGE, "", ""); }
+  else { pv_post(s, "link", POST_LINK, "", ""); }
+}
+// Polls a shown code every PV_POLL seconds; past its life it has expired.
+pv_poll_due :: (s: [] PrivateState) {
+  if s[0].code_state != CODE_SHOWN || s[0].post_kind != 0 { return; }
+  if s[0].time - s[0].code_at > PV_CODE_LIFE + 5 { s[0].code_state = CODE_EXPIRED; return; }
+  if s[0].time - s[0].polled_at < PV_POLL { return; }
+  s[0].polled_at = s[0].time;
+  pv_post_auth(s, "poll", POST_POLL, "poll", cast(string) s[0].poll[0..<s[0].poll_n]);
+}
+pv_ask_me :: (s: [] PrivateState) {
+  if s[0].ask_id >= 0 || s[0].ask_n > 0 { return; }
+  s[0].ask_n = pv_put(s[0].ask[..], 0, "/api/auth/me");
+  s[0].ask_kind = ASK_ME; s[0].me_status = 0; s[0].me_at = s[0].time;
+}
+// The QR: a light square (the grid's light modules and a 4-module quiet zone)
+// with the dark modules left dark, whole device pixels a module.
+pv_qr :: (s: [] PrivateState, out: [] f32, v0: int, cx: f32, top: f32, side: f32) -> int {
+  n := s[0].qr_size;
+  if n <= 0 { return v0; }
+  all := n + 8;
+  m := floor(side / cast(f32) all);
+  if m < 1 { m = 1; }
+  x0 := floor(cx - m * cast(f32) all * 0.5); y0 := floor(top);
+  v := v0;
+  for row: 0..<all {
+    y := y0 + cast(f32) row * m + m * 0.5;
+    col := 0;
+    while col < all {
+      if pv_dark(s, row - 4, col - 4) { col += 1; continue; }
+      run := col;
+      while run < all && !pv_dark(s, row - 4, run - 4) { run += 1; }
+      // a run of light modules: a square-ended quad (private.wgsl's mode -1)
+      ax := x0 + cast(f32) col * m + m * 0.5; bx := x0 + cast(f32) run * m - m * 0.5;
+      if bx <= ax { bx = ax + 0.01; }
+      if lit(out, v, ax, y, bx, y, m * 0.5, 1.0, 0, 0.97, 0.97, 0.97, -1.0) { v += 6; }
+      col = run;
+    }
+  }
+  return v;
+}
+pv_dark :: (s: [] PrivateState, y: int, x: int) -> bool {
+  n := s[0].qr_size;
+  if x < 0 || y < 0 || x >= n || y >= n { return false; }
+  return s[0].qr[y * n + x] == 1;
+}
+// The code's panel: the QR (or a box while it comes), what to do and how long it lasts.
+pv_code_panel :: (s: [] PrivateState, out: [] f32, v0: int, cx: f32, y: f32, side: f32, hint: string, done: string, p: Pen) -> int {
+  d := p.d; v := v0;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE);
+  st := s[0].code_state;
+  if st == CODE_SHOWN { v = pv_qr(s, out, v, cx, y, side); }
+  else {
+    b := Box.{x0 = cx - side * 0.5, y0 = y, x1 = cx + side * 0.5, y1 = y + side};
+    v = frame(out, v, b, 10 * d, p);
+    word := ifx st == CODE_DONE then done else ifx st == CODE_EXPIRED then "THIS CODE EXPIRED" else ifx st == CODE_FAILED then "NO CODE RIGHT NOW" else "MAKING A CODE";
+    v = put(out, v, word, cx - text_width(word, 8 * d) * 0.5, y + side * 0.5, 8 * d, ifx st == CODE_DONE then orange else dim);
+  }
+  ty := y + side + 26 * d;
+  if st == CODE_SHOWN {
+    v = put_fit(out, v, hint, hi(16 * d, cx - text_width(hint, 6.5 * d) * 0.5), ty, 6.5 * d, white, s[0].width - 32 * d);
+    left := cast(int) (PV_CODE_LIFE - (s[0].time - s[0].code_at));
+    if left < 0 { left = 0; }
+    buf: [64] u8;
+    k := pv_put(buf[..], 0, "WAITING FOR YOUR PHONE · GOOD FOR ");
+    k = pv_number(buf[..], k, left / 60); k = pv_put(buf[..], k, ":");
+    if left % 60 < 10 { k = pv_put(buf[..], k, "0"); }
+    k = pv_number(buf[..], k, left % 60);
+    t := cast(string) buf[0..<k];
+    v = put(out, v, t, cx - text_width(t, 6 * d) * 0.5, ty + 20 * d, 6 * d, dim);
+  } else if st == CODE_EXPIRED || st == CODE_FAILED {
+    w := chip_width("NEW CODE", 7 * d, p);
+    v = pv_chip(s, out, v, "NEW CODE", cx - w * 0.5, ty, H_NEWCODE, true, p, true, 0);
+  }
+  if s[0].note_n > 0 && s[0].time - s[0].note_at < 6 {
+    n := cast(string) s[0].note[0..<s[0].note_n];
+    v = put(out, v, n, cx - text_width(n, 6 * d) * 0.5, ty + 40 * d, 6 * d, orange);
+  }
+  return v;
+}
+pv_side :: (s: [] PrivateState) -> f32 {
+  d := s[0].d;
+  side := lo(s[0].width - 48 * d, s[0].height - 260 * d);
+  return clamp(side, 160 * d, 340 * d);
+}
+// OPENAGENTS / WHERE, top left, as the locked page draws it.
+pv_crumbs :: (s: [] PrivateState, out: [] f32, v0: int, where: string, p: Pen) -> int {
+  d := p.d; w := s[0].width;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM);
+  m := ifx w / d < 700 then 12.0f32 else 24.0f32;
+  x := (m + 18) * d; cy := (m + 22) * d;
+  v := put(out, v0, "OPENAGENTS", x, cy, 7 * d, ifx s[0].hot == H_HOME then white else dim);
+  w1 := text_width("OPENAGENTS", 7 * d);
+  pv_hit(s, Box.{x0 = x - 4 * d, y0 = cy - 14 * d, x1 = x + w1 + 4 * d, y1 = cy + 6 * d}, H_HOME);
+  crumb := x + w1 + SPACE * 7 * d;
+  v = put(out, v, "/", crumb, cy, 7 * d, dim);
+  px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
+  return put(out, v, where, px, cy, 7 * d, pv_chrome(p, INK_ORANGE));
+}
+// /signin.
+pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
+  d := p.d; w := s[0].width; h := s[0].height;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM);
+  v := pv_crumbs(s, out, 0, "SIGN IN", p);
+  cx := w * 0.5;
+  if s[0].me_status == 200 {
+    k := pv_first(s, 'K');
+    npub := ifx k >= 0 then pv_cell(s, k, 1) else "";
+    y := h * 0.32;
+    v = put(out, v, "SIGNED IN", cx - text_width("SIGNED IN", 12 * d) * 0.5, y, 12 * d, white);
+    short: [40] u8;
+    q := 0;
+    if npub.count > 24 { q = pv_put(short[..], 0, npub[0..<14]); q = pv_put(short[..], q, "..."); q = pv_put(short[..], q, npub[npub.count - 8..<npub.count]); }
+    else { q = pv_put(short[..], 0, npub); }
+    t := cast(string) short[0..<q];
+    v = put(out, v, t, cx - text_width(t, 7 * d) * 0.5, y + 26 * d, 7 * d, ink(p, INK_DIM));
+    n := pv_count(s, 'J');
+    y2 := y + 64 * d;
+    if n == 0 {
+      a := "THIS KEY ISN'T IN A PROJECT YET";
+      v = put(out, v, a, cx - text_width(a, 6.5 * d) * 0.5, y2, 6.5 * d, dim);
+      b := "ON YOUR PROJECT'S PAGE, LINK A PHONE ADDS IT";
+      v = put(out, v, b, cx - text_width(b, 6 * d) * 0.5, y2 + 18 * d, 6 * d, pv_chrome(p, INK_FAINT));
+      y2 += 40 * d;
+    } else {
+      v = put(out, v, "YOUR PROJECTS", cx - text_width("YOUR PROJECTS", 6.5 * d) * 0.5, y2, 6.5 * d, dim);
+      y2 += 26 * d;
+      for j: 0..<n {
+        if j >= 12 { break; }
+        slug := pv_cell(s, pv_nth(s, 'J', j), 1);
+        buf: [80] u8;
+        m := pv_upper(buf[..], 0, slug);
+        label := cast(string) buf[0..<m];
+        cw := chip_width(label, 7 * d, p);
+        v = pv_chip(s, out, v, label, cx - cw * 0.5, y2, H_MINE + j, false, p, true, 0);
+        y2 += 26 * d;
+      }
+    }
+    so := chip_width("SIGN OUT", 7 * d, p);
+    return pv_chip(s, out, v, "SIGN OUT", cx - so * 0.5, y2 + 14 * d, H_SITE_OUT, false, p, true, 0);
+  }
+  if s[0].me_status != 401 {
+    word := ifx s[0].me_status == 599 then "OFFLINE" else "LOADING";
+    return put(out, v, word, cx - text_width(word, 10 * d) * 0.5, h * 0.5, 10 * d, dim);
+  }
+  side := pv_side(s);
+  title := "SIGN IN WITH YOUR PHONE";
+  tcap := ifx w / d < 520 then 10 * d else 12 * d;
+  top := hi((h - side) * 0.5 - 30 * d, 70 * d);
+  v = put(out, v, title, cx - text_width(title, tcap) * 0.5, top - 18 * d, tcap, white);
+  return pv_code_panel(s, out, v, cx, top, side, "SCAN THIS WITH THE OPENAGENTS APP ON YOUR PHONE", "SIGNED IN", p);
+}
+// LINK A PHONE, over a member's page.
+pv_link_panel :: (s: [] PrivateState, out: [] f32, v0: int, top: f32, p: Pen) -> int {
+  d := p.d; w := s[0].width;
+  side := lo(pv_side(s), s[0].height - top - 150 * d);
+  side = hi(side, 140 * d);
+  cx := w * 0.5;
+  y := top + 34 * d;
+  v := put(out, v0, "LINK A PHONE", cx - text_width("LINK A PHONE", 10 * d) * 0.5, y, 10 * d, pv_chrome(p, INK_WHITE));
+  a := "THE OPENAGENTS APP SCANS THIS; THEN YOUR PHONE'S KEY OPENS THIS PROJECT AS YOU";
+  v = put_fit(out, v, a, hi(16 * d, cx - text_width(a, 6 * d) * 0.5), y + 18 * d, 6 * d, pv_chrome(p, INK_DIM), w - 32 * d);
+  v = pv_code_panel(s, out, v, cx, y + 36 * d, side, "SCAN THIS WITH THE OPENAGENTS APP ON YOUR PHONE", "PHONE LINKED", p);
+  word := ifx s[0].code_state == CODE_DONE then "DONE" else "CLOSE";
+  cw := chip_width(word, 7 * d, p);
+  return pv_chip(s, out, v, word, cx - cw * 0.5, y + 36 * d + side + 76 * d, H_CLOSE, s[0].code_state == CODE_DONE, p, true, 0);
+}
 
 // ---------------------------------------------------------------- layout and text
 
@@ -783,6 +1045,10 @@ pv_header :: (s: [] PrivateState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
   lw := chip_width(word, 7 * d, p);
   cap := 7 * d;
   v = chip(out, v, word, right - so - 8 * d - lw, cy, cap, ifx live then pv_chrome(p, INK_ORANGE) else dim, p);
+  lp := chip_width("LINK A PHONE", 7 * d, p);
+  if right - so - lw - lp - 16 * d > px + text_width("PROJECTS", 7 * d) + 12 * d {
+    v = pv_chip(s, out, v, "LINK A PHONE", right - so - lw - lp - 16 * d, cy, H_LINKPHONE, s[0].linking, p, true, 0);
+  }
   if pi >= 0 {
     title := pv_cell(s, pi, 1);
     ty := b.y0 + 56 * d;
@@ -841,13 +1107,19 @@ pv_shows_project :: (s: [] PrivateState) -> bool { return s[0].page == 0 && s[0]
 
 coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
-  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].day = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; s[0].tstatus = -1; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].day = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; s[0].tstatus = -1; s[0].me_status = -1; }
   s[0].time += clamp(dt, 0, 0.1);
   // a sign-in link's token, once the slug is known: trade it for the cookie
   if s[0].token_n > 0 && s[0].slug_n > 0 && s[0].post_kind == 0 {
     pv_post(s, "redeem", POST_REDEEM, "token", cast(string) s[0].token[0..<s[0].token_n]);
     s[0].token_n = 0;
   }
+  if s[0].page == 2 {
+    if s[0].me_status == -1 || (s[0].me_status == 599 && s[0].time - s[0].me_at > 10) { pv_ask_me(s); }
+    if s[0].me_status == 401 && s[0].code_state == CODE_NONE { pv_new_code(s); }
+    if s[0].me_status == 401 { pv_poll_due(s); }
+  }
+  if s[0].page == 0 && s[0].linking { pv_poll_due(s); }
   if s[0].page == 0 && s[0].post_kind != POST_REDEEM && s[0].status != 404 && s[0].status != 401 && s[0].status != 403 &&
      (s[0].status == -1 || s[0].time - s[0].asked_at >= PV_REFRESH) { pv_ask(s); }
   if s[0].page == 0 && pv_talk_due(s) { pv_ask_talk(s); }
@@ -859,6 +1131,7 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = p.fade;
   uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
   for k: 0..<PANELS { glass(uniforms, k, Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}, 0, 0); }
+  if s[0].page == 2 { s[0].typing = false; return pv_signin(s, out, p); }
   if !pv_shows_project(s) {
     s[0].typing = false;
     if s[0].page == 0 && (s[0].status <= 0) {
@@ -874,6 +1147,7 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
   glass(uniforms, 0, head, 10 * d, 0.92);
   v := pv_header(s, out, 0, head, p);
   top := head.y1 + g;
+  if s[0].linking { s[0].typing = false; return pv_link_panel(s, out, v, top, p); }
   cols := ifx w >= 1100 then 3 else ifx w >= 700 then 2 else 1;
   full := width - 2 * m * d;
   cw := (full - g * cast(f32) (cols - 1)) / cast(f32) cols;
@@ -942,6 +1216,14 @@ trim_lead :: (text: string) -> int { i := 0; while i < text.count && text[i] == 
 pv_act :: (s: [] PrivateState, target: int) {
   if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK { s[0].typing = false; }
   if target == H_HOME { pv_go(s, "/"); }
+  else if target == H_LINKPHONE { if !s[0].linking { s[0].linking = true; s[0].code_state = CODE_NONE; s[0].scroll = 0; pv_new_code(s); } }
+  else if target == H_CLOSE { s[0].linking = false; s[0].code_state = CODE_NONE; s[0].qr_size = 0; s[0].poll_n = 0; }
+  else if target == H_NEWCODE { pv_new_code(s); }
+  else if target == H_SITE_OUT { if s[0].post_kind == 0 { pv_post_auth(s, "logout", POST_SITE_OUT, "", ""); } }
+  else if target >= H_MINE && target < H_MINE + 12 {
+    j := pv_nth(s, 'J', target - H_MINE);
+    if j >= 0 { n := pv_put(s[0].outbox[..], 0, "/projects/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_cell(s, j, 1)); s[0].action = PV_NAVIGATE; }
+  }
   else if target == H_PROJECTS { pv_go(s, "/projects"); }
   else if target == H_SIGNOUT { if s[0].post_kind == 0 { pv_post(s, "logout", POST_LOGOUT, "", ""); } }
   else if target == H_PREV { s[0].day = pv_day(s) - 1; if s[0].day < 0 { s[0].day = 0; } }
@@ -1031,6 +1313,7 @@ coaxial_private_key :: (s: [] PrivateState, key: int) -> bool #export_c {
     }
     return false;
   }
+  if key == K_ESC && s[0].linking { pv_act(s, H_CLOSE); return true; }
   if key == K_DOWN { s[0].scroll += 40 * d; return true; }
   if key == K_UP { s[0].scroll -= 40 * d; return true; }
   if key == -11 { s[0].scroll += s[0].height * 0.8; return true; }
@@ -1066,7 +1349,7 @@ coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
   s[0].token_n = pv_put(s[0].token[..], 0, t);
   s[0].out_n = 0; s[0].action = PV_SET_HASH;
 }
-coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 then 0 else 1; } }
+coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 then page else 1; } }
 coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && pv_shows_project(s); }
 coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
 coaxial_private_action :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
@@ -1289,4 +1572,129 @@ pv_loaded :: (s: [] PrivateState, out: [] f32, u: [] f32) {
   s[0].time += 40;
   n2 := pv_fresh(s[..], out[..], u[..], 1440, 900);
   #assert !pv_has_hit(s[..], H_AFIELD) && s[0].ask_kind == ASK_STATE;
+}
+
+PV_CODE_ANSWER :: "200\n{\"url\": \"https://openagents.com/signin#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\", \"poll\": \"ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100\", \"challenge\": \"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\", \"expires_in\": 300}";
+// A stand-in grid: a checkerboard of the size a 70-byte URL makes.
+pv_fake_qr :: (s: [] PrivateState) -> int {
+  for i: 0..<37 * 37 { s[0].qr[i] = cast(u8) ((i + i / 37) % 2); }
+  return 37;
+}
+
+#test "/signin asks who is signed in, then shows a code, polls it, and signs in" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 2);
+  n := 0;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/auth/me" && s[0].ask_kind == ASK_ME && n > 0;
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "401\n{\"error\":\"not signed in\"}");
+  #assert s[0].me_status == 401;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/challenge" && cast(string) s[0].body[0..<s[0].body_n] == "{}";
+  #assert s[0].code_state == CODE_ASKING;
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, PV_CODE_ANSWER);
+  #assert s[0].qr_want && s[0].code_n == 96 && s[0].poll_n == 64;
+  #assert cast(string) s[0].code_url[0..<s[0].code_n] == "https://openagents.com/signin#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+  coaxial_private_qr(s[..], 0, pv_fake_qr(s[..]));
+  #assert s[0].code_state == CODE_SHOWN && !s[0].qr_want && s[0].qr_size == 37;
+  // the QR's light squares stay on the canvas, whole pixels a module
+  n = pv_fresh(s[..], out[..], u[..], 780, 1688);
+  #assert n > 37 * 6 && n < PV_MAX_VERTICES;
+  for k: 0..<n { #assert out[k * VERTEX_FLOATS] >= -20 && out[k * VERTEX_FLOATS] <= 800 && out[k * VERTEX_FLOATS + 1] >= -20 && out[k * VERTEX_FLOATS + 1] <= 1708; }
+  // no poll before 2 s, then one with the poll token (never the challenge)
+  #assert s[0].post_n == 0;
+  s[0].time += 2.1;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/poll";
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"poll\":\"ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100\"}";
+  coaxial_private_posted(s[..], 3);
+  pv_answer(s[..], 3, "200\n{\"state\": \"waiting\"}");
+  #assert s[0].code_state == CODE_SHOWN;
+  s[0].time += 2.1;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  coaxial_private_posted(s[..], 4);
+  pv_answer(s[..], 4, "200\n{\"npub\": \"npub1xyz\", \"state\": \"signed-in\"}");
+  #assert s[0].code_state == CODE_DONE && s[0].me_status == -1;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/auth/me";
+  coaxial_private_asked(s[..], 5);
+  pv_answer(s[..], 5, "200\nK|npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\nJ|proj\nJ|other\n");
+  #assert s[0].me_status == 200 && pv_count(s[..], 'J') == 2;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  // a project's chip opens it; SIGN OUT ends the site session
+  pv_act(s[..], H_MINE + 1);
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/projects/other";
+  coaxial_private_action_done(s[..]);
+  pv_act(s[..], H_SITE_OUT);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/logout";
+  coaxial_private_posted(s[..], 6);
+  pv_answer(s[..], 6, "200\n{\"ok\": true}");
+  #assert s[0].me_status == -1 && s[0].code_state == CODE_NONE && s[0].line_n == 0;
+}
+
+#test "/signin: an expired code offers NEW CODE; a refused grid is no code" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 2);
+  n := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "401\n{}");
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, PV_CODE_ANSWER);
+  coaxial_private_qr(s[..], 1, 0);
+  #assert s[0].code_state == CODE_FAILED && s[0].qr_size == 0;
+  pv_act(s[..], H_NEWCODE);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/challenge";
+  coaxial_private_posted(s[..], 3);
+  pv_answer(s[..], 3, PV_CODE_ANSWER);
+  coaxial_private_qr(s[..], 0, pv_fake_qr(s[..]));
+  s[0].time += 2.1;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_posted(s[..], 4);
+  pv_answer(s[..], 4, "404\n{\"error\": \"not found\"}");
+  #assert s[0].code_state == CODE_EXPIRED;
+  // a short or missing poll token is no code
+  pv_act(s[..], H_NEWCODE);
+  coaxial_private_posted(s[..], 5);
+  pv_answer(s[..], 5, "200\n{\"url\": \"https://openagents.com/signin#c=00\", \"poll\": \"ab\"}");
+  #assert s[0].code_state == CODE_FAILED && !s[0].qr_want;
+}
+
+#test "LINK A PHONE asks for a link code, shows it over the page, and says when the phone is linked" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 0);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, PV_FIXTURE);
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  seen := false;
+  for i: 0..<s[0].hit_n { if s[0].hit_id[i] == H_LINKPHONE { seen = true; } }
+  #assert seen;
+  pv_act(s[..], H_LINKPHONE);
+  #assert s[0].linking && cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/link";
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, PV_CODE_ANSWER);
+  coaxial_private_qr(s[..], 0, pv_fake_qr(s[..]));
+  #assert s[0].code_state == CODE_SHOWN;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert n > 37 * 6;
+  s[0].time += 2.1;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/poll";
+  coaxial_private_posted(s[..], 3);
+  pv_answer(s[..], 3, "200\n{\"state\": \"linked\"}");
+  #assert s[0].code_state == CODE_DONE;
+  // no more polls once linked; Escape closes it
+  s[0].time += 2.1;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].post_n == 0;
+  #assert coaxial_private_key(s[..], K_ESC) && !s[0].linking && s[0].poll_n == 0;
 }

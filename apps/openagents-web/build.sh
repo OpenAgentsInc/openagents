@@ -52,7 +52,8 @@ wait "$list"
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" &
 admin=$!
 # A private project's page (/projects/<slug>, served by oa-api to members).
-"$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm"
+"$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm" \
+  "$here/../../coax/lib/qr/qr-memory.coax"
 wait "$admin"
 wait "$splash"
 wait "$realm"

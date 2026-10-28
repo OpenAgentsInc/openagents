@@ -1,0 +1,5 @@
+{"applinks": {"details": [{"appIDs": ["HQWSG26L43.com.openagents.app"], "components": [
+  {"/": "/signin", "#": "c=*"},
+  {"/": "/signin", "#": "link=*"},
+  {"/": "/projects/*", "#": "invite=*"}
+]}]}}

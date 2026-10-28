@@ -3,6 +3,7 @@
 // post) handed to the host's HTTP import (coax/web/host.js) with their
 // answers wanted. The page records no analytics: what it shows is private.
 #include "private.h"
+#include "Qr-memory.h"
 #include <stddef.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
@@ -14,6 +15,10 @@ static coax_v_t_PrivateState at(uint32_t state) { return (coax_v_t_PrivateState)
 // What private.coax asks for, once there's a free slot (flag 4: answer wanted; 1: POST).
 static void send_asks(uint32_t state) {
   coax_t_PrivateState *s = at(state).data;
+  if (s->qr_want) {   // a phone code's URL: its QR module grid (coax/lib/qr)
+    coax_t_QrResult r = qr_encode((coax_v_u8){s->code_url.e, s->code_n}, (coax_v_u8){s->qr.e, (int64_t)sizeof s->qr.e});
+    coaxial_private_qr(at(state), r.status, r.size);
+  }
   if (s->ask_n > 0) {
     int32_t id = coaxial_http((uint32_t)(uintptr_t)s->ask.e, (uint32_t)s->ask_n, 0, 0, 4);
     if (id >= 0) coaxial_private_asked(at(state), id);

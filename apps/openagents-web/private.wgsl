@@ -83,6 +83,10 @@ struct V {
   return o;
 }
 @fragment fn fx_fs(v: V) -> @location(0) vec4f {
+  if (v.tint.w < -0.5) {
+    // A QR's light modules (private.coax pv_qr): flat, square-ended, no glow.
+    return vec4f(v.tint.rgb * v.shape.z, 1.0);
+  }
   if (v.tint.w > 3.5) {
     // A sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels.
     let lod = clamp(log2(64.0 / max(v.shape.x, 1.0)), 0.0, 4.0);
