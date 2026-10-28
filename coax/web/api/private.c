@@ -274,7 +274,11 @@ bool private_route(const request *q) {
   bool reads = !strcmp(what, "shell") || !strcmp(what, "state") || !strcmp(what, "inbox") || !strcmp(what, "talk");
   if (reads == post) { free(body); no(q); return true; }
   const char *v[4] = {what, slug, body, who};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'body', coalesce(x->>'cookie', ''), coalesce(x->>'wake', 'false') = 'true' FROM projects.api($1, $2, $3::jsonb, $4::jsonb) x",
+  // The agent's document tools (migration 0016) build a new version, then push through projects.api.
+  bool tool = !strcmp(what, "patch") || !strcmp(what, "milestone_edit") || !strcmp(what, "goal_propose");
+  PGresult *r = PQexecParams(db, tool
+      ? "SELECT (x->>'status')::int, x->>'body', '', false FROM projects.agent_edit($1, $2, $3::jsonb, $4::jsonb) x"
+      : "SELECT (x->>'status')::int, x->>'body', coalesce(x->>'cookie', ''), coalesce(x->>'wake', 'false') = 'true' FROM projects.api($1, $2, $3::jsonb, $4::jsonb) x",
                              4, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {

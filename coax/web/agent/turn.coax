@@ -1,0 +1,307 @@
+// The project agent's engine: one turn of a project's agent, on the Coax
+// Claude Agent SDK (coax/lib/agent/claude/). The runner (runner.c) starts it
+// in the turn's checkout with only ANTHROPIC_API_KEY, HOME, PATH and
+// OA_AGENT_MODEL, and writes one line:
+//   {"t":"turn","slug","turn":{id,kind,text,by},"history","version","model","budget_usd","repo","cwd"}
+// The model gets the project tools, served in process (SDK MCP server
+// "project"): each call goes to the runner as {"t":"call","id","tool","args"}
+// and comes back as {"t":"reply","id","status","body"}; the runner makes it
+// one signed oa-api op, so oa-api's rules decide every document change. With
+// a linked repository it also gets Read, Glob, Grep, Edit and Write, and the
+// permission callback allows them only inside the checkout. Nothing else: no
+// Bash, no web, no settings files, no saved session. The engine streams what
+// the model does as {"t":"event",...} lines and ends with {"t":"done",...};
+// a {"t":"stop"} from the runner ends the turn. The runner does git.
+// Build: coax c turn.coax, then cc with coax/platform/process-native.c and
+// engine-io.c (coax/web/agent/Dockerfile).
+
+#import "Basic";
+#load "../../lib/agent/claude/claude.coax";
+
+eio_read_line :: (timeout_ms: int) -> int #foreign;
+eio_line_byte :: (i: int) -> int #foreign;
+eio_put :: (byte: int) -> int #foreign;
+eio_flush :: () -> int #foreign;
+
+TURN_LINE :: 1048576;
+PROMPT_MAX :: 196608;
+HISTORY_TURNS :: 12;
+
+en_send :: (o: [] ClOut) {
+  if o[0].failed { return; }
+  for i: 0..<o[0].len { r := eio_put(cast(int) o[0].buf[i]); }
+  r := eio_put(10);
+  r = eio_flush();
+}
+
+en_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+
+// Dollars with six decimals.
+en_usd :: (o: [] ClOut, usd: f64) {
+  micro := cast(int) (usd * 1000000.0 + 0.5);
+  if micro < 0 { micro = 0; }
+  cl_put_int(o, micro / 1000000);
+  cl_put(o, ".");
+  frac := micro % 1000000;
+  d := 100000;
+  while d > 0 { digit: [1] u8; digit[0] = cast(u8) ('0' + (frac / d) % 10); cl_put(o, cast(string) digit[..]); d /= 10; }
+}
+
+en_event :: (buf: [] u8, type: string, key: string, value: string) {
+  o: [1] ClOut; o[0].buf = buf;
+  cl_put(o[..], "{\"t\":\"event\",\"type\":"); cl_put_string(o[..], type);
+  cl_put(o[..], ",\"data\":{"); cl_put_string(o[..], key); cl_put(o[..], ":"); cl_put_string(o[..], value); cl_put(o[..], "}}");
+  en_send(o[..]);
+}
+
+en_tool :: (buf: [] u8, name: string, detail: string) {
+  o: [1] ClOut; o[0].buf = buf;
+  cl_put(o[..], "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":"); cl_put_string(o[..], name);
+  cl_put(o[..], ",\"detail\":"); cl_put_string(o[..], detail); cl_put(o[..], "}}");
+  en_send(o[..]);
+}
+
+en_done :: (buf: [] u8, status: string, answer: string, error: string, cost: f64) {
+  o: [1] ClOut; o[0].buf = buf;
+  cl_put(o[..], "{\"t\":\"done\",\"status\":"); cl_put_string(o[..], status);
+  cl_put(o[..], ",\"answer\":"); cl_put_string(o[..], answer);
+  cl_put(o[..], ",\"error\":"); cl_put_string(o[..], error);
+  cl_put(o[..], ",\"cost_usd\":"); en_usd(o[..], cost); cl_put(o[..], "}");
+  en_send(o[..]);
+}
+
+// A path as the members know it: inside the checkout, or the project document.
+en_shown :: (path: string, cwd: string, doc: string) -> string {
+  if doc.count > 0 && path == doc { return "the project document"; }
+  if cwd.count > 0 && en_starts(path, cwd) && path.count > cwd.count + 1 && path[cwd.count] == '/' { return path[cwd.count + 1..<path.count]; }
+  return path;
+}
+
+SYSTEM :: "You are the agent of a private project on OpenAgents. The project's members talk to you on the project's page; each message is one turn, and the members can undo any turn.\n\nChange the project only through the project tools, which save to the project at once:\n- project_get: the project document as JSON with its version. Read it before you change anything, and again after a write is refused as stale.\n- milestone_status and checklist_status: a milestone's or a checklist item's status (todo, doing, done) with evidence.\n- milestone_edit: add, reword, move or carry over a milestone (a dated step), or add or reword a backlog item (in a checklist).\n- goal_propose: a new goal, or a change to one, as proposed. Goals apply only when every member agrees on the page; you cannot agree for them.\n- project_note: a note on the project's thread. project_plan: your plan for a milestone.\n- document_patch: a JSON patch (add, remove, replace, move, test) for anything the other tools don't cover, against the version you read.\nYou can never change the title, the members or an agreed goal; the server refuses it.\n\nRepository files: when the project links a repository, it is your working directory, and Read, Glob, Grep, Edit and Write work inside it only. The runner commits and pushes your file edits after the turn, one commit per turn. You cannot run commands or use the web.\n\nDo only what the member asked; when a request is unclear, ask instead of guessing. When you finish, answer the member in a few plain sentences: what you changed, or why you changed nothing.";
+
+PROJECT_TOOLS :: [8] string.["project_get", "project_note", "project_plan", "milestone_status", "milestone_edit", "checklist_status", "goal_propose", "document_patch"];
+PROJECT_ABOUT :: [8] string.[
+  "The project document as JSON, with its version. Read it before changing anything.",
+  "Post a note on the project's thread.",
+  "Post your plan for a milestone on the project's thread.",
+  "Set a milestone's status, with evidence.",
+  "Add, reword, move or carry over a milestone, or add or reword a backlog item. add: text and date (a milestone) or checklist (a backlog item), optional owner. reword: id and text. move and carry: id and the new date (carry notes where it came from).",
+  "Set a checklist item's status, with evidence.",
+  "Propose a new goal, or a change to a goal (give its id). It applies only when every member agrees.",
+  "A JSON patch (RFC 6902: add, remove, replace, move, test) to the project document, against the version you read. Paths are JSON pointers like /days/0/milestones/1/note."];
+PROJECT_SCHEMA :: [8] string.[
+  "{\"type\":\"object\",\"properties\":{}}",
+  "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"The note, 1 to 4000 characters\"}},\"required\":[\"text\"]}",
+  "{\"type\":\"object\",\"properties\":{\"milestone\":{\"type\":\"string\",\"description\":\"The milestone id\"},\"text\":{\"type\":\"string\",\"description\":\"The plan\"}},\"required\":[\"milestone\",\"text\"]}",
+  "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"todo\",\"doing\",\"done\"]},\"evidence\":{\"type\":\"string\",\"description\":\"Why: what was done or seen\"}},\"required\":[\"id\",\"status\"]}",
+  "{\"type\":\"object\",\"properties\":{\"base\":{\"type\":\"integer\",\"description\":\"The document version you read\"},\"action\":{\"type\":\"string\",\"enum\":[\"add\",\"reword\",\"move\",\"carry\"]},\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"date\":{\"type\":\"string\",\"description\":\"YYYY-MM-DD\"},\"checklist\":{\"type\":\"string\",\"description\":\"A checklist id, for a backlog item\"},\"owner\":{\"type\":\"string\"}},\"required\":[\"base\",\"action\"]}",
+  "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"todo\",\"doing\",\"done\"]},\"evidence\":{\"type\":\"string\"}},\"required\":[\"id\",\"status\"]}",
+  "{\"type\":\"object\",\"properties\":{\"base\":{\"type\":\"integer\",\"description\":\"The document version you read\"},\"text\":{\"type\":\"string\"},\"id\":{\"type\":\"string\",\"description\":\"The goal to change, if any\"}},\"required\":[\"base\",\"text\"]}",
+  "{\"type\":\"object\",\"properties\":{\"base\":{\"type\":\"integer\",\"description\":\"The document version you read\"},\"ops\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"op\":{\"type\":\"string\",\"enum\":[\"add\",\"remove\",\"replace\",\"move\",\"test\"]},\"path\":{\"type\":\"string\"},\"from\":{\"type\":\"string\"},\"value\":{}},\"required\":[\"op\",\"path\"]}}},\"required\":[\"base\",\"ops\"]}"];
+FILE_TOOLS :: [5] string.["Read", "Glob", "Grep", "Edit", "Write"];
+DENIED :: [5] string.["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"];
+
+// A path the model may touch: inside the checkout, with no ".." step.
+en_inside :: (path: string, cwd: string) -> bool {
+  if cwd.count == 0 { return false; }
+  for i: 0..<path.count {
+    if path[i] == '.' && i + 1 < path.count && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/') { return false; }
+  }
+  if path.count > 0 && path[0] != '/' { return true; }
+  return path == cwd || (path.count > cwd.count && en_starts(path, cwd) && path[cwd.count] == '/');
+}
+
+// Whether the next stdin line, waited for up to timeout_ms, is a stop.
+en_stop_waiting :: (timeout_ms: int) -> bool {
+  n := eio_read_line(timeout_ms);
+  if n == -1 { return true; }   // the runner is gone
+  if n < 0 { return false; }
+  buf: [64] u8; k := ifx n < 64 then n else 64;
+  for i: 0..<k { buf[i] = cast(u8) eio_line_byte(i); }
+  line := cast(string) buf[0..<k];
+  for i: 0..<k { if i + 6 <= k && line[i..<i + 6] == "\"stop\"" { return true; } }
+  return false;
+}
+
+main :: () {
+  first: [TURN_LINE] u8;
+  n := eio_read_line(60000);
+  out: [65536] u8;
+  if n <= 0 || n > TURN_LINE { en_done(out[..], "failed", "", "the agent got no turn", 0.0); return; }
+  for i: 0..<n { first[i] = cast(u8) eio_line_byte(i); }
+  line := cast(string) first[0..<n];
+  tar: [262144] u8; targ: [1] ClArena; targ[0].buf = tar[..];
+  text := cl_str(targ[..], line, "turn.text");
+  by := cl_str(targ[..], line, "turn.by");
+  model := cl_str(targ[..], line, "model");
+  cwd := cl_str(targ[..], line, "cwd");
+  repo := cl_bool(line, "repo").value;
+  budget := cl_num(line, "budget_usd").value;
+  if text.count == 0 { en_done(out[..], "failed", "", "the turn has no message", 0.0); return; }
+
+  sys_buf: [16384] u8; sys: [1] ClOut; sys[0].buf = sys_buf[..];
+  cl_put(sys[..], SYSTEM);
+  if repo { cl_put(sys[..], "\n\nYour working directory, the repository's checkout: "); cl_put(sys[..], cwd); }
+  else { cl_put(sys[..], "\n\nThis project links no repository, so you have only the project tools."); }
+  cl_put(sys[..], "\nToday is "); cl_put(sys[..], cl_str(targ[..], line, "today")); cl_put(sys[..], " (Chicago).\n");
+
+  // The prompt: the last turns of the conversation, then this message.
+  prompt_buf: [PROMPT_MAX] u8; p: [1] ClOut; p[0].buf = prompt_buf[..];
+  history := cl_raw(line, "history");
+  turns := cl_count(history);
+  start := ifx turns > HISTORY_TURNS then turns - HISTORY_TURNS else 0;
+  har: [131072] u8; harg: [1] ClArena; harg[0].buf = har[..];
+  this_id := cl_int(line, "turn.id").value;
+  said_any := false;
+  for i: start..<turns {
+    raw := cl_json(history, cl_item(history, i));
+    if cl_int(raw, "id").value == this_id { continue; }
+    harg[0].at = 0; harg[0].full = false;
+    if !said_any { cl_put(p[..], "The conversation so far:\n\n"); said_any = true; }
+    t := cl_str(harg[..], raw, "text");
+    a := cl_str(harg[..], raw, "answer");
+    cl_put(p[..], cl_str(harg[..], raw, "by")); cl_put(p[..], ": ");
+    cl_put(p[..], ifx t.count > 3000 then t[0..<3000] else t); cl_put(p[..], "\n");
+    if a.count > 0 { cl_put(p[..], "You: "); cl_put(p[..], ifx a.count > 3000 then a[0..<3000] else a); cl_put(p[..], "\n"); }
+    if cl_bool(raw, "undone").value { cl_put(p[..], "(the members undid that turn)\n"); }
+    cl_put(p[..], "\n");
+  }
+  cl_put(p[..], "Now "); cl_put(p[..], by); cl_put(p[..], " says:\n"); cl_put(p[..], text);
+  if p[0].failed || sys[0].failed { en_done(out[..], "failed", "", "the conversation is too long for one turn", 0.0); return; }
+
+  o: [1] ClOptions;
+  o[0].model = ifx model.count > 0 then model else "claude-sonnet-5-5";
+  o[0].system_prompt = cast(string) sys_buf[0..<sys[0].len];
+  o[0].tools_set = true;
+  if repo { for name: FILE_TOOLS { cl_add_tool(o[..], name); } }
+  for name: DENIED { cl_add_disallowed(o[..], name); }
+  srv := cl_add_server(o[..], "project", "1.0.0");
+  names: [8 * 40] u8;
+  for k: 0..<8 {
+    r := cl_add_server_tool(o[..], srv, PROJECT_TOOLS[k], PROJECT_ABOUT[k], PROJECT_SCHEMA[k]);
+    w: [1] ClOut; w[0].buf = names[k * 40..<(k + 1) * 40];
+    cl_put(w[..], "mcp__project__"); cl_put(w[..], PROJECT_TOOLS[k]);
+    cl_add_allowed(o[..], cast(string) names[k * 40..<k * 40 + w[0].len]);
+  }
+  o[0].permission_handler = true;
+  o[0].max_turns = 40;
+  if budget > 0.0 { o[0].max_budget_usd = budget; o[0].has_max_budget = true; }
+  o[0].persist_session = false;
+  o[0].setting_sources_set = true;
+  if cwd.count > 0 { o[0].cwd = cwd; }
+
+  qline: [CL_LINE_MAX] u8; arena: [262144] u8; qout: [262144] u8; scratch: [196608] u8;
+  q: [1] ClQuery; cl_init(q[..], qline[..], arena[..], qout[..]);
+  q[0].options = o[0];
+  proc: [1] ClProcess;
+  problem := cl_start(q[..], proc[..], cast(string) prompt_buf[0..<p[0].len], false, scratch[..]);
+  if problem.count > 0 { en_done(out[..], "failed", "", problem, 0.0); return; }
+  defer cl_close(proc[..]);
+  en_event(out[..], "working", "text", "reading the project");
+
+  cost := 0.0; status := "failed"; err := "the agent stopped before it finished";
+  mar: [262144] u8; marg: [1] ClArena; marg[0].buf = mar[..];
+  ans_buf: [16384] u8; ans_n := 0;
+  call_n := 0;
+  stopped := false;
+  call_buf: [300000] u8;
+  reply_buf: [TURN_LINE] u8;
+  while true {
+    if en_stop_waiting(0) { stopped = true; break; }
+    ev := cl_next(q[..], proc[..]);
+    if ev.kind == ClEventKind.end { break; }
+    if ev.kind == ClEventKind.failed { err = cl_error(q[..]); break; }
+    if ev.kind == ClEventKind.permission {
+      tool := ev.request.tool_name;
+      marg[0].at = 0; marg[0].full = false;
+      path := cl_str(marg[..], ev.request.input, "file_path");
+      if path.count == 0 { path = cl_str(marg[..], ev.request.input, "path"); }
+      file_tool := false;
+      for name: FILE_TOOLS { if name == tool { file_tool = true; } }
+      if repo && file_tool && (path.count == 0 || en_inside(path, cwd)) { cl_allow(q[..], ev.request.input, ""); }
+      else {
+        cl_deny(q[..], "Only the project tools, and Read, Glob, Grep, Edit and Write inside the checkout, are allowed.", false);
+        en_event(out[..], "session.error", "error", "a tool outside the project was refused");
+      }
+      continue;
+    }
+    if ev.kind == ClEventKind.tool_call {
+      tool := q[0].options.servers[ev.server].tools[ev.tool].name;
+      call_n += 1;
+      c: [1] ClOut; c[0].buf = call_buf[..];
+      cl_put(c[..], "{\"t\":\"call\",\"id\":"); cl_put_int(c[..], call_n);
+      cl_put(c[..], ",\"tool\":"); cl_put_string(c[..], tool);
+      cl_put(c[..], ",\"args\":"); cl_put(c[..], ifx ev.arguments.count > 0 then ev.arguments else "{}"); cl_put(c[..], "}");
+      if c[0].failed { cl_tool_text(q[..], "the arguments are too long", true); continue; }
+      en_send(c[..]);
+      en_tool(out[..], tool, "");
+      // the runner's reply (a stop may come first)
+      got := 0; ok := false;
+      while true {
+        k := eio_read_line(120000);
+        if k < 0 { stopped = true; break; }
+        if k > TURN_LINE { continue; }
+        for i: 0..<k { reply_buf[i] = cast(u8) eio_line_byte(i); }
+        r := cast(string) reply_buf[0..<k];
+        harg[0].at = 0; harg[0].full = false;
+        kind := cl_str(harg[..], r, "t");
+        if kind == "stop" { stopped = true; break; }
+        if kind == "reply" && cl_int(r, "id").value == call_n {
+          got = k; ok = cl_int(r, "status").value == 200; break;
+        }
+      }
+      if stopped { break; }
+      r := cast(string) reply_buf[0..<got];
+      body := cl_raw(r, "body");
+      cl_tool_text(q[..], ifx body.count > 0 then body else "{}", !ok);
+      continue;
+    }
+    if ev.kind != ClEventKind.message { continue; }
+    m := ev.message;
+    marg[0].at = 0; marg[0].full = false;
+    if m.kind == ClKind.assistant {
+      a := cl_assistant_of(marg[..], m);
+      content := cl_raw(a.message, "content");
+      for i: 0..<cl_count(content) {
+        block := cl_json(content, cl_item(content, i));
+        type := cl_str(marg[..], block, "type");
+        if type == "text" {
+          said := cl_str(marg[..], block, "text");
+          if said.count > 0 { en_event(out[..], "agent.message", "text", ifx said.count > 4000 then said[0..<4000] else said); }
+        } else if type == "tool_use" {
+          name := cl_str(marg[..], block, "name");
+          if en_starts(name, "mcp__project__") {
+            short := name[14..<name.count];
+            en_event(out[..], "working", "text", short);
+            continue;
+          }
+          path := cl_str(marg[..], block, "input.file_path");
+          if path.count == 0 { path = cl_str(marg[..], block, "input.pattern"); }
+          detail := en_shown(path, cwd, "");
+          en_tool(out[..], name, detail);
+          verb := ifx name == "Edit" || name == "Write" then "editing " else ifx name == "Read" then "reading " else "searching ";
+          wb: [600] u8; w: [1] ClOut; w[0].buf = wb[..];
+          cl_put(w[..], verb); cl_put(w[..], ifx detail.count > 400 then detail[0..<400] else detail);
+          if !w[0].failed { en_event(out[..], "working", "text", cast(string) wb[0..<w[0].len]); }
+        }
+      }
+      continue;
+    }
+    if m.kind == ClKind.result {
+      r := cl_result_of(marg[..], m);
+      cost = r.total_cost_usd;
+      if r.kind == ClResultKind.success && !r.is_error {
+        ans_n = cl_copy(ans_buf[..], r.result);
+        status = "done"; err = "";
+      } else if r.kind == ClResultKind.error_max_budget_usd {
+        err = "the turn reached today's spending limit";
+      } else if r.kind == ClResultKind.error_max_turns {
+        err = "the turn took too many steps; ask for something smaller";
+      } else {
+        err = "the model returned an error";
+      }
+    }
+  }
+  if stopped { r := cl_kill(proc[..]); en_done(out[..], "stopped", "", "", cost); return; }
+  en_done(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost);
+}

@@ -129,19 +129,58 @@ project tools and the permission callback. They speak JSON lines:
 
 | Direction | Line |
 | --- | --- |
-| runner → engine | `{"t":"turn","slug","turn":{id,kind,text,by},"history","version","model","budget_usd","repo"}` |
-| engine → runner | `{"t":"call","id","method","op","body"}`, op one of `state`, `push`, `status`, `note`; the runner adds the turn and signs it |
+| runner → engine | `{"t":"turn","slug","turn":{id,kind,text,by},"history","version","model","budget_usd","repo","cwd","today"}` |
+| engine → runner | `{"t":"call","id","tool","args"}`, one of the project tools; the runner makes it one oa-api op, adds the turn and signs it |
 | runner → engine | `{"t":"reply","id","status","body"}` |
 | engine → runner | `{"t":"event","type","data"}`: `working`, `agent.message`, `agent.tool_use`, `session.error` |
 | runner → engine | `{"t":"stop"}` when a member pressed STOP |
 | engine → runner | `{"t":"done","status","answer","error","cost_usd"}` |
 
+The engine (`coax/web/agent/turn.coax`, with `engine-io.c` for its stdin)
+serves the project tools as an in-process SDK MCP server named `project`.
+The runner maps each to oa-api:
+
+| Tool | oa-api op |
+| --- | --- |
+| `project_get` | `state` |
+| `project_note`, `project_plan` | `note` (kind `note` or `plan`) |
+| `milestone_status`, `checklist_status` | `status`, with the evidence as the note |
+| `milestone_edit` | `milestone_edit`: add (a dated milestone, or a backlog item in a checklist), reword, move, carry over |
+| `goal_propose` | `goal_propose`: a new proposed goal, or a change to a goal; a change to an agreed goal is a new proposed goal with `replaces`, and the agreed goal stays |
+| `document_patch` | `patch`: RFC 6902 add, remove, replace, move and test |
+
+`milestone_edit`, `goal_propose` and `patch` (migration 0016) carry the
+version the agent read (`base`), build the new document and save it through
+`push`, so the same rules hold: only an approved project's runner or agent,
+only inside a running turn, never the title, the members or an agreed goal,
+and each edit recorded under the turn. The CLI's `Read`, `Glob`, `Grep`,
+`Edit` and `Write` are offered only when the project links a repository, and
+the permission callback allows them only for paths inside the checkout; Bash,
+web and Task are disallowed, no settings files load and no session is saved.
+Milestones are todo, doing or done: the document has no dropped status yet.
+
 Events go to oa-api in batches every 4 seconds, and each batch's answer
-says whether STOP was pressed. The runner kills the engine's process group
-30 seconds after a STOP, or after 15 minutes. `coax/web/agent/test-engine.py`
-is a stand-in engine for the runner's checks
-(`coax/web/api/test_private_runner.py`). The runner's keys are listed in
+says whether STOP was pressed. The engine stops at the next event, and the
+runner kills its process group 30 seconds after a STOP, or after 15
+minutes. A turn that doesn't end done commits nothing.
+`coax/web/agent/test-engine.py` is a stand-in engine for the runner's checks
+(`coax/web/api/test_private_runner.py`); `coax/web/api/test_private_tools.py`
+checks the document tools. The runner's keys are listed in
 `coax/web/api/runners.conf` so their writes are limited at 600 a minute.
+
+## Deploying and checking it
+
+- `coax/web/agent/deploy.sh` builds one image and deploys `oa-agent-staging`
+  (Claude Haiku 5.5) and `oa-agent` (Claude Sonnet 5.5): scale to zero, one
+  instance, invoked only by oa-api's service account. Which projects it
+  serves, their repositories and deploy-key secrets come from Secret Manager
+  at deploy time (`oa-agent-repos-staging`, `oa-agent-repos`), never from
+  this repository. Then `coax/web/api/deploy.sh` points oa-api at it.
+- `coax/web/agent/live-check.py` checks a deployed agent as a member would:
+  `tools` asks for every tool and a file edit and checks the calls, the
+  version, the edit log, the pushed commit and that UNDO TURN puts both back;
+  `one` is a single change and its undo; `refused` checks a project without
+  the agent answers 404 like no project; `capped` checks the day's limit.
 
 ## The Coax Claude Agent SDK
 

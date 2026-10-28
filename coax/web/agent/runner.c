@@ -6,19 +6,24 @@
 //
 //   an ask:  a fresh shallow checkout of the linked repository's main in a new
 //            directory; the engine runs the model there; every changed file
-//            becomes one commit, "agent turn <id>: <first line>", rebased on
+//            becomes one commit, "agent turn <id>: <first line>" (only when the
+//            turn ended done), rebased on
 //            main and pushed. A conflict with a member's commit is not pushed:
 //            the turn says so and shows the diff's files.
 //   an undo: git revert of the turn's commit, pushed (oa-api has already put
 //            the document back).
 //
-// The engine (OA_AGENT_ENGINE) is the model's side: the Coax Claude Agent SDK
-// driving the claude CLI with the project's tools. It runs in the checkout
-// with only ANTHROPIC_API_KEY, HOME and PATH, and speaks JSON lines:
-//   in   {"t":"turn", "turn":{...}, "history":[...], "version":N, "model":M, "budget_usd":X, "slug":S}
+// The engine (OA_AGENT_ENGINE, coax/web/agent/turn.coax) is the model's side:
+// the Coax Claude Agent SDK driving the claude CLI with the project tools (in-
+// process SDK MCP tools) and Read, Glob, Grep, Edit and Write inside the
+// checkout. It runs there with only ANTHROPIC_API_KEY, HOME, PATH and
+// OA_AGENT_MODEL, and speaks JSON lines:
+//   in   {"t":"turn", "turn":{...}, "history":[...], "version":N, "model":M, "budget_usd":X, "slug":S, "repo":B, "cwd":DIR}
 //        {"t":"reply", "id":K, "status":S, "body":B}     the answer to a call
 //        {"t":"stop"}                                     a member pressed STOP
-//   out  {"t":"call", "id":K, "method":"GET"|"POST", "op":"state"|"push"|"status"|"note", "body":{...}}
+//   out  {"t":"call", "id":K, "tool":T, "args":{...}}    a project tool; the runner makes it one oa-api op:
+//          project_get → state; project_note, project_plan → note; milestone_status, checklist_status → status;
+//          milestone_edit, goal_propose → the op of that name; document_patch → patch
 //        {"t":"event", "type":T, "data":{...}}            working, agent.message, agent.tool_use, session.error
 //        {"t":"done", "status":"done"|"failed"|"stopped", "answer":A, "error":E, "cost_usd":C}
 // The runner adds the turn to every call and signs it; events go to oa-api in
@@ -350,8 +355,8 @@ static bool engine_start(engine *e, const char *dir, const char *home) {
     snprintf(key, sizeof key, "ANTHROPIC_API_KEY=%s", anthropic_key);
     snprintf(h, sizeof h, "HOME=%s", home);
     snprintf(model, sizeof model, "OA_AGENT_MODEL=%s", env("OA_AGENT_MODEL", "claude-sonnet-5-5"));
-    char path[] = "PATH=/usr/local/bin:/usr/bin:/bin";
-    char *envp[] = {key, h, path, model, NULL};
+    char path[] = "PATH=/usr/local/bin:/usr/bin:/bin", quiet[] = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", noup[] = "DISABLE_AUTOUPDATER=1";
+    char *envp[] = {key, h, path, model, quiet, noup, NULL};
     const char *argv[] = {env("OA_AGENT_ENGINE", "/usr/local/bin/oa-turn"), NULL};
     execve(argv[0], (char *const *)argv, envp);
     _exit(127);
@@ -407,23 +412,45 @@ static void run_engine(const char *slug, const char *turn_json, long long turn, 
         const char *l = line.p;
         char *t = jstr(l, "t", "");
         if (!strcmp(t, "call")) {
-          char *id = jraw(l, "id", "0"), *method = jstr(l, "method", "GET"), *op = jstr(l, "op", ""), *body = jraw(l, "body", "{}");
-          text reply = {0}, out = {0};
+          // a project tool: one oa-api op, signed with the runner's key, with the turn added
+          char *id = jraw(l, "id", "0"), *tool = jstr(l, "tool", ""), *args = jraw(l, "args", "{}");
+          text reply = {0}, out = {0}, b = {0};
           long st = 0;
-          if (strcmp(op, "state") && strcmp(op, "push") && strcmp(op, "status") && strcmp(op, "note")) { puts_(&out, "{\"error\":\"no such tool\"}"); st = 400; }
-          else if (!strcmp(method, "GET")) st = api("GET", slug, op, NULL, &out);
-          else {
-            // the turn goes with every write
-            text b = {0}; const char *end = strrchr(body, '}');
-            put(&b, body, end ? (size_t)(end - body) : 1);
-            putf(&b, "%s\"turn\":%lld}", (end && skip_ws(body + 1) != end) ? "," : "", turn);
-            st = api("POST", slug, op, b.p, &out);
-            free(b.p);
+          const char *op = NULL;
+          if (!strcmp(tool, "project_get")) op = "state";
+          else if (!strcmp(tool, "project_note") || !strcmp(tool, "project_plan")) {
+            op = "note";
+            char *tx = jstr(args, "text", ""), *ms = jstr(args, "milestone", "");
+            text full = {0};
+            if (!strcmp(tool, "project_plan") && *ms) { puts_(&full, ms); puts_(&full, ": "); }
+            puts_(&full, tx);
+            puts_(&b, "{\"kind\":"); putq(&b, !strcmp(tool, "project_plan") ? "plan" : "note");
+            puts_(&b, ",\"by\":\"Project agent\",\"text\":"); putq(&b, full.p ? full.p : "");
+            putf(&b, ",\"turn\":%lld}", turn);
+            free(tx); free(ms); free(full.p);
+          } else if (!strcmp(tool, "milestone_status") || !strcmp(tool, "checklist_status")) {
+            op = "status";
+            char *mid = jstr(args, "id", ""), *ss = jstr(args, "status", ""), *ev = jstr(args, "evidence", "");
+            puts_(&b, "{\"id\":"); putq(&b, mid); puts_(&b, ",\"status\":"); putq(&b, ss);
+            if (*ev) { puts_(&b, ",\"note\":"); putq(&b, ev); }
+            putf(&b, ",\"by\":\"Project agent\",\"turn\":%lld}", turn);
+            free(mid); free(ss); free(ev);
+          } else if (!strcmp(tool, "milestone_edit") || !strcmp(tool, "goal_propose") || !strcmp(tool, "document_patch")) {
+            op = !strcmp(tool, "document_patch") ? "patch" : tool;
+            const char *end = strrchr(args, '}');
+            if (*skip_ws(args) == '{' && end) {
+              put(&b, args, (size_t)(end - args));
+              putf(&b, "%s\"turn\":%lld}", skip_ws(skip_ws(args) + 1) != end ? "," : "", turn);
+            }
           }
+          if (!op) { puts_(&out, "{\"error\":\"no such tool\"}"); st = 400; }
+          else if (!strcmp(op, "state")) st = api("GET", slug, "state", NULL, &out);
+          else if (!b.n) { puts_(&out, "{\"error\":\"the arguments are not an object\"}"); st = 400; }
+          else st = api("POST", slug, op, b.p, &out);
           putf(&reply, "{\"t\":\"reply\",\"id\":%s,\"status\":%ld,\"body\":%s}", id, st, out.n && (out.p[0] == '{' || out.p[0] == '[') ? out.p : "{}");
           engine_send(&e, reply.p);
-          say("turn %lld tool %s %ld", turn, op, st);
-          free(reply.p); free(out.p); free(id); free(method); free(op); free(body);
+          say("turn %lld tool %s %ld", turn, op ? op : "?", st);
+          free(reply.p); free(out.p); free(b.p); free(id); free(tool); free(args);
         } else if (!strcmp(t, "event")) {
           char *type = jstr(l, "type", ""), *data = jraw(l, "data", "{}");
           add_event(&ev, slug, turn, type, data);
@@ -559,16 +586,20 @@ static void one_turn(const char *slug, const char *next) {
     }
   } else mkdir(co, 0700);
   {
-    // the engine's first line: the turn and what next said
+    // the engine's first line: the turn, what next said, and where the checkout is
     text first = {0};
+    char home[1300];
     char *history = jraw(next, "history", "[]"), *version = jraw(next, "version", "0"), *spent = jraw(next, "spent", "0"), *cap = jraw(next, "cap", "10");
-    putf(&first, "{\"t\":\"turn\",\"slug\":\"%s\",\"turn\":%s,\"history\":%s,\"version\":%s,\"model\":\"%s\",\"budget_usd\":%.4f,\"repo\":%s}",
+    putf(&first, "{\"t\":\"turn\",\"slug\":\"%s\",\"turn\":%s,\"history\":%s,\"version\":%s,\"model\":\"%s\",\"budget_usd\":%.4f,\"repo\":%s,\"cwd\":",
          slug, turn_json, history, version, env("OA_AGENT_MODEL", "claude-sonnet-5-5"), atof(cap) - atof(spent), has_repo ? "true" : "false");
-    char home[1300]; snprintf(home, sizeof home, "%s/home", dir); mkdir(home, 0700);
+    putq(&first, co);
+    char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
+    putf(&first, ",\"today\":\"%s\"}", today);
+    snprintf(home, sizeof home, "%s/home", dir); mkdir(home, 0700);
     run_engine(slug, first.p, id, co, home, &answer, &error, &cost, status);
     free(first.p); free(history); free(version); free(spent); free(cap);
   }
-  if (has_repo) {
+  if (has_repo && !strcmp(status, "done")) {
     out.n = 0;
     git(co, &out, "status", "--porcelain", NULL, NULL, NULL, NULL);
     if (out.n > 0) {
@@ -665,6 +696,7 @@ static void serve(int fd) {
 }
 
 int main(int argc, char **argv) {
+  setenv("TZ", "America/Chicago", 1); tzset();   // "today" in the engine's first line
   const char *listen_at = NULL;
   for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_at = argv[++i];
   signal(SIGPIPE, SIG_IGN);
