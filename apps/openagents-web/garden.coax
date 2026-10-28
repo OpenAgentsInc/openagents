@@ -1,0 +1,594 @@
+// The Garden, openagents.com/realm/garden: a small open-air Verse realm that
+// shows the engine's world pieces at work. You walk it with the engine's
+// controller (verse/player.coax, linked as its own library, as the realm
+// links it) and see it through the free orbit (verse/camera.coax Orbit),
+// which turns with a mouse drag, the arrow keys or your right thumb, zooms
+// with the wheel, swings in behind you as you walk, and pulls in where a
+// tree or a hedge is in the way.
+//
+// This file is the page: the garden's layout, the controls, the HUD, and
+// what the scene draws (garden.wgsl): a ground of cells (store 0, its
+// heights) and every object as a shape (store 1: a box, a sphere, a
+// cylinder or a cone, each with its place, size and colour). garden-face.c
+// binds it for the browser and runs the player between its calls.
+//   coax/bin/coax test apps/openagents-web/garden.coax
+
+#load "font.coax";
+#load "analytics.coax";
+#load "../../verse/camera.coax";
+
+VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 12000;
+PLATES :: 12;
+// The uniforms: width, height, time, fade, still, plates, dpr, 0; the view's
+// four rows; the eye; the sun; the ground (cells a side, cell size, its
+// west and south edge); SHADOWS blobs (x, z, radius, strength); PATHS path
+// pieces (ax, az, bx, bz) and their count and half width; then the plates,
+// x0, y0, x1, y1 and alpha, look, 0, 0 each.
+SHADOWS :: 16;
+PATHS :: 32;
+U_VIEW :: 8; U_EYE :: 24; U_SUN :: 28; U_GROUND :: 32; U_SHADOW :: 36;
+U_PATH :: U_SHADOW + SHADOWS * 4;
+U_PATH_INFO :: U_PATH + PATHS * 4;
+U_PLATE :: U_PATH_INFO + 4;
+UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
+
+// The ground: CELLS a side of CELL metres, centred on the origin.
+CELLS :: 64;
+CELL :: 1.5;
+GROUND_POINTS :: (CELLS + 1) * (CELLS + 1);
+EDGE :: -48.0;         // CELLS * CELL / 2, west and south
+
+// The shapes garden.wgsl draws, and how many of each one frame holds.
+SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
+SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];   // the ground's cell, then each shape
+SLOTS :: [5] int.[0, 128, 160, 48, 32];
+SLOT_AT :: [5] int.[0, 0, 128, 288, 336];
+OBJECTS :: 368;
+OBJECT_FLOATS :: 16;   // rows r0, r1, r2 (an affine map from the shape), colour and shape + 8 * look
+LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4;
+DRAWS :: 5;
+
+WALLS :: 48;           // the player's walls (player.coax WALL numbers each)
+SPHERES :: 32;         // the camera's round scenery (camera.coax SPHERE numbers each)
+BOXES :: 48;           // and its boxes
+
+// Keys held, a bit each.
+HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
+HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
+KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+
+LOOK_DRAG :: 0.0055;   // radians per CSS pixel a mouse drag turns
+WHEEL_ZOOM :: 0.006;   // metres per CSS pixel of wheel
+
+PARCH_R :: 0.93; PARCH_G :: 0.9; PARCH_B :: 0.82;
+GOLD_R :: 0.86; GOLD_G :: 0.72; GOLD_B :: 0.42;
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+Garden :: struct {
+  started: bool;
+  time: f64;
+  width: f32; height: f32; dpr: f32;
+  touch: bool;              // a finger has touched the page
+  orbit: Orbit;
+  held: int;
+  drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32;
+  look_yaw: f32; look_pitch: f32;   // a drag's turn since the last frame
+  wheel: f32;
+  // What the face hands the player this frame.
+  key_x: f32; key_y: f32; run: bool; jump: bool;
+  // You, as the player last drew you.
+  feet: Point; face: f32; act: int; stride: f32;
+  // The scene.
+  heights: [GROUND_POINTS] f32;
+  objects: [OBJECTS * OBJECT_FLOATS] f32;
+  counts: [5] int;
+  draws: [DRAWS * 4] u32;
+  walls: [WALLS * 6] f32; wall_n: int;
+  spheres: [SPHERES * 4] f32; sphere_n: int;
+  boxes: [BOXES * 6] f32; box_n: int;
+  shadow_n: int;
+  plate_n: int;
+}
+
+// ---- the garden's layout
+
+// Trees: x, z, trunk height, canopy radius.
+TREES :: 10;
+TREE :: [40] f32.[
+  -9, 4, 2.4, 1.7,   -12, -6, 2.0, 1.5,   10, 8, 2.6, 1.9,   13, -3, 2.2, 1.6,   4, 15, 2.4, 1.8,
+  -5, -16, 2.1, 1.5,  17, 13, 2.8, 2.0,   -16, 11, 2.5, 1.8,  8, -13, 2.2, 1.6,  -20, -2, 2.6, 1.9
+];
+// Hedges: min x, z, max x, z, height.
+HEDGES :: 7;
+HEDGE :: [35] f32.[
+  -6.5, 5.2, -2.2, 6.0, 1.1,    2.2, 5.2, 6.5, 6.0, 1.1,
+  -6.5, -6.0, -2.2, -5.2, 1.1,  2.2, -6.0, 6.5, -5.2, 1.1,
+  -22, 19, -8, 20, 1.7,          8, 19, 22, 20, 1.7,
+  20, -10, 21, 4, 1.5
+];
+// Flower beds: x, z, radius, then a colour 0 red, 1 gold, 2 white.
+BEDS :: 6;
+BED :: [24] f32.[ -4, 9, 1.4, 0,   4, 9, 1.4, 1,   -9, -9, 1.2, 2,   11, 2, 1.3, 0,   -14, 4, 1.1, 1,   6, -9, 1.2, 2 ];
+FLOWER_RGB :: [9] f32.[0.86, 0.2, 0.22,  0.95, 0.74, 0.2,  0.95, 0.94, 0.9];
+SPAWN_X :: 0.0; SPAWN_Z :: -11.0;
+
+// ---- small things
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { return false; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
+  i: Ink;
+  i.core = 0.55 * k; i.light = light; i.glow = 1.2 * k; i.red = red; i.green = green; i.blue = blue; i.mode = 0; i.scale = k;
+  return i;
+}
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+
+// ---- the page's state
+
+coaxial_garden_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_garden_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_garden_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+garden_start :: (s: [] Garden) {
+  s[0].started = true;
+  s[0].feet = v3(f32(SPAWN_X), 0, f32(SPAWN_Z));
+  s[0].orbit = verse_orbit_start(s[0].feet, 0);
+  for i: 0..<GROUND_POINTS { s[0].heights[i] = 0; }
+  build_scenery(s);
+}
+
+// The player's walls and the camera's scenery, from the layout.
+build_scenery :: (s: [] Garden) {
+  w := 0; sp := 0; bx := 0;
+  for t: 0..<TREES {
+    x := TREE[t * 4]; z := TREE[t * 4 + 1]; h := TREE[t * 4 + 2]; r := TREE[t * 4 + 3];
+    if w < WALLS { put6(s[0].walls[..], w, x - 0.28, 0, z - 0.28, x + 0.28, h + r, z + 0.28); w += 1; }
+    if bx < BOXES { put6(s[0].boxes[..], bx, x - 0.25, 0, z - 0.25, x + 0.25, h, z + 0.25); bx += 1; }
+    if sp < SPHERES { k := sp * 4; s[0].spheres[k] = x; s[0].spheres[k + 1] = h + r * 0.75; s[0].spheres[k + 2] = z; s[0].spheres[k + 3] = r * 0.9; sp += 1; }
+  }
+  for i: 0..<HEDGES {
+    k := i * 5;
+    if w < WALLS { put6(s[0].walls[..], w, HEDGE[k], 0, HEDGE[k + 1], HEDGE[k + 2], HEDGE[k + 4], HEDGE[k + 3]); w += 1; }
+    if bx < BOXES { put6(s[0].boxes[..], bx, HEDGE[k], 0, HEDGE[k + 1], HEDGE[k + 2], HEDGE[k + 4], HEDGE[k + 3]); bx += 1; }
+  }
+  // The pedestal in the middle.
+  if w < WALLS { put6(s[0].walls[..], w, -0.45, 0, -0.45, 0.45, 0.9, 0.45); w += 1; }
+  s[0].wall_n = w; s[0].sphere_n = sp; s[0].box_n = bx;
+}
+
+put6 :: (out: [] f32, i: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
+  k := i * 6;
+  if k + 6 > out.count { return; }
+  out[k] = a; out[k + 1] = b; out[k + 2] = c; out[k + 3] = d; out[k + 4] = e; out[k + 5] = f;
+}
+
+// The walls the player walks among, for the face.
+garden_walls :: (s: [] Garden) -> int #export_c { if !s[0].started { garden_start(s); } return s[0].wall_n; }
+garden_spawn :: (s: [] Garden) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
+
+// ---- the controls
+
+hold_bit :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return HOLD_FORWARD; }
+  if key == 's' || key == 'S' { return HOLD_BACK; }
+  if key == 'a' || key == 'A' { return HOLD_LEFT; }
+  if key == 'd' || key == 'D' { return HOLD_RIGHT; }
+  if key == KEY_SHIFT { return HOLD_RUN; }
+  if key == ' ' { return HOLD_JUMP; }
+  if key == KEY_LEFT || key == 'q' || key == 'Q' { return HOLD_TURN_LEFT; }
+  if key == KEY_RIGHT || key == 'e' || key == 'E' { return HOLD_TURN_RIGHT; }
+  if key == KEY_UP { return HOLD_TILT_UP; }
+  if key == KEY_DOWN { return HOLD_TILT_DOWN; }
+  return 0;
+}
+
+garden_key :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
+  if !s[0].started { garden_start(s); }
+  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
+  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  s[0].held = s[0].held | b;
+  return true;
+}
+
+garden_key_up :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  if s[0].held & b != 0 { s[0].held = s[0].held - b; }
+  return true;
+}
+
+garden_blur :: (s: [] Garden) #export_c { s[0].held = 0; s[0].drag_on = false; }
+
+// A mouse drag turns the camera; a finger is the face's (the sticks), so
+// this says it isn't used.
+garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { garden_start(s); }
+  if kind != 0 { s[0].touch = true; return false; }
+  k := hi(s[0].dpr, 0.5);
+  if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; return true; }
+  if !s[0].drag_on || id != s[0].drag_id { return false; }
+  if phase == 1 {
+    s[0].look_yaw -= (x - s[0].drag_x) / k * f32(LOOK_DRAG);
+    s[0].look_pitch -= (y - s[0].drag_y) / k * f32(LOOK_DRAG);
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  s[0].drag_on = false;
+  return true;
+}
+
+garden_wheel :: (s: [] Garden, dy: f32) #export_c {
+  if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
+}
+
+axis :: (held: int, plus: int, minus: int) -> f32 {
+  a := 0.0f32;
+  if held & plus != 0 { a += 1; }
+  if held & minus != 0 { a -= 1; }
+  return a;
+}
+
+// Before the player moves: what the keys say, and the camera's turn, so
+// the player walks the way the camera looks. dyaw and dpitch are a
+// thumb's turn (grid.coax Sticks).
+garden_controls :: (s: [] Garden, dt: f32, dyaw: f32, dpitch: f32) #export_c {
+  if !s[0].started { garden_start(s); }
+  h := s[0].held;
+  s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
+  s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
+  s[0].run = h & HOLD_RUN != 0;
+  s[0].jump = h & HOLD_JUMP != 0;
+  o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
+  o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
+  s[0].orbit = o;
+  s[0].look_yaw = 0; s[0].look_pitch = 0;
+}
+
+// The yaw the player's controller reads its camera by (player.coax theta:
+// the eye's angle round you, opposite the way it looks).
+garden_player_theta :: (s: [] Garden) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
+
+// ---- the scene
+
+// A shape at centre, turned yaw about +Y then tilt about its own +X,
+// sized sx, sy, sz (the shape is a unit: a cube, a sphere, a cylinder or
+// a cone one metre across).
+shape :: (s: [] Garden, kind: int, look: int, centre: Point, yaw: f32, tilt: f32, sx: f32, sy: f32, sz: f32,
+          red: f32, green: f32, blue: f32) {
+  if kind < 1 || kind > 4 { return; }
+  n := s[0].counts[kind];
+  if n >= SLOTS[kind] { return; }
+  s[0].counts[kind] = n + 1;
+  o := (SLOT_AT[kind] + n) * OBJECT_FLOATS;
+  cy := cos(yaw); sy_ := sin(yaw); ct := cos(tilt); st := sin(tilt);
+  // Columns: Ry(yaw) Rx(tilt) times the axes, scaled.
+  c0 := v3(cy * sx, 0, -sy_ * sx);
+  c1 := v3(sy_ * st * sy, ct * sy, cy * st * sy);
+  c2 := v3(sy_ * ct * sz, -st * sz, cy * ct * sz);
+  s[0].objects[o] = c0.x; s[0].objects[o + 1] = c1.x; s[0].objects[o + 2] = c2.x; s[0].objects[o + 3] = centre.x;
+  s[0].objects[o + 4] = c0.y; s[0].objects[o + 5] = c1.y; s[0].objects[o + 6] = c2.y; s[0].objects[o + 7] = centre.y;
+  s[0].objects[o + 8] = c0.z; s[0].objects[o + 9] = c1.z; s[0].objects[o + 10] = c2.z; s[0].objects[o + 11] = centre.z;
+  s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
+  s[0].objects[o + 15] = f32(kind + 8 * look);
+}
+
+// A soft shadow on the ground under something.
+shadow :: (s: [] Garden, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) {
+  n := s[0].shadow_n;
+  if n >= SHADOWS { return; }
+  k := U_SHADOW + n * 4;
+  u[k] = x; u[k + 1] = z; u[k + 2] = radius; u[k + 3] = strength;
+  s[0].shadow_n = n + 1;
+}
+
+ground_at :: (s: [] Garden, x: f32, z: f32) -> f32 { return 0; }
+
+scenery :: (s: [] Garden, u: [] f32) {
+  for t: 0..<TREES {
+    x := TREE[t * 4]; z := TREE[t * 4 + 1]; h := TREE[t * 4 + 2]; r := TREE[t * 4 + 3];
+    g := ground_at(s, x, z);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + h * 0.5, z), 0, 0, 0.42, h, 0.42, 0.36, 0.25, 0.16);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.7, z), f32(t), 0, r * 2, r * 1.8, r * 2, 0.24, 0.45 + 0.03 * f32(t % 3), 0.2);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.5, g + h + r * 0.25, z - r * 0.3), 0, 0, r * 1.3, r * 1.2, r * 1.3, 0.28, 0.5, 0.22);
+    shadow(s, u, x, z, r * 1.3, 0.55);
+  }
+  for i: 0..<HEDGES {
+    k := i * 5;
+    x0 := HEDGE[k]; z0 := HEDGE[k + 1]; x1 := HEDGE[k + 2]; z1 := HEDGE[k + 3]; h := HEDGE[k + 4];
+    shape(s, SHAPE_BOX, LOOK_LEAVES, v3((x0 + x1) / 2, h / 2, (z0 + z1) / 2), 0, 0, x1 - x0, h, z1 - z0, 0.2, 0.38, 0.17);
+  }
+  for b: 0..<BEDS {
+    x := BED[b * 4]; z := BED[b * 4 + 1]; r := BED[b * 4 + 2]; c := cast(int) BED[b * 4 + 3];
+    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, 0.06, z), 0, 0, r * 2, 0.16, r * 2, 0.36, 0.27, 0.2);
+    for f: 0..<9 {
+      a := f32(f) * 2.399 + f32(b);
+      d := r * 0.8 * sqrt((f32(f) + 0.5) / 9);
+      fx := x + cos(a) * d; fz := z + sin(a) * d;
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(fx, 0.32, fz), a, 0, 0.035, 0.4, 0.035, 0.25, 0.5, 0.2);
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(fx, 0.55, fz), 0, 0, 0.2, 0.16, 0.2, FLOWER_RGB[c * 3], FLOWER_RGB[c * 3 + 1], FLOWER_RGB[c * 3 + 2]);
+    }
+  }
+  // The pedestal in the middle of the plaza.
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(0, 0.45, 0), 0, 0, 0.8, 0.9, 0.8, 0.72, 0.68, 0.6);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(0, 0.93, 0), 0, 0, 0.95, 0.08, 0.95, 0.78, 0.74, 0.66);
+  shadow(s, u, 0, 0, 0.8, 0.5);
+}
+
+// You: a figure in a blue coat, its legs and arms swinging with your stride.
+figure :: (s: [] Garden, u: [] f32, feet: Point, face: f32, stride: f32, act: int) {
+  swing := ifx act == 1 || act == 2 then sin(stride * 2.4) * (ifx act == 2 then 0.75f32 else 0.5f32) else 0.0f32;
+  if act == 3 { swing = 0.5; }
+  bob := ifx act == 1 || act == 2 then abs(cos(stride * 2.4)) * 0.05 else 0.0f32;
+  base := add(feet, v3(0, bob, 0));
+  right := v3(-cos(face), 0, sin(face));
+  hip := add(base, v3(0, 0.82, 0));
+  for side: 0..<2 {
+    sign := ifx side == 0 then 1.0f32 else -1.0f32;
+    leg := add(hip, times(right, 0.11 * sign));
+    a := swing * sign;
+    // A limb hangs from its top: its centre is half its length down the swung line.
+    down := v3(sin(face) * sin(a), -cos(a), cos(face) * sin(a));
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(leg, times(down, 0.4)), face, a, 0.15, 0.8, 0.17, 0.22, 0.2, 0.26);
+    shoulder := add(add(base, v3(0, 1.38, 0)), times(right, 0.3 * sign));
+    arm := v3(sin(face) * sin(-a * 0.8), -cos(a * 0.8), cos(face) * sin(-a * 0.8));
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(shoulder, times(arm, 0.32)), face, -a * 0.8, 0.12, 0.64, 0.13, 0.2, 0.36, 0.62);
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, add(shoulder, times(arm, 0.66)), 0, 0, 0.12, 0.12, 0.12, 0.93, 0.76, 0.62);
+  }
+  shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(base, v3(0, 1.12, 0)), face, 0, 0.52, 0.64, 0.36, 0.2, 0.38, 0.66);
+  shape(s, SHAPE_SPHERE, LOOK_MATTE, add(base, v3(0, 1.43, 0)), face, 0, 0.56, 0.2, 0.38, 0.2, 0.38, 0.66);
+  head := add(base, v3(0, 1.66, 0));
+  shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, 0.36, 0.4, 0.36, 0.93, 0.76, 0.62);
+  shape(s, SHAPE_SPHERE, LOOK_MATTE, add(head, add(v3(0, 0.08, 0), times(v3(sin(face), 0, cos(face)), -0.04))), face, 0, 0.39, 0.3, 0.39, 0.3, 0.2, 0.12);
+  shadow(s, u, feet.x, feet.z, 0.45, 0.6);
+}
+
+// The camera as clip-space rows (WebGPU: depth 0 near to 1 far).
+NEAR :: 0.1; FAR :: 220.0;
+view :: (shot: Shot, width: f32, height: f32, u: [] f32, at: int) {
+  f := unit_or(sub(shot.at, shot.eye), v3(0, 0, 1));
+  r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
+  up := cross(r, f);
+  aspect := width / hi(height, 1);
+  fy := clamp(aspect * 1.25, 0.95, 1.9);
+  fx := fy / aspect;
+  depth := f32(FAR / (FAR - NEAR));
+  e := shot.eye;
+  rows := [16] f32.[
+    r.x * fx, r.y * fx, r.z * fx, -dot(r, e) * fx,
+    up.x * fy, up.y * fy, up.z * fy, -dot(up, e) * fy,
+    f.x * depth, f.y * depth, f.z * depth, (-dot(f, e) - f32(NEAR)) * depth,
+    f.x, f.y, f.z, -dot(f, e)
+  ];
+  for i: 0..<16 { u[at + i] = rows[i]; }
+}
+
+// Where the horizon crosses the screen, in pixels down: the sky's
+// gradient starts there.
+horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
+  f := sub(shot.at, shot.eye); f.y = 0;
+  far := add(shot.eye, times(unit_or(f, v3(0, 0, 1)), 1000));
+  cy := u[U_VIEW + 4] * far.x + u[U_VIEW + 5] * far.y + u[U_VIEW + 6] * far.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * far.x + u[U_VIEW + 13] * far.y + u[U_VIEW + 14] * far.z + u[U_VIEW + 15];
+  if !(cw > 0.001) { return 0; }
+  return (1 - cy / cw) * 0.5 * height;
+}
+
+// How far along the camera's ray it may go before the ground: the eye
+// keeps half a metre above it.
+ground_room :: (s: [] Garden, r: OrbitRay) -> f32 {
+  if r.dir.y >= 0 { return r.far; }
+  above := r.from.y - ground_at(s, r.from.x, r.from.z) - 0.5;
+  return hi(above / -r.dir.y, 0);
+}
+
+// The free orbit this frame: it follows you (feet as drawn) and swings in
+// behind the way you walk, then stops short of the trees, the hedges and
+// the ground along its line.
+camera_frame :: (s: [] Garden, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
+  speed := sqrt(vx * vx + vz * vz);
+  o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  room := verse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
+  room = lo(room, ground_room(s, verse_orbit_ray(o)));
+  o = verse_orbit_limit(o, room, dt);
+  s[0].orbit = o;
+  return verse_orbit_shot(o);
+}
+
+// ---- the HUD
+
+plate :: (s: [] Garden, u: [] f32, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  k := U_PLATE + n * 8;
+  u[k] = b.x0; u[k + 1] = b.y0; u[k + 2] = b.x1; u[k + 3] = b.y1;
+  u[k + 4] = alpha; u[k + 5] = look; u[k + 6] = s[0].dpr; u[k + 7] = 0;
+  s[0].plate_n = n + 1;
+}
+
+phone :: (s: [] Garden) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
+
+hint :: (s: [] Garden) -> string {
+  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
+  return "WASD WALK · DRAG, ARROWS OR Q E TURN THE CAMERA · WHEEL ZOOMS · SPACE JUMPS · SHIFT RUNS";
+}
+
+hud :: (s: [] Garden, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  n := 0;
+  gutter := 16 * k;
+  cap := 11 * k;
+  title := "THE GARDEN";
+  tw := text_width(title, cap);
+  plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + 24 * k}, 0.82, 0);
+  n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  line := hint(s);
+  small := 7.5 * k;
+  room := w - 2 * gutter - 24 * k;
+  lw := text_width(line, small);
+  if lw > room { small = small * room / lw; lw = room; }
+  y1 := h - gutter;
+  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - small - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
+  n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, small, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  if move_on {
+    r := 46 * k;
+    for i: 0..<32 {
+      a0 := f32(i) * f32(TAU) / 32; a1 := f32(i + 1) * f32(TAU) / 32;
+      if lit(out, n, ox + cos(a0) * r, oy + sin(a0) * r, ox + cos(a1) * r, oy + sin(a1) * r, 0.8 * k, 0.5, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, 0) { n += 6; }
+    }
+    kx := ox + pad_x * r; ky := oy - pad_y * r;
+    if lit(out, n, kx - 0.01, ky, kx + 0.01, ky, 14 * k, 0.8, 6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  }
+  return n;
+}
+
+// ---- the frame
+
+// After the player moved: you are at feet, facing face, doing act
+// (player.coax Act), with that flat velocity. A thumb on the move stick is
+// drawn from move_on, ox, oy and the pad. Fills the HUD's vertices and the
+// uniforms, lays out the scene, and returns the vertex count.
+garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+                 fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
+                 move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+  if !s[0].started { garden_start(s); }
+  if u.count < UNIFORM_FLOATS { return 0; }
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  s[0].time += f64(t);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
+  feet := v3(fx, fy, fz);
+  if !finite3(feet) { feet = s[0].feet; }
+  s[0].feet = feet; s[0].face = face; s[0].act = act;
+  speed := sqrt(vx * vx + vz * vz);
+  if finite(speed) { s[0].stride += speed * t / 1.8; }
+  shown := add(feet, v3(0, ground_at(s, feet.x, feet.z), 0));
+
+  shot := camera_frame(s, shown, vx, vz, t);
+
+  // The scene.
+  for k: 0..<5 { s[0].counts[k] = 0; }
+  s[0].shadow_n = 0; s[0].plate_n = 0;
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  scenery(s, u);
+  figure(s, u, shown, face, s[0].stride, act);
+  for kind: 0..<5 {
+    d := kind * 4;
+    s[0].draws[d] = 0;
+    s[0].draws[d + 1] = cast(u32) SHAPE_VERTICES[kind];
+    s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else CELLS * CELLS + SLOT_AT[kind]);
+    s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then CELLS * CELLS else s[0].counts[kind]);
+  }
+
+  u[0] = width; u[1] = height; u[2] = f32(s[0].time); u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  u[6] = s[0].dpr;
+  view(shot, width, height, u, U_VIEW);
+  u[7] = horizon_y(shot, u, height);
+  u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
+  sun := unit_or(v3(0.45, 0.8, 0.32), v3(0, 1, 0));
+  u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z;
+  u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(CELL); u[U_GROUND + 2] = f32(EDGE); u[U_GROUND + 3] = f32(EDGE);
+  u[U_PATH_INFO] = 0; u[U_PATH_INFO + 1] = 0.8;
+
+  n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
+  u[5] = f32(s[0].plate_n);
+  return n;
+}
+
+garden_draws :: (s: [] Garden) -> int #export_c { return DRAWS; }
+garden_store_cap :: (k: int) -> int #export_c {
+  if k == 0 { return GROUND_POINTS * 4; }
+  return OBJECTS * OBJECT_FLOATS * 4;
+}
+
+// ---- checks
+
+#test "the uniforms fit and line up with garden.wgsl's" {
+  #assert UNIFORM_FLOATS % 4 == 0;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_PLATE == 232 && UNIFORM_FLOATS == 328;
+  #assert SLOT_AT[4] + SLOTS[4] == OBJECTS;
+  for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
+}
+
+#test "a frame lays the garden out, sees you, and keeps the camera out of the trees" {
+  g: [1] Garden;
+  out: [3000 * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := garden_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -11, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && n <= 3000;
+  #assert g[0].counts[SHAPE_SPHERE] > 20 && g[0].counts[SHAPE_BOX] > 8 && g[0].counts[SHAPE_CYLINDER] > 10;
+  #assert u[5] >= 2 && u[0] == 1280;
+  for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
+  // You are in front of the camera: your head projects inside the view.
+  p := [4] f32.[0, 1.6, -11, 1];
+  cw := 0.0f32; cx := 0.0f32; cy := 0.0f32;
+  for i: 0..<4 { cx += u[U_VIEW + i] * p[i]; cy += u[U_VIEW + 4 + i] * p[i]; cw += u[U_VIEW + 12 + i] * p[i]; }
+  #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
+  // Stand just in front of a tree, looking away from it: the eye stays clear of its trunk and canopy.
+  g[0].orbit = verse_orbit_start(v3(-9, 0, 6.2), 0);
+  shot := verse_orbit_shot(g[0].orbit);
+  for i: 0..<120 { shot = camera_frame(g[..], v3(-9, 0, 6.2), 0, 0, 1.0 / 60.0); }
+  trunk := v3(-9, shot.eye.y, 4);
+  #assert length(sub(shot.eye, trunk)) > 0.25 + f32(FREE_CLEAR) - 0.01;
+  #assert shot.eye.y > 0.4;
+  #assert g[0].orbit.shown < verse_orbit_ray(g[0].orbit).far - 1;
+  // Turned the other way, nothing is behind: it backs out to the full distance.
+  g[0].orbit = verse_orbit_look(g[0].orbit, f32(PI), 0);
+  for i: 0..<300 { shot = camera_frame(g[..], v3(-9, 0, 6.2), 0, 0, 1.0 / 60.0); }
+  #assert near(g[0].orbit.shown, verse_orbit_ray(g[0].orbit).far, 0.05);
+}
+
+#test "keys walk and turn the camera; a drag turns it; letting go stops" {
+  g: [1] Garden;
+  #assert garden_key(g[..], 'w', 0) && garden_key(g[..], KEY_LEFT, 0);
+  #assert !garden_key(g[..], 'z', 0);
+  yaw := g[0].orbit.yaw;
+  garden_controls(g[..], 0.1, 0, 0);
+  #assert g[0].key_y == 1 && g[0].key_x == 0 && g[0].orbit.yaw > yaw;
+  #assert garden_key_up(g[..], 'w', 0);
+  garden_controls(g[..], 0.1, 0, 0);
+  #assert g[0].key_y == 0;
+  g[0].dpr = 2;
+  #assert garden_pointer(g[..], 100, 100, 0, 0, 1);
+  #assert garden_pointer(g[..], 140, 100, 1, 0, 1);
+  before := g[0].orbit.yaw;
+  garden_controls(g[..], 0, 0, 0);
+  #assert near(wrap_angle(g[0].orbit.yaw - before), -20 * f32(LOOK_DRAG) - 0, 0.0001);
+  #assert garden_pointer(g[..], 140, 100, 2, 0, 1);
+  #assert !garden_pointer(g[..], 140, 100, 0, 1, 2) && g[0].touch;
+  garden_blur(g[..]);
+  #assert g[0].held == 0;
+  // The player walks by the camera: theta is opposite the way it looks.
+  #assert near(wrap_angle(garden_player_theta(g[..]) - g[0].orbit.yaw), -f32(PI), 0.0001);
+}
+
+#test "the hint fits a phone" {
+  g: [1] Garden;
+  g[0].touch = true;
+  #assert text_width(hint(g[..]), 6.5 * 3) < 1170 - 96;
+}

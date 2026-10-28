@@ -1,14 +1,20 @@
-// The Grid's cinematic camera: the overview the home screen shows, high
-// above where you arrive, slowly circling it, and the dolly that Start runs,
-// a long eased swoop from wherever the camera is down to behind your
-// character, where verse/player.coax's follow camera takes over.
+// The engine's cameras. Each one answers with a Shot, an eye and the point
+// it looks at, as verse_grid_view and verse_grid_frame take them, so one
+// camera can hand over to another by blending shots:
+// - the overview the home screen shows, high above where you arrive,
+//   slowly circling it;
+// - the dolly that Start runs, a long eased swoop from wherever the camera
+//   is down to behind your character;
+// - the free orbit (Orbit), the third-person camera of an open world: it
+//   circles your character at your shoulder, turns with a mouse drag, the
+//   arrow keys or a thumb, zooms, swings gently behind you as you walk,
+//   and pulls in where scenery is in the way.
 //
-// A shot is an eye and the point it looks at, as verse_grid_view and
-// verse_grid_frame take them. The host keeps a Dolly value and passes it
-// back each frame with the shot the dolly ends on (the player's camera).
+// The host keeps a Dolly or an Orbit value and passes it back each frame.
 //   coax/bin/coax test verse/camera.coax
 
-PI :: 3.14159265;
+#load "space.coax";
+
 CENTER_X :: 0.0;          // what the overview circles: the spawn and its terminal
 CENTER_Z :: 3.0;
 ORBIT_RADIUS :: 62.0;     // metres out from the centre
@@ -23,22 +29,9 @@ LEAD :: 1.3;              // the look-at gets there this much sooner than the ey
 SWOOP_BACK :: 0.22;       // the last approach comes in from behind and above,
 SWOOP_UP :: 0.12;         //   this share of the way back and up
 
-Point :: struct { x: f32; y: f32; z: f32; }
-Shot :: struct { eye: Point; at: Point; }
-
 // A dolly from `from` to wherever the host says it ends, starting at
 // `start` and taking `length` seconds. Length 0 is a cut.
 Dolly :: struct { from: Shot; start: f64; length: f32; }
-
-v3 :: (x: f32, y: f32, z: f32) -> Point { return Point.{x = x, y = y, z = z}; }
-add :: (a: Point, b: Point) -> Point { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
-sub :: (a: Point, b: Point) -> Point { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
-times :: (a: Point, k: f32) -> Point { return v3(a.x * k, a.y * k, a.z * k); }
-length :: (a: Point) -> f32 { return sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
-mix :: (a: Point, b: Point, t: f32) -> Point { return add(a, times(sub(b, a), t)); }
-clamp01 :: (x: f32) -> f32 { if x < 0 { return 0; } if x > 1 { return 1; } return x; }
-finite :: (x: f32) -> bool { return x == x && x < 1000000 && x > -1000000; }
-finite3 :: (a: Point) -> bool { return finite(a.x) && finite(a.y) && finite(a.z); }
 
 // Smootherstep: starts and ends at rest, with no jerk at either end.
 ease :: (x: f32) -> f32 { t := clamp01(x); return t * t * t * (t * (t * 6 - 15) + 10); }
@@ -110,10 +103,205 @@ verse_camera_dolly_hurry :: (d: Dolly, now: f64, to: Shot) -> Dolly #export_c {
   return Dolly.{from = verse_camera_dolly(d, now, to), start = now, length = f32(HURRY)};
 }
 
+// ---- The free orbit ----
+//
+// It circles a pivot that follows your head, looking along yaw (0 is +Z)
+// and pitch (down from level), with you a little left of the middle: the
+// view is centred FREE_SHOULDER to your right, over your shoulder. The eye
+// sits on the line from the pivot to where it wants to be, as far along it
+// as scenery allows, so it is never behind a tree or inside a wall, and
+// it always looks the same way, so nothing jumps when it pulls in. A frame:
+//   verse_orbit_look (a drag or a thumb) and verse_orbit_keys (the arrows),
+//   verse_orbit_follow (you moved), verse_orbit_room against the scenery
+//   along verse_orbit_ray (and the host's ground along the same ray),
+//   verse_orbit_limit with the room left, verse_orbit_shot to draw.
+
+FREE_DIST :: 5.2;            // metres back, to start
+FREE_NEAR :: 1.5;            // the closest a zoom comes in
+FREE_FAR :: 12.0;            // the furthest it goes out
+FREE_HEIGHT :: 1.45;         // the pivot, above your feet
+FREE_SHOULDER :: 0.55;       // metres right of you the view is centred
+FREE_PITCH :: 0.3;           // radians down: where it rests
+FREE_PITCH_MIN :: -0.55;     // looking up past the horizon
+FREE_PITCH_MAX :: 1.3;       // nearly straight down
+FREE_FOLLOW :: 12.0;         // per second: the pivot catching up with you
+FREE_JUMP :: 12.0;           // metres: further than this in a frame is a cut
+FREE_RECENTRE_AFTER :: 1.4;  // seconds after the last look before it swings
+FREE_RECENTRE :: 1.3;        // per second: swinging behind where you walk
+FREE_TOWARD :: 2.4;          // radians: walking at the camera this square doesn't swing it
+FREE_ZOOM :: 9.0;            // per second: easing to the zoom asked for
+FREE_OUT :: 2.5;             // per second: backing out once scenery lets go
+FREE_CLEAR :: 0.25;          // how far the eye keeps from scenery
+FREE_MIN_ROOM :: 0.3;        // the closest scenery pushes it to the pivot
+FREE_KEY_TURN :: 2.2;        // radians a second for a held arrow key
+SPHERE :: 4;                 // numbers per sphere: centre x, y, z, radius
+BOX :: 6;                    // numbers per box: min x, y, z, max x, y, z
+
+Orbit :: struct {
+  yaw: f32;
+  pitch: f32 = FREE_PITCH;
+  want: f32 = FREE_DIST;     // the distance asked for
+  zoom: f32 = FREE_DIST;     // eased toward want
+  shown: f32 = FREE_DIST;    // how far along the ray the eye is drawn
+  pivot: Point;
+  idle: f32 = FREE_RECENTRE_AFTER;   // seconds since the last look
+}
+
+// The line the eye sits on: from the pivot, toward where it wants to be,
+// that far.
+OrbitRay :: struct { from: Point; dir: Point; far: f32; }
+
+// Behind your feet, facing as you do.
+verse_orbit_start :: (feet: Point, facing: f32) -> Orbit #export_c {
+  o: Orbit;
+  o.yaw = ifx finite(facing) then wrap_angle(facing) else 0.0f32;
+  o.pivot = ifx finite3(feet) then add(feet, v3(0, f32(FREE_HEIGHT), 0)) else v3(0, f32(FREE_HEIGHT), 0);
+  o.shown = verse_orbit_ray(o).far;
+  return o;
+}
+
+// Where it looks, and its right hand (level).
+verse_orbit_forward :: (o: Orbit) -> Point #export_c {
+  return v3(sin(o.yaw) * cos(o.pitch), -sin(o.pitch), cos(o.yaw) * cos(o.pitch));
+}
+verse_orbit_right :: (o: Orbit) -> Point #export_c { return v3(-cos(o.yaw), 0, sin(o.yaw)); }
+
+// A drag or a thumb: positive dyaw turns left, positive dpitch looks up,
+// in radians.
+verse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c {
+  next := o;
+  moved := false;
+  if finite(dyaw) && dyaw != 0 { next.yaw = wrap_angle(o.yaw + dyaw); moved = true; }
+  if finite(dpitch) && dpitch != 0 { next.pitch = clamp(o.pitch - dpitch, f32(FREE_PITCH_MIN), f32(FREE_PITCH_MAX)); moved = true; }
+  if moved { next.idle = 0; }
+  return next;
+}
+
+// The arrow keys held: turn (1 left, -1 right) and tilt (1 up, -1 down).
+verse_orbit_keys :: (o: Orbit, turn: f32, tilt: f32, dt: f32) -> Orbit #export_c {
+  if !finite(dt) || dt <= 0 { return o; }
+  t := lo(dt, 0.25);
+  return verse_orbit_look(o, clamp(turn, -1, 1) * f32(FREE_KEY_TURN) * t, clamp(tilt, -1, 1) * f32(FREE_KEY_TURN) * 0.6 * t);
+}
+
+// The wheel or a pinch: positive is further out.
+verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c {
+  next := o;
+  if finite(delta) { next.want = clamp(o.want + delta, f32(FREE_NEAR), f32(FREE_FAR)); }
+  return next;
+}
+
+// You are at feet, heading that way (yaw) when moving. The pivot catches
+// up; a while after the last look, walking swings the camera gently in
+// behind you, except when you walk at it.
+verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f32) -> Orbit #export_c {
+  next := o;
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  if !finite3(feet) { return next; }
+  dest := add(feet, v3(0, f32(FREE_HEIGHT), 0));
+  if !finite3(o.pivot) || length(sub(dest, o.pivot)) > f32(FREE_JUMP) { next.pivot = dest; }
+  else { next.pivot = mix(o.pivot, dest, settle(f32(FREE_FOLLOW), t)); }
+  next.idle = lo(o.idle + t, 1000);
+  if moving && finite(heading) && next.idle >= f32(FREE_RECENTRE_AFTER) {
+    ramp := clamp01((next.idle - f32(FREE_RECENTRE_AFTER)) / 0.6);
+    d := wrap_angle(heading - o.yaw);
+    if abs(d) < f32(FREE_TOWARD) {
+      next.yaw = wrap_angle(o.yaw + d * settle(f32(FREE_RECENTRE), t) * ramp);
+    }
+    next.pitch = lerp(o.pitch, f32(FREE_PITCH), settle(f32(FREE_RECENTRE), t) * ramp);
+  }
+  next.zoom = lerp(o.zoom, o.want, settle(f32(FREE_ZOOM), t));
+  return next;
+}
+
+verse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c {
+  back := times(verse_orbit_forward(o), -o.zoom);
+  want := add(back, times(verse_orbit_right(o), f32(FREE_SHOULDER)));
+  r: OrbitRay;
+  r.from = o.pivot;
+  r.far = length(want);
+  r.dir = unit_or(want, v3(0, 0, -1));
+  return r;
+}
+
+// How far along the ray the eye may go before scenery, keeping
+// FREE_CLEAR from it: spheres (SPHERE numbers each) and boxes (BOX
+// numbers each). Scenery the pivot is inside doesn't count.
+verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c {
+  r := verse_orbit_ray(o);
+  room := r.far;
+  for i: 0..<spheres.count / SPHERE {
+    c := v3(spheres[i * SPHERE], spheres[i * SPHERE + 1], spheres[i * SPHERE + 2]);
+    big := spheres[i * SPHERE + 3] + f32(FREE_CLEAR);
+    oc := sub(r.from, c);
+    b := dot(oc, r.dir);
+    c2 := dot(oc, oc) - big * big;
+    if !finite(c2) || c2 <= 0 { continue; }
+    disc := b * b - c2;
+    if disc < 0 { continue; }
+    t := -b - sqrt(disc);
+    if t >= 0 && t < room { room = t; }
+  }
+  for i: 0..<boxes.count / BOX {
+    k := i * BOX;
+    o3: [3] f32; d3: [3] f32;
+    o3[0] = r.from.x; o3[1] = r.from.y; o3[2] = r.from.z;
+    d3[0] = r.dir.x; d3[1] = r.dir.y; d3[2] = r.dir.z;
+    enter := -1000000.0f32; leave := 1000000.0f32; inside := true; miss := false;
+    for a: 0..<3 {
+      low := boxes[k + a] - f32(FREE_CLEAR); high := boxes[k + 3 + a] + f32(FREE_CLEAR);
+      if !(low <= high) { miss = true; break; }
+      if o3[a] < low || o3[a] > high { inside = false; }
+      if abs(d3[a]) < 0.000001 {
+        if o3[a] < low || o3[a] > high { miss = true; }
+      } else {
+        t0 := (low - o3[a]) / d3[a]; t1 := (high - o3[a]) / d3[a];
+        enter = hi(enter, lo(t0, t1)); leave = lo(leave, hi(t0, t1));
+      }
+    }
+    if miss || inside || enter > leave || enter < 0 { continue; }
+    if enter < room { room = enter; }
+  }
+  return hi(room, 0);
+}
+
+// Scenery left `room` along the ray this frame (the least of
+// verse_orbit_room and the host's ground): the eye comes in at once and
+// backs out gently, never past where it wants to be.
+verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c {
+  next := o;
+  far := verse_orbit_ray(o).far;
+  free := ifx finite(room) then clamp(room, f32(FREE_MIN_ROOM), far) else far;
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  if free < o.shown || !finite(o.shown) { next.shown = free; }
+  else { next.shown = lerp(o.shown, free, settle(f32(FREE_OUT), t)); }
+  next.shown = lo(next.shown, far);
+  return next;
+}
+
+// What to draw: the eye on the ray, looking forward.
+verse_orbit_shot :: (o: Orbit) -> Shot #export_c {
+  r := verse_orbit_ray(o);
+  s: Shot;
+  s.eye = add(r.from, times(r.dir, o.shown));
+  s.at = add(s.eye, times(verse_orbit_forward(o), f32(FREE_DIST)));
+  return s;
+}
+
+// Turns to look the way a shot does: how another camera (a cinematic, a
+// close-up) hands control back without a jump in direction.
+verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c {
+  d := sub(s.at, s.eye);
+  if !finite3(d) || length(d) < 0.0001 { return o; }
+  next := o;
+  next.yaw = yaw_of(d.x, d.z);
+  next.pitch = clamp(atan2(-d.y, flat_length(d)), f32(FREE_PITCH_MIN), f32(FREE_PITCH_MAX));
+  next.idle = 0;
+  return next;
+}
+
 // ---- Checks ----
 
-near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
-same :: (a: Point, b: Point, tolerance: f32) -> bool { return near(a.x, b.x, tolerance) && near(a.y, b.y, tolerance) && near(a.z, b.z, tolerance); }
 behind_you :: () -> Shot { return Shot.{eye = v3(0, 2.6, -4.2), at = v3(0, 1.6, 0)}; }
 
 #test "the ease rests at both ends" {
@@ -211,4 +399,153 @@ behind_you :: () -> Shot { return Shot.{eye = v3(0, 2.6, -4.2), at = v3(0, 1.6, 
   bad := Shot.{eye = v3(f32(0.0 / 0.0), 1, 1), at = v3(0, 0, 0)};
   d := verse_camera_dolly_start(bad, 0, false);
   #assert same(verse_camera_dolly(d, 1, behind_you()).eye, behind_you().eye, 0);
+}
+
+// ---- The free orbit's checks ----
+
+settled :: (o: Orbit) -> Orbit {
+  next := o;
+  for i: 0..<240 { next = verse_orbit_limit(verse_orbit_follow(next, sub(next.pivot, v3(0, f32(FREE_HEIGHT), 0)), 0, false, 1.0 / 60.0), 1000, 1.0 / 60.0); }
+  return next;
+}
+
+#test "it starts behind you and above, over your right shoulder" {
+  o := verse_orbit_start(v3(4, 0, 2), 0);
+  s := verse_orbit_shot(o);
+  #assert s.eye.z < 2 && s.eye.y > f32(FREE_HEIGHT);
+  // Facing +Z your right is -X: the eye is a little that way.
+  #assert s.eye.x < 4 && s.eye.x > 4 - 1;
+  #assert near(length(sub(s.eye, o.pivot)), length(v3(f32(FREE_SHOULDER), 0, f32(FREE_DIST))), 0.001);
+  // And it looks the way you face, a little down.
+  f := verse_orbit_forward(o);
+  #assert f.z > 0.9 && f.y < 0 && near(f.x, 0, 0.00001);
+  r := verse_orbit_right(o);
+  #assert same(r, v3(-1, 0, 0), 0.00001);
+  #assert same(verse_orbit_start(v3(0, 0, 0), f32(0.0 / 0.0)).pivot, v3(0, f32(FREE_HEIGHT), 0), 0);
+}
+
+#forall "the shot is whole and looks forward wherever it turns" iy: -6..<7, ip: -4..<5 {
+  o := verse_orbit_start(v3(1, 2, 3), 0);
+  o = verse_orbit_look(o, f32(iy) * 0.6, f32(ip) * 0.4);
+  #assert o.pitch >= f32(FREE_PITCH_MIN) && o.pitch <= f32(FREE_PITCH_MAX);
+  s := verse_orbit_shot(o);
+  #assert finite3(s.eye) && finite3(s.at);
+  #assert near(length(verse_orbit_forward(o)), 1, 0.0001);
+  d := unit_or(sub(s.at, s.eye), v3(0, 0, 0));
+  #assert same(d, verse_orbit_forward(o), 0.0001);
+  // The pivot (you) is ahead of the eye and a little to its left.
+  to := sub(o.pivot, s.eye);
+  #assert dot(to, verse_orbit_forward(o)) > 0;
+  #assert dot(to, verse_orbit_right(o)) < 0;
+}
+
+#test "looking turns it, the keys turn it at their rate, and junk is ignored" {
+  o := verse_orbit_start(v3(0, 0, 0), 0);
+  l := verse_orbit_look(o, 0.5, 0.1);
+  #assert near(l.yaw, 0.5, 0.00001) && near(l.pitch, f32(FREE_PITCH) - 0.1, 0.00001) && l.idle == 0;
+  #assert verse_orbit_look(o, f32(0.0 / 0.0), f32(1.0 / 0.0)).yaw == o.yaw;
+  #assert verse_orbit_look(o, 0, 0).idle == o.idle;
+  k := verse_orbit_keys(o, 1, 0, 0.2);
+  #assert near(k.yaw, f32(FREE_KEY_TURN) * 0.2, 0.0001);
+  #assert near(verse_orbit_keys(o, 1, 0, 3).yaw, f32(FREE_KEY_TURN) * 0.25, 0.0001);
+  #assert verse_orbit_keys(o, 1, 0, -1).yaw == o.yaw;
+  #assert near(verse_orbit_keys(o, 9, 0, 0.1).yaw, f32(FREE_KEY_TURN) * 0.1, 0.0001);
+  #assert verse_orbit_look(o, 0, 99).pitch == f32(FREE_PITCH_MIN) && verse_orbit_look(o, 0, -99).pitch == f32(FREE_PITCH_MAX);
+}
+
+#test "zoom asks for a distance, and it eases there" {
+  o := verse_orbit_zoom(verse_orbit_start(v3(0, 0, 0), 0), 3);
+  #assert near(o.want, f32(FREE_DIST) + 3, 0.0001) && o.zoom == f32(FREE_DIST);
+  #assert verse_orbit_zoom(o, 100).want == f32(FREE_FAR) && verse_orbit_zoom(o, -100).want == f32(FREE_NEAR);
+  s := settled(o);
+  #assert near(s.zoom, o.want, 0.01) && near(s.shown, verse_orbit_ray(s).far, 0.05);
+}
+
+#test "the pivot follows you, smoothly, and cuts when you jump far" {
+  o := verse_orbit_start(v3(0, 0, 0), 0);
+  a := verse_orbit_follow(o, v3(1, 0, 0), 0, true, 1.0 / 60.0);
+  #assert a.pivot.x > 0 && a.pivot.x < 0.5;
+  for i: 0..<120 { a = verse_orbit_follow(a, v3(1, 0, 0), 0, true, 1.0 / 60.0); }
+  #assert near(a.pivot.x, 1, 0.001) && near(a.pivot.y, f32(FREE_HEIGHT), 0.001);
+  // One 1/30 s frame goes as far as two 1/60 s ones.
+  one := verse_orbit_follow(o, v3(1, 0, 0), 0, false, 1.0 / 30.0);
+  two := verse_orbit_follow(verse_orbit_follow(o, v3(1, 0, 0), 0, false, 1.0 / 60.0), v3(1, 0, 0), 0, false, 1.0 / 60.0);
+  #assert near(one.pivot.x, two.pivot.x, 0.0001);
+  cut := verse_orbit_follow(o, v3(40, 0, 0), 0, true, 1.0 / 60.0);
+  #assert cut.pivot.x == 40;
+  #assert same(verse_orbit_follow(o, v3(f32(0.0 / 0.0), 0, 0), 0, true, 0.1).pivot, o.pivot, 0);
+}
+
+#test "walking swings it behind you, a while after you last looked" {
+  o := verse_orbit_look(verse_orbit_start(v3(0, 0, 0), 0), 0.001, 0);
+  // Right after a look it holds.
+  a := verse_orbit_follow(o, v3(0, 0, 0), f32(PI) / 2, true, 0.5);
+  #assert near(a.yaw, o.yaw, 0.00001);
+  // Later it swings toward where you walk (+X, a quarter turn) without overshooting.
+  for i: 0..<600 { a = verse_orbit_follow(a, v3(0, 0, 0), f32(PI) / 2, true, 1.0 / 60.0); }
+  #assert near(a.yaw, f32(PI) / 2, 0.02);
+  // Standing still it doesn't.
+  b := o;
+  for i: 0..<600 { b = verse_orbit_follow(b, v3(0, 0, 0), f32(PI) / 2, false, 1.0 / 60.0); }
+  #assert near(b.yaw, o.yaw, 0.00001);
+  // Nor walking at the camera.
+  c := o;
+  for i: 0..<600 { c = verse_orbit_follow(c, v3(0, 0, 0), f32(PI), true, 1.0 / 60.0); }
+  #assert near(c.yaw, o.yaw, 0.00001);
+}
+
+#test "a tree behind you pulls the eye in at once; it backs out gently" {
+  nothing: [1] f32;
+  o := settled(verse_orbit_start(v3(0, 0, 0), 0));
+  r := verse_orbit_ray(o);
+  spot := add(r.from, times(r.dir, 3));
+  tree := [4] f32.[spot.x, spot.y, spot.z, 0.5];
+  room := verse_orbit_room(o, tree[..], nothing[0..<0]);
+  #assert room < 3 - 0.5 && room > 3 - 0.5 - f32(FREE_CLEAR) - 0.05;
+  pulled := verse_orbit_limit(o, room, 1.0 / 60.0);
+  #assert near(pulled.shown, room, 0.00001);
+  s := verse_orbit_shot(pulled);
+  #assert length(sub(s.eye, spot)) >= 0.5 + f32(FREE_CLEAR) - 0.01;
+  // Gone again: one frame moves it only a little way out.
+  back := verse_orbit_limit(pulled, 1000, 1.0 / 60.0);
+  #assert back.shown > pulled.shown && back.shown < pulled.shown + 0.2;
+  // The view's direction never changes as it pulls in.
+  #assert same(unit_or(sub(s.at, s.eye), v3(0, 0, 0)), verse_orbit_forward(o), 0.0001);
+}
+
+#test "only scenery on the line counts" {
+  nothing: [1] f32;
+  o := settled(verse_orbit_start(v3(0, 0, 0), 0));
+  far := verse_orbit_ray(o).far;
+  ahead := [4] f32.[0, 1.5, 4, 1];      // in front of you
+  aside := [4] f32.[6, 1.5, -2, 1];     // off to the side
+  around := [4] f32.[0, 1.5, 0, 3];     // you are inside it
+  #assert verse_orbit_room(o, ahead[..], nothing[0..<0]) == far;
+  #assert verse_orbit_room(o, aside[..], nothing[0..<0]) == far;
+  #assert verse_orbit_room(o, around[..], nothing[0..<0]) == far;
+  wall := [6] f32.[-5, 0, -3, 5, 4, -2.5];     // a hedge behind you
+  room := verse_orbit_room(o, nothing[0..<0], wall[..]);
+  #assert room < far && room > 0;
+  hit := add(verse_orbit_ray(o).from, times(verse_orbit_ray(o).dir, room));
+  #assert near(hit.z, -2.5 + f32(FREE_CLEAR), 0.01);
+  beside := [6] f32.[3, 0, -6, 6, 4, -4];
+  #assert verse_orbit_room(o, nothing[0..<0], beside[..]) == far;
+  bent := [6] f32.[1, 1, 1, 0, 0, 0];   // a box with its corners swapped is nothing
+  #assert verse_orbit_room(o, nothing[0..<0], bent[..]) == far;
+}
+
+#forall "the eye stays inside the room it is given" k: 0..<40 {
+  o := settled(verse_orbit_start(v3(0, 0, 0), f32(k) * 0.3));
+  room := f32(k % 9) * 0.7;
+  l := verse_orbit_limit(o, room, 1.0 / 60.0);
+  #assert l.shown <= hi(room, f32(FREE_MIN_ROOM)) + 0.00001;
+  #assert l.shown >= f32(FREE_MIN_ROOM) - 0.00001;
+  #assert verse_orbit_limit(o, f32(0.0 / 0.0), 1.0 / 60.0).shown <= verse_orbit_ray(o).far + 0.00001;
+}
+
+#forall "another camera's shot hands back without a turn" iy: -5..<6, ip: -2..<4 {
+  o := verse_orbit_look(verse_orbit_start(v3(2, 0, 2), 0), f32(iy) * 0.55, -f32(ip) * 0.3);
+  back := verse_orbit_toward(verse_orbit_start(v3(2, 0, 2), 1), verse_orbit_shot(o));
+  #assert same(verse_orbit_forward(back), verse_orbit_forward(o), 0.001);
+  #assert verse_orbit_toward(o, Shot.{eye = v3(1, 1, 1), at = v3(1, 1, 1)}).yaw == o.yaw;
 }

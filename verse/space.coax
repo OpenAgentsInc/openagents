@@ -1,0 +1,107 @@
+// The engine's points and the small arithmetic over them, shared by the
+// modules that move things through a world: camera.coax (the overview, the
+// dolly and the free orbit), terrain.coax (the ground and its paths),
+// throw.coax (thrown things and carrying) and arrange.coax (the close-up
+// arranging view). Each loads this file; one compilation keeps one copy.
+//
+// Units are metres, seconds and radians; +Y is up, and yaw 0 faces +Z, as
+// in openagents.engine.v1.
+//   coax/bin/coax test verse/space.coax
+
+PI :: 3.14159265;
+TAU :: 6.2831853;
+
+Point :: struct { x: f32; y: f32; z: f32; }
+Shot :: struct { eye: Point; at: Point; }
+
+v3 :: (x: f32, y: f32, z: f32) -> Point { return Point.{x = x, y = y, z = z}; }
+add :: (a: Point, b: Point) -> Point { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
+sub :: (a: Point, b: Point) -> Point { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+times :: (a: Point, k: f32) -> Point { return v3(a.x * k, a.y * k, a.z * k); }
+dot :: (a: Point, b: Point) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+cross :: (a: Point, b: Point) -> Point { return v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+length :: (a: Point) -> f32 { return sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
+flat_length :: (a: Point) -> f32 { return sqrt(a.x * a.x + a.z * a.z); }
+mix :: (a: Point, b: Point, t: f32) -> Point { return add(a, times(sub(b, a), t)); }
+lerp :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+clamp01 :: (x: f32) -> f32 { if x < 0 { return 0; } if x > 1 { return 1; } return x; }
+finite :: (x: f32) -> bool { return x == x && x < 1000000 && x > -1000000; }
+finite3 :: (a: Point) -> bool { return finite(a.x) && finite(a.y) && finite(a.z); }
+
+// A unit vector the same way as a; `otherwise` when a has no length.
+unit_or :: (a: Point, otherwise: Point) -> Point {
+  l := length(a);
+  if !(l > 0.000001) || !finite(l) { return otherwise; }
+  return times(a, 1 / l);
+}
+
+// An angle in [-PI, PI).
+wrap_angle :: (a: f32) -> f32 { return a - f32(TAU) * floor((a + f32(PI)) / f32(TAU)); }
+
+// atan on [0, 1], within 2e-5 rad.
+atan_unit :: (t: f32) -> f32 {
+  s := t * t;
+  return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
+}
+
+// The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin.
+atan2 :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  a := ifx ay > ax then f32(PI) / 2 - atan_unit(ax / ay) else atan_unit(ay / ax);
+  if x < 0 { a = f32(PI) - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+
+// The yaw that faces along (x, z): 0 is +Z, PI/2 is +X.
+yaw_of :: (x: f32, z: f32) -> f32 { return atan2(x, z); }
+
+// How much of `rate` (per second) a frame of dt applies, framerate-free.
+settle :: (rate: f32, dt: f32) -> f32 { return 1 - exp(-rate * hi(dt, 0)); }
+
+near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
+same :: (a: Point, b: Point, tolerance: f32) -> bool { return near(a.x, b.x, tolerance) && near(a.y, b.y, tolerance) && near(a.z, b.z, tolerance); }
+
+#forall "atan2 points the right way" ix: -4..<5, iy: -4..<5 {
+  x := f32(ix) * 0.5; y := f32(iy) * 0.5;
+  a := atan2(y, x);
+  r := sqrt(x * x + y * y);
+  if r == 0 { #assert a == 0; }
+  else { #assert near(cos(a) * r, x, 0.0001 * r) && near(sin(a) * r, y, 0.0001 * r); }
+}
+
+#forall "wrap_angle keeps the direction" k: -30..<31 {
+  a := f32(k) * 0.7;
+  w := wrap_angle(a);
+  #assert w >= -f32(PI) && w < f32(PI);
+  #assert near(sin(w), sin(a), 0.0005) && near(cos(w), cos(a), 0.0005);
+}
+
+#test "yaw 0 faces +Z and a quarter turn faces +X" {
+  #assert near(yaw_of(0, 1), 0, 0.0001) && near(yaw_of(1, 0), f32(PI) / 2, 0.0001);
+}
+
+#test "vectors" {
+  a := v3(1, 2, 3); b := v3(-2, 0.5, 4);
+  #assert dot(a, b) == 11;
+  c := cross(v3(1, 0, 0), v3(0, 1, 0));
+  #assert same(c, v3(0, 0, 1), 0);
+  #assert near(length(unit_or(a, v3(0, 0, 0))), 1, 0.00001);
+  #assert same(unit_or(v3(0, 0, 0), v3(0, 1, 0)), v3(0, 1, 0), 0);
+  #assert near(flat_length(v3(3, 9, 4)), 5, 0.00001);
+  #assert clamp(5, 0, 1) == 1 && clamp(-5, 0, 1) == 0 && lerp(2, 4, 0.5) == 3;
+}
+
+#forall "settle never overshoots and is framerate-free" i: 0..<20 {
+  dt := f32(i) / 100;
+  s := settle(6, dt);
+  #assert s >= 0 && s < 1;
+  // Two half frames settle as far as one whole one.
+  h := settle(6, dt / 2);
+  #assert near(1 - (1 - h) * (1 - h), s, 0.00002);
+  #assert settle(6, -1) == 0;
+}
