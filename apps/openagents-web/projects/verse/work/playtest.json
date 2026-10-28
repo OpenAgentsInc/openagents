@@ -59,7 +59,12 @@
         "Every gap found is a task on this project"
       ],
       "blocked_by": [],
-      "blocks": []
+      "blocks": [
+        "pt-landing",
+        "pt-quest",
+        "pt-edit-mode",
+        "pt-server-skeleton"
+      ]
     },
     {
       "slug": "pt-landing",
@@ -79,7 +84,11 @@
       "blocked_by": [
         "pt-inventory"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-galaxy",
+        "pt-goldens",
+        "pt-share-card"
+      ]
     },
     {
       "slug": "pt-galaxy",
@@ -98,7 +107,10 @@
       "blocked_by": [
         "pt-landing"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-goldens",
+        "pt-planets"
+      ]
     },
     {
       "slug": "pt-quest",
@@ -118,7 +130,9 @@
       "blocked_by": [
         "pt-inventory"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-parity-review"
+      ]
     },
     {
       "slug": "pt-edit-mode",
@@ -139,7 +153,9 @@
       "blocked_by": [
         "pt-inventory"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-parity-review"
+      ]
     },
     {
       "slug": "pt-character-chat",
@@ -160,7 +176,10 @@
       "blocked_by": [
         "pt-chat-endpoint"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-parity-review",
+        "pt-voice"
+      ]
     },
     {
       "slug": "pt-saves",
@@ -181,7 +200,11 @@
       "blocked_by": [
         "pt-player-endpoints"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-parity-review",
+        "pt-change-offers",
+        "pt-accounts"
+      ]
     },
     {
       "slug": "pt-server-skeleton",
@@ -201,7 +224,12 @@
       "blocked_by": [
         "pt-inventory"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-player-endpoints",
+        "pt-chat-endpoint",
+        "pt-feedback",
+        "pt-capture"
+      ]
     },
     {
       "slug": "pt-player-endpoints",
@@ -221,7 +249,12 @@
       "blocked_by": [
         "pt-server-skeleton"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-saves",
+        "pt-import-demo-data",
+        "pt-presence-chat",
+        "pt-planets"
+      ]
     },
     {
       "slug": "pt-chat-endpoint",
@@ -241,7 +274,9 @@
       "blocked_by": [
         "pt-server-skeleton"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-character-chat"
+      ]
     },
     {
       "slug": "pt-feedback",
@@ -260,7 +295,9 @@
       "blocked_by": [
         "pt-server-skeleton"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-parity-review"
+      ]
     },
     {
       "slug": "pt-capture",
@@ -281,7 +318,10 @@
       "blocked_by": [
         "pt-server-skeleton"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-dashboard",
+        "pt-import-demo-data"
+      ]
     },
     {
       "slug": "pt-dashboard",
@@ -302,7 +342,10 @@
       "blocked_by": [
         "pt-capture"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-cutover-plan",
+        "pt-analytics-contract"
+      ]
     },
     {
       "slug": "pt-import-demo-data",
@@ -324,7 +367,9 @@
         "pt-capture",
         "pt-player-endpoints"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-cutover-plan"
+      ]
     },
     {
       "slug": "pt-pinned-releases",
@@ -363,7 +408,9 @@
         "pt-landing",
         "pt-galaxy"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-cutover-plan"
+      ]
     },
     {
       "slug": "pt-share-card",
@@ -382,7 +429,9 @@
       "blocked_by": [
         "pt-landing"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-parity-review"
+      ]
     },
     {
       "slug": "pt-cutover-plan",
@@ -405,7 +454,10 @@
         "pt-import-demo-data",
         "pt-dashboard"
       ],
-      "blocks": []
+      "blocks": [
+        "pt-parity-review",
+        "pt-voice"
+      ]
     },
     {
       "slug": "pt-parity-review",
@@ -430,6 +482,150 @@
         "pt-saves",
         "pt-feedback",
         "pt-share-card"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-analytics-contract",
+      "parent": "pt-analytics",
+      "title": "The analytics contract checked at every release",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "analytics",
+        "release"
+      ],
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. coax/web/release.sh plays /realm/haunted-house on staging in headless Chrome (coax/web/shot.ts style driver, never a visible window) and refuses to promote a build that stops sending any contract event (session-start, page-view, world-enter, load-engine, area, objective, quest, click, world-leave). The dashboard gains a Health card: per surface, last event, last hour and day, and contract events missing. INVARIANTS.md: 'Analytics never lose visibility'.",
+      "files": [
+        "coax/web/release.sh",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A staging build with one contract event removed is refused before promote, with the missing event named",
+        "The Health card on /admin/analytics shows last event per surface and flags a missing contract event",
+        "A normal release still promotes and the journey check adds under 10 s"
+      ],
+      "blocked_by": [
+        "pt-dashboard"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-presence-chat",
+      "parent": "pt-flow",
+      "title": "Other players in the house, and the room's chat",
+      "size": "L",
+      "labels": [
+        "playtest",
+        "realtime"
+      ],
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port room presence and chat (/api/chat/<room>, /api/presence/<room>, web/chat.js): players in the same realm see each other and a room chat, drawn in Coax with the realm's plate style. Bounded rooms and messages; guests included.",
+      "files": [
+        "apps/openagents-web/realm.coax",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Two headless sessions in /realm/haunted-house see each other within 2 s and exchange a chat line",
+        "Room size and message length are bounded and tested",
+        "Presence and chat events reach analytics"
+      ],
+      "blocked_by": [
+        "pt-player-endpoints"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-planets",
+      "parent": "pt-flow",
+      "title": "Realm setup and the player's own realm",
+      "size": "L",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port planet setup and the player's planet as realms (/api/award, /api/planets*, web/planet-setup.js): award, create and open a player's realm. The galaxy task only shows them; this makes them. Legacy /api/planets* paths keep answering.",
+      "files": [
+        "apps/openagents-web/",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A guest is awarded a realm, sets it up and reopens it after reload",
+        "Legacy /api/planets* requests answer like the playtest's",
+        "The galaxy lists the new realm"
+      ],
+      "blocked_by": [
+        "pt-player-endpoints",
+        "pt-galaxy"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-change-offers",
+      "parent": "pt-flow",
+      "title": "Offer changes to someone's world, and the edit log",
+      "size": "M",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port offered changes and the edit log (/api/change/*, /api/log/<id>, web/changes.js): a visitor proposes an edit to another player's world, the owner accepts or declines, every edit is logged. No settlement or sats.",
+      "files": [
+        "apps/openagents-web/realm.coax",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A second session offers a change; the owner accepts it and the world shows it after reload",
+        "A declined offer changes nothing",
+        "/api/log/<id> lists every edit in order"
+      ],
+      "blocked_by": [
+        "pt-saves"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-voice",
+      "parent": "pt-cutover",
+      "title": "The voice bot and voice prompts",
+      "size": "L",
+      "labels": [
+        "playtest",
+        "voice"
+      ],
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port the playtest's voice bot and voice prompts (voice, voice-on) onto the Coax voice engine (verse/voice*.coax), after the first switch as coax/web.md decides. Text chat keeps working without it.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/voice-host/"
+      ],
+      "acceptance": [
+        "Voice on, a spoken question to a character gets a spoken answer in the realm",
+        "Voice off, nothing asks for the microphone",
+        "Voice events reach analytics"
+      ],
+      "blocked_by": [
+        "pt-character-chat",
+        "pt-cutover-plan"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-accounts",
+      "parent": "pt-server",
+      "title": "Tie a session to a Nostr identity",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "identity"
+      ],
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Once the Coax project's phone sign-in lands (web-sign-in-page, server-nip98-session), a playtest session and its saves attach to the signed-in Nostr pubkey; guests stay first-class and can claim their guest saves on sign-in. The playtest used Google, GitHub and email; openagents.com uses Nostr only, never WorkOS. The analytics schema already has the column.",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Signing in moves a guest's saves and sessions to the pubkey",
+        "Signed-out play is unchanged",
+        "Analytics sessions carry the pubkey after sign-in"
+      ],
+      "blocked_by": [
+        "pt-saves"
       ],
       "blocks": []
     }
