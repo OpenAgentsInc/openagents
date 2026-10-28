@@ -6,7 +6,8 @@
 //   bun publish.ts publish [--project coax] [--dry-run] [--relay URL]
 //   bun publish.ts move SLUG --before SLUG | --after SLUG
 //   bun publish.ts status SLUG open|resolved|closed|draft
-//   bun publish.ts respread [--seed]   (even ranks again; --seed: work-file order)
+//   bun publish.ts respread [--seed | --order FILE]   (even ranks again; --seed: work-file order;
+//                                     --order: the slugs in FILE first, one a line, the rest after)
 //   bun publish.ts list               (the queue: ready first, then waiting, then done)
 //   bun publish.ts show SLUG          (body, acceptance checks, claim and notes)
 //   bun publish.ts claim SLUG --by NAME
@@ -242,19 +243,28 @@ async function move(relay: Relay, what: string, where: "before" | "after", other
   }
 }
 
-/** Spreads the ranks evenly again, keeping the order; --seed resets it to work-file order. */
-async function respread(relay: Relay, seed: boolean) {
+/** Spreads the ranks evenly again, keeping the order; --seed resets it to work-file order, --order to a file's. */
+async function respread(relay: Relay, seed: boolean, orderFile = "") {
   const work = await readWork(dir)
   const f = await load(relay)
   let entries = ordered(f, work)
-  if (seed) {
+  if (orderFile) {
+    const want = (await Bun.file(orderFile).text()).split("\n").map((l) => l.trim()).filter(Boolean)
+    const pos = new Map(want.map((slug, i) => [slug, i]))
+    const slugOf = new Map(f.issues.map((i) => [i.id, i.slug]))
+    const unknown = want.filter((slug) => !f.issues.some((i) => i.slug === slug))
+    if (unknown.length) throw new Error(`no items ${unknown.join(", ")}`)
+    const was = new Map(entries.map((e, i) => [e.id, i]))
+    entries = [...entries].sort((a, b) =>
+      (pos.get(slugOf.get(a.id)!) ?? 1e9) - (pos.get(slugOf.get(b.id)!) ?? 1e9) || was.get(a.id)! - was.get(b.id)!)
+  } else if (seed) {
     const pos = new Map(work.map((it, i) => [it.slug, i]))
     const slugOf = new Map(f.issues.map((i) => [i.id, i.slug]))
     entries = [...entries].sort((a, b) => (pos.get(slugOf.get(a.id)!) ?? 1e9) - (pos.get(slugOf.get(b.id)!) ?? 1e9))
   }
   const keys = spread(entries.length)
   entries.forEach((e, i) => (e.rank = keys[i]))
-  await send(relay, signer.sign({ kind: KIND_ORDER, content: "", tags: orderTags(entries) }), `respread ${entries.length}${seed ? " in work-file order" : ""}`)
+  await send(relay, signer.sign({ kind: KIND_ORDER, content: "", tags: orderTags(entries) }), `respread ${entries.length}${orderFile ? ` in the order of ${orderFile}` : seed ? " in work-file order" : ""}`)
 }
 
 const finished = (i: Issue) => i.status === "resolved" || i.status === "closed"
@@ -421,7 +431,7 @@ try {
     const issue = f.issues.find((i) => i.slug === args[1])
     if (!issue) throw new Error(`no item ${args[1]}`)
     await send(relay, statusEvent(issue, s), `${args[1]} ${s}`)
-  } else if (verb === "respread") await respread(relay, has("seed"))
+  } else if (verb === "respread") await respread(relay, has("seed"), has("order") ? flag("order") : "")
   else if (verb === "list") await list(relay)
   else if (verb === "show" && args[1]) await show(relay, args[1])
   else if (verb === "claim" && args[1]) await claim(relay, args[1], flag("by"))
