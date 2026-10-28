@@ -21,7 +21,7 @@ coax/bin/coax version
 ```
 
 ```
-coax0 0.7.0
+coax0 0.7.1
 ```
 
 The rest of this book writes `coax` for `coax/bin/coax`. To type

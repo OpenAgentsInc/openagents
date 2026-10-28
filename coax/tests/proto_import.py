@@ -280,6 +280,8 @@ main :: () {a:[4] u8;b:[4] u8;
         first=r.stdout.splitlines()[0].decode()
         self.assertIn('descriptor_sha256='+hashlib.sha256(descriptor.read_bytes()).hexdigest(),first)
         self.assertIn('generator=coax0-coax-v1',first)
+        self.assertIn('coax-proto-v4',first)
+        self.assertIn('fingerprint_sha256='+hashlib.sha256((ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),first)
         self.assertIn('importer_sha256='+hashlib.sha256((ROOT/'coax/lib/proto/importer.coax').read_bytes()).hexdigest(),first)
         self.assertIn('compiler='+checked([COAX,'--version']).decode().strip().replace(' ','-'),first)
         core=(ROOT/'coax/lib/proto/wire.coax').read_bytes()
@@ -362,17 +364,18 @@ main :: () {a:[4] u8;b:[4] u8;
     def test_native_importer_under_sanitizers(self):
         harness=self.d/'native.cpp'
         code='#include '+json.dumps(str(ROOT/'coax/src/proto.cpp'))+'\n#include <cassert>\n#include <fstream>\n#include <iterator>\nint main(int argc,char **argv){\n'
+        code+='assert(S_hash({nullptr,-1}).error==1);assert(S_hash({nullptr,2305843009213693952LL}).error==1);\n'
         # Independent hashlib oracle, including both SHA padding boundaries.
         for size in (0,3,55,56,57,63,64,65,1000):
             data=b'x'*size
-            code+='assert(coax::proto::sha256(std::string('+str(size)+",'x'))=="+json.dumps(hashlib.sha256(data).hexdigest())+');\n'
+            code+='{std::string input('+str(size)+",'x');uint8_t hex[64];auto digest=S_hash({input.data(),(int64_t)input.size()});assert(S_hex(digest,{hex,64}));assert(std::string((char*)hex,64)=="+json.dumps(hashlib.sha256(data).hexdigest())+');}\n'
         code+='''uint32_t state=17;std::string random;
 for(int n=0;n<1024;n++){random.resize((size_t)n);for(char &c:random){state=state*1664525+1013904223;c=(char)(state>>24);}
- auto result=coax::proto::import_descriptor(random,"Fuzz","test");assert(result.source.size()<=coax::proto::MAX_SOURCE);}
+ auto result=coax::proto::import_descriptor(random,"Fuzz","test");assert(result.source.size()<=(size_t)F_capacities().source);}
 for(int arg=1;arg<argc;arg++){std::ifstream file(argv[arg],std::ios::binary);std::string raw((std::istreambuf_iterator<char>(file)),{});
  assert(!raw.empty());assert(coax::proto::import_descriptor(raw,"Fuzz","test").error.empty());
  for(int i=0;i<64;i++){std::string changed=raw;state=state*1664525+1013904223;size_t pos=state%changed.size();changed[pos]^=(char)(1u<<(i%8));
-  auto result=coax::proto::import_descriptor(changed,"Fuzz","test");assert(result.source.size()<=coax::proto::MAX_SOURCE);}}
+  auto result=coax::proto::import_descriptor(changed,"Fuzz","test");assert(result.source.size()<=(size_t)F_capacities().source);}}
 return 0;}'''
         harness.write_text(code)
         executable=self.d/'native-sanitized'

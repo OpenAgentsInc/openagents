@@ -67,4 +67,6 @@ wire_checks_rc=$?
 wire_core_rc=$?
 "$COAX" test lib/proto/importer.coax
 importer_checks_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 ]]
+"$COAX" test lib/proto/fingerprint.coax && "$COAX" mutate lib/proto/fingerprint.coax
+fingerprint_checks_rc=$?
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]

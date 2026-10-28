@@ -21,7 +21,9 @@ trap 'rm -rf "$work"' EXIT
   cat lib/proto/memory.coax
   printf ')COAX_MEMORY";\nstatic constexpr char PROTO_IMPORTER_SOURCE[] = R"COAX_IMPORTER('
   cat lib/proto/importer.coax
-  printf ')COAX_IMPORTER";\n'
+  printf ')COAX_IMPORTER";\nstatic constexpr char PROTO_FINGERPRINT_SOURCE[] = R"COAX_FP('
+  cat lib/proto/fingerprint.coax
+  printf ')COAX_FP";\n'
 } > "$work/proto_runtime.inc"
 "${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I "$work" -o "$work/stage0" src/main.cpp
 gate() {
@@ -31,14 +33,17 @@ gate() {
 }
 gate "$work/stage0" test lib/proto/wire.coax
 gate "$work/stage0" mutate lib/proto/wire.coax
+gate "$work/stage0" test lib/proto/fingerprint.coax
+gate "$work/stage0" mutate lib/proto/fingerprint.coax
 gate "$work/stage0" test lib/proto/importer.coax
 gate "$work/stage0" mutate lib/proto/importer.coax
-"$work/stage0" c lib/proto/importer.coax --library --header "$work/proto_importer.h" > "$work/proto_importer.c"
+cat lib/proto/fingerprint.coax lib/proto/importer.coax > "$work/importer.coax"
+"$work/stage0" c "$work/importer.coax" --library --header "$work/proto_importer.h" > "$work/proto_importer.c"
 c_flags=(-std=c11 -O1 -g)
 if [[ -n "${COAX_HOST_TARGET:-}" ]]; then c_flags+=(-target "$COAX_HOST_TARGET"); fi
 "${CC:-cc}" "${c_flags[@]}" -c "$work/proto_importer.c" -o "$work/proto_importer.o"
 "${CXX:-c++}" "${host_flags[@]}" -I "$work" -o "$work/coax" src/main.cpp "$work/proto_importer.o"
-"$work/coax" c lib/proto/importer.coax --library > "$work/rebuilt.c"
+"$work/coax" c "$work/importer.coax" --library > "$work/rebuilt.c"
 cmp "$work/proto_importer.c" "$work/rebuilt.c"
 # Publish only a fully checked build. C/header remain available for native tests.
 cp "$work/proto_runtime.inc" bin/proto_runtime.inc

@@ -38,7 +38,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.7.0";
+static const char *VERSION = "coax0 0.7.1";
 
 int32_t g_error_count = 0;
 bool g_json_errors = false;

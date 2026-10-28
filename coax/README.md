@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.7.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.7.1's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The C++20 compiler parses and checks one source file, executes bounded
@@ -242,7 +242,9 @@ embed these sources into coax0; no Python build dependency returns.
 schema declaration hashes characterize compatibility; independent protoc vectors
 check interoperability. The descriptor parser and generator now live in
 `lib/proto/importer.coax`, with their own authority checks and mutation gate.
-Stage0 compiles that actual implementation to C11; the final compiler links it
+`lib/proto/fingerprint.coax` owns SHA-256, runtime extraction and provenance
+assembly, with its own authority and zero-survivor mutation gates. Stage0
+compiles these actual implementations together to C11; the final compiler links it
 and regenerates identical C. The C++ frontend/check interpreter/emitter and
 native host effects remain trusted. See [the evidence table](proto.md#native-importer-audit-boundary)
 for the scope and limits of each gate.

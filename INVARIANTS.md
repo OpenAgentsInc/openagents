@@ -129,7 +129,7 @@ assumptions. JSON diagnostics retain concrete witnesses.
 Check: `coax/tests/verify.py`, compiler ASan/UBSan signed-span checks and the
 actual imported wire checks in `coax/tests/proto/runtime.coax`. Native aliasing
 and non-finite representations remain in the target-side conformance suite.
-Descriptor/importer/runtime hashes and generator/compiler versions are recorded
+Descriptor/importer/fingerprint-module/runtime hashes and generator/compiler versions are recorded
 in generated C/headers. The authoritative pure runtime is
 `coax/lib/proto/wire.coax`, with `#authority`; its checks and zero-survivor mutation
 gate run before publishing a bootstrap compiler. `memory.coax` only observes
@@ -140,7 +140,11 @@ generation live in `coax/lib/proto/importer.coax`, with `#authority`, bounded
 checks and a zero-survivor mutation gate. Coax owns scratch capacities. Stage0
 has proto imports disabled and compiles this actual Coax implementation to C11;
 the final compiler links it and must regenerate identical importer C. There is
-no C++ parser/generator fallback. The frontend, evaluator, C emitter, toolchain
+no C++ parser/generator fallback. `coax/lib/proto/fingerprint.coax` owns
+SHA-256, runtime extraction, hexadecimal/provenance formatting and output
+assembly, with its own authority checks and zero-survivor mutation build gate.
+The native bridge only reads files, allocates Coax-requested buffers and copies
+Coax results. It contains no hash or formatting fallback. The frontend, evaluator, C emitter, toolchain
 and native host effects remain trusted; these gates are not a formal proof.
 Shell byte copies embed the runtime from its authoritative Coax sources. Normal
 compilation must not invoke Python, protoc or helper processes or depend on

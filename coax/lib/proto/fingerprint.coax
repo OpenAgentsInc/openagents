@@ -1,0 +1,223 @@
+// SHA-256 for reproducible compiler fingerprints, never admission/signatures.
+// No host calls, allocation or input-sized padding buffer. SHA-256 additions
+// explicitly reduce widened sums modulo 2^32 in both checked and native modes.
+#authority;
+S_Digest :: struct {words:[8] u32;error:u32;}
+F_Limits :: struct {descriptor:int;runtime:int;source:int;}
+F_Result :: struct {written:int;provenance:int;error:string;}
+F_Writer :: struct {out:[] u8;at:int;error:string;}
+#test "published SHA256 empty and abc vectors" {
+  out:[64] u8;
+  #assert S_hex(S_hash(""),out[..]);
+  #assert cast(string)out[..]=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  #assert S_hex(S_hash("abc"),out[..]);
+  #assert cast(string)out[..]=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+}
+#test "SHA256 length and padding boundaries" {
+  #assert S_length(0) && S_length(2305843009213693951) && !S_length(-1) && !S_length(2305843009213693952);
+  #assert S_blocks(0)==1 && S_blocks(55)==1 && S_blocks(56)==2 && S_blocks(63)==2 && S_blocks(64)==2;
+  #assert S_blocks(119)==2 && S_blocks(120)==3;
+  #assert S_padded("abc",0,64)==97 && S_padded("abc",2,64)==99 && S_padded("abc",3,64)==128;
+  #assert S_padded("abc",4,64)==0 && S_padded("abc",55,64)==0 && S_padded("abc",56,64)==0 && S_padded("abc",63,64)==24;
+  bad:=S_Digest.{error=1};out:[65] u8;out[0]=99;
+  #assert !S_hex(bad,out[..]) && out[0]==99;
+  #assert !S_hex(S_hash(""),out[0..<63]) && out[0]==99;
+  #assert S_hex(S_hash("abc"),out[0..<64]) && out[64]==0;
+}
+S_length :: (n:int)->bool {return n>=0 && n<=2305843009213693951;}
+S_blocks :: (n:int)->int {blocks:=n/64+1;if n%64>=56 {blocks+=1;}return blocks;}
+S_rotr :: (x:u32,n:int)->u32 {if n==0 {return x;}return (x>>n) | (x<<(32-n));}
+S_sum2 :: (a:u32,b:u32)->u32 {return cast,trunc(u32)(cast(u64)a+cast(u64)b);}
+S_sum4 :: (a:u32,b:u32,c:u32,d:u32)->u32 {return cast,trunc(u32)(cast(u64)a+cast(u64)b+cast(u64)c+cast(u64)d);}
+S_sum5 :: (a:u32,b:u32,c:u32,d:u32,e:u32)->u32 {return cast,trunc(u32)(cast(u64)a+cast(u64)b+cast(u64)c+cast(u64)d+cast(u64)e);}
+S_padding :: (count:int,at:int,total:int)->u8 {
+  if at==count {return 128;}
+  if at>=total-8 {return cast,trunc(u8)((cast(u64)count*8)>>((total-1-at)*8));}
+  return 0;
+}
+S_padded :: (input:string,at:int,total:int)->u8 {
+  if at<input.count {return input[at];}
+  return S_padding(input.count,at,total);
+}
+S_compress :: (h:[] u32,input:string,at:int,total:int) {
+  k:=[64] u32.[
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  w:[64] u32;
+  for i:0..<16 {
+    p:=at+i*4;
+    w[i]=(cast(u32)S_padded(input,p,total)<<24) | (cast(u32)S_padded(input,p+1,total)<<16) | (cast(u32)S_padded(input,p+2,total)<<8) | cast(u32)S_padded(input,p+3,total);
+  }
+  for i:16..<64 {
+    x:=w[i-15];y:=w[i-2];
+    s0:=S_rotr(x,7)^S_rotr(x,18)^(x>>3);s1:=S_rotr(y,17)^S_rotr(y,19)^(y>>10);
+    w[i]=S_sum4(w[i-16],s0,w[i-7],s1);
+  }
+  a:=h[0];b:=h[1];c:=h[2];d:=h[3];e:=h[4];f:=h[5];g:=h[6];z:=h[7];
+  for i:0..<64 {
+    s1:=S_rotr(e,6)^S_rotr(e,11)^S_rotr(e,25);choose:=(e&f)^((e^4294967295)&g);
+    t1:=S_sum5(z,s1,choose,k[i],w[i]);s0:=S_rotr(a,2)^S_rotr(a,13)^S_rotr(a,22);majority:=(a&b)^(a&c)^(b&c);
+    t2:=S_sum2(s0,majority);
+    z=g;g=f;f=e;e=S_sum2(d,t1);d=c;c=b;b=a;a=S_sum2(t1,t2);
+  }
+  h[0]=S_sum2(h[0],a);h[1]=S_sum2(h[1],b);h[2]=S_sum2(h[2],c);h[3]=S_sum2(h[3],d);
+  h[4]=S_sum2(h[4],e);h[5]=S_sum2(h[5],f);h[6]=S_sum2(h[6],g);h[7]=S_sum2(h[7],z);
+}
+S_seed :: (count:int)->S_Digest {
+  if !S_length(count) {return S_Digest.{error=1};}
+  h:=[8] u32.[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  return S_Digest.{words=h};
+}
+S_hash :: (input:string)->S_Digest #export_c {
+  seed:=S_seed(input.count);if seed.error!=0 {return seed;}h:=seed.words;
+  blocks:=S_blocks(input.count);total:=blocks*64;
+  for i:0..<blocks {S_compress(h[..],input,i*64,total);}
+  return S_Digest.{words=h};
+}
+S_hex :: (digest:S_Digest,out:[] u8)->bool #export_c {
+  if digest.error!=0 || out.count<64 {return false;}
+  digits:="0123456789abcdef";
+  for i:0..<8 {for j:0..<8 {n:=(digest.words[i]>>((7-j)*4))&15;out[i*8+j]=digits[n];}}
+  return true;
+}
+F_capacities :: ()->F_Limits #export_c {return F_Limits.{descriptor=8388608,runtime=1048576,source=8388608};}
+F_write :: (w:[] F_Writer,text:string) {
+  if text.count>w[0].out.count-w[0].at {w[0].error="fingerprint output budget";return;}
+  for c:text {w[0].out[w[0].at]=c;w[0].at+=1;}
+}
+F_runtime :: (core:string,memory:string,out:[] u8)->F_Result #export_c {
+  marker:="// @proto-runtime-checks\n";at:=0;
+  while at+marker.count<=core.count {
+    if core[at..<at+marker.count]==marker {
+      w:=[1] F_Writer.[F_Writer.{out=out}];F_write(w[..],core[0..<at]);F_write(w[..],memory);
+      if w[0].error!="" {return F_Result.{error=w[0].error};}return F_Result.{written=w[0].at};
+    }at+=1;
+  }return F_Result.{error="missing wire runtime check boundary"};
+}
+F_digest :: (w:[] F_Writer,digest:S_Digest) {
+  hex:[64] u8;if !S_hex(digest,hex[..]) {w[0].error="invalid fingerprint input length";return;}
+  F_write(w,cast(string)hex[..]);
+}
+F_hash :: (w:[] F_Writer,input:string) {F_digest(w,S_hash(input));}
+F_package :: (raw:string,prefix:string,compiler:string,runtime:string,importer:string,fingerprints:string,body:string,out:[] u8)->F_Result #export_c {
+  w:=[1] F_Writer.[F_Writer.{out=out}];
+  F_write(w[..],"// coax-proto-v4 generator=coax0-coax-v1 compiler=");
+  for c:compiler {one:=[1] u8.[c];if c==32 {one[0]=45;}F_write(w[..],cast(string)one[..]);}
+  F_write(w[..]," importer_sha256=");F_hash(w[..],importer);
+  F_write(w[..]," fingerprint_sha256=");F_hash(w[..],fingerprints);
+  F_write(w[..]," descriptor_sha256=");F_hash(w[..],raw);
+  F_write(w[..]," runtime_sha256=");F_hash(w[..],runtime);F_write(w[..]," prefix=");F_write(w[..],prefix);
+  provenance:=w[0].at;F_write(w[..],"\n");F_write(w[..],body);
+  if w[0].error!="" {return F_Result.{error=w[0].error};}
+  return F_Result.{written=w[0].at,provenance=provenance};
+}
+
+#test "writer, runtime boundary and capacity policy" {
+  c:=F_capacities();#assert c.descriptor==8388608 && c.runtime==1048576 && c.source==8388608;
+  #assert S_seed(-1).error==1 && S_seed(2305843009213693952).error==1 && S_seed(0).error==0;
+  out:[128] u8;writer:=[1] F_Writer.[F_Writer.{out=out[0..<3]}];
+  F_write(writer[..],"abc");#assert writer[0].error=="" && writer[0].at==3 && cast(string)out[0..<3]=="abc";
+  F_write(writer[..],"");#assert writer[0].error=="" && writer[0].at==3;
+  F_write(writer[..],"x");#assert writer[0].error=="fingerprint output budget" && writer[0].at==3;
+  writer[0]=F_Writer.{out=out[..]};F_digest(writer[..],S_Digest.{error=1});
+  #assert writer[0].error=="invalid fingerprint input length" && writer[0].at==0;
+  r:=F_runtime("core\n// @proto-runtime-checks\n#authority;","memory",out[..]);
+  #assert r.error=="" && r.written==11 && cast(string)out[0..<r.written]=="core\nmemory";
+  r=F_runtime("// @proto-runtime-checks\n","",out[0..<0]);#assert r.error=="" && r.written==0;
+  r=F_runtime("missing","",out[..]);#assert r.error=="missing wire runtime check boundary" && r.written==0;
+  r=F_runtime("x// @proto-runtime-checks\n","yz",out[0..<2]);#assert r.error=="fingerprint output budget" && r.written==0;
+}
+#test "complete fingerprint envelope is exact and bounded" {
+  out:[1024] u8;
+  r:=F_package("desc","P","coax0 1.2.3 debug","runtime","parser","sha","BODY",out[..]);
+  #assert r.error=="" && r.provenance==404 && r.written==409;
+  #assert cast(string)out[0..<r.written]=="// coax-proto-v4 generator=coax0-coax-v1 compiler=coax0-1.2.3-debug importer_sha256=b17d45121150928f2146af49e195eff1eef5d67325be273a733fb74acadaa342 fingerprint_sha256=d600474b1b8e50d3633c91c0cf1efc454b79c9624a43fd7de441ee71745726ab descriptor_sha256=97864e878fe129a3d4c35681c3ad4b12743f04f7cd705643f2fa1142dfede601 runtime_sha256=d92c6a81b2ff50096bcda80885427d1f59a25b5f483f7055523504925d16ab23 prefix=P\nBODY";
+  r=F_package("desc","P","coax0 1.2.3 debug","runtime","parser","sha","BODY",out[0..<409]);
+  #assert r.error=="" && r.written==409;
+  r=F_package("desc","P","coax0 1.2.3 debug","runtime","parser","sha","BODY",out[0..<408]);
+  #assert r.error=="fingerprint output budget" && r.written==0 && r.provenance==0;
+}
+#test "binary SHA256 vector 1" {
+  input:=[1] u8.[0];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d";
+}
+#test "binary SHA256 vector 3" {
+  input:=[3] u8.[0,1,2];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="ae4b3280e56e2faf83f414a6e3dabe9d5fbe18976544c05fed121accb85b53fc";
+}
+#test "binary SHA256 vector 55" {
+  input:=[55] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="463eb28e72f82e0a96c0a4cc53690c571281131f672aa229e0d45ae59b598b59";
+}
+#test "binary SHA256 vector 56" {
+  input:=[56] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="da2ae4d6b36748f2a318f23e7ab1dfdf45acdc9d049bd80e59de82a60895f562";
+}
+#test "binary SHA256 vector 57" {
+  input:=[57] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="2fe741af801cc238602ac0ec6a7b0c3a8a87c7fc7d7f02a3fe03d1c12eac4d8f";
+}
+#test "binary SHA256 vector 63" {
+  input:=[63] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="29af2686fd53374a36b0846694cc342177e428d1647515f078784d69cdb9e488";
+}
+#test "binary SHA256 vector 64" {
+  input:=[64] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108";
+}
+#test "binary SHA256 vector 65" {
+  input:=[65] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="4bfd2c8b6f1eec7a2afeb48b934ee4b2694182027e6d0fc075074f2fabb31781";
+}
+#test "binary SHA256 vector 119" {
+  input:=[119] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="da18797ed7c3a777f0847f429724a2d8cd5138e6ed2895c3fa1a6d39d18f7ec6";
+}
+#test "binary SHA256 vector 120" {
+  input:=[120] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="f52b23db1fbb6ded89ef42a23ce0c8922c45f25c50b568a93bf1c075420bbb7c";
+}
+#test "binary SHA256 vector 128" {
+  input:=[128] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="471fb943aa23c511f6f72f8d1652d9c880cfa392ad80503120547703e56a2be5";
+}
+#test "binary SHA256 vector 256" {
+  input:=[256] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880";
+}
+#test "binary SHA256 vector 1000" {
+  input:=[1000] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231];out:[64] u8;
+  #assert S_hex(S_hash(cast(string)input[..]),out[..]);
+  #assert cast(string)out[..]=="a8af099bf2e878609558dbf69d8f88f4a31040a8cf84b549a0cfa912f12ffc3f";
+}
+#forall "every rotate distance" n:0..<32 {
+  bits:u32=0x91e6a5f3;expected:u64=0;
+  for i:0..<32 {if ((cast(u64)bits>>i)&1)!=0 {expected=expected | (cast(u64)1<<((i-n+32)%32));}}
+  #assert S_rotr(bits,n)==cast(u32)expected;
+}
+#test "logical maximum SHA length without allocating the input" {
+  count:=2305843009213693951;total:=S_blocks(count)*64;
+  #assert total==2305843009213694016;
+  #assert S_padding(count,count,total)==128;
+  #assert S_padding(count,total-9,total)==0;
+  for i:0..<7 {#assert S_padding(count,total-8+i,total)==255;}
+  #assert S_padding(count,total-1,total)==248;
+}

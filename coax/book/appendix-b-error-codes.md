@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.7.0 can report. This appendix is generated from the
+Every error `coax0` 0.7.1 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are

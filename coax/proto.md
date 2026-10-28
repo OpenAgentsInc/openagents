@@ -1,4 +1,4 @@
-# Descriptor imports in coax0 0.7.0
+# Descriptor imports in coax0 0.7.1
 
 `#import_proto` generates real Coax declarations from a binary
 `google.protobuf.FileDescriptorSet`. Root `proto/` remains the schema source.
@@ -17,13 +17,15 @@ the resulting implementation, and `coax header` exposes exported C wrappers.
 
 The parser, descriptor validation, name resolution and source generator live in
 `coax/lib/proto/importer.coax`, with `#authority` and executable checks. They
-compile to C11 and are linked into coax0; `src/proto.cpp` supplies file I/O,
-Coax-requested buffer allocation and reproducible fingerprints only.
+compile to C11 and are linked into coax0; `src/proto.cpp` supplies file I/O and
+Coax-requested buffer allocation only. `lib/proto/fingerprint.coax` owns
+SHA-256, runtime-boundary extraction and the complete provenance/source
+envelope. There is no C++ hash, formatter or source-assembly fallback.
 
 `coax/build.sh` builds a temporary stage0 compiler with proto imports disabled.
-Stage0 checks and mutation-tests the importer and wire core, then emits the
-importer's C11 library/header. The host C compiler compiles it, and the C++20
-frontend links it into the final compiler. Both stages must emit identical C
+Stage0 checks and mutation-tests the fingerprint module, importer and wire
+core, then concatenates the two compiler modules and emits one C11
+library/header. The host C compiler compiles it, and the C++20 frontend links it into the final compiler. Both stages must emit identical C
 for the importer before publication. There is no old parser or generator
 fallback, checked-in generated C seed, Python step or protoc build dependency.
 
@@ -173,9 +175,9 @@ proven; this change does not deploy or replace the app.
 ## Native importer audit boundary
 
 Descriptor imports are explicit compiler input reads, separate from `#run`.
-Generated C/headers carry the descriptor, authoritative importer source and
-embedded runtime SHA-256 values, generator ID `coax0-coax-v1` and compiler
-version in a `coax-proto-v3` comment. The
+Generated C/headers carry the descriptor, authoritative importer source,
+authoritative fingerprint module and embedded runtime SHA-256 values, generator ID `coax0-coax-v1` and compiler
+version in a `coax-proto-v4` comment. The
 compiler binary/toolchain must still be pinned independently; fingerprints
 are not signatures, authority or a hermetic-build guarantee.
 
@@ -189,13 +191,14 @@ user-file line numbers past EOF.
 The actual parser/generator is now checked Coax, not a second model of a C++
 implementation. It uses bounded, host-owned views for messages, fields, enum
 values, groups, names and source buffers. Coax's exported `D_capacities` defines
-those scratch allocations; the host allocates from that contract. Native
-file-read and output-envelope bounds remain defensive host checks.
-Failures are values with first-error diagnostics; failed imports publish no
-partial source. Mutable scratch state is per import, with no cross-import cache.
+those scratch allocations; the host allocates from that contract. File-read
+bounds come from Coax limits; the host enforces them while doing I/O. Output
+envelope bounds and formatting are enforced by the Coax fingerprint module.
+Descriptor validation retains first-error diagnostics; failed imports publish
+no partial source. Mutable scratch state is per import, with no cross-import cache.
 
 This does not remove the trusted computing base: the C++ frontend, check
-interpreter and C emitter, the C toolchain, host allocation/I/O/fingerprinting
+interpreter and C emitter, the C toolchain, host allocation/I/O
 and native address wrappers remain trusted. Finite checks and mutation testing
 are not a formal proof of the importer or the bootstrap chain.
 
@@ -204,6 +207,8 @@ The evidence has distinct scopes:
 | Gate | What it establishes | What it does not establish |
 | --- | --- | --- |
 | Legacy declaration hashes in `tests/proto/import-baselines.json` | No generated schema-API drift for 11 existing profiles plus the scalar fixture; original full-output hashes retained as history | Correctness of either generator |
+| `coax test coax/lib/proto/fingerprint.coax` | Actual SHA-256, padding/length, hexadecimal, runtime boundary and envelope code passes finite checks, including empty/abc, binary block-boundary vectors and the maximum logical length | A certified cryptographic implementation, signatures or admission authority |
+| `coax mutate coax/lib/proto/fingerprint.coax` | All selected mutations are killed, with no exemptions | Universal correctness or an exhaustive defect model |
 | `coax test coax/lib/proto/importer.coax` | The actual parser/generator passes valid/invalid descriptor, budget, UTF-8, dependency, namespace, policy, diagnostic and generated-output checks | Universal correctness; exact-output fixtures characterize compatibility |
 | `coax mutate coax/lib/proto/importer.coax` | All selected mutations are killed, with no equivalent exemptions | An exhaustive defect model or proof of the compiler executing the checks |
 | `coax test coax/lib/proto/wire.coax` | Bounded, executable properties of the actual pure runtime source, including exhaustive two-byte varint/UTF-8 inputs and explicit limit/capacity/Unicode boundaries | Universal correctness, native pointer validity or complete generated-API coverage |
@@ -214,8 +219,8 @@ The evidence has distinct scopes:
 | Relocated binary and iOS consumer tests | The real Home codecs compile/run without Python/helpers in normal builds | General engine/app correctness |
 
 `wire.coax` carries `#authority`, so compiling it runs its checks and requires
-actual procedure execution. Bootstrap builds run both files’ checks and zero-survivor mutation gates before
-publishing coax0. The two tiny `memory.coax` wrappers supply the
+actual procedure execution. Bootstrap builds run the wire, importer and fingerprint modules' checks and
+zero-survivor mutation gates before publishing coax0. The two tiny `memory.coax` wrappers supply the
 physical-overlap observation to the pure policy; that observation is a native
 boundary tested by C ABI/sanitizer cases, not Coax verification. Callers use the
 generated public message APIs, not the internal `_checked` routines.
@@ -225,7 +230,9 @@ coverage of all its generated APIs and native operations. Generated sources
 include neither the core's authority directive nor its test harness. Their
 runtime fingerprint covers exactly the embedded program core plus address
 wrappers. The importer fingerprint additionally covers its authoritative source,
-including checks. Generated importer C/header are ignored build outputs. Python remains test/oracle and schema-maintenance tooling only.
+including checks; a separate fingerprint identifies the actual SHA/provenance
+module source, also including checks. Generated compiler-module C/header are
+ignored build outputs. Python remains test/oracle and schema-maintenance tooling only.
 
 To run the importer gate directly:
 
@@ -239,3 +246,21 @@ vectors; no Python generator is needed to read or execute them. The legacy
 output fixtures deliberately prove compatibility only. Independent protoc
 interoperability and native sanitizer fuzzing exercise the compiled Coax
 implementation through the real compiler entry point.
+
+The SHA-256 implementation processes one block at a time and uses fixed stack
+storage. Widened sums explicitly reduce modulo 2^32, including in checked
+builds. Padding can be tested by logical position independently of input
+storage, so the maximum permitted byte count (2^61 - 1) and its full big-endian
+bit length have finite checks without allocating that input. The exported
+hexadecimal writer rejects insufficient capacity and digest errors.
+
+```sh
+coax/bin/coax test coax/lib/proto/fingerprint.coax
+coax/bin/coax mutate coax/lib/proto/fingerprint.coax
+```
+
+The native sanitizer suite compares the compiled Coax hash with independent
+`hashlib` vectors and checks all emitted fingerprint fields independently.
+`protoc` remains the independent codec interoperability oracle. Python is only
+used in these test/oracle tools, never the bootstrap or an import. Fingerprints
+remain reproducibility evidence, not signatures or authorization.

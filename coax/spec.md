@@ -9,7 +9,7 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.7.0 implements procedures;
+**Implementation status matters.** Version 0.7.1 implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
@@ -712,11 +712,13 @@ snapshots preserve their pre-reset identities. New alpha options and Verse
 world/presence projections are experimental inputs. Current descriptors are
 in `proto/descriptors/`, generated and tested by `scripts/proto.sh`; the
 Coax compiler now ingests selected proto3 closures through `#import_proto`.
-Version 0.7.0 implements descriptor parsing, validation and source generation in
+Version 0.7.1 implements descriptor parsing, validation and source generation in
 `lib/proto/importer.coax`. Its `#authority` checks and mutation gate execute on
 the actual implementation. A proto-disabled C++ stage0 compiles it to C11,
 then the final compiler links it and must regenerate identical C. Coax defines
-its bounded scratch capacities; native code owns allocation, I/O and hashes.
+its bounded scratch capacities. `lib/proto/fingerprint.coax` also implements
+SHA-256, runtime extraction and the provenance/source envelope, with authority
+checks and mutation gates. Native code owns allocation and I/O only.
 The runtime remains in `lib/proto/wire.coax` with separate authority/mutation
 gates and two native-address wrappers. The frontend, check evaluator, C emitter,
 host effects and toolchain remain trusted; finite checks are not a proof of

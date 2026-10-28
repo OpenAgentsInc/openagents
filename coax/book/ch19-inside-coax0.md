@@ -37,8 +37,9 @@ The script builds a temporary frontend with proto imports disabled, checks and
 mutation-tests the Coax importer and wire core, then emits the importer as C11.
 It links that compiled object into the final compiler, requires identical
 regenerated importer C, and publishes the standalone binary atomically. The
-native bridge only reads files, allocates Coax-requested scratch buffers and
-records fingerprints. No Python/protoc step or old importer fallback exists.
+native bridge only reads files and allocates/copies buffers. The checked
+`lib/proto/fingerprint.coax` module computes SHA-256 and assembles provenance;
+it is compiled alongside the importer and has its own mutation gate. No Python/protoc step or old importer fallback exists.
 
 ## 19.3 Memory: one arena
 
