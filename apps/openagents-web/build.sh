@@ -29,12 +29,15 @@ bun "$tools/snapshot.ts" --project coax ${fresh[@]+"${fresh[@]}"} &
 coax=$!
 bun "$tools/snapshot.ts" --project verse ${fresh[@]+"${fresh[@]}"} &
 verse=$!
+bun "$tools/snapshot.ts" --project planetary-villa ${fresh[@]+"${fresh[@]}"} &
+villa=$!
 # The /projects list: every project on the relay (kind 30621) into projects/list.coax.
 bun "$tools/list.ts" ${fresh[@]+"${fresh[@]}"}
 "$here/../../coax/web/wasm.sh" "$here/projects.coax" "$here/projects-face.c" "$here/build/projects.wasm" &
 list=$!
 wait "$coax"
 wait "$verse"
+wait "$villa"
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
 wait "$list"
 # /admin/analytics: the projects list's HUD over the admins' numbers.

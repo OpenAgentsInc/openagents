@@ -62,3 +62,4 @@ private-assets.json
 /bench/terminal-bench/experiments/**/*.tar.gz
 /target-agents/
 apps/openagents-web/projects/verse/work.coax
+apps/openagents-web/projects/planetary-villa/work.coax

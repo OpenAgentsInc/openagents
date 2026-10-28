@@ -18,6 +18,8 @@
 #load "projects/coax/work.coax";
 #load "projects/verse/commits.coax";
 #load "projects/verse/work.coax";
+#load "projects/planetary-villa/commits.coax";
+#load "projects/planetary-villa/work.coax";
 #load "project-live.coax";
 #load "analytics.coax";
 
@@ -65,8 +67,15 @@ Baked :: struct {
   items: string; log: string; plans: string; plan_info: string; details: string; steps: string;
   history: string; commits: int; authors: int; lines: int;
 }
-BAKED_N :: 2;
+BAKED_N :: 3;
 baked :: (k: int) -> Baked {
+  if k == 2 {
+    return Baked.{slug = PLANETARY_VILLA_WORK_SLUG, pubkey = PLANETARY_VILLA_WORK_PUBKEY, relay = PLANETARY_VILLA_WORK_RELAY, naddr = PLANETARY_VILLA_WORK_NADDR,
+      name = PLANETARY_VILLA_WORK_NAME, description = PLANETARY_VILLA_WORK_DESCRIPTION, license = PLANETARY_VILLA_WORK_LICENSE, path = PLANETARY_VILLA_WORK_PATH,
+      repo = PLANETARY_VILLA_WORK_REPO, items = PLANETARY_VILLA_WORK_ITEMS, log = PLANETARY_VILLA_WORK_LOG, plans = PLANETARY_VILLA_WORK_PLANS,
+      plan_info = PLANETARY_VILLA_WORK_PLAN_INFO, details = PLANETARY_VILLA_WORK_DETAILS, steps = PLANETARY_VILLA_WORK_STEPS, history = PLANETARY_VILLA_HISTORY, commits = PLANETARY_VILLA_COMMITS,
+      authors = PLANETARY_VILLA_AUTHORS, lines = PLANETARY_VILLA_LINES};
+  }
   if k == 1 {
     return Baked.{slug = VERSE_WORK_SLUG, pubkey = VERSE_WORK_PUBKEY, relay = VERSE_WORK_RELAY, naddr = VERSE_WORK_NADDR,
       name = VERSE_WORK_NAME, description = VERSE_WORK_DESCRIPTION, license = VERSE_WORK_LICENSE, path = VERSE_WORK_PATH,
