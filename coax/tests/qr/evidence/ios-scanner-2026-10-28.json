@@ -1,0 +1,208 @@
+{
+  "binary_sha256": "660bc35e9d3c7045edd4cb0f28b26de48113ed1ea2a117c25ead9174186374a5",
+  "decoder": "Vision.VNDetectBarcodesRequest QR over CVPixelBuffer",
+  "decoder_source_sha256": "906c9260f7e6861e7b6c00cabafb2ce188f842a4d13681f6355f32d5d5fba882",
+  "physicalCamera": false,
+  "platform": "iOS Simulator",
+  "request_revision": 1,
+  "rows": [
+    {
+      "height": 232,
+      "inputBytes": 14,
+      "matches": true,
+      "name": "qr-1.png",
+      "observed": [
+        "Coax qr0123456"
+      ],
+      "width": 232
+    },
+    {
+      "height": 264,
+      "inputBytes": 15,
+      "matches": true,
+      "name": "qr-2.png",
+      "observed": [
+        "Coax qr01234567"
+      ],
+      "width": 264
+    },
+    {
+      "height": 296,
+      "inputBytes": 27,
+      "matches": true,
+      "name": "qr-3.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr"
+      ],
+      "width": 296
+    },
+    {
+      "height": 296,
+      "inputBytes": 42,
+      "matches": true,
+      "name": "qr-4.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Co"
+      ],
+      "width": 296
+    },
+    {
+      "height": 328,
+      "inputBytes": 43,
+      "matches": true,
+      "name": "qr-5.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coa"
+      ],
+      "width": 328
+    },
+    {
+      "height": 328,
+      "inputBytes": 62,
+      "matches": true,
+      "name": "qr-6.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Co"
+      ],
+      "width": 328
+    },
+    {
+      "height": 360,
+      "inputBytes": 70,
+      "matches": true,
+      "name": "qr-7.png",
+      "observed": [
+        "https://openagents.com/signin?challenge=000000000000000000000000000000"
+      ],
+      "width": 360
+    },
+    {
+      "height": 360,
+      "inputBytes": 84,
+      "matches": true,
+      "name": "qr-8.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax"
+      ],
+      "width": 360
+    },
+    {
+      "height": 392,
+      "inputBytes": 106,
+      "matches": true,
+      "name": "qr-9.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax q"
+      ],
+      "width": 392
+    },
+    {
+      "height": 424,
+      "inputBytes": 122,
+      "matches": true,
+      "name": "qr-10.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Co"
+      ],
+      "width": 424
+    },
+    {
+      "height": 456,
+      "inputBytes": 152,
+      "matches": true,
+      "name": "qr-11.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr01234"
+      ],
+      "width": 456
+    },
+    {
+      "height": 488,
+      "inputBytes": 180,
+      "matches": true,
+      "name": "qr-12.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._"
+      ],
+      "width": 488
+    },
+    {
+      "height": 520,
+      "inputBytes": 212,
+      "matches": true,
+      "name": "qr-13.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr01234"
+      ],
+      "width": 520
+    },
+    {
+      "height": 552,
+      "inputBytes": 240,
+      "matches": true,
+      "name": "qr-14.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._"
+      ],
+      "width": 552
+    },
+    {
+      "height": 584,
+      "inputBytes": 254,
+      "matches": true,
+      "name": "qr-15.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456"
+      ],
+      "width": 584
+    },
+    {
+      "height": 616,
+      "inputBytes": 300,
+      "matches": true,
+      "name": "qr-16.png",
+      "observed": [
+        "nostrconnect://0000000000000000000000000000000000000000000000000000000000000000?relay=wss%3A%2F%2Frelay.openagents.com&metadata=%7B%22name%22%3A%22Coax%22%7D&test=00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      "width": 616
+    },
+    {
+      "height": 648,
+      "inputBytes": 350,
+      "matches": true,
+      "name": "qr-17.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr012"
+      ],
+      "width": 648
+    },
+    {
+      "height": 680,
+      "inputBytes": 366,
+      "matches": true,
+      "name": "qr-18.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax q"
+      ],
+      "width": 680
+    },
+    {
+      "height": 680,
+      "inputBytes": 412,
+      "matches": true,
+      "name": "qr-19.png",
+      "observed": [
+        "Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr0123456789-._Coax qr01234"
+      ],
+      "width": 680
+    }
+  ],
+  "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+  "scope": "Actual iOS Simulator Vision QR rendered CVPixelBuffer decoding; physical camera optics and real phone sign-in not observed",
+  "sources": {
+    "coax/lib/qr/platform/QRFrameDecoder.swift": "906c9260f7e6861e7b6c00cabafb2ce188f842a4d13681f6355f32d5d5fba882",
+    "coax/tests/qr/ios/Probe.swift": "8187bfd4eed78285b3a07b2f261278267345f0ec2df730640e607d85385e4db6",
+    "coax/tests/qr/ios/run.py": "663640d40323d1c17016b611a12829a3cdc645bbf57f510b37614cd2f532b9e6"
+  },
+  "systemVersion": "26.5"
+}

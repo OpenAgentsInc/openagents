@@ -57,6 +57,23 @@ golden. Independent work can continue while a valid release holds the lock.
 
 ## Original handoff snapshot
 
+### Phone fast path coordination
+
+The owner assigned a Claude agent the temporary NIP-98 phone sign-in fast path:
+one-use `/signin` challenge, an iOS signature, the page session and member phone
+key linking. That agent exclusively owns `ios-key-custody`, the challenge/link
+API endpoints, `/signin` and TestFlight. Do not take those tasks or edit their
+implementation. Full NIP-46 and its lifecycle remain in the Nostr epic; the fast
+path does not satisfy those later contracts.
+
+QR source shipped in `78e2095bc1`. Load `coax/lib/qr/qr-memory.coax` and call
+`qr_encode(input,out)`. A70-byte URL yields size37/count1369; a5929-byte caller
+buffer covers every supported version. Output is row-major0/1; render a light
+four-module quiet zone and dark Coax quads without smoothing. Native/Wasm exact
+reference grids and the actual iOS Vision rendered-frame scanner pass. Physical
+camera optics remain part of the device sign-in owner step, not an inferred
+result. See `coax/lib/qr/README.md` for the API and scoped evidence.
+
 These lists are historical. The live queue and current execution update above
 supersede their status; retain them as the starting evidence.
 

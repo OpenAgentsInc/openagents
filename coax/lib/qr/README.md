@@ -59,8 +59,26 @@ it records the reference JavaScript SHA-256. Native tools never import or run
 that downloaded source. Normal tests are offline and need no reference network.
 Python is explicit test tooling, never an app/compiler build dependency.
 
-This first source delivery unblocks the page renderer. The iOS image-scanner
-acceptance is being completed separately under the same task; no physical
-camera or phone sign-in end-to-end result is claimed here. Key custody,
+The iOS scanner fixture also runs the **actual Vision decoder on iOS26.5
+Simulator**, through CVPixelBuffer frames rendered from generated Coax grids.
+All19 nonempty reference strings decode exactly, including70/300-byte URLs.
+The empty byte string remains a reference-grid test. Run it with:
+
+```sh
+python3 coax/tests/qr/ios/run.py
+```
+
+It builds a standalone probe, creates/boots an owned temporary Simulator
+without opening a window, observes the result and deletes only that device.
+It neither edits the real app nor needs a TestFlight build. The optional thin
+`platform/QRFrameDecoder.swift` adapter performs Vision byte observation only;
+camera permission, frame ownership and Coax URL/request admission are callers'
+responsibilities. It selects the public QR-capable revision1 explicitly: the
+Simulator's newer default detector refused with Vision error9 (inference
+context unavailable), and that failed trial was not treated as evidence.
+
+Physical camera optics and phone sign-in end-to-end are **not** established by
+rendered-frame decoding. They remain in the owner/device run for
+`phone-sign-in-e2e`. This source delivery unblocks the page renderer. Key custody,
 challenge/link endpoints, `/signin` and TestFlight remain the fast-path owner's
 work. Full NIP-46 remains in the Nostr epic.
