@@ -1,0 +1,252 @@
+// NIP-19 extended Bech32 display forms. Original TLV bytes and hint order survive.
+#load "bech32-core.coax";
+#authority;
+N19_NPUB :: 1; N19_NSEC :: 2; N19_NOTE :: 3;
+N19_PROFILE :: 4; N19_EVENT :: 5; N19_ADDR :: 6;
+N19_MAX_BYTES :: 3120;
+N19_Source :: struct { input: string; start: int; count: int; encoded: bool; }
+N19_Field :: struct { tag: u8; value: int; length: int; next: int; error: u32; done: bool; }
+N19_Result :: struct {
+  written: int; error: u32; type: u32;
+  special_at: int; special_length: int; has_special: bool;
+  author_at: int; has_author: bool;
+  kind: u32; has_kind: bool; relays: int;
+}
+
+#test "the pinned NIP19 public, secret and profile examples decode without losing fields" {
+  out: [128] u8;
+  p := nip19_decode_checked("npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg", out[..], false);
+  #assert p.error == NC_OK && p.type == N19_NPUB && p.written == 32;
+  #assert p.has_special && p.special_at == 0 && p.special_length == 32 && !p.has_author && !p.has_kind && p.relays == 0;
+  #assert out[0] == 126 && out[31] == 78;
+  n := nip19_decode_checked("nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5", out[..], false);
+  #assert n.error == NC_OK && n.type == N19_NSEC && n.written == 32;
+  #assert out[0] == 103 && out[31] == 250;
+  text: [5000] u8;
+  e := nip19_encode_checked(N19_NSEC, cast(string) out[0..<32], text[..], false);
+  #assert e.error == NC_OK && cast(string) text[0..<e.written] == "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+  profile := nip19_decode_checked("nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p", out[..], false);
+  #assert profile.error == NC_OK && profile.type == N19_PROFILE && profile.relays == 2;
+  #assert profile.special_at == 2 && profile.special_length == 32 && !profile.has_author && !profile.has_kind;
+  #assert out[2] == 59 && out[33] == 157;
+}
+
+#test "empty naddr identifiers, kind zero, and repeated/unknown TLVs retain presence" {
+  data: [56] u8;
+  data[0] = 0; data[1] = 0;
+  data[2] = 2; data[3] = 32;
+  for i: 0..<32 { data[4 + i] = cast(u8) i; }
+  data[36] = 3; data[37] = 4;
+  data[42] = 1; data[43] = 1; data[44] = 'x';
+  data[45] = 1; data[46] = 1; data[47] = 'x';
+  data[48] = 99; data[49] = 2; data[50] = 255; data[51] = 255;
+  text: [5000] u8; out: [56] u8;
+  e := nip19_encode_checked(N19_ADDR, cast(string) data[0..<52], text[..], false);
+  #assert e.error == NC_OK && e.written > 90;
+  r := nip19_decode_checked(cast(string) text[0..<e.written], out[..], false);
+  #assert r.error == NC_OK && r.written == 52 && r.type == N19_ADDR;
+  #assert r.has_special && r.special_length == 0 && r.special_at == 2;
+  #assert r.has_author && r.author_at == 4 && r.has_kind && r.kind == 0 && r.relays == 2;
+  for i: 0..<52 { #assert out[i] == data[i]; }
+  source := N19_Source.{input = cast(string) data[0..<52], count = 52};
+  f := n19_field(source, 48);
+  #assert f.error == NC_OK && f.tag == 99 && f.value == 50 && f.length == 2 && f.next == 52;
+  #assert n19_field(source, 52).done && n19_field(source, -1).error == NC_INVALID && n19_field(source, 53).error == NC_INVALID;
+  // The same empty identifier is missing if type0 is removed: it must refuse.
+  #assert n19_validate(N19_Source.{input = cast(string) data[2..<42], count = 40}, N19_ADDR).error == NC_INVALID;
+  // Unknown/unsupported types on nprofile are ignored, not mistaken for author/kind.
+  minimal: [40] u8; minimal[1] = 32; minimal[34] = 2; minimal[35] = 1; minimal[36] = 255;
+  r = n19_validate(N19_Source.{input = cast(string) minimal[0..<37], count = 37}, N19_PROFILE);
+  #assert r.error == NC_OK && !r.has_author && !r.has_kind;
+}
+
+#test "NIP19 refusals are transactional and malformed TLV or padding never becomes a key" {
+  out := [4] u8.[77,77,77,77]; text: [128] u8;
+  key: [32] u8;
+  e := nip19_encode_checked(N19_NOTE, cast(string) key[..], text[..], false);
+  #assert e.error == NC_OK;
+  #assert nip19_decode_checked(cast(string) text[0..<e.written], out[..], false).error == NC_CAPACITY;
+  wide: [32] u8; for i: 0..<32 { wide[i] = 77; }
+  #assert nip19_decode_checked(cast(string) text[0..<e.written], wide[..], true).error == NC_ALIAS;
+  #assert nip19_decode_checked("a12uel5l", wide[..], false).error == NC_INVALID;
+  #assert nip19_encode_checked(0, "", text[..], false).error == NC_INVALID;
+  #assert nip19_encode_checked(7, "", text[..], false).error == NC_INVALID;
+  #assert nip19_encode_checked(N19_NPUB, "x", text[..], false).error == NC_INVALID;
+  #assert nip19_encode_checked(N19_NPUB, cast(string) key[..], out[..], false).error == NC_CAPACITY;
+  #assert nip19_encode_checked(N19_NPUB, cast(string) key[..], text[..], true).error == NC_ALIAS;
+  for b: wide { #assert b == 77; } for b: out { #assert b == 77; }
+  #assert n19_byte_count(0, 0) == 0 && n19_byte_count(2, 0) == 1 && n19_byte_count(1, 0) == -1;
+  #assert n19_byte_count(2, 1) == -1 && n19_byte_count(4, 1) == -1;
+  bad := [6] string.["", "x", "\0", "\0\0", "\0 ", "\0\0\0\0"];
+  for s: bad { #assert n19_validate(N19_Source.{input = s, count = s.count}, N19_PROFILE).error == NC_INVALID; }
+}
+
+n19_count :: (count: int) -> bool #export_c { return count >= 0 && count <= N19_MAX_BYTES; }
+n19_prefix :: (type: u32) -> string {
+  if type == N19_NPUB { return "npub"; }
+  if type == N19_NSEC { return "nsec"; }
+  if type == N19_NOTE { return "note"; }
+  if type == N19_PROFILE { return "nprofile"; }
+  if type == N19_EVENT { return "nevent"; }
+  if type == N19_ADDR { return "naddr"; }
+  return "";
+}
+n19_same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if b32_lower(a[i]) != b[i] { return false; } }
+  return true;
+}
+n19_type :: (hrp: string) -> u32 {
+  for k: 1..<7 { if n19_same(hrp, n19_prefix(cast(u32) k)) { return cast(u32) k; } }
+  return 0;
+}
+n19_word_count :: (count: int) -> bool #export_c { return count >= 0 && count <= 4992; }
+n19_byte_count :: (words: int, last: int) -> int {
+  if !n19_word_count(words) || last < 0 || last > 31 { return -1; }
+  bits := words * 5;
+  unused := bits % 8;
+  if unused >= 5 { return -1; }
+  if unused != 0 && (last & ((1 << unused) - 1)) != 0 { return -1; }
+  return bits / 8;
+}
+// Reads decoded bytes directly from the validated source. In particular, nsec
+// does not pass through an intermediate raw-key array before caller output.
+n19_byte :: (source: N19_Source, at: int) -> u8 {
+  if !source.encoded { return source.input[at]; }
+  bit := at * 8; group := bit / 5; offset := bit % 5;
+  a := b32_digit(b32_lower(source.input[source.start + group]));
+  b := b32_digit(b32_lower(source.input[source.start + group + 1]));
+  value := (a << 5) | b;
+  if offset < 3 { return cast(u8)((value >> (2 - offset)) & 255); }
+  c := b32_digit(b32_lower(source.input[source.start + group + 2]));
+  return cast(u8)((((value << 5) | c) >> (7 - offset)) & 255);
+}
+n19_field :: (source: N19_Source, at: int) -> N19_Field {
+  if at < 0 || at > source.count { return N19_Field.{error = NC_INVALID}; }
+  if at == source.count { return N19_Field.{done = true}; }
+  if source.count - at < 2 { return N19_Field.{error = NC_INVALID}; }
+  tag := n19_byte(source, at); length := cast(int) n19_byte(source, at + 1);
+  if length > source.count - at - 2 { return N19_Field.{error = NC_INVALID}; }
+  return N19_Field.{tag = tag, value = at + 2, length = length, next = at + 2 + length};
+}
+n19_validate :: (source: N19_Source, type: u32) -> N19_Result {
+  if !n19_count(source.count) || type < 1 || type > 6 { return N19_Result.{error = NC_INVALID}; }
+  r := N19_Result.{written = source.count, type = type};
+  if type <= N19_NOTE {
+    if source.count != 32 { return N19_Result.{error = NC_INVALID}; }
+    r.has_special = true; r.special_length = 32;
+    return r;
+  }
+  at := 0;
+  while at < source.count {
+    f := n19_field(source, at);
+    if f.error != NC_OK { return N19_Result.{error = f.error}; }
+    if f.tag == 0 {
+      if r.has_special { return N19_Result.{error = NC_INVALID}; }
+      if type != N19_ADDR && f.length != 32 { return N19_Result.{error = NC_INVALID}; }
+      r.has_special = true; r.special_at = f.value; r.special_length = f.length;
+    } else if f.tag == 1 {
+      for i: 0..<f.length { if n19_byte(source, f.value + i) > 127 { return N19_Result.{error = NC_INVALID}; } }
+      r.relays += 1;
+    } else if f.tag == 2 && type != N19_PROFILE {
+      if r.has_author || f.length != 32 { return N19_Result.{error = NC_INVALID}; }
+      r.has_author = true; r.author_at = f.value;
+    } else if f.tag == 3 && type != N19_PROFILE {
+      if r.has_kind || f.length != 4 { return N19_Result.{error = NC_INVALID}; }
+      r.has_kind = true;
+      for i: 0..<4 { r.kind = (r.kind << 8) | cast(u32) n19_byte(source, f.value + i); }
+    }
+    // Unknown or unsupported fields are skipped without rewriting source bytes.
+    at = f.next;
+  }
+  if !r.has_special { return N19_Result.{error = NC_INVALID}; }
+  if type == N19_ADDR && (!r.has_author || !r.has_kind) { return N19_Result.{error = NC_INVALID}; }
+  return r;
+}
+nip19_encode_checked :: (type: u32, payload: string, out: [] u8, overlap: bool) -> NC_Result {
+  r := n19_validate(N19_Source.{input = payload, count = payload.count}, type);
+  if r.error != NC_OK { return NC_Result.{error = r.error}; }
+  return bech32_encode_checked(n19_prefix(type), payload, true, out, true, overlap);
+}
+nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+  h := b32_inspect(input, true);
+  if h.error != NC_OK { return N19_Result.{error = h.error}; }
+  type := n19_type(input[0..<h.hrp]);
+  if type == 0 { return N19_Result.{error = NC_INVALID}; }
+  last := b32_digit(b32_lower(input[h.hrp + h.words]));
+  bytes := n19_byte_count(h.words, last);
+  source := N19_Source.{input = input, start = h.hrp + 1, count = bytes, encoded = true};
+  r := n19_validate(source, type);
+  if r.error != NC_OK { return r; }
+  room := NC_room(r.written, out.count, overlap);
+  if room != NC_OK { return N19_Result.{error = room}; }
+  for i: 0..<r.written { out[i] = n19_byte(source, i); }
+  return r;
+}
+
+#test "all format discriminants, count boundaries, TLV end conditions and key presence" {
+  prefixes := [6] string.["npub","nsec","note","nprofile","nevent","naddr"];
+  for k: 0..<6 { #assert n19_type(prefixes[k]) == cast(u32)(k + 1) && n19_prefix(cast(u32)(k + 1)) == prefixes[k]; }
+  #assert n19_type("") == 0 && n19_type("xpub") == 0 && n19_type("nrelay") == 0 && n19_type("nprofilex") == 0;
+  #assert n19_count(0) && n19_count(3120) && !n19_count(-1) && !n19_count(3121);
+  #assert n19_word_count(0) && n19_word_count(4992) && !n19_word_count(-1) && !n19_word_count(4993);
+  #assert n19_byte_count(-1, 0) == -1 && n19_byte_count(4993, 0) == -1;
+  #assert n19_byte_count(4992, 31) == 3120 && n19_byte_count(4992, 32) == -1 && n19_byte_count(2, -1) == -1;
+  #assert n19_byte_count(5, 1) == -1;
+  bytes := [4] u8.[99,0,99,1]; source := N19_Source.{input = cast(string) bytes[..], count = 4};
+  #assert n19_field(source, 0).next == 2;
+  #assert n19_field(source, 2).error == NC_INVALID;
+  #assert n19_field(N19_Source.{input = cast(string) bytes[0..<3], count = 3}, 2).error == NC_INVALID;
+  huge: [3122] u8; huge[0] = 0; huge[1] = 32; at := 34;
+  for i: 0..<12 { huge[at] = 99; huge[at + 1] = 255; at += 257; }
+  huge[at] = 99; huge[at + 1] = 2;
+  #assert at + 4 == huge.count;
+  #assert n19_validate(N19_Source.{input = cast(string) huge[..], count = huge.count}, N19_PROFILE).error == NC_INVALID;
+  key: [32] u8;
+  #assert n19_validate(N19_Source.{input = cast(string) key[..], count = 32}, 0).error == NC_INVALID;
+  t: [110] u8; t[1] = 32;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<34], count = 34}, 7).error == NC_INVALID;
+  // Known singleton duplication refuses, while unknown type2/type3 on a profile skips.
+  t[34] = 0; t[35] = 32;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<68], count = 68}, N19_PROFILE).error == NC_INVALID;
+  t[34] = 2; t[35] = 32; t[68] = 3; t[69] = 4;
+  t[70] = 1; t[71] = 2; t[72] = 3; t[73] = 4;
+  r := n19_validate(N19_Source.{input = cast(string) t[0..<74], count = 74}, N19_EVENT);
+  #assert r.error == NC_OK && r.has_author && r.author_at == 36 && r.has_kind && r.kind == 16909060;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<34], count = 34}, N19_EVENT).error == NC_OK;
+  t[35] = 31;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<67], count = 67}, N19_EVENT).error == NC_INVALID;
+  t[35] = 32; t[68] = 2; t[69] = 32;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<102], count = 102}, N19_EVENT).error == NC_INVALID;
+  t[68] = 3; t[69] = 3;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<73], count = 73}, N19_EVENT).error == NC_INVALID;
+  t[69] = 4; t[74] = 3; t[75] = 4;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<80], count = 80}, N19_EVENT).error == NC_INVALID;
+  no_kind: [36] u8; no_kind[2] = 2; no_kind[3] = 32;
+  #assert n19_validate(N19_Source.{input = cast(string) no_kind[..], count = 36}, N19_ADDR).error == NC_INVALID;
+  no_author: [8] u8; no_author[2] = 3; no_author[3] = 4;
+  #assert n19_validate(N19_Source.{input = cast(string) no_author[..], count = 8}, N19_ADDR).error == NC_INVALID;
+  t[34] = 3; t[35] = 1; t[36] = 255;
+  r = n19_validate(N19_Source.{input = cast(string) t[0..<37], count = 37}, N19_PROFILE);
+  #assert r.error == NC_OK && !r.has_kind;
+  t[34] = 1; t[35] = 0;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<36], count = 36}, N19_PROFILE).relays == 1;
+  t[35] = 1; t[36] = 127;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<37], count = 37}, N19_PROFILE).error == NC_OK;
+  t[36] = 128;
+  #assert n19_validate(N19_Source.{input = cast(string) t[0..<37], count = 37}, N19_PROFILE).error == NC_INVALID;
+}
+
+#test "NIP19 bit padding rejects before any caller bytes are written" {
+  text: [128] u8; out := [32] u8.[77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77];
+  words: [52] u8;
+  words[51] = 1;
+  e := bech32_encode_checked("npub", cast(string) words[..], false, text[..], true, false);
+  #assert e.error == NC_OK;
+  #assert nip19_decode_checked(cast(string) text[0..<e.written], out[..], false).error == NC_INVALID;
+  e = bech32_encode_checked("npub", cast(string) words[0..<1], false, text[..], true, false);
+  #assert nip19_decode_checked(cast(string) text[0..<e.written], out[..], false).error == NC_INVALID;
+  e = bech32_encode_checked("npub", "", false, text[..], true, false);
+  #assert nip19_decode_checked(cast(string) text[0..<e.written], out[..], false).error == NC_INVALID;
+  for b: out { #assert b == 77; }
+}

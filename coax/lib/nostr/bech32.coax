@@ -1,0 +1,3 @@
+// Public BIP-173 and NIP-19 entry points with actual span-overlap observation.
+#load "nip19-core.coax";
+#load "bech32-memory.coax";

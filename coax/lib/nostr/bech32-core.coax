@@ -1,0 +1,202 @@
+// BIP-173 Bech32 only (checksum constant 1), never Bech32m.
+#load "codecs-common.coax";
+#authority;
+B32_ALPHABET :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+B32_Header :: struct { hrp: int; words: int; error: u32; }
+B32_Result :: struct { written: int; hrp_written: int; error: u32; }
+
+#test "the pinned BIP173 base checksum vectors, with canonical lowercase re-encoding" {
+  good := [7] string.["A12UEL5L", "a12uel5l", "an83characterlonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1tt5tgs", "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw", "11qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqc8247j", "split1checkupstagehandshakeupstreamerranterredcaperred2y9e3w", "?1ezyfcl"];
+  for s: good {
+    hrp: [83] u8; words: [83] u8; text: [90] u8;
+    h := b32_inspect(s, false);
+    #assert h.error == NC_OK;
+    r := bech32_decode_checked(s, hrp[..], words[..], false, false);
+    #assert r.error == NC_OK && r.hrp_written == h.hrp && r.written == h.words;
+    q := bech32_encode_checked(cast(string) hrp[0..<r.hrp_written], cast(string) words[0..<r.written], false, text[..], false, false);
+    #assert q.error == NC_OK && q.written == s.count;
+    for i: 0..<s.count { #assert text[i] == b32_lower(s[i]); }
+  }
+  bad := [9] string.[" 1nwldj5", "an84characterslonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1569pvx", "pzry9x0s0muk", "1pzry9x0s0muk", "x1b4n0q5v", "li1dgmt3", "A1G7SGD8", "10a06t8", "1qzzfhee"];
+  for s: bad { #assert b32_inspect(s, false).error == NC_INVALID; }
+  invalid := [3] u8.[127, 128, 255];
+  for c: invalid {
+    s := [8] u8.[0,49,97,120,107,119,114,120]; s[0] = c;
+    #assert b32_inspect(cast(string) s[..], false).error == NC_INVALID;
+  }
+  #assert b32_inspect("a12UEL5L", false).error == NC_INVALID;
+  #assert b32_inspect("A1LQFN3A", false).error == NC_INVALID; // Bech32m is not accepted.
+  too_big: [5001] u8;
+  #assert b32_inspect(cast(string) too_big[..], true).error == NC_INVALID;
+}
+
+#test "bounded sizes and refusal never touch public output" {
+  #assert b32_size(1, 0, false) == 8 && b32_size(83, 0, false) == 90;
+  #assert b32_size(0, 0, false) == -1 && b32_size(84, 0, true) == -1;
+  #assert b32_size(4, 4989, true) == 5000 && b32_size(4, 4990, true) == -1;
+  #assert b32_size(4, -1, true) == -1 && b32_size(4, 84, false) == -1;
+  #assert b32_text_count(8, false) && b32_text_count(90, false) && !b32_text_count(7, true);
+  #assert !b32_text_count(91, false) && b32_text_count(5000, true) && !b32_text_count(5001, true);
+  #assert b32_word_count(-1, true) == -1 && b32_word_count(NC_MAX_BYTES + 1, false) == -1;
+  #assert b32_word_count(1, true) == 2 && b32_word_count(2, true) == 4 && b32_word_count(0, true) == 0;
+  #assert b32_word_count(32, false) == 32 && b32_word_count(3, true) == 5;
+  raw_bits := [3] u8.[17,234,129]; expected_words := [5] u8.[2,7,21,8,2];
+  for i: 0..<5 { #assert b32_word(cast(string) raw_bits[..], true, i) == expected_words[i]; }
+  out := [16] u8.[77,77,77,77,77,77,77,77,77,77,77,77,77,77,77,77];
+  raw := [1] u8.[32];
+  #assert bech32_encode_checked("a", cast(string) raw[..], false, out[..], false, false).error == NC_INVALID;
+  #assert bech32_encode_checked("", "", false, out[..], false, false).error == NC_LIMIT;
+  #assert bech32_encode_checked(" ", "", false, out[..], false, false).error == NC_INVALID;
+  #assert bech32_encode_checked("aA", "", false, out[..], false, false).error == NC_INVALID;
+  #assert bech32_encode_checked("a", "", false, out[0..<7], false, false).error == NC_CAPACITY;
+  #assert bech32_encode_checked("a", "", false, out[..], false, true).error == NC_ALIAS;
+  hrp: [1] u8; hrp[0] = 77;
+  #assert bech32_decode_checked("a12uel5l", hrp[..], out[..], false, true).error == NC_ALIAS;
+  #assert bech32_decode_checked("abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw", hrp[..], out[..], false, false).error == NC_CAPACITY;
+  #assert bech32_decode_checked("x1b4n0q5v", hrp[..], out[..], false, false).error == NC_INVALID;
+  wide_hrp: [83] u8;
+  #assert bech32_decode_checked("abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw", wide_hrp[..], out[..], false, false).error == NC_CAPACITY;
+  #assert b32_inspect("a?2uel5l", false).error == NC_INVALID;
+  #assert b32_inspect("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1jsd6e5", true).error == NC_INVALID;
+  #assert hrp[0] == 77;
+  for b: out { #assert b == 77; }
+}
+
+#forall b: 0..<256 {
+  low := b32_lower(cast(u8) b);
+  #assert low == cast(u8)(ifx b >= 65 && b <= 90 then b + 32 else b);
+  expected := -1;
+  for i: 0..<32 { if B32_ALPHABET[i] == cast(u8) b { expected = i; } }
+  #assert b32_digit(cast(u8) b) == expected;
+  raw: [1] u8; raw[0] = cast(u8) b;
+  #assert b32_word(cast(string) raw[..], true, 0) == cast(u8)(b / 8);
+  #assert b32_word(cast(string) raw[..], true, 1) == cast(u8)((b % 8) * 4);
+  #assert b32_word(cast(string) raw[..], false, 0) == cast(u8) b;
+}
+
+b32_lower :: (c: u8) -> u8 { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
+b32_digit :: (c: u8) -> int {
+  for i: 0..<32 { if B32_ALPHABET[i] == c { return i; } }
+  return -1;
+}
+b32_text_count :: (count: int, extended: bool) -> bool #export_c {
+  limit := ifx extended then 5000 else 90;
+  return count >= 8 && count <= limit;
+}
+b32_size :: (hrp: int, words: int, extended: bool) -> int #export_c {
+  if hrp < 1 || hrp > 83 || !NC_count(words) { return -1; }
+  size := hrp + 7 + words;
+  if !b32_text_count(size, extended) { return -1; }
+  return size;
+}
+b32_word_count :: (count: int, eight: bool) -> int {
+  if !NC_count(count) { return -1; }
+  if eight { return (count * 8 + 4) / 5; }
+  return count;
+}
+b32_word :: (data: string, eight: bool, at: int) -> u8 {
+  if !eight { return data[at]; }
+  value: u32 = 0;
+  for k: 0..<5 {
+    value = value << 1;
+    bit := at * 5 + k;
+    if bit < data.count * 8 { value = value | ((cast(u32) data[bit / 8] >> (7 - bit % 8)) & 1); }
+  }
+  return cast(u8) value;
+}
+b32_step :: (state: u32, value: u8) -> u32 {
+  top := state >> 25;
+  next := ((state & 0x1ffffff) << 5) ^ cast(u32) value;
+  generators := [5] u32.[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3];
+  for generator: generators { if (top & 1) != 0 { next = next ^ generator; } top = top >> 1; }
+  return next;
+}
+b32_prefix :: (hrp: string) -> u32 {
+  state: u32 = 1;
+  for c: hrp { state = b32_step(state, b32_lower(c) >> 5); }
+  state = b32_step(state, 0);
+  for c: hrp { state = b32_step(state, b32_lower(c) & 31); }
+  return state;
+}
+b32_inspect :: (input: string, extended: bool) -> B32_Header {
+  if !b32_text_count(input.count, extended) { return B32_Header.{error = NC_INVALID}; }
+  upper := false; lower := false; separator := 0;
+  for i: 0..<input.count {
+    c := input[i];
+    if c < 33 || c > 126 { return B32_Header.{error = NC_INVALID}; }
+    if c >= 'A' && c <= 'Z' { upper = true; }
+    if c >= 'a' && c <= 'z' { lower = true; }
+    if c == '1' { separator = i; }
+  }
+  if upper && lower { return B32_Header.{error = NC_INVALID}; }
+  if separator < 1 || separator > 83 || input.count - separator < 7 { return B32_Header.{error = NC_INVALID}; }
+  state := b32_prefix(input[0..<separator]);
+  for i: separator + 1..<input.count {
+    value := b32_digit(b32_lower(input[i]));
+    if value < 0 { return B32_Header.{error = NC_INVALID}; }
+    state = b32_step(state, cast(u8) value);
+  }
+  if state != 1 { return B32_Header.{error = NC_INVALID}; }
+  return B32_Header.{hrp = separator, words = input.count - separator - 7};
+}
+bech32_encode_checked :: (hrp: string, data: string, eight: bool, out: [] u8, extended: bool, overlap: bool) -> NC_Result {
+  words := b32_word_count(data.count, eight);
+  needed := b32_size(hrp.count, words, extended);
+  room := NC_room(needed, out.count, overlap);
+  if room != NC_OK { return NC_Result.{error = room}; }
+  upper := false; lower := false;
+  for c: hrp {
+    if c < 33 || c > 126 { return NC_Result.{error = NC_INVALID}; }
+    if c >= 'A' && c <= 'Z' { upper = true; }
+    if c >= 'a' && c <= 'z' { lower = true; }
+  }
+  if upper && lower { return NC_Result.{error = NC_INVALID}; }
+  for i: 0..<words { if b32_word(data, eight, i) > 31 { return NC_Result.{error = NC_INVALID}; } }
+  state := b32_prefix(hrp);
+  for i: 0..<words { state = b32_step(state, b32_word(data, eight, i)); }
+  for i: 0..<6 { state = b32_step(state, 0); }
+  state = state ^ 1;
+  for i: 0..<hrp.count { out[i] = b32_lower(hrp[i]); }
+  out[hrp.count] = '1';
+  for i: 0..<words { out[hrp.count + 1 + i] = B32_ALPHABET[b32_word(data, eight, i)]; }
+  for i: 0..<6 { out[hrp.count + 1 + words + i] = B32_ALPHABET[(state >> (5 * (5 - i))) & 31]; }
+  return NC_Result.{written = needed};
+}
+bech32_decode_checked :: (input: string, hrp: [] u8, data: [] u8, extended: bool, overlap: bool) -> B32_Result {
+  h := b32_inspect(input, extended);
+  if h.error != NC_OK { return B32_Result.{error = h.error}; }
+  room := NC_room(h.hrp, hrp.count, overlap);
+  if room != NC_OK { return B32_Result.{error = room}; }
+  room = NC_room(h.words, data.count, overlap);
+  if room != NC_OK { return B32_Result.{error = room}; }
+  for i: 0..<h.hrp { hrp[i] = b32_lower(input[i]); }
+  for i: 0..<h.words { data[i] = cast(u8) b32_digit(b32_lower(input[h.hrp + 1 + i])); }
+  return B32_Result.{written = h.words, hrp_written = h.hrp};
+}
+
+#forall c: 0..<256 {
+  hrp := [3] u8.[0,97,97]; hrp[0] = cast(u8) c;
+  out: [90] u8;
+  r := bech32_encode_checked(cast(string) hrp[..], "", false, out[..], false, false);
+  valid := c >= 33 && c <= 126 && !(c >= 65 && c <= 90);
+  #assert (r.error == NC_OK) == valid;
+  if valid {
+    #assert b32_inspect(cast(string) out[0..<r.written], false).error == NC_OK;
+    upper: [90] u8;
+    for i: 0..<r.written {
+      ch := out[i];
+      upper[i] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch;
+    }
+    #assert b32_inspect(cast(string) upper[0..<r.written], false).error == NC_OK;
+    if c >= 97 && c <= 122 {
+      out[0] = cast(u8)(c - 32);
+      #assert b32_inspect(cast(string) out[0..<r.written], false).error == NC_INVALID;
+      upper[0] = cast(u8) c;
+      #assert b32_inspect(cast(string) upper[0..<r.written], false).error == NC_INVALID;
+    }
+  }
+  hrp[1] = 'A'; hrp[2] = 'A';
+  r = bech32_encode_checked(cast(string) hrp[..], "", false, out[..], false, false);
+  valid = c >= 33 && c <= 126 && !(c >= 97 && c <= 122);
+  #assert (r.error == NC_OK) == valid;
+}

@@ -1,0 +1,15 @@
+// Only observes native addresses. Checked cores own format, limits and writes.
+bech32_encode :: (hrp: string, words: [] u8, out: [] u8) -> NC_Result #export_c {
+  overlap := bytes_overlap(hrp, out) || bytes_overlap(words, out);
+  return bech32_encode_checked(hrp, cast(string) words, false, out, false, overlap);
+}
+bech32_decode :: (input: string, hrp: [] u8, words: [] u8) -> B32_Result #export_c {
+  overlap := bytes_overlap(input, hrp) || bytes_overlap(input, words) || bytes_overlap(hrp, words);
+  return bech32_decode_checked(input, hrp, words, false, overlap);
+}
+nip19_encode :: (type: u32, payload: [] u8, out: [] u8) -> NC_Result #export_c {
+  return nip19_encode_checked(type, cast(string) payload, out, bytes_overlap(payload, out));
+}
+nip19_decode :: (input: string, out: [] u8) -> N19_Result #export_c {
+  return nip19_decode_checked(input, out, bytes_overlap(input, out));
+}
