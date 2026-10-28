@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-playtest-session.v1",
+  "title": "NIP-XP playtest session record (kind 3196) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "requires",
+    "type",
+    "script",
+    "format",
+    "build",
+    "tester",
+    "held_at"
+  ],
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "requires": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "type": {
+      "const": "playtest-session"
+    },
+    "script": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "format": {
+      "enum": [
+        "moderated",
+        "group"
+      ]
+    },
+    "build": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "tester": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "held_at": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

@@ -1,0 +1,941 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.sovereign-custody-contracts.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/sovereign-guardian-policy"
+    },
+    {
+      "$ref": "#/$defs/sovereign-custody-policy"
+    },
+    {
+      "$ref": "#/$defs/sovereign-action-preconditions"
+    },
+    {
+      "$ref": "#/$defs/sovereign-custody-request"
+    },
+    {
+      "$ref": "#/$defs/sovereign-custody-receipt"
+    },
+    {
+      "$ref": "#/$defs/sovereign-quorum-admission"
+    },
+    {
+      "$ref": "#/$defs/approval-request"
+    },
+    {
+      "$ref": "#/$defs/approval-decision"
+    }
+  ],
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pubkey",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "kind": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "coordinate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1024
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/$defs/event"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        }
+      }
+    },
+    "sovereign-guardian-policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "agent",
+        "authority",
+        "revision",
+        "previous",
+        "members",
+        "threshold",
+        "operations",
+        "starts_at",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-guardian-policy.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-guardian-policy.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/definition"
+          }
+        },
+        "starts_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-custody-policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "agent",
+        "authority",
+        "revision",
+        "previous",
+        "mechanism",
+        "signer",
+        "transport",
+        "purposes",
+        "callers",
+        "recovery",
+        "exportable",
+        "starts_at",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-custody-policy.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-custody-policy.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mechanism": {
+          "enum": [
+            "nip46",
+            "local",
+            "hardware",
+            "threshold"
+          ]
+        },
+        "signer": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "transport": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "purposes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "enum": [
+              "sign",
+              "nip44_encrypt",
+              "nip44_decrypt"
+            ]
+          }
+        },
+        "callers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "recovery": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exportable": {
+          "type": "boolean"
+        },
+        "starts_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-action-preconditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "profile",
+        "guardian_policy",
+        "generation",
+        "input"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-action-preconditions.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "profile": {
+          "$ref": "#/$defs/artifact"
+        },
+        "guardian_policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-guardian-policy.v1"
+                }
+              }
+            }
+          ]
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "input": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-custody-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "agent",
+        "profile",
+        "policy",
+        "guardian",
+        "requester",
+        "generation",
+        "purpose",
+        "operation",
+        "input",
+        "action",
+        "nonce",
+        "deadline"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-custody-request.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "profile": {
+          "$ref": "#/$defs/artifact"
+        },
+        "policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-custody-policy.v1"
+                }
+              }
+            }
+          ]
+        },
+        "guardian": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-guardian-policy.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requester": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "purpose": {
+          "enum": [
+            "sign",
+            "nip44_encrypt",
+            "nip44_decrypt"
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/definition"
+        },
+        "input": {
+          "$ref": "#/$defs/artifact"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.action.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "deadline": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-custody-receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "status",
+        "result",
+        "quorum",
+        "evidence",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-custody-receipt.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-custody-request.v1"
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "refused",
+            "unknown"
+          ]
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quorum": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-quorum-admission.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-quorum-admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "action",
+        "policy",
+        "approvals",
+        "generation",
+        "consumed_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-quorum-admission.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "action": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.action.v1"
+                }
+              }
+            }
+          ]
+        },
+        "policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-guardian-policy.v1"
+                }
+              }
+            }
+          ]
+        },
+        "approvals": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.approval-decision.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "consumed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "approval-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "action",
+        "requester",
+        "approver",
+        "expires_at",
+        "reviews"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.approval-request.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "action": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.action.v1"
+                }
+              }
+            }
+          ]
+        },
+        "requester": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reviews": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "approval-decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "action",
+        "approver",
+        "decision",
+        "expires_at",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.approval-decision.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.approval-request.v1"
+                }
+              }
+            }
+          ]
+        },
+        "action": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.action.v1"
+                }
+              }
+            }
+          ]
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "deny"
+          ]
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

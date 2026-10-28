@@ -6,6 +6,7 @@ engine and **Verse** as its world/experience layer.
 - [Coax compiler, specification and book](coax/README.md)
 - [OpenAgents Protocol: the defining contract for every surface](docs/protocol/openagents-protocol-spec.md)
 - [Root protobuf schemas and checks](proto/README.md)
+- [Nostr NIPs: official, Block and OpenAgents sources](nips/README.md)
 - [Verse protocol](docs/verse/openagents-verse-protocol.md)
 - [Metareal engine](docs/verse/metareal-engine.md)
 - [Metareal ID migration](proto/migrations/README.md)

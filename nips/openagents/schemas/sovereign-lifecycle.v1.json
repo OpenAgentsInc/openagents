@@ -1,0 +1,996 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.sovereign-lifecycle-contracts.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/sovereign-activation"
+    },
+    {
+      "$ref": "#/$defs/sovereign-checkpoint"
+    },
+    {
+      "$ref": "#/$defs/sovereign-activation-request"
+    },
+    {
+      "$ref": "#/$defs/sovereign-transfer"
+    },
+    {
+      "$ref": "#/$defs/sovereign-transfer-acceptance"
+    },
+    {
+      "$ref": "#/$defs/sovereign-fencing"
+    },
+    {
+      "$ref": "#/$defs/sovereign-lifecycle-control"
+    },
+    {
+      "$ref": "#/$defs/sovereign-state-disclosure"
+    },
+    {
+      "$ref": "#/$defs/sovereign-late-result"
+    },
+    {
+      "$ref": "#/$defs/sovereign-lifecycle-result"
+    }
+  ],
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pubkey",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "kind": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "coordinate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1024
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/$defs/event"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lease",
+        "materialization"
+      ],
+      "properties": {
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "materialization": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-materialization.v1"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "sovereign-activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "activation",
+        "profile",
+        "plan",
+        "controller",
+        "generation",
+        "claim",
+        "reservation",
+        "environment",
+        "checkpoint",
+        "admitted_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-activation.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "activation": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "profile": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-profile.v1"
+                }
+              }
+            }
+          ]
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "claim": {
+          "$ref": "#/$defs/artifact"
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "environment": {
+          "$ref": "#/$defs/environment"
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-checkpoint.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "admitted_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "activation",
+        "revision",
+        "previous",
+        "controller",
+        "generation",
+        "record",
+        "state",
+        "obligations"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-checkpoint.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "activation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-activation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-checkpoint.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "record": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.run-record.v1"
+                }
+              }
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/artifact"
+        },
+        "obligations": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-activation-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "agent",
+        "activation",
+        "profile",
+        "plan",
+        "controller",
+        "claim",
+        "reservation",
+        "environment",
+        "dispatchers",
+        "checkpoint",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-activation-request.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "activation": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "profile": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-profile.v1"
+                }
+              }
+            }
+          ]
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "claim": {
+          "$ref": "#/$defs/artifact"
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "environment": {
+          "$ref": "#/$defs/environment"
+        },
+        "dispatchers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-checkpoint.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-transfer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "agent",
+        "from",
+        "checkpoint",
+        "to",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-transfer.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "from": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-activation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "checkpoint": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-checkpoint.v1"
+                }
+              }
+            }
+          ]
+        },
+        "to": {
+          "$ref": "#/$defs/sovereign-activation-request"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-transfer-acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "transfer",
+        "controller",
+        "environment"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-transfer-acceptance.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "transfer": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-transfer.v1"
+                }
+              }
+            }
+          ]
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "environment": {
+          "$ref": "#/$defs/environment"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-fencing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "activation",
+        "generation",
+        "dispatcher",
+        "status",
+        "unknown",
+        "observed_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-fencing.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "activation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-activation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "dispatcher": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "status": {
+          "enum": [
+            "fenced",
+            "unreachable"
+          ]
+        },
+        "unknown": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-lifecycle-control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "agent",
+        "activation",
+        "command",
+        "action",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-lifecycle-control.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "activation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-activation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "action": {
+          "enum": [
+            "stop",
+            "revoke",
+            "rollback"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-state-disclosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "recipients"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-state-disclosure.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "recipients": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-late-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "activation",
+        "generation",
+        "controller",
+        "record",
+        "received_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-late-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "activation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-activation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "record": {
+          "$ref": "#/$defs/artifact"
+        },
+        "received_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-lifecycle-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "status",
+        "activation",
+        "state",
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-lifecycle-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "$ref": "#/$defs/artifact"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "pending",
+            "conflict",
+            "refused",
+            "unknown"
+          ]
+        },
+        "activation": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.sovereign-activation.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "none",
+            "active",
+            "fencing",
+            "transferred",
+            "stopped",
+            "revoked",
+            "expired",
+            "rolled_back"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

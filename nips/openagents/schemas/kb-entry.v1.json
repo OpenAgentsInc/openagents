@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.kb-entry.v1",
+  "title": "NIP-KB entry version (kind 3190) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "id", "version", "kind", "document"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "entry" },
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "version": { "type": "integer", "minimum": 1 },
+    "kind": { "enum": ["method", "edge-case", "slip", "environment", "tool"] },
+    "document": { "type": "string", "minLength": 1 }
+  }
+}

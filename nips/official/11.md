@@ -1,0 +1,245 @@
+NIP-11
+======
+
+Relay Information Document
+--------------------------
+
+`draft` `optional` `relay`
+
+Relays may provide server metadata to clients to inform them of capabilities, administrative contacts, and various server attributes. This is made available as a JSON document over HTTP, on the same URI as the relay's websocket.
+
+When a relay receives an HTTP(s) request with an `Accept` header of `application/nostr+json` to a URI supporting WebSocket upgrades, they SHOULD return a document with the following structure.
+
+```json
+{
+  "name": <string identifying relay>,
+  "description": <string with detailed information>,
+  "banner": <a link to an image (e.g. in .jpg, or .png format)>,
+  "icon": <a link to an icon (e.g. in .jpg, or .png format>,
+  "pubkey": <administrative contact pubkey>,
+  "self": <relay's own pubkey>,
+  "contact": <administrative alternate contact>,
+  "supported_nips": <a list of NIP numbers supported by the relay>,
+  "software": <string identifying relay software URL>,
+  "version": <string version identifier>,
+  "terms_of_service": <a link to a text file describing the relay's term of service>
+}
+```
+
+Any field may be omitted, and clients MUST ignore any additional fields they do not understand. Relays MUST accept CORS requests by sending `Access-Control-Allow-Origin`, `Access-Control-Allow-Headers`, and `Access-Control-Allow-Methods` headers.
+
+Field Descriptions
+------------------
+
+### Name
+
+A relay may select a `name` for use in client software. This is a string, and SHOULD be less than 30 characters to avoid client truncation.
+
+### Description
+
+Detailed plain-text information about the relay may be contained in the `description` string. It is recommended that this contain no markup, formatting or line breaks for word wrapping, and simply use double newline characters to separate paragraphs. There are no limitations on length.
+
+### Banner
+
+To make nostr relay management more user friendly, an effort should be made by relay owners to communicate with non-dev non-technical nostr end users. A banner is a visual representation of the relay. It should aim to visually communicate the brand of the relay, complementing the text `Description`. [Here is an example banner](https://image.nostr.build/232ddf6846e8aea5a61abcd70f9222ab521f711aa545b7ab02e430248fa3a249.png) mockup as visualized in Damus iOS relay view of the Damus relay.
+
+### Icon
+
+Icon is a compact visual representation of the relay for use in UI with limited real estate such as a nostr user's relay list view. Below is an example URL pointing to an image to be used as an icon for the relay. Recommended to be squared in shape.
+
+```yaml
+{
+  "icon": "https://nostr.build/i/53866b44135a27d624e99c6165cabd76ac8f72797209700acb189fce75021f47.jpg",
+  // other fields...
+}
+```
+
+### Pubkey
+
+An administrative contact may be listed with a `pubkey`, in the same format as Nostr events (32-byte hex for a `secp256k1` public key).  If a contact is listed, this provides clients with a recommended address to send encrypted direct messages (See [NIP-17](17.md)) to a system administrator. Expected uses of this address are to report abuse or illegal content, file bug reports, or request other technical assistance.
+
+Relay operators have no obligation to respond to direct messages.
+
+### Self
+
+A relay MAY maintain an identity independent from its administrator using the `self` field, which MUST be a 32-byte hex public key. This allows relays to respond to requests with events published either in advance or on demand by their own key.
+
+### Contact
+
+An alternative contact may be listed under the `contact` field as well, with the same purpose as `pubkey`.  Use of a Nostr public key and direct message SHOULD be preferred over this. Contents of this field SHOULD be a URI, using schemes such as `mailto` or `https` to provide users with a means of contact.
+
+### Supported NIPs
+
+As the Nostr protocol evolves, some functionality may only be available by relays that implement a specific `NIP`.  This field is an array of the integer identifiers of `NIP`s that are implemented in the relay. Examples would include `1`, for `"NIP-01"` and `9`, for `"NIP-09"`.  Client-side `NIPs` SHOULD NOT be advertised, and can be ignored by clients.
+
+### Software
+
+The relay server implementation MAY be provided in the `software` attribute. If present, this MUST be a URL to the project's homepage.
+
+### Version
+
+The relay MAY choose to publish its software version as a string attribute. The string format is defined by the relay implementation. It is recommended this be a version number or commit identifier.
+
+### Terms of Service
+
+The relay owner/admin MAY choose to link to a terms of service document.
+
+Extra Fields
+------------
+
+### Server Limitations
+
+These are limitations imposed by the relay on clients. Your client
+should expect that requests exceed these *practical* limitations
+are rejected or fail immediately.
+
+```yaml
+{
+  "limitation": {
+    "max_message_length": 16384,
+    "max_subscriptions": 300,
+    "max_limit": 5000,
+    "max_subid_length": 100,
+    "max_event_tags": 100,
+    "max_content_length": 8196,
+    "min_pow_difficulty": 30,
+    "auth_required": true,
+    "payment_required": true,
+    "restricted_writes": true,
+    "created_at_lower_limit": 31536000,
+    "created_at_upper_limit": 3,
+    "default_limit": 500
+  },
+  // other fields...
+}
+```
+
+- `max_message_length`: the maximum number of bytes for incoming JSON that the relay
+will attempt to decode and act upon. When you send large subscriptions, you will be
+limited by this value. It also effectively limits the maximum size of any event. Value is
+calculated from `[` to `]` after UTF-8 serialization (so some unicode characters
+will cost 2-3 bytes). It is equal to the maximum size of the WebSocket message frame.
+
+- `max_subscriptions`: total number of subscriptions that may be
+active on a single websocket connection to this relay. Authenticated clients with a (paid) relationship to the relay
+may have higher limits.
+
+- `max_subid_length`: maximum length of subscription id as a string.
+
+- `max_limit`: the relay server will clamp each filter's `limit` value to this number.
+This means the client won't be able to get more than this number
+of events from a single subscription filter. This clamping is typically done silently
+by the relay, but with this number, you can know that there are additional results
+if you narrow your filter's time range or other parameters.
+
+- `max_event_tags`: in any event, this is the maximum number of elements in the `tags` list.
+
+- `max_content_length`: maximum number of characters in the `content`
+field of any event. This is a count of unicode characters. After
+serializing into JSON it may be larger (in bytes), and is still
+subject to the `max_message_length`, if defined.
+
+- `min_pow_difficulty`: new events will require at least this difficulty of PoW,
+based on [NIP-13](13.md), or they will be rejected by this server.
+
+- `auth_required`: this relay requires [NIP-42](42.md) authentication
+to happen before a new connection may perform any other action.
+Even if set to False, authentication may be required for specific actions.
+
+- `payment_required`: this relay requires payment before a new connection may perform any action.
+
+- `restricted_writes`: this relay requires some kind of condition to be fulfilled to
+accept events (not necessarily, but including `payment_required` and `min_pow_difficulty`).
+This should only be set to `true` when users are expected to know the relay policy before trying
+to write to it -- like belonging to a special pubkey-based whitelist or writing only events of
+a specific niche kind or content. Normal anti-spam heuristics, for example, do not qualify.
+
+- `created_at_lower_limit`: 'created_at' lower limit
+
+- `created_at_upper_limit`: 'created_at' upper limit
+
+- `default_limit`: The maximum returned events if you send a filter without a `limit`.
+
+### Pay-to-Relay
+
+Relays that require payments may want to expose their fee schedules.
+
+```yaml
+{
+  "payments_url": "https://my-relay/payments",
+  "fees": {
+    "admission": [{ "amount": 1000000, "unit": "msats" }],
+    "subscription": [{ "amount": 5000000, "unit": "msats", "period": 2592000 }],
+    "publication": [{ "kinds": [4], "amount": 100, "unit": "msats" }],
+  },
+  // other fields...
+}
+```
+
+### Examples
+
+```yaml
+~> curl -H "Accept: application/nostr+json" https://nostr.wine | jq
+{
+  "contact": "wino@nostr.wine",
+  "description": "A paid nostr relay for wine enthusiasts and everyone else.",
+  "fees": {
+    "admission": [
+      {
+        "amount": 18888000,
+        "unit": "msats"
+      }
+    ]
+  },
+  "icon": "https://image.nostr.build/30acdce4a81926f386622a07343228ae99fa68d012d54c538c0b2129dffe400c.png",
+  "limitation": {
+    "auth_required": false,
+    "created_at_lower_limit": 94608000,
+    "created_at_upper_limit": 300,
+    "max_event_tags": 4000,
+    "max_limit": 1000,
+    "max_message_length": 524288,
+    "max_subid_length": 71,
+    "max_subscriptions": 50,
+    "min_pow_difficulty": 0,
+    "payment_required": true,
+    "restricted_writes": true
+  },
+  "name": "nostr.wine",
+  "payments_url": "https://nostr.wine/invoices",
+  "pubkey": "4918eb332a41b71ba9a74b1dc64276cfff592e55107b93baae38af3520e55975",
+  "software": "https://nostr.wine",
+  "supported_nips": [ 1, 2, 4, 9, 11, 40, 42, 50, 70, 77 ],
+  "terms_of_service": "https://nostr.wine/terms",
+  "version": "0.3.3"
+}
+
+~> curl -H "Accept: application/nostr+json" https://nostr.land | jq
+{
+  "description": "[✨ NFDB] nostr.land family of relays (fi-01 [tiger])",
+  "name": "[✨ NFDB] nostr.land",
+  "pubkey": "52b4a076bcbbbdc3a1aefa3735816cf74993b1b8db202b01c883c58be7fad8bd",
+  "software": "NFDB",
+  "icon": "https://i.nostr.build/b3thno790aodH8lE.jpg",
+  "supported_nips": [ 1, 2, 4, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 27, 28, 30, 31, 32, 34, 35, 36, 37, 38, 39, 40, 42, 44, 46, 47, 48, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 65, 68, 69, 71, 72, 73, 75, 78, 84, 88, 89, 90, 92, 99 ],
+  "version": "1.0.0",
+  "limitation": {
+    "payment_required": true,
+    "max_message_length": 65535,
+    "max_event_tags": 2000,
+    "max_subscriptions": 200,
+    "auth_required": false
+  },
+  "payments_url": "https://nostr.land",
+  "fees": {
+    "subscription": [
+      {
+        "amount": 4000000,
+        "unit": "msats",
+        "period": 2592000
+      }
+    ]
+  },
+  "terms_of_service": "https://nostr.land/terms"
+}
+```
