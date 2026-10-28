@@ -113,12 +113,18 @@ traces are tested on Mac LLDB, with an actual Simulator app attachment too.
 See [methodology](../metareal/benchmarks/README.md), [debugging](DEBUGGING.md) and
 [retained results](../docs/verification/coax-r0-2026-10-28.md).
 
-**R0 remains open.** Output tolerance and observed zero-allocation checks pass;
-the initial optimized pose comparison misses the proposed 5% median budget.
-The current measurements are Mac/Simulator evidence, not phone performance or
-whole-engine parity. Finish optimization/profiling, physical-device and tail
-budgets, asset/install/launch/GPU-preparation attribution, status generation
-and independent reference/gate review before closing this milestone.
+**Pose median gap closed; R0 remains open.** The follow-up Coax kernel rewrite
+passes the unchanged proposed 5% median gate in all three profiles: 1.034×
+native at checked `-O0`, 0.807× in the app's checked `-O2` profile and 0.740×
+in wrapping release. Output tolerance and zero observed kernel allocations
+still pass. The reference, reader adapter, asset, workload, flags and threshold
+are unchanged. See [the follow-up evidence](../docs/verification/coax-r0-pose-2026-10-28.md).
+
+These remain Mac/Simulator observations, not phone performance or whole-engine
+parity. Debug variance includes a retained large outlier; a passing median
+is not a frame-tail guarantee. Finish physical-device/tail budgets, complete
+asset/install/launch/GPU-preparation attribution, status generation and
+independent reference/gate review before closing R0.
 
 1. Retain the frozen live pose kernel in `HomeRenderer.swift`/`metareal/cast.coax`,
    corpus, tolerance, reference revision and algorithms. Independently review
@@ -330,8 +336,12 @@ mutating backing bytes or changing domain state can require revalidation.
 
 ## 6. R3 — Make ownership and allocation policies explicit
 
-**R3a first:** diagnose straightforward returns/escapes of local-backed views
-using the current typed graph, and define the borrow/transfer discipline.
+**R3a started:** E0383 now rejects straightforward local-array view/string
+returns, simple aliases/slices/casts and conditional arms while preserving
+borrowed parameter returns. [Evidence and limits](verification-local-borrows.md)
+record 553 checker checks and 3,762 killed mutants with zero survivors.
+Interprocedural, aggregate-contained and general region lifetimes remain
+unchecked; the complete borrow/transfer discipline is still work to do.
 **R3b later:** owning allocations, containers and context after error/cleanup
 and target contracts exist. Early escape diagnostics do not establish general
 memory safety.
@@ -737,8 +747,8 @@ This is a priority queue, not a serial barrier. Formatting, scoped evidence
 and simple escape diagnostics can start from current APIs while R0 measurements
 and review remain open; every slice still needs its listed prerequisites.
 
-1. **Finish the existing R0 baseline.** Profile the measured pose gap; retain
-   the frozen reference and current debugging results. Complete device/tail
+1. **Finish the existing R0 baseline.** Retain the closed pose median gap,
+   frozen reference and current debugging results. Complete device/tail
    budgets, full-loop attribution, release/status generation and independent
    review enforcement. Do not repeat shipped kernel selection/debugging or
    weaken a budget to close the milestone. Start scoped evidence and the
@@ -754,8 +764,9 @@ and review remain open; every slice still needs its listed prerequisites.
 4. **Ship R7a tools early.** Formatting/evidence can use current APIs; typed
    queries and revision-bound fixes use R1a. Restricted analysis and useful
    diagnostics must not wait for plugins, macros or owning containers.
-5. **Deliver R2a/R3a, then owning storage.** Typed results, exhaustive cleanup,
-   simple escape diagnoses, transfer/deferred-destruction rules and one real
+5. **Continue R2a/R3a, then owning storage.** Retain the shipped simple
+   local-borrow diagnostics; add typed results, exhaustive cleanup,
+   transfer/deferred-destruction rules and one real
    asynchronous adapter. R4a non-owning generics and R5a concrete derivation
    can proceed on their narrower prerequisites; owning libraries wait for R3b.
 6. **Test platform and iteration assumptions early.** Extend Coaxial's existing

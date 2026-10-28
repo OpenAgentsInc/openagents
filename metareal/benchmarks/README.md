@@ -8,7 +8,7 @@ through the real generated C ABI. It makes no full-engine equivalence claim.
 ```sh
 python3 metareal/benchmarks/run.py --output /tmp/coax-r0 --repeats 9
 python3 metareal/benchmarks/run.py --output /tmp/coax-r0-asan --repeats 1 --sanitize
-# Optional proposed performance gate; currently expected to fail:
+# Proposed performance gate (all three profiles):
 python3 metareal/benchmarks/run.py --output /tmp/coax-r0-budget --enforce-budget
 ```
 
@@ -78,6 +78,10 @@ outside the kernel timers; value copies and stack use still cost time.
 The default command fails on correctness, input/hash or allocation violations.
 It records a missed proposed timing budget without pretending success means
 speed parity. `--enforce-budget` additionally exits nonzero on that miss.
+The latest retained nine-repeat run passes this unchanged median gate in all
+three profiles; [the pose follow-up](../../docs/verification/coax-r0-pose-2026-10-28.md)
+records the rewrite, raw samples, stack tradeoff and remaining tail limits.
+A result on one Mac is not a universal performance guarantee.
 
 ## Real iOS frames
 

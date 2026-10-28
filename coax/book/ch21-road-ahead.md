@@ -112,17 +112,20 @@ shared, so this is pose parity, not independent state-machine parity.
 Raw reports include matching native flags, three arithmetic/optimization
 profiles, repeated timings, allocation counts, compiler phases and peak RSS.
 The real Debug iOS Grid also records CPU stages and completed-command GPU
-clocks. Palette tolerance and zero observed kernel heap allocations pass;
-the initial optimized comparison misses the proposed 5% median budget.
+clocks. Palette tolerance and zero observed kernel heap allocations pass.
+After hoisting clip/skeleton preparation, caching decoded rows and reducing
+vector/matrix temporaries, the same frozen comparison passes the proposed
+5% median budget in all three profiles. The reference, input, arithmetic
+profiles and threshold remain unchanged. Raw tails/outliers are retained.
 No full-frame speed comparison against the old engine or physical-phone
 performance result follows from the Mac/Simulator runs.
 
 Original Coax breakpoints, stepping, names and loaded-file stacks work in
 Mac LLDB and the live Simulator pose can be inspected through Swift. Chapter
-24 shows the commands and limits. R0 still requires profiling/optimization,
-physical-device and full development-loop evidence, agreed tail budgets,
-release/status generation and independent review/gate enforcement. That gate
-stays open instead of calling a working benchmark a performance success.
+24 shows the commands and limits. The pose median fix supplies one part of
+R0's adoption evidence. Physical-device and full development-loop evidence,
+agreed tail budgets, release/status generation and independent review/gate
+enforcement still remain before the milestone closes.
 
 The originally proposed `src/paynet` update remains an archive candidate.
 It is not present in today's tree, and is not a prerequisite to measuring the
@@ -153,7 +156,7 @@ paying those costs for features nobody measured.
 These are the questions the spec lists as undecided. Each one will be
 answered by building something, not by argument.
 
-1. Which pose costs explain the current gap, and which device/tail budget should close R0/stage 2?
+1. Which device/tail budgets and independent evidence close R0/stage 2 after the pose median fix?
 2. Which region and alias model makes field effects trustworthy, without
    promising safety for arbitrary pointer graphs?
 3. What stable IDs separate compiler declarations, engine registrations,

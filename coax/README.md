@@ -75,8 +75,9 @@ library builds map to original Coax files by default. Plain `coax c` opts in
 explicitly, so bootstrap output stays reproducible. The optional LLDB helper
 shows authored names and checks source hashes. See [DEBUGGING.md](DEBUGGING.md)
 for commands, artifacts and current limits. The [R0 engine harness](../metareal/benchmarks/README.md)
-uses the real cast and a pinned native evaluator; [retained evidence](../docs/verification/coax-r0-2026-10-28.md)
-records correctness and the performance gap.
+uses the real cast and a pinned native evaluator; [original evidence](../docs/verification/coax-r0-2026-10-28.md)
+records the initial gap, and [follow-up evidence](../docs/verification/coax-r0-pose-2026-10-28.md)
+records the unchanged median gate passing in all three profiles.
 
 ## What works
 
@@ -263,9 +264,9 @@ tested Mac and iOS Simulator; optimized values still follow native debugging
 limits, and no Coax expression evaluator is provided.
 
 Next: finish [roadmap R0](ROADMAP.md)'s measured adoption gate. The real pose
-comparison and Metal frame capture now run, but a missed proposed performance
-budget, physical-device measurements, release/status generation and independent
-review enforcement remain open. See §20 of the specification for later
+comparison and Metal frame capture now run, and the pose rewrite passes the
+proposed median budget. Physical-device/frame-tail measurements, full-loop
+attribution, release/status generation and independent review remain open. See §20 of the specification for later
 metadata, build, parallelism, browser and reload gates.
 
 ## Coax frontend and bootstrap seeds

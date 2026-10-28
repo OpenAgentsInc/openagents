@@ -91,7 +91,8 @@ the capture; `Documents/R0-frame.json` contains raw CPU/GPU samples, counts
 and command errors. Release builds compile the capture adapter out. See
 [the benchmark README](../../metareal/benchmarks/README.md) for commands and
 the scope of each timer. Simulator timing is not physical-phone performance;
-the pinned headless comparison currently misses the proposed speed budget.
+the updated pinned headless comparison passes the proposed median budget;
+device and frame-tail evidence remain open.
 
 ## Ownership
 

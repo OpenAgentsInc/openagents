@@ -93,10 +93,10 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 finite :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
 v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
-add :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
-sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
-times :: (a: Vec3, k: f32) -> Vec3 { return v3(a.x * k, a.y * k, a.z * k); }
-cross :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+add :: (a: Vec3, b: Vec3) -> Vec3 { return Vec3.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z}; }
+sub :: (a: Vec3, b: Vec3) -> Vec3 { return Vec3.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z}; }
+times :: (a: Vec3, k: f32) -> Vec3 { return Vec3.{x=a.x*k,y=a.y*k,z=a.z*k}; }
+cross :: (a: Vec3, b: Vec3) -> Vec3 { return Vec3.{x=a.y*b.z-a.z*b.y,y=a.z*b.x-a.x*b.z,z=a.x*b.y-a.y*b.x}; }
 
 // ---- Quaternions ----
 
@@ -106,39 +106,45 @@ mul :: (a: Quat, b: Quat) -> Quat {
 }
 conj :: (q: Quat) -> Quat { return Quat.{x = -q.x, y = -q.y, z = -q.z, w = q.w}; }
 rotate :: (q: Quat, v: Vec3) -> Vec3 {
-  u := v3(q.x, q.y, q.z);
-  t := times(cross(u, v), 2);
-  return add(add(v, times(t, q.w)), cross(u, t));
+  // Keep the two cross products and additions in their original order,
+  // without materializing each vector through a chain of tiny calls.
+  tx := (q.y * v.z - q.z * v.y) * 2;
+  ty := (q.z * v.x - q.x * v.z) * 2;
+  tz := (q.x * v.y - q.y * v.x) * 2;
+  return Vec3.{x = (v.x + tx * q.w) + (q.y * tz - q.z * ty),
+               y = (v.y + ty * q.w) + (q.z * tx - q.x * tz),
+               z = (v.z + tz * q.w) + (q.x * ty - q.y * tx)};
 }
+normalize_rotation :: (q:Quat,fallback:Quat)->Quat {
+  size:=sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
+  if size<0.00000001 {return fallback;}
+  return Quat.{x=q.x/size,y=q.y/size,z=q.z/size,w=q.w/size};
+}
+
 // The normalized blend, the short way round.
 nlerp :: (a: Quat, b: Quat, t: f32) -> Quat {
   s := ifx a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w < 0 then -1.0f32 else 1.0f32;
   q := Quat.{x = a.x + (s * b.x - a.x) * t, y = a.y + (s * b.y - a.y) * t, z = a.z + (s * b.z - a.z) * t, w = a.w + (s * b.w - a.w) * t};
-  size := sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-  if size < 0.00000001 { return a; }
-  return Quat.{x = q.x / size, y = q.y / size, z = q.z / size, w = q.w / size};
+  return normalize_rotation(q,a);
 }
 
 // A rigid transform turned by yaw about +Y, scaled, and moved to (x, y, z):
 // the joint's row of the palette.
-placed :: (r: Rigid, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> Joint {
+placed_basis :: (r: Rigid, x: f32, y: f32, z: f32, c: f32, s: f32, scale: f32) -> Joint {
   q := r.q;
-  m: [9] f32;
-  m[0] = 1 - 2 * (q.y * q.y + q.z * q.z); m[1] = 2 * (q.x * q.y - q.w * q.z); m[2] = 2 * (q.x * q.z + q.w * q.y);
-  m[3] = 2 * (q.x * q.y + q.w * q.z); m[4] = 1 - 2 * (q.x * q.x + q.z * q.z); m[5] = 2 * (q.y * q.z - q.w * q.x);
-  m[6] = 2 * (q.x * q.z - q.w * q.y); m[7] = 2 * (q.y * q.z + q.w * q.x); m[8] = 1 - 2 * (q.x * q.x + q.y * q.y);
-  // Yaw 0 faces +Z: (c, 0, s), (0, 1, 0), (-s, 0, c), as aethyr's instances.
-  c := cos(yaw) * scale; s := sin(yaw) * scale;
-  out: Joint;
-  for k: 0..<3 {
-    out.m[k] = c * m[k] + s * m[6 + k];
-    out.m[4 + k] = scale * m[3 + k];
-    out.m[8 + k] = -s * m[k] + c * m[6 + k];
-  }
-  out.m[3] = c * r.t.x + s * r.t.z + x;
-  out.m[7] = scale * r.t.y + y;
-  out.m[11] = -s * r.t.x + c * r.t.z + z;
-  return out;
+  m00 := 1 - 2 * (q.y * q.y + q.z * q.z);
+  m01 := 2 * (q.x * q.y - q.w * q.z); m02 := 2 * (q.x * q.z + q.w * q.y);
+  m10 := 2 * (q.x * q.y + q.w * q.z); m11 := 1 - 2 * (q.x * q.x + q.z * q.z); m12 := 2 * (q.y * q.z - q.w * q.x);
+  m20 := 2 * (q.x * q.z - q.w * q.y); m21 := 2 * (q.y * q.z + q.w * q.x); m22 := 1 - 2 * (q.x * q.x + q.y * q.y);
+  // The literal has exactly twelve scalar fields, checked at compile time.
+  // It avoids a temporary matrix and dynamic indexing in the row loop.
+  return Joint.{m = [12]f32.[c*m00+s*m20, c*m01+s*m21, c*m02+s*m22, c*r.t.x+s*r.t.z+x,
+                           scale*m10, scale*m11, scale*m12, scale*r.t.y+y,
+                           -s*m00+c*m20, -s*m01+c*m21, -s*m02+c*m22, -s*r.t.x+c*r.t.z+z]};
+}
+
+placed :: (r: Rigid, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> Joint {
+  return placed_basis(r,x,y,z,cos(yaw)*scale,sin(yaw)*scale,scale);
 }
 
 // ---- Bytes ----
@@ -155,10 +161,10 @@ s32_at :: (b: [] u8, at: int) -> int {
 f32_at :: (b: [] u8, at: int) -> f32 { return f32_from_bits(u32_at(b, at)); }
 vec_at :: (b: [] u8, at: int) -> Vec3 { return v3(f32_at(b, at), f32_at(b, at + 4), f32_at(b, at + 8)); }
 rigid_at :: (b: [] u8, at: int) -> Rigid {
-  r: Rigid;
-  r.q = Quat.{x = f32_at(b, at), y = f32_at(b, at + 4), z = f32_at(b, at + 8), w = f32_at(b, at + 12)};
-  r.t = vec_at(b, at + 16);
-  return r;
+  // Validate the whole record once; constant field offsets let native code
+  // combine the byte loads without removing the checked view boundary.
+  row:=b[at..<at+28];
+  return Rigid.{q=Quat.{x=f32_at(row,0),y=f32_at(row,4),z=f32_at(row,8),w=f32_at(row,12)},t=vec_at(row,16)};
 }
 
 // Table entry i, if it is `name` with rows of `stride` bytes, starting on
@@ -380,38 +386,62 @@ frames_at :: (frames: f32, count: int, loop: bool) -> Frames {
 // A joint's motion relative to its parent in one frame: the rotation, and
 // how far it carries the joint's bind position.
 Rel :: struct { r: Quat; d: Vec3; }
-skin :: (b: [] u8, c: Cast, frame: int, j: int) -> Rigid { return rigid_at(b, c.poses.offset + (frame * c.joints + j) * 32); }
-parent_of :: (b: [] u8, c: Cast, j: int) -> int { return s32_at(b, c.skeleton.offset + j * 16); }
-bind_of :: (b: [] u8, c: Cast, j: int) -> Vec3 { return vec_at(b, c.skeleton.offset + j * 16 + 4); }
-
-relative :: (b: [] u8, c: Cast, frame: int, k: int) -> Rel {
-  sk := skin(b, c, frame, k);
-  out: Rel;
-  tc := sk.t;
-  out.r = sk.q;
-  p := parent_of(b, c, k);
-  if p >= 0 {
-    sp := skin(b, c, frame, p);
-    ip := conj(sp.q);
-    out.r = mul(ip, sk.q);
-    tc = rotate(ip, sub(sk.t, sp.t));
-  }
-  x := bind_of(b, c, k);
-  out.d = sub(add(rotate(out.r, x), tc), x);
-  return out;
+// Clip selection is invariant across the skeleton. Keep byte offsets and
+// interpolation separate from the joint loop instead of copying Cast per call.
+PoseFrames :: struct {first:int;second:int;f:f32;}
+pose_frames :: (b:[]u8,c:Cast,m:Move,start:f64,now:f64)->PoseFrames {
+  at:=frames_at(frames_into(m,start,now),frames_of(b,c,m),!once(m));
+  base:=first_of(b,c,m);stride:=c.joints*32;
+  return PoseFrames.{first=c.poses.offset+(base+at.a)*stride,second=c.poses.offset+(base+at.b)*stride,f=at.f};
 }
 
-sample :: (b: [] u8, c: Cast, m: Move, start: f64, now: f64, k: int) -> Rel {
-  count := frames_of(b, c, m);
-  at := frames_at(frames_into(m, start, now), count, !once(m));
-  base := first_of(b, c, m);
-  ra := relative(b, c, base + at.a, k);
-  if at.b != at.a {
-    rb := relative(b, c, base + at.b, k);
-    ra.r = nlerp(ra.r, rb.r, at.f);
-    ra.d = add(ra.d, times(sub(rb.d, ra.d), at.f));
+// Cache storage is fully overwritten before use. Zero defaults avoid building
+// 130 identity quaternions on every sample in unoptimized native builds.
+PoseRow :: struct {x:f32;y:f32;z:f32;w:f32;t:Vec3;}
+pose_row_at :: (b:[]u8,at:int)->PoseRow {
+  row:=b[at..<at+28];
+  return PoseRow.{x=f32_at(row,0),y=f32_at(row,4),z=f32_at(row,8),w=f32_at(row,12),t=vec_at(row,16)};
+}
+
+pose_relative_from :: (sk:PoseRow,sp:PoseRow,has_parent:bool,bind:Vec3)->Rel {
+  tc:=sk.t;rotation:=Quat.{x=sk.x,y=sk.y,z=sk.z,w=sk.w};
+  if has_parent {
+    ip:=Quat.{x= -sp.x,y= -sp.y,z= -sp.z,w=sp.w};
+    rotation=mul(ip,rotation);tc=rotate(ip,sub(sk.t,sp.t));
   }
-  return ra;
+  return Rel.{r=rotation,d=sub(add(rotate(rotation,bind),tc),bind)};
+}
+
+// Cache each decoded skin row once. Admission requires parents before children,
+// so their rows are already present when a child needs them. The caches are
+// bounded stack storage; all byte/view and parent indices remain checked.
+PoseBone :: struct {parent:int;bind:Vec3;}
+pose_skeleton :: (b:[]u8,c:Cast,out:[]PoseBone) {
+  skeleton:=b[c.skeleton.offset..<c.skeleton.end];
+  for k:0..<c.joints {out[k]=PoseBone.{parent=s32_at(skeleton,k*16),bind=vec_at(skeleton,k*16+4)};}
+}
+
+pose_samples :: (b:[]u8,frames:PoseFrames,skeleton:[]PoseBone,joints:int,out:[]Rel) {
+  first:[65]PoseRow;second:[65]PoseRow;
+  blend:=frames.second!=frames.first;
+  for k:0..<joints {
+    p:=skeleton[k].parent;bind:=skeleton[k].bind;
+    sk:=pose_row_at(b,frames.first+k*32);first[k]=sk;
+    parent:=ifx p>=0 then first[p] else sk;
+    ra:=pose_relative_from(sk,parent,p>=0,bind);
+    if blend {
+      if frames.f>0 {
+        sk2:=pose_row_at(b,frames.second+k*32);second[k]=sk2;
+        parent2:=ifx p>=0 then second[p] else sk2;
+        rb:=pose_relative_from(sk2,parent2,p>=0,bind);
+        ra.r=nlerp(ra.r,rb.r,frames.f);ra.d=add(ra.d,times(sub(rb.d,ra.d),frames.f));
+      } else {
+        // Zero interpolation still normalizes, matching the original nlerp.
+        ra.r=normalize_rotation(ra.r,ra.r);
+      }
+    }
+    out[k]=ra;
+  }
 }
 
 // How much of the clip you are leaving still shows.
@@ -425,25 +455,30 @@ metareal_cast_pose :: (b: [] u8, c: Cast, a: Anim, now: f64, x: f32, y: f32, z: 
   if !c.ok || b.count != c.size || out.count < c.joints { return false; }
   if !finite(x) || !finite(y) || !finite(z) || !finite(face) { return false; }
   w := fading(a, now);
+  current:=pose_frames(b,c,a.move,a.start,now);previous:PoseFrames;
+  if w>0 {previous=pose_frames(b,c,a.from,a.from_start,now);}
+  yaw_c:=cos(face);yaw_s:=sin(face);
+  skeleton:[65]PoseBone;pose_skeleton(b,c,skeleton[..]);
+  sampled:[65]Rel;pose_samples(b,current,skeleton[..],c.joints,sampled[..]);
+  if w>0 {
+    from:[65]Rel;pose_samples(b,previous,skeleton[..],c.joints,from[..]);
+    for k:0..<c.joints {
+      sampled[k].r=nlerp(from[k].r,sampled[k].r,1-w);
+      sampled[k].d=add(from[k].d,times(sub(sampled[k].d,from[k].d),1-w));
+    }
+  }
   world: [65] Rigid;
   for k: 0..<c.joints {
-    s := sample(b, c, a.move, a.start, now, k);
-    if w > 0 {
-      f := sample(b, c, a.from, a.from_start, now, k);
-      s.r = nlerp(f.r, s.r, 1 - w);
-      s.d = add(f.d, times(sub(s.d, f.d), 1 - w));
-    }
-    bind := bind_of(b, c, k);
+    bind:=skeleton[k].bind;p:=skeleton[k].parent;s:=sampled[k];
     local: Rigid;
     local.q = s.r;
     local.t = sub(add(bind, s.d), rotate(s.r, bind));
-    p := parent_of(b, c, k);
     if p < 0 { world[k] = local; }
     else {
       world[k].q = mul(world[p].q, local.q);
       world[k].t = add(rotate(world[p].q, local.t), world[p].t);
     }
-    out[k] = placed(world[k], x, y, z, face, 1);
+    out[k] = placed_basis(world[k], x, y, z, yaw_c, yaw_s, 1);
   }
   return true;
 }
@@ -1201,4 +1236,73 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   l := small(bytes[..]);
   b := bytes[0..<l.size]; c := opened(b);
   #assert first_of(b, c, Move.dancing) == 16 && frames_of(b, c, Move.dancing) == 2;
+}
+
+
+#test "pose frame selection is prepared once with checked byte offsets" {
+  bytes:[4096]u8;l:=small(bytes[..]);b:=bytes[0..<l.size];c:=opened(b);
+  idle:=pose_frames(b,c,Move.idle,0,f64(1.5f32/30));
+  #assert idle.first==l.poses+2*32 && idle.second==l.poses+4*32;
+  #assert near(idle.f,0.5,0.000001);
+  land:=pose_frames(b,c,Move.jump_land,0,5);
+  #assert land.first==l.poses+15*2*32 && land.second==land.first && land.f==0;
+  walk:=pose_frames(b,c,Move.walking,0,f64(0.5f32/48));
+  #assert walk.first==l.poses+4*2*32 && walk.second==l.poses+5*2*32;
+  #assert near(walk.f,0.5,0.000001);
+}
+
+#forall "prepared pose sampling agrees with independent analytic joint motion" step:0..<17 {
+  bytes:[4096]u8;l:=small(bytes[..]);b:=bytes[0..<l.size];c:=opened(b);
+  frame:=f32(step)/8;now:=f64(frame/30);plan:=pose_frames(b,c,Move.idle,0,now);
+  bones:[65]PoseBone;pose_skeleton(b,c,bones[..]);
+  samples:[65]Rel;pose_samples(b,plan,bones[..],c.joints,samples[..]);
+  root:=samples[0];child:=samples[1];
+  #assert close(root.d,root_at(frame).t,0.000002);
+  #assert close(rotate(root.r,TIP),rotate(root_at(frame).q,TIP),0.0001);
+  #assert close(add(B,child.d),B,0.0001);
+  #assert close(rotate(child.r,TIP),rotate(child_at(frame).q,TIP),0.0001);
+}
+
+
+#test "an exact interpolated frame still normalizes its relative rotation" {
+  bytes:[4096]u8;l:=small(bytes[..]);q:=turn(0.25);
+  rigid_out(bytes[..],l.poses,Rigid.{q=Quat.{x=q.x*2,y=q.y*2,z=q.z*2,w=q.w*2}});
+  b:=bytes[0..<l.size];c:=opened(b);plan:=pose_frames(b,c,Move.idle,0,0);
+  bones:[65]PoseBone;pose_skeleton(b,c,bones[..]);
+  samples:[65]Rel;pose_samples(b,plan,bones[..],c.joints,samples[..]);root:=samples[0];
+  #assert near(root.r.y,q.y,0.000001) && near(root.r.w,q.w,0.000001);
+}
+
+
+#test "the pose skeleton plan retains parent order and bind positions" {
+  bytes:[4096]u8;l:=small(bytes[..]);b:=bytes[0..<l.size];c:=opened(b);
+  bones:[65]PoseBone;pose_skeleton(b,c,bones[..]);
+  #assert bones[0].parent== -1 && close(bones[0].bind,v3(0,0,0),0);
+  #assert bones[1].parent==0 && close(bones[1].bind,B,0);
+}
+
+
+#test "little endian word reads include an exact last four byte span" {
+  bytes:=[7]u8.[1,2,3,4,255,255,255];
+  #assert u32_at(bytes[0..<4],0)==0x04030201;
+  #assert u32_at(bytes[..],3)==0xffffff04;
+  all:=[4]u8.[255,255,255,255];#assert u32_at(all[..],0)==0xffffffff;
+}
+
+
+#test "rotation normalization preserves its explicit degenerate fallback" {
+  fallback:=turn(0.3);zero:=Quat.{w=0};
+  same:=normalize_rotation(zero,fallback);
+  #assert same.y==fallback.y && same.w==fallback.w;
+  q:=normalize_rotation(Quat.{x=0.6,y=0,z=0,w=0.8},zero);
+  #assert q.x==0.6 && q.w==0.8;
+}
+
+
+#test "pose row cache decodes every field without an identity default" {
+  bytes:[4096]u8;l:=small(bytes[..]);want:=root_at(2);
+  row:=pose_row_at(bytes[..],l.poses+4*32);
+  #assert row.x==want.q.x && row.y==want.q.y && row.z==want.q.z && row.w==want.q.w;
+  #assert close(row.t,want.t,0);
+  zero:PoseRow;#assert zero.x==0 && zero.y==0 && zero.z==0 && zero.w==0 && close(zero.t,v3(0,0,0),0);
 }

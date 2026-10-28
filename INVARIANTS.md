@@ -32,6 +32,20 @@ runs under ASan/UBSan. `R0UITests` drives the normal Grid/Metal path; inspect
 retained frame counts and command errors too. Reference-adapter review,
 independently enforced adoption gates and device/tail budgets remain open.
 
+The pose rewrite retains the frozen reference, reader, asset, workload and
+threshold. Coax owns clip/skeleton preparation, bounded decoded-row caches and
+math; admitted parent-before-child order ensures every cached parent is written
+before use. All accesses remain checked, zero-weight interpolation still
+normalizes, and public quaternion defaults/target ABI are unchanged. Raw
+median/tail evidence and explicit stack costs stay separate from adoption claims.
+
+E0383 is a bounded checker diagnostic for direct local-array view/string
+returns and simple aliases/slices/casts/conditional arms. Borrowed parameter
+returns remain valid. Conservative false positives and interprocedural,
+aggregate-contained, loop and nested-block lifetime gaps are documented; this
+is not general ownership safety. Check: checker authority/mutation and seeds,
+focused native/sanitizer/negative cases in `coax/verification-local-borrows.md`.
+
 ## One protocol for all OpenAgents surfaces
 
 Root `proto/` and the OpenAgents Protocol specification define interchange for

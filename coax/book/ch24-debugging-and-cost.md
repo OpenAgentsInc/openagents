@@ -206,12 +206,19 @@ app launched with `-OABenchmark` also records the normal Grid's CPU stages,
 host buffer copies, Metal encoding and completed-command GPU clocks in
 `Documents/R0-frame.json`. Simulator clocks are not iPhone performance.
 
-The first comparison agrees within the frozen palette tolerance and observes
-zero Coax kernel heap allocations, but misses the proposed 5% median timing
-budget. Correctness success is not speed parity. The default harness reports
-the miss; `--enforce-budget` makes it a failing performance gate. Inspect the
-reference adaptation, variance and exact evidence before changing either the
-implementation or the budget. R0 remains open for profiling/optimization,
-physical-device and full-loop evidence, status generation and independent
-review enforcement. The benchmark README and `docs/verification/` in the
-repository record that scope and the retained results.
+The first comparison missed the proposed 5% median timing budget. A Coax-only
+follow-up hoists invariant clip/skeleton/yaw work, caches decoded rows in bounded
+stack storage, and removes vector/matrix temporaries and identity initialization
+from scratch rows. It keeps exact-frame normalization and checked access. The
+same frozen reference, asset, workload, flags and threshold now pass with median
+ratios 1.034× at checked `-O0`, 0.807× for app-style checked `-O2` and 0.740×
+for wrapping release. Palette tolerance and zero observed kernel allocations
+still pass. This preserves the numeric contract, not signed-zero bit identity.
+
+The default harness records any missed median gate; `--enforce-budget` makes
+it fail. These are named-Mac results, not universal speed guarantees. A large
+debug outlier remains in the raw report, and the caches increase bounded stack
+use. Inspect tails and memory as well as medians. R0 remains open for
+physical-device/tail budgets, full-loop evidence, status generation and
+independent reference/gate review. The benchmark README and `docs/verification/`
+retain both the original miss and the follow-up, including their actual inputs.

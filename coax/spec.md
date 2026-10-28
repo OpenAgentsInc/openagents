@@ -1036,8 +1036,10 @@ The first representative engine slice is implemented under
 [roadmap R0](ROADMAP.md): real cast poses against a pinned historical native
 evaluator, plus robot/body and player/collision timings and actual iOS Metal
 frame capture. [The evidence](../docs/verification/coax-r0-2026-10-28.md) records
-output tolerance, zero observed kernel allocations and a missed proposed 5%
-median budget. The reference reader adaptation still requires independent
+output tolerance and zero observed kernel allocations. The
+[pose follow-up](../docs/verification/coax-r0-pose-2026-10-28.md) passes the same
+proposed 5% median gate in all three profiles; raw tail/outlier and device
+limits remain explicit. The reference reader adaptation still requires independent
 review, and physical-device/full-loop evidence remains open. The
 historical `src/paynet` pulse update remains a candidate only after its
 reference source/data/host path is recovered; that directory is not present
@@ -1110,7 +1112,7 @@ engine remains unmeasured.
 | --- | --- | --- |
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. In 0.5.0, checks: `#test`, `#forall`, `#authority`, `coax test` and `coax mutate`. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
-| 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. R0 now compares the actual pose against a pinned native evaluator and records kernel/Metal-frame timings. The proposed speed budget is missed; device, full-loop and independent review gates remain open. |
+| 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. R0 now compares the actual pose against a pinned native evaluator and records kernel/Metal-frame timings. The follow-up pose rewrite passes the proposed median budget; device/tail, full-loop and independent review gates remain open. |
 | 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; Metareal derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |
@@ -1137,7 +1139,7 @@ programs or compiler plugins.
 
 ## 22. Open questions
 
-1. Which pose costs explain the R0 gap, and which device/tail budget should close the adoption gate?
+1. Which device/tail budgets and independent evidence close the adoption gate after the pose median fix?
 2. Which region/alias model is sufficient for field/range effects without
    overpromising safety for arbitrary pointer graphs?
 3. What stable IDs distinguish compiler declarations, engine registrations,
