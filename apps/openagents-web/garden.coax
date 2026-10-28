@@ -6,7 +6,10 @@
 // with the wheel, swings in behind you as you walk, and pulls in where a
 // tree, a hedge or a hill is in the way. The ground is verse/terrain.coax's:
 // rolling hills in a shallow bowl, levelled where the garden's paths run,
-// and a dog that follows you by those paths.
+// and a dog that follows you by those paths. There is a ball
+// (verse/throw.coax): E picks it up, E or a click throws it the way the
+// camera looks (an arc shows where it will land), it bounces and rolls, and
+// the dog fetches it back to you.
 //
 // The player walks on a flat floor and is drawn at the ground's height
 // where it stands: a step over a hill is a step over the flat, so the
@@ -23,7 +26,7 @@
 #load "font.coax";
 #load "analytics.coax";
 #load "../../verse/camera.coax";
-#load "../../verse/terrain.coax";
+#load "../../verse/throw.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 12000;
@@ -90,7 +93,13 @@ Garden :: struct {
   key_x: f32; key_y: f32; run: bool; jump: bool;
   // You, as the player last drew you.
   feet: Point; face: f32; act: int; stride: f32;
-  dog: Follower; dog_stride: f32;
+  fetch: Fetch;             // the dog and the ball (throw.coax)
+  dog_stride: f32;
+  use: bool;                // E, a click or the button asked to pick up or throw
+  drag_travel: f32;         // CSS pixels a mouse press has moved: a click when small
+  button: Box;              // the phone's PICK UP or THROW, when it shows (x1 > x0)
+  button_finger: int;       // the finger pressing it, or -1
+  button_on: bool;
   // The scene.
   heights: [GROUND_POINTS] f32;
   objects: [OBJECTS * OBJECT_FLOATS] f32;
@@ -142,8 +151,9 @@ BEDS :: 6;
 BED :: [24] f32.[ 3, 3, 1.0, 0,   -3, 3, 1.0, 1,   -3, -3, 1.0, 2,   3, -3, 1.0, 0,   -11, 2, 1.1, 1,   9.5, -5, 1.1, 2 ];
 FLOWER_RGB :: [9] f32.[0.86, 0.2, 0.22,  0.95, 0.74, 0.2,  0.95, 0.94, 0.9];
 SPAWN_X :: 0.0; SPAWN_Z :: -18.0;
-DOG_X :: 1.5; DOG_Z :: -15.5;
-DOG_STOP :: 2.2;     // metres short of you the dog stops
+DOG_X :: -1.5; DOG_Z :: -15.5;
+BALL_X :: 0.7; BALL_Z :: -16.9;
+ARC_POINTS :: 28;
 
 // ---- small things
 
@@ -191,7 +201,9 @@ garden_start :: (s: [] Garden) {
   ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
   s[0].feet = v3(f32(SPAWN_X), ground_at(s, f32(SPAWN_X), f32(SPAWN_Z)), f32(SPAWN_Z));
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
-  s[0].dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
+  s[0].fetch.dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
+  s[0].fetch.ball = verse_ball_place(ground(), s[0].heights[..], f32(BALL_X), f32(BALL_Z), 0.12);
+  s[0].button_finger = -1;
   build_scenery(s);
 }
 
@@ -243,8 +255,8 @@ hold_bit :: (key: int) -> int {
   if key == 'd' || key == 'D' { return HOLD_RIGHT; }
   if key == KEY_SHIFT { return HOLD_RUN; }
   if key == ' ' { return HOLD_JUMP; }
-  if key == KEY_LEFT || key == 'q' || key == 'Q' { return HOLD_TURN_LEFT; }
-  if key == KEY_RIGHT || key == 'e' || key == 'E' { return HOLD_TURN_RIGHT; }
+  if key == KEY_LEFT { return HOLD_TURN_LEFT; }
+  if key == KEY_RIGHT { return HOLD_TURN_RIGHT; }
   if key == KEY_UP { return HOLD_TILT_UP; }
   if key == KEY_DOWN { return HOLD_TILT_DOWN; }
   return 0;
@@ -254,6 +266,7 @@ garden_key :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
   if !s[0].started { garden_start(s); }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if key == 'e' || key == 'E' { s[0].use = true; return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
   s[0].held = s[0].held | b;
@@ -269,20 +282,33 @@ garden_key_up :: (s: [] Garden, key: int, mods: int) -> bool #export_c {
 
 garden_blur :: (s: [] Garden) #export_c { s[0].held = 0; s[0].drag_on = false; }
 
-// A mouse drag turns the camera; a finger is the face's (the sticks), so
-// this says it isn't used.
+in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+// A mouse drag turns the camera and a click throws what you hold. A finger
+// on the phone's button presses it; any other finger is the face's (the
+// sticks), so this says it isn't used.
 garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { garden_start(s); }
-  if kind != 0 { s[0].touch = true; return false; }
+  if kind != 0 {
+    s[0].touch = true;
+    if phase == 0 && in_box(s[0].button, x, y) { s[0].button_finger = id; s[0].button_on = true; return true; }
+    if id != s[0].button_finger { return false; }
+    if phase == 1 { s[0].button_on = in_box(s[0].button, x, y); return true; }
+    if phase == 2 && in_box(s[0].button, x, y) { s[0].use = true; }
+    s[0].button_finger = -1; s[0].button_on = false;
+    return true;
+  }
   k := hi(s[0].dpr, 0.5);
-  if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; return true; }
+  if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; s[0].drag_travel = 0; return true; }
   if !s[0].drag_on || id != s[0].drag_id { return false; }
   if phase == 1 {
     s[0].look_yaw -= (x - s[0].drag_x) / k * f32(LOOK_DRAG);
     s[0].look_pitch -= (y - s[0].drag_y) / k * f32(LOOK_DRAG);
+    s[0].drag_travel += (abs(x - s[0].drag_x) + abs(y - s[0].drag_y)) / k;
     s[0].drag_x = x; s[0].drag_y = y;
     return true;
   }
+  if phase == 2 && s[0].drag_travel < 6 && s[0].fetch.ball.held == 0 { s[0].use = true; }
   s[0].drag_on = false;
   return true;
 }
@@ -390,7 +416,7 @@ scenery :: (s: [] Garden, u: [] f32) {
 }
 
 // You: a figure in a blue coat, its legs and arms swinging with your stride.
-figure :: (s: [] Garden, u: [] f32, feet: Point, face: f32, stride: f32, act: int) {
+figure :: (s: [] Garden, u: [] f32, feet: Point, face: f32, stride: f32, act: int, holding: bool) {
   swing := ifx act == 1 || act == 2 then sin(stride * 2.4) * (ifx act == 2 then 0.75f32 else 0.5f32) else 0.0f32;
   if act == 3 { swing = 0.5; }
   bob := ifx act == 1 || act == 2 then abs(cos(stride * 2.4)) * 0.05 else 0.0f32;
@@ -405,8 +431,9 @@ figure :: (s: [] Garden, u: [] f32, feet: Point, face: f32, stride: f32, act: in
     down := v3(sin(face) * sin(a), -cos(a), cos(face) * sin(a));
     shape(s, SHAPE_BOX, LOOK_MATTE, add(leg, times(down, 0.4)), face, a, 0.15, 0.8, 0.17, 0.22, 0.2, 0.26);
     shoulder := add(add(base, v3(0, 1.38, 0)), times(right, 0.3 * sign));
-    arm := v3(sin(face) * sin(-a * 0.8), -cos(a * 0.8), cos(face) * sin(-a * 0.8));
-    shape(s, SHAPE_BOX, LOOK_MATTE, add(shoulder, times(arm, 0.32)), face, -a * 0.8, 0.12, 0.64, 0.13, 0.2, 0.36, 0.62);
+    swing_arm := ifx holding && side == 0 then -1.25f32 else -a * 0.8;
+    arm := v3(sin(face) * sin(swing_arm), -cos(swing_arm), cos(face) * sin(swing_arm));
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(shoulder, times(arm, 0.32)), face, swing_arm, 0.12, 0.64, 0.13, 0.2, 0.36, 0.62);
     shape(s, SHAPE_SPHERE, LOOK_SKIN, add(shoulder, times(arm, 0.66)), 0, 0, 0.12, 0.12, 0.12, 0.93, 0.76, 0.62);
   }
   shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(base, v3(0, 1.12, 0)), face, 0, 0.52, 0.64, 0.36, 0.2, 0.38, 0.66);
@@ -481,12 +508,50 @@ paths :: (u: [] f32) {
   u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(PATH_HALF);
 }
 
-// The dog follows you by the paths and stops a little short of you.
-dog_frame :: (s: [] Garden, u: [] f32, you: Point, dt: f32) {
+// Where you hold the ball: in your right hand, raised in front of you.
+your_hand :: (you: Point, face: f32) -> Point { return verse_hand(you, face, 0.42, 1.25, 0.3); }
+
+// The way a throw goes from here: along the camera, raised more the
+// further up it looks.
+throw_lift :: (o: Orbit) -> f32 { return clamp(0.42 - o.pitch * 0.7, 0.12, 1.0); }
+
+// A frame of play: E (or a click, or the button) picks the ball up when
+// it's in reach and throws it when you hold it; the ball flies and rolls;
+// the dog follows you, or fetches.
+play :: (s: [] Garden, you: Point, face: f32, vx: f32, vz: f32, dt: f32) {
   nodes := NODE_XZ; links := LINK_AB;
-  s[0].dog = verse_follower_step(s[0].dog, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, f32(DOG_STOP), dt);
-  s[0].dog_stride += flat_length(s[0].dog.vel) * dt / 0.9;
-  dog(s, u, s[0].dog.pos, s[0].dog.face, s[0].dog_stride, s[0].dog.walking);
+  b := s[0].fetch.ball;
+  if s[0].use {
+    if b.held == 0 {
+      b = verse_ball_throw(b, your_hand(you, face), s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz));
+    } else {
+      b = verse_ball_pick(b, 0, you, your_hand(you, face));
+    }
+    s[0].use = false;
+  }
+  if b.held == 0 { b = verse_ball_carry(b, your_hand(you, face)); }
+  b = verse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
+  s[0].fetch.ball = b;
+  s[0].fetch = verse_fetch_step(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, dt);
+  s[0].dog_stride += flat_length(s[0].fetch.dog.vel) * dt / 0.9;
+}
+
+// The ball, its shadow, and while you hold it the arc it would fly.
+ball :: (s: [] Garden, u: [] f32, you: Point, face: f32) {
+  b := s[0].fetch.ball;
+  shape(s, SHAPE_SPHERE, LOOK_MATTE, b.pos, b.spin, 0, b.radius * 2, b.radius * 2, b.radius * 2, 0.92, 0.32, 0.18);
+  shape(s, SHAPE_CYLINDER, LOOK_MATTE, b.pos, b.spin, f32(PI) / 2, b.radius * 2.04, b.radius * 0.5, b.radius * 2.04, 0.95, 0.92, 0.85);
+  g := ground_at(s, b.pos.x, b.pos.z);
+  shadow(s, u, b.pos.x, b.pos.z, 0.2, clamp(0.55 - (b.pos.y - g) * 0.12, 0.1, 0.55));
+  if b.held != 0 { return; }
+  arc: [ARC_POINTS * 3] f32;
+  v := verse_throw_velocity(s[0].orbit.yaw, throw_lift(s[0].orbit), f32(THROW_SPEED), v3(0, 0, 0));
+  n := verse_throw_arc(ground(), s[0].heights[..], your_hand(you, face), v, arc[..]);
+  for i: 1..<n {
+    p := v3(arc[i * 3], arc[i * 3 + 1], arc[i * 3 + 2]);
+    size := ifx i == n - 1 then 0.22f32 else 0.07f32;
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, p, 0, 0, size, size, size, 1.0, 0.92, 0.7);
+  }
 }
 
 // A dog: a golden body, its head up, its legs trotting when it walks.
@@ -536,7 +601,43 @@ phone :: (s: [] Garden) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr,
 
 hint :: (s: [] Garden) -> string {
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
-  return "WASD WALK · DRAG, ARROWS OR Q E TURN THE CAMERA · WHEEL ZOOMS · SPACE JUMPS · SHIFT RUNS";
+  return "WASD WALK · DRAG OR ARROWS TURN THE CAMERA · WHEEL ZOOMS · SPACE JUMPS · SHIFT RUNS";
+}
+
+// What E (or the button) does now: "" nothing.
+use_word :: (s: [] Garden) -> string {
+  b := s[0].fetch.ball;
+  if b.held == 0 { return "THROW"; }
+  you := add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z), 0));
+  if verse_ball_can_pick(b, you) { return "PICK UP"; }
+  return "";
+}
+
+// On a computer, the key and what it does; on a phone, a button.
+prompt :: (s: [] Garden, out: [] f32, u: [] f32, n: int, above: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  word := use_word(s);
+  s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if word.count == 0 { return n; }
+  m := n;
+  cap := 9 * k;
+  if phone(s) {
+    bw := hi(text_width(word, cap) + 40 * k, 120 * k); bh := 46 * k;
+    b := Box.{x0 = s[0].width - 16 * k - bw, y0 = above - 12 * k - bh, x1 = s[0].width - 16 * k, y1 = above - 12 * k};
+    s[0].button = b;
+    plate(s, u, b, 0.9, ifx s[0].button_on then 3.0f32 else 1.0f32);
+    m = draw_text(out, m, word, (b.x0 + b.x1 - text_width(word, cap)) / 2, (b.y0 + b.y1 + cap) / 2, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    return m;
+  }
+  line := ifx s[0].fetch.ball.held == 0 then "E OR CLICK" else "E";
+  wide := text_width(line, cap) + 16 * k + text_width(word, cap);
+  x0 := (s[0].width - wide) / 2;
+  b := Box.{x0 = x0 - 14 * k, y0 = above - 12 * k - cap - 22 * k, x1 = x0 + wide + 14 * k, y1 = above - 12 * k};
+  plate(s, u, b, 0.85, 1);
+  base := b.y1 - 11 * k;
+  m = draw_text(out, m, line, x0, base, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  m = draw_text(out, m, word, x0 + text_width(line, cap) + 16 * k, base, cap, GAP, SPACE, ink(k, 0.95, PARCH_R, PARCH_G, PARCH_B), false, false);
+  return m;
 }
 
 hud :: (s: [] Garden, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int {
@@ -557,6 +658,7 @@ hud :: (s: [] Garden, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, p
   y1 := h - gutter;
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - small - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, small, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  n = prompt(s, out, u, n, y1 - small - 20 * k);
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -597,8 +699,11 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
   s[0].shadow_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   scenery(s, u);
-  figure(s, u, shown, face, s[0].stride, act);
-  dog_frame(s, u, shown, t);
+  play(s, shown, face, vx, vz, t);
+  figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
+  pup := s[0].fetch.dog;
+  dog(s, u, pup.pos, pup.face, s[0].dog_stride, pup.walking);
+  ball(s, u, shown, face);
   for kind: 0..<5 {
     d := kind * 4;
     s[0].draws[d] = 0;
@@ -721,7 +826,42 @@ garden_store_cap :: (k: int) -> int #export_c {
   for i: 0..<9 { h := ground_at(g[..], -36 + f32(i) * 9, 30); lowest = lo(lowest, h); highest = hi(highest, h); }
   #assert highest - lowest > 0.8;
   #assert near(g[0].feet.y, ground_at(g[..], f32(SPAWN_X), f32(SPAWN_Z)), 0.0001);
-  #assert near(g[0].dog.pos.y, ground_at(g[..], f32(DOG_X), f32(DOG_Z)), 0.0001);
+  #assert near(g[0].fetch.dog.pos.y, ground_at(g[..], f32(DOG_X), f32(DOG_Z)), 0.0001);
+  // The ball lies on the path near you: E picks it up, E throws it the way the camera looks.
+  you := g[0].feet;
+  near_ball := v3(f32(BALL_X), ground_at(g[..], f32(BALL_X), f32(BALL_Z) - 0.8), f32(BALL_Z) - 0.8);
+  g[0].feet = v3(near_ball.x, 0, near_ball.z);
+  #assert use_word(g[..])[0] == 'P';
+  #assert garden_key(g[..], 'e', 0);
+  play(g[..], near_ball, 0, 0, 0, 1.0 / 30.0);
+  #assert g[0].fetch.ball.held == 0 && use_word(g[..])[0] == 'T';
+  play(g[..], near_ball, 0, 0, 0, 1.0 / 30.0);
+  #assert same(g[0].fetch.ball.pos, your_hand(near_ball, 0), 0.0001);
+  #assert garden_key(g[..], 'E', 0);
+  play(g[..], near_ball, 0, 0, 0, 1.0 / 30.0);
+  #assert g[0].fetch.ball.held == -1 && g[0].fetch.ball.thrown && g[0].fetch.ball.vel.z > 5;
+  for i: 0..<6 { play(g[..], near_ball, 0, 0, 0, 1.0 / 30.0); }
+  #assert g[0].fetch.mode == FETCH_CHASE && g[0].fetch.ball.pos.z > near_ball.z + 2;
+}
+
+#test "a click throws what you hold; a drag doesn't; the phone's button presses" {
+  g: [1] Garden;
+  g[0].started = true; g[0].dpr = 1; g[0].width = 390; g[0].height = 844;
+  g[0].fetch.ball.held = 0;
+  #assert garden_pointer(g[..], 100, 100, 0, 0, 1) && garden_pointer(g[..], 102, 101, 2, 0, 1);
+  #assert g[0].use;
+  g[0].use = false;
+  #assert garden_pointer(g[..], 100, 100, 0, 0, 1) && garden_pointer(g[..], 160, 100, 1, 0, 1) && garden_pointer(g[..], 160, 100, 2, 0, 1);
+  #assert !g[0].use;
+  g[0].button = Box.{x0 = 250, y0 = 700, x1 = 370, y1 = 746};
+  #assert garden_pointer(g[..], 300, 720, 0, 1, 7) && g[0].button_on;
+  #assert garden_pointer(g[..], 300, 721, 2, 1, 7) && g[0].use && !g[0].button_on;
+  g[0].use = false;
+  // Off the button a finger is the sticks'.
+  #assert !garden_pointer(g[..], 100, 500, 0, 1, 8);
+  // Pressed and slid off, it doesn't fire.
+  #assert garden_pointer(g[..], 300, 720, 0, 1, 9) && garden_pointer(g[..], 100, 720, 1, 1, 9) && !g[0].button_on;
+  #assert garden_pointer(g[..], 100, 720, 2, 1, 9) && !g[0].use;
 }
 
 #test "the hint fits a phone" {
