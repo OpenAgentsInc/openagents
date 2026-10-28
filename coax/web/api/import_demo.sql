@@ -117,7 +117,7 @@ SELECT 'added', 'files', count(*) FROM n;
 
 -- The offered changes in the edit logs just kept (0010_verse_offers.sql).
 SELECT 'added', 'offers', verse.offers_from_demo();
--- The rooms' chat (0013_verse_rooms.sql).
+-- The rooms' chat (0014_verse_rooms.sql).
 SELECT 'added', 'chat', verse.chat_from_demo();
 -- Awards, planets and planets' saved copies (0011_verse_planets.sql).
 CREATE TEMP TABLE had ON COMMIT DROP AS SELECT (SELECT count(*) FROM verse.awards) AS a, (SELECT count(*) FROM verse.planets) AS p,

@@ -1,5 +1,5 @@
 // Rooms (pt-presence-chat): who else is in a world, and its chat. The rules
-// live in SQL (migrations/0013_verse_rooms.sql, verse.room); this file reads
+// live in SQL (migrations/0014_verse_rooms.sql, verse.room); this file reads
 // the path, the player key and the body and hands them over.
 //
 //   POST /api/playtest/presence/<room>   {x, y, z, yaw, after}: here now -> {you, others, messages
