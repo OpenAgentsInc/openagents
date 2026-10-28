@@ -218,7 +218,7 @@ A checked-in generated C/header seed builds the first frontend. Normal builds
 must regenerate that seed exactly from the Coax source, pass its authority and
 zero-survivor mutation gates, and reproduce the final compiler modules before
 publication. Refreshing the seed is an explicit operation with a previously
-trusted compiler. The seeds, C++ checker/evaluator/emitter, native tree bridge, host/toolchain
+trusted compiler. The seeds, C++ evaluator/emitter, native tree bridge, host/toolchain
 and native ABI remain trusted; fixed points and finite checks are not proofs of
 bootstrap security or of the whole compiler. Normal bootstrap and iOS code
 generation remain Python-free.
@@ -245,9 +245,33 @@ admits at most 128 active grammar entries, reporting E0221 on exhaustion.
 The generated parser C/header seed is explicit, refreshed with a trusted
 compiler, and must reproduce exactly in the Python-free bootstrap. Its actual
 Coax checks and zero-survivor mutation gate run before publication, followed by
-final self-regeneration. C++ checker/evaluator/emitter, toolchain, generated
+final self-regeneration. C++ evaluator/emitter, toolchain, generated
 seeds and native ABI remain trusted. Compatibility snapshots are not proofs.
 Check: `coax test coax/lib/compiler/parser.coax`, mutation testing on that file,
 `coax/build.sh test`, `coax/tests/parser.py` (independent tree assertions,
 random expressions, bounds/stack limits, actual native bridge and kernel under
 ASan/UBSan), plus the real iOS simulator tests from empty generated outputs.
+
+
+## Type checking is Coax with no native semantic fallback
+
+`coax/lib/compiler/checker.coax` owns semantic admission and diagnostics,
+name/scope/type resolution, numeric folding/range/IEEE decisions, natural
+layout, calls, control flow, checks and Metal admission. The C++ bridge only
+supplies owned storage and reconstructs native records/references/lists after
+success. The indexed input is the trusted parser's internal graph; no partial
+typed tree is admitted on failure. E0381 bounds storage, native layout size
+and 256 active semantic entries.
+
+The explicit checker C/header seed reproduces in the Python-free bootstrap,
+passes authority/check/zero-survivor mutation gates and self-regenerates in the
+final compiler. Seed provenance, C++ evaluator/emitter, native ABI/storage and
+toolchain remain trust inputs. Compatibility snapshots and finite mutation
+scores do not prove semantic soundness or bootstrap security.
+
+Check: `coax test coax/lib/compiler/checker.coax`, mutation testing on that
+file, `coax/build.sh test`, `coax/tests/checker.py` (independent IEEE, natural
+layout and policy expectations; actual emitted checker under ASan/UBSan),
+complete compiler bridge sanitizers in `coax/tests/parser.py`, protoc
+interoperability and the actual iOS Home/Grid/animation tests from empty
+generated outputs.

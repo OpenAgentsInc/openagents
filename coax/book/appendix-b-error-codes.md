@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.9.0 can report. This appendix is generated from the
+Every error `coax0` 0.10.0 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
@@ -11,7 +11,6 @@ checker, `E04` compile-time evaluation (Chapter 4), `E05` descriptor imports.
 With `--json`, each
 diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 `message` and `fix`.
-
 
 ## E01xx: lexer
 
@@ -135,6 +134,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0378` | byte intrinsic argument mismatch | bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type. |
 | `E0379` | #forall domain cannot be enumerated | A #forall binding must be nonempty: bool, a nonempty enum, an integer of at most 16 bits, or an increasing lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths. |
 | `E0380` | procedure not exercised by a check | Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions. |
+| `E0381` | type checker resource limit | The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. |
 
 ## E04xx: compile-time evaluation
 

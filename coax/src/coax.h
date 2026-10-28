@@ -153,8 +153,6 @@ extern TypeInfo T_INVALID, T_VOID, T_BOOL, T_STRING, T_UNTYPED_INT, T_UNTYPED_FL
 extern TypeInfo T_S8, T_S16, T_S32, T_S64, T_U8, T_U16, T_U32, T_U64;
 #define T_INT (&T_S64)  // int is s64: one type, spelled "int"
 
-Type array_of(Type elem, int64_t length);
-Type view_of(Type elem);
 const char *type_name(Type t);
 inline bool is_int(Type t) { return t->kind == TypeKind::integer; }
 inline bool is_float(Type t) { return t->kind == TypeKind::floating; }
@@ -335,7 +333,9 @@ struct CheckDecl {
   ProcDecl *proc = nullptr;
 };
 
+struct CheckInput;
 struct File {
+  std::shared_ptr<CheckInput> check_input;
   const Source *src = nullptr;
   Slice<Import> imports;
   Slice<ProcDecl *> procs;

@@ -26,8 +26,9 @@ stage bindings. Normal app builds use the checked-in protobuf resource and
 need neither Python nor protoc. The Coax importer linked into coax0 expands the
 `ios-home` descriptor into generated Coax codecs, using the runtime embedded
 in the compiler binary. Its two-stage bootstrap compiles the checked Coax
-lexer, language parser, descriptor parser/generator and SHA-256/provenance modules to C11, then links
-them into the standalone compiler. The generated lexer and parser seeds must regenerate
+lexer, language parser, type checker, descriptor parser/generator and
+SHA-256/provenance modules to C11, then links them into the standalone compiler.
+The generated lexer, parser and checker seeds must regenerate
 exactly before that compiler is published. No helper script/runtime files are loaded and no
 protobuf or Python runtime is bundled with the app. Test/schema and App Store
 administration scripts still use Python separately. Xcode compiles the

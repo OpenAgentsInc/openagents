@@ -140,6 +140,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
   }
   out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
   out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
+  attach_check_input(out,nodes,objects,state.used);
   return true;
 }
 } // namespace coax

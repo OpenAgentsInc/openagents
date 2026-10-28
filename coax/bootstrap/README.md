@@ -2,7 +2,8 @@
 
 `lexer.c` and `lexer.h` are generated from `../lib/compiler/lexer.coax`.
 `parser.c` and `parser.h` are generated from `../lib/compiler/parser.coax`.
-These are the only lexer/parser seeds. There is no authored C++ grammar/scanner fallback and no
+`checker.c` and `checker.h` are generated from `../lib/compiler/checker.coax`.
+These are the only lexer/parser/checker seeds. There is no authored C++ grammar/scanner/type-policy fallback and no
 binary download, Python generator or dependency on an existing coax executable
 in a normal build.
 
@@ -11,13 +12,14 @@ with proto imports disabled. That compiler runs each module's checks and
 zero-survivor mutation gate, emits fresh C/header pairs, and compares both with
 their seeds. A mismatch fails the build; it never updates the checkpoint silently.
 The final compiler links regenerated Coax code and must reproduce both its
-lexer/parser C and its combined compiler-module C before publication.
+lexer/parser/checker C and its combined compiler-module C before publication.
 
 After an intentional frontend change, refresh with an already trusted compiler:
 
 ```sh
 coax/refresh-lexer-seed.sh /absolute/path/to/trusted/coax
 coax/refresh-parser-seed.sh /absolute/path/to/trusted/coax
+coax/refresh-checker-seed.sh /absolute/path/to/trusted/coax
 coax/build.sh test
 ```
 
@@ -25,7 +27,7 @@ Commit source and regenerated seed together. Each refresh command runs checks
 and mutation testing before replacing the seed. A previous compiler must be
 able to read the new source; grammar changes need a staged migration. The seed
 is a trust input: byte identity does not establish its provenance or prevent a
-malicious bootstrap compiler. The C++ checker/evaluator/emitter, native tree bridge, C toolchain and ABI are still
+malicious bootstrap compiler. The C++ evaluator/emitter, native tree bridge, C toolchain and ABI are still
 trusted. Finite properties and mutation scores are not correctness proofs.
 
 The lexer carries token spans and line/column locations in byte units. Source
@@ -76,3 +78,27 @@ Migration evidence separately compared reconstructed ASTs/diagnostics on real
 repository files and edited/truncated programs. Native tests add independently
 constructed expression trees, ASan/UBSan of the Coax kernel and complete native
 compiler bridge, and the real iOS app remains a separate consumer gate.
+
+## Type checker
+
+The checker consumes the trusted parser's indexed graph. `CK_caps` owns scratch
+capacities; `CK_run` owns name/scope/type resolution, composite interning, LP64
+layout, numeric literal folding/ranges, intrinsic calls, control flow, foreign
+and Metal admission, and check/authority reachability. Encoded IEEE values and
+four unsigned limbs preserve native nonfinite values and the full literal
+arithmetic domain without relying on the evaluator's host numeric behavior.
+A failed run never admits a partial typed graph. The native bridge only copies
+records, owns storage and reconstructs native pointer/value lists, after all
+references are populated. Enum ABI mappings are compile-time assertions.
+
+Contextual type hints use `CK_Hint`; by-value and view layout requests use
+`CK_Access`. Constant folding walks explicit bounded frames, with a 64-edge
+limit independent of the evaluator's procedure-call stack.
+
+Active semantic nesting is bounded at 256; E0381 reports storage/nesting and
+native layout-size exhaustion. The graph is an internal parser contract, not
+an untrusted serialized-input API. Numeric vector tests use independent exact
+integer/rational expectations; typed-record fixtures characterize migration.
+Native IEEE/layout/policy oracles and ASan/UBSan exercise actual emitted C and
+the complete bridge. The compiler suite and clean iOS simulator build remain
+separate consumer gates; mutation coverage is not a proof of soundness.

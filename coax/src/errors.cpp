@@ -123,6 +123,8 @@ const ErrorInfo ERRORS[] = {
     {"E0379", "#forall domain cannot be enumerated", "A #forall binding must be nonempty: bool, a nonempty enum, an integer of at most 16 bits, or an increasing lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths."},
     {"E0380", "procedure not exercised by a check", "Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions."},
 
+    {"E0381", "type checker resource limit", "The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree."},
+
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time step budget exceeded", "Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). Make the computation smaller or move it to run time."},
     {"E0401", "compile-time code cannot capture a runtime value", "#run code and constants see only constants and their own locals."},

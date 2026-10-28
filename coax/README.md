@@ -14,11 +14,12 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.9.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.10.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
-The Coax lexer and parser feed a C++20 checker that processes one source file and executes bounded
-compile-time work, and emits one self-contained C11 file. The host C compiler
+The lexer, parser and type checker are Coax compiled to C11. The native
+C++20 host supplies storage, reconstructs the typed tree, evaluates bounded
+compile-time work and emits one self-contained C11 file. The host C compiler
 builds it into a program, or into an object file plus a generated header that
 C, C++ and Swift hosts call. Generated code includes small print, checked
 arithmetic, bounds and cast helpers; it never contains the compiler's

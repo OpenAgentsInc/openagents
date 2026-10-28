@@ -104,8 +104,21 @@ class Parser(unittest.TestCase):
         flags=['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer']
         LX.checked([os.environ.get('CC','cc'),'-std=c11',*flags,'-c',ROOT/'bin/proto_importer.c','-o',obj])
         LX.checked([os.environ.get('CXX','c++'),'-std=c++20',*flags,'-I',ROOT/'bin',ROOT/'src/main.cpp',obj,'-o',exe])
-        for source in (ROOT/'lib/compiler/parser.coax',ROOT.parent/'metareal/home.coax',ROOT.parent/'metareal/grid.coax'):
+        for source in (ROOT/'lib/compiler/parser.coax',ROOT/'lib/compiler/checker.coax',ROOT.parent/'metareal/home.coax',ROOT.parent/'metareal/grid.coax'):
             LX.checked([exe,'check',source],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
+        # Wide source with a deep semantic dependency chain: the parser's
+        # grammar bound is not involved, and no partial typed tree may escape.
+        deep=self.d/'deep-types.coax'
+        deep.write_text('\n'.join(f'S{i} :: struct {{x:S{i+1};}}' for i in range(400))+'\nS400 :: struct {x:int;}')
+        import subprocess
+        result=subprocess.run([str(exe),'c',str(deep),'--library'],capture_output=True,text=True,
+                              env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0','UBSAN_OPTIONS':'halt_on_error=1'},timeout=30)
+        self.assertEqual(result.returncode,1,result.stderr)
+        self.assertIn('error[E0381]',result.stderr)
+        self.assertNotIn('AddressSanitizer',result.stderr)
+        self.assertNotIn('runtime error:',result.stderr)
+        self.assertEqual(result.stdout,'')
+
     def test_native_parser_under_sanitizers(self):
         host=self.d/'fuzz.c'
         host.write_text(r'''#include "lexer.h"

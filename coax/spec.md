@@ -9,7 +9,7 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.9.0 implements procedures;
+**Implementation status matters.** Version 0.10.0 implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
@@ -85,9 +85,9 @@ more useful than a large unsupported language surface.
 `source → lexer → recursive-descent parser → name/type checker → bounded
 AST evaluator → C11 emitter → C compiler/linker → executable`.
 
-The checker/evaluator/C emitter remain a C++20 unity frontend. The lexer and parser,
-including decimal-to-binary64 conversion and diagnostic construction, are Coax
-compiled to C11. Generated C lexer/parser seeds bootstrap the frontend; normal
+The evaluator/C emitter remain in the C++20 host. The lexer, parser and type
+checker, including numeric constant folding, layout, coercion and diagnostics,
+are Coax compiled to C11. Generated C lexer/parser/checker seeds bootstrap the frontend; normal
 builds require exact source/header regeneration and check/mutation gates. It needs no LLVM,
 VM package, network access or additional language compiler. `coax check`
 stops after checking and compile-time evaluation, without invoking the C
@@ -715,7 +715,7 @@ snapshots preserve their pre-reset identities. New alpha options and Verse
 world/presence projections are experimental inputs. Current descriptors are
 in `proto/descriptors/`, generated and tested by `scripts/proto.sh`; the
 Coax compiler now ingests selected proto3 closures through `#import_proto`.
-Version 0.9.0 implements descriptor parsing, validation and source generation in
+Version 0.10.0 implements descriptor parsing, validation and source generation in
 `lib/proto/importer.coax`. Its `#authority` checks and mutation gate execute on
 the actual implementation. A proto-disabled C++ stage0 compiles it to C11,
 then the final compiler links it and must regenerate identical C. Coax defines
