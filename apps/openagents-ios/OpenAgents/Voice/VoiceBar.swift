@@ -13,6 +13,7 @@ final class VoiceBar: UIView {
     private let captionBox = UIView()
     private let debug = UILabel()
     private var session: VoiceSession?
+    private var captionDrops = 0, shownKind = VoiceSnapshot.CaptionKind.none
     private var clock: CADisplayLink?
     weak var presenter: UIViewController?
 
@@ -36,10 +37,13 @@ final class VoiceBar: UIView {
     static var observe: Bool { UserDefaults.standard.bool(forKey: "OAVoiceObserve") }
     /// `-OAVoiceBarge NAME` plays a second recording over the reply.
     static var barge: String? { UserDefaults.standard.string(forKey: "OAVoiceBarge") }
+    /// `-OAVoicePlaybackDelay SECONDS` adds a phone's output latency to playback.
+    static var playbackDelay: Double { UserDefaults.standard.double(forKey: "OAVoicePlaybackDelay") }
     #else
     static var fixture: String? { nil }
     static var observe: Bool { false }
     static var barge: String? { nil }
+    static var playbackDelay: Double { 0 }
     #endif
     /// One identity per install, sent as the Hello's speaker.
     static var speaker: String {
@@ -173,7 +177,7 @@ final class VoiceBar: UIView {
     }
 
     private func begin() {
-        let s = VoiceSession(options: .init(host: Self.host, fixture: Self.fixture, barge: Self.barge, observe: Self.observe, speaker: Self.speaker))
+        let s = VoiceSession(options: .init(host: Self.host, fixture: Self.fixture, barge: Self.barge, observe: Self.observe, playbackDelay: Self.playbackDelay, speaker: Self.speaker))
         s.onChange = { [weak self] in self?.refresh() }
         session = s
         s.start()
@@ -227,9 +231,15 @@ final class VoiceBar: UIView {
         let downlinkPlaying = s.downlink.playback_state == UInt32(OA_PLAYBACK_STATE_PLAYING.rawValue)
         level.update(level: live, turn: s.uplink.turn_state, replying: s.phase == .replying || downlinkPlaying)
         let value = "level \(Int(live * 100)) peak \(Int(s.peakLevel * 100)) turns \(s.turns) replies \(s.replies) barges \(s.barges) decisions \(s.decisions)"
+            + " first \(s.firstMs) play \(s.playMs) audio \(s.audioMs) dry \(s.dry) drops \(captionDrops)"
         if level.accessibilityValue != value { level.accessibilityValue = value }
         if toggle.accessibilityValue != s.phase.rawValue { toggle.accessibilityValue = s.phase.rawValue }
         let text = s.caption
+        // A reply caption only grows; count any time it loses words.
+        if s.captionKind == .reply, shownKind == .reply, let old = caption.text, text.count < old.count, old.hasPrefix(text), !text.isEmpty {
+            captionDrops += 1
+        }
+        shownKind = s.captionKind
         if caption.text != text {
             caption.text = text
             caption.accessibilityLabel = text

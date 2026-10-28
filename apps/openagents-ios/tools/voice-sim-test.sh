@@ -16,7 +16,13 @@
 # Environment: VOICE_SIM (simulator name, default "Voice iPhone"),
 # VOICE_PORT (default 8797, so a host already on 8787 is left alone),
 # VOICE_FIXTURE (default hello-foreman), VOICE_EXPECT (words the live
-# transcript must contain; default "foreman").
+# transcript must contain; default "foreman"), VOICE_PLAYBACK_DELAY (seconds
+# of simulated output latency; default 0.25).
+#
+# Every reply is also checked the way a listener hears it: audio starts within
+# 1.5 s of the reply arriving, plays in about its own length (not stalled, not
+# played twice), the player never runs dry mid-reply, and the caption never
+# loses words.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 repo="$(cd "$here/../.." && pwd)"
@@ -25,6 +31,9 @@ sim="${VOICE_SIM:-Voice iPhone}"
 port="${VOICE_PORT:-8797}"
 fixture="${VOICE_FIXTURE:-hello-foreman}"
 expect="${VOICE_EXPECT:-foreman}"
+# A phone's output latency (voice processing, Bluetooth), which the simulator
+# lacks: played-back callbacks arrive this many seconds late, as on a device.
+delay="${VOICE_PLAYBACK_DELAY:-0.25}"
 logs="$here/build/voice-sim"
 mkdir -p "$logs"
 
@@ -71,6 +80,7 @@ run_test() { # $1 = name, $2 = expected words, $3 = agent (echo|gemini)
   TEST_RUNNER_OA_VOICE_FIXTURE="$fixture" \
   TEST_RUNNER_OA_VOICE_EXPECT="$2" \
   TEST_RUNNER_OA_VOICE_AGENT="${3:-echo}" \
+  TEST_RUNNER_OA_VOICE_PLAYBACK_DELAY="$delay" \
   xcodebuild -project "$here/OpenAgents.xcodeproj" -scheme OpenAgents \
     -destination "platform=iOS Simulator,id=$udid" \
     -derivedDataPath "$here/build" CODE_SIGNING_ALLOWED=NO \
@@ -78,7 +88,7 @@ run_test() { # $1 = name, $2 = expected words, $3 = agent (echo|gemini)
     -only-testing:OpenAgentsUITests/VoiceUITests test > "$logs/test-$name.log" 2>&1
   local status=$?
   set -e
-  grep -E "VoiceUITests (heard|reply|barge)|Test Case|error:|failed|passed|\*\* TEST" "$logs/test-$name.log" | grep -v "^ *$" | tail -20
+  grep -E "VoiceUITests (heard|reply|barge|playback)|Test Case|error:|failed|passed|\*\* TEST" "$logs/test-$name.log" | grep -v "^ *$" | tail -20
   return $status
 }
 

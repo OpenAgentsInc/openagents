@@ -9,9 +9,27 @@ import XCTest
 ///   OA_VOICE_EXPECT   words the transcript must contain (live Google runs)
 ///   OA_VOICE_AGENT    echo (default: the reply repeats the transcript) or
 ///                     gemini (any other non-empty reply)
+///   OA_VOICE_PLAYBACK_DELAY  seconds of simulated phone output latency
 final class VoiceUITests: XCTestCase {
     private func shot(_ app: XCUIApplication, _ name: String) {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
+    }
+    /// Launch arguments for a voice run against the test host.
+    private func voiceArguments(_ env: [String: String], host: String, fixture: String) -> [String] {
+        ["-OAVoiceHost", host, "-OAVoiceFixture", fixture, "-OAVoiceObserve", "YES",
+         "-OAVoicePlaybackDelay", env["OA_VOICE_PLAYBACK_DELAY"] ?? "0.25"]
+    }
+    /// The reply as a listener hears it, from the app's own player measurements.
+    private func checkPlayback(_ count: (String) -> Int, _ level: XCUIElement) {
+        let first = count("first"), play = count("play"), audio = count("audio"), dry = count("dry"), drops = count("drops")
+        NSLog("VoiceUITests playback: first %d ms, play %d ms, audio %d ms, dry %d, caption drops %d", first, play, audio, dry, drops)
+        XCTAssertGreaterThan(audio, 200, "no reply audio measured: \(level.value ?? "")")
+        XCTAssertLessThan(first, 1500, "the reply took \(first) ms to start playing")
+        // About its own length: a stall or audio played twice runs long.
+        XCTAssertLessThan(Double(play), Double(audio) * 1.25 + 600, "\(audio) ms of audio took \(play) ms to play")
+        XCTAssertGreaterThan(Double(play), Double(audio) * 0.8, "\(audio) ms of audio played in \(play) ms")
+        XCTAssertEqual(dry, 0, "the player ran dry \(dry) time(s) mid-reply (choppy)")
+        XCTAssertEqual(drops, 0, "the reply caption lost words \(drops) time(s)")
     }
     private func wait(_ timeout: TimeInterval, _ test: @escaping () -> Bool) -> Bool {
         XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in test() }, object: nil)], timeout: timeout) == .completed
@@ -25,7 +43,7 @@ final class VoiceUITests: XCTestCase {
         let expected = (env["OA_VOICE_EXPECT"] ?? "").lowercased().split(separator: " ").map(String.init)
 
         let app = XCUIApplication()
-        app.launchArguments += ["-OAVoiceHost", host, "-OAVoiceFixture", fixture, "-OAVoiceObserve", "YES"]
+        app.launchArguments += voiceArguments(env, host: host, fixture: fixture)
         app.launch()
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20))
@@ -95,6 +113,8 @@ final class VoiceUITests: XCTestCase {
         }
         shot(app, "Reply")
 
+        checkPlayback(count, level)
+
         // The level indicator followed the recording.
         let peak = count("peak")
         XCTAssertGreaterThan(peak, 20, "level: \(level.value ?? "")")
@@ -113,7 +133,7 @@ final class VoiceUITests: XCTestCase {
         let host = env["OA_VOICE_HOST"] ?? "ws://127.0.0.1:8787"
         let fixture = env["OA_VOICE_FIXTURE"] ?? "hello-foreman"
         let app = XCUIApplication()
-        app.launchArguments += ["-OAVoiceHost", host, "-OAVoiceFixture", fixture, "-OAVoiceBarge", "wait-stop", "-OAVoiceObserve", "YES"]
+        app.launchArguments += voiceArguments(env, host: host, fixture: fixture) + ["-OAVoiceBarge", "wait-stop"]
         app.launch()
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20))

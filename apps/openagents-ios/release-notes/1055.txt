@@ -1,0 +1,3 @@
+Voice fixes: replies start at once and play smoothly to the end (1054 could stall for many seconds and played each piece of audio twice), and the reply caption only ever adds words, so words no longer fade in and out while the answer streams in.
+
+Voice still needs a voice server on your Wi-Fi: long-press the microphone and enter ws://192.168.1.235:8787.
