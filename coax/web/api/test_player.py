@@ -179,3 +179,47 @@ section = raw.decode().split("#SURVEY ANSWERS|")[-1].split("\n#")[0]
 check("the dashboard shows each answer with its session, which opens",
       status == 200 and section.startswith("s|SESSION|WHEN|QUESTION|ANSWER") and "\nc0123456789abcdef|" in section
       and "|howItWent|Spooky, but the door stuck." in section, section[:300])
+
+# ---- offered changes (pt-change-offers): anyone known offers, the owner accepts or declines
+status, owner = pt("POST", "player", {})
+status, visitor = pt("POST", "player", {})
+status, made = pt("POST", "worlds", {}, key=owner["key"])
+ow = made["id"]
+base = {"kind": "verse.haunt.save", "bytes": "AAAA"}
+pt("POST", "world/" + ow, {"doc": base, "summary": "made it", "user": {"name": "Ann"}}, key=owner["key"])
+change = {"added": [{"list": "objects", "item": {"id": "placed-1", "name": "Ghost"}}]}
+proposed = {"kind": "verse.haunt.save", "bytes": "BBBB"}
+check("nobody known may not offer", pt("POST", "change/" + ow, {"delta": change})[0] == 403)
+check("an offer needs a change", pt("POST", "change/" + ow, {"delta": {"added": []}}, key=visitor["key"])[0] == 400)
+check("a price is whole sats, 0 to 1,000,000", pt("POST", "change/" + ow, {"delta": change, "price": 1.5}, key=visitor["key"])[0] == 400
+      and pt("POST", "change/" + ow, {"delta": change, "price": -1}, key=visitor["key"])[0] == 400)
+status, off = pt("POST", "change/" + ow, {"delta": change, "doc": proposed, "summary": "Added Ghost.", "user": {"name": "Bo"}}, key=visitor["key"])
+check("a second session offers a change: it waits", status == 200 and off["state"] == "waiting" and len(off["id"]) == 12, off)
+status, off2 = pt("POST", "change/" + ow, {"delta": change, "doc": {"kind": "verse.haunt.save", "bytes": "CCCC"}, "summary": "Added another."}, key=visitor["key"])
+check("the visitor may not accept it", pt("POST", f"change/{ow}/{off['id']}/accept", {}, key=visitor["key"])[0] == 403)
+check("an unknown offer is a 404", pt("POST", f"change/{ow}/nope/accept", {}, key=owner["key"])[0] == 404)
+check("a GET on a change is a 405", pt("GET", "change/" + ow, key=visitor["key"])[0] == 405)
+check("the owner declines one", pt("POST", f"change/{ow}/{off2['id']}/decline", {}, key=owner["key"]) == (200, {"state": "declined"}))
+check("a declined offer changes nothing", pt("GET", "world/" + ow)[1]["doc"] == base and pt("GET", "world/" + ow)[1]["version"] == 1)
+check("a decided offer stays decided", pt("POST", f"change/{ow}/{off2['id']}/accept", {}, key=owner["key"])[0] == 409)
+check("the owner accepts the other", pt("POST", f"change/{ow}/{off['id']}/accept", {}, key=owner["key"]) == (200, {"state": "accepted", "version": 2}))
+status, seen = pt("GET", "world/" + ow)
+check("the world shows it after a reload", seen["doc"] == proposed and seen["version"] == 2 and seen["publishedBy"] == "Bo", seen)
+status, log = pt("GET", "log/" + ow)
+check("the log lists every edit, newest first",
+      [e["state"] for e in log] == ["declined", "accepted", "published"] and log[0]["id"] == off2["id"]
+      and log[1]["id"] == off["id"] and log[1]["version"] == 2 and log[1]["who"] == "Bo" and log[1]["delta"] == change
+      and log[1]["by"]["player"] == visitor["id"] and log[1]["guest"] is True and log[2]["version"] == 1, log)
+check("offers keep no world in the log", all("doc" not in e for e in log))
+status, raw, _ = call("GET", "/api/log/" + ow)
+check("the legacy /api/log/<id> answers the same", status == 200 and json.loads(raw) == log)
+status, raw, _ = call("POST", "/api/change/" + ow, json.dumps({"delta": change, "summary": "legacy"}).encode(),
+                      {"Content-Type": "application/json", "X-Verse-Player": visitor["key"]})
+legacy_id = json.loads(raw)["id"]
+check("the legacy /api/change/<id> offers too", status == 200 and json.loads(raw)["state"] == "waiting", raw)
+check("an offer without its world needs one to accept",
+      pt("POST", f"change/{ow}/{legacy_id}/accept", {}, key=owner["key"])[0] == 400
+      and pt("POST", f"change/{ow}/{legacy_id}/accept", {"doc": proposed}, key=owner["key"]) == (200, {"state": "accepted", "version": 3}))
+check("a built-in world's offers are the site's to decide",
+      pt("POST", "change/haunted-house", {"delta": change}, key=visitor["key"])[0] == 200
+      and pt("POST", f"change/haunted-house/{pt('GET', 'log/haunted-house')[1][0]['id']}/accept", {"doc": proposed}, key=owner["key"])[0] == 403)

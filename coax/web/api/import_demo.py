@@ -81,6 +81,8 @@ def rows(data):
                 add("published", prefix + name, space, dict(doc, world=name[6:-5]))
             elif name.startswith("log-"):
                 for e in doc:
+                    if e.get("state") in ("waiting", "accepted", "declined") and re.match(r"^[A-Za-z0-9_-]{1,64}$", str(e.get("id", ""))):
+                        count["offer"] = count.get("offer", 0) + 1
                     if e.get("state") in ("published", "reset") and isinstance(e.get("version"), int):
                         add("log", "%s%s#%d@%r" % (prefix, name, e["version"], e["at"]), space, dict(e, world=name[4:-5]))
     for (space, _), (key, rec) in sorted(surveys.items()):
@@ -113,7 +115,7 @@ def main():
         got[what][kind] = int(n)
     added, held, kept = got["added"], got["held"], got["kept"]
     kinds = {"event": "events", "player": "players", "world": "worlds", "published": "published", "log": "log",
-             "playtester": "playtesters", "answer": "survey_answers", "survey": "surveys", "file": "files"}
+             "playtester": "playtesters", "answer": "survey_answers", "survey": "surveys", "file": "files", "offer": "offers"}
     want = {kinds[k]: n for k, n in source.items() if k in kinds}
     want["sessions"] = len({doc["sid"] for kind, _, _, doc in out if kind == "event"})
     report = {k: {"source": want.get(k, 0), "added": added.get(k, 0), "held": held.get(k, 0)} for k in held}

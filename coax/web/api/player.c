@@ -119,15 +119,29 @@ static void feedback(const request *q, PGconn *db, const char *parts) {
   PQclear(r);
 }
 
+// The demo's paths for what moved under /api/playtest/: /api/change/...,
+// /api/log/<id>, /api/award and /api/planets... answer as they did.
+static const char *legacy(const char *path) {
+  static const char *const kept[] = {"change/", "log/", "award", "planets"};
+  if (strncmp(path, "/api/", 5)) return NULL;
+  const char *rest = path + 5;
+  for (size_t i = 0; i < sizeof kept / sizeof kept[0]; i++) {
+    size_t n = strlen(kept[i]);
+    if (!strncmp(rest, kept[i], n) && (kept[i][n - 1] == '/' || rest[n] == 0 || rest[n] == '/')) return rest;
+  }
+  return NULL;
+}
+
 bool player_route(const request *q) {
-  if (strncmp(q->path, PREFIX, strlen(PREFIX)) || !strcmp(q->path, "/api/playtest/health")) return false;
+  const char *rest = legacy(q->path);
+  if (!rest && (strncmp(q->path, PREFIX, strlen(PREFIX)) || !strcmp(q->path, "/api/playtest/health"))) return false;
+  if (!rest) rest = q->path + strlen(PREFIX);
   if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
 
   // The path after the prefix, as a Postgres text[] literal: segments are
   // [A-Za-z0-9_-] only (anything else is not a route).
-  const char *rest = q->path + strlen(PREFIX);
   char parts[600]; size_t pn = 0; int segs = 0;
   parts[pn++] = '{';
   for (const char *p = rest; *p; p++) {

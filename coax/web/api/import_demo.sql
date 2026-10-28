@@ -70,8 +70,8 @@ WITH src AS (
   RETURNING 1)
 SELECT 'added', 'published', count(*) FROM n;
 
--- The edit logs' publishes and resets (log-<id>.json); offered changes stay
--- in verse.demo_files for pt-change-offers.
+-- The edit logs' publishes and resets (log-<id>.json); their offered changes
+-- follow from verse.demo_files below.
 WITH n AS (
   INSERT INTO verse.log (world, version, who, summary, at, state, by_player, source, import_key)
   SELECT doc->>'world', (doc->>'version')::int, left(coalesce(doc->>'who', ''), 40), left(coalesce(doc->>'summary', ''), 300),
@@ -115,6 +115,9 @@ WITH n AS (
   RETURNING 1)
 SELECT 'added', 'files', count(*) FROM n;
 
+-- The offered changes in the edit logs just kept (0010_verse_offers.sql).
+SELECT 'added', 'offers', verse.offers_from_demo();
+
 -- What the database now holds from the demo, and the worlds openagents.com
 -- had already published itself (kept, not overwritten).
 SELECT 'held', 'events', count(*) FROM analytics.events WHERE import_key LIKE 'aethyr-demo-data/%'
@@ -128,6 +131,7 @@ UNION ALL SELECT 'held', 'playtesters', count(*) FROM analytics.playtesters WHER
 UNION ALL SELECT 'held', 'survey_answers', count(*) FROM analytics.survey_answers WHERE source LIKE 'aethyr-demo-data/%'
 UNION ALL SELECT 'held', 'surveys', count(*) FROM analytics.surveys WHERE source LIKE 'aethyr-demo-data/%'
 UNION ALL SELECT 'held', 'files', count(*) FROM verse.demo_files
+UNION ALL SELECT 'held', 'offers', count(*) FROM verse.offers WHERE source LIKE 'aethyr-demo-data/%'
 UNION ALL SELECT 'kept', 'published', count(*) FROM verse.published x
   WHERE x.source IS NULL AND x.world IN (SELECT doc->>'world' FROM demo WHERE kind = 'published');
 COMMIT;
