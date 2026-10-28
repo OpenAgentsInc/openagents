@@ -855,7 +855,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
       bottom := ifx phone(r) then stick_rest_y(r[0].height, k) - STICK * k - 20 * k else r[0].height - gutter(r) - 34 * k;
       x0 := ifx phone(r) then (r[0].width - dw) * 0.5 else gutter(r) + 12 * k;
       top := bottom - said[0] - 6.5 * k;
-      plate(r, Box.{x0 = x0 - 12 * k, y0 = top - 8 * k, x1 = x0 + dw + 12 * k, y1 = bottom + 8 * k}, 0.75 * help, LOOK_PLAIN);
+      plate(r, Box.{x0 = x0 - 12 * k, y0 = top - 15 * k, x1 = x0 + dw + 12 * k, y1 = bottom + 4 * k}, 0.75 * help, LOOK_PLAIN);
       vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, x0, top - 6.5 * k, 6.5 * k, GAP, SPACE, white(k, 0.8 * help), dw, 13 * k, false, true, said[..]);
     }
   }
