@@ -1,0 +1,91 @@
+{
+  "budgets": {
+    "compile_time_steps_aggregate": 100000,
+    "driver_timeout_seconds": 180,
+    "identities_per_mode": 100000,
+    "maximum_identities_per_mode": 100000,
+    "maximum_temporary_bytes": 33554432,
+    "source_steps_per_check": 20000000,
+    "stream_record_bytes": 32
+  },
+  "compile_time_exponent_refusals": 4,
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "detected_emitted_faults": [
+    "wrong_inverse_exponent",
+    "wrong_root_parity",
+    "partial_nonresidue_value"
+  ],
+  "edge_comparisons": 1746,
+  "input_sha256": "fd016f6166432cbd03595f2b145b097fa89113cc5657ef45d377da38122a440a",
+  "libsecp_artifact_sha256": "8c46f911b6821f9fc0de66a55d50b11325e364cf64afd95ca6ab0b7f2882201b",
+  "libsecp_public_point_cases_per_mode": 36,
+  "libsecp_source_commit": "6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+  "modes": [
+    {
+      "driver_sha256": "704f31ccaababd5b024edac48bf1feefe426b425815a85d3a338d994ea5abecc",
+      "elapsed_seconds": 10.548784084006911,
+      "failures": 0,
+      "generated_c_sha256": "9d3c76d3be98d633bb6b23602ee5f345885892162daa6a08eb819612ab5a75f3",
+      "inverses": 100000,
+      "mode": "checked",
+      "output_sha256": "fed9fadc2df152810e839323c452c13dc7a15ed23cc93e07a449f8651af965e7",
+      "square_roots": 100000
+    },
+    {
+      "driver_sha256": "1685427b035a322d5d51cee8b5cb376ba13c664f630ce24d3871a6b2c14bc41b",
+      "elapsed_seconds": 6.908364082977641,
+      "failures": 0,
+      "generated_c_sha256": "fbbc61f0c1abb95093415a489847f9080333dad51b7f2627bd6369ec5ca0330b",
+      "inverses": 100000,
+      "mode": "release",
+      "output_sha256": "fed9fadc2df152810e839323c452c13dc7a15ed23cc93e07a449f8651af965e7",
+      "square_roots": 100000
+    }
+  ],
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "nonresidue_refusals": 286,
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "sanitized_raw_power_cases": 256,
+  "schema": "coax.secp-field-powers.v1",
+  "scope": "fixed public chain correctness/refusals only; no cross-target constant-time, secret-erasure, device or independent security approval claim",
+  "seed": 20261028,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/tests/nostr/secp_field.py": "e2449aa8475c32d4fbcfe17fea520b3fb502555897412e7d1a82b2bb4d93143f",
+    "coax/tests/nostr/secp_field_inv.py": "c76531a3f74bef7ecb4a4e1dddcb530472c275465098d05e3fe9259285292654",
+    "coax/tests/nostr/secp_field_mul.py": "bbf58edc942f4c00712d9b016be5f834a57813a9c230fdb618be1fd756e7ff80",
+    "coax/tests/nostr/secp_field_wasm.c": "304dc63f2f06d3fa189d7dad8a2d6fa6aa9c77b6a67c18b8f2e8f821409d29fc",
+    "coax/tests/nostr/secp_field_wasm.cjs": "72c016d35132e9ae1acde6fac7904f01b1ca0167fadcd66522b92d340a082a6e",
+    "tools/coax-nostr/fuzz/UPSTREAM.json": "dfc511b8c6ab64e780f52bf9e4ce77c8273b96edd64827459f37c1e9b8bbf33e",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9"
+  },
+  "temporary_bytes": 16887342,
+  "wasm": [
+    {
+      "artifact_sha256": "ff8224aa1d5ed25416ab3779363cabaf8d898ec605c8b39c58b18622d0899935",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "checked",
+      "operations": 84,
+      "raw_cases": 0,
+      "raw_powers": 208,
+      "raw_products": 0,
+      "target": "wasm32-wasip1",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "artifact_sha256": "fdc51c4bb45e392852575b67e6a3c3abae7f853ab3995fc1f841e5d4567438cc",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "release",
+      "operations": 84,
+      "raw_cases": 0,
+      "raw_powers": 208,
+      "raw_products": 0,
+      "target": "wasm32-wasip1",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    }
+  ]
+}

@@ -6,6 +6,8 @@ accept the same magnitude <=8 digit precondition and return canonical values.
 Square uses the multiplication kernel with identical operands. There is no
 variable-time path, native-wide-integer language dependency, group operation,
 signing implementation or production-key use in this slice.
+This records multiplication at `594f746ec1`; the subsequent
+[inversion/root slice](coax-secp-field-inv-2026-10-28.md) extends the same file.
 
 This is a checked interval certificate for this exact carry/fold schedule, plus
 independent correctness tests. It is not a formal proof of the compiler or a

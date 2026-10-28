@@ -24,6 +24,29 @@ SF_MUL_LIMITS :: [27] u64.[536870911, 33554431, 134217727, 134217727,
   134217726, 134217726, 8, 1073741823, 2048, 1073741823];
 SF_MUL_BOUNDS :: #run sf_mul_bounds(8);
 #assert SF_MUL_BOUNDS.ok;
+SfChainStep :: struct { left: int; squares: int; right: int; }
+SfChainState :: struct { value: [13] SecpField; }
+SfExponent :: struct { word: [8] u32; }
+SfExponentState :: struct { value: [13] SfExponent; }
+// State0 is a. The public chain ends at a^((2^223-1)*2^23 +2^22-1).
+SF_FIELD_CHAIN :: [12] SfChainStep.[
+  SfChainStep.{left = 0, squares = 1, right = 0},
+  SfChainStep.{left = 1, squares = 1, right = 0},
+  SfChainStep.{left = 2, squares = 3, right = 2},
+  SfChainStep.{left = 3, squares = 3, right = 2},
+  SfChainStep.{left = 4, squares = 2, right = 1},
+  SfChainStep.{left = 5, squares = 11, right = 5},
+  SfChainStep.{left = 6, squares = 22, right = 6},
+  SfChainStep.{left = 7, squares = 44, right = 7},
+  SfChainStep.{left = 8, squares = 88, right = 8},
+  SfChainStep.{left = 9, squares = 44, right = 7},
+  SfChainStep.{left = 10, squares = 3, right = 2},
+  SfChainStep.{left = 11, squares = 23, right = 6}];
+SF_FIELD_EXPONENT_PREFIX :: #run sf_exponent_prefix();
+SF_INVERSE_EXPONENT :: #run sf_exponent_inverse();
+SF_SQRT_EXPONENT :: #run sf_exponent_sqrt();
+#assert #run sf_exponent_matches(SF_INVERSE_EXPONENT, false);
+#assert #run sf_exponent_matches(SF_SQRT_EXPONENT, true);
 
 #forall "bound certificate covers the actual schedule at every admitted magnitude" magnitude: 1..<9 {
   b := sf_mul_bounds(magnitude);
@@ -388,3 +411,157 @@ sf_multiply :: (a: SecpField, b: SecpField) -> SecpField #export_c {
   return sf_normalize(r);
 }
 sf_square :: (a: SecpField) -> SecpField #export_c { return sf_multiply(a, a); }
+
+#test "the public chain proves both full256-bit exponents" {
+  prefix := sf_exponent_prefix();
+  for i: 0..<13 { for j: 0..<8 { #assert prefix.value[i].word[j] == SF_FIELD_EXPONENT_PREFIX.value[i].word[j]; } }
+  #assert sf_exponent_matches(sf_exponent_inverse(), false);
+  #assert sf_exponent_matches(sf_exponent_sqrt(), true);
+}
+#forall "exponent addition propagates a carry through every word boundary" boundary: 1..<8 {
+  a: SfExponent; one: SfExponent; one.word[0] = 1;
+  for i: 0..<boundary { a.word[i] = 4294967295; }
+  result := sf_exponent_step(a, 0, one);
+  for i: 0..<8 { #assert result.word[i] == (ifx i == boundary then cast(u32) 1 else cast(u32) 0); }
+}
+#forall "every exponent byte participates in its certificate" root_mode: bool, at: 0..<32 {
+  exponent := ifx root_mode then SF_SQRT_EXPONENT else SF_INVERSE_EXPONENT;
+  exponent.word[at / 4] ^= cast(u32) 1 << ((at % 4) * 8);
+  #assert !sf_exponent_matches(exponent, root_mode);
+}
+#forall "square counts are public bounded metadata" count: -1..<258 {
+  #assert sf_square_count_valid(count) == (count >= 0 && count <= 256);
+}
+#forall "chain dependencies refer only to preceding public states" index: -1..<13, left: -1..<14, right: -1..<14 {
+  step := SfChainStep.{left = left, squares = 1, right = right};
+  expected := index >= 0 && index < 12 && left >= 0 && left <= index && right >= 0 && right <= index;
+  #assert sf_chain_step_valid(step, index) == expected;
+}
+#test "chain square metadata accepts exact bounds and refuses the outside" {
+  step := SfChainStep.{left = 0, squares = 0, right = 0};
+  #assert sf_chain_step_valid(step, 0);
+  step.squares = 256; #assert sf_chain_step_valid(step, 0);
+  step.squares = -1; #assert !sf_chain_step_valid(step, 0);
+  step.squares = 257; #assert !sf_chain_step_valid(step, 0);
+}
+#test "public zero square count preserves the supplied value" {
+  a: SecpField; a.limb[0] = 2;
+  #assert sf_equal_mask(sf_square_n(a, 0), a) == CB_MAX64;
+}
+#test "inverse two and the explicit public-input alias agree" {
+  a: SecpField; a.limb[0] = 2; one: SecpField; one.limb[0] = 1;
+  result := sf_inverse(a); #assert result.ok;
+  #assert sf_equal_mask(sf_multiply(a, result.value), one) == CB_MAX64;
+  public_result := sf_inverse_vartime(a);
+  #assert public_result.ok && sf_equal_mask(public_result.value, result.value) == CB_MAX64;
+}
+#test "zero inverse refuses after the full chain including its noncanonical alias" {
+  zero: SecpField; p: SecpField; p.limb = SF_P;
+  result := sf_inverse(zero); alias := sf_inverse(p);
+  #assert !result.ok && !alias.ok;
+  #assert sf_equal_mask(result.value, zero) == CB_MAX64 && sf_equal_mask(alias.value, zero) == CB_MAX64;
+}
+#test "square roots have canonical even parity" {
+  two: SecpField; two.limb[0] = 2; four: SecpField; four.limb[0] = 4;
+  three: SecpField; three.limb[0] = 3; nine: SecpField; nine.limb[0] = 9;
+  a := sf_sqrt(four); b := sf_sqrt(nine);
+  #assert a.ok && b.ok;
+  #assert sf_equal_mask(a.value, two) == CB_MAX64;
+  #assert sf_equal_mask(b.value, sf_negate(three)) == CB_MAX64;
+}
+#test "zero is a square root and a nonresidue releases no candidate" {
+  zero: SecpField; one: SecpField; one.limb[0] = 1; three: SecpField; three.limb[0] = 3;
+  a := sf_sqrt(zero); b := sf_sqrt(three); c := sf_sqrt(one);
+  #assert a.ok && !b.ok && c.ok;
+  #assert sf_equal_mask(a.value, zero) == CB_MAX64 && sf_equal_mask(b.value, zero) == CB_MAX64;
+  #assert sf_equal_mask(c.value, sf_negate(one)) == CB_MAX64;
+}
+
+sf_square_count_valid :: (count: int) -> bool { return count >= 0 && count <= 256; }
+sf_chain_step_valid :: (step: SfChainStep, index: int) -> bool {
+  return index >= 0 && index < 12 && step.left >= 0 && step.left <= index && step.right >= 0 && step.right <= index && sf_square_count_valid(step.squares);
+}
+sf_square_n :: (a: SecpField, count: int) -> SecpField {
+  #assert sf_square_count_valid(count);
+  r := a; for i: 0..<count { r = sf_square(r); } return r;
+}
+sf_chain_prefix :: (a: SecpField) -> SfChainState {
+  cache: SfChainState; cache.value[0] = sf_normalize(a);
+  for i: 0..<12 {
+    step := SF_FIELD_CHAIN[i];
+    #assert sf_chain_step_valid(step, i);
+    cache.value[i + 1] = sf_multiply(sf_square_n(cache.value[step.left], step.squares), cache.value[step.right]);
+  }
+  return cache;
+}
+sf_inverse :: (a: SecpField) -> SecpFieldResult #export_c {
+  cache := sf_chain_prefix(a);
+  power9 := sf_multiply(sf_square(cache.value[1]), cache.value[1]);
+  power45 := sf_multiply(sf_square_n(power9, 2), power9);
+  r: SecpFieldResult;
+  r.value = sf_multiply(sf_square_n(cache.value[12], 10), power45);
+  zero: SecpField;
+  // The positive exponent already produces zero for zero input. No
+  // redundant clearing pass is needed to guarantee a zero refusal value.
+  valid := CB_MAX64 ^ sf_equal_mask(r.value, zero);
+  r.ok = valid == CB_MAX64; return r;
+}
+// Explicitly public-input entry point. It currently shares the fixed chain;
+// no variable-time optimization or secret-taint enforcement is claimed.
+sf_inverse_vartime :: (a: SecpField) -> SecpFieldResult #export_c { return sf_inverse(a); }
+sf_sqrt :: (a: SecpField) -> SecpFieldResult #export_c {
+  cache := sf_chain_prefix(a);
+  root := sf_square_n(sf_multiply(sf_square_n(cache.value[12], 6), cache.value[1]), 2);
+  valid := sf_equal_mask(sf_square(root), cache.value[0]);
+  negative := sf_negate(root); odd := cb_mask(root.limb[0] & 1);
+  r: SecpFieldResult;
+  for i: 0..<10 { r.value.limb[i] = cb_ct_select64(odd, negative.limb[i], root.limb[i]) & valid; }
+  r.ok = valid == CB_MAX64; return r;
+}
+
+// Compile-time exponent arithmetic, not field or secret arithmetic. Shifts
+// and addition are exact over all256 bits and refuse overflow explicitly.
+sf_exponent_step :: (a: SfExponent, squares: int, b: SfExponent) -> SfExponent {
+  #assert sf_square_count_valid(squares);
+  r := a;
+  for i: 0..<squares {
+    carry: u64;
+    for j: 0..<8 {
+      word := cast(u64) r.word[j] * 2 + carry;
+      r.word[j] = cast(u32) (word & 4294967295); carry = word >> 32;
+    }
+    #assert carry == 0;
+  }
+  carry: u64;
+  for j: 0..<8 {
+    word := cast(u64) r.word[j] + cast(u64) b.word[j] + carry;
+    r.word[j] = cast(u32) (word & 4294967295); carry = word >> 32;
+  }
+  #assert carry == 0; return r;
+}
+sf_exponent_prefix :: () -> SfExponentState {
+  cache: SfExponentState; cache.value[0].word[0] = 1;
+  for i: 0..<12 {
+    step := SF_FIELD_CHAIN[i];
+    #assert sf_chain_step_valid(step, i);
+    cache.value[i + 1] = sf_exponent_step(cache.value[step.left], step.squares, cache.value[step.right]);
+  }
+  return cache;
+}
+sf_exponent_inverse :: () -> SfExponent {
+  cache := SF_FIELD_EXPONENT_PREFIX;
+  power9 := sf_exponent_step(cache.value[1], 1, cache.value[1]);
+  power45 := sf_exponent_step(power9, 2, power9);
+  return sf_exponent_step(cache.value[12], 10, power45);
+}
+sf_exponent_sqrt :: () -> SfExponent {
+  cache := SF_FIELD_EXPONENT_PREFIX; zero: SfExponent;
+  return sf_exponent_step(sf_exponent_step(cache.value[12], 6, cache.value[1]), 2, zero);
+}
+sf_exponent_matches :: (exponent: SfExponent, root_mode: bool) -> bool {
+  expected: [8] u32; for i: 1..<8 { expected[i] = 4294967295; }
+  if root_mode { expected[0] = 0xBFFFFF0C; expected[7] = 0x3FFFFFFF; }
+  else { expected[0] = 0xFFFFFC2D; expected[1] = 0xFFFFFFFE; }
+  for i: 0..<8 { if exponent.word[i] != expected[i] { return false; } }
+  return true;
+}
