@@ -383,6 +383,79 @@ synthesized, and the owner asked for free and paid tiers.
 the Spark wallet already in the app. Voice owners are paid per use for
 licensed voices through the same path. Bitcoin only, as everywhere.
 
+## Capacity: 100 people talking at once
+
+*Estimated 2026-10-28 from Google's list prices; V3 and V4 replace these with measured numbers.*
+
+None of this is running yet. After the 2026-10-28 cleanup, the voice host,
+its load balancer and the earlier `coder-sync-1` socket pattern are all
+gone, so supporting voice starts from zero. Every figure here is a list-price
+estimate for **100 people talking to agents at the same time**.
+
+The assumptions:
+
+- People speak about 30% of the time. The phone opens a speech-to-text stream
+  only while `voice.coax` hears speech, and the voice host closes it at end
+  of turn.
+- One agent turn a minute per person, each answered with a spoken summary of
+  up to 30 words, about 180 characters.
+- Raw 16 kHz audio up (256 kbps per speaker) and 24 kHz audio down
+  (384 kbps while playing). Opus comes in before player voice (decision 5).
+
+### Speech APIs: most of the cost
+
+| Item | Per hour at 100 concurrent | How it's worked out |
+| --- | --- | --- |
+| Speech-to-text, Chirp 3, $0.016 a minute | ~$29 | 100 × 60 min × 30% speech = 1,800 min |
+| Text-to-speech, Chirp 3 HD, $30 per million characters | ~$32 | 100 × 60 turns × 180 chars = 1.08M chars |
+| **Total** | **~$61 an hour**, about **$0.60 per person-hour** | |
+
+If a stream stays open the whole session, speech-to-text rises to ~$96 an
+hour. That's why turn-scoped streams matter. Talkative agents cost more:
+two spoken replies a minute doubles text-to-speech to ~$65 an hour.
+
+### Machines and network: small
+
+| Item | Monthly | Notes |
+| --- | --- | --- |
+| Voice host: 2× e2-standard-4 (one active, one standby) in us-central1 | ~$200 | 100 sessions are about 26 Mbps up and 12 Mbps down, plus 100 gRPC streams to Google and Coax's VAD on 20 ms frames. One 4-vCPU VM carries that with room to spare; V3 measures the real load per session |
+| HTTPS load balancer with WebSocket backend | ~$20 + traffic | Long timeout, as `coder-sync-1` had |
+| Internet egress for spoken replies | ~$0.60 an hour at 100 concurrent | ~5 GB an hour of raw audio down. Opus drops it to ~$0.05 |
+
+Audio from the voice host to Google's APIs stays inside Google and isn't
+billed as egress.
+
+### Players talking to each other
+
+Player voice uses no speech models, only the forwarder. If each of 100
+players hears 5 others, that's 500 streams down. With Opus at 24 kbps that's
+12 Mbps, ~5 GB an hour, about **$0.65 an hour**. With raw audio it would be
+ten times that, so Opus has to ship before player voice (decision 5, V5).
+The same voice host handles it.
+
+### What it means
+
+| Usage at a peak of 100 concurrent | Speech APIs | Machines + network | Total a month |
+| --- | --- | --- | --- |
+| 1 hour a day | ~$1,800 | ~$240 | ~$2,000 |
+| 4 hours a day | ~$7,300 | ~$300 | ~$7,600 |
+| All day, every day | ~$44,000 | ~$650 | ~$45,000 |
+
+The machines fit easily under the account's $1,000-a-month cap. The speech
+APIs don't, beyond about 25 person-hours a day, about $15 a day. So
+`voice-meter.coax` is a launch requirement, not a later nicety:
+
+- The free tier caps minutes per account per day.
+- Paid use settles over Lightning at or above ~$0.60 a person-hour plus margin.
+- The voice host refuses new turns when the day's spend reaches its budget.
+
+Three levers lower the per-hour price if needed:
+
+- Standard text-to-speech voices ($4 per million characters) for
+  low-stakes lines, dropping text-to-speech by about 85%.
+- Batch and cached synthesis for NPC lines that repeat.
+- Speech-to-text volume tiers, which start at 500,000 minutes a month.
+
 ## Phases
 
 Each phase ends with a measurement committed and a real-phone run.
