@@ -54,8 +54,11 @@ C without absolute paths. Custom native builds also need `-g` when compiling
 the mapped C. Release builds can request mapping explicitly.
 
 This is not a Coax expression evaluator or complete native type visualizer.
-Inlining and optimized-out variables follow the native debugger. Generated
-helpers do not acquire invented source provenance. Keep matching sources,
+Inlining and optimized-out variables follow the native debugger. Runtime
+helpers keep native/generated locations. Generated protobuf procedures map to
+the `#import_proto` site, not an authored codec body; inspect their generated
+C and descriptor fingerprints. Source hashes cover physical Coax files, not
+every build input. Keep matching sources,
 maps, objects and executable/dSYM together; Darwin's debug map needs the
 object file retained by the driver. Maps contain absolute checkout paths.
 Do not edit generated C as a fix: it will be generated again.

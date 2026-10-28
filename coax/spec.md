@@ -972,7 +972,10 @@ for macros, inline-only symbols, variadics and unsupported declarations.
 C11 output runs on the tested host. iOS, Android, Linux, Windows and wasm32
 need distinct runtime, linker, ABI and debugging evidence before becoming
 supported compiler targets. No C output claim establishes that an arbitrary
-platform integration is complete.
+platform integration is complete. The current Coaxial splash uses
+`coax/web/wasm.sh` (upstream LLVM/WASI plus a C face) and a WebGPU host. This
+narrow browser consumer is useful feasibility evidence, not a complete engine
+runtime, target-aware layout implementation or browser source debugger.
 
 For Wasm, test pointer width, linear-memory growth and invalidated typed-array
 views, explicit host imports, async loads, main-loop ownership and resource

@@ -74,8 +74,12 @@ also attached to LLDB at `metareal_cast_pose` in `metareal/cast.coax`.
 This is line-level debugging and a name/type presentation bridge. It is not
 a Coax expression evaluator or a complete type visualizer. Native C types
 remain visible; optimized-out values and inlining follow the native debugger.
-Generated runtime helpers and generated codec declarations do not acquire
-invented authored-source provenance. There is no Metal shader source map,
+Runtime helpers retain generated/native locations. Generated protobuf
+procedures currently collapse to their `#import_proto` call site, as compiler
+diagnostics already do; this is import provenance, not step-by-step authored
+codec source. Inspect retained generated C for those bodies. Source hashes
+cover physical Coax files, not descriptor contents or the whole build;
+retain generated-code descriptor fingerprints too. There is no Metal shader source map,
 validated physical-device crash-symbolication workflow, portable DWARF type
 encoding, or browser debugger integration in this slice.
 

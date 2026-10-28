@@ -48,7 +48,7 @@ scanning waits for them even when `Generated/` starts empty.
 
 The bundle identifier is `com.openagents.app`. This is a minimal home
 shell. Distribution continues the existing OpenAgents App Store Connect record
-at version 1.0.0; the current build is 1051.
+at version 1.0.0; the current build is 1055.
 The home is the Grid from high above under a Start bar; Start dollies the
 camera down to your character. Once there, the balance of the person's
 existing Spark wallet sits top right; tapping it opens the wallet. You can:
@@ -77,6 +77,21 @@ WebSocket, never to Google. In the simulator the host defaults to
 `-OAVoiceHost ws://…` or by holding the button. A phone has no default host
 yet, so voice on a device needs one set this way. No login, chat or FM code is
 restored; the Grid has no buildings or other players yet.
+
+## Engine measurements and debugging
+
+Debug generation writes original Coax line information and source maps beside
+the main generated libraries. See [native debugging](../../coax/DEBUGGING.md)
+for LLDB commands, source-hash checks and native optimization limits. Maps
+and matching objects must stay with the exact executable being inspected.
+
+An explicit `-OABenchmark` Debug launch records the normal Grid frame path
+under Coax-owned scripted input. `R0UITests` enters the world and waits for
+the capture; `Documents/R0-frame.json` contains raw CPU/GPU samples, counts
+and command errors. Release builds compile the capture adapter out. See
+[the benchmark README](../../metareal/benchmarks/README.md) for commands and
+the scope of each timer. Simulator timing is not physical-phone performance;
+the pinned headless comparison currently misses the proposed speed budget.
 
 ## Ownership
 

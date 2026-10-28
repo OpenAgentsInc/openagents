@@ -33,7 +33,7 @@ of missing evidence, but do not schedule existing features as new work.
 | Compiler | Coax lexer/parser/checker/source policy, descriptor importer, wire runtime and fingerprinting; explicit reproducible seeds | Coax evaluator, verifier/mutator, emitters and driver; complete debugger/type integration and a resident compiler |
 | Native product | Actual iOS scene/HUD, Grid, movement, animation, wallet rules, Haunted House and voice logic | Measured whole-frame parity against a frozen native reference, broader platform/ABI evidence and complete product migration |
 | Protocols | Selected proto3 descriptor imports, bounded borrowed codecs and real app consumers | Remaining consumer/domain admission paths and consumer-justified schema features |
-| GPU/platforms | Scalar visual functions emitted as Metal; native stage wrappers; Mac build host and iOS integration | Shared GPU resource declarations, general shader profiles, browser vertical slice and evidence for other targets |
+| GPU/platforms | Scalar visual functions emitted as Metal; native stage wrappers; Mac/iOS integration; narrow Coaxial Wasm/WebGPU splash | Shared GPU resource declarations, general shader profiles, full engine browser vertical slice and evidence for other targets |
 | Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps and phase timings | Capability-aware `build.coax`, safe editor analysis, cache, transactional reload and additional backends |
 
 The [source-unit evidence](../docs/verification/coax-source-units-2026-10-28.md)
@@ -173,8 +173,10 @@ without mislabeling today's path inventory as a lockfile or cache key.
 **Consumer/gate:** split one real engine subsystem and the compiler graph into
 modules without weakening authority or changing behavior. Test cross-module
 cycles, private names, configuration invalidation and original diagnostics.
-Run a deliberately small wasm32 feasibility test here: types/layout, a host
-import, memory access and a useful source location. This is not browser support.
+Extend the existing Coaxial splash's wasm32 feasibility path rather than
+rebuilding its host: add target type/layout evidence, a host import, memory
+access and a useful source location. The current `coax/web/wasm.sh` plus
+WebGPU host is a narrow consumer, not complete browser support.
 
 ## 5. R2 — Make fallible application code expressible
 
