@@ -1,800 +1,145 @@
-// Parser: tokens to a syntax tree. Recursive descent; stops at the first
-// syntax error so every reported error is a real one.
+// Representation bridge only. Grammar, tree construction, budgets and syntax
+// diagnostics live in lib/compiler/parser.coax. No native parser fallback.
 #include "coax.h"
-
+#ifdef COAX_BOOTSTRAP_IMPORTER
+#include "parser.h"
+#else
+#include "proto_importer.h"
+#endif
 namespace coax {
-
 namespace {
-
-struct Parser {
-  Arena *arena;
-  const Source *src;
-  const std::vector<Token> *toks;
-  int32_t pos = 0;
-  bool failed = false;
-
-  const Token &peek(int32_t ahead = 0) const {
-    int32_t i = pos + ahead;
-    if (i >= (int32_t)toks->size()) i = (int32_t)toks->size() - 1;
-    return (*toks)[(size_t)i];
-  }
-  bool at(Tok k) const { return peek().kind == k; }
-  bool at_keyword(const char *kw, int32_t ahead = 0) const {
-    return peek(ahead).kind == Tok::keyword && str_eq(peek(ahead).text, kw);
-  }
-  Token next() { Token t = peek(); if (pos < (int32_t)toks->size() - 1) pos++; return t; }
-
-  void fail(Loc loc, const char *code, const std::string &msg, const std::string &fix = "") {
-    if (failed) return;
-    failed = true;
-    error_at(src, loc, code, msg, fix);
-  }
-
-  std::string describe(const Token &t) const {
-    return t.kind == Tok::ident || t.kind == Tok::keyword ? "'" + to_std(t.text) + "'" : tok_name(t.kind);
-  }
-
-  bool expect(Tok k, const char *what) {
-    if (at(k)) { next(); return true; }
-    const Token &t = peek();
-    // A missing ';' belongs right after the previous token, not at the start
-    // of whatever comes next (often the following line).
-    Loc where = t.loc;
-    if (k == Tok::semicolon && pos > 0) {
-      const Token &prev = (*toks)[(size_t)pos - 1];
-      where = Loc{prev.loc.line, prev.loc.col + prev.text.count, prev.loc.offset + prev.text.count};
-    }
-    fail(where, "E0201", std::string("expected ") + tok_name(k) + " " + what + ", found " + describe(t),
-         k == Tok::semicolon ? "add ';'" : "");
-    return false;
-  }
-
-  bool expect_keyword(const char *kw, const char *what) {
-    if (at_keyword(kw)) { next(); return true; }
-    fail(peek().loc, "E0201", std::string("expected '") + kw + "' " + what + ", found " + describe(peek()));
-    return false;
-  }
-
-  bool ident(Str *name, Loc *loc, const char *what) {
-    const Token &t = peek();
-    if (t.kind != Tok::ident) {
-      fail(t.loc, "E0208", std::string("expected ") + what + ", found " + describe(t));
-      return false;
-    }
-    *name = t.text;
-    *loc = t.loc;
-    next();
-    return true;
-  }
-
-  // type := NAME | '[' expr ']' type | '[' ']' type | '[' '..' ']' type
-  TypeExpr *type() {
-    TypeExpr *t = make<TypeExpr>(arena);
-    t->loc = peek().loc;
-    if (at(Tok::lbracket)) {
-      next();
-      if (at(Tok::rbracket)) {
-        next();
-        t->kind = TypeExpr::view;
-      } else if (at(Tok::dotdot)) {
-        next();
-        if (!expect(Tok::rbracket, "after '[..'")) return nullptr;
-        t->kind = TypeExpr::dynamic;
-      } else {
-        t->kind = TypeExpr::array;
-        if (!(t->length = expr()) || !expect(Tok::rbracket, "after the array length")) return nullptr;
-      }
-      if (!(t->elem = type())) return nullptr;
-      return t;
-    }
-    const Token &n = peek();
-    if (n.kind != Tok::ident && n.kind != Tok::keyword) {
-      fail(n.loc, "E0202", std::string("expected a type, found ") + tok_name(n.kind));
-      return nullptr;
-    }
-    t->name = n.text;
-    next();
-    return t;
-  }
-
-  // ---- expressions, lowest to highest precedence ----
-  // Bitwise operators share the levels of + and *, as in Go, so a & b == c
-  // means (a & b) == c.
-
-  static int precedence(Tok k) {
-    switch (k) {
-      case Tok::oror: return 1;
-      case Tok::andand: return 2;
-      case Tok::eqeq: case Tok::noteq: case Tok::lt: case Tok::le: case Tok::gt: case Tok::ge: return 3;
-      case Tok::plus: case Tok::minus: case Tok::pipe: case Tok::caret: return 4;
-      case Tok::star: case Tok::slash: case Tok::percent: case Tok::amp: case Tok::shl: case Tok::shr: return 5;
-      default: return 0;
-    }
-  }
-
-  Expr *node(ExprKind kind, Loc loc) {
-    Expr *e = make<Expr>(arena);
-    e->kind = kind;
-    e->loc = loc;
-    return e;
-  }
-
-  Expr *expr(int32_t min_prec = 1) {
-    Expr *lhs = unary();
-    while (lhs && !failed) {
-      Tok op = peek().kind;
-      int p = precedence(op);
-      if (p < min_prec || p == 0) break;
-      Loc loc = next().loc;
-      Expr *rhs = expr(p + 1);
-      if (!rhs) return nullptr;
-      // Comparisons do not chain: `a < b < c` is an error, not a surprise.
-      if (p == 3 && precedence(peek().kind) == 3) {
-        fail(peek().loc, "E0203", "comparisons cannot be chained", "split it with '&&'");
-        return nullptr;
-      }
-      Expr *e = node(ExprKind::binary, loc);
-      e->op = op;
-      e->lhs = lhs;
-      e->rhs = rhs;
-      lhs = e;
-    }
-    return lhs;
-  }
-
-  Expr *unary() {
-    if (peek().kind == Tok::directive && str_eq(peek().text, "run")) {
-      Expr *e = node(ExprKind::run, next().loc);
-      if (!(e->lhs = unary())) return nullptr;
-      return e;
-    }
-    if (at(Tok::minus) || at(Tok::bang)) {
-      Token t = next();
-      Expr *operand = unary();
-      if (!operand) return nullptr;
-      Expr *e = node(ExprKind::unary, t.loc);
-      e->op = t.kind;
-      e->lhs = operand;
-      return e;
-    }
-    if (at_keyword("cast")) {
-      // cast(T) x checks the value fits; cast,trunc(T) x keeps the low bits.
-      Expr *e = node(ExprKind::cast, next().loc);
-      if (at(Tok::comma)) {
-        next();
-        if (!(peek().kind == Tok::ident && str_eq(peek().text, "trunc"))) {
-          fail(peek().loc, "E0214", "the only cast modifier is 'trunc'", "cast,trunc(u8) x");
-          return nullptr;
-        }
-        next();
-        e->trunc = true;
-      }
-      if (!expect(Tok::lparen, "after 'cast'") || !(e->type_expr = type()) ||
-          !expect(Tok::rparen, "after the cast type") || !(e->lhs = unary()))
-        return nullptr;
-      return e;
-    }
-    return postfix(primary());
-  }
-
-  // x.field  x[i]  x[lo ..< hi]  x[..]  Name.{field = value}
-  Expr *postfix(Expr *e) {
-    while (e && !failed) {
-      if (at(Tok::dot) && peek(1).kind == Tok::ident) {
-        Expr *f = node(ExprKind::field, next().loc);
-        f->text = next().text;
-        f->lhs = e;
-        e = f;
-      } else if (at(Tok::dot) && peek(1).kind == Tok::lbrace) {
-        if (e->kind != ExprKind::ident) {
-          fail(peek().loc, "E0215", "a struct literal starts with the struct's name", "Point.{x = 1, y = 2}");
-          return nullptr;
-        }
-        Expr *lit = node(ExprKind::struct_lit, e->loc);
-        lit->type_expr = make<TypeExpr>(arena);
-        lit->type_expr->name = e->text;
-        lit->type_expr->loc = e->loc;
-        next();
-        next();
-        std::vector<FieldInit> fields;
-        while (!at(Tok::rbrace) && !failed) {
-          FieldInit fi;
-          if (!ident(&fi.name, &fi.loc, "a field name") ||
-              !expect(Tok::equal, "after the field name; struct literals name every field") ||
-              !(fi.value = expr()))
-            return nullptr;
-          fields.push_back(fi);
-          if (!at(Tok::comma)) break;
-          next();
-        }
-        if (!expect(Tok::rbrace, "to close the struct literal")) return nullptr;
-        lit->fields = to_slice(arena, fields);
-        e = lit;
-      } else if (at(Tok::lbracket)) {
-        Loc loc = next().loc;
-        if (at(Tok::dotdot) && peek(1).kind == Tok::rbracket) {
-          next();
-          next();
-          Expr *s = node(ExprKind::slice, loc);
-          s->lhs = e;
-          e = s;
-          continue;
-        }
-        Expr *first = expr();
-        if (!first) return nullptr;
-        if (at(Tok::dotdotlt)) {
-          next();
-          Expr *s = node(ExprKind::slice, loc);
-          s->lhs = e;
-          s->rhs = first;
-          if (!(s->third = expr()) || !expect(Tok::rbracket, "to close the slice")) return nullptr;
-          e = s;
-        } else {
-          if (at(Tok::dotdot)) {
-            fail(peek().loc, "E0216", "ranges are half-open: write '..<'", "a[lo ..< hi]");
-            return nullptr;
-          }
-          Expr *ix = node(ExprKind::index, loc);
-          ix->lhs = e;
-          ix->rhs = first;
-          if (!expect(Tok::rbracket, "to close the index")) return nullptr;
-          e = ix;
-        }
-      } else {
-        break;
-      }
-    }
-    return e;
-  }
-
-  Expr *call_args(Expr *e) {
-    std::vector<Expr *> args;
-    while (!at(Tok::rparen) && !failed) {
-      Expr *a = expr();
-      if (!a) return nullptr;
-      args.push_back(a);
-      if (!at(Tok::comma)) break;
-      next();
-    }
-    if (!expect(Tok::rparen, "after the arguments")) return nullptr;
-    e->args = to_slice(arena, args);
-    return e;
-  }
-
-  Expr *primary() {
-    const Token &t = peek();
-    Expr *e = node(ExprKind::int_lit, t.loc);
-    switch (t.kind) {
-      case Tok::int_lit:
-        e->int_value = t.int_value;
-        next();
-        return e;
-      case Tok::float_lit:
-        e->kind = ExprKind::float_lit;
-        e->float_value = t.float_value;
-        if (t.float_bits) {
-          e->type = t.float_bits == 32 ? &T_F32 : &T_F64;
-          if (t.float_bits == 32) e->float_value = (double)(float)t.float_value;
-        }
-        next();
-        return e;
-      case Tok::string_lit:
-        e->kind = ExprKind::string_lit;
-        e->text = t.string_value;
-        next();
-        return e;
-      case Tok::lparen: {
-        next();
-        Expr *inner = expr();
-        if (!inner || !expect(Tok::rparen, "to close '('")) return nullptr;
-        return inner;
-      }
-      case Tok::lbracket: {
-        // [N] T.[a, b, c]
-        e->kind = ExprKind::array_lit;
-        if (!(e->type_expr = type())) return nullptr;
-        if (e->type_expr->kind != TypeExpr::array) {
-          fail(t.loc, "E0217", "an array literal needs a fixed array type", "[3] int.[1, 2, 3]");
-          return nullptr;
-        }
-        if (!expect(Tok::dot, "after the array type") || !expect(Tok::lbracket, "to start the elements"))
-          return nullptr;
-        std::vector<Expr *> elems;
-        while (!at(Tok::rbracket) && !failed) {
-          Expr *a = expr();
-          if (!a) return nullptr;
-          elems.push_back(a);
-          if (!at(Tok::comma)) break;
-          next();
-        }
-        if (!expect(Tok::rbracket, "to close the array literal")) return nullptr;
-        e->args = to_slice(arena, elems);
-        return e;
-      }
-      case Tok::keyword:
-        if (str_eq(t.text, "true") || str_eq(t.text, "false")) {
-          e->kind = ExprKind::bool_lit;
-          e->int_value = str_eq(t.text, "true");
-          next();
-          return e;
-        }
-        if (str_eq(t.text, "ifx")) {
-          // ifx condition then a else b
-          e->kind = ExprKind::ifx;
-          next();
-          if (!(e->lhs = expr()) || !expect_keyword("then", "after the ifx condition") || !(e->rhs = expr()) ||
-              !expect_keyword("else", "in ifx; both branches are required") || !(e->third = expr()))
-            return nullptr;
-          return e;
-        }
-        if (str_eq(t.text, "size_of")) {
-          // size_of(T): the host C size, in bytes, as an int.
-          e->kind = ExprKind::call;
-          e->text = t.text;
-          next();
-          if (!expect(Tok::lparen, "after size_of") || !(e->type_expr = type()) ||
-              !expect(Tok::rparen, "after the type"))
-            return nullptr;
-          return e;
-        }
-        fail(t.loc, "E0204", "'" + to_std(t.text) + "' is reserved and not supported by coax0 yet");
-        return nullptr;
-      case Tok::ident: {
-        next();
-        e->text = t.text;
-        if (!at(Tok::lparen)) {
-          e->kind = ExprKind::ident;
-          return e;
-        }
-        next();
-        e->kind = ExprKind::call;
-        return call_args(e);
-      }
-      default:
-        fail(t.loc, "E0205", std::string("expected an expression, found ") + tok_name(t.kind));
-        return nullptr;
-    }
-  }
-
-  // ---- statements ----
-
-  Stmt *new_stmt(StmtKind kind, Loc loc) {
-    Stmt *s = make<Stmt>(arena);
-    s->kind = kind;
-    s->loc = loc;
-    return s;
-  }
-
-  Stmt *block() {
-    Stmt *b = new_stmt(StmtKind::block, peek().loc);
-    if (!expect(Tok::lbrace, "to start a block")) return nullptr;
-    std::vector<Stmt *> body;
-    while (!at(Tok::rbrace) && !at(Tok::eof) && !failed) {
-      Stmt *s = stmt();
-      if (!s) return nullptr;
-      body.push_back(s);
-    }
-    if (!expect(Tok::rbrace, "to close the block")) return nullptr;
-    b->body = to_slice(arena, body);
-    return b;
-  }
-
-  Stmt *if_stmt() {
-    Stmt *s = new_stmt(StmtKind::if_, next().loc);  // 'if'
-    if (!(s->expr = expr())) return nullptr;
-    if (!(s->then_ = block())) return nullptr;
-    if (at_keyword("else")) {
-      next();
-      s->else_ = at_keyword("if") ? if_stmt() : block();
-      if (!s->else_) return nullptr;
-    }
-    return s;
-  }
-
-  // for i: lo ..< hi { }   for item: values { }   for item, index: values { }
-  Stmt *for_stmt() {
-    Stmt *s = new_stmt(StmtKind::for_each, next().loc);
-    Loc loc;
-    if (!ident(&s->name, &loc, "a loop variable name")) return nullptr;
-    if (at(Tok::comma)) {
-      next();
-      if (!ident(&s->name2, &s->name2_loc, "an index variable name")) return nullptr;
-    }
-    if (!expect(Tok::colon, "after the loop variable")) return nullptr;
-    if (!(s->expr = expr())) return nullptr;
-    if (at(Tok::dotdotlt)) {
-      next();
-      s->kind = StmtKind::for_range;
-      if (s->name2.count) {
-        fail(s->name2_loc, "E0218", "a range loop has one variable", "for i: 0..<n { }");
-        return nullptr;
-      }
-      if (!(s->expr2 = expr())) return nullptr;
-    } else if (at(Tok::dotdot)) {
-      fail(peek().loc, "E0216", "ranges are half-open: write '..<'", "for i: 0..<n { }");
-      return nullptr;
-    }
-    if (!(s->then_ = block())) return nullptr;
-    return s;
-  }
-
-  static bool is_assign_op(Tok k) {
-    switch (k) {
-      case Tok::equal: case Tok::plus_equal: case Tok::minus_equal: case Tok::star_equal:
-      case Tok::slash_equal: case Tok::percent_equal: case Tok::amp_equal: case Tok::pipe_equal:
-      case Tok::caret_equal: case Tok::shl_equal: case Tok::shr_equal:
-        return true;
-      default: return false;
-    }
-  }
-
-  // An assignment or expression statement, without the ';' (defer reuses it).
-  Stmt *simple_stmt() {
-    Expr *e = expr();
-    if (!e) return nullptr;
-    Tok k = peek().kind;
-    if (is_assign_op(k)) {
-      if (e->kind != ExprKind::ident && e->kind != ExprKind::field && e->kind != ExprKind::index) {
-        fail(e->loc, "E0207", "only a variable, a field or an element can be assigned to");
-        return nullptr;
-      }
-      Stmt *s = new_stmt(StmtKind::assign, next().loc);
-      s->op = k;
-      s->target = e;
-      if (!(s->expr = expr())) return nullptr;
-      return s;
-    }
-    Stmt *s = new_stmt(StmtKind::expr, e->loc);
-    s->expr = e;
-    return s;
-  }
-
-  Stmt *stmt() {
-    const Token &t = peek();
-    if (t.kind == Tok::lbrace) return block();
-    if (t.kind == Tok::directive && str_eq(t.text, "assert")) {
-      // #assert condition;  checked when it runs, in every build
-      Stmt *s = new_stmt(StmtKind::assert_, next().loc);
-      if (!(s->expr = expr()) || !expect(Tok::semicolon, "after #assert")) return nullptr;
-      return s;
-    }
-    if (t.kind == Tok::keyword) {
-      if (str_eq(t.text, "if")) return if_stmt();
-      if (str_eq(t.text, "for")) return for_stmt();
-      if (str_eq(t.text, "while")) {
-        Stmt *s = new_stmt(StmtKind::while_, next().loc);
-        if (!(s->expr = expr())) return nullptr;
-        if (!(s->then_ = block())) return nullptr;
-        return s;
-      }
-      if (str_eq(t.text, "return")) {
-        Stmt *s = new_stmt(StmtKind::ret, next().loc);
-        if (!at(Tok::semicolon) && !(s->expr = expr())) return nullptr;
-        if (!expect(Tok::semicolon, "after the return")) return nullptr;
-        return s;
-      }
-      if (str_eq(t.text, "break") || str_eq(t.text, "continue")) {
-        Stmt *s = new_stmt(str_eq(t.text, "break") ? StmtKind::break_ : StmtKind::continue_, next().loc);
-        if (!expect(Tok::semicolon, str_eq(t.text, "break") ? "after break" : "after continue")) return nullptr;
-        return s;
-      }
-      if (str_eq(t.text, "defer")) {
-        // defer { ... }  or  defer statement;
-        Stmt *s = new_stmt(StmtKind::defer, next().loc);
-        if (at(Tok::lbrace)) {
-          if (!(s->then_ = block())) return nullptr;
-        } else {
-          if (!(s->then_ = simple_stmt()) || !expect(Tok::semicolon, "after the deferred statement")) return nullptr;
-        }
-        return s;
-      }
-    }
-
-    // Declarations: name := expr;  name: type [= expr | = ---];
-    if (t.kind == Tok::ident && (peek(1).kind == Tok::colonequal || peek(1).kind == Tok::colon)) {
-      Stmt *s = new_stmt(StmtKind::var, t.loc);
-      s->name = t.text;
-      next();
-      if (next().kind == Tok::colon) {
-        if (!(s->type_expr = type())) return nullptr;
-        if (at(Tok::equal)) {
-          next();
-          // `---`: the lexer gives '-' '-' '-'
-          if (at(Tok::minus) && peek(1).kind == Tok::minus && peek(2).kind == Tok::minus) {
-            next(); next(); next();
-            s->uninit = true;
-          } else if (!(s->expr = expr())) {
-            return nullptr;
-          }
-        }
-      } else if (!(s->expr = expr())) {
-        return nullptr;
-      }
-      if (!expect(Tok::semicolon, "after the declaration")) return nullptr;
-      return s;
-    }
-    if (t.kind == Tok::ident && peek(1).kind == Tok::coloncolon) {
-      fail(peek(1).loc, "E0206", "local constants, procedures and types are not supported by coax0 yet",
-           "move it to the top level");
-      return nullptr;
-    }
-
-    Stmt *s = simple_stmt();
-    if (!s) return nullptr;
-    if (!expect(Tok::semicolon, s->kind == StmtKind::assign ? "after the assignment" : "after the statement"))
-      return nullptr;
-    return s;
-  }
-
-  // ---- top level ----
-
-  bool starts_procedure() const {
-    if (!at(Tok::lparen)) return false;
-    int depth = 0;
-    for (int i = 0; peek(i).kind != Tok::eof; i++) {
-      if (peek(i).kind == Tok::lparen) depth++;
-      if (peek(i).kind == Tok::rparen && --depth == 0) {
-        const Token &after = peek(i + 1);
-        return after.kind == Tok::lbrace || after.kind == Tok::arrow || after.kind == Tok::directive;
-      }
-    }
-    return false;
-  }
-
-  ProcDecl *proc(const Token &name) {
-    ProcDecl *p = make<ProcDecl>(arena);
-    p->name = name.text;
-    p->loc = name.loc;
-    if (!expect(Tok::lparen, "to start the parameter list")) return nullptr;
-    std::vector<Param> params;
-    while (!at(Tok::rparen) && !failed) {
-      Param prm;
-      if (!ident(&prm.name, &prm.loc, "a parameter name")) return nullptr;
-      if (!expect(Tok::colon, "after the parameter name")) return nullptr;
-      if (!(prm.type_expr = type())) return nullptr;
-      params.push_back(prm);
-      if (!at(Tok::comma)) break;
-      next();
-    }
-    if (!expect(Tok::rparen, "to close the parameter list")) return nullptr;
-    if (at(Tok::arrow)) {
-      next();
-      if (!(p->ret_expr = type())) return nullptr;
-    }
-    while (at(Tok::directive)) {
-      const Token &d = peek();
-      if (str_eq(d.text, "export_c")) {
-        p->export_c = true;
-        next();
-      } else if (str_eq(d.text, "foreign")) {
-        // name :: (params) -> T #foreign;  a C symbol the host links in.
-        p->foreign = true;
-        next();
-        if (p->export_c) {
-          fail(d.loc, "E0210", "a procedure is either #foreign or #export_c, not both");
-          return nullptr;
-        }
-        if (!expect(Tok::semicolon, "after #foreign; a foreign procedure has no body")) return nullptr;
-        p->params = to_slice(arena, params);
-        return p;
-      } else {
-        fail(d.loc, "E0210", "#" + to_std(d.text) + " is not supported on procedures by coax0 yet");
-        return nullptr;
-      }
-    }
-    p->params = to_slice(arena, params);
-    if (!(p->body = block())) return nullptr;
-    return p;
-  }
-
-  // Name :: struct { field: T; field: T = default; }
-  StructDecl *struct_decl(const Token &name) {
-    StructDecl *d = make<StructDecl>(arena);
-    d->name = name.text;
-    d->loc = name.loc;
-    next();  // 'struct'
-    if (at(Tok::directive)) {
-      fail(peek().loc, "E0210", "#" + to_std(peek().text) + " on structs is not supported by coax0 yet");
-      return nullptr;
-    }
-    if (!expect(Tok::lbrace, "to start the struct's fields")) return nullptr;
-    std::vector<Field> fields;
-    while (!at(Tok::rbrace) && !failed) {
-      Field f;
-      if (at_keyword("using")) {
-        fail(peek().loc, "E0204", "'using' is reserved and not supported by coax0 yet");
-        return nullptr;
-      }
-      if (!ident(&f.name, &f.loc, "a field name") || !expect(Tok::colon, "after the field name") ||
-          !(f.type_expr = type()))
-        return nullptr;
-      if (at(Tok::equal)) {
-        next();
-        if (!(f.init = expr())) return nullptr;
-      }
-      if (!expect(Tok::semicolon, "after the field")) return nullptr;
-      fields.push_back(f);
-    }
-    if (!expect(Tok::rbrace, "to close the struct")) return nullptr;
-    d->fields = to_slice(arena, fields);
-    return d;
-  }
-
-  // Name :: enum u8 { member; member = value; }
-  EnumDecl *enum_decl(const Token &name) {
-    EnumDecl *d = make<EnumDecl>(arena);
-    d->name = name.text;
-    d->loc = name.loc;
-    next();  // 'enum'
-    if (at(Tok::lbrace)) {
-      fail(peek().loc, "E0219", "an enum names its underlying integer type", "Outcome :: enum u8 { ... }");
-      return nullptr;
-    }
-    if (!(d->base_expr = type()) || !expect(Tok::lbrace, "to start the enum's members")) return nullptr;
-    std::vector<EnumMember> members;
-    while (!at(Tok::rbrace) && !failed) {
-      EnumMember m;
-      if (!ident(&m.name, &m.loc, "an enum member name")) return nullptr;
-      if (at(Tok::equal)) {
-        next();
-        if (!(m.value = expr())) return nullptr;
-      }
-      if (!expect(Tok::semicolon, "after the enum member")) return nullptr;
-      members.push_back(m);
-    }
-    if (!expect(Tok::rbrace, "to close the enum")) return nullptr;
-    d->members = to_slice(arena, members);
-    return d;
-  }
-
-  // #test "name" { ... }
-  // #forall ["name"] a: u8, b: lo..<hi { ... }
-  CheckDecl *check_decl(const Token &d) {
-    CheckDecl *c = make<CheckDecl>(arena);
-    c->loc = d.loc;
-    c->forall = str_eq(d.text, "forall");
-    ProcDecl *p = make<ProcDecl>(arena);
-    p->loc = d.loc;
-    c->proc = p;
-    if (at(Tok::string_lit)) {
-      c->name = next().string_value;
-    } else if (!c->forall) {
-      fail(peek().loc, "E0220", "#test needs a name string", "#test \"refunds never exceed payment\" { ... }");
-      return nullptr;
-    }
-    std::vector<Param> params;
-    std::vector<Binding> domains;
-    int32_t start = peek().loc.offset;
-    while (c->forall && !at(Tok::lbrace) && !failed) {
-      Param prm;
-      Binding b;
-      if (!ident(&prm.name, &prm.loc, "a binding name")) return nullptr;
-      if (!expect(Tok::colon, "after the binding name")) return nullptr;
-      if (peek(1).kind == Tok::comma || peek(1).kind == Tok::lbrace) {
-        if (!(prm.type_expr = type())) return nullptr;
-      } else {
-        if (!(b.lo = expr())) return nullptr;
-        if (!expect(Tok::dotdotlt, "in the range; a #forall binding is a type or lo..<hi")) return nullptr;
-        if (!(b.hi = expr())) return nullptr;
-      }
-      params.push_back(prm);
-      domains.push_back(b);
-      if (!at(Tok::comma)) break;
-      next();
-    }
-    if (c->forall && params.empty()) {
-      fail(peek().loc, "E0220", "#forall needs at least one binding", "#forall a: u8, b: bool { ... }");
-      return nullptr;
-    }
-    if (c->forall && !c->name.count) {
-      int32_t end = peek().loc.offset;
-      while (end > start && (src->text[(size_t)end - 1] == ' ' || src->text[(size_t)end - 1] == '\n')) end--;
-      c->name = Str{src->text.data() + start, end - start};
-    }
-    p->name = c->name;
-    p->params = to_slice(arena, params);
-    c->domains = to_slice(arena, domains);
-    if (!(p->body = block())) return nullptr;
-    return c;
-  }
-
-  bool file(File *out) {
-    std::vector<Import> imports;
-    std::vector<ProcDecl *> procs;
-    std::vector<ConstDecl *> constants;
-    std::vector<StructDecl *> structs;
-    std::vector<EnumDecl *> enums;
-    std::vector<Expr *> assertions;
-    std::vector<CheckDecl *> checks;
-    while (!at(Tok::eof) && !failed) {
-      const Token &t = peek();
-      if (t.kind == Tok::directive && str_eq(t.text, "import")) {
-        next();
-        const Token &m = peek();
-        if (m.kind != Tok::string_lit) {
-          fail(m.loc, "E0209", "expected a module name string after #import", "write #import \"Basic\";");
-          break;
-        }
-        next();
-        imports.push_back(Import{m.string_value, m.loc});
-        if (!expect(Tok::semicolon, "after the import")) break;
-        continue;
-      }
-      if (t.kind == Tok::directive && str_eq(t.text, "assert")) {
-        next();
-        Expr *condition = expr();
-        if (!condition || !expect(Tok::semicolon, "after #assert")) break;
-        assertions.push_back(condition);
-        continue;
-      }
-      if (t.kind == Tok::directive && (str_eq(t.text, "test") || str_eq(t.text, "forall"))) {
-        Token d = next();
-        CheckDecl *c = check_decl(d);
-        if (!c) break;
-        checks.push_back(c);
-        continue;
-      }
-      if (t.kind == Tok::directive && str_eq(t.text, "authority")) {
-        next();
-        out->authority = true;
-        if (!expect(Tok::semicolon, "after #authority")) break;
-        continue;
-      }
-      if (t.kind == Tok::directive) {
-        fail(t.loc, "E0210", "#" + to_std(t.text) + " is not supported by coax0 yet");
-        break;
-      }
-      if (t.kind == Tok::ident && peek(1).kind == Tok::coloncolon) {
-        next();
-        next();
-        if (at_keyword("struct")) {
-          StructDecl *d = struct_decl(t);
-          if (!d) break;
-          structs.push_back(d);
-        } else if (at_keyword("enum")) {
-          EnumDecl *d = enum_decl(t);
-          if (!d) break;
-          enums.push_back(d);
-        } else if (at_keyword("union") || at_keyword("enum_flags")) {
-          fail(peek().loc, "E0204", "'" + to_std(peek().text) + "' is reserved and not supported by coax0 yet");
-          break;
-        } else if (starts_procedure()) {
-          ProcDecl *p = proc(t);
-          if (!p) break;
-          procs.push_back(p);
-        } else {
-          ConstDecl *c = make<ConstDecl>(arena);
-          c->name = t.text;
-          c->loc = t.loc;
-          if (!(c->expr = expr()) || !expect(Tok::semicolon, "after the constant")) break;
-          constants.push_back(c);
-        }
-        continue;
-      }
-      if (t.kind == Tok::ident && (peek(1).kind == Tok::colon || peek(1).kind == Tok::colonequal)) {
-        fail(t.loc, "E0212", "global variables are not supported by coax0 yet");
-        break;
-      }
-      fail(t.loc, "E0213", "expected '#import' or a declaration 'name :: ...' at the top level");
-      break;
-    }
-    out->src = src;
-    out->imports = to_slice(arena, imports);
-    out->procs = to_slice(arena, procs);
-    out->constants = to_slice(arena, constants);
-    out->structs = to_slice(arena, structs);
-    out->enums = to_slice(arena, enums);
-    out->assertions = to_slice(arena, assertions);
-    out->checks = to_slice(arena, checks);
-    return !failed;
-  }
-};
-
-}  // namespace
-
-bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, File *out) {
-  Parser p{arena, src, &tokens};
-  return p.file(out);
+static_assert((uint32_t)TypeExpr::named == COAX_PS_Tag_type_named-1, "type AST ABI: named");
+static_assert((uint32_t)TypeExpr::array == COAX_PS_Tag_type_array-1, "type AST ABI: array");
+static_assert((uint32_t)TypeExpr::view == COAX_PS_Tag_type_view-1, "type AST ABI: view");
+static_assert((uint32_t)TypeExpr::dynamic == COAX_PS_Tag_type_dynamic-1, "type AST ABI: dynamic");
+static_assert((uint32_t)ExprKind::int_lit == COAX_PS_Tag_expr_int_lit-16, "expression AST ABI: int_lit");
+static_assert((uint32_t)ExprKind::float_lit == COAX_PS_Tag_expr_float_lit-16, "expression AST ABI: float_lit");
+static_assert((uint32_t)ExprKind::bool_lit == COAX_PS_Tag_expr_bool_lit-16, "expression AST ABI: bool_lit");
+static_assert((uint32_t)ExprKind::string_lit == COAX_PS_Tag_expr_string_lit-16, "expression AST ABI: string_lit");
+static_assert((uint32_t)ExprKind::ident == COAX_PS_Tag_expr_ident-16, "expression AST ABI: ident");
+static_assert((uint32_t)ExprKind::call == COAX_PS_Tag_expr_call-16, "expression AST ABI: call");
+static_assert((uint32_t)ExprKind::unary == COAX_PS_Tag_expr_unary-16, "expression AST ABI: unary");
+static_assert((uint32_t)ExprKind::binary == COAX_PS_Tag_expr_binary-16, "expression AST ABI: binary");
+static_assert((uint32_t)ExprKind::run == COAX_PS_Tag_expr_run-16, "expression AST ABI: run");
+static_assert((uint32_t)ExprKind::field == COAX_PS_Tag_expr_field-16, "expression AST ABI: field");
+static_assert((uint32_t)ExprKind::index == COAX_PS_Tag_expr_index-16, "expression AST ABI: index");
+static_assert((uint32_t)ExprKind::slice == COAX_PS_Tag_expr_slice-16, "expression AST ABI: slice");
+static_assert((uint32_t)ExprKind::struct_lit == COAX_PS_Tag_expr_struct_lit-16, "expression AST ABI: struct_lit");
+static_assert((uint32_t)ExprKind::array_lit == COAX_PS_Tag_expr_array_lit-16, "expression AST ABI: array_lit");
+static_assert((uint32_t)ExprKind::cast == COAX_PS_Tag_expr_cast-16, "expression AST ABI: cast");
+static_assert((uint32_t)ExprKind::ifx == COAX_PS_Tag_expr_ifx-16, "expression AST ABI: ifx");
+static_assert((uint32_t)StmtKind::block == COAX_PS_Tag_stmt_block-40, "statement AST ABI: block");
+static_assert((uint32_t)StmtKind::expr == COAX_PS_Tag_stmt_expr-40, "statement AST ABI: expr");
+static_assert((uint32_t)StmtKind::var == COAX_PS_Tag_stmt_var-40, "statement AST ABI: var");
+static_assert((uint32_t)StmtKind::assign == COAX_PS_Tag_stmt_assign-40, "statement AST ABI: assign");
+static_assert((uint32_t)StmtKind::ret == COAX_PS_Tag_stmt_ret-40, "statement AST ABI: ret");
+static_assert((uint32_t)StmtKind::if_ == COAX_PS_Tag_stmt_if_-40, "statement AST ABI: if_");
+static_assert((uint32_t)StmtKind::while_ == COAX_PS_Tag_stmt_while_-40, "statement AST ABI: while_");
+static_assert((uint32_t)StmtKind::for_range == COAX_PS_Tag_stmt_for_range-40, "statement AST ABI: for_range");
+static_assert((uint32_t)StmtKind::for_each == COAX_PS_Tag_stmt_for_each-40, "statement AST ABI: for_each");
+static_assert((uint32_t)StmtKind::break_ == COAX_PS_Tag_stmt_break_-40, "statement AST ABI: break_");
+static_assert((uint32_t)StmtKind::continue_ == COAX_PS_Tag_stmt_continue_-40, "statement AST ABI: continue_");
+static_assert((uint32_t)StmtKind::defer == COAX_PS_Tag_stmt_defer-40, "statement AST ABI: defer");
+static_assert((uint32_t)StmtKind::assert_ == COAX_PS_Tag_stmt_assert_-40, "statement AST ABI: assert_");
+Loc parser_loc(coax_t_PS_Loc l) {return {(int32_t)l.line,(int32_t)l.column,(int32_t)l.offset};}
+Str parser_str(coax_string s) {return {s.data,(int32_t)s.count};}
+template<class T> T *parser_ref(const std::vector<void*> &objects,int64_t id) {return (T*)objects[(size_t)id];}
+template<class T> Slice<T> parser_values(Arena *arena,const std::vector<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t head) {
+  std::vector<T> values;for(auto id=head;id;id=nodes[(size_t)id].next) values.push_back(*parser_ref<T>(objects,id));return to_slice(arena,values);
 }
-
-}  // namespace coax
+template<class T> Slice<T*> parser_pointers(Arena *arena,const std::vector<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t head) {
+  std::vector<T*> values;for(auto id=head;id;id=nodes[(size_t)id].next) values.push_back(parser_ref<T>(objects,id));return to_slice(arena,values);
+}
+}
+namespace {
+std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
+  std::vector<coax_t_PS_Token> input;input.reserve(tokens.size());
+  for(const auto &t:tokens) {
+    const auto text=t.kind==Tok::string_lit?t.string_value:t.text;
+    input.push_back({(uint32_t)t.kind,{text.data,text.count},{t.loc.line,t.loc.col,t.loc.offset},t.int_value,t.float_value,t.float_bits,t.text.count});
+  }
+  return input;
+}
+}
+bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File *out) {
+  auto input=parser_tokens(tokens);
+  const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
+  std::vector<coax_t_PS_Node> nodes((size_t)caps.nodes);std::vector<uint8_t> message((size_t)caps.message);
+  coax_t_PS_State state{};
+  const auto result=PS_parse({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
+      {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()});
+  if(!result.ok) {
+    error_at(src,parser_loc(state.loc),std::string(state.code.data,(size_t)state.code.count).c_str(),
+        std::string((char*)message.data(),(size_t)state.length),std::string(state.fix.data?state.fix.data:"",(size_t)state.fix.count));return false;
+  }
+  std::vector<void*> objects((size_t)state.used+1,nullptr);
+  // Allocate first so all subsequent reference copies are independent of order.
+  for(int64_t id=1;id<=state.used;id++) {
+    const auto k=nodes[(size_t)id].kind;void *p=nullptr;
+    if(k>=1 && k<=4) p=make<TypeExpr>(arena);
+    else if(k>=16 && k<=31) p=make<Expr>(arena);
+    else if(k>=40 && k<=52) p=make<Stmt>(arena);
+    else switch(k) {
+      case COAX_PS_Tag_decl_proc:p=make<ProcDecl>(arena);break;case COAX_PS_Tag_decl_constant:p=make<ConstDecl>(arena);break;
+      case COAX_PS_Tag_decl_struct_:p=make<StructDecl>(arena);break;case COAX_PS_Tag_decl_enum_:p=make<EnumDecl>(arena);break;
+      case COAX_PS_Tag_decl_param:p=make<Param>(arena);break;case COAX_PS_Tag_decl_field:p=make<Field>(arena);break;
+      case COAX_PS_Tag_decl_enum_member:p=make<EnumMember>(arena);break;case COAX_PS_Tag_decl_field_init:p=make<FieldInit>(arena);break;
+      case COAX_PS_Tag_decl_import_:p=make<Import>(arena);break;case COAX_PS_Tag_decl_check:p=make<CheckDecl>(arena);break;
+    }
+    objects[(size_t)id]=p;
+  }
+  // Scalar and reference fields; list value copies happen after this pass.
+  for(int64_t id=1;id<=state.used;id++) {
+    const auto &v=nodes[(size_t)id];const auto loc=parser_loc(v.loc);const auto name=parser_str(v.name);
+    if(v.kind>=1 && v.kind<=4) {
+      auto *p=parser_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;
+      p->length=parser_ref<Expr>(objects,v.a);p->elem=parser_ref<TypeExpr>(objects,v.b);
+    }else if(v.kind>=16 && v.kind<=31) {
+      auto *p=parser_ref<Expr>(objects,id);p->kind=(ExprKind)(v.kind-16);p->loc=loc;p->text=name;p->int_value=v.value;p->float_value=v.floating;
+      if(v.width) p->type=v.width==32?&T_F32:&T_F64;
+      p->op=(Tok)v.op;p->lhs=parser_ref<Expr>(objects,v.a);p->rhs=parser_ref<Expr>(objects,v.b);p->third=parser_ref<Expr>(objects,v.c);
+      p->type_expr=parser_ref<TypeExpr>(objects,v.d);p->trunc=v.flag;
+    }else if(v.kind>=40 && v.kind<=52) {
+      auto *p=parser_ref<Stmt>(objects,id);p->kind=(StmtKind)(v.kind-40);p->loc=loc;p->name=name;p->name2=parser_str(v.name2);p->name2_loc=parser_loc(v.loc2);
+      p->expr=parser_ref<Expr>(objects,v.a);p->expr2=parser_ref<Expr>(objects,v.b);p->uninit=v.flag;
+      if(v.kind==42) p->type_expr=parser_ref<TypeExpr>(objects,v.d);
+      else {p->then_=parser_ref<Stmt>(objects,v.c);p->else_=parser_ref<Stmt>(objects,v.d);}
+      if(v.kind==43) {p->target=parser_ref<Expr>(objects,v.c);p->then_=nullptr;p->op=(Tok)v.op;}
+    }else switch(v.kind) {
+      case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=parser_ref<TypeExpr>(objects,v.a);p->body=parser_ref<Stmt>(objects,v.b);p->export_c=v.flag;p->foreign=v.flag2;break;}
+      case COAX_PS_Tag_decl_constant:{auto *p=parser_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=parser_ref<Expr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_struct_:{auto *p=parser_ref<StructDecl>(objects,id);p->loc=loc;p->name=name;break;}
+      case COAX_PS_Tag_decl_enum_:{auto *p=parser_ref<EnumDecl>(objects,id);p->loc=loc;p->name=name;p->base_expr=parser_ref<TypeExpr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_param:{auto *p=parser_ref<Param>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_field:{auto *p=parser_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);p->init=parser_ref<Expr>(objects,v.b);break;}
+      case COAX_PS_Tag_decl_enum_member:{auto *p=parser_ref<EnumMember>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_field_init:{auto *p=parser_ref<FieldInit>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_import_:{auto *p=parser_ref<Import>(objects,id);p->loc=loc;p->module=name;break;}
+      case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->proc=parser_ref<ProcDecl>(objects,v.a);
+        std::vector<Binding> domains;for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next) domains.push_back({parser_ref<Expr>(objects,nodes[(size_t)b].b),parser_ref<Expr>(objects,nodes[(size_t)b].c)});
+        p->domains=to_slice(arena,domains);break;}
+    }
+  }
+  for(int64_t id=1;id<=state.used;id++) {
+    const auto &v=nodes[(size_t)id];switch(v.kind) {
+      case COAX_PS_Tag_expr_call:case COAX_PS_Tag_expr_array_lit:parser_ref<Expr>(objects,id)->args=parser_pointers<Expr>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_expr_struct_lit:parser_ref<Expr>(objects,id)->fields=parser_values<FieldInit>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_stmt_block:parser_ref<Stmt>(objects,id)->body=parser_pointers<Stmt>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_decl_proc:parser_ref<ProcDecl>(objects,id)->params=parser_values<Param>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_decl_struct_:parser_ref<StructDecl>(objects,id)->fields=parser_values<Field>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_decl_enum_:parser_ref<EnumDecl>(objects,id)->members=parser_values<EnumMember>(arena,nodes,objects,v.head);break;
+    }
+  }
+  std::vector<Import> imports;std::vector<ProcDecl*> procs;std::vector<ConstDecl*> constants;
+  std::vector<StructDecl*> structs;std::vector<EnumDecl*> enums;std::vector<Expr*> assertions;std::vector<CheckDecl*> checks;
+  for(auto id=nodes[(size_t)result.root].head;id;id=nodes[(size_t)id].next) switch(nodes[(size_t)id].kind) {
+    case COAX_PS_Tag_decl_import_:imports.push_back(*parser_ref<Import>(objects,id));break;case COAX_PS_Tag_decl_proc:procs.push_back(parser_ref<ProcDecl>(objects,id));break;
+    case COAX_PS_Tag_decl_constant:constants.push_back(parser_ref<ConstDecl>(objects,id));break;case COAX_PS_Tag_decl_struct_:structs.push_back(parser_ref<StructDecl>(objects,id));break;
+    case COAX_PS_Tag_decl_enum_:enums.push_back(parser_ref<EnumDecl>(objects,id));break;case COAX_PS_Tag_decl_check:checks.push_back(parser_ref<CheckDecl>(objects,id));break;
+    case COAX_PS_Tag_decl_assertion:assertions.push_back(parser_ref<Expr>(objects,nodes[(size_t)id].a));break;
+  }
+  out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
+  out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
+  return true;
+}
+} // namespace coax

@@ -181,7 +181,7 @@ flow in `coax/tests/proto_import.py` and app tests.
 `coax/lib/compiler/lexer.coax` is the authored lexer, including keyword/operator
 selection, locations, recovery, decoded strings, diagnostic text, integer
 accumulation and decimal-to-binary64 conversion. `coax/src/lex.cpp` only supplies
-owned storage and copies the Coax result into the C++ parser ABI; it has no
+owned storage and copies the Coax result into the native token ABI; it has no
 native scanning or numeric-conversion fallback. Token ordinal ABI agreement is
 checked when compiling the bridge.
 
@@ -189,7 +189,7 @@ A checked-in generated C/header seed builds the first frontend. Normal builds
 must regenerate that seed exactly from the Coax source, pass its authority and
 zero-survivor mutation gates, and reproduce the final compiler modules before
 publication. Refreshing the seed is an explicit operation with a previously
-trusted compiler. The seed, C++ parser/checker/evaluator/emitter, host/toolchain
+trusted compiler. The seeds, C++ checker/evaluator/emitter, native tree bridge, host/toolchain
 and native ABI remain trusted; fixed points and finite checks are not proofs of
 bootstrap security or of the whole compiler. Normal bootstrap and iOS code
 generation remain Python-free.
@@ -199,3 +199,26 @@ Check: `coax test coax/lib/compiler/lexer.coax`, `coax mutate` on that file,
 independent exact-decimal and binary64 midpoint oracles, ASan/UBSan byte-pair and
 random-input fuzzing). The real iOS Home/Grid/animation tests exercise product
 code compiled through the Coax lexer.
+
+
+## The language parser is checked Coax, with no native grammar fallback
+
+`coax/lib/compiler/parser.coax` owns grammar/precedence, declaration lookahead,
+syntax diagnostics and bounded indexed tree construction. Source proto import
+syntax, top-level/Metal admission and prefix/count/path checks also live here;
+the driver only resolves/reads/assembles their files. `src/parse.cpp` only
+transports tokens and reconstructs arena objects/lists; native AST kind mappings
+have compile-time ABI assertions. Raw token spelling lengths must survive
+separately from decoded string content. The first syntax error is retained and
+no partial tree is admitted. Node/message capacities come from Coax; recursion
+admits at most 128 active grammar entries, reporting E0221 on exhaustion.
+
+The generated parser C/header seed is explicit, refreshed with a trusted
+compiler, and must reproduce exactly in the Python-free bootstrap. Its actual
+Coax checks and zero-survivor mutation gate run before publication, followed by
+final self-regeneration. C++ checker/evaluator/emitter, toolchain, generated
+seeds and native ABI remain trusted. Compatibility snapshots are not proofs.
+Check: `coax test coax/lib/compiler/parser.coax`, mutation testing on that file,
+`coax/build.sh test`, `coax/tests/parser.py` (independent tree assertions,
+random expressions, bounds/stack limits, actual native bridge and kernel under
+ASan/UBSan), plus the real iOS simulator tests from empty generated outputs.

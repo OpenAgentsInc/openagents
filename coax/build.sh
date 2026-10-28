@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build coax0 to coax/bin/coax: C++20 unity frontend plus a Coax importer
+# Build coax0 to coax/bin/coax: C++20 checker/emitter plus Coax lexer, parser and importer
 # compiled to C11. Host C/C++ compilers and shell tools only.
 #   coax/build.sh          build
 #   coax/build.sh test     build, then run tests/run.sh
@@ -28,7 +28,8 @@ trap 'rm -rf "$work"' EXIT
   printf ')COAX_FP";\n'
 } > "$work/proto_runtime.inc"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/lexer.c -o "$work/seed-lexer.o"
-"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-lexer.o"
+"${CC:-cc}" "${c_flags[@]}" -c bootstrap/parser.c -o "$work/seed-parser.o"
+"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-lexer.o" "$work/seed-parser.o"
 gate() {
   if "$@" > "$work/gate.log" 2>&1; then return 0; fi
   cat "$work/gate.log" >&2
@@ -41,24 +42,36 @@ if ! cmp bootstrap/lexer.c "$work/lexer.c" || ! cmp bootstrap/lexer.h "$work/lex
   echo "Lexer seed is stale. Regenerate it with coax/refresh-lexer-seed.sh using a trusted compiler." >&2
   exit 1
 fi
+gate "$work/stage0" test lib/compiler/parser.coax
+gate "$work/stage0" mutate lib/compiler/parser.coax
+"$work/stage0" c lib/compiler/parser.coax --library --header "$work/parser.h" > "$work/parser.c"
+if ! cmp bootstrap/parser.c "$work/parser.c" || ! cmp bootstrap/parser.h "$work/parser.h"; then
+  echo "Parser seed is stale. Regenerate it with coax/refresh-parser-seed.sh using a trusted compiler." >&2
+  exit 1
+fi
 gate "$work/stage0" test lib/proto/wire.coax
 gate "$work/stage0" mutate lib/proto/wire.coax
 gate "$work/stage0" test lib/proto/fingerprint.coax
 gate "$work/stage0" mutate lib/proto/fingerprint.coax
 gate "$work/stage0" test lib/proto/importer.coax
 gate "$work/stage0" mutate lib/proto/importer.coax
-cat lib/compiler/lexer.coax lib/proto/fingerprint.coax lib/proto/importer.coax > "$work/importer.coax"
+cat lib/compiler/lexer.coax lib/compiler/parser.coax lib/proto/fingerprint.coax lib/proto/importer.coax > "$work/importer.coax"
 "$work/stage0" c "$work/importer.coax" --library --header "$work/proto_importer.h" > "$work/proto_importer.c"
 "${CC:-cc}" "${c_flags[@]}" -c "$work/proto_importer.c" -o "$work/proto_importer.o"
 "${CXX:-c++}" "${host_flags[@]}" -I "$work" -o "$work/coax" src/main.cpp "$work/proto_importer.o"
 "$work/coax" c "$work/importer.coax" --library > "$work/rebuilt.c"
 cmp "$work/proto_importer.c" "$work/rebuilt.c"
 gate "$work/coax" test lib/compiler/lexer.coax
+gate "$work/coax" test lib/compiler/parser.coax
 "$work/coax" c lib/compiler/lexer.coax --library --header "$work/final-lexer.h" > "$work/final-lexer.c"
 cmp bootstrap/lexer.c "$work/final-lexer.c"
+"$work/coax" c lib/compiler/parser.coax --library --header "$work/final-parser.h" > "$work/final-parser.c"
+cmp bootstrap/parser.c "$work/final-parser.c"
 # Publish only a fully checked build. C/header remain available for native tests.
 cp "$work/lexer.c" bin/lexer.c
 cp "$work/lexer.h" bin/lexer.h
+cp "$work/parser.c" bin/parser.c
+cp "$work/parser.h" bin/parser.h
 cp "$work/proto_runtime.inc" bin/proto_runtime.inc
 cp "$work/proto_importer.c" bin/proto_importer.c
 cp "$work/proto_importer.h" bin/proto_importer.h

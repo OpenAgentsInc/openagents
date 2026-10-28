@@ -14,10 +14,10 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.8.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.9.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
-The Coax lexer feeds a C++20 parser/checker that processes one source file and executes bounded
+The Coax lexer and parser feed a C++20 checker that processes one source file and executes bounded
 compile-time work, and emits one self-contained C11 file. The host C compiler
 builds it into a program, or into an object file plus a generated header that
 C, C++ and Swift hosts call. Generated code includes small print, checked
@@ -222,18 +222,26 @@ loop with its outputs compared and its frame cost measured, before anything in
 the app or its CMake/Xcode paths changes. See §20 of the specification for
 later metadata, build, parallelism, browser and reload gates.
 
-## Coax lexer and bootstrap seed
+## Coax frontend and bootstrap seeds
 
 `lib/compiler/lexer.coax` owns byte classification, keywords, longest-match
 operators, nested comments, escapes, source locations, recovery, numeric
 conversion and diagnostic text. `src/lex.cpp` only adapts tokens, owned strings,
-locations and diagnostics to the existing C++ parser ABI. Binary64 values cross
+locations and diagnostics to the existing native token ABI. Binary64 values cross
 that ABI as raw bits copied into the parser's existing double field; the host
 does not parse numbers.
 
-The first compiler uses the generated C seed in `bootstrap/`. Normal builds
-rebuild that C/header from Coax and refuse a mismatch, run checks/mutation gates,
-link the regenerated lexer with the Coax importer/fingerprints, then check final
+`lib/compiler/parser.coax` owns the accepted grammar, precedence, declaration
+lookahead, indexed tree construction, syntax diagnostics and nesting/storage
+admission. It also admits `#import_proto` syntax and import prefixes/counts
+before native file I/O. `src/parse.cpp` copies that tree into the checker's existing arena
+objects; it contains no grammar or fallback. AST tag mappings have compile-time
+ABI assertions. Raw token lengths stay separate from decoded string bytes.
+Parsing stops with the first error; a failed result admits no partial tree.
+
+The first compiler uses the generated C seeds in `bootstrap/`. Normal builds
+rebuild both C/header pairs from Coax and refuse a mismatch, run checks/mutation gates,
+link the regenerated lexer/parser with the Coax importer/fingerprints, then check final
 self-regeneration before publishing. A seed refresh is explicit and uses an
 already trusted compiler. See [the bootstrap contract](bootstrap/README.md).
 

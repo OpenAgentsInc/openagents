@@ -1,5 +1,5 @@
 // coax0 driver and C++ unity frontend. The build-only stage0 compiles the
-// Coax descriptor importer to C11, which is linked into the final compiler.
+// Coax compiler modules to C11, which are linked into the final compiler.
 //
 //   coax run     file.coax [--release]               compile and run
 //   coax build   file.coax [-o out] [--release] [--keep-c]
@@ -38,7 +38,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.8.0";
+static const char *VERSION = "coax0 0.9.0";
 
 int32_t g_error_count = 0;
 bool g_json_errors = false;
@@ -151,34 +151,17 @@ static int run_process(const std::vector<std::string> &args) {
 static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Token> &tokens) {
   struct Request { std::string path, prefix; Loc loc; int end; };
   std::vector<Request> requests;
-  std::set<std::string> prefixes;
-  int depth = 0;
-  for (size_t i = 0; i < tokens.size(); i++) {
-    const Token &t = tokens[i];
-    if (t.kind == Tok::lbrace) depth++;
-    if (t.kind == Tok::rbrace) depth--;
-    if (t.kind != Tok::directive || !str_eq(t.text, "import_proto")) continue;
-    if (depth || i + 4 >= tokens.size() || tokens[i + 1].kind != Tok::string_lit ||
-        !str_eq(tokens[i + 2].text, "as") || tokens[i + 3].kind != Tok::ident || tokens[i + 4].kind != Tok::semicolon) {
-      error_at(src, t.loc, "E0501", "expected #import_proto \"profile.pb\" as Prefix; at top level");
-      return false;
-    }
-    if (opts.metal) {
-      error_at(src, t.loc, "E0504", "proto codecs cannot be compiled as Metal");
-      return false;
-    }
-    std::string path = to_std(tokens[i + 1].string_value), prefix = to_std(tokens[i + 3].text);
-    if (path.find('\0') != std::string::npos || !prefixes.insert(prefix).second) {
-      error_at(src, t.loc, "E0501", "NUL path or duplicate proto prefix");
-      return false;
-    }
-    requests.push_back({path, prefix, t.loc, tokens[i + 4].loc.offset + 1});
-    i += 4;
+  auto input=parser_tokens(tokens);
+  const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
+  std::vector<coax_t_PS_Import> records((size_t)caps.imports);
+  const auto scan=PS_imports({input.data(),(int64_t)input.size()},{records.data(),(int64_t)records.size()},opts.metal);
+  if(scan.code.count) {
+    error_at(src,parser_loc(scan.loc),std::string(scan.code.data,(size_t)scan.code.count).c_str(),
+        std::string(scan.message.data,(size_t)scan.message.count));return false;
   }
-  if (requests.empty()) return true;
-  if (requests.size() > 8) {
-    error_at(src, requests[0].loc, "E0502", "at most eight descriptor imports per source");
-    return false;
+  if(!scan.count) return true;
+  for(int64_t i=0;i<scan.count;i++) {
+    const auto &r=records[(size_t)i];requests.push_back({to_std(parser_str(r.path)),to_std(parser_str(r.prefix)),parser_loc(r.loc),(int)r.end});
   }
   src->original_text = src->text;
   std::string generated;

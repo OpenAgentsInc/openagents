@@ -1,4 +1,4 @@
-# Descriptor imports in coax0 0.8.0
+# Descriptor imports in coax0 0.9.0
 
 `#import_proto` generates real Coax declarations from a binary
 `google.protobuf.FileDescriptorSet`. Root `proto/` remains the schema source.
@@ -23,13 +23,13 @@ SHA-256, runtime-boundary extraction and the complete provenance/source
 envelope. There is no C++ hash, formatter or source-assembly fallback.
 
 `coax/build.sh` builds a temporary stage0 compiler with proto imports disabled
-using the generated Coax lexer seed. The lexer source must reproduce its
+using generated Coax lexer and parser seeds. Each source must reproduce its
 checked-in C/header exactly and pass its own authority/mutation gates.
 Stage0 checks and mutation-tests the fingerprint module, importer and wire
-core, then concatenates the two compiler modules and emits one C11
+core, then concatenates the lexer, parser, fingerprint and importer modules and emits one C11
 library/header. The host C compiler compiles it, and the C++20 frontend links it into the final compiler. Both stages must emit identical C
 for the importer before publication. There is no old parser or generator
-fallback, checked-in generated C seed, Python step or protoc build dependency.
+fallback, descriptor C seed, Python step or protoc build dependency.
 
 The runtime remains authoritative Coax in `lib/proto/wire.coax` (pure policy)
 and `memory.coax` (two address wrappers). Shell byte copies embed those sources;

@@ -42,6 +42,7 @@ const ErrorInfo ERRORS[] = {
     {"E0218", "a range loop has one variable", "for i: 0..<n { } has a counter only. Index variables belong to loops over arrays, views and strings."},
     {"E0219", "enum needs an underlying type", "An enum names its integer width: Outcome :: enum u8 { ... }. The width is part of its layout."},
     {"E0220", "malformed check", "#test takes a name string and a block: #test \"refunds never exceed payment\" { ... }. #forall takes one or more bindings, each a type or a lo..<hi range, then a block: #forall a: u8, b: 0..<10 { ... }."},
+    {"E0221", "parser resource limit", "The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure."},
 
     // ---- E03xx: checker ----
     {"E0301", "type not supported yet", "The type is in the plan (spec 6.2) but coax0 does not implement it, for example dynamic arrays '[..] T' or vectors."},

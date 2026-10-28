@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.8.0 can report. This appendix is generated from the
+Every error `coax0` 0.9.0 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
@@ -11,8 +11,6 @@ checker, `E04` compile-time evaluation (Chapter 4), `E05` descriptor imports.
 With `--json`, each
 diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 `message` and `fix`.
-
-## E01xx: lexer
 
 
 ## E01xx: lexer
@@ -55,6 +53,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0218` | a range loop has one variable | for i: 0..<n { } has a counter only. Index variables belong to loops over arrays, views and strings. |
 | `E0219` | enum needs an underlying type | An enum names its integer width: Outcome :: enum u8 { ... }. The width is part of its layout. |
 | `E0220` | malformed check | #test takes a name string and a block: #test "refunds never exceed payment" { ... }. #forall takes one or more bindings, each a type or a lo..<hi range, then a block: #forall a: u8, b: 0..<10 { ... }. |
+| `E0221` | parser resource limit | The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure. |
 
 ## E03xx: checker
 
