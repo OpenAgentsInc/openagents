@@ -45,12 +45,19 @@ token, put it in the command line or paste it into logs. The env file needs
 one `GITBOOK_TOKEN=...` assignment; the script does not execute the file.
 
 The publisher checks that the worktree is clean and HEAD equals remote main,
-checks the existing space's identity, requests an import of `coax/book`, then
-verifies the imported commit and complete SUMMARY page inventory. It does not
-change visibility, create a site or export GitBook content back into Git.
-An API error or timeout is not success; inspect the space before retrying
-an import with an unknown outcome.
+checks the existing space's identity, creates a GitBook draft and publishes
+the SUMMARY page inventory atomically. Existing page IDs and URLs remain; new
+sections become overview pages because the authoring API does not create
+Git Sync's navigation-only groups. Relative book links become stable page
+references, including links to newly inserted pages. The script verifies the
+draft inventory and merged revision. It does not change visibility, create a
+site or export content back into Git.
 
-Finally inspect the public book and its new pages. An imported API revision
+An API error or timeout is not success. Inspect the printed draft before
+retrying; `--change-request ID` resumes that draft for the same source commit.
+The legacy repository-import endpoint can accept a request without advancing
+an unconnected space; the publisher therefore uses the draft API.
+
+Finally inspect the public book and its new pages. A merged API revision
 is useful evidence, but a public render and working crosslinks verify the
 reader's path too. Existing page URLs should remain stable.
