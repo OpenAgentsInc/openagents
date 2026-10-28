@@ -1,0 +1,162 @@
+// Bounded endian and masked byte operations. All arithmetic is defined in both
+// checked and wrapping profiles. Equality/selection branch only on public
+// lengths/alias facts and scan the full admitted length. The "ct" names state
+// the intended algorithm, not a platform side-channel or erasure guarantee.
+// Runtime pointer-range observations live only in bytes-memory.coax.
+#authority;
+CB_MAX_BYTES :: 1048576;
+CB_MAX64 :: cast(u64) 18446744073709551615;
+CB_MAX32 :: cast(u32) 4294967295;
+CbU32 :: struct { value: u32; ok: bool; }
+CbU64 :: struct { value: u64; ok: bool; }
+
+#forall "span checks match a subtraction-only public bounds model" total: -1..<10, at: -1..<12, n: -1..<12 {
+  expected := total >= 0 && at >= 0 && n >= 0;
+  if expected { expected = at <= total; }
+  if expected { expected = n <= total - at; }
+  #assert cb_span(total, at, n) == expected;
+}
+#test "span limits refuse unbounded or overflowing metadata" {
+  #assert cb_span(1048576, 1048576, 0) && !cb_span(1048577, 0, 0);
+  #assert !cb_span(9223372036854775807, 0, 0);
+  #assert !cb_span(16, 9223372036854775807, 1) && !cb_span(16, 0, 9223372036854775807);
+  #assert !cb_span(16, -9223372036854775808, 0);
+}
+#test "endian words keep guards and round-trip all wrapper widths" {
+  data := [10] u8.[165, 1, 35, 69, 103, 137, 171, 205, 239, 165];
+  #assert cb_load_be32(data[..], 1).ok && cb_load_be32(data[..], 1).value == 0x01234567;
+  #assert cb_load_le32(data[..], 1).ok && cb_load_le32(data[..], 1).value == 0x67452301;
+  #assert cb_load_be64(data[..], 1).ok && cb_load_be64(data[..], 1).value == 0x0123456789ABCDEF;
+  #assert cb_load_le64(data[..], 1).ok && cb_load_le64(data[..], 1).value == 0xEFCDAB8967452301;
+  #assert cb_store_be32(data[..], 1, 0x12345678) && cb_load_be32(data[..], 1).value == 0x12345678;
+  #assert data[1] == 0x12 && data[4] == 0x78;
+  #assert cb_store_le32(data[..], 1, 0x12345678) && data[1] == 0x78 && data[4] == 0x12;
+  #assert cb_store_be64(data[..], 1, CB_MAX64) && cb_load_be64(data[..], 1).value == CB_MAX64;
+  #assert cb_store_le64(data[..], 1, 0x0123456789ABCDEF) && data[1] == 0xEF && data[8] == 1;
+  #assert cb_store_be64(data[..], 1, 0x0123456789ABCDEF) && data[1] == 1 && data[8] == 0xEF;
+  #assert data[0] == 165 && data[9] == 165;
+  #assert !cb_load_word(data[..], 0, 3, true).ok && !cb_store_word(data[..], 0, 0, 3, true);
+  #assert !cb_store_word(data[..], 0, 4294967296, 4, true);
+  #assert cb_store_word(data[..], 0, 4294967295, 4, true) && cb_load_be32(data[..], 0).value == CB_MAX32;
+}
+#forall "endian refusals happen before any byte is changed" width: 4..<9, at: -1..<11 {
+  data := [10] u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  old := data;
+  expected := (width == 4 || width == 8) && at >= 0 && at <= 10 && width <= 10 - at;
+  r := cb_load_word(data[..], at, width, false);
+  #assert r.ok == expected;
+  #assert cb_store_word(data[..], at, 7, width, false) == expected;
+  if !expected { #assert r.value == 0; for i: 0..<10 { #assert data[i] == old[i]; } }
+}
+#forall "mask uses exactly the low bit without unsigned underflow" bit: 0..<16 {
+  expected := ifx bit % 2 == 0 then cast(u64) 0 else CB_MAX64;
+  #assert cb_mask(cast(u64) bit) == expected;
+}
+#test "all word bits select independently" {
+  #assert cb_mask(CB_MAX64) == CB_MAX64 && cb_mask(9223372036854775808) == 0;
+  #assert cb_ct_select64(CB_MAX64, 7, 9) == 7 && cb_ct_select64(0, 7, 9) == 9;
+  #assert cb_ct_select32(CB_MAX32, 7, 9) == 7 && cb_ct_select32(0, 7, 9) == 9;
+  #assert cb_ct_select64(0x5555555555555555, 0xAAAAAAAAAAAAAAAA, CB_MAX64) == 0xAAAAAAAAAAAAAAAA;
+  #assert cb_ct_select32(0x55555555, 0xAAAAAAAA, CB_MAX32) == 0xAAAAAAAA;
+}
+#forall "every byte value and position affects the equality mask" value: 0..<256, position: 0..<4 {
+  a := [4] u8.[0, 17, 85, 255]; b := a;
+  b[position] = cast(u8) value;
+  expected := ifx value == cast(int) a[position] then CB_MAX64 else cast(u64) 0;
+  #assert cb_ct_equal(a[..], b[..]) == expected;
+}
+#test "empty and mismatched byte views have explicit masks" {
+  a: [1] u8; b: [2] u8;
+  #assert cb_ct_equal(a[0..<0], b[0..<0]) == CB_MAX64;
+  #assert cb_ct_equal(a[..], b[..]) == 0;
+}
+#forall "copy and select use the supplied alias facts only after capacity checks" overlap_a: bool, overlap_b: bool, capacity: 0..<6, bit: 0..<2 {
+  mask := ifx bit == 0 then cast(u64) 0 else CB_MAX64;
+  a := [4] u8.[0, 17, 85, 255]; b := [4] u8.[7, 9, 11, 13]; out := [6] u8.[165, 165, 165, 165, 165, 165];
+  expected := capacity >= 4 && !overlap_a && !overlap_b;
+  #assert cb_select_checked(mask, a[..], b[..], out[0..<capacity], overlap_a, overlap_b) == expected;
+  for i: 0..<6 {
+    want := cast(u8) 165;
+    if expected && i < 4 { want = ifx mask == 0 then b[i] else a[i]; }
+    #assert out[i] == want;
+  }
+  for i: 0..<6 { out[i] = 165; }
+  copied := capacity >= 4 && !overlap_a;
+  #assert cb_copy_checked(a[..], out[0..<capacity], overlap_a) == copied;
+  for i: 0..<6 { #assert out[i] == (ifx copied && i < 4 then a[i] else cast(u8) 165); }
+}
+#test "select and copy handle empty views and mismatched inputs" {
+  a: [1] u8; b: [2] u8; out := [1] u8.[165];
+  #assert cb_copy_checked(a[0..<0], out[0..<0], true);
+  #assert cb_select_checked(CB_MAX64, a[0..<0], b[0..<0], out[0..<0], true, true);
+  #assert !cb_select_checked(0, a[..], b[..], out[..], false, false) && out[0] == 165;
+  #assert !cb_copy_checked(a[..], out[..], true);
+  #assert !cb_select_checked(0, a[..], a[..], out[..], true, false);
+  #assert !cb_select_checked(0, a[..], a[..], out[..], false, true);
+}
+
+cb_span :: (total: int, at: int, n: int) -> bool #export_c {
+  if total < 0 || total > CB_MAX_BYTES || at < 0 || n < 0 || at > total { return false; }
+  return n <= total - at;
+}
+cb_load_word :: (data: [] u8, at: int, width: int, big: bool) -> CbU64 {
+  result: CbU64;
+  if (width != 4 && width != 8) || !cb_span(data.count, at, width) { return result; }
+  value: u64;
+  for i: 0..<width {
+    index := ifx big then at + i else at + width - 1 - i;
+    value = (value << 8) | cast(u64) data[index];
+  }
+  result.value = value; result.ok = true;
+  return result;
+}
+cb_store_word :: (out: [] u8, at: int, value: u64, width: int, big: bool) -> bool {
+  if (width != 4 && width != 8) || !cb_span(out.count, at, width) { return false; }
+  if width == 4 && value > 4294967295 { return false; }
+  for i: 0..<width {
+    index := ifx big then at + width - 1 - i else at + i;
+    out[index] = cast(u8) ((value >> (i * 8)) & 255);
+  }
+  return true;
+}
+cb_load_be32 :: (data: [] u8, at: int) -> CbU32 #export_c {
+  loaded := cb_load_word(data, at, 4, true); result: CbU32;
+  result.value = cast(u32) loaded.value; result.ok = loaded.ok; return result;
+}
+cb_load_le32 :: (data: [] u8, at: int) -> CbU32 #export_c {
+  loaded := cb_load_word(data, at, 4, false); result: CbU32;
+  result.value = cast(u32) loaded.value; result.ok = loaded.ok; return result;
+}
+cb_load_be64 :: (data: [] u8, at: int) -> CbU64 #export_c { return cb_load_word(data, at, 8, true); }
+cb_load_le64 :: (data: [] u8, at: int) -> CbU64 #export_c { return cb_load_word(data, at, 8, false); }
+cb_store_be32 :: (out: [] u8, at: int, value: u32) -> bool #export_c { return cb_store_word(out, at, cast(u64) value, 4, true); }
+cb_store_le32 :: (out: [] u8, at: int, value: u32) -> bool #export_c { return cb_store_word(out, at, cast(u64) value, 4, false); }
+cb_store_be64 :: (out: [] u8, at: int, value: u64) -> bool #export_c { return cb_store_word(out, at, value, 8, true); }
+cb_store_le64 :: (out: [] u8, at: int, value: u64) -> bool #export_c { return cb_store_word(out, at, value, 8, false); }
+
+// (bit & 1) is 0 or 1, so multiplication cannot overflow even in checked C.
+// The barrier obscures the resulting mask; it does not erase memory.
+cb_mask :: (bit: u64) -> u64 #export_c { return value_barrier((bit & 1) * CB_MAX64); }
+cb_ct_select64 :: (mask: u64, a: u64, b: u64) -> u64 #export_c { return b ^ ((a ^ b) & value_barrier(mask)); }
+cb_ct_select32 :: (mask: u32, a: u32, b: u32) -> u32 #export_c { return b ^ ((a ^ b) & value_barrier(mask)); }
+cb_ct_equal :: (a: [] u8, b: [] u8) -> u64 #export_c {
+  // Equal counts share one bounds check; the host still owns both pointers.
+  if a.count != b.count || !cb_span(a.count, 0, a.count) { return 0; }
+  diff: u64;
+  for i: 0..<a.count { diff |= cast(u64) (a[i] ^ b[i]); }
+  // OR of byte differences is <=255. diff+255 is <=510, giving nonzero in
+  // bit8 without underflow, signed conversion or a secret comparison/branch.
+  return cb_mask(((diff + 255) >> 8) ^ 1);
+}
+cb_copy_checked :: (source: [] u8, out: [] u8, overlap: bool) -> bool {
+  if !cb_span(source.count, 0, source.count) || !cb_span(out.count, 0, source.count) { return false; }
+  if source.count > 0 && overlap { return false; }
+  for i: 0..<source.count { out[i] = source[i]; }
+  return true;
+}
+cb_select_checked :: (mask: u64, a: [] u8, b: [] u8, out: [] u8, overlap_a: bool, overlap_b: bool) -> bool {
+  if a.count != b.count || !cb_span(a.count, 0, a.count) || !cb_span(out.count, 0, a.count) { return false; }
+  if a.count > 0 && (overlap_a || overlap_b) { return false; }
+  for i: 0..<a.count { out[i] = cast(u8) cb_ct_select64(mask, cast(u64) a[i], cast(u64) b[i]); }
+  return true;
+}

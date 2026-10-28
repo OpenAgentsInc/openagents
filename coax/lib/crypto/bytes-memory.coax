@@ -1,0 +1,9 @@
+// Runtime address observation only. Limits, alias decisions and byte behavior
+// are checked in bytes.coax. The native host lends truthful valid view spans.
+#load "bytes.coax";
+cb_copy :: (source: [] u8, out: [] u8) -> bool #export_c {
+  return cb_copy_checked(source, out, bytes_overlap(source, out));
+}
+cb_ct_select_bytes :: (mask: u64, a: [] u8, b: [] u8, out: [] u8) -> bool #export_c {
+  return cb_select_checked(mask, a, b, out, bytes_overlap(a, out), bytes_overlap(b, out));
+}
