@@ -1,7 +1,7 @@
-# A Coax web framework for openagents.com (proposal)
+# Coaxial: the Coax web framework for openagents.com (proposal)
 
-Status: **proposal, 2026-10-28. None of this is built.** Working name:
-**Braid** (see [Naming](#naming); the owner picks). Owner decisions needed
+Status: **proposal, 2026-10-28. None of this is built.** Name:
+**Coaxial** (see [Naming](#naming)). Owner decisions needed
 are collected in [Open questions](#open-questions).
 
 This document specifies how openagents.com moves onto Coax and Metareal: the
@@ -71,7 +71,7 @@ Facts this proposal starts from, checked 2026-10-28:
 ## Architecture
 
 ```
-            dev: braid serve (Mac)                    prod: Cloud Run + CDN
+            dev: coax serve (Mac)                    prod: Cloud Run + CDN
             watches .coax / .wgsl / data              same server binary
                    │ WebSocket: rebuilt modules             │ HTTPS
                    ▼                                        ▼
@@ -150,7 +150,7 @@ mean a deploy never breaks a tab that is already open.
 
 ## Fast iteration
 
-Development runs `braid serve` on the Mac: the site server in dev mode plus a
+Development runs `coax serve` on the Mac: the site server in dev mode plus a
 watcher. It rebuilds only what changed and pushes it to every open tab over
 a WebSocket. Four tiers, fastest first:
 
@@ -258,7 +258,7 @@ document's; the roadmap milestones they feed are named.
   this Mac; one Coax function compiled to wasm32 and called from host.js;
   WebGPU clears and draws. Feeds roadmap R1's wasm32 feasibility test
   (types, layout, a host import, memory, a source location).
-- **W1. Dev loop.** `braid serve`, the four reload tiers, the module data /
+- **W1. Dev loop.** `coax serve`, the four reload tiers, the module data /
   state split, and errors shown with `.coax` locations. Exit: the targets
   above measured on this Mac.
 - **W2. The Grid.** `grid.coax`, `player.coax`, `camera.coax` and the
@@ -288,25 +288,24 @@ is worth having only if it's a thing people build with (the site, and later
 other people's worlds). If not, call it "Metareal for the web" and skip the
 name.
 
-Candidates, each from how coaxial cable is built or used:
+The name is **Coaxial** (owner's direction, 2026-10-28): the cable's full
+name, Coax carried all the way to the screen and the server. The commands
+are Coax subcommands, not a second tool: `coax serve` (dev server and
+reload) and `coax deploy`.
 
-| Name | Why |
+Considered and set aside:
+
+| Name | Why not |
 | --- | --- |
-| **Braid** (recommended) | The woven shield around coax's core. The framework is the layer woven around the Coax engine that carries it to the browser and the server. Short, says "weave together", and works as a command: `braid serve`, `braid deploy`. |
-| Feedline | A coax line that carries signal from the transmitter to the antenna: Coax to the screen. Clear but long. |
-| Ferrule | The sleeve that crimps a connector onto coax. Precise, obscure. |
-| Splice | Joining live lines without dropping the signal: hot reload. Also generic. |
-| Jack | The socket you plug into. Short, but too common to search for. |
-
-Placeholder until decided: `braid` for the command, `coax/web.md` for this
-spec.
+| Coaxium | The starship fuel in Star Wars (a Lucasfilm term); reads as a reference and risks a trademark problem on a public product |
+| Triax | Triaxial cable is coax with one more shield, which fits, but it's less obvious |
+| Braid, Feedline, Ferrule, Splice, Jack | Cable parts; less direct than the cable itself |
 
 ## Open questions
 
 Decisions for the owner. Each has a recommendation.
 
-1. **Name.** Braid, another from the list, or no separate name?
-   *Recommend Braid.*
+1. **Name.** Decided: Coaxial, with `coax serve` and `coax deploy`.
 2. **WebGPU only?** Safari, Chrome and Edge ship WebGPU; older browsers and
    some Linux and Android setups don't. Options: WebGPU only with a text
    fallback page (the `index.md` content), or also a WebGL2 path (a second
@@ -341,7 +340,7 @@ Decisions for the owner. Each has a recommendation.
 
 ## What I need from you
 
-- Answers to questions 1, 2, 7 and 10. The rest have defaults I'll use
+- Answers to questions 2, 7 and 10. The rest have defaults I'll use
   unless you say otherwise.
 - A yes to install upstream LLVM (question 3).
 - The list for question 7: what openagents.com must keep doing on day one.
