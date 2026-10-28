@@ -60,7 +60,7 @@ the TypeScript services that aren't Coaxial pages. It leaves the browser.
 ## 3. Layers and modules
 
 ```
-coax/lib/crypto/            no Nostr knowledge; reusable by Metareal, wallet tools
+coax/lib/crypto/            no Nostr knowledge; reusable by Verse, wallet tools
   bytes.coax                  ct_eq, ct_select, zeroize, load/store be32/le32/be64
   sha256.coax                 SHA-256, streaming + one-shot; tagged hash helper
   hmac.coax                   HMAC-SHA256 (RFC 2104)

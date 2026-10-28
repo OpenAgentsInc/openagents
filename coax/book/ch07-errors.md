@@ -670,14 +670,14 @@ exist in release builds.
 ## In the real world: the wallet's rules
 
 The OpenAgents iOS wallet keeps its payment rules in
-`metareal/wallet.coax`, and it follows exactly this split. When the
+`verse/wallet.coax`, and it follows exactly this split. When the
 person confirms a payment, Swift asks Coax whether it may be sent:
 
 ```jai
 Pay :: enum u8 { idle; quoted; sending; succeeded; not_sent; unknown; }
 Verdict :: enum u8 { send; over_cap; over_limit; expired; bad_amount; busy; }
 
-metareal_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
+verse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
                              now: int, expires: int) -> Verdict #export_c {
   if state != Pay.quoted { return Verdict.busy; }
   if amount <= 0 || fee < 0 || amount > MAX_SAT { return Verdict.bad_amount; }

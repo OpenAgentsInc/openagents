@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Coax → C11 → wasm32 for the browser: one Coax file plus its C face, and
 # any Coax libraries the face calls, each its own C library and header
-# (Haunt.h for haunt.coax), as the iOS app links metareal's.
+# (Haunt.h for haunt.coax), as the iOS app links the engine's.
 #   coax/web/wasm.sh APP.coax FACE.c OUT.wasm [LIBRARY.coax...]
 # Needs upstream LLVM (clang + wasm-ld) and wasi-libc; on this Mac:
 #   brew install llvm lld wasi-libc wasi-runtimes

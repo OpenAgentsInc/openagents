@@ -389,9 +389,9 @@ elements it points at can, so `all[i] = moved(all[i], dt)` writes into
 positions after two steps. Use this style when you have many values to
 update, or when the values are too large to copy back and forth cheaply.
 
-> Note: The procedures in the native Metareal home use the first style
-> almost everywhere. `metareal/player.coax` advances the player with
-> `metareal_player_advance_among :: (p: Player, frame: f32, ...) -> Player`,
+> Note: The procedures in the native Verse home use the first style
+> almost everywhere. `verse/player.coax` advances the player with
+> `verse_player_advance_among :: (p: Player, frame: f32, ...) -> Player`,
 > and the host keeps the returned `Player`. A procedure that hands back the
 > whole new state is easy to test, because the old state is still there to
 > compare against.
@@ -690,7 +690,7 @@ state, make it the zero member, so a fresh value means something:
 Pay :: enum u8 { idle; quoted; sending; succeeded; not_sent; unknown; }
 ```
 
-That's the payment state from `metareal/wallet.coax`. Its first member,
+That's the payment state from `verse/wallet.coax`. Its first member,
 `idle`, is zero, so a zeroed payment is an idle one.
 
 If an enum has no sensible zero, as `Kind` doesn't, give it a field default
@@ -825,8 +825,8 @@ one `return`. The last branch is a plain `else`, which makes the chain
 complete by construction, at the cost of treating any new member as "a
 shot". Choose the final `else` with that in mind.
 
-> Note: `metareal/wallet.coax` drives a real payment through its states
-> this way. `metareal_wallet_step :: (f: Flow, e: Event) -> Flow` is an
+> Note: `verse/wallet.coax` drives a real payment through its states
+> this way. `verse_wallet_step :: (f: Flow, e: Event) -> Flow` is an
 > `if e == Event.quote { ... } else if e == Event.confirm { ... }` chain,
 > and a `#forall state: Pay, e: Event, sends: 0..<2` check walks every state
 > and event pair to prove things like "a payment is never sent twice".
@@ -1116,7 +1116,7 @@ when reflection generates the encoder, a person still has to decide what
 some fields mean. A field that refers to another entity might be saved as an
 entity ID, as an asset reference, or not at all; the type alone can't say.
 
-The Metareal cast loader is a real example of the other direction. It
+The Verse cast loader is a real example of the other direction. It
 reads a binary asset file into Coax structs one field at a time, at offsets
 the file format defines, with a little-endian helper:
 
@@ -1126,7 +1126,7 @@ u32_at :: (b: [] u8, at: int) -> u32 {
 }
 ```
 
-That's from `metareal/cast.coax`. Every read is bounds-checked, and the
+That's from `verse/cast.coax`. Every read is bounds-checked, and the
 struct it fills can change shape without changing the file. Chapter 6 looks
 at byte views like `b` in detail.
 

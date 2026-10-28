@@ -1,13 +1,13 @@
 // A realm's three passes: the sky, the house and the HUD. Every number they
 // draw from comes from Coax: the view, the eye, the lights and each
-// object's place and colour from metareal/haunt.coax and player.coax
+// object's place and colour from verse/haunt.coax and player.coax
 // (through realm-face.c), the HUD's strokes and panels from realm.coax.
 //
 // The house is the iOS stage's (apps/openagents-ios/OpenAgents/Platform/
 // Stages.metal haunt_vertex, haunt_fragment and haunt_sky_fragment), ported
-// by hand; its light, fog and the tone curve are metareal's own functions
+// by hand; its light, fog and the tone curve are the Verse engine's own functions
 // (haunt-light.coax, light.coax) converted by coax/web/wgsl.py at build time
-// into the generated blocks below, as is the HUD bar (metareal_bar). The
+// into the generated blocks below, as is the HUD bar (verse_bar). The
 // phone adds a bloom pass over the scene; the browser doesn't yet, so the
 // tone curve is applied as each pixel is drawn.
 
@@ -20,9 +20,9 @@ struct U {
 }
 @group(0) @binding(0) var<uniform> u: U;
 
-fn tone(c: vec3f) -> vec3f { return vec3f(metareal_tone(c.r), metareal_tone(c.g), metareal_tone(c.b)); }
+fn tone(c: vec3f) -> vec3f { return vec3f(verse_tone(c.r), verse_tone(c.g), verse_tone(c.b)); }
 
-// A HUD panel's dark glass behind its text, in metareal_bar's shape (the
+// A HUD panel's dark glass behind its text, in verse_bar's shape (the
 // plain corners, top right and bottom left, cut at 45°): faint scanlines and
 // a glow inside its edge, orange.
 fn glass(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
@@ -103,7 +103,7 @@ fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
   if (tex.a < 0.35) { discard; }
   let n = normalize(s.normal);
   let moon = max(0.0, dot(n, normalize(vec3f(-0.55, 0.55, -0.62))));
-  var lit = vec3f(metareal_haunt_ambient(n.y, 0.0), metareal_haunt_ambient(n.y, 1.0), metareal_haunt_ambient(n.y, 2.0))
+  var lit = vec3f(verse_haunt_ambient(n.y, 0.0), verse_haunt_ambient(n.y, 1.0), verse_haunt_ambient(n.y, 2.0))
           + moon * vec3f(0.5625, 0.6375, 0.8625) * 0.48;
   let count = u32(u.eye.w);
   for (var i = 0u; i < count; i++) {
@@ -111,18 +111,18 @@ fn word(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
     let delta = l.position.xyz - s.world;
     let d = length(delta);
     let lambert = max(0.08, dot(n, delta / max(d, 0.001)));
-    lit += l.color.rgb * metareal_haunt_attenuate(d, l.position.w) * lambert * 2.2;
+    lit += l.color.rgb * verse_haunt_attenuate(d, l.position.w) * lambert * 2.2;
   }
   let colour = tex.rgb * s.tint;
   let d = length(u.eye.xyz - s.world);
   let f = u.flash.x;
-  let c = vec3f(metareal_haunt_shade(colour.r, lit.r, s.glow, d, 0.0, f),
-                metareal_haunt_shade(colour.g, lit.g, s.glow, d, 1.0, f),
-                metareal_haunt_shade(colour.b, lit.b, s.glow, d, 2.0, f));
+  let c = vec3f(verse_haunt_shade(colour.r, lit.r, s.glow, d, 0.0, f),
+                verse_haunt_shade(colour.g, lit.g, s.glow, d, 1.0, f),
+                verse_haunt_shade(colour.b, lit.b, s.glow, d, 2.0, f));
   return vec4f(panels(s.pos.xy, tone(c)), 1.0);
 }
 
-// ---- generated: metareal/light.coax (metareal_bar, metareal_tone) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/light.coax (verse_bar, verse_tone) by coax/web/wgsl.py; do not edit
 fn coax_p_hi(l_a: f32, l_b: f32) -> f32 {
   if ((l_a > l_b))
   {
@@ -170,7 +170,7 @@ fn coax_p_smooth(l_a: f32, l_b: f32, l_x: f32) -> f32 {
   var l_t: f32 = coax_p_sat(((l_x - l_a) / (l_b - l_a)));
   return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
 }
-fn metareal_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_press: f32, l_flash: f32) -> f32 {
+fn verse_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_press: f32, l_flash: f32) -> f32 {
   var coax_t24: f32;
   var coax_t25: f32;
   var coax_t26: f32;
@@ -207,13 +207,13 @@ fn metareal_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_pr
   var l_glow: f32 = (coax_t29 * coax_t34);
   return ((l_glass + (l_edge * (0.649999976 + (0.5 * l_flash)))) + l_glow);
 }
-fn metareal_tone(l_light: f32) -> f32 {
+fn verse_tone(l_light: f32) -> f32 {
   return (1.0 - exp(((-l_light) * 1.35000002)));
 }
 // ---- end generated
 
-// ---- generated: metareal/haunt-light.coax (metareal_haunt_ambient, metareal_haunt_attenuate, metareal_haunt_shade) by coax/web/wgsl.py; do not edit
-fn metareal_haunt_ambient(l_ny: f32, l_channel: f32) -> f32 {
+// ---- generated: verse/haunt-light.coax (verse_haunt_ambient, verse_haunt_attenuate, verse_haunt_shade) by coax/web/wgsl.py; do not edit
+fn verse_haunt_ambient(l_ny: f32, l_channel: f32) -> f32 {
   var l_sky: f32 = select(select(0.150000006, 0.0900000036, (l_channel < 1.5)), 0.0799999982, (l_channel < 0.5));
   var l_ground: f32 = select(select(0.0199999996, 0.0250000004, (l_channel < 1.5)), 0.0299999993, (l_channel < 0.5));
   return (l_ground + ((l_sky - l_ground) * ((l_ny * 0.5) + 0.5)));
@@ -225,11 +225,11 @@ fn coax_p_hl_max(l_a: f32, l_b: f32) -> f32 {
   }
   return l_b;
 }
-fn metareal_haunt_attenuate(l_d: f32, l_r: f32) -> f32 {
+fn verse_haunt_attenuate(l_d: f32, l_r: f32) -> f32 {
   var l_q: f32 = coax_p_hl_max(0.0, (1.0 - (l_d / coax_p_hl_max(l_r, 0.00999999978))));
   return (l_q * l_q);
 }
-fn metareal_haunt_shade(l_albedo: f32, l_light: f32, l_glow: f32, l_distance: f32, l_channel: f32, l_flash: f32) -> f32 {
+fn verse_haunt_shade(l_albedo: f32, l_light: f32, l_glow: f32, l_distance: f32, l_channel: f32, l_flash: f32) -> f32 {
   var l_fog: f32 = (1.0 - exp((((-l_distance) * l_distance) * 0.000120999997)));
   var l_fogcolor: f32 = select(select(0.0700000003, 0.0399999991, (l_channel < 1.5)), 0.0350000001, (l_channel < 0.5));
   var l_lit: f32 = ((l_albedo * ((l_light + (l_glow * 2.0)) + (l_flash * 2.0))) * 1.29999995);
@@ -259,10 +259,10 @@ struct V {
   let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   let d = length(vec2f(along, v.place.y));
   if (v.tint.w > 3.5) {
-    // A HUD bar (ui.coax bar), as splash.wgsl draws one: metareal_bar mirrored
+    // A HUD bar (ui.coax bar), as splash.wgsl draws one: verse_bar mirrored
     // in x, so its cuts are on the plain corners.
     let p = v.place / (1.0 - 0.03 * v.bar.x);
-    let c = metareal_bar(-p.x, p.y, v.shape.x, v.shape.y, v.shape.z, u.time, v.bar.x, v.bar.y);
+    let c = verse_bar(-p.x, p.y, v.shape.x, v.shape.y, v.shape.z, u.time, v.bar.x, v.bar.y);
     return vec4f(v.tint.rgb * c * v.shape.w * u.fade, 1.0);
   }
   let core = 1.0 - smoothstep(v.shape.y - 0.5, v.shape.y + 0.6, d);

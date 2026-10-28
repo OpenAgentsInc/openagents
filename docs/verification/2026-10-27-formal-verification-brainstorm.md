@@ -22,7 +22,7 @@ It is grounded in what this repository holds:
 - `proto/` and its frozen baselines;
 - the NIP mirrors in `nips/`;
 - `coax/`, the compiler;
-- `metareal/`, the native home.
+- `verse/`, the native home.
 
 Payment and relay runtimes aren't in this checkout after the reset; where
 this note talks about them, it means the spec's designs and the Coax code
@@ -342,7 +342,7 @@ and we model their observable outcomes: succeeded, failed or unknown.
   baselines are Bitcoin Core's previous-releases tests for us. Keep them,
   and add missing-versus-zero presence and data-class strictness (§35.6)
   as exhaustive checks over small messages.
-- **The Metareal migration.** Migrations must be idempotent and
+- **The engine rename migration.** Migrations must be idempotent and
   collision-free, and never reinterpret a signature under a new domain.
   These are tested today; enumerate small catalogs too.
 - **Runs, coordination and automation.** No effect without its approval; a
@@ -353,7 +353,7 @@ and we model their observable outcomes: succeeded, failed or unknown.
   5) gets TSan in the suite as Bitcoin Core runs it. Later, effect
   annotations should be checked by the compiler the way Clang checks
   `GUARDED_BY`.
-- **The iOS home.** Its protobuf admission (`metareal/home.coax`) is a
+- **The iOS home.** Its protobuf admission (`verse/home.coax`) is a
   bounded decoder. It is the first `coax fuzz` target, and it already has
   an ASan/UBSan harness.
 
@@ -559,7 +559,7 @@ second toolchain for everything.
 | V0. Inventory | List every invariant the protocol spec states: its owner, its layer and where it's checked. Mark the authority-critical code. | A table here, linked from `INVARIANTS.md` |
 | V1. Native checks | `#forall`, `#test` and `coax test` with their own budget; `#authority` and `coax mutate`; MKT deadline and amount rules as checked Coax functions. **Initial runner landed in 0.5.0, hardened in 0.5.1**; domain-specific exit coverage, `assume` and production adoption remain open | `coax/build.sh test` runs `tests/verify.py`; counterexamples print as values; `examples/money.coax` kills every mutant |
 | V2. Money types | `distinct`, `#range`, checked arithmetic by default in authority modules; `MAX_MSAT` and checked sums | Unit mixing, out-of-range amounts and silent wrap are compile errors or traps in every build |
-| V3. Fuzzing and data | `coax fuzz` with emitted coverage, starting with `metareal/home.coax`; `#embed` with pinned Nostr, JCS and BIP vectors; sanitizer jobs through `COAX_CC` | A fuzz corpus and vector suites in the local test run |
+| V3. Fuzzing and data | `coax fuzz` with emitted coverage, starting with `verse/home.coax`; `#embed` with pinned Nostr, JCS and BIP vectors; sanitizer jobs through `COAX_CC` | A fuzz corpus and vector suites in the local test run |
 | V4. Machines | `state_machine` with built-in exploration and `#consistency`; Lightning attempts, x402, spend grants, ledger and MKT orders written with them | Each machine explored to a stated depth in minutes; traces kept as tests |
 | V5. Release discipline | `coax build --manifest`, independent attestation, and the evaluator-versus-C random-program check | Two builders produce identical manifests for a release |
 

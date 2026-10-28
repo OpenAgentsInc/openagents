@@ -4,8 +4,8 @@
 
 This is the defining protocol plan for **every OpenAgents surface**, including
 web, mobile, desktop, coding agents, cloud hosts, decisions, payments and Verse.
-**Coax is the implementation target. Metareal is the engine; Verse is the
-experience built on it.** Shared engine contracts stay under
+**Coax is the implementation target. Verse is the engine and the
+experience it runs; its worlds are realms.** Shared engine contracts stay under
 `openagents.engine.*`; world/product contracts stay under `openagents.verse.*`.
 
 Recovered `.proto` files and frozen descriptors define published shapes.
@@ -21,7 +21,7 @@ restored and executable. New alpha files cover experimental options and the
 first Verse world/presence projection; they do not amend Nostr, REACH or realm
 transports. Coax's `#import_proto` and production decoders are not implemented.
 
-The [Metareal migration](../../proto/migrations/README.md) names old IDs, new
+The [engine rename migration](../../proto/migrations/README.md) names old IDs, new
 canonical IDs and the required reader/writer transition. `legacy/<key>` in
 this catalog refers to that registry, never to a literal wire ID. Frozen
 snapshots and original signed records retain their bytes. Only the typed
@@ -48,7 +48,7 @@ future design sketches do not amend them.
 
 This chapter is the specification and build plan for `openagents.verse`, the
 Protobuf namespace for everything 3D that OpenAgents makes: the Verse
-metaverse, its worlds, zones, planets and the galaxy; avatars, agents and
+metaverse, its worlds, zones, realms and the galaxy; avatars, agents and
 townsfolk; presence, chat and social; the authoritative realm service;
 simulation, physics, combat and game rules; authored world documents and
 their edits, publishing and offers; assets, private assets, presentation and
@@ -57,7 +57,7 @@ building and in-world terminals; replays and film; and playtest telemetry.
 
 It covers what is built today, in this repository (`crates/verse*`,
 `crates/metareal*`, `apps/metareal`, the NIP-MV client) and in
-`Metareal source archive`. It also covers what the glossary, the NIPs and
+`Verse source archive`. It also covers what the glossary, the NIPs and
 the design documents say we intend to build. The aim is that one versioned,
 public schema tree describes the whole 3D vision. Anyone, inside or outside
 OpenAgents, should be able to implement a compatible client, host, tool or
@@ -100,11 +100,11 @@ four families:
 - **Length-prefixed JSON on the chamber wire.** `verse-world::service`, wire
   version 34, carries realm login, commands, movement confirmations and
   spatial deltas.
-- **Ad-hoc JSON over HTTP and `postMessage`.** In Metareal engine: the
+- **Ad-hoc JSON over HTTP and `postMessage`.** In Verse engine: the
   `verse.world.v1` world document, `/api/world`, `/api/planets`,
   `/api/change`, `/api/events`, `/api/presence` and `/api/npc/ask`, plus the
   iOS `legacy/save-bridge-v1`, `verseShell` and `verseWallet` bridges. In this
-  repository: the Metareal tools host protocol (versions 1 to 8), `ritual.json`
+  repository: the Verse tools host protocol (versions 1 to 8), `ritual.json`
   and `chamber.json`.
 - **Named JSON documents.** `openagents.verse-world-tree.v1`,
   `openagents.verse-npc.v1`, `openagents.verse.private-asset.v1`,
@@ -116,14 +116,14 @@ Every one of these is reasonable on its own terms. Together they have three
 costs:
 
 1. **Each language writes its own reader.** Rust, C++, JavaScript, Swift,
-   Kotlin and Python each re-implement the same shapes. The Metareal engine HTTP
+   Kotlin and Python each re-implement the same shapes. The Verse engine HTTP
    presence route was inventoried with a 7-number look while `LookSpec` has 12;
    verify the current route before migrating it.
    Mismatches like that are what independent hand-written readers produce.
 2. **Nobody outside can build against us.** There is no single place an
    outside developer can read "this is a Verse pose", "this is a world
-   document" or "this is how you publish a planet".
-3. **Product truth outruns contract truth.** Planets, offers, townsfolk,
+   document" or "this is how you publish a realm".
+3. **Product truth outruns contract truth.** Realms, offers, townsfolk,
    rumors, shared bodies and the realm wire all ship without a schema that
    says what they are.
 
@@ -153,7 +153,7 @@ limits:
 `crates/engine-proto` owns generation (protoc 29.3, Prost 0.13.5, Nanopb
 0.4.9.1, Python protobuf 5.29.3), validation, compatibility snapshots
 (`compatibility/*.descriptor.pb`), cross-language fixtures and the
-hash-pinned export bundle. Metareal engine imports that bundle into
+hash-pinned export bundle. Verse engine imports that bundle into
 `third_party/openagents-engine-proto`, and Swift uses the C++ codec through a
 C ABI. The proto README sets the rules this document inherits:
 
@@ -167,9 +167,9 @@ C ABI. The proto README sets the rules this document inherits:
 - Nostr, Loro, signed bytes and provider protocols keep their own formats.
 
 The current implementation target is Coax in this repository. The engine is
-Metareal; the Verse is its product/world layer. The scalar bootstrap and its
+the Verse engine; the Verse (its realms) is the product/world layer. The scalar bootstrap and its
 [spec](../../coax/spec.md) do not yet implement aggregate types or protobuf
-decoders. Current root contracts and the Metareal rename migration are listed
+decoders. Current root contracts and the Verse rename migration are listed
 in [the protocol guide](../../proto/README.md).
 
 Preserve native Metal, host-owned storage, the C ABI and GPU buffer layouts
@@ -183,7 +183,7 @@ claims that the deleted application crates have been restored.
 format with its destination. In short:
 
 - **Presence and social.** NIP-MV, world chat, rooms, private messages, Gym
-  notes, the NOSTR tab, Metareal engine HTTP presence and chat.
+  notes, the NOSTR tab, Verse engine HTTP presence and chat.
 - **Authoritative play.** The chamber/realm wire (v34), login challenge,
   character roles, commands, movement, spatial deltas, transfers, parties,
   guilds, trades, persistence and checkpoints (`verse-chamber-owned-v24`),
@@ -194,8 +194,8 @@ format with its destination. In short:
     atmosphere and portals.
   - The world model: the world tree, `legacy/world-v1` and
     `legacy/command-v1`.
-  - Hosting and publishing: the Metareal tools host protocol v1–v8, prop
-    worlds, publish, offers, edit log, world settings, planets, the galaxy
+  - Hosting and publishing: the Verse tools host protocol v1–v8, prop
+    worlds, publish, offers, edit log, world settings, realms, the galaxy
     and awards.
 - **Characters and agents.** Accounts, sessions, player keys, `LookSpec`,
   outfits, inventory, NPCs, brains, routines, rumors, the town clock,
@@ -225,7 +225,7 @@ changes need a separate reviewed amendment before implementation.
    role, grant, scope, expiry and revocation (SEC-001, INV-01).
 2. **Four data classes never share a writable field.** These are the
    *authored document*, *runtime state*, *presence* and *release identity*
-   (Metareal INV-05). Every message declares its class (§6). Promoting runtime
+   (Verse INV-05). Every message declares its class (§6). Promoting runtime
    state into a document is an explicit capture or bake command, never a
    field copy.
 3. **Clients send intent, never results.** Commands carry intent and aim.
@@ -309,11 +309,11 @@ proto/openagents/verse/
   place/v1/                  world tree, places, affordances, object states, known subgraphs
   agent/v1/                  agents in the world: seats, studio, crew, workshop agents
   quest/v1/                  quests, steps, facts, triggers, rewards (projections of XP)
-  galaxy/v1/                 planets, galaxy, visits, invitations, the universe picker
+  galaxy/v1/                 realms, galaxy, visits, invitations, the universe picker
   asset/v1/                  packs, catalogs, private assets, placements, provenance, budgets
   presentation/v1/           atmosphere, environment, lighting, look grades, quality, particles
   environment/v1/            water, weather, destruction, terrain events
-  host/v1/                   client↔host bridges: Metareal tools host ops, mobile shell, game bridge
+  host/v1/                   client↔host bridges: Verse tools host ops, mobile shell, game bridge
   gym/v1/                    Gym building projections: boards, notes, recipes (views only)
   terminal/v1/               in-world screen bindings to NIP-TERM terminals
   media/v1/                  in-world voice/video placement (LIVE references), film takes and cuts
@@ -437,8 +437,8 @@ uses an explicit `preserved` block a package declares.
 | Presence (poses, entity state) | Each publisher about its own keys; no validation | Unchanged. Marked `PRESENCE`; never accepted as proof of position by any authority |
 | Shared bodies (`verse-bare`, `verse-coast`) | Last toucher by stamp; a toy with no stakes | Unchanged. The profile declares `AUTHORITY_SERVERLESS_STAMPED`; any stakes need `AUTHORITY_HOSTED` |
 | Realm/chamber play | `verse-world` host, 30 Hz | Unchanged. `realm.v1` intents in, receipts and deltas out |
-| Metareal multiplayer (designed) | 60 Hz authoritative tick, session pins release | `realm.v1` with `sim.v1` tick profile; release pinned in session open |
-| World documents | Metareal engine server owner check (`may_own`); Metareal tools project service | `authoring.v1` commands with revision fences; the project service is the only writer |
+| Verse multiplayer (designed) | 60 Hz authoritative tick, session pins release | `realm.v1` with `sim.v1` tick profile; release pinned in session open |
+| World documents | Verse engine server owner check (`may_own`); Verse tools project service | `authoring.v1` commands with revision fences; the project service is the only writer |
 | Publication | Owner POST; designed signed channel CAS | `publish.v1`; Published only after channel CAS (PUB-003) |
 | NPC routines and rumors | Pure functions of seed and clock; owner admits villagers | Unchanged; documents are owner-written, runtime is deterministic |
 | XP, awards | Referee key signs NIP-XP | Verse only reads; `quest.v1` mirrors references |
@@ -468,7 +468,7 @@ uses an explicit `preserved` block a package declares.
 
 - **Coordinates.** Use `openagents.engine.v1.CoordinateConvention`
   (`Y_UP_METERS_Z_FORWARD`), which NIP-MV shares: right-handed, +Y up,
-  meters, rest facing +Z. Metareal tools's authored model states forward as
+  meters, rest facing +Z. Verse tools's authored model states forward as
   −Z. That is a view convention of its editor, recorded per document as a
   convention enum, never inferred.
 - **Floating point.** Runtime poses use `float` (`engine.v1.Vec3`). Global
@@ -623,7 +623,7 @@ production decoder is claimed. The larger catalog below remains the target.
 | --- | --- | --- | --- | --- |
 | `verse.common.v1` | Shared IDs, poses, cells, stamps, profile refs, content pins, refusals | (types) | NIP-MV, engine.v1, contracts.md | Designed |
 | `verse.world.v1` | World definitions, zone catalog, portals, arrivals, atmosphere refs, profile tuples, instances | Release, View | NIP-MV `33300`, `ZoneId`, `openagents.zones.v1`, `zone-rules.md` | Partial (implemented as JSON/Rust) |
-| `verse.doc.v1` | Authored world document: areas, doors, objects, NPC placements, voices, triggers, foliage, settings, planets | Document | `verse.world.v1` (Metareal engine), `haunt.v1`, `legacy/world-v1` | Implemented as JSON |
+| `verse.doc.v1` | Authored world document: areas, doors, objects, NPC placements, voices, triggers, foliage, settings, realms | Document | `verse.world.v1` (Verse engine), `haunt.v1`, `legacy/world-v1` | Implemented as JSON |
 | `verse.authoring.v1` | Commands, operations, preconditions, revisions, house deltas, prefabs, structural building model, merges, presence of editors | Intent, Receipt, Document | `legacy/command-v1`, house delta, host `propose` ops, `collaboration.md` | Partial |
 | `verse.publish.v1` | Releases, channels, signature statements (mirrors), publication state, offers, edit log, world settings, ownership | Release, Intent, Receipt | `legacy/release-v1`, `legacy/channel-v1`, `legacy/signature-v1`, `/api/world`, `/api/change`, `/api/log` | Partial |
 | `verse.presence.v1` | NIP-MV bodies: entity state, pose frames, gestures, zone commands, shared bodies and snapshots, object states, looks | Presence | NIP-MV, `crates/verse-net/src/mv.rs`, `web/grid-session.js` | Implemented as JSON |
@@ -631,16 +631,16 @@ production decoder is claimed. The larger catalog below remains the target.
 | `verse.realm.v1` | Authoritative session wire: hello, login challenge, character select, commands, confirmations, spatial deltas, acks, transfers, instances, errors | Intent, Runtime, Receipt | `verse-world::service` wire 34, `chamber.json` | Implemented as JSON |
 | `verse.sim.v1` | Tick profiles, physics profiles, determinism scope, input replay, game replay, checkpoints index | Runtime, Release | `verse.input-replay.v1`, `verse.game-replay.v1`, `physics` crate, kernel ABI | Partial |
 | `verse.rules.v1` | Rules profiles, abilities, spells, effects, conditions, dice reveal, combat events, encounter phases | Release, Runtime | `combat-model.md`, `verse-world/src/content.rs` | Implemented in Rust |
-| `verse.character.v1` | Accounts (views), characters, roles, appearance (`LookSpec`, rigs, shades), outfits, equipment, inventory, progression, settings | Runtime, Document, View | Realm accounts, `LookSpec`, `verse-content` outfits, Metareal engine players | Partial |
+| `verse.character.v1` | Accounts (views), characters, roles, appearance (`LookSpec`, rigs, shades), outfits, equipment, inventory, progression, settings | Runtime, Document, View | Realm accounts, `LookSpec`, `verse-content` outfits, Verse engine players | Partial |
 | `verse.npc.v1` | Townsfolk, towns, brains, routines, rumors, the town clock, dialogue lines, ask requests, knowledge | Document, Runtime, Intent | `openagents.verse-npc.v1`, `verse-town.v1`, `verse-rumor.v1`, `/api/npc/ask`, host v8 `talk` | Implemented as JSON |
 | `verse.place.v1` | World tree: districts, buildings, rooms, objects, standing points, affordances, object state, known subgraphs, place choice | Document, Presence | `openagents.verse-world-tree.v1` (`crates/world-tree`) | Implemented as JSON |
 | `verse.agent.v1` | Agents in the world: seats, stations, studio snapshots/updates, crew, workshop agent views, greetings, scans | View, Presence | `agent-studio.md`, `workshop-agent.md`, `crew.md` | Implemented (views) |
 | `verse.quest.v1` | Quests, steps, facts, trigger-driven progress, tutorial quests, XP projections | Document, Runtime, View | `haunt_quest.h`, `quest-*` commands, NIP-XP `30193` references | Partial |
-| `verse.galaxy.v1` | Planets, planet setup, galaxy listing and polling, visits, invitations, universe picker entries | Document, View, Intent | `/api/planets`, `/api/award`, galaxy pages | Implemented as JSON |
+| `verse.galaxy.v1` | Realms, realm setup, galaxy listing and polling, visits, invitations, universe picker entries | Document, View, Intent | `/api/planets`, `/api/award`, galaxy pages | Implemented as JSON |
 | `verse.asset.v1` | Pack descriptors, catalogs, private assets, placements, source manifests, licenses, provenance, decode budgets, cache policy | Release, Document | VTP3, `openagents.verse.private-asset.v1`, source manifests, `asset-packs.js` | Implemented as JSON/binary |
 | `verse.presentation.v1` | Atmosphere, environment (`env`), grades, lighting profiles, quality tiers, device-profile refs, particles, art styles | Document, Release | `look{}`, `env`, zone atmosphere, `particles.md`, `legacy/device-profile-v1` | Implemented as JSON |
 | `verse.environment.v1` | Water and sea state, weather schedules, ice, destruction hierarchy and events, terrain edits | Runtime, Document | `water.md`, `coast.md`, `destructible-buildings.md` | Partial/Designed |
-| `verse.host.v1` | Client↔host bridges: Metareal tools host ops (v1–v8 consolidated), mobile shell bridge, mobile game bridge, native save bridge, playables | Intent, Receipt, View | `metareal-host-protocol.md`, iOS `verseShell`/`legacy/save-bridge-v1`, `mobile-games.md` | Implemented as JSON |
+| `verse.host.v1` | Client↔host bridges: Verse tools host ops (v1–v8 consolidated), mobile shell bridge, mobile game bridge, native save bridge, playables | Intent, Receipt, View | `metareal-host-protocol.md`, iOS `verseShell`/`legacy/save-bridge-v1`, `mobile-games.md` | Implemented as JSON |
 | `verse.gym.v1` | Gym building views: board, run observations, recipes (refs), EVALS board rows, Gym notes | View | `gym.md`, `gym_evals.rs`, `gym_notes.rs` | Implemented (views) |
 | `verse.terminal.v1` | In-world screens bound to NIP-TERM terminals; layout; share views | Intent, View | `in-world-terminal.md` | Designed |
 | `verse.media.v1` | In-world voice/video placement (refs to LIVE), spatial audio zones, film takes, shots, cuts | View, Release | `film.md`, `crates/verse-film`, LIVE | Partial |
@@ -838,7 +838,7 @@ message ZoneEntry {
 enum ZoneAvailability { ZONE_AVAILABILITY_UNSPECIFIED = 0; ZONE_AVAILABILITY_OPEN = 1;
   ZONE_AVAILABILITY_HIDDEN = 2; ZONE_AVAILABILITY_DESKTOP_ONLY = 3; ZONE_AVAILABILITY_RETIRED = 4; }
 
-// A running copy of a world (realm instance, hosted planet, REACH chamber).
+// A running copy of a world (realm instance, hosted realm, REACH chamber).
 message WorldInstance { common.v1.WorldId world = 1; optional string instance = 2; optional uint32 wire = 3;
   common.v1.ContentPin content = 4; optional uint32 population = 5; optional uint32 capacity = 6; }
 
@@ -870,8 +870,8 @@ target for creator worlds.
 ### 10.3 `openagents.verse.doc.v1`
 
 Purpose: one typed authored world document for every editable place,
-including the Haunted House, every planet, the Sandbox, personal worlds,
-hosted social zones and future creator worlds. It unifies Metareal engine's
+including the Haunted House, every realm, the Sandbox, personal worlds,
+hosted social zones and future creator worlds. It unifies Verse engine's
 `verse.world.v1` JSON, the frozen `haunt.v1` data, and the structural
 parts of `legacy/world-v1`. `DOCUMENT` class: strict and
 revision-carrying.
@@ -896,11 +896,11 @@ message WorldDocument {
   repeated TriggerZone zones = 14;              // ≤ 256
   repeated FoliageLayer foliage = 15;           // ≤ 32
   WorldSettings settings = 16;
-  PlanetSetup planet = 17;                      // present for planets; galaxy.v1 lists them
+  RealmSetup realm = 17;                      // present for realms; galaxy.v1 lists them
   repeated Building buildings = 18;             // structural model (authoring.v1 validates topology)
   DocumentKind kind = 19;
 }
-enum DocumentKind { DOCUMENT_KIND_UNSPECIFIED = 0; DOCUMENT_KIND_HOUSE = 1; DOCUMENT_KIND_PLANET = 2;
+enum DocumentKind { DOCUMENT_KIND_UNSPECIFIED = 0; DOCUMENT_KIND_HOUSE = 1; DOCUMENT_KIND_REALM = 2;
   DOCUMENT_KIND_SANDBOX = 3; DOCUMENT_KIND_PERSONAL = 4; DOCUMENT_KIND_ZONE = 5; DOCUMENT_KIND_TOWN = 6; }
 
 message Arrival { optional float x = 1; optional float z = 2; optional float yaw_deg = 3; optional string area = 4; optional string cue = 5; }
@@ -969,10 +969,10 @@ message WorldSettings { ViewSettings view = 1; optional bool open = 2; }        
 message ViewSettings { CameraView view = 1; optional bool allow_toggle = 2; }
 enum CameraView { CAMERA_VIEW_UNSPECIFIED = 0; CAMERA_VIEW_THIRD = 1; CAMERA_VIEW_FIRST = 2; CAMERA_VIEW_TOP = 3; }
 
-message PlanetSetup { optional string id = 1; optional string owner = 2; PlanetEnvironment env = 3; optional string kind = 4;
+message RealmSetup { optional string id = 1; optional string owner = 2; RealmEnvironment env = 3; optional string kind = 4;
   optional string name = 5; common.v1.ArtStyle art = 6; CameraView camera = 7; DayCycle cycle = 8; }
-enum PlanetEnvironment { PLANET_ENVIRONMENT_UNSPECIFIED = 0; PLANET_ENVIRONMENT_VILLAGE = 1;
-  PLANET_ENVIRONMENT_FOREST = 2; PLANET_ENVIRONMENT_CEMETERY = 3; }
+enum RealmEnvironment { REALM_ENVIRONMENT_UNSPECIFIED = 0; REALM_ENVIRONMENT_VILLAGE = 1;
+  REALM_ENVIRONMENT_FOREST = 2; REALM_ENVIRONMENT_CEMETERY = 3; }
 
 enum DayCycle { DAY_CYCLE_UNSPECIFIED = 0; DAY_CYCLE_CYCLE = 1; DAY_CYCLE_ALWAYS_DAY = 2; DAY_CYCLE_ALWAYS_NIGHT = 3; }
 
@@ -1019,7 +1019,7 @@ document.
 Purpose: the only way an authored document changes. Typed operations in a
 command envelope, with revision fences, preconditions, idempotency and
 receipts. This is the proto form of `legacy/command-v1` and the
-Metareal engine house delta. It also covers the Metareal tools host `propose`,
+Verse engine house delta. It also covers the Verse tools host `propose`,
 `undo` and `redo` ops and the in-world edit mode.
 
 ```proto
@@ -1111,7 +1111,7 @@ Rules, carried from `contracts.md` and `collaboration.md`:
 
 Purpose: how a document becomes something others can visit, and how
 others propose changes to it. This covers release identity, channels,
-publication state, the Metareal engine publish/offer/edit-log flow, world
+publication state, the Verse engine publish/offer/edit-log flow, world
 settings and ownership.
 
 ```proto
@@ -1143,7 +1143,7 @@ message ChannelRef {                            // mirror of legacy/channel-v1 +
 enum PublicationState { PUBLICATION_STATE_UNSPECIFIED = 0; PUBLICATION_STATE_BUILDING = 1;
   PUBLICATION_STATE_UPLOADING = 2; PUBLICATION_STATE_READY = 3; PUBLICATION_STATE_PUBLISHED = 4; PUBLICATION_STATE_FAILED = 5; }
 
-// The lightweight per-world publish used by planets and the Haunted House today.
+// The lightweight per-world publish used by realms and the Haunted House today.
 message PublishWorldRequest { optional string world = 1; doc.v1.WorldDocument doc = 2; optional string summary = 3;
   optional uint64 expected_version = 4; optional string request_id = 5; }
 message PublishedWorld { doc.v1.WorldDocument doc = 1; optional uint64 version = 2; optional string published_by = 3;
@@ -1173,14 +1173,14 @@ message WorldOwnership { optional bool claimed = 1; optional bool you = 2; optio
 
 Rules:
 
-- **Only the channel CAS publishes.** In the full Metareal tools flow,
+- **Only the channel CAS publishes.** In the full Verse tools flow,
   *Published* means the channel compare-and-swap succeeded (PUB-003).
   Uploading or signing is not enough.
 - **Channel references.** Clients persist `(sequence, ref digest, trust version)`
   and refuse older ones. A different digest at the same sequence is a
   fork. Rollback is a higher sequence pointing at an older release.
 - **Sessions pin a release** (INV-07).
-- **Lightweight publish** (planets, the house). The owner check is the
+- **Lightweight publish** (realms, the house). The owner check is the
   server's. A non-owner receives `NOT_ADMITTED` together with an offer
   hint. They never receive a silent failure.
 - **Money fields** are msat decimal strings and are views of the payments
@@ -1216,7 +1216,7 @@ message EntityState {                           // kind 33301
   optional string status = 11;                           // ≤ 64 bytes, no controls
   ObjectState object = 12;                      // role=object
   BodySnapshot bodies = 13;                     // role=bodies
-  common.v1.AppearanceRef appearance = 14;   // richer appearance (metareal seed/look), optional
+  common.v1.AppearanceRef appearance = 14;   // richer appearance (verse seed/look), optional
 }
 message PoseFrame {                             // kind 23300; ≤ 4 KiB
   optional uint32 content_version = 1;
@@ -1347,13 +1347,13 @@ Rules:
   name tags within 60 m, at most 24 shown.
 
 Replaces: the hand-built tag logic in `verse-net::chat`,
-`web/grid-session.js`, Metareal engine `/api/chat/<room>` (≤500 lines kept,
+`web/grid-session.js`, Verse engine `/api/chat/<room>` (≤500 lines kept,
 name ≤40, text ≤500), and the visits qualification's message shapes.
 
 ### 10.8 `openagents.verse.realm.v1`
 
 Purpose: the authoritative session wire between a Verse client and a world
-host. It covers the chamber over TLS and REACH today and Metareal
+host. It covers the chamber over TLS and REACH today and Verse
 multiplayer next. This is the largest proto-native win: wire version 34 is
 length-prefixed JSON today, and proto makes it compact, typed and the same
 in every client.
@@ -1442,7 +1442,7 @@ Rules:
   `rate_limited`.
 - **Tick and scale.** Today: 30 Hz with four 120 Hz physics substeps, a
   64 m replication radius and up to 64 cooperative players per simulation.
-  Metareal multiplayer declares 60 Hz through the tick profile. Neither
+  Verse multiplayer declares 60 Hz through the tick profile. Neither
   value is hard-coded in the schema.
 - **One wire version.** The proposed realm proto wire starts at `wire = 35` and carries
   every feature that versions 2 to 34 added (presentation, telegraphs,
@@ -1560,7 +1560,7 @@ message CharacterSummary { optional string id = 1; optional string name = 2; opt
 
 message Appearance {                            // uses common.v1.LookSpec / AvatarLook
   optional uint32 seed = 1;
-  common.v1.LookSpec look = 2;                  // metareal figure
+  common.v1.LookSpec look = 2;                  // verse figure
   common.v1.AvatarLook rig = 3;                 // NIP-MV rig/shade
   repeated EquipmentSlot equipment = 4;
   repeated float tint = 5;
@@ -1749,8 +1749,8 @@ message StepDef { optional string id = 1; optional string label = 2; StepWhen wh
 message StepWhen { oneof cond { string fact = 1; string trigger = 2; string event = 3; } }   // closed: named facts only
 
 message QuestFacts {                            // quest-facts; RUNTIME, local to the page or host
-  optional bool editing = 1; optional bool touch = 2; optional bool planet = 3; optional bool name_empty = 4; optional bool survey_open = 5; optional bool theirs = 6;
-  optional string pane = 7; optional bool holding = 8; optional bool planet_made = 9; optional bool invited = 10; optional bool survey_answered = 11; }
+  optional bool editing = 1; optional bool touch = 2; optional bool realm = 3; optional bool name_empty = 4; optional bool survey_open = 5; optional bool theirs = 6;
+  optional string pane = 7; optional bool holding = 8; optional bool realm_made = 9; optional bool invited = 10; optional bool survey_answered = 11; }
 message QuestProgress { optional string quest = 1; optional uint32 at = 2; repeated string done = 3; optional int64 updated_ms = 4; }   // haunt/quest {at}
 message QuestView { optional string quest = 1; optional string name = 2; optional uint32 step = 3; repeated string steps = 4; optional string edge = 5;
   optional bool accepted = 6; optional bool claimable = 7; }
@@ -1770,7 +1770,7 @@ Rules:
   `QuestProgress` after migration). Realm quest state belongs to the
   realm authority.
 
-The designed time-and-quests model in Metareal engine
+The designed time-and-quests model in Verse engine
 `docs/time-and-quests.md` (clock, events, schedules, items, rules,
 `/api/time`, `/api/state`) lands here as `quest.v1` `Rule` and `Schedule`
 messages when it is built. Those messages are reserved, not sketched,
@@ -1778,27 +1778,33 @@ until that design is accepted.
 
 ### 10.16 `openagents.verse.galaxy.v1`
 
-Purpose: the universe picker and players' planets. This covers the
-galaxy's worlds and live planets, planet setup, visits and invitations.
+Purpose: the universe picker and players' realms. This covers the
+galaxy's worlds and live realms, realm setup, visits and invitations.
+
+Realms were called planets. The existing JSON surface keeps its old wire
+names: `/api/planets*`, `planets.json`, the `planet-` ID prefix and the
+`planet=` visit-link parameter. Readers accept them; new names apply only to
+the proposed proto messages. A realm here is a player's world; `realm.v1` is
+the authoritative session wire that hosts one.
 
 ```proto
 package openagents.verse.galaxy.v1;
 
-message Planet { optional string id = 1;                 // "planet-" + 12 alnum + 4 hex, one per player
+message Realm { optional string id = 1;                 // "planet-" + 12 alnum + 4 hex, one per player
   optional uint64 n = 2; optional string name = 3;                // ≤ 40
   optional string owner = 4;                             // display name ≤ 40; owner id stays server-side
-  doc.v1.PlanetEnvironment env = 5; common.v1.ArtStyle art = 6; doc.v1.CameraView camera = 7; doc.v1.DayCycle cycle = 8;
+  doc.v1.RealmEnvironment env = 5; common.v1.ArtStyle art = 6; doc.v1.CameraView camera = 7; doc.v1.DayCycle cycle = 8;
   optional int64 made_ms = 9; optional int64 at_ms = 10; }
-message PlanetList { repeated Planet planets = 1; optional uint64 n = 2; }      // GET ?after=N; galaxy polls every 3 s
-message CreatePlanetRequest { optional string request_id = 1; doc.v1.PlanetSetup settings = 2; }
-message MyPlanet { doc.v1.WorldDocument doc = 1; repeated string invited = 2; optional int64 saved_ms = 3; }
+message RealmList { repeated Realm realms = 1; optional uint64 n = 2; }      // GET ?after=N; galaxy polls every 3 s
+message CreateRealmRequest { optional string request_id = 1; doc.v1.RealmSetup settings = 2; }
+message MyRealm { doc.v1.WorldDocument doc = 1; repeated string invited = 2; optional int64 saved_ms = 3; }
 
 message GalaxyWorld { optional string id = 1; optional string label = 2; optional uint32 orbit = 3; world.v1.ZoneEntry zone = 4; optional string href = 5; }
-message Galaxy { repeated GalaxyWorld worlds = 1; PlanetList planets = 2;
-  optional uint32 full_planets = 3; }                    // newest 48 drawn full; older become belt dust
+message Galaxy { repeated GalaxyWorld worlds = 1; RealmList realms = 2;
+  optional uint32 full_realms = 3; }                    // newest 48 drawn full; older become belt dust
 
-message VisitLink { optional string planet = 1; doc.v1.PlanetSetup setup = 2; }  // haunt.html?visit=<id>&planet=<kind>&…
-message Invitation { optional string planet = 1; optional string to = 2; optional int64 at_ms = 3; }
+message VisitLink { optional string realm = 1; doc.v1.RealmSetup setup = 2; }  // haunt.html?visit=<id>&planet=<kind>&…
+message Invitation { optional string realm = 1; optional string to = 2; optional int64 at_ms = 3; }
 ```
 
 Rules:
@@ -1806,7 +1812,7 @@ Rules:
 - **No locked or placeholder destinations.** The galaxy's worlds come from
   the host's `ZoneCatalog` filtered to `OPEN`.
 - **The galaxy keeps its own worlds without a server.** That is the iOS
-  bundle case. Planets need the planets service.
+  bundle case. Realms need the realms service.
 - **A visit link must work when shared.** The setup travels in the link,
   and the published document comes from `publish.v1`.
 
@@ -1865,7 +1871,7 @@ message PrivateUrlReply { optional string url = 1; optional int64 expires_ms = 2
 Rules:
 
 - **Packs are data, never code.** A pack never carries scripts or shaders
-  ([NIP-MV loading rules](https://github.com/OpenAgentsInc/openagents/blob/853417f290e7cae1df18c081b89b0818432e60af/nips/openagents/NIP-MV.md), Metareal INV-09).
+  ([NIP-MV loading rules](https://github.com/OpenAgentsInc/openagents/blob/853417f290e7cae1df18c081b89b0818432e60af/nips/openagents/NIP-MV.md), Verse INV-09).
 - **Clients enforce their own decode limits.** The publisher's
   `DecodeLimits` can only make a client stricter.
 - **Licensed and private bytes never go in Git or public records.**
@@ -1958,7 +1964,7 @@ Rules:
 ### 10.20 `openagents.verse.host.v1`
 
 Purpose: the bridges between a Verse surface and the thing that hosts it.
-This covers the Metareal tools host protocol (one consolidated vocabulary
+This covers the Verse tools host protocol (one consolidated vocabulary
 replacing v1 to v8), the mobile shell bridge (iOS `verseShell` and
 `legacy/save-bridge-v1`, and Android equivalents), the mobile game bridge, and
 playables.
@@ -1966,7 +1972,7 @@ playables.
 ```proto
 package openagents.verse.host.v1;
 
-// Metareal tools host protocol: envelope with session, per-direction sequence, request id.
+// Verse tools host protocol: envelope with session, per-direction sequence, request id.
 message HostEnvelope { optional string session = 1; optional uint64 seq = 2; optional string request_id = 3; oneof body {
   HostHello hello = 10; HostReady ready = 11; HostRequest request = 12; HostResult result = 13; HostStatus status = 14; } }
 message HostHello { optional uint32 protocol = 1; repeated string ops = 2; }    // ops actually advertised (private adapter: inspect, observe)
@@ -2104,7 +2110,7 @@ message Consent { optional bool save_text = 1; optional int64 at_ms = 2; optiona
 
 message SurveyQuestion { optional string id = 1; optional string text = 2; repeated string choices = 3; optional bool free_text = 4; SurveyMoment moment = 5; }
 enum SurveyMoment { SURVEY_MOMENT_UNSPECIFIED = 0; SURVEY_MOMENT_FIRST_CHANGE = 1; SURVEY_MOMENT_PUBLISH = 2;
-  SURVEY_MOMENT_PLANET_SETUP = 3; SURVEY_MOMENT_WRAP_UP = 4; }
+  SURVEY_MOMENT_REALM_SETUP = 3; SURVEY_MOMENT_WRAP_UP = 4; }
 message SurveyAnswer { optional string rid = 1; optional string question = 2; optional string text = 3;   // ≤ 1000
   repeated string choices = 4; optional bool skipped = 5; optional uint32 n = 6; optional uint32 of = 7; optional string player = 8; optional string sid = 9; }
 
@@ -2238,8 +2244,8 @@ may be served as:
 | `WorldService` | `world.v1` | `GetZoneCatalog`, `GetWorldDefinition`, `ListInstances` | `GET /v1/zones`, compiled catalogs |
 | `PublishService` | `publish.v1` | `GetPublished`, `Publish`, `Reset`, `SetOpen`, `GetOwnership`, `GetSettings`, `SetSettings`, `GetEditLog` | `/api/world/*`, `/api/log/*` |
 | `OfferService` | `publish.v1` | `Offer`, `Accept`, `Decline`, `ListMine` | `/api/change/*`, `/api/wallet` |
-| `AuthoringService` | `authoring.v1` | `Submit(Command) → CommandReceipt`, `GetRevision`, `WatchPresence` (stream) | Metareal tools project service, host `propose` |
-| `GalaxyService` | `galaxy.v1` | `ListPlanets(after)`, `GetPlanet`, `CreatePlanet`, `GetMine`, `SaveMine`, `Invite` | `/api/planets*`, `/api/award` |
+| `AuthoringService` | `authoring.v1` | `Submit(Command) → CommandReceipt`, `GetRevision`, `WatchPresence` (stream) | Verse tools project service, host `propose` |
+| `GalaxyService` | `galaxy.v1` | `ListRealms(after)`, `GetRealm`, `CreateRealm`, `GetMine`, `SaveMine`, `Invite` | `/api/planets*`, `/api/award` |
 | `ProgressService` | `character.v1` | `GetProgress`, `PutProgress(AESV bytes, at)`, `Erase` | `/api/progress/*` |
 | `NpcService` | `npc.v1` | `Ask` | `/api/npc/ask` |
 | `TelemetryService` | `telemetry.v1` | `Record(EventBatch)`, `Answer(SurveyAnswer)`; owner-only `Query`, `Export` | `/api/events`, `/api/survey/answer`, `/api/analytics*` |
@@ -2279,8 +2285,8 @@ we keep a reader for old records for as long as such records exist.
 | NIP-29 rooms, NIP-17 PMs | same | `social.v1.Room`, `nostr.nip29.v1`, `nostr.nip17.v1` | upstream NIPs |
 | Gym notes | `verse-gym/src/gym_notes.rs` | `social.v1.ChatLine.gym_note`, `gym.v1.GymNote` | kind 9 + NIP-32 label |
 | NOSTR tab (kind 1 read-only) | `verse` | `nostr.event.v1.Event` view | — |
-| HTTP presence `/api/presence/<room>` (7-number look) | Metareal engine `tools/serve.py` | `presence.v1` via `PresenceService` with `character.v1.LookSpec` (12) | fixes the mismatch |
-| HTTP chat `/api/chat/<room>` | Metareal engine | `social.v1.ChatLine` via a room service, or retire for NIP-C7 | last 500 lines |
+| HTTP presence `/api/presence/<room>` (7-number look) | Verse engine `tools/serve.py` | `presence.v1` via `PresenceService` with `character.v1.LookSpec` (12) | fixes the mismatch |
+| HTTP chat `/api/chat/<room>` | Verse engine | `social.v1.ChatLine` via a room service, or retire for NIP-C7 | last 500 lines |
 
 ### 12.2 Realm and simulation
 
@@ -2295,11 +2301,11 @@ we keep a reader for old records for as long as such records exist.
 | `StationState`, station journal | `space.v1` | reader |
 | `spacecraft.v1`, `assembly-plan.v1`, `cad-mass-feed.v1` | `space.v1` | reader |
 
-### 12.3 Worlds, documents, publishing (Metareal engine first)
+### 12.3 Worlds, documents, publishing (Verse engine first)
 
 | Current | Becomes | Keeps |
 | --- | --- | --- |
-| `verse.world.v1` world document (house, planets, sandbox) | `doc.v1.WorldDocument` | JSON reader (schema 0/1/2 migrations); Kiki's frozen tree keeps its own |
+| `verse.world.v1` world document (house, realms, sandbox) | `doc.v1.WorldDocument` | JSON reader (schema 0/1/2 migrations); Kiki's frozen tree keeps its own |
 | `{format:"legacy/native-save-v2", schema:2, data:{doc, base}}` | AESV v3 container with `doc.v1` payload; `publish.v1.PublishedWorld` on the wire | reader |
 | House delta | `authoring.v1.DocumentDelta` (existing identity rule preserved) | JS/C++ JSON delta reader during migration |
 | Prop world `{props, zones}` and `verse.<world>.props/zones/look/view/hotbar` | `doc.v1` + `character.v1.PlayerSettings` | reader |
@@ -2314,7 +2320,7 @@ we keep a reader for old records for as long as such records exist.
 | `/api/progress/*` (AESV in JSON) | `ProgressService` (AESV bytes) | AESV container unchanged |
 | `openagents.zones.v1` (`GET /v1/zones`) | `world.v1.ZoneCatalog` | JSON route as adapter |
 | `ZoneId` serialization, zone atmosphere, portals | `world.v1.ZoneEntry` | — |
-| Metareal tools host protocol v1–v8 JSON schemas | `host.v1.HostEnvelope` (protocol 9) | frozen v1–v5 releases keep their SDKs |
+| Verse tools host protocol v1–v8 JSON schemas | `host.v1.HostEnvelope` (protocol 9) | frozen v1–v5 releases keep their SDKs |
 | `openagents.verse.playable.v1/.v2` | `host.v1.Playable` | reader |
 
 ### 12.4 Characters, NPCs, places, agents
@@ -2322,7 +2328,7 @@ we keep a reader for old records for as long as such records exist.
 | Current | Becomes |
 | --- | --- |
 | Player key / `players.json` / `X-Verse-Player` | `character.v1.PlayerView` (key never on wire beyond the header) |
-| `LookSpec` (12 ints), `set-look`, metareal seed/look in MV content | `character.v1.LookSpec`, `Appearance`, `presence.v1.EntityState.appearance` |
+| `LookSpec` (12 ints), `set-look`, verse seed/look in MV content | `character.v1.LookSpec`, `Appearance`, `presence.v1.EntityState.appearance` |
 | Realm accounts, characters, inventory, gear, progress | `character.v1` + `realm.v1.ReadReply` |
 | `verse/settings` | `character.v1.PlayerSettings` |
 | `openagents.verse-npc.v1`, `-town.v1`, `-town-proposal.v1`, `-rumor.v1` | `npc.v1` |
@@ -2380,7 +2386,7 @@ come from `proto/modules.json`.
 
 ### 13.2 Coax consumers and bootstrap bridges
 
-Coax is the target for Metareal, Verse clients, hosts, tools and agent surfaces.
+Coax is the target for the Verse engine, its clients, hosts, tools and agent surfaces.
 The root `metareal`, `verse` and `phone-agent` profiles select actual descriptor
 closures. The Coax bootstrap does not ingest them yet. Follow master P1 for
 aggregates, explicit presence/oneofs, bounded codecs and domain validation.
@@ -2458,7 +2464,7 @@ hold. That move freezes its descriptor.
    to the same verdict, and preserve exact original fixtures and existing identity rules. A semantic
    round trip is not an assertion that standard proto encodings are canonical.
 3. **Mapping tests** where the package mirrors JSON (NIP-MV, JCS,
-   Metareal engine routes): every NIP example and every stored production
+   Verse engine routes): every NIP example and every stored production
    record sample maps both ways losslessly, or fails with a named reason.
 4. **A real consumer:** at least one shipped surface reads and writes the
    package in production, alongside the legacy reader where one exists.
@@ -2467,8 +2473,8 @@ hold. That move freezes its descriptor.
    the change.
 6. **Invariants:** if the package touches an invariant-bearing surface,
    the relevant `INVARIANTS.md` is updated in the same change with a
-   test. Candidates include Metareal INV-01 to INV-13, the Kiki pin and
-   Metareal engine's "Registered world saves preserve schema and iteration
+   test. Candidates include Verse INV-01 to INV-13, the Kiki pin and
+   Verse engine's "Registered world saves preserve schema and iteration
    order".
 7. **A formal model where it fits.** Shared-body stamp ordering, realm
    command fencing, channel CAS and transfer prepare/commit are bounded
@@ -2488,9 +2494,9 @@ adapters are ready; do not create placeholders to satisfy a phase label.
 | --- | --- | --- |
 | **V0 — Baseline and selected tooling** | Master P0/P1: current engine/common/HOST/REACH baselines, selected-profile generator compatibility, proposed Verse common primitives and a selected Nostr envelope. | Existing outputs and bundle pins remain valid. Native Metal, C ABI, registered saves, and frozen Kiki behavior unchanged. |
 | **V1 — Presence consumer** | Verse presence plus only the Nostr/external mirrors its existing reader needs, after master P2 foundations. | Actual NIP-MV fixtures and bounded captured traffic round-trip through existing validation; a real Grid/mobile consumer works. Alpha until the gate; no automatic v1. |
-| **V2 — Document prerequisites and authoring** | Presentation primitives and NPC placement/card/line types first, then doc→authoring. Shared ArtStyle/ObjectLight ownership follows §9.2. | Stored house/planet/sandbox JSON and deltas convert losslessly with explicit old readers. Identity rules unchanged; frozen Kiki goldens remain valid. |
+| **V2 — Document prerequisites and authoring** | Presentation primitives and NPC placement/card/line types first, then doc→authoring. Shared ArtStyle/ObjectLight ownership follows §9.2. | Stored house/realm/sandbox JSON and deltas convert losslessly with explicit old readers. Identity rules unchanged; frozen Kiki goldens remain valid. |
 | **V3 — Assets, worlds and zones** | Presentation→asset→world after their actual types exist. | Pinned pack/catalog/ZoneManifest admission, old asset profiles and loading limits preserved. No claim that the scene profile is implemented until the live proof passes. |
-| **V4 — Publish, galaxy and progress views** | Doc/authoring/world prerequisites from V2/V3; basic character/progress views where consumed. | Existing publishing, galaxy, planet setup, old JSON routes, and playtest flow work with checked adapters. No mandatory Connect deployment. |
+| **V4 — Publish, galaxy and progress views** | Doc/authoring/world prerequisites from V2/V3; basic character/progress views where consumed. | Existing publishing, galaxy, realm setup, old JSON routes, and playtest flow work with checked adapters. No mandatory Connect deployment. |
 | **V5 — Simulation prerequisites** | World→sim→rules/environment primitives, doc→character, and quest state needed by realm. | Pinned execution profiles, current checkpoint/replay identities, and original readers preserved; native layouts stay native. |
 | **V6 — Realm wire** | V3/V5 prerequisites plus common grant references; supported HOST world authority remains the existing owner. | Explicit proposed wire 35 and dual-reader/bootstrap tests with JSON v34 peers; command fencing, actual replication fields, replay and soak evidence before cutover. |
 | **V7 — Remaining NPC/place and host bridges** | V2 placement types can expand into full NPC/place/quest views; full world host bridge after authoring/publish/character/NPC/economy prerequisites. | Deterministic town behavior and labeled dialogue; versioned bridge transition with old SDKs and native wallet reviews preserved. |
@@ -2519,7 +2525,7 @@ generic canonical encoder or rewrites checked domain logic as generated DTOs.
 | Outsiders read "schema exists" as "feature works" | Every package and message carries the glossary's status label in its docs page; NIP-MV keeps its Designed/Implemented markers |
 | Proto JSON mistaken for canonical | §7.3/§7.4 rules; existing JCS identities and stored-byte digests remain unchanged |
 | Private data leaks through public schemas | Recursive carriage/redaction checks and private-asset rules; credentials stay in their owning authenticated flows, never Verse views |
-| Two engines (Rust Metareal, C++ Metareal engine) diverge | Both consume the same export bundle and the same fixtures; cross-language tests in CI |
+| Two engines (the Rust engine, the C++ Verse engine) diverge | Both consume the same export bundle and the same fixtures; cross-language tests in CI |
 
 ## 18. Planned scope and constraints
 
@@ -2614,7 +2620,7 @@ Games and the engine:
 - `games/`
 - `engine/architecture.md`, `engine/roadmap.md`
 
-**Metareal engine documentation.**
+**Verse engine documentation.**
 
 - `docs/metareal/engine/` (README, architecture, contracts and
   `contracts/*.schema.json`, world-model, runtime, runtime-abi,
@@ -2622,7 +2628,7 @@ Games and the engine:
   asset-compilation, game-systems, security, INVARIANTS)
 - `docs/metareal/ui-protocol.md`, `docs/metareal/merge.md`
 
-**Metareal engine.**
+**Verse engine.**
 
 - README.md, INVARIANTS.md
 - `docs/save.md`, `docs/worlds.md`, `docs/triggers.md`, `docs/ai.md`,

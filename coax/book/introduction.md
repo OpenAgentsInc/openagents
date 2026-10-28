@@ -8,8 +8,8 @@ needs the compiler, so if you'd rather start typing, skip to
 
 ## What Coax is for
 
-OpenAgents builds a 3D world called the Verse. The engine underneath it
-is called Metareal. On an iPhone, a frame of the Verse goes like this:
+OpenAgents builds a 3D world called the Verse, and the engine that runs
+it carries the same name. On an iPhone, a frame of the Verse goes like this:
 Swift owns the window and the Metal layer, a display link fires every
 frame, and Swift calls into the engine through a C interface. The engine
 updates the scene, builds draw data, and hands it back to a thin Metal
@@ -25,7 +25,7 @@ silently overflow, arrays that aren't read past their end, simulations
 that replay the same way every time.
 
 This isn't hypothetical. The OpenAgents iPhone app already runs Coax.
-The files are in [`metareal/`](https://github.com/OpenAgentsInc/openagents/tree/main/metareal/) at the root of the
+The files are in [`verse/`](https://github.com/OpenAgentsInc/openagents/tree/main/verse/) at the root of the
 repository:
 
 - `home.coax` owns home configuration and HUD admission through generated
@@ -70,7 +70,7 @@ The wallet shows a different side of the language. It starts like this:
 MAX_SAT :: 2_100_000_000_000_000;
 
 // The SDK counts satoshis; payment.v1 counts millisatoshis.
-metareal_wallet_sat_to_msat :: (sat: int) -> int #export_c {
+verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
   if sat < 0 || sat > MAX_SAT { return -1; }
   return sat * 1000;
 }

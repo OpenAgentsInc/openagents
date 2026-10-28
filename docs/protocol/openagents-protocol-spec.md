@@ -4,8 +4,8 @@
 
 This is the defining protocol plan for **every OpenAgents surface**, including
 web, mobile, desktop, coding agents, cloud hosts, decisions, payments and Verse.
-**Coax is the implementation target. Metareal is the engine; Verse is the
-experience built on it.** Shared engine contracts stay under
+**Coax is the implementation target. Verse is the engine and the
+experience it runs; its worlds are realms.** Shared engine contracts stay under
 `openagents.engine.*`; world/product contracts stay under `openagents.verse.*`.
 
 Recovered `.proto` files and frozen descriptors define published shapes.
@@ -25,7 +25,7 @@ bounded caller-buffer codecs; [the importer contract](../../coax/proto.md)
 records supported shapes, strict duplicate semantics and native/protoc tests.
 Product adapters, domain validation and live admission remain separate gates.
 
-The [Metareal migration](../../proto/migrations/README.md) names old IDs, new
+The [engine rename migration](../../proto/migrations/README.md) names old IDs, new
 canonical IDs and the required reader/writer transition. `legacy/<key>` in
 this catalog refers to that registry, never to a literal wire ID. Frozen
 snapshots and original signed records retain their bytes. Only the typed
@@ -152,7 +152,7 @@ own product, and they do not share a schema language:
 - **Four shipped shared Protobuf packages**: `openagents.engine.v1`,
   `openagents.common.v1`, `openagents.host.v1`, and `openagents.reach.v1`,
   with descriptor snapshots, Nanopb options, generated consumers, and a
-  hash-pinned bundle that `Metareal engine` imports. The phone already uses
+  hash-pinned bundle that `Verse engine` imports. The phone already uses
   native HOST admission and authenticated REACH over Tailnet.
 - **One more Protobuf package**, `space.credential.provider.v2`, in
   `crates/space-key-broker/proto/`.
@@ -193,9 +193,9 @@ those bytes; it never re-encodes them (§3, principle 4).
 
 | Package | Where | Consumers | Status |
 | --- | --- | --- | --- |
-| `openagents.engine.v1` | `proto/openagents/engine/v1/` (scene, agent, hud, control, state, assets) | `crates/engine-proto` (Prost 0.13.5), Nanopb 0.4.9.1, Python protobuf 5.29.3, Swift via C ABI, `Metareal engine` via the `openagents.engine-proto.bundle.v1` export | Implemented; descriptor snapshots in `compatibility/`; historical engine epic #113 closed |
-| `openagents.common.v1` | `proto/openagents/common/v1/refs.proto` | Rust phone SDK, Metareal C++ codec, Swift through C ABI | Shipped; domain-qualified errors and original signed JSON |
-| `openagents.host.v1` | `proto/openagents/host/v1/host.proto` | `crates/phone-host`, Metareal phone agent | Shipped; verified access, exact pending requests, task bindings and revision-bound cursors |
+| `openagents.engine.v1` | `proto/openagents/engine/v1/` (scene, agent, hud, control, state, assets) | `crates/engine-proto` (Prost 0.13.5), Nanopb 0.4.9.1, Python protobuf 5.29.3, Swift via C ABI, `Verse engine` via the `openagents.engine-proto.bundle.v1` export | Implemented; descriptor snapshots in `compatibility/`; historical engine epic #113 closed |
+| `openagents.common.v1` | `proto/openagents/common/v1/refs.proto` | Rust phone SDK, Verse C++ codec, Swift through C ABI | Shipped; domain-qualified errors and original signed JSON |
+| `openagents.host.v1` | `proto/openagents/host/v1/host.proto` | `crates/phone-host`, Verse phone agent | Shipped; verified access, exact pending requests, task bindings and revision-bound cursors |
 | `openagents.reach.v1` | `proto/openagents/reach/v1/reach.proto` | Same native phone path | Shipped; verified presence, hints and telemetry projections; existing channel wire unchanged |
 | `space.credential.provider.v2` | `crates/space-key-broker/proto/` | Space key broker | Implemented; outside the `openagents.` tree |
 | `lnrpc`, `taprpc`, `looprpc`, `litrpc`, … | `crates/lnd-sdk/proto/<project>/<tag>/` with `sources.json` | `crates/lnd-sdk` | Vendored byte-exact; 44 files |
@@ -271,12 +271,12 @@ evidence or research records that stay JSON.
 | TERM record streams | NIP-TERM, `coder-pty` | 10-byte header (tag u16, length u32, crc32c); ≤16 MiB per stream |
 | HOST invitation | NIP-HOST | `coder-host:` + base64url of packed bytes; ≤640 B |
 | Gym connect | NIP-EVAL | `gym-connect:` + base64url |
-| AESV world container | Metareal | magic, version, layer, schema, world, payload, CRC32 |
-| Kernel ABI (`AFB1`), behavior bytecode (`AFBCv1`) | Metareal tools | Fixed-stride binary |
+| AESV world container | Verse | magic, version, layer, schema, world, payload, CRC32 |
+| Kernel ABI (`AFB1`), behavior bytecode (`AFBCv1`) | Verse tools | Fixed-stride binary |
 | Loro updates and chat2 frames | `coder-sync` | Loro's own format plus framed JSON |
 | ATIF trajectories | Harbor ATIF-v1.8 | JSON, sorted-key digest rule |
 
-### 2.6 Recovery baseline, Coax and Metareal
+### 2.6 Recovery baseline, Coax and Verse
 
 The pre-reset source is OpenAgents `853417f290e7cae1df18c081b89b0818432e60af`,
 the parent of `0b401561a0` (Nuke). Recovery preserves the reconciled common,
@@ -306,8 +306,9 @@ and bounded native codecs tested on actual profiles. Domain adapters and
 production consumer parity remain unimplemented and must not be inferred from
 codec availability.
 
-Metareal is the engine's current name. The owner approved ID migration as well
-as prose changes. `proto/migrations/metareal-v1.json` preserves old reader
+Verse is the engine's current name (it was Metareal, and before that
+Aethyr). The owner approved ID migration as well as prose changes; the
+Metareal-era canonical IDs below keep their published spelling. `proto/migrations/metareal-v1.json` preserves old reader
 aliases and records new canonical IDs. Current asset profiles use
 `metareal-grid-v1` and `metareal-town-v1`; required assets and layouts are
 unchanged. Signed legacy identities are not rewritten; new signature domains
@@ -507,7 +508,7 @@ proto/openagents/
   referral/v1/          referral sources, attribution, consent, commission terms
 
   # Interface (§29)
-  ui/v1/                Metareal view tree (legacy/ui-v1), intents, activation, tokens
+  ui/v1/                Verse view tree (legacy/ui-v1), intents, activation, tokens
   engine/v1/            (exists) engine-neutral runtime contracts
   verse/...             Chapter V: everything 3D
 
@@ -1909,7 +1910,7 @@ include roots. They retain packages such as `lnrpc`, `taprpc` and `looprpc`;
 there is no invented `openagents.*` prefix on upstream definitions.
 
 `proto/recovery.json` verifies every vendored byte. `proto/modules.json` keeps
-vendor imports out of default phone/Metareal/Verse profiles. A future Coax
+vendor imports out of default phone/engine/Verse profiles. A future Coax
 payment backend may consume a selected RPC descriptor module, but public
 OpenAgents messages use owned payment references instead of embedding wallet
 RPC implementation types. The old Rust SDK is not restored or required.
@@ -4220,7 +4221,7 @@ message CommissionAgreement { optional string terms = 1; T.Pubkey referrer = 2; 
 ### 29.1 `openagents.ui.v1`
 
 **Purpose.** The shared view language that web, mobile, desktop, Coder
-Desktop and the Verse HUD render: the Metareal view tree (`legacy/ui-v1`),
+Desktop and the Verse HUD render: the Verse view tree (`legacy/ui-v1`),
 Rust Native views, intents and activation, and token references
 (`oa-tokens`). Generative UI (the OpenUI adaptation) produces these
 trees.
@@ -4252,7 +4253,7 @@ Text views carry user-facing words only. Status words such as
 
 ### 29.2 `openagents.engine.v1`
 
-Unchanged. It is published, frozen and consumed by `Metareal engine`.
+Unchanged. It is published, frozen and consumed by `Verse engine`.
 `openagents.options.v1` options will be added to it only through a `v1`
 compatible change (new options, no field changes). The hand-written
 `.options` files become generated only after Coax P1 parity, and the output
@@ -4443,7 +4444,7 @@ inventory script replaces them with exact numbers in phase P1.
 | `coder` (216): `coder.host-*`, `coder.ssh-*`, `coder-package`, `coder.computers`, `coder.delegate-*` | `coder.*` packages (§25) |
 | `coder-one.*` (109) | `evidence.v1`, except `coder-one.policy.v1` → `coder.task.v1` |
 | `gym.*` (119), `recipe.*` (24) | `gym.v1` |
-| `verse.*` (102), `metareal.*`, the legacy Metareal tools contracts, `haunt.*`, `icecream.*`, `space*` | Chapter V packages |
+| `verse.*` (102), `metareal.*`, the legacy Verse tools contracts, `haunt.*`, `icecream.*`, `space*` | Chapter V packages |
 | `sales*` (88) | `evidence.v1` until stable; candidate future `sales.v1` |
 | `delegation*` (53) | `evidence.v1`; study protocol records stay JSON |
 | `terminal*` (52) | `terminal.v1`; `native-terminal.*` qualification records → `evidence.v1` |
@@ -4602,7 +4603,7 @@ No canonical protobuf encoder or mandatory gRPC/Connect deployment is introduced
 
 New domain contracts start as alpha and graduate per §35. Existing v1 core
 schemas and snapshots remain immutable reference inputs. New canonical names
-from the Metareal registry do not re-label a signed legacy record. Install
+from the engine rename registry do not re-label a signed legacy record. Install
 dual readers first, then versioned writers, then retire old writes only after
 interoperability evidence. Keep durable old readers as long as old data exists.
 
@@ -4641,7 +4642,7 @@ incrementally; an unused NIP mirror does not block a phone or engine release.
 The existing `openagents.engine-proto.bundle.v1` pattern generalizes to
 `openagents.protocol.bundle.v1`: a tarball of `.proto` files, descriptor
 sets, generated Nanopb C, and a manifest with the SHA-256 of every file.
-External C++ consumers such as `Metareal engine` import the bundle by hash, as
+External C++ consumers such as `Verse engine` import the bundle by hash, as
 they do today.
 
 ### 34.4 Extension number registration
@@ -4697,13 +4698,13 @@ a compiling graph: generate actual descriptors before starting a cutover.
 
 | Phase | Scope and prerequisites | Exit evidence |
 | --- | --- | --- |
-| **P0. Recover and namespace** | This recovery: root contracts, immutable baselines, source manifests, vendor modules, consumer profiles, Metareal migration and initial alpha Verse references. | Reproducible descriptors; all baseline/vendor hashes and migration tests pass. No old app workspace is resurrected. |
+| **P0. Recover and namespace** | This recovery: root contracts, immutable baselines, source manifests, vendor modules, consumer profiles, engine rename migration and initial alpha Verse references. | Reproducible descriptors; all baseline/vendor hashes and migration tests pass. No old app workspace is resurrected. |
 | **P1. Coax contract ingestion** | Widths/structs/byte views/C ABI and selected proto3 `#import_proto` now exist, including bounded presence/oneof/repeated codecs. Nostr/external native fixture tests and protoc interoperability pass. Checked domain adapters and live product parity remain open. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
 | **P2. Decision foundations** | Shared validation/options; selected Nostr envelope/mirrors; receipt and inference wire primitives before decision. | Fractional scores, string choices, structured rubrics, state restrictions and exact receipt refs round-trip through a real Coax/FM consumer. |
 | **P3. Runtime prerequisites** | Context→policy→capability→program; identity/attestation/skill; extension→eval; needed UI and payment reference primitives. | Compiled import graph, checked domain adapters and preserved admission/effect ownership. |
 | **P4. Execution and sessions** | Run/trace/exec/chat/session/control/workspace, then environment/work/coordination/automation/live after P2/P3 imports. | A real task, observed tool progress, result, cancellation and reconnect in the app; then actual sessions/terminals. Coax owns product logic. |
 | **P5. Products and money** | Accounts/credentials, cloud/computers, payments/ledger/markets/billing/Pylon and product services after their actual imports. | Versioned API/schema parity and real surface proofs. Preserve accounting units separately from payment execution rails. |
-| **P6. Metareal and Verse** | Chapter V's corrected V0–V12 dependency order. Small presence work can proceed after P1/P2; realm waits for world/sim/character/quest/environment. | Native Metal/C ABI and legacy reader parity; authenticated world authority; pinned saves/replication. New transport versions require negotiated dual readers. |
+| **P6. The Verse engine and its realms** | Chapter V's corrected V0–V12 dependency order. Small presence work can proceed after P1/P2; realm waits for world/sim/character/quest/environment. | Native Metal/C ABI and legacy reader parity; authenticated world authority; pinned saves/replication. New transport versions require negotiated dual readers. |
 | **P7. Remaining mirrors** | Extend official/external Nostr and optimization coverage by actual consumer; unused designs remain alpha. | Source-pinned lossless mappings, independent conformance and complete catalog tracking, separate from feature status. |
 | **P8. Incremental publication** | Publish each passing profile's sources/descriptors/version manifest and Coax consumer artifacts. | Reproducible inputs and an independent client. Hosting remains an owner decision; no big-bang cutover. |
 
@@ -4736,7 +4737,7 @@ retain their wire encodings until separately reviewed migrations pass.
    come from the consumer inventory, not a requirement to freeze unused APIs.
 3. NIP JSON stays authoritative where it is signed or hashed. Proto is the
    schema, and a generated mapper produces the JSON.
-4. Published contract IDs remain readable. The owner-approved Metareal registry
+4. Published contract IDs remain readable. The owner-approved engine rename registry
    introduces explicit canonical IDs and versioned writers; old signatures keep
    their original identity. Package and contract versions are separate axes.
 5. `openagents.systemone.v1` stays frozen.
@@ -4791,6 +4792,6 @@ retain their wire encodings until separately reviewed migrations pass.
 - `docs/cloud/`, `docs/protocol/` (NIP coverage, ledgers, fixtures)
 - `docs/metareal/merge.md` (naming: Verse, Metareal tools, Metareal)
 - `docs/verse/openagents-verse-protocol.md` (Chapter V)
-- `Metareal source archive` `third_party/openagents-engine-proto`
+- `Verse source archive` `third_party/openagents-engine-proto`
 - Repository-wide inventory of `openagents.*.vN` identifiers, 2026-10-27
   (2,368 distinct)

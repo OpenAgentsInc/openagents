@@ -1,6 +1,6 @@
-// A Metareal realm on the web, drawn by Coax: openagents.com/realm/haunted-house
-// first. The world is metareal's own code, unchanged from the iOS app:
-// metareal/haunt.coax plays the Haunted House, player.coax walks you through
+// A Verse realm on the web, drawn by Coax: openagents.com/realm/haunted-house
+// first. The world is the Verse engine's own code, unchanged from the iOS app:
+// verse/haunt.coax plays the Haunted House, player.coax walks you through
 // it and grid.coax reads a phone's thumbs, and realm-face.c binds them for
 // the browser as HauntViewController.swift does on the phone. This file is
 // everything on the screen over the world and what you do with it: the HUD
@@ -10,7 +10,7 @@
 // face reads this file's intent each frame and hands back what the house
 // says (RealmView).
 //
-// Every panel and button is the Metareal HUD bar (ui.coax hud: metareal_bar,
+// Every panel and button is the Verse HUD bar (ui.coax hud: verse_bar,
 // square brackets on the highlighted corners, cuts on the plain ones), its
 // glass laid behind by realm.wgsl, and all text is Filament (font.coax).
 
@@ -23,7 +23,7 @@ PANELS :: 4;
 // width, height, time, fade, still, panels, dpr, 0; the view matrix's four
 // rows; the eye and the light count; the flash, 0, 0, 0; then per panel
 // x0, y0, x1, y1, scale, alpha, tint, 0. The face writes the view, the eye,
-// the lights and the flash (metareal_grid_view, metareal_haunt_lights).
+// the lights and the flash (verse_grid_view, verse_haunt_lights).
 UNIFORM_FLOATS :: 64;
 PANEL_AT :: 32;
 
@@ -31,7 +31,7 @@ MODE_STROKE :: 0.0;    // a sharp core in a soft glow: words, rings
 MODE_LINK :: 1.0;
 MODE_PULSE :: 2.0;
 MODE_GLOW_TEXT :: 3.0;
-MODE_BAR :: 4.0;       // a Metareal HUD bar (ui.coax bar)
+MODE_BAR :: 4.0;       // a Verse HUD bar (ui.coax bar)
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -81,7 +81,7 @@ tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, gl
 
 // ---- what the house says this frame (realm-face.c fills it)
 
-MAP_MAX :: 66;   // metareal_haunt_map's boxes: rooms, you and the people
+MAP_MAX :: 66;   // verse_haunt_map's boxes: rooms, you and the people
 
 RealmView :: struct {
   ready: bool;          // the house is open and drawing
@@ -96,7 +96,7 @@ RealmView :: struct {
   reply: string;        // what they said
   // the move stick (grid.coax Sticks), where a thumb is down
   move_on: bool; ox: f32; oy: f32; pad_x: f32; pad_y: f32;
-  // the map (metareal_haunt_map, in the map box's pixels): x, y, width, height, kind
+  // the map (verse_haunt_map, in the map box's pixels): x, y, width, height, kind
   map_n: int; map: [MAP_MAX * 5] f32;
 }
 
@@ -230,7 +230,7 @@ button_at :: (r: [] Realm, x: f32, y: f32) -> int {
 // The pointer in device pixels: phase 0 down, 1 move, 2 up, 3 cancel; kind
 // 0 a mouse, 1 a finger or pen; id the host's number for it. Returns
 // whether it was used here: a finger that isn't on the HUD is the face's,
-// for the thumbs (metareal_sticks_world_touch).
+// for the thumbs (verse_sticks_world_touch).
 realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if phase == POINTER_DOWN {
     r[0].touch = kind != 0;
@@ -259,7 +259,7 @@ realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: i
 }
 LOOK_RADIANS :: 0.006;   // grid.coax LOOK
 
-// The wheel, in CSS pixels down: zooms the camera out (metareal_player_zoom).
+// The wheel, in CSS pixels down: zooms the camera out (verse_player_zoom).
 realm_wheel :: (r: [] Realm, dy: f32) #export_c { r[0].zoom += dy * 0.01; }
 
 realm_cursor :: (r: [] Realm) -> int #export_c { return ifx r[0].press >= 0 then 1 else 0; }
@@ -395,7 +395,7 @@ draw_map :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   set_panel(uniforms, 2, b, k, 0.92, 0);
   vertices := hud(out, at, b, k, 0, 0, 0.8, HUD_R, HUD_G, HUD_B);
   vertices = write(k, out, vertices, "MAP", b.x0 + 14 * k, b.y0 + 22 * k, 9 * k, GAP, SPACE, orange(k, 0.9), false, false);
-  // metareal_haunt_map lays the house out from the box's top left; centre it.
+  // verse_haunt_map lays the house out from the box's top left; centre it.
   x0 := 1e9f32; y0 := 1e9f32; x1 := -1e9f32; y1 := -1e9f32;
   for i: 0..<v.map_n {
     o := i * 5;

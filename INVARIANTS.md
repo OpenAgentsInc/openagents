@@ -18,7 +18,7 @@ Check: `coax/tests/debugging.py` uses actual Mac LLDB, native diagnostics and
 sanitizer stacks, including multi-statement lowering and loaded units.
 The live Simulator cast breakpoint reaches Coax through the Swift renderer.
 
-The R0 workload and statistical policy live in `metareal/benchmarks.coax`,
+The R0 workload and statistical policy live in `verse/benchmarks.coax`,
 with authority checks and a zero-survivor mutation gate. The external harness
 pins historical native source, its explicit reader adaptation and the real
 app corpus before comparison; timing policy is separate from output and
@@ -26,7 +26,7 @@ allocation assertions. A successful correctness run must not be reported as
 meeting a failed proposed timing budget. Measured allocation hooks have a
 documented scope; Simulator clocks are not physical-phone performance.
 
-Check: `metareal/benchmarks/run.py` compares every player palette element,
+Check: `verse/benchmarks/run.py` compares every player palette element,
 independently recomputes ranks/medians, observes kernel allocation calls and
 runs under ASan/UBSan. `R0UITests` drives the normal Grid/Metal path; inspect
 retained frame counts and command errors too. Reference-adapter review,
@@ -50,7 +50,7 @@ focused native/sanitizer/negative cases in `coax/verification-local-borrows.md`.
 
 Root `proto/` and the OpenAgents Protocol specification define interchange for
 all surfaces, including Verse. Coax is the product implementation target;
-Metareal is the engine name. Profiles select imports from one source tree,
+Verse is the engine name (formerly Metareal). Profiles select imports from one source tree,
 not separate definitions per app, target or implementation language.
 
 Check: `scripts/proto.sh check` compiles actual roots and profile closures.
@@ -68,7 +68,7 @@ Check: recovery hashes, compatibility mutation tests, isolated vendor builds,
 and alpha missing-versus-zero/limits tests in `scripts/proto.sh check`.
 These checks do not claim that deleted runtime admission code is installed.
 
-## Metareal rename has explicit readers and versions
+## Engine rename has explicit readers and versions
 
 Legacy IDs live in the migration registry, frozen evidence and byte-exact
 recovered or upstream NIP source specifications. Current
@@ -106,15 +106,15 @@ schema-1 resource subset, rejects unknown/duplicate fields and non-minimal
 varints, and emits existing HudInvocation bytes. Native adapters only transfer
 bytes; the resource and invocation have no second hand-written wire codec.
 The home is the Grid seen from high above, slowly orbiting, with only the Start
-bar over it (`metareal_home_hud_frame`). Start dollies the camera down to land
-behind you; `metareal/camera.coax` owns the overview orbit and the dolly path
+bar over it (`verse_home_hud_frame`). Start dollies the camera down to land
+behind you; `verse/camera.coax` owns the overview orbit and the dolly path
 (eased, from behind and above, never below where it lands, a cut under
 reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
 only once it lands. The balance sits top right as whole sats with no grouping
 (`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
-`metareal/grid.coax` owns its projection, line art and
-move/look/jump touch policy; `metareal/player.coax` owns walking and the
-camera; `metareal/cast.coax` admits the bundled `Cast.bin`, blends your
+`verse/grid.coax` owns its projection, line art and
+move/look/jump touch policy; `verse/player.coax` owns walking and the
+camera; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
 and binds the buffers Coax admitted. A cast whose offsets, indices, joints or
@@ -131,11 +131,11 @@ jumping, and keeps the camera out of it. The hotbar is aethyr's HUD slot:
 Dance_Loop while you stand); walking or jumping ends it. The Grid has no
 buildings, peers or network use yet.
 
-Check: `coax/build.sh test`, `coax test metareal/grid.coax`, `metareal/camera.coax`,
-`metareal/player.coax` and `metareal/cast.coax`, `metareal/test_cast.sh` (the
+Check: `coax/build.sh test`, `coax test verse/grid.coax`, `verse/camera.coax`,
+`verse/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
 real Cast.bin under ASan/UBSan, with corrupted copies refused, and you
 walking into the Foreman's leg and stopping),
-`PROTOC=... python3 metareal/test_home.py`, the sanitizer harness and the iOS
+`PROTOC=... python3 verse/test_home.py`, the sanitizer harness and the iOS
 UI tests (Start opens the Grid, you stand idle, the stick walks you forward,
 a jump plays its clips, the Foreman stands by the start and its leg stops
 you, the hotbar's slot makes you dance and a step ends it, the terminal's
@@ -161,12 +161,12 @@ The word list is checked against its published SHA-256 before use.
 
 The wallet sends and receives (Lightning invoices and addresses, LNURL,
 on-chain, Spark). `Wallet/SparkHost.swift` is the only file that imports the
-SDK and hands the screens plain values. `metareal/wallet.coax` is
+SDK and hands the screens plain values. `verse/wallet.coax` is
 `#authority` and compiled into the app, so its checks run on every build. It
-decides each send: `metareal_wallet_may_send` passes a quote only while its
+decides each send: `verse_wallet_may_send` passes a quote only while its
 payment is quoted, before it expires, with the fee no more than the review
 screen showed, and with amount plus fee within what is spendable. The payment
-moves only through `metareal_wallet_step`:
+moves only through `verse_wallet_step`:
 - one `sendPayment` per quote, under one idempotency key;
 - an unknown outcome waits for the SDK and is never shown as a failure;
 - a finished payment stays finished until the person closes it.
@@ -181,7 +181,7 @@ from random words held in memory for that launch, in its own folder, never
 the Keychain. Release builds compile this path out.
 
 Check: `apps/openagents-ios/tools/test-bip39.sh` (published BIP-39 vectors);
-`coax test` and `coax mutate metareal/wallet.coax` (0 survivors); the iOS UI
+`coax test` and `coax mutate verse/wallet.coax` (0 survivors); the iOS UI
 tests (a phone with no wallet shows that and changes nothing, and
 `WalletUITests` against mainnet with a throwaway wallet: every kind of
 request is made, sends are parsed and quoted, and an empty wallet's send is
@@ -323,14 +323,14 @@ complete compiler bridge sanitizers in `coax/tests/parser.py`, protoc
 interoperability and the actual iOS Home/Grid/animation tests from empty
 generated outputs.
 
-## Haunted House is a native Metareal world
+## Haunted House is a native Verse realm
 
 The Grid's lit arch at (-1.5, 0, 10) enters Haunted House by tapping its name
 or walking through it. Each world owns the window's full Metal surface; it
 is not a modal web view. Grid returns to the same app, with the home, cast
 and wallet intact. The scene's decisions, geometry packets, motion, trigger
 schedule, footsteps/spatial sound, dialogue, teaching/character behaviours,
-quest, editing and protobuf documents are in `metareal/haunt.coax`.
+quest, editing and protobuf documents are in `verse/haunt.coax`.
 `hud.coax` supplies reusable hotbar layout; `haunt-light.coax` emits the
 material math as Metal. Native code binds lifecycle, fixed-capacity memory,
 GPU buffers, UIKit/accessibility forms, audio clips and local file/share I/O.
@@ -343,7 +343,7 @@ morph and sheet ghost, run locally. This introduces no new network service,
 account, microphone permission or payment path. Local copies and invitations
 are actual proto files, not claims of a public-world publish. The retired
 web public-world/owner/change-offer APIs and cloud NPC endpoint remain explicit
-service parity gaps; see `docs/protocol/metareal-haunt.md`.
+service parity gaps; see `docs/protocol/verse-haunt.md`.
 
 `proto/openagents/metareal/haunt/v1alpha1` defines resource metadata and
 editable snapshots. Geometry is separately bounded; every vertex/index and
@@ -354,7 +354,7 @@ changes the live scene. The platform retains bytes for every borrowed view;
 undo rebuilds the base, then applies a complete override snapshot. Background
 stops audio/input and saves; returning discards the world's native allocations.
 
-Check: `metareal/test_haunt.sh` (Coax checks, 109/109 buffer-gate mutants killed,
+Check: `verse/test_haunt.sh` (Coax checks, 109/109 buffer-gate mutants killed,
 ASan/UBSan and real assets; with `PROTOC`/`PROTO_PYTHON`, source content parity
 and official protobuf writer interoperability in both directions), Grid/player
 checks, `HauntUITests` (real Metal portal, conversation, placement, save/reenter,
@@ -364,9 +364,9 @@ cameras/map/rotation/reset) and the existing `HomeUITests`.
 
 The schema is `proto/openagents/voice/v1alpha1/voice.proto`; one `Frame` is one
 WebSocket binary message, encoded and decoded only by the generated Coax codec
-(`metareal/voice-wire.coax`), with no second hand-written codec.
+(`verse/voice-wire.coax`), with no second hand-written codec.
 
-- **Turns are Coax decisions.** `metareal/voice.coax` decides when a turn starts
+- **Turns are Coax decisions.** `verse/voice.coax` decides when a turn starts
   and ends, barge-in and the media epoch. The phone sends uplink audio only for
   frames the engine marks as part of a turn (`OA_EV_FORWARD`) plus the turn's
   pre-roll. Silence between turns never leaves the phone.
@@ -375,8 +375,8 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   epoch and before its deadline, and every numeric field is clamped. A slow or
   missing decider can fail to steer audio, but can't stall it.
 - **Who may be heard and what speech may cost are `#authority`.**
-  `metareal/voice-floor.coax` (consent, input floor, routes by explicit binding
-  only, never by reading the words) and `metareal/voice-meter.coax` (free tier
+  `verse/voice-floor.coax` (consent, input floor, routes by explicit binding
+  only, never by reading the words) and `verse/voice-meter.coax` (free tier
   and price; no provider call for a turn the meter refuses) run with zero
   surviving mutants.
 - **Only the voice host calls a speech provider.** The phone and web clients
@@ -389,10 +389,10 @@ Model-boundary exception: Debug builds accept `-OAVoiceFixture` (a bundled
 recording through the same uplink path as the microphone) and
 `-OAVoiceObserve`; Release builds compile both out.
 
-Check: `metareal/test_voice.sh` (ASan/UBSan; every frame kind round-trips and
+Check: `verse/test_voice.sh` (ASan/UBSan; every frame kind round-trips and
 decodes with protoc; turns, barge-in, decisions, jitter buffer, fixtures);
-`coax test metareal/voice*.coax`; `coax mutate` on floor and meter (0
-survivors); `metareal/voice-host/test.sh` (offline, and live Google);
+`coax test verse/voice*.coax`; `coax mutate` on floor and meter (0
+survivors); `verse/voice-host/test.sh` (offline, and live Google);
 `apps/openagents-ios/tools/voice-sim-test.sh` (the simulator UI test, offline
 and live).
 
@@ -436,7 +436,7 @@ not supplied by these queries.
 Check: parser/checker authority and zero-survivor mutation gates,
 `coax/tests/reflection.py` (independent native size/alignment/offset oracle,
 ASan/UBSan, invalid categories/indices, cross-unit layout and expansion limits),
-and `metareal/test_haunt.sh`. The actual app's buffer admission consumes the
+and `verse/test_haunt.sh`. The actual app's buffer admission consumes the
 reflected Haunted House stride, layer offset and compile-time scalar table.
 Metal packing and source binary compatibility remain explicit native checks.
 

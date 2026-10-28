@@ -1,7 +1,8 @@
-# Metareal
+# Verse
 
-Metareal is OpenAgents' real-time engine. Verse is the world and experience
-built on it. Coax is the target implementation language for the engine and
+Verse is OpenAgents' real-time engine (formerly named Metareal). The same
+name covers the world and experience it runs, the Verse, whose individual
+worlds are realms. Coax is the target implementation language for the engine and
 for OpenAgents' other surfaces; the current compiler is a scalar bootstrap.
 
 The defining interchange contract is the

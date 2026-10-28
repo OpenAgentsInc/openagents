@@ -2,7 +2,7 @@
 
 Most of the code in the OpenAgents repositories is written by coding
 agents and reviewed by people. That includes most of the Coax in
-`metareal/`: the camera from Chapter 17, the wallet's payment rules, the
+`verse/`: the camera from Chapter 17, the wallet's payment rules, the
 compiler's own lexer, parser and type checker. An agent's working loop is simple. It
 edits a file, runs a tool, reads what the tool printed, and decides what
 to do next. Whatever the compiler prints is, in effect, the agent's whole
@@ -439,11 +439,11 @@ $ coax check spend.coax --json
 {"file": "spend.coax", "line": 26, "col": 3, "code": "E0406", "message": "assertion failed [#forall sends exactly what the rule allows]; counterexample: amount = 1, spent = 9", "fix": ""}
 ```
 
-This is how the real wallet is built. `metareal/wallet.coax` is
+This is how the real wallet is built. `verse/wallet.coax` is
 `#authority`, and its checks are strong enough that every mutant dies:
 
 ```sh
-$ coax mutate metareal/wallet.coax
+$ coax mutate verse/wallet.coax
 155 mutants, 155 killed, 0 survived
 ```
 

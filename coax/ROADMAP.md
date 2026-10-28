@@ -5,7 +5,7 @@ CPU layout reflection and the first R0 benchmark/source-debugging slice. This
 revision incorporates the follow-up technical review while retaining the
 evidence and compatibility limits of what has actually shipped.
 
-The goal is a systems language in which OpenAgents and Metareal can express
+The goal is a systems language in which OpenAgents and Verse can express
 their computation, data, protocols, tools and build policy in Coax. Runtime
 costs, ownership and generated behavior must remain visible. Native adapters
 continue to own platform effects, storage, graphics resources and foreign SDKs.
@@ -110,7 +110,7 @@ evaluator supplies a separate algorithmic reference over the actual app asset;
 the Debug iOS capture exercises the real Grid and Metal command buffers.
 Original-source breakpoints, stepping, values, stacks, diagnostics and sanitizer
 traces are tested on Mac LLDB, with an actual Simulator app attachment too.
-See [methodology](../metareal/benchmarks/README.md), [debugging](DEBUGGING.md) and
+See [methodology](../verse/benchmarks/README.md), [debugging](DEBUGGING.md) and
 [retained results](../docs/verification/coax-r0-2026-10-28.md).
 
 **Pose median gap closed; R0 remains open.** The follow-up Coax kernel rewrite
@@ -126,7 +126,7 @@ is not a frame-tail guarantee. Finish physical-device/tail budgets, complete
 asset/install/launch/GPU-preparation attribution, status generation and
 independent reference/gate review before closing R0.
 
-1. Retain the frozen live pose kernel in `HomeRenderer.swift`/`metareal/cast.coax`,
+1. Retain the frozen live pose kernel in `HomeRenderer.swift`/`verse/cast.coax`,
    corpus, tolerance, reference revision and algorithms. Independently review
    its reader adaptation and assumptions before adoption sign-off. Add a new
    reference or representative kernel only with a documented reason and its own
@@ -448,7 +448,7 @@ Record generator identity/version, declaration inputs and emitted ranges.
 Missing semantics for pointers/units/ownership must be annotations or explicit
 adapters, never guessed from field type alone.
 
-**Consumer/gate:** replace a hand-maintained Metareal registration or inspector
+**Consumer/gate:** replace a hand-maintained Verse registration or inspector
 table, rather than adding an unused language demo. Test collisions, reorder,
 rename, migration and cross-build identity. Inspect expanded code; reject bad
 generators and check independent native layouts. `#derive(proto)` can consume

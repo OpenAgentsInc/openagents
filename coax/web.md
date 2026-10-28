@@ -4,9 +4,9 @@ Status: **the first slice runs (2026-10-28): the openagents.com splash on a
 Coax engine in WebGPU, with `coax serve` hot reload. The rest is a proposal.**
 Owner decisions are recorded under [Decisions](#decisions-2026-10-28).
 
-This document specifies how openagents.com moves onto Coax and Metareal: the
+This document specifies how openagents.com moves onto Coax and Verse: the
 site takes over a full-window GPU canvas, shows the Grid and the rest of
-Metareal in the browser, loads fast, and is developed with edit-to-screen
+Verse in the browser, loads fast, and is developed with edit-to-screen
 times measured in milliseconds rather than seconds. It sits beside the
 [implementation roadmap](ROADMAP.md): the framework is the real consumer for
 the roadmap's wasm32 feasibility test (R1), its GPU and browser proof (R8)
@@ -49,7 +49,7 @@ compiler itself (today it's `coax/web/serve.sh`).
    connection and in under three on a typical phone, with the character and
    heavier assets streaming in after.
 2. **One engine.** The browser runs the same Coax code the iOS app runs
-   (`metareal/*.coax`): scene, Grid, player, camera, cast, HUD, voice. The
+   (`verse/*.coax`): scene, Grid, player, camera, cast, HUD, voice. The
    browser host does platform effects only, like Swift does on the phone.
 3. **Fast iteration.** Saving a `.coax`, shader or data file updates the
    running page without losing your place in the world. Targets below.
@@ -77,7 +77,7 @@ Facts this proposal starts from, checked 2026-10-28:
 - **Coax** emits C11 (`coax c`, `coax lib`) and a restricted f32/bool Metal
   library (`coax metal`). It has no wasm32 target, no WGSL emitter, no
   globals and no heap. State lives in caller-allocated storage passed as
-  views, the pattern `metareal/platform/voice.h` uses (`oa_voice_size()`,
+  views, the pattern `verse/platform/voice.h` uses (`oa_voice_size()`,
   caller allocates, zeroed).
 - **Compile speed today, this Mac:** `coax c` on `grid.coax` (895 lines),
   `player.coax` and `cast.coax` takes about 10 ms each; `home.coax` takes
@@ -110,19 +110,19 @@ Facts this proposal starts from, checked 2026-10-28:
  │ audio worklet, IME text field, accessibility mirror                 │
  │   │ owns one WebAssembly.Memory (the state arena) + GPU resources   │
  │   ▼                                                                 │
- │ engine.wasm  = metareal/*.coax → C11 → clang wasm32                 │
+ │ engine.wasm  = verse/*.coax → C11 → clang wasm32                 │
  │   grid, player, camera, cast, hud, voice … (stateless code)         │
  │ shaders.wgsl = Coax shader subset → WGSL (coax wgsl, not yet built) │
  └─────────────────────────────────────────────────────────────────────┘
                    │ WebSocket, protobuf frames (proto/)
                    ▼
    site server (C host + Coax logic): pages as text, API, Grid presence,
-   voice relay (metareal/voice-host pattern)
+   voice relay (verse/voice-host pattern)
 ```
 
 ### Client
 
-- **Engine code** is the existing Metareal Coax, compiled to C11 by
+- **Engine code** is the existing Verse Coax, compiled to C11 by
   `coax lib`, then to wasm32 by clang with `-ffreestanding`, no libc beyond
   what the generated C needs, no fast math and no floating-point contraction.
   The browser and iOS builds compile the same Coax sources; only the host
@@ -149,7 +149,7 @@ Facts this proposal starts from, checked 2026-10-28:
 
 ### Server
 
-- **One binary**, the `metareal/voice-host` pattern: a C host for sockets,
+- **One binary**, the `verse/voice-host` pattern: a C host for sockets,
   TLS-terminating proxy in front, and Coax for every decision (routing,
   admission, rate limits, protocol handling). It serves:
   - the app shell (`/`): a tiny HTML page, `host.js`, `engine.wasm`, WGSL and
@@ -260,7 +260,7 @@ the job:
 Everything else, including menus, panels, the hotbar and captions, is drawn
 by Coax in the HUD.
 
-## The Metareal feature path in the browser
+## The Verse feature path in the browser
 
 What the browser needs, in the order the Grid uses it:
 
@@ -326,7 +326,7 @@ document's; the roadmap milestones they feed are named.
 - **W5. Switch openagents.com.** After parity on the routes that matter
   (open question 7), point openagents.com at it with the old revision kept
   for rollback.
-- **W6. More Metareal.** Voice in the browser, then the Haunted House, the
+- **W6. More Verse.** Voice in the browser, then the Haunted House, the
   wallet and the rest, each as its own slice.
 
 Roadmap R8's full gate (the same pinned workload on native Metal and in a
@@ -335,10 +335,10 @@ asks for. This framework doesn't claim it earlier.
 
 ## Naming
 
-The engine is Metareal and the language is Coax. The framework is the part
-that puts Metareal on the web and runs the site around it. A separate name
+The engine is Verse and the language is Coax. The framework is the part
+that puts Verse on the web and runs the site around it. A separate name
 is worth having only if it's a thing people build with (the site, and later
-other people's worlds). If not, call it "Metareal for the web" and skip the
+other people's worlds). If not, call it "Verse for the web" and skip the
 name.
 
 The name is **Coaxial** (owner's direction, 2026-10-28): the cable's full

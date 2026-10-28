@@ -74,7 +74,7 @@ Version 0.13.0 adds native source debugging and phase reports:
 library builds map to original Coax files by default. Plain `coax c` opts in
 explicitly, so bootstrap output stays reproducible. The optional LLDB helper
 shows authored names and checks source hashes. See [DEBUGGING.md](DEBUGGING.md)
-for commands, artifacts and current limits. The [R0 engine harness](../metareal/benchmarks/README.md)
+for commands, artifacts and current limits. The [R0 engine harness](../verse/benchmarks/README.md)
 uses the real cast and a pinned native evaluator; [original evidence](../docs/verification/coax-r0-2026-10-28.md)
 records the initial gap, and [follow-up evidence](../docs/verification/coax-r0-pose-2026-10-28.md)
 records the unchanged median gate passing in all three profiles.
@@ -178,8 +178,8 @@ The [native iOS home](../apps/openagents-ios/README.md) runs its scene, HUD and
 resource admission in Coax and its shader math through the Metal emitter:
 
 ```sh
-coax/bin/coax c metareal/home.coax --library --header /tmp/Home.h > /tmp/Home.c
-coax/bin/coax metal metareal/light.coax > /tmp/Light.metal
+coax/bin/coax c verse/home.coax --library --header /tmp/Home.h > /tmp/Home.c
+coax/bin/coax metal verse/light.coax > /tmp/Light.metal
 apps/openagents-ios/build.sh
 ```
 
@@ -324,7 +324,7 @@ for the scope and limits of each gate.
 The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) defines
 interchange for every OpenAgents surface, including Verse. Source schemas and
 selected-profile descriptors live in root [proto/](../proto/README.md), beside
-`coax/`. Metareal is the engine name. The implemented
+`coax/`. Verse is the engine name (formerly Metareal). The implemented
 [`#import_proto` importer](proto.md) consumes selected descriptor closures and
 generates typed Coax views, presence/oneof/repeated accessors and bounded
 caller-buffer codecs. It adds no parallel language-only schema.

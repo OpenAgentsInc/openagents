@@ -31,7 +31,7 @@ message HudInvocation {
 
 We do not change that schema. The book uses `world = "book"` and
 `action_id = "preview"` as a local convention. These names do not register
-an action in Metareal. A decoded invocation is data, not permission to
+an action in Verse. A decoded invocation is data, not permission to
 invoke a screen or run code.
 
 For the exercise, `revision` carries the request epoch. This is a local
@@ -170,7 +170,7 @@ The current iOS app uses this shape with richer native adapters:
 The actual app's verification entry points are documented in
 [apps/openagents-ios/README.md](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-ios/README.md)
 and
-[metareal/haunt/verification.md](https://github.com/OpenAgentsInc/openagents/blob/main/metareal/haunt/verification.md).
+[verse/haunt/verification.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/haunt/verification.md).
 The capstone does not run those device or simulator tests for you.
 
 When extending it, keep the same discipline. Add a contract before a new

@@ -3,7 +3,7 @@
 *A draft book, begun October 2026.*
 
 This is a book about Coax, the language OpenAgents uses for code that has
-to be fast and has to be right: the Metareal engine behind the Verse, the
+to be fast and has to be right: the Verse engine and the world it runs, the
 iPhone app's home screen and Grid, and the money rules in its bitcoin
 wallet. Coax descends from Jonathan Blow's Jai. It compiles to plain C you
 can read, it checks arithmetic and array bounds while you develop, and it

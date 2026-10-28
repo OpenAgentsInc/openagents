@@ -2,13 +2,13 @@
 
 This root `proto/` directory is the defining schema source for **all
 OpenAgents surfaces**: web, mobile, desktop, agents, cloud, decisions,
-payments and Verse. Coax is the implementation target. **Metareal** is the
-engine; Verse is the world/product layer.
+payments and Verse. Coax is the implementation target. **Verse** is the
+engine and the world/product layer it runs, made of realms.
 
 - [Protocol specification and implementation plan](../docs/protocol/openagents-protocol-spec.md)
 - [Verse protocol chapter](../docs/verse/openagents-verse-protocol.md)
 - [Coax language and compiler](../coax/README.md)
-- [Metareal names and ID migration](migrations/README.md)
+- [Engine names and ID migration](migrations/README.md)
 
 The pre-reset spec is recovered and reconciled with the contracts that had
 already shipped. Its historical inventories do not mean the old apps/crates
@@ -22,7 +22,7 @@ workspace is restored.
 | --- | --- |
 | `nostr/` | 16 new alpha schemas: shared events/NIP-42 and 14 external agent, identity and channel projections. |
 | `openagents/common/v1/` | Recovered refs, signed-original wrappers and domain-qualified errors. |
-| `openagents/engine/v1/` | Six recovered schemas: scene, agent, HUD, control, registered state and assets. Metareal and other consumers share them. |
+| `openagents/engine/v1/` | Six recovered schemas: scene, agent, HUD, control, registered state and assets. Verse and other consumers share them. |
 | `openagents/host/v1/`, `openagents/reach/v1/` | Recovered phone task/admission, binding/cursor and authenticated reach records. Existing wire types are unchanged. |
 | `openagents/options/v1alpha1/` | New experimental data-class, limit, presence, unit and contract annotations. Numbers are provisional pending registry review. |
 | `openagents/verse/common/v1alpha1/` | New bounded world reference. |
@@ -32,7 +32,7 @@ workspace is restored.
 | `nostr/` | Mirror plan and source authority; no invented compiled Nostr mirrors yet. |
 | `compatibility/` | Nine immutable pre-reset descriptor/catalog snapshots. |
 | `descriptors/` | Reproducible current owned/profile descriptor sets, including imports. |
-| `migrations/` | Explicit Metareal reader aliases, canonical IDs and transition rules. |
+| `migrations/` | Explicit engine-rename reader aliases, canonical IDs and transition rules. |
 
 There are 12 owned schemas and 38 vendor schemas. The owned nine published
 schemas and their Nanopb `.options` are recovered without changes. New alpha
@@ -80,7 +80,7 @@ The reduced iOS home now imports the `ios-home` descriptor profile. Generated
 Coax codecs read `openagents.metareal.home.v1alpha1.HomeConfiguration` and write
 existing `openagents.engine.v1.HudInvocation` messages; the former hand-written
 wire reader/writer is removed. Screen admission stays in Coax and retains its
-closed schema-1 policy. `metareal/test_home.py` checks actual app resources,
+closed schema-1 policy. `verse/test_home.py` checks actual app resources,
 strict rejection rules and exact invocation bytes against protoc. Native
 sanitizer and simulator touch/rotation/resume tests cover the actual host path.
 Current C++ compiler code and Python schema checks are bootstrap infrastructure.

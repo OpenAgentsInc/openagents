@@ -8,11 +8,11 @@ mkdir -p "$here/build"
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/light.coax verse_bar --into apps/openagents-web/splash.wgsl)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
 splash=$!
-# The realms: metareal's house, player and thumbs, each its own library as on
-# iOS, under realm.coax's HUD; the house's light from metareal itself.
-(cd "$here/../.." && python3 coax/web/wgsl.py metareal/light.coax metareal_bar metareal_tone --into apps/openagents-web/realm.wgsl \
-  && python3 coax/web/wgsl.py metareal/haunt-light.coax metareal_haunt_ambient metareal_haunt_attenuate metareal_haunt_shade --into apps/openagents-web/realm.wgsl)
-m="$here/../../metareal"
+# The realms: the engine's house, player and thumbs, each its own library as on
+# iOS, under realm.coax's HUD; the house's light from the engine itself.
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/light.coax verse_bar verse_tone --into apps/openagents-web/realm.wgsl \
+  && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade --into apps/openagents-web/realm.wgsl)
+m="$here/../../verse"
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
   "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" &
 realm=$!

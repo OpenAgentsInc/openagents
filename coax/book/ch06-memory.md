@@ -56,7 +56,7 @@ glob.coax:1:1: error[E0212]: global variables are not supported by coax0 yet
 ```
 
 That sounds limiting, and it is. It's also why the real Coax code in
-Metareal looks the way it does: state goes in and comes out of procedures as
+Verse looks the way it does: state goes in and comes out of procedures as
 values (`Player` in, `Player` out), and anything large, like a mesh or an
 animation file, is owned by the native side and passed in as a view.
 
@@ -499,12 +499,12 @@ the view `squares` writes through is valid the whole time. The first line of
 `squares` checks the size once and refuses a view that's too small instead
 of writing part of the answer and trapping halfway.
 
-This is the most common shape of procedure in the Metareal code. The camera
-in `metareal/grid.coax` writes a 4x4 matrix for the native renderer like
+This is the most common shape of procedure in the Verse code. The camera
+in `verse/grid.coax` writes a 4x4 matrix for the native renderer like
 this:
 
 ```jai
-metareal_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+verse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
                        width: f32, height: f32, out: [] f32) -> bool #export_c {
   if !(width > 0) || !(height > 0) || out.count < 16 { return false; }
   // ...
@@ -688,8 +688,8 @@ IEEE bit pattern for 1.0, which is the `scale` we got. Its partners are
 share any memory; it's for code that copies between buffers and must not
 copy a buffer onto itself.
 
-> Note: This is how `metareal/cast.coax` loads the character and robot
-> animation file. `metareal_cast_open :: (b: [] u8) -> Cast` checks the
+> Note: This is how `verse/cast.coax` loads the character and robot
+> animation file. `verse_cast_open :: (b: [] u8) -> Cast` checks the
 > file's length, magic, version and buffer count with `int_at`, `u32_at`
 > and friends, and returns a `Cast` that isn't `ok` if anything is off. The
 > native side owns the file's bytes. Chapter 15 shows the same idea

@@ -69,7 +69,7 @@ the compiler comes from the existing checked Coax fingerprint module.
 stepping, values, loaded-file stacks, multi-line statement lowering, stale
 source refusal, escaped paths, duplicate private names in separate libraries,
 native diagnostics and sanitizer abort stacks. The iOS Simulator Grid was
-also attached to LLDB at `metareal_cast_pose` in `metareal/cast.coax`.
+also attached to LLDB at `verse_cast_pose` in `verse/cast.coax`.
 
 This is line-level debugging and a name/type presentation bridge. It is not
 a Coax expression evaluator or a complete type visualizer. Native C types
@@ -99,5 +99,5 @@ records a failing status when a report can be written. An unwritable timing
 report itself makes the command fail. Repeated single-shot invocations may
 benefit from OS caches; they are not incremental compilation.
 
-See [the real engine harness](../metareal/benchmarks/README.md) and
+See [the real engine harness](../verse/benchmarks/README.md) and
 [R0 evidence](../docs/verification/coax-r0-2026-10-28.md) for the measured scope.

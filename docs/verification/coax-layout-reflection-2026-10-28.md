@@ -24,7 +24,7 @@ Views report their element type with a zero type-level element count.
 
 ## Actual consumer
 
-`metareal/haunt-layout.coax` describes the existing packed vertex format and
+`verse/haunt-layout.coax` describes the existing packed vertex format and
 derives the 48-byte stride, texture-layer byte and eight scalar admission
 offsets. `haunt-buffer.coax` loads it and uses its compile-time table against
 the actual bundled geometry. No protobuf identity, binary asset or Metal
@@ -53,7 +53,7 @@ fixture generates field offsets and enumerates signed enum metadata.
   descriptor and wire interoperability.
 - `PROTOC=... BOOK_SANITIZE=1 coax/book/check-examples.sh`: exact debug/release
   output and status, checks, mutation, native hosts and linked book excerpts.
-- `PROTOC=... PROTO_PYTHON=... metareal/test_haunt.sh`: the real bundled world,
+- `PROTOC=... PROTO_PYTHON=... verse/test_haunt.sh`: the real bundled world,
   corrupted span rejection, rendering packets, gameplay, all nine triggers,
   editing/teaching, saves and official protobuf round trips under sanitizers.
 - `apps/openagents-ios/build.sh`, then `HomeUITests` and `HauntUITests` on a

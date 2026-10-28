@@ -6,7 +6,7 @@ The openagents.com splash writes COMING SOON in seven hand-drawn glyphs
 (`apps/openagents-web/splash.coax`). Each one is a single line through points
 on a small grid, drawn on the GPU as a sharp core with a soft glow. This
 proposal turns those seven glyphs into a complete typeface, kept as its own
-project so the splash, the docs and blog pages, the HUD and later Metareal
+project so the splash, the docs and blog pages, the HUD and later Verse
 all draw text the same way.
 
 Working name: **Filament**. Each letter is one lit wire, and the name says

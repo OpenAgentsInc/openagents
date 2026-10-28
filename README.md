@@ -5,7 +5,7 @@ reset on 2026-10-27. What is here now is the base everything else will be
 built on:
 
 - **Coax**, the language;
-- **Metareal**, the real-time engine, written in it;
+- **Verse**, the real-time engine, written in it;
 - **one protocol** that every OpenAgents surface speaks;
 - **a native iOS app** that runs Coax today.
 
@@ -23,14 +23,15 @@ built on:
   - The [specification](coax/spec.md) and a
     [book](coax/book/README.md) describe the language and say which parts
     exist today.
-- **Metareal** ([`metareal/`](metareal/)) is the engine. The home scene, its
+- **Verse** ([`verse/`](verse/)) is the engine. The home scene, its
   graph, its HUD and its resource admission are Coax (`home.coax`), and so is
   its shader math (`light.coax`). Start opens the Grid (`grid.coax`), where
   you walk (`player.coax`) as an animated character among patrolling robots
   (`cast.coax`). A thin C and Swift layer owns storage and
-  the GPU. **Verse** is the world and experience being built on Metareal
+  the GPU. The same name covers the world and experience the engine runs:
+  the Verse, made of realms such as the Haunted House
   ([Verse protocol](docs/verse/openagents-verse-protocol.md),
-  [engine notes](docs/verse/metareal-engine.md)).
+  [engine notes](docs/verse/engine.md)).
 - **The OpenAgents Protocol**
   ([spec](docs/protocol/openagents-protocol-spec.md), schemas in
   [`proto/`](proto/README.md)) defines the interchange for web, mobile,

@@ -17,8 +17,8 @@
 ## Coax in OpenAgents
 
 - [OpenAgents iOS app](https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents-ios/README.md): how the app
-  builds and calls the Coax files in `metareal/`.
-- [Metareal](https://github.com/OpenAgentsInc/openagents/tree/main/docs/verse/metareal-engine.md): engine scope and native paths.
+  builds and calls the Coax files in `verse/`.
+- [Verse](https://github.com/OpenAgentsInc/openagents/tree/main/docs/verse/engine.md): engine scope and native paths.
 
 ## Protocol
 
@@ -30,5 +30,5 @@
   product protocol catalog and dependency order.
 - [Recovery provenance](https://github.com/OpenAgentsInc/openagents/tree/main/proto/recovery.json): pre-reset source revision
   and exact source/snapshot/vendor hashes.
-- [Metareal migration](https://github.com/OpenAgentsInc/openagents/tree/main/proto/migrations/README.md): canonical names,
+- [Engine rename migration](https://github.com/OpenAgentsInc/openagents/tree/main/proto/migrations/README.md): canonical names,
   explicit old readers and versioned ID/signature transitions.

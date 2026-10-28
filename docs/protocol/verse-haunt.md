@@ -1,4 +1,4 @@
-# Metareal Haunted House documents
+# Verse Haunted House documents
 
 `openagents.metareal.haunt.v1alpha1`, selected by the `haunt` descriptor
 profile, defines the native scene and its editable documents. This is a new
@@ -34,7 +34,7 @@ copies, file invitations/import, and deterministic character conversation
 work without those services; these must not be described as authenticated
 public publication or cloud-generated answers.
 
-Checks: `metareal/test_haunt.sh` under ASan/UBSan; set `PROTOC` and
+Checks: `verse/test_haunt.sh` under ASan/UBSan; set `PROTOC` and
 `PROTO_PYTHON` to also run `haunt_oracle.py` against official protoc and the
 original content. Native UI tests enter from the Grid, converse, edit, save,
 leave/reenter, rotate and open the map. The normal iOS build remains Python

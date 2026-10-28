@@ -4,7 +4,7 @@ Updated: 2026-10-28. Status: **working 0.13.0 bootstrap; broader language design
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
 end in `.coax`; the executable is `coax`; a future build entry is `build.coax`.
 
-Coax is a systems language for Metareal and OpenAgents' real-time code. Its
+Coax is a systems language for Verse and OpenAgents' real-time code. Its
 purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
@@ -62,7 +62,7 @@ Contents:
 
 ## 1. Requirements
 
-The [performance plan](../docs/verse/metareal-engine.md) provides the engine context.
+The [performance plan](../docs/verse/engine.md) provides the engine context.
 These are requirements and evaluation criteria, not measured compiler claims.
 
 | Requirement | Concrete test |
@@ -764,8 +764,8 @@ yet.
 The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) is the
 defining interchange specification for every OpenAgents surface, including
 Verse. Root [proto/](../proto/README.md) is its schema authoring source.
-**Coax is the implementation target for all those surfaces. Metareal is the
-engine; Verse is the world/experience built on it.**
+**Coax is the implementation target for all those surfaces. Verse is the
+engine and the world/experience it runs; its worlds are realms.**
 
 Shared engine contracts use `openagents.engine.*`; Verse world/product types
 use `openagents.verse.*`; other domains use their owning `openagents.*`
@@ -804,7 +804,7 @@ Coax declarations may propose schema changes,
 but they return through public schema review and compatibility checks.
 There is no second Coax-only wire schema.
 
-The [Metareal migration](../proto/migrations/README.md) records legacy reader
+The [engine rename migration](../proto/migrations/README.md) records legacy reader
 aliases, new canonical IDs and versioned writer transitions. Published layout,
 asset profile identity, protocol name and brand are separate axes. A new
 signature domain needs a new signature; old signed bytes are never rewritten.
@@ -1113,7 +1113,7 @@ engine remains unmeasured.
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. In 0.5.0, checks: `#test`, `#forall`, `#authority`, `coax test` and `coax mutate`. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
 | 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. R0 now compares the actual pose against a pinned native evaluator and records kernel/Metal-frame timings. The follow-up pose rewrite passes the proposed median budget; device/tail, full-loop and independent review gates remain open. |
-| 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; Metareal derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
+| 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; Verse derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |
 | 6 — Protocol expansion and GPU experiments | Stable metadata/layouts and previous native ABI proof. Existing protocol adapters remain until parity. | Extend the first selected-profile codec into more domains; prove a Metal pipeline separately and compare generated shaders before choosing a compiler backend. |

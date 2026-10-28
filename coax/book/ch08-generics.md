@@ -496,7 +496,7 @@ before it's added.
 ## In the real world: five copies of `clamp`
 
 The Coax code behind the OpenAgents iOS world shows exactly the problem
-generics are for. `metareal/grid.coax`, `cast.coax` and `player.coax`
+generics are for. `verse/grid.coax`, `cast.coax` and `player.coax`
 each carry the same three helpers:
 
 ```jai

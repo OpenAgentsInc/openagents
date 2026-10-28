@@ -4,8 +4,8 @@ Coax code doesn't run on its own in the OpenAgents app. The app is a UIKit
 program written in Swift, and every Coax file it uses arrives as a small C
 library: a `.c` file Xcode compiles and a `.h` file Swift imports. When you
 tap Start on the home screen, Swift calls a Coax procedure named
-`metareal_camera_dolly_start`, and on every frame until the camera lands it
-calls `metareal_camera_dolly` to find out where the camera is. Neither side knows
+`verse_camera_dolly_start`, and on every frame until the camera lands it
+calls `verse_camera_dolly` to find out where the camera is. Neither side knows
 much about the other. They agree on a C header, and that header is the
 whole contract.
 
@@ -455,7 +455,7 @@ Building with `coax lib --release` gives exactly the same result, because
 release builds keep bounds checks. There's no error value to return and no
 way for C to catch it. If a host needs to survive bad input, it has to
 check the input before the call, or the Coax procedure has to return a
-result the host can test, the way `metareal/wallet.coax` returns `-1` for
+result the host can test, the way `verse/wallet.coax` returns `-1` for
 an amount it won't convert.
 
 Coax also trusts the count it's given. If C says a view has 3 elements
@@ -574,7 +574,7 @@ regenerated header against the Swift table. The app does
 exactly this in `apps/openagents-ios/OpenAgents/Wallet/WalletRules.swift`:
 
 ```swift
-/// metareal/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
+/// verse/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
 /// import the header's cast macros). The header's layout checks pin Flow.
 enum Pay { static let idle: coax_t_Pay = 0, quoted: coax_t_Pay = 1, sending: coax_t_Pay = 2, succeeded: coax_t_Pay = 3, notSent: coax_t_Pay = 4, unknown: coax_t_Pay = 5 }
 ```
@@ -718,7 +718,7 @@ bad2.coax:2:11: error[E0404]: compile-time execution cannot call the host proced
 1 error
 ```
 
-The iOS home is built on exactly this pattern. `metareal/home.coax` begins
+The iOS home is built on exactly this pattern. `verse/home.coax` begins
 with a list of host procedures:
 
 ```jai
@@ -730,7 +730,7 @@ host_dot :: (h: int, x: f64, y: f64, size: f64, light: f64, soft: f64, crisp: f6
 host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign;
 ```
 
-`metareal/platform/host.c` implements them over bounded, generation-checked
+`verse/platform/host.c` implements them over bounded, generation-checked
 storage: `h` is a handle, and a stale or unknown handle makes the call do
 nothing instead of touching freed memory.
 
@@ -747,8 +747,8 @@ One Coax file is easy. The iOS app has several, each compiled to its own
 library and header, and Swift includes their headers through one
 bridging header. That's where the team hit the next problem.
 
-`metareal/player.coax` has a 3D vector type called `Vec3`. When
-`metareal/camera.coax` was written, it needed a 3D vector too. Let's see
+`verse/player.coax` has a 3D vector type called `Vec3`. When
+`verse/camera.coax` was written, it needed a 3D vector too. Let's see
 what happens when two files both define one. Here are two tiny files:
 
 Filename: walker.coax
@@ -787,7 +787,7 @@ a host includes both. The view typedefs for built-in element types, like
 `coax_v_f32`, are guarded so they can repeat, but struct types aren't.
 
 The fix in the app was to give the camera's struct a different name.
-That's why `metareal/camera.coax` says `Point` where you'd expect `Vec3`:
+That's why `verse/camera.coax` says `Point` where you'd expect `Vec3`:
 
 ```jai
 Point :: struct { x: f32; y: f32; z: f32; }
@@ -816,9 +816,9 @@ duplicate symbol '_tick' in:
 ld: 1 duplicate symbols
 ```
 
-That's why every exported procedure in `metareal/` carries its file's
-name: `metareal_camera_dolly`, `metareal_player_feet`,
-`metareal_wallet_sat_to_msat`. It reads long, but C has one namespace, and
+That's why every exported procedure in `verse/` carries its file's
+name: `verse_camera_dolly`, `verse_player_feet`,
+`verse_wallet_sat_to_msat`. It reads long, but C has one namespace, and
 the prefix is how you share it.
 
 One thing that does repeat safely is a `#foreign` declaration. Both
@@ -838,7 +838,7 @@ for name in home player grid cast camera wallet haunt hud; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
   # is #authority, so its checks run in this compile and a failure stops it.
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
-  "$compiler" c "metareal/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
+  "$compiler" c "verse/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
 ```
@@ -854,7 +854,7 @@ does what `coax lib` does to the program: the Coax `main`, if there is
 one, becomes an unused static function, so there's no C `main` to clash
 with the app's.
 
-The comment about the wallet is worth reading twice. `metareal/wallet.coax`
+The comment about the wallet is worth reading twice. `verse/wallet.coax`
 is marked `#authority` (Chapter 10), so every compile of it runs its
 checks. If a change breaks a payment rule, the `coax c` in this loop fails,
 the build phase fails, and Xcode never produces an app with the broken
@@ -865,7 +865,7 @@ tells Clang where the generated headers are:
 
 ```yaml
 SWIFT_OBJC_BRIDGING_HEADER: OpenAgents/Platform/Bridge.h
-HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metareal/platform"]
+HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../verse/platform"]
 ```
 
 and `Bridge.h` includes the host's header and the generated Coax headers.
@@ -888,8 +888,8 @@ shot and starts a dolly, passing the system's Reduce Motion setting so
 Coax can turn the swoop into a cut:
 
 ```swift
-let from = lastShot ?? metareal_camera_overview(0)
-stage = .arriving(metareal_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
+let from = lastShot ?? verse_camera_overview(0)
+stage = .arriving(verse_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
 ```
 
 Swift keeps the returned `coax_t_Dolly` in an enum case, and on every
@@ -897,8 +897,8 @@ frame it asks Coax where the camera should be:
 
 ```swift
 case .arriving(let d):
-    shot = metareal_camera_dolly(d, timestamp, follow)
-    if metareal_camera_dolly_done(d, timestamp) { arrive() }
+    shot = verse_camera_dolly(d, timestamp, follow)
+    if verse_camera_dolly_done(d, timestamp) { arrive() }
 ```
 
 Notice the division of labor. Swift owns the clock, the touches, the
@@ -1033,9 +1033,9 @@ ease.coax:16:3: error[E0377]: a loop is outside the Metal scalar profile
 1 error
 ```
 
-The app uses this for `metareal/light.coax`, its sky, dots, glass bar,
+The app uses this for `verse/light.coax`, its sky, dots, glass bar,
 bloom and tone mapping. `generate.sh` writes `coax metal
-metareal/light.coax` and appends the hand-written stage functions from
+verse/light.coax` and appends the hand-written stage functions from
 `Stages.metal`, which bind textures and pack vectors and call the Coax
 functions. The tests run the C build of the same file, so one source is
 checked on the CPU and drawn on the GPU. Chapter 14 covers GPU programs in

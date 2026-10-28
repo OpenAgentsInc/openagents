@@ -1,6 +1,6 @@
 // The Haunted House's C face for the browser: what HauntViewController.swift
-// and HauntAssets.swift do on the phone, for coax/web/host.js. metareal's
-// own Coax plays the house (haunt.coax), walks you through it (player.coax)
+// and HauntAssets.swift do on the phone, for coax/web/host.js. The
+// engine's own Coax plays the house (haunt.coax), walks you through it (player.coax)
 // and reads your thumbs (grid.coax), each built as its own library as the
 // iOS app links them; realm.coax draws the HUD and decides the controls.
 // This file only holds their memory and passes values between them, once a
@@ -82,7 +82,7 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
   if (i == 2) index_count = bytes / 4;
 }
 
-static void rebuild_walls(void) { wall_count = metareal_haunt_walls(house, (coax_v_f32){walls, 4096 * 6}); }
+static void rebuild_walls(void) { wall_count = verse_haunt_walls(house, (coax_v_f32){walls, 4096 * 6}); }
 
 // The house opens once its document and geometry are here (HauntAssets.init).
 static void open_house(void) {
@@ -97,33 +97,33 @@ static void open_house(void) {
   s.actions = (coax_v_t_HauntAction){actions, 256};
   s.pending = (coax_v_t_HauntEvent){pending, 256};
   s.talking = -1; s.selected = -1; s.holding = -1; s.was_ground = true;
-  house = metareal_haunt_open((coax_v_u8){document, document_n}, s);
+  house = verse_haunt_open((coax_v_u8){document, document_n}, s);
   if (!house.ok) { failed = true; return; }
   for (int64_t i = 0; i < house.mesh_count; i++)
-    if (!metareal_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
+    if (!verse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
   rebuild_walls();
-  player = metareal_player_place(7, 0, 2, 0);
+  player = verse_player_place(7, 0, 2, 0);
   player.phi = 1.5707963f;
-  sticks = metareal_sticks_reset();
+  sticks = verse_sticks_reset();
   opened = true;
 }
 
 // E: talk to whoever is near, or open the door (activateNearby).
 static void use_nearby(void) {
-  int64_t person = metareal_haunt_near(house);
-  if (person >= 0) { house = metareal_haunt_talk(house, person, 0); return; }
-  int64_t door = metareal_haunt_door(house);
-  if (door >= 0) { house = metareal_haunt_edit(house, door, 9, 0); rebuild_walls(); }
+  int64_t person = verse_haunt_near(house);
+  if (person >= 0) { house = verse_haunt_talk(house, person, 0); return; }
+  int64_t door = verse_haunt_door(house);
+  if (door >= 0) { house = verse_haunt_edit(house, door, 9, 0); rebuild_walls(); }
 }
 
 static void take_asks(void) {
   int64_t asks = realm_take(realm_of());
   if (asks & 1) use_nearby();
-  if (asks & 2) { house = metareal_haunt_view(house); player.phi = house.camera == 0 ? 1.5707963f : 1.107f; }
-  if ((asks & 4) && house.talking >= 0) house = metareal_haunt_talk(house, house.talking, 1);
-  if (asks & 8) house = metareal_haunt_talk(house, -1, 0);
+  if (asks & 2) { house = verse_haunt_view(house); player.phi = house.camera == 0 ? 1.5707963f : 1.107f; }
+  if ((asks & 4) && house.talking >= 0) house = verse_haunt_talk(house, house.talking, 1);
+  if (asks & 8) house = verse_haunt_talk(house, -1, 0);
   // Walked away: the conversation ends.
-  if (house.talking >= 0 && metareal_haunt_near(house) != house.talking) house = metareal_haunt_talk(house, -1, 0);
+  if (house.talking >= 0 && verse_haunt_near(house) != house.talking) house = verse_haunt_talk(house, -1, 0);
 }
 
 // The sounds the house asked for this frame, a line each: name gain pan.
@@ -142,20 +142,20 @@ static void queue_sounds(void) {
 static void step(float dt) {
   coax_v_t_Realm r = realm_of();
   coax_t_Vec3 was = player.pos;
-  if (realm.zoom != 0) { player = metareal_player_zoom(player, realm.zoom); realm.zoom = 0; }
+  if (realm.zoom != 0) { player = verse_player_zoom(player, realm.zoom); realm.zoom = 0; }
   bool run = sticks.run || (realm.held & 16), jump = sticks.jump || (realm.held & 32);
-  player = metareal_player_input(player, realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
+  player = verse_player_input(player, realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);
   realm.dyaw = 0; realm.dpitch = 0;
-  sticks = metareal_sticks_used(sticks);
-  player = metareal_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6});
-  coax_t_HauntPoint kept = metareal_haunt_constrain(house, point(was), point(player.pos));
-  player = metareal_player_constrain(player, kept.x, kept.z);
-  coax_t_Vec3 feet = metareal_player_feet(player);
+  sticks = verse_sticks_used(sticks);
+  player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6});
+  coax_t_HauntPoint kept = verse_haunt_constrain(house, point(was), point(player.pos));
+  player = verse_player_constrain(player, kept.x, kept.z);
+  coax_t_Vec3 feet = verse_player_feet(player);
   float distance = hypotf(feet.x - was.x, feet.z - was.z);
-  house.facing = metareal_player_face(player);
-  coax_t_Vec3 eye = metareal_player_view_eye(player, house.camera);
-  house = metareal_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
+  house.facing = verse_player_face(player);
+  coax_t_Vec3 eye = verse_player_view_eye(player, house.camera);
+  house = verse_haunt_advance(house, now, point(feet), point(eye), player.theta, distance, player.on_ground);
   take_asks();
   queue_sounds();
 }
@@ -165,14 +165,14 @@ static void describe(void) {
   v.ready = opened; v.failed = failed;
   v.loaded = (float)(((ready >> 0) & 1) + ((ready >> 1) & 1) + ((ready >> 2) & 1) + ((ready >> 3) & 1)) / 4;
   if (opened) {
-    coax_t_Vec3 feet = metareal_player_feet(player);
-    int64_t area = metareal_haunt_area(house, point(feet));
+    coax_t_Vec3 feet = verse_player_feet(player);
+    int64_t area = verse_haunt_area(house, point(feet));
     v.title = area >= 0 ? areas[area].name : (coax_string){"Haunted House", 13};
     v.haunts = house.zone_count;
     uint32_t mask = house.zone_count >= 32 ? 0xffffffffu : (1u << house.zone_count) - 1;
     v.found = __builtin_popcount(house.fired & mask);
     v.notice = now < house.toast_until ? house.toast : (coax_string){"", 0};
-    int64_t person = metareal_haunt_near(house), door = metareal_haunt_door(house);
+    int64_t person = verse_haunt_near(house), door = verse_haunt_door(house);
     v.target = person >= 0 ? people[person].name : door >= 0 ? (coax_string){"Door", 4} : (coax_string){"", 0};
     v.talking = house.talking >= 0 ? people[house.talking].name : (coax_string){"", 0};
     v.reply = house.reply;
@@ -180,7 +180,7 @@ static void describe(void) {
     v.map_n = 0;
     if (realm.map) {
       coax_t_Box b = realm_map_box(realm_of());
-      int64_t n = metareal_haunt_map(house, b.x1 - b.x0, b.y1 - b.y0, (coax_v_t_HauntMapRect){boxes, 66});
+      int64_t n = verse_haunt_map(house, b.x1 - b.x0, b.y1 - b.y0, (coax_v_t_HauntMapRect){boxes, 66});
       for (int64_t i = 0; i < n && i < 66; i++) {
         float *m = v.map.e + i * 5;
         m[0] = boxes[i].x; m[1] = boxes[i].y; m[2] = boxes[i].width; m[3] = boxes[i].height; m[4] = (float)boxes[i].kind;
@@ -206,10 +206,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_realm_max_vertices() * coaxial_realm_vertex_floats()};
   int64_t n = realm_draw(realm_of(), view, out, (coax_v_f32){u, coaxial_realm_uniform_floats()}, w, h, scale, dt);
   if (opened) {
-    coax_t_Vec3 eye = metareal_player_view_eye(player, house.camera), at = metareal_player_view_at(player, house.camera);
-    metareal_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
-    draw_count = metareal_haunt_instances(house, now, (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
-    light_count = metareal_haunt_lights(house, now, (coax_v_t_HauntGPUlight){lights, 64});
+    coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
+    verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
+    draw_count = verse_haunt_instances(house, now, (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
+    light_count = verse_haunt_lights(house, now, (coax_v_t_HauntGPUlight){lights, 64});
     instance_end = 0;
     for (int64_t i = 0; i < draw_count; i++) if (draws[i].base + draws[i].instances > instance_end) instance_end = draws[i].base + draws[i].instances;
     u[24] = house.eye.x; u[25] = house.eye.y; u[26] = house.eye.z; u[27] = (float)light_count;
@@ -240,11 +240,11 @@ EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t 
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) {
   (void)state; return realm_key(realm_of(), view, key, mods, false) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; realm_blur(realm_of()); sticks = metareal_sticks_reset(); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; realm_blur(realm_of()); sticks = verse_sticks_reset(); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   (void)state;
   if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) return 1u;
-  if (kind != 0 && opened) sticks = metareal_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (kind != 0 && opened) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { (void)state; realm_wheel(realm_of(), dy); }

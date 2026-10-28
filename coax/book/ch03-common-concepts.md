@@ -1260,7 +1260,7 @@ undefined behavior; in Coax, a `print` that compiles prints what it says.
 
 ## In the real world
 
-Here are four small procedures from `metareal/home.coax`, the Coax code
+Here are four small procedures from `verse/home.coax`, the Coax code
 that draws the OpenAgents iOS app's home screen. Nothing in them is new
 to you now: `f64` parameters, `if` with `return`, a local in `smooth`,
 and procedures calling procedures declared just above them. We've added
@@ -1272,7 +1272,7 @@ Filename: smooth.coax
 ```jai
 #import "Basic";
 
-// From metareal/home.coax, the native home screen of the OpenAgents iOS app.
+// From verse/home.coax, the native home screen of the OpenAgents iOS app.
 minimum :: (a: f64, b: f64) -> f64 { if a < b { return a; } return b; }
 maximum :: (a: f64, b: f64) -> f64 { if a > b { return a; } return b; }
 clamp :: (a: f64, low: f64, high: f64) -> f64 { return minimum(high, maximum(low, a)); }

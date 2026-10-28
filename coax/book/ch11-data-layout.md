@@ -193,7 +193,7 @@ C++, so these run in the C compiler. A packing pragma, a different
 compiler or a struct edited by hand on the C side can't silently
 disagree with Coax: the C build stops at the assertion that names the
 field. The iOS wallet relies on exactly this. Its Swift code reads the
-`Flow` struct from `metareal/wallet.coax`, and the header's layout
+`Flow` struct from `verse/wallet.coax`, and the header's layout
 checks pin it.
 
 ## Arrays of structs and structs of arrays

@@ -29,7 +29,7 @@ descriptors with `#import_proto` and generates bounded codecs for the
 supported proto3 subset. Schema-1 `type_info`, `field_info` and `enum_info`
 queries expose CPU layouts as ordinary values and generate tables through `#run`.
 
-Coax is also in use. The `metareal/` folder of the OpenAgents repository
+Coax is also in use. The `verse/` folder of the OpenAgents repository
 holds the product Coax sources that the iOS app compiles and calls (see
 `apps/openagents-ios/README.md`): the
 home screen (`home.coax`, which also uses generated protobuf codecs), the

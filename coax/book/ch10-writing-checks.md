@@ -839,7 +839,7 @@ changes the procedures the checks call, not the checks, and the rule
 
 ## Checks in the real world
 
-The Grid's wallet in `metareal/wallet.coax` is written this way. Swift
+The Grid's wallet in `verse/wallet.coax` is written this way. Swift
 talks to the payment SDK and hands the Coax file plain numbers: amounts,
 fees, times and what the SDK reported. Coax decides whether a quote may
 be paid. The file starts like our split:
@@ -854,24 +854,24 @@ MAX_SAT :: 2_100_000_000_000_000;
 // ---- Amounts ----
 
 // The SDK counts satoshis; payment.v1 counts millisatoshis.
-metareal_wallet_sat_to_msat :: (sat: int) -> int #export_c {
+verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
   if sat < 0 || sat > MAX_SAT { return -1; }
   return sat * 1000;
 }
 
 #forall "sats to msat" sat: -3..<40 {
-  m := metareal_wallet_sat_to_msat(sat);
+  m := verse_wallet_sat_to_msat(sat);
   if sat < 0 { #assert m == -1; } else { #assert m == sat * 1000; }
 }
 
 #test "sats to msat at the top" {
-  #assert metareal_wallet_sat_to_msat(MAX_SAT) == MAX_SAT * 1000;
-  #assert metareal_wallet_sat_to_msat(MAX_SAT + 1) == -1;
-  #assert metareal_wallet_sat_to_msat(0) == 0;
+  #assert verse_wallet_sat_to_msat(MAX_SAT) == MAX_SAT * 1000;
+  #assert verse_wallet_sat_to_msat(MAX_SAT + 1) == -1;
+  #assert verse_wallet_sat_to_msat(0) == 0;
 }
 ```
 
-*Listing 10-7: The start of `metareal/wallet.coax`*
+*Listing 10-7: The start of `verse/wallet.coax`*
 
 Here is the small-instance pattern from earlier. The `#forall` covers
 amounts from -3 to 39 sats, crossing the boundary at zero, and the
@@ -888,23 +888,23 @@ the start:
 ```jai
 #forall "every four events" a: Event, b: Event, c: Event, d: Event {
   events := [4] Event.[a, b, c, d];
-  f := metareal_wallet_start();
+  f := verse_wallet_start();
   for e: events {
     before := f;
-    f = metareal_wallet_step(f, e);
+    f = verse_wallet_step(f, e);
     #assert f.sends <= 1;
     // ...
   }
 }
 ```
 
-*Listing 10-8: Every four-event history of a payment, from `metareal/wallet.coax`*
+*Listing 10-8: Every four-event history of a payment, from `verse/wallet.coax`*
 
 `Event` has 8 values, so that's 8^4 = 4,096 histories, every one of
 them. The whole file runs in a few hundredths of a second:
 
 ```
-$ coax test metareal/wallet.coax
+$ coax test verse/wallet.coax
 ok   #forall sats to msat (43 cases, 1188 steps)
 ok   #test sats to msat at the top (1 case, 54 steps)
 ...
@@ -914,7 +914,7 @@ ok   #test a fresh payment (1 case, 24 steps)
 ok   #forall each step (96 cases, 9876 steps)
 ok   #forall every four events (4096 cases, 1355356 steps)
 16 checks, 16 passed, 0 failed
-$ coax mutate metareal/wallet.coax
+$ coax mutate verse/wallet.coax
 155 mutants, 155 killed, 0 survived
 ```
 
@@ -922,7 +922,7 @@ Because the file is `#authority`, those 16 checks run every time
 `apps/openagents-ios/generate.sh` compiles it to C for the iOS app. A
 change that lets a quote be paid twice doesn't make it to a build.
 
-Not every file needs that. `metareal/camera.coax`, the camera that
+Not every file needs that. `verse/camera.coax`, the camera that
 circles the Grid and swoops down behind your character, has ten checks
 but no `#authority`. Its checks use helpers like `near` for comparing
 floats within a tolerance, and its rules are about motion: "the ease only
@@ -930,9 +930,9 @@ rises", "the dolly is smooth, above the ground, and comes in from
 behind". Mutating it shows that the checks leave a lot unpinned:
 
 ```
-$ coax mutate metareal/camera.coax
+$ coax mutate verse/camera.coax
 ...
-metareal/camera.coax:116:89: mutant survived: '&&' became '||'
+verse/camera.coax:116:89: mutant survived: '&&' became '||'
   same :: (a: Point, b: Point, tolerance: f32) -> bool { return near(a.x, b.x, tolerance) && near(a.y, b.y, tolerance) && near(a.z, b.z, tolerance); }
                                                                                           ^
 87 mutants, 63 killed, 24 survived

@@ -8,42 +8,42 @@ the wire is `proto/openagents/voice/v1alpha1/voice.proto`.
 
 | Path | What it is |
 | --- | --- |
-| `metareal/voice*.coax` | The voice engine: VAD, end of turn, barge-in, frame features and decisions, the wire codec, floor and meter authorities |
-| `metareal/platform/voice.h`, `voice.c` | The plain-C face of the engine, shared by the voice host and the iOS app |
-| `metareal/voice-host/host.c` | The voice host: WebSocket server, sessions, provider calls |
-| `metareal/voice-host/speech.c` | Speech providers (`google`, `local`), agents (`gemini`, `echo`) and the per-route agent instructions |
-| `metareal/voice-host/voice-reply.coax` | `#authority`: when a partial may stand as the final transcript, when to recognize early, where a streamed reply is cut into sentences |
-| `metareal/voice-host/ws.c`, `wav.c` | RFC 6455 WebSocket framing and handshake; WAV reading and writing |
-| `metareal/voice-host/client.c` | `voice-client`, the dev test client |
-| `metareal/voice-host/fixtures/` | Three 16 kHz mono speech fixtures, made once with Google TTS |
-| `metareal/voice-host/build.sh`, `run.sh`, `test.sh` | Build, run, test |
+| `verse/voice*.coax` | The voice engine: VAD, end of turn, barge-in, frame features and decisions, the wire codec, floor and meter authorities |
+| `verse/platform/voice.h`, `voice.c` | The plain-C face of the engine, shared by the voice host and the iOS app |
+| `verse/voice-host/host.c` | The voice host: WebSocket server, sessions, provider calls |
+| `verse/voice-host/speech.c` | Speech providers (`google`, `local`), agents (`gemini`, `echo`) and the per-route agent instructions |
+| `verse/voice-host/voice-reply.coax` | `#authority`: when a partial may stand as the final transcript, when to recognize early, where a streamed reply is cut into sentences |
+| `verse/voice-host/ws.c`, `wav.c` | RFC 6455 WebSocket framing and handshake; WAV reading and writing |
+| `verse/voice-host/client.c` | `voice-client`, the dev test client |
+| `verse/voice-host/fixtures/` | Three 16 kHz mono speech fixtures, made once with Google TTS |
+| `verse/voice-host/build.sh`, `run.sh`, `test.sh` | Build, run, test |
 
 ## Build, run, test
 
 ```sh
-metareal/voice-host/build.sh                 # -> metareal/voice-host/build/voice-host, voice-client
-metareal/voice-host/run.sh                   # Google speech + Gemini on 127.0.0.1:8787
-metareal/voice-host/run.sh --offline         # local speech + echo agent, no network
-metareal/voice-host/test.sh                  # offline cases, then the live Google cases
-metareal/voice-host/test.sh --offline        # offline cases only
+verse/voice-host/build.sh                 # -> verse/voice-host/build/voice-host, voice-client
+verse/voice-host/run.sh                   # Google speech + Gemini on 127.0.0.1:8787
+verse/voice-host/run.sh --offline         # local speech + echo agent, no network
+verse/voice-host/test.sh                  # offline cases, then the live Google cases
+verse/voice-host/test.sh --offline        # offline cases only
 ```
 
 Talk to a running host with a fixture:
 
 ```sh
-metareal/voice-host/build/voice-client --out /tmp/reply.wav metareal/voice-host/fixtures/hello-foreman.wav
+verse/voice-host/build/voice-client --out /tmp/reply.wav verse/voice-host/fixtures/hello-foreman.wav
 afplay /tmp/reply.wav
 ```
 
 `build.sh` uses only what's on the Mac: it builds `coax/bin/coax` if it is
 missing or stale (the same way `apps/openagents-ios/generate.sh` does),
-compiles each `metareal/voice*.coax` and `metareal/voice-host/*.coax` to a C library with
+compiles each `verse/voice*.coax` and `verse/voice-host/*.coax` to a C library with
 `coax c FILE --library --header` (`voice.coax` becomes `VoiceEngine.c/.h`,
 because `Voice.h` would match `voice.h` on a case-insensitive disk; the others
-are `VoiceWire`, `VoiceFloor`, `VoiceMeter`, `VoiceReply`), compiles `metareal/platform/voice.c` over
+are `VoiceWire`, `VoiceFloor`, `VoiceMeter`, `VoiceReply`), compiles `verse/platform/voice.c` over
 them, and links the host against libcurl from the macOS SDK. `#authority`
 files run their checks inside `coax c`, so a failing check stops the build.
-Outputs go to `metareal/voice-host/build/` (ignored by git).
+Outputs go to `verse/voice-host/build/` (ignored by git).
 
 ## Credentials
 
@@ -75,7 +75,7 @@ A real iPhone has no default voice host yet (none is deployed). On the same
 Wi-Fi, run the host on every interface and point the phone at the Mac:
 
 ```sh
-metareal/voice-host/run.sh --listen 0.0.0.0:8787
+verse/voice-host/run.sh --listen 0.0.0.0:8787
 ```
 
 On the phone, enter the Grid, long-press the microphone at the top left and enter
@@ -112,7 +112,7 @@ lengths only. `--verbose` adds the text and every applied or dropped decision.
 
 The agent's instruction comes from `Hello.route` through one table,
 `ROUTES` in `speech.c`. Today it has one row, `foreman`: the Foreman, an
-agent standing by the start of the Grid in OpenAgents' Verse (a Metareal
+agent standing by the start of the Grid in OpenAgents' Verse (a
 world built in Coax), who speaks at most 30 words of plain spoken English,
 says what it doesn't know instead of inventing projects or facts, and uses
 the conversation so far. A Hello with a route that has no row gets
@@ -207,7 +207,7 @@ decides turns).
 
 ### The final transcript
 
-`metareal_voice_reply_final_plan` in `voice-reply.coax` decides at
+`verse_voice_reply_final_plan` in `voice-reply.coax` decides at
 `TURN_END`, from the turn's numbers only:
 
 - **partial**: a finished recognition with words covers every voiced frame
@@ -227,7 +227,7 @@ mutation testing (`coax mutate`, zero survivors) are in the file.
 
 ### Sentences
 
-`metareal_voice_reply_sentence_end` decides where a streamed reply is cut:
+`verse_voice_reply_sentence_end` decides where a streamed reply is cut:
 after `.` `!` `?` followed by whitespace (or at a newline), once the
 sentence is at least 8 bytes. The reply's first piece must be at least 24
 bytes and may also end at `,` `;` `:`. That is short to render, but long

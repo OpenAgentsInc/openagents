@@ -15,7 +15,7 @@ We have built voice about twenty times since 2024. The
 [2026-10-21 voice audit](#reading-the-history) records what each attempt
 taught us. This proposal starts from those lessons and from the reset
 (`0b401561a0`), which removed every line of the Rust voice stack the audit
-recommended building on. What's left is Coax, Metareal, the protocol, and
+recommended building on. What's left is Coax, Verse, the protocol, and
 our own GCP project. That turns out to be a good place to start.
 
 ## What the owner has asked for
@@ -74,10 +74,10 @@ die with one app.
 
 - The schema: `proto/openagents/voice/v1alpha1/voice.proto`, including
   per-frame `FrameFeatures` and `FrameDecision`.
-- The Coax engine: `metareal/voice.coax`, `voice-wire.coax`, and the two
+- The Coax engine: `verse/voice.coax`, `voice-wire.coax`, and the two
   `#authority` files `voice-floor.coax` and `voice-meter.coax` (zero
-  surviving mutants), behind the C face `metareal/platform/voice.h`.
-- The dev voice host: `metareal/voice-host/` (C), running on this Mac only.
+  surviving mutants), behind the C face `verse/platform/voice.h`.
+- The dev voice host: `verse/voice-host/` (C), running on this Mac only.
   It calls Google Chirp 3, Chirp 3 HD and Vertex Gemini. How to run it:
   [dev.md](dev.md).
 - The phone: `apps/openagents-ios/OpenAgents/Voice/`, with the voice toggle
@@ -107,7 +107,7 @@ It doesn't yet have SIMD, jobs or threads, pointers, dynamic arrays, or
 `#foreign` imports that take views (`#foreign` is scalar-only). Those gaps
 decide where the line between Coax and the host falls.
 
-**Metareal** already does the shape of spatial sound. `haunt.coax`
+**Verse** already does the shape of spatial sound. `haunt.coax`
 computes a bounded, symmetric gain and pan for each sound from the eye and
 heading (`hh_gain`, `hh_pan`, with a `#test` for exactly that), and the
 Swift host plays what Coax decided.

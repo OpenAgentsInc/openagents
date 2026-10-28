@@ -46,7 +46,7 @@ Notice the checks alongside the implementation in all four compiler modules.
 Each starts with `#authority;`, the directive
 from Chapter 10 that says every procedure needs a check and that the
 checks run on every build. The compiler's front end is held to the same
-rule we asked of the wallet code in `metareal/wallet.coax`.
+rule we asked of the wallet code in `verse/wallet.coax`.
 
 The C++ side is a *unity build*: `main.cpp` `#include`s every other `.cpp`
 file, so the whole C++ frontend is one translation unit compiled by one
@@ -880,7 +880,7 @@ and C emitter handle the resulting structs, arrays and bounds checks.
 
 `tests/reflection.py` compares padding, array stride and offsets against
 independently authored C declarations under ASan/UBSan. The parser and checker
-include authority checks and mutation gates for the new paths. Metareal's
+include authority checks and mutation gates for the new paths. Verse's
 Haunted House buffer admission derives its stride and scalar table through
 these queries. Metal's packed vertex declaration is still an explicit
 platform boundary, not a second reflection target.

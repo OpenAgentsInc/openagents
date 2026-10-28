@@ -1,7 +1,7 @@
 # Lightning
 
 *Notes from 2026-10-27. Since 2026-10-28 `apps/openagents-ios` sends and
-receives through `Wallet/SparkHost.swift` and `metareal/wallet.coax`, steps 1
+receives through `Wallet/SparkHost.swift` and `verse/wallet.coax`, steps 1
 and 2 of the order of work in [coax-integration.md](coax-integration.md).*
 
 **Decision: the first wallet is Breez's Spark SDK, on mainnet, inside the
