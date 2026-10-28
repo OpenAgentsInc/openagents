@@ -1,0 +1,437 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "playtest-port",
+    "title": "Port the playtest to openagents.com, ready for the owner to switch",
+    "body": "Everything playtest.openagents.com runs today (the Kiki flow on the aethyr-demo Cloud Run service) rebuilt in this repo, in Coax, on openagents.com, with its data in Cloud SQL and full analytics for admins. playtest.openagents.com is not switched until the owner's final review.",
+    "labels": [
+      "playtest",
+      "verse"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "pt-flow",
+      "title": "The playtest flow in Coax",
+      "body": "Kiki's flow, rebuilt in Coax on openagents.com: the landing, the galaxy and the Haunted House with its quest, edit mode, characters and saving. Served at openagents.com/playtest until the owner switches playtest.openagents.com.",
+      "parent": "playtest-port"
+    },
+    {
+      "slug": "pt-server",
+      "title": "The playtest server",
+      "body": "Everything the Python API in the demo does (aethyr-cpp tools/serve.py and friends): players by email (never verified) or as guests, saves, published worlds, character chat, feedback and the session recording, as a Coax/C service on Cloud Run with its data in Cloud SQL.",
+      "parent": "playtest-port"
+    },
+    {
+      "slug": "pt-analytics",
+      "title": "Full analytics and the admin dashboard",
+      "body": "Every kind of data the playtest records, and everything traffic can tell us, captured on openagents.com into Cloud SQL; a Coax-drawn dashboard for admins, signed in with their phone (Nostr), no WorkOS.",
+      "parent": "playtest-port"
+    },
+    {
+      "slug": "pt-demo-pins",
+      "title": "Frozen demos and golden checks",
+      "body": "A demo is one exact build that never changes until the owner moves its pin: named releases, golden screenshots of the Haunted House, page smokes, the share card.",
+      "parent": "playtest-port"
+    },
+    {
+      "slug": "pt-cutover",
+      "title": "Ready to switch playtest.openagents.com",
+      "body": "Everything needed to point playtest.openagents.com at the new system, staged and rehearsed, with the old demo's data carried over; the owner does the final review and says when.",
+      "parent": "playtest-port"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "pt-inventory",
+      "parent": "pt-flow",
+      "title": "Inventory the playtest: every page, endpoint, event and file",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "docs"
+      ],
+      "body": "Read the aethyr-cpp repo (~/work/aethyr-cpp, OpenAgentsInc/aethyr-cpp): the pinned playtest flow is frozen/kiki/ (frozen/kiki.pin), and the live demo runs its demo/kiki-* tag (the worktree ~/work/aethyr-demo is that checkout; read, never edit it): README 'The web root', docs/environments.md, docs/kiki-playtest-2026-10-25.md, docs/owner-decisions.md, tools/serve.py and every tool it imports, tools/analytics.py, web/analytics.js, web/kiki pages, frozen/kiki. Write docs/verse/playtest-port.md: each page and what it does, each /api endpoint with request and response, each recorded event and field, each stored file and bucket, the Cloud Run, load balancer, DNS and certificate setup, and what in openagents already covers it (/realm/haunted-house). Split or add queue tasks where this inventory finds work the queue misses.",
+      "files": [],
+      "acceptance": [
+        "docs/verse/playtest-port.md lists every page, endpoint, event and stored file with its source path",
+        "Every gap found is a task on this project"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "pt-landing",
+      "parent": "pt-flow",
+      "title": "The landing in Coax: Create anything, Enter the Verse, email or guest",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "web"
+      ],
+      "body": "The demo's landing (revision 8): the title, the email box (never verified) with Enter beside it, and playing first as a guest who is asked once later. Drawn in Coax with the HUD look, at openagents.com/playtest on staging. Typed text uses the HUD field host.js already provides.",
+      "files": [],
+      "acceptance": [
+        "Real-Chrome screenshots, desktop and phone, side by side with the demo's",
+        "Email and guest both reach the galaxy; the email is stored by the server"
+      ],
+      "blocked_by": [
+        "pt-inventory"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-galaxy",
+      "parent": "pt-flow",
+      "title": "The galaxy: only the Haunted House opens",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web"
+      ],
+      "body": "The demo's galaxy after the landing, with the Haunted House the only world that opens (others shown, closed), in Coax.",
+      "files": [],
+      "acceptance": [
+        "Screenshots match the demo's layout; tapping the Haunted House opens /realm/haunted-house in the flow"
+      ],
+      "blocked_by": [
+        "pt-landing"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-quest",
+      "parent": "pt-flow",
+      "title": "The Haunted House quest and tutorial on the web",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "web",
+        "haunted-house"
+      ],
+      "body": "The tutorial quest and HAUNTS FOUND progress as the demo runs them (docs/tutorial-quest.md, time-and-quests.md), on the web build of the Haunted House, sharing the iOS Coax code.",
+      "files": [],
+      "acceptance": [
+        "The quest completes end to end in Chrome; a #test drives it headless"
+      ],
+      "blocked_by": [
+        "pt-inventory"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-edit-mode",
+      "parent": "pt-flow",
+      "title": "Edit mode on the web: objects, characters and zones",
+      "size": "L",
+      "labels": [
+        "playtest",
+        "web",
+        "haunted-house"
+      ],
+      "body": "The demo's edit mode (README 'Edit mode and views'): place, move and delete objects, characters and zones, undo, views; drawn in Coax, reusing the engine's HUD hotbar.",
+      "files": [],
+      "acceptance": [
+        "Every edit the demo allows works in Chrome and on a phone",
+        "Edits survive a reload (with pt-saves)"
+      ],
+      "blocked_by": [
+        "pt-inventory"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-character-chat",
+      "parent": "pt-flow",
+      "title": "Talk to characters: typed questions and teaching",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "web",
+        "ai"
+      ],
+      "body": "Typing questions to characters and teaching them, as the demo does (aethyr-cpp tools/npc_chat.py), through the server; model calls go Google-first (Vertex Gemini).",
+      "files": [],
+      "acceptance": [
+        "A question to Mortimer gets an in-character answer in Chrome",
+        "Teaching persists for that world"
+      ],
+      "blocked_by": [
+        "pt-chat-endpoint"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-saves",
+      "parent": "pt-flow",
+      "title": "Saving: versioned snapshots locally and on the server",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "web",
+        "save"
+      ],
+      "body": "World data and progress saved as versioned snapshots with a CRC (aethyr-cpp docs/save.md): IndexedDB in the page, the server for players with an email, fallback to the last good save, migrations forward.",
+      "files": [],
+      "acceptance": [
+        "A corrupted save falls back to the last good one (#test)",
+        "Progress follows a player with an email to another browser"
+      ],
+      "blocked_by": [
+        "pt-player-endpoints"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-server-skeleton",
+      "parent": "pt-server",
+      "title": "The playtest service: Coax/C on Cloud Run, Cloud SQL behind it",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "server"
+      ],
+      "body": "A native Coax service (coax/web/serve.c is the starting point) on Cloud Run, reached at openagents.com/api/playtest/* through the load balancer on staging, talking to a database on an existing Cloud SQL instance (pick openagents-production-pg or another, within the $1,500 a month budget, and say why). Schema migrations in the repo.",
+      "files": [],
+      "acceptance": [
+        "Staging answers /api/playtest/health from Cloud Run with a database round trip",
+        "No new Cloud SQL instance unless the inventory shows one is needed"
+      ],
+      "blocked_by": [
+        "pt-inventory"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-player-endpoints",
+      "parent": "pt-server",
+      "title": "Players, guests, saves and published worlds on the server",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "server"
+      ],
+      "body": "Every player and world endpoint the demo has, with the same behavior: join by email (never verified) or as a guest, save and load, publish a world and open it by link.",
+      "files": [],
+      "acceptance": [
+        "Each demo endpoint has a test against the new service",
+        "The page flow works against staging"
+      ],
+      "blocked_by": [
+        "pt-server-skeleton"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-chat-endpoint",
+      "parent": "pt-server",
+      "title": "Character chat on the server",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "server",
+        "ai"
+      ],
+      "body": "The demo's character chat endpoint with the same prompts and memory, Google-first models, per-world knowledge.",
+      "files": [],
+      "acceptance": [
+        "Same questions give comparable answers to the demo's (a side-by-side transcript)"
+      ],
+      "blocked_by": [
+        "pt-server-skeleton"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-feedback",
+      "parent": "pt-server",
+      "title": "Feedback from players",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "server"
+      ],
+      "body": "The demo's feedback endpoint and its in-game entry, stored with the session it came from.",
+      "files": [],
+      "acceptance": [
+        "Feedback posted in the flow appears in the dashboard with its session"
+      ],
+      "blocked_by": [
+        "pt-server-skeleton"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-capture",
+      "parent": "pt-analytics",
+      "title": "Capture everything the playtest records, and all the traffic",
+      "size": "L",
+      "labels": [
+        "playtest",
+        "analytics"
+      ],
+      "body": "Every event and field from tools/analytics.py and web/analytics.js (owner decision 4.2: save everything), on every openagents.com page, not only the playtest: page views, sessions, referrers, user agent, screen, timing, input, errors, geography from the load balancer's headers, and typed and spoken text where the playtest saved it, with the disclosure the demo shows. Coax collects in the page; the host only sends bytes.",
+      "files": [],
+      "acceptance": [
+        "Every event type in the inventory is captured and stored",
+        "A session replays in order from the database",
+        "The disclosure shows where the demo showed it"
+      ],
+      "blocked_by": [
+        "pt-server-skeleton"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-dashboard",
+      "parent": "pt-analytics",
+      "title": "The admin dashboard, drawn in Coax",
+      "size": "L",
+      "labels": [
+        "playtest",
+        "analytics",
+        "web"
+      ],
+      "body": "openagents.com/admin/analytics: sessions, funnels through the flow, where players stopped, every session's timeline with what they typed and said, feedback, traffic sources, errors. Admins only: signed in with the phone (Coax project milestone 'Sign in to the website with your phone'); until that lands, an admin signs a NIP-98 request with their key from this machine. Never WorkOS.",
+      "files": [],
+      "acceptance": [
+        "The owner sees yesterday's playtest sessions on staging",
+        "A non-admin gets nothing, not even counts"
+      ],
+      "blocked_by": [
+        "pt-capture"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-import-demo-data",
+      "parent": "pt-analytics",
+      "title": "Carry the demo's recorded sessions and data over",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "analytics",
+        "data"
+      ],
+      "body": "Import everything in the bucket aethyr-demo-data (players, worlds, saves, sessions, feedback) into the new database, idempotently, without changing the demo's bucket. Never delete anything Verse, Aethyr or playtest.",
+      "files": [],
+      "acceptance": [
+        "Counts match source and destination",
+        "Re-running changes nothing"
+      ],
+      "blocked_by": [
+        "pt-capture",
+        "pt-player-endpoints"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-pinned-releases",
+      "parent": "pt-demo-pins",
+      "title": "Pinned demo releases: one exact build until the owner moves it",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "release"
+      ],
+      "body": "A demo is a named, never-moved git tag released by coax/web/release.sh to its own path and bucket prefix, independent of main's releases; moving the pin is an owner step. Mirrors docs/environments.md's demo rules in the new system.",
+      "files": [],
+      "acceptance": [
+        "Releasing main never changes the pinned demo",
+        "Moving the pin and rolling it back are each one command"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "pt-goldens",
+      "parent": "pt-demo-pins",
+      "title": "Golden screenshots and page smokes for the playtest flow",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "testing"
+      ],
+      "body": "Golden screenshots of the landing, galaxy and the Haunted House start (as aethyr-cpp's tools/kiki-goldens.mjs and frozen/goldens do) and a smoke that walks the flow, run by release.sh for the demo pin.",
+      "files": [],
+      "acceptance": [
+        "A visual change fails the goldens until approved",
+        "The smoke walks landing to Haunted House on staging"
+      ],
+      "blocked_by": [
+        "pt-landing",
+        "pt-galaxy"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-share-card",
+      "parent": "pt-demo-pins",
+      "title": "The share card and page metadata",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web"
+      ],
+      "body": "The demo's Open Graph image and metadata (aethyr-cpp tools/kiki-og-image.mjs) for the new pages, with no explainer text in the HTML.",
+      "files": [],
+      "acceptance": [
+        "Link previews show the card in iMessage and Slack"
+      ],
+      "blocked_by": [
+        "pt-landing"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-cutover-plan",
+      "parent": "pt-cutover",
+      "title": "The switch-over plan and rehearsal for playtest.openagents.com",
+      "size": "M",
+      "labels": [
+        "playtest",
+        "ops"
+      ],
+      "body": "Today playtest.openagents.com is a load balancer in front of Cloud Run aethyr-demo. Write and rehearse the switch: the new host rule and certificate on the Coaxial load balancer, data freeze and last import, the exact DNS or URL-map change, smoke checks, and the one-command rollback to aethyr-demo. Rehearse on a staging hostname. Don't switch.",
+      "files": [],
+      "acceptance": [
+        "The rehearsal on a staging hostname passes its smokes",
+        "The rollback is tested",
+        "Nothing about playtest.openagents.com changes"
+      ],
+      "blocked_by": [
+        "pt-goldens",
+        "pt-import-demo-data",
+        "pt-dashboard"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "pt-parity-review",
+      "parent": "pt-cutover",
+      "title": "Side-by-side parity review for the owner",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "owner"
+      ],
+      "body": "A checklist with links: each demo page and feature next to its new version, with screenshots, known differences and the data counts. Add the owner's review and go/no-go to NEEDS_OWNER.md (committed and pushed to the workspace repo). The owner decides when to switch.",
+      "files": [],
+      "acceptance": [
+        "The checklist covers every inventory item",
+        "NEEDS_OWNER.md names the review screen by screen"
+      ],
+      "blocked_by": [
+        "pt-cutover-plan",
+        "pt-quest",
+        "pt-edit-mode",
+        "pt-character-chat",
+        "pt-saves",
+        "pt-feedback",
+        "pt-share-card"
+      ],
+      "blocks": []
+    }
+  ]
+}

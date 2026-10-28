@@ -250,6 +250,7 @@ const html = [
   `<p><a href="/project/${slug}/index.md">Tasks</a></p>`,
 ].join("\n")
 const page = join(dir, "index.html")
+if (!existsSync(page)) { console.log(`snapshot ${chicago(at)}: ${f.issues.length} items (no page yet; index.md only)`); process.exit(0) }
 const text = readFileSync(page, "utf8")
 const a = text.indexOf("<!-- snapshot -->"), b = text.indexOf("<!-- /snapshot -->")
 if (a < 0 || b < a) { console.error("snapshot: index.html has no <!-- snapshot --> markers"); process.exit(1) }

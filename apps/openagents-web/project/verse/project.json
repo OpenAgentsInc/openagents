@@ -1,0 +1,18 @@
+{
+  "slug": "verse",
+  "name": "Verse",
+  "description": "Worlds you walk into, built in Coax on the Verse engine: the Grid, the Haunted House and the playtest flow, on openagents.com.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "metareal/",
+  "contributions": "open",
+  "license": "Apache-2.0",
+  "pubkey": "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18"
+}

@@ -23,6 +23,7 @@ tools="$here/../../coax/web/project"
 [[ -d "$tools/node_modules" ]] || (cd "$tools" && bun install --silent)
 fresh=(); [[ "${COAXIAL_MODE:-dev}" == release ]] || fresh=(--if-older 10)
 bun "$tools/snapshot.ts" --project coax ${fresh[@]+"${fresh[@]}"}
+bun "$tools/snapshot.ts" --project verse ${fresh[@]+"${fresh[@]}"}
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
 wait "$splash"
 wait "$realm"
