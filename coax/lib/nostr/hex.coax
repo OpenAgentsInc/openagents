@@ -1,0 +1,89 @@
+// RFC 4648 base16: lowercase output, either ASCII case accepted on input.
+// Nostr's lowercase-only admission is a separate domain rule.
+#load "codecs-common.coax";
+#authority;
+
+#test "hex RFC vectors, exact capacity, and no write on refusal" {
+  plain := [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+  codes := [7] string.["", "66", "666f", "666f6f", "666f6f62", "666f6f6261", "666f6f626172"];
+  for i: 0..<7 {
+    out: [32] u8;
+    r := hex_encode_checked(plain[i], out[..], false);
+    #assert r.error == NC_OK && r.written == codes[i].count;
+    #assert cast(string) out[0..<r.written] == codes[i];
+    back: [16] u8;
+    q := hex_decode_checked(codes[i], back[..], false);
+    #assert q.error == NC_OK && q.written == plain[i].count;
+    #assert cast(string) back[0..<q.written] == plain[i];
+  }
+  out := [4] u8.[77, 77, 77, 77];
+  #assert hex_decode_checked("fF00", out[0..<2], false).written == 2 && out[0] == 255 && out[1] == 0;
+  out[0] = 77; out[1] = 77;
+  #assert hex_decode_checked("ff0", out[..], false).error == NC_INVALID;
+  #assert hex_decode_checked("ff0g", out[..], false).error == NC_INVALID;
+  #assert hex_encode_checked("foo", out[..], false).error == NC_CAPACITY;
+  #assert hex_decode_checked("ff00", out[0..<1], false).error == NC_CAPACITY;
+  #assert hex_encode_checked("f", out[..], true).error == NC_ALIAS;
+  #assert hex_decode_checked("ff", out[..], true).error == NC_ALIAS;
+  for b: out { #assert b == 77; }
+  #assert hex_encode_size(0) == 0 && hex_encode_size(NC_MAX_BYTES) == NC_MAX_BYTES * 2;
+  #assert hex_encode_size(-1) == -1 && hex_encode_size(NC_MAX_BYTES + 1) == -1;
+  #assert hex_decode_size(0) == 0 && hex_decode_size(NC_MAX_BYTES * 2) == NC_MAX_BYTES;
+  #assert hex_decode_size(-1) == -1 && hex_decode_size(1) == -1 && hex_decode_size(NC_MAX_BYTES * 2 + 2) == -1;
+}
+
+#forall b: 0..<256 {
+  raw: [1] u8; raw[0] = cast(u8) b;
+  out: [2] u8; back: [1] u8;
+  r := hex_encode_checked(cast(string) raw[..], out[..], false);
+  #assert r.error == NC_OK && r.written == 2;
+  #assert out[0] == "0123456789abcdef"[b / 16] && out[1] == "0123456789abcdef"[b % 16];
+  q := hex_decode_checked(cast(string) out[..], back[..], false);
+  #assert q.error == NC_OK && q.written == 1 && back[0] == raw[0];
+  v := hex_digit(cast(u8) b);
+  expected := -1;
+  if b >= 48 && b <= 57 { expected = b - 48; }
+  if b >= 65 && b <= 70 { expected = b - 55; }
+  if b >= 97 && b <= 102 { expected = b - 87; }
+  #assert v == expected;
+}
+
+hex_digit :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) c - 48; }
+  if c >= 'a' && c <= 'f' { return cast(int) c - 87; }
+  if c >= 'A' && c <= 'F' { return cast(int) c - 55; }
+  return -1;
+}
+hex_encode_size :: (count: int) -> int #export_c {
+  if !NC_count(count) { return -1; }
+  return count * 2;
+}
+hex_decode_size :: (count: int) -> int #export_c {
+  if count % 2 != 0 { return -1; }
+  n := count / 2;
+  if !NC_count(n) { return -1; }
+  return n;
+}
+hex_encode_checked :: (input: string, out: [] u8, overlap: bool) -> NC_Result {
+  n := hex_encode_size(input.count);
+  e := NC_room(n, out.count, overlap);
+  if e != NC_OK { return NC_Result.{error = e}; }
+  for i: 0..<input.count {
+    b := cast(int) input[i];
+    out[i * 2] = "0123456789abcdef"[b >> 4];
+    out[i * 2 + 1] = "0123456789abcdef"[b & 15];
+  }
+  return NC_Result.{written = n};
+}
+hex_decode_checked :: (input: string, out: [] u8, overlap: bool) -> NC_Result {
+  n := hex_decode_size(input.count);
+  if n < 0 { return NC_Result.{error = NC_INVALID}; }
+  // Validate the entire input before touching caller storage.
+  for c: input { if hex_digit(c) < 0 { return NC_Result.{error = NC_INVALID}; } }
+  e := NC_room(n, out.count, overlap);
+  if e != NC_OK { return NC_Result.{error = e}; }
+  for i: 0..<n {
+    out[i] = cast(u8) (hex_digit(input[i * 2]) * 16 + hex_digit(input[i * 2 + 1]));
+  }
+  return NC_Result.{written = n};
+}

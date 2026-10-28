@@ -1,0 +1,27 @@
+// Bounded caller-buffer codecs. Results never expose partial output on failure.
+#authority;
+NC_OK :: 0;
+NC_INVALID :: 1;
+NC_CAPACITY :: 2;
+NC_LIMIT :: 3;
+NC_ALIAS :: 4;
+NC_MAX_BYTES :: 1048576; // local codec ceiling; consumer profiles may be narrower
+NC_Result :: struct { written: int; error: u32; }
+
+#test "codec counts and preflight errors have explicit boundaries" {
+  #assert NC_count(0) && NC_count(1) && NC_count(NC_MAX_BYTES);
+  #assert !NC_count(-1) && !NC_count(NC_MAX_BYTES + 1);
+  #assert NC_room(-1, 10, false) == NC_LIMIT;
+  #assert NC_room(2, -1, false) == NC_CAPACITY;
+  #assert NC_room(2, 1, true) == NC_CAPACITY;
+  #assert NC_room(2, 2, true) == NC_ALIAS;
+  #assert NC_room(0, 0, false) == NC_OK;
+  #assert NC_room(2, 2, false) == NC_OK && NC_room(2, 3, false) == NC_OK;
+}
+NC_count :: (count: int) -> bool #export_c { return count >= 0 && count <= NC_MAX_BYTES; }
+NC_room :: (needed: int, capacity: int, overlap: bool) -> u32 {
+  if needed < 0 { return NC_LIMIT; }
+  if capacity < needed { return NC_CAPACITY; }
+  if overlap { return NC_ALIAS; }
+  return NC_OK;
+}

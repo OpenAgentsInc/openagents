@@ -1,0 +1,149 @@
+// RFC 4648 standard alphabet, required padding, no whitespace, canonical pad bits.
+// This is deliberately not base64url. All limits are local codec ceilings.
+#load "codecs-common.coax";
+#authority;
+B64_ALPHABET :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+B64_MAX_TEXT :: 1398104; // encode_size(NC_MAX_BYTES)
+
+#test "base64 RFC vectors and preflight preserve caller output on refusal" {
+  plain := [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+  codes := [7] string.["", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy"];
+  for i: 0..<7 {
+    out: [16] u8; back: [8] u8;
+    r := base64_encode_checked(plain[i], out[..], false);
+    #assert r.error == NC_OK && r.written == codes[i].count;
+    #assert cast(string) out[0..<r.written] == codes[i];
+    q := base64_decode_checked(codes[i], back[..], false);
+    #assert q.error == NC_OK && q.written == plain[i].count;
+    #assert cast(string) back[0..<q.written] == plain[i];
+  }
+  bad := [14] string.["Zg", "Zg=", "Zg===", "=AAA", "Z=g=", "Zg==\n", "Z g=", "-_==", "Zh==", "Zm9=", "A===", "====", "AAA!", "AA=A"];
+  out := [4] u8.[77, 77, 77, 77];
+  for s: bad {
+    r := base64_decode_checked(s, out[..], false);
+    #assert r.error == NC_INVALID && r.written == 0;
+    for b: out { #assert b == 77; }
+  }
+  #assert base64_encode_checked("f", out[0..<3], false).error == NC_CAPACITY;
+  #assert base64_decode_checked("Zm8=", out[0..<1], false).error == NC_CAPACITY;
+  #assert base64_encode_checked("f", out[..], true).error == NC_ALIAS;
+  #assert base64_decode_checked("Zg==", out[..], true).error == NC_ALIAS;
+  for b: out { #assert b == 77; }
+  #assert base64_encode_size(0) == 0 && base64_encode_size(1) == 4 && base64_encode_size(3) == 4;
+  #assert base64_encode_size(NC_MAX_BYTES) == B64_MAX_TEXT;
+  #assert base64_encode_size(-1) == -1 && base64_encode_size(NC_MAX_BYTES + 1) == -1;
+  #assert base64_text_count(0) && base64_text_count(B64_MAX_TEXT);
+  #assert !base64_text_count(-1) && !base64_text_count(B64_MAX_TEXT + 1);
+  #assert base64_decode_size_checked("Zm9v", false) == -1;
+  #assert base64_payload_size(B64_MAX_TEXT, 0) == -1;
+  #assert base64_payload_size(B64_MAX_TEXT, 2) == NC_MAX_BYTES;
+  #assert base64_payload_size(0, 0) == 0;
+  #assert base64_payload_size(4, 0) == 3 && base64_payload_size(4, 1) == 2 && base64_payload_size(4, 2) == 1;
+}
+
+#forall b: 0..<256 {
+  raw: [3] u8; raw[0] = cast(u8) b; raw[1] = cast(u8)(255 - b); raw[2] = cast(u8)(b / 2);
+  for n: 1..<4 {
+    out: [4] u8; back := [3] u8.[77, 77, 77];
+    r := base64_encode_checked(cast(string) raw[0..<n], out[..], false);
+    #assert r.error == NC_OK && r.written == 4;
+    #assert out[0] == B64_ALPHABET[b / 4];
+    q := base64_decode_checked(cast(string) out[..], back[..], false);
+    #assert q.error == NC_OK && q.written == n;
+    for i: 0..<n { #assert back[i] == raw[i]; }
+    for i: n..<3 { #assert back[i] == 77; }
+    if n == 1 {
+      #assert out[2] == '=' && out[3] == '=';
+      out[1] = B64_ALPHABET[base64_digit(out[1]) + 1];
+      #assert base64_decode_size(cast(string) out[..]) == -1;
+    }
+    if n == 2 {
+      #assert out[3] == '=';
+      out[2] = B64_ALPHABET[base64_digit(out[2]) + 1];
+      #assert base64_decode_size(cast(string) out[..]) == -1;
+    }
+  }
+  v := base64_digit(cast(u8) b);
+  expected := -1;
+  if b >= 65 && b <= 90 { expected = b - 65; }
+  if b >= 97 && b <= 122 { expected = b - 71; }
+  if b >= 48 && b <= 57 { expected = b + 4; }
+  if b == 43 { expected = 62; }
+  if b == 47 { expected = 63; }
+  #assert v == expected;
+}
+
+base64_text_count :: (count: int) -> bool #export_c { return count >= 0 && count <= B64_MAX_TEXT; }
+base64_encode_size :: (count: int) -> int #export_c {
+  if !NC_count(count) { return -1; }
+  return ((count + 2) / 3) * 4;
+}
+base64_digit :: (c: u8) -> int {
+  if c >= 'A' && c <= 'Z' { return cast(int) c - 65; }
+  if c >= 'a' && c <= 'z' { return cast(int) c - 71; }
+  if c >= '0' && c <= '9' { return cast(int) c + 4; }
+  if c == '+' { return 62; }
+  if c == '/' { return 63; }
+  return -1;
+}
+// Internal padding is already constrained to 0..2 by the validated suffix.
+base64_payload_size :: (characters: int, padding: int) -> int {
+  needed := characters / 4 * 3 - padding;
+  if !NC_count(needed) { return -1; }
+  return needed;
+}
+base64_decode_size :: (input: string) -> int {
+  return base64_decode_size_checked(input, base64_text_count(input.count));
+}
+base64_decode_size_checked :: (input: string, admitted_count: bool) -> int {
+  if !admitted_count { return -1; }
+  n := input.count;
+  if n % 4 != 0 { return -1; }
+  padding := 0;
+  if n != 0 && input[n - 1] == '=' {
+    padding = 1;
+    if input[n - 2] == '=' { padding = 2; }
+  }
+  for i: 0..<n - padding { if base64_digit(input[i]) < 0 { return -1; } }
+  if padding == 1 && (base64_digit(input[n - 2]) & 3) != 0 { return -1; }
+  if padding == 2 && (base64_digit(input[n - 3]) & 15) != 0 { return -1; }
+  return base64_payload_size(n, padding);
+}
+base64_encode_checked :: (input: string, out: [] u8, overlap: bool) -> NC_Result {
+  needed := base64_encode_size(input.count);
+  e := NC_room(needed, out.count, overlap);
+  if e != NC_OK { return NC_Result.{error = e}; }
+  at := 0; written := 0;
+  while at < input.count {
+    word := cast(u32) input[at] << 16;
+    if at + 1 < input.count { word = word | (cast(u32) input[at + 1] << 8); }
+    if at + 2 < input.count { word = word | cast(u32) input[at + 2]; }
+    out[written] = B64_ALPHABET[word >> 18];
+    out[written + 1] = B64_ALPHABET[(word >> 12) & 63];
+    out[written + 2] = ifx at + 1 < input.count then B64_ALPHABET[(word >> 6) & 63] else '=';
+    out[written + 3] = ifx at + 2 < input.count then B64_ALPHABET[word & 63] else '=';
+    at += 3; written += 4;
+  }
+  return NC_Result.{written = needed};
+}
+base64_decode_checked :: (input: string, out: [] u8, overlap: bool) -> NC_Result {
+  needed := base64_decode_size(input);
+  if needed < 0 { return NC_Result.{error = NC_INVALID}; }
+  e := NC_room(needed, out.count, overlap);
+  if e != NC_OK { return NC_Result.{error = e}; }
+  at := 0; written := 0;
+  while at < input.count {
+    a := base64_digit(input[at]); b := base64_digit(input[at + 1]);
+    out[written] = cast(u8)((a << 2) | (b >> 4)); written += 1;
+    if input[at + 2] != '=' {
+      c := base64_digit(input[at + 2]);
+      out[written] = cast(u8)(((b & 15) << 4) | (c >> 2)); written += 1;
+      if input[at + 3] != '=' {
+        d := base64_digit(input[at + 3]);
+        out[written] = cast(u8)(((c & 3) << 6) | d); written += 1;
+      }
+    }
+    at += 4;
+  }
+  return NC_Result.{written = needed};
+}

@@ -1,0 +1,5 @@
+// Public caller-buffer entry points. The memory bridge observes physical overlap;
+// the loaded authority cores own all validation and write/no-write decisions.
+#load "hex.coax";
+#load "base64.coax";
+#load "codecs-memory.coax";

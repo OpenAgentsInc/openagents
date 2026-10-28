@@ -1,0 +1,14 @@
+// Address observation only. Valid native spans are the host's responsibility;
+// size/format/capacity policy remains in the checked Coax cores.
+hex_encode :: (input: [] u8, out: [] u8) -> NC_Result #export_c {
+  return hex_encode_checked(cast(string) input, out, bytes_overlap(input, out));
+}
+hex_decode :: (input: string, out: [] u8) -> NC_Result #export_c {
+  return hex_decode_checked(input, out, bytes_overlap(input, out));
+}
+base64_encode :: (input: [] u8, out: [] u8) -> NC_Result #export_c {
+  return base64_encode_checked(cast(string) input, out, bytes_overlap(input, out));
+}
+base64_decode :: (input: string, out: [] u8) -> NC_Result #export_c {
+  return base64_decode_checked(input, out, bytes_overlap(input, out));
+}
