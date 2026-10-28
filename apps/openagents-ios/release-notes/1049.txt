@@ -1,0 +1,3 @@
+The robots are solid now: you bump into their legs and feet instead of walking through them, a walking robot pushes you aside, and you can walk under the giant Foreman between its legs. The camera stays in front of a robot instead of inside it. Robot outlines are thinner and fade with distance, so far robots no longer glow.
+
+Test: walk into the Foreman's leg by the start, then walk between its legs; stand in a patrolling robot's way; look at distant robots.
