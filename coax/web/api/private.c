@@ -135,6 +135,12 @@ static bool agent_on(const char *slug) {
   }
   return false;
 }
+// The project agent's runner keys (OA_AGENT_RUNNER_PUBKEYS, from runners.conf): a turn writes
+// events every few seconds, so their writes are limited at 600 a minute, not 30.
+static bool runner_key(const char *pubkey) {
+  const char *list = getenv("OA_AGENT_RUNNER_PUBKEYS");
+  return list && strlen(pubkey) == 64 && strstr(list, pubkey) != NULL;
+}
 static const char *agent_cap(void) { const char *c = getenv("OA_AGENT_DAILY_USD"); return c && *c ? c : "10"; }
 
 typedef struct { char *p; size_t n; } wbuf;
@@ -252,7 +258,7 @@ bool private_route(const request *q) {
     }
     memcpy(pubkey, ev.pubkey, sizeof pubkey);
   } else if (page_api) cookie_token(q, token);
-  if (post && pubkey[0] && !allowed("key", pubkey, 30)) {
+  if (post && pubkey[0] && !allowed("key", pubkey, runner_key(pubkey) ? 600 : 30)) {
     api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
   }
 

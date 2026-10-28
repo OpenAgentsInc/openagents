@@ -26,7 +26,8 @@ threading.Thread(target=runner_http.serve_forever, daemon=True).start()
 
 ASLUG = "agent-proj"
 CY_KEY, CY = new_key("cy.key")
-RUN_KEY, RUN = new_key("runner.key")
+RUN_KEY = os.environ["RUN_KEY_FILE"]   # in OA_AGENT_RUNNER_PUBKEYS (test.sh)
+RUN = subprocess.run([SIGN_BIN, "--key", RUN_KEY, "--pubkey"], capture_output=True, text=True, check=True).stdout.strip()
 ADOC = {
     "v": "openagents.private-project.v1", "slug": ASLUG, "title": "Agent Project", "summary": "The agent's fixture.",
     "members": [{"name": "Ada", "pubkey": ADMIN_PUB}, {"name": "Cy", "pubkey": CY}],

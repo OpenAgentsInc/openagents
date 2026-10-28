@@ -31,9 +31,10 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$stage/build.log" 2>&1 || { tail -30 "$stage/build.log"; exit 1; }
 admins="$(grep -v '^#' "$here/admins.conf" | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
+runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 
 deploy() {  # service secret host agent-projects-secret runner-service
-  local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_API_ORIGIN=https://$3" wake
+  local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_AGENT_RUNNER_PUBKEYS=$runners@OA_API_ORIGIN=https://$3" wake
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"

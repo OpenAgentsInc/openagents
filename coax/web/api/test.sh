@@ -22,8 +22,14 @@ export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analyt
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/sign" "$here/sign.c" \
   ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
+# The project agent's runner (coax/web/agent/runner.c), run by test_private_runner.py with a stand-in engine.
+$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/oa-agent" "$here/../agent/runner.c" \
+  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto -lcurl
+export RUNNER_BIN="$work/oa-agent" RUNNER_BIN_SRC="$here/../agent/runner.c"
 export SIGN="$work/sign" ADMIN_KEY="$work/admin.key" OTHER_KEY="$work/other.key"
 export OA_ADMIN_PUBKEYS="$("$SIGN" --new "$ADMIN_KEY")"
+export RUN_KEY_FILE="$work/runner.key" OA_AGENT_RUNNER_PUBKEYS="$("$SIGN" --new "$work/runner.key")"
 "$SIGN" --new "$OTHER_KEY" >/dev/null
 # Character chat asks a fake model (test_npc.py serves it) with a test token.
 export NPC_PORT=$((58000 + RANDOM % 1000))

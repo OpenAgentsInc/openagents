@@ -119,6 +119,30 @@ page (Coax, wasm) ──► oa-api ──► agent runner (Cloud Run) ──► 
   turned on, starting with one. Any other project refuses with the same
   "not found" answer private projects already give.
 
+## The runner and its engine
+
+The runner (`coax/web/agent/runner.c`) is the host: the wake, the signed
+calls to oa-api, the per-turn checkout, git, the deploy key and the runner's
+Nostr key. The model's side is the engine, a separate process in the
+checkout with only `ANTHROPIC_API_KEY`, `HOME` and `PATH`: the Coax SDK, the
+project tools and the permission callback. They speak JSON lines:
+
+| Direction | Line |
+| --- | --- |
+| runner → engine | `{"t":"turn","slug","turn":{id,kind,text,by},"history","version","model","budget_usd","repo"}` |
+| engine → runner | `{"t":"call","id","method","op","body"}`, op one of `state`, `push`, `status`, `note`; the runner adds the turn and signs it |
+| runner → engine | `{"t":"reply","id","status","body"}` |
+| engine → runner | `{"t":"event","type","data"}`: `working`, `agent.message`, `agent.tool_use`, `session.error` |
+| runner → engine | `{"t":"stop"}` when a member pressed STOP |
+| engine → runner | `{"t":"done","status","answer","error","cost_usd"}` |
+
+Events go to oa-api in batches every 4 seconds, and each batch's answer
+says whether STOP was pressed. The runner kills the engine's process group
+30 seconds after a STOP, or after 15 minutes. `coax/web/agent/test-engine.py`
+is a stand-in engine for the runner's checks
+(`coax/web/api/test_private_runner.py`). The runner's keys are listed in
+`coax/web/api/runners.conf` so their writes are limited at 600 a minute.
+
 ## The Coax Claude Agent SDK
 
 A port of the Rust crate `claude_agent_sdk` (removed in 0b401561a0; source at
