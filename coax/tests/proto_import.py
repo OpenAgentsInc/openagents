@@ -8,6 +8,7 @@ import ctypes as C
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import struct
 import subprocess as S
@@ -278,9 +279,12 @@ main :: () {a:[4] u8;b:[4] u8;
         r=run([COAX,'c',src],env=env);self.assertEqual(r.returncode,0,r.stderr.decode())
         first=r.stdout.splitlines()[0].decode()
         self.assertIn('descriptor_sha256='+hashlib.sha256(descriptor.read_bytes()).hexdigest(),first)
-        self.assertIn('tool_sha256='+hashlib.sha256((ROOT/'coax/tools/proto_import.py').read_bytes()).hexdigest(),first)
-        self.assertIn('runtime_sha256='+hashlib.sha256((ROOT/'coax/tools/proto_runtime.coax').read_bytes()).hexdigest(),first)
-        self.assertIn('python=',first);self.assertEqual(list(temp.iterdir()),[])
+        self.assertIn('generator=coax0-native-v1',first)
+        self.assertIn('compiler=coax0-0.6.0',first)
+        runtime=(ROOT/'coax/src/proto_runtime.inc').read_bytes()
+        body=runtime[len(b'R\"COAX_PROTO('):-len(b')COAX_PROTO\"\n')]
+        self.assertIn('runtime_sha256='+hashlib.sha256(body).hexdigest(),first)
+        self.assertNotIn('python=',first);self.assertEqual(list(temp.iterdir()),[])
         # The duplicate emitted declaration is located at the import, not at
         # a fictitious source line thousands of lines beyond this short file.
         src.write_text(f'#import_proto "{descriptor}" as P;\nP_Scalars :: struct {{}}\nmain :: () {{}}')
@@ -288,6 +292,32 @@ main :: () {a:[4] u8;b:[4] u8;
         errors=[json.loads(line) for line in r.stderr.splitlines()]
         self.assertTrue(any(x['line']==1 and 'generated proto import P' in x['message'] for x in errors),errors)
         self.assertEqual(list(temp.iterdir()),[])
+
+    def test_native_matches_pre_port_generation(self):
+        baseline=json.loads((ROOT/'coax/tests/proto/import-baselines.json').read_text())
+        for name,expected in baseline['profiles'].items():
+            descriptor=ROOT/name
+            self.assertEqual(hashlib.sha256(descriptor.read_bytes()).hexdigest(),expected['descriptor_sha256'],name)
+            source=checked([COAX,'proto',descriptor,'--prefix',baseline['prefix']])
+            body=source.split(b'\n',1)[1]
+            self.assertEqual(hashlib.sha256(body).hexdigest(),expected['source_sha256'],name)
+
+    def test_relocated_compiler_needs_no_interpreter_or_helpers(self):
+        isolated=self.d/'standalone';isolated.mkdir()
+        executable=isolated/'coax';shutil.copy2(COAX,executable)
+        empty_path=isolated/'empty';empty_path.mkdir()
+        env=dict(os.environ,PATH=str(empty_path),COAX_PROTO_TOOL='/no/tool',COAX_PROTO_PYTHON='/no/python',TMPDIR='/no/tmp')
+        # Actual iOS source, not just a synthetic empty message. Both C and
+        # header generation must work from the relocated binary with PATH empty.
+        source=ROOT/'metareal/home.coax';header=isolated/'Home.h'
+        r=run([executable,'c',source,'--library','--header',header],env=env)
+        self.assertEqual(r.returncode,0,r.stderr.decode())
+        self.assertIn(b'generator=coax0-native-v1',r.stdout)
+        self.assertIn(b'metareal_home_init',header.read_bytes())
+        fixture=ROOT/'coax/tests/proto/types.pb';generated=isolated/'types.coax'
+        r=run([executable,'proto',fixture,'--prefix','Alone','-o',generated],env=env)
+        self.assertEqual(r.returncode,0,r.stderr.decode());self.assertIn(b'Alone_Scalars',generated.read_bytes())
+        self.assertEqual(set(x.name for x in isolated.iterdir()),{'coax','empty','Home.h','types.coax'})
 
     def test_importer_rejects_unsupported_descriptors(self):
         # Descriptor fixtures are built with the wire format itself, no host protobuf dependency.
@@ -311,6 +341,42 @@ main :: () {a:[4] u8;b:[4] u8;
         # A leaf that collides with a generated helper is rejected explicitly.
         path.write_bytes(b(1,b(1,b'test.proto')+b(4,b(1,b'Item'))+b(4,b(1,b'Item_Option'))+b(12,b'proto3')))
         r=run([COAX,'check',src]);self.assertIn(b'E0502',r.stderr)
+
+    def test_native_descriptor_bounds_and_cli_diagnostics(self):
+        def descriptor(message):return b(1,b(1,b'test.proto')+b(4,message)+b(12,b'proto3'))
+        cases=[descriptor(b(1,b'M'*257)),v(99,0)*40001,
+               descriptor(b(1,b'M')+b(2,b(1,b'x')+v(3,1)+v(4,1)+v(5,5)+v(17,2))),
+               descriptor(b(1,b'M')+b(2,b(1,b'x')+v(3,1)+v(4,1)+v(5,5)+var(8*8+1)+b'\0'*8)),
+               b'\0'*(8*1024*1024+1)]
+        for i,wire in enumerate(cases):
+            descriptor_file=self.d/f'native-bad-{i}.pb';descriptor_file.write_bytes(wire)
+            r=run([COAX,'proto',descriptor_file,'--prefix','P','--json'])
+            self.assertEqual(r.returncode,1,r.stdout.decode())
+            self.assertEqual(json.loads(r.stderr)['code'],'E0502')
+        r=run([COAX,'proto',ROOT/'coax/tests/proto/types.pb','--prefix','bad-prefix','--json'])
+        self.assertEqual(r.returncode,1);self.assertEqual(json.loads(r.stderr)['code'],'E0502')
+
+    def test_native_importer_under_sanitizers(self):
+        harness=self.d/'native.cpp'
+        code='#include '+json.dumps(str(ROOT/'coax/src/proto.cpp'))+'\n#include <cassert>\n#include <fstream>\n#include <iterator>\nint main(int argc,char **argv){\n'
+        # Independent hashlib oracle, including both SHA padding boundaries.
+        for size in (0,3,55,56,57,63,64,65,1000):
+            data=b'x'*size
+            code+='assert(coax::proto::sha256(std::string('+str(size)+",'x'))=="+json.dumps(hashlib.sha256(data).hexdigest())+');\n'
+        code+='''uint32_t state=17;std::string random;
+for(int n=0;n<1024;n++){random.resize((size_t)n);for(char &c:random){state=state*1664525+1013904223;c=(char)(state>>24);}
+ auto result=coax::proto::import_descriptor(random,"Fuzz","test");assert(result.source.size()<=coax::proto::MAX_SOURCE);}
+for(int arg=1;arg<argc;arg++){std::ifstream file(argv[arg],std::ios::binary);std::string raw((std::istreambuf_iterator<char>(file)),{});
+ assert(!raw.empty());assert(coax::proto::import_descriptor(raw,"Fuzz","test").error.empty());
+ for(int i=0;i<64;i++){std::string changed=raw;state=state*1664525+1013904223;size_t pos=state%changed.size();changed[pos]^=(char)(1u<<(i%8));
+  auto result=coax::proto::import_descriptor(changed,"Fuzz","test");assert(result.source.size()<=coax::proto::MAX_SOURCE);}}
+return 0;}'''
+        harness.write_text(code)
+        executable=self.d/'native-sanitized'
+        checked([os.environ.get('CXX','c++'),'-std=c++20','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',harness,'-o',executable])
+        descriptors=sorted((ROOT/'proto/descriptors').glob('*.pb'))+[ROOT/'coax/tests/proto/types.pb']
+        r=run([executable,*descriptors],env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0',UBSAN_OPTIONS='halt_on_error=1'))
+        self.assertEqual(r.returncode,0,r.stderr.decode())
 
     def test_sanitizer_target_and_fuzz(self):
         # Run generated C, not the host importer, under ASan+UBSan.

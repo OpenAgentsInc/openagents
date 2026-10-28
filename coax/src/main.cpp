@@ -26,11 +26,10 @@
 #include "lex.cpp"
 #include "parse.cpp"
 #include "verify.cpp"
+#include "proto.cpp"
 
 #include <filesystem>
-#include <fcntl.h>
 #include <cerrno>
-#include <limits.h>
 #include <set>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -40,8 +39,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.5.1";
-static std::string g_proto_tool;
+static const char *VERSION = "coax0 0.6.0";
 
 int32_t g_error_count = 0;
 bool g_json_errors = false;
@@ -132,18 +130,14 @@ static bool write_file(const std::string &path, const std::string &data) {
 }
 
 // Runs argv[0] from PATH and returns its exit status (128+signal if killed).
-static int run_process(const std::vector<std::string> &args, const char *stderr_path = nullptr) {
+static int run_process(const std::vector<std::string> &args) {
   std::vector<char *> argv;
   for (const std::string &a : args) argv.push_back((char *)a.c_str());
   argv.push_back(nullptr);
   pid_t pid;
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  if (stderr_path) posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, stderr_path, O_WRONLY | O_TRUNC, 0600);
-  int spawn_error = posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
-  posix_spawn_file_actions_destroy(&actions);
+  int spawn_error = posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
   if (spawn_error != 0) {
-    if (!stderr_path) fprintf(stderr, "coax: cannot start '%s'\n", argv[0]);
+    fprintf(stderr, "coax: cannot start '%s'\n", argv[0]);
     return 127;
   }
   int status = 0;
@@ -153,7 +147,7 @@ static int run_process(const std::vector<std::string> &args, const char *stderr_
   return 1;
 }
 
-// Import tools run only while compiling, with argv (never through a shell).
+// Descriptor parsing and code generation run inside the compiler.
 // Generated declarations are appended after user text to preserve user locations.
 static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Token> &tokens) {
   struct Request { std::string path, prefix; Loc loc; int end; };
@@ -189,54 +183,20 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   }
   src->original_text = src->text;
   std::string generated;
-  const char *tmp = getenv("TMPDIR");
-  std::filesystem::path temp_root(tmp && *tmp ? tmp : "/tmp");
   for (const Request &r : requests) {
-    if (g_proto_tool.empty() || access(g_proto_tool.c_str(), R_OK) != 0) {
-      error_at(src, r.loc, "E0503", "cannot locate the proto import tool");
-      return false;
-    }
     std::filesystem::path path(r.path);
     if (path.is_relative()) path = std::filesystem::absolute(std::filesystem::path(src->path).parent_path() / path);
-    std::string temp = (temp_root / "coax-proto-XXXXXX").string();
-    int fd = mkstemp(temp.data());
-    if (fd < 0) {
-      error_at(src, r.loc, "E0503", "cannot create importer output");
+    proto::Result result = proto::import_file(path.lexically_normal().string(), r.prefix, VERSION);
+    if (!result.error.empty()) {
+      error_at(src, r.loc, "E0502", result.error);
       return false;
     }
-    close(fd);
-    std::string diagnostic = (temp_root / "coax-proto-errors-XXXXXX").string();
-    int errfd = mkstemp(diagnostic.data());
-    if (errfd < 0) {
-      unlink(temp.c_str());
-      error_at(src, r.loc, "E0503", "cannot create importer diagnostic output");
-      return false;
-    }
-    close(errfd);
-    const char *python = getenv("COAX_PROTO_PYTHON");
-    int rc = run_process({python && *python ? python : "python3", g_proto_tool, "--descriptor",
-                          path.lexically_normal().string(), "--prefix", r.prefix, "--output", temp}, diagnostic.c_str());
-    std::string text, reason;
-    bool read = rc == 0 && read_file(temp.c_str(), &text);
-    unlink(temp.c_str());
-    read_file(diagnostic.c_str(), &reason);
-    unlink(diagnostic.c_str());
-    if (reason.size() > 4096) reason.resize(4096);
-    while (!reason.empty() && (reason.back() == '\n' || reason.back() == '\r')) reason.pop_back();
-    if (!read) {
-      error_at(src, r.loc, rc == 127 ? "E0503" : "E0502", reason.empty() ? "cannot execute proto importer" : reason);
-      return false;
-    }
-    if (text.size() > 8 * 1024 * 1024 || generated.size() + text.size() + 1 > 16 * 1024 * 1024) {
+    std::string &text = result.source;
+    if (generated.size() + text.size() + 1 > 16 * 1024 * 1024) {
       error_at(src, r.loc, "E0502", "generated import exceeds source budget");
       return false;
     }
-    size_t newline = text.find('\n');
-    if (text.rfind("// coax-proto-v1 ", 0) != 0 || newline == std::string::npos || newline > 1024) {
-      error_at(src, r.loc, "E0502", "importer did not record descriptor/tool/runtime/interpreter provenance");
-      return false;
-    }
-    src->import_provenance.push_back(text.substr(0, newline));
+    src->import_provenance.push_back(result.provenance);
     int32_t start = (int32_t)(src->text.size() + generated.size() + 1);
     src->generated.push_back({start, start + (int32_t)text.size(), r.loc, r.prefix});
     generated += "\n" + text;
@@ -342,6 +302,7 @@ static int usage() {
           "       coax c       file.coax [--release] [--library [--header out.h]]\n"
           "       coax metal   file.coax\n"
           "       coax check   file.coax\n"
+          "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
           "       coax test    file.coax [--steps N]\n"
           "       coax mutate  file.coax\n"
@@ -392,34 +353,6 @@ static int explain(int argc, char **argv) {
 }
 
 static int main_impl(int argc, char **argv) {
-  if (const char *tool = getenv("COAX_PROTO_TOOL")) {
-    g_proto_tool = tool;
-  } else {
-    char resolved[PATH_MAX];
-    auto select_tool = [&]() {
-      g_proto_tool = (std::filesystem::path(resolved).parent_path().parent_path() / "tools/proto_import.py").string();
-    };
-    if (strchr(argv[0], '/') && realpath(argv[0], resolved)) {
-      select_tool();
-    } else if (const char *path = getenv("PATH")) {
-      std::string paths = path;
-      size_t at = 0;
-      while (at <= paths.size()) {
-        size_t end = paths.find(':', at);
-        std::string dir = paths.substr(at, end == std::string::npos ? end : end - at);
-        if (dir.empty()) dir = ".";
-        std::string candidate = dir + "/" + argv[0];
-        std::error_code ec;
-        if (std::filesystem::is_regular_file(candidate, ec) && access(candidate.c_str(), X_OK) == 0 &&
-            realpath(candidate.c_str(), resolved)) {
-          select_tool();
-          break;
-        }
-        if (end == std::string::npos) break;
-        at = end + 1;
-      }
-    }
-  }
   if (argc < 2) return usage();
   std::string cmd = argv[1];
   if (cmd == "version" || cmd == "--version") {
@@ -428,11 +361,11 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "metal" && cmd != "test" && cmd != "mutate")
+      cmd != "layout" && cmd != "metal" && cmd != "test" && cmd != "mutate" && cmd != "proto")
     return usage();
 
   const char *input = nullptr;
-  std::string out, header;
+  std::string out, header, proto_prefix;
   EmitOptions opts;
   bool keep_c = false;
   uint64_t steps = TEST_STEPS;
@@ -450,6 +383,7 @@ static int main_impl(int argc, char **argv) {
         return 1;
       }
     }
+    else if (a == "--prefix" && i + 1 < argc && cmd == "proto") proto_prefix = argv[++i];
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
@@ -459,6 +393,21 @@ static int main_impl(int argc, char **argv) {
     else return usage();
   }
   if (!input || (!header.empty() && cmd != "c")) return usage();
+  if (cmd == "proto") {
+    if (proto_prefix.empty()) return usage();
+    proto::Result result = proto::import_file(input, proto_prefix, VERSION);
+    if (!result.error.empty()) {
+      Source source;source.path=input;
+      error_at(&source, {1,1,0}, "E0502", result.error);
+      return 1;
+    }
+    if (out.empty()) fwrite(result.source.data(), 1, result.source.size(), stdout);
+    else if (!write_file(out, result.source)) {
+      fprintf(stderr, "coax: cannot write '%s'\n", out.c_str());
+      return 1;
+    }
+    return 0;
+  }
   if (cmd == "metal") opts.library = opts.metal = true;
   if (cmd == "test" || cmd == "mutate") {
     Source src;

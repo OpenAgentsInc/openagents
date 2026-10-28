@@ -105,5 +105,12 @@ assumptions. JSON diagnostics retain concrete witnesses.
 Check: `coax/tests/verify.py`, compiler ASan/UBSan signed-span checks and the
 actual imported wire checks in `coax/tests/proto/runtime.coax`. Native aliasing
 and non-finite representations remain in the target-side conformance suite.
-Descriptor/tool/runtime hashes and Python version are recorded in generated
-C/headers; explicit host importer I/O is not permitted inside `#run`.
+Descriptor/runtime hashes and native generator/compiler versions are recorded
+in generated C/headers. Descriptor parsing, generation and the embedded Coax
+runtime live inside coax0; normal compilation must not invoke Python, protoc
+or helper processes or depend on adjacent runtime files. Explicit descriptor
+input reads are not permitted inside `#run`.
+
+Check: native pre-port source baselines, relocated-binary/no-PATH iOS C/header
+generation, native descriptor ASan/UBSan fuzzing, independent protoc vectors
+and the real iOS simulator flow in `coax/tests/proto_import.py` and app tests.

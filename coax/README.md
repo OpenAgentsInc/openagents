@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.5.1's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.6.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The C++20 compiler parses and checks one source file, executes bounded
@@ -46,6 +46,7 @@ coax/build.sh test
 | `coax c FILE [--release] [--library [--header out.h]]` | Print the generated C, optionally as a library with its header |
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
+| `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
 | `coax test FILE [--steps N]` | Run every `#test` and `#forall`; print counterexamples |
 | `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails |
@@ -55,8 +56,13 @@ coax/build.sh test
 `--json` prints diagnostics as one JSON object per line. `COAX_CC` picks the
 C compiler (default `cc`). `--release` turns on C optimization and wrapping
 integer arithmetic; bounds, casts, shifts and division by zero are checked in
-every build. Normal compilation needs C++20 and C11 tools; the tests also use
-Python 3.
+every build. Normal compilation, including proto imports and iOS code generation, needs
+C++20 and C11 tools. The native importer and its embedded Coax runtime ship in
+the compiler binary; no interpreter or helper installation is needed. Tests
+and schema maintenance still use Python 3. `COAX_HOST_TARGET` can supply an
+explicit host triple for bootstrap builds inside a cross-target environment;
+the iOS generator selects the Mac triple and SDK. Compiler builds publish the
+new binary atomically.
 
 ## What works
 

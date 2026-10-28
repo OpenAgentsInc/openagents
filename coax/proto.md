@@ -1,4 +1,4 @@
-# Descriptor imports in coax0 0.4.0
+# Descriptor imports in coax0 0.6.0
 
 `#import_proto` generates real Coax declarations from a binary
 `google.protobuf.FileDescriptorSet`. Root `proto/` remains the schema source.
@@ -15,12 +15,21 @@ The compiler expands imports before normal parsing/checking; `coax c` exposes
 the resulting implementation, and `coax header` exposes exported C wrappers.
 `coax/examples/nostr-proto.coax` is a runnable presence/repeated-field example.
 
-The host-side importer uses Python 3's standard library, not protoc, network
-access or a Python protobuf package. Install `coax/tools/` beside `coax/bin/`
-when distributing the compiler. `COAX_PROTO_TOOL` overrides its location and
-`COAX_PROTO_PYTHON` selects the interpreter. Generated C11 has no protobuf or
-Python runtime dependency. A compiler host may inspect descriptors, but no
-schema code executes during import.
+The importer is built into coax0 in C++20. `coax/src/proto.cpp` parses the
+bounded binary descriptor directly; `coax/src/proto_runtime.inc` embeds the
+Coax runtime as a raw string literal in the compiler binary. There is no
+interpreter, protoc invocation, protobuf library, subprocess, temporary file,
+or installed helper/runtime-file dependency. A relocated compiler works with
+an empty `PATH`. The retired `COAX_PROTO_TOOL` and `COAX_PROTO_PYTHON` variables
+have no effect. Generated C11 also needs no protobuf or interpreter runtime.
+No schema code executes during import; `#run` still refuses host I/O.
+
+To inspect or save exactly the generated Coax declarations without compiling
+an application:
+
+```sh
+coax/bin/coax proto proto/descriptors/ios-home.pb --prefix Home -o /tmp/home-codecs.coax
+```
 
 ## Generated API
 
@@ -77,9 +86,12 @@ message types. Standalone `.options` files are not read by this importer.
 
 Default runtime limits are 1 MiB per message, 64 nested edges and 524,288 total
 field/packed-element visits across a validation. Descriptor limits are 8 MiB,
+400,000 visited wire metadata items (40,000 per descriptor object),
 256 files, 256 messages, 256 enums with 8,192 values total, 256 fields
 per message, 2,048 fields total, 32 nested declaration
-levels, 8 MiB generated source per import and 16 MiB per compilation. Descriptor
+levels, 256 bytes per identifier/prefix, 4 KiB package/file names,
+32 package components, 16 KiB metadata text values, 256 oneofs per message,
+8 MiB generated source per import and 16 MiB per compilation. Descriptor
 policies can tighten runtime bounds. `max_message_bytes`, `max_bytes`,
 `max_count`, `exact_bytes` and `required_value` are enforced. Strings require
 valid UTF-8; `nonempty-no-nul` and finite `rad` in [-pi, pi] are implemented.
@@ -108,8 +120,8 @@ fields, which are appended. It is not a canonical serializer or hash function.
 | VALUE: invalid scalar/grammar/unit value | 7 |
 
 Generated constants use the prefix `N__pb_`, for example `N__pb_REQUIRED`.
-Compiler diagnostics E0501–E0504 report syntax, descriptor, tool and target
-errors at the importing directive, including machine-readable `--json` output.
+Compiler diagnostics E0501, E0502 and E0504 report syntax, descriptor and target
+errors (external-tool error E0503 is retired) at the importing directive, including machine-readable `--json` output.
 Generated declarations are appended so original user-source line numbers stay
 stable. Importing codecs into a Metal library is explicitly rejected.
 
@@ -142,24 +154,30 @@ remain separate work. A decoded Event is not verified or authorized. Existing
 hand-written mobile home/protocol adapters remain until consumer parity is
 proven; this change does not deploy or replace the app.
 
-## Host tooling audit boundary
+## Native importer audit boundary
 
-Descriptor imports are explicit compiler input reads, separate from `#run`,
-which still refuses host I/O. The importer remains a Python standard-library
-bootstrap tool; relocating only the compiler binary requires an explicit
-`COAX_PROTO_TOOL` path or installing its sibling tools directory. No native
-importer or completely hermetic build is claimed.
+Descriptor imports are explicit compiler input reads, separate from `#run`.
+Generated C/headers carry the descriptor and embedded runtime SHA-256 values,
+native generator ID and compiler version in a `coax-proto-v2` comment. The
+compiler binary/toolchain must still be pinned independently; fingerprints
+are not signatures, authority or a hermetic-build guarantee.
 
-Generated C/headers carry the descriptor, generator and runtime SHA-256 values
-and Python version in a `coax-proto-v1` comment. This records the selected
-bootstrap inputs, including explicit tool overrides, without giving those
-trusted host tools sandbox or authenticity guarantees. Import temporaries use
-`TMPDIR`. Generated declaration errors point to the originating import and
-identify its prefix rather than inventing user-file line numbers past EOF.
-`ByteIntrinsic` names the compiler's byte/representation helpers.
+The native reader borrows descriptor byte spans only for the duration of an
+import. It validates wire types, duplicate metadata, UTF-8, names, dependency
+closure, options and supported shapes before generation. Work, nesting, input
+and output budgets bound the import. Errors retain the originating import's
+location, including JSON diagnostics; generated declarations do not invent
+user-file line numbers past EOF.
 
-`coax test coax/tests/proto/runtime.coax` executes the actual generated wire
-routines over all two-byte varint and UTF-8 inputs and targeted wide/boundary
-vectors. Native overlap, float payload and interoperability tests remain
-separate; file-level `#authority` cannot yet exclude generated APIs or native
-address operations from its coverage requirement.
+`tests/proto/import-baselines.json` pins the pre-port generated source for all
+11 existing profiles plus the scalar fixture. The native CLI must emit the
+same body byte for byte. Tests also relocate the compiler alone and generate
+the actual iOS C/header with an empty PATH, poisoned legacy tool variables and
+an unusable temporary directory. Native descriptor fuzzing and SHA padding
+vectors run under ASan/UBSan; target-side protoc/ABI tests remain independent.
+
+`coax test coax/tests/proto/runtime.coax` executes the generated wire routines
+over all two-byte varint/UTF-8 inputs and wide boundary vectors. File-level
+`#authority` still cannot exclude generated APIs or native-address operations
+from its coverage requirement. Python is used by test/oracle and schema
+maintenance scripts, not normal compilation or the iOS app build.

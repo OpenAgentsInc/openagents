@@ -1,4 +1,4 @@
-// Generated binary runtime. All views borrow caller storage; no allocation.
+R"COAX_PROTO(// Generated binary runtime. All views borrow caller storage; no allocation.
 PB_OK :: 0;
 PB_WIRE :: 1;
 PB_LIMIT :: 2;
@@ -127,3 +127,4 @@ PB_copy :: (wire:[] u8,out:[] u8)->PB_View {
   if bytes_overlap(wire,out) {return PB_View.{error=PB_ALIAS};}
   for b,i:wire {out[i]=b;} return PB_View.{wire=out[0..<wire.count]};
 }
+)COAX_PROTO"

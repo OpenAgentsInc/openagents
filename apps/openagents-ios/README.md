@@ -8,7 +8,7 @@ screen in this reduced shell yet.
 
 ## Build and run
 
-Requires macOS, Xcode with an iOS SDK/simulator, a C++20 host compiler, Python 3 (standard library only), and
+Requires macOS, Xcode with an iOS SDK/simulator, a C++20 host compiler, and
 XcodeGen (`xcodegen`). No package download or backend account is required.
 
 ```sh
@@ -21,10 +21,14 @@ Or open `OpenAgents.xcodeproj`, choose a simulator and Run. The checked-in
 project has a build phase that builds coax0 when needed, generates the C11
 library/header, and combines generated scalar Metal functions with native
 stage bindings. Normal app builds use the checked-in protobuf resource and
-need neither protoc nor a Python protobuf installation. The `ios-home`
-descriptor is expanded by `#import_proto` into generated Coax codecs; no
-protobuf or Python runtime is bundled with the app. Xcode compiles the
-product C for its target SDK. Metal compiles the bundled shader source at
+need neither Python nor protoc. The native C++ importer in coax0 expands the
+`ios-home` descriptor into generated Coax codecs, using the runtime embedded
+in the compiler binary. No helper script/runtime files are loaded and no
+protobuf or Python runtime is bundled with the app. Test/schema and App Store
+administration scripts still use Python separately. Xcode compiles the
+product C for its target SDK. If it rebuilds coax0, the bootstrap is explicitly
+targeted at the host Mac with its macOS SDK, so inherited iOS deployment
+settings cannot turn the build tool into an iOS executable. Metal compiles the bundled shader source at
 runtime; the optional command-line Metal toolchain component is not needed.
 
 The bundle identifier is `com.openagents.app`. This is a minimal home

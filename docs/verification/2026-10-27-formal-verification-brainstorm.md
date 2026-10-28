@@ -669,13 +669,19 @@ The money example now enforces its fee amount/rate domain at runtime in debug
 and release. Dividing before multiplication alone does not prevent overflow
 for arbitrary inputs. Boundary checks include the full stated money/rate caps.
 
-The proto importer remains Python standard-library **host build tooling**, not
-an iOS or Coax-program runtime. It reads explicitly imported descriptor files;
-that is a different boundary from `#run`, which still cannot perform host I/O.
-Generated C/headers now record descriptor, generator and runtime SHA-256 values
-plus Python version. This supports auditing but is not a hermetic-build claim
-or a sandbox for user-supplied host tools. A native/bootstrap replacement is
-still useful work, rather than a completed feature of this review.
+The 0.5.1 proto importer was Python host build tooling, separate from `#run`,
+which could not perform host I/O. Version 0.6.0 replaces that bootstrap helper
+with native C++ descriptor parsing and generation inside coax0. The Coax
+runtime is embedded in the compiler; a relocated binary compiles the actual
+iOS source with no interpreter, helper files, temporary files or PATH tools.
+Normal iOS builds no longer require Python. Test/oracle, schema maintenance and
+App Store administration tooling remain separate.
+
+Generated C/headers record descriptor/runtime SHA-256 values and native
+generator/compiler versions. These are audit metadata, not a hermetic-build,
+sandbox or authenticity claim. The pre-port generated source for every owned
+profile is pinned byte for byte; native malformed-descriptor fuzzing and SHA
+padding vectors run under sanitizers alongside independent protoc tests.
 
 Finite compiler checks now exercise the imported pure wire routines, while
 native ASan/UBSan and protoc remain independent implementation oracles. A full

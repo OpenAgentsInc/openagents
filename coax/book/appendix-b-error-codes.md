@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.5.1 can report. This appendix is generated from the
+Every error `coax0` 0.6.0 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
@@ -155,15 +155,15 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | --- | --- | --- |
 | `E0501` | invalid proto import | Use #import_proto "profile.pb" as Prefix; with an exact FileDescriptorSet path relative to the source file. |
 | `E0502` | proto descriptor rejected | The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated. |
-| `E0503` | proto importer unavailable | Install Python 3 and keep coax/tools/proto_import.py with the compiler source tree. COAX_PROTO_TOOL may select an explicit tool path. |
 | `E0504` | proto imports are CPU-only | Generated binary codecs are CPU code and cannot be compiled as Metal shaders. |
 
 ## Retired
 
-| Code | Was | Retired in |
+| Code | Status | Previous meaning |
 | --- | --- | --- |
 | `E0102` | retired in 0.3.0 | Was: floating-point literals are not supported. Floats arrived in 0.3.0. |
 | `E0211` | retired in 0.2.0 | Was: only procedures can be declared at the top level. Top-level constants arrived in 0.2.0. |
+| `E0503` | retired in 0.6.0 | Was: external proto importer unavailable. Descriptor parsing, generation and the Coax runtime template are now built into coax0. |
 
 ## Run-time traps
 

@@ -86,8 +86,9 @@ sanitizer and simulator touch/rotation/resume tests cover the actual host path.
 Current C++ compiler code and Python schema checks are bootstrap infrastructure.
 The initial compiler/codec prerequisites now exist. Checked domain adapters,
 platform consumers and live service parity remain separate work. The importer
-uses Python standard-library host tooling; generated target code needs no
-Python/protobuf runtime. See its contract for strict duplicate/oneof policy,
+is native C++ inside coax0 with an embedded Coax wire runtime; neither
+normal compilation nor generated target code needs Python/protobuf libraries.
+Test/reference and schema maintenance tools remain separate. See its contract for strict duplicate/oneof policy,
 unsupported shapes and memory budgets.
 
 The Python alpha validator is a fixture/reference checker, not app admission.
