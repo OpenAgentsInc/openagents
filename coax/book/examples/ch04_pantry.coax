@@ -1,0 +1,20 @@
+#import "Basic";
+
+main :: () {
+  apples := 12;
+  eaten := 3;
+  left := apples - eaten;
+  if left > 0 { print("% % left\n", left, plural(left)); }
+  for people: 1..<4 {
+    print("shared by %: % each\n", people, share(left, people));
+  }
+}
+
+share :: (count: int, people: int) -> int {
+  return count / people;
+}
+
+plural :: (n: int) -> string {
+  if n == 1 { return "apple"; }
+  return "apples";
+}

@@ -1,0 +1,62 @@
+#import "Basic";
+
+Port_Error :: enum u8 { none; empty; not_a_digit; out_of_range; }
+
+Parsed_Port :: struct {
+  value: u16;
+  error: Port_Error;
+}
+
+parse_port :: (text: string) -> Parsed_Port {
+  if text.count == 0 { return Parsed_Port.{error = Port_Error.empty}; }
+  value := 0;
+  for c: text {
+    if c < '0' || c > '9' { return Parsed_Port.{error = Port_Error.not_a_digit}; }
+    value = value * 10 + cast(int) (c - '0');
+    if value > 65535 { return Parsed_Port.{error = Port_Error.out_of_range}; }
+  }
+  if value == 0 { return Parsed_Port.{error = Port_Error.out_of_range}; }
+  return Parsed_Port.{value = cast(u16) value};
+}
+
+Address_Error :: enum u8 { none; no_colon; empty_host; bad_port; }
+
+Address :: struct {
+  host: string;
+  port: u16;
+  error: Address_Error;
+  port_error: Port_Error;     // set when error is bad_port
+}
+
+parse_address :: (text: string) -> Address {
+  colon := -1;
+  for c, i: text {
+    if c == ':' { colon = i; }
+  }
+  if colon < 0 { return Address.{error = Address_Error.no_colon}; }
+  if colon == 0 { return Address.{error = Address_Error.empty_host}; }
+
+  port := parse_port(text[colon + 1..<text.count]);
+  if port.error != Port_Error.none {
+    return Address.{error = Address_Error.bad_port, port_error = port.error};
+  }
+  return Address.{host = text[0..<colon], port = port.value};
+}
+
+main :: () {
+  checked := 0;
+  defer print("% addresses checked\n", checked);
+
+  inputs := [6] string.["localhost:8080", "example.com:443", "localhost", ":80", "db:5432x", "db:"];
+  for text: inputs {
+    checked += 1;
+    a := parse_address(text);
+    if a.error == Address_Error.bad_port {
+      print("%: bad port (%)\n", text, a.port_error);
+    } else if a.error != Address_Error.none {
+      print("%: %\n", text, a.error);
+    } else {
+      print("%: host %, port %\n", text, a.host, a.port);
+    }
+  }
+}

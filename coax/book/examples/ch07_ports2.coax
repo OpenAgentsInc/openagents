@@ -1,0 +1,17 @@
+#import "Basic";
+
+parse_port :: (text: string) -> int {
+  #assert text.count > 0;
+  value := 0;
+  for c: text {
+    #assert c >= '0' && c <= '9';
+    value = value * 10 + cast(int) (c - '0');
+  }
+  return value;
+}
+
+main :: () {
+  print("%\n", parse_port("8080"));
+  print("%\n", parse_port("80a0"));
+  print("never printed\n");
+}

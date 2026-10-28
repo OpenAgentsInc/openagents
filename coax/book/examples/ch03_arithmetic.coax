@@ -1,0 +1,17 @@
+#import "Basic";
+
+main :: () {
+  sum := 5 + 10;
+  difference := 95.5 - 4.3;
+  product := 4 * 30;
+  quotient := 56.7 / 32.2;
+  truncated := -7 / 2;     // integer division rounds toward zero
+  remainder := -7 % 2;     // and the remainder takes the dividend's sign
+
+  print("% % % %\n", sum, difference, product, quotient);
+  print("% %\n", truncated, remainder);
+
+  hungry := true;
+  tired := false;
+  print("% % %\n", hungry && tired, hungry || tired, !tired);
+}

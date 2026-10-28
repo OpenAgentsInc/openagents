@@ -1,0 +1,17 @@
+#import "Basic";
+
+f :: (n: int) -> int {
+    defer print("one\n");
+    defer print("two\n");
+    if n > 0 { return n + 1; }
+    return 0;
+}
+
+g :: (a: int, b: int) -> int {
+    return a - b;
+}
+
+main :: () {
+    x := g(f(1), f(0));
+    print("%\n", x);
+}

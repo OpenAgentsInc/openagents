@@ -1,0 +1,14 @@
+#import "Basic";
+
+// The first n whose square is over the limit.
+first_square_over :: (limit: int) -> int {
+  n := 1;
+  while n * n <= limit {
+    n += 1;
+  }
+  return n;
+}
+
+main :: () {
+  print("% % %\n", first_square_over(50), first_square_over(100), first_square_over(0));
+}

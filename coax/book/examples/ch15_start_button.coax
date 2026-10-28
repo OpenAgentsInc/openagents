@@ -1,0 +1,19 @@
+#import_proto "../../../proto/descriptors/ios-home.pb" as Home;
+#import "Basic";
+
+main :: () {
+  first: [256] u8;
+  second: [256] u8;
+  output: [256] u8;
+
+  start := Home_HudAction_new();
+  start = Home_HudAction_set_id(start, "home.start", first[..]);
+  start = Home_HudAction_set_label(start, "Start", second[..]);
+  start = Home_HudAction_set_enabled(start, true, first[..]);
+  start = Home_HudAction_set_shown(start, true, second[..]);
+
+  encoded := Home_HudAction_encode(start, output[..]);
+  print("error % , % bytes:", encoded.error, encoded.wire.count);
+  for b: encoded.wire { print(" %", b); }
+  print("\n");
+}

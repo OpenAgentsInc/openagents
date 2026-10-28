@@ -1,0 +1,30 @@
+#import "Basic";
+
+MAGIC :: 0x58414f43;           // "COAX" read as a little-endian u32
+HEADER :: 12;                  // magic, count, scale
+
+u32_at :: (b: [] u8, at: int) -> u32 {
+  return cast(u32) b[at] | (cast(u32) b[at + 1] << 8) |
+         (cast(u32) b[at + 2] << 16) | (cast(u32) b[at + 3] << 24);
+}
+
+Header :: struct { ok: bool; count: int; scale: f32; }
+
+// Admit a header, or refuse it. Nothing is read past the checks.
+read_header :: (b: [] u8) -> Header {
+  h: Header;
+  if b.count < HEADER || cast(int) u32_at(b, 0) != MAGIC { return h; }
+  h.count = cast(int) u32_at(b, 4);
+  h.scale = f32_from_bits(u32_at(b, 8));
+  h.ok = true;
+  return h;
+}
+
+main :: () {
+  file := [12] u8.['C', 'O', 'A', 'X', 3, 0, 0, 0, 0x00, 0x00, 0x80, 0x3f];
+  print("%\n", read_header(file[..]));
+  print("%\n", read_header(file[0..<8]));      // too short: refused
+
+  file[0] = 'J';
+  print("%\n", read_header(file[..]));         // wrong magic: refused
+}

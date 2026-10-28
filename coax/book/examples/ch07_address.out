@@ -1,0 +1,7 @@
+localhost:8080: host localhost, port 8080
+example.com:443: host example.com, port 443
+localhost: no_colon
+:80: empty_host
+db:5432x: bad port (not_a_digit)
+db:: bad port (empty)
+6 addresses checked

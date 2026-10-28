@@ -1,0 +1,5 @@
+Entity.{pos = Vec2.{x = 0.0, y = 0.0}, vel = Vec2.{x = 0.0, y = -1.0}, health = 100, target = -1}
+Entity.{pos = Vec2.{x = 0.0, y = 0.0}, vel = Vec2.{x = 0.0, y = -1.0}, health = 40, target = -1}
+b: 0.0 -1
+c: 10.0 3
+1

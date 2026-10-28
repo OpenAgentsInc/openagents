@@ -1,0 +1,3 @@
+Header.{ok = true, count = 3, scale = 1.0}
+Header.{ok = false, count = 0, scale = 0.0}
+Header.{ok = false, count = 0, scale = 0.0}

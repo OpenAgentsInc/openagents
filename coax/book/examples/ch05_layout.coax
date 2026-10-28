@@ -1,0 +1,25 @@
+#import "Basic";
+
+Kind :: enum u8 { ship = 1; rock = 2; bullet = 3; }
+
+// Fields in the order they occurred to us.
+Spark :: struct {
+  alive: bool;
+  born: f64;
+  kind: Kind;
+  ttl: s32;
+  team: u8;
+}
+
+// The same fields, largest first.
+Spark_Packed :: struct {
+  born: f64;
+  ttl: s32;
+  alive: bool;
+  kind: Kind;
+  team: u8;
+}
+
+main :: () {
+  print("% %\n", size_of(Spark), size_of(Spark_Packed));
+}

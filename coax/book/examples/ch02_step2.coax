@@ -1,0 +1,20 @@
+#import "Basic";
+
+WIDTH :: 64;
+HEIGHT :: 24;
+
+LEFT :: -2.2;
+RIGHT :: 1.0;
+TOP :: 1.2;
+BOTTOM :: -1.2;
+
+main :: () {
+  for row: 0..<HEIGHT {
+    y := TOP - (f64(row) + 0.5) * (TOP - BOTTOM) / HEIGHT;
+    for col: 0..<WIDTH {
+      x := LEFT + (f64(col) + 0.5) * (RIGHT - LEFT) / WIDTH;
+      if x * x + y * y < 1.0 { print("#"); } else { print("."); }
+    }
+    print("\n");
+  }
+}

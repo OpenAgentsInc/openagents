@@ -1,0 +1,12 @@
+#import "Basic";
+
+residue :: (x: f32, c: f32) -> f32 {
+  return x * x - c;
+}
+
+main :: () {
+  x := 1.0f32 + 1.0f32 / 4096.0f32;
+  c := 1.0f32 + 1.0f32 / 2048.0f32;
+  print("%\n", residue(x, c));
+  print("%\n", #run residue(1.0f32 + 1.0f32 / 4096.0f32, 1.0f32 + 1.0f32 / 2048.0f32));
+}

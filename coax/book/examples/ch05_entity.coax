@@ -1,0 +1,26 @@
+#import "Basic";
+
+Vec2 :: struct {
+  x: f32;
+  y: f32;
+}
+
+Entity :: struct {
+  pos: Vec2;
+  vel: Vec2;
+  health: s32;
+}
+
+main :: () {
+  ship := Entity.{
+    pos = Vec2.{x = 0, y = 0},
+    vel = Vec2.{x = 2, y = 1},
+    health = 100,
+  };
+  print("%\n", ship);
+
+  ship.pos.x += ship.vel.x * 0.5;
+  ship.pos.y += ship.vel.y * 0.5;
+  ship.health -= 25;
+  print("ship at (%, %) with % health\n", ship.pos.x, ship.pos.y, ship.health);
+}

@@ -1,0 +1,28 @@
+#import "Basic";
+#authority;
+
+// May a payment of `amount` sats go out, with `spent` already sent today
+// and a daily limit of `limit`?
+may_send :: (amount: int, spent: int, limit: int) -> bool {
+  if amount <= 0 { return false; }
+  return spent + amount <= limit;
+}
+
+// What is left to spend today; never negative.
+left_today :: (spent: int, limit: int) -> int {
+  if spent >= limit { return 0; }
+  return limit - spent;
+}
+
+#test "a payment within the limit goes" {
+  #assert may_send(100, 0, 1000);
+}
+
+#test "what is left" {
+  #assert left_today(300, 1000) == 700;
+}
+
+main :: () {
+  print("send 250 after 800? %\n", may_send(250, 800, 1000));
+  print("left after 800: %\n", left_today(800, 1000));
+}

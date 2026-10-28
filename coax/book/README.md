@@ -1,60 +1,118 @@
 # The Coax Programming Language
 
-*A draft book, begun 2026-10-27.*
+*A draft book, begun October 2026.*
 
-Coax is a programming language for real-time software: the Verse, its
-renderers and simulations, and the rest of OpenAgents' code that has to
-run at 120 frames a second on a phone. It is a descendant of Jonathan
-Blow's Jai, changed for a team where agents write most of the code, where
-simulations must replay bit for bit, and where data crosses a public
-protocol.
+This is a book about Coax, the language OpenAgents uses for code that has
+to be fast and has to be right: the Metareal engine behind the Verse, the
+iPhone app's home screen and Grid, and the money rules in its bitcoin
+wallet. Coax descends from Jonathan Blow's Jai. It compiles to plain C you
+can read, it checks arithmetic and array bounds while you develop, and it
+lets you write checks that the compiler runs for you.
 
-This book teaches the language and explains why it is the way it is.
-
-## The state of things
-
-Coax is young. The first compiler, `coax0`, lives in
-[`coax/`](../README.md) at the root of the openagents repo and compiles a growing subset of the language
-to C: scalars, structs, enums, arrays and views, `defer`, compile-time
-execution and a C boundary. Most of what this book describes is designed but not built yet.
-Every chapter says which kind it is:
-
-> **Runs today.** Every example in a chapter marked this way compiles
-> with `coax0` and prints what the book says. `check-examples.sh` in this
-> folder checks that, so the book cannot drift from the compiler.
-
-> **Design.** The chapter describes the language as specified in
-> [the Coax specification](../spec.md).
-> The syntax can change before it is built. Examples are not compiled.
-
-| Part | Status |
-| --- | --- |
-| I. Getting started (chapters 1–4) | Runs today |
-| II. The language (5–9) | Mixed: structs, enums, arrays, views, `defer` and Chapter 9's first half run today; each section says which |
-| III. Data and speed (10–13) | Design, except Chapter 10's layout tools |
-| IV. Coax in OpenAgents (14–18) | Design, except Chapter 16's `#export_c` and Chapter 18's tools |
-| V. Building Coax (19–20) | Runs today (19), plan (20) |
-
-The language moves faster than any one chapter. When the book and the
-compiler disagree, the compiler and its tests are right, and the book has
-a bug. The specification (`coax/spec.md`) is the design of record.
+The [Introduction](introduction.md) explains why Coax exists. If you'd
+rather start typing, go straight to [Chapter 1](ch01-getting-started.md).
 
 ## Who this book is for
 
-- **Programmers who know C, C++, Rust, Go or Jai** and want to write fast
-  code without fighting the language.
-- **Agents** writing Coax for OpenAgents. The book is written to be read
-  start to finish by a model as well as a person. Every rule has a reason,
-  and every error code is in [Appendix B](appendix-b-error-codes.md).
-- **People who want to work on the compiler.** Chapter 19 walks through
-  `coax0`, which is about 5,000 lines of C-style C++.
+We assume you've programmed before, in any language. You don't need to
+know C, though it helps in a few places, and when it does we'll say so.
+If you know C, C++, Rust or Jai, you'll find notes along the way that
+compare Coax with what you already know, and two appendices written just
+for you ([Jai](appendix-c-jai.md), [C++](appendix-d-cpp.md)).
 
-## Conventions
+The book is also written to be read by agents. Most Coax in OpenAgents
+is written by models, and they read this book the way a new teammate
+would. That's one reason every error code has an entry in
+[Appendix B](appendix-b-error-codes.md), and every rule comes with the
+reason for it.
 
-- Source files end in `.coax`. Commands assume you are at the root of the
-  openagents repository, with the compiler built (`coax/build.sh`).
-- `coax` means `coax/bin/coax`.
-- `check-examples.sh` in this folder compiles and runs every listing in
-  the chapters marked *Runs today*.
-- Output is shown in a block after the program. Errors are shown exactly
-  as the compiler prints them.
+## How to use this book
+
+Read it in order the first time. Each chapter builds on the ones before,
+and the early chapters introduce ideas lightly that later chapters cover
+in depth.
+
+Part I gets you running. Chapter 1 builds the compiler and a first
+program. Chapter 2 is a small project, an ASCII Mandelbrot renderer, that
+touches most of the everyday language at once. Chapters 3 and 4 then go
+back over the basics properly and show how to read the compiler's errors.
+
+Part II covers the language itself: structs and enums, memory, errors and
+cleanup, generics, compile-time execution, and writing checks. Part III
+is about data layout, jobs, determinism and the GPU. Part IV is about how
+Coax fits into OpenAgents: the protocol boundary, builds and hot reload,
+interop with C, C++ and Swift, targets, and tooling for agents. Part V
+opens up the compiler.
+
+The best way to learn is to type the examples in and run them. Change
+them, break them on purpose, and read what the compiler says.
+
+## What runs today and what doesn't
+
+Coax is young. Its first compiler, `coax0`, compiles a real but limited
+subset of the language: procedures, integers and floats, strings,
+structs, enums, fixed arrays and views, `defer`, compile-time `#run` and
+`#assert`, checks with `#test` and `#forall`, and a C boundary. A lot of
+what later chapters describe is designed but not built yet.
+
+The book is honest about which is which. Anything you can run today is
+shown with its real output. When a chapter describes something `coax0`
+can't compile yet, it says so in a note like this:
+
+> Note: This feature is planned and not available in `coax0`. The syntax
+> shown follows [the Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md) and may change
+> before it's built.
+
+Code in those sections hasn't been compiled. Everything else has.
+
+When the book and the compiler disagree, the compiler is right and the
+book has a bug. The specification, `coax/spec.md`, is the design of
+record for everything not yet built.
+
+## Where the examples live
+
+Every program the book runs is a file in
+[`examples/`](https://github.com/OpenAgentsInc/openagents/tree/main/coax/book/examples/), next to its exact output in a `.out` file.
+The script `check-examples.sh` in this folder compiles and runs each one
+and compares the output, so a listing can't quietly drift away from what
+the compiler does. Programs the book shows only being compiled have no
+`.out` file.
+
+Commands assume you're at the root of the openagents repository, and
+`coax` means `coax/bin/coax`. Chapter 1 shows how to build it and put it
+on your path.
+
+## Contents at a glance
+
+- [Foreword](foreword.md) and [Introduction](introduction.md)
+- Part I. Getting started: [1. Getting started](ch01-getting-started.md),
+  [2. A first project](ch02-a-first-project.md),
+  [3. Common concepts](ch03-common-concepts.md),
+  [4. Reading errors](ch04-reading-errors.md)
+- Part II. The language:
+  [5. Structs, enums and unions](ch05-structs-enums-unions.md),
+  [6. Arrays, strings, memory and the context](ch06-memory.md),
+  [7. Errors and cleanup](ch07-errors.md),
+  [8. Generics and constraints](ch08-generics.md),
+  [9. Compile time](ch09-compile-time.md),
+  [10. Writing checks](ch10-writing-checks.md)
+- Part III. Data and speed:
+  [11. Data-oriented layout](ch11-data-layout.md),
+  [12. Jobs: captures as effects](ch12-jobs.md),
+  [13. Determinism](ch13-determinism.md),
+  [14. GPU programs](ch14-gpu.md)
+- Part IV. Coax in OpenAgents:
+  [15. The protocol boundary](ch15-protocol.md),
+  [16. Builds and hot reload](ch16-builds-hot-reload.md),
+  [17. Living beside C, C++ and Swift](ch17-interop.md),
+  [18. Targets: Apple first, then the browser](ch18-targets.md),
+  [19. Built for agents](ch19-agents.md)
+- Part V. Building Coax:
+  [20. Inside coax0](ch20-inside-coax0.md),
+  [21. The road ahead](ch21-road-ahead.md)
+- Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
+  [B. Error codes](appendix-b-error-codes.md),
+  [C. Coax for Jai programmers](appendix-c-jai.md),
+  [D. Coax for C++ programmers](appendix-d-cpp.md),
+  [E. Glossary](appendix-e-glossary.md),
+  [F. Sources](appendix-f-sources.md)

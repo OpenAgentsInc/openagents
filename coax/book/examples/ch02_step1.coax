@@ -1,0 +1,13 @@
+#import "Basic";
+
+WIDTH :: 64;
+HEIGHT :: 24;
+
+main :: () {
+  for row: 0..<HEIGHT {
+    for col: 0..<WIDTH {
+      print(".");
+    }
+    print("\n");
+  }
+}

@@ -1,0 +1,6 @@
+#import "Basic";
+
+main :: () {
+  name := "Coax";
+  print("Hello, %!\n", name);
+}

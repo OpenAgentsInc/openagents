@@ -1,0 +1,36 @@
+#import "Basic";
+
+// Move each position by its velocity, first element to last. The
+// signature says what this can write: the elements of `position`.
+move :: (position: [] f32, velocity: [] f32, dt: f32) {
+  for i: 0..<position.count { position[i] += velocity[i] * dt; }
+}
+
+// The same update, last element to first, as another worker might
+// happen to run it.
+move_backward :: (position: [] f32, velocity: [] f32, dt: f32) {
+  for k: 0..<position.count {
+    i := position.count - 1 - k;
+    position[i] += velocity[i] * dt;
+  }
+}
+
+main :: () {
+  p: [3] f32;
+  v: [3] f32;
+  for i: 0..<3 { p[i] = 1; v[i] = 1; }
+  move(p[..], v[..], 1);
+  print("separate, forward:  % % %\n", p[0], p[1], p[2]);
+  for i: 0..<3 { p[i] = 1; }
+  move_backward(p[..], v[..], 1);
+  print("separate, backward: % % %\n", p[0], p[1], p[2]);
+
+  // Two views of one array that overlap by two elements.
+  a: [4] f32;
+  for i: 0..<4 { a[i] = 1; }
+  move(a[0..<3], a[1..<4], 1);
+  print("overlap, forward:   % % % %\n", a[0], a[1], a[2], a[3]);
+  for i: 0..<4 { a[i] = 1; }
+  move_backward(a[0..<3], a[1..<4], 1);
+  print("overlap, backward:  % % % %\n", a[0], a[1], a[2], a[3]);
+}

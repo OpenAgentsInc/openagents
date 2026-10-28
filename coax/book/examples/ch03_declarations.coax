@@ -1,0 +1,15 @@
+#import "Basic";
+
+main :: () {
+  lives := 3;               // the type comes from the value: int
+  name: string = "Kiki";    // the type is written out
+  score: int;               // zero
+  ready: bool;              // false
+  title: string;            // the empty string
+  buffer: int = ---;        // uninitialized: we promise to write it first
+
+  buffer = lives * 100;
+  score += buffer;
+  print("% has % lives and % points\n", name, lives, score);
+  print("ready: %, title: \"%\"\n", ready, title);
+}

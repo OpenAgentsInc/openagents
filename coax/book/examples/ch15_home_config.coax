@@ -1,0 +1,43 @@
+#import_proto "../../../proto/descriptors/ios-home.pb" as Home;
+#import "Basic";
+
+main :: () {
+  // The start button gets its own two buffers.
+  s1: [64] u8;
+  s2: [64] u8;
+  start := Home_HudAction_new();
+  start = Home_HudAction_set_id(start, "home.start", s1[..]);
+  start = Home_HudAction_set_label(start, "Start", s2[..]);
+  start = Home_HudAction_set_enabled(start, true, s1[..]);
+  start = Home_HudAction_set_shown(start, true, s2[..]);
+
+  // The configuration alternates between two more.
+  a: [256] u8;
+  b: [256] u8;
+  config := Home_HomeConfiguration_new();
+  config = Home_HomeConfiguration_set_schema_version(config, 1, a[..]);
+  config = Home_HomeConfiguration_set_seed(config, 7, b[..]);
+
+  out: [256] u8;
+  early := Home_HomeConfiguration_encode(config, out[..]);
+  print("half built: error %\n", early.error);
+
+  config = Home_HomeConfiguration_set_mote_count(config, 0, a[..]);
+  config = Home_HomeConfiguration_set_satellite_count(config, 3, b[..]);
+  config = Home_HomeConfiguration_set_start(config, start, a[..]);
+  encoded := Home_HomeConfiguration_encode(config, out[..]);
+  print("complete: error %, % bytes\n", encoded.error, encoded.wire.count);
+
+  // Read it back the way a receiver would.
+  read := Home_HomeConfiguration_decode(encoded.wire);
+  seed := Home_HomeConfiguration_get_seed(read);
+  motes := Home_HomeConfiguration_get_mote_count(read);
+  print("seed % (present %)\n", seed.value, seed.present);
+  print("motes % (present %)\n", motes.value, motes.present);
+
+  button := Home_HomeConfiguration_get_start(read).value;
+  label := Home_HudAction_get_label(button);
+  pressed := Home_HudAction_get_pressed(button);
+  print("label \"%\"\n", label.value);
+  print("pressed % (present %)\n", pressed.value, pressed.present);
+}

@@ -1,0 +1,20 @@
+#import "Basic";
+
+MAX_PLAYERS :: 200;          // untyped until it's used
+HALF :: 0.5;
+
+main :: () {
+  players: u8 = MAX_PLAYERS; // 200 fits in a u8
+  score: s32 = -40_000;
+  frames: u64 = 0xFFFF_FFFF_FFFF;
+  ratio: f32 = HALF;
+  wide := 1.0 / 3.0;         // an untyped float with nothing else to go on: f64
+  narrow := 1.0f32 / 3.0;    // a typed literal: f32
+  letter := 'A';             // a character literal is an integer: 65
+  ok := players > 100;
+
+  print("% % % % % % % %\n", players, score, frames, ratio, wide, narrow, letter, ok);
+  print("% % % % % %\n", type_name(players), type_name(ratio), type_name(wide),
+        type_name(narrow), type_name(letter), type_name(ok));
+  print("% % %\n", 100.0, 2.5e-7, 1e21);
+}

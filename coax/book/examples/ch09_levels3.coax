@@ -1,0 +1,45 @@
+#import "Basic";
+
+MAX_LEVEL :: 10;
+
+XP_TABLE :: #run build_xp_table();
+
+#assert XP_TABLE[0] == 0;
+#assert XP_TABLE[MAX_LEVEL - 1] == 8025;
+#assert #run is_increasing(XP_TABLE);
+
+xp_for_level :: (level: int) -> int {
+  total := 0;
+  for n: 1..<level {
+    total += 100 + n * n * 25;
+  }
+  return total;
+}
+
+build_xp_table :: () -> [MAX_LEVEL] int {
+  table: [MAX_LEVEL] int;
+  for i: 0..<MAX_LEVEL {
+    table[i] = xp_for_level(i + 1);
+  }
+  return table;
+}
+
+is_increasing :: (table: [MAX_LEVEL] int) -> bool {
+  for i: 1..<MAX_LEVEL {
+    if table[i] <= table[i - 1] { return false; }
+  }
+  return true;
+}
+
+level_for_xp :: (xp: int) -> int {
+  level := 1;
+  for need, i: XP_TABLE {
+    if xp >= need { level = i + 1; }
+  }
+  return level;
+}
+
+main :: () {
+  print("%\n", XP_TABLE);
+  print("1234 xp is level %\n", level_for_xp(1234));
+}

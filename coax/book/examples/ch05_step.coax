@@ -1,0 +1,43 @@
+#import "Basic";
+
+Vec2 :: struct { x: f32; y: f32; }
+
+Entity :: struct {
+  pos: Vec2;
+  vel: Vec2;
+  health: s32 = 100;
+}
+
+add :: (a: Vec2, b: Vec2) -> Vec2 { return Vec2.{x = a.x + b.x, y = a.y + b.y}; }
+scale :: (v: Vec2, k: f32) -> Vec2 { return Vec2.{x = v.x * k, y = v.y * k}; }
+
+// One entity in, the same entity a moment later out.
+moved :: (e: Entity, dt: f32) -> Entity {
+  next := e;
+  next.pos = add(e.pos, scale(e.vel, dt));
+  return next;
+}
+
+// Every entity in the caller's array, changed where it lies.
+step_all :: (all: [] Entity, dt: f32) {
+  for i: 0..<all.count { all[i] = moved(all[i], dt); }
+}
+
+same_place :: (a: Entity, b: Entity) -> bool {
+  return a.pos.x == b.pos.x && a.pos.y == b.pos.y;
+}
+
+main :: () {
+  ship := Entity.{vel = Vec2.{x = 2, y = 1}};
+  later := moved(ship, 0.5);
+  print("% -> %\n", ship.pos, later.pos);
+
+  world: [3] Entity;
+  world[0] = ship;
+  world[1].vel = Vec2.{x = -1, y = 0};
+  step_all(world[..], 1);
+  step_all(world[..], 1);
+  for e, i: world { print("% %\n", i, e.pos); }
+
+  print("% %\n", same_place(world[2], Entity.{}), same_place(world[0], world[1]));
+}

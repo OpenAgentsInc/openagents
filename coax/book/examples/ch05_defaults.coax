@@ -1,0 +1,28 @@
+#import "Basic";
+
+Vec2 :: struct { x: f32; y: f32; }
+
+MAX_HEALTH :: 100;
+
+Entity :: struct {
+  pos: Vec2;
+  vel: Vec2 = Vec2.{x = 0, y = -1};    // things drift down unless told otherwise
+  health: s32 = MAX_HEALTH;
+  target: s32 = -1;                     // -1: no target
+}
+
+main :: () {
+  a: Entity;                                   // every default, zero elsewhere
+  b := Entity.{health = 40};                   // defaults, except health
+  print("%\n%\n", a, b);
+
+  c := b;                                      // a copy of every field
+  c.pos.x = 10;
+  c.target = 3;
+  print("b: % %\n", b.pos.x, b.target);
+  print("c: % %\n", c.pos.x, c.target);
+
+  d: Entity = ---;                             // no defaults, no zeroing
+  d.health = 1;
+  print("%\n", d.health);
+}

@@ -1,0 +1,71 @@
+#import_proto "../../../proto/descriptors/ios-home.pb" as Home;
+#import "Basic";
+
+// The screen's own rules, applied after the codec has checked the wire.
+admit :: (bytes: [] u8) -> string {
+  config := Home_HomeConfiguration_decode_minimal(bytes);
+  if config.error == Home__pb_WIRE { return "refused: malformed wire"; }
+  if config.error == Home__pb_DUPLICATE { return "refused: a field appears twice"; }
+  if config.error == Home__pb_REQUIRED { return "refused: a required field is missing"; }
+  if config.error != 0 { return "refused: other codec error"; }
+  if !Home_HomeConfiguration_unknown(config, 0).done { return "refused: unknown field"; }
+
+  version := Home_HomeConfiguration_get_schema_version(config);
+  motes := Home_HomeConfiguration_get_mote_count(config);
+  if version.value != 1 { return "refused: not schema 1"; }
+  if motes.value > 4096 { return "refused: too many motes"; }
+  return "admitted";
+}
+
+// Append one varint field (wire type 0) to `buffer` at `at`.
+put_varint :: (buffer: [] u8, start: int, field: int, value: int) -> int {
+  at := start;
+  buffer[at] = cast(u8) (field * 8);
+  at += 1;
+  v := value;
+  while v >= 128 {
+    buffer[at] = cast(u8) (v % 128 + 128);
+    at += 1;
+    v = v / 128;
+  }
+  buffer[at] = cast(u8) v;
+  return at + 1;
+}
+
+main :: () {
+  s1: [64] u8;
+  s2: [64] u8;
+  start := Home_HudAction_new();
+  start = Home_HudAction_set_id(start, "home.start", s1[..]);
+  start = Home_HudAction_set_label(start, "Start", s2[..]);
+
+  a: [256] u8;
+  b: [256] u8;
+  config := Home_HomeConfiguration_new();
+  config = Home_HomeConfiguration_set_schema_version(config, 1, a[..]);
+  config = Home_HomeConfiguration_set_seed(config, 7, b[..]);
+  config = Home_HomeConfiguration_set_mote_count(config, 900, a[..]);
+  config = Home_HomeConfiguration_set_satellite_count(config, 3, b[..]);
+  config = Home_HomeConfiguration_set_start(config, start, a[..]);
+  out: [256] u8;
+  good := Home_HomeConfiguration_encode(config, out[..]).wire;
+  print("good bytes:     %\n", admit(good));
+
+  print("cut short:      %\n", admit(good[0..<good.count - 3]));
+
+  // Copy the good bytes into a scratch buffer we can extend.
+  extra: [256] u8;
+  for value, i: good { extra[i] = value; }
+  n := good.count;
+
+  end := put_varint(extra[..], n, 2, 9);
+  print("seed twice:     %\n", admit(extra[0..<end]));
+
+  end = put_varint(extra[..], n, 9, 1);
+  print("field 9:        %\n", admit(extra[0..<end]));
+
+  big := Home_HomeConfiguration_set_mote_count(config, 5000, b[..]);
+  print("5000 motes:     %\n", admit(Home_HomeConfiguration_encode(big, out[..]).wire));
+
+  print("no bytes:       %\n", admit(good[0..<0]));
+}

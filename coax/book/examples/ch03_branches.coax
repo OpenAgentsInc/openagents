@@ -1,0 +1,22 @@
+#import "Basic";
+
+describe :: (temperature: int) -> string {
+  if temperature < 0 {
+    return "freezing";
+  } else if temperature < 15 {
+    return "cold";
+  } else if temperature < 25 {
+    return "mild";
+  } else {
+    return "hot";
+  }
+}
+
+main :: () {
+  print("% % % %\n", describe(-5), describe(10), describe(20), describe(31));
+
+  apples := 1;
+  print("% %\n", apples, ifx apples == 1 then "apple" else "apples");
+  apples = 4;
+  print("% %\n", apples, ifx apples == 1 then "apple" else "apples");
+}

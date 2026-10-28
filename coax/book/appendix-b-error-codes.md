@@ -1,16 +1,35 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.10.0 can report. This appendix is generated from the
-compiler's own table (`coax/src/errors.cpp`) with
-`coax explain --all --markdown`, so it always lists the same codes as the
-compiler; `coax explain CODE` prints one entry in a terminal. Codes are
-stable: a code keeps its meaning, and a retired code is never reused.
+This appendix lists every error code `coax0` 0.10.0 can report. The tables
+below are the output of `coax explain --all --markdown`, which prints the
+compiler's own table from `coax/src/errors.cpp`; when that table changes,
+regenerate this appendix from it rather than editing the rows by hand. In
+a terminal, `coax explain CODE` prints one entry:
 
-The first two digits give the stage: `E01` lexer, `E02` parser, `E03`
-checker, `E04` compile-time evaluation (Chapter 4), `E05` descriptor imports.
-With `--json`, each
-diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
-`message` and `fix`.
+```
+$ coax explain E0303
+E0303: name already declared; no shadowing
+  Every local name in a procedure is unique among the names in scope. Coax has no shadowing, so a name always means one thing.
+```
+
+Codes are stable: a code keeps its meaning, and a retired code is never
+reused, so the tables include the retired ones too.
+
+The first two digits after the `E` give the stage that reports the error:
+
+| Prefix | Stage | Where to read more |
+| --- | --- | --- |
+| `E01` | Lexer | Chapter 4 |
+| `E02` | Parser | Chapter 4 |
+| `E03` | Checker | Chapter 4 |
+| `E04` | Compile-time evaluation and checks | Chapters 9 and 10 |
+| `E05` | Protobuf descriptor imports | Chapter 15 |
+
+Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
+part of the compiler produces each stage's errors. With `--json`, each
+diagnostic is one JSON object per line on stderr, with the fields `file`,
+`line`, `col`, `code`, `message` and `fix`.
+
 
 ## E01xx: lexer
 

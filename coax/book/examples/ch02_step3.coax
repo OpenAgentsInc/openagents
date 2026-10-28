@@ -1,0 +1,50 @@
+#import "Basic";
+
+WIDTH :: 64;
+HEIGHT :: 24;
+
+LEFT :: -2.2;
+RIGHT :: 1.0;
+TOP :: 1.2;
+BOTTOM :: -1.2;
+
+MAX_STEPS :: 50;
+
+Complex :: struct {
+  re: f64;
+  im: f64;
+}
+
+add :: (a: Complex, b: Complex) -> Complex {
+  return Complex.{re = a.re + b.re, im = a.im + b.im};
+}
+
+square :: (z: Complex) -> Complex {
+  return Complex.{re = z.re * z.re - z.im * z.im, im = 2.0 * z.re * z.im};
+}
+
+length_squared :: (z: Complex) -> f64 {
+  return z.re * z.re + z.im * z.im;
+}
+
+// Does z = z*z + c stay small for MAX_STEPS steps?
+in_set :: (c: Complex) -> bool {
+  z: Complex;
+  for step: 0..<MAX_STEPS {
+    z = add(square(z), c);
+    if length_squared(z) > 4.0 { return false; }
+  }
+  return true;
+}
+
+main :: () {
+  for row: 0..<HEIGHT {
+    y := TOP - (f64(row) + 0.5) * (TOP - BOTTOM) / HEIGHT;
+    for col: 0..<WIDTH {
+      x := LEFT + (f64(col) + 0.5) * (RIGHT - LEFT) / WIDTH;
+      c := Complex.{re = x, im = y};
+      if in_set(c) { print("#"); } else { print("."); }
+    }
+    print("\n");
+  }
+}

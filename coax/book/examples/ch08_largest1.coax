@@ -1,0 +1,11 @@
+#import "Basic";
+
+main :: () {
+  scores := [5] int.[34, 50, 25, 100, 65];
+
+  largest := scores[0];
+  for n: scores {
+    if n > largest { largest = n; }
+  }
+  print("the largest score is %\n", largest);
+}

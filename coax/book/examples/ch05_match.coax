@@ -1,0 +1,25 @@
+#import "Basic";
+
+Kind :: enum u8 { ship = 1; rock = 2; bullet = 3; }
+
+radius :: (k: Kind) -> f32 {
+  if k == Kind.ship { return 1.5; }
+  else if k == Kind.rock { return 4; }
+  else if k == Kind.bullet { return 0.25; }
+  return 0;                            // only an unchecked cast gets here
+}
+
+describe :: (k: Kind) -> string {
+  return ifx k == Kind.ship then "the player"
+         else ifx k == Kind.rock then "an asteroid"
+         else "a shot";
+}
+
+#forall k: Kind {
+  #assert radius(k) > 0;
+}
+
+main :: () {
+  kinds := [3] Kind.[Kind.ship, Kind.rock, Kind.bullet];
+  for k: kinds { print("% is %, radius %\n", k, describe(k), radius(k)); }
+}

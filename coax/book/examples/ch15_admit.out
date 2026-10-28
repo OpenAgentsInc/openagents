@@ -1,0 +1,6 @@
+good bytes:     admitted
+cut short:      refused: malformed wire
+seed twice:     refused: a field appears twice
+field 9:        refused: unknown field
+5000 motes:     refused: too many motes
+no bytes:       refused: a required field is missing

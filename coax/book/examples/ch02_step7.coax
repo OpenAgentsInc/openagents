@@ -1,0 +1,78 @@
+#import "Basic";
+
+WIDTH :: 64;
+HEIGHT :: 24;
+PALETTE :: " .:-=+*#%@";
+
+Complex :: struct {
+  re: f64;
+  im: f64;
+}
+
+add :: (a: Complex, b: Complex) -> Complex {
+  return Complex.{re = a.re + b.re, im = a.im + b.im};
+}
+
+square :: (z: Complex) -> Complex {
+  return Complex.{re = z.re * z.re - z.im * z.im, im = 2.0 * z.re * z.im};
+}
+
+length_squared :: (z: Complex) -> f64 {
+  return z.re * z.re + z.im * z.im;
+}
+
+// The part of the plane we draw, and how hard we look.
+View :: struct {
+  center: Complex = Complex.{re = -0.6, im = 0.0};
+  width: f64 = 3.2;
+  max_steps: int = 50;
+}
+
+escape_steps :: (c: Complex, max_steps: int) -> int {
+  z: Complex;
+  for step: 0..<max_steps {
+    z = add(square(z), c);
+    if length_squared(z) > 4.0 { return step; }
+  }
+  return max_steps;
+}
+
+#test "the origin never escapes" {
+  #assert escape_steps(Complex.{re = 0.0, im = 0.0}, 50) == 50;
+}
+
+#test "far points escape at once" {
+  #assert escape_steps(Complex.{re = 2.0, im = 2.0}, 50) == 0;
+}
+
+#test "one escapes on the third step" {
+  #assert escape_steps(Complex.{re = 1.0, im = 0.0}, 50) == 2;
+}
+
+render :: (view: View) {
+  // A character cell is about twice as tall as it is wide.
+  height := view.width * HEIGHT / WIDTH * 2.0;
+  left := view.center.re - view.width / 2.0;
+  top := view.center.im + height / 2.0;
+
+  line: [WIDTH] u8;
+  for row: 0..<HEIGHT {
+    y := top - (f64(row) + 0.5) * height / HEIGHT;
+    for col: 0..<WIDTH {
+      x := left + (f64(col) + 0.5) * view.width / WIDTH;
+      steps := escape_steps(Complex.{re = x, im = y}, view.max_steps);
+      i := steps * (PALETTE.count - 1) / view.max_steps;
+      line[col] = PALETTE[i];
+    }
+    print("%\n", cast(string) line[..]);
+  }
+}
+
+main :: () {
+  whole: View;
+  render(whole);
+
+  bulb := View.{center = Complex.{re = -1.25, im = 0.0}, width = 0.5, max_steps = 200};
+  print("\nzoomed in on %\n", bulb.center);
+  render(bulb);
+}

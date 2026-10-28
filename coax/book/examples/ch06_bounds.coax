@@ -1,0 +1,14 @@
+#import "Basic";
+
+// The last n elements of v.
+last :: (v: [] int, n: int) -> [] int {
+  return v[v.count - n..<v.count];
+}
+
+main :: () {
+  scores := [5] int.[10, 20, 30, 40, 50];
+  print("%\n", last(scores[..], 2));
+  print("%\n", last(scores[..], 5));
+  print("%\n", last(scores[..], 6));   // one more than there is
+  print("never printed\n");
+}

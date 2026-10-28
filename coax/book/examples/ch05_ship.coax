@@ -1,0 +1,15 @@
+#import "Basic";
+
+moved_x :: (x: f32, vx: f32, dt: f32) -> f32 { return x + vx * dt; }
+
+main :: () {
+  ship_x: f32 = 0;
+  ship_y: f32 = 0;
+  ship_vx: f32 = 2;
+  ship_vy: f32 = 1;
+  ship_health: s32 = 100;
+
+  ship_x = moved_x(ship_x, ship_vx, 0.5);
+  ship_y = moved_x(ship_y, ship_vy, 0.5);   // moved_x, but for y
+  print("ship at (%, %) with % health\n", ship_x, ship_y, ship_health);
+}

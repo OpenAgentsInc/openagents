@@ -1,0 +1,14 @@
+#import "Basic";
+
+// From metareal/home.coax, the native home screen of the OpenAgents iOS app.
+minimum :: (a: f64, b: f64) -> f64 { if a < b { return a; } return b; }
+maximum :: (a: f64, b: f64) -> f64 { if a > b { return a; } return b; }
+clamp :: (a: f64, low: f64, high: f64) -> f64 { return minimum(high, maximum(low, a)); }
+smooth :: (a: f64, b: f64, x: f64) -> f64 { t := clamp((x-a)/(b-a),0.0,1.0); return t*t*(3.0-2.0*t); }
+
+main :: () {
+  for i: 0..<6 {
+    x := f64(i) * 0.25;
+    print("smooth(0, 1, %) = %\n", x, smooth(0.0, 1.0, x));
+  }
+}

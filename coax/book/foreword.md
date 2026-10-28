@@ -1,23 +1,32 @@
 # Foreword
 
-Coax began with the gap between fast runtime code and a slow development loop.
-The Verse's native engine moved through Rust and C++; its current name is
-Metareal. Native Metal, explicit data layout and a versioned C boundary remain
-useful foundations while Coax takes on one checked subsystem at a time.
+Coax started from a frustration that anyone who has worked on a game
+engine will recognize. The code that runs every frame has to be fast, so
+it ends up in C or C++. But C++ is slow to build, hard to change safely,
+and keeps important facts out of sight: how big a struct really is, which
+thread touches which data, whether two builds of a simulation will give
+the same answer. The engine behind the Verse, which we now call Metareal,
+went through Rust and then C++ before we decided to try something else.
 
-The goal is broader than the engine. OpenAgents' web, mobile, desktop, agents,
-cloud and Verse surfaces share one public protocol and target Coax for product
-logic. That contract lives in root `proto/`; language metadata and generated
-code must implement it without inventing a second wire schema.
+The something else draws heavily on Jonathan Blow's Jai, which showed
+that a systems language can compile quickly, run arbitrary code at
+compile time, and still feel small. We changed it for our situation.
+Most of our code is written by agents, so the compiler's errors need
+stable codes and concrete fixes. Our simulations need to replay exactly,
+so floating point and iteration order need rules. Our data crosses a
+public protocol, so types need to carry field numbers and limits. And we
+wanted to keep the parts of our native stack that already work, the Swift
+host and the Metal renderer, and move pieces into Coax one at a time.
 
-The current compiler is deliberately small. It checks scalar procedures,
-executes bounded compile-time computation and emits inspectable C11. Structs,
-reflection, jobs, shaders, build plugins and safe reload are design work with
-specific consumer and conformance gates, not features that already ship.
+That is how Coax is being built. The compiler today, `coax0`, is small.
+It turns a checked subset of the language into C11 that you can read,
+and the iPhone app already runs real Coax: the home screen's scene and
+HUD, the Grid's camera and movement, shader math, and the rules for
+paying and receiving bitcoin in the wallet. Much of the rest of the
+language exists only in the specification. This book keeps the two
+apart. When it shows output, that output came from the compiler. When it
+describes something that isn't built, it says so.
 
-This book distinguishes running examples from planned syntax. The compiler,
-grammar, protocol, fixtures and book should grow together. A feature earns its
-place by improving a real workflow while preserving data, authority and
-platform boundaries.
+We hope you'll read it with a terminal open.
 
 *OpenAgents, October 2026*

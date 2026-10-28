@@ -1,0 +1,9 @@
+#import "Basic";
+
+main :: () {
+  side := 3.0;
+  diagonal := sqrt(side * side + side * side);
+  print("a %-metre square has a %-metre diagonal\n", side, diagonal);
+  print("% % %\n", floor(-2.5), abs(-4.0), pow(2.0, 0.5));
+  print("% %\n", sqrt(2.0f32), len("coaxial"));
+}

@@ -1,0 +1,22 @@
+#import "Basic";
+
+// One bit each. cast(u32) gives the constants a type, so they can't mix
+// with some other set of bits by accident.
+SOLID     :: cast(u32) 1;      // 0b0001
+VISIBLE   :: cast(u32) 2;      // 0b0010
+DAMAGING  :: cast(u32) 4;      // 0b0100
+WRAPS     :: cast(u32) 8;      // 0b1000
+
+has :: (flags: u32, bit: u32) -> bool { return (flags & bit) != 0; }
+
+main :: () {
+  rock := SOLID | VISIBLE | WRAPS;
+  shot := VISIBLE | DAMAGING;
+  print("% %\n", rock, shot);
+  print("% % %\n", has(rock, SOLID), has(shot, SOLID), has(shot, DAMAGING));
+
+  rock ^= WRAPS;                       // flip one bit: now it's off
+  print("% %\n", rock, has(rock, WRAPS));
+  rock ^= WRAPS;                       // and back on
+  print("% %\n", rock, has(rock, WRAPS));
+}

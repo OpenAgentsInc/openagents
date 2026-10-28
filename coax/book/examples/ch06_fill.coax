@@ -1,0 +1,18 @@
+#import "Basic";
+
+// Write the first squares into out. The caller owns out, so the results
+// outlive this call. Too small a view is refused rather than half-filled.
+squares :: (out: [] int, n: int) -> bool {
+  if out.count < n { return false; }
+  for i: 0..<n { out[i] = i * i; }
+  return true;
+}
+
+main :: () {
+  buffer: [8] int;
+  ok := squares(buffer[..], 5);
+  print("% %\n", ok, buffer);
+
+  small: [3] int;
+  print("% %\n", squares(small[..], 5), small);
+}

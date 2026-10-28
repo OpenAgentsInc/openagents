@@ -1,0 +1,82 @@
+#import "Basic";
+
+// The random generator is a value: whoever steps the world passes it in,
+// and gets the advanced generator back.
+Rng :: struct {
+  state: u32;
+}
+
+Draw :: struct {
+  value: f32;
+  rng: Rng;
+}
+
+next :: (r: Rng) -> Draw {
+  h := r.state;
+  h ^= h << 13;
+  h ^= h >> 17;
+  h ^= h << 5;
+  return Draw.{value = f32(h >> 8) / 16777216.0f32, rng = Rng.{state = h}};
+}
+
+World :: struct {
+  x: [8] f32;
+  v: [8] f32;
+  rng: Rng;
+}
+
+// One frame. `push` is this frame's input: the mote the player nudged,
+// or -1 for none.
+step :: (before: World, push: int) -> World {
+  w := before;
+  for i: 0..<8 {
+    d := next(w.rng);
+    w.rng = d.rng;
+    w.v[i] = w.v[i] * 0.98f32 + (d.value - 0.5f32) * 0.01f32;
+    if i == push { w.v[i] += 0.05f32; }
+    w.x[i] += w.v[i];
+  }
+  return w;
+}
+
+// One step of FNV-1a. The multiply is meant to wrap at 32 bits, so we do it
+// in 64 bits and keep the low half; a plain u32 multiply would overflow.
+mix :: (h: u32, bits: u32) -> u32 {
+  return cast(u32) ((cast(u64) (h ^ bits) * 16777619) % 4294967296);
+}
+
+// FNV-1a over the bits of every position and velocity.
+fingerprint :: (w: World) -> u32 {
+  h: u32 = 2166136261;
+  for i: 0..<8 {
+    h = mix(h, f32_bits(w.x[i]));
+    h = mix(h, f32_bits(w.v[i]));
+  }
+  return h;
+}
+
+INPUTS :: [12] int.[3, -1, -1, 5, 5, -1, 0, -1, 7, -1, -1, 2];
+
+replay :: (seed: u32, frames: int) -> u32 {
+  w: World;
+  w.rng = Rng.{state = seed};
+  for f: 0..<frames {
+    w = step(w, INPUTS[f % 12]);
+  }
+  return fingerprint(w);
+}
+
+AT_COMPILE :: #run replay(2026, 120);
+
+main :: () {
+  first := replay(2026, 120);
+  second := replay(2026, 120);
+  print("run 1:      %\n", first);
+  print("run 2:      %\n", second);
+  print("compiled:   %\n", AT_COMPILE);
+  print("other seed: %\n", replay(2027, 120));
+}
+
+#test "the recorded replay lands on its golden fingerprint" {
+  #assert replay(2026, 120) == 1882684683;
+}

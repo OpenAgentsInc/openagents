@@ -1,0 +1,4 @@
+circle area 12.56636 contains (1.5, 0.25): true
+box area 4.0 contains (1.5, 0.25): true
+2.0
+examples/ch05_shapes.coax:33: assertion failed

@@ -1,0 +1,36 @@
+#import "Basic";
+
+largest_int :: (values: [] int) -> int {
+  result := values[0];
+  for n: values {
+    if n > result { result = n; }
+  }
+  return result;
+}
+
+largest_f64 :: (values: [] f64) -> f64 {
+  result := values[0];
+  for n: values {
+    if n > result { result = n; }
+  }
+  return result;
+}
+
+largest_u8 :: (values: [] u8) -> u8 {
+  result := values[0];
+  for n: values {
+    if n > result { result = n; }
+  }
+  return result;
+}
+
+main :: () {
+  scores := [5] int.[34, 50, 25, 100, 65];
+  print("the largest score is %\n", largest_int(scores[..]));
+
+  temperatures := [3] f64.[21.5, 19.25, 23.75];
+  print("the warmest reading is %\n", largest_f64(temperatures[..]));
+
+  name := [5] u8.['c', 'o', 'a', 'x', '0'];
+  print("the largest byte is %\n", largest_u8(name[..]));
+}

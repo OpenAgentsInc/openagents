@@ -1,0 +1,58 @@
+#import "Basic";
+
+Pulse :: struct {
+  t: f32;      // how far along its edge, 0 to 1
+  speed: f32;  // edges per second
+  edge: u32;   // which edge it is on
+}
+
+#assert size_of(Pulse) == 12;
+
+COUNT :: 8;
+
+// A pulse stops at the end of its edge.
+finish :: (t: f32) -> f32 {
+  if t > 1 { return 1; }
+  return t;
+}
+
+// Array of structs: each pulse's fields sit together.
+advance_aos :: (pulses: [] Pulse, dt: f32) {
+  for i: 0..<pulses.count {
+    p := pulses[i];
+    p.t = finish(p.t + p.speed * dt);
+    pulses[i] = p;
+  }
+}
+
+// Struct of arrays: one array per field. The loop never reads edges.
+advance_soa :: (t: [] f32, speed: [] f32, dt: f32) {
+  for i: 0..<t.count {
+    t[i] = finish(t[i] + speed[i] * dt);
+  }
+}
+
+main :: () {
+  aos: [COUNT] Pulse;
+  t: [COUNT] f32;
+  speed: [COUNT] f32;
+  edge: [COUNT] u32;
+  for i: 0..<COUNT {
+    s := 0.125 * cast(f32) (i + 1);
+    aos[i] = Pulse.{t = 0, speed = s, edge = cast(u32) i};
+    t[i] = 0;
+    speed[i] = s;
+    edge[i] = cast(u32) i;
+  }
+
+  for frame: 0..<4 {
+    advance_aos(aos[..], 0.5);
+    advance_soa(t[..], speed[..], 0.5);
+  }
+
+  for i: 0..<COUNT {
+    print("pulse %: % %\n", i, aos[i].t, t[i]);
+  }
+  print("aos loop reads % bytes, soa loop reads %\n",
+        size_of([COUNT] Pulse), size_of([COUNT] f32) * 2);
+}

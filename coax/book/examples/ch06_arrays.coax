@@ -1,0 +1,25 @@
+#import "Basic";
+
+SLOTS :: 4;
+
+main :: () {
+  scores := [4] int.[10, 20, 30, 40];
+  print("% has % elements, the first is %\n", scores, scores.count, scores[0]);
+
+  copy := scores;               // all four elements are copied
+  copy[0] = 99;
+  print("scores % copy %\n", scores, copy);
+
+  empty: [SLOTS] u8;            // zeroed, like every new value
+  empty[SLOTS - 1] = 7;
+  print("% % bytes\n", empty, size_of([SLOTS] u8));
+
+  grid: [2] [3] u8;             // two rows of three
+  grid[1][2] = 9;
+  print("% %\n", grid, size_of([2] [3] u8));
+
+  total := 0;
+  for s: scores { total += s; }
+  for s, i: scores { print("%:% ", i, s); }
+  print("total %\n", total);
+}

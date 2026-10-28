@@ -1,0 +1,20 @@
+#import "Basic";
+
+clamp01 :: (x: f32) -> f32 {
+  if x < 0 { return 0; }
+  if x > 1 { return 1; }
+  return x;
+}
+
+// Smootherstep: 0 at 0, 1 at 1, and flat at both ends.
+ease :: (x: f32) -> f32 #export_c {
+  t := clamp01(x);
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+main :: () {
+  for i: 0..<5 {
+    x := f32(i) / 4;
+    print("ease(%) = %\n", x, ease(x));
+  }
+}

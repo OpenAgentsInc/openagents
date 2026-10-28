@@ -1,0 +1,10 @@
+#import "Basic";
+
+main :: () {
+  name := "Kiki";
+  lives := 3;
+  print("% has % lives\n", name, lives);
+  print("100%% sure\n");
+  print("% % % %\n", 7, -2.5, true, 'A');
+  print("no values at all\n");
+}

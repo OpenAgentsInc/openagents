@@ -1,0 +1,3 @@
+[40, 50]
+[10, 20, 30, 40, 50]
+examples/ch06_bounds.coax:5: slice out of bounds

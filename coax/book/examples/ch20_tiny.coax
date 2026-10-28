@@ -1,0 +1,18 @@
+#import "Basic";
+
+Pulse :: struct {
+    amount: u32;
+    hops: u8;
+    speed: f32 = 1.5;
+}
+
+square :: (x: int) -> int {
+    return x * x;
+}
+
+AREA :: #run square(7);
+
+main :: () {
+    p := Pulse.{amount = 500};
+    print("area % pulse % % %\n", AREA, p.amount, p.hops, p.speed);
+}

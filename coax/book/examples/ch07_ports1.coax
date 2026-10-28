@@ -1,0 +1,15 @@
+#import "Basic";
+
+parse_port :: (text: string) -> int {
+  value := 0;
+  for c: text {
+    value = value * 10 + cast(int) (c - '0');
+  }
+  return value;
+}
+
+main :: () {
+  print("%\n", parse_port("8080"));
+  print("%\n", parse_port("80a0"));
+  print("%\n", parse_port("80 80"));
+}

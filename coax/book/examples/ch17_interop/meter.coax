@@ -1,0 +1,16 @@
+// The host owns the samples; Coax asks for them one at a time.
+host_sample :: (h: int, index: int) -> f64 #foreign;
+host_report :: (h: int, mean: f64, peak: f64) #foreign;
+
+meter_scan :: (h: int, count: int) -> bool #export_c {
+  if count <= 0 { return false; }
+  sum: f64 = 0;
+  peak: f64 = 0;
+  for i: 0..<count {
+    s := host_sample(h, i);
+    sum += s;
+    if s > peak { peak = s; }
+  }
+  host_report(h, sum / f64(count), peak);
+  return true;
+}

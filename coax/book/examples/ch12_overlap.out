@@ -1,0 +1,4 @@
+separate, forward:  2.0 2.0 2.0
+separate, backward: 2.0 2.0 2.0
+overlap, forward:   2.0 2.0 2.0 1.0
+overlap, backward:  4.0 3.0 2.0 1.0

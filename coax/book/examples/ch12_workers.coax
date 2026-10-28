@@ -1,0 +1,64 @@
+#import "Basic";
+
+COUNT :: 64;
+GRAIN :: 8;
+BLOCKS :: COUNT / GRAIN;
+
+// One block's sum, added left to right. A block is the smallest piece
+// of work a worker takes.
+block_sum :: (values: [] f32, block: int) -> f32 {
+  sum: f32 = 0;
+  for i: block * GRAIN..<(block + 1) * GRAIN { sum += values[i]; }
+  return sum;
+}
+
+// Each worker keeps a running total of the blocks it took, and the
+// totals are added at the end. The answer depends on how many workers.
+by_worker :: (values: [] f32, workers: int) -> f32 {
+  totals: [8] f32;
+  for b: 0..<BLOCKS { totals[b % workers] += block_sum(values, b); }
+  sum: f32 = 0;
+  for w: 0..<workers { sum += totals[w]; }
+  return sum;
+}
+
+// Each block's sum goes in its own slot, whichever worker computed it,
+// and the slots are combined pairwise: (0+1)+(2+3), and so on up.
+by_tree :: (values: [] f32, workers: int) -> f32 {
+  sums: [BLOCKS] f32;
+  for w: 0..<workers {
+    b := w;
+    while b < BLOCKS {
+      sums[b] = block_sum(values, b);
+      b += workers;
+    }
+  }
+  width := BLOCKS;
+  while width > 1 {
+    width = width / 2;
+    for i: 0..<width { sums[i] = sums[2 * i] + sums[2 * i + 1]; }
+  }
+  return sums[0];
+}
+
+// One big block and many small values: the order of the adds shows.
+sample :: () -> [COUNT] f32 {
+  values: [COUNT] f32;
+  for i: 0..<COUNT { values[i] = ifx i < GRAIN then 100000000 else 3; }
+  return values;
+}
+
+#forall "the tree gives one answer for any number of workers" workers: 1..<9 {
+  values := sample();
+  #assert by_tree(values[..], workers) == by_tree(values[..], 1);
+}
+
+main :: () {
+  values := sample();
+  workers := 1;
+  while workers <= 8 {
+    print("% workers: by worker %, by tree %\n",
+          workers, by_worker(values[..], workers), by_tree(values[..], workers));
+    workers *= 2;
+  }
+}

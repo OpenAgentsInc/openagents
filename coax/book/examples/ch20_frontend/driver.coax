@@ -1,0 +1,65 @@
+// Not a standalone program. Append it to the compiler's own lexer and parser:
+//   cat ../lib/compiler/lexer.coax ../lib/compiler/parser.coax \
+//       examples/ch20_frontend/driver.coax > frontend.coax
+//   coax run frontend.coax
+// main is the only new procedure, and #authority exempts main from coverage.
+#import "Basic";
+
+main :: () {
+    text := "square :: (x: int) -> int { return x * x; }";
+
+    // Lexing: one LX_next call per token, into storage we own.
+    state := [1] LX_State.[LX_begin(text.count)];
+    decoded: [64] u8;
+    message: [64] u8;
+    tokens: [64] PS_Token;
+    count := 0;
+    while true {
+        item := LX_next(text, state[..], decoded[..], message[..]);
+        if !item.has_token { continue; }
+        t := item.token;
+        spelling := text[t.text_begin..<t.text_end];
+        print("%:%  %  %\n", t.loc.line, t.loc.column, LX_name(cast(u32) t.kind), spelling);
+        // The same copy src/parse.cpp makes before calling the parser.
+        loc := PS_Loc.{line = t.loc.line, column = t.loc.column, offset = t.loc.offset};
+        tokens[count] = PS_Token.{kind = cast(u32) t.kind, text = spelling, loc = loc,
+                                  value = t.int_value, raw_count = spelling.count};
+        count += 1;
+        if t.kind == LX_Kind.k_eof { break; }
+    }
+
+    // Parsing: an indexed tree in nodes we own. Node 0 means "none".
+    nodes: [256] PS_Node;
+    ps := [1] PS_State.[PS_State.{}];
+    out: [600] u8;
+    result := PS_parse(text, tokens[0..<count], nodes[..], ps[..], out[..]);
+    print("\nparsed: %, % nodes\n", result.ok, ps[0].used);
+
+    // Print the tree depth first, with an explicit stack.
+    stack: [64] int;
+    depths: [64] int;
+    stack[0] = result.root;
+    top := 1;
+    while top > 0 {
+        top -= 1;
+        id := stack[top];
+        depth := depths[top];
+        for i: 0..<depth { print("  "); }
+        label := ifx nodes[id].kind == PS_Tag.expr_binary then LX_name(nodes[id].op) else nodes[id].name;
+        print("#% % %\n", id, nodes[id].kind, label);
+        // Children: the a, b, c, d slots, then the list from head along next.
+        kids: [16] int;
+        k := 0;
+        for slot: [4] int.[nodes[id].a, nodes[id].b, nodes[id].c, nodes[id].d] {
+            if slot != 0 { kids[k] = slot; k += 1; }
+        }
+        child := nodes[id].head;
+        while child != 0 { kids[k] = child; k += 1; child = nodes[child].next; }
+        while k > 0 {
+            k -= 1;
+            stack[top] = kids[k];
+            depths[top] = depth + 1;
+            top += 1;
+        }
+    }
+}

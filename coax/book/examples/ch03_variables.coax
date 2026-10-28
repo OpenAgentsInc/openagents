@@ -1,0 +1,10 @@
+#import "Basic";
+
+main :: () {
+  lives := 3;
+  print("Kiki starts with % lives\n", lives);
+  lives = lives - 1;
+  print("Kiki falls in the pond and has % left\n", lives);
+  lives += 5;
+  print("Kiki finds a bag of hearts: %\n", lives);
+}

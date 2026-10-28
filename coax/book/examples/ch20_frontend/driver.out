@@ -1,0 +1,29 @@
+1:1  identifier  square
+1:8  '::'  ::
+1:11  '('  (
+1:12  identifier  x
+1:13  ':'  :
+1:15  identifier  int
+1:18  ')'  )
+1:20  '->'  ->
+1:23  identifier  int
+1:27  '{'  {
+1:29  keyword  return
+1:36  identifier  x
+1:38  '*'  *
+1:40  identifier  x
+1:41  ';'  ;
+1:43  '}'  }
+1:44  end of file  
+
+parsed: true, 10 nodes
+#1 decl_file 
+  #2 decl_proc square
+    #5 type_named int
+    #6 stmt_block 
+      #7 stmt_ret 
+        #10 expr_binary '*'
+          #8 expr_ident x
+          #9 expr_ident x
+    #3 decl_param x
+      #4 type_named int

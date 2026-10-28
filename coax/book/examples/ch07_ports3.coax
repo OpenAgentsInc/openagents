@@ -1,0 +1,32 @@
+#import "Basic";
+
+Port_Error :: enum u8 { none; empty; not_a_digit; out_of_range; }
+
+Parsed_Port :: struct {
+  value: u16;
+  error: Port_Error;
+}
+
+parse_port :: (text: string) -> Parsed_Port {
+  if text.count == 0 { return Parsed_Port.{error = Port_Error.empty}; }
+  value := 0;
+  for c: text {
+    if c < '0' || c > '9' { return Parsed_Port.{error = Port_Error.not_a_digit}; }
+    value = value * 10 + cast(int) (c - '0');
+    if value > 65535 { return Parsed_Port.{error = Port_Error.out_of_range}; }
+  }
+  if value == 0 { return Parsed_Port.{error = Port_Error.out_of_range}; }
+  return Parsed_Port.{value = cast(u16) value};
+}
+
+main :: () {
+  inputs := [5] string.["8080", "80a0", "", "70000", "443"];
+  for text: inputs {
+    p := parse_port(text);
+    if p.error != Port_Error.none {
+      print("\"%\": %\n", text, p.error);
+      continue;
+    }
+    print("\"%\": port %\n", text, p.value);
+  }
+}

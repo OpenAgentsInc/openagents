@@ -1,0 +1,6 @@
+rock true true
+2 1
+tiny small large 11
+Kind(0)
+bullet
+examples/ch05_kinds.coax:23: value is not a member of enum Kind

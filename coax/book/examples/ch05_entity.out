@@ -1,0 +1,2 @@
+Entity.{pos = Vec2.{x = 0.0, y = 0.0}, vel = Vec2.{x = 2.0, y = 1.0}, health = 100}
+ship at (1.0, 0.5) with 75 health

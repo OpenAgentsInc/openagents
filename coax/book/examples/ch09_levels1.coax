@@ -1,0 +1,18 @@
+#import "Basic";
+
+MAX_LEVEL :: 10;
+
+// Experience needed to reach a level: each level costs a little more than the last.
+xp_for_level :: (level: int) -> int {
+  total := 0;
+  for n: 1..<level {
+    total += 100 + n * n * 25;
+  }
+  return total;
+}
+
+main :: () {
+  for level: 1..<MAX_LEVEL + 1 {
+    print("level %: % xp\n", level, xp_for_level(level));
+  }
+}

@@ -2,11 +2,12 @@
 
 * [The Coax Programming Language](README.md)
 * [Foreword](foreword.md)
+* [Introduction](introduction.md)
 
 ## Part I. Getting started
 
-* [1. Why Coax](ch01-why-coax.md)
-* [2. Hello, world](ch02-hello-world.md)
+* [1. Getting started](ch01-getting-started.md)
+* [2. A first project](ch02-a-first-project.md)
 * [3. Common concepts](ch03-common-concepts.md)
 * [4. Reading errors](ch04-reading-errors.md)
 
@@ -17,26 +18,27 @@
 * [7. Errors and cleanup](ch07-errors.md)
 * [8. Generics and constraints](ch08-generics.md)
 * [9. Compile time](ch09-compile-time.md)
+* [10. Writing checks](ch10-writing-checks.md)
 
 ## Part III. Data and speed
 
-* [10. Data-oriented layout](ch10-data-layout.md)
-* [11. Jobs: captures as effects](ch11-jobs.md)
-* [12. Determinism](ch12-determinism.md)
-* [13. GPU programs](ch13-gpu.md)
+* [11. Data-oriented layout](ch11-data-layout.md)
+* [12. Jobs: captures as effects](ch12-jobs.md)
+* [13. Determinism](ch13-determinism.md)
+* [14. GPU programs](ch14-gpu.md)
 
 ## Part IV. Coax in OpenAgents
 
-* [14. The protocol boundary](ch14-protocol.md)
-* [15. Builds and hot reload](ch15-builds-hot-reload.md)
-* [16. Living beside C, C++ and Swift](ch16-interop.md)
-* [17. Targets: Apple first, then the browser](ch17-targets.md)
-* [18. Built for agents](ch18-agents.md)
+* [15. The protocol boundary](ch15-protocol.md)
+* [16. Builds and hot reload](ch16-builds-hot-reload.md)
+* [17. Living beside C, C++ and Swift](ch17-interop.md)
+* [18. Targets: Apple first, then the browser](ch18-targets.md)
+* [19. Built for agents](ch19-agents.md)
 
 ## Part V. Building Coax
 
-* [19. Inside coax0](ch19-inside-coax0.md)
-* [20. The road ahead](ch20-road-ahead.md)
+* [20. Inside coax0](ch20-inside-coax0.md)
+* [21. The road ahead](ch21-road-ahead.md)
 
 ## Appendices
 

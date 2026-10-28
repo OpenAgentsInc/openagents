@@ -1,0 +1,45 @@
+#import "Basic";
+
+Vec2 :: struct { x: f32; y: f32; }
+
+// Which alternative a Shape holds. The tag is first, and every reader
+// checks it before touching the fields that belong to one alternative.
+ShapeKind :: enum u8 { circle = 1; box = 2; }
+
+Shape :: struct {
+  kind: ShapeKind = ShapeKind.circle;
+  radius: f32;          // circle only
+  half: Vec2;           // box only: half the width and half the height
+}
+
+circle :: (r: f32) -> Shape { return Shape.{kind = ShapeKind.circle, radius = r}; }
+box :: (w: f32, h: f32) -> Shape {
+  return Shape.{kind = ShapeKind.box, half = Vec2.{x = w / 2, y = h / 2}};
+}
+
+area :: (s: Shape) -> f32 {
+  if s.kind == ShapeKind.circle { return 3.14159 * s.radius * s.radius; }
+  return 4 * s.half.x * s.half.y;
+}
+
+// Is p inside s, with s centred on the origin?
+contains :: (s: Shape, p: Vec2) -> bool {
+  if s.kind == ShapeKind.circle { return p.x * p.x + p.y * p.y <= s.radius * s.radius; }
+  return abs(p.x) <= s.half.x && abs(p.y) <= s.half.y;
+}
+
+// Only a circle has a radius. Asking a box for one is a bug, so stop.
+radius_of :: (s: Shape) -> f32 {
+  #assert s.kind == ShapeKind.circle;
+  return s.radius;
+}
+
+main :: () {
+  shapes := [2] Shape.[circle(2), box(4, 1)];
+  p := Vec2.{x = 1.5, y = 0.25};
+  for s: shapes {
+    print("% area % contains (1.5, 0.25): %\n", s.kind, area(s), contains(s, p));
+  }
+  print("%\n", radius_of(shapes[0]));
+  print("%\n", radius_of(shapes[1]));
+}

@@ -1,0 +1,3 @@
+ship is the player, radius 1.5
+rock is an asteroid, radius 4.0
+bullet is a shot, radius 0.25

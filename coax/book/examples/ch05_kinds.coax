@@ -1,0 +1,25 @@
+#import "Basic";
+
+Kind :: enum u8 {
+  ship   = 1;
+  rock   = 2;
+  bullet = 3;
+}
+
+Size :: enum u16 { tiny; small; large = 10; huge; }
+
+main :: () {
+  k := Kind.rock;
+  print("% % %\n", k, k == Kind.rock, k != Kind.ship);
+  print("% %\n", cast(u8) k, size_of(Kind));
+  print("% % % %\n", Size.tiny, Size.small, Size.large, cast(u16) Size.huge);
+
+  nothing: Kind;                       // zero, and no member is zero
+  print("%\n", nothing);
+
+  code: u8 = 3;
+  print("%\n", cast(Kind) code);       // 3 names a member: bullet
+  code = 7;
+  print("%\n", cast(Kind) code);       // 7 names nothing: this traps
+  print("never printed\n");
+}

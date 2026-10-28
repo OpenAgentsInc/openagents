@@ -1,0 +1,17 @@
+#import "Basic";
+
+largest_int :: (values: [] int) -> int {
+  result := values[0];
+  for n: values {
+    if n > result { result = n; }
+  }
+  return result;
+}
+
+main :: () {
+  scores := [5] int.[34, 50, 25, 100, 65];
+  print("the largest score is %\n", largest_int(scores[..]));
+
+  depths := [4] int.[-12, -3, -40, -7];
+  print("the shallowest depth is %\n", largest_int(depths[..]));
+}

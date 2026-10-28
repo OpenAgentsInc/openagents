@@ -1,0 +1,40 @@
+#import "Basic";
+
+Point :: struct { x: f32; y: f32; z: f32; }
+
+Mode :: enum u8 { orbit; dolly; follow; }
+
+sub :: (a: Point, b: Point) -> Point { return Point.{x = a.x - b.x, y = a.y - b.y, z = a.z - b.z}; }
+length :: (a: Point) -> f32 { return sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
+
+// The point a share `t` of the way from `a` to `b`.
+path_mix :: (a: Point, b: Point, t: f32) -> Point #export_c {
+  return Point.{x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t, z = a.z + (b.z - a.z) * t};
+}
+
+// The length of the path through every point in order.
+path_length :: (points: [] Point) -> f32 #export_c {
+  total: f32 = 0;
+  for i: 1..<points.count {
+    total += length(sub(points[i], points[i - 1]));
+  }
+  return total;
+}
+
+// What the camera does after `m` finishes.
+path_next :: (m: Mode) -> Mode #export_c {
+  if m == Mode.orbit { return Mode.dolly; }
+  return Mode.follow;
+}
+
+main :: () {
+  a := Point.{x = 0, y = 0, z = 0};
+  b := Point.{x = 3, y = 4, z = 0};
+  print("%\n", path_mix(a, b, 0.5));
+  points: [3] Point;
+  points[0] = a;
+  points[1] = b;
+  points[2] = Point.{x = 3, y = 4, z = 12};
+  print("length %\n", path_length(points[..]));
+  print("after orbit: %\n", path_next(Mode.orbit));
+}

@@ -1,0 +1,2 @@
+before: 9223372036854775807
+examples/ch03_overflow.coax:6: integer overflow in '+'
