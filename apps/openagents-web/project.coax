@@ -1026,6 +1026,9 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int 
   v = put(out, v, name, crumb, b.y0 + 22 * d, 7 * d, orange);
   if p.demo { v = put(out, v, "/ DEMO", crumb + text_width(name, 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, ink(p, INK_PALE)); }
   title := 26 * d;
+  // a long name shrinks to fit a phone's width (PLANETARY VILLA)
+  room := right - x;
+  if text_width(name, title) > room && text_width(name, 1) > 0 { title = hi(14 * d, room / text_width(name, 1)); }
   ty := b.y0 + 58 * d;
   v = put(out, v, name, x, ty, title, white);
   tag := ifx p.demo then "A systems language for real-time code. Compiles to C11, then to native code and wasm." else w[0].description;
