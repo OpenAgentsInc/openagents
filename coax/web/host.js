@@ -516,11 +516,13 @@ async function loadShaders() {
   const scene = !!engine?.exports.coaxial_draws;
   const flat = scene ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
   const shadows = scene && /fn\s+shadow_vs\b/.test(code);
+  const post = scene && /fn\s+post_fs\b/.test(code);
+  const lit = post ? [{ format: "rgba16float" }, { format: "rgba8unorm" }] : [{ format }];
   const sceneGroups = scene ? [gpu.layout, sceneLayout(), ...(shadows ? [shadowLayout()] : [])] : [];
-  const [bg, fx, sc, sh] = await Promise.all([
-    device.createRenderPipelineAsync({ layout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: [{ format }] } }),
+  const [bg, fx, sc, sh, bl, po] = await Promise.all([
+    device.createRenderPipelineAsync({ layout, ...flat, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
     device.createRenderPipelineAsync({
-      layout, ...flat,
+      layout, ...(post ? {} : flat),
       // one vec4f attribute per four floats of the app's vertex, in order
       vertex: { module, entryPoint: "fx_vs", buffers: [{ arrayStride: stride, attributes:
         Array.from({ length: Math.ceil(arena.floats / 4) }, (_, i) => ({ shaderLocation: i, offset: i * 16, format: "float32x4" })) }] },
@@ -530,7 +532,7 @@ async function loadShaders() {
     }),
     scene ? device.createRenderPipelineAsync({
       layout: device.createPipelineLayout({ bindGroupLayouts: sceneGroups }),
-      vertex: { module, entryPoint: "scene_vs" }, fragment: { module, entryPoint: "scene_fs", targets: [{ format }] },
+      vertex: { module, entryPoint: "scene_vs" }, fragment: { module, entryPoint: "scene_fs", targets: lit },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
     }) : null,
@@ -540,14 +542,22 @@ async function loadShaders() {
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 },
     }) : null,
+    post ? device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, postLayouts().bloom] }),
+      vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bloom_fs", targets: [{ format: "rgba16float" }] },
+    }) : null,
+    post ? device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, postLayouts().post] }),
+      vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "post_fs", targets: [{ format }] },
+    }) : null,
   ]);
-  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; // swapped whole, at the next frame
-  gpu.particles = sc ? await particlePipeline() : null;
+  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; // swapped whole, at the next frame
+  gpu.particles = sc ? await particlePipeline(post) : null;
   return true;
 }
 
 // The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
-async function particlePipeline() {
+async function particlePipeline(post) {
   const a = assets.find((s) => s.kind === "particles"), x = engine?.exports;
   if (!a || !x?.coaxial_particles) return null;
   const { device, format } = gpu;
@@ -561,7 +571,9 @@ async function particlePipeline() {
     const add = { operation: "add", srcFactor: "one", dstFactor: "one" };
     return await device.createRenderPipelineAsync({
       layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, group] }),
-      vertex: { module, entryPoint: "particle_vs" }, fragment: { module, entryPoint: "particle_fs", targets: [{ format, blend: { color: add, alpha: add } }] },
+      vertex: { module, entryPoint: "particle_vs" }, fragment: { module, entryPoint: "particle_fs", targets: post
+        ? [{ format: "rgba16float", blend: { color: add, alpha: add } }, { format: "rgba8unorm", writeMask: 0 }]
+        : [{ format, blend: { color: add, alpha: add } }] },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
     });
@@ -647,6 +659,49 @@ function shadowLayout() {
     { binding: 0, resource: gpu.shadowMap.createView() },
     { binding: 1, resource: device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" }) }] });
   return gpu.shadowLayout;
+}
+// The post pass, when the WGSL has post_fs: bg_fs and scene_fs draw light (rgba16float, its alpha
+// the share of it that blooms) and a second target, aux (rgba8unorm), instead of the screen;
+// bloom_fs runs five times, each pass's group 1 a source, a sampler and its vec4f (x, y the
+// blur's step in source texels, z 0 to take the bright parts, 1 to blur, w how many source
+// texels a target texel spans): the bright parts to a quarter of the size, blurred across and
+// down, then to an eighth, blurred across and down. post_fs then draws the screen from group 1: the
+// light, the quarter, the eighth, aux, the depth, a sampler; the HUD (fx) goes over it.
+function postLayouts() {
+  if (gpu.postLayouts) return gpu.postLayouts;
+  const f = GPUShaderStage.FRAGMENT, device = gpu.device;
+  const tex = (binding) => ({ binding, visibility: f, texture: {} });
+  gpu.postLayouts = {
+    bloom: device.createBindGroupLayout({ entries: [tex(0), { binding: 1, visibility: f, sampler: {} }, { binding: 2, visibility: f, buffer: {} }] }),
+    post: device.createBindGroupLayout({ entries: [tex(0), tex(1), tex(2), tex(3),
+      { binding: 4, visibility: f, texture: { sampleType: "depth" } }, { binding: 5, visibility: f, sampler: {} }] }),
+  };
+  gpu.linear = device.createSampler({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" });
+  gpu.steps = [[0, 0, 0, 4], [1, 0, 1, 1], [0, 1, 1, 1], [1, 0, 1, 2], [0, 1, 1, 1]].map((v) => {
+    const b = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(b, 0, new Float32Array(v));
+    return b;
+  });
+  return gpu.postLayouts;
+}
+// The post pass's textures at the canvas's size: [view, source, step] for each bloom pass, and post_fs's group.
+function postTargets(w, h) {
+  const { device } = gpu, use = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
+  for (const t of gpu.postTextures || []) t.destroy();
+  const make = (tw, th, format) => device.createTexture({ size: [Math.max(1, tw), Math.max(1, th)], format, usage: use });
+  const light = make(w, h, "rgba16float"), aux = make(w, h, "rgba8unorm");
+  const q0 = make(Math.ceil(w / 4), Math.ceil(h / 4), "rgba16float"), q1 = make(q0.width, q0.height, "rgba16float");
+  const e0 = make(Math.ceil(w / 8), Math.ceil(h / 8), "rgba16float"), e1 = make(e0.width, e0.height, "rgba16float");
+  gpu.depth?.destroy();
+  gpu.depth = make(w, h, "depth32float");
+  gpu.postTextures = [light, aux, q0, q1, e0, e1];
+  const { bloom, post } = postLayouts();
+  const group = (src, k) => device.createBindGroup({ layout: bloom, entries: [
+    { binding: 0, resource: src.createView() }, { binding: 1, resource: gpu.linear }, { binding: 2, resource: { buffer: gpu.steps[k] } }] });
+  gpu.light = light; gpu.aux = aux;
+  gpu.blooms = [[q0, group(light, 0)], [q1, group(q0, 1)], [q0, group(q1, 2)], [e1, group(q0, 3)], [e0, group(e1, 4)]];
+  gpu.postGroup = device.createBindGroup({ layout: post, entries: [light, q0, e0, aux, gpu.depth]
+    .map((t, binding) => ({ binding, resource: t.createView() })).concat([{ binding: 5, resource: gpu.linear }]) });
 }
 // Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
 function bindScene() {
@@ -743,10 +798,14 @@ function frame(now) {
     const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
     if (bytes) device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes);
   });
-  if (gpu.scene && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h)) {
-    gpu.depth?.destroy();
-    gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  if (gpu.scene && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup)) {
+    if (gpu.post) postTargets(w, h);
+    else {
+      gpu.depth?.destroy(); gpu.postGroup = null;
+      gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT });
+    }
   }
+  const post = gpu.post && gpu.postGroup;
   const encoder = device.createCommandEncoder();
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
   const drawScene = (pass) => {
@@ -758,8 +817,10 @@ function frame(now) {
       depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
     shade.setBindGroup(0, gpu.bindGroup); shade.setPipeline(gpu.shadow); drawScene(shade); shade.end();
   }
-  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
-    ...(gpu.scene ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" } } : {}) });
+  const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
+  const screen = () => target(context.getCurrentTexture().createView());
+  let pass = encoder.beginRenderPass({ colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
+    ...(gpu.scene ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
   pass.setPipeline(gpu.bg); pass.draw(3);
   if (draws) {
@@ -772,6 +833,15 @@ function frame(now) {
       device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes);
       pass.setPipeline(gpu.particles); pass.setBindGroup(1, gpu.particleGroup); pass.draw(6, sparks);
     }
+  }
+  if (post) {
+    pass.end();
+    for (const [into, group] of gpu.blooms) {
+      const b = encoder.beginRenderPass({ colorAttachments: [target(into.createView())] });
+      b.setBindGroup(0, gpu.bindGroup); b.setBindGroup(1, group); b.setPipeline(gpu.bloom); b.draw(3); b.end();
+    }
+    pass = encoder.beginRenderPass({ colorAttachments: [screen()] });
+    pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.postGroup); pass.setPipeline(gpu.post); pass.draw(3);
   }
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   pass.end();

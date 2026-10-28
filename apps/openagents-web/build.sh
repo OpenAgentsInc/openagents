@@ -11,7 +11,7 @@ splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/light.coax verse_bar verse_tone --into apps/openagents-web/realm.wgsl \
-  && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade verse_haunt_moon_dir verse_haunt_moonlight verse_haunt_shadow_reach verse_haunt_shadow_edge verse_haunt_night --into apps/openagents-web/realm.wgsl \
+  && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade verse_haunt_moon_dir verse_haunt_moonlight verse_haunt_shadow_reach verse_haunt_shadow_edge verse_haunt_night verse_haunt_bloom_share verse_haunt_glow --into apps/openagents-web/realm.wgsl \
   && python3 coax/web/wgsl.py verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl)
 m="$here/../../verse"
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \

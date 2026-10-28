@@ -56,10 +56,11 @@ fn panels(p: vec2f, under: vec3f) -> vec3f {
   let p = array(vec2f(-1.0, -3.0), vec2f(-1.0, 1.0), vec2f(3.0, 1.0));
   return vec4f(p[i], 0.0, 1.0);
 }
-@fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
+@fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let v = clamp(pos.y / max(u.size.y, 1.0), 0.0, 1.0);
   let sky = mix(vec3f(0.025, 0.03, 0.065), vec3f(0.035, 0.04, 0.07), v);
-  return vec4f(panels(pos.xy, tone(sky)), 1.0);
+  return Lit(vec4f(sky, 0.0), vec4f(0.0));
 }
 
 // ---- the house: each draw a mesh's indices over the shared vertices, one
@@ -148,7 +149,7 @@ fn moonlit(w: vec3f, n: vec3f) -> f32 {
   o.slice = vertices[b + 8u] >> 24u;
   return o;
 }
-@fragment fn scene_fs(s: S) -> @location(0) vec4f {
+@fragment fn scene_fs(s: S) -> Lit {
   let tex = textureSample(sheets, sheet, s.uv, s.slice);
   if (tex.a < 0.35) { discard; }
   let n = normalize(s.normal);
@@ -170,9 +171,48 @@ fn moonlit(w: vec3f, n: vec3f) -> f32 {
   let c = vec3f(verse_haunt_shade(colour.r, lit.r, s.glow, d, 0.0, f),
                 verse_haunt_shade(colour.g, lit.g, s.glow, d, 1.0, f),
                 verse_haunt_shade(colour.b, lit.b, s.glow, d, 2.0, f));
-  return vec4f(panels(s.pos.xy, tone(c)), 1.0);
+  let share = verse_haunt_bloom_share(max(c.r, max(c.g, c.b)), s.glow);
+  return Lit(vec4f(c, share), vec4f(n * 0.5 + 0.5, 0.0));
 }
 
+// ---- the post pass (host.js postLayouts): the light's bright share, blurred at a quarter and an
+// eighth of the size (bloom_fs), added back and toned onto the screen under the plates (post_fs).
+struct Step { v: vec4f }
+@group(1) @binding(0) var bloom_src: texture_2d<f32>;
+@group(1) @binding(1) var bloom_lin: sampler;
+@group(1) @binding(2) var<uniform> bloom_step: Step;
+@fragment fn bloom_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let texel = 1.0 / vec2f(textureDimensions(bloom_src));
+  let uv = pos.xy * bloom_step.v.w * texel;
+  if (bloom_step.v.z < 0.5) {
+    var c = vec3f(0.0);
+    for (var k = 0; k < 4; k++) {
+      let t = textureSampleLevel(bloom_src, bloom_lin, uv + (vec2f(f32(k & 1), f32(k >> 1u)) * 2.0 - 1.0) * texel, 0.0);
+      c += t.rgb * t.a;
+    }
+    return vec4f(c * 0.25, 1.0);
+  }
+  let d = bloom_step.v.xy * texel;
+  var c = textureSampleLevel(bloom_src, bloom_lin, uv, 0.0).rgb * 0.227;
+  c += (textureSampleLevel(bloom_src, bloom_lin, uv + d * 1.385, 0.0).rgb + textureSampleLevel(bloom_src, bloom_lin, uv - d * 1.385, 0.0).rgb) * 0.316;
+  c += (textureSampleLevel(bloom_src, bloom_lin, uv + d * 3.231, 0.0).rgb + textureSampleLevel(bloom_src, bloom_lin, uv - d * 3.231, 0.0).rgb) * 0.070;
+  return vec4f(c, 1.0);
+}
+@group(1) @binding(0) var post_light: texture_2d<f32>;
+@group(1) @binding(1) var post_quarter: texture_2d<f32>;
+@group(1) @binding(2) var post_eighth: texture_2d<f32>;
+@group(1) @binding(3) var post_aux: texture_2d<f32>;
+@group(1) @binding(4) var post_depth: texture_depth_2d;
+@group(1) @binding(5) var post_lin: sampler;
+@fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let p = vec2i(pos.xy);
+  let uv = pos.xy / u.size;
+  let light = textureLoad(post_light, p, 0).rgb;
+  let near = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb;
+  let far = textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb;
+  let c = vec3f(verse_haunt_glow(light.r, near.r, far.r), verse_haunt_glow(light.g, near.g, far.g), verse_haunt_glow(light.b, near.b, far.b));
+  return vec4f(panels(pos.xy, tone(c)), 1.0);
+}
 // ---- generated: verse/light.coax (verse_bar, verse_tone) by coax/web/wgsl.py; do not edit
 fn coax_p_hi(l_a: f32, l_b: f32) -> f32 {
   if ((l_a > l_b))
@@ -263,7 +303,7 @@ fn verse_tone(l_light: f32) -> f32 {
 }
 // ---- end generated
 
-// ---- generated: verse/haunt-light.coax (verse_haunt_ambient, verse_haunt_attenuate, verse_haunt_shade, verse_haunt_moon_dir, verse_haunt_moonlight, verse_haunt_shadow_reach, verse_haunt_shadow_edge, verse_haunt_night) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/haunt-light.coax (verse_haunt_ambient, verse_haunt_attenuate, verse_haunt_shade, verse_haunt_moon_dir, verse_haunt_moonlight, verse_haunt_shadow_reach, verse_haunt_shadow_edge, verse_haunt_night, verse_haunt_bloom_share, verse_haunt_glow) by coax/web/wgsl.py; do not edit
 fn verse_haunt_ambient(l_ny: f32, l_channel: f32) -> f32 {
   var l_sky: f32 = select(select(0.150000006, 0.0900000036, (l_channel < 1.5)), 0.0799999982, (l_channel < 0.5));
   var l_ground: f32 = select(select(0.0199999996, 0.0250000004, (l_channel < 1.5)), 0.0299999993, (l_channel < 0.5));
@@ -318,6 +358,18 @@ fn verse_haunt_night(l_light: f32) -> f32 {
   coax_t2 = (l_t * 0.800000012);
   coax_t3 = (sqrt(coax_p_hl_max(l_t, 0.0)) * 0.200000003);
   return (coax_t2 + coax_t3);
+}
+fn verse_haunt_bloom_share(l_peak: f32, l_glow: f32) -> f32 {
+  var coax_t4: f32;
+  var coax_t5: f32;
+  var l_own: f32 = coax_p_hl_min(0.899999976, (coax_p_hl_max(0.0, l_glow) * 0.800000012));
+  coax_t4 = coax_p_hl_max(0.0, (l_peak - 1.0));
+  coax_t5 = (l_peak + 0.5);
+  var l_past: f32 = coax_p_hl_min(1.0, (coax_t4 / coax_t5));
+  return (l_own + (((1.0 - l_own) * l_past) * 0.600000024));
+}
+fn verse_haunt_glow(l_light: f32, l_near: f32, l_far: f32) -> f32 {
+  return ((l_light + (l_near * 1.20000005)) + (l_far * 1.10000002));
 }
 // ---- end generated
 
