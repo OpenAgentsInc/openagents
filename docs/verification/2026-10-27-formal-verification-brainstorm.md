@@ -1,518 +1,584 @@
-# Formal verification in OpenAgents: a brainstorm
+# Verification in OpenAgents: Nostr, payments and Coax
 
-*Draft, 2026-10-27. A thinking document, not a plan of record.*
+*Draft, 2026-10-27, revised the same day. Thinking document, not a plan of
+record.*
 
-This note asks where formal methods would pay for themselves in this
-repository, mainly in Nostr and payments, and how Coax could make
-verification part of the language instead of a separate toolchain.
+This note asks how we make the code that carries money and signatures
+trustworthy, mainly Nostr and payments. It sets two rules:
 
-It is grounded in what the repository holds today:
+1. **When in doubt, do what Bitcoin Core does.** It is one of the most
+   attacked and longest-running codebases there is, and its approach is
+   public. Section 2 reviews it from the source.
+2. **No external toolchains outside Coax if we can help it.** Coax already
+   needs a C compiler, because it emits C. Everything else should be Coax:
+   tests, exhaustive checks, fuzzing, models and test vectors. Section 7
+   describes the language features that make that possible.
 
+It is grounded in what this repository holds:
 - the [OpenAgents Protocol](../protocol/openagents-protocol-spec.md)
   (§7.4 canonical bytes, §26 money, §35 conformance);
-- the recovered `proto/` tree and its checks;
+- `proto/` and its frozen baselines;
 - the NIP mirrors in `nips/`;
-- `coax/`, the compiler, and `metareal/`, the native home.
+- `coax/`, the compiler;
+- `metareal/`, the native home.
 
-Payment and relay runtimes aren't in this checkout after the reset. Where
-this note talks about them, it means the designs in the protocol spec and
-the code that will implement them, most of it planned in Coax.
+Payment and relay runtimes aren't in this checkout after the reset; where
+this note talks about them, it means the spec's designs and the Coax code
+that will implement them.
 
 ## 1. Why now
 
-Three things make this the cheapest moment we will get.
+- **The contracts are fixed before the code.** The protocol spec names
+  the state machines that carry authority:
+  - RUN, COORD and AUTO;
+  - ENV and HOST grants;
+  - ATT admission;
+  - MKT record chains;
+  - X402 status.
 
-1. **The contracts are fixed before the code.** The protocol spec
-   already names the state machines that carry authority:
-   - RUN, COORD and AUTO;
-   - ENV and HOST grants;
-   - ATT admission;
-   - MKT record chains;
-   - X402 status.
-
-   §35.9 already requires "a bounded model or property test" for each of
-   them before a package leaves alpha. Modeling them before implementing
-   them costs a fraction of finding the bugs later.
-2. **We own the language.** Coax doesn't have to guess what a program
-   means. It has a bounded evaluator, fixed-width checked integers, no
-   implicit conversions and no hidden control flow, and verification
-   tools need exactly those properties. Each feature we add can be
-   designed so a checker understands it.
-3. **Money and signatures are unforgiving.** A double payment, a ledger
-   that doesn't balance, an event ID computed over re-serialized bytes, or
-   a grant that outlives its revocation are each one bug that costs
-   trust permanently. Those are small, sharply defined properties, which
-   is where formal methods are strongest.
+  §35.9 requires a bounded model or property test for each of them before
+  a package leaves alpha. Doing that before the implementation is cheap.
+- **We own the language.** Coax has a bounded evaluator inside the
+  compiler, fixed-width checked integers, no implicit conversions and
+  left-to-right evaluation. Each new feature can be designed so that it
+  is easy to check.
+- **Money and signatures are unforgiving.** Each of these is one bug that
+  costs trust permanently:
+  - a double payment;
+  - a ledger that doesn't balance;
+  - an event ID computed over re-serialized bytes;
+  - a grant that outlives its revocation.
 
 The workspace rule already sets the discipline:
-- narrow the production contract;
-- model the bounded state space;
-- run or document the checker;
-- turn counterexamples into regression tests;
-- never weaken runtime policy to make a model pass.
+- narrow the contract;
+- check the bounded state space;
+- turn every counterexample into a regression test;
+- never weaken runtime policy to make a check pass.
 
-This note is about where to apply it first.
+## 2. What Bitcoin Core actually does
 
-## 2. A ladder of assurance
+Reviewed at `bitcoin/bitcoin` commit `aa76bd2` (2026-10-27). Points are
+cited by path.
 
-"Formal verification" covers a wide range of cost. We should pick the
-cheapest rung that actually covers the property and climb only when a
-property earns it.
+**No external formal methods in the node.** There is no TLA+, Coq, Lean or
+model checker in the tree. Assurance comes from many cheaper layers,
+applied everywhere and run all the time.
 
-| Rung | What it gives | Cost | Tools |
+1. **Assertions can never be compiled out.** `src/util/check.h` contains
+   `#error "Cannot compile without assertions!"` when `NDEBUG` is
+   defined. There are three levels:
+   - `Assert` for invariants that must abort;
+   - `Assume` for assumptions that abort in debug and fuzz builds and are
+     tolerated in release;
+   - `CHECK_NONFATAL` for errors reachable from user input, which return
+     an error instead of crashing.
+
+   `doc/developer-notes.md` prefers `static_assert`, "compile-time
+   checking is preferred over run-time checking".
+2. **Money is a range-checked integer.** `src/consensus/amount.h` defines
+   `CAmount` as `int64_t`, `MAX_MONEY` as `21'000'000 * COIN`, and
+   `MoneyRange(v)` as `0 <= v <= MAX_MONEY`. The comment there says the
+   exact value of `MAX_MONEY` is consensus-critical. Consensus code checks
+   the range at every accumulation: `src/consensus/tx_check.cpp` adds each
+   output and re-checks `MoneyRange(nValueOut)` after each addition.
+   `src/util/overflow.h` provides `CheckedAdd` and `SaturatingAdd` (and the
+   shift equivalents), returning an optional instead of overflowing.
+3. **Fuzzing is first-class.** `src/test/fuzz/` has about 143 harnesses:
+   - network message processing and every deserializer;
+   - integer and addition overflow, and multiplication overflow;
+   - the script interpreter.
+
+   A shared seed corpus lives in its own repository
+   (`bitcoin-core/qa-assets`, `doc/fuzzing.md`). Harnesses run under
+   sanitizers, MSan and Valgrind in CI.
+4. **Sanitizers are part of the normal suite.** `ci/test/` has jobs for:
+   - `address,float-divide-by-zero,integer,undefined`;
+   - `thread`;
+   - `memory`;
+   - Valgrind.
+
+   "The test suite should pass cleanly with the `thread` and `undefined`
+   sanitizers" (`doc/developer-notes.md`).
+5. **Expensive consistency checks are built into the product.**
+   `-checkblockindex`, `-checkmempool` and `-checkaddrman`
+   (`src/init.cpp`) re-verify whole data structures every *n* operations.
+   They are on by default in regtest, so every functional test runs them.
+6. **Static concurrency checks.** About 900 `GUARDED_BY` and
+   `EXCLUSIVE_LOCKS_REQUIRED` annotations are checked by Clang's thread
+   safety analysis. `DEBUG_LOCKORDER` adds run-time lock-order checking.
+7. **Where it matters most, tests are exhaustive on a small instance.**
+   - libsecp256k1 runs its group and signing code on a curve of order 13,
+     where every case can be enumerated (`src/secp256k1/src/tests_exhaustive.c`,
+     `EXHAUSTIVE_TEST_ORDER`).
+   - minisketch decodes every sketch of small parameters
+     (`src/minisketch/src/test.cpp`).
+
+   The code is written so that a small instance exercises the same
+   paths as the real one.
+8. **Constant-time is tested, not assumed.** `src/secp256k1/src/ctime_tests.c`
+   runs the secret-key code under Valgrind or MSan with secrets marked
+   uninitialized, so any secret-dependent branch is reported.
+9. **The one formal proof is narrow.** libsecp256k1's `sage/` scripts
+   (`prove_group_implementations.sage`) symbolically check the elliptic
+   curve formulas. External proof tools appear in exactly one place, for
+   frozen math that rarely changes.
+10. **Test vectors are shared data.** `src/test/data/` holds
+    `script_tests.json`, `tx_valid.json`, `tx_invalid.json`, `sighash.json`,
+    the BIP341 and BIP352 vectors, base58 and key encodings. Other
+    implementations use the same files. Tests read vectors; they don't run
+    other implementations.
+11. **Builds are reproducible and attested.** Guix builds
+    (`contrib/guix/`, `guix-attest`, `guix-verify`) let independent
+    builders publish hashes of identical binaries.
+12. **Dependencies are few and owned.** Libraries such as secp256k1 and
+    minisketch are subtrees checked for consistency with upstream
+    (`test/lint/git-subtree-check.sh`). `depends/` builds everything from
+    source.
+13. **Review is the bottleneck, deliberately.** "In-depth reviewing and
+    testing are the bottleneck of the project" (`CONTRIBUTING.md`).
+    Consensus-critical code is treated differently from everything else
+    (`doc/developer-notes.md`, "Consensus Compatibility"). Changes there
+    are rare, small, and reviewed by many people.
+
+The lesson is that Bitcoin Core doesn't buy assurance with a proof
+assistant. It buys it with:
+- checks that are always on;
+- money that can't leave its range;
+- fuzzing and sanitizers on every parser;
+- exhaustive tests of small instances;
+- whole-structure consistency checks;
+- shared vectors;
+- reproducible builds;
+- a hard line around consensus code.
+
+We should copy that, and put as much of it as possible inside Coax.
+
+## 3. The approach
+
+**Native first.** Every check below is either Coax code or a Coax compiler
+feature. The C compiler that builds Coax output is the one host tool we
+accept. Its sanitizers (ASan, UBSan, TSan, MSan) come with it, and we use
+them as Bitcoin Core does. We don't add TLA+, Alloy, Lean, Z3, CBMC or a
+second language for tests.
+
+The layers, cheapest first:
+
+| Layer | What it gives | Bitcoin Core's version | Ours |
 | --- | --- | --- | --- |
-| 0. Types and refusals | Whole classes of bug can't be written | Paid once, in language and schema design | Coax types, proto data classes, the generator's import refusals |
-| 1. Property tests and fuzzing | Invariants hold on many generated inputs | Hours | Python `hypothesis` for tools, libFuzzer on generated C, `cargo fuzz`/`proptest` in Rust repos |
-| 2. Differential testing | Two implementations agree | Hours to days | Coax vs a C reference (`examples/pulse`), evaluator vs generated C, our Nostr code vs reference libraries |
-| 3. Bounded model checking | Every behavior up to a bound is safe, with a counterexample trace when one isn't | Days per model | TLA+ (TLC, Apalache), Alloy, CBMC/ESBMC on C |
-| 4. Deductive proof | Holds for all inputs and all lengths | Weeks per property | Lean 4, Why3/Frama-C, Verus or Kani for Rust, SMT (Z3) behind small obligations |
+| Types and refusals | Bugs that can't be written | `CAmount`, `static_assert` | Coax types, `distinct` and range types, proto data classes, generator refusals |
+| Always-on checks | Violations stop the program | `Assert`, no `NDEBUG` | Bounds, overflow, casts and asserts checked in every build; `assume` for expensive debug checks |
+| Exhaustive small instances | Every case of a small model | secp256k1 order 13, minisketch | `#forall` and `#test` run by the compiler's evaluator |
+| State exploration | Every interleaving up to a bound | (not used) | `state_machine` declarations, explored by the evaluator |
+| Fuzzing | Hostile inputs at scale | `src/test/fuzz/`, qa-assets | `coax fuzz`, coverage counters emitted by Coax |
+| Sanitizers | Memory, UB, races | ASan, UBSan, TSan, MSan, Valgrind | The same, through `COAX_CC` |
+| Consistency checks | Whole-structure invariants in running code | `-checkmempool`, `-checkblockindex` | `#consistency` procedures run every *n* operations in test builds |
+| Shared vectors | Agreement with other implementations | `src/test/data/*.json` | Pinned vector files read with `#embed` |
+| Reproducible builds | Everyone ships the same bytes | Guix attest | Deterministic Coax output, hashes attested by independent builders |
 
-The rungs aren't alternatives. Rung 0 removes what it can, rung 3 checks
-the protocol design, and rungs 1–2 check that the code matches the design.
-Rung 4 is for the few properties where a bound isn't convincing, such as
-ledger conservation across all histories, or the core semantics of Coax
-itself.
+**Small-scope rule.** Most bugs show up with two or three actors, a few
+messages and one crash. Exhaustive checks at small sizes find nearly all
+of them, which is why secp256k1 tests at order 13. Authority code should
+be written so that it runs unchanged on a small instance: amounts as
+`u8`, three accounts, a deadline space of ten ticks.
 
-**Small-scope hypothesis.** Most protocol bugs show up with two or three
-actors, a handful of messages and one crash. Bounded checking at small
-sizes finds nearly everything for most of our state machines, so it is our
-default for protocols.
+**Authority-critical code.** Bitcoin Core treats consensus code
+differently. We name ours, and hold it to stricter rules:
+- the ledger;
+- payment-attempt and x402 proof consumption;
+- spend grants;
+- Nostr signature and event-ID verification;
+- JCS hashing;
+- market record chains.
 
-## 3. Payments and money
+Section 9 lists the rules.
 
-The money rule (§26.1) is already partly verified by construction:
+## 4. Payments and money
+
+The money rule (§26.1) is already partly enforced by construction:
 - `common.v1.Amount` can only hold msat or a Taproot Assets amount;
 - `payment.v1.Rail` lists only allowed rails;
 - the generator refuses imports of the Cashu and Fedimint mirrors.
 
-That's rung 0 done right. Everything below adds the dynamic properties.
+### 4.1 Money is a range type
 
-### 3.1 The ledger
+Follow `MoneyRange` exactly:
 
-`ledger.v1` is specified as double-entry and append-only, with every entry
-pointing at the receipt that caused it. Properties to check:
+```coax
+MAX_MSAT :: 21_000_000 * 100_000_000 * 1000;   // 2.1e18, fits s64
+Msat :: distinct s64 #range(0, MAX_MSAT);
+```
 
-- **Conservation.** For every posting, debits equal credits, and the sum
-  of all account balances only changes through declared external entries
-  (deposits, payouts).
-- **Append-only.** No operation rewrites or deletes an entry; corrections
-  are new entries that reference the corrected one.
-- **Causality.** Every entry references exactly one receipt, and one
-  receipt causes at most one posting (idempotency).
-- **No unbacked balance.** A balance goes negative only on accounts whose
-  policy allows credit, and never by more than the limit.
-- **No overflow.** msat totals fit `u64` (about 1.8e19 msat, roughly 184
-  million BTC), so checked arithmetic is enough. Accumulated totals still
-  need a stated bound, because "it never overflows in practice" is how
-  overflow bugs ship.
+- Every construction, cast and arithmetic result is range-checked, in
+  every build.
+- Sums go through a checked add that returns failure instead of
+  trapping, wherever the input comes from outside (the `CheckedAdd`
+  pattern). Each running total is re-checked after each step, as
+  `tx_check.cpp` does.
+- `Msat`, Taproot Assets `AssetUnits` and accounting `MicroAmount` are
+  distinct types: adding two of them is a compile error.
 
-How: a TLA+ model of the ledger with concurrent posting, retries and a
-crash between "receipt recorded" and "entry posted". The invariants are
-conservation, idempotency and causality. Then property tests that replay
-generated histories against the real implementation and check the same
-invariants on its output. Conservation over all histories is a good first
-candidate for a Lean proof, because the model is small and the property
-is permanent.
+### 4.2 The ledger
 
-### 3.2 Lightning payment attempts and x402
+`ledger.v1` is double-entry and append-only, and every entry points at the
+receipt that caused it. Bitcoin Core never proves that its UTXO set
+conserves value. Instead:
+- every block is checked as it arrives (inputs at least outputs, all in
+  range);
+- whole-structure checks re-verify everything in tests;
+- the UTXO set has a running commitment.
 
-Paying a Lightning invoice has an outcome that is often handled badly:
-**unknown**. The node accepted the payment, then the connection dropped.
-The payment may still settle, or may already have.
+We do the same:
+- **Per-posting checks, always on.** Debits equal credits; every amount is
+  in range; the entry references exactly one receipt, and the receipt
+  hasn't posted before. A failure refuses the posting.
+- **A consistency check.** A `#consistency` procedure recomputes every
+  balance from the entries. It confirms that no posting rewrote history,
+  that no unbacked balance exists, and that the totals match. It runs
+  every *n* postings in test builds, and on demand in production.
+- **A running commitment.** Keep a hash over the entry sequence, like the
+  UTXO set hash, so replicas and backups can prove they hold the same
+  ledger without comparing it entry by entry.
+- **Exhaustive small instances.** Run the ledger code with `u8` amounts and
+  three accounts over every short sequence of postings, retries and one
+  crash point, and check conservation and idempotency after each step.
+- **Fuzzing.** Fuzz the posting and decoding paths with arbitrary bytes.
 
-- **Safety:**
-  - never pay the same obligation twice;
-  - never mark an obligation unpaid while an attempt might still settle;
-  - a revealed preimage means the payment happened.
-- **Liveness:** with nodes eventually reachable, every attempt reaches
-  succeeded or failed; an unknown attempt is resolved by querying, never
-  by retrying blind.
-- **x402 proof consumption:**
-  - a preimage buys at most one execution, durably, across restarts;
-  - an execution never runs before its proof is recorded as consumed.
+### 4.3 Lightning payment attempts and x402
 
-  The spec says the pre-reset `crates/x402` had "durable proof
-  consumption and recovery". That's a claim a model should back.
+A Lightning payment can end in **unknown**: the node accepted the payment,
+then the connection dropped. The properties:
+- never pay one obligation twice;
+- never mark an obligation unpaid while an attempt might still settle;
+- resolve an unknown attempt by querying, never by retrying blind;
+- a revealed preimage means the payment happened;
+- for x402, one preimage buys at most one execution, durably, and
+  execution never starts before consumption is recorded.
 
-How: one TLA+ model with three actors (payer, node, payee/merchant),
-crash and restart of each, and a durable store. TLC at small bounds will
-find the double-spend and lost-update traces quickly if they exist.
-Recording the model next to the implementation, and turning each trace
-into a test, is the main deliverable.
+Write the attempt lifecycle as a Coax `state_machine` (§7.5), with
+payer, node and merchant, a durable store, and a crash at every step. The
+evaluator explores every interleaving to a small bound. Each counterexample
+is printed as an event sequence and kept as a test.
 
-### 3.3 Market orders (NIP-MKT) and agent labor
+### 4.4 Market orders and labor (NIP-MKT, `labor.v1`)
 
-`market.v1` has a sequenced private record chain (`seq`, `prev` digest)
-and an order lifecycle: RFQ, quote, order, acknowledgement, payment,
-delivery, review, dispute, refund, close. `labor.v1` adds verification,
-rework (at most three rounds) and resolution.
-
-Static invariants are cheap to state and should be checked functions, not
-prose:
-- the deadlines are ordered:
-  `quote_expires_at ≤ order_confirm_by < delivery_due_at < review_due_at < payment_due_at < retain_until`;
+Static rules are plain checked functions, run on every record:
+- `quote_expires_at ≤ order_confirm_by < delivery_due_at < review_due_at < payment_due_at < retain_until`;
 - `amount_due_msat ≤ price_msat`;
 - a refund is at most what was paid;
-- `max_reworks ≤ 3`.
+- `max_reworks ≤ 3`;
+- `seq` is contiguous and `prev` matches.
 
-Dynamic properties need a model:
-- each order ends in `Close` or a resolution by its last deadline;
-- a cancel racing a delivery has one defined winner;
-- the chain has no forks: `seq` is contiguous and `prev` matches;
-- the provider is never paid twice for one order, and paid at all only
-  if the order was accepted or resolved;
-- a buyer who goes silent can't block resolution forever (the
-  `buyer_unavailable` path).
+The lifecycle (RFQ through close, with cancel, dispute, rework and refund)
+is a state machine with buyer, provider and resolver, and a timer per
+deadline. Explore it exhaustively for:
+- every order ending by its last deadline;
+- one winner when cancel races delivery;
+- no double payment;
+- a silent buyer never blocking resolution.
 
-How: TLA+ for the lifecycle with buyer, provider and resolver, and timers
-for each deadline. This is the model most likely to find real design
-bugs, because each record type was specified on its own and the
-interleavings between them were never checked.
+### 4.5 Spend grants
 
-### 3.4 Spend grants
+For HOST spend grants, requests and receipts, the properties are:
+- the sum of receipts stays within the cap;
+- nothing is spent after expiry or revocation, including a spend already
+  in flight when revocation lands;
+- replaying or reordering requests never widens a grant.
 
-HOST `spend-grant`, `spend-request` and `spend-receipt` let an agent spend
-within a budget. Properties:
-- the sum of receipts never exceeds the grant's cap;
-- no spend after expiry or revocation, including a spend already in
-  flight when revocation lands;
-- a grant can't be widened by replaying or reordering requests.
+This is a small state machine, and it guards real money directly.
 
-This one is small enough to model in an afternoon, and it guards real
-money directly.
+### 4.6 What we don't verify
 
-### 3.5 Units
+We don't re-check LND, LDK, Breez or Taproot Assets internals, or Bitcoin's
+cryptography. We pin versions and keep their published vectors as data,
+and we model their observable outcomes: succeeded, failed or unknown.
 
-`Amount` (msat or asset units) and `MicroAmount` (an accounting unit such
-as USD) must never be added together. Coax should make that a type error,
-not a review comment (§6.2 below).
+## 5. Nostr
 
-### What we don't verify
-
-We don't re-prove LND, LDK, Breez or Taproot Assets internals, or
-Bitcoin's cryptography. We pin versions, run their published test vectors
-where they exist, and model their observable behavior: an attempt can
-succeed, fail or be unknown. Verification covers our use of them.
-
-## 4. Nostr
-
-### 4.1 Event identity and signatures
-
-- **Event ID.** The ID is SHA-256 of the NIP-01 serialization. Check our
-  serializer against reference implementations (`nostr-effect` in this
-  workspace, plus rust-nostr and nostr-tools) on generated events with
-  hostile strings: escapes, unicode, control bytes, long content.
-- **Verify the original bytes.** A signature is verified over the bytes
-  that arrived, never over a re-serialization (§35.4). A property test can
-  prove it: mutate the representation without changing the meaning, and
-  verification must still use the original bytes.
-- **JCS (RFC 8785).** It hashes most OpenAgents records (§7.4). Check it
-  differentially against a reference implementation, and fuzz it with the
-  §35.5 hostile inputs:
+- **Event IDs and signatures.** An event ID is SHA-256 of the NIP-01
+  serialization. Keep a pinned vector file of events with expected IDs
+  and signature results, generated once and hashed like
+  `nips/upstream-lock.json`. Include hostile strings: escapes, unicode,
+  control bytes. Coax tests read it with `#embed`, the way Bitcoin Core
+  reads `sighash.json`. Signatures are verified over the bytes that
+  arrived, never a re-serialization (§35.4); a test changes the
+  representation and checks that verification still uses the original.
+- **JCS (RFC 8785).** It hashes most OpenAgents records (§7.4). Keep vectors
+  for each domain prefix (`"openagents.run-record.v1\n"` and the others),
+  and fuzz the parser and canonicalizer with the §35.5 hostile inputs:
   - duplicate keys;
   - integers above 2^53−1;
   - non-finite numbers;
-  - excessive depth.
+  - excessive depth;
+  - oversize input.
+- **Replaceable and addressable events.** "Newest `created_at`, ties to the
+  lowest ID" is a merge rule. It must be commutative, associative and
+  idempotent, so relays converge regardless of arrival order. Check it
+  with `#forall` over every ordering of small event sets, including NIP-09
+  deletions arriving before, between and after replacements.
+- **Authority claims.** NIP-MP says a project's signer gains no authority
+  over its repositories; NIP-OA defines how agents inherit push access.
+  Model principals, attestations and grants as Coax data, and enumerate
+  every chain of up to *k* valid events. Check that none grants push
+  access without the repository owner's attestation.
+- **Leases.** NIP-PL push leases and other expiring grants share one
+  pattern: no delivery to an expired lease, renewal never revives a
+  revoked lease, and bounded clock skew never extends a lease past its
+  maximum. Write it as one reusable state machine.
+- **Relay filters.** In the `immortal` relay (Rust, its own repository),
+  keep NIP-01 filter matching as a short reference function. Fuzz the
+  indexed implementation against it. That repository follows its own
+  rules for tools.
+- **Encryption.** For NIP-44 and NIP-59, use audited code and its official
+  vectors. Test our handling: the right key per conversation, no plaintext
+  in logs (§35.7), and no downgrade to NIP-04. For secret-key code in Coax,
+  copy `ctime_tests.c`: run under MSan with secrets marked uninitialized,
+  so a branch on a secret is reported.
 
-  The domain-separation prefixes (`"openagents.run-record.v1\n"` and the
-  others) get golden vectors.
+## 6. Elsewhere
 
-### 4.2 Replaceable and addressable events
-
-Relays and clients keep "the latest" replaceable event (newest
-`created_at`, ties broken by lowest ID) per key. That rule is a merge
-function, and it should be a **join-semilattice**: commutative,
-associative and idempotent. If it is, any two relays that have seen the
-same events agree regardless of arrival order. That's easy to state and
-check:
-- property tests on random event sets and orders;
-- a short Lean proof, because the rule is a total order.
-
-NIP-09 deletions interact with it (a delete followed by an older replace),
-and that interaction is where bugs live. Add it to the model.
-
-### 4.3 Authority models
-
-Several Block NIPs make negative authority claims.
-- NIP-MP: "a project's signer gains no authority over any member
-  repository".
-- NIP-OA: owner attestation, and how agents inherit push access.
-
-The right tool is Alloy, or a small Datalog-style rule check:
-- model principals, keys, attestations and grants;
-- ask whether any chain of valid events grants push access without an
-  attestation from the repository owner.
-
-Alloy either finds such a chain or shows that none exists up to the
-bound. It's the same question as "can membership become permission?",
-asked by machine.
-
-### 4.4 Leases and state machines
-
-NIP-PL push leases, and other NIPs with expiry and renewal, are small
-timed state machines. One shared TLA+ pattern for "lease with renewal and
-clock skew" covers all of them. The properties:
-- no delivery to an expired lease;
-- renewal never resurrects a revoked lease;
-- bounded clock skew never extends a lease past its stated maximum.
-
-### 4.5 Relays and filters
-
-The relay itself lives in the `immortal` repository (Rust). Two things are
-worth doing there:
-1. Write NIP-01 filter matching as a small reference function. Run the
-   relay's indexed implementation against it on random events and filters
-   (rung 2). Index shortcuts are where matching bugs hide.
-2. Use Kani or proptest on the decoders, size limits and canonical-ID
-   code, and `cargo fuzz` on everything that parses network input.
-
-### 4.6 Encryption
-
-For NIP-44 and NIP-59 wrapping we use audited code and its official test
-vectors. What we verify is our handling:
-- the right key per conversation;
-- no plaintext in logs (§35.7);
-- no downgrade to NIP-04.
-
-## 5. Everything else worth a model
-
-- **Protocol evolution.** Breaking-change checks against the frozen
-  baselines in `proto/` are already verification. Add property tests for
-  missing-versus-zero presence and for the data classes (§35.6): strict
-  classes refuse unknown fields, lenient ones keep or drop them as
-  specified.
-- **The Metareal migration.** Legacy-ID migration must be idempotent,
-  collision-free and never reinterpret an old signature under a new
-  domain. These already have tests; they're also checkable statements
-  for an exhaustive check over a small catalog.
-- **Runs, coordination and automation.** Leases, cancellation, approvals
-  and exactly-once tool effects. Two key properties:
-  - no effect runs without its approval;
-  - a cancelled run never produces a later effect.
-
-  These are classic TLA+ targets, worth modeling before the P4
+- **Protocol evolution.** Breaking-change checks against `proto/`'s frozen
+  baselines are Bitcoin Core's previous-releases tests for us. Keep them,
+  and add missing-versus-zero presence and data-class strictness (§35.6)
+  as exhaustive checks over small messages.
+- **The Metareal migration.** Migrations must be idempotent and
+  collision-free, and never reinterpret a signature under a new domain.
+  These are tested today; enumerate small catalogs too.
+- **Runs, coordination and automation.** No effect without its approval; a
+  cancelled run never produces a later effect; a lease is held by one
+  holder. These are state machines, worth exploring before the P4
   implementation.
-- **Determinism (Coax stage 5).** "The same replay at 1, 2, 4 and 8
-  workers" is a spec gate. A model of the job scheduler with effect
-  annotations can show that declared-disjoint effects can't race. Tests
-  then check the real thing.
-- **The iOS home.** Its protobuf admission (`metareal/home.coax`) refuses
-  unknown and duplicate fields and bounds every varint. That's a small
-  decoder, a good first target for exhaustive checking of short inputs
-  and for libFuzzer on the generated C (the sanitizer harness already
-  exists).
+- **Determinism.** "The same replay at 1, 2, 4 and 8 workers" (Coax stage
+  5) gets TSan in the suite as Bitcoin Core runs it. Later, effect
+  annotations should be checked by the compiler the way Clang checks
+  `GUARDED_BY`.
+- **The iOS home.** Its protobuf admission (`metareal/home.coax`) is a
+  bounded decoder. It is the first `coax fuzz` target, and it already has
+  an ASan/UBSan harness.
 
-## 6. Making verification native in Coax
+## 7. Verification features for Coax
 
-This is the part only we can do. Coax already has three things most
-languages lack for this:
-- **A bounded, side-effect-free evaluator in the compiler.** `#run` and
-  `#assert` execute real code while compiling.
-- **Exact integer semantics.** Every integer has a fixed width. Overflow,
-  shifts, casts and bounds are checked in debug and at compile time.
-- **No hidden behavior.** No implicit conversions, no exceptions, no
-  constructors, and left-to-right evaluation. What a line does is on the
-  line.
+Coax already has what Bitcoin Core had to build or borrow:
+- a bounded evaluator inside the compiler;
+- integers with exact, checked semantics;
+- bounds and cast checks in every build;
+- deterministic output.
 
-Those make several features cheap.
+These features build on that, in rough order of value.
 
-### 6.1 Compile-time exhaustive checks (`#test`, `#forall`)
+### 7.1 Checks that never turn off
 
-The evaluator can run tests while compiling, and for small domains it can
-run all of them:
+Bitcoin Core refuses to compile without assertions. Coax should have the
+same rule.
+- Bounds, casts, shifts, division and `assert` are checked in every
+  build, as they are today. No flag removes them.
+- `assume(cond)` is for checks too expensive for release. It runs in
+  debug, test and fuzz builds, and is compiled out of release only.
+- Errors from external input are returned, not asserted: this is
+  `CHECK_NONFATAL`'s role, and in Coax it is ordinary error values.
+- **Release overflow.** Release builds currently wrap integer overflow.
+  Following Bitcoin Core, authority-critical code traps on overflow in
+  every build. Decision: `#arithmetic checked` is the default for the
+  modules named in §3. Elsewhere, wrapping in release stays allowed for
+  measured hot loops, and is spelled out (`wrap_add`, `cast,trunc`) where
+  it's intended.
+
+### 7.2 Distinct and range types
+
+`Msat :: distinct s64 #range(0, MAX_MSAT);` has the same layout as `s64`
+and a different name. There are no implicit conversions; casts are
+explicit and checked; every result is range-checked. This is `CAmount`
+plus `MoneyRange`, enforced by the compiler instead of by convention.
+`EventId :: distinct [32] u8;` and `Pubkey :: distinct [32] u8;` can't be
+swapped.
+
+### 7.3 `#forall` and `#test`: exhaustive checks in the compiler
 
 ```coax
-deadlines_ordered :: (t: Terms) -> bool { ... }
-
 #forall a: u8, b: u8 {
-  #assert add_msat(a, b) == add_msat(b, a);
+  #assert merge(a, b) == merge(b, a);
 }
 
-#test "a refund never exceeds payment" {
+#test "refunds never exceed payment" {
   for paid: 0..<1000 { for refund: 0..<1000 {
-    #assert ifx refund <= paid then refund_ok(paid, refund) else !refund_ok(paid, refund);
+    #assert refund_ok(paid, refund) == (refund <= paid);
   } }
 }
 ```
 
-- `#forall` over `u8`, `bool`, enums and small ranges enumerates every
-  value. That turns the small-scope hypothesis into a compiler feature.
-- Failures print the counterexample as a Coax value, so it can be pasted
-  into a regression test.
-- Tests need their own step budget, separate from the 100,000 steps that
-  keep ordinary compilation fast, plus a `coax test` command that runs
-  them.
+- `#forall` enumerates `u8`, `bool`, enums and small ranges completely.
+  This is the secp256k1 exhaustive suite as a language feature.
+- A failure prints the counterexample as a Coax value, ready to paste into
+  a regression test.
+- Tests get their own step budget, separate from the 100,000 steps that
+  keep ordinary compiles fast, and run with `coax test`.
+- Code is written so it can run on a small instance. For example, the
+  ledger takes its amount type and its maximum as constants. Until Coax
+  has generics, that means a small-instance build of the same file.
 
-This is the cheapest high-value step. It reuses the evaluator we already
-have and needs no external tool.
-
-### 6.2 Distinct types for units and identities
+### 7.4 `#consistency`: whole-structure checks
 
 ```coax
-Msat :: distinct u64;
-AssetUnits :: distinct u64;
-EventId :: distinct [32] u8;
+check_ledger :: (l: Ledger) #consistency { ... }
 ```
 
-- A distinct type has the same layout but a different name: no implicit
-  conversion, explicit `cast` only.
-- msat plus asset units, or an event ID passed where a pubkey goes,
-  becomes a type error.
-- Combined with checked arithmetic, money arithmetic can't silently wrap
-  or mix units.
+A `#consistency` procedure:
+- runs every *n* mutating operations in test builds;
+- runs on demand in production;
+- never runs in production unless asked.
 
-This is rung 0 for §3.5.
+This is `-checkmempool` and `-checkblockindex`, declared in the source
+next to the structure it checks.
 
-### 6.3 Checked arithmetic everywhere money lives
-
-Release builds currently wrap on integer overflow. For money and protocol
-code that default is wrong. Proposal: a per-file or per-procedure
-directive such as `#arithmetic checked`. Overflow then traps in release
-too, and the compiler refuses wrapping arithmetic unless it's spelled out
-(`wrap_add`, `cast,trunc`). The generated C already has the checked
-helpers. The cost is a branch per operation, which money code can afford.
-
-### 6.4 Contracts: `#requires`, `#ensures`, `#invariant`
+### 7.5 `state_machine` declarations with built-in exploration
 
 ```coax
-post :: (ledger: [] Entry, e: Entry) -> bool
-  #requires e.debit == e.credit
-  #ensures  balance_sum(ledger) == old(balance_sum(ledger))
-{ ... }
-```
-
-Contracts have three uses, and each can come separately:
-1. **Debug checks.** They are checked at run time in debug builds, like
-   asserts with better messages.
-2. **Compile-time evidence.** They are checked in `#run` and `#forall`
-   executions, so every compile-time test also tests the contracts.
-3. **Proof obligations.** They are exported to a verifier (§6.6). Ghost
-   state (`#ghost` locals and fields, erased from generated code) lets a
-   contract mention history (`old(...)`) without costing anything at run
-   time.
-
-### 6.5 State machines as declarations
-
-Most of §3 and §4 is state machines. If Coax could declare them, one
-declaration would give the implementation, the model and the tests:
-
-```coax
-OrderState :: state_machine {
-  states: quoted, ordered, delivered, accepted, disputed, refunded, closed;
-  ordered -> delivered  when provider_submits;
-  ordered -> refunded   when cancel_before_delivery;
-  delivered -> accepted when review_accepts;
-  delivered -> disputed when review_rejects;
-  ...
-  #invariant paid_total <= price;
-  #eventually closed;
+Attempt :: state_machine {
+  states: created, sent, unknown, succeeded, failed;
+  created -> sent        when pay;
+  sent -> succeeded      when settled;
+  sent -> failed         when rejected;
+  sent -> unknown        when connection_lost;
+  unknown -> succeeded   when query_settled;
+  unknown -> failed      when query_failed;
+  #invariant paid_count <= 1;
+  #eventually succeeded or failed;
 }
 ```
 
-The compiler checks:
-- every state is reachable and every event is handled;
-- the transition table is the only way to change state.
+One declaration gives the implementation, its tests and its model:
+- the compiler checks that every state is reachable, every event is
+  handled, and the table is the only way to change state;
+- `coax test` explores every event sequence of several actors, with
+  crashes, up to a stated depth, checking invariants at each step;
+- a failure prints the shortest event sequence.
 
-It can also explore the state space with the existing evaluator: a
-bounded breadth-first search over generated event sequences, checking
-invariants at each step. That's a small built-in model checker, with
-counterexamples printed as event sequences. For models too large for that,
-the same declaration can emit a TLA+ module, so the model can't drift
-from the code. This is the long-term answer to "the model and the code
-disagree".
+This replaces the TLA+ models the first draft proposed. The model can't
+drift from the code, because it is the code.
 
-### 6.6 Paths to external verifiers
+### 7.6 `coax fuzz`: fuzzing without libFuzzer
 
-Coax has two properties that make export to external checkers realistic:
-- **Fixed-width arithmetic.** Coax integers are SMT bit-vectors exactly:
-  same width, same overflow rules. A pure procedure over integers,
-  structs and fixed arrays translates directly to an SMT query. `#prove`
-  on a pure procedure could discharge its contracts with Z3 and report a
-  counterexample model when one exists.
-- **Plain C output.** The generated C is ordinary C11 with explicit
-  checks, which CBMC and ESBMC handle well. Running CBMC over the emitted
-  C proves the absence of undefined behavior and failed checks up to a
-  loop bound, with no new frontend. The sanitizer runs we already do in
-  `metareal/` are the dynamic version of this.
+We control code generation, so we don't need an external fuzzer.
+- A fuzz target is a procedure taking `[] u8`.
+- `coax fuzz` builds it with coverage counters that the emitter inserts on
+  each branch, then runs a mutating driver written in Coax.
+- The driver keeps a corpus directory of inputs that reach new branches.
+- Fuzz builds turn on `assume` and the consistency checks, as Bitcoin
+  Core's fuzz builds turn `Assume` into an abort. Crashes become fixtures.
+- With a clang `COAX_CC`, the same target can also run under ASan or
+  UBSan, or under libFuzzer when someone wants it.
+- The shared corpus lives in its own data repository, like `qa-assets`.
 
-Later, a Lean 4 model of core Coax semantics could support two claims:
-- that the evaluator and the C emitter agree (translation validation);
-- that well-typed programs don't hit undefined behavior.
+### 7.7 `#embed`: test vectors as pinned data
 
-That's a research-sized project; §7 puts it last on purpose.
+Compile-time code is sealed from I/O, and that stays true. But
+`#embed "vectors/sighash.json"` brings a file's bytes in as a constant:
+- the file is declared, and its hash is recorded in the build;
+- so the build stays reproducible, and vectors are data, not tool
+  output.
 
-### 6.7 Verify the generator, not each output
+Coax tests parse the vectors with Coax's own JSON reader, which we need
+anyway for JCS, so the vector tests exercise that reader too.
 
-`#import_proto` will generate bounded codecs for every package. Verifying
-each generated decoder is wasteful. Instead:
-- verify the template once, with CBMC on representative instances;
-- fuzz the generated decoders with libFuzzer on the emitted C;
-- keep the §35 conformance vectors as the shared oracle.
+### 7.8 The evaluator as reference semantics
 
-The same applies to `state_machine`: check the lowering once, then trust
-each instance's generated transition function.
+The evaluator is a second implementation of Coax. Generate random
+well-typed programs, run each in the evaluator and as compiled C in debug
+and release, and require identical output or the same trap. A wrong
+compiler is the one bug every other check would trust.
 
-### 6.8 The evaluator as reference semantics
+### 7.9 Reproducible, attested builds
 
-The compile-time evaluator is already a second implementation of Coax. We
-should make it the reference:
-- generate random well-typed programs, Csmith-style;
-- run each in the evaluator and as compiled C, in debug and release;
-- require identical output, or the same trap.
+Coax output is already deterministic, and `tests/tools.py` checks it. Add
+`coax build --manifest`, which records the hashes of:
+- the source;
+- the `#embed` inputs;
+- the generated C;
+- the result.
 
-Chapter 12 of the book shows this by hand. Making it systematic catches
-emitter bugs before agents ship code that depends on them.
+Independent builders compare manifests before a release, as Guix
+attestations do.
 
-## 7. A staged plan
+### What we leave out
+
+A proof assistant, an SMT solver, and translation validation in Lean.
+Bitcoin Core uses an external prover only for secp256k1's frozen curve
+formulas. If a frozen math core of ours ever needs a symbolic proof, that
+is the precedent: one narrow script, beside the code it proves, never a
+second toolchain for everything.
+
+## 8. A staged plan
 
 | Stage | Work | Exit evidence |
 | --- | --- | --- |
-| V0. Inventory | List every invariant the protocol spec states, with an owner, its rung and where it is checked. Add the missing ones to `INVARIANTS.md` as they get owners. | A table in `docs/verification/`, linked from `INVARIANTS.md` |
-| V1. Cheap and native | `#test` and `#forall` in Coax with their own budget and a `coax test` command; MKT deadline and amount invariants written as checked Coax functions; JCS and NIP-01 differential tests against references | Tests run under `coax/build.sh test`; counterexamples print as values |
-| V2. First models | TLA+ models for the ledger (conservation, idempotency), Lightning attempts with unknown outcomes, x402 proof consumption, and spend grants; Alloy for NIP-OA/NIP-MP authority | Each model checked at stated bounds in a few minutes locally, with traces kept as tests |
-| V3. Money in Coax | `distinct` types, `#arithmetic checked`, and debug contracts; the first ledger and payment code written with them | Unit mixing and silent wrap are compile errors in money code |
-| V4. Machines and tools | `state_machine` declarations with the built-in bounded explorer and TLA+ export; CBMC over emitted C; `#prove` through Z3 for pure procedures | One real protocol (MKT orders) implemented from a declaration, with its model generated from the same source |
-| V5. Deep proofs | Lean proofs of ledger conservation and the replaceable-event lattice; a Lean model of core Coax for translation validation | Proof artifacts checked locally, with stated assumptions |
+| V0. Inventory | List every invariant the protocol spec states: its owner, its layer and where it's checked. Mark the authority-critical code. | A table here, linked from `INVARIANTS.md` |
+| V1. Native checks | `#forall`, `#test` and `coax test` with their own budget; `assume`; MKT deadline and amount rules as checked Coax functions | Runs in `coax/build.sh test`; counterexamples print as values |
+| V2. Money types | `distinct`, `#range`, checked arithmetic by default in authority modules; `MAX_MSAT` and checked sums | Unit mixing, out-of-range amounts and silent wrap are compile errors or traps in every build |
+| V3. Fuzzing and data | `coax fuzz` with emitted coverage, starting with `metareal/home.coax`; `#embed` with pinned Nostr, JCS and BIP vectors; sanitizer jobs through `COAX_CC` | A fuzz corpus and vector suites in the local test run |
+| V4. Machines | `state_machine` with built-in exploration and `#consistency`; Lightning attempts, x402, spend grants, ledger and MKT orders written with them | Each machine explored to a stated depth in minutes; traces kept as tests |
+| V5. Release discipline | `coax build --manifest`, independent attestation, and the evaluator-versus-C random-program check | Two builders produce identical manifests for a release |
 
-V1 and V2 are independent and can start now. V3 waits on the payment code
-itself (protocol phase P5); V4 waits on Coax aggregate and protocol
-ingestion work (Coax stage 2–3, protocol phase P1).
+V1 can start now. V2 and V4 must land before the payment code they
+protect (protocol phase P5). V3 follows Coax aggregate and `#import_proto`
+work (Coax stage 2–3, protocol phase P1).
 
-## 8. Where things live
+## 9. Rules for authority-critical code
 
-- `verify/<domain>/` for models: `verify/ledger/Ledger.tla`,
-  `verify/nostr/authority.als`. Each directory gets a README that states:
-  - the production contract it models;
-  - its bounds;
-  - how to run it;
-  - the last result and its date.
-- Counterexamples become regression tests in the owning package, never
-  only in the model.
-- `scripts/verify.sh` runs every model at its documented bounds.
+These are adapted from how Bitcoin Core treats consensus code.
+
+- It lives in named modules, listed in `INVARIANTS.md`.
+- Checked arithmetic, range types, and checks that never turn off.
+- Every rule is a checked function, with its own exhaustive `#forall` or
+  `#test` and its own vectors.
+- Behavior changes and refactors never share a commit.
+- A change needs an independent review: a second agent working from the
+  code, not from the author's summary. The owner signs off on changes to
+  money rules.
+- Counterexamples, fuzz crashes and production incidents become
+  permanent tests.
+- New dependencies are refused by default. Anything accepted is pinned,
+  vendored with its hash, and checked against upstream.
 - Checks run locally or on owned machines; there are no GitHub Actions
-  (an `INVARIANTS.md` rule). A model must finish within a stated time
-  budget, or it gets split.
-- Traces never contain production data, secrets or real keys.
-- Changing a model's invariant is a policy change: update `INVARIANTS.md`
-  in the same commit.
+  (an `INVARIANTS.md` rule). Traces never contain production data,
+  secrets or real keys.
 
-## 9. Open questions
+## 10. Decisions on the open questions
 
-1. TLA+ or a Coax-native explorer first for protocol models? TLA+ is
-   proven and fast to start. Native state machines avoid drift but take
-   longer. A reasonable split: TLA+ for V2, native for V4, with V4
-   replacing the hand models it can generate.
-2. Should release builds of money code trap on overflow by default
-   (§6.3), or only where a file opts in?
-3. How much proof is enough for ledger conservation: a bounded model plus
-   property tests, or a Lean proof before real funds move?
-4. Who owns the reference implementations used for differential Nostr
-   testing, and how are their versions pinned (`nips/upstream-lock.json`
-   already pins the text)?
-5. Is a Lean model of Coax worth it before Coax has users beyond the iOS
-   home, or only once it carries money?
+The first draft ended with five questions. With Bitcoin Core as the
+tiebreaker and no external toolchains, the answers are:
 
-The common thread: write each invariant once, as close to the code as
-possible, and have a machine check it at the cheapest rung that's
-convincing. Coax gives us a rare chance to put most of those checks in the
-language itself.
+1. **TLA+ or a Coax-native explorer?** Native. Bitcoin Core uses no model
+   checker; its strength is checks that run all the time. Our protocol
+   models are `state_machine` declarations explored by the evaluator
+   (§7.5). Until V4 lands, the same models are written as ordinary Coax
+   `#test` procedures that enumerate event sequences, so nothing waits on
+   an external tool.
+2. **Should money code trap on overflow in release?** Yes, in every build.
+   That follows `MoneyRange` and the rule against compiling without
+   assertions. Authority modules use checked arithmetic and range types
+   by default (§7.1, §7.2). Wrapping elsewhere stays an explicit,
+   measured choice.
+3. **How much proof before real funds move?** Bitcoin Core's level, not a
+   proof assistant:
+   - per-posting checks that are always on;
+   - a `#consistency` recomputation of the whole ledger;
+   - a running ledger commitment;
+   - exhaustive small-instance runs;
+   - fuzzing;
+   - independent review.
+
+   All of these must pass before the ledger holds real funds.
+4. **How are reference implementations for Nostr pinned?** We don't run
+   them in tests. Like `src/test/data/`, we keep pinned vector files,
+   generated once, with their source and hash recorded, alongside the
+   NIP text pins in `nips/upstream-lock.json`. Tests read them through
+   `#embed`.
+5. **Is a Lean model of Coax worth it?** No. Bitcoin Core relies on tests,
+   fuzzing and review for its compiler-adjacent risk. We do the same with
+   the evaluator-versus-C random-program check (§7.8) and attested
+   reproducible builds (§7.9). A narrow external proof is a last resort,
+   like secp256k1's Sage scripts, and only for frozen math.
+
+The common thread: write each invariant once, next to the code, in Coax,
+and keep it on. Bitcoin Core earns trust through many cheap checks that
+never stop running. Coax lets us build those checks into the language
+itself.
