@@ -79,6 +79,9 @@ final class HomeViewController: UIViewController {
             setUpBalance()
             setUpVoice()
             setUpGrid()
+            // The overview and the dolly down play once, on the first launch;
+            // after that the app opens on the camera behind you.
+            let seen = UserDefaults.standard.bool(forKey: "OAGridSeen")
             housePortal.setTitle("Haunted House", for: .normal)
             housePortal.titleLabel?.font = UIFont(name: "Michroma", size: 10)
             housePortal.setTitleColor(.white, for: .normal)
@@ -88,6 +91,7 @@ final class HomeViewController: UIViewController {
             housePortal.addAction(UIAction { [weak self] _ in self?.enterHouse() }, for: .touchUpInside)
             view.addSubview(housePortal)
             view.accessibilityElements = [element]
+            if seen, inGrid { arrive() }
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.didEnterBackgroundNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(resume), name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -315,6 +319,7 @@ final class HomeViewController: UIViewController {
     /// The dolly is over: the sticks, the hotbar and your balance appear.
     private func arrive() {
         stage = .playing
+        UserDefaults.standard.set(true, forKey: "OAGridSeen")
         sticks = metareal_sticks_reset(); gridTouches = [:]
         view.isMultipleTouchEnabled = true
         balanceLabel.isHidden = false; walletButton.isHidden = false; voice.isHidden = false

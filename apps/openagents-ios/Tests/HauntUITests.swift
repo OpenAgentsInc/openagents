@@ -20,7 +20,7 @@ final class HauntUITests: XCTestCase {
     }
     private func row(_ title: String,_ app: XCUIApplication) { let cell=app.cells["haunt.row."+title];XCTAssertTrue(cell.waitForExistence(timeout:5));cell.tap() }
     func testPortalHouseConversationEditingAndReturn() {
-        let app=XCUIApplication();app.launch();enter(app)
+        let app=XCUIApplication();app.launchArguments+=["-OAGridSeen","NO"];app.launch();enter(app)
         let world=app.otherElements["haunt.world"]
         let initial=world.value as? String ?? ""
         XCTAssertTrue(initial.contains("Yard"))

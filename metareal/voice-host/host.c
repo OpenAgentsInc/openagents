@@ -1103,7 +1103,14 @@ static void on_control(session *s, const oa_voice_control *c) {
     s->dropped_upto = s->turn_no;
     drop_final(s);
     break;
-  case OA_CONTROL_PLAYBACK: s->played_samples = c->played_samples; break;
+  case OA_CONTROL_PLAYBACK:
+    // What the phone says it has played of the current reply: in a verbose
+    // run, every report (about four a second while a reply plays), so a
+    // silent client shows up as a stuck count or as no reports at all.
+    if (g_verbose)
+      logf_("%s: playback %s played %llu samples", s->sid, c->utterance, (unsigned long long)c->played_samples);
+    s->played_samples = c->played_samples;
+    break;
   case OA_CONTROL_PING: {
     oa_voice_msg m = {.kind = OA_MSG_CONTROL};
     m.u.control.kind = OA_CONTROL_PONG;

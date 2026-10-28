@@ -15,6 +15,7 @@ final class WalletUITests: XCTestCase {
 
     func testReceiveAndQuoteWithAThrowawayWallet() {
         let app = XCUIApplication()
+        app.launchArguments += ["-OAGridSeen", "NO"]  // every test starts from the first-launch overview
         app.launchEnvironment["OPENAGENTS_THROWAWAY_WALLET"] = "1"
         app.launch()
         // The balance shows once you are in the Grid.

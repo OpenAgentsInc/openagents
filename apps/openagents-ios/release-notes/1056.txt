@@ -1,0 +1,5 @@
+Voice no longer interrupts itself: on the loudspeaker the reply's own sound leaked back into the microphone, which cut the reply off after a moment and made it answer its own words. It now plays to the end unless you talk over it.
+
+The camera's drop down to your character plays only the first time you open the app; after that the app opens straight on the camera behind you.
+
+Voice still needs a voice server on your Wi-Fi: long-press the microphone and enter ws://192.168.1.235:8787.

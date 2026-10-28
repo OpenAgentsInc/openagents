@@ -12,6 +12,7 @@ final class HomeUITests: XCTestCase {
 
     func testStartOpensTheGridAndTheStickWalks() {
         let app = XCUIApplication()
+        app.launchArguments += ["-OAGridSeen", "NO"]  // every test starts from the first-launch overview
         app.launch()
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20))
@@ -87,6 +88,7 @@ final class HomeUITests: XCTestCase {
 
     func testTheHotbarDancesAndTheTerminalStandsAhead() {
         let app = XCUIApplication()
+        app.launchArguments += ["-OAGridSeen", "NO"]  // every test starts from the first-launch overview
         app.launch()
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20))
@@ -126,6 +128,7 @@ final class HomeUITests: XCTestCase {
 
     func testTheForemanStandsByTheStart() {
         let app = XCUIApplication()
+        app.launchArguments += ["-OAGridSeen", "NO"]  // every test starts from the first-launch overview
         app.launch()
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20))
