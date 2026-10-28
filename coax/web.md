@@ -1,8 +1,8 @@
 # Coaxial: the Coax web framework for openagents.com (proposal)
 
-Status: **proposal, 2026-10-28. None of this is built.** Name:
-**Coaxial** (see [Naming](#naming)). Owner decisions needed
-are collected in [Open questions](#open-questions).
+Status: **the first slice runs (2026-10-28): the openagents.com splash on a
+Coax engine in WebGPU, with `coax serve` hot reload. The rest is a proposal.**
+Owner decisions are recorded under [Decisions](#decisions-2026-10-28).
 
 This document specifies how openagents.com moves onto Coax and Metareal: the
 site takes over a full-window GPU canvas, shows the Grid and the rest of
@@ -12,6 +12,33 @@ times measured in milliseconds rather than seconds. It sits beside the
 the roadmap's wasm32 feasibility test (R1), its GPU and browser proof (R8)
 and its reload work (R11). It does not reorder the roadmap. R0, the measured
 native kernel, is separate work.
+
+## Decisions (2026-10-28)
+
+- **Name:** Coaxial; commands `coax serve` and `coax deploy`.
+- **WebGPU only**, with a text fallback for browsers without it.
+- **Upstream LLVM** installed (clang and lld 23.1.4, wasi-libc, wasi-runtimes,
+  from Homebrew).
+- **What openagents.com needs at the switch:** the landing page, and docs
+  and blog posts written in Markdown that search engines read as text and
+  people see drawn on the GPU. Nothing else: no chat, sign-in, API pages or
+  payments in this site for now.
+- **Voice in the browser:** after the first switch.
+- **First priority:** a Coaxial version of today's "Coming soon" splash.
+
+## Built so far
+
+| Piece | Where | State |
+| --- | --- | --- |
+| The splash | `apps/openagents-web/splash.coax` (layout, stroke font, write-on animation, nebula clock; 5 checks), `face.c` (its Wasm exports), `splash.wgsl` (temporary hand-written WGSL; the nebula is the old page's), `index.html`, `index.md` | Runs in Chrome; a frame read back shows the strokes over the nebula |
+| The browser host | `coax/web/host.js`: WebGPU, the frame clock, state in one `WebAssembly.Memory`, code and shader swaps, the dev error note, the `?probe` frame readback | Works for apps with one uniform block and one vertex stream |
+| Coax → Wasm | `coax/web/wasm.sh`: `coax c` → clang wasm32-wasip1 → wasm-ld; dev (`-O1`, parallel) and release (`-O2`) | The splash is 24 KB (release) |
+| Dev server | `coax/web/serve.c` + `serve.sh` (`coax serve`): static files, a watcher, rebuilds, `/coaxial/live` | Measured: an engine rebuild in 118–135 ms, shader and page messages, compiler errors with the `.coax` location |
+
+Not built: `coax wgsl` (shaders are hand-written WGSL for now), the
+production server and `coax deploy`, Markdown docs and blog drawn on the GPU,
+compression and content-hashed URLs, and a `coax serve` subcommand inside the
+compiler itself (today it's `coax/web/serve.sh`).
 
 ## Goals
 
@@ -54,8 +81,9 @@ Facts this proposal starts from, checked 2026-10-28:
   `player.coax` and `cast.coax` takes about 10 ms each; `home.coax` takes
   190 ms because it imports protobuf descriptors. Clang compiles the Grid's
   generated C at `-O2` in 90 ms.
-- **Toolchain gap:** Apple clang 21 on this Mac has no wasm32 target and
-  there is no `wasm-ld`. A wasm build needs upstream LLVM (clang + lld).
+- **Toolchain:** Apple clang 21 has no wasm32 target, so the browser build
+  uses upstream LLVM 23.1.4 (clang, wasm-ld) with wasi-libc, installed from
+  Homebrew on 2026-10-28.
 - **Precedent:** before the reset, Aethyrforge (`git show 0b401561a0^:apps/aethyr/`)
   rendered a town through WebGPU from a worker with C/Wasm kernels. Its
   measured record
@@ -306,14 +334,8 @@ Considered and set aside:
 Decisions for the owner. Each has a recommendation.
 
 1. **Name.** Decided: Coaxial, with `coax serve` and `coax deploy`.
-2. **WebGPU only?** Safari, Chrome and Edge ship WebGPU; older browsers and
-   some Linux and Android setups don't. Options: WebGPU only with a text
-   fallback page (the `index.md` content), or also a WebGL2 path (a second
-   shader target and renderer). *Recommend WebGPU only plus the text fallback.*
-3. **Install upstream LLVM** (clang + lld, about 1 GB) on this Mac and on the
-   build machine, pinned to one version? It's the only new toolchain, and a
-   wasm32 build needs it. The alternative is a Coax wasm emitter, which the
-   roadmap puts after measurements (R12). *Recommend installing LLVM.*
+2. **WebGPU only?** Decided: yes, with a text fallback.
+3. **Install upstream LLVM?** Decided: yes; installed.
 4. **Plain JavaScript for the host**, hand-written, no npm, no TypeScript,
    no bundler? Keeps the toolchain to Coax + clang and keeps the host honest
    about doing effects only. TypeScript would add a compiler and type
@@ -327,7 +349,8 @@ Decisions for the owner. Each has a recommendation.
 7. **What must keep working at the switch (W5).** Which of today's routes
    and features are required: `/chat`, Coder sign-in, the API and pricing,
    docs, blog, the agent catalog, payments? This decides how big W4 is.
-   *Need your list.*
+   Decided: the landing page plus Markdown docs and blog, drawn on the GPU
+   and readable as text.
 8. **Server data.** The new server needs accounts, sessions and chat
    history only when those features move over. Keep them on today's
    services and call them from the new server until then? *Recommend yes.*
@@ -335,12 +358,9 @@ Decisions for the owner. Each has a recommendation.
    during W4 costs about $18 a month for its forwarding rule, or it can share
    the existing load balancer with a path or host rule at no extra cost.
    *Recommend sharing the existing load balancer.*
-10. **Voice in the browser**: in scope for the first switch, or after?
-    *Recommend after W5: it works on the phone already.*
+10. **Voice in the browser:** decided: after the first switch.
 
 ## What I need from you
 
-- Answers to questions 2, 7 and 10. The rest have defaults I'll use
+- Nothing blocking. Questions 4, 5, 6, 8 and 9 use their recommendations
   unless you say otherwise.
-- A yes to install upstream LLVM (question 3).
-- The list for question 7: what openagents.com must keep doing on day one.
