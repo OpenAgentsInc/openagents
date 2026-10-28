@@ -1,0 +1,731 @@
+// Stream messages from the claude CLI's stdout (stream-json), as typed values.
+// Ports protocol/{mod,messages}.rs of the Rust crate claude_agent_sdk, which
+// tracks @anthropic-ai/claude-agent-sdk 0.3.296.
+//
+// One line is one frame: an SDK message, a control request, response or
+// cancel, or a keep-alive. cl_classify reads its type and subtype and checks
+// the fields the typed message requires (the specs below, from the crate's
+// serde types). A frame that is valid JSON but whose type, subtype or
+// required fields don't fit becomes ClKind.unknown with its raw text, and
+// the stream goes on; text that isn't JSON is ClFrame.invalid.
+//
+// The typed values (ClResult, ClInit, ...) are read from the frame with
+// cl_<kind>_of. Their strings borrow the line or the arena, and nested
+// arrays and objects the crate keeps as serde_json::Value stay raw JSON.
+
+#load "fields.coax";
+
+ClFrame :: enum u8 {
+  invalid;              // not JSON (the crate's Error::UnrecognizedMessage)
+  message;              // an SDK message, typed or unknown
+  control_request;      // the CLI asks the SDK
+  control_response;     // the CLI answers the SDK
+  control_cancel;       // the CLI withdrew a request it sent
+  unsupported_control;  // a control request whose subtype isn't modelled
+  keep_alive;
+}
+
+ClKind :: enum u8 {
+  unknown;
+  assistant; user; result; system; stream_event; tool_progress; auth_status;
+  prompt_suggestion; rate_limit_event; tool_use_summary; active_goal; conversation_reset;
+}
+
+ClSystem :: enum u8 {
+  none;
+  init; compact_boundary; status; api_retry; model_refusal_fallback; local_command_output;
+  hook_started; hook_progress; hook_response; plugin_install; task_notification; task_started;
+  task_updated; task_progress; thinking_tokens; session_state_changed; commands_changed;
+  notification; files_persisted; memory_recall; elicitation_complete; permission_denied;
+  mirror_error; control_request_progress; model_refusal_no_fallback; background_tasks_changed;
+  worker_shutting_down; informational;
+}
+
+ClResultKind :: enum u8 {
+  none; success; error_during_execution; error_max_turns; error_max_budget_usd;
+  error_max_structured_output_retries;
+}
+
+ClTerminal :: enum u8 {
+  none;
+  blocking_limit; rapid_refill_breaker; prompt_too_long; image_error; model_error; api_error;
+  malformed_tool_use_exhausted; aborted_streaming; aborted_tools; stop_hook_prevented;
+  hook_stopped; tool_deferred; max_turns; background_requested; completed; budget_exhausted;
+  structured_output_retry_exhausted; tool_deferred_unavailable; turn_setup_failed;
+  unknown;   // a later value; the result stays typed
+}
+
+ClAssistantError :: enum u8 {
+  none;
+  authentication_failed; oauth_org_not_allowed; billing_error; rate_limit; overloaded;
+  invalid_request; model_not_found; server_error; max_output_tokens; account_on_hold;
+  verification_required; cloud_credential_error;
+  unknown;
+}
+
+CL_TYPES :: [12] string.["assistant", "user", "result", "system", "stream_event", "tool_progress",
+  "auth_status", "prompt_suggestion", "rate_limit_event", "tool_use_summary", "active_goal",
+  "conversation_reset"];
+
+CL_SYSTEM_SUBTYPES :: [28] string.["init", "compact_boundary", "status", "api_retry",
+  "model_refusal_fallback", "local_command_output", "hook_started", "hook_progress",
+  "hook_response", "plugin_install", "task_notification", "task_started", "task_updated",
+  "task_progress", "thinking_tokens", "session_state_changed", "commands_changed",
+  "notification", "files_persisted", "memory_recall", "elicitation_complete",
+  "permission_denied", "mirror_error", "control_request_progress", "model_refusal_no_fallback",
+  "background_tasks_changed", "worker_shutting_down", "informational"];
+
+CL_RESULT_SUBTYPES :: [5] string.["success", "error_during_execution", "error_max_turns",
+  "error_max_budget_usd", "error_max_structured_output_retries"];
+
+CL_TERMINAL_REASONS :: [19] string.["blocking_limit", "rapid_refill_breaker", "prompt_too_long",
+  "image_error", "model_error", "api_error", "malformed_tool_use_exhausted", "aborted_streaming",
+  "aborted_tools", "stop_hook_prevented", "hook_stopped", "tool_deferred", "max_turns",
+  "background_requested", "completed", "budget_exhausted", "structured_output_retry_exhausted",
+  "tool_deferred_unavailable", "turn_setup_failed"];
+
+CL_ASSISTANT_ERRORS :: [12] string.["authentication_failed", "oauth_org_not_allowed",
+  "billing_error", "rate_limit", "overloaded", "invalid_request", "model_not_found",
+  "server_error", "max_output_tokens", "account_on_hold", "verification_required",
+  "cloud_credential_error"];
+
+// ---- the fields each typed message requires (serde's view of the crate's structs)
+
+CL_IDS :: " s:uuid s:session_id";
+CL_USAGE :: " o:usage u:usage.input_tokens u:usage.output_tokens ?u:usage.cache_read_input_tokens ?u:usage.cache_creation_input_tokens";
+CL_MODEL_USAGE :: " o:modelUsage u:modelUsage.*.inputTokens u:modelUsage.*.outputTokens u:modelUsage.*.cacheReadInputTokens u:modelUsage.*.cacheCreationInputTokens u:modelUsage.*.webSearchRequests f:modelUsage.*.costUSD u:modelUsage.*.contextWindow ?u:modelUsage.*.maxOutputTokens ?u:modelUsage.*.thinkingTokens ?s:modelUsage.*.canonicalModel ?s:modelUsage.*.provider ?s:modelUsage.*.costBasis";
+CL_DENIALS :: " a:permission_denials s:permission_denials.*.tool_name s:permission_denials.*.tool_use_id x:permission_denials.*.tool_input";
+CL_TURN :: " ?s:terminal_reason ?s:user_message_uuid ?a:user_message_uuids s:user_message_uuids.* ?s:resume_reason ?u:queued_turn_count ?u:result_index ?s:fast_mode_disabled_reason ?s:startup_failure_reason";
+CL_RESULT_COMMON :: " u:duration_ms u:duration_api_ms b:is_error u:num_turns f:total_cost_usd";
+
+cl_type_spec :: (kind: ClKind) -> string {
+  if kind == ClKind.assistant { return "x:message ?s:parent_tool_use_id ?s:error ?s:user_message_uuid ?a:user_message_uuids s:user_message_uuids.* ?s:resume_reason ?b:aborted ?s:timestamp ?s:agent_id ?s:subagent_type ?s:task_description s:uuid s:session_id"; }
+  if kind == ClKind.user { return "x:message ?s:parent_tool_use_id ?b:isSynthetic ?b:is_synthetic ?s:uuid s:session_id ?b:isReplay ?b:is_replay ?b:client_composed ?s:agent_id ?s:priority=now|next|later ?b:shouldQuery"; }
+  if kind == ClKind.stream_event { return "x:event ?s:parent_tool_use_id s:uuid s:session_id"; }
+  if kind == ClKind.tool_progress { return "s:tool_use_id s:tool_name ?s:parent_tool_use_id f:elapsed_time_seconds ?b:heartbeat ?s:subagent_type s:uuid s:session_id"; }
+  if kind == ClKind.auth_status { return "b:isAuthenticating a:output s:output.* ?s:error s:uuid s:session_id"; }
+  if kind == ClKind.prompt_suggestion { return "s:suggestion s:uuid s:session_id"; }
+  if kind == ClKind.rate_limit_event { return "o:rate_limit_info s:rate_limit_info.status ?i:rate_limit_info.resetsAt ?s:rate_limit_info.rateLimitType ?f:rate_limit_info.utilization ?s:rate_limit_info.overageStatus ?i:rate_limit_info.overageResetsAt ?s:rate_limit_info.overageDisabledReason ?b:rate_limit_info.isUsingOverage ?b:rate_limit_info.overageInUse ?b:rate_limit_info.overageEnabled ?f:rate_limit_info.surpassedThreshold ?s:rate_limit_info.limitScope ?s:rate_limit_info.errorCode ?b:rate_limit_info.canUserPurchaseCredits ?b:rate_limit_info.hasChargeableSavedPaymentMethod s:uuid s:session_id"; }
+  if kind == ClKind.tool_use_summary { return "s:summary a:preceding_tool_use_ids s:preceding_tool_use_ids.* s:uuid s:session_id"; }
+  if kind == ClKind.active_goal { return "?o:value s:value.condition u:value.iterations f:value.set_at u:value.tokens_at_start ?s:value.last_reason s:uuid s:session_id"; }
+  if kind == ClKind.conversation_reset { return "s:new_conversation_id ?s:trigger ?s:user_message_uuid ?s:timestamp s:uuid s:session_id"; }
+  return "";
+}
+
+cl_result_spec :: (r: ClResultKind) -> string {
+  if r == ClResultKind.success { return "?i:api_error_status s:result"; }
+  return "a:errors s:errors.*";
+}
+
+cl_system_spec :: (s: ClSystem) -> string {
+  if s == ClSystem.init { return "?a:agents s:agents.* s:apiKeySource ?a:betas s:betas.* s:claude_code_version s:cwd a:tools s:tools.* a:mcp_servers s:mcp_servers.*.name s:mcp_servers.*.status s:model s:permissionMode a:slash_commands s:slash_commands.* s:output_style a:skills s:skills.* a:plugins s:plugins.*.name s:plugins.*.path ?s:plugins.*.source ?s:plugins.*.version ?a:plugin_errors ?s:effort ?s:fast_mode_disabled_reason ?a:capabilities s:capabilities.*"; }
+  if s == ClSystem.compact_boundary { return "o:compact_metadata s:compact_metadata.trigger u:compact_metadata.pre_tokens"; }
+  if s == ClSystem.status { return "?s:status"; }
+  if s == ClSystem.api_retry { return "u:attempt u:max_retries u:retry_delay_ms ?i:error_status s:error ?o:no_response u:no_response.waited_ms u:no_response.retry_wait_ms"; }
+  if s == ClSystem.model_refusal_fallback { return "s:trigger ?s:scope s:direction s:original_model s:fallback_model ?s:request_id ?s:api_refusal_category ?s:api_refusal_explanation ?a:retracted_message_uuids s:retracted_message_uuids.* ?s:refused_user_message_uuid s:content"; }
+  if s == ClSystem.local_command_output { return "s:content"; }
+  if s == ClSystem.hook_started { return "s:hook_id s:hook_name s:hook_event"; }
+  if s == ClSystem.hook_progress { return "s:hook_id s:hook_name s:hook_event s:stdout s:stderr s:output"; }
+  if s == ClSystem.hook_response { return "?s:hook_id s:hook_name s:hook_event ?s:output s:stdout s:stderr ?i:exit_code ?s:outcome"; }
+  if s == ClSystem.plugin_install { return "s:status ?s:name ?s:error"; }
+  if s == ClSystem.task_notification { return "s:task_id ?s:run_id ?s:tool_use_id s:status s:output_file s:summary ?o:usage u:usage.total_tokens u:usage.tool_uses u:usage.duration_ms ?b:skip_transcript ?s:reason ?a:resource_links ?b:ambient"; }
+  if s == ClSystem.task_started { return "s:task_id ?s:run_id ?s:tool_use_id s:description ?s:subagent_type ?s:task_type ?s:workflow_name ?s:prompt ?b:skip_transcript ?b:is_backgrounded ?u:spawn_depth ?s:parent_task_id ?b:ambient"; }
+  if s == ClSystem.task_updated { return "s:task_id ?s:run_id o:patch ?s:patch.status ?s:patch.description ?f:patch.end_time ?f:patch.total_paused_ms ?s:patch.error ?b:patch.is_backgrounded"; }
+  if s == ClSystem.task_progress { return "s:task_id ?s:run_id ?s:tool_use_id s:description ?s:subagent_type o:usage u:usage.total_tokens u:usage.tool_uses u:usage.duration_ms ?s:last_tool_name ?s:summary"; }
+  if s == ClSystem.thinking_tokens { return "u:estimated_tokens u:estimated_tokens_delta ?s:user_message_uuid"; }
+  if s == ClSystem.session_state_changed { return "s:state"; }
+  if s == ClSystem.commands_changed { return "a:commands s:commands.*.name s:commands.*.description ?s:commands.*.argumentHint ?a:commands.*.aliases"; }
+  if s == ClSystem.notification { return "s:key s:text s:priority ?s:color ?u:timeout_ms"; }
+  if s == ClSystem.files_persisted { return "a:files s:files.*.filename s:files.*.file_id a:failed s:failed.*.filename s:failed.*.error s:processed_at"; }
+  if s == ClSystem.memory_recall { return "s:mode a:memories s:memories.*.path s:memories.*.scope ?s:memories.*.content"; }
+  if s == ClSystem.elicitation_complete { return "s:mcp_server_name s:elicitation_id"; }
+  if s == ClSystem.permission_denied { return "s:tool_name s:tool_use_id ?s:agent_id ?s:decision_reason_type ?s:decision_reason s:message"; }
+  if s == ClSystem.mirror_error { return "s:error o:key s:key.projectKey s:key.sessionId ?s:key.subpath"; }
+  if s == ClSystem.control_request_progress { return "s:request_id s:status ?u:attempt ?u:max_retries ?u:retry_delay_ms ?i:error_status"; }
+  if s == ClSystem.model_refusal_no_fallback { return "s:original_model ?s:request_id ?s:api_refusal_category ?s:api_refusal_explanation ?s:refused_user_message_uuid s:content"; }
+  if s == ClSystem.background_tasks_changed { return "a:tasks s:tasks.*.task_id ?s:tasks.*.run_id s:tasks.*.task_type ?s:tasks.*.subagent_type s:tasks.*.description ?s:tasks.*.parent_task_id ?b:tasks.*.ambient"; }
+  if s == ClSystem.worker_shutting_down { return "s:reason"; }
+  if s == ClSystem.informational { return "s:content s:level ?s:tool_use_id ?b:prevent_continuation ?s:tag"; }
+  return "";
+}
+
+// ---- one line, classified
+
+ClMessage :: struct {
+  frame: ClFrame;
+  kind: ClKind;
+  system: ClSystem;
+  result: ClResultKind;
+  line: string;            // the frame as it came (Unknown's raw)
+  type_name: string;       // "type", or "unknown" when there is none
+  subtype: string;         // "subtype" (system, result) or the control request's
+  uuid: string;
+  session_id: string;
+  parent_tool_use_id: string;   // "" when null or absent
+}
+
+cl_index_of :: (text: string, v: ClSlice, names: [] string) -> int {
+  if !v.ok || v.tok != JSON_STRING { return -1; }
+  for name, i: names { if json_is(text[v.from..<v.to], name) { return i; } }
+  return -1;
+}
+
+cl_message_kind :: (line: string, m: [] ClMessage) -> ClKind {
+  names := CL_TYPES;
+  t := cl_index_of(line, cl_find(line, "type"), names[..]);
+  if t < 0 { return ClKind.unknown; }
+  kind := cast(ClKind) (t + 1);
+  if kind == ClKind.system {
+    subtypes := CL_SYSTEM_SUBTYPES;
+    s := cl_index_of(line, cl_find(line, "subtype"), subtypes[..]);
+    if s < 0 { return ClKind.unknown; }
+    sub := cast(ClSystem) (s + 1);
+    if !cl_valid(line, cl_system_spec(sub)) || !cl_valid(line, CL_IDS) { return ClKind.unknown; }
+    m[0].system = sub;
+    return kind;
+  }
+  if kind == ClKind.result {
+    results := CL_RESULT_SUBTYPES;
+    r := cl_index_of(line, cl_find(line, "subtype"), results[..]);
+    if r < 0 { return ClKind.unknown; }
+    sub := cast(ClResultKind) (r + 1);
+    if !cl_valid(line, cl_result_spec(sub)) || !cl_valid(line, CL_RESULT_COMMON) || !cl_valid(line, CL_USAGE)
+       || !cl_valid(line, CL_MODEL_USAGE) || !cl_valid(line, CL_DENIALS) || !cl_valid(line, CL_TURN) || !cl_valid(line, CL_IDS) { return ClKind.unknown; }
+    m[0].result = sub;
+    return kind;
+  }
+  if !cl_valid(line, cl_type_spec(kind)) { return ClKind.unknown; }
+  return kind;
+}
+
+// Classify one stdout line. ar decodes escaped strings in the header.
+cl_classify :: (ar: [] ClArena, line: string) -> ClMessage {
+  m: [1] ClMessage;
+  m[0].line = line;
+  root := cl_root(line);
+  if !root.ok || root.tok != JSON_OBJECT { m[0].frame = ClFrame.invalid; return m[0]; }
+  type := cl_find(line, "type");
+  m[0].type_name = ifx type.ok && type.tok == JSON_STRING then cl_text(ar, line, type) else "unknown";
+  m[0].frame = ClFrame.message;
+  if cl_eq(line, type, "control_request") {
+    if cl_valid(line, "s:request_id o:request s:request.subtype") {
+      m[0].subtype = cl_str(ar, line, "request.subtype");
+      m[0].frame = ifx cl_control_known(m[0].subtype) then ClFrame.control_request else ClFrame.unsupported_control;
+      if m[0].frame == ClFrame.control_request && !cl_valid(line, cl_control_spec(m[0].subtype)) { m[0].frame = ClFrame.message; }
+      if m[0].frame != ClFrame.message { return m[0]; }
+    }
+    m[0].kind = ClKind.unknown; return m[0];
+  }
+  if cl_eq(line, type, "control_cancel_request") {
+    if cl_valid(line, "s:request_id") { m[0].frame = ClFrame.control_cancel; }
+    return m[0];
+  }
+  if cl_eq(line, type, "control_response") {
+    if cl_valid(line, "o:response s:response.subtype=success|error s:response.request_id ?a:response.pending_permission_requests ?a:response.pending_user_dialog_requests")
+       && (!cl_eq(line, cl_at(line, "response.subtype"), "error") || cl_valid(line, "s:response.error")) {
+      m[0].frame = ClFrame.control_response;
+      m[0].subtype = cl_str(ar, line, "response.subtype");
+    }
+    return m[0];
+  }
+  if cl_eq(line, type, "keep_alive") { m[0].frame = ClFrame.keep_alive; return m[0]; }
+  m[0].kind = cl_message_kind(line, m[..]);
+  if m[0].kind == ClKind.unknown { m[0].system = ClSystem.none; m[0].result = ClResultKind.none; return m[0]; }
+  m[0].subtype = cl_str(ar, line, "subtype");
+  m[0].uuid = cl_str(ar, line, "uuid");
+  m[0].session_id = cl_str(ar, line, "session_id");
+  m[0].parent_tool_use_id = cl_str(ar, line, "parent_tool_use_id");
+  return m[0];
+}
+
+// The wire type of a classified message ("unknown" for one with no type).
+cl_type_name :: (m: ClMessage) -> string { return m.type_name; }
+
+// ---- typed values
+
+cl_terminal :: (line: string, v: ClSlice) -> ClTerminal {
+  if !v.ok || v.tok != JSON_STRING { return ClTerminal.none; }
+  names := CL_TERMINAL_REASONS;
+  i := cl_index_of(line, v, names[..]);
+  return ifx i < 0 then ClTerminal.unknown else cast(ClTerminal) (i + 1);
+}
+
+cl_assistant_error :: (line: string, v: ClSlice) -> ClAssistantError {
+  if !v.ok || v.tok != JSON_STRING { return ClAssistantError.none; }
+  names := CL_ASSISTANT_ERRORS;
+  i := cl_index_of(line, v, names[..]);
+  return ifx i < 0 then ClAssistantError.unknown else cast(ClAssistantError) (i + 1);
+}
+
+// An optional integer, bool or string (Option<T> in the crate).
+ClOptInt :: struct { has: bool; value: int; }
+ClOptBool :: struct { has: bool; value: bool; }
+ClOptF64 :: struct { has: bool; value: f64; }
+cl_opt_int :: (line: string, path: string) -> ClOptInt { n := cl_int(line, path); return ClOptInt.{has = n.ok, value = n.value}; }
+cl_opt_bool :: (line: string, path: string) -> ClOptBool { b := cl_bool(line, path); return ClOptBool.{has = b.ok, value = b.value}; }
+cl_opt_f64 :: (line: string, path: string) -> ClOptF64 { f := cl_num(line, path); return ClOptF64.{has = f.ok, value = f.value}; }
+cl_has_str :: (line: string, path: string) -> bool { v := cl_at(line, path); return v.ok && v.tok == JSON_STRING; }
+
+ClUsage :: struct {
+  input_tokens: int; output_tokens: int;
+  cache_read_input_tokens: ClOptInt; cache_creation_input_tokens: ClOptInt;
+}
+cl_usage_in :: (usage: string) -> ClUsage {
+  u: ClUsage;
+  u.input_tokens = cl_int(usage, "input_tokens").value;
+  u.output_tokens = cl_int(usage, "output_tokens").value;
+  u.cache_read_input_tokens = cl_opt_int(usage, "cache_read_input_tokens");
+  u.cache_creation_input_tokens = cl_opt_int(usage, "cache_creation_input_tokens");
+  return u;
+}
+
+ClAssistant :: struct {
+  message: string;           // the API message, JSON
+  error: ClAssistantError;
+  user_message_uuid: string; user_message_uuids: string;
+  resume_reason: string; aborted: ClOptBool; timestamp: string;
+  context_usage: string; usage_report: string;
+  agent_id: string; subagent_type: string; task_description: string;
+}
+cl_assistant_of :: (ar: [] ClArena, m: ClMessage) -> ClAssistant {
+  a: ClAssistant; l := m.line;
+  a.message = cl_raw(l, "message");
+  a.error = cl_assistant_error(l, cl_at(l, "error"));
+  a.user_message_uuid = cl_str(ar, l, "user_message_uuid"); a.user_message_uuids = cl_raw(l, "user_message_uuids");
+  a.resume_reason = cl_str(ar, l, "resume_reason"); a.aborted = cl_opt_bool(l, "aborted");
+  a.timestamp = cl_str(ar, l, "timestamp");
+  a.context_usage = cl_raw(l, "context_usage"); a.usage_report = cl_raw(l, "usage_report");
+  a.agent_id = cl_str(ar, l, "agent_id"); a.subagent_type = cl_str(ar, l, "subagent_type");
+  a.task_description = cl_str(ar, l, "task_description");
+  return a;
+}
+
+ClUser :: struct {
+  message: string;
+  is_synthetic: ClOptBool; is_replay: ClOptBool;   // isSynthetic / isReplay (snake_case read too)
+  tool_use_result: string;
+  has_uuid: bool;
+  client_composed: ClOptBool; agent_id: string; priority: string; should_query: ClOptBool;
+}
+cl_user_of :: (ar: [] ClArena, m: ClMessage) -> ClUser {
+  u: ClUser; l := m.line;
+  u.message = cl_raw(l, "message");
+  u.is_synthetic = cl_opt_bool(l, "isSynthetic");
+  if !u.is_synthetic.has { u.is_synthetic = cl_opt_bool(l, "is_synthetic"); }
+  u.is_replay = cl_opt_bool(l, "isReplay");
+  if !u.is_replay.has { u.is_replay = cl_opt_bool(l, "is_replay"); }
+  u.tool_use_result = cl_raw(l, "tool_use_result");
+  u.has_uuid = cl_has_str(l, "uuid");
+  u.client_composed = cl_opt_bool(l, "client_composed"); u.agent_id = cl_str(ar, l, "agent_id");
+  u.priority = cl_str(ar, l, "priority"); u.should_query = cl_opt_bool(l, "shouldQuery");
+  return u;
+}
+
+ClResult :: struct {
+  kind: ClResultKind;
+  duration_ms: int; duration_api_ms: int; is_error: bool; num_turns: int;
+  total_cost_usd: f64;
+  usage: ClUsage;
+  model_usage: string;          // modelUsage, JSON; see cl_model_usage
+  permission_denials: string;   // JSON array
+  result: string;               // success only
+  api_error_status: ClOptInt;   // success only
+  structured_output: string;    // success only, JSON
+  errors: string;               // the error kinds, JSON array of strings
+  terminal_reason: ClTerminal;
+  user_message_uuid: string; user_message_uuids: string; resume_reason: string;
+  queued_turn_count: ClOptInt; result_index: ClOptInt;
+  fast_mode_disabled_reason: string; startup_failure_reason: string;
+}
+cl_result_of :: (ar: [] ClArena, m: ClMessage) -> ClResult {
+  r: ClResult; l := m.line;
+  r.kind = m.result;
+  r.duration_ms = cl_int(l, "duration_ms").value; r.duration_api_ms = cl_int(l, "duration_api_ms").value;
+  r.is_error = cl_bool(l, "is_error").value; r.num_turns = cl_int(l, "num_turns").value;
+  r.total_cost_usd = cl_num(l, "total_cost_usd").value;
+  r.usage = cl_usage_in(cl_raw(l, "usage"));
+  r.model_usage = cl_raw(l, "modelUsage"); r.permission_denials = cl_raw(l, "permission_denials");
+  if m.result == ClResultKind.success {
+    r.result = cl_str(ar, l, "result");
+    r.api_error_status = cl_opt_int(l, "api_error_status");
+    r.structured_output = cl_raw(l, "structured_output");
+  } else { r.errors = cl_raw(l, "errors"); }
+  r.terminal_reason = cl_terminal(l, cl_at(l, "terminal_reason"));
+  r.user_message_uuid = cl_str(ar, l, "user_message_uuid"); r.user_message_uuids = cl_raw(l, "user_message_uuids");
+  r.resume_reason = cl_str(ar, l, "resume_reason");
+  r.queued_turn_count = cl_opt_int(l, "queued_turn_count"); r.result_index = cl_opt_int(l, "result_index");
+  r.fast_mode_disabled_reason = cl_str(ar, l, "fast_mode_disabled_reason");
+  r.startup_failure_reason = cl_str(ar, l, "startup_failure_reason");
+  return r;
+}
+
+// One model's entry in a result's modelUsage, by model name.
+ClModelUsage :: struct {
+  found: bool;
+  input_tokens: int; output_tokens: int; cache_read_input_tokens: int;
+  cache_creation_input_tokens: int; web_search_requests: int; cost_usd: f64; context_window: int;
+  max_output_tokens: ClOptInt; thinking_tokens: ClOptInt;
+  canonical_model: string; provider: string; cost_basis: string;
+}
+cl_model_usage :: (ar: [] ClArena, model_usage: string, model: string) -> ClModelUsage {
+  u: ClModelUsage;
+  v := cl_find(model_usage, model);
+  if !v.ok || v.tok != JSON_OBJECT { return u; }
+  e := model_usage[v.from..<v.to];
+  u.found = true;
+  u.input_tokens = cl_int(e, "inputTokens").value; u.output_tokens = cl_int(e, "outputTokens").value;
+  u.cache_read_input_tokens = cl_int(e, "cacheReadInputTokens").value;
+  u.cache_creation_input_tokens = cl_int(e, "cacheCreationInputTokens").value;
+  u.web_search_requests = cl_int(e, "webSearchRequests").value;
+  u.cost_usd = cl_num(e, "costUSD").value; u.context_window = cl_int(e, "contextWindow").value;
+  u.max_output_tokens = cl_opt_int(e, "maxOutputTokens"); u.thinking_tokens = cl_opt_int(e, "thinkingTokens");
+  u.canonical_model = cl_str(ar, e, "canonicalModel"); u.provider = cl_str(ar, e, "provider");
+  u.cost_basis = cl_str(ar, e, "costBasis");
+  return u;
+}
+
+ClInit :: struct {
+  agents: string; api_key_source: string; betas: string; claude_code_version: string;
+  cwd: string; tools: string; tool_count: int; mcp_servers: string; model: string;
+  permission_mode: string; slash_commands: string; output_style: string; skills: string;
+  plugins: string; plugin_errors: string; effort: string; fast_mode_disabled_reason: string;
+  capabilities: string;
+}
+cl_init_of :: (ar: [] ClArena, m: ClMessage) -> ClInit {
+  i: ClInit; l := m.line;
+  i.agents = cl_raw(l, "agents"); i.api_key_source = cl_str(ar, l, "apiKeySource");
+  i.betas = cl_raw(l, "betas"); i.claude_code_version = cl_str(ar, l, "claude_code_version");
+  i.cwd = cl_str(ar, l, "cwd"); i.tools = cl_raw(l, "tools"); i.tool_count = cl_count(i.tools);
+  i.mcp_servers = cl_raw(l, "mcp_servers"); i.model = cl_str(ar, l, "model");
+  i.permission_mode = cl_str(ar, l, "permissionMode"); i.slash_commands = cl_raw(l, "slash_commands");
+  i.output_style = cl_str(ar, l, "output_style"); i.skills = cl_raw(l, "skills");
+  i.plugins = cl_raw(l, "plugins"); i.plugin_errors = cl_raw(l, "plugin_errors");
+  i.effort = cl_str(ar, l, "effort"); i.fast_mode_disabled_reason = cl_str(ar, l, "fast_mode_disabled_reason");
+  i.capabilities = cl_raw(l, "capabilities");
+  return i;
+}
+
+// The status of the MCP server called name in system/init, or "".
+cl_mcp_status :: (ar: [] ClArena, mcp_servers: string, name: string) -> string {
+  for k: 0..<cl_count(mcp_servers) {
+    e := cl_item(mcp_servers, k);
+    o := mcp_servers[e.from..<e.to];
+    if cl_eq(o, cl_find(o, "name"), name) { return cl_str(ar, o, "status"); }
+  }
+  return "";
+}
+
+ClCompactBoundary :: struct { trigger: string; pre_tokens: int; }
+cl_compact_boundary_of :: (ar: [] ClArena, m: ClMessage) -> ClCompactBoundary {
+  return ClCompactBoundary.{trigger = cl_str(ar, m.line, "compact_metadata.trigger"), pre_tokens = cl_int(m.line, "compact_metadata.pre_tokens").value};
+}
+
+ClStatus :: struct { status: string; has_status: bool; }
+cl_status_of :: (ar: [] ClArena, m: ClMessage) -> ClStatus {
+  return ClStatus.{status = cl_str(ar, m.line, "status"), has_status = cl_has_str(m.line, "status")};
+}
+
+ClApiRetry :: struct {
+  attempt: int; max_retries: int; retry_delay_ms: int; error_status: ClOptInt;
+  error: ClAssistantError; has_no_response: bool; waited_ms: int; retry_wait_ms: int;
+}
+cl_api_retry_of :: (m: ClMessage) -> ClApiRetry {
+  r: ClApiRetry; l := m.line;
+  r.attempt = cl_int(l, "attempt").value; r.max_retries = cl_int(l, "max_retries").value;
+  r.retry_delay_ms = cl_int(l, "retry_delay_ms").value; r.error_status = cl_opt_int(l, "error_status");
+  r.error = cl_assistant_error(l, cl_at(l, "error"));
+  r.has_no_response = cl_at(l, "no_response").tok == JSON_OBJECT;
+  r.waited_ms = cl_int(l, "no_response.waited_ms").value; r.retry_wait_ms = cl_int(l, "no_response.retry_wait_ms").value;
+  return r;
+}
+
+ClModelRefusalFallback :: struct {
+  trigger: string; scope: string; direction: string; original_model: string; fallback_model: string;
+  request_id: string; api_refusal_category: string; api_refusal_explanation: string;
+  retracted_message_uuids: string; refused_user_message_uuid: string; content: string;
+}
+cl_model_refusal_fallback_of :: (ar: [] ClArena, m: ClMessage) -> ClModelRefusalFallback {
+  r: ClModelRefusalFallback; l := m.line;
+  r.trigger = cl_str(ar, l, "trigger"); r.scope = cl_str(ar, l, "scope"); r.direction = cl_str(ar, l, "direction");
+  r.original_model = cl_str(ar, l, "original_model"); r.fallback_model = cl_str(ar, l, "fallback_model");
+  r.request_id = cl_str(ar, l, "request_id"); r.api_refusal_category = cl_str(ar, l, "api_refusal_category");
+  r.api_refusal_explanation = cl_str(ar, l, "api_refusal_explanation");
+  r.retracted_message_uuids = cl_raw(l, "retracted_message_uuids");
+  r.refused_user_message_uuid = cl_str(ar, l, "refused_user_message_uuid"); r.content = cl_str(ar, l, "content");
+  return r;
+}
+
+ClLocalCommandOutput :: struct { content: string; }
+cl_local_command_output_of :: (ar: [] ClArena, m: ClMessage) -> ClLocalCommandOutput {
+  return ClLocalCommandOutput.{content = cl_str(ar, m.line, "content")};
+}
+
+// hook_started, hook_progress and hook_response.
+ClHookEvent :: struct {
+  hook_id: string; hook_name: string; hook_event: string;
+  stdout: string; stderr: string; output: string; exit_code: ClOptInt; outcome: string;
+}
+cl_hook_event_of :: (ar: [] ClArena, m: ClMessage) -> ClHookEvent {
+  h: ClHookEvent; l := m.line;
+  h.hook_id = cl_str(ar, l, "hook_id"); h.hook_name = cl_str(ar, l, "hook_name"); h.hook_event = cl_str(ar, l, "hook_event");
+  h.stdout = cl_str(ar, l, "stdout"); h.stderr = cl_str(ar, l, "stderr"); h.output = cl_str(ar, l, "output");
+  h.exit_code = cl_opt_int(l, "exit_code"); h.outcome = cl_str(ar, l, "outcome");
+  return h;
+}
+
+ClPluginInstall :: struct { status: string; name: string; error: string; }
+cl_plugin_install_of :: (ar: [] ClArena, m: ClMessage) -> ClPluginInstall {
+  return ClPluginInstall.{status = cl_str(ar, m.line, "status"), name = cl_str(ar, m.line, "name"), error = cl_str(ar, m.line, "error")};
+}
+
+ClTaskUsage :: struct { has: bool; total_tokens: int; tool_uses: int; duration_ms: int; }
+cl_task_usage :: (l: string) -> ClTaskUsage {
+  return ClTaskUsage.{has = cl_at(l, "usage").tok == JSON_OBJECT, total_tokens = cl_int(l, "usage.total_tokens").value,
+    tool_uses = cl_int(l, "usage.tool_uses").value, duration_ms = cl_int(l, "usage.duration_ms").value};
+}
+
+// task_started, task_updated, task_progress and task_notification.
+ClTask :: struct {
+  task_id: string; run_id: string; tool_use_id: string; description: string; subagent_type: string;
+  task_type: string; workflow_name: string; prompt: string; skip_transcript: ClOptBool;
+  is_backgrounded: ClOptBool; spawn_depth: ClOptInt; parent_task_id: string; ambient: ClOptBool;
+  status: string; output_file: string; summary: string; reason: string; resource_links: string;
+  usage: ClTaskUsage; last_tool_name: string;
+  patch: string;   // task_updated's patch, JSON
+}
+cl_task_of :: (ar: [] ClArena, m: ClMessage) -> ClTask {
+  t: ClTask; l := m.line;
+  t.task_id = cl_str(ar, l, "task_id"); t.run_id = cl_str(ar, l, "run_id"); t.tool_use_id = cl_str(ar, l, "tool_use_id");
+  t.description = cl_str(ar, l, "description"); t.subagent_type = cl_str(ar, l, "subagent_type");
+  t.task_type = cl_str(ar, l, "task_type"); t.workflow_name = cl_str(ar, l, "workflow_name"); t.prompt = cl_str(ar, l, "prompt");
+  t.skip_transcript = cl_opt_bool(l, "skip_transcript"); t.is_backgrounded = cl_opt_bool(l, "is_backgrounded");
+  t.spawn_depth = cl_opt_int(l, "spawn_depth"); t.parent_task_id = cl_str(ar, l, "parent_task_id");
+  t.ambient = cl_opt_bool(l, "ambient"); t.status = cl_str(ar, l, "status"); t.output_file = cl_str(ar, l, "output_file");
+  t.summary = cl_str(ar, l, "summary"); t.reason = cl_str(ar, l, "reason"); t.resource_links = cl_raw(l, "resource_links");
+  t.usage = cl_task_usage(l); t.last_tool_name = cl_str(ar, l, "last_tool_name"); t.patch = cl_raw(l, "patch");
+  return t;
+}
+
+ClThinkingTokens :: struct { estimated_tokens: int; estimated_tokens_delta: int; user_message_uuid: string; }
+cl_thinking_tokens_of :: (ar: [] ClArena, m: ClMessage) -> ClThinkingTokens {
+  return ClThinkingTokens.{estimated_tokens = cl_int(m.line, "estimated_tokens").value,
+    estimated_tokens_delta = cl_int(m.line, "estimated_tokens_delta").value, user_message_uuid = cl_str(ar, m.line, "user_message_uuid")};
+}
+
+ClSessionState :: struct { state: string; }
+cl_session_state_of :: (ar: [] ClArena, m: ClMessage) -> ClSessionState { return ClSessionState.{state = cl_str(ar, m.line, "state")}; }
+
+ClCommandsChanged :: struct { commands: string; count: int; }
+cl_commands_changed_of :: (m: ClMessage) -> ClCommandsChanged {
+  c := cl_raw(m.line, "commands");
+  return ClCommandsChanged.{commands = c, count = cl_count(c)};
+}
+
+ClNotification :: struct { key: string; text: string; priority: string; color: string; timeout_ms: ClOptInt; }
+cl_notification_of :: (ar: [] ClArena, m: ClMessage) -> ClNotification {
+  l := m.line;
+  return ClNotification.{key = cl_str(ar, l, "key"), text = cl_str(ar, l, "text"), priority = cl_str(ar, l, "priority"),
+    color = cl_str(ar, l, "color"), timeout_ms = cl_opt_int(l, "timeout_ms")};
+}
+
+ClFilesPersisted :: struct { files: string; failed: string; processed_at: string; }
+cl_files_persisted_of :: (ar: [] ClArena, m: ClMessage) -> ClFilesPersisted {
+  return ClFilesPersisted.{files = cl_raw(m.line, "files"), failed = cl_raw(m.line, "failed"), processed_at = cl_str(ar, m.line, "processed_at")};
+}
+
+ClMemoryRecall :: struct { mode: string; memories: string; }
+cl_memory_recall_of :: (ar: [] ClArena, m: ClMessage) -> ClMemoryRecall {
+  return ClMemoryRecall.{mode = cl_str(ar, m.line, "mode"), memories = cl_raw(m.line, "memories")};
+}
+
+ClElicitationComplete :: struct { mcp_server_name: string; elicitation_id: string; }
+cl_elicitation_complete_of :: (ar: [] ClArena, m: ClMessage) -> ClElicitationComplete {
+  return ClElicitationComplete.{mcp_server_name = cl_str(ar, m.line, "mcp_server_name"), elicitation_id = cl_str(ar, m.line, "elicitation_id")};
+}
+
+ClPermissionDenied :: struct {
+  tool_name: string; tool_use_id: string; agent_id: string; decision_reason_type: string;
+  decision_reason: string; message: string;
+}
+cl_permission_denied_of :: (ar: [] ClArena, m: ClMessage) -> ClPermissionDenied {
+  l := m.line;
+  return ClPermissionDenied.{tool_name = cl_str(ar, l, "tool_name"), tool_use_id = cl_str(ar, l, "tool_use_id"),
+    agent_id = cl_str(ar, l, "agent_id"), decision_reason_type = cl_str(ar, l, "decision_reason_type"),
+    decision_reason = cl_str(ar, l, "decision_reason"), message = cl_str(ar, l, "message")};
+}
+
+ClMirrorError :: struct { error: string; project_key: string; key_session_id: string; subpath: string; }
+cl_mirror_error_of :: (ar: [] ClArena, m: ClMessage) -> ClMirrorError {
+  l := m.line;
+  return ClMirrorError.{error = cl_str(ar, l, "error"), project_key = cl_str(ar, l, "key.projectKey"),
+    key_session_id = cl_str(ar, l, "key.sessionId"), subpath = cl_str(ar, l, "key.subpath")};
+}
+
+ClControlRequestProgress :: struct {
+  request_id: string; status: string; attempt: ClOptInt; max_retries: ClOptInt;
+  retry_delay_ms: ClOptInt; error_status: ClOptInt;
+}
+cl_control_request_progress_of :: (ar: [] ClArena, m: ClMessage) -> ClControlRequestProgress {
+  l := m.line;
+  return ClControlRequestProgress.{request_id = cl_str(ar, l, "request_id"), status = cl_str(ar, l, "status"),
+    attempt = cl_opt_int(l, "attempt"), max_retries = cl_opt_int(l, "max_retries"),
+    retry_delay_ms = cl_opt_int(l, "retry_delay_ms"), error_status = cl_opt_int(l, "error_status")};
+}
+
+ClModelRefusalNoFallback :: struct {
+  original_model: string; request_id: string; api_refusal_category: string;
+  api_refusal_explanation: string; refused_user_message_uuid: string; content: string;
+}
+cl_model_refusal_no_fallback_of :: (ar: [] ClArena, m: ClMessage) -> ClModelRefusalNoFallback {
+  l := m.line;
+  return ClModelRefusalNoFallback.{original_model = cl_str(ar, l, "original_model"), request_id = cl_str(ar, l, "request_id"),
+    api_refusal_category = cl_str(ar, l, "api_refusal_category"), api_refusal_explanation = cl_str(ar, l, "api_refusal_explanation"),
+    refused_user_message_uuid = cl_str(ar, l, "refused_user_message_uuid"), content = cl_str(ar, l, "content")};
+}
+
+// One entry of background_tasks_changed's tasks.
+ClBackgroundTask :: struct {
+  found: bool; task_id: string; run_id: string; task_type: string; subagent_type: string;
+  description: string; parent_task_id: string; ambient: ClOptBool;
+}
+ClBackgroundTasks :: struct { tasks: string; count: int; }
+cl_background_tasks_of :: (m: ClMessage) -> ClBackgroundTasks {
+  t := cl_raw(m.line, "tasks");
+  return ClBackgroundTasks.{tasks = t, count = cl_count(t)};
+}
+cl_background_task :: (ar: [] ClArena, tasks: string, index: int) -> ClBackgroundTask {
+  b: ClBackgroundTask;
+  v := cl_item(tasks, index);
+  if !v.ok || v.tok != JSON_OBJECT { return b; }
+  e := tasks[v.from..<v.to];
+  b.found = true; b.task_id = cl_str(ar, e, "task_id"); b.run_id = cl_str(ar, e, "run_id");
+  b.task_type = cl_str(ar, e, "task_type"); b.subagent_type = cl_str(ar, e, "subagent_type");
+  b.description = cl_str(ar, e, "description"); b.parent_task_id = cl_str(ar, e, "parent_task_id");
+  b.ambient = cl_opt_bool(e, "ambient");
+  return b;
+}
+
+ClWorkerShuttingDown :: struct { reason: string; }
+cl_worker_shutting_down_of :: (ar: [] ClArena, m: ClMessage) -> ClWorkerShuttingDown { return ClWorkerShuttingDown.{reason = cl_str(ar, m.line, "reason")}; }
+
+ClInformational :: struct { content: string; level: string; tool_use_id: string; prevent_continuation: ClOptBool; tag: string; }
+cl_informational_of :: (ar: [] ClArena, m: ClMessage) -> ClInformational {
+  l := m.line;
+  return ClInformational.{content = cl_str(ar, l, "content"), level = cl_str(ar, l, "level"), tool_use_id = cl_str(ar, l, "tool_use_id"),
+    prevent_continuation = cl_opt_bool(l, "prevent_continuation"), tag = cl_str(ar, l, "tag")};
+}
+
+ClStreamEvent :: struct { event: string; event_type: string; }
+cl_stream_event_of :: (ar: [] ClArena, m: ClMessage) -> ClStreamEvent {
+  return ClStreamEvent.{event = cl_raw(m.line, "event"), event_type = cl_str(ar, m.line, "event.type")};
+}
+
+ClToolProgress :: struct {
+  tool_use_id: string; tool_name: string; elapsed_time_seconds: f64; heartbeat: ClOptBool;
+  subagent_type: string; subagent_retry: string;
+}
+cl_tool_progress_of :: (ar: [] ClArena, m: ClMessage) -> ClToolProgress {
+  l := m.line;
+  return ClToolProgress.{tool_use_id = cl_str(ar, l, "tool_use_id"), tool_name = cl_str(ar, l, "tool_name"),
+    elapsed_time_seconds = cl_num(l, "elapsed_time_seconds").value, heartbeat = cl_opt_bool(l, "heartbeat"),
+    subagent_type = cl_str(ar, l, "subagent_type"), subagent_retry = cl_raw(l, "subagent_retry")};
+}
+
+ClAuthStatus :: struct { is_authenticating: bool; output: string; error: string; }
+cl_auth_status_of :: (ar: [] ClArena, m: ClMessage) -> ClAuthStatus {
+  return ClAuthStatus.{is_authenticating = cl_bool(m.line, "isAuthenticating").value, output = cl_raw(m.line, "output"), error = cl_str(ar, m.line, "error")};
+}
+
+ClPromptSuggestion :: struct { suggestion: string; }
+cl_prompt_suggestion_of :: (ar: [] ClArena, m: ClMessage) -> ClPromptSuggestion { return ClPromptSuggestion.{suggestion = cl_str(ar, m.line, "suggestion")}; }
+
+ClRateLimit :: struct {
+  status: string; resets_at: ClOptInt; rate_limit_type: string; utilization: ClOptF64;
+  overage_status: string; overage_resets_at: ClOptInt; overage_disabled_reason: string;
+  is_using_overage: ClOptBool; overage_in_use: ClOptBool; overage_enabled: ClOptBool;
+  surpassed_threshold: ClOptF64; limit_scope: string; error_code: string;
+  can_user_purchase_credits: ClOptBool; has_chargeable_saved_payment_method: ClOptBool;
+}
+cl_rate_limit_of :: (ar: [] ClArena, m: ClMessage) -> ClRateLimit {
+  r: ClRateLimit; l := cl_raw(m.line, "rate_limit_info");
+  r.status = cl_str(ar, l, "status"); r.resets_at = cl_opt_int(l, "resetsAt");
+  r.rate_limit_type = cl_str(ar, l, "rateLimitType"); r.utilization = cl_opt_f64(l, "utilization");
+  r.overage_status = cl_str(ar, l, "overageStatus"); r.overage_resets_at = cl_opt_int(l, "overageResetsAt");
+  r.overage_disabled_reason = cl_str(ar, l, "overageDisabledReason");
+  r.is_using_overage = cl_opt_bool(l, "isUsingOverage"); r.overage_in_use = cl_opt_bool(l, "overageInUse");
+  r.overage_enabled = cl_opt_bool(l, "overageEnabled"); r.surpassed_threshold = cl_opt_f64(l, "surpassedThreshold");
+  r.limit_scope = cl_str(ar, l, "limitScope"); r.error_code = cl_str(ar, l, "errorCode");
+  r.can_user_purchase_credits = cl_opt_bool(l, "canUserPurchaseCredits");
+  r.has_chargeable_saved_payment_method = cl_opt_bool(l, "hasChargeableSavedPaymentMethod");
+  return r;
+}
+
+ClToolUseSummary :: struct { summary: string; preceding_tool_use_ids: string; count: int; }
+cl_tool_use_summary_of :: (ar: [] ClArena, m: ClMessage) -> ClToolUseSummary {
+  ids := cl_raw(m.line, "preceding_tool_use_ids");
+  return ClToolUseSummary.{summary = cl_str(ar, m.line, "summary"), preceding_tool_use_ids = ids, count = cl_count(ids)};
+}
+
+ClActiveGoal :: struct {
+  has_value: bool; condition: string; iterations: int; set_at: f64; tokens_at_start: int; last_reason: string;
+}
+cl_active_goal_of :: (ar: [] ClArena, m: ClMessage) -> ClActiveGoal {
+  l := m.line;
+  return ClActiveGoal.{has_value = cl_at(l, "value").tok == JSON_OBJECT, condition = cl_str(ar, l, "value.condition"),
+    iterations = cl_int(l, "value.iterations").value, set_at = cl_num(l, "value.set_at").value,
+    tokens_at_start = cl_int(l, "value.tokens_at_start").value, last_reason = cl_str(ar, l, "value.last_reason")};
+}
+
+ClConversationReset :: struct { new_conversation_id: string; trigger: string; user_message_uuid: string; timestamp: string; }
+cl_conversation_reset_of :: (ar: [] ClArena, m: ClMessage) -> ClConversationReset {
+  l := m.line;
+  return ClConversationReset.{new_conversation_id = cl_str(ar, l, "new_conversation_id"), trigger = cl_str(ar, l, "trigger"),
+    user_message_uuid = cl_str(ar, l, "user_message_uuid"), timestamp = cl_str(ar, l, "timestamp")};
+}
+
+// ---- inbound control frames (the subtypes the CLI sends the SDK)
+
+// Every subtype the crate's ControlRequestData models, inbound or outbound.
+CL_CONTROL_SUBTYPES :: [42] string.["initialize", "interrupt", "can_use_tool", "set_permission_mode",
+  "set_model", "set_max_thinking_tokens", "rename_session", "set_color", "mcp_status",
+  "get_context_usage", "get_session_cost", "list_models", "get_usage", "get_binary_version",
+  "mcp_call", "file_suggestions", "hook_callback", "mcp_message", "rewind_files",
+  "cancel_async_message", "read_file", "seed_read_state", "mcp_set_servers", "register_repo_root",
+  "reload_plugins", "reload_skills", "reload_output_styles", "mcp_reconnect", "mcp_toggle",
+  "stop_task", "background_tasks", "get_task_output", "apply_flag_settings", "get_settings",
+  "get_hooks_listing", "update_settings", "elicitation", "request_user_dialog",
+  "list_permission_rules", "mcp_read_resource", "oauth_token_refresh", "host_auth_token_refresh"];
+
+cl_control_known :: (subtype: string) -> bool {
+  if subtype.count == 0 { return false; }
+  for s: CL_CONTROL_SUBTYPES { if s == subtype { return true; } }
+  return false;
+}
+
+// The request fields a control request of this subtype requires (under "request").
+cl_control_spec :: (subtype: string) -> string {
+  if subtype == "can_use_tool" { return "s:request.tool_name x:request.input s:request.tool_use_id ?a:request.permission_suggestions ?s:request.blocked_path ?s:request.decision_reason ?s:request.decision_reason_type ?b:request.classifier_approvable ?b:request.suppress_always_allow_rule ?b:request.default_to_no ?s:request.title ?s:request.display_name ?s:request.agent_id ?s:request.description ?b:request.requires_user_interaction"; }
+  if subtype == "hook_callback" { return "s:request.callback_id x:request.input ?s:request.tool_use_id"; }
+  if subtype == "mcp_message" { return "s:request.server_name x:request.message"; }
+  if subtype == "elicitation" { return "s:request.mcp_server_name s:request.message ?s:request.mode ?s:request.url ?s:request.elicitation_id ?s:request.title ?s:request.display_name ?s:request.description"; }
+  if subtype == "request_user_dialog" { return "s:request.dialog_kind x:request.payload ?s:request.tool_use_id"; }
+  if subtype == "set_permission_mode" { return "s:request.mode=default|acceptEdits|bypassPermissions|plan|dontAsk|auto"; }
+  if subtype == "set_model" { return "?s:request.model"; }
+  if subtype == "rename_session" { return "s:request.title"; }
+  if subtype == "set_color" { return "s:request.color"; }
+  if subtype == "mcp_call" { return "s:request.tool"; }
+  if subtype == "file_suggestions" { return "s:request.query"; }
+  if subtype == "rewind_files" { return "s:request.user_message_id ?b:request.dry_run"; }
+  if subtype == "cancel_async_message" { return "s:request.message_uuid"; }
+  if subtype == "read_file" { return "s:request.path"; }
+  if subtype == "seed_read_state" { return "s:request.path f:request.mtime"; }
+  if subtype == "mcp_set_servers" { return "x:request.servers"; }
+  if subtype == "register_repo_root" { return "s:request.directory"; }
+  if subtype == "mcp_reconnect" { return "s:request.serverName"; }
+  if subtype == "mcp_toggle" { return "s:request.serverName b:request.enabled"; }
+  if subtype == "stop_task" || subtype == "get_task_output" { return "s:request.task_id"; }
+  if subtype == "apply_flag_settings" { return "x:request.settings"; }
+  if subtype == "update_settings" { return "s:request.source x:request.settings"; }
+  if subtype == "mcp_read_resource" { return "s:request.serverName s:request.uri"; }
+  return "";
+}

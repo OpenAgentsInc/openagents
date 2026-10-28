@@ -1,0 +1,431 @@
+// Recorded stream-json fixtures, ported from the crate's protocol/tests.rs:
+// each frame must parse to the same typed value there and here. Run with
+// coax test --library coax/lib/agent/claude/tests.coax.
+
+#load "claude.coax";
+
+FX_INIT :: "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"user\",\"claude_code_version\":\"1.0.0\",\"cwd\":\"/home/user/project\",\"tools\":[\"Read\",\"Write\",\"Bash\"],\"mcp_servers\":[{\"name\":\"test\",\"status\":\"connected\"}],\"model\":\"claude-sonnet-4-5-20250929\",\"permissionMode\":\"default\",\"slash_commands\":[\"/help\",\"/clear\"],\"output_style\":\"minimal\",\"skills\":[],\"plugins\":[],\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_ASSISTANT :: "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hello!\"}]},\"parent_tool_use_id\":null,\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_SUCCESS :: "{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":1000,\"duration_api_ms\":800,\"is_error\":false,\"num_turns\":3,\"result\":\"Task completed successfully\",\"total_cost_usd\":0.05,\"usage\":{\"input_tokens\":100,\"output_tokens\":200},\"modelUsage\":{\"claude-sonnet-4-5-20250929\":{\"inputTokens\":100,\"outputTokens\":200,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.05,\"contextWindow\":200000}},\"permission_denials\":[],\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_FIDELITY :: "{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":1000,\"duration_api_ms\":800,\"is_error\":true,\"api_error_status\":429,\"num_turns\":1,\"result\":\"rate limited\",\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":10,\"output_tokens\":4},\"modelUsage\":{\"claude-sonnet-4-5-20250929\":{\"inputTokens\":10,\"outputTokens\":4,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.01,\"contextWindow\":200000,\"maxOutputTokens\":16384}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_FUTURE_REASON :: "{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":1,\"duration_api_ms\":1,\"is_error\":false,\"num_turns\":1,\"result\":\"ok\",\"total_cost_usd\":0.0,\"usage\":{\"input_tokens\":1,\"output_tokens\":1},\"modelUsage\":{},\"permission_denials\":[],\"terminal_reason\":\"some_future_reason\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_BUDGET :: "{\"type\":\"result\",\"subtype\":\"error_max_budget_usd\",\"duration_ms\":10,\"duration_api_ms\":8,\"is_error\":true,\"num_turns\":2,\"total_cost_usd\":1.5,\"usage\":{\"input_tokens\":1,\"output_tokens\":1},\"modelUsage\":{},\"permission_denials\":[],\"errors\":[\"budget\"],\"terminal_reason\":\"blocking_limit\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_CAN_USE_TOOL :: "{\"type\":\"control_request\",\"request_id\":\"req-123\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\",\"input\":{\"command\":\"ls -la\"},\"tool_use_id\":\"tool-123\"}}";
+FX_STREAM :: "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}},\"parent_tool_use_id\":null,\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_PROGRESS :: "{\"type\":\"tool_progress\",\"tool_use_id\":\"tool-123\",\"tool_name\":\"Bash\",\"parent_tool_use_id\":null,\"elapsed_time_seconds\":5.5,\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_EMPTY_ASSISTANT :: "{\"type\":\"assistant\",\"message\":{},\"parent_tool_use_id\":null,\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_INTERRUPT :: "{\"type\":\"control_request\",\"request_id\":\"req-123\",\"request\":{\"subtype\":\"interrupt\"}}";
+FX_API_RETRY :: "{\"type\":\"system\",\"subtype\":\"api_retry\",\"attempt\":2,\"max_retries\":5,\"retry_delay_ms\":400,\"error_status\":429,\"error\":\"rate_limit\",\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_RATE :: "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed_warning\",\"resetsAt\":1700000000,\"rateLimitType\":\"five_hour\",\"utilization\":0.82},\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_SUGGESTION :: "{\"type\":\"prompt_suggestion\",\"suggestion\":\"run the tests\",\"uuid\":\"u1\",\"session_id\":\"s1\"}";
+FX_SUMMARY :: "{\"type\":\"tool_use_summary\",\"summary\":\"edited two files\",\"preceding_tool_use_ids\":[\"tool-1\",\"tool-2\"],\"uuid\":\"u2\",\"session_id\":\"s1\"}";
+FX_WIDGET :: "{\"type\":\"future_widget\",\"foo\":1,\"nested\":{\"ok\":true}}";
+FX_FAKE_SUBTYPE :: "{\"type\":\"system\",\"subtype\":\"not_a_real_subtype\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_RETRY_LINE :: "{\"type\":\"system\",\"subtype\":\"api_retry\",\"attempt\":1,\"max_retries\":3,\"retry_delay_ms\":200,\"error_status\":null,\"error\":\"overloaded\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_NOT_A_TYPE :: "{\"type\":\"not_a_real_type\",\"x\":true}";
+FX_INTERRUPT_LINE :: "{\"type\":\"control_request\",\"request_id\":\"req-1\",\"request\":{\"subtype\":\"interrupt\"}}";
+FX_HOOK :: "{\"type\":\"control_request\",\"request_id\":\"cli-hook-1\",\"request\":{\"subtype\":\"hook_callback\",\"callback_id\":\"cb-pre-1\",\"tool_use_id\":\"tu-1\",\"input\":{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"},\"tool_use_id\":\"tu-1\"}}}";
+FX_HOOK_STARTED :: "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"h1\",\"hook_name\":\"PreToolUse\",\"hook_event\":\"PreToolUse\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_HOOK_RESPONSE :: "{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_id\":\"h1\",\"hook_name\":\"PreToolUse\",\"hook_event\":\"PreToolUse\",\"output\":\"ok\",\"stdout\":\"ok\",\"stderr\":\"\",\"exit_code\":0,\"outcome\":\"success\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_CRP :: "{\"type\":\"system\",\"subtype\":\"control_request_progress\",\"uuid\":\"u\",\"session_id\":\"s\",\"request_id\":\"sdk-1\",\"status\":\"api_retry\",\"attempt\":2,\"max_retries\":5,\"retry_delay_ms\":400,\"error_status\":529}";
+FX_REFUSAL :: "{\"type\":\"system\",\"subtype\":\"model_refusal_no_fallback\",\"uuid\":\"u\",\"session_id\":\"s\",\"original_model\":\"opus\",\"request_id\":null,\"content\":\"refused\"}";
+FX_BG :: "{\"type\":\"system\",\"subtype\":\"background_tasks_changed\",\"uuid\":\"u\",\"session_id\":\"s\",\"tasks\":[{\"task_id\":\"t1\",\"task_type\":\"local_bash\",\"description\":\"build\",\"ambient\":false}]}";
+FX_SHUTDOWN :: "{\"type\":\"system\",\"subtype\":\"worker_shutting_down\",\"uuid\":\"u\",\"session_id\":\"s\",\"reason\":\"deploy\"}";
+FX_INFO :: "{\"type\":\"system\",\"subtype\":\"informational\",\"uuid\":\"u\",\"session_id\":\"s\",\"content\":\"heads up\",\"level\":\"warning\",\"prevent_continuation\":true}";
+FX_GOAL :: "{\"type\":\"active_goal\",\"value\":{\"condition\":\"tests pass\",\"iterations\":3,\"set_at\":1700000000000,\"tokens_at_start\":100},\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_GOAL_CLEARED :: "{\"type\":\"active_goal\",\"value\":null,\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_RESET :: "{\"type\":\"conversation_reset\",\"new_conversation_id\":\"c2\",\"trigger\":\"clear\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_R289 :: "{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":10,\"duration_api_ms\":8,\"is_error\":false,\"num_turns\":1,\"result\":\"ok\",\"total_cost_usd\":0.001,\"usage\":{\"input_tokens\":1,\"output_tokens\":1},\"modelUsage\":{\"claude-haiku\":{\"inputTokens\":1,\"outputTokens\":1,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.001,\"contextWindow\":200000,\"maxOutputTokens\":64000,\"thinkingTokens\":0,\"canonicalModel\":\"claude-haiku-4-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}},\"permission_denials\":[],\"structured_output\":null,\"terminal_reason\":\"budget_exhausted\",\"queued_turn_count\":0,\"result_index\":0,\"user_message_uuid\":\"um-1\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_ASSISTANT_ERROR :: "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[]},\"parent_tool_use_id\":null,\"error\":\"cloud_credential_error\",\"timestamp\":\"2026-10-04T00:00:00Z\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_ELICIT :: "{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"elicitation\",\"mcp_server_name\":\"docs\",\"message\":\"Pick\",\"mode\":\"url\",\"url\":\"https://example.com\",\"elicitation_id\":\"e1\"}}";
+FX_DIALOG :: "{\"type\":\"control_request\",\"request_id\":\"r2\",\"request\":{\"subtype\":\"request_user_dialog\",\"dialog_kind\":\"confirm\",\"payload\":{\"text\":\"ok?\"},\"tool_use_id\":\"tu\"}}";
+FX_CANCEL :: "{\"type\":\"control_cancel_request\",\"request_id\":\"r1\"}";
+FX_BRAND_NEW :: "{\"type\":\"control_request\",\"request_id\":\"r3\",\"request\":{\"subtype\":\"brand_new\",\"x\":1}}";
+FX_PERMISSION_289 :: "{\"type\":\"control_request\",\"request_id\":\"r4\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"mcp__docs__search\",\"input\":{},\"tool_use_id\":\"tu\",\"decision_reason_type\":\"classifier\",\"classifier_approvable\":true,\"mcp_server\":{\"name\":\"docs\"},\"display_name\":\"Search docs\"}}";
+FX_CARRIED :: "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"sdk-3\",\"response\":{},\"pending_permission_requests\":[{\"type\":\"control_request\",\"request_id\":\"p1\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\",\"input\":{},\"tool_use_id\":\"tu\"}}]}}";
+FX_SUB_ASSISTANT :: "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[]},\"parent_tool_use_id\":\"tu-1\",\"agent_id\":\"task-7\",\"subagent_type\":\"Explore\",\"task_description\":\"Find the config\",\"uuid\":\"a1\",\"session_id\":\"s\"}";
+FX_SUB_USER :: "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"},\"parent_tool_use_id\":\"tu-1\",\"agent_id\":\"task-7\",\"session_id\":\"s\"}";
+FX_USER_WIRE :: "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tu\",\"content\":\"ok\"}]},\"parent_tool_use_id\":null,\"isSynthetic\":true,\"isReplay\":true,\"tool_use_result\":{\"stdout\":\"ok\"},\"uuid\":\"u1\",\"session_id\":\"s\"}";
+FX_TASK_STARTED :: "{\"type\":\"system\",\"subtype\":\"task_started\",\"uuid\":\"u\",\"session_id\":\"s\",\"task_id\":\"t2\",\"run_id\":\"r-01\",\"description\":\"d\",\"parent_task_id\":\"t1\",\"spawn_depth\":2}";
+FX_TASK_UPDATED :: "{\"type\":\"system\",\"subtype\":\"task_updated\",\"uuid\":\"u\",\"session_id\":\"s\",\"task_id\":\"t2\",\"run_id\":\"r-01\",\"patch\":{\"status\":\"running\"}}";
+FX_TASK_PROGRESS :: "{\"type\":\"system\",\"subtype\":\"task_progress\",\"uuid\":\"u\",\"session_id\":\"s\",\"task_id\":\"t2\",\"run_id\":\"r-01\",\"description\":\"d\",\"usage\":{\"total_tokens\":1,\"tool_uses\":0,\"duration_ms\":5}}";
+FX_TASK_NOTE :: "{\"type\":\"system\",\"subtype\":\"task_notification\",\"uuid\":\"u\",\"session_id\":\"s\",\"task_id\":\"t2\",\"run_id\":\"r-01\",\"status\":\"completed\",\"output_file\":\"/o\",\"summary\":\"done\"}";
+FX_BG2 :: "{\"type\":\"system\",\"subtype\":\"background_tasks_changed\",\"uuid\":\"u\",\"session_id\":\"s\",\"tasks\":[{\"task_id\":\"t2\",\"run_id\":\"r-01\",\"task_type\":\"local_agent\",\"subagent_type\":\"general-purpose\",\"description\":\"d\",\"parent_task_id\":\"t1\"}]}";
+FX_OVERAGE :: "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed_warning\",\"overageStatus\":\"allowed\",\"overageResetsAt\":1760000000,\"overageDisabledReason\":\"out_of_credits\",\"overageEnabled\":true},\"uuid\":\"u\",\"session_id\":\"s\"}";
+FX_CITATION :: "{\"type\":\"web_search_result_location\",\"url\":\"https://x\",\"title\":\"X\",\"cited_text\":\"c\",\"encrypted_index\":\"e\"}";
+FX_CITED :: "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"cited\",\"citations\":[{\"type\":\"web_search_result_location\",\"url\":\"https://x\",\"title\":\"X\",\"cited_text\":\"c\",\"encrypted_index\":\"e\"}]}]},\"parent_tool_use_id\":null,\"uuid\":\"a\",\"session_id\":\"s\"}";
+FX_CITED_DELTA :: "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"citations_delta\",\"citation\":{\"type\":\"web_search_result_location\",\"url\":\"https://x\",\"title\":\"X\",\"cited_text\":\"c\",\"encrypted_index\":\"e\"}}},\"parent_tool_use_id\":null,\"uuid\":\"e\",\"session_id\":\"s\"}";
+FX_STARTUP0 :: "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"duration_ms\":1,\"duration_api_ms\":0,\"is_error\":true,\"num_turns\":0,\"total_cost_usd\":0.0,\"usage\":{\"input_tokens\":0,\"output_tokens\":0},\"modelUsage\":{},\"permission_denials\":[],\"errors\":[\"refused\"],\"startup_failure_reason\":\"org_config_required_unavailable\",\"uuid\":\"r\",\"session_id\":\"s\"}";
+FX_STARTUP1 :: "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"duration_ms\":1,\"duration_api_ms\":0,\"is_error\":true,\"num_turns\":0,\"total_cost_usd\":0.0,\"usage\":{\"input_tokens\":0,\"output_tokens\":0},\"modelUsage\":{},\"permission_denials\":[],\"errors\":[\"refused\"],\"startup_failure_reason\":\"org_config_refused\",\"uuid\":\"r\",\"session_id\":\"s\"}";
+FX_ASSISTANT_NO_UUID :: "{\"type\":\"assistant\",\"message\":{},\"session_id\":\"s\"}";
+FX_INIT_NO_SKILLS :: "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"user\",\"claude_code_version\":\"1.0.0\",\"cwd\":\"/home/user/project\",\"tools\":[\"Read\",\"Write\",\"Bash\"],\"mcp_servers\":[{\"name\":\"test\",\"status\":\"connected\"}],\"model\":\"claude-sonnet-4-5-20250929\",\"permissionMode\":\"default\",\"slash_commands\":[\"/help\",\"/clear\"],\"output_style\":\"minimal\",\"plugins\":[],\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"session-123\"}";
+FX_USER_BAD_PRIORITY :: "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"},\"session_id\":\"s\",\"priority\":\"urgent\"}";
+FX_ESCAPED :: "{\"type\":\"prompt_suggestion\",\"suggestion\":\"say \\\"hi\\\"\\nthen \\u00e9\",\"uuid\":\"u\",\"session_id\":\"s\"}";
+
+near :: (a: f64, b: f64) -> bool { return abs(a - b) < 0.001; }
+
+#test "system init" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_INIT);
+  #assert m.frame == ClFrame.message && m.kind == ClKind.system && m.system == ClSystem.init;
+  i := cl_init_of(ar[..], m);
+  #assert i.claude_code_version == "1.0.0" && i.model == "claude-sonnet-4-5-20250929" && i.tool_count == 3;
+  #assert m.session_id == "session-123" && cl_mcp_status(ar[..], i.mcp_servers, "test") == "connected";
+}
+
+#test "assistant" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_ASSISTANT);
+  #assert m.kind == ClKind.assistant && cl_root(cl_assistant_of(ar[..], m).message).tok == JSON_OBJECT;
+  #assert m.parent_tool_use_id == "" && m.uuid == "12345678-1234-1234-1234-123456789012";
+}
+
+#test "result success" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_SUCCESS);
+  #assert m.kind == ClKind.result && m.result == ClResultKind.success;
+  r := cl_result_of(ar[..], m);
+  #assert r.num_turns == 3 && r.result == "Task completed successfully" && near(r.total_cost_usd, 0.05);
+  #assert !r.api_error_status.has && r.terminal_reason == ClTerminal.none;
+  #assert r.usage.input_tokens == 100 && r.usage.output_tokens == 200 && !r.usage.cache_read_input_tokens.has;
+  u := cl_model_usage(ar[..], r.model_usage, "claude-sonnet-4-5-20250929");
+  #assert u.found && !u.max_output_tokens.has && near(u.cost_usd, 0.05) && u.context_window == 200000;
+}
+
+#test "result success fidelity fields" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  r := cl_result_of(ar[..], cl_classify(ar[..], FX_FIDELITY));
+  #assert r.kind == ClResultKind.success && r.is_error;
+  #assert r.api_error_status.has && r.api_error_status.value == 429 && r.terminal_reason == ClTerminal.completed;
+  u := cl_model_usage(ar[..], r.model_usage, "claude-sonnet-4-5-20250929");
+  #assert u.max_output_tokens.has && u.max_output_tokens.value == 16384;
+}
+
+#test "an unknown terminal_reason keeps the result typed" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_FUTURE_REASON);
+  #assert m.kind == ClKind.result && cl_result_of(ar[..], m).terminal_reason == ClTerminal.unknown;
+}
+
+#test "result error terminal_reason" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_BUDGET);
+  #assert m.kind == ClKind.result && m.result == ClResultKind.error_max_budget_usd;
+  r := cl_result_of(ar[..], m);
+  #assert r.terminal_reason == ClTerminal.blocking_limit && cl_count(r.errors) == 1 && near(r.total_cost_usd, 1.5);
+}
+
+#test "control request can_use_tool" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_CAN_USE_TOOL);
+  #assert m.frame == ClFrame.control_request && m.subtype == "can_use_tool";
+  r := cl_request_of(ar[..], m);
+  #assert r.tool_name == "Bash" && r.tool_use_id == "tool-123" && r.request_id == "req-123" && r.id_json == "\"req-123\"";
+  #assert cl_str(ar[..], r.input, "command") == "ls -la";
+}
+
+#test "control responses: allow and deny" {
+  buf: [512] u8; o: [1] ClOut; o[0].buf = buf[..];
+  pb: [128] u8; p: [1] ClOut; p[0].buf = pb[..];
+  cl_permission_allow(p[..], "{\"command\":\"ls -la\"}", "", "");
+  cl_control_success(o[..], "\"req-123\"", cast(string) pb[0..<p[0].len]);
+  line := cast(string) buf[0..<o[0].len - 1];
+  #assert buf[o[0].len - 1] == '\n' && cl_root(line).ok;
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  #assert cl_str(ar[..], line, "type") == "control_response" && cl_str(ar[..], line, "response.subtype") == "success";
+  #assert cl_str(ar[..], line, "response.request_id") == "req-123" && cl_str(ar[..], line, "response.response.behavior") == "allow";
+  #assert cl_raw(line, "response.response.updatedInput") == "{\"command\":\"ls -la\"}";
+  o[0].len = 0; p[0].len = 0;
+  cl_permission_deny(p[..], "Not allowed", false, "");
+  cl_control_success(o[..], "\"req-123\"", cast(string) pb[0..<p[0].len]);
+  line = cast(string) buf[0..<o[0].len - 1];
+  #assert cl_str(ar[..], line, "type") == "control_response" && cl_str(ar[..], line, "response.subtype") == "success";
+  #assert cl_str(ar[..], line, "response.response.message") == "Not allowed" && !cl_at(line, "response.response.interrupt").ok;
+  o[0].len = 0;
+  cl_control_error(o[..], "\"r\"", "no \"way\"");
+  line = cast(string) buf[0..<o[0].len - 1];
+  #assert cl_str(ar[..], line, "response.subtype") == "error" && cl_str(ar[..], line, "response.error") == "no \"way\"";
+}
+
+#test "user message" {
+  buf: [512] u8; o: [1] ClOut; o[0].buf = buf[..];
+  cl_user_text(o[..], "Hello, Claude!", "session-123", true);
+  line := cast(string) buf[0..<o[0].len - 1];
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  #assert cl_str(ar[..], line, "type") == "user" && cl_str(ar[..], line, "message.role") == "user";
+  #assert cl_str(ar[..], line, "message.content") == "Hello, Claude!" && cl_bool(line, "client_composed").value;
+}
+
+#test "a streamed user message with content blocks serializes as the TS SDK does" {
+  bb: [256] u8; b: [1] ClOut; b[0].buf = bb[..];
+  cl_put(b[..], "["); cl_text_block(b[..], "describe"); cl_put(b[..], ","); cl_image_block(b[..], "image/jpeg", "AAAA"); cl_put(b[..], "]");
+  buf: [512] u8; o: [1] ClOut; o[0].buf = buf[..];
+  cl_user_blocks(o[..], cast(string) bb[0..<b[0].len], "", "now", 0, false);
+  line := cast(string) buf[0..<o[0].len - 1];
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  #assert cl_str(ar[..], line, "type") == "user" && cl_is_null(line, cl_at(line, "parent_tool_use_id"));
+  #assert cl_has_str(line, "session_id") && cl_str(ar[..], line, "session_id") == "";
+  c := cl_at(line, "message.content");
+  #assert cl_json(line, cl_element(line, c, 0)) == "{\"type\":\"text\",\"text\":\"describe\"}";
+  #assert cl_json(line, cl_element(line, c, 1)) == "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/jpeg\",\"data\":\"AAAA\"}}";
+  #assert cl_str(ar[..], line, "priority") == "now" && !cl_bool(line, "shouldQuery").value && cl_bool(line, "shouldQuery").ok;
+  #assert !cl_at(line, "client_composed").ok;
+  back := cl_classify(ar[..], line);
+  #assert back.kind == ClKind.user;
+  u := cl_user_of(ar[..], back);
+  #assert u.priority == "now" && u.should_query.has && !u.should_query.value;
+  o[0].len = 0;
+  cl_user_text(o[..], "hi", "", false);
+  text := cast(string) buf[0..<o[0].len - 1];
+  #assert cl_str(ar[..], text, "message.content") == "hi" && !cl_at(text, "priority").ok && !cl_at(text, "shouldQuery").ok;
+}
+
+#test "stream event" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_STREAM);
+  #assert m.kind == ClKind.stream_event && cl_stream_event_of(ar[..], m).event_type == "content_block_delta";
+}
+
+#test "tool progress" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_PROGRESS);
+  p := cl_tool_progress_of(ar[..], m);
+  #assert m.kind == ClKind.tool_progress && p.tool_name == "Bash" && near(p.elapsed_time_seconds, 5.5);
+}
+
+#test "permission modes" {
+  #assert cl_permission_mode_name(ClPermissionMode.default) == "default" && cl_permission_mode_name(ClPermissionMode.accept_edits) == "acceptEdits";
+  #assert cl_permission_mode_name(ClPermissionMode.bypass_permissions) == "bypassPermissions" && cl_permission_mode_name(ClPermissionMode.plan) == "plan";
+  #assert cl_permission_mode_name(ClPermissionMode.dont_ask) == "dontAsk" && cl_permission_mode_name(ClPermissionMode.auto) == "auto";
+  #assert cl_permission_mode_name(ClPermissionMode.unset) == "";
+}
+
+#test "stdout frames: an SDK message, a control request, a keep-alive" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  #assert cl_classify(ar[..], FX_EMPTY_ASSISTANT).kind == ClKind.assistant;
+  #assert cl_classify(ar[..], FX_INTERRUPT).frame == ClFrame.control_request;
+  #assert cl_classify(ar[..], "{\"type\":\"keep_alive\"}").frame == ClFrame.keep_alive;
+}
+
+#test "api_retry system subtype" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_API_RETRY);
+  #assert m.kind == ClKind.system && m.system == ClSystem.api_retry;
+  r := cl_api_retry_of(m);
+  #assert r.attempt == 2 && r.max_retries == 5 && r.retry_delay_ms == 400 && r.error_status.has && r.error_status.value == 429;
+  #assert r.error == ClAssistantError.rate_limit && !r.has_no_response;
+}
+
+#test "rate limit event" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_RATE);
+  r := cl_rate_limit_of(ar[..], m);
+  #assert m.kind == ClKind.rate_limit_event && r.status == "allowed_warning" && r.resets_at.has && r.resets_at.value == 1700000000;
+  #assert r.rate_limit_type == "five_hour" && near(r.utilization.value, 0.82);
+}
+
+#test "prompt suggestion and tool use summary" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_SUGGESTION);
+  #assert m.kind == ClKind.prompt_suggestion && cl_prompt_suggestion_of(ar[..], m).suggestion == "run the tests";
+  s := cl_classify(ar[..], FX_SUMMARY);
+  #assert s.kind == ClKind.tool_use_summary && cl_tool_use_summary_of(ar[..], s).count == 2;
+}
+
+#test "an unknown type is Unknown and keeps its raw frame" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_WIDGET);
+  #assert m.frame == ClFrame.message && m.kind == ClKind.unknown && m.type_name == "future_widget";
+  #assert cl_int(m.line, "foo").value == 1 && cl_bool(m.line, "nested.ok").value && m.line == FX_WIDGET;
+}
+
+#test "an unknown system subtype is Unknown" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_FAKE_SUBTYPE);
+  #assert m.kind == ClKind.unknown && m.type_name == "system" && cl_str(ar[..], m.line, "subtype") == "not_a_real_subtype";
+  #assert m.system == ClSystem.none;
+}
+
+#test "a line that isn't JSON is invalid, and keeps its text" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], "not-json {");
+  #assert m.frame == ClFrame.invalid && m.line == "not-json {";
+}
+
+#test "a known new variant and an unknown type, from lines" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_RETRY_LINE);
+  #assert m.system == ClSystem.api_retry && cl_api_retry_of(m).attempt == 1 && cl_api_retry_of(m).error == ClAssistantError.overloaded;
+  #assert !cl_api_retry_of(m).error_status.has;
+  u := cl_classify(ar[..], FX_NOT_A_TYPE);
+  #assert u.kind == ClKind.unknown && u.type_name == "not_a_real_type" && cl_bool(u.line, "x").value;
+}
+
+#test "control and keep-alive frames are not swallowed as unknown" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  #assert cl_classify(ar[..], FX_INTERRUPT_LINE).frame == ClFrame.control_request;
+  #assert cl_classify(ar[..], "{\"type\":\"keep_alive\"}").frame == ClFrame.keep_alive;
+}
+
+#test "hook_callback request" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_HOOK);
+  #assert m.frame == ClFrame.control_request && m.subtype == "hook_callback";
+  r := cl_request_of(ar[..], m);
+  #assert r.callback_id == "cb-pre-1" && r.tool_use_id == "tu-1" && r.hook_event_name == "PreToolUse";
+}
+
+#test "hook started and response" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  s := cl_classify(ar[..], FX_HOOK_STARTED);
+  #assert s.system == ClSystem.hook_started && cl_hook_event_of(ar[..], s).hook_id == "h1";
+  r := cl_classify(ar[..], FX_HOOK_RESPONSE);
+  h := cl_hook_event_of(ar[..], r);
+  #assert r.system == ClSystem.hook_response && h.hook_id == "h1" && h.outcome == "success" && h.exit_code.value == 0;
+}
+
+#test "0.3.289 system subtypes parse to typed values" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  p := cl_classify(ar[..], FX_CRP);
+  c := cl_control_request_progress_of(ar[..], p);
+  #assert p.system == ClSystem.control_request_progress && c.request_id == "sdk-1" && c.attempt.has && c.attempt.value == 2;
+  f := cl_classify(ar[..], FX_REFUSAL);
+  #assert f.system == ClSystem.model_refusal_no_fallback && cl_model_refusal_no_fallback_of(ar[..], f).original_model == "opus";
+  b := cl_classify(ar[..], FX_BG);
+  tasks := cl_background_tasks_of(b);
+  #assert b.system == ClSystem.background_tasks_changed && cl_background_task(ar[..], tasks.tasks, 0).task_id == "t1";
+  w := cl_classify(ar[..], FX_SHUTDOWN);
+  #assert w.system == ClSystem.worker_shutting_down && cl_worker_shutting_down_of(ar[..], w).reason == "deploy";
+  i := cl_classify(ar[..], FX_INFO);
+  info := cl_informational_of(ar[..], i);
+  #assert i.system == ClSystem.informational && info.level == "warning" && info.prevent_continuation.has && info.prevent_continuation.value;
+}
+
+#test "0.3.289 top-level types parse to typed values" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  g := cl_classify(ar[..], FX_GOAL);
+  goal := cl_active_goal_of(ar[..], g);
+  #assert g.kind == ClKind.active_goal && goal.has_value && goal.condition == "tests pass" && goal.iterations == 3;
+  c := cl_classify(ar[..], FX_GOAL_CLEARED);
+  #assert c.kind == ClKind.active_goal && !cl_active_goal_of(ar[..], c).has_value;
+  r := cl_classify(ar[..], FX_RESET);
+  #assert r.kind == ClKind.conversation_reset && cl_type_name(r) == "conversation_reset";
+  #assert cl_str(ar[..], r.line, "type") == "conversation_reset" && cl_conversation_reset_of(ar[..], r).new_conversation_id == "c2";
+}
+
+#test "0.3.289 result fields and new terminal reasons" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_R289);
+  r := cl_result_of(ar[..], m);
+  #assert m.result == ClResultKind.success && r.terminal_reason == ClTerminal.budget_exhausted;
+  #assert r.queued_turn_count.has && r.queued_turn_count.value == 0 && r.user_message_uuid == "um-1";
+  u := cl_model_usage(ar[..], r.model_usage, "claude-haiku");
+  #assert u.canonical_model == "claude-haiku-4-5" && u.cost_basis == "list" && u.provider == "firstParty";
+}
+
+#test "0.3.289 assistant error values" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_ASSISTANT_ERROR);
+  a := cl_assistant_of(ar[..], m);
+  #assert m.kind == ClKind.assistant && a.error == ClAssistantError.cloud_credential_error && a.timestamp == "2026-10-04T00:00:00Z";
+}
+
+#test "inbound control frames at 0.3.289" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  e := cl_classify(ar[..], FX_ELICIT);
+  er := cl_request_of(ar[..], e);
+  #assert e.frame == ClFrame.control_request && e.subtype == "elicitation" && er.mode == "url" && er.elicitation_id == "e1";
+  d := cl_classify(ar[..], FX_DIALOG);
+  #assert d.frame == ClFrame.control_request && d.subtype == "request_user_dialog";
+  c := cl_classify(ar[..], FX_CANCEL);
+  #assert c.frame == ClFrame.control_cancel && cl_str(ar[..], c.line, "request_id") == "r1";
+  f := cl_classify(ar[..], FX_BRAND_NEW);
+  #assert f.frame == ClFrame.unsupported_control && f.subtype == "brand_new" && cl_str(ar[..], f.line, "request_id") == "r3";
+  #assert cl_int(f.line, "request.x").value == 1;
+  p := cl_classify(ar[..], FX_PERMISSION_289);
+  pr := cl_request_of(ar[..], p);
+  #assert p.frame == ClFrame.control_request && pr.decision_reason_type == "classifier" && pr.display_name == "Search docs";
+}
+
+#test "a control response carries pending requests" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_CARRIED);
+  #assert m.frame == ClFrame.control_response;
+  r := cl_response_of(ar[..], m);
+  #assert r.ok && r.sdk_number == 3 && r.response == "{}";
+  #assert cl_str(ar[..], cl_json(r.pending_permission_requests, cl_item(r.pending_permission_requests, 0)), "request_id") == "p1";
+}
+
+#test "0.3.292 subagent messages carry agent_id" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  a := cl_assistant_of(ar[..], cl_classify(ar[..], FX_SUB_ASSISTANT));
+  #assert a.agent_id == "task-7" && a.subagent_type == "Explore" && a.task_description == "Find the config";
+  u := cl_classify(ar[..], FX_SUB_USER);
+  #assert u.kind == ClKind.user && cl_user_of(ar[..], u).agent_id == "task-7" && u.parent_tool_use_id == "tu-1";
+}
+
+#test "inbound user messages parse typed and keep their frame" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_USER_WIRE);
+  u := cl_user_of(ar[..], m);
+  #assert m.kind == ClKind.user && u.is_synthetic.value && u.is_replay.value && u.has_uuid && m.uuid == "u1";
+  #assert cl_raw(u.tool_use_result, "stdout") == "\"ok\"" && m.line == FX_USER_WIRE;
+}
+
+#test "0.3.292 task events carry run and parent ids" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  s := cl_classify(ar[..], FX_TASK_STARTED);
+  t := cl_task_of(ar[..], s);
+  #assert s.system == ClSystem.task_started && t.run_id == "r-01" && t.parent_task_id == "t1" && t.spawn_depth.value == 2;
+  u := cl_classify(ar[..], FX_TASK_UPDATED);
+  #assert u.system == ClSystem.task_updated && cl_task_of(ar[..], u).run_id == "r-01";
+  p := cl_classify(ar[..], FX_TASK_PROGRESS);
+  #assert p.system == ClSystem.task_progress && cl_task_of(ar[..], p).run_id == "r-01" && cl_task_of(ar[..], p).usage.duration_ms == 5;
+  n := cl_classify(ar[..], FX_TASK_NOTE);
+  #assert n.system == ClSystem.task_notification && cl_task_of(ar[..], n).run_id == "r-01";
+  b := cl_classify(ar[..], FX_BG2);
+  task := cl_background_task(ar[..], cl_background_tasks_of(b).tasks, 0);
+  #assert task.run_id == "r-01" && task.subagent_type == "general-purpose" && task.parent_task_id == "t1";
+}
+
+#test "0.3.295 rate limit overage fields" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  r := cl_rate_limit_of(ar[..], cl_classify(ar[..], FX_OVERAGE));
+  #assert r.status == "allowed_warning" && r.overage_enabled.value && r.overage_status == "allowed";
+  #assert r.overage_resets_at.value == 1760000000 && r.overage_disabled_reason == "out_of_credits";
+}
+
+#test "0.3.295 text block citations survive" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  a := cl_assistant_of(ar[..], cl_classify(ar[..], FX_CITED));
+  content := cl_raw(a.message, "content");
+  first := cl_json(content, cl_item(content, 0));
+  cites := cl_raw(first, "citations");
+  #assert cl_json(cites, cl_item(cites, 0)) == FX_CITATION;
+  d := cl_classify(ar[..], FX_CITED_DELTA);
+  #assert d.kind == ClKind.stream_event && cl_raw(cl_stream_event_of(ar[..], d).event, "delta.citation") == FX_CITATION;
+}
+
+#test "0.3.296 startup failure reasons stay typed" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  a := cl_classify(ar[..], FX_STARTUP0);
+  #assert a.result == ClResultKind.error_during_execution && cl_result_of(ar[..], a).startup_failure_reason == "org_config_required_unavailable";
+  b := cl_classify(ar[..], FX_STARTUP1);
+  #assert b.result == ClResultKind.error_during_execution && cl_result_of(ar[..], b).startup_failure_reason == "org_config_refused";
+}
+
+#test "a known type missing a required field, or with a value it doesn't allow, stays raw" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_ASSISTANT_NO_UUID);
+  #assert m.frame == ClFrame.message && m.kind == ClKind.unknown && m.type_name == "assistant";
+  #assert cl_classify(ar[..], FX_INIT_NO_SKILLS).kind == ClKind.unknown;
+  #assert cl_classify(ar[..], FX_USER_BAD_PRIORITY).kind == ClKind.unknown;
+  #assert cl_classify(ar[..], "{\"type\":\"control_request\",\"request_id\":\"x\",\"request\":{\"subtype\":\"can_use_tool\"}}").kind == ClKind.unknown;
+}
+
+#test "escaped strings decode into the arena" {
+  buf: [4096] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  m := cl_classify(ar[..], FX_ESCAPED);
+  s := cl_prompt_suggestion_of(ar[..], m).suggestion;
+  #assert s.count == 16 && s[0..<14] == "say \"hi\"\nthen " && s[14] == 0xC3 && s[15] == 0xA9 && ar[0].at == 16;
+}

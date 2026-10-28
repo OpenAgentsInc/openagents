@@ -1,0 +1,329 @@
+// Field access over one JSON document for the Claude Agent SDK, built on the
+// pull parser in coax/lib/nostr/json.coax. Nothing allocates: a value is a
+// byte range of the text it came from, and a string with escapes is decoded
+// into a caller's arena (one with none is borrowed as it is). Everything
+// borrowed stays valid while the text and the arena do.
+//
+// cl_valid checks a document against a field spec, the way serde decides
+// whether a frame fits a typed message. A spec is items separated by
+// spaces, each TYPE:PATH:
+//   s string, u integer >= 0, i integer, f number, b bool, o object,
+//   a array, x anything present (null too);
+//   a leading ? makes the field optional (absent or null passes);
+//   s:path=one|two limits a string to those values;
+//   PATH is keys joined by '.', and * is every element of an array or every
+//   member of an object. A path whose parent is absent or null passes; the
+//   parent's own item decides whether that is allowed.
+
+#load "../../nostr/json.coax";
+
+CL_LINE_MAX :: 1048576;    // one stream-json line, and the parser's limits for it
+
+ClSlice :: struct {
+  ok: bool;
+  tok: int;        // JSON_STRING, JSON_NUMBER, JSON_OBJECT ...
+  from: int;       // a string's bytes without its quotes; a container's
+  to: int;         // bytes from its open to its close, inclusive
+}
+
+ClArena :: struct {
+  buf: [] u8;
+  at: int;
+  full: bool;      // a string did not fit; it read as empty
+}
+
+ClBool :: struct { ok: bool; value: bool; }
+
+cl_parse :: (j: [] Json, text: string) { json_start_bounded(j, text, CL_LINE_MAX, CL_LINE_MAX); }
+
+// A value whose first token j just read: its range (a container skipped to its end).
+cl_value_here :: (j: [] Json) -> ClSlice {
+  r: ClSlice;
+  t := j[0].tok;
+  from := j[0].from;
+  if t == JSON_OBJECT || t == JSON_ARRAY {
+    if !json_skip(j) { return r; }
+    return ClSlice.{ok = true, tok = t, from = from, to = j[0].at};
+  }
+  if t == JSON_ERROR || t == JSON_END || t == JSON_OBJECT_END || t == JSON_ARRAY_END { return r; }
+  return ClSlice.{ok = true, tok = t, from = j[0].from, to = j[0].to};
+}
+
+// The whole text as one value.
+cl_root :: (text: string) -> ClSlice {
+  r: ClSlice;
+  j: [1] Json; cl_parse(j[..], text);
+  if json_next(j[..]) == JSON_ERROR { return r; }
+  v := cl_value_here(j[..]);
+  if !v.ok || json_next(j[..]) != JSON_END { return r; }
+  return v;
+}
+
+// The text of a value: a string with its quotes, so it is JSON again.
+cl_json :: (text: string, v: ClSlice) -> string {
+  if !v.ok { return ""; }
+  if v.tok == JSON_STRING { return text[v.from - 1..<v.to + 1]; }
+  return text[v.from..<v.to];
+}
+
+// A member of the object that is all of text.
+cl_find :: (text: string, key: string) -> ClSlice {
+  r: ClSlice;
+  j: [1] Json; cl_parse(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return r; }
+  while true {
+    t := json_next(j[..]);
+    if t != JSON_STRING { return r; }
+    hit := json_is(json_text(j[..]), key);
+    if json_next(j[..]) == JSON_ERROR { return r; }
+    v := cl_value_here(j[..]);
+    if !v.ok { return r; }
+    if hit { return v; }
+  }
+  return r;
+}
+
+// Element i of the array (or value of member i of the object) that is all of text.
+cl_item :: (text: string, index: int) -> ClSlice {
+  r: ClSlice;
+  j: [1] Json; cl_parse(j[..], text);
+  open := json_next(j[..]);
+  if open != JSON_ARRAY && open != JSON_OBJECT { return r; }
+  k := 0;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_ARRAY_END || t == JSON_OBJECT_END || t == JSON_ERROR { return r; }
+    if open == JSON_OBJECT { t = json_next(j[..]); if t == JSON_ERROR { return r; } }
+    v := cl_value_here(j[..]);
+    if !v.ok { return r; }
+    if k == index { return v; }
+    k += 1;
+  }
+  return r;
+}
+
+// The key of member i of the object that is all of text (raw bytes).
+cl_key :: (text: string, index: int) -> ClSlice {
+  r: ClSlice;
+  j: [1] Json; cl_parse(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return r; }
+  k := 0;
+  while true {
+    t := json_next(j[..]);
+    if t != JSON_STRING { return r; }
+    key := ClSlice.{ok = true, tok = JSON_STRING, from = j[0].from, to = j[0].to};
+    if json_next(j[..]) == JSON_ERROR { return r; }
+    if !cl_value_here(j[..]).ok { return r; }
+    if k == index { return key; }
+    k += 1;
+  }
+  return r;
+}
+
+// How many elements (or members) the container that is all of text holds; -1 if it isn't one.
+cl_count :: (text: string) -> int {
+  j: [1] Json; cl_parse(j[..], text);
+  open := json_next(j[..]);
+  if open != JSON_ARRAY && open != JSON_OBJECT { return -1; }
+  k := 0;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_ARRAY_END || t == JSON_OBJECT_END { return k; }
+    if t == JSON_ERROR { return -1; }
+    if open == JSON_OBJECT { if json_next(j[..]) == JSON_ERROR { return -1; } }
+    if !cl_value_here(j[..]).ok { return -1; }
+    k += 1;
+  }
+  return -1;
+}
+
+// A member, offset to be a range of the outer text.
+cl_member :: (text: string, outer: ClSlice, key: string) -> ClSlice {
+  r: ClSlice;
+  if !outer.ok || outer.tok != JSON_OBJECT { return r; }
+  v := cl_find(text[outer.from..<outer.to], key);
+  if !v.ok { return r; }
+  return ClSlice.{ok = true, tok = v.tok, from = v.from + outer.from, to = v.to + outer.from};
+}
+
+cl_element :: (text: string, outer: ClSlice, index: int) -> ClSlice {
+  r: ClSlice;
+  if !outer.ok || (outer.tok != JSON_OBJECT && outer.tok != JSON_ARRAY) { return r; }
+  v := cl_item(text[outer.from..<outer.to], index);
+  if !v.ok { return r; }
+  return ClSlice.{ok = true, tok = v.tok, from = v.from + outer.from, to = v.to + outer.from};
+}
+
+// A dotted path from the root object ("rate_limit_info.resetsAt").
+cl_at :: (text: string, path: string) -> ClSlice {
+  r: ClSlice;
+  v := cl_root(text);
+  start := 0;
+  for i: 0..<path.count + 1 {
+    if i == path.count || path[i] == '.' {
+      v = cl_member(text, v, path[start..<i]);
+      if !v.ok { return r; }
+      start = i + 1;
+    }
+  }
+  return v;
+}
+
+cl_is_null :: (text: string, v: ClSlice) -> bool { return v.ok && v.tok == JSON_NULL; }
+
+// A string value, decoded. Plain strings are borrowed from text.
+cl_text :: (ar: [] ClArena, text: string, v: ClSlice) -> string {
+  if !v.ok || v.tok != JSON_STRING { return ""; }
+  raw := text[v.from..<v.to];
+  plain := true;
+  for c: raw { if c == '\\' { plain = false; break; } }
+  if plain { return raw; }
+  if ar.count == 0 { return ""; }
+  n := json_unescape(raw, ar[0].buf[ar[0].at..<ar[0].buf.count]);
+  if n < 0 { ar[0].full = true; return ""; }
+  s := cast(string) ar[0].buf[ar[0].at..<ar[0].at + n];
+  ar[0].at += n;
+  return s;
+}
+
+cl_str :: (ar: [] ClArena, text: string, path: string) -> string { return cl_text(ar, text, cl_at(text, path)); }
+
+cl_int_of :: (text: string, v: ClSlice) -> JsonInt {
+  r: JsonInt;
+  if !v.ok || v.tok != JSON_NUMBER { return r; }
+  return json_int(text[v.from..<v.to]);
+}
+cl_int :: (text: string, path: string) -> JsonInt { return cl_int_of(text, cl_at(text, path)); }
+
+cl_num_of :: (text: string, v: ClSlice) -> JsonF64 {
+  r: JsonF64;
+  if !v.ok || v.tok != JSON_NUMBER { return r; }
+  return json_f64(text[v.from..<v.to]);
+}
+cl_num :: (text: string, path: string) -> JsonF64 { return cl_num_of(text, cl_at(text, path)); }
+
+cl_bool_of :: (v: ClSlice) -> ClBool {
+  r: ClBool;
+  if !v.ok || (v.tok != JSON_TRUE && v.tok != JSON_FALSE) { return r; }
+  return ClBool.{ok = true, value = v.tok == JSON_TRUE};
+}
+cl_bool :: (text: string, path: string) -> ClBool { return cl_bool_of(cl_at(text, path)); }
+
+// The value's JSON text, or "" when absent.
+cl_raw :: (text: string, path: string) -> string { return cl_json(text, cl_at(text, path)); }
+
+// Whether text's string value equals s.
+cl_eq :: (text: string, v: ClSlice, s: string) -> bool {
+  return v.ok && v.tok == JSON_STRING && json_is(text[v.from..<v.to], s);
+}
+
+// ---- validation against a spec
+
+cl_type_ok :: (text: string, v: ClSlice, t: u8, allowed: string) -> bool {
+  if t == 'x' { return true; }
+  if t == 's' {
+    if v.tok != JSON_STRING { return false; }
+    if allowed.count == 0 { return true; }
+    start := 0;
+    for i: 0..<allowed.count + 1 {
+      if i == allowed.count || allowed[i] == '|' {
+        if json_is(text[v.from..<v.to], allowed[start..<i]) { return true; }
+        start = i + 1;
+      }
+    }
+    return false;
+  }
+  if t == 'b' { return v.tok == JSON_TRUE || v.tok == JSON_FALSE; }
+  if t == 'o' { return v.tok == JSON_OBJECT; }
+  if t == 'a' { return v.tok == JSON_ARRAY; }
+  if v.tok != JSON_NUMBER { return false; }
+  if t == 'f' { return true; }
+  n := json_int(text[v.from..<v.to]);
+  if !n.ok { return false; }
+  if t == 'u' { return n.value >= 0; }
+  return t == 'i';
+}
+
+// The rest of a path (from at) checked under the value v.
+cl_check_path :: (text: string, v: ClSlice, path: string, at: int, t: u8, optional: bool, allowed: string) -> bool {
+  if at > path.count {
+    if !v.ok || v.tok == JSON_NULL { return optional || (t == 'x' && v.ok); }
+    return cl_type_ok(text, v, t, allowed);
+  }
+  if !v.ok || v.tok == JSON_NULL { return true; }
+  end := at;
+  while end < path.count && path[end] != '.' { end += 1; }
+  segment := path[at..<end];
+  if segment == "*" {
+    if v.tok != JSON_ARRAY && v.tok != JSON_OBJECT { return true; }
+    n := cl_count(text[v.from..<v.to]);
+    for k: 0..<n {
+      if !cl_check_path(text, cl_element(text, v, k), path, end + 1, t, optional, allowed) { return false; }
+    }
+    return true;
+  }
+  if v.tok != JSON_OBJECT { return true; }
+  child := cl_member(text, v, segment);
+  if !child.ok {
+    if end < path.count { return true; }
+    return optional;
+  }
+  return cl_check_path(text, child, path, end + 1, t, optional, allowed);
+}
+
+cl_valid :: (text: string, spec: string) -> bool {
+  root := cl_root(text);
+  if !root.ok || root.tok != JSON_OBJECT { return false; }
+  i := 0;
+  while i < spec.count {
+    while i < spec.count && spec[i] == ' ' { i += 1; }
+    if i >= spec.count { break; }
+    s := i;
+    while i < spec.count && spec[i] != ' ' { i += 1; }
+    item := spec[s..<i];
+    optional := item[0] == '?';
+    k := ifx optional then 1 else 0;
+    t := item[k];
+    path := item[k + 2..<item.count];
+    allowed := "";
+    for c, p: path { if c == '=' { allowed = path[p + 1..<path.count]; path = path[0..<p]; break; } }
+    if !cl_check_path(text, root, path, 0, t, optional, allowed) { return false; }
+  }
+  return true;
+}
+
+// ---- checks
+
+#test "members, items, keys, counts and dotted paths" {
+  doc := "{\"a\":1,\"b\":{\"c\":[true,null,\"x\\ny\"]},\"d\":\"plain\",\"e\":-2.5}";
+  #assert cl_find(doc, "a").tok == JSON_NUMBER && cl_int(doc, "a").value == 1;
+  #assert cl_at(doc, "b.c").tok == JSON_ARRAY && cl_count(cl_raw(doc, "b.c")) == 3;
+  #assert cl_raw(doc, "b") == "{\"c\":[true,null,\"x\\ny\"]}";
+  #assert cl_raw(doc, "d") == "\"plain\"" && !cl_at(doc, "zz").ok && !cl_at(doc, "a.b").ok;
+  #assert cl_num(doc, "e").value == -2.5 && !cl_int(doc, "e").ok;
+  buf: [32] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  #assert cl_str(ar[..], doc, "d") == "plain" && ar[0].at == 0;
+  c := cl_at(doc, "b.c");
+  #assert cl_text(ar[..], doc, cl_element(doc, c, 2)) == "x\ny" && ar[0].at == 3;
+  #assert cl_bool_of(cl_element(doc, c, 0)).value && cl_is_null(doc, cl_element(doc, c, 1));
+  #assert !cl_element(doc, c, 3).ok && cl_count(doc) == 4 && cl_count("3") == -1;
+  #assert cl_text(ar[..], doc, cl_key(doc, 1)) == "b" && !cl_key(doc, 4).ok;
+  #assert !cl_root("{\"a\":1} x").ok && !cl_root("{").ok && cl_root(" [] ").tok == JSON_ARRAY;
+}
+
+#test "a string that doesn't fit the arena reads as empty and marks it full" {
+  doc := "{\"s\":\"\\u00e9\\u00e9\\u00e9\"}";
+  buf: [4] u8; ar: [1] ClArena; ar[0].buf = buf[..];
+  #assert cl_str(ar[..], doc, "s") == "" && ar[0].full;
+}
+
+#test "specs: required, optional, nullable parents, every element, allowed values" {
+  doc := "{\"n\":3,\"neg\":-1,\"f\":0.5,\"s\":\"x\",\"z\":null,\"o\":{\"k\":[{\"v\":1},{\"v\":2}]},\"m\":{\"p\":{\"q\":1},\"r\":{\"q\":2}}}";
+  #assert cl_valid(doc, "u:n i:neg f:f f:n s:s x:z o:o a:o.k u:o.k.*.v u:m.*.q");
+  #assert !cl_valid(doc, "u:neg") && !cl_valid(doc, "u:f") && !cl_valid(doc, "s:z") && !cl_valid(doc, "s:missing");
+  #assert cl_valid(doc, "?s:z ?s:missing ?u:n") && !cl_valid(doc, "?s:n");
+  #assert !cl_valid(doc, "s:o.k.*.v") && !cl_valid(doc, "u:m.*.missing") && cl_valid(doc, "?u:m.*.missing");
+  #assert cl_valid(doc, "s:z.deep s:missing.deep") && !cl_valid(doc, "x:missing");
+  #assert cl_valid(doc, "s:s=a|x|b") && !cl_valid(doc, "s:s=a|b") && cl_valid(doc, "?s:z=a");
+  #assert !cl_valid("[1]", "") && !cl_valid("{", "") && cl_valid("{}", "");
+}

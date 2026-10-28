@@ -1,0 +1,224 @@
+// The control protocol's frames the SDK writes to the CLI's stdin, and the
+// readers for the requests the CLI sends (protocol/control.rs). Every frame
+// is one JSON object and a newline, appended to a ClOut.
+
+#load "messages.coax";
+
+ClOut :: struct {
+  buf: [] u8;
+  len: int;
+  failed: bool;   // a frame did not fit; nothing after it was written
+}
+
+// Appends text, or marks the output failed.
+cl_put :: (o: [] ClOut, text: string) {
+  if o[0].failed { return; }
+  n := json_raw(o[0].buf, o[0].len, text);
+  if n < 0 { o[0].failed = true; return; }
+  o[0].len = n;
+}
+cl_put_string :: (o: [] ClOut, s: string) {
+  if o[0].failed { return; }
+  n := json_write_string(o[0].buf, o[0].len, s);
+  if n < 0 { o[0].failed = true; return; }
+  o[0].len = n;
+}
+cl_put_int :: (o: [] ClOut, v: int) {
+  if o[0].failed { return; }
+  n := json_write_int(o[0].buf, o[0].len, v);
+  if n < 0 { o[0].failed = true; return; }
+  o[0].len = n;
+}
+cl_put_bool :: (o: [] ClOut, b: bool) { cl_put(o, ifx b then "true" else "false"); }
+
+// A decimal for a float: at most 9 places, trailing zeros dropped (1.5, 0.25, 30).
+cl_put_f64 :: (o: [] ClOut, v: f64) {
+  x := v;
+  if x < 0 { cl_put(o, "-"); x = -x; }
+  if x > 9000000000000000.0 { x = 9000000000000000.0; }
+  whole := int(floor(x));
+  frac := int(floor((x - f64(whole)) * 1000000000.0 + 0.5));
+  if frac >= 1000000000 { whole += 1; frac -= 1000000000; }
+  cl_put_int(o, whole);
+  if frac == 0 { return; }
+  digits: [9] u8;
+  for k: 0..<9 { digits[8 - k] = cast(u8) ('0' + frac % 10); frac /= 10; }
+  n := 9;
+  while n > 0 && digits[n - 1] == '0' { n -= 1; }
+  cl_put(o, ".");
+  cl_put(o, cast(string) digits[0..<n]);
+}
+
+// The request id this SDK gives its n-th control request.
+cl_put_sdk_id :: (o: [] ClOut, n: int) { cl_put(o, "\"sdk-"); cl_put_int(o, n); cl_put(o, "\""); }
+
+// {"type":"control_request","request_id":"sdk-N","request":{"subtype":S<,fields>}}
+// fields is the rest of the request object, members only ("model":"haiku"), or "".
+cl_control_request :: (o: [] ClOut, n: int, subtype: string, fields: string) {
+  cl_put(o, "{\"type\":\"control_request\",\"request_id\":"); cl_put_sdk_id(o, n);
+  cl_put(o, ",\"request\":{\"subtype\":"); cl_put_string(o, subtype);
+  if fields.count > 0 { cl_put(o, ","); cl_put(o, fields); }
+  cl_put(o, "}}\n");
+}
+
+// A success answer to the CLI's request id (raw JSON string, as it came);
+// response is JSON, or "" for none.
+cl_control_success :: (o: [] ClOut, request_id_json: string, response: string) {
+  cl_put(o, "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":");
+  cl_put(o, request_id_json);
+  if response.count > 0 { cl_put(o, ",\"response\":"); cl_put(o, response); }
+  cl_put(o, "}}\n");
+}
+
+cl_control_error :: (o: [] ClOut, request_id_json: string, error: string) {
+  cl_put(o, "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":");
+  cl_put(o, request_id_json);
+  cl_put(o, ",\"error\":"); cl_put_string(o, error);
+  cl_put(o, "}}\n");
+}
+
+// {"type":"user","message":{"role":"user","content":TEXT},"parent_tool_use_id":null,"session_id":S}
+cl_user_text :: (o: [] ClOut, text: string, session_id: string, client_composed: bool) {
+  cl_put(o, "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"); cl_put_string(o, text);
+  cl_put(o, "},\"parent_tool_use_id\":null,\"session_id\":"); cl_put_string(o, session_id);
+  if client_composed { cl_put(o, ",\"client_composed\":true"); }
+  cl_put(o, "}\n");
+}
+
+// The same with content blocks (a JSON array), a priority ("now", "next",
+// "later" or "") and shouldQuery (-1 unset, 0 false, 1 true).
+cl_user_blocks :: (o: [] ClOut, blocks: string, session_id: string, priority: string, should_query: int, client_composed: bool) {
+  cl_put(o, "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"); cl_put(o, blocks);
+  cl_put(o, "},\"parent_tool_use_id\":null,\"session_id\":"); cl_put_string(o, session_id);
+  if priority.count > 0 { cl_put(o, ",\"priority\":"); cl_put_string(o, priority); }
+  if should_query >= 0 { cl_put(o, ",\"shouldQuery\":"); cl_put_bool(o, should_query == 1); }
+  if client_composed { cl_put(o, ",\"client_composed\":true"); }
+  cl_put(o, "}\n");
+}
+
+// {"type":"text","text":T} and {"type":"image","source":{"type":"base64","media_type":M,"data":D}}
+cl_text_block :: (o: [] ClOut, text: string) { cl_put(o, "{\"type\":\"text\",\"text\":"); cl_put_string(o, text); cl_put(o, "}"); }
+cl_image_block :: (o: [] ClOut, media_type: string, base64: string) {
+  cl_put(o, "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":"); cl_put_string(o, media_type);
+  cl_put(o, ",\"data\":"); cl_put_string(o, base64); cl_put(o, "}}");
+}
+
+// ---- permission answers (PermissionResult)
+
+CL_MAX_UPDATED_PERMISSIONS :: 4096;
+
+// How many entries an updatedPermissions array holds, counted as the crate
+// does: one per update plus its rules or directories.
+cl_permission_entries :: (updates: string) -> int {
+  n := cl_count(updates);
+  if n < 0 { return 0; }
+  total := 0;
+  for k: 0..<n {
+    v := cl_item(updates, k);
+    if !v.ok || v.tok != JSON_OBJECT { continue; }
+    e := updates[v.from..<v.to];
+    total += 1;
+    rules := cl_count(cl_raw(e, "rules"));
+    dirs := cl_count(cl_raw(e, "directories"));
+    if rules > 0 { total += rules; }
+    if dirs > 0 { total += dirs; }
+  }
+  return total;
+}
+
+// {"behavior":"allow","updatedInput":INPUT<,"updatedPermissions":U><,"toolUseID":T>}
+cl_permission_allow :: (o: [] ClOut, updated_input: string, updated_permissions: string, tool_use_id: string) {
+  cl_put(o, "{\"behavior\":\"allow\",\"updatedInput\":"); cl_put(o, updated_input);
+  if updated_permissions.count > 0 { cl_put(o, ",\"updatedPermissions\":"); cl_put(o, updated_permissions); }
+  if tool_use_id.count > 0 { cl_put(o, ",\"toolUseID\":"); cl_put_string(o, tool_use_id); }
+  cl_put(o, "}");
+}
+
+cl_permission_deny :: (o: [] ClOut, message: string, interrupt: bool, tool_use_id: string) {
+  cl_put(o, "{\"behavior\":\"deny\",\"message\":"); cl_put_string(o, message);
+  if interrupt { cl_put(o, ",\"interrupt\":true"); }
+  if tool_use_id.count > 0 { cl_put(o, ",\"toolUseID\":"); cl_put_string(o, tool_use_id); }
+  cl_put(o, "}");
+}
+
+// An allow whose updatedPermissions is over the limit becomes this deny.
+cl_permission_over_limit :: (o: [] ClOut, entries: int, tool_use_id: string) {
+  cl_put(o, "{\"behavior\":\"deny\",\"message\":\"Permission answer denied: updatedPermissions holds ");
+  cl_put_int(o, entries);
+  cl_put(o, " entries, over the limit of "); cl_put_int(o, CL_MAX_UPDATED_PERMISSIONS); cl_put(o, "\"");
+  if tool_use_id.count > 0 { cl_put(o, ",\"toolUseID\":"); cl_put_string(o, tool_use_id); }
+  cl_put(o, "}");
+}
+
+// ---- inbound requests
+
+// What a control request from the CLI asks, read from its frame.
+ClRequest :: struct {
+  id_json: string;          // request_id as raw JSON, to echo
+  request_id: string;
+  subtype: string;
+  request: string;          // the request object, JSON
+  // can_use_tool
+  tool_name: string; input: string; tool_use_id: string; decision_reason: string;
+  decision_reason_type: string; blocked_path: string; title: string; display_name: string;
+  description: string; agent_id: string; permission_suggestions: string;
+  // hook_callback
+  callback_id: string; hook_event_name: string;
+  // mcp_message
+  server_name: string; mcp_message: string;
+  // elicitation
+  message: string; mode: string; url: string; elicitation_id: string;
+  // request_user_dialog
+  dialog_kind: string; payload: string;
+}
+
+cl_request_of :: (ar: [] ClArena, m: ClMessage) -> ClRequest {
+  r: ClRequest; l := m.line;
+  r.id_json = cl_raw(l, "request_id"); r.request_id = cl_str(ar, l, "request_id");
+  r.subtype = m.subtype;
+  q := cl_raw(l, "request"); r.request = q;
+  r.tool_name = cl_str(ar, q, "tool_name"); r.input = cl_raw(q, "input"); r.tool_use_id = cl_str(ar, q, "tool_use_id");
+  r.decision_reason = cl_str(ar, q, "decision_reason"); r.decision_reason_type = cl_str(ar, q, "decision_reason_type");
+  r.blocked_path = cl_str(ar, q, "blocked_path"); r.title = cl_str(ar, q, "title");
+  r.display_name = cl_str(ar, q, "display_name"); r.description = cl_str(ar, q, "description");
+  r.agent_id = cl_str(ar, q, "agent_id"); r.permission_suggestions = cl_raw(q, "permission_suggestions");
+  r.callback_id = cl_str(ar, q, "callback_id"); r.hook_event_name = cl_str(ar, q, "input.hook_event_name");
+  r.server_name = cl_str(ar, q, "server_name"); r.mcp_message = cl_raw(q, "message");
+  r.message = cl_str(ar, q, "message"); r.mode = cl_str(ar, q, "mode"); r.url = cl_str(ar, q, "url");
+  r.elicitation_id = cl_str(ar, q, "elicitation_id");
+  r.dialog_kind = cl_str(ar, q, "dialog_kind"); r.payload = cl_raw(q, "payload");
+  return r;
+}
+
+// An answer from the CLI to a request this SDK sent.
+ClResponse :: struct {
+  request_id: string;
+  sdk_number: int;          // N of "sdk-N", or -1 for another id
+  ok: bool;
+  response: string;         // JSON, "" when absent
+  error: string;
+  pending_permission_requests: string;    // JSON arrays, "" when absent
+  pending_user_dialog_requests: string;
+}
+
+cl_response_of :: (ar: [] ClArena, m: ClMessage) -> ClResponse {
+  r: ClResponse; l := cl_raw(m.line, "response");
+  r.request_id = cl_str(ar, l, "request_id");
+  r.sdk_number = -1;
+  if r.request_id.count > 4 && r.request_id[0..<4] == "sdk-" {
+    n := json_int(r.request_id[4..<r.request_id.count]);
+    if n.ok && n.value >= 0 { r.sdk_number = n.value; }
+  }
+  r.ok = cl_eq(l, cl_find(l, "subtype"), "success");
+  r.response = cl_raw(l, "response");
+  r.error = cl_str(ar, l, "error");
+  r.pending_permission_requests = cl_raw(l, "pending_permission_requests");
+  r.pending_user_dialog_requests = cl_raw(l, "pending_user_dialog_requests");
+  return r;
+}
+
+// Subtypes for the machine serving a session's tools; the TS SDK leaves them
+// unanswered, and so does this one.
+cl_remote_tool_subtype :: (s: string) -> bool {
+  return s == "remote_tool_call" || s == "remote_plumbing_call" || s == "remote_tools_probe" || s == "remote_tools_reannounce";
+}

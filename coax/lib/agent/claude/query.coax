@@ -1,0 +1,236 @@
+// A query (query.rs) as a state machine over lines: cl_feed takes one stdout
+// line and returns what it was, writing any frames the SDK owes the CLI into
+// the query's output. Nothing here touches the process; transport.coax
+// moves the bytes. Coax has no callbacks, so where the crate calls a host
+// closure (a permission handler, a hook, an SDK MCP tool) this returns an
+// event and the host answers it before the next line.
+//
+// What a ClEvent borrows (the message, the request) lives in the query's
+// line and arena and is valid until the next cl_feed.
+
+#load "options.coax";
+
+CL_ID_MAX :: 256;
+
+ClEventKind :: enum u8 {
+  none;             // handled inside: a keep-alive, an answer the SDK gives itself
+  initialized;      // initialize was answered and the prompt sent
+  message;          // an SDK message (typed, or ClKind.unknown with its line)
+  invalid;          // a line that isn't JSON; the stream goes on
+  control_result;   // the CLI answered a request the host sent
+  permission;       // can_use_tool: answer with cl_allow or cl_deny
+  hook;             // hook_callback: answer with cl_hook_answer
+  tool_call;        // tools/call to an SDK MCP server: answer with cl_tool_answer
+  failed;           // the query is over; q.error says why
+  end;              // the CLI closed its output
+}
+
+ClEvent :: struct {
+  kind: ClEventKind;
+  message: ClMessage;
+  request: ClRequest;
+  response: ClResponse;
+  hook: int;            // hook: which of options.hooks
+  server: int;          // tool_call: which of options.servers
+  tool: int;            //            and which of its tools
+  arguments: string;    //            the call's arguments, JSON
+}
+
+ClQuery :: struct {
+  options: ClOptions;
+  line: [] u8;             // storage for the current line
+  line_len: int;
+  ar: [1] ClArena;         // decoded strings of the current line
+  out: [1] ClOut;          // frames waiting to be written
+  next_id: int;            // the next request is sdk-N
+  init_id: int;
+  initialized: bool;
+  models: int;             // from the initialize answer
+  commands: int;
+  version: [64] u8;        // claude_code_version from the initialize answer
+  version_len: int;
+  prompt: string;          // sent once initialize is answered
+  prompt_pending: bool;
+  streaming: bool;         // a result ends a turn, not the query
+  completed: bool;
+  session: [128] u8;       // from system/init
+  session_len: int;
+  error: [512] u8;
+  error_len: int;
+  // A request from the CLI the host has not answered yet.
+  pending: ClEventKind;
+  pending_id: [CL_ID_MAX] u8;
+  pending_id_len: int;
+  pending_mcp_id: [CL_ID_MAX] u8;   // the JSON-RPC id of a tools/call, as JSON
+  pending_mcp_id_len: int;
+  // Requests the host sent that wait for an answer (their sdk-N), for timeouts.
+  waiting: int;
+}
+
+cl_init :: (q: [] ClQuery, line: [] u8, arena: [] u8, out: [] u8) {
+  q[0].line = line; q[0].ar[0].buf = arena; q[0].out[0].buf = out;
+  q[0].pending = ClEventKind.none;
+}
+
+cl_session_id :: (q: [] ClQuery) -> string { return cast(string) q[0].session[0..<q[0].session_len]; }
+cl_claude_code_version :: (q: [] ClQuery) -> string { return cast(string) q[0].version[0..<q[0].version_len]; }
+cl_error :: (q: [] ClQuery) -> string { return cast(string) q[0].error[0..<q[0].error_len]; }
+
+cl_copy :: (dst: [] u8, s: string) -> int {
+  n := ifx s.count < dst.count then s.count else dst.count;
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+
+cl_fail :: (q: [] ClQuery, a: string, b: string) -> ClEvent {
+  n := cl_copy(q[0].error[..], a);
+  n += cl_copy(q[0].error[n..<q[0].error.count], b);
+  q[0].error_len = n; q[0].completed = true;
+  return ClEvent.{kind = ClEventKind.failed};
+}
+
+// Appends s escaped as JSON string content, without quotes.
+cl_put_escaped :: (o: [] ClOut, s: string) {
+  if o[0].failed { return; }
+  at := o[0].len;
+  n := json_write_string(o[0].buf, at, s);
+  if n < 0 { o[0].failed = true; return; }
+  for i: at..<n - 2 { o[0].buf[i] = o[0].buf[i + 1]; }
+  o[0].len = n - 2;
+}
+
+// An error answer whose text is a + b.
+cl_answer_error :: (q: [] ClQuery, id_json: string, a: string, b: string) {
+  o := q[0].out[..];
+  cl_put(o, "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":");
+  cl_put(o, id_json);
+  cl_put(o, ",\"error\":\""); cl_put_escaped(o, a); cl_put_escaped(o, b); cl_put(o, "\"}}\n");
+}
+
+// The members of the initialize request after its subtype.
+cl_initialize_fields :: (q: [] ClQuery, o: [] ClOut) {
+  cl_put(o, "");
+}
+
+// Start: check the options and queue the initialize request. The prompt
+// follows once initialize is answered; with streaming, there is none and the
+// host sends messages with cl_send_user. Returns what is wrong, or "".
+cl_begin :: (q: [] ClQuery, prompt: string, streaming: bool) -> string {
+  problem := cl_validate(q[0].options);
+  if problem.count > 0 { return problem; }
+  q[0].prompt = prompt; q[0].prompt_pending = !streaming; q[0].streaming = streaming;
+  q[0].init_id = q[0].next_id; q[0].next_id += 1;
+  fields: [1] ClOut; fields[0].buf = q[0].ar[0].buf;
+  cl_initialize_fields(q, fields[..]);
+  if fields[0].failed { return "the initialize request does not fit"; }
+  cl_control_request(q[0].out[..], q[0].init_id, "initialize", cast(string) fields[0].buf[0..<fields[0].len]);
+  q[0].waiting += 1;
+  if q[0].out[0].failed { return "the initialize request does not fit"; }
+  return "";
+}
+
+// A user message now (streaming input, or a follow-up turn).
+cl_send_user :: (q: [] ClQuery, text: string) {
+  cl_user_text(q[0].out[..], text, cl_session_id(q), q[0].options.verbatim_prompts);
+}
+
+// A host request with these members after its subtype; returns its number N
+// (the answer is a control_result event whose response.sdk_number is N).
+cl_request :: (q: [] ClQuery, subtype: string, fields: string) -> int {
+  n := q[0].next_id; q[0].next_id += 1;
+  cl_control_request(q[0].out[..], n, subtype, fields);
+  q[0].waiting += 1;
+  return n;
+}
+
+cl_interrupt :: (q: [] ClQuery) -> int { return cl_request(q, "interrupt", ""); }
+
+// The answer the SDK owes for a request the host left unanswered.
+cl_settle_pending :: (q: [] ClQuery) {
+  if q[0].pending == ClEventKind.none { return; }
+  id := cast(string) q[0].pending_id[0..<q[0].pending_id_len];
+  if q[0].pending == ClEventKind.permission { cl_answer_error(q, id, "invalid protocol message: ", "canUseTool callback is not provided"); }
+  else if q[0].pending == ClEventKind.hook { cl_answer_error(q, id, "hook callback failed: ", "the host did not answer"); }
+  else { cl_answer_error(q, id, "MCP server error: ", "the host did not answer the tool call"); }
+  q[0].pending = ClEventKind.none;
+}
+
+cl_hold :: (q: [] ClQuery, kind: ClEventKind, id_json: string) {
+  q[0].pending = kind;
+  q[0].pending_id_len = cl_copy(q[0].pending_id[..], id_json);
+}
+
+// A control request from the CLI.
+cl_on_request :: (q: [] ClQuery, ev: ClEvent) -> ClEvent {
+  r := ev.request;
+  if r.id_json.count > CL_ID_MAX { return ClEvent.{kind = ClEventKind.none}; }
+  if r.subtype == "can_use_tool" {
+    cl_answer_error(q, r.id_json, "invalid protocol message: ", "canUseTool callback is not provided");
+    return ClEvent.{kind = ClEventKind.none};
+  }
+  if r.subtype == "hook_callback" {
+    cl_answer_error(q, r.id_json, "hook callback failed: no hook callback found for ID: ", r.callback_id);
+    return ClEvent.{kind = ClEventKind.none};
+  }
+  if r.subtype == "mcp_message" {
+    cl_answer_error(q, r.id_json, "MCP server error: SDK MCP server not found: ", r.server_name);
+    return ClEvent.{kind = ClEventKind.none};
+  }
+  if r.subtype == "elicitation" { cl_control_success(q[0].out[..], r.id_json, "{\"action\":\"decline\"}"); return ClEvent.{kind = ClEventKind.none}; }
+  if r.subtype == "request_user_dialog" { return ClEvent.{kind = ClEventKind.none}; }
+  if r.subtype == "oauth_token_refresh" { cl_answer_error(q, r.id_json, "invalid protocol message: ", "getOAuthToken callback is not provided"); return ClEvent.{kind = ClEventKind.none}; }
+  if r.subtype == "host_auth_token_refresh" { cl_answer_error(q, r.id_json, "invalid protocol message: ", "getHostAuthToken callback is not provided"); return ClEvent.{kind = ClEventKind.none}; }
+  cl_answer_error(q, r.id_json, "invalid protocol message: unsupported control request subtype: ", r.subtype);
+  return ClEvent.{kind = ClEventKind.none};
+}
+
+// One stdout line (without its newline).
+cl_feed :: (q: [] ClQuery, line: string) -> ClEvent {
+  cl_settle_pending(q);
+  q[0].ar[0].at = 0; q[0].ar[0].full = false;
+  ev: ClEvent;
+  m := cl_classify(q[0].ar[..], line);
+  ev.message = m;
+  if m.frame == ClFrame.invalid { ev.kind = ClEventKind.invalid; return ev; }
+  if m.frame == ClFrame.keep_alive { return ev; }
+  if m.frame == ClFrame.control_cancel {
+    id := cl_raw(line, "request_id");
+    if q[0].pending != ClEventKind.none && id == cast(string) q[0].pending_id[0..<q[0].pending_id_len] { q[0].pending = ClEventKind.none; }
+    return ev;
+  }
+  if m.frame == ClFrame.unsupported_control {
+    if !cl_remote_tool_subtype(m.subtype) {
+      cl_answer_error(q, cl_raw(line, "request_id"), "unsupported control request subtype: ", m.subtype);
+    }
+    return ev;
+  }
+  if m.frame == ClFrame.control_request {
+    ev.request = cl_request_of(q[0].ar[..], m);
+    return cl_on_request(q, ev);
+  }
+  if m.frame == ClFrame.control_response {
+    r := cl_response_of(q[0].ar[..], m);
+    ev.response = r;
+    if q[0].waiting > 0 { q[0].waiting -= 1; }
+    if r.sdk_number == q[0].init_id && !q[0].initialized {
+      if !r.ok { return cl_fail(q, "initialization failed: ", r.error); }
+      q[0].initialized = true;
+      q[0].models = cl_count(cl_raw(r.response, "models"));
+      q[0].commands = cl_count(cl_raw(r.response, "commands"));
+      q[0].version_len = cl_copy(q[0].version[..], cl_str(q[0].ar[..], r.response, "claude_code_version"));
+      if q[0].prompt_pending { q[0].prompt_pending = false; cl_send_user(q, q[0].prompt); }
+      ev.kind = ClEventKind.initialized;
+      return ev;
+    }
+    ev.kind = ClEventKind.control_result;
+    return ev;
+  }
+  ev.kind = ClEventKind.message;
+  if m.kind == ClKind.system && m.system == ClSystem.init { q[0].session_len = cl_copy(q[0].session[..], m.session_id); }
+  if m.kind == ClKind.result && !q[0].streaming { q[0].completed = true; }
+  return ev;
+}
+
+// The frames waiting to be written, and forgetting them once written.
+cl_outbox :: (q: [] ClQuery) -> string { return cast(string) q[0].out[0].buf[0..<q[0].out[0].len]; }
+cl_outbox_clear :: (q: [] ClQuery) { q[0].out[0].len = 0; q[0].out[0].failed = false; }

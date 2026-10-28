@@ -45,12 +45,20 @@ Json :: struct {
   from: int; to: int;          // the token's bytes (a string's without its quotes)
   key: bool;                   // the string token is an object's key
   error_at: int;               // where it was refused, or -1
+  max_input: int = JSON_MAX_INPUT;    // the limits json_start_bounded may raise
+  max_string: int = JSON_MAX_STRING;
 }
 
-json_start :: (j: [] Json, text: string) {
+json_start :: (j: [] Json, text: string) { json_start_bounded(j, text, JSON_MAX_INPUT, JSON_MAX_STRING); }
+
+// json_start with other limits for the whole input and for one string's raw
+// bytes, for callers that hold larger documents (the Claude Agent SDK's
+// stream-json lines).
+json_start_bounded :: (j: [] Json, text: string, max_input: int, max_string: int) {
+  j[0].max_input = max_input; j[0].max_string = max_string;
   j[0].text = text; j[0].at = 0; j[0].depth = 0; j[0].want = JW_VALUE;
   j[0].tok = JSON_END; j[0].from = 0; j[0].to = 0; j[0].key = false; j[0].error_at = -1;
-  if text.count > JSON_MAX_INPUT { refused := json_refuse(j, 0); }
+  if text.count > max_input { refused := json_refuse(j, 0); }
 }
 
 json_refuse :: (j: [] Json, at: int) -> int {
@@ -96,7 +104,7 @@ json_string :: (j: [] Json) -> int {
   text := j[0].text;
   i := j[0].at + 1;
   while true {
-    if i >= text.count || i - j[0].at - 1 > JSON_MAX_STRING { return json_refuse(j, i); }
+    if i >= text.count || i - j[0].at - 1 > j[0].max_string { return json_refuse(j, i); }
     c := text[i];
     if c == '"' { break; }
     if c < 0x20 { return json_refuse(j, i); }
@@ -256,6 +264,50 @@ json_int :: (s: string) -> JsonInt {
     v=v*10+digit;i+=1;
   }
   return JsonInt.{ok=true,value=ifx negative then -v else v};
+}
+
+// A number token's text as the nearest-ish f64: the significant digits (the
+// first 18) times a power of ten. Within a few ulps, not correctly rounded;
+// for amounts the CLI reports, such as a turn's cost in dollars.
+JsonF64 :: struct { ok: bool; value: f64; }
+json_f64 :: (s: string) -> JsonF64 {
+  r: JsonF64; i := 0; negative := false;
+  if s.count == 0 { return r; }
+  if s[0] == '-' { negative = true; i = 1; }
+  if i >= s.count || !json_digit(s[i]) { return r; }
+  mantissa := 0; digits := 0; scale := 0; seen := false;
+  while i < s.count && json_digit(s[i]) {
+    d := cast(int) (s[i] - '0');
+    if d != 0 || seen { seen = true; if digits < 18 { mantissa = mantissa * 10 + d; digits += 1; } else { scale += 1; } }
+    i += 1;
+  }
+  if i < s.count && s[i] == '.' {
+    i += 1;
+    if i >= s.count || !json_digit(s[i]) { return r; }
+    while i < s.count && json_digit(s[i]) {
+      d := cast(int) (s[i] - '0');
+      if d != 0 || seen { seen = true; if digits < 18 { mantissa = mantissa * 10 + d; digits += 1; scale -= 1; } }
+      else { scale -= 1; }
+      i += 1;
+    }
+  }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1; minus := false;
+    if i < s.count && (s[i] == '+' || s[i] == '-') { minus = s[i] == '-'; i += 1; }
+    if i >= s.count || !json_digit(s[i]) { return r; }
+    e := 0;
+    while i < s.count && json_digit(s[i]) { if e < 100000 { e = e * 10 + cast(int) (s[i] - '0'); } i += 1; }
+    scale = ifx minus then scale - e else scale + e;
+  }
+  if i != s.count { return r; }
+  v := f64(mantissa);
+  if mantissa != 0 {
+    if scale > 308 { return r; }
+    if scale < -340 { v = 0; }
+    else if scale < 0 { v = v / pow(10.0f64, f64(-scale)); }
+    else if scale > 0 { v = v * pow(10.0f64, f64(scale)); }
+  }
+  return JsonF64.{ok = true, value = ifx negative then -v else v};
 }
 
 // A UTF-8 encoding of cp into out at n: the new length, or -1 when it doesn't fit.
@@ -454,6 +506,26 @@ json_write_int :: (out: [] u8, at: int, v: int) -> int {
   small: [2] u8;
   #assert json_unescape("abc", small[..]) == -1 && json_unescape("\\u20ac", small[..]) == -1 && json_unescape("ab", small[..]) == 2;
   #assert json_is("a\\u0062c", "abc") && json_is("abc", "abc") && !json_is("abd", "abc") && !json_is("ab", "abc");
+}
+
+#test "numbers as f64: fractions, exponents, signs; not what isn't a number" {
+  #assert json_f64("0.05").ok && abs(json_f64("0.05").value - 0.05) < 0.0000000000001;
+  #assert json_f64("-1.5e2").value == -150.0 && json_f64("1E+3").value == 1000.0;
+  #assert json_f64("0").ok && json_f64("0").value == 0.0 && json_f64("-0.0").ok;
+  #assert json_f64("200000").value == 200000.0 && json_f64("0.001").ok;
+  #assert abs(json_f64("123456789012345678901234").value - 123456789012345678901234.0) < 1e10;
+  #assert !json_f64("").ok && !json_f64("-").ok && !json_f64("1.").ok && !json_f64("1e").ok && !json_f64("x").ok && !json_f64("1x").ok;
+  #assert !json_f64("1e400").ok && json_f64("1e-400").value == 0.0;
+}
+
+#test "bounded starts raise the input and string limits" {
+  long: [JSON_MAX_STRING + 3] u8;
+  for i: 0..<long.count { long[i] = 'a'; }
+  long[0] = '"'; long[JSON_MAX_STRING + 2] = '"';
+  j: [1] Json;
+  json_start(j[..], cast(string) long[..]); #assert json_next(j[..]) == JSON_ERROR;
+  json_start_bounded(j[..], cast(string) long[..], JSON_MAX_INPUT, JSON_MAX_STRING + 1); #assert json_next(j[..]) == JSON_STRING;
+  json_start_bounded(j[..], "[1]", 2, 8); #assert json_next(j[..]) == JSON_ERROR;
 }
 
 #test "integers within 2^53, and nothing else" {

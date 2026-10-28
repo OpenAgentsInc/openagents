@@ -1,0 +1,147 @@
+// The process transport (transport/process.rs): the claude CLI as a child in
+// its own process group, stream-json on stdin and stdout, stderr kept. The
+// effects are coax/platform/process-native.c, reached with #foreign; link
+// that file into the program. Strings cross the boundary a byte at a time.
+
+#load "query.coax";
+
+cxproc_new :: () -> int #foreign;
+cxproc_push :: (h: int, field: int, byte: int) -> int #foreign;
+cxproc_end :: (h: int, field: int) -> int #foreign;
+cxproc_spawn :: (h: int) -> int #foreign;
+cxproc_read_line :: (h: int, timeout_ms: int) -> int #foreign;
+cxproc_line_byte :: (h: int, i: int) -> int #foreign;
+cxproc_write :: (h: int, byte: int) -> int #foreign;
+cxproc_flush :: (h: int) -> int #foreign;
+cxproc_close_stdin :: (h: int) -> int #foreign;
+cxproc_kill :: (h: int, sig: int) -> int #foreign;
+cxproc_wait :: (h: int, timeout_ms: int) -> int #foreign;
+cxproc_pid :: (h: int) -> int #foreign;
+cxproc_group_alive :: (pgid: int) -> int #foreign;
+cxproc_stderr_count :: (h: int) -> int #foreign;
+cxproc_stderr_byte :: (h: int, i: int) -> int #foreign;
+cxproc_release :: (h: int) -> int #foreign;
+cxproc_now_ms :: () -> int #foreign;
+cxproc_getenv_push :: (byte: int) -> int #foreign;
+cxproc_getenv :: () -> int #foreign;
+cxproc_getenv_byte :: (i: int) -> int #foreign;
+
+CL_EOF :: -1;
+CL_TIMEOUT :: -2;
+CL_TOO_LONG :: -4;
+CL_SIGKILL :: 9;
+CL_SIGTERM :: 15;
+
+CL_FIELD_ARG :: 0;
+CL_FIELD_ENV :: 1;
+CL_FIELD_UNSET :: 2;
+CL_FIELD_CWD :: 3;
+
+// The child of a running query.
+ClProcess :: struct {
+  handle: int = -1;
+  pid: int;           // also its process group's id
+}
+
+cl_push :: (h: int, field: int, s: string) -> bool {
+  for c: s { if c == 0 || cxproc_push(h, field, cast(int) c) != 0 { return false; } }
+  return cxproc_end(h, field) == 0;
+}
+
+// Spawn the CLI for q's options and queue initialize (the prompt follows
+// its answer). scratch holds the argument list while it is built. Returns
+// what went wrong, or "".
+cl_start :: (q: [] ClQuery, p: [] ClProcess, prompt: string, streaming: bool, scratch: [] u8) -> string {
+  problem := cl_begin(q, prompt, streaming);
+  if problem.count > 0 { return problem; }
+  third := scratch.count / 3;
+  args: [1] ClArgs; args[0].buf = scratch[0..<third];
+  cl_build_args(q[0].options, args[..], scratch[2 * third..<scratch.count]);
+  env: [1] ClArgs; env[0].buf = scratch[third..<2 * third];
+  cl_build_env(q[0].options, env[..]);
+  if args[0].failed || env[0].failed { return "the arguments do not fit"; }
+  h := cxproc_new();
+  if h < 0 { return "no process slot is free"; }
+  ok := true;
+  for i: 0..<args[0].count { ok = ok && cl_push(h, CL_FIELD_ARG, cl_arg_at(args[..], i)); }
+  for i: 0..<q[0].options.env_remove_count { ok = ok && cl_push(h, CL_FIELD_UNSET, q[0].options.env_remove[i]); }
+  for i: 0..<env[0].count { ok = ok && cl_push(h, CL_FIELD_ENV, cl_arg_at(env[..], i)); }
+  if q[0].options.cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, q[0].options.cwd); }
+  if !ok { r := cxproc_release(h); return "an argument holds a zero byte or does not fit"; }
+  e := cxproc_spawn(h);
+  if e != 0 { r := cxproc_release(h); return ifx e == 2 then "claude executable not found" else "failed to spawn claude process"; }
+  p[0].handle = h; p[0].pid = cxproc_pid(h);
+  return "";
+}
+
+// Write the frames the query owes the CLI. False when stdin is gone.
+cl_flush :: (q: [] ClQuery, p: [] ClProcess) -> bool {
+  out := cl_outbox(q);
+  if out.count == 0 { return true; }
+  if q[0].out[0].failed { cl_outbox_clear(q); return false; }
+  for c: out { if cxproc_write(p[0].handle, cast(int) c) != 0 { cl_outbox_clear(q); return false; } }
+  cl_outbox_clear(q);
+  return cxproc_flush(p[0].handle) == 0;
+}
+
+// The next event. It first writes what the query owes (the host's answer to
+// the last event included), then reads one line. While a control request
+// waits for its answer the read times out after options.control_timeout_ms.
+cl_next :: (q: [] ClQuery, p: [] ClProcess) -> ClEvent {
+  cl_settle_pending(q);
+  if !cl_flush(q, p) { return cl_fail(q, "failed to write to stdin: ", "broken pipe"); }
+  if q[0].completed { return ClEvent.{kind = ClEventKind.end}; }
+  timeout := ifx q[0].waiting > 0 then q[0].options.control_timeout_ms else -1;
+  n := cxproc_read_line(p[0].handle, timeout);
+  if n == CL_TIMEOUT { return cl_fail(q, "control request timed out", ""); }
+  if n == CL_EOF { q[0].completed = true; return ClEvent.{kind = ClEventKind.end}; }
+  if n == CL_TOO_LONG || n > q[0].line.count {
+    if n > 0 { for i: 0..<q[0].line.count { q[0].line[i] = 0; } }
+    return ClEvent.{kind = ClEventKind.invalid};
+  }
+  if n < 0 { return cl_fail(q, "failed to read from stdout", ""); }
+  for i: 0..<n { q[0].line[i] = cast(u8) cxproc_line_byte(p[0].handle, i); }
+  q[0].line_len = n;
+  return cl_feed(q, cast(string) q[0].line[0..<n]);
+}
+
+// Close stdin so the CLI finishes its work and exits (TS endInput).
+cl_end_input :: (q: [] ClQuery, p: [] ClProcess) -> bool {
+  ok := cl_flush(q, p);
+  return cxproc_close_stdin(p[0].handle) == 0 && ok;
+}
+
+// Stop the CLI's whole process group and reap it; its exit status.
+cl_kill :: (p: [] ClProcess) -> int {
+  if p[0].handle < 0 { return -1; }
+  k := cxproc_kill(p[0].handle, CL_SIGKILL);
+  return cxproc_wait(p[0].handle, 5000);
+}
+
+// Kill if still running, reap and free the child (the crate's Drop).
+cl_close :: (p: [] ClProcess) {
+  if p[0].handle < 0 { return; }
+  r := cxproc_release(p[0].handle);
+  p[0].handle = -1;
+}
+
+// Whether any process of the group is still alive.
+cl_group_alive :: (p: [] ClProcess) -> bool { return p[0].pid > 0 && cxproc_group_alive(p[0].pid) != 0; }
+
+// The CLI's last stderr bytes, copied into out.
+cl_stderr :: (p: [] ClProcess, out: [] u8) -> string {
+  n := cxproc_stderr_count(p[0].handle);
+  if n > out.count { n = out.count; }
+  for i: 0..<n { out[i] = cast(u8) cxproc_stderr_byte(p[0].handle, i); }
+  return cast(string) out[0..<n];
+}
+
+// A variable of the host's own environment, copied into out ("" when unset).
+cl_getenv :: (name: string, out: [] u8) -> string {
+  for c: name { r := cxproc_getenv_push(cast(int) c); }
+  n := cxproc_getenv();
+  if n < 0 { return ""; }
+  if n > out.count { n = out.count; }
+  for i: 0..<n { out[i] = cast(u8) cxproc_getenv_byte(i); }
+  return cast(string) out[0..<n];
+}

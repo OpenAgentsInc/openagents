@@ -1,0 +1,268 @@
+// QueryOptions: what becomes the CLI's flags and environment (options.rs,
+// build_args_for and env_vars). The initialize request is in query.coax.
+// Flag values ride in the flag's own argument (--model=haiku), as the TS SDK
+// does since 0.3.295; --mcp-config, --settings and extra arguments keep
+// "--flag value" unless the value starts with '-'.
+
+#load "control.coax";
+
+CL_LIST :: 32;     // tools, allowed and disallowed tools
+CL_ENV :: 16;      // environment entries set or removed
+CL_DIRS :: 8;
+CL_EXTRA :: 8;
+CL_ARGS :: 128;    // arguments in all
+
+CL_HOOKS :: 16;    // hook callbacks
+CL_SERVERS :: 4;   // in-process SDK MCP servers
+CL_TOOLS :: 16;    // tools on one of them
+
+// One hook callback: the host answers its hook_callback requests, which come
+// with its id hook_N (N is its place in the registration order the CLI is
+// told, events sorted by name as the crate does).
+ClHook :: struct {
+  event: string;      // a HookEvent name: PreToolUse, PostToolUse, ...
+  matcher: string;    // "" matches every tool
+  timeout: f64;       // seconds; 0 is unset
+}
+
+CL_HOOK_EVENTS :: [33] string.["PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch",
+  "Notification", "UserPromptSubmit", "UserPromptExpansion", "SessionStart", "SessionEnd", "Stop",
+  "StopFailure", "SubagentStart", "SubagentStop", "PreCompact", "PostCompact", "PreModelSwitch",
+  "PostModelSwitch", "PermissionRequest", "PermissionDenied", "Setup", "TeammateIdle",
+  "TaskCreated", "TaskCompleted", "Elicitation", "ElicitationResult", "ConfigChange",
+  "WorktreeCreate", "WorktreeRemove", "InstructionsLoaded", "CwdChanged", "FileChanged",
+  "DirectoryAdded", "MessageDisplay"];
+
+cl_hook_event_known :: (e: string) -> bool { for n: CL_HOOK_EVENTS { if n == e { return true; } } return false; }
+
+// A tool of an in-process SDK MCP server (the TS tool()). The host runs it
+// when its tools/call arrives.
+ClTool :: struct {
+  name: string;
+  description: string;
+  input_schema: string;   // JSON Schema, JSON
+  annotations: string;    // JSON, or ""
+  always_load: bool;      // _meta anthropic/alwaysLoad
+  search_hint: string;    // _meta anthropic/searchHint
+}
+
+// An in-process SDK MCP server (the TS createSdkMcpServer()).
+ClServer :: struct {
+  name: string;
+  version: string;
+  instructions: string;
+  always_load: bool;
+  timeout_ms: int;        // 0 is unset
+  tools: [CL_TOOLS] ClTool;
+  tool_count: int;
+}
+
+ClPermissionMode :: enum u8 { unset; default; accept_edits; bypass_permissions; plan; dont_ask; auto; }
+
+cl_permission_mode_name :: (m: ClPermissionMode) -> string {
+  if m == ClPermissionMode.default { return "default"; }
+  if m == ClPermissionMode.accept_edits { return "acceptEdits"; }
+  if m == ClPermissionMode.bypass_permissions { return "bypassPermissions"; }
+  if m == ClPermissionMode.plan { return "plan"; }
+  if m == ClPermissionMode.dont_ask { return "dontAsk"; }
+  if m == ClPermissionMode.auto { return "auto"; }
+  return "";
+}
+
+ClOptions :: struct {
+  program: string;                  // the CLI; "" is claude, found on PATH
+  model: string;
+  fallback_model: string;
+  system_prompt: string;            // replaces the preset (--system-prompt)
+  append_system_prompt: string;     // added to the preset (--append-system-prompt)
+  permission_mode: ClPermissionMode;
+  allow_dangerously_skip_permissions: bool;
+  max_turns: int;                   // 0 is unset
+  max_budget_usd: f64;
+  has_max_budget: bool;
+  max_thinking_tokens: int;         // 0 is unset
+  allowed_tools: [CL_LIST] string;
+  allowed_count: int;
+  disallowed_tools: [CL_LIST] string;
+  disallowed_count: int;
+  tools_set: bool;                  // --tools: the base set; none listed is no tools
+  tools_default: bool;              // --tools=default
+  tools: [CL_LIST] string;
+  tools_count: int;
+  mcp_servers: string;              // external servers, a JSON object of name to config
+  strict_mcp_config: bool;
+  setting_sources_set: bool;        // --setting-sources; none listed loads no settings files
+  setting_sources: [3] string;      // user, project, local
+  setting_sources_count: int;
+  include_partial_messages: bool;
+  include_hook_events: bool;
+  persist_session: bool = true;
+  continue_session: bool;
+  resume: string;
+  session_id: string;
+  fork_session: bool;
+  additional_directories: [CL_DIRS] string;
+  additional_count: int;
+  settings: string;                 // a settings file path or inline JSON
+  cwd: string;
+  env: [CL_ENV] string;             // KEY=VALUE, set in the child only
+  env_count: int;
+  env_remove: [CL_ENV] string;      // inherited variables the child doesn't get
+  env_remove_count: int;
+  permission_handler: bool;         // the host answers can_use_tool (--permission-prompt-tool=stdio)
+  permission_prompt_tool_name: string;
+  extra_flags: [CL_EXTRA] string;   // --NAME, with a value when extra_values[i] isn't ""
+  extra_values: [CL_EXTRA] string;
+  extra_count: int;
+  verbatim_prompts: bool;           // user messages carry client_composed
+  control_timeout_ms: int = 60000;  // how long a control request may wait
+  // Filled by cl_add_hook and cl_add_server (query.coax).
+  hooks: [CL_HOOKS] ClHook;
+  hook_count: int;
+  servers: [CL_SERVERS] ClServer;
+  server_count: int;
+  sdk_mcp_manifests: bool;
+}
+
+cl_add_allowed :: (o: [] ClOptions, tool: string) { if o[0].allowed_count < CL_LIST { o[0].allowed_tools[o[0].allowed_count] = tool; o[0].allowed_count += 1; } }
+cl_add_disallowed :: (o: [] ClOptions, tool: string) { if o[0].disallowed_count < CL_LIST { o[0].disallowed_tools[o[0].disallowed_count] = tool; o[0].disallowed_count += 1; } }
+cl_add_tool :: (o: [] ClOptions, tool: string) { o[0].tools_set = true; if o[0].tools_count < CL_LIST { o[0].tools[o[0].tools_count] = tool; o[0].tools_count += 1; } }
+cl_add_env :: (o: [] ClOptions, entry: string) { if o[0].env_count < CL_ENV { o[0].env[o[0].env_count] = entry; o[0].env_count += 1; } }
+cl_remove_env :: (o: [] ClOptions, name: string) { if o[0].env_remove_count < CL_ENV { o[0].env_remove[o[0].env_remove_count] = name; o[0].env_remove_count += 1; } }
+cl_add_setting_source :: (o: [] ClOptions, s: string) { o[0].setting_sources_set = true; if o[0].setting_sources_count < 3 { o[0].setting_sources[o[0].setting_sources_count] = s; o[0].setting_sources_count += 1; } }
+cl_add_directory :: (o: [] ClOptions, d: string) { if o[0].additional_count < CL_DIRS { o[0].additional_directories[o[0].additional_count] = d; o[0].additional_count += 1; } }
+cl_add_extra :: (o: [] ClOptions, flag: string, value: string) { if o[0].extra_count < CL_EXTRA { o[0].extra_flags[o[0].extra_count] = flag; o[0].extra_values[o[0].extra_count] = value; o[0].extra_count += 1; } }
+
+cl_add_hook :: (o: [] ClOptions, event: string, matcher: string, timeout: f64) {
+  if o[0].hook_count < CL_HOOKS { o[0].hooks[o[0].hook_count] = ClHook.{event = event, matcher = matcher, timeout = timeout}; o[0].hook_count += 1; }
+}
+// Adds a server and returns its index, or -1 when there is no room.
+cl_add_server :: (o: [] ClOptions, name: string, version: string) -> int {
+  if o[0].server_count >= CL_SERVERS { return -1; }
+  k := o[0].server_count;
+  o[0].servers[k].name = name; o[0].servers[k].version = version;
+  o[0].server_count += 1;
+  return k;
+}
+cl_add_server_tool :: (o: [] ClOptions, server: int, name: string, description: string, input_schema: string) -> int {
+  if server < 0 || server >= o[0].server_count || o[0].servers[server].tool_count >= CL_TOOLS { return -1; }
+  k := o[0].servers[server].tool_count;
+  o[0].servers[server].tools[k] = ClTool.{name = name, description = description, input_schema = input_schema};
+  o[0].servers[server].tool_count += 1;
+  return k;
+}
+
+// What is wrong with the options, or "".
+cl_validate :: (o: ClOptions) -> string {
+  if o.fallback_model.count > 0 && o.fallback_model == o.model { return "fallback model cannot be the same as the main model"; }
+  if o.permission_handler && o.permission_prompt_tool_name.count > 0 { return "a permission handler and permission_prompt_tool_name cannot both be set"; }
+  for k: 0..<o.hook_count { if !cl_hook_event_known(o.hooks[k].event) { return "an unknown hook event"; } }
+  for k: 0..<o.server_count {
+    name := o.servers[k].name;
+    if name.count == 0 { return "an SDK MCP server needs a name"; }
+    for j: 0..<k { if o.servers[j].name == name { return "two SDK MCP servers share a name"; } }
+    if o.mcp_servers.count > 0 && cl_find(o.mcp_servers, name).ok { return "an SDK MCP server's name is also in mcp_servers"; }
+  }
+  return "";
+}
+
+// ---- the argument list
+
+ClArgs :: struct {
+  buf: [] u8;
+  len: int;
+  ends: [CL_ARGS] int;    // argument i is buf[ends[i-1]..<ends[i]]
+  count: int;
+  failed: bool;
+}
+
+cl_args_byte :: (a: [] ClArgs, text: string) {
+  if a[0].failed { return; }
+  n := json_raw(a[0].buf, a[0].len, text);
+  if n < 0 { a[0].failed = true; return; }
+  a[0].len = n;
+}
+cl_args_end :: (a: [] ClArgs) {
+  if a[0].failed { return; }
+  if a[0].count >= CL_ARGS { a[0].failed = true; return; }
+  a[0].ends[a[0].count] = a[0].len; a[0].count += 1;
+}
+cl_arg :: (a: [] ClArgs, s: string) { cl_args_byte(a, s); cl_args_end(a); }
+cl_arg_pair :: (a: [] ClArgs, flag: string, value: string) { cl_args_byte(a, flag); cl_args_byte(a, "="); cl_args_byte(a, value); cl_args_end(a); }
+cl_arg_split :: (a: [] ClArgs, flag: string, value: string) {
+  if value.count > 1 && value[0] == '-' { cl_arg_pair(a, flag, value); return; }
+  cl_arg(a, flag); cl_arg(a, value);
+}
+cl_arg_int :: (a: [] ClArgs, flag: string, v: int) {
+  digits: [24] u8;
+  n := json_write_int(digits[..], 0, v);
+  cl_arg_pair(a, flag, cast(string) digits[0..<n]);
+}
+cl_arg_list :: (a: [] ClArgs, flag: string, items: [] string, count: int) {
+  cl_args_byte(a, flag); cl_args_byte(a, "=");
+  for k: 0..<count { if k > 0 { cl_args_byte(a, ","); } cl_args_byte(a, items[k]); }
+  cl_args_end(a);
+}
+
+cl_arg_at :: (a: [] ClArgs, i: int) -> string {
+  from := ifx i == 0 then 0 else a[0].ends[i - 1];
+  return cast(string) a[0].buf[from..<a[0].ends[i]];
+}
+
+// The CLI's arguments, program first, in the crate's order.
+cl_build_args :: (o: ClOptions, a: [] ClArgs, scratch: [] u8) {
+  p := o;
+  cl_arg(a, ifx p.program.count > 0 then p.program else "claude");
+  cl_arg(a, "--output-format"); cl_arg(a, "stream-json"); cl_arg(a, "--verbose");
+  cl_arg(a, "--input-format"); cl_arg(a, "stream-json");
+  if p.max_thinking_tokens > 0 { cl_arg_int(a, "--max-thinking-tokens", p.max_thinking_tokens); }
+  if p.max_turns > 0 { cl_arg_int(a, "--max-turns", p.max_turns); }
+  if p.has_max_budget {
+    out: [1] ClOut; out[0].buf = scratch;
+    cl_put_f64(out[..], p.max_budget_usd);
+    cl_arg_pair(a, "--max-budget-usd", cast(string) scratch[0..<out[0].len]);
+  }
+  if p.model.count > 0 { cl_arg_pair(a, "--model", p.model); }
+  if p.permission_handler { cl_arg_pair(a, "--permission-prompt-tool", "stdio"); }
+  else if p.permission_prompt_tool_name.count > 0 { cl_arg_pair(a, "--permission-prompt-tool", p.permission_prompt_tool_name); }
+  if p.continue_session { cl_arg(a, "--continue"); }
+  if p.resume.count > 0 { cl_arg_pair(a, "--resume", p.resume); }
+  if p.allowed_count > 0 { cl_arg_list(a, "--allowedTools", p.allowed_tools[..], p.allowed_count); }
+  if p.disallowed_count > 0 { cl_arg_list(a, "--disallowedTools", p.disallowed_tools[..], p.disallowed_count); }
+  if p.tools_default { cl_arg_pair(a, "--tools", "default"); }
+  else if p.tools_set { cl_arg_list(a, "--tools", p.tools[..], p.tools_count); }
+  if p.mcp_servers.count > 0 {
+    out: [1] ClOut; out[0].buf = scratch;
+    cl_put(out[..], "{\"mcpServers\":"); cl_put(out[..], p.mcp_servers); cl_put(out[..], "}");
+    if out[0].failed { a[0].failed = true; } else { cl_arg_split(a, "--mcp-config", cast(string) scratch[0..<out[0].len]); }
+  }
+  if p.setting_sources_set { cl_arg_list(a, "--setting-sources", p.setting_sources[..], p.setting_sources_count); }
+  if p.strict_mcp_config { cl_arg(a, "--strict-mcp-config"); }
+  if p.permission_mode != ClPermissionMode.unset { cl_arg_pair(a, "--permission-mode", cl_permission_mode_name(p.permission_mode)); }
+  if p.allow_dangerously_skip_permissions { cl_arg(a, "--allow-dangerously-skip-permissions"); }
+  if p.fallback_model.count > 0 { cl_arg_pair(a, "--fallback-model", p.fallback_model); }
+  if p.include_hook_events { cl_arg(a, "--include-hook-events"); }
+  if p.include_partial_messages { cl_arg(a, "--include-partial-messages"); }
+  for k: 0..<p.additional_count { cl_arg_pair(a, "--add-dir", p.additional_directories[k]); }
+  if p.fork_session { cl_arg(a, "--fork-session"); }
+  if p.session_id.count > 0 { cl_arg_pair(a, "--session-id", p.session_id); }
+  if !p.persist_session { cl_arg(a, "--no-session-persistence"); }
+  if p.system_prompt.count > 0 { cl_arg_pair(a, "--system-prompt", p.system_prompt); }
+  else if p.append_system_prompt.count > 0 { cl_arg_pair(a, "--append-system-prompt", p.append_system_prompt); }
+  if p.settings.count > 0 { cl_arg_split(a, "--settings", p.settings); }
+  for k: 0..<p.extra_count {
+    cl_args_byte(a, "--"); cl_args_byte(a, p.extra_flags[k]);
+    if p.extra_values[k].count == 0 { cl_args_end(a); }
+    else if p.extra_values[k].count > 1 && p.extra_values[k][0] == '-' { cl_args_byte(a, "="); cl_args_byte(a, p.extra_values[k]); cl_args_end(a); }
+    else { cl_args_end(a); cl_arg(a, p.extra_values[k]); }
+  }
+}
+
+// The environment the child gets on top of the inherited one. Claude Code
+// never opens a browser or a login page for an SDK child; a missing sign-in
+// is said instead.
+cl_build_env :: (o: ClOptions, a: [] ClArgs) {
+  cl_arg(a, "BROWSER=true");
+  cl_arg(a, "NO_OPEN_BROWSER=1");
+  for k: 0..<o.env_count { cl_arg(a, o.env[k]); }
+}

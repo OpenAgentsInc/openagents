@@ -1,0 +1,104 @@
+// Live smoke against the installed claude CLI (examples/smoke.rs): the
+// initialize handshake and one short turn on the owner's Claude Code login,
+// never an API key. Nothing is saved (--no-session-persistence), no settings
+// files load and no tools are offered. Then a kill: a fake CLI that leaves a
+// grandchild running, killed as a group. Run it with smoke.sh.
+
+#import "Basic";
+#load "claude.coax";
+
+Buffers :: struct {
+  line: [] u8;
+  arena: [] u8;
+  out: [] u8;
+  scratch: [] u8;
+}
+
+new_query :: (q: [] ClQuery, b: Buffers) { cl_init(q, b.line, b.arena, b.out); }
+
+// One turn: prints the handshake, system/init, the result and its cost.
+pong :: (b: Buffers, model: string) -> bool {
+  q: [1] ClQuery; new_query(q[..], b);
+  o: [1] ClOptions;
+  o[0].model = model;
+  o[0].max_turns = 1;
+  o[0].persist_session = false;
+  o[0].tools_set = true;
+  o[0].setting_sources_set = true;
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+  q[0].options = o[0];
+  p: [1] ClProcess;
+  problem := cl_start(q[..], p[..], "Reply with the single word: pong", false, b.scratch);
+  if problem.count > 0 { print("start: %\n", problem); return false; }
+  defer cl_close(p[..]);
+  unknown := 0; invalid := 0; success := false;
+  while true {
+    ev := cl_next(q[..], p[..]);
+    if ev.kind == ClEventKind.end { break; }
+    if ev.kind == ClEventKind.failed { print("failed: %\n", cl_error(q[..])); return false; }
+    if ev.kind == ClEventKind.invalid { invalid += 1; continue; }
+    if ev.kind == ClEventKind.initialized {
+      v := cl_claude_code_version(q[..]);
+      print("initialize: ok (% models, % commands, claude_code_version=%)\n", q[0].models, q[0].commands, ifx v.count > 0 then v else "absent");
+      continue;
+    }
+    if ev.kind != ClEventKind.message { continue; }
+    m := ev.message;
+    if m.kind == ClKind.unknown {
+      unknown += 1;
+      print("unknown message: type=% subtype=%\n", m.type_name, cl_raw(m.line, "subtype"));
+      continue;
+    }
+    if m.kind == ClKind.system && m.system == ClSystem.init {
+      init := cl_init_of(q[0].ar[..], m);
+      print("system init: claude_code_version=% model=% tools=% permissionMode=%\n", init.claude_code_version, init.model, init.tool_count, init.permission_mode);
+      continue;
+    }
+    if m.kind == ClKind.result {
+      r := cl_result_of(q[0].ar[..], m);
+      print("result: % turns=% cost_usd=% duration_ms=% terminal_reason=% text=%\n", m.subtype, r.num_turns, r.total_cost_usd, r.duration_ms, r.terminal_reason, r.result);
+      success = r.kind == ClResultKind.success && !r.is_error;
+      continue;
+    }
+    print("message: %\n", m.type_name);
+  }
+  print("unknown messages: %, invalid lines: %\n", unknown, invalid);
+  if !success {
+    err: [2048] u8;
+    print("stderr: %\n", cl_stderr(p[..], err[..]));
+  }
+  return success && unknown == 0 && invalid == 0;
+}
+
+// A fake CLI that forks a grandchild into its group and waits: killing the
+// query must stop both.
+kill_group :: (b: Buffers, fake: string) -> bool {
+  q: [1] ClQuery; new_query(q[..], b);
+  q[0].options.program = fake;
+  p: [1] ClProcess;
+  problem := cl_start(q[..], p[..], "", true, b.scratch);
+  if problem.count > 0 { print("kill: start: %\n", problem); return false; }
+  defer cl_close(p[..]);
+  // The fake writes one line once its grandchild runs.
+  ev := cl_next(q[..], p[..]);
+  alive := cl_group_alive(p[..]);
+  status := cl_kill(p[..]);
+  deadline := cxproc_now_ms() + 3000;
+  while cl_group_alive(p[..]) && cxproc_now_ms() < deadline { }
+  gone := !cl_group_alive(p[..]);
+  print("kill: group % alive before=% exit=% group gone after=%\n", p[0].pid, alive, status, gone);
+  return alive && gone && status == 128 + CL_SIGKILL;
+}
+
+main :: () {
+  line: [CL_LINE_MAX] u8; arena: [262144] u8; out: [262144] u8; scratch: [196608] u8;
+  b := Buffers.{line = line[..], arena = arena[..], out = out[..], scratch = scratch[..]};
+  model_buf: [128] u8; fake_buf: [1024] u8;
+  model := cl_getenv("SMOKE_MODEL", model_buf[..]);
+  if model.count == 0 { model = "haiku"; }
+  fake := cl_getenv("SMOKE_FAKE_CLI", fake_buf[..]);
+  ok := true;
+  if fake.count > 0 { ok = kill_group(b, fake) && ok; }
+  if cl_getenv("SMOKE_SKIP_LIVE", model_buf[64..<128]).count == 0 { ok = pong(b, model) && ok; }
+  print("%\n", ifx ok then "smoke: ok" else "smoke: FAILED");
+}

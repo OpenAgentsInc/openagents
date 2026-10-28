@@ -1,0 +1,7 @@
+// The Coax Claude Agent SDK: a port of the stream-json protocol of the claude
+// CLI, tracking @anthropic-ai/claude-agent-sdk 0.3.296 (see PARITY.md).
+// Load this file and link coax/platform/process-native.c.
+
+#load "transport.coax";
+
+CL_UPSTREAM_SDK_VERSION :: "0.3.296";
