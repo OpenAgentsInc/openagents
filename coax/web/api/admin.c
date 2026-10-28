@@ -206,6 +206,13 @@ static void section(out_buf *o, PGconn *db, const char *title, const char *flags
   "  FROM analytics.events WHERE ms >= $1::bigint AND ($2 = 'all' OR space = $2) GROUP BY sid), " \
   "k AS (SELECT * FROM s WHERE $3::boolean OR NOT automated), " \
   "e AS (SELECT x.* FROM analytics.events x JOIN k USING (sid) WHERE x.ms >= $1::bigint) "
+// The playtesters in the filter (after KEPT): one row a join, so a person
+// who came back counts once among the people and again among the visits.
+// An automated one (its own mark, or its session's) counts only with $3.
+#define PLAYTESTERS \
+  ", pt AS (SELECT t.email FROM analytics.playtesters t " \
+  "  WHERE (CASE WHEN t.at < 1e11 THEN t.at * 1000 ELSE t.at END) >= $1::bigint AND ($2 = 'all' OR t.space = $2) " \
+  "  AND ($3::boolean OR (t.auto IS NULL AND NOT EXISTS (SELECT 1 FROM s WHERE s.sid = t.sid AND s.automated)))) "
 #define CHI(ms) "to_char(to_timestamp((" ms ") / 1000.0) AT TIME ZONE 'America/Chicago', 'MM-DD HH24:MI')"
 // The flow's steps, as the playtest's funnel counts them.
 #define STEP_OF \
@@ -215,7 +222,7 @@ static void section(out_buf *o, PGconn *db, const char *title, const char *flags
 #define STEP_NAMES "ARRAY['visited', 'loaded', 'in a world', 'editing', 'placed', 'published', 'shared', 'invited', 'answered']"
 
 static void overview(out_buf *o, PGconn *db, const char *const *f) {
-  section(o, db, "SUMMARY", "", "WHAT|COUNT", KEPT
+  section(o, db, "SUMMARY", "", "WHAT|COUNT", KEPT PLAYTESTERS
     "SELECT 'Sessions', count(*)::text FROM k "
     "UNION ALL SELECT 'Visitors', count(DISTINCT p->>'pid')::text FROM e WHERE ev = 'session-start' "
     "UNION ALL SELECT 'Events', count(*)::text FROM e "
@@ -223,6 +230,8 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "UNION ALL SELECT 'Entered a world', count(DISTINCT sid)::text FROM e WHERE ev = 'world-enter' "
     "UNION ALL SELECT 'Said or typed something', count(DISTINCT sid)::text FROM e WHERE p ? 'text' "
     "UNION ALL SELECT 'Errors', count(*)::text FROM e WHERE ev = 'error' "
+    "UNION ALL SELECT 'Playtesters', count(DISTINCT lower(email))::text FROM pt "
+    "UNION ALL SELECT 'Playtester visits', count(*)::text FROM pt "
     "UNION ALL SELECT 'Automated, ' || CASE WHEN $3::boolean THEN 'counted' ELSE 'left out' END, count(*)::text FROM s WHERE automated", 3, f);
   section(o, db, "FUNNEL", "", "STEP|SESSIONS|OF ALL", KEPT
     ", steps(i, label) AS (SELECT i, (" STEP_NAMES ")[i] FROM generate_series(1, 9) i), "

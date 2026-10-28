@@ -61,8 +61,10 @@ check("import: events keep their space, source file and line, and the demo's wor
 check("import: a session's first and last seen, events and robot agent",
       sql("select first_ms || ' ' || last_ms || ' ' || events || ' ' || agent || ' ' || space from analytics.sessions where sid = 'kiki-c843929384becaa5-b711f85a'")
       == "1793025588457 1793025589000 2 headlesschrome kiki")
-check("import: offered changes and chat wait in demo_files",
-      sql("select count(*) from verse.log where world = 'haunt'") == "0"
+check("import: an automated run keeps its mark", sql("select auto from analytics.playtesters where id = '87934adead43ab54'") == "kiki-e2e")
+check("import: offered changes have their table, chat waits in demo_files",
+      sql("select count(*) from verse.log where world = 'haunt'") == "0" and rep["offers"] == {"source": 1, "added": 1, "held": 1}
+      and sql("select state || ' ' || who || ' ' || source from verse.offers where world = 'haunt'") == "waiting Kiki aethyr-demo-data/dev/log-haunt.json"
       and sql("select doc->0->>'text' from verse.demo_files where path = 'aethyr-demo-data/dev/chat-haunt.json'") == "hello")
 status, body, _ = call("GET", "/api/playtest/player", headers={"X-Verse-Player": old_key})
 check("import: a demo player's old key still works", status == 200 and json.loads(body)["id"] == "p-0123456789abcdef", (status, body))

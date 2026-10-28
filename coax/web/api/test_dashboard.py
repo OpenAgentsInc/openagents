@@ -47,6 +47,18 @@ status, body, _ = call("GET", reports, headers={"Cookie": token})
 text = body.decode()
 check("the admin sees the reports", status == 200 and "#SUMMARY||WHAT|COUNT" in text and "#FUNNEL|" in text and "#WHAT THEY SAID AND TYPED|s|" in text, text[:300])
 check("the reports count the captured sessions", "Sessions|4" in text and "It was spooky" in text, text[:600])
+sql("INSERT INTO analytics.playtesters (id, at, email, sid, how, auto, space) VALUES "
+    "('pt1', extract(epoch from now()), 'ann@example.com', 's-a', 'email', NULL, 'kiki'), "
+    "('pt2', extract(epoch from now()), 'Ann@example.com', 's-b', 'email', NULL, 'kiki'), "
+    "('pt3', extract(epoch from now()), 'bo@example.com', 's-c', 'form', NULL, 'kiki'), "
+    "('pt4', extract(epoch from now()), 'e2e@example.com', 's-d', 'form', 'kiki-e2e', 'kiki'), "
+    "('pt5', extract(epoch from now()), 'bot@example.com', '" + bot + "', 'form', NULL, 'kiki')")
+real = call("GET", reports.replace("auto=1", "auto=0"), headers={"Cookie": token})[1].decode()
+check("playtesters: real people by default, each email once, visits apart",
+      "Playtesters|2" in real and "Playtester visits|3" in real and "@example.com" not in real, real[:600])
+every = call("GET", reports, headers={"Cookie": token})[1].decode()
+check("with automated runs counted, theirs too", "Playtesters|4" in every and "Playtester visits|5" in every, every[:600])
+sql("DELETE FROM analytics.playtesters WHERE id IN ('pt1', 'pt2', 'pt3', 'pt4', 'pt5')")
 check("automated sessions can be left out", "Sessions|2" in call("GET", reports.replace("auto=1", "auto=0"), headers={"Cookie": token})[1].decode())
 status, body, _ = call("GET", "/api/admin/analytics?view=sessions&days=0", headers={"Cookie": token})
 check("the sessions list", status == 200 and "#SESSIONS|s|" in body.decode() and sid in body.decode(), body[:300])
