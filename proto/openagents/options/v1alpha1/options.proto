@@ -1,0 +1,33 @@
+syntax = "proto3";
+package openagents.options.v1alpha1;
+
+import "google/protobuf/descriptor.proto";
+
+// Experimental owned annotations. Numbers are provisional, not a claim of
+// registration in the public protobuf extension registry. Do not publish v1
+// without registry review and actual bounded consumer conformance.
+enum DataClass {
+  DATA_CLASS_UNSPECIFIED = 0;
+  DATA_CLASS_DOCUMENT = 1;
+  DATA_CLASS_RUNTIME = 2;
+  DATA_CLASS_PRESENCE = 3;
+  DATA_CLASS_RELEASE = 4;
+  DATA_CLASS_INTENT = 5;
+  DATA_CLASS_RECEIPT = 6;
+  DATA_CLASS_VIEW = 7;
+  DATA_CLASS_TELEMETRY = 8;
+  DATA_CLASS_GRANT = 9;
+  DATA_CLASS_EVIDENCE = 10;
+}
+extend google.protobuf.MessageOptions {
+  DataClass data_class = 51000;
+  uint64 max_message_bytes = 51001;
+  string contract = 51006;
+}
+extend google.protobuf.FieldOptions {
+  uint64 max_bytes = 51002;
+  uint64 max_count = 51003;
+  bool required_value = 51004;
+  string unit = 51005;
+  string grammar = 51007;
+}

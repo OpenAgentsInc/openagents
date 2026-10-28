@@ -1,0 +1,96 @@
+{
+  "modules": {
+    "owned": {
+      "roots": [
+        "openagents"
+      ],
+      "includes": [
+        "."
+      ],
+      "namespace": "openagents."
+    },
+    "lnd": {
+      "roots": [
+        "third_party/lightninglabs/lnd/v0.21.1-beta/lnrpc"
+      ],
+      "includes": [
+        "third_party/lightninglabs/lnd/v0.21.1-beta/lnrpc"
+      ]
+    },
+    "taproot-assets": {
+      "roots": [
+        "third_party/lightninglabs/taproot-assets/v0.8.0/taprpc/"
+      ],
+      "includes": [
+        "third_party/lightninglabs/taproot-assets/v0.8.0/taprpc/",
+        "third_party/lightninglabs/lnd/v0.21.1-beta/lnrpc"
+      ]
+    },
+    "loop": {
+      "roots": [
+        "third_party/lightninglabs/loop/v0.34.0-beta/"
+      ],
+      "includes": [
+        "third_party/lightninglabs/loop/v0.34.0-beta/",
+        "third_party/lightninglabs/lnd/v0.21.1-beta/"
+      ]
+    },
+    "lightning-terminal": {
+      "roots": [
+        "third_party/lightninglabs/lightning-terminal/v0.17.0-alpha/litrpc/"
+      ],
+      "includes": [
+        "third_party/lightninglabs/lightning-terminal/v0.17.0-alpha/litrpc/"
+      ]
+    },
+    "space": {
+      "roots": [
+        "third_party/space"
+      ],
+      "includes": [
+        "third_party/space"
+      ]
+    }
+  },
+  "profiles": {
+    "coax-foundation": [
+      "openagents/common/v1/refs.proto",
+      "openagents/options/v1alpha1/options.proto"
+    ],
+    "phone-agent": [
+      "openagents/host/v1/host.proto",
+      "openagents/reach/v1/reach.proto"
+    ],
+    "metareal": [
+      "openagents/engine/v1/agent.proto",
+      "openagents/engine/v1/assets.proto",
+      "openagents/engine/v1/control.proto",
+      "openagents/engine/v1/hud.proto",
+      "openagents/engine/v1/scene.proto",
+      "openagents/engine/v1/state.proto"
+    ],
+    "verse": [
+      "openagents/verse/presence/v1alpha1/presence.proto"
+    ]
+  },
+  "profile_namespaces": {
+    "coax-foundation": [
+      "openagents.common.",
+      "openagents.options."
+    ],
+    "phone-agent": [
+      "openagents.common.",
+      "openagents.host.",
+      "openagents.reach.",
+      "openagents.engine."
+    ],
+    "metareal": [
+      "openagents.engine."
+    ],
+    "verse": [
+      "openagents.verse.",
+      "openagents.engine.",
+      "openagents.options."
+    ]
+  }
+}

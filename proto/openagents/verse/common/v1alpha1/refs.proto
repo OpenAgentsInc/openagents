@@ -1,0 +1,17 @@
+syntax = "proto3";
+package openagents.verse.common.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// New alpha reference for Coax/Verse consumers, not a replacement for any
+// published world document. A reference conveys no ownership or authority.
+message WorldRef {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_VIEW;
+  option (openagents.options.v1alpha1.max_message_bytes) = 4096;
+  option (openagents.options.v1alpha1.contract) = "openagents.verse.world-ref.v1alpha1";
+  optional string world_id = 1 [(openagents.options.v1alpha1.required_value) = true,
+                               (openagents.options.v1alpha1.max_bytes) = 128,
+                               (openagents.options.v1alpha1.grammar) = "nonempty-no-nul"];
+  // Zero is valid when present; absence means an unpinned reference.
+  optional uint64 revision = 2;
+}

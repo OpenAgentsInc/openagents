@@ -1,0 +1,23 @@
+* type:FT_CALLBACK
+*.id max_length:128
+*.target max_length:128
+*.objective max_length:4000
+*.op max_length:32
+*.phase max_length:32
+*.state max_length:32
+*.kind max_length:64
+*.name max_length:80
+*.speaker max_length:128
+*.action max_length:32
+*.run max_length:128
+*.connection max_length:32
+*.input max_length:4096
+*.output max_length:12288
+*.text max_length:24000
+*.result max_length:16000
+*.error max_length:2000
+*.events max_count:100
+*.files max_count:40 max_length:512
+*.base max_length:64
+*.head max_length:64
+*.transport max_length:32

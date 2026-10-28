@@ -12,11 +12,12 @@ metal-cpp → Metal → GPU, with nothing in between: a Swift view controller
 owns a `CAMetalLayer`, a display link fires 120 times a second, and each
 tick calls straight into the engine's C entry points
 (`src/metal/home_app.h`). Three frames are in flight. The render targets
-live in tile memory and never touch RAM.
+use tile memory for memoryless transient targets; resolved outputs and other
+resources still have explicit backing storage.
 
 That native path is as close to the hardware as a phone allows. What's
 left between us and the speed we want is mostly in the code itself, and
-in how fast we can change it. The [performance stack](https://github.com/OpenAgentsInc/aethyr-cpp/blob/main/docs/performance-stack.md)
+in how fast we can change it. The [performance stack](../../docs/verse/metareal-engine.md)
 lists five things to do in C++ now: a hot-reloadable game layer, C-style
 C++ with unity builds, data-oriented layout with a job system, GPU-driven
 rendering, and SIMD only where the profiler says. Coax is the sixth
@@ -51,122 +52,32 @@ None of these is a speed number. A small compiler that makes one real
 engine workflow better is worth more than a large language that only
 exists on paper.
 
-## 1.2 The dream
+## 1.2 What the compiler should expose
 
-Jai meets more of that list than any language we can use. These are the
-reasons we call it the dream.
+The compiler already knows declaration types, field layouts, dependencies
+and the places where code originated. Coax aims to expose that information
+through checked metadata and bounded compile-time APIs. Registries,
+inspectors, codecs and build tools should share those declarations.
 
-**Compile speed is the design goal.** Jai has no header files and no
-textual includes, so each file is parsed once per build. Its compiler is
-C++, with a handwritten recursive-descent parser, multithreaded work, an
-internal bytecode for compile-time execution, and two backends: a custom
-x64 backend built to produce code quickly, and LLVM for optimized builds.
-The evidence is specific and worth keeping attached to its workloads:
+The scalar bootstrap already evaluates `#run` and checks `#assert` without
+embedding an interpreter in the target program. General reflection, typed
+code generation and compiler plugins remain planned. A generator's output
+must pass ordinary checking and retain provenance back to source.
 
-| Evidence | Result | What it doesn't show |
-| --- | --- | --- |
-| Blow's 2025 demonstration | ~300,000 lines, clean rebuild, 2.3 s | Incremental builds (that compiler had none; it makes full rebuilds fast instead) |
-| Smári McCarthy, 2024 | ~44,000 lines, three executables, ~1.3 s | That the front end is the whole story: over two-thirds of that time was LLVM |
+## 1.3 Prove the workflow
 
-C++ parses `ecs.h` again in every file that includes it, and Rust's
-compile times are the reason the C++ engine exists. The lesson we take is
-not a lines-per-second number. It's that a development build should be
-designed for feedback time and a release build for runtime speed, and
-that the thing to measure is edit to visible result.
+The useful measurement is edit to observable result, including checking,
+generation, linking, assets and GPU preparation. Development throughput and
+release optimization have different budgets. Coax keeps inspectable C output
+until another backend demonstrates a benefit on actual engine work.
 
-**The build is a program, and it can watch the compiler.** In Forrest
-Smith's Advent of Code repository, `modules/autorun.jai` is 53 lines of
-ordinary Jai that the compiler loads as a plugin. It receives a message
-for each compiler event. When the compile completes, it reads the build
-options and runs the program it just built:
-
-```jai
-message :: (_p: *Plugin, message: *Compiler.Message) {
-    p := cast(*AutorunPlugin) _p;
-    if message.kind == .COMPLETE {
-        complete := cast(*Compiler.Message_Complete) message;
-        if complete.error_code != .NONE { p.should_run = false; }
-    }
-}
-```
-
-The same messages carry every typechecked declaration, so a plugin can
-generate code, enforce a project rule, or write bindings, all in the same
-language as the program. No CMake, no Python generators.
-
-**Code is a value at compile time.** The same repository builds
-assertion macros that print the source text of what failed. The macro
-takes parameters of type `Code` (unevaluated expressions). It asks the
-compiler for their syntax tree at compile time with `#run`, splices them
-back in with `#insert`, and reports the caller's location with
-`#location`. Rust needs a separate procedural-macro crate for this. C++
-needs the preprocessor.
-
-**`#run` runs anything.** Any procedure can run at compile time, file IO
-included. Lookup tables, baked assets and generated code are just code.
-
-**Memory is explicit but not painful.** Every procedure gets an implicit
-`context` with an allocator in it, so a caller decides where a library's
-memory comes from without the library taking allocator parameters. A
-built-in temporary allocator makes scratch memory a pointer bump that is
-freed all at once. Dynamic arrays carry their allocator with them.
-
-**The compiler's knowledge is application infrastructure.** An engine
-keeps several views of the same data: CPU structs, editor properties,
-saves, network messages, debug views, asset processing. Without one
-source of truth, each needs its own declarations, parsers or hand-kept
-registries. Jai lets the program ask the compiler what it already knows,
-through `type_info`, `Code` and compile-time messages, and generate the
-rest. Blow's 2025 demonstration showed generated command registries,
-generated code you can step through in a debugger, and visual analysis of
-a large game. Current Jai builds structure-of-arrays layouts this way too,
-with reflection and `#insert`, instead of a dedicated keyword.
-
-**The small things are right.** `ifx` conditional expressions, multiple
-return values, distinct integer types (`RoomIndex :: #type,distinct
-int;`), struct literals, `defer`, and `using` for composition without
-inheritance.
-
-## 1.3 Why we can't depend on it
-
-- **We can't get it.** As of October 2026 the official compiler is a
-  closed beta. The studio's 1 September 2026 announcement describes public
-  binaries, and later source, as work that follows the game's release, and
-  there is no verified public release yet. Unofficial implementations
-  (Jacket, and OpenJai's early Zig bootstrap) are separate projects that
-  can't stand in for the official compiler's behavior or license.
-- **We can't plan around its license.** A stated intent to publish source
-  is not a license. We'd need terms for shipping commercial software and
-  for running the compiler on every CI and agent machine, at a pinned
-  version.
-- **We can't change it.** Its team builds it for their own games. If we
-  need an iOS or WebAssembly target, a Metal shader story, or a bug fixed
-  before a launch, we wait.
-- **It doesn't do several things we need.** It has no shader language: a
-  Jai program can be compiled to WebAssembly, but WebGPU takes WGSL, so
-  shaders stay a separate language. Public material describes no formal
-  floating-point or concurrency memory model. Its plain `union` overlays
-  storage without a tag. The hash tables in Forrest Smith's code iterate
-  in hash order, which breaks replays.
-- **It's proven in places we aren't.** The strongest platform evidence is
-  per project: *Order of the Sinking Star* on PC, PlayStation 5 and
-  Nintendo Switch 2, Polygon's procedural engine on desktop and in the
-  browser through WebAssembly and WebGPU, and the Focus editor. None of
-  that is the iOS and Metal path we ship first.
-- **Agents can't learn it reliably.** There is little public Jai, and what
-  exists spans compiler generations: older code dereferences with `<<p`,
-  newer code with `p.*`. An agent produces convincing obsolete syntax.
-  For a language of our own, we write the material agents learn from:
-  this book, the specification, the tests and the grammar, all pinned to
-  the compiler that's actually in the repository.
-
-So we took the design, not the dependency. The report that informed this
-chapter put it well: study Jai's compiler-as-a-programming-interface
-architecture even if you never adopt the language. That's what Coax is.
+The native Apple path and browser path require separate tests. A scalar
+compiler does not prove shader generation, ownership safety, parallel effects
+or transactional reload. Those features enter through explicit gates.
 
 ## 1.4 What Coax adds
 
-Chapter by chapter, this book covers what Coax does that Jai doesn't:
+Chapter by chapter, this book covers the Coax design and its implementation gates:
 
 | Area | Coax | Chapter |
 | --- | --- | --- |

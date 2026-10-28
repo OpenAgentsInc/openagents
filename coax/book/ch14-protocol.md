@@ -9,8 +9,10 @@ doing that without creating a second, drifting source of truth.
 
 ## 14.1 The `.proto` files stay in charge
 
-Public `.proto` files and their published descriptors are the source of
-truth for interchange. Coax consumes them:
+The [OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md)
+is the defining contract for all surfaces. Public `.proto` files in root
+[proto/](../../proto/README.md) and their descriptors define interchange.
+Coax will consume them (this syntax is still planned):
 
 ```coax
 #import_proto "openagents/engine/v1/state.proto";
@@ -22,9 +24,11 @@ change goes back through the owning repository's versioning and
 compatibility review. A Coax file is never a second schema that someone
 can edit quietly.
 
-The engine's current bundle (`third_party/openagents-engine-proto` in
-aethyr-cpp) holds frozen schemas, generated bindings and compatibility
-evidence. Coax work doesn't move or overwrite it. It reads it.
+The root tree recovers published contracts and immutable compatibility
+snapshots, adds initial alpha Verse world/presence types, and compiles selected
+consumer profiles. Metareal is the engine name. Its explicit ID migration
+keeps old reader identities separate from new canonical names and signatures.
+No deleted engine runtime or app service is installed by that recovery.
 
 ## 14.2 Bounded decoding
 

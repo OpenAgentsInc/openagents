@@ -4,7 +4,7 @@ Date: 2026-10-27. Status: **working scalar bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
 end in `.coax`; the executable is `coax`; a future build entry is `build.coax`.
 
-Coax is a systems language for Aethyr and OpenAgents' real-time code. Its
+Coax is a systems language for Metareal and OpenAgents' real-time code. Its
 purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
@@ -44,7 +44,7 @@ Contents:
 
 ## 1. Requirements
 
-The [performance plan](https://github.com/OpenAgentsInc/aethyr-cpp/blob/main/docs/performance-stack.md) provides the engine context.
+The [performance plan](../docs/verse/metareal-engine.md) provides the engine context.
 These are requirements and evaluation criteria, not measured compiler claims.
 
 | Requirement | Concrete test |
@@ -567,30 +567,46 @@ bool and byte-string behavior; it makes no floating-point determinism claim.
 
 ## 14. Protocol boundaries
 
-Public `.proto` files and published descriptors remain the interchange source
-of truth. A future `#import_proto` consumes existing contracts and generates
-checked types/codecs. Source annotations may propose schema changes, but those
-must return through the owning repository's versioning and compatibility
-review; they are not a competing silently editable schema source.
+The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) is the
+defining interchange specification for every OpenAgents surface, including
+Verse. Root [proto/](../proto/README.md) is its schema authoring source.
+**Coax is the implementation target for all those surfaces. Metareal is the
+engine; Verse is the world/experience built on it.**
 
-The current engine bundle under `third_party/openagents-engine-proto` contains
-frozen schemas, generated bindings and compatibility evidence. Preserve that
-pin and its existing C ABI consumers. A planned shared options package or a
-future `proto/compatibility` directory is not a currently implemented facility.
-Do not move or overwrite published descriptors as a side effect of language
-work. If the owning source repository changes or is archived, record a reviewed
-source/bundle migration instead of inferring new ownership from this draft.
+Shared engine contracts use `openagents.engine.*`; Verse world/product types
+use `openagents.verse.*`; other domains use their owning `openagents.*`
+packages. Vendor schemas retain upstream namespaces and compile in separate
+modules. Consumer profiles select roots plus actual imports rather than
+forking definitions per language or device.
 
-Bounded codecs must validate sizes, nesting, presence, unknown-field policy,
-units and revisions before admitting domain values. A decoded record grants
-no host authority. Original signed JSON and content-addressed bytes keep their
-existing representation and validation; ordinary protobuf serialization is
-not canonical hashing.
+The recovered nine published schemas, Nanopb limits and nine immutable
+snapshots preserve their pre-reset identities. New alpha options and Verse
+world/presence projections are experimental inputs. Current descriptors are
+in `proto/descriptors/`, generated and tested by `scripts/proto.sh`; the
+scalar Coax compiler does not ingest them yet.
 
-Protocol versions, native layout versions, save migrations and hot-reload
-versions are distinct axes. A field rename cannot automatically infer a safe
-migration. Pointer fields, `Any` and live resources are not portable wire data.
-No proto frontend or new codec is implemented by this change.
+A future `#import_proto` needs fixed-width values, bytes, aggregates, repeated
+fields, explicit presence and oneofs first. It then generates bounded codecs
+and checked domain adapters. Coax declarations may propose schema changes,
+but they return through public schema review and compatibility checks.
+There is no second Coax-only wire schema.
+
+The [Metareal migration](../proto/migrations/README.md) records legacy reader
+aliases, new canonical IDs and versioned writer transitions. Published layout,
+asset profile identity, protocol name and brand are separate axes. A new
+signature domain needs a new signature; old signed bytes are never rewritten.
+The typed asset catalog migration is implemented; other consumer migrations
+remain gated on real restored implementations.
+
+Bounded codecs validate sizes, nesting, missing-versus-zero/null, unknown-field
+policy, units and revisions before admitting domain values. Decoding grants
+no authority. Original Nostr JSON, signed statements and content-addressed
+bytes retain their own validation; protobuf serialization is not canonical
+hashing. Native/GPU layouts, saves and reload migration remain separate.
+
+The post-reset repository has the Coax bootstrap and recovered contract
+foundation. Historical native code and old product crates are migration
+sources, not a competing architecture or already restored services.
 
 ## 15. GPU programs
 
@@ -761,6 +777,11 @@ Parsing a few examples is not the expensive part.
 
 ## 20. Implementation order and exit gates
 
+The protocol plan's P0 recovery runs now. Its P1 ingestion follows stage 2's
+actual type/ABI prerequisites, before decision or app-domain ports. Stage 6
+expands that foundation; it is not permission to defer the first bounded codec
+until after every compiler feature.
+
 Stages are dependency-ordered and evidence-driven, not calendar promises.
 Each stage produces something independently testable. Platform/engine rollout
 happens only after its own gate; a bootstrap compiler does not mean the app
@@ -770,11 +791,11 @@ already uses it.
 | --- | --- | --- |
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
-| 2 — Data and C boundary | Structs/defaults, fixed arrays/views, half-open `for`, `defer`, explicit mutation and fixed-width export/import. Ordered runtime operand lowering before general effectful expressions. | Field/layout/ownership vectors; one pulse kernel called by the native host; compare outputs and frame cost. |
+| 2 — Data and C boundary | Structs/defaults, fixed arrays/views, half-open `for`, `defer`, explicit mutation and fixed-width export/import; bytes/presence/oneofs and first selected protocol ingestion after those prerequisites. Ordered runtime operand lowering before general effectful expressions. | Field/layout/ownership vectors; one pulse kernel called by the native host; compare outputs and frame cost. |
 | 3 — Metadata and generation | Target layouts and stable declaration IDs first; reflection, derived operations and hygienic typed code next. | Generated registry or inspector with provenance, invalid generator fixtures and bounded expansion. Consider bytecode only after profiling. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |
-| 6 — Protocol and GPU experiments | Stable metadata/layouts and previous native ABI proof. Existing protocol adapters remain until parity. | One bounded codec and one Metal pipeline, separately tested; compare generated schemas/shaders before choosing a compiler backend. |
+| 6 — Protocol expansion and GPU experiments | Stable metadata/layouts and previous native ABI proof. Existing protocol adapters remain until parity. | Extend the first selected-profile codec into more domains; prove a Metal pipeline separately and compare generated shaders before choosing a compiler backend. |
 | 7 — Browser vertical slice | wasm32 runtime/host ABI and separate shader bridge. | Geometry, memory growth, async resources, input, rendering and debug path in an actual browser. |
 | 8 — Resident compiler and reload | Dependency cache, stable code IDs, safe points and transactional state migration. | Mac-host edit/reload retains state and resources, rolls back failures and has measured latency. No device code-loading bypass. |
 | 9 — Additional backends | Earlier workflows demonstrate value; C backend remains a reference. | Native debug/optimized backends pass the same conformance and target suites and improve a measured workload. |
@@ -811,4 +832,4 @@ context, shaders or general compiler plugins.
    tools, or justify a restricted Coax backend after the pipeline experiment?
 8. Decided 2026-10-27: Coax lives in `coax/` at the root of the openagents
    repo, with this spec, the grammar, the compiler and the book
-   (`coax/book/`). Nothing of Coax stays in aethyr-cpp.
+   (`coax/book/`). The earlier engine repository is a historical migration source.

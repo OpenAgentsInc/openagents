@@ -1,0 +1,21 @@
+* type:FT_CALLBACK
+*.name max_length:128
+*.world max_length:128
+*.source_contract max_length:256
+*.contract max_length:256
+*.json max_length:1048576
+*.text max_length:65536
+*.fields max_count:256
+*.definitions max_count:1024
+*.components max_count:256
+*.entities max_count:65536
+*.added max_count:65536
+*.removed max_count:65536
+*.changed max_count:65536
+*.set max_count:256
+*.put max_count:256
+*.unset max_count:256 max_length:128
+*.resources max_count:1024
+*.versions max_count:1024
+*.vector max_count:3
+*.entity_order max_count:65536

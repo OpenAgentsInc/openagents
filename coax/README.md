@@ -124,3 +124,11 @@ Next: data types, views, half-open loops, cleanup, ordered operand lowering and
 a tested C ABI. Prove a small `src/paynet` kernel before changing the app or
 replacing its existing C++/CMake/Xcode paths. See §20 of the specification for
 later metadata, build, parallelism, browser and reload gates.
+
+## Shared protocol
+
+The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) defines
+interchange for every OpenAgents surface, including Verse. Source schemas and
+selected-profile descriptors live in root [proto/](../proto/README.md), beside
+`coax/`. Metareal is the engine name. Coax's future importer and bounded codecs
+must consume this source rather than defining a parallel language-only schema.

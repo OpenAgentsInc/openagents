@@ -1,0 +1,87 @@
+syntax = "proto3";
+package openagents.engine.v1;
+
+// Local phone-agent contracts, not a replacement for Codex or NIP-HOST.
+// Revision fences one task generation. Sequence/cursor values are exact
+// nonnegative integers <= 2^53-1 at JSON presentation boundaries.
+message ToolActivity {
+  string id = 1; // Actual provider call ID, scoped to its task/turn.
+  string kind = 2;
+  string name = 3;
+  string state = 4;
+  string input = 5;
+  string output = 6;
+  optional sint32 exit = 7;
+  bool truncated = 8;
+}
+message AgentEvent {
+  uint64 seq = 1;
+  string kind = 2;
+  string text = 3;
+  ToolActivity tool = 4;
+  string id = 5;
+  string speaker = 6;
+}
+message AgentTask {
+  uint32 schema = 1; // 1; old schema-1 JSON records have an explicit reader.
+  string id = 2;
+  string target = 3; // Authenticated tailnet peer, not chosen by the model.
+  string objective = 4;
+  string phase = 5;
+  uint64 revision = 6;
+  uint64 seq = 7;
+  bool write = 8;
+  bool admitted = 9;
+  repeated AgentEvent events = 10;
+  bool history_truncated = 11;
+  string connection = 12;
+  string result = 13;
+  optional sint32 exit = 14;
+  string transport = 15; // host-v1; empty records retain their legacy SSH reader.
+}
+message AgentOperation {
+  string op = 1; // begin, decision, dispatch, cancel, offline, observe.
+  string id = 2;
+  string target = 3;
+  string objective = 4;
+  uint64 revision = 5;
+  bool write = 6;
+  string action = 7; // Proposed delegate/clarify; coordinator admits dispatch.
+  string run = 8;
+  uint64 seq = 9;
+  string state = 10;
+  repeated AgentEvent events = 11;
+  string result = 12;
+  optional sint32 exit = 13;
+}
+message AgentReply {
+  bool ok = 1;
+  string error = 2;
+  AgentTask task = 3;
+}
+message AgentDispatch {
+  uint32 v = 1;
+  string op = 2; // start/read/cancel. Identity is the idempotency key.
+  string id = 3;
+  string target = 4;
+  string objective = 5;
+  bool write = 6;
+  uint64 after = 7;
+  string transport = 8;
+  bool admitted = 9;
+}
+message AgentProgress {
+  uint32 v = 1;
+  string run = 2;
+  string state = 3;
+  uint64 seq = 4;
+  repeated AgentEvent events = 5;
+  string result = 6;
+  optional sint32 exit = 7;
+  string base = 8;
+  string head = 9;
+  repeated string files = 10;
+  bool more = 11;
+  bool result_truncated = 12;
+  string error = 13;
+}
