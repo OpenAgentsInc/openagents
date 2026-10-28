@@ -15,7 +15,7 @@ splash=$!
   && python3 coax/web/wgsl.py verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl)
 m="$here/../../verse"
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
-  "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" &
+  "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" "$m/cinematic.coax" &
 realm=$!
 # /realm/garden: the engine's world pieces (camera, terrain, throwing,
 # arranging) in an open-air realm, with the player and thumbs as their own libraries.

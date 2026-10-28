@@ -1,0 +1,220 @@
+// Camera cinematics: an authored flight, keys of time and a Shot each,
+// flown through smoothly (Catmull-Rom through the keys, eased per key), with
+// cuts where a key says so, skippable at any moment, and ending by handing
+// the view back to whatever camera the player has (the host's live Shot),
+// blended over HANDBACK seconds so nothing jumps. The host keeps a Flight
+// value and passes it back each frame:
+//   verse_flight_new, verse_flight_key (author it), verse_flight_start,
+//   verse_flight_shot each frame with the live camera, verse_flight_skip
+//   on a key or a touch, verse_flight_take for what is on screen now (the
+//   host changes the scene behind a cut), verse_flight_active until it is
+//   over. A free orbit takes the last shot with verse_orbit_toward.
+//   coax/bin/coax test verse/cinematic.coax
+
+#load "space.coax";
+
+FLIGHT_KEYS :: 16;
+HANDBACK :: 0.9;           // seconds: from the flight's last shot to the live camera
+EASE_LINEAR :: 0;
+EASE_SMOOTH :: 1;          // starts and ends at rest
+EASE_IN :: 2;              // leaves gently, arrives at speed
+EASE_OUT :: 3;             // leaves at speed, settles
+
+FlightKey :: struct { at: f32; shot: Shot; cut: bool; ease: int; }
+Flight :: struct {
+  keys: [FLIGHT_KEYS]FlightKey;
+  count: int;
+  start: f64;
+  running: bool;
+  back_from: Shot;          // the shot the hand-back starts from
+  back_at: f64;             // when it started (a skip, or the last key)
+  backing: bool;
+}
+
+fl_ease :: (kind: int, x: f32) -> f32 {
+  t := clamp01(x);
+  if kind == EASE_SMOOTH { return t * t * t * (t * (t * 6 - 15) + 10); }
+  if kind == EASE_IN { return t * t; }
+  if kind == EASE_OUT { return 1 - (1 - t) * (1 - t); }
+  return t;
+}
+
+// Catmull-Rom through b and c, with a and d the neighbours.
+fl_spline :: (a: Point, b: Point, c: Point, d: Point, t: f32) -> Point {
+  t2 := t * t; t3 := t2 * t;
+  p := times(b, 2);
+  p = add(p, times(sub(c, a), t));
+  p = add(p, times(add(sub(times(a, 2), times(b, 5)), sub(times(c, 4), d)), t2));
+  p = add(p, times(add(sub(times(b, 3), a), sub(d, times(c, 3))), t3));
+  return times(p, 0.5);
+}
+
+fl_finite :: (s: Shot) -> bool {
+  return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
+}
+
+verse_flight_new :: () -> Flight #export_c { f: Flight; return f; }
+
+// A key `at` seconds into the flight (after the last key; others are
+// refused), the camera at eye looking at `at`. A cut jumps to it; otherwise
+// the flight comes to it from the key before, eased as `ease` says.
+verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, ease: int) -> Flight #export_c {
+  if f.count >= FLIGHT_KEYS || !finite(at) || at < 0 { return f; }
+  if f.count > 0 && at <= f.keys[f.count - 1].at { return f; }
+  s := Shot.{eye = eye, at = look};
+  if !fl_finite(s) { return f; }
+  next := f;
+  next.keys[f.count] = FlightKey.{at = at, shot = s, cut = cut || f.count == 0, ease = ease};
+  next.count = f.count + 1;
+  return next;
+}
+
+// It starts flying at `now`. With reduced motion, or with no keys, it is over at once.
+verse_flight_start :: (f: Flight, now: f64, reduced: bool) -> Flight #export_c {
+  next := f;
+  next.start = now; next.backing = false;
+  next.running = f.count > 0 && !reduced;
+  return next;
+}
+
+// How long the authored part lasts, seconds.
+verse_flight_length :: (f: Flight) -> f32 #export_c {
+  if f.count == 0 { return 0; }
+  return f.keys[f.count - 1].at;
+}
+
+// The take on screen at `now`: the index of the last cut at or before it
+// (0 the first), or -1 once the flight is handing back or over. A host
+// changes its scene when this changes, behind the cut.
+verse_flight_take :: (f: Flight, now: f64) -> int #export_c {
+  if !f.running || f.backing { return -1; }
+  t := f32(now - f.start);
+  if t >= verse_flight_length(f) { return -1; }
+  take := 0;
+  for i: 0..<f.count { if f.keys[i].cut && f.keys[i].at <= t { take = i; } }
+  return take;
+}
+
+// The authored shot `t` seconds in.
+fl_flown :: (f: Flight, t: f32) -> Shot {
+  if f.count == 0 { return Shot.{eye = v3(0, 0, 0), at = v3(0, 0, 1)}; }
+  if t <= f.keys[0].at { return f.keys[0].shot; }
+  i := 0;
+  while i + 1 < f.count && f.keys[i + 1].at <= t { i += 1; }
+  if i + 1 >= f.count { return f.keys[f.count - 1].shot; }
+  b := f.keys[i]; c := f.keys[i + 1];
+  // A cut holds the take before it still until the cut.
+  if c.cut { return b.shot; }
+  u := fl_ease(c.ease, (t - b.at) / (c.at - b.at));
+  a := ifx i > 0 && !b.cut then f.keys[i - 1].shot else b.shot;
+  d := ifx i + 2 < f.count && !f.keys[i + 2].cut then f.keys[i + 2].shot else c.shot;
+  return Shot.{eye = fl_spline(a.eye, b.shot.eye, c.shot.eye, d.eye, u), at = fl_spline(a.at, b.shot.at, c.shot.at, d.at, u)};
+}
+
+// Whether the flight still owns the camera (flying or handing back).
+verse_flight_active :: (f: Flight, now: f64) -> bool #export_c {
+  if !f.running { return false; }
+  if f.backing { return f32(now - f.back_at) < f32(HANDBACK); }
+  return f32(now - f.start) < verse_flight_length(f) + f32(HANDBACK);
+}
+
+// Whether input is still the flight's: a key or a touch skips it.
+verse_flight_flying :: (f: Flight, now: f64) -> bool #export_c {
+  return f.running && !f.backing && f32(now - f.start) < verse_flight_length(f);
+}
+
+// A key or a touch: the hand-back starts now, from where the camera is.
+verse_flight_skip :: (f: Flight, now: f64) -> Flight #export_c {
+  if !verse_flight_flying(f, now) { return f; }
+  next := f;
+  next.back_from = fl_flown(f, f32(now - f.start));
+  next.back_at = now; next.backing = true;
+  return next;
+}
+
+// The shot at `now`; `live` is the camera the player has, which the
+// flight hands back to. Past the end it is `live`.
+verse_flight_shot :: (f: Flight, now: f64, live: Shot) -> Shot #export_c {
+  if !f.running { return live; }
+  from := f.back_from; at := f.back_at;
+  if !f.backing {
+    t := f32(now - f.start);
+    if t < verse_flight_length(f) { return fl_flown(f, t); }
+    from = f.keys[f.count - 1].shot; at = f.start + f64(verse_flight_length(f));
+  }
+  u := fl_ease(EASE_SMOOTH, f32(now - at) / f32(HANDBACK));
+  if u >= 1 || !fl_finite(live) { return live; }
+  return Shot.{eye = mix(from.eye, live.eye, u), at = mix(from.at, live.at, u)};
+}
+
+// ---- Checks ----
+
+fl_near :: (a: Point, b: Point, e: f32) -> bool { return length(sub(a, b)) <= e; }
+
+demo :: () -> Flight {
+  f := verse_flight_new();
+  f = verse_flight_key(f, 0, v3(0, 10, -20), v3(0, 0, 0), false, EASE_LINEAR);
+  f = verse_flight_key(f, 2, v3(10, 8, -10), v3(0, 0, 0), false, EASE_SMOOTH);
+  f = verse_flight_key(f, 4, v3(10, 4, 0), v3(0, 1, 5), false, EASE_SMOOTH);
+  f = verse_flight_key(f, 5, v3(-5, 3, 20), v3(0, 1, 25), true, EASE_LINEAR);
+  f = verse_flight_key(f, 8, v3(-5, 2, 10), v3(0, 1, 25), false, EASE_OUT);
+  return f;
+}
+live_shot :: () -> Shot { return Shot.{eye = v3(1, 2, 3), at = v3(1, 2, 8)}; }
+
+#test "a flight passes through every key at its time" {
+  f := verse_flight_start(demo(), 100, false);
+  for i: 0..<f.count {
+    if i + 1 < f.count && f.keys[i + 1].cut { continue; }
+    s := verse_flight_shot(f, 100 + f64(f.keys[i].at), live_shot());
+    if i + 1 < f.count { #assert fl_near(s.eye, f.keys[i].shot.eye, 0.001); }
+  }
+}
+
+#test "keys out of order or past the bound are refused" {
+  f := demo();
+  #assert verse_flight_key(f, 3, v3(0, 0, 0), v3(0, 0, 1), false, 0).count == f.count;
+  g := verse_flight_new();
+  for i: 0..<40 { g = verse_flight_key(g, f32(i), v3(0, 0, 0), v3(0, 0, 1), false, 0); }
+  #assert g.count == FLIGHT_KEYS;
+}
+
+#forall "between keys it moves smoothly, never jumping" i: 0..<400 {
+  f := verse_flight_start(demo(), 0, false);
+  t := f64(i) * 0.02;
+  a := verse_flight_shot(f, t, live_shot()); b := verse_flight_shot(f, t + 0.005, live_shot());
+  // the cut at 5 s is the one jump
+  if !(t < 5.0 && t + 0.005 >= 5.0) { #assert length(sub(a.eye, b.eye)) < 0.25; }
+}
+
+#test "a cut holds the take before it, then jumps, and the take changes" {
+  f := verse_flight_start(demo(), 0, false);
+  #assert fl_near(verse_flight_shot(f, 4.5, live_shot()).eye, v3(10, 4, 0), 0.0001);
+  #assert fl_near(verse_flight_shot(f, 5.0, live_shot()).eye, v3(-5, 3, 20), 0.0001);
+  #assert verse_flight_take(f, 4.9) == 0 && verse_flight_take(f, 5.1) == 3;
+}
+
+#test "it ends handing the camera back, without a jump" {
+  f := verse_flight_start(demo(), 0, false);
+  #assert verse_flight_flying(f, 7.9) && !verse_flight_flying(f, 8.1);
+  #assert verse_flight_active(f, 8.1) && verse_flight_take(f, 8.1) == -1;
+  #assert fl_near(verse_flight_shot(f, 8.0, live_shot()).eye, v3(-5, 2, 10), 0.01);
+  #assert fl_near(verse_flight_shot(f, 8.0 + f64(HANDBACK), live_shot()).eye, live_shot().eye, 0.0001);
+  #assert !verse_flight_active(f, 8.0 + f64(HANDBACK) + 0.01);
+}
+
+#test "a skip hands back from where the camera is" {
+  f := verse_flight_start(demo(), 0, false);
+  here := verse_flight_shot(f, 3.0, live_shot());
+  s := verse_flight_skip(f, 3.0);
+  #assert !verse_flight_flying(s, 3.0) && verse_flight_active(s, 3.1);
+  #assert fl_near(verse_flight_shot(s, 3.0, live_shot()).eye, here.eye, 0.0001);
+  #assert fl_near(verse_flight_shot(s, 3.0 + f64(HANDBACK), live_shot()).eye, live_shot().eye, 0.0001);
+  #assert verse_flight_skip(s, 3.5).back_at == s.back_at;
+}
+
+#test "reduced motion or no keys: no flight" {
+  #assert !verse_flight_active(verse_flight_start(demo(), 0, true), 0);
+  #assert !verse_flight_active(verse_flight_start(verse_flight_new(), 0, false), 0);
+  #assert fl_near(verse_flight_shot(verse_flight_start(demo(), 0, true), 1, live_shot()).eye, live_shot().eye, 0);
+}

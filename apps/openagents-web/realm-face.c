@@ -605,6 +605,7 @@ static void send_typed(void) {
   else ask_npc(typed);
 }
 
+#include "realm-flight.c"
 #include "realm-world.c"
 #include "realm-room.c"
 
@@ -725,7 +726,7 @@ static void describe(void) {
 }
 
 // The house's lights (where this frame put them) and areas, for particles.coax to choose from.
-static void choose_particles(void) {
+static void choose_particles(float ex, float ey, float ez) {
   int64_t ln = house.light_count < house.lights.count ? house.light_count : house.lights.count;
   int64_t an = house.area_count < house.areas.count ? house.area_count : house.areas.count;
   if (ln > 64) ln = 64;
@@ -743,7 +744,7 @@ static void choose_particles(void) {
     o[0] = a.rect.x0; o[1] = a.rect.z0; o[2] = a.rect.x1; o[3] = a.rect.z1; o[4] = a.room ? 0 : 1; o[5] = a.dark ? 1 : 0;
   }
   emitter_n = verse_particles_haunt((coax_v_f32){lamp_floats, ln * 8}, ln, (coax_v_f32){area_floats, an * 6}, an,
-    house.eye.x, house.eye.y, house.eye.z, (coax_v_f32){emitters, 24 * 16});
+    ex, ey, ez, (coax_v_f32){emitters, 24 * 16});
 }
 
 EXPORT("coaxial_frame")
@@ -766,13 +767,15 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   track_drain(&track_state);
   if (opened) {
     coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
+    bool flown = flight_view(&eye, &at, still != 0);
     verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
     draw_count = verse_haunt_instances(house, now, (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
     light_count = verse_haunt_lights(house, now, (coax_v_t_HauntGPUlight){lights, 64});
     instance_end = 0;
     for (int64_t i = 0; i < draw_count; i++) if (draws[i].base + draws[i].instances > instance_end) instance_end = draws[i].base + draws[i].instances;
     u[24] = house.eye.x; u[25] = house.eye.y; u[26] = house.eye.z; u[27] = (float)light_count;
-    choose_particles();
+    if (flown) { u[24] = eye.x; u[25] = eye.y; u[26] = eye.z; }
+    choose_particles(u[24], u[25], u[26]);
     u[28] = now < house.flash_until ? 1.0f : 0.0f;
   }
   return n < 0 ? 0u : (uint32_t)n;
@@ -805,6 +808,7 @@ EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { (void
 // thumbs', as on the phone), the wheel zooms
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   (void)state;
+  if (opened && flight_skip()) return 1u;
   bool typing = realm_wants_text(realm_of());
   bool used = realm_key(realm_of(), view, key, mods, true);
   take_asks();   // now, inside the key event: a copy reaches the clipboard
@@ -820,6 +824,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   (void)state;
   track_pointer(tr(), x, y, phase, kind, realm_button_label(realm_of(), x, y));
   track_drain(&track_state);
+  if (phase == 0 && opened && flight_skip()) return 1u;
   if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) { take_asks(); return 1u; }
   if (kind != 0 && opened) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;

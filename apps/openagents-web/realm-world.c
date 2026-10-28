@@ -129,7 +129,7 @@ static void world_frame(void) {
 
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
   (void)state;
-  if (length > 64) return;
+  if (length > 64 || flight_hash(inbox, length)) return;
   coax_string h = {(const char *)inbox, length};
   if (!world_id_ok(h) || (length == strlen(SAVE_WORLD) && !memcmp(inbox, SAVE_WORLD, length))) return;
   if (world_holds() && (int64_t)length == world_n && !memcmp(world, inbox, length)) return;
