@@ -1,6 +1,7 @@
 // The publisher against a throwaway in-memory relay, with a throwaway key and
 // project: a dry run sends nothing, publishing twice publishes once, an edit
-// is a revision, a move above a blocker warns, and status lands.
+// is a revision, a move above a blocker warns, and status lands; then a
+// worker claims a task, notes on it, releases it, claims again and finishes it.
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { startRelay } from "nostr-effect/relay"
 import { generateSecretKey } from "nostr-effect/pure"
@@ -23,8 +24,8 @@ const work = (sha256Title: string) => ({
   items: [
     item("init", "initiative", "The initiative"),
     item("m-one", "milestone", "First milestone", { parent: "init" }),
-    item("sha256", "task", sha256Title, { parent: "m-one", size: "S", sats: 1000 }),
-    item("hmac", "task", "HMAC", { parent: "m-one", size: "S", sats: 1000, blocked_by: ["sha256"] }),
+    item("sha256", "task", sha256Title, { parent: "m-one", size: "S" }),
+    item("hmac", "task", "HMAC", { parent: "m-one", size: "S", blocked_by: ["sha256"] }),
   ],
 })
 
@@ -77,7 +78,36 @@ test("dry run, publish, publish again, edit, move, status", async () => {
 
   const listed = await run("list")
   expect(listed).toContain("SHA-256, one-shot")
-  expect(listed).toMatch(/resolved\s+task\s+sha256/)
+  expect(listed).toMatch(/done\s+task\s+sha256/)
+  expect(listed).toMatch(/ready\s+task\s+hmac/)
   const order = listed.split("\n").filter((l) => /task/.test(l)).map((l) => l.match(/ (hmac|sha256) /)?.[1])
   expect(order).toEqual(["hmac", "sha256"])
+}, 60000)
+
+test("claim, note, release, show, done", async () => {
+  await expect(run("claim", "hmac")).rejects.toThrow("usage: claim")
+  await expect(run("claim", "m-one", "--by", "w1")).rejects.toThrow("only tasks are claimed")
+  await expect(run("claim", "sha256", "--by", "w1")).rejects.toThrow("already resolved")
+  expect(await run("claim", "hmac", "--by", "w1")).toContain("published kind 1111: hmac claimed by w1")
+  expect(await run("list")).toMatch(/on:w1\s+task\s+hmac/)
+  await expect(run("claim", "hmac", "--by", "w2")).rejects.toThrow("claimed by w1")
+  expect(await run("note", "hmac", "chose the RFC 4231 vectors")).toContain("note on hmac")
+  expect(await run("release", "hmac")).toContain("hmac released")
+  expect(await run("list")).toMatch(/ready\s+task\s+hmac/)
+  // by alias, with its #
+  const alias = (await run("list")).match(/#([0-9a-f]{4,})\s+\S+\s+ready\s+task\s+hmac/)![1]
+  expect(await run("claim", `#${alias}`, "--by", "w2")).toContain("claimed by w2")
+  const shown = await run("show", "hmac")
+  expect(shown).toContain("claimed by w2")
+  expect(shown).toContain("Build HMAC.")
+  expect(shown).toContain("w1: chose the RFC 4231 vectors")
+  expect(shown).toContain("waits on #")
+  await expect(run("done", "hmac", "--commit", "nothex")).rejects.toThrow("usage: done")
+  const finished = await run("done", "hmac", "--commit", "a5c9177b1d0000000000000000000000000000ff")
+  expect(finished).toContain("hmac done in a5c9177b1d")
+  expect(finished).toContain("published kind 1631: hmac resolved")
+  const after = await run("list")
+  expect(after).toMatch(/done\s+task\s+hmac\s+HMAC\s+\(a5c9177b1d\)/)
+  expect(await run("show", "hmac")).toContain("done in a5c9177b1d")
+  await expect(run("done", "hmac", "--commit", "a5c9177b1d")).rejects.toThrow("already resolved")
 }, 60000)

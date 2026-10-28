@@ -288,13 +288,17 @@ AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 
 // WORK_ITEMS (project/coax/work.coax, made by coax/web/project/snapshot.ts
 // from the project's Nostr events): one row an item, fields
-//   alias | kind | status | title | labels | size | sats | parent | blocked by | rank | slug
-// where parent and blocked by are aliases. Read once into Work: the queue's
-// order is computed here, never stored as numbers. Ready tasks (every
-// blocker resolved or closed) come first by rank, then waiting ones by rank.
+//   alias | kind | status | title | labels | size | worker | parent | blocked by | rank | slug | commit | done at
+// where parent and blocked by are aliases, worker is who claimed it (empty
+// when nobody has), commit the short hash that finished it and done at ten
+// digits of seconds. Read once into Work: the queue's order is computed
+// here, never stored as numbers. Claimed tasks come first (in progress),
+// then ready ones (every blocker resolved or closed) by rank, then waiting
+// ones by rank; the latest finished tasks are kept apart.
 // A task ranked above an open blocker is shown with a warning: it moved
 // ahead of what it waits on, and stays waiting until that's done.
 MAX_ITEMS :: 128;
+RECENT :: 3;
 KIND_INITIATIVE :: 0; KIND_MILESTONE :: 1; KIND_TASK :: 2;
 WS_OPEN :: 0; WS_RESOLVED :: 1; WS_CLOSED :: 2; WS_DRAFT :: 3;
 
@@ -306,11 +310,15 @@ Work :: struct {
   status: [MAX_ITEMS] int;
   parent: [MAX_ITEMS] int;    // a row, or -1
   ready: [MAX_ITEMS] bool;
+  claimed: [MAX_ITEMS] bool;  // an open task a worker is on
   waits: [MAX_ITEMS] int;     // an open blocker's row, or -1
   ahead: [MAX_ITEMS] int;     // an open blocker ranked below this task, or -1
-  queue: [MAX_ITEMS] int;     // open tasks: ready by rank, then waiting by rank
+  queue: [MAX_ITEMS] int;     // open tasks: in progress, then ready by rank, then waiting by rank
   queued: int;
-  ready_n: int;
+  working_n: int;             // in progress: claimed
+  ready_n: int;               // ready and nobody on them
+  recent: [RECENT] int;       // the latest finished tasks, newest first
+  recent_n: int;
   done_n: int;
   tasks: int;
   milestones: [MAX_ITEMS] int;   // milestone rows by rank
@@ -391,23 +399,42 @@ read_work :: (w: [] Work, text: string) {
       a = b + 1;
     }
     w[0].ready[r] = w[0].kind[r] == KIND_TASK && w[0].status[r] == WS_OPEN && w[0].waits[r] < 0;
+    w[0].claimed[r] = w[0].kind[r] == KIND_TASK && !finished(w, r) && cell(text, w[0].start[r], 6).count > 0;
   }
-  // the queue: ready tasks by rank, then the rest still to do by rank
-  ready: [MAX_ITEMS] int; rest: [MAX_ITEMS] int;
-  rn := 0; sn := 0; tasks := 0; done := 0; mn := 0;
+  // the queue: tasks in progress, then ready ones by rank, then the rest
+  // still to do by rank
+  working: [MAX_ITEMS] int; ready: [MAX_ITEMS] int; rest: [MAX_ITEMS] int;
+  on := 0; rn := 0; sn := 0; tasks := 0; done := 0; mn := 0;
   for r: 0..<n {
     if w[0].kind[r] == KIND_MILESTONE { w[0].milestones[mn] = r; mn += 1; }
     if w[0].kind[r] != KIND_TASK { continue; }
     tasks += 1;
     if finished(w, r) { done += 1; continue; }
-    if w[0].ready[r] { ready[rn] = r; rn += 1; } else { rest[sn] = r; sn += 1; }
+    if w[0].claimed[r] { working[on] = r; on += 1; }
+    else if w[0].ready[r] { ready[rn] = r; rn += 1; } else { rest[sn] = r; sn += 1; }
   }
+  by_rank(w, text, working[..], on);
   by_rank(w, text, ready[..], rn);
   by_rank(w, text, rest[..], sn);
   by_rank(w, text, w[0].milestones[..], mn);
-  for k: 0..<rn { w[0].queue[k] = ready[k]; }
-  for k: 0..<sn { w[0].queue[rn + k] = rest[k]; }
-  w[0].queued = rn + sn; w[0].ready_n = rn; w[0].done_n = done; w[0].tasks = tasks; w[0].milestone_n = mn;
+  for k: 0..<on { w[0].queue[k] = working[k]; }
+  for k: 0..<rn { w[0].queue[on + k] = ready[k]; }
+  for k: 0..<sn { w[0].queue[on + rn + k] = rest[k]; }
+  w[0].queued = on + rn + sn; w[0].working_n = on; w[0].ready_n = rn; w[0].done_n = done; w[0].tasks = tasks; w[0].milestone_n = mn;
+  // the latest finished: the largest done-at, newest first
+  w[0].recent_n = 0;
+  for k: 0..<RECENT {
+    best := -1;
+    for r: 0..<n {
+      if w[0].kind[r] != KIND_TASK || !finished(w, r) { continue; }
+      taken := false;
+      for j: 0..<w[0].recent_n { if w[0].recent[j] == r { taken = true; } }
+      if taken { continue; }
+      if best < 0 || before(cell(text, w[0].start[best], 12), cell(text, w[0].start[r], 12)) { best = r; }
+    }
+    if best < 0 { break; }
+    w[0].recent[w[0].recent_n] = best; w[0].recent_n += 1;
+  }
 }
 
 // A milestone's tasks: how many, done and ready.
@@ -1021,18 +1048,24 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
 
 // ---------------------------------------------------------------- the real page's panels
 
-// The queue from the relay: ready tasks first by rank, then the ones still
-// waiting, by rank. Each row: its alias (from its event id, never a number
-// that order could change), its title, its state, and under it the
-// milestone, labels and size, or what it waits on.
+// The queue from the relay: the tasks in progress first, with the worker on
+// each; the latest finished, with the commit that did it; then the ready
+// tasks by rank and the ones still waiting, by rank. Each row: its alias
+// (from its event id, never a number that order could change), its title,
+// its state, and under it who is on it, the commit, or the milestone and
+// size, or what it waits on.
+SEC_WORKING :: 0; SEC_DONE :: 1; SEC_READY :: 2; SEC_WAITING :: 3;
 real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d;
   text := WORK_ITEMS;
-  buf: [64] u8;
-  o := number(w[0].ready_n, false, buf[..]);
+  buf: [96] u8;
+  o := 0;
+  if w[0].working_n > 0 { o += number(w[0].working_n, false, buf[o..<buf.count]); o += put_text(buf[..], o, " AT WORK · "); }
+  o += number(w[0].ready_n, false, buf[o..<buf.count]);
   o += put_text(buf[..], o, " READY · ");
-  o += number(w[0].queued - w[0].ready_n, false, buf[o..<buf.count]);
+  o += number(w[0].queued - w[0].ready_n - w[0].working_n, false, buf[o..<buf.count]);
   o += put_text(buf[..], o, " WAITING");
+  if w[0].done_n > 0 { o += put_text(buf[..], o, " · "); o += number(w[0].done_n, false, buf[o..<buf.count]); o += put_text(buf[..], o, " DONE"); }
   v := titled(out, at, b, "TASK QUEUE", cast(string) buf[0..<o], p);
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
@@ -1044,40 +1077,73 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     v = put_wrapped(out, v, "The queue fills from the project's events on the relay.", x, y + 24 * d, small, dim, right - x, 11 * d, 3, lines[..]);
     return frame(out, v, b, 10 * d, p);
   }
+  // what's shown, in order: in progress, just finished, ready, waiting
+  order: [MAX_ITEMS] int; sect: [MAX_ITEMS] int;
+  count := 0;
+  for k: 0..<w[0].queued {
+    if k == w[0].working_n {
+      for j: 0..<w[0].recent_n { if count < MAX_ITEMS { order[count] = w[0].recent[j]; sect[count] = SEC_DONE; count += 1; } }
+    }
+    if count >= MAX_ITEMS { break; }
+    order[count] = w[0].queue[k];
+    sect[count] = ifx k < w[0].working_n then SEC_WORKING else ifx k < w[0].working_n + w[0].ready_n then SEC_READY else SEC_WAITING;
+    count += 1;
+  }
+  if w[0].queued == w[0].working_n {
+    for j: 0..<w[0].recent_n { if count < MAX_ITEMS { order[count] = w[0].recent[j]; sect[count] = SEC_DONE; count += 1; } }
+  }
   tall := box_h(b) > 560 * d && box_w(b) > 340 * d;
   bottom := b.y1 - 30 * d;
   idw := text_width("#0000", cap) + 10 * d;
   shown := 0;
-  for k: 0..<w[0].queued {
-    r := w[0].queue[k];
-    if k == w[0].ready_n && k > 0 {
-      // the waiting tasks start here
+  for k: 0..<count {
+    r := order[k]; sc := sect[k];
+    if k > 0 && sc != sect[k - 1] && (sc == SEC_DONE || sc == SEC_WAITING) {
+      // a group starts here
       if y + 26 * d > bottom { break; }
       v = rule(out, v, x, y - 6 * d, x + 6 * d, y - 6 * d, dim, p.fade);
-      v = put(out, v, "WAITING ON OTHER TASKS", x + 12 * d, y - 2 * d, small, dim);
+      v = put(out, v, ifx sc == SEC_DONE then "JUST FINISHED" else "WAITING ON OTHER TASKS", x + 12 * d, y - 2 * d, small, dim);
       y += 16 * d;
     }
     if y + 14 * d > bottom { break; }
-    ready := w[0].ready[r];
-    state := ifx ready then "READY" else ifx w[0].status[r] == WS_DRAFT then "DRAFT" else "WAITING";
+    state := ifx sc == SEC_WORKING then "IN PROGRESS" else ifx sc == SEC_DONE then "DONE" else ifx sc == SEC_READY then "READY"
+             else ifx w[0].status[r] == WS_DRAFT then "DRAFT" else "WAITING";
+    hue := ifx sc == SEC_WORKING then white else ifx sc == SEC_READY then orange else dim;
     sw := chip_width(state, small, p);
     am := put_text(buf[..], 0, "#");
     am += put_text(buf[..], am, item(w, text, r, 0));
-    v = put(out, v, cast(string) buf[0..<am], x, y, cap, ifx ready then orange else dim);
-    v = chip(out, v, state, right - sw, y, small, ifx ready then orange else dim, p);
+    v = put(out, v, cast(string) buf[0..<am], x, y, cap, ifx sc == SEC_WAITING || sc == SEC_DONE then dim else orange);
+    if sc == SEC_WORKING {
+      // in progress: the chip beats, someone is on it now
+      beat := 0.55 + 0.45 * sin(p.time * 2.4);
+      v = diamond(out, v, right - sw - 7 * d, y - small * 0.5, 2 * d, orange, beat * p.fade);
+    }
+    v = chip(out, v, state, right - sw, y, small, hue, p);
     title := item(w, text, r, 3);
+    tint := ifx sc == SEC_WORKING || sc == SEC_READY then white else dim;
+    room := right - sw - 14 * d - x - idw;
     lines := 1;
     if tall {
       drawn: [1] int;
-      v = put_wrapped(out, v, title, x + idw, y, cap, ifx ready then white else ink(p, INK_DIM), right - sw - 10 * d - x - idw, 12 * d, 2, drawn[..]);
+      v = put_wrapped(out, v, title, x + idw, y, cap, tint, room, 12 * d, 2, drawn[..]);
       lines = drawn[0];
     } else {
-      v = put_fit(out, v, title, x + idw, y, cap, ifx ready then white else ink(p, INK_DIM), right - sw - 10 * d - x - idw);
+      v = put_fit(out, v, title, x + idw, y, cap, tint, room);
     }
     meta := y + 12 * d * cast(f32) (lines - 1) + 13 * d;
     m := 0;
-    if ready || w[0].waits[r] < 0 {
-      ms := w[0].parent[r];
+    ms := w[0].parent[r];
+    if sc == SEC_WORKING {
+      m += put_text(buf[..], m, "ON IT: ");
+      m += put_text(buf[..], m, item(w, text, r, 6));
+      v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, pale, right - x - idw);
+    } else if sc == SEC_DONE {
+      hash := item(w, text, r, 11);
+      m += put_text(buf[..], m, ifx hash.count > 0 then "DONE IN " else "RESOLVED");
+      m += put_text(buf[..], m, hash);
+      if ms >= 0 { m += put_text(buf[..], m, "  ·  "); m += put_text(buf[..], m, item(w, text, ms, 3)); }
+      v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw);
+    } else if sc == SEC_READY || w[0].waits[r] < 0 {
       if ms >= 0 { m += put_text(buf[..], m, item(w, text, ms, 3)); m += put_text(buf[..], m, "  ·  "); }
       size := item(w, text, r, 5);
       if size.count > 0 { m += put_text(buf[..], m, "SIZE "); m += put_text(buf[..], m, size); }
@@ -1089,7 +1155,7 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
       m += put_text(buf[..], m, item(w, text, w[0].waits[r], 3));
       v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim, right - x - idw);
     }
-    if w[0].ahead[r] >= 0 {
+    if sc != SEC_DONE && w[0].ahead[r] >= 0 {
       // moved above what it waits on: allowed, and said
       meta += 11 * d;
       wm := put_text(buf[..], 0, "! RANKED ABOVE ITS BLOCKER #");
@@ -1100,7 +1166,7 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     y = meta + 23 * d;
     shown += 1;
   }
-  more := w[0].queued - shown;
+  more := count - shown;
   mb: [64] u8;
   mm := 0;
   if more > 0 { mm = number(more, false, mb[..]); mm += put_text(mb[..], mm, " MORE · "); }
@@ -1109,8 +1175,32 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   return frame(out, v, b, 10 * d, p);
 }
 
+// The activity from the relay, newest first: claims, releases, notes and
+// finished tasks, each with its time in Chicago. The newest is brightest.
+activity_rows :: (out: [] f32, at: int, x: f32, y0: f32, right: f32, bottom: f32, p: Pen) -> int {
+  d := p.d; v := at;
+  dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE);
+  small := 5.5 * d;
+  y := y0;
+  v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, orange, p.fade);
+  v = put(out, v, "ACTIVITY", x + 12 * d, y, small, orange);
+  v = put_right(out, v, "CHICAGO TIME", right, y, small, dim);
+  y += 15 * d;
+  if rows(WORK_LOG) == 0 {
+    v = put(out, v, "NO CLAIMS OR NOTES YET", x, y, small, dim);
+    return v;
+  }
+  for r: 0..<rows(WORK_LOG) {
+    if y > bottom { break; }
+    v = put(out, v, field(WORK_LOG, r, 0), x, y, small, dim);
+    v = put_fit(out, v, field(WORK_LOG, r, 1), x + 64 * d, y, small, ifx r == 0 then white else pale, right - x - 64 * d);
+    y += 12 * d;
+  }
+  return v;
+}
+
 // The plan: the initiative and its milestones in order, each with its tasks
-// done and ready; then the latest events from the relay.
+// done and ready; then the workers' activity from the relay.
 plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d;
   text := WORK_ITEMS;
@@ -1125,8 +1215,10 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     y += 12 * d * cast(f32) lines[0] + 8 * d;
   }
   if w[0].milestone_n == 0 { v = put(out, v, "NO MILESTONES YET", x, y, cap, dim); }
+  // the activity keeps room for a few rows under the milestones
+  keep := ifx box_h(b) > 260 * d then 76 * d else 0.0f32;
   for k: 0..<w[0].milestone_n {
-    if y + 16 * d > b.y1 - 10 * d { break; }
+    if y + 16 * d > b.y1 - 10 * d - keep { break; }
     m := w[0].milestones[k];
     pr := progress(w, m);
     v = put_fit(out, v, item(w, text, m, 3), x, y, cap, ifx pr.ready > 0 then white else dim, right - x - 96 * d);
@@ -1148,27 +1240,17 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
       bar := orange; bar.core = 1.1 * d; bar.glow = 3 * d;
       v = rule(out, v, x, by, x + (bx1 - x) * cast(f32) pr.done / cast(f32) pr.total, by, bar, 0.75 * p.fade);
     }
-    y += 22 * d;
+    y += 17 * d;
   }
-  // the latest events, if there's room
-  if y + 40 * d < b.y1 - 10 * d && rows(WORK_LOG) > 0 {
-    y += 8 * d;
-    v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, orange, p.fade);
-    v = put(out, v, "LATEST", x + 12 * d, y, small, orange);
-    y += 16 * d;
-    for r: 0..<rows(WORK_LOG) {
-      if y > b.y1 - 12 * d { break; }
-      v = put(out, v, field(WORK_LOG, r, 0), x, y, small, dim);
-      v = put_fit(out, v, field(WORK_LOG, r, 1), x + 64 * d, y, small, pale, right - x - 64 * d);
-      y += 13 * d;
-    }
-  }
+  // what workers did, if there's room
+  if y + 30 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 8 * d, right, b.y1 - 12 * d, p); }
   return frame(out, v, b, 10 * d, p);
 }
 
 // For agents, on the real page: where the project's events are and how to
-// take a task today. Claims come with the projects API.
-real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
+// take a task today. Without the plan panel (narrower screens) the activity
+// goes here, under the steps, when there's room.
+real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activity: bool) -> int {
   d := p.d;
   v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
@@ -1178,7 +1260,7 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   lead := 52 * d;
   if !compact {
     lines: [1] int;
-    v = put_wrapped(out, v, "Take the top ready task: its issue says what to build, the checks that must pass and the files it writes. Reply on the issue to say you're on it, then open a pull request.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
+    v = put_wrapped(out, v, "Take the top ready task nobody is on: its issue says what to build, the checks that must pass and the files it writes. Claim it with a comment on the issue, note as you go, and finish it with the commit that passes its checks.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
     y += 12 * d * cast(f32) lines[0] + 10 * d;
   }
   for r: 0..<rows(WORK_STEPS) {
@@ -1190,7 +1272,9 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   if !compact && y + 24 * d < b.y1 - 10 * d {
     v = put(out, v, "PROJECT", x, y, cap, dim);
     v = put_fit(out, v, WORK_NADDR, x + lead, y, 5.5 * d, dim, right - x - lead);
+    y += step;
   }
+  if with_activity && y + 50 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 10 * d, right, b.y1 - 12 * d, p); }
   return frame(out, v, b, 10 * d, p);
 }
 
@@ -1231,7 +1315,7 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, out: [] f3
   } else {
     v = real_queue(out, v, l.queue, p, w);
     if l.activity_on { v = plan(out, v, l.activity, p, w); }
-    v = real_agents(out, v, l.agents, p, compact);
+    v = real_agents(out, v, l.agents, p, compact, !l.activity_on);
   }
   return v;
 }
@@ -1333,21 +1417,32 @@ on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
 }
 
 // A made-up project: an initiative, a milestone, and tasks where c waits on
-// b, b is done, d waits on e (open), and d is ranked above e.
-FIXTURE :: "i1|initiative|open|Init||||||0V|init\nm1|milestone|open|First|||||i1|1V|m-first\nb1|task|resolved|Bee||S|100|m1||3|b\nc1|task|open|Cee||M|200|m1|b1|5|c\nd1|task|open|Dee||S|0|m1|e1|6|d\ne1|task|open|Eee||L|0|m1||7|e\nf1|task|open|Eff||S|0|m1||4|f\ng1|task|draft|Gee||S|0|m1||2|g\n";
+// b, b is done (in commit abc1234567), d waits on e (open), d is ranked
+// above e, f is claimed by w1 and h was closed by hand after b.
+FIXTURE :: "i1|initiative|open|Init||||||0V|init||\nm1|milestone|open|First||||i1||1V|m-first||\nb1|task|resolved|Bee||S||m1||3|b|abc1234567|0000000100\nc1|task|open|Cee||M||m1|b1|5|c||\nd1|task|open|Dee||S||m1|e1|6|d||\ne1|task|open|Eee||L||m1||7|e||\nf1|task|open|Eff||S|w1|m1||4|f||\ng1|task|draft|Gee||S||m1||2|g||\nh1|task|closed|Aitch||S||m1||8|h||0000000200\n";
 
-#test "the real queue: ready tasks first by rank, then waiting ones, done ones out" {
+#test "the real queue: in progress first, then ready by rank, then waiting; done ones kept apart" {
   w: [1] Work;
   read_work(w[..], FIXTURE);
-  #assert w[0].n == 8 && w[0].tasks == 6 && w[0].done_n == 1 && w[0].milestone_n == 1 && w[0].initiative == 0;
-  // ready: f (rank 4), c (5, its blocker b is done), e (7); then waiting: g (draft, 2), d (6, waits on e)
-  #assert w[0].ready_n == 3 && w[0].queued == 5;
+  #assert w[0].n == 9 && w[0].tasks == 7 && w[0].done_n == 2 && w[0].milestone_n == 1 && w[0].initiative == 0;
+  // in progress: f (claimed by w1); ready: c (rank 5, its blocker b is done), e (7); then waiting: g (draft, 2), d (6, waits on e)
+  #assert w[0].working_n == 1 && w[0].ready_n == 2 && w[0].queued == 5;
   names := [5] string.["f1", "c1", "e1", "g1", "d1"];
   for k: 0..<5 { #assert same(item(w[..], FIXTURE, w[0].queue[k], 0), names[k]); }
   #assert w[0].ready[3] && !w[0].ready[4] && !w[0].ready[7];
+  #assert w[0].claimed[6] && !w[0].claimed[3] && same(item(w[..], FIXTURE, 6, 6), "w1");
   #assert w[0].waits[4] == 5 && w[0].waits[3] == -1;
+  // the latest finished, newest first: h (closed at 200), then b (100, in abc1234567)
+  #assert w[0].recent_n == 2 && w[0].recent[0] == 8 && w[0].recent[1] == 2;
+  #assert same(item(w[..], FIXTURE, 2, 11), "abc1234567");
   pr := progress(w[..], 1);
-  #assert pr.total == 6 && pr.done == 1 && pr.ready == 3;
+  #assert pr.total == 7 && pr.done == 2 && pr.ready == 3;
+}
+
+#test "a finished task drops its worker" {
+  w: [1] Work;
+  read_work(w[..], "t1|task|resolved|Tee||S|w9|||1|t|0123456789|0000000300\n");
+  #assert !w[0].claimed[0] && w[0].working_n == 0 && w[0].queued == 0 && w[0].recent_n == 1;
 }
 
 #test "a task ranked above an open blocker is flagged, and stays waiting" {
@@ -1379,4 +1474,12 @@ FIXTURE :: "i1|initiative|open|Init||||||0V|init\nm1|milestone|open|First|||||i1
   #assert m > 60 && m < n;
   q := plan(out[..], 0, b, p, w[..]);
   for v: 0..<q { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  // the made-up project, with a task in progress and two finished, draws inside too
+  f: [1] Work;
+  read_work(f[..], FIXTURE);
+  k := real_queue(out[..], 0, b, p, f[..]);
+  #assert k > 600;
+  for v: 0..<k { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  a := real_agents(out[..], 0, b, p, false, true);
+  for v: 0..<a { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
 }

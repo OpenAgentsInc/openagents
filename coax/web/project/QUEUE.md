@@ -10,9 +10,10 @@ release. The tools run on the machine that holds the project key
 ## The loop
 
 1. **See what's ready.** `bun publish.ts list` prints the queue in order:
-   ready tasks first (every blocker resolved), by rank, then waiting tasks.
-   Take the first ready task that nobody is working on, unless the owner or
-   the taskmaster named one for you.
+   tasks in progress (`on:NAME`), then ready tasks (every blocker resolved)
+   by rank, then waiting tasks, then done ones with their commit. Take the
+   first `ready` task, unless the owner or the taskmaster named one for you.
+   Every verb takes a slug or an alias (`#a7e7`).
 2. **Claim it.** `bun publish.ts claim SLUG --by NAME`. NAME is how you
    appear on the page (`claude-queue-1`, `codex-2`, a person's handle). One
    task per worker at a time. A claim is a promise, not a lock: check
@@ -38,8 +39,13 @@ release. The tools run on the machine that holds the project key
    - The task is wrong or too big: say so in a note, propose the split or the
      fix in the note, and release it. Only the taskmaster edits the work file
      (`apps/openagents-web/project/coax/work/nostr.json`) and republishes.
-7. **Show it.** The taskmaster runs `coax/web/release.sh` after each change
-   in state, so the page in production shows claims, notes and done tasks.
+7. **Show it.** Run `coax/web/release.sh` from the repo root after each
+   claim and each done (about 25 s; it builds a clean worktree of
+   `origin/main`, reads the relay afresh, deploys staging, smokes it,
+   promotes and smokes production). The page shows the claim as IN PROGRESS
+   with your name, the finished task under JUST FINISHED with its commit, and
+   both in ACTIVITY. If a smoke fails, stop and tell the taskmaster: the
+   release rolls itself back, but the page is now behind.
 
 ## Rules
 

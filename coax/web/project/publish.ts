@@ -7,7 +7,17 @@
 //   bun publish.ts move SLUG --before SLUG | --after SLUG
 //   bun publish.ts status SLUG open|resolved|closed|draft
 //   bun publish.ts respread [--seed]   (even ranks again; --seed: work-file order)
-//   bun publish.ts list
+//   bun publish.ts list               (the queue: ready first, then waiting, then done)
+//   bun publish.ts show SLUG          (body, acceptance checks, claim and notes)
+//   bun publish.ts claim SLUG --by NAME
+//   bun publish.ts note SLUG "text" [--by NAME]
+//   bun publish.ts release SLUG
+//   bun publish.ts done SLUG --commit HASH
+//
+// SLUG is an item's slug or its alias (#a7e7). Claims, notes and the commit
+// that finished a task are NIP-22 comments on its issue (model.ts), signed by
+// the project key with the worker's NAME in a tag; coax/web/project/QUEUE.md
+// is how a worker uses them.
 //
 // Work comes from apps/openagents-web/project/<slug>/work/*.json (model.ts,
 // WorkItem) and project.json. Every run folds the relay's events first, so
@@ -195,12 +205,105 @@ async function respread(relay: Relay, seed: boolean) {
   await send(relay, signer.sign({ kind: KIND_ORDER, content: "", tags: orderTags(entries) }), `respread ${entries.length}${seed ? " in work-file order" : ""}`)
 }
 
+const finished = (i: Issue) => i.status === "resolved" || i.status === "closed"
+
+/** Where an item stands in the queue: 0 ready, 1 waiting (a draft or an open blocker), 2 done, 3 not a task. */
+function standing(f: Folded, i: Issue): number {
+  if (i.kind !== "task") return 3
+  if (finished(i)) return 2
+  if (i.status === "draft") return 1
+  return i.blocked_by.every((b) => { const k = f.issues.find((o) => o.id === b); return !k || finished(k) }) ? 0 : 1
+}
+
 async function list(relay: Relay) {
   const f = await load(relay)
   const a = aliases(f.issues.map((i) => i.id))
-  const rows = [...f.issues].sort((x, y) => (x.rank || "~") < (y.rank || "~") ? -1 : 1)
-  for (const i of rows) console.log(`#${a.get(i.id)}  ${i.rank.padEnd(6)} ${i.status.padEnd(8)} ${i.kind.padEnd(10)} ${i.slug}  ${i.title}`)
+  const rows = [...f.issues].sort((x, y) => standing(f, x) - standing(f, y) || ((x.rank || "~") < (y.rank || "~") ? -1 : 1))
+  const word = ["ready", "waiting", "done", ""]
+  for (const i of rows) {
+    const st = standing(f, i)
+    const state = i.claimed_by ? `on:${i.claimed_by}` : st < 3 ? word[st] : i.status
+    const tail = st === 2 && i.commit ? `  (${i.commit.slice(0, 10)})` : ""
+    console.log(`#${a.get(i.id)}  ${i.rank.padEnd(6)} ${state.padEnd(16)} ${i.kind.padEnd(10)} ${i.slug}  ${i.title}${tail}`)
+  }
   console.log(`${rows.length} items · project ${naddr(pk, config)}`)
+}
+
+/** An item by slug or alias (with or without its #). */
+function find(f: Folded, what: string): Issue {
+  const a = aliases(f.issues.map((i) => i.id))
+  const w = what.replace(/^#/, "")
+  const issue = f.issues.find((i) => i.slug === w) ?? f.issues.find((i) => a.get(i.id) === w)
+  if (!issue) throw new Error(`no item ${what}`)
+  return issue
+}
+
+/** A worker's comment on an issue: a claim, a release, a note or a commit. */
+function commentEvent(issue: Issue, content: string, tags: string[][], alt: string) {
+  return signer.sign({ kind: KIND_COMMENT, content, tags: [
+    ["E", issue.id, config.relay, pk], ["K", String(KIND_ISSUE)], ["P", pk],
+    ["e", issue.id, config.relay, pk], ["k", String(KIND_ISSUE)], ["p", pk],
+    ...tags, ["alt", alt]] })
+}
+
+async function show(relay: Relay, what: string) {
+  const f = await load(relay)
+  const i = find(f, what)
+  const a = aliases(f.issues.map((x) => x.id))
+  const name = (id: string) => { const k = f.issues.find((x) => x.id === id); return k ? `#${a.get(id)} ${k.slug} (${k.status})` : id.slice(0, 8) }
+  const word = ["ready", "waiting", "done", i.status][standing(f, i)]
+  console.log(`#${a.get(i.id)} ${i.slug} · ${i.kind} · ${word}${i.size ? ` · size ${i.size}` : ""}`)
+  console.log(i.title)
+  if (i.parent) console.log(`in ${name(i.parent)}`)
+  if (i.blocked_by.length) console.log(`waits on ${i.blocked_by.map(name).join(", ")}`)
+  console.log(i.claimed_by ? `claimed by ${i.claimed_by} at ${new Date(i.claimed_at * 1000).toISOString()}` : "not claimed")
+  if (i.commit) console.log(`done in ${i.commit}`)
+  console.log(`\n${i.body.trim()}\n`)
+  if (i.notes.length) {
+    console.log("## Notes\n")
+    for (const n of i.notes) console.log(`- ${new Date(n.at * 1000).toISOString().slice(0, 16)} ${n.by ? n.by + ": " : ""}${n.text}`)
+  }
+}
+
+async function claim(relay: Relay, what: string, by: string) {
+  if (!by) throw new Error("usage: claim SLUG --by NAME")
+  const f = await load(relay)
+  const i = find(f, what)
+  if (i.kind !== "task") throw new Error(`${i.slug} is a ${i.kind}; only tasks are claimed`)
+  if (finished(i)) throw new Error(`${i.slug} is already ${i.status}`)
+  if (i.claimed_by && i.claimed_by !== by) throw new Error(`${i.slug} is claimed by ${i.claimed_by}; ask them, or the taskmaster releases it`)
+  if (i.claimed_by === by) { console.log(`${i.slug} is already yours`); return }
+  const mine = f.issues.find((o) => o.claimed_by === by && o.id !== i.id)
+  if (mine) console.log(`warning: ${by} also holds ${mine.slug}; one task at a time`)
+  if (standing(f, i) === 1) console.log(`warning: ${i.slug} still waits on an open blocker`)
+  await send(relay, commentEvent(i, `${by} is working on this.`, [["claim", by]], `${by} claimed a task: ${i.title}`), `${i.slug} claimed by ${by}`)
+}
+
+async function release(relay: Relay, what: string) {
+  const f = await load(relay)
+  const i = find(f, what)
+  if (!i.claimed_by) { console.log(`${i.slug} isn't claimed`); return }
+  await send(relay, commentEvent(i, `${i.claimed_by} let go of this.`, [["release"], ["by", i.claimed_by]], `A task was released: ${i.title}`), `${i.slug} released`)
+}
+
+async function note(relay: Relay, what: string, text: string, by: string) {
+  if (!text.trim()) throw new Error('usage: note SLUG "text" [--by NAME]')
+  const f = await load(relay)
+  const i = find(f, what)
+  const who = by || i.claimed_by
+  await send(relay, commentEvent(i, text.trim(), who ? [["by", who]] : [], `A note on a task: ${i.title}`), `note on ${i.slug}`)
+}
+
+async function done(relay: Relay, what: string, commit: string) {
+  if (!/^[0-9a-f]{7,40}$/.test(commit)) throw new Error("usage: done SLUG --commit HASH (a git commit hash)")
+  const f = await load(relay)
+  const i = find(f, what)
+  if (finished(i)) throw new Error(`${i.slug} is already ${i.status}`)
+  const who = i.claimed_by
+  const url = `${config.repo.web.replace(/\/$/, "")}/commit/${commit}`
+  await send(relay, commentEvent(i, `Done in ${commit.slice(0, 10)}: ${url}`, [["commit", commit], ["r", url], ...(who ? [["by", who]] : [])],
+    `A task was finished: ${i.title}`), `${i.slug} done in ${commit.slice(0, 10)}`)
+  await send(relay, statusEvent(i, "resolved"), `${i.slug} resolved`)
 }
 
 const verb = args[0]
@@ -220,5 +323,10 @@ try {
     await send(relay, statusEvent(issue, s), `${args[1]} ${s}`)
   } else if (verb === "respread") await respread(relay, has("seed"))
   else if (verb === "list") await list(relay)
-  else { console.error("usage: bun publish.ts publish|move|status|list (see the top of this file)"); process.exitCode = 2 }
+  else if (verb === "show" && args[1]) await show(relay, args[1])
+  else if (verb === "claim" && args[1]) await claim(relay, args[1], flag("by"))
+  else if (verb === "release" && args[1]) await release(relay, args[1])
+  else if (verb === "note" && args[1]) await note(relay, args[1], args[2] ?? "", flag("by"))
+  else if (verb === "done" && args[1]) await done(relay, args[1], flag("commit"))
+  else { console.error("usage: bun publish.ts publish|move|status|respread|list|show|claim|note|release|done (see the top of this file)"); process.exitCode = 2 }
 } finally { relay.close() }

@@ -7,6 +7,9 @@
 //   kind 1621   NIP-34 issue: one per initiative, milestone and task
 //   kind 1111   NIP-22 comment marked ["revision", ISSUE_REVISION]: an edit
 //               to an issue's subject, body, labels or relations
+//   kind 1111   NIP-22 comment without that mark: a worker's note on an issue,
+//               ["claim", NAME] when it takes the task, ["release"] when it
+//               lets go, ["commit", HASH] when it lands the work
 //   kind 1630-1633  NIP-34 status: open, resolved, closed, draft
 //   kind 30623  the project's queue order: ["item", <issue id>, <rank>]
 import { verifyEvent, type Event } from "nostr-effect/pure"
@@ -19,6 +22,7 @@ export const ISSUE_REVISION = "openagents.issue-revision.v1"
 export const WORK_SCHEMA = "openagents.project-work.v1"
 
 export type Status = "open" | "resolved" | "closed" | "draft"
+export type LogType = "open" | "revise" | "status" | "order" | "claim" | "release" | "note" | "done"
 export type ItemKind = "initiative" | "milestone" | "task"
 
 /** One entry of a work file (apps/openagents-web/project/<slug>/work/*.json). */
@@ -66,6 +70,10 @@ export interface Issue extends Fields {
   status: Status
   status_at: number
   rank: string
+  claimed_by: string      // the worker on it now, or ""
+  claimed_at: number
+  commit: string          // the commit that landed it, or ""
+  notes: { at: number; text: string; by: string }[]
 }
 
 export interface Folded {
@@ -74,7 +82,7 @@ export interface Folded {
   project: Event | null
   order: Event | null
   issues: Issue[]
-  log: { at: number; text: string; id: string }[]
+  log: { at: number; text: string; id: string; type: LogType }[]
 }
 
 export const repoCoord = (pk: string, c: ProjectConfig) => `${KIND_REPO}:${pk}:${c.repo.d}`
@@ -210,13 +218,37 @@ export function fold(pk: string, c: ProjectConfig, events: Event[]): Folded {
       e.tags.some((t) => t[0] === "E" && t[1] === root.id))
     const fields = revision ? fieldsFrom(revision.tags, revision.content) : fieldsFrom(root.tags, root.content)
     const status = latest((e) => e.kind >= 1630 && e.kind <= 1633 && e.tags.some((t) => t[0] === "e" && t[1] === root.id))
-    issues.push({ ...fields, id: root.id, slug, created_at: root.created_at, updated_at: revision?.created_at ?? root.created_at,
-      status: status ? STATUS_NAMES[status.kind] : "open", status_at: status?.created_at ?? root.created_at, rank: ranks.get(root.id) ?? "" })
-    log.push({ at: root.created_at, text: `opened ${fields.kind}`, id: root.id })
-    if (revision) log.push({ at: revision.created_at, text: "revised", id: root.id })
-    if (status && status.kind !== 1630) log.push({ at: status.created_at, text: STATUS_NAMES[status.kind], id: root.id })
+    const issue: Issue = { ...fields, id: root.id, slug, created_at: root.created_at, updated_at: revision?.created_at ?? root.created_at,
+      status: status ? STATUS_NAMES[status.kind] : "open", status_at: status?.created_at ?? root.created_at, rank: ranks.get(root.id) ?? "",
+      claimed_by: "", claimed_at: 0, commit: "", notes: [] }
+    log.push({ at: root.created_at, text: `opened ${fields.kind}`, id: root.id, type: "open" })
+    if (revision) log.push({ at: revision.created_at, text: "revised", id: root.id, type: "revise" })
+    if (status && status.kind !== 1630) log.push({ at: status.created_at, text: STATUS_NAMES[status.kind], id: root.id, type: "status" })
+    // the workers' comments, oldest first: claims, releases, notes, commits
+    const comments = mine.filter((e) => e.kind === KIND_COMMENT && !e.tags.some((t) => t[0] === "revision") &&
+      e.tags.some((t) => t[0] === "E" && t[1] === root.id)).sort((a, b) => a.created_at - b.created_at || (a.id < b.id ? -1 : 1))
+    for (const e of comments) {
+      const tag = (name: string) => e.tags.find((t) => t[0] === name)
+      const by = tag("by")?.[1] ?? tag("claim")?.[1] ?? issue.claimed_by
+      if (tag("claim")) {
+        issue.claimed_by = tag("claim")![1]; issue.claimed_at = e.created_at
+        log.push({ at: e.created_at, text: `claimed by ${issue.claimed_by}`, id: root.id, type: "claim" })
+      } else if (tag("release")) {
+        log.push({ at: e.created_at, text: `released by ${issue.claimed_by || "its worker"}`, id: root.id, type: "release" })
+        issue.claimed_by = ""; issue.claimed_at = 0
+      } else if (tag("commit")) {
+        issue.commit = tag("commit")![1]
+        log.push({ at: e.created_at, text: `done in ${issue.commit.slice(0, 10)}${by ? ` by ${by}` : ""}`, id: root.id, type: "done" })
+      } else if (e.content.trim()) {
+        log.push({ at: e.created_at, text: `${by ? by + ": " : ""}${e.content.trim()}`, id: root.id, type: "note" })
+      }
+      if (e.content.trim() && !tag("claim") && !tag("release")) issue.notes.push({ at: e.created_at, text: e.content.trim(), by })
+    }
+    // a finished task has nobody on it
+    if (issue.status === "resolved" || issue.status === "closed") issue.claimed_by = ""
+    issues.push(issue)
   }
-  if (order) log.push({ at: order.created_at, text: "reordered the queue", id: "" })
+  if (order) log.push({ at: order.created_at, text: "reordered the queue", id: "", type: "order" })
   log.sort((a, b) => b.at - a.at)
   return { pubkey: pk, repo, project, order, issues, log }
 }

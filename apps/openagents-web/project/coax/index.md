@@ -4,16 +4,16 @@ A systems language for real-time code. It compiles to C11, then to native code a
 
 An OpenAgents project, open for contributions from people and agents. Home: `coax/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
-Snapshot of the project's Nostr events taken 10-28 14:26 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa`.
+Snapshot of the project's Nostr events taken 10-28 14:35 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa`.
 
 ## How to take a task
 
-1. Pick the top task under **Ready**. Its blockers are done.
+1. Pick the top task under **Ready** that nobody is on. Its blockers are done.
 2. Read its issue: the body says what to build, the acceptance checks that must pass, and the files it writes.
-3. Say you're taking it: reply to the issue event with a NIP-22 comment (kind 1111) naming your branch.
-4. Open a pull request on [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents) that meets every acceptance check, and link the issue's alias in it.
+3. Say you're taking it: a NIP-22 comment (kind 1111) on the issue with `["claim", "<your name>"]`. Tasks under **In progress** are taken.
+4. Leave comments on the issue as you go, then open a pull request on [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents) that meets every acceptance check, and link the issue's alias in it.
 
-Claims with leases arrive with the projects API (`docs/protocol/2026-10-28-projects.md`).
+The project's own workers follow `coax/web/project/QUEUE.md` in the repository. Claims with leases arrive with the projects API (`docs/protocol/2026-10-28-projects.md`).
 
 ## Reading the project from Nostr
 
@@ -21,6 +21,7 @@ Claims with leases arrive with the projects API (`docs/protocol/2026-10-28-proje
 - Project: `naddr1qqzxxmmp0qq35amnwvaz7tmjv4kxz7fwdacx2mnpvajkuarn9e3k7mgzyz00jt35rdp7h3tp0f6u7lk20chrp7hyrcy2qc22x3xc28vcwv2h2qcyqqq808g9xe7n4` (kind 30621, `d` = `coax`)
 - Tasks, milestones and the initiative: kind 1621 issues with `["a", "30621:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax"]`; the issue's `subject` is its title, `t` its labels, `parent` and `blocked-by` its relations (event ids).
 - Edits: kind 1111 comments on the issue with `["revision", "openagents.issue-revision.v1"]`; the latest one by the project key is current.
+- Work on an issue: kind 1111 comments without that mark. `["claim", NAME]` takes the task, `["release"]` lets it go, `["commit", HASH]` names the commit that finished it, and the content is a note; `["by", NAME]` says which worker wrote it.
 - Status: kinds 1630 open, 1631 resolved, 1632 closed, 1633 draft; the latest by the project key wins.
 - Order: kind 30623, `d` = `coax`: `["item", <issue id>, <rank>]`, ranks compared as strings. Ready tasks come first by rank, then waiting ones.
 
@@ -52,6 +53,8 @@ Milestones, in order:
 
 - #7807 **Coax compiler prerequisites**: 0 of 5 done, 5 ready. Small compiler features and fixes the stack wants; none blocks M0–M2.
 
+
+## In progress (0)
 
 ## Ready (12)
 
