@@ -84,13 +84,25 @@ export class Relay {
     const seen = new Map<string, Event>()
     for (const f of filters) {
       let until: number | undefined
+      let ended = false
       for (let round = 0; round < 100; round++) {
         const got = await this.query([{ ...f, limit: page, ...(until === undefined ? {} : { until }) }])
-        const fresh = got.filter((e) => !seen.has(e.id))
+        if (got.length === 0) { ended = true; break }
         for (const e of got) seen.set(e.id, e)
-        if (fresh.length === 0 || got.length < page) break
-        until = Math.min(...got.map((e) => e.created_at))
+        const oldest = Math.min(...got.map((e) => e.created_at))
+        if (!Number.isSafeInteger(oldest) || oldest < 0 || (until !== undefined && oldest > until))
+          throw new Error("relay returned an invalid pagination timestamp")
+        if (oldest === until) {
+          // Inclusive until returns the boundary again. Multiple events at a
+          // stalled boundary may conceal a relay-capped same-second cohort.
+          if (got.length > 1) throw new Error("relay timestamp cohort cannot be paged without possible loss")
+          if (oldest === 0) { ended = true; break }
+          until = oldest - 1
+        } else until = oldest
+        // A short response is NOT exhaustion: the relay may cap below limit.
+        // Scan each filter independently even if another already saw its rows.
       }
+      if (!ended) throw new Error("relay pagination budget exhausted; refusing partial results")
     }
     return [...seen.values()]
   }
