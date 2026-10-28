@@ -17,6 +17,13 @@ browser, and `index.html` / `index.md` carry the same words as text for
 search engines, screen readers and browsers without WebGPU. Nothing visible
 is HTML (INVARIANTS.md); `coax/web/check-visuals.sh` checks it.
 
+`/verse` and `/verse/galaxy` are the Verse playtest's way in, one app
+(`verse.coax`, `verse-face.c`, `verse.wgsl`, `data-page` 0 and 1): the
+landing (CREATE ANYTHING, ENTER THE VERSE, the email box with GO, and ENTER
+to play as a guest; an email goes to `POST /api/playtest/join`) and the
+galaxy, where only the Haunted House opens. Their panels are the Haunted
+House's wood-and-bronze plates, not the HUD bar.
+
 ```sh
 coax/bin/coax test apps/openagents-web/splash.coax   # the splash's checks
 coax/web/serve.sh apps/openagents-web                # http://127.0.0.1:8800/, hot reload

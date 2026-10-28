@@ -55,11 +55,13 @@ def check(ok, what):
 pages = ["/projects", "/projects/index.md", "/projects/coax", "/projects/coax/index.md", "/projects/coax/demo", "/projects/verse", "/projects/verse/index.md"]
 moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md"]   # the old addresses: 301 to /projects/*
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
-first = fetch(["/", ("/", "GET", "http"), "/realm/haunted-house", "/realm/haunted-house/index.md"] + pages + moved + [p for p, _ in extra])
+verse = ["/verse", "/verse/index.md", "/verse/galaxy", "/verse/galaxy/index.md"]   # the playtest's landing and galaxy
+first = fetch(["/", ("/", "GET", "http"), "/realm/haunted-house", "/realm/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse)
 (s, h, page), redirect, house, house_md = first[:4]
 s_pages = first[4:4 + len(pages)]
 s_moved = first[4 + len(pages):4 + len(pages) + len(moved)]
-s_extra = first[4 + len(pages) + len(moved):]
+s_extra = first[4 + len(pages) + len(moved):4 + len(pages) + len(moved) + len(extra)]
+s_verse = first[4 + len(pages) + len(moved) + len(extra):]
 
 check(s == 200 and h.get("content-type", "").startswith("text/html"), f"/ is a page ({s})")
 check("no-cache" in h.get("cache-control", ""), "/ is checked on every visit (no-cache)")
@@ -113,6 +115,18 @@ for (path, want), (s, _, body) in zip(extra, s_extra):
         check(s in want, f"coder still answers {path} ({s})")
     else:
         check(s in want and b'data-page="1"' in body, f"an unknown path gets the Coax 404 ({s})")
+# The Verse's way in: the landing (page 0) and the galaxy (page 1), one app, and their Markdown.
+for path, (s, h, body) in zip(verse, s_verse):
+    if path.endswith(".md"):
+        check(s == 200 and body.startswith(b"# "), f"{path} ({s})")
+    else:
+        want = b'data-page="1"' if path.endswith("galaxy") else b'data-page="0"'
+        ok = s == 200 and b'data-app="verse"' in body and want in body and b"<!--" not in body
+        check(ok, f"{path} runs the verse app ({s})")
+        if ok:
+            for f in sorted(set(re.findall(rb'(?:data-wasm|data-wgsl)="(/[^"]+)"', body))):
+                fs, fh, fb = get(f.decode())
+                check(fs == 200 and (not f.endswith(b".wasm") or fb[:4] == b"\0asm"), f"{path}: {f.decode()} ({fs})")
 print(f"smoke {base}{' via ' + via if via else ''}: " + ("passed" if not failed else f"{len(failed)} failed"))
 sys.exit(1 if failed else 0)
 PY

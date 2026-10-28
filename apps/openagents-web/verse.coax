@@ -1,0 +1,929 @@
+// The Verse's way in, drawn by Coax: the landing (openagents.com/verse) and
+// the galaxy after it (/verse/galaxy), ported from the playtest's Kiki flow
+// (aethyr-cpp frozen/kiki at revision 8, demo/kiki-2026-10-27b).
+//
+// The landing: CREATE ANYTHING over ENTER THE VERSE, the one line about the
+// house, and the email box with GO, and ENTER beside it to play now as a
+// guest. An email is never verified (a format check only); it goes to
+// POST /api/playtest/join with this browser's anonymous id and the session,
+// and is kept in the browser so a returning player goes straight on. Both
+// ways reach the galaxy.
+//
+// The galaxy: the playtest's worlds turning on their orbits; only the
+// Haunted House opens (/realm/haunted-house). Coding is coming soon and the
+// rest are locked, as the playtest drew them. Drag turns it.
+//
+// Panels and buttons are plates (realm.coax's look: a dark wood fill and a
+// thin bronze line, drawn by verse.wgsl), the words parchment and bronze in
+// Filament (font.coax). The host (coax/web/host.js) moves bytes; every
+// decision is here. What people do is recorded through analytics.coax.
+
+#load "font.coax";
+#load "ui.coax";
+#load "analytics.coax";
+
+VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 40000;
+PLATES :: 16;          // the most plates one frame shows
+PANEL_AT :: 8;         // width, height, time, fade, still, plates, dpr, 0; then per plate x0, y0, x1, y1, scale, alpha, look, 0
+UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+
+MODE_STROKE :: 0.0;
+MODE_LINK :: 1.0;
+MODE_PULSE :: 2.0;
+MODE_GLOW_TEXT :: 3.0;
+MODE_BAR :: 4.0;
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+// One stroke as a quad wide enough for its glow, as splash.coax draws one.
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// A round light: a disc of radius radius in a glow, as graph.coax draws a node.
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// ---- the page's state, kept by the host
+
+PAGE_LANDING :: 0; PAGE_GALAXY :: 1;
+EMAIL_MAX :: 120;          // the playtest's limit
+OUTBOX :: 256;
+REQ_URL :: 64; REQ_BODY :: 400;
+WAIT_JOIN :: 2.5;          // seconds GO waits for the server before going on anyway
+TOAST_TIME :: 2.8;
+NUDGE_TIME :: 0.7;
+MSG_KEPT :: 4;             // host.js: what this app kept in the browser (action 4), on each visit
+ACT_KEEP :: 4;             // host.js: keep the outbox's text in this browser
+
+// The landing's buttons and the galaxy's.
+BTN_FIELD :: 0; BTN_GO :: 1; BTN_ENTER :: 2;
+BTN_HOUSE :: 3; BTN_CODING :: 4;
+BUTTONS :: 5;
+
+// The landing's notes under the box.
+NOTE_NONE :: 0; NOTE_BAD :: 1; NOTE_EMPTY :: 2;
+
+VerseState :: struct {
+  started: bool;
+  time: f32; width: f32; height: f32; dpr: f32; still: bool;
+  page: int;                 // PAGE_* (the host sets it: data-page)
+  touch: bool;               // the last pointer was a finger
+  press: int; press_id: int; hover: int;
+  boxes: [BUTTONS] Box; shown: [BUTTONS] bool;
+  // the landing
+  email: [EMAIL_MAX] u8; email_n: int;
+  kept: [EMAIL_MAX] u8; kept_n: int;   // the email this browser gave on an earlier visit
+  focused: bool; typed_at: f32; opened: bool;
+  note: int; nudge_at: f32;
+  landed: bool;              // the page's step event is sent
+  going: bool; going_at: f32; join_id: int; answered: bool;
+  // the galaxy
+  rot: f32; tilt: f32; spun: bool;
+  down: bool; down_id: int; down_x: f32; down_y: f32; drag_rot: f32; drag_tilt: f32; moved: f32;
+  over: int;                 // the planet under the mouse, or the one a first tap picked (-1 none)
+  toast: [96] u8; toast_n: int; toast_at: f32;
+  // to the host: one request, the keyboard field, an action
+  req_url: [REQ_URL] u8; req_url_n: int; req_body: [REQ_BODY] u8; req_body_n: int; req_flags: int; req_ready: bool;
+  field: [4] f32;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+  next: [OUTBOX] u8; next_n: int;   // where to go once the action before it is taken
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+}
+
+// Which page (the host's data-page), before anything else.
+verse_page :: (s: [] VerseState, page: int) #export_c {
+  if !s[0].started { verse_reset(s); }
+  s[0].page = ifx page == PAGE_GALAXY then PAGE_GALAXY else PAGE_LANDING;
+}
+
+verse_reset :: (s: [] VerseState) {
+  s[0].started = true;
+  s[0].press = -1; s[0].press_id = -1; s[0].hover = -1; s[0].over = -1; s[0].join_id = -1;
+  s[0].rot = 0.6; s[0].tilt = 0.42; s[0].nudge_at = -100; s[0].toast_at = -100;
+}
+
+email_text :: (s: [] VerseState) -> string { return cast(string) s[0].email[0..<s[0].email_n]; }
+kept_text :: (s: [] VerseState) -> string { return cast(string) s[0].kept[0..<s[0].kept_n]; }
+
+// An email as the server takes it (verse.api's check): something, one @,
+// then two or more dot-separated parts, no spaces, at most 120 bytes.
+email_ok :: (text: string) -> bool {
+  if text.count < 5 || text.count > EMAIL_MAX { return false; }
+  at := -1;
+  for i: 0..<text.count {
+    c := text[i];
+    if c <= 32 || c >= 127 { return false; }
+    if c == '@' { if at >= 0 { return false; } at = i; }
+  }
+  if at < 1 { return false; }
+  dots := 0; part := 0;
+  for i: at + 1..<text.count {
+    if text[i] == '.' { if part == 0 { return false; } dots += 1; part = 0; } else { part += 1; }
+  }
+  return dots >= 1 && part > 0;
+}
+
+// A byte an email may hold as typed: printable ASCII without quotes or
+// backslashes (so the request's JSON needs no escapes), lowercase.
+email_byte :: (c: int) -> int {
+  if c < 33 || c > 126 || c == '"' || c == '\\' || c == '<' || c == '>' { return -1; }
+  if c >= 'A' && c <= 'Z' { return c + 32; }
+  return c;
+}
+
+email_type :: (s: [] VerseState, text: string) {
+  for i: 0..<text.count {
+    c := email_byte(cast(int) text[i]);
+    if c >= 0 && s[0].email_n < EMAIL_MAX { s[0].email[s[0].email_n] = cast(u8) c; s[0].email_n += 1; }
+  }
+  s[0].typed_at = s[0].time; s[0].note = NOTE_NONE;
+}
+
+// ---- out to the host
+
+act :: (s: [] VerseState, action: int, text: string) { s[0].out_n = put(s[0].outbox[..], 0, text); s[0].action = action; }
+// Go to url once the action waiting (if any) is taken.
+go_to :: (s: [] VerseState, url: string) { s[0].next_n = put(s[0].next[..], 0, url); }
+
+// One request to this site (the face hands it to coaxial_http).
+request :: (s: [] VerseState, url: string, flags: int) {
+  s[0].req_url_n = put(s[0].req_url[..], 0, url); s[0].req_flags = flags; s[0].req_ready = true;
+}
+verse_requested :: (s: [] VerseState, id: int) #export_c {
+  s[0].req_ready = false;
+  if s[0].going && s[0].join_id == -2 { s[0].join_id = id; if id < 0 { s[0].answered = true; } }
+}
+
+// The join: {email, player, sid, how}, as the playtest sent it.
+join :: (s: [] VerseState, t: [] Track, how: string, wanted: bool) {
+  b := s[0].req_body[..]; n := 0;
+  n = put(b, n, "{\"email\":\""); n = put(b, n, email_text(s));
+  n = put(b, n, "\",\"player\":\""); n = put(b, n, cast(string) t[0].pid[0..<t[0].pid_n]);
+  n = put(b, n, "\",\"sid\":\""); n = put(b, n, cast(string) t[0].sid[0..<t[0].sid_n]);
+  n = put(b, n, "\",\"how\":\""); n = put(b, n, how); n = put(b, n, "\"}");
+  s[0].req_body_n = n;
+  request(s, "/api/playtest/join", ifx wanted then HTTP_POST | HTTP_ANSWER else HTTP_POST);
+}
+
+// ---- what a press does
+
+// GO: an email, kept and joined, then the galaxy; a bad one says so.
+submit :: (s: [] VerseState, t: [] Track) {
+  if s[0].going { return; }
+  if s[0].email_n == 0 { s[0].note = NOTE_EMPTY; s[0].nudge_at = s[0].time; return; }
+  if !email_ok(email_text(s)) { s[0].note = NOTE_BAD; s[0].nudge_at = s[0].time; return; }
+  s[0].note = NOTE_NONE; s[0].focused = false;
+  s[0].going = true; s[0].going_at = s[0].time; s[0].answered = false;
+  if email_text(s) != kept_text(s) {
+    act(s, ACT_KEEP, email_text(s));
+    s[0].join_id = -2;
+    join(s, t, "form", true);
+    if track_begin(t, "join") { track_str(t, "email", email_text(s)); track_str(t, "how", "form"); track_end(t); }
+  } else { s[0].answered = true; }
+  if track_begin(t, "start") { track_str(t, "how", "email"); track_str(t, "to", "galaxy"); track_end(t); }
+  go_to(s, "/verse/galaxy");
+}
+
+// ENTER: play now as a guest (or as the email given before).
+enter :: (s: [] VerseState, t: [] Track) {
+  if s[0].going { return; }
+  s[0].note = NOTE_NONE; s[0].focused = false;
+  s[0].going = true; s[0].going_at = s[0].time; s[0].answered = true;
+  if track_begin(t, "start") { track_str(t, "how", ifx s[0].kept_n > 0 then "email" else "guest"); track_str(t, "to", "galaxy"); track_end(t); }
+  go_to(s, "/verse/galaxy");
+}
+
+focus :: (s: [] VerseState, t: [] Track) {
+  s[0].focused = true; s[0].typed_at = s[0].time;
+  if !s[0].opened { s[0].opened = true; track(t, "join-open"); }
+}
+
+// The planet p was picked (via the map or its tag).
+pick :: (s: [] VerseState, t: [] Track, p: int, via: string) {
+  open := PLANET_KIND[p] == KIND_OPEN;
+  if track_begin(t, "planet-click") { track_str(t, "planet", PLANET_ID[p]); track_str(t, "via", via); track_bool(t, "open", open); track_end(t); }
+  if open {
+    if s[0].next_n == 0 && s[0].action == 0 { s[0].answered = true; go_to(s, "/realm/haunted-house"); }
+    return;
+  }
+  n := 0;
+  if PLANET_KIND[p] == KIND_SOON {
+    n = put(s[0].toast[..], 0, PLANET_NAME[p]); n = put(s[0].toast[..], n, " IS COMING SOON. THE HAUNTED HOUSE IS OPEN NOW.");
+  } else {
+    n = put(s[0].toast[..], 0, PLANET_NAME[p]); n = put(s[0].toast[..], n, " IS LOCKED FOR THE PLAYTEST");
+  }
+  s[0].toast_n = n; s[0].toast_at = s[0].time;
+}
+
+press_button :: (s: [] VerseState, t: [] Track, b: int) {
+  if b == BTN_FIELD { focus(s, t); return; }
+  if b == BTN_GO { submit(s, t); return; }
+  if b == BTN_ENTER { enter(s, t); return; }
+  if b == BTN_HOUSE { pick(s, t, HOUSE, "tag"); return; }
+  if b == BTN_CODING { pick(s, t, CODING, "tag"); }
+}
+
+// ---- input
+
+// A key: a code point, or a named key below zero (ui.coax KEY_*).
+verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #export_c {
+  if s[0].page != PAGE_LANDING || s[0].going { return false; }
+  if key == KEY_ENTER { if s[0].focused || s[0].email_n > 0 { submit(s, t); } else { enter(s, t); } return true; }
+  // with a keyboard, typing goes into the box without a click first
+  if !s[0].focused && key > 32 && key < 127 && mods & (MOD_CTRL | MOD_META) == 0 { focus(s, t); }
+  if !s[0].focused { return false; }
+  if key == KEY_ESCAPE { s[0].focused = false; return true; }
+  if key == KEY_BACKSPACE { if s[0].email_n > 0 { s[0].email_n -= 1; } s[0].typed_at = s[0].time; s[0].note = NOTE_NONE; return true; }
+  if key > 0 && mods & (MOD_CTRL | MOD_META) == 0 {
+    buf: [4] u8; buf[0] = cast(u8) (key & 127);
+    if key < 127 { email_type(s, cast(string) buf[0..<1]); return true; }
+  }
+  return false;
+}
+
+// Typed or pasted text (kind 1), what this browser kept (4), and the join's answer.
+verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #export_c {
+  if kind == MSG_TEXT {
+    if s[0].page == PAGE_LANDING && !s[0].going {
+      if !s[0].focused { focus(s, t); }
+      email_type(s, bytes);
+    }
+    return;
+  }
+  if kind == MSG_KEPT {
+    n := 0;
+    for i: 0..<bytes.count { c := email_byte(cast(int) bytes[i]); if c >= 0 && n < EMAIL_MAX { s[0].kept[n] = cast(u8) c; n += 1; } }
+    s[0].kept_n = ifx email_ok(cast(string) s[0].kept[0..<n]) then n else 0;
+    if s[0].email_n == 0 { for i: 0..<s[0].kept_n { s[0].email[i] = s[0].kept[i]; } s[0].email_n = s[0].kept_n; }
+    return;
+  }
+  if kind >= HTTP_KIND && kind < HTTP_KIND + HTTPS && kind - HTTP_KIND == s[0].join_id { s[0].answered = true; s[0].join_id = -1; }
+}
+
+// The planet at (x, y) (-1 none): of those in reach, the one whose middle
+// is nearest for its size, so a small world in front of a big one's glow
+// still answers.
+planet_at :: (s: [] VerseState, x: f32, y: f32) -> int {
+  best := -1; score := 1.0e9f32;
+  for p: 0..<PLANETS {
+    q := project(s, p);
+    reach := hi(q.r * 1.5, 22 * s[0].dpr);
+    dx := q.x - x; dy := q.y - y;
+    near := (dx * dx + dy * dy) / (reach * reach);
+    if near < 1 && near < score { best = p; score = near; }
+  }
+  return best;
+}
+
+// The button at (x, y), of those drawn last frame (-1 none).
+button_at :: (s: [] VerseState, x: f32, y: f32) -> int {
+  slop := 4 * s[0].dpr;
+  for i: 0..<BUTTONS {
+    if !s[0].shown[i] { continue; }
+    b := s[0].boxes[i];
+    if x >= b.x0 - slop && x <= b.x1 + slop && y >= b.y0 - slop && y <= b.y1 + slop { return i; }
+  }
+  return -1;
+}
+
+// The pointer in device pixels: phase 0 down, 1 move, 2 up, 3 cancel; kind 0 a mouse, 1 a finger or pen.
+verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if phase == POINTER_DOWN { s[0].touch = kind != 0; }
+  b := button_at(s, x, y);
+  galaxy := s[0].page == PAGE_GALAXY;
+  // on the galaxy an open world under the pointer wins over a tag lying across it
+  if galaxy && b >= 0 { under := planet_at(s, x, y); if under >= 0 && PLANET_KIND[under] == KIND_OPEN { b = -1; } }
+  s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
+  if galaxy && kind == 0 && !s[0].down { s[0].over = ifx b < 0 then planet_at(s, x, y) else -1; }
+  if phase == POINTER_DOWN {
+    if b >= 0 { s[0].press = b; s[0].press_id = id; return true; }
+    if galaxy {
+      s[0].down = true; s[0].down_id = id; s[0].down_x = x; s[0].down_y = y;
+      s[0].drag_rot = s[0].rot; s[0].drag_tilt = s[0].tilt; s[0].moved = 0;
+      return true;
+    }
+    // the landing: a press in the stars brings you back to the box
+    if !s[0].going {
+      s[0].nudge_at = s[0].time;
+      if kind == 0 { focus(s, t); } else { s[0].focused = false; }
+    }
+    return true;
+  }
+  if s[0].press >= 0 && id == s[0].press_id {
+    if phase == POINTER_UP && b == s[0].press { press_button(s, t, b); }
+    if phase != POINTER_MOVE { s[0].press = -1; s[0].press_id = -1; }
+    return true;
+  }
+  if galaxy && s[0].down && id == s[0].down_id {
+    k := hi(s[0].dpr, 0.5);
+    if phase == POINTER_MOVE {
+      s[0].moved = hi(s[0].moved, abs(x - s[0].down_x) + abs(y - s[0].down_y));
+      if s[0].moved > 6 * k {
+        s[0].rot = s[0].drag_rot + (x - s[0].down_x) / k * 0.006;
+        s[0].tilt = clamp(s[0].drag_tilt + (y - s[0].down_y) / k * 0.004, 0.12, 1.2);
+        s[0].spun = true;
+      }
+      return true;
+    }
+    s[0].down = false;
+    if phase == POINTER_UP && s[0].moved <= 6 * k {
+      p := planet_at(s, x, y);
+      if p >= 0 {
+        // a finger's first tap on a planet names it; the next opens it
+        if kind != 0 && s[0].over != p { s[0].over = p; } else { pick(s, t, p, "map"); }
+      } else if kind != 0 { s[0].over = -1; }
+    }
+    return true;
+  }
+  return kind == 0;
+}
+
+verse_wants_text :: (s: [] VerseState) -> bool #export_c { return s[0].page == PAGE_LANDING && s[0].focused && !s[0].going; }
+verse_cursor :: (s: [] VerseState) -> int #export_c {
+  if s[0].hover >= 0 || s[0].press >= 0 { return 1; }
+  if s[0].page == PAGE_GALAXY && s[0].over >= 0 && PLANET_KIND[s[0].over] == KIND_OPEN { return 1; }
+  return 0;
+}
+// What the pointer is over, for the click event.
+verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c {
+  b := button_at(s, x, y);
+  if b == BTN_FIELD { return "email"; }
+  if b == BTN_GO { return "go"; }
+  if b == BTN_ENTER { return "enter"; }
+  if b == BTN_HOUSE { return "house-tag"; }
+  if b == BTN_CODING { return "coding-tag"; }
+  if s[0].page == PAGE_GALAXY { p := planet_at(s, x, y); if p >= 0 { return PLANET_ID[p]; } }
+  return "";
+}
+verse_action :: (s: [] VerseState) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+verse_action_done :: (s: [] VerseState) #export_c { for i: 0..<OUTBOX { s[0].outbox[i] = 0; } s[0].out_n = 0; }
+
+// ---- the galaxy's worlds (the playtest's map, app.js galaxy.bodies)
+
+PLANETS :: 7;
+KIND_LOCKED :: 0; KIND_OPEN :: 1; KIND_SOON :: 2;
+HOUSE :: 1; CODING :: 5;
+PLANET_ID :: [PLANETS] string.["oa", "house", "blue", "brain", "grove", "coding", "grid"];
+PLANET_NAME :: [PLANETS] string.["OPENAGENTS", "HAUNTED HOUSE", "BLUE RUSH", "BIG BRAIN", "EVERGLADE", "CODING", "THE GRID"];
+PLANET_KIND :: [PLANETS] int.[KIND_LOCKED, KIND_OPEN, KIND_LOCKED, KIND_LOCKED, KIND_LOCKED, KIND_SOON, KIND_LOCKED];
+PLANET_R :: [PLANETS] f32.[0, 0.15, 0.42, 0.46, 0.34, 0.37, 0.3];
+PLANET_A :: [PLANETS] f32.[0, 0, 2.4, 0.5, 4.2, 3.25, 5.4];
+PLANET_SIZE :: [PLANETS] f32.[0.075, 0.028, 0.05, 0.045, 0.032, 0.043, 0.036];
+ORBITS :: [6] f32.[0.15, 0.26, 0.3, 0.34, 0.42, 0.46];
+
+Seen :: struct { x: f32; y: f32; r: f32; depth: f32; }
+
+// Where planet p is on the screen now, in device pixels: the playtest's
+// projection (a tilted disc, nearer is bigger), the house turning on its own.
+project :: (s: [] VerseState, p: int) -> Seen {
+  w := s[0].width; h := s[0].height;
+  m := lo(w, h) * 0.95; cx := w * 0.5; cy := h * 0.55;
+  a := PLANET_A[p];
+  if p == HOUSE { a = ifx s[0].still then 1.2f32 else s[0].time * 0.3; }
+  x := PLANET_R[p] * cos(a + s[0].rot); z := PLANET_R[p] * sin(a + s[0].rot);
+  depth := z * cos(s[0].tilt);
+  k := 1 / (1 + depth * 0.9);
+  return Seen.{x = cx + x * m * k, y = cy + z * sin(s[0].tilt) * m * k, r = PLANET_SIZE[p] * m * k, depth = depth};
+}
+
+// ---- the look (realm.coax's): change it here
+
+GAP :: 0.5;       // letter gap, in cap heights
+SPACE :: 1.2;     // a space, in cap heights
+WIDE :: 1.1;      // the eyebrows' wide spacing
+PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;   // #e8dcc0, words
+GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;        // bronze
+EMBER_R :: 0.91; EMBER_G :: 0.47; EMBER_B :: 0.17;     // the Haunted House's orange, the focus
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
+
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+ember :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.4 * k, EMBER_R, EMBER_G, EMBER_B); }
+
+plate :: (s: [] VerseState, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
+}
+button_look :: (s: [] VerseState, i: int, lit_up: bool) -> f32 {
+  look: f32 = ifx lit_up then LOOK_LIT else LOOK_PLAIN;
+  if s[0].press == i || s[0].hover == i { look += LOOK_HOVER; }
+  return look;
+}
+
+// A space for a letter gap: wide-spaced words keep a clear space between them.
+space_for :: (gap: f32) -> f32 { return hi(SPACE, gap * 2.4); }
+centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, k: Ink) -> int {
+  w := measure(text, gap, space_for(gap), false) * cap;
+  return write(d, out, at, text, x - w * 0.5, base, cap, gap, space_for(gap), k, false, false);
+}
+// The largest cap up to cap at which text fits width.
+fit_cap :: (text: string, cap: f32, gap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, gap, space_for(gap), false), 0.001)); }
+
+// A button: its plate and its label, centred.
+plate_button :: (s: [] VerseState, out: [] f32, at: int, i: int, b: Box, label: string, lit_up: bool) -> int {
+  k := s[0].dpr;
+  s[0].boxes[i] = b; s[0].shown[i] = true;
+  plate(s, b, 0.92, button_look(s, i, lit_up));
+  size := fit_cap(label, 9 * k, GAP, b.x1 - b.x0 - 16 * k);
+  return centred(k, out, at, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + size * 0.5, size, GAP, white(k, 0.95));
+}
+
+// An ellipse as a closed line of segments.
+ring :: (out: [] f32, at: int, cx: f32, cy: f32, rx: f32, ry: f32, segments: int, core: f32, light: f32, glow: f32,
+         red: f32, green: f32, blue: f32) -> int {
+  vertices := at;
+  if light <= 0 { return vertices; }
+  step := 6.2831853 / cast(f32) segments;
+  for i: 0..<segments {
+    a := cast(f32) i * step; b := a + step;
+    if lit(out, vertices, cx + rx * cos(a), cy + ry * sin(a), cx + rx * cos(b), cy + ry * sin(b), core, light, glow, red, green, blue, MODE_STROKE) { vertices += 6; }
+  }
+  return vertices;
+}
+
+// The OpenAgents mark (the power symbol) and the word, top left.
+brand :: (s: [] VerseState, out: [] f32, at: int, word: string) -> int {
+  k := s[0].dpr;
+  x := 16 * k + 8 * k; y := 16 * k + 9 * k; r := 6 * k;
+  vertices := at;
+  for i: 0..<24 {
+    a := -1.5707963 + 0.6 + cast(f32) i * (6.2831853 - 1.2) / 24.0;
+    b := a + (6.2831853 - 1.2) / 24.0;
+    if lit(out, vertices, x + r * cos(a), y + r * sin(a), x + r * cos(b), y + r * sin(b), 0.7 * k, 0.9, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+  }
+  if lit(out, vertices, x, y - r - 1.5 * k, x, y - 1 * k, 0.7 * k, 0.9, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
+  return write(k, out, vertices, word, x + r + 10 * k, y + 4.5 * k, 9 * k, GAP, SPACE, white(k, 0.95), false, false);
+}
+
+// ---- the landing
+
+TITLE :: "ENTER THE VERSE";
+EYEBROW :: "CREATE ANYTHING";
+LEDE_1 :: "EDIT OUR HAUNTED HOUSE.";
+LEDE_2 :: "CAN YOU MAKE IT SCARIER?";
+PLACEHOLDER :: "YOU@EXAMPLE.COM";
+
+column :: (s: [] VerseState) -> f32 { return lo(400 * s[0].dpr, s[0].width - 32 * s[0].dpr); }
+join_box :: (s: [] VerseState) -> Box {
+  k := s[0].dpr; w := column(s); cx := s[0].width * 0.5; cy := s[0].height * 0.5;
+  return Box.{x0 = cx - w * 0.5, y0 = cy + 6 * k, x1 = cx + w * 0.5, y1 = cy + 124 * k};
+}
+field_box :: (s: [] VerseState) -> Box {
+  k := s[0].dpr; j := join_box(s);
+  return Box.{x0 = j.x0 + 14 * k, y0 = j.y0 + 34 * k, x1 = j.x1 - 14 * k - 60 * k, y1 = j.y0 + 76 * k};
+}
+go_box :: (s: [] VerseState) -> Box {
+  k := s[0].dpr; j := join_box(s); f := field_box(s);
+  return Box.{x0 = f.x1 + 8 * k, y0 = f.y0, x1 = j.x1 - 14 * k, y1 = f.y1};
+}
+enter_box :: (s: [] VerseState) -> Box {
+  k := s[0].dpr; j := join_box(s);
+  return Box.{x0 = j.x0 + 44 * k, y0 = j.y0 + 86 * k, x1 = j.x0 + 132 * k, y1 = j.y0 + 112 * k};
+}
+
+// The faint orbs drifting behind the hero (the playtest's, made faint as revision 9 asked).
+orbs :: (s: [] VerseState, out: [] f32, at: int) -> int {
+  k := s[0].dpr; t := ifx s[0].still then 0.0f32 else s[0].time;
+  ox := [5] f32.[0.25, 0.73, 0.78, 0.14, 0.6];
+  oy := [5] f32.[0.27, 0.26, 0.73, 0.62, 0.86];
+  size := [5] f32.[4.5, 3.5, 3.8, 2.6, 3.0];
+  vertices := at;
+  for i: 0..<5 {
+    f := cast(f32) i;
+    x := (ox[i] + 0.018 * sin(t * 0.11 + f * 1.7)) * s[0].width;
+    y := (oy[i] + 0.014 * cos(t * 0.09 + f * 2.3)) * s[0].height;
+    if tinted_dot(out, vertices, x, y, size[i] * k, 0.42, 12 * k, 0.93, 0.93, 0.95) { vertices += 6; }
+    vertices = ring(out, vertices, x, y, (size[i] + 4) * k, (size[i] + 4) * k, 28, 0.5 * k, 0.16, 1 * k, 0.93, 0.93, 0.95);
+  }
+  return vertices;
+}
+
+draw_landing :: (s: [] VerseState, out: [] f32, at: int) -> int {
+  k := s[0].dpr; d := k; w := s[0].width; cx := w * 0.5; cy := s[0].height * 0.5;
+  vertices := orbs(s, out, at);
+  vertices = brand(s, out, vertices, "OPENAGENTS");
+  room := w - 32 * k;
+  eyebrow := fit_cap(EYEBROW, 7.5 * k, WIDE, room);
+  vertices = centred(d, out, vertices, EYEBROW, cx, cy - 118 * k, eyebrow, WIDE, bronze(k, 0.85));
+  title := fit_cap(TITLE, 30 * k, 0.62, w - 48 * k);
+  vertices = centred(d, out, vertices, TITLE, cx, cy - 70 * k, title, 0.62, ink(0.9 * k * title / (30 * k), 1, 5 * k, PARCH_R, PARCH_G, PARCH_B));
+  lede := lo(fit_cap(LEDE_1, 9.5 * k, GAP, room), fit_cap(LEDE_2, 9.5 * k, GAP, room));
+  vertices = centred(d, out, vertices, LEDE_1, cx, cy - 36 * k, lede, GAP, white(k, 0.9));
+  vertices = centred(d, out, vertices, LEDE_2, cx, cy - 18 * k, lede, GAP, white(k, 0.9));
+
+  // the box: YOUR EMAIL, the field and GO; or ENTER, play now as a guest
+  j := join_box(s);
+  plate(s, j, 0.9, LOOK_PLAIN);
+  vertices = write(d, out, vertices, "YOUR EMAIL", j.x0 + 16 * k, j.y0 + 22 * k, 7 * k, WIDE, space_for(WIDE), bronze(k, 0.95), false, false);
+  f := field_box(s);
+  s[0].boxes[BTN_FIELD] = f; s[0].shown[BTN_FIELD] = true;
+  focused := s[0].focused && !s[0].going;
+  plate(s, f, 0.95, ifx focused || s[0].hover == BTN_FIELD then LOOK_LIT else LOOK_PLAIN);
+  // the focus: an orange line round the field that breathes, brighter for a moment on a nudge
+  nudge := ifx s[0].still then 0.0f32 else 1 - ease((s[0].time - s[0].nudge_at) / NUDGE_TIME);
+  if focused || nudge > 0 {
+    breathe := ifx s[0].still then 0.0f32 else 0.15 * sin(s[0].time * 3.4);
+    light := ifx focused then 0.55 + breathe else 0.0f32;
+    light = hi(light, 0.95 * nudge);
+    g := 2 * k + 5 * k * nudge;
+    xs := [5] f32.[f.x0, f.x1, f.x1, f.x0, f.x0];
+    ys := [5] f32.[f.y0, f.y0, f.y1, f.y1, f.y0];
+    for e: 0..<4 {
+      if lit(out, vertices, xs[e], ys[e], xs[e + 1], ys[e + 1], 0.6 * k, light, g, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { vertices += 6; }
+    }
+  }
+  cap := 10 * k; base := (f.y0 + f.y1) * 0.5 + cap * 0.5; left := f.x0 + 12 * k; width := f.x1 - f.x0 - 24 * k;
+  text := email_text(s);
+  if text.count == 0 && !focused {
+    vertices = write(d, out, vertices, PLACEHOLDER, left, base, cap, GAP, SPACE, white(k, 0.32), false, false);
+  } else {
+    from := 0;
+    while from < text.count && measure(text[from..<text.count], GAP, SPACE, false) * cap > width { from += 1; }
+    shown := text[from..<text.count];
+    vertices = write(d, out, vertices, shown, left, base, cap, GAP, SPACE, white(k, 0.97), false, false);
+    since := s[0].time - s[0].typed_at;
+    if focused && (s[0].still || since / 1.06 - floor(since / 1.06) < 0.5) {
+      after := ifx shown.count > 0 then GAP * 0.6 else 0.0f32;
+      x := floor(left + (measure(shown, GAP, SPACE, false) + after) * cap) + 0.5;
+      if lit(out, vertices, x, base + 2 * k, x, base - cap - 3 * k, 0.5 * k, 1, 3 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { vertices += 6; }
+    }
+  }
+  s[0].field[0] = f.x0; s[0].field[1] = f.y0; s[0].field[2] = f.x1; s[0].field[3] = f.y1;
+  vertices = plate_button(s, out, vertices, BTN_GO, go_box(s), "GO", true);
+  e := enter_box(s);
+  row := (e.y0 + e.y1) * 0.5 + 3.5 * k;
+  vertices = write(d, out, vertices, "OR", j.x0 + 16 * k, row, 7 * k, GAP, SPACE, white(k, 0.5), false, false);
+  vertices = plate_button(s, out, vertices, BTN_ENTER, e, "ENTER", false);
+  guest := fit_cap("PLAY NOW AS A GUEST", 7 * k, GAP, j.x1 - e.x1 - 26 * k);
+  vertices = write(d, out, vertices, "PLAY NOW AS A GUEST", e.x1 + 12 * k, row, guest, GAP, SPACE, white(k, 0.55), false, false);
+
+  // what went wrong, under the box
+  if s[0].note != NOTE_NONE {
+    say := ifx s[0].note == NOTE_BAD then "THAT DOESN'T LOOK LIKE AN EMAIL ADDRESS" else "TYPE YOUR EMAIL, OR ENTER TO PLAY AS A GUEST";
+    size := fit_cap(say, 8 * k, GAP, room);
+    vertices = centred(d, out, vertices, say, cx, j.y1 + 26 * k, size, GAP, ember(k, 0.95));
+  }
+  return vertices;
+}
+
+// ---- the galaxy
+
+draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
+  k := s[0].dpr; d := k; w := s[0].width; h := s[0].height; cx := w * 0.5;
+  vertices := at;
+  phone := s[0].touch || w < 640 * k;
+  vertices = write(d, out, vertices, "THE VERSE", 16 * k, 16 * k + 13 * k, 9 * k, WIDE * 0.6, space_for(WIDE * 0.6), white(k, 0.95), false, false);
+  // who you are, top right: the email given, else a guest
+  who := ifx s[0].kept_n > 0 then kept_text(s) else "GUEST";
+  wcap := 8 * k;
+  ww := lo(measure(who, GAP, SPACE, false) * wcap + 28 * k, w * 0.5);
+  wb := Box.{x0 = w - 16 * k - ww, y0 = 14 * k, x1 = w - 16 * k, y1 = 44 * k};
+  plate(s, wb, 0.85, LOOK_PLAIN);
+  vertices = draw_fit(d, out, vertices, who, wb.x0 + 14 * k, (wb.y0 + wb.y1) * 0.5 + wcap * 0.5, wcap, GAP, SPACE, white(k, 0.9), ww - 28 * k);
+  vertices = centred(d, out, vertices, "GALAXY", cx, 82 * k, 9 * k, WIDE, bronze(k, 0.9));
+
+  // the orbits, then the worlds
+  m := lo(w, h) * 0.95; cy := h * 0.55;
+  for o: 0..<6 {
+    r := ORBITS[o] * m;
+    vertices = ring(out, vertices, cx, cy, r, r * sin(s[0].tilt), 72, 0.5 * k, 0.13, 1 * k, 0.93, 0.93, 0.95);
+  }
+  pulse := ifx s[0].still then 0.35f32 else (s[0].time / 1.6) - floor(s[0].time / 1.6);
+  for p: 0..<PLANETS {
+    q := project(s, p);
+    if PLANET_KIND[p] == KIND_OPEN {
+      if tinted_dot(out, vertices, q.x, q.y, 0.1, 3.2, q.r * 3.4, EMBER_R, EMBER_G, EMBER_B) { vertices += 6; }
+      if tinted_dot(out, vertices, q.x, q.y, q.r * 0.5, 1, q.r * 0.6, 0.94, 0.85, 0.75) { vertices += 6; }
+      // a ring swells out of the house and fades, over and over
+      vertices = ring(out, vertices, q.x, q.y, q.r * (1.1 + pulse * 2.2), q.r * (1.1 + pulse * 2.2), 40, 0.9 * k, 0.85 * (1 - pulse), 2 * k, EMBER_R, EMBER_G, EMBER_B);
+    } else {
+      bright := ifx PLANET_KIND[p] == KIND_SOON then 1.0f32 else 0.55f32;
+      if tinted_dot(out, vertices, q.x, q.y, 0.1, 2.2 * bright, q.r * 3.0, 0.93, 0.93, 0.95) { vertices += 6; }
+      if tinted_dot(out, vertices, q.x, q.y, q.r * 0.75 * 0.55, bright, q.r * 0.5, 0.95, 0.95, 0.96) { vertices += 6; }
+    }
+    if s[0].over == p { vertices = ring(out, vertices, q.x, q.y, q.r * 1.4 + 2 * k, q.r * 1.4 + 2 * k, 40, 0.6 * k, 0.6, 1.5 * k, 0.93, 0.93, 0.95); }
+  }
+
+  // the tags under the worlds that answer (the house opens; Coding says when)
+  tcap := ifx phone then 7 * k else 8 * k;
+  for which: 0..<2 {
+    p := ifx which == 0 then HOUSE else CODING;
+    i := ifx which == 0 then BTN_HOUSE else BTN_CODING;
+    if s[0].over == p { continue; }
+    label := "CODING · COMING SOON";
+    if which == 0 { label = ifx phone then "HAUNTED HOUSE · TAP TO ENTER" else "HAUNTED HOUSE · CLICK TO ENTER"; }
+    q := project(s, p);
+    tw := measure(label, GAP, SPACE, false) * tcap + 24 * k;
+    top := q.y + q.r * 1.5 + 6 * k;
+    b := Box.{x0 = q.x - tw * 0.5, y0 = top, x1 = q.x + tw * 0.5, y1 = top + 26 * k};
+    if b.x0 < 8 * k { b.x1 += 8 * k - b.x0; b.x0 = 8 * k; }
+    if b.x1 > w - 8 * k { b.x0 -= b.x1 - (w - 8 * k); b.x1 = w - 8 * k; }
+    s[0].boxes[i] = b; s[0].shown[i] = true;
+    plate(s, b, 0.9, button_look(s, i, which == 0));
+    vertices = centred(d, out, vertices, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + tcap * 0.5, tcap, GAP, ifx which == 0 then ember(k, 1) else white(k, 0.9));
+  }
+  // the world under the pointer: its name and whether it opens
+  if s[0].over >= 0 {
+    p := s[0].over; q := project(s, p);
+    name := PLANET_NAME[p];
+    state := "LOCKED";
+    if PLANET_KIND[p] == KIND_SOON { state = "COMING SOON"; }
+    if PLANET_KIND[p] == KIND_OPEN { state = ifx phone then "OPEN · TAP AGAIN TO ENTER" else "OPEN"; }
+    lw := hi(measure(name, GAP, SPACE, false) * 9 * k, measure(state, GAP, SPACE, false) * 7 * k) + 28 * k;
+    bottom := q.y - q.r - 10 * k;
+    b := Box.{x0 = q.x - lw * 0.5, y0 = bottom - 46 * k, x1 = q.x + lw * 0.5, y1 = bottom};
+    if b.x0 < 8 * k { b.x1 += 8 * k - b.x0; b.x0 = 8 * k; }
+    if b.x1 > w - 8 * k { b.x0 -= b.x1 - (w - 8 * k); b.x1 = w - 8 * k; }
+    plate(s, b, 0.92, LOOK_PLAIN);
+    vertices = write(d, out, vertices, name, b.x0 + 14 * k, b.y0 + 21 * k, 9 * k, GAP, SPACE, white(k, 0.97), false, false);
+    vertices = write(d, out, vertices, state, b.x0 + 14 * k, b.y0 + 37 * k, 7 * k, GAP, SPACE,
+                     ifx PLANET_KIND[p] == KIND_OPEN then ember(k, 0.95) else bronze(k, 0.85), false, false);
+  }
+
+  // what to do, at the bottom
+  hint := ifx s[0].spun then 0.45f32 else 0.7f32;
+  line1 := "DRAG TO TURN THE GALAXY";
+  line2 := ifx phone then "TAP THE ORANGE PLANET, THE HAUNTED HOUSE" else "CLICK THE ORANGE PLANET, THE HAUNTED HOUSE, TO ENTER";
+  hc := lo(fit_cap(line1, 7.5 * k, GAP, w - 32 * k), fit_cap(line2, 7.5 * k, GAP, w - 32 * k));
+  vertices = centred(d, out, vertices, line1, cx, h - 74 * k, hc, GAP, white(k, hint));
+  vertices = centred(d, out, vertices, line2, cx, h - 56 * k, hc, GAP, white(k, hint));
+
+  // a world that doesn't open says so for a moment
+  shown := 1 - ease((s[0].time - s[0].toast_at - TOAST_TIME) / 0.4);
+  if s[0].toast_n > 0 && s[0].time - s[0].toast_at < TOAST_TIME + 0.4 {
+    say := cast(string) s[0].toast[0..<s[0].toast_n];
+    room := w - 32 * k;
+    lines := line_total(say, 8.5 * k, room - 28 * k, GAP, SPACE, false);
+    tw := lo(measure(say, GAP, SPACE, false) * 8.5 * k + 28 * k, room);
+    th := 18 * k + cast(f32) lines * 16 * k;
+    b := Box.{x0 = cx - tw * 0.5, y0 = h - 110 * k - th, x1 = cx + tw * 0.5, y1 = h - 110 * k};
+    plate(s, b, 0.95 * shown, LOOK_LIT);
+    used: [1] f32;
+    vertices = draw_wrapped(d, out, vertices, say, b.x0 + 14 * k, b.y0 + 9 * k, 8.5 * k, GAP, SPACE, white(k, shown), tw - 28 * k, 16 * k, false, true, used[..]);
+  }
+  return vertices;
+}
+
+// ---- the frame
+
+// The host calls this once a frame. dt is seconds since the last frame;
+// still: the visitor prefers reduced motion. Returns the vertex count.
+verse_frame :: (s: [] VerseState, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].started { verse_reset(s); }
+  // back to a page left by going on (the browser kept it): it answers again
+  if s[0].going && s[0].next_n == 0 && s[0].time - s[0].going_at > 6 { s[0].going = false; }
+  s[0].time += clamp(dt, 0, 0.1);
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  if s[0].page == PAGE_GALAXY && !s[0].down && !still { s[0].rot += 0.036 * clamp(dt, 0, 0.1); }
+  s[0].plate_n = 0;
+  for i: 0..<BUTTONS { s[0].shown[i] = false; }
+  s[0].field[0] = 0; s[0].field[1] = 0; s[0].field[2] = 0; s[0].field[3] = 0;
+
+  // the page's own step, once the visit's facts are in
+  if !s[0].landed && t.count > 0 && t[0].ready {
+    s[0].landed = true;
+    if s[0].page == PAGE_GALAXY { track(t, "map"); }
+    else {
+      track(t, "landing");
+      // a returning player's visit is tied to their email too
+      if s[0].kept_n > 0 && email_text(s) == kept_text(s) {
+        join(s, t, "return", false);
+        if track_begin(t, "join") { track_str(t, "email", kept_text(s)); track_bool(t, "returning", true); track_str(t, "how", "return"); track_end(t); }
+      }
+    }
+  }
+  // GO waits for the server's answer (or WAIT_JOIN), and the keep before it
+  if s[0].next_n > 0 && s[0].action == 0 && !s[0].req_ready && (s[0].answered || s[0].time - s[0].going_at > WAIT_JOIN) {
+    act(s, ACT_NAVIGATE, cast(string) s[0].next[0..<s[0].next_n]);
+    s[0].next_n = 0;
+  }
+
+  for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = ifx still then 20.0f32 else s[0].time;
+  uniforms[3] = ifx still then 1.0f32 else ease(s[0].time / 0.8);
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32;
+  uniforms[6] = s[0].dpr;
+  n := ifx s[0].page == PAGE_GALAXY then draw_galaxy(s, out, 0) else draw_landing(s, out, 0);
+  uniforms[5] = cast(f32) s[0].plate_n;
+  for i: 0..<s[0].plate_n {
+    o := PANEL_AT + i * 8; b := s[0].plates[i];
+    uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = s[0].plate_alpha[i]; uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = 0;
+  }
+  return n;
+}
+
+coaxial_verse_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_verse_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_verse_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+// A page at w x h CSS pixels and dpr 2, its facts in, one frame drawn.
+page_at :: (s: [] VerseState, t: [] Track, page: int, w: f32, h: f32) {
+  s[0].page = page;
+  track_init(t, ifx page == PAGE_GALAXY then "galaxy" else "landing");
+  facts := "tab=0123456789abcdef\nfresh=1\nvisitor=feedfacecafebeef\nnow=1000\nnav=50\nurl=https://openagents.com/verse\nua=Mozilla/5.0\ncoarse=0";
+  _ := track_message(t, HOST_PAGE, facts);
+  out: [6 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  drawn := verse_frame(s, t, out[..], u[..], w * 2, h * 2, 2, 0.016, true);
+}
+redraw :: (s: [] VerseState, t: [] Track, dt: f32) {
+  out: [6 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := verse_frame(s, t, out[..], u[..], s[0].width, s[0].height, s[0].dpr, dt, true);
+}
+poke :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) { _ := verse_pointer(s, t, x, y, phase, kind, id); }
+take :: (s: [] VerseState) { _ := verse_action(s); verse_action_done(s); }
+click :: (s: [] VerseState, t: [] Track, b: Box) {
+  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  poke(s, t, x, y, POINTER_DOWN, 0, 1);
+  poke(s, t, x, y, POINTER_UP, 0, 1);
+}
+batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) t[0].buf[0..<t[0].buf_n], text); }
+
+#test "an email is what the server takes" {
+  #assert email_ok("a@b.co") && email_ok("chris@openagents.com") && email_ok("x.y+z@mail.example.org");
+  #assert !email_ok("") && !email_ok("a@b") && !email_ok("@b.co") && !email_ok("a@@b.co") && !email_ok("a@b..co");
+  #assert !email_ok("a@.co") && !email_ok("a@b.co.") && !email_ok("a b@c.co") && !email_ok("a@b@c.co");
+  #assert email_byte('A') == 'a' && email_byte('"') < 0 && email_byte('\\') < 0 && email_byte(' ') < 0;
+}
+
+#test "the landing fits a phone and a desktop" {
+  for size: 0..<2 {
+    s: [1] VerseState; t: [1] Track;
+    w := ifx size == 0 then 390.0f32 else 1440.0f32; h := ifx size == 0 then 844.0f32 else 900.0f32;
+    page_at(s[..], t[..], PAGE_LANDING, w, h);
+    out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+    n := verse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);
+    #assert n > 0 && n % 6 == 0 && n < MAX_VERTICES;
+    for v: 0..<n { x := out[v * VERTEX_FLOATS]; #assert x > -40 && x < w * 2 + 40; }
+    #assert s[0].shown[BTN_FIELD] && s[0].shown[BTN_GO] && s[0].shown[BTN_ENTER];
+    f := s[0].boxes[BTN_FIELD]; g := s[0].boxes[BTN_GO]; e := s[0].boxes[BTN_ENTER];
+    #assert f.x0 >= 16 * 2 && g.x1 <= w * 2 - 16 * 2 && f.x1 < g.x0 && e.y0 > f.y1;
+    #assert u[5] >= 4 && u[PANEL_AT] > 0;
+  }
+}
+
+#test "ENTER goes to the galaxy as a guest, once" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
+  #assert batch_has(t[..], "\"ev\":\"landing\"");
+  click(s[..], t[..], s[0].boxes[BTN_ENTER]);
+  #assert batch_has(t[..], "\"ev\":\"start\"") && batch_has(t[..], "\"how\":\"guest\"") && !s[0].req_ready;
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  take(s[..]);
+  click(s[..], t[..], s[0].boxes[BTN_ENTER]);
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == 0;
+}
+
+#test "GO with an email keeps it, joins and then goes" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_LANDING, 390, 844);
+  click(s[..], t[..], s[0].boxes[BTN_FIELD]);
+  #assert verse_wants_text(s[..]) && batch_has(t[..], "join-open");
+  verse_message(s[..], t[..], MSG_TEXT, "Chris@OpenAgents.com");
+  #assert email_text(s[..]) == "chris@openagents.com";
+  #assert verse_key(s[..], t[..], KEY_ENTER, 0);
+  #assert s[0].action == ACT_KEEP && cast(string) s[0].outbox[0..<s[0].out_n] == "chris@openagents.com";
+  #assert s[0].req_ready && cast(string) s[0].req_url[0..<s[0].req_url_n] == "/api/playtest/join";
+  body := cast(string) s[0].req_body[0..<s[0].req_body_n];
+  #assert body == "{\"email\":\"chris@openagents.com\",\"player\":\"feedfacecafebeef\",\"sid\":\"c0123456789abcdef\",\"how\":\"form\"}";
+  #assert s[0].req_flags == HTTP_POST | HTTP_ANSWER;
+  verse_requested(s[..], 3);
+  take(s[..]);
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == 0;   // waiting for the server
+  verse_message(s[..], t[..], HTTP_KIND + 3, "200\n{\"joined\":true}");
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  #assert batch_has(t[..], "\"how\":\"email\"");
+}
+
+#test "GO goes on anyway when the server doesn't answer" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
+  verse_message(s[..], t[..], MSG_TEXT, "a@b.co");
+  click(s[..], t[..], s[0].boxes[BTN_GO]);
+  verse_requested(s[..], 0);
+  take(s[..]);
+  for i: 0..<30 { redraw(s[..], t[..], 0.1); }
+  #assert s[0].action == ACT_NAVIGATE;
+}
+
+#test "a bad email says so and sends nothing" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
+  click(s[..], t[..], s[0].boxes[BTN_GO]);
+  #assert s[0].note == NOTE_EMPTY && !s[0].req_ready && s[0].action == 0;
+  verse_message(s[..], t[..], MSG_TEXT, "not an email");
+  #assert email_text(s[..]) == "notanemail";
+  click(s[..], t[..], s[0].boxes[BTN_GO]);
+  #assert s[0].note == NOTE_BAD && !s[0].req_ready && !s[0].going;
+  _ := verse_key(s[..], t[..], KEY_BACKSPACE, 0);
+  #assert email_text(s[..]) == "notanemai" && s[0].note == NOTE_NONE;
+}
+
+#test "a returning player's email is filled in and joined again" {
+  s: [1] VerseState; t: [1] Track;
+  s[0].page = PAGE_LANDING;
+  verse_message(s[..], t[..], MSG_KEPT, "me@example.org");
+  page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
+  #assert email_text(s[..]) == "me@example.org" && s[0].req_ready && s[0].req_flags == HTTP_POST;
+  #assert text_has(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"how\":\"return\"");
+  verse_requested(s[..], 0);
+  click(s[..], t[..], s[0].boxes[BTN_GO]);
+  #assert s[0].action == 0 && !s[0].req_ready;   // the same email: nothing to keep or join again
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE;
+}
+
+#test "only the Haunted House opens" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
+  #assert batch_has(t[..], "\"ev\":\"map\"");
+  #assert s[0].shown[BTN_HOUSE] && s[0].shown[BTN_CODING];
+  click(s[..], t[..], s[0].boxes[BTN_CODING]);
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == 0 && s[0].toast_n > 0 && batch_has(t[..], "\"planet\":\"coding\"");
+  for p: 0..<PLANETS {
+    if PLANET_KIND[p] == KIND_OPEN { continue; }
+    q := project(s[..], p);
+    if planet_at(s[..], q.x, q.y) != p || button_at(s[..], q.x, q.y) >= 0 { continue; }
+    poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
+    poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
+    redraw(s[..], t[..], 0.016);
+    #assert s[0].action == 0;
+  }
+  q := project(s[..], HOUSE);
+  poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
+  poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realm/haunted-house";
+  #assert batch_has(t[..], "\"open\":true");
+}
+
+#test "a drag turns the galaxy and opens nothing" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_GALAXY, 390, 844);
+  before := s[0].rot;
+  x := s[0].width * 0.5; y := s[0].height * 0.2;
+  poke(s[..], t[..], x, y, POINTER_DOWN, 1, 7);
+  poke(s[..], t[..], x + 200, y + 40, POINTER_MOVE, 1, 7);
+  poke(s[..], t[..], x + 200, y + 40, POINTER_UP, 1, 7);
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].rot != before && s[0].tilt > 0.42 && s[0].action == 0;
+}
+
+#test "a finger's first tap names a world, the second opens it" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_GALAXY, 390, 844);
+  q := project(s[..], HOUSE);
+  for tap: 0..<2 {
+    poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 1, 9);
+    poke(s[..], t[..], q.x, q.y, POINTER_UP, 1, 9);
+    redraw(s[..], t[..], 0.016);
+    if tap == 0 { #assert s[0].over == HOUSE && s[0].action == 0; }
+  }
+  #assert s[0].action == ACT_NAVIGATE;
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm and build/admin.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm and build/verse.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -16,6 +16,9 @@ m="$here/../../verse"
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
   "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" &
 realm=$!
+# /verse and /verse/galaxy: the playtest's landing and galaxy.
+"$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
+verse_app=$!
 # The project page's tasks, read from Nostr into projects/coax/work.coax: a
 # release always reads afresh, a dev build when the snapshot is ten minutes old.
 # (Unreachable relay: the last snapshot stays.)
@@ -38,3 +41,4 @@ wait "$list"
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm"
 wait "$splash"
 wait "$realm"
+wait "$verse_app"
