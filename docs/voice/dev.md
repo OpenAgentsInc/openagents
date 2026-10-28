@@ -71,6 +71,20 @@ prints `listening on 127.0.0.1:PORT ...` on stdout when it is ready. The iOS
 simulator reaches the Mac's `127.0.0.1:8787` directly. `GET /health` answers
 `ok` over plain HTTP.
 
+A real iPhone has no default voice host yet (none is deployed). On the same
+Wi-Fi, run the host on every interface and point the phone at the Mac:
+
+```sh
+metareal/voice-host/run.sh --listen 0.0.0.0:8787
+```
+
+On the phone, enter the Grid, long-press the microphone at the top left and enter
+`ws://YOUR-MAC.local:8787` (the name from System Settings > General > Sharing),
+then tap the microphone. iOS asks once for local network access. The app
+allows plain `ws://` only to local-network names (`NSAllowsLocalNetworking`).
+The host doesn't check `Hello.token` yet, so anyone on that network can use it
+(and spend its Google quota) while it listens on `0.0.0.0`.
+
 One process. The main thread owns every socket (`poll`) and every engine
 call; eight worker threads make the provider HTTP calls and hand results back
 through a pipe, so a slow Google call never blocks audio for any session.
