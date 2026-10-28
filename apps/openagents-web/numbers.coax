@@ -1,7 +1,7 @@
 // Amounts that float up from the graph's clusters, as payments landing do in
 // the Payment Network demo (aethyr-cpp web/payment-network.js): white digits
 // with a Lightning-orange glow and a bolt, or Wavelength violet with a plus,
-// rising 26 CSS pixels a second, popping a little as they appear and fading
+// drifting up 7 CSS pixels a second (about 25 in all), popping a little as they appear and fading
 // out. Here they are very faint and few, part of the background.
 //
 // Like the graph, nothing is stored: amount k is born at a fixed time, and
@@ -15,7 +15,7 @@ NUMBER_ALIVE :: 3;     // at most this many at once (NUMBER_LIFE / NUMBER_EVERY,
 NUMBER_DIGITS :: 7;
 NUMBER_CAP :: 8.0;     // cap height, CSS pixels
 NUMBER_LIGHT :: 0.2;   // very faint
-NUMBER_RISE :: 26.0;   // CSS pixels a second
+NUMBER_RISE :: 7.0;    // CSS pixels a second: a short drift, staying low
 
 // An amount in sats, from 21 to about 210,000, spread evenly in magnitude.
 number_amount :: (k: int) -> int { return cast(int) (21 * exp(hash(k, 5) * 9.2)); }
@@ -98,6 +98,7 @@ numbers_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32
   #assert number_opacity(-1) == 0 && number_opacity(NUMBER_LIFE + 0.1) == 0;
   #assert number_opacity(1) == 1 && number_pop(0) > 1.2 && number_pop(1) == 1;
   #assert NUMBER_LIFE <= NUMBER_EVERY * NUMBER_ALIVE;
+  #assert NUMBER_RISE * NUMBER_LIFE <= 30;   // they stay low
   out: [NUMBER_QUADS * 6 * VERTEX_FLOATS] f32;
   #assert numbers_draw(out[..], 0, 1280, 800, 1, 3, false) == 0;
   #assert numbers_draw(out[..], 0, 1280, 800, 1, 30, true) == 0;
