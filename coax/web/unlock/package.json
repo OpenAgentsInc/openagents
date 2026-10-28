@@ -1,0 +1,10 @@
+{
+  "name": "coaxial-unlock",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "nostr-effect": "0.0.13",
+    "@noble/hashes": "1.7.1",
+    "@scure/base": "1.2.4"
+  }
+}

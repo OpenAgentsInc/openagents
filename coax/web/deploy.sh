@@ -7,6 +7,8 @@
 #   deploy.sh --server APP_DIR SERVICE  # also (re)build the server image and
 #                                       # (re)create the service and its bucket
 #
+# COAXIAL_UNLOCKS adds hidden presentations to index.html (unlock/README.md).
+#
 # The first deploy of a service needs --server, then a domain mapping:
 #   gcloud beta run domain-mappings create --service SERVICE --domain HOST --region us-central1
 set -euo pipefail
@@ -54,6 +56,15 @@ for f in sorted(os.listdir(app)):
     text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+"([^>]*)>', tag, text)
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)
 PY
+
+# Hidden presentations (unlock/), when COAXIAL_UNLOCKS names any: from the
+# environment, or this machine's secrets file. The phrases stay here.
+secrets="${COAXIAL_UNLOCKS_FILE:-$HOME/work/.secrets/coaxial-unlocks.env}"
+if [[ -z "${COAXIAL_UNLOCKS:-}" && -f "$secrets" ]]; then set -a; source "$secrets"; set +a; fi
+if [[ -n "${COAXIAL_UNLOCKS:-}" ]]; then
+  [[ -d "$here/unlock/node_modules" ]] || (cd "$here/unlock" && bun install --silent)
+  bun "$here/unlock/inject.ts" "$stage"
+fi
 
 if $server; then
   t=$(now)
