@@ -16,7 +16,7 @@ m="$here/../../verse"
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
   "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" &
 realm=$!
-# The project page's tasks, read from Nostr into project/coax/work.coax: a
+# The project page's tasks, read from Nostr into projects/coax/work.coax: a
 # release always reads afresh, a dev build when the snapshot is ten minutes old.
 # (Unreachable relay: the last snapshot stays.)
 tools="$here/../../coax/web/project"

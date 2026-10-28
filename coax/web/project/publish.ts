@@ -51,7 +51,7 @@ const flag = (name: string, fallback = "") => { const i = args.indexOf(`--${name
 const has = (name: string) => args.includes(`--${name}`)
 const slug = flag("project", "coax")
 const dry = has("dry-run")
-const dir = flag("dir", join(ROOT, "apps/openagents-web/project", slug))
+const dir = flag("dir", join(ROOT, "apps/openagents-web/projects", slug))
 const config: ProjectConfig = await Bun.file(join(dir, "project.json")).json()
 const relayUrl = flag("relay", config.relay)
 const keyFile = flag("key", `${process.env.HOME}/work/.secrets/openagents-project-${slug}.key`)

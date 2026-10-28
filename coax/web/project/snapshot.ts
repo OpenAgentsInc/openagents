@@ -21,7 +21,7 @@ const ROOT = join(import.meta.dir, "../../..")
 const args = process.argv.slice(2)
 const flag = (name: string, fallback = "") => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback }
 const slug = flag("project", "coax")
-const dir = join(ROOT, "apps/openagents-web/project", slug)
+const dir = join(ROOT, "apps/openagents-web/projects", slug)
 const config: ProjectConfig = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"))
 const pubkey: string = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).pubkey ?? ""
 const out = join(dir, "work.coax")

@@ -12,8 +12,8 @@
 // bounties, the agents and their activity.
 
 #load "font.coax";
-#load "project/coax/commits.coax";
-#load "project/coax/work.coax";
+#load "projects/coax/commits.coax";
+#load "projects/coax/work.coax";
 #load "project-live.coax";
 
 // page 0 is the real page (/project/coax), 1 the demo (/project/coax/demo).
