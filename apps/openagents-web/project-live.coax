@@ -122,7 +122,10 @@ live_subscribe :: (l: [] Live) {
 }
 live_known_add :: (l: [] Live, id: string) -> bool {
   if id.count != 64 || !hex_lower(id) { return false; }
-  for k: 0..<l[0].known_n { if equal(live_known_id(l, k), id) { return true; } }
+  for k: 0..<l[0].known_n {
+    // most ids differ in their first bytes: look there before comparing all 64
+    if l[0].known[k * 64] == id[0] && l[0].known[k * 64 + 1] == id[1] && l[0].known[k * 64 + 2] == id[2] && equal(live_known_id(l, k), id) { return true; }
+  }
   if l[0].known_n >= FOLD_ISSUES { return false; }
   for i: 0..<64 { l[0].known[l[0].known_n * 64 + i] = id[i]; }
   l[0].known_n += 1; return true;

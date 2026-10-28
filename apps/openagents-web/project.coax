@@ -12,14 +12,13 @@
 // project.wasm draws every project. Placeholders until the projects API
 // exists (docs/protocol/2026-10-28-projects.md): the demo's agents and
 // their activity.
+//
+// Checks: coax test apps/openagents-web/project.coax --steps 300000000. They
+// draw whole frames of the real baked Coax queue (a frame is ~14M steps, the
+// longest check ~135M), more than the default 20M a check.
 
 #load "font.coax";
-#load "projects/coax/commits.coax";
-#load "projects/coax/work.coax";
-#load "projects/verse/commits.coax";
-#load "projects/verse/work.coax";
-#load "projects/planetary-villa/commits.coax";
-#load "projects/planetary-villa/work.coax";
+#load "projects/baked.coax";   // every project with a page (coax/web/project/baked.ts)
 #load "project-live.coax";
 #load "analytics.coax";
 
@@ -59,35 +58,15 @@ DETAIL_LIST :: 4096;
 MSG_PAGE_TEXT :: 2;   // the host's: the page's data-text, once the engine loads
 
 // What a build bakes for each project it knows: the first paint before the
-// relay's first EOSE (snapshot.ts) and the commits (commits.sh). A project
+// relay's first EOSE (snapshot.ts), the commits (commits.sh) and the owner
+// (project.json), generated for every projects/<slug>/project.json into
+// projects/baked.coax by coax/web/project/baked.ts. A project
 // the build doesn't know still draws live, without a tree.
 Baked :: struct {
   slug: string; pubkey: string; relay: string; naddr: string;
-  name: string; description: string; license: string; path: string; repo: string;
+  name: string; description: string; license: string; path: string; repo: string; owner: string;
   items: string; log: string; plans: string; plan_info: string; details: string; steps: string;
   history: string; commits: int; authors: int; lines: int;
-}
-BAKED_N :: 3;
-baked :: (k: int) -> Baked {
-  if k == 2 {
-    return Baked.{slug = PLANETARY_VILLA_WORK_SLUG, pubkey = PLANETARY_VILLA_WORK_PUBKEY, relay = PLANETARY_VILLA_WORK_RELAY, naddr = PLANETARY_VILLA_WORK_NADDR,
-      name = PLANETARY_VILLA_WORK_NAME, description = PLANETARY_VILLA_WORK_DESCRIPTION, license = PLANETARY_VILLA_WORK_LICENSE, path = PLANETARY_VILLA_WORK_PATH,
-      repo = PLANETARY_VILLA_WORK_REPO, items = PLANETARY_VILLA_WORK_ITEMS, log = PLANETARY_VILLA_WORK_LOG, plans = PLANETARY_VILLA_WORK_PLANS,
-      plan_info = PLANETARY_VILLA_WORK_PLAN_INFO, details = PLANETARY_VILLA_WORK_DETAILS, steps = PLANETARY_VILLA_WORK_STEPS, history = PLANETARY_VILLA_HISTORY, commits = PLANETARY_VILLA_COMMITS,
-      authors = PLANETARY_VILLA_AUTHORS, lines = PLANETARY_VILLA_LINES};
-  }
-  if k == 1 {
-    return Baked.{slug = VERSE_WORK_SLUG, pubkey = VERSE_WORK_PUBKEY, relay = VERSE_WORK_RELAY, naddr = VERSE_WORK_NADDR,
-      name = VERSE_WORK_NAME, description = VERSE_WORK_DESCRIPTION, license = VERSE_WORK_LICENSE, path = VERSE_WORK_PATH,
-      repo = VERSE_WORK_REPO, items = VERSE_WORK_ITEMS, log = VERSE_WORK_LOG, plans = VERSE_WORK_PLANS,
-      plan_info = VERSE_WORK_PLAN_INFO, details = VERSE_WORK_DETAILS, steps = VERSE_WORK_STEPS, history = VERSE_HISTORY, commits = VERSE_COMMITS,
-      authors = VERSE_AUTHORS, lines = VERSE_LINES};
-  }
-  return Baked.{slug = COAX_WORK_SLUG, pubkey = COAX_WORK_PUBKEY, relay = COAX_WORK_RELAY, naddr = COAX_WORK_NADDR,
-    name = COAX_WORK_NAME, description = COAX_WORK_DESCRIPTION, license = COAX_WORK_LICENSE, path = COAX_WORK_PATH,
-    repo = COAX_WORK_REPO, items = COAX_WORK_ITEMS, log = COAX_WORK_LOG, plans = COAX_WORK_PLANS,
-    plan_info = COAX_WORK_PLAN_INFO, details = COAX_WORK_DETAILS, steps = COAX_WORK_STEPS, history = COAX_HISTORY, commits = COAX_COMMITS,
-    authors = COAX_AUTHORS, lines = COAX_LINES};
 }
 // The baked project with this slug, or -1.
 baked_index :: (slug: string) -> int {
@@ -325,6 +304,13 @@ field :: (text: string, row: int, col: int) -> string {
   while j < text.count && text[j] != '|' && text[j] != '\n' { j += 1; }
   return text[i..<j];
 }
+// The first byte of the row after the one starting at i: walk a table a row
+// at a time with it and cell(), instead of field(), which counts from the top.
+next_row :: (text: string, i: int) -> int {
+  j := i;
+  while j < text.count && text[j] != '\n' { j += 1; }
+  return j + 1;
+}
 rows :: (text: string) -> int {
   n := 0;
   for i: 0..<text.count { if text[i] == '\n' { n += 1; } }
@@ -384,6 +370,7 @@ Work :: struct {
   read: bool;
   n: int;
   start: [MAX_ITEMS] int;     // each row's first byte
+  rank: [MAX_ITEMS] string;   // each row's rank (column 9), read once for the sorts
   kind: [MAX_ITEMS] int;
   status: [MAX_ITEMS] int;
   parent: [MAX_ITEMS] int;    // a row, or -1
@@ -414,6 +401,9 @@ Work :: struct {
   naddr: string;
   // the header: from the project's 30621 event and its repository's 30617
   slug: string; name: string; description: string; license: string; path: string; repo: string;
+  owner: string;              // who owns it (project.json owner), the header says
+  dstart: [MAX_ITEMS] int;    // each row's line in details (index_details), or -1
+  dlines: int;                // the lines in details
   baked: int;                 // the baked project it started from, or -1
   // the line to the relay, for the header's chip
   live: int;                  // LIVE_* (project-live.coax)
@@ -431,7 +421,8 @@ QueueView :: struct {
 
 // A task's row in a table keyed by alias (column 0), or -1.
 keyed :: (table: string, alias: string, from: int) -> int {
-  for r: from..<rows(table) { if same(field(table, r, 0), alias) { return r; } }
+  i := row_start(table, from); r := from;
+  while i < table.count { if same(cell(table, i, 0), alias) { return r; } i = next_row(table, i); r += 1; }
   return -1;
 }
 
@@ -465,9 +456,11 @@ plan_steps :: (out: [] f32, at: int, w: [] Work, alias: string, x: f32, y0: f32,
   small := 6 * d; line := 11 * d;
   plans := w[0].plans;
   total := 0; current := -1;
-  for r: 0..<rows(plans) {
-    if !same(field(plans, r, 0), alias) { continue; }
-    mark := field(plans, r, 1);
+  pi := 0;
+  while pi < plans.count {
+    pa := pi; pi = next_row(plans, pi);
+    if !same(cell(plans, pa, 0), alias) { continue; }
+    mark := cell(plans, pa, 1);
     if current < 0 && !same(mark, "x") { current = total; }
     total += 1;
   }
@@ -491,13 +484,15 @@ plan_steps :: (out: [] f32, at: int, w: [] Work, alias: string, x: f32, y0: f32,
     y += line;
   }
   k := 0; drawn := 0;
-  for r: 0..<rows(plans) {
-    if !same(field(plans, r, 0), alias) { continue; }
+  pi = 0;
+  while pi < plans.count {
+    r := pi; pi = next_row(plans, pi);
+    if !same(cell(plans, r, 0), alias) { continue; }
     if k < skip || drawn >= limit || y > bottom { k += 1; continue; }
-    mark := field(plans, r, 1);
+    mark := cell(plans, r, 1);
     v = step_mark(out, v, mark, x + 3 * d, y - small * 0.45, p);
     tint := ifx same(mark, ">") then white else ifx same(mark, "x") then dim else pale;
-    v = put_fit(out, v, field(plans, r, 2), x + 10 * d, y, small, tint, right - x - 10 * d);
+    v = put_fit(out, v, cell(plans, r, 2), x + 10 * d, y, small, tint, right - x - 10 * d);
     y += line; k += 1; drawn += 1;
   }
   rest := total - skip - drawn;
@@ -556,7 +551,7 @@ item :: (w: [] Work, text: string, r: int, col: int) -> string { return cell(tex
 by_rank :: (w: [] Work, text: string, order: [] int, n: int) {
   for i: 1..<n {
     k := order[i]; j := i - 1;
-    while j >= 0 && before(item(w, text, k, 9), item(w, text, order[j], 9)) { order[j + 1] = order[j]; j -= 1; }
+    while j >= 0 && before(w[0].rank[k], w[0].rank[order[j]]) { order[j + 1] = order[j]; j -= 1; }
     order[j + 1] = k;
   }
 }
@@ -573,6 +568,7 @@ read_work :: (w: [] Work, text: string) {
   w[0].n = n;
   w[0].initiative = -1;
   for r: 0..<n {
+    w[0].rank[r] = cell(text, w[0].start[r], 9);
     w[0].kind[r] = work_kind(cell(text, w[0].start[r], 1));
     w[0].status[r] = work_status(cell(text, w[0].start[r], 2));
     if w[0].kind[r] == KIND_INITIATIVE && w[0].initiative < 0 { w[0].initiative = r; }
@@ -589,7 +585,7 @@ read_work :: (w: [] Work, text: string) {
       k := row_of(w, text, blockers[a..<b]);
       if k >= 0 && !finished(w, k) {
         if w[0].waits[r] < 0 { w[0].waits[r] = k; }
-        if w[0].ahead[r] < 0 && before(cell(text, w[0].start[r], 9), cell(text, w[0].start[k], 9)) { w[0].ahead[r] = k; }
+        if w[0].ahead[r] < 0 && before(w[0].rank[r], w[0].rank[k]) { w[0].ahead[r] = k; }
       }
       a = b + 1;
     }
@@ -735,9 +731,12 @@ grow :: (t: [] Tree, history: string) {
   t[0].n = n; t[0].history = history;
   for b: 0..<BRANCHES { t[0].last[b] = -1; t[0].count[b] = 0; t[0].used[b] = false; t[0].label_n[b] = 0; }
   // Coax's own subfolders hold their places; the others take what's left
-  for i: 0..<n { k := branch_index(field(history, i, 2)); if k != 0 { t[0].used[k] = true; } }
+  firsts: [MAX_COMMITS] int;
+  hi_at := 0;
+  for i: 0..<n { firsts[i] = hi_at; hi_at = next_row(history, hi_at); }
+  for i: 0..<n { k := branch_index(cell(history, firsts[i], 2)); if k != 0 { t[0].used[k] = true; } }
   branches: [MAX_COMMITS] int;
-  for i: 0..<n { b := branch_of(t, field(history, i, 2)); branches[i] = b; t[0].count[b] += 1; }
+  for i: 0..<n { b := branch_of(t, cell(history, firsts[i], 2)); branches[i] = b; t[0].count[b] += 1; }
   seen: [BRANCHES] int;
   for i: 0..<n {
     b := branches[i];
@@ -1012,7 +1011,7 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int 
     hb: [192] u8;
     hn := put_text(hb[..], 0, "HOME ");
     hn += put_text(hb[..], hn, w[0].repo); hn += put_text(hb[..], hn, "/"); hn += put_text(hb[..], hn, w[0].path);
-    hn += put_text(hb[..], hn, "  ·  TASKS FROM NOSTR  ·  OWNER "); hn += put_text(hb[..], hn, w[0].repo);
+    hn += put_text(hb[..], hn, "  ·  TASKS FROM NOSTR  ·  OWNER "); hn += put_text(hb[..], hn, ifx w[0].owner.count > 0 then w[0].owner else w[0].repo);
     line := ifx p.demo then "HOME OPENAGENTS/COAX/  ·  PLOT 12,-4 ON THE GRID  ·  OWNER OPENAGENTS" else cast(string) hb[0..<hn];
     v = put_fit(out, v, line, tx, ty + 6 * d, 6.5 * d, dim, right - tx);
     chips_y = ty - 8 * d;
@@ -1484,11 +1483,12 @@ activity_rows :: (out: [] f32, at: int, x: f32, y0: f32, right: f32, bottom: f32
     v = put(out, v, "NO CLAIMS OR NOTES YET", x, y, small, dim);
     return v;
   }
-  for r: 0..<rows(rows_of) {
+  ri := 0; r := 0;
+  while ri < rows_of.count {
     if y > bottom { break; }
-    v = put(out, v, field(rows_of, r, 0), x, y, small, dim);
-    v = put_fit(out, v, field(rows_of, r, 1), x + 64 * d, y, small, ifx r == 0 then white else pale, right - x - 64 * d);
-    y += 12 * d;
+    v = put(out, v, cell(rows_of, ri, 0), x, y, small, dim);
+    v = put_fit(out, v, cell(rows_of, ri, 1), x + 64 * d, y, small, ifx r == 0 then white else pale, right - x - 64 * d);
+    y += 12 * d; ri = next_row(rows_of, ri); r += 1;
   }
   return v;
 }
@@ -1640,6 +1640,40 @@ tell :: (s: [] ProjectState, text: string) {
   s[0].out_n = put_text(s[0].outbox[..], 0, text[0..<lo_int(text.count, 16)]);
 }
 
+// Where each row's line in WORK_DETAILS starts, in one pass: the details are
+// written in the items' order, so a row's line is usually its own index;
+// an alias out of place is looked for among the rows.
+index_details :: (w: [] Work) {
+  for r: 0..<w[0].n { w[0].dstart[r] = -1; }
+  dt := w[0].details; i := 0; k := 0;
+  while i < dt.count {
+    alias := cell(dt, i, 0);
+    r := -1;
+    if k < w[0].n && same(item(w, w[0].text, k, 0), alias) { r = k; }
+    else { for j: 0..<w[0].n { if r < 0 && same(item(w, w[0].text, j, 0), alias) { r = j; } } }
+    if r >= 0 && w[0].dstart[r] < 0 { w[0].dstart[r] = i; }
+    i = next_row(dt, i); k += 1;
+  }
+  w[0].dlines = k;
+}
+// The baked snapshot's event ids (each details line's second field) as the
+// live line's known roots (live_seed_known), found through index_details
+// rather than by reading every line to its end.
+seed_known :: (lv: [] Live, w: [] Work) -> bool {
+  dt := w[0].details;
+  if w[0].dlines != w[0].n { return live_seed_known(lv, dt); }
+  for r: 0..<w[0].n {
+    i := w[0].dstart[r];
+    if i < 0 { return false; }
+    while i < dt.count && dt[i] != '|' && dt[i] != '\n' { i += 1; }
+    if i + 65 >= dt.count || dt[i] != '|' || dt[i + 65] != '|' { return false; }
+    if !live_known_add(lv, dt[i + 1..<i + 65]) { return false; }
+  }
+  return true;
+}
+// Row r's line in WORK_DETAILS, or -1.
+detail_of :: (w: [] Work, r: int) -> int { if r < 0 || r >= w[0].n { return -1; } return w[0].dstart[r]; }
+
 // Opens row r's detail: its text decoded once, the panel at its top, and the
 // location's hash naming it.
 open_task :: (s: [] ProjectState, w: [] Work, r: int) {
@@ -1648,7 +1682,7 @@ open_task :: (s: [] ProjectState, w: [] Work, r: int) {
   s[0].body_n = 0; s[0].checks_n = 0; s[0].notes_n = 0; s[0].event_n = 0; s[0].claimed_n = 0;
   alias := item(w, w[0].text, r, 0);
   dt := w[0].details;
-  k := keyed_start(dt, alias);
+  k := detail_of(w, r);
   if k >= 0 {
     event := cell(dt, k, 1); claimed := cell(dt, k, 2);
     s[0].event_n = put_text(s[0].event[..], 0, event[0..<lo_int(event.count, 64)]);
@@ -1843,23 +1877,28 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
   }
   // the worker's plan
   plans := w[0].plans; total := 0;
-  for k: 0..<rows(plans) { if same(field(plans, k, 0), alias) { total += 1; } }
+  done := 0;
+  pi := 0;
+  while pi < plans.count {
+    if same(cell(plans, pi, 0), alias) { total += 1; if same(cell(plans, pi, 1), "x") { done += 1; } }
+    pi = next_row(plans, pi);
+  }
   if total > 0 {
-    done := 0;
-    for k: 0..<rows(plans) { if same(field(plans, k, 0), alias) && same(field(plans, k, 1), "x") { done += 1; } }
     m = number(done, false, buf[..]); m += put_text(buf[..], m, " OF "); m += number(total, false, buf[m..<buf.count]); m += put_text(buf[..], m, " DONE");
     v = section(out, v, "PLAN", x, y, right, top, bottom, p);
     if in_view(y, small, top, bottom) { v = put_right(out, v, cast(string) buf[0..<m], right, y, 5.5 * d, dim); }
     y += 18 * d;
-    for k: 0..<rows(plans) {
-      if !same(field(plans, k, 0), alias) { continue; }
-      mark := field(plans, k, 1);
+    pi = 0;
+    while pi < plans.count {
+      k := pi; pi = next_row(plans, pi);
+      if !same(cell(plans, k, 0), alias) { continue; }
+      mark := cell(plans, k, 1);
       if in_view(y, body, top, bottom) { v = step_mark(out, v, mark, x + 3 * d, y - body * 0.45, p); }
       now := same(mark, ">");
       lead := 14.0f32 * d;
       if now && in_view(y, body, top, bottom) { v = put(out, v, "NOW", x + lead, y, 5.5 * d, orange); lead += 26 * d; }
       tint := ifx now then white else ifx same(mark, "x") then dim else pale;
-      f := flow(out, v, field(plans, k, 2), x + lead, y, body, tint, tw - lead, step, top, bottom);
+      f := flow(out, v, cell(plans, k, 2), x + lead, y, body, tint, tw - lead, step, top, bottom);
       v = f.v; y = f.y + 2 * d;
     }
     y += gap - step;
@@ -2201,10 +2240,11 @@ choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
   if k >= 0 {
     b := baked(k);
     read_work(w, b.items);
-    if s[0].page == 0 && !live_seed_known(lv, b.details) { live_incomplete(lv, 5); }
     w[0].plans = b.plans; w[0].plan_info = b.plan_info; w[0].details = b.details; w[0].log = b.log; w[0].steps = b.steps; w[0].naddr = b.naddr;
+    index_details(w);
+    if s[0].page == 0 && !seed_known(lv, w) { live_incomplete(lv, 5); }
     w[0].slug = b.slug; w[0].name = b.name; w[0].description = b.description; w[0].license = b.license;
-    w[0].path = b.path; w[0].repo = b.repo;
+    w[0].path = b.path; w[0].repo = b.repo; w[0].owner = b.owner;
     grow(t, b.history);
   } else {
     read_work(w, "");
@@ -2243,6 +2283,7 @@ live_apply :: (lv: [] Live, w: [] Work) {
   w[0].plans = cast(string) tb[0].plans[0..<tb[0].plans_n];
   w[0].plan_info = cast(string) tb[0].info[0..<tb[0].info_n];
   w[0].details = cast(string) tb[0].details[0..<tb[0].details_n];
+  index_details(w);
   pe := lv[0].fold[0].project; re := lv[0].fold[0].repo;
   h := head_put(lv, w, pe, "name", 1, 0, w[0].name); w[0].name = h.text;
   h = head_put(lv, w, pe, "description", 1, h.at, w[0].description); w[0].description = h.text;
@@ -2487,9 +2528,10 @@ FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply
   // the snapshot: one row an item, six fields each, keyed by the items' aliases
   w: [1] Work;
   read_work(w[..], COAX_WORK_ITEMS);
+  w[0].details = COAX_WORK_DETAILS; index_details(w[..]);
   #assert rows(COAX_WORK_DETAILS) == w[0].n;
   for r: 0..<w[0].n {
-    k := keyed_start(COAX_WORK_DETAILS, item(w[..], COAX_WORK_ITEMS, r, 0));
+    k := detail_of(w[..], r);
     #assert k >= 0 && cell(COAX_WORK_DETAILS, k, 1).count == 64;
     bars := 0; i := k;
     while i < COAX_WORK_DETAILS.count && COAX_WORK_DETAILS[i] != '\n' { if COAX_WORK_DETAILS[i] == '|' { bars += 1; } i += 1; }
@@ -2661,7 +2703,7 @@ samples :: (w: [] Work, pick: [] int) -> int {
   long := -1; most := 0; chatty := -1; notes := 0;
   for r: 0..<w[0].n {
     if w[0].kind[r] != KIND_TASK { continue; }
-    k := keyed_start(COAX_WORK_DETAILS, item(w, COAX_WORK_ITEMS, r, 0));
+    k := detail_of(w, r);
     if cell(COAX_WORK_DETAILS, k, 3).count > most { most = cell(COAX_WORK_DETAILS, k, 3).count; long = r; }
     if cell(COAX_WORK_DETAILS, k, 5).count > notes { notes = cell(COAX_WORK_DETAILS, k, 5).count; chatty = r; }
   }
@@ -2711,7 +2753,7 @@ detail_fits :: (size_w: f32, size_h: f32, most: int) -> bool {
   long := -1; most := 0; waiting := -1;
   for r: 0..<g[0].w[0].n {
     if g[0].w[0].kind[r] != KIND_TASK { continue; }
-    k := keyed_start(COAX_WORK_DETAILS, item(g[0].w[..], COAX_WORK_ITEMS, r, 0));
+    k := detail_of(g[0].w[..], r);
     if cell(COAX_WORK_DETAILS, k, 3).count > most { most = cell(COAX_WORK_DETAILS, k, 3).count; long = r; }
     if waiting < 0 && g[0].w[0].waits[r] >= 0 { waiting = r; }
   }
@@ -2787,7 +2829,7 @@ page_says :: (lv: [] Live, text: string) {
   s2: [1] ProjectState; t2: [1] Tree; w2: [1] Work; l2: [1] Live;
   page_says(l2[..], "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18 verse");
   n = coaxial_project_frame(s2[..], t2[..], w2[..], l2[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
-  #assert n > 3000 && w2[0].baked == 1 && same(w2[0].name, "Verse") && same(w2[0].text, VERSE_WORK_ITEMS);
+  #assert n > 3000 && w2[0].baked == baked_index("verse") && w2[0].baked > 0 && same(w2[0].name, "Verse") && same(w2[0].text, VERSE_WORK_ITEMS);
   s3: [1] ProjectState; t3: [1] Tree; w3: [1] Work; l3: [1] Live;
   page_says(l3[..], "1111111111111111111111111111111111111111111111111111111111111111 elsewhere");
   n = coaxial_project_frame(s3[..], t3[..], w3[..], l3[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);

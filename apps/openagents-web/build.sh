@@ -19,25 +19,24 @@ realm=$!
 # /verse and /verse/galaxy: the playtest's landing and galaxy.
 "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 verse_app=$!
-# The project page's tasks, read from Nostr into projects/coax/work.coax: a
-# release always reads afresh, a dev build when the snapshot is ten minutes old.
-# (Unreachable relay: the last snapshot stays.)
+# The project pages: every projects/<slug>/project.json with a page, its tasks
+# read from Nostr into projects/<slug>/work.coax (a release always reads
+# afresh, a dev build when the snapshot is ten minutes old; an unreachable
+# relay keeps the last snapshot), then baked.ts writes its commits and the
+# projects/baked.coax table project.coax draws from. Adding a project is data.
 tools="$here/../../coax/web/project"
 [[ -d "$tools/node_modules" ]] || (cd "$tools" && bun install --silent)
 fresh=(); [[ "${COAXIAL_MODE:-dev}" == release ]] || fresh=(--if-older 10)
-bun "$tools/snapshot.ts" --project coax ${fresh[@]+"${fresh[@]}"} &
-coax=$!
-bun "$tools/snapshot.ts" --project verse ${fresh[@]+"${fresh[@]}"} &
-verse=$!
-bun "$tools/snapshot.ts" --project planetary-villa ${fresh[@]+"${fresh[@]}"} &
-villa=$!
+snaps=()
+for slug in $(bun "$tools/baked.ts" --list); do
+  bun "$tools/snapshot.ts" --project "$slug" ${fresh[@]+"${fresh[@]}"} & snaps+=($!)
+done
 # The /projects list: every project on the relay (kind 30621) into projects/list.coax.
 bun "$tools/list.ts" ${fresh[@]+"${fresh[@]}"}
 "$here/../../coax/web/wasm.sh" "$here/projects.coax" "$here/projects-face.c" "$here/build/projects.wasm" &
 list=$!
-wait "$coax"
-wait "$verse"
-wait "$villa"
+for pid in "${snaps[@]}"; do wait "$pid"; done
+bun "$tools/baked.ts"
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
 wait "$list"
 # /admin/analytics: the projects list's HUD over the admins' numbers.

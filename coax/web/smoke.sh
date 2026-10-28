@@ -20,7 +20,11 @@ while (($#)); do
   esac
 done
 host="${base#https://}"
-exec python3 -I - "$base" "$host" "$via" "$coder" <<'PY'
+# every project page this checkout has (projects/<slug>/project.json beside an index.html)
+site="$(cd "$(dirname "$0")/../../apps/openagents-web/projects" && pwd)"
+projects=""
+for d in "$site"/*/; do d="${d%/}"; [[ -f "$d/project.json" && -f "$d/index.html" ]] && projects+="${d##*/} "; done
+exec python3 -I - "$base" "$host" "$via" "$coder" "$projects" <<'PY'
 import re, ssl, sys, socket, threading, http.client, uuid
 from concurrent.futures import ThreadPoolExecutor
 base, host, via, coder = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "true"
@@ -53,7 +57,8 @@ def check(ok, what):
     print(("  ok    " if ok else "  FAIL  ") + what)
     if not ok: failed.append(what)
 
-pages = ["/projects", "/projects/index.md", "/projects/coax", "/projects/coax/index.md", "/projects/coax/demo", "/projects/verse", "/projects/verse/index.md", "/projects/planetary-villa", "/projects/planetary-villa/index.md"]
+pages = ["/projects", "/projects/index.md", "/projects/coax/demo"] + [p for slug in sys.argv[5].split() for p in (f"/projects/{slug}", f"/projects/{slug}/index.md")]
+check(all(f"/projects/{slug}" in pages for slug in ("coax", "verse", "planetary-villa")), f"the project pages: {sys.argv[5].strip()}")
 moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md"]   # the old addresses: 301 to /projects/*
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
 verse = ["/verse", "/verse/index.md", "/verse/galaxy", "/verse/galaxy/index.md"]   # the playtest's landing and galaxy
