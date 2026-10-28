@@ -58,15 +58,16 @@ trap cleanup EXIT
 
 # Serve kept pin STAMP at demo/NAME/, then smoke it.
 serve() {
-  gcloud storage rsync -r "$kept/$name/$1/site" "gs://$bucket/demo/$name" --delete-unmatched-destination-objects --quiet > /dev/null
-  echo "$1 $(date -u +%Y%m%dT%H%M%SZ)" | gcloud storage cp - "$kept/$name/LIVE" --quiet > /dev/null
+  gcloud storage rsync -r "$kept/$name/$1/site" "gs://$bucket/demo/$name" --delete-unmatched-destination-objects --quiet > /dev/null 2>&1 ||
+    { echo "pin: couldn't copy $1 to demo/$name" >&2; exit 1; }
+  echo "$1 $(date -u +%Y%m%dT%H%M%SZ)" | gcloud storage cp - "$kept/$name/LIVE" --quiet > /dev/null 2>&1
 }
 smoke() {
-  gcloud storage ls -r "$kept/$name/$1/site/**" | sed -E "s#^$kept/$name/$1/site/##" |
-    python3 -I - "$site" "/demo/$name" <<'PY'
+  local names; names="$(gcloud storage ls -r "$kept/$name/$1/site/**" | sed -E "s#^$kept/$name/$1/site/##")"
+  python3 -I - "$site" "/demo/$name" "$names" <<'PY'
 import re, sys, urllib.request
 site, root = sys.argv[1], sys.argv[2]
-names = [l.strip() for l in sys.stdin if l.strip()]
+names = sys.argv[3].split()
 pages = [n for n in names if n.endswith(".html") or "." not in n.rsplit("/", 1)[-1]]   # x.html, and x (a bare path's page)
 failed = 0
 def get(path):
@@ -121,7 +122,7 @@ for d, _, fs in os.walk(site):
         open(p, "w", encoding="utf-8").write(t)
 PY
     python3 -I "$here/upload.py" "$stage" "$bucket" "$(gcloud auth print-access-token)" "demo-releases/$name/$stamp/site" > /dev/null
-    { history; echo "$stamp $tag $commit"; } | gcloud storage cp - "$kept/$name/HISTORY" --quiet > /dev/null
+    { history; echo "$stamp $tag $commit"; } | gcloud storage cp - "$kept/$name/HISTORY" --quiet > /dev/null 2>&1
     before="$(live)"
     serve "$stamp"
     if ! smoke "$stamp"; then
