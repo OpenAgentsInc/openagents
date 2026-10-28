@@ -16,7 +16,8 @@
 // Anyone else gets 401 or 403 and nothing more, not even counts. The reports
 // are rows for admin.coax to draw: a section starts "#TITLE|FLAGS|COLUMN|...",
 // then one "value|value|..." line a row ('|' and line breaks inside a value
-// become spaces). FLAGS "s": a row's first value is a session that opens.
+// become spaces). FLAGS "s": a row's first value is a session that opens;
+// "w": the section wants the full width.
 // Every time is Chicago's.
 #include "api.h"
 #include "nostr.h"
@@ -286,7 +287,7 @@ static void one_session(out_buf *o, PGconn *db, const char *sid) {
     "UNION ALL SELECT 'Address', coalesce(ip, '') FROM x UNION ALL SELECT 'Browser', coalesce(ua, '') FROM x "
     "UNION ALL SELECT 'Robot', coalesce(agent, '') FROM x UNION ALL SELECT 'Round trip', coalesce(rtt_ms::text || ' ms', '') FROM x "
     "UNION ALL SELECT 'Nostr key', coalesce(npub, '') FROM x", 1, v);
-  section(o, db, "TIMELINE", "", "AT|PAGE|EVENT|DETAILS",
+  section(o, db, "TIMELINE", "w", "AT|PAGE|EVENT|DETAILS",
     "WITH t AS (SELECT *, min(coalesce(ct, ms)) OVER () AS t0 FROM analytics.events WHERE sid = $1) "
     "SELECT to_char(((coalesce(ct, ms) - t0) / 1000.0) * interval '1 second', 'HH24:MI:SS'), page, ev, "
     "  coalesce((SELECT string_agg(key || ' ' || CASE WHEN jsonb_typeof(value) = 'string' THEN value #>> '{}' ELSE value::text END, '   ' ORDER BY key) "

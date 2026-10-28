@@ -7,7 +7,7 @@
 //
 // The answer is sections: "#TITLE|FLAGS|COLUMN|..." then a "value|value|..."
 // line a row. Small sections sit side by side on a wide screen; a long one
-// (more than four columns, or rows that open a session) spans the width.
+// (more than four columns, rows that open a session, or flag "w") spans the width.
 // FLAGS "s": a row's first value is a session id, and a click opens its
 // timeline. The filters: OVERVIEW or SESSIONS, the days, the space (openagents.com
 // is WEB; KIKI and DEV are the playtest's two), and AUTOMATED (count robots
@@ -101,12 +101,13 @@ ad_index :: (s: [] AdminState) {
   }
 }
 ad_title :: (s: [] AdminState, k: int) -> string { return ad_cell(s, s[0].sec_head[k], s[0].sec_end[k], 0); }
-ad_opens :: (s: [] AdminState, k: int) -> bool {
+ad_opens :: (s: [] AdminState, k: int) -> bool { return ad_flag(s, k, 's'); }
+ad_flag :: (s: [] AdminState, k: int, f: u8) -> bool {
   flags := ad_cell(s, s[0].sec_head[k], s[0].sec_end[k], 1);
-  for c: flags { if c == 's' { return true; } }
+  for c: flags { if c == f { return true; } }
   return false;
 }
-ad_wide_section :: (s: [] AdminState, k: int) -> bool { return s[0].sec_cols[k] > 4 || ad_opens(s, k); }
+ad_wide_section :: (s: [] AdminState, k: int) -> bool { return s[0].sec_cols[k] > 4 || ad_flag(s, k, 's') || ad_flag(s, k, 'w'); }
 
 // ---- asking oa-api
 
