@@ -17,6 +17,7 @@
 //   POST /api/analytics/events     a page's analytics batch (analytics.ingest in SQL)
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
+//   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)
 #include "api.h"
 
 #include <arpa/inet.h>
@@ -98,6 +99,13 @@ PGconn *api_db(void) {
     PQfinish(db); db = NULL;
   }
   return db;
+}
+
+// A connection of its own, for a child process (npc.c), which never touches the parent's.
+PGconn *api_db_new(void) {
+  PGconn *c = PQconnectdb(conninfo);
+  if (PQstatus(c) != CONNECTION_OK) { api_log("database: %s", PQerrorMessage(c)); PQfinish(c); return NULL; }
+  return c;
 }
 
 static bool exec_ok(PGconn *c, const char *sql) {
@@ -226,6 +234,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   else q.query = "";
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
   if (analytics_route(&q)) return;
+  if (npc_route(&q)) return;
   if (player_route(&q)) return;
   if (admin_route(&q)) return;
   api_json(cl->fd, 404, "{\"error\":\"not found\"}");

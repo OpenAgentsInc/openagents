@@ -20,6 +20,7 @@ void api_log(const char *fmt, ...);
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n);
 void api_json(int fd, int status, const char *json);
 PGconn *api_db(void);
+PGconn *api_db_new(void);   // a connection of its own (a child process's)
 // A header's value (first one), or NULL with out "".
 const char *api_header(const request *q, const char *name, char *out, size_t cap);
 // A query parameter, percent-decoded, or NULL with out "".
@@ -31,3 +32,4 @@ void admin_init(void);                    // admin.c
 bool admin_route(const request *q);
 bool admin_is(const char *pubkey);        // a pubkey in OA_ADMIN_PUBKEYS
 bool player_route(const request *q);      // player.c
+bool npc_route(const request *q);         // npc.c
