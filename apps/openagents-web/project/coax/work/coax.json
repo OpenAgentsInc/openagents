@@ -1,0 +1,415 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "coax",
+  "initiative": {
+    "slug": "coax-roadmap",
+    "title": "Coax: the language and its toolchain, R0 to R12",
+    "body": "The main Coax roadmap: what gets built in what order so OpenAgents and Metareal can express computation, data, protocols, tools and build policy in Coax, with costs and ownership visible. Milestones have dependencies and exit evidence, not dates.",
+    "spec": "coax/ROADMAP.md",
+    "labels": [
+      "coax",
+      "compiler",
+      "roadmap"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "r0",
+      "title": "R0: the adoption gate",
+      "body": "Real engine kernels and the whole development loop measured against frozen references, original-source debugging, one release/status source and an independently enforced review gate. Exit: reproducible kernel and whole-loop reports, no unexpected output or allocation regressions, usable native debugging, a versioned baseline.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r1",
+      "title": "R1: the compiler substrate",
+      "body": "R1a first: declaration and content identities, explicit targets, original spans, basic namespaces and inspectable procedure lowering, pinned by differential fixtures. R1b scheduling and configuration follow.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r2",
+      "title": "R2: fallible application code",
+      "body": "R2a first: tagged results and optionals, exhaustive switching, propagation and cleanup; a shared asynchronous host contract with R3.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r3",
+      "title": "R3: ownership and allocation policies",
+      "body": "R3a started (E0383 rejects simple returns of borrows into local arrays). Then typed transfer, deferred destruction and owning storage (R3b).",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r4",
+      "title": "R4: generics and foundational libraries",
+      "body": "R4a first: generic copyable values and non-owning operations over fixed storage; owning libraries wait for R3b.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r5",
+      "title": "R5: source-aware reflection and derivation",
+      "body": "R5a first: narrow derivation over concrete, already-checked types.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r6",
+      "title": "R6: hygienic typed code and data transformations",
+      "body": "Phase-typed Code, quotation, #insert and #expand with hygiene and expansion budgets.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r7",
+      "title": "R7: workspaces, plugins and tooling",
+      "body": "R7a: formatting, evidence, typed queries and revision-bound fixes early, on current APIs. R7b: workspaces, typed plugins and build programming.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r8",
+      "title": "R8: the native GPU and browser path",
+      "body": "R8a target-specific GPU interfaces; R8b a browser vertical slice (Coaxial is the wasm32 probe).",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r9",
+      "title": "R9: effects, strict math and deterministic jobs",
+      "body": "Transitive effect summaries for allocation, host I/O, clocks and randomness; strict math; deterministic jobs.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r10",
+      "title": "R10: self-hosting and the supported toolchain",
+      "body": "The remaining semantic work moves into Coax in reviewable slices.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r11",
+      "title": "R11: resident compiler and transactional reload",
+      "body": "R11a restricted procedure-body replacement (unchanged-layout Mac experiment first); R11b resident semantics and transactional migration.",
+      "parent": "coax-roadmap"
+    },
+    {
+      "slug": "r12",
+      "title": "R12: backends after profiling",
+      "body": "The C backend stays the reference; a fast native debug backend only when profiling shows C compilation is the bottleneck.",
+      "parent": "coax-roadmap"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "r0-kernel-benchmarks",
+      "parent": "r0",
+      "title": "Benchmark real engine kernels through the C ABI",
+      "size": "M",
+      "labels": [
+        "r0",
+        "perf"
+      ],
+      "body": "The cast pose, robots/body capsules and player collision run through a repeatable C ABI harness against a pinned native reference (coax0 0.13.0).\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-source-debugging",
+      "parent": "r0",
+      "title": "Original-source debugging: breakpoints, stepping, values and stacks",
+      "size": "M",
+      "labels": [
+        "r0",
+        "debug"
+      ],
+      "body": "LLDB breakpoints, stepping, values, stacks, diagnostics and sanitizer traces map to Coax source on Mac and a Simulator app (coax0 0.13.0).\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-pose-median-gap",
+      "parent": "r0",
+      "title": "Close the pose median gap against the frozen native reference",
+      "size": "M",
+      "labels": [
+        "r0",
+        "perf"
+      ],
+      "body": "The Coax pose kernel passes the unchanged 5% median gate: 1.034x native unoptimized, 0.807x app profile, 0.740x release; reference, harness and budget frozen.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-release-status-source",
+      "parent": "r0",
+      "title": "One release/status source with a drift check",
+      "size": "M",
+      "labels": [
+        "r0",
+        "tooling"
+      ],
+      "body": "CLI version, accepted-feature tables and book status generated from one source, with a publication drift check; implementation, schema and introduction versions kept distinct.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "Version, feature tables and book status are generated, not hand-edited",
+        "A drift check fails when a published copy disagrees with the source"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-device-tail-budgets",
+      "parent": "r0",
+      "title": "Physical-device and frame-tail budgets",
+      "size": "M",
+      "labels": [
+        "r0",
+        "perf",
+        "ios"
+      ],
+      "body": "Agree a frame-tail budget, then measure the Coax kernels on a named phone: CPU time, tails, copies, allocations and GPU upload, with raw results and dispersion retained.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "A tail budget is written down before optimizing",
+        "Device runs retained with dispersion; the owner's device step is in NEEDS_OWNER.md"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-loop-attribution",
+      "parent": "r0",
+      "title": "Attribute the whole clean and warm development loop",
+      "size": "M",
+      "labels": [
+        "r0",
+        "perf",
+        "tooling"
+      ],
+      "body": "Load/parse/check, compile-time work, generation, C compilation, link, assets, launch and GPU preparation; generated C size and peak compiler memory.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "A report attributes every stage for clean and warm builds",
+        "The largest bottleneck is named with its numbers"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-independent-review",
+      "parent": "r0",
+      "title": "Independently enforced review of invariants, oracles and gates",
+      "size": "M",
+      "labels": [
+        "r0",
+        "policy"
+      ],
+      "body": "Define who reviews changes to invariants, oracles and verification policy, enforced outside the compiler on owned infrastructure, including moves into unmarked helpers.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "The policy is written and enforced by a check outside the compiler",
+        "A change that weakens a check and its code together is refused without review"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-semantic-profiles",
+      "parent": "r0",
+      "title": "Pin semantic profiles: checked, wrapping and optimization kept apart",
+      "size": "M",
+      "labels": [
+        "r0",
+        "semantics"
+      ],
+      "body": "A versioned design and migration for checked arithmetic with explicit wrapping, profile metadata in artifacts and cache keys, and same-profile unoptimized/optimized conformance vectors (overflow, casts, shifts, division edges, evaluation order, cleanup, f32 literal rounding).\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "Profiles recorded in artifact metadata",
+        "Conformance vectors pass in both optimization levels"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-native-check-exe",
+      "parent": "r0",
+      "title": "Run eligible checks on emitted native code",
+      "size": "M",
+      "labels": [
+        "r0",
+        "testing"
+      ],
+      "body": "An optional native check executable runs pinned inputs through the evaluator and the emitted unoptimized and optimized procedures and compares values, traps and buffer writes.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "Seeded evaluator/emitter defects are caught",
+        "Mismatches minimised and kept as regressions"
+      ],
+      "blocked_by": [
+        "r0-semantic-profiles"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "r0-evidence-record",
+      "parent": "r0",
+      "title": "One versioned evidence record for checks and mutation",
+      "size": "S",
+      "labels": [
+        "r0",
+        "tooling"
+      ],
+      "body": "Every claim bound to source, compiler, target, profile, selection and budgets, with outcomes passed, counterexample, inconclusive, infrastructure error and not checked.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "coax test and coax mutate write the record",
+        "Missing execution is never a pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r0-authoring-corpus",
+      "parent": "r0",
+      "title": "A frozen authoring-task corpus for agents",
+      "size": "S",
+      "labels": [
+        "r0",
+        "agents"
+      ],
+      "body": "Change a kernel, add a field, repair a type error, update a protocol adapter; pinned revisions, tools and budgets; measure accepted completion, repair iterations and edit-to-result time.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "Four tasks pinned with oracles agents can't edit",
+        "A first run's numbers recorded"
+      ],
+      "blocked_by": [
+        "r0-evidence-record"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "r1a-identities",
+      "parent": "r1",
+      "title": "R1a: declaration identities, targets, spans and namespaces",
+      "size": "L",
+      "labels": [
+        "r1",
+        "compiler"
+      ],
+      "body": "Declaration and content identities, explicit target descriptions, original spans, basic namespaces and minimal inspectable procedure lowering, pinned with differential fixtures and independent oracles.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "Differential fixtures pass against independent oracles"
+      ],
+      "blocked_by": [
+        "r0-semantic-profiles"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "r7a-format-evidence",
+      "parent": "r7",
+      "title": "R7a: a formatter and evidence tools on current APIs",
+      "size": "M",
+      "labels": [
+        "r7",
+        "tooling"
+      ],
+      "body": "coax fmt and evidence reporting using today's compiler APIs; typed queries and revision-bound fixes follow R1a.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "coax fmt is idempotent over the repository's Coax files"
+      ],
+      "blocked_by": [
+        "r0-evidence-record"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "r3a-local-borrows",
+      "parent": "r3",
+      "title": "R3a: reject returns of borrows into local arrays (E0383)",
+      "size": "S",
+      "labels": [
+        "r3",
+        "diagnostics"
+      ],
+      "body": "E0383 rejects straightforward local-array view and string returns.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "r2a-results",
+      "parent": "r2",
+      "title": "R2a: tagged results, optionals and exhaustive switching",
+      "size": "L",
+      "labels": [
+        "r2",
+        "language"
+      ],
+      "body": "Typed results and optionals, exhaustive switch, propagation and exhaustive cleanup, with one real asynchronous adapter.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [
+        "The spec's R2a examples compile and their checks pass"
+      ],
+      "blocked_by": [
+        "r1a-identities"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "r4a-generic-values",
+      "parent": "r4",
+      "title": "R4a: generic copyable values over fixed storage",
+      "size": "L",
+      "labels": [
+        "r4",
+        "language"
+      ],
+      "body": "Generic copyable values and non-owning operations over fixed storage.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [],
+      "blocked_by": [
+        "r1a-identities"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "r5a-derivation",
+      "parent": "r5",
+      "title": "R5a: derivation over concrete checked types",
+      "size": "M",
+      "labels": [
+        "r5",
+        "language"
+      ],
+      "body": "Narrow derivation (equality, formatting, serialization) over concrete, already-checked types.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [],
+      "blocked_by": [
+        "r1a-identities"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "r11a-reload-experiment",
+      "parent": "r11",
+      "title": "R11a: replace a procedure body without relaunching (Mac experiment)",
+      "size": "M",
+      "labels": [
+        "r11",
+        "tooling"
+      ],
+      "body": "The unchanged-layout Mac replacement experiment: swap a procedure body in a running app.\n\nRoadmap: coax/ROADMAP.md.",
+      "files": [],
+      "acceptance": [],
+      "blocked_by": [
+        "r1a-identities"
+      ],
+      "blocks": []
+    }
+  ]
+}

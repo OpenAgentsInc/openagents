@@ -58,7 +58,6 @@ const finished = tasks.filter(done).sort((a, b) => b.status_at - a.status_at)
 const alias = aliases(f.issues.map((i) => i.id))
 const tag = (i: Issue | undefined) => (i ? `#${alias.get(i.id)}` : "")
 const milestones = f.issues.filter((i) => i.kind === "milestone").sort(rankOrder)
-const initiative = f.issues.find((i) => i.kind === "initiative")
 const coord = projectCoord(pubkey, config)
 const address = naddr(pubkey, config)
 const at = new Date()
@@ -203,14 +202,14 @@ const task = (i: Issue) => {
     line()
   }
 }
-if (initiative) {
-  line(`## Initiative: ${initiative.title}`)
+for (const ini of f.issues.filter((i) => i.kind === "initiative").sort(rankOrder)) {
+  line(`## Initiative: ${ini.title}`)
   line()
-  line(initiative.body.trim())
+  line(ini.body.trim())
   line()
   line(`Milestones, in order:`)
   line()
-  for (const m of milestones) {
+  for (const m of milestones.filter((m) => m.parent === ini.id)) {
     const mine = tasks.filter((t) => t.parent === m.id)
     line(`- ${tag(m)} **${m.title}**: ${mine.filter(done).length} of ${mine.length} done, ${mine.filter(isReady).length} ready. ${m.body}`)
   }

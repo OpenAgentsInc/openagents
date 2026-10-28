@@ -324,6 +324,8 @@ Work :: struct {
   milestones: [MAX_ITEMS] int;   // milestone rows by rank
   milestone_n: int;
   initiative: int;
+  initiatives: [8] int;       // initiative rows by rank
+  initiative_n: int;
   text: string;              // the WORK_ITEMS it was read from
   plans: string;              // WORK_PLANS: alias | mark (x done, > doing, o to do) | step
   plan_info: string;          // WORK_PLAN_INFO: alias | done | steps | plan updated | claimed | latest note
@@ -512,6 +514,14 @@ read_work :: (w: [] Work, text: string) {
   by_rank(w, text, ready[..], rn);
   by_rank(w, text, rest[..], sn);
   by_rank(w, text, w[0].milestones[..], mn);
+  // the initiatives by rank: each one's milestones are drawn under it
+  ins: [MAX_ITEMS] int; inn := 0;
+  for r: 0..<n { if w[0].kind[r] == KIND_INITIATIVE { ins[inn] = r; inn += 1; } }
+  by_rank(w, text, ins[..], inn);
+  if inn > 8 { inn = 8; }
+  for k: 0..<inn { w[0].initiatives[k] = ins[k]; }
+  w[0].initiative_n = inn;
+  if inn > 0 { w[0].initiative = ins[0]; }
   for k: 0..<on { w[0].queue[k] = working[k]; }
   for k: 0..<rn { w[0].queue[on + k] = ready[k]; }
   for k: 0..<sn { w[0].queue[on + rn + k] = rest[k]; }
@@ -1321,38 +1331,48 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
   y := b.y0 + title_room(p) + 12 * d;
   cap := 6.5 * d; small := 5.5 * d;
-  if w[0].initiative >= 0 {
-    lines: [1] int;
-    v = put_wrapped(out, v, item(w, text, w[0].initiative, 3), x, y, 7 * d, white, right - x, 12 * d, 2, lines[..]);
-    y += 12 * d * cast(f32) lines[0] + 8 * d;
-  }
   if w[0].milestone_n == 0 { v = put(out, v, "NO MILESTONES YET", x, y, cap, dim); }
   // the activity keeps room for a few rows under the milestones
   keep := ifx box_h(b) > 260 * d then 76 * d else 0.0f32;
-  for k: 0..<w[0].milestone_n {
-    if y + 16 * d > b.y1 - 10 * d - keep { break; }
-    m := w[0].milestones[k];
-    pr := progress(w, m);
-    v = put_fit(out, v, item(w, text, m, 3), x, y, cap, ifx pr.ready > 0 then white else dim, right - x - 96 * d);
-    buf: [32] u8;
-    n := number(pr.done, false, buf[..]);
-    n += put_text(buf[..], n, "/");
-    n += number(pr.total, false, buf[n..<buf.count]);
-    v = put_right(out, v, cast(string) buf[0..<n], right, y, cap, dim);
-    if pr.ready > 0 {
-      rb: [16] u8;
-      rn := number(pr.ready, false, rb[..]);
-      rn += put_text(rb[..], rn, " READY");
-      v = put_right(out, v, cast(string) rb[0..<rn], right - 34 * d, y, small, orange);
+  // each initiative in rank order, its milestones under it; milestones with
+  // no initiative come last
+  for g: 0..<(w[0].initiative_n + 1) {
+    root := ifx g < w[0].initiative_n then w[0].initiatives[g] else -1;
+    if root >= 0 {
+      if y + 30 * d > b.y1 - 10 * d - keep { break; }
+      if g > 0 { y += 4 * d; }
+      v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, ifx g == 0 then orange else pale, p.fade);
+      v = put_fit(out, v, item(w, text, root, 3), x + 12 * d, y, 6.5 * d, ifx g == 0 then white else pale, right - x - 12 * d);
+      y += 15 * d;
     }
-    // the bar: done of total
-    by := y + 6 * d; bx1 := right;
-    v = rule(out, v, x, by, bx1, by, dim, 0.1 * p.fade);
-    if pr.total > 0 && pr.done > 0 {
-      bar := orange; bar.core = 1.1 * d; bar.glow = 3 * d;
-      v = rule(out, v, x, by, x + (bx1 - x) * cast(f32) pr.done / cast(f32) pr.total, by, bar, 0.75 * p.fade);
+    for k: 0..<w[0].milestone_n {
+      m := w[0].milestones[k];
+      pm := w[0].parent[m];
+      loose := pm < 0 || w[0].kind[pm] != KIND_INITIATIVE;
+      if (root >= 0 && pm != root) || (root < 0 && !loose) { continue; }
+      if y + 16 * d > b.y1 - 10 * d - keep { break; }
+      pr := progress(w, m);
+      v = put_fit(out, v, item(w, text, m, 3), x, y, cap, ifx pr.ready > 0 then white else dim, right - x - 96 * d);
+      buf: [32] u8;
+      n := number(pr.done, false, buf[..]);
+      n += put_text(buf[..], n, "/");
+      n += number(pr.total, false, buf[n..<buf.count]);
+      v = put_right(out, v, cast(string) buf[0..<n], right, y, cap, dim);
+      if pr.ready > 0 {
+        rb: [16] u8;
+        rn := number(pr.ready, false, rb[..]);
+        rn += put_text(rb[..], rn, " READY");
+        v = put_right(out, v, cast(string) rb[0..<rn], right - 34 * d, y, small, orange);
+      }
+      // the bar: done of total
+      by := y + 6 * d; bx1 := right;
+      v = rule(out, v, x, by, bx1, by, dim, 0.1 * p.fade);
+      if pr.total > 0 && pr.done > 0 {
+        bar := orange; bar.core = 1.1 * d; bar.glow = 3 * d;
+        v = rule(out, v, x, by, x + (bx1 - x) * cast(f32) pr.done / cast(f32) pr.total, by, bar, 0.75 * p.fade);
+      }
+      y += 15 * d;
     }
-    y += 17 * d;
   }
   // what workers did, if there's room
   if y + 30 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 8 * d, right, b.y1 - 12 * d, p); }
@@ -1549,6 +1569,7 @@ FIXTURE :: "i1|initiative|open|Init||||||0V|init||\nm1|milestone|open|First||||i
   #assert same(item(w[..], FIXTURE, 2, 11), "abc1234567");
   pr := progress(w[..], 1);
   #assert pr.total == 7 && pr.done == 2 && pr.ready == 3;
+  #assert w[0].initiative_n == 1 && w[0].initiatives[0] == 0;
 }
 
 FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply\nf1|o|field square\nf1|o|inverse\nf1|o|benchmarks\nf1|o|docs\n";
