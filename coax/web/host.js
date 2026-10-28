@@ -224,9 +224,11 @@ function live() {
 async function main() {
   try {
     await fetchEngine(++wanted);
-    if (!(await startGpu())) return; // no WebGPU: the page's text stays, as written
+    // No usable WebGPU after all: show the page's text, as written.
+    if (!(await startGpu())) { document.documentElement.classList.remove("gpu"); return; }
     requestAnimationFrame(frame);
   } catch (e) {
+    document.documentElement.classList.remove("gpu");
     say(`${app}: ${e.message}`, true);
   }
   if (dev) live();

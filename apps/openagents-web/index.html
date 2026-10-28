@@ -8,6 +8,8 @@
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/index.md">
+<!-- With WebGPU the GPU draws the words: hide the text before the first paint, so it never flashes. -->
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"OpenAgents","url":"https://openagents.com/"}</script>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
@@ -15,7 +17,7 @@ body{display:grid;place-items:center;overflow:hidden;font-family:ui-sans-serif,s
 canvas{position:fixed;inset:0;width:100%;height:100%}
 main{position:relative;text-align:center;padding:0 16px}
 h1{margin:0;font-size:13px;font-weight:500;letter-spacing:.6em;text-indent:.6em;text-transform:uppercase;line-height:1}
-/* Once the GPU draws the words, the heading stays for search engines and screen readers only. */
+/* When the GPU draws the words, the heading stays for search engines and screen readers only. */
 .gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 </style>
 </head>
