@@ -48,7 +48,7 @@ scanning waits for them even when `Generated/` starts empty.
 
 The bundle identifier is `com.openagents.app`. This is a minimal home
 shell. Distribution continues the existing OpenAgents App Store Connect record
-at version 1.0.0; the current build is 1055.
+at version 1.0.0; `CURRENT_PROJECT_VERSION` in `project.yml` is the build number.
 The home is the Grid from high above under a Start bar; Start dollies the
 camera down to your character. Once there, the balance of the person's
 existing Spark wallet sits top right; tapping it opens the wallet. You can:
