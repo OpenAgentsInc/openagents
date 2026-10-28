@@ -1,0 +1,286 @@
+// Bounded safe-integer-only canonical JSON. This is a selected RFC 8785
+// envelope profile, not general floating-point JCS or NIP-01 event serialization.
+#load "json.coax";
+#load "adapters/json-policy.coax";
+#authority;
+JCS_MAX_INPUT :: 524288;
+JCS_MAX_NODES :: 2048;
+JCS_MAX_KEYS :: 1024;
+JCS_KEY_BYTES :: 65536;
+JCS_MAX_WORK :: 1048576;
+JCS_OK :: cast(u32)0;JCS_LIMIT :: cast(u32)1;JCS_JSON :: cast(u32)2;
+JCS_STRING :: cast(u32)3;JCS_DUPLICATE :: cast(u32)4;JCS_OUTPUT :: cast(u32)5;
+JCS_ALIAS :: cast(u32)6;JCS_WORK :: cast(u32)7;JCS_NUMBER :: cast(u32)8;
+JcsResult :: struct {written:int;error:u32;}
+JcsNode :: struct {kind:int;from:int;to:int;number:int;key_from:int=-1;key_count:int;child:int=-1;next:int=-1;last:int=-1;}
+JcsTree :: struct {nodes:[JCS_MAX_NODES]JcsNode;arena:[JCS_KEY_BYTES]u8;count:int;used:int;keys:int;work:int;error:u32;}
+JcsUnits :: struct {at:int;low:int;}
+JcsCompare :: struct {order:int;work:int;ok:bool;}
+
+#test "safe-integer canonical objects and arrays preserve originals and output tails" {
+  text:=" {\"z\":-0,\"a\":[true,null,\"x\"],\"kind\":\"name\"} ";out:[128]u8;
+  for i:0..<128 {out[i]=165;}
+  r:=jcs_canonicalize_checked(text,out[..],false);
+  #assert r.error==JCS_OK && cast(string)out[0..<r.written]=="{\"a\":[true,null,\"x\"],\"kind\":\"name\",\"z\":0}";
+  #assert out[r.written]==165 && text==" {\"z\":-0,\"a\":[true,null,\"x\"],\"kind\":\"name\"} ";
+  r=jcs_canonicalize_checked("[0,-0,10,-10,9007199254740991,-9007199254740991]",out[..],false);
+  #assert r.error==JCS_OK && cast(string)out[0..<r.written]=="[0,0,10,-10,9007199254740991,-9007199254740991]";
+  for s:[4]string.["{}","[]","true","false"] {r=jcs_canonicalize_checked(s,out[..],false);#assert r.error==JCS_OK && cast(string)out[0..<r.written]==s;}
+  r=jcs_canonicalize_checked("{\"a\":[{\"y\":2,\"x\":1},[3,{\"b\":4}]],\"b\":{\"z\":5,\"a\":6}}",out[..],false);
+  #assert r.error==JCS_OK && cast(string)out[0..<r.written]=="{\"a\":[{\"x\":1,\"y\":2},[3,{\"b\":4}]],\"b\":{\"a\":6,\"z\":5}}";
+  r=jcs_canonicalize_checked("{\"a\":{\"x\":1},\"b\":{\"x\":2}}",out[..],false);#assert r.error==JCS_OK;
+}
+#test "UTF-16 member order differs from scalar/UTF-8 order and keeps key identity" {
+  out:[128]u8;r:=jcs_canonicalize_checked("{\"\\ue000\":1,\"\\ud800\\udc00\":2,\"\":3}",out[..],false);
+  #assert r.error==JCS_OK && cast(string)out[0..<r.written]=="{\"\":3,\"𐀀\":2,\"\":1}";
+  r=jcs_canonicalize_checked("{\"é\":1,\"e\\u0301\":2}",out[..],false);
+  #assert r.error==JCS_OK && cast(string)out[0..<r.written]=="{\"é\":2,\"é\":1}";
+  #assert jcs_compare("", "a", 100).order==-1 && jcs_compare("a", "",100).order==1;
+  #assert jcs_compare("a","a",100).order==0 && jcs_compare("ab","a",100).order==1;
+  #assert !jcs_compare("a","b",0).ok;
+  #assert jcs_compare("a","b",1).ok && jcs_compare("a","b",1).work==1;
+  #assert !jcs_compare("a","a",1).ok && jcs_compare("a","a",2).ok && jcs_compare("a","a",2).work==2;
+  #assert jcs_compare("\0a","\0b",100).order==-1;
+}
+#test "escaping uses shortest mandatory lowercase forms without Unicode normalization" {
+  out:[128]u8;r:=jcs_canonicalize_checked("\"\\u0000\\u0001\\b\\f\\n\\r\\t\\/\\\"\\\\é\"",out[..],false);
+  #assert r.error==JCS_OK && cast(string)out[0..<r.written]=="\"\\u0000\\u0001\\b\\f\\n\\r\\t/\\\"\\\\é\"";
+}
+#test "duplicates, non-scalars, unsupported numbers and capacity fail before output" {
+  out:[128]u8;for i:0..<128 {out[i]=165;}
+  for s:[4]string.["{\"a\":1,\"\\u0061\":2}","{\"😀\":1,\"\\ud83d\\ude00\":2}","{\"\":1,\"\":2}","{\"x\":{\"a\":1,\"a\":2}}"] {#assert jcs_canonicalize_checked(s,out[..],false).error==JCS_DUPLICATE;}
+  for s:[6]string.["1.0","1e0","1E+0","9007199254740992","-9007199254740992","{\"x\":1.5}"] {#assert jcs_canonicalize_checked(s,out[..],false).error==JCS_NUMBER;}
+  for s:[2]string.["\"\\ud800\"","{\"\\udc00\":1}"] {#assert jcs_canonicalize_checked(s,out[..],false).error==JCS_STRING;}
+  for s:[5]string.["","[1,]","{\"a\":}","true false","NaN"] {#assert jcs_canonicalize_checked(s,out[..],false).error==JCS_JSON;}
+  #assert jcs_canonicalize_checked("{}",out[0..<1],false).error==JCS_OUTPUT;
+  #assert jcs_canonicalize_checked("{}",out[..],true).error==JCS_ALIAS;
+  #assert jcs_canonicalize_checked("{}",out[0..<2],false).written==2;
+  out[0]=165;out[1]=165;for b:out {#assert b==165;}
+}
+#test "UTF-16 iterator exposes exact scalar and surrogate-pair units" {
+  text:="A\0éࠀ￿𐀀􏿿";state:[1]JcsUnits;
+  for expected:[9]int.[65,0,233,2048,65535,55296,56320,56319,57343] {#assert jcs_unit(text,state[..])==expected;}
+  #assert jcs_unit(text,state[..])==-1;
+  bad:=[1]u8.[0xc0];state[0]=JcsUnits.{};#assert jcs_unit(cast(string)bad[..],state[..])==-2;
+  #assert !jcs_compare(cast(string)bad[..],"a",20).ok;
+}
+#test "measurement matches exact and one-short buffers before emitting anything" {
+  for source:[10]string.["{}","[]","null","false","\"x\"","\"\\u0000\\b\\f\\n\\r\\t\\\"\\\\\"","{\"a\":1}","[0,-0,10,-10]","9007199254740991","-9007199254740991"] {
+    full:[128]u8;r:=jcs_canonicalize_checked(source,full[..],false);#assert r.error==JCS_OK;
+    out:[128]u8;for i:0..<128 {out[i]=165;}
+    failed:=jcs_canonicalize_checked(source,out[0..<r.written-1],false);#assert failed.error==JCS_OUTPUT && failed.written==0;
+    for b:out {#assert b==165;}
+    exact:=jcs_canonicalize_checked(source,out[0..<r.written],false);#assert exact.error==JCS_OK && exact.written==r.written;
+    for i:0..<r.written {#assert full[i]==out[i];}#assert out[r.written]==165;
+  }
+  #assert jcs_string_size("")==2 && jcs_string_size(" ")==3;
+  #assert jcs_int_size(0)==1 && jcs_int_size(-1)==2 && jcs_int_size(9)==1 && jcs_int_size(10)==2;
+  #assert jcs_int_size(99)==2 && jcs_int_size(100)==3 && jcs_int_size(999)==3 && jcs_int_size(1000)==4;
+}
+#test "count admission and remaining comparison work expose exact profile boundaries" {
+  #assert jcs_admit_counts(0,0,false)==JCS_OK;
+  #assert jcs_admit_counts(524288,524288,false)==JCS_OK;
+  #assert jcs_admit_counts(-1,0,false)==JCS_LIMIT && jcs_admit_counts(524289,0,false)==JCS_LIMIT;
+  #assert jcs_admit_counts(2,-1,false)==JCS_OUTPUT && jcs_admit_counts(2,524289,false)==JCS_OUTPUT;
+  #assert jcs_budget(0)==1048576 && jcs_budget(1)==1048575 && jcs_budget(1048576)==0;
+}
+#test "node quota includes its exact admitted endpoint" {
+  for count:[2]int.[2047,2048] {
+    text:[5000]u8;at:=json_raw(text[..],0,"[");
+    for i:0..<count {if i>0 {at=json_raw(text[..],at,",");}at=json_raw(text[..],at,"0");}at=json_raw(text[..],at,"]");
+    out:[5000]u8;r:=jcs_canonicalize_checked(cast(string)text[0..<at],out[..],false);
+    #assert r.error==(ifx count==2047 then JCS_OK else JCS_LIMIT);
+    if r.error==JCS_OK {#assert r.written==at;}
+  }
+}
+#test "member quota includes its exact admitted endpoint" {
+  for count:[2]int.[1024,1025] {
+    text:[16384]u8;at:=json_raw(text[..],0,"{");
+    for i:0..<count {
+      if i>0 {at=json_raw(text[..],at,",");}key:[5]u8;value:=count-i-1;
+      for digit:0..<5 {key[4-digit]=cast(u8)('0'+value%10);value/=10;}
+      at=json_write_string(text[..],at,cast(string)key[..]);at=json_raw(text[..],at,":0");
+    }at=json_raw(text[..],at,"}");
+    out:[16384]u8;r:=jcs_canonicalize_checked(cast(string)text[0..<at],out[..],false);
+    #assert r.error==(ifx count==1024 then JCS_OK else JCS_LIMIT);
+  }
+}
+#test "decoded-key arena includes its exact admitted endpoint" {
+  text:[65560]u8;text[0]='{';text[1]='"';for i:0..<65536 {text[2+i]='a';}
+  at:=json_raw(text[..],65538,"\":0}");out:[65560]u8;
+  #assert jcs_canonicalize_checked(cast(string)text[0..<at],out[..],false).error==JCS_OK;
+}
+#test "decoded-key arena refuses one extra byte" {
+  text:[65560]u8;text[0]='{';text[1]='"';for i:0..<65536 {text[2+i]='a';}
+  at:=json_raw(text[..],65538,"\":0,\"b\":1}");out:[65560]u8;
+  #assert jcs_canonicalize_checked(cast(string)text[0..<at],out[..],false).error==JCS_LIMIT;
+}
+#test "comparison ledger charges exact units and refuses exhausted work" {
+  tree:[1]JcsTree;decoded:[65536]u8;
+  #assert jcs_build("{\"b\":0,\"a\":1}",tree[..],decoded[..])==JCS_OK && tree[0].work==1;
+  tree[0].work=JCS_MAX_WORK;tree[0].arena[2]='c';
+  next:=JcsNode.{kind=JSON_NUMBER,key_from=2,key_count=1};
+  #assert jcs_add(tree[..],next,0)==-1 && tree[0].error==JCS_WORK && tree[0].work==JCS_MAX_WORK;
+}
+#forall "I-JSON excludes the BMP noncharacter block" cp:0xfdd0..<0xfdf0 {
+  bytes:[4]u8;n:=json_put_cp(bytes[..],0,cp);#assert !jcs_unicode_admit(cast(string)bytes[0..<n]);
+}
+#forall "I-JSON excludes both noncharacters at every plane end" plane:0..<17,low:65534..<65536 {
+  bytes:[4]u8;n:=json_put_cp(bytes[..],0,plane*65536+low);#assert !jcs_unicode_admit(cast(string)bytes[0..<n]);
+}
+#test "I-JSON keeps adjacent scalars and refuses raw or escaped noncharacters" {
+  for cp:[6]int.[0xfdcf,0xfdf0,0xfffd,0x1fffd,0x10fffd,0] {bytes:[4]u8;n:=json_put_cp(bytes[..],0,cp);#assert jcs_unicode_admit(cast(string)bytes[0..<n]);}
+  out:[64]u8;
+  for source:[4]string.["\"﷐\"","\"\\ufdd0\"","{\"\\uffff\":1}","\"\\ud83f\\udffe\""] {#assert jcs_canonicalize_checked(source,out[..],false).error==JCS_STRING;}
+  bad:=[1]u8.[0xc0];#assert !jcs_unicode_admit(cast(string)bad[..]);
+  #assert jcs_unicode_admit("");
+}
+
+// Decode one UTF-8 scalar; -1 is EOF, -2 invalid UTF-8. UTF-16 conversion
+// and I-JSON noncharacter admission are separate consumers below.
+jcs_point :: (text:string,state:[]JcsUnits)->int {
+  if state[0].at>=text.count {return -1;}
+  at:=state[0].at;b:=cast(int)text[at];n:=json_utf8(text,at);
+  if n==0 {return -2;}
+  if n==1 {state[0].at+=1;return b;}
+  cp:=b&(127>>n);
+  for i:1..<n {cp=(cp<<6)|(cast(int)text[at+i]&63);}
+  state[0].at+=n;
+  return cp;
+}
+jcs_unicode_admit :: (text:string)->bool {
+  state:[1]JcsUnits;
+  while state[0].at<text.count {
+    cp:=jcs_point(text,state[..]);
+    if cp<0 {return false;}
+    if cp>=0xfdd0 && cp<=0xfdef {return false;}
+    if (cp&65535)>=65534 {return false;}
+  }
+  return true;
+}
+jcs_unit :: (text:string,state:[]JcsUnits)->int {
+  if state[0].low!=0 {v:=state[0].low;state[0].low=0;return v;}
+  cp:=jcs_point(text,state);
+  if cp>0xffff {cp-=0x10000;state[0].low=0xdc00+(cp&1023);return 0xd800+(cp>>10);}
+  return cp;
+}
+jcs_compare :: (a:string,b:string,budget:int)->JcsCompare {
+  x:[1]JcsUnits;y:[1]JcsUnits;work:=0;
+  while work<budget {
+    av:=jcs_unit(a,x[..]);bv:=jcs_unit(b,y[..]);work+=1;
+    if av==-2 || bv==-2 {return JcsCompare.{work=work};}
+    if av<bv {return JcsCompare.{order=-1,work=work,ok=true};}
+    if av>bv {return JcsCompare.{order=1,work=work,ok=true};}
+    if av==-1 {return JcsCompare.{work=work,ok=true};}
+  }
+  return JcsCompare.{work=work};
+}
+jcs_budget :: (used:int)->int {return JCS_MAX_WORK-used;}
+jcs_add :: (tree:[]JcsTree,node:JcsNode,parent:int)->int {
+  if tree[0].count>=JCS_MAX_NODES {tree[0].error=JCS_LIMIT;return -1;}
+  id:=tree[0].count;tree[0].count+=1;tree[0].nodes[id]=node;
+  if parent<0 {return id;}
+  if tree[0].nodes[parent].kind==JSON_OBJECT {
+    previous:=-1;current:=tree[0].nodes[parent].child;
+    while current!=-1 {
+      left:=cast(string)tree[0].arena[node.key_from..<node.key_from+node.key_count];
+      other:=tree[0].nodes[current];right:=cast(string)tree[0].arena[other.key_from..<other.key_from+other.key_count];
+      compared:=jcs_compare(left,right,jcs_budget(tree[0].work));tree[0].work+=compared.work;
+      if !compared.ok {tree[0].error=JCS_WORK;return -1;}
+      if compared.order==0 {tree[0].error=JCS_DUPLICATE;return -1;}
+      if compared.order==-1 {break;}
+      previous=current;current=tree[0].nodes[current].next;
+    }
+    tree[0].nodes[id].next=current;
+    if previous==-1 {tree[0].nodes[parent].child=id;}
+    else {tree[0].nodes[previous].next=id;}
+  } else {
+    last:=tree[0].nodes[parent].last;
+    if last==-1 {tree[0].nodes[parent].child=id;}
+    else {tree[0].nodes[last].next=id;}
+    tree[0].nodes[parent].last=id;
+  }
+  return id;
+}
+jcs_build :: (text:string,tree:[]JcsTree,decoded:[]u8)->u32 {
+  j:[1]Json;json_start(j[..],text);depth:=0;parents:[16]int;key_from:[16]int;key_count:[16]int;
+  while true {
+    token:=json_next(j[..]);
+    if token==JSON_ERROR {return JCS_JSON;}
+    if token==JSON_END {return JCS_OK;}
+    if token==JSON_OBJECT_END || token==JSON_ARRAY_END {depth-=1;continue;}
+    raw:=json_text(j[..]);
+    if token==JSON_STRING {
+      n:=json_unescape(raw,decoded);
+      if n<0 {return JCS_STRING;}
+      if !jcs_unicode_admit(cast(string)decoded[0..<n]) {return JCS_STRING;}
+      if j[0].key {
+        if tree[0].keys>=JCS_MAX_KEYS || n>JCS_KEY_BYTES-tree[0].used {return JCS_LIMIT;}
+        key_from[depth-1]=tree[0].used;key_count[depth-1]=n;
+        for i:0..<n {tree[0].arena[tree[0].used+i]=decoded[i];}
+        tree[0].used+=n;tree[0].keys+=1;continue;
+      }
+    }
+    parent:=ifx depth==0 then -1 else parents[depth-1];
+    node:=JcsNode.{kind=token,from=j[0].from,to=j[0].to};
+    if token==JSON_NUMBER {value:=ja_integer(raw);if !value.ok {return JCS_NUMBER;}node.number=value.value;}
+    if parent>=0 && tree[0].nodes[parent].kind==JSON_OBJECT {node.key_from=key_from[depth-1];node.key_count=key_count[depth-1];}
+    id:=jcs_add(tree,node,parent);if id<0 {return tree[0].error;}
+    if token==JSON_OBJECT || token==JSON_ARRAY {parents[depth]=id;depth+=1;}
+  }
+  return JCS_JSON;
+}
+jcs_string_size :: (text:string)->int {
+  count:=2;
+  for c:text {
+    if c=='"' || c=='\\' || c==8 || c==9 || c==10 || c==12 || c==13 {count+=2;}
+    else if c<32 {count+=6;}else {count+=1;}
+  }
+  return count;
+}
+jcs_int_size :: (v:int)->int {
+  x:=v;count:=1;if x<0 {count+=1;x=-x;}
+  while x>=10 {count+=1;x/=10;}
+  return count;
+}
+jcs_raw :: (out:[]u8,at:int,text:string,measure:bool)->int {
+  if measure {return at+text.count;}
+  return json_raw(out,at,text);
+}
+jcs_emit :: (tree:[]JcsTree,text:string,node_id:int,out:[]u8,start:int,measure:bool,decoded:[]u8)->int {
+  node:=tree[0].nodes[node_id];at:=start;
+  if node.kind==JSON_OBJECT || node.kind==JSON_ARRAY {
+    object:=node.kind==JSON_OBJECT;
+    at=jcs_raw(out,at,ifx object then "{" else "[",measure);child:=node.child;first:=true;
+    while child!=-1 {
+      if !first {at=jcs_raw(out,at,",",measure);}first=false;
+      if object {
+        entry:=tree[0].nodes[child];key:=cast(string)tree[0].arena[entry.key_from..<entry.key_from+entry.key_count];
+        at=ifx measure then at+jcs_string_size(key) else json_write_string(out,at,key);
+        at=jcs_raw(out,at,":",measure);
+      }
+      at=jcs_emit(tree,text,child,out,at,measure,decoded);child=tree[0].nodes[child].next;
+    }
+    return jcs_raw(out,at,ifx object then "}" else "]",measure);
+  }
+  if node.kind==JSON_STRING {
+    n:=json_unescape(text[node.from..<node.to],decoded);value:=cast(string)decoded[0..<n];
+    return ifx measure then at+jcs_string_size(value) else json_write_string(out,at,value);
+  }
+  if node.kind==JSON_NUMBER {return ifx measure then at+jcs_int_size(node.number) else json_write_int(out,at,node.number);}
+  return jcs_raw(out,at,text[node.from..<node.to],measure);
+}
+jcs_admit_counts :: (input:int,capacity:int,overlap:bool)->u32 #export_c {
+  if input<0 || input>JCS_MAX_INPUT {return JCS_LIMIT;}
+  if capacity<0 || capacity>JCS_MAX_INPUT {return JCS_OUTPUT;}
+  if overlap {return JCS_ALIAS;}return JCS_OK;
+}
+jcs_canonicalize_checked :: (text:string,out:[]u8,overlap:bool)->JcsResult #export_c {
+  admitted:=jcs_admit_counts(text.count,out.count,overlap);if admitted!=JCS_OK {return JcsResult.{error=admitted};}
+  tree:[1]JcsTree;decoded:[65536]u8;
+  error:=jcs_build(text,tree[..],decoded[..]);if error!=JCS_OK {return JcsResult.{error=error};}
+  required:=jcs_emit(tree[..],text,0,out,0,true,decoded[..]);
+  if required>out.count {return JcsResult.{error=JCS_OUTPUT};}
+  written:=jcs_emit(tree[..],text,0,out,0,false,decoded[..]);
+  return JcsResult.{written=written};
+}

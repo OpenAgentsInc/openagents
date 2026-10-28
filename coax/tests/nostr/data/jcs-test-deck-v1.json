@@ -1,0 +1,58 @@
+{
+  "source": "coax/web/unlock/unlock.test.ts sealed presentations md fixture",
+  "legacy_lib_sha256": "1908c8af103622923df827428ccc941c87a5129b5ae1dcaac36f8ee534403f81",
+  "markdown": "# Hello\n## Sub\n- one **two**\n- three\n> a note\n---\n# Second\nSome body",
+  "deck": {
+    "v": "coaxial.presentation.v1",
+    "title": "Hello",
+    "slides": [
+      {
+        "title": "Hello",
+        "subtitle": "Sub",
+        "bullets": [
+          "one **two**",
+          "three"
+        ],
+        "notes": "a note"
+      },
+      {
+        "title": "Second",
+        "body": "Some body"
+      }
+    ]
+  },
+  "canonical": "{\"slides\":[{\"bullets\":[\"one **two**\",\"three\"],\"notes\":\"a note\",\"subtitle\":\"Sub\",\"title\":\"Hello\"},{\"body\":\"Some body\",\"title\":\"Second\"}],\"title\":\"Hello\",\"v\":\"coaxial.presentation.v1\"}",
+  "digest": "sha256:31f0e9941da64dec653587f668942226e5aa282ce9be9404752c412e38dfdf89",
+  "envelope": {
+    "v": "openagents.artifact-envelope.v1",
+    "requires": [],
+    "artifact": {
+      "digest": "sha256:31f0e9941da64dec653587f668942226e5aa282ce9be9404752c412e38dfdf89",
+      "size": 182,
+      "media_type": "application/json",
+      "schema": "coaxial.presentation.v1"
+    },
+    "inline": {
+      "v": "coaxial.presentation.v1",
+      "title": "Hello",
+      "slides": [
+        {
+          "title": "Hello",
+          "subtitle": "Sub",
+          "bullets": [
+            "one **two**",
+            "three"
+          ],
+          "notes": "a note"
+        },
+        {
+          "title": "Second",
+          "body": "Some body"
+        }
+      ]
+    },
+    "issued_at": 1700000000,
+    "retain_until": 1731536000
+  },
+  "envelope_canonical": "{\"artifact\":{\"digest\":\"sha256:31f0e9941da64dec653587f668942226e5aa282ce9be9404752c412e38dfdf89\",\"media_type\":\"application/json\",\"schema\":\"coaxial.presentation.v1\",\"size\":182},\"inline\":{\"slides\":[{\"bullets\":[\"one **two**\",\"three\"],\"notes\":\"a note\",\"subtitle\":\"Sub\",\"title\":\"Hello\"},{\"body\":\"Some body\",\"title\":\"Second\"}],\"title\":\"Hello\",\"v\":\"coaxial.presentation.v1\"},\"issued_at\":1700000000,\"requires\":[],\"retain_until\":1731536000,\"v\":\"openagents.artifact-envelope.v1\"}"
+}

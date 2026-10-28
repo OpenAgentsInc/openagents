@@ -1,0 +1,5 @@
+// Address observation only; source and output are caller-owned stable spans.
+#load "jcs.coax";
+jcs_canonicalize :: (text:string,out:[]u8)->JcsResult #export_c {
+  return jcs_canonicalize_checked(text,out,bytes_overlap(text,out));
+}

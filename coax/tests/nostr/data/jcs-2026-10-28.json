@@ -1,0 +1,45 @@
+{
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "seed": 8785,
+  "records": 388,
+  "oracle": {
+    "node": "v26.12.1",
+    "records": 326
+  },
+  "test_deck_digest": "sha256:31f0e9941da64dec653587f668942226e5aa282ce9be9404752c412e38dfdf89",
+  "test_deck_bytes": 182,
+  "sources": {
+    "coax/lib/nostr/jcs.coax": "387b558e0746d3d1d234edfd649e28b7f88b669f12e68c63eec94269a14ee1b1",
+    "coax/lib/nostr/jcs-memory.coax": "bbf9db77219ff9847ed6e24da63ca4e884ef7990465bfbf3f045b79624646396",
+    "coax/lib/nostr/json.coax": "56ba1e76e8de6b0bc0372b80abc9282630b123dee8e7b79d51cef9f2386254e6",
+    "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+    "coax/tests/nostr/jcs.py": "b29b8a5696f81e9e2ee756f1cd29bc9518a7aa410ed7e0e9318327c75fb21e31",
+    "coax/tests/nostr/jcs_wasm.c": "9f7d99f6255896ea1ca76b0e1fe9c0136aea95be14e0927e9fbccab201024112",
+    "coax/tests/nostr/jcs_wasm.cjs": "348ab4072be78861d6dbdd27e59da30ee0969583f58202542b7a555dd9782ed2",
+    "coax/tests/nostr/jcs_native.c": "878470779f3ac7dd8cc9ffd412f06c6b9fc06f366015fa9d62db257dd82f4238",
+    "coax/tests/nostr/data/jcs-test-deck-v1.json": "0057fe5512c68adb442a46b1d48ea6d140eab35796e93c88646bfe3cbd4b0a25"
+  },
+  "results": [
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "records": 388,
+      "module_sha256": "5339499cfd4956ffac5afd746d125e14ed61438f70756c3b06b7a2555dbbd588",
+      "profile": "checked",
+      "optimization": "O2",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "records": 388,
+      "module_sha256": "f0ec9e294de52aa60d8b6e66c89d603ee60fc7f040e0bafb4f97e308b83ec528",
+      "profile": "release",
+      "optimization": "O2",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    }
+  ],
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "fixture_sha256": "c2df5525b74fa1d008bc3ff544b467fed3b2971aac2bd3bd851e9ddd8ca2299d"
+}
