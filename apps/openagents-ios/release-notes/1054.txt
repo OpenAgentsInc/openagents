@@ -1,0 +1,3 @@
+Voice fixes: reply audio plays smoothly on the phone (it was choppy), and the caption always shows the words being spoken, even when you talk while the Foreman is still answering.
+
+Voice still needs a voice server on your Wi-Fi: long-press the microphone and enter ws://192.168.1.235:8787.

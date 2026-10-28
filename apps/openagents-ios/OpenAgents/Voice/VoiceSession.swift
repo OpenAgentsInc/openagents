@@ -101,8 +101,19 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
     private var speechUtterance = ""
     private var speechText = ""
     private var receivedSamples: UInt64 = 0
+    /// Where the current utterance starts in this playback stream, in samples.
+    /// Replies to later turns that arrive while one is playing queue behind it
+    /// and become current when their first sample is heard, so the caption
+    /// always shows the words being spoken.
+    private var segmentStart: UInt64 = 0
+    private struct Queued { var utterance: String; var turn: String; var text: String; var start: UInt64?; var ended = false }
+    private var queued: [Queued] = []
     private var scheduledSamples: UInt64 = 0
     private let played = Atomic<UInt64>(0)  // samples the player has played this utterance
+    // Samples the player has taken from its queue. Flow control uses this, not
+    // `played`: on a device, played-back callbacks arrive after the output
+    // latency (voice processing, Bluetooth), and pacing on them starves the queue.
+    private let consumed = Atomic<UInt64>(0)
     private var playbackGeneration: UInt64 = 0
     private let playGeneration = Atomic<UInt64>(0)
     private var lastProgress: Double = 0
@@ -225,6 +236,7 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
         let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!
         audio.connect(player, to: pitch, format: format)
         audio.connect(pitch, to: audio.mainMixerNode, format: format)
+        pitch.bypass = appliedRate == 1
         playerRate = rate
         buffers = (0..<16).map { _ in AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(OA_VOICE_MAX_DOWNLINK_SAMPLES))! }
         nextBuffer = 0
@@ -467,8 +479,9 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
     private func bargeIn() {
         guard speaking else { return }
         let reportTurn = speechTurn, utterance = speechUtterance
-        let heard = played.load(ordering: .acquiring)
-        stopPlayer()
+        let total = played.load(ordering: .acquiring)
+        let heard = total > segmentStart ? total - segmentStart : 0
+        stopPlayer(); queued.removeAll()
         oa_voice_jitter_flush(v)
         let epoch = oa_voice_epoch(v)
         var m = oa_voice_msg(); m.kind = UInt32(OA_MSG_CONTROL.rawValue)
@@ -497,31 +510,42 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
     private func cutPlayback(report: Bool) {
         guard speaking else { stopPlayer(); return }
         if report { bargeIn() } else {
-            stopPlayer(); _ = oa_voice_cut(v); speaking = false
+            stopPlayer(); _ = oa_voice_cut(v); speaking = false; queued.removeAll()
         }
     }
 
-    /// Keeps about 60 ms of reply scheduled: small enough that duck, pause
-    /// and rate decisions are heard at once, large enough not to starve.
+    /// Keeps about 200 ms of reply queued in the player beyond what it has
+    /// taken: enough to ride out timer and Wi-Fi jitter on a real phone, short
+    /// enough that duck, pause and rate decisions are heard quickly.
     private func feedPlayer() {
         guard speaking, audioRunning else { return }
         let chunk = Int(playerRate / 50)
-        let ahead = Int(playerRate * 0.06)
-        let heard = played.load(ordering: .acquiring)
-        oa_voice_playing(v, speechStarted && scheduledSamples > heard)
+        let ahead = Int(playerRate * 0.2)
+        let total = played.load(ordering: .acquiring)
+        let taken = consumed.load(ordering: .acquiring)
+        // The next queued reply becomes current once its first sample is heard.
+        while let next = queued.first, let start = next.start, total >= start {
+            queued.removeFirst()
+            speechUtterance = next.utterance; speechTurn = next.turn; speechText = next.text
+            speechEnded = next.ended; segmentStart = start
+            publish { s in s.reply = next.text; s.caption = ""; s.captionKind = .reply }
+        }
+        let heard = total > segmentStart ? total - segmentStart : 0
+        let allEnded = speechEnded && queued.isEmpty
+        oa_voice_playing(v, speechStarted && scheduledSamples > total)
         let rate = oa_voice_playback_rate(v)
-        if rate != appliedRate, rate > 0 { pitch.rate = rate; appliedRate = rate }
-        while Int(scheduledSamples) - Int(heard) < ahead {
+        if rate != appliedRate, rate > 0 { pitch.rate = rate; pitch.bypass = rate == 1; appliedRate = rate }
+        while Int(scheduledSamples) - Int(taken) < ahead {
             let ev = oa_voice_jitter_pop(v, downScratch, UInt32(chunk))
             let underrun = ev & UInt32(OA_EV_UNDERRUN) != 0
-            if underrun && (!speechStarted || (speechEnded && oa_voice_jitter_depth(v) == 0)) { break }
+            if underrun && (!speechStarted || (allEnded && oa_voice_jitter_depth(v) == 0)) { break }
             var f = oa_voice_features()
             _ = oa_voice_downlink(v, downScratch, UInt32(chunk), UInt32(playerRate), &f)
             onFeatures?(f); lastDownlink = f
             schedule(chunk)
             speechStarted = true
         }
-        let done = speechEnded && speechStarted && oa_voice_jitter_depth(v) == 0 && heard >= scheduledSamples
+        let done = allEnded && speechStarted && oa_voice_jitter_depth(v) == 0 && total >= scheduledSamples
         let now = CACurrentMediaTime()
         if now - lastProgress > 0.25 || done {
             lastProgress = now
@@ -535,8 +559,9 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
             send(&m)
         }
         // The reply caption follows playback, word by word.
-        let total = max(receivedSamples, 1)
-        let fraction = done ? 1 : min(Double(heard) / Double(total), 1)
+        let end = queued.first?.start ?? receivedSamples
+        let length = max(end > segmentStart ? end - segmentStart : 0, 1)
+        let fraction = done ? 1 : min(Double(heard) / Double(length), 1)
         let words = speechText.split(separator: " ", omittingEmptySubsequences: true)
         let shown = done ? speechText : words.prefix(Int((Double(words.count) * fraction).rounded(.up))).joined(separator: " ")
         let downlink = lastDownlink
@@ -558,6 +583,10 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
         for i in 0..<n { out[i] = Float(downScratch[i]) / 32768 }
         scheduledSamples += UInt64(n)
         let generation = playbackGeneration
+        player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
+            guard let self, self.playGeneration.load(ordering: .acquiring) == generation else { return }
+            self.consumed.wrappingAdd(UInt64(n), ordering: .acquiringAndReleasing)
+        }
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             guard let self, self.playGeneration.load(ordering: .acquiring) == generation else { return }
             self.played.wrappingAdd(UInt64(n), ordering: .acquiringAndReleasing)
@@ -700,23 +729,40 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
                 publish { s in s.reply = text }
                 return
             }
+            if let i = queued.firstIndex(where: { $0.utterance == utterance }), !utterance.isEmpty {
+                queued[i].text = text; return
+            }
+            if speaking, !utterance.isEmpty, epoch == 0 || epoch == oa_voice_epoch(v), rate == 0 || Double(rate) == playerRate {
+                // A reply to a later turn while this one still plays: it
+                // follows in the same stream, after what's already queued.
+                queued.append(Queued(utterance: utterance, turn: turn, text: text, start: nil))
+                return
+            }
             if epoch > 0 { _ = oa_voice_set_epoch(v, epoch) }
             if speaking { stopPlayer() }
             if rate > 0, Double(rate) != playerRate {
                 player.stop(); attachPlayer(rate: Double(rate)); if audioRunning { player.play() }
             }
-            played.store(0, ordering: .releasing)
+            played.store(0, ordering: .releasing); consumed.store(0, ordering: .releasing)
+            segmentStart = 0; queued.removeAll()
             speaking = true; speechEnded = false; speechStarted = false
             speechTurn = turn; speechUtterance = utterance; speechText = text
             receivedSamples = 0; scheduledSamples = 0
             publish { s in s.reply = text; s.caption = ""; s.captionKind = .reply; s.phase = .replying }
             main()
-        case let .audio(sequence, _, epoch, _, samples):
+        case let .audio(sequence, _, epoch, utterance, samples):
             guard speaking, !samples.isEmpty, samples.count <= Int(OA_VOICE_MAX_DOWNLINK_SAMPLES) else { return }
+            if utterance != speechUtterance, let i = queued.firstIndex(where: { $0.utterance == utterance && $0.start == nil }) {
+                queued[i].start = receivedSamples
+            }
             let kept = samples.withUnsafeBufferPointer { oa_voice_jitter_push(v, sequence, epoch, $0.baseAddress, UInt32($0.count)) }
             if kept { receivedSamples += UInt64(samples.count) }
-        case let .control(kind, _, _, _):
-            if kind == UInt32(OA_CONTROL_SPEECH_END.rawValue) { speechEnded = true; publish { $0.replies += 1 } }
+        case let .control(kind, _, _, utterance):
+            if kind == UInt32(OA_CONTROL_SPEECH_END.rawValue) {
+                if let i = queued.firstIndex(where: { $0.utterance == utterance }), !utterance.isEmpty { queued[i].ended = true }
+                else { speechEnded = true }
+                publish { $0.replies += 1 }
+            }
             if kind == UInt32(OA_CONTROL_CANCEL.rawValue) { cutPlayback(report: false); refreshPhase() }
             if kind == UInt32(OA_CONTROL_PING.rawValue) { sendControl(OA_CONTROL_PONG, turn: "") }
         case .route:
