@@ -51,6 +51,13 @@ refuse.
 
 ## Known residual risks
 
+- **Unknown slugs get the site's 404 page, not the locked page.** The load
+  balancer's custom error policy (`lb.sh private-pages`) is in the URL map,
+  but the bucket's own not-found page still answers unknown `/projects/*`
+  paths. Both are 404 and name nothing, but a visitor can tell "routed and
+  locked" from "no such slug" by the page they see. The data endpoints are
+  identical for both. Fix: serve every unrouted `/projects/<slug>` from
+  oa-api (one prefix rule, the shell answering locked for unknown slugs).
 - **Routed slugs differ at the header level.** `lb.sh private-route SLUG`
   sends a real slug's page to oa-api, while an unknown slug is answered by
   the bucket. The bodies say the same thing, but raw response headers (for
