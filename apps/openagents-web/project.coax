@@ -1,0 +1,990 @@
+// A project's page, drawn by Coax: /project/coax first. The whole screen is
+// HUD: glass panels with their corners clipped at 45° (project.wgsl draws
+// the glass; this file places it), stroke text (font.coax), and in the
+// middle the project's plot on the Grid, seen from a slow orbit, with its
+// commit history growing out of it as a tree and agents walking between the
+// task queue's beacon and the branches they're working on.
+//
+// Real: the commits (baked by project/commits.sh into
+// project/coax/commits.coax), file and line counts, the one-liner, the
+// licence. Placeholders until the projects API exists
+// (docs/protocol/2026-10-28-projects.md): the tasks, their claims and
+// bounties, the agents and their activity.
+
+#load "font.coax";
+#load "project/coax/commits.coax";
+
+ProjectState :: struct {
+  time: f32;
+  frames: int;
+  page: int;
+}
+
+VERTEX_FLOATS :: 12;   // x, y, along, across, length, core, light, glow, red, green, blue, mode
+MAX_VERTICES :: 150000;
+PANELS :: 10;
+UNIFORM_FLOATS :: 88;  // width, height, time, fade, still, panels, 0, 0, then per panel x0, y0, x1, y1, cut, alpha, tint, 0
+
+MODE_STROKE :: 0.0;    // a sharp core in a soft glow
+MODE_LINK :: 1.0;      // a soft line, faded at its ends
+MODE_PULSE :: 2.0;     // a hot head with a tail: work in flight
+
+GAP :: 0.34;           // letter gap, cap heights
+SPACE :: 0.95;         // a space, cap heights
+MAX_COMMITS :: 256;
+BRANCHES :: 7;
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+fract :: (x: f32) -> f32 { return x - floor(x); }
+
+// One stroke as a quad wide enough for its glow (as splash.coax draws them).
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.002 { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v];
+    out[o + 3] = c[v];
+    out[o + 4] = length;
+    out[o + 5] = core;
+    out[o + 6] = light;
+    out[o + 7] = glow;
+    out[o + 8] = red;
+    out[o + 9] = green;
+    out[o + 10] = blue;
+    out[o + 11] = mode;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- the palette and the pen
+
+Pen :: struct { d: f32; fade: f32; time: f32; }
+
+// The four inks of the page: white text, dim text, Bitcoin orange (#ff8c1f)
+// and the pale orange of something in review.
+INK_WHITE :: 0; INK_DIM :: 1; INK_ORANGE :: 2; INK_PALE :: 3; INK_FAINT :: 4;
+ink :: (p: Pen, kind: int) -> Ink {
+  k := Ink.{core = 0.5 * p.d, light = 0.9 * p.fade, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE};
+  if kind == INK_DIM { k.light = 0.48 * p.fade; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
+  if kind == INK_FAINT { k.light = 0.3 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
+  if kind == INK_ORANGE { k.light = 1.0 * p.fade; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
+  if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
+  return k;
+}
+
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+
+// Text from x at baseline y, caps cap device pixels tall.
+put :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, at, text, x, y, cap, GAP, SPACE, k, false, false);
+}
+
+// Text ending at x.
+put_right :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return put(out, at, text, x - text_width(text, cap), y, cap, k);
+}
+
+// How many bytes of text fit in width (device pixels) at cap.
+fits :: (text: string, cap: f32, width: f32) -> int {
+  if text_width(text, cap) <= width { return text.count; }
+  n := 0; i := 0;
+  while i < text.count {
+    d := decode(text, i);
+    if text_width(text[0..<i + d.len], cap) > width - text_width("...", cap) { break; }
+    i += d.len; n = i;
+  }
+  return n;
+}
+
+// Text cut to width, with "..." when it was cut.
+put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32) -> int {
+  n := fits(text, cap, width);
+  if n >= text.count { return put(out, at, text, x, y, cap, k); }
+  v := put(out, at, text[0..<n], x, y, cap, k);
+  return put(out, v, "...", x + text_width(text[0..<n], cap) + GAP * cap, y, cap, k);
+}
+
+// Text wrapped to width from baseline y, lines step apart, at most lines
+// lines. Returns the vertex count; drawn[0] gets the lines drawn.
+put_wrapped :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32,
+                step: f32, lines: int, drawn: [] int) -> int {
+  v := at; from := 0; n := 0;
+  next: [1] int;
+  while from < text.count && n < lines {
+    end := wrap(text, from, width / cap, GAP, SPACE, false, next[..]);
+    v = put(out, v, text[from..<end], x, y + step * cast(f32) n, cap, k);
+    n += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  if drawn.count > 0 { drawn[0] = n; }
+  return v;
+}
+
+// A whole number: K for thousands when short is set, else commas (12,000).
+number :: (n: int, short: bool, buf: [] u8) -> int {
+  v := n; suffix := false;
+  if short && v >= 10000 { v = v / 1000; suffix = true; }
+  digits: [28] u8; c := 0;
+  if v == 0 { digits[0] = '0'; c = 1; }
+  k := 0;
+  while v > 0 && c < 27 {
+    if !short && k > 0 && k % 3 == 0 { digits[c] = ','; c += 1; }
+    digits[c] = cast(u8) ('0' + v % 10); v = v / 10; c += 1; k += 1;
+  }
+  w := 0;
+  for i: 0..<c { if w < buf.count { buf[w] = digits[c - 1 - i]; w += 1; } }
+  if suffix && w < buf.count { buf[w] = 'K'; w += 1; }
+  return w;
+}
+
+put_number :: (out: [] f32, at: int, n: int, short: bool, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  buf: [24] u8;
+  c := number(n, short, buf[..]);
+  return put(out, at, cast(string) buf[0..<c], x, y, cap, k);
+}
+
+number_width :: (n: int, short: bool, cap: f32) -> f32 {
+  buf: [24] u8;
+  c := number(n, short, buf[..]);
+  return text_width(cast(string) buf[0..<c], cap);
+}
+
+// ---------------------------------------------------------------- HUD elements
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+box_w :: (b: Box) -> f32 { return b.x1 - b.x0; }
+box_h :: (b: Box) -> f32 { return b.y1 - b.y0; }
+
+// A line in an ink, at a brightness.
+rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light: f32) -> int {
+  if lit(out, at, ax, ay, bx, by, k.core, light, k.glow, k.red, k.green, k.blue, k.mode) { return at + 6; }
+  return at;
+}
+
+// A panel's frame: the outline with clipped corners, faint, and brighter
+// brackets on two corners, as the HUD's panels have.
+frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
+  k := ink(p, INK_ORANGE);
+  v := at; f := 0.28 * p.fade;
+  xs := [9] f32.[b.x0 + cut, b.x1 - cut, b.x1, b.x1, b.x1 - cut, b.x0 + cut, b.x0, b.x0, b.x0 + cut];
+  ys := [9] f32.[b.y0, b.y0, b.y0 + cut, b.y1 - cut, b.y1, b.y1, b.y1 - cut, b.y0 + cut, b.y0];
+  for i: 0..<8 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, f); }
+  // the brackets: top left and bottom right, bright
+  arm := lo(36 * p.d, box_w(b) * 0.25);
+  v = rule(out, v, b.x0, b.y0 + cut + arm * 0.6, b.x0, b.y0 + cut, k, p.fade);
+  v = rule(out, v, b.x0, b.y0 + cut, b.x0 + cut, b.y0, k, p.fade);
+  v = rule(out, v, b.x0 + cut, b.y0, b.x0 + cut + arm, b.y0, k, p.fade);
+  v = rule(out, v, b.x1, b.y1 - cut - arm * 0.6, b.x1, b.y1 - cut, k, p.fade);
+  v = rule(out, v, b.x1, b.y1 - cut, b.x1 - cut, b.y1, k, p.fade);
+  v = rule(out, v, b.x1 - cut, b.y1, b.x1 - cut - arm, b.y1, k, p.fade);
+  return v;
+}
+
+// A panel's title: orange, with a short tick before it and a rule under it.
+// Returns the vertex count; the content starts at b.y0 + title_room.
+title_room :: (p: Pen) -> f32 { return 34 * p.d; }
+titled :: (out: [] f32, at: int, b: Box, title: string, note: string, p: Pen) -> int {
+  cap := 8 * p.d; y := b.y0 + 20 * p.d;
+  o := ink(p, INK_ORANGE);
+  v := rule(out, at, b.x0 + 12 * p.d, y - cap * 0.5, b.x0 + 18 * p.d, y - cap * 0.5, o, p.fade);
+  v = put(out, v, title, b.x0 + 24 * p.d, y, cap, o);
+  if note.count > 0 {
+    room := box_w(b) - 48 * p.d - text_width(title, cap);
+    n := fits(note, 6.5 * p.d, room);
+    v = put_right(out, v, note[0..<n], b.x1 - 14 * p.d, y, 6.5 * p.d, ink(p, INK_DIM));
+  }
+  v = rule(out, v, b.x0 + 12 * p.d, y + 7 * p.d, b.x1 - 12 * p.d, y + 7 * p.d, ink(p, INK_DIM), 0.12 * p.fade);
+  return v;
+}
+
+// A chip: text in a small clipped outline. Its width:
+chip_width :: (text: string, cap: f32, p: Pen) -> f32 { return text_width(text, cap) + 14 * p.d; }
+chip :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, p: Pen) -> int {
+  w := chip_width(text, cap, p); h := cap + 10 * p.d; c := 4 * p.d;
+  top := y - cap - 5 * p.d;
+  xs := [7] f32.[x + c, x + w, x + w, x + w - c, x, x, x + c];
+  ys := [7] f32.[top, top, top + h - c, top + h, top + h, top + c, top];
+  v := at;
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, k.light * 0.55); }
+  return put(out, v, text, x + 7 * p.d, y, cap, k);
+}
+
+// A small diamond, as nodes and dots are drawn.
+diamond :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: Ink, light: f32) -> int {
+  v := rule(out, at, x, y - r, x + r, y, k, light);
+  v = rule(out, v, x + r, y, x, y + r, k, light);
+  v = rule(out, v, x, y + r, x - r, y, k, light);
+  return rule(out, v, x - r, y, x, y - r, k, light);
+}
+
+// ---------------------------------------------------------------- the data
+
+// Rows of '\n'-separated text, fields split by '|'.
+row_start :: (text: string, row: int) -> int {
+  r := 0; i := 0;
+  while r < row && i < text.count { if text[i] == '\n' { r += 1; } i += 1; }
+  return i;
+}
+field :: (text: string, row: int, col: int) -> string {
+  i := row_start(text, row); c := 0;
+  while c < col && i < text.count && text[i] != '\n' { if text[i] == '|' { c += 1; } i += 1; }
+  j := i;
+  while j < text.count && text[j] != '|' && text[j] != '\n' { j += 1; }
+  return text[i..<j];
+}
+rows :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] == '\n' { n += 1; } }
+  if text.count > 0 && text[text.count - 1] != '\n' { n += 1; }
+  return n;
+}
+same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+// The tasks. Placeholders: id | state | title | labels | sats | claimant | branch.
+TASKS :: "CX-101|OPEN|Filament lowercase a to z (font.md stage 3)|FONT WEB|5000||web\nCX-102|CLAIMED|HEAD requests answer 405 in coax serve|WEB BUG|1000|MICROCODER-3|web\nCX-103|IN REVIEW|Markdown docs and blog pages in Coaxial (web.md W3)|WEB DOCS|12000|CODER-1|web\nCX-104|OPEN|Stage timing and generated-size reports (roadmap R0)|COMPILER|8000||src\nCX-105|CLAIMED|Original-source debugging: line maps for generated C|COMPILER|10000|SOLVER-7|src\nCX-106|OPEN|Coax emits WGSL for Coaxial shaders (roadmap R8a)|GPU|20000||src\nCX-107|OPEN|Book chapter: a web page in Coaxial|BOOK|3000||book\nCX-100|DONE|Filament capitals, digits and punctuation|FONT|4000|CODER-1|web\n";
+STATE_OPEN :: 0; STATE_CLAIMED :: 1; STATE_REVIEW :: 2; STATE_DONE :: 3;
+task_state :: (row: int) -> int {
+  s := field(TASKS, row, 1);
+  if same(s, "CLAIMED") { return STATE_CLAIMED; }
+  if same(s, "IN REVIEW") { return STATE_REVIEW; }
+  if same(s, "DONE") { return STATE_DONE; }
+  return STATE_OPEN;
+}
+open_tasks :: () -> int {
+  n := 0;
+  for r: 0..<rows(TASKS) { if task_state(r) == STATE_OPEN { n += 1; } }
+  return n;
+}
+claimed_tasks :: () -> int {
+  n := 0;
+  for r: 0..<rows(TASKS) { s := task_state(r); if s == STATE_CLAIMED || s == STATE_REVIEW { n += 1; } }
+  return n;
+}
+
+// The agents at work (placeholders): name | task | branch.
+AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
+
+// The tree's branches: the subfolders of coax/ a commit mostly touched.
+branch_index :: (name: string) -> int {
+  if same(name, "src") { return 1; }
+  if same(name, "tests") { return 2; }
+  if same(name, "book") { return 3; }
+  if same(name, "web") { return 4; }
+  if same(name, "examples") { return 5; }
+  if same(name, "bin") { return 6; }
+  return 0;   // spec: the folder's own files
+}
+branch_name :: (b: int) -> string {
+  if b == 1 { return "SRC/"; }
+  if b == 2 { return "TESTS/"; }
+  if b == 3 { return "BOOK/"; }
+  if b == 4 { return "WEB/"; }
+  if b == 5 { return "EXAMPLES/"; }
+  if b == 6 { return "BIN/"; }
+  return "SPEC";
+}
+
+// ---------------------------------------------------------------- the tree
+
+Vec3 :: struct { x: f32; y: f32; z: f32; }
+v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
+add :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
+sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+scale :: (a: Vec3, k: f32) -> Vec3 { return v3(a.x * k, a.y * k, a.z * k); }
+dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+cross :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+normalize :: (a: Vec3) -> Vec3 { l := sqrt(dot(a, a)); if l <= 0 { return a; } return scale(a, 1 / l); }
+mix3 :: (a: Vec3, b: Vec3, t: f32) -> Vec3 { return add(a, scale(sub(b, a), t)); }
+
+// One node per commit: where it sits and which branch it's on. The trunk
+// climbs with time; each commit hangs on its branch, which leaves the trunk
+// at its first commit and reaches out and up as the branch grows.
+Tree :: struct {
+  n: int;
+  branch: [MAX_COMMITS] int;
+  at: [MAX_COMMITS] Vec3;
+  trunk: [MAX_COMMITS] f32;   // the trunk's height at each commit
+  last: [BRANCHES] int;       // the newest commit on each branch, or -1
+  count: [BRANCHES] int;
+}
+
+TRUNK :: 5.8;   // the tree's height, grid units
+branch_angle :: (b: int) -> f32 { return 0.5 + cast(f32) b * 2.0 * 3.14159265 / cast(f32) BRANCHES; }
+
+grow :: (t: [] Tree, history: string) {
+  n := rows(history);
+  if n > MAX_COMMITS { n = MAX_COMMITS; }
+  t[0].n = n;
+  for b: 0..<BRANCHES { t[0].last[b] = -1; t[0].count[b] = 0; }
+  // (written out: coax0's C for += on an array field through a view doesn't compile)
+  for i: 0..<n { b := branch_index(field(history, i, 2)); t[0].count[b] = t[0].count[b] + 1; }
+  seen: [BRANCHES] int;
+  for i: 0..<n {
+    b := branch_index(field(history, i, 2));
+    t[0].branch[i] = b;
+    h := 0.35 + TRUNK * (ifx n > 1 then cast(f32) i / cast(f32) (n - 1) else 0.0f32);
+    t[0].trunk[i] = h;
+    k := seen[b]; seen[b] += 1;
+    reach := 0.7 + 2.3 * cast(f32) (k + 1) / cast(f32) (t[0].count[b] + 1);
+    a := branch_angle(b) + 0.06 * cast(f32) k;
+    t[0].at[i] = v3(reach * cos(a), h + 0.25 * cast(f32) k / cast(f32) (t[0].count[b] + 1), reach * sin(a));
+    t[0].last[b] = i;
+  }
+}
+
+// ---------------------------------------------------------------- the camera
+
+Camera :: struct { eye: Vec3; right: Vec3; up: Vec3; ahead: Vec3; cx: f32; cy: f32; focal: f32; clip: Box; }
+Spot :: struct { x: f32; y: f32; z: f32; ok: bool; }
+
+camera :: (b: Box, angle: f32) -> Camera {
+  look := v3(0, 3.0, 0);
+  eye := v3(12.5 * sin(angle), 6.2, 12.5 * cos(angle));
+  ahead := normalize(sub(look, eye));
+  right := normalize(cross(ahead, v3(0, 1, 0)));
+  up := cross(right, ahead);
+  // fit about 11 grid units of height in the box, and keep the tree inside a narrow one
+  focal := lo(box_h(b) * 1.18, box_w(b) * 1.2);
+  return Camera.{eye = eye, right = right, up = up, ahead = ahead, cx = (b.x0 + b.x1) * 0.5,
+                 cy = b.y0 + box_h(b) * 0.58, focal = focal, clip = b};
+}
+
+spot :: (c: Camera, p: Vec3) -> Spot {
+  v := sub(p, c.eye);
+  z := dot(v, c.ahead);
+  if z < 0.5 { return Spot.{x = 0, y = 0, z = z, ok = false}; }
+  return Spot.{x = c.cx + dot(v, c.right) / z * c.focal, y = c.cy - dot(v, c.up) / z * c.focal, z = z, ok = true};
+}
+
+// A segment in the world, projected, cut to the camera's box (Liang-Barsky)
+// and dimmed with distance.
+seg :: (out: [] f32, at: int, c: Camera, a: Vec3, b: Vec3, k: Ink, light: f32) -> int {
+  p := spot(c, a); q := spot(c, b);
+  if !p.ok || !q.ok { return at; }
+  t0 := 0.0f32; t1 := 1.0f32;
+  dx := q.x - p.x; dy := q.y - p.y;
+  ps := [4] f32.[-dx, dx, -dy, dy];
+  qs := [4] f32.[p.x - c.clip.x0, c.clip.x1 - p.x, p.y - c.clip.y0, c.clip.y1 - p.y];
+  for i: 0..<4 {
+    if ps[i] == 0 { if qs[i] < 0 { return at; } continue; }
+    r := qs[i] / ps[i];
+    if ps[i] < 0 { if r > t1 { return at; } if r > t0 { t0 = r; } }
+    else { if r < t0 { return at; } if r < t1 { t1 = r; } }
+  }
+  depth := clamp(1.55 - (p.z + q.z) * 0.5 / 20, 0.22, 1);
+  return rule(out, at, p.x + dx * t0, p.y + dy * t0, p.x + dx * t1, p.y + dy * t1, k, light * depth);
+}
+
+inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+PLOT :: 3.2;   // the plot's half size, grid units
+GRID :: 12;    // grid lines each way from the centre
+
+// The Grid's floor, the plot, the tree, the queue's beacon and the agents.
+scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool) -> int {
+  angle := 0.62 + (ifx still then 0.0f32 else p.time * 0.045);
+  // the readouts take the top of the box; the world stays under them
+  view := Box.{x0 = b.x0, y0 = b.y0 + 44 * p.d, x1 = b.x1, y1 = b.y1};
+  c := camera(view, angle);
+  roomy := box_w(b) > 520 * p.d;
+  v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  grid := dim; grid.glow = 2.0 * p.d; grid.core = hi(0.45 * p.d, 0.7);
+  // the floor, in one-unit pieces so each fades with its distance
+  for i: -GRID..<GRID + 1 {
+    for j: -GRID..<GRID {
+      x := cast(f32) i; z := cast(f32) j;
+      far := sqrt(x * x + z * z) / cast(f32) GRID;
+      light := 0.42 * clamp(1.15 - far, 0, 1) * p.fade;
+      onplot := abs(x) <= PLOT && abs(z + 0.5) <= PLOT;
+      v = seg(out, v, c, v3(x, 0, z), v3(x, 0, z + 1), ifx onplot then orange else grid, ifx onplot then light * 0.9 else light);
+      onplot2 := abs(z) <= PLOT && abs(x + 0.5) <= PLOT;
+      v = seg(out, v, c, v3(z, 0, x), v3(z + 1, 0, x), ifx onplot2 then orange else grid, ifx onplot2 then light * 0.9 else light);
+    }
+  }
+  // the plot's edge and its corner posts
+  e: f32 = PLOT + 0.25;
+  cx := [5] f32.[-e, e, e, -e, -e];
+  cz := [5] f32.[-e, -e, e, e, -e];
+  for k: 0..<4 {
+    v = seg(out, v, c, v3(cx[k], 0.02, cz[k]), v3(cx[k + 1], 0.02, cz[k + 1]), orange, 0.85 * p.fade);
+    v = seg(out, v, c, v3(cx[k], 0, cz[k]), v3(cx[k], 0.7, cz[k]), orange, 0.7 * p.fade);
+  }
+  // the tree grows in over the first seconds
+  n := t[0].n;
+  shown := ifx still then n else cast(int) (cast(f32) n * ease((p.time - 0.5) / 3.2));
+  bark := white; bark.core = 1.3 * p.d; bark.glow = 5 * p.d;
+  for i: 1..<shown { v = seg(out, v, c, v3(0, t[0].trunk[i - 1], 0), v3(0, t[0].trunk[i], 0), bark, 0.55 * p.fade); }
+  if shown > 0 { v = seg(out, v, c, v3(0, 0, 0), v3(0, t[0].trunk[0], 0), bark, 0.55 * p.fade); }
+  twig := white; twig.core = 0.65 * p.d;
+  prev: [BRANCHES] int;
+  for k: 0..<BRANCHES { prev[k] = -1; }
+  for i: 0..<shown {
+    br := t[0].branch[i];
+    from := ifx prev[br] < 0 then v3(0, t[0].trunk[i], 0) else t[0].at[prev[br]];
+    recent := i >= n - 6;
+    v = seg(out, v, c, from, t[0].at[i], ifx recent then orange else twig, ifx recent then 0.8 * p.fade else 0.5 * p.fade);
+    prev[br] = i;
+  }
+  // the nodes; the newest glow and pulse
+  for i: 0..<shown {
+    s := spot(c, t[0].at[i]);
+    if !s.ok || !inside(view, s.x, s.y) { continue; }
+    recent := i >= n - 6;
+    r := (ifx recent then 3.2f32 else 2.2f32) * p.d;
+    if recent {
+      pulse := 0.6 + 0.4 * sin(p.time * 3.0 + cast(f32) i);
+      v = diamond(out, v, s.x, s.y, r, orange, pulse * p.fade);
+    } else {
+      v = diamond(out, v, s.x, s.y, r, white, 0.6 * p.fade);
+    }
+    if i == n - 1 && i < shown {
+      ring := 6 * p.d + 5 * p.d * fract(p.time * 0.7);
+      v = diamond(out, v, s.x, s.y, ring, orange, 0.6 * (1 - fract(p.time * 0.7)) * p.fade);
+      small := 6.5 * p.d;
+      v = put(out, v, field(PROJECT_HISTORY, i, 0)[0..<7], s.x + 10 * p.d, s.y - 6 * p.d, small, orange);
+      if roomy { v = put(out, v, "HEAD", s.x + 10 * p.d, s.y + 5 * p.d, small, dim); }
+    }
+  }
+  // each branch's name at its newest commit
+  if shown == n && roomy {
+    for br: 0..<BRANCHES {
+      last := t[0].last[br];
+      if last < 0 { continue; }
+      s := spot(c, t[0].at[last]);
+      if !s.ok || !inside(view, s.x, s.y) { continue; }
+      v = put(out, v, branch_name(br), s.x - text_width(branch_name(br), 6 * p.d) - 8 * p.d, s.y + 10 * p.d, 6 * p.d, dim);
+    }
+  }
+  // the task queue's beacon at the plot's front corner
+  beacon := v3(e, 0, e);
+  top := v3(e, 2.4, e);
+  v = seg(out, v, c, beacon, top, orange, 0.9 * p.fade);
+  bs := spot(c, top);
+  if bs.ok && inside(view, bs.x, bs.y) {
+    beat := 0.55 + 0.45 * sin(p.time * 2.2);
+    v = diamond(out, v, bs.x, bs.y, 5 * p.d, orange, beat * p.fade);
+    v = diamond(out, v, bs.x, bs.y, 9 * p.d, orange, 0.35 * beat * p.fade);
+    label := 6.5 * p.d;
+    v = put(out, v, "TASK QUEUE", bs.x + 13 * p.d, bs.y - 2 * p.d, label, orange);
+    buf: [24] u8;
+    m := number(open_tasks(), false, buf[..]);
+    v = put(out, v, cast(string) buf[0..<m], bs.x + 13 * p.d, bs.y + 9 * p.d, label, white);
+    v = put(out, v, "OPEN", bs.x + 13 * p.d + text_width(cast(string) buf[0..<m], label) + SPACE * label, bs.y + 9 * p.d, label, dim);
+  }
+  // the agents: out from the beacon to their branch, work there, come back
+  for a: 0..<rows(AGENTS) {
+    target := t[0].last[branch_index(field(AGENTS, a, 2))];
+    if target < 0 || shown < n { continue; }
+    node := add(t[0].at[target], v3(0.35 * cos(cast(f32) a * 2.1), 0.5 + 0.2 * cast(f32) a, 0.35 * sin(cast(f32) a * 2.1)));
+    phase := fract((ifx still then 0.5f32 else p.time) * 0.055 + cast(f32) a * 0.31);
+    there := ease(phase / 0.3) * (1 - ease((phase - 0.78) / 0.22));
+    at3 := mix3(top, node, there);
+    s := spot(c, at3);
+    if !s.ok || !inside(view, s.x, s.y) { continue; }
+    working := phase > 0.3 && phase < 0.78;
+    if working {
+      ns := spot(c, t[0].at[target]);
+      if ns.ok {
+        // work in flight: a pulse from the agent down to the commit it's on
+        beam := orange; beam.mode = MODE_LINK; beam.core = 0.5 * p.d;
+        v = rule(out, v, s.x, s.y, ns.x, ns.y, beam, 0.45 * p.fade);
+        f := fract(p.time * 1.4 + cast(f32) a * 0.4);
+        hx := s.x + (ns.x - s.x) * f; hy := s.y + (ns.y - s.y) * f;
+        if lit(out, v, hx - (ns.x - s.x) * 0.08, hy - (ns.y - s.y) * 0.08, hx, hy, 1.2 * p.d, 0.9 * p.fade, 5 * p.d, 1.0, 0.55, 0.12, MODE_PULSE) { v += 6; }
+      }
+    }
+    // the marker: a small chevron over a dot
+    r := 5 * p.d;
+    v = rule(out, v, s.x - r, s.y - r, s.x, s.y, pale, p.fade);
+    v = rule(out, v, s.x, s.y, s.x + r, s.y - r, pale, p.fade);
+    v = diamond(out, v, s.x, s.y + 3 * p.d, 1.6 * p.d, white, p.fade);
+    // named once it has left the beacon, so it never covers the queue's label
+    if there > 0.2 {
+      label := 6 * p.d;
+      v = put(out, v, field(AGENTS, a, 0), s.x + 9 * p.d, s.y - 9 * p.d, label, pale);
+      if roomy { v = put(out, v, field(AGENTS, a, 1), s.x + 9 * p.d, s.y + 1 * p.d, label, dim); }
+    }
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- the layout
+
+Layout :: struct { wide: bool; columns: bool; header: Box; scene: Box; queue: Box; activity: Box; agents: Box; activity_on: bool; }
+
+WIDE :: 1080.0;   // CSS pixels: three columns from here
+TWO :: 700.0;     // CSS pixels: below this, one column
+
+layout :: (width: f32, height: f32, d: f32) -> Layout {
+  w := width / d; h := height / d;
+  m := ifx w < TWO then 12.0f32 else 24.0f32;
+  g := ifx w < TWO then 8.0f32 else 16.0f32;
+  l: Layout;
+  l.wide = w >= WIDE;
+  l.columns = w >= TWO;
+  if l.wide {
+    head := 112.0f32;
+    l.header = Box.{x0 = m, y0 = m, x1 = w - m, y1 = m + head};
+    top := m + head + g;
+    left := 390.0f32; right := 360.0f32;
+    l.queue = Box.{x0 = m, y0 = top, x1 = m + left, y1 = h - m};
+    l.activity_on = true;
+    split := top + (h - m - top) * 0.52;
+    l.activity = Box.{x0 = w - m - right, y0 = top, x1 = w - m, y1 = split - g * 0.5};
+    l.agents = Box.{x0 = w - m - right, y0 = split + g * 0.5, x1 = w - m, y1 = h - m};
+    l.scene = Box.{x0 = m + left + g, y0 = top, x1 = w - m - right - g, y1 = h - m};
+  } else {
+    head := ifx l.columns then 112.0f32 else 146.0f32;
+    l.header = Box.{x0 = m, y0 = m, x1 = w - m, y1 = m + head};
+    top := m + head + g;
+    rest := h - m - top;
+    sh := clamp(rest * 0.4, 150, 420);
+    l.scene = Box.{x0 = m, y0 = top, x1 = w - m, y1 = top + sh};
+    below := top + sh + g;
+    l.activity_on = false;
+    if l.columns {
+      mid := w * 0.55;
+      l.queue = Box.{x0 = m, y0 = below, x1 = mid - g * 0.5, y1 = h - m};
+      l.agents = Box.{x0 = mid + g * 0.5, y0 = below, x1 = w - m, y1 = h - m};
+    } else {
+      agents_h := clamp((h - m - below) * 0.4, 92, 150);
+      l.queue = Box.{x0 = m, y0 = below, x1 = w - m, y1 = h - m - agents_h - g};
+      l.agents = Box.{x0 = m, y0 = h - m - agents_h, x1 = w - m, y1 = h - m};
+    }
+  }
+  l.header = scaled(l.header, d); l.scene = scaled(l.scene, d); l.queue = scaled(l.queue, d);
+  l.activity = scaled(l.activity, d); l.agents = scaled(l.agents, d);
+  return l;
+}
+scaled :: (b: Box, d: f32) -> Box { return Box.{x0 = b.x0 * d, y0 = b.y0 * d, x1 = b.x1 * d, y1 = b.y1 * d}; }
+
+// The glass behind a panel, for project.wgsl.
+glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
+  if k >= PANELS { return; }
+  o := 8 + k * 8;
+  uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+  uniforms[o + 4] = cut; uniforms[o + 5] = alpha; uniforms[o + 6] = tint; uniforms[o + 7] = 0;
+}
+
+// ---------------------------------------------------------------- the panels
+
+header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool) -> int {
+  d := p.d; v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  x := b.x0 + 18 * d; right := b.x1 - 18 * d;
+  v = put(out, v, "OPENAGENTS / PROJECTS /", x, b.y0 + 22 * d, 7 * d, dim);
+  v = put(out, v, "COAX", x + text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, orange);
+  title := 26 * d;
+  ty := b.y0 + 58 * d;
+  v = put(out, v, "COAX", x, ty, title, white);
+  tag := "A systems language for real-time code. Compiles to C11, then to native code and wasm.";
+  chips_y := 0.0f32;
+  if wide {
+    tx := x + text_width("COAX", title) + 22 * d;
+    v = put_fit(out, v, tag, tx, ty - 10 * d, 8 * d, white, right - tx - 330 * d);
+    v = put(out, v, "HOME OPENAGENTS/COAX/  ·  PLOT 12,-4 ON THE GRID  ·  OWNER OPENAGENTS", tx, ty + 6 * d, 6.5 * d, dim);
+    chips_y = ty - 8 * d;
+  } else {
+    lines: [1] int;
+    v = put_wrapped(out, v, tag, x, ty + 22 * d, 7.5 * d, white, right - x, 13 * d, 3, lines[..]);
+    chips_y = ty + 22 * d + 13 * d * cast(f32) lines[0] + 14 * d;
+  }
+  // the chips: open for contributions (pulsing), the licence
+  cap := 7 * d;
+  open := "OPEN FOR CONTRIBUTIONS";
+  lic := "APACHE-2.0";
+  cx := ifx wide then right - chip_width(open, cap, p) - chip_width(lic, cap, p) - 8 * d else x;
+  v = chip(out, v, open, cx, chips_y, cap, orange, p);
+  beat := 0.5 + 0.5 * sin(p.time * 2.4);
+  v = diamond(out, v, cx - 8 * d, chips_y - cap * 0.5, 2 * d, orange, beat * p.fade);
+  v = chip(out, v, lic, cx + chip_width(open, cap, p) + 8 * d, chips_y, cap, dim, p);
+  return frame(out, v, b, 10 * d, p);
+}
+
+// The readouts over the scene: commits, contributors, lines, open tasks, agents at work.
+stats :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
+  d := p.d; v := at;
+  dim := ink(p, INK_DIM); white := ink(p, INK_WHITE); orange := ink(p, INK_ORANGE);
+  labels := [5] string.["COMMITS", "CONTRIBUTORS", "LINES", "OPEN TASKS", "AGENTS AT WORK"];
+  short := [5] string.["COMMITS", "PEOPLE", "LINES", "OPEN", "AGENTS"];
+  values := [5] int.[PROJECT_COMMITS, PROJECT_AUTHORS, PROJECT_LINES, open_tasks(), rows(AGENTS)];
+  each := (box_w(b) - 28 * d) / 5;
+  cap := clamp(each / 6.5, 8 * d, 15 * d);
+  small := clamp(each / 11, 5.5 * d, 7 * d);
+  for i: 0..<5 {
+    x := b.x0 + 16 * d + each * cast(f32) i;
+    name := ifx text_width(labels[i], small) > each - 6 * d then short[i] else labels[i];
+    v = put_fit(out, v, name, x, b.y0 + 18 * d, small, dim, each - 6 * d);
+    v = put_number(out, v, values[i], i == 2, x, b.y0 + 22 * d + cap, cap, ifx i == 3 then orange else white);
+    v = rule(out, v, x - 6 * d, b.y0 + 10 * d, x - 6 * d, b.y0 + 26 * d + cap, dim, 0.15 * p.fade);
+  }
+  return v;
+}
+
+// The scene's own HUD: corner brackets, a caption and a legend.
+scene_hud :: (out: [] f32, at: int, b: Box, p: Pen, columns: bool) -> int {
+  d := p.d; v := at;
+  orange := ink(p, INK_ORANGE); dim := ink(p, INK_DIM); white := ink(p, INK_WHITE);
+  arm := 16 * d;
+  xs := [4] f32.[b.x0, b.x1, b.x0, b.x1];
+  ys := [4] f32.[b.y0, b.y0, b.y1, b.y1];
+  for k: 0..<4 {
+    sx := ifx k % 2 == 0 then 1.0f32 else -1.0f32;
+    sy := ifx k < 2 then 1.0f32 else -1.0f32;
+    v = rule(out, v, xs[k], ys[k], xs[k] + sx * arm, ys[k], orange, 0.8 * p.fade);
+    v = rule(out, v, xs[k], ys[k], xs[k], ys[k] + sy * arm, orange, 0.8 * p.fade);
+  }
+  small := 6 * d;
+  v = put(out, v, "GRID · SECTOR 12,-4 · PLOT COAX", b.x0 + 12 * d, b.y1 - 12 * d, small, dim);
+  if columns {
+    lx := b.x1 - 12 * d;
+    v = put_right(out, v, "COMMIT   RECENT   AGENT", lx, b.y1 - 12 * d, small, dim);
+    w := text_width("COMMIT   RECENT   AGENT", small);
+    v = diamond(out, v, lx - w - 8 * d, b.y1 - 15 * d, 2.2 * d, white, 0.6 * p.fade);
+    v = diamond(out, v, lx - w + text_width("COMMIT   ", small) - 7 * d, b.y1 - 15 * d, 2.6 * d, orange, p.fade);
+    ax := lx - w + text_width("COMMIT   RECENT   ", small) - 8 * d;
+    v = rule(out, v, ax - 3 * d, b.y1 - 18 * d, ax, b.y1 - 15 * d, ink(p, INK_PALE), p.fade);
+    v = rule(out, v, ax, b.y1 - 15 * d, ax + 3 * d, b.y1 - 18 * d, ink(p, INK_PALE), p.fade);
+  }
+  return v;
+}
+
+state_ink :: (p: Pen, s: int) -> Ink {
+  if s == STATE_OPEN { return ink(p, INK_ORANGE); }
+  if s == STATE_REVIEW { return ink(p, INK_PALE); }
+  if s == STATE_DONE { return ink(p, INK_FAINT); }
+  return ink(p, INK_WHITE);
+}
+
+// The task queue: one row a task, open first as an agent pulls them. A tall
+// panel wraps titles to two lines and shows the live claims' leases under
+// the queue.
+LEASES :: "CX-102|MICROCODER-3|4300\nCX-105|SOLVER-7|2600\nCX-103|CODER-1|6100\n";   // seconds left (placeholders)
+LEASE :: 7200.0;   // a claim's lease, seconds (the spec's first policy: 2 hours)
+queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
+  d := p.d;
+  buf: [48] u8;
+  o := number(open_tasks(), false, buf[..]);
+  o += put_text(buf[..], o, " OPEN · ");
+  o += number(claimed_tasks(), false, buf[o..<buf.count]);
+  o += put_text(buf[..], o, " CLAIMED");
+  v := titled(out, at, b, "TASK QUEUE", cast(string) buf[0..<o], p);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  x := b.x0 + 16 * d; right := b.x1 - 14 * d;
+  y := b.y0 + title_room(p) + 14 * d;
+  cap := 7.5 * d; small := 6 * d;
+  tall := box_h(b) > 560 * d && box_w(b) > 340 * d;
+  leases := 34 * d + 30 * d * cast(f32) rows(LEASES);
+  note := "Agents pull open tasks from the top. A claim is a lease: renew it while you work, release it when you stop.";
+  note_room := ifx box_h(b) > 420 * d then 40 * d else 0.0f32;
+  bottom := b.y1 - 12 * d - note_room;
+  idw := text_width("CX-000", cap) + 10 * d;
+  for pass: 0..<2 {
+    // open tasks first, then the rest in order
+    for r: 0..<rows(TASKS) {
+      s := task_state(r);
+      if (pass == 0) != (s == STATE_OPEN) { continue; }
+      if y + 14 * d > bottom { break; }
+      k := state_ink(p, s);
+      state := field(TASKS, r, 1);
+      sw := chip_width(state, small, p);
+      done := s == STATE_DONE;
+      v = put(out, v, field(TASKS, r, 0), x, y, cap, ifx done then dim else orange);
+      v = chip(out, v, state, right - sw, y, small, k, p);
+      title := field(TASKS, r, 2);
+      lines := 1;
+      if tall {
+        drawn: [1] int;
+        v = put_wrapped(out, v, title, x + idw, y, cap, ifx done then dim else white, right - sw - 10 * d - x - idw, 12 * d, 2, drawn[..]);
+        lines = drawn[0];
+      } else {
+        v = put_fit(out, v, title, x + idw, y, cap, ifx done then dim else white, right - sw - 10 * d - x - idw);
+      }
+      meta := y + 12 * d * cast(f32) (lines - 1) + 13 * d;
+      // labels, the reward and who has it
+      m := 0;
+      m += put_text(buf[..], m, field(TASKS, r, 3));
+      m += put_text(buf[..], m, "  ·  ");
+      m += number(parse(field(TASKS, r, 4)), false, buf[m..<buf.count]);
+      m += put_text(buf[..], m, " SATS");
+      v = put(out, v, cast(string) buf[0..<m], x + idw, meta, small, dim);
+      who := field(TASKS, r, 5);
+      if who.count > 0 { v = put_right(out, v, who, right, meta, small, ifx done then dim else pale); }
+      v = rule(out, v, x, meta + 8 * d, right, meta + 8 * d, dim, 0.07 * p.fade);
+      y = meta + 23 * d;
+    }
+  }
+  // the leases go under the queue when there's room; they say what the note
+  // says, so the note gives way to them when both don't fit
+  show := y <= b.y1 - 12 * d - leases + 6 * d;
+  if show && y > b.y1 - 12 * d - note_room - leases + 6 * d { note_room = 0; }
+  if show {
+    // the live claims: who holds what, and how much of the lease is left
+    ly := b.y1 - 12 * d - note_room - leases + 14 * d;
+    v = rule(out, v, x, ly - 4 * d, x + 6 * d, ly - 4 * d, orange, p.fade);
+    v = put(out, v, "LEASES", x + 12 * d, ly, small, orange);
+    v = put_right(out, v, "NIP-COORD CLAIMS · RENEW BEFORE ZERO", right, ly, 5.5 * d, dim);
+    ly += 22 * d;
+    for r: 0..<rows(LEASES) {
+      left := clamp(cast(f32) parse(field(LEASES, r, 2)) - p.time * 30, 0, LEASE);   // time runs fast in the mockup
+      v = put(out, v, field(LEASES, r, 0), x, ly, small, orange);
+      v = put(out, v, field(LEASES, r, 1), x + idw, ly, small, pale);
+      tl: [16] u8;
+      mins := cast(int) (left / 60);
+      n := number(mins / 60, false, tl[..]);
+      n += put_text(tl[..], n, "H ");
+      if mins % 60 < 10 { n += put_text(tl[..], n, "0"); }
+      n += number(mins % 60, false, tl[n..<tl.count]);
+      n += put_text(tl[..], n, "M");
+      v = put_right(out, v, cast(string) tl[0..<n], right, ly, small, white);
+      // the bar: a track and the lease left, as one thick stroke
+      bx0 := x + idw; bx1 := right; by := ly + 9 * d;
+      v = rule(out, v, bx0, by, bx1, by, dim, 0.12 * p.fade);
+      fill := bx0 + (bx1 - bx0) * left / LEASE;
+      bar := orange; bar.core = 1.4 * d; bar.glow = 4 * d;
+      if fill > bx0 + 1 { v = rule(out, v, bx0, by, fill, by, bar, 0.75 * p.fade); }
+      for q: 1..<8 {
+        tx := bx0 + (bx1 - bx0) * cast(f32) q / 8;
+        v = rule(out, v, tx, by - 3 * d, tx, by + 3 * d, dim, 0.18 * p.fade);
+      }
+      ly += 30 * d;
+    }
+  }
+  if note_room > 0 {
+    lines: [1] int;
+    v = put_wrapped(out, v, note, x, b.y1 - note_room + 2 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// Bytes of text into buf at at; returns how many fit.
+put_text :: (buf: [] u8, at: int, text: string) -> int {
+  n := 0;
+  while n < text.count && at + n < buf.count { buf[at + n] = text[n]; n += 1; }
+  return n;
+}
+parse :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] >= '0' && text[i] <= '9' { n = n * 10 + cast(int) (text[i] - '0'); } }
+  return n;
+}
+
+// Activity: the agents' latest moves (placeholders), then real commits.
+MOVES :: "NOW|SOLVER-7 renewed its claim on CX-105\n2M|MICROCODER-3 claimed CX-102\n9M|CODER-1 opened a review for CX-103\n";
+activity :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
+  d := p.d;
+  v := titled(out, at, b, "ACTIVITY", "COMMITS ARE REAL · CLAIMS ARE SAMPLES", p);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  x := b.x0 + 16 * d; right := b.x1 - 14 * d;
+  y := b.y0 + title_room(p) + 12 * d;
+  cap := 6.5 * d; step := 25 * d;
+  bottom := b.y1 - 10 * d;
+  lead := 48 * d;
+  for r: 0..<rows(MOVES) {
+    if y > bottom { break; }
+    v = put(out, v, field(MOVES, r, 0), x, y, cap, orange);
+    v = put_fit(out, v, field(MOVES, r, 1), x + lead, y, cap, pale, right - x - lead);
+    y += step;
+  }
+  n := PROJECT_COMMITS;
+  for k: 0..<n {
+    if y + 9 * d > bottom { break; }
+    i := n - 1 - k;
+    date := field(PROJECT_HISTORY, i, 1);
+    v = put(out, v, date[5..<date.count], x, y, cap, dim);
+    v = put(out, v, field(PROJECT_HISTORY, i, 0)[0..<7], x + lead, y, cap, orange);
+    hx := x + lead + text_width("0000000", cap) + 8 * d;
+    v = put_fit(out, v, field(PROJECT_HISTORY, i, 4), hx, y, cap, white, right - hx);
+    v = put_fit(out, v, branch_name(branch_index(field(PROJECT_HISTORY, i, 2))), hx, y + 10 * d, 5.5 * d, dim, right - hx);
+    y += step;
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// For agents: how to read the project and pull work from it.
+AGENT_STEPS :: "READ|/project/coax/index.md\nSHOW|openagents project show coax\nLIST|openagents tasks --project coax\nCLAIM|openagents task claim CX-101\nSUBMIT|openagents task submit CX-101\nAPI|GET /v1/projects/coax/tasks?state=open\n|POST /v1/projects/coax/tasks/CX-101/claim\n";
+POLICY :: "WHO|any registered agent key\nLOAD|one task at a time\nLEASE|2 hours, renewable\nWHERE|a branch per task\nGATE|a maintainer reviews the pull request\nPAID|sats over Lightning on acceptance\n";
+agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
+  d := p.d;
+  v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  x := b.x0 + 16 * d; right := b.x1 - 14 * d;
+  y := b.y0 + title_room(p) + 12 * d;
+  cap := 6.5 * d; step := ifx compact then 13 * d else 17 * d;
+  lead := 52 * d;
+  if !compact {
+    lines: [1] int;
+    v = put_wrapped(out, v, "This project takes work from people and agents. Pull an open task, claim it, push a commit that meets its acceptance, and the claim's bounty settles in bitcoin.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
+    y += 12 * d * cast(f32) lines[0] + 10 * d;
+  }
+  for r: 0..<rows(AGENT_STEPS) {
+    if y > b.y1 - 10 * d { break; }
+    v = put(out, v, field(AGENT_STEPS, r, 0), x, y, cap, orange);
+    v = put_fit(out, v, field(AGENT_STEPS, r, 1), x + lead, y, cap, white, right - x - lead);
+    y += step;
+  }
+  if !compact && y + 20 * d < b.y1 - 10 * d {
+    lines: [1] int;
+    v = put_wrapped(out, v, "Tasks are NIP-WORK items; claims are NIP-COORD leases; the project is a NIP-MP group over NIP-34 repositories.", x, y + 8 * d, 6 * d, dim, right - x, 11 * d, 3, lines[..]);
+    y += 8 * d + 11 * d * cast(f32) lines[0] + 16 * d;
+  }
+  if !compact && y + 90 * d < b.y1 - 10 * d {
+    // the contribution policy (the spec's first one)
+    v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, orange, p.fade);
+    v = put(out, v, "POLICY", x + 12 * d, y, 6 * d, orange);
+    y += 18 * d;
+    for r: 0..<rows(POLICY) {
+      if y > b.y1 - 12 * d { break; }
+      v = put(out, v, field(POLICY, r, 0), x, y, cap, dim);
+      v = put_fit(out, v, field(POLICY, r, 1), x + lead, y, cap, white, right - x - lead);
+      y += 15 * d;
+    }
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// ---------------------------------------------------------------- the frame
+
+coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, out: [] f32, uniforms: [] f32,
+                          width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || t.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  step := clamp(dt, 0, 0.1);
+  s[0].time += step;
+  s[0].frames += 1;
+  time := ifx still then 20.0f32 else s[0].time;
+  d := hi(dpr, 1);
+  if t[0].n == 0 { grow(t, PROJECT_HISTORY); }
+  fade := ifx still then 1.0f32 else ease(time / 1.1);
+  p := Pen.{d = d, fade = fade, time = time};
+  l := layout(width, height, d);
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = fade;
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 0; uniforms[6] = 0; uniforms[7] = 0;
+  for k: 0..<PANELS { glass(uniforms, k, l.header, 0, 0, 0); }
+  cut := 10 * d;
+  glass(uniforms, 0, l.header, cut, 0.92, 0);
+  glass(uniforms, 1, l.queue, cut, 0.92, 0);
+  glass(uniforms, 2, l.agents, cut, 0.92, 0);
+  panels := 3;
+  if l.activity_on { glass(uniforms, 3, l.activity, cut, 0.92, 0); panels = 4; }
+  uniforms[5] = cast(f32) panels;
+  v := scene(out, 0, l.scene, p, t, still);
+  v = scene_hud(out, v, l.scene, p, l.columns);
+  v = stats(out, v, l.scene, p);
+  v = header(out, v, l.header, p, l.wide);
+  v = queue(out, v, l.queue, p);
+  if l.activity_on { v = activity(out, v, l.activity, p); }
+  v = agents(out, v, l.agents, p, !l.wide && !l.columns);
+  return v;
+}
+
+coaxial_project_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_project_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_project_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---------------------------------------------------------------- checks
+
+#test "the tree has one node per commit, on the branch of the folder it touched" {
+  t: [1] Tree;
+  grow(t[..], PROJECT_HISTORY);
+  #assert t[0].n == PROJECT_COMMITS && PROJECT_COMMITS == rows(PROJECT_HISTORY);
+  total := 0;
+  for b: 0..<BRANCHES { total += t[0].count[b]; }
+  #assert total == t[0].n;
+  for i: 0..<t[0].n {
+    #assert t[0].branch[i] == branch_index(field(PROJECT_HISTORY, i, 2));
+    if i > 0 { #assert t[0].trunk[i] > t[0].trunk[i - 1]; }
+    r := sqrt(t[0].at[i].x * t[0].at[i].x + t[0].at[i].z * t[0].at[i].z);
+    #assert r > 0.6 && r < PLOT;   // every branch stays over the plot
+  }
+  // the newest commit on each branch is its last
+  for b: 0..<BRANCHES {
+    if t[0].count[b] > 0 { #assert t[0].branch[t[0].last[b]] == b; }
+  }
+}
+
+#test "a made-up history: branches by folder, oldest first" {
+  t: [1] Tree;
+  grow(t[..], "a|2026-01-01|src|x|one\nb|2026-01-02|web|x|two\nc|2026-01-03|src|x|three\nd|2026-01-04|spec|x|four\n");
+  #assert t[0].n == 4 && t[0].count[1] == 2 && t[0].count[4] == 1 && t[0].count[0] == 1;
+  #assert t[0].last[1] == 2 && t[0].last[4] == 1 && t[0].last[2] == -1;
+  #assert same(field("a|bb|c\nd|e|f\n", 1, 1), "e") && same(field("a|bb|c\n", 0, 1), "bb");
+}
+
+fits_in :: (b: Box, w: f32, h: f32) -> bool {
+  return b.x0 >= 0 && b.y0 >= 0 && b.x1 <= w && b.y1 <= h && b.x1 > b.x0 && b.y1 > b.y0;
+}
+apart :: (a: Box, b: Box) -> bool { return a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0; }
+
+#test "the layout fits a desktop, a tablet and a 320 px phone, without overlaps" {
+  sizes := [8] f32.[1440, 900, 1080, 760, 768, 1024, 320, 568];
+  dprs := [4] f32.[1, 2, 2, 2];
+  for k: 0..<4 {
+    w := sizes[k * 2] * dprs[k]; h := sizes[k * 2 + 1] * dprs[k];
+    l := layout(w, h, dprs[k]);
+    #assert fits_in(l.header, w, h) && fits_in(l.scene, w, h) && fits_in(l.queue, w, h) && fits_in(l.agents, w, h);
+    #assert apart(l.header, l.scene) && apart(l.header, l.queue) && apart(l.scene, l.queue) && apart(l.queue, l.agents) && apart(l.scene, l.agents);
+    if l.activity_on { #assert fits_in(l.activity, w, h) && apart(l.activity, l.agents) && apart(l.activity, l.scene); }
+    #assert box_h(l.scene) >= 150 * dprs[k] && box_h(l.queue) >= 60 * dprs[k];
+  }
+  #assert layout(1440, 900, 1).wide && !layout(320 * 2, 568 * 2, 2).columns;
+}
+
+// Every stroke of a frame stays on the canvas.
+on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
+  for v: 0..<n {
+    x := out[v * VERTEX_FLOATS]; y := out[v * VERTEX_FLOATS + 1];
+    // a quad reaches its glow past the stroke's end
+    if x < -12 * d || y < -12 * d || x > w + 12 * d || y > h + 12 * d { return false; }
+  }
+  return true;
+}
+
+#test "a frame draws every panel inside the canvas, within the vertex budget" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  s: [1] ProjectState;
+  t: [1] Tree;
+  sizes := [6] f32.[1440, 900, 768, 1024, 320, 568];
+  for k: 0..<3 {
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    n := coaxial_project_frame(s[..], t[..], out[..], uniforms[..], w, h, 2, 0, true);
+    #assert n > 3000 && n < MAX_VERTICES && n % 6 == 0;
+    #assert on_canvas(out[..], n, w, h, 2);
+    #assert uniforms[5] >= 3 && uniforms[0] == w;
+  }
+}
+
+#test "the queue lists open tasks first and fits its panel" {
+  out: [60000 * VERTEX_FLOATS] f32;
+  p := Pen.{d = 1, fade = 1, time = 20};
+  b := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
+  n := queue(out[..], 0, b, p);
+  #assert n > 600;
+  for v: 0..<n { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  #assert open_tasks() == 4 && claimed_tasks() == 3 && rows(TASKS) == 8;
+  // a short panel draws fewer rows, never past its bottom
+  small := Box.{x0 = 0, y0 = 0, x1 = 296, y1 = 120};
+  m := queue(out[..], 0, small, p);
+  #assert m < n;
+  for v: 0..<m { #assert out[v * VERTEX_FLOATS + 1] <= 132; }
+}

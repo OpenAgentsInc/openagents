@@ -109,7 +109,8 @@ static void respond(int fd, int status, const char *reason, const char *type, co
 }
 
 // Maps a URL path to a file: /coaxial/* from the host directory, anything
-// else from the app directory ("/" is index.html). No "..", no dotfiles.
+// else from the app directory; a directory ("/", "/project/coax") is its
+// index.html, as the bucket serves it. No "..", no dotfiles.
 static bool resolve(const char *url, char *out, size_t cap) {
   char path[1024];
   size_t i = 0;
@@ -118,7 +119,13 @@ static bool resolve(const char *url, char *out, size_t cap) {
   if (path[0] != '/' || strstr(path, "..") || strstr(path, "/.")) return false;
   if (!strcmp(path, "/")) return snprintf(out, cap, "%s/index.html", app_dir) < (int)cap;
   if (!strncmp(path, "/coaxial/", 9)) return snprintf(out, cap, "%s/%s", host_dir, path + 9) < (int)cap;
-  return snprintf(out, cap, "%s%s", app_dir, path) < (int)cap;
+  if (snprintf(out, cap, "%s%s", app_dir, path) >= (int)cap) return false;
+  struct stat st;
+  if (stat(out, &st) == 0 && S_ISDIR(st.st_mode)) {
+    size_t n = strlen(out);
+    return snprintf(out + n, cap - n, "%sindex.html", out[n - 1] == '/' ? "" : "/") < (int)(cap - n);
+  }
+  return true;
 }
 
 // An unknown path gets the app's 404.html, if it has one, with a 404 status.

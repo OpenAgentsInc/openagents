@@ -7,16 +7,16 @@ here="$(cd "$(dirname "$0")" && pwd)"
 app="$(cd "$1" && pwd)"
 fail=0
 bad() { echo "check-visuals: $1" >&2; fail=1; }
-for page in "$app"/*.html; do
+while IFS= read -r page; do
   # Visible elements: anything in <body> besides the canvas, the hidden text
   # (main with h1/p/a) and scripts.
   body="$(sed -n '/<body>/,/<\/body>/p' "$page")"
   extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|ul|li|em|strong|code)' || true)"
-  [[ -z "$extra" ]] || bad "$(basename "$page"): visible elements $(echo $extra)"
+  [[ -z "$extra" ]] || bad "${page#$app/}: visible elements $(echo $extra)"
   # Links and text live only inside <main>, which the GPU page clips away.
   outside="$(printf '%s\n' "$body" | sed '/<main>/,/<\/main>/d' | grep -E '<a |<h1|<p>' || true)"
-  [[ -z "$outside" ]] || bad "$(basename "$page"): text or links outside the hidden <main>"
-done
+  [[ -z "$outside" ]] || bad "${page#$app/}: text or links outside the hidden <main>"
+done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_modules/*' | sort)
 # The host and the crypto glue build no UI: no styled or created elements
 # except the keyboard field and the dev note (host.js, localhost), each line
 # marked.
