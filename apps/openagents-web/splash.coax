@@ -1,7 +1,9 @@
 // The openagents.com splash, drawn by Coax. The page is one WebGPU canvas:
-// a slow nebula behind (splash.wgsl) and the words COMING SOON drawn as
-// glowing strokes that write themselves on, letter by letter, then shimmer,
-// over the iOS home's graph fading in as a wide band (graph.coax).
+// a slow nebula behind (splash.wgsl), the iOS home's graph fading in as a
+// wide band across the middle (graph.coax), and two lines drawn as glowing
+// strokes that write themselves on, letter by letter, then shimmer:
+// OPENAGENTS in the top third after a pause, COMING SOON in the bottom third
+// a little later.
 // The host (coax/web/host.js) owns the GPU and calls this once a frame; this
 // file decides every number it draws: where each stroke goes, how much of it
 // is written, how bright it is, and the nebula's clock.
@@ -17,19 +19,23 @@ SplashState :: struct {
   frames: int;
 }
 
-TEXT_COUNT :: 11;    // "COMING SOON"
+LINES :: 2;          // OPENAGENTS, COMING SOON
+LINE_MAX :: 11;      // letters in the longest line
 MAX_POINTS :: 12;    // the longest glyph (S) has 12 points
-MAX_SEGMENTS :: 96;  // all of COMING SOON's strokes, with room
+MAX_SEGMENTS :: 160; // both lines' strokes, with room
 VERTEX_FLOATS :: 8;  // x, y, along, across, length, core, light, glow
-MAX_VERTICES :: 14016; // (MAX_SEGMENTS + GRAPH_QUADS) * 6
+MAX_VERTICES :: 14400; // (MAX_SEGMENTS + GRAPH_QUADS) * 6
 UNIFORM_FLOATS :: 8; // width, height, time, fade, still, 0, 0, 0
 
-CAP :: 11.0;         // cap height, CSS pixels
+CAP :: 11.0;         // COMING SOON's cap height, CSS pixels
+TITLE_CAP :: 20.0;   // OPENAGENTS's cap height, CSS pixels
 GAP :: 0.72;         // letter gap, in cap heights (the old page's 0.6em spacing)
 SPACE :: 1.5;        // a space, in cap heights
 CORE :: 0.62;        // half the stroke, CSS pixels (a 1.2 px line, like weight 500 at 13 px)
 GLOW :: 7.0;         // the glow's reach, CSS pixels
-START :: 0.35;       // seconds before the first stroke starts
+TITLE_START :: 2.0;  // seconds before OPENAGENTS starts to appear
+START :: 4.5;        // seconds before COMING SOON starts to appear
+APPEAR :: 1.2;       // seconds a line takes to fade up as it writes
 STEP :: 0.032;       // seconds between strokes starting
 DRAW :: 0.22;        // seconds one stroke takes to write
 FADE :: 1.6;         // seconds the canvas takes to fade in, as the old page
@@ -39,12 +45,26 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
 
-// The letter at position i of COMING SOON (0 is a space).
-letter :: (i: int) -> u8 {
+// How many letters line l has (0 is OPENAGENTS, 1 is COMING SOON).
+line_count :: (l: int) -> int { return ifx l == 0 then 10 else 11; }
+
+// The letter at position i of line l (0 is a space).
+letter :: (l: int, i: int) -> u8 {
+  if i < 0 || i >= line_count(l) { return 0; }
+  if l == 0 { t := [10] u8.['O', 'P', 'E', 'N', 'A', 'G', 'E', 'N', 'T', 'S']; return t[i]; }
   t := [11] u8.['C', 'O', 'M', 'I', 'N', 'G', 0, 'S', 'O', 'O', 'N'];
-  if i < 0 || i >= TEXT_COUNT { return 0; }
   return t[i];
 }
+
+// Line l's cap height in CSS pixels, when it starts, and where its centre
+// sits as a fraction of the page height.
+line_cap :: (l: int) -> f32 { return ifx l == 0 then TITLE_CAP else CAP; }
+
+// Line l's cap height on a page width CSS pixels wide: the title shrinks to
+// keep a margin on a narrow phone.
+fitted_cap :: (l: int, width: f32) -> f32 { return lo(line_cap(l), width * 0.86 / text_width(l)); }
+line_start :: (l: int) -> f32 { return ifx l == 0 then TITLE_START else START; }
+line_y :: (l: int) -> f32 { return ifx l == 0 then 0.2f32 else 0.8f32; }
 
 // A glyph is one stroke through points on a 4 wide, 6 high grid, y up.
 // Writes x, y pairs into out and returns how many points.
@@ -57,6 +77,10 @@ glyph :: (c: u8, out: [] u8) -> int {
   if c == 'I' { p := [4] u8.[0,0, 0,6]; for k: 0..<4 { out[k] = p[k]; } n = 2; }
   if c == 'N' { p := [8] u8.[0,0, 0,6, 4,0, 4,6]; for k: 0..<8 { out[k] = p[k]; } n = 4; }
   if c == 'G' { p := [20] u8.[4,5, 3,6, 1,6, 0,5, 0,1, 1,0, 3,0, 4,1, 4,3, 2,3]; for k: 0..<20 { out[k] = p[k]; } n = 10; }
+  if c == 'P' { p := [14] u8.[0,0, 0,6, 3,6, 4,5, 4,4, 3,3, 0,3]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
+  if c == 'E' { p := [14] u8.[4,6, 0,6, 0,3, 3,3, 0,3, 0,0, 4,0]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
+  if c == 'A' { p := [16] u8.[0,0, 0,5, 1,6, 3,6, 4,5, 4,0, 4,3, 0,3]; for k: 0..<16 { out[k] = p[k]; } n = 8; }
+  if c == 'T' { p := [8] u8.[0,6, 4,6, 2,6, 2,0]; for k: 0..<8 { out[k] = p[k]; } n = 4; }
   if c == 'S' { p := [24] u8.[4,5, 3,6, 1,6, 0,5, 0,4, 1,3, 3,3, 4,2, 4,1, 3,0, 1,0, 0,1]; for k: 0..<24 { out[k] = p[k]; } n = 12; }
   return n;
 }
@@ -67,21 +91,28 @@ glyph_width :: (c: u8) -> f32 {
   return 4;
 }
 
-// The text's width in cap heights, so it can be centred.
-text_width :: () -> f32 {
+// Line l's width in cap heights, so it can be centred.
+text_width :: (l: int) -> f32 {
   w := 0.0f32;
-  for i: 0..<TEXT_COUNT {
-    c := letter(i);
+  n := line_count(l);
+  for i: 0..<n {
+    c := letter(l, i);
     if c == 0 { w += SPACE; } else { w += glyph_width(c) / 6; }
-    if i + 1 < TEXT_COUNT && c != 0 && letter(i + 1) != 0 { w += GAP; }
+    if i + 1 < n && c != 0 && letter(l, i + 1) != 0 { w += GAP; }
   }
   return w;
 }
 
-// How much of stroke k is written at time t: 0 to 1.
-written :: (k: int, t: f32, still: bool) -> f32 {
+// How much of line l's stroke k is written at time t: 0 to 1.
+written :: (l: int, k: int, t: f32, still: bool) -> f32 {
   if still { return 1; }
-  return ease((t - START - STEP * cast(f32) k) / DRAW);
+  return ease((t - line_start(l) - STEP * cast(f32) k) / DRAW);
+}
+
+// How bright line l is at time t as it fades up: 0 to 1.
+appeared :: (l: int, t: f32, still: bool) -> f32 {
+  if still { return 1; }
+  return ease((t - line_start(l)) / APPEAR);
 }
 
 // One stroke as a quad (two triangles) wide enough for its glow. Each
@@ -112,23 +143,33 @@ quad :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, li
   return true;
 }
 
-// Lays out COMING SOON for a canvas of width x height device pixels and
-// writes its strokes as vertices. Returns the vertex count.
+// Lays out both lines for a canvas of width x height device pixels and
+// writes their strokes as vertices. Returns the vertex count.
 strokes :: (out: [] f32, width: f32, height: f32, dpr: f32, t: f32, still: bool) -> int {
-  unit := CAP * dpr / 6;                       // device pixels per grid unit
-  cap := CAP * dpr;
-  x := (width - text_width() * cap) * 0.5;
-  base := height * 0.5 + cap * 0.5;            // y down on screen
+  vertices := 0;
+  for l: 0..<LINES { vertices = line_strokes(out, vertices, l, width, height, dpr, t, still); }
+  return vertices;
+}
+
+// One line's strokes, written from vertex at. Returns the new vertex count.
+line_strokes :: (out: [] f32, at: int, l: int, width: f32, height: f32, dpr: f32, t: f32, still: bool) -> int {
+  size := fitted_cap(l, width / dpr);
+  unit := size * dpr / 6;                      // device pixels per grid unit
+  cap := size * dpr;
+  x := (width - text_width(l) * cap) * 0.5;
+  base := height * line_y(l) + cap * 0.5;      // y down on screen
+  shown := appeared(l, t, still);
   points: [24] u8;
   segment := 0;
-  vertices := 0;
-  for i: 0..<TEXT_COUNT {
-    c := letter(i);
+  vertices := at;
+  count := line_count(l);
+  for i: 0..<count {
+    c := letter(l, i);
     if c == 0 { x += SPACE * cap; continue; }
     n := glyph(c, points[..]);
     for p: 1..<n {
-      if segment >= MAX_SEGMENTS { return vertices; }
-      f := written(segment, t, still);
+      if segment >= MAX_SEGMENTS / LINES { return vertices; }
+      f := written(l, segment, t, still);
       ax := x + cast(f32) points[(p - 1) * 2] * unit;
       ay := base - cast(f32) points[(p - 1) * 2 + 1] * unit;
       bx := x + cast(f32) points[p * 2] * unit;
@@ -136,13 +177,15 @@ strokes :: (out: [] f32, width: f32, height: f32, dpr: f32, t: f32, still: bool)
       if f > 0 {
         // after it's written, a slow shimmer runs across the words
         shimmer := ifx still then 0.0f32 else 0.12 * sin(t * 1.1 - ax / (40 * dpr));
-        light := 0.93 * (0.88 + shimmer) * hi(f, 0.35);
-        if quad(out, vertices, ax, ay, ax + (bx - ax) * f, ay + (by - ay) * f, CORE * dpr, light, GLOW * dpr) { vertices += 6; }
+        light := 0.93 * (0.88 + shimmer) * hi(f, 0.35) * shown;
+        weight := size / CAP;            // the title's stroke scales with it, a little less
+        core := CORE * dpr * (1 + (weight - 1) * 0.6);
+        if quad(out, vertices, ax, ay, ax + (bx - ax) * f, ay + (by - ay) * f, core, light, GLOW * dpr * weight) { vertices += 6; }
       }
       segment += 1;
     }
     x += glyph_width(c) * unit;
-    if i + 1 < TEXT_COUNT && letter(i + 1) != 0 { x += GAP * cap; }
+    if i + 1 < count && letter(l, i + 1) != 0 { x += GAP * cap; }
   }
   return vertices;
 }
@@ -163,8 +206,10 @@ coaxial_splash_frame :: (s: [] SplashState, out: [] f32, uniforms: [] f32,
   uniforms[5] = 0; uniforms[6] = 0; uniforms[7] = 0;
   d := hi(dpr, 1);
   words := strokes(out, width, height, d, t, still);
-  hole := Hole.{cx = width * 0.5, cy = height * 0.5, w = text_width() * CAP * d * 0.5, h = CAP * d * 0.5};
-  return words + graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, hole);
+  // The graph dims under both lines so the words read over it.
+  title := Hole.{cx = width * 0.5, cy = height * line_y(0), w = text_width(0) * fitted_cap(0, width / d) * d * 0.5, h = fitted_cap(0, width / d) * d * 0.5};
+  soon := Hole.{cx = width * 0.5, cy = height * line_y(1), w = text_width(1) * CAP * d * 0.5, h = CAP * d * 0.5};
+  return words + graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, title, soon);
 }
 
 coaxial_splash_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
@@ -193,10 +238,28 @@ coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   #assert u[3] == 1 && all > strokes(out[..], 1280, 800, 1, 10, false) && all <= MAX_VERTICES;
 }
 
-#test "strokes start in order" {
-  #assert written(0, START + DRAW, false) == 1;
-  #assert written(1, START + DRAW, false) < 1;
-  #assert written(40, 0, true) == 1;
+#test "strokes start in order, the title first, after a pause" {
+  #assert written(1, 0, START + DRAW, false) == 1;
+  #assert written(1, 1, START + DRAW, false) < 1;
+  #assert written(1, 40, 0, true) == 1;
+  #assert written(0, 0, 1.0, false) == 0 && appeared(0, 1.0, false) == 0;
+  #assert written(0, 0, TITLE_START + DRAW, false) == 1 && written(1, 0, TITLE_START + DRAW, false) == 0;
+  #assert appeared(1, 30, false) == 1;
+}
+
+#test "the title keeps a margin on a small phone" {
+  #assert fitted_cap(0, 1280) == TITLE_CAP;
+  #assert text_width(0) * fitted_cap(0, 280) <= 280 * 0.87;
+}
+
+#test "the title sits in the top third, COMING SOON in the bottom third" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  title := line_strokes(out[..], 0, 0, 1280, 900, 1, 0, true);
+  #assert title > 0;
+  for v: 0..<title { #assert out[v * VERTEX_FLOATS + 1] < 300; }
+  all := line_strokes(out[..], title, 1, 1280, 900, 1, 0, true);
+  #assert all > title;
+  for v: title..<all { #assert out[v * VERTEX_FLOATS + 1] > 600; }
 }
 
 #test "a small output or a missing state draws nothing" {

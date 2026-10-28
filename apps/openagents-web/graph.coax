@@ -230,7 +230,7 @@ dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32
 }
 
 // Draws the graph at time t into out from vertex at. Returns the vertices written.
-graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, still: bool, hole: Hole) -> int {
+graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, still: bool, hole: Hole, hole2: Hole) -> int {
   g: [1] Graph; nodes: [NODE_CAP] GNode; links: [LINK_CAP] GLink;
   if !graph_build(g[..], nodes[..], links[..]) { return 0; }
   n := g[0].n; m := g[0].m;
@@ -280,7 +280,7 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
         ax := nodes[a].sx; ay := nodes[a].sy;
         dx := nodes[b].sx - ax; dy := nodes[b].sy - ay;
         tail := hi(0, progress - 0.12);
-        light := bright * ease(progress / 0.15) * (1 - ease((progress - 0.85) / 0.15)) * GRAPH_LIGHT * clear(hole, ax + dx * progress, ay + dy * progress);
+        light := bright * ease(progress / 0.15) * (1 - ease((progress - 0.85) / 0.15)) * GRAPH_LIGHT * clear(hole, ax + dx * progress, ay + dy * progress) * clear(hole2, ax + dx * progress, ay + dy * progress);
         if quad(out, vertices, ax + dx * tail, ay + dy * tail, ax + dx * progress, ay + dy * progress, 0.6 * scale * dpr, light * 0.8, 2.5 * scale * dpr) { vertices += 6; }
         if dot(out, vertices, ax + dx * progress, ay + dy * progress, 1.6 * scale * dpr, light, 5 * scale * dpr) { vertices += 6; }
         pulses += 1;
@@ -294,7 +294,7 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
     a := links[i].a; b := links[i].b;
     ax := nodes[a].sx; ay := nodes[a].sy;
     bx := ax + (nodes[b].sx - ax) * f; by := ay + (nodes[b].sy - ay) * f;
-    light := links[i].intensity * f * GRAPH_LIGHT * 1.6 * clear(hole, (ax + bx) * 0.5, (ay + by) * 0.5);
+    light := links[i].intensity * f * GRAPH_LIGHT * 1.6 * clear(hole, (ax + bx) * 0.5, (ay + by) * 0.5) * clear(hole2, (ax + bx) * 0.5, (ay + by) * 0.5);
     if quad(out, vertices, ax, ay, bx, by, 0.35 * scale * dpr, light, 1.5 * scale * dpr) { vertices += 6; }
   }
   // Nodes fade in over 0.7 s: crisp discs with a halo, or soft points.
@@ -304,7 +304,7 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
     // The iOS dot: a crisp node is a small bright disc in a wide faint
     // halo; a soft one is a point of light.
     size := nodes[i].px * scale * dpr;
-    light := (nodes[i].bright + nodes[i].flash * 1.8) * f * GRAPH_LIGHT * clear(hole, nodes[i].sx, nodes[i].sy);
+    light := (nodes[i].bright + nodes[i].flash * 1.8) * f * GRAPH_LIGHT * clear(hole, nodes[i].sx, nodes[i].sy) * clear(hole2, nodes[i].sx, nodes[i].sy);
     core := size * (0.06 + 0.12 * nodes[i].crisp);
     if dot(out, vertices, nodes[i].sx, nodes[i].sy, core, light, size * 0.9) { vertices += 6; }
   }
@@ -324,7 +324,7 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
 #test "the graph is wider than it is tall, and stays on the canvas" {
   out: [GRAPH_QUADS * 6 * VERTEX_FLOATS] f32;
   hole := Hole.{cx = 640, cy = 400, w = 100, h = 11};
-  n := graph_draw(out[..], 0, 1280, 800, 1, 20, true, hole);
+  n := graph_draw(out[..], 0, 1280, 800, 1, 20, true, hole, hole);
   #assert n > 0 && n % 6 == 0;
   left := 1.0e9f32; right := -1.0e9f32; top := 1.0e9f32; bottom := -1.0e9f32;
   for v: 0..<n {
@@ -338,9 +338,9 @@ graph_draw :: (out: [] f32, at: int, width: f32, height: f32, dpr: f32, t: f32, 
 #test "nothing shows before the first node, and pulses only move in time" {
   out: [GRAPH_QUADS * 6 * VERTEX_FLOATS] f32;
   hole := Hole.{cx = 640, cy = 400, w = 100, h = 11};
-  #assert graph_draw(out[..], 0, 1280, 800, 1, 0, false, hole) == 0;
-  late := graph_draw(out[..], 0, 1280, 800, 1, 30, false, hole);
-  done := graph_draw(out[..], 0, 1280, 800, 1, 30, true, hole);
+  #assert graph_draw(out[..], 0, 1280, 800, 1, 0, false, hole, hole) == 0;
+  late := graph_draw(out[..], 0, 1280, 800, 1, 30, false, hole, hole);
+  done := graph_draw(out[..], 0, 1280, 800, 1, 30, true, hole, hole);
   #assert late >= done && late <= GRAPH_QUADS * 6;
 }
 
