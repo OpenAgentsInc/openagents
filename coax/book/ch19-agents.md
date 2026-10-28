@@ -3,7 +3,7 @@
 Most of the code in the OpenAgents repositories is written by coding
 agents and reviewed by people. That includes most of the Coax in
 `metareal/`: the camera from Chapter 17, the wallet's payment rules, the
-compiler's own lexer and parser. An agent's working loop is simple. It
+compiler's own lexer, parser and type checker. An agent's working loop is simple. It
 edits a file, runs a tool, reads what the tool printed, and decides what
 to do next. Whatever the compiler prints is, in effect, the agent's whole
 view of whether the code is right.
@@ -11,8 +11,8 @@ view of whether the code is right.
 In this chapter we'll walk through that loop with the tools `coax0` has
 today. We'll read diagnostics as JSON lines, look codes up with
 `coax explain`, and then spend most of the chapter on the part that
-matters most when the author isn't a person: checks that the agent can't
-skip, weaken or talk its way past. We'll build a small spending rule,
+matters most when the author isn't a person: checks that fail a build
+under the reviewed source and verification configuration. We'll build a small spending rule,
 watch `#authority` refuse it, watch `coax mutate` show that its tests
 prove almost nothing, fix that, and then watch the build stop a plausible
 "cleanup" that would have broken the rule.
@@ -22,6 +22,11 @@ prove almost nothing, fix that, and then watch the build stop a plausible
 > and readable C output all work in `coax0` 0.10.0. A formatter, a
 > compiler server that answers queries and expansion traces are designed
 > (spec §17.3) and marked where they come up.
+
+The agent can edit the checks, directives and build scripts as well as the
+implementation. Compiler gates do not protect their own configuration from
+that author. Review those changes and preserve independent expectations;
+[Chapter 25](ch25-verification-boundaries.md) explains the trust boundary.
 
 ## What makes a language easier for an agent
 
@@ -180,8 +185,8 @@ code are the ones that compile: an off-by-one in a limit, a branch that's
 never taken, a test that passes no matter what the code does. Chapter 10
 taught `#test`, `#forall`, `#authority` and `coax mutate` from the
 programmer's side. Here we'll look at them as an agent meets them,
-because for an agent they work less like tests it chooses to write and
-more like walls it can't get through.
+because these commands provide concrete failures instead of asking the
+author to judge its own output. Their configuration still needs review.
 
 Suppose an agent is asked to write the daily spending rule for a wallet.
 It writes two procedures and, being diligent, one test:

@@ -15,33 +15,33 @@ chapters recommend (bounded storage, one owner, checks written next to the
 code) is the same discipline the compiler is written in.
 
 > Note: Everything in this chapter describes `coax0` 0.10.0 as it is in
-> `coax/src/`, `coax/lib/compiler/` and `coax/bootstrap/`. Line counts are
-> approximate and will drift.
+> `coax/src/`, `coax/lib/compiler/` and `coax/bootstrap/`.
 
 ## A map of the source
 
-`coax0` is two languages working together. The lexer and parser are written
-in Coax and compiled to C. The checker, the compile-time evaluator and the C
-emitter are C++20. A small C++ driver ties them together. Here is where
-everything lives:
+`coax0` is two languages working together. The lexer, parser and type checker
+are written in Coax and compiled to C. Native bridges copy their inputs and
+results; the compile-time evaluator and C emitter remain C++20. A small C++
+driver ties them together. Here is where everything lives:
 
-| File | Lines | Job |
-| --- | --- | --- |
-| `lib/compiler/lexer.coax` | ~1,070 (~310 of code, the rest checks) | Bytes to tokens: keywords, punctuation, comments, escapes, exact number conversion, locations, lexer errors |
-| `lib/compiler/parser.coax` | ~4,000 (~390 of code, the rest checks) | Tokens to an indexed syntax tree: recursive descent, precedence, syntax errors, import admission |
-| `src/coax.h` | ~390 | The declarations every C++ stage shares: tokens, types, values, the syntax tree, the arena |
-| `src/lex.cpp` | ~90 | The bridge from the Coax lexer to C++ `Token`s |
-| `src/parse.cpp` | ~150 | The bridge from the Coax parser's tree to C++ syntax objects |
-| `src/check.cpp` | ~1,630 | Names, types, layouts, untyped literals, places, returns, print formats |
-| `src/eval.cpp` | ~940 | Runs `#run`, constants, `#assert` and checks over the checked tree, within budgets |
-| `src/emit_c.cpp` | ~1,260 | The checked tree to one C11 file with its runtime; headers and layout reports |
-| `src/verify.cpp` | ~310 | `coax test` and `coax mutate` |
-| `src/proto.cpp` | ~80 | File reading and buffers for descriptor imports; the importer itself is Coax in `lib/proto/` |
-| `src/errors.cpp` | ~150 | The explanation for every error code (`coax explain`) |
-| `src/main.cpp` | ~450 | The command-line driver, and the file that includes all the others |
+| File | Job |
+| --- | --- |
+| `lib/compiler/lexer.coax` | Bytes to tokens: keywords, punctuation, comments, escapes, exact number conversion, locations, lexer errors |
+| `lib/compiler/parser.coax` | Tokens to an indexed syntax tree: recursive descent, precedence, syntax errors, import admission |
+| `src/coax.h` | The declarations every C++ stage shares: tokens, types, values, the syntax tree, the arena |
+| `src/lex.cpp` | The bridge from the Coax lexer to C++ `Token`s |
+| `src/parse.cpp` | The bridge from the Coax parser's tree to C++ syntax objects |
+| `lib/compiler/checker.coax` | Semantic admission: names, types, layouts, numeric decisions, places, returns and diagnostics |
+| `src/check.cpp` | Storage and graph transport for the Coax checker, then reconstruction of native checked objects |
+| `src/eval.cpp` | Runs `#run`, constants, `#assert` and checks over the checked tree, within budgets |
+| `src/emit_c.cpp` | The checked tree to one C11 file with its runtime; headers and layout reports |
+| `src/verify.cpp` | `coax test` and `coax mutate` |
+| `src/proto.cpp` | File reading and buffers for descriptor imports; the importer itself is Coax in `lib/proto/` |
+| `src/errors.cpp` | The explanation for every error code (`coax explain`) |
+| `src/main.cpp` | The command-line driver, and the file that includes all the others |
 
-Notice the split in the two `.coax` files: most of their lines are `#test`
-and `#forall` checks. Both files start with `#authority;`, the directive
+Notice the checks alongside the implementation in all three compiler modules.
+Each starts with `#authority;`, the directive
 from Chapter 10 that says every procedure needs a check and that the
 checks run on every build. The compiler's front end is held to the same
 rule we asked of the wallet code in `metareal/wallet.coax`.
@@ -55,7 +55,8 @@ command. There's no build system to configure.
 How do you compile a compiler whose lexer is written in the language it
 compiles? You start from a copy of that lexer that has already been
 compiled. `coax/bootstrap/` holds exactly that: `lexer.c`, `lexer.h`,
-`parser.c` and `parser.h`, generated from the `.coax` sources by an earlier
+`parser.c`, `parser.h`, `checker.c` and `checker.h`, generated from the
+`.coax` sources by an earlier
 `coax`. These are the *seeds*. They're checked in, and nobody edits them by
 hand.
 
@@ -68,7 +69,7 @@ $ coax/build.sh
 It prints nothing when it succeeds. Behind that silence, `coax/build.sh`
 does this, stopping at the first failure:
 
-1. Compiles the seed `lexer.c` and `parser.c` with the C compiler, and links
+1. Compiles the seed lexer, parser and checker C with the C compiler, and links
    them with the C++ frontend into a temporary compiler called *stage0*.
    Stage0 has descriptor imports switched off; it exists only to build the
    real compiler.
@@ -77,9 +78,9 @@ does this, stopping at the first failure:
 3. Uses stage0 to compile `lexer.coax` to C again and compares the result
    with the seed, byte for byte. If they differ, the build stops with
    "Lexer seed is stale" instead of quietly updating anything.
-4. Repeats steps 2 and 3 for `parser.coax`, then runs the checks and the
+4. Repeats steps 2 and 3 for `parser.coax` and `checker.coax`, then runs the checks and the
    mutation gates for the descriptor importer modules in `lib/proto/`.
-5. Concatenates the lexer, parser, fingerprint and importer modules into
+5. Concatenates the lexer, parser, checker, fingerprint and importer modules into
    one Coax file, compiles that to C, and links it into the final compiler.
 6. Has the final compiler compile those modules again, and requires the
    same C bytes it was built from.
@@ -90,12 +91,14 @@ does this, stopping at the first failure:
 The build needs a C compiler, a C++20 compiler and a shell. It doesn't
 download anything, and there's no Python step in a normal build.
 
-When you change `lexer.coax` or `parser.coax` on purpose, the seeds have to
+When you change the lexer, parser or checker Coax source on purpose, its
+seed has to
 be refreshed with a compiler you already trust:
 
 ```
 $ coax/refresh-lexer-seed.sh /absolute/path/to/trusted/coax
 $ coax/refresh-parser-seed.sh /absolute/path/to/trusted/coax
+$ coax/refresh-checker-seed.sh /absolute/path/to/trusted/coax
 $ coax/build.sh test
 ```
 
@@ -104,7 +107,7 @@ The source change and the new seed are committed together.
 > Note: A seed that matches its source byte for byte tells you the seed is
 > current. It doesn't tell you the compiler that produced it was honest.
 > `coax/bootstrap/README.md` is explicit about this: the seeds, the C++
-> checker and emitter, and the host C toolchain are trusted inputs, and
+> graph bridges, evaluator and emitter, and the host C toolchain are trusted inputs, and
 > passing checks and mutation scores are evidence, not proofs.
 
 ## The program we'll follow
@@ -355,8 +358,9 @@ approach.
 
 ## The bridge into C++
 
-The checker is C++, and it wants C++ objects, not an array of `PS_Node`s.
-Two small files translate.
+The native evaluator and emitter use C++ objects. The parser and checker
+use indexed Coax graphs. The bridges transport these representations without
+implementing a second grammar or semantic checker.
 
 `src/lex.cpp` calls `LX_next` in a loop, exactly like our driver does, and
 copies each result into a C++ `Token`. Decoded string bytes are copied into
@@ -391,8 +395,14 @@ arena. This is the arena pattern from Chapter 6, used for real.
 
 ## Checking
 
-The checker in `src/check.cpp` decides whether the program means
-something. It works in passes over the declarations, in this order:
+The checker in `lib/compiler/checker.coax` decides whether the program means
+something. `src/check.cpp` transports the parsed graph into caller-owned
+`CK_Node`, `CK_Type`, local, diagnostic and byte arrays, calls the Coax
+checker, then reconstructs native typed objects only after success. It has
+no native semantic fallback. Storage and active semantic entries are
+bounded; E0381 reports those resource limits.
+
+The checker works in passes over the declarations, in this order:
 
 1. Imports. `coax0` knows one module, `Basic`.
 2. Type names for every struct and enum, then a check that no two
@@ -409,14 +419,15 @@ something. It works in passes over the declarations, in this order:
 
 Within a body, a few design choices explain a lot of the errors you've met:
 
-- Types are *interned*. Each type exists as exactly one `TypeInfo`, so
-  "same type" is a pointer comparison. `[4] int` and `[] u8` are created
-  the first time they're needed.
-- Literals are *untyped* until a use gives them a type. The checker folds
-  literal arithmetic exactly, in 128-bit integers, then checks that the
-  result fits the type it becomes.
-- Locals live in one flat vector, with a mark saved at the start of each
-  block. Leaving a block truncates the vector back to the mark. Looking a
+- Types are *interned* in an indexed type table. Equal types share an ID;
+  the native bridge reconstructs corresponding `TypeInfo` objects. `[4] int`
+  and `[] u8` are created when needed.
+- Literals are *untyped* until a use gives them a type. The Coax `CM_*`
+  helpers represent wide integer magnitudes and IEEE bit patterns explicitly
+  for numeric folding and range decisions. Native conversion is not a
+  second semantic implementation.
+- Locals live in caller-owned flat storage, with a mark saved at the start
+  of each block. Leaving a block truncates the vector back to the mark. Looking a
   name up scans backwards, and finding the name already in scope when
   declaring is E0303, because Coax has no shadowing.
 - Assignment targets are checked as *places*: a local, a field of a place,
@@ -452,7 +463,7 @@ tiny.coax:17:11: error[E0320]: format has 4 '%' slots but print was given 3 valu
 All three come from the rules above: the literal `300` met the type `u8`
 and didn't fit; the literal `2.5` met `int` and can't become one; and the
 format's four slots didn't match three values. Every message is built by a
-call to `err` with a code, the message and, where the checker can suggest
+call to `CK_error` with a code, the message and, where the checker can suggest
 one, a fix. `src/errors.cpp` holds the longer explanation for each code,
 which is what `coax explain` prints and what Appendix B is generated from.
 
@@ -796,7 +807,8 @@ and deletes the directory.
   compares it with a C reference.
 - Python test files (`tests/*.py`) cover compile-time evaluation, the
   tools (`explain`, `--json`, `layout`, headers compiled as C and as C++),
-  the native lexer and parser against independent oracles and fuzzing,
+  the lexer, parser and checker through their actual native bridges against
+  independent oracles, sanitizer runs and fuzzing,
   descriptor imports, and `coax test` and `coax mutate` themselves.
 - The checks inside the Coax modules run with `coax test`, and the
   mutation gates with `coax mutate`.
@@ -815,21 +827,24 @@ $ coax mutate coax/lib/compiler/lexer.coax
 1069 mutants, 1069 killed, 0 survived
 ```
 
-The parser has 155 checks of its own. This book's examples are tested too:
-`coax/book/check-examples.sh` runs every example that has a `.out` file and
-compiles the rest.
+The parser and checker have their own checks and mutation gates too. Run
+`coax test coax/lib/compiler/checker.coax` and `coax mutate` on that file
+to inspect the current results. `coax/tests/checker.py` adds independent
+IEEE, layout and policy expectations plus native sanitizer coverage.
+This book's `check-examples.sh` runs its examples in debug and release,
+executes authored checks, and exercises the native boundary examples.
 
 When you add a feature, it comes with a passing program, a failing program
 for each new error code, and an entry in `errors.cpp` for each code. When
-the feature belongs in the lexer or parser, it also comes with checks in the
-`.coax` file that survive `coax mutate`, and a refreshed seed.
+the feature belongs in the lexer, parser or checker, it also comes with
+checks in the `.coax` file that survive `coax mutate`, and a refreshed seed.
 
 ## Summary
 
 We followed one program through `coax0`. The Coax lexer turned bytes into
 tokens with locations; the Coax parser built an indexed tree in storage it
-didn't own, and stopped at the first syntax error. Two thin C++ bridges
-copied those results into arena-allocated objects. The checker resolved
+didn't own, and stopped at the first syntax error. Native bridges
+transported those results and reconstructed arena-allocated objects. The Coax checker resolved
 every name and type and reported every error it could find. The evaluator
 ran `#run square(7)` within its budget and froze the result into the tree.
 The emitter wrote one self-contained C file, with layout assertions,

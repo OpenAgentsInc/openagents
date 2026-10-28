@@ -40,6 +40,14 @@
 * [20. Inside coax0](ch20-inside-coax0.md)
 * [21. The road ahead](ch21-road-ahead.md)
 
+## Part VI. Building larger programs
+
+* [22. Organizing a larger program](ch22-organizing-programs.md)
+* [23. Asynchronous work and lifetimes](ch23-asynchronous-work.md)
+* [24. Debugging and measuring cost](ch24-debugging-and-cost.md)
+* [25. What verification establishes](ch25-verification-boundaries.md)
+* [26. A complete boundary](ch26-a-complete-boundary.md)
+
 ## Appendices
 
 * [A. Keywords, directives and types](appendix-a-keywords.md)

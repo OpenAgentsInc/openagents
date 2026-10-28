@@ -1,0 +1,5 @@
+schema: 1
+world: "book"
+action_id: "preview"
+request_id: "book-request"
+revision: 2

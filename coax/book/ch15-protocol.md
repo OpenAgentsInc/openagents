@@ -647,3 +647,6 @@ the single contract.
 In the next chapter we'll look at how all these generated files, C
 libraries, headers and shaders get built into the iOS app, and why hot
 reload is further away than a fast compiler makes it look.
+
+For a complete generated-codec, native-file and checked-request example,
+see [Chapter 26](ch26-a-complete-boundary.md).

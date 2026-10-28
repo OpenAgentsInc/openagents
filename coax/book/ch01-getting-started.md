@@ -25,7 +25,7 @@ $ coax/build.sh
 ```
 
 The script prints nothing when it succeeds. It's doing more than you
-might expect, though. Parts of the compiler, including its lexer, parser
+might expect, though. Parts of the compiler, including its lexer, parser, type checker
 and protocol importer, are themselves written in Coax. So the script
 first builds a small "stage 0" compiler, uses it to check and compile
 those Coax parts to C, makes sure the result matches the checked-in

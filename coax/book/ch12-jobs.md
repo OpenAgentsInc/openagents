@@ -416,3 +416,6 @@ of workers. We modeled that merge in ordinary code and checked it with a
 That last property, the same answer every time, is the subject of the
 next chapter: determinism, and what Coax does to make a replay come out
 the same on every machine.
+
+For asynchronous platform I/O, deadlines, cancellation and late completions
+with the current compiler, see [Chapter 23](ch23-asynchronous-work.md).

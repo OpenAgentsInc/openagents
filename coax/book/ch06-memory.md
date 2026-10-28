@@ -903,3 +903,6 @@ Dynamic arrays, pointers, handles, allocators, the context and scratch
 memory are planned, with ownership and allocation made visible rather than
 proven safe. In Chapter 7 we'll look at the other half of writing reliable
 code: errors, traps, and cleaning up with `defer`.
+
+For callbacks, cancellation and GPU buffers whose use outlives a call, see
+[Chapter 23](ch23-asynchronous-work.md). A view does not retain its backing storage.

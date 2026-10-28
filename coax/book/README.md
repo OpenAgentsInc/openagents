@@ -42,7 +42,9 @@ cleanup, generics, compile-time execution, and writing checks. Part III
 is about data layout, jobs, determinism and the GPU. Part IV is about how
 Coax fits into OpenAgents: the protocol boundary, builds and hot reload,
 interop with C, C++ and Swift, targets, and tooling for agents. Part V
-opens up the compiler.
+opens up the compiler. Part VI turns those pieces into larger programs:
+project organization, asynchronous lifetimes, debugging and cost, verification
+boundaries, and a runnable protocol-to-native capstone.
 
 The best way to learn is to type the examples in and run them. Change
 them, break them on purpose, and read what the compiler says.
@@ -63,20 +65,28 @@ can't compile yet, it says so in a note like this:
 > shown follows [the Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md) and may change
 > before it's built.
 
-Code in those sections hasn't been compiled. Everything else has.
+Code in planned sections has not been compiled. The runnable examples are
+checked against the current compiler; elided and illustrative fragments
+need the surrounding program described in their chapter.
 
-When the book and the compiler disagree, the compiler is right and the
-book has a bug. The specification, `coax/spec.md`, is the design of
-record for everything not yet built.
+When the book and the compiler disagree, reproduce the case and check the
+implemented subset and its conformance tests. Either the book or the compiler
+can have a bug. The specification, `coax/spec.md`, is the design of record;
+planned features are not claims about the current compiler.
 
 ## Where the examples live
 
 Every program the book runs is a file in
 [`examples/`](https://github.com/OpenAgentsInc/openagents/tree/main/coax/book/examples/), next to its exact output in a `.out` file.
 The script `check-examples.sh` in this folder compiles and runs each one
-and compares the output, so a listing can't quietly drift away from what
-the compiler does. Programs the book shows only being compiled have no
-`.out` file.
+and compares the output in debug and release modes. It also runs authored
+checks, library/host examples and local link checks. Selected source-linked
+listings are compared with their example files; excerpts and illustrative
+fragments are not all standalone programs. Programs shown only being
+compiled have no `.out` file. Deliberate traps have explicit `.status`
+files; mode-specific output or
+status uses `.release.out` and `.release.status`. A matching error message
+with the wrong exit status is a failure. See Chapter 25 for the limits.
 
 Commands assume you're at the root of the openagents repository, and
 `coax` means `coax/bin/coax`. Chapter 1 shows how to build it and put it
@@ -110,6 +120,12 @@ on your path.
 - Part V. Building Coax:
   [20. Inside coax0](ch20-inside-coax0.md),
   [21. The road ahead](ch21-road-ahead.md)
+- Part VI. Building larger programs:
+  [22. Organizing a larger program](ch22-organizing-programs.md),
+  [23. Asynchronous work and lifetimes](ch23-asynchronous-work.md),
+  [24. Debugging and measuring cost](ch24-debugging-and-cost.md),
+  [25. What verification establishes](ch25-verification-boundaries.md),
+  [26. A complete boundary](ch26-a-complete-boundary.md)
 - Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
   [B. Error codes](appendix-b-error-codes.md),
   [C. Coax for Jai programmers](appendix-c-jai.md),

@@ -743,8 +743,8 @@ nothing instead of touching freed memory.
 
 ## Many files in one program
 
-One Coax file is easy. The iOS app has six, each compiled to its own
-library and header, and Swift includes all six headers through one
+One Coax file is easy. The iOS app has several, each compiled to its own
+library and header, and Swift includes their headers through one
 bridging header. That's where the team hit the next problem.
 
 `metareal/player.coax` has a 3D vector type called `Vec3`. When
@@ -834,7 +834,7 @@ compiler is built, its core is this loop:
 
 ```sh
 out=apps/openagents-ios/Generated
-for name in home player grid cast camera wallet; do
+for name in home player grid cast camera wallet haunt hud; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
   # is #authority, so its checks run in this compile and a failure stops it.
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
@@ -868,7 +868,9 @@ SWIFT_OBJC_BRIDGING_HEADER: OpenAgents/Platform/Bridge.h
 HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metareal/platform"]
 ```
 
-and `Bridge.h` includes the host's header and the six Coax headers:
+and `Bridge.h` includes the host's header and the generated Coax headers.
+Here is the original subset; the current header also includes Haunt,
+HauntBuffer and Hud, with an explicit alias for Haunt's fixed-array type:
 
 ```c
 #include "host.h"
@@ -1075,3 +1077,7 @@ enum macros, so it keeps its own table of codes.
 All of this was on one Mac, for one Mac and the iPhone. In the next
 chapter we'll look at what it takes for Coax to call a platform supported,
 and what we'd have to prove before running it in a browser.
+
+For project boundaries before general source modules exist, see
+[Chapter 22](ch22-organizing-programs.md). For native debugging and costs,
+see [Chapter 24](ch24-debugging-and-cost.md).

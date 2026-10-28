@@ -28,14 +28,18 @@ This isn't hypothetical. The OpenAgents iPhone app already runs Coax.
 The files are in [`metareal/`](https://github.com/OpenAgentsInc/openagents/tree/main/metareal/) at the root of the
 repository:
 
-- `home.coax` generates and animates the home screen's graph and lays
-  out its HUD.
+- `home.coax` owns home configuration and HUD admission through generated
+  protobuf codecs. The current home shows an overview of the Grid with Start;
+  the earlier flat-storage graph remains in the module.
 - `grid.coax`, `player.coax` and `camera.coax` run the Grid: walking,
   running and jumping, bumping into robots, and the camera that circles
   above the spawn and swoops down when you press Start.
 - `cast.coax` poses your character and the robots from packed animation
   data.
 - `light.coax` holds shader math that compiles to both C and Metal.
+- `haunt.coax`, `haunt-buffer.coax`, `haunt-light.coax` and `hud.coax` run
+  the local Haunted House, its editor/documents, GPU span admission, shader
+  math and reusable hotbar layout.
 - `wallet.coax` decides the rules for the bitcoin wallet: whether a
   quote may be paid, how a payment's state moves, what the keypad holds.
 

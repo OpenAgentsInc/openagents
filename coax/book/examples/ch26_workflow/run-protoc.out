@@ -1,0 +1,3 @@
+file: 33 bytes, revision 2; result 42; stale ignored; failure and timeout checked
+file: 33 bytes, revision 2; result 42; stale ignored; failure and timeout checked
+protoc: both directions agree

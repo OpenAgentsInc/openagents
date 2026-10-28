@@ -991,3 +991,6 @@ Part III turns to performance, starting with how data is laid out in
 memory. The checks come along: in Chapter 12 we'll use a `#forall` to
 confirm that a parallel sum gives the same answer however the work is
 split.
+
+For the distinction between finite checks, native tests, independent oracles
+and authorization, see [Chapter 25](ch25-verification-boundaries.md).

@@ -1,8 +1,8 @@
 # Builds and hot reload
 
 So far we've mostly run single files with `coax run`. Real Coax code
-doesn't live alone. In the OpenAgents iOS app, seven `.coax` files
-become six C libraries with headers and one Metal shader source, which
+doesn't live alone. In the OpenAgents iOS app, Coax sources
+become C libraries with headers and combined Metal shader source, which
 Xcode compiles and links next to Swift. In this chapter we'll look at
 how that build works today: the commands that turn a Coax file into
 something another toolchain can use, a small build script of our own,
@@ -220,14 +220,16 @@ if [[ ! -x "$compiler" || coax/build.sh -nt "$compiler" || apps/openagents-ios/g
     COAX_HOST_TARGET="$(uname -m)-apple-macosx11.0" coax/build.sh
 fi
 out=apps/openagents-ios/Generated
-for name in home player grid cast camera wallet; do
+for name in home player grid cast camera wallet haunt hud; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
   # is #authority, so its checks run in this compile and a failure stops it.
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
   "$compiler" c "metareal/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
+"$compiler" c metareal/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"
 "$compiler" metal metareal/light.coax > "$out/HomeShaders.txt.tmp"
+"$compiler" metal metareal/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"
 ```
@@ -247,7 +249,7 @@ points the SDK at macOS, and sets `COAX_HOST_TARGET` to the Mac's own
 architecture, so the compiler can never accidentally be built as an iOS
 program.
 
-The second part generates the six libraries. For each file, `coax c
+The second part generates the libraries. For each file, `coax c
 --library --header` writes the C to standard output and the header to
 `Generated/`. The script writes the C to a `.tmp` file and renames it
 only after `coax` succeeds, so a failed compile never leaves a
@@ -342,7 +344,7 @@ declares its outputs:
 `basedOnDependencyAnalysis: false` makes the script run on every build.
 Declaring the outputs tells Xcode to wait for them, which matters on a
 fresh checkout where `Generated/` starts empty. The Swift side reaches
-all six headers through one bridging header,
+the generated headers through one bridging header,
 `OpenAgents/Platform/Bridge.h`, which is just a list of `#include`
 lines.
 
@@ -353,7 +355,7 @@ simulator.
 ## Measure the whole loop
 
 How long does all of this take? Here's the generate step on its own, the
-six libraries plus the Metal source, on an Apple M5 Max running macOS
+earlier six-library source set plus one Metal module, on an Apple M5 Max running macOS
 26.4, three runs:
 
 ```
@@ -373,6 +375,10 @@ Coax. Most of it is `Home.c`, 22,615 lines, nearly all of them the
 generated protocol codecs from Chapter 15; `coax c metareal/home.coax`
 takes about 0.04 seconds by itself. Our glow build script in Listing 16-2,
 which also runs the C compiler and links, takes about 0.22 seconds.
+
+That measurement predates the Haunted House, its buffer gate and HUD module,
+and its second Coax Metal module. It is not a current whole-app generation
+baseline. Chapter 24 describes how to collect one.
 
 Those numbers are real, but they measure the easy part. The loop you
 actually wait on, from saving a file to seeing the change on screen,

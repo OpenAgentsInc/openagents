@@ -2,7 +2,9 @@
 
 Most of this book has had two kinds of material in it: what `coax0` does
 today, which you can run, and what the specification plans, which is
-marked as not yet available. This last chapter is about the second kind.
+marked as not yet available. This chapter is about the second kind. The
+practical chapters in Part VI then return to what can be built with the
+current subset.
 We'll look at where things stand, the order in which the rest is planned to
 arrive, what each step has to prove before the next one starts, and the
 points at which the plan says to stop.
@@ -25,19 +27,20 @@ descriptors with `#import_proto` and generates bounded codecs for the
 supported proto3 subset.
 
 Coax is also in use. The `metareal/` folder of the OpenAgents repository
-holds seven Coax files that the iOS app compiles and calls (see
+holds the product Coax sources that the iOS app compiles and calls (see
 `apps/openagents-ios/README.md`): the
 home screen (`home.coax`, which also uses generated protobuf codecs), the
 Grid world, the player controller, the animated cast, the camera, the
-lighting math shared with Metal, and the wallet's payment rules. The
+lighting math shared with Metal, the wallet's payment rules, and the
+Haunted House gameplay/editor, buffer admission and reusable HUD layout. The
 wallet file is `#authority`, so every procedure in it has a check and
-survives mutation testing. In each case Swift or C++ owns the platform,
+survives mutation testing. In each case Swift or C owns the platform,
 memory and GPU resources, and the Coax code is the logic in between.
 
 The compiler itself has been moving into Coax piece by piece. The lexer, the
-parser, the protobuf descriptor importer and the SHA-256 fingerprinting are
-Coax now (Chapter 20). The checker, the evaluator and the C emitter are
-still C++.
+parser, type checker, protobuf descriptor importer, wire runtime and SHA-256
+fingerprinting are Coax now (Chapter 20). Native C++ bridges transport their
+inputs and results. The evaluator and C emitter remain C++.
 
 Much of the language in Parts II to IV isn't built yet: pointers and
 dynamic arrays, tagged unions and `switch`, `try` and error values,
