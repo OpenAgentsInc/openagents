@@ -237,7 +237,25 @@ verse_haunt_lights :: (s:Haunt,t:f64,out:[]HauntGPUlight)->int #export_c {
  goal:=verse_haunt_goal(s);gain=ifx s.quest<8 then 0.8+sin(f*3.2)*0.35 else 0.0f32;
  out[s.light_count+1].position=[4]f32.[goal.x,1.15,goal.z,3];out[s.light_count+1].color=[4]f32.[gain,gain*0.55,gain*0.12,1];return s.light_count+2;
 }
-verse_haunt_near :: (s:Haunt)->int #export_c {best:=-1;distance:=3.2f32;for i:0..<s.people_count {d:=hh_len(s.player,hh_person_position(s,i));if d<distance {best=i;distance=d;}}return best;}
+// What you can use is in reach and in front of the camera: within HH_AIM
+// (38°) of the flat look direction, -(sin heading, cos heading). The one
+// nearest the centre of view wins; a thing at your feet counts as ahead.
+HH_AIM :: 0.78801075;
+hh_aim :: (s:Haunt,p:HauntPoint)->f32 {dx:=p.x-s.player.x;dz:=p.z-s.player.z;d:=sqrt(dx*dx+dz*dz);if d<0.35{return 1;}return (-sin(s.heading)*dx-cos(s.heading)*dz)/d;}
+verse_haunt_reach :: (s:Haunt,person:int)->bool #export_c {return person>=0 && person<s.people_count && hh_len(s.player,hh_person_position(s,person))<3.2;}
+verse_haunt_near :: (s:Haunt)->int #export_c {best:=-1;score:f32=HH_AIM;for i:0..<s.people_count {if !verse_haunt_reach(s,i){continue;}a:=hh_aim(s,hh_person_position(s,i));if a>score {best=i;score=a;}}return best;}
+#test "you use only what is in reach and in front, the one nearest the centre" {
+ folks:[2]HauntPerson;folks[0].pos=hh_p(0,0,2);folks[1].pos=hh_p(0.9,0,2.5);
+ s:Haunt;s.people=folks[..];s.people_count=1;s.player=hh_p(0,0,0);
+ s.heading=3.14159265;#assert (verse_haunt_near(s)==0);
+ s.heading=0;#assert (verse_haunt_near(s)== -1);#assert (verse_haunt_reach(s,0));
+ s.heading=1.57079633;#assert (verse_haunt_near(s)== -1);
+ s.people_count=2;s.heading=3.14159265;#assert (verse_haunt_near(s)==0);
+ s.heading=3.14159265+0.34;#assert (verse_haunt_near(s)==1);
+ folks[0].pos=hh_p(0,0,5);s.heading=3.14159265;#assert (verse_haunt_near(s)==1);
+ d:HauntEntity;d.motion=5;d.pos=hh_p(1,0,0);doors:[1]HauntEntity;doors[0]=d;s.entities=doors[..];s.entity_count=1;
+ s.heading=1.57079633;#assert (verse_haunt_door(s)== -1);s.heading= -1.57079633;#assert (verse_haunt_door(s)==0);
+}
 verse_haunt_talk :: (s:Haunt,person:int,kind:int)->Haunt #export_c {
  next:=s;if person<0 || person>=s.people_count {next.talking=-1;next.reply="";return next;}
  next.talking=person;p:=s.people[person];
@@ -354,7 +372,7 @@ verse_haunt_place_point :: (s:Haunt)->HauntPoint #export_c {return hh_p(s.player
 verse_haunt_view :: (s:Haunt)->Haunt #export_c {next:=s;next.camera=(s.camera+1)%3;return next;}
 verse_haunt_edit_mode :: (s:Haunt,active:bool)->Haunt #export_c {next:=s;next.editing=active;if active {next.quest=hh_quest(s.quest,"edit");}next.dirty=true;return next;}
 verse_haunt_select :: (s:Haunt,index:int)->Haunt #export_c {next:=s;if index>=0 && index<s.entity_count{next.selected=index;}else{next.selected=-1;}return next;}
-verse_haunt_door :: (s:Haunt)->int #export_c {best:=-1;distance:=2.5f32;for i:0..<s.entity_count {e:=s.entities[i];if e.motion!=5{continue;}d:=hh_len(s.player,e.pos);if d<distance {distance=d;best=i;}}return best;}
+verse_haunt_door :: (s:Haunt)->int #export_c {best:=-1;score:f32=HH_AIM;for i:0..<s.entity_count {e:=s.entities[i];if e.motion!=5 || hh_len(s.player,e.pos)>=2.5{continue;}a:=hh_aim(s,e.pos);if a>score {score=a;best=i;}}return best;}
 verse_haunt_zone_edit :: (s:Haunt,index:int,op:int,value:f32)->Haunt #export_c {next:=s;if index<0 || index>=s.zone_count{return next;}z:=s.zones[index];if op==0{z.once=!z.once;}if op==1{z.radius=hh_clamp(z.radius+value,0.2,10);z.half=hh_p(hh_clamp(z.half.x+value,0.2,10),z.half.y,hh_clamp(z.half.z+value,0.2,10));}if op==2 {next.fired=next.fired&(0xffffffff^(cast(u32)1<<index));z.entered=false;}next.zones[index]=z;next.dirty=true;return next;}
 
 verse_haunt_save_valid :: (s:Haunt,bytes:[]u8)->bool #export_c {

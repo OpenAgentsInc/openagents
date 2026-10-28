@@ -123,7 +123,7 @@ static void take_asks(void) {
   if ((asks & 4) && house.talking >= 0) house = verse_haunt_talk(house, house.talking, 1);
   if (asks & 8) house = verse_haunt_talk(house, -1, 0);
   // Walked away: the conversation ends.
-  if (house.talking >= 0 && verse_haunt_near(house) != house.talking) house = verse_haunt_talk(house, -1, 0);
+  if (house.talking >= 0 && !verse_haunt_reach(house, house.talking)) house = verse_haunt_talk(house, -1, 0);
 }
 
 // The sounds the house asked for this frame, a line each: name gain pan.
@@ -142,7 +142,10 @@ static void queue_sounds(void) {
 static void step(float dt) {
   coax_v_t_Realm r = realm_of();
   coax_t_Vec3 was = player.pos;
-  if (realm.zoom != 0) { player = verse_player_zoom(player, realm.zoom); realm.zoom = 0; }
+  if (realm.zoom != 0) {
+    coax_t_PlayerZoom z = verse_player_zoom_view(player, house.camera, realm.zoom);
+    player = z.player; house.camera = z.mode; realm.zoom = 0;
+  }
   bool run = sticks.run || (realm.held & 16), jump = sticks.jump || (realm.held & 32);
   player = verse_player_input(player, realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);

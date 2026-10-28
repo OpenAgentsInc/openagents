@@ -90,7 +90,7 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         display.add(to: .main, forMode: .common); clock = display; assets?.startAudio(); lastTick = nil
     }
     @objc private func suspend() { clock?.invalidate(); clock = nil; sticks = verse_sticks_reset(); fingers = [:]; began = [:]; lastTick = nil; assets?.stopAudio(); assets?.save() }
-    @objc private func zoom(_ gesture: UIPinchGestureRecognizer) { player = verse_player_zoom(player, Float((1 - gesture.scale)*4)); gesture.scale = 1; sticks = verse_sticks_reset() }
+    @objc private func zoom(_ gesture: UIPinchGestureRecognizer) { if let a = assets { let z = verse_player_zoom_view(player, a.state.camera, Float((1 - gesture.scale)*4)); player = z.player; a.state.camera = z.mode } else { player = verse_player_zoom(player, Float((1 - gesture.scale)*4)) }; gesture.scale = 1; sticks = verse_sticks_reset() }
     @objc private func tick(_ link: CADisplayLink) {
         guard let assets, size.width > 0, size.height > 0 else { return }
         let now = link.timestamp; if epoch == nil { epoch = now }; let time = now - (epoch ?? now)

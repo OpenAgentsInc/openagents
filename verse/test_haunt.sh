@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d "${TMPDIR:-/tmp}/verse-haunt.XXXXXX")
+python3 verse/tools/check_haunt_doors.py
 coax/bin/coax test verse/haunt.coax
 coax/bin/coax test verse/hud.coax
 coax/bin/coax test verse/haunt-light.coax

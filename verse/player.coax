@@ -83,6 +83,7 @@ Player :: struct {
   phi: f32 = BEHIND_PHI;
   dist: f32 = CAM_MAX;
   max_dist: f32 = CAM_MAX;
+  zoom_push: f32;       // zoom past a view's end, gathering to cross it
   target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
   spring_vel: Vec3;
   // The controls held now.
@@ -1170,6 +1171,43 @@ verse_player_view_at :: (p:Player,mode:int)->Vec3 #export_c {
  if mode==2{return verse_player_feet(p);}return verse_player_at(p);
 }
 verse_player_zoom :: (p:Player,delta:f32)->Player #export_c {next:=p;if finite(delta){next.max_dist=clamp(p.max_dist+delta,1,20);}return next;}
+// Zooming crosses between first and third person. Out from first person
+// past ZOOM_OUT starts third person at its closest; in past the closest
+// third-person distance by ZOOM_IN goes to first person. The push gathers
+// across frames and clears when the zoom turns, so a jitter at the
+// boundary does not flap. Top down only zooms.
+ZOOM_OUT :: 0.3;
+ZOOM_IN :: 0.6;
+PlayerZoom :: struct { player: Player; mode: int; }
+verse_player_zoom_view :: (p:Player,mode:int,delta:f32)->PlayerZoom #export_c {
+ z:PlayerZoom;z.player=p;z.mode=mode;if !finite(delta) || delta==0 {return z;}
+ if mode==2 {z.player=verse_player_zoom(p,delta);return z;}
+ if mode==0 {
+  if delta<0 {z.player.zoom_push=0;return z;}
+  z.player.zoom_push=p.zoom_push+delta;
+  if z.player.zoom_push>=f32(ZOOM_OUT) {z.mode=1;z.player.max_dist=1;z.player.dist=1;z.player.prev_dist=1;z.player.phi=f32(BEHIND_PHI);z.player.zoom_push=0;}
+  return z;
+ }
+ if delta>0 {z.player=verse_player_zoom(p,delta);z.player.zoom_push=0;return z;}
+ z.player=verse_player_zoom(p,delta);
+ if p.max_dist+delta>=1 {z.player.zoom_push=0;return z;}
+ z.player.zoom_push=p.zoom_push+(1-(p.max_dist+delta));
+ if z.player.zoom_push>=f32(ZOOM_IN) {z.mode=0;z.player.phi=f32(PI/2);z.player.zoom_push=0;}
+ return z;
+}
+#test "zoom crosses first and third person without flapping" {
+ p:=verse_player_place(7,0,2,0);
+ z:=verse_player_zoom_view(p,0,0.1);#assert z.mode==0;
+ z=verse_player_zoom_view(z.player,0,0.25);#assert z.mode==1 && z.player.max_dist==1 && z.player.phi==f32(BEHIND_PHI);
+ z=verse_player_zoom_view(z.player,1,-0.3);#assert z.mode==1;
+ z=verse_player_zoom_view(z.player,1,0.2);#assert z.mode==1 && near(z.player.max_dist,1.2,0.0001);
+ z=verse_player_zoom_view(z.player,1,-0.2);z=verse_player_zoom_view(z.player,1,-0.2);#assert z.mode==1 && z.player.max_dist==1;
+ z=verse_player_zoom_view(z.player,1,0.05);z=verse_player_zoom_view(z.player,1,-0.3);#assert z.mode==1;
+ z=verse_player_zoom_view(z.player,1,-0.5);#assert z.mode==0 && near(z.player.phi,f32(PI/2),0.0001);
+ z=verse_player_zoom_view(z.player,0,0.2);z=verse_player_zoom_view(z.player,0,-0.1);z=verse_player_zoom_view(z.player,0,0.2);#assert z.mode==0;
+ z=verse_player_zoom_view(z.player,0,0.4);#assert z.mode==1;
+ t:=verse_player_zoom_view(p,2,-3);#assert t.mode==2 && near(t.player.max_dist,1.4,0.0001);
+}
 verse_player_constrain :: (p:Player,x:f32,z:f32)->Player #export_c {
  next:=p;dx:=x-p.pos.x;dz:=z-p.pos.z;
  if dx!=0 {next.pos.x=x;next.prev_pos.x=x;next.target.x+=dx;next.prev_target.x+=dx;next.vel.x=0;}
