@@ -21,9 +21,11 @@ slot. A callback captures that epoch before the host starts the effect.
 
 The complete runnable source is
 [ch23_requests.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/examples/ch23_requests.coax).
+The demo loads its checked policy from
+[lib/ch23_request_policy.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/examples/lib/ch23_request_policy.coax).
 Here are its types:
 
-<!-- checked-source: examples/ch23_requests.coax -->
+<!-- checked-source: examples/lib/ch23_request_policy.coax -->
 ```coax
 RequestPhase :: enum u8 { idle; running; succeeded; failed; cancelled; expired; }
 Request :: struct { epoch: u32; phase: RequestPhase; deadline: u64; value: int; }
@@ -60,7 +62,7 @@ Its `99` must never replace the new operation's result.
 
 The implementations are short. Completion is the important one:
 
-<!-- checked-source: examples/ch23_requests.coax -->
+<!-- checked-source: examples/lib/ch23_request_policy.coax -->
 ```coax
 request_complete :: (s: Request, epoch: u32, now: u64, ok: bool, value: int) -> Request #export_c {
     if s.phase != RequestPhase.running || epoch != s.epoch { return s; }

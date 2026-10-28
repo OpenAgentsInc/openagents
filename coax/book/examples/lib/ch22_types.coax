@@ -1,0 +1,2 @@
+// A declaration shared by source units, not a second ABI definition.
+Cell :: struct { value: int; }

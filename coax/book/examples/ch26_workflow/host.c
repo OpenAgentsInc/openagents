@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include "request.h"
 #include "workflow.h"
 
 static void codec_tests(void) {

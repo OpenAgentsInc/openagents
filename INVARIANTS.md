@@ -349,3 +349,28 @@ decodes with protoc; turns, barge-in, decisions, jitter buffer, fixtures);
 survivors); `metareal/voice-host/test.sh` (offline, and live Google);
 `apps/openagents-ios/tools/voice-sim-test.sh` (the simulator UI test, offline
 and live).
+
+## Source composition preserves physical ownership
+
+`coax/lib/compiler/sources.coax` owns literal load syntax, canonical identity
+admission, cycle/budget rules and verification-scope decisions. Native code
+resolves/reads regular files and transports owned storage. A canonical source
+loads once; an active cycle fails; graph source reads are bounded before and
+during I/O. Loaded units cannot close each other's delimiters. There is no
+source-load interpreter effect or native syntax-policy fallback.
+
+A physical unit's `#authority` requirements survive loading without spreading
+to unmarked dependencies. The internal checker graph receives source-owned
+scope annotations, never untrusted wire claims. Actual executed-check coverage
+still gates authority functions, and mutation covers reachable helpers while
+requiring entry/authority coverage. Compiler/evaluator/emitter, native ABI and
+filesystem behavior remain trust inputs; finite checks are not proofs.
+
+Check: source-kernel authority checks and zero-survivor mutation, explicit
+`sources.c/h` seed identity in the Python-free bootstrap, final regeneration
+from `lib/compiler/compiler.coax`, and `coax/tests/sources.py` (real driver,
+cycle/diamond/symlink tests, scoped authority, relative descriptors, original
+file diagnostics/traps, graph limits, helper-free relocated compiler, native
+ABI and ASan/UBSan with an independent widened budget oracle). The book
+capstone and real iOS HUD consume loaded policy/types. `coax deps` is a checked
+path inventory, not a lockfile, content cache key or native build manifest.

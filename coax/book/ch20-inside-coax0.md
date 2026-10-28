@@ -14,7 +14,7 @@ message points where it does. It also shows that the discipline the earlier
 chapters recommend (bounded storage, one owner, checks written next to the
 code) is the same discipline the compiler is written in.
 
-> Note: Everything in this chapter describes `coax0` 0.10.0 as it is in
+> Note: Everything in this chapter describes `coax0` 0.11.0 as it is in
 > `coax/src/`, `coax/lib/compiler/` and `coax/bootstrap/`.
 
 ## A map of the source
@@ -36,11 +36,13 @@ driver ties them together. Here is where everything lives:
 | `src/eval.cpp` | Runs `#run`, constants, `#assert` and checks over the checked tree, within budgets |
 | `src/emit_c.cpp` | The checked tree to one C11 file with its runtime; headers and layout reports |
 | `src/verify.cpp` | `coax test` and `coax mutate` |
+| `lib/compiler/sources.coax` | Source load syntax, canonical identity/cycles, graph budgets and verification scope |
+| `src/sources.cpp` | Filesystem reads and source/diagnostic storage transport |
 | `src/proto.cpp` | File reading and buffers for descriptor imports; the importer itself is Coax in `lib/proto/` |
 | `src/errors.cpp` | The explanation for every error code (`coax explain`) |
 | `src/main.cpp` | The command-line driver, and the file that includes all the others |
 
-Notice the checks alongside the implementation in all three compiler modules.
+Notice the checks alongside the implementation in all four compiler modules.
 Each starts with `#authority;`, the directive
 from Chapter 10 that says every procedure needs a check and that the
 checks run on every build. The compiler's front end is held to the same
@@ -55,7 +57,8 @@ command. There's no build system to configure.
 How do you compile a compiler whose lexer is written in the language it
 compiles? You start from a copy of that lexer that has already been
 compiled. `coax/bootstrap/` holds exactly that: `lexer.c`, `lexer.h`,
-`parser.c`, `parser.h`, `checker.c` and `checker.h`, generated from the
+`parser.c`, `parser.h`, `checker.c`, `checker.h`, `sources.c` and `sources.h`,
+generated from the
 `.coax` sources by an earlier
 `coax`. These are the *seeds*. They're checked in, and nobody edits them by
 hand.
@@ -69,7 +72,7 @@ $ coax/build.sh
 It prints nothing when it succeeds. Behind that silence, `coax/build.sh`
 does this, stopping at the first failure:
 
-1. Compiles the seed lexer, parser and checker C with the C compiler, and links
+1. Compiles the seed lexer, parser, checker and source-policy C with the C compiler, and links
    them with the C++ frontend into a temporary compiler called *stage0*.
    Stage0 has descriptor imports switched off; it exists only to build the
    real compiler.
@@ -78,10 +81,12 @@ does this, stopping at the first failure:
 3. Uses stage0 to compile `lexer.coax` to C again and compares the result
    with the seed, byte for byte. If they differ, the build stops with
    "Lexer seed is stale" instead of quietly updating anything.
-4. Repeats steps 2 and 3 for `parser.coax` and `checker.coax`, then runs the checks and the
+4. Repeats steps 2 and 3 for `sources.coax`, `parser.coax` and `checker.coax`,
+   then runs the checks and the
    mutation gates for the descriptor importer modules in `lib/proto/`.
-5. Concatenates the lexer, parser, checker, fingerprint and importer modules into
-   one Coax file, compiles that to C, and links it into the final compiler.
+5. Loads `lib/compiler/compiler.coax`, whose explicit source graph includes
+   the lexer, parser, checker, source policy, fingerprint and importer. It
+   compiles that graph to C and links it into the final compiler.
 6. Has the final compiler compile those modules again, and requires the
    same C bytes it was built from.
 7. Moves the finished binary to `coax/bin/coax`. The move happens only after
@@ -91,7 +96,7 @@ does this, stopping at the first failure:
 The build needs a C compiler, a C++20 compiler and a shell. It doesn't
 download anything, and there's no Python step in a normal build.
 
-When you change the lexer, parser or checker Coax source on purpose, its
+When you change the lexer, parser, checker or source-policy Coax source, its
 seed has to
 be refreshed with a compiler you already trust:
 
@@ -99,6 +104,7 @@ be refreshed with a compiler you already trust:
 $ coax/refresh-lexer-seed.sh /absolute/path/to/trusted/coax
 $ coax/refresh-parser-seed.sh /absolute/path/to/trusted/coax
 $ coax/refresh-checker-seed.sh /absolute/path/to/trusted/coax
+$ coax/refresh-sources-seed.sh /absolute/path/to/trusted/coax
 $ coax/build.sh test
 ```
 
@@ -149,7 +155,7 @@ area 49 pulse 500 0 1.5
 `coax run` does everything this chapter describes, then compiles the C,
 runs the program and deletes what it built. In `main.cpp` the front half is
 one function, `front_end`, and its body reads like a summary of the
-chapter: read the file, `lex`, expand any proto imports, `parse`, `check`,
+chapter: load the source graph, `lex`, expand any proto imports, `parse`, `check`,
 `evaluate`, and, for an `#authority` file, run the checks. Then
 `emit_c` writes the C. Let's take those in order.
 
@@ -166,7 +172,7 @@ an ordinary Coax procedure, so we can call it from Coax. Listing 20-2 is a
 small `main` that lexes one line of our program, prints each token, then
 hands the tokens to the parser and prints the tree it builds. It isn't a
 standalone program: it uses `LX_next`, `PS_parse` and their types, so we
-append it to the compiler's own lexer and parser sources.
+load it alongside the compiler's own lexer and parser sources.
 
 Filename: examples/ch20_frontend/driver.coax
 
@@ -215,7 +221,9 @@ main :: () {
 
 *Listing 20-2: A driver that runs the compiler's lexer and parser on one line (the tree printer is elided; see the file)*
 
-From `coax/book`, we glue the three files together and run the result:
+The checked book build now loads the three physical files with `#load`.
+To compare with the original single-file walkthrough, from `coax/book`
+you can still concatenate them and run the result:
 
 ```
 $ cat ../lib/compiler/lexer.coax ../lib/compiler/parser.coax \
@@ -827,7 +835,7 @@ $ coax mutate coax/lib/compiler/lexer.coax
 1069 mutants, 1069 killed, 0 survived
 ```
 
-The parser and checker have their own checks and mutation gates too. Run
+The parser, checker and source loader have their own checks and mutation gates too. Run
 `coax test coax/lib/compiler/checker.coax` and `coax mutate` on that file
 to inspect the current results. `coax/tests/checker.py` adds independent
 IEEE, layout and policy expectations plus native sanitizer coverage.
@@ -836,7 +844,7 @@ executes authored checks, and exercises the native boundary examples.
 
 When you add a feature, it comes with a passing program, a failing program
 for each new error code, and an entry in `errors.cpp` for each code. When
-the feature belongs in the lexer, parser or checker, it also comes with
+the feature belongs in the lexer, parser, checker or source policy, it comes with
 checks in the `.coax` file that survive `coax mutate`, and a refreshed seed.
 
 ## Summary

@@ -508,7 +508,7 @@ refund_ok :: (paid: int, refund: int) -> bool {
   20,000,000 steps unless `--steps` says otherwise. The same rules hold as in
   `#run`: no output, no host calls, overflow and bounds checked.
 - `#authority;` marks a file whose rules guard money, signatures or grants.
-  Every procedure except `main` and `#foreign` imports must actually execute
+  Every procedure authored in that physical source unit except `main` and `#foreign` imports must actually execute
   in a check, directly or through calls (E0380). Dead references, short-circuited
   calls and pre-folded `#run` results do not count. Every compile of the
   file runs its checks: a failing check is a failed build.
@@ -538,7 +538,8 @@ is typechecked but unevaluated. It returns a string constant without evaluating
 side effects or arithmetic in the operand; `type_name(1 / 0)` is `"int"`.
 Unknown names and ill-typed operands remain errors. It needs no module import.
 
-Planned `type_of`, `size_of` and `type_info` expose resolved types and
+`size_of(T)` is implemented for the bootstrap target layout. Planned
+`type_of` and `type_info` expose resolved types and
 **target-specific** layout. Metadata includes fields, offsets, alignment,
 defaults, annotations, enum values, procedure signatures and effects. It has
 an explicit schema version. Runtime metadata is opt-in or stripped by use;
@@ -841,12 +842,53 @@ quiescence or GPU resource preservation.
 
 ### 17.1 Modules
 
-Currently only `#import "Basic";` is supported, providing checked `print`.
-A future directory module has `module.coax`, explicit visibility and acyclic
-imports. `#load` adds a source unit to a module without making it a package
-manager. Vendored/locked sources are explicit inputs; import does not download
-code. Conditional compilation and module parameters must be represented in
-cache keys and editor analysis.
+Version 0.11.0 implements `#load "part.coax";` at file scope. Literal paths
+resolve relative to the declaring unit (absolute paths are explicit too).
+Canonical source paths provide once-only identity; active cycles are E0602.
+The entry source followed by depth-first loads in written order forms one
+flat declaration namespace. Each physical unit is validated by the Coax grammar before composition and
+must balance its own delimiters within depth 128; no declaration may cross
+a unit boundary. Comments and string contents never become directives. Names resolve across
+units, and duplicates remain errors. Loads are not interpreted `#run` effects.
+
+The checked Coax kernel in `lib/compiler/sources.coax` owns load syntax,
+identity/cycle decisions, verification-scope policy and resource admission.
+Native code owns filesystem resolution, reads and storage transport. A separate
+C/header seed reproduces exactly in the Python-free bootstrap, with authority
+checks and a zero-survivor mutation gate. `lib/compiler/compiler.coax` is the
+actual bootstrap source graph, not a concatenated copy.
+
+One compilation admits 64 canonical units, 32 active units, 16 MiB of source
+bytes and 512 load directives per physical unit (E0603). Invalid loads are
+E0600, unreadable/nonregular files E0601, and unbalanced composed units E0604.
+Reads check the source-byte budget before allocation and while reading. These
+bounds are not a whole-process sandbox or a bound on every compiler allocation.
+
+`#authority` belongs to a physical source unit. Loading an unmarked unit does
+not mark its procedures, and loading a marked unit retains its obligations.
+Any authority unit causes graph checks to run during ordinary compilation;
+actual execution must cover every authority procedure except `main` and
+foreign imports. Tests may cover procedures from another unit. `coax test`
+runs graph checks; `coax mutate` mutates reachable procedures and requires
+coverage of the entry unit and authority units. Both accept `--library` for
+units without a program main or native exports. Tests/directives remain
+editable source and are not a runtime authorization mechanism.
+
+Diagnostics, mutation reports and composed native traps retain original file
+and line. Descriptor paths resolve beside their own import unit; generated
+failures point at that directive. Native debugger stepping still uses C.
+`coax deps FILE` emits schema-version-1 JSON with canonical sources in visitation
+order and resolved descriptor inputs. It checks the program first. This is a
+path inventory, not a content-hashed lockfile, native-toolchain manifest or
+cache key. Normal compilation and dependency listing invoke no Python,
+preprocessor or protoc helper.
+
+`#import "Basic";` remains the only named built-in module, providing checked
+`print`. General directory modules with `module.coax`, explicit visibility,
+separate namespaces, locked packages and conditional module parameters remain
+planned. Vendored/locked sources are explicit inputs; import does not download
+code. Future conditional compilation and module parameters must be represented
+in cache keys and editor analysis.
 
 ### 17.2 C, C++, Swift and platform support
 
@@ -884,7 +926,8 @@ slice, not just a successful Wasm link.
 ### 17.3 Tooling
 
 Implemented commands: `coax version`, `check`, `c`, `build`, `run`, `lib`,
-`header`, `layout` (struct sizes, alignment, offsets and padding) and
+`header`, `layout` (struct sizes, alignment, offsets and padding), `deps`
+(source/descriptor input inventory) and
 `explain` (every error code, also as the Markdown table the book uses).
 `--keep-c` retains generated source for inspection; `--json` prints
 diagnostics as JSON lines for tools and agents. Errors have stable codes,
@@ -954,6 +997,11 @@ Its scene storage and scalar host ABI remain in place. Native/protoc and
 simulator tests cover this first product consumer; broader product adoption
 remains separate. Stage 6 expands that foundation rather than deferring the
 first bounded codec until every compiler feature is complete.
+
+Source composition in 0.11.0 supplies the explicit source graph and input
+inventory needed by later build workspaces. It does not implement package
+resolution, visibility, reflection, plugins or the stage-4 build program, and
+does not complete the remaining stage-2 engine/ABI evidence.
 
 Stages are dependency-ordered and evidence-driven, not calendar promises.
 Each stage produces something independently testable. Platform/engine rollout

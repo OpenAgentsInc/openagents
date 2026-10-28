@@ -103,7 +103,7 @@ typedef uint32_t coax_t_CK_Tag;
 #define COAX_CK_Tag_file ((coax_t_CK_Tag)UINT64_C(74))
 #define COAX_CK_Tag_assert_ ((coax_t_CK_Tag)UINT64_C(75))
 struct coax_t_CK_Loc { int64_t line; int64_t column; int64_t offset; };
-struct coax_t_CK_Node { coax_t_CK_Tag kind; coax_t_CK_Loc loc; coax_string name; coax_string name2; coax_t_CK_Loc loc2; int64_t a; int64_t b; int64_t c; int64_t d; int64_t head; int64_t tail; int64_t next; uint32_t op; _Bool flag; _Bool flag2; uint64_t value; uint64_t floating; int64_t type; int64_t field_index; int64_t proc; int64_t constant; _Bool negative; _Bool folded; _Bool builtin_print; uint32_t byte_intrinsic; uint32_t intrinsic; int64_t mark; _Bool reached; _Bool metal_done; _Bool metal_active; };
+struct coax_t_CK_Node { coax_t_CK_Tag kind; coax_t_CK_Loc loc; coax_string name; coax_string name2; coax_t_CK_Loc loc2; int64_t a; int64_t b; int64_t c; int64_t d; int64_t head; int64_t tail; int64_t next; uint32_t op; _Bool flag; _Bool flag2; uint64_t value; uint64_t floating; int64_t type; int64_t field_index; int64_t proc; int64_t constant; _Bool negative; _Bool folded; _Bool builtin_print; uint32_t byte_intrinsic; uint32_t intrinsic; int64_t mark; _Bool reached; _Bool metal_done; _Bool metal_active; _Bool skip_authority; };
 typedef struct { coax_t_CK_Node *data; int64_t count; } coax_v_t_CK_Node;
 typedef struct { coax_t_CK_Type *data; int64_t count; } coax_v_t_CK_Type;
 struct coax_t_CK_Local { coax_string name; int64_t type; coax_t_CK_Loc loc; coax_string immutable; };
@@ -149,6 +149,7 @@ COAX_LAYOUT(offsetof(coax_t_CK_Node, mark) == 216, "offset of CK_Node.mark");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, reached) == 224, "offset of CK_Node.reached");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, metal_done) == 225, "offset of CK_Node.metal_done");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, metal_active) == 226, "offset of CK_Node.metal_active");
+COAX_LAYOUT(offsetof(coax_t_CK_Node, skip_authority) == 227, "offset of CK_Node.skip_authority");
 COAX_LAYOUT(sizeof(coax_t_CK_Type) == 88 && COAX_ALIGNOF(coax_t_CK_Type) == 8, "layout of CK_Type");
 COAX_LAYOUT(offsetof(coax_t_CK_Type, kind) == 0, "offset of CK_Type.kind");
 COAX_LAYOUT(offsetof(coax_t_CK_Type, name) == 8, "offset of CK_Type.name");

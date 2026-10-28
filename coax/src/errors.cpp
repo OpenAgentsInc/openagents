@@ -144,6 +144,13 @@ const ErrorInfo ERRORS[] = {
     {"E0502", "proto descriptor rejected", "The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated."},
     {"E0503", "retired in 0.6.0", "Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0."},
     {"E0504", "proto imports are CPU-only", "Generated binary codecs are CPU code and cannot be compiled as Metal shaders."},
+    // ---- E06xx: source units ----
+    {"E0600", "invalid source load", "Use #load \"part.coax\"; at file scope with a nonempty, NUL-free path. Loads are literal source inputs, never compile-time effects."},
+    {"E0601", "source unit cannot be read", "The resolved source must be a readable regular file. Relative paths are resolved beside the unit containing #load."},
+    {"E0602", "source load cycle", "A source unit loaded a canonical path that is still active. Break the cycle; completed shared dependencies load only once."},
+    {"E0603", "source graph budget exceeded", "One compilation admits at most 64 distinct source units, 32 active units, 16 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading."},
+    {"E0604", "unbalanced source unit", "In a composed program every physical source must balance its own parentheses, brackets and braces within depth 128. Declarations cannot cross a source boundary."},
+
 };
 
 const int32_t ERROR_COUNT = (int32_t)(sizeof ERRORS / sizeof ERRORS[0]);

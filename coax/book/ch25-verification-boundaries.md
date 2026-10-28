@@ -99,11 +99,17 @@ command outcomes cannot be established by a pure state-machine test.
 
 ## The bootstrap is a trust chain
 
-The lexer, parser, type checker, descriptor importer, wire runtime and
+The lexer, parser, type checker, source-loading policy, descriptor importer,
+wire runtime and
 fingerprinting logic are authored in Coax. Generated C/header seeds let
 the compiler build itself without Python. Requiring regeneration to match
 those seeds catches drift. Requiring the final compiler to regenerate
 its linked modules catches another class of inconsistency.
+
+Source-unit scope is also part of that chain: the native source owner
+annotates the trusted internal checker graph. A physical unit's `#authority`
+requirements must survive composition; the source kernel and native
+end-to-end suite test that they do.
 
 Neither test proves that the starting compiler or seeds were benign.
 The seeds, native graph bridges, evaluator, emitter, C/C++ toolchain and

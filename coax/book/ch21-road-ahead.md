@@ -15,7 +15,7 @@ points at which the plan says to stop.
 
 ## Where things stand
 
-`coax0` 0.10.0 compiles one source file at a time to C11. It has sized
+`coax0` 0.11.0 compiles bounded source graphs to C11 using `#load`. It has sized
 integers, floats, `bool` and strings; structs with defaults, enums with a
 declared width, fixed arrays and views; `for`, `defer` and `ifx`; checked
 casts and left-to-right evaluation; constants, `#run` and `#assert` with
@@ -45,7 +45,8 @@ inputs and results. The evaluator and C emitter remain C++.
 Much of the language in Parts II to IV isn't built yet: pointers and
 dynamic arrays, tagged unions and `switch`, `try` and error values,
 generics and constraints, the context and allocators, reflection and
-macros, jobs and effects, `strict` and `deterministic`, modules and `#load`,
+macros, jobs and effects, `strict` and `deterministic`, general source modules
+and visibility,
 importing C headers, `build.coax`, hot reload and the browser target. Each
 of those chapters says so where it matters.
 
@@ -69,7 +70,7 @@ counts as done, and where each one is today.
 | 1. Compile-time scalars | Constants, `#run`, `#assert`, `type_name`, `coax check`, bounded evaluation; later the checks (`#test`, `#forall`, `#authority`, `coax test`, `coax mutate`) | Dependencies, cycles, limits, refusal of captures and I/O, the same errors in debug and release, literal output | Done |
 | 2. Data and the C boundary | Structs with defaults, enums, fixed arrays and views, `for`, `defer`, `ifx`, checked casts, ordered operands, `#export_c` with headers and layout assertions, `#foreign` | A pulse kernel called by the native host, outputs compared and frame cost measured | Mostly done; see below |
 | 3. Metadata and generation | Target layouts and stable declaration IDs, then reflection, `#derive`, hygienic typed code | A generated registry or inspector with provenance, invalid-generator fixtures, bounded expansion | Not started |
-| 4. Build workspaces and tools | Dependency scheduler, capabilities, input manifests, compiler events, then plugins and `build.coax` | One real asset or registry workflow; generated CMake and Xcode lists match the hand-written ones before replacing them | Not started |
+| 4. Build workspaces and tools | Dependency scheduler, capabilities, input manifests, compiler events, then plugins and `build.coax` | One real asset or registry workflow; generated CMake and Xcode lists match the hand-written ones before replacing them | Source graph and `deps` prerequisites ship; workspaces, plugins and `build.coax` remain planned |
 | 5. Effects and deterministic jobs | Region and alias model, effect summaries, strict math, scheduler integration | A real subsystem replays identically at 1, 2, 4 and 8 workers; bad effects and aliases are refused | Not started |
 | 6. Protocol expansion and GPU experiments | Stable layouts, plus the stage 2 ABI proof | More domains on the selected-profile codec; a Metal pipeline proven separately before choosing a shader approach | Started: descriptor imports and codecs ship, and the iOS home uses them |
 | 7. Browser vertical slice | A wasm32 runtime and host ABI, a separate shader bridge | Geometry, memory growth, async resources, input, rendering and debugging in a real browser | Not started |
@@ -83,6 +84,11 @@ protocol plan needed a first bounded importer and codec before any product
 code could move onto generated protocol types, and that didn't depend on
 reflection, build programs or effects. Stage 6 expands that foundation; it
 didn't wait for everything ahead of it in the table.
+
+Source composition removes the shell-concatenation workaround in Chapter 22
+and keeps physical-file authority scopes. It is a prerequisite for later
+build workspaces, not a replacement for stage 2's remaining C-header, real
+engine and measured target evidence.
 
 ## The rest of stage 2
 
@@ -154,7 +160,7 @@ answered by building something, not by argument.
 
 ## Summary
 
-`coax0` today is a small, working compiler: one file in, C out, with
+`coax0` today is a small, working compiler: an explicit source graph in, C out, with
 compile-time evaluation, checks, a C boundary and protobuf imports, and
 real code in the iOS app built with it. The rest of the language is a plan
 in nine stages, each with evidence it must produce and two places where the

@@ -175,7 +175,7 @@ coax: no error code 'E9999'
 
 The first two digits of every code name the compiler stage that found the
 problem (`E01` lexer, `E02` parser, `E03` checker, `E04` compile-time
-evaluation, `E05` descriptor imports), which Chapter 4 covers along with
+evaluation, `E05` descriptor imports, `E06` source loading), which Chapter 4 covers along with
 how to read a diagnostic in general.
 
 ## Checks as guardrails

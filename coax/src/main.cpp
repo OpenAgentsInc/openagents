@@ -26,6 +26,7 @@
 #include "parse.cpp"
 #include "verify.cpp"
 #include "proto.cpp"
+#include "sources.cpp"
 
 #include <filesystem>
 #include <cerrno>
@@ -38,7 +39,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.10.0";
+static const char *VERSION = "coax0 0.11.0";
 
 int32_t g_error_count = 0;
 bool g_json_errors = false;
@@ -83,21 +84,27 @@ void error_at(const Source *src, Loc loc, const char *code, const std::string &m
   for (const GeneratedRegion &region : src->generated)
     if (loc.offset >= region.start && loc.offset < region.end)
       reported += " (generated proto import " + region.prefix + ")";
-  loc = diagnostic_loc(src, loc);
+  Loc joined = diagnostic_loc(src, loc);
+  auto point = source_point(src, joined);
+  loc = point.loc;
   if (g_json_errors) {
     fprintf(stderr, "{\"file\": %s, \"line\": %d, \"col\": %d, \"code\": \"%s\", \"message\": %s, \"fix\": %s}\n",
-            json_string(src->path).c_str(), loc.line, loc.col, code, json_string(reported).c_str(),
+            json_string(point.path).c_str(), loc.line, loc.col, code, json_string(reported).c_str(),
             json_string(fix).c_str());
     return;
   }
-  fprintf(stderr, "%s:%d:%d: error[%s]: %s\n", src->path.c_str(), loc.line, loc.col, code, reported.c_str());
-  show_source(stderr, src, loc);
+  fprintf(stderr, "%s:%d:%d: error[%s]: %s\n", point.path.c_str(), loc.line, loc.col, code, reported.c_str());
+  show_source(stderr, src, joined);
   if (!fix.empty()) fprintf(stderr, "  fix: %s\n", fix.c_str());
 }
 
 void show_source(FILE *out, const Source *src, Loc loc) {
   loc = diagnostic_loc(src, loc);
-  const std::string &t = src->original_text.empty() ? src->text : src->original_text;
+  const std::string *text = &(src->original_text.empty() ? src->text : src->original_text);
+  for (const auto &unit:src->units) if (loc.offset>=unit->begin && loc.offset<unit->end) {
+    text=&unit->text;loc.offset-=unit->begin;break;
+  }
+  const std::string &t = *text;
   size_t start = (size_t)loc.offset;
   if (start > t.size()) start = t.size();
   while (start > 0 && t[start - 1] != '\n') start--;
@@ -110,16 +117,6 @@ void show_source(FILE *out, const Source *src, Loc loc) {
   }
 }
 
-static bool read_file(const char *path, std::string *out) {
-  FILE *f = fopen(path, "rb");
-  if (!f) return false;
-  char buf[65536];
-  size_t n;
-  while ((n = fread(buf, 1, sizeof buf, f)) > 0) out->append(buf, n);
-  bool ok = !ferror(f);
-  fclose(f);
-  return ok;
-}
 
 static bool write_file(const std::string &path, const std::string &data) {
   FILE *f = fopen(path.c_str(), "wb");
@@ -167,7 +164,8 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   std::string generated;
   for (const Request &r : requests) {
     std::filesystem::path path(r.path);
-    if (path.is_relative()) path = std::filesystem::absolute(std::filesystem::path(src->path).parent_path() / path);
+    if (path.is_relative()) path = std::filesystem::absolute(std::filesystem::path(source_point(src, r.loc).path).parent_path() / path);
+    src->descriptor_inputs.push_back(std::filesystem::absolute(path).lexically_normal().string());
     proto::Result result = proto::import_file(path.lexically_normal().string(), r.prefix, VERSION);
     if (!result.error.empty()) {
       error_at(src, r.loc, "E0502", result.error);
@@ -189,7 +187,7 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   return true;
 }
 
-enum class Output : uint8_t { none, c, header, layout };
+enum class Output : uint8_t { none, c, header, layout, deps };
 
 // lex, parse, check and evaluate; then produce the requested text.
 // library: no main is required (lib, header, and check of a file that exports).
@@ -198,11 +196,7 @@ enum class Output : uint8_t { none, c, header, layout };
 // the build. run_checks is false for coax test and mutate, which run them.
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks = true) {
-  src->path = path;
-  if (!read_file(path, &src->text)) {
-    fprintf(stderr, "coax: cannot read '%s'\n", path);
-    return false;
-  }
+  if (!load_sources(arena, src, path)) return false;
   std::vector<Token> tokens;
   bool ok = lex(arena, src, &tokens);
   if (ok) {
@@ -235,6 +229,14 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   if (what == Output::c) *text = emit_c(&file, opts);
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
+  else if (what == Output::deps) {
+    *text="{\"schema_version\":1,\"sources\":[";
+    bool first=true;
+    for (const auto &unit:src.units) {*text+=(first?"":",")+json_string(unit->canonical);first=false;}
+    *text+="],\"descriptors\":[";first=true;
+    for (const auto &name:src.descriptor_inputs) {*text+=(first?"":",")+json_string(name);first=false;}
+    *text+="]}\n";
+  }
   std::string provenance;
   for (const std::string &line : src.import_provenance) provenance += line + "\n";
   if (what == Output::c || what == Output::header) *text = provenance + *text;
@@ -286,6 +288,7 @@ static int usage() {
           "       coax check   file.coax\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
+          "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax test    file.coax [--steps N]\n"
           "       coax mutate  file.coax\n"
           "       coax explain CODE | --all [--markdown]\n"
@@ -343,7 +346,7 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "metal" && cmd != "test" && cmd != "mutate" && cmd != "proto")
+      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "test" && cmd != "mutate" && cmd != "proto")
     return usage();
 
   const char *input = nullptr;
@@ -395,13 +398,13 @@ static int main_impl(int argc, char **argv) {
     Source src;
     Arena arena;
     File file;
-    if (!front_end(input, &src, &arena, &file, opts, 2, false)) return 1;
+    if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false)) return 1;
     return cmd == "test" ? test_command(&file, steps) : mutate_command(&arena, &file);
   }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
-  if (cmd == "layout") {
-    if (!compile(input, opts, Output::layout, &text, 2)) return 1;
+  if (cmd == "layout" || cmd == "deps") {
+    if (!compile(input, opts, cmd == "deps" ? Output::deps : Output::layout, &text, 2)) return 1;
     fwrite(text.data(), 1, text.size(), stdout);
     return 0;
   }

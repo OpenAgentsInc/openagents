@@ -54,7 +54,8 @@ them, break them on purpose, and read what the compiler says.
 Coax is young. Its first compiler, `coax0`, compiles a real but limited
 subset of the language: procedures, integers and floats, strings,
 structs, enums, fixed arrays and views, `defer`, compile-time `#run` and
-`#assert`, checks with `#test` and `#forall`, and a C boundary. A lot of
+`#assert`, checks with `#test` and `#forall`, source graphs with `#load`,
+and a C boundary. A lot of
 what later chapters describe is designed but not built yet.
 
 The book is honest about which is which. Anything you can run today is

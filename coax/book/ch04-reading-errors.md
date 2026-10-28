@@ -180,6 +180,7 @@ say which stage found the problem:
 | `E03xx` | Checker | Names, types, returns, formats | Reports everything it finds |
 | `E04xx` | Compile-time evaluation | Runs `#run` and `#assert` (Chapter 9) | Stops at the first failure |
 | `E05xx` | Descriptor imports | Reads protobuf descriptors (Chapter 15) | Stops at the first failure |
+| `E06xx` | Source loading | Admits the source graph and physical units (Chapter 22) | Stops at the first failure |
 
 A stage only runs if the ones before it succeeded. You can see this with
 a program that has a bad character and a missing semicolon:

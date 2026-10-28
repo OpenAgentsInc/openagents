@@ -7,6 +7,9 @@
 // `return lo`. A reviewer marks such a line with the comment
 // `// mutant: equivalent`; mutants on it that survive are counted apart.
 #include "coax.h"
+#ifdef COAX_BOOTSTRAP_IMPORTER
+#include "sources.h"
+#endif
 
 #include <algorithm>
 #include <functional>
@@ -52,7 +55,7 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
   }
   if (ok && file->authority) {
     for (const ProcDecl *p : file->procs) {
-      if (p->foreign || str_eq(p->name, "main")) continue;
+      if (!SU_check_required(p->authority,p->root_source,false) || p->foreign || str_eq(p->name, "main")) continue;
       if (std::find(executed.begin(), executed.end(), p) == executed.end()) {
         error_at(file->src, p->loc, "E0380", "'" + to_std(p->name) + "' was never executed by a check",
                  "calls in dead branches or pre-folded #run results do not exercise the procedure");
@@ -284,12 +287,13 @@ static int mutate_command(Arena *arena, File *file) {
   }
   for (const Mutant *mu : survivors) {
     Loc loc = diagnostic_loc(file->src, mu->loc);
-    printf("%s:%d:%d: mutant survived: %s\n", file->src->path.c_str(), loc.line, loc.col, mu->what.c_str());
+    auto point = source_point(file->src, loc);
+    printf("%s:%d:%d: mutant survived: %s\n", point.path.c_str(), point.loc.line, point.loc.col, mu->what.c_str());
     show_source(stdout, file->src, mu->loc);
   }
   std::string unreached;
   for (const ProcDecl *p : file->procs) {
-    if (p->foreign || str_eq(p->name, "main")) continue;
+    if (!SU_check_required(p->authority,p->root_source,true) || p->foreign || str_eq(p->name, "main")) continue;
     if (std::find(m.reached.begin(), m.reached.end(), p) == m.reached.end())
       unreached += (unreached.empty() ? "" : ", ") + to_std(p->name);
   }

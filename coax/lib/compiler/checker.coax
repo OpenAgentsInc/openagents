@@ -171,7 +171,7 @@ CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic
   proc=64;constant=65;struct_=66;enum_=67;param=68;field=69;member=70;field_init=71;import_=72;check=73;file=74;assert_=75;
 }
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
-  type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;}
+  type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;}
 CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
@@ -840,9 +840,18 @@ CK_reach :: (c:CK_Context,id:int) {
   CK_reach(c,n.a);CK_reach(c,n.b);CK_reach(c,n.c);CK_reach(c,n.d);
   child:=n.head;while child!=CK_NONE {CK_reach(c,child);child=c.nodes[child].next;}
 }
+#forall "source-unit authority excludes only foreign, main, reached or unguarded procedures" kind:0..<3, foreign:bool, main_name:bool, reached:bool, skip:bool {
+ tags:=[3] CK_Tag.[CK_Tag.proc,CK_Tag.constant,CK_Tag.check];
+ p:=CK_Node.{kind=tags[kind],flag2=foreign,reached=reached,skip_authority=skip,name="work"};
+ if main_name {p.name="main";}
+ #assert CK_requires_coverage(p)==(kind==0 && !foreign && !main_name && !reached && !skip);
+}
+CK_requires_coverage :: (p:CK_Node)->bool {
+ return p.kind==CK_Tag.proc && !p.flag2 && p.name!="main" && !p.reached && !p.skip_authority;
+}
 CK_coverage :: (c:CK_Context) {
   id:=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_reach(c,c.nodes[c.nodes[id].a].b);}id=c.nodes[id].next;}
-  id=c.nodes[1].head;while id!=CK_NONE {p:=c.nodes[id];if p.kind==CK_Tag.proc && !p.flag2 && p.name!="main" && !p.reached {CK_error(c,p.loc,"E0380",CK_join3(c,"'",p.name,"' is not exercised by any #test or #forall"),"#authority files check every procedure: add a #test or #forall that calls it");}id=p.next;}
+  id=c.nodes[1].head;while id!=CK_NONE {p:=c.nodes[id];if CK_requires_coverage(p) {CK_error(c,p.loc,"E0380",CK_join3(c,"'",p.name,"' is not exercised by any #test or #forall"),"#authority files check every procedure: add a #test or #forall that calls it");}id=p.next;}
 }
 CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16};

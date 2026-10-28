@@ -1,6 +1,6 @@
 // Reusable engine HUD slots: content supplies action IDs and platform glyphs;
 // the engine owns the safe-area-aware hotbar geometry and hit areas.
-HudRect :: struct { x:f32;y:f32;width:f32;height:f32; }
+#load "hud/types.coax";
 #test "hotbar fits a narrow phone and stays above the home indicator" {
  b:=metareal_hud_slot(320,700,34,0,6);z:=metareal_hud_slot(320,700,34,5,6);
  #assert b.x>=8 && z.x+z.width<=312 && b.y+b.height<=654;

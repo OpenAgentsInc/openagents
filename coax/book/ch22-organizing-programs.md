@@ -5,141 +5,171 @@ world, a compiler and an app do not. They need boundaries: who owns a
 type, what crosses a boundary, and which parts a build is allowed to
 replace together.
 
-This chapter separates the facilities `coax0` has from the module system
-Coax plans. You can use the organization here now without writing syntax
-that the compiler cannot accept.
+`coax0` 0.11.0 provides source-unit composition with `#load`. You can share
+actual declarations and keep diagnostics and checks tied to their physical
+files. General directory modules, visibility and package management remain
+planned. A source graph today has one declaration namespace.
 
-## Three ways of sharing code today
+## Load another source unit
 
-| Mechanism | Available now | What it shares |
-| --- | --- | --- |
-| `#import "Basic"` | Yes | Built-in printing support; not a package loader |
-| `#import_proto "profile.pb" as Name` | Yes | Declarations generated from an explicit descriptor input |
-| Compile each Coax source as a C library | Yes | Exported procedures and their generated C ABI |
-| Concatenate sources before compiling | Yes, as a build operation | One flat declaration namespace and one file's check rules |
-| General source modules, `#load`, module visibility | Planned | Source-level dependency and visibility boundaries |
-| Package download, version resolution and lockfile tooling | Not provided by `coax0` | These require their own design and implementation |
+Run this example from the repository root:
 
-A folder called `lib` does not make its files importable. For example,
-`coax/lib/compiler/checker.coax` is an actual implementation module, but
-today the bootstrap script composes it with the other compiler sources.
-`#import "compiler/checker"` is not a working alternative.
+```sh
+coax/bin/coax run coax/book/examples/ch22_sources.coax
+```
 
-Chapter 17 shows the C-library approach. The iOS app uses it for the
-home, player, cast, camera, Grid, wallet and Haunted House. Each exported
-boundary is deliberately small. An app can replace one implementation
-without requiring Swift to understand its internal procedures.
+It prints `42`. The entry file imports printing and loads a source unit:
 
-Concatenation is useful for tightly coupled compiler modules. It does
-not create visibility or isolation. Duplicate names collide; the combined
-file has one `#authority` scope; relative descriptor paths resolve from
-the combined file's location. Keep the input order explicit, use unique
-prefixes, and place temporary outputs outside authored source folders.
-The capstone in Chapter 26 shows how to compose sources without losing a
-descriptor path.
+<!-- checked-source: examples/ch22_sources.coax -->
+```coax
+#import "Basic";
+#load "lib/ch22_numbers.coax";
+#test "a loaded type has one identity" { #assert cells_total(Cell.{value=20},Cell.{value=22})==42; }
+main :: () { print("%\n",cells_total(Cell.{value=20},Cell.{value=22})); }
+```
 
-## Decide what a boundary means
+That unit loads a shared type next to itself:
 
-There are three different identities to keep straight:
+<!-- checked-source: examples/lib/ch22_numbers.coax -->
+```coax
+#load "ch22_types.coax";
+#test "negative and positive cells" { #assert cells_total(Cell.{value= -2},Cell.{value=3})==1; }
+cells_total :: (a: Cell, b: Cell) -> int { return a.value+b.value; }
+```
 
-- A Coax type name identifies a declaration in a compiled program.
-- A C symbol and its header describe a particular native ABI.
-- A protobuf package, message and field number describe an interchange
-  contract that may outlive many builds of both programs.
+The final file declares `Cell`. It is the same declaration in both files,
+not two structurally similar types that happen to have the same spelling.
+Procedure and type names can refer forward across the graph. Duplicate
+names still fail; loading a second unrelated `Cell` is not namespacing.
 
-These need not have the same spelling or layout. A packed network record
-is not a native struct, and renaming a Coax local does not rename a
-published protobuf field.
+Paths are literal, nonempty, NUL-free strings, resolved beside the file
+containing the directive. Absolute paths are also explicit inputs. There
+is no search path, environment expansion, network download or package
+version selection. A source load is a file-level declaration, not an
+interpreted operation that `#run` can perform.
 
-For a new subsystem, write down its state, commands, observations and
-limits first. Put the pure transition rules in Coax. Export plain values
-or caller-owned views. Give the host only the work that needs the
-platform: allocating storage, delivering input, opening a file or socket,
-and binding a GPU resource.
+## One graph, with explicit limits
 
-Use the root `proto/` tree when values cross a process, device, storage or
-version boundary. Select an existing descriptor profile where possible.
-Do not introduce a second app-specific definition of a shared contract.
-An internal camera vector that never leaves one process does not need a
-protobuf representation merely because it is a struct.
+The compiler reads the entry unit first, then visits its loads depth first
+in written order. It parses the composed program after loading the graph.
+Declarations resolve across units regardless of their textual position.
+Checks retain that deterministic source-unit order too.
 
-## Names at the C boundary
+Canonical file paths establish source identity. A completed dependency
+loads once when another load resolves to that same canonical path, including
+dot paths and symlinks. Distinct hard-link names remain distinct units. Loading an active ancestor is a cycle and reports E0602 at
+the directive that closes it. This is source identity, not a guarantee
+that a filesystem cannot change during a build.
 
-Generated headers currently preserve user-defined type names in the
-native namespace, prefixed with `coax_t_`. Independently compiling two
-unrelated `Vec3` declarations does not make them the same type. Including
-both headers can fail even if their fields happen to match.
+Each compilation admits at most 64 distinct units, 32 active units, 16 MiB
+of source bytes and 512 load directives per unit. Budget exhaustion is
+E0603. Reads are checked against the byte budget before allocation and as
+the file is read. These bounds do not make the whole compiler a hostile
+process sandbox: token, syntax-tree and native toolchain work have their
+own costs.
 
-Use descriptive prefixes such as `PlayerVec3` and `CameraShot`. Prefix
-exported procedures too: `metareal_camera_overview` tells you its owner
-at the call site. Do not hand-edit generated headers to resolve a clash.
+Every physical unit is checked with the Coax grammar before composition.
+It must contain complete declarations and balance its own delimiters within
+depth 128. A brace or semicolon in another file cannot complete its procedure
+or constant. Comments and string
+contents never become directives. Unreadable or nonregular source inputs
+report E0601; invalid load syntax is E0600; unbalanced composed units are
+E0604.
 
-There is a second collision to watch for: fixed-array aliases generated
-in separate headers. The current app's bridging header has an explicit
-native compatibility alias for this case. Inspect the generated headers
-and the actual
-[Bridge.h](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-ios/OpenAgents/Platform/Bridge.h)
-before composing independently generated libraries. Namespaced source
-modules and stable cross-module type identity remain future work.
+## Authority belongs to the authored unit
 
-Changing a native struct can require rebuilding every consumer. Keep the
-layout assertions emitted in its header enabled. A protobuf schema's
-compatibility rules cannot validate a C calling convention or a Swift
-imported layout.
+An `#authority` directive applies to procedures authored in that physical
+file. Loading an unmarked utility does not silently mark the utility, and
+loading an authority file does not discard its requirements. Checks from
+another unit can exercise its procedures.
 
-## A small dependency policy
+If any unit is authoritative, ordinary compilation runs the graph's checks
+and verifies actual execution of its authority procedures. Dead references
+and a folded `#run` still do not satisfy execution coverage. Tests remain
+pure; moving a test to another file does not permit native effects in it.
 
-A useful initial dependency graph has four layers:
+`coax test entry.coax` runs checks throughout the graph. Add `--library`
+when a source unit has no program `main` or native exports. `coax mutate`
+mutates reachable code, including dependency helpers reached by the checks;
+its unchecked-procedure gate covers the entry file and authority units.
+An unused non-authority dependency need not be covered by its importer.
+For a reusable dependency, run its own checks and mutation gate separately.
 
-1. Pure domain types and transitions, with checks and no platform calls.
-2. Representation adapters: protocol bytes in and out, with explicit
-   capacities and borrowed storage.
-3. The host: lifecycle, effects, storage and threading.
-4. Presentation: the host draws the state and sends user commands back
-   through the domain transitions.
+This makes Chapter 26's composition possible: a protocol adapter can load
+a pure authority policy without requiring checks to execute every unused
+accessor in a generated descriptor closure. Importing a descriptor directly
+inside the authority unit still places its generated declarations under
+that unit's obligations. Do not remove the directive to avoid those checks.
 
-An arrow from the first layer back into the host deserves scrutiny. If a
-payment decision needs the current time, pass a time value. Do not make
-it ask a hidden clock. If a task needs a network response, pass an event
-when the response arrives. Chapter 23 develops that pattern.
+These are source-level verification rules, not runtime permissions. An
+author can still edit the files and directives. Chapter 25 explains the
+review and trust boundary.
 
-The compiler cannot enforce this architecture yet. Review the imports,
-`#foreign` declarations and build inputs. Reject source cycles by policy
-rather than hoping a future module loader will resolve them. A dependency
-that requires both sides to initialize each other is often two pieces of
-one subsystem, or a missing shared contract.
+## Inspect the inputs and failures
 
-For reproducible builds, record the compiler revision, descriptor bytes,
-source inputs, host compiler and target SDK. Pin external dependencies in
-the host's existing dependency mechanism. `#import_proto` consumes a file;
-it does not fetch a registry or choose a compatible version for you.
+```sh
+coax/bin/coax deps coax/book/examples/ch22_sources.coax
+```
 
-## What counts as the standard library?
+`deps` prints JSON with `schema_version: 1`, an ordered `sources` array of
+canonical source paths and a `descriptors` array of resolved descriptor
+inputs. It checks the program first and exits unsuccessfully for missing
+inputs, cycles or failed authority checks. Descriptor paths are explicit
+inputs; no guessed placeholders are emitted.
 
-Coax does not yet ship a general standard library for collections, files,
-networking or concurrency. The specification's allocator context, modules
-and richer containers are designs, not APIs you can import today.
+This is an input inventory, not a lockfile or cache key. It does not hash
+contents or enumerate native compiler, SDK, linker or environment inputs.
+A reproducible build must record those separately. `#load` and `deps` need
+no Python, external preprocessor or `protoc` process.
 
-Here is the current practical inventory:
+Parser, checker and evaluator diagnostics point at the original physical
+file and line. Mutation reports do too. Native traps in composed C output
+map their joined source lines back to the original unit. Debugger stepping
+still refers to generated C: this is not general Coax-to-debugger source
+mapping.
 
-| Facility | Contract to rely on today |
-| --- | --- |
-| Scalar operators, checked casts, fixed arrays and views | Compiler-defined semantics; see Chapters 3 and 6 |
-| Math intrinsics | Supported argument types are checked by the compiler; native results depend on the target math implementation unless a stronger mode is implemented |
-| `Basic` printing | Host output, unavailable as a compile-time effect; not a structured logging or localization API |
-| Generated protobuf codecs | Caller-owned buffers; borrowed results; capacity and wire errors returned as values; see Chapter 15 and `coax/proto.md` |
-| Files, sockets, audio, clocks, GPU objects | Platform adapters, not Coax standard-library APIs |
-| `coax/lib/compiler/` and `coax/lib/proto/` | Internal source with build and ABI obligations, not a promised stable public library |
+A protobuf import in a loaded file resolves its descriptor beside that
+file. An error in generated declarations points to that import directive.
+Prefixes still share the graph's namespace; `#load` does not make duplicate
+prefixes into separate protocol modules.
 
-When adding a reusable API, document more than its signature. Say whether
-it borrows or copies, who can mutate the backing memory, when a result
-expires, what it allocates, the maximum work it does, and how failure is
-reported. State whether order and output are deterministic across targets.
-For a view-returning parser, those statements are as important as the
-fields in its result.
+## See it in actual builds
 
-A sensible first module system should make these existing boundaries
-expressible rather than obscure them. It needs explicit exports, unique
-type identity, predictable cycle errors, recorded input dependencies and
-diagnostics that retain the original source location. Until it exists,
-small C ABIs and explicit build composition are the working path.
+The compiler's source graph is now
+[compiler.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/compiler/compiler.coax).
+The bootstrap compiles it, then requires the final compiler to regenerate
+the same C. The loader itself is authored in checked Coax, with an explicit
+C/header seed and a zero-survivor mutation gate. Native code reads files,
+resolves filesystem identities and transports storage; it does not provide
+a second load-syntax parser.
+
+The iOS engine's `hud.coax` loads `hud/types.coax`, keeping its native packet
+identity in a shared declaration. The capstone loads the same checked
+request policy used by Chapter 23. The frontend book example also uses a
+source graph instead of shell concatenation.
+
+## Keep source, ABI and protocol identity distinct
+
+A Coax type name identifies a declaration in a compiled source graph. A C
+symbol and header describe a native ABI. A protobuf package, message and
+field number identify interchange across builds. These are different
+contracts.
+
+Independently compiling two `Vec3` declarations still does not make their
+native headers compatible. Use descriptive prefixes for exported structs
+and procedures, preserve generated layout assertions, and inspect the
+actual bridging header when composing independent libraries. Shared source
+solves duplicate declarations within a graph; stable cross-library ABI
+identity and module visibility are separate work.
+
+Keep pure decisions in Coax, representation adapters at protocol
+boundaries, and lifecycle/effects in the host. A useful API documents what
+it borrows, copies or allocates, when a result expires, its work and space
+bounds, failure values and deterministic guarantees.
+
+`Basic` remains the only named built-in module. Math intrinsics, arrays,
+views and generated codecs are available; general collection, allocator,
+file, network and concurrency standard-library modules are not. Internal
+`coax/lib/` folders are authored implementation sources, not promised public
+package APIs. Build the next library from a real consumer and a checked
+contract rather than a name in the specification.

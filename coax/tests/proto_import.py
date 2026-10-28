@@ -299,13 +299,22 @@ main :: () {a:[4] u8;b:[4] u8;
     def test_schema_declaration_characterization(self):
         baseline=json.loads((ROOT/'coax/tests/proto/import-baselines.json').read_text())
         for name,expected in baseline['profiles'].items():
-            descriptor=ROOT/name
+            descriptor=ROOT/expected.get('descriptor_fixture',name)
             self.assertEqual(hashlib.sha256(descriptor.read_bytes()).hexdigest(),expected['descriptor_sha256'],name)
             source=checked([COAX,'proto',descriptor,'--prefix',baseline['prefix']])
             body=source.split(b'// @proto-descriptor-declarations\n',1)[1]
             self.assertEqual(hashlib.sha256(body).hexdigest(),expected['declarations_sha256'],name)
             self.assertNotIn(b'#authority;',source)
             self.assertNotIn(b'@proto-runtime-checks',source)
+
+    def test_current_owned_profile_includes_voice(self):
+        # The legacy parity fixture remains frozen when the live profile grows.
+        # Exercise today's full profile independently instead of blessing a new hash.
+        source=checked([COAX,'proto',ROOT/'proto/descriptors/owned.pb','--prefix','Live'])
+        self.assertTrue(b'Live_FrameFeatures' in source, 'current owned profile lost FrameFeatures')
+        self.assertTrue(b'Live_FrameDecision' in source, 'current owned profile lost FrameDecision')
+        generated=self.d/'live-owned.coax';generated.write_bytes(source)
+        checked([COAX,'check',generated,'--library'])
 
     def test_relocated_compiler_needs_no_interpreter_or_helpers(self):
         isolated=self.d/'standalone';isolated.mkdir()

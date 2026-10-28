@@ -37,7 +37,7 @@ Let's make sure it worked:
 
 ```sh
 $ coax/bin/coax version
-coax0 0.10.0
+coax0 0.11.0
 ```
 
 If you see a version, you're set. The rest of the book writes `coax` for
@@ -93,7 +93,8 @@ Let's go through Listing 1-1 one line at a time.
 Words that start with `#` are *directives*. They're instructions to the
 compiler rather than code that runs when the program does. `#import`
 makes a module's names available in this file. `Basic` is the module
-that provides `print`, and in `coax0` it's the only module there is.
+that provides `print`; it remains the only named built-in module. `#load`
+adds authored source units to a program (Chapter 22).
 Nothing is imported unless you ask for it, so the first lines of a file
 tell you what it depends on.
 

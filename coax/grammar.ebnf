@@ -1,4 +1,4 @@
-(* Coax 0.10.0 accepted subset. Planned language syntax is not in this grammar.
+(* Coax 0.11.0 accepted subset. Planned language syntax is not in this grammar.
    Lexing: ASCII identifiers (excluding reserved keywords); integer tokens in
    decimal/hex/binary with separators, up to the u64 maximum; decimal float
    tokens with a fraction and/or exponent ("1.5", "2e-3"; never "1." so that
@@ -6,7 +6,10 @@
    escaped byte strings; whitespace, line comments and nested block comments.
    A unary minus is a separate token. *)
 
-file = { import | proto-import | procedure | constant | struct | enum | assertion | check | authority } ;
+file = { load | import | proto-import | procedure | constant | struct | enum | assertion | check | authority } ;
+load = "#load", string, ";" ;
+(* Source loads form a bounded acyclic graph; each canonical source loads once.
+   Paths and descriptor imports resolve relative to their declaring source. *)
 import = "#import", string, ";" ;
 proto-import = "#import_proto", string, "as", identifier, ";" ;
 (* Proto imports generate ordinary declarations; see proto.md for supported

@@ -1,9 +1,9 @@
 # Appendix A. Keywords, directives and types
 
 This appendix lists every keyword, directive, intrinsic, literal form and
-type the Coax design names, and says whether `coax0` 0.10.0 accepts it.
+type the Coax design names, and says whether `coax0` 0.11.0 accepts it.
 
-- **works**: implemented and tested in `coax0` 0.10.0.
+- **works**: implemented and tested in `coax0` 0.11.0.
 - **reserved**: the word is reserved, and `coax0` refuses it with "not
   supported by coax0 yet" (E0204 for keywords, E0210 for directives, E0301
   for types) rather than guessing what it means.
@@ -58,7 +58,7 @@ keywords; they're ordinary identifiers that the checker resolves.
 | `#export_c` | After a procedure's signature: give it its own C name and the C calling convention (`coax lib`, `coax header`) | works |
 | `#foreign` | After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool` | works |
 | `#import_proto "file.pb" as Prefix;` | Generate types and bounded codecs from a protobuf descriptor set (CPU code only) | works |
-| `#load` | Add a file to the current module | reserved |
+| `#load "part.coax";` | Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority | works |
 | `#if` | Conditional compilation | reserved |
 | `#insert` `#expand` `#text` `#location` | Typed code and macros | reserved |
 | `#derive(...)` | Generate operations from fields | reserved |

@@ -801,9 +801,9 @@ to the dolly, in `HomeViewController.swift`:
 private func point(_ v: coax_t_Vec3) -> coax_t_Point { coax_t_Point(x: v.x, y: v.y, z: v.z) }
 ```
 
-Until modules arrive and Coax files can share a type, the rule is: an
-exported struct name must be unique across every header one program
-includes.
+`#load` now lets files share one declaration within a source graph
+(Chapter 22). Independently compiled libraries still need exported struct
+names unique across every header one native program includes.
 
 Procedure names have the same problem one level down. If two libraries
 both export `tick`, each header is fine, and the linker refuses:

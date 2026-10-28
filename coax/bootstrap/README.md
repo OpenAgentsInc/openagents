@@ -3,7 +3,8 @@
 `lexer.c` and `lexer.h` are generated from `../lib/compiler/lexer.coax`.
 `parser.c` and `parser.h` are generated from `../lib/compiler/parser.coax`.
 `checker.c` and `checker.h` are generated from `../lib/compiler/checker.coax`.
-These are the only lexer/parser/checker seeds. There is no authored C++ grammar/scanner/type-policy fallback and no
+`sources.c` and `sources.h` are generated from `../lib/compiler/sources.coax`.
+These are the only lexer/parser/checker/source-policy seeds. There is no authored C++ grammar/scanner/type-policy fallback and no
 binary download, Python generator or dependency on an existing coax executable
 in a normal build.
 
@@ -20,6 +21,7 @@ After an intentional frontend change, refresh with an already trusted compiler:
 coax/refresh-lexer-seed.sh /absolute/path/to/trusted/coax
 coax/refresh-parser-seed.sh /absolute/path/to/trusted/coax
 coax/refresh-checker-seed.sh /absolute/path/to/trusted/coax
+coax/refresh-sources-seed.sh /absolute/path/to/trusted/coax
 coax/build.sh test
 ```
 
@@ -102,3 +104,15 @@ integer/rational expectations; typed-record fixtures characterize migration.
 Native IEEE/layout/policy oracles and ASan/UBSan exercise actual emitted C and
 the complete bridge. The compiler suite and clean iOS simulator build remain
 separate consumer gates; mutation coverage is not a proof of soundness.
+
+
+## Source-unit composition
+
+`lib/compiler/compiler.coax` loads the actual authored modules, including the
+source kernel. Stage0 links the checked-in source seed so it can read this
+manifest; the final compiler must reproduce the same combined C and each
+standalone seed. Source syntax, budget/identity decisions and scope policy
+are checked Coax. Native filesystem canonicalization, source transport, native
+traps and evaluator/emitter behavior remain explicit trust boundaries. Scope
+annotations on the internal checker graph are supplied by this source owner,
+not accepted as an untrusted interchange format.

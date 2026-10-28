@@ -72,14 +72,24 @@ struct GeneratedRegion {
   Loc directive;
   std::string prefix;
 };
+struct SourceUnit {
+  std::string path, canonical, text;
+  int32_t begin = 0, end = 0, first_line = 1;
+  bool authority = false;
+};
+struct SourcePoint { std::string path; Loc loc; };
 struct Source {
   std::string path;
   std::string text;
   std::string original_text;
   std::vector<GeneratedRegion> generated;
   std::vector<std::string> import_provenance;
+  std::vector<std::shared_ptr<SourceUnit>> units;
+  std::vector<std::string> descriptor_inputs;
 };
 Loc diagnostic_loc(const Source *src, Loc loc);
+SourcePoint source_point(const Source *src, Loc loc);
+bool source_authority(const Source *src, Loc loc);
 
 // Prints "path:line:col: error[Exxxx]: message", the source line, a caret,
 // and "fix: ..." when there is one; or one JSON object per line with
@@ -267,6 +277,8 @@ struct ProcDecl {
   TypeExpr *ret_expr = nullptr;
   Type ret = &T_VOID;
   Stmt *body = nullptr;
+  bool root_source = true;
+  bool authority = false; // obligation belongs to the authored source unit
   bool export_c = false;
   bool foreign = false;  // #foreign: a C symbol the host provides; no body
 };
@@ -344,7 +356,7 @@ struct File {
   Slice<EnumDecl *> enums;
   Slice<Expr *> assertions;
   Slice<CheckDecl *> checks;
-  bool authority = false;  // #authority: every procedure must be exercised by a check
+  bool authority = false;  // at least one authored unit requires checked execution
   bool library = false;  // set by the driver: no C main, main optional
   bool metal = false;    // checked against the Metal scalar profile
 };

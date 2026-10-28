@@ -1,5 +1,8 @@
+#import_proto "../../../../proto/descriptors/ios-home.pb" as Book;
+#load "../lib/ch23_request_policy.coax";
+
 // Representation only: decoded bytes grant no permission to invoke a HUD action.
-// The request policy is a separate #authority library, never concatenated here.
+// Request policy keeps its own #authority scope in the same source graph.
 
 // Decoder checks run in the evaluator. Writer overlap checks require native memory.
 #test "read independent protobuf bytes" {

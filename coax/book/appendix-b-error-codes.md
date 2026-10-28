@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-This appendix lists every error code `coax0` 0.10.0 can report. The tables
+This appendix lists every error code `coax0` 0.11.0 can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
 compiler's own table from `coax/src/errors.cpp`; when that table changes,
 regenerate this appendix from it rather than editing the rows by hand. In
@@ -24,11 +24,15 @@ The first two digits after the `E` give the stage that reports the error:
 | `E03` | Checker | Chapter 4 |
 | `E04` | Compile-time evaluation and checks | Chapters 9 and 10 |
 | `E05` | Protobuf descriptor imports | Chapter 15 |
+| `E06` | Source-unit composition | Chapter 22 |
 
 Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
 part of the compiler produces each stage's errors. With `--json`, each
 diagnostic is one JSON object per line on stderr, with the fields `file`,
 `line`, `col`, `code`, `message` and `fix`.
+
+
+## E01xx: lexer
 
 
 ## E01xx: lexer
@@ -181,3 +185,8 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0502` | proto descriptor rejected | The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated. |
 | `E0503` | retired in 0.6.0 | Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0. |
 | `E0504` | proto imports are CPU-only | Generated binary codecs are CPU code and cannot be compiled as Metal shaders. |
+| `E0600` | invalid source load | Use #load "part.coax"; at file scope with a nonempty, NUL-free path. Loads are literal source inputs, never compile-time effects. |
+| `E0601` | source unit cannot be read | The resolved source must be a readable regular file. Relative paths are resolved beside the unit containing #load. |
+| `E0602` | source load cycle | A source unit loaded a canonical path that is still active. Break the cycle; completed shared dependencies load only once. |
+| `E0603` | source graph budget exceeded | One compilation admits at most 64 distinct source units, 32 active units, 16 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading. |
+| `E0604` | unbalanced source unit | In a composed program every physical source must balance its own parentheses, brackets and braces within depth 128. Declarations cannot cross a source boundary. |

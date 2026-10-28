@@ -1,0 +1,4 @@
+#import "Basic";
+#load "lib/ch22_numbers.coax";
+#test "a loaded type has one identity" { #assert cells_total(Cell.{value=20},Cell.{value=22})==42; }
+main :: () { print("%\n",cells_total(Cell.{value=20},Cell.{value=22})); }

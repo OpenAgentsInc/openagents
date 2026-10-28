@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.10.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.11.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The lexer, parser and type checker are Coax compiled to C11. The native
@@ -48,6 +48,7 @@ coax/build.sh test
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
+| `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
 | `coax test FILE [--steps N]` | Run every `#test` and `#forall`; print counterexamples |
 | `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails |
@@ -142,6 +143,21 @@ squares :: () -> [8] u16 {
 - **Diagnostics.** Stable codes with locations and fix text, `--json` for
   tools, and `coax explain` for every code. Compile-time failures add call
   site notes.
+
+## Multiple source files
+
+`#load "part.coax";` shares declarations in one source graph. Paths resolve
+beside their declaring file; canonical units load once, active cycles fail,
+and checks/diagnostics retain their physical source ownership. `#authority`
+does not spread to unmarked loaded units. `coax test` and `coax mutate` accept
+`--library` for pure units without a main or C exports.
+
+`coax deps FILE` lists canonical sources in deterministic traversal order and
+resolved descriptor inputs as schema-version-1 JSON. It is a path inventory,
+not a cache key. No Python or external preprocessing is used. The compiler's
+own graph is `lib/compiler/compiler.coax`; the iOS HUD and the book capstone
+are actual consumers. General module visibility and packages remain planned.
+See [Chapter 22](book/ch22-organizing-programs.md) for exact scope and limits.
 
 ## Native libraries and Metal
 

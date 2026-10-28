@@ -41,9 +41,9 @@ contract.
 
 ## Generate the representation adapter
 
-`run.sh` places an explicit `#import_proto` in a temporary source file,
-using the absolute path to the repository's checked-in descriptor. Then
-it appends `workflow.coax`. The example builds with the compiler, host C
+`workflow.coax` imports the checked-in descriptor relative to its own
+location and loads `../lib/ch23_request_policy.coax`. `run.sh` compiles
+that real source graph directly. The example builds with the compiler, host C
 compiler and shell; neither Python nor `protoc` is a build dependency.
 
 The Coax adapter has two exported procedures:
@@ -60,12 +60,12 @@ escapes it either. Its full-width `u64` result is deliberate: a wire
 revision must not silently narrow to the request machine's `u32` epoch.
 
 The representation adapter does not apply a domain authorization policy.
-The request decisions are built as a separate `#authority` library. This
-also avoids a current composition trap: concatenating an authority file
-with an entire generated descriptor closure places that closure under the
-same execution-coverage rule. `coax0` has no module-scoped authority
-boundary that exempts uncalled imported accessors. Keep the pure policy
-library separate rather than deleting its directive to make a build pass.
+The request decisions live in their own `#authority` source unit, loaded
+into the same program. Source-unit authority in 0.11.0 keeps the policy
+checked without marking every generated accessor in the unmarked adapter.
+Both sets of exports share one generated C library and header. Importing
+the descriptor inside the authority unit would still make its generated
+declarations subject to that unit's obligations.
 
 ## Write the checks at the right boundary
 
@@ -81,8 +81,8 @@ fitting capacity, zero and maximum `u32` revisions and malformed input.
 
 Those are different tests with different scopes. The native checks are
 not an excuse to remove the request machine's Coax checks or mutation
-gate. The build runs the decoder checks before generating the libraries,
-and compiling the request library enforces its authority checks.
+gate. The build runs the decoder checks before generating the library,
+and compilation enforces the loaded request policy's authority checks.
 
 ## Perform the effect
 

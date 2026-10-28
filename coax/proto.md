@@ -266,3 +266,11 @@ The native sanitizer suite compares the compiled Coax hash with independent
 `protoc` remains the independent codec interoperability oracle. Python is only
 used in these test/oracle tools, never the bootstrap or an import. Fingerprints
 remain reproducibility evidence, not signatures or authorization.
+
+
+The legacy declaration-characterization suite pins the pre-voice `owned.pb`
+as `tests/proto/legacy-owned.pb` at the recorded reference commit. The live
+owned profile is allowed to add domains; it is generated separately in the
+suite (including voice frame features/decisions). No legacy descriptor or
+expected declaration hash is redefined by that addition. This remains
+compatibility evidence, alongside independent protoc/native correctness tests.

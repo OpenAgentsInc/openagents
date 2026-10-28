@@ -45,7 +45,8 @@
     "proto/descriptors/owned.pb": {
       "descriptor_sha256": "135b068408d94e3da03af8d1086fbffb2a8ea6ce04f34d503f5f3f68015a2539",
       "legacy_source_sha256": "b90bca7c5bcad6e757bd29665eedaf3b1b9d80f7830e614851cbb1ea0d00e34f",
-      "declarations_sha256": "ea0cf1e1adee9d1a79d32e18c586a51075417e5d2119d1421fd7e39f2e250c40"
+      "declarations_sha256": "ea0cf1e1adee9d1a79d32e18c586a51075417e5d2119d1421fd7e39f2e250c40",
+      "descriptor_fixture": "coax/tests/proto/legacy-owned.pb"
     },
     "proto/descriptors/phone-agent.pb": {
       "descriptor_sha256": "05f12e950350c35a8025ef79d6d45fc935939175897dfee48c2e00480febf93f",

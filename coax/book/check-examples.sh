@@ -37,7 +37,7 @@ for src in examples/*.coax; do
 done
 "$COAX" test examples/lib/ch14_glow.coax > "$tmp/checks.log" 2>&1 || { echo "FAIL ch14 checks"; cat "$tmp/checks.log"; fail=1; }
 "$COAX" metal examples/lib/ch14_glow.coax > /dev/null || { echo "FAIL ch14 metal"; fail=1; }
-cat ../lib/compiler/lexer.coax ../lib/compiler/parser.coax examples/ch20_frontend/driver.coax > "$tmp/frontend.coax"
+printf '#load "%s";\n' "$PWD/../lib/compiler/lexer.coax" "$PWD/../lib/compiler/parser.coax" "$PWD/examples/ch20_frontend/driver.coax" > "$tmp/frontend.coax"
 "$COAX" run "$tmp/frontend.coax" > "$tmp/actual" 2>&1
 status=$?
 if [[ $status != 0 ]] || ! cmp -s "$tmp/actual" examples/ch20_frontend/driver.out; then

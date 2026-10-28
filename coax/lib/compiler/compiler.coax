@@ -1,0 +1,7 @@
+// The compiler's authored source graph. No shell concatenation or downloaded modules.
+#load "lexer.coax";
+#load "parser.coax";
+#load "checker.coax";
+#load "sources.coax";
+#load "../proto/fingerprint.coax";
+#load "../proto/importer.coax";
