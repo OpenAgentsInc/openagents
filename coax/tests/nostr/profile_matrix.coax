@@ -1,0 +1,42 @@
+// Explicit inventory maintenance: compile/run this file, or profiles.py --write.
+// This renderer performs output only; policy and all source data live in Coax.
+#load "../../lib/nostr/profiles.coax";
+#import "Basic";
+main :: () {
+  print("{\"schema\":%,\"safe_integer\":%,\"targets\":[\"native-c11\",\"ios-arm64\",\"wasm32\"],", NP_SCHEMA, NP_SAFE_INTEGER);
+  print("\"sources\":[{\"name\":\"official\",\"mask\":1,\"kind\":\"git\",\"pin\":\"%\",\"manifest\":\"nips/upstream-lock.json\"},", NP_OFFICIAL_PIN);
+  print("{\"name\":\"block\",\"mask\":2,\"kind\":\"git\",\"pin\":\"%\",\"manifest\":\"nips/upstream-lock.json\"},", NP_BLOCK_PIN);
+  print("{\"name\":\"openagents\",\"mask\":4,\"kind\":\"sha256-path-nul-bytes-nul\",\"pin\":\"%\",\"manifest\":\"nips/openagents/\"}],", NP_OWNED_DIGEST);
+  print("\"capabilities\":[");
+  for i: 0..<15 {
+    if i > 0 { print(","); }
+    print("{\"bit\":%,\"name\":\"%\"}", cast(u32) 1 << i, NP_CAPABILITY_NAMES[i]);
+  }
+  print("],\"evidence\":[");
+  for i: 0..<3 {
+    if i > 0 { print(","); }
+    print("{\"capability\":%,\"target\":%,\"source\":\"%\",\"checks\":\"%\",\"commit\":\"%\",\"sha256\":\"%\"}", NP_EVIDENCE_CAPABILITY[i], NP_EVIDENCE_TARGET[i], NP_EVIDENCE_SOURCE[i], NP_EVIDENCE_CHECKS[i], NP_EVIDENCE_COMMIT[i], NP_EVIDENCE_SHA256[i]);
+  }
+  print("],\"measure_order\":[");
+  for i: 0..<NP_MEASURES { if i > 0 { print(","); } print("\"%\"", NP_MEASURE_NAMES[i]); }
+  print("],\"consumers\":[");
+  for c: 0..<NP_CONSUMER_COUNT {
+    if c > 0 { print(","); }
+    print("{\"name\":\"%\",\"state\":\"%\",\"limits\":[", np_consumer_name(c), np_consumer_state(c));
+    for f: 0..<NP_MEASURES { if f > 0 { print(","); } print("%", np_limit(c, f)); }
+    print("]}");
+  }
+  print("],\"profiles\":[");
+  for p: 0..<NP_PROFILES {
+    if p > 0 { print(","); }
+    print("{\"name\":\"%\",\"nips\":\"%\",\"optional_nips\":\"%\",\"consumer\":\"%\",\"source_mask\":%,\"required\":%,\"targets\":[", np_name(p), np_nips(p), np_optional(p), np_consumers(p), np_sources(p), np_required(p));
+    for t: 0..<NP_TARGETS {
+      if t > 0 { print(","); }
+      supported := ifx np_can_advertise(p, t, np_required(p)) then "true" else "false";
+      state := ifx np_capabilities(p, t) == 0 then "planned" else "partial";
+      print("{\"target\":%,\"available\":%,\"supported\":%,\"state\":\"%\"}", t, np_capabilities(p, t), supported, state);
+    }
+    print("]}");
+  }
+  print("]}\n");
+}

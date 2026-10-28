@@ -1,0 +1,198 @@
+// Canonical Nostr support/evidence inventory and preflight budgets. A profile
+// is supported only when every required capability is evidenced for its target.
+// Byte/count admission below is not JSON parsing, signature verification or a
+// grant. Inputs must be truthful measurements from the consumer's parser.
+#authority;
+
+NP_PROFILES :: 8;
+NP_TARGETS :: 3; // 0 native C11, 1 iOS arm64, 2 wasm32
+NP_CONSUMER_COUNT :: 3;
+NP_MEASURES :: 12;
+NP_SCHEMA :: 1;
+NP_SAFE_INTEGER :: 9007199254740991;
+NP_OFFICIAL_PIN :: "400d157c53264b8e58c7b3cdbd21ef546fb7a157";
+NP_BLOCK_PIN :: "24a370606044c0c7be787cc2fd98ec0bfe1d606b";
+// SHA-256 of sorted relative path + NUL + bytes + NUL for every file in
+// nips/openagents/. Unlike an upstream branch, this is a local corpus pin.
+NP_OWNED_DIGEST :: "820c5daf961868efe0a16b9ceca09726667c57713f8e711a4ea00a6c387d9a0e";
+NP_CAPABILITY_NAMES :: [15] string.["wire-codec", "json-shape", "event-verify", "event-sign", "encryption", "socket-pipe", "relay-protocol", "nip19", "key-custody", "http-auth", "host-authority", "block-identity", "channel-policy", "agent-privacy", "key-backup"];
+NP_MEASURE_NAMES :: [NP_MEASURES] string.["frame_bytes", "original_json_bytes", "decoded_content_bytes", "raw_string_bytes", "tag_count", "values_per_tag", "depth", "output_bytes", "pending_verification", "stored_events", "stored_bytes", "protobuf_bytes"];
+NP_EVIDENCE_SOURCE :: [3] string.["coax/lib/proto/importer.coax", "coax/lib/nostr/json.coax", "apps/openagents-web/project-live.coax"];
+NP_EVIDENCE_CHECKS :: [3] string.["coax/tests/proto_import.py", "coax/lib/nostr/json.coax", "apps/openagents-web/project-live.coax"];
+NP_EVIDENCE_COMMIT :: [3] string.["8a81dc727e", "2ace224626", "2ace224626"];
+NP_EVIDENCE_SHA256 :: [3] string.["3a9a7e61eab567ae3a3f9dcbe04046962d0c84e9fe9aa74324172f396f2ae432", "3fcb17e95fd242ef68eeb1a6f0db703df5a5d98629c4075722b00dd41033ce42", "171c143b51447bade300c0190236f9e9cda754d4c38c1067fe165ded40be7c41"];
+NP_EVIDENCE_CAPABILITY :: [3] u32.[1, 2, 32];
+NP_EVIDENCE_TARGET :: [3] int.[0, 0, 2];
+
+// Independent axes, not an ordering of trust: codec, JSON shape, verified
+// event, sign, encryption, socket, relay protocol, NIP-19, custody, HTTP auth,
+// HOST authority, Block identity, channel policy, private-agent policy, backup.
+NP_REQUIRED :: [NP_PROFILES] u32.[198, 124, 796, 1028, 2052, 4100, 8212, 16384];
+NP_NATIVE :: [NP_PROFILES] u32.[3, 3, 0, 1, 1, 1, 1, 0];
+NP_WASM :: [NP_PROFILES] u32.[32, 32, 0, 0, 0, 0, 0, 0];
+NP_NAMES :: [NP_PROFILES] string.["core-read", "core-write", "phone-signer", "openagents-host", "block-identity", "block-channel", "agent-private", "key-backup"];
+NP_NIPS :: [NP_PROFILES] string.["official:01,19", "official:01,42,44,59", "official:46,98", "openagents:HOST,REACH,WORK,COORD,CAP,POL,CTX,RUN", "block:OA,AA,FI,FA", "block:CL,DV,CW,AR,IA,WP,GS,MP,PL,RS", "block:AE,AP,AO,AM", "official:49"];
+NP_OPTIONAL :: [NP_PROFILES] string.["official:09,11,40,50,65", "official:17", "official:07", "", "", "", "", "official:49"];
+NP_CONSUMERS :: [NP_PROFILES] string.["project-web,proto-reference", "encrypted-deck,project-publisher", "ios-keychain,web-signin,auth-server", "phone-agent,linux-codex-host", "community-relay,identity-adapter", "channel-client,artifact-store", "agent-memory,observer,usage", "owner-key-export"];
+NP_SOURCE_MASK :: [NP_PROFILES] u32.[1, 5, 1, 4, 3, 3, 3, 1];
+
+// Order: frame, original JSON, decoded content, raw string, tags, values/tag,
+// depth, output, pending verification, stored events, stored bytes, protobuf.
+// Zero means unavailable/not applicable: a nonzero measurement is refused.
+// Consumer 0 is the existing proto reference boundary, 1 the generic JSON
+// reader, 2 a PLANNED project-event pipeline within the shipped socket cap.
+// These maxima describe independent consumer contracts, not universal Nostr.
+NP_LIMITS :: [NP_CONSUMER_COUNT * NP_MEASURES] u64.[
+  0, 524288, 262144, 0, 2048, 64, 64, 1048576, 0, 0, 0, 1048576,
+  0, 1048576, 0, 65536, 0, 0, 16, 1048576, 0, 0, 0, 0,
+  262144, 262144, 65536, 65536, 2000, 16, 16, 262144, 64, 512, 1048576, 0
+];
+NP_CONSUMER_NAMES :: [NP_CONSUMER_COUNT] string.["proto-reference", "json-reader", "project-web"];
+NP_CONSUMER_STATE :: [NP_CONSUMER_COUNT] string.["wire-codec", "json-shape", "planned-event-pipeline"];
+
+np_name :: (profile: int) -> string #export_c {
+  if profile < 0 || profile >= NP_PROFILES { return ""; }
+  return NP_NAMES[profile];
+}
+np_nips :: (profile: int) -> string #export_c {
+  if profile < 0 || profile >= NP_PROFILES { return ""; }
+  return NP_NIPS[profile];
+}
+np_optional :: (profile: int) -> string #export_c {
+  if profile < 0 || profile >= NP_PROFILES { return ""; }
+  return NP_OPTIONAL[profile];
+}
+np_consumers :: (profile: int) -> string #export_c {
+  if profile < 0 || profile >= NP_PROFILES { return ""; }
+  return NP_CONSUMERS[profile];
+}
+np_sources :: (profile: int) -> u32 #export_c {
+  if profile < 0 || profile >= NP_PROFILES { return 0; }
+  return NP_SOURCE_MASK[profile];
+}
+np_required :: (profile: int) -> u32 #export_c {
+  if profile < 0 || profile >= NP_PROFILES { return 0; }
+  return NP_REQUIRED[profile];
+}
+np_capabilities :: (profile: int, target: int) -> u32 #export_c {
+  if profile < 0 || profile >= NP_PROFILES { return 0; }
+  if target == 0 { return NP_NATIVE[profile]; }
+  if target == 2 { return NP_WASM[profile]; }
+  return 0; // No Nostr-specific iOS evidence at this revision.
+}
+np_can_advertise :: (profile: int, target: int, claim: u32) -> bool #export_c {
+  available := np_capabilities(profile, target);
+  return claim != 0 && (claim & available) == claim;
+}
+np_consumer_name :: (consumer: int) -> string #export_c {
+  if consumer < 0 || consumer >= NP_CONSUMER_COUNT { return ""; }
+  return NP_CONSUMER_NAMES[consumer];
+}
+np_consumer_state :: (consumer: int) -> string #export_c {
+  if consumer < 0 || consumer >= NP_CONSUMER_COUNT { return ""; }
+  return NP_CONSUMER_STATE[consumer];
+}
+np_limit :: (consumer: int, field: int) -> u64 #export_c {
+  if consumer < 0 || consumer >= NP_CONSUMER_COUNT || field < 0 || field >= NP_MEASURES { return 0; }
+  return NP_LIMITS[consumer * NP_MEASURES + field];
+}
+np_bounds :: (consumer: int, measured: [] u64) -> bool #export_c {
+  if consumer < 0 || consumer >= NP_CONSUMER_COUNT || measured.count != NP_MEASURES { return false; }
+  for field: 0..<NP_MEASURES { if measured[field] > np_limit(consumer, field) { return false; } }
+  return true;
+}
+// A configurable consumer may narrow a budget, never silently enlarge it or
+// enable an unavailable axis. Required axes remain nonzero. Frame/original,
+// original/content and original/raw-string maxima must describe a valid pipe.
+np_configuration :: (consumer: int, limits: [] u64) -> bool #export_c {
+  if !np_bounds(consumer, limits) { return false; }
+  for field: 0..<NP_MEASURES {
+    if limits[field] == 0 && np_limit(consumer, field) != 0 { return false; }
+  }
+  if limits[2] > limits[1] || limits[3] > limits[1] { return false; }
+  if limits[0] > 0 && limits[1] > limits[0] { return false; }
+  return true;
+}
+np_safe_integer :: (value: int) -> bool #export_c {
+  return value >= -NP_SAFE_INTEGER && value <= NP_SAFE_INTEGER;
+}
+
+#test "canonical registry is partial support, with frozen source/consumer identity" {
+  required := [8] u32.[198, 124, 796, 1028, 2052, 4100, 8212, 16384];
+  native := [8] u32.[3, 3, 0, 1, 1, 1, 1, 0];
+  wasm := [8] u32.[32, 32, 0, 0, 0, 0, 0, 0];
+  sources := [8] u32.[1, 5, 1, 4, 3, 3, 3, 1];
+  for p: 0..<8 {
+    #assert np_name(p) == NP_NAMES[p] && np_nips(p) == NP_NIPS[p];
+    #assert np_optional(p) == NP_OPTIONAL[p] && np_consumers(p) == NP_CONSUMERS[p];
+    #assert np_sources(p) == sources[p] && np_required(p) == required[p];
+    #assert np_capabilities(p, 0) == native[p] && np_capabilities(p, 1) == 0 && np_capabilities(p, 2) == wasm[p];
+    #assert !np_can_advertise(p, 0, required[p]) && !np_can_advertise(p, 2, required[p]);
+    #assert np_capabilities(p, -1) == 0 && np_capabilities(p, 3) == 0;
+  }
+  for bad: [4] int.[-2, -1, 8, 9] {
+    #assert np_name(bad) == "" && np_nips(bad) == "" && np_optional(bad) == "" && np_consumers(bad) == "";
+    #assert np_sources(bad) == 0 && np_required(bad) == 0 && np_capabilities(bad, 0) == 0;
+  }
+  #assert np_consumer_name(0) == "proto-reference" && np_consumer_name(1) == "json-reader" && np_consumer_name(2) == "project-web";
+  #assert np_consumer_state(0) == "wire-codec" && np_consumer_state(1) == "json-shape" && np_consumer_state(2) == "planned-event-pipeline";
+  for bad: [4] int.[-2, -1, 3, 4] { #assert np_consumer_name(bad) == "" && np_consumer_state(bad) == ""; }
+}
+#forall "only nonempty subsets of target-evidenced capabilities can be advertised" p: -1..<9, t: -1..<4, bit: 0..<16 {
+  claim := cast(u32) 1 << bit;
+  expected := cast(u32) 0;
+  if p == 0 || p == 1 { if t == 0 { expected = 3; } if t == 2 { expected = 32; } }
+  if p >= 3 && p <= 6 && t == 0 { expected = 1; }
+  #assert np_can_advertise(p, t, claim) == ((claim & expected) != 0);
+  #assert !np_can_advertise(p, t, 0);
+}
+#test "reference maxima and all disabled axes stay explicit" {
+  expected := [36] u64.[0, 524288, 262144, 0, 2048, 64, 64, 1048576, 0, 0, 0, 1048576, 0, 1048576, 0, 65536, 0, 0, 16, 1048576, 0, 0, 0, 0, 262144, 262144, 65536, 65536, 2000, 16, 16, 262144, 64, 512, 1048576, 0];
+  for c: 0..<3 {
+    values: [12] u64;
+    for f: 0..<12 { values[f] = expected[c * 12 + f]; #assert np_limit(c, f) == values[f]; }
+    #assert np_bounds(c, values[..]) && np_configuration(c, values[..]);
+    #assert np_limit(c, 12) == 0 && np_limit(c, 13) == 0;
+    for f: 0..<12 {
+      old := values[f]; values[f] = 0;
+      #assert np_configuration(c, values[..]) == (old == 0);
+      values[f] = old;
+    }
+    #assert !np_bounds(c, values[0..<11]) && !np_configuration(c, values[0..<11]);
+  }
+  values: [12] u64;
+  #assert !np_bounds(-1, values[..]) && !np_bounds(3, values[..]);
+  #assert !np_configuration(-1, values[..]) && !np_configuration(3, values[..]);
+  #assert np_limit(-1, 0) == 0 && np_limit(3, 0) == 0 && np_limit(0, -1) == 0 && np_limit(0, 12) == 0;
+  for c: 0..<3 { #assert !np_configuration(c, values[..]); }
+  for f: 0..<11 { values[f] = 1; }
+  values[0] = 1; values[1] = 2;
+  #assert !np_configuration(2, values[..]);
+  values[0] = 100; values[1] = 1; values[2] = 2;
+  #assert !np_configuration(2, values[..]);
+  values[2] = 1; values[3] = 2;
+  #assert !np_configuration(2, values[..]);
+  values[0] = 8; values[1] = 8; values[2] = 8; values[3] = 8;
+  #assert np_configuration(2, values[..]);
+  values[0] = 100; values[1] = 8; values[2] = 9; values[3] = 4;
+  #assert !np_configuration(2, values[..]);
+  values[2] = 4; values[3] = 9;
+  #assert !np_configuration(2, values[..]);
+  values[0] = 8; values[1] = 9; values[3] = 4;
+  #assert !np_configuration(2, values[..]);
+}
+#forall "every individual budget admits its edge and refuses edge plus one" c: 0..<3, field: 0..<12 {
+  values: [12] u64;
+  cap := np_limit(c, field);
+  values[field] = cap;
+  #assert np_bounds(c, values[..]);
+  values[field] = cap + 1;
+  #assert !np_bounds(c, values[..]);
+  values[field] = 0;
+  #assert np_bounds(c, values[..]);
+}
+#test "safe integer projection is narrower than the generic JSON integer reader" {
+  for v: [9] int.[-9223372036854775808, -9007199254740993, -9007199254740992, -9007199254740991, 0, 9007199254740991, 9007199254740992, 9007199254740993, 9223372036854775807] {
+    #assert np_safe_integer(v) == (v >= -9007199254740991 && v <= 9007199254740991);
+  }
+}
