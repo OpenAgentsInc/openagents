@@ -360,7 +360,7 @@ verse_haunt_walls :: (s:Haunt,out:[]f32)->int #export_c {
 }
 verse_haunt_ray :: (eye:HauntPoint,at:HauntPoint,x:f32,y:f32,width:f32,height:f32)->HauntPoint #export_c {
  fx:=at.x-eye.x;fy:=at.y-eye.y;fz:=at.z-eye.z;l:=sqrt(fx*fx+fy*fy+fz*fz);fx/=l;fy/=l;fz/=l;
- rl:=sqrt(fx*fx+fz*fz);rx:=-fz/rl;rz:=fx/rl;ux:=-fy*rz;uy:=fz*rx-fx*rz;uz:=fy*rx;
+ rl:=sqrt(fx*fx+fz*fz);rx:=-fz/rl;rz:=fx/rl;ux:=-fy*rz;uy:=rz*fx-rx*fz;uz:=fy*rx;
  px:=(x/width*2-1)*width/height*0.57922;py:=(1-y/height*2)*0.57922;
  dx:=fx+rx*px+ux*py;dy:=fy+uy*py;dz:=fz+rz*px+uz*py;length:=sqrt(dx*dx+dy*dy+dz*dz);return hh_p(dx/length,dy/length,dz/length);
 }
@@ -410,6 +410,20 @@ verse_haunt_view :: (s:Haunt)->Haunt #export_c {next:=s;next.camera=(s.camera+1)
 verse_haunt_edit_mode :: (s:Haunt,active:bool)->Haunt #export_c {next:=s;next.editing=active;if active {next.quest=hh_quest(s.quest,"edit");}next.dirty=true;return next;}
 verse_haunt_select :: (s:Haunt,index:int)->Haunt #export_c {next:=s;if index>=0 && index<s.entity_count{next.selected=index;}else{next.selected=-1;}return next;}
 verse_haunt_door :: (s:Haunt)->int #export_c {best:=-1;score:f32=HH_AIM;for i:0..<s.entity_count {e:=s.entities[i];if e.motion!=5 || hh_len(s.player,e.pos)>=2.5{continue;}a:=hh_aim(s,e.pos);if a>score {score=a;best=i;}}return best;}
+// The zone you're in or nearest within 3 m (-1 none), for editing it.
+verse_haunt_zone_near :: (s:Haunt)->int #export_c {best:=-1;distance:=3.0f32;for i:0..<s.zone_count {z:=s.zones[i];dx:=z.pos.x-s.player.x;dz:=z.pos.z-s.player.z;d:=sqrt(dx*dx+dz*dz)-ifx z.sphere then z.radius else hh_min(z.half.x,z.half.z);if d<distance {distance=d;best=i;}}return best;}
+#test "a click above the middle of the view looks up, right of it looks right" {
+ eye:=hh_p(0,1,0);at:=hh_p(0,1,-1);
+ up:=verse_haunt_ray(eye,at,400,100,800,600);#assert (up.y>0.2);#assert (abs(up.x)<0.001);
+ down:=verse_haunt_ray(eye,at,400,500,800,600);#assert (down.y< -0.2);
+ right:=verse_haunt_ray(eye,at,700,300,800,600);#assert (right.x>0.2);#assert (abs(right.y)<0.001);
+ mid:=verse_haunt_ray(eye,at,400,300,800,600);#assert (mid.z< -0.999);
+}
+#test "the zone to edit is the nearest within three metres" {
+ zs:[2]HauntZone;zs[0].pos=hh_p(0,0,0);zs[0].half=hh_p(1,1,1);zs[1].pos=hh_p(5,0,0);zs[1].sphere=true;zs[1].radius=0.5;
+ s:Haunt;s.zones=zs[..];s.zone_count=2;s.player=hh_p(0.5,0,0);#assert verse_haunt_zone_near(s)==0;
+ s.player=hh_p(4,0,0);#assert verse_haunt_zone_near(s)==1;s.player=hh_p(20,0,0);#assert verse_haunt_zone_near(s)== -1;
+}
 verse_haunt_zone_edit :: (s:Haunt,index:int,op:int,value:f32)->Haunt #export_c {next:=s;if index<0 || index>=s.zone_count{return next;}z:=s.zones[index];if op==0{z.once=!z.once;}if op==1{z.radius=hh_clamp(z.radius+value,0.2,10);z.half=hh_p(hh_clamp(z.half.x+value,0.2,10),z.half.y,hh_clamp(z.half.z+value,0.2,10));}if op==2 {next.fired=next.fired&(0xffffffff^(cast(u32)1<<index));z.entered=false;}next.zones[index]=z;next.dirty=true;return next;}
 
 verse_haunt_save_valid :: (s:Haunt,bytes:[]u8)->bool #export_c {

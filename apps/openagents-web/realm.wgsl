@@ -16,33 +16,37 @@ struct U {
   r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,   // the view: clip = (r0, r1, r2, r3) · world
   eye: vec4f,          // the eye, and how many lights
   flash: vec4f,        // lightning, 0, 0, 0
-  panel: array<vec4f, 8>,   // per panel: x0, y0, x1, y1 (device pixels), then scale, alpha, tint, 0
+  panel: array<vec4f, 56>,  // per plate (realm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
 }
 @group(0) @binding(0) var<uniform> u: U;
 
 fn tone(c: vec3f) -> vec3f { return vec3f(verse_tone(c.r), verse_tone(c.g), verse_tone(c.b)); }
 
-// A HUD panel's dark glass behind its text, in verse_bar's shape (the
-// plain corners, top right and bottom left, cut at 45°): faint scanlines and
-// a glow inside its edge, orange.
-fn glass(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
+// A plate (realm.coax plate): a dark wood fill with one thin bronze line
+// round it and small rounded corners. Look 1 lights the line; 2 (under
+// the mouse or pressed) adds a step lighter fill and the bright line.
+fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   if (s.y <= 0.0) { return under; }
   let half = (r.zw - r.xy) * 0.5;
-  let q = p - (r.xy + half);
-  let inside = -coax_p_cut_distance(-q.x, q.y, half.x, half.y, max(s.x, 1.0));
-  if (inside <= -1.0) { return under; }
-  let tint = vec3f(1.0, 0.55, 0.12);
-  let shade = mix(vec3f(0.04, 0.03, 0.02), vec3f(0.012, 0.012, 0.018), clamp((q.y + half.y) / max(2.0 * half.y, 1.0), 0.0, 1.0));
-  let line = select(0.0, 0.02, fract(p.y / 3.0) < 0.34);
-  let glow = exp(-max(inside, 0.0) / 18.0) * 0.06;
-  let lit = mix(under * 0.3, shade, 0.8) + vec3f(line) + tint * glow;
-  return mix(under, lit, clamp(s.y, 0.0, 1.0) * smoothstep(-0.5, 1.0, inside));
+  let corner = 4.0 * s.x;
+  let q = abs(p - (r.xy + half)) - half + vec2f(corner);
+  let d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - corner;
+  if (d > 1.0) { return under; }
+  let over = s.z >= 2.0;
+  let lit = over || (s.z >= 1.0 && s.z < 2.0);
+  let fill = select(vec3f(0.165, 0.114, 0.078), vec3f(0.235, 0.168, 0.115), over);
+  let line = select(vec3f(0.69, 0.541, 0.29), vec3f(0.86, 0.70, 0.42), lit);
+  let w = 1.25 * s.x;
+  let inside = clamp(0.5 - d, 0.0, 1.0);
+  let edge = clamp(w * 0.5 + 0.5 - abs(d + w * 0.5), 0.0, 1.0);
+  let a = clamp(s.y, 0.0, 1.0);
+  return mix(mix(under, fill, a * inside), line, edge * min(1.0, a + 0.1));
 }
 fn panels(p: vec2f, under: vec3f) -> vec3f {
   var c = under;
-  for (var k = 0; k < 4; k++) {
+  for (var k = 0; k < 28; k++) {
     if (f32(k) >= u.panels) { break; }
-    c = glass(p, c, u.panel[k * 2], u.panel[k * 2 + 1]);
+    c = plate(p, c, u.panel[k * 2], u.panel[k * 2 + 1]);
   }
   return c;
 }

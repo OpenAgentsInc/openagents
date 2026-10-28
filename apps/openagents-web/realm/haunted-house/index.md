@@ -10,8 +10,9 @@ It is the same Coax code the OpenAgents iOS app runs, compiled to WebAssembly an
 
 ## Controls
 
-- Computer: W A S D or the arrow keys walk, drag the mouse to look, Space jumps, Shift runs, E acts on what you face (talks to a person, does the quest's step at its orb, opens a door; in a conversation, E asks for a hint and Escape says goodbye), V changes the view, M opens the map, the wheel zooms (out of first person into third, and back in). B opens edit mode: 1 to 5 place a jack-o'-lantern, a candlestick, a ghost, a spider or a tombstone in front of you; B, Escape or DONE play again.
-- Phone: your left thumb walks, your right thumb looks, a tap jumps. The HUD's buttons (VIEW, MAP, EDIT, EXIT, edit mode's things and the prompt for what you face) take taps.
+- Computer: W A S D or the arrow keys walk, drag the mouse to look, Space jumps, Shift runs, E acts on what you face (talks to a person, does the quest's step at its orb, opens a door; in a conversation, E asks for a hint and Escape says goodbye), V changes the view, M opens the map, the wheel zooms (out of first person into third, and back in). B opens edit mode (the camera steps behind you): 1 to 5 place a jack-o'-lantern, a candlestick, a ghost, a spider or a tombstone in front of you; click a thing to pick it, then the arrows move it across and along your view, R turns it, + and - resize it, Delete removes it, and Escape lets go. With nothing picked, the nearest haunt zone (within three metres) shows: BIGGER, SMALLER, ONCE or ALWAYS, RESET. Z undoes and Y redoes (sixteen steps). B, Escape or DONE play again.
+- Phone: your left thumb walks, your right thumb looks, a tap jumps. The HUD's buttons (VIEW, MAP, EDIT, EXIT, edit mode's things, edits, UNDO and REDO, and the prompt for what you face) take taps; in edit mode a tap on a thing picks it.
+- Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## The quest: Make it yours
 
@@ -19,11 +20,11 @@ Eight steps, one at a time, each at an orange orb (the HUD names the step, and a
 
 ## On the screen
 
-The room you're in, the quest's progress and its step, the house's notices as haunts go off, who or what is near, a conversation, the map and the hotbar. Everything is drawn by Coax: the Verse HUD bar and the Filament stroke font.
+The room you're in, the quest's progress and its step, the house's notices as haunts go off, who or what is near, a conversation, the map and the hotbar. Everything is drawn by Coax in the house's own plain look: each panel and button a dark wood plate with one thin bronze line, its words parchment, in the Filament stroke font.
 
 ## What the iOS app has that the web doesn't yet
 
-Most of editing (picking, moving and removing objects, characters and zones, undo), asking characters typed questions and teaching them, publishing to a server (Save keeps the house in this browser, and the survey answer stays there until the playtest server takes it), importing and switching worlds, realms of your own, and the bloom over bright lights.
+Editing characters and moving zones, asking characters typed questions and teaching them, publishing to a server (Save keeps the house in this browser, and the survey answer stays there until the playtest server takes it), importing and switching worlds, realms of your own, and the bloom over bright lights.
 
 ## Needs
 

@@ -10,22 +10,23 @@
 // face reads this file's intent each frame and hands back what the house
 // says (RealmView).
 //
-// Every panel and button is the Verse HUD bar (ui.coax hud: verse_bar,
-// square brackets on the highlighted corners, cuts on the plain ones), its
-// glass laid behind by realm.wgsl, and all text is Filament (font.coax).
+// Every panel and button is a plate (plate below): a dark wood fill with one
+// thin bronze line round it and rounded corners, drawn behind by realm.wgsl
+// (plate), its words parchment and bronze in Filament (font.coax). The
+// projects pages keep the HUD bar; the house has this, plainer, look.
 
 #load "font.coax";
 #load "ui.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
-PANELS :: 4;
+PLATES :: 28;   // the most plates (panels and buttons) one frame shows
 // width, height, time, fade, still, panels, dpr, 0; the view matrix's four
 // rows; the eye and the light count; the flash, 0, 0, 0; then per panel
-// x0, y0, x1, y1, scale, alpha, tint, 0. The face writes the view, the eye,
+// x0, y0, x1, y1, scale, alpha, look (plate: LOOK_*), 0. The face writes the view, the eye,
 // the lights and the flash (verse_grid_view, verse_haunt_lights).
-UNIFORM_FLOATS :: 64;
 PANEL_AT :: 32;
+UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
 
 MODE_STROKE :: 0.0;    // a sharp core in a soft glow: words, rings
 MODE_LINK :: 1.0;
@@ -97,6 +98,10 @@ RealmView :: struct {
   bearing: f32;         // the orb's angle from where you look, radians (sign: the side)
   editing: bool;        // edit mode
   items: [ITEMS] string; item_n: int;   // what edit mode's hotbar places, slot 1 up
+  selected: string;     // in edit mode, the thing picked ("" none)
+  zone: string;         // in edit mode with nothing picked, the zone nearest ("" none)
+  zone_once: bool;      // it goes off once
+  can_undo: bool; can_redo: bool;
   notice: string;       // the house's notice, while it lasts
   target: string;       // who or what E acts on: a person's name, "Door", or ""
   talking: string;      // the person you're talking to ("" none)
@@ -124,11 +129,21 @@ ASK_GOAL :: 32;        // do the quest's step at its orb
 ASK_SEND :: 64;        // send the survey's answer (typed)
 ASK_EDIT :: 128;       // into or out of edit mode
 ASK_PLACE :: 256;      // place edit mode's item `slot` in front of you
+ASK_PICK :: 512;       // pick what's under (pick_x, pick_y)
+ASK_OP :: 1024;        // an edit, `op` (OP_*)
+
+// Edits (ASK_OP): to the picked thing, to the nearest zone, and undo.
+OP_LEFT :: 0; OP_RIGHT :: 1; OP_AWAY :: 2; OP_NEAR :: 3; OP_TURN :: 4; OP_BIGGER :: 5; OP_SMALLER :: 6; OP_DELETE :: 7;
+OP_ZONE_BIGGER :: 8; OP_ZONE_SMALLER :: 9; OP_ZONE_ONCE :: 10; OP_ZONE_RESET :: 11;
+OP_UNDO :: 12; OP_REDO :: 13; OP_DROP :: 14;   // OP_DROP: let go of the picked thing
 
 // The buttons, drawn and hit in this order.
 BTN_USE :: 0; BTN_VIEW :: 1; BTN_MAP :: 2; BTN_EXIT :: 3; BTN_HINT :: 4; BTN_BYE :: 5;
-BTN_SEND :: 6; BTN_CANCEL :: 7; BTN_EDIT :: 8; BTN_ITEM :: 9;   // then one per item
-BUTTONS :: BTN_ITEM + ITEMS;
+BTN_SEND :: 6; BTN_CANCEL :: 7; BTN_EDIT :: 8; BTN_UNDO :: 9; BTN_REDO :: 10;
+BTN_ITEM :: 11;                        // then one per item
+BTN_OP :: BTN_ITEM + ITEMS;            // then the row for the picked thing or the zone: OPS of them
+OPS :: 8;
+BUTTONS :: BTN_OP + OPS;
 
 HELP_TIME :: 9.0;      // seconds the controls stay written after you first move
 
@@ -145,10 +160,15 @@ Realm :: struct {
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool;     // where each button was last drawn
   typing: bool; typed: [TYPED_MAX] u8; typed_n: int;   // the survey box, open, and its answer
   slot: int;            // the item ASK_PLACE places
+  op: int;              // the edit ASK_OP does
+  pick_x: f32; pick_y: f32;              // where ASK_PICK picks, device pixels
+  down_x: f32; down_y: f32; down_id: int; down_at: f32;   // a press that may be a click or tap
   outbox: [64] u8; out_n: int; action: int;        // the host's: ACT_NAVIGATE and a URL
+  hover: int;           // the button the mouse is over (-1 none)
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;   // this frame's plates
 }
 
-realm_reset :: (r: [] Realm) #export_c { r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; }
+realm_reset :: (r: [] Realm) #export_c { r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; r[0].hover = -1; }
 
 // The survey box: open it (the face does, at the last step's orb), what's
 // typed, and closing it.
@@ -223,11 +243,38 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_SEND && r[0].typed_n > 0 { r[0].asks |= ASK_SEND; }
   if b == BTN_CANCEL { r[0].typing = false; }
   if b >= BTN_ITEM && b < BTN_ITEM + v.item_n { r[0].slot = b - BTN_ITEM; r[0].asks |= ASK_PLACE; }
+  if b == BTN_UNDO { edit_op(r, OP_UNDO); }
+  if b == BTN_REDO { edit_op(r, OP_REDO); }
+  if b >= BTN_OP && b < BTN_OP + OPS {
+    k := b - BTN_OP;
+    if v.selected.count > 0 { edit_op(r, k); }
+    else if v.zone.count > 0 && k < 4 { edit_op(r, OP_ZONE_BIGGER + k); }
+  }
   if b == BTN_EXIT {
     r[0].asks |= ASK_EXIT;
     r[0].out_n = put(r[0].outbox[..], 0, "/");
     r[0].action = ACT_NAVIGATE;
   }
+}
+
+edit_op :: (r: [] Realm, op: int) { r[0].op = op; r[0].asks |= ASK_OP; }
+
+// Edit mode's keys for the picked thing: arrows move it (from where you
+// look), R turns it, + and - resize it, Delete or Backspace removes it; Z
+// undoes and Y redoes any edit. Returns the edit, or -1.
+edit_key :: (v: RealmView, key: int) -> int {
+  if key == 'z' || key == 'Z' { return OP_UNDO; }
+  if key == 'y' || key == 'Y' { return OP_REDO; }
+  if v.selected.count == 0 { return -1; }
+  if key == KEY_LEFT { return OP_LEFT; }
+  if key == KEY_RIGHT { return OP_RIGHT; }
+  if key == KEY_UP { return OP_AWAY; }
+  if key == KEY_DOWN { return OP_NEAR; }
+  if key == 'r' || key == 'R' { return OP_TURN; }
+  if key == '+' || key == '=' { return OP_BIGGER; }
+  if key == '-' || key == '_' { return OP_SMALLER; }
+  if key == KEY_DELETE || key == KEY_BACKSPACE { return OP_DELETE; }
+  return -1;
 }
 
 // A key down (down) or up. Returns whether it was used. A key held down
@@ -253,8 +300,13 @@ realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> boo
   if key == KEY_ESCAPE {
     if v.talking.count > 0 { realm_do(r, v, BTN_BYE); return true; }
     if r[0].map { r[0].map = false; return true; }
+    if v.editing && v.selected.count > 0 { edit_op(r, OP_DROP); return true; }
     if v.editing { realm_do(r, v, BTN_EDIT); return true; }
     return false;
+  }
+  if v.editing {
+    op := edit_key(v, key);
+    if op >= 0 { edit_op(r, op); return true; }
   }
   // Edit mode's hotbar: 1 to 9 place its items.
   if v.editing && key >= '1' && key < '1' + v.item_n {
@@ -280,7 +332,7 @@ realm_key :: (r: [] Realm, v: RealmView, key: int, mods: int, down: bool) -> boo
 }
 
 // The window lost the keyboard: nothing is held any more.
-realm_blur :: (r: [] Realm) #export_c { r[0].held = 0; r[0].looking = false; r[0].press = -1; }
+realm_blur :: (r: [] Realm) #export_c { r[0].held = 0; r[0].looking = false; r[0].press = -1; r[0].hover = -1; }
 
 realm_moved :: (r: [] Realm) { if r[0].moved_at < 0 { r[0].moved_at = r[0].time; } }
 
@@ -300,6 +352,17 @@ button_at :: (r: [] Realm, x: f32, y: f32) -> int {
 // whether it was used here: a finger that isn't on the HUD is the face's,
 // for the thumbs (verse_sticks_world_touch).
 realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  r[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then button_at(r, x, y) else -1;
+  // In edit mode a click or a tap on the world (a short press that hardly
+  // moves) picks what's under it; a drag still looks.
+  if phase == POINTER_DOWN && v.editing && button_at(r, x, y) < 0 { r[0].down_x = x; r[0].down_y = y; r[0].down_id = id; r[0].down_at = r[0].time; }
+  if phase == POINTER_UP && v.editing && id == r[0].down_id && r[0].down_at >= 0 && button_at(r, x, y) < 0 {
+    slop := 8 * r[0].dpr;
+    if abs(x - r[0].down_x) < slop && abs(y - r[0].down_y) < slop && r[0].time - r[0].down_at < 0.4 {
+      r[0].pick_x = x; r[0].pick_y = y; r[0].asks |= ASK_PICK;
+    }
+    r[0].down_at = -1;
+  }
   if phase == POINTER_DOWN {
     r[0].touch = kind != 0;
     b := button_at(r, x, y);
@@ -398,22 +461,35 @@ use_box :: (r: [] Realm, v: RealmView) -> Box {
   cap := 10 * k;
   w := measure(use_label(v), GAP, SPACE, false) * cap + ifx phone(r) then 48 * k else 82 * k;
   bottom := ifx phone(r) then stick_rest_y(r[0].height, k) - STICK * k - 28 * k else slot_box(r, 0).y0 - 22 * k;
-  if v.editing { bottom = item_box(r, 0).y0 - 18 * k; }
+  if v.editing { bottom = op_box(r, 0).y0 - 34 * k; }
   x0 := (r[0].width - w) * 0.5;
   return Box.{x0 = x0, y0 = bottom - 40 * k, x1 = x0 + w, y1 = bottom};
 }
 
-GAP :: 0.62;      // letter gap, in cap heights
+GAP :: 0.5;       // letter gap, in cap heights
 SPACE :: 1.2;     // a space, in cap heights
 
-white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 4 * k, HUD_R, HUD_G, HUD_B); }
-orange :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 4 * k, ORANGE_R, ORANGE_G, ORANGE_B); }
+// ---- the look: change it here. The plate's own colours (the wood fill
+// #2a1d14, a step lighter under the mouse, and the bronze line #b08a4a,
+// brighter when lit or under the mouse) are realm.wgsl plate's.
+PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;   // #e8dcc0, words
+GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;        // bronze, keys and headings
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;   // added: lit and under the mouse is 3
 
-set_panel :: (uniforms: [] f32, i: int, b: Box, k: f32, alpha: f32, tint: f32) {
-  o := PANEL_AT + i * 8;
-  if o + 8 > uniforms.count { return; }
-  uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
-  uniforms[o + 4] = k; uniforms[o + 5] = alpha; uniforms[o + 6] = tint; uniforms[o + 7] = 0;
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+orange :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+
+// A plate behind b this frame: a panel (alpha, how much it hides) or a
+// button (lit, or under the mouse or pressed).
+plate :: (r: [] Realm, b: Box, alpha: f32, look: f32) {
+  n := r[0].plate_n;
+  if n >= PLATES { return; }
+  r[0].plates[n] = b; r[0].plate_alpha[n] = alpha; r[0].plate_look[n] = look; r[0].plate_n = n + 1;
+}
+button_look :: (r: [] Realm, i: int, lit_up: bool) -> f32 {
+  look: f32 = ifx lit_up then LOOK_LIT else LOOK_PLAIN;
+  if r[0].press == i || r[0].hover == i { look += LOOK_HOVER; }
+  return look;
 }
 
 // Text centred on x.
@@ -422,19 +498,21 @@ centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: 
   return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
 }
 
-// A button: the HUD bar, its label and, on a desktop, its key.
+// A button: its plate, its label and, on a desktop, its key.
 hud_button :: (r: [] Realm, out: [] f32, at: int, i: int, b: Box, label: string, key: string, lit_up: bool) -> int {
   k := r[0].dpr; d := r[0].dpr;
   r[0].boxes[i] = b; r[0].shown[i] = true;
-  press := ifx r[0].press == i then 1.0f32 else 0.0f32;
-  red: f32 = ifx lit_up then ORANGE_R else HUD_R; green: f32 = ifx lit_up then ORANGE_G else HUD_G; blue: f32 = ifx lit_up then ORANGE_B else HUD_B;
-  vertices := hud(out, at, b, k, press, 0, ifx lit_up then 1.0f32 else 0.75f32, red, green, blue);
+  plate(r, b, 0.9, button_look(r, i, lit_up));
+  vertices := at;
   cap := 8.5 * k;
   cy := (b.y0 + b.y1) * 0.5 + cap * 0.5;
   if key.count > 0 && !phone(r) {
     vertices = write(d, out, vertices, key, b.x0 + 10 * k, cy, cap, GAP, SPACE, orange(k, 0.9), false, false);
-    w := measure(label, GAP, SPACE, false) * cap;
-    return write(d, out, vertices, label, b.x1 - 10 * k - w, cy, cap, GAP, SPACE, white(k, 0.9), false, false);
+    // the label right-aligned in the room after its key, smaller if it must be
+    room := b.x1 - b.x0 - 26 * k - measure(key, GAP, SPACE, false) * cap;
+    size := lo(cap, room / hi(measure(label, GAP, SPACE, false), 0.001));
+    w := measure(label, GAP, SPACE, false) * size;
+    return write(d, out, vertices, label, b.x1 - 10 * k - w, (b.y0 + b.y1) * 0.5 + size * 0.5, size, GAP, SPACE, white(k, 0.9), false, false);
   }
   fit := lo(cap, (b.x1 - b.x0 - 8 * k) / hi(measure(label, GAP, SPACE, false), 0.001));
   return centred(d, out, vertices, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fit * 0.5, fit, white(k, 0.9));
@@ -451,15 +529,31 @@ quest_text :: (buf: [] u8, quest: int) -> string {
   return cast(string) buf[0..<n];
 }
 
-// Edit mode's hotbar: its items along the bottom middle, then DONE.
+// Edit mode's hotbar: its items along the bottom middle, then UNDO, REDO
+// and DONE (i = ITEMS, ITEMS + 1, ITEMS + 2).
+EDIT_SLOTS :: ITEMS + 3;
 item_box :: (r: [] Realm, i: int) -> Box {
   k := r[0].dpr; m := gutter(r);
-  gap := ifx phone(r) then 5 * k else 10 * k;
-  w := ifx phone(r) then lo(56 * k, (r[0].width - 2 * m - 8 * k - cast(f32) ITEMS * gap) / cast(f32) (ITEMS + 1)) else 96 * k;
+  gap := ifx phone(r) then 4 * k else 10 * k;
+  n := cast(f32) EDIT_SLOTS;
+  w := lo(ifx phone(r) then 56 * k else 104 * k, (r[0].width - 2 * m - 8 * k - (n - 1) * gap) / n);
   h := 40 * k;
-  total := cast(f32) (ITEMS + 1) * w + cast(f32) ITEMS * gap;
+  total := n * w + (n - 1) * gap;
   x0 := (r[0].width - total) * 0.5 + cast(f32) i * (w + gap);
   bottom := ifx phone(r) then stick_rest_y(r[0].height, k) - STICK * k - 18 * k else slot_box(r, 0).y0 - 22 * k;
+  return Box.{x0 = x0, y0 = bottom - h, x1 = x0 + w, y1 = bottom};
+}
+
+// The row for the picked thing or the zone, over edit mode's hotbar.
+op_box :: (r: [] Realm, i: int) -> Box {
+  k := r[0].dpr; m := gutter(r);
+  gap := ifx phone(r) then 4 * k else 10 * k;
+  n := cast(f32) OPS;
+  w := lo(ifx phone(r) then 56 * k else 96 * k, (r[0].width - 2 * m - 8 * k - (n - 1) * gap) / n);
+  h := 36 * k;
+  total := n * w + (n - 1) * gap;
+  x0 := (r[0].width - total) * 0.5 + cast(f32) i * (w + gap);
+  bottom := item_box(r, 0).y0 - 12 * k;
   return Box.{x0 = x0, y0 = bottom - h, x1 = x0 + w, y1 = bottom};
 }
 
@@ -477,17 +571,17 @@ draw_stick :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   for i: 0..<40 {
     a0 := cast(f32) i * 6.2831853 / 40; a1 := cast(f32) (i + 1) * 6.2831853 / 40;
     if lit(out, vertices, ox + cos(a0) * rad, oy + sin(a0) * rad, ox + cos(a1) * rad, oy + sin(a1) * rad,
-           0.6 * k, light, 3 * k, HUD_R, HUD_G, HUD_B, MODE_STROKE) { vertices += 6; }
+           0.6 * k, light, 3 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
   }
-  if v.move_on && tinted_dot(out, vertices, ox + v.pad_x * rad, oy - v.pad_y * rad, 7 * k, 0.8, 6 * k, HUD_R, HUD_G, HUD_B) { vertices += 6; }
+  if v.move_on && tinted_dot(out, vertices, ox + v.pad_x * rad, oy - v.pad_y * rad, 7 * k, 0.8, 6 * k, PARCH_R, PARCH_G, PARCH_B) { vertices += 6; }
   return vertices;
 }
 
 // The house's map: the rooms' outlines, you and the people.
 draw_map :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) -> int {
   k := r[0].dpr; b := realm_map_box(r);
-  set_panel(uniforms, 2, b, k, 0.92, 0);
-  vertices := hud(out, at, b, k, 0, 0, 0.8, HUD_R, HUD_G, HUD_B);
+  plate(r, b, 0.92, LOOK_PLAIN);
+  vertices := at;
   vertices = write(k, out, vertices, "MAP", b.x0 + 14 * k, b.y0 + 22 * k, 9 * k, GAP, SPACE, orange(k, 0.9), false, false);
   // verse_haunt_map lays the house out from the box's top left; centre it.
   x0 := 1e9f32; y0 := 1e9f32; x1 := -1e9f32; y1 := -1e9f32;
@@ -504,10 +598,10 @@ draw_map :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
       light := ifx kind == 0 then 0.75f32 else 0.28f32;
       xs := [5] f32.[x, x + w, x + w, x, x]; ys := [5] f32.[y, y, y + h, y + h, y];
       for e: 0..<4 {
-        if lit(out, vertices, xs[e], ys[e], xs[e + 1], ys[e + 1], 0.5 * k, light, 2 * k, HUD_R, HUD_G, HUD_B, MODE_STROKE) { vertices += 6; }
+        if lit(out, vertices, xs[e], ys[e], xs[e + 1], ys[e + 1], 0.5 * k, light, 2 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
       }
     } else {
-      red: f32 = ifx kind == 2 then HUD_R else ORANGE_R; green: f32 = ifx kind == 2 then HUD_G else ORANGE_G; blue: f32 = ifx kind == 2 then HUD_B else ORANGE_B;
+      red: f32 = ifx kind == 2 then PARCH_R else GOLD_R; green: f32 = ifx kind == 2 then PARCH_G else GOLD_G; blue: f32 = ifx kind == 2 then PARCH_B else GOLD_B;
       if tinted_dot(out, vertices, x + w * 0.5, y + h * 0.5, hi(w, h) * 0.5, 0.95, 5 * k, red, green, blue) { vertices += 6; }
     }
   }
@@ -517,8 +611,8 @@ draw_map :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
 // The conversation: their name, what they said, HINT and BYE.
 draw_talk :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) -> int {
   k := r[0].dpr; b := talk_box(r);
-  set_panel(uniforms, 1, b, k, 0.9, 0);
-  vertices := hud(out, at, b, k, 0, 0, 0.9, ORANGE_R, ORANGE_G, ORANGE_B);
+  plate(r, b, 0.92, LOOK_PLAIN);
+  vertices := at;
   x := b.x0 + 18 * k;
   vertices = write(k, out, vertices, v.talking, x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
   height: [1] f32;
@@ -532,25 +626,51 @@ draw_talk :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32)
   return hud_button(r, out, vertices, BTN_BYE, bye, "BYE", "ESC", false);
 }
 
-// Edit mode: EDITING over the middle, its hotbar with a number key each, DONE.
+OP_LABELS :: [OPS] string.["LEFT", "RIGHT", "AWAY", "NEAR", "TURN", "BIGGER", "SMALLER", "DELETE"];
+ZONE_LABELS :: [4] string.["BIGGER", "SMALLER", "ONCE", "RESET"];
+
+// Edit mode: EDITING over the middle; the picked thing (or the nearest
+// zone) with its edits; the hotbar with a number key each, UNDO, REDO, DONE.
 draw_edit :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   k := r[0].dpr; d := r[0].dpr;
-  vertices := centred(d, out, at, "EDITING", r[0].width * 0.5, top_bottom(r) + 80 * k, 12 * k, orange(k, 0.95));
-  hint := ifx phone(r) then "TAP A THING TO PLACE IT" else "1 TO 5 PLACE IN FRONT OF YOU · B OR ESC TO PLAY";
-  vertices = centred(d, out, vertices, hint, r[0].width * 0.5, top_bottom(r) + 100 * k, 7.5 * k, white(k, 0.7));
+  y := top_bottom(r) + 100 * k;
+  vertices := centred(d, out, at, "EDITING", r[0].width * 0.5, y, 12 * k, orange(k, 0.95));
+  hint := ifx phone(r) then "TAP A THING TO PICK IT · A SLOT PLACES ONE" else "CLICK A THING TO PICK IT · 1 TO 5 PLACE · Z UNDO · B OR ESC TO PLAY";
+  if v.selected.count > 0 && !phone(r) { hint = "ARROWS MOVE IT · R TURNS · + AND - RESIZE · DELETE REMOVES · ESC LETS GO"; }
+  vertices = centred(d, out, vertices, hint, r[0].width * 0.5, y + 20 * k, 7.5 * k, white(k, 0.7));
   buf: [2] u8;
   for i: 0..<v.item_n {
     buf[0] = cast(u8) ('1' + i);
     vertices = hud_button(r, out, vertices, BTN_ITEM + i, item_box(r, i), v.items[i], cast(string) buf[0..<1], false);
   }
-  return hud_button(r, out, vertices, BTN_EDIT, item_box(r, ITEMS), "DONE", "", true);
+  if v.can_undo { vertices = hud_button(r, out, vertices, BTN_UNDO, item_box(r, ITEMS), "UNDO", "Z", false); }
+  if v.can_redo { vertices = hud_button(r, out, vertices, BTN_REDO, item_box(r, ITEMS + 1), "REDO", "Y", false); }
+  vertices = hud_button(r, out, vertices, BTN_EDIT, item_box(r, ITEMS + 2), "DONE", "", true);
+  // what's picked, or the zone, named over its row
+  name := ifx v.selected.count > 0 then v.selected else v.zone;
+  if name.count == 0 { return vertices; }
+  row := op_box(r, 0);
+  label := ifx v.selected.count > 0 then name else "ZONE";
+  if v.selected.count == 0 { row = op_box(r, 2); }
+  vertices = write(d, out, vertices, label, row.x0, row.y0 - 10 * k, 8.5 * k, GAP, SPACE, orange(k, 0.95), false, false);
+  if v.selected.count == 0 {
+    vertices = write(d, out, vertices, v.zone, row.x0 + measure(label, GAP, SPACE, false) * 8.5 * k + 14 * k, row.y0 - 10 * k, 8.5 * k, GAP, SPACE, white(k, 0.9), false, false);
+    for i: 0..<4 {
+      text := ZONE_LABELS[i];
+      if i == 2 { text = ifx v.zone_once then "ONCE" else "ALWAYS"; }
+      vertices = hud_button(r, out, vertices, BTN_OP + i, op_box(r, i + 2), text, "", i == 2 && v.zone_once);
+    }
+    return vertices;
+  }
+  for i: 0..<OPS { vertices = hud_button(r, out, vertices, BTN_OP + i, op_box(r, i), OP_LABELS[i], "", i == OP_DELETE); }
+  return vertices;
 }
 
 // The survey: the question, what's typed with a caret, SEND and CANCEL.
 draw_ask :: (r: [] Realm, out: [] f32, at: int, uniforms: [] f32) -> int {
   k := r[0].dpr; b := ask_box(r);
-  set_panel(uniforms, 1, b, k, 0.92, 0);
-  vertices := hud(out, at, b, k, 0, 0, 0.9, ORANGE_R, ORANGE_G, ORANGE_B);
+  plate(r, b, 0.92, LOOK_PLAIN);
+  vertices := at;
   x := b.x0 + 18 * k;
   vertices = write(k, out, vertices, "TELL US HOW IT WENT", x, b.y0 + 26 * k, 10 * k, GAP, SPACE, orange(k, 0.95), false, false);
   text := realm_typed(r);
@@ -561,7 +681,7 @@ draw_ask :: (r: [] Realm, out: [] f32, at: int, uniforms: [] f32) -> int {
   if sin(r[0].time * 6) > -0.2 {
     cx := x + ifx text.count > 0 then measure(last_line(text), GAP, SPACE, false) * 8.5 * k + 3 * k else 0.0f32;
     cy := b.y0 + 38 * k + hi(used[0] - 17 * k, 0) + 8.5 * k;
-    if lit(out, vertices, cx, cy - 10 * k, cx, cy + 2 * k, 0.6 * k, 0.9, 3 * k, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
+    if lit(out, vertices, cx, cy - 10 * k, cx, cy + 2 * k, 0.6 * k, 0.9, 3 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
   }
   bw := ifx phone(r) then 84 * k else 132 * k; bh := 32 * k;
   y1 := b.y1 - 14 * k;
@@ -582,11 +702,11 @@ draw_way :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   x := ifx side > 0 then r[0].width - 3 * k else 3 * k;
   cy := r[0].height * 0.5;
   vertices := at;
-  if lit(out, vertices, x, cy - 160 * k, x, cy + 160 * k, 1.2 * k, 0.8 * strength, 26 * k, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
+  if lit(out, vertices, x, cy - 160 * k, x, cy + 160 * k, 1.2 * k, 0.8 * strength, 26 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
   for c: 0..<2 {
     tip := x - side * (22 + cast(f32) c * 14) * k; back := tip - side * 10 * k;
-    if lit(out, vertices, back, cy - 12 * k, tip, cy, 0.8 * k, 0.9 * strength, 5 * k, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
-    if lit(out, vertices, tip, cy, back, cy + 12 * k, 0.8 * k, 0.9 * strength, 5 * k, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
+    if lit(out, vertices, back, cy - 12 * k, tip, cy, 0.8 * k, 0.9 * strength, 5 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+    if lit(out, vertices, tip, cy, back, cy + 12 * k, 0.8 * k, 0.9 * strength, 5 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
   }
   return vertices;
 }
@@ -599,9 +719,9 @@ draw_loading :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   vertices = centred(k, out, vertices, "LOADING", cx, cy + 20 * k, 8.5 * k, white(k, 0.6));
   w := lo(220 * k, r[0].width - 2 * gutter(r));
   x0 := cx - w * 0.5; y := cy + 40 * k;
-  if lit(out, vertices, x0, y, x0 + w, y, 0.5 * k, 0.18, 2 * k, HUD_R, HUD_G, HUD_B, MODE_STROKE) { vertices += 6; }
+  if lit(out, vertices, x0, y, x0 + w, y, 0.5 * k, 0.18, 2 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { vertices += 6; }
   f := clamp(v.loaded, 0, 1);
-  if f > 0 && lit(out, vertices, x0, y, x0 + w * f, y, 0.8 * k, 0.95, 5 * k, ORANGE_R, ORANGE_G, ORANGE_B, MODE_STROKE) { vertices += 6; }
+  if f > 0 && lit(out, vertices, x0, y, x0 + w * f, y, 0.8 * k, 0.95, 5 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
   return vertices;
 }
 
@@ -609,20 +729,30 @@ draw_loading :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
 // vertex count.
 realm_draw :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
   if uniforms.count < UNIFORM_FLOATS { return 0; }
+  r[0].plate_n = 0;
+  n := realm_hud(r, v, out, uniforms, width, height, dpr, dt);
+  uniforms[5] = cast(f32) r[0].plate_n;
+  for i: 0..<r[0].plate_n {
+    o := PANEL_AT + i * 8; b := r[0].plates[i];
+    uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+    uniforms[o + 4] = r[0].dpr; uniforms[o + 5] = r[0].plate_alpha[i]; uniforms[o + 6] = r[0].plate_look[i]; uniforms[o + 7] = 0;
+  }
+  return n;
+}
+realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
   r[0].width = width; r[0].height = height; r[0].dpr = hi(dpr, 0.5);
   r[0].time += clamp(dt, 0, 0.1);
   for i: 0..<BUTTONS { r[0].shown[i] = false; }
   for i: PANEL_AT..<UNIFORM_FLOATS { uniforms[i] = 0; }
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = r[0].time; uniforms[3] = 1;
-  uniforms[4] = 0; uniforms[5] = PANELS; uniforms[6] = r[0].dpr; uniforms[7] = 0;
+  uniforms[4] = 0; uniforms[5] = 0; uniforms[6] = r[0].dpr; uniforms[7] = 0;
   if !v.ready { return draw_loading(r, v, out, 0); }
   k := r[0].dpr; d := r[0].dpr;
   vertices := 0;
 
   // the room you're in and the quest
   t := title_box(r);
-  set_panel(uniforms, 0, t, k, 0.78, 0);
-  vertices = hud(out, vertices, t, k, 0, 0, 0.85, HUD_R, HUD_G, HUD_B);
+  plate(r, t, 0.88, LOOK_PLAIN);
   room := ifx v.title.count > 0 then v.title else "HAUNTED HOUSE";
   vertices = draw_fit(d, out, vertices, room, t.x0 + 14 * k, t.y0 + 22 * k, 10.5 * k, GAP, SPACE, white(k, 0.95), t.x1 - t.x0 - 28 * k);
   buf: [48] u8;
@@ -651,15 +781,15 @@ realm_draw :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: 
   }
 
   if v.quest > 0 && v.quest < QUEST_STEPS && v.goal.count == 0 && abs(v.bearing) > 0.55 { vertices = draw_way(r, v, out, vertices); }
-  if v.editing { vertices = draw_edit(r, v, out, vertices); }
+  // the map before edit mode's rows, so their plates lie over it
   if r[0].map { vertices = draw_map(r, v, out, vertices, uniforms); }
+  if v.editing { vertices = draw_edit(r, v, out, vertices); }
   if r[0].typing { vertices = draw_ask(r, out, vertices, uniforms); }
   else if v.talking.count > 0 { vertices = draw_talk(r, v, out, vertices, uniforms); }
   else if use_label(v).count > 0 {
     b := use_box(r, v);
     r[0].boxes[BTN_USE] = b; r[0].shown[BTN_USE] = true;
-    press := ifx r[0].press == BTN_USE then 1.0f32 else 0.0f32;
-    vertices = hud(out, vertices, b, k, press, 0, 1, ORANGE_R, ORANGE_G, ORANGE_B);
+    plate(r, b, 0.9, button_look(r, BTN_USE, true));
     cap := 10 * k; cy := (b.y0 + b.y1) * 0.5 + cap * 0.5;
     if phone(r) { vertices = centred(d, out, vertices, use_label(v), (b.x0 + b.x1) * 0.5, cy, cap, white(k, 0.95)); }
     else {
@@ -780,7 +910,8 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   for i: 0..<n { #assert out[i * VERTEX_FLOATS] > -100 && out[i * VERTEX_FLOATS] < 1270; }
   buf: [48] u8; t2 := title_box(r[..]);
   #assert measure(quest_text(buf[..], 8), GAP, SPACE, false) * 7.5 * 3 < t2.x1 - t2.x0 - 28 * 3;
-  #assert item_box(r[..], 0).x0 >= 48 && item_box(r[..], ITEMS).x1 <= 1170 - 48;
+  #assert item_box(r[..], 0).x0 >= 48 && item_box(r[..], EDIT_SLOTS - 1).x1 <= 1170 - 48;
+  #assert op_box(r[..], 0).x0 >= 48 && op_box(r[..], OPS - 1).x1 <= 1170 - 48 && op_box(r[..], 0).y1 < item_box(r[..], 0).y0;
   #assert measure("RIGHT THUMB LOOKS · TAP TO JUMP", GAP, SPACE, false) * 7.5 * 3 < 1170 - 96;
 }
 
@@ -803,7 +934,31 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   m := realm_map_box(r[..]);
-  #assert n > 0 && m.x1 - m.x0 > 400 && m.y1 <= slot_box(r[..], 0).y0 && u[PANEL_AT + 16 + 5] > 0;
+  #assert n > 0 && m.x1 - m.x0 > 400 && m.y1 <= slot_box(r[..], 0).y0 && plated(u[..], m) == LOOK_PLAIN;
+}
+
+// The look of the plate the frame laid over b (-1 if none did).
+plated :: (u: [] f32, b: Box) -> f32 {
+  for i: 0..<cast(int) u[5] {
+    o := PANEL_AT + i * 8;
+    if u[o] == b.x0 && u[o + 1] == b.y0 && u[o + 2] == b.x1 && u[o + 3] == b.y1 && u[o + 5] > 0 { return u[o + 6]; }
+  }
+  return -1;
+}
+
+#test "every button is a plate: lit when on, a step brighter under the mouse" {
+  r: [1] Realm; desk(r[..]); v := view(); v.editing = true;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert plated(u[..], slot_box(r[..], 0)) == LOOK_PLAIN && plated(u[..], slot_box(r[..], 2)) == LOOK_LIT;
+  #assert plated(u[..], item_box(r[..], ITEMS + 2)) == LOOK_LIT && plated(u[..], title_box(r[..])) == LOOK_PLAIN;
+  b := slot_box(r[..], 1);
+  over := realm_pointer(r[..], v, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_MOVE, 0, 1);
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert plated(u[..], b) == LOOK_HOVER && plated(u[..], slot_box(r[..], 2)) == LOOK_LIT;
+  over = realm_pointer(r[..], v, 5, 5, POINTER_MOVE, 0, 1);
+  _ = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert plated(u[..], b) == LOOK_PLAIN && cast(int) u[5] <= PLATES;
 }
 
 #test "the quest: its progress in the title, and E at the orb does the step" {
@@ -866,4 +1021,39 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   realm_ask_text(r[..]);
   _ = realm_key(r[..], v, KEY_ENTER, 0, true);
   #assert realm_take(r[..]) == 0;                 // nothing typed: nothing sent
+}
+
+#test "edit mode: a click picks, a drag looks; keys and buttons edit the picked thing, the zone, undo" {
+  r: [1] Realm; desk(r[..]); v := view(); v.editing = true; v.item_n = 2; v.items[0] = "JACK"; v.items[1] = "CANDLE";
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  d0 := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  p1 := realm_pointer(r[..], v, 700, 400, POINTER_DOWN, 0, 1);
+  p2 := realm_pointer(r[..], v, 702, 401, POINTER_UP, 0, 1);
+  #assert realm_take(r[..]) == ASK_PICK && r[0].pick_x == 702;
+  p3 := realm_pointer(r[..], v, 700, 400, POINTER_DOWN, 0, 1);
+  p4 := realm_pointer(r[..], v, 760, 400, POINTER_MOVE, 0, 1);
+  p5 := realm_pointer(r[..], v, 760, 400, POINTER_UP, 0, 1);
+  #assert realm_take(r[..]) == 0 && r[0].dyaw != 0;   // a drag: looked, not picked
+  #assert realm_key(r[..], v, 'z', 0, true) && realm_take(r[..]) == ASK_OP && r[0].op == OP_UNDO;
+  k1 := realm_key(r[..], v, KEY_LEFT, 0, true);
+  #assert realm_take(r[..]) == 0 && r[0].held & HOLD_LEFT != 0;   // nothing picked: arrows walk
+  realm_blur(r[..]);
+  v.selected = "Ghost";
+  k2 := realm_key(r[..], v, KEY_LEFT, 0, true);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_LEFT && r[0].held == 0;
+  k3 := realm_key(r[..], v, KEY_DELETE, 0, true);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_DELETE;
+  k4 := realm_key(r[..], v, KEY_ESCAPE, 0, true);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_DROP;   // Escape lets go first
+  d1 := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  b := op_box(r[..], OP_TURN);
+  p6 := realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_DOWN, 0, 1);
+  p7 := realm_pointer(r[..], v, b.x0 + 4, b.y0 + 4, POINTER_UP, 0, 1);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_TURN;
+  v.selected = ""; v.zone = "Potion shelves";
+  d2 := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  z := op_box(r[..], 4);
+  p8 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_DOWN, 0, 1);
+  p9 := realm_pointer(r[..], v, z.x0 + 4, z.y0 + 4, POINTER_UP, 0, 1);
+  #assert realm_take(r[..]) == ASK_OP && r[0].op == OP_ZONE_ONCE && !r[0].shown[BTN_OP + 4];
 }

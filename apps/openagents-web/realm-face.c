@@ -65,6 +65,17 @@ static uint32_t sounds_n;
 // Kept in this browser: the save's bytes (strings of a restored house point
 // into them, so they stay), the hex the host keeps, and its scratch.
 static uint8_t saved[131072], scratch[131072], restored[131072];
+// Undo: the house before each edit (HauntAssets.remember), and two live
+// buffers a restored house's strings point into, used in turn so the one
+// the house reads is never written.
+#define HISTORY 16
+#define SNAP 32768
+static uint8_t history[HISTORY][SNAP];
+static uint32_t history_len[HISTORY];
+static int history_n, history_at;
+static uint8_t live[2][SNAP];
+static int live_k;
+static int64_t edit_camera;   // the view before edit mode (it shows you in third person)
 static char kept[262144];
 static uint32_t kept_n;            // hex waiting for the house to open (0 none)
 static uint32_t keep_n;            // hex in `kept` for the host to keep now
@@ -182,6 +193,90 @@ static void use_nearby(void) {
   if (door >= 0) { house = verse_haunt_edit(house, door, 9, 0); rebuild_walls(); }
 }
 
+// Undo and redo (HauntAssets.remember, undo, redo), on saves of the house.
+static bool snapshot(int k) {
+  int64_t n = verse_haunt_save(house, (coax_v_u8){history[k], SNAP}, (coax_v_u8){scratch, sizeof scratch});
+  history_len[k] = n > 0 ? (uint32_t)n : 0;
+  return n > 0;
+}
+static void remember(void) {
+  if (history_at == HISTORY) {   // full: the oldest goes
+    memmove(history[0], history[1], sizeof history[0] * (HISTORY - 1));
+    memmove(history_len, history_len + 1, sizeof history_len[0] * (HISTORY - 1));
+    history_at--;
+  }
+  history_n = history_at;
+  if (snapshot(history_n)) history_n = ++history_at;
+}
+static void back_to(int k) {
+  int64_t selected = house.selected, camera = house.camera, quest = house.quest;
+  bool editing = house.editing;
+  live_k ^= 1;
+  memcpy(live[live_k], history[k], history_len[k]);
+  house = verse_haunt_restore(house, (coax_v_u8){live[live_k], history_len[k]});
+  // An undo never takes back a step of the quest.
+  house.editing = editing; house.camera = camera; house.dirty = true;
+  if (house.quest < quest) house.quest = quest;
+  house.selected = selected < house.entity_count ? selected : -1;
+  rebuild_walls();
+}
+static void undo(void) {
+  if (history_at == 0) return;
+  if (history_at == history_n) { if (history_n == HISTORY || !snapshot(history_n)) return; history_n++; }
+  back_to(--history_at);
+}
+static void redo(void) {
+  if (history_at + 1 >= history_n) return;
+  back_to(++history_at);
+}
+
+// Into or out of edit mode: it shows you in third person, and lets go of
+// what's picked when it ends.
+static void set_editing(bool on) {
+  if (on == house.editing) return;
+  house = verse_haunt_edit_mode(house, on);
+  if (on) { edit_camera = house.camera; house.camera = 1; player.phi = 1.107f; }
+  else { house.camera = edit_camera; player.phi = house.camera == 0 ? 1.5707963f : 1.107f; house.selected = -1; }
+}
+
+// Picks what's under (x, y) on the screen, in edit mode.
+static void pick(float x, float y) {
+  coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
+  coax_t_HauntPoint ray = verse_haunt_ray(point(eye), point(at), x, y, width, height);
+  house = verse_haunt_select(house, verse_haunt_pick(house, point(eye), ray));
+}
+
+// An edit (realm.coax OP_*) to the picked thing or the nearest zone.
+static void edit_op(int64_t op) {
+  if (op == 12) { undo(); return; }
+  if (op == 13) { redo(); return; }
+  if (op == 14) { house.selected = -1; return; }
+  if (op >= 8 && op <= 11) {
+    int64_t z = verse_haunt_zone_near(house);
+    if (z < 0) return;
+    remember();
+    static const int64_t zone_op[4] = {1, 1, 0, 2};
+    house = verse_haunt_zone_edit(house, z, zone_op[op - 8], op == 8 ? 0.25f : op == 9 ? -0.25f : 0);
+    return;
+  }
+  int64_t i = house.selected;
+  if (i < 0 || i >= house.entity_count) return;
+  remember();
+  // Moves go from where you look: left and right across the view, away and near along it.
+  float h = house.heading, fx = -sinf(h), fz = -cosf(h), step = 0.25f;
+  float dx = op == 0 ? fz : op == 1 ? -fz : op == 2 ? fx : op == 3 ? -fx : 0;
+  float dz = op == 0 ? -fx : op == 1 ? fx : op == 2 ? fz : op == 3 ? -fz : 0;
+  if (op <= 3) {
+    if (dx != 0) house = verse_haunt_edit(house, i, 0, dx * step);
+    if (dz != 0) house = verse_haunt_edit(house, i, 2, dz * step);
+  }
+  if (op == 4) house = verse_haunt_edit(house, i, 3, 0.7853982f);
+  if (op == 5) house = verse_haunt_edit(house, i, 4, 1.2f);
+  if (op == 6) house = verse_haunt_edit(house, i, 4, 1 / 1.2f);
+  if (op == 7) { house = verse_haunt_edit(house, i, 7, 0); house.selected = -1; }
+  rebuild_walls();
+}
+
 // Copies the house's link (the host's action 2).
 static void copy_link(void) {
   memcpy(realm.outbox.e, LINK, sizeof LINK - 1);
@@ -205,8 +300,8 @@ static void place(int64_t slot) {
 static void do_goal(void) {
   if (!verse_haunt_at_goal(house)) return;
   switch (house.quest) {
-  case 1: house = verse_haunt_edit_mode(house, true); break;
-  case 2: place(0); break;
+  case 1: set_editing(true); break;
+  case 2: remember(); place(0); break;
   case 3: house = verse_haunt_quest(house, text("publish")); keep(true); toast("Saved in this browser"); break;
   case 4: copy_link(); house = verse_haunt_quest(house, text("share")); toast("Link copied"); break;
   case 5: house = verse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
@@ -230,8 +325,10 @@ static void take_asks(void) {
   int64_t asks = realm_take(realm_of());
   if (asks & 32) do_goal();
   if (asks & 64) send_feedback();
-  if (asks & 128) house = verse_haunt_edit_mode(house, !house.editing);
-  if (asks & 256) place(realm.slot);
+  if (asks & 128) set_editing(!house.editing);
+  if ((asks & 256) && house.editing) { remember(); place(realm.slot); }
+  if ((asks & 512) && house.editing) pick(realm.pick_x, realm.pick_y);
+  if ((asks & 1024) && house.editing) edit_op(realm.op);
   if (asks & 1) use_nearby();
   if (asks & 2) { house = verse_haunt_view(house); player.phi = house.camera == 0 ? 1.5707963f : 1.107f; }
   if ((asks & 4) && house.talking >= 0) house = verse_haunt_talk(house, house.talking, 1);
@@ -297,6 +394,14 @@ static void describe(void) {
     v.editing = house.editing;
     v.item_n = 0;
     for (int i = 0; i < 5; i++) if (item_mesh[i] >= 0) v.items.e[v.item_n++] = text(items[i].label);
+    bool picked = house.editing && house.selected >= 0 && house.selected < house.entity_count;
+    v.selected = picked ? entities[house.selected].name : (coax_string){"", 0};
+    if (picked && v.selected.count == 0) v.selected = text("Thing");
+    int64_t zone = house.editing && !picked ? verse_haunt_zone_near(house) : -1;
+    v.zone = zone >= 0 ? zones[zone].name : (coax_string){"", 0};
+    v.zone_once = zone >= 0 && zones[zone].once;
+    v.can_undo = history_at > 0;
+    v.can_redo = history_at + 1 < history_n;
     v.notice = now < house.toast_until ? house.toast : (coax_string){"", 0};
     int64_t person = verse_haunt_near(house), door = verse_haunt_door(house);
     v.target = person >= 0 ? people[person].name : !goal && door >= 0 ? (coax_string){"Door", 4} : (coax_string){"", 0};
