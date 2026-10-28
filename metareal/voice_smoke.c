@@ -399,7 +399,12 @@ static void wav(const char *path) {
     memcpy(pcm, data + (size_t)k * n * 2, n * 2);
     oa_voice_features f;
     uint32_t ev = oa_voice_uplink(v, pcm, NULL, &f);
-    if (ev & OA_EV_TURN_START) printf("    %6.2f s  turn start (speech %.2f, %.1f dBFS over %.1f)\n", k * 0.02, f.speech, f.rms_db, f.noise_db);
+    if (ev & OA_EV_TURN_START) {
+      int16_t pre[OA_VOICE_PREROLL_SAMPLES];
+      uint32_t got = oa_voice_preroll(v, pre, OA_VOICE_PREROLL_SAMPLES);
+      printf("    %6.2f s  turn start (speech %.2f, %.1f dBFS over %.1f)\n", k * 0.02, f.speech, f.rms_db, f.noise_db);
+      printf("    onset %u ms: audio sent from %u ms (%u ms pre-roll)\n", k * 20, k * 20 - got / 16, got / 16);
+    }
     if (ev & OA_EV_DECISION) {
       oa_voice_decision d;
       if (oa_voice_last_decision(v, &d)) printf("    %6.2f s  decision action %u\n", k * 0.02, d.action);

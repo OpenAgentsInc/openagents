@@ -369,12 +369,14 @@ uint32_t oa_voice_input_frame_samples(const oa_voice *v);
 uint32_t oa_voice_uplink(oa_voice *v, const int16_t *pcm, int16_t *out16k, oa_voice_features *f);
 
 /* Pre-roll: on the frame that returned OA_EV_TURN_START, the 16 kHz audio of
- * the frames just before it (the speech onset that preceded the decision,
- * plus one leading frame), oldest first. Send it before that frame's audio
+ * the frames just before it, from the first frame that rose above the
+ * noise floor in the onset that was confirmed, plus one leading frame,
+ * oldest first. Send it before that frame's audio
  * so recognition hears the first syllable. Copies up to cap samples, returns
  * the count (a multiple of OA_VOICE_FRAME_SAMPLES, at most
  * OA_VOICE_PREROLL_SAMPLES). Valid until the next oa_voice_uplink. */
-#define OA_VOICE_PREROLL_SAMPLES 5120 /* 16 frames, 320 ms */
+#define OA_VOICE_PREROLL_SAMPLES 10240 /* 32 frames, 640 ms (was 5120: a smaller cap
+                                         * still works, it only clips the onset) */
 uint32_t oa_voice_preroll(const oa_voice *v, int16_t *out16k, uint32_t cap);
 
 /* Downlink: reply audio about to play, any length n at `rate`. Applies the

@@ -35,6 +35,13 @@ cflags=(-std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fn
   metareal/platform/voice.c metareal/voice_smoke.c "$work"/e.o "$work"/w.o "$work"/f.o "$work"/m.o -lm -o "$work/smoke"
 mkdir -p "$work/frames"
 "$work/smoke" --frames "$work/frames" "$@"
+# Regression: in garden-pause.wav speech begins at 300 ms ("Let's take ...").
+# The first audio sent (TURN_START minus pre-roll) must be at or before 320 ms.
+first=$("$work/smoke" metareal/voice-host/fixtures/garden-pause.wav | awk '/audio sent from/ {print $7; exit}')
+if [[ -z "$first" || "$first" -gt 320 ]]; then
+  echo "garden-pause.wav: first audio sent at ${first:-none} ms, want <= 320" >&2; exit 1
+fi
+echo "garden-pause.wav: first audio sent at $first ms (speech begins at 300)"
 if command -v protoc >/dev/null; then
   for k in 1 2 3 4 5 6 7 8 9 10 11; do
     protoc -I proto --decode=openagents.voice.v1alpha1.Frame proto/openagents/voice/v1alpha1/voice.proto \

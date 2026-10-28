@@ -17,7 +17,9 @@ FRAME :: 320;            // samples in a 20 ms frame at 16 kHz
 FRAME_MS :: 20;
 MAX_IN :: 960;           // samples in a 20 ms frame at 48 kHz
 HIST :: 128;             // resampler history, input samples
-PREROLL :: 16;           // frames of pre-roll kept for a turn's onset
+PREROLL :: 32;           // frames of pre-roll kept for a turn's onset (640 ms)
+ONSET_GAP :: 2;          // quiet frames an onset may contain and still count
+ONSET_SPAN :: 25;        // frames an onset may take to confirm (500 ms)
 JSLOTS :: 16;            // jitter buffer packets
 JMAX :: 4800;            // samples in one jitter packet (200 ms at 24 kHz)
 TAIL :: 160;             // samples of the last packet kept for concealment
@@ -107,7 +109,9 @@ VoiceDecision :: struct {
 
 Turn :: struct {
   state: u32 = TURN_IDLE;
-  run: u32;          // consecutive speech frames while idle
+  run: u32;          // speech frames in the onset being confirmed
+  gap: u32;          // consecutive quiet frames inside that onset
+  cand: u32;         // frames since the onset rose above the floor
   speech_ms: u32;
   silence_ms: u32;
   turn_ms: u32;
@@ -437,7 +441,10 @@ noise_next :: (noise: f32, rms: f32, speaking: bool) -> f32 {
 speech_likelihood :: (rms: f32, noise: f32, zcr: f32) -> f32 {
   p_snr := sigmoid((rms - noise - 10.0) / 2.0);
   p_abs := sigmoid((rms + 50.0) / 3.0);
-  p_z := ifx zcr <= 0.3 then 1.0 else hi32(0.2, 1.0 - (zcr - 0.3) * 2.5);
+  // High zero crossings mean noise, unless the frame stands far above the
+  // floor: then it is an unvoiced consonant (the s of "Let's"), which is speech.
+  voiced := ifx zcr <= 0.3 then 1.0 else hi32(0.2, 1.0 - (zcr - 0.3) * 2.5);
+  p_z := hi32(voiced, sigmoid((rms - noise - 20.0) / 3.0));
   return clampf(p_snr * p_abs * p_z, 0.0, 1.0);
 }
 
@@ -470,13 +477,26 @@ speech_likelihood :: (rms: f32, noise: f32, zcr: f32) -> f32 {
 
 // One frame of the turn machine. `speech`: this frame is speech. `end_now`:
 // an END_TURN decision applies to this frame.
-turn_step :: (t0: Turn, speech: bool, p: f32, end_now: bool, end_silence: u32, min_speech: u32, max_turn: u32) -> TurnOut {
+turn_step :: (t0: Turn, speech: bool, above: bool, p: f32, end_now: bool, end_silence: u32, min_speech: u32, max_turn: u32) -> TurnOut {
   o: TurnOut;
   o.t = t0;
   if o.t.state == TURN_ENDED { o.t = Turn.{turn_ms = t0.turn_ms}; }
   if o.t.state == TURN_IDLE {
-    if !speech { o.t.run = 0; return o; }
-    o.t.run = addsat(o.t.run, 1);
+    // An onset starts at the first frame above the floor and is confirmed
+    // by min_speech of speech frames; up to ONSET_GAP quiet frames in a row
+    // (stops, the closure before a consonant) don't break it, and it must
+    // confirm within ONSET_SPAN frames.
+    if !speech && !above {
+      if o.t.cand == 0 { return o; }
+      o.t.gap = addsat(o.t.gap, 1);
+      o.t.cand = addsat(o.t.cand, 1);
+      if o.t.gap > ONSET_GAP { o.t = Turn.{turn_ms = o.t.turn_ms}; }
+      return o;
+    }
+    o.t.cand = addsat(o.t.cand, 1);
+    o.t.gap = 0;
+    if speech { o.t.run = addsat(o.t.run, 1); }
+    if o.t.cand > ONSET_SPAN { o.t = Turn.{turn_ms = o.t.turn_ms, run = ifx speech then 1 else 0, cand = 1}; }
     if o.t.run * FRAME_MS < min_speech { return o; }
     o.t.state = TURN_SPEAKING;
     o.t.speech_ms = o.t.run * FRAME_MS;
@@ -510,63 +530,95 @@ turn_step :: (t0: Turn, speech: bool, p: f32, end_now: bool, end_silence: u32, m
 }
 
 // Every 12-frame speech pattern, with a 3-frame minimum, a 3-frame end and a
-// 10-frame cap: starts and ends pair up, a start needs the minimum run of
-// speech, an end needs the silence or the cap, and only turn frames forward.
+// 10-frame cap: starts and ends pair up; a start needs 3 speech frames since
+// the onset began, where more than 2 quiet frames in a row (or a turn's end)
+// begin a new onset; an end needs the silence or the cap; only turn frames
+// forward.
 #forall "turn machine" pattern: 0..<4096 {
   t: Turn;
   open := false;
-  run := 0;
+  count := 0;
   quiet := 0;
   frames := 0;
   for i: 0..<12 {
     speech := (pattern >> i) & 1 == 1;
-    o := turn_step(t, speech, 0.0, false, 60, 60, 200);
+    o := turn_step(t, speech, speech, 0.0, false, 60, 60, 200);
     was_open := open;
-    if (o.ev & EV_TURN_START) != 0 { #assert !open; open = true; frames = 0; }
-    if speech { run += 1; quiet = 0; } else { run = 0; quiet += 1; }
+    if speech { quiet = 0; } else { quiet += 1; }
+    if !open {
+      if speech { count += 1; }
+      if quiet > 2 { count = 0; }
+    }
+    if (o.ev & EV_TURN_START) != 0 { #assert !open && speech && count >= 3; open = true; frames = count - 1; }
     if open { frames += 1; }
     #assert ((o.ev & EV_FORWARD) != 0) == open;
-    if (o.ev & EV_TURN_START) != 0 { #assert run >= 3 && speech; frames = run; }
     if (o.ev & EV_TURN_END) != 0 {
       #assert open;
       #assert quiet >= 3 || frames >= 10;
       #assert ((o.ev & EV_TOO_LONG) != 0) == (frames >= 10);
       open = false;
-      run = 0;
+      count = 0;
+      quiet = 0;
     }
     if was_open && open && !((o.ev & EV_TURN_END) != 0) { #assert quiet < 3 && frames < 10; }
-    if !was_open && !open { #assert run < 3; }
+    if !was_open && !open { #assert count < 3; }
     t = o.t;
     #assert t.state == TURN_IDLE || t.state == TURN_SPEAKING || t.state == TURN_TRAILING || t.state == TURN_ENDED;
   }
 }
 
+#test "an onset: above-floor frames lead, gaps are bridged, slow onsets expire" {
+  // Two above-floor frames, a gap of two, then speech: one onset 7 frames long.
+  t: Turn;
+  t = turn_step(t, false, true, 0.0, false, 700, 60, 30000).t;
+  t = turn_step(t, false, true, 0.0, false, 700, 60, 30000).t;
+  t = turn_step(t, false, false, 0.0, false, 700, 60, 30000).t;
+  t = turn_step(t, false, false, 0.0, false, 700, 60, 30000).t;
+  #assert t.cand == 4 && t.gap == 2 && t.run == 0;
+  t = turn_step(t, true, true, 1.0, false, 700, 60, 30000).t;
+  t = turn_step(t, true, true, 1.0, false, 700, 60, 30000).t;
+  o := turn_step(t, true, true, 1.0, false, 700, 60, 30000);
+  #assert (o.ev & EV_TURN_START) != 0 && o.t.cand == 7;
+  // Three quiet frames end an unconfirmed onset.
+  u: Turn;
+  u = turn_step(u, true, true, 1.0, false, 700, 60, 30000).t;
+  for i: 0..<3 { u = turn_step(u, false, false, 0.0, false, 700, 60, 30000).t; }
+  #assert u.cand == 0 && u.run == 0;
+  // Above-floor frames alone never confirm, and the window slides.
+  w: Turn;
+  for i: 0..<40 { w = turn_step(w, false, true, 0.0, false, 700, 60, 30000).t; #assert w.state == TURN_IDLE; }
+  #assert w.cand <= 25;
+  w = turn_step(w, true, true, 1.0, false, 700, 60, 30000).t;
+  w = turn_step(w, true, true, 1.0, false, 700, 60, 30000).t;
+  #assert w.state == TURN_IDLE && w.run == 2;
+}
+
 #test "hold extends the end, END_TURN ends now" {
   t: Turn;
-  for i: 0..<5 { t = turn_step(t, true, 1.0, false, 100, 60, 10000).t; }
+  for i: 0..<5 { t = turn_step(t, true, true, 1.0, false, 100, 60, 10000).t; }
   #assert t.state == TURN_SPEAKING && t.speech_ms == 100;
-  o := turn_step(t, false, 0.0, false, 100, 60, 10000);
+  o := turn_step(t, false, false, 0.0, false, 100, 60, 10000);
   #assert o.t.state == TURN_TRAILING && o.t.silence_ms == 20;
   o.t.hold_ms = 100;
-  for i: 0..<8 { o = turn_step(o.t, false, 0.0, false, 100, 60, 10000); #assert (o.ev & EV_TURN_END) == 0; }
-  o = turn_step(o.t, false, 0.0, false, 100, 60, 10000);
+  for i: 0..<8 { o = turn_step(o.t, false, false, 0.0, false, 100, 60, 10000); #assert (o.ev & EV_TURN_END) == 0; }
+  o = turn_step(o.t, false, false, 0.0, false, 100, 60, 10000);
   #assert (o.ev & EV_TURN_END) != 0 && o.t.silence_ms == 200;
-  o = turn_step(o.t, false, 0.0, false, 100, 60, 10000);
+  o = turn_step(o.t, false, false, 0.0, false, 100, 60, 10000);
   #assert o.t.state == TURN_IDLE && o.ev == 0;
-  for i: 0..<3 { o = turn_step(o.t, true, 1.0, false, 100, 60, 10000); }
+  for i: 0..<3 { o = turn_step(o.t, true, true, 1.0, false, 100, 60, 10000); }
   #assert o.t.state == TURN_SPEAKING;
-  o = turn_step(o.t, true, 1.0, true, 100, 60, 10000);
+  o = turn_step(o.t, true, true, 1.0, true, 100, 60, 10000);
   #assert (o.ev & EV_TURN_END) != 0 && o.t.state == TURN_ENDED;
   // A start frame that is also told to end closes at once.
   u: Turn;
   u.run = 2;
-  o = turn_step(u, true, 1.0, true, 100, 60, 10000);
+  o = turn_step(u, true, true, 1.0, true, 100, 60, 10000);
   #assert (o.ev & (EV_TURN_START | EV_TURN_END)) == (EV_TURN_START | EV_TURN_END);
   // Speech resuming in the trailing stretch clears the hold.
-  v := turn_step(t, false, 0.5, false, 100, 60, 10000).t;
+  v := turn_step(t, false, false, 0.5, false, 100, 60, 10000).t;
   v.hold_ms = 300;
   v.held = true;
-  v = turn_step(v, true, 1.0, false, 100, 60, 10000).t;
+  v = turn_step(v, true, true, 1.0, false, 100, 60, 10000).t;
   #assert v.hold_ms == 0 && !v.held && v.silence_ms == 0 && v.trail_frames == 0;
 }
 
@@ -955,16 +1007,17 @@ metareal_voice_uplink :: (s: [] VoiceState, pcm: [] s16, out: [] s16, f: [] Voic
   in_turn := s[0].turn.state == TURN_SPEAKING || s[0].turn.state == TURN_TRAILING;
   p := speech_likelihood(l.rms_db, s[0].noise_db, l.zcr);
   speech := p >= s[0].cfg.speech_threshold;
+  above := l.rms_db > s[0].noise_db + 6.0;
   s[0].noise_db = noise_next(s[0].noise_db, l.rms_db, speech || (in_turn && s[0].turn.state == TURN_SPEAKING));
   playing := playback_state(s) == PLAY_PLAYING || playback_state(s) == PLAY_DUCKED;
 
-  o := turn_step(s[0].turn, speech, p, s[0].end_now, s[0].cfg.end_silence_ms, s[0].cfg.min_speech_ms, s[0].cfg.max_turn_ms);
+  o := turn_step(s[0].turn, speech, above, p, s[0].end_now, s[0].cfg.end_silence_ms, s[0].cfg.min_speech_ms, s[0].cfg.max_turn_ms);
   s[0].end_now = false;
   ev |= o.ev;
   if (o.ev & EV_TURN_START) != 0 {
     // Pre-roll: the onset frames before this one plus one leading frame.
     have := ifx s[0].up_seq < PREROLL then s[0].up_seq else PREROLL;
-    want := ifx o.t.run < PREROLL then o.t.run else PREROLL;
+    want := ifx o.t.cand < PREROLL then o.t.cand else PREROLL;
     frames := ifx want < have then want else have;
     s[0].preroll_n = frames * FRAME;
     for j: 0..<cast(int) frames {
