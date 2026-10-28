@@ -1,0 +1,4 @@
+Transform: 12 bytes, alignment 4
+x f32 @0 (4 bytes)
+y f32 @4 (4 bytes)
+selected bool @8 (1 bytes)

@@ -1,5 +1,6 @@
 // The binary GPU span gate. No GPU address is formed before this passes.
 #authority;
+#load "haunt-layout.coax";
 #test "whole triangles in a nonempty bounded vertex span" {
  v:[48]u8;i:[12]u8;
  #assert metareal_haunt_buffer_ok(v[..],i[..],1);
@@ -32,17 +33,17 @@ hb_limits :: (vertices:int,indices:int,layers:int)->bool {
  return vertices>0 && vertices<=16777216 && indices>0 && indices<=16777216 && layers>0 && layers<=64;
 }
 metareal_haunt_buffer_sizes :: (vertices:int,indices:int,layers:int)->bool #export_c {
- return hb_limits(vertices,indices,layers) && vertices%48==0 && indices%12==0;
+ return hb_limits(vertices,indices,layers) && vertices%HB_VERTEX_STRIDE==0 && indices%12==0;
 }
 hb_word :: (b:[]u8,k:int)->u32 {return cast(u32)b[k]|cast(u32)b[k+1]<<8|cast(u32)b[k+2]<<16|cast(u32)b[k+3]<<24;}
 metareal_haunt_buffer_ok :: (v:[]u8,i:[]u8,layers:int)->bool #export_c {
  if !metareal_haunt_buffer_sizes(v.count,i.count,layers){return false;}
- for k:0..<v.count/48 {
-  base:=k*48;
-  if !hb_scalar(v,base) || !hb_scalar(v,base+4) || !hb_scalar(v,base+8) || !hb_scalar(v,base+12) || !hb_scalar(v,base+16) || !hb_scalar(v,base+20) || !hb_scalar(v,base+24) || !hb_scalar(v,base+28){return false;}
-  if cast(int)v[k*48+35]>=layers{return false;}
+ for k:0..<v.count/HB_VERTEX_STRIDE {
+  base:=k*HB_VERTEX_STRIDE;
+  for offset:HB_SCALAR_OFFSETS {if !hb_scalar(v,base+offset) {return false;}}
+  if cast(int)v[base+HB_LAYER_OFFSET]>=layers{return false;}
  }
- for k:0..<i.count/4 {if cast(int)hb_word(i,k*4)>=v.count/48{return false;}}
+ for k:0..<i.count/4 {if cast(int)hb_word(i,k*4)>=v.count/HB_VERTEX_STRIDE{return false;}}
  return true;
 }
 

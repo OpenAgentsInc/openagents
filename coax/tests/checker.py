@@ -33,6 +33,7 @@ class Checker(unittest.TestCase):
         cls.source.write_bytes(LX.checked([ROOT/'bin/coax','c',ROOT/'lib/compiler/checker.coax','--library','--header',cls.header]))
         LX.checked([os.environ.get('CC','cc'),'-std=c11','-O1','-shared','-fPIC',cls.source,'-lm','-o',cls.d/'checker.dylib'])
         cls.lib=C.CDLL(str(cls.d/'checker.dylib'))
+        cls.lib.CK_meta_capacity.argtypes=[Context._fields_[0][1],C.c_int64];cls.lib.CK_meta_capacity.restype=C.c_int64
         cls.lib.CK_run.argtypes=[Context,C.c_int64,Options];cls.lib.CK_run.restype=C.c_bool
         cls.lib.CM_float.argtypes=[C.c_uint32,C.c_uint64,C.c_uint64];cls.lib.CM_float.restype=C.c_uint64
         cls.lib.CM_convert.argtypes=[C.c_uint64,C.c_uint8,C.c_uint8];cls.lib.CM_convert.restype=C.c_uint64
@@ -53,6 +54,10 @@ class Checker(unittest.TestCase):
 
             if v.kind==17:x.type=6 if v.width==32 else 7 if v.width==64 else 0
             if v.kind==69:x.field_index=0
+        extra=self.lib.CK_meta_capacity(Context._fields_[0][1](nodes,len(nodes)),n-1)
+        if extra:
+            expanded=(Node*(len(nodes)+extra))()
+            C.memmove(expanded,nodes,C.sizeof(nodes));nodes=expanded
         arrays=[nodes,types,locals_,errors,storage,state];views=[T for _,T in Context._fields_];ctx=Context(*[V(a,len(a)) for V,a in zip(views,arrays)])
         ok=self.lib.CK_run(ctx,n-1,Options(True,metal,parsed[1].flag))
         return ok,nodes,types,errors,state[0],(keep,parsed,*arrays)

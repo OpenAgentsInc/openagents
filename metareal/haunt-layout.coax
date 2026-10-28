@@ -1,0 +1,36 @@
+// CPU layout for the existing Haunt.vertices format. Metal's packed vertex
+// declaration remains a separately validated platform boundary.
+#authority;
+HauntVertexLayout :: struct {
+ position:[3]f32;
+ normal:[3]f32;
+ uv:[2]f32;
+ color:[4]u8;
+ reserved:[3]u32;
+}
+HB_VERTEX_STRIDE :: type_info(HauntVertexLayout).size;
+HB_LAYER_OFFSET :: field_info(HauntVertexLayout,3).offset+3;
+HB_SCALAR_OFFSETS :: #run hb_scalar_offsets();
+
+#test "the shipped packed vertex format retains its exact ABI" {
+ #assert HB_VERTEX_STRIDE==48 && type_info(HauntVertexLayout).alignment==4;
+ #assert HB_LAYER_OFFSET==35;
+ #assert type_info(HauntVertexLayout).field_count==5;
+ #assert field_info(HauntVertexLayout,4).offset==36;
+ #assert field_info(HauntVertexLayout,4).size==12;
+}
+#forall "the generated scalar table covers position normal and UV only" index:0..<8 {
+ offsets:=hb_scalar_offsets();
+ #assert offsets[index]==index*4 && HB_SCALAR_OFFSETS[index]==index*4;
+}
+hb_scalar_offsets :: ()->[8]int {
+ out:[8]int;at:=0;
+ for field:0..<3 {
+  info:=field_info(HauntVertexLayout,field);
+  for scalar:0..<info.size/size_of(f32) {
+   out[at]=info.offset+scalar*size_of(f32);at+=1;
+  }
+ }
+ #assert at==out.count;
+ return out;
+}

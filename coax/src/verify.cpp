@@ -156,7 +156,9 @@ struct Mutator {
   }
 
   void expr(Expr *e) {
-    if (!e) return;
+    // The Coax checker identifies synthetic metadata. Mutation targets source
+    // behavior; dynamic selector expressions remain outside these subtrees.
+    if (!e || e->compiler_generated) return;
     if (e->kind == ExprKind::binary) {
       Tok from = e->op, to = swap_of(from);
       bool ints_only = from == Tok::percent;

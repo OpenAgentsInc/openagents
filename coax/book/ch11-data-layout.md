@@ -163,9 +163,10 @@ too. The person making the change now has to decide on purpose: update
 the assertion and everything that relies on 12 bytes, or put `owner`
 somewhere else.
 
-> Note: `coax0` has `size_of` but not yet `align_of` or `offset_of`. To
-> pin individual offsets today, rely on the generated header checks
-> below, or on `coax layout` output reviewed in a diff.
+> Note: `type_info(Pulse).alignment` and `field_info(Pulse, i).offset`
+> expose CPU layout in 0.12.0. Separate `align_of` and `offset_of` intrinsics
+> do not exist. Generate a table with `#run` for repeated inspection; see
+> [Chapter 9](ch09-compile-time.md). GPU packing remains target-specific.
 
 ### Layouts the C compiler must agree with
 

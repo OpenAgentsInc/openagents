@@ -248,11 +248,17 @@ typedef struct { coax_string e[53]; } coax_a53_string;
 typedef struct { coax_string e[8]; } coax_a8_string;
 typedef struct { coax_string e[6]; } coax_a6_string;
 typedef struct { coax_string e[2]; } coax_a2_string;
+typedef struct { coax_string e[11]; } coax_a11_string;
+typedef struct { coax_string e[7]; } coax_a7_string;
 typedef struct { coax_string e[3]; } coax_a3_string;
+typedef struct { coax_t_PS_Node e[256]; } coax_a256_t_PS_Node;
+typedef struct { coax_t_PS_State e[1]; } coax_a1_t_PS_State;
+typedef struct { uint8_t e[256]; } coax_a256_u8;
+typedef struct { coax_t_PS_Token e[10]; } coax_a10_t_PS_Token;
+typedef struct { uint8_t e[512]; } coax_a512_u8;
+typedef struct { coax_string e[24]; } coax_a24_string;
 typedef struct { coax_t_PS_Token e[5]; } coax_a5_t_PS_Token;
 typedef struct { coax_t_PS_Node e[32]; } coax_a32_t_PS_Node;
-typedef struct { uint8_t e[512]; } coax_a512_u8;
-typedef struct { coax_t_PS_State e[1]; } coax_a1_t_PS_State;
 typedef struct { coax_t_PS_Token e[4]; } coax_a4_t_PS_Token;
 typedef struct { coax_t_PS_Token e[66]; } coax_a66_t_PS_Token;
 typedef struct { coax_t_PS_Node e[1024]; } coax_a1024_t_PS_Node;
@@ -264,10 +270,8 @@ typedef struct { coax_t_PS_Token e[12]; } coax_a12_t_PS_Token;
 typedef struct { coax_t_PS_Token e[39]; } coax_a39_t_PS_Token;
 typedef struct { coax_t_PS_Token e[31]; } coax_a31_t_PS_Token;
 typedef struct { coax_t_PS_Token e[9]; } coax_a9_t_PS_Token;
-typedef struct { coax_t_PS_Node e[256]; } coax_a256_t_PS_Node;
 typedef struct { uint8_t e[1024]; } coax_a1024_u8;
 typedef struct { coax_t_PS_Token e[11]; } coax_a11_t_PS_Token;
-typedef struct { coax_t_PS_Token e[10]; } coax_a10_t_PS_Token;
 typedef struct { coax_t_PS_Token e[3]; } coax_a3_t_PS_Token;
 typedef struct { coax_t_PS_Token e[2]; } coax_a2_t_PS_Token;
 typedef struct { coax_t_PS_Token e[8]; } coax_a8_t_PS_Token;
@@ -303,7 +307,6 @@ typedef struct { coax_t_PS_Token e[20]; } coax_a20_t_PS_Token;
 typedef struct { coax_t_PS_Token e[32]; } coax_a32_t_PS_Token;
 typedef struct { coax_t_PS_Token e[16]; } coax_a16_t_PS_Token;
 typedef struct { coax_t_PS_Node e[128]; } coax_a128_t_PS_Node;
-typedef struct { uint8_t e[256]; } coax_a256_u8;
 typedef struct { coax_t_PS_Node e[16]; } coax_a16_t_PS_Node;
 typedef struct { coax_t_PS_Token e[22]; } coax_a22_t_PS_Token;
 typedef struct { coax_t_PS_Import e[16]; } coax_a16_t_PS_Import;
@@ -460,11 +463,17 @@ static void coax_show_a53_string(const coax_a53_string *v);
 static void coax_show_a8_string(const coax_a8_string *v);
 static void coax_show_a6_string(const coax_a6_string *v);
 static void coax_show_a2_string(const coax_a2_string *v);
+static void coax_show_a11_string(const coax_a11_string *v);
+static void coax_show_a7_string(const coax_a7_string *v);
 static void coax_show_a3_string(const coax_a3_string *v);
+static void coax_show_a256_t_PS_Node(const coax_a256_t_PS_Node *v);
+static void coax_show_a1_t_PS_State(const coax_a1_t_PS_State *v);
+static void coax_show_a256_u8(const coax_a256_u8 *v);
+static void coax_show_a10_t_PS_Token(const coax_a10_t_PS_Token *v);
+static void coax_show_a512_u8(const coax_a512_u8 *v);
+static void coax_show_a24_string(const coax_a24_string *v);
 static void coax_show_a5_t_PS_Token(const coax_a5_t_PS_Token *v);
 static void coax_show_a32_t_PS_Node(const coax_a32_t_PS_Node *v);
-static void coax_show_a512_u8(const coax_a512_u8 *v);
-static void coax_show_a1_t_PS_State(const coax_a1_t_PS_State *v);
 static void coax_show_a4_t_PS_Token(const coax_a4_t_PS_Token *v);
 static void coax_show_a66_t_PS_Token(const coax_a66_t_PS_Token *v);
 static void coax_show_a1024_t_PS_Node(const coax_a1024_t_PS_Node *v);
@@ -476,10 +485,8 @@ static void coax_show_a12_t_PS_Token(const coax_a12_t_PS_Token *v);
 static void coax_show_a39_t_PS_Token(const coax_a39_t_PS_Token *v);
 static void coax_show_a31_t_PS_Token(const coax_a31_t_PS_Token *v);
 static void coax_show_a9_t_PS_Token(const coax_a9_t_PS_Token *v);
-static void coax_show_a256_t_PS_Node(const coax_a256_t_PS_Node *v);
 static void coax_show_a1024_u8(const coax_a1024_u8 *v);
 static void coax_show_a11_t_PS_Token(const coax_a11_t_PS_Token *v);
-static void coax_show_a10_t_PS_Token(const coax_a10_t_PS_Token *v);
 static void coax_show_a3_t_PS_Token(const coax_a3_t_PS_Token *v);
 static void coax_show_a2_t_PS_Token(const coax_a2_t_PS_Token *v);
 static void coax_show_a8_t_PS_Token(const coax_a8_t_PS_Token *v);
@@ -515,7 +522,6 @@ static void coax_show_a20_t_PS_Token(const coax_a20_t_PS_Token *v);
 static void coax_show_a32_t_PS_Token(const coax_a32_t_PS_Token *v);
 static void coax_show_a16_t_PS_Token(const coax_a16_t_PS_Token *v);
 static void coax_show_a128_t_PS_Node(const coax_a128_t_PS_Node *v);
-static void coax_show_a256_u8(const coax_a256_u8 *v);
 static void coax_show_a16_t_PS_Node(const coax_a16_t_PS_Node *v);
 static void coax_show_a22_t_PS_Token(const coax_a22_t_PS_Token *v);
 static void coax_show_a16_t_PS_Import(const coax_a16_t_PS_Import *v);
@@ -799,9 +805,73 @@ static void coax_show_a2_string(const coax_a2_string *v) {
   }
   fputc(']', stdout);
 }
+static void coax_show_a11_string(const coax_a11_string *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 11; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_string(v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a7_string(const coax_a7_string *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 7; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_string(v->e[i]);
+  }
+  fputc(']', stdout);
+}
 static void coax_show_a3_string(const coax_a3_string *v) {
   fputc('[', stdout);
   for (int64_t i = 0; i < 3; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_string(v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a256_t_PS_Node(const coax_a256_t_PS_Node *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 256; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_t_PS_Node(&v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a1_t_PS_State(const coax_a1_t_PS_State *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 1; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_t_PS_State(&v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a256_u8(const coax_a256_u8 *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 256; i++) {
+    if (i) fputs(", ", stdout);
+    coax_print_uint(v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a10_t_PS_Token(const coax_a10_t_PS_Token *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 10; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_t_PS_Token(&v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a512_u8(const coax_a512_u8 *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 512; i++) {
+    if (i) fputs(", ", stdout);
+    coax_print_uint(v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a24_string(const coax_a24_string *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 24; i++) {
     if (i) fputs(", ", stdout);
     coax_show_string(v->e[i]);
   }
@@ -820,22 +890,6 @@ static void coax_show_a32_t_PS_Node(const coax_a32_t_PS_Node *v) {
   for (int64_t i = 0; i < 32; i++) {
     if (i) fputs(", ", stdout);
     coax_show_t_PS_Node(&v->e[i]);
-  }
-  fputc(']', stdout);
-}
-static void coax_show_a512_u8(const coax_a512_u8 *v) {
-  fputc('[', stdout);
-  for (int64_t i = 0; i < 512; i++) {
-    if (i) fputs(", ", stdout);
-    coax_print_uint(v->e[i]);
-  }
-  fputc(']', stdout);
-}
-static void coax_show_a1_t_PS_State(const coax_a1_t_PS_State *v) {
-  fputc('[', stdout);
-  for (int64_t i = 0; i < 1; i++) {
-    if (i) fputs(", ", stdout);
-    coax_show_t_PS_State(&v->e[i]);
   }
   fputc(']', stdout);
 }
@@ -927,14 +981,6 @@ static void coax_show_a9_t_PS_Token(const coax_a9_t_PS_Token *v) {
   }
   fputc(']', stdout);
 }
-static void coax_show_a256_t_PS_Node(const coax_a256_t_PS_Node *v) {
-  fputc('[', stdout);
-  for (int64_t i = 0; i < 256; i++) {
-    if (i) fputs(", ", stdout);
-    coax_show_t_PS_Node(&v->e[i]);
-  }
-  fputc(']', stdout);
-}
 static void coax_show_a1024_u8(const coax_a1024_u8 *v) {
   fputc('[', stdout);
   for (int64_t i = 0; i < 1024; i++) {
@@ -946,14 +992,6 @@ static void coax_show_a1024_u8(const coax_a1024_u8 *v) {
 static void coax_show_a11_t_PS_Token(const coax_a11_t_PS_Token *v) {
   fputc('[', stdout);
   for (int64_t i = 0; i < 11; i++) {
-    if (i) fputs(", ", stdout);
-    coax_show_t_PS_Token(&v->e[i]);
-  }
-  fputc(']', stdout);
-}
-static void coax_show_a10_t_PS_Token(const coax_a10_t_PS_Token *v) {
-  fputc('[', stdout);
-  for (int64_t i = 0; i < 10; i++) {
     if (i) fputs(", ", stdout);
     coax_show_t_PS_Token(&v->e[i]);
   }
@@ -1239,14 +1277,6 @@ static void coax_show_a128_t_PS_Node(const coax_a128_t_PS_Node *v) {
   }
   fputc(']', stdout);
 }
-static void coax_show_a256_u8(const coax_a256_u8 *v) {
-  fputc('[', stdout);
-  for (int64_t i = 0; i < 256; i++) {
-    if (i) fputs(", ", stdout);
-    coax_print_uint(v->e[i]);
-  }
-  fputc(']', stdout);
-}
 static void coax_show_a16_t_PS_Node(const coax_a16_t_PS_Node *v) {
   fputc('[', stdout);
   for (int64_t i = 0; i < 16; i++) {
@@ -1322,6 +1352,9 @@ static int64_t coax_p_PS_expression(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n,
 static int64_t coax_p_PS_expr(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_min_prec);
 static int64_t coax_p_PS_unary(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out);
 static void coax_p_PS_list_expr(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_id, uint32_t l_close, coax_string l_what);
+static int64_t coax_p_PS_meta_kind(coax_string l_name);
+static void coax_p_PS_meta_record(coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_root, coax_t_PS_Loc l_loc, coax_string l_name, coax_v_string l_names, coax_v_string l_types);
+static void coax_p_PS_meta_types(coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_root);
 static int64_t coax_p_PS_primary(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out);
 static void coax_p_PS_reserved(coax_v_t_PS_State l_s, coax_v_u8 l_out, coax_t_PS_Token l_v);
 static int64_t coax_p_PS_postfix(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_first);
@@ -1345,7 +1378,7 @@ coax_t_PS_Caps PS_caps(int64_t l_tokens, int64_t l_source) {
   {
     return ((coax_t_PS_Caps){0});
   }
-  return ((coax_t_PS_Caps){.nodes = coax_add_s64(coax_mul_s64(l_tokens, INT64_C(3), 60), INT64_C(1), 60), .message = coax_add_s64(l_source, INT64_C(512), 60), .imports = coax_div_s64(l_tokens, INT64_C(5), 60)});
+  return ((coax_t_PS_Caps){.nodes = coax_add_s64(coax_mul_s64(l_tokens, INT64_C(3), 60), INT64_C(97), 60), .message = coax_add_s64(l_source, INT64_C(512), 60), .imports = coax_div_s64(l_tokens, INT64_C(5), 60)});
 }
 
 static coax_t_PS_Token coax_p_PS_peek(coax_v_t_PS_Token l_t, coax_v_t_PS_State l_s, int64_t l_ahead) {
@@ -1733,36 +1766,95 @@ static void coax_p_PS_list_expr(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coa
   coax_p_PS_expect(l_t, l_s, l_out, l_close, l_what);
 }
 
+static int64_t coax_p_PS_meta_kind(coax_string l_name) {
+  if (coax_string_eq(l_name, COAX_STR("type_info", 9)))
+  {
+    return INT64_C(1);
+  }
+  if (coax_string_eq(l_name, COAX_STR("field_info", 10)))
+  {
+    return INT64_C(2);
+  }
+  if (coax_string_eq(l_name, COAX_STR("enum_info", 9)))
+  {
+    return INT64_C(3);
+  }
+  return INT64_C(0);
+}
+
+static void coax_p_PS_meta_record(coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_root, coax_t_PS_Loc l_loc, coax_string l_name, coax_v_string l_names, coax_v_string l_types) {
+  int64_t l_d = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(66)), l_loc);
+  ((*coax_elem_v_t_PS_Node(l_n, l_d, 224))).name = l_name;
+  coax_p_PS_link(l_n, l_root, l_d);
+  {
+    int64_t coax_lo7 = INT64_C(0);
+    int64_t coax_hi7 = (l_names).count;
+    for (int64_t l_i = coax_lo7; l_i < coax_hi7; l_i++)
+    {
+      int64_t l_f = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(69)), l_loc);
+      ((*coax_elem_v_t_PS_Node(l_n, l_f, 226))).name = (*coax_elem_v_string(l_names, l_i, 226));
+      int64_t l_t = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(1)), l_loc);
+      ((*coax_elem_v_t_PS_Node(l_n, l_t, 227))).name = (*coax_elem_v_string(l_types, l_i, 227));
+      ((*coax_elem_v_t_PS_Node(l_n, l_f, 227))).a = l_t;
+      coax_p_PS_link(l_n, l_d, l_f);
+    }
+  }
+}
+
+static void coax_p_PS_meta_types(coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_root) {
+  {
+    int64_t coax_lo8 = INT64_C(1);
+    int64_t coax_hi8 = coax_add_s64(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 231))).used, INT64_C(1), 231);
+    for (int64_t l_i = coax_lo8; l_i < coax_hi8; l_i++)
+    {
+      if (((((*coax_elem_v_t_PS_Node(l_n, l_i, 232))).kind == ((coax_t_PS_Tag)UINT64_C(21))) && (((*coax_elem_v_t_PS_Node(l_n, l_i, 232))).d != INT64_C(0))) && (coax_p_PS_meta_kind(((*coax_elem_v_t_PS_Node(l_n, l_i, 232))).name) != INT64_C(0)))
+      {
+        coax_a11_string l_names = ((coax_a11_string){{COAX_STR("schema_version", 14), COAX_STR("name", 4), COAX_STR("kind", 4), COAX_STR("size", 4), COAX_STR("alignment", 9), COAX_STR("bits", 4), COAX_STR("is_signed", 9), COAX_STR("field_count", 11), COAX_STR("member_count", 12), COAX_STR("element_count", 13), COAX_STR("element_name", 12)}});
+        coax_a11_string l_types = ((coax_a11_string){{COAX_STR("u32", 3), COAX_STR("string", 6), COAX_STR("string", 6), COAX_STR("int", 3), COAX_STR("int", 3), COAX_STR("int", 3), COAX_STR("bool", 4), COAX_STR("int", 3), COAX_STR("int", 3), COAX_STR("int", 3), COAX_STR("string", 6)}});
+        coax_p_PS_meta_record(l_n, l_s, l_out, l_root, ((*coax_elem_v_t_PS_Node(l_n, l_i, 235))).loc, COAX_STR("CoaxTypeInfo", 12), coax_mkview_v_string((l_names).e, 11, 0, 11, 235), coax_mkview_v_string((l_types).e, 11, 0, 11, 235));
+        coax_a7_string l_fnames = ((coax_a7_string){{COAX_STR("schema_version", 14), COAX_STR("index", 5), COAX_STR("name", 4), COAX_STR("type_name", 9), COAX_STR("offset", 6), COAX_STR("size", 4), COAX_STR("alignment", 9)}});
+        coax_a7_string l_ftypes = ((coax_a7_string){{COAX_STR("u32", 3), COAX_STR("int", 3), COAX_STR("string", 6), COAX_STR("string", 6), COAX_STR("int", 3), COAX_STR("int", 3), COAX_STR("int", 3)}});
+        coax_p_PS_meta_record(l_n, l_s, l_out, l_root, ((*coax_elem_v_t_PS_Node(l_n, l_i, 238))).loc, COAX_STR("CoaxFieldInfo", 13), coax_mkview_v_string((l_fnames).e, 7, 0, 7, 238), coax_mkview_v_string((l_ftypes).e, 7, 0, 7, 238));
+        coax_a6_string l_enames = ((coax_a6_string){{COAX_STR("schema_version", 14), COAX_STR("index", 5), COAX_STR("name", 4), COAX_STR("value_bits", 10), COAX_STR("bits", 4), COAX_STR("is_signed", 9)}});
+        coax_a6_string l_etypes = ((coax_a6_string){{COAX_STR("u32", 3), COAX_STR("int", 3), COAX_STR("string", 6), COAX_STR("u64", 3), COAX_STR("int", 3), COAX_STR("bool", 4)}});
+        coax_p_PS_meta_record(l_n, l_s, l_out, l_root, ((*coax_elem_v_t_PS_Node(l_n, l_i, 241))).loc, COAX_STR("CoaxEnumInfo", 12), coax_mkview_v_string((l_enames).e, 6, 0, 6, 241), coax_mkview_v_string((l_etypes).e, 6, 0, 6, 241));
+        return;
+      }
+    }
+  }
+}
+
 static int64_t coax_p_PS_primary(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out) {
-  int64_t * coax_t7;
-  int64_t * coax_t8;
   int64_t * coax_t9;
   int64_t * coax_t10;
   int64_t * coax_t11;
+  int64_t * coax_t12;
+  int64_t * coax_t13;
+  int64_t * coax_t14;
   coax_t_PS_Token l_v = coax_p_PS_peek(l_t, l_s, INT64_C(0));
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(16)), (l_v).loc);
   if ((l_v).kind == ((uint32_t)UINT64_C(3)))
   {
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 166))).value = (l_v).value;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 248))).value = (l_v).value;
     coax_p_PS_skip(l_t, l_s);
     return coax_p_PS_valid(l_s, l_id);
   }
   if ((l_v).kind == ((uint32_t)UINT64_C(4)))
   {
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 167))).kind = ((coax_t_PS_Tag)UINT64_C(17));
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 167))).floating = (l_v).floating;
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 167))).width = (l_v).width;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 249))).kind = ((coax_t_PS_Tag)UINT64_C(17));
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 249))).floating = (l_v).floating;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 249))).width = (l_v).width;
     if ((l_v).width == INT64_C(32))
     {
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 167))).floating = ((double)(coax_to_f32((l_v).floating, 167)));
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 249))).floating = ((double)(coax_to_f32((l_v).floating, 249)));
     }
     coax_p_PS_skip(l_t, l_s);
     return coax_p_PS_valid(l_s, l_id);
   }
   if ((l_v).kind == ((uint32_t)UINT64_C(5)))
   {
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 168))).kind = ((coax_t_PS_Tag)UINT64_C(19));
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 168))).name = (l_v).text;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 250))).kind = ((coax_t_PS_Tag)UINT64_C(19));
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 250))).name = (l_v).text;
     coax_p_PS_skip(l_t, l_s);
     return coax_p_PS_valid(l_s, l_id);
   }
@@ -1775,10 +1867,10 @@ static int64_t coax_p_PS_primary(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
   }
   if ((l_v).kind == ((uint32_t)UINT64_C(12)))
   {
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 171))).kind = ((coax_t_PS_Tag)UINT64_C(29));
-    coax_t7 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 171))).d);
-    *coax_t7 = coax_p_PS_type(l_t, l_n, l_s, l_out);
-    if (((*coax_elem_v_t_PS_Node(l_n, ((*coax_elem_v_t_PS_Node(l_n, l_id, 172))).d, 172))).kind != ((coax_t_PS_Tag)UINT64_C(2)))
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 253))).kind = ((coax_t_PS_Tag)UINT64_C(29));
+    coax_t9 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 253))).d);
+    *coax_t9 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+    if (((*coax_elem_v_t_PS_Node(l_n, ((*coax_elem_v_t_PS_Node(l_n, l_id, 254))).d, 254))).kind != ((coax_t_PS_Tag)UINT64_C(2)))
     {
       coax_p_PS_fail(l_s, l_out, (l_v).loc, COAX_STR("E0217", 5), COAX_STR("an array literal needs a fixed array type", 41), COAX_STR("[3] int.[1, 2, 3]", 17));
       return INT64_C(0);
@@ -1788,14 +1880,31 @@ static int64_t coax_p_PS_primary(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
     coax_p_PS_list_expr(l_t, l_n, l_s, l_out, l_id, ((uint32_t)UINT64_C(13)), COAX_STR("to close the array literal", 26));
     return coax_p_PS_valid(l_s, l_id);
   }
+  if ((((l_v).kind == ((uint32_t)UINT64_C(2))) || ((l_v).kind == ((uint32_t)UINT64_C(1)))) && (coax_p_PS_meta_kind((l_v).text) != INT64_C(0)))
+  {
+    coax_p_PS_skip(l_t, l_s);
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 259))).kind = ((coax_t_PS_Tag)UINT64_C(21));
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 259))).name = (l_v).text;
+    coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(8)), COAX_STR("after the reflection query", 26));
+    coax_t10 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 259))).d);
+    *coax_t10 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+    if (!coax_string_eq((l_v).text, COAX_STR("type_info", 9)))
+    {
+      coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(14)), COAX_STR("before the reflection index", 27));
+      int64_t l_a = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_p_PS_link(l_n, l_id, l_a);
+    }
+    coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(9)), COAX_STR("after the reflection query", 26));
+    return coax_p_PS_valid(l_s, l_id);
+  }
   if ((l_v).kind == ((uint32_t)UINT64_C(2)))
   {
     if ((coax_string_eq((l_v).text, COAX_STR("true", 4))) || (coax_string_eq((l_v).text, COAX_STR("false", 5))))
     {
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 177))).kind = ((coax_t_PS_Tag)UINT64_C(18));
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 264))).kind = ((coax_t_PS_Tag)UINT64_C(18));
       if (coax_string_eq((l_v).text, COAX_STR("true", 4)))
       {
-        ((*coax_elem_v_t_PS_Node(l_n, l_id, 177))).value = UINT64_C(1);
+        ((*coax_elem_v_t_PS_Node(l_n, l_id, 264))).value = UINT64_C(1);
       }
       coax_p_PS_skip(l_t, l_s);
       return coax_p_PS_valid(l_s, l_id);
@@ -1803,25 +1912,25 @@ static int64_t coax_p_PS_primary(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
     if (coax_string_eq((l_v).text, COAX_STR("ifx", 3)))
     {
       coax_p_PS_skip(l_t, l_s);
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 179))).kind = ((coax_t_PS_Tag)UINT64_C(31));
-      coax_t8 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 179))).a);
-      *coax_t8 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 266))).kind = ((coax_t_PS_Tag)UINT64_C(31));
+      coax_t11 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 266))).a);
+      *coax_t11 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
       coax_p_PS_expect_kw(l_t, l_s, l_out, COAX_STR("then", 4), COAX_STR("after the ifx condition", 23));
-      coax_t9 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 180))).b);
-      *coax_t9 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t12 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 267))).b);
+      *coax_t12 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
       coax_p_PS_expect_kw(l_t, l_s, l_out, COAX_STR("else", 4), COAX_STR("in ifx; both branches are required", 34));
-      coax_t10 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 181))).c);
-      *coax_t10 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t13 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 268))).c);
+      *coax_t13 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
       return coax_p_PS_valid(l_s, l_id);
     }
     if (coax_string_eq((l_v).text, COAX_STR("size_of", 7)))
     {
       coax_p_PS_skip(l_t, l_s);
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 184))).kind = ((coax_t_PS_Tag)UINT64_C(21));
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 184))).name = (l_v).text;
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 271))).kind = ((coax_t_PS_Tag)UINT64_C(21));
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 271))).name = (l_v).text;
       coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(8)), COAX_STR("after size_of", 13));
-      coax_t11 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 184))).d);
-      *coax_t11 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+      coax_t14 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 271))).d);
+      *coax_t14 = coax_p_PS_type(l_t, l_n, l_s, l_out);
       coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(9)), COAX_STR("after the type", 14));
       return coax_p_PS_valid(l_s, l_id);
     }
@@ -1831,34 +1940,34 @@ static int64_t coax_p_PS_primary(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
   if ((l_v).kind == ((uint32_t)UINT64_C(1)))
   {
     coax_p_PS_skip(l_t, l_s);
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 190))).name = (l_v).text;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 277))).name = (l_v).text;
     if (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(8))))
     {
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 190))).kind = ((coax_t_PS_Tag)UINT64_C(20));
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 277))).kind = ((coax_t_PS_Tag)UINT64_C(20));
       return coax_p_PS_valid(l_s, l_id);
     }
     coax_p_PS_skip(l_t, l_s);
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 191))).kind = ((coax_t_PS_Tag)UINT64_C(21));
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 278))).kind = ((coax_t_PS_Tag)UINT64_C(21));
     coax_p_PS_list_expr(l_t, l_n, l_s, l_out, l_id, ((uint32_t)UINT64_C(9)), COAX_STR("after the arguments", 19));
     return coax_p_PS_valid(l_s, l_id);
   }
   coax_a2_string l_parts = ((coax_a2_string){{COAX_STR("expected an expression, found ", 30), coax_p_PS_label((l_v).kind)}});
-  coax_p_PS_error(l_s, l_out, (l_v).loc, COAX_STR("E0205", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 2, 0, 2, 193));
+  coax_p_PS_error(l_s, l_out, (l_v).loc, COAX_STR("E0205", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 2, 0, 2, 280));
   return INT64_C(0);
 }
 
 static void coax_p_PS_reserved(coax_v_t_PS_State l_s, coax_v_u8 l_out, coax_t_PS_Token l_v) {
   coax_a3_string l_parts = ((coax_a3_string){{COAX_STR("'", 1), (l_v).text, COAX_STR("' is reserved and not supported by coax0 yet", 44)}});
-  coax_p_PS_error(l_s, l_out, (l_v).loc, COAX_STR("E0204", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 195));
+  coax_p_PS_error(l_s, l_out, (l_v).loc, COAX_STR("E0204", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 282));
 }
 
 static int64_t coax_p_PS_postfix(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, int64_t l_first) {
-  coax_string * coax_t12;
-  int64_t * coax_t13;
-  int64_t * coax_t14;
-  int64_t * coax_t15;
+  coax_string * coax_t15;
+  int64_t * coax_t16;
+  int64_t * coax_t17;
+  int64_t * coax_t18;
   int64_t l_e = l_first;
-  while (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 198))).code, COAX_STR("", 0)))
+  while (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 285))).code, COAX_STR("", 0)))
   {
     coax_t_PS_Token l_v = coax_p_PS_peek(l_t, l_s, INT64_C(0));
     coax_t_PS_Token l_after = coax_p_PS_peek(l_t, l_s, INT64_C(1));
@@ -1866,33 +1975,33 @@ static int64_t coax_p_PS_postfix(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
     {
       coax_p_PS_skip(l_t, l_s);
       int64_t l_f = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(25)), (l_v).loc);
-      coax_t12 = &(((*coax_elem_v_t_PS_Node(l_n, l_f, 200))).name);
-      *coax_t12 = (coax_p_PS_take(l_t, l_s)).text;
-      ((*coax_elem_v_t_PS_Node(l_n, l_f, 200))).a = l_e;
+      coax_t15 = &(((*coax_elem_v_t_PS_Node(l_n, l_f, 287))).name);
+      *coax_t15 = (coax_p_PS_take(l_t, l_s)).text;
+      ((*coax_elem_v_t_PS_Node(l_n, l_f, 287))).a = l_e;
       l_e = l_f;
     }
     else
     if (((l_v).kind == ((uint32_t)UINT64_C(20))) && ((l_after).kind == ((uint32_t)UINT64_C(10))))
     {
-      if (((*coax_elem_v_t_PS_Node(l_n, l_e, 202))).kind != ((coax_t_PS_Tag)UINT64_C(20)))
+      if (((*coax_elem_v_t_PS_Node(l_n, l_e, 289))).kind != ((coax_t_PS_Tag)UINT64_C(20)))
       {
         coax_p_PS_fail(l_s, l_out, (l_v).loc, COAX_STR("E0215", 5), COAX_STR("a struct literal starts with the struct's name", 46), COAX_STR("Point.{x = 1, y = 2}", 20));
         return INT64_C(0);
       }
-      int64_t l_lit = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(28)), ((*coax_elem_v_t_PS_Node(l_n, l_e, 203))).loc);
-      int64_t l_ty = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(1)), ((*coax_elem_v_t_PS_Node(l_n, l_e, 203))).loc);
-      ((*coax_elem_v_t_PS_Node(l_n, l_ty, 203))).name = ((*coax_elem_v_t_PS_Node(l_n, l_e, 203))).name;
-      ((*coax_elem_v_t_PS_Node(l_n, l_lit, 203))).d = l_ty;
+      int64_t l_lit = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(28)), ((*coax_elem_v_t_PS_Node(l_n, l_e, 290))).loc);
+      int64_t l_ty = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(1)), ((*coax_elem_v_t_PS_Node(l_n, l_e, 290))).loc);
+      ((*coax_elem_v_t_PS_Node(l_n, l_ty, 290))).name = ((*coax_elem_v_t_PS_Node(l_n, l_e, 290))).name;
+      ((*coax_elem_v_t_PS_Node(l_n, l_lit, 290))).d = l_ty;
       coax_p_PS_skip(l_t, l_s);
       coax_p_PS_skip(l_t, l_s);
-      while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 204))).code, COAX_STR("", 0))))
+      while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 291))).code, COAX_STR("", 0))))
       {
         coax_t_PS_Token l_name = coax_p_PS_ident(l_t, l_s, l_out, COAX_STR("a field name", 12));
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(23)), COAX_STR("after the field name; struct literals name every field", 54));
         int64_t l_f = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(71)), (l_name).loc);
-        ((*coax_elem_v_t_PS_Node(l_n, l_f, 206))).name = (l_name).text;
-        coax_t13 = &(((*coax_elem_v_t_PS_Node(l_n, l_f, 206))).a);
-        *coax_t13 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+        ((*coax_elem_v_t_PS_Node(l_n, l_f, 293))).name = (l_name).text;
+        coax_t16 = &(((*coax_elem_v_t_PS_Node(l_n, l_f, 293))).a);
+        *coax_t16 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
         coax_p_PS_link(l_n, l_lit, l_f);
         if (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(14))))
         {
@@ -1908,7 +2017,7 @@ static int64_t coax_p_PS_postfix(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
     {
       coax_p_PS_skip(l_t, l_s);
       int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(27)), (l_v).loc);
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 212))).a = l_e;
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 299))).a = l_e;
       if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(21))) && ((coax_p_PS_peek(l_t, l_s, INT64_C(1))).kind == ((uint32_t)UINT64_C(13))))
       {
         coax_p_PS_skip(l_t, l_s);
@@ -1916,13 +2025,13 @@ static int64_t coax_p_PS_postfix(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
         l_e = l_id;
         continue;
       }
-      coax_t14 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 214))).b);
-      *coax_t14 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t17 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 301))).b);
+      *coax_t17 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
       if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(22))))
       {
         coax_p_PS_skip(l_t, l_s);
-        coax_t15 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 215))).c);
-        *coax_t15 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+        coax_t18 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 302))).c);
+        *coax_t18 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(13)), COAX_STR("to close the slice", 18));
       }
       else
@@ -1932,7 +2041,7 @@ static int64_t coax_p_PS_postfix(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, co
           coax_p_PS_fail(l_s, l_out, (coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc, COAX_STR("E0216", 5), COAX_STR("ranges are half-open: write '..<'", 33), COAX_STR("a[lo ..< hi]", 12));
           return INT64_C(0);
         }
-        ((*coax_elem_v_t_PS_Node(l_n, l_id, 218))).kind = ((coax_t_PS_Tag)UINT64_C(26));
+        ((*coax_elem_v_t_PS_Node(l_n, l_id, 305))).kind = ((coax_t_PS_Tag)UINT64_C(26));
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(13)), COAX_STR("to close the index", 18));
       }
       l_e = l_id;
@@ -1954,7 +2063,7 @@ static int64_t coax_p_PS_block(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax
   }
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(40)), l_loc);
   coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(10)), COAX_STR("to start a block", 16));
-  while (((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(0))))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 226))).code, COAX_STR("", 0))))
+  while (((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(0))))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 313))).code, COAX_STR("", 0))))
   {
     int64_t l_child = coax_p_PS_stmt(l_t, l_n, l_s, l_out);
     coax_p_PS_link(l_n, l_id, l_child);
@@ -1968,32 +2077,32 @@ static int64_t coax_p_PS_block(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax
 
 static int64_t coax_p_PS_if(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out) {
   int64_t coax_ret;
-  int64_t * coax_t16;
-  int64_t * coax_t17;
-  int64_t * coax_t18;
   int64_t * coax_t19;
+  int64_t * coax_t20;
+  int64_t * coax_t21;
+  int64_t * coax_t22;
   coax_t_PS_Token l_v = coax_p_PS_take(l_t, l_s);
   if (!coax_p_PS_enter(l_s, l_out, (l_v).loc))
   {
     return INT64_C(0);
   }
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(45)), (l_v).loc);
-  coax_t16 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 231))).a);
-  *coax_t16 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
-  coax_t17 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 232))).c);
-  *coax_t17 = coax_p_PS_block(l_t, l_n, l_s, l_out);
+  coax_t19 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 318))).a);
+  *coax_t19 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+  coax_t20 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 319))).c);
+  *coax_t20 = coax_p_PS_block(l_t, l_n, l_s, l_out);
   if (coax_p_PS_kw(l_t, l_s, COAX_STR("else", 4)))
   {
     coax_p_PS_skip(l_t, l_s);
     if (coax_p_PS_kw(l_t, l_s, COAX_STR("if", 2)))
     {
-      coax_t18 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 233))).d);
-      *coax_t18 = coax_p_PS_if(l_t, l_n, l_s, l_out);
+      coax_t21 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 320))).d);
+      *coax_t21 = coax_p_PS_if(l_t, l_n, l_s, l_out);
     }
     else
     {
-      coax_t19 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 233))).d);
-      *coax_t19 = coax_p_PS_block(l_t, l_n, l_s, l_out);
+      coax_t22 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 320))).d);
+      *coax_t22 = coax_p_PS_block(l_t, l_n, l_s, l_out);
     }
   }
   coax_ret = coax_p_PS_valid(l_s, l_id);
@@ -2003,34 +2112,34 @@ static int64_t coax_p_PS_if(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_
 }
 
 static int64_t coax_p_PS_for(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out) {
-  int64_t * coax_t20;
-  int64_t * coax_t21;
-  int64_t * coax_t22;
+  int64_t * coax_t23;
+  int64_t * coax_t24;
+  int64_t * coax_t25;
   coax_t_PS_Token l_v = coax_p_PS_take(l_t, l_s);
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(48)), (l_v).loc);
   coax_t_PS_Token l_name = coax_p_PS_ident(l_t, l_s, l_out, COAX_STR("a loop variable name", 20));
-  ((*coax_elem_v_t_PS_Node(l_n, l_id, 236))).name = (l_name).text;
+  ((*coax_elem_v_t_PS_Node(l_n, l_id, 323))).name = (l_name).text;
   if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(14))))
   {
     coax_p_PS_skip(l_t, l_s);
     coax_t_PS_Token l_index = coax_p_PS_ident(l_t, l_s, l_out, COAX_STR("an index variable name", 22));
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 237))).name2 = (l_index).text;
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 237))).loc2 = (l_index).loc;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 324))).name2 = (l_index).text;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 324))).loc2 = (l_index).loc;
   }
   coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(16)), COAX_STR("after the loop variable", 23));
-  coax_t20 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 239))).a);
-  *coax_t20 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+  coax_t23 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 326))).a);
+  *coax_t23 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
   if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(22))))
   {
     coax_p_PS_skip(l_t, l_s);
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 241))).kind = ((coax_t_PS_Tag)UINT64_C(47));
-    if ((((*coax_elem_v_t_PS_Node(l_n, l_id, 241))).name2).count != INT64_C(0))
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 328))).kind = ((coax_t_PS_Tag)UINT64_C(47));
+    if ((((*coax_elem_v_t_PS_Node(l_n, l_id, 328))).name2).count != INT64_C(0))
     {
-      coax_p_PS_fail(l_s, l_out, ((*coax_elem_v_t_PS_Node(l_n, l_id, 241))).loc2, COAX_STR("E0218", 5), COAX_STR("a range loop has one variable", 29), COAX_STR("for i: 0..<n { }", 16));
+      coax_p_PS_fail(l_s, l_out, ((*coax_elem_v_t_PS_Node(l_n, l_id, 328))).loc2, COAX_STR("E0218", 5), COAX_STR("a range loop has one variable", 29), COAX_STR("for i: 0..<n { }", 16));
       return INT64_C(0);
     }
-    coax_t21 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 242))).b);
-    *coax_t21 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+    coax_t24 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 329))).b);
+    *coax_t24 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
   }
   else
   if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(21))))
@@ -2038,40 +2147,40 @@ static int64_t coax_p_PS_for(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v
     coax_p_PS_fail(l_s, l_out, (coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc, COAX_STR("E0216", 5), COAX_STR("ranges are half-open: write '..<'", 33), COAX_STR("for i: 0..<n { }", 16));
     return INT64_C(0);
   }
-  coax_t22 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 244))).c);
-  *coax_t22 = coax_p_PS_block(l_t, l_n, l_s, l_out);
+  coax_t25 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 331))).c);
+  *coax_t25 = coax_p_PS_block(l_t, l_n, l_s, l_out);
   return coax_p_PS_valid(l_s, l_id);
 }
 
 static int64_t coax_p_PS_simple(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out) {
-  int64_t * coax_t23;
+  int64_t * coax_t26;
   int64_t l_e = coax_p_PS_expression(l_t, l_n, l_s, l_out);
   coax_t_PS_Token l_v = coax_p_PS_peek(l_t, l_s, INT64_C(0));
   if (coax_p_PS_assign((l_v).kind))
   {
-    if (((((*coax_elem_v_t_PS_Node(l_n, l_e, 249))).kind != ((coax_t_PS_Tag)UINT64_C(20))) && (((*coax_elem_v_t_PS_Node(l_n, l_e, 249))).kind != ((coax_t_PS_Tag)UINT64_C(25)))) && (((*coax_elem_v_t_PS_Node(l_n, l_e, 249))).kind != ((coax_t_PS_Tag)UINT64_C(26))))
+    if (((((*coax_elem_v_t_PS_Node(l_n, l_e, 336))).kind != ((coax_t_PS_Tag)UINT64_C(20))) && (((*coax_elem_v_t_PS_Node(l_n, l_e, 336))).kind != ((coax_t_PS_Tag)UINT64_C(25)))) && (((*coax_elem_v_t_PS_Node(l_n, l_e, 336))).kind != ((coax_t_PS_Tag)UINT64_C(26))))
     {
-      coax_p_PS_fail(l_s, l_out, ((*coax_elem_v_t_PS_Node(l_n, l_e, 249))).loc, COAX_STR("E0207", 5), COAX_STR("only a variable, a field or an element can be assigned to", 57), COAX_STR("", 0));
+      coax_p_PS_fail(l_s, l_out, ((*coax_elem_v_t_PS_Node(l_n, l_e, 336))).loc, COAX_STR("E0207", 5), COAX_STR("only a variable, a field or an element can be assigned to", 57), COAX_STR("", 0));
       return INT64_C(0);
     }
     coax_p_PS_skip(l_t, l_s);
     int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(43)), (l_v).loc);
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 250))).op = (l_v).kind;
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 250))).c = l_e;
-    coax_t23 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 250))).a);
-    *coax_t23 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 337))).op = (l_v).kind;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 337))).c = l_e;
+    coax_t26 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 337))).a);
+    *coax_t26 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
     return coax_p_PS_valid(l_s, l_id);
   }
-  int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(41)), ((*coax_elem_v_t_PS_Node(l_n, l_e, 251))).loc);
-  ((*coax_elem_v_t_PS_Node(l_n, l_id, 251))).a = l_e;
+  int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(41)), ((*coax_elem_v_t_PS_Node(l_n, l_e, 338))).loc);
+  ((*coax_elem_v_t_PS_Node(l_n, l_id, 338))).a = l_e;
   return coax_p_PS_valid(l_s, l_id);
 }
 
 static _Bool coax_p_PS_uninitialized(coax_v_t_PS_Token l_t, coax_v_t_PS_State l_s) {
   {
-    int64_t coax_lo24 = INT64_C(0);
-    int64_t coax_hi24 = INT64_C(3);
-    for (int64_t l_i = coax_lo24; l_i < coax_hi24; l_i++)
+    int64_t coax_lo27 = INT64_C(0);
+    int64_t coax_hi27 = INT64_C(3);
+    for (int64_t l_i = coax_lo27; l_i < coax_hi27; l_i++)
     {
       if ((coax_p_PS_peek(l_t, l_s, l_i)).kind != ((uint32_t)UINT64_C(35)))
       {
@@ -2083,15 +2192,15 @@ static _Bool coax_p_PS_uninitialized(coax_v_t_PS_Token l_t, coax_v_t_PS_State l_
 }
 
 static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out) {
-  int64_t * coax_t25;
-  int64_t * coax_t26;
-  int64_t * coax_t27;
   int64_t * coax_t28;
   int64_t * coax_t29;
   int64_t * coax_t30;
   int64_t * coax_t31;
   int64_t * coax_t32;
   int64_t * coax_t33;
+  int64_t * coax_t34;
+  int64_t * coax_t35;
+  int64_t * coax_t36;
   coax_t_PS_Token l_v = coax_p_PS_peek(l_t, l_s, INT64_C(0));
   if ((l_v).kind == ((uint32_t)UINT64_C(10)))
   {
@@ -2101,8 +2210,8 @@ static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
   {
     coax_p_PS_skip(l_t, l_s);
     int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(52)), (l_v).loc);
-    coax_t25 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 256))).a);
-    *coax_t25 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+    coax_t28 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 343))).a);
+    *coax_t28 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
     coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after #assert", 13));
     return coax_p_PS_valid(l_s, l_id);
   }
@@ -2120,10 +2229,10 @@ static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
     {
       coax_p_PS_skip(l_t, l_s);
       int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(46)), (l_v).loc);
-      coax_t26 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 259))).a);
-      *coax_t26 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
-      coax_t27 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 259))).c);
-      *coax_t27 = coax_p_PS_block(l_t, l_n, l_s, l_out);
+      coax_t29 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 346))).a);
+      *coax_t29 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t30 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 346))).c);
+      *coax_t30 = coax_p_PS_block(l_t, l_n, l_s, l_out);
       return coax_p_PS_valid(l_s, l_id);
     }
     if (coax_string_eq((l_v).text, COAX_STR("return", 6)))
@@ -2132,8 +2241,8 @@ static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
       int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(44)), (l_v).loc);
       if (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(15))))
       {
-        coax_t28 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 260))).a);
-        *coax_t28 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+        coax_t31 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 347))).a);
+        *coax_t31 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
       }
       coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after the return", 16));
       return coax_p_PS_valid(l_s, l_id);
@@ -2158,13 +2267,13 @@ static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
       int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(51)), (l_v).loc);
       if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(10))))
       {
-        coax_t29 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 263))).c);
-        *coax_t29 = coax_p_PS_block(l_t, l_n, l_s, l_out);
+        coax_t32 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 350))).c);
+        *coax_t32 = coax_p_PS_block(l_t, l_n, l_s, l_out);
       }
       else
       {
-        coax_t30 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 264))).c);
-        *coax_t30 = coax_p_PS_simple(l_t, l_n, l_s, l_out);
+        coax_t33 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 351))).c);
+        *coax_t33 = coax_p_PS_simple(l_t, l_n, l_s, l_out);
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after the deferred statement", 28));
       }
       return coax_p_PS_valid(l_s, l_id);
@@ -2174,13 +2283,13 @@ static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
   if (((l_v).kind == ((uint32_t)UINT64_C(1))) && (((l_after).kind == ((uint32_t)UINT64_C(18))) || ((l_after).kind == ((uint32_t)UINT64_C(16)))))
   {
     int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(42)), (l_v).loc);
-    ((*coax_elem_v_t_PS_Node(l_n, l_id, 269))).name = (l_v).text;
+    ((*coax_elem_v_t_PS_Node(l_n, l_id, 356))).name = (l_v).text;
     coax_p_PS_skip(l_t, l_s);
     coax_t_PS_Token l_op = coax_p_PS_take(l_t, l_s);
     if ((l_op).kind == ((uint32_t)UINT64_C(16)))
     {
-      coax_t31 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 271))).d);
-      *coax_t31 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+      coax_t34 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 358))).d);
+      *coax_t34 = coax_p_PS_type(l_t, l_n, l_s, l_out);
       if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(23))))
       {
         coax_p_PS_skip(l_t, l_s);
@@ -2189,19 +2298,19 @@ static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
           coax_p_PS_skip(l_t, l_s);
           coax_p_PS_skip(l_t, l_s);
           coax_p_PS_skip(l_t, l_s);
-          ((*coax_elem_v_t_PS_Node(l_n, l_id, 273))).flag = 1;
+          ((*coax_elem_v_t_PS_Node(l_n, l_id, 360))).flag = 1;
         }
         else
         {
-          coax_t32 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 274))).a);
-          *coax_t32 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+          coax_t35 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 361))).a);
+          *coax_t35 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
         }
       }
     }
     else
     {
-      coax_t33 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 276))).a);
-      *coax_t33 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t36 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 363))).a);
+      *coax_t36 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
     }
     coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after the declaration", 21));
     return coax_p_PS_valid(l_s, l_id);
@@ -2213,7 +2322,7 @@ static int64_t coax_p_PS_stmt(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
   }
   int64_t l_id = coax_p_PS_simple(l_t, l_n, l_s, l_out);
   coax_string l_what = COAX_STR("after the statement", 19);
-  if (((*coax_elem_v_t_PS_Node(l_n, l_id, 280))).kind == ((coax_t_PS_Tag)UINT64_C(43)))
+  if (((*coax_elem_v_t_PS_Node(l_n, l_id, 367))).kind == ((coax_t_PS_Tag)UINT64_C(43)))
   {
     l_what = COAX_STR("after the assignment", 20);
   }
@@ -2233,37 +2342,37 @@ static _Bool coax_p_PS_starts_proc(coax_v_t_PS_Token l_t, coax_v_t_PS_State l_s)
     uint32_t l_k = (coax_p_PS_peek(l_t, l_s, l_i)).kind;
     if (l_k == ((uint32_t)UINT64_C(8)))
     {
-      l_depth = coax_add_s64(l_depth, INT64_C(1), 285);
+      l_depth = coax_add_s64(l_depth, INT64_C(1), 372);
     }
     if (l_k == ((uint32_t)UINT64_C(9)))
     {
-      l_depth = coax_sub_s64(l_depth, INT64_C(1), 285);
+      l_depth = coax_sub_s64(l_depth, INT64_C(1), 372);
       if (l_depth == INT64_C(0))
       {
-        uint32_t l_after = (coax_p_PS_peek(l_t, l_s, coax_add_s64(l_i, INT64_C(1), 285))).kind;
+        uint32_t l_after = (coax_p_PS_peek(l_t, l_s, coax_add_s64(l_i, INT64_C(1), 372))).kind;
         return (((l_after == ((uint32_t)UINT64_C(10))) || (l_after == ((uint32_t)UINT64_C(19)))) || (l_after == ((uint32_t)UINT64_C(6))));
       }
     }
-    l_i = coax_add_s64(l_i, INT64_C(1), 285);
+    l_i = coax_add_s64(l_i, INT64_C(1), 372);
   }
   return 0;
 }
 
 static int64_t coax_p_PS_proc(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, coax_t_PS_Token l_name) {
-  int64_t * coax_t34;
-  int64_t * coax_t35;
-  int64_t * coax_t36;
+  int64_t * coax_t37;
+  int64_t * coax_t38;
+  int64_t * coax_t39;
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(64)), (l_name).loc);
-  ((*coax_elem_v_t_PS_Node(l_n, l_id, 288))).name = (l_name).text;
+  ((*coax_elem_v_t_PS_Node(l_n, l_id, 375))).name = (l_name).text;
   coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(8)), COAX_STR("to start the parameter list", 27));
-  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(9)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 289))).code, COAX_STR("", 0))))
+  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(9)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 376))).code, COAX_STR("", 0))))
   {
     coax_t_PS_Token l_v = coax_p_PS_ident(l_t, l_s, l_out, COAX_STR("a parameter name", 16));
     coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(16)), COAX_STR("after the parameter name", 24));
     int64_t l_p = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(68)), (l_v).loc);
-    ((*coax_elem_v_t_PS_Node(l_n, l_p, 291))).name = (l_v).text;
-    coax_t34 = &(((*coax_elem_v_t_PS_Node(l_n, l_p, 291))).a);
-    *coax_t34 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+    ((*coax_elem_v_t_PS_Node(l_n, l_p, 378))).name = (l_v).text;
+    coax_t37 = &(((*coax_elem_v_t_PS_Node(l_n, l_p, 378))).a);
+    *coax_t37 = coax_p_PS_type(l_t, l_n, l_s, l_out);
     coax_p_PS_link(l_n, l_id, l_p);
     if (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(14))))
     {
@@ -2275,21 +2384,21 @@ static int64_t coax_p_PS_proc(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
   if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(19))))
   {
     coax_p_PS_skip(l_t, l_s);
-    coax_t35 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 295))).a);
-    *coax_t35 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+    coax_t38 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 382))).a);
+    *coax_t38 = coax_p_PS_type(l_t, l_n, l_s, l_out);
   }
-  while (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(6))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 296))).code, COAX_STR("", 0))))
+  while (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(6))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 383))).code, COAX_STR("", 0))))
   {
     coax_t_PS_Token l_d = coax_p_PS_take(l_t, l_s);
     if (coax_string_eq((l_d).text, COAX_STR("export_c", 8)))
     {
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 297))).flag = 1;
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 384))).flag = 1;
     }
     else
     if (coax_string_eq((l_d).text, COAX_STR("foreign", 7)))
     {
-      ((*coax_elem_v_t_PS_Node(l_n, l_id, 298))).flag2 = 1;
-      if (((*coax_elem_v_t_PS_Node(l_n, l_id, 298))).flag)
+      ((*coax_elem_v_t_PS_Node(l_n, l_id, 385))).flag2 = 1;
+      if (((*coax_elem_v_t_PS_Node(l_n, l_id, 385))).flag)
       {
         coax_p_PS_fail(l_s, l_out, (l_d).loc, COAX_STR("E0210", 5), COAX_STR("a procedure is either #foreign or #export_c, not both", 53), COAX_STR("", 0));
         return INT64_C(0);
@@ -2300,30 +2409,30 @@ static int64_t coax_p_PS_proc(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
     else
     {
       coax_a3_string l_parts = ((coax_a3_string){{COAX_STR("#", 1), (l_d).text, COAX_STR(" is not supported on procedures by coax0 yet", 44)}});
-      coax_p_PS_error(l_s, l_out, (l_d).loc, COAX_STR("E0210", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 300));
+      coax_p_PS_error(l_s, l_out, (l_d).loc, COAX_STR("E0210", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 387));
       return INT64_C(0);
     }
   }
-  coax_t36 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 302))).b);
-  *coax_t36 = coax_p_PS_block(l_t, l_n, l_s, l_out);
+  coax_t39 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 389))).b);
+  *coax_t39 = coax_p_PS_block(l_t, l_n, l_s, l_out);
   return coax_p_PS_valid(l_s, l_id);
 }
 
 static int64_t coax_p_PS_struct(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, coax_t_PS_Token l_name) {
-  int64_t * coax_t37;
-  int64_t * coax_t38;
+  int64_t * coax_t40;
+  int64_t * coax_t41;
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(66)), (l_name).loc);
-  ((*coax_elem_v_t_PS_Node(l_n, l_id, 305))).name = (l_name).text;
+  ((*coax_elem_v_t_PS_Node(l_n, l_id, 392))).name = (l_name).text;
   coax_p_PS_skip(l_t, l_s);
   if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(6))))
   {
     coax_t_PS_Token l_d = coax_p_PS_peek(l_t, l_s, INT64_C(0));
     coax_a3_string l_parts = ((coax_a3_string){{COAX_STR("#", 1), (l_d).text, COAX_STR(" on structs is not supported by coax0 yet", 41)}});
-    coax_p_PS_error(l_s, l_out, (l_d).loc, COAX_STR("E0210", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 306));
+    coax_p_PS_error(l_s, l_out, (l_d).loc, COAX_STR("E0210", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 393));
     return INT64_C(0);
   }
   coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(10)), COAX_STR("to start the struct's fields", 28));
-  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 308))).code, COAX_STR("", 0))))
+  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 395))).code, COAX_STR("", 0))))
   {
     if (coax_p_PS_kw(l_t, l_s, COAX_STR("using", 5)))
     {
@@ -2333,14 +2442,14 @@ static int64_t coax_p_PS_struct(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coa
     coax_t_PS_Token l_f = coax_p_PS_ident(l_t, l_s, l_out, COAX_STR("a field name", 12));
     coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(16)), COAX_STR("after the field name", 20));
     int64_t l_field = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(69)), (l_f).loc);
-    ((*coax_elem_v_t_PS_Node(l_n, l_field, 311))).name = (l_f).text;
-    coax_t37 = &(((*coax_elem_v_t_PS_Node(l_n, l_field, 311))).a);
-    *coax_t37 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+    ((*coax_elem_v_t_PS_Node(l_n, l_field, 398))).name = (l_f).text;
+    coax_t40 = &(((*coax_elem_v_t_PS_Node(l_n, l_field, 398))).a);
+    *coax_t40 = coax_p_PS_type(l_t, l_n, l_s, l_out);
     if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(23))))
     {
       coax_p_PS_skip(l_t, l_s);
-      coax_t38 = &(((*coax_elem_v_t_PS_Node(l_n, l_field, 312))).b);
-      *coax_t38 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t41 = &(((*coax_elem_v_t_PS_Node(l_n, l_field, 399))).b);
+      *coax_t41 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
     }
     coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after the field", 15));
     coax_p_PS_link(l_n, l_id, l_field);
@@ -2350,33 +2459,33 @@ static int64_t coax_p_PS_struct(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coa
 }
 
 static int64_t coax_p_PS_enum(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, coax_t_PS_Token l_name) {
-  int64_t * coax_t39;
-  int64_t * coax_t40;
+  int64_t * coax_t42;
+  int64_t * coax_t43;
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(67)), (l_name).loc);
-  ((*coax_elem_v_t_PS_Node(l_n, l_id, 318))).name = (l_name).text;
+  ((*coax_elem_v_t_PS_Node(l_n, l_id, 405))).name = (l_name).text;
   coax_p_PS_skip(l_t, l_s);
   if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(10))))
   {
     coax_p_PS_fail(l_s, l_out, (coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc, COAX_STR("E0219", 5), COAX_STR("an enum names its underlying integer type", 41), COAX_STR("Outcome :: enum u8 { ... }", 26));
     return INT64_C(0);
   }
-  coax_t39 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 320))).a);
-  *coax_t39 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+  coax_t42 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 407))).a);
+  *coax_t42 = coax_p_PS_type(l_t, l_n, l_s, l_out);
   coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(10)), COAX_STR("to start the enum's members", 27));
-  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 321))).code, COAX_STR("", 0))))
+  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(11)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 408))).code, COAX_STR("", 0))))
   {
     coax_t_PS_Token l_v = coax_p_PS_ident(l_t, l_s, l_out, COAX_STR("an enum member name", 19));
-    if (!coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 322))).code, COAX_STR("", 0)))
+    if (!coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 409))).code, COAX_STR("", 0)))
     {
       return INT64_C(0);
     }
     int64_t l_m = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(70)), (l_v).loc);
-    ((*coax_elem_v_t_PS_Node(l_n, l_m, 322))).name = (l_v).text;
+    ((*coax_elem_v_t_PS_Node(l_n, l_m, 409))).name = (l_v).text;
     if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(23))))
     {
       coax_p_PS_skip(l_t, l_s);
-      coax_t40 = &(((*coax_elem_v_t_PS_Node(l_n, l_m, 323))).a);
-      *coax_t40 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t43 = &(((*coax_elem_v_t_PS_Node(l_n, l_m, 410))).a);
+      *coax_t43 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
     }
     coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after the enum member", 21));
     coax_p_PS_link(l_n, l_id, l_m);
@@ -2387,55 +2496,55 @@ static int64_t coax_p_PS_enum(coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_
 
 static coax_string coax_p_PS_trim_name(coax_string l_source, int64_t l_start, int64_t l_stop) {
   int64_t l_end = l_stop;
-  while ((l_end > l_start) && ((coax_byte(l_source, coax_sub_s64(l_end, INT64_C(1), 328), 328) == ((uint8_t)UINT64_C(32))) || (coax_byte(l_source, coax_sub_s64(l_end, INT64_C(1), 328), 328) == ((uint8_t)UINT64_C(10)))))
+  while ((l_end > l_start) && ((coax_byte(l_source, coax_sub_s64(l_end, INT64_C(1), 415), 415) == ((uint8_t)UINT64_C(32))) || (coax_byte(l_source, coax_sub_s64(l_end, INT64_C(1), 415), 415) == ((uint8_t)UINT64_C(10)))))
   {
-    l_end = coax_sub_s64(l_end, INT64_C(1), 328);
+    l_end = coax_sub_s64(l_end, INT64_C(1), 415);
   }
-  return coax_substr(l_source, (int64_t)(l_start), (int64_t)(l_end), 328);
+  return coax_substr(l_source, (int64_t)(l_start), (int64_t)(l_end), 415);
 }
 
 static int64_t coax_p_PS_check(coax_string l_source, coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out, coax_t_PS_Token l_d) {
-  coax_string * coax_t41;
-  int64_t * coax_t42;
-  int64_t * coax_t43;
-  int64_t * coax_t44;
-  coax_string * coax_t45;
+  coax_string * coax_t44;
+  int64_t * coax_t45;
   int64_t * coax_t46;
+  int64_t * coax_t47;
+  coax_string * coax_t48;
+  int64_t * coax_t49;
   int64_t l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(73)), (l_d).loc);
-  ((*coax_elem_v_t_PS_Node(l_n, l_id, 330))).flag = (coax_string_eq((l_d).text, COAX_STR("forall", 6)));
+  ((*coax_elem_v_t_PS_Node(l_n, l_id, 417))).flag = (coax_string_eq((l_d).text, COAX_STR("forall", 6)));
   int64_t l_p = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(64)), (l_d).loc);
-  ((*coax_elem_v_t_PS_Node(l_n, l_id, 330))).a = l_p;
+  ((*coax_elem_v_t_PS_Node(l_n, l_id, 417))).a = l_p;
   if (coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(5))))
   {
-    coax_t41 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 331))).name);
-    *coax_t41 = (coax_p_PS_take(l_t, l_s)).text;
+    coax_t44 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 418))).name);
+    *coax_t44 = (coax_p_PS_take(l_t, l_s)).text;
   }
   else
-  if (!((*coax_elem_v_t_PS_Node(l_n, l_id, 332))).flag)
+  if (!((*coax_elem_v_t_PS_Node(l_n, l_id, 419))).flag)
   {
     coax_p_PS_fail(l_s, l_out, (coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc, COAX_STR("E0220", 5), COAX_STR("#test needs a name string", 25), COAX_STR("#test \"refunds never exceed payment\" { ... }", 44));
     return INT64_C(0);
   }
   int64_t l_start = ((coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc).offset;
-  while ((((*coax_elem_v_t_PS_Node(l_n, l_id, 334))).flag && (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(10))))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 334))).code, COAX_STR("", 0))))
+  while ((((*coax_elem_v_t_PS_Node(l_n, l_id, 421))).flag && (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(10))))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 421))).code, COAX_STR("", 0))))
   {
     coax_t_PS_Token l_v = coax_p_PS_ident(l_t, l_s, l_out, COAX_STR("a binding name", 14));
     coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(16)), COAX_STR("after the binding name", 22));
     int64_t l_b = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(68)), (l_v).loc);
-    ((*coax_elem_v_t_PS_Node(l_n, l_b, 336))).name = (l_v).text;
+    ((*coax_elem_v_t_PS_Node(l_n, l_b, 423))).name = (l_v).text;
     uint32_t l_k = (coax_p_PS_peek(l_t, l_s, INT64_C(1))).kind;
     if ((l_k == ((uint32_t)UINT64_C(14))) || (l_k == ((uint32_t)UINT64_C(10))))
     {
-      coax_t42 = &(((*coax_elem_v_t_PS_Node(l_n, l_b, 337))).a);
-      *coax_t42 = coax_p_PS_type(l_t, l_n, l_s, l_out);
+      coax_t45 = &(((*coax_elem_v_t_PS_Node(l_n, l_b, 424))).a);
+      *coax_t45 = coax_p_PS_type(l_t, l_n, l_s, l_out);
     }
     else
     {
-      coax_t43 = &(((*coax_elem_v_t_PS_Node(l_n, l_b, 338))).b);
-      *coax_t43 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t46 = &(((*coax_elem_v_t_PS_Node(l_n, l_b, 425))).b);
+      *coax_t46 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
       coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(22)), COAX_STR("in the range; a #forall binding is a type or lo..<hi", 52));
-      coax_t44 = &(((*coax_elem_v_t_PS_Node(l_n, l_b, 338))).c);
-      *coax_t44 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+      coax_t47 = &(((*coax_elem_v_t_PS_Node(l_n, l_b, 425))).c);
+      *coax_t47 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
     }
     coax_p_PS_link(l_n, l_p, l_b);
     if (!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(14))))
@@ -2444,38 +2553,38 @@ static int64_t coax_p_PS_check(coax_string l_source, coax_v_t_PS_Token l_t, coax
     }
     coax_p_PS_skip(l_t, l_s);
   }
-  if (((*coax_elem_v_t_PS_Node(l_n, l_id, 341))).flag && (((*coax_elem_v_t_PS_Node(l_n, l_p, 341))).head == INT64_C(0)))
+  if (((*coax_elem_v_t_PS_Node(l_n, l_id, 428))).flag && (((*coax_elem_v_t_PS_Node(l_n, l_p, 428))).head == INT64_C(0)))
   {
     coax_p_PS_fail(l_s, l_out, (coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc, COAX_STR("E0220", 5), COAX_STR("#forall needs at least one binding", 34), COAX_STR("#forall a: u8, b: bool { ... }", 30));
     return INT64_C(0);
   }
-  if (((*coax_elem_v_t_PS_Node(l_n, l_id, 342))).flag && ((((*coax_elem_v_t_PS_Node(l_n, l_id, 342))).name).count == INT64_C(0)))
+  if (((*coax_elem_v_t_PS_Node(l_n, l_id, 429))).flag && ((((*coax_elem_v_t_PS_Node(l_n, l_id, 429))).name).count == INT64_C(0)))
   {
-    coax_t45 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 343))).name);
-    *coax_t45 = coax_p_PS_trim_name(l_source, l_start, ((coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc).offset);
+    coax_t48 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 430))).name);
+    *coax_t48 = coax_p_PS_trim_name(l_source, l_start, ((coax_p_PS_peek(l_t, l_s, INT64_C(0))).loc).offset);
   }
-  ((*coax_elem_v_t_PS_Node(l_n, l_p, 345))).name = ((*coax_elem_v_t_PS_Node(l_n, l_id, 345))).name;
-  coax_t46 = &(((*coax_elem_v_t_PS_Node(l_n, l_p, 345))).b);
-  *coax_t46 = coax_p_PS_block(l_t, l_n, l_s, l_out);
+  ((*coax_elem_v_t_PS_Node(l_n, l_p, 432))).name = ((*coax_elem_v_t_PS_Node(l_n, l_id, 432))).name;
+  coax_t49 = &(((*coax_elem_v_t_PS_Node(l_n, l_p, 432))).b);
+  *coax_t49 = coax_p_PS_block(l_t, l_n, l_s, l_out);
   return coax_p_PS_valid(l_s, l_id);
 }
 
 coax_t_PS_Result PS_parse(coax_string l_source, coax_v_t_PS_Token l_t, coax_v_t_PS_Node l_n, coax_v_t_PS_State l_s, coax_v_u8 l_out) {
-  int64_t * coax_t47;
-  int64_t * coax_t48;
-  (*coax_elem_v_t_PS_State(l_s, INT64_C(0), 348)) = ((coax_t_PS_State){0});
+  int64_t * coax_t50;
+  int64_t * coax_t51;
+  (*coax_elem_v_t_PS_State(l_s, INT64_C(0), 435)) = ((coax_t_PS_State){0});
   if ((l_t).count == INT64_C(0))
   {
     coax_p_PS_fail(l_s, l_out, ((coax_t_PS_Loc){0}), COAX_STR("E0221", 5), COAX_STR("parser needs an EOF-terminated token stream", 43), COAX_STR("", 0));
     return ((coax_t_PS_Result){0});
   }
-  if (((*coax_elem_v_t_PS_Token(l_t, coax_sub_s64((l_t).count, INT64_C(1), 350), 350))).kind != ((uint32_t)UINT64_C(0)))
+  if (((*coax_elem_v_t_PS_Token(l_t, coax_sub_s64((l_t).count, INT64_C(1), 437), 437))).kind != ((uint32_t)UINT64_C(0)))
   {
-    coax_p_PS_fail(l_s, l_out, ((*coax_elem_v_t_PS_Token(l_t, coax_sub_s64((l_t).count, INT64_C(1), 350), 350))).loc, COAX_STR("E0221", 5), COAX_STR("parser needs an EOF-terminated token stream", 43), COAX_STR("", 0));
+    coax_p_PS_fail(l_s, l_out, ((*coax_elem_v_t_PS_Token(l_t, coax_sub_s64((l_t).count, INT64_C(1), 437), 437))).loc, COAX_STR("E0221", 5), COAX_STR("parser needs an EOF-terminated token stream", 43), COAX_STR("", 0));
     return ((coax_t_PS_Result){0});
   }
   int64_t l_root = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(74)), ((coax_t_PS_Loc){0}));
-  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(0)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 352))).code, COAX_STR("", 0))))
+  while ((!coax_p_PS_at(l_t, l_s, ((uint32_t)UINT64_C(0)))) && (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 439))).code, COAX_STR("", 0))))
   {
     coax_t_PS_Token l_v = coax_p_PS_peek(l_t, l_s, INT64_C(0));
     int64_t l_id = ((int64_t)0);
@@ -2492,15 +2601,15 @@ coax_t_PS_Result PS_parse(coax_string l_source, coax_v_t_PS_Token l_t, coax_v_t_
         }
         coax_p_PS_skip(l_t, l_s);
         l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(72)), (l_m).loc);
-        ((*coax_elem_v_t_PS_Node(l_n, l_id, 357))).name = (l_m).text;
+        ((*coax_elem_v_t_PS_Node(l_n, l_id, 444))).name = (l_m).text;
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after the import", 16));
       }
       else
       if (coax_string_eq((l_v).text, COAX_STR("assert", 6)))
       {
         l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(75)), (l_v).loc);
-        coax_t47 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 358))).a);
-        *coax_t47 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+        coax_t50 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 445))).a);
+        *coax_t50 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after #assert", 13));
       }
       else
@@ -2511,14 +2620,14 @@ coax_t_PS_Result PS_parse(coax_string l_source, coax_v_t_PS_Token l_t, coax_v_t_
       else
       if (coax_string_eq((l_v).text, COAX_STR("authority", 9)))
       {
-        ((*coax_elem_v_t_PS_Node(l_n, l_root, 360))).flag = 1;
+        ((*coax_elem_v_t_PS_Node(l_n, l_root, 447))).flag = 1;
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after #authority", 16));
         continue;
       }
       else
       {
         coax_a3_string l_parts = ((coax_a3_string){{COAX_STR("#", 1), (l_v).text, COAX_STR(" is not supported by coax0 yet", 30)}});
-        coax_p_PS_error(l_s, l_out, (l_v).loc, COAX_STR("E0210", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 361));
+        coax_p_PS_error(l_s, l_out, (l_v).loc, COAX_STR("E0210", 5), COAX_STR("", 0), coax_mkview_v_string((l_parts).e, 3, 0, 3, 448));
         break;
       }
     }
@@ -2544,9 +2653,9 @@ coax_t_PS_Result PS_parse(coax_string l_source, coax_v_t_PS_Token l_t, coax_v_t_
       else
       {
         l_id = coax_p_PS_new(l_n, l_s, l_out, ((coax_t_PS_Tag)UINT64_C(65)), (l_v).loc);
-        ((*coax_elem_v_t_PS_Node(l_n, l_id, 367))).name = (l_v).text;
-        coax_t48 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 367))).a);
-        *coax_t48 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
+        ((*coax_elem_v_t_PS_Node(l_n, l_id, 454))).name = (l_v).text;
+        coax_t51 = &(((*coax_elem_v_t_PS_Node(l_n, l_id, 454))).a);
+        *coax_t51 = coax_p_PS_expression(l_t, l_n, l_s, l_out);
         coax_p_PS_expect(l_t, l_s, l_out, ((uint32_t)UINT64_C(15)), COAX_STR("after the constant", 18));
       }
     }
@@ -2563,7 +2672,11 @@ coax_t_PS_Result PS_parse(coax_string l_source, coax_v_t_PS_Token l_t, coax_v_t_
     }
     coax_p_PS_link(l_n, l_root, l_id);
   }
-  return ((coax_t_PS_Result){.ok = (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 372))).code, COAX_STR("", 0))), .root = l_root});
+  if (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 460))).code, COAX_STR("", 0)))
+  {
+    coax_p_PS_meta_types(l_n, l_s, l_out, l_root);
+  }
+  return ((coax_t_PS_Result){.ok = (coax_string_eq(((*coax_elem_v_t_PS_State(l_s, INT64_C(0), 461))).code, COAX_STR("", 0))), .root = l_root});
 }
 
 coax_t_PS_Imports PS_imports(coax_v_t_PS_Token l_t, coax_v_t_PS_Import l_out, _Bool l_metal) {
@@ -2572,25 +2685,25 @@ coax_t_PS_Imports PS_imports(coax_v_t_PS_Token l_t, coax_v_t_PS_Import l_out, _B
   coax_t_PS_Imports l_r = ((coax_t_PS_Imports){0});
   while (l_i < (l_t).count)
   {
-    coax_t_PS_Token l_v = (*coax_elem_v_t_PS_Token(l_t, l_i, 380));
+    coax_t_PS_Token l_v = (*coax_elem_v_t_PS_Token(l_t, l_i, 469));
     if ((l_v).kind == ((uint32_t)UINT64_C(10)))
     {
-      l_depth = coax_add_s64(l_depth, INT64_C(1), 380);
+      l_depth = coax_add_s64(l_depth, INT64_C(1), 469);
     }
     if ((l_v).kind == ((uint32_t)UINT64_C(11)))
     {
-      l_depth = coax_sub_s64(l_depth, INT64_C(1), 380);
+      l_depth = coax_sub_s64(l_depth, INT64_C(1), 469);
     }
     if (((l_v).kind != ((uint32_t)UINT64_C(6))) || (!coax_string_eq((l_v).text, COAX_STR("import_proto", 12))))
     {
-      l_i = coax_add_s64(l_i, INT64_C(1), 381);
+      l_i = coax_add_s64(l_i, INT64_C(1), 470);
       continue;
     }
-    if ((l_depth != INT64_C(0)) || (coax_add_s64(l_i, INT64_C(4), 382) >= (l_t).count))
+    if ((l_depth != INT64_C(0)) || (coax_add_s64(l_i, INT64_C(4), 471) >= (l_t).count))
     {
       return ((coax_t_PS_Imports){.code = COAX_STR("E0501", 5), .message = COAX_STR("expected #import_proto \"profile.pb\" as Prefix; at top level", 59), .loc = (l_v).loc});
     }
-    if ((((((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(1), 383), 383))).kind != ((uint32_t)UINT64_C(5))) || (!coax_string_eq(((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(2), 383), 383))).text, COAX_STR("as", 2)))) || (((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(3), 383), 383))).kind != ((uint32_t)UINT64_C(1)))) || (((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(4), 383), 383))).kind != ((uint32_t)UINT64_C(15))))
+    if ((((((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(1), 472), 472))).kind != ((uint32_t)UINT64_C(5))) || (!coax_string_eq(((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(2), 472), 472))).text, COAX_STR("as", 2)))) || (((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(3), 472), 472))).kind != ((uint32_t)UINT64_C(1)))) || (((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(4), 472), 472))).kind != ((uint32_t)UINT64_C(15))))
     {
       return ((coax_t_PS_Imports){.code = COAX_STR("E0501", 5), .message = COAX_STR("expected #import_proto \"profile.pb\" as Prefix; at top level", 59), .loc = (l_v).loc});
     }
@@ -2598,13 +2711,13 @@ coax_t_PS_Imports PS_imports(coax_v_t_PS_Token l_t, coax_v_t_PS_Import l_out, _B
     {
       return ((coax_t_PS_Imports){.code = COAX_STR("E0504", 5), .message = COAX_STR("proto codecs cannot be compiled as Metal", 40), .loc = (l_v).loc});
     }
-    coax_string l_path = ((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(1), 385), 385))).text;
-    coax_string l_prefix = ((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(3), 385), 385))).text;
+    coax_string l_path = ((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(1), 474), 474))).text;
+    coax_string l_prefix = ((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(3), 474), 474))).text;
     {
-      coax_string coax_c49 = l_path;
-      for (int64_t coax_i49 = 0; coax_i49 < coax_c49.count; coax_i49++)
+      coax_string coax_c52 = l_path;
+      for (int64_t coax_i52 = 0; coax_i52 < coax_c52.count; coax_i52++)
       {
-        uint8_t l_b = (uint8_t)coax_c49.data[coax_i49];
+        uint8_t l_b = (uint8_t)coax_c52.data[coax_i52];
         if (l_b == ((uint8_t)UINT64_C(0)))
         {
           return ((coax_t_PS_Imports){.code = COAX_STR("E0501", 5), .message = COAX_STR("NUL path or duplicate proto prefix", 34), .loc = (l_v).loc});
@@ -2612,11 +2725,11 @@ coax_t_PS_Imports PS_imports(coax_v_t_PS_Token l_t, coax_v_t_PS_Import l_out, _B
       }
     }
     {
-      int64_t coax_lo50 = INT64_C(0);
-      int64_t coax_hi50 = (l_r).count;
-      for (int64_t l_j = coax_lo50; l_j < coax_hi50; l_j++)
+      int64_t coax_lo53 = INT64_C(0);
+      int64_t coax_hi53 = (l_r).count;
+      for (int64_t l_j = coax_lo53; l_j < coax_hi53; l_j++)
       {
-        if (coax_string_eq(((*coax_elem_v_t_PS_Import(l_out, l_j, 387))).prefix, l_prefix))
+        if (coax_string_eq(((*coax_elem_v_t_PS_Import(l_out, l_j, 476))).prefix, l_prefix))
         {
           return ((coax_t_PS_Imports){.code = COAX_STR("E0501", 5), .message = COAX_STR("NUL path or duplicate proto prefix", 34), .loc = (l_v).loc});
         }
@@ -2626,13 +2739,13 @@ coax_t_PS_Imports PS_imports(coax_v_t_PS_Token l_t, coax_v_t_PS_Import l_out, _B
     {
       return ((coax_t_PS_Imports){.code = COAX_STR("E0502", 5), .message = COAX_STR("proto request storage budget exceeded", 37), .loc = (l_v).loc});
     }
-    (*coax_elem_v_t_PS_Import(l_out, (l_r).count, 389)) = ((coax_t_PS_Import){.path = l_path, .prefix = l_prefix, .loc = (l_v).loc, .end = coax_add_s64((((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(4), 389), 389))).loc).offset, INT64_C(1), 389)});
-    (l_r).count = coax_add_s64((l_r).count, INT64_C(1), 389);
-    l_i = coax_add_s64(l_i, INT64_C(5), 389);
+    (*coax_elem_v_t_PS_Import(l_out, (l_r).count, 478)) = ((coax_t_PS_Import){.path = l_path, .prefix = l_prefix, .loc = (l_v).loc, .end = coax_add_s64((((*coax_elem_v_t_PS_Token(l_t, coax_add_s64(l_i, INT64_C(4), 478), 478))).loc).offset, INT64_C(1), 478)});
+    (l_r).count = coax_add_s64((l_r).count, INT64_C(1), 478);
+    l_i = coax_add_s64(l_i, INT64_C(5), 478);
   }
   if ((l_r).count > INT64_C(8))
   {
-    return ((coax_t_PS_Imports){.code = COAX_STR("E0502", 5), .message = COAX_STR("at most eight descriptor imports per source", 43), .loc = ((*coax_elem_v_t_PS_Import(l_out, INT64_C(0), 391))).loc});
+    return ((coax_t_PS_Imports){.code = COAX_STR("E0502", 5), .message = COAX_STR("at most eight descriptor imports per source", 43), .loc = ((*coax_elem_v_t_PS_Import(l_out, INT64_C(0), 480))).loc});
   }
   return l_r;
 }

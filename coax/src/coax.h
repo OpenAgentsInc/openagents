@@ -233,6 +233,7 @@ struct Expr {
   TypeExpr *type_expr = nullptr;  // cast, struct_lit, array_lit
   bool trunc = false;         // cast,trunc
   bool negative = false;      // untyped int_lit: int_value holds a negative s64
+  bool compiler_generated = false; // checked Coax provenance; never an authored mutation site
   bool folded = false;        // untyped int_lit computed from an operation, not written
   int32_t field_index = -1;   // field
   struct ProcDecl *proc = nullptr;      // call: resolved target (null for builtins)

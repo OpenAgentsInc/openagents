@@ -1,9 +1,9 @@
 # Appendix A. Keywords, directives and types
 
 This appendix lists every keyword, directive, intrinsic, literal form and
-type the Coax design names, and says whether `coax0` 0.11.0 accepts it.
+type the Coax design names, and says whether `coax0` 0.12.0 accepts it.
 
-- **works**: implemented and tested in `coax0` 0.11.0.
+- **works**: implemented and tested in `coax0` 0.12.0.
 - **reserved**: the word is reserved, and `coax0` refuses it with "not
   supported by coax0 yet" (E0204 for keywords, E0210 for directives, E0301
   for types) rather than guessing what it means.
@@ -39,7 +39,8 @@ keywords; they're ordinary identifiers that the checker resolves.
 | `xx` | Integer-width autocast | reserved |
 | `constraint` | Declare a generic constraint | reserved |
 | `inline` `no_inline` | Inlining control at a definition or call | reserved |
-| `type_of` `type_info` | Reflection | reserved |
+| `type_info` | CPU type layout metadata, schema 1 | works |
+| `type_of` | First-class type reflection | reserved |
 | `Type` `Code` | Meta types | reserved |
 | `job` `pure` | Jobs and effect markers | reserved |
 | `strict` `deterministic` | Floating-point and determinism markers | reserved |
@@ -81,7 +82,10 @@ the same in generated C, at compile time and, for the math functions, in
 | --- | --- | --- |
 | `print(format, ...)` | Print with `%` slots checked at compile time; needs `#import "Basic"` | works |
 | `type_name(expr)` | The expression's type name as a string; the operand isn't evaluated | works |
-| `size_of(T)` | The type's size in bytes (the host C layout) | works |
+| `size_of(T)` | The type's size in bytes (bootstrap LP64 CPU layout) | works |
+| `type_info(T)` | Type name, kind, layout and counts as `CoaxTypeInfo` | works |
+| `field_info(T, i)` | Struct field name, type and layout as `CoaxFieldInfo` | works |
+| `enum_info(T, i)` | Enum member name and underlying bits as `CoaxEnumInfo` | works |
 | `len(x)` | The length of a string, array or view (the same as `.count`) | works |
 | `byte_at(s, i)` | The byte at index `i` of a string | works |
 | `sin` `cos` `tan` `exp` `log` `sqrt` `floor` `abs` | One float argument, same type back | works |

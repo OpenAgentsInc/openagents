@@ -1,0 +1,23 @@
+#import "Basic";
+
+Transform :: struct {x:f32;y:f32;selected:bool;}
+FIELDS :: #run transform_fields();
+
+transform_fields :: ()->[3]CoaxFieldInfo {
+ fields:[3]CoaxFieldInfo;
+ for i:0..<fields.count {fields[i]=field_info(Transform,i);}
+ return fields;
+}
+
+#test "a generated inspector retains target padding" {
+ fields:=transform_fields();
+ #assert type_info(Transform).size==12 && type_info(Transform).alignment==4;
+ #assert fields[0].offset==0 && fields[1].offset==4 && fields[2].offset==8;
+ #assert fields[2].name=="selected" && fields[2].size==1;
+}
+
+main :: () {
+ info:=type_info(Transform);
+ print("%: % bytes, alignment %\n",info.name,info.size,info.alignment);
+ for field:FIELDS {print("% % @% (% bytes)\n",field.name,field.type_name,field.offset,field.size);}
+}

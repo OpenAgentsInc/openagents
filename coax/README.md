@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.11.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.12.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The lexer, parser and type checker are Coax compiled to C11. The native
@@ -204,14 +204,24 @@ constant-dependency levels. Cycles, uninitialized reads, overflow, division by
 zero, bounds and bad casts are errors in debug **and release**. These are
 execution limits, not a complete limit for hostile source.
 
+## CPU layout reflection
+
+`type_info(T)`, `field_info(T, index)` and `enum_info(T, index)` return
+schema-1 ordinary records. Generate inspector tables with `#run`, or use
+constant scalar projections in array lengths. Invalid categories/indices and
+bounded expansion are checked. These queries describe bootstrap LP64 CPU
+storage; stable type IDs, alternate targets, defaults and procedure metadata
+remain planned. See [the spec](spec.md#102-reflection-now-and-later) and the
+[book example](book/examples/layout-reflection.coax).
+
 ## Layout
 
 | Path | Responsibility |
 | --- | --- |
 | `src/coax.h` | Tokens, types, values, syntax tree, declarations |
-| `src/lex.cpp` | Source to tokens |
-| `src/parse.cpp` | Recursive-descent parser |
-| `src/check.cpp` | Types and layouts, untyped literals, names, places, returns, formats |
+| `src/lex.cpp` | Native lexer storage and token bridge |
+| `src/parse.cpp` | Native syntax-tree storage and parser bridge |
+| `src/check.cpp` | Native type/tree storage and checked-result bridge |
 | `src/eval.cpp` | Bounded typed-AST evaluator and literal folding |
 | `src/emit_c.cpp` | C11 output, ordered operands, defer lowering, headers, layout reports |
 | `src/errors.cpp` | The explanation of every error code |
@@ -221,6 +231,7 @@ execution limits, not a complete limit for hostile source.
 | `tests/fail/` | Expected diagnostics and runtime traps |
 | `tests/compile_time.py` | Isolation, dependency, budget, error and generated-artifact checks |
 | `tests/tools.py` | Explain, JSON diagnostics, layout, libraries and headers, determinism |
+| `tests/reflection.py` | Layout values, generated tables, bounds and an independent native ABI oracle |
 | `tests/native.py` | Float math, foreign/export ABI linked into C, ordered effects, Metal profile |
 | `tests/verify.py` | Checks, counterexamples, budgets, `#authority` builds and mutation reports |
 | `examples/` | Demos with expected output; `pulse/` links a Coax kernel into C |

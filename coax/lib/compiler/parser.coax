@@ -57,7 +57,7 @@ PS_Result :: struct {ok:bool;root:int;}
 PS_Caps :: struct {nodes:int;message:int;imports:int;}
 PS_caps :: (tokens:int,source:int)->PS_Caps #export_c {
   if tokens<1 || tokens>2147483646 || source<0 || source>2147483646 {return PS_Caps.{};}
-  return PS_Caps.{nodes=tokens*3+1,message=source+512,imports=tokens/5};
+  return PS_Caps.{nodes=tokens*3+97,message=source+512,imports=tokens/5};
 }
 PS_peek :: (t:[] PS_Token,s:[] PS_State,ahead:int)->PS_Token {at:=s[0].pos+ahead;if at>=t.count {return t[t.count-1];}return t[at];}
 PS_at :: (t:[] PS_Token,s:[] PS_State,kind:u32)->bool {return PS_peek(t,s,0).kind==kind;}
@@ -161,6 +161,88 @@ PS_list_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int,close
     if !PS_at(t,s,14) {break;}PS_skip(t,s);
   }PS_expect(t,s,out,close,what);
 }
+#forall "reflection query names select a complete record schema" kind:0..<3 {
+ names:=[3]string.["type_info","field_info","enum_info"];
+ #assert PS_meta_kind(names[kind])==kind+1;
+ #assert PS_meta_kind("not_reflection")==0;
+}
+#test "reflection schemas are injected once only when requested" {
+ nodes:[256]PS_Node;state:=[1]PS_State.[PS_State.{used=2}];out:[256]u8;
+ nodes[1]=PS_Node.{kind=PS_Tag.decl_file};nodes[2]=PS_Node.{kind=PS_Tag.expr_call,name="type_info",d=3};
+ PS_meta_types(nodes[..],state[..],out[..],1);
+ #assert state[0].code=="" && nodes[nodes[1].head].name=="CoaxTypeInfo";
+ #assert nodes[nodes[nodes[1].head].next].name=="CoaxFieldInfo";
+ #assert nodes[nodes[nodes[nodes[1].head].next].next].name=="CoaxEnumInfo";
+ #assert nodes[nodes[nodes[1].head].head].name=="schema_version";
+ #assert state[0].used==53;
+ state[0]=PS_State.{used=2};nodes[1]=PS_Node.{kind=PS_Tag.decl_file};nodes[2].name="other";
+ PS_meta_types(nodes[..],state[..],out[..],1);#assert state[0].used==2 && nodes[1].head==0;
+}
+#forall "reflection query grammar retains type, selector and delimiters" query:0..<3, broken:0..<5 {
+ names:=[3]string.["type_info","field_info","enum_info"];
+ tokens:=[10]PS_Token.[PS_Token.{kind=1,text="info"},PS_Token.{kind=17},PS_Token.{kind=1,text=names[query]},PS_Token.{kind=8},PS_Token.{kind=1,text="u8"},PS_Token.{kind=14},PS_Token.{kind=3,value=7},PS_Token.{kind=9},PS_Token.{kind=15},PS_Token.{}];
+ if query==0 {tokens[2].kind=2;tokens[5].kind=9;tokens[6].kind=15;tokens[7].kind=0;tokens[8].kind=0;}
+ if broken==1 {tokens[3].kind=9;}
+ if broken==2 {tokens[4].kind=3;}
+ if broken==3 {if query==0 {tokens[5].kind=14;}else {tokens[5].kind=15;}}
+ if broken==4 {if query==0 {tokens[5].kind=8;}else {tokens[7].kind=8;}}
+ nodes:[256]PS_Node;state:[1]PS_State;out:[512]u8;
+ r:=PS_parse("",tokens[..],nodes[..],state[..],out[..]);
+ #assert r.ok==(broken==0);
+ if broken==0 {
+  call:=nodes[nodes[1].head].a;
+  #assert nodes[call].kind==PS_Tag.expr_call && nodes[call].name==names[query];
+  #assert nodes[nodes[call].d].name=="u8";
+  if query==0 {#assert nodes[call].head==0;}else {#assert nodes[nodes[call].head].value==7;}
+  #assert nodes[nodes[nodes[1].head].next].name=="CoaxTypeInfo";
+ }
+}
+#test "injected reflection schemas carry every field and resolved spelling" {
+ nodes:[256]PS_Node;state:=[1]PS_State.[PS_State.{used=1}];out:[256]u8;
+ nodes[1]=PS_Node.{kind=PS_Tag.expr_call,name="type_info",d=3};
+ PS_meta_types(nodes[..],state[..],out[..],0);
+ expected:=[24]string.["schema_version","name","kind","size","alignment","bits","is_signed","field_count","member_count","element_count","element_name","schema_version","index","name","type_name","offset","size","alignment","schema_version","index","name","value_bits","bits","is_signed"];
+ types:=[24]string.["u32","string","string","int","int","int","bool","int","int","int","string","u32","int","string","string","int","int","int","u32","int","string","u64","int","bool"];
+ record:=nodes[0].head;index:=0;
+ for k:0..<3 {
+  field:=nodes[record].head;
+  while field!=0 {#assert nodes[field].kind==PS_Tag.decl_field && nodes[field].name==expected[index];#assert nodes[nodes[field].a].kind==PS_Tag.type_named && nodes[nodes[field].a].name==types[index];index+=1;field=nodes[field].next;}
+  record=nodes[record].next;
+ }
+ #assert index==24 && record==0;
+ state[0]=PS_State.{used=1};nodes[0]=PS_Node.{};nodes[1].d=0;
+ PS_meta_types(nodes[..],state[..],out[..],0);#assert state[0].used==1;
+ state[0].used=1;nodes[1]=PS_Node.{kind=PS_Tag.expr_ident,name="type_info",d=3};
+ PS_meta_types(nodes[..],state[..],out[..],0);#assert state[0].used==1;
+ nodes[2]=PS_Node.{kind=PS_Tag.expr_call,name="type_info",d=3};
+ PS_meta_types(nodes[..],state[..],out[..],0);#assert state[0].used==1;
+}
+PS_meta_kind :: (name:string)->int {
+ if name=="type_info" {return 1;}if name=="field_info" {return 2;}if name=="enum_info" {return 3;}return 0;
+}
+PS_meta_record :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int,loc:PS_Loc,name:string,names:[]string,types:[]string) {
+ d:=PS_new(n,s,out,PS_Tag.decl_struct_,loc);n[d].name=name;PS_link(n,root,d);
+ for i:0..<names.count {
+  f:=PS_new(n,s,out,PS_Tag.decl_field,loc);n[f].name=names[i];
+  t:=PS_new(n,s,out,PS_Tag.type_named,loc);n[t].name=types[i];n[f].a=t;PS_link(n,d,f);
+ }
+}
+PS_meta_types :: (n:[]PS_Node,s:[]PS_State,out:[]u8,root:int) {
+ for i:1..<s[0].used+1 {
+  if n[i].kind==PS_Tag.expr_call && n[i].d!=0 && PS_meta_kind(n[i].name)!=0 {
+   names:=[11]string.["schema_version","name","kind","size","alignment","bits","is_signed","field_count","member_count","element_count","element_name"];
+   types:=[11]string.["u32","string","string","int","int","int","bool","int","int","int","string"];
+   PS_meta_record(n,s,out,root,n[i].loc,"CoaxTypeInfo",names[..],types[..]);
+   fnames:=[7]string.["schema_version","index","name","type_name","offset","size","alignment"];
+   ftypes:=[7]string.["u32","int","string","string","int","int","int"];
+   PS_meta_record(n,s,out,root,n[i].loc,"CoaxFieldInfo",fnames[..],ftypes[..]);
+   enames:=[6]string.["schema_version","index","name","value_bits","bits","is_signed"];
+   etypes:=[6]string.["u32","int","string","u64","int","bool"];
+   PS_meta_record(n,s,out,root,n[i].loc,"CoaxEnumInfo",enames[..],etypes[..]);return;
+  }
+ }
+}
+
 PS_primary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
   v:=PS_peek(t,s,0);id:=PS_new(n,s,out,PS_Tag.expr_int_lit,v.loc);
   if v.kind==3 {n[id].value=v.value;PS_skip(t,s);return PS_valid(s,id);}
@@ -172,6 +254,11 @@ PS_primary :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
     if n[n[id].d].kind!=PS_Tag.type_array {PS_fail(s,out,v.loc,"E0217","an array literal needs a fixed array type","[3] int.[1, 2, 3]");return 0;}
     PS_expect(t,s,out,20,"after the array type");PS_expect(t,s,out,12,"to start the elements");
     PS_list_expr(t,n,s,out,id,13,"to close the array literal");return PS_valid(s,id);
+  }
+  if (v.kind==2 || v.kind==1) && PS_meta_kind(v.text)!=0 {
+    PS_skip(t,s);n[id].kind=PS_Tag.expr_call;n[id].name=v.text;PS_expect(t,s,out,8,"after the reflection query");n[id].d=PS_type(t,n,s,out);
+    if v.text!="type_info" {PS_expect(t,s,out,14,"before the reflection index");a:=PS_expression(t,n,s,out);PS_link(n,id,a);}
+    PS_expect(t,s,out,9,"after the reflection query");return PS_valid(s,id);
   }
   if v.kind==2 {
     if v.text=="true" || v.text=="false" {n[id].kind=PS_Tag.expr_bool_lit;if v.text=="true" {n[id].value=1;}PS_skip(t,s);return PS_valid(s,id);}
@@ -369,7 +456,9 @@ PS_parse :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->
     }else if v.kind==1 && (PS_peek(t,s,1).kind==16 || PS_peek(t,s,1).kind==18) {PS_fail(s,out,v.loc,"E0212","global variables are not supported by coax0 yet","");break;}
     else {PS_fail(s,out,v.loc,"E0213","expected '#import' or a declaration 'name :: ...' at the top level","");break;}
     PS_link(n,root,id);
-  }return PS_Result.{ok=s[0].code=="",root=root};
+  }
+  if s[0].code=="" {PS_meta_types(n,s,out,root);}
+  return PS_Result.{ok=s[0].code=="",root=root};
 }
 // Source import syntax/admission belongs to the parser; native code reads files.
 PS_Import :: struct {path:string;prefix:string;loc:PS_Loc;end:int;}
@@ -407,7 +496,7 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   #assert state[0].fix=="add ';'";
 }
 #test "capacity admission" {
-  #assert PS_caps(1,0).nodes==4 && PS_caps(1,0).message==512;
+  #assert PS_caps(1,0).nodes==100 && PS_caps(1,0).message==512;
   #assert PS_caps(0,0).nodes==0 && PS_caps(2147483647,0).nodes==0;
   #assert PS_caps(1,-1).nodes==0 && PS_caps(1,2147483647).nodes==0;
 }
@@ -2778,7 +2867,7 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   }
 }
 #test "capacity boundaries and source limits" {
-  #assert PS_caps(2147483646,2147483646).nodes==6442450939 && PS_caps(2147483646,2147483646).message==2147484158;
+  #assert PS_caps(2147483646,2147483646).nodes==6442451035 && PS_caps(2147483646,2147483646).message==2147484158;
   #assert PS_caps(-1,0).nodes==0;
 }
 #forall "operator table is the grammar" k:0..<53 {

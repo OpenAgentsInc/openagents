@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-This appendix lists every error code `coax0` 0.11.0 can report. The tables
+This appendix lists every error code `coax0` 0.12.0 can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
 compiler's own table from `coax/src/errors.cpp`; when that table changes,
 regenerate this appendix from it rather than editing the rows by hand. In
@@ -30,9 +30,6 @@ Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
 part of the compiler produces each stage's errors. With `--json`, each
 diagnostic is one JSON object per line on stderr, with the fields `file`,
 `line`, `col`, `code`, `message` and `fix`.
-
-
-## E01xx: lexer
 
 
 ## E01xx: lexer
@@ -158,6 +155,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0379` | #forall domain cannot be enumerated | A #forall binding must be nonempty: bool, a nonempty enum, an integer of at most 16 bits, or an increasing lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths. |
 | `E0380` | procedure not exercised by a check | Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions. |
 | `E0381` | type checker resource limit | The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. |
+| `E0382` | invalid reflection category | field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout. |
 
 ## E04xx: compile-time evaluation
 

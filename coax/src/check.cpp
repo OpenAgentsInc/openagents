@@ -100,7 +100,7 @@ static void attach_check_input(File *file,const std::vector<coax_t_PS_Node> &nod
 }
 bool check(Arena *arena,File *file){
   if(!file->check_input){error_at(file->src,{1,1,0},"E0381","type checker has no indexed syntax input");return false;}
-  auto input=file->check_input;const auto caps=CK_caps(input->used+1,(int64_t)file->src->text.size());input->nodes.resize((size_t)caps.nodes);
+  auto input=file->check_input;const auto caps=CK_caps(input->used+1,(int64_t)file->src->text.size());const auto extra=CK_meta_capacity({input->nodes.data(),(int64_t)input->nodes.size()},input->used);input->nodes.resize((size_t)(caps.nodes+extra));
   std::vector<coax_t_CK_Type> records((size_t)caps.types);std::vector<coax_t_CK_Local> locals((size_t)caps.locals);
   std::vector<coax_t_CK_Error> errors((size_t)caps.errors);std::vector<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
   coax_t_CK_Context context{{input->nodes.data(),(int64_t)input->nodes.size()},{records.data(),(int64_t)records.size()},{locals.data(),(int64_t)locals.size()},{errors.data(),(int64_t)errors.size()},{bytes.data(),(int64_t)bytes.size()},{&state,1}};
@@ -108,7 +108,7 @@ bool check(Arena *arena,File *file){
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}
   auto &nodes=input->nodes;auto &objects=input->objects;const size_t old_size=objects.size();objects.resize((size_t)state.used+1,nullptr);
-  for(size_t id=old_size;id<objects.size();id++){const auto k=nodes[id].kind;if(k>=1 && k<=4)objects[id]=make<TypeExpr>(arena);else if(k>=16 && k<=33)objects[id]=make<Expr>(arena);}
+  for(size_t id=old_size;id<objects.size();id++){const auto k=nodes[id].kind;if(k>=1 && k<=4)objects[id]=make<TypeExpr>(arena);else if(k>=16 && k<=33)objects[id]=make<Expr>(arena);else if(k==COAX_CK_Tag_field_init)objects[id]=make<FieldInit>(arena);}
   std::vector<TypeInfo*> types={&T_INVALID,&T_VOID,&T_BOOL,&T_STRING,&T_UNTYPED_INT,&T_UNTYPED_FLOAT,&T_F32,&T_F64,&T_S8,&T_S16,&T_S32,&T_S64,&T_U8,&T_U16,&T_U32,&T_U64};
   for(int64_t i=16;i<state.type_count;i++)types.push_back(make<TypeInfo>(arena));
   g_composite_list.clear();
@@ -123,7 +123,7 @@ bool check(Arena *arena,File *file){
     const auto &v=nodes[(size_t)id];const auto loc=checked_loc(v.loc);const auto name=checked_string(arena,v.name);const auto ty=types[(size_t)v.type];
     if(v.kind>=1 && v.kind<=4){auto *p=checked_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;p->length=checked_ref<Expr>(objects,v.a);p->elem=checked_ref<TypeExpr>(objects,v.b);}
     else if(v.kind>=16 && v.kind<=33){auto *p=checked_ref<Expr>(objects,id);p->kind=(ExprKind)(v.kind-16);p->loc=loc;p->text=name;p->type=ty;p->int_value=v.value;memcpy(&p->float_value,&v.floating,8);p->op=(Tok)v.op;
-      p->lhs=checked_ref<Expr>(objects,v.a);p->rhs=checked_ref<Expr>(objects,v.b);p->third=checked_ref<Expr>(objects,v.c);p->type_expr=checked_ref<TypeExpr>(objects,v.d);p->trunc=v.flag;p->negative=v.negative;p->folded=v.folded;p->field_index=(int32_t)v.field_index;p->proc=checked_ref<ProcDecl>(objects,v.proc);p->constant=checked_ref<ConstDecl>(objects,v.constant);p->builtin_print=v.builtin_print;p->byte_intrinsic=(ByteIntrinsic)v.byte_intrinsic;p->intrinsic=(Intrinsic)v.intrinsic;p->args={};p->fields={};}
+      p->lhs=checked_ref<Expr>(objects,v.a);p->rhs=checked_ref<Expr>(objects,v.b);p->third=checked_ref<Expr>(objects,v.c);p->type_expr=checked_ref<TypeExpr>(objects,v.d);p->trunc=v.flag;p->negative=v.negative;p->folded=v.folded;p->compiler_generated=CK_generated(v.mark);p->field_index=(int32_t)v.field_index;p->proc=checked_ref<ProcDecl>(objects,v.proc);p->constant=checked_ref<ConstDecl>(objects,v.constant);p->builtin_print=v.builtin_print;p->byte_intrinsic=(ByteIntrinsic)v.byte_intrinsic;p->intrinsic=(Intrinsic)v.intrinsic;p->args={};p->fields={};}
     else if(v.kind>=40 && v.kind<=52){auto *p=checked_ref<Stmt>(objects,id);p->kind=(StmtKind)(v.kind-40);p->loc=loc;p->name=name;p->name2=checked_string(arena,v.name2);p->name2_loc=checked_loc(v.loc2);p->type=ty;p->expr=checked_ref<Expr>(objects,v.a);p->expr2=checked_ref<Expr>(objects,v.b);p->target=nullptr;p->type_expr=nullptr;p->then_=nullptr;p->else_=nullptr;p->uninit=v.flag;
       if(v.kind==COAX_CK_Tag_stmt_var)p->type_expr=checked_ref<TypeExpr>(objects,v.d);
       else if(v.kind==COAX_CK_Tag_stmt_assign){p->target=checked_ref<Expr>(objects,v.c);p->op=(Tok)v.op;}

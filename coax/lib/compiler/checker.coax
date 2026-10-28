@@ -236,7 +236,7 @@ CK_untyped :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.untype
 CK_aggregate :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.array || c.types[t].kind==CK_Kind.struct_;}
 CK_find :: (c:CK_Context,kind:CK_Tag,name:string)->int {id:=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==kind && c.nodes[id].name==name {return id;}id=c.nodes[id].next;}return CK_NONE;}
 CK_local :: (c:CK_Context,name:string)->int {i:=c.state[0].local_count;while i>0 {i-=1;at:=i;if c.locals[at].name==name {return at;}}return -1;}
-CK_builtin_name :: (c:CK_Context,name:string)->bool {return name=="type_name" || (c.state[0].basic && name=="print") || name=="len" || name=="byte_at" || CK_intrinsic(name)!=0 || CK_byte_intrinsic(name)!=0;}
+CK_builtin_name :: (c:CK_Context,name:string)->bool {return name=="type_name" || name=="field_info" || name=="enum_info" || (c.state[0].basic && name=="print") || name=="len" || name=="byte_at" || CK_intrinsic(name)!=0 || CK_byte_intrinsic(name)!=0;}
 CK_intern :: (c:CK_Context,kind:CK_Kind,elem:int,length:int)->int {
   for i:16..<c.state[0].type_count {t:=c.types[i];if t.kind==kind && t.elem==elem && t.length==length {return i;}}
   name:="";size:=16;alignment:=8;
@@ -437,7 +437,7 @@ CK_field :: (c:CK_Context,id:int)->int {
   t:=CK_expr(c,e.a,CK_Hint.{});if t==CK_NONE {return CK_NONE;}kind:=c.types[t].kind;
   if e.name=="count" && (kind==CK_Kind.array || kind==CK_Kind.view || t==3) {c.nodes[id].field_index= -2;return 11;}
   if kind==CK_Kind.struct_ {
-    d:=c.types[t].decl;f:=c.nodes[d].head;index:=0;while f!=0 {if c.nodes[f].name==e.name {c.nodes[id].field_index=index;return c.nodes[f].type;}index+=1;f=c.nodes[f].next;}
+    d:=c.types[t].decl;f:=c.nodes[d].head;index:=0;while f!=0 {if c.nodes[f].name==e.name {c.nodes[id].field_index=index;if c.nodes[e.a].kind==CK_Tag.expr_struct && c.nodes[e.a].mark==1 {value:=c.nodes[CK_at(c,c.nodes[e.a].head,index)].a;CK_copy_expr(c,id,value,true);}return c.nodes[f].type;}index+=1;f=c.nodes[f].next;}
     parts:=[5] string.["struct '",c.nodes[d].name,"' has no field '",e.name,"'"];CK_error(c,e.loc,"E0351",CK_text(c,parts[..]),CK_field_list(c,d,false));return CK_NONE;
   }
   fix:="";if kind==CK_Kind.array || kind==CK_Kind.view || t==3 {fix="it has '.count'";}
@@ -498,6 +498,7 @@ CK_expr :: (c:CK_Context,id:int,want:CK_Hint)->int {
 }
 CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int {
   e:=c.nodes[id];
+  if e.mark==1 && (e.kind==CK_Tag.expr_struct || e.kind==CK_Tag.expr_array) {return e.type;}
   if e.kind==CK_Tag.expr_int {if e.type==0 {return 4;}return e.type;}
   if e.kind==CK_Tag.expr_float {if e.type==0 {return 5;}return e.type;}
   if e.kind==CK_Tag.expr_bool {return 2;}if e.kind==CK_Tag.expr_string {return 3;}
@@ -588,6 +589,281 @@ CK_math_call :: (c:CK_Context,id:int,intrinsic:u32,want:CK_Hint)->int {
     if at!=t || !CK_float(c,t) {need:=" needs a float";if arity==2 {need=" needs two floats of one type";}fix:="";if CK_integer(c,at) {fix="convert it first: f64(x)";}parts:=[4] string.[e.name,need,", found ",c.types[at].name];CK_error(c,c.nodes[a].loc,"E0375",CK_text(c,parts[..]),fix);return CK_NONE;}a=c.nodes[a].next;
   }return t;
 }
+// Schema 1 is target layout metadata, lowered to ordinary typed values. No
+// compiler object, pointer or host resource escapes into the target program.
+CK_MetaValue :: struct {text:string;value:u64;}
+#test "reflection workspace is requested only by typed query syntax" {
+ nodes:[3] CK_Node;
+ #assert CK_meta_capacity(nodes[..],2)==0;
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="field_info",d=1};
+ #assert CK_meta_capacity(nodes[..],2)==65536;
+ nodes[2].name="enum_info";#assert CK_meta_capacity(nodes[..],2)==65536;
+ nodes[2].name="type_info";#assert CK_meta_capacity(nodes[..],2)==65536;
+ nodes[2].d=0;#assert CK_meta_capacity(nodes[..],2)==0;
+ nodes[1]=CK_Node.{kind=CK_Tag.expr_ident,name="type_info",d=1};
+ #assert CK_meta_capacity(nodes[..],2)==0;
+ nodes[1].kind=CK_Tag.expr_call;#assert CK_meta_capacity(nodes[..],2)==65536;
+ nodes[1].name="size_of";#assert CK_meta_capacity(nodes[..],2)==0;
+}
+#forall "reflection lowering preserves target metadata and rejects invalid selectors" variant:0..<20 {
+ nodes:[512]CK_Node;types:[64]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:=[1]CK_State.[CK_State.{used=90,type_count=23}];
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="CoaxTypeInfo",type=16,head=5,next=3};types[16]=CK_Type.{kind=CK_Kind.struct_,name="CoaxTypeInfo",decl=2};
+ nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="CoaxFieldInfo",type=17,head=16,next=4};types[17]=CK_Type.{kind=CK_Kind.struct_,name="CoaxFieldInfo",decl=3};
+ nodes[4]=CK_Node.{kind=CK_Tag.struct_,name="CoaxEnumInfo",type=18,head=23,next=0};types[18]=CK_Type.{kind=CK_Kind.struct_,name="CoaxEnumInfo",decl=4};
+ nodes[5]=CK_Node.{kind=CK_Tag.field,name="schema_version",type=14,next=6};
+ nodes[6]=CK_Node.{kind=CK_Tag.field,name="name",type=3,next=7};
+ nodes[7]=CK_Node.{kind=CK_Tag.field,name="kind",type=3,next=8};
+ nodes[8]=CK_Node.{kind=CK_Tag.field,name="size",type=11,next=9};
+ nodes[9]=CK_Node.{kind=CK_Tag.field,name="alignment",type=11,next=10};
+ nodes[10]=CK_Node.{kind=CK_Tag.field,name="bits",type=11,next=11};
+ nodes[11]=CK_Node.{kind=CK_Tag.field,name="is_signed",type=2,next=12};
+ nodes[12]=CK_Node.{kind=CK_Tag.field,name="field_count",type=11,next=13};
+ nodes[13]=CK_Node.{kind=CK_Tag.field,name="member_count",type=11,next=14};
+ nodes[14]=CK_Node.{kind=CK_Tag.field,name="element_count",type=11,next=15};
+ nodes[15]=CK_Node.{kind=CK_Tag.field,name="element_name",type=3,next=0};
+ nodes[16]=CK_Node.{kind=CK_Tag.field,name="schema_version",type=14,next=17};
+ nodes[17]=CK_Node.{kind=CK_Tag.field,name="index",type=11,next=18};
+ nodes[18]=CK_Node.{kind=CK_Tag.field,name="name",type=3,next=19};
+ nodes[19]=CK_Node.{kind=CK_Tag.field,name="type_name",type=3,next=20};
+ nodes[20]=CK_Node.{kind=CK_Tag.field,name="offset",type=11,next=21};
+ nodes[21]=CK_Node.{kind=CK_Tag.field,name="size",type=11,next=22};
+ nodes[22]=CK_Node.{kind=CK_Tag.field,name="alignment",type=11,next=0};
+ nodes[23]=CK_Node.{kind=CK_Tag.field,name="schema_version",type=14,next=24};
+ nodes[24]=CK_Node.{kind=CK_Tag.field,name="index",type=11,next=25};
+ nodes[25]=CK_Node.{kind=CK_Tag.field,name="name",type=3,next=26};
+ nodes[26]=CK_Node.{kind=CK_Tag.field,name="value_bits",type=15,next=27};
+ nodes[27]=CK_Node.{kind=CK_Tag.field,name="bits",type=11,next=28};
+ nodes[28]=CK_Node.{kind=CK_Tag.field,name="is_signed",type=2,next=0};
+ types[19]=CK_Type.{kind=CK_Kind.struct_,name="Sample",size=16,alignment=8,decl=30};
+ nodes[30]=CK_Node.{kind=CK_Tag.struct_,head=31};nodes[31]=CK_Node.{kind=CK_Tag.field,name="tag",type=12,field_index=0,next=32};nodes[32]=CK_Node.{kind=CK_Tag.field,name="value",type=7,field_index=8};
+ types[20]=CK_Type.{kind=CK_Kind.enum_,name="Mode",size=1,alignment=1,bits=8,is_signed=true,decl=33};
+ nodes[33]=CK_Node.{kind=CK_Tag.enum_,head=34};nodes[34]=CK_Node.{kind=CK_Tag.member,name="negative",value=18446744073709551614,next=35};nodes[35]=CK_Node.{kind=CK_Tag.member,name="positive",value=7};
+ types[21]=CK_Type.{kind=CK_Kind.array,name="[3] u16",size=6,alignment=2,elem=13,length=3};
+ types[22]=CK_Type.{kind=CK_Kind.view,name="[] Sample",size=16,alignment=8,elem=19};
+ nodes[36]=CK_Node.{kind=CK_Tag.expr_call,name="type_info",head=37,next=39,loc=CK_Loc.{line=7,column=3,offset=90}};
+ nodes[37]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ for i:5..<29 {nodes[i].a=i+55;nodes[i+55]=CK_Node.{kind=CK_Tag.type_named,name=types[nodes[i].type].name};}
+ target:=12;if variant>0 && variant<5 {target=18+variant;}
+ if variant>=5 {nodes[36].name="field_info";target=19;nodes[37].value=1;}
+ if variant==6 || variant==8 || variant==16 {nodes[36].name="enum_info";target=20;nodes[37].value=0;}
+ if variant==7 || variant==8 || variant==15 {nodes[37]=CK_Node.{kind=CK_Tag.expr_ident,name="selector"};locals[0]=CK_Local.{name="selector",type=11};state[0].local_count=1;}
+ if variant==9 {target=20;}
+ if variant==10 {nodes[37]=CK_Node.{kind=CK_Tag.expr_bool};}
+ if variant==11 {nodes[37].value=2;}
+ if variant==12 {nodes[30].head=0;}
+ if variant==13 {nodes[37].value=18446744073709551615;}
+ if variant==14 {nodes[36].name="type_info";}
+ if variant==17 {nodes[37]=CK_Node.{kind=CK_Tag.expr_ident,name="missing"};}
+ if variant==18 {nodes[37].value=256;nodes[37].type=0;}
+ if variant==19 {nodes[37]=CK_Node.{kind=CK_Tag.expr_ident,name="selector"};locals[0]=CK_Local.{name="selector",type=11};state[0].local_count=1;}
+ if variant==16 {types[20].bits=64;types[20].is_signed=false;nodes[34].value=18446744073709551615;}
+ limit:=nodes.count;if variant==14 || variant==15 {limit=100;}
+ type_limit:=types.count;if variant==19 {type_limit=23;}
+ c:=CK_Context.{nodes=nodes[0..<limit],types=types[0..<type_limit],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ result:=CK_meta_query(c,36,target);
+ if (variant>=9 && variant<=15) || variant>=17 {
+  #assert result==0 && state[0].error_count==1;
+  code:="E0382";if variant==10 {code="E0356";}if variant==11 || variant==13 {code="E0374";}if variant==14 || variant==15 {code="E0381";}
+  if variant==17 {code="E0306";}if variant==18 {code="E0374";}if variant==19 {code="E0381";}
+  #assert errors[0].code==code;
+  if variant==15 {#assert state[0].used==90;}
+ }else {
+  #assert state[0].error_count==0 && nodes[36].next==39 && nodes[36].loc.line==7 && nodes[36].loc.column==3 && nodes[36].loc.offset==90;
+  expected_type:=16;if variant>=5 {expected_type=17;}if variant==6 || variant==8 || variant==16 {expected_type=18;}
+  #assert result==expected_type && nodes[36].type==expected_type;
+  schema_sizes:=[3]int.[112,72,56];#assert types[expected_type].size==schema_sizes[expected_type-16] && types[expected_type].alignment==8;
+  record:=36;
+  if variant==7 || variant==8 {
+   #assert nodes[36].kind==CK_Tag.expr_index && nodes[36].b==37;
+   array:=nodes[36].a;#assert nodes[array].mark==1 && nodes[array].kind==CK_Tag.expr_array;
+   #assert types[nodes[array].type].kind==CK_Kind.array && types[nodes[array].type].length==2 && types[nodes[array].type].elem==expected_type;
+   array_type:=nodes[array].type;#assert CK_expr(c,array,CK_Hint.{})==array_type;
+   record=nodes[array].head;
+   second:=nodes[record].next;#assert second!=0 && nodes[second].next==0 && nodes[array].tail==second;
+   #assert nodes[nodes[CK_at(c,nodes[second].head,1)].a].value==1;
+   if variant==7 {#assert nodes[nodes[CK_at(c,nodes[second].head,4)].a].value==8;}else {#assert nodes[nodes[CK_at(c,nodes[second].head,3)].a].value==7;}
+  }
+  #assert nodes[record].kind==CK_Tag.expr_struct && nodes[record].mark==1;
+  #assert CK_expr(c,record,CK_Hint.{})==expected_type;
+  count:=7;if variant<5 {count=11;}if expected_type==18 {count=6;}
+  #assert CK_list_count(c,nodes[record].head)==count;
+  field:=nodes[record].head;schema:=nodes[types[expected_type].decl].head;
+  for i:0..<count {
+   #assert nodes[field].name==nodes[schema].name && nodes[field].kind==CK_Tag.field_init && nodes[field].field_index==i;
+   value:=nodes[field].a;#assert nodes[value].type==nodes[schema].type && nodes[value].mark==1 && nodes[value].folded && nodes[value].loc.offset==90;
+   kind:=CK_Tag.expr_int;if nodes[schema].type==3 {kind=CK_Tag.expr_string;}if nodes[schema].type==2 {kind=CK_Tag.expr_bool;}
+   #assert nodes[value].kind==kind;
+   if i==0 {#assert nodes[value].value==1;}
+   field=nodes[field].next;schema=nodes[schema].next;
+  }
+  if variant==0 {
+   #assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].name=="u8";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,2)].a].name=="integer";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,3)].a].value==1;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,4)].a].value==1;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,5)].a].value==8;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,6)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,7)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,8)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,9)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,10)].a].name=="";
+  }
+  if variant==1 {
+   #assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].name=="Sample";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,2)].a].name=="struct";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,3)].a].value==16;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,4)].a].value==8;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,5)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,6)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,7)].a].value==2;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,8)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,9)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,10)].a].name=="";
+  }
+  if variant==2 {
+   #assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].name=="Mode";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,2)].a].name=="enum";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,3)].a].value==1;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,4)].a].value==1;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,5)].a].value==8;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,6)].a].value==1;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,7)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,8)].a].value==2;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,9)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,10)].a].name=="";
+  }
+  if variant==3 {
+   #assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].name=="[3] u16";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,2)].a].name=="array";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,3)].a].value==6;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,4)].a].value==2;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,5)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,6)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,7)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,8)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,9)].a].value==3;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,10)].a].name=="u16";
+  }
+  if variant==4 {
+   #assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].name=="[] Sample";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,2)].a].name=="view";
+   #assert nodes[nodes[CK_at(c,nodes[record].head,3)].a].value==16;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,4)].a].value==8;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,5)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,6)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,7)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,8)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,9)].a].value==0;
+   #assert nodes[nodes[CK_at(c,nodes[record].head,10)].a].name=="Sample";
+  }
+  if variant==5 {#assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].value==1;#assert nodes[nodes[CK_at(c,nodes[record].head,2)].a].name=="value";#assert nodes[nodes[CK_at(c,nodes[record].head,3)].a].name=="f64";#assert nodes[nodes[CK_at(c,nodes[record].head,4)].a].value==8;#assert nodes[nodes[CK_at(c,nodes[record].head,5)].a].value==8;#assert nodes[nodes[CK_at(c,nodes[record].head,6)].a].value==8;}
+  if variant==6 || variant==8 || variant==16 {
+   #assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].value==0 && nodes[nodes[CK_at(c,nodes[record].head,2)].a].name=="negative";
+   raw:u64=254;width:u64=8;sign:u64=1;if variant==16 {raw=18446744073709551615;width=64;sign=0;}
+   #assert nodes[nodes[CK_at(c,nodes[record].head,3)].a].value==raw && nodes[nodes[CK_at(c,nodes[record].head,4)].a].value==width && nodes[nodes[CK_at(c,nodes[record].head,5)].a].value==sign;
+  }
+  nodes[38]=CK_Node.{kind=CK_Tag.expr_field,a=record,name="schema_version",next=39,loc=CK_Loc.{offset=123}};
+  #assert CK_field(c,38)==14 && nodes[38].kind==CK_Tag.expr_int && nodes[38].value==1 && nodes[38].next==39 && nodes[38].loc.offset==123;
+  if variant==0 {
+   nodes[4].next=30;nodes[30].name="Sample";nodes[30].type=19;nodes[30].mark=2;
+   nodes[29]=CK_Node.{kind=CK_Tag.type_named,name="Sample"};nodes[38]=CK_Node.{kind=CK_Tag.expr_struct,d=29};
+   nodes[39]=CK_Node.{kind=CK_Tag.expr_field,a=38,name="tag"};
+   #assert CK_field(c,39)==12 && nodes[39].kind==CK_Tag.expr_field && nodes[39].a==38;
+  }
+ }
+}
+#forall "metadata allocation failure is never a partially published record" capacity:6..<10 {
+ nodes:[12]CK_Node;types:[17]CK_Type;locals:[1]CK_Local;errors:[4]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{used=4}];
+ types[16]=CK_Type.{kind=CK_Kind.struct_,decl=1};nodes[1]=CK_Node.{kind=CK_Tag.struct_,head=2,mark=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=14,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=14};
+ c:=CK_Context.{nodes=nodes[0..<capacity],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};values:[2]CK_MetaValue;
+ #assert CK_meta_record(c,16,values[..],CK_Loc.{})==0;
+ #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";
+}
+#test "metadata table budgets include one array node and the null spare" {
+ #assert !CK_meta_table_fits(0,2,true);
+ #assert !CK_meta_table_fits(31,2,true) && CK_meta_table_fits(32,2,true) && CK_meta_table_fits(33,2,true);
+ #assert !CK_meta_table_fits(27,2,false) && CK_meta_table_fits(28,2,false) && CK_meta_table_fits(29,2,false);
+}
+CK_meta_table_fits :: (remaining:int,count:int,fields:bool)->bool {
+ width:=13;if fields {width=15;}return count<=(remaining-2)/width;
+}
+CK_meta_publish :: (c:CK_Context,id:int,result:int)->int {
+ if c.state[0].fatal {return CK_NONE;}
+ next:=c.nodes[id].next;c.nodes[id]=c.nodes[result];c.nodes[id].next=next;return c.nodes[id].type;
+}
+#forall "synthetic reflection provenance is distinct from authored expressions" mark:0..<4 {
+ #assert CK_generated(mark)==(mark==1);
+}
+CK_generated :: (mark:int)->bool #export_c {return mark==1;}
+CK_meta_capacity :: (nodes:[] CK_Node,used:int)->int #export_c {
+ for i:1..<used+1 {n:=nodes[i];if n.kind==CK_Tag.expr_call && n.d!=0 && (n.name=="type_info" || n.name=="field_info" || n.name=="enum_info") {return 65536;}}
+ return 0;
+}
+CK_meta_record :: (c:CK_Context,t:int,values:[] CK_MetaValue,loc:CK_Loc)->int {
+ CK_layout(c,c.types[t].decl);
+ id:=CK_new(c,CK_Tag.expr_struct,loc);c.nodes[id].type=t;c.nodes[id].mark=1;
+ field:=c.nodes[c.types[t].decl].head;
+ for v,index:values {
+  if c.state[0].fatal {return CK_NONE;}
+  f:=CK_new(c,CK_Tag.field_init,loc);value:=CK_new(c,CK_Tag.expr_int,loc);
+  ft:=c.nodes[field].type;
+  c.nodes[value].mark=1;c.nodes[value].type=ft;c.nodes[value].value=v.value;c.nodes[value].folded=true;
+  if ft==3 {c.nodes[value].kind=CK_Tag.expr_string;c.nodes[value].name=v.text;}
+  if ft==2 {c.nodes[value].kind=CK_Tag.expr_bool;}
+  c.nodes[f].name=c.nodes[field].name;c.nodes[f].a=value;c.nodes[f].field_index=index;
+  if c.nodes[id].head==0 {c.nodes[id].head=f;}else {c.nodes[c.nodes[id].tail].next=f;}
+  c.nodes[id].tail=f;field=c.nodes[field].next;
+ }
+ if c.state[0].fatal {return CK_NONE;}return id;
+}
+CK_meta_type :: (c:CK_Context,t:int,loc:CK_Loc)->int {
+ ty:=c.types[t];fields:=0;members:=0;count:=0;element:="";
+ if ty.kind==CK_Kind.struct_ {fields=CK_list_count(c,c.nodes[ty.decl].head);}
+ if ty.kind==CK_Kind.enum_ {members=CK_list_count(c,c.nodes[ty.decl].head);}
+ if ty.kind==CK_Kind.array || ty.kind==CK_Kind.view {count=ty.length;element=c.types[ty.elem].name;}
+ kinds:=[12]string.["invalid","void","integer","float","bool","string","integer literal","float literal","struct","enum","array","view"];
+ values:=[11]CK_MetaValue.[CK_MetaValue.{value=1},CK_MetaValue.{text=ty.name},CK_MetaValue.{text=kinds[cast(int)ty.kind]},CK_MetaValue.{value=cast(u64)ty.size},CK_MetaValue.{value=cast(u64)ty.alignment},CK_MetaValue.{value=cast(u64)ty.bits},CK_MetaValue.{value=ifx ty.is_signed then 1 else 0},CK_MetaValue.{value=cast(u64)fields},CK_MetaValue.{value=cast(u64)members},CK_MetaValue.{value=cast(u64)count},CK_MetaValue.{text=element}];
+ return CK_meta_record(c,c.nodes[CK_find(c,CK_Tag.struct_,"CoaxTypeInfo")].type,values[..],loc);
+}
+CK_meta_member :: (c:CK_Context,t:int,index:int,fields:bool,loc:CK_Loc)->int {
+ ty:=c.types[t];member:=c.nodes[CK_at(c,c.nodes[ty.decl].head,index)];
+ if fields {
+  ft:=c.types[member.type];values:=[7]CK_MetaValue.[CK_MetaValue.{value=1},CK_MetaValue.{value=cast(u64)index},CK_MetaValue.{text=member.name},CK_MetaValue.{text=ft.name},CK_MetaValue.{value=cast(u64)member.field_index},CK_MetaValue.{value=cast(u64)ft.size},CK_MetaValue.{value=cast(u64)ft.alignment}];
+  return CK_meta_record(c,c.nodes[CK_find(c,CK_Tag.struct_,"CoaxFieldInfo")].type,values[..],loc);
+ }
+ values:=[6]CK_MetaValue.[CK_MetaValue.{value=1},CK_MetaValue.{value=cast(u64)index},CK_MetaValue.{text=member.name},CK_MetaValue.{value=member.value&CM_mask(ty.bits)},CK_MetaValue.{value=cast(u64)ty.bits},CK_MetaValue.{value=ifx ty.is_signed then 1 else 0}];
+ return CK_meta_record(c,c.nodes[CK_find(c,CK_Tag.struct_,"CoaxEnumInfo")].type,values[..],loc);
+}
+CK_meta_query :: (c:CK_Context,id:int,t:int)->int {
+ e:=c.nodes[id];
+ if e.name=="type_info" {result:=CK_meta_type(c,t,e.loc);return CK_meta_publish(c,id,result);}
+ fields:=e.name=="field_info";kind:=CK_Kind.enum_;if fields {kind=CK_Kind.struct_;}
+ if c.types[t].kind!=kind {CK_error(c,e.loc,"E0382","field_info requires a struct; enum_info requires an enum","");return CK_NONE;}
+ index_type:=CK_value(c,e.head,CK_Hint.{type=11});if index_type==0 {return CK_NONE;}
+ if !CK_integer(c,index_type) {CK_error(c,c.nodes[e.head].loc,"E0356","a reflection index must be an integer","");return CK_NONE;}
+ count:=CK_list_count(c,c.nodes[c.types[t].decl].head);
+ if count==0 {CK_error(c,e.loc,"E0382","cannot select metadata from a type with no fields or members","");return CK_NONE;}
+ index:=CK_const_int(c,e.head);
+ if !index.bad {
+  if index.negative || CM_cmp(index.mag,CM_u(cast(u64)count))>=0 {CK_error(c,c.nodes[e.head].loc,"E0374","reflection index is outside the declaration","");return CK_NONE;}
+  result:=CK_meta_member(c,t,cast(int)CM_low(index.mag),fields,e.loc);return CK_meta_publish(c,id,result);
+ }
+ // Preflight before constructing a table. All expansion shares the bounded
+ // checker node pool; a failed allocation is never partially published.
+ if !CK_meta_table_fits(c.nodes.count-c.state[0].used,count,fields) {CK_resource(c,e.loc);return CK_NONE;}
+ array:=CK_new(c,CK_Tag.expr_array,e.loc);c.nodes[array].mark=1;
+ for i:0..<count {
+  value:=CK_meta_member(c,t,i,fields,e.loc);
+  if i==0 {c.nodes[array].head=value;}else {c.nodes[c.nodes[array].tail].next=value;}
+  c.nodes[array].tail=value;
+ }
+ rt:=c.nodes[c.nodes[array].head].type;c.nodes[array].type=CK_intern(c,CK_Kind.array,rt,count);
+ if c.state[0].fatal {return CK_NONE;}
+ next:=c.nodes[id].next;c.nodes[id]=CK_Node.{kind=CK_Tag.expr_index,loc=e.loc,a=array,b=e.head,next=next,type=rt};return rt;
+}
+
 CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
   e:=c.nodes[id];count:=CK_list_count(c,e.head);builtin:=CK_builtin_type(e.name);
   if CK_numeric(c,builtin) && e.d==CK_NONE {
@@ -614,7 +890,7 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
     if byte==1 {return 2;}if byte==2 {return 6;}if byte==3 {return 7;}if byte==4 {return 14;}return 15;
   }
   intrinsic:=CK_intrinsic(e.name);if intrinsic!=0 {return CK_math_call(c,id,intrinsic,want);}
-  if e.d!=CK_NONE {t:=CK_resolve(c,e.d,CK_Access.value);if t==CK_NONE {return CK_NONE;}CK_set_int(c,id,CM_from(cast(u64)c.types[t].size,false));return c.nodes[id].type;}
+  if e.d!=CK_NONE {t:=CK_resolve(c,e.d,CK_Access.value);if t==CK_NONE {return CK_NONE;}if e.name!="size_of" {return CK_meta_query(c,id,t);}CK_set_int(c,id,CM_from(cast(u64)c.types[t].size,false));return c.nodes[id].type;}
   if e.name=="type_name" {
     if count!=1 {CK_error(c,e.loc,"E0343","type_name needs exactly one expression","");return CK_NONE;}
     c.state[0].unevaluated+=1;t:=CK_value(c,e.head,CK_Hint.{});c.state[0].unevaluated-=1;if t==CK_NONE {return CK_NONE;}

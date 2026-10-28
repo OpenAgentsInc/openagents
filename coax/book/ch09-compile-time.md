@@ -403,7 +403,7 @@ fails with `E0402`.
 
 ## Asking about types: `type_name` and `size_of`
 
-Coax has two small pieces of reflection today. `type_name(expression)`
+Coax has layout reflection today. `type_name(expression)`
 gives the name of an expression's type as a string:
 
 ```jai
@@ -432,10 +432,57 @@ main :: () {
 16 16 [16] u8
 ```
 
-`size_of` answers for the machine the C is compiled for, which is the
-only target `coax0` has. The planned `type_of` and `type_info` will
-describe whole structs, including their layout on a specific target, as
-we'll see at the end of this chapter.
+`size_of` describes the bootstrap's LP64 CPU target. Since 0.12.0,
+`type_info(T)` also gives its name, kind, alignment, scalar width/sign,
+field/member counts and array/view element information. `field_info(T, i)`
+gives a struct field's name, type name, byte offset, size and alignment.
+`enum_info(T, i)` gives an enum member's name and underlying bits.
+
+These are ordinary records, with `schema_version` equal to 1. You can pass
+them to procedures or build an inspector table once during compilation:
+
+<!-- checked-source: examples/layout-reflection.coax -->
+```coax
+Transform :: struct {x:f32;y:f32;selected:bool;}
+FIELDS :: #run transform_fields();
+
+transform_fields :: ()->[3]CoaxFieldInfo {
+ fields:[3]CoaxFieldInfo;
+ for i:0..<fields.count {fields[i]=field_info(Transform,i);}
+ return fields;
+}
+```
+
+The complete [layout-reflection example](examples/layout-reflection.coax)
+checks the table and prints it:
+
+```text
+Transform: 12 bytes, alignment 4
+x f32 @0 (4 bytes)
+y f32 @4 (4 bytes)
+selected bool @8 (1 bytes)
+```
+
+`type_info(Transform).field_count` and `field_info(Transform, 1).offset`
+are known while checking, so they can also appear in array lengths.
+Selectors follow declaration order. A constant invalid index is rejected;
+a dynamic invalid index traps in both modes. A dynamic selector creates a
+bounded array of metadata, so use `#run` for a table you will inspect often.
+The generated program receives literals, not a compiler or reflection VM.
+
+`CoaxTypeInfo` contains `schema_version`, `name`, `kind`, `size`, `alignment`,
+`bits`, `is_signed`, `field_count`, `member_count`, `element_count` and
+`element_name`. `CoaxFieldInfo` contains `schema_version`, `index`, `name`,
+`type_name`, `offset`, `size` and `alignment`. `CoaxEnumInfo` contains
+`schema_version`, `index`, `name`, `value_bits`, `bits` and `is_signed`.
+Names use resolved spellings, so `s64` is `int`. Enum `value_bits` is the
+underlying-width pattern zero-extended to u64: an s8 member of -2 is 254.
+A view's element count is zero because its length belongs to the value.
+
+The queries take type syntax. They don't make types first-class or expose
+procedure bodies. They describe CPU storage, not protobuf bytes or Metal
+vector packing. The actual C compiler still checks emitted layout assertions.
+See [Chapter 11](ch11-data-layout.md) for those boundaries.
 
 ## Compile time is sealed
 
@@ -771,15 +818,19 @@ Budgets count work, not time: proposed at 64 nested expansions and
 100,000 new syntax nodes per workspace. A millisecond limit would make
 whether a program compiles depend on the machine.
 
-## Planned: reflection
+## Reflection still planned
 
-`type_info(T)` will describe a type: its fields, offsets, alignment,
-defaults, annotations, enum values and procedure signatures. Layout
-questions take an explicit *target*, because a struct can be laid out
-differently on an iPhone, in WebAssembly and on a GPU
-([Chapter 11](ch11-data-layout.md)). The compiler never answers with its
-own machine's `sizeof` for a different target. `type_info` is reserved
-today: using it fails with `E0204`.
+The working layout queries are the first part of the metadata system.
+First-class `type_of`/`Type`, defaults, annotations, procedure signatures,
+effects, stable declaration IDs and explicit alternate-target layouts remain
+planned. `type_of` is still reserved and rejected. Today's metadata does not
+permit macros, typed syntax insertion or compiler plugins.
+
+A query-bearing source graph gets 65,536 extra checker nodes. Metadata
+expansion shares that bounded pool and refuses exhaustion with E0381;
+the compile-time evaluator's separate step limits still apply to `#run`.
+This bounds generated tables without pretending finite tests prove every
+possible generator correct.
 
 A temporary type ID from the compiler is not a stable identity. Engine
 component IDs and protocol names stay explicit and survive a rebuild.

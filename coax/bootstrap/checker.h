@@ -213,6 +213,8 @@ uint32_t CK_intrinsic(coax_string name);
 uint32_t CK_byte_intrinsic(coax_string name);
 _Bool CK_c_keyword(coax_string name);
 int64_t CM_g(uint64_t bits, coax_v_u8 out);
+_Bool CK_generated(int64_t mark);
+int64_t CK_meta_capacity(coax_v_t_CK_Node nodes, int64_t used);
 _Bool CK_run(coax_t_CK_Context c, int64_t used, coax_t_CK_Options options);
 
 #ifdef __cplusplus

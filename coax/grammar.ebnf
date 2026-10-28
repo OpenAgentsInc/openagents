@@ -67,6 +67,8 @@ field-init = identifier, "=", expression ;
 primary = integer | float | character | string | "true" | "false" |
           identifier, [ "(", [ arguments ], ")" ] |
           "size_of", "(", type, ")" |
+          "type_info", "(", type, ")" |
+          ( "field_info" | "enum_info" ), "(", type, ",", expression, ")" |
           "ifx", expression, "then", expression, "else", expression |
           "[", expression, "]", type, ".", "[", [ arguments ], "]" |
           "(", expression, ")" ;

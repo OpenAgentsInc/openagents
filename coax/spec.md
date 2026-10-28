@@ -538,12 +538,54 @@ is typechecked but unevaluated. It returns a string constant without evaluating
 side effects or arithmetic in the operand; `type_name(1 / 0)` is `"int"`.
 Unknown names and ill-typed operands remain errors. It needs no module import.
 
-`size_of(T)` is implemented for the bootstrap target layout. Planned
-`type_of` and `type_info` expose resolved types and
-**target-specific** layout. Metadata includes fields, offsets, alignment,
-defaults, annotations, enum values, procedure signatures and effects. It has
-an explicit schema version. Runtime metadata is opt-in or stripped by use;
-tools can retain richer metadata separately.
+`size_of(T)` and, since 0.12.0, `type_info(T)`, `field_info(T, index)` and
+`enum_info(T, index)` describe the bootstrap's **LP64 CPU target layout**.
+They take type syntax, not a first-class type value. They require no import.
+The parser supplies ordinary record definitions when a query is present:
+
+| Record (schema 1) | Fields |
+| --- | --- |
+| `CoaxTypeInfo` | `schema_version:u32`, `name:string`, `kind:string`, `size:int`, `alignment:int`, `bits:int`, `is_signed:bool`, `field_count:int`, `member_count:int`, `element_count:int`, `element_name:string` |
+| `CoaxFieldInfo` | `schema_version:u32`, `index:int`, `name:string`, `type_name:string`, `offset:int`, `size:int`, `alignment:int` |
+| `CoaxEnumInfo` | `schema_version:u32`, `index:int`, `name:string`, `value_bits:u64`, `bits:int`, `is_signed:bool` |
+
+Names use resolved checker spellings (`s64` is `int`, `uint` is `u64`). Kinds
+for value types are `integer`, `float`, `bool`, `string`, `struct`, `enum`,
+`array` and `view`. Fields/members follow declaration order, with zero-based
+indices. Counts are zero outside their category; `element_name` is empty
+except on arrays/views. A view's `element_count` is zero: its runtime length
+is not part of its type. `bits` and `is_signed` are the checker's scalar or
+enum attributes (including the sign bit on floats); aggregates use 0/false.
+Empty structs retain the bootstrap's one-byte representation.
+
+`field_info` requires a nonempty struct and `enum_info` a nonempty enum
+(E0382). Indices are integers. Constant out-of-range indices fail with E0374;
+dynamic indices retain bounds traps in debug **and release**. `value_bits`
+is the underlying-width enum bit pattern, zero-extended to u64: s8 -2 is
+254, not 18446744073709551614. Use `bits`/`is_signed` to interpret it.
+
+Queries lower in the Coax checker to typed struct/array literals and ordinary
+indexing; the C++ bridge only transports them. Direct scalar projections such
+as `type_info(T).size` and `field_info(T, 1).offset` are known while checking,
+so they can size arrays and participate in constants. Metadata is also an
+ordinary value: pass it, retain it or return tables from `#run`. A dynamic
+selector materializes a finite metadata array; generate a table once with
+`#run` instead of rebuilding it per frame. A query-bearing source graph
+requests 65,536 extra checker nodes. Expansion shares the bounded checker
+pool and refuses exhaustion with E0381; it does not allocate without limit.
+
+The record names and query names are compiler-owned when reflection is used;
+user definitions cannot replace them. `type_info` is a keyword; `field_info`
+and `enum_info` are intrinsic names. The metadata describes the current CPU
+layout only, not wire serialization, a Metal vector layout or a cross-target
+ABI. Generated C/header layout assertions still validate the actual native
+compiler. No query silently substitutes the compiler host's layout for a
+future GPU or WebAssembly target.
+
+Still planned: first-class `type_of`/`Type`, explicit alternate-target
+queries, stable declaration IDs, defaults, annotations, procedure/effect
+metadata, `#derive`, hygienic typed insertion and plugins. These APIs supply
+layout data, not arbitrary syntax generation or compiler callbacks.
 
 A compiler's temporary type ID is not a persistent component ID. Registered
 engine component identities and protocol names remain explicit and stable
@@ -1015,7 +1057,7 @@ engine remains unmeasured.
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. In 0.5.0, checks: `#test`, `#forall`, `#authority`, `coax test` and `coax mutate`. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
 | 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. Remaining: the `src/paynet` kernel called by the native host, outputs compared and frame cost measured. |
-| 3 — Metadata and generation | Target layouts and stable declaration IDs first; reflection, derived operations and hygienic typed code next. | Generated registry or inspector with provenance, invalid generator fixtures and bounded expansion. Consider bytecode only after profiling. |
+| 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; Metareal derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |
 | 6 — Protocol expansion and GPU experiments | Stable metadata/layouts and previous native ABI proof. Existing protocol adapters remain until parity. | Extend the first selected-profile codec into more domains; prove a Metal pipeline separately and compare generated shaders before choosing a compiler backend. |

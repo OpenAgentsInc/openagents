@@ -47,7 +47,7 @@ class Parser(unittest.TestCase):
                 owned=C.create_string_buffer(text);keep.append(owned)
                 tokens.append(Token(t.kind,LX.Text(C.addressof(owned),len(text)),Loc(t.loc.line,t.loc.column,t.loc.offset),t.integer,struct.unpack('d',struct.pack('Q',t.floating))[0],t.width,t.end-t.begin))
                 if t.kind==0:break
-        tokens=(Token*len(tokens))(*tokens);nodes=(Node*(capacity if capacity is not None else len(tokens)*3+1))();s=(State*1)();out=(C.c_uint8*(len(data)+512))()
+        tokens=(Token*len(tokens))(*tokens);nodes=(Node*(capacity if capacity is not None else len(tokens)*3+97))();s=(State*1)();out=(C.c_uint8*(len(data)+512))()
         args=self.lib.PS_parse.argtypes
         r=self.lib.PS_parse(LX.Text(C.addressof(buf),len(data)),args[1](tokens,len(tokens)),args[2](nodes,len(nodes)),args[3](s,1),args[4](out,len(out)))
         # Retain all input owners for strings/views returned in the tree/state.

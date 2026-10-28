@@ -125,6 +125,8 @@ const ErrorInfo ERRORS[] = {
 
     {"E0381", "type checker resource limit", "The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree."},
 
+    {"E0382", "invalid reflection category", "field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout."},
+
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time step budget exceeded", "Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). Make the computation smaller or move it to run time."},
     {"E0401", "compile-time code cannot capture a runtime value", "#run code and constants see only constants and their own locals."},

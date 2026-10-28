@@ -15,7 +15,7 @@ points at which the plan says to stop.
 
 ## Where things stand
 
-`coax0` 0.11.0 compiles bounded source graphs to C11 using `#load`. It has sized
+`coax0` 0.12.0 compiles bounded source graphs to C11 using `#load`. It has sized
 integers, floats, `bool` and strings; structs with defaults, enums with a
 declared width, fixed arrays and views; `for`, `defer` and `ifx`; checked
 casts and left-to-right evaluation; constants, `#run` and `#assert` with
@@ -24,7 +24,8 @@ bounded compile-time evaluation; checks with `#test`, `#forall`,
 with generated headers, `#foreign` for scalar C functions, and `coax metal`
 for a small f32/bool subset as Metal Shading Language. It imports protobuf
 descriptors with `#import_proto` and generates bounded codecs for the
-supported proto3 subset.
+supported proto3 subset. Schema-1 `type_info`, `field_info` and `enum_info`
+queries expose CPU layouts as ordinary values and generate tables through `#run`.
 
 Coax is also in use. The `metareal/` folder of the OpenAgents repository
 holds the product Coax sources that the iOS app compiles and calls (see
@@ -44,7 +45,7 @@ inputs and results. The evaluator and C emitter remain C++.
 
 Much of the language in Parts II to IV isn't built yet: pointers and
 dynamic arrays, tagged unions and `switch`, `try` and error values,
-generics and constraints, the context and allocators, reflection and
+generics and constraints, the context and allocators, richer reflection and
 macros, jobs and effects, `strict` and `deterministic`, general source modules
 and visibility,
 importing C headers, `build.coax`, hot reload and the browser target. Each
@@ -69,7 +70,7 @@ counts as done, and where each one is today.
 | 0. Bootstrap semantics | Lexer, parser, checker, C emitter, documented scalar grammar | Pass and fail fixtures, checked formats, overflow behavior | Done |
 | 1. Compile-time scalars | Constants, `#run`, `#assert`, `type_name`, `coax check`, bounded evaluation; later the checks (`#test`, `#forall`, `#authority`, `coax test`, `coax mutate`) | Dependencies, cycles, limits, refusal of captures and I/O, the same errors in debug and release, literal output | Done |
 | 2. Data and the C boundary | Structs with defaults, enums, fixed arrays and views, `for`, `defer`, `ifx`, checked casts, ordered operands, `#export_c` with headers and layout assertions, `#foreign` | A pulse kernel called by the native host, outputs compared and frame cost measured | Mostly done; see below |
-| 3. Metadata and generation | Target layouts and stable declaration IDs, then reflection, `#derive`, hygienic typed code | A generated registry or inspector with provenance, invalid-generator fixtures, bounded expansion | Not started |
+| 3. Metadata and generation | CPU type/field/enum metadata ships; stable declaration IDs, richer reflection, `#derive` and hygienic typed code follow | Checked compile-time inspector, independent C oracle and real Haunted House layout consumer; alternate targets and general derived registries remain gated | Started in 0.12.0 |
 | 4. Build workspaces and tools | Dependency scheduler, capabilities, input manifests, compiler events, then plugins and `build.coax` | One real asset or registry workflow; generated CMake and Xcode lists match the hand-written ones before replacing them | Source graph and `deps` prerequisites ship; workspaces, plugins and `build.coax` remain planned |
 | 5. Effects and deterministic jobs | Region and alias model, effect summaries, strict math, scheduler integration | A real subsystem replays identically at 1, 2, 4 and 8 workers; bad effects and aliases are refused | Not started |
 | 6. Protocol expansion and GPU experiments | Stable layouts, plus the stage 2 ABI proof | More domains on the selected-profile codec; a Metal pipeline proven separately before choosing a shader approach | Started: descriptor imports and codecs ship, and the iOS home uses them |

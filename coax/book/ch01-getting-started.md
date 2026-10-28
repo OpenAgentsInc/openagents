@@ -37,7 +37,7 @@ Let's make sure it worked:
 
 ```sh
 $ coax/bin/coax version
-coax0 0.11.0
+coax0 0.12.0
 ```
 
 If you see a version, you're set. The rest of the book writes `coax` for

@@ -14,7 +14,7 @@ message points where it does. It also shows that the discipline the earlier
 chapters recommend (bounded storage, one owner, checks written next to the
 code) is the same discipline the compiler is written in.
 
-> Note: Everything in this chapter describes `coax0` 0.11.0 as it is in
+> Note: Everything in this chapter describes `coax0` 0.12.0 as it is in
 > `coax/src/`, `coax/lib/compiler/` and `coax/bootstrap/`.
 
 ## A map of the source
@@ -863,3 +863,24 @@ Along the way we saw the compiler's own rules at work: `#authority` on its
 front end, seeds that must regenerate byte for byte, and a build that only
 publishes a compiler after every gate passes. Chapter 21 looks at what
 comes next for the compiler and the language.
+
+## Layout metadata lowering
+
+The Coax parser recognizes type/field/enum queries and supplies schema-1
+record declarations once per source graph. The Coax checker resolves the
+operand's CPU layout and lowers the result into ordinary typed literals.
+A dynamic selector becomes a bounded metadata array and ordinary indexing;
+a direct scalar projection can fold while resolving an array length.
+The C++ bridge allocates native tree storage and copies those nodes, including
+field initializers and Coax-owned synthetic-node provenance. The mutator
+uses that provenance to exclude compiler-created metadata literals; authored
+selectors and surrounding logic remain mutation sites. This is not an
+equivalent-mutant exemption. The bridge makes no reflection decisions. The existing evaluator
+and C emitter handle the resulting structs, arrays and bounds checks.
+
+`tests/reflection.py` compares padding, array stride and offsets against
+independently authored C declarations under ASan/UBSan. The parser and checker
+include authority checks and mutation gates for the new paths. Metareal's
+Haunted House buffer admission derives its stride and scalar table through
+these queries. Metal's packed vertex declaration is still an explicit
+platform boundary, not a second reflection target.

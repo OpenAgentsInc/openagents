@@ -493,3 +493,17 @@ full shader procedures, are the planned part.
 
 Next we'll look at the other boundary Coax code crosses constantly: the
 protocol messages OpenAgents sends and receives.
+
+## A CPU layout consumer in Metareal
+
+The actual app's Haunted House buffer gate loads `metareal/haunt-layout.coax`.
+It describes the existing packed vertex as fixed arrays of f32, u8 and u32,
+then derives its stride, texture-layer byte and scalar offsets with
+`type_info`/`field_info`. A `#run` table supplies admission offsets; independent
+checks pin the shipped 48-byte stride, four-byte alignment and colour offset.
+This removes duplicated numeric layout decisions from the admission loop.
+
+This is CPU reflection over an existing binary format. It does not infer Metal
+vector alignment or rewrite a shader. The packed Metal declaration remains a
+platform contract; `metareal/test_haunt.sh` checks the native layout and real
+bundled geometry, while the simulator test exercises the actual GPU path.

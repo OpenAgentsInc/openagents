@@ -374,3 +374,22 @@ file diagnostics/traps, graph limits, helper-free relocated compiler, native
 ABI and ASan/UBSan with an independent widened budget oracle). The book
 capstone and real iOS HUD consume loaded policy/types. `coax deps` is a checked
 path inventory, not a lockfile, content cache key or native build manifest.
+
+
+## CPU reflection lowers to bounded ordinary values
+
+`type_info`, `field_info` and `enum_info` are implemented in the Coax parser
+and checker. Their schema-1 records describe the bootstrap LP64 CPU layout;
+indices use declaration order and enum bits are zero-extended from the
+underlying width. Dynamic selectors use ordinary bounds-checked indexing in
+both build modes. Expansion shares a bounded checker pool; no native compiler
+object or host pointer becomes a target value. The bridge only transports
+nodes. Stable IDs, general derivation/plugins and other target layouts are
+not supplied by these queries.
+
+Check: parser/checker authority and zero-survivor mutation gates,
+`coax/tests/reflection.py` (independent native size/alignment/offset oracle,
+ASan/UBSan, invalid categories/indices, cross-unit layout and expansion limits),
+and `metareal/test_haunt.sh`. The actual app's buffer admission consumes the
+reflected Haunted House stride, layer offset and compile-time scalar table.
+Metal packing and source binary compatibility remain explicit native checks.

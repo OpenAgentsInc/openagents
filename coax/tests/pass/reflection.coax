@@ -1,0 +1,22 @@
+#import "Basic";
+Sample :: struct { tag:u8; value:f64; live:bool; }
+Mode :: enum s8 {off=-2;on=7;}
+COUNT :: type_info(Sample).field_count;
+offsets :: ()->[COUNT] int {
+ out:[COUNT]int;
+ for i:0..<COUNT {out[i]=field_info(Sample,i).offset;}
+ return out;
+}
+OFFSETS :: #run offsets();
+#test "reflected padding and enum representation" {
+ #assert type_info(Sample).schema_version==1;
+ #assert type_info(Sample).size==24 && type_info(Sample).alignment==8;
+ #assert field_info(Sample,1).name=="value";
+ #assert field_info(Sample,1).type_name=="f64";
+ #assert enum_info(Mode,0).value_bits==254;
+}
+main :: () {
+ print("% % % % %\n", type_info(Sample).name, type_info(Sample).kind, OFFSETS[0],OFFSETS[1],OFFSETS[2]);
+ for i:0..<type_info(Mode).member_count {m:=enum_info(Mode,i);print("% % % %\n", m.name,m.value_bits,m.bits,m.is_signed);}
+ print("% % %\n", type_info([3] u16).size,type_info([3] u16).element_count,type_info([] u16).element_name);
+}
