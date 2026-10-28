@@ -1,0 +1,614 @@
+syntax = "proto3";
+
+package rfqrpc;
+
+option go_package = "github.com/lightninglabs/taproot-assets/taprpc/rfqrpc";
+
+service Rfq {
+    /* tapcli: `rfq buyorder`
+    AddAssetBuyOrder is used to add a buy order for a specific asset. If a buy
+    order already exists for the asset, it will be updated.
+
+    A buy order instructs the RFQ (Request For Quote) system to request a quote
+    from a peer for the acquisition of an asset.
+
+    The normal use of a buy order is as follows:
+    1. Alice, operating a wallet node, wants to receive a Tap asset as payment
+       by issuing a Lightning invoice.
+    2. Alice has an asset channel established with Bob's edge node.
+    3. Before issuing the invoice, Alice needs to agree on an exchange rate with
+       Bob, who will facilitate the asset transfer.
+    4. To obtain the best exchange rate, Alice creates a buy order specifying
+       the desired asset.
+    5. Alice's RFQ subsystem processes the buy order and sends buy requests to
+       relevant peers to find the best rate. In this example, Bob is the only
+       available peer.
+    6. Once Bob provides a satisfactory quote, Alice accepts it.
+    7. Alice issues the Lightning invoice, which Charlie will pay.
+    8. Instead of paying Alice directly, Charlie pays Bob.
+    9. Bob then forwards the agreed amount of the Tap asset to Alice over their
+       asset channel.
+    */
+    rpc AddAssetBuyOrder (AddAssetBuyOrderRequest)
+        returns (AddAssetBuyOrderResponse);
+
+    /* tapcli: `rfq sellorder`
+    AddAssetSellOrder is used to add a sell order for a specific asset. If a
+    sell order already exists for the asset, it will be updated.
+    */
+    rpc AddAssetSellOrder (AddAssetSellOrderRequest)
+        returns (AddAssetSellOrderResponse);
+
+    /* tapcli: `rfq selloffer`
+    AddAssetSellOffer is used to add a sell offer for a specific asset. If a
+    sell offer already exists for the asset, it will be updated.
+    */
+    rpc AddAssetSellOffer (AddAssetSellOfferRequest)
+        returns (AddAssetSellOfferResponse);
+
+    /* tapcli: `rfq buyoffer`
+    AddAssetBuyOffer is used to add a buy offer for a specific asset. If a
+    buy offer already exists for the asset, it will be updated.
+
+    A buy offer is used by the node to selectively accept or reject incoming
+    asset sell quote requests before price is considered.
+    */
+    rpc AddAssetBuyOffer (AddAssetBuyOfferRequest)
+        returns (AddAssetBuyOfferResponse);
+
+    /* tapcli: `rfq acceptedquotes`
+    QueryPeerAcceptedQuotes is used to query for quotes that were requested by
+    our node and have been accepted our peers.
+    */
+    rpc QueryPeerAcceptedQuotes (QueryPeerAcceptedQuotesRequest)
+        returns (QueryPeerAcceptedQuotesResponse);
+
+    /*
+    SubscribeRfqEventNtfns is used to subscribe to RFQ events.
+    */
+    rpc SubscribeRfqEventNtfns (SubscribeRfqEventNtfnsRequest)
+        returns (stream RfqEvent);
+
+    /* tapcli: `rfq forwardinghistory`
+    ForwardingHistory is used to query for completed asset forwarding events.
+    These are historical records of HTLCs that were settled successfully.
+    */
+    rpc ForwardingHistory (ForwardingHistoryRequest)
+        returns (ForwardingHistoryResponse);
+}
+
+message AssetSpecifier {
+    oneof id {
+        // The 32-byte asset ID specified as raw bytes (gRPC only).
+        bytes asset_id = 1;
+
+        // The 32-byte asset ID encoded as a hex string (use this for REST).
+        string asset_id_str = 2;
+
+        // The 32-byte asset group key specified as raw bytes (gRPC only).
+        bytes group_key = 3;
+
+        // The 32-byte asset group key encoded as hex string (use this for
+        // REST).
+        string group_key_str = 4;
+    }
+}
+
+// FixedPoint is a scaled integer representation of a fractional number.
+//
+// This type consists of two integer fields: a coefficient and a scale.
+// Using this format enables precise and consistent representation of fractional
+// numbers while avoiding floating-point data types, which are prone to
+// precision errors.
+//
+// The relationship between the fractional representation and its fixed-point
+// representation is expressed as:
+// ```
+// V = F_c / (10^F_s)
+// ```
+// where:
+//
+// * `V` is the fractional value.
+//
+// * `F_c` is the coefficient component of the fixed-point representation. It is
+//    the scaled-up fractional value represented as an integer.
+//
+// * `F_s` is the scale component. It is an integer specifying how
+//   many decimal places `F_c` should be divided by to obtain the fractional
+//   representation.
+message FixedPoint {
+    // The coefficient is the fractional value scaled-up as an integer. This
+    // integer is represented as a string as it may be too large to fit in a
+    // uint64.
+    string coefficient = 1;
+
+    // The scale is the component that determines how many decimal places
+    // the coefficient should be divided by to obtain the fractional value.
+    uint32 scale = 2;
+}
+
+// ExecutionPolicy specifies how a quote request should be filled.
+enum ExecutionPolicy {
+    // EXECUTION_POLICY_IOC is Immediate-Or-Cancel: accept any partial
+    // fill at or above the minimum threshold. This is the default.
+    EXECUTION_POLICY_IOC = 0;
+
+    // EXECUTION_POLICY_FOK is Fill-Or-Kill: the accepted rate must
+    // support the full maximum amount or the quote is rejected.
+    EXECUTION_POLICY_FOK = 1;
+}
+
+message AddAssetBuyOrderRequest {
+    // asset_specifier is the subject asset.
+    AssetSpecifier asset_specifier = 1;
+
+    // The maximum amount of the asset that the provider must be willing to
+    // offer.
+    uint64 asset_max_amt = 2;
+
+    // The unix timestamp in seconds after which the order is no longer valid.
+    uint64 expiry = 3;
+
+    // The public key of the intended recipient peer for the order.
+    bytes peer_pub_key = 4;
+
+    // timeout_seconds is the number of seconds to wait for the peer to respond
+    // with an accepted quote (or a rejection).
+    uint32 timeout_seconds = 5;
+
+    // If set, the check if a channel with the given asset exists with the peer
+    // will be skipped. An active channel with the peer is still required for
+    // the RFQ negotiation to work. This flag shouldn't be set outside of test
+    // scenarios.
+    bool skip_asset_channel_check = 6;
+
+    // An optional text field that can be used to provide additional metadata
+    // about the buy order to the price oracle. This can include information
+    // about the wallet end user that initiated the transaction, or any
+    // authentication information that the price oracle can use to give out a
+    // more accurate (or discount) asset rate. Though not verified or enforced
+    // by tapd, the suggested format for this field is a JSON string.
+    // This field is optional and can be left empty if no metadata is available.
+    // The maximum length of this field is 32'768 bytes.
+    string price_oracle_metadata = 7;
+
+    // The optional minimum amount of the asset that the provider
+    // must be willing to offer. If set, must be less than or equal
+    // to asset_max_amt. When omitted, defaults to asset_max_amt
+    // (full-fill expected). Set explicitly to 0 to accept any
+    // partial fill.
+    optional uint64 asset_min_amt = 8;
+
+    // An optional rate limit constraint expressed as a fixed-point number.
+    // For buy orders this is the minimum acceptable rate (asset units per
+    // BTC). If unset, no rate floor is enforced.
+    FixedPoint asset_rate_limit = 9;
+
+    // The execution policy for this order. IOC (default) accepts any
+    // partial fill >= min threshold. FOK requires the rate to support
+    // the full max amount.
+    ExecutionPolicy execution_policy = 10;
+}
+
+message AddAssetBuyOrderResponse {
+    oneof response {
+        // accepted_quote holds the quote received from the peer as a response
+        // to our quote request.
+        PeerAcceptedBuyQuote accepted_quote = 1;
+
+        // invalid_quote is returned if the quote response received from the
+        // peer was invalid or insufficient.
+        InvalidQuoteResponse invalid_quote = 2;
+
+        // rejected_quote is returned if the quote request was rejected by the
+        // peer.
+        RejectedQuoteResponse rejected_quote = 3;
+    }
+}
+
+message AddAssetSellOrderRequest {
+    // asset_specifier is the subject asset.
+    AssetSpecifier asset_specifier = 1;
+
+    // The maximum msat amount that the responding peer must agree to pay
+    // (units: millisats).
+    uint64 payment_max_amt = 2;
+
+    // The unix timestamp in seconds after which the order is no longer valid.
+    uint64 expiry = 3;
+
+    // The public key of the intended recipient peer for the order.
+    bytes peer_pub_key = 4;
+
+    // timeout_seconds is the number of seconds to wait for the peer to respond
+    // with an accepted quote (or a rejection).
+    uint32 timeout_seconds = 5;
+
+    // If set, the check if a channel with the given asset exists with the peer
+    // will be skipped. An active channel with the peer is still required for
+    // the RFQ negotiation to work. This flag shouldn't be set outside of test
+    // scenarios.
+    bool skip_asset_channel_check = 6;
+
+    // An optional text field that can be used to provide additional metadata
+    // about the sell order to the price oracle. This can include information
+    // about the wallet end user that initiated the transaction, or any
+    // authentication information that the price oracle can use to give out a
+    // more accurate (or discount) asset rate. Though not verified or enforced
+    // by tapd, the suggested format for this field is a JSON string.
+    // This field is optional and can be left empty if no metadata is available.
+    // The maximum length of this field is 32'768 bytes.
+    string price_oracle_metadata = 7;
+
+    // The optional minimum msat amount that the responding peer
+    // must agree to pay. If set, must be less than or equal to
+    // payment_max_amt. When omitted, defaults to payment_max_amt
+    // (full-fill expected). Set explicitly to 0 to accept any
+    // partial fill (units: millisats).
+    optional uint64 payment_min_amt = 8;
+
+    // An optional rate limit constraint expressed as a fixed-point number.
+    // For sell orders this is the maximum acceptable rate (asset units per
+    // BTC). If unset, no rate ceiling is enforced.
+    FixedPoint asset_rate_limit = 9;
+
+    // The execution policy for this order. IOC (default) accepts any
+    // partial fill >= min threshold. FOK requires the rate to support
+    // the full max amount.
+    ExecutionPolicy execution_policy = 10;
+}
+
+message AddAssetSellOrderResponse {
+    oneof response {
+        // accepted_quote holds the quote received from the peer as a response
+        // to our quote request.
+        PeerAcceptedSellQuote accepted_quote = 1;
+
+        // invalid_quote is returned if the quote response received from the
+        // peer was invalid or insufficient.
+        InvalidQuoteResponse invalid_quote = 2;
+
+        // rejected_quote is returned if the quote request was rejected by the
+        // peer.
+        RejectedQuoteResponse rejected_quote = 3;
+    }
+}
+
+message AddAssetSellOfferRequest {
+    // asset_specifier is the subject asset.
+    AssetSpecifier asset_specifier = 1;
+
+    // max_units is the maximum amount of the asset to sell.
+    uint64 max_units = 2;
+}
+
+message AddAssetSellOfferResponse {
+}
+
+message AddAssetBuyOfferRequest {
+    // asset_specifier is the subject asset.
+    AssetSpecifier asset_specifier = 1;
+
+    // max_units is the maximum amount of the asset to buy.
+    uint64 max_units = 2;
+}
+
+message AddAssetBuyOfferResponse {
+}
+
+message QueryPeerAcceptedQuotesRequest {
+}
+
+message AssetSpec {
+    // The 32-byte asset ID specified as raw bytes.
+    bytes id = 1;
+
+    // The 32-byte asset group public key, serialized in BIP340 format.
+    // BIP340 defines a canonical encoding for Schnorr public keys.
+    // This field is serialized using schnorr.SerializePubKey.
+    bytes group_pub_key = 2;
+}
+
+message PeerAcceptedBuyQuote {
+    // Quote counterparty peer.
+    string peer = 1;
+
+    // The unique identifier of the quote request.
+    bytes id = 2;
+
+    // The short channel ID of the channel over which the payment for the quote
+    // should be made.
+    uint64 scid = 3;
+
+    // The maximum exchange amount denoted in the subject asset. This includes
+    // the user-configured maximum routing fees, so the actual payment amount
+    // will be less than this. This just defines the maximum volume that the
+    // edge node has accepted to divest with the given rate.
+    uint64 asset_max_amount = 4;
+
+    // ask_asset_rate is the asset to BTC conversion rate represented as a
+    // fixed-point number.
+    FixedPoint ask_asset_rate = 5;
+
+    // The unix timestamp in seconds after which the quote is no longer valid.
+    uint64 expiry = 6;
+
+    // The smallest amount of asset units that can be transported within a
+    // single HTLC over the Lightning Network with the given rate. This is the
+    // asset unit equivalent of 354 satoshis, which is the minimum amount for an
+    // HTLC to be above the dust limit.
+    uint64 min_transportable_units = 7;
+
+    // An optional user-provided text field used to provide additional metadata
+    // about the buy order to the price oracle. This can include information
+    // about the wallet end user that initiated the transaction, or any
+    // authentication information that the price oracle can use to give out a
+    // more accurate (or discount) asset rate.
+    string price_oracle_metadata = 8;
+
+    // The subject asset specifier.
+    AssetSpec asset_spec = 9;
+
+    // accepted_max_amount is an optional negotiated fill quantity. When
+    // non-zero the responder accepted up to this many asset units instead
+    // of the full request max.
+    uint64 accepted_max_amount = 10;
+}
+
+message PeerAcceptedSellQuote {
+    // Quote counterparty peer.
+    string peer = 1;
+
+    // The unique identifier of the quote request.
+    bytes id = 2;
+
+    // scid is the short channel ID of the channel over which the payment for
+    // the quote should be made.
+    uint64 scid = 3;
+
+    // asset_amount is the amount of the subject asset.
+    uint64 asset_amount = 4;
+
+    // bid_asset_rate is the asset to BTC conversion rate represented as a
+    // fixed-point number.
+    FixedPoint bid_asset_rate = 5;
+
+    // The unix timestamp in seconds after which the quote is no longer valid.
+    uint64 expiry = 6;
+
+    // The minimum amount of milli-satoshis that need to be sent out in order to
+    // transport a single asset unit over the Lightning Network with the given
+    // rate. This is the base amount of 354,000 milli-satoshi (the minimum
+    // amount for a non-dust HTLC) plus the equivalent of one asset unit in
+    // milli-satoshis.
+    uint64 min_transportable_msat = 7;
+
+    // An optional user-provided text field used to provide additional metadata
+    // about the sell order to the price oracle. This can include information
+    // about the wallet end user that initiated the transaction, or any
+    // authentication information that the price oracle can use to give out a
+    // more accurate (or discount) asset rate.
+    string price_oracle_metadata = 8;
+
+    // The subject asset specifier.
+    AssetSpec asset_spec = 9;
+
+    // accepted_max_amount is an optional negotiated fill quantity. When
+    // non-zero the responder accepted up to this many msat instead of the
+    // full request max.
+    uint64 accepted_max_amount = 10;
+}
+
+// QuoteRespStatus is an enum that represents the status of a quote response.
+enum QuoteRespStatus {
+    // INVALID_ASSET_RATES indicates that at least one asset rate in the
+    // quote response is invalid.
+    INVALID_ASSET_RATES = 0;
+
+    // INVALID_EXPIRY indicates that the expiry in the quote response is
+    // invalid.
+    INVALID_EXPIRY = 1;
+
+    // PRICE_ORACLE_QUERY_ERR indicates that an error occurred when querying the
+    // price oracle whilst evaluating the quote response.
+    PRICE_ORACLE_QUERY_ERR = 2;
+
+    // PORTFOLIO_PILOT_ERR indicates that an unexpected error occurred in the
+    // portfolio pilot while evaluating the quote response.
+    PORTFOLIO_PILOT_ERR = 3;
+
+    // VALID_ACCEPT_QUOTE indicates that the accepted quote passed all
+    // validation checks successfully.
+    VALID_ACCEPT_QUOTE = 4;
+
+    // MIN_FILL_NOT_MET indicates that the minimum fill constraint
+    // was not satisfiable at the accepted rate.
+    MIN_FILL_NOT_MET = 5;
+
+    // RATE_BOUND_MISS indicates that the accepted rate violated the
+    // requester's rate limit constraint.
+    RATE_BOUND_MISS = 6;
+
+    // FOK_NOT_VIABLE indicates that the FOK execution policy could
+    // not be satisfied at the accepted rate.
+    FOK_NOT_VIABLE = 7;
+}
+
+// InvalidQuoteResponse is a message that is returned when a quote response is
+// invalid or insufficient.
+message InvalidQuoteResponse {
+    // status is the status of the quote response.
+    QuoteRespStatus status = 1;
+
+    // peer is the quote counterparty peer.
+    string peer = 2;
+
+    // id is the unique identifier of the quote request.
+    bytes id = 3;
+}
+
+// RejectedQuoteResponse is a message that is returned when a quote request is
+// rejected by the peer.
+message RejectedQuoteResponse {
+    // peer is the quote counterparty peer.
+    string peer = 1;
+
+    // id is the unique identifier of the quote request.
+    bytes id = 2;
+
+    // error_message is a human-readable error message.
+    string error_message = 3;
+
+    // error_code is a machine-readable error code.
+    uint32 error_code = 4;
+}
+
+message QueryPeerAcceptedQuotesResponse {
+    // buy_quotes is a list of asset buy quotes which were requested by our
+    // node and have been accepted by our peers.
+    repeated PeerAcceptedBuyQuote buy_quotes = 1;
+
+    // sell_quotes is a list of asset sell quotes which were requested by our
+    // node and have been accepted by our peers.
+    repeated PeerAcceptedSellQuote sell_quotes = 2;
+}
+
+message SubscribeRfqEventNtfnsRequest {
+}
+
+message PeerAcceptedBuyQuoteEvent {
+    // Unix timestamp in microseconds.
+    uint64 timestamp = 1;
+
+    // The asset buy quote that was accepted by out peer.
+    PeerAcceptedBuyQuote peer_accepted_buy_quote = 2;
+}
+
+message PeerAcceptedSellQuoteEvent {
+    // Unix timestamp in microseconds.
+    uint64 timestamp = 1;
+
+    // The asset sell quote that was accepted by out peer.
+    PeerAcceptedSellQuote peer_accepted_sell_quote = 2;
+}
+
+message AcceptHtlcEvent {
+    // Unix timestamp in microseconds.
+    uint64 timestamp = 1;
+
+    // scid is the short channel ID of the channel over which the payment for
+    // the quote is made.
+    uint64 scid = 2;
+}
+
+message RfqEvent {
+    oneof event {
+        // peer_accepted_buy_quote is an event that is emitted when a peer
+        // accepted (incoming) asset buy quote message is received.
+        PeerAcceptedBuyQuoteEvent peer_accepted_buy_quote = 1;
+
+        // peer_accepted_sell_offer is an event that is emitted when a peer
+        // accepted (incoming) asset sell quote message is received.
+        PeerAcceptedSellQuoteEvent peer_accepted_sell_quote = 2;
+
+        // accept_htlc is an event that is sent when a HTLC is accepted by the
+        // RFQ service.
+        AcceptHtlcEvent accept_htlc = 3;
+    }
+}
+
+// RfqPolicyType indicates the type of policy of an RFQ session.
+enum RfqPolicyType {
+    // RFQ_POLICY_TYPE_SALE indicates that the RFQ session was a sale.
+    RFQ_POLICY_TYPE_SALE = 0;
+
+    // RFQ_POLICY_TYPE_PURCHASE indicates that the RFQ session was a purchase.
+    RFQ_POLICY_TYPE_PURCHASE = 1;
+}
+
+message ForwardingHistoryRequest {
+    // min_timestamp is the minimum Unix timestamp in seconds. Only forwarding
+    // events that settled at or after this time are returned. If not set, there
+    // is no lower bound.
+    uint64 min_timestamp = 1;
+
+    // max_timestamp is the maximum Unix timestamp in seconds. Only forwarding
+    // events that settled at or before this time are returned. If not set,
+    // there is no upper bound.
+    uint64 max_timestamp = 2;
+
+    // peer is the optional counterparty peer's public key. If set,
+    // only forwarding events involving this peer are returned.
+    bytes peer = 3;
+
+    // asset_specifier optionally filters forwarding events by asset ID or group
+    // key.
+    AssetSpecifier asset_specifier = 4;
+
+    // limit is the maximum number of records to return.
+    int32 limit = 5;
+
+    // offset is the number of records to skip for pagination.
+    int32 offset = 6;
+}
+
+message ForwardingHistoryResponse {
+    // forwards is the list of completed asset forwarding events matching the
+    // query.
+    repeated ForwardingEvent forwards = 1;
+
+    // total_count is the total number of forwards matching the filter (before
+    // pagination is applied). This can be used for pagination.
+    int64 total_count = 2;
+}
+
+message ForwardingEvent {
+    // rfq_id is the unique identifier of the RFQ session that governed this
+    // forward.
+    bytes rfq_id = 1;
+
+    // chan_id_in is the short channel ID of the incoming channel.
+    uint64 chan_id_in = 2;
+
+    // chan_id_out is the short channel ID of the outgoing channel.
+    uint64 chan_id_out = 3;
+
+    // htlc_id is the HTLC ID on the incoming channel.
+    uint64 htlc_id = 4;
+
+    // opened_at is the Unix timestamp in seconds when the forward was
+    // initiated.
+    uint64 opened_at = 5;
+
+    // settled_at is the Unix timestamp in seconds when the forward settled.
+    // A value of 0 means the forward has not settled yet.
+    uint64 settled_at = 6;
+
+    // failed_at is the Unix timestamp in seconds when the forward failed.
+    // A value of 0 means the forward has not failed.
+    uint64 failed_at = 7;
+
+    // asset_amt is the asset amount that was swapped.
+    uint64 asset_amt = 8;
+
+    // amt_in_msat is the actual amount received on the incoming channel in
+    // millisatoshis.
+    uint64 amt_in_msat = 9;
+
+    // amt_out_msat is the actual amount sent on the outgoing channel in
+    // millisatoshis.
+    uint64 amt_out_msat = 10;
+
+    // policy_type indicates whether this was a sale or purchase of assets
+    // from the edge node's perspective.
+    RfqPolicyType policy_type = 11;
+
+    // peer is the counterparty peer's public key as a hex string.
+    string peer = 12;
+
+    // asset_specifier identifies the asset that was swapped.
+    AssetSpec asset_spec = 13;
+
+    // rate is the exchange rate that was used for this swap.
+    FixedPoint rate = 14;
+}

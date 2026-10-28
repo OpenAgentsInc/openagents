@@ -111,7 +111,8 @@ The full set of commands:
 | `coax build FILE [-o out]` | Build an executable |
 | `coax lib FILE [-o out.o]` | Build an object file of the `#export_c` procedures, with no `main` (Chapter 16) |
 | `coax header FILE [-o out.h]` | Write the C header for those procedures |
-| `coax c FILE` | Print the generated C |
+| `coax c FILE` | Print the generated C (`--library --header out.h` for a library and its header) |
+| `coax metal FILE` | Print f32/bool procedures as Metal Shading Language (Chapter 16) |
 | `coax check FILE` | Check without building |
 | `coax layout FILE` | Print every struct's size, alignment and field offsets (Chapter 10) |
 | `coax explain CODE` | Explain an error code (Chapter 4) |

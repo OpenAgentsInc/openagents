@@ -272,6 +272,10 @@ struct Parser {
       case Tok::float_lit:
         e->kind = ExprKind::float_lit;
         e->float_value = t.float_value;
+        if (t.float_bits) {
+          e->type = t.float_bits == 32 ? &T_F32 : &T_F64;
+          if (t.float_bits == 32) e->float_value = (double)(float)t.float_value;
+        }
         next();
         return e;
       case Tok::string_lit:
@@ -556,6 +560,17 @@ struct Parser {
       if (str_eq(d.text, "export_c")) {
         p->export_c = true;
         next();
+      } else if (str_eq(d.text, "foreign")) {
+        // name :: (params) -> T #foreign;  a C symbol the host links in.
+        p->foreign = true;
+        next();
+        if (p->export_c) {
+          fail(d.loc, "E0210", "a procedure is either #foreign or #export_c, not both");
+          return nullptr;
+        }
+        if (!expect(Tok::semicolon, "after #foreign; a foreign procedure has no body")) return nullptr;
+        p->params = to_slice(arena, params);
+        return p;
       } else {
         fail(d.loc, "E0210", "#" + to_std(d.text) + " is not supported on procedures by coax0 yet");
         return nullptr;

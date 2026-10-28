@@ -17,11 +17,17 @@ namespace coax {
 static const char *RUNTIME = R"COAXRT(/* Coax float arithmetic is plain IEEE, one rounding per operation: no fused
    multiply-add, so results match compile-time evaluation and other compilers. */
 #pragma STDC FP_CONTRACT OFF
+/* Generated code carries the whole runtime and keeps every declared local. */
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 typedef struct { const char *data; int64_t count; } coax_string;
 #define COAX_STR(lit, n) ((coax_string){(lit), (n)})
@@ -111,6 +117,11 @@ static int64_t coax_ftoi_s(double v, int64_t lo, int64_t hi, int32_t l) {
   int64_t i = (int64_t)v;
   if (i < lo || i > hi) coax_trap("cast out of range", l);
   return i;
+}
+static float coax_to_f32(double v, int32_t l) {
+  /* Finite values that would round to infinity do not fit; inf and nan stay. */
+  if (isfinite(v) && fabs(v) >= 3.4028235677973366e38) coax_trap("cast out of range", l);
+  return (float)v;
 }
 static uint64_t coax_ftoi_u(double v, uint64_t hi, int32_t l) {
   if (!(v > -1.0 && v < 18446744073709551616.0)) coax_trap("cast out of range", l);
@@ -291,7 +302,31 @@ struct Emitter {
   }
 
   std::string local_name(Str s) { return "l_" + to_std(s); }
-  std::string proc_name(const ProcDecl *p) { return p->export_c ? to_std(p->name) : "coax_p_" + to_std(p->name); }
+
+  // "(x == y)" rather than "((x == y))", which compilers warn about.
+  std::string condition(const Expr *e) {
+    std::string c = ex(e);
+    if (c.size() >= 2 && c.front() == '(' && c.back() == ')') {
+      int depth = 0;
+      size_t i = 0;
+      for (; i < c.size(); i++) {
+        depth += c[i] == '(' ? 1 : c[i] == ')' ? -1 : 0;
+        if (depth == 0) break;
+      }
+      if (i == c.size() - 1) return c;
+    }
+    return "(" + c + ")";
+  }
+
+  // C's math.h names, with the float variants for f32; Metal overloads.
+  std::string math_name(const Expr *e) {
+    std::string name = e->intrinsic == Intrinsic::abs ? "fabs" : to_std(e->text);
+    if (opts.metal) return e->intrinsic == Intrinsic::abs ? "abs" : name;
+    return name + (e->type == &T_F32 ? "f" : "");
+  }
+  std::string proc_name(const ProcDecl *p) {
+    return p->export_c || p->foreign ? to_std(p->name) : "coax_p_" + to_std(p->name);
+  }
 
   // Evaluate operands left to right when order is observable; build() gets
   // the C text for each operand.
@@ -391,6 +426,7 @@ struct Emitter {
     std::string x = ex(e->lhs), line = std::to_string(e->loc.line);
     if (from == to) return x;
     if (to == &T_STRING) return "coax_string_of_bytes(" + x + ")";
+    if (to == &T_F32 && from == &T_F64 && !opts.metal) return "coax_to_f32(" + x + ", " + line + ")";
     if (is_float(to)) return "((" + c_type(to) + ")(" + x + "))";
     if (to->kind == TypeKind::enum_) {
       Type b = from->kind == TypeKind::enum_ ? from->elem : from;
@@ -420,7 +456,16 @@ struct Emitter {
     switch (e->kind) {
       case ExprKind::int_lit: return int_text(e->type, e->int_value);
       case ExprKind::enum_value: return int_text(e->type, e->int_value);
-      case ExprKind::float_lit: return float_text(e->type, e->float_value);
+      case ExprKind::float_lit:
+        if (opts.metal) {
+          // Metal gets decimal text: 9 digits round-trip any f32.
+          char buf[64];
+          snprintf(buf, sizeof buf, "%.9g", e->float_value);
+          std::string t = buf;
+          if (t.find_first_of(".eEn") == std::string::npos) t += ".0";
+          return t + "f";
+        }
+        return float_text(e->type, e->float_value);
       case ExprKind::bool_lit: return e->int_value ? "1" : "0";
       case ExprKind::string_lit: return "COAX_STR(" + c_string_text(e->text) + ", " + std::to_string(e->text.count) + ")";
       case ExprKind::ct_value: return ct_name(e);
@@ -432,7 +477,7 @@ struct Emitter {
       case ExprKind::call: {
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
-        std::string name = proc_name(e->proc);
+        std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : proc_name(e->proc);
         return ordered(ops, [&](const std::vector<std::string> &t) {
           std::string s = name + "(";
           for (size_t i = 0; i < t.size(); i++) s += (i ? ", " : "") + t[i];
@@ -759,7 +804,7 @@ struct Emitter {
         break;
       case StmtKind::defer: break;  // registered by the enclosing block
       case StmtKind::if_:
-        line("if (" + ex(s->expr) + ")");
+        line("if " + condition(s->expr));
         stmt(s->then_);
         if (s->else_) {
           line("else");
@@ -767,7 +812,7 @@ struct Emitter {
         }
         break;
       case StmtKind::while_:
-        line("while (" + ex(s->expr) + ")");
+        line("while " + condition(s->expr));
         loop(s->then_);
         break;
       case StmtKind::for_range: {
@@ -823,7 +868,8 @@ struct Emitter {
   // ---- declarations ----
 
   std::string prototype(const ProcDecl *p, bool header = false) {
-    std::string s = (p->export_c || header ? "" : "static ") + c_type(p->ret) + " " + proc_name(p) + "(";
+    std::string s = (header || p->export_c ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
+                    proc_name(p) + "(";
     if (p->params.count == 0) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
       if (i) s += ", ";
@@ -835,6 +881,7 @@ struct Emitter {
   }
 
   std::string function(const ProcDecl *p) {
+    if (p->foreign) return "";
     current = p;
     out.clear();
     temps.clear();
@@ -1036,6 +1083,15 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   Emitter em{file, opts};
   std::string functions;
   for (const ProcDecl *p : file->procs) functions += em.function(p);
+  if (opts.metal) {
+    // Scalar f32/bool functions only (the checker enforced it): no runtime.
+    std::string s = "/* Generated by coax0 from " + file->src->path + ". Do not edit: change the .coax file. */\n";
+    s += "#include <metal_stdlib>\nusing namespace metal;\n\n";
+    for (const ProcDecl *p : file->procs) s += em.prototype(p) + ";\n";
+    s += functions;
+    for (size_t at = 0; (at = s.find("_Bool", at)) != std::string::npos;) s.replace(at, 5, "bool");
+    return s;
+  }
   std::string inits = init_functions(file, em);
   std::string shows = show_functions(file, em);
 
@@ -1096,7 +1152,7 @@ std::string emit_header(const File *file) {
       return found;
     };
     for (const ProcDecl *p : file->procs) {
-      if (!p->export_c) continue;
+      if (!p->export_c && !p->foreign) continue;
       used = used || uses(p->ret);
       for (const Param &prm : p->params) used = used || uses(prm.type);
     }
@@ -1129,6 +1185,13 @@ std::string emit_header(const File *file) {
   s += types.out + asserts + "\n";
   for (const ProcDecl *p : file->procs)
     if (p->export_c) s += em.prototype(p, true) + ";\n";
+  bool any_foreign = false;
+  for (const ProcDecl *p : file->procs) any_foreign = any_foreign || p->foreign;
+  if (any_foreign) {
+    s += "\n/* Provided by the host (#foreign). */\n";
+    for (const ProcDecl *p : file->procs)
+      if (p->foreign) s += em.prototype(p, true) + ";\n";
+  }
   s += "\n#ifdef __cplusplus\n}\n#undef _Bool\n#endif\n#undef COAX_LAYOUT\n#undef COAX_ALIGNOF\n#endif\n";
   return s;
 }

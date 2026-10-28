@@ -1,0 +1,111 @@
+syntax = "proto3";
+package openagents.engine.v1;
+
+// Display and collision metadata shared by engine hosts. These messages do
+// not authorize commands, admit assets, or replace simulation state.
+message SceneMetadata {
+  uint32 schema_version = 1; // Must be 1 for this contract.
+  string scene_id = 2; // 1-48 ASCII letters, digits, underscores, or hyphens.
+  CoordinateConvention coordinates = 3;
+  repeated Landmark landmarks = 4; // At most 16, with distinct IDs.
+  repeated AxisAlignedBox colliders = 5; // At most 64, with distinct IDs.
+}
+
+enum CoordinateConvention {
+  COORDINATE_CONVENTION_UNSPECIFIED = 0;
+  // Positions and dimensions are meters. +Y is up; the forward axis is +Z.
+  COORDINATE_CONVENTION_Y_UP_METERS_Z_FORWARD = 1;
+}
+
+message Vec3 {
+  // Every component must be finite, with magnitude at most 1,000,000 meters.
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message Landmark {
+  string id = 1; // Same identifier rules as scene_id.
+  string label = 2; // Nonempty UTF-8, at most 64 bytes, without ASCII controls.
+  Vec3 position = 3; // Required: the ground reference point, in scene axes.
+  float label_height_m = 4; // Finite offset above position.y, from 0 to 100.
+  InteractionRange interaction = 5; // Absent for a decorative landmark.
+  string interaction_label = 6; // Nonempty with interaction; at most 64 UTF-8 bytes, without ASCII controls.
+}
+
+message InteractionRange {
+  // Ground-plane distances from the reference point. These control prompts,
+  // not access. Both must be finite; 0 < enter_m <= leave_m <= 100.
+  float enter_m = 1;
+  float leave_m = 2;
+}
+
+message AxisAlignedBox {
+  string id = 1; // Same identifier rules as scene_id.
+  Vec3 min = 2; // Required; every component is less than max's component.
+  Vec3 max = 3; // Required; bounds use the scene's coordinate convention.
+}
+
+// Binds one compiled scene to exact files. Not a signature or publication grant.
+message AssetManifest {
+  uint32 schema_version = 1; // Must be 1.
+  string scene_id = 2;
+  string profile = 3; // Explicit consumer profile, at most 64 ASCII ID characters.
+  repeated Artifact artifacts = 4; // 1-32, distinct IDs and relative paths.
+}
+
+message Artifact {
+  string id = 1; // Scene identifier rules.
+  string path = 2; // At most 192 UTF-8 bytes; safe relative POSIX path, no symlinks.
+  bytes sha256 = 3; // Exactly 32 bytes, covering the exact file bytes.
+  uint64 byte_length = 4; // 1..512 MiB; the complete manifest is at most 1 GiB.
+  string format = 5; // At most 64 ASCII ID characters.
+  repeated string dependencies = 6; // At most 8 distinct artifact IDs; acyclic.
+  repeated BufferDescriptor buffers = 7; // At most 8 distinct semantic names.
+}
+
+message BufferDescriptor {
+  string semantic = 1; // Scene identifier rules.
+  uint64 byte_offset = 2;
+  uint64 byte_length = 3; // Nonempty, entirely inside the artifact.
+  uint32 byte_stride = 4; // Nonzero; byte_length == element_count * byte_stride.
+  uint64 element_count = 5;
+}
+
+// Bounded interchange for compiled town metadata. Render buffers stay separate.
+// This is not an authored world document, runtime state, or release identity.
+message CompiledScene {
+  uint32 schema_version = 1; // Must be 1.
+  string scene_id = 2;
+  CoordinateConvention coordinates = 3;
+  repeated ScenePlacement placements = 4; // At most 32768; distinct IDs.
+  repeated SceneLight lights = 5; // At most 2048; distinct IDs.
+  repeated SceneCamera cameras = 6; // At most 64; distinct IDs.
+  SceneCamera spawn = 7; // Required.
+}
+
+message ScenePlacement {
+  string id = 1;
+  string asset_id = 2; // Nonempty UTF-8 reference, at most 192 bytes.
+  // Exactly 16 column-major floats. Affine, finite, nonsingular; Y-up meters.
+  repeated float transform = 3;
+  string actor = 4; // Optional source grouping; at most 192 UTF-8 bytes.
+  string source_class = 5; // Optional import hint; at most 192 UTF-8 bytes.
+}
+
+message SceneLight {
+  string id = 1;
+  Vec3 position = 2; // Required.
+  Vec3 linear_color = 3; // Required, RGB radiance multipliers, 0..32.
+  float radius_m = 4; // Finite, 0 < radius <= 1000000.
+  // Point-light approximation only. Spot/temperature conversion is a producer
+  // policy; physical source lighting remains in its original source document.
+}
+
+message SceneCamera {
+  string id = 1;
+  Vec3 position = 2; // Required.
+  Vec3 target = 3; // Required, distinct from position.
+  float vertical_fov_degrees = 4; // Finite, 1..179.
+  string name = 5; // Optional UTF-8 display/source name, at most 192 bytes.
+}

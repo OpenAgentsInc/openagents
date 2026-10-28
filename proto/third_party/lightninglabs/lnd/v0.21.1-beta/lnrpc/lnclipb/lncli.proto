@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package lnclipb;
+
+import "verrpc/verrpc.proto";
+
+option go_package = "github.com/lightningnetwork/lnd/lnrpc/lnclipb";
+
+message VersionResponse {
+    // The version information for lncli.
+    verrpc.Version lncli = 1;
+
+    // The version information for lnd.
+    verrpc.Version lnd = 2;
+};

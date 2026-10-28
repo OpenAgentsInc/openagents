@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-card.v1",
+  "title": "NIP-XP trainer card (kind 30194) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "curve", "relays", "trust", "keys", "xp", "level", "awards", "issued_at"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "card" },
+    "curve": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "relays": {
+      "type": "array", "minItems": 1, "maxItems": 32,
+      "items": { "type": "string", "minLength": 6, "maxLength": 256 }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["referees", "runners"],
+      "properties": {
+        "referees": {
+          "type": "array", "minItems": 1, "maxItems": 32,
+          "items": { "type": "string", "minLength": 64, "maxLength": 64 }
+        },
+        "runners": {
+          "type": "array", "maxItems": 32,
+          "items": { "type": "string", "minLength": 64, "maxLength": 64 }
+        }
+      }
+    },
+    "keys": {
+      "description": "The keys whose XP the card sums, the signer first.",
+      "type": "array", "minItems": 1, "maxItems": 17,
+      "items": { "type": "string", "minLength": 64, "maxLength": 64 }
+    },
+    "xp": { "type": "integer", "minimum": 0 },
+    "level": { "type": "integer", "minimum": 1 },
+    "awards": {
+      "type": "array", "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "pubkey", "role", "xp", "quest"],
+        "properties": {
+          "id": { "type": "string", "minLength": 64, "maxLength": 64 },
+          "pubkey": { "type": "string", "minLength": 64, "maxLength": 64 },
+          "role": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "xp": { "type": "integer", "minimum": 0 },
+          "quest": { "type": "string", "minLength": 1, "maxLength": 160 }
+        }
+      }
+    },
+    "issued_at": { "type": "integer", "minimum": 0 }
+  }
+}

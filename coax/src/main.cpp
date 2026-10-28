@@ -129,7 +129,9 @@ enum class Output : uint8_t { none, c, header, layout };
 
 // lex, parse, check and evaluate; then produce the requested text.
 // library: no main is required (lib, header, and check of a file that exports).
-static bool compile(const char *path, const EmitOptions &opts, Output what, std::string *text, int library = 0) {
+// header_path: also write the C header (`coax c FILE --library --header out.h`).
+static bool compile(const char *path, const EmitOptions &opts, Output what, std::string *text, int library = 0,
+                    const std::string *header_path = nullptr) {
   Source src;
   src.path = path;
   if (!read_file(path, &src.text)) {
@@ -144,6 +146,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
     bool exports = false;
     for (const ProcDecl *p : file.procs) exports = exports || p->export_c;
     file.library = library == 1 || (library == 2 && exports);
+    file.metal = opts.metal;
     ok = check(&arena, &file) && evaluate(&file);
   }
   if (!ok) {
@@ -153,6 +156,10 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   if (what == Output::c) *text = emit_c(&file, opts);
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
+  if (header_path && !write_file(*header_path, emit_header(&file))) {
+    fprintf(stderr, "coax: cannot write '%s'\n", header_path->c_str());
+    return false;
+  }
   return true;
 }
 
@@ -176,6 +183,7 @@ static int build(const char *path, const std::string &exe, const EmitOptions &op
   if (!opts.release) args.push_back("-g");
   if (opts.library) args.push_back("-c");
   args.insert(args.end(), {"-o", exe, c_path});
+  if (!opts.library) args.push_back("-lm");
   int rc = run_process(args);
   if (!keep_c) unlink(c_path.c_str());
   if (rc != 0) {
@@ -191,7 +199,8 @@ static int usage() {
           "       coax build   file.coax [-o out] [--release] [--keep-c]\n"
           "       coax lib     file.coax [-o out.o] [--release] [--keep-c]\n"
           "       coax header  file.coax [-o out.h]\n"
-          "       coax c       file.coax [--release] [--lib]\n"
+          "       coax c       file.coax [--release] [--library [--header out.h]]\n"
+          "       coax metal   file.coax\n"
           "       coax check   file.coax\n"
           "       coax layout  file.coax\n"
           "       coax explain CODE | --all [--markdown]\n"
@@ -249,11 +258,11 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout")
+      cmd != "layout" && cmd != "metal")
     return usage();
 
   const char *input = nullptr;
-  std::string out;
+  std::string out, header;
   EmitOptions opts;
   bool keep_c = false;
   for (int i = 2; i < argc; i++) {
@@ -261,21 +270,24 @@ static int main_impl(int argc, char **argv) {
     if (a == "--release") opts.release = true;
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--json") g_json_errors = true;
-    else if (a == "--lib") opts.library = true;
+    else if (a == "--lib" || a == "--library") opts.library = true;
+    else if (a == "--header" && i + 1 < argc) header = argv[++i];
     else if (a == "-o" && i + 1 < argc) out = argv[++i];
     else if (!input && a.size() && a[0] != '-') input = argv[i];
     else return usage();
   }
-  if (!input) return usage();
+  if (!input || (!header.empty() && cmd != "c")) return usage();
+  if (cmd == "metal") opts.library = opts.metal = true;
   std::string text;
-  if (cmd == "check") return compile(input, opts, Output::none, &text, 2) ? 0 : 1;
+  if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
   if (cmd == "layout") {
     if (!compile(input, opts, Output::layout, &text, 2)) return 1;
     fwrite(text.data(), 1, text.size(), stdout);
     return 0;
   }
-  if (cmd == "c" || cmd == "header") {
-    if (!compile(input, opts, cmd == "c" ? Output::c : Output::header, &text, cmd == "header" || opts.library ? 1 : 0))
+  if (cmd == "c" || cmd == "header" || cmd == "metal") {
+    if (!compile(input, opts, cmd == "header" ? Output::header : Output::c, &text,
+                 cmd != "c" || opts.library ? 1 : 0, header.empty() ? nullptr : &header))
       return 1;
     if (out.empty()) {
       fwrite(text.data(), 1, text.size(), stdout);

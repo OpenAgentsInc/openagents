@@ -1,0 +1,137 @@
+// Public SPACE protocol, Apache-2.0.
+// Source: perplexityai/SPACE at de87b436c35dac056564bdd5b2a113c9046e189b.
+syntax = "proto3";
+package space.credential.provider.v2;
+
+import "google/protobuf/duration.proto";
+
+// Provider-neutral authority for issuing and releasing tenant intermediate
+// keys. A broker may route requests to one or more KMS, Vault, or HSM
+// backends; those choices and their identifiers never cross this boundary.
+//
+// Non-OK gRPC statuses are transport failures only. Application decisions
+// are returned in-band so authentication middleware, proxies, and broken
+// workload credentials cannot accidentally report deliberate key revocation.
+service IntermediateKeyBroker {
+    // Mint a fresh 256-bit intermediate key and return it wrapped. Reissuing
+    // for a tenant may begin rotation; historical keys must remain unwrapable
+    // for as long as the caller may retain data protected by them.
+    rpc IssueIntermediateKey(IssueIntermediateKeyRequest) returns (IssueIntermediateKeyResponse);
+
+    // Release the plaintext for a previously issued wrapped intermediate key.
+    // The plaintext exists at the trusted caller only for max_cache_ttl and is
+    // never persisted there.
+    rpc UnwrapIntermediateKey(UnwrapIntermediateKeyRequest) returns (UnwrapIntermediateKeyResponse);
+}
+
+// Stable identity of a tenant in the namespace of the authority that assigned
+// the id. Both fields are required, compared exactly, and form the durable
+// cryptographic tenant binding. A namespace migration must preserve a route
+// for historical keys.
+message TenantRef {
+    // Stable namespace or issuer identifier.
+    string namespace = 1;
+    // Opaque identifier assigned within namespace.
+    string id = 2;
+}
+
+// Optional evidence authorizing the broker to act for a tenant. The broker
+// interprets the bytes according to scheme. An unsupported non-empty scheme
+// must be rejected in-band as AUTHORIZATION_REJECTED and must never be ignored.
+message AuthorizationEvidence {
+    // Versioned identifier for the evidence validation protocol.
+    string scheme = 1;
+    // Subject represented by the evidence, when the scheme defines one.
+    optional string subject = 2;
+    // Opaque evidence bytes. They must never be logged or returned in errors.
+    bytes evidence = 3;
+}
+
+message IssueIntermediateKeyRequest {
+    TenantRef tenant = 1;
+    // Absence is valid when broker policy relies only on workload transport
+    // identity. Presence requires a supported, non-empty scheme and evidence.
+    AuthorizationEvidence authorization = 2;
+}
+
+message IssueIntermediateKeyResponse {
+    oneof outcome {
+        WrappedIntermediateKey key = 1;
+        IssueFailure failure = 2;
+    }
+}
+
+message WrappedIntermediateKey {
+    // Stable opaque identifier in the broker's namespace. It must survive
+    // backend, account, region, and endpoint migrations.
+    string key_id = 1;
+    // Broker-wrapped intermediate key. Opaque to the caller and persisted
+    // verbatim for later unwrap.
+    bytes wrapped_key = 2;
+}
+
+message IssueFailure {
+    IssueFailureReason reason = 1;
+    // Human-readable operational context. It must contain no key or evidence
+    // bytes and is never parsed by the caller.
+    string detail = 2;
+}
+
+enum IssueFailureReason {
+    ISSUE_FAILURE_REASON_UNSPECIFIED = 0;
+    // The tenant reference is unknown or invalid. Permanent for this input.
+    ISSUE_FAILURE_REASON_INVALID_TENANT = 1;
+    // Evidence is required, unsupported, expired, malformed, or invalid.
+    // This is not revocation and must never trigger tenant cleanup.
+    ISSUE_FAILURE_REASON_AUTHORIZATION_REJECTED = 2;
+    // The broker deliberately declares tenant key access revoked.
+    ISSUE_FAILURE_REASON_ACCESS_REVOKED = 3;
+    // The broker or its backing key service is temporarily unavailable.
+    ISSUE_FAILURE_REASON_UNAVAILABLE = 4;
+}
+
+message UnwrapIntermediateKeyRequest {
+    TenantRef tenant = 1;
+    string key_id = 2;
+    bytes wrapped_key = 3;
+    // See IssueIntermediateKeyRequest.authorization.
+    AuthorizationEvidence authorization = 4;
+}
+
+message UnwrapIntermediateKeyResponse {
+    oneof outcome {
+        IntermediateKeyMaterial key = 1;
+        UnwrapFailure failure = 2;
+    }
+}
+
+message IntermediateKeyMaterial {
+    // Exactly 32 bytes. The caller keeps this only in zeroizing memory.
+    bytes plaintext_key = 1;
+    // Required nonnegative upper bound on plaintext caching. Zero disables
+    // caching. When authorization evidence has a lifetime, the broker must not
+    // return a cap beyond its validated remaining lifetime. The caller also
+    // applies the minimum of its local, evidence, and broker limits.
+    google.protobuf.Duration max_cache_ttl = 2;
+}
+
+message UnwrapFailure {
+    UnwrapFailureReason reason = 1;
+    // Human-readable operational context. It must contain no key or evidence
+    // bytes and is never parsed by the caller.
+    string detail = 2;
+}
+
+enum UnwrapFailureReason {
+    UNWRAP_FAILURE_REASON_UNSPECIFIED = 0;
+    // The tenant/key/blob tuple is unknown, malformed, or cryptographically
+    // inconsistent. Permanent for these inputs; it does not imply revocation.
+    UNWRAP_FAILURE_REASON_INVALID_KEY = 1;
+    // Evidence is required, unsupported, expired, malformed, or invalid.
+    // This is not revocation and must never trigger tenant cleanup.
+    UNWRAP_FAILURE_REASON_AUTHORIZATION_REJECTED = 2;
+    // The broker deliberately declares tenant or key access revoked.
+    UNWRAP_FAILURE_REASON_ACCESS_REVOKED = 3;
+    // The broker or its backing key service is temporarily unavailable.
+    UNWRAP_FAILURE_REASON_UNAVAILABLE = 4;
+}

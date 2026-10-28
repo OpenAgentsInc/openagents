@@ -22,7 +22,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0106` | string is never closed | A string ends with a " on the same line. Strings cannot span lines yet. |
 | `E0107` | non-ASCII character outside a string or comment | Identifiers and operators are ASCII. UTF-8 text belongs in strings and comments. |
 | `E0108` | unexpected character | The character starts no token in Coax. |
-| `E0109` | floating-point literal is too large for f64 | The literal rounds to infinity. The largest f64 is about 1.8e308. |
+| `E0109` | bad floating-point literal | The literal rounds to infinity (the largest f64 is about 1.8e308, the largest f32 about 3.4e38), or it is followed by something other than an f32 or f64 suffix. |
 | `E0110` | invalid character literal | A character literal is one ASCII character or escape in single quotes ('a', '\n', '\''). It is an integer literal holding that byte, so it fits u8. |
 
 ## E02xx: parser
@@ -122,6 +122,9 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0372` | type name conflicts | A struct or enum name is already used by another type, a procedure, a constant, or a built-in. |
 | `E0373` | enum base must be an integer | An enum's underlying type is one of s8..s64 or u8..u64. |
 | `E0374` | constant index out of bounds | An index written as a constant must be inside a fixed array's length. Indexes computed at run time are checked when they run. |
+| `E0375` | math or string intrinsic misused | sin cos tan exp log sqrt floor abs take one float, pow two floats of one type; len takes a string, array or view; byte_at takes a string and an index. Convert integers first: f64(x). |
+| `E0376` | procedure cannot cross the C boundary | A #foreign procedure passes only integers, floats and bool, and its name must be a valid C symbol that is not main and does not start with coax_. |
+| `E0377` | outside the Metal scalar profile | coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print and #foreign calls stay in the C library. |
 
 ## E04xx: compile-time evaluation
 
@@ -139,13 +142,14 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0409` | compile-time result contains a view | A view points at memory that exists only while compiling, so it cannot be baked into the program. Return the array itself. |
 | `E0410` | compile-time index out of bounds | An index or slice evaluated while compiling is outside its array, view or string. |
 | `E0411` | compile-time cast or shift out of range | A cast evaluated while compiling does not fit its target, a value is not a member of the enum, or a shift amount is out of range. |
+| `E0412` | compile-time math has no finite result | A math intrinsic evaluated while compiling gave infinity or NaN, such as sqrt(-1.0) or log(0.0). Compile-time results must be finite. |
 
 ## Retired
 
 | Code | Was | Retired in |
 | --- | --- | --- |
-| `E0102` | floating-point literals are not supported | 0.3.0, when floats arrived |
-| `E0211` | only procedures can be declared at the top level | 0.2.0, when top-level constants arrived |
+| `E0102` | retired in 0.3.0 | Was: floating-point literals are not supported. Floats arrived in 0.3.0. |
+| `E0211` | retired in 0.2.0 | Was: only procedures can be declared at the top level. Top-level constants arrived in 0.2.0. |
 
 ## Run-time traps
 

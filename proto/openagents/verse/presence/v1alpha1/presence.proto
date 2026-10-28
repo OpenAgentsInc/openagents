@@ -1,0 +1,31 @@
+syntax = "proto3";
+package openagents.verse.presence.v1alpha1;
+
+import "openagents/engine/v1/scene.proto";
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/verse/common/v1alpha1/refs.proto";
+
+// An explicitly new transient projection. It does not change NIP-MV JSON,
+// REACH framing, the realm wire, or authenticated player admission.
+message PeerState {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_PRESENCE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 1024;
+  optional string actor_id = 1 [(openagents.options.v1alpha1.required_value) = true,
+                               (openagents.options.v1alpha1.max_bytes) = 128,
+                               (openagents.options.v1alpha1.grammar) = "nonempty-no-nul"];
+  // Engine convention: meters, Y up, +Z forward. Components must be finite.
+  openagents.engine.v1.Vec3 position = 2 [(openagents.options.v1alpha1.required_value) = true];
+  // Finite radians in [-pi, pi]. No implicit degrees conversion.
+  optional double heading_rad = 3 [(openagents.options.v1alpha1.unit) = "rad"];
+  // First sequence number is zero. Omission is invalid.
+  optional uint64 sequence = 4 [(openagents.options.v1alpha1.required_value) = true];
+}
+message PresenceSnapshot {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_PRESENCE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 262144;
+  option (openagents.options.v1alpha1.contract) = "openagents.verse.presence-snapshot.v1alpha1";
+  openagents.verse.common.v1alpha1.WorldRef world = 1 [(openagents.options.v1alpha1.required_value) = true];
+  repeated PeerState peers = 2 [(openagents.options.v1alpha1.max_count) = 256];
+  optional uint64 observed_at_ms = 3 [(openagents.options.v1alpha1.required_value) = true,
+                                    (openagents.options.v1alpha1.unit) = "ms"];
+}

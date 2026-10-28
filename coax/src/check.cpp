@@ -67,6 +67,13 @@ Type array_of(Type elem, int64_t length) { return intern(TypeKind::array, elem, 
 Type view_of(Type elem) { return intern(TypeKind::view, elem, 0); }
 const char *type_name(Type t) { return t->name.c_str(); }
 
+Intrinsic find_intrinsic(Str name) {
+  static const char *NAMES[] = {"", "sin", "cos", "tan", "exp", "log", "sqrt", "floor", "abs", "pow"};
+  for (int i = 1; i < (int)(sizeof NAMES / sizeof NAMES[0]); i++)
+    if (str_eq(name, NAMES[i])) return (Intrinsic)i;
+  return Intrinsic::none;
+}
+
 namespace {
 
 // Names a struct field or exported parameter cannot have, because the C (and
@@ -443,7 +450,9 @@ struct Checker {
     } else if (is_float(to)) {
       double v = as_double(e);
       if (to == &T_F32 && !__builtin_isinf(v) && __builtin_isinf((float)v) && !unevaluated) {
-        err(e->loc, "E0350", "value is out of range for f32", "use f64, or a smaller value");
+        char text[32];
+        snprintf(text, sizeof text, "%g", v);
+        err(e->loc, "E0350", std::string(text) + " does not fit in f32", "use f64, or a smaller value");
         e->type = &T_INVALID;
         return;
       }
@@ -546,7 +555,7 @@ struct Checker {
         err(e->loc, "E0306", "'" + to_std(e->text) + "' is not declared");
         return &T_INVALID;
       }
-      case ExprKind::call: return call(e);
+      case ExprKind::call: return call(e, want);
       case ExprKind::unary: {
         Type t = expr(e->lhs, want);
         if (t == &T_INVALID) return t;
@@ -856,7 +865,89 @@ struct Checker {
     return &T_INVALID;
   }
 
-  Type call(Expr *e) {
+  // A cast node made from a call, for int(x), f32(x) and byte_at(s, i).
+  Type call_as_cast(Expr *e, Str type, Expr *operand) {
+    TypeExpr *te = make<TypeExpr>(arena);
+    te->kind = TypeExpr::named;
+    te->loc = e->loc;
+    te->name = type;
+    e->kind = ExprKind::cast;
+    e->type_expr = te;
+    e->lhs = operand;
+    e->args = {};
+    return cast(e);
+  }
+
+  // sin(x) .. pow(x, y): floats of one type. Untyped arguments take a
+  // typed argument's type, else the wanted float type, else f64.
+  Type math_call(Expr *e, Intrinsic in, Type want) {
+    std::string name = to_std(e->text);
+    int32_t arity = in == Intrinsic::pow ? 2 : 1;
+    e->intrinsic = in;
+    if (e->args.count != arity) {
+      err(e->loc, "E0375", name + " takes " + (arity == 1 ? "one value" : "two values") + ", given " +
+                               std::to_string(e->args.count));
+      for (Expr *a : e->args) value(a, nullptr);
+      return &T_INVALID;
+    }
+    Type hint = want && is_float(want) ? want : nullptr;
+    bool bad = false;
+    for (Expr *a : e->args) bad = expr(a, hint) == &T_INVALID || bad;
+    if (bad) return &T_INVALID;
+    Type t = nullptr;
+    for (Expr *a : e->args)
+      if (!is_untyped(a->type)) { t = a->type; break; }
+    if (!t) t = hint ? hint : &T_F64;
+    for (Expr *a : e->args)
+      if (is_untyped(a->type)) coerce(a, t);
+    for (Expr *a : e->args) {
+      if (a->type == &T_INVALID) return &T_INVALID;
+      if (a->type != t || !is_float(t)) {
+        err(a->loc, "E0375",
+            name + (arity == 1 ? " needs a float" : " needs two floats of one type") + ", found " + type_name(a->type),
+            is_int(a->type) ? "convert it first: f64(x)" : "");
+        return &T_INVALID;
+      }
+    }
+    return t;
+  }
+
+  Type call(Expr *e, Type want) {
+    // T(x) is cast(T) x for the number types: int(x), f32(x), u8(x).
+    if (Type b = builtin_type(e->text); b && is_number(b) && !e->type_expr) {
+      if (e->args.count != 1) {
+        err(e->loc, "E0362", to_std(e->text) + "(x) converts one value, given " + std::to_string(e->args.count));
+        for (Expr *a : e->args) value(a, nullptr);
+        return &T_INVALID;
+      }
+      return call_as_cast(e, e->text, e->args[0]);
+    }
+    if (str_eq(e->text, "len") && !find_proc(e->text)) {
+      // len(x) is x.count, for strings, arrays and views.
+      if (e->args.count != 1) {
+        err(e->loc, "E0375", "len takes one value, given " + std::to_string(e->args.count));
+        return &T_INVALID;
+      }
+      e->kind = ExprKind::field;
+      e->lhs = e->args[0];
+      e->args = {};
+      e->text = Str{"count", 5};
+      return field(e);
+    }
+    if (str_eq(e->text, "byte_at") && !find_proc(e->text)) {
+      // byte_at(s, i) is cast(int) s[i]: a bounds-checked byte as an int.
+      if (e->args.count != 2) {
+        err(e->loc, "E0375", "byte_at takes a string and an index, given " + std::to_string(e->args.count) + " values");
+        return &T_INVALID;
+      }
+      Expr *ix = make<Expr>(arena);
+      ix->kind = ExprKind::index;
+      ix->loc = e->loc;
+      ix->lhs = e->args[0];
+      ix->rhs = e->args[1];
+      return call_as_cast(e, Str{"int", 3}, ix);
+    }
+    if (Intrinsic in = find_intrinsic(e->text); in != Intrinsic::none) return math_call(e, in, want);
     if (str_eq(e->text, "size_of") && e->type_expr) {
       Type t = resolve_type(e->type_expr);
       if (t == &T_INVALID) return t;
@@ -975,7 +1066,7 @@ struct Checker {
       err(loc, "E0304", "'" + to_std(name) + "' is already the name of a procedure", "pick another name");
       return false;
     }
-    if (find_constant(name) || str_eq(name, "type_name") || find_struct(name) || find_enum(name)) {
+    if (find_constant(name) || is_builtin_name(name) || find_struct(name) || find_enum(name)) {
       err(loc, "E0342", "'" + to_std(name) + "' is already a constant, type or intrinsic", "pick another name");
       return false;
     }
@@ -1176,7 +1267,8 @@ struct Checker {
   // ---- declarations ----
 
   bool is_builtin_name(Str name) {
-    return str_eq(name, "type_name") || (has_basic && str_eq(name, "print"));
+    return str_eq(name, "type_name") || (has_basic && str_eq(name, "print")) || str_eq(name, "len") ||
+           str_eq(name, "byte_at") || find_intrinsic(name) != Intrinsic::none;
   }
 
   void check_global_names() {
@@ -1256,6 +1348,87 @@ struct Checker {
     }
   }
 
+  // #foreign: the host provides a C symbol with this exact name. Only
+  // integers, floats and bool cross; there is no pointer or ownership ABI.
+  void check_foreign(ProcDecl *p) {
+    auto scalar = [](Type t) { return t == &T_INVALID || is_number(t) || t == &T_BOOL; };
+    std::string name = to_std(p->name);
+    if (!scalar(p->ret) && p->ret != &T_VOID)
+      err(p->loc, "E0376", "'" + name + "' returns " + type_name(p->ret) + "; #foreign procedures pass integers, floats and bool");
+    for (const Param &prm : p->params)
+      if (!scalar(prm.type))
+        err(prm.loc, "E0376", "parameter '" + to_std(prm.name) + "' is " + type_name(prm.type) +
+                                  "; #foreign procedures pass integers, floats and bool");
+    if (is_c_keyword(p->name) || str_eq(p->name, "main"))
+      err(p->loc, "E0376", "'" + name + "' cannot be a C symbol name");
+    else if (p->name.count >= 5 && memcmp(p->name.data, "coax_", 5) == 0)
+      err(p->loc, "E0376", "foreign names cannot start with 'coax_', which the runtime uses");
+  }
+
+  // ---- The Metal scalar profile (coax metal) ----
+  // f32 and bool values, straight-line code and acyclic calls: what a
+  // shader can run without the C runtime. Stage binding stays native.
+
+  bool metal_type(Type t) { return t == &T_F32 || t == &T_BOOL || t == &T_VOID || t == &T_INVALID; }
+
+  void metal_fail(Loc loc, const std::string &what) {
+    err(loc, "E0377", what + " is outside the Metal scalar profile",
+        "Metal libraries use f32 and bool, if/else and calls; no loops, strings, integers or host calls");
+  }
+
+  void metal_expr(const Expr *e, std::vector<const ProcDecl *> &path) {
+    if (!e) return;
+    if (!metal_type(e->type)) return metal_fail(e->loc, std::string("a ") + type_name(e->type) + " value");
+    if (e->builtin_print) return metal_fail(e->loc, "print");
+    if (e->kind == ExprKind::call && e->proc) {
+      if (e->proc->foreign) return metal_fail(e->loc, "a #foreign call");
+      for (const ProcDecl *q : path)
+        if (q == e->proc) return metal_fail(e->loc, "a recursive call");
+      metal_proc(e->proc, path);
+    }
+    metal_expr(e->lhs, path);
+    metal_expr(e->rhs, path);
+    metal_expr(e->third, path);
+    for (const Expr *a : e->args) metal_expr(a, path);
+  }
+
+  void metal_stmt(const Stmt *s, std::vector<const ProcDecl *> &path) {
+    if (!s) return;
+    if (s->kind == StmtKind::while_ || s->kind == StmtKind::for_range || s->kind == StmtKind::for_each)
+      return metal_fail(s->loc, "a loop");
+    if (s->kind == StmtKind::var && !metal_type(s->type)) return metal_fail(s->loc, std::string("a ") + type_name(s->type) + " local");
+    metal_expr(s->expr, path);
+    metal_expr(s->target, path);
+    for (const Stmt *c : s->body) metal_stmt(c, path);
+    metal_stmt(s->then_, path);
+    metal_stmt(s->else_, path);
+  }
+
+  std::vector<const ProcDecl *> metal_done;
+
+  void metal_proc(const ProcDecl *p, std::vector<const ProcDecl *> &path) {
+    for (const ProcDecl *q : metal_done)
+      if (q == p) return;
+    if (path.size() >= 64) return metal_fail(p->loc, "a call chain deeper than 64");
+    path.push_back(p);
+    metal_stmt(p->body, path);
+    path.pop_back();
+    metal_done.push_back(p);
+  }
+
+  void check_metal() {
+    for (const ProcDecl *p : file->procs) {
+      if (p->foreign) { metal_fail(p->loc, "a #foreign procedure"); continue; }
+      if (!metal_type(p->ret)) metal_fail(p->loc, std::string("returning ") + type_name(p->ret));
+      for (const Param &prm : p->params)
+        if (!metal_type(prm.type)) metal_fail(prm.loc, std::string("a ") + type_name(prm.type) + " parameter");
+    }
+    for (const ProcDecl *p : file->procs) {
+      std::vector<const ProcDecl *> path;
+      if (!p->foreign) metal_proc(p, path);
+    }
+  }
+
   bool run() {
     int32_t before = g_error_count;
     for (const Import &im : file->imports) {
@@ -1293,6 +1466,7 @@ struct Checker {
         err(p->loc, "E0335", "'" + to_std(p->name) + "' is already a builtin", "pick another name");
       for (Param &prm : p->params) prm.type = resolve_type(prm.type_expr);
       if (p->ret_expr) p->ret = resolve_type(p->ret_expr);
+      if (p->foreign) check_foreign(p);
       if (p->export_c) {
         any_export = true;
         if (str_eq(p->name, "main"))
@@ -1320,10 +1494,11 @@ struct Checker {
       if (!file->library)
         err(Loc{1, 1, 0}, "E0336", "the program has no 'main'",
             any_export ? "build it as a library: coax lib FILE.coax" : "add main :: () { ... }");
-    } else if (entry->params.count || entry->ret != &T_VOID) {
+    } else if (entry->params.count || entry->ret != &T_VOID || entry->foreign) {
       err(entry->loc, "E0337", "'main' takes no parameters and returns nothing in coax0", "main :: () { ... }");
     }
     for (ProcDecl *p : file->procs) {
+      if (p->foreign) continue;
       current = p;
       locals.clear();
       for (const Param &prm : p->params) declare(prm.name, prm.type, prm.loc, "parameter");
@@ -1332,6 +1507,7 @@ struct Checker {
         err(p->loc, "E0338", "'" + to_std(p->name) + "' can reach its end without returning " + type_name(p->ret),
             "add a return at the end");
     }
+    if (file->metal && g_error_count == before) check_metal();
     return g_error_count == before;
   }
 };

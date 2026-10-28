@@ -107,6 +107,7 @@ struct Token {
   Str text;            // identifier, keyword, directive name (without '#'), or raw literal
   uint64_t int_value = 0;
   double float_value = 0;
+  uint8_t float_bits = 0;  // float_lit: 32 or 64 for a 1.5f32 / 1.5f64 suffix, 0 for untyped
   Str string_value;    // string literal after escapes
 };
 
@@ -185,6 +186,10 @@ enum class ExprKind : uint8_t {
   field, index, slice, struct_lit, array_lit, cast, ifx, enum_value, ct_value,
 };
 
+// Built-in math, the same in C, Metal and compile-time evaluation.
+enum class Intrinsic : uint8_t { none, sin, cos, tan, exp, log, sqrt, floor, abs, pow };
+Intrinsic find_intrinsic(Str name);
+
 struct FieldInit {
   Str name;
   Loc loc;
@@ -213,6 +218,7 @@ struct Expr {
   struct ProcDecl *proc = nullptr;      // call: resolved target (null for builtins)
   struct ConstDecl *constant = nullptr; // ident: resolved global constant
   bool builtin_print = false;
+  Intrinsic intrinsic = Intrinsic::none;  // call: built-in math (proc is null)
   Value *ct = nullptr;        // ct_value: an aggregate computed at compile time
   int32_t ct_id = -1;         // ct_value: emitted as a static constant
 };
@@ -251,6 +257,7 @@ struct ProcDecl {
   Type ret = &T_VOID;
   Stmt *body = nullptr;
   bool export_c = false;
+  bool foreign = false;  // #foreign: a C symbol the host provides; no body
 };
 
 struct Field {
@@ -308,6 +315,7 @@ struct File {
   Slice<EnumDecl *> enums;
   Slice<Expr *> assertions;
   bool library = false;  // set by the driver: no C main, main optional
+  bool metal = false;    // checked against the Metal scalar profile
 };
 
 bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, File *out);
@@ -323,6 +331,7 @@ bool has_call(const Expr *e);
 struct EmitOptions {
   bool release = false;  // release: integer overflow wraps; debug: it traps
   bool library = false;  // no C main; #export_c procedures are the interface
+  bool metal = false;    // Metal Shading Language instead of C
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
 // A C header for the file's #export_c procedures and the types they use,

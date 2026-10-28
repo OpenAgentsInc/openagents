@@ -1,9 +1,8 @@
 # Appendix C. Coax for Jai programmers
 
 Coax starts from Jai's design. If you know Jai, most of Coax will look
-familiar, and the differences are deliberate. Jai syntax here is current
-Jai where the report on it was clear, and Forrest Smith's 2022 Advent of
-Code code where that's the source.
+familiar, and the differences are deliberate. Jai syntax here follows public
+Jai sources, such as Forrest Smith's 2022 Advent of Code code.
 
 ## Same idea, same spelling
 

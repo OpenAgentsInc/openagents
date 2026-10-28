@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "engine_name": "Metareal",
+  "policy": "Legacy IDs are reader aliases only. No signed body or signature domain is rewritten. New signatures need a new authenticated publication. Contract/bridge/record migrations remain gated on restored consumers; only asset-profile catalog migration is implemented here.",
+  "legacy_source_repository": "https://github.com/OpenAgentsInc/aethyr-cpp",
+  "legacy_source_revision": "040329b588152594b120206daa6195c636d0d816",
+  "entries": [
+    {
+      "key": "grid-profile-v1",
+      "kind": "asset-profile",
+      "legacy_id": "aethyr-grid-v1",
+      "canonical_id": "metareal-grid-v1",
+      "automatic_metadata_migration": true
+    },
+    {
+      "key": "town-profile-v1",
+      "kind": "asset-profile",
+      "legacy_id": "aethyr-town-v1",
+      "canonical_id": "metareal-town-v1",
+      "automatic_metadata_migration": true
+    },
+    {
+      "key": "native-save-v2",
+      "kind": "record-format",
+      "legacy_id": "aethyr.record",
+      "canonical_id": "metareal.record",
+      "automatic_metadata_migration": false,
+      "legacy_schema": 2,
+      "canonical_schema": 3
+    },
+    {
+      "key": "ui-v1",
+      "kind": "contract",
+      "legacy_id": "aethyr.ui.v1",
+      "canonical_id": "openagents.ui.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "device-profile-v1",
+      "kind": "contract",
+      "legacy_id": "aethyr.profile.v1",
+      "canonical_id": "openagents.metareal.profile.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "world-v1",
+      "kind": "contract",
+      "legacy_id": "aethyrforge.world.v1",
+      "canonical_id": "openagents.verse.doc.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "command-v1",
+      "kind": "contract",
+      "legacy_id": "aethyrforge.command.v1",
+      "canonical_id": "openagents.verse.authoring-command.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "release-v1",
+      "kind": "contract",
+      "legacy_id": "aethyrforge.release.v1",
+      "canonical_id": "openagents.verse.release.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "channel-v1",
+      "kind": "contract",
+      "legacy_id": "aethyrforge.channel.v1",
+      "canonical_id": "openagents.verse.channel.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "signature-v1",
+      "kind": "contract",
+      "legacy_id": "aethyrforge.signature.v1",
+      "canonical_id": "openagents.verse.signature.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "player-artifact-v1",
+      "kind": "contract",
+      "legacy_id": "aethyrforge.player-artifact.v1",
+      "canonical_id": "openagents.verse.player-artifact.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "stream-package-v1",
+      "kind": "contract",
+      "legacy_id": "aethyrforge.stream-package.v1",
+      "canonical_id": "openagents.verse.stream-package.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "npcs-v1",
+      "kind": "contract",
+      "legacy_id": "openagents.aethyr.npcs.v1",
+      "canonical_id": "openagents.verse.npcs.v2",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "save-bridge-v1",
+      "kind": "bridge",
+      "legacy_id": "aethyrSave",
+      "canonical_id": "metarealSave",
+      "automatic_metadata_migration": false
+    },
+    {
+      "key": "signature-domain-v1",
+      "kind": "signature-domain",
+      "legacy_id": "AETHYRFORGE-SIGNATURE-V1\n",
+      "canonical_id": "METAREAL-SIGNATURE-V2\n",
+      "automatic_metadata_migration": false
+    }
+  ],
+  "historical_path_prefixes": [
+    {
+      "display_prefix": "docs/metareal/",
+      "legacy_prefix": "docs/aethyr/"
+    },
+    {
+      "display_prefix": "crates/metareal",
+      "legacy_prefix": "crates/aethyr"
+    },
+    {
+      "display_prefix": "apps/metareal",
+      "legacy_prefix": "apps/aethyr"
+    },
+    {
+      "display_prefix": "metareal-host",
+      "legacy_prefix": "aethyrforge-host"
+    }
+  ]
+}

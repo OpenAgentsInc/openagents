@@ -1,0 +1,20 @@
+syntax = "proto3";
+package openagents.metareal.home.v1alpha1;
+import "openagents/engine/v1/hud.proto";
+import "openagents/options/v1alpha1/options.proto";
+
+// An offline, bounded presentation resource; not a login or authority record.
+// The Coax home admits schema 1, nonzero seed, <=4096 motes, <=8 satellites,
+// and the exact enabled/shown home.start action with a 1..32 byte ASCII label.
+// Unknown/duplicate fields and malformed varints are rejected in this first
+// document reader. No native struct layout is encoded here.
+message HomeConfiguration {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_DOCUMENT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 1024;
+  option (openagents.options.v1alpha1.contract) = "openagents.metareal.home.v1alpha1";
+  optional uint32 schema_version = 1 [(openagents.options.v1alpha1.required_value) = true];
+  optional uint32 seed = 2 [(openagents.options.v1alpha1.required_value) = true];
+  optional uint32 mote_count = 3 [(openagents.options.v1alpha1.required_value) = true];
+  optional uint32 satellite_count = 4 [(openagents.options.v1alpha1.required_value) = true];
+  openagents.engine.v1.HudAction start = 5 [(openagents.options.v1alpha1.required_value) = true];
+}

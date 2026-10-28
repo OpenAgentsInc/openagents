@@ -2,14 +2,14 @@
    Lexing: ASCII identifiers (excluding reserved keywords); integer tokens in
    decimal/hex/binary with separators, up to the u64 maximum; decimal float
    tokens with a fraction and/or exponent ("1.5", "2e-3"; never "1." so that
-   "0..<n" stays a range); character literals 'a' and '\n' (integer tokens);
+   "0..<n" stays a range) and an optional f32/f64 suffix ("1.5f32" is typed); character literals 'a' and '\n' (integer tokens);
    escaped byte strings; whitespace, line comments and nested block comments.
    A unary minus is a separate token. *)
 
 file = { import | procedure | constant | struct | enum | assertion } ;
 import = "#import", string, ";" ;
 procedure = identifier, "::", "(", [ parameters ], ")",
-            [ "->", type ], [ "#export_c" ], block ;
+            [ "->", type ], ( [ "#export_c" ], block | "#foreign", ";" ) ;
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
@@ -70,4 +70,9 @@ arguments = expression, { ",", expression }, [ "," ] ;
    built as a library; no unused expression results; literal checked print
    formats; deferred code that does not leave its block; left-to-right
    evaluation; and bounded compile-time execution. print is provided by
-   Basic; type_name is an unevaluated but typechecked intrinsic. *)
+   Basic; type_name is an unevaluated but typechecked intrinsic. A call
+   named after a number type converts (int(x) is cast(int) x); sin, cos,
+   tan, exp, log, sqrt, floor, abs, pow, len and byte_at are intrinsics.
+   #foreign procedures pass integers, floats and bool. coax metal accepts
+   only f32/bool values, no loops, strings or foreign calls, and acyclic
+   calls. *)

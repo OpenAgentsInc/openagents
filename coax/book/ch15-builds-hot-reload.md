@@ -20,8 +20,7 @@ build :: () {
 
 In Jai the build is a Jai program: the compiler starts a metaprogram that
 creates workspaces, sets options and handles compiler messages. Coax
-does the same with `build.coax`, and adds what the Jai report flagged as
-missing.
+does the same with `build.coax`, and adds what a team build needs on top.
 
 **Capabilities.** Build code runs on the build machine, separate from
 target code. Reading files, running processes or touching the network

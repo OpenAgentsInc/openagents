@@ -2,23 +2,24 @@
 
 > **Partly runs today.** On `coax0` 0.3.0, `#export_c`, `coax lib` and
 > `coax header` run (16.4 and 16.5), and the example is checked;
-> `coax/examples/pulse` links a Coax kernel into a C host. Importing C
+> `coax/examples/pulse` links a Coax kernel into a C host; `#foreign`
+> (16.2) and `coax metal` (16.6) run too. Importing C
 > headers (16.2), ownership and nullability annotations in headers, and
 > anything that carries the context are *Design* (spec §17.2).
 
 Coax will live beside 40,000 lines of C++ for years. It doesn't replace
 the engine. It takes over one subsystem at a time behind a C boundary,
 the same boundary Swift already uses to drive the engine
-(`src/metal/home_app.h` in aethyr-cpp).
+(`src/metal/home_app.h` in the Metareal source archive).
 
 ## 16.1 The C boundary is the contract
 
 Every crossing uses plain C:
 
 - **Fixed-width data.** Coax `int` is 64 bits. C `int` usually isn't. At
-  the boundary, write `s32` or `s64` explicitly. Jai has the same trap,
-  and the report on it called it out first. The generated header spells
-  every type with `<stdint.h>` names, so `int` arrives as `int64_t`.
+  the boundary, write `s32` or `s64` explicitly; never assume a host
+  integer width. The generated header spells every type with `<stdint.h>`
+  names, so `int` arrives as `int64_t`.
 - **Explicit lengths.** A Coax `string` is a pointer and a count, not a
   `char *`, and a view `[] T` is the same: `{data, count}`. Passing one
   to C means passing both, or producing a zero-terminated copy on
@@ -35,14 +36,31 @@ calling convention, ownership, nullability, callback lifetimes and
 allocator pairing. Today's header records sizes and offsets, as checked
 assertions (16.4); the rest is *Design*.
 
-## 16.2 Calling C (design)
+## 16.2 Calling C
+
+One C function at a time works today. `#foreign` declares a symbol the host
+links in, by its exact name:
+
+```coax
+host_load :: (h: int, slot: int) -> f64 #foreign;
+host_store :: (h: int, slot: int, value: f64) #foreign;
+```
+
+Foreign procedures pass integers, floats and `bool`, nothing else
+(`E0376`): there is no pointer or ownership ABI yet, so a host that owns
+memory hands Coax an integer handle. Compile-time code can't call them
+(`E0404`). The generated header declares them, so the C compiler checks
+the host's definitions against Coax's signatures. The native iOS home
+(`metareal/home.coax`) is built this way.
+
+Importing whole headers is design:
 
 ```coax
 #import_c "stb_image.h";
 ```
 
 Header import reads C declarations through libclang at compile time. The
-rules come straight from Jai's experience generating SDL3 bindings: skip
+rules must skip
 what isn't callable (static inline functions, `va_list` variants, macros
 that aren't constants) and say so, rather than generating calls to
 symbols that don't exist.
@@ -205,3 +223,19 @@ dependencies beyond the C library, so it builds with any C compiler,
 including Xcode's clang. Other targets (iOS, Android, Windows, wasm32)
 need their own runtime, linker and ABI evidence before they count as
 supported (Chapter 17).
+
+## 16.6 Metal functions
+
+The same checked procedures can become Metal Shading Language, for the
+scalar math a shader stage calls:
+
+```sh
+coax metal metareal/light.coax > Light.metal
+```
+
+The Metal profile accepts `f32` and `bool` values, `if`/`else`, locals and
+calls that don't recurse. Loops, strings, integers, `f64`, `print` and
+`#foreign` calls are `E0377`. The native stage still binds textures and
+attributes and packs vectors; Coax supplies the functions it calls. The C
+build of the same file is what the tests run, so one source is checked on
+the CPU and drawn on the GPU.

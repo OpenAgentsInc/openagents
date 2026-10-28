@@ -176,8 +176,19 @@ bool lex(Arena *arena, const Source *src, std::vector<Token> *out) {
           if (s[k] != '_') digits_only += s[k];
         t.kind = Tok::float_lit;
         t.float_value = strtod(digits_only.c_str(), nullptr);
-        if (t.float_value > 1.7976931348623157e308)
+        // 1.5f32 and 1.5f64 are typed; a bare 1.5 is untyped.
+        if (i + 3 <= n && s[i] == 'f' && (memcmp(s + i, "f32", 3) == 0 || memcmp(s + i, "f64", 3) == 0)) {
+          t.float_bits = s[i + 1] == '3' ? 32 : 64;
+          i += 3;
+        }
+        if (i < n && is_ident_char(s[i])) {
+          error_at(src, t.loc, "E0109", "a floating-point literal can only be followed by f32 or f64");
+          while (i < n && is_ident_char(s[i])) i++;
+        } else if (t.float_value > 1.7976931348623157e308) {
           error_at(src, t.loc, "E0109", "floating-point literal is too large for f64");
+        } else if (t.float_bits == 32 && __builtin_isinf((float)t.float_value)) {
+          error_at(src, t.loc, "E0109", "floating-point literal is too large for f32");
+        }
         t.text = Str{s + start, i - start};
         out->push_back(t);
         continue;

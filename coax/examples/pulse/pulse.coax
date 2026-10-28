@@ -1,5 +1,5 @@
 // Payment pulses moving along channels: the shape of the per-frame pulse
-// update in aethyr-cpp's src/paynet, written as a Coax kernel that a C host
+// update in the engine archive's src/paynet, written as a Coax kernel that a C host
 // calls through the generated header (spec §20, stage 2).
 //
 //   coax lib pulse.coax -o pulse.o && coax header pulse.coax -o pulse.h

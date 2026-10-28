@@ -41,7 +41,8 @@ coax/build.sh test
 | `coax build FILE [-o out] [--release] [--keep-c]` | Build an executable |
 | `coax lib FILE [-o out.o] [--release]` | Build an object file of the `#export_c` procedures |
 | `coax header FILE [-o out.h]` | Write the C header for those procedures, with layout assertions |
-| `coax c FILE [--release] [--lib]` | Print the generated C |
+| `coax c FILE [--release] [--library [--header out.h]]` | Print the generated C, optionally as a library with its header |
+| `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
 | `coax explain CODE` / `--all [--markdown]` | Explain an error code |
@@ -108,15 +109,46 @@ squares :: () -> [8] u16 {
   them in order before using them.
 - **Compile time.** `#run` evaluates ordinary procedures, including arrays,
   structs and loops; aggregate results become static constants in the C.
+  Math intrinsics (`sin cos tan exp log sqrt floor abs pow`) and the
+  conversions `int(x)`, `f32(x)` work there too, and must give finite results.
   `#assert` checks a bool while compiling. `type_name(x)` typechecks without
   evaluating. `print` while compiling is refused (E0404).
 - **The C boundary.** `#export_c` procedures keep their names, use the C
   calling convention, and appear in `coax header`, with `_Static_assert`
   checks that the C compiler's layout of every struct equals Coax's. Views
-  cross as `{data, count}`; `int` is `int64_t`.
+  cross as `{data, count}`; `int` is `int64_t`. `#foreign` imports a host C
+  symbol, and `coax metal` emits f32/bool functions as Metal (see below).
 - **Diagnostics.** Stable codes with locations and fix text, `--json` for
   tools, and `coax explain` for every code. Compile-time failures add call
   site notes.
+
+## Native libraries and Metal
+
+The [native iOS home](../apps/openagents-ios/README.md) runs its scene, HUD and
+resource admission in Coax and its shader math through the Metal emitter:
+
+```sh
+coax/bin/coax c metareal/home.coax --library --header /tmp/Home.h > /tmp/Home.c
+coax/bin/coax metal metareal/light.coax > /tmp/Light.metal
+apps/openagents-ios/build.sh
+```
+
+- `name :: (h: int) -> f64 #foreign;` imports a host C symbol by its exact
+  name. Foreign procedures pass integers, floats and bool (E0376), and
+  compile-time code cannot call them (E0404). `coax header` and
+  `c --library --header` declare them next to the `#export_c` procedures.
+- `int(x)`, `f32(x)`, `u8(x)` and the other number types convert like
+  `cast(T) x`: checked, float to integer truncates toward zero, f64 to f32
+  traps when a finite value doesn't fit. `1.5f32` and `1.5f64` are typed
+  literals; a bare `1.5` is untyped.
+- `sin cos tan exp log sqrt floor abs pow` take floats of one type (E0375) and
+  call the C library's `float` or `double` function. Compile-time results
+  must be finite (E0412). There is no cross-platform libm guarantee.
+- `len(x)` is `x.count`; `byte_at(s, i)` is `cast(int) s[i]`, bounds-checked.
+- `coax metal FILE` emits Metal Shading Language from the same checked tree:
+  f32 and bool values, `if`/`else`, locals and acyclic calls. Loops, strings,
+  integers, f64, `print` and `#foreign` calls are E0377. Native stages bind
+  textures and attributes; this is not a general GPU compiler.
 
 ## Compile-time contract
 
@@ -151,13 +183,14 @@ execution limits, not a complete limit for hostile source.
 | `tests/fail/` | Expected diagnostics and runtime traps |
 | `tests/compile_time.py` | Isolation, dependency, budget, error and generated-artifact checks |
 | `tests/tools.py` | Explain, JSON diagnostics, layout, libraries and headers, determinism |
+| `tests/native.py` | Float math, foreign/export ABI linked into C, ordered effects, Metal profile |
 | `examples/` | Demos with expected output; `pulse/` links a Coax kernel into C |
 
 ## Limits and next work
 
 The bootstrap does not implement pointers, dynamic arrays, unions, `switch`,
 optionals and errors (`try`/`or_else`), generics, general reflection, macros,
-compiler plugins, context, effects, jobs, shaders, a build language, a native
+compiler plugins, context, effects, jobs, general GPU programs, a build language, a native
 backend or a resident compiler. Reserved syntax for them is diagnosed. A view
 does not keep its array alive: returning a view of a local is the same
 mistake it is in C. C debug locations still refer to generated C.
@@ -166,3 +199,11 @@ Next: the `src/paynet` pulse kernel itself, called from the engine's frame
 loop with its outputs compared and its frame cost measured, before anything in
 the app or its CMake/Xcode paths changes. See §20 of the specification for
 later metadata, build, parallelism, browser and reload gates.
+
+## Shared protocol
+
+The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) defines
+interchange for every OpenAgents surface, including Verse. Source schemas and
+selected-profile descriptors live in root [proto/](../proto/README.md), beside
+`coax/`. Metareal is the engine name. Coax's future importer and bounded codecs
+must consume this source rather than defining a parallel language-only schema.

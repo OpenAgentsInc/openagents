@@ -53,4 +53,6 @@ echo "$pass passed, $fail failed"
 fixtures_rc=$?
 python3 tests/compile_time.py && python3 tests/tools.py
 python_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 ]]
+python3 tests/native.py
+native_rc=$?
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 ]]

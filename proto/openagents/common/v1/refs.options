@@ -1,0 +1,13 @@
+openagents.common.v1.* type:FT_CALLBACK
+openagents.common.v1.*.* max_length:4096 max_count:64
+openagents.common.v1.SignedEvent.json max_length:524288
+openagents.common.v1.ArtifactRef.sources max_count:16
+openagents.common.v1.EventRef.id max_length:64
+openagents.common.v1.EventRef.pubkey max_length:64
+openagents.common.v1.EventRef.coordinate max_length:1024
+openagents.common.v1.ArtifactRef.digest max_length:71
+openagents.common.v1.ArtifactRef.media_type max_length:128
+openagents.common.v1.ArtifactRef.schema max_length:256
+openagents.common.v1.Refusal.message max_length:512
+openagents.common.v1.Refusal.code max_length:64
+openagents.common.v1.Refusal.domain max_length:32

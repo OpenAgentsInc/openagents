@@ -271,6 +271,33 @@ struct Evaluator {
     }
   }
 
+  // Built-in math. f32 uses the float functions, as the generated C does.
+  Value math(const Expr *e, CtFrame &frame, bool allow_calls) {
+    double a = expr(e->args[0], frame, allow_calls).f, b = 0;
+    if (!failed && e->args.count == 2) b = expr(e->args[1], frame, allow_calls).f;
+    if (failed) return {};
+    bool f32 = e->type == &T_F32;
+    float x = (float)a, y = (float)b;
+    double r = 0;
+    switch (e->intrinsic) {
+      case Intrinsic::sin: r = f32 ? ::sinf(x) : std::sin(a); break;
+      case Intrinsic::cos: r = f32 ? ::cosf(x) : std::cos(a); break;
+      case Intrinsic::tan: r = f32 ? ::tanf(x) : std::tan(a); break;
+      case Intrinsic::exp: r = f32 ? ::expf(x) : std::exp(a); break;
+      case Intrinsic::log: r = f32 ? ::logf(x) : std::log(a); break;
+      case Intrinsic::sqrt: r = f32 ? ::sqrtf(x) : std::sqrt(a); break;
+      case Intrinsic::floor: r = f32 ? ::floorf(x) : std::floor(a); break;
+      case Intrinsic::abs: r = f32 ? ::fabsf(x) : std::fabs(a); break;
+      case Intrinsic::pow: r = f32 ? ::powf(x, y) : std::pow(a, b); break;
+      case Intrinsic::none: break;
+    }
+    if (!std::isfinite(r)) {
+      err(e->loc, "E0412", to_std(e->text) + " has no finite result for these arguments while compiling");
+      return {};
+    }
+    return floating(e->type, r);
+  }
+
   Value do_cast(const Expr *e, Value v) {
     Type to = e->type, from = v.type;
     if (from == to) return v;
@@ -285,7 +312,13 @@ struct Evaluator {
       return s;
     }
     if (is_float(to)) {
-      if (is_float(from)) return floating(to, v.f);
+      if (is_float(from)) {
+        if (to == &T_F32 && std::isfinite(v.f) && std::isinf((float)v.f)) {
+          err(e->loc, "E0411", "cast of " + std::to_string(v.f) + " to f32 is out of range");
+          return {};
+        }
+        return floating(to, v.f);
+      }
       // One rounding, straight from the integer, as C converts.
       if (to == &T_F32) return floating(to, from->is_signed ? (double)(float)(int64_t)v.bits : (double)(float)v.bits);
       return floating(to, from->is_signed ? (double)(int64_t)v.bits : (double)v.bits);
@@ -433,8 +466,13 @@ struct Evaluator {
           err(e->loc, "E0408", "a constant procedure call requires #run");
           return {};
         }
+        if (e->intrinsic != Intrinsic::none) return math(e, frame, allow_calls);
         if (e->builtin_print) {
           err(e->loc, "E0404", "compile-time execution cannot perform output or host I/O");
+          return {};
+        }
+        if (e->proc->foreign) {
+          err(e->loc, "E0404", "compile-time execution cannot call the host procedure '" + to_std(e->proc->name) + "'");
           return {};
         }
         if (calls.size() >= MAX_DEPTH) {
