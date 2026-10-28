@@ -1,4 +1,5 @@
 // expect: E0409
+// No local array escapes: even an empty view cannot be baked as a constant.
 V :: #run view();
-view :: () -> [] int { a: [2] int; return a[..]; }
+view :: () -> [] int { empty: [] int; return empty; }
 main :: () {}
