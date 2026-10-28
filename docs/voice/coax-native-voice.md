@@ -70,11 +70,22 @@ die with one app.
 
 ## Where we are today
 
-**Voice code:** none. The only audio in the tree is `AVAudioPlayer`
-playing Haunt's clips (`apps/openagents-ios/OpenAgents/Platform/HauntAssets.swift`).
-The phone app has never asked for the microphone, and
-[INVARIANTS.md](../../INVARIANTS.md) says the home screen does not acquire
-device permissions. Turning voice on is an invariant change.
+**Voice code** (status 2026-10-28; this section was written before any of it existed):
+
+- The schema: `proto/openagents/voice/v1alpha1/voice.proto`, including
+  per-frame `FrameFeatures` and `FrameDecision`.
+- The Coax engine: `metareal/voice.coax`, `voice-wire.coax`, and the two
+  `#authority` files `voice-floor.coax` and `voice-meter.coax` (zero
+  surviving mutants), behind the C face `metareal/platform/voice.h`.
+- The dev voice host: `metareal/voice-host/` (C), running on this Mac only.
+  It calls Google Chirp 3, Chirp 3 HD and Vertex Gemini. How to run it:
+  [dev.md](dev.md).
+- The phone: `apps/openagents-ios/OpenAgents/Voice/`, with the voice toggle
+  on the home. `tools/voice-sim-test.sh` passes in the simulator against the
+  Mac's host, offline and live. It has not run on a physical iPhone yet.
+- [INVARIANTS.md](../../INVARIANTS.md) now allows the microphone through the
+  voice toggle only, and audio leaves the phone only inside a turn and only
+  to our voice host.
 
 **Coax** (`coax0` 0.10.0) gives us:
 
@@ -387,9 +398,9 @@ licensed voices through the same path. Bitcoin only, as everywhere.
 
 *Estimated 2026-10-28 from Google's list prices; V3 and V4 replace these with measured numbers.*
 
-None of this is running yet. After the 2026-10-28 cleanup, the voice host,
-its load balancer and the earlier `coder-sync-1` socket pattern are all
-gone, so supporting voice starts from zero. Every figure here is a list-price
+Nothing is deployed yet: the voice host runs only on a development Mac.
+After the 2026-10-28 cleanup, its future load balancer and the earlier
+`coder-sync-1` socket pattern are gone, so hosted capacity starts from zero. Every figure here is a list-price
 estimate for **100 people talking to agents at the same time**.
 
 The assumptions:
@@ -471,19 +482,27 @@ Each phase ends with a measurement committed and a real-phone run.
 
 - **V0. Clean up.** Done 2026-10-28: LiveKit's cluster, Redis and
   addresses deleted.
-- **V1. The protocol and the Coax core.** `openagents.voice.v1` in
+- **V1. The protocol and the Coax core.** Done 2026-10-28. `openagents.voice.v1` in
   `proto/` with compatibility snapshots, then `voice.coax` (frames, resampler,
   levels, VAD, end of turn, barge-in, jitter buffer), checked on recorded
   fixtures. No network, no models. Exit: replay checks pass, every
   audio-thread procedure has a bounded step test.
-- **V2. Phone loopback.** Microphone permission (with the invariant
+- **V2. Phone loopback.** Simulator done 2026-10-28; the real-iPhone
+  measurement is not done. Microphone permission (with the invariant
   change), VoiceProcessingIO capture, and Coax deciding turns live on the
   phone. Playback can just echo your own speech back. Exit: turn-end
   latency measured on a real iPhone.
-- **V3. Voice host with speech-to-text.** The C host plus Coax libraries on
+- **V3. Voice host with speech-to-text.** Local only so far: the host runs
+  on a Mac with per-turn REST recognition (not streaming), no VM, no load
+  balancer. The C host plus Coax libraries on
   a small VM, calling Google's streaming speech-to-text, frames over a WebSocket through the load balancer, partial and
   final transcripts on screen. Exit: harness numbers for steps 1–2.
-- **V4. Text-to-speech and the agent relay.** The first full conversation:
+- **V4. Text-to-speech and the agent relay.** Local only so far: a full
+  conversation with the Foreman works in the simulator. Median end of turn
+  to first reply audio on one Mac, live: 1.76 s (recognition 292 ms, agent
+  first sentence 668 ms, first speech 703 ms). Against the budget, which
+  leaves out the agent's own time: the final transcript (292 ms) meets its
+  300 ms target; first speech (703 ms) misses its 300 ms target. The first full conversation:
   talk to the Foreman in the Grid. Exit: every row of the budget measured.
 - **V5. Players.** The forwarder, `voice-space.coax`, and Opus if decision
   5 says so. Exit: two phones in the Grid hear each other placed in space,

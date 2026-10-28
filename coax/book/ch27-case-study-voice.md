@@ -4,7 +4,7 @@ The earlier chapters taught Coax with small programs, and Chapter 26 put
 several features together in one boundary. In this chapter we'll look at
 something bigger: the voice system OpenAgents uses to let people, NPCs and
 agents talk to each other. It's a real system, not a teaching toy. It runs
-on a Mac today, it has a phone client in progress, and its decisions about
+on a Mac today, its phone client passes in the iOS simulator, and its decisions about
 who may be heard and what speech costs are held to the same rules as the
 wallet.
 
@@ -81,7 +81,7 @@ can't: talk to audio hardware, open sockets, and make HTTPS calls.
 | The C face | `metareal/platform/voice.h`, `voice.c` | A stable C API over the four libraries |
 | The voice host | `metareal/voice-host/` | WebSocket server, sessions, Google calls, a dev client |
 | The reply path | `metareal/voice-host/voice-reply.coax` | When a partial may stand as the final transcript, and where a reply splits into sentences (`#authority`, newest and still changing) |
-| The phone | `apps/openagents-ios/OpenAgents/Voice/` | Capture, playback, the socket, the UI (in progress) |
+| The phone | `apps/openagents-ios/OpenAgents/Voice/` | Capture, playback, the socket, the UI |
 
 ## Start with the protocol
 
@@ -1680,16 +1680,15 @@ A launch argument, `-OAVoiceFixture`, streams a bundled recording into
 the same ring the microphone writes, so the simulator test exercises the
 real uplink path without a microphone.
 
-> Note: what's still in progress on the phone, as of this writing. The
-> Swift files above exist and the app builds them, but they belong to work
-> another engineer is finishing, and we did not run the simulator test for
-> this chapter. Nothing has been run on a physical iPhone. A phone has no
-> default voice host yet (the simulator uses the Mac's `127.0.0.1:8787`).
-> And `INVARIANTS.md` still says the home's only network use is the Spark
-> wallet and that it acquires no device permissions; turning on the
-> microphone and a voice socket is an invariant change that has to land
-> with the app code. One more honest detail: the engine runs on the serial
-> worker queue, fed by a timer, not inside the real-time audio callback.
+> Note: where the phone stands, as of this writing. The simulator test
+> (`apps/openagents-ios/tools/voice-sim-test.sh`) passes offline and live:
+> the fixture is heard as "Hello foreman, what are we building today?" and
+> the Foreman answers aloud. `INVARIANTS.md` changed with the app code to
+> allow the microphone through the voice toggle. Nothing has been run on a
+> physical iPhone, and a phone has no default voice host yet (the simulator
+> uses the Mac's `127.0.0.1:8787`). One more honest detail: the engine runs
+> on the serial worker queue, fed by a timer, not inside the real-time audio
+> callback.
 
 ## Testing at every layer
 
@@ -1899,12 +1898,15 @@ gRPC-only, and it isn't built. The recognition jobs in `host.c`
 (`JOB_RECOGNIZE`, `JOB_FINAL`, `JOB_TAIL`) and `speech_recognize` are where
 it would go.
 
-Measured latency. The host now streams the agent's reply and synthesizes
-it sentence by sentence, but that was landing as this chapter was written,
-and nothing has measured a real conversation since. The design's budget
-(350 ms to decide the turn, 300 ms to the final transcript, 300 ms to the
-first reply audio) needs the latency harness and real phones before
-anyone can say it's met.
+Measured latency. The host streams the agent's reply and synthesizes it
+sentence by sentence. On one Mac, live against Google and Gemini, the
+median from end of turn to first reply audio is 1.76 s: 292 ms to the
+final transcript (planned from the last partial by `voice-reply.coax`),
+668 ms to the agent's first sentence, 703 ms to its first speech. The
+design's budget (350 ms to decide the turn, 300 ms to the final
+transcript, 300 ms to the first reply audio) is not met yet. Streaming
+speech, which is gRPC-only, is the obvious next step, and real phones have
+to be measured before anyone can claim a number.
 
 Opus. Talking to agents uses raw 16 kHz PCM, by design. Player-to-player
 voice in the Verse needs a codec, because raw audio would cost about ten
