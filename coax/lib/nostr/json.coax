@@ -314,9 +314,9 @@ json_unescape :: (raw: string, out: [] u8) -> int {
       i += 6;
       if cp >= 0xDC00 && cp <= 0xDFFF { return -1; }
       if cp >= 0xD800 && cp <= 0xDBFF {
-        lo := json_u4(raw, i);
-        if lo < 0xDC00 || lo > 0xDFFF { return -1; }
-        cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+        low := json_u4(raw, i);
+        if low < 0xDC00 || low > 0xDFFF { return -1; }
+        cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
         i += 6;
       }
       n = json_put_cp(out, n, cp);
@@ -501,10 +501,10 @@ json_write_int :: (out: [] u8, at: int, v: int) -> int {
   while i < text.count {
     e := i;
     while e < text.count && text[e] != '\n' { e += 1; }
-    frame := text[i..<e];
-    #assert json_valid(frame);
+    one := text[i..<e];
+    #assert json_valid(one);
     j: [1] Json;
-    json_start(j[..], frame);
+    json_start(j[..], one);
     #assert json_next(j[..]) == JSON_ARRAY && json_next(j[..]) == JSON_STRING;
     if json_is(json_text(j[..]), "EVENT") {
       #assert json_next(j[..]) == JSON_STRING && json_next(j[..]) == JSON_OBJECT;

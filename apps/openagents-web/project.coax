@@ -5,18 +5,22 @@
 // commit history growing out of it as a tree and agents walking between the
 // task queue's beacon and the branches they're working on.
 //
-// Real: the commits (baked by projects/commits.sh into
-// projects/coax/commits.coax), file and line counts, the one-liner, the
-// licence. Placeholders until the projects API exists
-// (docs/protocol/2026-10-28-projects.md): the tasks, their claims and
-// bounties, the agents and their activity.
+// Real: the project, its tasks, claims, plans, notes and order, live from
+// its relay (project-live.coax); the commits (baked by projects/commits.sh
+// into projects/SLUG/commits.coax), file and line counts. The page learns
+// which project it shows from its HTML (data-text: "KEY SLUG"), so one
+// project.wasm draws every project. Placeholders until the projects API
+// exists (docs/protocol/2026-10-28-projects.md): the demo's agents and
+// their activity.
 
 #load "font.coax";
 #load "projects/coax/commits.coax";
 #load "projects/coax/work.coax";
+#load "projects/verse/commits.coax";
+#load "projects/verse/work.coax";
 #load "project-live.coax";
 
-// page 0 is the real page (/projects/coax), 1 the demo (/projects/coax/demo).
+// page 0 is a real page (/projects/SLUG), 1 the demo (/projects/coax/demo).
 // The rest is the page's input: the pointer, the task open in the detail
 // panel and what the last frame drew there, for the pointer to find.
 ProjectState :: struct {
@@ -43,10 +47,44 @@ ProjectState :: struct {
   // the location's hash: the task a link asks for (in), the task open now (outbox out)
   want: [16] u8; want_n: int; wanted: bool;
   action: int; outbox: [16] u8; out_n: int;
+  chosen: bool;      // the project is picked (at the first frame)
 }
 MAX_LINKS :: 48;
 DETAIL_BODY :: 16384;
 DETAIL_LIST :: 4096;
+
+MSG_PAGE_TEXT :: 2;   // the host's: the page's data-text, once the engine loads
+
+// What a build bakes for each project it knows: the first paint before the
+// relay's first EOSE (snapshot.ts) and the commits (commits.sh). A project
+// the build doesn't know still draws live, without a tree.
+Baked :: struct {
+  slug: string; pubkey: string; relay: string; naddr: string;
+  name: string; description: string; license: string; path: string; repo: string;
+  items: string; log: string; plans: string; plan_info: string; details: string; steps: string;
+  history: string; commits: int; authors: int; lines: int;
+}
+BAKED_N :: 2;
+baked :: (k: int) -> Baked {
+  if k == 1 {
+    return Baked.{slug = VERSE_WORK_SLUG, pubkey = VERSE_WORK_PUBKEY, relay = VERSE_WORK_RELAY, naddr = VERSE_WORK_NADDR,
+      name = VERSE_WORK_NAME, description = VERSE_WORK_DESCRIPTION, license = VERSE_WORK_LICENSE, path = VERSE_WORK_PATH,
+      repo = VERSE_WORK_REPO, items = VERSE_WORK_ITEMS, log = VERSE_WORK_LOG, plans = VERSE_WORK_PLANS,
+      plan_info = VERSE_WORK_PLAN_INFO, details = VERSE_WORK_DETAILS, steps = VERSE_WORK_STEPS, history = VERSE_HISTORY, commits = VERSE_COMMITS,
+      authors = VERSE_AUTHORS, lines = VERSE_LINES};
+  }
+  return Baked.{slug = COAX_WORK_SLUG, pubkey = COAX_WORK_PUBKEY, relay = COAX_WORK_RELAY, naddr = COAX_WORK_NADDR,
+    name = COAX_WORK_NAME, description = COAX_WORK_DESCRIPTION, license = COAX_WORK_LICENSE, path = COAX_WORK_PATH,
+    repo = COAX_WORK_REPO, items = COAX_WORK_ITEMS, log = COAX_WORK_LOG, plans = COAX_WORK_PLANS,
+    plan_info = COAX_WORK_PLAN_INFO, details = COAX_WORK_DETAILS, steps = COAX_WORK_STEPS, history = COAX_HISTORY, commits = COAX_COMMITS,
+    authors = COAX_AUTHORS, lines = COAX_LINES};
+}
+// The baked project with this slug, or -1.
+baked_index :: (slug: string) -> int {
+  for k: 0..<BAKED_N { if same(baked(k).slug, slug) { return k; } }
+  return -1;
+}
+DEFAULT_RELAY :: "wss://relay.openagents.com";
 
 VERTEX_FLOATS :: 12;   // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 240000;  // the page is ~120K at 1440 px; an open detail adds up to ~70K
@@ -357,6 +395,15 @@ Work :: struct {
   plan_info: string;          // WORK_PLAN_INFO: alias | done | steps | plan updated | claimed | latest note
   details: string;            // WORK_DETAILS: alias | event id | claimed at | body | acceptance | notes (escaped: undetail)
   view: QueueView;            // what the queue drew last, for the pointer
+  log: string;                // WORK_LOG: time (Chicago) | what, newest first
+  steps: string;              // WORK_STEPS: how to take a task
+  naddr: string;
+  // the header: from the project's 30621 event and its repository's 30617
+  slug: string; name: string; description: string; license: string; path: string; repo: string;
+  baked: int;                 // the baked project it started from, or -1
+  // the line to the relay, for the header's chip
+  live: int;                  // LIVE_* (project-live.coax)
+  head: [1024] u8;            // the header's strings, when they come from the relay
 }
 
 // The queue's rows as the last frame drew them, and what they light: the
@@ -602,6 +649,32 @@ branch_index :: (name: string) -> int {
   if same(name, "bin") { return 6; }
   return 0;   // spec: the folder's own files
 }
+// A subfolder's branch on this tree: Coax's own subfolders keep their
+// places; any other gets the next free one, in the order it first appears
+// (the spec branch, 0, when all are taken).
+branch_of :: (t: [] Tree, name: string) -> int {
+  k := branch_index(name);
+  if k != 0 || same(name, "spec") { return k; }
+  for b: 1..<BRANCHES {
+    if t[0].label_n[b] != name.count + 1 { continue; }
+    match := true;
+    for i: 0..<name.count { c := name[i]; if t[0].labels[b * 24 + i] != (ifx c >= 'a' && c <= 'z' then c - 32 else c) { match = false; } }
+    if match { return b; }
+  }
+  for b: 1..<BRANCHES {
+    if t[0].used[b] || name.count + 1 > 24 { continue; }
+    t[0].used[b] = true;
+    for i: 0..<name.count { c := name[i]; t[0].labels[b * 24 + i] = ifx c >= 'a' && c <= 'z' then c - 32 else c; }
+    t[0].labels[b * 24 + name.count] = '/';
+    t[0].label_n[b] = name.count + 1;
+    return b;
+  }
+  return 0;
+}
+branch_label :: (t: [] Tree, b: int) -> string {
+  if t[0].label_n[b] > 0 { return cast(string) t[0].labels[b * 24..<b * 24 + t[0].label_n[b]]; }
+  return branch_name(b);
+}
 branch_name :: (b: int) -> string {
   if b == 1 { return "SRC/"; }
   if b == 2 { return "TESTS/"; }
@@ -634,6 +707,9 @@ Tree :: struct {
   trunk: [MAX_COMMITS] f32;   // the trunk's height at each commit
   last: [BRANCHES] int;       // the newest commit on each branch, or -1
   count: [BRANCHES] int;
+  used: [BRANCHES] bool;      // a branch taken by a subfolder
+  labels: [BRANCHES * 24] u8; label_n: [BRANCHES] int;   // names of the branches not Coax's own
+  history: string;            // the commits it grew from
 }
 
 TRUNK :: 5.8;   // the tree's height, grid units
@@ -642,12 +718,15 @@ branch_angle :: (b: int) -> f32 { return 0.5 + cast(f32) b * 2.0 * 3.14159265 / 
 grow :: (t: [] Tree, history: string) {
   n := rows(history);
   if n > MAX_COMMITS { n = MAX_COMMITS; }
-  t[0].n = n;
-  for b: 0..<BRANCHES { t[0].last[b] = -1; t[0].count[b] = 0; }
-  for i: 0..<n { b := branch_index(field(history, i, 2)); t[0].count[b] += 1; }
+  t[0].n = n; t[0].history = history;
+  for b: 0..<BRANCHES { t[0].last[b] = -1; t[0].count[b] = 0; t[0].used[b] = false; t[0].label_n[b] = 0; }
+  // Coax's own subfolders hold their places; the others take what's left
+  for i: 0..<n { k := branch_index(field(history, i, 2)); if k != 0 { t[0].used[k] = true; } }
+  branches: [MAX_COMMITS] int;
+  for i: 0..<n { b := branch_of(t, field(history, i, 2)); branches[i] = b; t[0].count[b] += 1; }
   seen: [BRANCHES] int;
   for i: 0..<n {
-    b := branch_index(field(history, i, 2));
+    b := branches[i];
     t[0].branch[i] = b;
     h := 0.35 + TRUNK * (ifx n > 1 then cast(f32) i / cast(f32) (n - 1) else 0.0f32);
     t[0].trunk[i] = h;
@@ -769,7 +848,7 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
       ring := 6 * p.d + 5 * p.d * fract(p.time * 0.7);
       v = diamond(out, v, s.x, s.y, ring, orange, 0.6 * (1 - fract(p.time * 0.7)) * p.fade);
       small := 6.5 * p.d;
-      v = put(out, v, field(PROJECT_HISTORY, i, 0)[0..<7], s.x + 10 * p.d, s.y - 6 * p.d, small, orange);
+      v = put(out, v, field(t[0].history, i, 0)[0..<7], s.x + 10 * p.d, s.y - 6 * p.d, small, orange);
       if roomy { v = put(out, v, "HEAD", s.x + 10 * p.d, s.y + 5 * p.d, small, dim); }
     }
   }
@@ -780,7 +859,7 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
       if last < 0 { continue; }
       s := spot(c, t[0].at[last]);
       if !s.ok || !inside(view, s.x, s.y) { continue; }
-      v = put(out, v, branch_name(br), s.x - text_width(branch_name(br), 6 * p.d) - 8 * p.d, s.y + 10 * p.d, 6 * p.d, dim);
+      v = put(out, v, branch_label(t, br), s.x - text_width(branch_label(t, br), 6 * p.d) - 8 * p.d, s.y + 10 * p.d, 6 * p.d, dim);
     }
   }
   // the task queue's beacon at the plot's front corner
@@ -802,7 +881,7 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
   // the agents: out from the beacon to their branch, work there, come back
   // (samples: only the demo has them until claims are real)
   for a: 0..<(ifx p.demo then rows(AGENTS) else 0) {
-    target := t[0].last[branch_index(field(AGENTS, a, 2))];
+    target := t[0].last[branch_of(t, field(AGENTS, a, 2))];
     if target < 0 || shown < n { continue; }
     node := add(t[0].at[target], v3(0.35 * cos(cast(f32) a * 2.1), 0.5 + 0.2 * cast(f32) a, 0.35 * sin(cast(f32) a * 2.1)));
     phase := fract((ifx still then 0.5f32 else p.time) * 0.055 + cast(f32) a * 0.31);
@@ -897,23 +976,29 @@ glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
 
 // ---------------------------------------------------------------- the panels
 
-header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, lv: [] Live) -> int {
+header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int {
   d := p.d; v := at;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
   x := b.x0 + 18 * d; right := b.x1 - 18 * d;
+  // the project's name, line and home: from its 30621 event and its repository
+  name := ifx p.demo then "COAX" else w[0].name;
   v = put(out, v, "OPENAGENTS / PROJECTS /", x, b.y0 + 22 * d, 7 * d, dim);
   crumb := x + text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d;
-  v = put(out, v, "COAX", crumb, b.y0 + 22 * d, 7 * d, orange);
-  if p.demo { v = put(out, v, "/ DEMO", crumb + text_width("COAX", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, ink(p, INK_PALE)); }
+  v = put(out, v, name, crumb, b.y0 + 22 * d, 7 * d, orange);
+  if p.demo { v = put(out, v, "/ DEMO", crumb + text_width(name, 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, ink(p, INK_PALE)); }
   title := 26 * d;
   ty := b.y0 + 58 * d;
-  v = put(out, v, "COAX", x, ty, title, white);
-  tag := "A systems language for real-time code. Compiles to C11, then to native code and wasm.";
+  v = put(out, v, name, x, ty, title, white);
+  tag := ifx p.demo then "A systems language for real-time code. Compiles to C11, then to native code and wasm." else w[0].description;
   chips_y := 0.0f32;
   if wide {
-    tx := x + text_width("COAX", title) + 22 * d;
+    tx := x + text_width(name, title) + 22 * d;
     v = put_fit(out, v, tag, tx, ty - 10 * d, 8 * d, white, right - tx - 330 * d);
-    line := ifx p.demo then "HOME OPENAGENTS/COAX/  ·  PLOT 12,-4 ON THE GRID  ·  OWNER OPENAGENTS" else "HOME OPENAGENTS/COAX/  ·  TASKS FROM NOSTR  ·  OWNER OPENAGENTS";
+    hb: [192] u8;
+    hn := put_text(hb[..], 0, "HOME ");
+    hn += put_text(hb[..], hn, w[0].repo); hn += put_text(hb[..], hn, "/"); hn += put_text(hb[..], hn, w[0].path);
+    hn += put_text(hb[..], hn, "  ·  TASKS FROM NOSTR  ·  OWNER "); hn += put_text(hb[..], hn, w[0].repo);
+    line := ifx p.demo then "HOME OPENAGENTS/COAX/  ·  PLOT 12,-4 ON THE GRID  ·  OWNER OPENAGENTS" else cast(string) hb[0..<hn];
     v = put_fit(out, v, line, tx, ty + 6 * d, 6.5 * d, dim, right - tx);
     chips_y = ty - 8 * d;
   } else {
@@ -922,15 +1007,12 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, lv: [] Live) -> int
     chips_y = ty + 22 * d + 13 * d * cast(f32) lines[0] + 14 * d;
   }
   // the chips: open for contributions (pulsing), the licence, and the data's
-  // source: SAMPLE DATA on the demo, the snapshot's time on the real page
+  // source: SAMPLE DATA on the demo; on a real page the line to the relay
   cap := 7 * d;
   open := "OPEN FOR CONTRIBUTIONS";
-  lic := "APACHE-2.0";
-  buf: [64] u8;
-  m := put_text(buf[..], 0, "SNAPSHOT ");
-  m += put_text(buf[..], m, WORK_SNAPSHOT_AT);
-  if lv[0].frames > 0 { m += put_text(buf[..], m, " · "); m += number(lv[0].frames, false, buf[m..<buf.count]); m += put_text(buf[..], m, " FRAMES"); }
-  source := ifx p.demo then "DEMO · SAMPLE DATA" else cast(string) buf[0..<m];
+  lic := ifx p.demo then "APACHE-2.0" else w[0].license;
+  state := ifx w[0].live == LIVE_LIVE then "LIVE" else ifx w[0].live == LIVE_OFFLINE then "OFFLINE" else "CONNECTING";
+  source := ifx p.demo then "DEMO · SAMPLE DATA" else state;
   third := chip_width(source, cap, p) + 8 * d;
   cx := ifx wide then right - chip_width(open, cap, p) - chip_width(lic, cap, p) - 8 * d else x;
   if wide { cx = cx - third; }
@@ -940,17 +1022,21 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, lv: [] Live) -> int
   v = chip(out, v, lic, cx + chip_width(open, cap, p) + 8 * d, chips_y, cap, dim, p);
   sx := cx + chip_width(open, cap, p) + chip_width(lic, cap, p) + 16 * d;
   if !wide && sx + chip_width(source, cap, p) > right { sx = x; chips_y = chips_y + cap + 16 * d; }
-  v = chip(out, v, source, sx, chips_y, cap, ifx p.demo then ink(p, INK_PALE) else dim, p);
+  live := !p.demo && w[0].live == LIVE_LIVE;
+  v = chip(out, v, source, sx, chips_y, cap, ifx p.demo then ink(p, INK_PALE) else ifx live then orange else dim, p);
+  if live { v = diamond(out, v, sx + chip_width(source, cap, p) + 6 * d, chips_y - cap * 0.5, 2 * d, orange, beat * p.fade); }
   return frame(out, v, b, 10 * d, p);
 }
 
 // The readouts over the scene: commits, contributors, lines, open tasks, agents at work.
-stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
+stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work, t: [] Tree) -> int {
   d := p.d; v := at;
   dim := ink(p, INK_DIM); white := ink(p, INK_WHITE); orange := ink(p, INK_ORANGE);
   labels := [5] string.["COMMITS", "CONTRIBUTORS", "LINES", "OPEN TASKS", "AGENTS AT WORK"];
   short := [5] string.["COMMITS", "PEOPLE", "LINES", "OPEN", "AGENTS"];
-  values := [5] int.[PROJECT_COMMITS, PROJECT_AUTHORS, PROJECT_LINES, open_tasks(), rows(AGENTS)];
+  k := ifx p.demo || w[0].baked < 0 then 0 else w[0].baked;
+  values := [5] int.[baked(k).commits, baked(k).authors, baked(k).lines, open_tasks(), rows(AGENTS)];
+  if !p.demo && w[0].baked < 0 { values[0] = t[0].n; values[1] = 0; values[2] = 0; }
   if !p.demo {
     // the real page counts the relay's tasks: ready to take, and still to do
     labels[3] = "READY"; short[3] = "READY"; values[3] = w[0].ready_n;
@@ -970,7 +1056,7 @@ stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
 }
 
 // The scene's own HUD: corner brackets, a caption and a legend.
-scene_hud :: (out: [] f32, at: int, b: Box, p: Pen, columns: bool) -> int {
+scene_hud :: (out: [] f32, at: int, b: Box, p: Pen, columns: bool, wk: [] Work) -> int {
   d := p.d; v := at;
   orange := ink(p, INK_ORANGE); dim := ink(p, INK_DIM); white := ink(p, INK_WHITE);
   arm := 16 * d;
@@ -983,7 +1069,10 @@ scene_hud :: (out: [] f32, at: int, b: Box, p: Pen, columns: bool) -> int {
     v = rule(out, v, xs[k], ys[k], xs[k], ys[k] + sy * arm, orange, 0.8 * p.fade);
   }
   small := 6 * d;
-  v = put(out, v, "GRID · SECTOR 12,-4 · PLOT COAX", b.x0 + 12 * d, b.y1 - 12 * d, small, dim);
+  pb: [96] u8;
+  pn := put_text(pb[..], 0, "GRID · SECTOR 12,-4 · PLOT ");
+  pn += put_text(pb[..], pn, ifx p.demo then "COAX" else wk[0].slug);
+  v = put(out, v, cast(string) pb[0..<pn], b.x0 + 12 * d, b.y1 - 12 * d, small, dim);
   if columns {
     lx := b.x1 - 12 * d;
     v = put_right(out, v, "COMMIT   RECENT   AGENT", lx, b.y1 - 12 * d, small, dim);
@@ -1131,16 +1220,16 @@ activity :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
     v = put_fit(out, v, field(MOVES, r, 1), x + lead, y, cap, pale, right - x - lead);
     y += step;
   }
-  n := PROJECT_COMMITS;
+  n := COAX_COMMITS;
   for k: 0..<n {
     if y + 9 * d > bottom { break; }
     i := n - 1 - k;
-    date := field(PROJECT_HISTORY, i, 1);
+    date := field(COAX_HISTORY, i, 1);
     v = put(out, v, date[5..<date.count], x, y, cap, dim);
-    v = put(out, v, field(PROJECT_HISTORY, i, 0)[0..<7], x + lead, y, cap, orange);
+    v = put(out, v, field(COAX_HISTORY, i, 0)[0..<7], x + lead, y, cap, orange);
     hx := x + lead + text_width("0000000", cap) + 8 * d;
-    v = put_fit(out, v, field(PROJECT_HISTORY, i, 4), hx, y, cap, white, right - hx);
-    v = put_fit(out, v, branch_name(branch_index(field(PROJECT_HISTORY, i, 2))), hx, y + 10 * d, 5.5 * d, dim, right - hx);
+    v = put_fit(out, v, field(COAX_HISTORY, i, 4), hx, y, cap, white, right - hx);
+    v = put_fit(out, v, branch_name(branch_index(field(COAX_HISTORY, i, 2))), hx, y + 10 * d, 5.5 * d, dim, right - hx);
     y += step;
   }
   return frame(out, v, b, 10 * d, p);
@@ -1356,14 +1445,17 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   mb: [64] u8;
   mm := 0;
   if more > 0 { mm = number(more, false, mb[..]); mm += put_text(mb[..], mm, " MORE · "); }
-  mm += put_text(mb[..], mm, "EVERY TASK: /PROJECTS/COAX/INDEX.MD");
+  mm += put_text(mb[..], mm, "EVERY TASK: /PROJECTS/");
+  mm += put_text(mb[..], mm, w[0].slug);
+  mm += put_text(mb[..], mm, "/INDEX.MD");
   v = put_fit(out, v, cast(string) mb[0..<mm], x, b.y1 - 14 * d, small, dim, right - x);
   return frame(out, v, b, 10 * d, p);
 }
 
 // The activity from the relay, newest first: claims, releases, notes and
 // finished tasks, each with its time in Chicago. The newest is brightest.
-activity_rows :: (out: [] f32, at: int, x: f32, y0: f32, right: f32, bottom: f32, p: Pen) -> int {
+activity_rows :: (out: [] f32, at: int, x: f32, y0: f32, right: f32, bottom: f32, p: Pen, w: [] Work) -> int {
+  rows_of := w[0].log;
   d := p.d; v := at;
   dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE);
   small := 5.5 * d;
@@ -1372,14 +1464,14 @@ activity_rows :: (out: [] f32, at: int, x: f32, y0: f32, right: f32, bottom: f32
   v = put(out, v, "ACTIVITY", x + 12 * d, y, small, orange);
   v = put_right(out, v, "CHICAGO TIME", right, y, small, dim);
   y += 15 * d;
-  if rows(WORK_LOG) == 0 {
+  if rows(rows_of) == 0 {
     v = put(out, v, "NO CLAIMS OR NOTES YET", x, y, small, dim);
     return v;
   }
-  for r: 0..<rows(WORK_LOG) {
+  for r: 0..<rows(rows_of) {
     if y > bottom { break; }
-    v = put(out, v, field(WORK_LOG, r, 0), x, y, small, dim);
-    v = put_fit(out, v, field(WORK_LOG, r, 1), x + 64 * d, y, small, ifx r == 0 then white else pale, right - x - 64 * d);
+    v = put(out, v, field(rows_of, r, 0), x, y, small, dim);
+    v = put_fit(out, v, field(rows_of, r, 1), x + 64 * d, y, small, ifx r == 0 then white else pale, right - x - 64 * d);
     y += 12 * d;
   }
   return v;
@@ -1439,14 +1531,14 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     }
   }
   // what workers did, if there's room
-  if y + 30 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 8 * d, right, b.y1 - 12 * d, p); }
+  if y + 30 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 8 * d, right, b.y1 - 12 * d, p, w); }
   return frame(out, v, b, 10 * d, p);
 }
 
 // For agents, on the real page: where the project's events are and how to
 // take a task today. Without the plan panel (narrower screens) the activity
 // goes here, under the steps, when there's room.
-real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activity: bool) -> int {
+real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activity: bool, w: [] Work) -> int {
   d := p.d;
   v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
@@ -1459,18 +1551,18 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activi
     v = put_wrapped(out, v, "Take the top ready task nobody is on: its issue says what to build, the checks that must pass and the files it writes. Claim it with a comment on the issue, note as you go, and finish it with the commit that passes its checks.", x, y, 6.5 * d, dim, right - x, 12 * d, 4, lines[..]);
     y += 12 * d * cast(f32) lines[0] + 10 * d;
   }
-  for r: 0..<rows(WORK_STEPS) {
+  for r: 0..<rows(w[0].steps) {
     if y > b.y1 - 10 * d { break; }
-    v = put(out, v, field(WORK_STEPS, r, 0), x, y, cap, orange);
-    v = put_fit(out, v, field(WORK_STEPS, r, 1), x + lead, y, cap, white, right - x - lead);
+    v = put(out, v, field(w[0].steps, r, 0), x, y, cap, orange);
+    v = put_fit(out, v, field(w[0].steps, r, 1), x + lead, y, cap, white, right - x - lead);
     y += step;
   }
   if !compact && y + 24 * d < b.y1 - 10 * d {
     v = put(out, v, "PROJECT", x, y, cap, dim);
-    v = put_fit(out, v, WORK_NADDR, x + lead, y, 5.5 * d, dim, right - x - lead);
+    v = put_fit(out, v, w[0].naddr, x + lead, y, 5.5 * d, dim, right - x - lead);
     y += step;
   }
-  if with_activity && y + 50 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 10 * d, right, b.y1 - 12 * d, p); }
+  if with_activity && y + 50 * d < b.y1 - 10 * d { v = activity_rows(out, v, x, y + 10 * d, right, b.y1 - 12 * d, p, w); }
   return frame(out, v, b, 10 * d, p);
 }
 
@@ -2010,12 +2102,16 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
   s[0].frames += 1;
-  // the real page holds its socket to the relay; the demo keeps its samples
-  if s[0].page == 0 { live_tick(lv, s[0].time, WORK_RELAY); }
+  if !s[0].chosen { choose(s, t, w, lv); }
+  // a real page holds its socket to the relay and draws each new fold; the
+  // demo keeps its samples
+  if s[0].page == 0 {
+    live_tick(lv, s[0].time, ifx w[0].baked >= 0 then baked(w[0].baked).relay else DEFAULT_RELAY);
+    w[0].live = lv[0].state;
+    if lv[0].dirty { live_apply(lv, w); }
+  }
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
-  if t[0].n == 0 { grow(t, PROJECT_HISTORY); }
-  if !w[0].read { read_work(w, WORK_ITEMS); w[0].plans = WORK_PLANS; w[0].plan_info = WORK_PLAN_INFO; w[0].details = WORK_DETAILS; }
   s[0].width = width; s[0].height = height; s[0].dpr = d;
   // the task a link (the location's hash) asks for, once the work is read
   if s[0].wanted {
@@ -2057,10 +2153,10 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
   v := 0;
   if !open {
     v = scene(out, v, l.scene, p, t, still, w[0].ready_n);
-    v = scene_hud(out, v, l.scene, p, l.columns);
-    v = stats(out, v, l.scene, p, w);
+    v = scene_hud(out, v, l.scene, p, l.columns, w);
+    v = stats(out, v, l.scene, p, w, t);
   }
-  v = header(out, v, l.header, p, l.wide, lv);
+  v = header(out, v, l.header, p, l.wide, w);
   compact := !l.wide && !l.columns;
   if p.demo {
     v = queue(out, v, l.queue, p);
@@ -2069,16 +2165,79 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
   } else {
     v = real_queue(out, v, l.queue, p, w);
     if l.activity_on { v = plan(out, v, l.activity, p, w); }
-    v = real_agents(out, v, l.agents, p, compact, !l.activity_on);
+    v = real_agents(out, v, l.agents, p, compact, !l.activity_on, w);
     if open { v = detail(out, v, db, p, s, w); }
   }
   return v;
 }
 
+// The first frame: which project. The page named it (MSG_PAGE_TEXT, before
+// any frame); a page that didn't is Coax's, as is the demo. A project this
+// build baked starts from its baked tables and commits; any other from
+// nothing until its relay answers.
+choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
+  s[0].chosen = true;
+  k := 0;
+  if s[0].page == 0 && lv[0].key_n > 0 { k = baked_index(live_slug(lv)); }
+  else if s[0].page == 0 && !live_project_of(lv, baked(0)) { k = -1; }
+  w[0].baked = k;
+  if k >= 0 {
+    b := baked(k);
+    read_work(w, b.items);
+    w[0].plans = b.plans; w[0].plan_info = b.plan_info; w[0].details = b.details; w[0].log = b.log; w[0].steps = b.steps; w[0].naddr = b.naddr;
+    w[0].slug = b.slug; w[0].name = b.name; w[0].description = b.description; w[0].license = b.license;
+    w[0].path = b.path; w[0].repo = b.repo;
+    grow(t, b.history);
+  } else {
+    read_work(w, "");
+    w[0].slug = live_slug(lv); w[0].name = live_slug(lv);
+    grow(t, "");
+  }
+}
+live_project_of :: (lv: [] Live, b: Baked) -> bool {
+  buf: [160] u8;
+  n := put_text(buf[..], 0, b.pubkey); n += put_text(buf[..], n, " "); n += put_text(buf[..], n, b.slug);
+  return live_project(lv, cast(string) buf[0..<n]);
+}
+
+// A tag's value from the project's or its repository's event, as a cell, into the header's buffer.
+head_put :: (lv: [] Live, w: [] Work, e: int, name: string, k: int, at: int, keep: string) -> Head {
+  h := Head.{text = keep, at = at};
+  if e < 0 { return h; }
+  st := lv[0].store[..];
+  tg := tag_named(st, e, name);
+  if tg < 0 || st[0].tag_len[tg] <= k { return h; }
+  n := cell_into(w[0].head[..], at, element(st, tg, k));
+  if n < 0 { return h; }
+  h.text = cast(string) w[0].head[at..<n]; h.at = n;
+  return h;
+}
+Head :: struct { text: string; at: int; }
+
+// Events arrived: fold them again and draw the result.
+live_apply :: (lv: [] Live, w: [] Work) {
+  lv[0].dirty = false; lv[0].folds += 1;
+  st := lv[0].store[..]; tb := lv[0].tables[..];
+  fold(st, lv[0].fold[..], live_slug(lv));
+  write_tables(st, lv[0].fold[..], tb);
+  read_work(w, cast(string) tb[0].items[0..<tb[0].items_n]);
+  w[0].log = cast(string) tb[0].log[0..<tb[0].log_n];
+  w[0].plans = cast(string) tb[0].plans[0..<tb[0].plans_n];
+  w[0].plan_info = cast(string) tb[0].info[0..<tb[0].info_n];
+  w[0].details = cast(string) tb[0].details[0..<tb[0].details_n];
+  pe := lv[0].fold[0].project; re := lv[0].fold[0].repo;
+  h := head_put(lv, w, pe, "name", 1, 0, w[0].name); w[0].name = h.text;
+  h = head_put(lv, w, pe, "description", 1, h.at, w[0].description); w[0].description = h.text;
+  h = head_put(lv, w, pe, "license", 1, h.at, w[0].license); w[0].license = h.text;
+  h = head_put(lv, w, pe, "path", 2, h.at, w[0].path); w[0].path = h.text;
+  h = head_put(lv, w, re, "name", 1, h.at, w[0].repo); w[0].repo = h.text;
+}
+
 // The host's messages: the relay socket's events (project-live.coax).
 coaxial_project_message :: (l: [] Live, kind: int, length: int) #export_c {
-  if l.count < 1 { return; }
-  live_message(l, kind, length, WORK_PUBKEY, WORK_SLUG);
+  if l.count < 1 || length < 0 || length > LIVE_INBOX { return; }
+  if kind == MSG_PAGE_TEXT { if live_project(l, cast(string) l[0].inbox[0..<length]) {} return; }
+  live_message(l, kind, length);
 }
 // The face carried out the pipe's open: the host's socket id, or -1.
 coaxial_project_opened :: (l: [] Live, id: int) #export_c {
@@ -2095,13 +2254,13 @@ coaxial_project_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 #test "the tree has one node per commit, on the branch of the folder it touched" {
   t: [1] Tree;
-  grow(t[..], PROJECT_HISTORY);
-  #assert t[0].n == PROJECT_COMMITS && PROJECT_COMMITS == rows(PROJECT_HISTORY);
+  grow(t[..], COAX_HISTORY);
+  #assert t[0].n == COAX_COMMITS && COAX_COMMITS == rows(COAX_HISTORY);
   total := 0;
   for b: 0..<BRANCHES { total += t[0].count[b]; }
   #assert total == t[0].n;
   for i: 0..<t[0].n {
-    #assert t[0].branch[i] == branch_index(field(PROJECT_HISTORY, i, 2));
+    #assert t[0].branch[i] == branch_of(t[..], field(COAX_HISTORY, i, 2));
     if i > 0 { #assert t[0].trunk[i] > t[0].trunk[i - 1]; }
     r := sqrt(t[0].at[i].x * t[0].at[i].x + t[0].at[i].z * t[0].at[i].z);
     #assert r > 0.6 && r < PLOT;   // every branch stays over the plot
@@ -2260,8 +2419,8 @@ FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply
   out: [60000 * VERTEX_FLOATS] f32;
   p := Pen.{d = 1, fade = 1, time = 20, demo = false};
   w: [1] Work;
-  read_work(w[..], WORK_ITEMS);
-  #assert rows(WORK_ITEMS) <= MAX_ITEMS && w[0].n == rows(WORK_ITEMS);
+  read_work(w[..], COAX_WORK_ITEMS);
+  #assert rows(COAX_WORK_ITEMS) <= MAX_ITEMS && w[0].n == rows(COAX_WORK_ITEMS) && rows(VERSE_WORK_ITEMS) <= MAX_ITEMS;
   b := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
   n := real_queue(out[..], 0, b, p, w[..]);
   #assert n > 600;
@@ -2286,13 +2445,13 @@ FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply
   ks := real_queue(out[..], 0, short, p, f[..]);
   for v: 0..<ks { #assert out[v * VERTEX_FLOATS + 1] <= 212; }
   for v: 0..<k { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
-  a := real_agents(out[..], 0, b, p, false, true);
+  a := real_agents(out[..], 0, b, p, false, true, w[..]);
   for v: 0..<a { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
 }
 
 // ---------------------------------------------------------------- checks: a task's detail
 
-#test "WORK_DETAILS fields decode as details.ts escapes them" {
+#test "COAX_WORK_DETAILS fields decode as details.ts escapes them" {
   buf: [256] u8;
   // details.ts escapeDetail("a|b\nc\\d \\. e")
   n := undetail("a\\pb\\nc\\\\d \\\\. e", buf[..]);
@@ -2309,13 +2468,13 @@ FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply
   #assert undetail("abcdef", small[..]) == 4;
   // the snapshot: one row an item, six fields each, keyed by the items' aliases
   w: [1] Work;
-  read_work(w[..], WORK_ITEMS);
-  #assert rows(WORK_DETAILS) == w[0].n;
+  read_work(w[..], COAX_WORK_ITEMS);
+  #assert rows(COAX_WORK_DETAILS) == w[0].n;
   for r: 0..<w[0].n {
-    k := keyed_start(WORK_DETAILS, item(w[..], WORK_ITEMS, r, 0));
-    #assert k >= 0 && cell(WORK_DETAILS, k, 1).count == 64;
+    k := keyed_start(COAX_WORK_DETAILS, item(w[..], COAX_WORK_ITEMS, r, 0));
+    #assert k >= 0 && cell(COAX_WORK_DETAILS, k, 1).count == 64;
     bars := 0; i := k;
-    while i < WORK_DETAILS.count && WORK_DETAILS[i] != '\n' { if WORK_DETAILS[i] == '|' { bars += 1; } i += 1; }
+    while i < COAX_WORK_DETAILS.count && COAX_WORK_DETAILS[i] != '\n' { if COAX_WORK_DETAILS[i] == '|' { bars += 1; } i += 1; }
     #assert bars == 5;
   }
   #assert keyed_start("ab|1\nb|2\n", "b") == 5 && keyed_start("ab|1\n", "a") == -1;
@@ -2484,9 +2643,9 @@ samples :: (w: [] Work, pick: [] int) -> int {
   long := -1; most := 0; chatty := -1; notes := 0;
   for r: 0..<w[0].n {
     if w[0].kind[r] != KIND_TASK { continue; }
-    k := keyed_start(WORK_DETAILS, item(w, WORK_ITEMS, r, 0));
-    if cell(WORK_DETAILS, k, 3).count > most { most = cell(WORK_DETAILS, k, 3).count; long = r; }
-    if cell(WORK_DETAILS, k, 5).count > notes { notes = cell(WORK_DETAILS, k, 5).count; chatty = r; }
+    k := keyed_start(COAX_WORK_DETAILS, item(w, COAX_WORK_ITEMS, r, 0));
+    if cell(COAX_WORK_DETAILS, k, 3).count > most { most = cell(COAX_WORK_DETAILS, k, 3).count; long = r; }
+    if cell(COAX_WORK_DETAILS, k, 5).count > notes { notes = cell(COAX_WORK_DETAILS, k, 5).count; chatty = r; }
   }
   n := 0;
   if long >= 0 { pick[n] = long; n += 1; }
@@ -2534,8 +2693,8 @@ detail_fits :: (size_w: f32, size_h: f32, most: int) -> bool {
   long := -1; most := 0; waiting := -1;
   for r: 0..<g[0].w[0].n {
     if g[0].w[0].kind[r] != KIND_TASK { continue; }
-    k := keyed_start(WORK_DETAILS, item(g[0].w[..], WORK_ITEMS, r, 0));
-    if cell(WORK_DETAILS, k, 3).count > most { most = cell(WORK_DETAILS, k, 3).count; long = r; }
+    k := keyed_start(COAX_WORK_DETAILS, item(g[0].w[..], COAX_WORK_ITEMS, r, 0));
+    if cell(COAX_WORK_DETAILS, k, 3).count > most { most = cell(COAX_WORK_DETAILS, k, 3).count; long = r; }
     if waiting < 0 && g[0].w[0].waits[r] >= 0 { waiting = r; }
   }
   #assert long >= 0 && waiting >= 0;
@@ -2578,4 +2737,44 @@ detail_fits :: (size_w: f32, size_h: f32, most: int) -> bool {
   _ = draw_page(g[..], out[..], w, h);
   c := g[0].s[0].close;
   #assert tap(g[..], mid_x(c), mid_y(c), 1) && g[0].s[0].open == 0;
+}
+
+page_says :: (lv: [] Live, text: string) {
+  for i: 0..<text.count { lv[0].inbox[i] = text[i]; }
+  coaxial_project_message(lv, MSG_PAGE_TEXT, text.count);
+}
+
+#test "a page names its project, paints what was baked, and draws the relay's fold from the last EOSE on" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  s: [1] ProjectState; t: [1] Tree; w: [1] Work; lv: [1] Live;
+  page_says(lv[..], "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575 coax");
+  n := coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
+  #assert n > 3000 && w[0].baked == 0 && w[0].live == LIVE_CONNECTING && same(w[0].text, COAX_WORK_ITEMS) && t[0].n == COAX_COMMITS;
+  #assert lv[0].pipe[0].n == 1 && same(pipe_bytes(lv[0].pipe[..], 0), COAX_WORK_RELAY);
+  pipe_drained(lv[0].pipe[..]);
+  coaxial_project_opened(lv[..], 0);
+  fake_message(lv[..], 0, SOCKET_OPENED, "");
+  feed_transcript(lv[..], 0, COAX_RELAY);
+  n = coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
+  #assert n > 3000 && w[0].live == LIVE_LIVE && lv[0].folds == 1;
+  #assert same(w[0].text, COAX_RELAY_ITEMS) && same(w[0].log, COAX_RELAY_LOG) && same(w[0].plans, COAX_RELAY_PLANS) && same(w[0].details, COAX_RELAY_DETAILS);
+  #assert same(w[0].name, "Coax") && same(w[0].license, "Apache-2.0") && same(w[0].path, "coax/") && same(w[0].repo, "OpenAgents");
+  // the socket drops: OFFLINE, and the last fold stays drawn
+  fake_message(lv[..], 0, SOCKET_CLOSED, "");
+  n = coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
+  #assert w[0].live == LIVE_OFFLINE && same(w[0].text, COAX_RELAY_ITEMS);
+  // another baked project, and one this build doesn't know
+  s2: [1] ProjectState; t2: [1] Tree; w2: [1] Work; l2: [1] Live;
+  page_says(l2[..], "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18 verse");
+  n = coaxial_project_frame(s2[..], t2[..], w2[..], l2[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
+  #assert n > 3000 && w2[0].baked == 1 && same(w2[0].name, "Verse") && same(w2[0].text, VERSE_WORK_ITEMS);
+  s3: [1] ProjectState; t3: [1] Tree; w3: [1] Work; l3: [1] Live;
+  page_says(l3[..], "1111111111111111111111111111111111111111111111111111111111111111 elsewhere");
+  n = coaxial_project_frame(s3[..], t3[..], w3[..], l3[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
+  #assert n > 1000 && w3[0].baked == -1 && same(w3[0].name, "elsewhere") && t3[0].n == 0 && l3[0].pipe[0].n == 1;
+  // a page that names nothing is Coax's
+  s4: [1] ProjectState; t4: [1] Tree; w4: [1] Work; l4: [1] Live;
+  n = coaxial_project_frame(s4[..], t4[..], w4[..], l4[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
+  #assert w4[0].baked == 0 && same(live_slug(l4[..]), "coax");
 }

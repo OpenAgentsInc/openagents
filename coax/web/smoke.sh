@@ -52,7 +52,7 @@ def check(ok, what):
     print(("  ok    " if ok else "  FAIL  ") + what)
     if not ok: failed.append(what)
 
-pages = ["/projects", "/projects/index.md", "/projects/coax", "/projects/coax/index.md", "/projects/coax/demo", "/projects/verse/index.md"]
+pages = ["/projects", "/projects/index.md", "/projects/coax", "/projects/coax/index.md", "/projects/coax/demo", "/projects/verse", "/projects/verse/index.md"]
 moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md"]   # the old addresses: 301 to /projects/*
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
 first = fetch(["/", ("/", "GET", "http"), "/realm/haunted-house", "/realm/haunted-house/index.md"] + pages + moved + [p for p, _ in extra])
@@ -92,6 +92,10 @@ for path, (s, h, body) in zip(pages, s_pages):
     app = b'data-app="projects"' if path == "/projects" else b'data-app="project"'
     ok = s == 200 and (path.endswith(".md") or (app in body and b"<!--" not in body))
     check(ok, f"{path} ({s})")
+    # a real project page names its project (key and d) for the page's own line to the relay
+    if path.count("/") == 2 and not path.endswith(".md"):
+        slug = path.rsplit("/", 1)[1]
+        check(re.search(rb'data-text="[0-9a-f]{64} ' + slug.encode() + rb'"', body) is not None, f"{path} names its project")
 # The old /project/* addresses move for good to /projects/*, path kept.
 for path, (s, h, _) in zip(moved, s_moved):
     want = "/projects/" + path[len("/project/"):]

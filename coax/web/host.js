@@ -20,7 +20,9 @@
 //                             kind 0 a mouse, 1 a finger or pen; id tells fingers apart
 //   coaxial_wheel(state, dy)  the wheel, CSS pixels down (the page doesn't scroll)
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
-//                             text in: kind 1 is typed or pasted text; others the page's own
+//                             text in: kind 1 is typed or pasted text; kind 2 the page's data-text,
+//                             once each time an engine loads (which project a page shows, say);
+//                             others the page's own
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
 //   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
 //   coaxial_cursor(state)     0 the default, 1 a link
@@ -121,6 +123,7 @@ async function loadEngine(bytes, generation) {
   }
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
   engine = { exports: x, layout };
+  if (script?.dataset.text) send(2, script.dataset.text);
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
   sendHash();
   // The page's scripts may talk to the app from now (action 0: ready).

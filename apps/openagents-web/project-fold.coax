@@ -1,0 +1,1086 @@
+// A project's events, kept and folded in Coax, the way
+// coax/web/project/model.ts fold() and tables.ts read them: the relay's
+// EVENT frames are parsed (coax/lib/nostr/json.coax) into a fixed store, and
+// the fold turns the store into the tables the project page draws
+// (WORK_ITEMS, WORK_LOG, WORK_PLANS, WORK_PLAN_INFO and WORK_DETAILS in work.coax's
+// format). Its test checks the tables against model.ts's for a captured
+// relay transcript, byte for byte.
+//
+// Signatures: until Coax verifies BIP-340 Schnorr signatures (task
+// project-page-verify), the page trusts relay.openagents.com's signature
+// check and keeps only events whose pubkey is the project's.
+
+#load "../../coax/lib/nostr/json.coax";
+
+STORE_EVENTS :: 8192;
+STORE_BYTES :: 4194304;
+STORE_TAGS :: 65536;
+STORE_ELEMS :: 131072;
+FOLD_ISSUES :: 256;
+FOLD_LOG :: 16384;
+PLAN_STEPS :: 24;      // steps a task's plan shows, as snapshot.ts
+ACTIVITY :: 40;        // rows of activity, as snapshot.ts
+
+KIND_REPO :: 30617; KIND_PROJECT :: 30621; KIND_ISSUE :: 1621; KIND_COMMENT :: 1111; KIND_ORDER :: 30623;
+ISSUE_REVISION :: "openagents.issue-revision.v1";
+TASK_PLAN :: "openagents.task-plan.v1";
+
+// ---------------------------------------------------------------- the store
+
+// Every kept event: its id, kind, time, tags and content, the strings in one
+// byte arena. A tag is a run of elements; an element is a run of bytes.
+Store :: struct {
+  n: int; used: int; tag_n: int; el_n: int;
+  dropped: int;                      // refused: malformed, another key, over a limit
+  key: [STORE_EVENTS] int;           // the id's first 15 hex digits
+  id: [STORE_EVENTS] int;            // the id's 64 hex digits in bytes
+  kind: [STORE_EVENTS] int;
+  at: [STORE_EVENTS] int;            // created_at
+  tag0: [STORE_EVENTS] int; tags: [STORE_EVENTS] int;
+  content: [STORE_EVENTS] int; content_n: [STORE_EVENTS] int;
+  tag_el: [STORE_TAGS] int; tag_len: [STORE_TAGS] int;
+  el_from: [STORE_ELEMS] int; el_len: [STORE_ELEMS] int;
+  bytes: [STORE_BYTES] u8;
+}
+
+store_clear :: (s: [] Store) { s[0].n = 0; s[0].used = 0; s[0].tag_n = 0; s[0].el_n = 0; s[0].dropped = 0; }
+
+// A string in the arena.
+Ref :: struct { from: int; len: int; }
+str :: (s: [] Store, r: Ref) -> string { return cast(string) s[0].bytes[r.from..<r.from + r.len]; }
+event_id :: (s: [] Store, e: int) -> string { return cast(string) s[0].bytes[s[0].id[e]..<s[0].id[e] + 64]; }
+content_of :: (s: [] Store, e: int) -> string { return cast(string) s[0].bytes[s[0].content[e]..<s[0].content[e] + s[0].content_n[e]]; }
+element :: (s: [] Store, t: int, k: int) -> string { return str(s, element_ref(s, t, k)); }
+element_ref :: (s: [] Store, t: int, k: int) -> Ref {
+  el := s[0].tag_el[t] + k;
+  return Ref.{from = s[0].el_from[el], len = s[0].el_len[el]};
+}
+
+hex_lower :: (text: string) -> bool {
+  for i: 0..<text.count { c := text[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+hex_key :: (text: string) -> int {
+  v := 0;
+  for i: 0..<15 { v = v * 16 + json_hex(text[i]); }
+  return v;
+}
+equal :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+// The id's index in the store, or -1.
+store_find :: (s: [] Store, id: string) -> int {
+  if id.count != 64 { return -1; }
+  key := hex_key(id);
+  for e: 0..<s[0].n { if s[0].key[e] == key && equal(event_id(s, e), id) { return e; } }
+  return -1;
+}
+
+// A string token unescaped onto the arena's end: its Ref, len -1 when it doesn't fit.
+store_string :: (s: [] Store, j: [] Json) -> Ref {
+  r := Ref.{from = s[0].used, len = -1};
+  n := json_unescape(json_text(j), s[0].bytes[s[0].used..<STORE_BYTES]);
+  if n < 0 { return r; }
+  s[0].used += n; r.len = n;
+  return r;
+}
+
+// The event object just opened in j, kept when it's the project key's, of a
+// kind the page reads, and new. Anything malformed or over a limit is
+// dropped whole. Returns the event's index, or -1.
+store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
+  if s[0].n >= STORE_EVENTS { s[0].dropped += 1; return -1; }
+  used := s[0].used; tag_n := s[0].tag_n; el_n := s[0].el_n;
+  e := s[0].n;
+  have := 0;   // bits: id, pubkey, kind, created_at, tags, content
+  ok := true;
+  s[0].content[e] = s[0].used; s[0].content_n[e] = 0;
+  while ok {
+    t := json_next(j);
+    if t == JSON_OBJECT_END { break; }
+    if t != JSON_STRING { ok = false; break; }
+    k := json_text(j);
+    v := json_next(j);
+    if v == JSON_ERROR { ok = false; break; }
+    if json_is(k, "id") {
+      id := json_text(j);
+      if v != JSON_STRING || id.count != 64 || !hex_lower(id) || s[0].used + 64 > STORE_BYTES { ok = false; break; }
+      s[0].id[e] = s[0].used;
+      for i: 0..<64 { s[0].bytes[s[0].used + i] = id[i]; }
+      s[0].used += 64; s[0].key[e] = hex_key(id); have |= 1;
+    } else if json_is(k, "pubkey") {
+      if v != JSON_STRING || !equal(json_text(j), pubkey) { ok = false; break; }
+      have |= 2;
+    } else if json_is(k, "kind") || json_is(k, "created_at") {
+      n := json_int(json_text(j));
+      if v != JSON_NUMBER || !n.ok || n.value < 0 { ok = false; break; }
+      if json_is(k, "kind") { s[0].kind[e] = n.value; have |= 4; } else { s[0].at[e] = n.value; have |= 8; }
+    } else if json_is(k, "content") {
+      if v != JSON_STRING { ok = false; break; }
+      r := store_string(s, j);
+      if r.len < 0 { ok = false; break; }
+      s[0].content[e] = r.from; s[0].content_n[e] = r.len; have |= 32;
+    } else if json_is(k, "tags") {
+      if v != JSON_ARRAY { ok = false; break; }
+      s[0].tag0[e] = s[0].tag_n;
+      while ok {
+        a := json_next(j);
+        if a == JSON_ARRAY_END { break; }
+        if a != JSON_ARRAY || s[0].tag_n >= STORE_TAGS { ok = false; break; }
+        tg := s[0].tag_n; s[0].tag_n += 1;
+        s[0].tag_el[tg] = s[0].el_n; s[0].tag_len[tg] = 0;
+        while ok {
+          b := json_next(j);
+          if b == JSON_ARRAY_END { break; }
+          if b != JSON_STRING || s[0].el_n >= STORE_ELEMS { ok = false; break; }
+          r := store_string(s, j);
+          if r.len < 0 { ok = false; break; }
+          s[0].el_from[s[0].el_n] = r.from; s[0].el_len[s[0].el_n] = r.len;
+          s[0].el_n += 1; s[0].tag_len[tg] += 1;
+        }
+      }
+      s[0].tags[e] = s[0].tag_n - s[0].tag0[e];
+      have |= 16;
+    } else {
+      if !json_skip(j) { ok = false; break; }
+    }
+  }
+  kind := s[0].kind[e];
+  wanted := kind == KIND_REPO || kind == KIND_PROJECT || kind == KIND_ISSUE || kind == KIND_COMMENT || kind == KIND_ORDER || (kind >= 1630 && kind <= 1633);
+  if !ok || (have & 31) != 31 || !wanted || store_find(s, event_id(s, e)) >= 0 {
+    // already kept, or refused: the arena gives the bytes back
+    if !ok || (have & 31) != 31 || !wanted { s[0].dropped += 1; }
+    s[0].used = used; s[0].tag_n = tag_n; s[0].el_n = el_n;
+    return -1;
+  }
+  s[0].n += 1;
+  return e;
+}
+
+// ---------------------------------------------------------------- tags
+
+// The first tag named name: its index, or -1 (model.ts tags.find).
+tag_named :: (s: [] Store, e: int, name: string) -> int {
+  for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+    if s[0].tag_len[t] > 0 && equal(element(s, t, 0), name) { return t; }
+  }
+  return -1;
+}
+// That tag's value, and whether it has one (t[1] ?? fallback).
+Value :: struct { ok: bool; ref: Ref; }
+tag_value :: (s: [] Store, e: int, name: string) -> Value {
+  v: Value;
+  t := tag_named(s, e, name);
+  if t >= 0 && s[0].tag_len[t] > 1 { v.ok = true; v.ref = element_ref(s, t, 1); }
+  return v;
+}
+// Whether some tag is [name, value, ...].
+tag_has :: (s: [] Store, e: int, name: string, value: string) -> bool {
+  for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+    if s[0].tag_len[t] > 1 && equal(element(s, t, 0), name) && equal(element(s, t, 1), value) { return true; }
+  }
+  return false;
+}
+has_tag :: (s: [] Store, e: int, name: string) -> bool { return tag_named(s, e, name) >= 0; }
+
+// Newer: created_at later, or the same and a smaller id (model.ts latest()).
+newer :: (s: [] Store, a: int, b: int) -> bool {
+  if b < 0 { return true; }
+  if s[0].at[a] != s[0].at[b] { return s[0].at[a] > s[0].at[b]; }
+  return id_before(s, a, b);
+}
+// Older, for sorting oldest first: created_at earlier, or the same and a smaller id.
+older :: (s: [] Store, a: int, b: int) -> bool {
+  if s[0].at[a] != s[0].at[b] { return s[0].at[a] < s[0].at[b]; }
+  return id_before(s, a, b);
+}
+id_before :: (s: [] Store, a: int, b: int) -> bool {
+  x := event_id(s, a); y := event_id(s, b);
+  for i: 0..<64 { if x[i] != y[i] { return x[i] < y[i]; } }
+  return false;
+}
+
+// ---------------------------------------------------------------- the fold
+
+LOG_OPEN :: 0; LOG_REVISE :: 1; LOG_STATUS :: 2; LOG_ORDER :: 3; LOG_CLAIM :: 4; LOG_RELEASE :: 5;
+LOG_NOTE :: 6; LOG_DONE :: 7; LOG_PLAN :: 8;
+FK_INITIATIVE :: 0; FK_MILESTONE :: 1; FK_TASK :: 2;   // as project.coax's KIND_*
+ST_OPEN :: 0; ST_RESOLVED :: 1; ST_CLOSED :: 2; ST_DRAFT :: 3;
+STATUS_NAME :: [4] string.["open", "resolved", "closed", "draft"];
+
+Fold :: struct {
+  project: int; repo: int; order: int;   // events, or -1
+  under: [STORE_EVENTS] int;             // per event: the issue it hangs off, or -1
+  n: int;
+  root: [FOLD_ISSUES] int;
+  fields: [FOLD_ISSUES] int;             // the revision whose fields are current, or the root
+  revised: [FOLD_ISSUES] int;            // the revision, or -1
+  status: [FOLD_ISSUES] int;             // ST_*
+  status_at: [FOLD_ISSUES] int;
+  status_ev: [FOLD_ISSUES] int;
+  kind: [FOLD_ISSUES] int;               // FK_INITIATIVE, FK_MILESTONE, FK_TASK
+  claimed: [FOLD_ISSUES] Ref;            // the worker on it now (len 0: nobody)
+  claimed_at: [FOLD_ISSUES] int;
+  commit: [FOLD_ISSUES] Ref;
+  plan: [FOLD_ISSUES] int;               // the latest plan event, or -1
+  plan_by: [FOLD_ISSUES] Ref;
+  note: [FOLD_ISSUES] int;               // the latest note that isn't "Done in ...", or -1
+  alias: [FOLD_ISSUES] int;              // hex digits of the id the alias takes
+  rank: [FOLD_ISSUES] Ref;               // len -1: no rank
+  // the log, in the order model.ts pushes it; a plan's older line is dropped
+  log_n: int;
+  log_at: [FOLD_LOG] int; log_type: [FOLD_LOG] int; log_issue: [FOLD_LOG] int; log_ev: [FOLD_LOG] int;
+  log_who: [FOLD_LOG] Ref; log_dead: [FOLD_LOG] bool;
+  steps: [FOLD_ISSUES] int; steps_done: [FOLD_ISSUES] int;
+  // every note on an issue (model.ts issue.notes: a comment with text that
+  // isn't a claim, release or plan), oldest first: note_from[r] on, note_cnt[r] of them
+  note_from: [FOLD_ISSUES] int; note_cnt: [FOLD_ISSUES] int;
+  notes_n: int; notes_ev: [FOLD_LOG] int; notes_by: [FOLD_LOG] Ref;
+}
+
+fold_issue_of :: (s: [] Store, f: [] Fold, id: string) -> int {
+  if id.count != 64 { return -1; }
+  key := hex_key(id);
+  for r: 0..<f[0].n { if s[0].key[f[0].root[r]] == key && equal(event_id(s, f[0].root[r]), id) { return r; } }
+  return -1;
+}
+
+is_space :: (c: u8) -> bool { return c == ' ' || c == 9 || c == 10 || c == 11 || c == 12 || c == 13; }
+// text without whitespace at either end (String.prototype.trim, ASCII whitespace)
+trimmed :: (text: string) -> string {
+  a := 0; b := text.count;
+  while a < b && is_space(text[a]) { a += 1; }
+  while b > a && is_space(text[b - 1]) { b -= 1; }
+  return text[a..<b];
+}
+starts :: (text: string, prefix: string) -> bool {
+  if text.count < prefix.count { return false; }
+  return equal(text[0..<prefix.count], prefix);
+}
+
+log_push :: (f: [] Fold, at: int, type: int, issue: int, ev: int, who: Ref) {
+  if f[0].log_n >= FOLD_LOG { return; }
+  k := f[0].log_n; f[0].log_n += 1;
+  f[0].log_at[k] = at; f[0].log_type[k] = type; f[0].log_issue[k] = issue; f[0].log_ev[k] = ev;
+  f[0].log_who[k] = who; f[0].log_dead[k] = false;
+}
+
+// A plan's steps (model.ts parsePlan): lines "- [x] text", "* [>] text", "- [ ] text".
+Step :: struct { ok: bool; mark: u8; text: string; }
+plan_line :: (line: string) -> Step {
+  st: Step;
+  i := 0;
+  while i < line.count && is_space(line[i]) { i += 1; }
+  if i >= line.count || (line[i] != '-' && line[i] != '*') { return st; }
+  i += 1;
+  while i < line.count && is_space(line[i]) { i += 1; }
+  if i + 3 > line.count || line[i] != '[' || line[i + 2] != ']' { return st; }
+  m := line[i + 1];
+  if m != ' ' && m != 'x' && m != 'X' && m != '>' { return st; }
+  i += 3;
+  w := 0;
+  while i + w < line.count && is_space(line[i + w]) { w += 1; }
+  rest := trimmed(line[i + w..<line.count]);
+  if w == 0 || (rest.count == 0 && w < 2) { return st; }
+  for k: 0..<rest.count { if rest[k] == 13 { return st; } }   // "." stops at a carriage return
+  st.ok = true; st.mark = ifx m == 'X' then 'x' else m; st.text = rest;
+  return st;
+}
+// The k-th step of a plan's content (or ok false).
+plan_step :: (content: string, k: int) -> Step {
+  n := 0; i := 0;
+  while i <= content.count {
+    e := i;
+    while e < content.count && content[e] != 10 { e += 1; }
+    st := plan_line(content[i..<e]);
+    if st.ok { if n == k { return st; } n += 1; }
+    i = e + 1;
+  }
+  none: Step;
+  return none;
+}
+
+fold :: (s: [] Store, f: [] Fold, slug: string) {
+  f[0].n = 0; f[0].log_n = 0; f[0].notes_n = 0; f[0].project = -1; f[0].repo = -1; f[0].order = -1;
+  // the project, its order, its repository: the latest of each
+  for e: 0..<s[0].n {
+    f[0].under[e] = -1;
+    k := s[0].kind[e];
+    if k == KIND_PROJECT && tag_has(s, e, "d", slug) && newer(s, e, f[0].project) { f[0].project = e; }
+    if k == KIND_ORDER && tag_has(s, e, "d", slug) && newer(s, e, f[0].order) { f[0].order = e; }
+  }
+  // the repository the project names in its "a" tag (30617:KEY:D), else any
+  repo_d := "";
+  if f[0].project >= 0 {
+    for t: s[0].tag0[f[0].project]..<s[0].tag0[f[0].project] + s[0].tags[f[0].project] {
+      if s[0].tag_len[t] > 1 && equal(element(s, t, 0), "a") && starts(element(s, t, 1), "30617:") {
+        a := element(s, t, 1);
+        if a.count > 6 + 65 { repo_d = a[6 + 65..<a.count]; }
+        break;
+      }
+    }
+  }
+  for e: 0..<s[0].n {
+    if s[0].kind[e] == KIND_REPO && (repo_d.count == 0 || tag_has(s, e, "d", repo_d)) && newer(s, e, f[0].repo) { f[0].repo = e; }
+  }
+  // the issues: kind 1621 with ["a", 30621:KEY:SLUG], oldest first, one per slug
+  roots: [FOLD_ISSUES] int; rn := 0;
+  for e: 0..<s[0].n {
+    if s[0].kind[e] != KIND_ISSUE || rn >= FOLD_ISSUES { continue; }
+    under := false;
+    for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+      if s[0].tag_len[t] > 1 && equal(element(s, t, 0), "a") && is_coord(element(s, t, 1), slug) { under = true; }
+    }
+    if !under { continue; }
+    k := rn; rn += 1;
+    while k > 0 && older(s, e, roots[k - 1]) { roots[k] = roots[k - 1]; k -= 1; }
+    roots[k] = e;
+  }
+  for k: 0..<rn {
+    e := roots[k];
+    sl := slug_of(s, e);
+    taken := false;
+    for r: 0..<f[0].n { if equal(slug_of(s, f[0].root[r]), sl) { taken = true; } }
+    if taken { continue; }
+    r := f[0].n; f[0].n += 1;
+    f[0].root[r] = e;
+  }
+  // what hangs off each issue: comments by "E", statuses by "e"
+  for e: 0..<s[0].n {
+    k := s[0].kind[e];
+    name := ifx k == KIND_COMMENT then "E" else "e";
+    if k != KIND_COMMENT && !(k >= 1630 && k <= 1633) { continue; }
+    for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+      if s[0].tag_len[t] > 1 && equal(element(s, t, 0), name) {
+        r := fold_issue_of(s, f, element(s, t, 1));
+        if r >= 0 { f[0].under[e] = r; break; }
+      }
+    }
+  }
+  for r: 0..<f[0].n { fold_one(s, f, r); }
+  if f[0].order >= 0 { log_push(f, s[0].at[f[0].order], LOG_ORDER, -1, f[0].order, Ref.{}); }
+  // aliases: four hex digits, more where two ids would share them
+  for r: 0..<f[0].n {
+    n := 4;
+    for o: 0..<f[0].n {
+      if o == r { continue; }
+      a := event_id(s, f[0].root[r]); b := event_id(s, f[0].root[o]);
+      while n < 64 && equal(a[0..<n], b[0..<n]) { n += 1; }
+    }
+    f[0].alias[r] = n;
+  }
+}
+
+is_coord :: (a: string, slug: string) -> bool {
+  // 30621:<64 hex>:<slug>; the key is checked by the store (only the project's events are kept)
+  return a.count == 6 + 64 + 1 + slug.count && starts(a, "30621:") && a[70] == ':' && equal(a[71..<a.count], slug);
+}
+
+slug_of :: (s: [] Store, e: int) -> string {
+  v := tag_value(s, e, "slug");
+  if v.ok { return str(s, v.ref); }
+  return event_id(s, e)[0..<8];
+}
+
+
+// One issue: its fields, status, comments and log lines, as model.ts.
+fold_one :: (s: [] Store, f: [] Fold, r: int) {
+  root := f[0].root[r];
+  revision := -1; status := -1;
+  for e: 0..<s[0].n {
+    if f[0].under[e] != r { continue; }
+    k := s[0].kind[e];
+    if k == KIND_COMMENT && tag_has(s, e, "revision", ISSUE_REVISION) && newer(s, e, revision) { revision = e; }
+    if k >= 1630 && k <= 1633 && newer(s, e, status) { status = e; }
+  }
+  f[0].revised[r] = revision;
+  f[0].fields[r] = ifx revision >= 0 then revision else root;
+  f[0].kind[r] = FK_TASK;
+  fe := f[0].fields[r];
+  if tag_has(s, fe, "t", "milestone") { f[0].kind[r] = FK_MILESTONE; }
+  if tag_has(s, fe, "t", "initiative") { f[0].kind[r] = FK_INITIATIVE; }
+  f[0].status[r] = ifx status >= 0 then s[0].kind[status] - 1630 else ST_OPEN;
+  f[0].status_at[r] = ifx status >= 0 then s[0].at[status] else s[0].at[root];
+  f[0].status_ev[r] = status;
+  f[0].claimed[r] = Ref.{}; f[0].claimed_at[r] = 0; f[0].commit[r] = Ref.{};
+  f[0].plan[r] = -1; f[0].plan_by[r] = Ref.{}; f[0].note[r] = -1;
+  f[0].note_from[r] = f[0].notes_n; f[0].note_cnt[r] = 0;
+  f[0].rank[r] = Ref.{from = 0, len = -1};
+  if f[0].order >= 0 {
+    o := f[0].order;
+    for t: s[0].tag0[o]..<s[0].tag0[o] + s[0].tags[o] {
+      if s[0].tag_len[t] > 2 && equal(element(s, t, 0), "item") && equal(element(s, t, 1), event_id(s, root)) { f[0].rank[r] = element_ref(s, t, 2); }
+    }
+  }
+  log_push(f, s[0].at[root], LOG_OPEN, r, root, Ref.{});
+  if revision >= 0 { log_push(f, s[0].at[revision], LOG_REVISE, r, revision, Ref.{}); }
+  if status >= 0 && f[0].status[r] != ST_OPEN { log_push(f, s[0].at[status], LOG_STATUS, r, status, Ref.{}); }
+  // the workers' comments, oldest first
+  comments: [STORE_EVENTS] int; cn := 0;
+  for e: 0..<s[0].n {
+    if f[0].under[e] != r || s[0].kind[e] != KIND_COMMENT || has_tag(s, e, "revision") { continue; }
+    k := cn; cn += 1;
+    while k > 0 && older(s, e, comments[k - 1]) { comments[k] = comments[k - 1]; k -= 1; }
+    comments[k] = e;
+  }
+  for c: 0..<cn {
+    e := comments[c];
+    by := f[0].claimed[r];
+    bv := tag_value(s, e, "by"); cv := tag_value(s, e, "claim");
+    if bv.ok { by = bv.ref; } else if cv.ok { by = cv.ref; }
+    text := trimmed(content_of(s, e));
+    pv := tag_value(s, e, "plan");
+    if pv.ok && equal(str(s, pv.ref), TASK_PLAN) {
+      f[0].plan[r] = e; f[0].plan_by[r] = by;
+      // one plan line in the log per task: the latest
+      for k: 0..<f[0].log_n { if f[0].log_issue[k] == r && f[0].log_type[k] == LOG_PLAN { f[0].log_dead[k] = true; } }
+      log_push(f, s[0].at[e], LOG_PLAN, r, e, by);
+      continue;
+    }
+    claim := has_tag(s, e, "claim"); release := has_tag(s, e, "release");
+    if claim {
+      f[0].claimed[r] = ifx cv.ok then cv.ref else Ref.{}; f[0].claimed_at[r] = s[0].at[e];
+      log_push(f, s[0].at[e], LOG_CLAIM, r, e, f[0].claimed[r]);
+    } else if release {
+      log_push(f, s[0].at[e], LOG_RELEASE, r, e, f[0].claimed[r]);
+      f[0].claimed[r] = Ref.{}; f[0].claimed_at[r] = 0;
+    } else if has_tag(s, e, "commit") {
+      mv := tag_value(s, e, "commit");
+      f[0].commit[r] = ifx mv.ok then mv.ref else Ref.{};
+      log_push(f, s[0].at[e], LOG_DONE, r, e, by);
+    } else if text.count > 0 {
+      log_push(f, s[0].at[e], LOG_NOTE, r, e, by);
+    }
+    if text.count > 0 && !claim && !release && !starts(text, "Done in ") { f[0].note[r] = e; }
+    if text.count > 0 && !claim && !release && f[0].notes_n < FOLD_LOG {
+      f[0].notes_ev[f[0].notes_n] = e; f[0].notes_by[f[0].notes_n] = by; f[0].notes_n += 1; f[0].note_cnt[r] += 1;
+    }
+  }
+  if f[0].status[r] == ST_RESOLVED || f[0].status[r] == ST_CLOSED { f[0].claimed[r] = Ref.{}; }
+  // the plan's steps: how many, how many done
+  f[0].steps[r] = 0; f[0].steps_done[r] = 0;
+  if f[0].plan[r] >= 0 {
+    content := content_of(s, f[0].plan[r]);
+    while true {
+      st := plan_step(content, f[0].steps[r]);
+      if !st.ok { break; }
+      f[0].steps[r] += 1;
+      if st.mark == 'x' { f[0].steps_done[r] += 1; }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- the tables
+
+ITEMS_CAP :: 131072; LOG_CAP :: 16384; PLANS_CAP :: 16384; INFO_CAP :: 16384; SCRATCH_CAP :: 70000;
+
+Tables :: struct {
+  items: [ITEMS_CAP] u8; items_n: int;
+  log: [LOG_CAP] u8; log_n: int;
+  plans: [PLANS_CAP] u8; plans_n: int;
+  info: [INFO_CAP] u8; info_n: int;
+  scratch: [SCRATCH_CAP] u8;
+  order: [FOLD_ISSUES] int;     // issues by rank
+  working: [FOLD_ISSUES] int; working_n: int;
+  picked: [FOLD_LOG] bool;
+  // WORK_DETAILS, and what write_details works in
+  details: [DETAILS_CAP] u8; details_n: int;
+  norm: [BODY_CAP] u8; body: [BODY_CAP] u8; body_n: int; acc: [BODY_CAP] u8; acc_n: int; acc_items: int;
+  prose: [BODY_CAP] u8;
+  lines: [1] Lines;
+}
+DETAILS_CAP :: 1048576; BODY_CAP :: 70000;
+
+// The stroke font's alphabet (tables.ts plain() then cell()): a few marks
+// spelled out, everything else outside printable ASCII dropped, "|" a space,
+// spaces collapsed, both ends trimmed. Appends text to out at n; -1 when it
+// doesn't fit.
+cell_into :: (out: [] u8, n: int, text: string) -> int {
+  if n < 0 { return -1; }
+  at := n; pending := false; started := false;
+  i := 0;
+  while i < text.count {
+    b := text[i];
+    put_as := ""; width := 1;
+    if b < 0x80 {
+      if b >= 0x20 && b <= 0x7e { put_as = text[i..<i + 1]; }
+    } else {
+      width = ifx b >= 0xF0 then 4 else ifx b >= 0xE0 then 3 else ifx b >= 0xC0 then 2 else 1;
+      if i + width > text.count { width = text.count - i; }
+      c := text[i..<i + width];
+      put_as = mark_of(c);
+    }
+    for k: 0..<put_as.count {
+      ch := put_as[k];
+      if ch == '|' { ch = ' '; }
+      if ch == ' ' { if started { pending = true; } continue; }
+      if pending { if at >= out.count { return -1; } out[at] = ' '; at += 1; pending = false; }
+      if at >= out.count { return -1; }
+      out[at] = ch; at += 1; started = true;
+    }
+    i += width;
+  }
+  return at;
+}
+
+// What plain() spells a mark as; "" for anything else outside ASCII (dropped).
+mark_of :: (c: string) -> string {
+  if equal(c, "×") { return "x"; }
+  if equal(c, "–") || equal(c, "—") || equal(c, "·") || equal(c, "−") { return "-"; }
+  if equal(c, "≈") { return "~"; }
+  if equal(c, "’") || equal(c, "‘") { return "'"; }
+  if equal(c, "“") || equal(c, "”") { return "\""; }
+  if equal(c, "→") { return "->"; }
+  if equal(c, "←") { return "<-"; }
+  if equal(c, "…") { return "..."; }
+  if equal(c, "≤") { return "<="; }
+  if equal(c, "≥") { return ">="; }
+  if equal(c, "≠") { return "!="; }
+  if equal(c, "≡") { return "="; }
+  return "";
+}
+utf8_width :: (text: string, i: int) -> int {
+  b := text[i];
+  w := ifx b >= 0xF0 then 4 else ifx b >= 0xE0 then 3 else ifx b >= 0xC0 then 2 else 1;
+  return ifx i + w > text.count then text.count - i else w;
+}
+
+upper_into :: (out: [] u8, n: int, text: string) -> int {
+  if n < 0 || n + text.count > out.count { return -1; }
+  for i: 0..<text.count {
+    c := text[i];
+    out[n + i] = ifx c >= 'a' && c <= 'z' then c - 32 else c;
+  }
+  return n + text.count;
+}
+
+int_into :: (out: [] u8, n: int, v: int, width: int) -> int {
+  if n < 0 { return -1; }
+  digits: [24] u8; c := 0; x := v;
+  while true { digits[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  at := n;
+  for k: c..<width { if at >= out.count { return -1; } out[at] = '0'; at += 1; }
+  if at + c > out.count { return -1; }
+  for k: 0..<c { out[at + k] = digits[c - 1 - k]; }
+  return at + c;
+}
+
+// ---- Chicago time, as the tables show it: "MM-DD HH:MM"
+
+days_from_civil :: (y0: int, m: int, d: int) -> int {
+  y := ifx m <= 2 then y0 - 1 else y0;
+  era := (ifx y >= 0 then y else y - 399) / 400;
+  yoe := y - era * 400;
+  doy := (153 * (ifx m > 2 then m - 3 else m + 9) + 2) / 5 + d - 1;
+  doe := yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + doe - 719468;
+}
+Civil :: struct { y: int; m: int; d: int; }
+civil_from_days :: (z0: int) -> Civil {
+  z := z0 + 719468;
+  era := (ifx z >= 0 then z else z - 146096) / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1;
+  m := ifx mp < 10 then mp + 3 else mp - 9;
+  return Civil.{y = yoe + era * 400 + (ifx m <= 2 then 1 else 0), m = m, d = d};
+}
+// The day (days since 1970) of the n-th Sunday of a month.
+nth_sunday :: (y: int, m: int, n: int) -> int {
+  first := days_from_civil(y, m, 1);
+  weekday := (first + 4) % 7;   // 1970-01-01 was a Thursday; 0 is Sunday
+  if weekday < 0 { weekday += 7; }
+  return first + (7 - weekday) % 7 + 7 * (n - 1);
+}
+// Seconds to add to UTC for Chicago: CDT (-5 h) from the second Sunday of
+// March, 2:00 CST, to the first Sunday of November, 2:00 CDT; CST (-6 h) otherwise.
+chicago_offset :: (t: int) -> int {
+  y := civil_from_days(t / 86400).y;
+  start := nth_sunday(y, 3, 2) * 86400 + 8 * 3600;
+  end := nth_sunday(y, 11, 1) * 86400 + 7 * 3600;
+  return ifx t >= start && t < end then -5 * 3600 else -6 * 3600;
+}
+// "MM-DD HH:MM" (date true) or "HH:MM".
+chicago_into :: (out: [] u8, n: int, t: int, date: bool) -> int {
+  local := t + chicago_offset(t);
+  day := local / 86400; if local < 0 && local % 86400 != 0 { day -= 1; }
+  secs := local - day * 86400;
+  c := civil_from_days(day);
+  at := n;
+  if date { at = int_into(out, at, c.m, 2); at = json_raw(out, at, "-"); at = int_into(out, at, c.d, 2); at = json_raw(out, at, " "); }
+  at = int_into(out, at, secs / 3600, 2); at = json_raw(out, at, ":");
+  return int_into(out, at, (secs / 60) % 60, 2);
+}
+
+// ---- the rows
+
+done_issue :: (f: [] Fold, r: int) -> bool { return f[0].status[r] == ST_RESOLVED || f[0].status[r] == ST_CLOSED; }
+rank_before :: (s: [] Store, f: [] Fold, a: int, b: int) -> bool {
+  x := ifx f[0].rank[a].len < 0 || f[0].rank[a].len == 0 then "~" else str(s, f[0].rank[a]);
+  y := ifx f[0].rank[b].len < 0 || f[0].rank[b].len == 0 then "~" else str(s, f[0].rank[b]);
+  n := ifx x.count < y.count then x.count else y.count;
+  for i: 0..<n { if x[i] != y[i] { return x[i] < y[i]; } }
+  return x.count < y.count;
+}
+alias_into :: (s: [] Store, f: [] Fold, out: [] u8, n: int, r: int) -> int {
+  return json_raw(out, n, event_id(s, f[0].root[r])[0..<f[0].alias[r]]);
+}
+KIND_NAMES :: [3] string.["initiative", "milestone", "task"];
+
+// The rows of WORK_ITEMS, WORK_LOG, WORK_PLANS and WORK_PLAN_INFO.
+write_tables :: (s: [] Store, f: [] Fold, t: [] Tables) {
+  n := f[0].n;
+  // issues by rank (stable), and the tasks in progress
+  for r: 0..<n {
+    k := r;
+    while k > 0 && rank_before(s, f, r, t[0].order[k - 1]) { t[0].order[k] = t[0].order[k - 1]; k -= 1; }
+    t[0].order[k] = r;
+  }
+  t[0].working_n = 0;
+  for k: 0..<n {
+    r := t[0].order[k];
+    if f[0].kind[r] == FK_TASK && !done_issue(f, r) && f[0].claimed[r].len > 0 { t[0].working[t[0].working_n] = r; t[0].working_n += 1; }
+  }
+  // WORK_ITEMS: alias | kind | status | title | labels | size | worker | parent | blocked by | rank | slug | commit | done at
+  out := t[0].items[..]; m := 0;
+  for k: 0..<n {
+    r := t[0].order[k]; fe := f[0].fields[r];
+    m = alias_into(s, f, out, m, r);
+    m = json_raw(out, m, "|"); m = json_raw(out, m, KIND_NAMES[f[0].kind[r]]);
+    m = json_raw(out, m, "|"); m = json_raw(out, m, STATUS_NAME[f[0].status[r]]);
+    m = json_raw(out, m, "|"); title := tag_value(s, fe, "subject"); m = cell_into(out, m, ifx title.ok then str(s, title.ref) else "");
+    // the labels: every t tag but initiative and milestone, joined by spaces, then as a cell
+    sn := 0; first := true;
+    for tg: s[0].tag0[fe]..<s[0].tag0[fe] + s[0].tags[fe] {
+      if s[0].tag_len[tg] < 2 || !equal(element(s, tg, 0), "t") { continue; }
+      l := element(s, tg, 1);
+      if equal(l, "initiative") || equal(l, "milestone") { continue; }
+      if !first { sn = json_raw(t[0].scratch[..], sn, " "); }
+      sn = json_raw(t[0].scratch[..], sn, l); first = false;
+    }
+    m = json_raw(out, m, "|"); m = cell_into(out, m, ifx sn > 0 then cast(string) t[0].scratch[0..<sn] else "");
+    size := tag_value(s, fe, "size");
+    m = json_raw(out, m, "|"); m = cell_into(out, m, ifx size.ok then str(s, size.ref) else "");
+    m = json_raw(out, m, "|"); m = cell_into(out, m, str(s, f[0].claimed[r]));
+    m = json_raw(out, m, "|");
+    parent := tag_value(s, fe, "parent");
+    if parent.ok { p := fold_issue_of(s, f, str(s, parent.ref)); if p >= 0 { m = alias_into(s, f, out, m, p); } }
+    m = json_raw(out, m, "|");
+    first = true;
+    for tg: s[0].tag0[fe]..<s[0].tag0[fe] + s[0].tags[fe] {
+      if s[0].tag_len[tg] < 2 || !equal(element(s, tg, 0), "blocked-by") { continue; }
+      b := fold_issue_of(s, f, element(s, tg, 1));
+      if b < 0 { continue; }
+      if !first { m = json_raw(out, m, " "); }
+      m = alias_into(s, f, out, m, b); first = false;
+    }
+    m = json_raw(out, m, "|"); if f[0].rank[r].len > 0 { m = json_raw(out, m, str(s, f[0].rank[r])); }
+    m = json_raw(out, m, "|"); m = json_raw(out, m, slug_of(s, f[0].root[r]));
+    c := str(s, f[0].commit[r]);
+    m = json_raw(out, m, "|"); m = json_raw(out, m, c[0..<(ifx c.count > 10 then 10 else c.count)]);
+    m = json_raw(out, m, "|"); if done_issue(f, r) { m = int_into(out, m, f[0].status_at[r], 10); }
+    m = json_raw(out, m, "\n");
+  }
+  t[0].items_n = ifx m < 0 then 0 else m;
+  write_log(s, f, t);
+  write_plans(s, f, t);
+  write_details(s, f, t);
+}
+
+// Whether a log line is the workers' (tables.ts worked()): claims, releases,
+// notes, plans and finished tasks; a status too, unless the task's own done
+// is within two minutes of it.
+worked :: (s: [] Store, f: [] Fold, k: int) -> bool {
+  if f[0].log_dead[k] { return false; }
+  ty := f[0].log_type[k];
+  if ty == LOG_CLAIM || ty == LOG_RELEASE || ty == LOG_NOTE || ty == LOG_DONE || ty == LOG_PLAN { return true; }
+  if ty != LOG_STATUS { return false; }
+  r := f[0].log_issue[k];
+  if f[0].commit[r].len == 0 { return true; }
+  for o: 0..<f[0].log_n {
+    if f[0].log_type[o] == LOG_DONE && f[0].log_issue[o] == r && !f[0].log_dead[o] {
+      d := f[0].log_at[o] - f[0].log_at[k];
+      if d < 120 && d > -120 { return false; }
+    }
+  }
+  return true;
+}
+
+// WORK_LOG: the workers' activity, newest first (ties in the order it was
+// pushed): time (Chicago) | what.
+write_log :: (s: [] Store, f: [] Fold, t: [] Tables) {
+  for k: 0..<f[0].log_n { t[0].picked[k] = false; }
+  out := t[0].log[..]; m := 0;
+  for row: 0..<ACTIVITY {
+    best := -1;
+    for k: 0..<f[0].log_n {
+      if t[0].picked[k] || !worked(s, f, k) { continue; }
+      if best < 0 || f[0].log_at[k] > f[0].log_at[best] { best = k; }
+    }
+    if best < 0 { break; }
+    t[0].picked[best] = true;
+    r := f[0].log_issue[best]; e := f[0].log_ev[best]; ty := f[0].log_type[best];
+    who := str(s, f[0].log_who[best]);
+    // what: "#alias SAID - title", then as a cell
+    w := t[0].scratch[..]; n := json_raw(w, 0, "#");
+    n = alias_into(s, f, w, n, r);
+    n = json_raw(w, n, " ");
+    if ty == LOG_NOTE {
+      if who.count > 0 { n = json_raw(w, n, who); n = json_raw(w, n, ": "); }
+      n = json_raw(w, n, trimmed(content_of(s, e)));
+    } else if ty == LOG_DONE {
+      c := str(s, f[0].commit[r]);
+      n = json_raw(w, n, "DONE IN "); n = json_raw(w, n, c[0..<(ifx c.count > 10 then 10 else c.count)]);
+      if who.count > 0 { n = json_raw(w, n, " BY "); n = json_raw(w, n, who); }
+    } else if ty == LOG_CLAIM {
+      n = json_raw(w, n, "CLAIMED BY "); n = upper_into(w, n, who);
+    } else if ty == LOG_RELEASE {
+      n = json_raw(w, n, "RELEASED BY "); n = upper_into(w, n, ifx who.count > 0 then who else "its worker");
+    } else if ty == LOG_STATUS {
+      n = upper_into(w, n, STATUS_NAME[f[0].status[r]]);
+    } else if ty == LOG_PLAN {
+      if who.count > 0 { n = upper_into(w, n, who); n = json_raw(w, n, " "); }
+      n = json_raw(w, n, "PLANNED "); n = int_into(w, n, f[0].steps_done[r], 1);
+      n = json_raw(w, n, " OF "); n = int_into(w, n, f[0].steps[r], 1); n = json_raw(w, n, " DONE");
+    }
+    n = json_raw(w, n, " - ");
+    title := tag_value(s, f[0].fields[r], "subject");
+    n = cell_into(w, n, ifx title.ok then str(s, title.ref) else "");
+    if n < 0 { continue; }
+    m = chicago_into(out, m, f[0].log_at[best], true);
+    m = json_raw(out, m, "|");
+    m = cell_into(out, m, cast(string) w[0..<n]);
+    m = json_raw(out, m, "\n");
+  }
+  t[0].log_n = ifx m < 0 then 0 else m;
+}
+
+// WORK_PLANS (alias | mark | step, marks x done, > doing, o to do) for the
+// tasks with a plan, those in progress first (by rank), then the rest as the
+// fold has them; WORK_PLAN_INFO (alias | done | steps | plan updated | claimed
+// | latest note) for the tasks in progress.
+write_plans :: (s: [] Store, f: [] Fold, t: [] Tables) {
+  out := t[0].plans[..]; m := 0;
+  info := t[0].info[..]; q := 0;
+  for k: 0..<t[0].working_n { m = plan_rows(s, f, out, m, t[0].working[k]); }
+  for r: 0..<f[0].n {
+    if f[0].kind[r] != FK_TASK || f[0].plan[r] < 0 { continue; }
+    on := false;
+    for k: 0..<t[0].working_n { if t[0].working[k] == r { on = true; } }
+    if !on { m = plan_rows(s, f, out, m, r); }
+  }
+  for k: 0..<t[0].working_n {
+    r := t[0].working[k];
+    q = alias_into(s, f, info, q, r); q = json_raw(info, q, "|");
+    q = int_into(info, q, f[0].steps_done[r], 1); q = json_raw(info, q, "|");
+    q = int_into(info, q, f[0].steps[r], 1); q = json_raw(info, q, "|");
+    if f[0].plan[r] >= 0 { q = chicago_into(info, q, s[0].at[f[0].plan[r]], false); }
+    q = json_raw(info, q, "|");
+    q = chicago_into(info, q, f[0].claimed_at[r], false); q = json_raw(info, q, "|");
+    if f[0].note[r] >= 0 { q = cell_into(info, q, trimmed(content_of(s, f[0].note[r]))); }
+    q = json_raw(info, q, "\n");
+  }
+  t[0].plans_n = ifx m < 0 then 0 else m;
+  t[0].info_n = ifx q < 0 then 0 else q;
+}
+plan_rows :: (s: [] Store, f: [] Fold, out: [] u8, at: int, r: int) -> int {
+  m := at;
+  if f[0].plan[r] < 0 { return m; }
+  content := content_of(s, f[0].plan[r]);
+  for i: 0..<(ifx f[0].steps[r] < PLAN_STEPS then f[0].steps[r] else PLAN_STEPS) {
+    st := plan_step(content, i);
+    m = alias_into(s, f, out, m, r); m = json_raw(out, m, "|");
+    mark := ifx st.mark == ' ' then "o" else ifx st.mark == 'x' then "x" else ">";
+    m = json_raw(out, m, mark); m = json_raw(out, m, "|");
+    m = cell_into(out, m, st.text); m = json_raw(out, m, "\n");
+  }
+  return m;
+}
+
+// ---- WORK_DETAILS (tables.ts details, details.ts escapes): one row an item,
+// by rank: alias | event id | claimed at (Chicago) | body | acceptance | notes.
+// A field holds "\\\\" for a backslash, "\\n" a newline, "\\p" a '|'; a list's
+// items are apart by "\\.", a note's parts (time, by, text) by "\\:".
+
+// "MM-DD HH:MM CDT" (or CST), as tables.ts chicago().
+chicago_zone_into :: (out: [] u8, n: int, t: int) -> int {
+  m := chicago_into(out, n, t, true);
+  return json_raw(out, m, ifx chicago_offset(t) == -5 * 3600 then " CDT" else " CST");
+}
+
+// plain(): marks spelled out, everything else outside printable ASCII dropped.
+plain_into :: (out: [] u8, n: int, text: string) -> int {
+  m := n; i := 0;
+  while i < text.count && m >= 0 {
+    b := text[i];
+    if b < 0x80 {
+      if b >= 0x20 && b <= 0x7e { m = json_raw(out, m, text[i..<i + 1]); }
+      i += 1;
+    } else {
+      w := utf8_width(text, i);
+      m = json_raw(out, m, mark_of(text[i..<i + w]));
+      i += w;
+    }
+  }
+  return m;
+}
+
+// prose(): each line plain and without trailing spaces, then every "**" and
+// every '`' taken out.
+prose_into :: (out: [] u8, n: int, text: string) -> int {
+  m := n; i := 0;
+  while m >= 0 {
+    e := i;
+    while e < text.count && text[e] != 10 { e += 1; }
+    start := m;
+    m = plain_into(out, m, text[i..<e]);
+    if m < 0 { return -1; }
+    while m > start && out[m - 1] == ' ' { m -= 1; }
+    if e >= text.count { break; }
+    m = json_raw(out, m, "\n");
+    i = e + 1;
+  }
+  if m < 0 { return -1; }
+  w := n; k := n;
+  while k < m {
+    if out[k] == '*' && k + 1 < m && out[k + 1] == '*' { k += 2; continue; }
+    out[w] = out[k]; w += 1; k += 1;
+  }
+  m = w; w = n;
+  for k2: n..<m { if out[k2] != '`' { out[w] = out[k2]; w += 1; } }
+  return w;
+}
+
+// escapeDetail()
+escape_into :: (out: [] u8, n: int, text: string) -> int {
+  m := n;
+  for i: 0..<text.count {
+    c := text[i];
+    if c == '\\' { m = json_raw(out, m, "\\\\"); }
+    else if c == '|' { m = json_raw(out, m, "\\p"); }
+    else if c == 10 { m = json_raw(out, m, "\\n"); }
+    else if c == 13 { m = json_raw(out, m, "\\n"); }
+    else { m = json_raw(out, m, text[i..<i + 1]); }
+    if m < 0 { return -1; }
+  }
+  return m;
+}
+// escapeDetail(prose(text)), through the tables' prose buffer.
+prose_field :: (t: [] Tables, out: [] u8, n: int, text: string) -> int {
+  p := prose_into(t[0].prose[..], 0, text);
+  if p < 0 || n < 0 { return -1; }
+  return escape_into(out, n, cast(string) t[0].prose[0..<p]);
+}
+
+// A line, trimmed, is "## Acceptance" (any case, any whitespace between).
+acceptance_head :: (line: string) -> bool {
+  l := trimmed(line);
+  if l.count < 3 || l[0] != '#' || l[1] != '#' || !is_space(l[2]) { return false; }
+  rest := trimmed(l[2..<l.count]);
+  word := "acceptance";
+  if rest.count != word.count { return false; }
+  for i: 0..<word.count {
+    c := rest[i];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    if c != word[i] { return false; }
+  }
+  return true;
+}
+// A line, trimmed, starts a section: "##" then whitespace.
+section_head :: (line: string) -> bool {
+  l := trimmed(line);
+  return l.count >= 3 && l[0] == '#' && l[1] == '#' && is_space(l[2]);
+}
+// The lines of normalized text: line k's start and end.
+Lines :: struct { n: int; from: [DETAIL_LINES] int; to: [DETAIL_LINES] int; }
+DETAIL_LINES :: 4096;
+
+// splitAcceptance(body) into the tables' body (the rest, trimmed) and
+// acceptance buffers (one item a line); false when they don't fit.
+split_acceptance :: (t: [] Tables, body: string) -> bool {
+  t[0].body_n = 0; t[0].acc_n = 0; t[0].acc_items = 0;
+  // \r\n and a lone \r are newlines
+  nb := t[0].norm[..]; nn := 0; i := 0;
+  while i < body.count {
+    c := body[i];
+    if c == 13 { c = 10; if i + 1 < body.count && body[i + 1] == 10 { i += 1; } }
+    if nn >= nb.count { return false; }
+    nb[nn] = c; nn += 1; i += 1;
+  }
+  text := cast(string) nb[0..<nn];
+  ln := t[0].lines[..]; ln[0].n = 0; a := 0;
+  while true {
+    e := a;
+    while e < text.count && text[e] != 10 { e += 1; }
+    if ln[0].n >= DETAIL_LINES { return false; }
+    ln[0].from[ln[0].n] = a; ln[0].to[ln[0].n] = e; ln[0].n += 1;
+    if e >= text.count { break; }
+    a = e + 1;
+  }
+  at := -1;
+  for k: 0..<ln[0].n { if at < 0 && acceptance_head(text[ln[0].from[k]..<ln[0].to[k]]) { at = k; } }
+  if at < 0 {
+    // no acceptance section: the body as it came, trimmed
+    b := trimmed(body);
+    if b.count > t[0].body.count { return false; }
+    for k: 0..<b.count { t[0].body[k] = b[k]; }
+    t[0].body_n = b.count;
+    return true;
+  }
+  end := ln[0].n;
+  for k: at + 1..<ln[0].n { if end == ln[0].n && section_head(text[ln[0].from[k]..<ln[0].to[k]]) { end = k; } }
+  // the checks: "- " or "* " lines; a line after one carries on its text
+  acc := t[0].acc[..]; q := 0;
+  for k: at + 1..<end {
+    l := text[ln[0].from[k]..<ln[0].to[k]];
+    j := 0;
+    while j < l.count && is_space(l[j]) { j += 1; }
+    check_line := j < l.count && (l[j] == '-' || l[j] == '*') && j + 1 < l.count && is_space(l[j + 1]);
+    if check_line {
+      if t[0].acc_items > 0 { q = json_raw(acc, q, "\n"); }
+      q = json_raw(acc, q, trimmed(l[j + 1..<l.count]));
+      t[0].acc_items += 1;
+    } else if trimmed(l).count > 0 && t[0].acc_items > 0 {
+      q = json_raw(acc, q, " "); q = json_raw(acc, q, trimmed(l));
+    }
+    if q < 0 { return false; }
+  }
+  t[0].acc_n = q;
+  // the rest: the lines before and after, runs of 3+ newlines as 2, trimmed
+  rest := t[0].body[..]; m := 0; first := true;
+  for k: 0..<ln[0].n {
+    if k >= at && k < end { continue; }
+    if !first { m = json_raw(rest, m, "\n"); }
+    m = json_raw(rest, m, text[ln[0].from[k]..<ln[0].to[k]]); first = false;
+    if m < 0 { return false; }
+  }
+  w := 0; run := 0;
+  for k: 0..<m {
+    if rest[k] == 10 { run += 1; if run > 2 { continue; } } else { run = 0; }
+    rest[w] = rest[k]; w += 1;
+  }
+  lo2 := 0; hi2 := w;
+  while lo2 < hi2 && is_space(rest[lo2]) { lo2 += 1; }
+  while hi2 > lo2 && is_space(rest[hi2 - 1]) { hi2 -= 1; }
+  for k: lo2..<hi2 { rest[k - lo2] = rest[k]; }
+  t[0].body_n = hi2 - lo2;
+  return true;
+}
+
+write_details :: (s: [] Store, f: [] Fold, t: [] Tables) {
+  out := t[0].details[..]; m := 0;
+  for k: 0..<f[0].n {
+    r := t[0].order[k];
+    row := m;
+    m = alias_into(s, f, out, m, r); m = json_raw(out, m, "|");
+    m = json_raw(out, m, event_id(s, f[0].root[r])); m = json_raw(out, m, "|");
+    if f[0].claimed[r].len > 0 && f[0].claimed_at[r] != 0 { m = chicago_zone_into(out, m, f[0].claimed_at[r]); }
+    m = json_raw(out, m, "|");
+    if !split_acceptance(t, content_of(s, f[0].fields[r])) { m = -1; }
+    m = prose_field(t, out, m, cast(string) t[0].body[0..<t[0].body_n]);
+    m = json_raw(out, m, "|");
+    // the checks: one an item
+    acc := cast(string) t[0].acc[0..<t[0].acc_n];
+    a := 0;
+    for c: 0..<t[0].acc_items {
+      e := a;
+      while e < acc.count && acc[e] != 10 { e += 1; }
+      if c > 0 { m = json_raw(out, m, "\\."); }
+      m = prose_field(t, out, m, acc[a..<e]);
+      a = e + 1;
+    }
+    m = json_raw(out, m, "|");
+    for c: 0..<f[0].note_cnt[r] {
+      j := f[0].note_from[r] + c; e := f[0].notes_ev[j];
+      if c > 0 { m = json_raw(out, m, "\\."); }
+      m = chicago_zone_into(out, m, s[0].at[e]); m = json_raw(out, m, "\\:");
+      p := plain_into(t[0].prose[..], 0, str(s, f[0].notes_by[j]));
+      m = ifx p < 0 then -1 else escape_into(out, m, cast(string) t[0].prose[0..<p]);
+      m = json_raw(out, m, "\\:");
+      m = prose_field(t, out, m, trimmed(content_of(s, e)));
+    }
+    m = json_raw(out, m, "\n");
+    // a row that doesn't fit is left out, never cut
+    if m < 0 { m = row; break; }
+  }
+  t[0].details_n = m;
+}
+
+// ---------------------------------------------------------------- frames
+
+FRAME_OTHER :: 0; FRAME_EVENT :: 1; FRAME_EOSE :: 2; FRAME_CLOSED :: 3;
+Frame :: struct { type: int; sub: string; kept: int; }
+
+// A relay frame: an EVENT's event goes in the store (kept: its index, or -1);
+// EOSE and CLOSED name their subscription (its raw JSON string).
+read_frame :: (s: [] Store, text: string, pubkey: string) -> Frame {
+  fr := Frame.{type = FRAME_OTHER, sub = "", kept = -1};
+  j: [1] Json;
+  json_start(j[..], text);
+  if json_next(j[..]) != JSON_ARRAY || json_next(j[..]) != JSON_STRING { return fr; }
+  what := json_text(j[..]);
+  event := json_is(what, "EVENT"); eose := json_is(what, "EOSE"); closed := json_is(what, "CLOSED");
+  if !event && !eose && !closed { return fr; }
+  if json_next(j[..]) != JSON_STRING { return fr; }
+  fr.sub = json_text(j[..]);
+  if eose { fr.type = FRAME_EOSE; return fr; }
+  if closed { fr.type = FRAME_CLOSED; return fr; }
+  fr.type = FRAME_EVENT;
+  if json_next(j[..]) != JSON_OBJECT { s[0].dropped += 1; return fr; }
+  fr.kept = store_event(s, j[..], pubkey);
+  return fr;
+}
+
+#load "../../coax/lib/nostr/fixtures/coax_relay.coax";
+#load "../../coax/lib/nostr/fixtures/coax_relay_tables.coax";
+
+FOLD_TEST_KEY :: "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
+
+// Every frame of the transcript, read into the store; the number of EOSEs.
+read_transcript :: (s: [] Store, text: string) -> int {
+  eose := 0; i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != 10 { e += 1; }
+    fr := read_frame(s, text[i..<e], FOLD_TEST_KEY);
+    if fr.type == FRAME_EOSE { eose += 1; }
+    i = e + 1;
+  }
+  return eose;
+}
+
+// The first line where two tables differ, for a readable failure.
+first_difference :: (a: string, b: string) -> string {
+  i := 0; line := 0;
+  while i < a.count && i < b.count && a[i] == b[i] { if a[i] == 10 { line = i + 1; } i += 1; }
+  if i == a.count && i == b.count { return ""; }
+  e := i; while e < a.count && a[e] != 10 { e += 1; }
+  return a[line..<e];
+}
+
+#test "the fold of a captured relay transcript equals model.ts fold() and tables.ts, byte for byte" {
+  s: [1] Store; f: [1] Fold; t: [1] Tables;
+  #assert read_transcript(s[..], COAX_RELAY) == 5;
+  #assert s[0].dropped == 0 && s[0].n > 100;
+  fold(s[..], f[..], "coax");
+  #assert f[0].project >= 0 && f[0].order >= 0 && f[0].repo >= 0;
+  write_tables(s[..], f[..], t[..]);
+  #assert first_difference(cast(string) t[0].items[0..<t[0].items_n], COAX_RELAY_ITEMS) == "";
+  #assert equal(cast(string) t[0].items[0..<t[0].items_n], COAX_RELAY_ITEMS) && t[0].items_n > 20;
+  #assert first_difference(cast(string) t[0].log[0..<t[0].log_n], COAX_RELAY_LOG) == "";
+  #assert equal(cast(string) t[0].log[0..<t[0].log_n], COAX_RELAY_LOG) && t[0].log_n > 20;
+  #assert first_difference(cast(string) t[0].plans[0..<t[0].plans_n], COAX_RELAY_PLANS) == "";
+  #assert equal(cast(string) t[0].plans[0..<t[0].plans_n], COAX_RELAY_PLANS) && t[0].plans_n > 20;
+  #assert first_difference(cast(string) t[0].info[0..<t[0].info_n], COAX_RELAY_PLAN_INFO) == "";
+  #assert equal(cast(string) t[0].info[0..<t[0].info_n], COAX_RELAY_PLAN_INFO) && t[0].info_n > 20;
+  #assert first_difference(cast(string) t[0].details[0..<t[0].details_n], COAX_RELAY_DETAILS) == "";
+  #assert equal(cast(string) t[0].details[0..<t[0].details_n], COAX_RELAY_DETAILS) && t[0].details_n > 20000;
+  // the same events again (a second subscription, a reconnect) change nothing
+  n := s[0].n;
+  #assert read_transcript(s[..], COAX_RELAY) == 5 && s[0].n == n;
+}

@@ -2,9 +2,9 @@
 
 Worlds you walk into, built in Coax on the Verse engine: the Grid, the Haunted House and the playtest flow, on openagents.com.
 
-An OpenAgents project, open for contributions from people and agents. Home: `metareal/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
+An OpenAgents project, open for contributions from people and agents. Home: `verse/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
-Snapshot of the project's Nostr events taken 10-28 15:10 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1j5dhp706jlvzznsvnull8y4pm5tx3es4v8hjrg4xj95d8qj99cvqwjx4qp`.
+Snapshot of the project's Nostr events taken 10-28 15:35 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1j5dhp706jlvzznsvnull8y4pm5tx3es4v8hjrg4xj95d8qj99cvqwjx4qp`.
 
 ## How to take a task
 
@@ -32,7 +32,7 @@ Everything playtest.openagents.com runs today (the Kiki flow on the aethyr-demo 
 
 Milestones, in order:
 
-- #df59 **The playtest flow in Coax**: 0 of 7 done, 1 ready. Kiki's flow, rebuilt in Coax on openagents.com: the landing, the galaxy and the Haunted House with its quest, edit mode, characters and saving. Served at openagents.com/playtest until the owner switches playtest.openagents.com.
+- #df59 **The playtest flow in Coax**: 1 of 7 done, 1 ready. Kiki's flow, rebuilt in Coax on openagents.com: the landing, the galaxy and the Haunted House with its quest, edit mode, characters and saving. Served at openagents.com/playtest until the owner switches playtest.openagents.com.
 
 - #4d06 **The playtest server**: 0 of 4 done, 0 ready. Everything the Python API in the demo does (aethyr-cpp tools/serve.py and friends): players by email (never verified) or as guests, saves, published worlds, character chat, feedback and the session recording, as a Coax/C service on Cloud Run with its data in Cloud SQL.
 
@@ -43,7 +43,50 @@ Milestones, in order:
 - #a105 **Ready to switch playtest.openagents.com**: 0 of 2 done, 0 ready. Everything needed to point playtest.openagents.com at the new system, staged and rehearsed, with the old demo's data carried over; the owner does the final review and says when.
 
 
-## In progress (0)
+## Activity
+
+- 10-28 15:35 CDT #7e98 done in 8a81dc727e by claude-haunt-1 (The Haunted House quest and tutorial on the web)
+- 10-28 15:35 CDT #7e98 claude-haunt-1: Chrome, desktop: walked the whole quest from walk-in to COMPLETE on the dev server, reloading between steps; the step, the placed jack-o'-lantern and the answer come back from this browser. Phone: HUD, EDIT and its hotbar fit 390 wide. iOS shares the Coax (step line, orb prompt, at-goal, bearing) but its view controller isn't rewired yet (no device builds now). Save/feedback stay in the browser until pt-saves / pt-feedback. (The Haunted House quest and tutorial on the web)
+- 10-28 15:35 CDT #7e98 claude-haunt-1 planned 5 of 5 done (The Haunted House quest and tutorial on the web)
+- 10-28 15:25 CDT #c630 claude-analytics-1: Database: openagents-production-pg (PG 18, running, the OpenAgents production instance; a database on it costs nothing more, so no new instance). Role oa_analytics, databases oa_analytics and oa_analytics_staging; DSNs in Secret Manager oa-analytics-database-url and oa-analytics-staging-database-url. (The playtest service: Coax/C on Cloud Run, Cloud SQL behind it)
+- 10-28 15:25 CDT #c630 claude-analytics-1 planned 1 of 6 done (The playtest service: Coax/C on Cloud Run, Cloud SQL behind it)
+- 10-28 15:24 CDT #c630 claimed by claude-analytics-1 (The playtest service: Coax/C on Cloud Run, Cloud SQL behind it)
+- 10-28 15:24 CDT #febd released by claude-analytics-1 (Inventory the playtest: every page, endpoint, event and file)
+- 10-28 15:24 CDT #febd claude-analytics-1: docs/verse/playtest-port.md in 120354ad13 (analytics first). Live demo is demo/kiki-2026-10-28d (55a0f3b); ~/work/aethyr-demo is a day behind at 27d. Gaps for the taskmaster to add (doc section 6): pt-analytics-contract (journey check in release.sh + Health card), pt-presence-chat, pt-planets, pt-change-offers, pt-voice, pt-accounts (Nostr sign-in tie-in). Left open until they are tasks: only the taskmaster edits the work file. pt-server-skeleton and pt-capture can start now. (Inventory the playtest: every page, endpoint, event and file)
+- 10-28 15:24 CDT #febd claude-analytics-1 planned 6 of 7 done (Inventory the playtest: every page, endpoint, event and file)
+- 10-28 15:17 CDT #7e98 claimed by claude-haunt-1 (The Haunted House quest and tutorial on the web)
+- 10-28 15:12 CDT #febd claimed by claude-analytics-1 (Inventory the playtest: every page, endpoint, event and file)
+- 10-28 15:11 CDT #760b taskmaster: owner (2026-10-28): openagents.com/realm/haunted-house must record everything the playtest version recorded, every event and field, and feed the admin dashboard, same as the playtest. Acceptance adds: a Haunted House session on production shows in the dashboard with the same event types as a playtest session. (Capture everything the playtest records, and all the traffic)
+
+## In progress (1)
+
+### #c630 The playtest service: Coax/C on Cloud Run, Cloud SQL behind it
+
+status open · in progress: claude-analytics-1 · size M · labels playtest, server · milestone #4d06 The playtest server
+
+Waits on: #febd Inventory the playtest: every page, endpoint, event and file (open)
+
+Event: `c630e92afaebfc81145e80afa94c5de83a72e12954dbbf5aca5c5517d64f5e15`
+
+Plan (1 of 6 done, updated 10-28 15:25 CDT by claude-analytics-1):
+
+- [x] Database: role oa_analytics, databases oa_analytics and oa_analytics_staging on openagents-production-pg, URLs in Secret Manager
+- [ ] **now:** Migrations in coax/web/api/migrations with a runner
+- [ ] The service coax/web/api/api.c from serve.c: HTTP, libpq, /api/playtest/health with a round trip
+- [ ] Image and deploy script: Cloud Run oa-api-staging and oa-api with the Cloud SQL socket
+- [ ] Serverless NEGs, backend services, /api/ path rules on staging then production
+- [ ] Smoke: staging and production answer /api/playtest/health; coder routes still answer
+
+A native Coax service (coax/web/serve.c is the starting point) on Cloud Run, reached at openagents.com/api/playtest/* through the load balancer on staging, talking to a database on an existing Cloud SQL instance (pick openagents-production-pg or another, within the $1,500 a month budget, and say why). Schema migrations in the repo.
+
+## Acceptance
+
+- Staging answers /api/playtest/health from Cloud Run with a database round trip
+- No new Cloud SQL instance unless the inventory shows one is needed
+
+Notes:
+
+- 10-28 15:25 CDT claude-analytics-1: Database: openagents-production-pg (PG 18, running, the OpenAgents production instance; a database on it costs nothing more, so no new instance). Role oa_analytics, databases oa_analytics and oa_analytics_staging; DSNs in Secret Manager oa-analytics-database-url and oa-analytics-staging-database-url.
 
 ## Ready (2)
 
@@ -53,12 +96,26 @@ status open · ready · size S · labels playtest, docs · milestone #df59 The p
 
 Event: `febd896f7884de5eb9d3d77ed4a1ed56fa697f123c3d47452db64ba70bc44908`
 
+Plan (6 of 7 done, updated 10-28 15:24 CDT by claude-analytics-1):
+
+- [x] Read the playtest analytics: tools/analytics.py, web/analytics.js, analytics.html, tests
+- [x] Read serve.py and every tool it imports: every /api endpoint
+- [x] Read the web/kiki pages, frozen/kiki and the demo worktree
+- [x] Read the bucket layout, Cloud Run, LB, DNS, cert setup
+- [x] Map what openagents already covers (/realm/haunted-house)
+- [x] Write docs/verse/playtest-port.md, analytics first
+- [ ] **now:** Add queue notes or tasks for gaps found
+
 Read the aethyr-cpp repo (~/work/aethyr-cpp, OpenAgentsInc/aethyr-cpp): the pinned playtest flow is frozen/kiki/ (frozen/kiki.pin), and the live demo runs its demo/kiki-* tag (the worktree ~/work/aethyr-demo is that checkout; read, never edit it): README 'The web root', docs/environments.md, docs/kiki-playtest-2026-10-25.md, docs/owner-decisions.md, tools/serve.py and every tool it imports, tools/analytics.py, web/analytics.js, web/kiki pages, frozen/kiki. Write docs/verse/playtest-port.md: each page and what it does, each /api endpoint with request and response, each recorded event and field, each stored file and bucket, the Cloud Run, load balancer, DNS and certificate setup, and what in openagents already covers it (/realm/haunted-house). Split or add queue tasks where this inventory finds work the queue misses.
 
 ## Acceptance
 
 - docs/verse/playtest-port.md lists every page, endpoint, event and stored file with its source path
 - Every gap found is a task on this project
+
+Notes:
+
+- 10-28 15:24 CDT claude-analytics-1: docs/verse/playtest-port.md in 120354ad13 (analytics first). Live demo is demo/kiki-2026-10-28d (55a0f3b); ~/work/aethyr-demo is a day behind at 27d. Gaps for the taskmaster to add (doc section 6): pt-analytics-contract (journey check in release.sh + Health card), pt-presence-chat, pt-planets, pt-change-offers, pt-voice, pt-accounts (Nostr sign-in tie-in). Left open until they are tasks: only the taskmaster edits the work file. pt-server-skeleton and pt-capture can start now.
 
 ### #1886 Pinned demo releases: one exact build until the owner moves it
 
@@ -73,21 +130,7 @@ A demo is a named, never-moved git tag released by coax/web/release.sh to its ow
 - Releasing main never changes the pinned demo
 - Moving the pin and rolling it back are each one command
 
-## Waiting (17)
-
-### #7e98 The Haunted House quest and tutorial on the web
-
-status open · size M · labels playtest, web, haunted-house · milestone #df59 The playtest flow in Coax
-
-Waits on: #febd Inventory the playtest: every page, endpoint, event and file (open)
-
-Event: `7e98fee86a8a828eb832fa8d157a47384505a8b62fbb1ba8ac0389540320f44a`
-
-The tutorial quest and HAUNTS FOUND progress as the demo runs them (docs/tutorial-quest.md, time-and-quests.md), on the web build of the Haunted House, sharing the iOS Coax code.
-
-## Acceptance
-
-- The quest completes end to end in Chrome; a #test drives it headless
+## Waiting (15)
 
 ### #1855 Edit mode on the web: objects, characters and zones
 
@@ -103,6 +146,41 @@ The demo's edit mode (README 'Edit mode and views'): place, move and delete obje
 
 - Every edit the demo allows works in Chrome and on a phone
 - Edits survive a reload (with pt-saves)
+
+### #760b Capture everything the playtest records, and all the traffic
+
+status open · size L · labels playtest, analytics · milestone #228e Full analytics and the admin dashboard
+
+Waits on: #c630 The playtest service: Coax/C on Cloud Run, Cloud SQL behind it (open)
+
+Event: `760b8c305a474c09e41961263346a85d413203fcad18e607a25a72ced409dbcc`
+
+Every event and field from tools/analytics.py and web/analytics.js (owner decision 4.2: save everything), on every openagents.com page, not only the playtest: page views, sessions, referrers, user agent, screen, timing, input, errors, geography from the load balancer's headers, and typed and spoken text where the playtest saved it, with the disclosure the demo shows. Coax collects in the page; the host only sends bytes.
+
+## Acceptance
+
+- Every event type in the inventory is captured and stored
+- A session replays in order from the database
+- The disclosure shows where the demo showed it
+
+Notes:
+
+- 10-28 15:11 CDT taskmaster: owner (2026-10-28): openagents.com/realm/haunted-house must record everything the playtest version recorded, every event and field, and feed the admin dashboard, same as the playtest. Acceptance adds: a Haunted House session on production shows in the dashboard with the same event types as a playtest session.
+
+### #0fcd The admin dashboard, drawn in Coax
+
+status open · size L · labels playtest, analytics, web · milestone #228e Full analytics and the admin dashboard
+
+Waits on: #760b Capture everything the playtest records, and all the traffic (open)
+
+Event: `0fcda401d4fe95cf4253b4fb24c2844cc77b49688d3612452a5fa7943941f1d4`
+
+openagents.com/admin/analytics: sessions, funnels through the flow, where players stopped, every session's timeline with what they typed and said, feedback, traffic sources, errors. Admins only: signed in with the phone (Coax project milestone 'Sign in to the website with your phone'); until that lands, an admin signs a NIP-98 request with their key from this machine. Never WorkOS.
+
+## Acceptance
+
+- The owner sees yesterday's playtest sessions on staging
+- A non-admin gets nothing, not even counts
 
 ### #d25a The landing in Coax: Create anything, Enter the Verse, email or guest
 
@@ -163,21 +241,6 @@ World data and progress saved as versioned snapshots with a CRC (aethyr-cpp docs
 - A corrupted save falls back to the last good one (#test)
 - Progress follows a player with an email to another browser
 
-### #c630 The playtest service: Coax/C on Cloud Run, Cloud SQL behind it
-
-status open · size M · labels playtest, server · milestone #4d06 The playtest server
-
-Waits on: #febd Inventory the playtest: every page, endpoint, event and file (open)
-
-Event: `c630e92afaebfc81145e80afa94c5de83a72e12954dbbf5aca5c5517d64f5e15`
-
-A native Coax service (coax/web/serve.c is the starting point) on Cloud Run, reached at openagents.com/api/playtest/* through the load balancer on staging, talking to a database on an existing Cloud SQL instance (pick openagents-production-pg or another, within the $1,500 a month budget, and say why). Schema migrations in the repo.
-
-## Acceptance
-
-- Staging answers /api/playtest/health from Cloud Run with a database round trip
-- No new Cloud SQL instance unless the inventory shows one is needed
-
 ### #eb9d Players, guests, saves and published worlds on the server
 
 status open · size M · labels playtest, server · milestone #4d06 The playtest server
@@ -220,37 +283,6 @@ The demo's feedback endpoint and its in-game entry, stored with the session it c
 ## Acceptance
 
 - Feedback posted in the flow appears in the dashboard with its session
-
-### #760b Capture everything the playtest records, and all the traffic
-
-status open · size L · labels playtest, analytics · milestone #228e Full analytics and the admin dashboard
-
-Waits on: #c630 The playtest service: Coax/C on Cloud Run, Cloud SQL behind it (open)
-
-Event: `760b8c305a474c09e41961263346a85d413203fcad18e607a25a72ced409dbcc`
-
-Every event and field from tools/analytics.py and web/analytics.js (owner decision 4.2: save everything), on every openagents.com page, not only the playtest: page views, sessions, referrers, user agent, screen, timing, input, errors, geography from the load balancer's headers, and typed and spoken text where the playtest saved it, with the disclosure the demo shows. Coax collects in the page; the host only sends bytes.
-
-## Acceptance
-
-- Every event type in the inventory is captured and stored
-- A session replays in order from the database
-- The disclosure shows where the demo showed it
-
-### #0fcd The admin dashboard, drawn in Coax
-
-status open · size L · labels playtest, analytics, web · milestone #228e Full analytics and the admin dashboard
-
-Waits on: #760b Capture everything the playtest records, and all the traffic (open)
-
-Event: `0fcda401d4fe95cf4253b4fb24c2844cc77b49688d3612452a5fa7943941f1d4`
-
-openagents.com/admin/analytics: sessions, funnels through the flow, where players stopped, every session's timeline with what they typed and said, feedback, traffic sources, errors. Admins only: signed in with the phone (Coax project milestone 'Sign in to the website with your phone'); until that lands, an admin signs a NIP-98 request with their key from this machine. Never WorkOS.
-
-## Acceptance
-
-- The owner sees yesterday's playtest sessions on staging
-- A non-admin gets nothing, not even counts
 
 ### #4a59 Carry the demo's recorded sessions and data over
 
@@ -316,7 +348,7 @@ Today playtest.openagents.com is a load balancer in front of Cloud Run aethyr-de
 
 status open · size S · labels playtest, owner · milestone #a105 Ready to switch playtest.openagents.com
 
-Waits on: #2086 The switch-over plan and rehearsal for playtest.openagents.com (open); #7e98 The Haunted House quest and tutorial on the web (open); #1855 Edit mode on the web: objects, characters and zones (open); #12ff Talk to characters: typed questions and teaching (open); #63a5 Saving: versioned snapshots locally and on the server (open); #15c3 Feedback from players (open); #9918 The share card and page metadata (open)
+Waits on: #2086 The switch-over plan and rehearsal for playtest.openagents.com (open); #7e98 The Haunted House quest and tutorial on the web (resolved); #1855 Edit mode on the web: objects, characters and zones (open); #12ff Talk to characters: typed questions and teaching (open); #63a5 Saving: versioned snapshots locally and on the server (open); #15c3 Feedback from players (open); #9918 The share card and page metadata (open)
 
 Event: `072df03e534b2507197b5c79062b465ff717ebd6545d80b070fc77240169fb1b`
 
@@ -326,3 +358,7 @@ A checklist with links: each demo page and feature next to its new version, with
 
 - The checklist covers every inventory item
 - NEEDS_OWNER.md names the review screen by screen
+
+## Done (1)
+
+- #7e98 The Haunted House quest and tutorial on the web · [8a81dc727e](https://github.com/OpenAgentsInc/openagents/commit/8a81dc727e)
