@@ -129,15 +129,20 @@ assumptions. JSON diagnostics retain concrete witnesses.
 Check: `coax/tests/verify.py`, compiler ASan/UBSan signed-span checks and the
 actual imported wire checks in `coax/tests/proto/runtime.coax`. Native aliasing
 and non-finite representations remain in the target-side conformance suite.
-Descriptor/runtime hashes and native generator/compiler versions are recorded
+Descriptor/importer/runtime hashes and generator/compiler versions are recorded
 in generated C/headers. The authoritative pure runtime is
 `coax/lib/proto/wire.coax`, with `#authority`; its checks and zero-survivor mutation
 gate run before publishing a bootstrap compiler. `memory.coax` only observes
 native storage overlap and delegates policy to the pure core. Physical addresses
 remain a native ABI/sanitizer boundary, outside Coax check claims. Checks and
 `#authority` are not copied into imported applications. Descriptor parsing and
-generation remain trusted C++ bootstrap code; Coax does not verify them. Shell
-byte copies embed the runtime from these Coax sources into coax0. Normal
+generation live in `coax/lib/proto/importer.coax`, with `#authority`, bounded
+checks and a zero-survivor mutation gate. Coax owns scratch capacities. Stage0
+has proto imports disabled and compiles this actual Coax implementation to C11;
+the final compiler links it and must regenerate identical importer C. There is
+no C++ parser/generator fallback. The frontend, evaluator, C emitter, toolchain
+and native host effects remain trusted; these gates are not a formal proof.
+Shell byte copies embed the runtime from its authoritative Coax sources. Normal
 compilation must not invoke Python, protoc or helper processes or depend on
 adjacent runtime files. Explicit descriptor input reads are not permitted inside `#run`.
 

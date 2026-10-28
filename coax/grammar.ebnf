@@ -1,4 +1,4 @@
-(* Coax 0.6.1 accepted subset. Planned language syntax is not in this grammar.
+(* Coax 0.7.0 accepted subset. Planned language syntax is not in this grammar.
    Lexing: ASCII identifiers (excluding reserved keywords); integer tokens in
    decimal/hex/binary with separators, up to the u64 maximum; decimal float
    tokens with a fraction and/or exponent ("1.5", "2e-3"; never "1." so that

@@ -1,4 +1,4 @@
-# Descriptor imports in coax0 0.6.1
+# Descriptor imports in coax0 0.7.0
 
 `#import_proto` generates real Coax declarations from a binary
 `google.protobuf.FileDescriptorSet`. Root `proto/` remains the schema source.
@@ -15,18 +15,30 @@ The compiler expands imports before normal parsing/checking; `coax c` exposes
 the resulting implementation, and `coax header` exposes exported C wrappers.
 `coax/examples/nostr-proto.coax` is a runnable presence/repeated-field example.
 
-The importer is built into coax0 in C++20. `coax/src/proto.cpp` parses the
-bounded binary descriptor directly. Authoritative runtime source lives in
-`coax/lib/proto/wire.coax` (pure wire/policy core) and `memory.coax` (two native
-address-overlap wrappers). `coax/build.sh` embeds these sources into the compiler
-using shell byte copies; `bin/proto_runtime.inc` is ignored build output. Only
-the core's program section, before `// @proto-runtime-checks`, enters generated
-applications. Its checks and `#authority` belong to the core's own test target. There is no
-interpreter, protoc invocation, protobuf library, subprocess, temporary file,
-or installed helper/runtime-file dependency. A relocated compiler works with
-an empty `PATH`. The retired `COAX_PROTO_TOOL` and `COAX_PROTO_PYTHON` variables
-have no effect. Generated C11 also needs no protobuf or interpreter runtime.
-No schema code executes during import; `#run` still refuses host I/O.
+The parser, descriptor validation, name resolution and source generator live in
+`coax/lib/proto/importer.coax`, with `#authority` and executable checks. They
+compile to C11 and are linked into coax0; `src/proto.cpp` supplies file I/O,
+Coax-requested buffer allocation and reproducible fingerprints only.
+
+`coax/build.sh` builds a temporary stage0 compiler with proto imports disabled.
+Stage0 checks and mutation-tests the importer and wire core, then emits the
+importer's C11 library/header. The host C compiler compiles it, and the C++20
+frontend links it into the final compiler. Both stages must emit identical C
+for the importer before publication. There is no old parser or generator
+fallback, checked-in generated C seed, Python step or protoc build dependency.
+
+The runtime remains authoritative Coax in `lib/proto/wire.coax` (pure policy)
+and `memory.coax` (two address wrappers). Shell byte copies embed those sources;
+only the core program before `// @proto-runtime-checks` enters generated apps.
+`PB_` is a reserved substitution marker in this owned template, including its
+comments; template authors must not use it as literal application data.
+
+The final compiler performs imports in-process, without subprocesses, temporary
+files, a protobuf library or adjacent helper/runtime files. A relocated compiler
+works with an empty `PATH`. The retired `COAX_PROTO_TOOL` and
+`COAX_PROTO_PYTHON` variables have no effect. Generated C11 also needs no
+protobuf or interpreter runtime. Explicit descriptor reads remain outside
+`#run`, which still refuses host I/O.
 
 To inspect or save exactly the generated Coax declarations without compiling
 an application:
@@ -161,30 +173,39 @@ proven; this change does not deploy or replace the app.
 ## Native importer audit boundary
 
 Descriptor imports are explicit compiler input reads, separate from `#run`.
-Generated C/headers carry the descriptor and embedded runtime SHA-256 values,
-native generator ID and compiler version in a `coax-proto-v2` comment. The
+Generated C/headers carry the descriptor, authoritative importer source and
+embedded runtime SHA-256 values, generator ID `coax0-coax-v1` and compiler
+version in a `coax-proto-v3` comment. The
 compiler binary/toolchain must still be pinned independently; fingerprints
 are not signatures, authority or a hermetic-build guarantee.
 
-The native reader borrows descriptor byte spans only for the duration of an
+The Coax reader borrows descriptor byte spans only for the duration of an
 import. It validates wire types, duplicate metadata, UTF-8, names, dependency
 closure, options and supported shapes before generation. Work, nesting, input
 and output budgets bound the import. Errors retain the originating import's
 location, including JSON diagnostics; generated declarations do not invent
 user-file line numbers past EOF.
 
-The descriptor parser/generator in `src/proto.cpp` remains C++ bootstrap code
-in the compiler's trusted computing base, along with the checker, evaluator and
-C emitter. It has no Coax checks of its own. Reimplementing its decisions in a
-second Coax model would not check this implementation. ASan/UBSan and malformed-
-descriptor fuzzing detect exercised defects; they do not prove the reader or
-generator correct. A future verified/self-hosted importer is separate work.
+The actual parser/generator is now checked Coax, not a second model of a C++
+implementation. It uses bounded, host-owned views for messages, fields, enum
+values, groups, names and source buffers. Coax's exported `D_capacities` defines
+those scratch allocations; the host allocates from that contract. Native
+file-read and output-envelope bounds remain defensive host checks.
+Failures are values with first-error diagnostics; failed imports publish no
+partial source. Mutable scratch state is per import, with no cross-import cache.
+
+This does not remove the trusted computing base: the C++ frontend, check
+interpreter and C emitter, the C toolchain, host allocation/I/O/fingerprinting
+and native address wrappers remain trusted. Finite checks and mutation testing
+are not a formal proof of the importer or the bootstrap chain.
 
 The evidence has distinct scopes:
 
 | Gate | What it establishes | What it does not establish |
 | --- | --- | --- |
 | Legacy declaration hashes in `tests/proto/import-baselines.json` | No generated schema-API drift for 11 existing profiles plus the scalar fixture; original full-output hashes retained as history | Correctness of either generator |
+| `coax test coax/lib/proto/importer.coax` | The actual parser/generator passes valid/invalid descriptor, budget, UTF-8, dependency, namespace, policy, diagnostic and generated-output checks | Universal correctness; exact-output fixtures characterize compatibility |
+| `coax mutate coax/lib/proto/importer.coax` | All selected mutations are killed, with no equivalent exemptions | An exhaustive defect model or proof of the compiler executing the checks |
 | `coax test coax/lib/proto/wire.coax` | Bounded, executable properties of the actual pure runtime source, including exhaustive two-byte varint/UTF-8 inputs and explicit limit/capacity/Unicode boundaries | Universal correctness, native pointer validity or complete generated-API coverage |
 | `coax mutate coax/lib/proto/wire.coax` | All selected mutations are rejected by those checks, with no exemptions | A proof or an exhaustive defect model |
 | `coax test coax/tests/proto/runtime.coax` | Selected actual imported routines agree with the checked core's expected behavior | Every generated accessor, or a separate parser implementation |
@@ -193,8 +214,8 @@ The evidence has distinct scopes:
 | Relocated binary and iOS consumer tests | The real Home codecs compile/run without Python/helpers in normal builds | General engine/app correctness |
 
 `wire.coax` carries `#authority`, so compiling it runs its checks and requires
-actual procedure execution. Bootstrap builds run both its checks and mutation
-gate before publishing coax0. The two tiny `memory.coax` wrappers supply the
+actual procedure execution. Bootstrap builds run both files’ checks and zero-survivor mutation gates before
+publishing coax0. The two tiny `memory.coax` wrappers supply the
 physical-overlap observation to the pure policy; that observation is a native
 boundary tested by C ABI/sanitizer cases, not Coax verification. Callers use the
 generated public message APIs, not the internal `_checked` routines.
@@ -203,4 +224,18 @@ The complete imported profile is not marked `#authority`: that would imply
 coverage of all its generated APIs and native operations. Generated sources
 include neither the core's authority directive nor its test harness. Their
 runtime fingerprint covers exactly the embedded program core plus address
-wrappers. Python remains test/oracle and schema-maintenance tooling only.
+wrappers. The importer fingerprint additionally covers its authoritative source,
+including checks. Generated importer C/header are ignored build outputs. Python remains test/oracle and schema-maintenance tooling only.
+
+To run the importer gate directly:
+
+```sh
+coax/bin/coax test coax/lib/proto/importer.coax
+coax/bin/coax mutate coax/lib/proto/importer.coax
+```
+
+The inline binary fixtures and expected declaration chunks are checked-in test
+vectors; no Python generator is needed to read or execute them. The legacy
+output fixtures deliberately prove compatibility only. Independent protoc
+interoperability and native sanitizer fuzzing exercise the compiled Coax
+implementation through the real compiler entry point.

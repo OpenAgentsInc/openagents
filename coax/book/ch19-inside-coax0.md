@@ -26,18 +26,19 @@ source → lexer → parser → checker → evaluator → C emitter → cc → e
 
 ## 19.2 One translation unit
 
-`main.cpp` `#include`s every other `.cpp` file, so there is one C++20
-compiler invocation. Run the build script from the repository root:
+The C++ frontend remains a unity translation unit. The descriptor parser and
+source generator are Coax in `lib/proto/importer.coax`. Build from the root:
 
 ```sh
 coax/build.sh
 ```
 
-The script first copies the authoritative `.coax` protobuf runtime sources into
-an ignored C++ include, then compiles with `-I bin`. It runs the pure wire core's
-checks and mutation gate before atomically publishing `coax/bin/coax`. There is
-no Python generator or installed runtime-file dependency. Directly compiling
-`src/main.cpp` requires the generated include from that build step.
+The script builds a temporary frontend with proto imports disabled, checks and
+mutation-tests the Coax importer and wire core, then emits the importer as C11.
+It links that compiled object into the final compiler, requires identical
+regenerated importer C, and publishes the standalone binary atomically. The
+native bridge only reads files, allocates Coax-requested scratch buffers and
+records fingerprints. No Python/protoc step or old importer fallback exists.
 
 ## 19.3 Memory: one arena
 

@@ -9,7 +9,7 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.6.1 implements procedures;
+**Implementation status matters.** Version 0.7.0 implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
@@ -712,14 +712,19 @@ snapshots preserve their pre-reset identities. New alpha options and Verse
 world/presence projections are experimental inputs. Current descriptors are
 in `proto/descriptors/`, generated and tested by `scripts/proto.sh`; the
 Coax compiler now ingests selected proto3 closures through `#import_proto`.
-Version 0.6.1 performs descriptor parsing and generation natively in C++; its
-Coax wire runtime source lives in `lib/proto/wire.coax` with `#authority`,
-bounded checks and a zero-survivor mutation build gate. Shell byte copies embed
-that core plus two native-address wrappers into the compiler. The C++ importer
-and physical-address observations remain explicit trusted boundaries; see the
-evidence scopes in [proto.md](proto.md#native-importer-audit-boundary). Normal
-imports need no Python, protoc, subprocess or installed helper files. `coax proto` exposes the generated
-Coax source directly; independent schema/oracle tests retain their own tooling.
+Version 0.7.0 implements descriptor parsing, validation and source generation in
+`lib/proto/importer.coax`. Its `#authority` checks and mutation gate execute on
+the actual implementation. A proto-disabled C++ stage0 compiles it to C11,
+then the final compiler links it and must regenerate identical C. Coax defines
+its bounded scratch capacities; native code owns allocation, I/O and hashes.
+The runtime remains in `lib/proto/wire.coax` with separate authority/mutation
+gates and two native-address wrappers. The frontend, check evaluator, C emitter,
+host effects and toolchain remain trusted; finite checks are not a proof of
+the bootstrap chain. See the evidence scopes in
+[proto.md](proto.md#native-importer-audit-boundary). Normal builds and imports
+need no Python, protoc, subprocess-based importer or installed helpers.
+`coax proto` exposes generated Coax source; independent schema/oracle tests
+retain their own tooling.
 
 `#import_proto` generates typed views, repeated iterators, explicit presence,
 oneof cases and caller-buffer codecs using the implemented data types.

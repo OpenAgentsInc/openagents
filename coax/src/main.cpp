@@ -1,6 +1,5 @@
-// coax0 driver, and the unity build: this file includes every other source,
-// so the compiler builds with one compiler invocation (performance stack
-// item 2).
+// coax0 driver and C++ unity frontend. The build-only stage0 compiles the
+// Coax descriptor importer to C11, which is linked into the final compiler.
 //
 //   coax run     file.coax [--release]               compile and run
 //   coax build   file.coax [-o out] [--release] [--keep-c]
@@ -39,7 +38,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.6.1";
+static const char *VERSION = "coax0 0.7.0";
 
 int32_t g_error_count = 0;
 bool g_json_errors = false;

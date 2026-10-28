@@ -53,6 +53,14 @@ targets:
       - name: Generate Coax product code
         script: '"$SRCROOT/generate.sh"'
         basedOnDependencyAnalysis: false
+        outputFiles:
+          - $(SRCROOT)/Generated/Home.c
+          - $(SRCROOT)/Generated/Home.h
+          - $(SRCROOT)/Generated/Player.c
+          - $(SRCROOT)/Generated/Player.h
+          - $(SRCROOT)/Generated/Grid.c
+          - $(SRCROOT)/Generated/Grid.h
+          - $(SRCROOT)/Generated/HomeShaders.txt
   OpenAgentsUITests:
     type: bundle.ui-testing
     platform: iOS

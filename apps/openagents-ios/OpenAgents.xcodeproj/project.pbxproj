@@ -282,6 +282,13 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(SRCROOT)/Generated/Home.c",
+				"$(SRCROOT)/Generated/Home.h",
+				"$(SRCROOT)/Generated/Player.c",
+				"$(SRCROOT)/Generated/Player.h",
+				"$(SRCROOT)/Generated/Grid.c",
+				"$(SRCROOT)/Generated/Grid.h",
+				"$(SRCROOT)/Generated/HomeShaders.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

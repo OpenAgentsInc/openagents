@@ -65,4 +65,6 @@ verify_rc=$?
 wire_checks_rc=$?
 "$COAX" test lib/proto/wire.coax && "$COAX" mutate lib/proto/wire.coax
 wire_core_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $wire_core_rc -eq 0 ]]
+"$COAX" test lib/proto/importer.coax
+importer_checks_rc=$?
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 ]]

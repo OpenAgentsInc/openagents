@@ -138,7 +138,7 @@ const ErrorInfo ERRORS[] = {
     // ---- E05xx: proto imports ----
     {"E0501", "invalid proto import", "Use #import_proto \"profile.pb\" as Prefix; with an exact FileDescriptorSet path relative to the source file."},
     {"E0502", "proto descriptor rejected", "The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated."},
-    {"E0503", "retired in 0.6.0", "Was: external proto importer unavailable. Descriptor parsing, generation and the Coax runtime template are now built into coax0."},
+    {"E0503", "retired in 0.6.0", "Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0."},
     {"E0504", "proto imports are CPU-only", "Generated binary codecs are CPU code and cannot be compiled as Metal shaders."},
 };
 

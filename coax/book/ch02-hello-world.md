@@ -11,17 +11,17 @@ need a C++20 compiler (Xcode's clang, or any recent clang or gcc).
 coax/build.sh
 ```
 
-That compiles the whole compiler as a single translation unit:
-`src/main.cpp` includes the other source files, so there is one compiler
-invocation. Shell byte copies embed the Coax wire runtime, and its checks and
-mutation gate run before publishing the compiler at `coax/bin/coax`. Check it:
+That builds the C++ frontend as one translation unit, uses it to check and
+compile the Coax descriptor importer to C11, then links the final compiler.
+The importer and wire runtime must pass their checks and mutation gates before
+publishing the compiler at `coax/bin/coax`. Check it:
 
 ```sh
 coax/bin/coax version
 ```
 
 ```
-coax0 0.6.1
+coax0 0.7.0
 ```
 
 The rest of this book writes `coax` for `coax/bin/coax`. To type

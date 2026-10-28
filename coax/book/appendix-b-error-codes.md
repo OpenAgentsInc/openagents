@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.6.1 can report. This appendix is generated from the
+Every error `coax0` 0.7.0 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
@@ -163,7 +163,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | --- | --- | --- |
 | `E0102` | retired in 0.3.0 | Was: floating-point literals are not supported. Floats arrived in 0.3.0. |
 | `E0211` | retired in 0.2.0 | Was: only procedures can be declared at the top level. Top-level constants arrived in 0.2.0. |
-| `E0503` | retired in 0.6.0 | Was: external proto importer unavailable. Descriptor parsing, generation and the Coax runtime template are now built into coax0. |
+| `E0503` | retired in 0.6.0 | Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0. |
 
 ## Run-time traps
 
