@@ -14,7 +14,7 @@ g() { gcloud "$@" --project "$project" --quiet; }
 exists() { gcloud "$@" --project "$project" > /dev/null 2>&1; }
 
 g storage buckets add-iam-policy-binding "gs://$bucket" --member allUsers --role roles/storage.objectViewer > /dev/null
-g storage buckets update "gs://$bucket" --web-main-page-suffix index.html > /dev/null
+g storage buckets update "gs://$bucket" --web-main-page-suffix index.html --web-error-page 404.html > /dev/null
 exists compute backend-buckets describe "$name" ||
   g compute backend-buckets create "$name" --gcs-bucket-name "$bucket" --enable-cdn --cache-mode USE_ORIGIN_HEADERS
 exists compute url-maps describe "$name" || g compute url-maps create "$name" --default-backend-bucket "$name"

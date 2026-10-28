@@ -10,6 +10,7 @@
 //   coaxial_state_size()      bytes of state the host keeps
 //   coaxial_max_vertices(), coaxial_vertex_floats(), coaxial_uniform_floats()
 //   coaxial_frame(state, vertices, uniforms, width, height, dpr, dt, still)
+//   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
 //                             -> vertex count
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
 // vertices: one vec4f attribute per four floats), sharing one uniform buffer.
@@ -68,6 +69,7 @@ async function loadEngine(bytes, generation) {
     if (engine) say(`state layout changed: ${app} starts over`);
     arena.layout = layout;
   }
+  x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
   engine = { exports: x, layout };
   return true;
 }

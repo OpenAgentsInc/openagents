@@ -121,14 +121,26 @@ static bool resolve(const char *url, char *out, size_t cap) {
   return snprintf(out, cap, "%s%s", app_dir, path) < (int)cap;
 }
 
+// An unknown path gets the app's 404.html, if it has one, with a 404 status.
+static void not_found(int fd) {
+  char path[2048];
+  static char page[1 << 16];
+  snprintf(path, sizeof path, "%s/404.html", app_dir);
+  FILE *f = fopen(path, "rb");
+  size_t n = f ? fread(page, 1, sizeof page, f) : 0;
+  if (f) fclose(f);
+  if (n > 0 && n < sizeof page) respond(fd, 404, "Not Found", "text/html; charset=utf-8", page, n);
+  else respond(fd, 404, "Not Found", "text/plain", "not found\n", 10);
+}
+
 static void serve_file(int fd, const char *url) {
   char path[2048];
-  if (!resolve(url, path, sizeof path)) { respond(fd, 404, "Not Found", "text/plain", "not found\n", 10); return; }
+  if (!resolve(url, path, sizeof path)) { not_found(fd); return; }
   FILE *f = fopen(path, "rb");
   struct stat st;
   if (!f || fstat(fileno(f), &st) || !S_ISREG(st.st_mode)) {
     if (f) fclose(f);
-    respond(fd, 404, "Not Found", "text/plain", "not found\n", 10);
+    not_found(fd);
     return;
   }
   char *body = malloc((size_t)st.st_size + 1);

@@ -49,8 +49,9 @@ for f in sorted(os.listdir(app)):
         name = re.search(r'data-app="([^"]+)"', m.group(0)).group(1)
         wasm = put(os.path.join(app, "build", name + ".wasm"), f"build/{name}.wasm")
         wgsl = put(os.path.join(app, name + ".wgsl"), f"{name}.wgsl")
-        return f'<script type="module" src="{host_url}" data-app="{name}" data-wasm="{wasm}" data-wgsl="{wgsl}">'
-    text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+">', tag, text)
+        rest = m.group(1)
+        return f'<script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'
+    text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+"([^>]*)>', tag, text)
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)
 PY
 

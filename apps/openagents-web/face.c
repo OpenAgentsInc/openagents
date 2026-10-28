@@ -17,6 +17,11 @@ EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uin
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_splash_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_splash_uniform_floats(); }
 
+// Which page to draw: 0 the splash, 1 the not-found page.
+EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) {
+  ((coax_t_SplashState *)(uintptr_t)state)->page = page;
+}
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
                        float width, float height, float dpr, float dt, uint32_t still) {
