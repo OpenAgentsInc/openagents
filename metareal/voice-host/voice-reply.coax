@@ -1,0 +1,183 @@
+// The voice host's reply-path decisions (docs/voice/dev.md, "Latency").
+// The host hands this file plain numbers: how much of a turn a finished or
+// in-flight recognition covers, where the last voiced frame ended, and the
+// bytes of a streaming agent reply one at a time. This file decides when a
+// partial transcript may stand as the final one (which decides whether the
+// agent hears every word), when to recognize early, and where a reply may be
+// cut into sentences for synthesis. Words are never routed here; a byte is
+// only ever compared with sentence punctuation and whitespace.
+//   coax/bin/coax test metareal/voice-host/voice-reply.coax
+//   coax/bin/coax mutate metareal/voice-host/voice-reply.coax
+#authority;
+
+// Audio after the last voiced frame that a transcript must also cover, so a
+// trailing consonant that fell under the speech threshold is still heard.
+GUARD_MS :: 100;
+// Silence a recognition's cut point must sit in before the audio after it
+// may be recognized on its own (no word can straddle a cut in silence).
+CUT_SILENCE_MS :: 200;
+// Trailing silence after which the host recognizes early, before the
+// client's end of turn arrives.
+EARLY_MS :: 160;
+// The shortest reply prefix that may be synthesized as a sentence.
+MIN_SENTENCE :: 8;
+// The first piece of a reply is at least this long, and may also end at a
+// clause (',' ';' ':'): short enough to render fast, long enough (about 1.5 s
+// of speech) that the next piece is rendered before it finishes playing, so
+// the reply's audio has no gap. (A Chirp 3 HD render takes about 300 ms plus
+// 130 ms per second of audio.)
+MIN_FIRST :: 24;
+
+// ---- The final transcript ----
+
+// What to do at TURN_END:
+//   0 recognize the whole turn
+//   1 the finished partial is the final transcript
+//   2 recognize only the audio after the finished partial, and append it
+//   3 wait for the in-flight recognition, then decide again
+// voiced_end: ms of turn audio up to the end of the last voiced frame.
+// done_cover: ms the finished partial covered (0 for none); done_text: it
+//   has words; done_cut_silence: ms of silence at its cut point.
+// flight_cover: ms an in-flight recognition covers (0 for none).
+PLAN_WHOLE :: 0;
+PLAN_USE :: 1;
+PLAN_TAIL :: 2;
+PLAN_WAIT :: 3;
+
+// Every voiced frame plus the guard. voiced_end >= 0 (the host's count of
+// turn audio); with no audio a recognition of nothing covers nothing.
+covers :: (cover: int, voiced_end: int) -> bool {
+  return cover >= voiced_end + GUARD_MS;
+}
+
+metareal_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bool, done_cut_silence: int, flight_cover: int) -> int #export_c {
+  if done_text && covers(done_cover, voiced_end) { return PLAN_USE; }
+  if covers(flight_cover, voiced_end) { return PLAN_WAIT; }
+  if done_text && done_cover > 0 && done_cut_silence >= CUT_SILENCE_MS { return PLAN_TAIL; }
+  return PLAN_WHOLE;
+}
+
+#forall "the final plan" voiced: 0..<5, done: 0..<6, text: 0..<2, cut: 0..<3, flight: 0..<6 {
+  v := voiced * 60;
+  d := done * 60;
+  f := flight * 60;
+  c := cut * 100;
+  t := text == 1;
+  p := metareal_voice_reply_final_plan(v, d, t, c, f);
+  // A partial stands as final only if it has words and covers every voiced
+  // frame plus the guard: nothing the speaker said is left out.
+  if p == PLAN_USE { #assert t && d >= v + GUARD_MS; }
+  // Waiting is only for a recognition that will cover everything.
+  if p == PLAN_WAIT { #assert f >= v + GUARD_MS; }
+  // A tail is only recognized after a cut that sat in silence.
+  if p == PLAN_TAIL { #assert t && d > 0 && c >= CUT_SILENCE_MS; }
+  // A covering partial with words is always used: no second recognition.
+  if t && d >= v + GUARD_MS { #assert p == PLAN_USE; }
+  // With nothing finished or in flight, the whole turn is recognized.
+  if d == 0 && f == 0 { #assert p == PLAN_WHOLE; }
+}
+
+#test "the final plan at the edges" {
+  #assert metareal_voice_reply_final_plan(1000, 1100, true, 0, 0) == PLAN_USE;
+  #assert metareal_voice_reply_final_plan(1000, 1099, true, 0, 0) == PLAN_WHOLE;
+  #assert metareal_voice_reply_final_plan(1000, 1100, false, 0, 0) == PLAN_WHOLE;
+  #assert metareal_voice_reply_final_plan(1000, 1099, true, 0, 1100) == PLAN_WAIT;
+  #assert metareal_voice_reply_final_plan(1000, 0, false, 0, 1099) == PLAN_WHOLE;
+  #assert metareal_voice_reply_final_plan(1000, 800, true, 200, 0) == PLAN_TAIL;
+  #assert metareal_voice_reply_final_plan(1000, 800, true, 199, 0) == PLAN_WHOLE;
+  #assert metareal_voice_reply_final_plan(1000, 800, false, 200, 0) == PLAN_WHOLE;
+  #assert metareal_voice_reply_final_plan(0, 0, true, 300, 0) == PLAN_WHOLE;
+  #assert metareal_voice_reply_final_plan(0, 100, true, 0, 0) == PLAN_USE;
+  #assert metareal_voice_reply_final_plan(1000, 1, true, 200, 0) == PLAN_TAIL;
+  #assert metareal_voice_reply_final_plan(1000, 0, true, 200, 0) == PLAN_WHOLE;
+}
+
+// Recognize early: the speaker has been quiet for EARLY_MS after voicing,
+// and nothing finished or in flight covers the last voiced frame yet.
+metareal_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: int) -> bool #export_c {
+  if voiced_end <= 0 { return false; }
+  if silence_ms < EARLY_MS { return false; }
+  return !covers(cover, voiced_end);
+}
+
+#forall "recognizing early" silence: 0..<5, voiced: 0..<4, cover: 0..<6 {
+  s := silence * 60;
+  v := voiced * 80;
+  c := cover * 80;
+  e := metareal_voice_reply_recognize_early(s, v, c);
+  #assert e == (v > 0 && s >= EARLY_MS && !(c >= v + GUARD_MS));
+}
+
+#test "recognizing early at the edges" {
+  #assert metareal_voice_reply_recognize_early(160, 500, 0);
+  #assert !metareal_voice_reply_recognize_early(159, 500, 0);
+  #assert !metareal_voice_reply_recognize_early(400, 0, 0);
+  #assert !metareal_voice_reply_recognize_early(400, 500, 600);
+  #assert metareal_voice_reply_recognize_early(400, 500, 599);
+  #assert metareal_voice_reply_recognize_early(400, 1, 0);
+}
+
+// ---- Sentences ----
+
+// Is there a sentence end between byte `cur` and byte `next` of a reply
+// whose sentence so far is `length` bytes (including cur)? next is -1 when
+// the reply is complete and cur is its last byte, -2 when the next byte has
+// not arrived yet. Ends: '.', '!', '?' followed by whitespace, or a newline;
+// the reply's first piece (`first`) must be MIN_FIRST bytes and may also end
+// at ',' ';' ':' followed by whitespace. A very short sentence ("Hi.") joins
+// the next one.
+is_space :: (c: int) -> bool { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
+
+metareal_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool) -> bool #export_c {
+  if next == -2 { return false; }
+  if length < MIN_SENTENCE { return false; }
+  if first && length < MIN_FIRST { return false; }
+  if cur == '\n' { return true; }
+  if first && (cur == ',' || cur == ';' || cur == ':') { return is_space(next); }
+  if cur != '.' && cur != '!' && cur != '?' { return false; }
+  return next == -1 || is_space(next);
+}
+
+#forall "sentence ends" cur: 0..<128, next: -2..<128, size: 6..<10, f: 0..<2 {
+  e := metareal_voice_reply_sentence_end(cur, next, size, f == 1);
+  punct := cur == '.' || cur == '!' || cur == '?';
+  space := next == ' ' || next == '\n' || next == '\t' || next == '\r';
+  want := next != -2 && size >= MIN_SENTENCE && f == 0 && (cur == '\n' || (punct && (next == -1 || space)));
+  #assert e == want;
+}
+
+#forall "clause ends" cur: 32..<128, next: -2..<128, size: 22..<27, f: 0..<2 {
+  e := metareal_voice_reply_sentence_end(cur, next, size, f == 1);
+  punct := cur == '.' || cur == '!' || cur == '?';
+  clause := cur == ',' || cur == ';' || cur == ':';
+  space := next == ' ' || next == '\n' || next == '\t' || next == '\r';
+  ok_len := f == 0 || size >= MIN_FIRST;
+  want := next != -2 && ok_len && ((punct && (next == -1 || space)) || (f == 1 && clause && space));
+  #assert e == want;
+}
+
+#test "sentence ends" {
+  #assert metareal_voice_reply_sentence_end('.', ' ', 8, false);
+  #assert !metareal_voice_reply_sentence_end('.', ' ', 7, false);
+  #assert !metareal_voice_reply_sentence_end('.', '5', 20, false);   // 1.5
+  #assert !metareal_voice_reply_sentence_end('.', -2, 20, false);    // not arrived yet
+  #assert metareal_voice_reply_sentence_end('?', -1, 20, false);
+  #assert metareal_voice_reply_sentence_end('!', '\n', 20, false);
+  #assert metareal_voice_reply_sentence_end('.', '\t', 20, false);
+  #assert metareal_voice_reply_sentence_end('.', '\r', 20, false);
+  #assert metareal_voice_reply_sentence_end('\n', 'A', 20, false);
+  #assert !metareal_voice_reply_sentence_end(',', ' ', 20, false);
+  #assert metareal_voice_reply_sentence_end(',', ' ', 24, true);
+  #assert metareal_voice_reply_sentence_end('.', ' ', 24, true);
+  #assert !metareal_voice_reply_sentence_end('.', ' ', 23, true);   // "Hello there!" joins the next
+  #assert !metareal_voice_reply_sentence_end('\n', 'A', 23, true);
+  #assert metareal_voice_reply_sentence_end('\n', 'A', 24, true);
+  #assert !metareal_voice_reply_sentence_end(',', ' ', 23, true);
+  #assert !metareal_voice_reply_sentence_end(',', ' ', 40, false);
+  #assert metareal_voice_reply_sentence_end(';', '\n', 30, true);
+  #assert metareal_voice_reply_sentence_end(':', '\t', 30, true);
+  #assert metareal_voice_reply_sentence_end(':', '\r', 30, true);
+  #assert !metareal_voice_reply_sentence_end(',', '5', 30, true);   // 1,500
+  #assert !metareal_voice_reply_sentence_end(',', -1, 30, true);
+  #assert !metareal_voice_reply_sentence_end(',', -2, 30, true);
+}
