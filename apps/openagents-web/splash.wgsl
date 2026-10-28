@@ -1,11 +1,16 @@
 // The splash's two passes. Every number they draw from comes from
-// splash.coax: the canvas size, the nebula's clock, the fade, and each
+// splash.coax and ui.coax: the canvas size, the nebula's clock, the fade,
+// how dim the scene is, the panel behind the terminal or a prompt, and each
 // stroke's place, width, light and glow.
 //
 // Temporary: hand-written WGSL until Coax emits WGSL (coax/web.md). The
 // nebula is the previous openagents.com splash's, unchanged.
 
-struct U { size: vec2f, time: f32, fade: f32, still: f32, pad0: f32, pad1: f32, pad2: f32 }
+struct U {
+  size: vec2f, time: f32, fade: f32, still: f32, scene: f32, pad0: f32, pad1: f32,
+  panel: vec4f,        // x0, y0, x1, y1 in device pixels (ui.coax)
+  cut: f32, alpha: f32, tint: f32, pad2: f32,   // corner, opacity, 0 orange / 1 red / 2 granted
+}
 @group(0) @binding(0) var<uniform> u: U;
 
 // ---- the nebula: one full-screen triangle
@@ -33,7 +38,29 @@ fn fbm(q: vec2f) -> f32 {
   var c = tint * glow * glow * (0.2 + 0.8 * n);
   let star = step(0.9975, hash(floor(pos.xy * 0.5))) * (0.5 + 0.5 * sin(u.time * 1.3 + hash(floor(pos.xy)) * 40.0));
   c += vec3f(star * 0.5 * (1.0 - glow * 0.6));
-  return vec4f(c * u.fade, 1.0);
+  c = c * u.fade * u.scene;
+  return vec4f(panel(pos.xy, c), 1.0);
+}
+
+// The panel behind the terminal or a prompt: a dark glass with its corners
+// clipped at 45°, faint scanlines and an inner glow in the state's colour.
+fn panel(p: vec2f, under: vec3f) -> vec3f {
+  if (u.alpha <= 0.0) { return under; }
+  let lo = u.panel.xy; let hi = u.panel.zw;
+  let x = p.x - lo.x; let y = p.y - lo.y; let w = hi.x - lo.x; let h = hi.y - lo.y;
+  // distance inside the clipped rectangle (negative outside)
+  let side = min(min(x, w - x), min(y, h - y));
+  let corner = min(min(x + y, (w - x) + y), min(x + (h - y), (w - x) + (h - y))) - u.cut;
+  let inside = min(side, corner * 0.7071);
+  if (inside <= 0.0) { return under; }
+  var tint = vec3f(1.0, 0.55, 0.12);
+  if (u.tint > 0.5 && u.tint < 1.5) { tint = vec3f(1.0, 0.24, 0.24); }
+  if (u.tint > 1.5) { tint = vec3f(1.0, 0.65, 0.3); }
+  let shade = mix(vec3f(0.055, 0.039, 0.024), vec3f(0.016, 0.016, 0.024), clamp(y / max(h, 1.0), 0.0, 1.0));
+  let line = select(0.0, 0.035, fract(p.y / 3.0) < 0.34);
+  let glow = exp(-inside / 18.0) * select(0.06, 0.16, u.tint > 1.5);
+  let glass = mix(under * 0.18, shade, 0.86) + vec3f(line) + tint * glow;
+  return mix(under, glass, clamp(u.alpha, 0.0, 1.0) * smoothstep(0.0, 1.5, inside));
 }
 
 // ---- the words, the graph and the amounts: one quad per stroke

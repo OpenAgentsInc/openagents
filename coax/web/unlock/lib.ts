@@ -67,6 +67,23 @@ export function checkDeck(deck: unknown): Deck {
   return d
 }
 
+/** A deck as the lines the page's Coax code reads (ui.coax): "D" and the
+ * title, then per slide "=", "T" title, "S" subtitle, "P" body lines, "B"
+ * bullets and "N" notes. Text keeps its "**" bold marks. */
+export function deckLines(deck: Deck): string {
+  const one = (s: string) => s.replace(/\s*[\r\n]+\s*/g, " ").trim()
+  const lines = (s: string | undefined) => (s ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const out = ["D" + one(deck.title)]
+  for (const s of deck.slides) {
+    out.push("=", "T" + one(s.title))
+    if (s.subtitle) out.push("S" + one(s.subtitle))
+    for (const p of lines(s.body)) out.push("P" + p)
+    for (const b of s.bullets ?? []) out.push("B" + one(b))
+    for (const n of lines(s.notes)) out.push("N" + n)
+  }
+  return out.join("\n") + "\n"
+}
+
 /** Reads the deck format: slides split by a line of ---, each "# title",
  * an optional "## subtitle", "- " bullets, "> " speaker notes, other lines body. */
 export function parseDeck(markdown: string): Deck {

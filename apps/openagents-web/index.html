@@ -14,7 +14,8 @@
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
 body{display:grid;place-items:center;overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
-canvas{position:fixed;inset:0;width:100%;height:100%}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas[data-cursor=pointer]{cursor:pointer}
 main{position:relative;text-align:center;padding:0 16px}
 h1{margin:0;font-size:13px;font-weight:500;letter-spacing:.6em;text-indent:.6em;text-transform:uppercase;line-height:1}
 /* When the GPU draws the words, the heading stays for search engines and screen readers only. */

@@ -10,8 +10,19 @@
 //   coaxial_state_size()      bytes of state the host keeps
 //   coaxial_max_vertices(), coaxial_vertex_floats(), coaxial_uniform_floats()
 //   coaxial_frame(state, vertices, uniforms, width, height, dpr, dt, still)
-//   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
 //                             -> vertex count
+//   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
+// and, optionally, input and output, all drawn and decided by the app:
+//   coaxial_key(state, key, mods) -> used     a code point, or a named key < 0 (KEYS)
+//   coaxial_pointer(state, x, y, phase, kind) device pixels; phase 0 down 1 move 2 up 3 cancel
+//   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
+//                             text in: kind 1 is typed or pasted text; others the page's own
+//   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
+//   coaxial_cursor(state)     0 the default, 1 a link
+//   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
+//                             out: 1 navigates to the outbox's URL; others go to the page's
+//                             scripts as a "coaxial" event (0 when an engine loads), which
+//                             answer with coaxial.send(kind, text)
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
 // vertices: one vec4f attribute per four floats), sharing one uniform buffer.
 
@@ -30,6 +41,10 @@ const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) |
 // Reduced motion draws the finished frame at once (probes use it too: headless browsers barely tick).
 const still = (probe && !probeAt) || matchMedia("(prefers-reduced-motion: reduce)").matches;
 let frames = 0;
+// Development tests only: ?probe&do=STEPS runs input before the probed frame,
+// steps split by ";": "kTEXT" types keys, "K-2" a named key, "m16:TEXT" a
+// message, "t1.5" runs the clock that many seconds.
+const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "";
 
 const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024 }); // 4 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
@@ -71,6 +86,9 @@ async function loadEngine(bytes, generation) {
   }
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
   engine = { exports: x, layout };
+  // The page's scripts may talk to the app from now (action 0: ready).
+  globalThis.coaxial.ready = true;
+  dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
   return true;
 }
 
@@ -148,6 +166,7 @@ function frame(now) {
   try {
     for (let k = 0; probeAt && !gpu.probed && k < probeAt * 10; k++)
       engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);
+    if (probeDo && !gpu.probed) runProbe(w, h, dpr);
     n = engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
   } catch (e) { say(`${app} trapped: ${e.message}`, true); engine = null; return; }
   n = Math.min(n, arena.maxVertices);
@@ -165,6 +184,104 @@ function frame(now) {
   device.queue.submit([encoder.finish()]);
   document.documentElement.classList.add("gpu");
   if (readback) report(readback, texture);
+  after(false);
+}
+
+// ---- input: keys, the pointer and typed text go to the app; its actions come out
+const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
+  Home: -8, End: -9, PageUp: -10, PageDown: -11 };
+const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports[name](arena.state, ...args) : 0);
+let field = null;   // INVARIANTS.md: the keyboard field, a zero-size input that brings up a phone's keyboard
+let touched = false;
+
+function send(kind, text = "") {
+  const x = engine?.exports;
+  if (!x?.coaxial_message) return;
+  const bytes = new TextEncoder().encode(text).subarray(0, x.coaxial_inbox_cap());
+  new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
+  x.coaxial_message(arena.state, kind, bytes.length);
+  after(false);
+}
+globalThis.coaxial = { send, ready: false };
+
+// After input or a frame: focus or free the keyboard field, carry out an
+// action, set the cursor. gesture: inside an input event, where a phone
+// lets a field bring up its keyboard; tap: a touch just ended, which focuses
+// the field again so a keyboard that was dismissed comes back.
+function after(gesture, tap = false) {
+  if (!engine) return;
+  const x = engine.exports;
+  const want = call("coaxial_wants_text") === 1;
+  if (want && document.activeElement !== field ? gesture || !touched : want && tap && touched) focusField();
+  else if (!want && field && document.activeElement === field) field.blur();
+  const code = call("coaxial_action");
+  if (code) {
+    const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_outbox(arena.state), x.coaxial_outbox_len(arena.state)).slice());
+    call("coaxial_action_done");
+    if (code === 1) { if (text.startsWith("/")) location.assign(text); }
+    else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
+  }
+  const cursor = ["", "pointer"][call("coaxial_cursor")] || "";
+  if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;
+}
+
+function focusField() {
+  if (!field) {
+    field = document.createElement("input"); // keyboard field
+    for (const [k, v] of Object.entries({ "aria-label": "Typed text", autocomplete: "off", autocapitalize: "off",
+      autocorrect: "off", spellcheck: "false", enterkeyhint: "go" })) field.setAttribute(k, v);
+    field.style.cssText = "position:fixed;left:0;bottom:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:16px"; // keyboard field
+    // The field holds one space, so a phone's delete always has something to delete.
+    const flush = () => {
+      const v = field.value;
+      if (v === " ") return;
+      if (v === "") call("coaxial_key", KEYS.Backspace, 0); else send(1, v.startsWith(" ") ? v.slice(1) : v);
+      field.value = " "; field.setSelectionRange(1, 1);
+      after(false);
+    };
+    field.addEventListener("input", (e) => { if (!e.isComposing) flush(); });
+    field.addEventListener("compositionend", flush);
+    document.body.append(field);
+  }
+  if (document.activeElement === field) field.blur();
+  field.value = " ";
+  field.focus({ preventScroll: true });
+  field.setSelectionRange(1, 1);
+}
+
+addEventListener("keydown", (e) => {
+  if (!engine || e.isComposing) return;
+  const named = KEYS[e.key];
+  if (!named && e.target === field) return;   // the field's input event brings the text
+  const key = named ?? ([...e.key].length === 1 ? e.key.codePointAt(0) : 0);
+  if (!key) return;
+  const mods = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+  if (call("coaxial_key", key, mods)) e.preventDefault();
+  after(true);
+});
+addEventListener("paste", (e) => {
+  if (e.target === field || !engine) return;
+  const text = e.clipboardData?.getData("text") || "";
+  if (text) { e.preventDefault(); send(1, text); }
+});
+for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup", 2], ["pointercancel", 3]])
+  addEventListener(type, (e) => {
+    if (!engine) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    if (phase !== 1) touched = e.pointerType !== "mouse";
+    call("coaxial_pointer", e.clientX * dpr, e.clientY * dpr, phase, e.pointerType === "mouse" ? 0 : 1);
+    after(phase === 2, phase === 2);
+  });
+
+function runProbe(w, h, dpr) {
+  for (const step of probeDo.split(";").filter(Boolean)) {
+    const op = step[0], arg = step.slice(1);
+    if (op === "k") for (const c of arg) call("coaxial_key", c.codePointAt(0), 0);
+    if (op === "K") call("coaxial_key", Number(arg), 0);
+    if (op === "m") { const i = arg.indexOf(":"); send(Number(i < 0 ? arg : arg.slice(0, i)), i < 0 ? "" : arg.slice(i + 1)); }
+    if (op === "t") for (let k = 0; k < Number(arg) * 10; k++)
+      engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);
+  }
 }
 
 // Development tests only (?probe): copy one frame back and print its middle

@@ -5,11 +5,14 @@ The website, drawn by Coax on WebGPU. The framework is specified in
 
 Today this is the splash: `splash.coax` lays out and animates the words,
 `graph.coax` is the iOS home's graph (from `metareal/home.coax`, same seed)
-fading in behind them as a wide band, `splash.wgsl` draws both over the
-nebula, `face.c` exports the Coax
-procedures to the browser, and `index.html` / `index.md` carry the same
-words as text for search engines, screen readers and browsers without
-WebGPU.
+fading in behind them as a wide band, `font.coax` is Filament, the stroke
+font every letter is drawn in ([coax/font.md](../../coax/font.md)),
+`ui.coax` is what a visitor can do (the access terminal, the key prompt and
+slides of a hidden presentation, the not-found page's HOME), `splash.wgsl`
+draws it all over the nebula, `face.c` exports the Coax procedures to the
+browser, and `index.html` / `index.md` carry the same words as text for
+search engines, screen readers and browsers without WebGPU. Nothing visible
+is HTML (INVARIANTS.md); `coax/web/check-visuals.sh` checks it.
 
 ```sh
 coax/bin/coax test apps/openagents-web/splash.coax   # the splash's checks
@@ -25,6 +28,9 @@ change reloads the page. Build errors show in the page's corner with the
 
 `http://127.0.0.1:8800/?probe` reads one frame back from the GPU and prints
 its middle to the console, for checking a render in a headless browser.
+`&at=8` runs the clock 8 seconds first, and `&do=` runs input before the
+frame (`m16;kab;t0.5` arms the terminal, types two keys, waits half a
+second; see `host.js`).
 
 A new `.coax` file is watched from the next `coax serve` start; until then,
 save `splash.coax` to rebuild.

@@ -1,0 +1,333 @@
+// Filament, the stroke font (coax/font.md), stages 1, 2 and the symbols the
+// HUD and decks need: capitals, digits and punctuation. Lowercase letters
+// draw as capitals until stage 3. A glyph is one or a few polylines on a
+// 4 wide, 6 high grid, y up, the baseline at 0, corners clipped at 45°.
+// Points are kept in half units with the baseline at 2 (x * 2, y * 2 + 2),
+// so the half units the rules allow (dots, the slash's foot) and the
+// descenders of , ; _ fit in a u8; FONT_BREAK lifts the pen.
+// The table is sorted by code point: font_find is a binary search.
+// Glyphs: ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _ ` | ~ U+00B7 U+2013 U+2014 U+2018 U+2019 U+201C U+201D U+2022 U+2026 U+20BF U+2192
+
+FONT_BREAK :: 255;
+FONT_GLYPHS :: 77;
+FONT_MAX_POINTS :: 18;   // the most points (breaks included) one glyph has
+FONT_CODES :: [77] u32.[
+  33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+  45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56,
+  57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
+  69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
+  81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92,
+  93, 94, 95, 96, 124, 126, 183, 8211, 8212, 8216, 8217, 8220,
+  8221, 8226, 8230, 8383, 8594
+];
+FONT_FIRST :: [77] u16.[
+  0, 5, 10, 21, 36, 50, 60, 62, 66, 70, 74, 79, 82, 84, 86, 88,
+  97, 100, 107, 116, 120, 129, 140, 143, 159, 170, 175, 181, 184, 189, 192, 202,
+  215, 223, 235, 243, 250, 257, 263, 273, 281, 283, 288, 296, 299, 304, 308, 317,
+  324, 336, 345, 357, 361, 367, 372, 377, 382, 390, 394, 398, 400, 404, 407, 409,
+  411, 413, 417, 419, 421, 423, 425, 427, 432, 437, 439, 447, 465
+];
+FONT_COUNT :: [77] u8.[
+  5, 5, 11, 15, 14, 10, 2, 4, 4, 4, 5, 3, 2, 2, 2, 9, 3, 7, 9, 4, 9, 11, 3, 16,
+  11, 5, 6, 3, 5, 3, 10, 13, 8, 12, 8, 7, 7, 6, 10, 8, 2, 5, 8, 3, 5, 4, 9, 7,
+  12, 9, 12, 4, 6, 5, 5, 5, 8, 4, 4, 2, 4, 3, 2, 2, 2, 4, 2, 2, 2, 2, 2, 5,
+  5, 2, 8, 18, 5
+];
+FONT_WIDTH :: [77] u8.[
+  2, 3, 8, 8, 8, 8, 2, 2, 2, 6, 8, 2, 6, 2, 4, 8, 4, 8, 8, 8, 8, 8, 8, 8,
+  8, 2, 2, 4, 8, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 0, 8, 8, 8, 8, 8, 8, 8,
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 8, 2, 0, 8, 2, 8, 12, 2, 2, 3,
+  3, 2, 8, 8, 8
+];   // in half units
+FONT_POINTS :: [940] u8.[
+  1, 14, 1, 6, 255, 255, 1, 2, 1, 3, 0, 14, 0, 11, 255, 255, 3, 14, 3, 11, 2, 4, 2, 12,
+  255, 255, 6, 4, 6, 12, 255, 255, 0, 6, 8, 6, 255, 255, 0, 10, 8, 10, 8, 12, 6, 14, 2, 14,
+  0, 12, 0, 10, 2, 8, 6, 8, 8, 6, 8, 4, 6, 2, 2, 2, 0, 4, 255, 255, 4, 15, 4, 1,
+  0, 2, 8, 14, 255, 255, 0, 12, 0, 14, 2, 14, 2, 12, 0, 12, 255, 255, 6, 2, 8, 2, 8, 4,
+  6, 4, 6, 2, 8, 2, 2, 8, 2, 12, 4, 14, 6, 12, 6, 10, 0, 4, 2, 2, 4, 2, 8, 6,
+  1, 14, 1, 11, 2, 14, 0, 12, 0, 4, 2, 2, 0, 14, 2, 12, 2, 4, 0, 2, 6, 14, 0, 8,
+  6, 8, 2, 2, 0, 8, 8, 8, 4, 8, 4, 12, 4, 4, 1, 3, 1, 2, 0, 0, 0, 8, 6, 8,
+  1, 2, 1, 3, 0, 2, 4, 14, 2, 2, 6, 2, 8, 4, 8, 12, 6, 14, 2, 14, 0, 12, 0, 4,
+  2, 2, 2, 12, 4, 14, 4, 2, 0, 12, 2, 14, 6, 14, 8, 12, 8, 10, 0, 2, 8, 2, 0, 14,
+  8, 14, 4, 8, 6, 8, 8, 6, 8, 4, 6, 2, 2, 2, 0, 4, 6, 2, 6, 14, 0, 6, 8, 6,
+  8, 14, 0, 14, 0, 8, 6, 8, 8, 6, 8, 4, 6, 2, 2, 2, 0, 4, 8, 12, 6, 14, 2, 14,
+  0, 12, 0, 4, 2, 2, 6, 2, 8, 4, 8, 6, 6, 8, 0, 8, 0, 14, 8, 14, 2, 2, 2, 8,
+  0, 10, 0, 12, 2, 14, 6, 14, 8, 12, 8, 10, 6, 8, 2, 8, 0, 6, 0, 4, 2, 2, 6, 2,
+  8, 4, 8, 6, 6, 8, 0, 4, 2, 2, 6, 2, 8, 4, 8, 12, 6, 14, 2, 14, 0, 12, 0, 10,
+  2, 8, 8, 8, 1, 2, 1, 3, 255, 255, 1, 8, 1, 9, 1, 3, 1, 2, 0, 0, 255, 255, 1, 8,
+  1, 9, 4, 12, 0, 8, 4, 4, 0, 6, 8, 6, 255, 255, 0, 10, 8, 10, 0, 12, 4, 8, 0, 4,
+  0, 12, 2, 14, 6, 14, 8, 12, 8, 10, 4, 6, 4, 5, 255, 255, 4, 2, 4, 3, 6, 6, 6, 10,
+  2, 10, 2, 6, 6, 6, 8, 6, 8, 12, 6, 14, 2, 14, 0, 12, 0, 4, 2, 2, 8, 2, 0, 2,
+  0, 12, 2, 14, 6, 14, 8, 12, 8, 2, 8, 8, 0, 8, 0, 2, 0, 14, 6, 14, 8, 12, 8, 10,
+  6, 8, 0, 8, 6, 8, 8, 6, 8, 4, 6, 2, 0, 2, 8, 12, 6, 14, 2, 14, 0, 12, 0, 4,
+  2, 2, 6, 2, 8, 4, 0, 2, 0, 14, 6, 14, 8, 12, 8, 4, 6, 2, 0, 2, 8, 14, 0, 14,
+  0, 8, 6, 8, 0, 8, 0, 2, 8, 2, 8, 14, 0, 14, 0, 8, 6, 8, 0, 8, 0, 2, 8, 12,
+  6, 14, 2, 14, 0, 12, 0, 4, 2, 2, 6, 2, 8, 4, 8, 8, 4, 8, 0, 14, 0, 2, 255, 255,
+  8, 14, 8, 2, 255, 255, 0, 8, 8, 8, 0, 2, 0, 14, 8, 14, 8, 4, 6, 2, 2, 2, 0, 4,
+  0, 14, 0, 2, 255, 255, 8, 14, 0, 6, 255, 255, 2, 8, 8, 2, 0, 14, 0, 2, 8, 2, 0, 2,
+  0, 14, 4, 8, 8, 14, 8, 2, 0, 2, 0, 14, 8, 2, 8, 14, 2, 2, 6, 2, 8, 4, 8, 12,
+  6, 14, 2, 14, 0, 12, 0, 4, 2, 2, 0, 2, 0, 14, 6, 14, 8, 12, 8, 10, 6, 8, 0, 8,
+  2, 2, 6, 2, 8, 4, 8, 12, 6, 14, 2, 14, 0, 12, 0, 4, 2, 2, 255, 255, 4, 6, 8, 2,
+  0, 2, 0, 14, 6, 14, 8, 12, 8, 10, 6, 8, 0, 8, 2, 8, 8, 2, 8, 12, 6, 14, 2, 14,
+  0, 12, 0, 10, 2, 8, 6, 8, 8, 6, 8, 4, 6, 2, 2, 2, 0, 4, 0, 14, 8, 14, 4, 14,
+  4, 2, 0, 14, 0, 4, 2, 2, 6, 2, 8, 4, 8, 14, 0, 14, 0, 6, 4, 2, 8, 6, 8, 14,
+  0, 14, 0, 2, 4, 8, 8, 2, 8, 14, 0, 14, 8, 2, 255, 255, 8, 14, 0, 2, 0, 14, 0, 12,
+  4, 8, 4, 2, 255, 255, 8, 14, 8, 12, 4, 8, 0, 14, 8, 14, 0, 2, 8, 2, 4, 14, 0, 14,
+  0, 2, 4, 2, 0, 14, 4, 2, 0, 14, 4, 14, 4, 2, 0, 2, 0, 10, 2, 12, 4, 10, 0, 0,
+  8, 0, 0, 14, 2, 12, 0, 15, 0, 1, 0, 8, 2, 10, 6, 6, 8, 8, 1, 8, 1, 9, 0, 8,
+  8, 8, 0, 8, 12, 8, 1, 14, 1, 11, 1, 14, 1, 11, 0, 14, 0, 11, 255, 255, 3, 14, 3, 11,
+  0, 14, 0, 11, 255, 255, 3, 14, 3, 11, 1, 7, 1, 9, 0, 2, 0, 3, 255, 255, 4, 2, 4, 3,
+  255, 255, 8, 2, 8, 3, 0, 2, 0, 14, 6, 14, 8, 12, 8, 10, 6, 8, 0, 8, 6, 8, 8, 6,
+  8, 4, 6, 2, 0, 2, 255, 255, 3, 14, 3, 16, 255, 255, 3, 2, 3, 0, 0, 8, 8, 8, 6, 10,
+  8, 8, 6, 6
+];
+
+// A code point and how many bytes of UTF-8 it took.
+Rune :: struct { code: u32; len: int; }
+
+// The code point at byte i of UTF-8 text. A malformed byte reads as one '?'.
+decode :: (text: string, i: int) -> Rune {
+  bad := Rune.{code = '?', len = 1};
+  if i < 0 || i >= text.count { return bad; }
+  b := cast(u32) text[i];
+  if b < 0x80 { return Rune.{code = b, len = 1}; }
+  n := 0; c: u32 = 0;
+  if b >= 0xF0 && b < 0xF8 { n = 4; c = b & 7; }
+  else if b >= 0xE0 && b < 0xF0 { n = 3; c = b & 15; }
+  else if b >= 0xC0 && b < 0xE0 { n = 2; c = b & 31; }
+  else { return bad; }
+  if i + n > text.count { return bad; }
+  for k: 1..<n {
+    x := cast(u32) text[i + k];
+    if (x & 0xC0) != 0x80 { return bad; }
+    c = (c << 6) | (x & 63);
+  }
+  return Rune.{code = c, len = n};
+}
+
+// Writes code point c as UTF-8 at out[at]. Returns the bytes written (0
+// when it doesn't fit).
+encode :: (c: u32, out: [] u8, at: int) -> int {
+  n := ifx c < 0x80 then 1 else ifx c < 0x800 then 2 else ifx c < 0x10000 then 3 else 4;
+  if at < 0 || at + n > out.count || c > 0x10FFFF { return 0; }
+  if n == 1 { out[at] = cast(u8) c; return 1; }
+  lead: u32 = ifx n == 2 then 0xC0 else ifx n == 3 then 0xE0 else 0xF0;
+  out[at] = cast(u8) (lead | (c >> (6 * cast(u32) (n - 1))));
+  for k: 1..<n { out[at + k] = cast(u8) (0x80 | ((c >> (6 * cast(u32) (n - 1 - k))) & 63)); }
+  return n;
+}
+
+// The glyph a code point draws as: lowercase as capitals (until stage 3),
+// Latin-1 accented letters as their base letter, a no-break space as a space.
+font_fold :: (code: u32) -> u32 {
+  c := code;
+  if c >= 'a' && c <= 'z' { return c - 32; }
+  if c >= 0xE0 && c <= 0xFE && c != 0xF7 { c -= 32; }
+  if c >= 0xC0 && c <= 0xC5 { return 'A'; }
+  if c == 0xC7 { return 'C'; }
+  if c >= 0xC8 && c <= 0xCB { return 'E'; }
+  if c >= 0xCC && c <= 0xCF { return 'I'; }
+  if c == 0xD1 { return 'N'; }
+  if (c >= 0xD2 && c <= 0xD6) || c == 0xD8 { return 'O'; }
+  if c >= 0xD9 && c <= 0xDC { return 'U'; }
+  if c == 0xDD { return 'Y'; }
+  if c == 0xA0 || c == '\t' { return ' '; }
+  return c;
+}
+
+// The table row for code point c (folded), or the row for '?' when the
+// font has no such glyph.
+font_find :: (code: u32) -> int {
+  c := font_fold(code);
+  low := 0; high := FONT_GLYPHS - 1;
+  while low <= high {
+    mid := (low + high) / 2;
+    if FONT_CODES[mid] == c { return mid; }
+    if FONT_CODES[mid] < c { low = mid + 1; } else { high = mid - 1; }
+  }
+  if c == '?' { return -1; }
+  return font_find('?');
+}
+
+// A glyph's points: x * 2, y * 2 + 2, FONT_BREAK between strokes. Writes
+// pairs into out and returns how many points.
+glyph :: (code: u32, out: [] u8) -> int {
+  k := font_find(code);
+  if k < 0 || out.count < FONT_MAX_POINTS * 2 { return 0; }
+  first := cast(int) FONT_FIRST[k]; n := cast(int) FONT_COUNT[k];
+  for p: 0..<n * 2 { out[p] = FONT_POINTS[first * 2 + p]; }
+  return n;
+}
+
+// A glyph's width in cap heights (I is a single line: 0).
+glyph_width :: (code: u32) -> f32 {
+  k := font_find(code);
+  if k < 0 { return 0; }
+  return cast(f32) FONT_WIDTH[k] / 12;
+}
+
+// "**" at byte i: rich text's bold switch, which draws nothing.
+bold_mark :: (text: string, i: int) -> bool {
+  return i + 1 < text.count && text[i] == '*' && text[i + 1] == '*';
+}
+
+// Whether rich text is bold at byte i (an odd number of "**" before it).
+bold_at :: (text: string, i: int) -> bool {
+  on := false; k := 0;
+  while k < i && k < text.count {
+    if bold_mark(text, k) { on = !on; k += 2; } else { k += 1; }
+  }
+  return on;
+}
+
+// How wide text is, in cap heights: glyph widths, gap between letters that
+// touch, and space for each space. Rich text's "**" takes no room.
+measure :: (text: string, gap: f32, space: f32, rich: bool) -> f32 {
+  w := 0.0f32; i := 0; after := false;
+  while i < text.count {
+    if rich && bold_mark(text, i) { i += 2; continue; }
+    d := decode(text, i); i += d.len;
+    c := font_fold(d.code);
+    if c == ' ' { w += space; after = false; continue; }
+    if c < 32 { continue; }
+    if after { w += gap; }
+    w += glyph_width(c);
+    after = true;
+  }
+  return w;
+}
+
+// How text is drawn: the stroke's half width, brightness and glow reach
+// (device pixels), its colour and the shader mode.
+Ink :: struct { core: f32; light: f32; glow: f32; red: f32; green: f32; blue: f32; mode: f32; }
+
+// Draws text with the left end of its baseline at x, base (device pixels,
+// y down) and capitals cap pixels tall, from vertex at. Rich text draws
+// "**"-marked runs bold (brighter, thicker, white), starting bold if bold.
+// Returns the new vertex count; text that runs out of room stops drawing.
+draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, gap: f32, space: f32,
+              k: Ink, rich: bool, bold: bool) -> int {
+  points: [FONT_MAX_POINTS * 2] u8;
+  unit := cap / 12;              // device pixels per half unit
+  vertices := at; i := 0; after := false; strong := bold; pen := x;
+  while i < text.count {
+    if rich && bold_mark(text, i) { strong = !strong; i += 2; continue; }
+    d := decode(text, i); i += d.len;
+    c := font_fold(d.code);
+    if c == ' ' { pen += space * cap; after = false; continue; }
+    if c < 32 { continue; }
+    if after { pen += gap * cap; }
+    n := glyph(c, points[..]);
+    core := ifx strong then k.core * 1.5 else k.core;
+    light := ifx strong then hi(k.light, lo(1, k.light * 1.35)) else k.light;
+    red := ifx strong then 1.0f32 else k.red;
+    green := ifx strong then 1.0f32 else k.green;
+    blue := ifx strong then 1.0f32 else k.blue;
+    for p: 1..<n {
+      if points[(p - 1) * 2] == FONT_BREAK || points[p * 2] == FONT_BREAK { continue; }
+      ax := pen + cast(f32) points[(p - 1) * 2] * unit;
+      ay := base - (cast(f32) points[(p - 1) * 2 + 1] - 2) * unit;
+      bx := pen + cast(f32) points[p * 2] * unit;
+      by := base - (cast(f32) points[p * 2 + 1] - 2) * unit;
+      if lit(out, vertices, ax, ay, bx, by, core, light, k.glow, red, green, blue, k.mode) { vertices += 6; }
+    }
+    pen += glyph_width(c) * cap;
+    after = true;
+  }
+  return vertices;
+}
+
+// The end of text's line that starts at byte from, wrapped to width cap
+// heights at spaces: the first byte of the next line (past its spaces) is
+// written to next[0]. A word longer than the line breaks where it must.
+wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, next: [] int) -> int {
+  i := from; end := from; w := 0.0f32;
+  while i < text.count {
+    if text[i] == '\n' { end = i; next[0] = i + 1; return end; }
+    // the next word
+    j := i;
+    while j < text.count && text[j] != ' ' && text[j] != '\n' { j += 1; }
+    word := measure(text[i..<j], gap, space, rich);
+    lead := ifx end > from then space else 0.0f32;
+    if end > from && w + lead + word > width {
+      next[0] = i; return end;
+    }
+    if end == from && word > width {
+      // one long word: as many letters as fit
+      k := i; fit := k;
+      while k < j {
+        d := decode(text, k);
+        if measure(text[i..<k + d.len], gap, space, rich) > width && fit > i { break; }
+        k += d.len; fit = k;
+      }
+      next[0] = fit; return fit;
+    }
+    w += lead + word; end = j; i = j;
+    while i < text.count && text[i] == ' ' { i += 1; }
+  }
+  next[0] = text.count;
+  return end;
+}
+
+#test "every glyph is on the grid, inside its width, and the table is sorted" {
+  for k: 0..<FONT_GLYPHS {
+    if k > 0 { #assert FONT_CODES[k - 1] < FONT_CODES[k]; }
+    first := cast(int) FONT_FIRST[k]; n := cast(int) FONT_COUNT[k];
+    #assert n >= 2 && n <= FONT_MAX_POINTS;
+    #assert FONT_POINTS[first * 2] != FONT_BREAK && FONT_POINTS[(first + n - 1) * 2] != FONT_BREAK;
+    for p: 0..<n {
+      x := FONT_POINTS[(first + p) * 2]; y := FONT_POINTS[(first + p) * 2 + 1];
+      if x == FONT_BREAK { #assert y == FONT_BREAK; continue; }
+      #assert x <= FONT_WIDTH[k] && y <= 16;
+      // whole grid units, except the listed half units: dots, quotes, and the slash family
+      if p > 0 && FONT_POINTS[(first + p - 1) * 2] != FONT_BREAK {
+        px := FONT_POINTS[(first + p - 1) * 2]; py := FONT_POINTS[(first + p - 1) * 2 + 1];
+        #assert px != x || py != y;    // no zero-length segments
+      }
+    }
+  }
+}
+
+#test "the HUD's and a deck's characters all have glyphs" {
+  need := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;!?'\"-/()&%$#@+=*·…–—“”‘’•";
+  i := 0;
+  while i < need.count {
+    d := decode(need[..], i); i += d.len;
+    k := font_find(d.code);
+    #assert k >= 0 && FONT_CODES[k] == d.code;
+  }
+  #assert FONT_CODES[font_find('q')] == 'Q' && FONT_CODES[font_find(0xE9)] == 'E';
+  #assert FONT_CODES[font_find(0x4E2D)] == '?';
+}
+
+#test "UTF-8 goes both ways, and bad bytes read as '?'" {
+  buf: [8] u8;
+  for c: [5] u32.[65, 0xB7, 0x2026, 0x1F600, 0x7FF] {
+    n := encode(c, buf[..], 0);
+    d := decode(cast(string) buf[0..<n], 0);
+    #assert d.code == c && d.len == n;
+  }
+  bad := [2] u8.[0xE2, 0x41];
+  #assert decode(cast(string) bad[..], 0).code == '?' && decode(cast(string) bad[..], 0).len == 1;
+  #assert encode(0x2026, buf[..], 6) == 0;
+}
+
+#test "measure and wrap" {
+  #assert measure("I", 0.3, 1, false) == 0;
+  #assert abs(measure("AB", 0.5, 1, false) - (4.0 / 6 * 2 + 0.5)) < 0.001;
+  #assert measure("A**B**", 0.5, 1, true) == measure("AB", 0.5, 1, false);
+  #assert measure("A B", 0.5, 1, false) == measure("AB", 0.5, 1, false) - 0.5 + 1;
+  #assert bold_at("a **b** c", 4) && !bold_at("a **b** c", 8);
+  text := "ONE TWO THREE FOUR";
+  next: [1] int;
+  width := measure("ONE TWO", 0.3, 0.7, false) + 0.01;
+  end := wrap(text[..], 0, width, 0.3, 0.7, false, next[..]);
+  #assert end == 7 && next[0] == 8;
+  end = wrap(text[..], 8, width, 0.3, 0.7, false, next[..]);
+  #assert end == 13 && next[0] == 14;
+  end = wrap(text[..], 14, width, 0.3, 0.7, false, next[..]);
+  #assert end == 18 && next[0] == 18;
+  long := "ABCDEFGHIJ";
+  end = wrap(long[..], 0, 3, 0.3, 0.7, false, next[..]);
+  #assert end > 0 && end < 10 && measure(long[0..<end], 0.3, 0.7, false) <= 3;
+}

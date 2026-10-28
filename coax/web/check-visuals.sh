@@ -18,13 +18,14 @@ for page in "$app"/*.html; do
   [[ -z "$outside" ]] || bad "$(basename "$page"): text or links outside the hidden <main>"
 done
 # The host and the crypto glue build no UI: no styled or created elements
-# except the keyboard field (unlock/) and the dev note (host.js, localhost).
+# except the keyboard field and the dev note (host.js, localhost), each line
+# marked.
 for f in "$here/host.js" "$here"/unlock/*.ts; do
   [[ -e "$f" ]] || continue
   case "$f" in *.test.ts) continue ;; esac
-  n="$(grep -cE 'innerHTML|insertAdjacentHTML|\.style\.|createElement\("(div|span|button|a|img|form|section|pre|p|h[1-6]|style|svg|canvas)"\)|className *=' "$f" || true)"
-  allowed=0
-  [[ "$(basename "$f")" == host.js ]] && allowed="$(grep -cE '// dev only' "$f" || true)"
-  [[ "$n" -le "$allowed" ]] || bad "$(basename "$f"): builds or styles visible UI ($n place(s)); draw it in Coax"
+  marked='// (dev only|keyboard field)$'
+  [[ "$(basename "$f")" == host.js ]] || marked='^$'
+  n="$(grep -E 'innerHTML|insertAdjacentHTML|\.style\.|createElement\("(div|span|button|a|img|form|section|pre|p|h[1-6]|style|svg|canvas)"\)|className *=' "$f" | grep -cvE "$marked" || true)"
+  [[ "$n" -eq 0 ]] || bad "$(basename "$f"): builds or styles visible UI ($n place(s)); draw it in Coax"
 done
 exit $fail

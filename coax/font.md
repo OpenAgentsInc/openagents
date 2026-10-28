@@ -1,6 +1,6 @@
 # Filament: a stroke font for Coaxial
 
-Proposal, 2026-10-28. Status: not built.
+Proposal, 2026-10-28. Status: stages 1, 2 and the HUD's symbols are built (`apps/openagents-web/font.coax`); lowercase draws as capitals until stage 3.
 
 The openagents.com splash writes COMING SOON in seven hand-drawn glyphs
 (`apps/openagents-web/splash.coax`). Each one is a single line through points

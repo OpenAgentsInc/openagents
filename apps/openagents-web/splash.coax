@@ -1,9 +1,10 @@
 // The openagents.com splash, drawn by Coax. The page is one WebGPU canvas:
 // a slow nebula behind (splash.wgsl), the iOS home's graph fading in as a
-// wide band across the middle (graph.coax), and two lines drawn as glowing
-// strokes that write themselves on, letter by letter, then shimmer:
-// OPENAGENTS in the top third after a pause, COMING SOON just under it a
-// little later. Payments run the graph's links in Bitcoin orange.
+// wide band across the middle (graph.coax), and COMING SOON near the top,
+// drawn in glowing strokes (font.coax) that write themselves on, letter by
+// letter, after a pause, then shimmer. Payments run the graph's links in
+// Bitcoin orange. What a visitor can do (the access terminal, presentations,
+// the not-found page's HOME) is ui.coax.
 // The host (coax/web/host.js) owns the GPU and calls this once a frame; this
 // file decides every number it draws: where each stroke goes, how much of it
 // is written, how bright it is, and the nebula's clock.
@@ -13,35 +14,36 @@
 // animation carries on from where it was.
 
 #load "graph.coax";
+#load "font.coax";
+#load "ui.coax";
 
 SplashState :: struct {
   time: f32;       // seconds since the page started, as this code counts them
   frames: int;
   page: int;       // 0 the splash, 1 the not-found page (the host sets it: coaxial_page)
+  ui: Ui;
 }
 
-LINES :: 2;          // OPENAGENTS, COMING SOON
+LINES :: 2;          // the most lines a page has
 LINE_MAX :: 11;      // letters in the longest line
-MAX_POINTS :: 16;    // the longest glyph (8) has 16 points
-MAX_SEGMENTS :: 160; // both lines' strokes, with room
+MAX_SEGMENTS :: 160; // a page's strokes, with room
 VERTEX_FLOATS :: 12; // x, y, along, across, length, core, light, glow, red, green, blue, mode
-MAX_VERTICES :: 14400; // (MAX_SEGMENTS + GRAPH_QUADS) * 6
+MAX_VERTICES :: 50400; // (MAX_SEGMENTS + GRAPH_QUADS + UI_QUADS) * 6
 
 // How the shader draws a quad (the vertex's last float).
 MODE_STROKE :: 0.0;  // a sharp core and a soft glow: words, nodes
 MODE_LINK :: 1.0;    // a soft line, faded where it meets its nodes
 MODE_PULSE :: 2.0;   // a payment in flight: a hot head, a tail, a coloured glow
 MODE_GLOW_TEXT :: 3.0; // a stroke with a white core and a coloured glow: the amounts
-UNIFORM_FLOATS :: 8; // width, height, time, fade, still, 0, 0, 0
+UNIFORM_FLOATS :: 16; // width, height, time, fade, still, scene, 0, 0, then the panel (ui.coax): x0, y0, x1, y1, cut, alpha, tint, 0
 
 CAP :: 11.0;         // COMING SOON's cap height, CSS pixels
-TITLE_CAP :: 20.0;   // OPENAGENTS's cap height, CSS pixels
+TITLE_CAP :: 20.0;   // 404's cap height, CSS pixels
 GAP :: 0.72;         // letter gap, in cap heights (the old page's 0.6em spacing)
 SPACE :: 1.5;        // a space, in cap heights
 CORE :: 0.62;        // half the stroke, CSS pixels (a 1.2 px line, like weight 500 at 13 px)
 GLOW :: 7.0;         // the glow's reach, CSS pixels
-TITLE_START :: 2.0;  // seconds before OPENAGENTS starts to appear
-START :: 4.5;        // seconds before COMING SOON starts to appear
+START :: 2.0;        // seconds before COMING SOON starts to appear
 APPEAR :: 1.2;       // seconds a line takes to fade up as it writes
 STEP :: 0.032;       // seconds between strokes starting
 DRAW :: 0.22;        // seconds one stroke takes to write
@@ -52,81 +54,40 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
 
-// Lines come two to a page: 0 OPENAGENTS and 1 COMING SOON on the splash,
-// 2 "404" and 3 NOT FOUND on the not-found page. Even lines are titles.
-// How many letters line l has.
+// Lines: 0 COMING SOON on the splash; 1 "404" and 2 NOT FOUND on the
+// not-found page. How many letters line l has.
 line_count :: (l: int) -> int {
-  if l == 0 { return 10; }
-  if l == 2 { return 3; }
-  if l == 3 { return 9; }
+  if l == 1 { return 3; }
+  if l == 2 { return 9; }
   return 11;
 }
 
 // The letter at position i of line l (0 is a space).
 letter :: (l: int, i: int) -> u8 {
   if i < 0 || i >= line_count(l) { return 0; }
-  if l == 0 { t := [10] u8.['O', 'P', 'E', 'N', 'A', 'G', 'E', 'N', 'T', 'S']; return t[i]; }
-  if l == 2 { t := [3] u8.['4', '0', '4']; return t[i]; }
-  if l == 3 { t := [9] u8.['N', 'O', 'T', 0, 'F', 'O', 'U', 'N', 'D']; return t[i]; }
+  if l == 1 { t := [3] u8.['4', '0', '4']; return t[i]; }
+  if l == 2 { t := [9] u8.['N', 'O', 'T', 0, 'F', 'O', 'U', 'N', 'D']; return t[i]; }
   t := [11] u8.['C', 'O', 'M', 'I', 'N', 'G', 0, 'S', 'O', 'O', 'N'];
   return t[i];
 }
 
+// A page's lines: the first, and how many.
+page_first :: (page: int) -> int { return ifx page == 1 then 1 else 0; }
+page_lines :: (page: int) -> int { return ifx page == 1 then 2 else 1; }
+
 // Line l's cap height in CSS pixels, when it starts, and where its centre
 // sits as a fraction of the page height. The not-found page comes up quickly.
-line_cap :: (l: int) -> f32 { return ifx l % 2 == 0 then TITLE_CAP else CAP; }
+line_cap :: (l: int) -> f32 { return ifx l == 1 then TITLE_CAP else CAP; }
 
-// Line l's cap height on a page width CSS pixels wide: the title shrinks to
+// Line l's cap height on a page width CSS pixels wide: a big line shrinks to
 // keep a margin on a narrow phone.
 fitted_cap :: (l: int, width: f32) -> f32 { return lo(line_cap(l), width * 0.86 / text_width(l)); }
 line_start :: (l: int) -> f32 {
-  if l == 2 { return 0.4; }
-  if l == 3 { return 1.0; }
-  return ifx l == 0 then TITLE_START else START;
+  if l == 1 { return 0.4; }
+  if l == 2 { return 1.0; }
+  return START;
 }
-line_y :: (l: int) -> f32 { return ifx l % 2 == 0 then 0.14f32 else 0.205f32; }
-
-// A glyph is one stroke through points on a 4 wide, 6 high grid, y up.
-// Writes x, y pairs into out and returns how many points.
-glyph :: (c: u8, out: [] u8) -> int {
-  if out.count < MAX_POINTS * 2 { return 0; }
-  n := 0;
-  if c == 'C' { p := [16] u8.[4,5, 3,6, 1,6, 0,5, 0,1, 1,0, 3,0, 4,1]; for k: 0..<16 { out[k] = p[k]; } n = 8; }
-  if c == 'O' { p := [18] u8.[1,0, 3,0, 4,1, 4,5, 3,6, 1,6, 0,5, 0,1, 1,0]; for k: 0..<18 { out[k] = p[k]; } n = 9; }
-  if c == 'M' { p := [10] u8.[0,0, 0,6, 2,3, 4,6, 4,0]; for k: 0..<10 { out[k] = p[k]; } n = 5; }
-  if c == 'I' { p := [4] u8.[0,0, 0,6]; for k: 0..<4 { out[k] = p[k]; } n = 2; }
-  if c == 'N' { p := [8] u8.[0,0, 0,6, 4,0, 4,6]; for k: 0..<8 { out[k] = p[k]; } n = 4; }
-  if c == 'G' { p := [20] u8.[4,5, 3,6, 1,6, 0,5, 0,1, 1,0, 3,0, 4,1, 4,3, 2,3]; for k: 0..<20 { out[k] = p[k]; } n = 10; }
-  if c == 'F' { p := [12] u8.[4,6, 0,6, 0,3, 3,3, 0,3, 0,0]; for k: 0..<12 { out[k] = p[k]; } n = 6; }
-  if c == 'U' { p := [12] u8.[0,6, 0,1, 1,0, 3,0, 4,1, 4,6]; for k: 0..<12 { out[k] = p[k]; } n = 6; }
-  if c == 'D' { p := [14] u8.[0,0, 0,6, 3,6, 4,5, 4,1, 3,0, 0,0]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
-  if c == 'P' { p := [14] u8.[0,0, 0,6, 3,6, 4,5, 4,4, 3,3, 0,3]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
-  if c == 'E' { p := [14] u8.[4,6, 0,6, 0,3, 3,3, 0,3, 0,0, 4,0]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
-  if c == 'A' { p := [16] u8.[0,0, 0,5, 1,6, 3,6, 4,5, 4,0, 4,3, 0,3]; for k: 0..<16 { out[k] = p[k]; } n = 8; }
-  if c == 'T' { p := [8] u8.[0,6, 4,6, 2,6, 2,0]; for k: 0..<8 { out[k] = p[k]; } n = 4; }
-  if c == '0' { p := [18] u8.[1,0, 3,0, 4,1, 4,5, 3,6, 1,6, 0,5, 0,1, 1,0]; for k: 0..<18 { out[k] = p[k]; } n = 9; }
-  if c == '1' { p := [6] u8.[1,5, 2,6, 2,0]; for k: 0..<6 { out[k] = p[k]; } n = 3; }
-  if c == '2' { p := [14] u8.[0,5, 1,6, 3,6, 4,5, 4,4, 0,0, 4,0]; for k: 0..<14 { out[k] = p[k]; } n = 7; }
-  if c == '3' { p := [18] u8.[0,6, 4,6, 2,3, 3,3, 4,2, 4,1, 3,0, 1,0, 0,1]; for k: 0..<18 { out[k] = p[k]; } n = 9; }
-  if c == '4' { p := [8] u8.[3,0, 3,6, 0,2, 4,2]; for k: 0..<8 { out[k] = p[k]; } n = 4; }
-  if c == '5' { p := [18] u8.[4,6, 0,6, 0,3, 3,3, 4,2, 4,1, 3,0, 1,0, 0,1]; for k: 0..<18 { out[k] = p[k]; } n = 9; }
-  if c == '6' { p := [22] u8.[4,5, 3,6, 1,6, 0,5, 0,1, 1,0, 3,0, 4,1, 4,2, 3,3, 0,3]; for k: 0..<22 { out[k] = p[k]; } n = 11; }
-  if c == '7' { p := [6] u8.[0,6, 4,6, 1,0]; for k: 0..<6 { out[k] = p[k]; } n = 3; }
-  if c == '8' { p := [32] u8.[1,3, 0,4, 0,5, 1,6, 3,6, 4,5, 4,4, 3,3, 1,3, 0,2, 0,1, 1,0, 3,0, 4,1, 4,2, 3,3]; for k: 0..<32 { out[k] = p[k]; } n = 16; }
-  if c == '9' { p := [22] u8.[0,1, 1,0, 3,0, 4,1, 4,5, 3,6, 1,6, 0,5, 0,4, 1,3, 4,3]; for k: 0..<22 { out[k] = p[k]; } n = 11; }
-  if c == '+' { p := [10] u8.[0,3, 4,3, 2,3, 2,5, 2,1]; for k: 0..<10 { out[k] = p[k]; } n = 5; }
-  if c == '*' { p := [8] u8.[3,6, 0,3, 3,3, 1,0]; for k: 0..<8 { out[k] = p[k]; } n = 4; }   // a lightning bolt
-  if c == 'S' { p := [24] u8.[4,5, 3,6, 1,6, 0,5, 0,4, 1,3, 3,3, 4,2, 4,1, 3,0, 1,0, 0,1]; for k: 0..<24 { out[k] = p[k]; } n = 12; }
-  return n;
-}
-
-// How wide a glyph is, in grid units (I is a single line).
-glyph_width :: (c: u8) -> f32 {
-  if c == 'I' { return 0; }
-  if c == '1' { return 2; }
-  if c == '*' { return 3; }
-  return 4;
-}
+line_y :: (l: int) -> f32 { return ifx l == 2 then 0.205f32 else 0.14f32; }
 
 // Line l's width in cap heights, so it can be centred.
 text_width :: (l: int) -> f32 {
@@ -134,7 +95,7 @@ text_width :: (l: int) -> f32 {
   n := line_count(l);
   for i: 0..<n {
     c := letter(l, i);
-    if c == 0 { w += SPACE; } else { w += glyph_width(c) / 6; }
+    if c == 0 { w += SPACE; } else { w += glyph_width(cast(u32) c); }
     if i + 1 < n && c != 0 && letter(l, i + 1) != 0 { w += GAP; }
   }
   return w;
@@ -196,37 +157,37 @@ strokes :: (out: [] f32, width: f32, height: f32, dpr: f32, t: f32, still: bool)
   return page_strokes(out, 0, width, height, dpr, t, still);
 }
 
-// The same for a page's two lines (0 the splash, 1 not found).
+// The same for a page's lines (0 the splash, 1 not found).
 page_strokes :: (out: [] f32, page: int, width: f32, height: f32, dpr: f32, t: f32, still: bool) -> int {
-  first := ifx page == 1 then 2 else 0;
   vertices := 0;
-  for l: 0..<LINES { vertices = line_strokes(out, vertices, first + l, width, height, dpr, t, still); }
+  for l: 0..<page_lines(page) { vertices = line_strokes(out, vertices, page_first(page) + l, width, height, dpr, t, still); }
   return vertices;
 }
 
 // One line's strokes, written from vertex at. Returns the new vertex count.
 line_strokes :: (out: [] f32, at: int, l: int, width: f32, height: f32, dpr: f32, t: f32, still: bool) -> int {
   size := fitted_cap(l, width / dpr);
-  unit := size * dpr / 6;                      // device pixels per grid unit
+  unit := size * dpr / 12;                     // device pixels per half unit
   cap := size * dpr;
   x := (width - text_width(l) * cap) * 0.5;
   base := height * line_y(l) + cap * 0.5;      // y down on screen
   shown := appeared(l, t, still);
-  points: [32] u8;
+  points: [FONT_MAX_POINTS * 2] u8;
   segment := 0;
   vertices := at;
   count := line_count(l);
   for i: 0..<count {
     c := letter(l, i);
     if c == 0 { x += SPACE * cap; continue; }
-    n := glyph(c, points[..]);
+    n := glyph(cast(u32) c, points[..]);
     for p: 1..<n {
+      if points[(p - 1) * 2] == FONT_BREAK || points[p * 2] == FONT_BREAK { continue; }
       if segment >= MAX_SEGMENTS / LINES { return vertices; }
       f := written(l, segment, t, still);
       ax := x + cast(f32) points[(p - 1) * 2] * unit;
-      ay := base - cast(f32) points[(p - 1) * 2 + 1] * unit;
+      ay := base - (cast(f32) points[(p - 1) * 2 + 1] - 2) * unit;
       bx := x + cast(f32) points[p * 2] * unit;
-      by := base - cast(f32) points[p * 2 + 1] * unit;
+      by := base - (cast(f32) points[p * 2 + 1] - 2) * unit;
       if f > 0 {
         // after it's written, a slow shimmer runs across the words
         shimmer := ifx still then 0.0f32 else 0.12 * sin(t * 1.1 - ax / (40 * dpr));
@@ -237,7 +198,7 @@ line_strokes :: (out: [] f32, at: int, l: int, width: f32, height: f32, dpr: f32
       }
       segment += 1;
     }
-    x += glyph_width(c) * unit;
+    x += glyph_width(cast(u32) c) * cap;
     if i + 1 < count && letter(l, i + 1) != 0 { x += GAP * cap; }
   }
   return vertices;
@@ -245,62 +206,112 @@ line_strokes :: (out: [] f32, at: int, l: int, width: f32, height: f32, dpr: f32
 
 // The host calls this once a frame. dt is seconds since the last frame
 // (the host clamps a stalled tab). still: the visitor prefers reduced motion.
-coaxial_splash_frame :: (s: [] SplashState, out: [] f32, uniforms: [] f32,
+// u is the page's ui, which lives in the state (s[0].ui) for the host.
+coaxial_splash_frame :: (s: [] SplashState, u: [] Ui, out: [] f32, uniforms: [] f32,
                          width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
-  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
-  s[0].time += clamp(dt, 0, 0.1);
+  if s.count < 1 || u.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  step := clamp(dt, 0, 0.1);
+  s[0].time += step;
   s[0].frames += 1;
   t := s[0].time;
+  d := hi(dpr, 1);
+  page := ifx s[0].page == 1 then 1 else 0;
+  u[0].time = t; u[0].width = width; u[0].height = height; u[0].dpr = d; u[0].still = still; u[0].page = page;
+  ui_step(u, step);
+  scene := ui_scene(u);
   uniforms[0] = width;
   uniforms[1] = height;
   uniforms[2] = ifx still then 20.0f32 else 20 + t;   // the nebula's clock, as the old page
   uniforms[3] = ifx still then 1.0f32 else ease(t / FADE);
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
-  uniforms[5] = 0; uniforms[6] = 0; uniforms[7] = 0;
-  d := hi(dpr, 1);
-  page := ifx s[0].page == 1 then 1 else 0;
-  first := page * 2;
+  uniforms[5] = scene;
+  uniforms[6] = 0; uniforms[7] = 0;
+  first := page_first(page); last := first + page_lines(page) - 1;
   words := page_strokes(out, page, width, height, d, t, still);
-  // The graph dims under both lines so the words read over it.
-  title := Hole.{cx = width * 0.5, cy = height * line_y(first), w = text_width(first) * fitted_cap(first, width / d) * d * 0.5, h = fitted_cap(first, width / d) * d * 0.5};
-  soon := Hole.{cx = width * 0.5, cy = height * line_y(first + 1), w = text_width(first + 1) * CAP * d * 0.5, h = CAP * d * 0.5};
-  graph := graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, title, soon);
-  return words + graph;
+  // The graph dims under the words so they read over it.
+  top := Hole.{cx = width * 0.5, cy = height * line_y(first), w = text_width(first) * fitted_cap(first, width / d) * d * 0.5, h = fitted_cap(first, width / d) * d * 0.5};
+  under := Hole.{cx = width * 0.5, cy = height * line_y(last), w = text_width(last) * fitted_cap(last, width / d) * d * 0.5, h = fitted_cap(last, width / d) * d * 0.5};
+  graph := graph_draw(out, words, width, height, d, ifx still then 20.0f32 else t, still, top, under);
+  scene_end := words + graph;
+  // and the whole scene dims under a presentation
+  if scene < 1 { for v: 0..<scene_end { out[v * VERTEX_FLOATS + 6] *= scene; } }
+  all := ui_draw(u, out, scene_end, uniforms);
+  // and goes quiet behind a panel (the terminal, a prompt), so its text reads
+  alpha := uniforms[13];
+  if alpha > 0 {
+    for q: 0..<scene_end / 6 {
+      o := q * 6 * VERTEX_FLOATS;
+      x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
+      y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
+      if x > uniforms[8] && x < uniforms[10] && y > uniforms[9] && y < uniforms[11] {
+        for v: 0..<6 { out[o + v * VERTEX_FLOATS + 6] *= 1 - 0.88 * alpha; }
+      }
+    }
+  }
+  return all;
+}
+
+// A frame of the splash for the checks, its ui in its state as the host keeps it.
+frame :: (s: [] SplashState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
+  if s.count < 1 { return 0; }
+  ui: [1] Ui;
+  ui[0] = s[0].ui;
+  n := coaxial_splash_frame(s, ui[..], out, uniforms, width, height, dpr, dt, false);
+  s[0].ui = ui[0];
+  return n;
 }
 
 coaxial_splash_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+
+// Input in and actions out, for the host (ui.coax).
+coaxial_splash_key :: (u: [] Ui, key: int, mods: int) -> bool #export_c { return u.count == 1 && ui_key(u, key, mods); }
+coaxial_splash_pointer :: (u: [] Ui, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+  return u.count == 1 && ui_pointer(u, x, y, phase, kind);
+}
+coaxial_splash_message :: (u: [] Ui, kind: int, length: int) #export_c { if u.count == 1 { ui_message(u, kind, length); } }
+coaxial_splash_wants_text :: (u: [] Ui) -> bool #export_c { return u.count == 1 && ui_wants_text(u); }
+coaxial_splash_cursor :: (u: [] Ui) -> int #export_c { if u.count != 1 { return 0; } return ui_cursor(u); }
+coaxial_splash_inbox_cap :: () -> int #export_c { return INBOX_CAP; }
+// The pending action (0 for none); taking it empties the outbox.
+coaxial_splash_action :: (u: [] Ui) -> int #export_c { if u.count != 1 { return 0; } a := u[0].action; u[0].action = 0; return a; }
+coaxial_splash_action_done :: (u: [] Ui) #export_c {
+  if u.count != 1 { return; }
+  for i: 0..<OUTBOX_CAP { u[0].outbox[i] = 0; }
+  u[0].out_n = 0;
+}
 coaxial_splash_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 #test "the words are centred and fit a narrow phone" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  n := strokes(out[..], 320 * 3, 640 * 3, 3, 0, true);
-  #assert n > 0 && n % 6 == 0;
-  lowest := 1.0e9f32; highest := -1.0e9f32;
-  for v: 0..<n {
-    x := out[v * VERTEX_FLOATS];
-    lowest = lo(lowest, x); highest = hi(highest, x);
+  for page: 0..<2 {
+    n := page_strokes(out[..], page, 320 * 3, 640 * 3, 3, 0, true);
+    #assert n > 0 && n % 6 == 0;
+    lowest := 1.0e9f32; highest := -1.0e9f32;
+    for v: 0..<n {
+      x := out[v * VERTEX_FLOATS];
+      lowest = lo(lowest, x); highest = hi(highest, x);
+    }
+    #assert lowest > 0 && highest < 960;
+    #assert abs((lowest + highest) * 0.5 - 480) < 4;
   }
-  #assert lowest > 0 && highest < 960;
-  #assert abs((lowest + highest) * 0.5 - 480) < 4;
 }
 
 #test "nothing is written before the start, everything after" {
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [8] f32; s: [1] SplashState;
-  #assert coaxial_splash_frame(s[..], out[..], u[..], 1280, 800, 1, 0, false) == 0;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [16] f32; s: [1] SplashState;
+  #assert frame(s[..], out[..], u[..], 1280, 800, 1, 0) == 0;
   #assert strokes(out[..], 1280, 800, 1, 10, false) == strokes(out[..], 1280, 800, 1, 0, true);
   s[0].time = 10;
-  all := coaxial_splash_frame(s[..], out[..], u[..], 1280, 800, 1, 0, false);
-  #assert u[3] == 1 && all > strokes(out[..], 1280, 800, 1, 10, false) && all <= MAX_VERTICES;
+  all := frame(s[..], out[..], u[..], 1280, 800, 1, 0);
+  #assert u[3] == 1 && u[5] == 1 && all > strokes(out[..], 1280, 800, 1, 10, false) && all <= MAX_VERTICES;
 }
 
-#test "strokes start in order, the title first, after a pause" {
-  #assert written(1, 0, START + DRAW, false) == 1;
-  #assert written(1, 1, START + DRAW, false) < 1;
-  #assert written(1, 40, 0, true) == 1;
+#test "strokes start in order, after a pause" {
+  #assert written(0, 0, START + DRAW, false) == 1;
+  #assert written(0, 1, START + DRAW, false) < 1;
+  #assert written(0, 40, 0, true) == 1;
   #assert written(0, 0, 1.0, false) == 0 && appeared(0, 1.0, false) == 0;
-  #assert written(0, 0, TITLE_START + DRAW, false) == 1 && written(1, 0, TITLE_START + DRAW, false) == 0;
-  #assert appeared(1, 30, false) == 1;
+  #assert appeared(0, 30, false) == 1;
 }
 
 #test "the not-found page writes 404 and NOT FOUND, quickly" {
@@ -308,35 +319,42 @@ coaxial_splash_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   #assert page_strokes(out[..], 1, 1280, 800, 1, 0, true) > 0;
   #assert page_strokes(out[..], 1, 1280, 800, 1, 0.2, false) == 0;
   #assert page_strokes(out[..], 1, 1280, 800, 1, 3, false) == page_strokes(out[..], 1, 1280, 800, 1, 0, true);
-  #assert page_strokes(out[..], 0, 1280, 800, 1, 3, false) < strokes(out[..], 1280, 800, 1, 0, true);
-  text: [MAX_POINTS * 2] u8;
-  for l: 2..<4 { for i: 0..<line_count(l) { c := letter(l, i); #assert c == 0 || glyph(c, text[..]) > 1; } }
+  #assert page_strokes(out[..], 0, 1280, 800, 1, 1, false) < strokes(out[..], 1280, 800, 1, 0, true);
+  text: [FONT_MAX_POINTS * 2] u8;
+  for l: 1..<3 { for i: 0..<line_count(l) { c := letter(l, i); #assert c == 0 || glyph(cast(u32) c, text[..]) > 1; } }
 }
 
-#test "the title keeps a margin on a small phone" {
-  #assert fitted_cap(0, 1280) == TITLE_CAP;
-  #assert text_width(0) * fitted_cap(0, 280) <= 280 * 0.87;
+#test "404 keeps a margin on a small phone" {
+  #assert fitted_cap(1, 1280) == TITLE_CAP;
+  #assert text_width(1) * fitted_cap(1, 60) <= 60 * 0.87;
 }
 
-#test "the title sits in the top third, COMING SOON just under it" {
+#test "the splash is COMING SOON alone, near the top" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  title := line_strokes(out[..], 0, 0, 1280, 900, 1, 0, true);
-  #assert title > 0;
-  for v: 0..<title { #assert out[v * VERTEX_FLOATS + 1] < 200; }
-  all := line_strokes(out[..], title, 1, 1280, 900, 1, 0, true);
-  #assert all > title;
-  for v: title..<all { #assert out[v * VERTEX_FLOATS + 1] > 160 && out[v * VERTEX_FLOATS + 1] < 210; }
+  n := page_strokes(out[..], 0, 1280, 900, 1, 0, true);
+  #assert n > 0 && n == line_strokes(out[..], 0, 0, 1280, 900, 1, 0, true);
+  for v: 0..<n { y := out[v * VERTEX_FLOATS + 1]; #assert y > 100 && y < 150; }
 }
 
 #test "a small output or a missing state draws nothing" {
-  out: [10] f32; u: [8] f32; s: [1] SplashState;
+  out: [10] f32; u: [16] f32; s: [1] SplashState;
   s[0].time = 10;
-  #assert coaxial_splash_frame(s[..], out[..], u[..], 800, 600, 1, 0, false) == 0;
-  #assert coaxial_splash_frame(s[0..<0], out[..], u[..], 800, 600, 1, 0, false) == 0;
+  #assert frame(s[..], out[..], u[..], 800, 600, 1, 0) == 0;
+  #assert frame(s[0..<0], out[..], u[..], 800, 600, 1, 0) == 0;
 }
 
 #test "a stalled tab doesn't jump the clock" {
-  out: [4608] f32; u: [8] f32; s: [1] SplashState;
-  _ := coaxial_splash_frame(s[..], out[..], u[..], 800, 600, 1, 5, false);
+  out: [4608] f32; u: [16] f32; s: [1] SplashState;
+  _ := frame(s[..], out[..], u[..], 800, 600, 1, 5);
   #assert s[0].time <= 0.1;
+}
+
+#test "a presentation dims the scene behind it" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [16] f32; s: [1] SplashState;
+  s[0].time = 10;
+  before := frame(s[..], out[..], u[..], 1280, 800, 1, 0);
+  light := out[6];
+  s[0].ui.show = SHOW_LOADING; s[0].ui.veil = 1;
+  _ := frame(s[..], out[..], u[..], 1280, 800, 1, 0);
+  #assert u[5] < 0.3 && out[6] < light * 0.3;
 }

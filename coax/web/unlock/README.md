@@ -18,13 +18,17 @@ readable in the page.
   salted phrase, and the pointer (relay, event id, recipient) AES-GCM
   encrypted under PBKDF2-SHA-256 (210,000 rounds) of the phrase. The gate
   script is added; the opener module is a separate content-named file.
-- **In the page** (`gate.ts`, then `page.ts`): typed letters are checked
-  against the entries. A phrase that matches decrypts its pointer and loads
-  the opener, which finds the recipient key on this device: a NIP-07 signer
-  holding it, or a key pasted here once and kept in this site's IndexedDB.
-  It fetches the wrap as that key, verifies every signature, the author
-  chain, the recipient and the digest, and shows the slides over the scene
-  (arrow keys, click or swipe; N shows notes; Esc closes).
+- **In the page** (`gate.ts`, then `page.ts`): the page's Coax code draws
+  everything you see (`apps/openagents-web/ui.coax`): the access terminal,
+  the key prompt and the slides. These scripts only answer it through the
+  Coaxial host (`coaxial` events in, `coaxial.send` out). A code sent from
+  the terminal is checked against the entries; a phrase that matches
+  decrypts its pointer and loads the opener, which finds the recipient key on
+  this device: a NIP-07 signer holding it, or a key pasted into the prompt
+  once and kept in this site's IndexedDB. It fetches the wrap as that key,
+  verifies every signature, the author chain, the recipient and the digest,
+  and hands the slides to the page as deck lines (`deckLines` in `lib.ts`;
+  arrow keys, click or swipe; N shows notes; Esc closes).
 
 The phrase gate is a door, not a lock: anyone with the page can try phrases
 against the check offline. The lock is the key the deck is sealed to.

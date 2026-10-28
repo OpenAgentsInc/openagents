@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { generateSecretKey, getPublicKey } from "nostr-effect/pure"
 import { getConversationKey, decrypt } from "nostr-effect/nip44"
-import { DECK_SCHEMA, jcs, localOpener, openDeck, parseDeck, sealDeck } from "./lib.ts"
+import { DECK_SCHEMA, deckLines, jcs, localOpener, openDeck, parseDeck, sealDeck } from "./lib.ts"
 import { makeEntry, match, normalize } from "./gate.ts"
 import { parseUnlocks } from "./inject.ts"
 
@@ -42,6 +42,9 @@ describe("sealed presentations", () => {
       { title: "Second", body: "Some body" },
     ])
     expect(() => parseDeck("no title here")).toThrow()
+  })
+  test("the lines the page draws a deck from", () => {
+    expect(deckLines(parseDeck(md))).toBe("DHello\n=\nTHello\nSSub\nBone **two**\nBthree\nNa note\n=\nTSecond\nPSome body\n")
   })
   test("JCS sorts keys and refuses floats", () => {
     expect(jcs({ b: 1, a: [true, null, "x"] })).toBe('{"a":[true,null,"x"],"b":1}')
