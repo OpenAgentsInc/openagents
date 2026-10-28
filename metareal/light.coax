@@ -80,6 +80,65 @@ metareal_cast_line_light :: (tint:f32,distance:f32)->f32 #export_c {
   return metareal_unlit(tint)*0.7f32*(1.0f32-smooth(6.0f32,110.0f32,distance))*crowd;
 }
 
+// A hotbar slot, as aethyr's HUD draws one (src/metal/home.metal, kSlot):
+// dark glass with rounded corners, its icon in the middle, the picked one
+// edged bright, a glow as it is used. (px, py) are pixels from its centre,
+// y down; (ex, ey) its half size; k pixels a point. The host layers the
+// light (premultiplied) over the screen with its coverage; the glow adds.
+// Icons: 0 none, 1 the dance (a quaver; aethyr has none).
+cover :: (d:f32)->f32 { return 1.0f32-smooth(-0.5f32,0.5f32,d); }
+rim :: (d:f32,w:f32)->f32 { return 1.0f32-smooth(w*0.5f32-0.5f32,w*0.5f32+0.5f32,abs(d+w*0.5f32)); }
+stroke :: (d:f32,w:f32)->f32 { return 1.0f32-smooth(w*0.5f32-0.5f32,w*0.5f32+0.5f32,d); }
+sd_box :: (px:f32,py:f32,bx:f32,by:f32,r:f32)->f32 {
+  qx:=abs(px)-bx+r; qy:=abs(py)-by+r;
+  mx:=hi(qx,0.0f32); my:=hi(qy,0.0f32);
+  return sqrt(mx*mx+my*my)+lo(hi(qx,qy),0.0f32)-r;
+}
+sd_segment :: (px:f32,py:f32,ax:f32,ay:f32,bx:f32,by:f32)->f32 {
+  vx:=px-ax; vy:=py-ay; wx:=bx-ax; wy:=by-ay;
+  t:=sat((vx*wx+vy*wy)/(wx*wx+wy*wy));
+  dx:=vx-wx*t; dy:=vy-wy*t;
+  return sqrt(dx*dx+dy*dy);
+}
+metareal_slot_icon :: (icon:f32,px:f32,py:f32,s:f32,w:f32)->f32 #export_c {
+  if icon<0.5f32 || icon>1.5f32 { return 0.0f32; }
+  hx:=(px+0.2f32*s)/(0.24f32*s); hy:=(py-0.38f32*s)/(0.18f32*s);
+  head:=cover((sqrt(hx*hx+hy*hy)-1.0f32)*0.18f32*s);
+  stem:=stroke(sd_segment(px,py,0.03f32*s,0.36f32*s,0.03f32*s,-0.6f32*s),w);
+  flag:=stroke(sd_segment(px,py,0.03f32*s,-0.6f32*s,0.42f32*s,-0.3f32*s),w);
+  return hi(head,hi(stem,flag));
+}
+// The slot's layers, light and coverage, `alpha` choosing which.
+slot :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32,alpha:bool)->f32 {
+  sink:=1.0f32-0.03f32*press;
+  x:=px/sink; y:=py/sink;
+  d:=sd_box(x,y,ex,ey,5.0f32*k);
+  inside:=cover(d);
+  ny:=y/ey;
+  g:=0.0f32; a:=0.0f32;
+  // glass
+  la:=0.62f32*inside; lc:=0.04f32+0.05f32*(0.5f32-0.5f32*ny)+0.08f32*press+0.05f32*sel;
+  g=lc*la+g*(1.0f32-la); a=la+a*(1.0f32-la);
+  // icon
+  la=metareal_slot_icon(icon,x,y-1.5f32*k,lo(ex,ey)*0.36f32,1.5f32*k); lc=0.72f32+0.28f32*sel;
+  g=lc*la+g*(1.0f32-la); a=la+a*(1.0f32-la);
+  // edge
+  la=sat(rim(d,(1.0f32+0.6f32*sel)*k)*(0.28f32+0.62f32*sel+0.4f32*flash)); lc=0.95f32;
+  g=lc*la+g*(1.0f32-la); a=la+a*(1.0f32-la);
+  if alpha { return a; }
+  return g;
+}
+metareal_slot_light :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32)->f32 #export_c {
+  return slot(px,py,ex,ey,k,press,flash,sel,icon,false);
+}
+metareal_slot_cover :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,press:f32,flash:f32,sel:f32,icon:f32)->f32 #export_c {
+  return slot(px,py,ex,ey,k,press,flash,sel,icon,true);
+}
+metareal_slot_glow :: (px:f32,py:f32,ex:f32,ey:f32,k:f32,flash:f32,sel:f32)->f32 #export_c {
+  d:=sd_box(px,py,ex,ey,5.0f32*k);
+  return exp(-hi(d,0.0f32)/(7.0f32*k))*(1.0f32-cover(d))*(0.12f32*sel+0.25f32*flash);
+}
+
 within :: (a:f32,b:f32,t:f32)->bool { return abs(a-b)<=t; }
 #test "display values round trip through linear light" {
   for i: 0..<11 { v:=f32(i)/10.0f32; #assert within(metareal_encode(metareal_decode(v)),v,0.0001f32); }
@@ -117,4 +176,25 @@ within :: (a:f32,b:f32,t:f32)->bool { return abs(a-b)<=t; }
   #assert within(metareal_cast_line_light(0.5f32,12.0f32),metareal_unlit(0.5f32)*0.7f32*(1.0f32-smooth(6.0f32,110.0f32,12.0f32))*0.5f32,0.00001f32);
   #assert metareal_cast_line_light(0.5f32,30.0f32)==metareal_unlit(0.5f32)*0.7f32*(1.0f32-smooth(6.0f32,110.0f32,30.0f32))*0.3f32;
   #assert metareal_cast_line_light(0.5f32,110.0f32)==0.0f32 && metareal_cast_line_light(0.0f32,1.0f32)==0.0f32;
+}
+#test "a hotbar slot: glass inside, nothing far outside, brighter picked and pressed" {
+  // Its middle-left: the glass (no icon there), 0.62 covered.
+  #assert within(metareal_slot_cover(-15.0f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32,0.0f32,1.0f32),0.62f32,0.001f32);
+  #assert within(metareal_slot_light(-15.0f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32,0.0f32,1.0f32),0.62f32*0.065f32,0.001f32);
+  #assert metareal_slot_light(-15.0f32,0.0f32,23.0f32,23.0f32,1.0f32,1.0f32,0.0f32,1.0f32,1.0f32)>metareal_slot_light(-15.0f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32,0.0f32,1.0f32);
+  #assert metareal_slot_cover(40.0f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32,1.0f32,1.0f32)==0.0f32;
+  // Its edge is lit, more when picked.
+  #assert metareal_slot_light(22.5f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32,1.0f32,1.0f32)>metareal_slot_light(22.5f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32,0.0f32,1.0f32);
+  #assert metareal_slot_light(22.5f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32,0.0f32,1.0f32)>0.2f32;
+  // The glow: only outside, only picked or flashing, fading away.
+  #assert metareal_slot_glow(0.0f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,1.0f32)==0.0f32;
+  #assert metareal_slot_glow(30.0f32,0.0f32,23.0f32,23.0f32,1.0f32,0.0f32,0.0f32)==0.0f32;
+  #assert metareal_slot_glow(30.0f32,0.0f32,23.0f32,23.0f32,1.0f32,1.0f32,0.0f32)>metareal_slot_glow(40.0f32,0.0f32,23.0f32,23.0f32,1.0f32,1.0f32,0.0f32);
+}
+#test "the dance icon is a note: a head, a stem, a flag" {
+  #assert metareal_slot_icon(1.0f32,-2.0f32,3.8f32,10.0f32,1.5f32)==1.0f32;    // the head
+  #assert metareal_slot_icon(1.0f32,0.3f32,-2.0f32,10.0f32,1.5f32)>0.9f32;     // the stem
+  #assert metareal_slot_icon(1.0f32,2.25f32,-4.5f32,10.0f32,1.5f32)>0.9f32;    // the flag
+  #assert metareal_slot_icon(1.0f32,-4.0f32,-4.0f32,10.0f32,1.5f32)==0.0f32;   // empty
+  #assert metareal_slot_icon(0.0f32,-2.0f32,3.8f32,10.0f32,1.5f32)==0.0f32 && metareal_slot_icon(2.0f32,-2.0f32,3.8f32,10.0f32,1.5f32)==0.0f32;
 }

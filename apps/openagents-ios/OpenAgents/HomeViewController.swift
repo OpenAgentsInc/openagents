@@ -28,6 +28,9 @@ final class HomeViewController: UIViewController {
     private var player = metareal_player_place(0, 0, 0, 0)
     private var sticks = metareal_sticks_reset()
     private var gridTouches: [ObjectIdentifier: Int64] = [:]
+    private var walls: [Float] = []
+    private var danceElement: UIAccessibilityElement?
+    private var danceRequested = false
     private var nextTouchSlot: Int64 = 0
     private var lastTick: Double?
     private var gridElement: UIAccessibilityElement?
@@ -35,7 +38,7 @@ final class HomeViewController: UIViewController {
     // Cast.bin, admitted by metareal_cast_open; its bytes stay put for every call.
     private var castBytes: UnsafeMutableRawBufferPointer?
     private var cast: CastAssets?
-    private var anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false)
+    private var anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false, dance: false)
     private var gridStart: Double?
     // This frame's palette (the robots posed before you move) and the robots'
     // body capsules from it, which you collide with.
@@ -198,18 +201,27 @@ final class HomeViewController: UIViewController {
         if cast == nil {
             do { cast = try loadCast() } catch { NSLog("OpenAgents: the Grid's cast is unavailable: %@", String(describing: error)) }
         }
-        anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false)
+        anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false, dance: false)
         gridStart = nil
         var config: UInt8 = 0
         gridHandle = mr_create(&config, 1, 1)
         guard gridHandle != 0 else { NSLog("OpenAgents: no storage for the Grid"); return }
         player = metareal_player_place(0, 0, 0, 0)
+        walls = Array(repeating: 0, count: 64)
+        let wallCount = walls.withUnsafeMutableBufferPointer { Int(metareal_grid_walls(coax_v_f32(data: $0.baseAddress, count: Int64($0.count)))) }
+        walls = Array(walls.prefix(wallCount * 6))
         sticks = metareal_sticks_reset(); gridTouches = [:]; lastTick = nil; trackedTouch = nil
         view.isMultipleTouchEnabled = true
         balanceLabel.isHidden = true
         let element = UIAccessibilityElement(accessibilityContainer: surface)
         element.accessibilityLabel = "The Grid"
         element.accessibilityHint = "Drag on the left to walk, drag on the right to look, tap on the right to jump."
+        let dance = HomeActionElement(accessibilityContainer: surface)
+        dance.accessibilityLabel = "Dance"
+        dance.accessibilityTraits = .button
+        dance.accessibilityIdentifier = "grid.dance"
+        dance.activate = { [weak self] in self?.danceRequested = true; return self != nil }
+        danceElement = dance
         element.accessibilityIdentifier = "grid.world"
         element.accessibilityFrameInContainerSpace = view.bounds
         gridElement = element
@@ -218,13 +230,14 @@ final class HomeViewController: UIViewController {
         you.accessibilityIdentifier = "grid.you"
         you.accessibilityFrameInContainerSpace = CGRect(x: view.bounds.midX - 30, y: view.bounds.midY - 60, width: 60, height: 120)
         youElement = you
-        view.accessibilityElements = cast == nil ? [element] : [element, you]
+        view.accessibilityElements = cast == nil ? [element, dance] : [element, you, dance]
         UIAccessibility.post(notification: .screenChanged, argument: element)
         NSLog("OpenAgents: entered the Grid")
     }
     private func updateGrid(at timestamp: Double) {
         let frame = Float(min(max(timestamp - (lastTick ?? timestamp), 0), 0.25)); lastTick = timestamp
         player = metareal_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
+        if sticks.dance || danceRequested { anim = metareal_cast_dance(anim); danceRequested = false }
         sticks = metareal_sticks_used(sticks)
         // The robots move first; then you, among their bodies.
         var placed = 0, posed = false
@@ -240,15 +253,21 @@ final class HomeViewController: UIViewController {
                 }
             }
         }
-        player = bodies.withUnsafeMutableBufferPointer {
-            metareal_player_advance_among(player, frame, coax_v_f32(data: $0.baseAddress, count: Int64(placed * 7)))
-        }
+        player = bodies.withUnsafeMutableBufferPointer { b in walls.withUnsafeMutableBufferPointer { w in
+            metareal_player_advance_among(player, frame, coax_v_f32(data: b.baseAddress, count: Int64(placed * 7)),
+                                          coax_v_f32(data: w.baseAddress, count: Int64(w.count)))
+        } }
         let eye = metareal_player_eye(player), at = metareal_player_at(player), feet = metareal_player_feet(player)
         let face = metareal_player_face(player)
         let width = Float(lastSize.width), height = Float(lastSize.height)
         mr_clear_frame(gridHandle)
         metareal_grid_frame(gridHandle, sticks, eye.x, eye.y, eye.z, at.x, at.y, at.z, feet.x, feet.y, feet.z,
-                            width, height, Float(surface.metalLayer.contentsScale))
+                            width, height, Float(surface.metalLayer.contentsScale), anim.dance, timestamp)
+        if let slots = mr_slots(gridHandle), mr_slot_count(gridHandle) > 0 {
+            let s = slots[0], k = surface.metalLayer.contentsScale
+            let rect = CGRect(x: CGFloat(s.x) / k, y: CGFloat(s.y) / k, width: CGFloat(s.width) / k, height: CGFloat(s.height) / k)
+            if danceElement?.accessibilityFrameInContainerSpace != rect { danceElement?.accessibilityFrameInContainerSpace = rect }
+        }
         guard mr_ok(gridHandle) else { suspend(); NSLog("OpenAgents: invalid Grid draw packet"); return }
         var castFrame: CastFrame?
         if let cast, let bytes = castBytes {
@@ -264,7 +283,7 @@ final class HomeViewController: UIViewController {
                     return true
                 }
             }
-            let names = ["idle", "walking", "running", "jump start", "jump loop", "landing"]
+            let names = ["idle", "walking", "running", "jump start", "jump loop", "landing", "dancing"]
             let name = names[min(Int(anim.move), names.count - 1)]
             if youElement?.accessibilityValue != name { youElement?.accessibilityValue = name }
         }
@@ -280,7 +299,7 @@ final class HomeViewController: UIViewController {
             guard let slot = gridTouches[id] else { continue }
             let point = touch.location(in: view)
             sticks = metareal_sticks_touch(sticks, slot, phase, Float(point.x * scale), Float(point.y * scale),
-                                           Float(lastSize.width), Float(scale), touch.timestamp)
+                                           Float(lastSize.width), Float(lastSize.height), Float(scale), touch.timestamp)
             if phase >= 2 { gridTouches[id] = nil }
         }
     }

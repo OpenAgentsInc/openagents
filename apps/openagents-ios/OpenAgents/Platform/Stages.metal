@@ -100,3 +100,18 @@ vertex LineOut cast_line_vertex(uint id [[vertex_id]],uint inst [[instance_id]],
   float tint=va.tint.r/255.;
   return {float4(p/(v.size*.5),z,1),uv.y,t,metareal_cast_line_light(tint,a.w),metareal_cast_line_light(tint,b.w)};
 }
+// A hotbar slot (aethyr's HUD slot, metareal/light.coax): glass, icon and
+// rim over the scene, premultiplied, with its glow added outside the box.
+struct Slot { float4 rect; float4 state; };
+struct SlotOut {float4 position [[position]];float2 p;};
+vertex SlotOut slot_vertex(uint id [[vertex_id]],constant View& v [[buffer(0)]],constant Slot& s [[buffer(1)]]) {
+  float2 p=corners[id]*(s.rect.zw*.5+24*v.scale);
+  return {clip(s.rect.xy+s.rect.zw*.5+p,v.size),p};
+}
+fragment float4 slot_fragment(SlotOut in [[stage_in]],constant View& v [[buffer(0)]],constant Slot& s [[buffer(1)]]) {
+  float2 e=s.rect.zw*.5;
+  float g=metareal_slot_light(in.p.x,in.p.y,e.x,e.y,v.scale,s.state.x,s.state.y,s.state.z,s.state.w);
+  float a=metareal_slot_cover(in.p.x,in.p.y,e.x,e.y,v.scale,s.state.x,s.state.y,s.state.z,s.state.w);
+  float glow=metareal_slot_glow(in.p.x,in.p.y,e.x,e.y,v.scale,s.state.y,s.state.z);
+  return float4(float3(g+glow),clamp(a,0.,1.));
+}

@@ -24,7 +24,7 @@ start on 16-byte boundaries.
 """
 import hashlib, math, os, shutil, struct, sys
 
-CLIPS = ["Idle_Loop", "Walk_Loop", "Sprint_Loop", "Jump_Start", "Jump_Loop", "Jump_Land"]
+CLIPS = ["Idle_Loop", "Walk_Loop", "Sprint_Loop", "Jump_Start", "Jump_Loop", "Jump_Land", "Dance_Loop"]
 PARTS = ["Male_Peasant_Arms", "Male_Peasant_Body", "Male_Peasant_Legs", "Male_Peasant_Feet", "Male_head", "Hair_Buns_M"]
 LAYERS = [5, 9, 10, 11, 12, 16]          # texture slot i is assets/layer{LAYERS[i]}.jpg
 HAIR = (0.22, 0.11, 0.05)                 # kHairColors[1], the default; layers 10 and 11 take it

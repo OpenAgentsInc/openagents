@@ -2,7 +2,7 @@
 // admitted with aethyr's counts, a minute of walking, running and jumping
 // and the robots' patrols give finite palettes, and damaged copies,
 // including non-finite numbers the Coax evaluator cannot hold, are refused.
-// Then metareal/player.coax walks you at the Foreman among the robots'
+// The dance plays and a step ends it. Then metareal/player.coax walks you at the Foreman among the robots'
 // bodies: its leg stops you, and you can walk under it between its legs.
 #include "Cast.h"
 #include "Player.h"
@@ -55,6 +55,20 @@ int main(int argc, char **argv) {
       for (int k = 0; k < 12; ++k) assert(isfinite(palette[j].m.e[k]) && fabsf(palette[j].m.e[k]) < 1000);
   }
   for (int m = 0; m < 6; ++m) assert(seen[m]);
+  // The dance: standing, the hotbar's button plays Dance_Loop for a while,
+  // finite throughout; a step ends it.
+  a = metareal_cast_dance(a);
+  for (int i = 0; i < 600; ++i) {
+    double now = 60 + i / 60.0;
+    a = metareal_cast_update(view, c, a, 0, false, now);
+    assert(a.dance);
+    assert(metareal_cast_pose(view, c, a, now, 1.0f, 0, -2.0f, 0, (coax_v_t_Joint){palette, joints}));
+    for (int64_t j = 0; j < c.joints; ++j)
+      for (int k = 0; k < 12; ++k) assert(isfinite(palette[j].m.e[k]) && fabsf(palette[j].m.e[k]) < 1000);
+  }
+  assert(a.move == 6);
+  a = metareal_cast_update(view, c, a, 1, false, 71);
+  assert(!a.dance && a.move == 1);
 
   // Non-finite numbers: a vertex weight, a pose, a bind position, a sample.
   uint32_t nan = 0x7fc00000, inf = 0x7f800000;
@@ -88,7 +102,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 240; ++i) {
       assert(metareal_cast_robots_pose(view, c, i / 60.0, (coax_v_t_Joint){palette, joints}));
       assert(metareal_cast_bodies(view, c, (coax_v_t_Joint){palette, joints}, (coax_v_f32){bodies, count * 7}) == count);
-      p = metareal_player_advance_among(p, 1 / 60.0f, (coax_v_f32){bodies, run == 2 ? 0 : count * 7});
+      p = metareal_player_advance_among(p, 1 / 60.0f, (coax_v_f32){bodies, run == 2 ? 0 : count * 7}, (coax_v_f32){0, 0});
       assert(isfinite(p.pos.x) && isfinite(p.pos.z));
       float d = hypotf(p.pos.x - tx, p.pos.z - tz);
       if (d < nearest[run]) nearest[run] = d;
@@ -103,7 +117,7 @@ int main(int argc, char **argv) {
   // A body's non-finite number is skipped, not followed.
   coax_t_Player p = metareal_player_place(lx, 0, lz - 0.9f, 0);
   bodies[3] = NAN;
-  p = metareal_player_advance_among(p, 1 / 60.0f, (coax_v_f32){bodies, count * 7});
+  p = metareal_player_advance_among(p, 1 / 60.0f, (coax_v_f32){bodies, count * 7}, (coax_v_f32){0, 0});
   assert(isfinite(p.pos.x) && isfinite(p.pos.z));
   assert(refused(bytes, size, (size_t)c.robot_bodies.offset + 32 + 12, nan));
   assert(refused(bytes, size, (size_t)c.robot_bodies.offset + 4, inf));

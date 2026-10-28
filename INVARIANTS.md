@@ -68,8 +68,14 @@ floats fail admission is refused, not drawn. You collide with the robots
 through `player.coax`: a capsule per robot bone, placed by `cast.coax` from
 the same palette the robots are drawn with, pushes you out sideways and keeps
 the camera in front of it. Robot line art takes its width and light by
-distance from `light.coax`. The Grid has no buildings, peers or network use
-yet.
+distance from `light.coax`. A terminal (aethyr's desk and screen, from
+`grid.coax`) stands 4 m ahead of the spawn; its boxes are both drawn and
+solid, so `player.coax` stops you at the desk, lets you onto it only by
+jumping, and keeps the camera out of it. The hotbar is aethyr's HUD slot:
+`grid.coax` places it and claims touches on it before the sticks, and
+`light.coax` draws it. Its one slot toggles the dance (`cast.coax` plays
+Dance_Loop while you stand); walking or jumping ends it. The Grid has no
+buildings, peers or network use yet.
 
 Check: `coax/build.sh test`, `coax test metareal/grid.coax`,
 `metareal/player.coax` and `metareal/cast.coax`, `metareal/test_cast.sh` (the
@@ -78,7 +84,8 @@ walking into the Foreman's leg and stopping),
 `PROTOC=... python3 metareal/test_home.py`, the sanitizer harness and the iOS
 UI tests (Start opens the Grid, you stand idle, the stick walks you forward,
 a jump plays its clips, the Foreman stands by the start and its leg stops
-you, rotation and
+you, the hotbar's slot makes you dance and a step ends it, the terminal's
+desk stops you, rotation and
 backgrounding keep it). Metal layout/stage
 bindings remain an explicit native boundary; the home retains its initial
 flat-storage graph while decoded configuration views use bounded Coax scratch

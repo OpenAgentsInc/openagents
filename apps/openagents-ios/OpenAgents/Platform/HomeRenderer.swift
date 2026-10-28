@@ -22,6 +22,10 @@ final class CastAssets {
     fileprivate let robotVertices: MTLBuffer, robotFaces: MTLBuffer, robotLines: MTLBuffer
     fileprivate let sheets: MTLTexture
     fileprivate var palettes: [MTLBuffer] = []
+    /// The terminal ahead of where you arrive (metareal_grid_props): one
+    /// rigid mesh on an identity joint, drawn like a robot.
+    fileprivate let propVertices: MTLBuffer, propFaces: MTLBuffer, propLines: MTLBuffer, still: MTLBuffer
+    fileprivate let propFaceCount: Int, propLineCount: Int
     init(device: MTLDevice, queue: MTLCommandQueue, bytes: Data, cast: coax_t_Cast, layers: [URL]) throws {
         guard cast.ok, cast.size == bytes.count else { throw HomeError.resource("Cast.bin") }
         self.cast = cast
@@ -51,6 +55,19 @@ final class CastAssets {
         guard let command = queue.makeCommandBuffer(), let blit = command.makeBlitCommandEncoder() else { throw HomeError.resource("Cast textures") }
         blit.generateMipmaps(for: sheets); blit.endEncoding(); command.commit()
         self.sheets = sheets
+        var vertices = [UInt8](repeating: 0, count: Int(metareal_grid_prop_vertices()) * 64)
+        var faces = [UInt32](repeating: 0, count: Int(metareal_grid_prop_faces()))
+        var lines = [UInt32](repeating: 0, count: Int(metareal_grid_prop_lines()))
+        let built = vertices.withUnsafeMutableBufferPointer { v in faces.withUnsafeMutableBufferPointer { f in lines.withUnsafeMutableBufferPointer { l in
+            metareal_grid_props(coax_v_u8(data: v.baseAddress, count: Int64(v.count)), coax_v_u32(data: f.baseAddress, count: Int64(f.count)), coax_v_u32(data: l.baseAddress, count: Int64(l.count)))
+        } } }
+        var identity: [Float] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]
+        guard built, let pv = device.makeBuffer(bytes: vertices, length: vertices.count, options: .storageModeShared),
+              let pf = device.makeBuffer(bytes: faces, length: faces.count * 4, options: .storageModeShared),
+              let pl = device.makeBuffer(bytes: lines, length: lines.count * 4, options: .storageModeShared),
+              let still = device.makeBuffer(bytes: &identity, length: identity.count * 4, options: .storageModeShared) else { throw HomeError.resource("Grid props") }
+        propVertices = pv; propFaces = pf; propLines = pl; self.still = still
+        propFaceCount = faces.count; propLineCount = lines.count / 2
         let length = Int(metareal_cast_palette(cast)) * MemoryLayout<coax_t_Joint>.stride
         for _ in 0..<3 {
             guard let palette = device.makeBuffer(length: length, options: .storageModeShared) else { throw HomeError.resource("Cast palette") }
@@ -71,6 +88,7 @@ final class HomeRenderer {
     private let bloom: MTLRenderPipelineState
     private let composite: MTLRenderPipelineState
     private let bar: MTLRenderPipelineState
+    private let slot: MTLRenderPipelineState
     private let castFaces: MTLRenderPipelineState
     private let castLines: MTLRenderPipelineState
     private let flat: MTLDepthStencilState
@@ -119,6 +137,7 @@ final class HomeRenderer {
         bloom = try pipeline("screen_vertex", "bloom_fragment", .rgba16Float)
         composite = try pipeline("screen_vertex", "composite_fragment", .bgra8Unorm)
         bar = try pipeline("bar_vertex", "bar_fragment", .bgra8Unorm, alpha: true)
+        slot = try pipeline("slot_vertex", "slot_fragment", .bgra8Unorm, alpha: true)
         castFaces = try pipeline("cast_vertex", "cast_fragment", .rgba16Float, scene: true)
         castLines = try pipeline("cast_line_vertex", "line_fragment", .rgba16Float, brightest: true, scene: true)
         func depthState(_ compare: MTLCompareFunction, write: Bool) throws -> MTLDepthStencilState {
@@ -227,6 +246,16 @@ final class HomeRenderer {
             final.setFragmentBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:0); final.setFragmentBytes(&button,length:MemoryLayout<BarUniform>.stride,index:1); final.setFragmentTexture(labelTexture,index:0)
             final.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
         }
+        // The hotbar's slots (the Grid's dance button).
+        if let slots = mr_slots(handle) {
+            final.setRenderPipelineState(slot); final.setVertexBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:0); final.setFragmentBytes(&view,length:MemoryLayout<ViewUniform>.stride,index:0)
+            for i in 0..<mr_slot_count(handle) {
+                let s = slots[i]
+                var u = BarUniform(rect: SIMD4(s.x,s.y,s.width,s.height),state: SIMD4(s.press,s.flash,s.selected,s.icon))
+                final.setVertexBytes(&u,length:MemoryLayout<BarUniform>.stride,index:1); final.setFragmentBytes(&u,length:MemoryLayout<BarUniform>.stride,index:1)
+                final.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:6)
+            }
+        }
         final.endEncoding()
         let semaphore = available
         command.addCompletedHandler { buffer in
@@ -245,6 +274,8 @@ final class HomeRenderer {
         e.setRenderPipelineState(castFaces); e.setDepthStencilState(solid)
         e.setVertexBytes(&u, length: MemoryLayout<CastUniform>.stride, index: 2)
         e.setFragmentTexture(assets.sheets, index: 0)
+        e.setVertexBuffer(assets.propVertices, offset: 0, index: 0); e.setVertexBuffer(assets.still, offset: 0, index: 1)
+        e.drawIndexedPrimitives(type: .triangle, indexCount: assets.propFaceCount, indexType: .uint32, indexBuffer: assets.propFaces, indexBufferOffset: 0)
         e.setVertexBuffer(assets.bodyVertices, offset: 0, index: 0); e.setVertexBuffer(palette, offset: 0, index: 1)
         e.drawIndexedPrimitives(type: .triangle, indexCount: Int(c.body_indices.count), indexType: .uint32, indexBuffer: assets.bodyIndices, indexBufferOffset: 0)
         let robots = Int(metareal_cast_robots(c))
@@ -254,6 +285,10 @@ final class HomeRenderer {
             e.drawIndexedPrimitives(type: .triangle, indexCount: Int(c.robot_faces.count), indexType: .uint32, indexBuffer: assets.robotFaces, indexBufferOffset: 0)
         }
         e.setRenderPipelineState(castLines); e.setDepthStencilState(behind)
+        e.setVertexBuffer(assets.propVertices, offset: 0, index: 0); e.setVertexBuffer(assets.still, offset: 0, index: 1)
+        e.setVertexBuffer(assets.propLines, offset: 0, index: 3)
+        e.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: assets.propLineCount)
+        e.setVertexBuffer(assets.robotVertices, offset: 0, index: 0)
         e.setVertexBuffer(assets.robotLines, offset: 0, index: 3)
         for r in 0..<robots {
             e.setVertexBuffer(palette, offset: (Int(c.joints) + r * Int(c.bones)) * joint, index: 1)

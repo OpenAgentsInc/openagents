@@ -7,8 +7,10 @@
 // buffer. After that the host only uploads the vertex and index buffers the
 // Cast names and draws them with the joint palettes written here.
 //
-// Your character plays six clips (idle, walk, sprint, and the three-part
-// jump), cross-fading 0.18 s from one to the next. A clip's pose is each
+// Your character plays seven clips (idle, walk, sprint, the three-part
+// jump, and a dance), cross-fading 0.18 s from one to the next. The dance
+// is asked for (metareal_cast_dance) and plays while you stand; moving or
+// jumping ends it. A clip's pose is each
 // joint's motion relative to its parent, blended per joint and chained from
 // the root, so a cross-fade keeps every bone its length. The robots replay
 // their recorded patrols and play their walk and idle clips; the Foreman
@@ -73,7 +75,8 @@ Cast :: struct {
 Joint :: struct { m: [12] f32; }
 
 // The character's clips, in Cast.bin's order.
-Move :: enum u8 { idle; walking; running; jump_start; jump_loop; jump_land; }
+Move :: enum u8 { idle; walking; running; jump_start; jump_loop; jump_land; dancing; }
+CLIPS :: 7;
 
 Anim :: struct {
   move: Move = Move.idle;
@@ -82,6 +85,7 @@ Anim :: struct {
   from_start: f64;
   fade_start: f64 = -1;   // when the last change began; -1 none
   air: bool;              // airborne at the last update
+  dance: bool;            // asked to dance, until you move or jump
 }
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -207,9 +211,9 @@ ranges_ok :: (b: [] u8, x: Buffer, stride: int, of: int, size: int) -> bool {
 }
 
 // The sizes Coax's fixed storage takes: up to MAX_JOINTS joints with
-// whole frames of poses and the six clips; robots of 1 to MAX_BONES bones
+// whole frames of poses and the seven clips; robots of 1 to MAX_BONES bones
 // with whole frames and the walk and idle clips at least.
-joints_ok :: (joints: int, clips: int, poses: int) -> bool { return joints <= MAX_JOINTS && clips == 6 && poses % joints == 0; }
+joints_ok :: (joints: int, clips: int, poses: int) -> bool { return joints <= MAX_JOINTS && clips == CLIPS && poses % joints == 0; }
 robots_ok :: (bones: int, frames: int, robot_clips: int) -> bool {
   return bones > 0 && bones <= MAX_BONES && frames % bones == 0 && robot_clips > IDLE;
 }
@@ -241,7 +245,7 @@ metareal_cast_open :: (b: [] u8) -> Cast #export_c {
      !c.patrols.ok || !c.patrol_samples.ok || !c.robot_bodies.ok { return bad; }
 
   // The character: parents before their children, finite bind positions,
-  // six clips inside the poses, and every vertex and index in range.
+  // seven clips inside the poses, and every vertex and index in range.
   c.joints = c.skeleton.count;
   if !joints_ok(c.joints, c.clips.count, c.poses.count) { return bad; }
   for j: 0..<c.joints {
@@ -327,6 +331,7 @@ metareal_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now
   if !c.ok || b.count != c.size { return a; }
   out := a;
   moving := act == 1 || act == 2;
+  if act != 0 { out.dance = false; }
   if act == 3 {
     if !a.air { out = play(out, ifx rising then Move.jump_start else Move.jump_loop, now); }
     out.air = true;
@@ -335,13 +340,20 @@ metareal_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now
     out.air = false;
     // In the air the clip is always the jump's start or loop.
     if landing && !moving { out = play(out, Move.jump_land, now); }
-    else if !(out.move == Move.jump_land && !moving) { out = play(out, ground(act), now); }
+    else if !(out.move == Move.jump_land && !moving) { out = play(out, ifx out.dance then Move.dancing else ground(act), now); }
   }
   // A one-shot that has played out moves on.
   if once(out.move) && frames_into(out.move, out.start, now) >= f32(frames_of(b, c, out.move)) {
     if out.move == Move.jump_start { out = play(out, Move.jump_loop, now); }
     else { out = play(out, ground(act), now); }
   }
+  return out;
+}
+
+// Asks for the dance, or stops it if you are dancing.
+metareal_cast_dance :: (a: Anim) -> Anim #export_c {
+  out := a;
+  out.dance = !a.dance;
   return out;
 }
 
@@ -589,15 +601,15 @@ child_at :: (f: f32) -> Rigid {
 Layout :: struct { poses: int; clips: int; skeleton: int; body_vertices: int; body_indices: int; setup: int;
                    robot_vertices: int; robot_clips: int; robot_frames: int; patrols: int; samples: int; bodies: int; size: int; }
 
-// The clips: frame counts 4, 2, 2, 3, 2, 3 (idle, walk, sprint, jump
-// start, loop, land), 16 frames in all.
+// The clips: frame counts 4, 2, 2, 3, 2, 3, 2 (idle, walk, sprint, jump
+// start, loop, land, dance), 18 frames in all.
 small :: (b: [] u8) -> Layout {
   l: Layout;
   put32(b, 0, MAGIC); put32(b, 4, 1); put32(b, 8, BUFFERS);
   at := 16 + BUFFERS * 32;
   l.skeleton = at; at = table(b, 0, "skeleton", 16, 2, at);
-  l.clips = at; at = table(b, 1, "clips", 8, 6, at);
-  l.poses = at; at = table(b, 2, "poses", 32, 32, at);
+  l.clips = at; at = table(b, 1, "clips", 8, 7, at);
+  l.poses = at; at = table(b, 2, "poses", 32, 36, at);
   l.body_vertices = at; at = table(b, 3, "body_vertices", 64, 3, at);
   l.body_indices = at; at = table(b, 4, "body_indices", 4, 3, at);
   l.setup = at; at = table(b, 5, "robot_setup", 16, 1, at);
@@ -612,10 +624,10 @@ small :: (b: [] u8) -> Layout {
   l.size = at;
   put32(b, l.skeleton, -1); put32(b, l.skeleton + 16, 0);
   putf(b, l.skeleton + 20, B.x); putf(b, l.skeleton + 24, B.y);
-  counts: [6] int; counts[0] = 4; counts[1] = 2; counts[2] = 2; counts[3] = 3; counts[4] = 2; counts[5] = 3;
+  counts: [7] int; counts[0] = 4; counts[1] = 2; counts[2] = 2; counts[3] = 3; counts[4] = 2; counts[5] = 3; counts[6] = 2;
   first := 0;
-  for i: 0..<6 { put32(b, l.clips + i * 8, first); put32(b, l.clips + i * 8 + 4, counts[i]); first += counts[i]; }
-  for f: 0..<16 {
+  for i: 0..<7 { put32(b, l.clips + i * 8, first); put32(b, l.clips + i * 8 + 4, counts[i]); first += counts[i]; }
+  for f: 0..<18 {
     root := root_at(f32(f));
     rigid_out(b, l.poses + (f * 2) * 32, root);
     rigid_out(b, l.poses + (f * 2 + 1) * 32, chain(root, child_at(f32(f))));
@@ -663,7 +675,7 @@ small :: (b: [] u8) -> Layout {
   c := metareal_cast_open(bytes[0..<l.size]);
   #assert c.ok && c.size == l.size;
   #assert c.joints == 2 && c.bones == 2 && c.rate == 2 && c.scale == 2;
-  #assert c.poses.count == 32 && c.body_vertices.count == 3 && c.robot_lines.count == 2;
+  #assert c.poses.count == 36 && c.body_vertices.count == 3 && c.robot_lines.count == 2;
   #assert c.poses.offset == l.poses && c.patrol_samples.offset == l.samples;
   #assert c.skeleton.end == l.skeleton + 32 && c.patrol_samples.end == l.samples + 120;
   #assert c.robot_bodies.offset == l.bodies && c.robot_bodies.count == 1 && c.robot_bodies.end == l.size;
@@ -673,8 +685,8 @@ small :: (b: [] u8) -> Layout {
 }
 
 #test "the limits of the fixed storage" {
-  #assert joints_ok(65, 6, 650) && joints_ok(1, 6, 1) && !joints_ok(66, 6, 660);
-  #assert !joints_ok(65, 5, 650) && !joints_ok(65, 7, 650) && !joints_ok(65, 6, 651);
+  #assert joints_ok(65, 7, 650) && joints_ok(1, 7, 1) && !joints_ok(66, 7, 660);
+  #assert !joints_ok(65, 6, 650) && !joints_ok(65, 8, 650) && !joints_ok(65, 7, 651);
   #assert robots_ok(67, 670, 3) && robots_ok(1, 1, 2) && robots_ok(96, 96, 2);
   #assert !robots_ok(0, 670, 3) && !robots_ok(97, 970, 3);
   #assert !robots_ok(67, 671, 3);   // part of a robot frame
@@ -747,15 +759,15 @@ small :: (b: [] u8) -> Layout {
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.skeleton + 16 + 12, -2000000);
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
-  copy = bytes; put32(copy[..], l.clips + 5 * 8, 14);                // the land clip past the poses
+  copy = bytes; put32(copy[..], l.clips + 6 * 8, 17);                // the dance past the poses
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
-  copy = bytes; put32(copy[..], l.clips + 5 * 8, 13);                // up to the last pose frame
+  copy = bytes; put32(copy[..], l.clips + 6 * 8, 16);                // up to the last pose frame
   #assert metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.clips + 4, 0);                     // an empty clip
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.poses, -2000000);                   // a pose out of range
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
-  copy = bytes; putf(copy[..], l.poses + 32 * 31 + 24, 2000000);     // the last one's last number
+  copy = bytes; putf(copy[..], l.poses + 32 * 35 + 24, 2000000);     // the last one's last number
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.setup, 0);                         // no bones
   #assert !metareal_cast_open(copy[0..<l.size]).ok;
@@ -1151,4 +1163,42 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   #assert abs(s.yaw) > 3;
   #assert near(s.time, 1.25, 0.00001) && s.clip == 0 && near(s.z, 0.25, 0.00001);
   #assert wrap_angle(f32(PI)) == -f32(PI) && near(wrap_angle(7), 7 - f32(2 * PI), 0.00001);
+}
+
+#test "the dance plays while you stand, and moving or jumping ends it" {
+  bytes: [4096] u8;
+  l := small(bytes[..]);
+  b := bytes[0..<l.size]; c := opened(b);
+  a: Anim;
+  a = metareal_cast_update(b, c, a, 0, false, 1);
+  a = metareal_cast_dance(a);
+  #assert a.dance && a.move == Move.idle;
+  a = metareal_cast_update(b, c, a, 0, false, 2);
+  #assert a.move == Move.dancing && a.from == Move.idle && a.start == 2 && a.dance;
+  // It loops: still dancing a while later.
+  a = metareal_cast_update(b, c, a, 0, false, 9);
+  #assert a.move == Move.dancing && a.start == 2;
+  #assert speed(Move.dancing) == 1 && !once(Move.dancing);
+  // Asked again, it stops.
+  s := metareal_cast_update(b, c, metareal_cast_dance(a), 0, false, 10);
+  #assert s.move == Move.idle && !s.dance && s.from == Move.dancing;
+  // Walking ends it, and stopping again doesn't bring it back.
+  w := metareal_cast_update(b, c, a, 1, false, 10);
+  #assert w.move == Move.walking && !w.dance;
+  #assert metareal_cast_update(b, c, w, 0, false, 11).move == Move.idle;
+  // So does a jump; landing goes to the landing, not the dance.
+  j := metareal_cast_update(b, c, a, 3, true, 10);
+  #assert j.move == Move.jump_start && !j.dance;
+  j = metareal_cast_update(b, c, j, 0, false, 11);
+  #assert j.move == Move.jump_land;
+  // Asked in the air, it never starts.
+  air := metareal_cast_update(b, c, metareal_cast_dance(j), 3, false, 12);
+  #assert !air.dance && air.move != Move.dancing;
+}
+
+#test "the dance is the seventh clip" {
+  bytes: [4096] u8;
+  l := small(bytes[..]);
+  b := bytes[0..<l.size]; c := opened(b);
+  #assert first_of(b, c, Move.dancing) == 16 && frames_of(b, c, Move.dancing) == 2;
 }

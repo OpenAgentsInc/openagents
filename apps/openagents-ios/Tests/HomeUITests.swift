@@ -63,6 +63,41 @@ final class HomeUITests: XCTestCase {
         app.terminate()
     }
 
+    func testTheHotbarDancesAndTheTerminalStandsAhead() {
+        let app = XCUIApplication()
+        app.launch()
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20))
+        start.tap()
+        let you = app.otherElements["grid.you"]
+        XCTAssertTrue(you.waitForExistence(timeout: 5))
+        let terminal = XCTAttachment(screenshot: app.screenshot())
+        terminal.name = "The terminal ahead"; terminal.lifetime = .keepAlways; add(terminal)
+        // The hotbar's one slot dances, like the robots.
+        let dance = app.buttons["grid.dance"]
+        XCTAssertTrue(dance.waitForExistence(timeout: 5))
+        dance.tap()
+        let dancing = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in you.value as? String == "dancing" }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [dancing], timeout: 5), .completed, "you: \(you.value ?? "")")
+        Thread.sleep(forTimeInterval: 1)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "Dancing"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertEqual(you.value as? String, "dancing")
+        // Walking ahead ends the dance; the terminal's desk stops you short of it.
+        let grid = app.otherElements["grid.world"]
+        let thumb = app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.8))
+        thumb.press(forDuration: 0.05, thenDragTo: thumb.withOffset(CGVector(dx: 0, dy: -80)),
+                    withVelocity: .default, thenHoldForDuration: 3)
+        let stood = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in you.value as? String == "idle" }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [stood], timeout: 5), .completed, "you: \(you.value ?? "")")
+        let parts = (grid.value as? String)?.split(separator: " ").compactMap { Double($0) } ?? []
+        XCTAssertEqual(parts.count, 2)
+        if parts.count == 2 { XCTAssertGreaterThan(parts[1], 2.5); XCTAssertLessThan(parts[1], 3.3, "through the desk: \(grid.value ?? "")") }
+        let desk = XCTAttachment(screenshot: app.screenshot())
+        desk.name = "At the terminal"; desk.lifetime = .keepAlways; add(desk)
+        app.terminate()
+    }
+
     func testTheForemanStandsByTheStart() {
         let app = XCUIApplication()
         app.launch()

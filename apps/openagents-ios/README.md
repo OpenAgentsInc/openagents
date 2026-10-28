@@ -54,8 +54,8 @@ robots or other players yet, and no payments are sent or received yet.
 | --- | --- |
 | `../../metareal/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
 | `../../metareal/grid.coax` | The Grid: projecting and fading its ground ring, the view matrix, the move/look/jump touch policy |
-| `../../metareal/player.coax` | Walking, running, jumping, bumping into the robots and the third-person camera, ported from aethyr-cpp |
-| `../../metareal/cast.coax` | Your character (skinned, idle/walk/run/jump clips cross-faded) and the six robots, including the Foreman by the start, with a body capsule per robot bone that you collide with; reads and checks `Cast.bin` |
+| `../../metareal/player.coax` | Walking, running, jumping, bumping into the robots and the terminal, and the third-person camera, ported from aethyr-cpp |
+| `../../metareal/cast.coax` | Your character (skinned, idle/walk/run/jump/dance clips cross-faded) and the six robots, including the Foreman by the start, with a body capsule per robot bone that you collide with; reads and checks `Cast.bin` |
 | `OpenAgents/Resources/Cast.bin`, `cast-layer*.jpg` | Packed by `../../metareal/tools/pack_cast.py` from aethyr-cpp assets (Quaternius models, CC0) |
 | `../../metareal/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |
 | `../../metareal/platform/host.c` | Bounded resident storage, generation-checked handles, packed draw packets |

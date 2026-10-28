@@ -6,12 +6,13 @@
 #define SLOTS 16
 #define PACKETS 8192
 #define OUTPUT 512
+#define HOTBAR 8
 typedef struct {
   double *cells; size_t cell_count;
   uint8_t *config; size_t config_size;
   MRDot dots[PACKETS]; size_t dots_count;
   MRLine lines[PACKETS]; size_t lines_count;
-  MRBar bar; char label[33]; uint8_t output[OUTPUT]; size_t output_size;
+  MRBar bar; char label[33]; MRSlot hotbar[HOTBAR]; size_t hotbar_count; uint8_t output[OUTPUT]; size_t output_size;
   bool failed;
 } Resident;
 static Resident *slots[SLOTS];
@@ -34,13 +35,15 @@ int64_t mr_create(const uint8_t *config,size_t size,size_t cells) {
   return 0;
 }
 void mr_destroy(int64_t h){ Resident*r=lookup(h);if(!r)return;slots[h&255]=NULL;free(r->cells);free(r->config);free(r); }
-void mr_clear_frame(int64_t h){Resident*r=lookup(h);if(r){r->dots_count=r->lines_count=0;memset(&r->bar,0,sizeof(r->bar));}}
+void mr_clear_frame(int64_t h){Resident*r=lookup(h);if(r){r->dots_count=r->lines_count=r->hotbar_count=0;memset(&r->bar,0,sizeof(r->bar));}}
 bool mr_ok(int64_t h){Resident*r=lookup(h);return r&&!r->failed;}
 const MRDot *mr_dots(int64_t h){Resident*r=lookup(h);return r?r->dots:NULL;}
 const MRLine *mr_lines(int64_t h){Resident*r=lookup(h);return r?r->lines:NULL;}
 size_t mr_dot_count(int64_t h){Resident*r=lookup(h);return r?r->dots_count:0;}
 size_t mr_line_count(int64_t h){Resident*r=lookup(h);return r?r->lines_count:0;}
 const MRBar *mr_bar(int64_t h){Resident*r=lookup(h);return r?&r->bar:NULL;}
+const MRSlot *mr_slots(int64_t h){Resident*r=lookup(h);return r?r->hotbar:NULL;}
+size_t mr_slot_count(int64_t h){Resident*r=lookup(h);return r?r->hotbar_count:0;}
 const uint8_t *mr_output(int64_t h){Resident*r=lookup(h);return r?r->output:NULL;}
 size_t mr_output_size(int64_t h){Resident*r=lookup(h);return r?r->output_size:0;}
 double host_load(int64_t h,int64_t slot){Resident*r=lookup(h);if(!r)return 0;if(slot<0||(uint64_t)slot>=r->cell_count){r->failed=true;return 0;}return r->cells[slot];}
@@ -60,6 +63,12 @@ void host_bar(int64_t h,double x,double y,double width,double height,double pres
   double v[]={x,y,width,height,press,flash};if(!floats(r,v,6))return;
   r->bar=(MRBar){x,y,width,height,press,flash,{0}};
   memcpy(r->bar.label,r->label,sizeof(r->bar.label));r->bar.label[32]=0;
+}
+void host_slot(int64_t h,double x,double y,double width,double height,double press,double flash,double selected,double icon){
+  Resident*r=lookup(h);if(!r)return;
+  double v[]={x,y,width,height,press,flash,selected,icon};if(!floats(r,v,8))return;
+  if(r->hotbar_count==HOTBAR){r->failed=true;return;}
+  r->hotbar[r->hotbar_count++]=(MRSlot){x,y,width,height,press,flash,selected,icon};
 }
 void host_output_reset(int64_t h){Resident*r=lookup(h);if(r)r->output_size=0;}
 void host_output_byte(int64_t h,int64_t value){Resident*r=lookup(h);if(!r)return;if(value<0||value>255||r->output_size==OUTPUT){r->failed=true;return;}r->output[r->output_size++]=(uint8_t)value;}
