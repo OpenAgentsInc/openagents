@@ -11,7 +11,7 @@
     "clone": "https://github.com/OpenAgentsInc/openagents.git",
     "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
   },
-  "path": "metareal/",
+  "path": "verse/",
   "contributions": "open",
   "license": "Apache-2.0",
   "pubkey": "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18"
