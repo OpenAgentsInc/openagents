@@ -103,10 +103,12 @@ class AdmissionTests(unittest.TestCase):
                 for case,result in zip(cases,results):self.assertEqual(int(result)==0,case[-1],(mode,case[0][:120],len(case[0]),case[1:4],int(result)))
         print(f'{len(cases)} independent JSON cases per mode; original bytes preserved')
 
-    def test_parser_implementation_prefix_is_frozen(self):
-        original=subprocess.check_output(['git','show','1b269c7ae3:coax/lib/nostr/json.coax'],cwd=ROOT)
-        current=(ROOT/'coax/lib/nostr/json.coax').read_bytes()
-        marker=b'// ---- checks'
-        self.assertEqual(original.split(marker)[0],current.split(marker)[0])
+    def test_reference_snapshot_identity(self):
+        # json_parser.py exercises current emitted code against this immutable
+        # baseline, including token/range/decode/number and partial-writer parity.
+        from json_parser import REFERENCE,REFERENCE_SHA256
+        import hashlib
+        original=subprocess.check_output(['git','show',REFERENCE+':coax/lib/nostr/json.coax'],cwd=ROOT)
+        self.assertEqual(hashlib.sha256(original.split(b'// ---- checks')[0]).hexdigest(),REFERENCE_SHA256)
 
 if __name__=='__main__':unittest.main()

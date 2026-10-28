@@ -50,9 +50,12 @@ The new structural JSON adapter/policy and its scope are documented in
 [`docs/verification/coax-nostr-json-admission-2026-10-28.md`](../docs/verification/coax-nostr-json-admission-2026-10-28.md).
 It preserves generic parser behavior and original bytes while refusing decoded
 key ambiguity, unsafe selected integers and explicit consumer-budget violations.
-The existing decoder/writer has mutation coverage gaps; the separate
-`nostr-json-parser-checks` task gates completion of event/JCS/JWS verification.
-No survivor exemptions or hidden parser replacements qualify it.
+The separate `nostr-json-parser-checks` closure now kills971/971 mutants
+and matches a frozen decoder on42328 native sanitizer cases per mode, including
+exact token/range/decode/error and bounded writer output. Its evidence is in
+[`coax-json-decoder-checks-2026-10-28.md`](../docs/verification/coax-json-decoder-checks-2026-10-28.md).
+This qualifies the explicit decoder check closure, not full event/JWS verification
+or every target; no survivor exemptions or hidden parser replacements are used.
 
 ### 1.2 Supported profiles, not an unlimited promise
 

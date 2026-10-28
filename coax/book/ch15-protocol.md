@@ -632,8 +632,9 @@ The three profiles cover event JSON, JWS payload JSON and envelope JSON. They
 bound source, frame, decoded strings, content and protobuf bytes separately;
 one larger budget never enlarges another. A caller can narrow a policy.
 Successful structural admission still needs domain shape, signature and
-permission checks. The decoder's historical mutation coverage gap is tracked
-separately; a zero-survivor policy run is not a claim about every parser path.
+permission checks. The decoder's full check closure separately kills971/971 mutants. Native
+reference and independent oracle tests cover the real parser-to-policy path;
+these scoped observations do not certify signatures or all target behavior.
 See the repository's
 [admission evidence](../../docs/verification/coax-nostr-json-admission-2026-10-28.md)
 for limits, commands and the remaining consumer gates.

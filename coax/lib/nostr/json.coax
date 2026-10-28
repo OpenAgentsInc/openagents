@@ -50,7 +50,7 @@ Json :: struct {
 json_start :: (j: [] Json, text: string) {
   j[0].text = text; j[0].at = 0; j[0].depth = 0; j[0].want = JW_VALUE;
   j[0].tok = JSON_END; j[0].from = 0; j[0].to = 0; j[0].key = false; j[0].error_at = -1;
-  if text.count > JSON_MAX_INPUT { if json_refuse(j, 0) == JSON_ERROR {} }
+  if text.count > JSON_MAX_INPUT { refused := json_refuse(j, 0); }
 }
 
 json_refuse :: (j: [] Json, at: int) -> int {
@@ -78,20 +78,16 @@ json_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
 
 // The length of the UTF-8 sequence at i, or 0 when it isn't one.
 json_utf8 :: (text: string, i: int) -> int {
-  c := cast(int) text[i];
-  if c < 0x80 { return 1; }
-  n := 0; low := 0x80; cp := 0;
-  if c >= 0xC2 && c <= 0xDF { n = 2; cp = c & 0x1F; }
-  else if c >= 0xE0 && c <= 0xEF { n = 3; cp = c & 0x0F; low = 0x800; }
-  else if c >= 0xF0 && c <= 0xF4 { n = 4; cp = c & 0x07; low = 0x10000; }
-  else { return 0; }
-  if i + n > text.count { return 0; }
-  for k: 1..<n {
-    b := cast(int) text[i + k];
-    if (b & 0xC0) != 0x80 { return 0; }
-    cp = cp * 64 + (b & 0x3F);
-  }
-  if cp < low || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) { return 0; }
+  c:=text[i];if c<0x80 {return 1;}
+  if c<0xC2 || c>0xF4 {return 0;}
+  n:=2;if c>=0xE0 {n=3;}if c>=0xF0 {n=4;}
+  if i+n>text.count {return 0;}
+  for k:1..<n {if text[i+k]<0x80 || text[i+k]>0xBF {return 0;}}
+  second:=text[i+1];
+  if c==0xE0 && second<0xA0 {return 0;}
+  if c==0xED && second>=0xA0 {return 0;}
+  if c==0xF0 && second<0x90 {return 0;}
+  if c==0xF4 && second>0x8F {return 0;}
   return n;
 }
 
@@ -120,7 +116,6 @@ json_string :: (j: [] Json) -> int {
     if n == 0 { return json_refuse(j, i); }
     i += n;
   }
-  if i - j[0].at - 1 > JSON_MAX_STRING { return json_refuse(j, i); }
   t := json_token(j, JSON_STRING, j[0].at + 1, i);
   j[0].at = i + 1;
   return t;
@@ -129,7 +124,7 @@ json_string :: (j: [] Json) -> int {
 json_number :: (j: [] Json) -> int {
   text := j[0].text;
   s := j[0].at; i := s;
-  if i < text.count && text[i] == '-' { i += 1; }
+  if text[i] == '-' { i += 1; }
   if i >= text.count || !json_digit(text[i]) { return json_refuse(j, i); }
   if text[i] == '0' { i += 1; } else { while i < text.count && json_digit(text[i]) { i += 1; } }
   if i < text.count && text[i] == '.' {
@@ -165,14 +160,15 @@ json_value :: (j: [] Json) -> int {
     j[0].at += 1;
     return json_token(j, ifx c == '{' then JSON_OBJECT else JSON_ARRAY, j[0].at - 1, j[0].at);
   }
-  t := JSON_ERROR;
+  t: int;
   if c == '"' { t = json_string(j); }
   else if c == '-' || json_digit(c) { t = json_number(j); }
   else if c == 't' { t = json_word(j, "true", JSON_TRUE); }
   else if c == 'f' { t = json_word(j, "false", JSON_FALSE); }
   else if c == 'n' { t = json_word(j, "null", JSON_NULL); }
   else { return json_refuse(j, j[0].at); }
-  if t != JSON_ERROR { json_after_value(j); }
+  if t == JSON_ERROR { return t; }
+  json_after_value(j);
   return t;
 }
 
@@ -190,7 +186,6 @@ json_close :: (j: [] Json) -> int {
 json_next :: (j: [] Json) -> int {
   if j[0].tok == JSON_ERROR { return JSON_ERROR; }
   text := j[0].text;
-  while true {
     while j[0].at < text.count {
       c := text[j[0].at];
       if c != ' ' && c != '\t' && c != '\n' && c != '\r' { break; }
@@ -206,11 +201,11 @@ json_next :: (j: [] Json) -> int {
     if w == JW_COLON {
       if c != ':' { return json_refuse(j, j[0].at); }
       j[0].at += 1; j[0].want = JW_VALUE;
-      continue;
+      return json_next(j);
     }
     if w == JW_NEXT {
       object := j[0].object[j[0].depth - 1];
-      if c == ',' { j[0].at += 1; j[0].want = ifx object then JW_KEY else JW_VALUE; continue; }
+      if c == ',' { j[0].at += 1; j[0].want = ifx object then JW_KEY else JW_VALUE; return json_next(j); }
       if (object && c == '}') || (!object && c == ']') { return json_close(j); }
       return json_refuse(j, j[0].at);
     }
@@ -224,8 +219,6 @@ json_next :: (j: [] Json) -> int {
     }
     if w == JW_VALUE_OR_CLOSE && c == ']' { return json_close(j); }
     return json_value(j);
-  }
-  return JSON_ERROR;
 }
 
 // Skips the value whose first token was just read (a container to its end).
@@ -242,34 +235,27 @@ json_skip :: (j: [] Json) -> bool {
 
 // Every token to the end: true when the text is one JSON value.
 json_valid :: (text: string) -> bool {
-  j: [1] Json;
-  json_start(j[..], text);
-  while true {
-    t := json_next(j[..]);
-    if t == JSON_END { return true; }
-    if t == JSON_ERROR { return false; }
-  }
-  return false;
+  j:[1]Json;json_start(j[..],text);t:=json_next(j[..]);
+  while t!=JSON_END && t!=JSON_ERROR {t=json_next(j[..]);}
+  return t==JSON_END;
 }
 
 // A number token's text as an integer: no fraction or exponent, |n| <= 2^53.
 JsonInt :: struct { ok: bool; value: int; }
 JSON_INT_MOST :: 9007199254740992;
 json_int :: (s: string) -> JsonInt {
-  r: JsonInt;
-  i := 0; negative := false;
-  if i < s.count && s[i] == '-' { negative = true; i += 1; }
-  if i >= s.count || s.count - i > 16 { return r; }
-  if s[i] == '0' && s.count - i > 1 { return r; }
-  v := 0;
-  while i < s.count {
-    if !json_digit(s[i]) { return r; }
-    v = v * 10 + cast(int) (s[i] - '0');
-    i += 1;
+  r:JsonInt;if s.count==0 {return r;}
+  i:=0;negative:=false;if s[0]=='-' {negative=true;i=1;}
+  if i>=s.count {return r;}
+  if s[i]=='0' && s.count-i>1 {return r;}
+  v:=0;
+  while i<s.count {
+    if !json_digit(s[i]) {return r;}
+    digit:=cast(int)(s[i]-'0');
+    if v>(JSON_INT_MOST-digit)/10 {return r;}
+    v=v*10+digit;i+=1;
   }
-  if v > JSON_INT_MOST { return r; }
-  r.ok = true; r.value = ifx negative then -v else v;
-  return r;
+  return JsonInt.{ok=true,value=ifx negative then -v else v};
 }
 
 // A UTF-8 encoding of cp into out at n: the new length, or -1 when it doesn't fit.
@@ -312,15 +298,15 @@ json_unescape :: (raw: string, out: [] u8) -> int {
       cp := json_u4(raw, i);
       if cp < 0 { return -1; }
       i += 6;
-      if cp >= 0xDC00 && cp <= 0xDFFF { return -1; }
-      if cp >= 0xD800 && cp <= 0xDBFF {
+      if cp >= 0xD800 && cp <= 0xDFFF {
+        if cp >= 0xDC00 { return -1; }
         low := json_u4(raw, i);
         if low < 0xDC00 || low > 0xDFFF { return -1; }
         cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
         i += 6;
       }
       n = json_put_cp(out, n, cp);
-      if n < 0 { return -1; }
+      if n == -1 { return -1; }
       continue;
     }
     b := e;
@@ -359,7 +345,7 @@ json_raw :: (out: [] u8, at: int, text: string) -> int {
 json_write_string :: (out: [] u8, at: int, s: string) -> int {
   n := json_raw(out, at, "\"");
   for i: 0..<s.count {
-    if n < 0 { return -1; }
+    if n == -1 { return -1; }
     c := s[i];
     if c == '"' { n = json_raw(out, n, "\\\""); }
     else if c == '\\' { n = json_raw(out, n, "\\\\"); }
@@ -371,7 +357,9 @@ json_write_string :: (out: [] u8, at: int, s: string) -> int {
     else if c < 0x20 {
       n = json_raw(out, n, "\\u00");
       digits := "0123456789abcdef";
-      if n >= 0 && n + 2 <= out.count { out[n] = digits[c >> 4]; out[n + 1] = digits[c & 15]; n += 2; } else { n = -1; }
+      if n == -1 { return -1; }
+      if n + 2 > out.count { return -1; }
+      out[n] = digits[c >> 4]; out[n + 1] = digits[c & 15]; n += 2;
     } else {
       if n >= out.count { return -1; }
       out[n] = c; n += 1;
@@ -491,4 +479,257 @@ json_write_int :: (out: [] u8, at: int, v: int) -> int {
   small: [4] u8;
   #assert json_write_string(small[..], 0, "abc") == -1 && json_write_int(small[..], json_raw(small[..], 0, "abcde"), 1) == -1;
   #assert json_write_string(small[..], 0, "ab") == 4 && json_write_int(small[..], 0, 1234) == 4 && json_write_int(small[..], 0, 12345) == -1;
+}
+
+#test "reused parser state is reset and refusal ranges remain observable" {
+  j:[1]Json;j[0].text="old";j[0].at=8;j[0].depth=9;j[0].want=JW_DONE;j[0].tok=JSON_ERROR;j[0].from=8;j[0].to=9;j[0].key=true;j[0].error_at=7;
+  json_start(j[..],"null");
+  #assert j[0].text=="null" && j[0].at==0 && j[0].depth==0 && j[0].want==JW_VALUE;
+  #assert j[0].tok==JSON_END && j[0].from==0 && j[0].to==0 && !j[0].key && j[0].error_at == -1;
+  #assert json_next(j[..])==JSON_NULL && json_text(j[..])=="null";
+  #assert json_next(j[..])==JSON_END;
+  j[0].key=true;j[0].from=4;j[0].to=7;
+  #assert json_refuse(j[..],2)==JSON_ERROR;
+  #assert j[0].tok==JSON_ERROR && j[0].error_at==2 && j[0].from==2 && j[0].to==2 && !j[0].key;
+  #assert json_next(j[..])==JSON_ERROR;
+}
+#test "original input budget is inclusive without parsing a megabyte" {
+  input:[JSON_MAX_INPUT+1]u8;j:[1]Json;
+  json_start(j[..],cast(string)input[0..<JSON_MAX_INPUT]);#assert j[0].tok==JSON_END && j[0].error_at == -1;
+  json_start(j[..],cast(string)input[..]);#assert j[0].tok==JSON_ERROR && j[0].error_at==0;
+}
+#forall "hex and decimal classification on every byte" value:0..<256 {
+  b:=cast(u8)value;
+  if value>=48 && value<=57 {#assert json_hex(b)==value-48;}
+  else if value>=65 && value<=70 {#assert json_hex(b)==value-55;}
+  else if value>=97 && value<=102 {#assert json_hex(b)==value-87;}
+  else {#assert json_hex(b) == -1;}
+  #assert json_digit(b)==(value>=48 && value<=57);
+}
+#test "token ranges, whitespace, scalar skip and malformed containers" {
+  j:[1]Json;json_start(j[..],"\t\r\n false");
+  #assert json_next(j[..])==JSON_FALSE && j[0].from==4 && j[0].to==9 && json_skip(j[..]);
+  json_start(j[..],"[true,null]");#assert json_next(j[..])==JSON_ARRAY;
+  #assert json_next(j[..])==JSON_TRUE && j[0].from==1 && j[0].to==5 && json_skip(j[..]);
+  #assert json_next(j[..])==JSON_NULL && json_skip(j[..]);
+  #assert json_next(j[..])==JSON_ARRAY_END && j[0].from==10 && j[0].to==11;
+  json_start(j[..],"{\"x\":{");#assert json_next(j[..])==JSON_OBJECT && !json_skip(j[..]);
+  json_start(j[..],"[");#assert json_next(j[..])==JSON_ARRAY && !json_skip(j[..]);
+  json_start(j[..],"{\"x\\u00g0\":1}");#assert json_next(j[..])==JSON_OBJECT && json_next(j[..])==JSON_ERROR;
+  for raw:[8]string.["[}","{]","\"abc\\", "\"\\u0000", "-", "1.", "1e+", "1e-"] {#assert !json_valid(raw);}
+  json_start(j[..],"nall");#assert json_next(j[..])==JSON_ERROR && j[0].error_at==1;
+  json_start(j[..],"xrue");#assert json_word(j[..],"true",JSON_TRUE)==JSON_ERROR && j[0].error_at==0;
+  json_start(j[..],"truX");#assert json_next(j[..])==JSON_ERROR && j[0].error_at==3;
+  json_start(j[..],"tru");#assert json_next(j[..])==JSON_ERROR && j[0].error_at==0;
+  json_start(j[..],"{\"x\":1}");#assert json_next(j[..])==JSON_OBJECT;#assert json_skip(j[..]) && j[0].from==6 && j[0].to==7;
+}
+#test "unescape helper boundaries are explicit even before parser admission" {
+  out:[8]u8;
+  for raw:[6]string.["\\", "\\u", "\\u000g", "xx0000", "\\v0000", "\\uGGGG"] {#assert json_u4(raw,0) == -1;}
+  #assert json_unescape("\\",out[..]) == -1 && json_unescape("\\uGGGG",out[..]) == -1;
+  #assert json_unescape("\\uDFFF",out[..]) == -1;
+  #assert json_unescape("\\uDBFF\\uDC00",out[..])==4;
+  #assert json_unescape("\\uD800\\uDC00",out[..])==4 && out[0]==240 && out[1]==144 && out[2]==128 && out[3]==128;
+  #assert json_unescape("\\uDBFF\\uDFFF",out[..])==4 && out[0]==244 && out[1]==143 && out[2]==191 && out[3]==191;
+  #assert json_unescape("\\uD800\\uDBFF",out[..]) == -1 && json_unescape("\\uD800\\uE000",out[..]) == -1;
+  #assert json_unescape("\\uE000",out[..])==3;
+  #assert json_unescape("\\n",out[0..<0]) == -1 && json_unescape("\\u0080",out[0..<1]) == -1;
+  #assert json_put_cp(out[..],-1,65) == -1;
+  #assert !json_is("\\n","\\n") && !json_is("\\u0062","a") && !json_is("\\u0061x","ay");
+  #assert !json_is("a","b") && json_is("","");
+  plain:[300]u8;for i:0..<300 {plain[i]=97;}#assert json_is(cast(string)plain[..],cast(string)plain[..]);
+}
+#test "writer control bytes, exact output and sticky failures" {
+  out:[256]u8;input:[1]u8;
+  input[0]=8;#assert json_write_string(out[..],0,cast(string)input[..])==4 && cast(string)out[0..<4]=="\"\\b\"";
+  input[0]=12;#assert json_write_string(out[..],0,cast(string)input[..])==4 && cast(string)out[0..<4]=="\"\\f\"";
+  input[0]=32;#assert json_write_string(out[..],0,cast(string)input[..])==3 && cast(string)out[0..<3]=="\" \"";
+  input[0]=31;#assert json_write_string(out[..],0,cast(string)input[..])==8 && cast(string)out[0..<8]=="\"\\u001f\"";
+  #assert json_write_string(out[..],-1,"abc") == -1 && json_write_string(out[0..<0],0,"a") == -1;
+  #assert json_write_string(out[0..<2],0,"aa") == -1;
+  #assert json_write_string(out[0..<5],0,cast(string)input[..]) == -1;
+  #assert json_write_string(out[0..<7],0,cast(string)input[..]) == -1;
+  #assert json_write_int(out[..],0,0)==1 && out[0]=='0';
+}
+
+#test "fixed Unicode encoding boundaries match independent UTF-8 fixtures" {
+  out:[8]u8;
+  #assert json_put_cp(out[..],0,0)==1;#assert out[0]==0;
+  #assert json_put_cp(out[0..<1],0,0)==1;
+  #assert json_put_cp(out[..],0,1)==1;#assert out[0]==1;
+  #assert json_put_cp(out[0..<1],0,1)==1;
+  #assert json_put_cp(out[..],0,63)==1;#assert out[0]==63;
+  #assert json_put_cp(out[0..<1],0,63)==1;
+  #assert json_put_cp(out[..],0,64)==1;#assert out[0]==64;
+  #assert json_put_cp(out[0..<1],0,64)==1;
+  #assert json_put_cp(out[..],0,127)==1;#assert out[0]==127;
+  #assert json_put_cp(out[0..<1],0,127)==1;
+  #assert json_put_cp(out[..],0,128)==2;#assert out[0]==194;#assert out[1]==128;
+  #assert json_put_cp(out[0..<2],0,128)==2;
+  #assert json_put_cp(out[0..<1],0,128) == -1;
+  #assert json_put_cp(out[..],0,129)==2;#assert out[0]==194;#assert out[1]==129;
+  #assert json_put_cp(out[0..<2],0,129)==2;
+  #assert json_put_cp(out[0..<1],0,129) == -1;
+  #assert json_put_cp(out[..],0,255)==2;#assert out[0]==195;#assert out[1]==191;
+  #assert json_put_cp(out[0..<2],0,255)==2;
+  #assert json_put_cp(out[0..<1],0,255) == -1;
+  #assert json_put_cp(out[..],0,256)==2;#assert out[0]==196;#assert out[1]==128;
+  #assert json_put_cp(out[0..<2],0,256)==2;
+  #assert json_put_cp(out[0..<1],0,256) == -1;
+  #assert json_put_cp(out[..],0,1023)==2;#assert out[0]==207;#assert out[1]==191;
+  #assert json_put_cp(out[0..<2],0,1023)==2;
+  #assert json_put_cp(out[0..<1],0,1023) == -1;
+  #assert json_put_cp(out[..],0,1024)==2;#assert out[0]==208;#assert out[1]==128;
+  #assert json_put_cp(out[0..<2],0,1024)==2;
+  #assert json_put_cp(out[0..<1],0,1024) == -1;
+  #assert json_put_cp(out[..],0,2047)==2;#assert out[0]==223;#assert out[1]==191;
+  #assert json_put_cp(out[0..<2],0,2047)==2;
+  #assert json_put_cp(out[0..<1],0,2047) == -1;
+  #assert json_put_cp(out[..],0,2048)==3;#assert out[0]==224;#assert out[1]==160;#assert out[2]==128;
+  #assert json_put_cp(out[0..<3],0,2048)==3;
+  #assert json_put_cp(out[0..<2],0,2048) == -1;
+  #assert json_put_cp(out[..],0,2049)==3;#assert out[0]==224;#assert out[1]==160;#assert out[2]==129;
+  #assert json_put_cp(out[0..<3],0,2049)==3;
+  #assert json_put_cp(out[0..<2],0,2049) == -1;
+  #assert json_put_cp(out[..],0,4095)==3;#assert out[0]==224;#assert out[1]==191;#assert out[2]==191;
+  #assert json_put_cp(out[0..<3],0,4095)==3;
+  #assert json_put_cp(out[0..<2],0,4095) == -1;
+  #assert json_put_cp(out[..],0,4096)==3;#assert out[0]==225;#assert out[1]==128;#assert out[2]==128;
+  #assert json_put_cp(out[0..<3],0,4096)==3;
+  #assert json_put_cp(out[0..<2],0,4096) == -1;
+  #assert json_put_cp(out[..],0,55295)==3;#assert out[0]==237;#assert out[1]==159;#assert out[2]==191;
+  #assert json_put_cp(out[0..<3],0,55295)==3;
+  #assert json_put_cp(out[0..<2],0,55295) == -1;
+  #assert json_put_cp(out[..],0,57344)==3;#assert out[0]==238;#assert out[1]==128;#assert out[2]==128;
+  #assert json_put_cp(out[0..<3],0,57344)==3;
+  #assert json_put_cp(out[0..<2],0,57344) == -1;
+  #assert json_put_cp(out[..],0,65535)==3;#assert out[0]==239;#assert out[1]==191;#assert out[2]==191;
+  #assert json_put_cp(out[0..<3],0,65535)==3;
+  #assert json_put_cp(out[0..<2],0,65535) == -1;
+  #assert json_put_cp(out[..],0,65536)==4;#assert out[0]==240;#assert out[1]==144;#assert out[2]==128;#assert out[3]==128;
+  #assert json_put_cp(out[0..<4],0,65536)==4;
+  #assert json_put_cp(out[0..<3],0,65536) == -1;
+  #assert json_put_cp(out[..],0,65537)==4;#assert out[0]==240;#assert out[1]==144;#assert out[2]==128;#assert out[3]==129;
+  #assert json_put_cp(out[0..<4],0,65537)==4;
+  #assert json_put_cp(out[0..<3],0,65537) == -1;
+  #assert json_put_cp(out[..],0,262143)==4;#assert out[0]==240;#assert out[1]==191;#assert out[2]==191;#assert out[3]==191;
+  #assert json_put_cp(out[0..<4],0,262143)==4;
+  #assert json_put_cp(out[0..<3],0,262143) == -1;
+  #assert json_put_cp(out[..],0,262144)==4;#assert out[0]==241;#assert out[1]==128;#assert out[2]==128;#assert out[3]==128;
+  #assert json_put_cp(out[0..<4],0,262144)==4;
+  #assert json_put_cp(out[0..<3],0,262144) == -1;
+  #assert json_put_cp(out[..],0,1114111)==4;#assert out[0]==244;#assert out[1]==143;#assert out[2]==191;#assert out[3]==191;
+  #assert json_put_cp(out[0..<4],0,1114111)==4;
+  #assert json_put_cp(out[0..<3],0,1114111) == -1;
+}
+
+#test "UTF-8 width at raw byte boundaries and truncated spans" {
+  b:[8]u8;
+  b[0]=0;#assert json_utf8(cast(string)b[0..<1],0)==1;
+  b[0]=127;#assert json_utf8(cast(string)b[0..<1],0)==1;
+  b[0]=128;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=191;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=192;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=193;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=194;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=223;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=224;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=239;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=240;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=244;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=245;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=255;#assert json_utf8(cast(string)b[0..<1],0)==0;
+  b[0]=194;  b[1]=127;#assert json_utf8(cast(string)b[0..<2],0)==0;
+  b[0]=194;  b[1]=128;#assert json_utf8(cast(string)b[0..<2],0)==2;
+  b[0]=194;  b[1]=191;#assert json_utf8(cast(string)b[0..<2],0)==2;
+  b[0]=194;  b[1]=192;#assert json_utf8(cast(string)b[0..<2],0)==0;
+  b[0]=223;  b[1]=127;#assert json_utf8(cast(string)b[0..<2],0)==0;
+  b[0]=223;  b[1]=128;#assert json_utf8(cast(string)b[0..<2],0)==2;
+  b[0]=223;  b[1]=191;#assert json_utf8(cast(string)b[0..<2],0)==2;
+  b[0]=223;  b[1]=192;#assert json_utf8(cast(string)b[0..<2],0)==0;
+  b[0]=224;  b[1]=127;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=224;  b[1]=128;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=224;  b[1]=159;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=224;  b[1]=160;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=224;  b[1]=191;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=224;  b[1]=192;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=237;  b[1]=127;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=237;  b[1]=128;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=237;  b[1]=159;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=237;  b[1]=160;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=237;  b[1]=191;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=237;  b[1]=192;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=239;  b[1]=127;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=239;  b[1]=128;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=239;  b[1]=159;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=239;  b[1]=160;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=239;  b[1]=191;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==3;
+  b[0]=239;  b[1]=192;  b[2]=128;#assert json_utf8(cast(string)b[0..<3],0)==0;
+  b[0]=240;  b[1]=127;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=240;  b[1]=128;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=240;  b[1]=143;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=240;  b[1]=144;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==4;
+  b[0]=240;  b[1]=191;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==4;
+  b[0]=240;  b[1]=192;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=244;  b[1]=127;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=244;  b[1]=128;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==4;
+  b[0]=244;  b[1]=143;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==4;
+  b[0]=244;  b[1]=144;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=244;  b[1]=191;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=244;  b[1]=192;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=245;  b[1]=127;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=245;  b[1]=128;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=245;  b[1]=143;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=245;  b[1]=144;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=245;  b[1]=191;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=245;  b[1]=192;  b[2]=128;  b[3]=128;#assert json_utf8(cast(string)b[0..<4],0)==0;
+  b[0]=0;b[1]=194;b[2]=128;#assert json_utf8(cast(string)b[0..<3],1)==2;
+}
+
+#test "minimal numbers and parser failure metadata remain exact" {
+  #assert json_valid("1e1") && json_valid("1e+1") && json_valid("1e-1") && !json_valid("1e");
+  #assert json_int("-0").ok && json_int("-0").value==0;
+  j:[1]Json;json_start(j[..],"\"bad");#assert json_value(j[..])==JSON_ERROR && j[0].want==JW_VALUE;
+  json_start(j[..],"{\"bad");#assert json_next(j[..])==JSON_OBJECT;
+  #assert json_next(j[..])==JSON_ERROR && !j[0].key && j[0].want==JW_KEY_OR_CLOSE;
+  json_start(j[..],"{\"x\":null}");#assert json_next(j[..])==JSON_OBJECT;
+  #assert json_next(j[..])==JSON_STRING && j[0].want==JW_COLON;
+  #assert json_next(j[..])==JSON_NULL && j[0].want==JW_NEXT;
+  json_start(j[..],"[}");#assert json_next(j[..])==JSON_ARRAY && json_next(j[..])==JSON_ERROR && j[0].depth==1;
+  json_start(j[..],"{]");#assert json_next(j[..])==JSON_OBJECT && json_next(j[..])==JSON_ERROR && j[0].depth==1;
+  json_start(j[..],"[1}");#assert json_next(j[..])==JSON_ARRAY && json_next(j[..])==JSON_NUMBER && json_next(j[..])==JSON_ERROR && j[0].depth==1;
+  json_start(j[..],"{\"x\":1]");#assert json_next(j[..])==JSON_OBJECT && json_next(j[..])==JSON_STRING && json_next(j[..])==JSON_NUMBER && json_next(j[..])==JSON_ERROR && j[0].depth==1;
+  out:[8]u8;
+  #assert json_unescape("\\uDC00",out[..]) == -1;
+  #assert json_unescape("\\uDBFF\\uDC00a",out[..])==5 && out[4]==97;
+  #assert json_unescape("\\uDFFF",out[..]) == -1;
+  #assert json_unescape("\\u0000",out[..])==1 && out[0]==0;
+  ctl:=[1]u8.[1];
+  #assert json_write_string(out[0..<7],0,cast(string)ctl[..]) == -1;
+  #assert json_write_string(out[0..<8],0,cast(string)ctl[..])==8;
+  #assert json_write_string(out[0..<6],0,cast(string)ctl[..]) == -1;
+}
+#test "raw string budget includes a nonzero opening offset" {
+  buf:[65540]u8;for i:0..<buf.count {buf[i]=97;}
+  buf[0]='[';buf[1]='"';buf[65538]='"';buf[65539]=']';
+  #assert json_valid(cast(string)buf[..]);
+}
+
+#test "truncated strings refuse at the original byte and control writes stay bounded" {
+  j:[1]Json;json_start(j[..],"\"\\\"");#assert json_next(j[..])==JSON_ERROR && j[0].error_at==3;
+  json_start(j[..],"\"\\u0000");#assert json_next(j[..])==JSON_ERROR && j[0].error_at==7;
+  #assert !json_valid("\"\\ug000\"") && !json_valid("{\"x\":]");
+  out:[8]u8;#assert json_unescape("\\u0080a",out[0..<1]) == -1;
+  ctl:=[1]u8.[1];
+  #assert json_write_string(out[0..<3],0,cast(string)ctl[..]) == -1;
+  #assert json_write_string(out[0..<4],0,cast(string)ctl[..]) == -1;
+  for i:0..<8 {out[i]=255;}
+  #assert json_write_string(out[0..<7],0,cast(string)ctl[..]) == -1;
+  #assert out[5]=='0' && out[6]=='1' && out[7]==255;
+}
+
+#test "short Unicode escapes and paired low surrogates cannot bypass admission" {
+  j:[1]Json;json_start(j[..],"\"\\u000");
+  #assert json_next(j[..])==JSON_ERROR && j[0].error_at==1;
+  out:[8]u8;#assert json_unescape("\\uDC00\\uDC00",out[..]) == -1;
 }

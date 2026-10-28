@@ -7,6 +7,28 @@ chat owns the plan, the work file and the queue order from here. The Claude
 queue worker has stopped. The live-page worker (`claude-live-1`) finishes
 #c29a and then stops.
 
+## Current execution update
+
+`codex-nostr` owns the taskmaster and root worker loop. Other active workers are
+`codex-nostr-codecs`, `codex-nostr-profiles` and `codex-nostr-vectors`; use the live
+queue, not the historical lists below, to avoid duplicate claims. The shared
+checkout stays untouched; isolated worktrees rebase/push only their own commits.
+
+Since the original handoff: ct_view now reachesE0409 safely (`cfc36f3ab7`);
+page capacity is256; TS pagination and Coax bounded catch-up no longer mistake
+short capped responses for complete history. Vectors, native vector runner,
+profiles, byte helpers, wrapping intrinsics, SHA-256, hex/base64, Bech32/NIP-19,
+entropy, random import and byte storage have shipped in scoped slices. Structural
+JSON admission is shipped (`a165c9bc26`); the existing decoder mutation closure
+is being closed separately. Actual signed queue comments/plans/statuses and
+`coax/nostr.md` record evidence and remaining gates.
+
+Read-only event verification is still distinct from signing. Full profiles,
+production secret approval, independent review, native/iOS/Wasm target evidence
+and domain authority integration remain open until their own checks pass. No
+amounts or rewards have been added. Test only affected changes; an unrelated
+remote commit does not justify repeating the compiler/app suites.
+
 ## Where things are
 
 - Design: `coax/nostr.md`. Protocol for projects and tasks:
