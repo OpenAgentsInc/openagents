@@ -75,7 +75,7 @@ check("a stranger's talk is not found", s == 404 and b == {"error": "not found"}
 
 # ---- a member asks; the runner is woken; both members see the turn
 s, b = talk(ada)
-check("the panel's lines start with the day's spend and the cap", s == 200 and b.startswith("Z|0.00|10.00|0\n"), b[:80])
+check("the panel's lines start with the day's spend and the cap", s == 200 and b.startswith("Z|0.00|10.00|0|2\n"), b[:80])
 n0 = len(wakes)
 s, b, _ = page("POST", f"/projects/{ASLUG}/api/ask", {"text": "Mark the deck as doing"}, cookie=ada, xff="10.1.0.2")
 turn = json.loads(b).get("turn")
@@ -143,6 +143,8 @@ check("members' tools get the conversation as JSON, each edit with the message t
 # ---- goals: proposed until every member agrees
 s, b, _ = page("POST", f"/projects/{ASLUG}/api/agree", {"goal": "g2"}, cookie=ada, xff="10.1.0.2")
 check("one member agreeing leaves the goal proposed", s == 200 and b == b'{"agreed": false}', (s, b))
+s, b = talk(cy)
+check("the panel says who agreed to a proposed goal", "\nG|g2|Ada\n" in b, b)
 s, b, _ = page("POST", f"/projects/{ASLUG}/api/agree", {"goal": "g1"}, cookie=ada, xff="10.1.0.2")
 check("only a proposed goal is agreed to", s == 404)
 

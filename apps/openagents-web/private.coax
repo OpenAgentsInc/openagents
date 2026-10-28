@@ -8,8 +8,13 @@
 // milestones in Chicago time, with the days before and after), CHECKLIST
 // (done, doing, todo, with evidence), ANALYTICS (the live numbers and the
 // old dashboard), AGENTS (what they did, newest first) and MESSAGES (the
-// thread and a field to write to the agents). The state comes again every
-// 30 s and when the tab is shown again; LIVE says the last answer is fresh.
+// thread and a field to write to the agents) and, for a project whose agent
+// is turned on, AGENT (docs/project-agent.md): the shared conversation, each
+// turn's edits and commit as cards, what it is doing now, STOP, UNDO TURN,
+// and AGREE on goals it proposed. The state comes again every 30 s and when
+// the tab is shown again; LIVE says the last answer is fresh. The agent's
+// conversation (/api/talk, projects.talk_lines: Z U E G lines) comes every
+// 2 s while a turn waits or runs, else every 30 s.
 //
 // The state is lines (migrations/0007_private_projects.sql, projects.lines):
 // "KIND|value|...", KIND one of Y P T G D M C I A X N S L.
@@ -25,14 +30,20 @@ PV_LINES :: 2048;
 PV_URL :: 256;
 PV_BODY :: 6144;
 PV_TEXT :: 1500;           // bytes a message may hold
-PV_HITS :: 24;
+PV_HITS :: 64;
+PV_TDATA :: 131072;
+PV_TLINES :: 512;
+PV_BUSY :: 2.0;            // seconds between reads of the conversation while a turn waits or runs
+PV_NOTE :: 200;
 PV_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
 PV_TYPED :: 1; PV_PAGE_TEXT :: 2; PV_SHOWN :: 602;
 PV_NAVIGATE :: 1; PV_SET_HASH :: 3;
 PV_REFRESH :: 30.0;        // seconds between reads of the state
 PV_FRESH :: 75.0;          // an answer this old or newer is LIVE
-POST_MESSAGE :: 1; POST_REDEEM :: 2; POST_LOGOUT :: 3;
-H_HOME :: 1; H_PROJECTS :: 2; H_SIGNOUT :: 3; H_PREV :: 4; H_NEXT :: 5; H_FIELD :: 6; H_SEND :: 7; H_LINK :: 8;
+POST_MESSAGE :: 1; POST_REDEEM :: 2; POST_LOGOUT :: 3; POST_ASK :: 4; POST_STOP :: 5; POST_UNDO :: 6; POST_AGREE :: 7;
+ASK_STATE :: 1; ASK_TALK :: 2;
+H_HOME :: 1; H_PROJECTS :: 2; H_SIGNOUT :: 3; H_PREV :: 4; H_NEXT :: 5; H_FIELD :: 6; H_SEND :: 7; H_LINK :: 8; H_AFIELD :: 9; H_ASK :: 10;
+H_UNDO :: 100; H_STOP :: 140; H_AGREE :: 200;   // + the turn's (or goal's) index
 K_BACK :: -3; K_ESC :: -1;
 
 PrivateState :: struct {
@@ -47,11 +58,18 @@ PrivateState :: struct {
   post: [PV_URL] u8; post_n: int; post_id: int; post_kind: int;
   body: [PV_BODY] u8; body_n: int;
   token: [80] u8; token_n: int;  // a sign-in link's token, until it's traded
-  note: [64] u8; note_n: int; note_at: f32;   // a short word after a send: SENT, NOT SENT
+  note: [PV_NOTE] u8; note_n: int; note_at: f32;   // a short word after a send: SENT, NOT SENT
+  anote: [PV_NOTE] u8; anote_n: int; anote_at: f32; // the same under the agent's field
   day: int;                      // the day shown: an index into the days, -1 today's
   scroll: f32; content: f32;
   hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
   typing: bool; text: [PV_TEXT] u8; text_n: int;
+  focus: int;                    // the field typed into: 0 messages, 1 the agent
+  atext: [PV_TEXT] u8; atext_n: int;
+  ask_kind: int;                 // what the read in flight is: ASK_STATE or ASK_TALK
+  tstatus: int; tasked_at: f32;  // the conversation: -1 not read yet, 200, or 404 (this project has no agent)
+  tdata: [PV_TDATA] u8; tdata_n: int;
+  tline_at: [PV_TLINES] int; tline_end: [PV_TLINES] int; tline_n: int;
   field: [4] f32;                // where the message field is drawn, device pixels (the host's keyboard field goes there)
   hit_box: [PV_HITS] Box; hit_id: [PV_HITS] int; hit_n: int;
   link: [PV_URL] u8; link_n: int;
@@ -103,6 +121,51 @@ pv_nth :: (s: [] PrivateState, kind: u8, k: int) -> int {
   for i: 0..<s[0].line_n { if pv_kind(s, i) == kind { if n == k { return i; } n += 1; } }
   return -1;
 }
+// The same over the agent's conversation.
+ta_kind :: (s: [] PrivateState, i: int) -> u8 { return s[0].tdata[s[0].tline_at[i]]; }
+ta_cell :: (s: [] PrivateState, i: int, col: int) -> string {
+  from := s[0].tline_at[i]; to := s[0].tline_end[i];
+  k := from; c := 0;
+  while c < col && k < to { if s[0].tdata[k] == '|' { c += 1; } k += 1; }
+  if c < col { return ""; }
+  j := k;
+  while j < to && s[0].tdata[j] != '|' { j += 1; }
+  return cast(string) s[0].tdata[k..<j];
+}
+ta_index :: (s: [] PrivateState) {
+  s[0].tline_n = 0;
+  at := 0; n := s[0].tdata_n;
+  while at < n {
+    stop := at;
+    while stop < n && s[0].tdata[stop] != '\n' { stop += 1; }
+    if stop > at + 1 && s[0].tdata[at + 1] == '|' && s[0].tline_n < PV_TLINES {
+      s[0].tline_at[s[0].tline_n] = at; s[0].tline_end[s[0].tline_n] = stop; s[0].tline_n += 1;
+    }
+    at = stop + 1;
+  }
+}
+ta_first :: (s: [] PrivateState, kind: u8) -> int {
+  for i: 0..<s[0].tline_n { if ta_kind(s, i) == kind { return i; } }
+  return -1;
+}
+ta_count :: (s: [] PrivateState, kind: u8) -> int {
+  n := 0;
+  for i: 0..<s[0].tline_n { if ta_kind(s, i) == kind { n += 1; } }
+  return n;
+}
+ta_nth :: (s: [] PrivateState, kind: u8, k: int) -> int {
+  n := 0;
+  for i: 0..<s[0].tline_n { if ta_kind(s, i) == kind { if n == k { return i; } n += 1; } }
+  return -1;
+}
+// The project has an agent, and a turn waits or runs.
+pv_agent_on :: (s: [] PrivateState) -> bool { return s[0].tstatus == 200 && ta_first(s, 'Z') >= 0; }
+pv_busy :: (s: [] PrivateState) -> bool { z := ta_first(s, 'Z'); return s[0].post_kind == POST_ASK || (z >= 0 && ta_cell(s, z, 3) == "1"); }
+// The members who agreed to a proposed goal's current text, or "".
+pv_agreed :: (s: [] PrivateState, goal: string) -> string {
+  for i: 0..<s[0].tline_n { if ta_kind(s, i) == 'G' && ta_cell(s, i, 1) == goal { return ta_cell(s, i, 2); } }
+  return "";
+}
 pv_today :: (s: [] PrivateState) -> string { t := pv_first(s, 'T'); return ifx t < 0 then "" else pv_cell(s, t, 1); }
 // The day shown: the one chosen, else today's, else the next after today, else the last.
 pv_day :: (s: [] PrivateState) -> int {
@@ -129,12 +192,28 @@ pv_put :: (buf: [] u8, at: int, text: string) -> int {
 }
 pv_slug :: (s: [] PrivateState) -> string { return cast(string) s[0].slug[0..<s[0].slug_n]; }
 pv_ask :: (s: [] PrivateState) {
-  if s[0].page != 0 || s[0].slug_n == 0 || s[0].ask_id >= 0 { return; }
+  if s[0].page != 0 || s[0].slug_n == 0 || s[0].ask_id >= 0 || s[0].ask_n > 0 { return; }
   n := pv_put(s[0].ask[..], 0, "/projects/");
   n = pv_put(s[0].ask[..], n, pv_slug(s));
   s[0].ask_n = pv_put(s[0].ask[..], n, "/api/state");
+  s[0].ask_kind = ASK_STATE;
   s[0].asked_at = s[0].time;
   if s[0].status == -1 { s[0].status = 0; }
+}
+// The agent's conversation, once the state has come.
+pv_ask_talk :: (s: [] PrivateState) {
+  if s[0].page != 0 || s[0].slug_n == 0 || s[0].ask_id >= 0 || s[0].ask_n > 0 || s[0].status != 200 { return; }
+  n := pv_put(s[0].ask[..], 0, "/projects/");
+  n = pv_put(s[0].ask[..], n, pv_slug(s));
+  s[0].ask_n = pv_put(s[0].ask[..], n, "/api/talk");
+  s[0].ask_kind = ASK_TALK;
+  s[0].tasked_at = s[0].time;
+}
+pv_talk_due :: (s: [] PrivateState) -> bool {
+  if s[0].status != 200 || s[0].tstatus == 404 { return false; }
+  if s[0].tstatus == -1 { return true; }
+  wait := ifx pv_busy(s) then 2.0f32 else 30.0f32;   // PV_BUSY, PV_REFRESH
+  return s[0].time - s[0].tasked_at >= wait;
 }
 // A JSON string's contents into buf.
 pv_json :: (buf: [] u8, at: int, text: string) -> int {
@@ -176,6 +255,15 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
   i := 0; code := 0;
   while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
   if i < bytes.count && bytes[i] == '\n' { i += 1; }
+  if id == s[0].ask_id && s[0].ask_kind == ASK_TALK {
+    s[0].ask_id = -1;
+    if code == 200 {
+      n := 0;
+      while i < bytes.count && n < PV_TDATA { s[0].tdata[n] = bytes[i]; n += 1; i += 1; }
+      s[0].tdata_n = n; ta_index(s); s[0].tstatus = 200;
+    } else if code == 404 { s[0].tstatus = 404; s[0].tdata_n = 0; s[0].tline_n = 0; }   // no agent here
+    return;
+  }
   if id == s[0].ask_id {
     s[0].ask_id = -1;
     if code == 200 {
@@ -201,8 +289,33 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     if code == 200 { pv_go_page(s); } else { pv_say(s, "THAT LINK WAS USED OR HAS EXPIRED"); }
   } else if kind == POST_LOGOUT {
     pv_go_page(s);
+  } else if kind >= POST_ASK && kind <= POST_AGREE {
+    if code == 200 {
+      if kind == POST_ASK { s[0].atext_n = 0; pv_say_agent(s, "SENT TO THE AGENT"); }
+      if kind == POST_UNDO { pv_say_agent(s, "UNDOING THE TURN"); }
+      if kind == POST_STOP { pv_say_agent(s, "STOPPING"); }
+      s[0].tasked_at = -1000;
+      if kind != POST_STOP { s[0].asked_at = -1000; }    // the document changed: read it again
+    } else {
+      pv_say_agent(s, ifx code == 429 then "SLOW DOWN" else pv_error(bytes, i));
+    }
   }
 }
+// The "error" of a JSON answer from i, or NOT DONE.
+pv_error :: (bytes: string, i: int) -> string {
+  key := "\"error\": \"";
+  k := i;
+  while k + key.count <= bytes.count {
+    if bytes[k..<k + key.count] == key {
+      a := k + key.count; b := a;
+      while b < bytes.count && bytes[b] != '"' { b += 1; }
+      return bytes[a..<b];
+    }
+    k += 1;
+  }
+  return "NOT DONE";
+}
+pv_say_agent :: (s: [] PrivateState, word: string) { s[0].anote_n = pv_put(s[0].anote[..], 0, word); s[0].anote_at = s[0].time; }
 
 // ---------------------------------------------------------------- layout and text
 
@@ -280,9 +393,21 @@ pv_goals :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     r = pv_text(s, out, r, pv_cell(s, i, 4), x0 + 16 * d, x1 - x0 - 16 * d, BODY, ink(p, INK_WHITE), 3, draw, top);
     buf: [160] u8;
     m := ifx proposed then pv_put(buf[..], 0, "PROPOSED") else pv_upper(buf[..], pv_put(buf[..], 0, "AGREED · "), pv_cell(s, i, 3));
+    // a proposed goal on a project with an agent: who agreed, NEEDS BOTH (or ALL), and AGREE
+    agree := false;
+    if proposed && pv_agent_on(s) {
+      who := pv_agreed(s, pv_cell(s, i, 1));
+      if who.count > 0 { m = pv_put(buf[..], m, " · "); m = pv_upper(buf[..], m, who); m = pv_put(buf[..], m, " AGREED"); }
+      z := ta_first(s, 'Z');
+      m = pv_put(buf[..], m, ifx ta_cell(s, z, 4) == "2" then " · NEEDS BOTH" else " · NEEDS EVERY MEMBER");
+      yi := pv_first(s, 'Y');
+      agree = yi >= 0 && !pv_has(who, pv_cell(s, yi, 1));
+    }
     sub := r; sub.y -= 1 * d;
-    r = pv_text(s, out, sub, cast(string) buf[0..<m], x0 + 16 * d, x1 - x0 - 16 * d, 6, ifx proposed then pv_chrome(p, INK_ORANGE) else ink(p, INK_DIM), 1, draw, top);
-    r.y += 7 * d;
+    right := ifx agree then chip_width("AGREE", 7 * d, p) + 8 * d else 0.0f32;
+    r = pv_text(s, out, sub, cast(string) buf[0..<m], x0 + 16 * d, x1 - x0 - 16 * d - right, 6, ifx proposed then pv_chrome(p, INK_ORANGE) else ink(p, INK_DIM), 1, draw, top);
+    if agree { r.v = pv_chip(s, out, r.v, "AGREE", x1 - right + 8 * d, sub.y + 9 * d, H_AGREE + k, false, p, draw, top); }
+    r.y += ifx agree then 12 * d else 7 * d;
   }
   return r;
 }
@@ -448,45 +573,139 @@ pv_messages :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p:
     r = pv_text(s, out, r, pv_cell(s, i, 4), x, x1 - x, BODY, ink(p, INK_WHITE), 4, draw, top);
     r.y += 7 * d;
   }
-  // the field: what's typed, drawn here; the host's keyboard field sits over it
-  send_w := chip_width("SEND", 7 * d, p);
-  fb := Box.{x0 = x0, y0 = r.y + 4 * d, x1 = x1 - send_w - 10 * d, y1 = r.y + 34 * d};
-  if draw && fb.y1 > top && fb.y0 < s[0].height {
-    k := ifx s[0].typing then ink(p, INK_ORANGE) else ink(p, INK_DIM);
-    r.v = rule(out, r.v, fb.x0, fb.y1, fb.x1, fb.y1, k, ifx s[0].typing then 0.9 * p.fade else 0.45 * p.fade);
-    r.v = rule(out, r.v, fb.x0, fb.y0 + 8 * d, fb.x0, fb.y1, k, 0.3 * p.fade);
-    tx := fb.x0 + 8 * d; base := fb.y1 - 10 * d; room := box_w(fb) - 20 * d;
-    white := ink(p, INK_WHITE);
-    caret_x := tx;
-    if s[0].text_n == 0 {
-      if !s[0].typing { r.v = put_fit(out, r.v, "Message the agents", tx, base, BODY * d, ink(p, INK_FAINT), room); }
-    } else {
-      // the end of what's typed, as much as fits
-      text := cast(string) s[0].text[0..<s[0].text_n];
-      from := 0;
-      while from < text.count && ink_width(text[from..<text.count], BODY * d, GAP, SPACE, white) > room {
-        from += decode(text, from).len;
-      }
-      r.v = put(out, r.v, text[from..<text.count], tx, base, BODY * d, white);
-      caret_x = tx + ink_width(text[from..<text.count], BODY * d, GAP, SPACE, white) + 1.5 * d;
-    }
-    if s[0].typing && (cast(int) (s[0].time * 2)) % 2 == 0 {
-      r.v = rule(out, r.v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_ORANGE), p.fade);
-    }
-    pv_hit(s, fb, H_FIELD);
-    s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1;
-    r.v = pv_chip(s, out, r.v, "SEND", x1 - send_w, fb.y1 - 6 * d, H_SEND, s[0].text_n > 0 && s[0].typing, p, draw, top);
-  }
-  r.y = fb.y1 + 6 * d;
+  r = pv_field(s, out, r, x0, x1, p, draw, top, 0, "Message the agents", "SEND", H_FIELD, H_SEND);
   if s[0].note_n > 0 && s[0].time - s[0].note_at < 4 {
     r = pv_text(s, out, r, cast(string) s[0].note[0..<s[0].note_n], x0, x1 - x0, 6, pv_chrome(p, INK_ORANGE), 1, draw, top);
   }
   return r;
 }
 
-PV_PANELS :: 6;
-PV_GOALS :: 0; PV_TODAY :: 1; PV_CHECK :: 2; PV_NUMBERS :: 3; PV_AGENTS :: 4; PV_MESSAGES :: 5;
-PV_TITLES :: [6] string.["GOALS", "TODAY", "CHECKLIST", "ANALYTICS", "AGENTS", "MESSAGES"];
+// A field's typed text: 0 the messages', 1 the agent's.
+pv_typed :: (s: [] PrivateState, which: int) -> string {
+  if which == 1 { return cast(string) s[0].atext[0..<s[0].atext_n]; }
+  return cast(string) s[0].text[0..<s[0].text_n];
+}
+// A field: what's typed, drawn here; the host's keyboard field sits over the focused one.
+pv_field :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32,
+             which: int, hint: string, send: string, hfield: int, hsend: int) -> PvFlow {
+  d := p.d; r := f;
+  on := s[0].typing && s[0].focus == which;
+  typed := pv_typed(s, which);
+  send_w := chip_width(send, 7 * d, p);
+  fb := Box.{x0 = x0, y0 = r.y + 4 * d, x1 = x1 - send_w - 10 * d, y1 = r.y + 34 * d};
+  if draw && fb.y1 > top && fb.y0 < s[0].height {
+    k := ifx on then ink(p, INK_ORANGE) else ink(p, INK_DIM);
+    r.v = rule(out, r.v, fb.x0, fb.y1, fb.x1, fb.y1, k, ifx on then 0.9 * p.fade else 0.45 * p.fade);
+    r.v = rule(out, r.v, fb.x0, fb.y0 + 8 * d, fb.x0, fb.y1, k, 0.3 * p.fade);
+    tx := fb.x0 + 8 * d; base := fb.y1 - 10 * d; room := box_w(fb) - 20 * d;
+    white := ink(p, INK_WHITE);
+    caret_x := tx;
+    if typed.count == 0 {
+      if !on { r.v = put_fit(out, r.v, hint, tx, base, BODY * d, ink(p, INK_FAINT), room); }
+    } else {
+      // the end of what's typed, as much as fits
+      from := 0;
+      while from < typed.count && ink_width(typed[from..<typed.count], BODY * d, GAP, SPACE, white) > room {
+        from += decode(typed, from).len;
+      }
+      r.v = put(out, r.v, typed[from..<typed.count], tx, base, BODY * d, white);
+      caret_x = tx + ink_width(typed[from..<typed.count], BODY * d, GAP, SPACE, white) + 1.5 * d;
+    }
+    if on && (cast(int) (s[0].time * 2)) % 2 == 0 {
+      r.v = rule(out, r.v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_ORANGE), p.fade);
+    }
+    pv_hit(s, fb, hfield);
+    if on || !s[0].typing { s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1; }
+    r.v = pv_chip(s, out, r.v, send, x1 - send_w, fb.y1 - 6 * d, hsend, typed.count > 0 && on, p, draw, top);
+  }
+  r.y = fb.y1 + 6 * d;
+  return r;
+}
+
+// The agent's conversation: each turn (the last 6), who asked and what, its
+// edits and commit as cards, the agent's answer, and what it does now.
+PV_SHOWN_TURNS :: 6;
+pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
+  d := p.d; r := f;
+  n := ta_count(s, 'U');
+  if n == 0 {
+    r = pv_text(s, out, r, "Ask the project's agent to move milestones, write notes and plans, edit the document or the linked repository. Every turn can be undone.",
+                x0, x1 - x0, BODY, ink(p, INK_FAINT), 4, draw, top);
+    r.y += 4 * d;
+  }
+  first := ifx n > PV_SHOWN_TURNS then n - PV_SHOWN_TURNS else 0;
+  for k: first..<n {
+    i := ta_nth(s, 'U', k);
+    kind := ta_cell(s, i, 2); status := ta_cell(s, i, 3);
+    buf: [160] u8;
+    m := pv_upper(buf[..], 0, ta_cell(s, i, 5));
+    if kind == "undo" { m = pv_put(buf[..], m, " · UNDO TURN"); }
+    base := r.y + 10 * d;
+    if draw && base > top && base < s[0].height {
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, pv_chrome(p, INK_ORANGE), x1 - x0 - 90 * d);
+      r.v = put_right(out, r.v, ta_cell(s, i, 4), x1, base, 6.5 * d, ink(p, INK_FAINT));
+    }
+    r.y += 13 * d;
+    if kind == "ask" { r = pv_text(s, out, r, ta_cell(s, i, 6), x0, x1 - x0, BODY, ink(p, INK_WHITE), 6, draw, top); }
+    // the cards: each edit, the commit, a stop or an error
+    j := i + 1;
+    cards := 0;
+    while j < s[0].tline_n && ta_kind(s, j) == 'E' {
+      if cards < 12 {
+        type := ta_cell(s, j, 3);
+        y0 := r.y + 2 * d;
+        line := r; line.y += 2 * d;
+        word: [220] u8;
+        q := 0;
+        if type == "agent.commit" { q = pv_put(word[..], 0, "COMMIT "); }
+        q = pv_put(word[..], q, ta_cell(s, j, 4));
+        k2 := ifx type == "agent.edit" then ink(p, INK_PALE) else ifx type == "agent.commit" then pv_chrome(p, INK_DIM) else pv_chrome(p, INK_ORANGE);
+        line = pv_text(s, out, line, cast(string) word[0..<q], x0 + 12 * d, x1 - x0 - 12 * d, 6.5, k2, 2, draw, top);
+        if draw && y0 > top && y0 < s[0].height { line.v = rule(out, line.v, x0 + 4 * d, y0 + 2 * d, x0 + 4 * d, line.y - 2 * d, ink(p, INK_ORANGE), 0.5 * p.fade); }
+        r = line;
+      }
+      cards += 1; j += 1;
+    }
+    answer := ta_cell(s, i, 7);
+    if answer.count > 0 { r.y += 3 * d; r = pv_text(s, out, r, answer, x0, x1 - x0, BODY, ink(p, INK_PALE), 14, draw, top); }
+    err := ta_cell(s, i, 8);
+    if err.count > 0 && (status == "failed" || status == "refused") { r.y += 2 * d; r = pv_text(s, out, r, err, x0, x1 - x0, 6.5, pv_chrome(p, INK_ORANGE), 3, draw, top); }
+    // what it does now, and what can be done with it
+    y := r.y + 13 * d;
+    sw: [160] u8;
+    w := 0;
+    hk := -1; chipw := "";
+    if status == "running" {
+      w = pv_put(sw[..], 0, "WORKING");
+      if ta_cell(s, i, 13).count > 0 { w = pv_put(sw[..], w, " · "); w = pv_upper(sw[..], w, ta_cell(s, i, 13)); }
+      hk = H_STOP + k; chipw = "STOP";
+    } else if status == "queued" { w = pv_put(sw[..], 0, "WAITING"); hk = H_STOP + k; chipw = "STOP"; }
+    else if status == "stopped" { w = pv_put(sw[..], 0, "STOPPED"); }
+    else if status == "refused" { w = pv_put(sw[..], 0, "NOT RUN"); }
+    else if status == "failed" { w = pv_put(sw[..], 0, "FAILED"); }
+    if ta_cell(s, i, 12).count > 0 { w = pv_put(sw[..], w, ifx w > 0 then " · UNDONE" else "UNDONE"); }
+    if ta_cell(s, i, 11) == "1" { hk = H_UNDO + k; chipw = "UNDO TURN"; }
+    if kind == "undo" && status == "done" { w = pv_put(sw[..], 0, "PUT BACK"); }
+    if w > 0 || hk >= 0 {
+      if draw && y > top && y < s[0].height && w > 0 {
+        r.v = put_fit(out, r.v, cast(string) sw[0..<w], x0, y, 6 * d, pv_chrome(p, ifx status == "running" then INK_ORANGE else INK_DIM), x1 - x0 - 90 * d);
+      }
+      if hk >= 0 { r.v = pv_chip(s, out, r.v, chipw, x1 - chip_width(chipw, 7 * d, p), y, hk, false, p, draw, top); }
+      r.y = y + 6 * d;
+    }
+    r.y += 10 * d;
+  }
+  r = pv_field(s, out, r, x0, x1, p, draw, top, 1, "Ask the project's agent", "ASK", H_AFIELD, H_ASK);
+  if s[0].anote_n > 0 && s[0].time - s[0].anote_at < 6 {
+    r = pv_text(s, out, r, cast(string) s[0].anote[0..<s[0].anote_n], x0, x1 - x0, 6, pv_chrome(p, INK_ORANGE), 2, draw, top);
+  }
+  r.y += 2 * d;
+  return pv_text(s, out, r, "What you write here and the project's contents go to Anthropic's API as the model's input.", x0, x1 - x0, 6, ink(p, INK_FAINT), 2, draw, top);
+}
+
+PV_PANELS :: 7;
+PV_GOALS :: 0; PV_TODAY :: 1; PV_CHECK :: 2; PV_NUMBERS :: 3; PV_AGENTS :: 4; PV_MESSAGES :: 5; PV_AGENT :: 6;
+PV_TITLES :: [7] string.["GOALS", "TODAY", "CHECKLIST", "ANALYTICS", "AGENTS", "MESSAGES", "AGENT"];
 
 pv_panel :: (s: [] PrivateState, out: [] f32, k: int, f: PvFlow, x0: f32, x1: f32, p: Pen, draw: bool, top: f32) -> PvFlow {
   if k == PV_GOALS { return pv_goals(s, out, f, x0, x1, p, draw, top); }
@@ -494,6 +713,7 @@ pv_panel :: (s: [] PrivateState, out: [] f32, k: int, f: PvFlow, x0: f32, x1: f3
   if k == PV_CHECK { return pv_checklist(s, out, f, x0, x1, p, draw, top); }
   if k == PV_NUMBERS { return pv_numbers(s, out, f, x0, x1, p, draw, top); }
   if k == PV_AGENTS { return pv_agents(s, out, f, x0, x1, p, draw, top); }
+  if k == PV_AGENT { return pv_agent(s, out, f, x0, x1, p, draw, top); }
   return pv_messages(s, out, f, x0, x1, p, draw, top);
 }
 // A panel's title note: counts.
@@ -518,6 +738,13 @@ pv_note :: (s: [] PrivateState, k: int, buf: [] u8) -> int {
   if k == PV_NUMBERS { return pv_put(buf, 0, "LIVE · CHICAGO"); }
   if k == PV_AGENTS { return pv_put(buf, 0, "NEWEST FIRST"); }
   if k == PV_MESSAGES { return pv_put(buf, 0, "TO THE AGENTS"); }
+  if k == PV_AGENT {
+    z := ta_first(s, 'Z');
+    if z < 0 { return 0; }
+    if ta_cell(s, z, 3) == "1" { return pv_put(buf, 0, "WORKING"); }
+    m := pv_put(buf, 0, "$"); m = pv_put(buf, m, ta_cell(s, z, 1)); m = pv_put(buf, m, " OF $"); m = pv_put(buf, m, ta_cell(s, z, 2));
+    return pv_put(buf, m, " TODAY");
+  }
   return 0;
 }
 
@@ -527,8 +754,9 @@ pv_column :: (cols: int, k: int) -> int {
   if cols == 2 { return ifx k == PV_GOALS || k == PV_TODAY || k == PV_NUMBERS then 0 else 1; }
   return 0;
 }
-PV_ORDER_3 :: [6] int.[0, 1, 2, 3, 5, 4];
-PV_ORDER_1 :: [6] int.[0, 1, 5, 2, 3, 4];
+PV_ORDER_3 :: [7] int.[0, 1, 2, 3, 6, 5, 4];
+PV_ORDER_2 :: [7] int.[0, 1, 3, 6, 2, 5, 4];
+PV_ORDER_1 :: [7] int.[0, 1, 6, 5, 2, 3, 4];
 
 // ---------------------------------------------------------------- the frame
 
@@ -613,7 +841,7 @@ pv_shows_project :: (s: [] PrivateState) -> bool { return s[0].page == 0 && s[0]
 
 coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
-  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].day = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].day = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; s[0].tstatus = -1; }
   s[0].time += clamp(dt, 0, 0.1);
   // a sign-in link's token, once the slug is known: trade it for the cookie
   if s[0].token_n > 0 && s[0].slug_n > 0 && s[0].post_kind == 0 {
@@ -622,6 +850,7 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
   }
   if s[0].page == 0 && s[0].post_kind != POST_REDEEM && s[0].status != 404 && s[0].status != 401 && s[0].status != 403 &&
      (s[0].status == -1 || s[0].time - s[0].asked_at >= PV_REFRESH) { pv_ask(s); }
+  if s[0].page == 0 && pv_talk_due(s) { pv_ask_talk(s); }
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
   s[0].width = width; s[0].height = height; s[0].d = d;
@@ -650,11 +879,12 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
   cw := (full - g * cast(f32) (cols - 1)) / cast(f32) cols;
   bottom: [3] f32;
   for c: 0..<3 { bottom[c] = top - s[0].scroll; }
-  order := ifx cols == 1 then PV_ORDER_1 else PV_ORDER_3;
+  order := ifx cols == 1 then PV_ORDER_1 else ifx cols == 2 then PV_ORDER_2 else PV_ORDER_3;
   panel := 1;
   inner := 14 * d;
   for j: 0..<PV_PANELS {
     k := order[j];
+    if k == PV_AGENT && !pv_agent_on(s) { continue; }
     c := pv_column(cols, k);
     x0 := m * d + cast(f32) c * (cw + g);
     b := Box.{x0 = x0, y0 = bottom[c], x1 = x0 + cw, y1 = 0};
@@ -688,22 +918,44 @@ pv_hit_at :: (s: [] PrivateState, x: f32, y: f32) -> int {
   return -1;
 }
 pv_send :: (s: [] PrivateState) {
+  if s[0].focus == 1 { pv_ask_agent(s); return; }
   if s[0].text_n == 0 || s[0].post_kind != 0 { return; }
   text := cast(string) s[0].text[0..<s[0].text_n];
   a := trim_lead(text);
   if a >= text.count { return; }
   pv_post(s, "message", POST_MESSAGE, "text", text[a..<text.count]);
 }
+pv_ask_agent :: (s: [] PrivateState) {
+  if s[0].atext_n == 0 || s[0].post_kind != 0 { return; }
+  text := cast(string) s[0].atext[0..<s[0].atext_n];
+  a := trim_lead(text);
+  if a >= text.count { return; }
+  pv_post(s, "ask", POST_ASK, "text", text[a..<text.count]);
+}
+// A turn's id from the k-th turn line, for STOP and UNDO TURN.
+pv_turn_post :: (s: [] PrivateState, op: string, kind: int, k: int) {
+  i := ta_nth(s, 'U', k);
+  if i < 0 || s[0].post_kind != 0 { return; }
+  pv_post(s, op, kind, "turn", ta_cell(s, i, 1));
+}
 trim_lead :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
 pv_act :: (s: [] PrivateState, target: int) {
-  if target != H_FIELD && target != H_SEND { s[0].typing = false; }
+  if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK { s[0].typing = false; }
   if target == H_HOME { pv_go(s, "/"); }
   else if target == H_PROJECTS { pv_go(s, "/projects"); }
   else if target == H_SIGNOUT { if s[0].post_kind == 0 { pv_post(s, "logout", POST_LOGOUT, "", ""); } }
   else if target == H_PREV { s[0].day = pv_day(s) - 1; if s[0].day < 0 { s[0].day = 0; } }
   else if target == H_NEXT { s[0].day = pv_day(s) + 1; if s[0].day >= pv_count(s, 'D') { s[0].day = pv_count(s, 'D') - 1; } }
-  else if target == H_FIELD { s[0].typing = true; }
-  else if target == H_SEND { pv_send(s); }
+  else if target == H_FIELD { s[0].typing = true; s[0].focus = 0; }
+  else if target == H_SEND { s[0].focus = 0; pv_send(s); }
+  else if target == H_AFIELD { s[0].typing = true; s[0].focus = 1; }
+  else if target == H_ASK { s[0].focus = 1; pv_send(s); }
+  else if target >= H_UNDO && target < H_UNDO + 40 { pv_turn_post(s, "undo", POST_UNDO, target - H_UNDO); }
+  else if target >= H_STOP && target < H_STOP + 40 { pv_turn_post(s, "stop", POST_STOP, target - H_STOP); }
+  else if target >= H_AGREE && target < H_AGREE + 100 {
+    g := pv_nth(s, 'G', target - H_AGREE);
+    if g >= 0 && s[0].post_kind == 0 { pv_post(s, "agree", POST_AGREE, "goal", pv_cell(s, g, 1)); }
+  }
   else if target == H_LINK && s[0].link_n > 0 { pv_go(s, cast(string) s[0].link[0..<s[0].link_n]); }
 }
 
@@ -741,9 +993,14 @@ coaxial_private_pointer :: (s: [] PrivateState, x: f32, y: f32, phase: int, kind
 // Typed text into the field: line breaks become spaces; nothing past the cap.
 pv_type :: (s: [] PrivateState, text: string) {
   for c: text {
-    if s[0].text_n >= PV_TEXT { return; }
-    s[0].text[s[0].text_n] = ifx c == '\n' || c == '\r' || c == '\t' then ' ' else c;
-    s[0].text_n += 1;
+    t := ifx c == '\n' || c == '\r' || c == '\t' then ' ' else c;
+    if s[0].focus == 1 {
+      if s[0].atext_n >= PV_TEXT { return; }
+      s[0].atext[s[0].atext_n] = t; s[0].atext_n += 1;
+    } else {
+      if s[0].text_n >= PV_TEXT { return; }
+      s[0].text[s[0].text_n] = t; s[0].text_n += 1;
+    }
   }
 }
 coaxial_private_key :: (s: [] PrivateState, key: int) -> bool #export_c {
@@ -753,7 +1010,13 @@ coaxial_private_key :: (s: [] PrivateState, key: int) -> bool #export_c {
     if key == K_ENTER { pv_send(s); return true; }
     if key == K_ESC { s[0].typing = false; return true; }
     if key == K_BACK {
-      if s[0].text_n > 0 {
+      if s[0].focus == 1 {
+        if s[0].atext_n > 0 {
+          n := s[0].atext_n - 1;
+          while n > 0 && (s[0].atext[n] & 0xC0) == 0x80 { n -= 1; }
+          s[0].atext_n = n;
+        }
+      } else if s[0].text_n > 0 {
         n := s[0].text_n - 1;
         while n > 0 && (s[0].text[n] & 0xC0) == 0x80 { n -= 1; }   // a whole UTF-8 character
         s[0].text_n = n;
@@ -847,6 +1110,8 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
   #assert pv_dashboard(s[..]) >= 0;
   n := pv_fresh(s[..], out[..], u[..], 1440, 900);
   #assert n > 2000 && s[0].hit_n > 4;
+  coaxial_private_asked(s[..], 9);
+  pv_answer(s[..], 9, "404\n{\"error\": \"not found\"}");   // this project has no agent
   pv_act(s[..], H_NEXT);
   #assert pv_day(s[..]) == 2;
   pv_act(s[..], H_PREV); pv_act(s[..], H_PREV); pv_act(s[..], H_PREV);
@@ -941,4 +1206,87 @@ pv_fresh :: (s: [] PrivateState, out: [] f32, u: [] f32, w: f32, h: f32) -> int 
   coaxial_private_action_done(s[..]);
   coaxial_private_hash(s[..], bad.count);
   #assert s[0].token_n == 0 && s[0].action == 0;
+}
+
+PV_TALK :: "200\nZ|0.42|10.00|1|2\nG|g2|\nU|7|ask|done|Oct 28 15:40|Ada|Mark the deck as doing|Done: the deck is doing.||abc1234|1|1|||\nE|7|1|agent.edit|day 10-29: Start the deck → doing\nE|7|2|agent.commit|abc1234 · agent turn 7 · project/plan.md\nU|8|ask|running|Oct 28 15:45|Bea|Add a step||||0|0||editing day 10-29|\n";
+pv_has_hit :: (s: [] PrivateState, id: int) -> bool {
+  for i: 0..<s[0].hit_n { if s[0].hit_id[i] == id { return true; } }
+  return false;
+}
+pv_loaded :: (s: [] PrivateState, out: [] f32, u: [] f32) {
+  coaxial_private_page(s, 0);
+  t := "proj";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s, PV_PAGE_TEXT, t.count);
+  n0 := pv_fresh(s, out, u, 1440, 900);
+  coaxial_private_asked(s, 0);
+  pv_answer(s, 0, PV_FIXTURE);
+}
+
+#test "a project with an agent reads the conversation and draws its turns, cards, STOP, UNDO TURN and AGREE" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  pv_loaded(s[..], out[..], u[..]);
+  n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/projects/proj/api/talk" && s[0].ask_kind == ASK_TALK;
+  #assert !pv_has_hit(s[..], H_AFIELD);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, PV_TALK);
+  #assert s[0].tstatus == 200 && pv_agent_on(s[..]) && pv_busy(s[..]) && ta_count(s[..], 'U') == 2 && ta_count(s[..], 'E') == 2;
+  n2 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert n2 > n1;
+  #assert pv_has_hit(s[..], H_AFIELD) && pv_has_hit(s[..], H_ASK) && pv_has_hit(s[..], H_UNDO + 0) && pv_has_hit(s[..], H_STOP + 1);
+  #assert pv_has_hit(s[..], H_AGREE + 1) && !pv_has_hit(s[..], H_AGREE + 0);
+  // while a turn runs it reads again after 2 s
+  s[0].time += 2.1;
+  n3 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/projects/proj/api/talk";
+  coaxial_private_asked(s[..], 2);
+  // UNDO TURN posts the turn's id, then reads the state and the conversation at once
+  pv_act(s[..], H_UNDO + 0);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/undo" && cast(string) s[0].body[0..<s[0].body_n] == "{\"turn\":\"7\"}";
+  coaxial_private_posted(s[..], 3);
+  pv_answer(s[..], 3, "200\n{\"turn\": 9, \"version\": 5}");
+  #assert s[0].tasked_at < 0 && s[0].asked_at < 0;
+  pv_act(s[..], H_STOP + 1);
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"turn\":\"8\"}";
+  coaxial_private_posted(s[..], 4);
+  pv_answer(s[..], 4, "409\n{\"error\": \"that turn has ended\"}");
+  #assert cast(string) s[0].anote[0..<s[0].anote_n] == "that turn has ended";
+  pv_act(s[..], H_AGREE + 1);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/agree" && cast(string) s[0].body[0..<s[0].body_n] == "{\"goal\":\"g2\"}";
+}
+
+#test "asking the agent from its own field, apart from the messages field" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  pv_loaded(s[..], out[..], u[..]);
+  n1 := pv_fresh(s[..], out[..], u[..], 390, 844);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, PV_TALK);
+  n2 := pv_fresh(s[..], out[..], u[..], 390, 844);
+  pv_act(s[..], H_AFIELD);
+  #assert coaxial_private_wants_text(s[..]) && s[0].focus == 1;
+  typed := "Move m1 to done";
+  for i: 0..<typed.count { s[0].inbox[i] = typed[i]; }
+  coaxial_private_message(s[..], PV_TYPED, typed.count);
+  #assert s[0].atext_n == typed.count && s[0].text_n == 0;
+  k := coaxial_private_key(s[..], K_ENTER);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/ask" && cast(string) s[0].body[0..<s[0].body_n] == "{\"text\":\"Move m1 to done\"}";
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, "200\n{\"turn\": 10, \"wake\": true}");
+  #assert s[0].atext_n == 0 && s[0].tasked_at < 0;
+}
+
+#test "a project without an agent draws no AGENT panel and stops asking" {
+  s: [1] PrivateState;
+  out: [PV_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  pv_loaded(s[..], out[..], u[..]);
+  n1 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "404\n{\"error\": \"not found\"}");
+  #assert s[0].tstatus == 404 && !pv_agent_on(s[..]) && s[0].status == 200;
+  s[0].time += 40;
+  n2 := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert !pv_has_hit(s[..], H_AFIELD) && s[0].ask_kind == ASK_STATE;
 }

@@ -141,7 +141,8 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
 $$;
 
 -- The conversation as lines, for the page's AGENT panel:
---   Z|spent today|cap|busy (1 while a turn is queued or running)
+--   Z|spent today|cap|busy (1 while a turn is queued or running)|members
+--   G|goal id|members who agreed to its current text (proposed goals)
 --   U|id|kind|status|at|by|text|answer|error|commit|files|undoable|undone by|working|undo of   (oldest first)
 --   E|turn|id|type|text                                                               (each turn's edits and commits)
 CREATE FUNCTION projects.talk_lines(want text, cap numeric) RETURNS text LANGUAGE sql STABLE AS $$
@@ -149,7 +150,12 @@ CREATE FUNCTION projects.talk_lines(want text, cap numeric) RETURNS text LANGUAG
   t AS (SELECT * FROM (SELECT * FROM projects.turns WHERE slug = want ORDER BY id DESC LIMIT 20) x)
   SELECT string_agg(line, E'\n' ORDER BY o1, o2) || E'\n' FROM (
     SELECT 0 AS o1, 0::bigint AS o2, 'Z|' || to_char(projects.spent(want), 'FM9990.00') || '|' || to_char(cap, 'FM9990.00') || '|'
-         || CASE WHEN EXISTS (SELECT 1 FROM projects.turns WHERE slug = want AND status IN ('queued', 'running')) THEN '1' ELSE '0' END AS line
+         || CASE WHEN EXISTS (SELECT 1 FROM projects.turns WHERE slug = want AND status IN ('queued', 'running')) THEN '1' ELSE '0' END
+         || '|' || (SELECT jsonb_array_length(doc->'members') FROM d) AS line
+    UNION ALL SELECT 0, i, 'G|' || projects.v(g->>'id') || '|' || coalesce(projects.v((SELECT string_agg(m->>'name', ', ' ORDER BY o)
+           FROM jsonb_array_elements(d.doc->'members') WITH ORDINALITY AS mm(m, o) JOIN projects.agreements a
+             ON a.slug = want AND a.goal = g->>'id' AND a.goal_text = g->>'text' AND a.pubkey = m->>'pubkey')), '')
+      FROM d, jsonb_array_elements(coalesce(d.doc->'goals', '[]')) WITH ORDINALITY AS z(g, i) WHERE g->>'status' = 'proposed'
     UNION ALL SELECT 1, t.id * 1000, 'U|' || t.id || '|' || t.kind || '|' || t.status || '|' || projects.chi(t.asked_ms) || '|' || projects.v(t.by_name) || '|'
          || projects.v(left(t.text, 1500)) || '|' || projects.v(left(t.answer, 3000)) || '|' || projects.v(t.error) || '|' || coalesce(left(t.commit_sha, 7), '') || '|'
          || jsonb_array_length(t.files) || '|' || CASE WHEN projects.undoable(t.kind, t.status, t.undone_by, t.commit_sha, t.version_after, (SELECT version FROM d)) THEN '1' ELSE '0' END || '|'
