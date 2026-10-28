@@ -32,6 +32,7 @@
 #include <unistd.h>
 
 #define COOKIE "oa_project"
+#define SITE_COOKIE "oa_session"   // a site session from /signin (signin.api), Path=/
 #define SESSION_DAYS 30
 #define NO "{\"error\": \"not found\"}"   // as Postgres writes projects.no(): every refusal is the same bytes
 // Every private answer: never kept by a cache, never framed, no referrer.
@@ -61,14 +62,15 @@ static bool allowed(const char *kind, const char *who, int per_minute) {
   return true;
 }
 
-// The cookie's token (64 hex), or "".
-static void cookie_token(const request *q, char out[65]) {
-  char cookies[4096];
+// A cookie's token (64 hex), or "".
+static void cookie_named(const request *q, const char *name, char out[65]) {
+  char cookies[4096], want[32];
   out[0] = 0;
   if (!api_header(q, "Cookie", cookies, sizeof cookies)) return;
-  for (const char *c = strstr(cookies, COOKIE "="); c; c = strstr(c + 1, COOKIE "=")) {
+  int w = snprintf(want, sizeof want, "%s=", name);
+  for (const char *c = strstr(cookies, want); c; c = strstr(c + 1, want)) {
     if (c != cookies && c[-1] != ' ' && c[-1] != ';') continue;
-    c += strlen(COOKIE "=");
+    c += w;
     size_t n = 0;
     while (n < 64 && isxdigit((unsigned char)c[n])) { out[n] = c[n]; n++; }
     out[n] = 0;
@@ -76,6 +78,7 @@ static void cookie_token(const request *q, char out[65]) {
     return;
   }
 }
+static void cookie_token(const request *q, char out[65]) { cookie_named(q, COOKIE, out); }
 
 static bool first_use(PGconn *db, const nostr_event *ev) {
   const char *v[1] = {ev->id};
@@ -201,7 +204,96 @@ static long agent_wake(const char *slug) {
   return status;
 }
 
+// The visitor's address: the load balancer appends it and then its own, so
+// it's the next to last; anything before it the visitor could have written.
+static void visitor(const request *q, char ip[128]) {
+  char xff[512];
+  api_header(q, "X-Forwarded-For", xff, sizeof xff);
+  char *parts[16]; int np = 0;
+  for (char *t = strtok(xff, ", "); t && np < 16; t = strtok(NULL, ", ")) parts[np++] = t;
+  ip[0] = 0;
+  if (np) snprintf(ip, 128, "%s", parts[np >= 2 ? np - 2 : 0]);
+}
+
+// ---- signing in with the phone (/api/auth/<op>, signin.api in migrations/0019_phone_signin.sql)
+//   POST challenge  (this site's pages)   a new challenge for /signin's QR, and the page's poll token
+//   POST approve    (NIP-98, with payload) {challenge, kind}: the phone approves
+//   POST poll       (this site's pages)   {poll}: waiting, then the oa_session cookie once
+//   GET  me         (oa_session)          the session's npub and projects, as lines
+//   POST logout     (this site's pages)   ends the session
+// Every POST is rate limited per address; challenges and poll tokens are never logged.
+static bool auth_route(const request *q) {
+  const char *op = q->path + 10;
+  bool post = !strcmp(q->method, "POST");
+  bool known = (post && (!strcmp(op, "challenge") || !strcmp(op, "approve") || !strcmp(op, "poll") || !strcmp(op, "logout")))
+               || (!post && !strcmp(q->method, "GET") && !strcmp(op, "me"));
+  if (!known) { no(q); return true; }
+  char ip[128], auth[4096], from[256], site[65], pubkey[65] = "";
+  visitor(q, ip);
+  bool signed_req = api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6);
+  if (post) {
+    bool has_origin = api_header(q, "Origin", from, sizeof from) != NULL;
+    bool approve = !strcmp(op, "approve");
+    // the phone's approval is signed; the rest come from this site's pages
+    if (approve ? !signed_req || (has_origin && strcmp(from, origin())) : !has_origin || strcmp(from, origin())) {
+      api_respond(q->fd, 403, "application/json", PRIVATE_HEADERS, "{\"error\":\"cross-site\"}", 22); return true;
+    }
+    int per = !strcmp(op, "poll") ? 120 : !strcmp(op, "logout") ? 30 : 10;
+    char kind[32]; snprintf(kind, sizeof kind, "auth-%s", op);
+    if (!allowed("ip", ip, 200) || !allowed(kind, ip, per)) {
+      api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
+    }
+  }
+  if (q->body_len > 4096) { api_respond(q->fd, 413, "application/json", PRIVATE_HEADERS, "{\"error\":\"too large\"}", 21); return true; }
+  PGconn *db = api_db();
+  if (!db) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"no database\"}", 23); return true; }
+  if (!strcmp(op, "approve")) {
+    char url[4300]; snprintf(url, sizeof url, "%s%s", origin(), q->target);
+    nostr_event ev; char err[160];
+    if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err) || !ev.payload[0] || !first_use(db, &ev)) {
+      no(q); return true;
+    }
+    if (!allowed("key", ev.pubkey, 30)) {
+      api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
+    }
+    memcpy(pubkey, ev.pubkey, sizeof pubkey);
+  }
+  cookie_named(q, SITE_COOKIE, site);
+  char who[400];
+  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"site\":\"%s\",\"origin\":\"%.200s\"}", pubkey, site, origin());
+  char *body = malloc(q->body_len + 3);
+  if (!body) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"memory\"}", 18); return true; }
+  if (post && q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
+  const char *v[3] = {op, body, who};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'body', coalesce(x->>'cookie', '') FROM signin.api($1, $2::jsonb, $3::jsonb) x",
+                             3, NULL, v, NULL, NULL, 0);
+  free(body);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    api_log("auth %s: sql %s", op, state ? state : "?");
+    PQclear(r);
+    if (theirs) api_respond(q->fd, 400, "application/json", PRIVATE_HEADERS, "{\"error\":\"not json\"}", 20);
+    else api_respond(q->fd, 500, "application/json", PRIVATE_HEADERS, "{\"error\":\"not kept\"}", 20);
+    return true;
+  }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  const char *out = PQgetvalue(r, 0, 1), *made = PQgetvalue(r, 0, 2);
+  char headers[700];
+  if (made[0] && status == 200)
+    snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " SITE_COOKIE "=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n", made, SESSION_DAYS * 86400);
+  else if (!strcmp(op, "logout") && status == 200)
+    snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " SITE_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n");
+  else snprintf(headers, sizeof headers, PRIVATE_HEADERS);
+  bool lines = !strcmp(op, "me") && status == 200;
+  api_respond(q->fd, status, lines ? "text/plain; charset=utf-8" : "application/json", headers, out, strlen(out));
+  if (strcmp(op, "poll") || status != 200) api_log("auth %s %d%s%.8s", op, status, pubkey[0] ? " by " : "", pubkey);
+  PQclear(r);
+  return true;
+}
+
 bool private_route(const request *q) {
+  if (!strncmp(q->path, "/api/auth/", 10)) return auth_route(q);
   const char *p = q->path, *rest;
   bool page_api = false;
   if (!strncmp(p, "/api/private/", 13)) rest = p + 13;
@@ -224,13 +316,8 @@ bool private_route(const request *q) {
 
   bool post = !strcmp(q->method, "POST");
   if (!post && strcmp(q->method, "GET")) { no(q); return true; }
-  // The visitor's address: the load balancer appends it and then its own, so
-  // it's the next to last; anything before it the visitor could have written.
-  char xff[512], ip[128] = "";
-  api_header(q, "X-Forwarded-For", xff, sizeof xff);
-  char *parts[16]; int np = 0;
-  for (char *t = strtok(xff, ", "); t && np < 16; t = strtok(NULL, ", ")) parts[np++] = t;
-  if (np) snprintf(ip, sizeof ip, "%s", parts[np >= 2 ? np - 2 : 0]);
+  char ip[128];
+  visitor(q, ip);
   char auth[4096], from[256], token[65];
   bool signed_req = api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6);
   if (post) {
@@ -239,7 +326,7 @@ bool private_route(const request *q) {
     if ((has_origin && strcmp(from, origin())) || (!has_origin && !signed_req)) {
       api_respond(q->fd, 403, "application/json", PRIVATE_HEADERS, "{\"error\":\"cross-site\"}", 22); return true;
     }
-    if (!allowed("ip", ip, 60) || (!strcmp(op, "redeem") && !allowed("redeem", ip, 10))) {
+    if (!allowed("ip", ip, 60) || ((!strcmp(op, "redeem") || !strcmp(op, "claim")) && !allowed("redeem", ip, 10))) {
       api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
     }
   }
@@ -256,15 +343,18 @@ bool private_route(const request *q) {
     if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err) || !first_use(db, &ev)) {
       no(q); return true;
     }
+    if (!strcmp(op, "claim") && !ev.payload[0]) { no(q); return true; }
     memcpy(pubkey, ev.pubkey, sizeof pubkey);
   } else if (page_api) cookie_token(q, token);
+  char site[65] = "";
+  if (!signed_req && page_api) cookie_named(q, SITE_COOKIE, site);
   if (post && pubkey[0] && !allowed("key", pubkey, runner_key(pubkey) ? 600 : 30)) {
     api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
   }
 
-  char who[480];
-  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"session\":\"%s\",\"admin\":%s,\"format\":\"%s\",\"agent_on\":%s,\"cap_usd\":\"%.16s\"}",
-           pubkey, token, pubkey[0] && admin_is(pubkey) ? "true" : "false", page_api ? "lines" : "json",
+  char who[800];
+  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"session\":\"%s\",\"site\":\"%s\",\"origin\":\"%.200s\",\"admin\":%s,\"format\":\"%s\",\"agent_on\":%s,\"cap_usd\":\"%.16s\"}",
+           pubkey, token, site, origin(), pubkey[0] && admin_is(pubkey) ? "true" : "false", page_api ? "lines" : "json",
            agent_on(slug) ? "true" : "false", agent_cap());
   char *body = malloc(q->body_len + 3);
   if (!body) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"memory\"}", 18); return true; }
@@ -298,7 +388,8 @@ bool private_route(const request *q) {
     snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " COOKIE "=%s; Path=/projects/%s; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n",
              made, slug, SESSION_DAYS * 86400);
   else if (!strcmp(what, "logout") && status == 200)
-    snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " COOKIE "=; Path=/projects/%s; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", slug);
+    snprintf(headers, sizeof headers, PRIVATE_HEADERS "Set-Cookie: " COOKIE "=; Path=/projects/%s; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n"
+             "Set-Cookie: " SITE_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", slug);
   else snprintf(headers, sizeof headers, PRIVATE_HEADERS);
   bool lines = page_api && (!strcmp(what, "state") || !strcmp(what, "talk")) && status == 200;
   bool wake = status == 200 && !strcmp(PQgetvalue(r, 0, 3), "t");

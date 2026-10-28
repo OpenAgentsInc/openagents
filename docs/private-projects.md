@@ -3,8 +3,9 @@
 A private project is a page at `https://openagents.com/projects/<slug>` that
 only its members, and agents they register, can see. Members are Nostr keys
 named in the project's document. There is no WorkOS and no password: a member
-signs in with a one-time link minted by another member, or signs requests
-with their key.
+signs in with a one-time link minted by another member, signs requests
+with their key, or signs in with the OpenAgents phone app once the phone is
+linked to them ([phone-sign-in.md](phone-sign-in.md)).
 
 The mechanism is public (this repo). Each project's contents are not: the
 document lives in a private repo and is served by oa-api from Cloud SQL, only

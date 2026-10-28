@@ -40,6 +40,9 @@ compromised machine or key, and a member sharing contents on purpose.
 | Losing history | Every push keeps the previous version; a push based on a stale version is 409 | `test_private.py` |
 | Contents in logs | oa-api logs only the operation, status and the first 8 hex digits of the caller's pubkey; SQL errors log only their SQLSTATE; no tokens, cookies or contents | `test_private.py` reads the test server's log |
 | Contents in public places | The page's files are generic and public; contents come only from the API with a session; nothing goes to the Nostr relay or the site bucket | review; `smoke.sh` |
+| A phone's key acting for a member | A key is linked only by a member's own LINK A PHONE challenge (five minutes, once) or by spending an invite for that member; a key that already has a place in the project can't be linked; a linked key acts only in its project and stops when its member leaves the document | `test_private_phone.py` |
+| A photographed sign-in QR | The QR holds only the challenge; the session goes to whoever holds the poll token, which never leaves the page; challenges are good once for five minutes and the approval is NIP-98 signed over its body | `test_private_phone.py` |
+| A site session from /signin | `oa_session`: HttpOnly, Secure, SameSite=Lax, Path=/, 30 days, only its SHA-256 stored; it opens a project page only when its key is a member's or a member's linked key; writes still need this site's Origin; SIGN OUT ends it | `test_private_phone.py` |
 | Framing and referrers | `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` | `test_private.py` |
 
 ### Why SameSite=Lax, not Strict
