@@ -1,0 +1,14 @@
+syntax = "proto3";
+package coax.test;
+message Inner { string text = 1; }
+enum State { UNKNOWN=0; READY=1; NEGATIVE=-1; }
+message Scalars {
+  double real64=1; float real32=2; int64 i64=3; uint64 u64=4;
+  int32 i32=5; fixed64 fixed64_value=6; fixed32 fixed32_value=7;
+  bool enabled=8; string text=9; bytes blob=10; uint32 u32=11;
+  State state=12; sfixed32 sf32=13; sfixed64 sf64=14;
+  sint32 zig32=15; sint64 zig64=16;
+  repeated sint32 numbers=17; Inner child=18; repeated Inner children=19;
+  oneof choice { string title=20; uint64 rank=21; }
+  optional uint32 opt=22; Scalars recurse=23;
+}

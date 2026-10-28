@@ -20,7 +20,10 @@ The root [protocol guide](../../proto/README.md) identifies what is actually
 restored and executable. New alpha files cover experimental options and the
 first Verse world/presence projection, native home and the first 16 Nostr
 mirror schemas; they do not amend Nostr, REACH or realm
-transports. Coax's `#import_proto` and production decoders are not implemented.
+transports. Coax 0.4.0 now implements selected proto3 descriptor imports and
+bounded caller-buffer codecs; [the importer contract](../../coax/proto.md)
+records supported shapes, strict duplicate semantics and native/protoc tests.
+Product adapters, domain validation and live admission remain separate gates.
 
 The [Metareal migration](../../proto/migrations/README.md) names old IDs, new
 canonical IDs and the required reader/writer transition. `legacy/<key>` in
@@ -298,8 +301,10 @@ After the reset, `6329f3e0b3` moved Coax into `coax/`, `85e7706684` imported
 bootstrap 0.2.0, and `7bf3a4140c` added its book. The current
 [Coax spec](../../coax/spec.md) and [compiler guide](../../coax/README.md)
 replace the earlier language draft. The bootstrap supports scalar compile-time
-work; structs, protobuf ingestion and bounded production codecs still need
-implementation. Protocol work must not claim those capabilities already exist.
+work, structs/views and a C boundary. Version 0.4.0 adds descriptor ingestion
+and bounded native codecs tested on actual profiles. Domain adapters and
+production consumer parity remain unimplemented and must not be inferred from
+codec availability.
 
 Metareal is the engine's current name. The owner approved ID migration as well
 as prose changes. `proto/migrations/metareal-v1.json` preserves old reader
@@ -4561,10 +4566,13 @@ wire. Register and review extension numbers before stable publication.
 ### 33.2 Coax is the product implementation target
 
 Coax now has initial scalar widths, structs, arrays/views and a C boundary.
-Before general contract ingestion, it still needs protobuf presence/oneof lowering,
-repeated fields, explicit presence, oneofs and checked memory model used by
-its selected contracts. Then `#import_proto` consumes the selected descriptor
-closure and generates bounded codecs plus checked domain adapters.
+`#import_proto` now consumes selected proto3 descriptor closures and generates
+typed borrowed views, presence/oneof accessors, repeated iterators and bounded
+caller-buffer codecs. Nostr/Block fixtures and all scalar wire types are tested
+through generated native C11, ASan/UBSan and pinned protoc. Its first strict
+reader rejects duplicate known singular/oneof fields and unsupported shapes;
+see [the exact importer contract](../../coax/proto.md). Checked domain adapters,
+app adoption and restored HOST/REACH runtime parity remain later P1 gates.
 
 A Coax declaration may propose a schema change, but public `.proto` files are
 the defining contract and that change must pass source review and compatibility
@@ -4690,7 +4698,7 @@ a compiling graph: generate actual descriptors before starting a cutover.
 | Phase | Scope and prerequisites | Exit evidence |
 | --- | --- | --- |
 | **P0. Recover and namespace** | This recovery: root contracts, immutable baselines, source manifests, vendor modules, consumer profiles, Metareal migration and initial alpha Verse references. | Reproducible descriptors; all baseline/vendor hashes and migration tests pass. No old app workspace is resurrected. |
-| **P1. Coax contract ingestion** | Initial widths/structs/byte views/C ABI now exist; complete presence/oneof lowering, selected `#import_proto` and bounded codecs next. The first Event-kind reader is a narrow proof, not the whole phase. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
+| **P1. Coax contract ingestion** | Widths/structs/byte views/C ABI and selected proto3 `#import_proto` now exist, including bounded presence/oneof/repeated codecs. Nostr/Block native fixture tests and protoc interoperability pass. Checked domain adapters and live product parity remain open. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
 | **P2. Decision foundations** | Shared validation/options; selected Nostr envelope/mirrors; receipt and inference wire primitives before decision. | Fractional scores, string choices, structured rubrics, state restrictions and exact receipt refs round-trip through a real Coax/FM consumer. |
 | **P3. Runtime prerequisites** | Context→policy→capability→program; identity/attestation/skill; extension→eval; needed UI and payment reference primitives. | Compiled import graph, checked domain adapters and preserved admission/effect ownership. |
 | **P4. Execution and sessions** | Run/trace/exec/chat/session/control/workspace, then environment/work/coordination/automation/live after P2/P3 imports. | A real task, observed tool progress, result, cancellation and reconnect in the app; then actual sessions/terminals. Coax owns product logic. |

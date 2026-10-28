@@ -118,6 +118,15 @@ static int64_t coax_ftoi_s(double v, int64_t lo, int64_t hi, int32_t l) {
   if (i < lo || i > hi) coax_trap("cast out of range", l);
   return i;
 }
+static _Bool coax_bytes_overlap(const void *a, int64_t n, const void *b, int64_t m) {
+  if(n<=0 || m<=0) return 0;
+  uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;
+  return x<=y ? y-x<(uint64_t)n : x-y<(uint64_t)m;
+}
+static float coax_f32_from_bits(uint32_t x){float f;memcpy(&f,&x,4);return f;}
+static double coax_f64_from_bits(uint64_t x){double f;memcpy(&f,&x,8);return f;}
+static uint32_t coax_f32_bits(float f){uint32_t x;memcpy(&x,&f,4);return x;}
+static uint64_t coax_f64_bits(double f){uint64_t x;memcpy(&x,&f,8);return x;}
 static float coax_to_f32(double v, int32_t l) {
   /* Finite values that would round to infinity do not fit; inf and nan stay. */
   if (isfinite(v) && fabs(v) >= 3.4028235677973366e38) coax_trap("cast out of range", l);
@@ -475,6 +484,13 @@ struct Emitter {
         fputs("coax: internal error: unevaluated #run reached the C emitter\n", stderr);
         abort();
       case ExprKind::call: {
+        if (e->binary_intrinsic != BinaryIntrinsic::none) {
+          if (e->binary_intrinsic == BinaryIntrinsic::bytes_overlap) {
+            std::string a=new_temp(c_type(e->args[0]->type)),b=new_temp(c_type(e->args[1]->type));
+            return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_bytes_overlap("+a+".data, "+a+".count, "+b+".data, "+b+".count))";
+          }
+          return "coax_"+to_std(e->text)+"("+ex(e->args[0])+")";
+        }
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
         std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : proc_name(e->proc);

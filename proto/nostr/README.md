@@ -58,9 +58,14 @@ source-derived protobuf fixture. It scans wire data, skips supported unknown
 fields and declines groups, duplicate kind fields, malformed lengths and
 oversized inputs. It deliberately accepts a kind-only projection and does not
 validate the full Event, signed JSON or authentication. Coax now has initial structs and byte views, which this proof uses directly.
-General `#import_proto`, protobuf presence/oneof lowering and complete bounded
-codecs remain unimplemented; the other schema adapters are not yet running as
-Coax product code.
+[`#import_proto`](../../coax/proto.md) now imports all five descriptor profiles
+into typed Coax wire views, presence/oneof accessors, repeated iterators and
+bounded caller-buffer codecs. `coax/tests/proto_import.py` exercises the real
+Event fixture, Block types, unknown preservation, strict duplicate policy and
+limits through generated native C ABI code, including sanitizer and pinned
+protoc interoperability runs. The kind-only reader remains a regression
+reference. Domain adapters and live product/cryptographic admission are not
+implemented by these codecs.
 
 The native host in that test lends a valid byte view through a generated C ABI
 struct; the Coax reader checks its count and never mutates its contents. No mobile

@@ -1,13 +1,14 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.3.0 can report. This appendix is generated from the
+Every error `coax0` 0.4.0 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
 stable: a code keeps its meaning, and a retired code is never reused.
 
 The first two digits give the stage: `E01` lexer, `E02` parser, `E03`
-checker, `E04` compile-time evaluation (Chapter 4). With `--json`, each
+checker, `E04` compile-time evaluation (Chapter 4), `E05` descriptor imports.
+With `--json`, each
 diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 `message` and `fix`.
 
@@ -125,6 +126,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0375` | math or string intrinsic misused | sin cos tan exp log sqrt floor abs take one float, pow two floats of one type; len takes a string, array or view; byte_at takes a string and an index. Convert integers first: f64(x). |
 | `E0376` | procedure cannot cross the C boundary | A #foreign procedure passes only integers, floats and bool, and its name must be a valid C symbol that is not main and does not start with coax_. |
 | `E0377` | outside the Metal scalar profile | coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print and #foreign calls stay in the C library. |
+| `E0378` | binary intrinsic argument mismatch | bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type. |
 
 ## E04xx: compile-time evaluation
 
@@ -143,6 +145,15 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0410` | compile-time index out of bounds | An index or slice evaluated while compiling is outside its array, view or string. |
 | `E0411` | compile-time cast or shift out of range | A cast evaluated while compiling does not fit its target, a value is not a member of the enum, or a shift amount is out of range. |
 | `E0412` | compile-time math has no finite result | A math intrinsic evaluated while compiling gave infinity or NaN, such as sqrt(-1.0) or log(0.0). Compile-time results must be finite. |
+
+## E05xx: proto imports
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `E0501` | invalid proto import | Use #import_proto "profile.pb" as Prefix; with an exact FileDescriptorSet path relative to the source file. |
+| `E0502` | proto descriptor rejected | The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated. |
+| `E0503` | proto importer unavailable | Install Python 3 and keep coax/tools/proto_import.py with the compiler source tree. COAX_PROTO_TOOL may select an explicit tool path. |
+| `E0504` | proto imports are CPU-only | Generated binary codecs are CPU code and cannot be compiled as Metal shaders. |
 
 ## Retired
 

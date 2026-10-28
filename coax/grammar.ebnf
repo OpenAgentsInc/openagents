@@ -1,4 +1,4 @@
-(* Coax 0.3.0 accepted subset. Planned language syntax is not in this grammar.
+(* Coax 0.4.0 accepted subset. Planned language syntax is not in this grammar.
    Lexing: ASCII identifiers (excluding reserved keywords); integer tokens in
    decimal/hex/binary with separators, up to the u64 maximum; decimal float
    tokens with a fraction and/or exponent ("1.5", "2e-3"; never "1." so that
@@ -6,8 +6,11 @@
    escaped byte strings; whitespace, line comments and nested block comments.
    A unary minus is a separate token. *)
 
-file = { import | procedure | constant | struct | enum | assertion } ;
+file = { import | proto-import | procedure | constant | struct | enum | assertion } ;
 import = "#import", string, ";" ;
+proto-import = "#import_proto", string, "as", identifier, ";" ;
+(* Proto imports generate ordinary declarations; see proto.md for supported
+   descriptors, naming, budgets, borrowed lifetimes and strict wire policy. *)
 procedure = identifier, "::", "(", [ parameters ], ")",
             [ "->", type ], ( [ "#export_c" ], block | "#foreign", ";" ) ;
 parameters = parameter, { ",", parameter }, [ "," ] ;
@@ -72,7 +75,8 @@ arguments = expression, { ",", expression }, [ "," ] ;
    evaluation; and bounded compile-time execution. print is provided by
    Basic; type_name is an unevaluated but typechecked intrinsic. A call
    named after a number type converts (int(x) is cast(int) x); sin, cos,
-   tan, exp, log, sqrt, floor, abs, pow, len and byte_at are intrinsics.
+   tan, exp, log, sqrt, floor, abs, pow, len, byte_at, bytes_overlap,
+   f32_bits, f64_bits, f32_from_bits and f64_from_bits are intrinsics.
    #foreign procedures pass integers, floats and bool. coax metal accepts
    only f32/bool values, no loops, strings or foreign calls, and acyclic
    calls. *)

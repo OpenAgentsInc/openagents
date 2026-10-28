@@ -9,7 +9,7 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.3.0 implements procedures;
+**Implementation status matters.** Version 0.4.0 implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
@@ -24,7 +24,9 @@ syntax below is a target design unless explicitly marked implemented. The
 The reduced native iOS home now runs scene/HUD logic and scalar shader math in
 Coax; native adapters own storage and GPU resources. Fixed-scalar C ABI exports,
 foreign imports and a restricted f32/bool Metal library emitter are implemented.
-This does not complete the broader engine, protocol importer or GPU design.
+Descriptor imports now generate typed borrowed wire views and bounded codecs
+for the supported proto3 subset; see [the importer contract](proto.md). This
+does not complete product protocol migration, the broader engine or GPU design.
 
 Contents:
 
@@ -653,11 +655,15 @@ The recovered nine published schemas, Nanopb limits and nine immutable
 snapshots preserve their pre-reset identities. New alpha options and Verse
 world/presence projections are experimental inputs. Current descriptors are
 in `proto/descriptors/`, generated and tested by `scripts/proto.sh`; the
-scalar Coax compiler does not ingest them yet.
+Coax compiler now ingests selected proto3 closures through `#import_proto`.
 
-A future `#import_proto` needs fixed-width values, bytes, aggregates, repeated
-fields, explicit presence and oneofs first. It then generates bounded codecs
-and checked domain adapters. Coax declarations may propose schema changes,
+`#import_proto` generates typed views, repeated iterators, explicit presence,
+oneof cases and caller-buffer codecs using the implemented data types.
+Unknown fields survive edits; the first reader rejects duplicate known singular
+fields/oneof members rather than merging them. Maps, proto2, editions, groups
+and extension fields are rejected. Domain adapters and product migration are
+separate gates; [proto.md](proto.md) specifies the exact supported subset.
+Coax declarations may propose schema changes,
 but they return through public schema review and compatibility checks.
 There is no second Coax-only wire schema.
 
@@ -864,7 +870,9 @@ Parsing a few examples is not the expensive part.
 ## 20. Implementation order and exit gates
 
 The protocol plan's P0 recovery runs now. Its P1 ingestion follows stage 2's
-actual type/ABI prerequisites for general generated codecs. The 0.3.0 home
+actual type/ABI prerequisites. Version 0.4.0 ships selected descriptor imports
+and bounded codecs with Nostr/Block, scalar and protoc interoperability tests;
+product/domain parity remains open. The 0.3.0 home
 port is a narrow exception: scalar-only C ABI, opaque bounded host storage and
 a hand-written resource reader/writer verified against protoc; it does not
 claim aggregate or general ingestion support. Stage 6

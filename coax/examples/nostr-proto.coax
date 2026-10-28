@@ -1,0 +1,13 @@
+// Real descriptor-generated types. Empty kinds is distinct from missing kinds.
+#import_proto "../../proto/descriptors/nostr-event.pb" as N;
+#import "Basic";
+main :: () {
+  first:[128] u8;second:[128] u8;output:[128] u8;
+  kinds:=N_KindList_append_values(N_KindList_new(),0,first[..]);
+  filter:=N_Filter_set_kinds(N_Filter_new(),kinds,second[..]);
+  encoded:=N_Filter_encode(filter,output[..]);
+  decoded:=N_Filter_decode(encoded.wire);
+  selected:=N_Filter_get_kinds(decoded);
+  values:=N_KindList_iter_values(selected.value);
+  print("% % %\n",encoded.error,selected.present,values.value);
+}

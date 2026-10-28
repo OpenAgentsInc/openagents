@@ -116,6 +116,8 @@ const ErrorInfo ERRORS[] = {
     {"E0376", "procedure cannot cross the C boundary", "A #foreign procedure passes only integers, floats and bool, and its name must be a valid C symbol that is not main and does not start with coax_."},
     {"E0377", "outside the Metal scalar profile", "coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print and #foreign calls stay in the C library."},
 
+    {"E0378", "binary intrinsic argument mismatch", "bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type."},
+
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time step budget exceeded", "Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Make the computation smaller or move it to run time."},
     {"E0401", "compile-time code cannot capture a runtime value", "#run code and constants see only constants and their own locals."},
@@ -130,6 +132,11 @@ const ErrorInfo ERRORS[] = {
     {"E0410", "compile-time index out of bounds", "An index or slice evaluated while compiling is outside its array, view or string."},
     {"E0411", "compile-time cast or shift out of range", "A cast evaluated while compiling does not fit its target, a value is not a member of the enum, or a shift amount is out of range."},
     {"E0412", "compile-time math has no finite result", "A math intrinsic evaluated while compiling gave infinity or NaN, such as sqrt(-1.0) or log(0.0). Compile-time results must be finite."},
+    // ---- E05xx: proto imports ----
+    {"E0501", "invalid proto import", "Use #import_proto \"profile.pb\" as Prefix; with an exact FileDescriptorSet path relative to the source file."},
+    {"E0502", "proto descriptor rejected", "The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated."},
+    {"E0503", "proto importer unavailable", "Install Python 3 and keep coax/tools/proto_import.py with the compiler source tree. COAX_PROTO_TOOL may select an explicit tool path."},
+    {"E0504", "proto imports are CPU-only", "Generated binary codecs are CPU code and cannot be compiled as Metal shaders."},
 };
 
 const int32_t ERROR_COUNT = (int32_t)(sizeof ERRORS / sizeof ERRORS[0]);

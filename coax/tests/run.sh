@@ -57,4 +57,6 @@ python3 tests/native.py
 native_rc=$?
 python3 tests/nostr.py
 nostr_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 ]]
+python3 tests/proto_import.py
+proto_rc=$?
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $nostr_rc -eq 0 && $proto_rc -eq 0 ]]

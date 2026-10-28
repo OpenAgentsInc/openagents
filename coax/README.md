@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.3.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.4.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The C++20 compiler parses and checks one source file, executes bounded
@@ -205,12 +205,18 @@ later metadata, build, parallelism, browser and reload gates.
 The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) defines
 interchange for every OpenAgents surface, including Verse. Source schemas and
 selected-profile descriptors live in root [proto/](../proto/README.md), beside
-`coax/`. Metareal is the engine name. Coax's future importer and bounded codecs
-must consume this source rather than defining a parallel language-only schema.
+`coax/`. Metareal is the engine name. The implemented
+[`#import_proto` importer](proto.md) consumes selected descriptor closures and
+generates typed Coax views, presence/oneof/repeated accessors and bounded
+caller-buffer codecs. It adds no parallel language-only schema.
 
 The first [Nostr mirror profiles](../proto/nostr/README.md) now compile into
 selected descriptors. `examples/nostr-wire.coax` is a bounded C-ABI consumer of
 the shared Event projection's kind field. `tests/nostr.py` compiles it and reads
 a canonical source-derived protobuf fixture, including kind zero, all selected
-Block kinds, unknown fields, wide timestamps and malformed inputs. It does not
-implement general descriptor ingestion, signed JSON parsing or Nostr admission.
+Block kinds, unknown fields, wide timestamps and malformed inputs. That narrow
+reader remains as a regression reference. `examples/nostr-proto.coax` now uses
+the descriptor-generated API; `tests/proto_import.py` checks actual native
+round trips, all scalar types, presence, oneofs, repeats, malformed inputs and
+ASan/UBSan. An explicit `--oracle` run checks both directions with pinned
+protoc. Signed JSON parsing and Nostr admission remain separate gates.

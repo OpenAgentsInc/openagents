@@ -466,6 +466,16 @@ struct Evaluator {
           err(e->loc, "E0408", "a constant procedure call requires #run");
           return {};
         }
+        if (e->binary_intrinsic != BinaryIntrinsic::none) {
+          if(e->binary_intrinsic == BinaryIntrinsic::bytes_overlap) {err(e->loc,"E0404","runtime storage overlap cannot execute at compile time");return {};}
+          Value a=expr(e->args[0],frame,allow_calls),r;r.type=e->type;
+          if(e->binary_intrinsic == BinaryIntrinsic::f32_bits){float x=(float)a.f;uint32_t b;memcpy(&b,&x,4);r.bits=b;}
+          else if(e->binary_intrinsic == BinaryIntrinsic::f64_bits){memcpy(&r.bits,&a.f,8);}
+          else if(e->binary_intrinsic == BinaryIntrinsic::f32_from_bits){uint32_t b=(uint32_t)a.bits;float x;memcpy(&x,&b,4);r.f=x;}
+          else {memcpy(&r.f,&a.bits,8);}
+          if(is_float(r.type) && !std::isfinite(r.f)) {err(e->loc,"E0412","non-finite compile-time bit conversion");return {};}
+          return r;
+        }
         if (e->intrinsic != Intrinsic::none) return math(e, frame, allow_calls);
         if (e->builtin_print) {
           err(e->loc, "E0404", "compile-time execution cannot perform output or host I/O");

@@ -8,7 +8,8 @@ Metareal is the engine name. Profiles select imports from one source tree,
 not separate definitions per app, target or implementation language.
 
 Check: `scripts/proto.sh check` compiles actual roots and profile closures.
-Coax ingestion/production decoding remains a separate, explicit consumer gate.
+Coax descriptor ingestion is checked by `coax/tests/proto_import.py`. Product
+migration and domain/admission validation remain explicit consumer gates.
 
 ## Published contracts and signed originals retain identity
 
@@ -77,5 +78,10 @@ Check: `proto/tools/check_nostr_sources.py` and `scripts/proto.sh check` reject
 stale mirror pins/hashes and schema inventory drift. Reference tests check real
 event ID/original round trips, unknown fields, missing/null/zero cases, token
 classes, byte bounds and selected-profile imports. Coax tests consume the actual
-Event protobuf fixture through a bounded kind-only reader; other Coax ingestion
-and all cryptographic/relay admission remain explicit unimplemented gates.
+Event protobuf fixture through both the narrow reader and actual descriptor-
+generated typed codecs. `coax/tests/proto_import.py` checks presence/oneofs,
+repeats, unknown retention, writer capacity/alias errors, policy bounds and
+native ASan/UBSan; its explicit protoc oracle checks interoperability. Codecs
+borrow input/output storage, allocate no target memory, and reject unsupported
+descriptors and duplicate known singular/oneof fields. Domain migration and all
+cryptographic/relay admission remain explicit unimplemented gates.

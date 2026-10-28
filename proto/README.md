@@ -70,21 +70,23 @@ separately from each upstream vendor module, avoiding import-name collisions.
 
 ## Coax adoption
 
-Coax does **not** implement `#import_proto` or general protobuf code generation.
-The [Nostr alpha profile](nostr/README.md) provides selected descriptors and
-source-pinned projection definitions. A compiled Coax event-kind reader proves
-a narrow consumer path against the canonical protobuf fixture; it is not a
-signed JSON/JWS parser, signature verifier or general NIP implementation.
+Coax 0.4.0 implements [`#import_proto`](../coax/proto.md) for selected proto3
+descriptor closures. It generates actual Coax typed wire views, presence,
+oneofs, repeated iterators and bounded caller-buffer codecs. The
+[Nostr alpha profiles](nostr/README.md) are exercised against real fixture
+bytes, with native C ABI round trips and pinned protoc interoperability. This
+is not a signed JSON/JWS parser, signature verifier or general NIP implementation.
 The reduced iOS home has one real bounded Coax resource reader for
 `openagents.metareal.home.v1alpha1.HomeConfiguration` and writes existing
 `openagents.engine.v1.HudInvocation` messages. `metareal/test_home.py` checks
 these against canonical protoc bytes. This manually written selected-profile
 codec is not a general decoder or authority path.
 Current C++ compiler code and Python schema checks are bootstrap infrastructure.
-The next compiler prerequisites are aggregates, fixed-width values, bytes,
-repeated fields, explicit presence and oneofs, followed by bounded codecs and
-checked domain adapters. The checked-in descriptors are real inputs to that
-work; no placeholder Coax structs simulate a working integration.
+The initial compiler/codec prerequisites now exist. Checked domain adapters,
+platform consumers and live service parity remain separate work. The importer
+uses Python standard-library host tooling; generated target code needs no
+Python/protobuf runtime. See its contract for strict duplicate/oneof policy,
+unsupported shapes and memory budgets.
 
 The Python alpha validator is a fixture/reference checker, not app admission.
 Production consumers still need limits before untrusted allocation, recursive

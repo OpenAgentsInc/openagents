@@ -190,6 +190,9 @@ enum class ExprKind : uint8_t {
 enum class Intrinsic : uint8_t { none, sin, cos, tan, exp, log, sqrt, floor, abs, pow };
 Intrinsic find_intrinsic(Str name);
 
+enum class BinaryIntrinsic : uint8_t { none, bytes_overlap, f32_from_bits, f64_from_bits, f32_bits, f64_bits };
+BinaryIntrinsic find_binary_intrinsic(Str name);
+
 struct FieldInit {
   Str name;
   Loc loc;
@@ -218,6 +221,7 @@ struct Expr {
   struct ProcDecl *proc = nullptr;      // call: resolved target (null for builtins)
   struct ConstDecl *constant = nullptr; // ident: resolved global constant
   bool builtin_print = false;
+  BinaryIntrinsic binary_intrinsic = BinaryIntrinsic::none;
   Intrinsic intrinsic = Intrinsic::none;  // call: built-in math (proc is null)
   Value *ct = nullptr;        // ct_value: an aggregate computed at compile time
   int32_t ct_id = -1;         // ct_value: emitted as a static constant
