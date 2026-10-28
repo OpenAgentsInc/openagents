@@ -1,0 +1,457 @@
+{
+  "schema": "coax.crypto-vectors.v1",
+  "retrieved": "2026-10-28",
+  "files": [
+    {
+      "path": "upstream/rfc/rfc4231.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc4231.txt",
+      "revision": "RFC 4231",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "hmac-sha256"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "72178527ce93500e730bc8eb182b857e583096d652b64ece0879c52ba1df973b",
+      "bytes": 17725
+    },
+    {
+      "path": "upstream/rfc/rfc5869.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc5869.txt",
+      "revision": "RFC 5869",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "hkdf-sha256"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "7a40eb3835b35fc947eb12a2ed614db079d43b26e50dbc537c31fba16397089c",
+      "bytes": 25854
+    },
+    {
+      "path": "upstream/rfc/rfc7914.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc7914.txt",
+      "revision": "RFC 7914",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "pbkdf2-hmac-sha256"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "df55932f8b6a5d271f36a634d91a25903724e189ba6c120bf7257cd47f10b197",
+      "bytes": 29222
+    },
+    {
+      "path": "upstream/rfc/rfc8439.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc8439.txt",
+      "revision": "RFC 8439",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "chacha20"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "25bef70fbf7a07ff45c2fe4cb7c6ce954eac687413d8610603268b4e4415324c",
+      "bytes": 88847
+    },
+    {
+      "path": "upstream/rfc/rfc4648.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc4648.txt",
+      "revision": "RFC 4648",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "hex",
+        "base64"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "84e14418f795d503be5f34bf23ce4ebaa119e9ec7c9f667d8caeb111385b178f",
+      "bytes": 35491
+    },
+    {
+      "path": "upstream/rfc/rfc8785.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc8785.txt",
+      "revision": "RFC 8785",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "jcs"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "63d52294eb0e3f0014174288186d388b4ddbf2c67d1ce8af1d9726eb0c3ab240",
+      "bytes": 41879
+    },
+    {
+      "path": "upstream/rfc/rfc8259.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc8259.txt",
+      "revision": "RFC 8259",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "61a5378f4255c720beb2a4b4a63b29540147c140f36988bf086291989b4cd2d7",
+      "bytes": 28360
+    },
+    {
+      "path": "upstream/bip340/test-vectors.csv",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/test-vectors.csv",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause OR MIT OR CC0-1.0",
+      "covers": [
+        "bip340"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d",
+      "bytes": 6892
+    },
+    {
+      "path": "upstream/bip340/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/LICENSE",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause OR MIT OR CC0-1.0",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "e4974cd8532036eda7e540a9930fee0c020cb297d455033232606298a89adbd4",
+      "bytes": 332
+    },
+    {
+      "path": "upstream/bip173/bip-0173.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0173.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bech32"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "b19eab06b264bbd15ad7f7d640fa34de8f4a8809fba8a6ecc3e165545b27a543",
+      "bytes": 20803
+    },
+    {
+      "path": "upstream/nip44/nip44.vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/test/nip44.vectors.json",
+      "revision": "git:671a1f04bcfacaf125b0db68adc45bc9ce0e763b",
+      "license": "Unlicense (javascript subtree; root corpus has same digest)",
+      "covers": [
+        "nip44"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040",
+      "bytes": 37630
+    },
+    {
+      "path": "upstream/nip44/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/LICENSE",
+      "revision": "git:671a1f04bcfacaf125b0db68adc45bc9ce0e763b",
+      "license": "Unlicense",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "f0510d3b9d1223c45e8fdd2b49270ec8734fff491c7f7d1b948ee70162e1ceff",
+      "bytes": 1210
+    },
+    {
+      "path": "upstream/wycheproof/ecdh_secp256k1_test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdh_secp256k1_test.json",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "ecdh-secp256k1"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae",
+      "bytes": 501501
+    },
+    {
+      "path": "upstream/wycheproof/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/LICENSE",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+      "bytes": 11357
+    },
+    {
+      "path": "upstream/json/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/LICENSE",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "8bd0e0578be788c617ea01d18b2a8146e3746ae50bddadc65a5f9d3aad08ad49",
+      "bytes": 1071
+    },
+    {
+      "path": "upstream/json/y_string_escaped_control_character.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_string_escaped_control_character.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "1a9f37085203c6d712945c5fb87ad5e08fa38515e51ee4a637c7558bb1b82725",
+      "bytes": 10
+    },
+    {
+      "path": "upstream/json/y_string_utf8.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_string_utf8.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "adec79032c3509dce21c9b0b96445a0fe398533d6647d12abc639eef16e621ab",
+      "bytes": 11
+    },
+    {
+      "path": "upstream/json/n_string_unescaped_ctrl_char.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_string_unescaped_ctrl_char.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "c85db33857913bc4c4d4f044c72cd06d50ffb5644b2e5093ef8b46ebfe340ed0",
+      "bytes": 7
+    },
+    {
+      "path": "upstream/json/n_string_incomplete_escape.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_string_incomplete_escape.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "df3709e1b19bc2562a9bc0301265c237ca5a5b35bd9bc5c3a7f45c57092e0537",
+      "bytes": 5
+    },
+    {
+      "path": "upstream/json/n_string_invalid-utf-8-in-escape.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_string_invalid-utf-8-in-escape.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "1c1ef70149258ff7ee082817269431c45e34f75a2268c3dff56f35d3a4859f1e",
+      "bytes": 7
+    },
+    {
+      "path": "upstream/json/n_object_trailing_comma.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_object_trailing_comma.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "60e04bc71fcc4c57abeef95a9604a96aa60f833881a2f028d27bd4f03e176603",
+      "bytes": 9
+    },
+    {
+      "path": "upstream/json/y_number_int_with_exp.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_number_int_with_exp.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "6d014f6467daa9753d57f0d75067fe62c9f3b0116455a3222c26e58432541b0d",
+      "bytes": 6
+    },
+    {
+      "path": "upstream/json/i_string_UTF-16LE_with_BOM.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/i_string_UTF-16LE_with_BOM.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "6a9c15ecc8fc3da72b0ba5e3539e07f2aad3c704b496fe3496579dc723ce49c5",
+      "bytes": 12
+    },
+    {
+      "path": "upstream/json/i_structure_500_nested_arrays.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/i_structure_500_nested_arrays.json",
+      "revision": "git:1ef36fa01286573e846ac449e8683f8833c5b26a",
+      "license": "MIT",
+      "covers": [
+        "json"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "a6c6b45361ff77e7372a015a1f0289e9c09d1fe1ed59cf9773d599c55acf57cf",
+      "bytes": 1000
+    },
+    {
+      "path": "upstream/nist/Readme.txt",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip",
+      "revision": "NIST CAVS 11.0 byte-oriented SHA vectors (archive identity pinned)",
+      "archive_member": "shabytetestvectors/Readme.txt",
+      "archive_sha256": "929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "notice"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "24bf370543f9521f7eb44f49e8d489ac9e45a21126f883d8e32e7fffd1d10227",
+      "bytes": 831
+    },
+    {
+      "path": "upstream/nist/SHA256ShortMsg.rsp",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip",
+      "revision": "NIST CAVS 11.0 byte-oriented SHA vectors (archive identity pinned)",
+      "archive_member": "shabytetestvectors/SHA256ShortMsg.rsp",
+      "archive_sha256": "929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "sha256"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c",
+      "bytes": 10299
+    },
+    {
+      "path": "upstream/nist/SHA256LongMsg.rsp",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip",
+      "revision": "NIST CAVS 11.0 byte-oriented SHA vectors (archive identity pinned)",
+      "archive_member": "shabytetestvectors/SHA256LongMsg.rsp",
+      "archive_sha256": "929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "sha256"
+      ],
+      "retrieved": "2026-10-28",
+      "sha256": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974",
+      "bytes": 426209
+    },
+    {
+      "path": "upstream/nips/01.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/01.md",
+      "revision": "git:400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+      "retrieved": "2026-10-28",
+      "license": "No standalone license declared in source; existing vendored protocol text, notices preserved; no new license asserted",
+      "sha256": "d5c5ce2b5639eee440b5d342dbe81af42008838cb260ec04acaffaffd29dcaf7",
+      "bytes": 14131,
+      "covers": [
+        "nostr-event"
+      ]
+    },
+    {
+      "path": "upstream/nips/19.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/19.md",
+      "revision": "git:400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+      "retrieved": "2026-10-28",
+      "license": "No standalone license declared in source; existing vendored protocol text, notices preserved; no new license asserted",
+      "sha256": "5b53c98637ae0cb8e6d99e1570e32da2c5842154ba898393439f334f1fd90aad",
+      "bytes": 3952,
+      "covers": [
+        "nip19"
+      ]
+    },
+    {
+      "path": "upstream/nips/44.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/44.md",
+      "revision": "git:400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+      "retrieved": "2026-10-28",
+      "license": "No standalone license declared in source; existing vendored protocol text, notices preserved; no new license asserted",
+      "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2",
+      "bytes": 19610,
+      "covers": [
+        "nip44-extended-length"
+      ]
+    },
+    {
+      "path": "upstream/nips/59.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/59.md",
+      "revision": "git:400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+      "retrieved": "2026-10-28",
+      "license": "No standalone license declared in source; existing vendored protocol text, notices preserved; no new license asserted",
+      "sha256": "b46b078ff5b219fd4ab33a53b479b49d4cbd604b88be46d6b978d53d8f8b43a0",
+      "bytes": 13188,
+      "covers": [
+        "nip59"
+      ]
+    },
+    {
+      "path": "derived/catalog.json",
+      "kind": "derived",
+      "url": "local:make_catalog.py",
+      "revision": "adapter:source-index-v1",
+      "retrieved": "2026-10-28",
+      "license": "Apache-2.0 (OpenAgents source index; upstream input licenses unchanged)",
+      "sha256": "eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27",
+      "bytes": 6722,
+      "covers": [
+        "source-index"
+      ],
+      "generator": "make_catalog.py",
+      "generator_sha256": "280444035ce58c559bf9c2b2724dd9a2e9df6e755376b6bff2bf6a8515e662ba",
+      "inputs": [
+        {
+          "path": "upstream/bip340/test-vectors.csv",
+          "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d"
+        },
+        {
+          "path": "upstream/nip44/nip44.vectors.json",
+          "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040"
+        },
+        {
+          "path": "upstream/wycheproof/ecdh_secp256k1_test.json",
+          "sha256": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"
+        },
+        {
+          "path": "upstream/nist/SHA256ShortMsg.rsp",
+          "sha256": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c"
+        },
+        {
+          "path": "upstream/nist/SHA256LongMsg.rsp",
+          "sha256": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974"
+        },
+        {
+          "path": "upstream/nips/44.md",
+          "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,332 @@
+{
+  "schema": "coax.crypto-vector-catalog.v1",
+  "scope": "Source indexing only; not a Coax algorithm result or an adapted ECDH oracle",
+  "inputs": [
+    {
+      "path": "upstream/bip340/test-vectors.csv",
+      "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d"
+    },
+    {
+      "path": "upstream/nip44/nip44.vectors.json",
+      "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040"
+    },
+    {
+      "path": "upstream/wycheproof/ecdh_secp256k1_test.json",
+      "sha256": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"
+    },
+    {
+      "path": "upstream/nist/SHA256ShortMsg.rsp",
+      "sha256": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c"
+    },
+    {
+      "path": "upstream/nist/SHA256LongMsg.rsp",
+      "sha256": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974"
+    },
+    {
+      "path": "upstream/nips/44.md",
+      "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
+    }
+  ],
+  "bip340": [
+    {
+      "id": 0,
+      "message_bytes": 32,
+      "verification": true,
+      "has_signing_input": true
+    },
+    {
+      "id": 1,
+      "message_bytes": 32,
+      "verification": true,
+      "has_signing_input": true
+    },
+    {
+      "id": 2,
+      "message_bytes": 32,
+      "verification": true,
+      "has_signing_input": true
+    },
+    {
+      "id": 3,
+      "message_bytes": 32,
+      "verification": true,
+      "has_signing_input": true
+    },
+    {
+      "id": 4,
+      "message_bytes": 32,
+      "verification": true,
+      "has_signing_input": false
+    },
+    {
+      "id": 5,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 6,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 7,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 8,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 9,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 10,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 11,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 12,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 13,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 14,
+      "message_bytes": 32,
+      "verification": false,
+      "has_signing_input": false
+    },
+    {
+      "id": 15,
+      "message_bytes": 0,
+      "verification": true,
+      "has_signing_input": true
+    },
+    {
+      "id": 16,
+      "message_bytes": 1,
+      "verification": true,
+      "has_signing_input": true
+    },
+    {
+      "id": 17,
+      "message_bytes": 17,
+      "verification": true,
+      "has_signing_input": true
+    },
+    {
+      "id": 18,
+      "message_bytes": 100,
+      "verification": true,
+      "has_signing_input": true
+    }
+  ],
+  "nip44": {
+    "valid": {
+      "get_conversation_key": 35,
+      "get_message_keys": 2,
+      "calc_padded_len": 24,
+      "encrypt_decrypt": 10,
+      "encrypt_decrypt_long_msg": 3
+    },
+    "invalid": {
+      "encrypt_msg_lengths": 4,
+      "get_conversation_key": 8,
+      "decrypt": 12
+    }
+  },
+  "nip44_extended": [
+    {
+      "plaintext_len": 65535,
+      "prefix": "u16 (2 bytes)",
+      "padded_len": 65536,
+      "plaintext_sha256": "6e1bebca6a8229364a162a72ef064826c4cd7457bf54f190ef782bd9deff3e42",
+      "payload_sha256": "6d8c2810d1e870fbaa1f0a0937126cca837a15f9260e27060c331d70a3c0bc84"
+    },
+    {
+      "plaintext_len": 65536,
+      "prefix": "extended (6 bytes)",
+      "padded_len": 65536,
+      "plaintext_sha256": "bf718b6f653bebc184e1479f1935b8da974d701b893afcf49e701f3e2f9f9c5a",
+      "payload_sha256": "b7b4edb36ba92e267d322d56d9aebc22e7fa96ff52e3c12adc07f07a43cbc616"
+    },
+    {
+      "plaintext_len": 65537,
+      "prefix": "extended (6 bytes)",
+      "padded_len": 81920,
+      "plaintext_sha256": "008ffc88d3c96a9f307524eb361e47c5222a887fc45fa0c1fb8d429c5c23b430",
+      "payload_sha256": "eeb7c7c5373894ea2c1547cfd3ccb15d5a0b2d619da852e5c79df792dcc9e435"
+    }
+  ],
+  "wycheproof": {
+    "algorithm": "ECDH",
+    "source_cases": 752,
+    "groups": 1,
+    "adaptation": "None. Source public keys are encoded; a reviewed raw-x/x-only adapter is required before NIP-44 use."
+  },
+  "nist_sha256": [
+    {
+      "path": "upstream/nist/SHA256ShortMsg.rsp",
+      "cases": 65,
+      "message_lengths_bits": [
+        0,
+        8,
+        16,
+        24,
+        32,
+        40,
+        48,
+        56,
+        64,
+        72,
+        80,
+        88,
+        96,
+        104,
+        112,
+        120,
+        128,
+        136,
+        144,
+        152,
+        160,
+        168,
+        176,
+        184,
+        192,
+        200,
+        208,
+        216,
+        224,
+        232,
+        240,
+        248,
+        256,
+        264,
+        272,
+        280,
+        288,
+        296,
+        304,
+        312,
+        320,
+        328,
+        336,
+        344,
+        352,
+        360,
+        368,
+        376,
+        384,
+        392,
+        400,
+        408,
+        416,
+        424,
+        432,
+        440,
+        448,
+        456,
+        464,
+        472,
+        480,
+        488,
+        496,
+        504,
+        512
+      ]
+    },
+    {
+      "path": "upstream/nist/SHA256LongMsg.rsp",
+      "cases": 64,
+      "message_lengths_bits": [
+        1304,
+        2096,
+        2888,
+        3680,
+        4472,
+        5264,
+        6056,
+        6848,
+        7640,
+        8432,
+        9224,
+        10016,
+        10808,
+        11600,
+        12392,
+        13184,
+        13976,
+        14768,
+        15560,
+        16352,
+        17144,
+        17936,
+        18728,
+        19520,
+        20312,
+        21104,
+        21896,
+        22688,
+        23480,
+        24272,
+        25064,
+        25856,
+        26648,
+        27440,
+        28232,
+        29024,
+        29816,
+        30608,
+        31400,
+        32192,
+        32984,
+        33776,
+        34568,
+        35360,
+        36152,
+        36944,
+        37736,
+        38528,
+        39320,
+        40112,
+        40904,
+        41696,
+        42488,
+        43280,
+        44072,
+        44864,
+        45656,
+        46448,
+        47240,
+        48032,
+        48824,
+        49616,
+        50408,
+        51200
+      ]
+    }
+  ]
+}

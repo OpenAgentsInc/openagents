@@ -1,0 +1,2 @@
+# Preserve authentic source bytes, including CRLF and intentionally malformed JSON.
+upstream/** -text -whitespace
