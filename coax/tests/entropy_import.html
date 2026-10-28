@@ -1,0 +1,77 @@
+<!doctype html><meta charset="utf-8"><pre id="result">running</pre>
+<script type="module">
+import { prepareRandomImport } from './entropy-import.js';
+const result=document.getElementById('result');
+try {
+  result.textContent='running: loading wasm';
+  const load=async(name)=>WebAssembly.compile(await(await fetch(`./${name}.wasm`)).arrayBuffer());
+  const module=await load('consumer'),large=await load('large'),missing=await load('missing');
+  result.textContent='running: loaded wasm';
+  const memory=new WebAssembly.Memory({initial:64,maximum:1024}),reservation={};
+  const prepared=prepareRandomImport(memory,module,reservation);
+  let cases=0;
+  const check=(condition,why)=>{if(!condition)throw Error(why);};
+  let refused=false;try{prepared.imports.coaxial_random(0,1);}catch{refused=true;}
+  check(refused,'unbound import accepted');cases++;
+  refused=false;try{prepareRandomImport(memory,missing);}catch(e){refused=e.message.includes('requires Coax export');}
+  check(refused,'missing policy accepted');cases++;
+  const instance=await WebAssembly.instantiate(module,{env:{memory,...prepared.imports}}),x=instance.exports;
+  let finishedA=0;
+  prepared.bind({...x,entropy_finish(...args){finishedA++;return x.entropy_finish(...args);}});
+  const out=x.probe_output();
+  const reset=()=>new Uint8Array(memory.buffer,out,1048584).fill(77);
+  const unchanged=()=>new Uint8Array(memory.buffer,out,1048584).every(b=>b===77);
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'crypto'),real=globalThis.crypto;
+  const install=(crypto)=>Object.defineProperty(globalThis,'crypto',{value:crypto,configurable:true});
+  let calls=0;
+  install({getRandomValues(part){calls++;return real.getRandomValues(part);}});
+  const initial=memory.buffer.byteLength;
+  check(x.probe_random(0)===0&&memory.buffer.byteLength===initial&&calls===0,'zero request allocated or called provider');cases++;
+  for(const n of [1,32,65535,65536,65537,1048576]){
+    reset();check(x.probe_random(n)===0,'real imported RNG failed');
+    check(new Uint8Array(memory.buffer,reservation.ptr,n).every(b=>b===0),'scratch not reset');
+    check(new Uint8Array(memory.buffer)[out+n]===77,'output tail changed');cases++;
+  }
+  check(memory.buffer.byteLength===initial+1048576,'scratch reservation footprint');cases++;
+  const sharedAt=reservation.ptr;
+  memory.grow(1);reset();check(x.probe_random(32)===0&&reservation.ptr===sharedAt,'stale memory buffer after growth');cases++;
+  for(const mode of ['missing','throw','partial','grow']){
+    reset();let count=0;
+    install(mode==='missing'?undefined:{getRandomValues(part){count++;if(mode==='throw')throw Error('fixture');if(mode==='grow'){part.fill(19);memory.grow(1);return part;}part.fill(19);if(count===2)throw Error('partial fixture');return part;}});
+    check(x.probe_random(65537)===(mode==='missing'?5:6)&&unchanged(),'provider failure escaped');
+    check(new Uint8Array(memory.buffer,reservation.ptr,65537).every(b=>b===0),'failed provider scratch retained');cases++;
+  }
+  let attempts=0;install({getRandomValues(){attempts++;throw Error('must not call');}});
+  for(const [p,n,error] of [[out,-1,1],[out,1048577,1],[-1,32,3],[memory.buffer.byteLength-1,32,3],[reservation.ptr,32,4]]){
+    reset();check(x.probe_at(p,n)===error&&unchanged(),'bad import span accepted');cases++;
+  }
+  check(attempts===0,'provider called before admission');cases++;
+  // A second instance uses its own completion function, while scratch is reused.
+  const other=prepareRandomImport(memory,module,reservation);
+  const b=await WebAssembly.instantiate(module,{env:{memory,...other.imports}});let finishedB=0;
+  other.bind({...b.exports,entropy_finish(...args){finishedB++;return b.exports.entropy_finish(...args);}});
+  install(real);const beforeA=finishedA;check(b.exports.probe_random(32)===0&&finishedB===1&&finishedA===beforeA,'cross-instance dispatch');
+  check(x.probe_random(32)===0&&finishedA===beforeA+1&&finishedB===1&&reservation.ptr===sharedAt,'old instance binding replaced');cases++;
+  // A bigger module owns the old interval; reserve beyond its data/stack.
+  memory.grow(128);
+  const newer=prepareRandomImport(memory,large,reservation);
+  const c=await WebAssembly.instantiate(large,{env:{memory,...newer.imports}});newer.bind(c.exports);
+  check(c.exports.probe_random(32)===0&&reservation.ptr>=Number(c.exports.__heap_base.value)&&reservation.ptr!==sharedAt,'reloaded static data used as scratch');cases++;
+  const tight=new WebAssembly.Memory({initial:64,maximum:64}),blocked=prepareRandomImport(tight,module);
+  const d=await WebAssembly.instantiate(module,{env:{memory:tight,...blocked.imports}});blocked.bind(d.exports);
+  new Uint8Array(tight.buffer,d.exports.probe_output(),64).fill(77);attempts=0;install({getRandomValues(){attempts++;throw Error('no capacity');}});
+  check(d.exports.probe_random(32)===2&&new Uint8Array(tight.buffer,d.exports.probe_output(),64).every(b=>b===77)&&attempts===0,'memory.grow failure escaped');cases++;
+  Object.defineProperty(globalThis,'crypto',descriptor);
+  // Full, bundled host startup and dispatch, including _initialize after binding.
+  for(const [name,expected] of [['consumer','PASS'],['stdio','PASS'],['missing','requires Coax export'],['unknown','unsupported Wasm import'],['prototype','unsupported Wasm import']]){
+    result.textContent=`running: host ${name}, ${cases} cases`;
+    const frame=document.createElement('iframe');
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(Error(`host ${name} timeout: ready=${frame.contentWindow.coaxial?.ready}`)),5000);
+      const receive=(e)=>{if(e.source!==frame.contentWindow)return;clearTimeout(timer);removeEventListener('message',receive);e.data.includes(expected)?resolve():reject(Error(e.data));};
+      addEventListener('message',receive);frame.src=`./entropy_import_host.html?module=${name}`;document.body.appendChild(frame);
+    });frame.remove();cases++;
+  }
+  result.textContent=`PASS ${cases} random-import browser/Wasm cases`;
+}catch(e){result.textContent=`FAIL ${e.message}`;}
+</script>

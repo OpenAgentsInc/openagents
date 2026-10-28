@@ -28,10 +28,13 @@ lap() { local d=$(( $(now) - $2 )); printf '  %-8s %4s s\n' "$1" "$(( d / 100000
 t=$(now); COAXIAL_MODE=release "$app/build.sh"; lap build "$t"
 
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
+# Bundle host modules before content naming; deployed pages need one immutable
+# script, while coax serve can load the source modules from /coaxial/ directly.
+bun build "$here/host.js" --target browser --format esm --outfile "$stage/host.js" > /dev/null
 # The page, index.html at the bucket's root as the CDN serves it. The wasm,
 # shaders and host script are named by their content (cached for good); the
 # page names them (data-wasm, data-wgsl) and is checked on every visit.
-python3 - "$app" "$here/host.js" "$stage" <<'PY'
+python3 - "$app" "$stage/host.js" "$stage" <<'PY'
 import hashlib, os, re, shutil, sys
 app, host, stage = sys.argv[1:]
 assets, site = os.path.join(stage, "assets"), os.path.join(stage, "site")

@@ -44,6 +44,9 @@
 // 0 opened, 1 a frame (the inbox holds its bytes), 2 closed (the slot is free again), 3 an error
 // (a frame over the inbox cap is dropped and arrives as an error). The host reads no frame: what
 // they say is the app's.
+// and, optionally, entropy: env.coaxial_random(ptr, len) -> Coax ENTROPY_* error
+// (0 success). The module exports the shared entropy policy face. The host keeps
+// bounded scratch outside app storage; bytes commit only after full CSPRNG success.
 // and, optionally, HTTP to this site: one request's bytes out, its answer's bytes back. The app imports:
 //   coaxial_http(url, url_len, body, body_len, flags) -> id   flags 1 POST (else GET), 2 a beacon (it
 //                             outlives a page being left; nothing comes back), 4 the answer is wanted:
@@ -78,6 +81,8 @@
 // The WGSL's scene_vs/scene_fs read group 1: the storage assets, then the stores, then the texture
 // and its sampler, in that order.
 
+import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
+
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
 // A deploy names the files by their content (data-wasm, data-wgsl), so a CDN
@@ -108,20 +113,24 @@ let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, ver
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
 const assets = parseAssets((script && script.dataset.assets) || "");
 let last = 0;
+const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
 
 // ---- engine: compile, check its layout, keep or start over its state
 async function loadEngine(bytes, generation) {
   const module = await WebAssembly.compile(bytes);
-  const imports = { env: { memory, ...socketImports, ...httpImports } };
+  const random = prepareRandomImport(memory, module, randomScratch);
+  const imports = Object.create(null);
+  imports.env = Object.assign(Object.create(null), { memory, ...socketImports, ...httpImports, ...random.imports });
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
-    (imports[imp.module] ||= {})[imp.name] ||= wasiStub(imp.name);
+    (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
   }
   const instance = await WebAssembly.instantiate(module, imports);
   if (generation !== wanted) return false; // a newer build was asked for meanwhile
   const kept = await keptRead;   // before the first frame, so a kept world opens with it
   if (generation !== wanted) return false;
   const x = instance.exports;
+  random.bind(x);
   x._initialize?.();
   const layout = x.coaxial_layout();
   const heapBase = x.__heap_base?.value ?? 0;
@@ -155,7 +164,8 @@ async function loadEngine(bytes, generation) {
   return true;
 }
 
-function wasiStub(name) {
+function wasiStub(module, name) {
+  if (module !== "wasi_snapshot_preview1") return unsupportedImport(module, name);
   if (name === "fd_write") return (fd, iovs, n, written) => {
     const v = new DataView(memory.buffer); let text = "", total = 0;
     for (let i = 0; i < n; i++) {
@@ -165,7 +175,11 @@ function wasiStub(name) {
     v.setUint32(written, total, true); (fd === 2 ? console.error : console.log)(text.trimEnd()); return 0;
   };
   if (name === "proc_exit") return (code) => { throw new Error(`${app} exited (${code})`); };
-  return () => 0;
+  // Existing libc optional probes may be unavailable. Return WASI ENOSYS,
+  // without pretending to initialize their output buffers. All other imports,
+  // especially random_get, refuse before the module can run.
+  if (["fd_fdstat_get", "fd_seek", "fd_close", "clock_time_get"].includes(name)) return () => 52;
+  return unsupportedImport(module, name);
 }
 
 const align = (n, a) => Math.ceil(n / a) * a;

@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><canvas id="coaxial"></canvas>
+<script>
+const moduleName=new URLSearchParams(location.search).get('module');
+const originalError=console.error;
+console.error=(...args)=>{parent.postMessage(args.join(' '),'*');originalError(...args);};
+addEventListener('error',(e)=>parent.postMessage(`ERROR ${e.message}`,'*'));
+addEventListener('coaxial',(e)=>{
+  if(e.detail.code===0)coaxial.send(999,'');
+  if(e.detail.code===901||e.detail.code===902)parent.postMessage(e.detail.code===901?'PASS':'FAIL consumer','*');
+});
+const script=document.createElement('script');script.type='module';script.src='./host.bundle.js';
+script.dataset.app='consumer';script.dataset.wasm=`./${moduleName}.wasm`;document.body.appendChild(script);
+script.onerror=()=>parent.postMessage('ERROR host bundle failed to load','*');
+</script>

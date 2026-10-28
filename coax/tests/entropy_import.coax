@@ -1,0 +1,3 @@
+// Test consumer composition: an app loads the same authority as a library.
+#authority;
+#load "../lib/crypto/entropy.coax";

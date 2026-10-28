@@ -22,6 +22,14 @@ Entropy_Result :: struct { written: int; error: u32; }
   #assert entropy_admit(4,4,4,false,false) == ENTROPY_SPAN;
   #assert entropy_admit(4,4,4,true,true) == ENTROPY_ALIAS;
   #assert entropy_chunk_bytes() == 65536;
+  #assert entropy_request_limit() == ENTROPY_MAX_BYTES;
+  #assert entropy_output_admit(0,0,true) == ENTROPY_OK;
+  #assert entropy_output_admit(ENTROPY_MAX_BYTES,ENTROPY_MAX_BYTES,true) == ENTROPY_OK;
+  #assert entropy_output_admit(-1,4,true) == ENTROPY_COUNT;
+  #assert entropy_output_admit(ENTROPY_MAX_BYTES+1,ENTROPY_MAX_BYTES+1,true) == ENTROPY_COUNT;
+  #assert entropy_output_admit(4,3,true) == ENTROPY_CAPACITY;
+  #assert entropy_output_admit(0,-1,true) == ENTROPY_CAPACITY;
+  #assert entropy_output_admit(4,4,false) == ENTROPY_SPAN;
   #assert entropy_full_chunks(0) == 0 && entropy_tail(0) == 0;
   #assert entropy_full_chunks(65535) == 0 && entropy_tail(65535) == 65535;
   #assert entropy_full_chunks(65536) == 1 && entropy_tail(65536) == 0;
@@ -68,6 +76,15 @@ entropy_admit :: (requested:int, capacity:int, scratch:int, spans:bool, overlap:
   return ENTROPY_OK;
 }
 entropy_chunk_bytes :: () -> int #export_c { return 65536; }
+entropy_request_limit :: () -> int #export_c { return ENTROPY_MAX_BYTES; }
+// Output-only preflight precedes host scratch allocation. No scratch span is
+// claimed to exist until entropy_admit/finish observe the actual reservation.
+entropy_output_admit :: (requested:int, capacity:int, output_valid:bool)->u32 #export_c {
+  if requested < 0 || requested > ENTROPY_MAX_BYTES { return ENTROPY_COUNT; }
+  if capacity < requested { return ENTROPY_CAPACITY; }
+  if !output_valid { return ENTROPY_SPAN; }
+  return ENTROPY_OK;
+}
 entropy_full_chunks :: (requested:int)->int #export_c {
   if requested < 0 || requested > ENTROPY_MAX_BYTES { return -1; }
   return requested / 65536;
