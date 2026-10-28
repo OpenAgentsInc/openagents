@@ -1,0 +1,6 @@
+// expect: E0380
+#authority;
+double :: (x: int) -> int { return x * 2; }
+triple :: (x: int) -> int { return x * 3; }
+#test "double" { #assert double(2) == 4; }
+main :: () { }

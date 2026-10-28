@@ -1259,6 +1259,11 @@ struct Checker {
             err(s->loc, "E0360", std::string(what) + " is only allowed inside a loop");
         }
         break;
+      case StmtKind::assert_: {
+        Type t = value(s->expr, &T_BOOL);
+        if (t != &T_INVALID && t != &T_BOOL) err(s->expr->loc, "E0346", "#assert requires bool");
+        break;
+      }
       case StmtKind::defer: {
         int32_t saved = loop_depth;
         loop_depth = 0;
@@ -1416,6 +1421,7 @@ struct Checker {
     if (!s) return;
     if (s->kind == StmtKind::while_ || s->kind == StmtKind::for_range || s->kind == StmtKind::for_each)
       return metal_fail(s->loc, "a loop");
+    if (s->kind == StmtKind::assert_) return metal_fail(s->loc, "#assert");
     if (s->kind == StmtKind::var && !metal_type(s->type)) return metal_fail(s->loc, std::string("a ") + type_name(s->type) + " local");
     metal_expr(s->expr, path);
     metal_expr(s->target, path);
@@ -1446,6 +1452,81 @@ struct Checker {
     for (const ProcDecl *p : file->procs) {
       std::vector<const ProcDecl *> path;
       if (!p->foreign) metal_proc(p, path);
+    }
+  }
+
+  // ---- Checks: #test and #forall ----
+
+  // A #forall enumerates every value: bool, enums, integers of at most 16
+  // bits, or an int range whose bounds are constants.
+  void check_check(CheckDecl *c) {
+    ProcDecl *p = c->proc;
+    for (int32_t i = 0; i < p->params.count; i++) {
+      Param &prm = p->params[i];
+      Binding &b = c->domains[i];
+      if (prm.type_expr) {
+        prm.type = resolve_type(prm.type_expr);
+        Type t = prm.type;
+        if (t != &T_INVALID && t != &T_BOOL && t->kind != TypeKind::enum_ && !(is_int(t) && t->bits <= 16))
+          err(prm.loc, "E0379", "#forall cannot enumerate " + std::string(type_name(t)),
+              "bind bool, an enum, an integer of at most 16 bits, or a range: " + to_std(prm.name) + ": 0..<100");
+        continue;
+      }
+      prm.type = T_INT;
+      for (Expr *bound : {b.lo, b.hi}) {
+        std::vector<Local> saved;
+        saved.swap(locals);
+        Type t = value(bound, T_INT);
+        locals.swap(saved);
+        if (t != &T_INVALID && t != T_INT)
+          err(bound->loc, "E0379", std::string("a #forall range bound must be an int constant, found ") + type_name(t));
+      }
+    }
+    current = p;
+    locals.clear();
+    for (const Param &prm : p->params) declare(prm.name, prm.type, prm.loc, "binding");
+    stmt(p->body);
+  }
+
+  void reach_expr(const Expr *e, std::vector<const ProcDecl *> &seen) {
+    if (!e) return;
+    if (e->kind == ExprKind::call && e->proc && !e->proc->foreign) {
+      bool known = false;
+      for (const ProcDecl *q : seen) known = known || q == e->proc;
+      if (!known) {
+        seen.push_back(e->proc);
+        reach_stmt(e->proc->body, seen);
+      }
+    }
+    reach_expr(e->lhs, seen);
+    reach_expr(e->rhs, seen);
+    reach_expr(e->third, seen);
+    for (const Expr *a : e->args) reach_expr(a, seen);
+    for (const FieldInit &f : e->fields) reach_expr(f.value, seen);
+  }
+
+  void reach_stmt(const Stmt *s, std::vector<const ProcDecl *> &seen) {
+    if (!s) return;
+    reach_expr(s->expr, seen);
+    reach_expr(s->expr2, seen);
+    reach_expr(s->target, seen);
+    for (const Stmt *c : s->body) reach_stmt(c, seen);
+    reach_stmt(s->then_, seen);
+    reach_stmt(s->else_, seen);
+  }
+
+  // #authority: the check comes first. Every procedure except main and host
+  // imports must be reached, directly or through calls, from a check.
+  void check_coverage() {
+    std::vector<const ProcDecl *> seen;
+    for (const CheckDecl *c : file->checks) reach_stmt(c->proc->body, seen);
+    for (const ProcDecl *p : file->procs) {
+      if (p->foreign || str_eq(p->name, "main")) continue;
+      bool known = false;
+      for (const ProcDecl *q : seen) known = known || q == p;
+      if (!known)
+        err(p->loc, "E0380", "'" + to_std(p->name) + "' is not exercised by any #test or #forall",
+            "#authority files check every procedure: add a #test or #forall that calls it");
     }
   }
 
@@ -1527,6 +1608,8 @@ struct Checker {
         err(p->loc, "E0338", "'" + to_std(p->name) + "' can reach its end without returning " + type_name(p->ret),
             "add a return at the end");
     }
+    for (CheckDecl *c : file->checks) check_check(c);
+    if (file->authority && g_error_count == before) check_coverage();
     if (file->metal && g_error_count == before) check_metal();
     return g_error_count == before;
   }

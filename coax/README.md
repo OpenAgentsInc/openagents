@@ -14,7 +14,7 @@ Commands below run from the openagents repo root.
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The
-[bootstrap grammar](grammar.ebnf) describes version 0.4.0's accepted subset.
+[bootstrap grammar](grammar.ebnf) describes version 0.5.0's accepted subset.
 The broader design is a plan, not a list of working features.
 
 The C++20 compiler parses and checks one source file, executes bounded
@@ -32,6 +32,8 @@ coax/bin/coax run coax/examples/life.coax
 coax/examples/pulse/run.sh                          # a Coax kernel inside a C host
 coax/bin/coax layout coax/examples/pulse/pulse.coax
 coax/bin/coax explain E0350
+coax/bin/coax test coax/examples/money.coax         # checks written before the code
+coax/bin/coax mutate coax/examples/money.coax       # every mutant must fail a check
 coax/build.sh test
 ```
 
@@ -45,6 +47,8 @@ coax/build.sh test
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
+| `coax test FILE [--steps N]` | Run every `#test` and `#forall`; print counterexamples |
+| `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails |
 | `coax explain CODE` / `--all [--markdown]` | Explain an error code |
 | `coax version` | Print the version |
 
@@ -118,6 +122,16 @@ squares :: () -> [8] u16 {
   checks that the C compiler's layout of every struct equals Coax's. Views
   cross as `{data, count}`; `int` is `int64_t`. `#foreign` imports a host C
   symbol, and `coax metal` emits f32/bool functions as Metal (see below).
+- **Checks first.** `#test "name" { ... }` and `#forall a: u8, b: 0..<10 { ...
+  }` run in the evaluator, never in the program, each with a 20,000,000-step
+  budget; `#forall` covers every combination of bool, enum, small-integer and
+  range bindings and reports the first counterexample. `#assert cond;` is a
+  statement too, and traps in debug and release. `#authority;` makes every
+  procedure need a check (E0380) and runs the checks on every build. `coax
+  mutate` checks the checks: boundary, operator, literal, condition and
+  statement mutants must each fail one. See
+  [`examples/money.coax`](examples/money.coax) and
+  [the verification report](../docs/verification/2026-10-27-formal-verification-brainstorm.md).
 - **Diagnostics.** Stable codes with locations and fix text, `--json` for
   tools, and `coax explain` for every code. Compile-time failures add call
   site notes.
@@ -178,12 +192,14 @@ execution limits, not a complete limit for hostile source.
 | `src/eval.cpp` | Bounded typed-AST evaluator and literal folding |
 | `src/emit_c.cpp` | C11 output, ordered operands, defer lowering, headers, layout reports |
 | `src/errors.cpp` | The explanation of every error code |
+| `src/verify.cpp` | `coax test` and `coax mutate` |
 | `src/main.cpp` | Driver and unity build |
 | `tests/pass/` | Exact native output in debug and release |
 | `tests/fail/` | Expected diagnostics and runtime traps |
 | `tests/compile_time.py` | Isolation, dependency, budget, error and generated-artifact checks |
 | `tests/tools.py` | Explain, JSON diagnostics, layout, libraries and headers, determinism |
 | `tests/native.py` | Float math, foreign/export ABI linked into C, ordered effects, Metal profile |
+| `tests/verify.py` | Checks, counterexamples, budgets, `#authority` builds and mutation reports |
 | `examples/` | Demos with expected output; `pulse/` links a Coax kernel into C |
 
 ## Limits and next work

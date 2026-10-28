@@ -1,0 +1,16 @@
+// Checks are not part of the program: they run under coax test, and their
+// #assert statements are the same always-on checks the program uses.
+#import "Basic";
+Coin :: enum u8 { heads; tails; }
+flip :: (c: Coin) -> Coin { return ifx c == Coin.heads then Coin.tails else Coin.heads; }
+#forall c: Coin { #assert flip(flip(c)) == c; #assert flip(c) != c; }
+#test "a test may loop and use locals" {
+  n := 0;
+  for i: 0..<10 { n += i; }
+  #assert n == 45;
+}
+main :: () {
+  c := flip(Coin.heads);
+  #assert c == Coin.tails;
+  print("% %\n", cast(u8) c, cast(u8) flip(c));
+}

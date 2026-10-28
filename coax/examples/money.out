@@ -1,0 +1,4 @@
+refund 30 of 40: true
+refund 50 of 40: false
+sum past 21M BTC refused: true
+fee on 2500000 msat at 1000 ppm: 2500

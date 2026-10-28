@@ -1,6 +1,6 @@
 # Appendix B. Error codes
 
-Every error `coax0` 0.4.0 can report. This appendix is generated from the
+Every error `coax0` 0.5.0 can report. This appendix is generated from the
 compiler's own table (`coax/src/errors.cpp`) with
 `coax explain --all --markdown`, so it always lists the same codes as the
 compiler; `coax explain CODE` prints one entry in a terminal. Codes are
@@ -48,6 +48,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0217` | array literal needs a fixed array type | Write the type first: [3] int.[1, 2, 3]. |
 | `E0218` | a range loop has one variable | for i: 0..<n { } has a counter only. Index variables belong to loops over arrays, views and strings. |
 | `E0219` | enum needs an underlying type | An enum names its integer width: Outcome :: enum u8 { ... }. The width is part of its layout. |
+| `E0220` | malformed check | #test takes a name string and a block: #test "refunds never exceed payment" { ... }. #forall takes one or more bindings, each a type or a lo..<hi range, then a block: #forall a: u8, b: 0..<10 { ... }. |
 
 ## E03xx: checker
 
@@ -97,7 +98,7 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0343` | type_name needs one value | type_name(x) takes exactly one expression with a value. It is checked but never run. |
 | `E0344` | cannot assign a constant or parameter | Constants never change. Parameters are immutable: copy one into a local to update it. |
 | `E0345` | duplicate or conflicting constant | The constant's name is already a constant, procedure or intrinsic. |
-| `E0346` | #assert needs bool | The asserted expression must be a bool. |
+| `E0346` | #assert needs bool | The asserted expression must be a bool, at the top level and in a statement. |
 | `E0347` | constant dependencies too deep | Constant type resolution is bounded at depth 64. |
 | `E0350` | value does not fit its type | Untyped literals take the type their use needs, if the value fits: x: u8 = 300 does not. A float literal cannot become an integer. Use a wider type, or cast,trunc to keep the low bits. |
 | `E0351` | no such field or member | The struct has no field, or the enum no member, with this name. Arrays, views and strings have .count. |
@@ -125,20 +126,22 @@ diagnostic is one JSON object per line, with `file`, `line`, `col`, `code`,
 | `E0374` | constant index out of bounds | An index written as a constant must be inside a fixed array's length. Indexes computed at run time are checked when they run. |
 | `E0375` | math or string intrinsic misused | sin cos tan exp log sqrt floor abs take one float, pow two floats of one type; len takes a string, array or view; byte_at takes a string and an index. Convert integers first: f64(x). |
 | `E0376` | procedure cannot cross the C boundary | A #foreign procedure passes only integers, floats and bool, and its name must be a valid C symbol that is not main and does not start with coax_. |
-| `E0377` | outside the Metal scalar profile | coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print and #foreign calls stay in the C library. |
+| `E0377` | outside the Metal scalar profile | coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print, #assert and #foreign calls stay in the C library. |
 | `E0378` | binary intrinsic argument mismatch | bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type. |
+| `E0379` | #forall domain cannot be enumerated | A #forall binding is enumerated completely, so it must be bool, an enum, an integer of at most 16 bits, or a lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths. |
+| `E0380` | procedure not exercised by a check | In an #authority file the check comes first: every procedure except main and #foreign imports must be called, directly or through other procedures, by some #test or #forall. Write the check, then the code. |
 
 ## E04xx: compile-time evaluation
 
 | Code | Meaning | What to do |
 | --- | --- | --- |
-| `E0400` | compile-time step budget exceeded | Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Make the computation smaller or move it to run time. |
+| `E0400` | compile-time step budget exceeded | Compile-time evaluation is bounded at 100000 steps per compilation; each array element created costs one. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). Make the computation smaller or move it to run time. |
 | `E0401` | compile-time code cannot capture a runtime value | #run code and constants see only constants and their own locals. |
 | `E0402` | compile-time cycle | A constant, or a struct's field defaults, depend on themselves while being evaluated. |
 | `E0403` | compile-time depth exceeded | Compile-time calls and dependencies are bounded at depth 64. |
 | `E0404` | compile-time code cannot do I/O | print and other host effects are refused while compiling, so builds cannot depend on hidden effects. |
 | `E0405` | compile-time read of an uninitialized variable | A variable declared with = --- was read before anything was assigned to it. |
-| `E0406` | compile-time assertion failed | An #assert condition evaluated to false. |
+| `E0406` | assertion failed | An #assert condition evaluated to false: at the top level while compiling, or as a statement inside a #test, a #forall or code they call. At run time the same statement traps in debug and release builds. |
 | `E0407` | compile-time overflow or division by zero | Compile-time arithmetic is checked in every build mode, so release settings cannot change generated constants. |
 | `E0408` | constant call needs #run | A constant that calls a procedure must say so: VALUE :: #run compute(); |
 | `E0409` | compile-time result contains a view | A view points at memory that exists only while compiling, so it cannot be baked into the program. Return the array itself. |
@@ -177,3 +180,4 @@ wraps in `--release`.
 | `cast out of range` | `cast(T)` of a value that `T` cannot hold, or of a NaN |
 | `value is not a member of enum NAME` | `cast(Enum)` of an integer that names no member |
 | `shift amount out of range` | A shift by less than 0, or by the type's width or more |
+| `assertion failed` | An `#assert` statement whose condition is false; it is checked in debug and release |

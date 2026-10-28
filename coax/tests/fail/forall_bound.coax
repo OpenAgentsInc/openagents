@@ -1,0 +1,4 @@
+// expect: E0379
+N :: cast(u8) 5;
+#forall x: 0..<N { #assert x == x; }
+main :: () { }

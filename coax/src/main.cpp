@@ -10,6 +10,8 @@
 //   coax c       file.coax [--release] [--lib]       print the generated C
 //   coax check   file.coax                           check without invoking C
 //   coax layout  file.coax                           struct and enum layouts
+//   coax test    file.coax [--steps N]               run every #test and #forall
+//   coax mutate  file.coax                           mutate the code; every mutant must fail a check
 //   coax explain CODE | --all [--markdown]           what an error code means
 //   coax version
 //
@@ -23,6 +25,7 @@
 #include "emit_c.cpp"
 #include "lex.cpp"
 #include "parse.cpp"
+#include "verify.cpp"
 
 #include <filesystem>
 #include <fcntl.h>
@@ -37,7 +40,7 @@ extern char **environ;
 
 namespace coax {
 
-static const char *VERSION = "coax0 0.4.0";
+static const char *VERSION = "coax0 0.5.0";
 static std::string g_proto_tool;
 
 int32_t g_error_count = 0;
@@ -80,7 +83,11 @@ void error_at(const Source *src, Loc loc, const char *code, const std::string &m
     return;
   }
   fprintf(stderr, "%s:%d:%d: error[%s]: %s\n", src->path.c_str(), loc.line, loc.col, code, message.c_str());
-  // The source line and a caret under the column.
+  show_source(stderr, src, loc);
+  if (!fix.empty()) fprintf(stderr, "  fix: %s\n", fix.c_str());
+}
+
+void show_source(FILE *out, const Source *src, Loc loc) {
   const std::string &t = src->text;
   size_t start = (size_t)loc.offset;
   if (start > t.size()) start = t.size();
@@ -88,11 +95,10 @@ void error_at(const Source *src, Loc loc, const char *code, const std::string &m
   size_t end = start;
   while (end < t.size() && t[end] != '\n') end++;
   if (end > start) {
-    fprintf(stderr, "  %.*s\n  ", (int)(end - start), t.data() + start);
-    for (size_t i = start; i < (size_t)loc.offset && i < end; i++) fputc(t[i] == '\t' ? '\t' : ' ', stderr);
-    fputs("^\n", stderr);
+    fprintf(out, "  %.*s\n  ", (int)(end - start), t.data() + start);
+    for (size_t i = start; i < (size_t)loc.offset && i < end; i++) fputc(t[i] == '\t' ? '\t' : ' ', out);
+    fputs("^\n", out);
   }
-  if (!fix.empty()) fprintf(stderr, "  fix: %s\n", fix.c_str());
 }
 
 static bool read_file(const char *path, std::string *out) {
@@ -183,31 +189,44 @@ enum class Output : uint8_t { none, c, header, layout };
 // lex, parse, check and evaluate; then produce the requested text.
 // library: no main is required (lib, header, and check of a file that exports).
 // header_path: also write the C header (`coax c FILE --library --header out.h`).
-static bool compile(const char *path, const EmitOptions &opts, Output what, std::string *text, int library = 0,
-                    const std::string *header_path = nullptr) {
-  Source src;
-  src.path = path;
-  if (!read_file(path, &src.text)) {
+// An #authority file's checks run on every compile: a failing check fails
+// the build. run_checks is false for coax test and mutate, which run them.
+static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
+                      bool run_checks = true) {
+  src->path = path;
+  if (!read_file(path, &src->text)) {
     fprintf(stderr, "coax: cannot read '%s'\n", path);
     return false;
   }
-  Arena arena;
   std::vector<Token> tokens;
-  File file;
-  bool ok = lex(&arena, &src, &tokens);
-  if(ok) {size_t before=src.text.size();ok=import_protos(&src,opts,tokens);if(ok && src.text.size()!=before){tokens.clear();ok=lex(&arena,&src,&tokens);}}
-  if(ok) ok=parse(&arena,&src,tokens,&file);
+  bool ok = lex(arena, src, &tokens);
+  if (ok) {
+    size_t before = src->text.size();
+    ok = import_protos(src, opts, tokens);
+    if (ok && src->text.size() != before) {
+      tokens.clear();
+      ok = lex(arena, src, &tokens);
+    }
+  }
+  if (ok) ok = parse(arena, src, tokens, file);
   if (ok) {
     bool exports = false;
-    for (const ProcDecl *p : file.procs) exports = exports || p->export_c;
-    file.library = library == 1 || (library == 2 && exports);
-    file.metal = opts.metal;
-    ok = check(&arena, &file) && evaluate(&file);
+    for (const ProcDecl *p : file->procs) exports = exports || p->export_c;
+    file->library = library == 1 || (library == 2 && exports);
+    file->metal = opts.metal;
+    ok = check(arena, file) && evaluate(file);
   }
-  if (!ok) {
-    if (!g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
-    return false;
-  }
+  if (ok && run_checks && file->authority) ok = run_all_checks(file, TEST_STEPS, false);
+  if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
+  return ok;
+}
+
+static bool compile(const char *path, const EmitOptions &opts, Output what, std::string *text, int library = 0,
+                    const std::string *header_path = nullptr) {
+  Source src;
+  Arena arena;
+  File file;
+  if (!front_end(path, &src, &arena, &file, opts, library)) return false;
   if (what == Output::c) *text = emit_c(&file, opts);
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
@@ -258,6 +277,8 @@ static int usage() {
           "       coax metal   file.coax\n"
           "       coax check   file.coax\n"
           "       coax layout  file.coax\n"
+          "       coax test    file.coax [--steps N]\n"
+          "       coax mutate  file.coax\n"
           "       coax explain CODE | --all [--markdown]\n"
           "       coax version\n"
           "options: --json prints diagnostics as JSON lines\n");
@@ -324,16 +345,18 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "metal")
+      cmd != "layout" && cmd != "metal" && cmd != "test" && cmd != "mutate")
     return usage();
 
   const char *input = nullptr;
   std::string out, header;
   EmitOptions opts;
   bool keep_c = false;
+  uint64_t steps = TEST_STEPS;
   for (int i = 2; i < argc; i++) {
     std::string a = argv[i];
     if (a == "--release") opts.release = true;
+    else if (a == "--steps" && i + 1 < argc && cmd == "test") steps = strtoull(argv[++i], nullptr, 10);
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
@@ -344,6 +367,13 @@ static int main_impl(int argc, char **argv) {
   }
   if (!input || (!header.empty() && cmd != "c")) return usage();
   if (cmd == "metal") opts.library = opts.metal = true;
+  if (cmd == "test" || cmd == "mutate") {
+    Source src;
+    Arena arena;
+    File file;
+    if (!front_end(input, &src, &arena, &file, opts, 2, false)) return 1;
+    return cmd == "test" ? test_command(&file, steps ? steps : TEST_STEPS) : mutate_command(&arena, &file);
+  }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
   if (cmd == "layout") {

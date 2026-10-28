@@ -1,6 +1,6 @@
 # Appendix A. Keywords, directives and types
 
-> Status per entry: **works** in `coax0` 0.3.0, or **reserved** (refused
+> Status per entry: **works** in `coax0` 0.5.0, or **reserved** (refused
 > with "not supported by coax0 yet" until it's built).
 
 ## Keywords
@@ -39,7 +39,10 @@
 | --- | --- | --- |
 | `#import "Basic"` | Import a module (only `Basic` exists) | works |
 | `#run expr` | Evaluate at compile time | works |
-| `#assert expr` | Compile-time `bool` check | works |
+| `#assert expr` | Compile-time `bool` check at the top level; an always-on check as a statement | works |
+| `#test "name" { }` | A check run by `coax test`, never compiled into the program | works |
+| `#forall a: T, b: lo..<hi { }` | A check over every combination of its bindings | works |
+| `#authority` | Every procedure in the file needs a check; checks run on every build | works |
 | `#load` | Add a file to the current module | reserved |
 | `#insert` `#expand` `#text` `#location` | Typed code and macros | reserved |
 | `#if` | Conditional compilation | reserved |

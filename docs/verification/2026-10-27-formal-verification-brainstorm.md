@@ -1,7 +1,8 @@
 # Verification in OpenAgents: Nostr, payments and Coax
 
 *Draft, 2026-10-27, revised the same day. Thinking document, not a plan of
-record.*
+record. Stage V1 and the check-first loop of §9 have landed in coax0 0.5.0;
+the rest is still a proposal.*
 
 This note asks how we make the code that carries money and signatures
 trustworthy, mainly Nostr and payments. It sets two rules:
@@ -363,14 +364,16 @@ Coax already has what Bitcoin Core had to build or borrow:
 - bounds and cast checks in every build;
 - deterministic output.
 
-These features build on that, in rough order of value.
+These features build on that, in rough order of value. §7.1 (in part),
+§7.3 and §7.10 are implemented in coax0 0.5.0; the rest are proposals.
 
 ### 7.1 Checks that never turn off
 
 Bitcoin Core refuses to compile without assertions. Coax should have the
 same rule.
 - Bounds, casts, shifts, division and `assert` are checked in every
-  build, as they are today. No flag removes them.
+  build. No flag removes them. **Landed in 0.5.0:** `#assert cond;` is a
+  statement that traps with `assertion failed` in debug and release.
 - `assume(cond)` is for checks too expensive for release. It runs in
   debug, test and fuzz builds, and is compiled out of release only.
 - Errors from external input are returned, not asserted: this is
@@ -393,6 +396,8 @@ swapped.
 
 ### 7.3 `#forall` and `#test`: exhaustive checks in the compiler
 
+**Landed in coax0 0.5.0** (`coax test`, spec §10.1.1, book §9.6).
+
 ```coax
 #forall a: u8, b: u8 {
   #assert merge(a, b) == merge(b, a);
@@ -405,12 +410,15 @@ swapped.
 }
 ```
 
-- `#forall` enumerates `u8`, `bool`, enums and small ranges completely.
-  This is the secp256k1 exhaustive suite as a language feature.
-- A failure prints the counterexample as a Coax value, ready to paste into
-  a regression test.
-- Tests get their own step budget, separate from the 100,000 steps that
-  keep ordinary compiles fast, and run with `coax test`.
+- `#forall` enumerates `bool`, enums, integers up to 16 bits and `int`
+  ranges with constant bounds completely, up to 2^24 cases. This is the
+  secp256k1 exhaustive suite as a language feature.
+- A failure prints the counterexample as values (`counterexample: paid =
+  0, refund = 0`), ready to paste into a regression test.
+- Each check has its own budget, 20,000,000 steps by default (`coax test
+  --steps N`), separate from the 100,000 steps that keep ordinary compiles
+  fast. The evaluator runs tens of millions of steps a second, so the
+  65,536 pairs of two `u8`s take a few hundredths of a second.
 - Code is written so it can run on a small instance. For example, the
   ledger takes its amount type and its maximum as constants. Until Coax
   has generics, that means a small-instance build of the same file.
@@ -498,6 +506,41 @@ Coax output is already deterministic, and `tests/tools.py` checks it. Add
 Independent builders compare manifests before a release, as Guix
 attestations do.
 
+### 7.10 Check-first development: `#authority` and `coax mutate`
+
+**Landed in coax0 0.5.0.** These two features turn §9's loop into
+something the compiler enforces.
+- `#authority;` at the top of a file means every procedure except `main`
+  and `#foreign` imports must be reached from a `#test` or `#forall`,
+  directly or through calls. If not, it is error E0380. Every compile of
+  the file also runs its checks, so a failing check is a failed build. A
+  procedure can't exist before its check does.
+- `coax mutate FILE` checks the checks. It changes the code reached from
+  checks one site at a time:
+  - comparison boundaries (`<` and `<=`);
+  - `==` and `!=`;
+  - arithmetic, logical and bitwise operators;
+  - `+=` and `-=`;
+  - an integer literal changed by one;
+  - flipped bool literals;
+  - negated conditions;
+  - removed assignments and calls.
+
+  Every mutant must fail a check. A mutant that loops forever is stopped
+  at ten times the budget the unmutated check used. Survivors print with
+  their source line, and the command exits 1. A reviewer can mark a line
+  `// mutant: equivalent` when no input can observe the change, and
+  surviving mutants there are reported apart. The mark is a review
+  decision, never a way to silence a weak test.
+- `coax/examples/money.coax` is the reference. It covers:
+  - `MAX_MSAT` and `money_range`;
+  - refunds;
+  - sums re-checked after each addition (the `tx_check.cpp` pattern);
+  - routing fees without forming `amount * ppm`;
+  - NIP-MKT deadline order.
+
+  It has 8 checks and all 37 mutants are killed.
+
 ### What we leave out
 
 A proof assistant, an SMT solver, and translation validation in Lean.
@@ -511,13 +554,13 @@ second toolchain for everything.
 | Stage | Work | Exit evidence |
 | --- | --- | --- |
 | V0. Inventory | List every invariant the protocol spec states: its owner, its layer and where it's checked. Mark the authority-critical code. | A table here, linked from `INVARIANTS.md` |
-| V1. Native checks | `#forall`, `#test` and `coax test` with their own budget; `assume`; MKT deadline and amount rules as checked Coax functions | Runs in `coax/build.sh test`; counterexamples print as values |
+| V1. Native checks | `#forall`, `#test` and `coax test` with their own budget; `#authority` and `coax mutate`; MKT deadline and amount rules as checked Coax functions. **Landed in 0.5.0**, except `assume` | `coax/build.sh test` runs `tests/verify.py`; counterexamples print as values; `examples/money.coax` kills every mutant |
 | V2. Money types | `distinct`, `#range`, checked arithmetic by default in authority modules; `MAX_MSAT` and checked sums | Unit mixing, out-of-range amounts and silent wrap are compile errors or traps in every build |
 | V3. Fuzzing and data | `coax fuzz` with emitted coverage, starting with `metareal/home.coax`; `#embed` with pinned Nostr, JCS and BIP vectors; sanitizer jobs through `COAX_CC` | A fuzz corpus and vector suites in the local test run |
 | V4. Machines | `state_machine` with built-in exploration and `#consistency`; Lightning attempts, x402, spend grants, ledger and MKT orders written with them | Each machine explored to a stated depth in minutes; traces kept as tests |
 | V5. Release discipline | `coax build --manifest`, independent attestation, and the evaluator-versus-C random-program check | Two builders produce identical manifests for a release |
 
-V1 can start now. V2 and V4 must land before the payment code they
+V1 has landed, apart from `assume`, which waits for the fuzz builds of V3. V2 and V4 must land before the payment code they
 protect (protocol phase P5). V3 follows Coax aggregate and `#import_proto`
 work (Coax stage 2–3, protocol phase P1).
 
@@ -525,10 +568,36 @@ work (Coax stage 2–3, protocol phase P1).
 
 These are adapted from how Bitcoin Core treats consensus code.
 
-- It lives in named modules, listed in `INVARIANTS.md`.
+**The loop: check first.** This is test-driven development where the
+failing test is a property over a whole small domain, not one example. It
+is how BIPs ship test vectors before implementations, and how a Bitcoin
+Core bug fix starts with a test that fails without it.
+1. **Write the rule from the spec as a check.** Use a `#forall`, a
+   `#test` or (later) a `state_machine` `#invariant`, in an `#authority`
+   file, before the code. Until the procedure exists, the file doesn't
+   compile. Once a stub exists, the check fails. That is red.
+2. **Add the vectors** from the spec or NIP, or write them into the spec
+   first if it has none.
+3. **Implement until the checks pass.** That is green. Every
+   counterexample along the way becomes a `#test`.
+4. **Run `coax mutate` until nothing survives.** Strengthen the checks;
+   never weaken the code. An equivalent mark needs the reviewer's
+   agreement.
+5. **Harden.** Add the fuzz target, the `#consistency` check and sanitizer
+   runs as V3 and V4 land. Every crash becomes a fixture.
+6. **Refactor freely.** The checks run on every build.
+
+Ordinary code keeps example fixtures (`tests/pass`, `tests/fail`); the
+loop is required only for authority-critical code.
+
+The rules:
+
+- It lives in named modules, listed in `INVARIANTS.md`, and every file
+  starts with `#authority;`.
 - Checked arithmetic, range types, and checks that never turn off.
 - Every rule is a checked function, with its own exhaustive `#forall` or
-  `#test` and its own vectors.
+  `#test` and its own vectors, written before the function.
+- `coax mutate` reports no survivors before a change lands.
 - Behavior changes and refactors never share a commit.
 - A change needs an independent review: a second agent working from the
   code, not from the author's summary. The owner signs off on changes to

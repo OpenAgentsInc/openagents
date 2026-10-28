@@ -1,7 +1,7 @@
 # 9. Compile time
 
-> **Runs today (9.1–9.5), design (9.6–9.9).** `#run`, `#assert`,
-> `type_name` and `size_of` work in `coax0` 0.3.0, including `#run`
+> **Runs today (9.1–9.6), design (9.7–9.10).** `#run`, `#assert`,
+> `type_name`, `size_of` and the checks of 9.6 work in `coax0` 0.5.0, including `#run`
 > results that are structs and arrays, and the examples in the first half
 > are checked. Typed code, macros, reflection beyond `type_name` and
 > `size_of`, plugins and `#if` are designed (spec §10).
@@ -223,7 +223,7 @@ It names every type `coax0` has: `"u8"`, `"Vec2"`, `"[3] int"`,
 known while checking, so it can size an array: `buffer: [size_of(Pulse)]
 u8;`. It answers for the host the C is compiled for, which is all
 `coax0` targets. Later, `type_of` and `type_info` describe whole structs,
-including their layout on a specific target (9.7).
+including their layout on a specific target (9.8).
 
 ## 9.4 Compile time is sealed
 
@@ -354,7 +354,104 @@ different constant from a debug build.
 
 Results are remembered. A constant used in ten places is computed once.
 
-## 9.6 Typed code (design)
+## 9.6 Checks first
+
+The evaluator that runs `#run` also runs checks: `#test` and `#forall`.
+They are written before the code they check, and they are never part of
+the program.
+
+```coax
+#import "Basic";
+#authority;
+
+#forall paid: 0..<40, refund: -2..<45 {
+  #assert refund_ok(paid, refund) == (refund >= 0 && refund <= paid);
+}
+
+#test "a full refund is allowed" {
+  #assert refund_ok(7, 7);
+}
+
+refund_ok :: (paid: int, refund: int) -> bool {
+  return refund >= 0 && refund <= paid;
+}
+
+main :: () {
+  print("refund 30 of 40: %\n", refund_ok(40, 30));
+}
+```
+
+`#forall` runs its block once for every combination of its bindings:
+here 40 × 47 = 1,880 cases. A binding can be `bool`, an enum, an integer
+of up to 16 bits (all 65,536 values of a `u16`), or a range of `int`
+with constant bounds. `#assert` inside a block is a statement. In a check
+it fails the check; in the program it traps with `assertion failed`, in
+debug and release alike.
+
+```
+$ coax test refunds.coax
+ok   #forall paid: 0..<40, refund: -2..<45 (1880 cases, 40884 steps)
+ok   #test a full refund is allowed (1 case, 14 steps)
+2 checks, 2 passed, 0 failed
+```
+
+Each check has its own budget, 20,000,000 steps unless `--steps` says
+otherwise, separate from the 100,000 steps a compile gets.
+
+**Red first.** Write the checks, then `refund_ok`. Until it is right,
+the checks fail with values you can paste into a regression test. Here,
+`refund <= paid` was written `refund < paid`:
+
+```
+refunds.coax:5:3: error[E0406]: assertion failed
+    #assert refund_ok(paid, refund) == (refund >= 0 && refund <= paid);
+    ^
+  note: in #forall paid: 0..<40, refund: -2..<45
+  counterexample: paid = 0, refund = 0
+```
+
+**`#authority`.** A file that guards money, signatures or grants starts
+with `#authority;`. Its checks run on every build, so that failure above
+is a failed `coax build`. And every procedure except `main` and
+`#foreign` imports must be called from some check, directly or through
+other procedures. Code with no check doesn't compile:
+
+```
+error[E0380]: 'triple' is not exercised by any #test or #forall
+```
+
+**Checking the checks.** A check can pass and still pin nothing down.
+`coax mutate` changes the code one site at a time and runs the checks
+against every change. It swaps `<` and `<=`, `==` and `!=`, `+` and `-`,
+`&&` and `||`; changes a literal by one; negates conditions; and removes
+assignments and calls. Each change, a mutant, must fail some check. With
+only one weak test, `refund_ok(7, 3)`, all four survive:
+
+```
+$ coax mutate weak.coax
+weak.coax:10:22: mutant survived: '&&' became '||'
+    return refund >= 0 && refund <= paid;
+                       ^
+weak.coax:10:17: mutant survived: '>=' became '>'
+weak.coax:10:20: mutant survived: 0 became 1
+weak.coax:10:32: mutant survived: '<=' became '<'
+4 mutants, 0 killed, 4 survived
+```
+
+With the `#forall` above, all four are killed. Some changes can't be
+observed by any input. In `if x < lo { return lo; }`, making it `x <= lo`
+returns the same value. A reviewer marks such a line
+`// mutant: equivalent`, and mutants there that survive are counted
+apart rather than failing the run.
+
+This is how Coax does test-driven development for code that must not
+fail. It copies Bitcoin Core's habits: checks that never turn off,
+exhaustive tests of small instances, and test vectors written before
+implementations. `coax/examples/money.coax` applies it to money ranges,
+checked sums, routing fees and market deadlines, with every mutant
+killed.
+
+## 9.7 Typed code (design)
 
 The next step is code as a value. A parameter of type `Code` receives an
 expression without evaluating it. `#insert` puts code into the program,
@@ -386,7 +483,7 @@ text of a failed comparison. Coax adds rules Jai doesn't have:
   100,000 new syntax nodes per workspace. A millisecond limit would make
   validity depend on the machine.
 
-## 9.7 Reflection (design)
+## 9.8 Reflection (design)
 
 `type_info(T)` describes a type: fields, offsets, alignment, defaults,
 annotations, enum values and procedure signatures. Layout questions take
@@ -397,7 +494,7 @@ its own machine's `sizeof`.
 A temporary type ID from the compiler is not a stable identity. Engine
 component IDs and protocol names stay explicit and survive a rebuild.
 
-## 9.8 Plugins (design)
+## 9.9 Plugins (design)
 
 A plugin is Coax code the compiler loads during a build. It gets typed
 events: file loaded, parsed, signature ready, typechecked, all ready work
@@ -411,7 +508,7 @@ The Jai plugin that runs a program after a successful compile is the
 model. Coax's version gets a tagged union of messages instead of
 unchecked casts, and a capability model for any file or process work.
 
-## 9.9 Conditional compilation (design)
+## 9.10 Conditional compilation (design)
 
 ```coax
 #if TARGET_IS_IOS { ... } else { ... }

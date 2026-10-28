@@ -227,7 +227,7 @@ struct Expr {
   int32_t ct_id = -1;         // ct_value: emitted as a static constant
 };
 
-enum class StmtKind : uint8_t { block, expr, var, assign, ret, if_, while_, for_range, for_each, break_, continue_, defer };
+enum class StmtKind : uint8_t { block, expr, var, assign, ret, if_, while_, for_range, for_each, break_, continue_, defer, assert_ };
 
 struct Stmt {
   StmtKind kind;
@@ -310,6 +310,22 @@ struct ConstDecl {
   uint8_t checked = 0, evaluated = 0; // 0 unseen, 1 visiting, 2 done
 };
 
+// #test "name" { ... } and #forall a: u8, b: 0..<10 { ... }: checks the
+// evaluator runs (coax test), never emitted. A check is a procedure with no
+// name in the program's namespace; a #forall's bindings are its parameters,
+// enumerated over their whole domain.
+struct Binding {
+  Expr *lo = nullptr, *hi = nullptr;  // a lo..<hi range of int; null for a type domain
+};
+
+struct CheckDecl {
+  Str name;               // the #test's string, or the bindings' text for an unnamed #forall
+  Loc loc;
+  bool forall = false;
+  Slice<Binding> domains;  // one per parameter of proc
+  ProcDecl *proc = nullptr;
+};
+
 struct File {
   const Source *src = nullptr;
   Slice<Import> imports;
@@ -318,6 +334,8 @@ struct File {
   Slice<StructDecl *> structs;
   Slice<EnumDecl *> enums;
   Slice<Expr *> assertions;
+  Slice<CheckDecl *> checks;
+  bool authority = false;  // #authority: every procedure must be exercised by a check
   bool library = false;  // set by the driver: no C main, main optional
   bool metal = false;    // checked against the Metal scalar profile
 };
@@ -343,5 +361,19 @@ std::string emit_c(const File *file, const EmitOptions &opts);
 std::string emit_header(const File *file);
 // A human-readable layout report for every struct.
 std::string layout_report(const File *file);
+
+// ---- Checks: coax test and coax mutate ----
+
+struct CheckOutcome {
+  bool passed = false;
+  uint64_t cases = 0, steps = 0;
+  Loc loc;                     // the failure
+  std::string code, message;   // the failure's error code and message
+  std::string counterexample;  // #forall: "a = 3, b = true"
+};
+// Runs one check in the evaluator with its own step budget. Never prints.
+CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps);
+// The source line and a caret under loc, as diagnostics print them.
+void show_source(FILE *out, const Source *src, Loc loc);
 
 }  // namespace coax

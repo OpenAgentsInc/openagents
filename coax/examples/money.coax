@@ -1,0 +1,112 @@
+// Money rules written check-first. #authority makes the compiler refuse any
+// procedure no check calls, and runs every check on every build. coax mutate
+// then changes the code one operator at a time; each change must fail a check.
+//   coax/bin/coax test coax/examples/money.coax
+//   coax/bin/coax mutate coax/examples/money.coax
+#import "Basic";
+#authority;
+
+// Millisatoshis in an int, kept in range the way Bitcoin Core keeps CAmount
+// in MoneyRange: checked at every step, in every build.
+MAX_MSAT :: 2_100_000_000_000_000_000;
+
+money_range :: (v: int) -> bool {
+  return v >= 0 && v <= MAX_MSAT;
+}
+
+#forall "money_range at both ends" low: -3..<3, gap: -3..<3 {
+  #assert money_range(low) == (low >= 0);
+  #assert money_range(MAX_MSAT + gap) == (gap <= 0);
+}
+
+// A refund is never negative and never more than was paid.
+refund_ok :: (paid: int, refund: int) -> bool {
+  return money_range(paid) && money_range(refund) && refund <= paid;
+}
+
+#forall "refunds" paid: -2..<40, refund: -2..<45 {
+  #assert refund_ok(paid, refund) == (paid >= 0 && refund >= 0 && refund <= paid);
+}
+
+#test "refunds at the top of the range" {
+  #assert refund_ok(MAX_MSAT, MAX_MSAT);
+  #assert !refund_ok(MAX_MSAT + 1, 0);
+}
+
+Sum :: struct {
+  total: int;
+  ok: bool;
+}
+
+// Adds amounts, re-checking the range after every addition, as
+// consensus/tx_check.cpp does. Never overflows: it refuses first.
+sum_amounts :: (amounts: [] int) -> Sum {
+  s := Sum.{total = 0, ok = true};
+  for a: amounts {
+    if !money_range(a) || a > MAX_MSAT - s.total { return Sum.{total = 0, ok = false}; }
+    s.total += a;
+  }
+  return s;
+}
+
+#forall "sums of three small amounts" a: -1..<6, b: 0..<6, c: 0..<6 {
+  xs := [3] int.[a, b, c];
+  s := sum_amounts(xs[..]);
+  #assert s.ok == (a >= 0);
+  if s.ok { #assert s.total == a + b + c; }
+  else { #assert s.total == 0; }
+}
+
+#test "sums at the limit" {
+  exact := [2] int.[MAX_MSAT - 5, 5];
+  #assert sum_amounts(exact[..]).total == MAX_MSAT;
+  over := [2] int.[MAX_MSAT - 5, 6];
+  #assert !sum_amounts(over[..]).ok;
+  empty := [1] int.[0];
+  #assert sum_amounts(empty[0..<0]).ok;
+}
+
+// A routing fee in parts per million, rounded down, without forming
+// amount * ppm, which could overflow for large amounts.
+fee_msat :: (amount: int, ppm: int) -> int {
+  return amount / 1_000_000 * ppm + amount % 1_000_000 * ppm / 1_000_000;
+}
+
+#forall "fees match the exact formula on a small instance" amount: 0..<3000, ppm: 0..<20 {
+  #assert fee_msat(amount, ppm * 50) == amount * (ppm * 50) / 1_000_000;
+}
+
+#forall "fees across a million" amount: 999_990..<1_000_010, ppm: 0..<30 {
+  #assert fee_msat(amount, ppm * 3) == amount * (ppm * 3) / 1_000_000;
+}
+
+// NIP-MKT terms: quote_expires_at <= order_confirm_by < delivery_due_at <
+// review_due_at < payment_due_at < retain_until.
+Terms :: struct {
+  quote_expires_at: int;
+  order_confirm_by: int;
+  delivery_due_at: int;
+  review_due_at: int;
+  payment_due_at: int;
+  retain_until: int;
+}
+
+terms_ok :: (t: Terms) -> bool {
+  return t.quote_expires_at <= t.order_confirm_by && t.order_confirm_by < t.delivery_due_at &&
+         t.delivery_due_at < t.review_due_at && t.review_due_at < t.payment_due_at &&
+         t.payment_due_at < t.retain_until;
+}
+
+#forall "deadline order" q: 0..<3, o: 0..<3, d: 0..<4, r: 0..<5, p: 0..<6, k: 0..<7 {
+  t := Terms.{quote_expires_at = q, order_confirm_by = o, delivery_due_at = d, review_due_at = r,
+              payment_due_at = p, retain_until = k};
+  #assert terms_ok(t) == (q <= o && o < d && d < r && r < p && p < k);
+}
+
+main :: () {
+  print("refund 30 of 40: %\n", refund_ok(40, 30));
+  print("refund 50 of 40: %\n", refund_ok(40, 50));
+  big := [2] int.[MAX_MSAT, 1];
+  print("sum past 21M BTC refused: %\n", !sum_amounts(big[..]).ok);
+  print("fee on 2500000 msat at 1000 ppm: %\n", fee_msat(2_500_000, 1000));
+}

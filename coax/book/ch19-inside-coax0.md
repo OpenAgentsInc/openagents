@@ -176,6 +176,9 @@ coax/build.sh test
 - `examples/*.coax` with a `.out` file run in debug and release, and
   `examples/pulse/run.sh` links a Coax kernel into a C host and compares
   it with a C reference.
+- `tests/verify.py` checks `coax test` and `coax mutate`: counterexamples,
+  budgets, `#authority` builds, and that `examples/money.coax` kills every
+  mutant.
 - `book/check-examples.sh` compiles and runs every example in this book.
 
 A new feature comes with a passing program, a failing program for each

@@ -1,0 +1,18 @@
+#import "Basic";
+#authority;
+
+#forall paid: 0..<40, refund: -2..<45 {
+  #assert refund_ok(paid, refund) == (refund >= 0 && refund <= paid);
+}
+
+#test "a full refund is allowed" {
+  #assert refund_ok(7, 7);
+}
+
+refund_ok :: (paid: int, refund: int) -> bool {
+  return refund >= 0 && refund <= paid;
+}
+
+main :: () {
+  print("refund 30 of 40: %\n", refund_ok(40, 30));
+}

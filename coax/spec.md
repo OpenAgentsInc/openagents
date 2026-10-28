@@ -9,13 +9,15 @@ purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
 
-**Implementation status matters.** Version 0.4.0 implements procedures;
+**Implementation status matters.** Version 0.5.0 implements procedures;
 sized integers, `f32`/`f64`, `bool` and counted byte strings; untyped
 literals and constants; structs with defaults, enums with a declared width,
 fixed arrays and views; `for` over half-open ranges and collections, `break`,
 `continue`, `defer` and `ifx`; checked casts; left-to-right operand
 evaluation; immutable top-level constants, bounded `#run` (including
-aggregate results), `#assert` and `type_name(expression)`; math intrinsics; and the C boundary:
+aggregate results), `#assert` and `type_name(expression)`; checks (`#test`,
+`#forall`, `#authority`, `coax test`, `coax mutate`) and always-on `#assert`
+statements; math intrinsics; and the C boundary:
 `#export_c` with a generated C header, `#foreign` scalar imports, and a
 restricted f32/bool Metal library emitter. It generates C11 and uses a host C compiler to
 produce executables and object files. Other
@@ -472,6 +474,48 @@ and runtime mutable state cannot be retained because this subset cannot
 construct them. Only checked values without views cross into target
 initialization.
 
+### 10.1.1 Implemented checks
+
+Checks are written before the code they check, and run in the same evaluator
+as `#run`. They are never part of the generated program.
+
+```coax
+#authority;
+refund_ok :: (paid: int, refund: int) -> bool {
+  return refund >= 0 && refund <= paid;
+}
+#forall paid: 0..<40, refund: -2..<45 {
+  #assert refund_ok(paid, refund) == (refund >= 0 && refund <= paid);
+}
+#test "refund of everything" { #assert refund_ok(7, 7); }
+```
+
+- `#assert condition;` is also a statement. In a check it fails the check; in
+  generated code it traps with `assertion failed` in debug **and** release.
+  No build mode removes it.
+- `#test "name" { ... }` is a block of ordinary statements. `#forall [name]
+  a: T, b: lo..<hi { ... }` runs its block once for every combination of its
+  bindings, the last binding changing fastest. A binding is `bool`, an enum,
+  an integer of at most 16 bits, or a half-open `int` range with constant
+  bounds (E0379); at most 2^24 cases. A failure reports the first
+  counterexample as values.
+- `coax test FILE [--steps N]` runs every check, each with its own budget of
+  20,000,000 steps unless `--steps` says otherwise. The same rules hold as in
+  `#run`: no output, no host calls, overflow and bounds checked.
+- `#authority;` marks a file whose rules guard money, signatures or grants.
+  Every procedure except `main` and `#foreign` imports must be reached,
+  directly or through calls, from a check (E0380), and every compile of the
+  file runs its checks: a failing check is a failed build.
+- `coax mutate FILE` changes the code reached from checks one site at a time:
+  comparison boundaries (`<` and `<=`), equality, arithmetic, logical and
+  bitwise operators, `+=`/`-=`, integer literals (n to n+1), bool literals,
+  negated `if`/`while` conditions, and removed assignments and calls. Each
+  mutant must fail some check, under a budget of ten times the steps the
+  unmutated check used. Survivors are printed with their source line; it
+  exits 1 if any survive. A reviewer may mark a line `// mutant: equivalent`
+  when no input can observe the change; surviving mutants there are counted
+  apart.
+
 ### 10.2 Reflection now and later
 
 `type_name(expression)` is implemented for every type. Its operand
@@ -891,7 +935,7 @@ engine remains unmeasured.
 | Stage | Work and prerequisites | Exit evidence |
 | --- | --- | --- |
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
-| 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
+| 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. In 0.5.0, checks: `#test`, `#forall`, `#authority`, `coax test` and `coax mutate`. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
 | 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. Remaining: the `src/paynet` kernel called by the native host, outputs compared and frame cost measured. |
 | 3 — Metadata and generation | Target layouts and stable declaration IDs first; reflection, derived operations and hygienic typed code next. | Generated registry or inspector with provenance, invalid generator fixtures and bounded expansion. Consider bytecode only after profiling. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |

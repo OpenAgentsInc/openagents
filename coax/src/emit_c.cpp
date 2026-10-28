@@ -819,6 +819,9 @@ struct Emitter {
         line(s->kind == StmtKind::break_ ? "break;" : "continue;");
         break;
       case StmtKind::defer: break;  // registered by the enclosing block
+      case StmtKind::assert_:  // checked in every build, like bounds and casts
+        line("if (!" + condition(s->expr) + ") coax_trap(\"assertion failed\", " + std::to_string(s->loc.line) + ");");
+        break;
       case StmtKind::if_:
         line("if " + condition(s->expr));
         stmt(s->then_);

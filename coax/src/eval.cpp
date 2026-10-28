@@ -68,14 +68,22 @@ bool fits_type(Type t, __int128 v) {
 
 struct Evaluator {
   File *file;
-  uint32_t steps = 0, dependency_depth = 0;
+  uint64_t steps = 0, max_steps = MAX_STEPS;
+  uint32_t dependency_depth = 0;
   bool failed = false;
+  bool quiet = false;  // checks: record the failure instead of printing it
+  Loc fail_loc;
+  std::string fail_code, fail_message;
   std::vector<Loc> calls;
   static constexpr uint32_t MAX_STEPS = 100000, MAX_DEPTH = 64;
 
   void err(Loc loc, const char *code, const std::string &message) {
     if (failed) return;
     failed = true;
+    fail_loc = loc;
+    fail_code = code;
+    fail_message = message;
+    if (quiet) return;
     error_at(file->src, loc, code, message);
     // A bounded call trace refers to source, not generated C or interpreter code.
     for (size_t i = calls.size(); i-- > 0;)
@@ -86,8 +94,8 @@ struct Evaluator {
   bool tick(Loc loc, uint32_t cost = 1) {
     if (failed) return false;
     steps += cost;
-    if (steps > MAX_STEPS) {
-      err(loc, "E0400", "compile-time evaluation exceeded 100000 steps");
+    if (steps > max_steps) {
+      err(loc, "E0400", "compile-time evaluation exceeded " + std::to_string(max_steps) + " steps");
       return false;
     }
     return true;
@@ -686,6 +694,11 @@ struct Evaluator {
       case StmtKind::break_: return Flow::brk;
       case StmtKind::continue_: return Flow::cont;
       case StmtKind::defer: return Flow::normal;  // registered by the enclosing block
+      case StmtKind::assert_: {
+        Value condition = expr(s->expr, frame, true);
+        if (!failed && !condition.bits) err(s->loc, "E0406", "assertion failed");
+        return Flow::normal;
+      }
       case StmtKind::if_: {
         Value condition = expr(s->expr, frame, true);
         if (failed) return Flow::normal;
@@ -796,11 +809,97 @@ struct Evaluator {
       if (!failed && !condition.bits) err(a->loc, "E0406", "compile-time assertion failed");
     }
     for (ProcDecl *p : file->procs) fold_stmt(p->body);
+    for (CheckDecl *c : file->checks) fold_stmt(c->proc->body);
     return !failed;
+  }
+
+  // How a #forall prints a value in a counterexample.
+  static std::string show(const Value &v) {
+    Type t = v.type;
+    if (t == &T_BOOL) return v.bits ? "true" : "false";
+    if (t->kind == TypeKind::enum_) {
+      for (const EnumMember &m : t->enum_decl->members)
+        if (m.bits == v.bits) return to_std(t->enum_decl->name) + "." + to_std(m.name);
+    }
+    if (t->is_signed) return std::to_string((long long)(int64_t)v.bits);
+    return std::to_string((unsigned long long)v.bits);
+  }
+
+  // Every value of a #forall binding, in order.
+  bool domain(const Param &prm, const Binding &b, std::vector<Value> *out) {
+    Type t = prm.type;
+    if (b.lo) {
+      CtFrame empty;
+      Value lo = expr(b.lo, empty, false);
+      if (failed) return false;
+      Value hi = expr(b.hi, empty, false);
+      if (failed) return false;
+      int64_t l = (int64_t)lo.bits, h = (int64_t)hi.bits;
+      if (h > l && (uint64_t)(h - l) > MAX_CASES) {
+        err(b.lo->loc, "E0400", "#forall range has more than " + std::to_string(MAX_CASES) + " values");
+        return false;
+      }
+      for (int64_t i = l; i < h; i++) out->push_back(scalar(t, (uint64_t)i));
+    } else if (t == &T_BOOL) {
+      out->push_back(scalar(t, 0));
+      out->push_back(scalar(t, 1));
+    } else if (t->kind == TypeKind::enum_) {
+      for (const EnumMember &m : t->enum_decl->members) out->push_back(scalar(t, m.bits));
+    } else {
+      __int128 lo = t->is_signed ? -((__int128)1 << (t->bits - 1)) : 0;
+      __int128 hi = t->is_signed ? ((__int128)1 << (t->bits - 1)) : ((__int128)1 << t->bits);
+      for (__int128 i = lo; i < hi; i++) out->push_back(scalar(t, canon_bits(t, (uint64_t)i)));
+    }
+    return true;
+  }
+
+  static constexpr uint64_t MAX_CASES = UINT64_C(1) << 24;
+
+  CheckOutcome check(CheckDecl *c) {
+    CheckOutcome out;
+    ProcDecl *p = c->proc;
+    std::vector<std::vector<Value>> domains((size_t)p->params.count);
+    uint64_t total = 1;
+    for (int32_t i = 0; i < p->params.count && !failed; i++) {
+      if (!domain(p->params[i], c->domains[i], &domains[(size_t)i])) break;
+      total *= domains[(size_t)i].size();
+      if (total > MAX_CASES) err(c->loc, "E0400", "#forall has more than " + std::to_string(MAX_CASES) + " cases");
+    }
+    // An odometer over the bindings: the last one changes fastest.
+    std::vector<size_t> at(domains.size(), 0);
+    for (uint64_t n = 0; n < total && !failed; n++) {
+      CtFrame frame;
+      for (size_t i = 0; i < domains.size(); i++) frame.locals.push_back({p->params[(int32_t)i].name, domains[i][at[i]], true});
+      Value ignored;
+      stmt(p->body, frame, &ignored);
+      out.cases++;
+      if (failed) {
+        for (size_t i = 0; i < domains.size(); i++)
+          out.counterexample += (i ? ", " : "") + to_std(p->params[(int32_t)i].name) + " = " + show(domains[i][at[i]]);
+        break;
+      }
+      for (size_t i = domains.size(); i-- > 0;) {
+        if (++at[i] < domains[i].size()) break;
+        at[i] = 0;
+      }
+    }
+    out.passed = !failed;
+    out.steps = steps;
+    out.loc = fail_loc;
+    out.code = fail_code;
+    out.message = fail_message;
+    return out;
   }
 };
 
 }  // namespace
+
+CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
+  Evaluator evaluator{file};
+  evaluator.quiet = true;
+  evaluator.max_steps = max_steps;
+  return evaluator.check(check);
+}
 
 bool evaluate(File *file) {
   Evaluator evaluator{file};

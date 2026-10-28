@@ -452,6 +452,12 @@ struct Parser {
   Stmt *stmt() {
     const Token &t = peek();
     if (t.kind == Tok::lbrace) return block();
+    if (t.kind == Tok::directive && str_eq(t.text, "assert")) {
+      // #assert condition;  checked when it runs, in every build
+      Stmt *s = new_stmt(StmtKind::assert_, next().loc);
+      if (!(s->expr = expr()) || !expect(Tok::semicolon, "after #assert")) return nullptr;
+      return s;
+    }
     if (t.kind == Tok::keyword) {
       if (str_eq(t.text, "if")) return if_stmt();
       if (str_eq(t.text, "for")) return for_stmt();
@@ -641,6 +647,57 @@ struct Parser {
     return d;
   }
 
+  // #test "name" { ... }
+  // #forall ["name"] a: u8, b: lo..<hi { ... }
+  CheckDecl *check_decl(const Token &d) {
+    CheckDecl *c = make<CheckDecl>(arena);
+    c->loc = d.loc;
+    c->forall = str_eq(d.text, "forall");
+    ProcDecl *p = make<ProcDecl>(arena);
+    p->loc = d.loc;
+    c->proc = p;
+    if (at(Tok::string_lit)) {
+      c->name = next().string_value;
+    } else if (!c->forall) {
+      fail(peek().loc, "E0220", "#test needs a name string", "#test \"refunds never exceed payment\" { ... }");
+      return nullptr;
+    }
+    std::vector<Param> params;
+    std::vector<Binding> domains;
+    int32_t start = peek().loc.offset;
+    while (c->forall && !at(Tok::lbrace) && !failed) {
+      Param prm;
+      Binding b;
+      if (!ident(&prm.name, &prm.loc, "a binding name")) return nullptr;
+      if (!expect(Tok::colon, "after the binding name")) return nullptr;
+      if (peek(1).kind == Tok::comma || peek(1).kind == Tok::lbrace) {
+        if (!(prm.type_expr = type())) return nullptr;
+      } else {
+        if (!(b.lo = expr())) return nullptr;
+        if (!expect(Tok::dotdotlt, "in the range; a #forall binding is a type or lo..<hi")) return nullptr;
+        if (!(b.hi = expr())) return nullptr;
+      }
+      params.push_back(prm);
+      domains.push_back(b);
+      if (!at(Tok::comma)) break;
+      next();
+    }
+    if (c->forall && params.empty()) {
+      fail(peek().loc, "E0220", "#forall needs at least one binding", "#forall a: u8, b: bool { ... }");
+      return nullptr;
+    }
+    if (c->forall && !c->name.count) {
+      int32_t end = peek().loc.offset;
+      while (end > start && (src->text[(size_t)end - 1] == ' ' || src->text[(size_t)end - 1] == '\n')) end--;
+      c->name = Str{src->text.data() + start, end - start};
+    }
+    p->name = c->name;
+    p->params = to_slice(arena, params);
+    c->domains = to_slice(arena, domains);
+    if (!(p->body = block())) return nullptr;
+    return c;
+  }
+
   bool file(File *out) {
     std::vector<Import> imports;
     std::vector<ProcDecl *> procs;
@@ -648,6 +705,7 @@ struct Parser {
     std::vector<StructDecl *> structs;
     std::vector<EnumDecl *> enums;
     std::vector<Expr *> assertions;
+    std::vector<CheckDecl *> checks;
     while (!at(Tok::eof) && !failed) {
       const Token &t = peek();
       if (t.kind == Tok::directive && str_eq(t.text, "import")) {
@@ -667,6 +725,19 @@ struct Parser {
         Expr *condition = expr();
         if (!condition || !expect(Tok::semicolon, "after #assert")) break;
         assertions.push_back(condition);
+        continue;
+      }
+      if (t.kind == Tok::directive && (str_eq(t.text, "test") || str_eq(t.text, "forall"))) {
+        Token d = next();
+        CheckDecl *c = check_decl(d);
+        if (!c) break;
+        checks.push_back(c);
+        continue;
+      }
+      if (t.kind == Tok::directive && str_eq(t.text, "authority")) {
+        next();
+        out->authority = true;
+        if (!expect(Tok::semicolon, "after #authority")) break;
         continue;
       }
       if (t.kind == Tok::directive) {
@@ -714,6 +785,7 @@ struct Parser {
     out->structs = to_slice(arena, structs);
     out->enums = to_slice(arena, enums);
     out->assertions = to_slice(arena, assertions);
+    out->checks = to_slice(arena, checks);
     return !failed;
   }
 };
