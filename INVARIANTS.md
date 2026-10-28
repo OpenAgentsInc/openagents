@@ -51,8 +51,9 @@ production credentials or network download.
 Coax owns its scene, animation, layout, reusable HUD touch policy and bounded
 protobuf admission. Native adapters own platform lifecycle, serialized opaque
 storage handles, packet transfer, font rasterization and Metal bindings. A
-screen does not acquire chat or device permissions through this port. The only
-network use is the Spark wallet below.
+screen does not acquire chat or device permissions through this port, except
+the microphone, which only the voice toggle asks for (see the voice section
+below). The only network uses are the Spark wallet below and the voice host.
 The home imports the `ios-home` descriptor profile for generated
 HomeConfiguration and HudInvocation codecs. It accepts only its documented
 schema-1 resource subset, rejects unknown/duplicate fields and non-minimal
@@ -312,3 +313,39 @@ ASan/UBSan and real assets; with `PROTOC`/`PROTO_PYTHON`, source content parity
 and official protobuf writer interoperability in both directions), Grid/player
 checks, `HauntUITests` (real Metal portal, conversation, placement, save/reenter,
 cameras/map/rotation/reset) and the existing `HomeUITests`.
+
+## Voice: audio leaves the phone only inside a turn, and only to our voice host
+
+The schema is `proto/openagents/voice/v1alpha1/voice.proto`; one `Frame` is one
+WebSocket binary message, encoded and decoded only by the generated Coax codec
+(`metareal/voice-wire.coax`), with no second hand-written codec.
+
+- **Turns are Coax decisions.** `metareal/voice.coax` decides when a turn starts
+  and ends, barge-in and the media epoch. The phone sends uplink audio only for
+  frames the engine marks as part of a turn (`OA_EV_FORWARD`) plus the turn's
+  pre-roll. Silence between turns never leaves the phone.
+- **Decisions are never awaited.** Audio flows under the last decision. A
+  `FrameDecision` from any decider applies only within its stream and media
+  epoch and before its deadline, and every numeric field is clamped. A slow or
+  missing decider can fail to steer audio, but can't stall it.
+- **Who may be heard and what speech may cost are `#authority`.**
+  `metareal/voice-floor.coax` (consent, input floor, routes by explicit binding
+  only, never by reading the words) and `metareal/voice-meter.coax` (free tier
+  and price; no provider call for a turn the meter refuses) run with zero
+  surviving mutants.
+- **Only the voice host calls a speech provider.** The phone and web clients
+  never hold Google credentials. The host never logs tokens or audio. Renders
+  are cached by SHA-256 of profile, revision, text and rate.
+- **The microphone is opt-in.** It opens only after the person turns on the voice
+  toggle and sees that Google processes their speech.
+
+Model-boundary exception: Debug builds accept `-OAVoiceFixture` (a bundled
+recording through the same uplink path as the microphone) and
+`-OAVoiceObserve`; Release builds compile both out.
+
+Check: `metareal/test_voice.sh` (ASan/UBSan; every frame kind round-trips and
+decodes with protoc; turns, barge-in, decisions, jitter buffer, fixtures);
+`coax test metareal/voice*.coax`; `coax mutate` on floor and meter (0
+survivors); `metareal/voice-host/test.sh` (offline, and live Google);
+`apps/openagents-ios/tools/voice-sim-test.sh` (the simulator UI test, offline
+and live).

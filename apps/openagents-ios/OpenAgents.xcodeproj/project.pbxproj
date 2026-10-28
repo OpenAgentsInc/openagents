@@ -17,6 +17,7 @@
 		26A051AF597CE318F9BFD252 /* cast-layer5.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A0E91A4368889291453CA5E9 /* cast-layer5.jpg */; };
 		28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */; };
 		2F7550EF7E1770994106353D /* Cast.bin in Resources */ = {isa = PBXBuildFile; fileRef = 06BB7B8BF39C34AF7C7ACAE5 /* Cast.bin */; };
+		30138E51AD9DABB194DD92AF /* hello-foreman.wav in Resources */ = {isa = PBXBuildFile; fileRef = 98C9675F63CA0181693012F2 /* hello-foreman.wav */; };
 		35A3B13C150F78FD4C9E753E /* Grid.c in Sources */ = {isa = PBXBuildFile; fileRef = 3BE259AB44E619C281EC401B /* Grid.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		36365D7C247809A11218E088 /* HauntBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = A6E0D2F142DFE9C221574028 /* HauntBuffer.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00755E361D10FD9EA268AF3 /* BIP39.swift */; };
@@ -32,12 +33,15 @@
 		4D24F2312B26BE146D8EAA1D /* haunt-click.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 114569F7448EC07E9EB3739A /* haunt-click.mp3 */; };
 		502E6C47D6754A400252B96D /* WalletRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1041A12F3949F189557F595D /* WalletRules.swift */; };
 		52405A25E8238A6D9F22D14F /* HauntAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3C742E2035F083D5EBF027 /* HauntAssets.swift */; };
+		5AB9283993700A2B487118E8 /* VoiceEngine.c in Sources */ = {isa = PBXBuildFile; fileRef = 8CDE427D09F63A4EFD8DFEBB /* VoiceEngine.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		5D9EDB16B7C36F347C949BAA /* haunt-step_metal_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 32566D9487BC88F307E50D66 /* haunt-step_metal_1.mp3 */; };
+		5E9D4E76D332C1D063811712 /* VoiceMeter.c in Sources */ = {isa = PBXBuildFile; fileRef = C8689A231995DC9878827291 /* VoiceMeter.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		6133DCAD289B23FA746D37E4 /* haunt-layer18.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B419AFF111A98FABC2F131D5 /* haunt-layer18.jpg */; };
 		6692EBECFA658A019AEA0004 /* haunt-hiss.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 77D49D6E856A70EFF171D148 /* haunt-hiss.mp3 */; };
 		6AA7D24AF6649B718917BB9B /* haunt-layer2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EB24C563C6E6C235C493BCE9 /* haunt-layer2.jpg */; };
 		6AC1798BF278EC6C6B37F0A8 /* haunt-land.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 53CB5C1F96F76F902F8CD7C8 /* haunt-land.mp3 */; };
+		71E7318F739A0B4939C83A4C /* wait-stop.wav in Resources */ = {isa = PBXBuildFile; fileRef = A552CDD5935D80B4192A9E4D /* wait-stop.wav */; };
 		777987D602FE02582208A54B /* haunt-step_grass_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = B92DC9E803C0D83793130EE0 /* haunt-step_grass_1.mp3 */; };
 		7859D5562411497FB00B8FFE /* haunt-layer0.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 4A29BCBC72FC7A99126C9D1E /* haunt-layer0.jpg */; };
 		7936085AF00569E867930063 /* Haunt.pb in Resources */ = {isa = PBXBuildFile; fileRef = 14166A55B3401A60E8955D9E /* Haunt.pb */; };
@@ -48,8 +52,10 @@
 		882DE814F326D410CE807EA2 /* cast-layer16.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1F408C8FDC3DB39479826802 /* cast-layer16.jpg */; };
 		891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */ = {isa = PBXBuildFile; fileRef = 75264437CFF5986509BFE1BF /* michroma-ofl.txt */; };
 		8C1B12994A825FF8013B031C /* haunt-step_grass_2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 99E1E3472391E665C5D030F9 /* haunt-step_grass_2.mp3 */; };
+		8C9A8101023ABDB4F42F9783 /* garden-pause.wav in Resources */ = {isa = PBXBuildFile; fileRef = D32F73555F56FD1F4D920AD5 /* garden-pause.wav */; };
 		92A7139DA066857E95DF7C5C /* haunt-layer27.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 64067442BA5A73442D8D93AD /* haunt-layer27.jpg */; };
 		942FD4A2E4B76AE6B67327C2 /* HauntUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FF8EBFA4A63F702F0F578A /* HauntUITests.swift */; };
+		964E12F58676563856602927 /* VoiceFrames.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4AC2C3883CA39BBC7789FC /* VoiceFrames.swift */; };
 		9827B36D7AD36932D42A88A3 /* haunt-layer1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 7AD563F88EE767B0FD1AEEAE /* haunt-layer1.jpg */; };
 		9B64E81CED3EE607C7477FCD /* Camera.c in Sources */ = {isa = PBXBuildFile; fileRef = 94FB25EB951B7C4EB8547F7A /* Camera.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		9B72B16D20FCCB863A22AF4B /* haunt-layer22.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9AE44FED01ADF77410F4FD26 /* haunt-layer22.jpg */; };
@@ -67,6 +73,10 @@
 		B846A94D0DF0DDDAD61A67FA /* cast-layer10.jpg in Resources */ = {isa = PBXBuildFile; fileRef = FF206467CC283E67E24BBD6E /* cast-layer10.jpg */; };
 		BA35BAB96B0D3158F066A2E2 /* cast-layer11.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */; };
 		BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD722D77A3244F05AAF6E9AA /* BreezKey.swift */; };
+		C81BC5971C4C8962601CCFF7 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219AD682C44ECBE0620A279B /* VoiceFixture.swift */; };
+		C88A368231BDEF444BAC3EB7 /* VoiceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EEAD5AF6BC22A503783C2DC /* VoiceBar.swift */; };
+		D0D8E0EE075F0E31B1586907 /* voice.c in Sources */ = {isa = PBXBuildFile; fileRef = 0003C41E79E3C2F240E09456 /* voice.c */; };
+		D1B29687D239E5915B47D8CD /* VoiceWire.c in Sources */ = {isa = PBXBuildFile; fileRef = ED2325E916319DB296E06C49 /* VoiceWire.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		D3F2FF4DDECBBBEF441BECFC /* haunt-step_wood_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 72C6BDFF8688434D7DE8F49C /* haunt-step_wood_1.mp3 */; };
 		D73FEB5A299519039A1EF73D /* Haunt-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = A5AF4B4DE64CEBF4D5D102A6 /* Haunt-NOTICE.txt */; };
 		D80CC444251F6E8198061D7F /* haunt-slam.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 9F87878C2541D03D0BB35D30 /* haunt-slam.mp3 */; };
@@ -74,6 +84,7 @@
 		DF636597608A11F38C221B24 /* haunt-step_wood_3.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 4281FC9167BC6662FEB38F4B /* haunt-step_wood_3.mp3 */; };
 		DFAB32CEAEA4828324CE0761 /* haunt-step_grass_3.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 68E7BC528083770536878DDA /* haunt-step_grass_3.mp3 */; };
 		E042C58657667D51A54A789B /* HomeShaders.txt in Resources */ = {isa = PBXBuildFile; fileRef = BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */; };
+		E16E57A4265C2A0D9DDF39BF /* VoiceRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40E6FB07620FC5FF713635D /* VoiceRing.swift */; };
 		E29DF63A3F2D00F83783EF03 /* haunt-layer28.jpg in Resources */ = {isa = PBXBuildFile; fileRef = BE67C56D03E3CF12EC67C5CC /* haunt-layer28.jpg */; };
 		EA8B2ED90489BD67E4CD3168 /* Haunt.c in Sources */ = {isa = PBXBuildFile; fileRef = CA28D2490F29A69E702341D4 /* Haunt.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		EF21CDB56CA1090F8B6AB09B /* haunt-wind_loop.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F143D07CA3DB048AFD8682B9 /* haunt-wind_loop.mp3 */; };
@@ -82,8 +93,11 @@
 		F5D72357EDBC9C2C7A705B08 /* host.c in Sources */ = {isa = PBXBuildFile; fileRef = 4B5B3339D798BBE8F8C653F5 /* host.c */; };
 		F7115CC7DD2F3496387C333A /* haunt-creak.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 996C843717D33E65529B5F2B /* haunt-creak.mp3 */; };
 		F71F068782B0F62282780EF9 /* haunt-layer24.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 44EB04B4572B424A9CCF7255 /* haunt-layer24.jpg */; };
+		F8FDCEAEDA12A944EA90C876 /* VoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001EE4412E8F1ACF286BF01 /* VoiceSession.swift */; };
 		F962058982567BC884FC31EE /* HauntViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1234748589E6A08771C35B9E /* HauntViewController.swift */; };
+		F9B094E95D05DCBFD43F7558 /* VoiceFloor.c in Sources */ = {isa = PBXBuildFile; fileRef = AC28403A12E4EEEBE6C0CB2B /* VoiceFloor.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		F9D5F9215FC257A2461957DC /* haunt-layer20.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 317B94CAFFEDC4F181368BFA /* haunt-layer20.jpg */; };
+		FBA1D1CFD5995FD7A90E92B2 /* VoiceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2A091B46A3D2D9144CFE4C /* VoiceUITests.swift */; };
 		FCD7CBE64D465956F9E50CA3 /* haunt-step_metal_2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 765E5981C38494428FB71480 /* haunt-step_metal_2.mp3 */; };
 		FEBC9257EE7B916388ACED02 /* haunt-layer21.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 21F22E3C15BA8552B95E9ABE /* haunt-layer21.jpg */; };
 /* End PBXBuildFile section */
@@ -99,6 +113,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0003C41E79E3C2F240E09456 /* voice.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = voice.c; sourceTree = "<group>"; };
 		00B098BC3A77B9FE2543DB88 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
 		06BB7B8BF39C34AF7C7ACAE5 /* Cast.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = Cast.bin; sourceTree = "<group>"; };
 		0D9CCE7A321B824A05570718 /* HomeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRenderer.swift; sourceTree = "<group>"; };
@@ -112,6 +127,7 @@
 		1EA8BD95327E6ECD1A97B685 /* Player.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Player.c; sourceTree = "<group>"; };
 		1F0BB5C1FEBCC604A19475A8 /* haunt-step_wood_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_wood_2.mp3"; sourceTree = "<group>"; };
 		1F408C8FDC3DB39479826802 /* cast-layer16.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer16.jpg"; sourceTree = "<group>"; };
+		219AD682C44ECBE0620A279B /* VoiceFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFixture.swift; sourceTree = "<group>"; };
 		21F22E3C15BA8552B95E9ABE /* haunt-layer21.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer21.jpg"; sourceTree = "<group>"; };
 		2470A951A569419B3A288638 /* cast-layer9.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer9.jpg"; sourceTree = "<group>"; };
 		253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer11.jpg"; sourceTree = "<group>"; };
@@ -119,6 +135,7 @@
 		317B94CAFFEDC4F181368BFA /* haunt-layer20.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer20.jpg"; sourceTree = "<group>"; };
 		32566D9487BC88F307E50D66 /* haunt-step_metal_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_metal_1.mp3"; sourceTree = "<group>"; };
 		3BE259AB44E619C281EC401B /* Grid.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Grid.c; sourceTree = "<group>"; };
+		3C2A091B46A3D2D9144CFE4C /* VoiceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceUITests.swift; sourceTree = "<group>"; };
 		4176C3BB15A8996C7FB6B383 /* Wallet.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Wallet.c; sourceTree = "<group>"; };
 		4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeUITests.swift; sourceTree = "<group>"; };
 		4281FC9167BC6662FEB38F4B /* haunt-step_wood_3.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_wood_3.mp3"; sourceTree = "<group>"; };
@@ -141,21 +158,26 @@
 		77D49D6E856A70EFF171D148 /* haunt-hiss.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-hiss.mp3"; sourceTree = "<group>"; };
 		77DC63ED359C367DA403C413 /* Haunt.vertices */ = {isa = PBXFileReference; path = Haunt.vertices; sourceTree = "<group>"; };
 		7AD563F88EE767B0FD1AEEAE /* haunt-layer1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer1.jpg"; sourceTree = "<group>"; };
+		7EEAD5AF6BC22A503783C2DC /* VoiceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBar.swift; sourceTree = "<group>"; };
 		7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Michroma-Regular.ttf"; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8CDE427D09F63A4EFD8DFEBB /* VoiceEngine.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceEngine.c; sourceTree = "<group>"; };
 		8F9A88BD7F66AA9706624E3E /* haunt-bubble.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-bubble.mp3"; sourceTree = "<group>"; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		94FB25EB951B7C4EB8547F7A /* Camera.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Camera.c; sourceTree = "<group>"; };
+		98C9675F63CA0181693012F2 /* hello-foreman.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "hello-foreman.wav"; sourceTree = "<group>"; };
 		996C843717D33E65529B5F2B /* haunt-creak.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-creak.mp3"; sourceTree = "<group>"; };
 		99E1E3472391E665C5D030F9 /* haunt-step_grass_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_grass_2.mp3"; sourceTree = "<group>"; };
 		9AE44FED01ADF77410F4FD26 /* haunt-layer22.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer22.jpg"; sourceTree = "<group>"; };
 		9B7CE77A2EE685E4D933032D /* haunt-layer26.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer26.jpg"; sourceTree = "<group>"; };
 		9F87878C2541D03D0BB35D30 /* haunt-slam.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-slam.mp3"; sourceTree = "<group>"; };
 		A0E91A4368889291453CA5E9 /* cast-layer5.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer5.jpg"; sourceTree = "<group>"; };
+		A552CDD5935D80B4192A9E4D /* wait-stop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "wait-stop.wav"; sourceTree = "<group>"; };
 		A5AF4B4DE64CEBF4D5D102A6 /* Haunt-NOTICE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Haunt-NOTICE.txt"; sourceTree = "<group>"; };
 		A6E0D2F142DFE9C221574028 /* HauntBuffer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HauntBuffer.c; sourceTree = "<group>"; };
 		A8590DE7BE9F641F9A440194 /* Home.pb */ = {isa = PBXFileReference; path = Home.pb; sourceTree = "<group>"; };
 		AB94FB3266A42BB8002A0185 /* haunt-jump.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-jump.mp3"; sourceTree = "<group>"; };
+		AC28403A12E4EEEBE6C0CB2B /* VoiceFloor.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceFloor.c; sourceTree = "<group>"; };
 		AD722D77A3244F05AAF6E9AA /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
 		B1F14129101E502D2EB4F25C /* EngineHotbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHotbar.swift; sourceTree = "<group>"; };
 		B39219FCD634F147CEECDE36 /* cast-layer12.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer12.jpg"; sourceTree = "<group>"; };
@@ -164,22 +186,28 @@
 		B92DC9E803C0D83793130EE0 /* haunt-step_grass_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_grass_1.mp3"; sourceTree = "<group>"; };
 		BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = HomeShaders.txt; sourceTree = "<group>"; };
 		BE67C56D03E3CF12EC67C5CC /* haunt-layer28.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer28.jpg"; sourceTree = "<group>"; };
+		C40E6FB07620FC5FF713635D /* VoiceRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRing.swift; sourceTree = "<group>"; };
 		C44F943A8802BF3449385B8F /* haunt-thunder.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-thunder.mp3"; sourceTree = "<group>"; };
 		C66F7AEEF75B7AFDC508706C /* Bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridge.h; sourceTree = "<group>"; };
+		C8689A231995DC9878827291 /* VoiceMeter.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceMeter.c; sourceTree = "<group>"; };
 		CA28D2490F29A69E702341D4 /* Haunt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Haunt.c; sourceTree = "<group>"; };
 		CA34DB580151D40597358639 /* Home.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Home.c; sourceTree = "<group>"; };
 		D00755E361D10FD9EA268AF3 /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
 		D1FF8EBFA4A63F702F0F578A /* HauntUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HauntUITests.swift; sourceTree = "<group>"; };
 		D2B60B64BD044AC100DF2301 /* haunt-layer19.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer19.jpg"; sourceTree = "<group>"; };
+		D32F73555F56FD1F4D920AD5 /* garden-pause.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "garden-pause.wav"; sourceTree = "<group>"; };
 		DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-boo.mp3"; sourceTree = "<group>"; };
 		E4D57E9776762973386F3D8E /* haunt-step_stone_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_2.mp3"; sourceTree = "<group>"; };
 		E63041B894166B46A3E46D9D /* haunt-step_stone_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_1.mp3"; sourceTree = "<group>"; };
 		E89FB258FB2F619B8111905A /* Haunt.indices */ = {isa = PBXFileReference; path = Haunt.indices; sourceTree = "<group>"; };
 		EB24C563C6E6C235C493BCE9 /* haunt-layer2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer2.jpg"; sourceTree = "<group>"; };
+		ED2325E916319DB296E06C49 /* VoiceWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceWire.c; sourceTree = "<group>"; };
 		EED5025FC8A374A284612812 /* WalletUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletUITests.swift; sourceTree = "<group>"; };
+		F001EE4412E8F1ACF286BF01 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
 		F143D07CA3DB048AFD8682B9 /* haunt-wind_loop.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-wind_loop.mp3"; sourceTree = "<group>"; };
 		FE9115742188118078C4592C /* Hud.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Hud.c; sourceTree = "<group>"; };
 		FF206467CC283E67E24BBD6E /* cast-layer10.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer10.jpg"; sourceTree = "<group>"; };
+		FF4AC2C3883CA39BBC7789FC /* VoiceFrames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFrames.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -252,13 +280,37 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		096FEE54A4134EDBF2DDAFD7 /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				7EEAD5AF6BC22A503783C2DC /* VoiceBar.swift */,
+				219AD682C44ECBE0620A279B /* VoiceFixture.swift */,
+				FF4AC2C3883CA39BBC7789FC /* VoiceFrames.swift */,
+				C40E6FB07620FC5FF713635D /* VoiceRing.swift */,
+				F001EE4412E8F1ACF286BF01 /* VoiceSession.swift */,
+				3A9C812E2B5DC80E1443A532 /* Fixtures */,
+			);
+			path = Voice;
+			sourceTree = "<group>";
+		};
 		2B3DDEC1B150BF9146AE0B93 /* platform */ = {
 			isa = PBXGroup;
 			children = (
 				4B5B3339D798BBE8F8C653F5 /* host.c */,
+				0003C41E79E3C2F240E09456 /* voice.c */,
 			);
 			name = platform;
 			path = ../../metareal/platform;
+			sourceTree = "<group>";
+		};
+		3A9C812E2B5DC80E1443A532 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				D32F73555F56FD1F4D920AD5 /* garden-pause.wav */,
+				98C9675F63CA0181693012F2 /* hello-foreman.wav */,
+				A552CDD5935D80B4192A9E4D /* wait-stop.wav */,
+			);
+			path = Fixtures;
 			sourceTree = "<group>";
 		};
 		5B366C12F710C7D176CACD52 /* Generated */ = {
@@ -273,6 +325,10 @@
 				BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */,
 				FE9115742188118078C4592C /* Hud.c */,
 				1EA8BD95327E6ECD1A97B685 /* Player.c */,
+				8CDE427D09F63A4EFD8DFEBB /* VoiceEngine.c */,
+				AC28403A12E4EEEBE6C0CB2B /* VoiceFloor.c */,
+				C8689A231995DC9878827291 /* VoiceMeter.c */,
+				ED2325E916319DB296E06C49 /* VoiceWire.c */,
 				4176C3BB15A8996C7FB6B383 /* Wallet.c */,
 			);
 			path = Generated;
@@ -283,6 +339,7 @@
 			children = (
 				D1FF8EBFA4A63F702F0F578A /* HauntUITests.swift */,
 				4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */,
+				3C2A091B46A3D2D9144CFE4C /* VoiceUITests.swift */,
 				EED5025FC8A374A284612812 /* WalletUITests.swift */,
 			);
 			path = Tests;
@@ -330,6 +387,7 @@
 				1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */,
 				A7B7CA3CC18D3E4990CFBB72 /* Platform */,
 				00BFE8813FC6529C85B1547B /* Resources */,
+				096FEE54A4134EDBF2DDAFD7 /* Voice */,
 				9A66F17929CA2AB167552B4E /* Wallet */,
 			);
 			path = OpenAgents;
@@ -452,6 +510,7 @@
 				882DE814F326D410CE807EA2 /* cast-layer16.jpg in Resources */,
 				26A051AF597CE318F9BFD252 /* cast-layer5.jpg in Resources */,
 				3894A2ED21D7B03892405193 /* cast-layer9.jpg in Resources */,
+				8C9A8101023ABDB4F42F9783 /* garden-pause.wav in Resources */,
 				A5B6AF72BD610C316262A8C2 /* haunt-boo.mp3 in Resources */,
 				0167B4B96147DF241BCBC57A /* haunt-boom.mp3 in Resources */,
 				1FD760B12034E884AAC44570 /* haunt-bubble.mp3 in Resources */,
@@ -488,7 +547,9 @@
 				DF636597608A11F38C221B24 /* haunt-step_wood_3.mp3 in Resources */,
 				A20413F0FFC11E920FDE5682 /* haunt-thunder.mp3 in Resources */,
 				EF21CDB56CA1090F8B6AB09B /* haunt-wind_loop.mp3 in Resources */,
+				30138E51AD9DABB194DD92AF /* hello-foreman.wav in Resources */,
 				891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */,
+				71E7318F739A0B4939C83A4C /* wait-stop.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -527,6 +588,14 @@
 				"$(SRCROOT)/Generated/HauntBuffer.h",
 				"$(SRCROOT)/Generated/Hud.c",
 				"$(SRCROOT)/Generated/Hud.h",
+				"$(SRCROOT)/Generated/VoiceEngine.c",
+				"$(SRCROOT)/Generated/VoiceEngine.h",
+				"$(SRCROOT)/Generated/VoiceWire.c",
+				"$(SRCROOT)/Generated/VoiceWire.h",
+				"$(SRCROOT)/Generated/VoiceFloor.c",
+				"$(SRCROOT)/Generated/VoiceFloor.h",
+				"$(SRCROOT)/Generated/VoiceMeter.c",
+				"$(SRCROOT)/Generated/VoiceMeter.h",
 				"$(SRCROOT)/Generated/HomeShaders.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -557,11 +626,21 @@
 				AB6D5B362735767EF7D5E89E /* Hud.c in Sources */,
 				83FD88F53E028589CEE45BCA /* Player.c in Sources */,
 				7C03BECB12D4D71352A3A98D /* SparkHost.swift in Sources */,
+				C88A368231BDEF444BAC3EB7 /* VoiceBar.swift in Sources */,
+				5AB9283993700A2B487118E8 /* VoiceEngine.c in Sources */,
+				C81BC5971C4C8962601CCFF7 /* VoiceFixture.swift in Sources */,
+				F9B094E95D05DCBFD43F7558 /* VoiceFloor.c in Sources */,
+				964E12F58676563856602927 /* VoiceFrames.swift in Sources */,
+				5E9D4E76D332C1D063811712 /* VoiceMeter.c in Sources */,
+				E16E57A4265C2A0D9DDF39BF /* VoiceRing.swift in Sources */,
+				F8FDCEAEDA12A944EA90C876 /* VoiceSession.swift in Sources */,
+				D1B29687D239E5915B47D8CD /* VoiceWire.c in Sources */,
 				B5B1AF1B14C0810ADDFF3B1F /* Wallet.c in Sources */,
 				471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */,
 				502E6C47D6754A400252B96D /* WalletRules.swift in Sources */,
 				1A440D16806FE261B821F982 /* WalletScreens.swift in Sources */,
 				F5D72357EDBC9C2C7A705B08 /* host.c in Sources */,
+				D0D8E0EE075F0E31B1586907 /* voice.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -571,6 +650,7 @@
 			files = (
 				942FD4A2E4B76AE6B67327C2 /* HauntUITests.swift in Sources */,
 				28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */,
+				FBA1D1CFD5995FD7A90E92B2 /* VoiceUITests.swift in Sources */,
 				A203994108226A5200DF11E6 /* WalletUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -602,6 +682,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents asks for Face ID before it sends bitcoin.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents listens while voice is on, so you can talk to agents hands-free.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -683,6 +764,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1052;
+				EXCLUDED_SOURCE_FILE_NAMES = "*.wav";
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -693,6 +775,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents asks for Face ID before it sends bitcoin.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents listens while voice is on, so you can talk to agents hands-free.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

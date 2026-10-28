@@ -63,8 +63,20 @@ Every send goes through a review screen and the phone's owner check, and
 `metareal/wallet.coax` decides whether it may go. The wallet opens from the
 Keychain seed the earlier app saved, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
 `Package.resolved`). See [`docs/lightning/`](../../docs/lightning/README.md).
-No login, chat, microphone or FM code is restored; the Grid has no buildings
-or other players yet.
+
+On the Grid, the microphone button at the top left turns voice on: tap it
+once and talk hands-free, tap it again to stop. The first time, the app says
+that your speech goes to our voice server, which uses Google to recognize it
+and to speak replies. Five bars beside the button follow every 20 ms frame's
+level and light up while `metareal/voice.coax` hears you speaking; the
+caption under it shows the partial transcript, then the final one, then the
+reply word by word as it plays. Talking over a reply stops it within a frame.
+The phone talks only to a voice host (`metareal/voice-host/`) over a
+WebSocket, never to Google. In the simulator the host defaults to
+`ws://127.0.0.1:8787`; set another with the launch argument
+`-OAVoiceHost ws://…` or by holding the button. A phone has no default host
+yet, so voice on a device needs one set this way. No login, chat or FM code is
+restored; the Grid has no buildings or other players yet.
 
 ## Ownership
 
@@ -79,6 +91,8 @@ or other players yet.
 | `../../metareal/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |
 | `../../metareal/platform/host.c` | Bounded resident storage, generation-checked handles, packed draw packets |
 | `OpenAgents/App.swift`, `HomeViewController.swift` | UIKit lifecycle, safe areas, orientation, reduced motion, accessibility, native touch forwarding; routes Start to the Grid and passes numbers between `grid.coax` and `player.coax` each frame |
+| `OpenAgents/Voice/` | Voice's Swift host: the audio session (Bluetooth, AirPlay, car, interruptions, route changes), capture with Apple's voice processing into a preallocated ring, 20 ms frames through `oa_voice_uplink`, the WebSocket to the voice host, reply audio through the jitter buffer and `oa_voice_downlink` into the player, barge-in, playback reports, reconnects, and the toggle/level/caption UI. Bundled `Fixtures/*.wav` are copies of `../../metareal/voice-host/fixtures/` for tests |
+| `../../metareal/platform/voice.h`, `voice.c`, `../../metareal/voice*.coax` | The voice engine both the phone and the voice host link: turns, levels, barge-in, jitter buffer, gain, FrameFeatures, frame decisions and the wire codecs (`openagents.voice.v1alpha1`) |
 | `OpenAgents/Platform/` | CAMetalLayer/Metal resources, triple-buffer transfers, CoreText glyph raster, texture/stage bindings |
 | `../../proto/openagents/metareal/home/v1alpha1/` | HomeConfiguration in the root protocol tree; imports the existing engine HudAction |
 | `../../metareal/home.textproto` | Human-readable resource; `scripts/proto.sh generate` produces `Home.pb` |
@@ -124,6 +138,26 @@ unknown/duplicate/truncated resource rejection, bounded finite draw packets,
 deterministic initialization, reduced motion, resume, stale handles, cancelled
 presses and exact-once invocations. UI tests launch the real Metal app and tap
 the rendered HUD through the native touch path in portrait and landscape.
+
+Voice in the simulator, end to end (builds the app, starts the voice host
+offline on port 8797, boots a `Voice iPhone` simulator and runs
+`Tests/VoiceUITests.swift`; then, when this Mac has Google credentials,
+repeats against the live host with Google speech, once with the echo agent
+and once with Gemini):
+
+```sh
+apps/openagents-ios/tools/voice-sim-test.sh            # offline, then live
+apps/openagents-ios/tools/voice-sim-test.sh --offline
+```
+
+The test launches the app with `-OAVoiceFixture hello-foreman`, which streams
+that bundled 16 kHz recording through the same ring and uplink path as the
+microphone, and checks that the caption shows the final transcript, then the
+agent's reply played until the host's SPEECH_END, and that the level
+indicator moved. `-OAVoiceObserve YES` adds a line of live frame
+measurements and decisions under the caption. Both are test hooks: only
+Debug builds accept them, and the recordings (`*.wav`) are left out of
+Release builds. `-OAVoiceHost` and the long press work in every build.
 
 Haunted House regression checks:
 

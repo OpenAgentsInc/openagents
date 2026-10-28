@@ -12,3 +12,4 @@
 #undef coax_a12_f32
 #include "HauntBuffer.h"
 #include "Hud.h"
+#include "voice.h"

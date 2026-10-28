@@ -27,6 +27,8 @@ final class HomeViewController: UIViewController {
     private let balanceLabel = UILabel()
     private let walletButton = UIButton(type: .custom)
     private var walletTask: Task<Void, Never>?
+    /// Voice: the toggle, level and caption (Voice/VoiceBar.swift).
+    private let voice = VoiceBar()
     private var gridHandle: Int64 = 0
     private var player = metareal_player_place(0, 0, 0, 0)
     private var sticks = metareal_sticks_reset()
@@ -75,6 +77,7 @@ final class HomeViewController: UIViewController {
             element.activate = { [weak self] in self?.activateAccessibleButton() ?? false }
             startElement = element
             setUpBalance()
+            setUpVoice()
             setUpGrid()
             housePortal.setTitle("Haunted House", for: .normal)
             housePortal.titleLabel?.font = UIFont(name: "Michroma", size: 10)
@@ -125,6 +128,7 @@ final class HomeViewController: UIViewController {
         guard presentedViewController == nil else { return }
         walletTask?.cancel(); walletTask = nil
         Task { [wallet] in await wallet.disconnect() }
+        voice.stop()
     }
     @objc private func resume() {
         refreshBalance()
@@ -161,6 +165,19 @@ final class HomeViewController: UIViewController {
             balanceLabel.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, multiplier: 0.6),
         ])
         show(.opening)
+    }
+    private func setUpVoice() {
+        voice.translatesAutoresizingMaskIntoConstraints = false
+        voice.presenter = self
+        // Shown on the Grid once you play, like the balance.
+        voice.isHidden = true
+        view.addSubview(voice)
+        NSLayoutConstraint.activate([
+            voice.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
+            voice.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            voice.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            voice.heightAnchor.constraint(equalToConstant: 170),
+        ])
     }
     private func refreshBalance() {
         guard walletTask == nil, balanceLabel.superview != nil else { return }
@@ -300,8 +317,8 @@ final class HomeViewController: UIViewController {
         stage = .playing
         sticks = metareal_sticks_reset(); gridTouches = [:]
         view.isMultipleTouchEnabled = true
-        balanceLabel.isHidden = false; walletButton.isHidden = false
-        view.accessibilityElements = [gridElement, youElement, danceElement, walletButton, housePortal].compactMap { $0 }.filter { $0 !== youElement || cast != nil }
+        balanceLabel.isHidden = false; walletButton.isHidden = false; voice.isHidden = false
+        view.accessibilityElements = ([gridElement, youElement, danceElement, walletButton, housePortal].compactMap { $0 }.filter { $0 !== youElement || cast != nil }) + voice.accessibleParts
         UIAccessibility.post(notification: .screenChanged, argument: gridElement)
         NSLog("OpenAgents: entered the Grid")
     }
@@ -396,6 +413,7 @@ final class HomeViewController: UIViewController {
     }
     private func enterHouse() {
         guard house == nil, playing, let window = view.window else { return }
+        voice.stop()
         suspend()
         let screen = HauntViewController(); house = screen
         // Each world owns the window's full Metal surface. Nesting Metal

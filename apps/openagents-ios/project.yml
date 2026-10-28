@@ -40,7 +40,16 @@ targets:
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Hud.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/VoiceEngine.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/VoiceWire.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/VoiceFloor.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+      - path: Generated/VoiceMeter.c
+        compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: ../../metareal/platform/host.c
+      - path: ../../metareal/platform/voice.c
       - path: Generated/HomeShaders.txt
         buildPhase: resources
     dependencies:
@@ -59,10 +68,15 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSCameraUsageDescription: "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes."
         INFOPLIST_KEY_NSFaceIDUsageDescription: "OpenAgents asks for Face ID before it sends bitcoin."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents listens while voice is on, so you can talk to agents hands-free."
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_OBJC_BRIDGING_HEADER: OpenAgents/Platform/Bridge.h
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metareal/platform"]
         GCC_OPTIMIZATION_LEVEL: "2"
+      configs:
+        # Voice test recordings (OpenAgents/Voice/Fixtures) ship in Debug only.
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: "*.wav"
     preBuildScripts:
       - name: Generate Coax product code
         script: '"$SRCROOT/generate.sh"'
@@ -86,6 +100,14 @@ targets:
           - $(SRCROOT)/Generated/HauntBuffer.h
           - $(SRCROOT)/Generated/Hud.c
           - $(SRCROOT)/Generated/Hud.h
+          - $(SRCROOT)/Generated/VoiceEngine.c
+          - $(SRCROOT)/Generated/VoiceEngine.h
+          - $(SRCROOT)/Generated/VoiceWire.c
+          - $(SRCROOT)/Generated/VoiceWire.h
+          - $(SRCROOT)/Generated/VoiceFloor.c
+          - $(SRCROOT)/Generated/VoiceFloor.h
+          - $(SRCROOT)/Generated/VoiceMeter.c
+          - $(SRCROOT)/Generated/VoiceMeter.h
           - $(SRCROOT)/Generated/HomeShaders.txt
   OpenAgentsUITests:
     type: bundle.ui-testing
