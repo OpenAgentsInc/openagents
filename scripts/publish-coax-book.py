@@ -79,7 +79,7 @@ def main():
             "url": REPOSITORY, "ref": "refs/heads/main", "repoProjectDirectory": "coax/book",
             "repoTreeURL": "https://github.com/OpenAgentsInc/openagents/tree/main",
             "repoCommitURL": "https://github.com/OpenAgentsInc/openagents/commit/",
-            "standalone": False, "timestamp": datetime.now(timezone.utc).isoformat()
+            "standalone": False, "force": True, "timestamp": datetime.now(timezone.utc).isoformat()
         })
     deadline = time.monotonic() + args.timeout
     while True:
