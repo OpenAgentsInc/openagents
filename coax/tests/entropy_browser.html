@@ -1,0 +1,50 @@
+<!doctype html><meta charset="utf-8"><pre id="result">running</pre>
+<script type="module">
+import { createEntropy } from './entropy.js';
+const result=document.getElementById('result');
+try {
+  const buffer=await(await fetch('./entropy.wasm')).arrayBuffer();
+  const memory=new WebAssembly.Memory({initial:128,maximum:1024});
+  const {instance}=await WebAssembly.instantiate(buffer,{env:{memory}});
+  const fill=createEntropy(memory,instance.exports);
+  const base=Number(instance.exports.__heap_base.value)+64;
+  const out=base,scratch=base+1048576+64,view=new Uint8Array(memory.buffer);
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'crypto');
+  const real=globalThis.crypto;
+  const install=(crypto)=>Object.defineProperty(globalThis,'crypto',{value:crypto,configurable:true});
+  let cases=0,calls=[];
+  const check=(condition,why)=>{if(!condition)throw Error(why);};
+  const reset=()=>{view.fill(77,out,out+1048584);view.fill(88,scratch,scratch+1048584);};
+  const tails=(n)=>check(view[out+n]===77&&view[scratch+n]===88,'tail changed');
+  // Actual WebCrypto is called, merely observed by this test-only realm wrapper.
+  install({getRandomValues(part){calls.push(part.length);return real.getRandomValues(part);}});
+  for(const n of [0,1,32,65535,65536,65537,1048576]){
+    reset();calls=[];const r=fill(out,1048584,scratch,1048584,n);
+    check(r.error===0&&r.written===n,'real WebCrypto failed');
+    check(calls.every(n=>n>0&&n<=65536),'oversized WebCrypto call');
+    check(calls.reduce((a,b)=>a+b,0)===n,'wrong WebCrypto byte total');
+    if(n===65537)check(JSON.stringify(calls)==='[65536,1]','chunk boundary');
+    for(let i=0;i<n;i++)check(view[scratch+i]===0,'scratch not reset');tails(n);cases++;
+  }
+  for(const mode of ['missing','throw','partial','wrong-return']){
+    reset();let count=0;
+    install(mode==='missing'?undefined:{getRandomValues(part){count++;if(mode==='throw')throw Error('fixture');if(mode==='partial'){part.fill(19);if(count===2)throw Error('partial fixture');return part;}return new Uint8Array(part.length);}});
+    const r=fill(out,1048584,scratch,1048584,65537);
+    check(r.error===(mode==='missing'?5:6)&&r.written===0,'failure accepted');
+    for(let i=0;i<65537;i++)check(view[out+i]===77&&view[scratch+i]===0,'partial result escaped');tails(65537);cases++;
+  }
+  let attempted=0;
+  install({getRandomValues(){attempted++;throw Error('must not run');}});
+  const bad=[
+    [out,32,scratch,32,-1,1], [out,1048584,scratch,1048584,1048577,1],
+    [out,31,scratch,32,32,2], [out,32,scratch,31,32,2],
+    [memory.buffer.byteLength-1,32,scratch,32,32,3], [-1,32,scratch,32,32,3],
+    [out,32,out+1,32,32,4], [out,32,scratch,32,NaN,1],
+    [out,32,scratch,32,1.5,1], [out,NaN,scratch,32,32,2]
+  ];
+  for(const [a,b,c,d,n,error] of bad){reset();const r=fill(a,b,c,d,n);check(r.error===error&&r.written===0,'bad admission');check(view[out]===77&&view[scratch]===88,'admission wrote');cases++;}
+  check(attempted===0,'RNG invoked before admission');
+  Object.defineProperty(globalThis,'crypto',descriptor);
+  result.textContent=`PASS ${cases} browser/Wasm CSPRNG boundary cases`;
+} catch(e) {result.textContent=`FAIL ${e.message}`;}
+</script>

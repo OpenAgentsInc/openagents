@@ -1,0 +1,94 @@
+// Request/completion policy only. Entropy itself is an OS/browser host effect.
+#authority;
+ENTROPY_OK :: 0;
+ENTROPY_COUNT :: 1;
+ENTROPY_CAPACITY :: 2;
+ENTROPY_SPAN :: 3;
+ENTROPY_ALIAS :: 4;
+ENTROPY_UNAVAILABLE :: 5;
+ENTROPY_FAILED :: 6;
+ENTROPY_SHORT :: 7;
+ENTROPY_MAX_BYTES :: 1048576;
+Entropy_Result :: struct { written: int; error: u32; }
+
+#test "entropy request and browser chunks have explicit count/capacity/span boundaries" {
+  #assert entropy_admit(0,0,0,true,false) == ENTROPY_OK;
+  #assert entropy_admit(ENTROPY_MAX_BYTES,ENTROPY_MAX_BYTES,ENTROPY_MAX_BYTES,true,false) == ENTROPY_OK;
+  #assert entropy_admit(-1,4,4,true,false) == ENTROPY_COUNT;
+  #assert entropy_admit(ENTROPY_MAX_BYTES + 1,ENTROPY_MAX_BYTES + 1,ENTROPY_MAX_BYTES + 1,true,false) == ENTROPY_COUNT;
+  #assert entropy_admit(4,3,4,true,false) == ENTROPY_CAPACITY;
+  #assert entropy_admit(4,4,3,true,false) == ENTROPY_CAPACITY;
+  #assert entropy_admit(0,-1,0,true,false) == ENTROPY_CAPACITY;
+  #assert entropy_admit(4,4,4,false,false) == ENTROPY_SPAN;
+  #assert entropy_admit(4,4,4,true,true) == ENTROPY_ALIAS;
+  #assert entropy_chunk_bytes() == 65536;
+  #assert entropy_full_chunks(0) == 0 && entropy_tail(0) == 0;
+  #assert entropy_full_chunks(65535) == 0 && entropy_tail(65535) == 65535;
+  #assert entropy_full_chunks(65536) == 1 && entropy_tail(65536) == 0;
+  #assert entropy_full_chunks(65537) == 1 && entropy_tail(65537) == 1;
+  #assert entropy_full_chunks(ENTROPY_MAX_BYTES) == 16 && entropy_tail(ENTROPY_MAX_BYTES) == 0;
+  #assert entropy_full_chunks(-1) == -1 && entropy_tail(-1) == -1;
+  #assert entropy_full_chunks(ENTROPY_MAX_BYTES + 1) == -1 && entropy_tail(ENTROPY_MAX_BYTES + 1) == -1;
+}
+
+#test "completion refuses unavailable, failed or short hosts and never releases partial bytes" {
+  #assert entropy_completed(0,false,false,0).error == ENTROPY_OK;
+  #assert entropy_completed(4,false,true,4).error == ENTROPY_UNAVAILABLE;
+  #assert entropy_completed(4,true,false,4).error == ENTROPY_FAILED;
+  #assert entropy_completed(4,true,true,3).error == ENTROPY_SHORT;
+  #assert entropy_completed(4,true,true,-1).error == ENTROPY_SHORT;
+  #assert entropy_completed(4,true,true,5).error == ENTROPY_SHORT;
+  r := entropy_completed(4,true,true,4);
+  #assert r.error == ENTROPY_OK && r.written == 4;
+  out := [6] u8.[77,77,77,77,77,77]; scratch := [6] u8.[1,2,3,4,88,88];
+  r = entropy_finish(4,out[..],scratch[..],true,false,true,true,4);
+  #assert r.error == ENTROPY_OK && r.written == 4;
+  for i: 0..<4 { #assert out[i] == cast(u8)(i + 1) && scratch[i] == 0; }
+  #assert out[4] == 77 && scratch[4] == 88;
+  for mode: 0..<3 {
+    for i: 0..<6 { out[i] = 77; scratch[i] = 88; }
+    r = entropy_finish(4,out[..],scratch[..],true,false,mode!=0,mode!=1,ifx mode==2 then 3 else 4);
+    #assert r.written == 0 && r.error != ENTROPY_OK;
+    for b: out { #assert b == 77; }
+    for i: 0..<4 { #assert scratch[i] == 0; }
+    #assert scratch[4] == 88;
+  }
+  for i: 0..<6 { out[i] = 77; scratch[i] = 88; }
+  #assert entropy_finish(4,out[..],scratch[..],true,true,true,true,4).error == ENTROPY_ALIAS;
+  #assert entropy_finish(4,out[0..<3],scratch[..],true,false,true,true,4).error == ENTROPY_CAPACITY;
+  #assert entropy_finish(4,out[..],scratch[..],false,false,true,true,4).error == ENTROPY_SPAN;
+  for b: out { #assert b == 77; } for b: scratch { #assert b == 88; }
+}
+
+entropy_admit :: (requested:int, capacity:int, scratch:int, spans:bool, overlap:bool)->u32 #export_c {
+  if requested < 0 || requested > ENTROPY_MAX_BYTES { return ENTROPY_COUNT; }
+  if capacity < requested || scratch < requested { return ENTROPY_CAPACITY; }
+  if !spans { return ENTROPY_SPAN; }
+  if overlap { return ENTROPY_ALIAS; }
+  return ENTROPY_OK;
+}
+entropy_chunk_bytes :: () -> int #export_c { return 65536; }
+entropy_full_chunks :: (requested:int)->int #export_c {
+  if requested < 0 || requested > ENTROPY_MAX_BYTES { return -1; }
+  return requested / 65536;
+}
+entropy_tail :: (requested:int)->int #export_c {
+  if requested < 0 || requested > ENTROPY_MAX_BYTES { return -1; }
+  return requested % 65536;
+}
+entropy_completed :: (requested:int, available:bool, ok:bool, written:int)->Entropy_Result {
+  if requested == 0 { return Entropy_Result.{}; }
+  if !available { return Entropy_Result.{error=ENTROPY_UNAVAILABLE}; }
+  if !ok { return Entropy_Result.{error=ENTROPY_FAILED}; }
+  if written != requested { return Entropy_Result.{error=ENTROPY_SHORT}; }
+  return Entropy_Result.{written=requested};
+}
+entropy_finish :: (requested:int, out:[] u8, scratch:[] u8, spans:bool, overlap:bool, available:bool, ok:bool, written:int)->Entropy_Result #export_c {
+  error := entropy_admit(requested,out.count,scratch.count,spans,overlap);
+  if error != ENTROPY_OK { return Entropy_Result.{error=error}; }
+  r := entropy_completed(requested,available,ok,written);
+  if r.error == ENTROPY_OK { for i:0..<requested { out[i]=scratch[i]; } }
+  // Ordinary observable scratch reset, not the later secure-erasure guarantee.
+  for i:0..<requested { scratch[i]=0; }
+  return r;
+}
