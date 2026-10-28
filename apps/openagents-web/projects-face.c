@@ -13,7 +13,7 @@ static coax_v_t_ProjectsState at(uint32_t state) { coax_v_t_ProjectsState s = {(
 // the host's page facts; the list's own messages are copied into its inbox.
 static coax_t_Track track_state;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
-static uint8_t inbox[4096];
+static uint8_t inbox[8192];
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_ProjectsState) * 1000003u + _Alignof(coax_t_ProjectsState) * 31u
@@ -63,6 +63,11 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
   if (mine || length > coaxial_projects_inbox_cap()) return;
   memcpy(at(state).data->inbox.e, inbox, (size_t)length);
   coaxial_projects_message(at(state), kind, length);
+}
+EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
+  if (length > sizeof inbox || (int64_t)length > coaxial_projects_inbox_cap()) return;
+  memcpy(at(state).data->inbox.e, inbox, (size_t)length);
+  coaxial_projects_hash(at(state), (int64_t)length);
 }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_projects_cursor(at(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)coaxial_projects_action(at(state)); }

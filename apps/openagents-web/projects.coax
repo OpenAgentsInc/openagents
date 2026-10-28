@@ -8,6 +8,11 @@
 // from one place: the viewer's hex pubkey, sent in as message MSG_VIEWER by
 // whatever confirms it (a session the server checked, or a NIP-07 signer).
 // Until sign-in exists nothing sends it, and MINE says sign-in is needed.
+// NEW PROJECT (rc-drop-zone, docs/projects/new-project.md Part 2) opens the
+// drop area in the list's place: files dropped on the page or picked go to the
+// private drop store (coax/web/drop.js, /api/drops); MSG_DROPS says how each is
+// doing and this file draws it. Dragging files over the page opens it too, and
+// so does /projects#new.
 // The rules (docs/protocol/2026-10-28-projects.md, "Who sees a project"):
 //   a public project shows to everyone;
 //   a private one only to its members: the owner, a maintainer or a contributor;
@@ -26,7 +31,7 @@ MODE_STROKE :: 0.0;
 GAP :: 0.34;
 SPACE :: 0.95;
 MAX_SHOWN :: 256;
-INBOX :: 256;
+INBOX :: 8192;
 OUTBOX :: 160;
 
 // the rows' columns
@@ -39,10 +44,15 @@ FILTER_AUTO :: 0; FILTER_MINE :: 1; FILTER_ALL :: 2;
 K_ENTER :: -2; K_LEFT :: -4; K_RIGHT :: -5; K_UP :: -6; K_DOWN :: -7; K_HOME :: -8; K_END :: -9;
 P_DOWN :: 0; P_MOVE :: 1; P_UP :: 2;
 MSG_VIEWER :: 3;     // the signed-in viewer's hex pubkey; empty: signed out
+MSG_DROPS :: 40;     // the drop's state (coax/web/host.js, data-drops): "S|signed|signer|dragging|note", then a file a line
 ACT_NAVIGATE :: 1;
+ACT_HASH :: 3;       // the location's hash: "new" while the drop area is open
+ACT_PICK :: 20;      // open the browser's file picker
+ACT_SIGNIN :: 22;    // sign in with the browser's Nostr signer
+K_ESCAPE :: -1;
 
 // what the pointer is on
-HIT_NONE :: -1; HIT_MINE :: -2; HIT_ALL :: -3; HIT_HOME :: -4;
+HIT_NONE :: -1; HIT_MINE :: -2; HIT_ALL :: -3; HIT_HOME :: -4; HIT_NEW :: -5; HIT_CLOSE :: -6; HIT_ZONE :: -7; HIT_SIGNIN :: -8;
 
 ProjectsState :: struct {
   time: f32;
@@ -55,6 +65,8 @@ ProjectsState :: struct {
   press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
   scroll: f32;                       // device pixels the list is scrolled
   viewer: [64] u8; viewer_n: int;
+  drop_open: bool;                   // NEW PROJECT's drop area is in the list's place
+  drops: [INBOX] u8; drops_n: int;   // the last MSG_DROPS
   inbox: [INBOX] u8;
   outbox: [OUTBOX] u8; out_n: int; action: int;
 }
@@ -300,7 +312,7 @@ viewer_of :: (s: [] ProjectsState) -> string { return cast(string) s[0].viewer[0
 
 // ---------------------------------------------------------------- layout
 
-Layout :: struct { wide: bool; header: Box; list: Box; mine: Box; all: Box; home: Box; row_h: f32; rows_top: f32; }
+Layout :: struct { wide: bool; header: Box; list: Box; mine: Box; all: Box; home: Box; newp: Box; row_h: f32; rows_top: f32; }
 
 WIDE :: 860.0;   // CSS pixels: the row's numbers get columns from here
 
@@ -321,6 +333,9 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
   x := ifx l.wide then l.header.x1 - 18 * d - chip_width("MINE", cap, p) - chip_width("ALL", cap, p) - 8 * d else l.header.x0 + 18 * d;
   l.mine = chip_box("MINE", x, y, cap, p);
   l.all = chip_box("ALL", x + chip_width("MINE", cap, p) + 8 * d, y, cap, p);
+  ny := ifx l.wide then y else l.header.y0 + 58 * d;
+  nx := ifx l.wide then l.mine.x0 - 16 * d - chip_width("NEW PROJECT", cap, p) else l.header.x1 - 18 * d - chip_width("NEW PROJECT", cap, p);
+  l.newp = chip_box("NEW PROJECT", nx, ny, cap, p);
   l.home = Box.{x0 = l.header.x0 + 18 * d, y0 = l.header.y0 + 10 * d, x1 = l.header.x0 + 18 * d + text_width("OPENAGENTS", 7 * d), y1 = l.header.y0 + 26 * d};
   l.row_h = (ifx l.wide then 58.0f32 else 96.0f32) * d;
   l.rows_top = l.list.y0 + title_room(p) + (ifx l.wide then 18.0f32 else 4.0f32) * d;
@@ -365,7 +380,7 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: i
   cap := FILTER_CAP * d;
   if l.wide {
     tx := x + text_width("PROJECTS", 26 * d) + 22 * d;
-    v = put_fit(out, v, "WORK PEOPLE AND AGENTS CAN PICK UP, FROM NOSTR", tx, ty - 10 * d, 8 * d, white, l.mine.x0 - tx - 150 * d);
+    v = put_fit(out, v, "WORK PEOPLE AND AGENTS CAN PICK UP, FROM NOSTR", tx, ty - 10 * d, 8 * d, white, l.newp.x0 - tx - 40 * d);
     v = chip(out, v, snap, tx, ty + 12 * d, 6.5 * d, dim, p);
   } else {
     v = put_fit(out, v, "WORK PEOPLE AND AGENTS CAN PICK UP", x, ty + 22 * d, 7.5 * d, white, right - x);
@@ -377,6 +392,7 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: i
   ak := ifx m == FILTER_ALL then orange else (ifx hot == HIT_ALL then white else dim);
   v = chip(out, v, "MINE", l.mine.x0, base, cap, mk, p);
   v = chip(out, v, "ALL", l.all.x0, base, cap, ak, p);
+  v = chip(out, v, "NEW PROJECT", l.newp.x0, l.newp.y1 - 5 * d, cap, ifx hot == HIT_NEW then white else orange, p);
   if !signed {
     note := "SIGN-IN NEEDED FOR MINE";
     if l.wide { v = put_right(out, v, note, l.all.x1, l.mine.y0 - 8 * d, 6 * d, dim); }
@@ -488,6 +504,205 @@ draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: st
   return frame(out, v, b, 10 * d, p);
 }
 
+// ---------------------------------------------------------------- NEW PROJECT: the drop area
+
+// The drop's state: row 0 "S|signed|signer|dragging|note", then "F|name|kind|bytes|permille|status|note".
+drops_of :: (s: [] ProjectsState) -> string { return cast(string) s[0].drops[0..<s[0].drops_n]; }
+drop_flag :: (text: string, col: int) -> bool { return rows(text) > 0 && same(field(text, 0, 0), "S") && same(field(text, 0, col), "1"); }
+drop_files :: (text: string) -> int {
+  n := 0;
+  for r: 1..<rows(text) { if same(field(text, r, 0), "F") { n += 1; } }
+  return n;
+}
+
+// Digits of n into buf at at; returns how many.
+put_int :: (buf: [] u8, at: int, n: int) -> int {
+  digits: [20] u8; k := 0; x := ifx n < 0 then 0 else n;
+  if x == 0 { digits[0] = '0'; k = 1; }
+  while x > 0 && k < 20 { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  c := 0;
+  for i: 0..<k { if at + c < buf.count { buf[at + c] = digits[k - 1 - i]; c += 1; } }
+  return c;
+}
+// A size as people read it: 512 B, 12 KB, 4.2 MB, 64 MB.
+put_bytes :: (buf: [] u8, at: int, n: int) -> int {
+  if n < 1024 { c := put_int(buf, at, n); return c + put_text(buf, at + c, " B"); }
+  if n < 1048576 { c := put_int(buf, at, (n + 512) / 1024); return c + put_text(buf, at + c, " KB"); }
+  tenths := (n * 10 + 524288) / 1048576;
+  c := put_int(buf, at, tenths / 10);
+  if tenths < 100 { c += put_text(buf, at + c, "."); c += put_int(buf, at + c, tenths % 10); }
+  return c + put_text(buf, at + c, " MB");
+}
+
+// What a file's status says, into buf.
+put_status :: (buf: [] u8, status: string, permille: int, signed: bool) -> int {
+  if same(status, "queued") { return put_text(buf, 0, ifx signed then "QUEUED" else "WAITING FOR SIGN-IN"); }
+  if same(status, "starting") { return put_text(buf, 0, "STARTING"); }
+  if same(status, "uploading") { c := put_text(buf, 0, "UPLOADING "); c += put_int(buf, c, permille / 10); return c + put_text(buf, c, "%"); }
+  if same(status, "scanning") { return put_text(buf, 0, "SCANNING"); }
+  if same(status, "kept") { return put_text(buf, 0, "KEPT, PRIVATE"); }
+  if same(status, "refused") { return put_text(buf, 0, "REFUSED"); }
+  return put_text(buf, 0, "");
+}
+// How far a file's bar is filled, 0..1.
+drop_progress :: (status: string, permille: int) -> f32 {
+  if same(status, "kept") || same(status, "scanning") || same(status, "refused") { return 1; }
+  if same(status, "uploading") { return clamp(cast(f32) permille / 1000, 0, 1); }
+  return 0;
+}
+
+DropLayout :: struct { panel: Box; close: Box; zone: Box; signin: Box; rows_top: f32; row_h: f32; fit: int; }
+drop_layout :: (l: Layout, d: f32) -> DropLayout {
+  p := Pen.{d = d, fade = 1, time = 0};
+  k: DropLayout;
+  b := l.list;
+  k.panel = b;
+  cap := FILTER_CAP * d;
+  k.close = chip_box("CLOSE", b.x1 - 14 * d - chip_width("CLOSE", cap, p), b.y0 + 24 * d, cap, p);
+  top := b.y0 + title_room(p) + (ifx l.wide then 26.0f32 else 50.0f32) * d;
+  zh := clamp(box_h(b) * 0.36, 150 * d, 220 * d);
+  k.zone = Box.{x0 = b.x0 + 18 * d, y0 = top, x1 = b.x1 - 18 * d, y1 = top + zh};
+  sw := chip_width("SIGN IN WITH NOSTR", 9 * d, p);
+  cx := (k.zone.x0 + k.zone.x1) * 0.5;
+  k.signin = chip_box("SIGN IN WITH NOSTR", cx - sw * 0.5, k.zone.y0 + zh * 0.5 + 34 * d, 9 * d, p);
+  k.rows_top = k.zone.y1 + 22 * d;
+  k.row_h = (ifx l.wide then 34.0f32 else 44.0f32) * d;
+  k.fit = int(hi(0, (b.y1 - 30 * d - k.rows_top) / k.row_h));
+  return k;
+}
+
+// A dashed outline: the place things are dropped.
+dashed :: (out: [] f32, at: int, b: Box, k: Ink, light: f32, d: f32) -> int {
+  v := at; dash := 9 * d; gap := 6 * d;
+  xs := [5] f32.[b.x0, b.x1, b.x1, b.x0, b.x0];
+  ys := [5] f32.[b.y0, b.y0, b.y1, b.y1, b.y0];
+  for e: 0..<4 {
+    dx := xs[e + 1] - xs[e]; dy := ys[e + 1] - ys[e];
+    el := sqrt(dx * dx + dy * dy);
+    if el <= 0 { continue; }
+    t := 0.0f32;
+    while t < el {
+      t1 := lo(t + dash, el);
+      v = rule(out, v, xs[e] + dx * t / el, ys[e] + dy * t / el, xs[e] + dx * t1 / el, ys[e] + dy * t1 / el, k, light);
+      t = t1 + gap;
+    }
+  }
+  return v;
+}
+
+put_center :: (out: [] f32, at: int, text: string, cx: f32, y: f32, cap: f32, k: Ink, width: f32) -> int {
+  w := lo(ink_width(text, cap, GAP, SPACE, k), width);
+  return put_fit(out, at, text, cx - w * 0.5, y, cap, k, width);
+}
+
+// Wrapped text, each line centred on cx.
+put_center_wrapped :: (out: [] f32, at: int, text: string, cx: f32, y: f32, cap: f32, k: Ink, width: f32, step: f32, lines: int) -> int {
+  v := at; from := 0; n := 0;
+  next: [1] int;
+  while from < text.count && n < lines {
+    end := wrap_ink(text, from, width, cap, GAP, SPACE, k, next[..]);
+    if n == lines - 1 && next[0] < text.count { end = text.count; }
+    v = put_center(out, v, text[from..<end], cx, y + step * cast(f32) n, cap, k, width);
+    n += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  return v;
+}
+
+draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -> int {
+  d := p.d; k := drop_layout(l, d); b := k.panel;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
+  signed := drop_flag(text, 1); signer := drop_flag(text, 2); dragging := drop_flag(text, 3);
+  v := titled(out, at, b, "NEW PROJECT", "", p);
+  v = chip(out, v, "CLOSE", k.close.x0, k.close.y1 - 5 * d, FILTER_CAP * d, ifx hot == HIT_CLOSE then white else dim, p);
+  v = put_wrapped(out, v, "Drop design notes, voice memos, concept art, 3D models, textures and sounds. They stay private to you until you publish.",
+                  b.x0 + 26 * d, b.y0 + title_room(p) + 12 * d, 6.5 * d, dim, box_w(b) - 52 * d, 12 * d, 3);
+  z := k.zone; cx := (z.x0 + z.x1) * 0.5; zw := box_w(z) - 24 * d; mid := (z.y0 + z.y1) * 0.5;
+  lit_zone := dragging || hot == HIT_ZONE;
+  v = dashed(out, v, z, ifx lit_zone then orange else dim, ifx dragging then p.fade else (ifx hot == HIT_ZONE then 0.8 * p.fade else 0.45 * p.fade), d);
+  if dragging {
+    v = put_center(out, v, "LET GO TO DROP", cx, mid + 6 * d, 16 * d, orange, zw);
+  } else if !signed {
+    v = put_center(out, v, "SIGN IN TO DROP FILES", cx, mid - 22 * d, 12 * d, white, zw);
+    if signer {
+      v = chip(out, v, "SIGN IN WITH NOSTR", k.signin.x0, k.signin.y1 - 5 * d, 9 * d, ifx hot == HIT_SIGNIN then white else orange, p);
+      v = put_center(out, v, "Your browser's Nostr signer signs you in.", cx, mid + 4 * d, 6.5 * d, dim, zw);
+    } else {
+      v = put_center_wrapped(out, v, "Use a Nostr signer in this browser, or open your admin sign-in link.", cx, mid + 4 * d, 6.5 * d, dim, zw, 12 * d, 2);
+      v = put_center_wrapped(out, v, "Files you pick now wait until you're signed in.", cx, mid + 30 * d, 6.5 * d, faint, zw, 12 * d, 2);
+    }
+  } else {
+    v = put_center(out, v, ifx l.wide then "DROP FILES HERE" else "TAP TO PICK FILES", cx, mid - 14 * d, 16 * d, ifx hot == HIT_ZONE then orange else white, zw);
+    v = put_center(out, v, ifx l.wide then "or click to pick them" else "or drop them here", cx, mid + 10 * d, 7 * d, dim, zw);
+  }
+  v = put_center_wrapped(out, v, "Documents, images, audio, 3D models, textures, video and zip. 64 MB a file, 40 files a drop.",
+                         cx, z.y1 - (ifx l.wide then 14.0f32 else 24.0f32) * d, 6 * d, faint, zw, 11 * d, 2);
+  note := field(text, 0, 4);
+  if note.count > 0 && same(field(text, 0, 0), "S") { v = put_center(out, v, note, cx, z.y0 + 18 * d, 6.5 * d, pale, zw); }
+
+  n := drop_files(text);
+  first := ifx n > k.fit then n - k.fit else 0;
+  x := b.x0 + 26 * d; right := b.x1 - 26 * d; w := right - x;
+  row := 0; seen := 0; kept := 0; kept_bytes := 0;
+  for r: 1..<rows(text) {
+    if !same(field(text, r, 0), "F") { continue; }
+    status := field(text, r, 5); bytes := parse(field(text, r, 3));
+    if same(status, "kept") { kept += 1; kept_bytes += bytes; }
+    seen += 1;
+    if seen <= first { continue; }
+    y := k.rows_top + k.row_h * cast(f32) row;
+    row += 1;
+    permille := parse(field(text, r, 4));
+    sb: [48] u8; sn := put_status(sb[..], status, permille, signed);
+    st := cast(string) sb[0..<sn];
+    refused := same(status, "refused");
+    bb: [24] u8; bn := put_bytes(bb[..], 0, bytes);
+    size := cast(string) bb[0..<bn];
+    sk := ifx refused then pale else (ifx same(status, "kept") then dim else orange);
+    sw := ink_width(st, 6.5 * d, GAP, SPACE, sk);
+    v = put_right(out, v, st, right, y, 6.5 * d, sk);
+    v = put_right(out, v, size, right - sw - 14 * d, y, 6.5 * d, faint);
+    v = put_fit(out, v, field(text, r, 1), x, y, 7.5 * d, white, w - sw - ink_width(size, 6.5 * d, GAP, SPACE, faint) - 34 * d);
+    sub := ifx refused then field(text, r, 6) else field(text, r, 2);
+    if sub.count > 0 { v = put_fit(out, v, sub, x, y + 12 * d, 6 * d, ifx refused then pale else faint, w); }
+    bar := y + (ifx l.wide then 18.0f32 else 22.0f32) * d;
+    v = rule(out, v, x, bar, right, bar, dim, 0.12 * p.fade);
+    f := drop_progress(status, permille);
+    if f > 0 { v = rule(out, v, x, bar, x + w * f, bar, ifx refused then pale else orange, (ifx same(status, "kept") then 0.4f32 else 0.9f32) * p.fade); }
+  }
+  fb: [96] u8; fc := 0;
+  if n == 0 { fc = put_text(fb[..], 0, "NOTHING DROPPED YET"); }
+  else {
+    fc = put_int(fb[..], 0, kept);
+    fc += put_text(fb[..], fc, ifx kept == 1 then " FILE KEPT, " else " FILES KEPT, ");
+    fc += put_bytes(fb[..], fc, kept_bytes);
+    if first > 0 { fc += put_text(fb[..], fc, ", "); fc += put_int(fb[..], fc, first); fc += put_text(fb[..], fc, " EARLIER NOT SHOWN"); }
+  }
+  v = put(out, v, cast(string) fb[0..<fc], x, b.y1 - 14 * d, 6 * d, dim);
+  return frame(out, v, b, 10 * d, p);
+}
+
+// What's under (x, y) in the drop area.
+drop_hit :: (l: Layout, d: f32, text: string, x: f32, y: f32) -> int {
+  k := drop_layout(l, d);
+  if inside(k.close, x, y) { return HIT_CLOSE; }
+  if !drop_flag(text, 1) && drop_flag(text, 2) && inside(k.signin, x, y) { return HIT_SIGNIN; }
+  if inside(k.zone, x, y) { return HIT_ZONE; }
+  return HIT_NONE;
+}
+
+hash_to :: (s: [] ProjectsState, text: string) {
+  s[0].out_n = put_text(s[0].outbox[..], 0, text);
+  s[0].action = ACT_HASH;
+}
+open_drop :: (s: [] ProjectsState, open: bool) {
+  if s[0].drop_open == open { return; }
+  s[0].drop_open = open; s[0].hot = HIT_NONE; s[0].press = HIT_NONE;
+  hash_to(s, ifx open then "new" else "");
+}
+ask_host :: (s: [] ProjectsState, action: int) { s[0].out_n = 0; s[0].action = action; }
+
 coaxial_projects_frame :: (s: [] ProjectsState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
                            dt: f32, still: bool) -> int #export_c {
   return projects_frame(s, PROJECTS_ROWS, out, uniforms, width, height, dpr, dt, still);
@@ -517,6 +732,7 @@ projects_frame :: (s: [] ProjectsState, table: string, out: [] f32, uniforms: []
   glass(uniforms, 0, l.header, 10 * d, 0.92);
   glass(uniforms, 1, l.list, 10 * d, 0.92);
   v := header(out, 0, l, p, m, signed_in(viewer), s[0].hot);
+  if s[0].drop_open { return draw_drop(out, v, l, p, drops_of(s), s[0].hot); }
   return draw_list(out, v, l, p, table, viewer, m, order[..], n, s[0].scroll, s[0].hot, s[0].sel);
 }
 
@@ -526,6 +742,11 @@ projects_frame :: (s: [] ProjectsState, table: string, out: [] f32, uniforms: []
 hit :: (s: [] ProjectsState, table: string, x: f32, y: f32) -> int {
   if s[0].d <= 0 { return HIT_NONE; }
   l := layout(s[0].width, s[0].height, s[0].d);
+  if inside(l.newp, x, y) { return HIT_NEW; }
+  if s[0].drop_open {
+    if inside(l.home, x, y) { return HIT_HOME; }
+    return drop_hit(l, s[0].d, drops_of(s), x, y);
+  }
   if inside(l.mine, x, y) { return HIT_MINE; }
   if inside(l.all, x, y) { return HIT_ALL; }
   if inside(l.home, x, y) { return HIT_HOME; }
@@ -557,8 +778,12 @@ choose :: (s: [] ProjectsState, filter: int) {
 }
 
 act :: (s: [] ProjectsState, table: string, target: int) {
-  if target == HIT_MINE { choose(s, FILTER_MINE); }
-  else if target == HIT_ALL { choose(s, FILTER_ALL); }
+  if target == HIT_NEW { open_drop(s, !s[0].drop_open); }
+  else if target == HIT_CLOSE { open_drop(s, false); }
+  else if target == HIT_ZONE { ask_host(s, ACT_PICK); }
+  else if target == HIT_SIGNIN { ask_host(s, ACT_SIGNIN); }
+  else if target == HIT_MINE { choose(s, FILTER_MINE); open_drop(s, false); }
+  else if target == HIT_ALL { choose(s, FILTER_ALL); open_drop(s, false); }
   else if target == HIT_HOME { navigate(s, "/"); }
   else if target >= 0 { s[0].sel = target; open_row(s, table, target); }
 }
@@ -596,6 +821,12 @@ absf :: (x: f32) -> f32 { if x < 0 { return -x; } return x; }
 // Keys: up and down choose a row, Enter opens it, m and a (or left and right) pick the filter.
 projects_key :: (s: [] ProjectsState, table: string, key: int) -> bool {
   if s.count < 1 { return false; }
+  if s[0].drop_open {
+    if key == K_ESCAPE { open_drop(s, false); return true; }
+    if key == K_ENTER { ask_host(s, ACT_PICK); return true; }
+    return false;
+  }
+  if key == 'n' || key == 'N' { open_drop(s, true); return true; }
   order: [MAX_SHOWN] int;
   n := shown(table, viewer_of(s), s[0].filter, order[..]);
   m := filter_in_force(s[0].filter, table, viewer_of(s));
@@ -621,7 +852,14 @@ projects_key :: (s: [] ProjectsState, table: string, key: int) -> bool {
 
 // The viewer: MSG_VIEWER with a hex pubkey from the inbox signs in; an empty one signs out.
 projects_message :: (s: [] ProjectsState, kind: int, length: int) {
-  if s.count < 1 || kind != MSG_VIEWER || length < 0 || length > INBOX { return; }
+  if s.count < 1 || length < 0 || length > INBOX { return; }
+  if kind == MSG_DROPS {
+    for i: 0..<length { s[0].drops[i] = s[0].inbox[i]; }
+    s[0].drops_n = length;
+    if drop_flag(drops_of(s), 3) { open_drop(s, true); }   // files dragged over the page open the drop area
+    return;
+  }
+  if kind != MSG_VIEWER { return; }
   text := cast(string) s[0].inbox[0..<length];
   if length == 0 || !signed_in(text) { s[0].viewer_n = 0; return; }
   for i: 0..<64 { s[0].viewer[i] = s[0].inbox[i]; }
@@ -634,6 +872,13 @@ coaxial_projects_pointer :: (s: [] ProjectsState, x: f32, y: f32, phase: int, ki
 coaxial_projects_key :: (s: [] ProjectsState, key: int) -> bool #export_c { return projects_key(s, PROJECTS_ROWS, key); }
 coaxial_projects_wheel :: (s: [] ProjectsState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
 coaxial_projects_message :: (s: [] ProjectsState, kind: int, length: int) #export_c { projects_message(s, kind, length); }
+// The location's hash, in the inbox: "new" opens the drop area, anything else closes it.
+projects_hash :: (s: [] ProjectsState, length: int) {
+  if s.count < 1 || length < 0 || length > INBOX { return; }
+  want := same(cast(string) s[0].inbox[0..<length], "new");
+  if s[0].drop_open != want { s[0].drop_open = want; s[0].hot = HIT_NONE; }
+}
+coaxial_projects_hash :: (s: [] ProjectsState, length: int) #export_c { projects_hash(s, length); }
 coaxial_projects_cursor :: (s: [] ProjectsState) -> int #export_c {
   if s.count < 1 { return 0; }
   return ifx s[0].hot != HIT_NONE then 1 else 0;
@@ -810,4 +1055,96 @@ on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
   coaxial_projects_wheel(s[..], -100000);
   #assert projects_frame(s[..], table, out[..], uniforms[..], 390 * 2, 844 * 2, 2, 0, true) > 0;
   #assert s[0].scroll == 0;
+}
+
+DROPS_FIXTURE :: "S|1|0|0|\nF|Villa notes.md|document|2048|1000|kept|\nF|moon.glb|model|5452595|420|uploading|\nF|cover.png|image|64|1000|refused|it is a program\nF|theme.wav|audio|1200000|0|queued|\n";
+
+drop_message :: (s: [] ProjectsState, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  projects_message(s, MSG_DROPS, text.count);
+}
+
+#test "sizes read as people say them" {
+  b: [24] u8;
+  #assert same(cast(string) b[0..<put_bytes(b[..], 0, 512)], "512 B");
+  #assert same(cast(string) b[0..<put_bytes(b[..], 0, 2048)], "2 KB");
+  #assert same(cast(string) b[0..<put_bytes(b[..], 0, 5452595)], "5.2 MB");
+  #assert same(cast(string) b[0..<put_bytes(b[..], 0, 67108864)], "64 MB");
+  #assert same(cast(string) b[0..<put_status(b[..], "uploading", 420, true)], "UPLOADING 42%");
+  #assert same(cast(string) b[0..<put_status(b[..], "queued", 0, false)], "WAITING FOR SIGN-IN");
+  #assert drop_progress("uploading", 420) == 0.42f32 && drop_progress("queued", 0) == 0 && drop_progress("kept", 0) == 1;
+}
+
+#test "NEW PROJECT opens the drop area and CLOSE, Escape or MINE put the list back" {
+  sizes := [4] f32.[1440, 900, 390, 844];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  for k: 0..<2 {
+    s: [1] ProjectsState;
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    l := layout(w, h, 2);
+    #assert within(l.newp, l.header) && apart(l.newp, l.mine) && apart(l.newp, l.all) && apart(l.newp, l.home);
+    nx := (l.newp.x0 + l.newp.x1) * 0.5; ny := (l.newp.y0 + l.newp.y1) * 0.5;
+    #assert projects_pointer(s[..], FIXTURE, nx, ny, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, nx, ny, P_UP, 0);
+    #assert s[0].drop_open && s[0].action == ACT_HASH && same(cast(string) s[0].outbox[0..<s[0].out_n], "new");
+    coaxial_projects_action_done(s[..]);
+    // signed out: the zone still picks files, which wait for the sign-in
+    #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 300;
+    dl := drop_layout(l, 2);
+    #assert within(dl.zone, l.list) && within(dl.close, l.list) && apart(dl.close, dl.zone) && dl.fit >= 3;
+    zx := (dl.zone.x0 + dl.zone.x1) * 0.5; zy := dl.zone.y0 + 10;
+    #assert projects_pointer(s[..], FIXTURE, zx, zy, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, zx, zy, P_UP, 0);
+    #assert s[0].action == ACT_PICK;
+    coaxial_projects_action_done(s[..]);
+    // a Nostr signer: SIGN IN WITH NOSTR asks the host to sign in
+    drop_message(s[..], "S|0|1|0|\n");
+    sx := (dl.signin.x0 + dl.signin.x1) * 0.5; sy := (dl.signin.y0 + dl.signin.y1) * 0.5;
+    #assert within(dl.signin, dl.zone);
+    #assert projects_pointer(s[..], FIXTURE, sx, sy, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, sx, sy, P_UP, 0);
+    #assert s[0].action == ACT_SIGNIN;
+    coaxial_projects_action_done(s[..]);
+    // signed in with files on their way: each one drawn
+    drop_message(s[..], DROPS_FIXTURE);
+    #assert drop_files(drops_of(s[..])) == 4 && drop_flag(drops_of(s[..]), 1) && !drop_flag(drops_of(s[..]), 3);
+    nv := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
+    #assert nv > 900 && nv < MAX_VERTICES && on_canvas(out[..], nv, w, h, 2);
+    cx := (dl.close.x0 + dl.close.x1) * 0.5; cy := (dl.close.y0 + dl.close.y1) * 0.5;
+    #assert projects_pointer(s[..], FIXTURE, cx, cy, P_DOWN, 0) && projects_pointer(s[..], FIXTURE, cx, cy, P_UP, 0);
+    #assert !s[0].drop_open && same(cast(string) s[0].outbox[0..<s[0].out_n], "");
+    coaxial_projects_action_done(s[..]);
+  }
+  s: [1] ProjectsState;
+  #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], 1440, 900, 1, 0, true) > 0;
+  #assert projects_key(s[..], FIXTURE, 'n') && s[0].drop_open;
+  #assert projects_key(s[..], FIXTURE, K_ENTER) && s[0].action == ACT_PICK;
+  coaxial_projects_action_done(s[..]);
+  #assert projects_key(s[..], FIXTURE, K_ESCAPE) && !s[0].drop_open;
+  // files dragged over the page open it; the hash opens and closes it
+  drop_message(s[..], "S|1|0|1|\n");
+  #assert s[0].drop_open;
+  coaxial_projects_action_done(s[..]);
+  s[0].inbox[0] = 'x';
+  projects_hash(s[..], 1);
+  #assert !s[0].drop_open;
+  for i: 0..<3 { s[0].inbox[i] = "new"[i]; }
+  projects_hash(s[..], 3);
+  #assert s[0].drop_open;
+}
+
+#test "a full drop shows its newest files and counts the rest" {
+  big: [8192] u8; n := put_text(big[..], 0, "S|1|0|0|\n");
+  for k: 0..<40 { n += put_text(big[..], n, "F|a file with a long name of its own.png|image|1048576|1000|kept|\n"); }
+  s: [1] ProjectsState;
+  for i: 0..<n { s[0].inbox[i] = big[i]; }
+  projects_message(s[..], MSG_DROPS, n);
+  s[0].drop_open = true;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  v := projects_frame(s[..], FIXTURE, out[..], uniforms[..], 390 * 3, 844 * 3, 3, 0, true);
+  #assert v > 900 && v < MAX_VERTICES && on_canvas(out[..], v, 390 * 3, 844 * 3, 3);
+  #assert drop_files(drops_of(s[..])) == 40;
+  // too long a message is dropped, not cut
+  projects_message(s[..], MSG_DROPS, INBOX + 1);
+  #assert drop_files(drops_of(s[..])) == 40;
 }

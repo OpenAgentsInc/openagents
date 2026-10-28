@@ -64,6 +64,11 @@
 //       playtest player's public id and account, "" none; never its key)
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each
+// and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
+// /api/drops, private to who dropped them. Message 40 is their state, a line each: "S|signed|signer|
+// dragging|note" (signer: the browser has a Nostr signer), then "F|name|kind|bytes|permille|status|note"
+// per file (status queued, starting, uploading, scanning, kept, refused); message 3 the signed-in pubkey.
+// Action 20 opens the file picker; 22 signs in with the browser's Nostr signer (NIP-07, then NIP-98).
 // The WGSL has bg_vs/bg_fs (a full-screen pass) and fx_vs/fx_fs (the
 // vertices: one vec4f attribute per four floats), sharing one uniform buffer.
 //
@@ -90,6 +95,7 @@
 //   coaxial_particle_instances(state)  quads to draw (6 vertices each)
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
+import { startDrops } from "./drop.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -905,6 +911,8 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false };
+// A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
+if (script?.dataset.drops) startDrops({ send });
 
 // The location's hash, for an app that opens something by it (a link straight to it).
 function sendHash() {
