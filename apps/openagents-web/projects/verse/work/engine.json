@@ -1,0 +1,274 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "verse-engine",
+    "title": "The Verse engine: what the worlds need next",
+    "body": "Engine upgrades that worlds built on the Verse are waiting for. Each task names the projects and tasks that need it.",
+    "labels": [
+      "engine"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "engine-planetary-villa",
+      "title": "What Planetary Villa needs from the engine",
+      "body": "Upgrades Hecate's Cemetery is blocked on; each links back to its Planetary Villa tasks.",
+      "parent": "verse-engine"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "verse-moonlight",
+      "parent": "engine-planetary-villa",
+      "title": "Night lighting: moonlight as the key light, soft shadows",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "A night lighting model for realms: one moonlight key light, dim ambient, soft shadows, and tone mapping that keeps dark scenes readable.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-moonlight. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-outlines",
+      "parent": "engine-planetary-villa",
+      "title": "Stylized outlines for shapes and paths",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "An outline pass (depth and normal edges) with per-material strength, for stylized low-poly realms.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-moonlight. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-glow",
+      "parent": "engine-planetary-villa",
+      "title": "Glowing materials and bloom",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "Emissive materials (glowing white pets, glowing flowers) with a bloom pass that stays cheap on phones.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-pet-customize, hc-flowers-field. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-particles",
+      "parent": "engine-planetary-villa",
+      "title": "A GPU particle system",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "Particles for trails, glows and drifting motes: emitters attached to characters and objects, bounded counts, drawn in one pass.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-realm-particles, hc-flowers-field. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-soft-silhouette",
+      "parent": "engine-planetary-villa",
+      "title": "Soft-edged silhouette characters",
+      "size": "S",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "A character material that renders as a shadow with fuzzy edges (an alpha fringe or dither), lit by nothing but its rim.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-shadow-visitor. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-quadruped",
+      "parent": "engine-planetary-villa",
+      "title": "Four-legged characters: rig, gaits and customizable shape",
+      "size": "L",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "A quadruped rig with walk, trot, run, sit, lie, dig and pick-up motions, and shape parameters (size, proportions, ears, tail, coat colours and pattern) that an agent or a slider can set.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-pet-customize, hc-fetch. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-authored-motions",
+      "parent": "engine-planetary-villa",
+      "title": "Motions and emotes as data an agent can write",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "Emotes as small keyframe documents (poses over time on the rig) that an agent can author from a description and the engine plays, blends and checks for bounds.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-emotes. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-cinematics",
+      "parent": "engine-planetary-villa",
+      "title": "Camera cinematics: authored flights, skippable",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "Camera paths with timing and easing, scene changes behind them, skippable, ending with control handed back.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): pv-flight. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-terrain-paths",
+      "parent": "engine-planetary-villa",
+      "title": "Terrain and walkable garden paths",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "A heightfield ground for open fields, path pieces that mark walkable routes, and navigation for followers over them.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-garden-layout. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-orbit-camera",
+      "parent": "engine-planetary-villa",
+      "title": "A free-orbit third-person camera",
+      "size": "S",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "An orbiting over-the-shoulder camera (the Breath of the Wild view) with collision against scenery, on mouse, keys and touch; builds on player.coax.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-camera. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-throw-physics",
+      "parent": "engine-planetary-villa",
+      "title": "Thrown objects and pick-up",
+      "size": "S",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "Simple ballistic objects that bounce and roll, and a pick-up and carry behaviour for characters.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-fetch. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-closeup-arrange",
+      "parent": "engine-planetary-villa",
+      "title": "A close-up arranging view",
+      "size": "M",
+      "labels": [
+        "engine",
+        "planetary-villa"
+      ],
+      "body": "A mode that frames one object up close and lets you point and click to place small items on it (flowers in a vase), then returns to the world.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-vase. Those tasks wait on this one.",
+      "files": [
+        "verse/"
+      ],
+      "acceptance": [
+        "Works in a realm on openagents.com at desktop and phone, inside the frame budget",
+        "coax test passes on the engine files touched",
+        "A short demo in /realm shows it"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    }
+  ]
+}

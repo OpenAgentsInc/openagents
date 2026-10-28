@@ -97,9 +97,10 @@
       "size": "S",
       "labels": [
         "playtest",
-        "web"
+        "web",
+        "planetary-villa"
       ],
-      "body": "The demo's galaxy after the landing, with the Haunted House the only world that opens (others shown, closed), in Coax.",
+      "body": "The demo's galaxy after the landing, with the Haunted House the only world that opens (others shown, closed), in Coax.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): pv-galaxy-entry.",
       "files": [],
       "acceptance": [
         "Screenshots match the demo's layout; tapping the Haunted House opens /realm/haunted-house in the flow"
@@ -189,9 +190,10 @@
       "labels": [
         "playtest",
         "web",
-        "save"
+        "save",
+        "planetary-villa"
       ],
-      "body": "World data and progress saved as versioned snapshots with a CRC (aethyr-cpp docs/save.md): IndexedDB in the page, the server for players with an email, fallback to the last good save, migrations forward.",
+      "body": "World data and progress saved as versioned snapshots with a CRC (aethyr-cpp docs/save.md): IndexedDB in the page, the server for players with an email, fallback to the last good save, migrations forward.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-tombstones, hc-vase-place.",
       "files": [],
       "acceptance": [
         "A corrupted save falls back to the last good one (#test)",
@@ -238,9 +240,10 @@
       "size": "M",
       "labels": [
         "playtest",
-        "server"
+        "server",
+        "planetary-villa"
       ],
-      "body": "Every player and world endpoint the demo has, with the same behavior: join by email (never verified) or as a guest, save and load, publish a world and open it by link.",
+      "body": "Every player and world endpoint the demo has, with the same behavior: join by email (never verified) or as a guest, save and load, publish a world and open it by link.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-pet-upload.",
       "files": [],
       "acceptance": [
         "Each demo endpoint has a test against the new service",
@@ -517,9 +520,10 @@
       "size": "L",
       "labels": [
         "playtest",
-        "realtime"
+        "realtime",
+        "planetary-villa"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port room presence and chat (/api/chat/<room>, /api/presence/<room>, web/chat.js): players in the same realm see each other and a room chat, drawn in Coax with the realm's plate style. Bounded rooms and messages; guests included.",
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port room presence and chat (/api/chat/<room>, /api/presence/<room>, web/chat.js): players in the same realm see each other and a room chat, drawn in Coax with the realm's plate style. Bounded rooms and messages; guests included.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-presence, hc-chat.",
       "files": [
         "apps/openagents-web/realm.coax",
         "coax/web/api/"
@@ -540,9 +544,10 @@
       "title": "Realm setup and the player's own realm",
       "size": "L",
       "labels": [
-        "playtest"
+        "playtest",
+        "planetary-villa"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port planet setup and the player's planet as realms (/api/award, /api/planets*, web/planet-setup.js): award, create and open a player's realm. The galaxy task only shows them; this makes them. Legacy /api/planets* paths keep answering.",
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port planet setup and the player's planet as realms (/api/award, /api/planets*, web/planet-setup.js): award, create and open a player's realm. The galaxy task only shows them; this makes them. Legacy /api/planets* paths keep answering.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): pv-galaxy-entry.",
       "files": [
         "apps/openagents-web/",
         "coax/web/api/"

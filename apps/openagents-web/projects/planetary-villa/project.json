@@ -1,0 +1,20 @@
+{
+  "slug": "planetary-villa",
+  "name": "Planetary Villa",
+  "description": "A world on the Verse with game expansions. First: Hecate's Cemetery, a moonlit memorial garden where you bring your pet back as a glowing companion.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "planetary-villa/",
+  "contributions": "open",
+  "license": "Apache-2.0",
+  "owner": "Kiki",
+  "owner_pubkey": "",
+  "pubkey": "f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7"
+}

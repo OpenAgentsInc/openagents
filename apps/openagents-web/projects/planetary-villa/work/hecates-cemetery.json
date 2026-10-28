@@ -1,0 +1,763 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "planetary-villa",
+  "initiative": {
+    "slug": "hecates-cemetery",
+    "title": "Hecate's Cemetery: the first Planetary Villa expansion",
+    "body": "Planetary Villa is a world on the Verse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.",
+    "spec": "planetary-villa/README.md",
+    "labels": [
+      "planetary-villa",
+      "verse"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "pv-arrival",
+      "title": "Planetary Villa on the galaxy map, and the flight to Hecate's Cemetery",
+      "body": "Pick Planetary Villa on the galaxy map and a short cinematic carries you to this session's expansion.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-world",
+      "title": "The moonlit cemetery and its field",
+      "body": "The cemetery garden, its paths and tombstones, and the open field beside it, lit only by the moon.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-visitor",
+      "title": "You, the visitor from another realm",
+      "body": "Your character: a shadow with soft edges and a trail of particles.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-pet",
+      "title": "Bring your pet: make and customize its avatar",
+      "body": "Upload text, images or video about your pet, late or new; an agent builds a glowing avatar you customize, with emotes and skills.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-memorial",
+      "title": "Tombstones and memorial pages",
+      "body": "Each pet gets a tombstone in the garden and a memorial page with its stories and achievements, shareable by link.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-play",
+      "title": "Play with your pet",
+      "body": "Fetch and the pet's skills in the field, emotes, and visiting other tombstones.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-together",
+      "title": "Others in the garden, and the chat",
+      "body": "A multiplayer world with a chat box like Horse Isle.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-flowers",
+      "title": "The glowing flowers mini game",
+      "body": "Collect three kinds of glowing flowers, arrange them in a vase, and place it, by the tombstone first.",
+      "parent": "hecates-cemetery"
+    },
+    {
+      "slug": "hc-launch",
+      "title": "Tutorial, analytics and launch",
+      "body": "The first-visit tutorial, analytics on every step, safety, and the public launch.",
+      "parent": "hecates-cemetery"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "pv-spec",
+      "parent": "pv-arrival",
+      "title": "Write down Planetary Villa and Hecate's Cemetery as Kiki described them",
+      "size": "S",
+      "labels": [
+        "docs"
+      ],
+      "body": "Turn Kiki's description into the design document `planetary-villa/README.md`: the world, the expansion, the art direction, every mechanic and the flower mini game, with open questions for Kiki. Kiki owns the design; the document is hers to correct.",
+      "files": [
+        "planetary-villa/README.md"
+      ],
+      "acceptance": [
+        "planetary-villa/README.md covers every mechanic in the project's tasks",
+        "Kiki has read it and her corrections are in"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "pv-galaxy-entry",
+        "hc-art-kit",
+        "hc-pet-upload"
+      ]
+    },
+    {
+      "slug": "pv-galaxy-entry",
+      "parent": "pv-arrival",
+      "title": "Planetary Villa appears on the galaxy map and opens",
+      "size": "M",
+      "labels": [
+        "web",
+        "needs-verse"
+      ],
+      "body": "Planetary Villa is a planet you can choose on the galaxy map; choosing it starts the flight to the current expansion.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-galaxy, pt-planets. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Choosing Planetary Villa on the galaxy map at openagents.com opens the flight",
+        "Analytics records the choice"
+      ],
+      "blocked_by": [
+        "pv-spec"
+      ],
+      "blocks": [
+        "pv-flight"
+      ],
+      "needs": [
+        "verse:pt-galaxy",
+        "verse:pt-planets"
+      ]
+    },
+    {
+      "slug": "pv-flight",
+      "parent": "pv-arrival",
+      "title": "The flight to Hecate's Cemetery: a short cinematic",
+      "size": "M",
+      "labels": [
+        "web",
+        "cinematic",
+        "needs-verse"
+      ],
+      "body": "A skippable cinematic of traveling through space to the expansion this session focuses on (Hecate's Cemetery), ending where you land in the garden.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-cinematics. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "The cinematic plays on desktop and phone and can be skipped",
+        "It ends at the garden's entrance with control handed to you"
+      ],
+      "blocked_by": [
+        "pv-galaxy-entry"
+      ],
+      "blocks": [],
+      "needs": [
+        "verse:verse-cinematics"
+      ]
+    },
+    {
+      "slug": "hc-art-kit",
+      "parent": "hc-world",
+      "title": "The art kit: simple stylized low-poly garden, tombstones, paths and field",
+      "size": "L",
+      "labels": [
+        "art"
+      ],
+      "body": "A small set of low-poly models in one stylized look: tombstones (several shapes with room for a name and epitaph), garden beds, hedges, trees, gates, benches, a fountain, path pieces, the open field's edge. Sources must be licensed for our use; list each source.",
+      "files": [],
+      "acceptance": [
+        "Every model loads in the Verse and fits one style",
+        "Licences recorded next to the assets"
+      ],
+      "blocked_by": [
+        "pv-spec"
+      ],
+      "blocks": [
+        "hc-moonlight"
+      ]
+    },
+    {
+      "slug": "hc-moonlight",
+      "parent": "hc-world",
+      "title": "Everything lit by moonlight: dim, blue, with outlines",
+      "size": "M",
+      "labels": [
+        "web",
+        "lighting",
+        "needs-verse"
+      ],
+      "body": "The garden at night: moonlight as the only key light, not very bright, soft shadows, a light outline on shapes and paths so they read in the dark.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-moonlight, verse-outlines. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Side-by-side screenshots at desktop and phone show the moonlit look Kiki approves",
+        "Frame time stays inside the realm's budget on a phone"
+      ],
+      "blocked_by": [
+        "hc-art-kit"
+      ],
+      "blocks": [
+        "hc-garden-layout",
+        "hc-shadow-visitor"
+      ],
+      "needs": [
+        "verse:verse-moonlight",
+        "verse:verse-outlines"
+      ]
+    },
+    {
+      "slug": "hc-garden-layout",
+      "parent": "hc-world",
+      "title": "The cemetery garden and the field beside it",
+      "size": "M",
+      "labels": [
+        "web",
+        "needs-verse"
+      ],
+      "body": "Lay out the garden: paths between tombstone plots with room to grow, a gate into the open field, and spots for the vase and the fountain. Paths are walkable and readable from the third-person view.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-terrain-paths. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "You can walk every path and into the field",
+        "Plots for at least 64 tombstones, added as pets arrive"
+      ],
+      "blocked_by": [
+        "hc-moonlight"
+      ],
+      "blocks": [
+        "hc-camera",
+        "hc-tombstones",
+        "hc-flowers-field"
+      ],
+      "needs": [
+        "verse:verse-terrain-paths"
+      ]
+    },
+    {
+      "slug": "hc-camera",
+      "parent": "hc-world",
+      "title": "A third-person camera like Breath of the Wild",
+      "size": "M",
+      "labels": [
+        "web",
+        "controls",
+        "needs-verse"
+      ],
+      "body": "The Breath of the Wild perspective: an over-the-shoulder third-person camera that orbits freely, with the walking controller the Haunted House uses, on keyboard, mouse and touch.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-orbit-camera. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Orbit, zoom and follow feel right on desktop and phone",
+        "No clipping through tombstones or hedges"
+      ],
+      "blocked_by": [
+        "hc-garden-layout"
+      ],
+      "blocks": [
+        "hc-fetch"
+      ],
+      "needs": [
+        "verse:verse-orbit-camera"
+      ]
+    },
+    {
+      "slug": "hc-shadow-visitor",
+      "parent": "hc-visitor",
+      "title": "Your character: an all-black humanoid with fuzzy edges",
+      "size": "M",
+      "labels": [
+        "web",
+        "character",
+        "needs-verse"
+      ],
+      "body": "The visitor is mostly a shadow: an all-black humanoid with soft, fuzzy edges, not detailed.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-soft-silhouette. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "The shadow reads clearly against the moonlit garden",
+        "Its edges look soft at desktop and phone sizes"
+      ],
+      "blocked_by": [
+        "hc-moonlight"
+      ],
+      "blocks": [
+        "hc-realm-particles"
+      ],
+      "needs": [
+        "verse:verse-soft-silhouette"
+      ]
+    },
+    {
+      "slug": "hc-realm-particles",
+      "parent": "hc-visitor",
+      "title": "Particles that show you're visiting from another realm",
+      "size": "S",
+      "labels": [
+        "web",
+        "effects",
+        "needs-verse"
+      ],
+      "body": "A light trail of particles around the visitor while it moves, so it reads as a guest from another realm.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-particles. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "The particles follow you and stay within the frame budget on a phone"
+      ],
+      "blocked_by": [
+        "hc-shadow-visitor"
+      ],
+      "blocks": [],
+      "needs": [
+        "verse:verse-particles"
+      ]
+    },
+    {
+      "slug": "hc-pet-upload",
+      "parent": "hc-pet",
+      "title": "Tell us about your pet: text, images or video",
+      "size": "M",
+      "labels": [
+        "web",
+        "server",
+        "needs-verse"
+      ],
+      "body": "A create-your-pet flow drawn in Coax: write about your pet, and drop in photos or a short video, for a late pet or a new one. Uploads are stored privately with size and type limits, and only used to build the avatar.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-player-endpoints. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Text, image and video uploads work on desktop and phone",
+        "Uploads are private, limited in size and type, and deletable by their owner"
+      ],
+      "blocked_by": [
+        "pv-spec"
+      ],
+      "blocks": [
+        "hc-pet-avatar-agent",
+        "hc-pet-customize",
+        "hc-tombstones"
+      ],
+      "needs": [
+        "verse:pt-player-endpoints"
+      ]
+    },
+    {
+      "slug": "hc-pet-avatar-agent",
+      "parent": "hc-pet",
+      "title": "An agent turns what you shared into your pet's avatar",
+      "size": "L",
+      "labels": [
+        "agents",
+        "ai"
+      ],
+      "body": "An agent reads the text, images and video and sets the avatar's parameters: species and breed shape, size, proportions, coat colours and pattern, ears, tail, and the details that made the pet theirs. Model calls go through our Google-first provider routing.",
+      "files": [],
+      "acceptance": [
+        "From a photo and a sentence, the avatar is recognisably that pet to its owner in a playtest",
+        "Each choice the agent made is shown and can be changed"
+      ],
+      "blocked_by": [
+        "hc-pet-upload",
+        "hc-pet-customize"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hc-pet-customize",
+      "parent": "hc-pet",
+      "title": "Customize your pet's avatar, like in the Sims",
+      "size": "L",
+      "labels": [
+        "web",
+        "character",
+        "needs-verse"
+      ],
+      "body": "An editor drawn in Coax: change shape, proportions, colours, pattern and accessories with sliders and swatches, seeing the pet turn and move as you change it. The pet glows white in the world.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-quadruped, verse-glow. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Every parameter the agent sets can be changed by hand",
+        "The glowing white look matches Kiki's art direction"
+      ],
+      "blocked_by": [
+        "hc-pet-upload"
+      ],
+      "blocks": [
+        "hc-pet-avatar-agent",
+        "hc-emotes",
+        "hc-skills"
+      ],
+      "needs": [
+        "verse:verse-quadruped",
+        "verse:verse-glow"
+      ]
+    },
+    {
+      "slug": "hc-emotes",
+      "parent": "hc-pet",
+      "title": "Emotes to choose from, and new ones the agent makes",
+      "size": "L",
+      "labels": [
+        "web",
+        "agents",
+        "animation",
+        "needs-verse"
+      ],
+      "body": "A set of emotes (sit, play bow, roll over, howl, wag, sleep) to choose from, and new ones an agent makes from what you say about the pet (\"she always spun twice before lying down\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-authored-motions. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "At least six stock emotes play on the pet",
+        "An agent-made emote from a sentence plays in the world"
+      ],
+      "blocked_by": [
+        "hc-pet-customize"
+      ],
+      "blocks": [
+        "hc-launch-review"
+      ],
+      "needs": [
+        "verse:verse-authored-motions"
+      ]
+    },
+    {
+      "slug": "hc-skills",
+      "parent": "hc-pet",
+      "title": "Skills: fetch, obedience, digging holes",
+      "size": "M",
+      "labels": [
+        "web",
+        "gameplay"
+      ],
+      "body": "The pet's skills, chosen when you make it: fetch, obedience (sit, stay, come), digging holes, and room for more. Skills decide what the pet can do in the field.",
+      "files": [],
+      "acceptance": [
+        "Each skill has a visible action in the field",
+        "Skills are saved with the pet"
+      ],
+      "blocked_by": [
+        "hc-pet-customize"
+      ],
+      "blocks": [
+        "hc-fetch",
+        "hc-explore"
+      ]
+    },
+    {
+      "slug": "hc-tombstones",
+      "parent": "hc-memorial",
+      "title": "A tombstone for each pet in the garden",
+      "size": "M",
+      "labels": [
+        "web",
+        "needs-verse"
+      ],
+      "body": "When you press play, your pet's tombstone takes a plot in the garden: its name, dates and a line, with its achievements if it was competitive and its most beloved traits and stories.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "A new pet's tombstone appears in the garden for every visitor",
+        "Walking up to a tombstone shows its name, line and a link to the memorial"
+      ],
+      "blocked_by": [
+        "hc-garden-layout",
+        "hc-pet-upload"
+      ],
+      "blocks": [
+        "hc-memorial-page",
+        "hc-explore",
+        "hc-vase-place"
+      ],
+      "needs": [
+        "verse:pt-saves"
+      ]
+    },
+    {
+      "slug": "hc-memorial-page",
+      "parent": "hc-memorial",
+      "title": "The memorial page: stories, achievements and testimonials",
+      "size": "M",
+      "labels": [
+        "web"
+      ],
+      "body": "A memorial page for each pet, drawn in Coax: its avatar, stories, achievements and beloved traits, and testimonials from people who knew it. Linked from the tombstone.",
+      "files": [],
+      "acceptance": [
+        "Every pet has a memorial page linked from its tombstone",
+        "The owner can edit it and remove testimonials"
+      ],
+      "blocked_by": [
+        "hc-tombstones"
+      ],
+      "blocks": [
+        "hc-memorial-share",
+        "hc-safety"
+      ]
+    },
+    {
+      "slug": "hc-memorial-share",
+      "parent": "hc-memorial",
+      "title": "A shareable link for each memorial",
+      "size": "S",
+      "labels": [
+        "web"
+      ],
+      "body": "Each memorial page has a short shareable link with a share card (the pet's avatar in moonlight), so it can be sent to family and friends.",
+      "files": [],
+      "acceptance": [
+        "The link opens the memorial for someone signed out",
+        "The share card shows in messages and social posts"
+      ],
+      "blocked_by": [
+        "hc-memorial-page"
+      ],
+      "blocks": [
+        "hc-launch-review"
+      ]
+    },
+    {
+      "slug": "hc-fetch",
+      "parent": "hc-play",
+      "title": "Play fetch in the field",
+      "size": "M",
+      "labels": [
+        "web",
+        "gameplay",
+        "needs-verse"
+      ],
+      "body": "Throw a ball in the open field; a pet with the fetch skill runs, picks it up and brings it back.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-throw-physics, verse-quadruped. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Fetch works with mouse, keys and touch",
+        "The pet's run and pickup look natural"
+      ],
+      "blocked_by": [
+        "hc-skills",
+        "hc-camera"
+      ],
+      "blocks": [
+        "hc-tutorial"
+      ],
+      "needs": [
+        "verse:verse-throw-physics",
+        "verse:verse-quadruped"
+      ]
+    },
+    {
+      "slug": "hc-explore",
+      "parent": "hc-play",
+      "title": "Walk the garden with your pet and visit other tombstones",
+      "size": "S",
+      "labels": [
+        "web"
+      ],
+      "body": "Your pet follows you through the garden; other pets' tombstones can be visited and their memorials opened.",
+      "files": [],
+      "acceptance": [
+        "The pet follows without getting stuck on paths and hedges",
+        "Any tombstone's memorial opens from the world"
+      ],
+      "blocked_by": [
+        "hc-tombstones",
+        "hc-skills"
+      ],
+      "blocks": [
+        "hc-presence"
+      ]
+    },
+    {
+      "slug": "hc-presence",
+      "parent": "hc-together",
+      "title": "Other visitors and their pets in the garden",
+      "size": "L",
+      "labels": [
+        "web",
+        "realtime",
+        "needs-verse"
+      ],
+      "body": "A multiplayer garden: see other visitors' shadows and their glowing pets moving in real time.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Two visitors see each other and each other's pets within two seconds",
+        "Room size is bounded"
+      ],
+      "blocked_by": [
+        "hc-explore"
+      ],
+      "blocks": [
+        "hc-chat"
+      ],
+      "needs": [
+        "verse:pt-presence-chat"
+      ]
+    },
+    {
+      "slug": "hc-chat",
+      "parent": "hc-together",
+      "title": "A chat box like Horse Isle",
+      "size": "M",
+      "labels": [
+        "web",
+        "realtime",
+        "needs-verse"
+      ],
+      "body": "A chat box in the corner for everyone in the garden, in the style of Horse Isle, drawn in Coax, with names and the pet each visitor brought.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Chat works between two visitors on desktop and phone",
+        "Messages are bounded and moderated"
+      ],
+      "blocked_by": [
+        "hc-presence"
+      ],
+      "blocks": [
+        "hc-safety"
+      ],
+      "needs": [
+        "verse:pt-presence-chat"
+      ]
+    },
+    {
+      "slug": "hc-flowers-field",
+      "parent": "hc-flowers",
+      "title": "Three kinds of glowing flowers to collect in the field",
+      "size": "M",
+      "labels": [
+        "web",
+        "gameplay",
+        "needs-verse"
+      ],
+      "body": "Glowing flowers of three kinds grow in the field; walk up and pick them, and they go in your basket.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-glow, verse-particles. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "All three kinds grow, glow and can be picked",
+        "Picked flowers regrow after a while"
+      ],
+      "blocked_by": [
+        "hc-garden-layout"
+      ],
+      "blocks": [
+        "hc-vase"
+      ],
+      "needs": [
+        "verse:verse-glow",
+        "verse:verse-particles"
+      ]
+    },
+    {
+      "slug": "hc-vase",
+      "parent": "hc-flowers",
+      "title": "Arrange flowers in a vase, point and click",
+      "size": "M",
+      "labels": [
+        "web",
+        "gameplay",
+        "needs-verse"
+      ],
+      "body": "A close-up arranging view: point and click to put each flower in the vase where you want it.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-closeup-arrange. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "Arranging works with a mouse and with touch",
+        "The arrangement is saved with the vase"
+      ],
+      "blocked_by": [
+        "hc-flowers-field"
+      ],
+      "blocks": [
+        "hc-vase-place"
+      ],
+      "needs": [
+        "verse:verse-closeup-arrange"
+      ]
+    },
+    {
+      "slug": "hc-vase-place",
+      "parent": "hc-flowers",
+      "title": "Place the vase anywhere; the tutorial leads you to the tombstone",
+      "size": "S",
+      "labels": [
+        "web",
+        "gameplay",
+        "needs-verse"
+      ],
+      "body": "Carry the vase and set it down anywhere in the world. The tutorial directs you to place it by your pet's tombstone. Placed vases stay for everyone.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.",
+      "files": [],
+      "acceptance": [
+        "A vase can be placed anywhere walkable",
+        "The tutorial step points to the tombstone",
+        "Placed vases persist and other visitors see them"
+      ],
+      "blocked_by": [
+        "hc-vase",
+        "hc-tombstones"
+      ],
+      "blocks": [
+        "hc-tutorial"
+      ],
+      "needs": [
+        "verse:pt-saves"
+      ]
+    },
+    {
+      "slug": "hc-tutorial",
+      "parent": "hc-launch",
+      "title": "The first visit: a gentle tutorial",
+      "size": "M",
+      "labels": [
+        "web"
+      ],
+      "body": "From landing to making your pet, playing fetch, picking flowers and placing the vase by the tombstone: one tip at a time, in the realm's plate style.",
+      "files": [],
+      "acceptance": [
+        "A first-time visitor finishes the loop without help in a playtest"
+      ],
+      "blocked_by": [
+        "hc-vase-place",
+        "hc-fetch"
+      ],
+      "blocks": [
+        "hc-analytics"
+      ]
+    },
+    {
+      "slug": "hc-analytics",
+      "parent": "hc-launch",
+      "title": "Analytics on every step",
+      "size": "S",
+      "labels": [
+        "analytics"
+      ],
+      "body": "Record each step (galaxy choice, flight, pet made, emotes, fetch, flowers, vase, memorial shares) through the openagents.com analytics.",
+      "files": [],
+      "acceptance": [
+        "Each step appears on the analytics dashboard"
+      ],
+      "blocked_by": [
+        "hc-tutorial"
+      ],
+      "blocks": [
+        "hc-launch-review"
+      ]
+    },
+    {
+      "slug": "hc-safety",
+      "parent": "hc-launch",
+      "title": "Safety for uploads, memorials and chat",
+      "size": "M",
+      "labels": [
+        "safety"
+      ],
+      "body": "Uploads, memorial text, testimonials and chat are moderated: limits, reporting, the owner's removal, and a review queue. Grief is personal; nothing a visitor shares is used for anything but their pet.",
+      "files": [],
+      "acceptance": [
+        "Reporting and removal work for each kind of content",
+        "Upload use is limited to the pet's avatar, and said so on the upload screen"
+      ],
+      "blocked_by": [
+        "hc-chat",
+        "hc-memorial-page"
+      ],
+      "blocks": [
+        "hc-launch-review"
+      ]
+    },
+    {
+      "slug": "hc-launch-review",
+      "parent": "hc-launch",
+      "title": "Kiki's review and the public launch",
+      "size": "S",
+      "labels": [
+        "launch"
+      ],
+      "body": "Kiki plays the whole expansion and signs off; then it goes public.",
+      "files": [],
+      "acceptance": [
+        "Kiki has signed off",
+        "The expansion is reachable from the galaxy map for everyone"
+      ],
+      "blocked_by": [
+        "hc-analytics",
+        "hc-safety",
+        "hc-memorial-share",
+        "hc-emotes"
+      ],
+      "blocks": []
+    }
+  ]
+}

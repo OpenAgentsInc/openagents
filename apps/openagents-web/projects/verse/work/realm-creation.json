@@ -1,0 +1,173 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "realm-creation",
+    "title": "Realm creation from a drop",
+    "body": "Drop assets, images and documents on openagents.com and get a complete project card, roadmap and first realm, reviewed by the owner before it's public.",
+    "spec": "docs/projects/new-project.md",
+    "labels": [
+      "realm-creation"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "realm-drop",
+      "title": "From a drop to a published project",
+      "body": "The drop area, the agent's draft, the owner's review and publishing without a deploy.",
+      "parent": "realm-creation"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "rc-drop-zone",
+      "parent": "realm-drop",
+      "title": "NEW PROJECT on /projects: a drop area for assets, images and documents",
+      "size": "M",
+      "labels": [
+        "realm-creation",
+        "web"
+      ],
+      "body": "A drop area drawn in Coax on /projects (and on a project's own page for later drops): files of any kind, with progress, limits on size and type, stored privately until published.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "files": [],
+      "acceptance": [
+        "Dropping documents, images, audio and 3D files works on desktop; picking files works on a phone",
+        "Drops are private to their owner until published"
+      ],
+      "blocked_by": [
+        "pt-player-endpoints"
+      ],
+      "blocks": [
+        "rc-read-drop"
+      ]
+    },
+    {
+      "slug": "rc-read-drop",
+      "parent": "realm-drop",
+      "title": "An agent reads a drop and drafts the project",
+      "size": "L",
+      "labels": [
+        "realm-creation",
+        "web"
+      ],
+      "body": "An agent reads everything dropped and drafts the project card (name, one line, owner, cover, art direction), the design document in the owner's words with open questions, the roadmap as milestones and tasks with acceptance checks, and an asset inventory with licences. Google-first model routing.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "files": [],
+      "acceptance": [
+        "From the Planetary Villa notes alone, the draft covers every mechanic Kiki described",
+        "Each drafted task has acceptance checks a reviewer could run"
+      ],
+      "blocked_by": [
+        "rc-drop-zone"
+      ],
+      "blocks": [
+        "rc-engine-links",
+        "rc-review"
+      ]
+    },
+    {
+      "slug": "rc-engine-links",
+      "parent": "realm-drop",
+      "title": "The draft names the engine upgrades the design needs",
+      "size": "M",
+      "labels": [
+        "realm-creation",
+        "web"
+      ],
+      "body": "The agent compares the design with what the Verse engine can do and drafts linked engine tasks (reusing existing ones), with `needs` on the waiting tasks.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "files": [],
+      "acceptance": [
+        "Run on the Planetary Villa notes, it finds the engine needs the manual setup found"
+      ],
+      "blocked_by": [
+        "rc-read-drop"
+      ],
+      "blocks": [
+        "rc-publish"
+      ]
+    },
+    {
+      "slug": "rc-review",
+      "parent": "realm-drop",
+      "title": "The owner reviews and corrects the draft before anything is public",
+      "size": "M",
+      "labels": [
+        "realm-creation",
+        "web"
+      ],
+      "body": "A review view: the card, design, roadmap and links side by side, every field editable, with PUBLISH and DISCARD. Nothing reaches the relay or the bucket before PUBLISH.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "files": [],
+      "acceptance": [
+        "The owner can change any field and the published project matches the edits",
+        "DISCARD leaves no trace in public"
+      ],
+      "blocked_by": [
+        "rc-read-drop"
+      ],
+      "blocks": [
+        "rc-publish"
+      ]
+    },
+    {
+      "slug": "rc-publish",
+      "parent": "realm-drop",
+      "title": "Publish: key, Nostr events, assets, page and listing",
+      "size": "L",
+      "labels": [
+        "realm-creation",
+        "web"
+      ],
+      "body": "On PUBLISH the site makes the project's key (held for the owner until their account takes it), publishes the 30621 project and its work, stores the assets, and the project appears on /projects with its page, without a code change or a release.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "files": [],
+      "acceptance": [
+        "A project created from a drop is live at /projects/<slug> without a deploy",
+        "Its key never leaves the server unencrypted"
+      ],
+      "blocked_by": [
+        "rc-review",
+        "rc-engine-links"
+      ],
+      "blocks": [
+        "rc-first-realm",
+        "rc-later-drops"
+      ]
+    },
+    {
+      "slug": "rc-first-realm",
+      "parent": "realm-drop",
+      "title": "A first realm from the drop's assets",
+      "size": "L",
+      "labels": [
+        "realm-creation",
+        "web"
+      ],
+      "body": "The dropped 3D assets, textures and sounds placed in an empty realm so the project has somewhere to walk on day one, linked from its card.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "files": [],
+      "acceptance": [
+        "A drop with models produces a walkable realm with them placed"
+      ],
+      "blocked_by": [
+        "rc-publish"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "rc-later-drops",
+      "parent": "realm-drop",
+      "title": "Later drops grow a project, as proposals the owner accepts",
+      "size": "M",
+      "labels": [
+        "realm-creation",
+        "web"
+      ],
+      "body": "A drop on an existing project's page becomes proposed changes (new tasks, design notes, assets) that the owner accepts or declines.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "files": [],
+      "acceptance": [
+        "A second drop on Planetary Villa proposes changes and accepting them updates the page"
+      ],
+      "blocked_by": [
+        "rc-publish"
+      ],
+      "blocks": []
+    }
+  ]
+}
