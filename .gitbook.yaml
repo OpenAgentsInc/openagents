@@ -1,0 +1,6 @@
+# GitBook Git Sync publishes the Coax book from this folder (no GitHub Actions).
+root: ./coax/book/
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
