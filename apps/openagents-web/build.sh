@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm and build/private.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm and build/private.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -22,6 +22,9 @@ realm=$!
 "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 garden=$!
+# /realm/characters: the engine's figures (verse/figure.coax).
+"$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
+characters=$!
 # /verse and /verse/galaxy: the playtest's landing and galaxy.
 "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 verse_app=$!
@@ -55,3 +58,4 @@ wait "$splash"
 wait "$realm"
 wait "$verse_app"
 wait "$garden"
+wait "$characters"

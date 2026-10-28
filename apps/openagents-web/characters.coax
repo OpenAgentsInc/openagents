@@ -1,0 +1,380 @@
+// The characters realm, openagents.com/realm/characters: the Verse
+// engine's figures (verse/figure.coax) in a night garden, drawn by
+// characters.wgsl. Two shadow visitors (soft silhouettes, black, fuzzy at
+// the edge and lit only at the rim) and a lit one to compare; tap or click
+// a figure to choose it, then its gait (STAND, WALK, RUN) and its look
+// (SOFT or LIT). Drag turns the view, the wheel zooms.
+//
+// State lives in the host's memory (a Chars the face keeps), so the dev
+// server can swap this code in while the page runs.
+
+#load "font.coax";
+#load "analytics.coax";
+#load "../../verse/figure.coax";
+
+VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 24000;
+PLATES :: 16;
+FIGS :: 6;
+FIG_FLOATS :: 20;      // bound (4); coat, look; marks, pattern; x, y, z, yaw; bones, blend, size, glow
+// width, height, time, fade; figures, plates, dpr, chosen; the eye and the
+// view's half-height tangent; right, up, ahead; toward the moon; 0 (4); the
+// plates (PLATES × 8: x0, y0, x1, y1, scale, alpha, look, 0); the figures;
+// their bones (FIGS × MAX_PARTS × BONE_FLOATS).
+PANEL_AT :: 32;
+FIG_AT :: PANEL_AT + PLATES * 8;
+BONE_AT :: FIG_AT + FIGS * FIG_FLOATS;
+UNIFORM_FLOATS :: BONE_AT + FIGS * MAX_PARTS * BONE_FLOATS;
+INBOX :: 4096;
+
+MODE_STROKE :: 0.0;
+GAP :: 0.5; SPACE :: 1.2;
+PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
+GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
+LOOK_PLAIN :: 0.0; LOOK_LIT_UP :: 1.0; LOOK_HOVER :: 2.0;
+
+RING :: 2.2;           // metres: the gravel ring walkers follow
+FADE_GAIT :: 0.35;     // seconds one gait takes to blend into the next
+TARGET_Y :: 0.75;      // the height the view turns round
+
+// The buttons.
+BTN_STAND :: 0; BTN_WALK :: 1; BTN_RUN :: 2; BTN_LOOK :: 3;
+BUTTONS :: 4;
+
+Walker :: struct {
+  name: string;
+  shape: Shape;
+  skel: Skeleton;
+  gait: Gait = Gait.stand;
+  was: Gait = Gait.stand;  // the gait it is blending from
+  since: f32 = 10;         // seconds since the gait changed
+  phase: f32;
+  at: Place;
+  angle: f32;              // round the ring, radians
+  radius: f32 = RING;
+  bound: [4] f32;
+}
+
+Chars :: struct {
+  time: f32;
+  frames: int;
+  width: f32; height: f32; dpr: f32 = 1;
+  touch: bool;
+  yaw: f32 = 0.5; pitch: f32 = 0.3; dist: f32 = 6.5;
+  idle: f32;                 // seconds since a touch, a drag or a key
+  down: bool; down_id: int; lx: f32; ly: f32; travel: f32;
+  press: int = -1; hover: int = -1;
+  built: bool;
+  figs: [FIGS] Walker; fig_n: int; chosen: int;
+  eye: Fv; right: Fv; up: Fv; ahead: Fv; tv: f32 = 0.45;
+  plate_n: int; plates: [PLATES] Box; plate_alpha: [PLATES] f32; plate_look: [PLATES] f32;
+  boxes: [BUTTONS] Box; shown: [BUTTONS] bool;
+  inbox: [INBOX] u8;
+}
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+coaxial_chars_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_chars_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_chars_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+coaxial_chars_inbox_cap :: () -> int #export_c { return INBOX; }
+
+// ---- strokes (font.coax draws words with these)
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+ink_of :: (k: f32, light: f32, gold: bool) -> Ink {
+  return Ink.{core = 0.55 * k, light = light, glow = 1.2 * k, red = ifx gold then GOLD_R else PARCH_R,
+              green = ifx gold then GOLD_G else PARCH_G, blue = ifx gold then GOLD_B else PARCH_B, mode = MODE_STROKE, scale = k};
+}
+words :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, at, text, x, base, cap, GAP, SPACE, k, false, false);
+}
+centred :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return words(out, at, text, x - measure(text, GAP, SPACE, false) * cap * 0.5, base, cap, k);
+}
+plate :: (c: [] Chars, b: Box, alpha: f32, look: f32) {
+  n := c[0].plate_n;
+  if n >= PLATES { return; }
+  c[0].plates[n] = b; c[0].plate_alpha[n] = alpha; c[0].plate_look[n] = look; c[0].plate_n = n + 1;
+}
+button :: (c: [] Chars, out: [] f32, at: int, i: int, b: Box, label: string, on: bool) -> int {
+  k := c[0].dpr;
+  c[0].boxes[i] = b; c[0].shown[i] = true;
+  look: f32 = ifx on then LOOK_LIT_UP else LOOK_PLAIN;
+  if c[0].press == i || c[0].hover == i { look += LOOK_HOVER; }
+  plate(c, b, 0.9, look);
+  cap := lo(8.5 * k, (b.x1 - b.x0 - 10 * k) / hi(measure(label, GAP, SPACE, false), 0.001));
+  return centred(out, at, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, ink_of(k, ifx on then 1.0f32 else 0.85f32, on));
+}
+inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+phone :: (c: [] Chars) -> bool { return c[0].touch || c[0].width < 640 * c[0].dpr; }
+
+// ---- the cast
+
+walker :: (name: string, s: Shape, at: Place) -> Walker {
+  w: Walker; w.name = name; w.shape = verse_figure_shape_fix(s); w.skel = verse_figure_skeleton(w.shape); w.at = at;
+  w.angle = angle_of(at.z, at.x); w.radius = hi(1.2, sqrt(at.x * at.x + at.z * at.z));
+  return w;
+}
+// The host's memory starts as zeros, so the first frame sets what Chars's defaults say.
+build :: (c: [] Chars) {
+  c[0].yaw = 0.5; c[0].pitch = 0.3; c[0].dist = 6.5; c[0].press = -1; c[0].hover = -1; c[0].tv = 0.45;
+  visitor: Shape; visitor.look = LOOK_SOFT; visitor.girth = 0.9;
+  c[0].figs[0] = walker("THE VISITOR", visitor, Place.{x = RING, z = 0});
+  c[0].figs[0].gait = Gait.walk; c[0].figs[0].was = Gait.walk;
+  tall := visitor; tall.size = 1.1; tall.girth = 0.75; tall.head = 0.9;
+  c[0].figs[1] = walker("THE TALL ONE", tall, Place.{x = -0.9, z = 0.5, yaw = 0.5});
+  guest: Shape; guest.coat = fv(0.34, 0.12, 0.08); guest.marks = fv(0.2, 0.17, 0.14); guest.girth = 1.05;
+  c[0].figs[2] = walker("A GUEST", guest, Place.{x = 0.8, z = -0.6, yaw = -0.4});
+  c[0].fig_n = 3;
+  c[0].built = true;
+}
+
+set_gait :: (c: [] Chars, i: int, g: Gait) {
+  if i < 0 || i >= c[0].fig_n || c[0].figs[i].gait == g { return; }
+  w := c[0].figs[i];
+  if w.gait == Gait.stand {   // setting off: round the ring from where it is
+    w.angle = angle_of(w.at.z, w.at.x); w.radius = hi(1.2, sqrt(w.at.x * w.at.x + w.at.z * w.at.z));
+  }
+  w.was = w.gait; w.gait = g; w.since = 0;
+  c[0].figs[i] = w;
+}
+
+step :: (w: Walker, dt: f32) -> Walker {
+  r := w;
+  r.since += dt;
+  g := ifx r.gait == Gait.stand && r.since < FADE_GAIT then r.was else r.gait;
+  r.phase = fract(r.phase + verse_figure_stride_rate(r.shape, g) * dt);
+  speed := verse_figure_speed(r.shape, r.gait);
+  if r.since < FADE_GAIT { speed = verse_figure_speed(r.shape, r.was) + (speed - verse_figure_speed(r.shape, r.was)) * r.since / FADE_GAIT; }
+  if speed > 0 {
+    r.angle += speed / r.radius * dt;
+    r.at.x = cos(r.angle) * r.radius; r.at.z = sin(r.angle) * r.radius; r.at.yaw = -r.angle;
+  }
+  return r;
+}
+pose_of :: (w: Walker, clock: f32) -> Pose {
+  now := verse_figure_gait(w.shape.rig, w.gait, w.phase, clock);
+  if w.since >= FADE_GAIT { return now; }
+  return verse_figure_blend(verse_figure_gait(w.shape.rig, w.was, w.phase, clock), now, smooth01(w.since / FADE_GAIT));
+}
+
+// ---- the view
+
+view :: (c: [] Chars) {
+  cp := cos(c[0].pitch); sp := sin(c[0].pitch);
+  eye := fv(sin(c[0].yaw) * cp * c[0].dist, TARGET_Y + sp * c[0].dist, cos(c[0].yaw) * cp * c[0].dist);
+  ahead := fv_times(fv_sub(fv(0, TARGET_Y, 0), eye), 1.0 / c[0].dist);
+  right := fv(-ahead.z, 0, ahead.x);
+  rl := hi(fv_length(right), 0.0001); right = fv_times(right, 1.0 / rl);
+  up := fv(right.y * ahead.z - right.z * ahead.y, right.z * ahead.x - right.x * ahead.z, right.x * ahead.y - right.y * ahead.x);
+  c[0].eye = eye; c[0].ahead = ahead; c[0].right = right; c[0].up = up;
+  aspect := c[0].width / hi(c[0].height, 1);
+  c[0].tv = hi(0.42, 0.36 / hi(aspect, 0.1));
+}
+// The figure under device pixel x, y (its bound sphere nearest the eye), or -1.
+pick :: (c: [] Chars, x: f32, y: f32) -> int {
+  aspect := c[0].width / hi(c[0].height, 1);
+  nx := x / hi(c[0].width, 1) * 2 - 1; ny := 1 - y / hi(c[0].height, 1) * 2;
+  d := fv_add(c[0].ahead, fv_add(fv_times(c[0].right, nx * aspect * c[0].tv), fv_times(c[0].up, ny * c[0].tv)));
+  d = fv_times(d, 1.0 / fv_length(d));
+  best := -1; near: f32 = 1000000;
+  for i: 0..<c[0].fig_n {
+    b := c[0].figs[i].bound;
+    oc := fv_sub(c[0].eye, fv(b[0], b[1], b[2]));
+    bb := oc.x * d.x + oc.y * d.y + oc.z * d.z;
+    disc := bb * bb - (oc.x * oc.x + oc.y * oc.y + oc.z * oc.z) + b[3] * b[3] * 0.7;
+    if disc <= 0 { continue; }
+    t := -bb - sqrt(disc);
+    if t > 0 && t < near { near = t; best = i; }
+  }
+  return best;
+}
+
+// ---- the frame
+
+coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if !c[0].built { build(c); }
+  step_dt := clamp(ifx finite(dt) then dt else 0, 0, 0.1);
+  if still { step_dt = 0; }
+  c[0].time += step_dt; c[0].frames += 1; c[0].idle += step_dt;
+  c[0].width = width; c[0].height = height; c[0].dpr = hi(dpr, 0.5);
+  if c[0].idle > 6 { c[0].yaw += 0.05 * step_dt; }
+  if phone(c) && c[0].frames == 1 { c[0].dist = 7.5; }
+  for i: 0..<c[0].fig_n { c[0].figs[i] = step(c[0].figs[i], step_dt); }
+  view(c);
+
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = c[0].time; u[3] = smooth01(c[0].time / 1.2);
+  u[4] = cast(f32) c[0].fig_n; u[6] = c[0].dpr; u[7] = cast(f32) c[0].chosen;
+  u[8] = c[0].eye.x; u[9] = c[0].eye.y; u[10] = c[0].eye.z; u[11] = c[0].tv;
+  u[12] = c[0].right.x; u[13] = c[0].right.y; u[14] = c[0].right.z;
+  u[16] = c[0].up.x; u[17] = c[0].up.y; u[18] = c[0].up.z;
+  u[20] = c[0].ahead.x; u[21] = c[0].ahead.y; u[22] = c[0].ahead.z;
+  u[24] = -0.45; u[25] = 0.62; u[26] = -0.64;
+  for i: 0..<c[0].fig_n {
+    w := c[0].figs[i];
+    if (i + 1) * FIG_FLOATS > FIGS * FIG_FLOATS { break; }
+    bones := u[BONE_AT + i * MAX_PARTS * BONE_FLOATS ..< BONE_AT + (i + 1) * MAX_PARTS * BONE_FLOATS];
+    n := verse_figure_place(w.skel, pose_of(w, c[0].time), w.at, bones, c[0].figs[i].bound[..]);
+    o := FIG_AT + i * FIG_FLOATS;
+    b := c[0].figs[i].bound;
+    u[o] = b[0]; u[o + 1] = b[1]; u[o + 2] = b[2]; u[o + 3] = b[3];
+    u[o + 4] = w.shape.coat.x; u[o + 5] = w.shape.coat.y; u[o + 6] = w.shape.coat.z; u[o + 7] = cast(f32) w.shape.look;
+    u[o + 8] = w.shape.marks.x; u[o + 9] = w.shape.marks.y; u[o + 10] = w.shape.marks.z; u[o + 11] = cast(f32) w.shape.pattern;
+    u[o + 12] = w.at.x; u[o + 13] = w.at.y; u[o + 14] = w.at.z; u[o + 15] = w.at.yaw;
+    u[o + 16] = cast(f32) n; u[o + 17] = ifx w.shape.look == LOOK_SOFT then w.skel.blend * 2.5 else w.skel.blend; u[o + 18] = w.shape.size;
+    u[o + 19] = ifx i == c[0].chosen && w.shape.look == LOOK_LIT then 0.02f32 else 0;
+  }
+
+  // the HUD
+  c[0].plate_n = 0;
+  for i: 0..<BUTTONS { c[0].shown[i] = false; }
+  k := c[0].dpr;
+  m := ifx phone(c) then 16 * k else 28 * k;
+  vertices := 0;
+  vertices = words(out, vertices, "CHARACTERS", m, m + 14 * k, 14 * k, ink_of(k, 1, true));
+  w := c[0].figs[c[0].chosen];
+  vertices = words(out, vertices, w.name, m, m + 36 * k, 9 * k, ink_of(k, 0.95, false));
+  hint := ifx phone(c) then "TAP A FIGURE · DRAG TO TURN" else "CLICK A FIGURE TO CHOOSE IT · DRAG TO TURN · 1 2 3 GAIT · L LOOK";
+  vertices = words(out, vertices, hint, m, m + 54 * k, 6.5 * k, ink_of(k, 0.55, false));
+  labels := [BUTTONS] string.["STAND", "WALK", "RUN", ""];
+  bw := ifx phone(c) then lo(84 * k, (width - 2 * m - 3 * 8 * k) / 4) else 92 * k;
+  bh := 34 * k; gap := 8 * k;
+  x := (width - (bw * 4 + gap * 3)) * 0.5; y := height - m - bh;
+  for i: 0..<BUTTONS {
+    b := Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + bh};
+    if i == BTN_LOOK {
+      label := ifx w.shape.look == LOOK_SOFT then "SOFT" else "LIT";
+      vertices = button(c, out, vertices, i, b, label, w.shape.look == LOOK_SOFT);
+    } else {
+      g := cast(Gait) cast(u8) i;
+      if i == BTN_RUN { g = Gait.run; }
+      vertices = button(c, out, vertices, i, b, labels[i], w.gait == g);
+    }
+    x += bw + gap;
+  }
+  for p: 0..<c[0].plate_n {
+    o := PANEL_AT + p * 8; b := c[0].plates[p];
+    u[o] = b.x0; u[o + 1] = b.y0; u[o + 2] = b.x1; u[o + 3] = b.y1;
+    u[o + 4] = k; u[o + 5] = c[0].plate_alpha[p]; u[o + 6] = c[0].plate_look[p];
+  }
+  u[5] = cast(f32) c[0].plate_n;
+  return vertices;
+}
+
+// ---- input
+
+act :: (c: [] Chars, i: int) {
+  if i == BTN_STAND { set_gait(c, c[0].chosen, Gait.stand); }
+  else if i == BTN_WALK { set_gait(c, c[0].chosen, Gait.walk); }
+  else if i == BTN_RUN { set_gait(c, c[0].chosen, Gait.run); }
+  else if i == BTN_LOOK {
+    s := c[0].figs[c[0].chosen].shape;
+    s.look = ifx s.look == LOOK_SOFT then LOOK_LIT else LOOK_SOFT;
+    c[0].figs[c[0].chosen].shape = s;
+  }
+}
+button_at :: (c: [] Chars, x: f32, y: f32) -> int {
+  for i: 0..<BUTTONS { if c[0].shown[i] && inside(c[0].boxes[i], x, y) { return i; } }
+  return -1;
+}
+coaxial_chars_pointer :: (c: [] Chars, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if kind == 1 { c[0].touch = true; }
+  if phase == 0 {
+    c[0].idle = 0;
+    if c[0].down { return true; }
+    c[0].press = button_at(c, x, y);
+    c[0].down = true; c[0].down_id = id; c[0].lx = x; c[0].ly = y; c[0].travel = 0;
+    return true;
+  }
+  if phase == 1 {
+    if !c[0].down { c[0].hover = button_at(c, x, y); return false; }
+    if id != c[0].down_id { return true; }
+    dx := x - c[0].lx; dy := y - c[0].ly;
+    c[0].travel += abs(dx) + abs(dy);
+    if c[0].press < 0 {
+      k := c[0].dpr;
+      c[0].yaw -= dx / k * 0.008;
+      c[0].pitch = clamp(c[0].pitch + dy / k * 0.006, 0.05, 1.2);
+    }
+    c[0].lx = x; c[0].ly = y; c[0].idle = 0;
+    return true;
+  }
+  if !c[0].down || id != c[0].down_id { return false; }
+  c[0].down = false;
+  pressed := c[0].press; c[0].press = -1;
+  if phase == 3 { return true; }
+  if pressed >= 0 { if inside(c[0].boxes[pressed], x, y) { act(c, pressed); } return true; }
+  if c[0].travel < 10 * c[0].dpr {
+    f := pick(c, x, y);
+    if f >= 0 { c[0].chosen = f; }
+  }
+  return true;
+}
+coaxial_chars_wheel :: (c: [] Chars, dy: f32) #export_c {
+  c[0].dist = clamp(c[0].dist * exp(clamp(dy, -200, 200) * 0.0015), 2.5, 16);
+  c[0].idle = 0;
+}
+coaxial_chars_key :: (c: [] Chars, key: int, mods: int) -> bool #export_c {
+  c[0].idle = 0;
+  if key == '1' { act(c, BTN_STAND); return true; }
+  if key == '2' { act(c, BTN_WALK); return true; }
+  if key == '3' { act(c, BTN_RUN); return true; }
+  if key == 'l' || key == 'L' { act(c, BTN_LOOK); return true; }
+  if key == 9 || key == -5 { c[0].chosen = (c[0].chosen + 1) % (ifx c[0].fig_n > 0 then c[0].fig_n else 1); return true; }
+  if key == -4 { c[0].chosen = (c[0].chosen + c[0].fig_n - 1) % (ifx c[0].fig_n > 0 then c[0].fig_n else 1); return true; }
+  return false;
+}
+coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >= 0 then 1 else 0; }
+
+#test "the cast is built once, and a gait change walks the chosen figure off" {
+  cs: [1] Chars; c := cs[..];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert n > 0 && c[0].fig_n == 3 && u[4] == 3 && u[5] == 4;
+  #assert u[FIG_AT + 7] == 1 && u[FIG_AT + FIG_FLOATS * 2 + 7] == 0 && u[FIG_AT + 16] > 15;
+  x0 := c[0].figs[1].at.x;
+  c[0].chosen = 1;
+  #assert coaxial_chars_key(c, '2', 0);
+  for f: 0..<5 { n = coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.1, false); }
+  #assert c[0].figs[1].gait == Gait.walk && abs(c[0].figs[1].at.x - x0) > 0.1;
+  #assert coaxial_chars_key(c, 'l', 0) && c[0].figs[1].shape.look == LOOK_LIT;
+}
+#test "a tap on a button acts; a tap on a figure chooses it" {
+  cs: [1] Chars; c := cs[..];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := coaxial_chars_frame(c, out[..], u[..], 1280, 800, 1, 0.016, false);
+  b := c[0].boxes[BTN_RUN];
+  #assert coaxial_chars_pointer(c, b.x0 + 4, b.y0 + 4, 0, 0, 1) && coaxial_chars_pointer(c, b.x0 + 4, b.y0 + 4, 2, 0, 1);
+  #assert c[0].figs[0].gait == Gait.run;
+  // the guest, from where it stands on screen
+  w := c[0].figs[2].bound;
+  p := fv_sub(fv(w[0], w[1], w[2]), c[0].eye);
+  z := p.x * c[0].ahead.x + p.y * c[0].ahead.y + p.z * c[0].ahead.z;
+  sx := (p.x * c[0].right.x + p.y * c[0].right.y + p.z * c[0].right.z) / z / c[0].tv / (1280.0 / 800.0);
+  sy := (p.x * c[0].up.x + p.y * c[0].up.y + p.z * c[0].up.z) / z / c[0].tv;
+  px := (sx + 1) * 0.5 * 1280; py := (1 - sy) * 0.5 * 800;
+  #assert coaxial_chars_pointer(c, px, py, 0, 0, 1) && coaxial_chars_pointer(c, px, py, 2, 0, 1);
+  #assert c[0].chosen == 2;
+}

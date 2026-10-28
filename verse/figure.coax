@@ -1,0 +1,661 @@
+// Verse figures: characters built from a few dozen rounded bones, for the
+// realms that draw characters as soft shapes rather than skinned meshes (a
+// shadow visitor, a pet). A figure is a rig (a person or a four-legged
+// animal), a shape (its build, set by an agent or a slider) and a pose
+// (each joint's turn); verse_figure_place turns the three into bones in the
+// world, each a round cone between two joints, which a realm's shader
+// blends into one smooth body (apps/openagents-web/characters.wgsl).
+//
+// Axes: a figure stands on y = 0 facing +z, its left along +x. A joint's
+// turn is three angles in radians applied as yaw (about y), then pitch
+// (about the left axis, x), then roll (about the forward axis, z), and it
+// turns everything below it. Pitch + tips a bone that points up forward (a
+// bow, a nod) and swings a bone that hangs down backward (an arm, a leg);
+// roll + tips the top of the body toward its left. Every joint has limits
+// (verse_figure_limit) a motion is checked against (verse/motion.coax).
+//
+// The gaits are worked out here, from a clock: a person idles, walks and
+// runs; an animal walks (each foot in turn), trots (diagonal pairs) and
+// runs (a gallop, its back flexing), each foot's stride timed to its legs.
+//   coax/bin/coax test verse/figure.coax --library
+
+PI :: 3.14159265;
+MAX_JOINTS :: 36;
+MAX_PARTS :: 32;
+BONE_FLOATS :: 8;    // per placed bone: one end, its radius plus 1000 times its region, the other end, its radius
+
+Fv :: struct { x: f32; y: f32; z: f32; }
+M3 :: struct { m: [9] f32; }   // rows
+
+Rig :: enum u8 { person; animal; }
+
+// Where a part of the body is, for a coat's pattern: the trunk, the head,
+// the muzzle, an ear, the tail, the top of a limb, the bottom of a limb
+// (and a paw or a hand), an eye, the nose.
+REGION_BODY :: 0; REGION_HEAD :: 1; REGION_MUZZLE :: 2; REGION_EAR :: 3; REGION_TAIL :: 4;
+REGION_UPPER :: 5; REGION_LOWER :: 6; REGION_EYE :: 7; REGION_NOSE :: 8;
+
+// A coat: plain, patches, points (darker ears, muzzle, legs and tail),
+// stripes, or socks (pale feet).
+PATTERN_PLAIN :: 0; PATTERN_PATCHES :: 1; PATTERN_POINTS :: 2; PATTERN_STRIPES :: 3; PATTERN_SOCKS :: 4;
+PATTERNS :: 5;
+// How a figure is drawn: lit (its coat in the realm's light) or a soft
+// silhouette (black, fuzzy at its edges, lit only at its rim).
+LOOK_LIT :: 0; LOOK_SOFT :: 1;
+
+// A figure's build. 1 is the rig's usual; every number is held to its range
+// (verse_figure_shape_ok, verse_figure_shape_fix). An animal reads all of
+// them; a person reads size, legs, body, girth and head.
+Shape :: struct {
+  rig: Rig = Rig.person;
+  size: f32 = 1;     // 0.4 .. 1.8: the whole figure
+  legs: f32 = 1;     // 0.5 .. 1.6: leg length
+  body: f32 = 1;     // 0.6 .. 1.6: the trunk's length
+  girth: f32 = 1;    // 0.6 .. 1.6: how thick
+  head: f32 = 1;     // 0.7 .. 1.5
+  snout: f32 = 1;    // 0.4 .. 1.6: the muzzle's length
+  ears: f32 = 0;     // 0 .. 1: pricked up, to hanging down
+  ear_size: f32 = 1; // 0.5 .. 1.8
+  tail: f32 = 1;     // 0 .. 1.8: no tail to a long one
+  fluff: f32 = 1;    // 0.5 .. 2: the tail's thickness
+  coat: Fv = Fv.{x = 0.55, y = 0.36, z = 0.2};    // linear red, green, blue
+  marks: Fv = Fv.{x = 0.92, y = 0.88, z = 0.82};  // the pattern's colour
+  pattern: int;      // PATTERN_*
+  look: int;         // LOOK_*
+}
+
+Part :: struct { a: int; b: int; ra: f32; rb: f32; region: int; }
+
+// A rig built to a shape: each joint's parent and its place from the parent
+// when every turn is zero, and the bones between joints.
+Skeleton :: struct {
+  rig: Rig;
+  joints: int;
+  parent: [MAX_JOINTS] int;
+  offset: [MAX_JOINTS] Fv;
+  parts: int;
+  part: [MAX_PARTS] Part;
+  blend: f32;        // how far bones melt into each other, metres
+}
+
+// Each joint's turn (yaw, pitch, roll in x = pitch, y = yaw, z = roll) and
+// how far the whole figure is lifted or moved from where it stands.
+Pose :: struct { turn: [MAX_JOINTS] Fv; lift: Fv; }
+
+// The joints, by rig. A person:
+P_HIPS :: 0; P_SPINE :: 1; P_CHEST :: 2; P_NECK :: 3; P_HEAD :: 4; P_CROWN :: 5;
+P_L_SHOULDER :: 6; P_L_ELBOW :: 7; P_L_HAND :: 8; P_R_SHOULDER :: 9; P_R_ELBOW :: 10; P_R_HAND :: 11;
+P_L_HIP :: 12; P_L_KNEE :: 13; P_L_FOOT :: 14; P_L_TOE :: 15; P_R_HIP :: 16; P_R_KNEE :: 17; P_R_FOOT :: 18; P_R_TOE :: 19;
+PERSON_JOINTS :: 20;
+// An animal (front legs F, hind legs H; each leg's top, middle, lower, paw, toe):
+A_PELVIS :: 0; A_SPINE :: 1; A_CHEST :: 2; A_NECK :: 3; A_HEAD :: 4; A_NOSE :: 5;
+A_L_EAR :: 6; A_L_EAR_TIP :: 7; A_R_EAR :: 8; A_R_EAR_TIP :: 9;
+A_TAIL :: 10; A_TAIL_2 :: 11; A_TAIL_3 :: 12; A_TAIL_TIP :: 13;
+A_LF :: 14; A_RF :: 19; A_LH :: 24; A_RH :: 29;   // + 0 top, 1 middle, 2 lower, 3 paw, 4 toe
+A_L_EYE :: 34; A_R_EYE :: 35;
+ANIMAL_JOINTS :: 36;
+
+PERSON_NAMES :: [20] string.["hips", "spine", "chest", "neck", "head", "crown",
+  "left_shoulder", "left_elbow", "left_hand", "right_shoulder", "right_elbow", "right_hand",
+  "left_hip", "left_knee", "left_foot", "left_toe", "right_hip", "right_knee", "right_foot", "right_toe"];
+ANIMAL_NAMES :: [36] string.["pelvis", "spine", "chest", "neck", "head", "nose",
+  "left_ear", "left_ear_tip", "right_ear", "right_ear_tip", "tail", "tail_2", "tail_3", "tail_tip",
+  "front_left_shoulder", "front_left_elbow", "front_left_wrist", "front_left_paw", "front_left_toe",
+  "front_right_shoulder", "front_right_elbow", "front_right_wrist", "front_right_paw", "front_right_toe",
+  "hind_left_hip", "hind_left_knee", "hind_left_hock", "hind_left_paw", "hind_left_toe",
+  "hind_right_hip", "hind_right_knee", "hind_right_hock", "hind_right_paw", "hind_right_toe",
+  "left_eye", "right_eye"];
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+finite :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+fract :: (a: f32) -> f32 { return a - floor(a); }
+smooth01 :: (a: f32) -> f32 { t := clamp(a, 0, 1); return t * t * (3 - 2 * t); }
+// The angle of x, y from the x axis, radians (-PI .. PI).
+angle_of :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax + ay < 0.00001 { return 0; }
+  ratio := ifx ay > ax then ax / ay else ay / ax; rr := ratio * ratio;
+  a := ratio * (0.99997726 + rr * (-0.33262347 + rr * (0.19354346 + rr * (-0.11643287 + rr * (0.05265332 + rr * -0.01172120)))));
+  if ay > ax { a = 1.57079633 - a; }
+  if x < 0 { a = 3.14159265 - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+fv :: (x: f32, y: f32, z: f32) -> Fv { return Fv.{x = x, y = y, z = z}; }
+fv_add :: (a: Fv, b: Fv) -> Fv { return fv(a.x + b.x, a.y + b.y, a.z + b.z); }
+fv_sub :: (a: Fv, b: Fv) -> Fv { return fv(a.x - b.x, a.y - b.y, a.z - b.z); }
+fv_times :: (a: Fv, k: f32) -> Fv { return fv(a.x * k, a.y * k, a.z * k); }
+fv_mix :: (a: Fv, b: Fv, t: f32) -> Fv { return fv(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
+fv_length :: (a: Fv) -> f32 { return sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
+
+m3_identity :: () -> M3 { r: M3; r.m[0] = 1; r.m[4] = 1; r.m[8] = 1; return r; }
+m3_mul :: (a: M3, b: M3) -> M3 {
+  r: M3;
+  for i: 0..<3 { for j: 0..<3 {
+    r.m[i * 3 + j] = a.m[i * 3] * b.m[j] + a.m[i * 3 + 1] * b.m[3 + j] + a.m[i * 3 + 2] * b.m[6 + j];
+  } }
+  return r;
+}
+m3_apply :: (a: M3, v: Fv) -> Fv {
+  return fv(a.m[0] * v.x + a.m[1] * v.y + a.m[2] * v.z, a.m[3] * v.x + a.m[4] * v.y + a.m[5] * v.z, a.m[6] * v.x + a.m[7] * v.y + a.m[8] * v.z);
+}
+// yaw (about y), then pitch (about x), then roll (about z): Ry · Rx · Rz.
+m3_turn :: (t: Fv) -> M3 {
+  cy := cos(t.y); sy := sin(t.y); cx := cos(t.x); sx := sin(t.x); cz := cos(t.z); sz := sin(t.z);
+  ry := m3_identity(); ry.m[0] = cy; ry.m[2] = sy; ry.m[6] = -sy; ry.m[8] = cy;
+  rx := m3_identity(); rx.m[4] = cx; rx.m[5] = -sx; rx.m[7] = sx; rx.m[8] = cx;
+  rz := m3_identity(); rz.m[0] = cz; rz.m[1] = -sz; rz.m[3] = sz; rz.m[4] = cz;
+  return m3_mul(ry, m3_mul(rx, rz));
+}
+
+// ---- the shape
+
+shape_range :: (i: int) -> Fv {   // x the lowest, y the highest, z the usual
+  if i == 0 { return fv(0.4, 1.8, 1); }
+  if i == 1 || i == 2 || i == 3 { return fv(ifx i == 1 then 0.5f32 else 0.6f32, 1.6, 1); }
+  if i == 4 { return fv(0.7, 1.5, 1); }
+  if i == 5 { return fv(0.4, 1.6, 1); }
+  if i == 6 { return fv(0, 1, 0); }
+  if i == 7 { return fv(0.5, 1.8, 1); }
+  if i == 8 { return fv(0, 1.8, 1); }
+  return fv(0.5, 2, 1);
+}
+SHAPE_NUMBERS :: 10;
+SHAPE_NAMES :: [10] string.["size", "legs", "body", "girth", "head", "snout", "ears", "ear_size", "tail", "fluff"];
+verse_figure_shape_get :: (s: Shape, i: int) -> f32 #export_c {
+  if i == 0 { return s.size; } if i == 1 { return s.legs; } if i == 2 { return s.body; } if i == 3 { return s.girth; }
+  if i == 4 { return s.head; } if i == 5 { return s.snout; } if i == 6 { return s.ears; } if i == 7 { return s.ear_size; }
+  if i == 8 { return s.tail; } return s.fluff;
+}
+verse_figure_shape_set :: (s: Shape, i: int, v: f32) -> Shape #export_c {
+  r := s; range := shape_range(i);
+  w := ifx finite(v) then clamp(v, range.x, range.y) else range.z;
+  if i == 0 { r.size = w; } else if i == 1 { r.legs = w; } else if i == 2 { r.body = w; } else if i == 3 { r.girth = w; }
+  else if i == 4 { r.head = w; } else if i == 5 { r.snout = w; } else if i == 6 { r.ears = w; } else if i == 7 { r.ear_size = w; }
+  else if i == 8 { r.tail = w; } else if i == 9 { r.fluff = w; }
+  return r;
+}
+colour_ok :: (c: Fv) -> bool { return finite(c.x) && finite(c.y) && finite(c.z) && c.x >= 0 && c.y >= 0 && c.z >= 0 && c.x <= 1 && c.y <= 1 && c.z <= 1; }
+verse_figure_shape_ok :: (s: Shape) -> bool #export_c {
+  for i: 0..<SHAPE_NUMBERS { v := verse_figure_shape_get(s, i); r := shape_range(i); if !finite(v) || v < r.x || v > r.y { return false; } }
+  return colour_ok(s.coat) && colour_ok(s.marks) && s.pattern >= 0 && s.pattern < PATTERNS && (s.look == LOOK_LIT || s.look == LOOK_SOFT);
+}
+// The shape with every number held to its range (and a bad one the usual).
+verse_figure_shape_fix :: (s: Shape) -> Shape #export_c {
+  r := s;
+  for i: 0..<SHAPE_NUMBERS { r = verse_figure_shape_set(r, i, verse_figure_shape_get(s, i)); }
+  if !colour_ok(r.coat) { r.coat = fv(0.55, 0.36, 0.2); }
+  if !colour_ok(r.marks) { r.marks = fv(0.92, 0.88, 0.82); }
+  if r.pattern < 0 || r.pattern >= PATTERNS { r.pattern = PATTERN_PLAIN; }
+  if r.look != LOOK_SOFT { r.look = LOOK_LIT; }
+  return r;
+}
+
+// ---- the rigs
+
+joint :: (k: Skeleton, j: int, parent: int, at: Fv) -> Skeleton { r := k; r.parent[j] = parent; r.offset[j] = at; return r; }
+bone :: (k: Skeleton, a: int, b: int, ra: f32, rb: f32, region: int) -> Skeleton {
+  r := k;
+  if r.parts >= MAX_PARTS { return r; }
+  r.part[r.parts] = Part.{a = a, b = b, ra = ra, rb = rb, region = region}; r.parts += 1;
+  return r;
+}
+
+person :: (s: Shape) -> Skeleton {
+  k: Skeleton; k.rig = Rig.person; k.joints = PERSON_JOINTS;
+  z := s.size; L := s.legs * z; B := s.body * z; g := s.girth * z; h := s.head * z;
+  thigh := 0.43 * L; shin := 0.43 * L;
+  k = joint(k, P_HIPS, -1, fv(0, thigh + shin + 0.09 * z, 0));
+  k = joint(k, P_SPINE, P_HIPS, fv(0, 0.12 * B, 0));
+  k = joint(k, P_CHEST, P_SPINE, fv(0, 0.22 * B, 0));
+  k = joint(k, P_NECK, P_CHEST, fv(0, 0.2 * B, 0));
+  k = joint(k, P_HEAD, P_NECK, fv(0, 0.1 * z, 0.01 * z));
+  k = joint(k, P_CROWN, P_HEAD, fv(0, 0.1 * h, 0.015 * h));
+  for side: 0..<2 {
+    sx: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    sh := ifx side == 0 then P_L_SHOULDER else P_R_SHOULDER;
+    k = joint(k, sh, P_CHEST, fv(sx * 0.18 * g, 0.17 * B, 0));
+    k = joint(k, sh + 1, sh, fv(0, -0.28 * z, 0));
+    k = joint(k, sh + 2, sh + 1, fv(0, -0.26 * z, 0));
+    hip := ifx side == 0 then P_L_HIP else P_R_HIP;
+    k = joint(k, hip, P_HIPS, fv(sx * 0.1 * g, -0.03 * z, 0));
+    k = joint(k, hip + 1, hip, fv(0, -thigh, 0));
+    k = joint(k, hip + 2, hip + 1, fv(0, -shin, 0));
+    k = joint(k, hip + 3, hip + 2, fv(0, -0.02 * z, 0.13 * z));
+  }
+  k = bone(k, P_HIPS, P_L_HIP, 0.11 * g, 0.085 * g, REGION_BODY);
+  k = bone(k, P_HIPS, P_R_HIP, 0.11 * g, 0.085 * g, REGION_BODY);
+  k = bone(k, P_HIPS, P_SPINE, 0.12 * g, 0.115 * g, REGION_BODY);
+  k = bone(k, P_SPINE, P_CHEST, 0.115 * g, 0.14 * g, REGION_BODY);
+  k = bone(k, P_CHEST, P_NECK, 0.14 * g, 0.07 * g, REGION_BODY);
+  k = bone(k, P_L_SHOULDER, P_R_SHOULDER, 0.065 * g, 0.065 * g, REGION_BODY);
+  k = bone(k, P_NECK, P_HEAD, 0.05 * g, 0.055 * g, REGION_BODY);
+  k = bone(k, P_HEAD, P_CROWN, 0.09 * h, 0.1 * h, REGION_HEAD);
+  for side: 0..<2 {
+    sh := ifx side == 0 then P_L_SHOULDER else P_R_SHOULDER;
+    k = bone(k, sh, sh + 1, 0.055 * g, 0.045 * g, REGION_UPPER);
+    k = bone(k, sh + 1, sh + 2, 0.045 * g, 0.035 * g, REGION_LOWER);
+    k = bone(k, sh + 2, sh + 2, 0.045 * z, 0.045 * z, REGION_LOWER);
+    hip := ifx side == 0 then P_L_HIP else P_R_HIP;
+    k = bone(k, hip, hip + 1, 0.08 * g, 0.056 * g, REGION_UPPER);
+    k = bone(k, hip + 1, hip + 2, 0.055 * g, 0.04 * g, REGION_LOWER);
+    k = bone(k, hip + 2, hip + 3, 0.045 * z, 0.04 * z, REGION_LOWER);
+  }
+  k.blend = 0.035 * z;
+  return k;
+}
+
+animal :: (s: Shape) -> Skeleton {
+  k: Skeleton; k.rig = Rig.animal; k.joints = ANIMAL_JOINTS;
+  z := s.size; L := s.legs * z; B := s.body * z; g := s.girth * z; h := s.head * z; e := s.ear_size * h; t := s.tail * z; f := s.fluff * z;
+  paw := 0.035 * z;
+  k = joint(k, A_PELVIS, -1, fv(0, 0.05 * z + 0.46 * L + paw, -0.22 * B));
+  k = joint(k, A_SPINE, A_PELVIS, fv(0, 0.02 * z, 0.22 * B));
+  k = joint(k, A_CHEST, A_SPINE, fv(0, -0.01 * z, 0.22 * B));
+  k = joint(k, A_NECK, A_CHEST, fv(0, 0.1 * z, 0.1 * z));
+  k = joint(k, A_HEAD, A_NECK, fv(0, 0.1 * z, 0.06 * z));
+  k = joint(k, A_NOSE, A_HEAD, fv(0, -0.03 * h, 0.14 * h * s.snout));
+  k = joint(k, A_L_EYE, A_HEAD, fv(0.037 * h, 0.03 * h, 0.06 * h));
+  k = joint(k, A_R_EYE, A_HEAD, fv(-0.037 * h, 0.03 * h, 0.06 * h));
+  for side: 0..<2 {
+    sx: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    ear := ifx side == 0 then A_L_EAR else A_R_EAR;
+    k = joint(k, ear, A_HEAD, fv(sx * 0.05 * h, 0.06 * h, -0.03 * h));
+    k = joint(k, ear + 1, ear, fv_times(fv_mix(fv(sx * 0.015, 0.085, -0.01), fv(sx * 0.04, -0.07, 0.02), s.ears), e));
+    front := ifx side == 0 then A_LF else A_RF;
+    k = joint(k, front, A_CHEST, fv(sx * 0.08 * g, -0.06 * z, 0.02 * z));
+    k = joint(k, front + 1, front, fv(0, -0.2 * L, -0.03 * L));
+    k = joint(k, front + 2, front + 1, fv(0, -0.18 * L, 0.02 * L));
+    k = joint(k, front + 3, front + 2, fv(0, -0.08 * L, 0));
+    k = joint(k, front + 4, front + 3, fv(0, 0, 0.055 * z));
+    hind := ifx side == 0 then A_LH else A_RH;
+    k = joint(k, hind, A_PELVIS, fv(sx * 0.08 * g, -0.05 * z, 0));
+    k = joint(k, hind + 1, hind, fv(0, -0.18 * L, 0.06 * L));
+    k = joint(k, hind + 2, hind + 1, fv(0, -0.17 * L, -0.1 * L));
+    k = joint(k, hind + 3, hind + 2, fv(0, -0.11 * L, 0.02 * L));
+    k = joint(k, hind + 4, hind + 3, fv(0, 0, 0.055 * z));
+  }
+  k = joint(k, A_TAIL, A_PELVIS, fv(0, 0.03 * z, -0.08 * z));
+  k = joint(k, A_TAIL_2, A_TAIL, fv(0, 0.05 * t, -0.1 * t));
+  k = joint(k, A_TAIL_3, A_TAIL_2, fv(0, 0.04 * t, -0.1 * t));
+  k = joint(k, A_TAIL_TIP, A_TAIL_3, fv(0, 0.02 * t, -0.09 * t));
+
+  k = bone(k, A_PELVIS, A_SPINE, 0.105 * g, 0.115 * g, REGION_BODY);
+  k = bone(k, A_SPINE, A_CHEST, 0.115 * g, 0.125 * g, REGION_BODY);
+  k = bone(k, A_CHEST, A_NECK, 0.1 * g, 0.07 * g, REGION_BODY);
+  k = bone(k, A_NECK, A_HEAD, 0.07 * g, 0.085 * h, REGION_HEAD);
+  k = bone(k, A_HEAD, A_NOSE, 0.075 * h, 0.035 * h, REGION_MUZZLE);
+  k = bone(k, A_NOSE, A_NOSE, 0.022 * h, 0.022 * h, REGION_NOSE);
+  k = bone(k, A_L_EYE, A_L_EYE, 0.016 * h, 0.016 * h, REGION_EYE);
+  k = bone(k, A_R_EYE, A_R_EYE, 0.016 * h, 0.016 * h, REGION_EYE);
+  k = bone(k, A_L_EAR, A_L_EAR_TIP, 0.03 * e, 0.01 * e, REGION_EAR);
+  k = bone(k, A_R_EAR, A_R_EAR_TIP, 0.03 * e, 0.01 * e, REGION_EAR);
+  if s.tail > 0.05 {
+    k = bone(k, A_TAIL, A_TAIL_2, 0.032 * f, 0.03 * f, REGION_TAIL);
+    k = bone(k, A_TAIL_2, A_TAIL_3, 0.03 * f, 0.025 * f, REGION_TAIL);
+    k = bone(k, A_TAIL_3, A_TAIL_TIP, 0.025 * f, 0.01 * f, REGION_TAIL);
+  }
+  for leg: 0..<4 {
+    top := A_LF + leg * 5;
+    hind := leg >= 2;
+    k = bone(k, top, top + 1, ifx hind then 0.072 * g else 0.058 * g, 0.042 * z, REGION_UPPER);
+    k = bone(k, top + 1, top + 2, 0.036 * z, 0.029 * z, REGION_LOWER);
+    k = bone(k, top + 2, top + 3, 0.029 * z, 0.03 * z, REGION_LOWER);
+    k = bone(k, top + 3, top + 4, paw, 0.032 * z, REGION_LOWER);
+  }
+  k.blend = 0.03 * z;
+  return k;
+}
+
+verse_figure_skeleton :: (s: Shape) -> Skeleton #export_c {
+  f := verse_figure_shape_fix(s);
+  return ifx f.rig == Rig.animal then animal(f) else person(f);
+}
+verse_figure_joints :: (r: Rig) -> int #export_c { return ifx r == Rig.animal then ANIMAL_JOINTS else PERSON_JOINTS; }
+verse_figure_joint_name :: (r: Rig, j: int) -> string #export_c {
+  if j < 0 || j >= verse_figure_joints(r) { return ""; }
+  return ifx r == Rig.animal then ANIMAL_NAMES[j] else PERSON_NAMES[j];
+}
+verse_figure_joint_named :: (r: Rig, name: string) -> int #export_c {
+  for j: 0..<verse_figure_joints(r) { if verse_figure_joint_name(r, j) == name { return j; } }
+  return -1;
+}
+
+// ---- limits: how far each joint may turn, in radians (x the lowest pitch,
+// y the highest; then yaw and roll the same way). The root turns freely.
+Limit :: struct { pitch: Fv; yaw: Fv; roll: Fv; }   // each: x lowest, y highest
+lim :: (p0: f32, p1: f32, y0: f32, y1: f32, r0: f32, r1: f32) -> Limit {
+  d: f32 = PI / 180;
+  return Limit.{pitch = fv(p0 * d, p1 * d, 0), yaw = fv(y0 * d, y1 * d, 0), roll = fv(r0 * d, r1 * d, 0)};
+}
+person_limit :: (j: int) -> Limit {
+  if j == P_HIPS { return lim(-180, 180, -180, 180, -180, 180); }
+  if j == P_SPINE || j == P_CHEST { return lim(-35, 70, -45, 45, -35, 35); }
+  if j == P_NECK { return lim(-45, 60, -75, 75, -35, 35); }
+  if j == P_HEAD { return lim(-45, 45, -60, 60, -35, 35); }
+  if j == P_L_SHOULDER { return lim(-190, 70, -100, 100, -40, 190); }
+  if j == P_R_SHOULDER { return lim(-190, 70, -100, 100, -190, 40); }
+  if j == P_L_ELBOW || j == P_R_ELBOW { return lim(-155, 5, -100, 100, -10, 10); }
+  if j == P_L_HAND || j == P_R_HAND { return lim(-80, 80, -40, 40, -60, 60); }
+  if j == P_L_HIP { return lim(-125, 50, -50, 50, -30, 80); }
+  if j == P_R_HIP { return lim(-125, 50, -50, 50, -80, 30); }
+  if j == P_L_KNEE || j == P_R_KNEE { return lim(-5, 155, -10, 10, -10, 10); }
+  if j == P_L_FOOT || j == P_R_FOOT { return lim(-50, 50, -30, 30, -25, 25); }
+  return lim(0, 0, 0, 0, 0, 0);
+}
+animal_limit :: (j: int) -> Limit {
+  if j == A_PELVIS { return lim(-180, 180, -180, 180, -180, 180); }
+  if j == A_SPINE || j == A_CHEST { return lim(-40, 40, -40, 40, -30, 30); }
+  if j == A_NECK { return lim(-70, 80, -80, 80, -40, 40); }
+  if j == A_HEAD { return lim(-60, 60, -60, 60, -45, 45); }
+  if j == A_L_EAR || j == A_R_EAR { return lim(-70, 70, -60, 60, -70, 70); }
+  if j == A_TAIL || j == A_TAIL_2 || j == A_TAIL_3 { return lim(-80, 100, -80, 80, -40, 40); }
+  if j >= A_LF && j < A_L_EYE {
+    leg := (j - A_LF) / 5; at := (j - A_LF) % 5; hind := leg >= 2;
+    if at == 0 { return ifx hind then lim(-110, 80, -25, 25, -40, 40) else lim(-130, 80, -25, 25, -40, 40); }
+    if at == 1 { return ifx hind then lim(-30, 130, -10, 10, -10, 10) else lim(-10, 150, -10, 10, -10, 10); }
+    if at == 2 { return ifx hind then lim(-130, 40, -10, 10, -10, 10) else lim(-40, 130, -10, 10, -10, 10); }
+    if at == 3 { return lim(-80, 80, -20, 20, -20, 20); }
+  }
+  return lim(0, 0, 0, 0, 0, 0);
+}
+verse_figure_limit :: (r: Rig, j: int) -> Limit #export_c { return ifx r == Rig.animal then animal_limit(j) else person_limit(j); }
+within :: (a: f32, range: Fv) -> bool { return a >= range.x - 0.0001 && a <= range.y + 0.0001; }
+// Whether joint j may turn t (no tolerance beyond rounding).
+verse_figure_turn_ok :: (r: Rig, j: int, t: Fv) -> bool #export_c {
+  l := verse_figure_limit(r, j);
+  return finite(t.x) && finite(t.y) && finite(t.z) && within(t.x, l.pitch) && within(t.y, l.yaw) && within(t.z, l.roll);
+}
+// t held to joint j's limits.
+verse_figure_turn_hold :: (r: Rig, j: int, t: Fv) -> Fv #export_c {
+  l := verse_figure_limit(r, j);
+  return fv(clamp(ifx finite(t.x) then t.x else 0, l.pitch.x, l.pitch.y), clamp(ifx finite(t.y) then t.y else 0, l.yaw.x, l.yaw.y),
+            clamp(ifx finite(t.z) then t.z else 0, l.roll.x, l.roll.y));
+}
+
+// ---- placing a posed figure in the world
+
+// Where a figure stands: x, ground height y, z, and the way it faces.
+Place :: struct { x: f32; y: f32; z: f32; yaw: f32; }
+
+// The joints of a posed figure in the world (out: one per joint).
+verse_figure_joints_at :: (k: Skeleton, p: Pose, at: Place, out: [] Fv) -> bool #export_c {
+  if out.count < k.joints || k.joints > MAX_JOINTS { return false; }
+  rot: [MAX_JOINTS] M3;
+  base := m3_turn(fv(0, at.yaw, 0));
+  for j: 0..<k.joints {
+    t := verse_figure_turn_hold(k.rig, j, p.turn[j]);
+    parent := k.parent[j];
+    if parent < 0 || parent >= j {
+      lift := fv(clamp(p.lift.x, -3, 3), clamp(p.lift.y, -3, 3), clamp(p.lift.z, -3, 3));
+      out[j] = fv_add(fv(at.x, at.y, at.z), m3_apply(base, fv_add(k.offset[j], lift)));
+      rot[j] = m3_mul(base, m3_turn(t));
+    } else {
+      out[j] = fv_add(out[parent], m3_apply(rot[parent], k.offset[j]));
+      rot[j] = m3_mul(rot[parent], m3_turn(t));
+    }
+  }
+  return true;
+}
+
+// The bones of a posed figure in the world, BONE_FLOATS each, for the
+// shader: end a and its radius (plus 1000 × the bone's region), end b and
+// its radius. Returns how many bones; bound (4 floats) gets a sphere round
+// all of them.
+verse_figure_place :: (k: Skeleton, p: Pose, at: Place, out: [] f32, bound: [] f32) -> int #export_c {
+  if bound.count < 4 { return 0; }
+  joints: [MAX_JOINTS] Fv;
+  if !verse_figure_joints_at(k, p, at, joints[..]) { return 0; }
+  n := 0;
+  c := fv(0, 0, 0);
+  for j: 0..<k.joints { c = fv_add(c, joints[j]); }
+  c = fv_times(c, 1.0 / cast(f32) hi(1, cast(f32) k.joints));
+  r: f32 = 0;
+  for i: 0..<k.parts {
+    if (n + 1) * BONE_FLOATS > out.count { break; }
+    q := k.part[i];
+    a := joints[q.a]; b := joints[q.b];
+    o := n * BONE_FLOATS;
+    out[o] = a.x; out[o + 1] = a.y; out[o + 2] = a.z; out[o + 3] = q.ra + 1000 * cast(f32) q.region;
+    out[o + 4] = b.x; out[o + 5] = b.y; out[o + 6] = b.z; out[o + 7] = q.rb;
+    r = hi(r, fv_length(fv_sub(a, c)) + q.ra);
+    r = hi(r, fv_length(fv_sub(b, c)) + q.rb);
+    n += 1;
+  }
+  bound[0] = c.x; bound[1] = c.y; bound[2] = c.z; bound[3] = r + k.blend;
+  return n;
+}
+
+// ---- gaits
+
+Gait :: enum u8 { stand; walk; trot; run; }
+
+// How many strides a second a gait takes, for a figure of this shape, and
+// how fast it then goes (metres a second): a longer leg strides slower and
+// further.
+verse_figure_stride_rate :: (s: Shape, g: Gait) -> f32 #export_c {
+  leg := hi(0.2, s.size * s.legs);
+  base: f32 = ifx g == Gait.walk then 1.0f32 else ifx g == Gait.trot then 1.5f32 else ifx g == Gait.run then 1.9f32 else 0.25f32;
+  if s.rig == Rig.person { base = ifx g == Gait.walk then 0.95f32 else ifx g == Gait.run || g == Gait.trot then 1.45f32 else 0.25f32; }
+  return base / sqrt(leg);
+}
+verse_figure_speed :: (s: Shape, g: Gait) -> f32 #export_c {
+  leg := hi(0.2, s.size * s.legs);
+  stride: f32 = ifx g == Gait.walk then 0.85f32 else ifx g == Gait.trot then 1.25f32 else ifx g == Gait.run then 2.4f32 else 0;
+  if s.rig == Rig.person { stride = ifx g == Gait.walk then 1.45f32 else ifx g == Gait.run || g == Gait.trot then 2.6f32 else 0; leg = leg * 0.9; }
+  return stride * leg * verse_figure_stride_rate(s, g);
+}
+
+wave :: (phase: f32) -> f32 { return sin(phase * 2 * PI); }
+
+person_gait :: (g: Gait, phase: f32, clock: f32) -> Pose {
+  p: Pose;
+  breathe := sin(clock * 1.7);
+  if g == Gait.stand {
+    p.turn[P_CHEST] = fv(0.02 * breathe, 0, 0);
+    p.turn[P_L_SHOULDER] = fv(0.03 * breathe, 0, 0.06); p.turn[P_R_SHOULDER] = fv(0.03 * breathe, 0, -0.06);
+    p.turn[P_L_ELBOW] = fv(-0.12, 0, 0); p.turn[P_R_ELBOW] = fv(-0.12, 0, 0);
+    p.turn[P_HEAD] = fv(0, 0.15 * sin(clock * 0.31), 0);
+    return p;
+  }
+  run := g == Gait.run || g == Gait.trot;
+  a: f32 = ifx run then 0.75f32 else 0.42f32;
+  s := wave(phase); c := cos(phase * 2 * PI);
+  p.turn[P_L_HIP] = fv(-a * s, 0, 0.02); p.turn[P_R_HIP] = fv(a * s, 0, -0.02);
+  lift: f32 = ifx run then 1.5f32 else 0.75f32;
+  left := hi(0, c); right := hi(0, -c);
+  p.turn[P_L_KNEE] = fv(0.1 + lift * left * left, 0, 0); p.turn[P_R_KNEE] = fv(0.1 + lift * right * right, 0, 0);
+  p.turn[P_L_FOOT] = fv(-0.25 * left + 0.15 * s, 0, 0); p.turn[P_R_FOOT] = fv(-0.25 * right - 0.15 * s, 0, 0);
+  arm: f32 = ifx run then 0.9f32 else 0.45f32;
+  p.turn[P_L_SHOULDER] = fv(arm * s, 0, 0.08); p.turn[P_R_SHOULDER] = fv(-arm * s, 0, -0.08);
+  bend: f32 = ifx run then -1.5f32 else -0.3f32;
+  p.turn[P_L_ELBOW] = fv(bend - 0.2 * hi(0, s), 0, 0); p.turn[P_R_ELBOW] = fv(bend - 0.2 * hi(0, -s), 0, 0);
+  p.turn[P_SPINE] = fv(ifx run then 0.18f32 else 0.04f32, 0.12 * s, 0);
+  p.turn[P_CHEST] = fv(0, -0.2 * s, 0);
+  p.turn[P_HIPS] = fv(0, 0.08 * s, 0);
+  bob := abs(c);
+  reach := 0.8 * (1 - cos(a * s));   // the legs spread lower the hips
+  p.lift = fv(0, (ifx run then 0.05f32 else 0.02f32) * (bob - 0.5) - reach - (ifx run then 0.02f32 else 0.0f32), 0);
+  return p;
+}
+
+// One leg's swing over its own stride (0..1, the foot down for the first
+// duty of it): the top joint's pitch and how much the leg folds to lift.
+Swing :: struct { pitch: f32; fold: f32; }
+swing :: (q: f32, duty: f32, reach: f32) -> Swing {
+  if q < duty { return Swing.{pitch = -reach * (1 - 2 * q / duty), fold = 0}; }
+  u := (q - duty) / (1 - duty);
+  return Swing.{pitch = reach * (1 - 2 * smooth01(u)), fold = sin(u * PI)};
+}
+
+animal_gait :: (g: Gait, phase: f32, clock: f32) -> Pose {
+  p: Pose;
+  breathe := sin(clock * 2.1);
+  p.turn[A_TAIL] = fv(-0.5, 0.15 * sin(clock * 1.3), 0);
+  p.turn[A_TAIL_2] = fv(0.15, 0, 0);
+  if g == Gait.stand {
+    p.turn[A_SPINE] = fv(0, 0, 0.01 * breathe);
+    p.turn[A_NECK] = fv(-0.05, 0.2 * sin(clock * 0.37), 0);
+    p.turn[A_HEAD] = fv(0.05 + 0.05 * sin(clock * 0.53), 0, 0.06 * sin(clock * 0.29));
+    p.lift = fv(0, 0.004 * breathe, 0);
+    return p;
+  }
+  // each leg's offset in the stride (front left, front right, hind left, hind right) and how long its foot is down
+  duty: f32 = ifx g == Gait.walk then 0.66f32 else ifx g == Gait.trot then 0.5f32 else 0.36f32;
+  reach: f32 = ifx g == Gait.walk then 0.32f32 else ifx g == Gait.trot then 0.45f32 else 0.7f32;
+  offsets := [4] f32.[0.25, 0.75, 0, 0.5];
+  if g == Gait.trot { offsets = [4] f32.[0, 0.5, 0.5, 0]; }
+  if g == Gait.run { offsets = [4] f32.[0.55, 0.65, 0, 0.1]; }
+  for leg: 0..<4 {
+    w := swing(fract(phase + offsets[leg]), duty, reach);
+    top := A_LF + leg * 5;
+    if leg < 2 {
+      p.turn[top] = fv(w.pitch, 0, 0);
+      p.turn[top + 1] = fv(0.1 + 1.0 * w.fold, 0, 0);
+      p.turn[top + 2] = fv(0.35 * w.fold, 0, 0);
+      p.turn[top + 3] = fv(0.3 * w.fold, 0, 0);
+    } else {
+      p.turn[top] = fv(w.pitch * 0.9 - 0.25 * w.fold, 0, 0);
+      p.turn[top + 1] = fv(0.7 * w.fold, 0, 0);
+      p.turn[top + 2] = fv(-0.7 * w.fold, 0, 0);
+      p.turn[top + 3] = fv(0.4 * w.fold, 0, 0);
+    }
+  }
+  s := wave(phase);
+  if g == Gait.run {
+    p.turn[A_SPINE] = fv(0.22 * s, 0, 0);
+    p.turn[A_CHEST] = fv(0.12 * s, 0, 0);
+    p.turn[A_NECK] = fv(-0.3 - 0.12 * s, 0, 0);
+    p.lift = fv(0, 0.05 * s - 0.01, 0);
+    p.turn[A_TAIL] = fv(-0.1, 0, 0);
+  } else {
+    p.turn[A_SPINE] = fv(0, 0.05 * s, 0);
+    p.turn[A_NECK] = fv(-0.1 + 0.04 * wave(phase * 2), 0, 0);
+    p.lift = fv(0, (ifx g == Gait.trot then 0.012f32 else 0.006f32) * wave(phase * 2), 0);
+    p.turn[A_TAIL] = fv(-0.5, 0.25 * s, 0);
+  }
+  return p;
+}
+
+// The gait's pose at phase (0..1 through one stride) and clock (seconds,
+// for breathing and idling).
+verse_figure_gait :: (r: Rig, g: Gait, phase: f32, clock: f32) -> Pose #export_c {
+  return ifx r == Rig.animal then animal_gait(g, fract(phase), clock) else person_gait(g, fract(phase), clock);
+}
+
+// A blend of two poses, t from a to b, joint by joint.
+verse_figure_blend :: (a: Pose, b: Pose, t: f32) -> Pose #export_c {
+  r: Pose; w := clamp(t, 0, 1);
+  for j: 0..<MAX_JOINTS { r.turn[j] = fv_mix(a.turn[j], b.turn[j], w); }
+  r.lift = fv_mix(a.lift, b.lift, w);
+  return r;
+}
+
+// ---- checks
+
+#test "a person stands on the ground, as tall as its shape" {
+  s: Shape;
+  k := verse_figure_skeleton(s);
+  p: Pose;
+  joints: [MAX_JOINTS] Fv;
+  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert abs(joints[P_L_TOE].y - 0.04) < 0.03 && abs(joints[P_R_FOOT].y - 0.06) < 0.001;
+  #assert joints[P_CROWN].y > 1.6 && joints[P_CROWN].y < 1.85;
+  #assert joints[P_L_HAND].x > 0 && joints[P_R_HAND].x < 0;
+  s.size = 0.5; k = verse_figure_skeleton(s);
+  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert joints[P_CROWN].y > 0.8 && joints[P_CROWN].y < 0.95;
+}
+#test "an animal stands on its four paws, its head in front" {
+  s: Shape; s.rig = Rig.animal;
+  k := verse_figure_skeleton(s);
+  p: Pose;
+  joints: [MAX_JOINTS] Fv;
+  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  for leg: 0..<4 { #assert abs(joints[A_LF + leg * 5 + 3].y - 0.035) < 0.002; }
+  #assert joints[A_NOSE].z > joints[A_CHEST].z && joints[A_TAIL_TIP].z < joints[A_PELVIS].z;
+  #assert joints[A_L_EAR_TIP].y > joints[A_L_EAR].y;
+  s.ears = 1; k = verse_figure_skeleton(s);
+  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert joints[A_L_EAR_TIP].y < joints[A_L_EAR].y;
+  s.legs = 1.5; k = verse_figure_skeleton(s);
+  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert abs(joints[A_RH + 3].y - 0.035) < 0.002;
+}
+#test "a figure faces where it is placed, and turns carry their children" {
+  s: Shape;
+  k := verse_figure_skeleton(s);
+  p: Pose;
+  joints: [MAX_JOINTS] Fv;
+  #assert verse_figure_joints_at(k, p, Place.{x = 2, z = 3, yaw = PI * 0.5}, joints[..]);
+  #assert joints[P_L_TOE].x > joints[P_L_FOOT].x + 0.1;
+  p.turn[P_L_SHOULDER] = fv(0, 0, PI * 0.5);
+  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert joints[P_L_HAND].x > 0.6 && abs(joints[P_L_HAND].y - joints[P_L_SHOULDER].y) < 0.01;
+  p.turn[P_L_SHOULDER] = fv(-PI * 0.5, 0, 0);
+  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert joints[P_L_HAND].z > 0.5;
+}
+#test "turns are held to their joint's limits, and the limits are checked" {
+  #assert verse_figure_turn_ok(Rig.person, P_L_KNEE, fv(1, 0, 0));
+  #assert !verse_figure_turn_ok(Rig.person, P_L_KNEE, fv(-1, 0, 0));
+  #assert !verse_figure_turn_ok(Rig.person, P_L_KNEE, fv(0.0 / 0.0, 0, 0));
+  h := verse_figure_turn_hold(Rig.person, P_L_KNEE, fv(-1, 0.5, 0));
+  #assert h.x > -0.1 && h.y < 0.2;
+  #assert verse_figure_turn_ok(Rig.animal, A_PELVIS, fv(0, 3, 3));
+  #assert !verse_figure_turn_ok(Rig.animal, A_NOSE, fv(0.1, 0, 0));
+  #assert verse_figure_joint_named(Rig.animal, "tail_2") == A_TAIL_2 && verse_figure_joint_named(Rig.person, "tail") == -1;
+  #assert verse_figure_joint_name(Rig.animal, A_RH + 2) == "hind_right_hock";
+}
+#test "a shape is held to its ranges" {
+  s: Shape;
+  #assert verse_figure_shape_ok(s);
+  s.size = 9; s.pattern = 12; s.coat = fv(2, 0, 0);
+  #assert !verse_figure_shape_ok(s);
+  f := verse_figure_shape_fix(s);
+  #assert verse_figure_shape_ok(f) && f.size == 1.8 && f.pattern == 0;
+  #assert verse_figure_shape_set(f, 6, 0.0 / 0.0).ears == 0;
+}
+#test "bones are placed inside their bound, regions and radii packed" {
+  s: Shape; s.rig = Rig.animal;
+  k := verse_figure_skeleton(s);
+  out: [MAX_PARTS * BONE_FLOATS] f32; bound: [4] f32;
+  n := verse_figure_place(k, verse_figure_gait(Rig.animal, Gait.trot, 0.3, 1), Place.{x = 1}, out[..], bound[..]);
+  #assert n == k.parts && n > 25 && n <= MAX_PARTS;
+  for i: 0..<n {
+    o := i * BONE_FLOATS;
+    region := floor(out[o + 3] / 1000);
+    #assert region >= 0 && region <= 8 && out[o + 3] - region * 1000 > 0 && out[o + 3] - region * 1000 < 0.3;
+    dx := out[o] - bound[0]; dy := out[o + 1] - bound[1]; dz := out[o + 2] - bound[2];
+    #assert sqrt(dx * dx + dy * dy + dz * dz) < bound[3];
+  }
+  small: [16] f32;
+  #assert verse_figure_place(k, Pose.{}, Place.{}, small[..], bound[..]) == 2;
+}
+#test "every gait keeps its turns inside the limits and its feet near the ground" {
+  for r: 0..<2 {
+    rig := ifx r == 0 then Rig.person else Rig.animal;
+    s: Shape; s.rig = rig;
+    k := verse_figure_skeleton(s);
+    for g: 0..<4 {
+      for n: 0..<20 {
+        p := verse_figure_gait(rig, cast(Gait) cast(u8) g, cast(f32) n / 20, cast(f32) n);
+        for j: 0..<k.joints { #assert verse_figure_turn_ok(rig, j, p.turn[j]); }
+        joints: [MAX_JOINTS] Fv;
+        #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+        low: f32 = 10;
+        for j: 0..<k.joints { low = lo(low, joints[j].y); }
+        #assert low > -0.08 && low < 0.15;
+      }
+    }
+  }
+}
+#test "a faster gait goes faster, a bigger figure strides slower" {
+  s: Shape; s.rig = Rig.animal;
+  #assert verse_figure_speed(s, Gait.walk) < verse_figure_speed(s, Gait.trot) && verse_figure_speed(s, Gait.trot) < verse_figure_speed(s, Gait.run);
+  #assert verse_figure_speed(s, Gait.stand) == 0;
+  big := s; big.size = 1.6;
+  #assert verse_figure_stride_rate(big, Gait.walk) < verse_figure_stride_rate(s, Gait.walk);
+}
