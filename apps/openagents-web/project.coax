@@ -324,6 +324,100 @@ Work :: struct {
   milestones: [MAX_ITEMS] int;   // milestone rows by rank
   milestone_n: int;
   initiative: int;
+  text: string;              // the WORK_ITEMS it was read from
+  plans: string;              // WORK_PLANS: alias | mark (x done, > doing, o to do) | step
+  plan_info: string;          // WORK_PLAN_INFO: alias | done | steps | plan updated | claimed | latest note
+}
+
+// A task's row in a table keyed by alias (column 0), or -1.
+keyed :: (table: string, alias: string, from: int) -> int {
+  for r: from..<rows(table) { if same(field(table, r, 0), alias) { return r; } }
+  return -1;
+}
+
+// A tick for a plan step, centred at (x, y): done is a check, doing a
+// beating diamond, to do an empty square.
+step_mark :: (out: [] f32, at: int, mark: string, x: f32, y: f32, p: Pen) -> int {
+  d := p.d; v := at;
+  if same(mark, ">") {
+    beat := 0.55 + 0.45 * sin(p.time * 2.4);
+    return diamond(out, v, x, y, 2.4 * d, ink(p, INK_ORANGE), beat * p.fade);
+  }
+  if same(mark, "x") {
+    k := ink(p, INK_PALE);
+    v = rule(out, v, x - 2.6 * d, y, x - 0.8 * d, y + 2 * d, k, 0.8 * p.fade);
+    return rule(out, v, x - 0.8 * d, y + 2 * d, x + 2.8 * d, y - 2.6 * d, k, 0.8 * p.fade);
+  }
+  k := ink(p, INK_DIM); r := 2.2 * d;
+  v = rule(out, v, x - r, y - r, x + r, y - r, k, 0.5 * p.fade);
+  v = rule(out, v, x + r, y - r, x + r, y + r, k, 0.5 * p.fade);
+  v = rule(out, v, x + r, y + r, x - r, y + r, k, 0.5 * p.fade);
+  return rule(out, v, x - r, y + r, x - r, y - r, k, 0.5 * p.fade);
+}
+
+// Under a task in progress: its worker's plan, the step it's on and the
+// ones around it when they don't all fit, then the latest note. Returns the
+// last line's y.
+PlanDrawn :: struct { v: int; y: f32; }
+plan_steps :: (out: [] f32, at: int, w: [] Work, alias: string, x: f32, y0: f32, right: f32, bottom: f32, limit: int, p: Pen) -> PlanDrawn {
+  d := p.d; v := at;
+  dim := ink(p, INK_DIM); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE); orange := ink(p, INK_ORANGE);
+  small := 6 * d; line := 11 * d;
+  plans := w[0].plans;
+  total := 0; current := -1;
+  for r: 0..<rows(plans) {
+    if !same(field(plans, r, 0), alias) { continue; }
+    mark := field(plans, r, 1);
+    if current < 0 && !same(mark, "x") { current = total; }
+    total += 1;
+  }
+  y := y0;
+  if total == 0 {
+    if y <= bottom { v = put_fit(out, v, "NO PLAN POSTED YET", x, y, small, dim, right - x); }
+    return PlanDrawn.{v = v, y = y};
+  }
+  // the window: from the step before the current one, as many as fit
+  skip := 0;
+  if total > limit {
+    skip = ifx current > 0 then current - 1 else 0;
+    if current < 0 { skip = total - limit; }
+    if skip + limit > total { skip = total - limit; }
+  }
+  if skip > 0 {
+    buf: [32] u8;
+    n := number(skip, false, buf[..]);
+    n += put_text(buf[..], n, " DONE ABOVE");
+    if y <= bottom { v = put(out, v, cast(string) buf[0..<n], x + 10 * d, y, 5.5 * d, dim); }
+    y += line;
+  }
+  k := 0; drawn := 0;
+  for r: 0..<rows(plans) {
+    if !same(field(plans, r, 0), alias) { continue; }
+    if k < skip || drawn >= limit || y > bottom { k += 1; continue; }
+    mark := field(plans, r, 1);
+    v = step_mark(out, v, mark, x + 3 * d, y - small * 0.45, p);
+    tint := ifx same(mark, ">") then white else ifx same(mark, "x") then dim else pale;
+    v = put_fit(out, v, field(plans, r, 2), x + 10 * d, y, small, tint, right - x - 10 * d);
+    y += line; k += 1; drawn += 1;
+  }
+  rest := total - skip - drawn;
+  if rest > 0 && y <= bottom {
+    buf: [32] u8;
+    n := number(rest, false, buf[..]);
+    n += put_text(buf[..], n, " MORE TO DO");
+    v = put(out, v, cast(string) buf[0..<n], x + 10 * d, y, 5.5 * d, dim);
+    y += line;
+  }
+  info := keyed(w[0].plan_info, alias, 0);
+  if info >= 0 {
+    note := field(w[0].plan_info, info, 5);
+    if note.count > 0 && y <= bottom {
+      v = put(out, v, "NOTE", x, y, 5.5 * d, orange);
+      v = put_fit(out, v, note, x + 26 * d, y, 5.5 * d, dim, right - x - 26 * d);
+      y += line;
+    }
+  }
+  return PlanDrawn.{v = v, y = y - line};
 }
 
 cell :: (text: string, start: int, col: int) -> string {
@@ -369,6 +463,7 @@ by_rank :: (w: [] Work, text: string, order: [] int, n: int) {
 
 read_work :: (w: [] Work, text: string) {
   w[0].read = true;
+  w[0].text = text;
   n := 0; i := 0;
   while i < text.count && n < MAX_ITEMS {
     w[0].start[n] = i; n += 1;
@@ -1056,7 +1151,7 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
 SEC_WORKING :: 0; SEC_DONE :: 1; SEC_READY :: 2; SEC_WAITING :: 3;
 real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d;
-  text := WORK_ITEMS;
+  text := w[0].text;
   buf: [96] u8;
   o := 0;
   if w[0].working_n > 0 { o += number(w[0].working_n, false, buf[o..<buf.count]); o += put_text(buf[..], o, " AT WORK · "); }
@@ -1133,9 +1228,27 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     m := 0;
     ms := w[0].parent[r];
     if sc == SEC_WORKING {
+      alias := item(w, text, r, 0);
       m += put_text(buf[..], m, "ON IT: ");
       m += put_text(buf[..], m, item(w, text, r, 6));
+      info := keyed(w[0].plan_info, alias, 0);
+      if info >= 0 {
+        since := field(w[0].plan_info, info, 4);
+        if since.count > 0 { m += put_text(buf[..], m, " SINCE "); m += put_text(buf[..], m, since); }
+        steps := field(w[0].plan_info, info, 2);
+        if parse(steps) > 0 {
+          m += put_text(buf[..], m, "  ·  PLAN ");
+          m += put_text(buf[..], m, field(w[0].plan_info, info, 1));
+          m += put_text(buf[..], m, "/");
+          m += put_text(buf[..], m, steps);
+          updated := field(w[0].plan_info, info, 3);
+          if updated.count > 0 { m += put_text(buf[..], m, " AT "); m += put_text(buf[..], m, updated); }
+        }
+      }
       v = put_fit(out, v, cast(string) buf[0..<m], x + idw, meta, small, pale, right - x - idw);
+      // the plan: every step on a tall panel, the ones around the current step otherwise
+      pd := plan_steps(out, v, w, alias, x + idw, meta + 13 * d, right, bottom - 4 * d, ifx tall then 10 else 4, p);
+      v = pd.v; meta = pd.y;
     } else if sc == SEC_DONE {
       hash := item(w, text, r, 11);
       m += put_text(buf[..], m, ifx hash.count > 0 then "DONE IN " else "RESOLVED");
@@ -1202,7 +1315,7 @@ activity_rows :: (out: [] f32, at: int, x: f32, y0: f32, right: f32, bottom: f32
 // done and ready; then the workers' activity from the relay.
 plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d;
-  text := WORK_ITEMS;
+  text := w[0].text;
   v := titled(out, at, b, "MILESTONES", "FROM NOSTR", p);
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
@@ -1288,7 +1401,7 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, out: [] f3
   time := ifx still then 20.0f32 else s[0].time;
   d := hi(dpr, 1);
   if t[0].n == 0 { grow(t, PROJECT_HISTORY); }
-  if !w[0].read { read_work(w, WORK_ITEMS); }
+  if !w[0].read { read_work(w, WORK_ITEMS); w[0].plans = WORK_PLANS; w[0].plan_info = WORK_PLAN_INFO; }
   fade := ifx still then 1.0f32 else ease(time / 1.1);
   p := Pen.{d = d, fade = fade, time = time, demo = s[0].page == 1};
   l := layout(width, height, d);
@@ -1438,6 +1551,34 @@ FIXTURE :: "i1|initiative|open|Init||||||0V|init||\nm1|milestone|open|First||||i
   #assert pr.total == 7 && pr.done == 2 && pr.ready == 3;
 }
 
+FIXTURE_PLAN :: "f1|x|read the spec\nf1|x|write the vectors\nf1|>|field multiply\nf1|o|field square\nf1|o|inverse\nf1|o|benchmarks\nf1|o|docs\n";
+
+#test "a plan's steps are found by alias, and the current one is the first not done" {
+  #assert keyed("a|1\nb|2\n", "b", 0) == 1 && keyed("a|1\n", "z", 0) == -1;
+  w: [1] Work;
+  read_work(w[..], FIXTURE);
+  w[0].plans = FIXTURE_PLAN;
+  out: [20000 * VERTEX_FLOATS] f32;
+  p := Pen.{d = 1, fade = 1, time = 20};
+  // four fit: the window starts at the step before the current one
+  a := plan_steps(out[..], 0, w[..], "f1", 0, 20, 300, 1000, 4, p);
+  #assert a.v > 0 && a.y > 20;
+  none := plan_steps(out[..], 0, w[..], "c1", 0, 20, 300, 1000, 4, p);
+  #assert none.y == 20;
+  #assert a.v > 300;
+  #assert a.y >= 20 + 11 * 4;
+  w[0].claimed[6] = true;
+  #assert w[0].working_n == 1 && same(item(w[..], FIXTURE, w[0].queue[0], 0), "f1");
+  #assert same(item(w[..], FIXTURE, w[0].queue[0], 6), "w1");
+  big := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
+  q1 := real_queue(out[..], 0, big, p, w[..]);
+  e: [1] Work;
+  read_work(e[..], FIXTURE);
+  q0 := real_queue(out[..], 0, big, p, e[..]);
+  #assert q0 > 600;
+  #assert q1 != q0;
+}
+
 #test "a finished task drops its worker" {
   w: [1] Work;
   read_work(w[..], "t1|task|resolved|Tee||S|w9|||1|t|0123456789|0000000300\n");
@@ -1478,6 +1619,14 @@ FIXTURE :: "i1|initiative|open|Init||||||0V|init||\nm1|milestone|open|First||||i
   read_work(f[..], FIXTURE);
   k := real_queue(out[..], 0, b, p, f[..]);
   #assert k > 600;
+  // and with a plan under its task in progress: more strokes, still inside
+  f[0].plans = FIXTURE_PLAN; f[0].plan_info = "f1|2|7|14:52|14:41|chose the RFC vectors\n";
+  kp := real_queue(out[..], 0, b, p, f[..]);
+  #assert kp > k;
+  for v: 0..<kp { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  short := Box.{x0 = 0, y0 = 0, x1 = 300, y1 = 200};
+  ks := real_queue(out[..], 0, short, p, f[..]);
+  for v: 0..<ks { #assert out[v * VERTEX_FLOATS + 1] <= 212; }
   for v: 0..<k { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
   a := real_agents(out[..], 0, b, p, false, true);
   for v: 0..<a { #assert out[v * VERTEX_FLOATS + 1] <= 712; }

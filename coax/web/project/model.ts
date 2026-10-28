@@ -9,7 +9,10 @@
 //               to an issue's subject, body, labels or relations
 //   kind 1111   NIP-22 comment without that mark: a worker's note on an issue,
 //               ["claim", NAME] when it takes the task, ["release"] when it
-//               lets go, ["commit", HASH] when it lands the work
+//               lets go, ["commit", HASH] when it lands the work, or
+//               ["plan", TASK_PLAN] when the content is the worker's plan: a
+//               markdown checklist, "- [x]" done, "- [>]" doing, "- [ ]" to do;
+//               the latest plan replaces the one before
 //   kind 1630-1633  NIP-34 status: open, resolved, closed, draft
 //   kind 30623  the project's queue order: ["item", <issue id>, <rank>]
 import { verifyEvent, type Event } from "nostr-effect/pure"
@@ -20,9 +23,10 @@ export const STATUS_KINDS: Record<string, number> = { open: 1630, resolved: 1631
 export const STATUS_NAMES: Record<number, Status> = { 1630: "open", 1631: "resolved", 1632: "closed", 1633: "draft" }
 export const ISSUE_REVISION = "openagents.issue-revision.v1"
 export const WORK_SCHEMA = "openagents.project-work.v1"
+export const TASK_PLAN = "openagents.task-plan.v1"
 
 export type Status = "open" | "resolved" | "closed" | "draft"
-export type LogType = "open" | "revise" | "status" | "order" | "claim" | "release" | "note" | "done"
+export type LogType = "open" | "revise" | "status" | "order" | "claim" | "release" | "note" | "done" | "plan"
 export type ItemKind = "initiative" | "milestone" | "task"
 
 /** One entry of a work file (apps/openagents-web/project/<slug>/work/*.json). */
@@ -74,7 +78,24 @@ export interface Issue extends Fields {
   claimed_at: number
   commit: string          // the commit that landed it, or ""
   notes: { at: number; text: string; by: string }[]
+  plan: Plan | null       // the worker's latest plan, or null
 }
+
+export type Mark = "x" | ">" | " "
+export interface Step { mark: Mark; text: string }
+export interface Plan { at: number; by: string; steps: Step[] }
+
+/** A plan's checklist from markdown: "- [x] done", "- [>] doing", "- [ ] to do"; other lines are skipped. */
+export function parsePlan(text: string): Step[] {
+  const steps: Step[] = []
+  for (const line of text.split("\n")) {
+    const m = /^\s*[-*]\s*\[([ xX>])\]\s+(.+?)\s*$/.exec(line)
+    if (m) steps.push({ mark: (m[1] === "X" ? "x" : m[1]) as Mark, text: m[2] })
+  }
+  return steps
+}
+export const planText = (steps: Step[]) => steps.map((s) => `- [${s.mark}] ${s.text}`).join("\n")
+export const planDone = (steps: Step[]) => steps.filter((s) => s.mark === "x").length
 
 export interface Folded {
   pubkey: string
@@ -220,7 +241,7 @@ export function fold(pk: string, c: ProjectConfig, events: Event[]): Folded {
     const status = latest((e) => e.kind >= 1630 && e.kind <= 1633 && e.tags.some((t) => t[0] === "e" && t[1] === root.id))
     const issue: Issue = { ...fields, id: root.id, slug, created_at: root.created_at, updated_at: revision?.created_at ?? root.created_at,
       status: status ? STATUS_NAMES[status.kind] : "open", status_at: status?.created_at ?? root.created_at, rank: ranks.get(root.id) ?? "",
-      claimed_by: "", claimed_at: 0, commit: "", notes: [] }
+      claimed_by: "", claimed_at: 0, commit: "", notes: [], plan: null }
     log.push({ at: root.created_at, text: `opened ${fields.kind}`, id: root.id, type: "open" })
     if (revision) log.push({ at: revision.created_at, text: "revised", id: root.id, type: "revise" })
     if (status && status.kind !== 1630) log.push({ at: status.created_at, text: STATUS_NAMES[status.kind], id: root.id, type: "status" })
@@ -230,6 +251,15 @@ export function fold(pk: string, c: ProjectConfig, events: Event[]): Folded {
     for (const e of comments) {
       const tag = (name: string) => e.tags.find((t) => t[0] === name)
       const by = tag("by")?.[1] ?? tag("claim")?.[1] ?? issue.claimed_by
+      if (tag("plan")?.[1] === TASK_PLAN) {
+        const steps = parsePlan(e.content)
+        issue.plan = { at: e.created_at, by, steps }
+        // one plan line in the log per task: the latest
+        const old = log.findIndex((l) => l.id === root.id && l.type === "plan")
+        if (old >= 0) log.splice(old, 1)
+        log.push({ at: e.created_at, text: `${by ? by + " " : ""}planned ${planDone(steps)} of ${steps.length} done`, id: root.id, type: "plan" })
+        continue
+      }
       if (tag("claim")) {
         issue.claimed_by = tag("claim")![1]; issue.claimed_at = e.created_at
         log.push({ at: e.created_at, text: `claimed by ${issue.claimed_by}`, id: root.id, type: "claim" })

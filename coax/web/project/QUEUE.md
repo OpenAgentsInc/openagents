@@ -26,11 +26,18 @@ release. The tools run on the machine that holds the project key
    the checkout is busy. Follow the repo's AGENTS.md and INVARIANTS.md. Run
    every acceptance check named in the task, plus `coax test` for each Coax
    file you touched.
-5. **Leave notes as you go.** `bun publish.ts note SLUG "text"` for anything
+5. **Post your plan and keep it current.** Right after claiming, write the
+   steps you'll take: `bun publish.ts plan SLUG set "step" "step" ...`. As you
+   work, `plan SLUG start N` marks the step you're on (one at a time),
+   `plan SLUG check N` the ones done, `plan SLUG add "step"` what you find you
+   need, `plan SLUG drop N` what turned out unneeded. Update it at every step,
+   not at the end: the page draws it under your task, and the owner reads it
+   to see where you are. `plan SLUG` prints it.
+6. **Leave notes as you go.** `bun publish.ts note SLUG "text"` for anything
    the next worker or the owner should see: a decision, a surprise, a
    blocker. Keep notes short and factual.
-6. **Finish.**
-   - All acceptance checks pass: commit and push (scoped files,
+7. **Finish.**
+   - All acceptance checks pass: check every step of the plan, commit and push (scoped files,
      `--no-verify`, the commit message names the task alias), then
      `bun publish.ts done SLUG --commit HASH`. That marks the issue resolved
      and links the commit.
@@ -39,7 +46,7 @@ release. The tools run on the machine that holds the project key
    - The task is wrong or too big: say so in a note, propose the split or the
      fix in the note, and release it. Only the taskmaster edits the work file
      (`apps/openagents-web/project/coax/work/nostr.json`) and republishes.
-7. **Show it.** Run `coax/web/release.sh` from the repo root after each
+8. **Show it.** Run `coax/web/release.sh` from the repo root after each
    claim and each done (about 25 s; it builds a clean worktree of
    `origin/main`, reads the relay afresh, deploys staging, smokes it,
    promotes and smokes production). The page shows the claim as IN PROGRESS

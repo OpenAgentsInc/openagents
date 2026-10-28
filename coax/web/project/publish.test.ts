@@ -84,7 +84,7 @@ test("dry run, publish, publish again, edit, move, status", async () => {
   expect(order).toEqual(["hmac", "sha256"])
 }, 60000)
 
-test("claim, note, release, show, done", async () => {
+test("claim, note, release, show, plan, done", async () => {
   await expect(run("claim", "hmac")).rejects.toThrow("usage: claim")
   await expect(run("claim", "m-one", "--by", "w1")).rejects.toThrow("only tasks are claimed")
   await expect(run("claim", "sha256", "--by", "w1")).rejects.toThrow("already resolved")
@@ -102,6 +102,20 @@ test("claim, note, release, show, done", async () => {
   expect(shown).toContain("Build HMAC.")
   expect(shown).toContain("w1: chose the RFC 4231 vectors")
   expect(shown).toContain("waits on #")
+  // the worker's plan: set, start, check, add, drop; the latest replaces the last
+  expect(await run("plan", "hmac")).toContain("no plan yet")
+  expect(await run("plan", "hmac", "set", "read RFC 4231", "write the vectors", "pad the key")).toContain("plan for hmac (0/3)")
+  expect(await run("plan", "hmac", "start", "1")).toContain("[>] read RFC 4231")
+  expect(await run("plan", "hmac", "check", "1")).toContain("plan for hmac (1/3)")
+  expect(await run("plan", "hmac", "add", "constant-time compare")).toContain("4. [ ] constant-time compare")
+  expect(await run("plan", "hmac", "start", "2")).toContain("[>] write the vectors")
+  expect(await run("plan", "hmac", "drop", "3")).toContain("plan for hmac (1/3)")
+  await expect(run("plan", "hmac", "check", "9")).rejects.toThrow("steps are 1 to 3")
+  const planned = await run("show", "hmac")
+  expect(planned).toContain("1 of 3 done, by w2")
+  expect(planned).toMatch(/1\. \[x\] read RFC 4231\n\s+2\. \[>\] write the vectors\n\s+3\. \[ \] constant-time compare/)
+  expect(planned).not.toContain("w2: - [")   // a plan isn't a note
+  await expect(run("plan", "m-one", "set", "x")).rejects.toThrow("plans are for tasks")
   await expect(run("done", "hmac", "--commit", "nothex")).rejects.toThrow("usage: done")
   const finished = await run("done", "hmac", "--commit", "a5c9177b1d0000000000000000000000000000ff")
   expect(finished).toContain("hmac done in a5c9177b1d")

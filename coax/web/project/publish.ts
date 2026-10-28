@@ -13,6 +13,15 @@
 //   bun publish.ts note SLUG "text" [--by NAME]
 //   bun publish.ts release SLUG
 //   bun publish.ts done SLUG --commit HASH
+//   bun publish.ts plan SLUG                       (print the task's plan)
+//   bun publish.ts plan SLUG set "step" "step"...  (a new plan, every step to do)
+//   bun publish.ts plan SLUG add "step"...         (steps at the end)
+//   bun publish.ts plan SLUG start N | check N... | uncheck N... | drop N...
+//   bun publish.ts plan SLUG file PATH|-           (the whole checklist, markdown)
+//
+// A plan is the worker's to-do list for its task, kept current as it works:
+// "start" marks the step it's on now (one at a time), "check" the ones done.
+// Steps count from 1. Every change publishes the whole list again.
 //
 // SLUG is an item's slug or its alias (#a7e7). Claims, notes and the commit
 // that finished a task are NIP-22 comments on its issue (model.ts), signed by
@@ -32,7 +41,8 @@ import { join } from "node:path"
 import { Relay, Signer } from "./relay"
 import { aliases, checkWork, fieldTags, filters, fold, followups, ISSUE_REVISION, KIND_COMMENT, KIND_ISSUE, KIND_ORDER,
   KIND_PROJECT, KIND_REPO, naddr, projectCoord, projectTags, repoCoord, repoTags, sameFields, STATUS_KINDS, topo,
-  type Fields, type Folded, type Issue, type ProjectConfig, type Status, type WorkItem, WORK_SCHEMA, SEED_SCHEMA, seedItems } from "./model"
+  type Fields, type Folded, type Issue, type ProjectConfig, type Status, type Step, type WorkItem, WORK_SCHEMA, SEED_SCHEMA, seedItems,
+  parsePlan, planDone, planText, TASK_PLAN } from "./model"
 import { placed, rebalance, spread, spreadBetween } from "./rank"
 
 const ROOT = join(import.meta.dir, "../../..")
@@ -259,6 +269,7 @@ async function show(relay: Relay, what: string) {
   console.log(i.claimed_by ? `claimed by ${i.claimed_by} at ${new Date(i.claimed_at * 1000).toISOString()}` : "not claimed")
   if (i.commit) console.log(`done in ${i.commit}`)
   console.log(`\n${i.body.trim()}\n`)
+  if (i.plan) { console.log("## Plan\n"); printPlan(i); console.log() }
   if (i.notes.length) {
     console.log("## Notes\n")
     for (const n of i.notes) console.log(`- ${new Date(n.at * 1000).toISOString().slice(0, 16)} ${n.by ? n.by + ": " : ""}${n.text}`)
@@ -306,6 +317,47 @@ async function done(relay: Relay, what: string, commit: string) {
   await send(relay, statusEvent(i, "resolved"), `${i.slug} resolved`)
 }
 
+const MARK_WORD = { x: "done", ">": "doing", " ": "to do" }
+function printPlan(i: Issue) {
+  if (!i.plan) { console.log(`${i.slug} has no plan yet`); return }
+  console.log(`${i.slug}: ${planDone(i.plan.steps)} of ${i.plan.steps.length} done${i.plan.by ? `, by ${i.plan.by}` : ""}, ${new Date(i.plan.at * 1000).toISOString().slice(0, 16)}`)
+  i.plan.steps.forEach((st, k) => console.log(`${String(k + 1).padStart(3)}. [${st.mark}] ${st.text}`))
+}
+
+async function plan(relay: Relay, what: string, rest: string[], by: string) {
+  const f = await load(relay)
+  const i = find(f, what)
+  // the plan's words, without the --flag value pairs the command line also carries
+  rest = rest.filter((w, k, all) => !w.startsWith("--") && !all[k - 1]?.startsWith("--"))
+  const op = rest[0] ?? ""
+  if (!op) { printPlan(i); return }
+  if (i.kind !== "task") throw new Error(`${i.slug} is a ${i.kind}; plans are for tasks`)
+  if (finished(i)) console.log(`warning: ${i.slug} is already ${i.status}`)
+  let steps: Step[] = (i.plan?.steps ?? []).map((st) => ({ ...st }))
+  const words = rest.slice(1)
+  const nums = () => {
+    const ns = words.map(Number)
+    if (!ns.length || ns.some((n) => !Number.isInteger(n) || n < 1 || n > steps.length)) throw new Error(`steps are 1 to ${steps.length}`)
+    return ns.map((n) => n - 1)
+  }
+  if (op === "set") steps = words.map((t) => ({ mark: " ", text: t.trim() }))
+  else if (op === "add") steps.push(...words.map((t) => ({ mark: " " as const, text: t.trim() })))
+  else if (op === "start") { const [k] = nums(); steps.forEach((st) => { if (st.mark === ">") st.mark = " " }); steps[k].mark = ">" }
+  else if (op === "check") for (const k of nums()) steps[k].mark = "x"
+  else if (op === "uncheck") for (const k of nums()) steps[k].mark = " "
+  else if (op === "drop") { const gone = new Set(nums()); steps = steps.filter((_, k) => !gone.has(k)) }
+  else if (op === "file") {
+    const text = words[0] === "-" || !words[0] ? await Bun.stdin.text() : await Bun.file(words[0]).text()
+    steps = parsePlan(text)
+  } else throw new Error("usage: plan SLUG [set|add|start|check|uncheck|drop|file] ...")
+  steps = steps.filter((st) => st.text)
+  if (!steps.length) throw new Error("a plan needs at least one step")
+  const who = by || i.claimed_by
+  await send(relay, commentEvent(i, planText(steps), [["plan", TASK_PLAN], ...(who ? [["by", who]] : [])],
+    `A worker's plan for a task: ${i.title}`), `plan for ${i.slug} (${planDone(steps)}/${steps.length})`)
+  steps.forEach((st, k) => console.log(`${String(k + 1).padStart(3)}. [${st.mark}] ${st.text}  (${MARK_WORD[st.mark]})`))
+}
+
 const verb = args[0]
 const relay = await Relay.open(relayUrl, key)
 try {
@@ -328,5 +380,6 @@ try {
   else if (verb === "release" && args[1]) await release(relay, args[1])
   else if (verb === "note" && args[1]) await note(relay, args[1], args[2] ?? "", flag("by"))
   else if (verb === "done" && args[1]) await done(relay, args[1], flag("commit"))
-  else { console.error("usage: bun publish.ts publish|move|status|respread|list|show|claim|note|release|done (see the top of this file)"); process.exitCode = 2 }
+  else if (verb === "plan" && args[1]) await plan(relay, args[1], args.slice(2), flag("by"))
+  else { console.error("usage: bun publish.ts publish|move|status|respread|list|show|claim|note|release|done|plan (see the top of this file)"); process.exitCode = 2 }
 } finally { relay.close() }

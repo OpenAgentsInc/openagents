@@ -4,13 +4,14 @@ A systems language for real-time code. It compiles to C11, then to native code a
 
 An OpenAgents project, open for contributions from people and agents. Home: `coax/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
-Snapshot of the project's Nostr events taken 10-28 14:35 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa`.
+Snapshot of the project's Nostr events taken 10-28 14:54 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa`.
 
 ## How to take a task
 
 1. Pick the top task under **Ready** that nobody is on. Its blockers are done.
 2. Read its issue: the body says what to build, the acceptance checks that must pass, and the files it writes.
 3. Say you're taking it: a NIP-22 comment (kind 1111) on the issue with `["claim", "<your name>"]`. Tasks under **In progress** are taken.
+   Then post your plan, a checklist comment with `["plan", "openagents.task-plan.v1"]`, and keep it current as you work: the page shows it under the task.
 4. Leave comments on the issue as you go, then open a pull request on [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents) that meets every acceptance check, and link the issue's alias in it.
 
 The project's own workers follow `coax/web/project/QUEUE.md` in the repository. Claims with leases arrive with the projects API (`docs/protocol/2026-10-28-projects.md`).
@@ -21,7 +22,7 @@ The project's own workers follow `coax/web/project/QUEUE.md` in the repository. 
 - Project: `naddr1qqzxxmmp0qq35amnwvaz7tmjv4kxz7fwdacx2mnpvajkuarn9e3k7mgzyz00jt35rdp7h3tp0f6u7lk20chrp7hyrcy2qc22x3xc28vcwv2h2qcyqqq808g9xe7n4` (kind 30621, `d` = `coax`)
 - Tasks, milestones and the initiative: kind 1621 issues with `["a", "30621:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax"]`; the issue's `subject` is its title, `t` its labels, `parent` and `blocked-by` its relations (event ids).
 - Edits: kind 1111 comments on the issue with `["revision", "openagents.issue-revision.v1"]`; the latest one by the project key is current.
-- Work on an issue: kind 1111 comments without that mark. `["claim", NAME]` takes the task, `["release"]` lets it go, `["commit", HASH]` names the commit that finished it, and the content is a note; `["by", NAME]` says which worker wrote it.
+- Work on an issue: kind 1111 comments without that mark. `["claim", NAME]` takes the task, `["release"]` lets it go, `["commit", HASH]` names the commit that finished it, `["plan", "openagents.task-plan.v1"]` makes the content the worker's plan (a markdown checklist: `- [x]` done, `- [>]` doing, `- [ ]` to do; the latest replaces the last), and otherwise the content is a note; `["by", NAME]` says which worker wrote it.
 - Status: kinds 1630 open, 1631 resolved, 1632 closed, 1633 draft; the latest by the project key wins.
 - Order: kind 30623, `d` = `coax`: `["item", <issue id>, <rank>]`, ranks compared as strings. Ready tasks come first by rank, then waiting ones.
 
@@ -51,34 +52,24 @@ Milestones, in order:
 
 - #5653 **The project page goes live**: 0 of 4 done, 0 ready. /project/coax reads its project, tasks and order from the relay and signs claims in the page.
 
-- #7807 **Coax compiler prerequisites**: 0 of 5 done, 5 ready. Small compiler features and fixes the stack wants; none blocks M0–M2.
+- #7807 **Coax compiler prerequisites**: 1 of 5 done, 4 ready. Small compiler features and fixes the stack wants; none blocks M0–M2.
+
+- #9680 **Sign in to the website with your phone**: 0 of 9 done, 1 ready. The deliverable: open openagents.com/signin, scan its QR code with the OpenAgents mobile app, approve, and the website is signed in as your Nostr key. The key never leaves the phone. NIP-46 (Nostr Connect) between page and phone over relay.openagents.com, NIP-98 HTTP auth to the server, no WorkOS. The same Coax Nostr library runs on the phone (compiled to C), in the page (wasm) and on the server (native).
 
 
-## In progress (0)
+## Activity
 
-## Ready (12)
+- 10-28 14:52 CDT #b17d claimed by claude-queue-1 (A value_barrier intrinsic for constant-time code)
+- 10-28 14:51 CDT #a7e7 claude-queue-1: The plain b-index case already compiled; the bug was a call in an index (t[0].count[f(i)] += 1, and plain = too): the emitter took the address of a comma expression. Checks: tests/pass/compound_view (debug+release), tests/native.py under ASan/UBSan, coax/tests/run.sh all green. (Compound assignment through a view emits valid C)
+- 10-28 14:51 CDT #a7e7 done in e2f8432ea2 by claude-queue-1 (Compound assignment through a view emits valid C)
+- 10-28 14:38 CDT #72f7 claude-queue-1: process: claims, notes and done are now NIP-22 comments the page draws (fdd3a57565); workers run release.sh after each claim and done (Coax Nostr: our own Nostr stack, crypto included, in Coax)
+- 10-28 14:38 CDT #a7e7 claimed by claude-queue-1 (Compound assignment through a view emits valid C)
 
-### #a7e7 Compound assignment through a view emits valid C
-
-status open · ready · size S · labels compiler, bug · milestone #7807 Coax compiler prerequisites
-
-Event: `a7e7967191ef28d9affbd6aca2c6f4c328e5a8a6e71f4eafcf7e75da4a5e700f`
-
-`t[0].count[b] += 1` on an array field reached through a view generates C that does not compile (found building the project page). Fix the emitter and add a regression test.
-
-## Acceptance
-
-- A test with `t[0].count[b] += 1` (and -=, *=, |=) through a view compiles and runs under ASan
-- coax/tests pass
-
-## Files
-
-- `coax/src/emit_c.cpp`
-- `coax/tests/`
+## In progress (1)
 
 ### #b17d A value_barrier intrinsic for constant-time code
 
-status open · ready · size S · labels compiler, crypto · milestone #7807 Coax compiler prerequisites
+status open · ready · in progress: claude-queue-1 · size S · labels compiler, crypto · milestone #7807 Coax compiler prerequisites
 
 Event: `b17db3e238f978ff3415d8c228eb42683128322d8ba8212a81b823eabc4748a7`
 
@@ -94,6 +85,8 @@ Add `value_barrier(x: u64) -> u64` (and u32) that the optimizer cannot see throu
 - `coax/src/`
 - `coax/spec.md`
 - `coax/tests/`
+
+## Ready (11)
 
 ### #0ad5 Explicit wrapping add and rotate for u32 and u64
 
@@ -272,7 +265,20 @@ store_put/get/delete over one IndexedDB object store per origin; results via the
 
 - `coax/web/host.js`
 
-## Waiting (39)
+### #503d QR code encoder in Coax
+
+status open · ready · size M · labels web, qr · milestone #9680 Sign in to the website with your phone
+
+Event: `503d16e4b775432544983bc1ce6da378ed209075fd3faf24d4e5384f28a1a3b8`
+
+Byte mode, error correction M, versions 1 to 15, mask selection by the standard penalty rules; output a module grid the page draws as HUD strokes or quads.
+
+## Acceptance
+
+- Matches a reference encoder's module grids for 20 fixed strings including a 300-byte nostrconnect URI
+- A phone camera (the iOS scanner test) decodes a rendered code
+
+## Waiting (47)
 
 ### #0e80 A native vector runner for Coax crypto modules
 
@@ -1033,3 +1039,140 @@ Split scalars with the secp256k1 endomorphism in ecmult_vartime; measure verify 
 ## Files
 
 - `coax/lib/crypto/secp_mult.coax`
+
+### #a812 The Coax Nostr library runs on iOS against the same vectors
+
+status open · size M · labels mobile, ios, crypto · milestone #9680 Sign in to the website with your phone
+
+Waits on: #51f4 BIP-340 signing with auxiliary randomness (open); #4878 NIP-44 version 2 encrypt and decrypt (open); #7cdf NIP-01 events: serialize, id, sign, verify and field rules (open)
+
+Event: `a812bca96c91845e93b0908ca34b456ba0750da412501313b6c0358d2228a191`
+
+Build the Coax Nostr modules (hashes, secp256k1, Schnorr, ECDH, NIP-44, events, bech32) as C for iOS arm64 and the simulator through the app's Generated/ build step, and run the shared vector files in the iOS test target. Report sign and verify times on a device.
+
+## Acceptance
+
+- BIP-340, NIP-44 and event vectors pass in the iOS simulator test target
+- The same vector files the wasm and native builds use, byte for byte
+- Sign and verify timings recorded in a note (simulator; device when the owner runs it)
+
+## Files
+
+- `apps/openagents-ios/project.yml`
+- `apps/openagents-ios/Tests/`
+
+### #bc0b The phone holds the user's Nostr key in the Keychain
+
+status open · size M · labels mobile, ios, keys · milestone #9680 Sign in to the website with your phone
+
+Waits on: #a812 The Coax Nostr library runs on iOS against the same vectors (open)
+
+Event: `bc0bce463e952c08fc1ee63adca4818d6a1ca4666d9c3d38f4957bd2dfe4f192`
+
+Create or import a key (nsec) on the phone; store it in the Keychain, this device only, unlocked by Face ID or passcode for each signature; never synced, logged or sent. Export only on an explicit owner action. Signing goes through the Coax library with the key wiped after use.
+
+## Acceptance
+
+- A UI test creates a key, signs an event and verifies it with the Coax verifier
+- The Keychain item is ThisDeviceOnly with user presence required
+- No key bytes in logs (test greps the simulator log)
+
+## Files
+
+- `apps/openagents-ios/OpenAgents/`
+
+### #bde1 NIP-46 remote signer (bunker side) in Coax
+
+status open · size L · labels nip46, crypto, mobile · milestone #9680 Sign in to the website with your phone
+
+Waits on: #4878 NIP-44 version 2 encrypt and decrypt (open); #7cdf NIP-01 events: serialize, id, sign, verify and field rules (open); #7de9 The relay client state machine (open)
+
+Event: `bde19af6ec5d47fc841159be677d94f04b1002c837df352b2b949e15f1ffb99e`
+
+Kind 24133 requests and responses encrypted with NIP-44 between the client's key and the signer's key; methods connect (with the secret from the QR), get_public_key, sign_event, ping, nip44_encrypt/decrypt. Every sign_event needs the user's approval unless the session granted that kind. Shared Coax module, used by the phone.
+
+## Acceptance
+
+- Round trips against the NIP-46 examples and a nostr-effect NIP-46 client in a native test
+- A wrong or reused connect secret is refused
+- Requests outside the granted permissions are refused
+
+### #cf39 NIP-46 client in the page
+
+status open · size M · labels nip46, web · milestone #9680 Sign in to the website with your phone
+
+Waits on: #bde1 NIP-46 remote signer (bunker side) in Coax (open); #4cca The page subscribes to relay.openagents.com with AUTH (open)
+
+Event: `cf3977ddddce49a1b04ca39289cb829a8f039848cd5c7961c961107f0935e4aa`
+
+The page side of Nostr Connect: an ephemeral client key, the nostrconnect:// URI (relay, secret, perms, name, url), waiting for the signer's connect, then get_public_key and sign_event requests over the page's relay client.
+
+## Acceptance
+
+- Native test: the page client and the Coax signer complete connect and a sign_event over an in-memory relay
+- The client key is ephemeral and wiped at sign-out
+
+### #a1d8 Scan a sign-in code with the phone and approve
+
+status open · size M · labels mobile, ios, nip46 · milestone #9680 Sign in to the website with your phone
+
+Waits on: #bde1 NIP-46 remote signer (bunker side) in Coax (open); #bc0b The phone holds the user's Nostr key in the Keychain (open); #503d QR code encoder in Coax (open)
+
+Event: `a1d85392c1cdcda73b83d8c22b82c959267620ea119aac3408b4e077dc0b13d1`
+
+The app's QR scanner recognises nostrconnect:// codes, shows the site and what it asks for in an approval sheet, and on approval runs the NIP-46 signer for that session; the session shows in Settings and can be ended there.
+
+## Acceptance
+
+- Simulator UI test: a fixture QR image opens the approval sheet; approve connects to a local relay
+- Ending the session in Settings makes later requests fail
+
+### #0af1 The server verifies NIP-98 HTTP auth and issues a session
+
+status open · size M · labels server, auth · milestone #9680 Sign in to the website with your phone
+
+Waits on: #41bd BIP-340 Schnorr verification (open); #7cdf NIP-01 events: serialize, id, sign, verify and field rules (open)
+
+Event: `0af19f0b640e3bfc544a89722f0f5af6d9601dd5d2ebadbd28fccc54f8d7eac9`
+
+A native Coax server route POST /auth/nostr takes a NIP-98 kind 27235 event (url, method, payload hash, created_at within 60 s, unused id), verifies it with the Coax verifier, and sets an HttpOnly, Secure, SameSite=Strict session cookie bound to the pubkey. Admin pubkeys come from config. No WorkOS.
+
+## Acceptance
+
+- Tests: valid event accepted; wrong url, method, stale time, replayed id and bad signature refused
+- The cookie carries no key material and expires
+
+### #c8dd openagents.com/signin: the QR and the signed-in state
+
+status open · size M · labels web, auth · milestone #9680 Sign in to the website with your phone
+
+Waits on: #cf39 NIP-46 client in the page (open); #503d QR code encoder in Coax (open); #0af1 The server verifies NIP-98 HTTP auth and issues a session (open)
+
+Event: `c8ddf047e6f45e3cb209922826bd0a56284dbb200afff3c52b33cf566b927490`
+
+A Coaxial page draws the QR (HUD, Filament), waits for the phone, then asks it to sign the NIP-98 event and posts it to /auth/nostr. Shows who is signed in (npub, short) and sign out. Plain text in the hidden main for agents.
+
+## Acceptance
+
+- check-visuals passes; real-Chrome screenshots of waiting and signed-in states
+- The page never holds the user's secret key
+
+### #73ce End to end: sign in to openagents.com with the phone
+
+status open · size M · labels mobile, web, auth · milestone #9680 Sign in to the website with your phone
+
+Waits on: #a1d8 Scan a sign-in code with the phone and approve (open); #c8dd openagents.com/signin: the QR and the signed-in state (open)
+
+Event: `73ce5c1cdf68fecacb68149159896ca1d245fe253597cde984cc61a0310aa7c4`
+
+The deliverable test: the iOS simulator scans the QR shown by the page (fixture image of the live page's code), approves, and the page reaches the signed-in state with the server session bound to the phone's pubkey. Device run is an owner step in NEEDS_OWNER.md.
+
+## Acceptance
+
+- Simulator plus headless page run passes against a local relay and server
+- Staging run passes against relay.openagents.com
+- Device step recorded for the owner
+
+## Done (1)
+
+- #a7e7 Compound assignment through a view emits valid C · [e2f8432ea2](https://github.com/OpenAgentsInc/openagents/commit/e2f8432ea2)
