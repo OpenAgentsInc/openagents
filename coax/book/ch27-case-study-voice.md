@@ -1683,7 +1683,9 @@ real uplink path without a microphone.
 > Note: where the phone stands, as of this writing. The simulator test
 > (`apps/openagents-ios/tools/voice-sim-test.sh`) passes offline and live:
 > the fixture is heard as "Hello foreman, what are we building today?" and
-> the Foreman answers aloud. `INVARIANTS.md` changed with the app code to
+> the Foreman answers aloud. A second test plays "Wait, stop." over the reply:
+> the phone cuts playback, applies the engine's frame decisions, and the new
+> turn is heard and answered. `INVARIANTS.md` changed with the app code to
 > allow the microphone through the voice toggle. Nothing has been run on a
 > physical iPhone, and a phone has no default voice host yet (the simulator
 > uses the Mac's `127.0.0.1:8787`). One more honest detail: the engine runs

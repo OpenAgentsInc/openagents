@@ -104,4 +104,47 @@ final class VoiceUITests: XCTestCase {
         XCTAssertTrue(!caption.exists || caption.label.isEmpty, "caption after off: \(caption.label)")
         app.terminate()
     }
+
+    /// Talking over the reply: a second recording plays once the reply has
+    /// played 300 ms. voice.coax hears it, the phone cuts playback and reports
+    /// how much was heard, the new turn is recognized and answered.
+    func testTalkingOverTheReplyStopsItAndIsHeard() throws {
+        let env = ProcessInfo.processInfo.environment
+        let host = env["OA_VOICE_HOST"] ?? "ws://127.0.0.1:8787"
+        let fixture = env["OA_VOICE_FIXTURE"] ?? "hello-foreman"
+        let app = XCUIApplication()
+        app.launchArguments += ["-OAVoiceHost", host, "-OAVoiceFixture", fixture, "-OAVoiceBarge", "wait-stop", "-OAVoiceObserve", "YES"]
+        app.launch()
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20))
+        start.tap()
+        let toggle = app.buttons["voice.toggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 20))
+        toggle.tap()
+        let notice = app.alerts["Voice"]
+        if notice.waitForExistence(timeout: 3) { notice.buttons["Turn on"].tap() }
+        let level = app.otherElements["voice.level"]
+        let caption = app.staticTexts["voice.caption"]
+        XCTAssertTrue(level.waitForExistence(timeout: 5))
+        let count = { (key: String) -> Int in
+            (level.value as? String)?.components(separatedBy: key + " ").last?.split(separator: " ").first.flatMap { Int($0) } ?? 0
+        }
+        var firstHeard = ""
+        XCTAssertTrue(wait(60) {
+            if firstHeard.isEmpty, caption.exists, let v = caption.value as? String, let r = v.range(of: "; heard: ") { firstHeard = String(v[r.upperBound...]) }
+            return count("barges") >= 1
+        }, "never barged in; level: \(level.value ?? "")")
+        shot(app, "Barge-in")
+        XCTAssertTrue(wait(45) { count("turns") >= 2 }, "no second turn; level: \(level.value ?? "")")
+        var heard = ""
+        XCTAssertTrue(wait(60) {
+            guard caption.exists, let v = caption.value as? String, let r = v.range(of: "; heard: ") else { return false }
+            heard = String(v[r.upperBound...])
+            return !heard.isEmpty && heard != firstHeard && v.hasPrefix("reply") && toggle.value as? String == "listening"
+        }, "the second turn was not answered; caption: \(caption.exists ? (caption.value as? String ?? "") : "-")")
+        NSLog("VoiceUITests barge heard: %@ (first: %@) level: %@", heard, firstHeard, (level.value as? String) ?? "")
+        XCTAssertGreaterThanOrEqual(count("decisions"), 1, "no frame decision was applied; level: \(level.value ?? "")")
+        shot(app, "Answered after barge-in")
+        app.terminate()
+    }
 }

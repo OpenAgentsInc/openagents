@@ -2,7 +2,8 @@
 # Voice in the simulator, end to end: build the app, start the voice host,
 # boot a simulator and run Tests/VoiceUITests.swift, which turns voice on in
 # the Grid with a bundled recording and checks the transcript, the reply and
-# the level indicator.
+# the level indicator, then talks over the reply (wait-stop) and checks that
+# playback is cut, frame decisions are applied and the new turn is answered.
 #
 #   apps/openagents-ios/tools/voice-sim-test.sh            # offline host, then live if credentials work
 #   apps/openagents-ios/tools/voice-sim-test.sh --offline  # offline host only
@@ -77,7 +78,7 @@ run_test() { # $1 = name, $2 = expected words, $3 = agent (echo|gemini)
     -only-testing:OpenAgentsUITests/VoiceUITests test > "$logs/test-$name.log" 2>&1
   local status=$?
   set -e
-  grep -E "VoiceUITests (heard|reply)|Test Case|error:|failed|passed|\*\* TEST" "$logs/test-$name.log" | grep -v "^ *$" | tail -20
+  grep -E "VoiceUITests (heard|reply|barge)|Test Case|error:|failed|passed|\*\* TEST" "$logs/test-$name.log" | grep -v "^ *$" | tail -20
   return $status
 }
 

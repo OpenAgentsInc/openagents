@@ -23,6 +23,10 @@ struct VoiceSnapshot {
     var turns = 0
     /// Replies the host has finished sending and timing (CONTROL_KIND_SPEECH_END).
     var replies = 0
+    /// Times playback was cut because you talked over it.
+    var barges = 0
+    /// Frame decisions the engine kept and this host acted on.
+    var decisions = 0
     var lastDecision: String = ""
     var provider = ""
     var meter: oa_voice_meter_report?
@@ -43,6 +47,8 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
     struct Options {
         var host: URL?
         var fixture: String?
+        /// A second recording played over the reply once it has played 300 ms (tests barge-in).
+        var barge: String?
         var observe = false
         var route = "foreman"
         var speaker = "ios"
@@ -82,6 +88,9 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
     private var fixture: VoiceFixture?
     private var fixtureStart: Double = 0
     private var fixtureFed = 0
+    private var bargeFixture: VoiceFixture?
+    private var bargeAt: Int?             // fixture sample where the barge-in recording starts
+    private var heardSince: Double?       // when reply audio first played this utterance
     private var audioRunning = false
 
     // MARK: reply playback (worker only, except the played counter)
@@ -134,6 +143,8 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
                 if let name = options.fixture {
                     let f = try VoiceFixture(named: name)
                     fixture = f
+                    bargeFixture = try options.barge.map { try VoiceFixture(named: $0) }
+                    bargeAt = nil; heardSince = nil
                     setUpEngine(rate: f.rate)
                     fixtureStart = CACurrentMediaTime(); fixtureFed = 0
                     try startPlaybackOnly()
@@ -354,14 +365,24 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
     private func feedFixture() {
         guard let fixture else { return }
         let lead = Int(fixture.rate) * 3 / 10
-        let due = Int((CACurrentMediaTime() - fixtureStart) * Double(fixture.rate))
+        let now = CACurrentMediaTime()
+        let due = Int((now - fixtureStart) * Double(fixture.rate))
+        if bargeFixture != nil, bargeAt == nil, speaking, played.load(ordering: .acquiring) > 0 {
+            if heardSince == nil { heardSince = now }
+            if let t = heardSince, now - t >= 0.3 { bargeAt = fixtureFed }
+        }
         var chunk = [Int16](repeating: 0, count: 0)
         while fixtureFed < due {
             let n = min(due - fixtureFed, frameSamples)
             chunk.removeAll(keepingCapacity: true)
             for i in 0..<n {
                 let at = fixtureFed + i - lead
-                chunk.append(at >= 0 && at < fixture.samples.count ? fixture.samples[at] : 0)
+                var x = at >= 0 && at < fixture.samples.count ? Int(fixture.samples[at]) : 0
+                if let b = bargeFixture, let start = bargeAt {
+                    let k = fixtureFed + i - start
+                    if k >= 0 && k < b.samples.count { x += Int(b.samples[k]) }
+                }
+                chunk.append(Int16(clamping: x))
             }
             chunk.withUnsafeBufferPointer { _ = ring.write($0.baseAddress!, count: n) }
             fixtureFed += n
@@ -434,7 +455,7 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
     private func apply(_ d: oa_voice_decision, decider: String) {
         if d.action == UInt32(OA_FRAME_ACTION_BARGE_IN.rawValue), speaking { bargeIn() }
         let name = Self.actionName(d.action)
-        publish { $0.lastDecision = "\(name) from \(decider) at \(d.apply_from_sequence)" }
+        publish { s in s.lastDecision = "\(name) from \(decider) at \(d.apply_from_sequence)"; s.decisions += 1 }
     }
 
     static func actionName(_ a: UInt32) -> String {
@@ -459,6 +480,7 @@ final class VoiceSession: NSObject, URLSessionWebSocketDelegate, @unchecked Send
         m.u.control.at_ms = UInt64(CACurrentMediaTime() * 1000)
         send(&m)
         speaking = false
+        publish { $0.barges += 1 }
         NSLog("OpenAgents voice: barge-in after %llu samples (epoch %llu)", heard, epoch)
         refreshPhase()
     }
