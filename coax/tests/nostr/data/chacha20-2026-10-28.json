@@ -1,0 +1,84 @@
+{
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "cpu": "Apple M5 Max",
+  "oracle": {
+    "node": "v26.12.1",
+    "openssl": "4.1.0"
+  },
+  "rfc_sha256": "25bef70fbf7a07ff45c2fe4cb7c6ce954eac687413d8610603268b4e4415324c",
+  "records": 269,
+  "method": "Warm scalar O2 Wasm kernel, 7 samples of32x1MiB; 5 warmups, input byte varies each iteration and output feeds observable sink. Decimal MB/s; no UI/network/cold-start timing. Test keys only; repeated fixture nonce/counters are not production usage.",
+  "sources": {
+    "coax/lib/crypto/chacha20.coax": "c959d92c0603b615cded026015b6eade4f7c6fec4845dea888bafd4b4bbfbc07",
+    "coax/lib/crypto/chacha20-memory.coax": "5e9fca66e5d75aae130f12f46c9b8439e7d5470d7c2fc70158d64d604e1aa78b",
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/tests/nostr/chacha20.py": "0d65d7684aa0756e6c7cfd45b7e3608020c41c16dab18a47c7c9cf19f1898206",
+    "coax/tests/nostr/chacha20_wasm.c": "f84e549585395185f9eb85e9850f35c98a1c1b76ae5a99429121d0ef11ab2927",
+    "coax/tests/nostr/chacha20_wasm.cjs": "9d7052f9e799f0bdc673aef7c84bef40ced723a52f73e6140762a4830ecc5609",
+    "coax/tests/nostr/chacha20_native.c": "d7f50c72ee71cb6797f077c07a95f1d0b2ede7aecc7eb88cca0ea7d9eb57e2f0"
+  },
+  "measurements": [
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "openssl": "4.1.0",
+      "records": 269,
+      "refusal_cases": 11,
+      "payload_bytes": 1048576,
+      "iterations": 32,
+      "samples": 7,
+      "mb_per_second": [
+        656.7319283905624,
+        657.606071518688,
+        666.3067695332263,
+        650.8462288607657,
+        660.1299416618609,
+        668.6136595609496,
+        654.5689559736159
+      ],
+      "median_mb_per_second": 657.606071518688,
+      "sink": 130,
+      "module_sha256": "c40b3dbcd4d5f889a3f728e25056f82a436443224e4d36d482bd19662a6fc823",
+      "profile": "checked",
+      "optimization": "O2",
+      "simd": false,
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "target": "wasm32-v8",
+      "node": "v26.12.1",
+      "openssl": "4.1.0",
+      "records": 269,
+      "refusal_cases": 11,
+      "payload_bytes": 1048576,
+      "iterations": 32,
+      "samples": 7,
+      "mb_per_second": [
+        663.3736049741506,
+        665.7300721325932,
+        670.8912772040721,
+        678.4875466967278,
+        675.0783530666238,
+        666.1634669929424,
+        668.7896754905014
+      ],
+      "median_mb_per_second": 668.7896754905014,
+      "sink": 130,
+      "module_sha256": "de2cbbdfe6e8a19908baaa7a583d6296086008af5f337541d9f5ea111a0de205",
+      "profile": "release",
+      "optimization": "O2",
+      "simd": false,
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    }
+  ],
+  "seed": 8439,
+  "fixture_sha256": "e98e733f37994d0dfbe05abafd77647fe6d88567f989e02310e17d6a334d7417",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "generated_c": {
+    "checked": "508d83eefe98c19832bc6c22e0f53faf3dd1cebb55a2531180da25c996800a81",
+    "release": "0b7917dba3a7f50cca43547a5bb6426ce360544e0b59c5930748d6a1161bb9d1"
+  }
+}

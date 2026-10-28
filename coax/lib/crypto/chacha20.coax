@@ -1,0 +1,151 @@
+// RFC 8439 IETF ChaCha20. Caller supplies nonce/counter; never reuse a
+// key+nonce+counter range. Raw stream encryption supplies no authentication.
+#load "bytes.coax";
+#authority;
+CC_OK :: cast(u32)0;
+CC_KEY :: cast(u32)1;
+CC_NONCE :: cast(u32)2;
+CC_INPUT :: cast(u32)3;
+CC_OUTPUT :: cast(u32)4;
+CC_COUNTER :: cast(u32)5;
+CC_ALIAS :: cast(u32)6;
+ChaChaResult :: struct { written:int; error:u32; }
+CcQuarter :: struct { a:u32; b:u32; c:u32; d:u32; }
+CcWords :: struct { words:[16]u32; }
+
+#test "RFC 8439 quarter round uses all four explicit wrapping words" {
+  q:=cc_quarter(0x11111111,0x01020304,0x9b8d6f43,0x01234567);
+  #assert q.a==0xea2a92f4 && q.b==0xcb1cf8ce && q.c==0x4581472e && q.d==0x5881c4bb;
+}
+#test "RFC 8439 section 2.3.2 complete block and initialization" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)i;}
+  nonce:=[12]u8.[0,0,0,9,0,0,0,74,0,0,0,0];out:[65]u8;out[64]=165;
+  initial:=cc_initial(key[..],nonce[..],1);
+  #assert initial.words[0]==0x61707865 && initial.words[1]==0x3320646e && initial.words[2]==0x79622d32 && initial.words[3]==0x6b206574;
+  #assert initial.words[4]==0x03020100 && initial.words[11]==0x1f1e1d1c;
+  #assert initial.words[12]==1 && initial.words[13]==0x09000000 && initial.words[14]==0x4a000000 && initial.words[15]==0;
+  r:=chacha20_block_checked(key[..],nonce[..],1,out[..],false);
+  #assert r.error==CC_OK && r.written==64 && out[64]==165;
+  #assert chacha20_block_checked(key[..],nonce[..],1,out[0..<64],false).error==CC_OK;
+  expected:=[16]u32.[0xe4e7f110,0x15593bd1,0x1fdd0f50,0xc47120a3,0xc7f4d1c7,0x0368c033,0x9aaa2204,0x4e6cd4c3,0x466482d2,0x09aa9f07,0x05d7c214,0xa2028bd9,0xd19c12b5,0xb94e16de,0xe883d0cb,0x4e3c50a2];
+  for i:0..<16 {#assert cb_load_le32(out[..],i*4).value==expected[i];}
+}
+#test "RFC 8439 appendix A.1 zero block and cipher xor are reversible" {
+  key:[32]u8;nonce:[12]u8;out:[65]u8;out[64]=165;
+  expected:=[16]u32.[0xade0b876,0x903df1a0,0xe56a5d40,0x28bd8653,0xb819d2bd,0x1aed8da0,0xccef36a8,0xc70d778b,0x7c5941da,0x8d485751,0x3fe02477,0x374ad8b8,0xf4b8436a,0x1ca11815,0x69b687c3,0x8665eeb2];
+  #assert chacha20_block_checked(key[..],nonce[..],0,out[..],false).error==CC_OK;
+  for i:0..<16 {#assert cb_load_le32(out[..],i*4).value==expected[i];}
+  input:[65]u8;back:[65]u8;for i:0..<65 {input[i]=cast(u8)i;}
+  zero:[65]u8;
+  #assert chacha20_xor_checked(key[..],nonce[..],0,zero[..],back[..],false).error==CC_OK;
+  for i:0..<64 {#assert back[i]==out[i];} #assert back[64]==0x9f;
+  for length:0..<66 {
+    r:=chacha20_xor_checked(key[..],nonce[..],7,input[0..<length],out[..],false);
+    #assert r.error==CC_OK && r.written==length;
+    #assert chacha20_xor_checked(key[..],nonce[..],7,out[0..<length],back[..],false).error==CC_OK;
+    for i:0..<length {#assert input[i]==back[i];}
+  }
+}
+#forall "admission handles short capacities and public overlap before copying" n:-1..<67, capacity:-1..<67, overlap:bool {
+  expected:=CC_OK;
+  if n<0 {expected=CC_INPUT;}
+  else if capacity<n {expected=CC_OUTPUT;}
+  else if n>0 && overlap {expected=CC_ALIAS;}
+  #assert cc_admit(32,12,0,n,capacity,overlap)==expected;
+}
+#test "IETF counter and key/nonce/limit refusals preserve caller output" {
+  #assert cc_admit(31,12,0,0,0,false)==CC_KEY && cc_admit(33,12,0,0,0,false)==CC_KEY;
+  #assert cc_admit(32,11,0,0,0,false)==CC_NONCE && cc_admit(32,13,0,0,0,false)==CC_NONCE;
+  #assert cc_admit(32,12,0,1048577,1048577,false)==CC_INPUT;
+  #assert cc_admit(32,12,0,1,1048577,false)==CC_OUTPUT;
+  #assert cc_admit(32,12,0xffffffff,64,64,false)==CC_OK;
+  #assert cc_admit(32,12,0xffffffff,65,65,false)==CC_COUNTER;
+  #assert cc_admit(32,12,0xffffc000,1048576,1048576,false)==CC_OK;
+  #assert cc_admit(32,12,0xffffc001,1048576,1048576,false)==CC_COUNTER;
+  key:[32]u8;nonce:[12]u8;input:[65]u8;out:[65]u8;for i:0..<65 {out[i]=165;}
+  #assert chacha20_block_checked(key[0..<31],nonce[..],0,out[..],false).error==CC_KEY;
+  #assert chacha20_block_checked(key[..],nonce[0..<11],0,out[..],false).error==CC_NONCE;
+  #assert chacha20_block_checked(key[..],nonce[..],0,out[0..<63],false).error==CC_OUTPUT;
+  #assert chacha20_block_checked(key[..],nonce[..],0,out[..],true).error==CC_ALIAS;
+  r:=chacha20_xor_checked(key[..],nonce[..],0xffffffff,input[..],out[..],false);
+  #assert r.error==CC_COUNTER && r.written==0;
+  #assert chacha20_xor_checked(key[..],nonce[..],0,input[..],out[..],true).error==CC_ALIAS;
+  #assert chacha20_xor_checked(key[..],nonce[..],0,input[..],out[0..<64],false).error==CC_OUTPUT;
+  for b:out {#assert b==165;}
+}
+
+cc_quarter :: (a_in:u32,b_in:u32,c_in:u32,d_in:u32)->CcQuarter {
+  a:=a_in;b:=b_in;c:=c_in;d:=d_in;
+  a=add_wrap(a,b);d=rotl(d^a,16);
+  c=add_wrap(c,d);b=rotl(b^c,12);
+  a=add_wrap(a,b);d=rotl(d^a,8);
+  c=add_wrap(c,d);b=rotl(b^c,7);
+  return CcQuarter.{a=a,b=b,c=c,d=d};
+}
+cc_initial :: (key:[]u8,nonce:[]u8,counter:u32)->CcWords {
+  state:CcWords;
+  state.words[0]=0x61707865;state.words[1]=0x3320646e;
+  state.words[2]=0x79622d32;state.words[3]=0x6b206574;
+  state.words[12]=counter;
+  for i:0..<8 {state.words[4+i]=cb_load_le32(key,i*4).value;}
+  for i:0..<3 {state.words[13+i]=cb_load_le32(nonce,i*4).value;}
+  return state;
+}
+cc_block_words :: (initial:CcWords)->CcWords {
+  x:=initial;
+  for round:0..<10 {
+    q:=cc_quarter(x.words[0],x.words[4],x.words[8],x.words[12]);
+    x.words[0]=q.a;x.words[4]=q.b;x.words[8]=q.c;x.words[12]=q.d;
+    q=cc_quarter(x.words[1],x.words[5],x.words[9],x.words[13]);
+    x.words[1]=q.a;x.words[5]=q.b;x.words[9]=q.c;x.words[13]=q.d;
+    q=cc_quarter(x.words[2],x.words[6],x.words[10],x.words[14]);
+    x.words[2]=q.a;x.words[6]=q.b;x.words[10]=q.c;x.words[14]=q.d;
+    q=cc_quarter(x.words[3],x.words[7],x.words[11],x.words[15]);
+    x.words[3]=q.a;x.words[7]=q.b;x.words[11]=q.c;x.words[15]=q.d;
+    q=cc_quarter(x.words[0],x.words[5],x.words[10],x.words[15]);
+    x.words[0]=q.a;x.words[5]=q.b;x.words[10]=q.c;x.words[15]=q.d;
+    q=cc_quarter(x.words[1],x.words[6],x.words[11],x.words[12]);
+    x.words[1]=q.a;x.words[6]=q.b;x.words[11]=q.c;x.words[12]=q.d;
+    q=cc_quarter(x.words[2],x.words[7],x.words[8],x.words[13]);
+    x.words[2]=q.a;x.words[7]=q.b;x.words[8]=q.c;x.words[13]=q.d;
+    q=cc_quarter(x.words[3],x.words[4],x.words[9],x.words[14]);
+    x.words[3]=q.a;x.words[4]=q.b;x.words[9]=q.c;x.words[14]=q.d;
+  }
+  for i:0..<16 {x.words[i]=add_wrap(x.words[i],initial.words[i]);}
+  return x;
+}
+// Internal caller has already established the bounded nonnegative length.
+cc_blocks :: (n:int)->int {return(n+63)/64;}
+cc_admit :: (key_count:int,nonce_count:int,counter:u32,n:int,capacity:int,overlap:bool)->u32 #export_c {
+  if key_count!=32 {return CC_KEY;}
+  if nonce_count!=12 {return CC_NONCE;}
+  if n<0 || n>CB_MAX_BYTES {return CC_INPUT;}
+  if capacity<n || capacity>CB_MAX_BYTES {return CC_OUTPUT;}
+  blocks:=cc_blocks(n);
+  if cast(u64)blocks > 4294967296-cast(u64)counter {return CC_COUNTER;}
+  if n>0 && overlap {return CC_ALIAS;}
+  return CC_OK;
+}
+chacha20_block_checked :: (key:[]u8,nonce:[]u8,counter:u32,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+  error:=cc_admit(key.count,nonce.count,counter,64,out.count,overlap);
+  if error!=CC_OK {return ChaChaResult.{error=error};}
+  block:=cc_block_words(cc_initial(key,nonce,counter));
+  for i:0..<16 {stored:=cb_store_le32(out,i*4,block.words[i]);}
+  return ChaChaResult.{written=64};
+}
+chacha20_xor_checked :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+  error:=cc_admit(key.count,nonce.count,counter,input.count,out.count,overlap);
+  if error!=CC_OK {return ChaChaResult.{error=error};}
+  initial:=cc_initial(key,nonce,counter);
+  for block_index:0..<cc_blocks(input.count) {
+    at:=block_index*64;
+    initial.words[12]=add_wrap(counter,cast(u32)block_index);
+    block:=cc_block_words(initial);
+    for j:0..<64 {
+      if at+j>=input.count {break;}
+      stream:=cast(u8)((block.words[j/4]>>((j%4)*8))&255);
+      out[at+j]=input[at+j]^stream;
+    }
+  }
+  return ChaChaResult.{written=input.count};
+}

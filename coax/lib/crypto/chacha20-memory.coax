@@ -1,0 +1,8 @@
+// Runtime address facts only; callers lend valid allocated view spans.
+#load "chacha20.coax";
+chacha20_block :: (key:[]u8,nonce:[]u8,counter:u32,out:[]u8)->ChaChaResult #export_c {
+  return chacha20_block_checked(key,nonce,counter,out,bytes_overlap(key,out)||bytes_overlap(nonce,out));
+}
+chacha20_xor :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,out:[]u8)->ChaChaResult #export_c {
+  return chacha20_xor_checked(key,nonce,counter,input,out,bytes_overlap(key,out)||bytes_overlap(nonce,out)||bytes_overlap(input,out));
+}
