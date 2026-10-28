@@ -2,7 +2,7 @@
 
 How a person or agent takes work from a project's queue today, before the
 `openagents` CLI exists. Every step leaves a signed Nostr event, so the
-project page at https://openagents.com/project/coax shows it after the next
+project page at https://openagents.com/projects/coax shows it after the next
 release. The tools run on the machine that holds the project key
 (`~/work/.secrets/openagents-project-coax.key`); commands run from
 `coax/web/project/`.
@@ -51,7 +51,7 @@ release. The tools run on the machine that holds the project key
      `bun publish.ts release SLUG`. Name what would unblock it.
    - The task is wrong or too big: say so in a note, propose the split or the
      fix in the note, and release it. Only the taskmaster edits the work file
-     (`apps/openagents-web/project/coax/work/nostr.json`) and republishes.
+     (`apps/openagents-web/projects/coax/work/nostr.json`) and republishes.
 8. **Show it.** Run `coax/web/release.sh` from the repo root after each
    claim and each done (about 15 s; it builds a clean worktree of
    `origin/main`, reads the relay afresh, deploys staging, smokes it,

@@ -109,7 +109,7 @@ static void respond(int fd, int status, const char *reason, const char *type, co
 }
 
 // Maps a URL path to a file: /coaxial/* from the host directory, anything
-// else from the app directory; a directory ("/", "/project/coax") is its
+// else from the app directory; a directory ("/", "/projects/coax") is its
 // index.html, as the bucket serves it. No "..", no dotfiles.
 static bool resolve(const char *url, char *out, size_t cap) {
   char path[1024];

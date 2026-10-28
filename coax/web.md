@@ -298,7 +298,7 @@ Skipping staging takes `--skip-staging --yes-skip-staging`, for emergencies.
 
 **Routing.** One global load balancer (`coaxial-openagents-web-staging`, IP 136.69.24.60) serves both hosts:
 - staging.openagents.com goes to the staging bucket;
-- openagents.com sends `/`, `/favicon.svg`, `/build/*` and `/coaxial/*` to the production bucket, and everything else to the Cloud Run `coder` service until it is retired ([deprecation plan](../docs/2026-10-28-coder-service-deprecation.md)).
+- openagents.com sends `/`, `/favicon.svg`, `/build/*`, `/coaxial/*`, `/realm/*`, `/projects` and `/projects/*` to the production bucket, answers the old `/project/*` with a 301 to `/projects/*` (path kept; both hosts), and sends everything else to the Cloud Run `coder` service until it is retired ([deprecation plan](../docs/2026-10-28-coder-service-deprecation.md)).
 
 Moving a route off `coder` is one path rule. DNS for openagents.com is a single A record at Cloudflare. The records it replaced (Cloud Run's four A and four AAAA) are kept in `~/work/.secrets/openagents-com-dns-before-coaxial.json`.
 

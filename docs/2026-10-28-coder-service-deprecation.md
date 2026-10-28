@@ -156,7 +156,7 @@ worktree. That is a last resort, not part of this plan.
 | `/cli/install.sh`, `/cli/install.ps1` | 200 | CLI installers; binaries come from `gs://openagentsgemini-cli-releases` |
 | `/health` | 200 `ok` | health check |
 | `/connect`, `/verse`, `/download`, `/docs/api` | 200 | pages |
-| `/project/coax` | 404 | Coaxial page; lives only in the bucket |
+| `/projects/coax` | 404 | Coaxial page; lives only in the bucket |
 
 ## Traffic (Cloud Run request logs)
 

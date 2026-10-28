@@ -1262,7 +1262,7 @@
       "body": "Use coax-nostr publish to sign the kind 30621 project (with path and contributions tags per docs/protocol/2026-10-28-projects.md), its work items from this file, and the queue order record, with the project key.",
       "files": [
         "tools/coax-nostr/",
-        "apps/openagents-web/project/coax/work/"
+        "apps/openagents-web/projects/coax/work/"
       ],
       "acceptance": [
         "Events fetched back from relay.openagents.com verify and match this file",
@@ -1287,7 +1287,7 @@
       "body": "The real project page holds a WebSocket to relay.openagents.com and redraws as events arrive: no snapshots, no release needed to show a claim, a plan, a note, a status or a reorder. The host only moves bytes (host-socket-pipe); Coax parses the relay's JSON, keeps the project's events (REQ with authors = the project key; the relay checks signatures until project-page-verify lands), folds them the way coax/web/project/model.ts does (issues, revisions, statuses, claims, releases, plans, notes, commits, the order record) into the tables project.coax draws, and redraws. Subscriptions stay open after EOSE so new events land live; reconnect with backoff; the header shows LIVE, CONNECTING or OFFLINE instead of a snapshot time. The build-time tables stay only as the first paint until the socket's first EOSE. The demo page keeps its samples.",
       "files": [
         "apps/openagents-web/project.coax",
-        "apps/openagents-web/project/coax/"
+        "apps/openagents-web/projects/coax/"
       ],
       "acceptance": [
         "A claim, a plan update and a done published with publish.ts show on the production page within 2 s, with no release",

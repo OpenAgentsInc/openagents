@@ -2,8 +2,8 @@
 
 Proposal, 2026-10-28. Status: specification and task breakdown; nothing below
 is built yet. The work is organized as the first real project on
-`/project/coax`; the tasks live in
-[`apps/openagents-web/project/coax/work/nostr.json`](../apps/openagents-web/project/coax/work/nostr.json).
+`/projects/coax`; the tasks live in
+[`apps/openagents-web/projects/coax/work/nostr.json`](../apps/openagents-web/projects/coax/work/nostr.json).
 
 Every Nostr integration on openagents.com runs in Coax: hashing, secp256k1,
 BIP-340 Schnorr signatures, ECDH, NIP-44 encryption, NIP-59 gift wraps, event
@@ -440,7 +440,7 @@ no compatibility period.
 | M5 Events and encodings | JSON, NIP-01 event, filters, bech32/NIP-19, JCS, envelope | event fixtures; envelope digest of today's deck |
 | M6 Relay client in the page | host socket/storage/random imports, relay state machine, NIP-42 | the page subscribes to relay.openagents.com with AUTH |
 | M7 Replace the TypeScript | page opener, gate, sealer and injector in Coax; INVARIANTS change; delete `coax/web/unlock/` | the hidden deck opens with no TypeScript |
-| M8 Project page live | `/project/coax` reads its project, tasks and order from the relay; claims signed in the page | the real project page |
+| M8 Project page live | `/projects/coax` reads its project, tasks and order from the relay; claims signed in the page | the real project page |
 
 The order matters: the unlock deck is the first real consumer (it already
 exercises NIP-44, NIP-59, NIP-42, the envelope and key storage end to end,

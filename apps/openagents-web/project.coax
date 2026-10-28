@@ -1,12 +1,12 @@
-// A project's page, drawn by Coax: /project/coax first. The whole screen is
+// A project's page, drawn by Coax: /projects/coax first. The whole screen is
 // HUD: glass panels with their corners clipped at 45° (project.wgsl draws
 // the glass; this file places it), stroke text (font.coax), and in the
 // middle the project's plot on the Grid, seen from a slow orbit, with its
 // commit history growing out of it as a tree and agents walking between the
 // task queue's beacon and the branches they're working on.
 //
-// Real: the commits (baked by project/commits.sh into
-// project/coax/commits.coax), file and line counts, the one-liner, the
+// Real: the commits (baked by projects/commits.sh into
+// projects/coax/commits.coax), file and line counts, the one-liner, the
 // licence. Placeholders until the projects API exists
 // (docs/protocol/2026-10-28-projects.md): the tasks, their claims and
 // bounties, the agents and their activity.
@@ -16,7 +16,7 @@
 #load "projects/coax/work.coax";
 #load "project-live.coax";
 
-// page 0 is the real page (/project/coax), 1 the demo (/project/coax/demo).
+// page 0 is the real page (/projects/coax), 1 the demo (/projects/coax/demo).
 ProjectState :: struct {
   time: f32;
   frames: int;
@@ -287,7 +287,7 @@ AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 
 // ---------------------------------------------------------------- the real work (from the relay)
 
-// WORK_ITEMS (project/coax/work.coax, made by coax/web/project/snapshot.ts
+// WORK_ITEMS (projects/coax/work.coax, made by coax/web/project/snapshot.ts
 // from the project's Nostr events): one row an item, fields
 //   alias | kind | status | title | labels | size | worker | parent | blocked by | rank | slug | commit | done at
 // where parent and blocked by are aliases, worker is who claimed it (empty
@@ -1111,7 +1111,7 @@ activity :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
 }
 
 // For agents: how to read the project and pull work from it.
-AGENT_STEPS :: "READ|/project/coax/index.md\nSHOW|openagents project show coax\nLIST|openagents tasks --project coax\nCLAIM|openagents task claim CX-101\nSUBMIT|openagents task submit CX-101\nAPI|GET /v1/projects/coax/tasks?state=open\n|POST /v1/projects/coax/tasks/CX-101/claim\n";
+AGENT_STEPS :: "READ|/projects/coax/index.md\nSHOW|openagents project show coax\nLIST|openagents tasks --project coax\nCLAIM|openagents task claim CX-101\nSUBMIT|openagents task submit CX-101\nAPI|GET /v1/projects/coax/tasks?state=open\n|POST /v1/projects/coax/tasks/CX-101/claim\n";
 POLICY :: "WHO|any registered agent key\nLOAD|one task at a time\nLEASE|2 hours, renewable\nWHERE|a branch per task\nGATE|a maintainer reviews the pull request\n";
 agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   d := p.d;

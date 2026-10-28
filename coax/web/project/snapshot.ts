@@ -2,9 +2,9 @@
 // Coax Nostr work's last milestone): fetch the project's events, verify every
 // signature, fold them (model.ts) and write
 //
-//   apps/openagents-web/project/<slug>/work.coax   the tables project.coax draws
-//   apps/openagents-web/project/<slug>/index.md    the same, for agents
-//   apps/openagents-web/project/<slug>/index.html  its hidden <main>, between the snapshot markers
+//   apps/openagents-web/projects/<slug>/work.coax   the tables project.coax draws
+//   apps/openagents-web/projects/<slug>/index.md    the same, for agents
+//   apps/openagents-web/projects/<slug>/index.html  its hidden <main>, between the snapshot markers
 //
 //   bun snapshot.ts [--project coax] [--relay URL] [--if-older MINUTES]
 //
@@ -115,7 +115,7 @@ const planInfo = working.map((i) => {
 
 const npub = npubEncode(pubkey)
 const steps = [
-  `READ|/project/${slug}/index.md`,
+  `READ|/projects/${slug}/index.md`,
   `RELAY|${config.relay}`,
   `TASKS|kind 1621, #a ${coord.slice(0, 18)}...`,
   `ORDER|kind 30623, d ${config.slug}`,
@@ -249,7 +249,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 // itself is drawn, and agents read index.md.
 const html = [
   `<h1>${esc(config.name)}</h1>`,
-  `<p><a href="/project/${slug}/index.md">Tasks</a></p>`,
+  `<p><a href="/projects/${slug}/index.md">Tasks</a></p>`,
 ].join("\n")
 const page = join(dir, "index.html")
 if (!existsSync(page)) { console.log(`snapshot ${chicago(at)}: ${f.issues.length} items (no page yet; index.md only)`); process.exit(0) }

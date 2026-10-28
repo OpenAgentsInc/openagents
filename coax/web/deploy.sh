@@ -43,7 +43,7 @@ def put(src, rel):
     return "/" + named
 host_url = put(host, "coaxial/host.js")
 os.makedirs(site, exist_ok=True)
-# Pages at any depth (project/coax/index.html is /project/coax): pages, their
+# Pages at any depth (projects/coax/index.html is /projects/coax): pages, their
 # Markdown twins and icons. Work files, builds and sources stay behind.
 pages = []
 for root, dirs, files in os.walk(app):
@@ -71,7 +71,7 @@ for f in pages:
         return f'<script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'
     text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+"([^>]*)>', tag, text)
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)
-    # A directory's page also answers at the bare path (/project/coax), which
+    # A directory's page also answers at the bare path (/projects/coax), which
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.
     if os.path.basename(f) == "index.html" and os.path.dirname(f):
         shutil.copy(os.path.join(site, f), os.path.join(site, os.path.dirname(f) + ".page"))

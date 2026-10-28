@@ -29,7 +29,7 @@ export type Status = "open" | "resolved" | "closed" | "draft"
 export type LogType = "open" | "revise" | "status" | "order" | "claim" | "release" | "note" | "done" | "plan"
 export type ItemKind = "initiative" | "milestone" | "task"
 
-/** One entry of a work file (apps/openagents-web/project/<slug>/work/*.json). */
+/** One entry of a work file (apps/openagents-web/projects/<slug>/work/*.json). */
 export interface WorkItem {
   slug: string
   kind: ItemKind
@@ -155,7 +155,7 @@ export function sameFields(a: Fields, b: Fields): boolean {
   return JSON.stringify(fieldTags(a)) === JSON.stringify(fieldTags(b)) && a.body === b.body && (a.sats || 0) === (b.sats || 0)
 }
 
-/** A seed file (project/<slug>/work/README.md, openagents.project-work-seed.v1) as work items. A task's
+/** A seed file (projects/<slug>/work/README.md, openagents.project-work-seed.v1) as work items. A task's
  * acceptance checks and the files it writes go in its body, where an agent reads them. */
 export const SEED_SCHEMA = "openagents.project-work-seed.v1"
 export interface Seed {

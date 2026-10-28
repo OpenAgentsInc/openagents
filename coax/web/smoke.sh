@@ -52,11 +52,14 @@ def check(ok, what):
     print(("  ok    " if ok else "  FAIL  ") + what)
     if not ok: failed.append(what)
 
-pages = ["/project/coax", "/project/coax/index.md", "/project/coax/demo"]
+pages = ["/projects/coax", "/projects/coax/index.md", "/projects/coax/demo", "/projects/verse/index.md"]
+moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md"]   # the old addresses: 301 to /projects/*
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
-first = fetch(["/", ("/", "GET", "http"), "/realm/haunted-house", "/realm/haunted-house/index.md"] + pages + [p for p, _ in extra])
+first = fetch(["/", ("/", "GET", "http"), "/realm/haunted-house", "/realm/haunted-house/index.md"] + pages + moved + [p for p, _ in extra])
 (s, h, page), redirect, house, house_md = first[:4]
-s_pages, s_extra = first[4:4 + len(pages)], first[4 + len(pages):]
+s_pages = first[4:4 + len(pages)]
+s_moved = first[4 + len(pages):4 + len(pages) + len(moved)]
+s_extra = first[4 + len(pages) + len(moved):]
 
 check(s == 200 and h.get("content-type", "").startswith("text/html"), f"/ is a page ({s})")
 check("no-cache" in h.get("cache-control", ""), "/ is checked on every visit (no-cache)")
@@ -88,6 +91,11 @@ check(s in (301, 308) and h.get("location", "").startswith("https://"), f"http:/
 for path, (s, h, body) in zip(pages, s_pages):
     ok = s == 200 and (path.endswith(".md") or (b'data-app="project"' in body and b"<!--" not in body))
     check(ok, f"{path} ({s})")
+# The old /project/* addresses move for good to /projects/*, path kept.
+for path, (s, h, _) in zip(moved, s_moved):
+    want = "/projects/" + path[len("/project/"):]
+    where = h.get("location", "")
+    check(s == 301 and where in (want, f"https://{host}{want}"), f"{path} moves to {want} ({s} {where})")
 # The Haunted House: its page, its Markdown, and every asset it names (the
 # house's document, geometry and sheets; sounds and their loop).
 check(house[0] == 200 and b'data-app="realm"' in house[2], f"/realm/haunted-house ({house[0]})")

@@ -34,7 +34,7 @@ def files(root):
             yield os.path.relpath(p, root), p
 
 def object_name(name):
-    # x.page is the page for the bare path x (deploy.sh): /project/coax.
+    # x.page is the page for the bare path x (deploy.sh): /projects/coax.
     return name[:-5] if name.endswith(".page") else name
 
 def put(name, path, cache):

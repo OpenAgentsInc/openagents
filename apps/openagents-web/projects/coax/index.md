@@ -487,7 +487,7 @@ The real project page holds a WebSocket to relay.openagents.com and redraws as e
 ## Files
 
 - `apps/openagents-web/project.coax`
-- `apps/openagents-web/project/coax/`
+- `apps/openagents-web/projects/coax/`
 
 ### #ccba Run eligible checks on emitted native code
 
@@ -1287,7 +1287,7 @@ Use coax-nostr publish to sign the kind 30621 project (with path and contributio
 ## Files
 
 - `tools/coax-nostr/`
-- `apps/openagents-web/project/coax/work/`
+- `apps/openagents-web/projects/coax/work/`
 
 ### #4356 Claim a task from the page with a signed event
 

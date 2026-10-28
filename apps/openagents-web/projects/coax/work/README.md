@@ -1,7 +1,7 @@
 # Work seeds for the Coax project
 
 Each `*.json` file here is the source the project publisher turns into Nostr
-events for `/project/coax` (see `docs/protocol/2026-10-28-projects.md`). Edit
+events for `/projects/coax` (see `docs/protocol/2026-10-28-projects.md`). Edit
 the file, run the publisher, and the live page follows; nothing on the page is
 numbered by hand.
 

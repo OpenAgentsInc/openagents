@@ -28,7 +28,7 @@
 // the project key with the worker's NAME in a tag; coax/web/project/QUEUE.md
 // is how a worker uses them.
 //
-// Work comes from apps/openagents-web/project/<slug>/work/*.json (model.ts,
+// Work comes from apps/openagents-web/projects/<slug>/work/*.json (model.ts,
 // WorkItem) and project.json. Every run folds the relay's events first, so
 // re-running publishes only what changed: a new item is a new issue, an edit
 // is a revision (a NIP-22 comment), a status is a status event, and the
