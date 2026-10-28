@@ -9,8 +9,15 @@ E("field") uint32_t field(int op,uint32_t ap,uint32_t bp,uint32_t out){
   if(op==1)r=sf_add(a.value,b.value);
   else if(op==2)r=sf_subtract(a.value,b.value);
   else if(op==3)r=sf_negate(a.value);
+  else if(op==4)r=sf_multiply(a.value,b.value);
+  else if(op==5)r=sf_square(a.value);
   else if(op!=0)return 5;
   return sf_store(r,bytes(out))?0:9;
+}
+E("raw_product") uint32_t raw_product(uint32_t p,uint32_t q,uint32_t out){
+  coax_t_SecpField a={0},b={0};
+  for(int i=0;i<10;i++){a.limb.e[i]=((uint64_t*)(uintptr_t)p)[i];b.limb.e[i]=((uint64_t*)(uintptr_t)q)[i];}
+  return sf_store(sf_multiply(a,b),bytes(out))?0:9;
 }
 E("raw") uint32_t raw(uint32_t p,int magnitude,uint32_t out){
   coax_t_SecpFieldDebug d={0};d.magnitude=magnitude;

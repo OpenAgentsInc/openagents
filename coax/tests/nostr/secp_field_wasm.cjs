@@ -16,11 +16,15 @@ const fs=require('node:fs'),{WASI}=require('node:wasi');
  }
  for(const v of fixtures.operations){
   u.set(Buffer.from(v.a,'hex'),base);u.set(Buffer.from(v.b,'hex'),base+64);u.fill(165,out,out+40);
-  check(x.field(['normalize','add','sub','negate'].indexOf(v.op),base,base+64,out),v.expected);
+  check(x.field(['normalize','add','sub','negate','mul','square'].indexOf(v.op),base,base+64,out),v.expected);
  }
  for(const v of fixtures.raw){
   v.limbs.forEach((n,i)=>data.setBigUint64(base+i*8,BigInt(n),true));u.fill(165,out,out+40);
   check(x.raw(base,v.magnitude,out),v.expected);
  }
- process.stdout.write(JSON.stringify({target:'wasm32-wasip1',engine:`Node${process.version} V8${process.versions.v8}`,operations:fixtures.operations.length,raw_cases:fixtures.raw.length,failures:0}));
+ for(const v of fixtures.raw_products||[]){
+  v.a.forEach((n,i)=>data.setBigUint64(base+i*8,BigInt(n),true));v.b.forEach((n,i)=>data.setBigUint64(base+128+i*8,BigInt(n),true));u.fill(165,out,out+40);
+  check(x.raw_product(base,base+128,out),v.expected);
+ }
+ process.stdout.write(JSON.stringify({target:'wasm32-wasip1',engine:`Node${process.version} V8${process.versions.v8}`,operations:fixtures.operations.length,raw_cases:fixtures.raw.length,raw_products:fixtures.raw_products?.length||0,failures:0}));
 })().catch(e=>{process.stderr.write(String(e.stack||e));process.exitCode=1;});

@@ -3,6 +3,8 @@
 Task `secp-field-repr` (#5684). This slice implements representation and basic
 arithmetic in `coax/lib/crypto/secp_field.coax`. It does not implement field
 multiplication/inversion, group arithmetic, signing or a complete Nostr stack.
+This records the representation slice at `44e24c812e`; the subsequent
+[multiplication slice](coax-secp-field-mul-2026-10-28.md) extends the same file.
 
 ## API and preconditions
 

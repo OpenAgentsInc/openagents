@@ -1,0 +1,83 @@
+{
+  "budgets": {
+    "driver_timeout_seconds": 120,
+    "maximum_products_per_mode": 1000000,
+    "maximum_temporary_bytes": 167772160,
+    "random_products_per_mode": 1000000,
+    "source_check_steps_per_check": 20000000,
+    "stream_record_bytes": 64
+  },
+  "compile_time_refusals": 4,
+  "compiler": "coax0 0.15.0",
+  "compiler_sha256": "35dcb1ff3633b4f33cd6e931565dc85f4928e530fc916a23c13dbb9ffe9b11ec",
+  "detected_emitted_faults": [
+    "lost_product_carry",
+    "wrong_final_fold"
+  ],
+  "modes": [
+    {
+      "driver_sha256": "8ad0475aa7a6ed9b0f984ed14586c0be0720b9619f011d28146e42364e5cb713",
+      "elapsed_seconds": 1.7176365419873036,
+      "failures": 0,
+      "generated_c_sha256": "f540b23ed0a45b2ccfd369053339b95da43ebdf1692b7a2648becdc41861acd7",
+      "mode": "checked",
+      "output_bytes": 32125024,
+      "output_sha256": "9f14b6432a8302bb8f457f097104fc7271f400e52cf170c9b5924d755e504b93",
+      "products": 1000000,
+      "squares": 3907
+    },
+    {
+      "driver_sha256": "659c7286d3b14009280ed70bff780d2cffabeb9e8798de4177c1007d485ba2cd",
+      "elapsed_seconds": 1.6783026659977622,
+      "failures": 0,
+      "generated_c_sha256": "85a896a904f5068dbeced40f814d4393ae147ed022fa8515bcd11d981929bdba",
+      "mode": "release",
+      "output_bytes": 32125024,
+      "output_sha256": "9f14b6432a8302bb8f457f097104fc7271f400e52cf170c9b5924d755e504b93",
+      "products": 1000000,
+      "squares": 3907
+    }
+  ],
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "raw_and_edge_comparisons": 1538,
+  "sanitized_raw_cases": 8192,
+  "schema": "coax.secp-field-multiply.v1",
+  "scope": "bounded multiplication/square correctness only; no constant-time, device, secure-erasure, one-hour or security-review claim",
+  "seed": 20261028,
+  "sources": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/secp_field.coax": "463e7b5682c1c279d5c6676c743e0bf70afb23883de0a71d126d95a258a92f23",
+    "coax/tests/nostr/secp_field.py": "e2449aa8475c32d4fbcfe17fea520b3fb502555897412e7d1a82b2bb4d93143f",
+    "coax/tests/nostr/secp_field_mul.py": "bbf58edc942f4c00712d9b016be5f834a57813a9c230fdb618be1fd756e7ff80",
+    "coax/tests/nostr/secp_field_wasm.c": "6300d470226773c86de0311ba74c8948eb3ad125e048801f4728fa786441d6d9",
+    "coax/tests/nostr/secp_field_wasm.cjs": "dfd5d7d265740fdcd30f1a3a53de86f4c4646c896ebcbe7363a1da802051b330",
+    "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9"
+  },
+  "stream_sha256": "4813aea277cd912649775bace4f00f56db2c8bd21f7a639130ec068c8f87720e",
+  "temporary_bytes": 129049480,
+  "wasm": [
+    {
+      "artifact_sha256": "0beed4cdc1716fafd077afbf2168bea07caa624d9b03bc72e28e32d70323935e",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "checked",
+      "operations": 522,
+      "raw_cases": 0,
+      "raw_products": 216,
+      "target": "wasm32-wasip1",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    },
+    {
+      "artifact_sha256": "3833d6f9bfdf3f8ef95d669558f97ab3f18bbab1d7d3df881104521022c3bf37",
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "failures": 0,
+      "mode": "release",
+      "operations": 522,
+      "raw_cases": 0,
+      "raw_products": 216,
+      "target": "wasm32-wasip1",
+      "wasm_compiler": "Homebrew clang version 23.1.4"
+    }
+  ]
+}

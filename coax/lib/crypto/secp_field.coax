@@ -1,8 +1,8 @@
 // secp256k1 field representation, p = 2^256 - 2^32 - 977.
 // Ten little-endian u64 limbs: nine 26-bit limbs and one 22-bit limb.
 // Runtime inputs admit each digit <=8 times its mask. Operations return
-// canonical magnitude1 values. No multiplication, variable-time optimization,
-// secret-taint enforcement or target constant-time guarantee is claimed here.
+// canonical magnitude1 values. No variable-time optimization, secret-taint
+// enforcement or target constant-time guarantee is claimed here.
 #load "bytes.coax";
 #authority;
 SF_MASK26 :: cast(u64) 67108863;
@@ -15,6 +15,102 @@ SecpFieldResult :: struct { value: SecpField; ok: bool; }
 SecpFieldDebug :: struct { value: SecpField; magnitude: int; normalized: bool; }
 SF_P :: [10] u64.[67107887, 67108799, 67108863, 67108863, 67108863,
   67108863, 67108863, 67108863, 67108863, 4194303];
+SfMulBounds :: struct { facts: [27] u64; ok: bool; }
+// Inclusive declared budgets. The verification note names every fact slot.
+SF_MUL_LIMITS :: [27] u64.[536870911, 33554431, 134217727, 134217727,
+  4503599627370495, 72057594037927935, 1073741823, 72057594037927935,
+  35184372088831, 8388607, 137438953471, 2048, 137438953471, 4,
+  127, 137438953471, 2048, 137438953471, 2048, 134217727, 1,
+  134217726, 134217726, 8, 1073741823, 2048, 1073741823];
+SF_MUL_BOUNDS :: #run sf_mul_bounds(8);
+#assert SF_MUL_BOUNDS.ok;
+
+#forall "bound certificate covers the actual schedule at every admitted magnitude" magnitude: 1..<9 {
+  b := sf_mul_bounds(magnitude);
+  #assert b.ok;
+  m := cast(u64) magnitude;
+  #assert b.facts[0] == m * 67108864 - 1 && b.facts[1] == m * 4194304 - 1;
+  #assert b.facts[2] == 67108863 + (m - 1) * 977 && b.facts[3] == 67108863 + (m - 1) * 64;
+  expected := [23] u64.[4503599493152769, 45035994931527690, 671088640,
+    45035995602616330, 17592848744449, 4194463, 69927435246, 2048,
+    69927437294, 4, 79, 65632468014, 977, 4362154255, 65, 67113984,
+    1, 67109840, 67108927, 0, 671088630, 1042, 268447680];
+  expected[19] = m;
+  for i: 4..<27 { #assert b.facts[i] == expected[i - 4]; }
+}
+#forall "budget admission rejects each real exceeding fact without overflow" index: 0..<27 {
+  b: SfMulBounds; b.facts = SF_MUL_LIMITS;
+  #assert sf_mul_budget(b);
+  b.facts[index] += 1; #assert !sf_mul_budget(b);
+}
+#test "inductive carry budgets compare facts rather than assume them" {
+  b: SfMulBounds; b.facts = SF_MUL_LIMITS;
+  b.facts[6] = 0; b.facts[24] = 1; #assert !sf_mul_budget(b);
+  b.facts[24] = 0; #assert sf_mul_budget(b);
+  b.facts[11] = 0; b.facts[25] = 1; #assert !sf_mul_budget(b);
+  b.facts[25] = 0; #assert sf_mul_budget(b);
+}
+
+#test "bound arithmetic refuses true u64 overflow and accepts its exact boundary" {
+  #assert sf_bound_product_ok(CB_MAX64, 1) && sf_bound_product_ok(0, CB_MAX64);
+  #assert sf_bound_product_ok(CB_MAX64, 0) && !sf_bound_product_ok(CB_MAX64, 2);
+  #assert !sf_bound_product_ok(4294967296, 4294967296);
+  #assert sf_bound_sum_ok(CB_MAX64, 0) && !sf_bound_sum_ok(CB_MAX64, 1);
+  #assert sf_bound_sum_ok(CB_MAX64 - 1, 1);
+  #assert sf_bound_product(7, 9) == 63 && sf_bound_sum(7, 9) == 16;
+  #assert !sf_mul_bounds(0).ok && !sf_mul_bounds(9).ok;
+  #assert !sf_mul_bounds(-9223372036854775808).ok && !sf_mul_bounds(9223372036854775807).ok;
+  bad := sf_mul_bounds(9); for i: 0..<27 { #assert bad.facts[i] == 0; }
+}
+#test "multiplication and square known residues" {
+  zero: SecpField; one: SecpField; one.limb[0] = 1;
+  two: SecpField; two.limb[0] = 2; four: SecpField; four.limb[0] = 4;
+  #assert sf_equal_mask(sf_multiply(zero, two), zero) == CB_MAX64;
+  #assert sf_equal_mask(sf_multiply(two, one), two) == CB_MAX64;
+  #assert sf_equal_mask(sf_square(two), four) == CB_MAX64;
+  #assert sf_equal_mask(sf_square(sf_negate(one)), one) == CB_MAX64;
+  #assert sf_equal_mask(sf_multiply(sf_negate(two), two), sf_negate(four)) == CB_MAX64;
+  c: SecpField; c.limb[0] = 977; c.limb[1] = 64;
+  // This product's second fold equals2^256 and exercises the final carry1.
+  #assert sf_equal_mask(sf_multiply(sf_negate(one), sf_negate(c)), c) == CB_MAX64;
+}
+#forall "radix carry preserves each public span and every single carry edge" length: 1..<33, at: 0..<32 {
+  digits: [33] u64;
+  digits[at] = 67108864;
+  #assert sf_radix_carry(digits[0..<length]);
+  for i: 0..<33 {
+    want: u64;
+    if at < length - 1 {
+      if i == at + 1 { want = 1; }
+    } else { if i == at { want = 67108864; } }
+    #assert digits[i] == want;
+  }
+}
+#test "radix carry refuses empty or excessive public views without mutation" {
+  digits: [33] u64;
+  digits[0] = 67108864;
+  #assert !sf_radix_carry(digits[..]) && !sf_radix_carry(digits[0..<0]);
+  #assert digits[0] == 67108864;
+}
+#forall "every radix bit squares and multiplies by its additive inverse" bit: 0..<256 {
+  a: SecpField; one: SecpField; one.limb[0] = 1;
+  a.limb[bit / 26] = cast(u64) 1 << (bit % 26);
+  #assert sf_equal_mask(sf_multiply(a, one), a) == CB_MAX64;
+  square := sf_square(a);
+  #assert sf_equal_mask(sf_multiply(a, sf_negate(a)), sf_negate(square)) == CB_MAX64;
+  #assert sf_debug_valid(sf_debug_normalize(SecpFieldDebug.{value = square, magnitude = 1, normalized = true}));
+}
+#forall "magnitude8 products agree with an independent small polynomial" magnitude: 1..<9 {
+  a: SecpField; expected: SecpField;
+  for i: 0..<9 { a.limb[i] = cast(u64) magnitude * SF_MASK26; }
+  a.limb[9] = cast(u64) magnitude * SF_MASK22;
+  // a reduces to m*(2^32+976). Square its three-term polynomial directly.
+  m := cast(u64) magnitude;
+  expected.limb[0] = m * m * 976 * 976;
+  expected.limb[1] = m * m * 2 * 976 * 64;
+  expected.limb[2] = m * m * 64 * 64;
+  #assert sf_equal_mask(sf_square(a), sf_normalize(expected)) == CB_MAX64;
+}
 
 #test "zero one p-minus-one and maximum256 load modulo p" {
   bytes: [32] u8; zero: SecpField;
@@ -205,3 +301,90 @@ sf_debug_add :: (a: SecpFieldDebug, b: SecpFieldDebug) -> SecpFieldDebug #export
 sf_debug_negate :: (a: SecpFieldDebug) -> SecpFieldDebug #export_c {
   x := sf_debug_normalize(a); x.value = sf_negate(x.value); return x;
 }
+
+// Bound helpers execute on public compile-time metadata, never on secrets.
+sf_bound_product_ok :: (a: u64, b: u64) -> bool { return b == 0 || a <= CB_MAX64 / b; }
+sf_bound_sum_ok :: (a: u64, b: u64) -> bool { return a <= CB_MAX64 - b; }
+sf_bound_product :: (a: u64, b: u64) -> u64 { #assert sf_bound_product_ok(a, b); return a * b; }
+sf_bound_sum :: (a: u64, b: u64) -> u64 { #assert sf_bound_sum_ok(a, b); return a + b; }
+sf_mul_budget :: (bounds: SfMulBounds) -> bool {
+  for i: 0..<27 { if bounds.facts[i] > SF_MUL_LIMITS[i] { return false; } }
+  if bounds.facts[24] > bounds.facts[6] { return false; }
+  if bounds.facts[25] > bounds.facts[11] { return false; }
+  return true;
+}
+sf_mul_bounds :: (magnitude: int) -> SfMulBounds {
+  r: SfMulBounds;
+  if magnitude < 1 || magnitude > 8 { return r; }
+  m := cast(u64) magnitude;
+  // The admitted input normalization schedule has at most m-1 initial carry.
+  r.facts[0] = sf_bound_sum(sf_bound_product(m, SF_MASK26), m - 1);
+  r.facts[1] = sf_bound_sum(sf_bound_product(m, SF_MASK22), m - 1);
+  r.facts[2] = sf_bound_sum(SF_MASK26, sf_bound_product(m - 1, 977));
+  r.facts[3] = sf_bound_sum(SF_MASK26, sf_bound_product(m - 1, 64));
+  // Canonical operands: at most ten products per convolution coefficient.
+  r.facts[4] = sf_bound_product(SF_MASK26, SF_MASK26);
+  r.facts[5] = sf_bound_product(r.facts[4], 10);
+  r.facts[6] = sf_bound_product(SF_MASK26 + 1, 10);
+  r.facts[7] = sf_bound_sum(r.facts[5], r.facts[6]);
+  r.facts[8] = sf_bound_sum(sf_bound_product(SF_MASK22, SF_MASK22), r.facts[6]);
+  // p19 comes only from carrying p18; p18's own product uses two22-bit digits.
+  r.facts[9] = sf_bound_sum(SF_MASK26 >> 22, (r.facts[8] >> 26) << 4);
+  // Every other q digit <=MASK26. Even the conservative q9 bound is smaller.
+  r.facts[10] = sf_bound_sum(SF_MASK26, sf_bound_sum(sf_bound_product(SF_MASK26, 977), sf_bound_product(SF_MASK26, 64)));
+  r.facts[11] = 2048;
+  r.facts[12] = sf_bound_sum(r.facts[10], r.facts[11]);
+  r.facts[26] = sf_bound_sum(sf_bound_product(r.facts[9], 64), r.facts[11]);
+  r.facts[13] = r.facts[26] >> 26;
+  r.facts[14] = sf_bound_sum(SF_MASK26 >> 22, r.facts[13] << 4);
+  r.facts[15] = sf_bound_sum(SF_MASK26, sf_bound_product(SF_MASK26, 977));
+  r.facts[16] = r.facts[15] >> 26;
+  r.facts[17] = sf_bound_sum(sf_bound_sum(SF_MASK26, sf_bound_sum(sf_bound_product(r.facts[14], 977), sf_bound_product(SF_MASK26, 64))), r.facts[16]);
+  r.facts[18] = r.facts[17] >> 26;
+  r.facts[19] = sf_bound_sum(SF_MASK26, sf_bound_sum(sf_bound_product(r.facts[14], 64), r.facts[18]));
+  r.facts[20] = r.facts[19] >> 26;
+  // All subsequent carries, including bit256, are <=1. Folding that carry
+  // leaves magnitude<=2 for the already-proved normalization schedule.
+  r.facts[21] = sf_bound_sum(SF_MASK26, 977);
+  r.facts[22] = sf_bound_sum(SF_MASK26, 64);
+  r.facts[23] = m;
+  r.facts[24] = r.facts[7] >> 26;
+  r.facts[25] = r.facts[12] >> 26;
+  r.ok = sf_mul_budget(r); return r;
+}
+// Carry every lower digit into its successor. The caller's proven bounds
+// admit every addition; the final digit retains its full carry. Counts/public
+// indices are the only choices, with no validation branch on secret digits.
+sf_radix_carry :: (digits: [] u64) -> bool {
+  if digits.count < 1 || digits.count > 32 { return false; }
+  for i: 0..<digits.count - 1 {
+    digits[i + 1] += digits[i] >> 26;
+    digits[i] &= SF_MASK26;
+  }
+  return true;
+}
+sf_multiply :: (a: SecpField, b: SecpField) -> SecpField #export_c {
+  x := sf_normalize(a); y := sf_normalize(b); product: [20] u64;
+  for i: 0..<10 { for j: 0..<10 { product[i + j] += x.limb[i] * y.limb[j]; } }
+  #assert sf_radix_carry(product[..]);
+  // Split at bit256 and fold the high part by c=2^32+977.
+  r: SecpField; fold: [12] u64;
+  for i: 0..<10 { fold[i] = product[i]; }
+  fold[9] &= SF_MASK22;
+  for i: 0..<10 {
+    q := (product[i + 9] >> 22) | ((product[i + 10] & SF_MASK22) << 4);
+    fold[i] += q * 977; fold[i + 1] += q * 64;
+  }
+  #assert sf_radix_carry(fold[..]);
+  for i: 0..<10 { r.limb[i] = fold[i]; }
+  r.limb[9] &= SF_MASK22;
+  q0 := (fold[9] >> 22) | ((fold[10] & SF_MASK22) << 4);
+  q1 := (fold[10] >> 22) | (fold[11] << 4);
+  r.limb[0] += q0 * 977;
+  r.limb[1] += q1 * 977 + q0 * 64;
+  r.limb[2] += q1 * 64;
+  carry := sf_carry(r.limb[..]);
+  r.limb[0] += carry * 977; r.limb[1] += carry * 64;
+  return sf_normalize(r);
+}
+sf_square :: (a: SecpField) -> SecpField #export_c { return sf_multiply(a, a); }
