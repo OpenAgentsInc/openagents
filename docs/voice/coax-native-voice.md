@@ -456,6 +456,14 @@ Three levers lower the per-hour price if needed:
 - Batch and cached synthesis for NPC lines that repeat.
 - Speech-to-text volume tiers, which start at 500,000 minutes a month.
 
+The one lever that removes speech cost entirely is the on-device path. The
+2026-10-21 audit recommended it ("on the user's computer first, a Pylon
+second, a cloud provider never by default"). aethyr-cpp's iOS builds
+1036–1045 already run it: SpeechAnalyzer transcription and system voices,
+on the phone. Using it would reopen decision 3 (Google for all speech).
+Kept as a free-tier fallback, it would let the free tier cost us nothing
+while paid users get Chirp 3 HD.
+
 ## Phases
 
 Each phase ends with a measurement committed and a real-phone run.
