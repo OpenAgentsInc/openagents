@@ -2007,19 +2007,48 @@
         "web",
         "projects"
       ],
-      "body": "Extend the shipped socket/frame probe: parse bounded relay JSON, retain project-scoped events and fold issues/revisions/status/comments/plans/order in Coax. Reconnect/catch-up with missing dependencies explicit. Existing signature-verified snapshot is first paint. Until project-page-verify, live rows are explicitly relay-trusted provisional data, cannot overwrite verified state or feed authority/claims; LIVE means socket state only.",
+      "body": "Shipped in 2ace224626: project-agnostic Coax relay parsing, event store and task/plan/detail fold with captured-transcript parity and live updates. It trusts the configured relay for signatures. Capped-history catch-up and explicit partial-state hardening are tracked separately by project-live-catchup; cryptographic admission is project-page-verify.",
       "files": [
         "apps/openagents-web/project.coax",
         "apps/openagents-web/projects/coax/"
       ],
       "acceptance": [
-        "Throwaway signed claim/plan/status/order on a local relay redraws the page within 2s without release; captured fixtures agree with model.ts",
-        "Provisional and verified snapshot states stay distinct; malformed/out-of-scope/missing/deferred events never become authoritative",
-        "Reconnect, partial EOSE, capacity and old-generation tests pass; check-visuals passes"
+        "Retain committed Coax/model.ts captured-transcript fold parity and live update checks from 2ace224626",
+        "Do not claim Coax signature verification or complete catch-up from this resolved transport/fold task"
       ],
       "blocked_by": [
         "host-socket-pipe",
         "nostr-json-profile-hardening"
+      ],
+      "blocks": [
+        "project-page-verify",
+        "project-live-catchup"
+      ],
+      "status": "resolved"
+    },
+    {
+      "slug": "project-live-catchup",
+      "parent": "m8-project-live",
+      "title": "Complete bounded live catch-up across relay caps",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "web",
+        "reliability"
+      ],
+      "body": "The live fold shipped in 2ace224626, but a capped initial REQ/EOSE is not complete history. Add bounded initial backfill for issues/comments/status, missing order-record issue IDs, timestamp ties/budgets and generation-safe reconnect. Keep stable live subscriptions; do not replace a full snapshot with a partial set or treat CLOSED as successful EOSE. Preserve details/plans and make incomplete states explicit. This is relay-trusted display only until local verification.",
+      "files": [
+        "apps/openagents-web/project-live.coax",
+        "apps/openagents-web/project-fold.coax",
+        "coax/web/project/"
+      ],
+      "acceptance": [
+        "A scripted relay cap below requested limit still loads all155+ known issue rows and older current claims/plans/statuses, matching model.ts",
+        "Same-timestamp ambiguity, omitted known order IDs, auth-required CLOSED, reconnect and exhausted budget preserve the last complete view and show incomplete/offline instead of false LIVE",
+        "Actual browser task/worker/count state agrees with signature-verified snapshot for a captured fixture, then reflects a newly published update without reload"
+      ],
+      "blocked_by": [
+        "project-page-live"
       ],
       "blocks": [
         "project-page-verify"
@@ -2046,7 +2075,8 @@
       ],
       "blocked_by": [
         "project-page-live",
-        "nostr-event"
+        "nostr-event",
+        "project-live-catchup"
       ],
       "blocks": [
         "nostr-production-cutover",
