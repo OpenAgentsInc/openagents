@@ -28,6 +28,9 @@ _Bool MS_run(_Bool selective, _Bool entered);
 uint32_t MS_type_action(uint32_t kind);
 _Bool MS_string_cast(uint32_t expr, uint32_t ty);
 _Bool MS_storage_changed(uint64_t before_slots, uint64_t before_containers, uint64_t after_slots, uint64_t after_containers);
+_Bool MS_shard_valid(uint64_t shard, uint64_t count);
+_Bool MS_shard_owns(uint64_t index, uint64_t shard, uint64_t count);
+_Bool MS_jobs_valid(uint64_t jobs);
 
 #ifdef __cplusplus
 }

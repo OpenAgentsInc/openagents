@@ -72,7 +72,7 @@ coax/build.sh test
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
 | `coax test FILE [--steps N]` | Run every `#test` and `#forall`; print counterexamples |
-| `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails |
+| `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails. `--jobs N` (default: cores) runs mutants in parallel; `--shard I/N` and `--merge RECORD...` split a file across processes or machines. The report is identical in every mode |
 | `coax explain CODE` / `--all [--markdown]` | Explain an error code |
 | `coax version` | Print the version |
 | `coax status [--json]` | Print the release catalogue as Markdown or inventory-schema-1 JSON |

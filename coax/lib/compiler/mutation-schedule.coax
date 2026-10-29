@@ -35,3 +35,31 @@ MS_string_cast :: (expr:u32,ty:u32)->bool #export_c {return expr>=18 || ty==0 ||
 MS_storage_changed :: (before_slots:u64,before_containers:u64,after_slots:u64,after_containers:u64)->bool #export_c {
  return before_slots!=after_slots || before_containers!=after_containers;
 }
+
+// Parallel and sharded mutation. Every mutant has one global index in source
+// order; shard s of n (1-based) owns the indices congruent to s-1 modulo n, so
+// the shards are disjoint and their union is the whole set. Workers only
+// change who evaluates a mutant, never which mutants exist or their order.
+#forall "a shard spec is 1-based and bounded" shard:0..<6, count:0..<6 {
+ #assert MS_shard_valid(cast(u64)shard,cast(u64)count)==(count>=1 && shard>=1 && shard<=count);
+}
+#test "shard counts are capped" {
+ #assert MS_shard_valid(65536,65536) && !MS_shard_valid(1,65537) && MS_shard_valid(1,65536);
+}
+#forall "each mutant belongs to exactly its residue shard" index:0..<12, shard:1..<6, count:1..<6 {
+ #assert MS_shard_owns(cast(u64)index,cast(u64)shard,cast(u64)count)==(shard<=count && index%count==shard-1);
+}
+#forall "shards partition the mutants" index:0..<40, count:1..<9 {
+ owners:=0;
+ for s:1..<count+1 { if MS_shard_owns(cast(u64)index,cast(u64)s,cast(u64)count) {owners+=1;} }
+ #assert owners==1;
+}
+#test "job requests are capped" {
+ #assert MS_jobs_valid(1) && MS_jobs_valid(1024) && !MS_jobs_valid(0) && !MS_jobs_valid(1025);
+}
+MS_shard_valid :: (shard:u64,count:u64)->bool #export_c {return count>=1 && count<=65536 && shard>=1 && shard<=count;}
+MS_shard_owns :: (index:u64,shard:u64,count:u64)->bool #export_c {
+ if !MS_shard_valid(shard,count) {return false;}
+ return index%count==shard-1;
+}
+MS_jobs_valid :: (jobs:u64)->bool #export_c {return jobs>=1 && jobs<=1024;}

@@ -711,6 +711,45 @@ Use `coax mutate split.coax --mutation-reference` to force the full runner.
 `--mutation-stats` reports check counts and fallback facts;
 `--mutation-trace` reports the first killing check for each mutant.
 
+### Running mutants in parallel
+
+Mutants are independent: each one changes one site, runs the checks in a
+fresh evaluator and is undone. So `coax mutate` evaluates them in worker
+processes, one per available core by default. `--jobs N` sets the number
+(1 to 1,024; `--jobs 1` keeps everything in one process), and so does the
+`COAX_MUTATE_JOBS` environment variable when `--jobs` is absent. Each worker
+starts from a copy of the compiler made after the unmutated checks pass, and
+the report is printed only after every mutant is done, in source order. The
+mutant set, every kill or survival, the trace, the statistics and the exit
+status are the same for every N:
+
+```shell
+$ coax mutate split.coax --jobs 1
+6 mutants, 6 killed, 0 survived
+$ coax mutate split.coax --jobs 8
+6 mutants, 6 killed, 0 survived
+```
+
+To split one file's mutants across shells or machines, give each run a
+shard. `--shard I/N` evaluates the mutants whose index leaves remainder
+I - 1 when divided by N, so the N shards are disjoint and cover every
+mutant. A shard prints a record on standard output and its own survivors on
+standard error. `--merge` combines all N records into the full report:
+
+```shell
+$ coax mutate split.coax --shard 1/2 > one.rec
+$ coax mutate split.coax --shard 2/2 > two.rec
+$ coax mutate split.coax --merge one.rec --merge two.rec
+6 mutants, 6 killed, 0 survived
+```
+
+A record names the compiler, the file's text and every mutant, so a merge
+refuses records from another file, another compiler, a missing or repeated
+shard, or a truncated record. The merged report, trace and statistics are
+byte for byte the serial ones. `coax/tests/mutation_parallel.py` checks that
+for synthetic files and real `#authority` units: pass it `.coax` paths to
+compare any file.
+
 To kill a survivor, write the check that would have caught it. Restore
 the two assertions for persons 1 and 2 (that's Listing 10-1 again):
 

@@ -11,7 +11,8 @@
 //   coax check   file.coax                           check without invoking C
 //   coax layout  file.coax                           struct and enum layouts
 //   coax test    file.coax [--steps N]               run every #test and #forall
-//   coax mutate  file.coax                           mutate the code; every mutant must fail a check
+//   coax mutate  file.coax [--jobs N] [--shard I/N] [--merge RECORD]...
+//                                                    mutate the code; every mutant must fail a check
 //   coax explain CODE | --all [--markdown]           what an error code means
 //   coax version
 //
@@ -338,7 +339,12 @@ static int usage() {
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax test    file.coax [--steps N]\n"
-          "       coax mutate  file.coax [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
+          "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...]\n"
+          "                    [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
+          "                    --jobs N evaluates mutants in N processes (default: available cores,\n"
+          "                    or $COAX_MUTATE_JOBS); the report is the same for every N\n"
+          "                    --shard I/N runs mutants I-1, I-1+N, ... and prints a record on stdout\n"
+          "                    --merge RECORD (repeated) combines all N records into the full report\n"
           "       coax explain CODE | --all [--markdown]\n"
           "       coax version\n"
           "       coax status [--json]\n"
@@ -407,7 +413,7 @@ static int main_impl(int argc, char **argv) {
   const char *input = nullptr;
   std::string out, header, proto_prefix;
   EmitOptions opts;
-  bool mutation_reference = false, mutation_stats = false, mutation_trace = false;
+  MutationOptions mutation;
   bool keep_c = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
@@ -443,9 +449,26 @@ static int main_impl(int argc, char **argv) {
       }
     }
     else if (a == "--prefix" && i + 1 < argc && cmd == "proto") proto_prefix = argv[++i];
-    else if (a == "--mutation-reference" && cmd == "mutate") mutation_reference = true;
-    else if (a == "--mutation-stats" && cmd == "mutate") mutation_stats = true;
-    else if (a == "--mutation-trace" && cmd == "mutate") mutation_trace = true;
+    else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
+    else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
+    else if (a == "--mutation-trace" && cmd == "mutate") mutation.trace = true;
+    else if (a == "--jobs" && cmd == "mutate") {
+      if (mutation.jobs || i + 1 >= argc || !parse_count(argv[i + 1], &mutation.jobs) || !MS_jobs_valid(mutation.jobs)) {
+        fprintf(stderr, "coax: --jobs requires one count from 1 to 1024\n");
+        return 1;
+      }
+      ++i;
+    }
+    else if (a == "--shard" && cmd == "mutate") {
+      std::string spec = i + 1 < argc ? argv[++i] : "";
+      size_t slash = spec.find('/');
+      if (mutation.shards || slash == std::string::npos || !parse_count(spec.substr(0, slash).c_str(), &mutation.shard) ||
+          !parse_count(spec.substr(slash + 1).c_str(), &mutation.shards) || !MS_shard_valid(mutation.shard, mutation.shards)) {
+        fprintf(stderr, "coax: --shard requires I/N with 1 <= I <= N <= 65536\n");
+        return 1;
+      }
+    }
+    else if (a == "--merge" && cmd == "mutate" && i + 1 < argc) mutation.merge.push_back(argv[++i]);
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
@@ -455,6 +478,10 @@ static int main_impl(int argc, char **argv) {
     else return usage();
   }
   if (!input || (!header.empty() && cmd != "c")) return usage();
+  if (mutation.shards && !mutation.merge.empty()) {
+    fprintf(stderr, "coax: --shard runs one part; --merge combines finished parts. Use one of them\n");
+    return 1;
+  }
 #ifdef COAX_BOOTSTRAP_IMPORTER
   if(!g_timings.source_map.empty()){fprintf(stderr,"coax: source maps require the final compiler, not build-only stage0\n");return 1;}
 #endif
@@ -482,7 +509,7 @@ static int main_impl(int argc, char **argv) {
     Arena arena;
     File file;
     if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false)) return 1;
-    return cmd == "test" ? test_command(&file, steps) : mutate_command(&arena, &file, mutation_reference, mutation_stats, mutation_trace);
+    return cmd == "test" ? test_command(&file, steps) : mutate_command(&arena, &file, mutation);
   }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;

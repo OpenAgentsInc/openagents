@@ -176,6 +176,9 @@ _Bool MS_run(_Bool l_selective, _Bool l_entered);
 uint32_t MS_type_action(uint32_t l_kind);
 _Bool MS_string_cast(uint32_t l_expr, uint32_t l_ty);
 _Bool MS_storage_changed(uint64_t l_before_slots, uint64_t l_before_containers, uint64_t l_after_slots, uint64_t l_after_containers);
+_Bool MS_shard_valid(uint64_t l_shard, uint64_t l_count);
+_Bool MS_shard_owns(uint64_t l_index, uint64_t l_shard, uint64_t l_count);
+_Bool MS_jobs_valid(uint64_t l_jobs);
 
 _Bool MS_selective(_Bool l_reference, _Bool l_borrowed_aggregate, _Bool l_string_allocation, _Bool l_unstable_storage) {
   return ((((!l_reference) && (!l_borrowed_aggregate)) && (!l_string_allocation)) && (!l_unstable_storage));
@@ -211,4 +214,20 @@ _Bool MS_string_cast(uint32_t l_expr, uint32_t l_ty) {
 
 _Bool MS_storage_changed(uint64_t l_before_slots, uint64_t l_before_containers, uint64_t l_after_slots, uint64_t l_after_containers) {
   return ((l_before_slots != l_after_slots) || (l_before_containers != l_after_containers));
+}
+
+_Bool MS_shard_valid(uint64_t l_shard, uint64_t l_count) {
+  return ((((l_count >= UINT64_C(1)) && (l_count <= UINT64_C(65536))) && (l_shard >= UINT64_C(1))) && (l_shard <= l_count));
+}
+
+_Bool MS_shard_owns(uint64_t l_index, uint64_t l_shard, uint64_t l_count) {
+  if (!MS_shard_valid(l_shard, l_count))
+  {
+    return 0;
+  }
+  return (coax_mod_u64(l_index, l_count, 63) == coax_sub_u64(l_shard, UINT64_C(1), 63));
+}
+
+_Bool MS_jobs_valid(uint64_t l_jobs) {
+  return ((l_jobs >= UINT64_C(1)) && (l_jobs <= UINT64_C(1024)));
 }
