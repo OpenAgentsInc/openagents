@@ -1,0 +1,52 @@
+// The calibration the pinned decision bundles actually supply.
+#load "readout.coax";
+#authority;
+PcStatus :: enum u8 {ok;kind;readout;unpinned;}
+PcSource :: enum u8 {none;}
+PcCalibration :: struct {status:PcStatus;source:PcSource;slots:int;head_dim:int;}
+// The complete 63-byte readout.json of both pinned revisions (SHA-256 96ea8a5c...).
+PC_PINNED_READOUT :: "{\n  \"readout\": \"slot_lm\",\n  \"head_dim\": 256,\n  \"n_slots\": 256\n}";
+#test "both pinned bundles supply a slot readout and no temperature table" {
+    readout:=PC_PINNED_READOUT;none:[1]u8;bytes:[63]u8;for i:0..<63 {bytes[i]=readout[i];}
+    #assert readout.count==63;
+    for kind:0..<2 {
+        c:=pc_load(cast(u8)kind,bytes[..],none[0..<0]);
+        #assert c.status==PcStatus.ok && c.source==PcSource.none && c.slots==256 && c.head_dim==256;
+        #assert pc_temperature(c,QrKind.choice,1)==1 && pc_temperature(c,QrKind.choice,255)==1;
+        #assert pc_temperature(c,QrKind.noul,2)==1 && pc_temperature(c,QrKind.score,1)==1 && pc_temperature(c,QrKind.score,10)==1;
+    }
+}
+#test "other readouts, targets and calibration files are refused" {
+    readout:=PC_PINNED_READOUT;none:[1]u8;extra:=[1]u8.[123];
+    bytes:[64]u8;for i:0..<63 {bytes[i]=readout[i];}
+    #assert pc_load(2,bytes[0..<63],none[0..<0]).status==PcStatus.kind;
+    #assert pc_load(255,bytes[0..<63],none[0..<0]).status==PcStatus.kind;
+    #assert pc_load(0,bytes[0..<63],extra[..]).status==PcStatus.unpinned;
+    #assert pc_load(1,bytes[0..<63],none[0..<0]).status==PcStatus.ok;
+    #assert pc_load(1,bytes[0..<62],none[0..<0]).status==PcStatus.readout;
+    #assert pc_load(1,bytes[..],none[0..<0]).status==PcStatus.readout;
+    bytes[62]=32;#assert pc_load(0,bytes[0..<63],none[0..<0]).status==PcStatus.readout;
+    #assert pc_load(0,bytes[0..<63],extra[..]).status==PcStatus.readout;
+}
+#test "temperature follows the readout's question bounds" {
+    readout:=PC_PINNED_READOUT;none:[1]u8;bytes:[63]u8;for i:0..<63 {bytes[i]=readout[i];}c:=pc_load(0,bytes[..],none[0..<0]);
+    #assert pc_temperature(c,QrKind.choice,0)==0 && pc_temperature(c,QrKind.choice,256)==0;
+    #assert pc_temperature(c,QrKind.noul,1)==0 && pc_temperature(c,QrKind.noul,3)==0;
+    #assert pc_temperature(c,QrKind.score,0)==0 && pc_temperature(c,QrKind.score,11)==0;
+    bad:=c;bad.status=PcStatus.readout;#assert pc_temperature(bad,QrKind.choice,2)==0;
+    bad.status=PcStatus.unpinned;#assert pc_temperature(bad,QrKind.noul,2)==0;
+}
+// book:begin calibration
+pc_load :: (kind:u8,readout:[]u8,calibration:[]u8)->PcCalibration #export_c {
+    if kind>1 {return PcCalibration.{status=PcStatus.kind};}
+    if cast(string)readout!=PC_PINNED_READOUT {return PcCalibration.{status=PcStatus.readout};}
+    // Neither pinned revision contains calibration.json; one is a different bundle.
+    if calibration.count>0 {return PcCalibration.{status=PcStatus.unpinned};}
+    return PcCalibration.{source=PcSource.none,slots=256,head_dim=256};
+}
+// With no table, the pinned runtime uses 1.0 for every kind and option count.
+pc_temperature :: (c:PcCalibration,kind:QrKind,count:int)->f32 #export_c {
+    if c.status!=PcStatus.ok || !qr_valid(cast(u8)kind,count,1) {return 0;}
+    return 1;
+}
+// book:end calibration

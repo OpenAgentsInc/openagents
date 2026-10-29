@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "name": "psionic-ch12-heldout-v1",
+  "about": "Twelve owned text decisions written for chapter 12. Labels and metric definitions were committed before any model run. Nothing is tuned on them.",
+  "metrics": "psionic/lib/decision-quality.coax qm_measure: first-maximum accuracy, multi-class Brier, top-label ECE over 15 bins, abstention over items that offer an abstain option, score mean absolute error",
+  "temperature": "the bundle's calibration: none, so 1.0 for every kind",
+  "items": [
+    {"id": "choice-water", "kind": "choice", "state": "The kettle was switched off an hour ago. The water in it is now at room temperature.", "question": "How warm is the water in the kettle?", "options": [{"name": "boiling"}, {"name": "room temperature"}, {"name": "frozen"}], "gold": 1, "abstain": null},
+    {"id": "choice-payment", "kind": "choice", "state": "Maya paid for the concert tickets in cash. She does not own a bank card.", "question": "How did Maya pay for the tickets?", "options": [{"name": "cash"}, {"name": "card"}, {"name": "bank transfer"}], "gold": 0, "abstain": null},
+    {"id": "choice-room-unknown", "kind": "choice", "state": "The team meeting was moved to a different room this morning.", "question": "Which room is the meeting in now?", "options": [{"name": "room 101"}, {"name": "room 204"}, {"name": "unknown", "description": "the state does not say"}], "gold": 2, "abstain": 2},
+    {"id": "choice-parcel", "kind": "choice", "state": "The parcel left the warehouse on Monday and was delivered on Wednesday.", "question": "On which day was the parcel delivered?", "options": [{"name": "Monday"}, {"name": "Tuesday"}, {"name": "Wednesday"}, {"name": "unknown", "description": "the state does not say"}], "gold": 2, "abstain": 3},
+    {"id": "choice-routing", "kind": "choice", "state": "A customer writes: \"The app crashes every time I open the camera.\"", "question": "Which team should handle this message?", "options": [{"name": "billing"}, {"name": "bug reports"}, {"name": "sales"}], "gold": 1, "abstain": null},
+    {"id": "noul-window", "kind": "noul", "state": "Every window in the house is closed.", "question": "Is the kitchen window open?", "gold": 1},
+    {"id": "noul-height", "kind": "noul", "state": "Sam is taller than Ana, and Ana is taller than Lee.", "question": "Is Sam taller than Lee?", "gold": 0},
+    {"id": "noul-hours", "kind": "noul", "state": "The shop opens at 9:00 and closes at 17:00 every day.", "question": "Is the shop open at 20:00?", "gold": 1},
+    {"id": "noul-capital", "kind": "noul", "state": "France is a country in Europe.", "question": "The capital of France is Paris.", "gold": 0},
+    {"id": "score-review-bad", "kind": "score", "state": "Review: \"Terrible. It broke on the first day.\"", "question": "How positive is the review?", "options": [{"description": "very negative"}, {"description": "neutral"}, {"description": "very positive"}], "gold": 0},
+    {"id": "score-review-plain", "kind": "score", "state": "Review: \"It works. Nothing special.\"", "question": "How positive is the review?", "options": [{"description": "very negative"}, {"description": "neutral"}, {"description": "very positive"}], "gold": 1},
+    {"id": "score-severity", "kind": "score", "state": "Bug report: the whole service is down for every user.", "question": "How severe is the issue?", "options": [{"description": "minor"}, {"description": "moderate"}, {"description": "critical"}], "gold": 2}
+  ]
+}

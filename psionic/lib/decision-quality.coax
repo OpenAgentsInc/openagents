@@ -1,0 +1,127 @@
+// Decision-quality metrics over labeled requests, kept apart from numerical conformance.
+#load "readout.coax";
+#authority;
+PqStatus :: enum u8 {ok;shape;number;}
+// One labeled item: its distribution is probabilities[start..<start+count]. Noul slot 0 is yes.
+// abstain names a choice option that means "I don't know", or is -1.
+PqItem :: struct {kind:QrKind;count:int;start:int;gold:int;abstain:int;}
+PqKind :: struct {items:int;correct:int;brier:f64;}
+PqReport :: struct {status:PqStatus;cause:int;items:int;correct:int;brier:f64;ece:f64;kinds:[3]PqKind;score_error:f64;offered:int;abstained:int;answered:int;answered_correct:int;}
+PQ_BINS :: 15;
+PQ_TOLERANCE :: 0.000000000931322574615478515625; // 2^-30 on the sum of each distribution
+#test "four hand-derived items: accuracy, Brier, error, abstention and calibration" {
+    p:=[11]f64.[0.8,0.1,0.1, 0.3,0.7, 0,0.5,0.5, 0.1,0.2,0.7];
+    items:=[4]PqItem.[PqItem.{kind=QrKind.choice,count=3,start=0,gold=0,abstain=2},PqItem.{kind=QrKind.noul,count=2,start=3,gold=0,abstain=-1},
+        PqItem.{kind=QrKind.score,count=3,start=5,gold=2,abstain=-1},PqItem.{kind=QrKind.choice,count=3,start=8,gold=2,abstain=2}];
+    r:=pq_measure(items[..],p[..]);
+    #assert r.status==PqStatus.ok && r.items==4 && r.correct==2;
+    #assert abs(r.brier-0.42)<0.000000000001 && abs(r.score_error-0.5)<0.000000000001;
+    #assert r.kinds[0].items==2 && r.kinds[0].correct==2 && abs(r.kinds[0].brier-0.1)<0.000000000001;
+    #assert r.kinds[1].items==1 && r.kinds[1].correct==0 && abs(r.kinds[1].brier-0.98)<0.000000000001;
+    #assert r.kinds[2].items==1 && r.kinds[2].correct==0 && abs(r.kinds[2].brier-0.5)<0.000000000001;
+    #assert r.offered==2 && r.abstained==1 && r.answered==3 && r.answered_correct==1;
+    // Bins (11/15,12/15], (10/15,11/15] and (7/15,8/15]: 0.05 + 0.1 + 0.125.
+    #assert abs(r.ece-0.275)<0.000000000001;
+}
+#test "calibration bins are half-open from below and empty kinds have zero means" {
+    // 0.8 is exactly 12/15, so it shares (11/15,12/15] with 0.78; certainty lands in the last bin.
+    p:=[5]f64.[0.8,0.2, 0.78,0.22, 1];
+    items:=[3]PqItem.[PqItem.{kind=QrKind.noul,count=2,start=0,gold=0,abstain=-1},PqItem.{kind=QrKind.noul,count=2,start=2,gold=1,abstain=-1},PqItem.{kind=QrKind.choice,count=1,start=4,gold=0,abstain=-1}];
+    r:=pq_measure(items[..],p[..]);
+    #assert r.status==PqStatus.ok && r.items==3 && r.correct==2 && r.offered==0 && r.abstained==0 && r.answered==3 && r.answered_correct==2;
+    #assert abs(r.ece-f64(2)/3*abs(0.79-0.5))<0.000000000001;
+    #assert r.kinds[2].items==0 && r.kinds[2].brier==0 && r.score_error==0 && r.kinds[0].brier==0;
+    #assert abs(r.kinds[1].brier-(0.08+2*0.78*0.78)/2)<0.000000000001;
+    // Ties choose the first slot; an abstention that is wrong still counts as an abstention.
+    t:=[4]f64.[0.5,0.5, 0.25,0.75];
+    tied:=[2]PqItem.[PqItem.{kind=QrKind.score,count=2,start=0,gold=1,abstain=-1},PqItem.{kind=QrKind.choice,count=2,start=2,gold=0,abstain=1}];
+    q:=pq_measure(tied[..],t[..]);
+    #assert q.status==PqStatus.ok && q.correct==0 && q.kinds[2].correct==0 && q.kinds[0].correct==0 && abs(q.score_error-0.5)<0.000000000001;
+    #assert q.offered==1 && q.abstained==1 && q.answered==1 && q.answered_correct==0;
+    #assert abs(q.ece-(0.5*0.5+0.5*0.75))<0.000000000001;
+}
+#test "abstention at option zero, the first bin and two score items" {
+    // Twenty equal options put the top probability 0.05 in the first bin (0,1/15].
+    p:[26]f64;for i:0..<20 {p[i]=0.05;}p[20]=0.9;p[21]=0.1;p[22]=0.2;p[23]=0.8;p[24]=0.5;p[25]=0.5;
+    items:=[4]PqItem.[PqItem.{kind=QrKind.choice,count=20,start=0,gold=0,abstain=-1},PqItem.{kind=QrKind.choice,count=2,start=20,gold=1,abstain=0},
+        PqItem.{kind=QrKind.score,count=2,start=22,gold=0,abstain=-1},PqItem.{kind=QrKind.score,count=2,start=24,gold=1,abstain=-1}];
+    r:=pq_measure(items[..],p[..]);
+    #assert r.status==PqStatus.ok && r.correct==1 && r.offered==1 && r.abstained==1 && r.answered==3 && r.answered_correct==1;
+    // Score errors 0.8 and 0.5; bins hold 0.05 (right), 0.9 (wrong), 0.8 (wrong) and 0.5 (wrong, first maximum).
+    #assert abs(r.score_error-0.65)<0.000000000001 && r.kinds[2].items==2 && r.kinds[2].correct==0;
+    #assert abs(r.kinds[2].brier-(1.28+0.5)/2)<0.000000000001;
+    #assert abs(r.ece-(0.25*0.95+0.25*0.9+0.25*0.8+0.25*0.5))<0.000000000001;
+}
+#test "the first two bins stay separate" {
+    // 0.05 lies in (0,1/15] and 0.1 in (1/15,2/15].
+    p:[30]f64;for i:0..<20 {p[i]=0.05;}for i:20..<30 {p[i]=0.1;}
+    items:=[2]PqItem.[PqItem.{kind=QrKind.choice,count=20,start=0,gold=0,abstain=-1},PqItem.{kind=QrKind.choice,count=10,start=20,gold=1,abstain=-1}];
+    r:=pq_measure(items[..],p[..]);
+    #assert r.status==PqStatus.ok && r.correct==1 && abs(r.ece-(0.5*0.95+0.5*0.1))<0.000000000001;
+}
+#test "malformed labels and distributions refuse with the item index" {
+    p:=[4]f64.[0.5,0.5,0.25,0.75];good:=PqItem.{kind=QrKind.noul,count=2,start=0,gold=0,abstain=-1};
+    items:=[2]PqItem.[good,good];items[1].start=2;
+    #assert pq_measure(items[..],p[..]).status==PqStatus.ok;
+    #assert pq_measure(items[0..<0],p[..]).status==PqStatus.shape;
+    bad:=items;bad[1].count=3;r:=pq_measure(bad[..],p[..]);#assert r.status==PqStatus.shape && r.cause==1;
+    bad=items;bad[1].start=3;#assert pq_measure(bad[..],p[..]).status==PqStatus.shape;
+    bad=items;bad[1].start=-1;#assert pq_measure(bad[..],p[..]).status==PqStatus.shape;
+    bad=items;bad[0].gold=2;r=pq_measure(bad[..],p[..]);#assert r.status==PqStatus.shape && r.cause==0;
+    bad=items;bad[0].gold=-1;#assert pq_measure(bad[..],p[..]).status==PqStatus.shape;
+    bad=items;bad[0].abstain=0;#assert pq_measure(bad[..],p[..]).status==PqStatus.shape;
+    bad=items;bad[0].abstain=-2;#assert pq_measure(bad[..],p[..]).status==PqStatus.shape;
+    bad=items;bad[0].kind=QrKind.choice;bad[0].abstain=1;#assert pq_measure(bad[..],p[..]).status==PqStatus.ok;
+    bad[0].abstain=0;#assert pq_measure(bad[..],p[..]).status==PqStatus.ok;
+    bad[0].abstain=2;#assert pq_measure(bad[..],p[..]).status==PqStatus.shape;
+    // The sum may differ from one by at most 2^-30.
+    q:=p;q[2]=0.25+PQ_TOLERANCE;#assert pq_measure(items[..],q[..]).status==PqStatus.ok;
+    q[2]=0.25+2*PQ_TOLERANCE;r=pq_measure(items[..],q[..]);#assert r.status==PqStatus.number && r.cause==1;
+    q[2]=0.25-PQ_TOLERANCE;#assert pq_measure(items[..],q[..]).status==PqStatus.ok;
+    q[2]=0.25-2*PQ_TOLERANCE;#assert pq_measure(items[..],q[..]).status==PqStatus.number;
+    q=p;q[3]=1.25;q[2]=-0.25;#assert pq_measure(items[..],q[..]).status==PqStatus.number;
+    q=p;q[0]=1.5;q[1]=-0.5;r=pq_measure(items[..],q[..]);#assert r.status==PqStatus.number && r.cause==0;
+    #assert pq_item_count(1) && pq_item_count(65536) && !pq_item_count(65537);
+}
+pq_item_count :: (n:int)->bool {return n>=1 && n<=65536;}
+pq_item_valid :: (item:PqItem,total:int)->bool {
+    if !qr_valid(cast(u8)item.kind,item.count,1) || item.start<0 || item.start>total-item.count {return false;}
+    if item.gold<0 || item.gold>=item.count {return false;}
+    if item.abstain==-1 {return true;}
+    return item.kind==QrKind.choice && item.abstain>=0 && item.abstain<item.count;
+}
+pq_first_max :: (p:[]f64)->int {best:=0;for i:1..<p.count {if p[i]>p[best] {best=i;}}return best;}
+// book:begin quality
+pq_measure :: (items:[]PqItem,probabilities:[]f64)->PqReport #export_c {
+    if !pq_item_count(items.count) {return PqReport.{status=PqStatus.shape};}
+    for item,index:items {
+        if !pq_item_valid(item,probabilities.count) {return PqReport.{status=PqStatus.shape,cause=index};}
+        sum:=0.0;
+        for v:probabilities[item.start..<item.start+item.count] {if !(v>=0 && v<=1) {return PqReport.{status=PqStatus.number,cause=index};}sum+=v;}
+        if abs(sum-1)>PQ_TOLERANCE {return PqReport.{status=PqStatus.number,cause=index};}
+    }
+    r:=PqReport.{items=items.count};confidence:[PQ_BINS]f64;hits:[PQ_BINS]f64;
+    for item:items {
+        p:=probabilities[item.start..<item.start+item.count];best:=pq_first_max(p);correct:=best==item.gold;
+        brier:=0.0;expected:=0.0;
+        for v,i:p {target:=0.0;if i==item.gold {target=1;}brier+=(v-target)*(v-target);expected+=f64(i)*v;}
+        k:=cast(int)item.kind;r.kinds[k].items+=1;r.kinds[k].brier+=brier;r.brier+=brier;
+        if correct {r.kinds[k].correct+=1;r.correct+=1;}
+        if item.kind==QrKind.score {r.score_error+=abs(expected-f64(item.gold));}
+        if item.abstain>=0 {r.offered+=1;}
+        if item.abstain>=0 && best==item.abstain {r.abstained+=1;} else {r.answered+=1;if correct {r.answered_correct+=1;}}
+        // Top-label calibration: the first equal-width bin (b/15,(b+1)/15] that holds c.
+        c:=p[best];b:=0;while c>f64(b+1)/PQ_BINS {b+=1;}
+        confidence[b]+=c;if correct {hits[b]+=1;}
+    }
+    n:=f64(items.count);
+    // Sum over bins of (m/n)*|mean confidence - accuracy|, with each bin's count m cancelled.
+    for b:0..<PQ_BINS {r.ece+=abs(confidence[b]-hits[b])/n;}
+    r.brier/=n;
+    for k:0..<3 {if r.kinds[k].items!=0 {r.kinds[k].brier/=f64(r.kinds[k].items);}}
+    if r.kinds[2].items!=0 {r.score_error/=f64(r.kinds[2].items);}
+    return r;
+}
+// book:end quality
+
+#load "../fixtures/quality/quality-vectors.coax";
