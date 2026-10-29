@@ -1,0 +1,202 @@
+{
+  "additional_boundary_sequences": 3,
+  "annex_revision": 58,
+  "casefile_bytes": 6343538,
+  "casefile_sha256": "3cb06e15d310936457ccbd1b24c8318c605d801582d33d89a0a9e0c713aec479",
+  "checks": {
+    "authored": 7,
+    "budget_steps_per_check": 20000000,
+    "failed": 0,
+    "passed": 7
+  },
+  "compiler": "coax0 0.22.0",
+  "compiler_sha256": "9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",
+  "elapsed_seconds": 9.955879582994385,
+  "host": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "independent_source_review": {
+    "scope": "Read-only taskmaster review of UTF-8, decomposition, composition exclusions/order/blocking, Hangul, transactional capacity and corpus construction; no concrete correctness defect under bounded truthful-disjointness contract; performance/stack limitations retained; no external security audit or production approval.",
+    "source_sha256": "5a157bf8d2b923a0fcf205dcd0fca2c963895170526bf3d65ad67eb4e7b22c99",
+    "table_generator_sha256": "4a1ddf1e07a8a14470df8e0fc19de397ca72a0dd905679d05373909af09daf83"
+  },
+  "ios_simulator_sdk": "26.5",
+  "mutation": {
+    "failed_history": [
+      {
+        "killed": 362,
+        "log_sha256": "ff62d7c8848ae7d860824d3e74585050594c651823ef724193f5b93cfe823803",
+        "schema": "coax.unicode-mutation-history.v1",
+        "source_sha256": "9d5deeef5ae74c465454eefca8e868bf0e6137427ed2d62252ea051220732418",
+        "survived": 67,
+        "total": 429
+      },
+      {
+        "killed": 414,
+        "log_sha256": "f90bf2089443aa26b438a9aaa77be0c8de1d72c644b7c6e574b021175933cd0f",
+        "schema": "coax.unicode-mutation-history.v1",
+        "source_sha256": "04808a07aa9abcaa95438779a7e70f7be2b4c61ba75cfd5a71481c794ab5ead5",
+        "survived": 3,
+        "total": 417
+      }
+    ],
+    "filtered": false,
+    "killed": 417,
+    "log_sha256": "0889dd0a78a603928fcd9c03c4a30c2d1af5ccff658a6f57f6937fdbda9874ca",
+    "source_sha256": "5a157bf8d2b923a0fcf205dcd0fca2c963895170526bf3d65ad67eb4e7b22c99",
+    "survived": 0,
+    "total": 417,
+    "waivers": 0
+  },
+  "native": [
+    {
+      "artifact_sha256": "be24996fc710d1211674663238bdc6ecdd44a4b531c55461f5f45141f148a7c4",
+      "boundary_timings_ns": [
+        {
+          "case": 0,
+          "nanoseconds": 135000
+        },
+        {
+          "case": 1,
+          "nanoseconds": 571000
+        },
+        {
+          "case": 2,
+          "nanoseconds": 2046000
+        }
+      ],
+      "compiler_stack_usage": "coax/lib/text/nfkc.coax:189:un_nfkc\t96\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-5lt1bbbr/checked.c:32:coax_trap\t64\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.1\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.2\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.3\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.4\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.5\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.6\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.7\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.8\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.9\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.10\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.11\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.12\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.13\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.14\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.15\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.16\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.17\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.18\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.19\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.20\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.21\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.22\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.23\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.24\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.25\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.26\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.27\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.28\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.29\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.30\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.31\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.32\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.33\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.34\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.35\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.36\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.37\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.38\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.39\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.40\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.41\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.42\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.43\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.44\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.45\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.46\t16\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_0\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_1\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_2\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_3\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_4\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_5\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_6\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_7\t0\tstatic\n",
+      "elapsed_seconds": 0.37467525000101887,
+      "generated_c_sha256": "b0ae3e86b96f13fda41b63ad2f6b7d6f124f58bbaa8b15aa596b28089754b8d1",
+      "ios": "arm64 Simulator compilation only",
+      "ios_object_sha256": "6be1e987c6d04d01e6d121fddc78ed0b7695ec9a6c6f3a426dd45eeb1872b43a",
+      "largest_reported_single_function_frame_bytes": 96,
+      "profile": "checked",
+      "result": "boundary_timing 0 135000\nboundary_timing 1 571000\nboundary_timing 2 2046000\n394045 full corpus/scalar cases passed",
+      "sanitizers": "ASan+UBSan actual boundary calls passed",
+      "source_map_sha256": "1d8e3ad8983026bfadd5f7bd81c4ce12647c91b492346c8e21a70f996ad29387"
+    },
+    {
+      "artifact_sha256": "e45827a6f8fc52ed89f362da3448538ec02f25d2423f72ca00dbf7a0ee212f5d",
+      "boundary_timings_ns": [
+        {
+          "case": 0,
+          "nanoseconds": 133000
+        },
+        {
+          "case": 1,
+          "nanoseconds": 887000
+        },
+        {
+          "case": 2,
+          "nanoseconds": 1978000
+        }
+      ],
+      "compiler_stack_usage": "coax/lib/text/nfkc.coax:189:un_nfkc\t96\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-5lt1bbbr/release.c:32:coax_trap\t64\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.1\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.2\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.3\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.4\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.5\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.6\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.7\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.8\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.9\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.10\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.11\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.12\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.13\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.14\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.15\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.16\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.17\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.18\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.19\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.20\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.21\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.22\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.23\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.24\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.25\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.26\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.27\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.28\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.29\t16\tstatic\ncoax/lib/text/nfkc.coax:0:un_nfkc.cold.30\t16\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_0\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_1\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_2\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_3\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_4\t0\tstatic\ncoax/lib/text/nfkc.coax:0:OUTLINED_FUNCTION_5\t0\tstatic\n",
+      "elapsed_seconds": 0.42702829200425185,
+      "generated_c_sha256": "1ec6df225ebf99771b038e11dcfacc4e215be4dfbdc8ac186d9fe68bd2a127ec",
+      "ios": "arm64 Simulator compilation only",
+      "ios_object_sha256": "afd5e584a302bad03444054d6472b4f20cbb368574c19d5d274153c84249c6d1",
+      "largest_reported_single_function_frame_bytes": 96,
+      "profile": "release",
+      "result": "boundary_timing 0 133000\nboundary_timing 1 887000\nboundary_timing 2 1978000\n394045 full corpus/scalar cases passed",
+      "sanitizers": "ASan+UBSan actual boundary calls passed",
+      "source_map_sha256": "1d8e3ad8983026bfadd5f7bd81c4ce12647c91b492346c8e21a70f996ad29387"
+    }
+  ],
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "native_target": "arm64-apple-darwin25.4.0",
+  "nfkc_column_invariants": 100855,
+  "official_rows": 20171,
+  "omitted_assigned_scalar_identities": 293187,
+  "schema": "coax.unicode-nfkc-conformance.v1",
+  "scope": "bounded correctness and conformance; not secret erasure, constant time, physical iOS or production approval",
+  "source_integrity_tests": {
+    "failed": 0,
+    "passed": 3,
+    "scope": "exact inventory/original/archive hashes, deterministic regeneration, modified/missing/unlisted file refusal"
+  },
+  "source_manifest_sha256": "c57637f57d82a9cf0bda8c9f9445c5c26b9b0bdce22b0fbc73b32324383985fe",
+  "sources": {
+    "coax/lib/text/nfkc-data.coax": "ce5e30f7f0579d1153df5c52e209b454e921c098fa0aafb138065cff43d2b832",
+    "coax/lib/text/nfkc.coax": "5a157bf8d2b923a0fcf205dcd0fca2c963895170526bf3d65ad67eb4e7b22c99",
+    "coax/tests/unicode/conformance.py": "1ba8fef6deeea7d9c91f161ed4d1e4b17023ed8482cbf1e6bce4d1f216c1ada8",
+    "coax/tests/unicode/native.c": "4bc45f799186c42ab9cc750527dfd40a6e4b1ed5c2e3d1ace647bdf29c598273",
+    "coax/tests/unicode/test_tables.py": "287736dc706b35ca94cd29dfa2132b418c6623e3812b9bd083f3829ef3b2db82",
+    "coax/tests/unicode/wasm.c": "ad8ba0cce1e0efd0f91ad86c897679347168cfbf23ba07a4e5113399bc3510e4",
+    "coax/tests/unicode/wasm.cjs": "96dc2ca8167ddc976439e37e401d20d5c76d8ab5c57033c7dc93df65665bd2e5",
+    "tools/coax-unicode/tables.py": "4a1ddf1e07a8a14470df8e0fc19de397ca72a0dd905679d05373909af09daf83"
+  },
+  "stack_scope": "Compiler-reported individual function frames only. Generated C uses local lookup arrays before optimization; no total-stack guarantee for another profile/host/compiler.",
+  "tables": {
+    "assigned_codepoints": 312389,
+    "combining_classes": 1002,
+    "composition_pairs": 961,
+    "decomposed_values": 9265,
+    "decompositions": 5982,
+    "max_decomposition": 18,
+    "version": "18.0.0"
+  },
+  "timing_scope": "Single warm kernel calls, not latency or worst-case guarantees. Cases 0/1/2: 1024-byte ASCII, 1024-byte maximal compatibility expansion, 1023-byte reverse combining-class sequence. Native and Node/V8 Wasm observations do not establish iOS behavior.",
+  "unicode_version": "18.0.0",
+  "unoptimized_stack_observation": {
+    "compiler_stack_usage": "coax/lib/text/nfkc.coax:189:un_nfkc\t224\tstatic\ncoax/lib/text/nfkc.coax:113:coax_p_un_admit\t48\tstatic\ncoax/lib/text/nfkc.coax:130:coax_p_un_decode\t128\tstatic\ncoax/lib/text/nfkc.coax:147:coax_p_un_decompose\t24192\tstatic\ncoax/lib/text/nfkc.coax:160:coax_p_un_order\t112\tstatic\ncoax/lib/text/nfkc.coax:172:coax_p_un_compose\t112\tstatic\ncoax/lib/text/nfkc.coax:143:coax_p_un_size\t16\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:234:coax_elem_v_u32\t64\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:72:coax_add_s64\t48\tstatic\ncoax/lib/text/nfkc.coax:181:coax_p_un_emit\t224\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:108:coax_cast_uu\t48\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:85:coax_byte\t64\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:72:coax_sub_s64\t48\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:75:coax_sub_u32\t32\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:75:coax_add_u32\t32\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:75:coax_mul_u32\t32\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:32:coax_trap\t80\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:12:coax_path_for\t48\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:13:coax_line_for\t48\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:8:coax_find_source\t16\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:78:coax_index\t48\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:75:coax_mod_u32\t32\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:75:coax_div_u32\t32\tstatic\ncoax/lib/text/nfkc.coax:117:coax_p_un_find32\t80\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:235:coax_mkview_v_u32\t80\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:104:coax_cast_us\t48\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:72:coax_div_s64\t48\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:82:coax_slice_check\t48\tstatic\ncoax/lib/text/nfkc.coax:127:coax_p_un_class\t4080\tstatic\ncoax/lib/text/nfkc.coax:166:coax_p_un_pair\t7824\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:76:coax_shl_u64\t48\tstatic\ncoax/lib/text/nfkc.coax:122:coax_p_un_find64\t80\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:246:coax_mkview_v_u64\t80\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:245:coax_elem_v_u64\t64\tstatic\n/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-unicode-stack-406_5oq6/checked.c:257:coax_elem_v_u8\t64\tstatic\n",
+    "generated_c_sha256": "b0ae3e86b96f13fda41b63ad2f6b7d6f124f58bbaa8b15aa596b28089754b8d1",
+    "largest_reported_single_function_frame_bytes": 24192,
+    "native_flags": [
+      "-std=c11",
+      "-O0",
+      "-fstack-usage"
+    ],
+    "scope": "compiler-reported individual frames only, not a complete stack bound or executed profile"
+  },
+  "wasm": [
+    {
+      "artifact_sha256": "85ffccc9215f922ad6f513a4a8ecb80b9d98b32d413acc91054014272e1705c9",
+      "boundary_cases": 7,
+      "boundary_timings": [
+        {
+          "case": 0,
+          "milliseconds": 0.16008300000021336
+        },
+        {
+          "case": 1,
+          "milliseconds": 1.271750000000111
+        },
+        {
+          "case": 2,
+          "milliseconds": 2.8719579999999496
+        }
+      ],
+      "cases": 394045,
+      "elapsed_seconds": 1.3160928339930251,
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "guard_bytes": true,
+      "profile": "checked",
+      "stack_bytes": 1048576
+    },
+    {
+      "artifact_sha256": "8ba28888b1e3a44a0947ee203ce13ff83c68bac41611ea751501200e36bdf79f",
+      "boundary_cases": 7,
+      "boundary_timings": [
+        {
+          "case": 0,
+          "milliseconds": 0.19562499999994998
+        },
+        {
+          "case": 1,
+          "milliseconds": 0.7798750000000609
+        },
+        {
+          "case": 2,
+          "milliseconds": 2.3812920000000304
+        }
+      ],
+      "cases": 394045,
+      "elapsed_seconds": 0.9645655420026742,
+      "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+      "guard_bytes": true,
+      "profile": "release",
+      "stack_bytes": 1048576
+    }
+  ],
+  "wasm_compiler": "Homebrew clang version 23.1.4"
+}

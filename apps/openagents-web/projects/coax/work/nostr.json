@@ -2828,7 +2828,7 @@
       "files": [
         "coax/lib/text/",
         "coax/tests/unicode/",
-        "coax/tests/vectors/upstream/unicode-18.0.0/",
+        "coax/tests/unicode/upstream/unicode-18.0.0/",
         "tools/coax-unicode/",
         "docs/verification/"
       ],

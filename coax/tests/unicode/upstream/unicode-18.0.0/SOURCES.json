@@ -1,0 +1,61 @@
+{
+  "schema": "coax.unicode-source-pins.v1",
+  "unicode_version": "18.0.0",
+  "normalization_annex_revision": 58,
+  "license": "Unicode-3.0",
+  "retrieved_utc": "2026-10-29",
+  "scope": "Original upstream payloads; larger text files are losslessly archived with deterministic gzip (both archive and original hashes pinned). No downloaded scripts are executed. Runtime tables are derived separately.",
+  "files": [
+    {
+      "file": "ReadMe.txt",
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/ReadMe.txt",
+      "bytes": 729,
+      "sha256": "b0ea442f29dee90584aacd3665a6e1ce87ffc917a4d31f34e1916d2d6f7f9205"
+    },
+    {
+      "file": "UnicodeData.txt.gz",
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt",
+      "bytes": 311170,
+      "sha256": "2b27f5e446fd9854d060e470fe4af1594da68285f584b103dda069eca5decc54",
+      "source_bytes": 2243593,
+      "source_sha256": "0736451de439ae7baf1425136617da495e09ee5afbe6e394374db7009ea08950",
+      "encoding": "gzip"
+    },
+    {
+      "file": "DerivedNormalizationProps.txt.gz",
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/DerivedNormalizationProps.txt",
+      "bytes": 174255,
+      "sha256": "2f6290f17987993531db752adf6848c66b2ef614a071bee2d5609fc2f6f55fc3",
+      "source_bytes": 1396877,
+      "source_sha256": "98ac7f67d985fe781e317f6182e885e94cabb0c314769e6dd73e48b226931ccd",
+      "encoding": "gzip"
+    },
+    {
+      "file": "CompositionExclusions.txt",
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/CompositionExclusions.txt",
+      "bytes": 9007,
+      "sha256": "c759b100e9ae8960ae6b50fc5765950a7581fd9f30d4ef95f68f25a6d97e818e"
+    },
+    {
+      "file": "NormalizationTest.txt.gz",
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/NormalizationTest.txt",
+      "bytes": 455362,
+      "sha256": "4f7bc034c0d2fe2e3ebaaab2d63635daa7f87eeb399192577c2d4aa34e6f8992",
+      "source_bytes": 2863708,
+      "source_sha256": "25a50d816764b04abfb4a646d3eb2b2a803284c3873d9a06757b94fe4513dde3",
+      "encoding": "gzip"
+    },
+    {
+      "file": "LICENSE",
+      "url": "https://www.unicode.org/license.txt",
+      "bytes": 1995,
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+    },
+    {
+      "file": "uax15-58.html",
+      "url": "https://www.unicode.org/reports/tr15/tr15-58.html",
+      "bytes": 141588,
+      "sha256": "efcf19da85342bd87fb93b590975ca422597243f2e19c6cb46e941d0d2d48d73"
+    }
+  ]
+}
