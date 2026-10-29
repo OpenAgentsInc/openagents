@@ -218,6 +218,7 @@ Everglade :: struct {
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;
   // the pack: its meshes' indices, its identity indices for the shapes, how it streams
   kit_first: [KIT_MESHES] int; kit_count: [KIT_MESHES] int;
+  canopy_rgb: [KIT_TREES * 3] f32;   // each kind's leaves' mean colour from the catalog (0 until it says)
   identity_first: int; pack_ready: bool; pack_failed: bool;
   ranger_first: int; ranger_count: int; ranger_word: int;   // its indices and its first vertex's word
   pack_loaded: int; pack_total: int;
@@ -474,6 +475,7 @@ whole_at :: (line: string, from: int) -> int {
 everglade_catalog :: (s: [] Everglade, text: string) #export_c {
   if !s[0].started { everglade_start(s); }
   for m: 0..<KIT_MESHES { s[0].kit_first[m] = 0; s[0].kit_count[m] = 0; }
+  for k: 0..<KIT_TREES * 3 { s[0].canopy_rgb[k] = 0; }
   s[0].identity_first = -1;
   s[0].ranger_first = 0; s[0].ranger_count = 0; s[0].ranger_word = 0;
   i := 0;
@@ -503,6 +505,19 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
     first := whole_at(line, name_end);
     count := whole_at(line, word_end(line, name_end + 1));
     for m: 0..<KIT_MESHES { if name == KIT_MESH[m] && first >= 0 && count > 0 { s[0].kit_first[m] = first; s[0].kit_count[m] = count; } }
+    // a tree's leaves end their line "canopy SHAPE R G B" (linear thousandths): the far cones take that colour
+    c := name_end;
+    while c + 7 <= line.count && line[c..<c + 7] != "canopy " { c += 1; }
+    if c + 7 <= line.count {
+      at := word_end(line, c + 7);
+      rgb: [3] int;
+      for k: 0..<3 { rgb[k] = whole_at(line, at); at = word_end(line, at + 1); }
+      for m: 0..<2 * KIT_TREES {
+        if m % 2 == 1 && name == KIT_MESH[m] && rgb[0] >= 0 && rgb[1] >= 0 && rgb[2] >= 0 {
+          for k: 0..<3 { s[0].canopy_rgb[(m / 2) * 3 + k] = f32(rgb[k]) / 1000; }
+        }
+      }
+    }
   }
   s[0].pack_ready = s[0].identity_first >= 0;
 }
@@ -1390,8 +1405,13 @@ far_tree :: (s: [] Everglade, x: f32, base: f32, z: f32, size: f32, yaw: f32, ki
   w := ifx pine then 4.6f32 else 5.4f32;
   h := ifx pine then 8.0f32 else 6.6f32;
   lift := ifx pine then 1.4f32 else 2.6f32;
-  shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, base + (lift + h / 2) * size, z), yaw, 0, w * size, h * size, w * size,
-        ifx pine then 0.16f32 else 0.26f32, ifx pine then 0.32f32 else 0.42f32, ifx pine then 0.2f32 else 0.17f32);
+  // the colour of the kit's leaves it stands for (the pack's catalog), so the swap doesn't show through the haze
+  k := kind * 3;
+  kit_rgb := s[0].canopy_rgb[k] + s[0].canopy_rgb[k + 1] + s[0].canopy_rgb[k + 2] > 0;
+  r := ifx kit_rgb then s[0].canopy_rgb[k] else ifx pine then 0.16f32 else 0.26f32;
+  g := ifx kit_rgb then s[0].canopy_rgb[k + 1] else ifx pine then 0.32f32 else 0.42f32;
+  b := ifx kit_rgb then s[0].canopy_rgb[k + 2] else ifx pine then 0.2f32 else 0.17f32;
+  shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, base + (lift + h / 2) * size, z), yaw, 0, w * size, h * size, w * size, r, g, b);
 }
 
 KIT_BUCKETS :: 12;
@@ -2219,7 +2239,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert squares > 100 && holes * 50 < squares;
 }
 
-CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nT 0 layer29.jpg 0\n";
+CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1 canopy ellipsoid 33 98 0\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1 canopy sphere 97 198 0\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nT 0 layer29.jpg 0\n";
 
 #test "the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it" {
   g: [1] Everglade;
@@ -2232,6 +2252,9 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   everglade_catalog(g[..], CATALOG);
   #assert g[0].pack_ready && g[0].identity_first == 43083 && everglade_draws(g[..]) == DRAWS;
   #assert g[0].kit_first[3] == 11418 && g[0].kit_count[3] == 3630 && g[0].kit_first[11] == 42351;
+  // a tree's leaves carry their canopy's colour for the far cones; a kind without one keeps its own
+  #assert abs(g[0].canopy_rgb[3] - 0.033) < 0.0001 && abs(g[0].canopy_rgb[4] - 0.098) < 0.0001 && g[0].canopy_rgb[5] == 0;
+  #assert abs(g[0].canopy_rgb[7] - 0.198) < 0.0001 && g[0].canopy_rgb[0] == 0 && g[0].canopy_rgb[9] == 0;
   #assert g[0].ranger_first == 44107 && g[0].ranger_count == 94188 && g[0].ranger_word == 692676;
   n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].draws[0] == 43083 && g[0].draws[5 * 4] == 0 && g[0].draws[5 * 4 + 1] == 1464;

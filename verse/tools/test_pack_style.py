@@ -129,5 +129,38 @@ class Manifest(unittest.TestCase):
             self.assertEqual(catalog(data), catalog(shipped.read_bytes()))
 
 
+class Canopy(unittest.TestCase):
+    """Blob canopies (art-styles.md 7): a tree's leaves carry their shape, colour and per-vertex blob."""
+    def test_shapes_by_name(self):
+        self.assertEqual(P.canopy_shape("CommonTree_3_Leaves"), "sphere")
+        self.assertEqual(P.canopy_shape("Pine_5_Leaves"), "ellipsoid")
+        self.assertIsNone(P.canopy_shape("CommonTree_3"))
+
+    def test_the_blob_points_out_of_the_centre_with_the_height_share(self):
+        v = bytearray()
+        for p in ((0.0, 4.0, 0.0), (2.0, 2.0, 0.0), (0.0, 0.0, -1.0)):
+            v += struct.pack("<3f", *p) + bytes(36)
+        P.canopy_blob(v, 0, [-2.0, 0.0, -1.0], [2.0, 4.0, 1.0], False)
+        top = struct.unpack_from("<3bB", v, 36)
+        self.assertEqual(top, (0, 127, 0, 255))
+        side = struct.unpack_from("<3bB", v, 48 + 36)
+        self.assertEqual((side[0], side[1], side[2], side[3]), (127, 0, 0, 128))
+        # an ellipsoid leans toward its short axis: z's half size is 1 against y's 2
+        self.assertEqual(struct.unpack_from("<3bB", v, 96 + 36)[2], -57)
+        P.canopy_blob(v, 0, [-2.0, 0.0, -1.0], [2.0, 4.0, 1.0], True)
+        self.assertEqual(struct.unpack_from("<3bB", v, 96 + 36)[2], -114)
+
+    @unittest.skipUnless(HAVE_KIT, "the kit's scene.bin and layers aren't on this machine")
+    def test_the_fixture_pack_names_its_canopy(self):
+        m, keys, data, *_ = P.build(copy.deepcopy(FIXTURE))
+        line = next(x for x in catalog(data).split("\n") if x.startswith("M CommonTree_3_Leaves "))
+        words = line.split()
+        self.assertEqual(words[11:13], ["canopy", "sphere"])
+        r, g, b = map(int, words[13:16])
+        self.assertTrue(g > r >= b and g > 50)
+        trunk = next(x for x in catalog(data).split("\n") if x.startswith("M CommonTree_3 "))
+        self.assertNotIn("canopy", trunk)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,10 @@ The catalog is text, a line each:
   pack NAME / budget BYTES / bytes BYTES
   L K NAME|LICENCE|URL            licence K
   M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1   a mesh: its indices, licence, bounds (metres)
+  M ... canopy SHAPE R G B         a tree's leaves (a "_Leaves" mesh) end their M line so: SHAPE
+                                  sphere, or ellipsoid for a pine or cypress, and the leaves' mean
+                                  colour (linear, thousandths: the texels under its vertices times
+                                  their colour), so the far trees that stand for it match it
   T LAYER SOURCE K                a texture layer and its licence
   S NAME K                        a sound and its licence
   I FIRST COUNT                   identity indices (0, 1, ... COUNT-1) for shapes the realm's shader
@@ -48,8 +52,13 @@ layer that still fails is refused with its numbers; the source stays as it
 was.
 
 Vertices are the Haunted House's (realm.wgsl): 48 bytes, position, normal,
-uv, colour with its layer in the alpha byte, then 12 zero bytes; the layer
-is the pack's own (0 first). A character's vertices follow the kit's, 32
+uv, colour with its layer in the alpha byte, then 12 bytes; the layer is the
+pack's own (0 first). The 12 are zero but on a canopy's vertices, where the
+first 4 are its blob (docs/verse/art-styles.md, 7. Foliage): the direction
+from the canopy's centre (the middle of its bounds) as three signed bytes
+(n * 127; over the half sizes squared for an ellipsoid, then normalized),
+and its share of the tree's height (y over the leaves' top, 255ths), which
+the wind's sway scales by. A character's vertices follow the kit's, 32
 bytes each: position (3 x f32), the normal as three signed bytes (n / 127)
 with the layer in the fourth, uv (2 x f32), four joints (u8) and four
 weights (u8, 255ths summing to 255).
@@ -229,6 +238,48 @@ def image(stem, size, style="lowpoly", painted=False):
     else:
         im.save(buf, "JPEG", quality=82, optimize=True)
     return path, buf.getvalue()
+
+
+def canopy_shape(name):
+    """A tree's leaves shade as a blob: an ellipsoid for a pine or cypress, else a sphere; None for any other mesh."""
+    if not name.endswith("_Leaves"):
+        return None
+    return "ellipsoid" if any(k in name for k in ("Pine", "Cypress")) else "sphere"
+
+
+def canopy_blob(vertices, vstart, lo, hi, ellipsoid):
+    """Writes each canopy vertex's blob direction and height share into its first spare 4 bytes."""
+    c = [(lo[k] + hi[k]) / 2 for k in range(3)]
+    half = [max((hi[k] - lo[k]) / 2, 0.001) for k in range(3)]
+    top = max(hi[1], 0.001)
+    for v in range(vstart, len(vertices) // 48):
+        p = struct.unpack_from("<3f", vertices, v * 48)
+        d = [(p[k] - c[k]) / (half[k] * half[k] if ellipsoid else 1.0) for k in range(3)]
+        n = sum(x * x for x in d) ** 0.5
+        d = [x / n for x in d] if n > 1e-9 else [0.0, 1.0, 0.0]
+        share = min(max(p[1] / top, 0.0), 1.0)
+        struct.pack_into("<3bB", vertices, v * 48 + 36, *[max(-127, min(127, round(x * 127))) for x in d], round(share * 255))
+
+
+def canopy_colour(vertices, vstart, vend, layer_images):
+    """A canopy's mean colour (linear, thousandths): the opaque texels of the layers its vertices use
+    (a leaf card's corners are clear, so not the texel under each vertex), times their mean colour."""
+    from PIL import Image
+    lin = [((x / 255) / 12.92) if x <= 10 else (((x / 255) + 0.055) / 1.055) ** 2.4 for x in range(256)]
+    layers, colour, n = {}, [0.0, 0.0, 0.0], 0
+    for v in range(vstart, vend):
+        layers[vertices[v * 48 + 35]] = 1
+        for k in range(3):
+            colour[k] += vertices[v * 48 + 32 + k] / 255
+        n += 1
+    total, texels = [0.0, 0.0, 0.0], 0
+    for layer in layers:
+        im = Image.open(io.BytesIO(layer_images[layer])).convert("RGBA")
+        px = im.tobytes()
+        for i in range(0, len(px), 4):
+            if px[i + 3] >= 90:
+                total[0] += lin[px[i]]; total[1] += lin[px[i + 1]]; total[2] += lin[px[i + 2]]; texels += 1
+    return [round(1000 * total[k] / max(texels, 1) * colour[k] / max(n, 1)) for k in range(3)]
 
 
 class Reader:
@@ -493,6 +544,7 @@ def build(manifest_path):
     layers = []          # SCN4 layer numbers, in the pack's order
     layer_licence = {}
     mesh_lines = []
+    canopies = []        # (its mesh line, its first vertex and the one after its last, sphere or ellipsoid)
     for item in m["meshes"]:
         name = item["name"] if isinstance(item, dict) else item
         if name not in meshes:
@@ -501,6 +553,7 @@ def build(manifest_path):
         key = (item.get("licence") if isinstance(item, dict) else None) or FROM_KIND.get(kind)
         lic = licence_of(key, f"mesh {name}")
         start = len(indices)
+        vstart = len(vertices) // 48
         unique = {}
         lo, hi = [1e9] * 3, [-1e9] * 3
         for i in range(count):
@@ -519,18 +572,26 @@ def build(manifest_path):
                 hi = [max(hi[k], p[k]) for k in range(3)]
                 vertices += raw[:35] + bytes([layers.index(layer)]) + bytes(12)
             indices.append(unique[raw])
-        mesh_lines.append(f"M {name} {start} {len(indices) - start} {lic} " + " ".join(f"{x:.3f}" for x in lo + hi))
+        line = f"M {name} {start} {len(indices) - start} {lic} " + " ".join(f"{x:.3f}" for x in lo + hi)
+        if canopy_shape(name):
+            canopy_blob(vertices, vstart, lo, hi, canopy_shape(name) == "ellipsoid")
+            canopies.append((len(mesh_lines), vstart, len(vertices) // 48, canopy_shape(name)))
+        mesh_lines.append(line)
     size = int(m.get("texture_size", PAINT_DEFAULT_SIZE if style == "painterly" else 512))
     entries = []   # (kind, licence, name, bytes)
     layer_lines, sound_lines = [], []
+    layer_images = []
     for k, layer in enumerate(layers):
         lic = layer_licence[layer]
         if lic == 255:
             raise SystemExit(f"layer {layer} is used by meshes of two licences; split them")
         painted = paint_what is True or (isinstance(paint_what, list) and layer in paint_what)
         src, data = image(home(m["layers"].format(n=layer)), size, style, painted)
+        layer_images.append(data)
         entries.append((KIND_LAYER, lic, f"layer{k}", data))
         layer_lines.append(f"T {k} {src.name} {lic}")
+    for at, vstart, vend, shape in canopies:
+        mesh_lines[at] += f" canopy {shape} " + " ".join(str(x) for x in canopy_colour(vertices, vstart, vend, layer_images))
     character_lines, rig = [], None
     if "character" in m:
         spec = m["character"]

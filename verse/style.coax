@@ -257,6 +257,24 @@ verse_style_shaft :: (sum:f32,total:f32,weight:f32,fade:f32)->f32 #export_c {ret
 // Relative luminance of linear RGB.
 verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
 
+// ---- 7. Foliage: blob canopies (art-styles.md 7). A canopy shades as one soft blob round its centre,
+// not as its leaf cards: its normal leans 0.85 of the way to the blob's.
+// One channel of the blob's direction at a canopy point p with centre c and half size `half` on that
+// axis: (p - c) / half^2, an ellipsoid's gradient (a sphere's when the three half sizes match), so a
+// pine's tall crown rounds over its top and sides alike. The three are normalized together.
+verse_style_canopy_axis :: (p:f32,c:f32,half:f32)->f32 #export_c {h:=st_max(half,0.001f32);return (p-c)/(h*h);}
+// One channel of the canopy normal before normalizing: the mesh's normal mixed `k` (0.85) toward the blob's.
+verse_style_canopy_normal :: (mesh_n:f32,blob_n:f32,k:f32)->f32 #export_c {return mesh_n+(blob_n-mesh_n)*k;}
+// How far a canopy point `share` of its tree's height up (from the trunk's base) moves in the wind:
+// `reach` (0.05 m) times its share times the wind's bend over its amplitude, so the canopy breathes
+// with the grass and the trunk stays still.
+verse_style_canopy_sway :: (theta:f32,amp:f32,reach:f32,share:f32)->f32 #export_c {
+ return reach*st_sat(share)*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));
+}
+// Leafy gaps: whether the canopy is open at a point whose leaf noise is n (0 to 1): open where the noise
+// is under `gap` (the preset's 0.36), so the sky shows through in holes and the light shafts streak.
+verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c {return ifx n<gap then 1.0f32 else 0.0f32;}
+
 #test "the band edges sit at 0.20 and 0.58 and blend over 0.12" {
  #assert verse_style_bands(0.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
  #assert verse_style_bands(0.14f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
@@ -505,4 +523,15 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
  #assert verse_style_tip(0.3f32,0.0f32,0.15f32)/0.3f32>verse_style_tip(0.4f32,1.0f32,0.15f32)/0.4f32;
  #assert abs(verse_style_jitter(0.5f32,0.0f32,1.0f32,0.04f32)-0.52f32)<0.0001f32 && abs(verse_style_jitter(0.5f32,2.0f32,1.0f32,0.04f32)-0.48f32)<0.0001f32;
  #assert verse_style_jitter(0.5f32,1.0f32,0.3f32,0.04f32)==0.5f32 && verse_style_jitter(0.5f32,0.0f32,0.5f32,0.04f32)==0.5f32;
+}
+#test "canopies: normals 0.85 to the blob, an ellipsoid for a pine, 0.05 m of sway at the top, 0.36 open" {
+ // a sphere's blob direction is p - c over the radius squared; an ellipsoid's leans to its short axes
+ #assert abs(verse_style_canopy_axis(3.0f32,1.0f32,2.0f32)-0.5f32)<0.00001f32;
+ #assert verse_style_canopy_axis(1.0f32,0.0f32,1.0f32)>verse_style_canopy_axis(1.0f32,0.0f32,3.0f32);
+ #assert abs(verse_style_canopy_normal(0.0f32,1.0f32,0.85f32)-0.85f32)<0.00001f32 && verse_style_canopy_normal(0.4f32,0.4f32,0.85f32)==0.4f32;
+ #assert verse_style_canopy_sway(0.3f32,0.3f32,0.05f32,0.0f32)==0.0f32;
+ #assert abs(verse_style_canopy_sway(0.3f32,0.3f32,0.05f32,1.0f32)-0.05f32)<0.00001f32;
+ #assert abs(verse_style_canopy_sway(-0.15f32,0.3f32,0.05f32,0.5f32)+0.0125f32)<0.00001f32;
+ #assert verse_style_canopy_sway(0.9f32,0.3f32,0.05f32,2.0f32)==0.05f32;
+ #assert verse_style_canopy_open(0.1f32,0.3f32)==1.0f32 && verse_style_canopy_open(0.3f32,0.3f32)==0.0f32 && verse_style_canopy_open(0.5f32,0.0f32)==0.0f32;
 }

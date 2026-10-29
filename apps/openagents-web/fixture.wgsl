@@ -83,9 +83,27 @@ const EYE = vec3f(0.0, 1.75, 8.0);
 const SPHERE = vec4f(-1.7, 0.85, 0.0, 0.85);
 const CUBE = vec4f(1.5, 0.6, 0.3, 0.6);              // centre, half size; turned 0.5 rad about y
 const TRUNK = vec4f(3.9, 0.0, -2.6, 0.18);           // base, radius; 1.9 m tall
+const CANOPY_TOP = 3.85;                              // the crown's top: the tree's height for its sway
 fn canopy(i: i32) -> vec4f {
   var c = array<vec4f, 3>(vec4f(3.9, 2.7, -2.6, 1.15), vec4f(3.25, 2.3, -2.3, 0.8), vec4f(4.5, 2.35, -2.9, 0.85));
-  return c[i];
+  // the canopy breathes with the grass's wind (spec 7): 0.05 m at the top, by each clump's share of
+  // the tree's height; the trunk stays still. Frozen at t = 0 under still.
+  let w = st(24u); let w2 = st(25u);
+  let t = select(u.time, 0.0, u.still > 0.5);
+  let wd = vec2f(w2.x, w2.y);
+  let theta = verse_style_wind(dot(TRUNK.xz, wd), verse_style_gust(TRUNK.x, TRUNK.z, t, wd.x, wd.y, w.z, w.w), t, w.x, w.y, w.z);
+  let d = verse_style_canopy_sway(theta, w.x, st(26u).y, c[i].y / CANOPY_TOP);
+  return c[i] + vec4f(wd.x * d, 0.0, wd.y * d, 0.0);
+}
+// Leafy gaps (spec 7): the crown is open where its leaf noise, small clumps over the sphere round the
+// crown's centre, falls under the preset's share, so the sky shows through in holes and the light
+// shafts stream through them as streaks. A ray through the crown's thick middle (thick 1) finds fewer
+// holes than one grazing its edge (0), as through a real crown.
+fn canopy_open(p: vec3f, thick: f32) -> bool {
+  let q = normalize(p - CANOPY_C);
+  let a = atan2(q.z, q.x);
+  let n = verse_style_noise(a * 4.1 + 11.0, q.y * 6.0 + 2.0) * 0.6 + verse_style_noise(a * 9.3 + 3.0, q.y * 12.5 + 5.0) * 0.4;
+  return verse_style_canopy_open(n + 0.22 * thick * thick, st(26u).z) > 0.5;
 }
 const CANOPY_C = vec3f(3.9, 2.5, -2.6);
 const BODY = vec4f(-0.3, 0.0, -1.8, 0.24);           // a figure: capsule from y 0.24 to 1.30, head above
@@ -172,11 +190,21 @@ fn trace(o: vec3f, d: vec3f) -> Hit {
   t = cylinder_t(o, d, TRUNK, 1.9);
   if (t > 0.0 && t < h.t) { let p = o + d * t; h = Hit(t, normalize(vec3f(p.x - TRUNK.x, 0.0, p.z - TRUNK.z)), vec3f(0.17, 0.10, 0.05), 1.0, 3.0); }
   for (var i = 0; i < 3; i++) {
-    t = sphere_t(o, d, canopy(i));
-    if (t > 0.0 && t < h.t) {
-      // a blob: the leaf mass shades as one soft shape round the canopy's centre (spec 7)
-      let p = o + d * t;
-      h = Hit(t, normalize(mix(normalize(p - canopy(i).xyz), normalize(p - CANOPY_C), 0.85)), vec3f(0.11, 0.27, 0.05), 1.0, 4.0);
+    let c = canopy(i);
+    // through a gap the ray passes the clump to whatever is behind it
+    var tc = sphere_t(o, d, c);
+    if (tc > 0.0) {
+      let oc = o - c.xyz; let b = dot(oc, d);
+      let thick = sqrt(max(b * b - dot(oc, oc) + c.w * c.w, 0.0)) / c.w;
+      if (canopy_open(o + d * tc, thick)) { tc = -1.0; }
+    }
+    if (tc > 0.001 && tc < h.t) {
+      // a blob: the leaf mass shades as one soft shape round the canopy's centre (spec 7), its normal
+      // the clump's leaned the preset's mix toward the crown's
+      let p = o + d * tc;
+      let k = st(26u).x;
+      let nc = normalize(p - c.xyz); let nb = normalize(p - CANOPY_C);
+      h = Hit(tc, normalize(vec3f(verse_style_canopy_normal(nc.x, nb.x, k), verse_style_canopy_normal(nc.y, nb.y, k), verse_style_canopy_normal(nc.z, nb.z, k))), vec3f(0.11, 0.27, 0.05), 1.0, 4.0);
     }
   }
   t = capsule_t(o, d, BODY.xyz + vec3f(0.0, 0.24, 0.0), BODY.xyz + vec3f(0.0, 1.30, 0.0), BODY.w);
@@ -220,7 +248,7 @@ fn trace(o: vec3f, d: vec3f) -> Hit {
 const CASTER_SEGMENTS = 24u;
 const CASTER_RINGS = 13u;                            // odd: no ring on a capsule's equator
 fn caster(i: u32) -> vec4f {                         // centre, radius (the cube: its half size)
-  var c = array<vec4f, 8>(SPHERE, CUBE, vec4f(3.9, 2.7, -2.6, 1.15), vec4f(3.25, 2.3, -2.3, 0.8), vec4f(4.5, 2.35, -2.9, 0.85),
+  var c = array<vec4f, 8>(SPHERE, CUBE, canopy(0), canopy(1), canopy(2),
     vec4f(TRUNK.x, 0.95, TRUNK.z, TRUNK.w), vec4f(BODY.x, 0.77, BODY.z, BODY.w), HEAD);
   return c[i];
 }
@@ -714,7 +742,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 }
 // ---- end generated
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_canopy_axis, verse_style_canopy_normal, verse_style_canopy_sway, verse_style_canopy_open) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1164,5 +1192,26 @@ fn verse_style_jitter(l_c: f32, l_ch: f32, l_h: f32, l_jitter: f32) -> f32 {
     return l_c;
   }
   return (l_c * (1.0 - l_j));
+}
+fn verse_style_canopy_axis(l_p: f32, l_c: f32, l_half: f32) -> f32 {
+  var l_h: f32 = coax_p_st_max(l_half, 0.00100000005);
+  return ((l_p - l_c) / (l_h * l_h));
+}
+fn verse_style_canopy_normal(l_mesh_n: f32, l_blob_n: f32, l_k: f32) -> f32 {
+  return (l_mesh_n + ((l_blob_n - l_mesh_n) * l_k));
+}
+fn verse_style_canopy_sway(l_theta: f32, l_amp: f32, l_reach: f32, l_share: f32) -> f32 {
+  var coax_t50: f32;
+  var coax_t51: f32;
+  var coax_t52: f32;
+  var coax_t53: f32;
+  coax_t50 = (l_reach * coax_p_st_sat(l_share));
+  coax_t52 = (-1.0);
+  coax_t53 = coax_p_st_min(1.0, (l_theta / coax_p_st_max(l_amp, 9.99999975e-05)));
+  coax_t51 = coax_p_st_max(coax_t52, coax_t53);
+  return (coax_t50 * coax_t51);
+}
+fn verse_style_canopy_open(l_n: f32, l_gap: f32) -> f32 {
+  return select(0.0, 1.0, (l_n < l_gap));
 }
 // ---- end generated

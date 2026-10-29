@@ -340,7 +340,7 @@ backs into them, so the only ways out of the city are the trails.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
 - **The pack:** `verse/packs/everglade.json`, compiled to
-  `realms/everglade/assets/everglade.pack` (6.0 MB: 6,021,712 bytes,
+  `realms/everglade/assets/everglade.pack` (6.0 MB: 6,021,808 bytes,
   budget 6,750,000) with `licences.md`; it carries the town's 44 Medieval
   Village and Fantasy Props pieces as well as the forest's, and the Ranger
   (1.7 MB of it). The budget was 5 MB before the Ranger and rose by the

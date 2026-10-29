@@ -51,7 +51,7 @@ SU_GRASS :: 88;             // blades per m2, radius (m), fade (m), least height
 SU_GRASS2 :: 92;            // most height (m), base width (m), the tip's lift, hue jitter
 SU_WIND :: 96;              // bend amplitude (rad), wavelength (m), speed (m/s), gust scale (1/m)
 SU_WIND2 :: 100;            // wind direction x, z, the bent normal's most tilt (rad), parting radius (m)
-SU_FOLIAGE :: 104;          // canopy normal mix, sway (m), 0, 0
+SU_FOLIAGE :: 104;          // canopy normal mix, sway (m), the crown's open share (leafy gaps, 0.36), 0
 SU_WATER_SHALLOW :: 108;    // shallow rgb, the shallow band's depth (m)
 SU_WATER_MID :: 112;        // mid rgb, the mid band's depth (m)
 SU_WATER_DEEP :: 116;       // deep rgb, each edge's softness (m)
@@ -104,7 +104,7 @@ StylePreset :: struct {
   grass_width: f32; grass_tip: f32; grass_jitter: f32;
   wind_amp: f32; wind_wavelength: f32; wind_speed: f32; wind_gust: f32;
   wind_x: f32; wind_z: f32; wind_tilt: f32; parting: f32;
-  canopy_mix: f32; sway: f32;
+  canopy_mix: f32; sway: f32; canopy_gap: f32;
   // water (the painted preset)
   shallow_r: f32; shallow_g: f32; shallow_b: f32; shallow_depth: f32;
   mid_r: f32; mid_g: f32; mid_b: f32; mid_depth: f32;
@@ -216,7 +216,7 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
     p.grass_low = 0.35; p.grass_high = 0.60; p.grass_width = 0.06; p.grass_tip = 0.15; p.grass_jitter = 0.04;
     p.wind_amp = 0.30; p.wind_wavelength = 12; p.wind_speed = 3; p.wind_gust = 1.0 / 25.0;
     p.wind_x = 0.8; p.wind_z = 0.6; p.wind_tilt = 20 * DEG; p.parting = 0.7;
-    p.canopy_mix = 0.85; p.sway = 0.05;
+    p.canopy_mix = 0.85; p.sway = 0.05; p.canopy_gap = 0.36;
     p.shallow_r = 0.30; p.shallow_g = 0.72; p.shallow_b = 0.74; p.shallow_depth = 0.4;
     p.mid_r = 0.10; p.mid_g = 0.45; p.mid_b = 0.55; p.mid_depth = 1.5;
     p.deep_r = 0.05; p.deep_g = 0.22; p.deep_b = 0.36; p.water_soft = 0.15;
@@ -308,7 +308,7 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   put4(out, SU_GRASS2, p.grass_high, p.grass_width, p.grass_tip, p.grass_jitter);
   put4(out, SU_WIND, p.wind_amp, p.wind_wavelength, p.wind_speed, p.wind_gust);
   put4(out, SU_WIND2, p.wind_x, p.wind_z, p.wind_tilt, p.parting);
-  put4(out, SU_FOLIAGE, p.canopy_mix, p.sway, 0, 0);
+  put4(out, SU_FOLIAGE, p.canopy_mix, p.sway, p.canopy_gap, 0);
   put4(out, SU_WATER_SHALLOW, p.shallow_r, p.shallow_g, p.shallow_b, p.shallow_depth);
   put4(out, SU_WATER_MID, p.mid_r, p.mid_g, p.mid_b, p.mid_depth);
   put4(out, SU_WATER_DEEP, p.deep_r, p.deep_g, p.deep_b, p.water_soft);

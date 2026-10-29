@@ -164,6 +164,26 @@ fn clip(w: vec3f) -> vec4f {
   return vec4f(dot(u.r0, p), dot(u.r1, p), dot(u.r2, p), dot(u.r3, p));
 }
 
+// ---- blob canopies (art-styles.md 7, verse/style.coax): the painterly preset's numbers until
+// eg-paint-light gives Everglade the preset's uniform block
+const CANOPY_MIX = 0.85;
+const CANOPY_SWAY = 0.05;
+const WIND = vec4f(0.30, 12.0, 3.0, 1.0 / 25.0);   // amplitude (rad), wavelength (m), speed (m/s), gust scale
+const WIND_DIR = vec2f(0.8, 0.6);
+const LOOK_FAR_CANOPY = 6u;                        // a far tree's cone, lit as a blob
+const LOOK_CANOPY = 7u;                            // a kit tree's leaves, lit as a blob
+fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
+  return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
+}
+// How far the wind moves a canopy point `share` of its tree's height up, the tree standing at `at`:
+// the grass's wind (frozen at 0 under still), 0.05 m at the top.
+fn canopy_sway(at: vec3f, share: f32) -> vec3f {
+  let t = select(u.time, 0.0, u.still > 0.5);
+  let theta = verse_style_wind(dot(at.xz, WIND_DIR), verse_style_gust(at.x, at.z, t, WIND_DIR.x, WIND_DIR.y, WIND.z, WIND.w), t, WIND.x, WIND.y, WIND.z);
+  let d = verse_style_canopy_sway(theta, WIND.x, CANOPY_SWAY, share);
+  return vec3f(WIND_DIR.x * d, 0.0, WIND_DIR.y * d);
+}
+
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
   var o: S;
   let n = u32(u.ground.x);
@@ -186,6 +206,9 @@ fn clip(w: vec3f) -> vec4f {
   let kind = u32(m.colour.w) % 8u;
   var v: Vert;
   var tint = m.colour.rgb;
+  var canopy = false;
+  var cone = false;
+  var share = 0.0;
   o.uv = vec2f(0.0);
   o.slice = 0u;
   switch kind {
@@ -198,6 +221,14 @@ fn clip(w: vec3f) -> vec4f {
       o.uv = vec2f(word(b + 6u), word(b + 7u));
       o.slice = vertices[b + 8u] >> 24u;
       tint = unpack4x8unorm(vertices[b + 8u]).rgb * m.colour.rgb;
+      // a tree's leaves (pack_realm.py: the blob in the vertex's spare word): one soft blob round the
+      // canopy's centre, breathing with the wind
+      let blob = vertices[b + 9u];
+      if (blob != 0u) {
+        v.n = canopy_n(v.n, unpack4x8snorm(blob).xyz);
+        share = f32(blob >> 24u) / 255.0;
+        canopy = true;
+      }
     }
     case 6u: {
       // The Ranger: the pack's 32-byte character vertex, skinned by up to four joints of the pose.
@@ -219,10 +250,15 @@ fn clip(w: vec3f) -> vec4f {
       o.slice = vertices[b + 3u] >> 24u;
       tint = vec3f(1.0);
     }
-    default: { v = cone_vertex(id); }
+    default: {
+      v = cone_vertex(id);
+      // a far tree's cone shades as the kit's canopy does: its normal leans to the blob round its middle
+      if (u32(m.colour.w) / 8u == 1u) { v.n = canopy_n(v.n, normalize(v.p + vec3f(0.0, 0.0001, 0.0))); cone = true; }
+    }
   }
   let p = vec4f(v.p, 1.0);
-  let w = vec3f(dot(m.r0, p), dot(m.r1, p), dot(m.r2, p));
+  var w = vec3f(dot(m.r0, p), dot(m.r1, p), dot(m.r2, p));
+  if (share > 0.0) { w += canopy_sway(vec3f(m.r0.w, m.r1.w, m.r2.w), share); }
   let c0 = vec3f(m.r0.x, m.r1.x, m.r2.x);
   let c1 = vec3f(m.r0.y, m.r1.y, m.r2.y);
   let c2 = vec3f(m.r0.z, m.r1.z, m.r2.z);
@@ -231,7 +267,7 @@ fn clip(w: vec3f) -> vec4f {
   o.world = w;
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = tint;
-  o.look = u32(m.colour.w) / 8u;
+  o.look = select(select(u32(m.colour.w) / 8u, LOOK_CANOPY, canopy), LOOK_FAR_CANOPY, cone);
   return o;
 }
 
@@ -280,11 +316,12 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;
-  if (s.look == 5u) {
-    // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit.
+  if (s.look == 5u || s.look == LOOK_CANOPY) {
+    // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
+    // (a canopy's blob normal already faces out, so it keeps it).
     if (tex.a < 0.35) { discard; }
     base = tex.rgb * s.tint;
-    if (!front) { n = -n; }
+    if (!front && s.look == 5u) { n = -n; }
     // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
     if (n.y > 0.7) { shadow = shade_shadows_at(s.world.xz, s.world.y, true); }
   }
@@ -825,7 +862,7 @@ fn water_halves(i: WaterOut) -> WaterShade {
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_canopy_axis, verse_style_canopy_normal, verse_style_canopy_sway, verse_style_canopy_open) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1275,5 +1312,26 @@ fn verse_style_jitter(l_c: f32, l_ch: f32, l_h: f32, l_jitter: f32) -> f32 {
     return l_c;
   }
   return (l_c * (1.0 - l_j));
+}
+fn verse_style_canopy_axis(l_p: f32, l_c: f32, l_half: f32) -> f32 {
+  var l_h: f32 = coax_p_st_max(l_half, 0.00100000005);
+  return ((l_p - l_c) / (l_h * l_h));
+}
+fn verse_style_canopy_normal(l_mesh_n: f32, l_blob_n: f32, l_k: f32) -> f32 {
+  return (l_mesh_n + ((l_blob_n - l_mesh_n) * l_k));
+}
+fn verse_style_canopy_sway(l_theta: f32, l_amp: f32, l_reach: f32, l_share: f32) -> f32 {
+  var coax_t50: f32;
+  var coax_t51: f32;
+  var coax_t52: f32;
+  var coax_t53: f32;
+  coax_t50 = (l_reach * coax_p_st_sat(l_share));
+  coax_t52 = (-1.0);
+  coax_t53 = coax_p_st_min(1.0, (l_theta / coax_p_st_max(l_amp, 9.99999975e-05)));
+  coax_t51 = coax_p_st_max(coax_t52, coax_t53);
+  return (coax_t50 * coax_t51);
+}
+fn verse_style_canopy_open(l_n: f32, l_gap: f32) -> f32 {
+  return select(0.0, 1.0, (l_n < l_gap));
 }
 // ---- end generated

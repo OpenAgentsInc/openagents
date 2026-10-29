@@ -286,6 +286,21 @@ the sky without a seam.
 - **Far trees**: the cones past the kit's range shade with the same ellipsoid
   normal and colour as the kit tree they stand for, so the swap doesn't
   show through the haze.
+- **Leafy gaps**: a crown is open in small holes (the preset's 0.36 of its
+  leaf noise, fewer through its thick middle than at its edge), so the sky
+  shows through and the light shafts stream through as streaks.
+- **Built** (October 29, as-blob-foliage): `verse/style.coax` holds
+  `verse_style_canopy_axis` (an ellipsoid's gradient, a sphere's when the half
+  sizes match), `_canopy_normal` (the 0.85 mix), `_canopy_sway` (0.05 m at
+  the top, by the grass's wind) and `_canopy_open` (the gaps); the preset's
+  `SU_FOLIAGE` row carries the mix, the sway and the gap share.
+  `pack_realm.py` ends each `_Leaves` mesh's `M` line with
+  `canopy sphere|ellipsoid R G B` (a pine or cypress is an ellipsoid; the
+  colour is the leaves' mean, linear thousandths) and writes each canopy
+  vertex's blob direction and height share into its spare vertex word.
+  Everglade's kit leaves shade and sway by it, and its far cones take the
+  same blob normal and their kit's colour from the catalog, with no per-leaf
+  noise. The style fixture's traced tree sways and has the gaps.
 
 ### 8. Grass: dense, wind-swept
 
