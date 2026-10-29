@@ -84,6 +84,9 @@ U_PLATE :: U_SQUARE + SQUARES * 4;
 // WATER_FLOATS of them.
 U_WATER :: U_PLATE + PLATES * 8;
 WATER_FLOATS :: 324;
+// The fountain's two numbers in the block's spare W_GRID2 z and w (the river leaves them): the
+// ground under it, and 1 when it is drawn (everglade.wgsl fountain_vertex).
+U_FOUNTAIN :: U_WATER + 318;
 // Then the painterly preset at the clock (verse/style-preset.coax verse_style_at, SU_* rows; everglade.wgsl u.style).
 STYLE_AT :: U_WATER + WATER_FLOATS;
 // Then where no grass grows (art-styles.md 8): the buildings' and the props' footprints, x0, z0, x1, z1.
@@ -116,7 +119,23 @@ TOWN_CAP :: [40] int.[
 TOWN_OBJECTS :: 3061;     // the sum of TOWN_CAP
 OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EG_EDIT_ITEMS * EG_EDIT_MAX;   // and an admin's placed things (everglade-voice.coax)
 RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
-ALL_OBJECTS :: OBJECTS + 1;
+// Lathed stone (the fountain's basin and column): a profile turned about its axis (everglade.wgsl
+// lathe_vertex), drawn in LATHE_WEDGES instances of LATHE_SECTORS sectors and LATHE_SEGMENTS
+// segments each, so an instance stays inside the pack's 1,024 identity indices.
+SHAPE_LATHE :: 7;
+LATHE_WEDGES :: 8; LATHE_SECTORS :: 6; LATHE_SEGMENTS :: 28;
+LATHE_VERTICES :: LATHE_SECTORS * LATHE_SEGMENTS * 6;
+LATHE_SLOTS :: 2 * LATHE_WEDGES;
+LATHE_AT :: OBJECTS + 1;
+PROFILE_BASIN :: 0; PROFILE_COLUMN :: 1;
+LOOK_CARVED :: 9;
+LOOK_PLANKS :: 11;        // a deck of planks (everglade.wgsl planks): boards, gaps, staggered ends, grain
+LOOK_WOOD :: 12;          // sawn timber: grain and a tone per piece         // carved stone: coursed blocks, weathered, wet and mossy at the waterline
+ALL_OBJECTS :: OBJECTS + 1 + LATHE_SLOTS;
+// The fountain on the commons (docs/verse/water.md, "The fountain"): its pool's level over the
+// ground, and the water's instances after the river's patches (everglade.wgsl fountain_vertex).
+FOUNTAIN_POOL :: 0.62;
+FOUNTAIN_INSTANCES :: 32;
 OBJECT_FLOATS :: 16;
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4; LOOK_KIT :: 5;
 // The kit's rocks (Rock_Medium_1 and _2: the undergrowth's and the waystone's): the kit's texture, darkened
@@ -143,8 +162,10 @@ STOREY :: 3.12;           // a kit wall's height
 WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin (its local +z)
 // The shapes' five draws, then a draw per kit mesh, then yours, then the
 // river's (last: the host draws it after everything else, in two halves).
-DRAWS :: 5 + KIT_MESHES + 2;
-WATER_DRAW :: 5 + KIT_MESHES + 1;
+DRAWS :: 5 + KIT_MESHES + 3;
+RANGER_DRAW :: 5 + KIT_MESHES;
+LATHE_DRAW :: 5 + KIT_MESHES + 1;
+WATER_DRAW :: 5 + KIT_MESHES + 2;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad).
 FLOATS :: 9;
@@ -223,6 +244,7 @@ Everglade :: struct {
   heights: [EG_GROUND_POINTS] f32;
   objects: [ALL_OBJECTS * OBJECT_FLOATS] f32;
   counts: [5] int;
+  lathe_n: int;
   draws: [DRAWS * 4] u32;
   walls: [WALLS * 6] f32; wall_n: int;
   boxes: [BOXES * 6] f32; box_n: int;
@@ -1044,6 +1066,22 @@ shape :: (s: [] Everglade, kind: int, look: int, centre: Point, yaw: f32, tilt: 
   s[0].objects[o + 15] = f32(kind + 8 * look);
 }
 
+// Lathed stone: profile `profile` (everglade.wgsl lathe_profile) turned about +Y at `centre`, its
+// metres times `scale`, one object a wedge. The wedge and profile ride in the shape word above the look.
+lathe :: (s: [] Everglade, profile: int, look: int, centre: Point, scale: f32, red: f32, green: f32, blue: f32) {
+  for w: 0..<LATHE_WEDGES {
+    n := s[0].lathe_n;
+    if n >= LATHE_SLOTS { return; }
+    s[0].lathe_n = n + 1;
+    o := (LATHE_AT + n) * OBJECT_FLOATS;
+    for k: 0..<12 { s[0].objects[o + k] = 0; }
+    s[0].objects[o] = scale; s[0].objects[o + 5] = scale; s[0].objects[o + 10] = scale;
+    s[0].objects[o + 3] = centre.x; s[0].objects[o + 7] = centre.y; s[0].objects[o + 11] = centre.z;
+    s[0].objects[o + 12] = red; s[0].objects[o + 13] = green; s[0].objects[o + 14] = blue;
+    s[0].objects[o + 15] = f32(SHAPE_LATHE + 8 * look + 256 * (profile * LATHE_WEDGES + w));
+  }
+}
+
 // A soft round shadow at x, z on the floor at height y: the scene darkens
 // only what is near that floor (everglade.wgsl shade_shadows_at), so one
 // cast on a bench's top falls on the bench and not on the ground under it.
@@ -1083,10 +1121,10 @@ city :: (s: [] Everglade, u: [] f32) {
   shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82);
   // The commons: the fountain, the quest board.
   g := ground_at(s, 0, 0);
-  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, g + 0.3, 0), 0, 0, 6, 0.9, 6, 0.7, 0.68, 0.64);
-  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(0, g + 0.72, 0), 0, 0, 5.2, 0.1, 5.2, 0.32, 0.52, 0.62);
-  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(0, g + 1.4, 0), 0, 0, 0.9, 2.2, 0.9, 0.72, 0.7, 0.66);
-  shape(s, SHAPE_SPHERE, LOOK_WATER, v3(0, g + 2.7, 0), 0, 0, 1.4, 0.7, 1.4, 0.42, 0.62, 0.72);
+  // the fountain: a carved basin and a column with an upper bowl, its water the water shader's
+  // (the pool, the bowl, the streams falling from the bowl's lip: everglade.wgsl fountain_vertex)
+  lathe(s, PROFILE_BASIN, LOOK_CARVED, v3(0, g, 0), 1, 0.78, 0.74, 0.66);
+  lathe(s, PROFILE_COLUMN, LOOK_CARVED, v3(0, g, 0), 1, 0.8, 0.76, 0.68);
   for i: 1..<EG_PROPS {
     k := i * EG_BOX;
     x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3]; h := EG_PROP[k + 4];
@@ -1100,13 +1138,36 @@ city :: (s: [] Everglade, u: [] f32) {
     if i < EG_CRYPT && s[0].pack_ready { continue; }    // the waystone and the pillars are the kit's stone (landmarks)
     block(s, LOOK_STONE, x0, z0, x1, z1, h, 0.6, 0.6, 0.58);
   }
-  // The bridge: its deck, where you walk over the river, on two piles in the stream.
+  // The bridge: a timber deck of planks where you walk over the river (its walkable rectangle is
+  // plan.coax's EG_BRIDGE), with a rail of posts and two bars along each side, four beams under the
+  // deck, and two rows of piles in the stream under a cap beam; the middle pile of each row is the
+  // river's (river.coax RIVER_PILE: the current wraps it and churns white).
   br := EG_BRIDGE;
-  shape(s, SHAPE_BOX, LOOK_MATTE, v3((br[0] + br[2]) / 2, s[0].deck - 0.2, (br[1] + br[3]) / 2), 0, 0, br[2] - br[0], 0.4, br[3] - br[1], 0.5, 0.38, 0.24);
+  deck := s[0].deck;
+  mx := (br[0] + br[2]) / 2; mz := (br[1] + br[3]) / 2; long := br[2] - br[0];
+  shape(s, SHAPE_BOX, LOOK_PLANKS, v3(mx, deck - 0.12, mz), 0, 0, long, 0.24, br[3] - br[1], 0.62, 0.45, 0.29);
+  for side: 0..<2 {
+    z := ifx side == 0 then br[1] + 0.18 else br[3] - 0.18;
+    for k: 0..<5 {
+      x := br[0] + 0.2 + f32(k) * (long - 0.4) / 4;
+      shape(s, SHAPE_BOX, LOOK_WOOD, v3(x, deck + 0.5, z), 0, 0, 0.18, 1.0, 0.18, 0.46, 0.33, 0.2);
+    }
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(mx, deck + 0.98, z), 0, 0, long, 0.1, 0.16, 0.52, 0.38, 0.23);
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(mx, deck + 0.52, z), 0, 0, long, 0.08, 0.1, 0.48, 0.35, 0.21);
+  }
+  for k: 0..<4 {
+    z := br[1] + 0.9 + f32(k) * (br[3] - br[1] - 1.8) / 3;
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(mx, deck - 0.39, z), 0, 0, long, 0.3, 0.28, 0.4, 0.29, 0.18);
+  }
   for q: 0..<2 {
     px := ifx q == 0 then 87.0f32 else 89.0f32;
-    bed := ground_at(s, px, -11);
-    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(px, (bed + s[0].deck - 0.4) / 2, -11), 0, 0, 1.0, s[0].deck - 0.4 - bed + 0.3, 1.0, 0.42, 0.32, 0.2);
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(px, deck - 0.72, mz), 0, 0, 0.4, 0.36, br[3] - br[1] - 1.0, 0.38, 0.28, 0.17);
+    for k: 0..<3 {
+      pz := ifx k == 0 then br[1] + 1.4 else ifx k == 1 then -11.0f32 else br[3] - 1.4;
+      wide := ifx k == 1 then 0.9f32 else 0.5f32;
+      bed := ground_at(s, px, pz);
+      shape(s, SHAPE_CYLINDER, LOOK_WOOD, v3(px, (bed + deck - 0.9) / 2, pz), 0, 0, wide, deck - 0.9 - bed + 0.3, wide, 0.36, 0.27, 0.17);
+    }
   }
   river_floats(s);
 }
@@ -2113,6 +2174,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   shot := camera_frame(s, shown, vx, vz, t);
 
   for k: 0..<5 { s[0].counts[k] = 0; }
+  s[0].lathe_n = 0;
   s[0].shadow_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   view(shot, width, height, u, U_VIEW);
@@ -2142,24 +2204,32 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
     s[0].kit_triangles += s[0].kit_count[m] / 3 * s[0].kit_used[group];
     if group < KIT_FOREST { s[0].forest_triangles += s[0].kit_count[m] / 3 * s[0].kit_used[group]; }
   }
-  d := (5 + KIT_MESHES) * 4;
+  d := RANGER_DRAW * 4;
   s[0].draws[d] = cast(u32) s[0].ranger_first;
   s[0].draws[d + 1] = cast(u32) s[0].ranger_count;
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
   s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 then 1 else 0);
   s[0].kit_triangles += s[0].ranger_count / 3;
-  // the river: a patch an instance, drawn after everything (host.js coaxial_water_draws)
+  d = LATHE_DRAW * 4;
+  s[0].draws[d] = first;
+  s[0].draws[d + 1] = cast(u32) LATHE_VERTICES;
+  s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + LATHE_AT);
+  s[0].draws[d + 3] = cast(u32) s[0].lathe_n;
+  // the water: the river a patch an instance, then the fountain's, drawn after everything (host.js
+  // coaxial_water_draws)
   d = WATER_DRAW * 4;
+  waters := ifx s[0].water_vertices > 0 then s[0].water_patches + FOUNTAIN_INSTANCES else 0;
   s[0].draws[d] = first;
   s[0].draws[d + 1] = cast(u32) s[0].water_vertices;
   s[0].draws[d + 2] = 0;
-  s[0].draws[d + 3] = cast(u32) (ifx s[0].water_vertices > 0 then s[0].water_patches else 0);
-  s[0].water_triangles = s[0].water_vertices / 3 * s[0].water_patches;
+  s[0].draws[d + 3] = cast(u32) waters;
+  s[0].water_triangles = s[0].water_vertices / 3 * waters;
 
   u[0] = width; u[1] = height; u[2] = f32(s[0].time); u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
   u[6] = s[0].dpr;
   u[7] = horizon_y(shot, u, height);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
+  u[U_FOUNTAIN] = ground_at(s, 0, 0); u[U_FOUNTAIN + 1] = 1;
 
   // the painterly preset at the clock (art-styles.md 13): the day turns unless the page is still;
   // the key light (the sun, or the moon at night) is the one everything here is lit by
@@ -2350,8 +2420,11 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   everglade_catalog(g[..], CATALOG);
   face := 0.6f32;
   n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, face, 0, 0, 0, false, 0, 0, 0, 0);
-  d := (WATER_DRAW - 1) * 4;
+  d := RANGER_DRAW * 4;
   #assert WATER_DRAW == DRAWS - 1 && g[0].draws[WATER_DRAW * 4 + 3] == 0;   // no river yet: the face hasn't built it
+  // the fountain's lathed stone: the basin's and the column's wedges
+  #assert g[0].draws[LATHE_DRAW * 4 + 3] == cast(u32) LATHE_SLOTS && g[0].draws[LATHE_DRAW * 4 + 1] == cast(u32) LATHE_VERTICES;
+  #assert LATHE_VERTICES <= 1024;
   #assert g[0].draws[d] == 44107 && g[0].draws[d + 1] == 94188 && g[0].draws[d + 3] == 1;
   #assert g[0].draws[d + 2] == cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
   o := RANGER_AT * OBJECT_FLOATS;
@@ -2453,8 +2526,8 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   // The forest's kit share of a phone's frame stays under 700,000 triangles, and so
   // does the whole frame's kit: the forest, the town and you (the Ranger's 31,396).
   #assert most > 0 && most < 700000 && whole >= most + RANGER_TRIANGLES && whole < 700000;
-  // and with the river's 2,496 triangles drawn too
-  #assert g[0].water_triangles == 2496 && whole + g[0].water_triangles < 700000;
+  // and with the water's 4,032 triangles drawn too (the river's 2,496 and the fountain's)
+  #assert g[0].water_triangles == 4032 && whole + g[0].water_triangles < 700000;
 }
 
 #test "the camera stays out of the woods: at a clearing's edge it pulls in before the trees" {

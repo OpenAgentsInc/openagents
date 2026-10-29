@@ -65,7 +65,7 @@ python3 verse/everglade/map.py --times
 | **The palisade** | Round the city | 4.5 m walls, four gates | Keeps the city a place; every way out is a gate. |
 | **Inn Street** | South Gate to the commons | 3 m street, 44 m | The way in: the inn and houses. |
 | **The inn** | Inn Street, east side | 16 × 14 m, two storeys | The common room with a hearth, rooms upstairs; where parties meet. The innkeeper and the inn's cat. |
-| **The commons** | The middle | paved, 32 m across | The fountain (6 m across), the quest board and the town crier; the ring street round it. The errand cat waits by the fountain. |
+| **The commons** | The middle | paved, 32 m across | The fountain (6.6 m across: a carved basin and a column with an upper bowl whose water falls in eight streams, docs/verse/water.md "The fountain"), the quest board and the town crier; the ring street round it. The errand cat waits by the fountain. |
 | **The market** | West of the commons, on Market Street | paved, 26 m across | Six stalls in two rows either side of the street (3 × 2 m each), three sellers. |
 | **General store** | The market's north side | 12 × 10 m | Supplies; the shopkeeper. |
 | **Smithy** | North-west of the market, by the West Gate | 12 × 10 m | Arms and tools; the smith. |
@@ -133,7 +133,7 @@ meshes. Where a kit has no piece, the line says what is assembled instead.
 | Forest and trails | SN `CommonTree_1/3/4` (+ `_Leaves`), `Pine_1/4/5`, `TwistedTree_2/4/5`, `Bush_Common`, `Fern_1`, `Grass_*`, `Clover_*`, `Flower_*`, `Mushroom_Common`, `Plant_1/7`, `Rock_Medium_1..3`. |
 | Ruins | SN `Rock_Medium_*`; MV `Prop_Brick1..4`, `Wall_UnevenBrick_Straight` broken off, `Wall_Arch`; FP `Vase_Rubble_Medium`. |
 | Crypt | MV `Wall_UnevenBrick_Door_Round`, `DoorFrame_Round_Brick`, `Door_4_Round`; SN `DeadTree_1..3`, `Rock_Medium_*`. |
-| River crossing | MV `Floor_WoodDark` planks and `Prop_WoodenFence_Single` rails for the bridge; SN `Rock_Medium_*` on the banks; water drawn by the engine (the water system, docs/verse/water.md). |
+| River crossing | The bridge is the engine's timber for now (everglade.coax `city`: a plank deck, `LOOK_PLANKS`, with staggered boards and gaps; a rail of posts and two bars each side, four beams under it, two rows of three piles under cap beams, `LOOK_WOOD`; the rails don't stop you yet), later MV `Floor_WoodDark` planks and `Prop_WoodenFence_Single` rails; SN `Rock_Medium_*` on the banks; water drawn by the engine (the water system, docs/verse/water.md). |
 | Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are still plain figures, to be aethyr's figure parts with the `Peasant` and `Ranger` outfits; the cats are aethyr's `Custom_Cat`. |
 
 ## Where characters stand

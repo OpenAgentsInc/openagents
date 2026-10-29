@@ -225,6 +225,104 @@ fn cone_vertex(id: u32) -> Vert {
   return Vert(vec3f(cos(a) * 0.5, -0.5, sin(a) * 0.5), n);
 }
 
+// Carved stone (the fountain's): coursed blocks 0.26 m high and 0.6 m long, every other course
+// offset by half, each block its own tone, the joints dark; weathered in streaks running down; wet
+// and darker under the water and a little above it, with a mossy band at the waterline.
+fn carved(tint: vec3f, p: vec3f, uv: vec2f) -> vec3f {
+  let course = floor(uv.y / 0.26);
+  let along = uv.x / 0.6 + select(0.0, 0.5, fract(course * 0.5) > 0.25);
+  let block = floor(along);
+  let fy = fract(uv.y / 0.26);
+  let fx = fract(along);
+  let gap = min(min(fx, 1.0 - fx) * 0.6, min(fy, 1.0 - fy) * 0.26);
+  let joint = 1.0 - smoothstep(0.006, 0.022, gap);
+  var c = tint * (0.86 + 0.18 * water_hash(vec3f(block, course, 7.0))) * (0.9 + 0.14 * noise(p.xz * 6.0 + p.y * 4.0));
+  c *= 0.9 + 0.1 * noise(vec2f(uv.x * 2.5, p.y * 0.5));
+  c = mix(c, c * 0.55, joint);
+  let depth = water_depth_at(p);
+  let wet = smoothstep(-0.08, 0.0, depth);
+  c = mix(c, c * vec3f(0.6, 0.66, 0.64), wet);
+  let moss = exp(-(depth + 0.02) * (depth + 0.02) / 0.002) * smoothstep(0.3, 0.7, noise(vec2f(uv.x * 3.0, p.y * 9.0)));
+  c = mix(c, vec3f(0.3, 0.38, 0.2), moss * 0.6);
+  return c;
+}
+
+// Timber (the bridge's): on a deck's top, boards 0.3 m wide across the way over with dark gaps and
+// their ends staggered every 2.4 m, each board its own tone; elsewhere, grain along the piece; both
+// weathered in broad patches and darker and wet low down near the water.
+const LOOK_PLANKS = 11u;
+const LOOK_WOOD = 12u;
+fn timber(tint: vec3f, p: vec3f, n: vec3f, deck: bool) -> vec3f {
+  var c = tint;
+  if (deck && n.y > 0.5) {
+    let board = floor(p.x / 0.3);
+    let fx = fract(p.x / 0.3);
+    let run = p.z / 2.4 + water_hash(vec3f(board, 3.0, 1.0));
+    let fz = fract(run);
+    let gap = 1.0 - smoothstep(0.03, 0.08, min(fx, 1.0 - fx)) * smoothstep(0.004, 0.012, min(fz, 1.0 - fz));
+    let grain = noise(vec2f(p.x * 30.0, p.z * 1.2)) * 0.6 + noise(vec2f(p.x * 70.0, p.z * 3.0)) * 0.4;
+    c = c * (0.82 + 0.26 * water_hash(vec3f(board, floor(run), 2.0))) * (0.88 + 0.2 * grain);
+    c = mix(c, c * 0.35, gap);
+  } else {
+    // grain along the longer horizontal run, or up a post
+    let g = select(vec2f(p.x * 1.0 + p.z * 1.0, p.y * 25.0), vec2f(p.y * 1.2, (p.x + p.z) * 25.0), abs(n.y) > 0.5);
+    let grain = noise(vec2f(p.x * 25.0 + p.z * 25.0, p.y * 1.5)) * 0.5 + noise(g) * 0.5;
+    c = c * (0.85 + 0.25 * grain);
+  }
+  c *= 0.9 + 0.12 * noise(p.xz * 0.7 + p.y);
+  let damp = water_depth_at(p);
+  c = mix(c, c * vec3f(0.55, 0.58, 0.52), smoothstep(-0.25, 0.0, damp));
+  return c;
+}
+
+// ---- lathed stone (everglade.coax lathe): a profile of (radius, height) points in metres turned
+// about +Y, 48 sectors round in 8 wedges (one object each) of 6 sectors and 28 segments. A profile runs
+// with the solid on its right, so (-t.y, t.x) of a segment faces out; a vertex takes the mean of its
+// two segments' normals unless they meet at a crease. uv: metres round the axis, metres along the profile.
+const LATHE_SECTORS = 6u;
+const LATHE_SEGMENTS = 28u;
+const LOOK_CARVED = 9u;
+fn lathe_point(profile: u32, j: u32) -> vec2f {
+  // the fountain's basin: the dished floor, the inner wall, the rounded lip, the outer wall, the plinth
+  var basin = array(vec2f(0.0, 0.05), vec2f(1.2, 0.1), vec2f(2.0, 0.25), vec2f(2.4, 0.38), vec2f(2.54, 0.46),
+    vec2f(2.6, 0.56), vec2f(2.62, 0.7), vec2f(2.66, 0.8), vec2f(2.74, 0.86), vec2f(2.86, 0.89), vec2f(2.98, 0.88),
+    vec2f(3.06, 0.84), vec2f(3.1, 0.77), vec2f(3.08, 0.69), vec2f(3.0, 0.65), vec2f(2.97, 0.6), vec2f(2.97, 0.3),
+    vec2f(3.02, 0.25), vec2f(3.2, 0.23), vec2f(3.28, 0.19), vec2f(3.31, 0.12), vec2f(3.32, -0.3));
+  // the column, top down: the finial, the upper bowl (its floor, inner wall, lip and underside), the
+  // collar, the shaft, the moulded base and plinth
+  var column = array(vec2f(0.0, 2.62), vec2f(0.09, 2.6), vec2f(0.17, 2.53), vec2f(0.21, 2.44), vec2f(0.17, 2.36),
+    vec2f(0.13, 2.22), vec2f(0.15, 2.1), vec2f(0.24, 1.92), vec2f(0.7, 1.9), vec2f(1.05, 1.93), vec2f(1.16, 2.02),
+    vec2f(1.2, 2.12), vec2f(1.28, 2.16), vec2f(1.36, 2.13), vec2f(1.4, 2.06), vec2f(1.36, 1.99), vec2f(1.12, 1.86),
+    vec2f(0.8, 1.74), vec2f(0.5, 1.62), vec2f(0.4, 1.54), vec2f(0.42, 1.46), vec2f(0.33, 1.38), vec2f(0.29, 1.3),
+    vec2f(0.31, 0.55), vec2f(0.4, 0.44), vec2f(0.46, 0.3), vec2f(0.6, 0.22), vec2f(0.62, 0.14), vec2f(0.62, -0.1));
+  if (profile == 0u) { return basin[min(j, 21u)]; }
+  return column[min(j, 28u)];
+}
+fn lathe_segment_n(profile: u32, k: u32) -> vec2f {
+  let t = lathe_point(profile, k + 1u) - lathe_point(profile, k);
+  if (dot(t, t) < 1e-8) { return vec2f(0.0, 0.0); }
+  return normalize(vec2f(-t.y, t.x));
+}
+fn lathe_vertex(id: u32, word: u32) -> Vert {
+  let profile = word / 8u;
+  let wedge = word % 8u;
+  let q = id / 6u;
+  let c = quad(id % 6u);
+  let seg = q % LATHE_SEGMENTS;
+  let sector = q / LATHE_SEGMENTS;
+  let a = (f32(wedge * LATHE_SECTORS + sector) + c.x) / 48.0 * TAU;
+  let j = seg + u32(c.y);
+  let p = lathe_point(profile, j);
+  var n2 = lathe_segment_n(profile, seg);
+  // the neighbouring segment at this end: smooth across it unless the two meet at a crease
+  var other = vec2f(0.0);
+  if (c.y > 0.5) { other = lathe_segment_n(profile, seg + 1u); } else if (seg > 0u) { other = lathe_segment_n(profile, seg - 1u); }
+  if (dot(n2, other) > 0.75) { n2 = normalize(n2 + other); }
+  if (dot(n2, n2) < 0.5) { n2 = vec2f(0.0, 1.0); }
+  let dir = vec3f(cos(a), 0.0, sin(a));
+  return Vert(vec3f(dir.x * p.x, p.y, dir.z * p.x), normalize(vec3f(dir.x * n2.x, n2.y, dir.z * n2.x)));
+}
+
 fn clip(w: vec3f) -> vec4f {
   let p = vec4f(w, 1.0);
   return vec4f(dot(u.r0, p), dot(u.r1, p), dot(u.r2, p), dot(u.r3, p));
@@ -322,6 +420,13 @@ fn place(id: u32, instance: u32) -> S {
       tint = vec3f(1.0);
       ranger = true;
     }
+    case 7u: {
+      let word = u32(m.colour.w) / 256u;
+      v = lathe_vertex(id, word);
+      // uv: metres round the axis at this radius, and the height (the masonry's courses)
+      let a = atan2(v.p.z, v.p.x);
+      o.uv = vec2f(a * length(v.p.xz), v.p.y);
+    }
     default: {
       v = cone_vertex(id);
       // a far tree's cone shades as the kit's canopy does: its normal leans to the blob round its middle
@@ -339,7 +444,7 @@ fn place(id: u32, instance: u32) -> S {
   o.world = w;
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = tint;
-  o.look = select(select(select(u32(m.colour.w) / 8u, LOOK_CANOPY, canopy), LOOK_FAR_CANOPY, cone), LOOK_CHARACTER, ranger);
+  o.look = select(select(select((u32(m.colour.w) / 8u) % 32u, LOOK_CANOPY, canopy), LOOK_FAR_CANOPY, cone), LOOK_CHARACTER, ranger);
   return o;
 }
 
@@ -491,6 +596,10 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
     base *= 0.8 + 0.35 * noise(s.world.xy * 3.1 + s.world.zx * 2.3);
   } else if (s.look == 2u) {
     base *= 0.9 + 0.15 * noise(s.world.xz * 9.0 + s.world.y * 7.0);
+  } else if (s.look == LOOK_CARVED) {
+    base = carved(base, s.world, s.uv);
+  } else if (s.look == LOOK_PLANKS || s.look == LOOK_WOOD) {
+    base = timber(base, s.world, n, s.look == LOOK_PLANKS);
   } else if (s.look == 4u) {
     base = mix(base, vec3f(0.85, 0.92, 0.95), 0.25 * noise(xz * 1.5 + vec2f(u.time * 0.2, 0.0)));
   }
@@ -675,6 +784,8 @@ fn water_rest(uv: vec2f) -> WaterRest {
 
 // How deep (m) a point lies under the river at rest, or a negative number when it is not under it.
 fn water_depth_at(p: vec3f) -> f32 {
+  let f = fountain_depth_at(p);
+  if (f > -0.5) { return f; }
   if (u.water.grid.x < 2.0 || u.water.frame.w <= 0.0) { return -1.0; }
   let uv = water_uv(p.xz);
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > u.water.grid.x - 1.0 || uv.y > u.water.grid.y - 1.0) { return -1.0; }
@@ -754,8 +865,194 @@ struct WaterOut {
 
 // A patch an instance; its quads are sampled between the baked nodes, and a
 // quad whose four corners stand above the water is dry ground and not drawn.
+// ---- the fountain on the commons (everglade.coax lathe and FOUNTAIN_*; docs/verse/water.md, "The
+// fountain"): its water drawn after the river's patches, in the painted look. Instances: the basin's
+// pool in 8 wedges, the upper bowl's in 4, 8 streams falling from the bowl's lip, 4 arcs of the jet
+// from the finial and 8 splash crowns where the streams land. A pool's quads are rings and sectors,
+// a stream's are round its section and along its fall. The streams fall as thrown water does.
+const F_POOL = 0.62;            // the basin's water over the ground
+const F_POOL_IN = 0.28;         // inside the column
+const F_POOL_OUT = 2.64;        // into the basin's inner wall
+const F_BOWL = 2.09;            // the upper bowl's water
+const F_BOWL_IN = 0.12;
+const F_BOWL_OUT = 1.19;
+const F_LIP = vec2f(1.38, 2.13);   // where a stream leaves the bowl's lip (radius, height)
+const F_THROW = 0.7;               // m/s outward off the lip
+const F_FALL_T = 0.555;            // s from the lip to the pool
+const F_LAND = 1.77;               // where the streams meet the pool
+const F_JET = vec3f(0.03, 2.6, 0.56);   // the jet: its start's radius and height, its time in the air
+const F_JET_V = vec2f(0.5, 1.8);        // outward and up, m/s
+const F_JET_LAND = 0.31;
+const F_GRAVITY = 9.8;
+fn fountain_on() -> bool { return u.water.grid2.w > 0.5; }
+fn fountain_base() -> f32 { return u.water.grid2.z; }
+// The basin's floor under the pool (everglade.wgsl lathe_point's basin, from the middle out).
+fn fountain_floor(r: f32) -> f32 {
+  if (r < 1.2) { return mix(0.05, 0.1, r / 1.2); }
+  if (r < 2.0) { return mix(0.1, 0.25, (r - 1.2) / 0.8); }
+  if (r < 2.4) { return mix(0.25, 0.38, (r - 2.0) / 0.4); }
+  if (r < 2.54) { return mix(0.38, 0.46, (r - 2.4) / 0.14); }
+  return mix(0.46, 0.56, clamp((r - 2.54) / 0.06, 0.0, 1.0));
+}
+// The streams' angles: eight, between the column's wedge seams.
+fn fountain_stream_angle(k: u32) -> f32 { return (f32(k) + 0.5) / 8.0 * TAU; }
+// How near the angle a is to a stream's (1 on it).
+fn fountain_stream_near(a: f32) -> f32 { return pow(max(-cos(8.0 * a), 0.0), 6.0); }
+// How deep a point lies in the fountain's water, or -1 when it is not in it.
+fn fountain_depth_at(p: vec3f) -> f32 {
+  if (!fountain_on()) { return -1.0; }
+  let r = length(p.xz);
+  let y = p.y - fountain_base();
+  if (r < F_POOL_OUT && y < F_POOL + 0.08) { return F_POOL - y; }
+  if (r < F_BOWL_OUT && y > 1.85 && y < F_BOWL + 0.08) { return F_BOWL - y; }
+  return -1.0;
+}
+// A stream's (or a jet arc's) tube: its centre at a share v of its fall, and the way it runs.
+struct Fall { centre: vec3f, along: vec3f, radius: f32 }
+fn fountain_fall(k: u32, jet: bool, v: f32) -> Fall {
+  var f: Fall;
+  let base = fountain_base();
+  if (jet) {
+    let a = (f32(k) + 0.5) / 4.0 * TAU + TAU / 16.0;
+    let dir = vec3f(cos(a), 0.0, sin(a));
+    let t = v * F_JET.z;
+    f.centre = dir * (F_JET.x + F_JET_V.x * t) + vec3f(0.0, base + F_JET.y + F_JET_V.y * t - 0.5 * F_GRAVITY * t * t, 0.0);
+    f.along = normalize(dir * F_JET_V.x + vec3f(0.0, F_JET_V.y - F_GRAVITY * t, 0.0));
+    f.radius = mix(0.032, 0.02, v);
+    return f;
+  }
+  let a = fountain_stream_angle(k);
+  let dir = vec3f(cos(a), 0.0, sin(a));
+  let t = v * F_FALL_T;
+  f.centre = dir * (F_LIP.x + F_THROW * t) + vec3f(0.0, base + F_LIP.y - 0.5 * F_GRAVITY * t * t, 0.0);
+  f.along = normalize(dir * F_THROW + vec3f(0.0, -F_GRAVITY * t, 0.0));
+  f.radius = mix(0.075, 0.05, v);
+  return f;
+}
+fn fountain_vertex(id: u32, f: u32) -> WaterOut {
+  var o: WaterOut;
+  let qa = u32(u.water.grid.z);
+  let ql = u32(u.water.grid.w);
+  let quad_id = id / 6u;
+  let c = quad(id % 6u);
+  if (!fountain_on() || quad_id >= qa * ql || f >= 32u) { o.clip = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
+  let qx = quad_id % qa;
+  let qz = quad_id / qa;
+  let base = fountain_base();
+  let time = u.water.params.x;
+  if (f < 12u) {
+    // a pool: the basin's in 8 wedges, the upper bowl's in 4
+    let bowl = f >= 8u;
+    let wedges = select(8.0, 4.0, bowl);
+    let w = select(f, f - 8u, bowl);
+    let a = (f32(w * qa + qx) + c.x) / (wedges * f32(qa)) * TAU;
+    let s = (f32(qz) + c.y) / f32(ql);
+    let dir = vec2f(cos(a), sin(a));
+    var r = mix(F_POOL_IN, F_POOL_OUT, s);
+    var level = F_POOL;
+    var depth = F_POOL - fountain_floor(r);
+    var shore = min(2.61 - r, r - 0.31);
+    var land = F_LAND;
+    if (bowl) {
+      r = mix(F_BOWL_IN, F_BOWL_OUT, s);
+      level = F_BOWL;
+      depth = select(F_BOWL - 1.9, F_BOWL - mix(2.1, 1.92, (r - 0.15) / 0.09), r < 0.24);
+      shore = min(1.17 - r, r - 0.15);
+      land = F_JET_LAND;
+    }
+    let world = vec3f(dir.x * r, base + level, dir.y * r);
+    let off = r - land;
+    // the water runs out from where the falls strike, and churns white there under each one
+    let flow = dir * sign(off) * 0.28 * exp(-off * off / 0.5);
+    let white = exp(-off * off / 0.03) * select(0.35 + 0.65 * fountain_stream_near(a), 0.8, bowl);
+    o.clip = clip(world);
+    o.world_depth = vec4f(world, depth);
+    o.rest_flow = vec4f(world.xz, flow);
+    o.look = vec4f(white, 0.0, 0.0, shore);
+    o.extra = vec4f(select(1.0, 2.0, bowl), 0.0, r, land);
+    return o;
+  }
+  if (f < 24u) {
+    // a stream (8) or an arc of the jet (4): a tube round its path
+    let jet = f >= 20u;
+    let k = select(f - 12u, f - 20u, jet);
+    let v = (f32(qz) + c.y) / f32(ql);
+    let phi = (f32(qx) + c.x) / f32(qa) * TAU;
+    let fall = fountain_fall(k, jet, v);
+    let side = normalize(cross(fall.along, vec3f(0.0, 1.0, 0.0)) + vec3f(0.0001, 0.0, 0.0));
+    let up = normalize(cross(side, fall.along));
+    // a stream leaves the lip as a broad tongue and gathers round as it falls
+    let wide = select(mix(2.0, 1.0, smoothstep(0.0, 0.5, v)), 1.0, jet);
+    let n = normalize(side * cos(phi) + up * sin(phi));
+    let world = fall.centre + (side * cos(phi) * wide + up * sin(phi)) * fall.radius;
+    o.clip = clip(world);
+    o.world_depth = vec4f(world, fall.radius);
+    o.rest_flow = vec4f(n.x, n.y, n.z, v);
+    o.look = vec4f(0.0);
+    o.extra = vec4f(select(3.0, 4.0, jet), phi / TAU, v, f32(k));
+    return o;
+  }
+  // a splash crown where a stream strikes: a ring of spray thrown up and out, pulsing
+  let k = f - 24u;
+  let a = fountain_stream_angle(k);
+  let at = vec3f(cos(a) * F_LAND, base + F_POOL, sin(a) * F_LAND);
+  let phi = (f32(qx) + c.x) / f32(qa) * TAU;
+  let v = (f32(qz) + c.y) / f32(ql);
+  let pulse = 0.75 + 0.25 * sin(time * 11.0 + f32(k) * 1.7 + phi * 2.0);
+  let ring = vec3f(cos(phi), 0.0, sin(phi));
+  let world = at + ring * mix(0.06, 0.2, v) + vec3f(0.0, v * 0.16 * pulse - 0.01, 0.0);
+  o.clip = clip(world);
+  o.world_depth = vec4f(world, 0.05);
+  o.rest_flow = vec4f(normalize(ring + vec3f(0.0, 0.8, 0.0)), v);
+  o.look = vec4f(0.0);
+  o.extra = vec4f(5.0, phi / TAU, v, f32(k));
+  return o;
+}
+
+// Spray, a stream or a jet: a streaked, broken sheet of white-shot teal, the painted sky in its
+// Fresnel rim, its streaks running down at the water's speed.
+fn fountain_fall_shade(i: WaterOut, part: u32) -> WaterShade {
+  var o: WaterShade;
+  let world = i.world_depth.xyz;
+  let n = normalize(i.rest_flow.xyz);
+  let v_along = i.rest_flow.w;
+  let around = i.extra.y;
+  let k = i.extra.w;
+  let to_eye = normalize(u.eye.xyz - world);
+  let t = u.water.params.x;
+  let light = water_host_light(world, normalize(n + vec3f(0.0, 0.6, 0.0)));
+  let facing = abs(dot(n, to_eye));
+  let fresnel = water_fresnel(max(facing, 0.05));
+  let sky = water_host_sky(reflect(-to_eye, n), 0.0);
+  var streak = water_noise(vec3f(around * 9.0 + k * 3.1, v_along * 7.0 - t * 5.5, k));
+  streak = streak * 0.6 + 0.4 * water_noise(vec3f(around * 23.0 + k, v_along * 16.0 - t * 9.0, k + 4.0));
+  var alpha = 0.0;
+  var white = 0.0;
+  if (part == 5u) {
+    // the crown: froth thinning to droplets at its rim
+    let froth = water_noise(vec3f(around * 14.0 + k * 2.0, v_along * 3.0 - t * 4.0, t * 2.0 + k));
+    alpha = smoothstep(0.35, 0.7, froth + 0.35 * (1.0 - v_along)) * (1.0 - smoothstep(0.55, 1.0, v_along)) * 0.9;
+    white = 0.85;
+  } else {
+    // a stream: clearer at the lip, breaking up toward the bottom; seen edge-on it reads thicker
+    let thick = mix(0.55, 0.92, 1.0 - facing);
+    alpha = thick * (0.72 + 0.4 * streak) * (1.0 - 0.45 * smoothstep(0.6, 1.0, v_along) * (1.0 - streak));
+    white = clamp(0.25 + 0.55 * smoothstep(0.45, 0.85, streak) + 0.3 * v_along, 0.0, 1.0);
+    if (part == 4u) { white = 0.55 + 0.35 * streak; }
+  }
+  alpha = clamp(alpha, 0.0, 1.0);
+  let body = pow(W_SHALLOW, vec3f(2.2)) * (light * 0.9 + vec3f(0.05));
+  let foam = vec3f(0.95, 0.97, 0.96) * (light * 0.95 + vec3f(0.08));
+  let c = mix(body, foam, white) * (1.0 - fresnel * 0.5) + sky * fresnel * 0.5;
+  o.emit = c * alpha;
+  o.transmit = vec3f(1.0 - alpha);
+  return o;
+}
+
 @vertex fn water_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) piece: u32) -> WaterOut {
   var o: WaterOut;
+  let patches = u32(u.water.grid2.y);
+  if (piece >= patches) { return fountain_vertex(id, piece - patches); }
   let qa = u32(u.water.grid.z);
   let ql = u32(u.water.grid.w);
   let quad_id = id / 6u;
@@ -989,6 +1286,31 @@ fn water_below(n: vec3f, v: vec3f, path: f32, slope: f32) -> WaterShade {
   return o;
 }
 
+// A fountain's pool: still water bent by the detail waves and by rings running out from where the
+// falls strike, in the painted look. The basin is shallow, so its bands are read at 2.1 times its
+// depth (a painted fountain's water reads deep in the middle and clear at the rim).
+fn fountain_pool_shade(i: WaterOut, part: u32, v: vec3f, footprint: f32) -> WaterShade {
+  let world = i.world_depth.xyz;
+  let rest = i.rest_flow.xy;
+  let flow = i.rest_flow.zw;
+  let r = i.extra.z;
+  let land = i.extra.w;
+  let t = u.water.params.x;
+  let detail = water_flow_detail(rest * 1.6, flow, footprint);
+  let off = r - land;
+  let d = abs(off);
+  let k = TAU / select(0.2, 0.12, part == 2u);
+  let a = atan2(rest.y, rest.x);
+  let near = select(0.45 + 0.55 * fountain_stream_near(a), 1.0, part == 2u);
+  let amp = select(0.006, 0.003, part == 2u) * near * exp(-d * 1.4);
+  let ring = (rest / max(r, 1e-3)) * sign(off) * amp * k * cos(k * d - t * 9.0);
+  let slope = detail.xy * 0.7 + ring;
+  let n = normalize(vec3f(-slope.x, 1.0, -slope.y));
+  let deep = select(2.1, 2.4, part == 2u);
+  // and its shore line half as wide as a river's
+  return water_painted(world, rest, flow, i.world_depth.w * deep, i.look.w * 2.0, i.look.x, n, v, footprint);
+}
+
 // ---- the painted look (art-styles.md 12; verse/water-look.coax water_paint_*, the `painted` preset,
 // W_ABSORB + 3): colour bands by depth in place of Beer-Lambert, the painted sky's gradient in
 // Schlick's Fresnel with no roughness blur, sparkles where a cell's tilt mirrors the key light, a
@@ -1049,6 +1371,8 @@ fn water_painted(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore: f32,
 }
 
 fn water_fragment(i: WaterOut) -> WaterShade {
+  let part = u32(i.extra.x + 0.5);
+  if (part >= 3u) { return fountain_fall_shade(i, part); }
   let world = i.world_depth.xyz;
   let rest = i.rest_flow.xy;
   let flow = i.rest_flow.zw;
@@ -1056,6 +1380,7 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   let v = normalize(u.eye.xyz - world);
   let eye_distance = distance(u.eye.xyz, world);
   let footprint = water_footprint(v, eye_distance);
+  if (part >= 1u) { return fountain_pool_shade(i, part, v, footprint); }
   // the normal, and the roughness its lost detail adds
   let swell = water_gerstner_slope(rest, depth, 1.0);
   let detail = water_flow_detail(rest, flow, footprint);

@@ -175,6 +175,38 @@ rest (the river's bed and banks) with the ridges of two drifting noise
 fields, faded in over the first 0.1 m and out with depth, in the key's
 light and shadow.
 
+## The fountain (verse-water-fountain)
+
+The commons' fountain is lathed stone with its water drawn by the water
+shader (everglade.coax `lathe`, everglade.wgsl `lathe_vertex`,
+`fountain_vertex`):
+
+- **Stone.** A profile of (radius, height) points turned about the axis,
+  48 sectors round, in 8 wedge instances of 6 sectors by 28 segments so one
+  stays inside the pack's 1,024 identity indices (`SHAPE_LATHE`, its own
+  draw before the water). The basin: a dished floor, the inner wall, a
+  rounded coping lip, the outer wall and a plinth, 6.6 m across. The column:
+  a moulded base, the shaft, a collar, the upper bowl (floor, lip,
+  underside) and a finial. `carved` shades it as coursed blocks (0.26 m by
+  0.6 m, staggered), each its own tone, dark joints, streaked weathering,
+  wet below the water and a mossy band at the waterline.
+- **Water.** After the river's patches, 32 instances of the water draw: the
+  basin's pool (8 wedges of rings and sectors) and the upper bowl's (4), in
+  the painted look at 2.1 and 2.4 times their depth (the basin is 0.4 to
+  0.6 m deep) with a shore line half a river's width; 8 streams leaving the
+  bowl's lip at 0.7 m/s and falling as thrown water does for 0.555 s to the
+  pool 1.77 m out, each a tube that leaves the lip as a broad tongue; 4 arcs
+  of the jet from the finial into the bowl; and 8 splash crowns where the
+  streams strike. Where they strike the pool churns white, runs outward and
+  rings spread (`fountain_pool_shade`). A stream is streaked, broken teal
+  and white with the sky in its rim (`fountain_fall_shade`).
+- **Caustics** on the basin's floor and the bowl's (`fountain_depth_at`
+  feeds `water_depth_at`).
+- Two numbers ride in the water block's spare `W_GRID2` z and w: the ground
+  under the fountain and 1 when it is drawn (everglade.coax `U_FOUNTAIN`).
+  On a phone the pools and streams take the phone's coarser quads; the
+  fountain adds 1,536 water triangles there.
+
 ## W6: ripples (done; the rest of W6 is not)
 
 `water_look_ripples` puts 24 expanding rings in the uniform block (the old
