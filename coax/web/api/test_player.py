@@ -110,6 +110,15 @@ status, raw, _ = call("POST", P + "world/haunted-house", body,
                       {"Content-Type": "application/json", "Authorization": nip98(os.environ["OTHER_KEY"], "POST", "world/haunted-house", body)})
 check("someone else's signature does not own it", status == 403)
 
+# ---- the Sandbox (0029_sandbox_open.sql): the site's, open to everyone known
+status, own = pt("GET", "world/sandbox/owner", key=guest["key"])
+check("the Sandbox is open, and nobody's but the site's", status == 200 and own["open"] is True and own["you"] is False and own["claimed"] is False, own)
+status, pub = pt("POST", "world/sandbox", {"doc": doc, "summary": "Built in the Sandbox"}, key=other["key"])
+check("anyone with a player key publishes the Sandbox", status == 200 and pub.get("version", 0) >= 1, pub)
+check("someone unknown may not", pt("POST", "world/sandbox", {"doc": doc})[0] == 403)
+check("and nobody but the site resets it", pt("POST", "world/sandbox/reset", {}, key=other["key"])[0] == 403)
+check("every publish is in its log", pt("GET", "log/sandbox")[1][0]["summary"] == "Built in the Sandbox")
+
 # ---- join by email: never verified, so it never opens anyone else's account
 slot = "progress/haunted-house/main"
 check("a guest keeps no progress on the server", pt("GET", slot, key=guest["key"])[0] == 403)

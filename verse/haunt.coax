@@ -102,7 +102,7 @@ hh_action :: (v:HH_Action)->HauntAction {
 verse_haunt_open :: (bytes:[]u8,s:Haunt)->Haunt #export_c {
  next:=s;next.ok=false;if bytes.count<1 || bytes.count>262144{return next;}next.mesh_count=0;next.entity_count=0;next.area_count=0;next.walk_count=0;next.light_count=0;next.people_count=0;next.zone_count=0;next.action_count=0;next.pending_count=0;
  doc:=HH_Resource_decode_minimal(bytes);
- if doc.error!=0 || HH_Resource_get_version(doc).value!=1 || HH_Resource_get_world_id(doc).value!="haunted-house" || HH_Resource_get_vertices_resource(doc).value!="Haunt.vertices" || HH_Resource_get_indices_resource(doc).value!="Haunt.indices" {return next;}
+ if doc.error!=0 || HH_Resource_get_version(doc).value!=1 || (HH_Resource_get_world_id(doc).value!="haunted-house" && HH_Resource_get_world_id(doc).value!="sandbox") || HH_Resource_get_vertices_resource(doc).value!="Haunt.vertices" || HH_Resource_get_indices_resource(doc).value!="Haunt.indices" {return next;}
  next.resource=doc;if next.instance_id.count==0{next.instance_id=HH_Resource_get_world_id(doc).value;}next.title=HH_Resource_get_title(doc).value;next.world_id=HH_Resource_get_world_id(doc).value;next.revision=HH_Resource_get_source_commit(doc).value;
  mi:=HH_Resource_iter_meshes(doc);
  while mi.has_value {

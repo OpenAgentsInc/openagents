@@ -64,8 +64,8 @@ static bool world_send(void) {
   if (n <= 0) return false;
   int64_t cn = save_pack(text(SAVE_WORLD), SAVE_SCHEMA, (coax_v_u8){saved, n}, n, (coax_v_u8){container, sizeof container});
   if (cn <= 0) return false;
-  world_offering = !world_owner;
-  int64_t bn = world_body((coax_v_u8){container, cn}, cn, wall_ms(), text(placed_n ? "Placed things in the house" : "Changed the house"),
+  world_offering = !world_owner && !sandbox;   // the Sandbox is open: everyone publishes
+  int64_t bn = world_body((coax_v_u8){container, cn}, cn, wall_ms(), text(sandbox ? "Built in the Sandbox" : placed_n ? "Placed things in the house" : "Changed the house"),
                           world_offering, (coax_v_u8){(uint8_t *)post, sizeof post});
   int64_t un = world_url(world_name(), world_offering ? 3 : 0, (coax_string){"", 0}, (coax_v_u8){(uint8_t *)world_url_buf, sizeof world_url_buf});
   if (bn <= 0 || un <= 0) return false;
@@ -100,7 +100,7 @@ static bool world_message(int32_t kind, uint32_t length) {
   if (send_ask >= 0 && kind == 512 + send_ask) {
     send_ask = -1;
     int status = world_status(length);
-    toast(status == 200 ? (world_offering ? "Your change is offered to the owner" : "Published: everyone with the link sees it")
+    toast(status == 200 ? (world_offering ? "Your change is offered to the owner" : sandbox ? "Published: everyone in the Sandbox sees it" : "Published: everyone with the link sees it")
                         : "That didn't reach the server; try again");
     if (status != 200) world_changed = true;
     return true;
@@ -127,14 +127,19 @@ static void world_frame(void) {
   world_apply();
 }
 
+// Opens the named world over the document: what was published, and whether you own it.
+static void world_open(coax_string h) {
+  if (h.count > 64 || (world_holds() && h.count == world_n && !memcmp(world, h.data, (size_t)h.count))) return;
+  memcpy(world, h.data, (size_t)h.count); world[h.count] = 0; world_n = h.count;
+  world_owner = false; offers_n = 0; offer_id[0] = 0;
+  world_ask = world_get(0, 4);
+  owner_ask = world_get(1, HTTP_ANSWER_PLAYER);
+}
+
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
   (void)state;
   if (length > 64 || flight_hash(inbox, length)) return;
   coax_string h = {(const char *)inbox, length};
-  if (!world_id_ok(h) || (length == strlen(SAVE_WORLD) && !memcmp(inbox, SAVE_WORLD, length))) return;
-  if (world_holds() && (int64_t)length == world_n && !memcmp(world, inbox, length)) return;
-  memcpy(world, inbox, length); world[length] = 0; world_n = length;
-  world_owner = false; offers_n = 0; offer_id[0] = 0;
-  world_ask = world_get(0, 4);
-  owner_ask = world_get(1, HTTP_ANSWER_PLAYER);
+  if (sandbox || !world_id_ok(h) || (length == strlen(SAVE_WORLD) && !memcmp(inbox, SAVE_WORLD, length))) return;
+  world_open(h);
 }

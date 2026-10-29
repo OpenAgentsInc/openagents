@@ -84,6 +84,35 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realm/fixture/assets/fixture.pack"]
       } },
+    { "id": "sandbox", "name": "SANDBOX", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 1.25, "size": 0.03 },
+      "realm": {
+        "slug": "sandbox",
+        "title": "Sandbox",
+        "description": "The Sandbox, open ground in the Verse that everyone builds on together: press B to edit, move, paint or copy what's there or place crates, barrels, lamps, trees and rocks, and what you build is published for everyone.",
+        "alt": "Enter the Verse: build on the Sandbox's open ground",
+        "module": "realm",
+        "slot": "sandbox",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "assets": [
+          "data:/realm/sandbox/assets/Sandbox.pb",
+          "storage:/realm/haunted-house/assets/Haunt.vertices",
+          "index:/realm/haunted-house/assets/Haunt.indices",
+          "layers:/realm/haunted-house/assets/haunt-layer0.jpg|/realm/haunted-house/assets/haunt-layer1.jpg|/realm/haunted-house/assets/haunt-layer2.jpg|/realm/haunted-house/assets/haunt-layer18.jpg|/realm/haunted-house/assets/haunt-layer19.jpg|/realm/haunted-house/assets/haunt-layer20.jpg|/realm/haunted-house/assets/haunt-layer21.jpg|/realm/haunted-house/assets/haunt-layer22.jpg|/realm/haunted-house/assets/haunt-layer24.jpg|/realm/haunted-house/assets/haunt-layer26.jpg|/realm/haunted-house/assets/haunt-layer27.jpg|/realm/haunted-house/assets/haunt-layer28.jpg",
+          "sound:click=/realm/haunted-house/assets/haunt-click.mp3",
+          "sound:jump=/realm/haunted-house/assets/haunt-jump.mp3",
+          "sound:land=/realm/haunted-house/assets/haunt-land.mp3",
+          "sound:step_grass_1=/realm/haunted-house/assets/haunt-step_grass_1.mp3",
+          "sound:step_grass_2=/realm/haunted-house/assets/haunt-step_grass_2.mp3",
+          "sound:step_grass_3=/realm/haunted-house/assets/haunt-step_grass_3.mp3",
+          "sound:step_stone_1=/realm/haunted-house/assets/haunt-step_stone_1.mp3",
+          "sound:step_stone_2=/realm/haunted-house/assets/haunt-step_stone_2.mp3",
+          "sound:step_stone_3=/realm/haunted-house/assets/haunt-step_stone_3.mp3",
+          "sound:step_wood_1=/realm/haunted-house/assets/haunt-step_wood_1.mp3",
+          "sound:step_wood_2=/realm/haunted-house/assets/haunt-step_wood_2.mp3",
+          "sound:step_wood_3=/realm/haunted-house/assets/haunt-step_wood_3.mp3",
+          "particles:/particles.wgsl"
+        ]
+      } },
     { "id": "icecream", "name": "ICE CREAM MAN", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 3.7, "size": 0.026 },
       "realm": {
         "slug": "ice-cream-man",

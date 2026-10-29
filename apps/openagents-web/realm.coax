@@ -105,6 +105,7 @@ RealmView :: struct {
   title: string;        // the room you're in
   quest: int;           // the quest's step, 0 to 8 (8: complete)
   quest_line: string;   // what to do now
+  no_voice: bool;       // a realm without a voice (the Sandbox): no VOICE button
   goal: string;         // at the quest's orb: what E does there ("" not at it)
   bearing: f32;         // the orb's angle from where you look, radians (sign: the side)
   editing: bool;        // edit mode
@@ -664,6 +665,7 @@ draw_voice :: (r: [] Realm, out: [] f32, at: int) -> int {
 
 // Writes "MAKE IT YOURS  N / 8" (the steps done), or that it's complete, into buf.
 quest_text :: (buf: [] u8, quest: int) -> string {
+  if quest < 0 { return "EVERYONE'S OPEN GROUND"; }   // a realm without the quest (the Sandbox)
   n := put(buf, 0, "MAKE IT YOURS");
   if quest >= QUEST_STEPS { n = put(buf, n, " · COMPLETE"); return cast(string) buf[0..<n]; }
   n = put(buf, n, "  ");
@@ -1123,14 +1125,16 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   }
 
   // the hotbar
-  vertices = hud_button(r, out, vertices, BTN_VIEW, slot_box(r, 0), "VIEW", "V", false);
-  vertices = hud_button(r, out, vertices, BTN_MAP, slot_box(r, 1), "MAP", "M", r[0].map);
-  vertices = hud_button(r, out, vertices, BTN_EDIT, slot_box(r, 2), "EDIT", "B", v.editing);
-  vertices = hud_button(r, out, vertices, BTN_CHAT, slot_box(r, 3), "CHAT", "C", r[0].chat || v.unread > 0);
+  // without VOICE the row closes up: towards EXIT at the right on a computer, the left on a phone
+  sh := ifx v.no_voice && !phone(r) then 1 else 0;
+  vertices = hud_button(r, out, vertices, BTN_VIEW, slot_box(r, sh), "VIEW", "V", false);
+  vertices = hud_button(r, out, vertices, BTN_MAP, slot_box(r, sh + 1), "MAP", "M", r[0].map);
+  vertices = hud_button(r, out, vertices, BTN_EDIT, slot_box(r, sh + 2), "EDIT", "B", v.editing);
+  vertices = hud_button(r, out, vertices, BTN_CHAT, slot_box(r, sh + 3), "CHAT", "C", r[0].chat || v.unread > 0);
   labels := QUALITY_LABELS;
-  vertices = hud_button(r, out, vertices, BTN_GFX, slot_box(r, 4), labels[r[0].quality % 3], "G", false);
-  vertices = hud_button(r, out, vertices, BTN_VOICE, slot_box(r, 5), "VOICE", "", r[0].voice);
-  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, 6), "EXIT", "", false);
+  vertices = hud_button(r, out, vertices, BTN_GFX, slot_box(r, sh + 4), labels[r[0].quality % 3], "G", false);
+  if !v.no_voice { vertices = hud_button(r, out, vertices, BTN_VOICE, slot_box(r, 5), "VOICE", "", r[0].voice); }
+  vertices = hud_button(r, out, vertices, BTN_EXIT, slot_box(r, ifx v.no_voice && phone(r) then 5 else 6), "EXIT", "", false);
   vertices = draw_voice(r, out, vertices);
 
   // the house's notice, under the title
@@ -1561,6 +1565,16 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   r[0].action = 0;
   #assert realm_pointer(r[..], v, x, y, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, x, y, POINTER_UP, 0, 1);
   #assert !r[0].voice && cast(string) r[0].outbox[0..<r[0].out_n] == "off";
+}
+
+#test "a realm without a voice shows no VOICE, the row closed up, and no quest" {
+  r: [1] Realm; desk(r[..]); v := view(); v.no_voice = true; v.quest = -1; v.quest_line = "";
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert !r[0].shown[BTN_VOICE] && r[0].shown[BTN_EXIT] && r[0].shown[BTN_VIEW];
+  #assert r[0].boxes[BTN_EXIT].x0 == slot_box(r[..], 6).x0 && r[0].boxes[BTN_GFX].x0 == slot_box(r[..], 5).x0;
+  buf: [48] u8;
+  #assert quest_text(buf[..], -1) == "EVERYONE'S OPEN GROUND";
 }
 
 #test "GFX steps the graphics down and tells the host; G does too" {

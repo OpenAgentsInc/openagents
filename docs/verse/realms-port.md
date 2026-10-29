@@ -40,6 +40,11 @@ Everglade. The tasks are in the Verse project under "Port the realms"
    - Players can't edit it.
 5. **Later:** the Sandbox, the Grid and Medieval Town. Medieval Town may
    fold into Everglade.
+   - The Sandbox is at /realm/sandbox (rl-sandbox): a world document
+     (`verse/tools/pack_sandbox.py`) played by the Haunted House's engine
+     and edit tools, one shared world `sandbox` on the server that anyone
+     with a player key publishes to (`0029_sandbox_open.sql`). Its
+     one-sentence set pieces are still to come.
 
 ## Sources (read only)
 

@@ -100,7 +100,12 @@ static int history_n, history_at;
 static uint8_t live[2][SNAP];
 static int live_k;
 static int64_t edit_camera;   // the view before edit mode (it shows you in third person)
-#define SAVE_WORLD "haunted-house"
+// The world the document is (its world_id): the Haunted House, or the
+// Sandbox (rl-sandbox), everyone's open ground, which opens as its own
+// shared world on the server, published when you leave edit mode.
+static const char *save_world = "haunted-house";
+#define SAVE_WORLD save_world
+static bool sandbox;
 #define SAVE_SCHEMA 1              // the house's save in this build; save.coax migrates older ones forward
 #define PROGRESS_URL "/api/playtest/progress/haunted-house/main"
 #define HTTP_ANSWER_PLAYER 12      // coaxial_http: an answer wanted (4), the player key sent (8)
@@ -136,19 +141,26 @@ static int64_t talking_was = -1;   // the conversation the realm remembers
 static coax_string greet;          // what they said first
 
 // Edit mode's hotbar: short names (the HUD's) and the house's mesh for each.
-static const struct { const char *label, *name, *mesh; } items[5] = {
+typedef struct { const char *label, *name, *mesh; } Item;
+static const Item house_items[5] = {
   {"JACK", "Jack-o'-lantern", "Custom_JackOLantern"}, {"CANDLE", "Candlestick", "CandleStick"},
   {"GHOST", "Ghost", "Custom_Ghost"}, {"SPIDER", "Spider", "Custom_Spider"}, {"GRAVE", "Tombstone", "Custom_Tombstone_Round"},
 };
+static const Item sandbox_items[5] = {
+  {"CRATE", "Crate", "Crate_Wooden"}, {"BARREL", "Barrel", "Barrel"}, {"LAMP", "Lamp", "CandleStick_Stand"},
+  {"TREE", "Tree", "Custom_Tree_Round"}, {"ROCK", "Rock", "Custom_Rock"},
+};
+static const Item *items = house_items;
 static int64_t item_mesh[5];
 
 // What the house records (analytics.coax, realm_track): its Track and what it saw last frame.
 static coax_t_Track track_state;
 static coax_t_RealmSeen seen;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
-#define LINK "https://openagents.com/realm/haunted-house"
+static const char *link = "https://openagents.com/realm/haunted-house";
 
 static bool world_holds(void);
+static void world_open(coax_string h);
 static coax_string world_name(void);
 static bool world_send(void);
 static void world_edited(void);
@@ -301,9 +313,14 @@ static void open_house(void) {
   for (int64_t i = 0; i < house.mesh_count; i++)
     if (!verse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
   rebuild_walls();
+  if (house.world_id.count == 7 && !memcmp(house.world_id.data, "sandbox", 7)) {
+    sandbox = true; save_world = "sandbox"; link = "https://openagents.com/realm/sandbox"; items = sandbox_items;
+    house.quest = 8;   // no quest here: done, and the HUD shows none
+    world_open(text("sandbox"));
+  }
   if (kept_n && !world_holds()) restore_kept();
   for (int i = 0; i < 5; i++) item_mesh[i] = verse_haunt_mesh(house, text(items[i].mesh));
-  player = verse_player_place(7, 0, 2, 0);
+  player = sandbox ? verse_player_place(0, 0, -2, 0) : verse_player_place(7, 0, 2, 0);
   player.phi = 1.5707963f;
   sticks = verse_sticks_reset();
   opened = true;
@@ -438,8 +455,8 @@ static void edit_op(int64_t op) {
 
 // Copies the house's link (the host's action 2).
 static void copy_link(void) {
-  memcpy(realm.outbox.e, LINK, sizeof LINK - 1);
-  realm.out_n = sizeof LINK - 1;
+  memcpy(realm.outbox.e, link, strlen(link));
+  realm.out_n = (int64_t)strlen(link);
   coax_string w = world_name();
   if (world_holds() && realm.out_n + 1 + w.count <= (int64_t)sizeof realm.outbox.e) {
     realm.outbox.e[realm.out_n++] = '#';
@@ -691,10 +708,11 @@ static void describe(void) {
   if (opened) {
     coax_t_Vec3 feet = verse_player_feet(player);
     int64_t area = verse_haunt_area(house, point(feet));
-    v.title = area >= 0 ? areas[area].name : (coax_string){"Haunted House", 13};
+    v.title = area >= 0 ? areas[area].name : sandbox ? text("Sandbox") : (coax_string){"Haunted House", 13};
     bool goal = verse_haunt_at_goal(house);
-    v.quest = house.quest;
-    v.quest_line = verse_haunt_step_line(house);
+    v.quest = sandbox ? -1 : house.quest;
+    v.no_voice = sandbox;
+    v.quest_line = sandbox ? (coax_string){"", 0} : verse_haunt_step_line(house);
     v.goal = goal ? verse_haunt_goal_prompt(house) : (coax_string){"", 0};
     v.bearing = verse_haunt_goal_bearing(house);
     v.editing = house.editing;
