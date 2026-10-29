@@ -293,3 +293,5 @@ analytics until `pt-capture`.
    milestone "Sign in to the website with your phone" lands (the playtest
    used Google, GitHub and email sign-in; openagents.com uses Nostr, never
    WorkOS). The analytics schema already has the column.
+
+The switch-over plan and its rehearsal: `docs/verse/playtest-cutover.md`.
