@@ -2238,6 +2238,8 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   sp := everglade_spawn(g[..]);
   n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].near_board;
+  // and nothing edits Everglade: the Haunted House's B is nobody's here
+  #assert !everglade_key(g[..], 'b', 0) && !everglade_key(g[..], 'B', 0);
 }
 
 #test "a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up" {

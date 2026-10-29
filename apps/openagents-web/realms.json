@@ -48,7 +48,6 @@
       } },
     { "id": "blue", "name": "BLUE RUSH", "kind": "locked", "orbit": { "r": 0.42, "a": 2.4, "size": 0.05 } },
     { "id": "brain", "name": "BIG BRAIN", "kind": "locked", "orbit": { "r": 0.46, "a": 0.5, "size": 0.045 } },
-    { "id": "grove", "name": "EVERGLADE", "kind": "locked", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 } },
     { "id": "coding", "name": "CODING", "kind": "soon", "orbit": { "r": 0.37, "a": 3.25, "size": 0.043 } },
     { "id": "grid", "name": "THE GRID", "kind": "open", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 },
       "realm": {
@@ -67,12 +66,13 @@
           "index:/realm/the-grid/assets/grid.indices"
         ]
       } },
-    { "id": "everglade", "name": "EVERGLADE BLOCKOUT", "kind": "open", "listed": false, "orbit": { "r": 0.21, "a": 4.65, "size": 0.024 },
+    { "id": "everglade", "name": "EVERGLADE", "kind": "open", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 },
       "realm": {
         "slug": "everglade",
         "title": "Everglade",
-        "description": "Everglade, the forest city, built from art kits in a forest you leave only by its trails: the palisade and its gates, the commons and fountain, the market, the inn and six more rooms you can walk into, the guild halls, the temple and observatory, and the trails out to the deep wood, the ruins, the crypt and the river crossing.",
-        "alt": "Enter the Verse: walk Everglade, the forest city",
+        "description": "Everglade, the forest city in a forest you leave only by its trails: walk its streets and rooms, talk to its people, who remember you, and take quests from the board out to the deep wood, the ruins and the river crossing. One of them earns a flock of birds that follows you.",
+        "alt": "Everglade, the forest city: take a quest from the board",
+        "card": "/realm/everglade/og.jpg",
         "module": "everglade",
         "slot": "everglade",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },

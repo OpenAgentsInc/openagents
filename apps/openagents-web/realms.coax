@@ -1,13 +1,13 @@
 // Written by coax/web/realms.ts from realms.json: change the table, not this file.
 // The galaxy's worlds in order (verse.coax): id, name, kind, orbit, whether
 // the galaxy shows it (an unlisted one with ?realms=all) and the page it opens.
-PLANETS :: 13;
+PLANETS :: 12;
 KIND_LOCKED :: 0; KIND_OPEN :: 1; KIND_SOON :: 2;
-PLANET_ID :: [PLANETS] string.["oa", "house", "blue", "brain", "grove", "coding", "grid", "everglade", "deadgears", "fixture", "sandbox", "icecream", "villa"];
-PLANET_NAME :: [PLANETS] string.["OPENAGENTS", "HAUNTED HOUSE", "BLUE RUSH", "BIG BRAIN", "EVERGLADE", "CODING", "THE GRID", "EVERGLADE BLOCKOUT", "DEAD GEARS", "FIXTURE REALM", "SANDBOX", "ICE CREAM MAN", "PLANETARY VILLA"];
-PLANET_KIND :: [PLANETS] int.[KIND_LOCKED, KIND_OPEN, KIND_LOCKED, KIND_LOCKED, KIND_LOCKED, KIND_SOON, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN];
-PLANET_R :: [PLANETS] f32.[0, 0.15, 0.42, 0.46, 0.34, 0.37, 0.3, 0.21, 0.3, 0.26, 0.36, 0.22, 0.42];
-PLANET_A :: [PLANETS] f32.[0, 0, 2.4, 0.5, 4.2, 3.25, 5.4, 4.65, 2.9, 1.9, 1.25, 3.7, 5.6];
-PLANET_SIZE :: [PLANETS] f32.[0.075, 0.028, 0.05, 0.045, 0.032, 0.043, 0.036, 0.024, 0.03, 0.026, 0.03, 0.026, 0.034];
-PLANET_LISTED :: [PLANETS] bool.[true, true, true, true, true, true, true, false, true, false, false, true, false];
-PLANET_PATH :: [PLANETS] string.["", "/realm/haunted-house", "", "", "", "", "/realm/the-grid", "/realm/everglade", "/realm/dead-gears", "/realm/fixture", "/realm/sandbox", "/realm/ice-cream-man", "/realm/hecates-cemetery"];
+PLANET_ID :: [PLANETS] string.["oa", "house", "blue", "brain", "coding", "grid", "everglade", "deadgears", "fixture", "sandbox", "icecream", "villa"];
+PLANET_NAME :: [PLANETS] string.["OPENAGENTS", "HAUNTED HOUSE", "BLUE RUSH", "BIG BRAIN", "CODING", "THE GRID", "EVERGLADE", "DEAD GEARS", "FIXTURE REALM", "SANDBOX", "ICE CREAM MAN", "PLANETARY VILLA"];
+PLANET_KIND :: [PLANETS] int.[KIND_LOCKED, KIND_OPEN, KIND_LOCKED, KIND_LOCKED, KIND_SOON, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN];
+PLANET_R :: [PLANETS] f32.[0, 0.15, 0.42, 0.46, 0.37, 0.3, 0.34, 0.3, 0.26, 0.36, 0.22, 0.42];
+PLANET_A :: [PLANETS] f32.[0, 0, 2.4, 0.5, 3.25, 5.4, 4.2, 2.9, 1.9, 1.25, 3.7, 5.6];
+PLANET_SIZE :: [PLANETS] f32.[0.075, 0.028, 0.05, 0.045, 0.043, 0.036, 0.032, 0.03, 0.026, 0.03, 0.026, 0.034];
+PLANET_LISTED :: [PLANETS] bool.[true, true, true, true, true, true, true, true, false, false, true, false];
+PLANET_PATH :: [PLANETS] string.["", "/realm/haunted-house", "", "", "", "/realm/the-grid", "/realm/everglade", "/realm/dead-gears", "/realm/fixture", "/realm/sandbox", "/realm/ice-cream-man", "/realm/hecates-cemetery"];

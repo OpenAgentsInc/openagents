@@ -454,7 +454,7 @@ verse_action_done :: (s: [] VerseState) #export_c { for i: 0..<OUTBOX { s[0].out
 // ---- the galaxy's worlds (the playtest's map, app.js galaxy.bodies)
 
 // PLANETS and PLANET_* are realms.coax's; these two have tags of their own.
-HOUSE :: 1; CODING :: 5;
+HOUSE :: 1; CODING :: 4;
 ORBITS :: [6] f32.[0.15, 0.26, 0.3, 0.34, 0.42, 0.46];
 
 Seen :: struct { x: f32; y: f32; r: f32; depth: f32; }
