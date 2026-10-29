@@ -875,8 +875,11 @@ quest_text :: (buf: [] u8, quest: int) -> string {
 piece_box :: (r: [] Realm) -> Box {
   k := r[0].dpr;
   w := ifx phone(r) then 190 * k else 230 * k;
-  e := slot_box(r, SLOTS - 1);
-  return Box.{x0 = e.x1 - w, y0 = e.y0 - 46 * k, x1 = e.x1, y1 = e.y0 - 10 * k};
+  e := slot_box(r, SLOTS - 1); m := gutter(r);
+  // beside the hotbar when there's room, else under your name (clear of the help line over the hotbar)
+  if !phone(r) && e.x1 + 16 * k + w <= r[0].width - m - 72 * k { return Box.{x0 = e.x1 + 16 * k, y0 = e.y0, x1 = e.x1 + 16 * k + w, y1 = e.y1}; }
+  y0 := top_bottom(r) + 12 * k;
+  return Box.{x0 = m + 4 * k, y0 = y0, x1 = m + 4 * k + w, y1 = y0 + 36 * k};
 }
 
 // A change offered to your world: who, what it does, ACCEPT and DECLINE.
