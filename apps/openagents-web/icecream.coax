@@ -1,0 +1,244 @@
+// Ice Cream Man's realm (openagents.com/realm/ice-cream-man): the seed's
+// house from verse/icecream/ (mesh.coax, built and lit by scene.coax, its own
+// library), seen from where a run starts, behind the kid. No play yet
+// (icm-world brings it). This file is the HUD over it: the title plate and
+// GALAXY (or Escape), which goes back; #seed=N in the address builds that
+// seed's house. icecream-face.c builds the scene when the seed changes and
+// adds its uniforms after these.
+
+#load "font.coax";
+#load "ui.coax";
+
+VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 6000;
+PLATES :: 4;
+// width, height, time, fade, still, plates, dpr, the outline's width; then
+// the scene's (verse/icecream/scene.coax SCENE_AT, SCENE_FLOATS); then per
+// plate x0, y0, x1, y1, scale, alpha, look, 0
+SCENE_FLOATS :: 436;
+PANEL_AT :: 8 + SCENE_FLOATS;
+UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+SEED :: 3;
+
+MODE_STROKE :: 0.0;
+MODE_LINK :: 1.0;
+MODE_PULSE :: 2.0;
+MODE_GLOW_TEXT :: 3.0;
+MODE_BAR :: 4.0;
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+// One stroke as a quad wide enough for its glow, as verse.coax draws one.
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// A round light: a disc of radius radius in a glow.
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+BTN_GALAXY :: 0; BUTTONS :: 1;
+
+IceRealm :: struct {
+  started: bool;
+  time: f32; width: f32; height: f32; dpr: f32; still: bool;
+  seed: u64;
+  press: int; hover: int;
+  boxes: [BUTTONS] Box; shown: [BUTTONS] bool;
+  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+}
+
+ice_reset :: (s: [] IceRealm) {
+  s[0].started = true; s[0].press = -1; s[0].hover = -1;
+  if s[0].seed == 0 { s[0].seed = SEED; }
+}
+// The seed the scene shows.
+ice_seed :: (s: [] IceRealm) -> u64 #export_c { if !s[0].started { ice_reset(s); } return s[0].seed; }
+// Seconds the lights have flickered for (none when still).
+ice_time :: (s: [] IceRealm) -> f32 #export_c { return ifx s[0].still then 0.0f32 else s[0].time; }
+
+// ---- in from the host
+
+// #seed=N picks the house; anything else, the default one.
+ice_hash :: (s: [] IceRealm, text: string) #export_c {
+  if !s[0].started { ice_reset(s); }
+  key := "seed=";
+  seed: u64 = SEED;
+  at := 0;
+  while at + key.count <= text.count {
+    if text[at..<at + key.count] == key { break; }
+    at += 1;
+  }
+  i := at + key.count;
+  v: u64 = 0;
+  digits := 0;
+  while i < text.count && digits < 18 && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(u64) (text[i] - '0'); i += 1; digits += 1; }
+  if digits > 0 { seed = v; }
+  s[0].seed = seed;
+}
+leave_to :: (s: [] IceRealm, url: string) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, url); s[0].action = ACT_NAVIGATE; } }
+ice_key :: (s: [] IceRealm, key: int, down: bool) -> bool #export_c {
+  if !s[0].started { ice_reset(s); }
+  if down && key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
+  return false;
+}
+ice_blur :: (s: [] IceRealm) #export_c { s[0].press = -1; }
+button_at :: (s: [] IceRealm, x: f32, y: f32) -> int {
+  for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
+  return -1;
+}
+ice_pointer :: (s: [] IceRealm, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { ice_reset(s); }
+  b := button_at(s, x, y);
+  s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
+  if phase == POINTER_DOWN { if b >= 0 { s[0].press = b; return true; } return false; }
+  if s[0].press >= 0 {
+    if phase == POINTER_UP && b == s[0].press && b == BTN_GALAXY { leave_to(s, "/verse/galaxy"); }
+    if phase != POINTER_MOVE { s[0].press = -1; }
+    return true;
+  }
+  return false;
+}
+ice_cursor :: (s: [] IceRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+ice_action :: (s: [] IceRealm) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+ice_action_done :: (s: [] IceRealm) #export_c { s[0].out_n = 0; }
+
+// ---- the HUD (the fixture realm's look)
+
+GAP :: 0.5; SPACE :: 1.2;
+PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
+GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+plate :: (s: [] IceRealm, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
+}
+centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  w := measure(text, GAP, SPACE, false) * cap;
+  return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
+}
+fit_cap :: (text: string, cap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, GAP, SPACE, false), 0.001)); }
+
+draw_hud :: (s: [] IceRealm, out: [] f32) -> int {
+  k := s[0].dpr; w := s[0].width;
+  phone := w < 640 * k;
+  g := 16 * k;
+  title := "ICE CREAM MAN";
+  buf: [48] u8;
+  n := put(buf[..], 0, "THE HOUSE, SEED ");
+  n = put_int(buf[..], n, cast(int) s[0].seed);
+  sub := cast(string) buf[0..<n];
+  bw := 104 * k;
+  room := ifx phone then w - 2 * g else w - 3 * g - bw;
+  tw := lo(hi(measure(title, GAP, SPACE, false) * 11 * k, measure(sub, GAP, SPACE, false) * 7.5 * k) + 32 * k, room);
+  tb := Box.{x0 = g, y0 = g, x1 = g + tw, y1 = g + 54 * k};
+  plate(s, tb, 0.92, LOOK_PLAIN);
+  vertices := write(k, out, 0, title, tb.x0 + 16 * k, tb.y0 + 24 * k, fit_cap(title, 11 * k, tw - 32 * k), GAP, SPACE, white(k, 0.97), false, false);
+  vertices = write(k, out, vertices, sub, tb.x0 + 16 * k, tb.y0 + 42 * k, fit_cap(sub, 7.5 * k, tw - 32 * k), GAP, SPACE, bronze(k, 0.9), false, false);
+  b := Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 34 * k};
+  if phone { b = Box.{x0 = w - g - bw, y0 = tb.y1 + 10 * k, x1 = w - g, y1 = tb.y1 + 44 * k}; }
+  s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
+  look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
+  plate(s, b, 0.92, look);
+  return centred(k, out, vertices, "GALAXY", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+}
+
+// ---- the frame: the HUD's strokes and uniforms (the face adds the scene's)
+
+ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, step: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].started { ice_reset(s); }
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  s[0].time += clamp(step, 0, 0.1);
+  s[0].plate_n = 0;
+  for i: 0..<BUTTONS { s[0].shown[i] = false; }
+  n := draw_hud(s, out);
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = ice_time(s);
+  uniforms[3] = ifx still then 1.0f32 else clamp(s[0].time / 0.4, 0, 1);
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32;
+  uniforms[5] = cast(f32) s[0].plate_n;
+  uniforms[6] = s[0].dpr;
+  uniforms[7] = 2.5 * s[0].dpr;     // world.cpp kLine: the ink outline, 2.5 CSS pixels
+  for i: 0..<PLATES {
+    o := PANEL_AT + i * 8; b := s[0].plates[i];
+    on := i < s[0].plate_n;
+    uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+    uniforms[o + 4] = s[0].dpr; uniforms[o + 5] = ifx on then s[0].plate_alpha[i] else 0.0f32; uniforms[o + 6] = s[0].plate_look[i]; uniforms[o + 7] = 0;
+  }
+  return n;
+}
+
+coaxial_ice_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_ice_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_ice_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+#test "the HUD: a title plate and GALAXY, on a laptop and a phone" {
+  s: [1] IceRealm;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  #assert n > 0 && s[0].plate_n == 2 && u[5] == 2 && u[PANEL_AT + 5] > 0 && u[PANEL_AT + 16 + 5] == 0;
+  b := s[0].boxes[BTN_GALAXY];
+  #assert b.x1 <= 1440 && b.x0 > s[0].plates[0].x1;
+  n = ice_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true);
+  b = s[0].boxes[BTN_GALAXY];
+  #assert n > 0 && b.x1 <= 1170 && b.y0 > s[0].plates[0].y1 && s[0].plates[0].x1 <= 1170 - 48;
+}
+
+#test "#seed=N picks the house; GALAXY and Escape go back" {
+  s: [1] IceRealm;
+  #assert ice_seed(s[..]) == SEED;
+  ice_hash(s[..], "seed=12");
+  #assert ice_seed(s[..]) == 12;
+  ice_hash(s[..], "");
+  #assert ice_seed(s[..]) == SEED;
+  #assert ice_key(s[..], KEY_ESCAPE, true) && ice_action(s[..]) == ACT_NAVIGATE;
+  #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := ice_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  b := s[0].boxes[BTN_GALAXY];
+  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  #assert ice_pointer(s[..], x, y, POINTER_DOWN, 0, 1) && ice_pointer(s[..], x, y, POINTER_UP, 0, 1) && ice_action(s[..]) == ACT_NAVIGATE;
+}

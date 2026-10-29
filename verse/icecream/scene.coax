@@ -1,0 +1,227 @@
+// Ice Cream Man's scene for the realm (/realm/ice-cream-man): the seed's
+// house from mesh.coax, the kid at the spawn and the view from behind it
+// (camera.coax), as world.cpp draws them, packed for the GPU. Its own
+// library (Scene.h): the realm's HUD (apps/openagents-web/icecream.coax)
+// can't share a file with the rules, whose names clash with font.coax's.
+//
+// A vertex is six words: x, y, z; the normal (snorm bytes, the shine in the
+// fourth); the colour (bytes, its light in the fourth: a room's index,
+// LIT_FLAT + a room for a ceiling panel, LIT_KID, LIT_TOOL); the hull (snorm
+// bytes, the outline weight in the fourth). The draws take CHUNK vertices
+// an instance over a sequential index buffer (the garden's 0..1023); an
+// instance from OUTLINE_BASE is the kid's ink outline.
+//   coax/bin/coax test verse/icecream/scene.coax --library --steps 4000000000
+#load "camera.coax";
+
+SCENE_WORDS :: 6;
+CHUNK :: 1020;
+MAX_SCENE :: 530400;      // 520 chunks: the biggest house (64 rooms, ~450k) and the kid
+OUTLINE_BASE :: 1048576;
+SCRATCH :: 9000;          // the most one room or model writes
+LIT_FLAT :: 128;
+LIT_KID :: 254;
+LIT_TOOL :: 253;
+SCENE_DRAWS :: 3;
+// The uniforms the scene writes, from SCENE_AT: the view's rows (clip =
+// rows · world, depth 0..1), the eye, the fog's colour, its range (near,
+// far, strength), the kid's light, the tool's light, then a light a room.
+SCENE_AT :: 8;
+SCENE_FLOATS :: 16 + 5 * 4 + MAX_ROOMS * 4;
+
+IceScene :: struct {
+  built: bool;
+  sent: int;
+  seed: u64;
+  games: [1] Game;
+  spaces: [1] Space;
+  view: View;
+  scratch: [SCRATCH] Vtx;
+  verts: [MAX_SCENE * SCENE_WORDS] u32;
+  vert_n: int;
+  kid_at: int;
+  draws: [SCENE_DRAWS * 4] u32;
+}
+
+snorm8 :: (x: f32) -> u32 { return cast(u32) cast,trunc(u8) cast(s32) roundf(clampf(x, -1, 1) * 127); }
+pack_snorm :: (v: V3, w: f32) -> u32 { return snorm8(v.x) | (snorm8(v.y) << 8) | (snorm8(v.z) << 16) | (snorm8(w) << 24); }
+
+// Packs n built vertices (in scratch) at the scene's end, placed by xf.
+pack :: (s: [] IceScene, n: int, xf: Xf, lit: int, shine: f32) {
+  for i: 0..<n {
+    if s[0].vert_n >= MAX_SCENE { return; }
+    x := s[0].scratch[i];
+    p := xf_apply(xf, x.p);
+    o := s[0].vert_n * SCENE_WORDS;
+    s[0].verts[o] = f32_bits(p.x); s[0].verts[o + 1] = f32_bits(p.y); s[0].verts[o + 2] = f32_bits(p.z);
+    s[0].verts[o + 3] = pack_snorm(v3norm_or_zero(xf_linear(xf, x.n)), shine);
+    s[0].verts[o + 4] = (x.colour & 0xFFFFFF) | (cast(u32) lit << 24);
+    s[0].verts[o + 5] = pack_snorm(v3norm_or_zero(xf_linear(xf, x.hull)), x.weight);
+    s[0].vert_n += 1;
+  }
+}
+align_chunk :: (s: [] IceScene) {
+  while s[0].vert_n % CHUNK != 0 && s[0].vert_n < MAX_SCENE {
+    o := s[0].vert_n * SCENE_WORDS;
+    for k: 0..<SCENE_WORDS { s[0].verts[o + k] = 0; }
+    s[0].vert_n += 1;
+  }
+}
+
+// The kid at the spawn as world.cpp's drawAvatar stands it still: turned
+// its way, arms down but the tool arm held out, the tool in that hand.
+add_kid :: (s: [] IceScene) {
+  g := s[0].games[..];
+  pl := g[0].player;
+  turn: Xf;
+  l := len2(pl.facing);
+  if l > 0 {
+    fx := pl.facing.x / l; fz := pl.facing.z / l;
+    turn.m[0] = fz; turn.m[2] = fx; turn.m[6] = -fx; turn.m[8] = fz;
+  }
+  base := xf_mul(xf_mul(translate(v3(pl.pos.x, pl.height + 0.4 - 0.4 + 0.4, pl.pos.z)), turn), xf_scale(v3splat(avatar_scale())));
+  v := s[0].scratch[..];
+  pack(s, tn_part(Part.torso, v, 0), base, LIT_KID, 0);
+  pack(s, tn_part(Part.head, v, 0), base, LIT_KID, 0);
+  for k: 0..<2 {
+    side: f32 = ifx k == 0 then -1.0f32 else 1.0f32;
+    pack(s, tn_part(Part.leg, v, 0), xf_mul(base, translate(v3(side * 0.2, 0.8, 0))), LIT_KID, 0);
+    angle: f32 = ifx side < 0 then -1.5707963f32 else 0.0f32;
+    pack(s, tn_part(Part.arm, v, 0), xf_mul(xf_mul(base, translate(v3(side * 0.53, 1.5, 0))), rot_x(angle)), LIT_KID, 0);
+  }
+  pack(s, tn_tool(pl.tool, v, 0), xf_mul(base, translate(v3(-0.53, 1.45, 0.7))), LIT_TOOL, 0.4);
+}
+
+// Builds the seed's house (the demo's default: Normal, Backrooms yellow), the kid, the view and the draws.
+icecream_scene_build :: (s: [] IceScene, seed: u64) #export_c {
+  g := s[0].games[..];
+  t := tuning_for(Difficulty.normal);
+  game_new(g, seed, false, t);
+  space_of(g, s[0].spaces[..]);
+  s[0].seed = seed;
+  s[0].vert_n = 0;
+  v := s[0].scratch[..];
+  for i: 0..<g[0].house.room_n { pack(s, tn_room(g, i, t.yellow, v, 0), xf_id(), i, 0); }
+  for i: 0..<g[0].house.room_n { pack(s, tn_lights(g, i, t.yellow, v, 0), xf_id(), LIT_FLAT + i, 0); }
+  align_chunk(s);
+  s[0].kid_at = s[0].vert_n;
+  add_kid(s);
+  align_chunk(s);
+  s[0].view = cam_view(camera_facing(g[0].player.facing), g[0].player.pos, g[0].player.height, s[0].spaces[..]);
+  house := cast(u32) (s[0].kid_at / CHUNK);
+  kid := cast(u32) ((s[0].vert_n - s[0].kid_at) / CHUNK);
+  d := [12] u32.[0, CHUNK, 0, house, 0, CHUNK, house, kid, 0, CHUNK, OUTLINE_BASE + house, kid];
+  for k: 0..<12 { s[0].draws[k] = d[k]; }
+  s[0].built = true;
+  s[0].sent = 0;
+}
+icecream_scene_built :: (s: [] IceScene) -> bool #export_c { return s[0].built; }
+icecream_scene_seed :: (s: [] IceScene) -> u64 #export_c { return s[0].seed; }
+// The store's bytes this frame: the whole scene the first few frames, then none (it stays as it is).
+icecream_scene_store_bytes :: (s: [] IceScene) -> int #export_c {
+  if !s[0].built || s[0].sent >= 3 { return 0; }
+  s[0].sent += 1;
+  return s[0].vert_n * SCENE_WORDS * 4;
+}
+icecream_scene_store_cap :: () -> int #export_c { return MAX_SCENE * SCENE_WORDS * 4; }
+icecream_scene_floats :: () -> int #export_c { return SCENE_FLOATS; }
+
+// ---- the light (world.cpp roomLight)
+
+FLUORESCENT :: V3.{x = 1.0, y = 0.97, z = 0.80};
+WARM :: V3.{x = 1.0, y = 0.94, z = 0.86};
+COLD :: V3.{x = 0.74, y = 0.84, z = 1.0};
+FOG :: V3.{x = 0.30, y = 0.33, z = 0.46};
+BACK_FOG :: V3.{x = 0.56, y = 0.52, z = 0.33};
+room_light :: (g: [] Game, index: int, time: f32) -> V3 {
+  t := g[0].tuning;
+  backrooms := t.yellow >= 0.5;
+  m := g[0].house.rooms[index].kind;
+  base := ifx backrooms then FLUORESCENT else ifx cold(m) then COLD else WARM;
+  i := cast(u32) index;
+  tick := cast(u32) (time * 14);
+  fast := cast(u32) (cmin(t.flicker, 0.05) * 10000);
+  slow := cast(u32) (cmax(t.flicker - 0.05, 0.0) * 10000);
+  f: f32 = 1;
+  if hash_u(i, tick) % 10000 < fast { f = ifx backrooms then 0.45f32 else 0.55f32; }
+  else if !backrooms && cold(m) && hash_u(i + 50, tick / 3) % 100 < 6 { f = 0.8; }
+  else if slow > 0 && hash_u(i + 70, cast(u32) (time * 2)) % 10000 < slow { f = 0.62; }
+  return v3mul(base, f * 0.95);
+}
+floor3 :: (a: V3, m: f32) -> V3 { return v3(cmax(a.x, m), cmax(a.y, m), cmax(a.z, m)); }
+
+// world.cpp's perspective · lookAt in rows, with WebGPU's depth (z + w) / 2.
+view_rows :: (eye: V3, target: V3, fovy: f32, aspect: f32, out: [] f32, at: int) {
+  f := v3norm(v3sub(target, eye));
+  side := v3norm(v3cross(f, TN_Y));
+  up := v3cross(side, f);
+  near: f32 = 0.05;
+  far: f32 = 120;
+  one: f32 = 1;
+  two: f32 = 2;
+  k := one / tan(fovy / two);
+  a := (far + near) / (near - far);
+  b := two * far * near / (near - far);
+  view := [12] f32.[side.x, side.y, side.z, -v3dot(side, eye), up.x, up.y, up.z, -v3dot(up, eye), -f.x, -f.y, -f.z, v3dot(f, eye)];
+  for c: 0..<4 {
+    z := view[8 + c] * a + (ifx c == 3 then b else 0.0f32);
+    w := -view[8 + c];
+    out[at + c] = view[c] * (k / aspect);
+    out[at + 4 + c] = view[4 + c] * k;
+    out[at + 8 + c] = (z + w) / two;
+    out[at + 12 + c] = w;
+  }
+}
+
+// The scene's uniforms for a frame at `time` seconds (0 when still: no flicker).
+icecream_scene_uniforms :: (s: [] IceScene, out: [] f32, width: f32, height: f32, time: f32) #export_c {
+  if !s[0].built || out.count < SCENE_AT + SCENE_FLOATS || width < 1 || height < 1 { return; }
+  g := s[0].games[..];
+  aspect := width / height;
+  e := s[0].view.eye;
+  view_rows(e, s[0].view.target, cam_fov(aspect), aspect, out, SCENE_AT);
+  o := SCENE_AT + 16;
+  t := g[0].tuning;
+  y := t.yellow;
+  fog := v3add(FOG, v3mul(v3sub(BACK_FOG, FOG), y));
+  spawn := room_light(g, room_of(g, g[0].player.pos), time);
+  kid := floor3(spawn, 0.97);
+  tool := floor3(spawn, 0.9);
+  vals := [20] f32.[e.x, e.y, e.z, 0, fog.x, fog.y, fog.z, 0, t.fog_near, cmax(t.fog_far, t.fog_near + 0.5), 0.82 + 0.14 * y, 0,
+                    kid.x, kid.y, kid.z, 0, tool.x, tool.y, tool.z, 0];
+  for i: 0..<20 { out[o + i] = vals[i]; }
+  o += 20;
+  for i: 0..<MAX_ROOMS {
+    l := ifx i < g[0].house.room_n then room_light(g, i, time) else v3splat(0);
+    out[o + i * 4] = l.x; out[o + i * 4 + 1] = l.y; out[o + i * 4 + 2] = l.z; out[o + i * 4 + 3] = 0;
+  }
+}
+
+// ---- checks
+
+#test "the house, the kid and the view are built once, chunk by chunk" {
+  s: [1] IceScene;
+  icecream_scene_build(s[..], 3);
+  g := s[0].games[..];
+  #assert s[0].kid_at % CHUNK == 0 && s[0].vert_n % CHUNK == 0 && s[0].vert_n < MAX_SCENE && s[0].kid_at > 60000;
+  #assert s[0].draws[3] * CHUNK == cast(u32) s[0].kid_at && s[0].draws[10] == OUTLINE_BASE + s[0].draws[3];
+  #assert (s[0].verts[s[0].kid_at * SCENE_WORDS + 4] >> 24) == LIT_KID && (s[0].verts[4] >> 24) == 0;
+  #assert icecream_scene_store_bytes(s[..]) == s[0].vert_n * SCENE_WORDS * 4;
+  #assert icecream_scene_store_bytes(s[..]) > 0 && icecream_scene_store_bytes(s[..]) > 0 && icecream_scene_store_bytes(s[..]) == 0;
+  e := s[0].view.eye;
+  #assert room_of(g, v2(e.x, e.z)) == room_of(g, g[0].player.pos);
+}
+
+#test "the view puts the kid's head mid-screen, in front of the eye" {
+  s: [1] IceScene;
+  icecream_scene_build(s[..], 3);
+  u: [SCENE_AT + SCENE_FLOATS] f32;
+  icecream_scene_uniforms(s[..], u[..], 1600, 1000, 0);
+  p := s[0].games[0].player.pos;
+  head := [4] f32.[p.x, s[0].games[0].player.height + CAM_HEAD, p.z, 1];
+  c: [4] f32;
+  for r: 0..<4 { c[r] = 0; for k: 0..<4 { c[r] += u[SCENE_AT + r * 4 + k] * head[k]; } }
+  #assert c[3] > 0;
+  #assert abs(c[0] / c[3]) < 0.05;
+  #assert c[2] / c[3] > 0 && c[2] / c[3] < 1;
+  #assert u[SCENE_AT + 16 + 20] > 0.3 && u[SCENE_AT + 16 + 20] <= 0.95;
+}

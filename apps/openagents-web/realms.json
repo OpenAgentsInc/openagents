@@ -60,6 +60,17 @@
         "slot": "fixture",
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realm/fixture/assets/fixture.pack"]
+      } },
+    { "id": "icecream", "name": "ICE CREAM MAN", "kind": "open", "listed": false, "orbit": { "r": 0.22, "a": 3.7, "size": 0.026 },
+      "realm": {
+        "slug": "ice-cream-man",
+        "title": "Ice Cream Man",
+        "description": "Ice Cream Man, a Verse realm in the browser: a seeded house of rooms, furniture and fluorescent light, built by the same Coax code as the game's rules. Play comes next.",
+        "alt": "Enter the Verse",
+        "module": "icecream",
+        "slot": "ice-cream-man",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "assets": ["index:/realm/ice-cream-man/assets/IceCream.indices"]
       } }
   ]
 }

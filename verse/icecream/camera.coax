@@ -1,0 +1,182 @@
+// Ice Cream Man's third-person view, from ~/work/aethyr-demo/src/icecream/
+// camera.cpp (the Rust build's camera.rs): a boom from the kid's head that
+// tilts down to stay under the ceiling, pulled in short of every wall,
+// piece of furniture, doorway lintel, the floor and the ceiling by a sphere
+// swept along it. This is the view only (Space, Rig and Camera::view); the
+// drag, the wheel, Shift Lock and the boom's easing come with play
+// (icm-world). The yaw is kept as the direction it faces (sin, cos), so the
+// kid's facing gives it without an arctangent.
+//   coax/bin/coax test verse/icecream/camera.coax --library
+#load "mesh.coax";
+
+CAM_MIN_ZOOM :: 0.5f32;
+CAM_MAX_ZOOM :: 8.0f32;
+CAM_FIRST_PERSON :: 0.9f32;
+CAM_HEAD :: 1.2f32;            // kEyeHeight: third person pivots here
+CAM_HEADROOM :: 0.3f32;
+CAM_FLOOR :: 0.35f32;
+CAM_RADIUS :: 0.2f32;
+CAM_MARGIN :: 0.08f32;
+CAM_THIRD_PERSON :: 4.5f32;    // the zoom a run starts with
+MAX_BOXES :: MAX_BLOCKS + 2 * MAX_ROOMS;
+
+Box3 :: struct { min: V3; max: V3; }
+axis_of :: (v: V3, i: int) -> f32 { return ifx i == 0 then v.x else ifx i == 1 then v.y else v.z; }
+// Where along a to b (0 to 1) the segment enters the box grown by r; < 0 if
+// it misses or starts inside.
+sweep :: (box: Box3, a: V3, b: V3, r: f32) -> f32 {
+  lo := v3(box.min.x - r, box.min.y - r, box.min.z - r);
+  hi := v3(box.max.x + r, box.max.y + r, box.max.z + r);
+  if a.x >= lo.x && a.y >= lo.y && a.z >= lo.z && a.x <= hi.x && a.y <= hi.y && a.z <= hi.z { return -1; }
+  d := v3sub(b, a);
+  low: f32 = 0;
+  high: f32 = 1;
+  for i: 0..<3 {
+    ai := axis_of(a, i); di := axis_of(d, i); mn := axis_of(lo, i); mx := axis_of(hi, i);
+    if abs(di) < 0.000000001 {
+      if ai < mn || ai > mx { return -1; }
+    } else {
+      t0 := (mn - ai) / di;
+      t1 := (mx - ai) / di;
+      if t0 > t1 { swap := t0; t0 = t1; t1 = swap; }
+      low = cmax(low, t0);
+      high = cmin(high, t1);
+      if low > high { return -1; }
+    }
+  }
+  return low;
+}
+
+// What the camera can bump: every wall, piece of furniture and doorway
+// lintel as a box, and the floor and ceiling.
+Space :: struct { boxes: [MAX_BOXES] Box3; n: int; ceiling: f32 = WALL_HEIGHT; }
+space_of :: (g: [] Game, s: [] Space) {
+  h := g[0].house;
+  s[0].n = 0;
+  for i: 0..<h.block_n {
+    b := h.blocks[i];
+    s[0].boxes[s[0].n] = Box3.{min = v3(b.min.x, 0, b.min.z), max = v3(b.max.x, b.height, b.max.z)};
+    s[0].n += 1;
+  }
+  two: f32 = 2.0;
+  for i: 0..<h.room_n {
+    room := h.rooms[i];
+    for k: 0..<2 {
+      side := ifx k == 0 then Side.south else Side.east;
+      if !room.doors[cast(int) side] { continue; }
+      nb := neighbour(g, room.at, side);
+      if cell_eq(nb, NO_CELL) { continue; }
+      mid := doorway(room.at, nb);
+      along_x := side == Side.south;
+      hx := ifx along_x then DOOR / two else WALL / two;
+      hz := ifx along_x then WALL / two else DOOR / two;
+      s[0].boxes[s[0].n] = Box3.{min = v3(mid.x - hx, DOOR_HEIGHT, mid.z - hz), max = v3(mid.x + hx, WALL_HEIGHT, mid.z + hz)};
+      s[0].n += 1;
+    }
+  }
+  s[0].ceiling = WALL_HEIGHT;
+}
+space_cast :: (s: [] Space, a: V3, b: V3, r: f32) -> f32 {
+  t: f32 = 1;
+  d := v3sub(b, a);
+  top := s[0].ceiling - r;
+  if b.y > top && a.y < top && abs(d.y) > 0.000000001 { t = cmin(t, (top - a.y) / d.y); }
+  if b.y < r && a.y > r && abs(d.y) > 0.000000001 { t = cmin(t, (r - a.y) / d.y); }
+  for i: 0..<s[0].n {
+    hit := sweep(s[0].boxes[i], a, b, r);
+    if hit >= 0 { t = cmin(t, hit); }
+  }
+  return cmax(t, 0.0);
+}
+
+View :: struct { eye: V3; target: V3; first_person: bool; }
+Rig :: struct { pivot: V3; back: V3; look: V3; rise: f32; want: f32; safe: f32; first_person: bool; }
+rig_dir :: (s: [] Space, r: Rig, length0: f32) -> V3 {
+  length := cmax(length0, 0.001);
+  top := cmax(s[0].ceiling - CAM_HEADROOM, CAM_FLOOR);
+  y := cmin(length * r.rise, top - r.pivot.y);
+  y = cmax(y, CAM_FLOOR - r.pivot.y);
+  y = clampf(y, -length * 0.95, length * 0.95);
+  flat := sqrt(length * length - y * y);
+  one: f32 = 1.0;
+  return v3mul(v3add(v3mul(r.back, flat), v3mul(TN_Y, y)), one / length);
+}
+rig_reach :: (s: [] Space, r: Rig, length: f32) -> f32 {
+  end := v3add(r.pivot, v3mul(rig_dir(s, r, length), length));
+  return space_cast(s, r.pivot, end, CAM_RADIUS) * length;
+}
+rig_clear :: (s: [] Space, r: Rig, length: f32) -> f32 {
+  reach := rig_reach(s, r, length);
+  return ifx reach >= length - 0.0001 then length else cmax(reach - CAM_MARGIN, 0.0);
+}
+rig_view :: (s: [] Space, r: Rig, boom: f32) -> View {
+  if r.first_person { return View.{eye = r.pivot, target = v3add(r.pivot, r.look), first_person = true}; }
+  length := rig_clear(s, r, clampf(boom, 0, r.safe));
+  d := rig_dir(s, r, length);
+  eye := v3add(r.pivot, v3mul(d, length));
+  return View.{eye = eye, target = v3sub(eye, d)};
+}
+
+// The camera: which way it faces (forward = (sin yaw, cos yaw)), its pitch
+// below the horizon and its zoom.
+Camera :: struct { sin_yaw: f32 = 0; cos_yaw: f32 = -1; pitch: f32 = 0.35; zoom: f32 = CAM_THIRD_PERSON; }
+camera_facing :: (f: V2) -> Camera {
+  c: Camera;
+  l := len2(f);
+  if l > 0 { c.sin_yaw = f.x / l; c.cos_yaw = f.z / l; }
+  return c;
+}
+cam_forward :: (c: Camera) -> V2 { return v2(c.sin_yaw, c.cos_yaw); }
+cam_first_person :: (c: Camera) -> bool { return c.zoom < CAM_FIRST_PERSON; }
+cam_look :: (c: Camera) -> V3 { return v3(cos(c.pitch) * c.sin_yaw, -sin(c.pitch), cos(c.pitch) * c.cos_yaw); }
+cam_rig :: (c: Camera, at: V2, feet: f32, s: [] Space) -> Rig {
+  head := v3(at.x, feet + CAM_HEAD, at.z);
+  b := cam_forward(c);
+  r := Rig.{pivot = head, back = v3(-b.x, 0, -b.z), rise = sin(c.pitch), look = cam_look(c), first_person = cam_first_person(c)};
+  if r.first_person { return r; }
+  r.want = clampf(c.zoom, CAM_FIRST_PERSON, CAM_MAX_ZOOM);
+  // Pull in until the boom's own (steeper, shorter) line is clear.
+  length := r.want;
+  for i: 0..<6 {
+    cl := rig_clear(s, r, length);
+    if cl >= length { break; }
+    length = cl;
+  }
+  r.safe = rig_clear(s, r, length);
+  return r;
+}
+cam_view :: (c: Camera, at: V2, feet: f32, s: [] Space) -> View {
+  r := cam_rig(c, at, feet, s);
+  return rig_view(s, r, r.safe);
+}
+// The vertical field of view: wider on a tall screen.
+cam_fov :: (aspect: f32) -> f32 { d: f32 = 180.0; return (ifx aspect < 1 then 70.0f32 else 60.0f32) * 3.14159265 / d; }
+
+// ---- checks ----
+
+#test "a sweep enters a box, misses it, or starts inside" {
+  b := Box3.{min = v3(0, 0, 0), max = v3(2, 2, 2)};
+  #assert sweep(b, v3(-1, 1, 1), v3(3, 1, 1), 0) == 0.25;
+  #assert sweep(b, v3(-1, 5, 1), v3(3, 5, 1), 0) < 0;
+  #assert sweep(b, v3(1, 1, 1), v3(3, 1, 1), 0) < 0;
+  #assert sweep(b, v3(-2, 1, 1), v3(2, 1, 1), 0.5) == 0.375;
+}
+
+#test "the start view: behind the kid's head, under the ceiling, inside the house" {
+  games: [1] Game;
+  g := games[..];
+  game_new(g, 3, false, tuning_for(Difficulty.normal));
+  spaces: [1] Space;
+  s := spaces[..];
+  space_of(g, s);
+  #assert s[0].n > g[0].house.block_n;
+  c := camera_facing(g[0].player.facing);
+  at := g[0].player.pos;
+  v := cam_view(c, at, g[0].player.height, s);
+  #assert !v.first_person && v.eye.y <= WALL_HEIGHT - CAM_HEADROOM + 0.001 && v.eye.y >= CAM_HEAD;
+  back := v2(v.eye.x - at.x, v.eye.z - at.z);
+  #assert dot2(back, g[0].player.facing) < 0 && len2(back) <= CAM_THIRD_PERSON;
+  #assert room_of(g, v2(v.eye.x, v.eye.z)) == room_of(g, at);
+  d := v3sub(v.target, v.eye);
+  #assert abs(v3dot(d, d) - 1) < 0.001;
+}
