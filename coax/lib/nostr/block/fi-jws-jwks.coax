@@ -1,0 +1,51 @@
+// Signature evidence only: the document is untrusted until a real provider authenticates it.
+#load "fi-jwks-parse.coax";
+#load "fi-jws-signature.coax";
+#authority;
+#test "original JWS is verified only with the exact protected kid in a complete JWKS" {
+ token_text:="eyJhbGciOiJSUzI1NiIsInR5cCI6Im5pcC1maStqd3QiLCJraWQiOiJ0ZXN0LWtleSJ9.eyJzdWIiOiJmaXh0dXJlIiwiaWF0IjoxNzAwMDAwMDAwfQ.CXbfHP_sZFGpFYxN_rq_fFgxmzQvAbtz74-BBEC7iP_Nk6WAYkHAdUbvxfLw2o8IRTo96aJQLmy531SiHzUFAuBJgulaiLXiL_G3h2oJk47Wyf8dBqT0A1-E4bGJj1A1Q3D_l68rW02Hd3rj6Djl4P7ZhDXB7bPWTQHqnGmxgEn-gqmt8k1PcEvCjt2WbTiq8dBUyr6Ka4vTRZ8P6EmeHXYboRMcQeK2-I7LhsHoLgXsliSS82upveJPmTuJ2-k-ZQ66LTUZoLjcpC2QbWAzY9h4EOjcy6qMPzwqerIEBVqcNKzskS6TwAec9CBog4QzSIl4UM4c3ClDhB6wnKLTwg";token:[458]u8;for i:0..<token.count {token[i]=token_text[i];}
+ jwks:="{\"keys\":[{\"kid\":\"test-key\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"u-tnLcg84K5St5tIb_ScQsRwhibOlMUcGVfLP54_dUSTeKWH7mEeN2kyz34BhmiDwKPUHttrlj8APOwjasnfAuHq4AofPejIUMozufB5mqJzRxHd8vUN9PcnShyGDSiHVuubjgugXg4Z04jvjI22gFDmlsrvbyea7_9o6QpqrAmUH0JfV5Fq3L6lZtJqexeQ5qJZJGD0EbKt2G8M2eQamPFLQcrxwQnu9hTp8gx7qdO84qe7lMShMKQP5_lluT_OUqUVhsAzhuQF13KtGpsLUMBfPbZgVYdGiHMRbKb8YHgaVMeYj_K5k0bZxOjbhp873_c8bsp1zj8k1EqnlDvvKw\",\"e\":\"AQAB\"}]}";
+ #assert fi_jws_document_signature(token[..],jwks);
+ #assert !fi_jws_document_signature(token[..],"{\"keys\":[]}");
+ #assert !fi_jws_document_signature(token[0..<0],jwks);
+}
+#test "lookup uses exact bounded kid and requires a parsed whole snapshot" {
+ keys:FiParsedJwks;keys.ok=true;keys.count=2;
+ keys.keys[0].kid_count=1;keys.keys[0].kid[0]='a';keys.keys[1].kid_count=1;keys.keys[1].kid[0]='b';
+ #assert fi_jws_find_key(keys,"a")==0 && fi_jws_find_key(keys,"b")==1 && fi_jws_find_key(keys,"c")== -1;
+ keys.ok=false;#assert fi_jws_find_key(keys,"a")== -1;keys.ok=true;
+ keys.count=0;#assert fi_jws_find_key(keys,"a")== -1;keys.count=17;#assert fi_jws_find_key(keys,"a")== -1;
+ keys.count=16;keys.keys[15].kid_count=1;keys.keys[15].kid[0]='z';#assert fi_jws_find_key(keys,"z")==15;
+ keys.count=1;keys.keys[0].kid_count=-1;#assert fi_jws_find_key(keys,"a")== -1;
+ keys.keys[0].kid_count=0;#assert fi_jws_find_key(keys,"")==0;
+ data:[129]u8;for i:0..<129 {data[i]='x';if i<128 {keys.keys[0].kid[i]='x';}}
+ keys.keys[0].kid_count=128;#assert fi_jws_find_key(keys,cast(string)data[0..<128])==0;
+ keys.keys[0].kid_count=129;#assert fi_jws_find_key(keys,cast(string)data[..])== -1;
+}
+#test "header decode parse and missing kid failures refuse" {
+ jwks:="{\"keys\":[{\"kid\":\"test-key\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"u-tnLcg84K5St5tIb_ScQsRwhibOlMUcGVfLP54_dUSTeKWH7mEeN2kyz34BhmiDwKPUHttrlj8APOwjasnfAuHq4AofPejIUMozufB5mqJzRxHd8vUN9PcnShyGDSiHVuubjgugXg4Z04jvjI22gFDmlsrvbyea7_9o6QpqrAmUH0JfV5Fq3L6lZtJqexeQ5qJZJGD0EbKt2G8M2eQamPFLQcrxwQnu9hTp8gx7qdO84qe7lMShMKQP5_lluT_OUqUVhsAzhuQF13KtGpsLUMBfPbZgVYdGiHMRbKb8YHgaVMeYj_K5k0bZxOjbhp873_c8bsp1zj8k1EqnlDvvKw\",\"e\":\"AQAB\"}]}";
+ oversized:[3079]u8;for i:0..<2732 {oversized[i]='A';}oversized[2732]='.';oversized[2733]='e';oversized[2734]='3';oversized[2735]='0';oversized[2736]='.';for i:2737..<3079 {oversized[i]='A';}
+ #assert fi_compact_parse(cast(string)oversized[..]).ok && !fi_jws_document_signature(oversized[..],jwks);
+ invalid:[349]u8;invalid[0]='e';invalid[1]='w';invalid[2]='.';invalid[3]='e';invalid[4]='3';invalid[5]='0';invalid[6]='.';for i:7..<349 {invalid[i]='A';}
+ #assert fi_compact_parse(cast(string)invalid[..]).ok && !fi_jws_document_signature(invalid[..],jwks);
+ header:="eyJhbGciOiJSUzI1NiIsInR5cCI6Im5pcC1maStqd3QiLCJraWQiOiJ1bmtub3duIn0";missing:[414]u8;for i:0..<header.count {missing[i]=header[i];}at:=header.count;missing[at]='.';missing[at+1]='e';missing[at+2]='3';missing[at+3]='0';missing[at+4]='.';for i:at+5..<missing.count {missing[i]='A';}
+ #assert fi_compact_parse(cast(string)missing[..]).ok && !fi_jws_document_signature(missing[..],jwks);
+}
+// The parsed document is produced locally by fi_jwks_parse, never from a DTO.
+fi_jws_find_key :: (keys:FiParsedJwks,kid:string)->int {
+ if !keys.ok || keys.count<1 || keys.count>16 {return -1;}
+ for i:0..<keys.count {
+  key:=keys.keys[i];
+  if key.kid_count>=0 && key.kid_count<=128 && cast(string)key.kid[0..<key.kid_count]==kid {return i;}
+ }
+ return -1;
+}
+fi_jws_document_signature :: (token:[]u8,jwks:string)->bool #export_c {
+ keys:=fi_jwks_parse(jwks);if !keys.ok {return false;}
+ text:=cast(string)token;parts:=fi_compact_parse(text);if !parts.ok {return false;}
+ bytes:[2048]u8;decoded:=fi_b64url_decode(text[0..<parts.protected_end],bytes[..]);
+ if decoded.error!=NC_OK {return false;}
+ header:=fi_protected_parse(cast(string)bytes[0..<decoded.written]);if !header.ok {return false;}
+ kid:=cast(string)header.kid[0..<header.kid_count];index:=fi_jws_find_key(keys,kid);if index<0 {return false;}
+ key:=keys.keys[index];return fi_jws_signature(token,key.modulus[0..<key.modulus_count]).verified;
+}

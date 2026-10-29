@@ -1,0 +1,91 @@
+// Canonical unpadded RFC 4648 base64url for the bounded FI profile. Decoder
+// output is scratch, never proof that a token or key is trustworthy.
+#load "../codecs-common.coax";
+#authority;
+FI_B64URL_MAX :: 1398102;
+#test "base64url decoding accepts canonical unpadded RFC vectors" {
+ input:=[7]string.["","Zg","Zm8","Zm9v","Zm9vYg","Zm9vYmE","Zm9vYmFy"];
+ expected:=[7]string.["","f","fo","foo","foob","fooba","foobar"];
+ out:[16]u8;
+ for i:0..<7 {
+  for j:0..<16 {out[j]=77;}
+  result:=fi_b64url_decode(input[i],out[..]);
+  #assert result.error==NC_OK && result.written==expected[i].count;
+  #assert cast(string)out[0..<result.written]==expected[i];
+ }
+ #assert fi_b64url_decode("-_8",out[..]).error==NC_OK && out[0]==251 && out[1]==255;
+}
+#test "base64url rejects padding wrong alphabet pad bits and short output before writes" {
+ bad:=[10]string.["A","Zg=","Zg==","+_8","-/8","Zh","Zm9","AA!","AA A","AA\n"];
+ out:=[8]u8.[77,77,77,77,77,77,77,77];
+ for input:bad {
+  result:=fi_b64url_decode(input,out[..]);#assert result.error==NC_INVALID && result.written==0;
+  for b:out {#assert b==77;}
+ }
+ #assert fi_b64url_decode("Zm9v",out[0..<2]).error==NC_CAPACITY;
+ for b:out {#assert b==77;}
+ #assert fi_b64url_decode_size_checked("Zg",false)==-1;
+ #assert fi_b64url_decode_size_checked("",true)==0;
+ #assert fi_b64url_decode_size_checked("Zg",true)==1 && fi_b64url_decode_size_checked("Zm8",true)==2 && fi_b64url_decode_size_checked("Zm9v",true)==3 && fi_b64url_decode_size_checked("Zm9vYg",true)==4;
+ #assert fi_b64url_decode("Zm9v",out[0..<3]).error==NC_OK;
+}
+#forall "all byte values map to URL alphabet and unused bits must be zero" b:0..<256 {
+ digit:=fi_b64url_digit(cast(u8)b);want:=-1;
+ if b>=65 && b<=90 {want=b-65;}if b>=97 && b<=122 {want=b-71;}
+ if b>=48 && b<=57 {want=b+4;}if b==45 {want=62;}if b==95 {want=63;}
+ #assert digit==want;
+}
+#test "decoder limits and integer encodings are explicit" {
+ #assert fi_b64url_size_allowed(0) && fi_b64url_size_allowed(FI_B64URL_MAX);
+ #assert !fi_b64url_size_allowed(-1) && !fi_b64url_size_allowed(FI_B64URL_MAX+1);
+ out:[4]u8;
+ #assert fi_b64url_uint("AQAB",out[..]).error==NC_OK && out[0]==1 && out[1]==0 && out[2]==1;
+ #assert fi_b64url_uint("AQ",out[0..<1]).error==NC_OK && out[0]==1;
+ #assert fi_b64url_uint("AQ",out[0..<0]).error==NC_CAPACITY;
+ #assert fi_b64url_uint("",out[..]).error==NC_INVALID;
+ #assert fi_b64url_uint("AAE",out[..]).error==NC_INVALID;
+}
+fi_b64url_size_allowed :: (n:int)->bool {return n>=0 && n<=FI_B64URL_MAX;}
+fi_b64url_digit :: (c:u8)->int {
+ if c>='A' && c<='Z' {return cast(int)c-65;}
+ if c>='a' && c<='z' {return cast(int)c-71;}
+ if c>='0' && c<='9' {return cast(int)c+4;}
+ if c=='-' {return 62;}if c=='_' {return 63;}return -1;
+}
+fi_b64url_decode_size_checked :: (input:string,admitted:bool)->int {
+ if !admitted {return -1;}
+ n:=input.count;if n%4==1 {return -1;}
+ for byte:input {if fi_b64url_digit(byte)<0 {return -1;}}
+ remainder:=n%4;
+ if remainder==2 && (fi_b64url_digit(input[n-1])&15)!=0 {return -1;}
+ if remainder==3 && (fi_b64url_digit(input[n-1])&3)!=0 {return -1;}
+ size:=n/4*3;if remainder==2 {size+=1;}if remainder==3 {size+=2;}
+ return size;
+}
+fi_b64url_decode :: (input:string,out:[]u8)->NC_Result {
+ size:=fi_b64url_decode_size_checked(input,fi_b64url_size_allowed(input.count));
+ if size<0 {return NC_Result.{error=NC_INVALID};}
+ if out.count<size {return NC_Result.{error=NC_CAPACITY};}
+ offset:=0;written:=0;
+ while offset+4<=input.count {
+  a:=fi_b64url_digit(input[offset]);b:=fi_b64url_digit(input[offset+1]);
+  c:=fi_b64url_digit(input[offset+2]);d:=fi_b64url_digit(input[offset+3]);
+  out[written]=cast(u8)((a<<2)|(b>>4));out[written+1]=cast(u8)(((b<<4)|(c>>2))&255);out[written+2]=cast(u8)(((c<<6)|d)&255);
+  offset+=4;written+=3;
+ }
+ rem:=input.count-offset;
+ if rem>=2 {
+  a:=fi_b64url_digit(input[offset]);b:=fi_b64url_digit(input[offset+1]);out[written]=cast(u8)((a<<2)|(b>>4));written+=1;
+  if rem==3 {c:=fi_b64url_digit(input[offset+2]);out[written]=cast(u8)(((b<<4)|(c>>2))&255);written+=1;}
+ }
+ return NC_Result.{error=NC_OK,written=written};
+}
+// Integer helper is deliberately limited to at most a 4096-bit RSA integer.
+fi_b64url_uint :: (input:string,out:[]u8)->NC_Result {
+ scratch:[512]u8;r:=fi_b64url_decode(input,scratch[..]);
+ if r.error!=NC_OK {return r;}
+ if r.written==0 || scratch[0]==0 {return NC_Result.{error=NC_INVALID};}
+ if out.count<r.written {return NC_Result.{error=NC_CAPACITY};}
+ for i:0..<r.written {out[i]=scratch[i];}
+ return r;
+}

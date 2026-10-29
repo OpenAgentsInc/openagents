@@ -1,0 +1,199 @@
+// Public RSA verification arithmetic. This does not admit an FI assertion.
+#load "sha256.coax";
+#authority;
+RsaWords :: struct { words:[128]u32; }
+RSA_BASE :: cast(u64)4294967296;
+RSA_MASK :: cast(u64)4294967295;
+#test "public modular addition reduces exact boundaries" {
+ n:RsaWords;n.words[0]=17;a:RsaWords;b:RsaWords;
+ a.words[0]=16;b.words[0]=16;
+ #assert rsa_add_mod(a,b,n,1).words[0]==15;
+ n.words[0]=4294967291;a.words[0]=4294967290;b.words[0]=4294967290;
+ #assert rsa_add_mod(a,b,n,1).words[0]==4294967289;
+}
+#test "exact SHA256 DigestInfo and padding are required" {
+ digest:[32]u8;em:[256]u8;
+ em[1]=1;for i:2..<204 {em[i]=255;}
+ prefix:=[19]u8.[48,49,48,13,6,9,96,134,72,1,101,3,4,2,1,5,0,4,32];
+ for i:0..<19 {em[205+i]=prefix[i];}
+ #assert rsa_pkcs1_sha256(em[..],digest[..]);
+ em[0]=1;#assert !rsa_pkcs1_sha256(em[..],digest[..]);em[0]=0;
+ em[1]=2;#assert !rsa_pkcs1_sha256(em[..],digest[..]);em[1]=1;
+ em[100]=0;#assert !rsa_pkcs1_sha256(em[..],digest[..]);em[100]=255;
+ em[204]=255;#assert !rsa_pkcs1_sha256(em[..],digest[..]);em[204]=0;
+ em[210]=0;#assert !rsa_pkcs1_sha256(em[..],digest[..]);em[210]=prefix[5];
+ em[255]=1;#assert !rsa_pkcs1_sha256(em[..],digest[..]);
+ #assert !rsa_pkcs1_sha256(em[0..<61],digest[..]);
+ #assert !rsa_pkcs1_sha256(em[..],digest[0..<31]);
+}
+#test "RSA admission rejects wrong sizes and public parameter shapes" {
+ n:[256]u8;sig:[256]u8;message:[1]u8;
+ n[0]=128;n[255]=1;
+ #assert !rsa_verify_sha256(n[0..<255],sig[..],message[..]);
+ #assert !rsa_verify_sha256(n[..],sig[0..<255],message[..]);
+ n[0]=127;#assert !rsa_verify_sha256(n[..],sig[..],message[..]);n[0]=128;
+ n[255]=0;#assert !rsa_verify_sha256(n[..],sig[..],message[..]);n[255]=1;
+ for i:0..<256 {sig[i]=n[i];}
+ #assert !rsa_verify_sha256(n[..],sig[..],message[..]);
+}
+#test "big-endian loading and comparison retain all limbs" {
+ bytes:=[9]u8.[1,2,3,4,5,6,7,8,9];a:=rsa_load(bytes[..]);
+ #assert a.words[0]==0x06070809 && a.words[1]==0x02030405 && a.words[2]==1;
+ b:=a;#assert !rsa_less(a,b,3) && !rsa_less(b,a,3);
+ b.words[0]+=1;#assert rsa_less(a,b,3) && !rsa_less(b,a,3);
+ b=a;b.words[2]+=1;#assert rsa_less(a,b,3) && !rsa_less(b,a,3);
+}
+#test "minimum encoding requires eight padding bytes" {
+ digest:[32]u8;em:[62]u8;em[1]=1;for i:2..<10 {em[i]=255;}
+ prefix:=[19]u8.[48,49,48,13,6,9,96,134,72,1,101,3,4,2,1,5,0,4,32];
+ for i:0..<19 {em[11+i]=prefix[i];}
+ #assert rsa_pkcs1_sha256(em[..],digest[..]);
+ em[2]=0;#assert !rsa_pkcs1_sha256(em[..],digest[..]);em[2]=255;
+ em[11]=0;#assert !rsa_pkcs1_sha256(em[..],digest[..]);em[11]=prefix[0];
+ digest[0]=1;#assert !rsa_pkcs1_sha256(em[..],digest[..]);
+}
+#test "Montgomery multiplication matches known one- and two-word residues" {
+ n:RsaWords;a:RsaWords;b:RsaWords;n.words[0]=17;a.words[0]=12;b.words[0]=13;
+ inverse:=rsa_mont_inverse(n.words[0]);
+ #assert (cast(u64)inverse*17&RSA_MASK)==RSA_MASK;
+ #assert rsa_mont_mul(a,b,n,1,inverse).words[0]==3;
+ n.words[0]=4294967237;n.words[1]=4294967295;a.words[0]=2;b.words[0]=3;
+ inverse=rsa_mont_inverse(n.words[0]);
+ #assert (cast(u64)inverse*cast(u64)n.words[0]&RSA_MASK)==RSA_MASK;
+ result:=rsa_mont_mul(a,b,n,2,inverse);
+ #assert result.words[0]==3275822468 && result.words[1]==3348618569;
+}
+#test "published RSA SHA256 signature verifies original bytes" {
+ n:=[256]u8.[162,180,81,160,125,10,165,249,110,69,86,113,81,53,80,81,74,138,91,70,46,190,247,23,9,79,161,254,232,34,36,230,55,249,116,109,63,124,175,211,24,120,216,3,37,182,239,90,23,0,246,89,3,180,105,66,158,137,214,234,200,132,80,151,181,171,57,49,137,219,146,81,46,216,167,113,26,18,83,250,205,32,247,156,21,232,36,127,61,62,66,228,110,72,201,142,37,74,47,233,118,83,19,160,62,255,143,23,225,160,41,57,122,31,162,106,141,206,38,244,144,237,129,41,150,21,217,129,76,34,218,97,4,40,224,156,125,150,88,89,66,102,245,192,33,208,252,236,160,141,148,90,18,190,130,222,77,30,206,107,76,3,20,91,93,52,149,212,237,84,17,235,135,141,175,5,253,122,252,62,9,173,160,241,18,100,34,245,144,151,90,25,105,129,111,72,105,139,203,186,27,77,156,174,121,212,96,216,249,248,94,121,117,0,93,155,194,44,78,90,192,247,193,164,93,18,86,154,98,128,125,59,154,2,229,165,48,231,115,6,111,69,61,31,91,76,46,156,247,130,2,131,247,66,185,213];
+ sig:=[256]u8.[132,15,93,172,83,16,109,209,249,197,114,25,34,76,245,18,137,41,12,66,242,4,102,135,91,168,232,48,172,86,144,229,65,83,111,204,138,176,59,115,31,130,191,102,216,63,25,78,126,24,11,57,99,236,122,47,63,121,4,167,206,73,174,212,125,164,212,183,148,33,234,249,55,211,1,179,230,150,22,146,151,183,151,195,44,7,106,18,190,77,224,181,142,0,60,81,35,5,26,132,161,12,98,248,218,194,244,42,134,64,0,142,179,199,204,205,103,96,255,91,81,182,137,118,57,34,88,40,69,240,72,251,129,80,229,167,166,202,46,204,199,189,200,83,73,173,91,38,197,33,55,167,159,163,254,92,41,171,92,215,97,80,19,33,156,25,65,182,112,142,156,60,35,254,255,95,235,175,12,142,188,165,117,11,84,227,230,233,154,62,135,107,57,111,39,134,11,127,62,196,233,25,23,3,198,51,45,148,79,111,105,117,17,103,104,12,121,196,246,181,127,28,200,117,93,36,182,236,21,140,205,186,205,178,49,7,163,60,182,179,50,81,108,19,39,77,31,157,204,194,29,206,216,105,228,134];
+ message:[1]u8;
+ #assert rsa_verify_sha256(n[..],sig[..],message[0..<0]);
+}
+#test "Montgomery carry edges preserve the high word" {
+ n:RsaWords;n.words[0]=4294967295;n.words[1]=4294967295;
+ a:RsaWords;a.words[0]=4294967294;a.words[1]=4294967295;
+ result:=rsa_mont_mul(a,a,n,2,rsa_mont_inverse(n.words[0]));
+ #assert result.words[0]==1 && result.words[1]==0;
+}
+#test "public modulus metadata and hash status stay bounded" {
+ n:[513]u8;n[0]=128;n[255]=1;n[256]=1;n[511]=1;n[512]=1;
+ #assert rsa_modulus_ok(n[0..<256],256);
+ #assert rsa_modulus_ok(n[0..<512],512);
+ #assert !rsa_modulus_ok(n[..],513) && !rsa_modulus_ok(n[0..<255],255);
+ #assert !rsa_modulus_ok(n[0..<256],255);
+ n[0]=0;#assert !rsa_modulus_ok(n[0..<257],257);n[0]=1;#assert rsa_modulus_ok(n[0..<257],257);
+ n[0]=128;#assert rsa_modulus_ok(n[0..<256],256);n[0]=127;#assert !rsa_modulus_ok(n[0..<256],256);
+ n[0]=128;n[255]=2;#assert !rsa_modulus_ok(n[0..<256],256);
+ #assert rsa_word_count(256)==64 && rsa_word_count(257)==65 && rsa_word_count(260)==65 && rsa_word_count(512)==128;
+ #assert rsa_hash_ok(SHA_OK) && !rsa_hash_ok(SHA_BAD_INPUT);
+}
+#test "Newton inverse covers all 32 bits for odd low limbs" {
+ words:=[4]u32.[0x12345679,0xabcdef01,0xfffffffd,0xffffffff];
+ for low:words {#assert (cast(u64)low*cast(u64)rsa_mont_inverse(low)&RSA_MASK)==RSA_MASK;}
+}
+#test "oversize message cannot pass hash admission" {
+ n:[256]u8;sig:[256]u8;message:[1048577]u8;n[0]=128;n[255]=1;
+ #assert !rsa_verify_sha256(n[..],sig[..],message[..]);
+}
+// Inputs to the internal operations are reduced and count is 1..128.
+// One u32 limb plus one u32 limb plus a carry fits in u64.
+rsa_add_mod :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int)->RsaWords {
+ sum:RsaWords;difference:RsaWords;carry:=cast(u64)0;
+ for i:0..<count {
+  wide:=cast(u64)a.words[i]+cast(u64)b.words[i]+carry;
+  sum.words[i]=cast(u32)(wide&RSA_MASK);carry=wide>>32;
+ }
+ borrow:=cast(u64)0;
+ for i:0..<count {
+  wide:=RSA_BASE+cast(u64)sum.words[i]-cast(u64)n.words[i]-borrow;
+  difference.words[i]=cast(u32)(wide&RSA_MASK);borrow=1-(wide>>32);
+ }
+ if carry!=0 || borrow==0 {return difference;}
+ return sum;
+}
+// CIOS Montgomery reduction over public operands; n is odd and inputs < n.
+// Each wide accumulation is at most (2^32-1)^2 + 2*(2^32-1).
+rsa_inverse_step :: (x:u64,low:u32)->u64 {
+ return (x*(RSA_BASE+2-((cast(u64)low*x)&RSA_MASK)))&RSA_MASK;
+}
+rsa_mont_inverse :: (low:u32)->u32 {
+ x:=cast(u64)1;
+ x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);x=rsa_inverse_step(x,low);
+ return cast(u32)((RSA_BASE-x)&RSA_MASK);
+}
+rsa_mont_mul :: (a:RsaWords,b:RsaWords,n:RsaWords,count:int,inverse:u32)->RsaWords {
+ t:[130]u32;
+ for i:0..<count {
+  carry:=cast(u64)0;
+  for j:0..<count {
+   wide:=cast(u64)t[j]+cast(u64)a.words[j]*cast(u64)b.words[i]+carry;
+   t[j]=cast(u32)(wide&RSA_MASK);carry=wide>>32;
+  }
+  wide:=cast(u64)t[count]+carry;t[count]=cast(u32)(wide&RSA_MASK);t[count+1]=cast(u32)(wide>>32);
+  m:=(cast(u64)t[0]*cast(u64)inverse)&RSA_MASK;
+  first_product:=cast(u64)t[0]+m*cast(u64)n.words[0];
+  reduction_carry:=first_product>>32;
+  for j:1..<count {
+   product:=cast(u64)t[j]+m*cast(u64)n.words[j]+reduction_carry;
+   t[j]=cast(u32)(product&RSA_MASK);reduction_carry=product>>32;
+  }
+  wide=cast(u64)t[count]+reduction_carry;t[count]=cast(u32)(wide&RSA_MASK);t[count+1]+=cast(u32)(wide>>32);
+  for j:0..<count {t[j]=t[j+1];}t[count]=t[count+1];
+ }
+ value:RsaWords;difference:RsaWords;borrow:=cast(u64)0;
+ for i:0..<count {
+  value.words[i]=t[i];wide:=RSA_BASE+cast(u64)t[i]-cast(u64)n.words[i]-borrow;
+  difference.words[i]=cast(u32)(wide&RSA_MASK);borrow=1-(wide>>32);
+ }
+ if t[count]!=0 || borrow==0 {return difference;}
+ return value;
+}
+rsa_load :: (bytes:[]u8)->RsaWords {
+ result:RsaWords;
+ for i:0..<bytes.count {
+  index:=bytes.count-1-i;
+  result.words[i/4]=result.words[i/4]|(cast(u32)bytes[index]<<((i%4)*8));
+ }
+ return result;
+}
+rsa_less :: (a:RsaWords,b:RsaWords,count:int)->bool {
+ for offset:0..<count {
+  i:=count-1-offset;
+  if a.words[i]<b.words[i] {return true;}
+  if a.words[i]>b.words[i] {return false;}
+ }
+ return false;
+}
+rsa_pkcs1_sha256 :: (em:[]u8,digest:[]u8)->bool {
+ if em.count<62 || digest.count!=32 {return false;}
+ if em[0]!=0 || em[1]!=1 {return false;}
+ separator:=em.count-52;
+ for i:2..<separator {if em[i]!=255 {return false;}}
+ if em[separator]!=0 {return false;}
+ prefix:=[19]u8.[48,49,48,13,6,9,96,134,72,1,101,3,4,2,1,5,0,4,32];
+ for i:0..<19 {if em[separator+1+i]!=prefix[i] {return false;}}
+ for i:0..<32 {if em[separator+20+i]!=digest[i] {return false;}}
+ return true;
+}
+rsa_modulus_ok :: (modulus:[]u8,signature_count:int)->bool {
+ if modulus.count<256 || modulus.count>512 || signature_count!=modulus.count {return false;}
+ return modulus[0]!=0 && (modulus.count!=256 || modulus[0]>=128) && (modulus[modulus.count-1]&1)!=0;
+}
+rsa_word_count :: (byte_count:int)->int {return (byte_count+3)/4;}
+rsa_hash_ok :: (status:u32)->bool {return status==SHA_OK;}
+// The selected public exponent is fixed to 65537; callers cannot choose an algorithm.
+rsa_verify_sha256 :: (modulus:[]u8,signature:[]u8,message:[]u8)->bool #export_c {
+ if !rsa_modulus_ok(modulus,signature.count) {return false;}
+ n:=rsa_load(modulus);s:=rsa_load(signature);count:=rsa_word_count(modulus.count);
+ if !rsa_less(s,n,count) {return false;}
+ digest:[32]u8;if !rsa_hash_ok(sha256_hash_checked(message,digest[..],false)) {return false;}
+ // 65537 = 2^16 + 1; 16 squarings and one multiply.
+ inverse:=rsa_mont_inverse(n.words[0]);
+ base:=s;for i:0..<count*32 {base=rsa_add_mod(base,base,n,count);}
+ value:=base;for i:0..<16 {value=rsa_mont_mul(value,value,n,count,inverse);}
+ value=rsa_mont_mul(value,base,n,count,inverse);
+ one:RsaWords;one.words[0]=1;value=rsa_mont_mul(value,one,n,count,inverse);
+ encoded:[512]u8;
+ for i:0..<modulus.count {encoded[modulus.count-1-i]=cast(u8)((value.words[i/4]>>((i%4)*8))&255);}
+ return rsa_pkcs1_sha256(encoded[0..<modulus.count],digest[..]);
+}

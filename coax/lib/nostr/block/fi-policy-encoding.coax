@@ -1,0 +1,219 @@
+// Canonical configuration bytes only. This is not AssertionPolicyId: compiled
+// verifier/adapter identity and enforced provider/build binding are absent.
+#load "fi-policy.coax";
+#authority;
+FiPolicyEncoding :: struct {ok:bool;count:int;bytes:[65536]u8;}
+#test "selected policy encodes identically under set reordering" {
+ names:=[2]string.["https://issuer.test","https://other.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[..]};p:FiIssuer;p.issuer=names[0];p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.allow_client=true;p.noncollision=true;
+ a:=fi_policy_encoding(c,p);#assert a.ok && a.count>0;
+ names[0]="https://other.test";names[1]="https://issuer.test";owners[0]="person";owners[1]="human";clients[0]="worker";clients[1]="service";
+ b:=fi_policy_encoding(c,p);#assert b.ok && cast(string)a.bytes[0..<a.count]==cast(string)b.bytes[0..<b.count];
+}
+#test "selected configuration changes alter bytes and invalid configuration refuses" {
+ names:=[1]string.["https://issuer.test"];c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[..]};p:FiIssuer;p.issuer=names[0];p.jwks_uri="https://keys.test";p.transport=1;p.token_class=1;p.maximum_age=10;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;
+ a:=fi_policy_encoding(c,p);#assert a.ok;
+ p.maximum_age=11;b:=fi_policy_encoding(c,p);#assert b.ok && cast(string)a.bytes[0..<a.count]!=cast(string)b.bytes[0..<b.count];p.maximum_age=10;
+ p.jwks_uri="https://other.test";b=fi_policy_encoding(c,p);#assert b.ok && cast(string)a.bytes[0..<a.count]!=cast(string)b.bytes[0..<b.count];p.jwks_uri="https://keys.test";
+ names[0]="https://other.test";#assert !fi_policy_encoding(c,p).ok;names[0]="https://issuer.test";
+ p.refresh=0;#assert !fi_policy_encoding(c,p).ok;
+}
+#test "independent canonical encoding case 0" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ 
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 1" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ names[0]="https://other.test";names[1]="https://issuer.test";owners[0]="person";owners[1]="human";clients[0]="worker";clients[1]="service";
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 2" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ c.host="other.test";
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,111,116,104,101,114,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 3" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ c.audience="wss://other.test";
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,111,116,104,101,114,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 4" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ c.issuers=names[..];
+ result:=fi_policy_encoding(c,p); expected:=[264]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,3,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,116,104,105,114,100,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 5" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.issuer="https://other.test";
+ result:=fi_policy_encoding(c,p); expected:=[243]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 6" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.jwks_uri="https://else.test";
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,101,108,115,101,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 7" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.transport=2;p.jwks_uri="http://keys.local";
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,58,47,47,107,101,121,115,46,108,111,99,97,108,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 8" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.token_class=1;p.marker_name="";p.owner_values=owners[0..<0];p.client_values=clients[0..<0];p.noncollision=false;
+ result:=fi_policy_encoding(c,p); expected:=[208]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,0,0,0,0,0]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 9" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.maximum_age=11;
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,11,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 10" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.skew=2;
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 11" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.connection_lifetime=11;
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,11,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 12" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.refresh=2;
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 13" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.hard_deadline=31;
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,31,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 14" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.marker_name="type";
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,116,121,112,101,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 15" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ owners[1]="other";
+ result:=fi_policy_encoding(c,p); expected:=[243]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,5,111,116,104,101,114,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 16" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ clients[1]="daemon";
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,6,100,97,101,109,111,110,0,7,115,101,114,118,105,99,101,0,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 17" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.allow_client=true;
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,1,1]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 18" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.noncollision=false;
+ result:=fi_policy_encoding(c,p); expected:=[244]u8.[0,32,111,112,101,110,97,103,101,110,116,115,46,102,105,45,99,111,110,102,105,103,45,101,110,99,111,100,105,110,103,46,118,49,0,10,114,101,108,97,121,46,116,101,115,116,0,16,119,115,115,58,47,47,114,101,108,97,121,46,116,101,115,116,2,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,18,104,116,116,112,115,58,47,47,111,116,104,101,114,46,116,101,115,116,0,19,104,116,116,112,115,58,47,47,105,115,115,117,101,114,46,116,101,115,116,0,17,104,116,116,112,115,58,47,47,107,101,121,115,46,116,101,115,116,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,30,0,4,107,105,110,100,2,0,5,104,117,109,97,110,0,6,112,101,114,115,111,110,2,0,7,115,101,114,118,105,99,101,0,6,119,111,114,107,101,114,0,0]; #assert result.ok && result.count==expected.count;
+ for j:0..<expected.count {#assert result.bytes[j]==expected[j];}
+}
+#test "independent canonical encoding case 19" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ names[1]=names[0];
+ result:=fi_policy_encoding(c,p); #assert !result.ok && result.count==0;
+}
+#test "independent canonical encoding case 20" {
+ names:=[3]string.["https://issuer.test","https://other.test","https://third.test"];owners:=[2]string.["human","person"];clients:=[2]string.["service","worker"];
+ c:=FiCommunity.{host="relay.test",audience="wss://relay.test",issuers=names[0..<2]};p:FiIssuer;p.issuer="https://issuer.test";p.jwks_uri="https://keys.test";p.transport=1;p.token_class=2;p.maximum_age=10;p.skew=1;p.connection_lifetime=10;p.refresh=1;p.hard_deadline=30;p.marker_name="kind";p.owner_values=owners[..];p.client_values=clients[..];p.noncollision=true;
+ p.refresh=0;
+ result:=fi_policy_encoding(c,p); #assert !result.ok && result.count==0;
+}
+#test "policy writer and bytewise ordering boundaries" {
+ w:[1]FiPolicyEncoding;w[0].ok=true;fi_policy_u16(w[..],0);fi_policy_u16(w[..],65535);fi_policy_u64(w[..],1);
+ #assert w[0].ok && w[0].count==12 && w[0].bytes[0]==0 && w[0].bytes[1]==0 && w[0].bytes[2]==255 && w[0].bytes[3]==255 && w[0].bytes[11]==1;
+ w[0].ok=true;fi_policy_u16(w[..],-1);#assert !w[0].ok;w[0].ok=true;fi_policy_u16(w[..],65536);#assert !w[0].ok;
+ w[0].ok=true;fi_policy_u64(w[..],-1);#assert !w[0].ok;
+ w[0].ok=true;w[0].count=65535;fi_policy_byte(w[..],7);#assert w[0].ok && w[0].count==65536 && w[0].bytes[65535]==7;
+ fi_policy_byte(w[..],8);#assert !w[0].ok;w[0].ok=true;w[0].count=-1;fi_policy_byte(w[..],1);#assert !w[0].ok;
+ #assert fi_policy_before("a","b") && fi_policy_before("a","aa") && !fi_policy_before("a","a") && !fi_policy_before("b","a");
+ #assert !fi_policy_before("aa","a") && fi_policy_before("ab","ac") && !fi_policy_before("ac","ab");
+ w[0].ok=true;w[0].count=0;fi_policy_u64(w[..],72623859790382856);#assert w[0].count==8;
+ for i:0..<8 {#assert w[0].bytes[i]==cast(u8)(i+1);}
+ values:=[17]string.["p","o","n","m","l","k","j","i","h","g","f","e","d","c","b","a","q"];
+ w[0].ok=true;w[0].count=0;fi_policy_set(w[..],values[0..<16]);#assert w[0].ok && w[0].bytes[0]==16 && w[0].count==49 && w[0].bytes[3]=='a' && w[0].bytes[48]=='p';
+ w[0].ok=true;fi_policy_set(w[..],values[..]);#assert !w[0].ok;
+ w[0].ok=true;fi_policy_set(w[0..<0],values[..]);#assert w[0].ok;
+}
+// Byte writers operate only on owned local storage. They grant no authority.
+fi_policy_byte :: (out:[]FiPolicyEncoding,value:u8) {
+ if out.count!=1 {return;}if !out[0].ok || out[0].count<0 || out[0].count>=65536 {out[0].ok=false;return;}
+ out[0].bytes[out[0].count]=value;out[0].count+=1;
+}
+fi_policy_u16 :: (out:[]FiPolicyEncoding,value:int) {
+ if value<0 || value>65535 {if out.count==1 {out[0].ok=false;}return;}
+ fi_policy_byte(out,cast(u8)((value>>8)&255));fi_policy_byte(out,cast(u8)(value&255));
+}
+fi_policy_u64 :: (out:[]FiPolicyEncoding,value:int) {
+ if value<0 {if out.count==1 {out[0].ok=false;}return;}
+ for i:0..<8 {fi_policy_byte(out,cast(u8)((value>>((7-i)*8))&255));}
+}
+fi_policy_string :: (out:[]FiPolicyEncoding,value:string) {
+ fi_policy_u16(out,value.count);for b:value {fi_policy_byte(out,b);}
+}
+fi_policy_before :: (a:string,b:string)->bool {
+ for i:0..<a.count {if i>=b.count {return false;}if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
+ return a.count<b.count;
+}
+fi_policy_set :: (out:[]FiPolicyEncoding,values:[]string) {
+ if values.count>16 {if out.count==1 {out[0].ok=false;}return;}
+ fi_policy_byte(out,cast(u8)values.count);order:[16]int;for i:0..<values.count {order[i]=i+1;}
+ for i:0..<values.count {for j:i+1..<values.count {if fi_policy_before(values[order[j]-1],values[order[i]-1]) {tmp:=order[i];order[i]=order[j];order[j]=tmp;}}}
+ for i:0..<values.count {fi_policy_string(out,values[order[i]-1]);}
+}
+fi_policy_encoding :: (community:FiCommunity,issuer:FiIssuer)->FiPolicyEncoding #export_c {
+ bad:FiPolicyEncoding;cs:=[1]FiCommunity.[community];ps:=[1]FiIssuer.[issuer];
+ selected:=fi_select(cs[..],ps[..],community.host,issuer.issuer);if selected.status!=FI_CANDIDATE {return bad;}
+ out:[1]FiPolicyEncoding;out[0].ok=true;
+ fi_policy_string(out[..],"openagents.fi-config-encoding.v1");
+ fi_policy_string(out[..],community.host);fi_policy_string(out[..],community.audience);fi_policy_set(out[..],community.issuers);
+ fi_policy_string(out[..],issuer.issuer);fi_policy_string(out[..],issuer.jwks_uri);fi_policy_u64(out[..],issuer.transport);fi_policy_u64(out[..],issuer.token_class);
+ fi_policy_u64(out[..],issuer.maximum_age);fi_policy_u64(out[..],issuer.skew);fi_policy_u64(out[..],issuer.connection_lifetime);fi_policy_u64(out[..],issuer.refresh);fi_policy_u64(out[..],issuer.hard_deadline);
+ fi_policy_string(out[..],issuer.marker_name);fi_policy_set(out[..],issuer.owner_values);fi_policy_set(out[..],issuer.client_values);
+ fi_policy_byte(out[..],ifx issuer.allow_client then 1 else 0);fi_policy_byte(out[..],ifx issuer.noncollision then 1 else 0);
+ if !out[0].ok {return bad;}return out[0];
+}

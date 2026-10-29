@@ -1,0 +1,53 @@
+// Semantic candidate only. Header, payload, and configuration are inputs, not
+// proof. This never verifies a signature, provider, NIP-42, or identity.
+#load "fi-claims-select.coax";
+#authority;
+#test "issuer marker overlap survives selection into the typed candidate policy" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];owners:=[1]string.[issuer];clients:=[1]string.["service"];
+ cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=2;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;ps[0].marker_name="iss";ps[0].owner_values=owners[..];ps[0].client_values=clients[..];
+ h:=FiHeader.{algorithm="RS256",typ="at+jwt",kid="key"};
+ text:="{\"iss\":\"https://issuer.test\",\"sub\":\"subject\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":1,\"exp\":20,\"client_id\":\"mobile\"}";
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,text,2)==FI_CANDIDATE;
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,text,11)==FI_REJECTED;
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"other.test",h,text,2)==FI_UNAVAILABLE;
+ h.algorithm="HS256";#assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,text,2)==FI_REJECTED;
+}
+#test "missing marker wrong audience and untrusted malformed input never become a candidate" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];owners:=[1]string.["human"];clients:=[1]string.["service"];
+ cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=2;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;ps[0].marker_name="kind";ps[0].owner_values=owners[..];ps[0].client_values=clients[..];
+ h:=FiHeader.{algorithm="RS256",typ="at+jwt",kid="key"};
+ text:="{\"iss\":\"https://issuer.test\",\"sub\":\"subject\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":1,\"exp\":20,\"client_id\":\"mobile\"}";
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,text,2)==FI_REJECTED;
+ ps[0].marker_name="iss";owners[0]=issuer;cs[0].audience="wss://other.test";#assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,text,2)==FI_REJECTED;
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,"{}",2)==FI_REJECTED;
+}
+#test "dedicated class ignores unverified client_id while access class refuses it" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];owners:=[1]string.[issuer];clients:=[1]string.["service"];
+ cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=1;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;
+ text:="{\"iss\":\"https://issuer.test\",\"sub\":\"subject\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":1,\"exp\":20,\"client_id\":{\"ignored\":true}}";
+ h:=FiHeader.{algorithm="RS256",typ="nip-fi+jwt",kid="key"};
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,text,2)==FI_CANDIDATE;
+ ps[0].token_class=2;ps[0].marker_name="iss";ps[0].owner_values=owners[..];ps[0].client_values=clients[..];h.typ="at+jwt";
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,text,2)==FI_REJECTED;
+}
+#test "one-byte subject issued time nbf and distinct agent owner reach the candidate policy" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=1;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;
+ h:=FiHeader.{algorithm="RS256",typ="nip-fi-agent+jwt",kid="key"};
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,"{\"iss\":\"https://issuer.test\",\"sub\":\"x\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":100,\"exp\":200,\"nostr_owner_pubkey\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"nbf\":100}",101)==FI_CANDIDATE;
+ #assert fi_claims_semantic_candidate(cs[..],ps[..],"relay.test",h,"{\"iss\":\"https://issuer.test\",\"sub\":\"x\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":100,\"exp\":200,\"nostr_owner_pubkey\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"nbf\":102}",101)==FI_REJECTED;
+}
+fi_claims_semantic_candidate :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,header:FiHeader,text:string,now:int)->int #export_c {
+ selected:=fi_claims_select(communities,issuers,host,text);if selected.status!=FI_CANDIDATE {return selected.status;}
+ p:=selected.projection;audiences:[16]string;
+ for i:0..<p.audience_count {audiences[i]=cast(string)p.audiences[i].bytes[0..<p.audiences[i].count];}
+ claims:FiClaims;
+ claims.issuer=cast(string)p.issuer.bytes[0..<p.issuer.count];claims.subject=cast(string)p.subject.bytes[0..<p.subject.count];claims.audiences=audiences[0..<p.audience_count];
+ claims.key=cast(string)p.key.bytes[0..<p.key.count];claims.has_iat=p.has_iat;claims.iat=p.iat;claims.has_exp=p.has_exp;claims.exp=p.exp;claims.has_nbf=p.has_nbf;claims.nbf=p.nbf;
+ claims.has_owner=p.has_owner;claims.owner=cast(string)p.owner.bytes[0..<p.owner.count];claims.client_id=cast(string)p.client.bytes[0..<p.client.count];claims.marker=cast(string)p.marker.bytes[0..<p.marker.count];
+ if !fi_token_class(issuers[selected.issuer],header,claims) || !fi_claims_candidate(issuers[selected.issuer],communities[selected.community],claims,now) {return FI_REJECTED;}
+ return FI_CANDIDATE;
+}

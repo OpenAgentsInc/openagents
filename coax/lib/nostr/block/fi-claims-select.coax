@@ -1,0 +1,51 @@
+// Untrusted claim selection only. The result never proves signature, provider,
+// possession, or FI authorization. The caller must keep text immutable through
+// both passes and through verification of the original compact signing bytes.
+#load "fi-claims-parse.coax";
+#authority;
+FiClaimsSelection :: struct {status:int;community:int;issuer:int;projection:FiClaimsProjection;}
+#test "exact issuer is community-selected before issuer-specific marker projection" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];owners:=[1]string.[issuer];clients:=[1]string.["service"];
+ cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=2;
+ ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;
+ ps[0].marker_name="iss";ps[0].owner_values=owners[..];ps[0].client_values=clients[..];
+ text:="{\"iss\":\"https://issuer.test\",\"sub\":\"subject\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":1,\"exp\":2,\"client_id\":\"mobile\"}";
+ r:=fi_claims_select(cs[..],ps[..],"relay.test",text);#assert r.status==FI_CANDIDATE && r.projection.ok && r.projection.has_marker;
+ #assert cast(string)r.projection.marker.bytes[0..<r.projection.marker.count]==issuer;
+ #assert fi_claims_select(cs[..],ps[..],"unknown.test",text).status==FI_UNAVAILABLE;
+ names[0]="https://other.test";#assert fi_claims_select(cs[..],ps[..],"relay.test",text).status==FI_REJECTED;
+}
+#test "unverified malformed claims or impossible marker typing refuse without a candidate" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];owners:=[1]string.["human"];clients:=[1]string.["service"];
+ cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=2;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;
+ ps[0].marker_name="iat";ps[0].owner_values=owners[..];ps[0].client_values=clients[..];
+ text:="{\"iss\":\"https://issuer.test\",\"sub\":\"subject\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":1,\"exp\":2,\"client_id\":\"mobile\"}";
+ #assert fi_claims_select(cs[..],ps[..],"relay.test",text).status==FI_REJECTED;
+ #assert fi_claims_select(cs[..],ps[..],"relay.test","{}").status==FI_REJECTED;
+ #assert fi_claims_select(cs[..],ps[..],"unknown.test","{}").status==FI_UNAVAILABLE;
+ #assert fi_claims_select(cs[0..<0],ps[..],"relay.test","{}").status==FI_UNAVAILABLE;
+ ps[0].refresh=0;
+ #assert fi_claims_select(cs[..],ps[..],"relay.test","{\"iss\":\"https://issuer.test\",\"sub\":null}").status==FI_UNAVAILABLE;
+}
+#test "second parse status and issuer equality are both required" {
+ p:FiClaimsProjection;p.ok=true;p.issuer.count=1;p.issuer.bytes[0]='a';
+ #assert fi_claims_reparse_ok(p,"a");#assert !fi_claims_reparse_ok(p,"b");
+ p.ok=false;#assert !fi_claims_reparse_ok(p,"a");#assert !fi_claims_reparse_ok(p,"b");
+}
+fi_claims_reparse_ok :: (second:FiClaimsProjection,issuer:string)->bool {
+ p:=second;return p.ok && cast(string)p.issuer.bytes[0..<p.issuer.count]==issuer;
+}
+fi_claims_select :: (communities:[]FiCommunity,issuers:[]FiIssuer,host:string,text:string)->FiClaimsSelection #export_c {
+ // Empty issuers cannot occur in a valid allowlist. This probes only the
+ // configured Host/community before untrusted claims or issuer dependencies.
+ host_only:=fi_select(communities,issuers,host,"");
+ if host_only.status!=FI_REJECTED {return FiClaimsSelection.{status=FI_UNAVAILABLE};}
+ first:=fi_claims_profile(text,"",0);if !first.ok {return FiClaimsSelection.{status=FI_REJECTED};}
+ issuer:=cast(string)first.issuer.bytes[0..<first.issuer.count];selected:=fi_select(communities,issuers,host,issuer);
+ if selected.status!=FI_CANDIDATE {return FiClaimsSelection.{status=selected.status};}
+ second:=fi_claims_profile(text,issuers[selected.issuer].marker_name,issuers[selected.issuer].token_class);
+ if !fi_claims_reparse_ok(second,issuer) {return FiClaimsSelection.{status=FI_REJECTED};}
+ return FiClaimsSelection.{community=selected.community,issuer=selected.issuer,projection=second};
+}

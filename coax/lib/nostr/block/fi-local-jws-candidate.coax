@@ -1,0 +1,50 @@
+// Local fixture evidence only: a caller-supplied JWKS is not an authenticated
+// provider. No result authorizes identity, possession, session or production.
+#load "fi-claims-candidate.coax";
+#load "fi-jws-jwks.coax";
+#authority;
+#test "original compact token passes semantic and local signature checks" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];owners:=[1]string.[issuer];clients:=[1]string.["service"];
+ cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=2;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;ps[0].marker_name="iss";ps[0].owner_values=owners[..];ps[0].client_values=clients[..];
+ text:="eyJhbGciOiJSUzI1NiIsInR5cCI6ImF0K2p3dCIsImtpZCI6InRlc3Qta2V5In0.eyJpc3MiOiJodHRwczovL2lzc3Vlci50ZXN0Iiwic3ViIjoic3ViamVjdCIsImF1ZCI6IndzczovL3JlbGF5LnRlc3QiLCJub3N0cl9wdWJrZXkiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwIiwiaWF0IjoxMDAsImV4cCI6MjAwLCJjbGllbnRfaWQiOiJtb2JpbGUifQ.XSeCVpjfcpU3ghfQ8PZIMCCZDeke4nk87Fjsag7mGboO2qpbc-j7xHvu1utTsQXaud1jjqpV5v9FQc4yApNLpxa01gkDs8sNR_dGPd67LUjYhpAdJSWbIJbbBNf-uXzzA35fRFThFGcbZ6gCyxq7KRmb5n35g9ExqunVPUmw-4FQB1veh_C1DZC_8-oqQnIolHvqPqKA_6Qvo8EC6J6KYL7QMPOm0UuywCew9F1LQDMFowFOOCMVaxS7UHXcxL_IN0VjNaVAstpn67oLCnaTSVRyeRf6RTQmgbBlUeP3KmjoOzSnYKPG6Zs6e39dgN3k7BfqyPLqM6Ay5cUyvb4_8w";token:[665]u8;for i:0..<token.count {token[i]=text[i];}
+ jwks:="{\"keys\":[{\"kid\":\"test-key\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"mSSukJYIEze9DyYlGyp2FJ3o6HTXmrQ1YRceZ_AbJuraYooxZ3qs46aZsRZeuNmb3i4pBZTNJkzhgE2ewEvQ11JQuyMWjlYoCTgvVpaazIEvGnXFRLL7AR7J_PlEZPwxFVcQZP7O-pLIp65V0Y9t6WmSEK1WZ3XG6FLo834haItBHj1deE-_lu_DC0ku6LqU8Uf4s79PBf7K5YOz2eh_7m81DKbuPSuXSqMD0XQcu0npAdW8-wuYNqaQvzFPn7lE7wJKHGkuLCJ4qkVxG3UmkTWCUPdY5Borg7nVNK9owvm3E6TySCL9DYx4439UXfcvhwEtdZaZhxhBxu9ZVm5wWQ\",\"e\":\"AQAB\"}]}";
+ #assert fi_local_jws_candidate(token[..],jwks,cs[..],ps[..],"relay.test",101);
+ #assert !fi_local_jws_candidate(token[..],jwks,cs[..],ps[..],"relay.test",110);
+ #assert !fi_local_jws_candidate(token[..],jwks,cs[..],ps[..],"other.test",101);
+ #assert !fi_local_jws_candidate(token[0..<0],jwks,cs[..],ps[..],"relay.test",101);
+}
+#test "protected types bridge explicitly without fallback" {
+ #assert fi_local_typ(1)=="nip-fi+jwt" && fi_local_typ(2)=="nip-fi-agent+jwt" && fi_local_typ(3)=="at+jwt";
+ #assert fi_local_typ(0)=="" && fi_local_typ(4)=="";
+}
+#test "one-byte protected kid survives semantic projection and local verification" {
+ issuer:="https://issuer.test";names:=[1]string.[issuer];owners:=[1]string.[issuer];clients:=[1]string.["service"];
+ cs:[1]FiCommunity;cs[0].host="relay.test";cs[0].audience="wss://relay.test";cs[0].issuers=names[..];
+ ps:[1]FiIssuer;ps[0].issuer=issuer;ps[0].jwks_uri="https://keys.test";ps[0].transport=1;ps[0].token_class=2;ps[0].maximum_age=10;ps[0].connection_lifetime=10;ps[0].refresh=1;ps[0].hard_deadline=30;ps[0].marker_name="iss";ps[0].owner_values=owners[..];ps[0].client_values=clients[..];
+ text:="eyJhbGciOiJSUzI1NiIsInR5cCI6ImF0K2p3dCIsImtpZCI6ImsifQ.eyJpc3MiOiJodHRwczovL2lzc3Vlci50ZXN0Iiwic3ViIjoic3ViamVjdCIsImF1ZCI6IndzczovL3JlbGF5LnRlc3QiLCJub3N0cl9wdWJrZXkiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwIiwiaWF0IjoxMDAsImV4cCI6MjAwLCJjbGllbnRfaWQiOiJtb2JpbGUifQ.AWl8gAyag-FFVbKc9MU8PwV2IoMFVSAPLbNKxHthBay3p79hPsNjFUYS-Uc3N3l3JEf3UvhbxAoqyr-Ie86Th1wteBBJvU1nci7022VL-UraiykrpurjpvHRCp4EUPBcF9JRKYVRopW4-uxeLv-epoL8JRY8n8RXPNkXG1p_t1phJj5Jpk5Kz00r49Wcik1S7cDdtsEaUj8X1PyK7drjssLmpkmM0P705o2u3-kR7Ux90trlMFWt0bXgLxaLqIk0_z19miKbuUla2FZqYLy7U8Gg36NTIgY_TYOXReCNu0pVU18roFl8oWgJRt-enV-g8K2V6fReY1p9DCyx5ktBkw";token:[656]u8;for i:0..<token.count {token[i]=text[i];}jwks:="{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"0cKQjTquDQB49lyc9hzJcdFy2ZRvSINLId8yh0npsLnnxuV02EHGQ17TDiIIIW-cb1ddAhI8VR8pPYJyytaNu4OjpZx80zAiAIvX926M-H6CnH39v5s3Mn7bnXMesn3oNRUc0wCAVQz7y8g39rZg2mGqm3q61gkq4-LmGg3jL0X_LDssyZOcP7oYewzRJFsQsRk2PSv5aLUVYuypPBBfo49gmdi0T0c49OYUkaGCukx8SghcyJWrIku5z_srHlUMXcBbWI2K8mC3diI6qOUNuwcGKnvxvOutDonQUOeUS9xmsEs59_gWYv3uvFUp5f6BwCcGn6QSv8I4RfjZVExoIw\",\"e\":\"AQAB\"}]}";
+ #assert fi_local_jws_candidate(token[..],jwks,cs[..],ps[..],"relay.test",101);
+}
+#test "header decode header projection and payload capacity fail before local evidence" {
+ cs:[1]FiCommunity;ps:[1]FiIssuer;
+ oversized:[3079]u8;for i:0..<2732 {oversized[i]='A';}oversized[2732]='.';oversized[2733]='e';oversized[2734]='3';oversized[2735]='0';oversized[2736]='.';for i:2737..<3079 {oversized[i]='A';}
+ #assert fi_compact_parse(cast(string)oversized[..]).ok && !fi_local_jws_candidate(oversized[..],"{}",cs[..],ps[..],"x",1);
+ invalid:[349]u8;invalid[0]='e';invalid[1]='w';invalid[2]='.';invalid[3]='e';invalid[4]='3';invalid[5]='0';invalid[6]='.';for i:7..<349 {invalid[i]='A';}
+ #assert fi_compact_parse(cast(string)invalid[..]).ok && !fi_local_jws_candidate(invalid[..],"{}",cs[..],ps[..],"x",1);
+ header:="eyJhbGciOiJSUzI1NiIsInR5cCI6ImF0K2p3dCIsImtpZCI6InRlc3Qta2V5In0";large:[87791]u8;for i:0..<header.count {large[i]=header[i];}at:=header.count;large[at]='.';for i:0..<87384 {large[at+1+i]='A';}large[at+87385]='.';for i:at+87386..<large.count {large[i]='A';}
+ #assert fi_compact_parse(cast(string)large[..]).ok && !fi_local_jws_candidate(large[..],"{}",cs[..],ps[..],"x",1);
+}
+fi_local_typ :: (typ:int)->string {
+ if typ==1 {return "nip-fi+jwt";}if typ==2 {return "nip-fi-agent+jwt";}if typ==3 {return "at+jwt";}return "";
+}
+fi_local_jws_candidate :: (token:[]u8,jwks:string,communities:[]FiCommunity,issuers:[]FiIssuer,host:string,now:int)->bool #export_c {
+ text:=cast(string)token;parts:=fi_compact_parse(text);if !parts.ok {return false;}
+ header_bytes:[2048]u8;decoded_header:=fi_b64url_decode(text[0..<parts.protected_end],header_bytes[..]);
+ if decoded_header.error!=NC_OK {return false;}
+ projection:=fi_protected_parse(cast(string)header_bytes[0..<decoded_header.written]);if !projection.ok {return false;}
+ h:=FiHeader.{algorithm="RS256",typ=fi_local_typ(projection.typ),kid=cast(string)projection.kid[0..<projection.kid_count]};
+ payload:[65536]u8;decoded_payload:=fi_b64url_decode(text[parts.payload_start..<parts.signing_end],payload[..]);
+ if decoded_payload.error!=NC_OK {return false;}
+ if fi_claims_semantic_candidate(communities,issuers,host,h,cast(string)payload[0..<decoded_payload.written],now)!=FI_CANDIDATE {return false;}
+ return fi_jws_document_signature(token,jwks);
+}

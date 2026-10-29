@@ -1,0 +1,117 @@
+// Strict decoded JWKS snapshot projection. This grants no authority.
+#load "../json.coax";
+#load "fi-base64url.coax";
+#authority;
+FiParsedKey :: struct {ok:bool;has_key_ops:bool;kid:[128]u8;kid_count:int;modulus:[512]u8;modulus_count:int;}
+FiParsedJwks :: struct {ok:bool;count:int;keys:[16]FiParsedKey;}
+
+#test "public RSA JWKS projects the complete key" {
+ snapshot:=fi_jwks_parse("{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]}");
+ #assert snapshot.ok && snapshot.count==1 && !snapshot.keys[0].has_key_ops && snapshot.keys[0].kid_count==1 && snapshot.keys[0].kid[0]=='k';
+ #assert snapshot.keys[0].modulus_count==256 && snapshot.keys[0].modulus[0]==128 && snapshot.keys[0].modulus[255]==1;
+}
+
+#test "malformed private duplicate and unsupported keys refuse the complete snapshot" {
+ bad:=[13]string.["{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"enc\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"EC\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"HS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"Aw\"}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AAEAAQ\"}]}","{\"keys\":[{\"kid\":\"k\",\"kid\":\"j\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\",\"d\":\"AA\"}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\",\"jku\":\"evil\"}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\",\"key_ops\":[\"sign\"]}]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\",\"key_ops\":[\"verify\",\"sign\"]}]}","{\"keys\":[]}","{\"keys\":[],\"keys\":[]}","{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]} true"];
+ for text:bad {snap:=fi_jwks_parse(text);#assert !snap.ok && snap.count==0;}
+}
+#test "key operations and unique snapshot kids" {
+ a:=fi_jwks_parse("{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\",\"key_ops\":[\"verify\"]}]}");#assert a.ok && a.count==1 && a.keys[0].has_key_ops;
+ b:=fi_jwks_parse("{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"},{\"kid\":\"m\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]}");#assert b.ok && b.count==2 && b.keys[1].kid[0]=='m';
+ c:=fi_jwks_parse("{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"},{\"kid\":\"k\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ\",\"e\":\"AQAB\"}]}");#assert !c.ok && c.count==0;
+}
+#test "JWKS parser metadata and public integers have exact boundaries" {
+ text:[129]u8;for i:0..<129 {text[i]='x';}
+ #assert fi_jwk_visible(cast(string)text[0..<128]) && !fi_jwk_visible(cast(string)text[..]) && !fi_jwk_visible(cast(string)text[0..<0]);
+ text[0]=33;#assert fi_jwk_visible(cast(string)text[0..<1]);text[0]=126;#assert fi_jwk_visible(cast(string)text[0..<1]);
+ text[0]=32;#assert !fi_jwk_visible(cast(string)text[0..<1]);text[0]=127;#assert !fi_jwk_visible(cast(string)text[0..<1]);
+ #assert fi_jwk_length_ok(0) && !fi_jwk_length_ok(-1);
+ #assert fi_jwk_field("key_ops")==64 && fi_jwk_field("unknown")==0;
+ #assert fi_jwks_size_ok(0) && fi_jwks_size_ok(524288) && !fi_jwks_size_ok(524289) && !fi_jwks_size_ok(-1);
+ #assert fi_jwks_room(0) && fi_jwks_room(15) && !fi_jwks_room(-1) && !fi_jwks_room(16);
+ #assert fi_jwks_count_ok(1) && fi_jwks_count_ok(16) && !fi_jwks_count_ok(0) && !fi_jwks_count_ok(17);
+ n:[513]u8;n[0]=128;n[255]=1;n[256]=1;n[511]=1;n[512]=1;
+ #assert fi_jwk_modulus_ok(n[0..<256]) && fi_jwk_modulus_ok(n[0..<512]);
+ #assert !fi_jwk_modulus_ok(n[0..<255]) && !fi_jwk_modulus_ok(n[..]);
+ n[0]=1;#assert fi_jwk_modulus_ok(n[0..<257]);n[0]=0;#assert !fi_jwk_modulus_ok(n[0..<257]);
+ n[0]=127;#assert !fi_jwk_modulus_ok(n[0..<256]);n[0]=128;n[255]=2;#assert !fi_jwk_modulus_ok(n[0..<256]);
+ e:=[3]u8.[1,0,1];#assert fi_jwk_exponent_ok(e[..]) && !fi_jwk_exponent_ok(e[0..<2]);
+ for i:0..<3 {old:=e[i];e[i]=2;#assert !fi_jwk_exponent_ok(e[..]);e[i]=old;}
+}
+fi_jwk_length_ok :: (n:int)->bool {return n>=0;}
+fi_jwks_size_ok :: (n:int)->bool {return n>=0 && n<=524288;}
+fi_jwks_room :: (n:int)->bool {return n>=0 && n<16;}
+fi_jwks_count_ok :: (n:int)->bool {return n>=1 && n<=16;}
+fi_jwk_exponent_ok :: (e:[]u8)->bool {return e.count==3 && e[0]==1 && e[1]==0 && e[2]==1;}
+fi_jwk_modulus_ok :: (n:[]u8)->bool {
+ if n.count<256 || n.count>512 {return false;}
+ return n[0]!=0 && (n.count!=256 || n[0]>=128) && (n[n.count-1]&1)!=0;
+}
+fi_jwk_field :: (name:string)->int {
+ if name=="kid" {return 1;}if name=="kty" {return 2;}if name=="alg" {return 4;}
+ if name=="use" {return 8;}if name=="n" {return 16;}if name=="e" {return 32;}
+ if name=="key_ops" {return 64;}return 0;
+}
+fi_jwk_visible :: (text:string)->bool {
+ if text.count<1 || text.count>128 {return false;}
+ for b:text {if b<33 || b>126 {return false;}}return true;
+}
+fi_jwk_parse :: (j:[]Json)->FiParsedKey {
+ key:FiParsedKey;seen:=0;
+ while true {
+  tok:=json_next(j);if tok==JSON_OBJECT_END {break;}
+  if tok!=JSON_STRING {return FiParsedKey.{};}
+  name:[16]u8;length:=json_unescape(json_text(j),name[..]);if !fi_jwk_length_ok(length) {return FiParsedKey.{};}
+  field:=fi_jwk_field(cast(string)name[0..<length]);
+  if field==0 || (seen&field)!=0 {return FiParsedKey.{};}seen=seen|field;
+  tok=json_next(j);
+  if field==64 {
+   if tok!=JSON_ARRAY || json_next(j)!=JSON_STRING {return FiParsedKey.{};}
+   op:[16]u8;length=json_unescape(json_text(j),op[..]);if !fi_jwk_length_ok(length) {return FiParsedKey.{};}
+   if cast(string)op[0..<length]!="verify" || json_next(j)!=JSON_ARRAY_END {return FiParsedKey.{};}
+   key.has_key_ops=true;
+  } else {
+   if tok!=JSON_STRING {return FiParsedKey.{};}
+   value:[1024]u8;length=json_unescape(json_text(j),value[..]);if !fi_jwk_length_ok(length) {return FiParsedKey.{};}
+   text:=cast(string)value[0..<length];
+   if field==1 {
+    if !fi_jwk_visible(text) {return FiParsedKey.{};}key.kid_count=length;
+    for i:0..<length {key.kid[i]=value[i];}
+   } else if field==2 {if text!="RSA" {return FiParsedKey.{};}}
+   else if field==4 {if text!="RS256" {return FiParsedKey.{};}}
+   else if field==8 {if text!="sig" {return FiParsedKey.{};}}
+   else if field==16 {
+    n:=fi_b64url_uint(text,key.modulus[..]);if n.error!=NC_OK {return FiParsedKey.{};}key.modulus_count=n.written;
+   } else if field==32 {
+    e:[3]u8;r:=fi_b64url_uint(text,e[..]);
+    if r.error!=NC_OK {return FiParsedKey.{};}
+    if !fi_jwk_exponent_ok(e[0..<r.written]) {return FiParsedKey.{};}
+   }
+  }
+ }
+ if (seen&63)!=63 {return FiParsedKey.{};}
+ if !fi_jwk_modulus_ok(key.modulus[0..<key.modulus_count]) {return FiParsedKey.{};}
+ key.ok=true;return key;
+}
+fi_jwks_parse :: (text:string)->FiParsedJwks #export_c {
+ result:FiParsedJwks;if !fi_jwks_size_ok(text.count) {return result;}
+ j:[1]Json;json_start(j[..],text);
+ if json_next(j[..])!=JSON_OBJECT {return result;}
+ if json_next(j[..])!=JSON_STRING {return result;}
+ name:[16]u8;length:=json_unescape(json_text(j[..]),name[..]);
+ if !fi_jwk_length_ok(length) {return FiParsedJwks.{};}
+ if cast(string)name[0..<length]!="keys" {return FiParsedJwks.{};}
+ if json_next(j[..])!=JSON_ARRAY {return FiParsedJwks.{};}
+ while true {
+  tok:=json_next(j[..]);if tok==JSON_ARRAY_END {break;}
+  if tok!=JSON_OBJECT {return FiParsedJwks.{};}
+  if !fi_jwks_room(result.count) {return FiParsedJwks.{};}
+  key:=fi_jwk_parse(j[..]);if !key.ok {return FiParsedJwks.{};}
+  for i:0..<result.count {
+   if cast(string)result.keys[i].kid[0..<result.keys[i].kid_count]==cast(string)key.kid[0..<key.kid_count] {return FiParsedJwks.{};}
+  }
+  result.keys[result.count]=key;result.count+=1;
+ }
+ if result.count<1 || json_next(j[..])!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return FiParsedJwks.{};}
+ result.ok=true;return result;
+}

@@ -1,0 +1,64 @@
+// Closed, typed projection of a decoded protected header. Original compact bytes
+// remain the only signing input; this projection grants no authorization.
+#load "../json.coax";
+#authority;
+FiProtected :: struct {ok:bool;typ:int;kid:[128]u8;kid_count:int;}
+#test "closed protected header projects only RS256 and accepted token classes" {
+ h:=fi_protected_parse("{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"key-1\"}");
+ #assert h.ok && h.typ==1 && cast(string)h.kid[0..<h.kid_count]=="key-1";
+ h=fi_protected_parse("{\"typ\":\"nip-fi-agent+jwt\",\"kid\":\"x\",\"alg\":\"RS256\"}");#assert h.ok && h.typ==2;
+ h=fi_protected_parse("{\"typ\":\"at+jwt\",\"kid\":\"x\",\"alg\":\"RS256\"}");#assert h.ok && h.typ==3;
+ h=fi_protected_parse("{\"\\u0061lg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"x\"}");#assert h.ok;
+}
+#test "unknown duplicate missing and key-selected headers refuse" {
+ bad:=[12]string.["{}","[]","{\"alg\":\"none\",\"typ\":\"nip-fi+jwt\",\"kid\":\"x\"}",
+ "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"x\"}","{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\"}",
+ "{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"\"}","{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":1}",
+ "{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"x\",\"jku\":\"https://evil\"}",
+ "{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"x\",\"jwk\":{}}",
+ "{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"x\",\"crit\":[]}",
+ "{\"alg\":\"RS256\",\"\\u0061lg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"x\"}",
+ "{\"alg\":\"RS256\",\"typ\":\"nip-fi+jwt\",\"kid\":\"x\"} true"];
+ for text:bad {h:=fi_protected_parse(text);#assert !h.ok && h.typ==0 && h.kid_count==0;}
+}
+#test "protected text bounds and field selection are explicit" {
+ text:[129]u8;for i:0..<129 {text[i]='x';}
+ #assert fi_protected_visible(cast(string)text[0..<128]);
+ #assert !fi_protected_visible(cast(string)text[..]) && !fi_protected_visible(cast(string)text[0..<0]);
+ text[0]=33;#assert fi_protected_visible(cast(string)text[0..<1]);text[0]=126;#assert fi_protected_visible(cast(string)text[0..<1]);
+ text[0]=32;#assert !fi_protected_visible(cast(string)text[0..<1]);text[0]=127;#assert !fi_protected_visible(cast(string)text[0..<1]);
+ #assert fi_protected_unescaped_ok(0) && !fi_protected_unescaped_ok(-1);
+ #assert fi_protected_field("alg")==1 && fi_protected_field("typ")==2 && fi_protected_field("kid")==4 && fi_protected_field("")==0;
+}
+fi_protected_unescaped_ok :: (n:int)->bool {return n>=0;}
+fi_protected_field :: (name:string)->int {
+ if name=="alg" {return 1;}if name=="typ" {return 2;}if name=="kid" {return 4;}return 0;
+}
+fi_protected_typ :: (value:string)->int {
+ if value=="nip-fi+jwt" {return 1;}if value=="nip-fi-agent+jwt" {return 2;}if value=="at+jwt" {return 3;}return 0;
+}
+fi_protected_visible :: (value:string)->bool {
+ if value.count<1 || value.count>128 {return false;}
+ for b:value {if b<33 || b>126 {return false;}}return true;
+}
+fi_protected_parse :: (text:string)->FiProtected #export_c {
+ result:FiProtected;j:[1]Json;json_start(j[..],text);
+ if json_next(j[..])!=JSON_OBJECT {return FiProtected.{};}
+ seen:=0;
+ while true {
+  tok:=json_next(j[..]);if tok==JSON_OBJECT_END {break;}
+  if tok!=JSON_STRING {return FiProtected.{};}
+  name:[128]u8;length:=json_unescape(json_text(j[..]),name[..]);if !fi_protected_unescaped_ok(length) {return FiProtected.{};}
+  key:=cast(string)name[0..<length];field:=fi_protected_field(key);
+  if field==0 {return FiProtected.{};}
+  if (seen&field)!=0 {return FiProtected.{};}seen=seen|field;
+  if json_next(j[..])!=JSON_STRING || j[0].key {return FiProtected.{};}
+  value:[128]u8;length=json_unescape(json_text(j[..]),value[..]);if !fi_protected_unescaped_ok(length) {return FiProtected.{};}
+  decoded:=cast(string)value[0..<length];
+  if field==1 {if decoded!="RS256" {return FiProtected.{};}}
+  else if field==2 {result.typ=fi_protected_typ(decoded);if result.typ==0 {return FiProtected.{};}}
+  else {if !fi_protected_visible(decoded) {return FiProtected.{};}result.kid_count=length;for i:0..<length {result.kid[i]=value[i];}}
+ }
+ if seen!=7 || json_next(j[..])!=JSON_END {return FiProtected.{};}
+ result.ok=true;return result;
+}
