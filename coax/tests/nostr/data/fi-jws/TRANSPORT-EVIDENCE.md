@@ -301,8 +301,14 @@ counterexample. It noted that a client-self-exit case witnesses the inherited
 helper lock, but does not establish that a resolver had already started; and
 that PID-existence checks may be confused by reuse. The latest fixture requires
 newline-terminated PID markers rather than accepting partial numeric writes;
-the packaged native and sanitizer tests passed, and this test-only delta has
-not been independently reviewed.
+the packaged native and sanitizer tests passed. A subsequent independent
+delta review confirmed that change closes the partial-digit interpretation.
+The tested and reviewed C fixture SHA-256 is
+`573312f65eae735a5f8d9c681e64f9f91f7d19b569b5ba63b89801a98487d39d`
+and Python probe SHA-256 is
+`4fd1d77f588a4914b948b2afb539a349fe77cc847641c5bf7c55e02f5e9a60f5`.
+The fake helper can still signal before its marker is complete and cause a
+spurious failure, and PID-existence checks retain their reuse caveat.
 
 Independent read-only review (`fixedbase_rescue`) of the reaperless prototype
 confirmed two deployment constraints: `pipe()` followed by `fcntl(FD_CLOEXEC)`
