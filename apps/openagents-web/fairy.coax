@@ -97,7 +97,8 @@ LINE_BYTES :: 300;
 TYPED :: 200;
 ASK_BYTES :: 8192;
 ANSWER_WAIT :: 30.0;       // seconds before an unanswered question is given up
-TAP_TALK_NEAR :: 22.0;     // metres: a creature this near can be clicked or tapped to talk
+TAP_TALK_NEAR :: 22.0;
+FLYING :: 0.6;             // metres over the ground: flying, so E and the BLOOM button wait until you land     // metres: a creature this near can be clicked or tapped to talk
 
 // The HUD's colours: a cream ink and a soft gold.
 CREAM_R :: 0.97; CREAM_G :: 0.94; CREAM_B :: 0.86;
@@ -1323,6 +1324,15 @@ swell :: (s: [] Fairy, look: int, a: Point, b: Point, wa: f32, wm: f32, wb: f32,
     ellipsoid(s, look, add(a, times(d, f)), times(along, l * 0.8), times(across, w), w, c);
   }
 }
+// A lock of hair from a, bending at m, to a point at b: one cylinder and one
+// cone, whose shading runs smooth along them (a row of ellipsoids lit each
+// on its own reads as beads, worst seen from below in flight), and a ball
+// to round the bend.
+lock :: (s: [] Fairy, a: Point, m: Point, b: Point, w: f32, c: Point) {
+  limb(s, SHAPE_CYLINDER, LOOK_CLOTH, a, m, w, c.x, c.y, c.z);
+  limb(s, SHAPE_CONE, LOOK_CLOTH, m, b, w * 0.97, c.x, c.y, c.z);
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, m, 0, 0, w, w, w, c.x, c.y, c.z);
+}
 // An ellipsoid with axes a1 and a2 (their lengths its sizes) and a third,
 // w across both, turned so its faces point out (oriented() needs a
 // right-handed frame, else the light falls on its inside).
@@ -1474,8 +1484,7 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
     from := add(head, add(times(right, 0.12 * sign), add(times(ahead, 0.02), v3(0, 0.0, 0))));
     mid := add(from, add(times(right, 0.1 * sign), add(times(ahead, -0.04 - trail * 0.3), v3(0, -0.34, 0))));
     tip := add(mid, add(times(right, 0.08 * sign), add(times(ahead, -0.06 - trail * 0.4), v3(0, -0.36 + trail * 0.3, 0))));
-    swell(s, LOOK_CLOTH, from, mid, 0.11, 0.13, 0.12, ahead, hair);
-    swell(s, LOOK_CLOTH, mid, tip, 0.12, 0.1, 0.03, ahead, hair);
+    lock(s, from, mid, tip, 0.125, hair);
   }
   // the mass of it behind her head and shoulders
   ellipsoid(s, LOOK_CLOTH, add(head, add(times(ahead, -0.11 - trail * 0.2), v3(0, -0.18, 0))), v3(0, 0.5, 0), times(ahead, 0.18), 0.44, hair);
@@ -1488,9 +1497,8 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
     curl := add(tip, add(times(right, off * 0.3), add(times(ahead, 0.03), v3(0, -0.06, 0))));
     shade := 0.88 + 0.16 * hash1(f32(k), 1);
     c := v3(hair.x * shade, hair.y * shade, hair.z * shade);
-    swell(s, LOOK_CLOTH, from, mid, 0.15, 0.18, 0.17, right, c);
-    swell(s, LOOK_CLOTH, mid, tip, 0.17, 0.15, 0.07, right, c);
-    limb(s, SHAPE_CONE, LOOK_CLOTH, tip, curl, 0.06, c.x, c.y, c.z);
+    lock(s, from, mid, tip, 0.2, c);
+    limb(s, SHAPE_CONE, LOOK_CLOTH, mix(mid, tip, 0.8), curl, 0.05, c.x, c.y, c.z);
   }
   // a star clip in her hair
   clip := add(head, add(times(right, -0.13), add(v3(0, 0.1, 0), times(ahead, 0.02))));
@@ -1624,6 +1632,7 @@ blooms :: (s: [] Fairy, u: [] f32) {
 // E, a click or BLOOM: the patch at your feet blooms.
 play :: (s: [] Fairy, you: Point) {
   f := s[0].forest[..];
+  if s[0].use && s[0].air > f32(FLYING) { s[0].use = false; }   // flying: nothing at hand (no prompt shows)
   if s[0].use {
     i := ff_patch_near(f, you.x, you.z);
     if i >= 0 { done := ff_bloom(f, i, s[0].time); }
@@ -1758,7 +1767,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   }
   // BLOOM (or LIGHT, or TALK): E on a computer, a button on a phone
   near_patch := ff_patch_near(f, you.x, you.z);
-  if near_patch >= 0 || s[0].near_creature >= 0 {
+  if (near_patch >= 0 || s[0].near_creature >= 0) && s[0].air <= f32(FLYING) {
     bc := 9 * k;
     // the Old Ring's stones are lit, not bloomed
     verb := ifx near_patch < 0 then (ifx phone(s) then "TALK" else FF_TALK_TO[s[0].near_creature])
@@ -2090,6 +2099,23 @@ fairy_store_cap :: (k: int) -> int #export_c {
   b := g[0].bye_button;
   #assert fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 0, 2) && fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 0, 2);
   #assert !fairy_talking(g[..]);
+}
+
+#test "flying, the BLOOM prompt hides and E waits until you land" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  nv := fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 3, f32(FF_SPAWN_Z), 0, 0, 0, 0, 3, 0, false, 0, 0, 0, 0);
+  #assert ff_patch_near(g[0].forest[..], g[0].feet.x, g[0].feet.z) == 0;
+  g[0].touch = true;
+  nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 3, f32(FF_SPAWN_Z), 0, 0, 0, 0, 3, 0, false, 0, 0, 0, 0);
+  #assert g[0].button.x1 == 0;
+  #assert fairy_key(g[..], 'e', 0);
+  nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 3, f32(FF_SPAWN_Z), 0, 0, 0, 0, 3, 0, false, 0, 0, 0, 0);
+  #assert !g[0].forest[0].bloomed[0];
+  // landed: the button is back
+  nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].button.x1 > g[0].button.x0;
 }
 
 // What the player library (verse/player.coax) stands on: a wall whose top is

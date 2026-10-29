@@ -12,7 +12,7 @@ You are a fairy with glowing wings that beat slowly when you stand and quickly w
 
 ## Bloom
 
-Faded patches of flowers lie along the trails and in the glades. Stand by one and press E (on a phone, the BLOOM button) to bloom it: it comes back to colour, and the colour spreads round it. The Old Ring's dark stones are lit the same way (LIGHT).
+Faded patches of flowers lie along the trails and in the glades. Stand by one and press E (on a phone, the BLOOM button) to bloom it: it comes back to colour, and the colour spreads round it. The Old Ring's dark stones are lit the same way (LIGHT). While you fly the prompt hides; land to bloom.
 
 ## The creatures
 
