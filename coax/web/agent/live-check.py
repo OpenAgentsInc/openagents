@@ -9,6 +9,7 @@
 #       was called, the document's version moved with the edits logged under
 #       the turn, the commit was pushed; UNDO TURN puts both back
 #   live-check.py ... --slug SLUG one      one milestone status and one file line, then UNDO TURN
+#   --file PATH picks the repository file the check appends to (default project/plan.md)
 #   live-check.py ... --slug SLUG refused  this project's agent answers 404, like no project
 #   live-check.py ... --slug SLUG capped   the next ask is refused with the day's limit
 import json, os, subprocess, sys, tempfile, time, urllib.error, urllib.request
@@ -20,6 +21,7 @@ def opt(name, default=None):
     return default
 ORIGIN = opt("--origin", "https://staging.openagents.com")
 SLUG = opt("--slug")
+FILE = opt("--file", "project/plan.md")
 KEY = opt("--key", os.path.expanduser("~/work/.secrets/openagents-analytics-admin.key"))
 SIGN = opt("--sign", os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "oa-admin", "sign"))
 MODE = args[0] if args else "tools"
@@ -141,12 +143,12 @@ if MODE == "tools":
             "6. project_note: \"Live check note\".\n"
             f"7. project_plan: for milestone {ms['id']}, the plan \"Live check plan\".\n"
             "8. document_patch: add /summary_check with the value \"live check\" (read the version first).\n"
-            "9. Append the line \"- live check\" to project/plan.md in the repository.\n"
+            f"9. Append the line \"- live check\" to {FILE} in the repository.\n"
             "Read the document again before each write that needs its version. Then say which steps worked.")
     want_tools = ["project_get", "milestone_status", "milestone_edit", "goal_propose", "project_note", "project_plan", "document_patch"] + (["checklist_status"] if item else [])
 else:
     text = (f"Automated check: set milestone {ms['id']} to {other} with the evidence \"live check\", and append the line \"- live check\" "
-            "to project/plan.md. Nothing else.")
+            f"to {FILE}. Nothing else.")
     want_tools = ["milestone_status"]
 
 s, b = page("ask", {"text": text}, cookie)
@@ -157,13 +159,13 @@ check("the turn ends done", t.get("status") == "done", {k: t.get(k) for k in ("s
 called = [e["data"].get("name") for e in t.get("events", []) if e["type"] == "agent.tool_use"]
 for name in want_tools:
     check(f"the agent called {name}", name in called, called)
-check("the agent edited project/plan.md", "Edit" in called or "Write" in called, called)
+check(f"the agent edited {FILE}", "Edit" in called or "Write" in called, called)
 s, st = signed("GET", "state")
 check("the document's version moved", st["version"] > v0 and t.get("version_after") == st["version"], (v0, st["version"], t.get("version_after")))
 ed = edits(t)
 check("the edits are logged under the turn", len(ed) >= (4 if MODE == "tools" else 1), [e["data"].get("line") for e in ed])
 c = commit_of(t)
-check("the commit was pushed, named for the turn", c is not None and c.get("message", "").startswith(f"agent turn {tid}:") and "project/plan.md" in c.get("files", []), c)
+check("the commit was pushed, named for the turn", c is not None and c.get("message", "").startswith(f"agent turn {tid}:") and FILE in c.get("files", []), c)
 print(f"  ..    turn {tid}: {len(called)} tool calls, {len(ed)} edits, commit {c and c.get('sha', '')[:7]}, cost ${t.get('cost_usd')}")
 
 s, b = page("undo", {"turn": tid}, cookie)
