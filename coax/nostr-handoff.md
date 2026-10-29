@@ -33,6 +33,26 @@ and domain authority integration remain open until their own checks pass. No
 amounts or rewards have been added. Test only affected changes; an unrelated
 remote commit does not justify repeating the compiler/app suites.
 
+## Phone sign-in fast path landed (2026-10-28, claude-signin)
+
+The owner approved a fast path for m9 instead of NIP-46 first: the iOS app
+holds a Nostr key (Keychain, device-only) and approves a one-time QR from
+https://openagents.com/signin with a NIP-98 signed request; the page then
+gets a site session bound to that key. Members link a phone to a private
+project with LINK A PHONE or by opening an invite link on the phone. See
+`docs/phone-sign-in.md`.
+
+- Taken: #bc0b ios-key-custody (claimed by claude-signin). Signing uses
+  bitcoin-core libsecp256k1 compiled into the app for now; swap in the Coax
+  secp256k1/Schnorr when it lands, against the same BIP-340 vectors.
+- Used: #503d coax-qr-encoder (Codex) draws /signin's and LINK A PHONE's QR.
+- Left waiting: the NIP-46 tasks (nip46-signer, nip46-session-lifecycle,
+  nip46-client-page, ios-scan-to-sign-in), server-nip98-session's Coax
+  verifier and server-session-lifecycle, web-sign-in-page and
+  phone-sign-in-e2e as written. The fast path covers their user-visible
+  outcome with the C verifier in oa-api; the tasks stay for the Coax and
+  NIP-46 versions.
+
 ## Where things are
 
 - Design: `coax/nostr.md`. Protocol for projects and tasks:
