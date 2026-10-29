@@ -1,0 +1,196 @@
+// A flock that follows someone: a few birds that ride a slow ring over and
+// just ahead of whoever they follow, each pulled to its place on the ring by a
+// critically damped spring, kept apart from the others, held under a top
+// speed and acceleration, and trailing a ribbon of where it has been.
+// Everglade's bird companion (eg-companion) is the first to use it.
+//
+// It steps at a fixed rate whatever the frame's dt (a phone's frames come
+// unevenly), at most FLOCK_CATCH_UP steps a frame, so a slow frame doesn't
+// fling the birds and a fast one doesn't stall them. Someone who jumps far
+// away at once (a link to another place) has the flock waiting for them
+// there. The ribbon is FLOCK_TRAIL points a bird, one every
+// FLOCK_TRAIL_EVERY seconds, newest first from flock_trail.
+//   coax/bin/coax test verse/flock.coax
+
+#load "space.coax";
+
+FLOCK_BIRDS :: 7;
+FLOCK_TRAIL :: 10;
+FLOCK_TRAIL_EVERY :: 0.08;
+FLOCK_STEP :: 0.008333333;  // 120 steps a second
+FLOCK_CATCH_UP :: 30;       // steps a frame at most (a quarter second)
+FLOCK_PULL :: 6.0;          // the spring's rate: how fast a bird closes on its place
+FLOCK_SPEED :: 16.0;        // metres a second at most (a runner is 7)
+FLOCK_ACCEL :: 40.0;        // and its change, metres a second a second
+FLOCK_APART :: 0.7;         // birds closer than this push apart
+FLOCK_LOST :: 30.0;         // further than this from where it should be, a bird is put back
+FLOCK_RING :: 1.5;          // the ring's radius
+FLOCK_HEIGHT :: 2.9;        // over the feet of whoever they follow
+FLOCK_BEHIND :: -0.6;       // the ring's middle is this far behind them (ahead, less than 0)
+FLOCK_TURN :: 0.9;          // the ring's turn, radians a second
+
+Flock :: struct {
+  started: bool;
+  time: f32; pending: f32; since: f32;
+  pos: [FLOCK_BIRDS] Point; vel: [FLOCK_BIRDS] Point;
+  trail: [FLOCK_BIRDS * FLOCK_TRAIL] Point; trail_n: int; head: int;
+}
+
+// Where bird i belongs at time t, following someone standing at feet facing face.
+flock_place :: (i: int, t: f32, feet: Point, face: f32) -> Point {
+  a := t * f32(FLOCK_TURN) + f32(i) * f32(TAU) / f32(FLOCK_BIRDS);
+  r := f32(FLOCK_RING) * (1 + 0.22 * sin(t * 0.9 + f32(i) * 1.7));
+  y := f32(FLOCK_HEIGHT) + 0.35 * sin(t * 1.3 + f32(i) * 2.3);
+  mid := add(feet, v3(-sin(face) * f32(FLOCK_BEHIND), 0, -cos(face) * f32(FLOCK_BEHIND)));
+  return add(mid, v3(cos(a) * r, y, sin(a) * r));
+}
+
+flock_start :: (f: [] Flock, feet: Point, face: f32) {
+  f[0].started = true; f[0].pending = 0; f[0].since = 0;
+  for i: 0..<FLOCK_BIRDS {
+    f[0].pos[i] = flock_place(i, f[0].time, feet, face); f[0].vel[i] = v3(0, 0, 0);
+    for k: 0..<FLOCK_TRAIL { f[0].trail[i * FLOCK_TRAIL + k] = f[0].pos[i]; }
+  }
+  f[0].trail_n = FLOCK_TRAIL; f[0].head = 0;
+}
+
+cap_length :: (a: Point, most: f32) -> Point {
+  l := length(a);
+  if l > most && l > 0 { return times(a, most / l); }
+  return a;
+}
+
+// One fixed step for every bird.
+flock_one :: (f: [] Flock, feet: Point, face: f32) {
+  dt := f32(FLOCK_STEP);
+  f[0].time += dt;
+  w := f32(FLOCK_PULL);
+  for i: 0..<FLOCK_BIRDS {
+    goal := flock_place(i, f[0].time, feet, face);
+    p := f[0].pos[i]; v := f[0].vel[i];
+    if length(sub(goal, p)) > f32(FLOCK_LOST) { f[0].pos[i] = goal; f[0].vel[i] = v3(0, 0, 0); continue; }
+    a := sub(times(sub(goal, p), w * w), times(v, 2 * w));
+    for j: 0..<FLOCK_BIRDS {
+      if j == i { continue; }
+      d := sub(p, f[0].pos[j]);
+      l := length(d);
+      if l < f32(FLOCK_APART) && l > 0.0001 { a = add(a, times(d, 30 * (f32(FLOCK_APART) - l) / l)); }
+    }
+    a = cap_length(a, f32(FLOCK_ACCEL));
+    v = cap_length(add(v, times(a, dt)), f32(FLOCK_SPEED));
+    f[0].vel[i] = v;
+    f[0].pos[i] = add(p, times(v, dt));
+  }
+  f[0].since += dt;
+  if f[0].since >= f32(FLOCK_TRAIL_EVERY) {
+    f[0].since -= f32(FLOCK_TRAIL_EVERY);
+    f[0].head = (f[0].head + 1) % FLOCK_TRAIL;
+    for i: 0..<FLOCK_BIRDS { f[0].trail[i * FLOCK_TRAIL + f[0].head] = f[0].pos[i]; }
+    if f[0].trail_n < FLOCK_TRAIL { f[0].trail_n += 1; }
+  }
+}
+
+// A frame: as many fixed steps as dt holds (the rest waits for the next frame).
+flock_frame :: (f: [] Flock, feet: Point, face: f32, dt: f32) {
+  if !finite3(feet) || !finite(face) { return; }
+  if !f[0].started { flock_start(f, feet, face); return; }
+  f[0].pending += ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  steps := 0;
+  while f[0].pending >= f32(FLOCK_STEP) && steps < FLOCK_CATCH_UP {
+    flock_one(f, feet, face);
+    f[0].pending -= f32(FLOCK_STEP); steps += 1;
+  }
+  if steps == FLOCK_CATCH_UP { f[0].pending = 0; }
+}
+
+// Bird i's ribbon, k points back (0 the newest kept).
+flock_trail :: (f: [] Flock, i: int, k: int) -> Point {
+  at := ((f[0].head - k) % FLOCK_TRAIL + FLOCK_TRAIL) % FLOCK_TRAIL;
+  return f[0].trail[i * FLOCK_TRAIL + at];
+}
+// How bird i's wings stand: beating faster as it climbs or hurries, a glide when it drifts.
+flock_wing :: (f: [] Flock, i: int) -> f32 {
+  v := f[0].vel[i];
+  effort := clamp01(0.35 + length(v) / 6 + hi(v.y, 0) / 2);
+  return sin(f[0].time * 15 + f32(i) * 1.9) * 0.8 * effort;
+}
+
+// ---- checks
+
+#test "the flock keeps up with a runner, over and behind them, the birds apart" {
+  f: [1] Flock;
+  feet := v3(0, 0, 0);
+  flock_frame(f[..], feet, 0, 0.016);
+  #assert f[0].started;
+  worst := 0.0f32; closest := 100.0f32;
+  for frame: 0..<600 {
+    feet = add(feet, v3(0, 0, 7.0 * 0.016));   // running north
+    flock_frame(f[..], feet, 0, 0.016);
+    if frame < 120 { continue; }
+    for i: 0..<FLOCK_BIRDS {
+      p := f[0].pos[i];
+      worst = hi(worst, flat_length(sub(p, feet)));
+      #assert p.y > feet.y + 1.2 && p.y < feet.y + 4.5;
+      for j: 0..<i { closest = lo(closest, length(sub(p, f[0].pos[j]))); }
+    }
+  }
+  #assert worst < 6.5;
+  #assert closest > 0.35;
+}
+
+#test "on a phone's uneven frames the birds move smoothly: no jump, no jolt" {
+  f: [1] Flock;
+  feet := v3(0, 0, 0);
+  flock_frame(f[..], feet, 0, 0.016);
+  dts := [5] f32.[0.016, 0.033, 0.016, 0.05, 0.011];
+  last: [FLOCK_BIRDS] Point; lastv: [FLOCK_BIRDS] Point;
+  for i: 0..<FLOCK_BIRDS { last[i] = f[0].pos[i]; lastv[i] = f[0].vel[i]; }
+  face := 0.0f32;
+  for frame: 0..<900 {
+    dt := dts[frame % 5];
+    face = face + 0.6 * dt;            // walking round a bend
+    feet = add(feet, v3(sin(face) * 3.5 * dt, 0, cos(face) * 3.5 * dt));
+    pending := f[0].pending + dt;
+    steps := cast(int) (pending / f32(FLOCK_STEP));
+    flock_frame(f[..], feet, face, dt);
+    for i: 0..<FLOCK_BIRDS {
+      moved := length(sub(f[0].pos[i], last[i]));
+      #assert moved <= f32(FLOCK_SPEED) * f32(steps + 1) * f32(FLOCK_STEP) + 0.001;
+      dv := length(sub(f[0].vel[i], lastv[i]));
+      #assert dv <= f32(FLOCK_ACCEL) * f32(steps + 1) * f32(FLOCK_STEP) + 0.001;
+      last[i] = f[0].pos[i]; lastv[i] = f[0].vel[i];
+    }
+  }
+}
+
+#test "a long frame is caught up in bounded steps; far away at once, the flock waits there" {
+  f: [1] Flock;
+  flock_frame(f[..], v3(0, 0, 0), 0, 0.016);
+  t0 := f[0].time;
+  flock_frame(f[..], v3(0, 0, 0), 0, 5.0);
+  #assert f[0].time - t0 <= f32(FLOCK_CATCH_UP) * f32(FLOCK_STEP) + 0.0001 && f[0].pending == 0;
+  flock_frame(f[..], v3(100, 0, 100), 0, 0.02);
+  for i: 0..<FLOCK_BIRDS { #assert flat_length(sub(f[0].pos[i], v3(100, 0, 100))) < 5; }
+  // nothing that isn't a number moves it
+  was := f[0].pos[0];
+  zero := 0.0f32;
+  flock_frame(f[..], v3(zero / zero, 0, 0), 0, 0.02);
+  #assert same(f[0].pos[0], was, 0);
+}
+
+#test "each bird trails a ribbon of where it has been, newest first" {
+  f: [1] Flock;
+  feet := v3(0, 0, 0);
+  flock_frame(f[..], feet, 0, 0.016);
+  for frame: 0..<120 { feet = add(feet, v3(0, 0, 0.1)); flock_frame(f[..], feet, 0, 0.016); }
+  #assert f[0].trail_n == FLOCK_TRAIL;
+  for i: 0..<FLOCK_BIRDS {
+    // flying north, each older point lies further south, a step's flight apart
+    for k: 1..<FLOCK_TRAIL {
+      a := flock_trail(f[..], i, k - 1); b := flock_trail(f[..], i, k);
+      #assert length(sub(a, b)) < f32(FLOCK_SPEED) * f32(FLOCK_TRAIL_EVERY) + 0.01;
+    }
+    #assert flock_trail(f[..], i, 0).z > flock_trail(f[..], i, FLOCK_TRAIL - 1).z;
+    #assert abs(flock_wing(f[..], i)) <= 0.8;
+  }
+}

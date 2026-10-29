@@ -1,0 +1,300 @@
+// Everglade's quests (eg-quests): data an agent can write, and the rules
+// that move a player through them. A quest is a title, what the board says
+// of it, and up to EG_QUEST_STEPS steps, each one of three kinds:
+//   GO      reach a place of the plan (plan.coax EG_PLACE, by index), within
+//           EG_QUEST_NEAR metres of it
+//   TALK    talk to someone (plan.coax EG_SPOT, by index); what they say
+//           first is the quest's line for them, not their greeting
+//   RETURN  hand it in at the quest board on the commons (or to the crier)
+// Every quest ends with RETURN. What a quest earns is its reward (0 none,
+// EG_REWARD_FLOCK the bird flock that follows you, eg-companion).
+//
+// A player's progress is a stage per quest: 0 not taken, 1 + k taken with
+// k steps done, EG_QUEST_DONE handed in. It is saved in the browser for its
+// player (the page's save slot, everglade) as text eg_quest_save writes and
+// eg_quest_load reads, tied to the player's public id so another player on
+// the same browser starts afresh.
+//   coax/bin/coax test --library verse/everglade/quests.coax --steps 400000000
+
+#load "people.coax";
+
+EG_QUESTS :: 3;
+EG_QUEST_STEPS :: 3;
+EG_QUEST_NEAR :: 12.0;    // metres from a GO step's place that count as there
+EG_QUEST_DONE :: 9;       // a stage: handed in
+EG_STEP_NONE :: 0; EG_STEP_GO :: 1; EG_STEP_TALK :: 2; EG_STEP_RETURN :: 3;
+EG_REWARD_NONE :: 0; EG_REWARD_FLOCK :: 1;
+EG_CRIER :: 3;            // the town crier stands at the board and takes quests in too
+
+EG_QUEST_TITLE :: [3] string.["THE WAYSTONE'S WORD", "OLDER THAN THE CITY", "ACROSS THE RIVER"];
+EG_QUEST_BRIEF :: [3] string.[
+  "Moss the woodwarden hasn't sent word from the deep wood in a week. Go out by the East Gate, find the waystone and see that Moss is well.",
+  "Corin the ruin scholar thinks the stones up the North Trail are older than Everglade. Go to the ruins and hear what Corin has found.",
+  "Old Tam keeps the ferry on the river's far bank. Go out by the West Gate, cross the bridge and bring back Tam's news. A flock of birds is said to follow whoever does."
+];
+// Each quest's steps: a kind and what it names (a place, a spot, nothing).
+EG_QUEST_KIND :: [9] int.[
+  EG_STEP_GO, EG_STEP_TALK, EG_STEP_RETURN,
+  EG_STEP_GO, EG_STEP_TALK, EG_STEP_RETURN,
+  EG_STEP_GO, EG_STEP_TALK, EG_STEP_RETURN
+];
+EG_QUEST_ARG :: [9] int.[
+  7, 19, 0,
+  8, 21, 0,
+  10, 20, 0
+];
+// What each step asks of you, on the HUD while it's the one you're on.
+EG_QUEST_TODO :: [9] string.[
+  "GO OUT BY THE EAST GATE TO THE DEEP WOOD", "TALK TO MOSS BY THE WAYSTONE", "HAND IT IN AT THE QUEST BOARD",
+  "GO UP THE NORTH TRAIL TO THE RUINS", "TALK TO CORIN AMONG THE RUINS", "HAND IT IN AT THE QUEST BOARD",
+  "GO OUT BY THE WEST GATE TO THE RIVER", "CROSS THE BRIDGE AND TALK TO OLD TAM", "HAND IT IN AT THE QUEST BOARD"
+];
+// What the one a TALK step sends you to says when you come for the quest.
+EG_QUEST_ARRIVE :: [3] string.[
+  "Word from the city? I'm well. Tell Oswin the waystone stands, though something's been at the bark along the trail.",
+  "You came! Look, the marks on these pillars are a map. These stones were old before the first log of the palisade was cut.",
+  "Well met. See the birds over the water? They follow folk who come all this way. Go on back to the board; they'll find you."
+];
+// And the board when you hand it in.
+EG_QUEST_THANKS :: [3] string.[
+  "Moss is well and the waystone stands. Oswin will cry it at noon.",
+  "The ruins are older than the city. Corin's map is pinned beside this notice now.",
+  "Tam's news is in, and the birds came back with you. They'll follow you wherever you walk."
+];
+EG_QUEST_REWARD :: [3] int.[EG_REWARD_NONE, EG_REWARD_NONE, EG_REWARD_FLOCK];
+// What the one a TALK step sends you to knows of it, for the character chat.
+EG_QUEST_NOTE :: [3] string.[
+  "The traveller you are talking to came out from the city's quest board to see that you are well; you have told them you are, that the waystone stands, and that something has been at the bark along the trail.",
+  "The traveller you are talking to came up from the city's quest board to hear what you found; you have shown them the marks on the pillars, which you think are a map, and told them the stones are older than the city.",
+  "The traveller you are talking to crossed the bridge from the city's quest board for your news; you have told them the river is calm and that the birds over the water follow folk who come this far, and will follow them home."
+];
+
+eg_quest_steps :: (q: int) -> int {
+  n := 0;
+  for k: 0..<EG_QUEST_STEPS { if EG_QUEST_KIND[q * EG_QUEST_STEPS + k] != EG_STEP_NONE { n += 1; } }
+  return n;
+}
+// The step a stage is on (0 based), or -1 when it isn't taken or is done.
+eg_quest_at :: (q: int, stage: int) -> int {
+  if q < 0 || q >= EG_QUESTS || stage <= 0 || stage == EG_QUEST_DONE { return -1; }
+  k := stage - 1;
+  if k >= eg_quest_steps(q) { return -1; }
+  return k;
+}
+eg_quest_kind_at :: (q: int, stage: int) -> int {
+  k := eg_quest_at(q, stage);
+  return ifx k < 0 then EG_STEP_NONE else EG_QUEST_KIND[q * EG_QUEST_STEPS + k];
+}
+eg_quest_todo :: (q: int, stage: int) -> string {
+  k := eg_quest_at(q, stage);
+  return ifx k < 0 then "" else EG_QUEST_TODO[q * EG_QUEST_STEPS + k];
+}
+eg_quest_ready :: (q: int, stage: int) -> bool { return eg_quest_kind_at(q, stage) == EG_STEP_RETURN; }
+
+// Where the step a stage is on points: its place, its person, or the board.
+QuestMark :: struct { ok: bool; x: f32; z: f32; }
+eg_quest_mark :: (q: int, stage: int) -> QuestMark {
+  m: QuestMark;
+  kind := eg_quest_kind_at(q, stage);
+  if kind == EG_STEP_NONE { return m; }
+  a := EG_QUEST_ARG[q * EG_QUEST_STEPS + eg_quest_at(q, stage)];
+  m.ok = true;
+  if kind == EG_STEP_GO { m.x = EG_PLACE[a * 2]; m.z = EG_PLACE[a * 2 + 1]; }
+  if kind == EG_STEP_TALK { m.x = EG_SPOT[a * 3]; m.z = EG_SPOT[a * 3 + 1]; }
+  if kind == EG_STEP_RETURN {
+    b := EG_BOARD * EG_BOX;
+    m.x = (EG_PROP[b] + EG_PROP[b + 2]) / 2; m.z = (EG_PROP[b + 1] + EG_PROP[b + 3]) / 2;
+  }
+  return m;
+}
+
+// Taking a quest from the board: only one not yet taken.
+eg_quest_take :: (stages: [] int, q: int) -> bool {
+  if q < 0 || q >= EG_QUESTS || q >= stages.count || stages[q] != 0 { return false; }
+  stages[q] = 1;
+  return true;
+}
+// Handing in at the board (or to the crier): a quest whose last step is the one it's on.
+eg_quest_hand_in :: (stages: [] int, q: int) -> bool {
+  if q < 0 || q >= EG_QUESTS || q >= stages.count || !eg_quest_ready(q, stages[q]) { return false; }
+  stages[q] = EG_QUEST_DONE;
+  return true;
+}
+// Standing at (x, z): every quest on a GO step whose place is near moves on.
+// How many moved.
+eg_quest_reach :: (stages: [] int, x: f32, z: f32) -> int {
+  moved := 0;
+  for q: 0..<EG_QUESTS {
+    if q >= stages.count || eg_quest_kind_at(q, stages[q]) != EG_STEP_GO { continue; }
+    a := EG_QUEST_ARG[q * EG_QUEST_STEPS + eg_quest_at(q, stages[q])];
+    dx := EG_PLACE[a * 2] - x; dz := EG_PLACE[a * 2 + 1] - z;
+    if dx * dx + dz * dz <= f32(EG_QUEST_NEAR * EG_QUEST_NEAR) { stages[q] += 1; moved += 1; }
+  }
+  return moved;
+}
+// Talking to spot i: the first quest on a TALK step for them moves on; which, or -1.
+eg_quest_talk :: (stages: [] int, i: int) -> int {
+  for q: 0..<EG_QUESTS {
+    if q >= stages.count || eg_quest_kind_at(q, stages[q]) != EG_STEP_TALK { continue; }
+    if EG_QUEST_ARG[q * EG_QUEST_STEPS + eg_quest_at(q, stages[q])] != i { continue; }
+    stages[q] += 1;
+    return q;
+  }
+  return -1;
+}
+// What a player has earned: the bird flock once its quest is handed in.
+eg_quest_has_flock :: (stages: [] int) -> bool {
+  for q: 0..<EG_QUESTS {
+    if q < stages.count && EG_QUEST_REWARD[q] == EG_REWARD_FLOCK && stages[q] == EG_QUEST_DONE { return true; }
+  }
+  return false;
+}
+// What the board's row for a quest says of it.
+eg_quest_state :: (q: int, stage: int) -> string {
+  if stage == EG_QUEST_DONE { return "DONE"; }
+  if stage <= 0 { return "NEW"; }
+  if eg_quest_ready(q, stage) { return "HAND IN"; }
+  return "UNDER WAY";
+}
+
+// ---- saving: "eg-quests 1", "player=ID", "q=S,S,S", a line each
+
+EG_QUEST_SAVE :: "eg-quests 1\n";
+eg_quest_save :: (out: [] u8, stages: [] int, player: string) -> int {
+  n := raw_put(out, 0, EG_QUEST_SAVE);
+  n = raw_put(out, n, "player=");
+  n = raw_put(out, n, player);
+  n = raw_put(out, n, "\nq=");
+  for q: 0..<EG_QUESTS {
+    if q > 0 { n = raw_put(out, n, ","); }
+    v := ifx q < stages.count then stages[q] else 0;
+    d := [1] u8.[cast(u8) ('0' + eg_clamp_i(v, 0, 9))];
+    n = raw_put(out, n, cast(string) d[..]);
+  }
+  n = raw_put(out, n, "\n");
+  if n >= out.count { return 0; }
+  return n;
+}
+eg_clamp_i :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
+// A stage that can be: 0, a step that exists, or done.
+eg_quest_valid :: (q: int, v: int) -> bool { return v == 0 || v == EG_QUEST_DONE || (v >= 1 && v <= eg_quest_steps(q)); }
+
+// Reads a save into stages when it is this player's (or either has no id
+// yet: a guest is given one when it first talks). True when it took.
+eg_quest_load :: (text: string, stages: [] int, player: string) -> bool {
+  if text.count < EG_QUEST_SAVE.count || text[0..<EG_QUEST_SAVE.count] != EG_QUEST_SAVE { return false; }
+  got: [EG_QUESTS] int;
+  seen := false; who := "";
+  i := EG_QUEST_SAVE.count;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    if line.count >= 7 && line[0..<7] == "player=" { who = line[7..<line.count]; continue; }
+    if line.count < 2 || line[0..<2] != "q=" { continue; }
+    q := 0; k := 2;
+    while k < line.count && q < EG_QUESTS {
+      c := line[k];
+      if c < '0' || c > '9' { return false; }
+      v := cast(int) (c - '0');
+      if !eg_quest_valid(q, v) { return false; }
+      got[q] = v; q += 1; k += 1;
+      if k < line.count && line[k] != ',' { return false; }
+      k += 1;
+    }
+    if q != EG_QUESTS { return false; }
+    seen = true;
+  }
+  if !seen { return false; }
+  if who.count > 0 && player.count > 0 && who != player { return false; }
+  for q: 0..<EG_QUESTS { if q < stages.count { stages[q] = got[q]; } }
+  return true;
+}
+
+// ---- checks
+
+#test "every quest is three steps an agent can follow: a place, someone there, the board" {
+  for q: 0..<EG_QUESTS {
+    #assert EG_QUEST_TITLE[q].count > 0 && EG_QUEST_BRIEF[q].count > 0;
+    #assert EG_QUEST_ARRIVE[q].count > 0 && EG_QUEST_THANKS[q].count > 0 && EG_QUEST_NOTE[q].count > 0;
+    n := eg_quest_steps(q);
+    #assert n >= 1 && EG_QUEST_KIND[q * EG_QUEST_STEPS + n - 1] == EG_STEP_RETURN;
+    for k: 0..<n {
+      i := q * EG_QUEST_STEPS + k;
+      kind := EG_QUEST_KIND[i]; a := EG_QUEST_ARG[i];
+      #assert EG_QUEST_TODO[i].count > 0;
+      if kind == EG_STEP_GO { #assert a >= 0 && a < EG_PLACES; }
+      if kind == EG_STEP_TALK { #assert a >= 0 && a < EG_SPOTS && !eg_is_cat(a); }
+      if kind == EG_STEP_RETURN { #assert k == n - 1; }
+      // a talk step's person stands near the place the step before sent you to
+      if kind == EG_STEP_TALK && k > 0 && EG_QUEST_KIND[i - 1] == EG_STEP_GO {
+        p := EG_QUEST_ARG[i - 1];
+        dx := EG_SPOT[a * 3] - EG_PLACE[p * 2]; dz := EG_SPOT[a * 3 + 1] - EG_PLACE[p * 2 + 1];
+        #assert dx * dx + dz * dz <= f32(EG_QUEST_NEAR * EG_QUEST_NEAR);
+      }
+    }
+    for r: 0..<q { #assert EG_QUEST_TITLE[r] != EG_QUEST_TITLE[q]; }
+  }
+  // the three go out to the deep wood, the ruins and the river crossing; one earns the flock
+  #assert EG_PLACE_ID[EG_QUEST_ARG[0]] == "deep-wood" && EG_PLACE_ID[EG_QUEST_ARG[3]] == "ruins" && EG_PLACE_ID[EG_QUEST_ARG[6]] == "river";
+  flocks := 0;
+  for q: 0..<EG_QUESTS { if EG_QUEST_REWARD[q] == EG_REWARD_FLOCK { flocks += 1; } }
+  #assert flocks == 1;
+  #assert EG_SPOT_NAME[EG_CRIER] == "TOWN CRIER";
+}
+
+#test "a quest is taken, followed and handed in, and only in that order" {
+  st := [3] int.[0, 0, 0];
+  #assert !eg_quest_hand_in(st[..], 0) && eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], -92, 25) == 0;
+  #assert eg_quest_state(0, st[0]) == "NEW";
+  #assert eg_quest_take(st[..], 0) && !eg_quest_take(st[..], 0) && st[0] == 1;
+  #assert eg_quest_todo(0, st[0]) == "GO OUT BY THE EAST GATE TO THE DEEP WOOD" && eg_quest_state(0, st[0]) == "UNDER WAY";
+  // talking to Moss before you're there counts for nothing; far away nothing moves
+  #assert eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], 0, 0) == 0 && st[0] == 1;
+  m := eg_quest_mark(0, st[0]);
+  #assert m.ok && m.x == -92 && m.z == 25;
+  #assert eg_quest_reach(st[..], -88, 18) == 1 && st[0] == 2 && eg_quest_kind_at(0, st[0]) == EG_STEP_TALK;
+  #assert !eg_quest_hand_in(st[..], 0);
+  #assert eg_quest_talk(st[..], 21) == -1 && eg_quest_talk(st[..], 19) == 0 && st[0] == 3;
+  #assert eg_quest_ready(0, st[0]) && eg_quest_state(0, st[0]) == "HAND IN";
+  m = eg_quest_mark(0, st[0]);
+  #assert m.ok && m.x > 6.19 && m.x < 6.21 && m.z == -5;
+  #assert eg_quest_hand_in(st[..], 0) && st[0] == EG_QUEST_DONE && !eg_quest_hand_in(st[..], 0);
+  #assert eg_quest_state(0, st[0]) == "DONE" && eg_quest_todo(0, st[0]) == "" && !eg_quest_mark(0, st[0]).ok;
+  #assert !eg_quest_has_flock(st[..]);
+  // the river: the flock is earned when it's handed in, not before
+  #assert eg_quest_take(st[..], 2) && eg_quest_reach(st[..], 93, -12) == 1 && eg_quest_talk(st[..], 20) == 2;
+  #assert !eg_quest_has_flock(st[..]) && eg_quest_hand_in(st[..], 2) && eg_quest_has_flock(st[..]);
+  #assert !eg_quest_take(st[..], -1) && !eg_quest_take(st[..], 3);
+}
+
+#test "two quests at once move on their own" {
+  st := [3] int.[0, 0, 0];
+  #assert eg_quest_take(st[..], 0) && eg_quest_take(st[..], 1);
+  #assert eg_quest_reach(st[..], 22, 90) == 1 && st[0] == 1 && st[1] == 2;
+  #assert eg_quest_talk(st[..], 21) == 1 && st[1] == 3 && st[0] == 1;
+}
+
+#test "a save is read back for its player, and only for them" {
+  st := [3] int.[2, EG_QUEST_DONE, 0];
+  out: [128] u8;
+  n := eg_quest_save(out[..], st[..], "p-7");
+  text := cast(string) out[0..<n];
+  #assert text == "eg-quests 1\nplayer=p-7\nq=2,9,0\n";
+  back := [3] int.[0, 0, 0];
+  #assert eg_quest_load(text, back[..], "p-7") && back[0] == 2 && back[1] == EG_QUEST_DONE && back[2] == 0;
+  other := [3] int.[0, 0, 0];
+  #assert !eg_quest_load(text, other[..], "p-8") && other[0] == 0;
+  // a guest's save before it had an id, and a page before its facts arrive
+  guest := [3] int.[0, 0, 0];
+  #assert eg_quest_load("eg-quests 1\nplayer=\nq=1,0,0\n", guest[..], "p-9") && guest[0] == 1;
+  #assert eg_quest_load(text, guest[..], "") && guest[1] == EG_QUEST_DONE;
+  // anything else is refused whole
+  bad := [3] int.[0, 0, 0];
+  #assert !eg_quest_load("", bad[..], "p-7") && !eg_quest_load("eg-quests 1\nq=4,0,0\n", bad[..], "p-7");
+  #assert !eg_quest_load("eg-quests 1\nq=1,0\n", bad[..], "p-7") && !eg_quest_load("eg-quests 1\nq=1;0;0\n", bad[..], "p-7");
+  #assert !eg_quest_load("eg-quests 2\nq=1,0,0\n", bad[..], "p-7") && !eg_quest_load("eg-quests 1\nplayer=p-7\n", bad[..], "p-7");
+  #assert bad[0] == 0 && bad[1] == 0 && bad[2] == 0;
+  small: [8] u8;
+  #assert eg_quest_save(small[..], st[..], "p-7") == 0;
+}

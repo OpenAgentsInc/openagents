@@ -172,6 +172,52 @@ talks. They stand at their spots all day for now; schedules are for later.
 | Ferryman | On the river's far bank, by the bridge |
 | Ruin scholar | Among the ruins |
 
+## The quests (eg-quests)
+
+The quests are data an agent can write, in `verse/everglade/quests.coax`: a
+title, what the board says of it, and up to three steps, each one of three
+kinds: GO (reach one of the plan's places, within 12 m), TALK (talk to one of
+the plan's people) and RETURN (hand it in at the quest board, or to Oswin the
+crier). Every quest ends with RETURN. Each also names what the person it
+sends you to says when you come (their first line instead of their
+greeting), what the character chat is told of it (so Moss knows why you
+came), what the board says when you hand it in, and its reward. The checks
+hold every step to a real place or person, a talk step's person near the
+place before it, and exactly one quest earning the flock.
+
+| Quest | Steps | Reward |
+| --- | --- | --- |
+| The Waystone's Word | out by the East Gate to the deep wood; talk to Moss by the waystone; hand it in | |
+| Older Than the City | up the North Trail to the ruins; talk to Corin; hand it in | |
+| Across the River | out by the West Gate to the river; cross the bridge and talk to Old Tam; hand it in | the bird flock |
+
+At the board on the commons press E (on a phone, tap READ THE QUEST BOARD):
+a row a quest with NEW, UNDER WAY, HAND IN or DONE, what the picked one asks,
+and TAKE IT or HAND IT IN. 1 2 3 or W and S pick, Enter does it, Esc closes.
+`#quest-board` starts you there. While a quest is under way its name and
+the step you are on show under the title with how far it is, and a QUEST
+mark with the distance stands over where it sends you. Several can be under
+way at once; the HUD follows the one you last moved on.
+
+Progress is a stage per quest, kept in this browser for its playtest player
+(the host's save slot `everglade`, IndexedDB else localStorage) as
+`eg-quests 1`, `player=ID` and `q=S,S,S`. A save made for another player
+is not read: their quests start new. It is not on the server, so another
+browser or device starts afresh.
+
+## The bird flock (eg-companion)
+
+Hand in Across the River and a flock of seven birds follows you, each
+trailing a ribbon of its own colour that narrows to nothing. `verse/flock.coax`
+is the engine piece: the birds ride a slow ring over and just ahead of you,
+each pulled to its place by a critically damped spring, kept apart, under a
+top speed (16 m/s) and acceleration (40 m/s²). They step at a fixed 120 Hz
+whatever the frame rate, at most a quarter second a frame, so a phone's uneven
+frames neither fling nor stall them; the checks run a phone's uneven frames
+round a bend and hold every step under those limits, and a runner never more
+than 6.5 m from the flock. Each bird keeps its last ten places (one every
+0.08 s) for its ribbon. A link to another place has the flock waiting there.
+
 ## What players can and can't do
 
 - **Can:** walk, run and jump anywhere the ground is open; go into the
@@ -285,6 +331,4 @@ Each building is put together from its footprint in `plan.coax`, in
 
 ## What's next
 
-eg-people,
-eg-quests, eg-companion and eg-launch, in that order
-([realms-port.md](realms-port.md)).
+eg-launch ([realms-port.md](realms-port.md)).

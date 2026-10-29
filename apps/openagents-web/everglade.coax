@@ -29,19 +29,28 @@
 // (the server keeps what you told each of them, per player). The face sends
 // the question this file writes (everglade_ask) and hands back the answer.
 //
+// The quest board on the commons (eg-quests, verse/everglade/quests.coax):
+// E (or the button) at it shows the three quests, takes one and hands it
+// in; the step you are on shows under the title, with a mark over where it
+// sends you. The stages are kept in this browser for its player (action 4,
+// the save slot everglade; message 4 gives them back). Handing in the river
+// quest brings the bird flock (eg-companion, verse/flock.coax), drawn here.
+//
 // The player walks on a flat floor and is drawn at the ground's height
 // where it stands, as in the Garden; the ground is verse/terrain.coax's.
 // everglade.wgsl draws a ground of cells (store 0, its heights), every
 // shape from the vertex index alone (the pack's identity indices) and the
 // kit's meshes from the pack's vertices and texture layers (store 1 holds
 // every object). everglade-face.c binds it for the browser.
-//   coax/bin/coax test apps/openagents-web/everglade.coax --steps 200000000
+//   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000
 
 #load "font.coax";
 #load "analytics.coax";
 #load "../../verse/camera.coax";
 #load "../../verse/everglade/plan.coax";
 #load "../../verse/everglade/people.coax";
+#load "../../verse/everglade/quests.coax";
+#load "../../verse/flock.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;
@@ -117,6 +126,11 @@ LINE_BYTES :: 300;
 TYPED :: 200;
 ASK_BYTES :: 8192;
 ANSWER_WAIT :: 30.0;      // seconds before an unanswered question is given up
+MSG_KEPT :: 4;            // the host's kept text for this save slot, once at load
+ACT_KEEP :: 4;            // host.js: keep the outbox in this browser (the save slot, everglade)
+BOARD_NEAR :: 3.0;        // metres from the quest board's middle that read it
+SAVE_BYTES :: 160;
+NEWS_TIME :: 4.0;         // seconds a quest's news shows over the hint
 
 WALLS :: 128;          // the player's walls (player.coax WALL numbers each)
 BOXES :: 128;          // the camera's boxes (camera.coax BOX numbers each)
@@ -189,6 +203,19 @@ Everglade :: struct {
   field: [4] f32;
   prompt: [64] u8; prompt_n: int; head: [64] u8; head_n: int;
   outbox: [OUTBOX] u8; out_n: int; action: int;
+  // the quests (eg-quests, verse/everglade/quests.coax): a stage each, which one the HUD
+  // follows, the board and what's saved
+  stages: [EG_QUESTS] int; focus: int;
+  near_board: bool; board: bool; pick: int; thanks: int;
+  news_text: [96] u8; news_n: int; mark_text: [32] u8; mark_n: int;
+  rows: [EG_QUESTS] Box; act_button: Box; close_button: Box; board_finger: int;
+  news: int; news_time: f32;               // the quest whose step just moved, and how long it shows
+  talk_quest: int;                         // the quest the one you talk to came into, or -1
+  player: [64] u8; player_n: int;          // the page facts' player= (its public id)
+  kept: [SAVE_BYTES] u8; kept_n: int;      // the save this browser gave back, read again once the player is known
+  dirty: bool;                             // the stages changed: keep them
+  flock: bool;                             // the bird flock is yours (the river quest handed in)
+  birds: [1] Flock;                        // and where its birds are (verse/flock.coax)
 }
 
 // ---- small things
@@ -247,6 +274,7 @@ everglade_start :: (s: [] Everglade) {
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
   s[0].map_finger = -1;
   s[0].near = -1; s[0].talk = -1; s[0].talk_finger = -1;
+  s[0].focus = -1; s[0].pick = 0; s[0].thanks = -1; s[0].board_finger = -1; s[0].news = -1; s[0].talk_quest = -1;
   build_scenery(s);
   plant_forest(s);
   at := KIT_AT;
@@ -390,7 +418,14 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
 }
 everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
-  if kind == MSG_FACTS { take_visit(s, text); return; }
+  if kind == MSG_FACTS { take_visit(s, text); take_player(s, text); return; }
+  if kind == MSG_KEPT {
+    n := 0;
+    for i: 0..<text.count { if n < SAVE_BYTES { s[0].kept[n] = text[i]; n += 1; } }
+    s[0].kept_n = ifx text.count <= SAVE_BYTES then n else 0;
+    read_kept(s);
+    return;
+  }
   if kind != MSG_PACK { return; }
   loaded := whole_at(text, 0);
   total := whole_at(text, word_end(text, 0));
@@ -408,6 +443,15 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
+  // the quest board: just north of it, facing it, near enough to read it
+  if hash == "quest-board" {
+    bm := board_middle();
+    s[0].spawn = v3(bm.x, 0, bm.z + 1.5); s[0].spawn_face = f32(PI);
+    s[0].feet = v3(bm.x, ground_at(s, bm.x, bm.z + 1.5), bm.z + 1.5);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return;
+  }
   for b: 0..<EG_BUILDINGS {
     if !EG_INTERIOR[b] || hash != EG_ROOM_ID[b] { continue; }
     r := room_of(s, b);
@@ -486,6 +530,8 @@ hold_bit :: (key: int) -> int {
 everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
+  if s[0].board { return board_key(s, key, mods); }
+  if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
@@ -504,7 +550,7 @@ everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-everglade_blur :: (s: [] Everglade) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; }
+everglade_blur :: (s: [] Everglade) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; s[0].board_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -512,6 +558,7 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 // finger is the face's (the sticks), so this says it isn't used.
 everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
+  if s[0].board { return board_pointer(s, x, y, phase, id); }
   if talk_pointer(s, x, y, phase, id) { return true; }
   if kind != 0 {
     s[0].touch = true;
@@ -578,6 +625,94 @@ take_visit :: (s: [] Everglade, text: string) {
   }
 }
 
+// The page facts' player=: the browser's playtest player, whose quests these are.
+take_player :: (s: [] Everglade, text: string) {
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    if line.count < 7 || line[0..<7] != "player=" { continue; }
+    n := 0;
+    for k: 7..<line.count { if n < 64 { s[0].player[n] = line[k]; n += 1; } }
+    s[0].player_n = n;
+    read_kept(s);
+  }
+}
+player_id :: (s: [] Everglade) -> string { return cast(string) s[0].player[0..<s[0].player_n]; }
+
+// The kept save, read for this player: someone else's leaves every quest new.
+read_kept :: (s: [] Everglade) {
+  if s[0].kept_n == 0 { return; }
+  if !eg_quest_load(cast(string) s[0].kept[0..<s[0].kept_n], s[0].stages[..], player_id(s)) {
+    for q: 0..<EG_QUESTS { s[0].stages[q] = 0; }
+  }
+  s[0].flock = eg_quest_has_flock(s[0].stages[..]);
+}
+
+// The stages changed: the next frame keeps them (action 4), unless the outbox is taken.
+keep_quests :: (s: [] Everglade) {
+  if !s[0].dirty || s[0].action != 0 { return; }
+  n := eg_quest_save(s[0].outbox[..], s[0].stages[..], player_id(s));
+  if n == 0 { return; }
+  s[0].out_n = n; s[0].action = ACT_KEEP; s[0].dirty = false;
+  // what's kept is what a facts message reads again
+  for i: 0..<n { if i < SAVE_BYTES { s[0].kept[i] = s[0].outbox[i]; } }
+  s[0].kept_n = ifx n <= SAVE_BYTES then n else 0;
+}
+
+// The quest the HUD follows: the one you last moved on, else the first under way.
+follow :: (s: [] Everglade) -> int {
+  f := s[0].focus;
+  if f >= 0 && f < EG_QUESTS && eg_quest_at(f, s[0].stages[f]) >= 0 { return f; }
+  for q: 0..<EG_QUESTS { if eg_quest_at(q, s[0].stages[q]) >= 0 { return q; } }
+  return -1;
+}
+quest_moved :: (s: [] Everglade, q: int) {
+  s[0].dirty = true; s[0].focus = q; s[0].news = q; s[0].news_time = f32(NEWS_TIME);
+  s[0].flock = eg_quest_has_flock(s[0].stages[..]);
+}
+
+// The board: open it on the first quest that wants something of you.
+open_board :: (s: [] Everglade) {
+  s[0].board = true; s[0].held = 0; s[0].thanks = -1; s[0].pick = 0;
+  for q: 0..<EG_QUESTS { if eg_quest_ready(q, s[0].stages[q]) { s[0].pick = q; return; } }
+  for q: 0..<EG_QUESTS { if s[0].stages[q] == 0 { s[0].pick = q; return; } }
+}
+close_board :: (s: [] Everglade) { s[0].board = false; s[0].board_finger = -1; }
+// The picked quest's one thing to do on the board: take it, or hand it in.
+board_word :: (s: [] Everglade) -> string {
+  q := s[0].pick;
+  if s[0].stages[q] == 0 { return "TAKE IT"; }
+  if eg_quest_ready(q, s[0].stages[q]) { return "HAND IT IN"; }
+  return "";
+}
+board_act :: (s: [] Everglade) {
+  q := s[0].pick;
+  if eg_quest_take(s[0].stages[..], q) { quest_moved(s, q); s[0].thanks = -1; return; }
+  if eg_quest_hand_in(s[0].stages[..], q) { quest_moved(s, q); s[0].thanks = q; }
+}
+board_key :: (s: [] Everglade, key: int, mods: int) -> bool {
+  if key == KEY_ESCAPE || key == 'q' || key == 'Q' { close_board(s); return true; }
+  if key >= '1' && key < '1' + EG_QUESTS { s[0].pick = key - '1'; s[0].thanks = -1; return true; }
+  if key == KEY_UP || key == 'w' || key == 'W' { s[0].pick = (s[0].pick + EG_QUESTS - 1) % EG_QUESTS; s[0].thanks = -1; return true; }
+  if key == KEY_DOWN || key == 's' || key == 'S' { s[0].pick = (s[0].pick + 1) % EG_QUESTS; s[0].thanks = -1; return true; }
+  if key == KEY_ENTER || key == ' ' || key == 'e' || key == 'E' { board_act(s); return true; }
+  return (mods & 10) == 0 && key != KEY_SHIFT;
+}
+// A row picks its quest; the button does its thing; CLOSE closes. Pressed and lifted on them.
+board_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 { s[0].board_finger = id; return true; }
+  if id != s[0].board_finger { return true; }
+  if phase == 2 {
+    if in_box(s[0].close_button, x, y) { close_board(s); }
+    else if in_box(s[0].act_button, x, y) { board_act(s); }
+    else { for q: 0..<EG_QUESTS { if in_box(s[0].rows[q], x, y) { s[0].pick = q; s[0].thanks = -1; } } }
+  }
+  if phase >= 2 { s[0].board_finger = -1; }
+  return true;
+}
+
 // The nearest person within TALK_NEAR of you, or -1.
 nearest :: (s: [] Everglade, you: Point) -> int {
   best := -1; most := f32(TALK_NEAR);
@@ -608,17 +743,36 @@ typed_text :: (s: [] Everglade) -> string { return cast(string) s[0].typed[0..<s
 talk_to :: (s: [] Everglade, i: int) {
   if i < 0 || i >= EG_SPOTS { return; }
   s[0].talk = i; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
-  s[0].held = 0;
+  s[0].held = 0; s[0].talk_quest = -1;
+  q := eg_quest_talk(s[0].stages[..], i);
+  if q >= 0 { quest_moved(s, q); s[0].talk_quest = q; add_line(s, true, EG_QUEST_ARRIVE[q]); return; }
+  // the crier takes in what's ready to hand in, as the board does
+  if i == EG_CRIER {
+    for r: 0..<EG_QUESTS {
+      if !eg_quest_hand_in(s[0].stages[..], r) { continue; }
+      quest_moved(s, r); s[0].talk_quest = r;
+      add_line(s, true, EG_QUEST_THANKS[r]);
+      return;
+    }
+  }
   add_line(s, true, EG_GREET[i]);
 }
 end_talk :: (s: [] Everglade) { s[0].talk = -1; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0; }
+
+// What the one you talk to knows of your quest with them, for the character chat.
+quest_note :: (s: [] Everglade) -> string {
+  q := s[0].talk_quest;
+  if q < 0 || q >= EG_QUESTS { return ""; }
+  return EG_QUEST_NOTE[q];
+}
 
 // What you typed goes to the face as a question, with the conversation so far.
 send_typed :: (s: [] Everglade) {
   if s[0].talk < 0 || s[0].waiting || s[0].typed_n == 0 { return; }
   lines: [TALK_LINES] EgLine;
   for k: 0..<s[0].line_n { lines[k] = EgLine.{npc = s[0].line_npc[k], text = line_of(s, k)}; }
-  n := eg_ask_body(s[0].ask[..], s[0].talk, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n]);
+  n := eg_ask_body_note(s[0].ask[..], s[0].talk, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n],
+                        quest_note(s));
   if n == 0 { return; }
   s[0].ask_n = n;
   add_line(s, false, typed_text(s));
@@ -660,6 +814,7 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   if id != s[0].talk_finger { return false; }
   if phase == 2 {
     if s[0].talk >= 0 && in_box(s[0].bye_button, x, y) { end_talk(s); }
+    else if s[0].talk < 0 && s[0].near_board && in_box(s[0].talk_button, x, y) { open_board(s); }
     else if s[0].talk < 0 && s[0].near >= 0 && in_box(s[0].talk_button, x, y) { talk_to(s, s[0].near); }
   }
   if phase >= 2 { s[0].talk_finger = -1; }
@@ -701,6 +856,7 @@ everglade_answer :: (s: [] Everglade, reply: string) #export_c {
 
 // The face mints a player key when the browser has none; the page keeps it.
 everglade_keep_player :: (s: [] Everglade, record: string) #export_c {
+  if s[0].action == ACT_KEEP { s[0].action = 0; s[0].dirty = true; }   // the save goes next frame
   if s[0].action != 0 || record.count > OUTBOX { return; }
   for i: 0..<record.count { s[0].outbox[i] = record[i]; }
   s[0].out_n = record.count; s[0].action = ACT_PLAYER;
@@ -1177,6 +1333,44 @@ role_colour :: (i: int) -> Point {
   return v3(0.66, 0.52, 0.32);
 }
 
+// The bird flock (eg-companion): small dark birds beating their wings, each
+// trailing a ribbon of its own colour that narrows to nothing behind it.
+RIBBON :: [21] f32.[
+  0.93, 0.32, 0.3,   0.96, 0.72, 0.26,   0.36, 0.7, 0.95,   0.42, 0.85, 0.48,
+  0.78, 0.46, 0.92,  0.98, 0.56, 0.7,    0.4, 0.88, 0.86
+];
+birds :: (s: [] Everglade) {
+  f := s[0].birds[..];
+  if !f[0].started { return; }
+  for i: 0..<FLOCK_BIRDS {
+    p := f[0].pos[i]; v := f[0].vel[i];
+    heading := ifx flat_length(v) > 0.05 then yaw_of(v.x, v.z) else 0.0f32;
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, p, heading, 0, 0.14, 0.11, 0.27, 0.18, 0.19, 0.24);
+    right := v3(cos(heading), 0, -sin(heading));
+    flap := flock_wing(f, i);
+    for side: 0..<2 {
+      sign := ifx side == 0 then 1.0f32 else -1.0f32;
+      wing := add(add(p, times(right, 0.16 * sign)), v3(0, flap * 0.1, 0));
+      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.25 * (1 - abs(flap) * 0.35), 0.02, 0.11, 0.26, 0.27, 0.33);
+    }
+    // the ribbon: from the bird back along its trail, each piece narrower
+    a := p;
+    for k: 0..<f[0].trail_n {
+      b := flock_trail(f, i, k);
+      d := sub(a, b);
+      l := length(d);
+      if l > 0.02 {
+        fl := flat_length(d);
+        tilt := -atan2(d.y, hi(fl, 0.0001));
+        wide := 0.14 * (1 - f32(k) / f32(FLOCK_TRAIL));
+        shape(s, SHAPE_BOX, LOOK_MATTE, mix(a, b, 0.5), yaw_of(d.x, d.z), tilt, wide, 0.015, l,
+              RIBBON[i * 3], RIBBON[i * 3 + 1], RIBBON[i * 3 + 2]);
+      }
+      a = b;
+    }
+  }
+}
+
 // You: a figure in a blue coat, its legs and arms swinging with your stride.
 figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, stride: f32, act: int) {
   swing := ifx act == 1 || act == 2 then sin(stride * 2.4) * (ifx act == 2 then 0.75f32 else 0.5f32) else 0.0f32;
@@ -1304,8 +1498,26 @@ hint :: (s: [] Everglade) -> string {
     if phone(s) { return "THE MAP · TAP MAP TO WALK AGAIN"; }
     return "THE MAP · M OR ESC TO WALK AGAIN";
   }
+  if s[0].news_time > 0 && s[0].news >= 0 { return news_line(s); }
   if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
   return "WASD WALK · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT RUNS · M MAP";
+}
+
+// A quest's news, over the hint for a few seconds: taken, its next step, handed in.
+news_line :: (s: [] Everglade) -> string {
+  q := s[0].news;
+  st := s[0].stages[q];
+  n := 0;
+  if st == EG_QUEST_DONE {
+    n = join_into(s[0].news_text[..], "HANDED IN · ", EG_QUEST_TITLE[q]);
+    if EG_QUEST_REWARD[q] == EG_REWARD_FLOCK { n += join_into(s[0].news_text[n..<96], " · THE BIRDS FOLLOW YOU", ""); }
+  } else if st == 1 {
+    n = join_into(s[0].news_text[..], "QUEST TAKEN · ", eg_quest_todo(q, st));
+  } else {
+    n = join_into(s[0].news_text[..], "NEXT · ", eg_quest_todo(q, st));
+  }
+  s[0].news_n = n;
+  return cast(string) s[0].news_text[0..<n];
 }
 
 // The district you are in: the nearest place.
@@ -1383,6 +1595,7 @@ join_into :: (out: [] u8, a: string, b: string) -> int {
   return n;
 }
 talk_prompt :: (s: [] Everglade) -> string {
+  if s[0].near_board { return ifx phone(s) then "READ THE QUEST BOARD" else "E · READ THE QUEST BOARD"; }
   if s[0].near < 0 { return ""; }
   s[0].prompt_n = join_into(s[0].prompt[..], ifx phone(s) then "TALK TO " else "E · TALK TO ", EG_PERSON[s[0].near]);
   return cast(string) s[0].prompt[0..<s[0].prompt_n];
@@ -1457,6 +1670,138 @@ conversation :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   return n;
 }
 
+// The quest you follow, under the title: its name, what to do now and how
+// far; and over where it sends you, a mark you can see from afar.
+tracker :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, you: Point) -> int {
+  q := follow(s);
+  if q < 0 { return at; }
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width;
+  gutter := 16 * k;
+  st := s[0].stages[q];
+  m := eg_quest_mark(q, st);
+  n := at;
+  far := flat_gap(v3(m.x, 0, m.z), you);
+  metres := cast(int) (far + 0.5);
+  s[0].mark_n = join_into(s[0].mark_text[..], "QUEST · ", "");
+  s[0].mark_n = put_digits(s[0].mark_text[..], s[0].mark_n, metres);
+  s[0].mark_n += join_into(s[0].mark_text[s[0].mark_n..<32], " M", "");
+  mark := cast(string) s[0].mark_text[0..<s[0].mark_n];
+  if m.ok && far > 5 {
+    n = tag(s, out, u, n, mark, v3(m.x, ground_at(s, m.x, m.z) + 4.5, m.z), 9 * k, 1.0, true);
+  }
+  title := EG_QUEST_TITLE[q];
+  todo := eg_quest_todo(q, st);
+  tc := 8 * k; dc := 6.5 * k;
+  room := w - 2 * gutter - 28 * k;
+  tw := text_width(title, tc); dw := text_width(todo, dc) + text_width(" · 000 M", dc);
+  if tw > room { tc = tc * room / tw; tw = room; }
+  if dw > room { dc = dc * room / dw; dw = room; }
+  pw := hi(tw, dw) + 28 * k;
+  plate(s, u, Box.{x0 = gutter, y0 = top, x1 = gutter + pw, y1 = top + tc + dc + 34 * k}, 0.82, 0);
+  n = draw_text(out, n, title, gutter + 14 * k, top + 12 * k + tc, tc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  y := top + 22 * k + tc + dc;
+  n = draw_text(out, n, todo, gutter + 14 * k, y, dc, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  if far > 5 {
+    n = draw_text(out, n, mark[5..<mark.count], gutter + 14 * k + text_width(todo, dc), y, dc, GAP, SPACE, ink(k, 0.75, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  return n;
+}
+// v's decimal digits into out from at; the new length.
+put_digits :: (out: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; c := 0; x := hi_i(v, 0);
+  while true { digits[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  while c > 0 && n < out.count { c -= 1; out[n] = digits[c]; n += 1; }
+  return n;
+}
+
+// The quest board, along the bottom: a row a quest with how it stands, what
+// the picked one asks (or the board's thanks when you hand it in), and its
+// one button: TAKE IT or HAND IT IN. CLOSE, top right.
+board_panel :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  gutter := 16 * k;
+  pw := lo(w - 2 * gutter, 760 * k);
+  x0 := (w - pw) / 2; x1 := x0 + pw;
+  cap := 8.5 * k; lead := cap * 2.1;
+  rh := 40 * k;
+  q := s[0].pick;
+  said := ifx s[0].thanks >= 0 then EG_QUEST_THANKS[s[0].thanks] else EG_QUEST_BRIEF[q];
+  inner := pw - 32 * k;
+  starts: [6] int; ends: [6] int; lines := 0; from := 0;
+  next: [1] int;
+  while from < said.count && lines < 5 {
+    e := wrap(said, from, inner / cap, GAP, SPACE, false, next[..]);
+    starts[lines] = from; ends[lines] = e; lines += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  todo := ifx s[0].thanks < 0 then eg_quest_todo(q, s[0].stages[q]) else "";
+  word := ifx s[0].thanks < 0 then board_word(s) else "";
+  ph := 30 * k + cap + 16 * k + f32(EG_QUESTS) * (rh + 8 * k) + 8 * k + f32(hi_i(lines, 1)) * lead
+        + (ifx todo.count > 0 then lead else 0.0f32) + 20 * k + 44 * k + 16 * k;
+  y0 := h - gutter - ph;
+  plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x1, y1 = h - gutter}, 0.9, 0);
+  n := at;
+  y := y0 + 18 * k + cap;
+  n = draw_text(out, n, "QUEST BOARD", x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  cw := text_width("CLOSE", 8 * k) + 28 * k;
+  cb := Box.{x0 = x1 - 10 * k - cw, y0 = y0 + 8 * k, x1 = x1 - 10 * k, y1 = y0 + 8 * k + 34 * k};
+  s[0].close_button = cb;
+  plate(s, u, cb, 0.85, 1);
+  n = draw_text(out, n, "CLOSE", cb.x0 + 14 * k, cb.y1 - 13 * k, 8 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  y += 16 * k;
+  rc := 7.5 * k;
+  for r: 0..<EG_QUESTS {
+    rb := Box.{x0 = x0 + 12 * k, y0 = y, x1 = x1 - 12 * k, y1 = y + rh};
+    s[0].rows[r] = rb;
+    plate(s, u, rb, ifx r == q then 0.95f32 else 0.6f32, ifx r == q then 1.0f32 else 0.0f32);
+    state := eg_quest_state(r, s[0].stages[r]);
+    sw := text_width(state, rc);
+    title := EG_QUEST_TITLE[r];
+    tc := rc;
+    room := rb.x1 - rb.x0 - sw - 52 * k;
+    if text_width(title, tc) > room { tc = tc * room / text_width(title, tc); }
+    digit := [1] u8.[cast(u8) (49 + r)];
+    n = draw_text(out, n, cast(string) digit[..], rb.x0 + 12 * k, rb.y1 - 15 * k, rc, GAP, SPACE, ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false);
+    n = draw_text(out, n, title, rb.x0 + 30 * k, rb.y1 - 15 * k, tc, GAP, SPACE,
+                  ifx r == q then ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B) else ink(k, 0.75, PARCH_R, PARCH_G, PARCH_B), false, false);
+    gold := s[0].stages[r] == 0 || eg_quest_ready(r, s[0].stages[r]);
+    n = draw_text(out, n, state, rb.x1 - 12 * k - sw, rb.y1 - 15 * k, rc, GAP, SPACE,
+                  ifx gold then ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B) else ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false);
+    y += rh + 8 * k;
+  }
+  y += 8 * k;
+  for l: 0..<lines {
+    y += lead;
+    if ends[l] > starts[l] {
+      n = draw_text(out, n, said[starts[l]..<ends[l]], x0 + 16 * k, y - lead * 0.4, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+    }
+  }
+  if todo.count > 0 {
+    y += lead;
+    n = draw_text(out, n, todo, x0 + 16 * k, y - lead * 0.4, cap * 0.85, GAP, SPACE, ink(k, 0.9, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  y += 20 * k;
+  s[0].act_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  bx := x0 + 12 * k;
+  if word.count > 0 {
+    aw := text_width(word, 9 * k) + 32 * k;
+    ab := Box.{x0 = bx, y0 = y, x1 = bx + aw, y1 = y + 40 * k};
+    s[0].act_button = ab;
+    plate(s, u, ab, 0.9, ifx s[0].board_finger >= 0 then 2.0f32 else 1.0f32);
+    n = draw_text(out, n, word, ab.x0 + 16 * k, ab.y1 - 15 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    bx = ab.x1 + 16 * k;
+  }
+  if !phone(s) {
+    help := ifx word.count > 0 then "1 2 3 PICK · ENTER · ESC CLOSES" else "1 2 3 PICK · ESC CLOSES";
+    n = draw_text(out, n, help, bx, y + 25 * k, 7 * k, GAP, SPACE, ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  return n;
+}
+
 hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
@@ -1480,6 +1825,8 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
+  if s[0].board { return board_panel(s, out, u, n); }
+  if s[0].lift < 0.5 { n = tracker(s, out, u, n, gutter + cap + small + 44 * k, you); }
   line := hint(s);
   hs := 7.5 * k;
   room := w - 2 * gutter - 24 * k;
@@ -1489,7 +1836,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
   // Someone near: E (or TALK, on a phone) talks to them.
-  if s[0].near >= 0 && !s[0].above {
+  if (s[0].near >= 0 || s[0].near_board) && !s[0].above {
     ask := talk_prompt(s);
     ts := 9 * k;
     aw := text_width(ask, ts) + 32 * k;
@@ -1534,6 +1881,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   view(shot, width, height, u, U_VIEW);
   figure(s, u, shown, face, s[0].stride, act);
+  if s[0].flock { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown);
   city(s, u);
   forest(s, u, shot.eye);
@@ -1568,18 +1916,42 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u);
 
-  s[0].near = ifx s[0].above || s[0].talk >= 0 then -1 else nearest(s, feet);
+  s[0].near = ifx s[0].above || s[0].talk >= 0 || s[0].board then -1 else nearest(s, feet);
+  // the quest board, when it is nearer than anyone
+  s[0].near_board = false;
+  if !s[0].above && s[0].talk < 0 && !s[0].board {
+    bm := board_middle();
+    bd := flat_gap(bm, feet);
+    if bd < f32(BOARD_NEAR) && (s[0].near < 0 || bd < flat_gap(v3(EG_SPOT[s[0].near * 3], 0, EG_SPOT[s[0].near * 3 + 1]), feet)) {
+      s[0].near_board = true; s[0].near = -1;
+    }
+  }
+  // a quest's place reached
+  if !s[0].above {
+    was: [EG_QUESTS] int;
+    for q: 0..<EG_QUESTS { was[q] = s[0].stages[q]; }
+    if eg_quest_reach(s[0].stages[..], feet.x, feet.z) > 0 {
+      for q: 0..<EG_QUESTS { if was[q] != s[0].stages[q] { quest_moved(s, q); } }
+    }
+  }
+  if s[0].news_time > 0 { s[0].news_time = hi(s[0].news_time - t, 0); }
+  keep_quests(s);
   if s[0].waiting {
     s[0].waited += t;
     if s[0].waited > f32(ANSWER_WAIT) { s[0].ask_n = 0; everglade_answer(s, "0\n"); }
   }
-  n := hud(s, out, u, move_on && !s[0].above && s[0].talk < 0, ox, oy, pad_x, pad_y, shown);
+  n := hud(s, out, u, move_on && !s[0].above && s[0].talk < 0 && !s[0].board, ox, oy, pad_x, pad_y, shown);
   u[5] = f32(s[0].plate_n);
   return n;
 }
 
-// While the map shows, or while you talk, you stand still.
-everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0; }
+board_middle :: () -> Point {
+  b := EG_BOARD * EG_BOX;
+  return v3((EG_PROP[b] + EG_PROP[b + 2]) / 2, 0, (EG_PROP[b + 1] + EG_PROP[b + 3]) / 2);
+}
+
+// While the map shows, while you talk or read the board, you stand still.
+everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0 || s[0].board; }
 
 // Nothing draws until the pack is in: its index buffer holds the shapes' indices too.
 everglade_draws :: (s: [] Everglade) -> int #export_c { return ifx s[0].pack_ready then DRAWS else 0; }
@@ -1857,6 +2229,17 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert everglade_key(g[..], KEY_ESCAPE, 0) && g[0].talk == -1 && !everglade_busy(g[..]);
 }
 
+#test "#quest-board starts you at the board, near enough to read it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_hash(g[..], "quest-board");
+  #assert everglade_warp(g[..]);
+  sp := everglade_spawn(g[..]);
+  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near_board;
+}
+
 #test "a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
@@ -1887,6 +2270,109 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   // a minted player key is kept by the page (action 5)
   everglade_keep_player(g[..], "{\"key\":\"k\",\"id\":\"p-2\"}");
   #assert everglade_action(g[..]) == ACT_PLAYER && cast(string) g[0].outbox[0..<g[0].out_n] == "{\"key\":\"k\",\"id\":\"p-2\"}";
+}
+
+#test "the quest board: take a quest, go out to the deep wood, talk to Moss, hand it in; it's kept for this player" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_message(g[..], MSG_FACTS, "tab=x\nnow=1730000000123\nplayer=p-1\n");
+  #assert player_id(g[..]) == "p-1";
+  // by the board, nearer it than the crier: E reads it
+  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 6.2, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near_board && g[0].near == -1 && talk_prompt(g[..]) == "E · READ THE QUEST BOARD";
+  #assert follow(g[..]) == -1;
+  #assert everglade_key(g[..], 'e', 0) && g[0].board && everglade_busy(g[..]) && g[0].pick == 0;
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 6.2, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && board_word(g[..]) == "TAKE IT" && g[0].plate_n <= PLATES;
+  for r: 0..<EG_QUESTS { #assert g[0].rows[r].x1 > g[0].rows[r].x0 && g[0].rows[r].y1 <= 800; }
+  // W and S pick while the board is up; nothing walks
+  #assert everglade_key(g[..], 's', 0) && g[0].pick == 1 && g[0].held == 0;
+  #assert everglade_key(g[..], '1', 0) && g[0].pick == 0;
+  #assert everglade_key(g[..], KEY_ENTER, 0) && g[0].stages[0] == 1 && g[0].dirty;
+  #assert board_word(g[..]) == "" && !everglade_key(g[..], 'r', 8);
+  // the next frame keeps it in this browser (action 4)
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 6.2, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert everglade_action(g[..]) == ACT_KEEP && cast(string) g[0].outbox[0..<g[0].out_n] == "eg-quests 1\nplayer=p-1\nq=1,0,0\n";
+  everglade_action_done(g[..]);
+  #assert everglade_key(g[..], KEY_ESCAPE, 0) && !g[0].board && !everglade_busy(g[..]);
+  #assert follow(g[..]) == 0 && news_line(g[..]) == "QUEST TAKEN · GO OUT BY THE EAST GATE TO THE DEEP WOOD";
+  // the deep wood: the next step
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -92, 0, 25, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].stages[0] == 2 && news_line(g[..]) == "NEXT · TALK TO MOSS BY THE WAYSTONE";
+  // Moss says what the quest brought you for, and is told of it
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -88, 0, 19.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].near == 19 && everglade_key(g[..], 'e', 0) && g[0].talk == 19 && g[0].stages[0] == 3;
+  #assert line_of(g[..], 0) == EG_QUEST_ARRIVE[0];
+  for c: "Are you well?" { #assert everglade_key(g[..], cast(int) c, 0); }
+  #assert everglade_key(g[..], KEY_ENTER, 0);
+  body := cast(string) g[0].ask[0..<everglade_ask(g[..])];
+  #assert contains(body, "came out from the city's quest board") && contains(body, "\"name\":\"Moss\"");
+  everglade_answer(g[..], "200\n{\"text\":\"I am.\"}");
+  #assert everglade_key(g[..], KEY_ESCAPE, 0);
+  // the board takes it in, and says so
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 6.2, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert everglade_action(g[..]) == ACT_KEEP;
+  everglade_action_done(g[..]);
+  #assert everglade_key(g[..], 'E', 0) && g[0].board && g[0].pick == 0 && board_word(g[..]) == "HAND IT IN";
+  #assert everglade_key(g[..], 'e', 0) && g[0].stages[0] == EG_QUEST_DONE && g[0].thanks == 0 && !g[0].flock;
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 6.2, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert everglade_action(g[..]) == ACT_KEEP && cast(string) g[0].outbox[0..<g[0].out_n] == "eg-quests 1\nplayer=p-1\nq=9,0,0\n";
+  // a phone: tap a row, then the button; CLOSE closes
+  g[0].touch = true;
+  r1 := g[0].rows[1];
+  #assert everglade_pointer(g[..], (r1.x0 + r1.x1) / 2, (r1.y0 + r1.y1) / 2, 0, 1, 3);
+  #assert everglade_pointer(g[..], (r1.x0 + r1.x1) / 2, (r1.y0 + r1.y1) / 2, 2, 1, 3) && g[0].pick == 1;
+  n = everglade_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, 6.2, 0, -3.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  ab := g[0].act_button;
+  #assert ab.x1 > ab.x0 && ab.y1 <= 2532;
+  #assert everglade_pointer(g[..], ab.x0 + 2, ab.y0 + 2, 0, 1, 4) && everglade_pointer(g[..], ab.x0 + 2, ab.y0 + 2, 2, 1, 4);
+  #assert g[0].stages[1] == 1;
+  cb := g[0].close_button;
+  #assert everglade_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 0, 1, 5) && everglade_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 2, 1, 5) && !g[0].board;
+}
+
+#test "the river quest earns the flock, handed in to the crier; a save comes back for its player only" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_start(g[..]);
+  #assert eg_quest_take(g[0].stages[..], 2);
+  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 93, 0, -12, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].stages[2] == 2;
+  talk_to(g[..], 20);
+  #assert g[0].stages[2] == 3 && line_of(g[..], 0) == EG_QUEST_ARRIVE[2];
+  end_talk(g[..]);
+  talk_to(g[..], EG_CRIER);
+  #assert g[0].stages[2] == EG_QUEST_DONE && line_of(g[..], 0) == EG_QUEST_THANKS[2] && g[0].flock;
+  #assert news_line(g[..]) == "HANDED IN · ACROSS THE RIVER · THE BIRDS FOLLOW YOU";
+  end_talk(g[..]);
+  // the flock comes with you, every bird and its ribbon within the shapes' slots
+  for f: 0..<30 {
+    n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.05, false, 0, 0, -84 + f32(f) * 0.15, 0, 1, 0, 3.5, false, 0, 0, 0, 0);
+  }
+  #assert g[0].birds[0].started && g[0].birds[0].trail_n == FLOCK_TRAIL;
+  #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] < SLOTS[SHAPE_SPHERE];
+  for i: 0..<FLOCK_BIRDS { #assert flat_gap(g[0].birds[0].pos[i], v3(0, 0, -79.65)) < 5; }
+  // a save given back before the facts; then the facts say whose browser it is
+  h: [1] Everglade;
+  everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+  #assert h[0].stages[0] == EG_QUEST_DONE && h[0].stages[1] == 2 && h[0].flock;
+  everglade_message(h[..], MSG_FACTS, "now=1\nplayer=p-1\n");
+  #assert h[0].stages[1] == 2 && h[0].flock;
+  o: [1] Everglade;
+  everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+  everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
+  #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
+  // a minted player key goes out before a waiting save, which follows it
+  g[0].dirty = true;
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].action == ACT_KEEP;
+  everglade_keep_player(g[..], "{\"key\":\"k\",\"id\":\"p-3\"}");
+  #assert everglade_action(g[..]) == ACT_PLAYER && g[0].dirty;
+  everglade_action_done(g[..]);
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert everglade_action(g[..]) == ACT_KEEP;
 }
 
 #test "a conversation keeps its last lines, oldest dropped" {

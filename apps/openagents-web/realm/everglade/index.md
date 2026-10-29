@@ -20,10 +20,21 @@ Walk up to anyone and press E (on a phone, tap TALK). Type what you want to say 
 
 Names float over each place as you come near. The city is about 130 metres across inside its walls: half a minute's walk from the South Gate to the temple.
 
+## Quests
+
+The quest board stands on the commons by the fountain. Walk up to it and press E (on a phone, tap READ THE QUEST BOARD). Three quests are posted:
+
+- The Waystone's Word: out by the East Gate to the deep wood, to see that Moss the woodwarden is well.
+- Older Than the City: up the North Trail to the ruins, to hear what Corin has found.
+- Across the River: out by the West Gate, over the bridge to Old Tam the ferryman. Hand this one in and a flock of birds with coloured ribbons follows you from then on.
+
+Take one, go where it says (the step you are on and how far it is show under EVERGLADE, and a QUEST mark stands over the place), talk to whoever it sends you to, and hand it in at the board or to Oswin the crier. Your quests are kept in this browser for your player, so they are there when you come back.
+
 ## Controls
 
 - Computer: W A S D walk, Shift runs, Space jumps, drag the mouse or the arrow keys turn the camera, the wheel zooms, M (or the MAP button) lifts the camera over the whole city and back.
 - Phone: your left thumb walks, your right thumb turns the camera, a tap jumps, MAP at the top right shows the city from above.
+- `#quest-board` starts you at the quest board.
 - A link can start you beside someone, near enough to talk: `#marta`, `#old-tam`, `#pebble` and so on, by their name.
 - A link can start you at a place: `#commons`, `#market`, `#guilds`, `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`, `#crypt`, `#river`, `#gate`, `#north-gate`; inside a building: `#in-inn`, `#in-store`, `#in-smithy`, `#in-alchemist`, `#in-fighters`, `#in-rangers`, `#in-temple`; `#above` opens on the map.
 - Nobody can change Everglade: there is no editing here.
@@ -32,6 +43,7 @@ Names float over each place as you come near. The city is about 130 metres acros
 ## How it is made
 
 - `verse/everglade/plan.coax` is the city's layout: the palisade, every building and prop as a box, the streets and trails, the squares, where each character stands, and the checks that everything is reachable on foot, nothing overlaps and the paths connect.
+- The quests are `verse/everglade/quests.coax`, data an agent can write: each a title, a notice and steps (go to a place, talk to someone, hand it in), with checks that every step leads somewhere real. The bird flock is `verse/flock.coax`.
 - The people are `verse/everglade/people.coax`: who stands at each spot, their role, greeting and what they know of the city. Talking goes to the site's character chat (`/api/playtest/npc/ask`, Gemini on Vertex AI), which keeps what each player said to each character and tells the character on their next visit (`coax/web/api/migrations/0031_npc_memory.sql`).
 - `apps/openagents-web/everglade.coax` draws it and the HUD, `everglade-face.c` binds it for the browser, `everglade.wgsl` shades it. The ground and paths are `verse/terrain.coax`, the camera `verse/camera.coax`, walking `verse/player.coax`, and a phone's thumbs `verse/grid.coax`, as in the Garden.
 - The forest's trees, bushes, ferns and rocks are from the CC0 Quaternius Stylized Nature kit, and the walls, roofs, doors, windows, palisade and furniture from the CC0 Quaternius Medieval Village and Fantasy Props kits, all in one asset pack (`everglade.pack`, about 4.3 MB) streamed when you enter; the full list is [licences.md](licences.md). `verse/tools/pack_realm.py` compiles it from `verse/packs/everglade.json`. The trees nearest you are the kit's; farther ones are simple cones, so a phone keeps its frame rate. Each building's walls, doors and rooms are worked out from its footprint in the plan, which checks every room can be walked into and out of.

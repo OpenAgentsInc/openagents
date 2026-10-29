@@ -116,12 +116,20 @@ EgLine :: struct { npc: bool; text: string; }
 // conversation so far (oldest first), the question, this visit's stamp.
 // The number of bytes written, or 0 when it didn't fit.
 eg_ask_body :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string) -> int {
+  return eg_ask_body_note(out, i, lines, question, visit, "");
+}
+// The same with a note on what brought the player to them (a quest), put
+// after what everyone knows of the city.
+eg_ask_body_note :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: string, note: string) -> int {
   if i < 0 || i >= EG_SPOTS { return 0; }
   n := raw_put(out, 0, "{\"npc\":{");
   n = field_put(out, n, "name", EG_PERSON[i], false);
   n = field_put(out, n, "role", eg_role(i), true);
   n = field_put(out, n, "greet", EG_GREET[i], true);
-  n = field_put(out, n, "knowledge", EG_CITY, true);
+  n = raw_put(out, n, ",\"knowledge\":\"");
+  n = json_put(out, n, EG_CITY);
+  if note.count > 0 { n = raw_put(out, n, " "); n = json_put(out, n, note); }
+  n = raw_put(out, n, "\"");
   n = raw_put(out, n, "}");
   n = field_put(out, n, "world", EG_WORLD, true);
   n = field_put(out, n, "controls", EG_CONTROLS, true);
@@ -166,4 +174,16 @@ eg_ask_body :: (out: [] u8, i: int, lines: [] EgLine, question: string, visit: s
   small: [64] u8;
   #assert eg_ask_body(small[..], 5, lines[..], "Remember me?", "1") == 0;
   #assert eg_ask_body(out[..], -1, lines[..], "x", "1") == 0 && eg_ask_body(out[..], EG_SPOTS, lines[..], "x", "1") == 0;
+  // a note follows what everyone knows, escaped as the rest
+  noted_buf: [4096] u8;
+  m := eg_ask_body_note(noted_buf[..], 19, lines[..], "Well?", "1", "They came from the \"board\".");
+  noted := cast(string) noted_buf[0..<m];
+  plain := eg_ask_body(out[..], 19, lines[..], "Well?", "1");
+  #assert m == plain + 30 && contains_text(noted, " They came from the \\\"board\\\".\"},\"world\"");
+}
+
+contains_text :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
 }
