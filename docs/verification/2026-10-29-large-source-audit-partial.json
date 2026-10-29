@@ -76,7 +76,8 @@
       "line": 114,
       "column": 44,
       "reached": 1,
-      "visits": 2286
+      "visits": 2286,
+      "loaded_audit_artifact_sha256": "0e949859df957729f2523dd3285124634c110f82c58e05a1a46438b1607da488"
     },
     "large_classified": {
       "raw_report_sha256": "60c7d75f71e8bb9b352ab4612dd322bbdaf46c8af84608fb8b9629d817799de6",
@@ -144,7 +145,29 @@
           "classification": "public",
           "view": null
         }
-      ]
+      ],
+      "loaded_audit_artifact_sha256": "ea849ee29e83d14eb30a9992987af5daf83d1adf3f68c6dc112ab7f98fa385d6"
     }
+  },
+  "audit_tool_sources": {
+    "$REPO/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+    "$REPO/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+    "$REPO/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+    "$REPO/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+    "$REPO/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+    "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "$REPO/coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "$REPO/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+    "$REPO/tools/coax-nostr/large-source-audit/aggregate.coax": "ac29ff216df396078f995d62f9dab9bf360f238e66efe2342ea855ebad1a5018",
+    "$REPO/tools/coax-nostr/large-source-audit/inventory.coax": "68a30c50ca2b02308dd56d6416a8dbf04798ded7912dcfc1354f19462fbb8d85",
+    "$REPO/coax/lib/crypto/secret-flow.coax": "208119c702a971e799baa13221b211b38665c0a7a34c52a2af3f453ac5588f4e",
+    "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+    "$REPO/coax/tests/nostr/secret_flow.coax": "b3b383a63aa7fffeaed0daf3bde6066c0c1e7f7e856c6a855f8c5c45fb2840d3",
+    "$REPO/coax/tests/nostr/secret_aggregate.coax": "6e87fcd53c8955bb1ce5f1dff6a57b57055fd6813461be07357da46f77afbd7a",
+    "$REPO/coax/tests/nostr/secret_aggregate_cases.coax": "b99853d36c10cedf11c195856d7d56032c3f8bd7a59a9d0b030350e09f55adc7",
+    "$REPO/tools/coax-nostr/large-source-audit/bridge-aggregate.cpp": "36425ae3a5733ba91b1c383f07a836f6525dc102e483aee8d1e1fff870d97bd3",
+    "$REPO/tools/coax-nostr/large-source-audit/check.py": "811e7f65169eff6254e6509b7f84bb2fe111d6e85632c6a04457632b04257e4f",
+    "$REPO/tools/coax-nostr/large-source-audit/aggregate.py": "ca48ee2e52c7e7abe3af910ef41aa915abcc63c314ce281386075a3815e8562f"
   }
 }
