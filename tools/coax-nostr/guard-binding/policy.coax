@@ -1,0 +1,41 @@
+// Reviewed registry for one source-only guard decision. The driver and local
+// compiler/runtime remain trusted; this is not target or production approval.
+#authority;
+GdInput :: struct {
+ entry:string;profile:string;compiler:string;compiler_version:string;source:string;tool:string;types:string;
+ parameters:string;guards:string;proof:string;model:string;runtime:string;reviews:string;
+ status:string;classification:string;error:u32;raw_accepted:bool;default_steps:bool;
+ reached:int;visits:int;return_mask:u64;target_approved:bool;production_approved:bool;
+}
+#test "reviewed guard binding accepts only the exact scoped record" {
+ row:=GD_reviewed();#assert GD_accept(row);
+ #assert row.error==14 && row.reached==44 && row.visits==98078 && row.return_mask==1;
+}
+#forall "every reviewed identity and status is required" variant:0..<23 {
+ row:=GD_reviewed();
+ if variant==0 {row.entry="wrong";}else if variant==1 {row.profile="wrong";}else if variant==2 {row.compiler="wrong";}
+ else if variant==3 {row.source="wrong";}else if variant==4 {row.tool="wrong";}else if variant==5 {row.types="wrong";}
+ else if variant==6 {row.parameters="wrong";}else if variant==7 {row.guards="wrong";}else if variant==8 {row.proof="wrong";}
+ else if variant==9 {row.model="wrong";}else if variant==10 {row.runtime="wrong";}else if variant==11 {row.status="wrong";}
+ else if variant==12 {row.classification="wrong";}else if variant==13 {row.error=0;}else if variant==14 {row.raw_accepted=true;}
+ else if variant==15 {row.default_steps=false;}else if variant==16 {row.reached+=1;}else if variant==17 {row.visits+=1;}
+ else if variant==18 {row.return_mask=0;}else if variant==19 {row.target_approved=true;}else if variant==20 {row.production_approved=true;}else if variant==21 {row.compiler_version="wrong";}else {row.reviews="wrong";}
+ #assert !GD_accept(row);
+}
+GD_reviewed :: ()->GdInput {
+ return GdInput.{entry="smc_multiply",profile="native-c-checked-library",compiler="9857663bf2c87462d9acdd09b118c9a3e298a3a9caa43ab842dfeabedcce0cd7",compiler_version="coax0 0.22.0",
+  source="b34d74b32676c68f395edc66a17f60ba6f65df76ba2a8b7c7871778089752f00",tool="ce4e1bcfb0f9cbf951afdf7242ce14adb6458a441d2add769776c12c3775ae19",
+  types="498d0d568740438233850bbe9dd90c21fc623eccea019d6ed2da474c74988af9",parameters="b7db8121b62c3082e9a96e171e6554d8c97cf3a80926043ad7cc0709b1b6f727",
+  guards="04c265e010c65a2448f5665730312a360c24f7d654e0f73ea7b480797db79aba",proof="90ce9200475505374f53c9e5315f1125e6193ac7f4514a67418ac222081a0410",
+  model="b673bf4daf9d8fb78a787d569157d2938acccd5d9b50737e1a2236afed443da5",runtime="858b9965d5dff972a1bd15664f12d97a23a92ca87c48dd7dfcb23dd3f6fade6a",reviews="f823985cfae2bfe9a94c38aefb537ff6114657c14e0ba6d8ecf9219d357f375a",
+  status="analyzed-with-guard-obligations",classification="explicit whole-parameter classification",error=14,default_steps=true,reached=44,visits=98078,return_mask=1};
+}
+GD_accept :: (value:GdInput)->bool #export_c {
+ expected:=GD_reviewed();
+ return value.entry==expected.entry && value.profile==expected.profile && value.compiler==expected.compiler && value.compiler_version==expected.compiler_version && value.source==expected.source &&
+  value.tool==expected.tool && value.types==expected.types && value.parameters==expected.parameters && value.guards==expected.guards &&
+  value.proof==expected.proof && value.model==expected.model && value.runtime==expected.runtime && value.reviews==expected.reviews && value.status==expected.status &&
+  value.classification==expected.classification && value.error==expected.error && value.raw_accepted==expected.raw_accepted &&
+  value.default_steps==expected.default_steps && value.reached==expected.reached && value.visits==expected.visits &&
+  value.return_mask==expected.return_mask && value.target_approved==expected.target_approved && value.production_approved==expected.production_approved;
+}
