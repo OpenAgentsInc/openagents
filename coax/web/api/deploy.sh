@@ -15,6 +15,10 @@
 # and oa-agent-projects (comma-separated slugs) become OA_AGENT_PROJECTS when
 # they exist, and the runner services oa-agent-staging and oa-agent, when
 # deployed (coax/web/agent/deploy.sh), become OA_AGENT_WAKE_URL.
+#
+# Publishing from a drop (rc-publish, drops.c): Secret Manager oa-project-kek-staging and
+# oa-project-kek-production (64 hex digits each, made once, never printed) seal each project's
+# key; while one is missing that environment's PUBLISH only freezes the draft.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 prod=true; [[ "${1:-}" == --staging ]] && prod=false
@@ -38,6 +42,14 @@ team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "pla
 deploy() {  # service secret host agent-projects-secret runner-service drops-folder
   local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_AGENT_RUNNER_PUBKEYS=$runners@OA_TEAM=$team@OA_API_ORIGIN=https://$3@OA_DROPS_BUCKET=openagentsgemini-project-drops@OA_DROPS_PREFIX=$6" wake
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
+  # Publishing a project from a drop (drops.c, rc-publish): the key that seals project keys, the relay,
+  # the site's bucket; staging's projects go on the relay as private, so no list shows them.
+  local kek="oa-project-kek-$6" site="$project-openagents-web" vis=public
+  [[ "$6" == staging ]] && site="$project-openagents-web-staging" vis=private
+  if gcloud secrets describe "$kek" --project "$project" >/dev/null 2>&1; then
+    secrets+=",OA_PROJECT_KEK=$kek:latest"
+    env+="@OA_PUBLISH_RELAY=wss://relay.openagents.com@OA_SITE_BUCKET=$site@OA_PUBLISH_VISIBILITY=$vis"
+  fi
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"
   gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \

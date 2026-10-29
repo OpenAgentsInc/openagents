@@ -36,6 +36,19 @@ class FakeGcs(http.server.BaseHTTPRequestHandler):
             return self.answer(200, json.dumps({"candidates": [{"content": {"parts": [
                 {"text": "thinking", "thought": True}, {"text": json.dumps(bucket["draft"])}]}}]}).encode())
         q = urllib.parse.parse_qs(u.query)
+        if self.headers.get("Authorization") == "Bearer test-gcs" and u.path == "/upload/storage/v1/b/site-test/o" and q.get("uploadType") == ["multipart"]:
+            raw = self.rfile.read(int(self.headers["Content-Length"]))
+            parts = raw.split(b"--oa-site")
+            meta = json.loads(parts[1].split(b"\r\n\r\n", 1)[1].rsplit(b"\r\n", 1)[0])
+            bucket["site"][meta["name"]] = {"meta": meta, "data": parts[2].split(b"\r\n\r\n", 1)[1][:-2]}
+            return self.answer(200, b"{}")
+        if self.headers.get("Authorization") == "Bearer test-gcs" and "/rewriteTo/b/site-test/o/" in u.path:
+            src, dest = u.path.split("/storage/v1/b/drops-test/o/", 1)[1].split("/rewriteTo/b/site-test/o/")
+            data = bucket["objects"].get(urllib.parse.unquote(src))
+            if data is None:
+                return self.answer(404)
+            bucket["site"][urllib.parse.unquote(dest)] = {"meta": {}, "data": data}
+            return self.answer(200, b'{"kind": "storage#rewriteResponse", "done": true}')
         if self.headers.get("Authorization") != "Bearer test-gcs" or u.path != "/upload/storage/v1/b/drops-test/o":
             return self.answer(403)
         n = str(len(bucket["sessions"]))
@@ -68,6 +81,68 @@ class FakeGcs(http.server.BaseHTTPRequestHandler):
         bucket["objects"].pop(name, None)
         self.answer(204)
 
+
+# rc-publish: a relay that asks for AUTH, checks each event's id against its NIP-01 serialization and keeps it.
+import base64 as b64mod, hashlib, socketserver, struct
+pub_relay = {"events": [], "auth": []}
+
+
+class FakeRelay(socketserver.BaseRequestHandler):
+    def frame(self, text):
+        data = text.encode()
+        head = bytes([0x81]) + (bytes([len(data)]) if len(data) < 126 else bytes([126]) + struct.pack(">H", len(data)) if len(data) < 65536
+                                else bytes([127]) + struct.pack(">Q", len(data)))
+        self.request.sendall(head + data)
+
+    def read(self, n):
+        out = b""
+        while len(out) < n:
+            got = self.request.recv(n - len(out))
+            if not got:
+                raise EOFError
+            out += got
+        return out
+
+    def handle(self):
+        req = b""
+        while b"\r\n\r\n" not in req:
+            req += self.request.recv(4096)
+        key = [l.split(":", 1)[1].strip() for l in req.decode().split("\r\n") if l.lower().startswith("sec-websocket-key:")][0]
+        accept = b64mod.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+        self.request.sendall(f"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n".encode())
+        self.frame('["AUTH","challenge-1"]')
+        try:
+            while True:
+                h = self.read(2)
+                n = h[1] & 0x7F
+                if n == 126:
+                    n = struct.unpack(">H", self.read(2))[0]
+                elif n == 127:
+                    n = struct.unpack(">Q", self.read(8))[0]
+                mask = self.read(4) if h[1] & 0x80 else b"\0\0\0\0"
+                data = bytes(c ^ mask[i % 4] for i, c in enumerate(self.read(n)))
+                if h[0] & 0x0F == 8:
+                    return
+                msg = json.loads(data)
+                ev = msg[1]
+                serial = json.dumps([0, ev["pubkey"], ev["created_at"], ev["kind"], ev["tags"], ev["content"]], separators=(",", ":"), ensure_ascii=False)
+                ok = hashlib.sha256(serial.encode()).hexdigest() == ev["id"] and len(ev["sig"]) == 128 and h[1] & 0x80
+                if msg[0] == "AUTH":
+                    pub_relay["auth"].append(ev)
+                    ok = ok and ev["kind"] == 22242 and ["challenge", "challenge-1"] in ev["tags"]
+                elif not pub_relay["auth"]:
+                    self.frame(json.dumps(["OK", ev["id"], False, "auth-required: first"]))
+                    continue
+                else:
+                    pub_relay["events"].append(ev)
+                self.frame(json.dumps(["OK", ev["id"], bool(ok), "" if ok else "invalid: id"]))
+        except EOFError:
+            return
+
+
+pub_relay_server = socketserver.ThreadingTCPServer(("127.0.0.1", int(os.environ["RELAY_PORT"])), FakeRelay)
+threading.Thread(target=pub_relay_server.serve_forever, daemon=True).start()
+bucket["site"] = {}
 
 gcs_server = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["GCS_PORT"])), FakeGcs)
 threading.Thread(target=gcs_server.serve_forever, daemon=True).start()
@@ -260,10 +335,58 @@ check("review: the edits are kept, the model's answer too",
       got["draft"]["card"]["name"] == "Moon Villa" and got["edits"] == 6 and got["approved"] is False
       and sql(f"SELECT original->'card'->>'name' FROM drops.drafts WHERE drop_id = '{d}'") == "Planetary Villa", got)
 status, pub, _ = dcall("POST", f"/api/drops/{d}/publish", {}, cookie=jar)
-check("review: PUBLISH freezes the reviewed draft for the publisher",
-      status == 200 and pub["approved"] is True and sql(f"SELECT status FROM drops.drops WHERE id = '{d}'") == "approved", pub)
+check("review: PUBLISH freezes the reviewed draft and publishes it",
+      status == 200 and pub["approved"] is True and pub.get("published") == {"slug": "moon-villa", "page": "/projects/moon-villa"}
+      and sql(f"SELECT status FROM drops.drops WHERE id = '{d}'") == "published", pub)
+# rc-publish: the key, the events, the files, the page and the list.
+pk = sql("SELECT pubkey FROM drops.projects WHERE slug = 'moon-villa'")
+admin_pk = sql(f"SELECT owner FROM drops.drops WHERE id = '{d}'")
+sealed = sql("SELECT key_sealed FROM drops.projects WHERE slug = 'moon-villa'")
+check("publish: the project's key is kept only sealed (nonce, 32 bytes, tag)", len(pk) == 64 and len(sealed) == 120
+      and sql("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'drops' AND table_name = 'projects' AND column_name ~ 'secret|^key$'") == "0")
+evs = pub_relay["events"]
+kinds = [e["kind"] for e in evs]
+check("publish: the relay asked for AUTH and the project's key answered", pub_relay["auth"] and pub_relay["auth"][0]["pubkey"] == pk)
+check("publish: repository, project, initiative, milestone, task and order, signed by the project's key, each id its NIP-01 hash",
+      kinds == [30617, 30621, 1621, 1621, 1621, 30623] and all(e["pubkey"] == pk for e in evs), kinds)
+ptag = lambda e, n: [t for t in e["tags"] if t[0] == n]
+proj, ini, mil, task, order = evs[1], evs[2], evs[3], evs[4], evs[5]
+check("publish: the project is the draft as reviewed, its dropper the maintainer",
+      ptag(proj, "d") == [["d", "moon-villa"]] and ptag(proj, "name") == [["name", "Moon Villa"]] and ptag(proj, "visibility") == [["visibility", "public"]]
+      and ["p", admin_pk, "", "maintainer"] in proj["tags"] and ptag(proj, "a")[0][1] == f"30617:{pk}:openagents", proj["tags"])
+check("publish: the tasks hang from their milestone, the milestone from the initiative, the checks in the body",
+      ["t", "initiative"] in ini["tags"] and ["t", "milestone"] in mil["tags"] and ptag(mil, "parent") == [["parent", ini["id"]]]
+      and ptag(task, "parent") == [["parent", mil["id"]]] and ptag(task, "size") == [["size", "L"]] and "## Acceptance\n\n- Two moons rise" in task["content"]
+      and ptag(task, "slug") == [["slug", "t"]] and [f"30621:{pk}:moon-villa", "wss://relay.openagents.com"] == ptag(task, "a")[1][1:], task)
+check("publish: the order ranks every issue", [t[1] for t in ptag(order, "item")] == [ini["id"], mil["id"], task["id"]]
+      and [t[2] for t in ptag(order, "item")] == ["11", "12", "13"], order["tags"])
+ppage = bucket["site"].get("projects/moon-villa/index.html", {})
+check("publish: the page is in the site's bucket, uncached, drawn live by the project app",
+      ppage.get("meta", {}).get("cacheControl") == "no-cache" and f'data-app="project" data-text="{pk} moon-villa"'.encode() in ppage.get("data", b"")
+      and b"<h1>Moon Villa</h1>" in ppage.get("data", b""), ppage.get("meta"))
+plisted = bucket["site"].get("projects/published.txt", {}).get("data", b"").decode()
+check("publish: /projects lists it from published.txt, with no release",
+      plisted.startswith("moon-villa|Moon Villa|") and f"|/projects/moon-villa|{pk}|{admin_pk}\n" in plisted
+      and bucket["site"]["projects/published-slugs.txt"]["data"] == b"moon-villa\n", plisted)
+pfiles = [k for k in bucket["site"] if k.startswith("projects/moon-villa/files/")]
+kept_files = sql(f"SELECT string_agg(object, ' ') FROM drops.files WHERE drop_id = '{d}' AND status = 'scanned'").split()
+check("publish: the kept files are copied next to the page", len(pfiles) == len(kept_files) >= 1
+      and sorted(bucket["site"][k]["data"] for k in pfiles) == sorted(bucket["objects"][o] for o in kept_files), (pfiles, kept_files))
+check("publish: index.md for agents names the design and the relay",
+      b"## Design" in bucket["site"]["projects/moon-villa/index.md"]["data"] and pk.encode() in bucket["site"]["projects/moon-villa/index.md"]["data"])
+n_events = len(evs)
+status, again, _ = dcall("POST", f"/api/drops/{d}/publish", {}, cookie=jar)
+check("publish: PUBLISH again is the same answer and signs nothing twice",
+      status == 200 and again["published"]["slug"] == "moon-villa" and len(pub_relay["events"]) == n_events, again)
 check("review: after PUBLISH nothing changes and nothing is read again",
       dcall("POST", E, {"path": ["card", "name"], "value": "x"}, cookie=jar)[0] == 409 and dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)[0] == 409)
+check("publish: a published drop can't be discarded", dcall("POST", f"/api/drops/{d}/discard", {}, cookie=jar)[0] == 409)
+# DISCARD, on a second drop
+d = dcall("POST", "/api/drops", {}, cookie=jar)[1]["id"]
+status, added, _ = dcall("POST", f"/api/drops/{d}/files", {"name": "Villa notes.md", "bytes": len(notes)}, cookie=jar)
+put(added["upload"], notes)
+dcall("POST", f"/api/drops/{d}/files/{added['file']['id']}/done", {}, cookie=jar)
+dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)
 kept = [k for k in bucket["objects"] if f"/{d}/" in k]
 status, gone, _ = dcall("POST", f"/api/drops/{d}/discard", {}, cookie=mjar)
 check("review: someone else can't discard it", status == 404 and all(k in bucket["objects"] for k in kept))

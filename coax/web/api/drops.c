@@ -23,7 +23,11 @@
 //   GET  /api/drops/<d>/draft                the last draft {status: none|reading|ready|failed, ...}
 //   POST /api/drops/<d>/draft/edit           the owner changes one field {path, value} (rc-review,
 //                                            0020_project_review.sql) -> the draft
-//   POST /api/drops/<d>/publish              PUBLISH: the reviewed draft, frozen for the publisher
+//   POST /api/drops/<d>/publish              PUBLISH: the reviewed draft is frozen, then published (rc-publish,
+//                                            0038_project_publish.sql): the project's key made and sealed, its
+//                                            events on the relay, its files and page in the site's bucket, so it
+//                                            is live at /projects/<slug> and listed on /projects with no deploy
+//                                            -> the draft and {published: {slug, page} | note}
 //   POST /api/drops/<d>/discard              DISCARD: the drop's files leave the bucket, its draft is gone
 //
 // Who asks: a NIP-98 signature (each event once), else the oa_drops cookie,
@@ -38,6 +42,7 @@
 //   OA_DRAFT_URL     its generateContent URL (tests point it at a fake)
 #include "api.h"
 #include "nostr.h"
+#include "relay.h"
 #include <ctype.h>
 #include <curl/curl.h>
 #include <fcntl.h>
@@ -440,6 +445,173 @@ static void discard(const request *q, PGconn *db, const char *pk, const char *dr
   PQclear(r); free(a.body); free(a.all);
 }
 
+// ---- publishing (rc-publish, 0038_project_publish.sql): after PUBLISH froze the draft, the project's
+// key is made and sealed, its events signed and sent, its files copied and its page written.
+//   OA_PROJECT_KEK         64 hex digits that seal project keys (Secret Manager); without it nothing is published
+//   OA_PUBLISH_RELAY       where the events go (wss://relay.openagents.com); without it nothing is published
+//   OA_SITE_BUCKET         the site's bucket the page, files and lists go into
+//   OA_PUBLISH_VISIBILITY  public (production) or private (staging: on the relay, never listed)
+static bool publisher_on(void) { const char *k = getenv("OA_PROJECT_KEK"), *r = getenv("OA_PUBLISH_RELAY"); return k && strlen(k) == 64 && r && *r; }
+
+// A call to the storage API with a body (POST); its status, and its answer into b.
+static long gcs_body(const char *url, const char *tok, const char *type, const char *body, size_t n, buf *b) {
+  CURL *h = curl_easy_init();
+  if (!h) return 0;
+  char auth[4200], ct[200];
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok); snprintf(ct, sizeof ct, "Content-Type: %s", type);
+  struct curl_slist *list = curl_slist_append(curl_slist_append(NULL, auth), ct);
+  buf sink = {0};
+  curl_easy_setopt(h, CURLOPT_URL, url);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, list);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDS, body);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)n);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, b ? b : &sink);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 60L);
+  long status = 0;
+  if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  curl_slist_free_all(list); curl_easy_cleanup(h); free(sink.p);
+  return status;
+}
+
+// Writes name in the site's bucket (no-cache: a page, a list).
+static bool site_put(const char *tok, const char *name, const char *type, const char *data) {
+  const char *bucket = getenv("OA_SITE_BUCKET");
+  if (!bucket || !*bucket) return false;
+  size_t n = strlen(data), cap = n + 1024;
+  char *body = malloc(cap), url[1024];
+  if (!body) return false;
+  int k = snprintf(body, cap, "--oa-site\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
+                   "{\"name\":\"%s\",\"contentType\":\"%s\",\"cacheControl\":\"no-cache\"}\r\n--oa-site\r\nContent-Type: %s\r\n\r\n", name, type, type);
+  memcpy(body + k, data, n);
+  k += (int)n;
+  k += snprintf(body + k, cap - (size_t)k, "\r\n--oa-site--\r\n");
+  snprintf(url, sizeof url, "%s/upload/storage/v1/b/%s/o?uploadType=multipart", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"), bucket);
+  long status = gcs_body(url, tok, "multipart/related; boundary=oa-site", body, (size_t)k, NULL);
+  free(body);
+  if (status != 200) api_log("drops: site write %ld", status);
+  return status == 200;
+}
+
+// Copies a kept file from the drops bucket into the site's (a rewrite: the bytes never pass through here).
+static bool site_copy(const char *tok, const char *object, const char *dest) {
+  const char *bucket = getenv("OA_SITE_BUCKET");
+  if (!bucket || !*bucket) return false;
+  char from[1024], to[1024], url[4096], rt[2048] = "";
+  enc(from, sizeof from, object); enc(to, sizeof to, dest);
+  for (int i = 0; i < 20; i++) {
+    snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s/rewriteTo/b/%s/o/%s%s%s", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"),
+             env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops"), from, bucket, to, rt[0] ? "?rewriteToken=" : "", rt);
+    buf b = {0};
+    long status = gcs_body(url, tok, "application/json", "{}", 2, &b);
+    bool done = status == 200 && b.p && (strstr(b.p, "\"done\": true") || strstr(b.p, "\"done\":true"));
+    bool more = status == 200 && !done && b.p && str_of(b.p, "rewriteToken", rt, sizeof rt);
+    free(b.p);
+    if (done) return true;
+    if (!more) { api_log("drops: copy %ld", status); return false; }
+  }
+  return false;
+}
+
+// One text from SQL (params v), malloc'd; NULL on an error.
+static char *sql_text(PGconn *c, const char *sql, int n, const char *const *v) {
+  PGresult *r = PQexecParams(c, sql, n, NULL, v, NULL, NULL, 0);
+  char *out = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) ? strdup(PQgetvalue(r, 0, 0)) : NULL;
+  PQclear(r);
+  return out;
+}
+
+// In the child: the publishing itself, then the answer. Every step is kept, so a second PUBLISH goes on
+// where a first one stopped.
+static const char *publish_steps(PGconn *c, const char *slug, bool has_key) {
+  const char *kek = getenv("OA_PROJECT_KEK");
+  unsigned char sk[32]; char pub[65], sealed[200];
+  if (!has_key) {
+    if (!nostr_keygen(sk, pub) || !seal(kek, slug, sk, 32, sealed, sizeof sealed)) return "no key";
+    char *kept = sql_text(c, "SELECT drops.publish_key($1, $2, $3)::text", 3, (const char *[]){slug, pub, sealed});
+    bool ok = kept && !strcmp(kept, "true");
+    free(kept);
+    if (!ok) { memset(sk, 0, 32); return "the key wasn't kept"; }
+  } else {
+    char *s = sql_text(c, "SELECT drops.publish_sealed($1)", 1, (const char *[]){slug});
+    bool ok = s && unseal(kek, slug, s, sk, 32);
+    free(s);
+    if (!ok) return "the key can't be opened";
+  }
+  relay *r = NULL;
+  char err[300] = "";
+  const char *why = NULL;
+  for (int guard = 0; guard < 2000 && !why; guard++) {
+    PGresult *q = PQexecParams(c, "SELECT x->>'seq', x->>'kind', x->>'tags', x->>'content' FROM drops.publish_next($1) x", 1, NULL,
+                               (const char *[]){slug}, NULL, NULL, 0);
+    if (PQresultStatus(q) != PGRES_TUPLES_OK || PQntuples(q) != 1) { PQclear(q); why = "sql"; break; }
+    if (PQgetisnull(q, 0, 0)) { PQclear(q); break; }   // every event is sent
+    char id[65], seq[16];
+    snprintf(seq, sizeof seq, "%s", PQgetvalue(q, 0, 0));
+    char *ev = nostr_sign(sk, atoi(PQgetvalue(q, 0, 1)), (long long)time(NULL), PQgetvalue(q, 0, 2), PQgetvalue(q, 0, 3), id);
+    PQclear(q);
+    if (!ev) { why = "not signed"; break; }
+    if (!r && !(r = relay_open(getenv("OA_PUBLISH_RELAY"), sk, err, sizeof err))) { free(ev); why = "the relay"; break; }
+    if (!relay_send(r, ev, id, err, sizeof err)) { free(ev); why = "the relay"; break; }
+    char *kept = sql_text(c, "SELECT drops.publish_sent($1, $2::int, $3, $4)::text", 4, (const char *[]){slug, seq, id, ev});
+    free(ev);
+    if (!kept) why = "sql";
+    free(kept);
+  }
+  relay_close(r);
+  memset(sk, 0, 32);
+  if (why) { if (err[0]) api_log("drops: publish: %s", err); return why; }
+  free(sql_text(c, "SELECT drops.publish_step($1, 'sent')::text", 1, (const char *[]){slug}));
+  char tok[4096];
+  if (!token(tok, sizeof tok)) return "no token";
+  PGresult *f = PQexecParams(c, "SELECT object, dest FROM drops.publish_files($1)", 1, NULL, (const char *[]){slug}, NULL, NULL, 0);
+  bool copied = PQresultStatus(f) == PGRES_TUPLES_OK;
+  for (int i = 0; copied && i < PQntuples(f); i++) copied = site_copy(tok, PQgetvalue(f, i, 0), PQgetvalue(f, i, 1));
+  PQclear(f);
+  if (!copied) return "the files";
+  free(sql_text(c, "SELECT drops.publish_step($1, 'files')::text", 1, (const char *[]){slug}));
+  free(sql_text(c, "SELECT drops.publish_step($1, 'listed')::text", 1, (const char *[]){slug}));
+  char name[200];
+  const char *pages[3][3] = {{"SELECT drops.published_slugs()", "projects/published-slugs.txt", "text/plain; charset=utf-8"},
+                             {"SELECT drops.publish_page($1)", "index.html", "text/html; charset=utf-8"},
+                             {"SELECT drops.publish_md($1)", "index.md", "text/markdown; charset=utf-8"}};
+  for (int i = 0; i < 3; i++) {
+    char *text = sql_text(c, pages[i][0], i ? 1 : 0, (const char *[]){slug});
+    if (i) snprintf(name, sizeof name, "projects/%s/%s", slug, pages[i][1]); else snprintf(name, sizeof name, "%s", pages[i][1]);
+    bool ok = text && site_put(tok, name, pages[i][2], text);
+    free(text);
+    if (!ok) return "the page";
+  }
+  char *rows = sql_text(c, "SELECT drops.published_rows()", 0, NULL);
+  bool listed = rows && site_put(tok, "projects/published.txt", "text/plain; charset=utf-8", rows);
+  free(rows);
+  if (!listed) return "the list";
+  free(sql_text(c, "SELECT drops.publish_step($1, 'done')::text", 1, (const char *[]){slug}));
+  return NULL;
+}
+
+// PUBLISH: the reviewed draft is frozen (0020), then, when this service publishes, made public.
+static void publish(const request *q, PGconn *db, const char *pk, const char *drop) {
+  answer ap = ask(db, Q("drops.draft_approve($1, $2)"), 2, (const char *[]){pk, drop});
+  if (!publisher_on() || (ap.status != 200 && ap.status != 409)) { reply(q->fd, ap); return; }
+  answer b = ask(db, Q("drops.publish_begin($1, $2, $3)"), 3, (const char *[]){pk, drop, env_or("OA_PUBLISH_VISIBILITY", "public")});
+  if (b.status != 200) { free(b.body); free(b.all); reply(q->fd, ap); return; }
+  char slug[80], state[24];
+  str_of(b.all, "slug", slug, sizeof slug);
+  bool has_key = b.all && strstr(b.all, "\"has_key\": true");
+  bool done = str_of(b.body, "drop", state, sizeof state) && !strcmp(state, "published");
+  free(b.body); free(b.all); free(ap.body); free(ap.all);
+  if (done) { reply(q->fd, ask(db, Q("drops.publish_answer($1, $2, $3, null)"), 3, (const char *[]){pk, drop, slug})); return; }
+  if (!in_child()) return;
+  PGconn *c = api_db_new();
+  if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
+  const char *why = publish_steps(c, slug, has_key);
+  if (why) api_log("drops: publish stopped at %s", why);
+  reply(q->fd, ask(c, Q("drops.publish_answer($1, $2, $3, $4)"), 4, (const char *[]){pk, drop, slug, why}));
+  PQfinish(c);
+  _exit(0);
+}
+
 static bool id_ok(const char *s, char lead) {
   if (s[0] != lead || s[1] != '-' || strlen(s) != 18) return false;
   for (int i = 2; i < 18; i++) if (!isxdigit((unsigned char)s[i])) return false;
@@ -491,7 +663,7 @@ bool drops_route(const request *q) {
   }
   if (!strcmp(slash, "/files") && post) { add_file(q, db, pk, admin, drop); return true; }
   if (post && !strcmp(slash, "/draft/edit")) { body_call(q, db, pk, drop, Q("drops.draft_edit($1, $2, $3::jsonb)")); return true; }
-  if (post && !strcmp(slash, "/publish")) { reply(q->fd, ask(db, Q("drops.draft_approve($1, $2)"), 2, (const char *[]){pk, drop})); return true; }
+  if (post && !strcmp(slash, "/publish")) { publish(q, db, pk, drop); return true; }
   if (post && !strcmp(slash, "/discard")) { discard(q, db, pk, drop); return true; }
   if (!strcmp(slash, "/draft")) {
     if (post) draft(q, db, pk, drop);
