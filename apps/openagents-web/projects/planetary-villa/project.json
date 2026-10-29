@@ -16,5 +16,9 @@
   "license": "Apache-2.0",
   "owner": "Kiki",
   "owner_pubkey": "",
-  "pubkey": "f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7"
+  "pubkey": "f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
 }

@@ -7,7 +7,8 @@
 // coax/web/project/list.ts; its header says the columns). Who "me" is comes
 // from one place: the viewer's hex pubkey, sent in as message MSG_VIEWER by
 // whatever confirms it (a session the server checked, or a NIP-07 signer).
-// Until sign-in exists nothing sends it, and MINE says sign-in is needed.
+// host.js sends MSG_ME on every page (/api/auth/me, the /login session), and MINE asks a
+// viewer who isn't logged in to log in.
 // NEW PROJECT (rc-drop-zone, docs/projects/new-project.md Part 2) opens the
 // drop area in the list's place: files dropped on the page or picked go to the
 // private drop store (coax/web/drop.js, /api/drops); MSG_DROPS says how each is
@@ -47,6 +48,7 @@ K_ENTER :: -2; K_BACKSPACE :: -3; K_DELETE :: -12; K_LEFT :: -4; K_RIGHT :: -5; 
 P_DOWN :: 0; P_MOVE :: 1; P_UP :: 2;
 MSG_TEXT :: 1;       // typed or pasted text
 MSG_VIEWER :: 3;     // the signed-in viewer's hex pubkey; empty: signed out
+MSG_ME :: 606;       // host.js on every page: /api/auth/me's lines (H| is the hex key); empty: nobody
 MSG_DROPS :: 40;     // the drop's state (coax/web/host.js, data-drops): "S|signed|signer|dragging|note", then a file a line
 ACT_NAVIGATE :: 1;
 ACT_HASH :: 3;       // the location's hash: "new" while the drop area is open
@@ -505,7 +507,7 @@ draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: st
     y := l.rows_top + 30 * d; x := b.x0 + 26 * d; w := box_w(b) - 52 * d;
     if m == FILTER_MINE && !signed_in(viewer) {
       v = put_fit(out, v, "LOG IN TO SEE YOUR PROJECTS", x, y, 10 * d, white, w);
-      v = put_wrapped(out, v, "LOGGING IN ISN'T AVAILABLE YET. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
+      v = put_wrapped(out, v, "LOG IN AT OPENAGENTS.COM/LOGIN WITH THE PHONE APP. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
     } else if m == FILTER_MINE {
       v = put_fit(out, v, "NONE OF THESE ARE YOURS YET", x, y, 10 * d, white, w);
       v = put_wrapped(out, v, "ALL SHOWS EVERY PROJECT YOU CAN SEE.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
@@ -964,6 +966,16 @@ projects_message :: (s: [] ProjectsState, kind: int, length: int) {
     if drop_flag(drops_of(s), 3) { open_drop(s, true); }   // files dragged over the page open the drop area
     return;
   }
+  if kind == MSG_ME {   // the line "H|<64 hex>", else signed out
+    s[0].viewer_n = 0;
+    for i: 0..<length - 1 {
+      if s[0].inbox[i] == 'H' && s[0].inbox[i + 1] == '|' && (i == 0 || s[0].inbox[i - 1] == '\n') && i + 66 <= length {
+        if signed_in(cast(string) s[0].inbox[i + 2..<i + 66]) { for j: 0..<64 { s[0].viewer[j] = s[0].inbox[i + 2 + j]; } s[0].viewer_n = 64; }
+        return;
+      }
+    }
+    return;
+  }
   if kind != MSG_VIEWER { return; }
   text := cast(string) s[0].inbox[0..<length];
   if length == 0 || !signed_in(text) { s[0].viewer_n = 0; return; }
@@ -1395,6 +1407,23 @@ FIXTURE :: "coax|Coax|A language.|open|public|71|16|8|claude-live-1, codex-coax|
   // a visibility we don't know counts as private
   odd := "x|X|y|open|secret|0|0|0||0000000001|10-28 00:00||0000000000000000000000000000000000000000000000000000000000000abc|\n";
   #assert shown(odd, "", FILTER_ALL, order[..]) == 0 && shown(odd, OWNER, FILTER_ALL, order[..]) == 1;
+}
+
+#test "the login every page gets (MSG_ME): its H| line is the viewer; nobody logged in signs out" {
+  s: [1] ProjectsState;
+  me := "K|npub1x\nJ|cakbam\nH|";
+  n := 0;
+  for i: 0..<me.count { s[0].inbox[n] = me[i]; n += 1; }
+  for i: 0..<64 { s[0].inbox[n] = BOB[i]; n += 1; }
+  s[0].inbox[n] = '\n'; n += 1;
+  projects_message(s[..], MSG_ME, n);
+  #assert s[0].viewer_n == 64 && same(viewer_of(s[..]), BOB);
+  projects_message(s[..], MSG_ME, 0);
+  #assert s[0].viewer_n == 0;
+  bad := "K|npub1x\nH|12\n";
+  for i: 0..<bad.count { s[0].inbox[i] = bad[i]; }
+  projects_message(s[..], MSG_ME, bad.count);
+  #assert s[0].viewer_n == 0;
 }
 
 #test "the viewer arrives by message, and a bad one signs out" {

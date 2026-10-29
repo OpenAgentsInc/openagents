@@ -105,7 +105,7 @@ check("a challenge expires", s == 404 and site("POST", "poll", {"poll": ch2["pol
 check("challenges last five minutes", sql("select bool_and(expires_ms - created_ms = 300000) from signin.challenges where expires_ms > 1") == "t")
 
 s, b, _ = site("GET", "me", cookie=sess)
-check("me: the session's npub, no projects yet", s == 200 and b == ("K|" + bech32_npub(PHONE) + "\n\n").encode(), (s, b))
+check("me: the session's npub and hex key, no projects yet", s == 200 and b == ("K|" + bech32_npub(PHONE) + "\n\nH|" + PHONE + "\n\n").encode(), (s, b))
 check("me without a session is 401", site("GET", "me")[0] == 401 and site("GET", "me", cookie="ab" * 32)[0] == 401)
 
 # ---- a private project, and the phone's session before it is linked
@@ -167,6 +167,7 @@ s, b, _ = agent(PHONE_KEY, "GET", "state", slug=SLUG)
 check("but only in the project it was linked to", s == 404, s)
 s, b, _ = site("GET", "me", cookie=sess)
 check("me lists the project", s == 200 and f"J|{PSLUG}".encode() in b and f"J|{SLUG}".encode() not in b, (s, b))
+check("me names the member the linked key speaks for", s == 200 and b"\nM|" in b and f"H|{PHONE}".encode() in b, (s, b))
 
 # ---- an invite opened on the phone links it to that member
 s, inv, _ = agent(os.environ["ADMIN_KEY"], "POST", "invite", {"pubkey": CY}, slug=PSLUG)

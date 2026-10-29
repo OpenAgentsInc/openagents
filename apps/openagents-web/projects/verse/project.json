@@ -14,5 +14,9 @@
   "path": "verse/",
   "contributions": "open",
   "license": "Apache-2.0",
-  "pubkey": "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18"
+  "pubkey": "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
 }

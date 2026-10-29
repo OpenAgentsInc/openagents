@@ -14,5 +14,9 @@
   "path": "coax/",
   "contributions": "open",
   "license": "Apache-2.0",
-  "pubkey": "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575"
+  "pubkey": "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
 }

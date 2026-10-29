@@ -194,6 +194,7 @@ async function loadEngine(bytes, generation) {
   if (kept) send(4, kept);
   globalThis.coaxial.ready = true;
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
+  viewer();
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
   return true;
 }
@@ -441,7 +442,15 @@ const byteStorage = makeByteStorage({
 const storageImports = byteStorage.imports;
 
 // ---- the page: what the browser knows about this visit, for the app
-const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604;
+const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604, VIEWER_KIND = 606;
+// Who is logged in, the same on every page: /api/auth/me's lines (K| npub, H| hex key, M| a member key it
+// speaks for, J| a private project), or "" when nobody is. Apps that care read VIEWER_KIND.
+function viewer() {
+  if (!engine?.exports.coaxial_message || location.protocol === "file:") return;
+  fetch("/api/auth/me", { credentials: "same-origin" })
+    .then((r) => (r.ok ? r.text() : ""), () => "")
+    .then((t) => send(VIEWER_KIND, t), () => send(VIEWER_KIND, ""));
+}
 const randomId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
 function kept(store, key) {
   try { const v = store.getItem(key); if (v) return [v, false]; const n = randomId(); store.setItem(key, n); return [n, true]; }
