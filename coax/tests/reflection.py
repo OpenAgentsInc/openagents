@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from quiet_crash import run as run_quiet_crash
 
 ROOT = Path(__file__).resolve().parents[1]
 COAX = Path(os.environ.get("COAX_TEST_COMPILER", ROOT / "bin/coax")).resolve()
@@ -23,8 +24,9 @@ class Reflection(unittest.TestCase):
         p = self.base / name
         p.write_text(text)
         return p
-    def command(self, cmd, path, *args):
-        return subprocess.run([str(COAX), cmd, str(path), *args], capture_output=True, text=True)
+    def command(self, cmd, path, *args, expect_crash=False):
+        runner = run_quiet_crash if expect_crash else subprocess.run
+        return runner([str(COAX), cmd, str(path), *args], capture_output=True, text=True)
     def success(self, cmd, path, *args):
         p = self.command(cmd, path, *args)
         self.assertEqual(p.returncode, 0, p.stderr)
@@ -115,7 +117,7 @@ main :: () {
             for index in [-1, 2]:
                 src = self.write("bounds.coax", decl+f'\nf :: (i:int) {{x:={query}(S,i);}} main :: () {{f({index});}}')
                 for mode in [[], ["--release"]]:
-                    p = self.command("run", src, *mode)
+                    p = self.command("run", src, *mode, expect_crash=True)
                     self.assertNotEqual(p.returncode, 0)
                     self.assertIn("index", p.stderr)
 

@@ -2,6 +2,7 @@
 """Original Coax source through generated C, native diagnostics and real LLDB."""
 from pathlib import Path
 import hashlib, json, os, shutil, subprocess, tempfile, unittest
+from quiet_crash import run as run_quiet_crash
 ROOT=Path(__file__).resolve().parents[1]
 COAX=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax')).resolve()
 class Debugging(unittest.TestCase):
@@ -61,7 +62,7 @@ class Debugging(unittest.TestCase):
   host=self.d/'host.c';host.write_text('#include "lib.h"\nint main(void){return (int)leaf(1);}')
   built=subprocess.run(['cc','-std=c11','-O0','-g','-fsanitize=address,undefined',str(c),str(host),'-o',str(self.d/'fault')],capture_output=True,text=True)
   self.assertEqual(built.returncode,0,built.stderr)
-  run=subprocess.run([str(self.d/'fault')],capture_output=True,text=True,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0:handle_abort=1'})
+  run=run_quiet_crash([str(self.d/'fault')],capture_output=True,text=True,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0:handle_abort=1'})
   self.assertNotEqual(run.returncode,0);self.assertIn('AddressSanitizer',run.stderr)
   self.assertIn('leaf.coax:3',run.stderr);self.assertIn('leaf',run.stderr)
  def test_debugger_rejects_stale_source(self):

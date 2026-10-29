@@ -19,6 +19,18 @@ Everything Coax lives in this folder, at the root of the openagents repo.
 
 Commands below run from the openagents repo root.
 
+Expected native faults use `coax/tests/quiet_crash.py` to suppress macOS crash
+dialogs for the selected subprocess and its descendants. Python tests import
+`run` from `quiet_crash`; shell tests use
+`python3 coax/tests/quiet_crash.py -- COMMAND [ARG ...]`. The launcher clears
+only the child's inherited Mach crash-report port and execs the real command.
+Signals, exit statuses, diagnostics and sanitizer output remain observable;
+each test still checks its expected failure. Ordinary launches retain crash
+reporting. macOS may still write local diagnostic reports. This does not change
+macOS preferences or the emitted Coax runtime.
+`python3 coax/tests/crash_reporting.py` checks real aborts, normal exits,
+timeouts and process isolation with an independent native Mach-port oracle.
+
 ## coax0: the Coax bootstrap compiler
 
 Coax is specified in [the language design](spec.md). The

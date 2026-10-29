@@ -15,10 +15,13 @@ import sys
 import tempfile
 
 ROOT=Path(__file__).resolve().parents[3]
+sys.path.insert(0,str(ROOT/'coax/tests'))
+from quiet_crash import run as run_quiet_crash
 COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'coax/bin/coax')).resolve()
 ADAPTER=ROOT/'coax/tests/nostr/field_guard_adapter.coax'
 SANITIZER=ROOT/'coax/tests/nostr/field_guard_sanitized.c'
 PROOF=ROOT/'tools/coax-nostr/field-guards/prove.py'
+CRASH_LAUNCHER=ROOT/'coax/tests/quiet_crash.py'
 P=(1<<256)-(1<<32)-977
 class U32(C.Structure):_fields_=[('data',C.POINTER(C.c_uint32)),('count',C.c_int64)]
 class U64(C.Structure):_fields_=[('data',C.POINTER(C.c_uint64)),('count',C.c_int64)]
@@ -48,7 +51,7 @@ def main():
  if args.retain:args.retain.mkdir(parents=True,exist_ok=False)
  helper=COMPILER.parent/'provenance-check';record=COMPILER.parent/'provenance.record';provenance=ROOT/'coax/provenance.sh'
  run(provenance,'verify',ROOT,COMPILER,helper,record)
- results={'schema':'coax.field-guard-witnesses.v1','scope':'conditional math and native arithmetic witnesses; not a production-secret approval','compiler':run(COMPILER,'--version').stdout.strip(),'compiler_sha256':sha(COMPILER),'compiler_provenance_helper_sha256':sha(helper),'compiler_provenance_record_sha256':sha(record),'native_compiler':run('cc','--version').stdout.splitlines()[0],'host':platform.platform(),'adapter_sha256':sha(ADAPTER),'sanitizer_sha256':sha(SANITIZER),'proof_sha256':sha(PROOF),'witness_sha256':sha(__file__),'seed':4405,'modes':{}}
+ results={'schema':'coax.field-guard-witnesses.v1','scope':'conditional math and native arithmetic witnesses; not a production-secret approval','compiler':run(COMPILER,'--version').stdout.strip(),'compiler_sha256':sha(COMPILER),'compiler_provenance_helper_sha256':sha(helper),'compiler_provenance_record_sha256':sha(record),'native_compiler':run('cc','--version').stdout.splitlines()[0],'host':platform.platform(),'adapter_sha256':sha(ADAPTER),'sanitizer_sha256':sha(SANITIZER),'proof_sha256':sha(PROOF),'witness_sha256':sha(__file__),'crash_launcher_sha256':sha(CRASH_LAUNCHER),'seed':4405,'modes':{}}
  with tempfile.TemporaryDirectory(prefix='coax-field-guards-') as tmp:
   tmp=Path(tmp);proof=tmp/'proof.json';run(sys.executable,PROOF,'--report',proof);result=json.loads(proof.read_text());results['proof']=result
   if args.retain:shutil.copyfile(proof,args.retain/'proof.json')
@@ -83,12 +86,12 @@ def main():
     a=(C.c_uint32*8)(*words(x));b=(C.c_uint32*8)(*words(y))
     for name,want in [('field_guard_add32',(x+y)%P),('field_guard_mul32',(x*y)%P)]:
      out=(C.c_uint32*8)();assert getattr(lib,name)(U32(a,8),U32(b,8),U32(out,8));assert packed(out)==want
-   bad=subprocess.run([sys.executable,str(Path(__file__).resolve()),'--invalid-add',str(artifact)],capture_output=True,text=True,timeout=20)
-   bad_normal=subprocess.run([sys.executable,str(Path(__file__).resolve()),'--invalid-normalize',str(artifact)],capture_output=True,text=True,timeout=20)
+   bad=run_quiet_crash([sys.executable,str(Path(__file__).resolve()),'--invalid-add',str(artifact)],capture_output=True,text=True,timeout=20)
+   bad_normal=run_quiet_crash([sys.executable,str(Path(__file__).resolve()),'--invalid-normalize',str(artifact)],capture_output=True,text=True,timeout=20)
    assert bad.returncode==-signal.SIGABRT and 'secp_field32.coax:70: assertion failed' in bad.stderr
    if mode=='checked':assert bad_normal.returncode==-signal.SIGABRT and "secp_field.coax:223: integer overflow" in bad_normal.stderr
    for name,expected in sources.items():assert sha(name)==expected
-   assert sha(COMPILER)==results['compiler_sha256'] and sha(PROOF)==results['proof_sha256'] and sha(__file__)==results['witness_sha256'] and sha(SANITIZER)==results['sanitizer_sha256']
+   assert sha(COMPILER)==results['compiler_sha256'] and sha(PROOF)==results['proof_sha256'] and sha(__file__)==results['witness_sha256'] and sha(SANITIZER)==results['sanitizer_sha256'] and sha(CRASH_LAUNCHER)==results['crash_launcher_sha256']
    for name,expected in result['source_sha256'].items():assert sha(ROOT/name)==expected
    run(provenance,'verify',ROOT,COMPILER,helper,record);assert sha(helper)==results['compiler_provenance_helper_sha256'] and sha(record)==results['compiler_provenance_record_sha256']
    results['modes'][mode]={'c_sha256':sha(c),'artifact_sha256':sha(artifact),'sanitized_artifact_sha256':sha(sanitized),'address_sanitizer':True,'undefined_sanitizer':True,'source_map_sha256':sha(source_map),'source_sha256':recorded,'normalization_cases':len(normal),'field_pairs':len(pairs),'invalid_add_exit':bad.returncode,'invalid_add_diagnostic':'secp_field32.coax:70: assertion failed','invalid_normalize_exit':bad_normal.returncode}

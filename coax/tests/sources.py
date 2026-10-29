@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from quiet_crash import run as run_quiet_crash
 
 ROOT = Path(__file__).resolve().parents[1]
 COAX = Path(os.environ.get("COAX_TEST_COMPILER", ROOT / "bin/coax")).resolve()
@@ -21,8 +22,9 @@ class Sources(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
         return path
-    def command(self, cmd, path, *args, env=None):
-        return subprocess.run([str(COAX), cmd, str(path), *args], capture_output=True, text=True, env=env)
+    def command(self, cmd, path, *args, env=None, expect_crash=False):
+        runner = run_quiet_crash if expect_crash else subprocess.run
+        return runner([str(COAX), cmd, str(path), *args], capture_output=True, text=True, env=env)
     def success(self, cmd, path, *args):
         p = self.command(cmd,path,*args)
         self.assertEqual(p.returncode,0,p.stderr)
@@ -149,7 +151,7 @@ class Sources(unittest.TestCase):
         main=self.write("main.coax",'#load "part.coax";\nmain :: () {bad();}')
         part=self.write("part.coax",'bad :: () {\n a:=[1]int.[7];\n i:=2;\n #assert a[i]==7;\n}')
         for mode in [[],["--release"]]:
-            p=self.command("run",main,*mode)
+            p=self.command("run",main,*mode,expect_crash=True)
             self.assertNotEqual(p.returncode,0)
             self.assertIn(str(part)+":4: index out of bounds",p.stderr)
 
@@ -158,7 +160,7 @@ class Sources(unittest.TestCase):
         part=self.write(name,'bad :: () {#assert false;}')
         spelling=name.replace('\\','\\\\').replace('"','\\"').replace('\n','\\n')
         main=self.write("main.coax",'#load "'+spelling+'"; main :: () {bad();}')
-        p=self.command("run",main)
+        p=self.command("run",main,expect_crash=True)
         self.assertNotEqual(p.returncode,0)
         self.assertIn(str(part)+':1: assertion failed',p.stderr)
 

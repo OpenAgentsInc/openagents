@@ -9,14 +9,16 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from quiet_crash import run as run_quiet_crash
 
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "bin/coax"
 
 
-def coax(*args):
-    return subprocess.run([str(COMPILER), *args], capture_output=True, text=True, timeout=120)
+def coax(*args, expect_crash=False):
+    runner = run_quiet_crash if expect_crash else subprocess.run
+    return runner([str(COMPILER), *args], capture_output=True, text=True, timeout=120)
 
 
 class Verify(unittest.TestCase):
@@ -168,7 +170,7 @@ class Verify(unittest.TestCase):
         for arguments in ('-1,1000','MAX_MSAT+1,1000','1,-1','MAX_MSAT,1000001'):
             path=self.write(source+'main :: () {fee:=fee_msat('+arguments+');}')
             for opts in ((),('--release',)):
-                r=coax('run',path,*opts);self.assertNotEqual(r.returncode,0);self.assertIn('assertion failed',r.stderr)
+                r=coax('run',path,*opts,expect_crash=True);self.assertNotEqual(r.returncode,0);self.assertIn('assertion failed',r.stderr)
 
     def test_equivalent_marks_must_be_actual_line_comments(self):
         for marker in ('note:="// mutant: equivalent";', '/* // mutant: equivalent */', '// mutant: equivalently'):
@@ -181,7 +183,7 @@ class Verify(unittest.TestCase):
 
     def test_runtime_assert_traps_in_release(self):
         path = self.write("main :: () { x := 3; #assert x == 4; }\n")
-        r = coax("run", "--release", path)
+        r = coax("run", "--release", path, expect_crash=True)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn(":1: assertion failed", r.stderr)
 

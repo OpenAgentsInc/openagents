@@ -6,15 +6,17 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from quiet_crash import run as run_quiet_crash
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = ROOT / 'bin/coax'
 
 class NativeTests(unittest.TestCase):
-    def invoke(self, source, command='c', *options):
+    def invoke(self, source, command='c', *options, expect_crash=False):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'test.coax'; path.write_text(source)
-            return subprocess.run([str(COMPILER),command,str(path),*options],capture_output=True,text=True,timeout=15)
+            runner = run_quiet_crash if expect_crash else subprocess.run
+            return runner([str(COMPILER),command,str(path),*options],capture_output=True,text=True,timeout=15)
 
     def test_borrowed_return_storage_under_sanitizers(self):
         source='''tail :: (input:[]u8)->[]u8 #export_c {alias:=input;return alias[1..<input.count];}
@@ -73,7 +75,7 @@ class NativeTests(unittest.TestCase):
         for expr,message in [('int(big)','cast out of range'),('f32(big * big * big)','cast out of range'),
                              ('byte_at("a",minus)','out of bounds'),('1 << (minus + 65)','shift amount out of range'),
                              ('1 >> minus','shift amount out of range')]:
-            r=self.invoke('main :: () { big := 1e30; minus := -1; x:='+expr+'; }','run')
+            r=self.invoke('main :: () { big := 1e30; minus := -1; x:='+expr+'; }','run',expect_crash=True)
             self.assertNotEqual(r.returncode,0);self.assertIn(message,r.stderr)
 
     def test_fixed_abi_and_ordered_effects(self):

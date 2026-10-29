@@ -18,6 +18,8 @@ import tempfile
 import unittest
 
 ROOT=Path(__file__).resolve().parents[3]
+sys.path.insert(0,str(ROOT/'coax/tests'))
+from quiet_crash import run as run_quiet_crash
 COMPILER=Path(os.environ.get('COAX_TEST_COMPILER', ROOT/'coax/bin/coax'))
 SOURCE=ROOT/'coax/lib/crypto/secp_field.coax'
 sys.path.insert(0,str(ROOT/'tools/coax-nostr/fuzz'))
@@ -55,7 +57,7 @@ class SecpField(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
   cls.temp=tempfile.TemporaryDirectory(prefix='coax-secp-field-');cls.dir=Path(cls.temp.name);cls.libs=[]
-  cls.evidence={'schema':'coax.secp-field-repr.v1','seed':20261028,'scope':'normalize/load/store/strict/add/sub/negate/equality only; public deterministic fixtures; no field multiplication, constant-time, one-hour fuzz or security approval claim','compiler':run(COMPILER,'version').stdout.strip(),'compiler_sha256':hashlib.sha256(COMPILER.read_bytes()).hexdigest(),'platform':platform.platform(),'native_compiler':run('cc','--version').stdout.splitlines()[0],'sources':{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [SOURCE,ROOT/'coax/lib/crypto/bytes.coax',Path(__file__),ROOT/'coax/tests/nostr/secp_field_wasm.c',ROOT/'coax/tests/nostr/secp_field_wasm.cjs',ROOT/'tools/coax-nostr/fuzz/oracle.py']},'modes':[]}
+  cls.evidence={'schema':'coax.secp-field-repr.v1','seed':20261028,'scope':'normalize/load/store/strict/add/sub/negate/equality only; public deterministic fixtures; no field multiplication, constant-time, one-hour fuzz or security approval claim','compiler':run(COMPILER,'version').stdout.strip(),'compiler_sha256':hashlib.sha256(COMPILER.read_bytes()).hexdigest(),'platform':platform.platform(),'native_compiler':run('cc','--version').stdout.splitlines()[0],'sources':{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [SOURCE,ROOT/'coax/lib/crypto/bytes.coax',Path(__file__),ROOT/'coax/tests/quiet_crash.py',ROOT/'coax/tests/nostr/secp_field_wasm.c',ROOT/'coax/tests/nostr/secp_field_wasm.cjs',ROOT/'tools/coax-nostr/fuzz/oracle.py']},'modes':[]}
   for label,flags in [('checked',[]),('release',['--release'])]:
    c=cls.dir/(label+'.c');header=cls.dir/'secp_field.h'
    c.write_text(run(COMPILER,'c',SOURCE,'--library','--header',header,*flags).stdout)
@@ -152,7 +154,7 @@ int main(int argc,char**argv){{coax_t_SecpFieldDebug d={{0}};d.magnitude=8;
 ''')
    run('cc','-std=c11','-O2',c,'-lm','-o',exe)
    for i in range(10):
-    result=subprocess.run([str(exe),str(i)],capture_output=True,text=True,preexec_fn=lambda:resource.setrlimit(resource.RLIMIT_CORE,(0,0)))
+    result=run_quiet_crash([str(exe),str(i)],capture_output=True,text=True,preexec_fn=lambda:resource.setrlimit(resource.RLIMIT_CORE,(0,0)))
     self.assertNotEqual(result.returncode,0);self.assertIn('assertion failed',result.stderr);count+=1
   self.evidence['isolated_bound_traps']=count
  def test_wasm_matches_independent_supplied_fixtures(self):
