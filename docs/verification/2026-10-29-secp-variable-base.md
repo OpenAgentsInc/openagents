@@ -5,12 +5,11 @@ for bounded peer coordinates and reduces the 256-bit scalar modulo the group
 order. A canonical infinity peer is accepted as a mathematical point; an
 invalid bounded peer is refused with canonical infinity. An actual ECDH
 consumer must separately reject inappropriate peers and invalid secret keys.
-Caller-owned point fields must satisfy the existing group magnitude bound.
-The validation kernel performs field arithmetic before raw-limb admission,
-and masked selection evaluates peer normalization eagerly. This API therefore
-does not promise refusal of arbitrary unbounded limbs; a byte-key admission
-boundary belongs in the ECDH consumer. This evidence does not approve production
-secrets.
+The exported entry checks all raw coordinate limbs against the existing group
+magnitude bound before validation or eager peer normalization; an oversized
+raw point is refused with canonical infinity. Byte-key admission and any ECDH
+peer policy remain separate responsibilities of the consumer. This evidence
+does not approve production secrets.
 
 The scalar is recoded into65 signed radix-16 digits. Every online row uses four
 unconditional doubles, scans all nine table entries with a complete mask,
@@ -147,7 +146,7 @@ erasure and production-secret admission remain separate gates.
 
 The exported entry now rejects every raw coordinate limb outside the magnitude-eight bounds before validity or normalization. The ABI and bounded-peer behavior are unchanged; an oversized raw peer returns `ok=false` and canonical infinity. The [admission report](2026-10-29-secp-peer-admission.md) records adversarial boundary checks and 1,353/1,353 source mutants killed. A [changed-source guard reproof](2026-10-29-secp-field-guard-reproof.md) independently reviews the admitted caller trace and proves the three arithmetic guard outcomes under the documented domains. The guards remain in source; this is not an automatic source-auditor waiver.
 
-The [classified source audit](2026-10-29-classified-root-audit.md) analyzes this exact source with scalar secret and peer public, an explicit caller assumption. It reaches 44 procedures in 98,078 visits and reports the same three authored guard obligations with `accepted=false`. The default all-parameters-secret audit refuses the peer-dependent admission branch. These results establish no secrecy classification for a caller and do not approve generated objects, JIT behavior, erasure or production secrets.
+The proof, audit and oracle records agree on their shared runtime source hashes; their full inventories differ because the proof also pins fixed-base wrappers and the audit includes scalar fixtures. The [classified source audit](2026-10-29-classified-root-audit.md) analyzes this exact source with scalar secret and peer public, an explicit caller assumption. It reaches 44 procedures in 98,078 visits and reports the same three authored guard obligations with `accepted=false`. The default all-parameters-secret audit refuses the peer-dependent admission branch. These results establish no secrecy classification for a caller and do not approve generated objects, JIT behavior, erasure or production secrets.
 
 The refreshed [independent oracle run](2026-10-29-secp-mult-const-admission-oracle.json) matched 100,000 random pairs per native mode and 100,517 cases per Wasm mode, including boundary scalars, with zero failures; all four runner tests passed. The additional scaled-peer probe passed 1,000 random projective peers in each native mode, and the [Wasm exceptional-peer probe](2026-10-29-secp-mult-const-admission-wasm-exceptions.json) passed 15 cases per mode. Its inherited report's `random_pairs` setting is configuration metadata; that separate probe ran exceptional cases only. The scaled probe source SHA-256 is `015d98513f4c9872681a164cf99630369fac18bf48612b706d5f8de16b06b2e0`; its retained log SHA-256 is `d05cfca3a495be0640ff0acdd0dabeb441e1dc58e8ebfe574ab1525d01452615`. These tests use public fixtures and do not establish target constant-time behavior or production approval.
 
