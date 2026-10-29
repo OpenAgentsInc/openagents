@@ -14,6 +14,7 @@
 - [12. Are the probabilities any good?](ch012-are-the-probabilities-any-good.md)
 - [13. Qualify honestly](ch013-qualify-honestly.md)
 - [16. Serve `/v1/systemone`](ch016-serve-systemone.md)
+- [70. Learning with arrays](ch070-learning-with-arrays.md) — first learning chapter
 - [26. A Coax compute subset](ch026-a-coax-compute-subset.md) — first device chapter
 - [30. Elephant on CUDA](ch030-elephant-on-cuda.md)
 - [41. Original MXFP4 weights](ch041-original-mxfp4-weights.md) — first gpt-oss branch chapter
@@ -46,6 +47,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–10, 12, 13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–57, 59, 165–169 and 172 are
+Chapters 1–10, 12, 13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–57, 59, 70, 165–169 and 172 are
 runnable. Chapter 11, chapters 14, 15, 17–25, 27–29, 31–40 and the remaining outlines
 remain proposed.

@@ -1,0 +1,68 @@
+#import "Basic";
+#load "../lib/tabular.coax";
+
+// Four decimal places for the transcript; the native harness compares full precision.
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+
+// Scale with statistics from `rows` only.
+scale :: (x:[]f64,rows:[]int,xs:[]f64) {
+    mean:[4]f64;sd:[4]f64;
+    #assert tb_fit_scale(x,4,rows,mean[..],sd[..],false)==TbStatus.ok;
+    #assert tb_apply_scale(x,4,mean[..],sd[..],xs,false)==TbStatus.ok;
+}
+// Train on `rows`, then write an output for every request.
+fit :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,z:[]f64) {
+    p:[161]f64;order:[2400]int;
+    #assert tb_train(m,c,x,y,rows,p[..],order[..],false).status==TbStatus.ok;
+    #assert tb_predict(m,p[..],x,z,false)==TbStatus.ok;
+}
+test_loss :: (z:[]f64,y:[]f64,rows:[]int)->f64 {v:=tb_log_loss(z,y,rows);#assert v.status==TbStatus.ok;return r4(v.value);}
+
+// book:begin example
+main :: () {
+    x:[9600]f64;y:[2400]f64;lat:[2400]f64;g:[2400]int;
+    sim:=tb_simulate(70,300,x[..],y[..],lat[..],g[..],false);
+    print("% requests from 300 sessions, % on time (deadline 9 s)\n",sim.rows,sim.on_time);
+    tr:[2400]int;va:[2400]int;te:[2400]int;
+    train:=tr[0..<tb_rows(g[..],0,tr[..],false)];val:=va[0..<tb_rows(g[..],1,va[..],false)];test:=te[0..<tb_rows(g[..],2,te[..],false)];
+    print("split by session: % training, % validation, % test rows\n",train.count,val.count,test.count);
+
+    xs:[9600]f64;scale(x[..],train,xs[..]);z:[2400]f64;
+    logistic:=TbModel.{features=4,logistic=true};mlp:=TbModel.{features=4,hidden=8,logistic=true};
+    c:=TbConfig.{epochs=40,batch=16,rate=0.5,init_seed=1,shuffle_seed=2};
+    raw:=c;raw.rate=1e-6;fit(logistic,raw,x[..],y[..],train,z[..]);unscaled:=test_loss(z[..],y[..],val);
+    zg:[2400]f64;fit(logistic,c,xs[..],y[..],train,zg[..]);
+    print("validation log loss, logistic: raw features % at rate 1e-6, scaled %\n",unscaled,test_loss(zg[..],y[..],val));
+
+    // Every predictor gives a probability (or a 0/1 decision) of finishing on time.
+    on:[5][2400]f64;base:=tb_base_logit(y[..],train);logit:[2400]f64;
+    #assert base.status==TbStatus.ok && tb_rule(x[..],on[1][..],false)==TbStatus.ok;
+    line:=c;line.rate=0.05;fit(TbModel.{features=4},line,xs[..],lat[..],train,z[..]);
+    for i:0..<2400 {logit[i]=base.value;on[0][i]=tb_sigmoid(base.value);on[2][i]=0;if tb_on_time(z[i]) {on[2][i]=1;}on[3][i]=tb_sigmoid(zg[i]);}
+    print("latency line: test squared error % s^2\n",r4(tb_mse(z[..],lat[..],test).value));
+    fit(mlp,c,xs[..],y[..],train,z[..]);
+    for i:0..<2400 {on[4][i]=tb_sigmoid(z[i]);}
+    print("test log loss: constant %, logistic %, MLP %\n",test_loss(logit[..],y[..],test),test_loss(zg[..],y[..],test),test_loss(z[..],y[..],test));
+
+    print("test decisions at threshold 0.5 (a missed late request costs 5, a needless flag 1):\n");
+    names:=[5]string.["constant","rule    ","line    ","logistic","MLP     "];
+    for k:0..<5 {
+        d:=tb_classify(on[k][..],y[..],test,0.5,5,1);
+        print("  % accuracy %, cost %, caught % of % late\n",names[k],r4(d.accuracy),r4(d.cost),d.caught,d.late);
+    }
+    for k:3..<5 {
+        t:=tb_choose(on[k][..],y[..],val,5,1);
+        print("  % threshold % chosen on validation: test cost %\n",names[k],t.threshold,r4(tb_classify(on[k][..],y[..],test,t.threshold,5,1).cost));
+    }
+
+    // Little data: the first 40 sessions' training rows, scaled on those rows alone.
+    few:[2400]int;nf:=0;
+    for r:train {if g[r]<40 {few[nf]=r;nf+=1;}}
+    scale(x[..],few[0..<nf],xs[..]);
+    long:=c;long.epochs=200;decayed:=long;decayed.decay=0.01;
+    fit(logistic,long,xs[..],y[..],few[0..<nf],z[..]);a:=test_loss(z[..],y[..],test);
+    fit(mlp,long,xs[..],y[..],few[0..<nf],z[..]);b:=test_loss(z[..],y[..],test);
+    fit(mlp,decayed,xs[..],y[..],few[0..<nf],z[..]);
+    print("% training rows: test log loss logistic %, MLP %, MLP with decay 0.01 %\n",nf,a,b,test_loss(z[..],y[..],test));
+}
+// book:end example

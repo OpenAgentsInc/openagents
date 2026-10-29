@@ -330,6 +330,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deadline-predictor.coax",
+      "chapter": "psionic/book/ch070-learning-with-arrays.md",
+      "stdout": "psionic/fixtures/deadline-predictor.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

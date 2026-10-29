@@ -1,0 +1,14 @@
+2400 requests from 300 sessions, 2047 on time (deadline 9 s)
+split by session: 1440 training, 480 validation, 480 test rows
+validation log loss, logistic: raw features 1.5078 at rate 1e-6, scaled 0.1086
+latency line: test squared error 3.8812 s^2
+test log loss: constant 0.3807, logistic 0.1593, MLP 0.1434
+test decisions at threshold 0.5 (a missed late request costs 5, a needless flag 1):
+  constant accuracy 0.875, cost 0.625, caught 0 of 60 late
+  rule     accuracy 0.8146, cost 0.2021, caught 58 of 60 late
+  line     accuracy 0.9292, cost 0.1792, caught 47 of 60 late
+  logistic accuracy 0.9375, cost 0.1625, caught 48 of 60 late
+  MLP      accuracy 0.9396, cost 0.1438, caught 50 of 60 late
+  logistic threshold 0.9 chosen on validation: test cost 0.1167
+  MLP      threshold 0.95 chosen on validation: test cost 0.1125
+192 training rows: test log loss logistic 0.1771, MLP 0.2812, MLP with decay 0.01 0.1592

@@ -35,6 +35,8 @@ keeps that memory exact. **GPU execution and useful throughput are
 not complete.** The device sequence below is the next GPT-OSS delivery path.
 [Chapter 56](ch056-execute-a-deepseek-r1-distill.md) adds a bounded original
 DeepSeek R1-Distill-Qwen-1.5B CPU reference and a complete greedy greeting.
+[Chapter 70](ch070-learning-with-arrays.md) is runnable on the CPU: the first
+learning chapter, on simulated deadline data.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -328,7 +330,7 @@ Part XX.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 70. Learning with arrays | A small supervised path on one dataset: a line with several inputs, logistic regression, then one hidden layer, each compared with a constant predictor and a handwritten rule, with explicit gradients and SGD. The project predicts whether a request finishes before its deadline from a controlled simulator (prompt length, queue depth, model choice, memory headroom), later from chapter 14's measurements. Feature scaling, grouped train/validation/test splits, regularization, class imbalance and threshold choice are measured, and one case shows the larger model losing. It can follow chapter 3 directly. |
+| [70. Learning with arrays](ch070-learning-with-arrays.md) — runnable: cpu-f64-sgd-v1, simulator only | A small supervised path on one dataset: a line with several inputs, logistic regression, then one hidden layer, each compared with a constant predictor and a handwritten rule, with explicit gradients and SGD. The project predicts whether a request finishes before its deadline from a controlled simulator (prompt length, queue depth, model choice, memory headroom), later from chapter 14's measurements. Feature scaling, grouped train/validation/test splits, regularization, class imbalance and threshold choice are measured, and one case shows the larger model losing. It can follow chapter 3 directly. |
 | 71. Gradients as a program | A bounded reverse-mode tape, saved values, accumulation and parameter identity; analytic and finite-difference checks. |
 | 71a. Make a model fail, then find out why | A working classifier broken on purpose (gradients that accumulate across steps, targets paired with the wrong examples, a loss mask that includes padding, a learning rate too large, initialization that makes hidden units identical, a training-only random operation left on at evaluation), and diagnostics for each: activation distributions, gradient norms, update sizes, train and validation curves, and overfitting one small batch first. Each fault must produce a diagnostic that points at it, and repairing it must restore the expected behavior. |
 | 71b. Differentiate any tensor program | General reverse mode over 26a's IR: vector-Jacobian rules per operator, shared subexpressions, a parameter used more than once, unused gradients, custom derivatives, gradient-mode control and saved-tensor lifetimes. 71's tape stays the teaching version; this is the permanent one. An MLP built from registered operators, including a custom one, trains with checked gradients. Framework track. |
