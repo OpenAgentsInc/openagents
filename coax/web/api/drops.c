@@ -44,6 +44,8 @@
 #include "nostr.h"
 #include "relay.h"
 #include <ctype.h>
+#include <math.h>
+#include <stdint.h>
 #include <curl/curl.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -474,23 +476,26 @@ static long gcs_body(const char *url, const char *tok, const char *type, const c
   return status;
 }
 
-// Writes name in the site's bucket (no-cache: a page, a list).
-static bool site_put(const char *tok, const char *name, const char *type, const char *data) {
+// Writes name in the site's bucket (no-cache: a page, a list, a realm's pack).
+static bool site_put_bytes(const char *tok, const char *name, const char *type, const unsigned char *data, size_t n) {
   const char *bucket = getenv("OA_SITE_BUCKET");
   if (!bucket || !*bucket) return false;
-  size_t n = strlen(data), cap = n + 1024;
+  size_t cap = n + 1024;
   char *body = malloc(cap), url[1024];
   if (!body) return false;
   int k = snprintf(body, cap, "--oa-site\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
                    "{\"name\":\"%s\",\"contentType\":\"%s\",\"cacheControl\":\"no-cache\"}\r\n--oa-site\r\nContent-Type: %s\r\n\r\n", name, type, type);
-  memcpy(body + k, data, n);
-  k += (int)n;
-  k += snprintf(body + k, cap - (size_t)k, "\r\n--oa-site--\r\n");
+  if (n) memcpy(body + k, data, n);
+  size_t len = (size_t)k + n;
+  len += (size_t)snprintf(body + len, cap - len, "\r\n--oa-site--\r\n");
   snprintf(url, sizeof url, "%s/upload/storage/v1/b/%s/o?uploadType=multipart", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"), bucket);
-  long status = gcs_body(url, tok, "multipart/related; boundary=oa-site", body, (size_t)k, NULL);
+  long status = gcs_body(url, tok, "multipart/related; boundary=oa-site", body, len, NULL);
   free(body);
   if (status != 200) api_log("drops: site write %ld", status);
   return status == 200;
+}
+static bool site_put(const char *tok, const char *name, const char *type, const char *data) {
+  return site_put_bytes(tok, name, type, (const unsigned char *)data, strlen(data));
 }
 
 // Copies a kept file from the drops bucket into the site's (a rewrite: the bytes never pass through here).
@@ -519,6 +524,327 @@ static char *sql_text(PGconn *c, const char *sql, int n, const char *const *v) {
   char *out = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) ? strdup(PQgetvalue(r, 0, 0)) : NULL;
   PQclear(r);
   return out;
+}
+
+// ---- the first realm (rc-first-realm, 0040_project_realm.sql): the drop's .glb models in one asset pack
+// (the realm host's VPK1, docs/verse/realm-host.md and verse/tools/pack_realm.py) and a page that walks it.
+// SQL reads each model's glTF (drops.glb_plan, drops.glb_images); here the bytes are copied out of its
+// binary chunk, every read checked against the chunk, the accessor's buffer view and the limits below.
+#define REALM_BUDGET (32u << 20)        // the pack, at most
+#define REALM_MODEL_MAX (64u << 20)     // a dropped file is at most 64 MiB (0016)
+#define REALM_VERTICES 1500000u
+#define REALM_INDICES 4500000u
+#define REALM_LAYERS 12
+#define REALM_LAYER_MAX (4u << 20)      // an image bigger than this is left out (the model keeps its colour)
+#define REALM_WHITE 255                 // a vertex's layer until the white layer's place is known
+
+typedef struct { unsigned char *p; size_t n, cap; } bytes;
+static bool more(bytes *b, size_t k) {
+  if (b->n + k <= b->cap) return true;
+  size_t cap = b->cap ? b->cap : 4096;
+  while (cap < b->n + k) cap *= 2;
+  unsigned char *p = realloc(b->p, cap);
+  if (!p) return false;
+  b->p = p; b->cap = cap;
+  return true;
+}
+static bool add(bytes *b, const void *data, size_t k) { if (!more(b, k)) return false; memcpy(b->p + b->n, data, k); b->n += k; return true; }
+static size_t take_model(char *data, size_t size, size_t n, void *user) {
+  bytes *b = user; size_t k = size * n;
+  if (b->n + k > REALM_MODEL_MAX) return 0;
+  return add(b, data, k) ? k : 0;
+}
+static float clampf(float v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+static uint32_t le32(const unsigned char *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static void put32(unsigned char *p, uint32_t v) { p[0] = (unsigned char)v; p[1] = (unsigned char)(v >> 8); p[2] = (unsigned char)(v >> 16); p[3] = (unsigned char)(v >> 24); }
+
+// A kept file's bytes from the drops bucket.
+static bool fetch_object(const char *tok, const char *object, bytes *out) {
+  char name[1024], url[2048], auth[4200];
+  enc(name, sizeof name, object);
+  snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s?alt=media", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"),
+           env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops"), name);
+  CURL *h = curl_easy_init();
+  if (!h) return false;
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+  struct curl_slist *list = curl_slist_append(NULL, auth);
+  curl_easy_setopt(h, CURLOPT_URL, url);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, list);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take_model);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, out);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 120L);
+  long status = 0;
+  if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  curl_slist_free_all(list); curl_easy_cleanup(h);
+  return status == 200;
+}
+
+// An accessor as drops.glb_acc writes it: where its elements lie and what they are.
+typedef struct { unsigned long long at, count, end; int comp, n, stride, norm; bool ok; } acc;
+static int comp_bytes(int comp) { return comp == 5126 || comp == 5125 ? 4 : comp == 5123 || comp == 5122 ? 2 : comp == 5121 || comp == 5120 ? 1 : 0; }
+static acc acc_of(const char *text, size_t bin) {
+  acc a = {0};
+  if (!text || !*text) return a;
+  if (sscanf(text, "%llu %llu %d %d %d %llu %d", &a.at, &a.count, &a.comp, &a.n, &a.stride, &a.end, &a.norm) != 7) return a;
+  int size = comp_bytes(a.comp) * a.n;
+  if (size <= 0 || a.count == 0 || a.count > REALM_INDICES) return a;
+  if (!a.stride) a.stride = size;
+  if (a.stride < size || a.stride > 252) return a;
+  unsigned long long last = a.at + (a.count - 1) * (unsigned long long)a.stride + (unsigned long long)size;
+  a.ok = last <= a.end && a.end <= bin;
+  return a;
+}
+// Component k of element i, as a float (normalized integers to 0..1).
+static float acc_float(const unsigned char *bin, const acc *a, unsigned long long i, int k) {
+  const unsigned char *p = bin + a->at + i * (unsigned long long)a->stride + (unsigned long long)(k * comp_bytes(a->comp));
+  switch (a->comp) {
+    case 5126: { float f; memcpy(&f, p, 4); return f == f && f > -1e9f && f < 1e9f ? f : 0; }
+    case 5121: return p[0] / 255.0f;
+    case 5123: return (uint16_t)(p[0] | p[1] << 8) / 65535.0f;
+    default: return 0;
+  }
+}
+static uint32_t acc_index(const unsigned char *bin, const acc *a, unsigned long long i) {
+  const unsigned char *p = bin + a->at + i * (unsigned long long)a->stride;
+  return a->comp == 5125 ? le32(p) : a->comp == 5123 ? (uint32_t)(p[0] | p[1] << 8) : p[0];
+}
+
+// An image's size from its header (PNG IHDR, JPEG SOF), 0 when it can't be read.
+static void image_size(const unsigned char *p, size_t n, int *w, int *h) {
+  *w = *h = 0;
+  if (n > 24 && !memcmp(p, "\x89PNG\r\n\x1a\n", 8) && !memcmp(p + 12, "IHDR", 4)) { *w = (int)(p[16] << 24 | p[17] << 16 | p[18] << 8 | p[19]); *h = (int)(p[20] << 24 | p[21] << 16 | p[22] << 8 | p[23]); return; }
+  if (n < 4 || p[0] != 0xff || p[1] != 0xd8) return;
+  for (size_t i = 2; i + 9 < n;) {
+    if (p[i] != 0xff) return;
+    int m = p[i + 1];
+    size_t len = (size_t)(p[i + 2] << 8 | p[i + 3]);
+    if (m >= 0xc0 && m <= 0xcf && m != 0xc4 && m != 0xc8 && m != 0xcc) { *h = p[i + 5] << 8 | p[i + 6]; *w = p[i + 7] << 8 | p[i + 8]; return; }
+    i += 2 + len;
+  }
+}
+
+typedef struct { bytes data; int w, h, licence; } layer;
+typedef struct {
+  bytes vertices, indices, lines;   // lines: the catalog's L and M lines
+  layer layers[REALM_LAYERS]; int layer_n;
+  int placed;                        // models (and licences) in the pack
+  char note[600];                    // what couldn't be placed
+} realm_pack;
+static void realm_note(realm_pack *rp, const char *file, const char *why) {
+  size_t n = strlen(rp->note);
+  if (n + 8 < sizeof rp->note) snprintf(rp->note + n, sizeof rp->note - n, "%s%s: %s", n ? "; " : "", file, why);
+}
+
+// One model into the pack: its triangle lists in world space (one mesh), its images as layers. Why not, or NULL.
+static const char *realm_model(PGconn *c, realm_pack *rp, const unsigned char *g, size_t n, const char *mesh, const char *file, const char *licence) {
+  if (n < 28 || memcmp(g, "glTF", 4) || le32(g + 4) != 2 || le32(g + 8) > n) return "not a binary glTF 2.0 file";
+  uint32_t jlen = le32(g + 12);
+  if (le32(g + 16) != 0x4e4f534a || 20ull + jlen > n) return "its JSON is missing";
+  const unsigned char *bin = NULL; size_t binlen = 0;
+  size_t at = 20 + (size_t)jlen;
+  if (at + 8 <= n && le32(g + at + 4) == 0x004e4942) { binlen = le32(g + at); bin = g + at + 8; if (at + 8 + binlen > n) return "its binary chunk is cut short"; }
+  if (!bin) return "it has no binary chunk (its data lives in other files)";
+  char *json = malloc(jlen + 1);
+  if (!json) return "memory";
+  memcpy(json, g + 20, jlen); json[jlen] = 0;
+  for (uint32_t i = 0; i < jlen; i++) if (!json[i]) json[i] = ' ';
+  // the images it carries: each a layer while there is room
+  int layer_of[64]; for (int i = 0; i < 64; i++) layer_of[i] = REALM_WHITE;
+  PGresult *im = PQexecParams(c, "SELECT image, at, len FROM drops.glb_images($1::jsonb)", 1, NULL, (const char *[]){json}, NULL, NULL, 0);
+  for (int i = 0; PQresultStatus(im) == PGRES_TUPLES_OK && i < PQntuples(im); i++) {
+    int k = atoi(PQgetvalue(im, i, 0));
+    unsigned long long iat = strtoull(PQgetvalue(im, i, 1), NULL, 10), ilen = strtoull(PQgetvalue(im, i, 2), NULL, 10);
+    if (k < 0 || k >= 64 || iat + ilen > binlen || ilen == 0 || ilen > REALM_LAYER_MAX || rp->layer_n >= REALM_LAYERS) continue;
+    layer *l = &rp->layers[rp->layer_n];
+    image_size(bin + iat, (size_t)ilen, &l->w, &l->h);
+    if (l->w <= 0 || l->h <= 0 || l->w > 8192 || l->h > 8192) continue;
+    l->data = (bytes){0}; l->licence = rp->placed;
+    if (!add(&l->data, bin + iat, (size_t)ilen)) continue;
+    layer_of[k] = rp->layer_n++;
+  }
+  PQclear(im);
+  PGresult *r = PQexecParams(c, "SELECT m, pos, nrm, uv, idx, colour, image FROM drops.glb_plan($1::jsonb)", 1, NULL, (const char *[]){json}, NULL, NULL, 0);
+  free(json);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { PQclear(r); return "its JSON can't be read"; }
+  size_t first = rp->indices.n / 4;
+  float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+  const char *why = NULL;
+  for (int row = 0; row < PQntuples(r) && !why; row++) {
+    float m[16];
+    if (sscanf(PQgetvalue(r, row, 0), "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5], &m[6], &m[7],
+               &m[8], &m[9], &m[10], &m[11], &m[12], &m[13], &m[14], &m[15]) != 16) continue;
+    acc pos = acc_of(PQgetvalue(r, row, 1), binlen), nrm = acc_of(PQgetvalue(r, row, 2), binlen), uv = acc_of(PQgetvalue(r, row, 3), binlen);
+    acc idx = acc_of(PQgetvalue(r, row, 4), binlen);
+    bool has_idx = !PQgetisnull(r, row, 4);
+    if (!pos.ok || pos.comp != 5126 || pos.n != 3 || (has_idx && (!idx.ok || idx.n != 1 || (idx.comp != 5121 && idx.comp != 5123 && idx.comp != 5125)))) continue;
+    bool normals = nrm.ok && nrm.comp == 5126 && nrm.n == 3 && nrm.count == pos.count;
+    bool uvs = uv.ok && uv.n == 2 && uv.count == pos.count && (uv.comp == 5126 || ((uv.comp == 5121 || uv.comp == 5123) && uv.norm));
+    float cr = 1, cg = 1, cb = 1, ca = 1;
+    sscanf(PQgetvalue(r, row, 5), "%f %f %f %f", &cr, &cg, &cb, &ca);
+    int img = atoi(PQgetvalue(r, row, 6));
+    int lay = img >= 0 && img < 64 && uvs ? layer_of[img] : REALM_WHITE;
+    unsigned long long tris = has_idx ? idx.count / 3 * 3 : pos.count / 3 * 3;
+    size_t base = rp->vertices.n / 48;
+    if (base + pos.count > REALM_VERTICES || rp->indices.n / 4 + tris > REALM_INDICES) { why = "too big for a first realm"; break; }
+    if (!more(&rp->vertices, (size_t)pos.count * 48) || !more(&rp->indices, (size_t)tris * 4)) { why = "memory"; break; }
+    unsigned char rgba[4] = {(unsigned char)(clampf(cr) * 255 + 0.5f), (unsigned char)(clampf(cg) * 255 + 0.5f), (unsigned char)(clampf(cb) * 255 + 0.5f), (unsigned char)lay};
+    unsigned char *vb = rp->vertices.p + rp->vertices.n;
+    for (unsigned long long i = 0; i < pos.count; i++) {
+      float p[3], q[3], nn[3] = {0, 1, 0}, t[2] = {0, 0};
+      for (int k = 0; k < 3; k++) p[k] = acc_float(bin, &pos, i, k);
+      for (int k = 0; k < 3; k++) { q[k] = m[k] * p[0] + m[4 + k] * p[1] + m[8 + k] * p[2] + m[12 + k]; if (q[k] < lo[k]) lo[k] = q[k]; if (q[k] > hi[k]) hi[k] = q[k]; }
+      if (normals) {
+        float a[3]; for (int k = 0; k < 3; k++) a[k] = acc_float(bin, &nrm, i, k);
+        for (int k = 0; k < 3; k++) nn[k] = m[k] * a[0] + m[4 + k] * a[1] + m[8 + k] * a[2];
+        float l = sqrtf(nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]);
+        if (l > 1e-12f) for (int k = 0; k < 3; k++) nn[k] /= l; else { nn[0] = 0; nn[1] = 1; nn[2] = 0; }
+      }
+      if (uvs) { t[0] = acc_float(bin, &uv, i, 0); t[1] = acc_float(bin, &uv, i, 1); }
+      unsigned char *v = vb + i * 48;
+      memcpy(v, q, 12); memcpy(v + 12, nn, 12); memcpy(v + 24, t, 8); memcpy(v + 32, rgba, 4); memset(v + 36, 0, 12);
+    }
+    rp->vertices.n += (size_t)pos.count * 48;
+    unsigned char *ib = rp->indices.p + rp->indices.n;
+    size_t kept = 0;
+    for (unsigned long long i = 0; i < tris; i++) {
+      uint32_t k = has_idx ? acc_index(bin, &idx, i) : (uint32_t)i;
+      if (k >= pos.count) { kept -= kept % 3; i += 2 - i % 3; continue; }   // a triangle naming a vertex it hasn't: dropped
+      put32(ib + kept * 4, (uint32_t)(base + k)); kept++;
+    }
+    kept -= kept % 3;
+    rp->indices.n += kept * 4;
+    if (!normals) {   // face normals, summed at each vertex
+      float *acc_n = calloc((size_t)pos.count * 3, sizeof(float));
+      if (acc_n) {
+        for (size_t i = 0; i + 2 < kept; i += 3) {
+          uint32_t a = le32(ib + i * 4) - (uint32_t)base, b = le32(ib + i * 4 + 4) - (uint32_t)base, d = le32(ib + i * 4 + 8) - (uint32_t)base;
+          float pa[3], pb[3], pd[3];
+          memcpy(pa, vb + a * 48ull, 12); memcpy(pb, vb + b * 48ull, 12); memcpy(pd, vb + d * 48ull, 12);
+          float e1[3] = {pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]}, e2[3] = {pd[0] - pa[0], pd[1] - pa[1], pd[2] - pa[2]};
+          float f[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+          for (int k = 0; k < 3; k++) { acc_n[a * 3 + k] += f[k]; acc_n[b * 3 + k] += f[k]; acc_n[d * 3 + k] += f[k]; }
+        }
+        for (unsigned long long i = 0; i < pos.count; i++) {
+          float *f = acc_n + i * 3, l = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+          float nn[3] = {0, 1, 0};
+          if (l > 1e-20f) { nn[0] = f[0] / l; nn[1] = f[1] / l; nn[2] = f[2] / l; }
+          memcpy(vb + i * 48 + 12, nn, 12);
+        }
+        free(acc_n);
+      }
+    }
+  }
+  PQclear(r);
+  size_t count = rp->indices.n / 4 - first;
+  if (!why && count == 0) why = "no triangles the realm can draw (compressed meshes aren't read yet)";
+  if (why) {   // the model's vertices and layers stay unused; its indices go
+    rp->indices.n = first * 4;
+    return why;
+  }
+  char line[400];
+  snprintf(line, sizeof line, "L %d %s|%s|\nM %s %zu %zu %d %.3f %.3f %.3f %.3f %.3f %.3f\n", rp->placed, file, licence, mesh, first, count, rp->placed,
+           lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+  if (!add(&rp->lines, line, strlen(line))) return "memory";
+  rp->placed++;
+  return NULL;
+}
+
+// The pack's file: header, table, catalog, vertices, indices, the layers (the white one last). NULL on memory.
+static const unsigned char WHITE_PNG[] = {0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,0x00,0x0d,0x49,0x48,0x44,0x52,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,0xde,0x00,0x00,0x00,0x0c,0x49,0x44,0x41,0x54,0x78,0x9c,0x63,0xf8,0xff,0xff,0x3f,0x00,0x05,0xfe,0x02,0xfe,0x0d,0xef,0x46,0xb8,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82};
+static bool realm_file(realm_pack *rp, const char *slug, bytes *out) {
+  // the layers in the pack's order: the one nearest 1024 px (none over it, if it can) first, as the host
+  // sizes every layer to the first; then the rest; then white
+  int order[REALM_LAYERS], n = 0, best = -1;
+  for (int i = 0; i < rp->layer_n; i++) {
+    int s = rp->layers[i].w > rp->layers[i].h ? rp->layers[i].w : rp->layers[i].h, b = best < 0 ? 0 : (rp->layers[best].w > rp->layers[best].h ? rp->layers[best].w : rp->layers[best].h);
+    if (best < 0 || (s <= 1024 && (b > 1024 || s > b)) || (s > 1024 && b > 1024 && s < b)) best = i;
+  }
+  if (best >= 0) order[n++] = best;
+  for (int i = 0; i < rp->layer_n; i++) if (i != best) order[n++] = i;
+  int place[REALM_LAYERS];
+  for (int k = 0; k < n; k++) place[order[k]] = k;
+  for (size_t v = 0; v + 48 <= rp->vertices.n; v += 48) {
+    unsigned char *l = rp->vertices.p + v + 35;
+    *l = (unsigned char)(*l == REALM_WHITE || *l >= rp->layer_n ? n : place[*l]);
+  }
+  int entries = 3 + n + 1;
+  bytes cat = {0};
+  char head[200];
+  size_t total = 0;
+  for (int pass = 0; pass < 4; pass++) {
+    cat.n = 0;
+    snprintf(head, sizeof head, "pack %s\nbudget %u\nbytes %zu\n", slug, REALM_BUDGET, total);
+    if (!add(&cat, head, strlen(head)) || !add(&cat, rp->lines.p ? rp->lines.p : (unsigned char *)"", rp->lines.n)) { free(cat.p); return false; }
+    for (int k = 0; k < n; k++) { snprintf(head, sizeof head, "T %d image%d %d\n", k, order[k], rp->layers[order[k]].licence); if (!add(&cat, head, strlen(head))) { free(cat.p); return false; } }
+    size_t at = 32 + 48 * (size_t)entries;
+    at += (cat.n + 3) & ~(size_t)3; at += (rp->vertices.n + 3) & ~(size_t)3; at += (rp->indices.n + 3) & ~(size_t)3;
+    for (int k = 0; k < n; k++) at += (rp->layers[order[k]].data.n + 3) & ~(size_t)3;
+    at += (sizeof WHITE_PNG + 3) & ~(size_t)3;
+    if (at == total) break;
+    total = at;
+  }
+  out->n = 0;
+  if (!more(out, total)) { free(cat.p); return false; }
+  memset(out->p, 0, total); out->n = total;
+  memcpy(out->p, "VPK1", 4); put32(out->p + 4, (uint32_t)entries); put32(out->p + 8, (uint32_t)total); put32(out->p + 12, REALM_BUDGET);
+  put32(out->p + 16, 32); put32(out->p + 20, (uint32_t)(32 + 48 * entries));
+  size_t at = 32 + 48 * (size_t)entries;
+  for (int e = 0; e < entries; e++) {
+    const unsigned char *data; size_t len; int kind, lic = 255; char name[32] = "";
+    if (e == 0) { data = cat.p; len = cat.n; kind = 1; strcpy(name, "catalog"); }
+    else if (e == 1) { data = rp->vertices.p; len = rp->vertices.n; kind = 2; strcpy(name, "vertices"); }
+    else if (e == 2) { data = rp->indices.p; len = rp->indices.n; kind = 3; strcpy(name, "indices"); }
+    else if (e < 3 + n) { layer *l = &rp->layers[order[e - 3]]; data = l->data.p; len = l->data.n; kind = 4; lic = l->licence; snprintf(name, sizeof name, "layer%d", e - 3); }
+    else { data = WHITE_PNG; len = sizeof WHITE_PNG; kind = 4; strcpy(name, "white"); }
+    unsigned char *t = out->p + 32 + 48 * (size_t)e;
+    t[0] = (unsigned char)kind; t[1] = (unsigned char)lic; put32(t + 4, (uint32_t)at); put32(t + 8, (uint32_t)len);
+    memcpy(t + 16, name, strlen(name));
+    if (len) memcpy(out->p + at, data, len);
+    at += (len + 3) & ~(size_t)3;
+  }
+  free(cat.p);
+  return out->n <= REALM_BUDGET;
+}
+
+// The realm: every .glb model of the drop packed, the pack and the realm's page in the site's bucket. Why not, or NULL.
+static const char *realm_steps(PGconn *c, const char *tok, const char *slug) {
+  PGresult *m = PQexecParams(c, "SELECT object, file, mesh, licence FROM drops.realm_models($1)", 1, NULL, (const char *[]){slug}, NULL, NULL, 0);
+  if (PQresultStatus(m) != PGRES_TUPLES_OK) { PQclear(m); return "sql"; }
+  if (PQntuples(m) == 0) { PQclear(m); return NULL; }   // no models: no realm
+  realm_pack rp = {0};
+  const char *why = NULL;
+  for (int i = 0; i < PQntuples(m) && !why; i++) {
+    bytes g = {0};
+    if (!fetch_object(tok, PQgetvalue(m, i, 0), &g)) { free(g.p); why = "the models"; break; }
+    const char *not = realm_model(c, &rp, g.p, g.n, PQgetvalue(m, i, 2), PQgetvalue(m, i, 1), PQgetvalue(m, i, 3));
+    if (not && !strcmp(not, "memory")) why = "memory";
+    else if (not) realm_note(&rp, PQgetvalue(m, i, 1), not);
+    free(g.p);
+  }
+  PQclear(m);
+  bytes pack = {0};
+  if (!why && !realm_file(&rp, slug, &pack)) why = "the realm's pack";
+  free(rp.vertices.p); free(rp.indices.p); free(rp.lines.p);
+  for (int i = 0; i < rp.layer_n; i++) free(rp.layers[i].data.p);
+  char name[200];
+  snprintf(name, sizeof name, "projects/%s/realm/realm.pack", slug);
+  if (!why && !site_put_bytes(tok, name, "application/octet-stream", pack.p, pack.n)) why = "the realm's pack";
+  free(pack.p);
+  if (why) return why;
+  char *kept = sql_text(c, "SELECT drops.realm_done($1, $2)::text", 2, (const char *[]){slug, rp.note});
+  if (!kept) return "sql";
+  free(kept);
+  const char *pages[3][3] = {{"SELECT drops.realm_page($1, $2)", "", "text/html; charset=utf-8"},
+                             {"SELECT drops.realm_page($1, $2)", "/index.html", "text/html; charset=utf-8"},
+                             {"SELECT drops.realm_md($1)", "/index.md", "text/markdown; charset=utf-8"}};
+  for (int i = 0; i < 3; i++) {
+    char *text = sql_text(c, pages[i][0], i < 2 ? 2 : 1, (const char *[]){slug, origin()});
+    snprintf(name, sizeof name, "projects/%s/realm%s", slug, pages[i][1]);
+    bool ok = text && site_put(tok, name, pages[i][2], text);
+    free(text);
+    if (!ok) return "the realm's page";
+  }
+  return NULL;
 }
 
 // In the child: the publishing itself, then the answer. Every step is kept, so a second PUBLISH goes on
@@ -570,15 +896,20 @@ static const char *publish_steps(PGconn *c, const char *slug, bool has_key) {
   PQclear(f);
   if (!copied) return "the files";
   free(sql_text(c, "SELECT drops.publish_step($1, 'files')::text", 1, (const char *[]){slug}));
+  char *walked = sql_text(c, "SELECT (realm_ms IS NOT NULL)::text FROM drops.projects WHERE slug = $1", 1, (const char *[]){slug});
+  bool realm_up = walked && !strcmp(walked, "true");
+  free(walked);
+  if (!realm_up) { const char *rw = realm_steps(c, tok, slug); if (rw) return rw; }
   free(sql_text(c, "SELECT drops.publish_step($1, 'listed')::text", 1, (const char *[]){slug}));
   char name[200];
   // the page answers at /projects/<slug> (an object of that name, as upload.py writes a site's pages) and at .../index.html
   const char *pages[4][3] = {{"SELECT drops.published_slugs()", "projects/published-slugs.txt", "text/plain; charset=utf-8"},
-                             {"SELECT drops.publish_page($1)", "", "text/html; charset=utf-8"},
-                             {"SELECT drops.publish_page($1)", "/index.html", "text/html; charset=utf-8"},
+                             {"SELECT drops.publish_page($1, $2)", "", "text/html; charset=utf-8"},
+                             {"SELECT drops.publish_page($1, $2)", "/index.html", "text/html; charset=utf-8"},
                              {"SELECT drops.publish_md($1)", "/index.md", "text/markdown; charset=utf-8"}};
+  const int params[4] = {0, 2, 2, 1};
   for (int i = 0; i < 4; i++) {
-    char *text = sql_text(c, pages[i][0], i ? 1 : 0, (const char *[]){slug});
+    char *text = sql_text(c, pages[i][0], params[i], (const char *[]){slug, origin()});
     if (i) snprintf(name, sizeof name, "projects/%s%s", slug, pages[i][1]); else snprintf(name, sizeof name, "%s", pages[i][1]);
     bool ok = text && site_put(tok, name, pages[i][2], text);
     free(text);

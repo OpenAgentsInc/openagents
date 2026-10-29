@@ -403,6 +403,7 @@ Work :: struct {
   // the header: from the project's 30621 event and its repository's 30617
   slug: string; name: string; description: string; license: string; path: string; repo: string;
   owner: string;              // who owns it (project.json owner), the header says
+  realm: string;              // its first realm's page (the 30621's realm tag, a project made from a drop), or ""
   dstart: [MAX_ITEMS] int;    // each row's line in details (index_details), or -1
   dlines: int;                // the lines in details
   links: string;              // WORK_LINKS: alias | needs or by | project d | its alias | its status | its title
@@ -1025,6 +1026,9 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int 
   crumb := x + text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d;
   v = put(out, v, name, crumb, b.y0 + 22 * d, 7 * d, orange);
   if p.demo { v = put(out, v, "/ DEMO", crumb + text_width(name, 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, ink(p, INK_PALE)); }
+  // a project made from a drop: its first realm, at the right of the crumbs
+  rb := realm_box(w, b, d);
+  if rb.x1 > rb.x0 { v = put(out, v, realm_label(w, b, d), rb.x0, b.y0 + 22 * d, 7 * d, orange); }
   title := 26 * d;
   // a long name shrinks to fit a phone's width (PLANETARY VILLA)
   room := right - x;
@@ -2135,7 +2139,21 @@ crumb_at :: (s: [] ProjectState, x: f32, y: f32) -> string {
   return "";
 }
 
+// The header's link to the project's first realm: WALK THE REALM, or REALM where the crumbs leave less room.
+realm_label :: (w: [] Work, b: Box, d: f32) -> string {
+  crumbs := text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d + text_width(w[0].name, 7 * d);
+  long := "WALK THE REALM";
+  return ifx b.x0 + 18 * d + crumbs + 24 * d + text_width(long, 7 * d) <= b.x1 - 18 * d then long else "REALM";
+}
+realm_box :: (w: [] Work, b: Box, d: f32) -> Box {
+  if w[0].realm.count == 0 { return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  right := b.x1 - 18 * d;
+  return Box.{x0 = right - text_width(realm_label(w, b, d), 7 * d), y0 = b.y0 + 10 * d, x1 = right, y1 = b.y0 + 27 * d};
+}
+
 click :: (s: [] ProjectState, w: [] Work, x: f32, y: f32) -> bool {
+  rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
+  if rb.x1 > rb.x0 && inside(rb, x, y) { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, w[0].realm); return true; }
   go := crumb_at(s, x, y);
   if go.count > 0 { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, go); return true; }
   if s[0].open > 0 {
@@ -2227,6 +2245,8 @@ coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
   if s.count < 1 || w.count < 1 || s[0].page != 0 || s[0].touch || !s[0].pointed { return 0; }
   x := s[0].px; y := s[0].py;
   if crumb_at(s, x, y).count > 0 { return 1; }
+  rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
+  if rb.x1 > rb.x0 && inside(rb, x, y) { return 1; }
   if s[0].open > 0 {
     if inside(s[0].close, x, y) || link_at(s, x, y) != -1 { return 1; }
     if inside(s[0].panel, x, y) { return 0; }
@@ -2390,6 +2410,15 @@ live_apply :: (lv: [] Live, w: [] Work) {
   h = head_put(lv, w, pe, "license", 1, h.at, w[0].license); w[0].license = h.text;
   h = head_put(lv, w, pe, "path", 2, h.at, w[0].path); w[0].path = h.text;
   h = head_put(lv, w, re, "name", 1, h.at, w[0].repo); w[0].repo = h.text;
+  h = head_put(lv, w, pe, "realm", 1, h.at, w[0].realm);
+  w[0].realm = ifx realm_path(h.text) then h.text else "";
+}
+// A realm's page as a project event may name it: one of this site's, under /projects/.
+realm_path :: (path: string) -> bool {
+  pre := "/projects/";
+  if path.count <= pre.count || path.count > 120 || path[0..<pre.count] != pre { return false; }
+  for i: 0..<path.count { c := path[i]; if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '/') { return false; } }
+  return true;
 }
 
 // Work across projects came back from the relay: draw its table.
@@ -2735,6 +2764,28 @@ within :: (out: [] f32, from: int, to: int, b: Box, d: f32) -> bool {
     coaxial_project_action_done(g[0].s[..]);
     #assert tap(g[..], x0 + 10, y, k) && same(cast(string) g[0].s[0].outbox[0..<g[0].s[0].out_n], "/");
     #assert same(crumb_at(g[0].s[..], x0 + 10, hb.y0 + 80), "");
+  }
+}
+
+#test "a project made from a drop links its first realm from the header; one that isn't doesn't" {
+  #assert realm_path("/projects/lantern-garden/realm") && !realm_path("https://example.com/x") && !realm_path("/projects/")
+    && !realm_path("/projects/a b") && !realm_path("/verse");
+  sizes := [4] f32.[1440, 900, 320, 568];
+  for k: 0..<2 {
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    s: [1] ProjectState; wk: [1] Work;
+    s[0].width = w; s[0].height = h; s[0].dpr = 2; s[0].pointed = true; s[0].touch = k == 1;
+    wk[0].name = "LANTERN GARDEN";
+    hb := layout(w, h, 2).header;
+    #assert realm_box(wk[..], hb, 2).x1 <= realm_box(wk[..], hb, 2).x0;   // none named
+    wk[0].realm = "/projects/lantern-garden/realm";
+    rb := realm_box(wk[..], hb, 2);
+    #assert rb.x1 > rb.x0 && rb.x1 <= hb.x1 && rb.x0 > hb.x0 + 36 + text_width("OPENAGENTS / PROJECTS /", 14);
+    #assert same(realm_label(wk[..], hb, 2), ifx k == 0 then "WALK THE REALM" else "REALM");
+    s[0].px = (rb.x0 + rb.x1) * 0.5; s[0].py = (rb.y0 + rb.y1) * 0.5;
+    if k == 0 { #assert coaxial_project_cursor(s[..], wk[..]) == 1; }
+    #assert click(s[..], wk[..], s[0].px, s[0].py) && s[0].action == ACT_NAVIGATE;
+    #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "/projects/lantern-garden/realm");
   }
 }
 

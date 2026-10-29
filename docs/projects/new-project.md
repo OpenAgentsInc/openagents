@@ -66,7 +66,10 @@ The aim is to manage everything on the website.
    - every engine upgrade the design needs, as linked tasks in the Verse
      project;
    - a first realm: the drop's assets placed in an empty realm, so there is
-     something to walk around on day one.
+     something to walk around on day one. Built: on PUBLISH every dropped
+     `.glb` is packed (`coax/web/api/drops.c`, `0040_project_realm.sql`) and
+     stood on a floor at `/projects/<slug>/realm` (`droprealm.coax`), which
+     the project's page header (WALK THE REALM) and its `index.md` link.
 3. **Review.** The owner sees the card, design, roadmap and links as a draft,
    corrects any of it, and publishes. Nothing goes public until then.
 4. **Publish.** The site makes the project's key (held for the owner until

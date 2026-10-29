@@ -100,6 +100,17 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realm/fixture/assets/fixture.pack"]
       } },
+    { "id": "drop", "name": "A FIRST REALM", "kind": "open", "listed": false, "orbit": { "r": 0.22, "a": 5.2, "size": 0.024 },
+      "realm": {
+        "slug": "drop",
+        "title": "A First Realm",
+        "description": "Where a project made from a drop first opens: the models someone dropped, stood on an empty floor for you to walk among.",
+        "alt": "Enter the Verse",
+        "module": "droprealm",
+        "slot": "drop",
+        "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
+        "assets": ["pack:/realm/fixture/assets/fixture.pack"]
+      } },
     { "id": "sandbox", "name": "SANDBOX", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 1.25, "size": 0.03 },
       "realm": {
         "slug": "sandbox",

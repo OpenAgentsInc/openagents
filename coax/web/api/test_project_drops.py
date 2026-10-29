@@ -73,7 +73,7 @@ class FakeGcs(http.server.BaseHTTPRequestHandler):
         if data is None:
             return self.answer(404)
         if q.get("alt") == ["media"]:
-            return self.answer(206, data[:4096])
+            return self.answer(206, data[:4096]) if self.headers.get("Range") else self.answer(200, data)
         self.answer(200, json.dumps({"size": str(len(data)), "md5Hash": "bWQ1"}).encode())
 
     def do_DELETE(self):
@@ -396,6 +396,108 @@ check("review: DISCARD takes the files out of the bucket and forgets the draft",
       and sql(f"SELECT count(*) FROM drops.files WHERE drop_id = '{d}'") == "0"
       and dcall("GET", f"/api/drops/{d}/draft", cookie=jar)[1] == {"status": "none"} and "objects" not in gone, (status, gone, kept))
 check("review: a discarded drop is closed", dcall("POST", f"/api/drops/{d}/discard", {}, cookie=jar)[0] == 409)
+
+# rc-first-realm: a drop's .glb models become a realm: one pack and a page, linked from the project.
+def realm_checks():
+    import zlib, struct
+
+
+    def png(w, h, rgb):
+        chunk = lambda k, d: struct.pack(">I", len(d)) + k + d + struct.pack(">I", zlib.crc32(k + d) & 0xFFFFFFFF)
+        raw = b"".join(b"\0" + bytes(rgb) * w for _ in range(h))
+        return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+    def glb(doc, binary):
+        binary += b"\0" * (-len(binary) % 4)
+        doc["buffers"] = [{"byteLength": len(binary)}]
+        js = json.dumps(doc).encode(); js += b" " * (-len(js) % 4)
+        return (b"glTF" + struct.pack("<II", 2, 12 + 8 + len(js) + 8 + len(binary)) + struct.pack("<I", len(js)) + b"JSON" + js
+                + struct.pack("<I", len(binary)) + b"BIN\0" + binary)
+
+
+    tex = png(4, 4, (200, 100, 50))
+    lantern_bin = struct.pack("<12f", -0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0) + struct.pack("<12f", *([0, 0, 1] * 4)) \
+        + struct.pack("<8f", 0, 0, 1, 0, 1, 1, 0, 1) + struct.pack("<6H", 0, 1, 2, 0, 2, 3) + tex
+    lantern = glb({"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}],
+                   "nodes": [{"mesh": 0, "translation": [10, 0, 0], "rotation": [0, 0.70710678, 0, 0.70710678], "scale": [2, 2, 2]}],
+                   "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": 0},
+                                              {"attributes": {"POSITION": 0}, "mode": 1}]}],
+                   "materials": [{"pbrMetallicRoughness": {"baseColorFactor": [1, 0.5, 0.25, 1], "baseColorTexture": {"index": 0}}}],
+                   "textures": [{"source": 0}], "images": [{"bufferView": 4, "mimeType": "image/png"}],
+                   "accessors": [{"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3"},
+                                 {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
+                                 {"bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC2"},
+                                 {"bufferView": 3, "componentType": 5123, "count": 6, "type": "SCALAR"}],
+                   "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 48}, {"buffer": 0, "byteOffset": 48, "byteLength": 48},
+                                   {"buffer": 0, "byteOffset": 96, "byteLength": 32}, {"buffer": 0, "byteOffset": 128, "byteLength": 12},
+                                   {"buffer": 0, "byteOffset": 140, "byteLength": len(tex)}]}, lantern_bin)
+    crate = glb({"asset": {"version": "2.0"}, "nodes": [{"matrix": [100, 0, 0, 0, 0, 100, 0, 0, 0, 0, 100, 0, 0, 0, 0, 1], "children": [1]},
+                                                      {"mesh": 0, "translation": [0, 0, 0.01]}],
+                 "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+                 "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+                               {"bufferView": 0, "componentType": 5126, "count": 900, "type": "VEC3"}],
+                 "bufferViews": [{"buffer": 0, "byteLength": 36}]}, struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0))
+    broken = b"glTF" + struct.pack("<III", 2, 32, 12) + b"JSON" + b'{"asset":{} }'[:12]
+    cover = png(8, 8, (10, 20, 30))
+    d = dcall("POST", "/api/drops", {}, cookie=jar)[1]["id"]
+    for name, data in [("lantern.glb", lantern), ("Old Crate.glb", crate), ("broken.glb", broken), ("cover.png", cover), ("notes.md", notes)]:
+        status, added, _ = dcall("POST", f"/api/drops/{d}/files", {"name": name, "bytes": len(data)}, cookie=jar)
+        put(added["upload"], data)
+        status, done, _ = dcall("POST", f"/api/drops/{d}/files/{added['file']['id']}/done", {}, cookie=jar)
+        check(f"realm: {name} is kept", done["file"]["status"] == "scanned", done)
+    bucket["draft"] = json.loads(json.dumps(bucket["draft"]))
+    bucket["draft"]["card"].update({"name": "Lantern Garden", "slug": "lantern-garden", "cover": "cover.png"})
+    bucket["draft"]["assets"] = [{"file": "lantern.glb", "kind": "model", "licence": "CC0 1.0", "use": "the lanterns"}]
+    dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)
+    before = len(pub_relay["events"])
+    status, pub, _ = dcall("POST", f"/api/drops/{d}/publish", {}, cookie=jar)
+    check("realm: the drop is published", status == 200 and pub.get("published", {}).get("slug") == "lantern-garden", pub)
+    proj = [e for e in pub_relay["events"][before:] if e["kind"] == 30621]
+    check("realm: the project's event names its realm", proj and ["realm", "/projects/lantern-garden/realm"] in proj[0]["tags"], proj)
+    check("realm: a project with no model names none", not [t for t in evs[1]["tags"] if t[0] == "realm"])
+    raw = bucket["site"].get("projects/lantern-garden/realm/realm.pack", {}).get("data", b"")
+    check("realm: the pack is in the site's bucket", raw[:4] == b"VPK1" and struct.unpack_from("<I", raw, 8)[0] == len(raw), raw[:16])
+    entries = []
+    if raw[:4] == b"VPK1":
+        for k in range(struct.unpack_from("<I", raw, 4)[0]):
+            kind, lic, _, off, n = struct.unpack_from("<BBHII", raw, 32 + 48 * k)
+            entries.append((kind, lic, raw[32 + 48 * k + 16:32 + 48 * k + 48].rstrip(b"\0").decode(), raw[off:off + n]))
+    check("realm: catalog, vertices, indices, the model's texture, then white", [(e[0], e[2]) for e in entries]
+          == [(1, "catalog"), (2, "vertices"), (3, "indices"), (4, "layer0"), (4, "white")] and entries[3][3] == tex, [(e[0], e[2]) for e in entries])
+    cat = entries[0][3].decode() if entries else ""
+    check("realm: each model a licence and a mesh, stood where its nodes put it (translation, rotation, scale, a parent's matrix)",
+          "L 0 lantern.glb|CC0 1.0|\nM lantern 0 6 0 10.000 0.000 -1.000 10.000 2.000 1.000\n" in cat
+          and "L 1 Old Crate.glb|licence unknown: ask the owner|\nM Old-Crate 6 3 1 0.000 0.000 1.000 100.000 100.000 1.000\n" in cat
+          and "T 0 image0 0\n" in cat and f"bytes {len(raw)}\n" in cat and "broken" not in cat, cat)
+    if len(entries) == 5:
+        vs, ix = entries[1][3], struct.unpack(f"<{len(entries[2][3]) // 4}I", entries[2][3])
+        v = lambda i: (struct.unpack_from("<3f3f2f", vs, i * 48), vs[i * 48 + 32:i * 48 + 36])
+        check("realm: the triangles index the model's own vertices, a line strip left out", ix == (0, 1, 2, 0, 2, 3, 4, 5, 6) and len(vs) == 7 * 48, ix)
+        (p0, c0), (p4, c4) = v(2), v(5)
+        check("realm: positions and normals in the world, the uv kept, the colour and the layer in the colour's bytes",
+              abs(p0[0] - 10) < 1e-4 and abs(p0[1] - 2) < 1e-4 and abs(p0[2] + 1) < 1e-4 and abs(p0[3] - 1) < 1e-4 and abs(p0[5]) < 1e-4
+              and p0[6:8] == (1.0, 1.0) and c0 == bytes([255, 128, 64, 0]), (p0, c0))
+        check("realm: a model without normals gets its faces', and without a texture the white layer",
+              abs(p4[0] - 100) < 1e-3 and abs(p4[5] - 1) < 1e-4 and c4 == bytes([255, 255, 255, 1]), (p4, c4))
+    page = bucket["site"].get("projects/lantern-garden/realm", {}).get("data", b"")
+    check("realm: its page opens the first-realm module on the pack, named for the project",
+          b'data-realm-of="lantern-garden"' in page and b'data-name="Lantern Garden"' in page and b'fetch("/realm/drop"' in page
+          and b"/realm/realm.pack" in page and bucket["site"].get("projects/lantern-garden/realm/index.html", {}).get("data") == page
+          and b'<p><a href="/projects/lantern-garden/realm/index.md">A first realm</a></p>' in page, page[:200])
+    rmd = bucket["site"].get("projects/lantern-garden/realm/index.md", {}).get("data", b"").decode()
+    check("realm: its index.md lists what stands there and says what couldn't be placed",
+          "- lantern.glb (CC0 1.0)" in rmd and "- Old Crate.glb (licence unknown: ask the owner)" in rmd and "broken.glb: it has no binary chunk" in rmd, rmd)
+    pmd = bucket["site"].get("projects/lantern-garden/index.md", {}).get("data", b"").decode()
+    check("realm: the project's index.md links its realm", "[/projects/lantern-garden/realm](/projects/lantern-garden/realm)" in pmd, pmd[:400])
+    cover_at = [k for k in bucket["site"] if k.startswith("projects/lantern-garden/files/cover-")]
+    ppage = bucket["site"].get("projects/lantern-garden", {}).get("data", b"").decode()
+    check("realm: the project's link preview is the drop's cover", cover_at and f'<meta property="og:image" content="{API}/{cover_at[0]}">' in ppage
+          and f'<meta property="og:url" content="{API}/projects/lantern-garden">' in ppage, (cover_at, ppage[:900]))
+    check("realm: kept once", sql("SELECT realm_ms IS NOT NULL FROM drops.projects WHERE slug = 'lantern-garden'") == "t"
+          and "broken.glb" in sql("SELECT realm_note FROM drops.projects WHERE slug = 'lantern-garden'"))
+
+realm_checks()
 status, _, oh = dcall("POST", "/api/drops/signout", {}, cookie=jar)
 check("drops: signing out ends the session", status == 200 and "Max-Age=0" in oh.get("Set-Cookie", "") and dcall("GET", "/api/drops/me", cookie=jar)[0] == 401)
 gcs_server.shutdown()
