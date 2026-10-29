@@ -4,7 +4,7 @@ At https://openagents.com/realms/new, the step after the Haunted House. You say 
 
 ## What it does
 
-- HOLD TO TALK (or hold Space) and say the world you want. The microphone is open only while the button is held. TYPE IT types it instead.
+- Tap TALK (or press Space), say the world you want, and tap it again to send. The microphone is open only while TALK is on; after a few quiet seconds it sends on its own. TYPE IT types it instead.
 - The board shows the realm's name, its style (low poly or painterly), its ground and time of day, and a checkbox per feature: IN YOUR REALM (water, trees, rocks, plants, lanterns, a flock, props, characters) and VISITORS CAN (build, fly, jump, a map, talk to characters, voice).
 - Tap a row to check it on or off. Talk again to change the board; your checks go with it.
 - MAKE IT makes the realm from only the checked features and takes you to `/realms/<slug>`. It is empty except what you checked: characters are there only if you checked them.

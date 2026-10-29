@@ -8,8 +8,11 @@ and takes them into it.
 
 ## The flow
 
-1. **Prompt.** HOLD TO TALK (or hold Space): the microphone is open only while it is held
-   (`coax/web/voice.js` push to talk; the page's `data-voice="haunted-house"` reuses that route of the
+1. **Prompt.** TALK is a toggle (a tap or Space): it shows LISTENING and the words as they are
+   heard; the next tap closes the microphone and sends them as one prompt. A pause between
+   sentences doesn't send; four quiet seconds after words do, and 25 s with nothing heard closes
+   it. The microphone is open only while TALK is on (`coax/web/voice.js` "on"/"end"; other realms
+   keep push to talk). The page's `data-voice="haunted-house"` reuses that route of the
    voice host, facing "Realm builder" so the host leaves the turn to the page). The heard words, or
    typed ones (TYPE IT), go to `POST /api/playtest/realms/plan?as=lines`.
 2. **Board.** The server asks Gemini (`OA_BUILDER_MODEL`, default `gemini-3.8-flash`, Vertex first,

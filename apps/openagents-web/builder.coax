@@ -1,6 +1,6 @@
 // Build your own realm (openagents.com/realms/new; docs/verse/realm-builder.md): the step after the
-// Haunted House. Hold TALK and say the world you want (the microphone is open only while it's
-// held: coax/web/voice.js push to talk, the voice host's speech to text), or type it. The words
+// Haunted House. Tap TALK, say the world you want, tap again to send (the microphone is open only
+// while TALK is on: coax/web/voice.js, the voice host's speech to text), or type it. The words
 // go to the server's typed planner (POST /api/playtest/realms/plan, migrations/0048_realm_builder.sql),
 // which answers a board: the realm's name, its style, ground and time of day, and its features a
 // few words each, each with a box to check on or off. Talk again to change it. MAKE IT makes the
@@ -87,6 +87,9 @@ TYPED :: 400; CAPTION :: 200; NOTE :: 120; OUTBOX :: 512; BODY :: 1024; URL :: 1
 BTN_TALK :: 0; BTN_TYPE :: 1; BTN_MAKE :: 2; BTN_BACK :: 3; BTN_SEND :: 4; BUTTONS :: 5;
 ROW :: 34.0;              // CSS pixels a feature's row takes
 WAIT :: 40.0;             // seconds a request may take before the page gives up on it
+QUIET_SEND :: 4.0;        // TALK on: seconds of quiet after words are heard before they go on their own
+QUIET_OFF :: 25.0;        // TALK on: seconds with nothing heard before the microphone closes on its own
+STOP_WAIT :: 8.0;         // TALK off mid-sentence: seconds the page waits for that sentence's words
 
 Builder :: struct {
   started: bool;
@@ -98,8 +101,10 @@ Builder :: struct {
   // typing
   typing: bool; typed: [TYPED] u8; typed_n: int;
   field: [4] f32;
-  // voice: the page's data-voice, push to talk
+  // voice: the page's data-voice. TALK is a toggle: held is "on" (the microphone open), the heard
+  // sentences gather in got until it's tapped off (or a quiet spell), then they go as one prompt.
   voice: bool; faced: bool; held: bool; finger: int; key_held: bool;
+  stopping: bool; stop_at: f32; quiet_at: f32; got: [TYPED] u8; got_n: int;
   vphase: [WORD] u8; vphase_n: int; caption: [CAPTION] u8; caption_n: int;
   said: [TYPED] u8; said_n: int;
   // the board
@@ -311,7 +316,19 @@ builder_message :: (s: [] Builder, t: [] Track, kind: int, text: string) #export
     s[0].vphase_n = copy_into(s[0].vphase[..], text[0..<cut]);
     cap := ifx cut + 1 <= text.count then text[cut + 1..<text.count] else "";
     s[0].caption_n = copy_into(s[0].caption[..], cap);
-    if text[0..<cut] == "heard" && cap.count > 0 { ask_plan(s, t, cap, "voice"); }
+    ph := text[0..<cut];
+    if ph == "hearing" { s[0].quiet_at = s[0].time; }
+    if ph == "heard" && cap.count > 0 {
+      if s[0].held || s[0].stopping {
+        if s[0].got_n > 0 && s[0].got_n < TYPED { s[0].got[s[0].got_n] = ' '; s[0].got_n += 1; }
+        s[0].got_n += copy_into(s[0].got[s[0].got_n..<TYPED], cap);
+        s[0].quiet_at = s[0].time;
+        if s[0].stopping { finish_talk(s, t); }
+      } else { ask_plan(s, t, cap, "voice"); }
+    }
+    // voice turned itself off (no microphone, the day's voice used up): TALK is off too
+    if (ph == "off" || ph == "notice") && s[0].held { s[0].held = false; s[0].stopping = true; s[0].stop_at = s[0].time; }
+    if (ph == "off" || ph == "notice") && s[0].stopping { finish_talk(s, t); }
     return;
   }
   if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); }
@@ -321,15 +338,36 @@ builder_message :: (s: [] Builder, t: [] Track, kind: int, text: string) #export
 
 phone :: (s: [] Builder) -> bool { return s[0].width < 640 * s[0].dpr; }
 
-talk_down :: (s: [] Builder) {
-  if !s[0].voice || busy(s) || s[0].phase == PH_MAKING || s[0].phase == PH_GOING { return; }
-  s[0].held = true; s[0].want_voice = 1; s[0].note_n = 0; s[0].caption_n = 0;
+// TALK is a toggle: a tap (or Space) turns the microphone on, the next one turns it off and sends
+// what was heard. Voice.js's "end" closes the microphone at once.
+talk_on :: (s: [] Builder) {
+  if !s[0].voice || busy(s) || s[0].stopping || s[0].phase == PH_MAKING || s[0].phase == PH_GOING { return; }
+  s[0].held = true; s[0].want_voice = 1; s[0].note_n = 0; s[0].caption_n = 0; s[0].got_n = 0; s[0].quiet_at = s[0].time;
   if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "on"); s[0].action = ACT_VOICE; s[0].want_voice = 0; }
 }
-talk_up :: (s: [] Builder) {
+talk_off :: (s: [] Builder) {
   if !s[0].held { return; }
-  s[0].held = false; s[0].want_voice = 2;
+  s[0].held = false; s[0].stopping = true; s[0].stop_at = s[0].time; s[0].want_voice = 2;
   if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "end"); s[0].action = ACT_VOICE; s[0].want_voice = 0; }
+}
+talk_tap :: (s: [] Builder) { if s[0].held { talk_off(s); } else { talk_on(s); } }
+// A sentence is under way while the voice host hears it or turns it into words.
+mid_sentence :: (s: [] Builder) -> bool {
+  ph := cast(string) s[0].vphase[0..<s[0].vphase_n];
+  return ph == "hearing" || ph == "thinking";
+}
+// TALK is off: what was heard goes to the planner as one prompt.
+finish_talk :: (s: [] Builder, t: [] Track) {
+  s[0].stopping = false;
+  if s[0].got_n > 0 { ask_plan(s, t, cast(string) s[0].got[0..<s[0].got_n], "voice"); }
+  s[0].got_n = 0;
+}
+talk_tick :: (s: [] Builder, t: [] Track) {
+  if s[0].held && !mid_sentence(s) {
+    quiet := s[0].time - s[0].quiet_at;
+    if (s[0].got_n > 0 && quiet > QUIET_SEND) || (s[0].got_n == 0 && quiet > QUIET_OFF) { talk_off(s); }
+  }
+  if s[0].stopping && (!mid_sentence(s) || s[0].time - s[0].stop_at > STOP_WAIT) { finish_talk(s, t); }
 }
 open_typing :: (s: [] Builder) { if s[0].phase != PH_MAKING && s[0].phase != PH_GOING { s[0].typing = true; s[0].note_n = 0; } }
 send_typed :: (s: [] Builder, t: [] Track) {
@@ -354,8 +392,8 @@ builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> 
     return false;
   }
   if key == ' ' {
-    if down && !s[0].key_held { s[0].key_held = true; talk_down(s); }
-    if !down && s[0].key_held { s[0].key_held = false; talk_up(s); }
+    if down && !s[0].key_held { s[0].key_held = true; talk_tap(s); }
+    if !down { s[0].key_held = false; }
     return true;
   }
   if !down { return false; }
@@ -364,7 +402,7 @@ builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> 
   if key == KEY_ESCAPE { go_back(s); return true; }
   return false;
 }
-builder_blur :: (s: [] Builder) #export_c { begin(s); s[0].key_held = false; talk_up(s); s[0].press = -1; s[0].row_press = -1; s[0].drag_id = -1; }
+builder_blur :: (s: [] Builder) #export_c { begin(s); s[0].key_held = false; talk_off(s); s[0].press = -1; s[0].row_press = -1; s[0].drag_id = -1; }
 
 button_at :: (s: [] Builder, x: f32, y: f32) -> int {
   for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
@@ -387,14 +425,14 @@ builder_pointer :: (s: [] Builder, t: [] Track, x: f32, y: f32, phase: int, kind
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
   if phase == POINTER_DOWN {
-    if b == BTN_TALK { s[0].press = b; s[0].finger = id; talk_down(s); return true; }
+    if b == BTN_TALK { s[0].press = b; s[0].finger = id; talk_tap(s); return true; }
     if b >= 0 { s[0].press = b; return true; }
     r := row_at(s, x, y);
     if r >= 0 || inside(s[0].list, x, y) { s[0].row_press = r; s[0].drag_id = id; s[0].drag_y = y; s[0].dragged = false; return true; }
     return false;
   }
   if s[0].press == BTN_TALK && id == s[0].finger {
-    if phase == POINTER_UP || phase == POINTER_CANCEL { talk_up(s); s[0].press = -1; s[0].finger = -1; }
+    if phase == POINTER_UP || phase == POINTER_CANCEL { s[0].press = -1; s[0].finger = -1; }
     return true;
   }
   if s[0].press >= 0 {
@@ -586,19 +624,30 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   gap := 10 * k;
   if board {
     third := (col - 2 * gap) / 3;
-    n = pill(s, out, n, BTN_TALK, Box.{x0 = x0, y0 = bottom, x1 = x0 + third, y1 = bottom + bh}, ifx s[0].held then "LISTENING" else "HOLD TO TALK", s[0].held);
+    n = pill(s, out, n, BTN_TALK, Box.{x0 = x0, y0 = bottom, x1 = x0 + third, y1 = bottom + bh}, ifx s[0].held then "LISTENING" else "TALK", s[0].held);
     n = pill(s, out, n, BTN_TYPE, Box.{x0 = x0 + third + gap, y0 = bottom, x1 = x0 + 2 * third + gap, y1 = bottom + bh}, "TYPE", false);
     n = pill(s, out, n, BTN_MAKE, Box.{x0 = x1 - third, y0 = bottom, x1 = x1, y1 = bottom + bh}, ifx s[0].phase == PH_MAKING then "MAKING" else "MAKE IT", true);
   } else {
     half := (col - gap) * 0.62;
-    n = pill(s, out, n, BTN_TALK, Box.{x0 = x0, y0 = bottom, x1 = x0 + half, y1 = bottom + bh}, ifx s[0].held then "LISTENING" else "HOLD TO TALK", true);
+    n = pill(s, out, n, BTN_TALK, Box.{x0 = x0, y0 = bottom, x1 = x0 + half, y1 = bottom + bh}, ifx s[0].held then "LISTENING" else "TALK", true);
     n = pill(s, out, n, BTN_TYPE, Box.{x0 = x0 + half + gap, y0 = bottom, x1 = x1, y1 = bottom + bh}, "TYPE IT", false);
   }
 
   // what's heard, a note, or what's happening, over the buttons
   status := "";
   buf: [CAPTION + 16] u8;
-  if s[0].held { status = ifx s[0].caption_n > 0 then caption_text(s) else "LISTENING"; }
+  if s[0].held || s[0].stopping {
+    // the heard sentences, then the one being heard; a long run shows its end
+    heard: [TYPED + CAPTION + 2] u8;
+    m := put(heard[..], 0, cast(string) s[0].got[0..<s[0].got_n]);
+    if s[0].caption_n > 0 && cast(string) s[0].vphase[0..<s[0].vphase_n] == "hearing" {
+      if m > 0 { m = put(heard[..], m, " "); }
+      m = put(heard[..], m, caption_text(s));
+    }
+    from := most(m - 72, 0);
+    m2 := put(buf[..], 0, cast(string) heard[from..<m]);
+    status = ifx m2 > 0 then cast(string) buf[0..<m2] else (ifx s[0].held then "LISTENING: TAP TALK TO SEND" else "SENDING");
+  }
   else if s[0].phase == PH_PLANNING { status = ifx s[0].plan > 0 then "CHANGING THE BOARD" else "MAKING YOUR BOARD"; }
   else if s[0].phase == PH_MAKING { status = "MAKING YOUR REALM"; }
   else if s[0].phase == PH_GOING { status = "TAKING YOU THERE"; }
@@ -624,7 +673,7 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
     mid := lo(top + (bottom - top) * 0.42, bottom - 140 * k);
     ask := "SAY THE WORLD YOU WANT";
     n = centred(d, out, n, ask, cx, mid, fit_cap(ask, 15 * k, col), white(k, 0.98));
-    hint := ifx ph then "HOLD THE BUTTON AND TALK" else "HOLD THE BUTTON OR SPACE AND TALK";
+    hint := ifx ph then "TAP TALK, SAY IT, TAP AGAIN" else "TAP TALK OR SPACE, SAY IT, TAP AGAIN";
     if !s[0].voice { hint = "TYPE IT BELOW"; }
     n = centred(d, out, n, hint, cx, mid + 30 * k, fit_cap(hint, 8 * k, col), bronze(k, 0.85));
     ex := "A FOGGY MOOR WITH A LIGHTHOUSE KEEPER AND BATS";
@@ -657,6 +706,7 @@ builder_frame :: (s: [] Builder, t: [] Track, out: [] f32, uniforms: [] f32, wid
     s[0].faced = true; s[0].out_n = put(s[0].outbox[..], 0, VOICE_FACING); s[0].action = ACT_VOICE_TO;
   }
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { fail(s, "That took too long. Try again."); }
+  talk_tick(s, t);
   s[0].plate_n = 0;
   for i: 0..<BUTTONS { s[0].shown[i] = false; }
   for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
@@ -702,7 +752,7 @@ outbox_is :: (s: [] Builder, text: string) -> bool { return cast(string) s[0].ou
 body_is :: (s: [] Builder, text: string) -> bool { return cast(string) s[0].req_body[0..<s[0].req_body_n] == text; }
 answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requested(s, id); builder_message(s, t, HTTP_ANSWER_KIND + id, text); }
 
-#test "holding TALK opens the microphone only while it's held; the heard words go to the planner" {
+#test "TALK is a toggle: a tap opens the microphone, the next closes it and sends what was heard" {
   s: [1] Builder; t: [1] Track;
   ready(s[..], t[..], true);
   n := frame_of(s[..], t[..], 2560, 1600, 2);
@@ -710,30 +760,68 @@ answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requeste
   builder_action_done(s[..]);
   b := s[0].boxes[BTN_TALK];
   #assert s[0].shown[BTN_TALK];
-  down := builder_pointer(s[..], t[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 9);
+  tap(s[..], t[..], b);
   #assert s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "on");
   builder_action_done(s[..]);
-  up := builder_pointer(s[..], t[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1, 9);
+  // letting go of the button changes nothing: the microphone stays on
+  #assert s[0].held && builder_action(s[..]) == 0;
+  builder_message(s[..], t[..], MSG_VOICE, "listening|");
+  builder_message(s[..], t[..], MSG_VOICE, "hearing|a misty");
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a misty swamp");
+  // a pause between sentences doesn't send
+  #assert s[0].held && !s[0].req_ready;
+  builder_message(s[..], t[..], MSG_VOICE, "hearing|with bats");
+  m := frame_of(s[..], t[..], 2560, 1600, 2);
+  tap(s[..], t[..], b);
   #assert !s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "end");
-  builder_message(s[..], t[..], MSG_VOICE, "heard|a misty swamp with \"bats\"");
-  #assert s[0].phase == PH_PLANNING && s[0].req_ready && s[0].req_what == REQ_PLAN;
+  // mid-sentence: the page waits for that sentence's words, then sends the lot
+  #assert !s[0].req_ready && s[0].stopping;
+  builder_message(s[..], t[..], MSG_VOICE, "thinking|with bats");
+  builder_message(s[..], t[..], MSG_VOICE, "heard|with \"bats\"");
+  #assert !s[0].stopping && s[0].phase == PH_PLANNING && s[0].req_ready && s[0].req_what == REQ_PLAN;
   #assert cast(string) s[0].req_url[0..<s[0].req_url_n] == PLAN_URL && body_is(s[..], "{\"prompt\":\"a misty swamp with \\\"bats\\\"\"}");
   #assert (s[0].req_flags & TRACK_KEY) != 0;
 }
 
-#test "Space holds to talk on a keyboard; without voice, the page asks for typing" {
+#test "Space toggles TALK; a quiet spell sends; nothing heard closes the microphone; without voice, typing" {
   s: [1] Builder; t: [1] Track;
   ready(s[..], t[..], true);
   n := frame_of(s[..], t[..], 2560, 1600, 2);
   builder_action_done(s[..]); a0 := builder_action(s[..]);
   #assert builder_key(s[..], t[..], ' ', 0, true) && s[0].held;
   #assert builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "on");
-  #assert builder_key(s[..], t[..], ' ', 0, false) && !s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "end");
+  // letting go of Space keeps it on; key repeat doesn't toggle
+  #assert builder_key(s[..], t[..], ' ', 0, true) && s[0].held;
+  #assert builder_key(s[..], t[..], ' ', 0, false) && s[0].held && builder_action(s[..]) == 0;
+  #assert builder_key(s[..], t[..], ' ', 0, true) && !s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "end");
+  m := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert !s[0].stopping && !s[0].req_ready;
+  // on, words, then quiet: they go on their own
+  #assert builder_key(s[..], t[..], ' ', 0, false) && builder_key(s[..], t[..], ' ', 0, true) && s[0].held;
+  a1 := builder_action(s[..]);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a snowy pass");
+  s[0].time += QUIET_SEND + 1; talk_tick(s[..], t[..]);
+  #assert !s[0].held && builder_action(s[..]) == ACT_VOICE && outbox_is(s[..], "end") && body_is(s[..], "{\"prompt\":\"a snowy pass\"}");
+  // on and nothing said: the microphone closes, nothing is sent
+  p: [1] Builder; v: [1] Track;
+  ready(p[..], v[..], true);
+  f0 := frame_of(p[..], v[..], 2560, 1600, 2);
+  tap(p[..], v[..], p[0].boxes[BTN_TALK]);
+  #assert p[0].held;
+  p[0].time += QUIET_SEND + 1; talk_tick(p[..], v[..]);
+  #assert p[0].held;
+  p[0].time += QUIET_OFF; talk_tick(p[..], v[..]);
+  a2 := builder_action(p[..]);
+  #assert !p[0].held && !p[0].req_ready && p[0].phase == PH_ASK;
+  // voice gave up (no microphone): TALK is off
+  tap(p[..], v[..], p[0].boxes[BTN_TALK]);
+  builder_message(p[..], v[..], MSG_VOICE, "notice|Voice needs the microphone.");
+  #assert !p[0].held && !p[0].stopping;
   q: [1] Builder; u: [1] Track;
   ready(q[..], u[..], false);
-  m := frame_of(q[..], u[..], 2560, 1600, 2);
-  b := q[0].boxes[BTN_TALK];
-  down := builder_pointer(q[..], u[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 9);
+  m2 := frame_of(q[..], u[..], 2560, 1600, 2);
+  c := q[0].boxes[BTN_TALK];
+  down := builder_pointer(q[..], u[..], (c.x0 + c.x1) * 0.5, (c.y0 + c.y1) * 0.5, POINTER_DOWN, 1, 9);
   #assert !q[0].held && builder_action(q[..]) != ACT_VOICE;
 }
 
