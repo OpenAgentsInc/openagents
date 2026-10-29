@@ -1,0 +1,56 @@
+#import "Basic";
+#load "../lib/threshold.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+r2 :: (v:f64)->f64 {return floor(v*100+0.5)/100;}
+show :: (name:string,r:ThRecord) {
+    print("  %: % below %",name,r.action[0],r4(r.edge[1]));
+    for b:1..<r.bands-1 {print(", % below %",r.action[b],r4(r.edge[b+1]));}
+    print(", % from there\n",r.action[r.bands-1]);
+}
+
+// book:begin example
+main :: () {
+    b:=th_background();v:=th_voice();
+    print("by hand, background classification at p = 0.5: no %, yes %, ask %, escalate %\n",
+        0.5*b.wrong_no,0.5*b.wrong_yes,
+        r4(b.ask+b.per_second*b.person_seconds),r4(th_escalate(b,0.5,0.9)));
+
+    // Validation: measure Mammoth, then freeze the records.
+    e:[2000]f64;m:[2000]f64;y:[2000]f64;
+    #assert th_simulate(157,0.9,e[..],m[..],y[..],false)==ThStatus.ok;
+    rho:=th_rho(e[..],m[..],y[..]).value;
+    print("validation, 2000 items: Mammoth's evidence points the right way on % of them\n",rho);
+    records:=[2]ThRecord.[th_record(v,rho),th_record(b,rho)];costs:=[2]ThCosts.[v,b];
+    names:=[2]string.["voice interruption","background classification"];
+    print("threshold records, version %, rho %:\n",records[0].version,rho);
+    for k:0..<2 {#assert records[k].status==ThStatus.ok;show(names[k],records[k]);}
+
+    // Confirmation, opened once.
+    ce:[4000]f64;cm:[4000]f64;cy:[4000]f64;
+    #assert th_simulate(158,0.9,ce[..],cm[..],cy[..],false)==ThStatus.ok;
+    agree:=0;differ:=0;
+    for i:0..<4000 {
+        if th_decide(records[0],ce[i])!=th_decide(records[1],ce[i]) {differ+=1;}
+        for k:0..<2 {if th_decide(records[k],ce[i])==th_best(costs[k],ce[i],rho).action {agree+=1;}}
+    }
+    print("confirmation, 4000 items; the records match expected costs on % of % decisions\n",agree,8000);
+    policies:=[4]string.["always Elephant","always Mammoth","fixed rule","record"];
+    cost:[4][4000]f64;scratch:[4000]f64;
+    for k:0..<2 {
+        print("%: cost per decision, with a 95 percent interval\n",names[k]);
+        best:=0;means:[4]f64;
+        for p:0..<4 {
+            x:=th_run(costs[k],cast(ThPolicy)p,records[k],ce[..],cm[..],cy[..],cost[p][..],false);
+            #assert x.status==ThStatus.ok;means[p]=x.mean;
+            if p<3 && x.mean<means[best] {best=p;}
+            answered:=4000-x.asked;
+            print("  %: % ± %; errors % of % answered (%), escalated %, asked %, % s\n",policies[p],r4(x.mean),r4(x.half),
+                x.errors,answered,r4(f64(x.errors)/f64(answered)),x.escalated,x.asked,r2(x.seconds));
+        }
+        d:=th_paired(cost[3][..],cost[best][..],scratch[..],false);
+        print("  record minus %: % ± %\n",policies[best],r4(d.value),r4(d.half));
+    }
+    print("the same probabilities, two consumers: they act differently on % of 4000 items\n",differ);
+}
+// book:end example

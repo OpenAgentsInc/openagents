@@ -87,6 +87,7 @@ python3 -I psionic/tests/gptoss_oracle.py --header > "$out/gptoss-oracle.h"
 python3 -I psionic/tests/tabular_oracle.py --header > "$out/tabular-oracle.h"
 python3 -I psionic/tests/tape_oracle.py --header > "$out/tape-oracle.h"
 python3 -I psionic/tests/route_oracle.py --header > "$out/route-oracle.h"
+python3 -I psionic/tests/threshold_oracle.py --header > "$out/threshold-oracle.h"
 "$text_python" -I psionic/tests/harmony_fixtures.py
 "$text_python" -I psionic/tests/harmony_oracle.py --header > "$out/harmony-goldens.h"
 python3 -I psionic/tests/weights_fixtures.py --header > "$out/weights-fixtures.h"
@@ -112,8 +113,8 @@ python3 -I psionic/tests/mammoth_reference_fixture.py
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-output psionic/fixtures/models/mammoth/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
-native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
+coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
+native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
         weights|rank5|rank5-bundle|access|layer-map|model-map) echo "psionic/lib/model-io/$1.coax" ;;
@@ -135,6 +136,7 @@ native_harness() {
         tabular) adapter=psionic/platform/tabular-spans.c; harness=psionic/tests/tabular.c ;;
         tape) adapter=psionic/platform/tape-spans.c; harness=psionic/tests/tape.c ;;
         route) adapter=psionic/platform/route-spans.c; harness=psionic/tests/route.c ;;
+        threshold) adapter=psionic/platform/threshold-spans.c; harness=psionic/tests/threshold.c ;;
         tensor) adapter=psionic/platform/tensor-memory.c; harness=psionic/tests/tensor.c ;;
         ops) adapter=psionic/platform/ops-memory.c; harness=psionic/tests/ops.c ;;
         weights) adapter=psionic/platform/weights-memory.c; harness=psionic/tests/weights.c ;;

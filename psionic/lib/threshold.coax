@@ -1,0 +1,429 @@
+// Chapter 157: thresholds from written costs. A consumer writes down what each
+// mistake, second and model call costs; the expected cost of every action at a
+// probability follows, and so do the bands of an Elephant and Mammoth cascade:
+// answer no, escalate to Mammoth, ask a person, answer yes. Mammoth's accuracy
+// is measured on validation data, the bands are frozen into a versioned
+// record, and the record is scored once on a confirmation set.
+// Profile cpu-f64-threshold-v1: binary64, chapter 3's compensated accumulator
+// for every sum, 1 to 8,192 items, costs within [0, 10^6].
+#load "tabular.coax";
+#authority;
+
+ThStatus :: enum u8 {ok;shape;capacity;alias;number;}
+ThAction :: enum u8 {no;yes;ask;escalate;}
+ThPolicy :: enum u8 {elephant;mammoth;fixed;record;}
+// Costs of one decision in one unit (dollars, say): each kind of mistake,
+// asking a person, each second of waiting, and each model call.
+ThCosts :: struct {wrong_yes:f64;wrong_no:f64;ask:f64;per_second:f64;
+    elephant_dollars:f64;elephant_seconds:f64;mammoth_dollars:f64;mammoth_seconds:f64;person_seconds:f64;}
+ThChoice :: struct {action:ThAction;cost:f64;}
+ThValue :: struct {status:ThStatus;value:f64;half:f64;}
+// Band k covers probabilities from edge[k] up to edge[k+1]; edge[0] is 0.
+ThRecord :: struct {status:ThStatus;version:int;rho:f64;bands:int;edge:[4]f64;action:[4]ThAction;}
+ThReport :: struct {status:ThStatus;mean:f64;half:f64;errors:int;asked:int;escalated:int;seconds:f64;}
+
+TH_ITEMS_MAX :: 8192;
+TH_COST_MAX :: 1000000.0;
+TH_GRID :: 4096;
+TH_BANDS_MAX :: 4;
+TH_VERSION :: 1;
+
+// Checks precede the implementation. Expected values are derived in chapter 157.
+// A table whose costs are exact binary fractions, so expected costs are exact.
+th_exact :: ()->ThCosts {
+    return ThCosts.{wrong_yes=4,wrong_no=2,ask=0.5,per_second=0.25,elephant_dollars=0.125,elephant_seconds=0.5,
+        mammoth_dollars=0.25,mammoth_seconds=1,person_seconds=2};
+}
+#test "the written tables" {
+    v:=th_voice();b:=th_background();
+    #assert v.wrong_yes==1 && v.wrong_no==3 && v.ask==0.8 && v.per_second==2 && v.person_seconds==1 && v.mammoth_seconds==1.2;
+    #assert b.wrong_yes==5 && b.wrong_no==1 && b.ask==0.2 && b.per_second==0.001 && b.person_seconds==300;
+    #assert v.elephant_dollars==0.0005 && v.elephant_seconds==0.15 && v.mammoth_dollars==0.01;
+    #assert b.elephant_dollars==0.0005 && b.elephant_seconds==0.15 && b.mammoth_dollars==0.01 && b.mammoth_seconds==1.2;
+}
+#test "costs lie in [0, 10^6]" {
+    c:=th_exact();#assert th_costs_ok(c);
+    c.wrong_yes=TH_COST_MAX;#assert th_costs_ok(c);
+    c.wrong_yes=1000000.0000000001;#assert !th_costs_ok(c);
+    c=th_exact();c.wrong_no=-1e-300;#assert !th_costs_ok(c);
+    c=th_exact();c.ask=-1;#assert !th_costs_ok(c);
+    c=th_exact();c.per_second=-1;#assert !th_costs_ok(c);
+    c=th_exact();c.elephant_dollars=-1;#assert !th_costs_ok(c);
+    c=th_exact();c.elephant_seconds=-1;#assert !th_costs_ok(c);
+    c=th_exact();c.mammoth_dollars=-1;#assert !th_costs_ok(c);
+    c=th_exact();c.mammoth_seconds=-1;#assert !th_costs_ok(c);
+    c=th_exact();c.person_seconds=-1;#assert !th_costs_ok(c);
+    c=th_exact();c.wrong_yes=0;#assert th_costs_ok(c);
+}
+#test "answering: no costs p times a wrong no, yes costs 1 - p times a wrong yes, asking is flat" {
+    c:=th_exact();
+    // Asking costs 0.5 + 0.25 * 2 = 1.
+    a:=th_answer(c,0.5);#assert a.action==ThAction.no && a.cost==1;
+    a=th_answer(c,0.625);#assert a.action==ThAction.ask && a.cost==1;
+    a=th_answer(c,0.75);#assert a.action==ThAction.yes && a.cost==1;
+    a=th_answer(c,0.875);#assert a.action==ThAction.yes && a.cost==0.5;
+    a=th_answer(c,0.25);#assert a.action==ThAction.no && a.cost==0.5;
+    // The voice table: a tie at 0.25 keeps no; asking (2.8) never wins.
+    v:=th_voice();a=th_answer(v,0.25);#assert a.action==ThAction.no && a.cost==0.75;
+    a=th_answer(v,0.5);#assert a.action==ThAction.yes && a.cost==0.5;
+}
+#test "Mammoth's two readings move p by Bayes' rule" {
+    #assert th_posterior(0.5,0.75,true)==0.75 && th_posterior(0.5,0.75,false)==0.25;
+    #assert th_posterior(0.25,0.75,true)==0.5 && th_posterior(0.75,0.75,false)==0.5;
+    #assert th_posterior(0,0.75,true)==0 && th_posterior(1,0.75,false)==1;
+}
+#test "escalating: Mammoth's price, then the expected answer after it" {
+    c:=th_exact();
+    // p 0.5, rho 0.75: each reading half the time; at 0.75 answering costs 1, at 0.25 it costs 0.5.
+    #assert th_escalate(c,0.5,0.75)==0.25+0.25*1+(0.5*1+0.5*0.5);
+    b:=th_best(c,0.5,0.75);#assert b.action==ThAction.no && b.cost==1;
+    c.mammoth_seconds=0;b=th_best(c,0.5,0.75);#assert b.action==ThAction.no && b.cost==1;
+    c.mammoth_dollars=0.125;b=th_best(c,0.5,0.75);#assert b.action==ThAction.escalate && b.cost==0.875;
+    // p 0.25: Mammoth reads up three times in eight.
+    #assert th_escalate(c,0.25,0.75)==0.125+(0.375*1+0.625*th_answer(c,0.1).cost);
+}
+// Each edge is the first probability with its band's action: the number just below has the previous one.
+th_edges_ok :: (c:ThCosts,rho:f64,r:ThRecord)->bool {
+    for k:1..<r.bands {
+        e:=r.edge[k];below:=f64_from_bits(f64_bits(e)-1);
+        if th_best(c,e,rho).action!=r.action[k] || th_best(c,below,rho).action!=r.action[k-1] {return false;}
+    }
+    return true;
+}
+#test "records: bands where the cheapest action changes" {
+    r:=th_record(th_voice(),0.9);
+    #assert r.status==ThStatus.ok && r.version==1 && r.rho==0.9 && r.bands==2 && r.edge[0]==0;
+    #assert r.action[0]==ThAction.no && r.action[1]==ThAction.yes;
+    // The first probability above 0.25, where yes becomes strictly cheaper.
+    #assert r.edge[1]==0.25000000000000006;
+    b:=th_record(th_background(),0.9);
+    #assert b.status==ThStatus.ok && b.bands==3 && b.action[0]==ThAction.no && b.action[1]==ThAction.escalate && b.action[2]==ThAction.yes;
+    #assert th_edges_ok(th_background(),0.9,b) && th_edges_ok(th_voice(),0.9,r);
+    // One number too high, the first edge is wrong: the number below it already escalates.
+    t:=b;t.edge[1]=f64_from_bits(f64_bits(b.edge[1])+1);#assert !th_edges_ok(th_background(),0.9,t);
+    // A band of asking between about 1/10,000 and 3/10,000, inside the first two grid steps.
+    n:=ThCosts.{wrong_yes=1,wrong_no=9997,ask=0.9997,mammoth_dollars=TH_COST_MAX};k:=th_record(n,0.9);
+    #assert k.bands==3 && k.action[1]==ThAction.ask && k.edge[2]<2.0/4096 && th_edges_ok(n,0.9,k);
+    // A wrong yes is the only cost: no is free everywhere up to 1.
+    n=ThCosts.{wrong_yes=1};#assert th_record(n,0.9).bands==1;
+    #assert th_record(th_voice(),0.5).status==ThStatus.shape && th_record(th_voice(),1).status==ThStatus.shape;
+    #assert th_record(th_voice(),0.5000000000000001).status==ThStatus.ok && th_record(th_voice(),0.9999999999999999).status==ThStatus.ok;
+    c:=th_voice();c.ask=-1;#assert th_record(c,0.9).status==ThStatus.shape;
+    // A first edge below 1/4096: a wrong no costs a million times a wrong yes.
+    c=ThCosts.{wrong_yes=1,wrong_no=TH_COST_MAX,ask=TH_COST_MAX,mammoth_dollars=TH_COST_MAX};r=th_record(c,0.9);
+    #assert r.bands==2 && r.edge[1]<1.0/4096 && th_best(c,r.edge[1],0.9).action==ThAction.yes;
+    #assert th_best(c,f64_from_bits(f64_bits(r.edge[1])-1),0.9).action==ThAction.no;
+    // Costs of zero everywhere: no throughout, even at 1.
+    z:ThCosts;r=th_record(z,0.9);#assert r.status==ThStatus.ok && r.bands==1 && r.action[0]==ThAction.no;
+}
+#test "a record holds four bands; a table needing five is refused" {
+    // Escalate, ask, escalate between no and yes.
+    c:=ThCosts.{wrong_yes=3.7803962883838738,wrong_no=5.707815255990233,ask=1.118570363743846,mammoth_dollars=0.16348652470478742};
+    r:=th_record(c,0.6404278614180691);#assert r.status==ThStatus.capacity;
+    c=ThCosts.{wrong_yes=5.511704740692165,wrong_no=1.042749980146136,ask=0.1956889929845529,mammoth_dollars=0.14638683766469707};
+    r=th_record(c,0.9335563267522538);
+    #assert r.status==ThStatus.ok && r.bands==4 && r.action[1]==ThAction.ask && r.action[2]==ThAction.escalate && r.action[3]==ThAction.yes;
+    // Escalating from about 0.932 to 0.968, a band narrower than half its upper edge.
+    #assert th_edges_ok(c,0.9335563267522538,r) && r.edge[2]>0.93 && r.edge[3]<0.97;
+}
+#test "deciding by a record: the last band whose edge is at most p" {
+    r:=ThRecord.{version=1,bands=3};r.edge[1]=0.25;r.edge[2]=0.75;
+    r.action[0]=ThAction.no;r.action[1]=ThAction.escalate;r.action[2]=ThAction.yes;
+    #assert th_decide(r,0)==ThAction.no && th_decide(r,0.2499999)==ThAction.no && th_decide(r,0.25)==ThAction.escalate;
+    #assert th_decide(r,0.7499999)==ThAction.escalate && th_decide(r,0.75)==ThAction.yes && th_decide(r,1)==ThAction.yes;
+    r.bands=2;#assert th_decide(r,0.9)==ThAction.escalate;
+}
+#test "the simulator draws at fixed counters" {
+    e:=[3]f64.[-7,-7,-7];m:=[3]f64.[-7,-7,-7];y:=[3]f64.[-7,-7,-7];
+    #assert th_simulate(4,0.75,e[..],m[..],y[..],false)==ThStatus.ok;
+    for i:0..<3 {
+        c:=cast(u64)(3*i);p:=tb_sigmoid(8*tb_uniform(4,c)-4);want:=floor(tb_uniform(4,c+1)+p);
+        wrong:=floor(tb_uniform(4,c+2)+0.25);
+        #assert e[i]==p && y[i]==want && m[i]==th_posterior(p,0.75,want!=wrong);
+    }
+    #assert th_simulate(4,0.75,e[0..<0],m[..],y[..],false)==ThStatus.shape && th_simulate(4,0.75,e[0..<1],m[..],y[..],false)==ThStatus.ok;
+    #assert th_simulate(4,0.5,e[..],m[..],y[..],false)==ThStatus.shape && th_simulate(4,1,e[..],m[..],y[..],false)==ThStatus.shape;
+    #assert th_simulate(4,0.75,e[..],m[0..<2],y[..],false)==ThStatus.capacity && th_simulate(4,0.75,e[..],m[..],y[0..<2],false)==ThStatus.capacity;
+    #assert th_simulate(4,0.75,e[..],m[..],y[..],true)==ThStatus.alias;
+    big:[8193]f64;#assert th_simulate(4,0.75,big[0..<8193],big[..],big[..],false)==ThStatus.shape;
+}
+#test "labels and Mammoth's direction follow their probabilities" {
+    e:[8192]f64;m:[8192]f64;y:[8192]f64;
+    #assert th_simulate(157,0.75,e[..],m[..],y[..],false)==ThStatus.ok;
+    yes:=0;wrong:=0;s:PsionicAccumulator;
+    for i:0..<8192 {
+        if y[i]==1 {yes+=1;}
+        if (m[i]>e[i])!=(y[i]==1) {wrong+=1;}
+        s=psionic_ops_accumulate(s,e[i]);
+    }
+    // Yes about as often as Elephant's mean probability (0.5), Mammoth wrong a quarter of the time.
+    mean:=psionic_ops_total(s);
+    #assert abs(f64(yes)-mean)<=4*45.3 && wrong>=2048-4*39 && wrong<=2048+4*39;
+    v:=th_rho(e[..],m[..],y[..]);#assert v.status==ThStatus.ok && v.value==f64(8192-wrong)/8192;
+}
+#test "rho by hand" {
+    e:=[4]f64.[0.5,0.5,0.25,0.75];m:=[4]f64.[0.75,0.25,0.5,0.5];y:=[4]f64.[1,1,0,0];
+    v:=th_rho(e[..],m[..],y[..]);#assert v.status==ThStatus.ok && v.value==0.5;
+    m[1]=0.5;#assert th_rho(e[..],m[..],y[..]).value==0.5;
+    m[1]=0.75;#assert th_rho(e[..],m[..],y[..]).value==0.75;
+    #assert th_rho(e[0..<0],m[0..<0],y[0..<0]).status==ThStatus.shape && th_rho(e[0..<1],m[0..<1],y[0..<1]).value==1;
+    #assert th_rho(e[..],m[0..<3],y[..]).status==ThStatus.shape && th_rho(e[..],m[..],y[0..<3]).status==ThStatus.shape;
+    e[0]=1.5;#assert th_rho(e[..],m[..],y[..]).status==ThStatus.number;
+    e[0]=0.5;m[3]=-0.5;#assert th_rho(e[..],m[..],y[..]).status==ThStatus.number;
+    m[3]=0.5;y[2]=0.5;#assert th_rho(e[..],m[..],y[..]).status==ThStatus.number;
+    big:[8193]f64;#assert th_rho(big[0..<8192],big[0..<8192],big[0..<8192]).status==ThStatus.ok && th_rho(big[..],big[..],big[..]).status==ThStatus.shape;
+}
+#test "each policy's cost per item, by hand" {
+    c:=th_exact();
+    // Elephant 0.125 + 0.25 * 0.5 = 0.25 per call; Mammoth 0.25 + 0.25 = 0.5; asking 1.
+    r:=ThRecord.{version=1,bands=4};r.edge[1]=0.25;r.edge[2]=0.5;r.edge[3]=0.75;
+    r.action[0]=ThAction.no;r.action[1]=ThAction.escalate;r.action[2]=ThAction.ask;r.action[3]=ThAction.yes;
+    t:=th_item(c,ThPolicy.elephant,r,0.5,0.1,0);#assert t.cost==0.25+4 && t.wrong && !t.escalated && t.seconds==0.5;
+    t=th_item(c,ThPolicy.elephant,r,0.4999,0.9,1);#assert t.cost==0.25+2 && t.wrong;
+    t=th_item(c,ThPolicy.mammoth,r,0.1,0.5,1);#assert t.cost==0.5 && !t.wrong && t.escalated && t.seconds==1;
+    t=th_item(c,ThPolicy.mammoth,r,0.9,0.4999,0);#assert t.cost==0.5 && !t.wrong;
+    t=th_item(c,ThPolicy.fixed,r,0.2,0.9,0);#assert t.cost==0.25 && !t.wrong && !t.escalated;
+    t=th_item(c,ThPolicy.fixed,r,0.8,0.1,0);#assert t.cost==0.25+4 && t.wrong && !t.escalated;
+    t=th_item(c,ThPolicy.fixed,r,0.2000001,0.9,1);#assert t.cost==0.75 && t.escalated && t.seconds==1.5;
+    t=th_item(c,ThPolicy.fixed,r,0.7999999,0.1,1);#assert t.cost==0.75+2 && t.escalated && t.wrong;
+    t=th_item(c,ThPolicy.record,r,0.1,0.9,1);#assert t.cost==0.25+2 && t.wrong && !t.escalated;
+    // Escalated, then Mammoth's 0.625 is answered by costs: ask.
+    t=th_item(c,ThPolicy.record,r,0.3,0.625,1);#assert t.escalated && t.asked && t.cost==0.75+1 && t.seconds==3.5 && !t.wrong;
+    t=th_item(c,ThPolicy.record,r,0.3,0.875,1);#assert t.escalated && !t.asked && t.cost==0.75;
+    t=th_item(c,ThPolicy.record,r,0.6,0.9,1);#assert t.asked && !t.escalated && t.cost==0.25+1 && t.seconds==2.5;
+    t=th_item(c,ThPolicy.record,r,0.8,0.1,0);#assert t.cost==0.25+4 && t.wrong;
+    t=th_item(c,ThPolicy.record,r,0.8,0.1,1);#assert t.cost==0.25 && !t.wrong && !t.asked;
+}
+#test "runs: means, intervals, counts and refusals" {
+    c:=th_exact();r:=th_record(c,0.75);
+    e:=[4]f64.[0.1,0.9,0.6,0.3];m:=[4]f64.[0.1,0.9,0.9,0.1];y:=[4]f64.[0,1,0,1];cost:[4]f64;
+    x:=th_run(c,ThPolicy.elephant,r,e[..],m[..],y[..],cost[..],false);
+    // Costs 0.25, 0.25, 4.25, 2.25.
+    #assert x.status==ThStatus.ok && cost[0]==0.25 && cost[2]==4.25 && cost[3]==2.25 && x.mean==1.75 && x.errors==2 && x.seconds==0.5;
+    #assert x.half==th_interval(cost[..]).half && x.asked==0 && x.escalated==0;
+    x=th_run(c,ThPolicy.mammoth,r,e[..],m[..],y[..],cost[..],false);
+    #assert x.mean==(0.5+0.5+4.5+2.5)/4 && x.errors==2 && x.escalated==0 && x.seconds==1;
+    x=th_run(c,ThPolicy.fixed,r,e[..],m[..],y[..],cost[..],false);
+    #assert x.escalated==2 && x.seconds==1;
+    x=th_run(c,ThPolicy.record,r,e[..],m[..],y[..],cost[..],false);
+    // A hand-made record: no, escalate from 0.25, ask from 0.5, yes from 0.75.
+    h:=ThRecord.{version=1,bands=4};h.edge[1]=0.25;h.edge[2]=0.5;h.edge[3]=0.75;
+    h.action[1]=ThAction.escalate;h.action[2]=ThAction.ask;h.action[3]=ThAction.yes;
+    // 0.25 and 0.25; asking 0.25 + 1; escalating 0.75, then no at Mammoth's 0.1, wrong: + 2.
+    x=th_run(c,ThPolicy.record,h,e[..],m[..],y[..],cost[..],false);
+    #assert x.status==ThStatus.ok && x.mean==1.125 && x.errors==1 && x.asked==1 && x.escalated==1 && x.seconds==1.25;
+    #assert th_run(c,ThPolicy.elephant,r,e[0..<1],m[0..<1],y[0..<1],cost[..],false).status==ThStatus.shape;
+    #assert th_run(c,ThPolicy.elephant,r,e[0..<2],m[0..<2],y[0..<2],cost[..],false).status==ThStatus.ok;
+    #assert th_run(c,ThPolicy.elephant,r,e[..],m[0..<3],y[..],cost[..],false).status==ThStatus.shape;
+    #assert th_run(c,ThPolicy.elephant,r,e[..],m[..],y[0..<3],cost[..],false).status==ThStatus.shape;
+    #assert th_run(c,ThPolicy.elephant,r,e[..],m[..],y[..],cost[0..<3],false).status==ThStatus.capacity;
+    #assert th_run(c,ThPolicy.elephant,r,e[..],m[..],y[..],cost[..],true).status==ThStatus.alias;
+    bad:=r;bad.status=ThStatus.capacity;
+    #assert th_run(c,ThPolicy.record,bad,e[..],m[..],y[..],cost[..],false).status==ThStatus.shape;
+    #assert th_run(c,ThPolicy.elephant,bad,e[..],m[..],y[..],cost[..],false).status==ThStatus.ok;
+    bad=r;bad.version=2;#assert th_run(c,ThPolicy.record,bad,e[..],m[..],y[..],cost[..],false).status==ThStatus.shape;
+    k:=c;k.ask=-1;#assert th_run(k,ThPolicy.elephant,r,e[..],m[..],y[..],cost[..],false).status==ThStatus.shape;
+    e[3]=1.5;#assert th_run(c,ThPolicy.elephant,r,e[..],m[..],y[..],cost[..],false).status==ThStatus.number;
+    e[3]=0.3;m[3]=-1;#assert th_run(c,ThPolicy.elephant,r,e[..],m[..],y[..],cost[..],false).status==ThStatus.number;
+    m[3]=0.1;y[3]=2;#assert th_run(c,ThPolicy.elephant,r,e[..],m[..],y[..],cost[..],false).status==ThStatus.number;
+    big:[8193]f64;out:[8193]f64;
+    #assert th_run(c,ThPolicy.elephant,r,big[0..<8192],big[0..<8192],big[0..<8192],out[..],false).status==ThStatus.ok;
+    #assert th_run(c,ThPolicy.elephant,r,big[..],big[..],big[..],out[..],false).status==ThStatus.shape;
+}
+#test "intervals and paired differences" {
+    x:=[4]f64.[1,2,3,6];v:=th_interval(x[..]);
+    // Mean 3; squared deviations 4, 1, 0, 9 sum to 14; variance 14/3.
+    #assert v.value==3 && v.half==1.96*sqrt(14.0/3/4);
+    a:=[4]f64.[2,4,6,12];s:[4]f64;
+    p:=th_paired(a[..],x[..],s[..],false);#assert p.status==ThStatus.ok && p.value==3 && p.half==v.half;
+    #assert th_paired(a[0..<1],x[0..<1],s[..],false).status==ThStatus.shape && th_paired(a[0..<2],x[0..<2],s[..],false).status==ThStatus.ok;
+    #assert th_paired(a[..],x[0..<3],s[..],false).status==ThStatus.shape;
+    #assert th_paired(a[..],x[..],s[0..<3],false).status==ThStatus.capacity && th_paired(a[..],x[..],s[..],true).status==ThStatus.alias;
+    a[3]=2e12;#assert th_paired(a[..],x[..],s[..],false).status==ThStatus.number;
+    a[3]=1e12;#assert th_paired(a[..],x[..],s[..],false).status==ThStatus.ok;
+    x[0]=-2e12;#assert th_paired(a[..],x[..],s[..],false).status==ThStatus.number;
+    x[0]=-1e12;#assert th_paired(a[..],x[..],s[..],false).status==ThStatus.ok;
+    big:[8193]f64;sb:[8193]f64;
+    #assert th_paired(big[0..<8192],big[0..<8192],sb[..],false).status==ThStatus.ok && th_paired(big[..],big[..],sb[..],false).status==ThStatus.shape;
+}
+
+th_voice :: ()->ThCosts {
+    return ThCosts.{wrong_yes=1,wrong_no=3,ask=0.8,per_second=2,elephant_dollars=0.0005,elephant_seconds=0.15,
+        mammoth_dollars=0.01,mammoth_seconds=1.2,person_seconds=1};
+}
+th_background :: ()->ThCosts {
+    return ThCosts.{wrong_yes=5,wrong_no=1,ask=0.2,per_second=0.001,elephant_dollars=0.0005,elephant_seconds=0.15,
+        mammoth_dollars=0.01,mammoth_seconds=1.2,person_seconds=300};
+}
+
+th_costs_ok :: (c:ThCosts)->bool {
+    v:=[9]f64.[c.wrong_yes,c.wrong_no,c.ask,c.per_second,c.elephant_dollars,c.elephant_seconds,c.mammoth_dollars,c.mammoth_seconds,c.person_seconds];
+    for x:v {if !tb_in(x,0,TH_COST_MAX) {return false;}}
+    return true;
+}
+th_unit :: (t:[]f64)->bool {
+    for v:t {if !tb_in(v,0,1) {return false;}}
+    return true;
+}
+
+// book:begin answer
+// The expected cost of answering at probability p of yes: no is wrong with
+// probability p, yes with 1 - p, and asking costs the same either way.
+// The cheapest wins; a tie keeps the earlier of no, yes, ask.
+th_answer :: (c:ThCosts,p:f64)->ThChoice {
+    best:=ThChoice.{action=ThAction.no,cost=p*c.wrong_no};
+    yes:=(1-p)*c.wrong_yes;if yes<best.cost {best=ThChoice.{action=ThAction.yes,cost=yes};}
+    ask:=c.ask+c.per_second*c.person_seconds;if ask<best.cost {best=ThChoice.{action=ThAction.ask,cost=ask};}
+    return best;
+}
+// book:end answer
+
+// book:begin escalate
+// Mammoth's evidence points the right way with probability rho. Its answer
+// moves p by Bayes' rule, and the consumer then answers at Mammoth's p.
+th_posterior :: (p:f64,rho:f64,up:bool)->f64 {
+    if up {return p*rho/(p*rho+(1-p)*(1-rho));}
+    return p*(1-rho)/(p*(1-rho)+(1-p)*rho);
+}
+// The expected cost of escalating: Mammoth's call and wait, then the answer
+// at each of its two readings, weighted by how likely that reading is.
+th_escalate :: (c:ThCosts,p:f64,rho:f64)->f64 {
+    up:=p*rho+(1-p)*(1-rho);
+    after:=up*th_answer(c,th_posterior(p,rho,true)).cost+(1-up)*th_answer(c,th_posterior(p,rho,false)).cost;
+    return c.mammoth_dollars+c.per_second*c.mammoth_seconds+after;
+}
+// Escalate only when it is strictly cheaper than the best answer now.
+th_best :: (c:ThCosts,p:f64,rho:f64)->ThChoice #export_c {
+    now:=th_answer(c,p);e:=th_escalate(c,p,rho);
+    if e<now.cost {return ThChoice.{action=ThAction.escalate,cost=e};}
+    return now;
+}
+// book:end escalate
+
+// book:begin record
+// The bands, read off th_best. At p = 0 answering no costs nothing, so the
+// first band is always no (the zero action). Probabilities k/4096 are scanned;
+// at each change, halving between the last probability with the old action and
+// the first with the new one, until the two are adjacent numbers, finds the
+// first probability where the old action stops.
+th_record :: (c:ThCosts,rho:f64)->ThRecord #export_c {
+    if !th_costs_ok(c) || !(rho>0.5 && rho<1) {return ThRecord.{status=ThStatus.shape};}
+    r:=ThRecord.{version=TH_VERSION,rho=rho,bands=1};last:=0.0;
+    for k:1..<TH_GRID+1 {
+        p:=f64(k)/TH_GRID;a:=th_best(c,p,rho).action;old:=r.action[r.bands-1];
+        if a!=old {
+            if r.bands==TH_BANDS_MAX {return ThRecord.{status=ThStatus.capacity};}
+            lo:=last;hi:=p;
+            while true {
+                mid:=(lo+hi)/2;
+                if mid==lo || mid==hi {break;}
+                if th_best(c,mid,rho).action==old {lo=mid;} else {hi=mid;}
+            }
+            r.edge[r.bands]=hi;r.action[r.bands]=a;r.bands+=1;
+        }
+        last=p;
+    }
+    return r;
+}
+// The action of the last band whose edge is at most p.
+th_decide :: (r:ThRecord,p:f64)->ThAction #export_c {
+    k:=0;
+    for b:1..<r.bands {if r.edge[b]<=p {k=b;}}
+    return r.action[k];
+}
+// book:end record
+
+// book:begin simulate
+// threshold-sim-v1. Item i: Elephant's probability from a logit uniform in
+// [-4, 4] at counter 3i; the label, yes with that probability, at 3i+1;
+// Mammoth's evidence, right with probability rho, at 3i+2. A draw u gives
+// "yes" when u + p reaches 1, which happens with probability p, and Mammoth
+// is wrong when u + (1 - rho) reaches 1. Mammoth reports Bayes' rule.
+th_simulate :: (seed:u64,rho:f64,elephant:[]f64,mammoth:[]f64,label:[]f64,overlap:bool)->ThStatus #export_c {
+    n:=elephant.count;
+    if n<1 || n>TH_ITEMS_MAX || !(rho>0.5 && rho<1) {return ThStatus.shape;}
+    if mammoth.count<n || label.count<n {return ThStatus.capacity;}
+    if overlap {return ThStatus.alias;}
+    for i:0..<n {
+        c:=cast(u64)(3*i);p:=tb_sigmoid(8*tb_uniform(seed,c)-4);
+        y:=floor(tb_uniform(seed,c+1)+p);wrong:=floor(tb_uniform(seed,c+2)+(1-rho));
+        elephant[i]=p;label[i]=y;mammoth[i]=th_posterior(p,rho,y!=wrong);
+    }
+    return ThStatus.ok;
+}
+// Mammoth's evidence pointed up when its probability exceeds Elephant's;
+// rho is estimated as the share of items where that direction was right.
+th_rho :: (elephant:[]f64,mammoth:[]f64,label:[]f64)->ThValue #export_c {
+    n:=elephant.count;
+    if n<1 || n>TH_ITEMS_MAX || mammoth.count!=n || label.count!=n {return ThValue.{status=ThStatus.shape};}
+    if !th_unit(elephant) || !th_unit(mammoth) {return ThValue.{status=ThStatus.number};}
+    for y:label {if y!=0 && y!=1 {return ThValue.{status=ThStatus.number};}}
+    right:=0;
+    for i:0..<n {if (mammoth[i]>elephant[i])==(label[i]==1) {right+=1;}}
+    return ThValue.{value=f64(right)/f64(n)};
+}
+// book:end simulate
+
+// book:begin run
+// The cost of every decision under one policy, and its mean with a 95 percent
+// normal interval. Elephant, Mammoth and the fixed rule answer by the most
+// likely label (yes from 0.5); the fixed rule escalates when 0.2 < p < 0.8.
+// The record decides by its bands, and after escalating answers by costs.
+ThItem :: struct {cost:f64;seconds:f64;wrong:bool;asked:bool;escalated:bool;}
+th_item :: (c:ThCosts,policy:ThPolicy,r:ThRecord,p:f64,q:f64,y:f64)->ThItem {
+    t:=ThItem.{seconds=c.elephant_seconds};dollars:=c.elephant_dollars;a:=ThAction.no;
+    if p>=0.5 {a=ThAction.yes;}
+    if policy==ThPolicy.mammoth {t.seconds=0;dollars=0;t.escalated=true;}
+    if policy==ThPolicy.fixed && p>0.2 && p<0.8 {t.escalated=true;}
+    if policy==ThPolicy.record {a=th_decide(r,p);t.escalated=a==ThAction.escalate;}
+    if t.escalated {
+        t.seconds+=c.mammoth_seconds;dollars+=c.mammoth_dollars;
+        a=ThAction.no;if q>=0.5 {a=ThAction.yes;}
+        if policy==ThPolicy.record {a=th_answer(c,q).action;}
+    }
+    if a==ThAction.ask {t.seconds+=c.person_seconds;dollars+=c.ask;t.asked=true;}
+    if a==ThAction.yes && y==0 {dollars+=c.wrong_yes;t.wrong=true;}
+    if a==ThAction.no && y==1 {dollars+=c.wrong_no;t.wrong=true;}
+    t.cost=dollars+c.per_second*t.seconds;
+    return t;
+}
+th_run :: (c:ThCosts,policy:ThPolicy,r:ThRecord,elephant:[]f64,mammoth:[]f64,label:[]f64,cost:[]f64,overlap:bool)->ThReport #export_c {
+    n:=elephant.count;
+    if n<2 || n>TH_ITEMS_MAX || mammoth.count!=n || label.count!=n || !th_costs_ok(c) {return ThReport.{status=ThStatus.shape};}
+    if policy==ThPolicy.record && (r.status!=ThStatus.ok || r.version!=TH_VERSION) {return ThReport.{status=ThStatus.shape};}
+    if cost.count<n {return ThReport.{status=ThStatus.capacity};}
+    if overlap {return ThReport.{status=ThStatus.alias};}
+    if !th_unit(elephant) || !th_unit(mammoth) {return ThReport.{status=ThStatus.number};}
+    for y:label {if y!=0 && y!=1 {return ThReport.{status=ThStatus.number};}}
+    report:ThReport;seconds:PsionicAccumulator;
+    for i:0..<n {
+        t:=th_item(c,policy,r,elephant[i],mammoth[i],label[i]);cost[i]=t.cost;seconds=psionic_ops_accumulate(seconds,t.seconds);
+        if t.wrong {report.errors+=1;}
+        if t.asked {report.asked+=1;}
+        // Always-Mammoth calls Mammoth directly; it is not counted as escalating.
+        if t.escalated && policy!=ThPolicy.mammoth {report.escalated+=1;}
+    }
+    v:=th_interval(cost[0..<n]);
+    report.mean=v.value;report.half=v.half;report.seconds=psionic_ops_total(seconds)/f64(n);
+    return report;
+}
+// Mean and 1.96 standard errors, with the n - 1 sample variance.
+th_interval :: (x:[]f64)->ThValue {
+    s:PsionicAccumulator;for v:x {s=psionic_ops_accumulate(s,v);}
+    mean:=psionic_ops_total(s)/f64(x.count);
+    d:PsionicAccumulator;for v:x {e:=v-mean;d=psionic_ops_accumulate(d,e*e);}
+    return ThValue.{value=mean,half=1.96*sqrt(psionic_ops_total(d)/f64(x.count-1)/f64(x.count))};
+}
+// A paired comparison: the mean of a - b per item, with its interval.
+th_paired :: (a:[]f64,b:[]f64,scratch:[]f64,overlap:bool)->ThValue #export_c {
+    n:=a.count;
+    if n<2 || n>TH_ITEMS_MAX || b.count!=n {return ThValue.{status=ThStatus.shape};}
+    if scratch.count<n {return ThValue.{status=ThStatus.capacity};}
+    if overlap {return ThValue.{status=ThStatus.alias};}
+    for i:0..<n {
+        if !tb_in(a[i],-1e12,1e12) || !tb_in(b[i],-1e12,1e12) {return ThValue.{status=ThStatus.number};}
+        scratch[i]=a[i]-b[i];
+    }
+    return th_interval(scratch[0..<n]);
+}
+// book:end run

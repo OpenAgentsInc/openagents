@@ -1,0 +1,19 @@
+by hand, background classification at p = 0.5: no 0.5, yes 2.5, ask 0.5, escalate 0.3112
+validation, 2000 items: Mammoth's evidence points the right way on 0.9005 of them
+threshold records, version 1, rho 0.9005:
+  voice interruption: no below 0.25, yes from there
+  background classification: no below 0.1219, escalate below 0.9851, yes from there
+confirmation, 4000 items; the records match expected costs on 8000 of 8000 decisions
+voice interruption: cost per decision, with a 95 percent interval
+  always Elephant: 0.6548 ± 0.0271; errors 705 of 4000 answered (0.1763), escalated 0, asked 0, 0.15 s
+  always Mammoth: 2.553 ± 0.0179; errors 292 of 4000 answered (0.073), escalated 0, asked 0, 1.2 s
+  fixed rule: 1.3034 ± 0.0405; errors 348 of 4000 answered (0.087), escalated 1384, asked 0, 0.57 s
+  record: 0.5815 ± 0.0201; errors 834 of 4000 answered (0.2085), escalated 0, asked 0, 0.15 s
+  record minus always Elephant: -0.0732 ± 0.0231
+background classification: cost per decision, with a 95 percent interval
+  always Elephant: 0.5259 ± 0.0438; errors 705 of 4000 answered (0.1763), escalated 0, asked 0, 0.15 s
+  always Mammoth: 0.2362 ± 0.03; errors 292 of 4000 answered (0.073), escalated 0, asked 0, 1.2 s
+  fixed rule: 0.2755 ± 0.0328; errors 348 of 4000 answered (0.087), escalated 1384, asked 0, 0.57 s
+  record: 0.1587 ± 0.0174; errors 197 of 3541 answered (0.0556), escalated 2999, asked 459, 35.47 s
+  record minus always Mammoth: -0.0775 ± 0.0236
+the same probabilities, two consumers: they act differently on 2999 of 4000 items

@@ -390,6 +390,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/cost-thresholds.coax",
+      "chapter": "psionic/book/ch157-thresholds-from-written-costs.md",
+      "stdout": "psionic/fixtures/cost-thresholds.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
