@@ -1,0 +1,136 @@
+// Experimental caller-owned outer AEAD workspace. Lower-level cipher and MAC
+// functions still have untracked stack temporaries; no production approval.
+#load "xchacha20_poly1305.coax";
+#load "aead_cleanup.coax";
+#authority;
+
+#test "AEAD workspace stages a verified result until cleanup" {
+  state:[1]AeadOperation;scratch:[1]AeadScratch;key:[32]u8;nonce:[24]u8;aad:[1]u8;msg:[1]u8;out:[17]u8;
+  for i:0..<17 {out[i]=165;}
+  #assert aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],msg[..],true,false);
+  #assert aw_next(state[..])==AC_WORK && !aw_publish(state[..],out[..],false);
+  #assert !aw_ack(state[..],AC_WORK,false) && aw_ack(state[..],AC_WORK,true);
+  #assert aw_next(state[..])==AC_READY && aw_publish(state[..],out[..],false);
+  #assert !aw_publish(state[..],out[..],false) && aw_next(state[..])==AC_PUBLISHED;
+  state[0]=AeadOperation.{};
+  #assert aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],out[..],false,false);
+  #assert aw_ack(state[..],AC_WORK,true);
+  plain:[1]u8;#assert aw_publish(state[..],plain[..],false) && plain[0]==msg[0];
+}
+#test "tampered authentication and cancellation demand result cleanup" {
+  state:[1]AeadOperation;scratch:[1]AeadScratch;key:[32]u8;nonce:[24]u8;aad:[1]u8;box:[16]u8;out:[1]u8;out[0]=165;
+  #assert !aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],box[..],false,false);
+  #assert state[0].policy.reason==AC_FAILURE && aw_next(state[..])==AC_WORK;
+  #assert aw_ack(state[..],AC_WORK,true) && aw_next(state[..])==AC_STAGE;
+  #assert aw_ack(state[..],AC_STAGE,true) && !aw_publish(state[..],out[..],false) && out[0]==165;
+  state[0]=AeadOperation.{};msg:[1]u8;
+  #assert aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],msg[..],true,false);
+  #assert aw_ack(state[..],AC_WORK,true) && aw_cancel(state[..]);
+  #assert aw_next(state[..])==AC_STAGE && aw_ack(state[..],AC_STAGE,true);
+  #assert !aw_publish(state[..],out[..],false);
+}
+#test "AEAD workspace refuses invalid metadata and forged cleanup" {
+  state:[1]AeadOperation;scratch:[1]AeadScratch;key:[32]u8;nonce:[24]u8;aad:[1]u8;msg:[1]u8;out:[17]u8;
+  #assert !aw_start(state[0..<0],scratch[..],key[..],nonce[..],aad[..],msg[..],true,false);
+  #assert !aw_start(state[..],scratch[0..<0],key[..],nonce[..],aad[..],msg[..],true,false);
+  #assert !aw_start(state[..],scratch[..],key[0..<31],nonce[..],aad[..],msg[..],true,false);
+  #assert !aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],msg[..],true,true);
+  #assert !aw_ack(state[..],AC_WORK,true) && !aw_cancel(state[..]);
+  #assert aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],msg[..],true,false);
+  #assert !aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],msg[..],true,false);
+  #assert !aw_ack(state[..],AC_STAGE,true) && !aw_ack(state[..],0,true);
+  #assert !aw_publish(state[..],out[..],true);
+}
+
+
+#test "independent AEAD vector covers nonempty padding and full open" {
+  state:[1]AeadOperation;scratch:[1]AeadScratch;key:[32]u8;nonce:[24]u8;aad:[17]u8;msg:[17]u8;out:[33]u8;
+  for i:0..<32 {key[i]=cast(u8)i;}for i:0..<24 {nonce[i]=cast(u8)i;}for i:0..<17 {aad[i]=cast(u8)i;msg[i]=cast(u8)i;}
+  expected:=[33]u8.[0x9e,0xc3,0x0d,0x7c,0x94,0xd7,0x8b,0xa9,0x3b,0x4d,0x2c,0xc5,0xc7,0x5f,0xa6,0xe7,0x5b,0x7a,0x59,0xe9,0x94,0xcb,0x5c,0x4d,0xb5,0xd2,0x63,0x11,0x37,0xe1,0x34,0x31,0xdf];
+  scratch[0].mac[17]=255;scratch[0].zero[0]=255;
+  #assert aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],msg[..],true,false);
+  #assert aw_ack(state[..],AC_WORK,true) && aw_publish(state[..],out[..],false);
+  for i:0..<33 {#assert out[i]==expected[i];}
+  state[0]=AeadOperation.{};
+  #assert aw_start(state[..],scratch[..],key[..],nonce[..],aad[..],out[..],false,false);
+  #assert aw_ack(state[..],AC_WORK,true);plain:[17]u8;
+  #assert aw_publish(state[..],plain[..],false);for i:0..<17 {#assert plain[i]==msg[i];}
+  badkey:[31]u8;scratch[0]=AeadScratch.{};
+  #assert !aw_tag(scratch[..],badkey[..],nonce[..],aad[..],msg[..]);
+}
+#test "workspace status, cancellation and output admission boundaries" {
+  state:[1]AeadOperation;out:[1]u8;
+  #assert aw_next(state[..])==AC_INVALID && aw_next(state[0..<0])==AC_INVALID;
+  #assert !aw_cancel(state[0..<0]) && !aw_publish(state[0..<0],out[..],false);
+  state[0].policy=ac_begin();#assert !aw_cancel(state[..]) && !aw_publish(state[..],out[..],false);
+  state[0].active=true;state[0].policy=AeadCleanup.{phase=AC_CLEAN,reason=0,pending=1};#assert !aw_cancel(state[..]);
+  state[0].policy=AeadCleanup.{phase=AC_FINISHED,reason=AC_FAILURE,pending=0};
+  #assert !aw_ack(state[..],0,true);
+  state[0].policy=AeadCleanup.{phase=AC_PUBLISH,reason=AC_SUCCESS,pending=0};#assert !aw_cancel(state[..]);
+  #assert aw_output_admit(0,0,false) && aw_output_admit(4112,4112,false) && aw_output_admit(0,CB_MAX_BYTES,false);
+  #assert !aw_output_admit(-1,0,false) && !aw_output_admit(4113,4113,false);
+  #assert !aw_output_admit(1,0,false) && !aw_output_admit(0,CB_MAX_BYTES+1,false) && !aw_output_admit(0,0,true);
+}
+
+AeadScratch :: struct {zero:[32]u8;polykey:[32]u8;mac:[5168]u8;cipher:[4096]u8;tag:[16]u8;}
+AeadOperation :: struct {policy:AeadCleanup;staged:[4112]u8;count:int;active:bool;}
+// Host validates all extents, addresses and alias facts and maintains stable,
+// serialized ownership. The normalization/wipe/publish effects are not here.
+aw_tag :: (scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8)->bool {
+  stream:=xchacha20_xor_checked(key,nonce,0,scratch[0].zero[..],scratch[0].polykey[..],false);
+  at:=0;for b:aad {scratch[0].mac[at]=b;at+=1;}
+  while at%16!=0 {at+=1;}
+  for b:cipher {scratch[0].mac[at]=b;at+=1;}
+  while at%16!=0 {at+=1;}
+  a:=cb_store_le64(scratch[0].mac[..],at,cast(u64)aad.count);at+=8;
+  b:=cb_store_le64(scratch[0].mac[..],at,cast(u64)cipher.count);at+=8;
+  ok:=poly1305_checked(scratch[0].polykey[..],scratch[0].mac[0..<at],scratch[0].tag[..],false);
+  return stream.error==CC_OK && ok;
+}
+aw_start :: (state:[]AeadOperation,scratch:[]AeadScratch,key:[]u8,nonce:[]u8,aad:[]u8,text:[]u8,seal:bool,overlap:bool)->bool #export_c {
+  if state.count!=1 || scratch.count!=1 {return false;}
+  if state[0].active || !xcp_admit(key.count,nonce.count,aad.count,text.count,state[0].staged[..].count,overlap,seal) {return false;}
+  state[0]=AeadOperation.{policy=ac_begin(),active=true};scratch[0]=AeadScratch.{};
+  ok:bool;
+  if seal {
+    stream:=xchacha20_xor_checked(key,nonce,1,text,scratch[0].cipher[0..<text.count],false);
+    tagged:=aw_tag(scratch,key,nonce,aad,scratch[0].cipher[0..<text.count]);
+    ok=xcp_commit(scratch[0].cipher[0..<text.count],scratch[0].tag[..],state[0].staged[..],stream.error,tagged);
+    state[0].count=text.count+16;
+  } else {
+    n:=text.count-16;tagged:=aw_tag(scratch,key,nonce,aad,text[0..<n]);
+    ok=xcp_finish_open(key,nonce,text,state[0].staged[0..<n],scratch[0].tag[..],tagged);
+    state[0].count=n;
+  }
+  state[0].policy=ac_stop(state[0].policy,ifx ok then AC_SUCCESS else AC_FAILURE);return ok;
+}
+aw_next :: (state:[]AeadOperation)->int #export_c {
+  if state.count!=1 {return AC_INVALID;}if !state[0].active {return AC_INVALID;}
+  return ac_next(state[0].policy);
+}
+aw_ack :: (state:[]AeadOperation,region:int,erased:bool)->bool #export_c {
+  if region<=0 || region!=aw_next(state) || !erased {return false;}
+  state[0].policy=ac_ack(state[0].policy,region,true);return true;
+}
+aw_cancel :: (state:[]AeadOperation)->bool #export_c {
+  if state.count!=1 {return false;}if !state[0].active {return false;}
+  if !ac_valid(state[0].policy) {return false;}if state[0].policy.phase==AC_PUBLISH {return false;}
+  state[0].policy=ac_stop(state[0].policy,AC_CANCEL);return true;
+}
+aw_output_admit :: (count:int,capacity:int,overlap:bool)->bool {return !overlap && count>=0 && count<=4112 && capacity>=count && capacity<=CB_MAX_BYTES;}
+aw_publish :: (state:[]AeadOperation,out:[]u8,overlap:bool)->bool #export_c {
+  if state.count!=1 {return false;}if !state[0].active {return false;}
+  n:=state[0].count;if !aw_output_admit(n,out.count,overlap) {return false;}
+  next:=ac_publish(state[0].policy);if !ac_visible(next) || ac_visible(state[0].policy) {return false;}
+  state[0].policy=next;for i:0..<n {out[i]=state[0].staged[i];}return true;
+}
+
+#test "publication refuses invalid output without exposing staged bytes" {
+  state:[1]AeadOperation;out:[1]u8;out[0]=165;
+  state[0].active=true;state[0].policy=AeadCleanup.{phase=AC_FINISHED,reason=AC_SUCCESS};state[0].staged[0]=77;
+  state[0].count=-1;#assert !aw_publish(state[..],out[..],false) && out[0]==165;
+  state[0].count=4113;#assert !aw_publish(state[..],out[..],false) && out[0]==165;
+  state[0].count=1;#assert !aw_publish(state[..],out[0..<0],false) && out[0]==165;
+  #assert !aw_publish(state[..],out[..],true) && out[0]==165;
+  #assert aw_publish(state[..],out[..],false) && out[0]==77;
+}
