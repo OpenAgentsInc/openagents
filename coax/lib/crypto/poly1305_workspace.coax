@@ -1,0 +1,89 @@
+// Experimental Poly1305 with named mutable state in caller-owned storage.
+// Scalar values, compiler copies and lower-level operations still have no
+// proven erasure. A trusted host must wipe the complete workspace afterward.
+#load "poly1305.coax";
+#authority;
+
+#test "Poly1305 owned workspace matches RFC 8439" {
+  key:=[32]u8.[0x85,0xd6,0xbe,0x78,0x57,0x55,0x6d,0x33,0x7f,0x44,0x52,0xfe,0x42,0xd5,0x06,0xa8,0x01,0x03,0x80,0x8a,0xfb,0x0d,0xb2,0xfd,0x4a,0xbf,0xf6,0xaf,0x41,0x49,0xf5,0x1b];
+  msg:="Cryptographic Forum Research Group";input:[34]u8;for i:0..<34 {input[i]=msg[i];}
+  expected:=[16]u8.[0xa8,0x06,0x1d,0xc1,0x30,0x51,0x36,0xc6,0xc2,0x2b,0x8b,0xaf,0x0c,0x01,0x27,0xa9];
+  work:[1]PolyWorkspace;out:[17]u8;out[16]=165;
+  #assert poly_workspace(key[..],input[..],work[..],out[..],false);
+  for i:0..<16 {#assert out[i]==expected[i];}#assert out[16]==165;
+}
+#test "owned workspace agrees with independent existing path at key and block boundaries" {
+  key:[32]u8;msg:[33]u8;work:[1]PolyWorkspace;out:[16]u8;reference:[16]u8;
+  for i:0..<32 {key[i]=cast(u8)(i*7+3);}for i:0..<33 {msg[i]=cast(u8)(i*5+1);}
+  for count:[7]int.[0,1,15,16,17,32,33] {
+    #assert poly1305_checked(key[..],msg[0..<count],reference[..],false);
+    #assert poly_workspace(key[..],msg[0..<count],work[..],out[..],false);
+    for i:0..<16 {#assert out[i]==reference[i];}
+  }
+}
+#test "owned workspace admission preserves caller output" {
+  key:[32]u8;msg:[1]u8;work:[1]PolyWorkspace;out:[16]u8;for i:0..<16 {out[i]=165;}
+  #assert !poly_workspace(key[0..<31],msg[..],work[..],out[..],false);
+  #assert !poly_workspace(key[..],msg[..],work[0..<0],out[..],false);
+  #assert !poly_workspace(key[..],msg[..],work[..],out[0..<15],false);
+  #assert !poly_workspace(key[..],msg[..],work[..],out[..],true);
+  for v:out {#assert v==165;}
+}
+
+#test "owned carry and reduction boundaries" {
+  m:=POLY_BASE_MASK; work:[1]PolyWorkspace;
+  below:=[5]u64.[m-5,m,m,m,m]; equal:=[5]u64.[m-4,m,m,m,m]; above:=[5]u64.[m-3,m,m,m,m];
+  for i:0..<5 {work[0].h[i]=below[i];} pw_reduce(work[..]);for i:0..<5 {#assert work[0].h[i]==below[i];}
+  for i:0..<5 {work[0].h[i]=equal[i];} pw_reduce(work[..]);for i:0..<5 {#assert work[0].h[i]==0;}
+  for i:0..<5 {work[0].h[i]=above[i];} pw_reduce(work[..]);one:=[5]u64.[1,0,0,0,0];for i:0..<5 {#assert work[0].h[i]==one[i];}
+  carries:=[5]u64.[m-1,m,m,m,cast(u64)13421773*(m+1)+m];
+  for i:0..<5 {work[0].product[i]=carries[i];} pw_normalize(work[..]);
+  wanted:=[5]u64.[4,1,0,0,0];for i:0..<5 {#assert work[0].product[i]==wanted[i];}
+}
+#test "owned workspace reduces full accumulators and clears reused block" {
+  key:[32]u8;key[0]=1;msg:[48]u8;out:[16]u8;work:[1]PolyWorkspace;
+  for i:0..<16 {msg[i]=255;msg[16+i]=254;msg[32+i]=1;}msg[16]=251;
+  #assert poly_workspace(key[..],msg[..],work[..],out[..],false);for v:out {#assert v==0;}
+  for i:0..<32 {msg[i]=255;}msg[16]=252;
+  #assert poly_workspace(key[..],msg[0..<32],work[..],out[..],false);for v:out {#assert v==0;}
+}
+
+PolyWorkspace :: struct {clamped:[16]u8;r:[5]u64;h:[5]u64;block:[17]u8;product:[5]u64;reduced:[5]u64;}
+pw_carry :: (work:[]PolyWorkspace) {
+  for i:0..<5 {carry:=work[0].product[i]>>26;work[0].product[i]&=POLY_BASE_MASK;
+    if i==4 {work[0].product[0]+=carry*5;}else {work[0].product[i+1]+=carry;}}
+}
+pw_normalize :: (work:[]PolyWorkspace) {pw_carry(work);pw_carry(work);pw_carry(work);}
+pw_reduce :: (work:[]PolyWorkspace) {
+  for i:0..<5 {work[0].reduced[i]=work[0].h[i];}work[0].reduced[0]+=5;
+  for i:0..<4 {carry:=work[0].reduced[i]>>26;work[0].reduced[i]&=POLY_BASE_MASK;work[0].reduced[i+1]+=carry;}
+  overflow:=work[0].reduced[4]>>26;work[0].reduced[4]&=POLY_BASE_MASK;mask:=sub_wrap(cast(u64)0,overflow);
+  for i:0..<5 {work[0].h[i]=(work[0].reduced[i]&mask)|(work[0].h[i]^(work[0].h[i]&mask));}
+}
+// This entry assumes truthful alias facts and stable valid disjoint views.
+poly_workspace :: (key:[]u8,msg:[]u8,work:[]PolyWorkspace,out:[]u8,overlap:bool)->bool #export_c {
+  if work.count!=1 || !poly_admit(key.count,msg.count,out.count,overlap) {return false;}
+  work[0]=PolyWorkspace.{};
+  for i:0..<16 {work[0].clamped[i]=key[i];}
+  work[0].clamped[3]&=15;work[0].clamped[7]&=15;work[0].clamped[11]&=15;work[0].clamped[15]&=15;
+  work[0].clamped[4]&=252;work[0].clamped[8]&=252;work[0].clamped[12]&=252;
+  for bit:0..<128 {work[0].r[bit/26]|=cast(u64)((work[0].clamped[bit/8]>>(bit%8))&1)<<(bit%26);}
+  at:=0;
+  while at<msg.count {
+    remaining:=msg.count-at;length:=16;if (remaining-1)/16==0 {length=remaining;}
+    for i:0..<length {work[0].block[i]=msg[at+i];}work[0].block[length]=1;for i:length+1..<17 {work[0].block[i]=0;}
+    for bit:0..<130 {work[0].h[bit/26]+=cast(u64)((work[0].block[bit/8]>>(bit%8))&1)<<(bit%26);}
+    for i:0..<5 {work[0].product[i]=0;}
+    for i:0..<5 {for j:0..<5 {index:=i+j;factor:=cast(u64)1;if index>=5 {index-=5;factor=5;}
+      work[0].product[index]+=work[0].h[i]*work[0].r[j]*factor;
+    }}
+    pw_normalize(work);
+    for i:0..<5 {work[0].h[i]=work[0].product[i];}at+=length;
+  }
+  pw_reduce(work);
+  carry:=cast(u64)0;
+  for i:0..<16 {value:=cast(u64)0;for j:0..<8 {bit:=i*8+j;value|=((work[0].h[bit/26]>>(bit%26))&1)<<j;}
+    sum:=value+cast(u64)key[16+i]+carry;out[i]=cast(u8)(sum&255);carry=sum>>8;
+  }
+  return true;
+}
