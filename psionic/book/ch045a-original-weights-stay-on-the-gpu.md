@@ -50,8 +50,9 @@ prefill chunk: 128 tokens; generated kernel entry points: 43
 ```
 
 The 128 MiB reserve is an admission requirement, separate from workspace.
-Actual free memory is observed after driver/module setup and checked against
-this plan. The display server, CUDA context and driver allocations consume
+A metadata-only preflight refuses impossible residency before hashing the
+model or compiling its module. It grants no identity admission. Actual free
+memory is checked again after authentication and driver/module setup. The display server, CUDA context and driver allocations consume
 memory too; a nominal 16 GiB card does not expose 16 GiB free. Failed allocation
 is still a platform failure. A plan cannot reserve memory against another
 process allocating concurrently.

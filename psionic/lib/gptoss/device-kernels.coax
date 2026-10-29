@@ -242,6 +242,9 @@ gk_batch_rotate :: (item:int,heads:int,kv_heads:int,start:int,qkv:[]f32,rope:[]f
     if head<heads {qkv[index]=left;qkv[index+32]=right;}else {k:=(head-heads)*64+pair;kn:=kv_heads*64;at:=token*2*kn;pending[at+k]=left;pending[at+k+32]=right;pending[at+kn+k]=qkv[token*qwidth+heads*64+kn+k];pending[at+kn+k+32]=qkv[token*qwidth+heads*64+kn+k+32];}flags[item]=gk_bad(left)|gk_bad(right);
 }
 gk_batch_scores :: (item:int,heads:int,kv_heads:int,start:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32) #export_c {
+    if heads==64 && kv_heads==8 && (capacity==128 || capacity==2048) {gk_scores_64x8(item,heads,kv_heads,start,window,capacity,stride,qkv,cache,pending,scores);}else {gk_batch_scores_generic(item,heads,kv_heads,start,window,capacity,stride,qkv,cache,pending,scores);}
+}
+gk_batch_scores_generic :: (item:int,heads:int,kv_heads:int,start:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32) {
     query:=item/(heads*stride);head:=item/stride%heads;slot:=item%stride;position:=start+query;first:=0;if window>0 && position>=window {first=position+1-window;}if slot>=position-first+1 {return;}
     t:=first+slot;kh:=head/(heads/kv_heads);kn:=kv_heads*64;qwidth:=(heads+2*kv_heads)*64;sum:f32=0;
     for d:0..<64 {key:f32=0;if t<start {key=cache[(t%capacity)*2*kn+kh*64+d];}else {key=pending[(t-start)*2*kn+kh*64+d];}sum+=qkv[query*qwidth+head*64+d]*key;}scores[item]=sum*0.125f32;
@@ -251,6 +254,9 @@ gk_batch_softmax :: (item:int,heads:int,start:int,window:int,stride:int,sinks:[]
     flags[item]=gk_soft_row(gk_bf(sinks[head]),visible,scores[item*stride..<item*stride+visible]);
 }
 gk_batch_context_part :: (item:int,heads:int,kv_heads:int,tokens:int,start:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32) #export_c {
+    if heads==64 && kv_heads==8 && (capacity==128 || capacity==2048) && lanes==8 {gk_context_64x8(item,heads,kv_heads,tokens,start,window,capacity,stride,lanes,scores,cache,pending,partial);}else {gk_batch_context_part_generic(item,heads,kv_heads,tokens,start,window,capacity,stride,lanes,scores,cache,pending,partial);}
+}
+gk_batch_context_part_generic :: (item:int,heads:int,kv_heads:int,tokens:int,start:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32) {
     lane:=item%lanes;d:=item/lanes%64;head:=item/(lanes*64)%heads;query:=item/(lanes*heads*64);position:=start+query;first:=0;if window>0 && position>=window {first=position+1-window;}visible:=position-first+1;kn:=kv_heads*64;kh:=head/(heads/kv_heads);sum:f32=0;
     for j:0..<(visible+lanes-1)/lanes {slot:=j*lanes+lane;if slot<visible {t:=first+slot;value:f32=0;if t<start {value=cache[(t%capacity)*2*kn+kn+kh*64+d];}else {value=pending[(t-start)*2*kn+kn+kh*64+d];}sum+=scores[(query*heads+head)*stride+slot]*value;}}
     partial[(lane*tokens+query)*heads*64+head*64+d]=sum;
@@ -293,4 +299,29 @@ gk_advance_many :: (item:int,tokens:int,control:[]int) #export_c {if control[0]=
     control:[8]int;control[0]=5;logits:=[1]f32.[3];public:=[1]f32.[-7];trace:[1]f32;ids:=[1]int.[2];weights:=[1]f32.[1];out_ids:[1]int;
     for i:0..<256 {gk_publish_batch(i,control[..],shadow[..],logits[..],logits[..],ids[..],weights[..],cache[..],public[..],trace[..],out_ids[..],weights[..]);}gk_advance_many(0,3,control[..]);#assert cache[64]==8 && public[0]== -7 && control[2]==0;
     control[0]=0;for i:0..<256 {gk_publish_batch(i,control[..],shadow[..],logits[..],logits[..],ids[..],weights[..],cache[..],public[..],trace[..],out_ids[..],weights[..]);}gk_advance_many(0,3,control[..]);#assert cache[64]==4 && public[0]==3 && out_ids[0]==2 && control[2]==3;
+}
+
+gk_scores_64x8 :: (item:int,heads:int,kv_heads:int,start:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32) {
+    work:=cast(u32)item;ns:=cast(u32)stride;begin:=cast(u32)start;cap:=cast(u32)capacity;win:=cast(u32)window;
+    query:=work/(64*ns);head:=work/ns%64;slot:=work%ns;position:=begin+query;first:u32=0;if win>0 && position>=win {first=position+1-win;}if slot>=position-first+1 {return;}
+    t:=first+slot;kh:=head/8;qb:=gk_addr(query,5120,head*64);q:=qkv[qb..<qb+64];keys:=pending[0..<0];
+    if t<begin {kb:=gk_addr(t&(cap-1),1024,kh*64);keys=cache[kb..<kb+64];}else {kb:=gk_addr(t-begin,1024,kh*64);keys=pending[kb..<kb+64];}
+    sum:f32=0;for d:0..<64 {sum+=q[d]*keys[d];}scores[item]=sum*0.125f32;
+}
+gk_context_64x8 :: (item:int,heads:int,kv_heads:int,tokens:int,start:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32) {
+    work:=cast(u32)item;begin:=cast(u32)start;cap:=cast(u32)capacity;win:=cast(u32)window;nt:=cast(u32)tokens;ns:=cast(u32)stride;
+    lane:=work%8;d:=work/8%64;head:=work/512%64;query:=work/32768;position:=begin+query;first:u32=0;if win>0 && position>=win {first=position+1-win;}visible:=position-first+1;
+    at:=gk_addr(query*64+head,ns,0);prob:=scores[at..<at+cast(int)visible];value_lane:=512+(head/8)*64+d;sum:f32=0;
+    for j:cast(u32)0..<(visible+7)/8 {slot:=j*8+lane;if slot<visible {t:=first+slot;value:f32=0;
+        if t<begin {value=cache[gk_addr(t&(cap-1),1024,value_lane)];}else {value=pending[gk_addr(t-begin,1024,value_lane)];}sum+=prob[slot]*value;
+    }}partial[gk_addr(lane*nt+query,4096,head*64+d)]=sum;
+}
+#test "64-query-head tiled attention preserves a wrapped causal band" {
+    qkv:[10240]f32;cache:[131072]f32;for t:0..<128 {for d:512..<1024 {cache[t*1024+d]=8;}}
+    pending:[2048]f32;for d:512..<1024 {pending[d]=2;pending[1024+d]=4;}scores:[16384]f32;
+    for query:0..<2 {for h:0..<2 {for k:0..<2 {item:=(query*64+h*63)*128+k*127;gk_batch_scores(item,64,8,129,128,128,128,qkv[..],cache[..],pending[..],scores[..]);#assert scores[item]==0;}}}
+    for i:0..<16384 {scores[i]=f32(1.0/129.0);}partial:[65536]f32;
+    for query:0..<2 {for h:0..<2 {for d:0..<2 {for lane:0..<8 {item:=(query*4096+h*63*64+d*63)*8+lane;gk_batch_context_part(item,64,8,2,129,128,128,128,8,scores[..],cache[..],pending[..],partial[..]);}}}}
+    out:[8192]f32;flags:[8192]u8;empty:[1]u16;
+    for query:0..<2 {for h:0..<2 {for d:0..<2 {item:=query*4096+h*63*64+d*63;gk_batch_finish(item,4096,2,8,partial[..],empty[0..<0],out[..],flags[..]);expected:=ifx query==0 then f32(1018.0/129.0) else f32(1014.0/129.0);#assert abs(out[item]-expected)<0.000003f32 && flags[item]==0;}}}
 }

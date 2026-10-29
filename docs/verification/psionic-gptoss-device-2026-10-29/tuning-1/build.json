@@ -1,0 +1,14 @@
+{
+  "cuda_emitter_sha256": "0634fac1dc50a9eb2c9bf18e51486b567d996dcdfe47e9d66112c847f010eb46",
+  "native_emitter_sha256": "c5acf492faaef7ea8450245c44b454e69b208f83d9594e874be4d06eb3d3ae1a",
+  "tested_files_sha256": {
+    "device-host.c": "f7ee81c250d12a9d849b182cd88ddefe33b4b5df2c91069af430ad79f1c0f6ff",
+    "device-host.h": "e42afbd577eaf3a1049c2aa58dd23dd5fac8166c4bcb830d9dfeaf438bb90214",
+    "device-kernels-v6.cu": "0a9ff413608cc328063407d68e2e40ec9dd1381e7bf5973ea5d253210d75f6c8",
+    "gptoss-device.c": "53177bd282dabe798800eadee1edd06a15607f3b9b742c8c979bf4f110d3d2f6",
+    "gptoss-device.h": "f18a07e0242cdc84329e885dc5ff22c067cbe56b3c14edec694e08ca5b531e72",
+    "gptoss_device.c": "28692a86c4da910ab554b7005b99dacea5cbb12eaa05c457032e9288930e18ce",
+    "native-v6-block128": "e0dfb999caa85322ab03f51d42d8a28c979e2476a883f04c07509e14514a8032"
+  },
+  "flags": "same as the initial record; Coax-selected 128-thread packed-product blocks, 256 otherwise"
+}

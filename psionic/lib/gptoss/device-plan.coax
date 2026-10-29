@@ -9,7 +9,7 @@ GDPlan :: struct {status:GStatus;weights:int;workspace:int;total:int;flags:int;f
 GDRef :: struct {buffer:int;offset:int;count:int;elem:int=1;}
 GDParam :: struct {file:int;begin:int;bytes:int;device:int;}
 GDArg :: struct {view:bool;value:int;ref:GDRef;}
-GDOp :: struct {kind:int;items:int;first:int;count:int;}
+GDOp :: struct {kind:int;items:int;first:int;count:int;block:int=256;}
 GDProgram :: struct {status:GStatus;ops:int;args:int;flags:int;}
 GDScalars :: struct {a:int;b:int;c:int;d:int;e:int;f:int;g:int;h:int;}
 GDViews :: struct {a:GDRef;b:GDRef;c:GDRef;d:GDRef;e:GDRef;f:GDRef;g:GDRef;h:GDRef;i:GDRef;j:GDRef;k:GDRef;l:GDRef;m:GDRef;n:GDRef;o:GDRef;p:GDRef;}
@@ -63,7 +63,7 @@ gd_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDV
     scalars:=[8]int.[ints.a,ints.b,ints.c,ints.d,ints.e,ints.f,ints.g,ints.h];refs:=[16]GDRef.[views.a,views.b,views.c,views.d,views.e,views.f,views.g,views.h,views.i,views.j,views.k,views.l,views.m,views.n,views.o,views.p];
     for i:0..<nv {if !gd_ref_fits(w.plan,refs[i]) {result.result.status=GStatus.capacity;return result;}}
     first:=result.result.args;for i:0..<ni {w.args[first+i]=GDArg.{value=scalars[i]};}for i:0..<nv {w.args[first+ni+i]=GDArg.{view=true,ref=refs[i]};}
-    w.ops[result.result.ops]=GDOp.{kind=kind,items=items,first=first,count=ni+nv};result.result.ops+=1;result.result.args+=ni+nv;return result;
+    w.ops[result.result.ops]=GDOp.{kind=kind,items=items,first=first,count=ni+nv,block=gd_block(kind)};result.result.ops+=1;result.result.args+=ni+nv;return result;
 }
 gd_flags :: (w:GDWriter,count:int)->GDRef {return gd_slice(w.plan,22,w.result.flags,count);}
 gd_norm :: (w:GDWriter,width:int,scale:GDRef,x:GDRef,out:GDRef)->GDWriter {
@@ -121,7 +121,7 @@ gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:
     pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
     p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);#assert p.status==GStatus.ok;
     ops:[192]GDOp;args:[4608]GDArg;r:=gd_program(GT_SHAPE,p,params[..],0,1,true,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.flags<p.flags && r.ops>40 && r.args>200;
-    seen:[24]int;for i:0..<r.ops {op:=ops[i];seen[op.kind]+=1;#assert op.items>0 && gd_kernel_name(op.kind)!="";for j:0..<op.count {a:=args[op.first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
+    seen:[24]int;for i:0..<r.ops {op:=ops[i];seen[op.kind]+=1;#assert op.items>0 && gd_kernel_name(op.kind)!="" && op.block==gd_block(op.kind);for j:0..<op.count {a:=args[op.first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
     for i:0..<24 {#assert seen[i]>0;}
     #assert gd_program(GT_SHAPE,p,params[..],8,1,true,4,ops[..],args[..]).status==GStatus.state;
     #assert gd_program(GT_SHAPE,p,params[..],0,16,true,4,ops[..],args[..]).status==GStatus.state;
@@ -152,3 +152,27 @@ gd_packed_fits :: (p:GDPlan,bytes:int)->bool #export_c {return bytes>=0 && bytes
     #assert gd_packed_fits(p,p.upload[0]) && !gd_packed_fits(p,-1) && !gd_packed_fits(p,p.upload[0]+1);
     #assert p.batch==8 && p.counts[35]==p.counts[16] && p.counts[39]==9;
 }
+
+#test "preflight refuses impossible residency before reading model bytes" {
+    pins:=GOWN_ARTIFACTS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..]};
+    #assert gd_preflight(profile,0,1000000000).status==GStatus.budget;
+    #assert gd_preflight(profile,1000000000,0).status==GStatus.budget;
+    #assert gd_preflight(profile,1000000000,1000000000).status==GStatus.ok;
+    profile.status=GStatus.weights;#assert gd_preflight(profile,1000000000,1000000000).status==GStatus.weights;
+}
+// Metadata can refuse a session cheaply; it never authenticates or admits it.
+// Successful construction still authenticates every original byte, compiles
+// the module and checks the actual remaining memory again before allocation.
+gd_preflight :: (profile:GProfile,free_bytes:int,budget:int)->GDPlan #export_c {
+    if profile.status!=GStatus.ok {return GDPlan.{status=profile.status};}
+    return gd_plan(profile.shape,profile.pins,free_bytes,budget);
+}
+
+#test "packed product launches use the measured register occupancy" {
+    #assert gd_block(7)==128 && gd_block(32)==128;
+    #assert gd_block(5)==256 && gd_block(27)==256 && gd_block(38)==256;
+}
+// On the qualified SM 8.9 build the batch MXFP4 kernel uses 154 registers
+// per thread. A 128-thread block permits three resident blocks instead of
+// one 256-thread block. This is dispatch policy, not a host-side heuristic.
+gd_block :: (kind:int)->int {return ifx kind==7 || kind==32 then 128 else 256;}

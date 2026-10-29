@@ -123,3 +123,46 @@ independent stdin requests in one resident session: “Say hi.” and “What is
 2 + 2?”. Both returned complete final messages, with warm prefill 0.234/0.253 s
 and decode 0.632/0.607 s. Admission/upload happened once (60.319 s in this run).
 The [interactive log](psionic-gptoss-device-2026-10-29/interactive.log) is retained.
+
+## Qualified tuning: row views and launch occupancy
+
+The [second run](psionic-gptoss-device-2026-10-29/tuning-1/run.log),
+[summary](psionic-gptoss-device-2026-10-29/tuning-1/benchmark.json),
+[qualification](psionic-gptoss-device-2026-10-29/tuning-1/qualification.json)
+and [exact build](psionic-gptoss-device-2026-10-29/tuning-1/build.json) retain
+the next delivered implementation. Original arithmetic and the frozen bound
+are unchanged. Complete 129-position serial/batched GPU cache and logits are
+still bitwise identical, routes/top token still exact, and Harmony returns.
+
+The qualified 64-query/8-KV-head attention path uses bounded row views and
+u32 addresses; power-of-two ring masking is used only for capacities 128/2048.
+Other admitted head/capacity combinations retain the generic path. An authored
+wrapped-window check covers old and current-chunk values at distant heads and
+dimensions. Packed-product blocks now contain 128 threads, chosen by Coax.
+Static driver [resource data](psionic-gptoss-device-2026-10-29/tuning-1/resources.log)
+([read-only tooling source](psionic-gptoss-device-2026-10-29/tuning-1/resources.c))
+reports 154 registers/thread for batch MXFP4, zero local-memory bytes and zero
+shared-memory bytes. This supported testing smaller blocks; it is not a
+hardware-counter occupancy measurement.
+
+| Same workload, one warm-up and five repeats | Tuned result |
+| --- | --- |
+| 1,024-token prefill | P50 **3.219239 s**, nearest-rank P95 3.232044 s |
+| 128-token decode | P50 **4.326436 s**, nearest-rank P95 4.332186 s |
+| Decode rate | Median **29.586 tokens/s** |
+| Observed allocated device memory | 15,212,740,608 bytes, 1,498,611,712 free |
+| Complete 59-ID prompt / 24-ID generation | Prefill 0.208834 s, decode 0.607641 s |
+
+Warm prefill falls about 26% from the first delivered baseline. The 2-second
+goal is still open. A metadata-only memory preflight now refuses impossible
+residency before original SHA-256 work or module compilation; successful
+construction still authenticates and checks memory again. Real-device tiny
+checks verify zero-budget refusal even with invalid artifact bytes.
+
+Further tile experiments used the opt-in owned original-shaped
+`gptoss_device_product_bench.c`, avoiding whole-model startup. Four-row/four-token
+products improved this isolated constant-data slice slightly; two-row/four-token
+products regressed. Neither was promoted. Slice timing is not full-model
+throughput. An original-wide column-view specialization also stayed near the
+baseline and was discarded. Cooperative matrix support remains the next
+substantial step, with graph replay and the serving gates still planned.

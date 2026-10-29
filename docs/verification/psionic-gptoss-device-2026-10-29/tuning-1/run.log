@@ -1,0 +1,44 @@
+device NVIDIA GeForce RTX 4080 compute 8.9 free=15790702592 total=16711352320
+zero-budget preflight refuses before reading invalid artifact bytes
+tiny backend=CUDA admission=0.047417 s
+logits max scaled error 3.9783401e-07; fixed bound 0.0005
+trace max scaled error 7.04732587e-07; fixed bound 0.0005
+mixture max scaled error 2.07705914e-08; fixed bound 0.0005
+logits max scaled error 9.07333894e-07; fixed bound 0.0005
+trace max scaled error 1.05453446e-06; fixed bound 0.0005
+mixture max scaled error 3.74882427e-08; fixed bound 0.0005
+logits max scaled error 4.07954737e-07; fixed bound 0.0005
+trace max scaled error 1.06710544e-06; fixed bound 0.0005
+mixture max scaled error 3.96620366e-08; fixed bound 0.0005
+logits max scaled error 5.60604059e-07; fixed bound 0.0005
+trace max scaled error 7.45049718e-07; fixed bound 0.0005
+mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batched prefill splits 1/3, 2/2, 3/1 and 4 preserve all serial cache bytes
+invalid prompt IDs and mismatched sequential position preserve public state
+late serial and batch head failure preserves the full public cache and logits
+device NVIDIA GeForce RTX 4080 compute 8.9 free=15790702592 total=16711352320
+original 20b admitted/authenticated/uploaded once in 50.664505 s; weight bytes=13761300984 workspace=527933440 reserve=134217728
+original step 0 0.036906 seconds
+original step 1 0.045513 seconds
+original 129-token varied prefix: complete serial/batch cache and logits bitwise equal across window/chunk boundary
+generation prefix=59 emitted=24 stop=1 prefill_seconds=0.208834 decode_seconds=0.607641
+final: Hello! 👋 How can I help you today?
+forced-token batched workload repeat=-1 input=1024 output=128 prefill=3.220206 decode=4.318596 tok_s=29.639
+forced-token batched workload repeat=0 input=1024 output=128 prefill=3.219239 decode=4.316663 tok_s=29.653
+forced-token batched workload repeat=1 input=1024 output=128 prefill=3.218593 decode=4.315057 tok_s=29.664
+forced-token batched workload repeat=2 input=1024 output=128 prefill=3.217988 decode=4.326436 tok_s=29.586
+forced-token batched workload repeat=3 input=1024 output=128 prefill=3.232044 decode=4.329666 tok_s=29.563
+forced-token batched workload repeat=4 input=1024 output=128 prefill=3.226434 decode=4.332186 tok_s=29.546
+resident device bytes observed=15212740608; free=1498611712; no per-layer activation/route downloads

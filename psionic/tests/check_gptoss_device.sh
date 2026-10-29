@@ -33,6 +33,11 @@ done
 if [[ ${PSIONIC_CUDA:-0} == 1 ]]; then
     "$coax" cuda psionic/lib/gptoss/device-kernels.coax > "$out/device-kernels.cu"
     "$out/native-plain" tiny "$out/device-kernels.cu" psionic/fixtures/gptoss/tiny/model.safetensors unused
+    if [[ ${PSIONIC_DEVICE_PRODUCT_BENCH:-0} == 1 ]]; then
+        "$cc" -std=c11 -O2 -Ipsionic/platform psionic/platform/cuda-host.c \
+            psionic/tests/gptoss_device_product_bench.c "${libs[@]}" -o "$out/product"
+        "$out/product" "$out/device-kernels.cu" 4 8 128
+    fi
     if [[ -n ${PSIONIC_GPTOSS_ORIGINAL:-} ]]; then
         mkdir "$out/original"
         "$out/native-plain" original "$out/device-kernels.cu" "$PSIONIC_GPTOSS_ORIGINAL" "$out/original" bench | tee "$out/original/run.log"

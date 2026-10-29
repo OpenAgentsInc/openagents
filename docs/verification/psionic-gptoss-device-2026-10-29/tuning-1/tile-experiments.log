@@ -1,0 +1,15 @@
+row_tile=4 token_tile=8 block=128 repeat=0 up_product_ms=7.212202
+row_tile=4 token_tile=8 block=128 repeat=1 up_product_ms=6.603418
+row_tile=4 token_tile=8 block=128 repeat=2 up_product_ms=6.553069
+row_tile=4 token_tile=8 block=128 repeat=3 up_product_ms=6.522072
+row_tile=4 token_tile=8 block=128 repeat=4 up_product_ms=6.516736
+row_tile=4 token_tile=4 block=128 repeat=0 up_product_ms=6.640591
+row_tile=4 token_tile=4 block=128 repeat=1 up_product_ms=6.033499
+row_tile=4 token_tile=4 block=128 repeat=2 up_product_ms=6.040218
+row_tile=4 token_tile=4 block=128 repeat=3 up_product_ms=6.031053
+row_tile=4 token_tile=4 block=128 repeat=4 up_product_ms=6.053632
+row_tile=2 token_tile=4 block=128 repeat=0 up_product_ms=12.313482
+row_tile=2 token_tile=4 block=128 repeat=1 up_product_ms=11.360198
+row_tile=2 token_tile=4 block=128 repeat=2 up_product_ms=11.228558
+row_tile=2 token_tile=4 block=128 repeat=3 up_product_ms=11.293594
+row_tile=2 token_tile=4 block=128 repeat=4 up_product_ms=11.258776

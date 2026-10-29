@@ -295,7 +295,7 @@ original 20b with resident packed weights, a complete greedy CUDA decoder and
 128-token grouped prefill. The retained original vectors pass the frozen
 numerical bound and exact route/top-token gates; a complete Harmony turn runs.
 At 1,024 input / 128 forced output, five warm 4080 repeats give median
-**4.325127 s prefill and 28.454 decode tokens/s**. The 2-second prefill goal
+**3.219239 s prefill and 29.586 decode tokens/s** after qualified attention/launch tuning. The 2-second prefill goal
 remains open. See the [record](../../docs/verification/psionic-gptoss-device-2026-10-29.md).
 
 Next in the GPT-OSS delivery sequence: cooperative Coax compute primitives,

@@ -52,7 +52,7 @@ static PcStatus pg_create(coax_t_GProfile profile,coax_v_t_GFile files,const cha
 refused:pg_close(s);return PC_OK;
 failed:pg_close(s);return code;
 }
-PcStatus pg_open(coax_t_GProfile p,coax_v_t_GFile f,const char *source,size_t bytes,size_t budget,PgSession **out,coax_t_GResult *why){PcDeviceInfo info;PcStatus code=pc_open(&info);if(code){*out=NULL;return code;}return pg_create(p,f,source,bytes,budget,0,out,why);}
+PcStatus pg_open(coax_t_GProfile p,coax_v_t_GFile f,const char *source,size_t bytes,size_t budget,PgSession **out,coax_t_GResult *why){PcDeviceInfo info;PcStatus code=pc_open(&info);*out=NULL;if(code)return code;coax_t_GDPlan preflight=gd_preflight(p,(int64_t)info.free_bytes,(int64_t)budget);if(preflight.status){*why=(coax_t_GResult){.status=preflight.status};return PC_OK;}return pg_create(p,f,source,bytes,budget,0,out,why);}
 #ifdef PSIONIC_DEVICE_TEST
 PcStatus pg_open_cpu(coax_t_GProfile p,coax_v_t_GFile f,PgSession **out,coax_t_GResult *why){return pg_create(p,f,NULL,0,1073741824,1,out,why);}
 #endif
@@ -75,7 +75,7 @@ static PcStatus pg_execute(PgSession *s,coax_t_GDProgram p){
 #ifdef PSIONIC_DEVICE_TEST
         PcEvent begin=NULL,end=NULL;if(s->profile){PcStatus z=pc_event(&begin);if(z)return z;z=pc_event(&end);if(z)return z;z=pc_record(begin,s->stream);if(z)return z;}
 #endif
-        PcStatus code=pc_launch(s->kernels[op.kind],op.items,256,arguments,(int)op.count,s->stream);if(code){s->poisoned=1;return code;}
+        PcStatus code=pc_launch(s->kernels[op.kind],op.items,(int)op.block,arguments,(int)op.count,s->stream);if(code){s->poisoned=1;return code;}
 #ifdef PSIONIC_DEVICE_TEST
         if(s->profile){double elapsed;code=pc_record(end,s->stream);if(!code)code=pc_sync_stream(s->stream);if(!code)code=pc_event_seconds(begin,end,&elapsed);pc_destroy_event(begin);pc_destroy_event(end);if(code)return code;s->seconds[op.kind]+=elapsed;s->launches[op.kind]++;}
 #endif

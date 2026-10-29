@@ -63,6 +63,13 @@ The transaction boundary is one chunk: earlier successful chunks stay committed
 if a later chunk fails. Request-level rollback remains a caller operation.
 The late-head failure test checks all public cache bytes and logits.
 
+The qualified 64-query/8-KV-head path also forms bounded row views before
+inner dot products. Coax retains its bounds checks, while the compiler can
+remove redundant checks inside known 64-value rows. The ring mask is used only
+for admitted power-of-two capacities; other shapes use the generic path.
+The dispatch planner chooses 128-thread packed-product blocks from measured
+static register use. Both changes retain the exact per-output arithmetic.
+
 ## Measure the result, keep the next gate honest
 
 ```shell
@@ -83,3 +90,20 @@ actual results, build identity and unmet goals. The [plan](PLAN.md) keeps the
 2-second prefill goal, a packaged-reference comparison, continuous batching,
 120b device execution and fast speculation as explicit gates. Tiling alone
 does not establish tensor-core utilization or production serving throughput.
+
+The latest five-repeat 4080 result is **3.219239 s median prefill and 29.586
+decode tokens/s** at the fixed 1,024/128 workload. The original vectors and
+129-position serial/batched parity still pass. The 2-second prefill goal
+remains open.
+
+For a faster product-only experiment without original model files:
+
+```shell
+PSIONIC_CUDA=1 PSIONIC_DEVICE_PRODUCT_BENCH=1 \
+COAX=coax/bin/coax psionic/tests/check_gptoss_device.sh
+```
+
+The [owned slice tool](../tests/gptoss_device_product_bench.c) uses the original
+5,760-by-2,880 expert-up shape, 32 experts, 128 tokens and four selected slots.
+Constant coefficients/inputs give hand-derived partial sums. It measures only
+that product; it cannot qualify a full model or replace the original gates.
