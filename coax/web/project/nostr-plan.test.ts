@@ -56,6 +56,16 @@ test("full integration includes profiles, grants, identity, channels, private da
   }
 })
 
+test("optional key backup waits for version-pinned complete NFKC normalization", () => {
+  const task = tasks.get("unicode-nfkc")
+  expect(task.body).toContain("Unicode 18.0.0")
+  expect(task.body).toContain("UAX #15 revision 58")
+  expect(task.acceptance.join(" ")).toContain("Full NormalizationTest")
+  expect(task.acceptance.join(" ")).toContain("assigned scalars omitted by Part 1")
+  expect(reaches("nip49-primitives", "unicode-nfkc")).toBe(true)
+  expect(reaches("nip49-backup", "unicode-nfkc")).toBe(true)
+})
+
 test("decoder mutation coverage remains a separate gate from structural policy", () => {
   for (const slug of ["nostr-event", "nostr-jcs", "fi-jws-verifier"]) expect(reaches(slug, "nostr-json-parser-checks")).toBe(true)
   expect(tasks.get("nostr-json").status).toBe("resolved")

@@ -328,7 +328,8 @@
       "blocked_by": [],
       "blocks": [
         "crypto-vector-runner",
-        "secp-libsecp-harness"
+        "secp-libsecp-harness",
+        "unicode-nfkc"
       ]
     },
     {
@@ -2813,6 +2814,37 @@
       ]
     },
     {
+      "slug": "unicode-nfkc",
+      "parent": "m-key-backup",
+      "title": "Pinned full Unicode NFKC normalization in Coax",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax",
+        "unicode"
+      ],
+      "body": "Implement Unicode 18.0.0 NFKC from immutable official UCD data and UAX #15 revision 58, including strict scalar UTF-8 decoding, recursive compatibility/canonical decomposition, stable canonical ordering, composition exclusions and algorithmic Hangul. Keep Unicode tables and the complete official normalization corpus byte/hash/license pinned; generated tables are explicit reproducible tooling, never host-version normalization. Bound input/output/workspace and refuse malformed text, alias observations or capacity failure without publishing partial output. This is the normalization prerequisite for optional NIP-49, not secret erasure or production-key approval. Initial byte profile admits up to 1024 input bytes with explicitly bounded caller workspace; conformance tests must exercise every full-corpus NFKC invariant and assigned scalar identity obligation within that profile.",
+      "files": [
+        "coax/lib/text/",
+        "coax/tests/unicode/",
+        "coax/tests/vectors/upstream/unicode-18.0.0/",
+        "tools/coax-unicode/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Official Unicode 18.0.0 UnicodeData, full composition exclusions, normalization conformance corpus and license are pinned with source URLs, exact versions and SHA-256; altered/missing data and table drift refuse",
+        "Full NormalizationTest NFKC c1..c5-to-c4 invariants and assigned scalars omitted by Part 1 pass with actual checked/release native and Wasm Coax output, independent of host Unicode versions",
+        "Strict malformed UTF-8, surrogate/overlong/range rejection, decomposition/order/blocking/Hangul, exact capacities, caller-reported alias, transactional destination preservation and guard bytes pass; native sanitizers and arm64 iOS Simulator compilation are separately reported",
+        "Coax authority checks and complete reachable mutation testing have zero survivors or waivers; generated table provenance and native/Wasm evidence do not grant secret erasure, physical-device or production approval"
+      ],
+      "blocked_by": [
+        "crypto-vectors-pinned"
+      ],
+      "blocks": [
+        "nip49-primitives"
+      ]
+    },
+    {
       "slug": "nip49-primitives",
       "parent": "m-key-backup",
       "title": "Optional NIP-49 KDF, cipher and normalization primitives",
@@ -2834,7 +2866,8 @@
       "blocked_by": [
         "crypto-chacha20",
         "crypto-secure-zero",
-        "crypto-vector-runner"
+        "crypto-vector-runner",
+        "unicode-nfkc"
       ],
       "blocks": [
         "nip49-backup"
