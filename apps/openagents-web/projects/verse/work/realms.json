@@ -578,14 +578,14 @@
         "realms",
         "everglade"
       ],
-      "body": "/realm/everglade, the galaxy orbit, analytics, share card and golden. Everglade is the same for everyone; players can't edit it.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "/realm/everglade, the galaxy orbit, analytics, share card and golden. Everglade is the same for everyone; players can't edit it (admins can: eg-edit).\n\nPlan: `docs/verse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "verse/"
       ],
       "acceptance": [
         "Opens from the galaxy on production",
-        "Edit mode is off in Everglade"
+        "Edit mode is off in Everglade for everyone but admins"
       ],
       "blocked_by": [
         "eg-forest",
@@ -593,6 +593,33 @@
         "eg-quests",
         "rl-realm-goldens"
       ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-edit",
+      "parent": "eg",
+      "title": "Everglade: edit mode for admins",
+      "size": "M",
+      "labels": [
+        "realms",
+        "everglade",
+        "admin"
+      ],
+      "body": "The owner: \"I am the owner of Everglade, so why do I not have edit mode here? Whenever a user is an admin, they need to have edit mode.\" An admin (a key in coax/web/api/admins.conf, logged in at /login or signing NIP-98) gets the Haunted House's edit mode in Everglade: B or EDIT, a hotbar of things to place, the picked thing's row (LEFT RIGHT AWAY NEAR TURN BIGGER SMALLER DELETE), UNDO, REDO, DONE, and ORIGINAL to go back to the designed city. The edits are the realm's published world on the server (/api/playtest/world/everglade), checked there: only an admin writes them; everyone sees them, nobody else gets edit mode. Each edit is held to the plan (not in a wall, the woods or out of the world) and DONE walks the city again (plan.coax reachability) and warns the admin of anything blocked. Then every other realm without edit mode, or a recorded reason it has none.\n\nPlan: `docs/verse/everglade.md`.",
+      "files": [
+        "apps/openagents-web/",
+        "verse/everglade/",
+        "coax/web/api/",
+        "docs/verse/"
+      ],
+      "acceptance": [
+        "An admin sees EDIT in Everglade and places, moves, turns, resizes and removes things; UNDO, REDO, DONE and ORIGINAL work",
+        "The edits persist on the server for everyone; a non-admin sees them and has no EDIT",
+        "coax/web/api/test.sh: an admin's edits are saved; a non-admin's and a signed-out write are refused",
+        "DONE warns when an edit blocks a door, a character, a street node or a gate",
+        "coax test passes on the files touched"
+      ],
+      "blocked_by": [],
       "blocks": []
     },
     {
