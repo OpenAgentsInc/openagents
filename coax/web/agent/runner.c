@@ -31,6 +31,7 @@
 //
 //   oa-agent [--listen HOST:PORT]
 //   POST /wake {"slug": S}   202; the turn loop runs on (Cloud Run: CPU always allocated)
+//   POST /wake {"chat": true}, POST /credential   openagents.com/chat's general mode (chat-runner.c, docs/chat.md)
 //   GET  /                   200
 //
 // Environment (Secret Manager at deploy time; coax/web/agent/deploy.sh):
@@ -75,6 +76,15 @@ static void say(const char *fmt, ...) {
 }
 static double now_ms(void) { struct timeval t; gettimeofday(&t, NULL); return t.tv_sec * 1000.0 + t.tv_usec / 1000.0; }
 static char anthropic_key[512];
+// What the engine gets: the project engine with our key, unless a /chat turn
+// (chat-runner.c) sets another engine, credential and CLI config directory.
+static const char *engine_cred_name = "ANTHROPIC_API_KEY";
+static const char *engine_cred = anthropic_key;
+static const char *engine_bin;
+static char engine_cfg[900];
+static bool chat_expired;     // a /chat engine said the subscription token expired
+static void chat_turns(void);
+static const char *api_base = "/api/private/";   // /chat's turns: /api/chat/ (slug "runner")
 
 // ---- growable text
 typedef struct { char *p; size_t n, cap; } text;
@@ -216,7 +226,7 @@ static unsigned long nonce;
 static long api(const char *method, const char *slug, const char *op, const char *body, text *out) {
   char url[1024], auth[8192];
   bool post = !strcmp(method, "POST");
-  snprintf(url, sizeof url, "%s/api/private/%s/%s%s", env("OA_API_ORIGIN", "https://openagents.com"), slug, op, post ? "" : "?n=");
+  snprintf(url, sizeof url, "%s%s%s/%s%s", env("OA_API_ORIGIN", "https://openagents.com"), api_base, slug, op, post ? "" : "?n=");
   if (!post) { size_t k = strlen(url); snprintf(url + k, sizeof url - k, "%lu-%lld", ++nonce, (long long)now_ms()); }
   text b = {0};
   if (post) {
@@ -351,13 +361,14 @@ static bool engine_start(engine *e, const char *dir, const char *home) {
     setpgid(0, 0);   // its own group: STOP and timeouts end the CLI with it
     if (chdir(dir)) _exit(127);
     dup2(a[0], 0); dup2(b[1], 1); close(a[1]); close(b[0]);
-    char key[600], h[600], model[200];
-    snprintf(key, sizeof key, "ANTHROPIC_API_KEY=%s", anthropic_key);
+    char key[600], h[600], model[200], cfg[1000];
+    snprintf(key, sizeof key, "%s=%s", engine_cred_name, engine_cred);   // one credential, never both
+    snprintf(cfg, sizeof cfg, "CLAUDE_CONFIG_DIR=%s", engine_cfg);
     snprintf(h, sizeof h, "HOME=%s", home);
     snprintf(model, sizeof model, "OA_AGENT_MODEL=%s", env("OA_AGENT_MODEL", "claude-sonnet-5-5"));
     char path[] = "PATH=/usr/local/bin:/usr/bin:/bin", quiet[] = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", noup[] = "DISABLE_AUTOUPDATER=1";
-    char *envp[] = {key, h, path, model, quiet, noup, NULL};
-    const char *argv[] = {env("OA_AGENT_ENGINE", "/usr/local/bin/oa-turn"), NULL};
+    char *envp[] = {key, h, path, model, quiet, noup, engine_cfg[0] ? cfg : NULL, NULL};
+    const char *argv[] = {engine_bin ? engine_bin : env("OA_AGENT_ENGINE", "/usr/local/bin/oa-turn"), NULL};
     execve(argv[0], (char *const *)argv, envp);
     _exit(127);
   }
@@ -460,6 +471,7 @@ static void run_engine(const char *slug, const char *turn_json, long long turn, 
           snprintf(status, 16, "%s", !strcmp(s, "done") || !strcmp(s, "stopped") ? s : "failed");
           char *a = jraw(l, "answer", "\"\""), *er = jraw(l, "error", "\"\""), *c = jraw(l, "cost_usd", "0");
           puts_(answer, a); puts_(error, er); *cost = atof(c);
+          if (strstr(l, "\"credential_expired\":true") || strstr(l, "\"credential_expired\": true")) chat_expired = true;
           free(s); free(a); free(er); free(c);
           done = true;
         }
@@ -682,7 +694,7 @@ static void wake(const char *slug) {
   }
   if (free_slot < 0) return;
   pid_t pid = fork();
-  if (pid == 0) { turns(slug); _exit(0); }
+  if (pid == 0) { if (!strcmp(slug, "@chat")) chat_turns(); else turns(slug); _exit(0); }
   if (pid > 0) { snprintf(loops[free_slot].slug, sizeof loops[free_slot].slug, "%s", slug); loops[free_slot].pid = pid; }
 }
 static void respond(int fd, int status, const char *body) {
@@ -691,6 +703,8 @@ static void respond(int fd, int status, const char *body) {
                    status, status == 202 ? "Accepted" : status == 200 ? "OK" : status == 400 ? "Bad Request" : "Not Found", strlen(body));
   if (write(fd, head, (size_t)n) < 0 || write(fd, body, strlen(body)) < 0) say("write failed");
 }
+#include "chat-runner.c"   // the general mode, for /chat
+
 static void serve(int fd) {
   char req[8192]; size_t n = 0;
   struct timeval tv = {5, 0}; setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
@@ -706,6 +720,15 @@ static void serve(int fd) {
     }
   }
   if (!end) { respond(fd, 400, "{\"error\":\"bad request\"}"); return; }
+  if (!strncmp(req, "POST /credential ", 17)) {   // /chat: check and seal a credential (chat-runner.c)
+    pid_t pid = fork();
+    if (pid == 0) { credential(fd, end + 4); _exit(0); }
+    OPENSSL_cleanse(req, sizeof req);
+    return;
+  }
+  if (!strncmp(req, "POST /wake ", 11) && strstr(end + 4, "\"chat\":true")) {
+    respond(fd, 202, "{\"ok\":true}"); shutdown(fd, SHUT_WR); wake("@chat"); say("wake chat"); return;
+  }
   if (!strncmp(req, "POST /wake ", 11)) {
     char *slug = jstr(end + 4, "slug", "");
     bool ok = *slug && strlen(slug) <= 64;
@@ -726,6 +749,7 @@ int main(int argc, char **argv) {
   if (!load_key()) { say("OA_RUNNER_KEY is missing or not a key"); return 2; }
   snprintf(anthropic_key, sizeof anthropic_key, "%s", env("ANTHROPIC_API_KEY", ""));
   unsetenv("ANTHROPIC_API_KEY");   // only the engine gets it
+  if (!seal_load()) say("OA_CHAT_SEAL_KEY is missing: /chat cannot save keys");
   char host[256] = "0.0.0.0"; int port = atoi(env("PORT", "8080"));
   if (listen_at) { const char *c = strrchr(listen_at, ':'); if (c) { snprintf(host, sizeof host, "%.*s", (int)(c - listen_at), listen_at); port = atoi(c + 1); } }
   int lfd = socket(AF_INET, SOCK_STREAM, 0), one = 1;

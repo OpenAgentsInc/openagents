@@ -1,0 +1,305 @@
+// /chat's engine (docs/chat.md): one turn of an admin's general chat with a
+// Claude agent, on the Coax Claude Agent SDK (coax/lib/agent/claude/), the
+// general sibling of the project agent's engine (turn.coax). The runner
+// (runner.c, chat mode) starts it in a read-only checkout of the public
+// openagents repository's main with only HOME, CLAUDE_CONFIG_DIR, PATH and one
+// credential (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, never both), and
+// writes one line:
+//   {"t":"turn","mode":"chat","turn":{id,text,model},"model","budget_usd","cwd","today",
+//    "resume":SESSION or "session_id":SESSION, "history":[...] when the session could not be resumed}
+// The model gets Read, Glob and Grep, which the permission callback allows
+// only inside the checkout, and WebSearch and WebFetch. Everything else is
+// refused there: Edit, Write, Bash, Task and any path outside the checkout.
+// No settings files load; the CLI session is kept (the runner stores it) so
+// the next turn resumes it, with whatever model that turn asks for. It
+// streams {"t":"event",...} lines (working, agent.message, agent.tool_use,
+// session.error) and ends with {"t":"done",...}; a {"t":"stop"} ends the turn.
+// Build: coax c chat.coax, then cc with coax/platform/process-native.c and
+// engine-io.c (coax/web/agent/Dockerfile).
+
+#import "Basic";
+#load "../../lib/agent/claude/claude.coax";
+
+eio_read_line :: (timeout_ms: int) -> int #foreign;
+eio_line_byte :: (i: int) -> int #foreign;
+eio_put :: (byte: int) -> int #foreign;
+eio_flush :: () -> int #foreign;
+
+TURN_LINE :: 1048576;
+PROMPT_MAX :: 196608;
+ANSWER_MAX :: 60000;
+
+ch_send :: (o: [] ClOut) {
+  if o[0].failed { return; }
+  for i: 0..<o[0].len { r := eio_put(cast(int) o[0].buf[i]); }
+  r := eio_put(10);
+  r = eio_flush();
+}
+
+ch_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+ch_has :: (s: string, w: string) -> bool {
+  if w.count == 0 || w.count > s.count { return false; }
+  for i: 0..<s.count - w.count + 1 { if s[i..<i + w.count] == w { return true; } }
+  return false;
+}
+
+ch_usd :: (o: [] ClOut, usd: f64) {
+  micro := cast(int) (usd * 1000000.0 + 0.5);
+  if micro < 0 { micro = 0; }
+  cl_put_int(o, micro / 1000000);
+  cl_put(o, ".");
+  frac := micro % 1000000;
+  d := 100000;
+  while d > 0 { digit: [1] u8; digit[0] = cast(u8) ('0' + (frac / d) % 10); cl_put(o, cast(string) digit[..]); d /= 10; }
+}
+
+ch_event :: (buf: [] u8, type: string, key: string, value: string) {
+  o: [1] ClOut; o[0].buf = buf;
+  cl_put(o[..], "{\"t\":\"event\",\"type\":"); cl_put_string(o[..], type);
+  cl_put(o[..], ",\"data\":{"); cl_put_string(o[..], key); cl_put(o[..], ":"); cl_put_string(o[..], value); cl_put(o[..], "}}");
+  ch_send(o[..]);
+}
+
+ch_tool :: (buf: [] u8, name: string, detail: string) {
+  o: [1] ClOut; o[0].buf = buf;
+  cl_put(o[..], "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":"); cl_put_string(o[..], name);
+  cl_put(o[..], ",\"detail\":"); cl_put_string(o[..], detail); cl_put(o[..], "}}");
+  ch_send(o[..]);
+}
+
+ch_done :: (buf: [] u8, status: string, answer: string, error: string, cost: f64, expired: bool) {
+  o: [1] ClOut; o[0].buf = buf;
+  cl_put(o[..], "{\"t\":\"done\",\"status\":"); cl_put_string(o[..], status);
+  cl_put(o[..], ",\"answer\":"); cl_put_string(o[..], answer);
+  cl_put(o[..], ",\"error\":"); cl_put_string(o[..], error);
+  cl_put(o[..], ",\"credential_expired\":"); cl_put(o[..], ifx expired then "true" else "false");
+  cl_put(o[..], ",\"cost_usd\":"); ch_usd(o[..], cost); cl_put(o[..], "}");
+  ch_send(o[..]);
+}
+
+// A path as the asker knows it: inside the checkout, relative to it.
+ch_shown :: (path: string, cwd: string) -> string {
+  if cwd.count > 0 && ch_starts(path, cwd) && path.count > cwd.count + 1 && path[cwd.count] == '/' { return path[cwd.count + 1..<path.count]; }
+  return path;
+}
+
+// A path the model may read: inside the checkout, with no ".." step.
+ch_inside :: (path: string, cwd: string) -> bool {
+  if cwd.count == 0 { return false; }
+  for i: 0..<path.count {
+    if path[i] == '.' && i + 1 < path.count && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/') { return false; }
+  }
+  if path.count > 0 && path[0] == '~' { return false; }
+  if path.count > 0 && path[0] != '/' { return true; }
+  return path == cwd || (path.count > cwd.count && ch_starts(path, cwd) && path[cwd.count] == '/');
+}
+
+READ_TOOLS :: [3] string.["Read", "Glob", "Grep"];
+WEB_TOOLS :: [2] string.["WebSearch", "WebFetch"];
+DENIED :: [8] string.["Bash", "Edit", "Write", "NotebookEdit", "Task", "Agent", "TodoWrite", "KillShell"];
+
+// What the permission callback decides: 1 allow, 0 refuse.
+ch_may :: (tool: string, path: string, cwd: string) -> bool {
+  for name: WEB_TOOLS { if name == tool { return true; } }
+  for name: READ_TOOLS { if name == tool { return path.count == 0 || ch_inside(path, cwd); } }
+  return false;
+}
+
+// The expired or revoked subscription token, as the CLI says it.
+ch_expired :: (text: string) -> bool {
+  return ch_has(text, "Login expired") || ch_has(text, "/login") || ch_has(text, "OAuth token has expired") || ch_has(text, "OAuth access token is invalid");
+}
+
+SYSTEM :: "You are the OpenAgents agent on openagents.com/chat, talking with one of the OpenAgents team. Answer general questions plainly and accurately.\n\nYour working directory is a read-only checkout of the public OpenAgents repository (github.com/OpenAgentsInc/openagents), main, refreshed for this turn. When a question is about OpenAgents, Coax, Verse, the website or this repository, look in the checkout with Read, Glob and Grep before answering, and name the files you used as paths relative to the checkout (for example coax/web/release.sh), with line numbers when they help. You can also search and fetch the web. You cannot change files, run commands or start other agents: those tools are refused.\n\nWrite in Markdown: short paragraphs, lists where they help, and fenced code blocks for code. Be concise.";
+
+ch_working :: (buf: [] u8, verb: string, what: string) {
+  wb: [600] u8; w: [1] ClOut; w[0].buf = wb[..];
+  cl_put(w[..], verb); cl_put(w[..], ifx what.count > 400 then what[0..<400] else what);
+  if !w[0].failed { ch_event(buf, "working", "text", cast(string) wb[0..<w[0].len]); }
+}
+
+// Whether the next stdin line, waited for up to timeout_ms, is a stop.
+ch_stop_waiting :: (timeout_ms: int) -> bool {
+  n := eio_read_line(timeout_ms);
+  if n == -1 { return true; }   // the runner is gone
+  if n < 0 { return false; }
+  buf: [64] u8; k := ifx n < 64 then n else 64;
+  for i: 0..<k { buf[i] = cast(u8) eio_line_byte(i); }
+  line := cast(string) buf[0..<k];
+  for i: 0..<k { if i + 6 <= k && line[i..<i + 6] == "\"stop\"" { return true; } }
+  return false;
+}
+
+main :: () {
+  first: [TURN_LINE] u8;
+  n := eio_read_line(60000);
+  out: [131072] u8;
+  if n <= 0 || n > TURN_LINE { ch_done(out[..], "failed", "", "the agent got no turn", 0.0, false); return; }
+  for i: 0..<n { first[i] = cast(u8) eio_line_byte(i); }
+  line := cast(string) first[0..<n];
+  tar: [262144] u8; targ: [1] ClArena; targ[0].buf = tar[..];
+  text := cl_str(targ[..], line, "turn.text");
+  model := cl_str(targ[..], line, "model");
+  cwd := cl_str(targ[..], line, "cwd");
+  resume := cl_str(targ[..], line, "resume");
+  session := cl_str(targ[..], line, "session_id");
+  budget := cl_num(line, "budget_usd").value;
+  if text.count == 0 { ch_done(out[..], "failed", "", "the turn has no message", 0.0, false); return; }
+
+  sys_buf: [8192] u8; sys: [1] ClOut; sys[0].buf = sys_buf[..];
+  cl_put(sys[..], SYSTEM);
+  cl_put(sys[..], "\n\nThe checkout: "); cl_put(sys[..], cwd);
+  cl_put(sys[..], "\nToday is "); cl_put(sys[..], cl_str(targ[..], line, "today")); cl_put(sys[..], " (Chicago).\n");
+
+  // The prompt: this message, after the conversation so far when its session could not be resumed.
+  prompt_buf: [PROMPT_MAX] u8; p: [1] ClOut; p[0].buf = prompt_buf[..];
+  if resume.count == 0 {
+    history := cl_raw(line, "history");
+    turns := cl_count(history);
+    start := ifx turns > 10 then turns - 10 else 0;
+    har: [131072] u8; harg: [1] ClArena; harg[0].buf = har[..];
+    said_any := false;
+    for i: start..<turns {
+      raw := cl_json(history, cl_item(history, i));
+      harg[0].at = 0; harg[0].full = false;
+      if !said_any { cl_put(p[..], "The conversation so far:\n\n"); said_any = true; }
+      t := cl_str(harg[..], raw, "text");
+      a := cl_str(harg[..], raw, "answer");
+      cl_put(p[..], "Me: "); cl_put(p[..], ifx t.count > 3000 then t[0..<3000] else t); cl_put(p[..], "\n");
+      if a.count > 0 { cl_put(p[..], "You: "); cl_put(p[..], ifx a.count > 4000 then a[0..<4000] else a); cl_put(p[..], "\n"); }
+      cl_put(p[..], "\n");
+    }
+    if said_any { cl_put(p[..], "Now:\n"); }
+  }
+  cl_put(p[..], text);
+  if p[0].failed || sys[0].failed { ch_done(out[..], "failed", "", "the conversation is too long for one turn", 0.0, false); return; }
+
+  o: [1] ClOptions;
+  o[0].model = ifx model.count > 0 then model else "claude-opus-5-5";
+  o[0].system_prompt = cast(string) sys_buf[0..<sys[0].len];
+  o[0].tools_set = true;
+  for name: READ_TOOLS { cl_add_tool(o[..], name); }
+  for name: WEB_TOOLS { cl_add_tool(o[..], name); }
+  for name: DENIED { cl_add_disallowed(o[..], name); }
+  o[0].permission_handler = true;
+  o[0].max_turns = 30;
+  if budget > 0.0 { o[0].max_budget_usd = budget; o[0].has_max_budget = true; }
+  o[0].persist_session = true;
+  if resume.count > 0 { o[0].resume = resume; } else if session.count > 0 { o[0].session_id = session; }
+  o[0].setting_sources_set = true;
+  if cwd.count > 0 { o[0].cwd = cwd; }
+
+  qline: [CL_LINE_MAX] u8; arena: [262144] u8; qout: [262144] u8; scratch: [196608] u8;
+  q: [1] ClQuery; cl_init(q[..], qline[..], arena[..], qout[..]);
+  q[0].options = o[0];
+  proc: [1] ClProcess;
+  problem := cl_start(q[..], proc[..], cast(string) prompt_buf[0..<p[0].len], false, scratch[..]);
+  if problem.count > 0 { ch_done(out[..], "failed", "", problem, 0.0, false); return; }
+  defer cl_close(proc[..]);
+  ch_event(out[..], "working", "text", "thinking");
+
+  cost := 0.0; status := "failed"; err := "the agent stopped before it finished";
+  expired := false;
+  mar: [262144] u8; marg: [1] ClArena; marg[0].buf = mar[..];
+  ans_buf: [ANSWER_MAX] u8; ans_n := 0;
+  err_buf: [2000] u8;
+  stopped := false;
+  while true {
+    if ch_stop_waiting(0) { stopped = true; break; }
+    ev := cl_next(q[..], proc[..]);
+    if ev.kind == ClEventKind.end { break; }
+    if ev.kind == ClEventKind.failed { err = cl_error(q[..]); break; }
+    if ev.kind == ClEventKind.permission {
+      tool := ev.request.tool_name;
+      marg[0].at = 0; marg[0].full = false;
+      path := cl_str(marg[..], ev.request.input, "file_path");
+      if path.count == 0 { path = cl_str(marg[..], ev.request.input, "path"); }
+      if ch_may(tool, path, cwd) { cl_allow(q[..], ev.request.input, ""); }
+      else {
+        cl_deny(q[..], "Refused: only Read, Glob and Grep inside the checkout, WebSearch and WebFetch are allowed here.", false);
+        wb: [400] u8; w: [1] ClOut; w[0].buf = wb[..];
+        cl_put(w[..], "refused "); cl_put(w[..], ifx tool.count > 40 then tool[0..<40] else tool);
+        if path.count > 0 { cl_put(w[..], " "); cl_put(w[..], ifx path.count > 200 then path[0..<200] else path); }
+        if !w[0].failed { ch_event(out[..], "session.error", "error", cast(string) wb[0..<w[0].len]); }
+      }
+      continue;
+    }
+    if ev.kind != ClEventKind.message { continue; }
+    m := ev.message;
+    marg[0].at = 0; marg[0].full = false;
+    if m.kind == ClKind.assistant {
+      a := cl_assistant_of(marg[..], m);
+      content := cl_raw(a.message, "content");
+      for i: 0..<cl_count(content) {
+        block := cl_json(content, cl_item(content, i));
+        type := cl_str(marg[..], block, "type");
+        if type == "text" {
+          said := cl_str(marg[..], block, "text");
+          if said.count > 0 { ch_event(out[..], "agent.message", "text", ifx said.count > 4000 then said[0..<4000] else said); }
+        } else if type == "tool_use" {
+          name := cl_str(marg[..], block, "name");
+          if name == "WebSearch" {
+            query := cl_str(marg[..], block, "input.query");
+            ch_tool(out[..], name, query); ch_working(out[..], "searching the web for ", query);
+          } else if name == "WebFetch" {
+            url := cl_str(marg[..], block, "input.url");
+            ch_tool(out[..], name, url); ch_working(out[..], "fetching ", url);
+          } else {
+            path := cl_str(marg[..], block, "input.file_path");
+            if path.count == 0 { path = cl_str(marg[..], block, "input.pattern"); }
+            if path.count == 0 { path = cl_str(marg[..], block, "input.path"); }
+            detail := ch_shown(path, cwd);
+            ch_tool(out[..], name, detail);
+            ch_working(out[..], ifx name == "Read" then "reading " else ifx name == "Grep" then "searching for " else ifx name == "Glob" then "looking for " else "trying ", detail);
+          }
+        }
+      }
+      continue;
+    }
+    if m.kind == ClKind.result {
+      r := cl_result_of(marg[..], m);
+      cost = r.total_cost_usd;
+      if r.kind == ClResultKind.success && !r.is_error {
+        ans_n = cl_copy(ans_buf[..], r.result);
+        status = "done"; err = "";
+      } else if r.kind == ClResultKind.error_max_budget_usd {
+        err = "The turn reached today's spending limit for /chat.";
+      } else if r.kind == ClResultKind.error_max_turns {
+        err = "The turn took too many steps; ask for something smaller.";
+      } else if r.result.count > 0 {
+        expired = ch_expired(r.result);
+        k := cl_copy(err_buf[..], ifx expired then "Your token expired. Make a new one with claude setup-token and save it under KEY." else r.result);
+        err = cast(string) err_buf[0..<k];
+      } else {
+        err = "The model returned an error.";
+      }
+    }
+  }
+  if stopped { r := cl_kill(proc[..]); ch_done(out[..], "stopped", "", "", cost, false); return; }
+  ch_done(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
+}
+
+#test "reads only inside the checkout, the web, and nothing else" {
+  cwd := "/tmp/oa-agent/chat-repo";
+  #assert ch_may("Read", "/tmp/oa-agent/chat-repo/coax/web/release.sh", cwd);
+  #assert ch_may("Grep", "", cwd) && ch_may("Glob", "coax/web", cwd);
+  #assert !ch_may("Read", "/etc/passwd", cwd);
+  #assert !ch_may("Read", "/tmp/oa-agent/chat-repo/../secrets", cwd);
+  #assert !ch_may("Read", "/tmp/oa-agent/chat-repo-other/x", cwd);
+  #assert !ch_may("Read", "~/.ssh/id_ed25519", cwd);
+  #assert !ch_may("Glob", "../", cwd);
+  #assert ch_may("WebSearch", "", cwd) && ch_may("WebFetch", "", cwd);
+  #assert !ch_may("Bash", "", cwd) && !ch_may("Edit", "/tmp/oa-agent/chat-repo/a", cwd) && !ch_may("Write", "/tmp/oa-agent/chat-repo/a", cwd);
+  #assert !ch_may("Task", "", cwd) && !ch_may("mcp__x__y", "", cwd);
+}
+
+#test "an expired subscription token is told apart" {
+  #assert ch_expired("Failed to authenticate. API Error: 401 OAuth access token is invalid.");
+  #assert ch_expired("Login expired. Please run /login");
+  #assert !ch_expired("API Error: 529 overloaded");
+}
+
+#test "paths are shown relative to the checkout" {
+  #assert ch_shown("/w/repo/coax/web/release.sh", "/w/repo") == "coax/web/release.sh";
+  #assert ch_shown("coax/web", "/w/repo") == "coax/web";
+}

@@ -6,6 +6,8 @@
 #
 #   admin.sh open [--staging]            sign in and open the dashboard in the default browser
 #   admin.sh url [--staging]             the one-time sign-in link (good for 60 s), to open anywhere
+#   admin.sh chat [--staging]            sign in and open /chat (docs/chat.md)
+#   admin.sh chat-url [--staging]        the same link, to open anywhere
 #   admin.sh get [--staging] QUERY       a report as text, e.g. "view=overview&days=7"
 #   admin.sh pubkey                      the key's public key, for admins.conf
 #
@@ -32,6 +34,8 @@ case "$cmd" in
   pubkey) "$sign" --key "$key" --pubkey ;;
   url) link ;;
   open) open "$(link)" ;;
+  chat) open "$(link)&next=chat" ;;
+  chat-url) printf '%s&next=chat\n' "$(link | tr -d '\n')" ;;
   get)
     url="$origin/api/admin/analytics?${1:-view=overview}"
     curl -fsS -H "Authorization: Nostr $("$sign" --key "$key" GET "$url")" "$url" ;;

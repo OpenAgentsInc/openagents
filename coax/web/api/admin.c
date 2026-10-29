@@ -8,6 +8,7 @@
 //                                              good once; sets the oa_admin cookie
 //                                              (HttpOnly, Secure, SameSite=Strict, /api/admin)
 //                                              and sends the browser to /admin/analytics
+//                                              (?next=chat: to /chat; the cookie opens /api/chat too)
 //   GET /api/admin/logout                      ends that session
 //   GET /api/admin/analytics?view=overview|sessions|session&days=N&space=web|kiki|dev|all&auto=1&sid=S
 //                                              the reports, for admin.coax; a cookie or an
@@ -99,6 +100,9 @@ static int who_is(const request *q, PGconn *db, char who[65]) {
   return status;
 }
 
+// The same check for other routes (chat.c): 0 an admin (pubkey in who), else 401 or 403.
+int admin_who(const request *q, PGconn *db, char who[65]) { return who_is(q, db, who); }
+
 static void refuse(int fd, int status) {
   api_json(fd, status, status == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"sign in as an admin\"}");
 }
@@ -129,11 +133,16 @@ static void login(const request *q, PGconn *db) {
   bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
   PQclear(r);
   if (!ok) { api_json(q->fd, 503, "{\"error\":\"no session\"}"); return; }
-  char headers[512];
-  // The same session opens /api/drops (drops.c), so an admin can drop files for a new project.
-  snprintf(headers, sizeof headers, "Location: /admin/analytics\r\nSet-Cookie: oa_admin=%s; Path=/api/admin; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
-           "Set-Cookie: oa_admin=%s; Path=/api/drops; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n",
-           token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600);
+  char headers[900], next[16];
+  // ?next=chat sends the browser to /chat instead (the link is signed without it, as before).
+  api_query(q, "next", next, sizeof next);
+  // The same session opens /api/drops (drops.c), so an admin can drop files for a new project,
+  // and /api/chat (chat.c), the admins' chat with a Claude agent.
+  snprintf(headers, sizeof headers, "Location: %s\r\nSet-Cookie: oa_admin=%s; Path=/api/admin; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
+           "Set-Cookie: oa_admin=%s; Path=/api/drops; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
+           "Set-Cookie: oa_admin=%s; Path=/api/chat; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n",
+           !strcmp(next, "chat") ? "/chat" : "/admin/analytics",
+           token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600);
   api_log("admin signed in: %.12s", ev.pubkey);
   api_respond(q->fd, 303, "text/plain", headers, "", 0);
 }
@@ -152,7 +161,8 @@ static void logout(const request *q, PGconn *db) {
     }
   }
   api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: oa_admin=; Path=/api/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
-              "Set-Cookie: oa_admin=; Path=/api/drops; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);
+              "Set-Cookie: oa_admin=; Path=/api/drops; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
+              "Set-Cookie: oa_admin=; Path=/api/chat; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);
 }
 
 // ---- the reports

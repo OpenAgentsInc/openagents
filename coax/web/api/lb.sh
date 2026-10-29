@@ -89,7 +89,7 @@ for svc in oa-api-staging oa-api; do
   g compute backend-services update "$svc" --global "${args[@]}" >/dev/null
 done
 # The path rules (the map read as JSON, which import takes as YAML): /api/ in each host's matcher, at the next
-# free priority, and /admin/analytics, /signin and the app's universal-link file to the site in production.
+# free priority, and /admin/analytics, /signin, /chat and the app's universal-link file to the site in production.
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
 g compute url-maps describe "$map" --global --format json > "$tmp"
 python3 -I - "$tmp" "$project" <<'PY'
@@ -106,7 +106,7 @@ for pm in m["pathMatchers"]:
     rules.append({"priority": max([r["priority"] for r in rules] or [0]) + 1, "matchRules": [{"prefixMatch": "/api/"}],
                   "service": f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendServices/{svc}"})
     changed = True
-# /admin/analytics (admin.coax) and /signin (private.coax page 2) are Coaxial
+# /admin/analytics (admin.coax), /signin (private.coax page 2) and /chat (chat.coax) are Coaxial
 # pages: in production they go to the site's bucket with the other Coax pages,
 # not to the coder service; so does /.well-known/apple-app-site-association.
 for pm in m["pathMatchers"]:
@@ -117,6 +117,7 @@ for pm in m["pathMatchers"]:
         have = {r.get("fullPathMatch") or r.get("prefixMatch") for r in rule.get("matchRules", [])}
         for match in ({"fullPathMatch": "/admin/analytics"}, {"prefixMatch": "/admin/analytics/"},
                       {"fullPathMatch": "/signin"}, {"prefixMatch": "/signin/"},
+                      {"fullPathMatch": "/chat"}, {"prefixMatch": "/chat/"},
                       {"fullPathMatch": "/.well-known/apple-app-site-association"}):
             if next(iter(match.values())) not in have:
                 rule["matchRules"].append(match); changed = True

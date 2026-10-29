@@ -188,6 +188,14 @@ three places:
 - **The checkout.** `OA_AGENT_REPOS` maps a slug to a repository and deploy
   key. A read-only workspace would clone without a key and never commit.
 
+/chat is the first other kind of turn ([chat.md](chat.md)). It uses the seam
+as described: `coax/web/agent/chat-runner.c` (included by `runner.c`) takes
+turns from `/api/chat/runner/next`, sends
+`{"kind":"chat","budget":"chat","tools":["web"],"write":false}`, runs its own
+engine (`chat.coax`, `/usr/local/bin/oa-chat-turn`) in a read-only checkout
+of the public repository, and keeps its spend in `chat.turns`. The runner's
+wake, events batching and STOP are shared.
+
 ## Deploying and checking it
 
 - `coax/web/agent/deploy.sh` builds one image and deploys `oa-agent-staging`
