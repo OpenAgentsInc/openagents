@@ -3045,7 +3045,7 @@
         "coax/spec.md"
       ],
       "acceptance": [
-        "Default100000-step behavior and deterministic failure remain unchanged; invalid, missing, negative, overflowing or above-250000000 configuration refuses before evaluation",
+        "The default 100000-step counter and deterministic work-limit failure stay unchanged; the new independent aggregate-storage cap is documented as an additional safety boundary in every profile. Invalid, missing, negative, overflowing or above-250000000 work input refuses before evaluation",
         "Both real fixed-base table schedules generate through actual #run under the declared finite profile, with retained work cost,32/64KiB table bounds and independent value comparison",
         "Independent #run sites share one aggregate budget; the explicit --run-steps input reaches every relevant compiler command and is distinguished from check/mutation and native optimization inputs",
         "Large and nested aggregate allocations refuse before exceeding the declared live slot/container bounds, including deep clones, multiple retained constants and partial failures; normal generator tables fit, and tracked storage is released when the last view/owner dies",
