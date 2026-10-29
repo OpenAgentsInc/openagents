@@ -14,7 +14,10 @@
 # named and nothing is promoted. Production gets the walk too.
 # A visual change fails the goldens until approved: look at the shot it
 # printed, then `bun coax/web/goldens.ts https://staging.openagents.com
-# --update` and commit coax/web/goldens/ with the change.
+# --update` and commit coax/web/goldens/ with the change. A realm not yet
+# listed on the galaxy (realms.json listed: false) with no golden doesn't
+# block: it must start, show no errors and draw, and its shot waits in
+# coax/web/goldens/pending/ ("NEW REALM ...") for approval.
 #
 # The build comes from a clean worktree of the ref, never from a working
 # directory other agents are editing. Production gets the files staging was
@@ -81,7 +84,7 @@ if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
   t=$(now); "$tree/coax/web/smoke.sh" https://staging.openagents.com; lap smoke "$t"
   t=$(now)
-  bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ||
+  GOLDENS_PENDING="$repo/coax/web/goldens/pending" bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ||
     { echo "release $commit: staging's pages don't start, draw, match their goldens or send the analytics contract; production is untouched" >&2; exit 1; }
   lap goldens "$t"
 fi

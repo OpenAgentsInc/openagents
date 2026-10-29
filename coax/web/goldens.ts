@@ -38,6 +38,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { inflateSync } from "node:zlib"
 import { worlds } from "./realms"
+import { missingGolden } from "./golden-policy"
 
 const W = 1280, H = 800, BLOCK = Number(process.env.BLOCK ?? 8), SHADE = Number(process.env.SHADE ?? 8)
 const args = process.argv.slice(2)
@@ -59,6 +60,9 @@ const PAGES: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, set
 // through them with ?realms=all (realms.json's order).
 const table = worlds(), open = table.filter((w) => w.kind === "open" && w.realm)
 for (const w of open) PAGES[w.realm!.slug] = { path: `/realm/${w.realm!.slug}`, ...w.realm!.golden }
+// Realms the galaxy doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
+const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
+const pendingDir = process.env.GOLDENS_PENDING || join(goldens, "pending")
 // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
 const BY_ADDRESS: Record<string, Page> = { garden: { path: "/realm/garden", lit: 0.5, settle: 3000, blocks: 6 } }
 for (const [name, page] of Object.entries(BY_ADDRESS)) PAGES[name] ??= page
@@ -189,7 +193,13 @@ try {
     if (walkOnly) return image
     const golden = join(goldens, `${name}.png`)
     if (update) { mkdirSync(goldens, { recursive: true }); writeFileSync(golden, bytes); console.log(`  new   ${golden}`); return image }
-    if (!existsSync(golden)) { check(false, `${name}: no golden (${golden}); run --update and look at it`); return image }
+    if (!existsSync(golden)) {
+      const m = missingGolden(name, unlisted.has(name), pendingDir, base)
+      if (m.fail) { check(false, m.line); return image }
+      mkdirSync(pendingDir, { recursive: true }); writeFileSync(m.pending, bytes)
+      console.log(`  ${m.line}`)
+      return image
+    }
     // more shots: what moves on its own (candles, orbits) isn't compared
     const shots = [image]
     for (let i = 0; i < 3; i++) { await Bun.sleep(500); shots.push(png(await shot())) }
