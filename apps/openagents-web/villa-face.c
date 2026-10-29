@@ -36,6 +36,7 @@ int64_t vf_motion_named(figs_view f, coax_string name);
 #define EXPORT(name) __attribute__((export_name(name)))
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
+#include "edit-face.h"
 #define PLAYER_URL "/api/playtest/player"
 #define RIG_WHY "rig must be animal: this is for a dog"
 
@@ -71,6 +72,7 @@ static figs_view fv(void) { return (figs_view){figs, 1}; }
 
 static coax_t_Villa *villa(uint32_t state) { return (coax_t_Villa *)(uintptr_t)state; }
 static coax_v_t_Villa at(uint32_t state) { return (coax_v_t_Villa){villa(state), 1}; }
+static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){villa(state)->ed.e, 1}; }
 
 // You: a slight shadow of a person. The dog: a dog of the usual build, its
 // coat pale so it glows white (villa.coax draws it so).
@@ -257,6 +259,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     if (name.count && track_begin(tr(), name)) { track_int(tr(), track_cstr("n"), villa_ev_arg(at(state), i)); track_end(tr()); }
   }
   villa_ev_clear(at(state));
+  edit_face_drain(ed(state));
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -315,6 +318,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) return;
   start(state);
   if (place_message(state, kind, inbox, length)) return;
+  if (kind != 600 && edit_face_message(ed(state), kind, (coax_string){(const char *)inbox, length})) { edit_face_drain(ed(state)); return; }
   if (kind == 600) {   // the page facts: whether the browser has a player key
     facts_seen = true;
     for (uint32_t i = 0; i + 7 < length; i++)

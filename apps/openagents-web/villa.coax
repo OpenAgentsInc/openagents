@@ -39,6 +39,7 @@
 #load "villaroom.coax";
 #load "villatips.coax";
 #load "place-orbit.coax";
+#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -159,6 +160,8 @@ Villa :: struct {
   chat: [1] Chat;
   // The first visit's tips (villatips.coax).
   tips: [1] Tips;
+  // The shared edit layer: its board switches the flight in, fireflies, the trail, the tips and other visitors.
+  ed: [1] RealmEdit;
 }
 
 // ---- the layout (metres; +z north, +x east)
@@ -437,6 +440,8 @@ skip_flight :: (s: [] Villa) -> bool {
 
 villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
   if !s[0].started { villa_start(s); }
+  used := redit_key(s[0].ed[..], key, true);
+  if used > 0 { return used == 1; }
   if skip_flight(s) { return true; }
   if chat_key(s, key) { return true; }
   if pet_key(s[0].pet[..], key) { s[0].held = 0; return true; }
@@ -450,6 +455,8 @@ villa_key :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
 }
 
 villa_key_up :: (s: [] Villa, key: int, mods: int) -> bool #export_c {
+  if redit_key(s[0].ed[..], key, false) == 1 { return true; }
+  if redit_typing(s[0].ed[..]) { return false; }
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }
@@ -462,6 +469,7 @@ villa_blur :: (s: [] Villa) #export_c { s[0].held = 0; s[0].drag_on = false; }
 // A finger is the face's (the sticks): this says it isn't used.
 villa_pointer :: (s: [] Villa, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { villa_start(s); }
+  if !in_space(s) && redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
   if kind != 0 { s[0].touch = true; }
   if phase == 0 && skip_flight(s) { return true; }
   if villa_busy(s) { return true; }
@@ -550,6 +558,12 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
   if !s[0].started { villa_start(s); }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   s[0].time += f64(t);
+  redit_start(s[0].ed[..], "hecates-cemetery");
+  redit_step(s[0].ed[..], f32(s[0].time), s[0].width, s[0].height, s[0].dpr);
+  // the layer's push to talk goes out through the pet panel's outbox, which the face hands the host
+  if s[0].pet[0].action == 0 { ea := redit_take_action(s[0].ed[..], s[0].pet[0].outbox[..]); if ea.kind != 0 { s[0].pet[0].action = ea.kind; s[0].pet[0].out_n = ea.n; } }
+  // the board's flight switched off: a visit starts at the gate
+  if in_space(s) && s[0].ed[0].ready && !redit_row_on(s[0].ed[..], "flight") && !s[0].skip_ask { s[0].skip_ask = true; }
   feet := v3(fx, fy, fz);
   if !finite3(feet) { feet = v3(s[0].feet.x, 0, s[0].feet.z); }
   shown := v3(feet.x, feet.y + ground_at(s, feet.x, feet.z), feet.z);
@@ -916,15 +930,16 @@ particles :: (s: [] Villa) {
   out := s[0].emitters[..];
   you := s[0].feet;
   moving := clamp((s[0].speed - 0.3) / 3.0, 0, 1);
-  if moving > 0 {
+  trail := redit_row_on(s[0].ed[..], "trail");
+  if moving > 0 && trail {
     behind := v3(-sin(s[0].face) * 0.35, 0, -cos(s[0].face) * 0.35);
     p := add(you, add(behind, v3(0, 0.9, 0)));
     if verse_emitter_put(out, s[0].emitter_n, p.x, p.y, p.z, 0.55, 0.55, 0.62, 1.0, 0.6, 2, 16 + 40 * moving, 0.05, 1.4, 7.1) { s[0].emitter_n += 1; }
   }
   // a faint shimmer that always hangs round you, so the visitor reads as a guest
-  if verse_emitter_put(out, s[0].emitter_n, you.x, you.y + 1.0, you.z, 0.7, 0.45, 0.5, 0.9, 0.8, 2, 10, 0.035, 0.6, 3.3) { s[0].emitter_n += 1; }
+  if trail && verse_emitter_put(out, s[0].emitter_n, you.x, you.y + 1.0, you.z, 0.7, 0.45, 0.5, 0.9, 0.8, 2, 10, 0.035, 0.6, 3.3) { s[0].emitter_n += 1; }
   // fireflies over the field
-  if verse_emitter_put(out, s[0].emitter_n, 22, ground_at(s, 22, 0) + 0.9, 0, 16, 0.6, 0.75, 0.95, 0.9, 2, 64, 0.05, 0.5, 11.0) { s[0].emitter_n += 1; }
+  if redit_row_on(s[0].ed[..], "fireflies") && verse_emitter_put(out, s[0].emitter_n, 22, ground_at(s, 22, 0) + 0.9, 0, 16, 0.6, 0.75, 0.95, 0.9, 2, 64, 0.05, 0.5, 11.0) { s[0].emitter_n += 1; }
 }
 villa_emitter_count :: (s: [] Villa) -> int #export_c { return s[0].emitter_n; }
 villa_particles_per :: () -> int #export_c { return VERSE_PARTICLES_PER; }
@@ -1029,8 +1044,8 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     old_stones(s);
     pet_stones(s);
     play_draw(s);
-    room_draw(s);
-    tips_draw(s);
+    if redit_row_on(s[0].ed[..], "others") { room_draw(s); }
+    if redit_row_on(s[0].ed[..], "tips") { tips_draw(s); }
   }
   figures(s, u);
   particles(s);
@@ -1058,7 +1073,23 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(CELL); u[U_GROUND + 2] = f32(EDGE); u[U_GROUND + 3] = f32(EDGE);
   paths(u);
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
-  if !villa_busy(s) { n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); n = room_hud(s, out, u, n); n = tips_hud(s, out, u, n); } else { s[0].pet[0].buttons = 0; }
+  if !villa_busy(s) {
+    n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); n = room_hud(s, out, u, n);
+    if redit_row_on(s[0].ed[..], "tips") { n = tips_hud(s, out, u, n); }
+    // EDIT, left of YOUR PET, for its owner and admins (verse/edit/edit.coax); the pet's pane closes it
+    k := hi(s[0].dpr, 0.5); g := 16 * k;
+    if s[0].pet[0].view != PV_NONE { s[0].ed[0].pane = REDIT_SHUT; }
+    pw := text_width(ifx s[0].pet[0].has then "YOUR PET" else "BRING YOUR PET", 9 * k) + 36 * k;
+    top := ifx phone(s) then g + 11 * k + 24 * k + 8 * k else g;
+    ew := text_width("EDIT", 9 * k) + 32 * k;
+    if s[0].pet[0].view == PV_NONE {
+      n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = width - g - pw - 8 * k - ew, y0 = top, x1 = width - g - pw - 8 * k, y1 = top + 38 * k});
+      for i: 0..<s[0].ed[0].plate_n {
+        pb := s[0].ed[0].plate_box[i];
+        plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
+      }
+    }
+  } else { s[0].pet[0].buttons = 0; }
   u[5] = f32(s[0].plate_n);
   return n;
 }
@@ -1074,7 +1105,7 @@ villa_pet_answer :: (s: [] Villa, kind: int, status: int, t: string) #export_c {
 villa_pet_files :: (s: [] Villa, t: string) #export_c { s[0].pet[0].files_n = pet_copy(s[0].pet[0].files[..], t); }
 villa_pet_scanned :: (s: [] Villa, t: string) #export_c { pet_take(s[0].pet[..], t, false); pet_ev(s[0].pet[..], EV_UPLOAD, 0); }
 villa_typed :: (s: [] Villa, t: string) #export_c { if s[0].chat[0].typing { chat_typed(s[0].chat[..], t); } else { pet_typed(s[0].pet[..], t); } }
-villa_wants_text :: (s: [] Villa) -> bool #export_c { return s[0].chat[0].typing || s[0].pet[0].focus != -1 && s[0].pet[0].view != PV_NONE; }
+villa_wants_text :: (s: [] Villa) -> bool #export_c { return redit_typing(s[0].ed[..]) || s[0].chat[0].typing || s[0].pet[0].focus != -1 && s[0].pet[0].view != PV_NONE; }
 villa_hash :: (s: [] Villa, t: string) #export_c {
   if !s[0].started { villa_start(s); }
   if t.count == 10 && t[0] == 'm' && t[1] == '/' { pet_open_memorial(s[0].pet[..], t[2..<10]); }
@@ -1324,4 +1355,29 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   #assert cast(string) b[0..<n] == "/api/villa/pets/q-1/emote/keep";
   pet_take(p, "{\"id\": \"q-1\", \"emotes\": [{\"name\": \"spin\", \"label\": \"SPIN\", \"text\": \"motion spin; rig animal\"}]}", false);
   #assert p[0].my_n == 1 && villa_my_emote_text(s[..], 0) == "motion spin; rig animal" && villa_my_emote_text(s[..], 1) == "";
+}
+
+#test "EDIT for its owner and admins only; the board's flight off starts a visit at the gate" {
+  s: [1] Villa;
+  out: [3000 * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realms/hecates-cemetery";
+  redit_requested(s[0].ed[..], 3);
+  used := redit_message(s[0].ed[..], HTTP_KIND + 3, "200\nrealm hecates-cemetery\nrole visitor\nowner 0\nrow flight 0 The flight in from space\nrow tips 1 First-visit tips\n");
+  #assert used && in_space(s[..]);
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  n := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert !in_space(s[..]) && !s[0].ed[0].shown[RB_EDIT];   // the flight is off: no space; a visitor has no EDIT
+  a: [1] Villa;
+  villa_step(a[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  redit_requested(a[0].ed[..], 4);
+  used = redit_message(a[0].ed[..], HTTP_KIND + 4, "200\nrealm hecates-cemetery\nrole admin\nowner 0\nrow flight 1 The flight in from space\nrow tips 1 First-visit tips\nwaiting 0\n");
+  fly(a[..], 10);
+  n = villa_draw(a[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert a[0].ed[0].shown[RB_EDIT];
+  e := a[0].ed[0].boxes[RB_EDIT];
+  #assert villa_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && villa_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
+  #assert a[0].ed[0].pane == REDIT_BOARD;
+  #assert e.x1 < 1280 - 16 - text_width("BRING YOUR PET", 9) - 36 && e.x0 > 600;   // left of the pet's button
 }
