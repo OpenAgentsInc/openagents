@@ -3,7 +3,7 @@
 // Unlike sg_pick this private selector admits no untrusted point/table input.
 // Secret approval
 // still requires authored-guard discharge and target/object/JIT review.
-#load "secp_group.coax";
+#load "secp_group32.coax";
 #load "secp_scalar.coax";
 #authority;
 
@@ -146,11 +146,11 @@ smb_comb :: (input: ScScalar,table: [] SgPoint,width: int,spacing: int) -> SgPoi
   for limb: 0..<8 { extended[limb] = scalar.limbs[limb]; }
   // The first PUBLIC row starts at infinity. Select it directly instead of
   // evaluating an unnecessary infinity double/add pair.
-  result := smb_pick_generated(table,smb_index(extended,width,spacing,spacing-1));
+  result := sg32_from_point(smb_pick_generated(table,smb_index(extended,width,spacing,spacing-1)));
   for round: 1..<spacing {
-    result = sg_double_valid(result);
-    selected := smb_pick_generated(table,smb_index(extended,width,spacing,spacing-1-round));
-    result = sg_add_valid(result,selected);
+    result = sg32_double(result);
+    selected := sg32_from_point(smb_pick_generated(table,smb_index(extended,width,spacing,spacing-1-round)));
+    result = sg32_add(result,selected);
   }
-  return result;
+  return sg32_to_point(result);
 }
