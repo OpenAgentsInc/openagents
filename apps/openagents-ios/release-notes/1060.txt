@@ -1,0 +1,1 @@
+Voice replies no longer cut out at the start. The beginning of a reply coming out of the speaker could still sound like you interrupting, so the reply stopped for a moment and picked up again, sometimes repeating a word. Voice also connects to voice.openagents.com by default, and Foreman has a new voice.
