@@ -119,26 +119,26 @@ native request struct as an alternative.
 
 From the repository root:
 
-```sh
+```shell
 coax/book/examples/ch26_workflow/run.sh
 ```
 
 It builds and runs both debug and optimized native programs. Each prints:
 
-```text
+```jai
 file: 33 bytes, revision 2; result 42; stale ignored; failure and timeout checked
 ```
 
 To add the request mutation gate and native sanitizers:
 
-```sh
+```shell
 BOOK_MUTATE=1 BOOK_SANITIZE=1 coax/book/examples/ch26_workflow/run.sh
 ```
 
 To also check interoperability, set `PROTOC` to your pinned official
 `protoc` executable:
 
-```sh
+```shell
 PROTOC=/absolute/path/to/protoc BOOK_SANITIZE=1 coax/book/examples/ch26_workflow/run.sh
 ```
 
@@ -146,7 +146,7 @@ PROTOC=/absolute/path/to/protoc BOOK_SANITIZE=1 coax/book/examples/ch26_workflow
 written text fixture. It then encodes that fixture and compares the bytes
 with Coax's output. Only if both agree does the script print:
 
-```text
+```jai
 protoc: both directions agree
 ```
 

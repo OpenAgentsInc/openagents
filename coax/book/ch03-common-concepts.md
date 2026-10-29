@@ -45,7 +45,7 @@ main :: () {
 
 *Listing 3-1: Declaring a variable and assigning to it*
 
-```
+```shell
 $ coax run variables.coax
 Kiki starts with 3 lives
 Kiki falls in the pond and has 2 left
@@ -96,7 +96,7 @@ main :: () {
 
 *Listing 3-2: The four declaration forms*
 
-```
+```shell
 $ coax run declarations.coax
 Kiki has 3 lives and 300 points
 ready: false, title: ""
@@ -143,7 +143,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check lives.coax
 lives.coax:6:5: error[E0303]: 'lives' is already declared at line 4; Coax does not allow shadowing
       lives := lives - 1;
@@ -201,7 +201,7 @@ main :: () {
 
 *Listing 3-3: Top-level constants*
 
-```
+```shell
 $ coax run constants.coax
 Haunted House has 256 tiles; the answer is 42
 ```
@@ -241,7 +241,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check players.coax
 players.coax:4:7: error[E0206]: local constants, procedures and types are not supported by coax0 yet
     MAX :: 4;
@@ -313,7 +313,7 @@ main :: () {
 
 *Listing 3-4: The scalar types*
 
-```
+```shell
 $ coax run scalars.coax
 200 -40000 281474976710655 0.5 0.3333333333333333 0.33333334 65 true
 u8 f32 f64 f32 int bool
@@ -397,7 +397,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check fit.coax
 fit.coax:3:11: error[E0350]: 300 does not fit in u8
     y: u8 = 300;
@@ -440,7 +440,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check speed.coax
 speed.coax:6:22: error[E0309]: '*' needs two numbers of one type, found f32 and f64
     print("%\n", speed * boost);
@@ -461,7 +461,7 @@ but here the cleaner fix is to say what `boost` is when we declare it:
   print("%\n", speed * boost);
 ```
 
-```
+```shell
 $ coax run speed.coax
 9.0
 ```
@@ -506,7 +506,7 @@ main :: () {
 
 *Listing 3-5: Checked and truncating conversions*
 
-```
+```shell
 $ coax run conversions.coax
 1200 s32
 7 -7
@@ -573,7 +573,7 @@ main :: () {
 
 *Listing 3-6: Arithmetic and logic*
 
-```
+```shell
 $ coax run arithmetic.coax
 15 91.2 120 1.7608695652173911
 -3 -1
@@ -606,7 +606,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check between.coax
 between.coax:5:12: error[E0203]: comparisons cannot be chained
     if 1 < x < 10 { print("in\n"); }
@@ -638,7 +638,7 @@ main :: () {
 
 *Listing 3-7: Adding one to the largest `int`*
 
-```
+```shell
 $ coax run overflow.coax
 before: 9223372036854775807
 overflow.coax:6: integer overflow in '+'
@@ -649,7 +649,7 @@ the line and the operator. That applies to signed and unsigned types
 alike: a `u8` at 255 plus 1 stops, and so does a `u32` 3 minus 5. Now
 build it for release:
 
-```
+```shell
 $ coax run overflow.coax --release
 before: 9223372036854775807
 after: -9223372036854775808
@@ -699,7 +699,7 @@ main :: () {
 
 *Listing 3-8: Packing and counting bits*
 
-```
+```shell
 $ coax run bits.coax
 16744464 128 10
 32751 1099511627776
@@ -781,7 +781,7 @@ greet :: (name: string) {
 
 *Listing 3-9: Procedures with parameters and return values*
 
-```
+```shell
 $ coax run procedures.coax
 gcd(1071, 462) = 21
 7 is odd and 10 is even
@@ -843,7 +843,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check squares.coax
 squares.coax:3:1: error[E0338]: 'first_square_over' can reach its end without returning int
   first_square_over :: (limit: int) -> int {
@@ -880,7 +880,7 @@ main :: () {
 
 *Listing 3-10: A loop whose condition says when it ends*
 
-```
+```shell
 $ coax run squares.coax
 8 11 1
 ```
@@ -911,7 +911,7 @@ main :: () {
 
 *Listing 3-11: Math built-ins*
 
-```
+```shell
 $ coax run math.coax
 a 3.0-metre square has a 4.242640687119285-metre diagonal
 -3.0 4.0 1.4142135623730951
@@ -975,7 +975,7 @@ main :: () {
 
 *Listing 3-12: An `if` chain and `ifx`*
 
-```
+```shell
 $ coax run branches.coax
 freezing cold mild hot
 1 apple
@@ -1016,7 +1016,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check label.coax
 label.coax:5:11: error[E0204]: 'if' is reserved and not supported by coax0 yet
     word := if apples == 1 { "apple" } else { "apples" };
@@ -1076,7 +1076,7 @@ main :: () {
 
 *Listing 3-13: Two `while` loops*
 
-```
+```shell
 $ coax run collatz.coax
 below 10000, 6171 takes the most steps: 261
 ```
@@ -1124,7 +1124,7 @@ main :: () {
 
 *Listing 3-14: `for` over ranges and a string, with `break` and `continue`*
 
-```
+```shell
 $ coax run for.coax
 0 1 4 9 16 
 7 14 21 28 
@@ -1159,7 +1159,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check inclusive.coax
 inclusive.coax:4:11: error[E0216]: ranges are half-open: write '..<'
     for i: 1..10 { print("% ", i); }
@@ -1187,7 +1187,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check skip.coax
 skip.coax:5:19: error[E0359]: a loop variable cannot be assigned
       if i == 3 { i += 1; }
@@ -1228,7 +1228,7 @@ main :: () {
 
 *Listing 3-15: `print` formats*
 
-```
+```shell
 $ coax run print.coax
 Kiki has 3 lives
 100% sure
@@ -1245,7 +1245,7 @@ What makes `print` different from C's `printf` is that the compiler
 checks it. Give it the wrong number of values and you hear about it
 while compiling:
 
-```
+```jai
 pct.coax:2:20: error[E0320]: format has 2 '%' slots but print was given 3 values
   main :: () { print("100%% sure, % and %\n", 1, true, 3); }
                      ^
@@ -1288,7 +1288,7 @@ main :: () {
 
 *Listing 3-16: Easing procedures from the iOS home screen*
 
-```
+```shell
 $ coax run smooth.coax
 smooth(0, 1, 0.0) = 0.0
 smooth(0, 1, 0.25) = 0.15625

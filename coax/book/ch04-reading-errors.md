@@ -40,7 +40,7 @@ main :: () {
 `coax check` compiles a file without building or running it, which makes
 it the quickest way to see what the compiler thinks:
 
-```
+```shell
 $ coax check half.coax
 half.coax:3:1: error[E0338]: 'half' can reach its end without returning int
   half :: (n: int) -> int {
@@ -61,7 +61,7 @@ half.coax:10:12: error[E0325]: 'x' is int but is initialized with string
 
 Let's read the first one line by line.
 
-```
+```jai
 half.coax:3:1: error[E0338]: 'half' can reach its end without returning int
 ```
 
@@ -80,7 +80,7 @@ After the code is the message itself, one sentence that names the things
 involved: the procedure `'half'` and the type `int`. Good messages say
 "'x' is int but is initialized with string", not "type mismatch".
 
-```
+```jai
   half :: (n: int) -> int {
   ^
 ```
@@ -90,7 +90,7 @@ column it's talking about. Here the caret is at the start of the
 procedure, because the problem belongs to `half` as a whole: some path
 through it reaches the closing brace with no `return`.
 
-```
+```jai
   fix: add a return at the end
 ```
 
@@ -107,7 +107,7 @@ nothing at all and exits with status 0.
 
 Read the third error again:
 
-```
+```jai
 half.coax:9:19: error[E0320]: format has 1 '%' slot but print was given 0 values
     if name { print("%\n"); }
                     ^
@@ -134,13 +134,13 @@ about which old errors are still real.
 Every code has a longer explanation, which you can ask for with
 `coax explain`:
 
-```
+```shell
 $ coax explain E0338
 E0338: missing return
   Some path reaches the end of a procedure that must return a value.
 ```
 
-```
+```shell
 $ coax explain E0331
 E0331: condition must be bool
   if, while and ifx take a bool. Compare explicitly: x != 0.
@@ -150,7 +150,7 @@ The first line is the code's short name and the second is the rule
 behind it, often with the usual fix. Some explanations are more about
 the *why*:
 
-```
+```shell
 $ coax explain E0204
 E0204: reserved word not supported yet
   The word is reserved for a planned feature (union, switch, using, try...). coax0 refuses it rather than guessing what it means.
@@ -158,7 +158,7 @@ E0204: reserved word not supported yet
 
 Codes are case-sensitive, and an unknown code says so:
 
-```
+```shell
 $ coax explain E9999
 coax: no error code 'E9999'
 ```
@@ -196,7 +196,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check stages.coax
 stages.coax:3:10: error[E0108]: unexpected character '$'
     x := 1 $ 2;
@@ -255,7 +255,7 @@ plural :: (n: int) -> string {
 
 ### Round 1: a missing semicolon
 
-```
+```shell
 $ coax check pantry.coax
 pantry.coax:2:15: error[E0201]: expected ';' after the declaration, found 'eaten'
     apples := 12
@@ -275,7 +275,7 @@ We add the semicolon: `apples := 12;`.
 
 ### Round 2: a closed range
 
-```
+```shell
 $ coax check pantry.coax
 pantry.coax:6:16: error[E0216]: ranges are half-open: write '..<'
     for people: 0..4 {
@@ -292,7 +292,7 @@ the loop becomes `for people: 0..<4 {`.
 
 Now the program parses, and the checker reports everything at once:
 
-```
+```shell
 $ coax check pantry.coax
 pantry.coax:4:18: error[E0309]: '-' needs two numbers of one type, found int and u8
     left := apples - eaten;
@@ -341,7 +341,7 @@ We make both fixes, adding the import at the top and changing `eaten`.
 
 ### Round 4: what was hiding
 
-```
+```shell
 $ coax check pantry.coax
 pantry.coax:7:6: error[E0331]: condition must be bool, found int
     if left { print("% % left\n", plural(left)); }
@@ -382,7 +382,7 @@ in order:
 
 ### Round 5: it compiles, then it stops
 
-```
+```shell
 $ coax check pantry.coax
 $ coax run pantry.coax
 9 apples left
@@ -427,7 +427,7 @@ plural :: (n: int) -> string {
 
 *Listing 4-3: `pantry.coax`, fixed*
 
-```
+```shell
 $ coax run pantry.coax
 9 apples left
 shared by 1: 9 each
@@ -458,7 +458,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check types.coax
 types.coax:2:6: error[E0302]: unknown type 'flaot'
     x: flaot = 1.0;
@@ -473,7 +473,7 @@ types.coax:3:6: error[E0301]: type 'fixed32' is not supported by coax0 yet
 type that `coax0` doesn't implement, and the compiler says exactly that.
 The same goes for planned keywords:
 
-```
+```jai
 modes.coax:5:3: error[E0204]: 'switch' is reserved and not supported by coax0 yet
     switch mode {
     ^
@@ -508,7 +508,7 @@ capacity :: (rooms: int) -> int { return rooms * 8; }
 main :: () { print("%\n", SLOTS); }
 ```
 
-```
+```shell
 $ coax check slots.coax
 slots.coax:6:26: error[E0407]: division by zero during compile-time evaluation
     return capacity(rooms) / (rooms - 40);
@@ -533,7 +533,7 @@ Round 5 showed a runtime error. `coax0` turns the operations that C
 leaves undefined into clean stops, each with the Coax source file and
 line, printed to standard error:
 
-```
+```jai
 overflow.coax:6: integer overflow in '+'
 bounds_trap.coax:4: index out of bounds
 conversions.coax:12: cast out of range
@@ -565,7 +565,7 @@ including editors, test scripts and agents, want something they can
 parse. Add `--json` and each diagnostic comes out as one JSON object per
 line. Here's round 4 of the pantry program again:
 
-```
+```shell
 $ coax check pantry.coax --json
 {"file": "pantry.coax", "line": 7, "col": 6, "code": "E0331", "message": "condition must be bool, found int", "fix": "compare it: x != 0"}
 {"file": "pantry.coax", "line": 7, "col": 19, "code": "E0320", "message": "format has 2 '%' slots but print was given 1 value", "fix": "write '%%' for a literal percent sign"}

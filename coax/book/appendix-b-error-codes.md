@@ -9,7 +9,7 @@ compiler's own table from `coax/src/errors.cpp`; when that table changes,
 regenerate this appendix from it rather than editing the rows by hand. In
 a terminal, `coax explain CODE` prints one entry:
 
-```
+```shell
 $ coax explain E0303
 E0303: name already declared; no shadowing
   Every local name in a procedure is unique among the names in scope. Coax has no shadowing, so a name always means one thing.

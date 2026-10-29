@@ -23,7 +23,7 @@ enough; on Linux, any recent clang or gcc will do.
 
 From the root of the repository, run:
 
-```sh
+```shell
 $ coax/build.sh
 ```
 
@@ -39,7 +39,7 @@ compiler. [Chapter 20](ch20-inside-coax0.md) walks through all of this.
 Let's make sure it worked:
 
 <!-- coax-release:version-example:start -->
-```sh
+```shell
 $ coax/bin/coax version
 coax0 0.16.0
 ```
@@ -49,7 +49,7 @@ If you see a version, you're set. The rest of the book writes `coax` for
 `coax/bin/coax`. To type it that way yourself, add the folder to your
 path for this terminal session:
 
-```sh
+```shell
 $ export PATH="$PWD/coax/bin:$PATH"
 ```
 
@@ -77,7 +77,7 @@ main :: () {
 
 Save the file and run it:
 
-```sh
+```shell
 $ coax run hello.coax
 Hello, world!
 ```
@@ -159,7 +159,7 @@ main :: () {
 
 *Listing 1-2: Printing a variable with a `%` slot*
 
-```sh
+```shell
 $ coax run hello_name.coax
 Hello, Coax!
 ```
@@ -182,7 +182,7 @@ two slots and pass one value:
 
 we get an error when compiling, before the program ever runs:
 
-```
+```jai
 hello_name.coax:5:9: error[E0320]: format has 2 '%' slots but print was given 1 value
     print("Hello, % and %!\n", name);
           ^
@@ -210,7 +210,7 @@ your source.
 `coax build FILE` writes an ordinary executable next to the source file,
 named after it:
 
-```sh
+```shell
 $ coax build hello.coax
 $ ./hello
 Hello, world!
@@ -229,7 +229,7 @@ program into a single C file and then hands that file to a C compiler
 (`cc`, or whatever the `COAX_CC` environment variable names). `coax c`
 stops halfway and prints the C:
 
-```sh
+```shell
 $ coax c hello_name.coax
 ```
 
@@ -284,7 +284,7 @@ the file, checks the types, and runs any compile-time code (Chapter 9).
 It doesn't call the C compiler, so it's the fastest way to ask "is this
 program right?". When the answer is yes, it prints nothing:
 
-```sh
+```shell
 $ coax check hello.coax
 $
 ```
@@ -341,7 +341,7 @@ The `//` starts a comment, which runs to the end of the line. `big`'s
 type is inferred as `int`, a 64-bit signed integer, and `big += 1` is
 short for `big = big + 1`. Run it:
 
-```sh
+```shell
 $ coax run overflow.coax
 before: 9223372036854775807
 overflow.coax:6: integer overflow in '+'
@@ -361,7 +361,7 @@ one overflows. You can see the check in the generated C, where `big +=
 `coax_add_s64` adds and checks, and the `6` is the line number it
 reports. Now try a release build:
 
-```sh
+```shell
 $ coax run overflow.coax --release
 before: 9223372036854775807
 after: -9223372036854775808
@@ -382,7 +382,7 @@ covers them all.
 Let's make some mistakes on purpose. Delete the `#import` line from
 `hello.coax` and run it again:
 
-```sh
+```shell
 $ coax run hello.coax
 hello.coax:3:3: error[E0313]: print is in module Basic, which is not imported
     print("Hello, world!\n");
@@ -400,7 +400,7 @@ to do.
 Put the import back, and this time delete the semicolon after the
 `print` call:
 
-```
+```jai
 hello.coax:4:27: error[E0201]: expected ';' after the statement, found '}'
     print("Hello, world!\n")
                             ^
@@ -416,7 +416,7 @@ That makes them easy to search for, and it's what lets tools and agents
 react to an error without parsing its English. If an error's sentence
 isn't enough, ask the compiler to explain the code:
 
-```sh
+```shell
 $ coax explain E0313
 E0313: print needs Basic
   print is in module Basic. Add #import "Basic"; at the top of the file.

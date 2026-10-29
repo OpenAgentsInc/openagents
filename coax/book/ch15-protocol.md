@@ -93,7 +93,7 @@ main :: () {
 
 *Listing 15-2: Building a `HudAction` and printing its wire bytes*
 
-```
+```shell
 $ coax run ch15_start_button.coax
 error 0 , 23 bytes: 10 10 104 111 109 101 46 115 116 97 114 116 18 5 83 116 97 114 116 24 1 40 1
 ```
@@ -157,7 +157,7 @@ all.
 To read the generated declarations, or save them to a file, use
 `coax proto` from the repository root:
 
-```
+```shell
 $ coax proto proto/descriptors/ios-home.pb --prefix Home -o /tmp/home-codecs.coax
 $ wc -l /tmp/home-codecs.coax
     4769 /tmp/home-codecs.coax
@@ -167,7 +167,7 @@ That's every message in the profile, 27 of them, including the agent
 and HUD messages `hud.proto` imports, plus a shared wire core. The first
 line records where it came from:
 
-```
+```jai
 // coax-proto-v4 generator=coax0-coax-v1 compiler=coax0-0.10.0 importer_sha256=3a9a7e61... fingerprint_sha256=94142391... descriptor_sha256=9ced2888... runtime_sha256=b0ceb1e5... prefix=Home
 ```
 
@@ -249,7 +249,7 @@ main :: () {
 
 *Listing 15-3: Building a configuration, then reading it back*
 
-```
+```shell
 $ coax run ch15_home_config.coax
 half built: error 5
 complete: error 0, 33 bytes
@@ -330,7 +330,7 @@ does, and keep the final buffer alive until every reader is finished.
 Because the codecs are ordinary generated Coax, ordinary mistakes get
 ordinary errors. Misspell a field and the procedure doesn't exist:
 
-```
+```shell
 $ coax check ch15_home_config.coax
 ch15_home_config.coax:34:12: error[E0315]: procedure 'Home_HomeConfiguration_get_motes' is not declared
     motes := Home_HomeConfiguration_get_motes(read);
@@ -340,7 +340,7 @@ ch15_home_config.coax:34:12: error[E0315]: procedure 'Home_HomeConfiguration_get
 
 Give a field the wrong type and the schema's type shows up in the error:
 
-```
+```jai
 ch15_home_config.coax:19:52: error[E0317]: argument 2 of 'Home_HomeConfiguration_set_seed' is u32, given string
     config = Home_HomeConfiguration_set_seed(config, "seven", b[..]);
                                                      ^
@@ -350,7 +350,7 @@ ch15_home_config.coax:19:52: error[E0317]: argument 2 of 'Home_HomeConfiguration
 A wrong descriptor path is reported at the import, with the path the
 compiler actually tried:
 
-```
+```jai
 examples/ch15_home_config.coax:1:1: error[E0502]: cannot read proto descriptor: /Users/christopherdavid/work/openagents/proto/descriptors/ios-hom.pb
   #import_proto "../../../proto/descriptors/ios-hom.pb" as Home;
   ^
@@ -449,7 +449,7 @@ main :: () {
 
 *Listing 15-4: An admission policy over a generated codec*
 
-```
+```shell
 $ coax run ch15_admit.coax
 good bytes:     admitted
 cut short:      refused: malformed wire

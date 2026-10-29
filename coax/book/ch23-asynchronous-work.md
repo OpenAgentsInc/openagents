@@ -82,7 +82,7 @@ under a separately checked lifetime rule.
 
 Run it from the repository root:
 
-```sh
+```shell
 coax/bin/coax test coax/book/examples/ch23_requests.coax
 coax/bin/coax mutate coax/book/examples/ch23_requests.coax
 coax/bin/coax run coax/book/examples/ch23_requests.coax
@@ -91,7 +91,7 @@ coax/bin/coax run coax/book/examples/ch23_requests.coax
 The authored version has seven checks and kills all 27 mutants. Its output
 is:
 
-```text
+```jai
 old completion: epoch 2, phase 1
 current completion: epoch 2, result 42
 deadline: expired true

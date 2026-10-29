@@ -65,7 +65,7 @@ In many languages the inner `count := i` declares a new variable that
 hides the outer one, and the program runs. Maybe that was intended,
 maybe the author meant `count = i`. Coax refuses to guess:
 
-```sh
+```shell
 $ coax check shadow.coax
 shadow.coax:5:5: error[E0303]: 'count' is already declared at line 3; Coax does not allow shadowing
       count := i;
@@ -99,7 +99,7 @@ main :: () {
 
 First the human form:
 
-```sh
+```shell
 $ coax check two.coax
 two.coax:5:20: error[E0325]: 'tip' is s32 but is initialized with int
     tip: s32 = total / 5;
@@ -113,7 +113,7 @@ two.coax:6:20: error[E0306]: 'tipp' is not declared
 
 And with `--json`:
 
-```sh
+```shell
 $ coax check two.coax --json
 {"file": "two.coax", "line": 5, "col": 20, "code": "E0325", "message": "'tip' is s32 but is initialized with int", "fix": "convert it: cast(s32) x"}
 {"file": "two.coax", "line": 6, "col": 20, "code": "E0306", "message": "'tipp' is not declared", "fix": ""}
@@ -129,7 +129,7 @@ the human form, the JSON goes to standard error, and the exit status is
 That makes the output easy to feed into other tools. With `jq`, for
 example:
 
-```sh
+```shell
 $ coax check two.coax --json 2>&1 | jq -r '"\(.code) line \(.line): \(.fix)"'
 E0325 line 5: convert it: cast(s32) x
 E0306 line 6: 
@@ -146,7 +146,7 @@ reworded as the compiler improves; codes don't change meaning. When a
 code stops being used, it's retired rather than reused, and
 `coax explain` still knows it:
 
-```sh
+```shell
 $ coax explain E0102
 E0102: retired in 0.3.0
   Was: floating-point literals are not supported. Floats arrived in 0.3.0.
@@ -156,7 +156,7 @@ For a live code, `coax explain` gives a short title and the reasoning
 behind the rule, which is often what an agent needs to choose the right
 fix rather than the first one that compiles:
 
-```sh
+```shell
 $ coax explain E0325
 E0325: initializer has the wrong type
   The variable's declared type and its initializer differ. There are no implicit conversions.
@@ -168,7 +168,7 @@ in Appendix B, which is how that appendix is produced. An unknown code is
 an error with exit status 1, so a tool can tell "no such code" from an
 explanation:
 
-```sh
+```shell
 $ coax explain E9999
 coax: no error code 'E9999'
 ```
@@ -225,7 +225,7 @@ main :: () {
 The second line, `#authority;`, marks this as a file whose rules guard
 money. That changes what the compiler accepts:
 
-```sh
+```shell
 $ coax check spend.coax
 spend.coax:12:1: error[E0380]: 'left_today' is not exercised by any #test or #forall
   left_today :: (spent: int, limit: int) -> int {
@@ -246,7 +246,7 @@ double :: (x: int) -> int { return x * 2; }
 main :: () {}
 ```
 
-```sh
+```shell
 $ coax check sc.coax
 sc.coax:2:1: error[E0380]: 'double' was never executed by a check
   double :: (x: int) -> int { return x * 2; }
@@ -279,7 +279,7 @@ Filename: spend.coax
 
 *Listing 19-2: The spending rule with one test per procedure*
 
-```sh
+```shell
 $ coax run spend.coax
 send 250 after 800? false
 left after 800: 200
@@ -294,7 +294,7 @@ But two test cases can't say much about rules with this many edges. How
 would we know? We'd break the code on purpose and see whether the tests
 notice. That's what `coax mutate` does, one small change at a time:
 
-```sh
+```shell
 $ coax mutate spend.coax
 spend.coax:7:13: mutant survived: '<=' became '<'
     if amount <= 0 { return false; }
@@ -356,7 +356,7 @@ The ranges are chosen to cross every boundary: amounts from -2 through
 a zero amount, a payment that lands exactly on the limit and one that
 goes one sat past it.
 
-```sh
+```shell
 $ coax test spend.coax
 ok   #test a payment within the limit goes (1 case, 17 steps)
 ok   #test what is left (1 case, 16 steps)
@@ -383,7 +383,7 @@ Coax lets a reviewer say so in the source:
   if spent >= limit { return 0; } // mutant: equivalent (at spent == limit both branches return 0)
 ```
 
-```sh
+```shell
 $ coax mutate spend.coax
 10 mutants, 9 killed, 0 survived, 1 marked equivalent
 ```
@@ -416,7 +416,7 @@ file had only Listing 19-2's tests, the change would ship. But
 `#authority` runs every check on every compile, so this doesn't even get
 as far as a test run:
 
-```sh
+```shell
 $ coax c spend.coax
 spend.coax:26:3: error[E0406]: assertion failed
     #assert may_send(amount, spent, 10) == (amount > 0 && spent + amount <= 10);
@@ -434,7 +434,7 @@ its change was wrong or the rule should change (in which case the person
 reviewing it should see the `#forall` change too). In JSON, the check's
 name and the counterexample travel in the message:
 
-```sh
+```shell
 $ coax check spend.coax --json
 {"file": "spend.coax", "line": 26, "col": 3, "code": "E0406", "message": "assertion failed [#forall sends exactly what the rule allows]; counterexample: amount = 1, spent = 9", "fix": ""}
 ```
@@ -442,7 +442,7 @@ $ coax check spend.coax --json
 This is how the real wallet is built. `verse/wallet.coax` is
 `#authority`, and its checks are strong enough that every mutant dies:
 
-```sh
+```shell
 $ coax mutate verse/wallet.coax
 155 mutants, 155 killed, 0 survived
 ```

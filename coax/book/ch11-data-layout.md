@@ -70,7 +70,7 @@ main :: () {
 `size_of` takes a type and gives its size in bytes as a constant. It
 works on structs, enums and arrays alike. Run it:
 
-```
+```shell
 $ coax run padding.coax
 24 16
 96 64
@@ -81,7 +81,7 @@ show you. `coax layout` prints every struct's size, alignment, field
 offsets and padding, and every enum's width and values, without
 building anything:
 
-```
+```shell
 $ coax layout padding.coax
 Loose  size 24  align 8
        0     1  kind: Kind
@@ -150,7 +150,7 @@ Now suppose someone adds a field, say `owner: u64` for who sent the
 pulse. An 8-byte field after three 4-byte ones needs four bytes of
 padding before it, and the struct grows to 24 bytes. The build stops:
 
-```
+```shell
 $ coax run pulses.coax
 pulses.coax:10:24: error[E0406]: compile-time assertion failed
   #assert size_of(Pulse) == 12;
@@ -177,7 +177,7 @@ and nothing crashes until the numbers look strange. So the header that
 writes for the `Pulse` in `coax/examples/pulse/pulse.coax`, which has
 four 4-byte fields:
 
-```
+```shell
 $ coax header examples/pulse/pulse.coax
 ...
 COAX_LAYOUT(sizeof(coax_t_Pulse) == 16 && COAX_ALIGNOF(coax_t_Pulse) == 4, "layout of Pulse");
@@ -203,7 +203,7 @@ way to store a thousand pulses is an array of `Pulse`: each pulse's
 fields sit together, then the next pulse's, and so on. That's called an
 *array of structs*, or AoS.
 
-```
+```jai
 t speed edge | t speed edge | t speed edge | ...
 ```
 
@@ -211,7 +211,7 @@ The other way is to keep one array per field: all the `t` values, then
 all the `speed` values, then all the `edge` values. That's a *struct of
 arrays*, or SoA.
 
-```
+```jai
 t t t t ... | speed speed speed ... | edge edge edge ...
 ```
 
@@ -296,7 +296,7 @@ copies, so it copies each pulse into `p`, updates it and writes it back.
 directly. Since a view's elements belong to the caller's array (Chapter
 6), both loops change `main`'s arrays.
 
-```
+```shell
 $ coax run pulses.coax
 pulse 0: 0.25 0.25
 pulse 1: 0.5 0.5
@@ -359,7 +359,7 @@ for pulses_soa { it.t = finish(it.t + it.speed * dt); }
 If you try an `SOA` declaration today, the parser stops at the word it
 doesn't know:
 
-```
+```shell
 $ coax check soa.coax
 soa.coax:3:14: error[E0201]: expected ';' after the declaration, found '['
     pulses: SOA [8] Pulse;
@@ -412,7 +412,7 @@ mismatch is caught before the GPU reads garbage:
 #run print_layout(Pulse, target = .ios_arm64);
 ```
 
-```
+```jai
 Pulse  (ios_arm64)  size 12  align 4  fingerprint 6f1c…
   0  t      f32
   4  speed  f32

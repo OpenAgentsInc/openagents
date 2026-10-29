@@ -49,7 +49,7 @@ main :: () {
 
 the compiler refuses:
 
-```
+```shell
 $ coax check frames.coax
 frames.coax:3:1: error[E0212]: global variables are not supported by coax0 yet
   frames: int = 0;
@@ -62,7 +62,7 @@ Top-level declarations are constants, and constants can't change.
 Parameters are immutable. A procedure that tries to assign to one is
 told to copy it into a local:
 
-```
+```jai
 p.coax:1:22: error[E0344]: parameters cannot be assigned
   bump :: (x: int) { x += 1; }
                        ^
@@ -127,7 +127,7 @@ main :: () {
 
 *Listing 12-1: The same update in two orders, on separate and overlapping views*
 
-```
+```shell
 $ coax run overlap.coax
 separate, forward:  2.0 2.0 2.0
 separate, backward: 2.0 2.0 2.0
@@ -314,7 +314,7 @@ The sample data is chosen to make rounding visible: eight values of
 represent multiples of 64, so whether the small values are added to each
 other first or to the big total first changes the result.
 
-```
+```shell
 $ coax run workers.coax
 1 workers: by worker 800000000.0, by tree 800000128.0
 2 workers: by worker 800000128.0, by tree 800000128.0
@@ -337,7 +337,7 @@ matters.
 The `#forall` in the listing states that as a rule, using the checks
 from Chapter 10. It tries every worker count from 1 to 8:
 
-```
+```shell
 $ coax test workers.coax
 ok   #forall the tree gives one answer for any number of workers (8 cases, 18790 steps)
 1 check, 1 passed, 0 failed
@@ -346,7 +346,7 @@ ok   #forall the tree gives one answer for any number of workers (8 cases, 18790
 Change the assertion to use `by_worker` instead, and the check finds the
 problem at once:
 
-```
+```shell
 $ coax test workers.coax
 FAIL #forall the tree gives one answer for any number of workers
 workers.coax:53:3: error[E0406]: assertion failed

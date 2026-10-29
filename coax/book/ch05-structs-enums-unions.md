@@ -46,7 +46,7 @@ main :: () {
 
 *Listing 5-1: A ship as five loose variables*
 
-```
+```shell
 $ coax run ship.coax
 ship at (1.0, 0.5) with 100 health
 ```
@@ -100,7 +100,7 @@ main :: () {
 
 *Listing 5-2: A Vec2 and an Entity made from it*
 
-```
+```shell
 $ coax run entity.coax
 Entity.{pos = Vec2.{x = 0.0, y = 0.0}, vel = Vec2.{x = 2.0, y = 1.0}, health = 100}
 ship at (1.0, 0.5) with 75 health
@@ -146,7 +146,7 @@ exactly what you got wrong when you misspell one:
 ship := Entity.{vel = Vec2.{x = 2, y = 1}, helth = 50};
 ```
 
-```
+```shell
 $ coax check entity.coax
 entity.coax:4:46: error[E0351]: struct 'Entity' has no field 'helth'
     ship := Entity.{vel = Vec2.{x = 2, y = 1}, helth = 50};
@@ -165,7 +165,7 @@ If you come from C or Jai you may reach for a positional literal:
 v := Vec2.{2, 1};
 ```
 
-```
+```jai
 point.coax:4:14: error[E0208]: expected a field name, found integer
     v := Vec2.{2, 1};
                ^
@@ -219,7 +219,7 @@ main :: () {
 
 *Listing 5-3: Field defaults, copies, and opting out with `---`*
 
-```
+```shell
 $ coax run defaults.coax
 Entity.{pos = Vec2.{x = 0.0, y = 0.0}, vel = Vec2.{x = 0.0, y = -1.0}, health = 100, target = -1}
 Entity.{pos = Vec2.{x = 0.0, y = 0.0}, vel = Vec2.{x = 0.0, y = -1.0}, health = 40, target = -1}
@@ -322,7 +322,7 @@ main :: () {
 
 *Listing 5-4: Value in, value out, and changing many in place through a view*
 
-```
+```shell
 $ coax run step.coax
 Vec2.{x = 0.0, y = 0.0} -> Vec2.{x = 1.0, y = 0.5}
 0 Vec2.{x = 4.0, y = 2.0}
@@ -348,7 +348,7 @@ nudge :: (e: Entity) {
 }
 ```
 
-```
+```shell
 $ coax check nudge.coax
 nudge.coax:4:11: error[E0344]: parameters cannot be assigned
     e.pos.x += 1;
@@ -370,7 +370,7 @@ ship: Entity;
 moved(ship, 0.5);
 ```
 
-```
+```jai
 forgot.coax:10:3: error[E0323]: the result of 'moved' (Entity) is not used
     moved(ship, 0.5);
     ^
@@ -411,7 +411,7 @@ b := a;
 if a == b { }
 ```
 
-```
+```jai
 compare.coax:6:8: error[E0311]: cannot compare Entity values with '=='
     if a == b { }
          ^
@@ -444,7 +444,7 @@ Node :: struct {
 }
 ```
 
-```
+```jai
 node.coax:1:1: error[E0353]: struct 'Node' contains itself
   Node :: struct {
   ^
@@ -501,14 +501,14 @@ main :: () {
 
 *Listing 5-5: The same fields in two orders*
 
-```
+```shell
 $ coax run layout.coax
 32 16
 ```
 
 Half the size, just from the order. `coax layout` shows where the bytes go:
 
-```
+```shell
 $ coax layout layout.coax
 Spark  size 32  align 8
        0     1  alive: bool
@@ -586,7 +586,7 @@ main :: () {
 
 *Listing 5-6: Defining enums, converting them, and a bad conversion*
 
-```
+```shell
 $ coax run kinds.coax
 rock true true
 2 1
@@ -602,7 +602,7 @@ There's a lot in this listing, so let's take it a piece at a time.
 `u8`. Every enum in Coax names its underlying integer type. Leave it out and
 the compiler stops you:
 
-```
+```jai
 kind.coax:1:14: error[E0219]: an enum names its underlying integer type
   Kind :: enum { ship; rock; bullet; }
                ^
@@ -625,7 +625,7 @@ every value must fit the underlying type; both mistakes are `E0363`
 We name a member through its type, `Kind.rock`. Misspelling one lists the
 real members, the same way a misspelled field does:
 
-```
+```jai
 boat.coax:3:12: error[E0351]: enum 'Kind' has no member 'boat'
     k := Kind.boat;
              ^
@@ -641,14 +641,14 @@ Enums print by name, which is why the first line of output says `rock`, not
 You can compare two values of the same enum with `==` and `!=`, and that's
 all. There's no ordering and no arithmetic:
 
-```
+```jai
 order.coax:4:8: error[E0310]: '>' compares two numbers of one type, found Kind and Kind
     if k > Kind.ship { }
          ^
 1 error
 ```
 
-```
+```jai
 next.coax:3:18: error[E0309]: '+' needs two numbers of one type, found Kind and integer literal
     k := Kind.rock + 1;
                    ^
@@ -657,7 +657,7 @@ next.coax:3:18: error[E0309]: '+' needs two numbers of one type, found Kind and 
 
 And an enum doesn't quietly turn into its number:
 
-```
+```jai
 toint.coax:4:11: error[E0325]: 'n' is u8 but is initialized with Kind
     n: u8 = k;
             ^
@@ -720,7 +720,7 @@ Most code that holds an enum wants to do something different for each
 member. Many languages have a `switch` or `match` statement for this. Coax
 plans one, but `coax0` doesn't have it:
 
-```
+```jai
 sw.coax:4:3: error[E0204]: 'switch' is reserved and not supported by coax0 yet
     switch k {
     ^
@@ -763,7 +763,7 @@ main :: () {
 *Listing 5-7: Matching on an enum with `if` chains, and a check that covers
 every member*
 
-```
+```shell
 $ coax run match.coax
 ship is the player, radius 1.5
 rock is an asteroid, radius 4.0
@@ -776,7 +776,7 @@ The final `return 0;` looks unreachable: we've covered all three members.
 But the compiler doesn't reason about which members an `if` chain covers,
 so without it we get:
 
-```
+```jai
 radius.coax:2:1: error[E0338]: 'radius' can reach its end without returning f32
   radius :: (k: Kind) -> f32 {
   ^
@@ -797,7 +797,7 @@ for every member of `Kind`, while compiling, and `#assert radius(k) > 0`
 fails if any member falls through to the `return 0`. `coax run` doesn't run
 checks; `coax test` does:
 
-```
+```shell
 $ coax test match.coax
 ok   #forall k: Kind (3 cases, 54 steps)
 1 check, 1 passed, 0 failed
@@ -806,7 +806,7 @@ ok   #forall k: Kind (3 cases, 54 steps)
 Let's see it catch a mistake. Delete the `bullet` line from `radius` and
 test again:
 
-```
+```shell
 $ coax test match.coax
 FAIL #forall k: Kind
 match.coax:18:3: error[E0406]: assertion failed
@@ -857,7 +857,7 @@ and does damage. The classic representation is one bit per property in an
 integer. An enum is the wrong tool here, because `|` on two members gives a
 value that isn't a member:
 
-```
+```jai
 flagsbad.coax:3:21: error[E0370]: '|' needs two integers of one type, found Kind and Kind
     both := Kind.ship | Kind.rock;
                       ^
@@ -867,7 +867,7 @@ flagsbad.coax:3:21: error[E0370]: '|' needs two integers of one type, found Kind
 Coax's design has a separate form, `enum_flags`, for exactly this case, and
 `coax0` doesn't implement it yet:
 
-```
+```jai
 layers.coax:1:10: error[E0204]: 'enum_flags' is reserved and not supported by coax0 yet
   Layer :: enum_flags u32 { solid; visible; damaging; wraps; }
            ^
@@ -905,7 +905,7 @@ main :: () {
 
 *Listing 5-8: Flags as typed bit constants*
 
-```
+```shell
 $ coax run flags.coax
 11 6
 true false true
@@ -935,7 +935,7 @@ This is what a union is for, and Coax's design makes unions *tagged*: the
 value records which alternative it holds, and the language won't let you
 read the wrong one. `coax0` doesn't have unions yet:
 
-```
+```jai
 un.coax:2:10: error[E0204]: 'union' is reserved and not supported by coax0 yet
   Shape :: union { circle: f32; box: Vec2; }
            ^
@@ -997,7 +997,7 @@ main :: () {
 
 *Listing 5-9: A tagged shape built from an enum and a struct*
 
-```
+```shell
 $ coax run shapes.coax
 circle area 12.56636 contains (1.5, 0.25): true
 box area 4.0 contains (1.5, 0.25): true
@@ -1024,7 +1024,7 @@ and the bug would surface somewhere else as a collision that never happens.
 
 Let's look at the layout:
 
-```
+```shell
 $ coax layout shapes.coax
 ...
 Shape  size 16  align 4
@@ -1086,7 +1086,7 @@ Games often build a big struct out of smaller ones: a player has a body
 members reachable from the outer struct, so `p.pos.x` means
 `p.body.pos.x`. `coax0` refuses it:
 
-```
+```jai
 player.coax:4:3: error[E0204]: 'using' is reserved and not supported by coax0 yet
     using body: Body;
     ^

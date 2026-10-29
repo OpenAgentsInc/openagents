@@ -54,7 +54,7 @@ main :: () {
 
 *Listing 9-1: Experience needed for each level, computed when the program runs*
 
-```
+```shell
 $ coax run examples/ch09_levels1.coax
 level 1: 0 xp
 level 2: 125 xp
@@ -104,7 +104,7 @@ main :: () {
 
 *Listing 9-2: The top level's cost computed by the compiler*
 
-```
+```shell
 $ coax run examples/ch09_levels2.coax
 the top level, 10, needs 8025 xp
 level 4 needs 650 xp
@@ -124,7 +124,7 @@ depends on what.
 We can see the difference in the C that `coax c` generates. Here's the
 first line of `main`:
 
-```
+```shell
 $ coax c examples/ch09_levels2.coax
 ...
   { coax_put(COAX_STR("the top level, ", 15)); coax_print_int(INT64_C(10)); coax_put(COAX_STR(", needs ", 8)); coax_print_int(INT64_C(8025)); coax_put(COAX_STR(" xp\n", 4)); }
@@ -145,7 +145,7 @@ What if we leave `#run` out?
 MAX_XP :: xp_for_level(MAX_LEVEL);
 ```
 
-```
+```shell
 $ coax check levels.coax
 levels.coax:4:11: error[E0408]: a constant procedure call requires #run
   MAX_XP :: xp_for_level(MAX_LEVEL);
@@ -241,7 +241,7 @@ main :: () {
 
 *Listing 9-3: The experience table built while compiling, with facts checked by `#assert`*
 
-```
+```shell
 $ coax run examples/ch09_levels3.coax
 [0, 125, 325, 650, 1150, 1875, 2875, 4200, 5900, 8025]
 1234 xp is level 5
@@ -265,7 +265,7 @@ If it's false, there's no program. Suppose someone changes the formula
 and the top level no longer costs what the design document says. Change
 the second assertion to expect 8000 and build:
 
-```
+```shell
 $ coax check levels.coax
 levels.coax:8:33: error[E0406]: compile-time assertion failed
   #assert XP_TABLE[MAX_LEVEL - 1] == 8000;
@@ -278,7 +278,7 @@ The third assertion is the more interesting one: it calls a procedure,
 turns the `+` in the formula into a `-` by mistake, each level would
 cost *less* than the one before:
 
-```
+```shell
 $ coax check levels.coax
 levels.coax:8:9: error[E0406]: compile-time assertion failed
   #assert #run is_increasing(XP_TABLE);
@@ -289,7 +289,7 @@ levels.coax:8:9: error[E0406]: compile-time assertion failed
 An `#assert` that calls a procedure needs `#run` too, by the same rule
 as constants. Without it:
 
-```
+```shell
 $ coax check levels.coax
 levels.coax:9:9: error[E0408]: a constant procedure call requires #run
   #assert is_increasing(XP_TABLE);
@@ -372,7 +372,7 @@ main :: () {
 
 *Listing 9-4: A prime table and a struct computed from it, both while compiling*
 
-```
+```shell
 $ coax run examples/prime_table.coax
 [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131]
 Gaps.{widest = 14, after = 113, twins = 10}
@@ -428,7 +428,7 @@ main :: () {
 }
 ```
 
-```
+```jai
 16 16 [16] u8
 ```
 
@@ -456,7 +456,7 @@ transform_fields :: ()->[3]CoaxFieldInfo {
 The complete [layout-reflection example](examples/layout-reflection.coax)
 checks the table and prints it:
 
-```text
+```jai
 Transform: 12 bytes, alignment 4
 x f32 @0 (4 bytes)
 y f32 @4 (4 bytes)
@@ -512,7 +512,7 @@ xp_for_level :: (level: int) -> int {
 main :: () { print("%\n", MAX_XP); }
 ```
 
-```
+```shell
 $ coax check levels.coax
 levels.coax:10:3: error[E0404]: compile-time execution cannot perform output or host I/O
     print("level % needs % xp\n", level, total);
@@ -548,7 +548,7 @@ level_xp :: (level: int) -> int {
 }
 ```
 
-```
+```shell
 $ coax check levels.coax
 levels.coax:4:28: error[E0401]: compile-time expression cannot capture runtime value 'level'
     return #run xp_for_level(level);
@@ -577,7 +577,7 @@ ceiling :: (levels: int) -> int { return 100 / levels; }
 main :: () { print("%\n", clamp_level(3)); }
 ```
 
-```
+```shell
 $ coax check br.coax
 br.coax:8:46: error[E0407]: division by zero during compile-time evaluation
   ceiling :: (levels: int) -> int { return 100 / levels; }
@@ -607,7 +607,7 @@ evens :: () -> [] int {
 main :: () {}
 ```
 
-```
+```shell
 $ coax check ct_view.coax
 ct_view.coax:1:10: error[E0409]: a compile-time result cannot contain a view; views borrow memory that exists only while compiling
   EVENS :: #run evens();
@@ -634,7 +634,7 @@ last :: (n: int) -> int {
 main :: () {}
 ```
 
-```
+```shell
 $ coax check ct_bounds.coax
 ct_bounds.coax:5:15: error[E0410]: index 4 is out of bounds for 4 elements
     return table[n];           // should be n - 1
@@ -653,7 +653,7 @@ to_byte :: (n: int) -> u8 {
 main :: () {}
 ```
 
-```
+```shell
 $ coax check ct_cast.coax
 ct_cast.coax:4:10: error[E0411]: cast to u8 is out of range
     return cast(u8) n;
@@ -685,7 +685,7 @@ spin :: () -> int {
 main :: () {}
 ```
 
-```
+```shell
 $ coax check spin.coax
 spin.coax:5:21: error[E0400]: compile-time evaluation exceeded 100000 steps
     while true { i += 1; }
@@ -709,7 +709,7 @@ blank_map :: () -> [200000] u8 {
 main :: () {}
 ```
 
-```
+```shell
 $ coax check big.coax
 big.coax:4:3: error[E0400]: compile-time evaluation exceeded 100000 steps
     map: [200000] u8;          // 200,000 elements, one step each

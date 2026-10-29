@@ -55,7 +55,7 @@ n: int;
 print("% %\n", n, size_of(int));
 ```
 
-```
+```jai
 0 8
 ```
 
@@ -86,7 +86,7 @@ main :: () {
 }
 ```
 
-```
+```jai
 Pulse.{amount = 0, speed = 1.5} Pulse.{amount = 9, speed = 1.5}
 ```
 
@@ -128,7 +128,7 @@ The generated C contains only the result, a `static const` array of the
 eight values; `squares` isn't called at run time. A failed `#assert` stops
 the build:
 
-```
+```jai
 cpp2b.coax:10:20: error[E0406]: compile-time assertion failed
   #assert SQUARES[7] == 48;
                      ^
@@ -168,7 +168,7 @@ main :: () {
 }
 ```
 
-```
+```jai
 open
 working
 close 3
@@ -209,7 +209,7 @@ main :: () {
 }
 ```
 
-```
+```jai
 [1.0, 20.0, 30.0, 4.0]
 ```
 
@@ -233,7 +233,7 @@ in Coax:
   most with a warning. In Coax it doesn't compile. Here's the error from
   Chapter 20's program with an argument missing:
 
-```
+```jai
 tiny.coax:17:11: error[E0320]: format has 4 '%' slots but print was given 3 values
       print("area % pulse % % %\n", AREA, p.amount, p.hops);
             ^

@@ -45,7 +45,7 @@ main :: () {
 We keep the first element in `largest`, then walk the array and replace
 `largest` whenever we see something bigger.
 
-```
+```shell
 $ coax run examples/ch08_largest1.coax
 the largest score is 100
 ```
@@ -84,7 +84,7 @@ The parameter is a view, `[] int`, so the procedure works on an array of
 any length. `scores[..]` makes a view of the whole array
 ([Chapter 6](ch06-memory.md) covers views).
 
-```
+```shell
 $ coax run examples/ch08_largest2.coax
 the largest score is 100
 the shallowest depth is -3
@@ -152,7 +152,7 @@ main :: () {
 
 *Listing 8-3: Three procedures that differ only in their types*
 
-```
+```shell
 $ coax run examples/ch08_largest3.coax
 the largest score is 100
 the warmest reading is 23.75
@@ -164,7 +164,7 @@ the largest byte is 120
 The three bodies are character-for-character the same. Could we at
 least give them one name? Let's try renaming all three to `largest`:
 
-```
+```shell
 $ coax check largest.coax
 largest.coax:11:1: error[E0334]: procedure 'largest' is already declared at line 3
   largest :: (values: [] f64) -> f64 {
@@ -224,7 +224,7 @@ in Listing 8-4 would contain two procedures, one for `int` and one for
 
 Today, `coax0` stops at the dollar sign:
 
-```
+```shell
 $ coax check largest.coax
 largest.coax:3:24: error[E0108]: unexpected character '$'
   largest :: (values: [] $T) -> T {
@@ -267,7 +267,7 @@ main :: () {
 
 *Listing 8-5: Comparing structs with `>`*
 
-```
+```shell
 $ coax check points.coax
 points.coax:8:10: error[E0310]: '>' compares two numbers of one type, found Vec2 and Vec2
       if v > largest { largest = v; }
@@ -429,7 +429,7 @@ main :: () {}
 
 it reports:
 
-```
+```shell
 $ coax check bake.coax
 bake.coax:2:12: error[E0205]: expected an expression, found directive
   draw_64 :: #bake_arguments draw(limit = 64);
@@ -454,7 +454,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check money.coax
 money.coax:8:14: error[E0309]: '+' needs two numbers of one type, found Money and Money
     total := a + b;

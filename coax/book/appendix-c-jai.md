@@ -66,7 +66,7 @@ for i: 0..<scores.count {
 accident. If you write a Jai-style `..` range out of habit, `coax0` stops
 you instead of guessing which end you meant:
 
-```
+```shell
 $ coax check loops.coax
 loops.coax:5:13: error[E0216]: ranges are half-open: write '..<'
       for i: 0..scores.count {
@@ -95,7 +95,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check shadow.coax
 shadow.coax:6:9: error[E0303]: 'count' is already declared at line 4; Coax does not allow shadowing
           count := 10;
@@ -123,7 +123,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax run wrap.coax
 wrap.coax:5: integer overflow in '+'
 $ coax run wrap.coax --release
@@ -147,7 +147,7 @@ small: u8 = xx big;
 
 `xx` is reserved in Coax, and `coax0` refuses it:
 
-```
+```shell
 $ coax check xx.coax
 xx.coax:3:17: error[E0204]: 'xx' is reserved and not supported by coax0 yet
       small: u8 = xx big;
@@ -174,7 +174,7 @@ Color :: enum u8 { red; green; blue = 7; }
 
 Leaving it out is an error:
 
-```
+```shell
 $ coax check en.coax
 en.coax:1:15: error[E0219]: an enum names its underlying integer type
   Color :: enum { red; green; }

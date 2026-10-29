@@ -92,7 +92,7 @@ convention, and declare it in the generated header. `clamp01` has no
 We can still run the file the ordinary way, which is a good habit: test
 the logic in Coax before any C is involved.
 
-```sh
+```shell
 $ coax run ease.coax
 ease(0.0) = 0.0
 ease(0.25) = 0.103515625
@@ -106,7 +106,7 @@ ease(1.0) = 1.0
 Now let's ask for the header a C program would include. `coax header`
 prints it, or writes it to a file with `-o`:
 
-```sh
+```shell
 $ coax header ease.coax
 ```
 
@@ -178,7 +178,7 @@ Coax `f32` is C `float`. `clamp01` isn't mentioned at all.
 The header is half of what a C program needs. The other half is compiled
 code. `coax lib` compiles the file to an object file:
 
-```sh
+```shell
 $ coax lib ease.coax -o ease.o
 $ nm ease.o
 0000000000000064 t _coax_p_clamp01
@@ -223,7 +223,7 @@ int main(void) {
 
 Compile it with the object and run it:
 
-```sh
+```shell
 $ coax header ease.coax -o ease.h
 $ coax lib ease.coax -o ease.o
 $ cc -std=c11 -Wall -o ease_host ease_host.c ease.o
@@ -245,7 +245,7 @@ it:
 int main() { std::printf("from C++: %g\n", ease(0.25f)); }
 ```
 
-```sh
+```shell
 $ c++ -std=c++17 -Wall -o ease_hostpp ease_host.cpp ease.o
 $ ./ease_hostpp
 from C++: 0.103516
@@ -308,7 +308,7 @@ main :: () {
 
 *Listing 17-4: Exported procedures that take and return a struct, a view and an enum*
 
-```sh
+```shell
 $ coax run path.coax
 Point.{x = 1.5, y = 2.0, z = 0.0}
 length 17.0
@@ -388,7 +388,7 @@ int main(void) {
 
 *Listing 17-6: A C host passing structs, a view and an enum*
 
-```sh
+```shell
 $ cc -std=c11 -Wall -o path_host path_host.c path.o
 $ ./path_host
 mix: 1.5 2 0
@@ -406,7 +406,7 @@ Because field names cross unchanged, a field can't be named something C or
 C++ has reserved. The compiler stops you early, even in a file that never
 exports anything, because any struct might end up in a header:
 
-```sh
+```shell
 $ coax check kw.coax
 kw.coax:1:19: error[E0371]: field name 'class' is reserved in C or C++, where this struct also lives
   Thing :: struct { class: s32; }
@@ -441,7 +441,7 @@ int main(void) {
 }
 ```
 
-```sh
+```shell
 $ ./first_host
 2.5
 first.coax:1: index out of bounds
@@ -514,7 +514,7 @@ let next = path_next(COAX_Mode_orbit)
 print(next == COAX_Mode_dolly)
 ```
 
-```sh
+```shell
 $ swiftc -import-objc-header Bridge.h enum.swift path.o -o swift_enum
 enum.swift:1:22: error: cannot find 'COAX_Mode_orbit' in scope
 1 | let next = path_next(COAX_Mode_orbit)
@@ -556,7 +556,7 @@ func describeNext() {
 
 Add `describeNext()` to the end of `main.swift` and build both files:
 
-```sh
+```shell
 $ swiftc -import-objc-header Bridge.h main.swift path_modes.swift path.o ease.o -o swift_host
 $ ./swift_host
 mix: 1.5 2.0 0.0
@@ -618,7 +618,7 @@ meter_scan :: (h: int, count: int) -> bool #export_c {
 This file has no `main`, so `coax run` refuses it, and the error tells you
 what to do instead:
 
-```sh
+```shell
 $ coax run meter.coax
 meter.coax:1:1: error[E0336]: the program has no 'main'
   // The host owns the samples; Coax asks for them one at a time.
@@ -669,7 +669,7 @@ int main(void) {
 
 *Listing 17-10: A host that provides the `#foreign` procedures and calls the export*
 
-```sh
+```shell
 $ cc -std=c11 -Wall -o meter_host meter_host.c meter.o
 $ ./meter_host
 buffer 1: mean 0.438, peak 0.875
@@ -680,7 +680,7 @@ Suppose the host gets a type wrong and returns `float` from
 `host_sample`. Without the shared header, that would link and then
 quietly read garbage. With it:
 
-```sh
+```shell
 $ cc -std=c11 -c meter_bad.c
 meter_bad.c:8:7: error: conflicting types for 'host_sample'
     8 | float host_sample(int64_t h, int64_t index) { return buffers[h][index]; }
@@ -694,7 +694,7 @@ meter_bad.c:8:7: error: conflicting types for 'host_sample'
 `#foreign` is deliberately narrow for now. Parameters and results must be
 integers, floats or `bool`:
 
-```sh
+```shell
 $ coax check bad.coax
 bad.coax:1:14: error[E0376]: parameter 'xs' is [] f32; #foreign procedures pass integers, floats and bool
   host_sum :: (xs: [] f32) -> f32 #foreign;
@@ -710,7 +710,7 @@ buffer, and Coax only ever holds a number that names it.
 Compile-time code can't call the host either, because there's no host
 while the compiler runs (Chapter 9):
 
-```sh
+```shell
 $ coax check bad2.coax
 bad2.coax:2:11: error[E0404]: compile-time execution cannot call the host procedure 'host_now'
   T :: #run host_now();
@@ -768,7 +768,7 @@ orbit_eye :: (t: f32) -> Vec3 #export_c { return Vec3.{x = sin(t), y = 10, z = c
 Each one compiles on its own, and each header is fine on its own. Include
 both and C sees two definitions of `coax_t_Vec3`:
 
-```sh
+```shell
 $ cc -std=c11 -c both.c
 In file included from both.c:2:
 ./orbit.h:26:8: error: redefinition of 'coax_t_Vec3'
@@ -808,7 +808,7 @@ names unique across every header one native program includes.
 Procedure names have the same problem one level down. If two libraries
 both export `tick`, each header is fine, and the linker refuses:
 
-```sh
+```shell
 $ cc m.c a.o b.o -o m
 duplicate symbol '_tick' in:
     .../a.o
@@ -832,7 +832,7 @@ Now we can read the app's build. `apps/openagents-ios/generate.sh` runs as
 an Xcode build phase before anything is compiled. After making sure the
 compiler is built, its core is this loop:
 
-```sh
+```shell
 out=apps/openagents-ios/Generated
 for name in home player grid cast camera wallet haunt hud; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
@@ -968,7 +968,7 @@ main :: () {
 
 *Listing 17-11: The pulse kernel*
 
-```sh
+```shell
 $ coax run pulse_kernel.coax
 arrived 1
 Pulse.{position = 0.5, speed = 2.0, channel = 22, hops = 0}
@@ -982,7 +982,7 @@ and a plain C version of the same loop on another, then compares the two
 copies with `memcmp`. `run.sh` builds the header and a release object,
 compiles the host at `-O2`, and runs it:
 
-```sh
+```shell
 $ coax/examples/pulse/run.sh
 100000 pulses x 600 frames: Coax matches the C reference byte for byte
 arrived 61834, still moving 38166
@@ -1004,7 +1004,7 @@ The same procedures can also become Metal Shading Language, for the scalar
 math a shader calls. `coax metal` prints it. Take Listing 17-1 without its
 `main` (the Metal profile has no loops or printing):
 
-```sh
+```shell
 $ coax metal ease_only.coax
 ```
 
@@ -1024,7 +1024,7 @@ than left to Metal's precedence rules.
 
 Try it on the original file and the compiler says why it can't:
 
-```sh
+```shell
 $ coax metal ease.coax
 ease.coax:16:3: error[E0377]: a loop is outside the Metal scalar profile
     for i: 0..<5 {

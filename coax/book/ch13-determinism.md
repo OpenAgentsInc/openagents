@@ -78,7 +78,7 @@ main :: () {
 
 *Listing 13-1: Calls that announce themselves*
 
-```
+```shell
 $ coax run operand_order.coax
 a b c = 7
 first second = 12
@@ -139,7 +139,7 @@ that last 2⁻²⁴, so a multiply that rounds gives exactly 1 + 2⁻¹¹, which
 is `c`, and the residue is zero. A fused multiply-add keeps the full
 product until after the subtraction and gives 2⁻²⁴, about 6e-8.
 
-```
+```shell
 $ coax run ch13_residue.coax
 0.0
 0.0
@@ -169,7 +169,7 @@ int main(void) {
 
 On an Apple silicon Mac with Apple clang 21:
 
-```
+```shell
 $ cc -O2 ch13_residue.c -o residue && ./residue
 5.96046e-08
 $ cc -O2 -ffp-contract=off ch13_residue.c -o residue && ./residue
@@ -213,7 +213,7 @@ debug and a release build of the same Coax program behave differently.
 In [Chapter 1](ch01-getting-started.md) we added one to the largest
 `int`:
 
-```
+```shell
 $ coax run overflow.coax
 before: 9223372036854775807
 overflow.coax:6: integer overflow in '+'
@@ -250,7 +250,7 @@ main :: () {
 
 *Listing 13-5: Reading a variable that was never initialized*
 
-```
+```shell
 $ coax run garbage.coax
 4294967303
 $ coax run garbage.coax --release
@@ -262,7 +262,7 @@ disagree, and your machine may print other numbers again. At run time
 `coax0` doesn't detect this. At compile time it does: add the line
 `FOLDED :: #run total();` just below `total` and the compiler refuses.
 
-```
+```shell
 $ coax run garbage.coax
 garbage.coax:5:22: error[E0405]: compile-time read of an uninitialized variable
     for i: 0..<4 { sum += i; }
@@ -333,7 +333,7 @@ main :: () {
 
 *Listing 13-6: The same computations at compile time and at run time*
 
-```
+```shell
 $ coax run same_answer.coax
 1.1090176 1.1090176 true
 1513575512 true
@@ -477,7 +477,7 @@ have to be careful. If we wrote the obvious line,
 
 the compiler would stop us:
 
-```
+```shell
 $ coax run ch13_replay.coax
 ch13_replay.coax:45:21: error[E0407]: integer overflow in u32 during compile-time evaluation
     return (h ^ bits) * 16777619;
@@ -503,7 +503,7 @@ Then we run it four ways: twice at run time, once at compile time, and
 once with a different seed to make sure the fingerprint actually depends
 on the simulation.
 
-```
+```shell
 $ coax run ch13_replay.coax
 run 1:      1882684683
 run 2:      1882684683
@@ -523,7 +523,7 @@ at the bottom of Listing 13-7 records the golden fingerprint, and
 `coax test` runs it (see [Chapter 10](ch10-writing-checks.md) for the
 whole checking toolkit):
 
-```
+```shell
 $ coax test ch13_replay.coax
 ok   #test the recorded replay lands on its golden fingerprint (1 case, 70272 steps)
 1 check, 1 passed, 0 failed
@@ -533,7 +533,7 @@ Suppose someone changes the damping from `0.98` to `0.981`, or reorders
 the draws in `step`. The fingerprint moves and the test says so. To see
 what that looks like, change the golden number to `1882684684`:
 
-```
+```shell
 $ coax test ch13_replay.coax
 FAIL #test the recorded replay lands on its golden fingerprint
 ch13_replay.coax:81:3: error[E0406]: assertion failed
@@ -552,7 +552,7 @@ purpose.
 Why 120 frames and not 600? Try it. Change both `120`s in `AT_COMPILE`
 and `main` to `600`:
 
-```
+```shell
 $ coax run ch13_replay.coax
 ch13_replay.coax:35:54: error[E0400]: compile-time evaluation exceeded 100000 steps
       w.v[i] = w.v[i] * 0.98f32 + (d.value - 0.5f32) * 0.01f32;

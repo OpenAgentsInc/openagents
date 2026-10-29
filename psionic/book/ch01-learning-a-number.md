@@ -14,14 +14,14 @@ check every multiplication before building larger machinery.
 
 From the repository root, build Coax and run the example:
 
-```sh
+```shell
 coax/build.sh
 coax/bin/coax run psionic/examples/learn-number.coax
 ```
 
 The actual current output is:
 
-```text
+```jai
 model: prediction = weight * x
 before: weight = 0, loss = 10.0
 one update: weight = 1.25, loss = 1.40625
@@ -31,7 +31,7 @@ held-out: x = 3, prediction = 5.999999, target = 6
 
 To check the library, the book, and the native C boundary together:
 
-```sh
+```shell
 psionic/check.sh
 ```
 
@@ -43,7 +43,7 @@ verification and the C compiler for native tests and sanitizers.
 
 Our rule is:
 
-```text
+```jai
 prediction = weight * x
 ```
 
@@ -66,7 +66,7 @@ For one example, subtract the target from the prediction. Square that error
 so positive and negative mistakes both count. Average the squared errors
 across the examples. That average is the **mean squared error**, our loss:
 
-```text
+```jai
 error[i] = weight * x[i] - y[i]
 loss = sum(error[i] * error[i]) / sample_count
 ```
@@ -81,13 +81,13 @@ The derivative tells us how the loss changes when the weight changes a
 little. For `error = weight*x - y`, the derivative of `error²` with respect
 to weight is `2*x*error`. Average those terms to get the gradient:
 
-```text
+```jai
 gradient = sum(2 * x[i] * error[i]) / sample_count
 ```
 
 At weight zero:
 
-```text
+```jai
 gradient = (2*1*(-2) + 2*2*(-4)) / 2
          = (-4 - 16) / 2
          = -10
@@ -97,7 +97,7 @@ A negative gradient says increasing the weight reduces the loss locally.
 We subtract a small multiple of the gradient. That operation is called
 **gradient descent**. Our learning rate is fixed at `1/8`:
 
-```text
+```jai
 next_weight = weight - (1/8) * gradient
             = 0 - (1/8) * (-10)
             = 1.25
@@ -143,7 +143,7 @@ limits, unchanged storage on refusal, and failure during later updates.
 
 Run those authored checks directly:
 
-```sh
+```shell
 coax/bin/coax test psionic/lib/learn.coax
 coax/bin/coax mutate psionic/lib/learn.coax
 ```
@@ -278,7 +278,7 @@ generalization on real-world data.
 Substituting our two samples into the gradient gives `5*weight - 10`.
 In exact arithmetic, one update is:
 
-```text
+```jai
 next_weight = (3/8) * weight + 5/4
 next_error_from_2 = (3/8) * current_error_from_2
 weight_after_k = 2 - 2*(3/8)^k
@@ -308,14 +308,14 @@ and tolerances rather than their printed text.
 trace slot for one update. It receives `capacity`, confirms both output and
 scratch are unchanged, and prints:
 
-```text
+```jai
 refused: one update needs two trace values
 trace and scratch unchanged
 ```
 
 Run it with:
 
-```sh
+```shell
 coax/bin/coax run psionic/examples/refuse-capacity.coax
 ```
 

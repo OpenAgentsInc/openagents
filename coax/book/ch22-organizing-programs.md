@@ -17,7 +17,7 @@ planned. A source graph today has one declaration namespace.
 
 Run this example from the repository root:
 
-```sh
+```shell
 coax/bin/coax run coax/book/examples/ch22_sources.coax
 ```
 
@@ -110,7 +110,7 @@ review and trust boundary.
 
 ## Inspect the inputs and failures
 
-```sh
+```shell
 coax/bin/coax deps coax/book/examples/ch22_sources.coax
 ```
 

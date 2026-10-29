@@ -87,7 +87,7 @@ compute.
 
 Run the program first, to see that the check is not part of it:
 
-```
+```shell
 $ coax run split.coax
 person 0 gets 4 sats
 person 1 gets 3 sats
@@ -97,7 +97,7 @@ person 2 gets 3 sats
 `coax run` compiled `main` and everything it calls, and left the test
 out. To run the checks, use `coax test`:
 
-```
+```shell
 $ coax test split.coax
 ok   #test ten sats between three people (1 case, 64 steps)
 1 check, 1 passed, 0 failed
@@ -125,7 +125,7 @@ A check that has never failed hasn't shown you that it can. Let's break
 
 and run the checks again:
 
-```
+```shell
 $ coax test split.coax
 FAIL #test ten sats between three people
 split.coax:13:3: error[E0406]: assertion failed
@@ -142,7 +142,7 @@ assertion, so if several lines are wrong you'll see them one at a time.
 
 Now look at what `coax run` does with the broken code:
 
-```
+```shell
 $ coax run split.coax
 person 0 gets 4 sats
 person 1 gets 4 sats
@@ -168,7 +168,7 @@ is reach outside the compiler. If you try to print from a check:
 
 the check fails instead of printing:
 
-```
+```jai
 p.coax:3:17: error[E0404]: compile-time execution cannot perform output or host I/O
   #test "print" { print("hi\n"); #assert f(1) == 1; }
                   ^
@@ -209,7 +209,7 @@ every combination, 50 × 8 = 400 times.
 If you've written C, the loop inside may look right to you. The compiler
 disagrees:
 
-```
+```shell
 $ coax test split.coax
 split.coax:19:11: error[E0216]: ranges are half-open: write '..<'
     for i: 0..people-1 { sum += share(total, people, i); }
@@ -223,7 +223,7 @@ the fix. A check is type-checked like any other code, so a mistake like
 this is caught before anything runs. Write `0..<people` and run it
 again:
 
-```
+```shell
 $ coax test split.coax
 ok   #test ten sats between three people (1 case, 64 steps)
 FAIL #forall the shares add up
@@ -264,7 +264,7 @@ after the first one:
 
 Run the checks:
 
-```
+```shell
 $ coax test split.coax
 ok   #test ten sats between three people (1 case, 64 steps)
 FAIL #test nobody to split between
@@ -345,7 +345,7 @@ main :: () {
 
 *Listing 10-3: `share` with a guard, and checks for both sides of it*
 
-```
+```shell
 $ coax test split.coax
 ok   #test ten sats between three people (1 case, 112 steps)
 ok   #test nobody to split between (1 case, 22 steps)
@@ -378,7 +378,7 @@ What it can't be is a wide type. If you try to check the rule for every
 
 the compiler refuses:
 
-```
+```shell
 $ coax test split.coax
 split.coax:24:29: error[E0379]: #forall cannot enumerate int
   #forall "the shares add up" total: int, people: 1..<8 {
@@ -392,7 +392,7 @@ case it's given, so it only takes domains it can finish. The total
 across all bindings is capped too, at 2^24 (16,777,216) cases. Two `u16`
 bindings would be 2^32:
 
-```
+```jai
 FAIL #forall a: u16, b: u16
 big.coax:2:1: error[E0400]: #forall has more than 16777216 cases
   #forall a: u16, b: u16 { #assert f(a) == a && f(b) == b; }
@@ -455,7 +455,7 @@ to see how expensive each check is, or to make sure a check stays cheap.
 Here's the finished file (Listing 10-6, later in this chapter) with a
 budget of 60,000:
 
-```
+```shell
 $ coax test split.coax --steps 60000
 ok   #test ten sats between three people (1 case, 100 steps)
 ok   #test nobody to split between (1 case, 24 steps)
@@ -486,7 +486,7 @@ is refused.
 fails or the file doesn't compile. A file with nothing to check is an
 error too, so a typo in a CI script can't pass silently:
 
-```
+```shell
 $ coax test hello.coax
 coax: hello.coax has no #test or #forall to run
 ```
@@ -495,7 +495,7 @@ Like every `coax` command, `test` takes `--json`, which prints each
 diagnostic as one line of JSON for a tool or an agent to read. Here's the
 `<=` bug from earlier:
 
-```
+```shell
 $ coax test split.coax --json
 FAIL #test ten sats between three people
 {"file": "split.coax", "line": 13, "col": 3, "code": "E0406", "message": "assertion failed [#test ten sats between three people]", "fix": ""}
@@ -524,7 +524,7 @@ half :: (x: int) -> int { #assert x % 2 == 0; return x / 2; }
 main :: () { print("%\n", half(8)); print("%\n", half(7)); }
 ```
 
-```
+```shell
 $ coax run rt.coax
 4
 rt.coax:2: assertion failed
@@ -585,7 +585,7 @@ First, every compile of the file runs its checks, and a failing check is
 a failed compile. Here's the `<=` bug again, in a file marked
 `#authority`:
 
-```
+```shell
 $ coax run split.coax
 split.coax:14:3: error[E0406]: assertion failed
     #assert share(10, 3, 1) == 3;
@@ -607,7 +607,7 @@ leftover :: (total: int, people: int) -> int {
 }
 ```
 
-```
+```shell
 $ coax run split.coax
 split.coax:16:1: error[E0380]: 'leftover' is not exercised by any #test or #forall
   leftover :: (total: int, people: int) -> int {
@@ -666,7 +666,7 @@ against each one. If some check fails, the mutant is *killed*: the checks
 noticed. If every check still passes, the mutant *survived*, and you've
 found a change to the code that your checks can't see.
 
-```
+```shell
 $ coax mutate split.coax
 split.coax:7:8: mutant survived: '<' became '<='
     if i < total % people { return base + 1; }
@@ -699,7 +699,7 @@ check used, and running out counts as a kill.
 To kill a survivor, write the check that would have caught it. Restore
 the two assertions for persons 1 and 2 (that's Listing 10-1 again):
 
-```
+```shell
 $ coax mutate split.coax
 6 mutants, 6 killed, 0 survived
 ```
@@ -710,7 +710,7 @@ Now let's mutate the full file: Listing 10-3 plus the fairness rule of
 Listing 10-4, with `#authority` at the top. That's 5 checks and over 900
 cases. Surely nothing survives?
 
-```
+```shell
 $ coax mutate split.coax
 split.coax:9:26: mutant survived: '<=' became '<'
     if total < 0 || people <= 0 || i < 0 || i >= people { return -1; }
@@ -732,7 +732,7 @@ observe the change:
   if total < 0 || people <= 0 || i < 0 || i >= people { return -1; } // mutant: equivalent
 ```
 
-```
+```shell
 $ coax mutate split.coax
 18 mutants, 17 killed, 0 survived, 1 marked equivalent
 ```
@@ -751,7 +751,7 @@ can delete it:
   if total < 0 || i < 0 || i >= people { return -1; }
 ```
 
-```
+```shell
 $ coax mutate split.coax
 15 mutants, 15 killed, 0 survived
 ```
@@ -819,7 +819,7 @@ main :: () {
 *Listing 10-6: The finished split, every check passing and every mutant
 killed*
 
-```
+```shell
 $ coax run split.coax
 person 0 gets 4 sats
 person 1 gets 3 sats
@@ -903,7 +903,7 @@ the start:
 `Event` has 8 values, so that's 8^4 = 4,096 histories, every one of
 them. The whole file runs in a few hundredths of a second:
 
-```
+```shell
 $ coax test verse/wallet.coax
 ok   #forall sats to msat (43 cases, 1188 steps)
 ok   #test sats to msat at the top (1 case, 54 steps)
@@ -929,7 +929,7 @@ floats within a tolerance, and its rules are about motion: "the ease only
 rises", "the dolly is smooth, above the ground, and comes in from
 behind". Mutating it shows that the checks leave a lot unpinned:
 
-```
+```shell
 $ coax mutate verse/camera.coax
 ...
 verse/camera.coax:116:89: mutant survived: '&&' became '||'

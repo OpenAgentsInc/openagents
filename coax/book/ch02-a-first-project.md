@@ -73,7 +73,7 @@ print a newline.
 
 Run it:
 
-```sh
+```shell
 $ coax run mandelbrot.coax
 ................................................................
 ................................................................
@@ -150,7 +150,7 @@ that the braces are required, even around a single statement.
 
 Let's run it:
 
-```sh
+```shell
 $ coax run mandelbrot.coax
 mandelbrot.coax:13:27: error[E0350]: a float literal cannot become int
       y := TOP - row * (TOP - BOTTOM) / HEIGHT;
@@ -196,7 +196,7 @@ Now everything in each expression is an `f64`, and the untyped
 constants happily become `f64` too. Notice that `y` and `x` are declared
 with `:=` and no type. Coax infers `f64` from the value. Run it again:
 
-```sh
+```shell
 $ coax run mandelbrot.coax
 ................................................................
 ................................................................
@@ -336,7 +336,7 @@ reads best.
 
 Run it:
 
-```sh
+```shell
 $ coax run mandelbrot.coax
 ................................................................
 ................................................................
@@ -407,7 +407,7 @@ one character long. So our first try is:
 
 This compiles fine. Let's run it:
 
-```sh
+```shell
 $ coax run mandelbrot.coax
            ........:::::::::::::::::----=----::::...............
           ......::::::::::::::::-----==+mandelbrot.coax:48: slice out of bounds
@@ -443,7 +443,7 @@ first and divide last; dividing first would round almost everything to
 zero. A point that never escapes gets `50 * 9 / 50`, which is 9, the
 `@` at the end of the palette. Run it:
 
-```sh
+```shell
 $ coax run mandelbrot.coax
                                                                 
                                         :.                      
@@ -500,7 +500,7 @@ thought might be to keep the slice we used before:
 
 But the compiler objects:
 
-```sh
+```shell
 $ coax run mandelbrot.coax
 mandelbrot.coax:49:26: error[E0327]: the target is u8, assigned string
         line[col] = PALETTE[i..<i + 1];
@@ -622,7 +622,7 @@ the width, and since we're looking more closely we allow 200 steps. We
 also print `bulb.center` with `%`: `print` knows how to show a whole
 struct, which is handy when you're debugging.
 
-```sh
+```shell
 $ coax run mandelbrot.coax
                                                                 
                                         :.                      
@@ -708,7 +708,7 @@ A `#test` block has a name and a body. `#assert` states something that
 must be true. The tests don't become part of the program. Instead, the
 command `coax test` runs them inside the compiler:
 
-```sh
+```shell
 $ coax test mandelbrot.coax
 ok   #test the origin never escapes (1 case, 2966 steps)
 ok   #test far points escape at once (1 case, 76 steps)
@@ -733,7 +733,7 @@ third step is step 2. The test was wrong, not the code: we were counting
 from 1 and the loop counts from 0. That's the most common bug there is,
 and a test caught it in seconds. Change the `3` to `2`:
 
-```sh
+```shell
 $ coax test mandelbrot.coax
 ok   #test the origin never escapes (1 case, 2966 steps)
 ok   #test far points escape at once (1 case, 76 steps)

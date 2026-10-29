@@ -54,7 +54,7 @@ with the iOS SDK, alongside the Swift. You can do the same thing by hand
 with Xcode's tools. Here's the camera's generated C, compiled for an
 iPhone and for the simulator:
 
-```sh
+```shell
 $ xcrun --sdk iphoneos clang -target arm64-apple-ios18.0 -std=c11 -c Generated/Camera.c -o cam-ios.o
 $ file cam-ios.o
 cam-ios.o: Mach-O 64-bit object arm64
@@ -84,7 +84,7 @@ symbolication workflow, every ABI case or a general supported-target matrix.
 The native app is the first target because it's where the speed is. The
 path from a touch to a pixel is short:
 
-```
+```jai
 UIKit (Swift) → Bridge.h → Coax libraries + host.c → Metal (Swift) → GPU
 ```
 
@@ -183,7 +183,7 @@ Clang can check a file for targets it can't link for. We already compiled
 the camera for the iPhone above. Here's the header against an Intel Mac,
 32-bit ARM Linux and WebAssembly, and then 32-bit x86 Linux:
 
-```sh
+```shell
 $ for t in x86_64-apple-macos11 armv7-unknown-linux-gnueabihf wasm32-unknown-unknown; do
 >   clang -target $t -ffreestanding -std=c11 -fsyntax-only -I Generated cam.c
 > done
@@ -232,7 +232,7 @@ The web build of the engine runs through WebAssembly, and that's the next
 target Coax is meant to prove. This bare-target experiment still illustrates
 why a host/runtime matters:
 
-```sh
+```shell
 $ clang --target=wasm32 -std=c11 -c path.c -o path.wasm.o
 path.c:13:10: fatal error: 'stdio.h' file not found
    13 | #include <stdio.h>

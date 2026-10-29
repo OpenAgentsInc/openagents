@@ -37,7 +37,7 @@ matters). `--keep-c` keeps the intermediate C file that `build` and
 `lib` normally delete. And the environment variable `COAX_CC` picks the
 C compiler; without it, `coax0` uses `cc`.
 
-```
+```shell
 $ coax build hello.coax --keep-c
 $ ls
 hello       hello.c     hello.coax  hello.dSYM
@@ -48,7 +48,7 @@ Hello, world!
 `build` and `lib` are thin. They write the generated C, then run one
 command, which you could type yourself:
 
-```
+```shell
 cc -std=c11 -w -O0 -g -o hello hello.c -lm
 ```
 
@@ -59,7 +59,7 @@ information macOS keeps beside a `-g` executable.
 If the C compiler fails on code `coax0` generated, that's always the
 compiler's bug, not yours, and it says so:
 
-```
+```shell
 $ COAX_CC=false coax build hello.coax
 coax: the C compiler failed on generated code (exit 1); this is a coax bug
 ```
@@ -109,7 +109,7 @@ The header it includes doesn't exist yet. The build script makes it:
 
 Filename: examples/lib/ch16_build.sh
 
-```sh
+```shell
 #!/usr/bin/env bash
 # Build ch14_glow.coax for both of its consumers, then run the C preview.
 set -euo pipefail
@@ -132,7 +132,7 @@ cat ch14_stage.metal >> "$out/Glow.metal"
 
 *Listing 16-2: Building one Coax file for C and for Metal*
 
-```
+```shell
 $ examples/lib/ch16_build.sh
 
 
@@ -205,7 +205,7 @@ anything else. Here it is in full:
 
 Filename: apps/openagents-ios/generate.sh
 
-```sh
+```shell
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -301,7 +301,7 @@ We can watch this happen with our glow library. Put `#authority;` on the
 first line of a copy of `ch14_glow.coax`, break its first test by
 changing `1.2f32` to `1.25f32`, and try to generate the library:
 
-```
+```shell
 $ coax c ch14_glow_auth.coax --library --header ch14_glow_auth.h > ch14_glow_auth.c
 ch14_glow_auth.coax:32:3: error[E0406]: assertion failed
     #assert glow_dot(0.0f32, 0.0f32, 1.0f32) == 1.25f32;
@@ -366,7 +366,7 @@ How long does all of this take? Here's the generate step on its own, the
 earlier six-library source set plus one Metal module, on an Apple M5 Max running macOS
 26.4, three runs:
 
-```
+```shell
 $ cat gen.sh
 for n in home player grid cast camera wallet; do
   coax/bin/coax c verse/$n.coax --library --header /tmp/$n.h > /tmp/$n.c

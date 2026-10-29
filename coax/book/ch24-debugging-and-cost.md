@@ -9,7 +9,7 @@ current compiler, then explains what to measure before calling code fast.
 Version 0.13.0 maps generated native code back to physical Coax files. Build
 this two-file example from the repository root:
 
-```sh
+```shell
 coax/bin/coax build coax/book/examples/ch24_debug/main.coax \
   -o /tmp/coax-debug --keep-c --source-map /tmp/coax-debug.map.json \
   --timings /tmp/coax-debug.timings.json
@@ -29,7 +29,7 @@ twice :: (value:int)->int {
 
 In LLDB, replace the checkout path with your own absolute path:
 
-```text
+```shell
 command script import /absolute/openagents/coax/tools/coax_lldb.py
 coax-map /tmp/coax-debug.map.json
 breakpoint set --file adjust.coax --line 3
@@ -80,7 +80,7 @@ Keep their stderr and exit status; an empty stdout is not success.
 
 From the repository root:
 
-```sh
+```shell
 BOOK_SANITIZE=1 coax/book/examples/ch26_workflow/run.sh
 ```
 
@@ -149,7 +149,7 @@ Separate at least four measurements:
 
 The driver can record its own phases without changing program stdout:
 
-```sh
+```shell
 coax/bin/coax build coax/book/examples/ch24_debug/main.coax \
   -o /tmp/coax-debug --timings /tmp/coax-debug.timings.json
 ```
@@ -195,7 +195,7 @@ against a pinned historical native evaluator, measures robots/body capsules
 and movement/collision, records allocation calls, and retains raw samples,
 compiler phases, peak compiler RSS and generated sizes. Run it with:
 
-```sh
+```shell
 python3 verse/benchmarks/run.py --output /tmp/coax-r0 --repeats 9
 python3 verse/benchmarks/run.py --output /tmp/coax-r0-asan --repeats 1 --sanitize
 ```

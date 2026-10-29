@@ -61,7 +61,7 @@ like `'0'` is just an integer (48), so `c - '0'` is the digit's value
 when `c` is a digit. We widen it to `int` and add it to ten times what
 we had so far. Run it:
 
-```
+```shell
 $ coax run examples/ch07_ports1.coax
 8080
 8490
@@ -84,7 +84,7 @@ kind of bad input and not another, and it took the whole program down
 over what is really a typo in a configuration file. Build the same
 program with `--release` and the picture gets worse:
 
-```
+```shell
 $ coax run examples/ch07_ports1.coax --release
 8080
 8490
@@ -127,7 +127,7 @@ main :: () {
 
 *Listing 7-2: Trapping on anything that isn't a digit*
 
-```
+```shell
 $ coax run examples/ch07_ports2.coax
 8080
 examples/ch07_ports2.coax:7: assertion failed
@@ -217,7 +217,7 @@ rather than hand back a truncated port.)
 In `main`, the caller looks at `p.error` before it looks at `p.value`.
 Run it:
 
-```
+```shell
 $ coax run examples/ch07_ports3.coax
 "8080": port 8080
 "80a0": not_a_digit
@@ -244,7 +244,7 @@ Port_Error :: enum u8 { empty = 1; not_a_digit; out_of_range; }
   print("%\n", p);
 ```
 
-```
+```jai
 Parsed_Port.{value = 80, error = Port_Error(0)}
 ```
 
@@ -266,7 +266,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check ports.coax
 ports.coax:24:3: error[E0323]: the result of 'parse_port' (Parsed_Port) is not used
     parse_port("8080");
@@ -377,7 +377,7 @@ that away.
 
 Here's the output:
 
-```
+```shell
 $ coax run examples/ch07_address.coax
 localhost:8080: host localhost, port 8080
 example.com:443: host example.com, port 443
@@ -447,7 +447,7 @@ main :: () {
 
 *Listing 7-5: Deferred statements run on every way out of a block*
 
-```
+```shell
 $ coax run examples/cleanup.coax
 open 0 1 2 3 close
 -> 20
@@ -492,7 +492,7 @@ main :: () {
 
 *Listing 7-6: `return` evaluates its value, then runs the defers*
 
-```
+```shell
 $ coax run examples/deferred_result.coax
 30
 ```
@@ -511,7 +511,7 @@ main :: () {
 }
 ```
 
-```
+```shell
 $ coax check defer_leave.coax
 defer_leave.coax:3:25: error[E0361]: a deferred statement cannot break out of its block
       defer { if i == 1 { break; } }
@@ -577,7 +577,7 @@ main :: () {
 
 *Listing 7-7: Indexing one past the end traps*
 
-```
+```shell
 $ coax run examples/bounds_trap.coax
 30
 examples/bounds_trap.coax:4: index out of bounds
@@ -707,7 +707,7 @@ and nothing stopped a caller from reading `a.port` without checking
 `a.error`. The spec plans dedicated syntax for both problems. None of it
 runs in `coax0` today; if you try, the compiler tells you so:
 
-```
+```shell
 $ coax check ports.coax
 ports.coax:25:10: error[E0204]: 'try' is reserved and not supported by coax0 yet
       p := try parse_port(text);

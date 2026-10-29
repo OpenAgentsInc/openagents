@@ -10,7 +10,7 @@ Start with [the book](book/README.md) and
 
 From the repository root:
 
-```sh
+```shell
 psionic/check.sh
 coax/bin/coax run psionic/examples/learn-number.coax
 ```

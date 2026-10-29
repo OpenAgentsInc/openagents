@@ -51,7 +51,7 @@ reads and writes it but never allocates or frees it.
 There is no fifth place. You can't allocate a block that outlives the
 procedure that asked for it, and there are no global variables:
 
-```
+```jai
 glob.coax:1:1: error[E0212]: global variables are not supported by coax0 yet
   frame_count: int = 0;
   ^
@@ -100,7 +100,7 @@ main :: () {
 
 *Listing 6-1: Fixed arrays are values with a length known while compiling*
 
-```
+```shell
 $ coax run arrays.coax
 [10, 20, 30, 40] has 4 elements, the first is 10
 scores [10, 20, 30, 40] copy [99, 20, 30, 40]
@@ -112,7 +112,7 @@ scores [10, 20, 30, 40] copy [99, 20, 30, 40]
 `[4] int.[10, 20, 30, 40]` is an array literal: the type first, then `.[`,
 then the elements. It has to give exactly as many elements as the type says:
 
-```
+```jai
 short.coax:2:13: error[E0358]: [5] int needs 5 elements, given 3
     scores := [5] int.[10, 20, 30];
               ^
@@ -129,7 +129,7 @@ inline: `size_of([SLOTS] u8)` is exactly 4, with no hidden header, and a
 is `N` itself. The length can be a literal, a constant like `SLOTS`, or
 arithmetic on them, but not a runtime value:
 
-```
+```jai
 size.coax:2:12: error[E0357]: an array length must be an integer known while checking: a literal, a constant, or arithmetic on them
     buffer: [n] u8;
              ^
@@ -147,7 +147,7 @@ are stored row after row.
 gives each one's index. The loop variable is a copy of the element and can't
 be assigned:
 
-```
+```jai
 loopvar.coax:3:21: error[E0359]: a loop variable cannot be assigned
     for s: scores { s *= 2; }
                       ^
@@ -175,7 +175,7 @@ keep the lockers from being torn down. If they are, the note still says
 
 In memory, a view is two words: a pointer to its first element and a count.
 
-```
+```jai
 a := [6] int.[1, 2, 3, 4, 5, 6];      middle := a[2..<5];
 
              a (48 bytes, in main's frame)
@@ -232,7 +232,7 @@ main :: () {
 
 *Listing 6-2: Views borrow an array's storage, and writes go through*
 
-```
+```shell
 $ coax run views.coax
 6 [3, 4, 5] 3
 21 12
@@ -284,7 +284,7 @@ total :: (scores: [5] int) -> int {
 }
 ```
 
-```
+```shell
 $ coax check total.coax
 total.coax:2:16: error[E0366]: a view needs an array variable it may write through, and this is a parameter
     all := scores[..];
@@ -297,7 +297,7 @@ Copy the parameter into a local (`mine := scores;`) and view that, or,
 better, have the procedure take a `[] int` in the first place. A view of a
 temporary, such as an array literal, is refused for the same reason:
 
-```
+```jai
 view_of_lit.coax:2:25: error[E0366]: a view needs an array variable it may write through, and this is a temporary
     v := [3] int.[1, 2, 3][..];
                           ^
@@ -309,7 +309,7 @@ A view parameter is itself immutable, so a procedure can't move its view to
 point somewhere else, though it can change the elements and slice it into a
 new local view:
 
-```
+```jai
 shift.coax:2:5: error[E0344]: parameters cannot be assigned
     v = v[1..<v.count];
       ^
@@ -324,7 +324,7 @@ Finally, a view can't leave the compiler. A `#run` result (Chapter 9) that
 contains one is refused, because it would point into memory that exists
 only while compiling:
 
-```
+```jai
 table.coax:3:10: error[E0409]: a compile-time result cannot contain a view; views borrow memory that exists only while compiling
   TABLE :: #run make();
            ^
@@ -337,7 +337,7 @@ Every index and every slice in Coax is checked against the length, in debug
 builds and in release builds. When the index is a constant, the check
 happens while compiling:
 
-```
+```jai
 lookup.coax:4:23: error[E0374]: index 5 is outside [5] int
     print("%\n", scores[5]);
                         ^
@@ -369,7 +369,7 @@ main :: () {
 
 *Listing 6-3: A slice that runs off the front of its view*
 
-```
+```shell
 $ coax run bounds.coax
 [40, 50]
 [10, 20, 30, 40, 50]
@@ -386,7 +386,7 @@ A slice is in bounds when `0 <= lo <= hi <= count`. An index `i` is in bounds
 when `0 <= i < count`, and a bad one stops the program with a similar
 message:
 
-```
+```shell
 $ coax run index.coax
 50
 index.coax:3: index out of bounds
@@ -423,7 +423,7 @@ main :: () {
 
 *Listing 6-4: Returning a view of a local is rejected with E0383.*
 
-```
+```shell
 $ coax check dangle.coax
 error[E0383]: returned borrow may refer to a local fixed array
   fix: return the fixed array value, or use caller-owned storage passed as a view
@@ -432,7 +432,7 @@ error[E0383]: returned borrow may refer to a local fixed array
 `squares` lives in `first_squares`'s stack frame. Without the diagnostic, the
 returned view would point into that frame, which is reused after the return:
 
-```
+```jai
  while first_squares runs          after it returns
 
  first_squares's frame             (free; the next call reuses it)
@@ -491,7 +491,7 @@ main :: () {
 
 *Listing 6-5: The caller owns the storage and passes a view to fill*
 
-```
+```shell
 $ coax run fill.coax
 true [0, 1, 4, 9, 16, 0, 0, 0]
 false [0, 0, 0]
@@ -556,7 +556,7 @@ main :: () {
 
 *Listing 6-6: Strings are byte views you can read but not write*
 
-```
+```shell
 $ coax run strings.coax
 7 99 ax u8
 Coaxial true
@@ -572,7 +572,7 @@ free, since it's stored in the view; there's no scan for a terminating zero.
 
 Strings are immutable:
 
-```
+```jai
 shout.coax:3:15: error[E0359]: strings are immutable
     greeting[0] = 'H';
                 ^
@@ -594,7 +594,7 @@ though the two strings point at different memory. It's the only aggregate
 
 Going the other way, a string isn't silently a `[] u8`:
 
-```
+```jai
 tostr.coax:3:14: error[E0325]: 'b' is [] u8 but is initialized with string
     b: [] u8 = name;
                ^
@@ -664,7 +664,7 @@ main :: () {
 
 *Listing 6-7: Decoding a header from bytes, one checked field at a time*
 
-```
+```shell
 $ coax run bytes.coax
 Header.{ok = true, count = 3, scale = 1.0}
 Header.{ok = false, count = 0, scale = 0.0}
@@ -714,7 +714,7 @@ allocator it came from. It grows with `array_add` and is released with
 share storage, just as two views do. `coax0` refuses the type and suggests
 what to do in the meantime:
 
-```
+```jai
 grow.coax:2:12: error[E0301]: dynamic arrays '[..] T' are not supported by coax0 yet
     pending: [..] int;
              ^
@@ -739,7 +739,7 @@ and `p.*` reads or writes through a pointer. A field access works through a
 pointer too, so `p.pos` means the same whether `p` is an `Entity` or a
 `*Entity`. None of this parses in `coax0`:
 
-```
+```jai
 ptr.coax:3:6: error[E0202]: expected a type, found '*'
     p: *int = *value;
        ^
@@ -796,7 +796,7 @@ Allocation will always be a visible call: `New`, `NewArray`, `array_add`,
 fields point at, and `destroy` releases only what its own contract says it
 owns. Today those names are simply undeclared:
 
-```
+```jai
 new.coax:2:13: error[E0315]: procedure 'NewArray' is not declared
     scores := NewArray(100, int);
               ^
@@ -828,7 +828,7 @@ whole subsystem under an arena, a tracking allocator or a different logger
 without changing any signature. It's the idea from Jai we're most confident
 about. `coax0` has no context at all:
 
-```
+```jai
 ctx.coax:2:3: error[E0204]: 'push_context' is reserved and not supported by coax0 yet
     push_context .{allocator = level_arena} { }
     ^

@@ -61,7 +61,7 @@ wallet already do. That's the argument for writing the core in Coax.
 
 Here's the shape we're building toward:
 
-```text
+```jai
 iOS app (Swift host)  ──WebSocket, one voice.v1alpha1.Frame per binary message──►  voice host (C host)
   mic (VoiceProcessingIO) → oa_voice_uplink (Coax) → Audio frames up                 Coax engine (same libs)
   speaker ← playback ← oa_voice_downlink (Coax) ← Audio frames down                  → Google STT / TTS (REST)
@@ -154,7 +154,7 @@ Filename: verse/voice-wire.coax
 You can see what that directive produces by asking the compiler for it
 directly. From the repository root:
 
-```sh
+```shell
 $ coax/bin/coax proto proto/descriptors/voice.pb --prefix V | wc -l
     3285
 $ coax/bin/coax proto proto/descriptors/voice.pb --prefix V | grep -c "^V_[A-Za-z_]* ::"
@@ -335,7 +335,7 @@ peaks at -20 dBFS, and its RMS sits 3 dB lower.
 
 Run it:
 
-```sh
+```shell
 $ coax run examples/ch27_meter.coax
 silence:        rms -120.0 dBFS, peak -120.0 dBFS, zcr 0.0
 300 Hz at 0.1:  rms -23.012287 dBFS, peak -20.002121 dBFS, zcr 0.03448276
@@ -438,7 +438,7 @@ result is a probability, and turning the level up never makes a frame
 *less* likely to be speech. It tries every whole-dB level from -120 to 0
 against every floor from -90 to -20:
 
-```sh
+```shell
 $ coax test examples/ch27_vad.coax
 ok   #forall a probability that rises with level (8591 cases, 2029012 steps)
 ok   #test voice, hiss and the floor (1 case, 469 steps)
@@ -587,7 +587,7 @@ frames, bit `i` meaning "frame `i` is speech", and keeps its own simple
 count of speech and silence runs to compare against. That's every possible
 12-frame history, not a sample of them.
 
-```sh
+```shell
 $ coax test examples/ch27_turns.coax
 ok   #forall starts and ends pair up (4096 cases, 3622267 steps)
 1 check, 1 passed, 0 failed
@@ -607,7 +607,7 @@ Suppose we forget to reset the run when an idle frame is silent, and write
 `if !speech { return o; }` instead. Save that as `ch27_turns_broken.coax`
 and run the checks:
 
-```sh
+```shell
 $ coax test ch27_turns_broken.coax
 FAIL #forall starts and ends pair up
 ch27_turns_broken.coax:59:27: error[E0406]: assertion failed
@@ -754,7 +754,7 @@ the client's epoch if it's ahead, bumps the floor's epoch, and reports
 `TurnEvent INTERRUPTED`. Here's that happening with the dev client, which
 talks over the reply with a second recording (`--barge`):
 
-```sh
+```shell
 $ build/voice-client --url ws://127.0.0.1:8899/ --barge fixtures/wait-stop.wav fixtures/hello-foreman.wav
 welcome session=s2-5d393b95 provider=local in=16000 out=24000 max_turn_ms=30000 free_ms_left=595160
 turn-start t1 at 560 ms of input (pre-roll 160 ms)
@@ -931,7 +931,7 @@ comments promised, and treats a NaN gain as "not sent": `x != x` is true
 only for NaN, so `clampf` turns NaN into the low bound and `clamp` drops
 the field entirely. Then `gate` refuses in a fixed order and reports why.
 
-```sh
+```shell
 $ coax run examples/ch27_gate.coax
 -6 dB: kept, gain now -6.0 dB
 +30 dB: kept, gain now 12.0 dB
@@ -1131,7 +1131,7 @@ wrapping. (A first version of this listing multiplied in `u64` without
 reducing, and both `coax run` and `coax test` stopped with "integer
 overflow in '*'". That's the trap doing its job.)
 
-```sh
+```shell
 $ coax run examples/ch27_jitter.coax
 push seq 0 epoch 1: kept
 push seq 2 epoch 1: kept
@@ -1258,7 +1258,7 @@ ones:
 It passes all 324 cases. It looks thorough. Let's ask `coax mutate`
 whether it is:
 
-```sh
+```shell
 $ coax mutate examples/ch27_floor.coax
 examples/ch27_floor.coax:17:11: mutant survived: the if condition was negated
     if !yes && g.holder == slot { g.holder = -1; }
@@ -1307,7 +1307,7 @@ nothing they do is visible. The fix is to check every three-step sequence:
 
 *Listing 27-16: The model check extended to three steps*
 
-```sh
+```shell
 $ coax test examples/ch27_floor.coax
 ok   #forall the floor matches its model (5832 cases, 5057816 steps)
 1 check, 1 passed, 0 failed
@@ -1331,7 +1331,7 @@ route target, and keeps the floor's media epoch. Its model check runs
 every three-step sequence of 19 operations, including bad slot numbers,
 on three slots: 6,859 cases. From the repository root:
 
-```sh
+```shell
 $ coax/bin/coax test verse/voice-floor.coax
 ok   #forall the floor matches its model (6859 cases, 7838207 steps)
 ok   #forall bad slots (20 cases, 4078 steps)
@@ -1376,7 +1376,7 @@ long way? Let's try the short way. Copy the file as
 `voice-meter-le.coax`, change that one line to `if used <= free { return
 0; }`, and mutate it:
 
-```sh
+```shell
 $ coax mutate voice-meter-le.coax
 ...
 voice-meter-le.coax:44:11: mutant survived: '<=' became '<'
@@ -1395,7 +1395,7 @@ with `used < free + 1`, the mutant `used <= free + 1` returns 0 at
 `free + 1`, where the real code returns 1, and a check is waiting there.
 The real file passes its gate:
 
-```sh
+```shell
 $ coax/bin/coax mutate verse/voice-meter.coax
 72 mutants, 72 killed, 0 survived
 ```
@@ -1412,7 +1412,7 @@ They include one hand-written file, `verse/platform/voice.h`, backed by
 Start with where the engine's state lives. Coax has no heap and no global
 variables:
 
-```sh
+```shell
 $ coax check globals.coax
 globals.coax:1:1: error[E0212]: global variables are not supported by coax0 yet
   engine_state: [4] s16;
@@ -1431,7 +1431,7 @@ direction. A view can come *into* an exported procedure, but `#foreign`
 imports pass only scalars. Here's what happens if we try to declare an
 Opus encoder that takes sample buffers:
 
-```sh
+```shell
 $ coax c opus.coax --library
 opus.coax:1:17: error[E0376]: parameter 'pcm' is [] s16; #foreign procedures pass integers, floats and bool
   opus_encode :: (pcm: [] s16, out: [] u8) -> int #foreign;
@@ -1565,7 +1565,7 @@ recording in real time through `oa_voice_uplink`, exactly as the phone
 does with its microphone. These commands run in `verse/voice-host/`
 after `./build.sh`:
 
-```sh
+```shell
 $ build/voice-host --listen 127.0.0.1:8899 --provider local --agent echo &
 $ build/voice-client --url ws://127.0.0.1:8899/ --out reply.wav fixtures/hello-foreman.wav
 welcome session=s1-a00724ec provider=local in=16000 out=24000 max_turn_ms=30000 free_ms_left=600000
@@ -1609,7 +1609,7 @@ passed its 7 checks and `coax mutate` killed all 74 mutants.
 With `--observe`, the host also sends the client a `FrameFeatures` for
 every frame its engine processed. The first few lines of that stream:
 
-```text
+```jai
 features up seq=0 rms=-120.0 peak=-120.0 speech=0.00 noise=-71.0 turn=1 play=1 speech_ms=0 silence_ms=0 zc=0.000
 features up seq=1 rms=-24.2 peak=-10.2 speech=1.00 noise=-71.0 turn=1 play=1 speech_ms=0 silence_ms=0 zc=0.125
 features up seq=2 rms=-16.6 peak=-6.7 speech=1.00 noise=-71.0 turn=1 play=1 speech_ms=0 silence_ms=0 zc=0.097
@@ -1715,7 +1715,7 @@ runs it once on its most expensive input, so `coax test --steps` reports
 and bounds its cost. The last five checks in `voice.coax` are exactly
 that:
 
-```sh
+```shell
 $ coax/bin/coax test verse/voice.coax --steps 20000000
 ...
 ok   #test worst case: uplink frame at 48 kHz (1 case, 2074649 steps)
@@ -1730,7 +1730,7 @@ A 48 kHz uplink frame, the most expensive because of resampling, costs
 about two million evaluator steps. If someone makes it more expensive, the
 count goes up, and a tight enough budget turns that into a failure:
 
-```sh
+```shell
 $ coax/bin/coax test verse/voice.coax --steps 2000000
 ...
 FAIL #test worst case: uplink frame at 48 kHz
@@ -1757,7 +1757,7 @@ then builds the four libraries and the C face with
 `protoc` is installed, it also decodes every frame the smoke test encoded,
 as a second implementation of the wire. Here's a full run:
 
-```sh
+```shell
 $ verse/test_voice.sh
 voice: 41 checks, 41 passed, 0 failed
 voice-wire: 7 checks, 7 passed, 0 failed
@@ -1815,7 +1815,7 @@ client and three recorded fixtures. Because the local provider is
 deterministic, these tests don't need a network and give the same answers
 every run. After a line reporting the build:
 
-```sh
+```shell
 $ verse/voice-host/test.sh --offline
 ...
 offline: --provider local --agent echo
@@ -1842,7 +1842,7 @@ Google access token: the real recognizer must hear "what are we building
 today" in `hello-foreman.wav`. Here's a live session run by hand, against
 a host started with `--provider google --agent echo`:
 
-```sh
+```shell
 $ build/voice-client --url ws://127.0.0.1:8898/ --expect "what are we building today" --out live.wav fixtures/hello-foreman.wav
 welcome session=s1-915c8fa3 provider=google in=16000 out=24000 max_turn_ms=30000 free_ms_left=600000
 turn-start t1 at 560 ms of input (pre-roll 160 ms)

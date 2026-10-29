@@ -113,7 +113,7 @@ with both `-O0` and `-O2`, keeping arithmetic policy fixed.
 From the repository root, with an already-built compiler and a new output
 directory:
 
-```sh
+```shell
 python3 coax/tools/differential.py --seed 20261028 --cases 16 --output /tmp/coax-differential-run
 ```
 
