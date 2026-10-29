@@ -26,7 +26,7 @@ PB_String :: struct { value:string; present:bool; error:u32; }
 // Count-only admission makes the native span boundary explicit and testable.
 PB_small :: (count:int)->bool {return count>=0 && count<=PB_MAX_BYTES;}
 // Check metadata before any generated decoder accesses its borrowed view.
-PB_message_admitted :: (depth:int,count:int)->bool {return depth<=PB_MAX_DEPTH && PB_small(count);}
+PB_message_admitted :: (depth:int,count:int)->bool {return depth>=0 && depth<=PB_MAX_DEPTH && PB_small(count);}
 PB_root_depth :: ()->int {return 0;}
 PB_default_fields :: ()->int {return PB_MAX_FIELDS;}
 PB_require_fields :: ()->bool {return true;}
@@ -171,7 +171,7 @@ PB_copy_checked :: (wire:[] u8,out:[] u8,overlap:bool)->PB_View {
 
 #test "message admission preserves depth and foreign view bounds" {
   #assert PB_message_admitted(0,0) && PB_message_admitted(64,1048576);
-  #assert !PB_message_admitted(65,0) && !PB_message_admitted(0,-1) && !PB_message_admitted(0,1048577);
+  #assert !PB_message_admitted(-1,0) && !PB_message_admitted(65,0) && !PB_message_admitted(0,-1) && !PB_message_admitted(0,1048577);
   #assert PB_root_depth()==0 && PB_default_fields()==524288 && PB_require_fields() && !PB_partial_fields();
 }
 

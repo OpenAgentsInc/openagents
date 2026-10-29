@@ -78,6 +78,6 @@
 }
 #test "generated protobuf message admission and default budget" {
  #assert N__pb_message_admitted(0,0) && N__pb_message_admitted(64,1048576);
- #assert !N__pb_message_admitted(65,0) && !N__pb_message_admitted(0,-1) && !N__pb_message_admitted(0,1048577);
+ #assert !N__pb_message_admitted(-1,0) && !N__pb_message_admitted(65,0) && !N__pb_message_admitted(0,-1) && !N__pb_message_admitted(0,1048577);
  #assert N__pb_root_depth()==0 && N__pb_default_fields()==524288 && N__pb_require_fields() && !N__pb_partial_fields();
 }

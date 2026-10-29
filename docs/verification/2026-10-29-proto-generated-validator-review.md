@@ -68,3 +68,34 @@ retained log SHA-256 is
 `e1ac49c6b6e9992dd69cd79c793a2e209de3c3609e1de77048342c802435bb8f`.
 The event projection gate remains open, so this evidence does not close the
 task.
+
+Independent read-only review of the experimental event and FI projections
+found no concrete authority bypass under live, stable, physically valid borrowed
+input. It did identify that `Event.kind` is a `uint32` in the descriptor even
+though the Nostr range is documented as 0..65535: generated validation alone
+does not enforce that comment. The event projection separately checks the
+original parser's bound and equality. The event parser also imposes its own
+JSON and tag limits, including 2,000 tags and 16 values per tag. The FI
+projection uses 4,096-byte decoded headers, 65,536-byte decoded payloads, and a
+1..16-entry audience profile; the generic generated audience-list validator
+does not itself impose that audience count. These are local profile limits,
+not protocol-wide guarantees. Tests use a 2 MiB Wasm stack and optional simulator
+CLI fixtures; they do not establish iOS app-thread stack limits or pointer
+provenance. The reviewed FI projection was
+`fa887723059edbb2d4632f0b14aecbefab83a5a276b3638ba04d7fee71bce0fd` and
+the event projection was
+`46f0fe0fe568431914f280e2d705e0ef5e4132bd61791e7dadd7932910219d70`.
+
+The shared message admission now rejects negative depth as well as depths above
+64. The generated public decoders already start at zero; the change also makes
+direct internal checker calls fail closed. The changed wire core passed all
+14 Coax checks and 404/404 full-reference mutations, with no skipped checks.
+A fresh Python-free bootstrap, event and FI generated-check tests, 21 native
+importer tests (one optional oracle skipped there), 18 independent protoc policy
+cases in checked/release native and Wasm, and the iOS Debug simulator build
+passed. Bounds are still count checks on borrowed spans, not proof of native
+pointer provenance. The complete event projection mutation gate remains open.
+The reviewed changed wire source SHA-256 is
+`bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a`.
+An independent source review also checked the generated-prefix boundary tests;
+that review did not rerun tests or approve arbitrary schemas.
