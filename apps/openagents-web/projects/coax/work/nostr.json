@@ -3024,7 +3024,8 @@
       "blocks": [
         "secp-mult-base",
         "secp-mult-const",
-        "crypto-secret-codegen"
+        "crypto-secret-codegen",
+        "crypto-secret-public-loop-summaries"
       ]
     },
     {
@@ -3144,6 +3145,34 @@
       ],
       "blocked_by": [
         "coax-run-resource-inputs"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "crypto-secret-public-loop-summaries",
+      "parent": "m-assurance",
+      "title": "Analyze bounded public-loop crypto closures within finite audit work",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "coax",
+        "crypto"
+      ],
+      "body": "Extend the aggregate source auditor so actual fixed-work cryptographic closures with nested public loops can be analyzed within deterministic bounded resources. The variable-base candidate currently reproduces a refusal with `python3 tools/coax-nostr/secret-check/aggregate.py coax/lib/crypto/secp_mult_const.coax --entry smc_multiply --report /tmp/variable-source.json`: the existing visit limit is reached before the closure is analyzed. Reproduce against a source-hashed candidate or committed fixture; preserve exact typed source and origin tracking. Sound public-loop and direct-callee summaries may be reused only when their effects, regions and dependency masks are conservatively proven; otherwise refuse. Do not raise or waive existing audit limits to turn the refusal into acceptance. Existing secret-derived authored guard obligations stay unresolved unless discharged by their separate review; this task cannot authorize production paths, generated objects or JIT behavior.",
+      "files": [
+        "tools/coax-nostr/secret-check/",
+        "coax/lib/crypto/secret-flow.coax",
+        "coax/tests/nostr/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "The pinned real variable-base closure or an exact source-hashed candidate is analyzed within the existing bounded audit profile, with all reachable public-loop and callee effects accounted for and every authored guard obligation reported; an unproved guard keeps full admission false",
+        "Independent negative fixtures and mutations reject secret loop bounds, branch conditions and indices, aggregate or alias laundering, transitive variable-time calls, changed callees, unsound summary reuse and unknown effects; exact source/type identity is retained",
+        "Document and test finite work and storage accounting, recursion and unsupported-flow refusals, fallback behavior and summary invalidation; no existing resource limit is increased or waived",
+        "Affected authority checks and policy mutation pass with zero survivors; recorded source analysis does not claim target-code constant time, guard discharge, JIT safety, erasure or production-secret approval"
+      ],
+      "blocked_by": [
+        "crypto-secret-aggregate-closure"
       ],
       "blocks": []
     }

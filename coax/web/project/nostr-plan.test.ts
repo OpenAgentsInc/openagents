@@ -79,6 +79,20 @@ test("real fixed-base compile-time generation waits for bounded work inputs", ()
   expect(tasks.get("coax-run-resource-inputs").body).toContain("live aggregate-storage budget")
 })
 
+test("public-loop audit scalability preserves the existing secret and resource gates", () => {
+  const task = tasks.get("crypto-secret-public-loop-summaries")
+  expect(task).toBeDefined()
+  expect(reaches(task.slug, "crypto-secret-aggregate-closure")).toBe(true)
+  expect(task.body).toContain("smc_multiply")
+  expect(task.body).toContain("Do not raise or waive existing audit limits")
+  expect(task.body).toContain("cannot authorize production paths")
+  expect(task.acceptance.join(" ")).toContain("unproved guard keeps full admission false")
+  expect(tasks.get("secp-mult-const").acceptance).toEqual([
+    "100000 random scalar/peer pairs and exceptional points match",
+    "Secret branches/indices are forbidden by the documented source scope; timing probe records methodology without claiming proof",
+  ])
+})
+
 test("aggregate traversal work is tracked separately from existing step semantics", () => {
   expect(reaches("coax-run-copy-work", "coax-run-resource-inputs")).toBe(true)
   expect(tasks.get("coax-run-copy-work").body).toContain("does not charge")
