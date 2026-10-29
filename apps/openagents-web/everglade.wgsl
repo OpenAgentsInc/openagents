@@ -814,7 +814,7 @@ fn water_halves(i: WaterOut) -> WaterShade {
 }
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -880,16 +880,16 @@ fn verse_style_rim(l_ndv: f32, l_ndl: f32, l_start: f32, l_full: f32, l_strength
   return ((l_edge * (0.349999994 + (0.649999976 * coax_p_st_sat((l_ndl + 0.300000012))))) * l_strength);
 }
 fn verse_style_haze(l_d: f32, l_y: f32, l_base_y: f32, l_start: f32, l_density: f32, l_cap: f32, l_falloff: f32) -> f32 {
-  var coax_t10: f32;
-  var coax_t11: f32;
   var coax_t12: f32;
   var coax_t13: f32;
-  coax_t10 = (-l_density);
-  coax_t11 = coax_p_st_max((l_d - l_start), 0.0);
-  var l_dist: f32 = (1.0 - exp((coax_t10 * coax_t11)));
-  coax_t12 = (-coax_p_st_max((l_y - l_base_y), 0.0));
-  coax_t13 = coax_p_st_max(l_falloff, 0.00100000005);
-  var l_height: f32 = exp((coax_t12 / coax_t13));
+  var coax_t14: f32;
+  var coax_t15: f32;
+  coax_t12 = (-l_density);
+  coax_t13 = coax_p_st_max((l_d - l_start), 0.0);
+  var l_dist: f32 = (1.0 - exp((coax_t12 * coax_t13)));
+  coax_t14 = (-coax_p_st_max((l_y - l_base_y), 0.0));
+  coax_t15 = coax_p_st_max(l_falloff, 0.00100000005);
+  var l_height: f32 = exp((coax_t14 / coax_t15));
   return coax_p_st_min((l_dist * (1.0 + ((l_height - 1.0) * 0.600000024))), l_cap);
 }
 fn verse_style_haze_glow(l_vdl: f32) -> f32 {
@@ -899,11 +899,11 @@ fn verse_style_haze_glow(l_vdl: f32) -> f32 {
   return ((l_a4 * l_a4) * 0.449999988);
 }
 fn verse_style_fog(l_c: f32, l_haze_c: f32, l_f: f32) -> f32 {
-  var coax_t14: f32;
-  var coax_t15: f32;
-  coax_t14 = (l_haze_c - l_c);
-  coax_t15 = coax_p_st_sat(l_f);
-  return (l_c + (coax_t14 * coax_t15));
+  var coax_t16: f32;
+  var coax_t17: f32;
+  coax_t16 = (l_haze_c - l_c);
+  coax_t17 = coax_p_st_sat(l_f);
+  return (l_c + (coax_t16 * coax_t17));
 }
 fn verse_style_sky_t(l_up: f32) -> f32 {
   return pow(coax_p_st_max(l_up, 9.99999997e-07), 0.550000012);
@@ -912,11 +912,11 @@ fn verse_style_sky_band(l_up: f32, l_lift: f32) -> f32 {
   return (l_lift * (1.0 - coax_p_st_sat((abs(l_up) / 0.104500003))));
 }
 fn verse_style_halo(l_cos_t: f32, l_k: f32) -> f32 {
-  var coax_t16: f32;
-  var coax_t17: f32;
-  coax_t16 = (-l_k);
-  coax_t17 = coax_p_st_max((1.0 - l_cos_t), 0.0);
-  return exp((coax_t16 * coax_t17));
+  var coax_t18: f32;
+  var coax_t19: f32;
+  coax_t18 = (-l_k);
+  coax_t19 = coax_p_st_max((1.0 - l_cos_t), 0.0);
+  return exp((coax_t18 * coax_t19));
 }
 fn verse_style_tone(l_c: f32, l_exposure: f32) -> f32 {
   return (1.0 - exp(((-coax_p_st_max(l_c, 0.0)) * l_exposure)));
@@ -931,19 +931,136 @@ fn verse_style_luma(l_r: f32, l_g: f32, l_b: f32) -> f32 {
   return (((0.212599993 * l_r) + (0.715200007 * l_g)) + (0.0722000003 * l_b));
 }
 fn verse_style_bloom_share(l_lum: f32, l_threshold: f32, l_knee: f32) -> f32 {
-  var coax_t18: f32;
-  var coax_t19: f32;
+  var coax_t20: f32;
+  var coax_t21: f32;
   if ((l_lum <= 0.0))
   {
     return 0.0;
   }
   var l_k: f32 = coax_p_st_max(l_knee, 9.99999975e-06);
-  coax_t18 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
-  coax_t19 = (2.0 * l_k);
-  var l_q: f32 = coax_p_st_min(coax_t18, coax_t19);
+  coax_t20 = coax_p_st_max(((l_lum - l_threshold) + l_k), 0.0);
+  coax_t21 = (2.0 * l_k);
+  var l_q: f32 = coax_p_st_min(coax_t20, coax_t21);
   return coax_p_st_min((coax_p_st_max(((l_q * l_q) / (4.0 * l_k)), (l_lum - l_threshold)) / l_lum), 1.0);
 }
 fn verse_style_bloom_mix(l_c: f32, l_bloom: f32, l_mix: f32) -> f32 {
   return (l_c + (l_bloom * l_mix));
+}
+fn verse_style_shadow_reach(l_phone: f32) -> f32 {
+  if ((l_phone > 0.5))
+  {
+    return 40.0;
+  }
+  return 60.0;
+}
+fn verse_style_shadow_snap(l_x: f32, l_reach: f32, l_size: f32) -> f32 {
+  var coax_t10: f32;
+  var coax_t11: f32;
+  coax_t10 = (2.0 * l_reach);
+  coax_t11 = coax_p_st_max(l_size, 1.0);
+  var l_texel: f32 = (coax_t10 / coax_t11);
+  return (floor(((l_x / l_texel) + 0.5)) * l_texel);
+}
+fn verse_style_shadow_taps(l_phone: f32) -> f32 {
+  if ((l_phone > 0.5))
+  {
+    return 4.0;
+  }
+  return 9.0;
+}
+fn verse_style_shadow_radius(l_phone: f32) -> f32 {
+  return (2.5 + (0.0 * l_phone));
+}
+fn verse_style_shadow_tap(l_k: f32, l_phone: f32, l_axis: f32) -> f32 {
+  var l_x: f32 = 0.0;
+  var l_y: f32 = 0.0;
+  if ((l_phone > 0.5))
+  {
+    if ((l_k < 0.5))
+    {
+      l_x = (-0.600000024);
+      l_y = (-0.25);
+    }
+    else
+    if ((l_k < 1.5))
+    {
+      l_x = 0.25;
+      l_y = (-0.600000024);
+    }
+    else
+    if ((l_k < 2.5))
+    {
+      l_x = 0.600000024;
+      l_y = 0.25;
+    }
+    else
+    {
+      l_x = (-0.25);
+      l_y = 0.600000024;
+    }
+  }
+  else
+  {
+    if ((l_k < 0.5))
+    {
+      l_x = 0.0;
+      l_y = 0.0;
+    }
+    else
+    if ((l_k < 1.5))
+    {
+      l_x = (-0.326000005);
+      l_y = (-0.405999988);
+    }
+    else
+    if ((l_k < 2.5))
+    {
+      l_x = (-0.839999974);
+      l_y = (-0.074000001);
+    }
+    else
+    if ((l_k < 3.5))
+    {
+      l_x = (-0.69599998);
+      l_y = 0.456999987;
+    }
+    else
+    if ((l_k < 4.5))
+    {
+      l_x = (-0.202999994);
+      l_y = 0.620999992;
+    }
+    else
+    if ((l_k < 5.5))
+    {
+      l_x = 0.962000012;
+      l_y = (-0.194999993);
+    }
+    else
+    if ((l_k < 6.5))
+    {
+      l_x = 0.47299999;
+      l_y = (-0.479999989);
+    }
+    else
+    if ((l_k < 7.5))
+    {
+      l_x = 0.518999994;
+      l_y = 0.76700002;
+    }
+    else
+    {
+      l_x = 0.185000002;
+      l_y = (-0.893000007);
+    }
+  }
+  if ((l_axis > 0.5))
+  {
+    return l_y;
+  }
+  return l_x;
+}
+fn verse_style_contact(l_cast_lit: f32, l_blob: f32, l_strength: f32) -> f32 {
+  return coax_p_st_min(l_cast_lit, (1.0 - (l_strength * coax_p_st_sat(l_blob))));
 }
 // ---- end generated

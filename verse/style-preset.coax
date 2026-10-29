@@ -379,6 +379,16 @@ STYLE_KEYED_AT :: [STYLE_KEYED] int.[SU_KEY, SU_KEY + 1, SU_KEY + 2, SU_KEY + 3,
   SU_HAZE_KEY + 1, SU_ZENITH, SU_HORIZON + 1, SU_CLOUD_TOP + 2, SU_TONE, SU_SHAFTS + 2];
 sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
 
+#test "the shadow tint is blue or violet all day: blue the largest, nothing under 0.35" {
+  p := verse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
+  for i: 0..<48 {
+    #assert verse_style_at(p, f32(i) / 48.0, o[..]);
+    #assert o[SU_TINT + 2] >= o[SU_TINT] && o[SU_TINT + 2] >= o[SU_TINT + 1];
+    #assert o[SU_TINT] >= 0.35 && o[SU_TINT + 1] >= 0.35 && o[SU_TINT + 2] >= 0.35;
+  }
+  #assert verse_style_at(p, 0.5, o[..]);
+  #assert sp_near(o[SU_TINT], 0.52) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_TINT + 2], 0.86) && sp_near(o[SU_TINT + 3], 0.35);
+}
 #test "the rim's colour is the key's, warmed, by clock: day, dusk and dawn, the moon's silver at 0.6" {
   day := verse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
   #assert verse_style_at(day, 0.5, o[..]);

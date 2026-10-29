@@ -49,6 +49,34 @@ verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #expor
  return edge*(0.35f32+0.65f32*st_sat(ndl+0.3f32))*strength;
 }
 
+// ---- 3. Real shadows: the key light's shadow map (host.js shadowLayout, 2048 square, 1024 on a phone)
+// How far round the eye the map reaches, in metres: the camera's near 60 m, 40 m on a phone.
+verse_style_shadow_reach :: (phone:f32)->f32 #export_c {if phone>0.5f32 {return 40.0f32;} return 60.0f32;}
+// The map's place snapped to whole texels (reach across size texels each way), so shadows hold still as the eye moves.
+verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c {
+ texel:=2.0f32*reach/st_max(size,1.0f32);
+ return floor(x/texel+0.5f32)*texel;
+}
+// How many Poisson taps the filter takes, and how far out they reach in texels.
+verse_style_shadow_taps :: (phone:f32)->f32 #export_c {if phone>0.5f32 {return 4.0f32;} return 9.0f32;}
+verse_style_shadow_radius :: (phone:f32)->f32 #export_c {return 2.5f32+0.0f32*phone;}
+// Tap k's offset on the unit disc, axis 0 across and 1 down: nine spread Poisson points, or a
+// phone's four in a turned square.
+verse_style_shadow_tap :: (k:f32,phone:f32,axis:f32)->f32 #export_c {
+ x:=0.0f32; y:=0.0f32;
+ if phone>0.5f32 {
+  if k<0.5f32 {x=-0.60f32;y=-0.25f32;} else if k<1.5f32 {x=0.25f32;y=-0.60f32;} else if k<2.5f32 {x=0.60f32;y=0.25f32;} else {x=-0.25f32;y=0.60f32;}
+ } else {
+  if k<0.5f32 {x=0.0f32;y=0.0f32;} else if k<1.5f32 {x=-0.326f32;y=-0.406f32;} else if k<2.5f32 {x=-0.840f32;y=-0.074f32;}
+  else if k<3.5f32 {x=-0.696f32;y=0.457f32;} else if k<4.5f32 {x=-0.203f32;y=0.621f32;} else if k<5.5f32 {x=0.962f32;y=-0.195f32;}
+  else if k<6.5f32 {x=0.473f32;y=-0.480f32;} else if k<7.5f32 {x=0.519f32;y=0.767f32;} else {x=0.185f32;y=-0.893f32;}
+ }
+ if axis>0.5f32 {return y;} return x;
+}
+// The cast shadow (1 lit, 0 shadowed) with a mover's blob under it: the blob darkens to
+// 1 - strength (0.35) at its middle and never lightens a cast shadow.
+verse_style_contact :: (cast_lit:f32,blob:f32,strength:f32)->f32 #export_c {return st_min(cast_lit,1.0f32-strength*st_sat(blob));}
+
 // ---- 4. Atmosphere: haze
 // The haze's share at distance d, height y over the ground at the eye (base_y):
 // exponential past `start`, thinner higher up (falloff), capped.
@@ -145,6 +173,28 @@ verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.715
   if verse_style_rim(ndv,0.5f32,0.38f32,0.12f32,0.45f32)>0.0f32 {rim_m=rim_m+0.001f32;}}
  w:=rim_m*px_per_m;
  #assert w>=2.0f32 && w<=4.0f32;
+}
+#test "the shadow map reaches 60 m, 40 m on a phone, snapped to whole texels" {
+ #assert verse_style_shadow_reach(0.0f32)==60.0f32 && verse_style_shadow_reach(1.0f32)==40.0f32;
+ // 120 m over 2048 texels: 0.0586 m a texel; a point moves only in whole texels
+ t:=120.0f32/2048.0f32;
+ #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)-10.0f32)<t*0.5f32+0.00001f32;
+ #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t-floor(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t+0.5f32))<0.001f32;
+ #assert verse_style_shadow_snap(10.01f32,60.0f32,2048.0f32)==verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32);
+}
+#test "nine Poisson taps at 2.5 texels on desktop, four on a phone, all on the unit disc" {
+ #assert verse_style_shadow_taps(0.0f32)==9.0f32 && verse_style_shadow_taps(1.0f32)==4.0f32 && verse_style_shadow_radius(0.0f32)==2.5f32 && verse_style_shadow_radius(1.0f32)==2.5f32;
+ for k:0..<9 {x:=verse_style_shadow_tap(cast(f32)k,0.0f32,0.0f32); y:=verse_style_shadow_tap(cast(f32)k,0.0f32,1.0f32);
+  #assert x*x+y*y<=1.0f32;
+  for j:0..<9 {if j!=k {u:=verse_style_shadow_tap(cast(f32)j,0.0f32,0.0f32)-x; v:=verse_style_shadow_tap(cast(f32)j,0.0f32,1.0f32)-y; #assert u*u+v*v>0.09f32;}}}
+ sx:=0.0f32; sy:=0.0f32;
+ for k:0..<4 {x:=verse_style_shadow_tap(cast(f32)k,1.0f32,0.0f32); y:=verse_style_shadow_tap(cast(f32)k,1.0f32,1.0f32); #assert x*x+y*y<=1.0f32; sx=sx+x; sy=sy+y;}
+ #assert abs(sx)<0.0001f32 && abs(sy)<0.0001f32;
+}
+#test "a mover's blob darkens to 0.65 under it and never lightens a cast shadow" {
+ #assert abs(verse_style_contact(1.0f32,1.0f32,0.35f32)-0.65f32)<0.0001f32;
+ #assert verse_style_contact(1.0f32,0.0f32,0.35f32)==1.0f32;
+ #assert verse_style_contact(0.2f32,1.0f32,0.35f32)==0.2f32;
 }
 #test "day haze: 0.58 at 100 m, 0.86 at 200 m, never past its cap" {
  #assert verse_style_haze(20.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.0f32;
