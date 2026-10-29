@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+import os
 import json
 from pathlib import Path
 import re
@@ -70,26 +72,32 @@ def check():
     return examples
 
 
-def run(compiler, examples):
-    for item in examples:
-        for mode in item["modes"]:
-            cmd = [compiler, "run", str(path(item["source"]))]
-            if mode == "release":
-                cmd.append("--release")
-            result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=60)
-            assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
-            assert not result.stderr, f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"
-            assert result.stdout == path(item["stdout"]).read_bytes(), f"transcript drift: {cmd}\n{result.stdout.decode()}"
+def run_one(compiler, item, mode):
+    cmd = [compiler, "run", str(path(item["source"]))]
+    if mode == "release":
+        cmd.append("--release")
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=60)
+    assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
+    assert not result.stderr, f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"
+    assert result.stdout == path(item["stdout"]).read_bytes(), f"transcript drift: {cmd}\n{result.stdout.decode()}"
+
+
+def run(compiler, examples, jobs=1):
+    runs = [(item, mode) for item in examples for mode in item["modes"]]
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        for future in [pool.submit(run_one, compiler, item, mode) for item, mode in runs]:
+            future.result()  # in inventory order: the first failure is reported
     print(f"book execution: {len(examples) * 2} runs match output and exit status")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--coax", help="also compile and run every example")
+    parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="examples run at once")
     args = parser.parse_args()
     examples = check()
     if args.coax:
-        run(str(Path(args.coax).resolve()), examples)
+        run(str(Path(args.coax).resolve()), examples, args.jobs)
 
 
 if __name__ == "__main__":
