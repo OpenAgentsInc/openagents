@@ -1,0 +1,128 @@
+// Address-range facts only. Host retains responsibility for valid, accessible,
+// allocated and stable buffers and serializes their use.
+#authority;
+
+#test "checked public address spans reject null and address wrap" {
+  #assert sa_span(0,0,1024);#assert sa_span(1,0,1024);#assert sa_span(1,1024,1024);
+  #assert !sa_span(0,1,1024);#assert !sa_span(1,-1,1024);#assert !sa_span(1,1025,1024);
+  #assert sa_span(cast(u64)18446744073709551614,1,1024);
+  #assert !sa_span(cast(u64)18446744073709551614,2,1024);
+}
+#test "range overlap is symmetric and treats empty spans as empty" {
+  #assert !sa_overlap(10,0,10,10);#assert !sa_overlap(10,10,10,0);
+  #assert sa_overlap(10,10,10,10);#assert sa_overlap(10,10,19,1);
+  #assert sa_overlap(19,1,10,10);#assert !sa_overlap(10,10,20,1);
+  #assert !sa_overlap(20,1,10,10);#assert sa_overlap(11,1,10,10);
+  #assert sa_overlap(10,1,10,1);#assert !sa_overlap(10,0,11,1);
+}
+#test "start admission requires bounded parameters and disjoint spans" {
+  #assert sa_start(100,20,200,2048,3000,5,4000,16,1);
+  #assert sa_start(100,20,200,2048,0,0,4000,16,1);
+  #assert !sa_start(0,20,200,2048,3000,5,4000,16,1);
+  #assert !sa_start(100,0,200,2048,3000,5,4000,16,1);
+  #assert !sa_start(100,20,0,2048,3000,5,4000,16,1);
+  #assert !sa_start(100,20,200,2047,3000,5,4000,16,1);
+  #assert !sa_start(100,20,200,2048,0,5,4000,16,1);
+  #assert !sa_start(100,20,200,2048,3000,1025,4000,16,1);
+  #assert !sa_start(100,20,200,2048,3000,5,4000,15,1);
+  #assert !sa_start(100,20,200,2048,3000,5,4000,16,0);
+  #assert !sa_start(100,20,200,2048,3000,5,4000,16,19);
+  #assert !sa_start(100,20,110,2048,3000,5,4000,16,1);
+  #assert !sa_start(100,20,200,2048,110,5,4000,16,1);
+  #assert !sa_start(100,20,200,2048,3000,5,110,16,1);
+  #assert !sa_start(100,20,200,2048,210,5,4000,16,1);
+  #assert !sa_start(100,20,200,2048,3000,5,210,16,1);
+  #assert !sa_start(100,20,200,2048,3000,5,3002,16,1);
+  #assert sa_start(100,1,200,2048,3000,5,4000,16,1);
+  #assert !sa_start(100,1048577,2000000,2048,3000000,5,4000000,16,1);
+  #assert !sa_start(100,20,2000000,268435457,300000000,5,400000000,16,1);
+  #assert sa_start(100,20,2000000,2048,3000000,1024,4000000,16,1);
+  #assert !sa_start(100,20,2000000,2048,3000000,1025,4000000,16,1);
+  #assert !sa_start(100,20,2000000,2048,3000000,5,cast(u64)18446744073709551600,16,1);
+  #assert sa_start(100,20,200,2048,3000,5,1,16,1);
+  #assert sa_start(100,20,200,2048,3000,5,cast(u64)18446744073709551599,16,1);
+  #assert sa_start(100,20,200,2048,3000,5,cast(u64)18446744073709551598,16,1);
+  #assert sa_cost(18)==268435456 && sa_cost(19)==0 && sa_cost(0)==0;
+  #assert sa_start(100,20,2000000,268435456,300000000,5,400000000,16,18);
+}
+#test "output must not overlap retained session or original scratch" {
+  #assert sa_output(100,20,200,2048,3000,32);
+  #assert !sa_output(100,20,200,2048,0,32);
+  #assert !sa_output(100,20,200,2048,3000,31);
+  #assert !sa_output(100,20,200,2048,110,32);
+  #assert !sa_output(100,20,200,2048,210,32);
+  #assert !sa_output(100,20,110,2048,3000,32);
+  #assert !sa_output(100,20,200,2048,3000,1048577);
+  #assert sa_output(100,1,200,2048,3000,32);
+  #assert !sa_output(100,0,200,2048,3000,32);
+  #assert !sa_output(100,1048577,2000000,2048,3000000,32);
+  #assert !sa_output(100,20,2000000,268435457,300000000,32);
+  #assert !sa_output(100,20,0,2048,3000,32);
+  #assert !sa_output(100,20,200,2047,3000,32);
+  #assert !sa_output(100,20,0,0,3000,32);
+}
+
+
+#test "32-bit admission checks the target's own address limit" {
+  #assert sa_span32(1,1);
+  #assert !sa_span32(cast(u64)4294967295,1);
+  #assert sa_start32(100,20,200,2048,3000,5,4000,16,1);
+  #assert !sa_start32(0,20,200,2048,3000,5,4000,16,1);
+  #assert !sa_start32(100,20,cast(u64)4294967280,2048,3000,5,4000,16,1);
+  #assert !sa_start32(100,20,200,2048,3000,5,cast(u64)4294967280,16,1);
+  #assert sa_start32(100,20,200,2048,3000,5,cast(u64)4294967279,16,1);
+  #assert !sa_start32(100,20,200,2048,cast(u64)4294967296,1,4000,16,1);
+  #assert sa_start32(100,20,200,2048,cast(u64)4294967296,0,4000,16,1);
+  #assert sa_output32(100,20,200,2048,3000,32);
+  #assert !sa_output32(0,20,200,2048,3000,32);
+  #assert !sa_output32(100,20,200,2048,cast(u64)4294967280,32);
+  #assert !sa_output32(cast(u64)4294967295,1,200,2048,3000,32);
+  #assert !sa_output32(100,20,cast(u64)4294967280,2048,3000,32);
+}
+
+SA_MAX :: cast(u64)18446744073709551615;
+sa_span :: (address:u64,length:int,limit:int)->bool {
+  if length<0 || length>limit {return false;}
+  if length==0 {return true;}
+  if address==0 {return false;}
+  return cast(u64)length<=SA_MAX-address;
+}
+// Both spans must already satisfy sa_span; wrapped subtraction is used only
+// after address-range validation prevents either span from crossing the end.
+sa_overlap :: (a:u64,an:int,b:u64,bn:int)->bool {
+  if an<1 || bn<1 {return false;}
+  return sub_wrap(b,a)<cast(u64)an || sub_wrap(a,b)<cast(u64)bn;
+}
+sa_cost :: (log_n:int)->int {
+  if log_n<1 || log_n>18 {return 0;}
+  return (1<<log_n)*1024;
+}
+sa_start :: (session:u64,sn:int,scratch:u64,mn:int,password:u64,pn:int,salt:u64,tn:int,log_n:int)->bool #export_c {
+  if sn<1 || !sa_span(session,sn,1048576) || !sa_span(scratch,mn,268435456) || !sa_span(password,pn,1024) {return false;}
+  if tn!=16 || salt==0 || salt>SA_MAX-16 {return false;}
+  needed:=sa_cost(log_n);if needed==0 || mn<needed {return false;}
+  if sa_overlap(session,sn,scratch,mn) || sa_overlap(session,sn,password,pn) || sa_overlap(session,sn,salt,tn) {return false;}
+  return !sa_overlap(scratch,mn,password,pn) && !sa_overlap(scratch,mn,salt,tn) && !sa_overlap(password,pn,salt,tn);
+}
+sa_output :: (session:u64,sn:int,scratch:u64,mn:int,out:u64,on:int)->bool #export_c {
+  if sn<1 || !sa_span(session,sn,1048576) || mn<2048 || !sa_span(scratch,mn,268435456) || on<32 || !sa_span(out,on,1048576) {return false;}
+  return !sa_overlap(session,sn,scratch,mn) && !sa_overlap(session,sn,out,on) && !sa_overlap(scratch,mn,out,on);
+}
+
+// 32-bit entry points independently restrict each live span to the target's
+// address space. Host still validates real allocations and linear-memory size.
+// Internal width-only check: sa_start/sa_output must first validate the
+// nonnegative length and reject a nonempty null address.
+sa_span32 :: (address:u64,length:int)->bool {
+  if length==0 {return true;}
+  if (address>>32)!=0 {return false;}
+  return cast(u64)length<=cast(u64)4294967295-address;
+}
+sa_start32 :: (session:u64,sn:int,scratch:u64,mn:int,password:u64,pn:int,salt:u64,tn:int,log_n:int)->bool #export_c {
+  if !sa_start(session,sn,scratch,mn,password,pn,salt,tn,log_n) {return false;}
+  return sa_span32(session,sn) && sa_span32(scratch,mn) && sa_span32(password,pn) && sa_span32(salt,tn);
+}
+sa_output32 :: (session:u64,sn:int,scratch:u64,mn:int,out:u64,on:int)->bool #export_c {
+  if !sa_output(session,sn,scratch,mn,out,on) {return false;}
+  return sa_span32(session,sn) && sa_span32(scratch,mn) && sa_span32(out,on);
+}
