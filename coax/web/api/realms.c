@@ -9,7 +9,11 @@
 //        (migrations/0049_realm_builder_setup.sql); 400, 429, 503
 //   POST /api/playtest/realms {plan?, board}           -> 200 {slug, path, name, page}; 400, 401, 429
 //   GET  /api/playtest/realms/<slug>                   -> text/plain, the spec a line each; 404
-//   POST /api/playtest/realms/<slug>/settings {tools}  -> 200 {tools}; 403 not the owner
+//   POST /api/playtest/realms/<slug>/settings {tools}  -> 200 {tools}; 403 not an owner or admin
+//   POST /api/playtest/realms/<slug>/switch {row, on}  -> 200 {row, on}; 403, 404 (one row of the board)
+//   POST /api/playtest/realms/<slug>/revise {prompt}   -> 200 {plan, changed}; 400, 403, 429, 502, 503
+// Any realm: a made one or a hand-built one from realms.json (migrations/0049_realm_edit.sql decides
+// who is its owner, an admin or a visitor; a site admin, admin_who, is an admin of every realm).
 //   POST /api/playtest/realms/<slug>/place {thing, x, z, yaw}   -> 200 {placed} | {proposed}; 403
 //   GET  /api/playtest/realms/<slug>/proposals         -> text/plain, the owner's cards ("" for anyone else)
 //   POST /api/playtest/realms/<slug>/proposals/<id>/accept|decline   -> 200 {state}; 403, 404, 409
@@ -216,6 +220,63 @@ static void make(const request *q, PGconn *db, const char *key) {
   free(answer); free(slug);
 }
 
+// ---- talking revises a realm's board (migrations/0049_realm_edit.sql): asked here, the model's
+// answer kept by a child, as a plan is. ?as=lines answers the board's rows as lines.
+static void revise_answer(int fd, const char *asked, const char *request, bool lines) {
+  const char *model = env_or("OA_BUILDER_MODEL", "gemini-3.8-flash");
+  char *got = NULL;
+  double t0 = api_now_ms();
+  long status = npc_ask_model("OA_BUILDER_URL", model, request, &got);
+  char http[16], taken[16];
+  snprintf(http, sizeof http, "%ld", status);
+  snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
+  PGconn *db = api_db_new();
+  const char *v[5] = {asked, http, got ? got : "", model, taken};
+  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.edit_revise_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+                                  5, NULL, v, NULL, NULL, 0) : NULL;
+  if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+    if (lines) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
+    else api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+  }
+  else { api_log("realms: revise: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  if (status != 200) api_log("realms: model answered %ld", status);
+  if (r) PQclear(r);
+  if (db) PQfinish(db);
+  free(got);
+}
+
+static void revise(const request *q, PGconn *db, const char *slug, const char *key, const char *admin) {
+  char *body = body_of(q);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  const char *v[5] = {slug, body, env_or("OA_BUILDER_DAILY_CAP", "3000"), key, admin};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
+                                 "FROM verse.edit_revise_ask($1, $2::jsonb, $3::int, $4, $5::boolean) x", 5, NULL, v, NULL, NULL, 0);
+  free(body);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("realms: revise ask: %s", PQerrorMessage(db));
+    PQclear(r);
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    return;
+  }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  bool lines = as_lines(q);
+  if (status != 200) {
+    char out[200]; snprintf(out, sizeof out, "{\"error\": \"%s\"}", PQgetvalue(r, 0, 1));
+    PQclear(r);
+    if (lines) answer_lines(q->fd, status, out, NULL); else api_json(q->fd, status, out);
+    return;
+  }
+  char *request = strdup(PQgetvalue(r, 0, 2)), *asked = strdup(PQgetvalue(r, 0, 3));
+  PQclear(r);
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid == 0) { revise_answer(q->fd, asked, request, lines); _exit(0); }
+  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  free(request); free(asked);
+}
+
 static bool slug_ok(const char *s, size_t n) {
   if (!n || n > 48) return false;
   for (size_t i = 0; i < n; i++) if (!((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= '0' && s[i] <= '9') || s[i] == '-')) return false;
@@ -251,31 +312,36 @@ bool realms_route(const request *q) {
   if (!slug_ok(rest, n)) { api_json(q->fd, 404, "{\"error\":\"no such realm\"}"); return true; }
   memcpy(slug, rest, n); slug[n] = 0;
   const char *what = slash ? slash + 1 : "";
+  // A site admin (admins.conf, by site login or NIP-98) is an admin of every realm; SQL decides the rest.
+  char who[65];
+  const char *admin = admin_who(q, db, who) == 0 ? "true" : "false";
   if (!*what) {
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the realm\"}"); return true; }
-    const char *v[2] = {slug, key};
-    PGresult *r = PQexecParams(db, "SELECT verse.builder_spec($1, $2)", 2, NULL, v, NULL, NULL, 0);
+    const char *v[3] = {slug, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT verse.edit_spec($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     text_answer(q->fd, r);
     PQclear(r);
     return true;
   }
   if (!strcmp(what, "proposals")) {
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the proposals\"}"); return true; }
-    const char *v[2] = {slug, key};
-    PGresult *r = PQexecParams(db, "SELECT verse.builder_proposals($1, $2)", 2, NULL, v, NULL, NULL, 0);
+    const char *v[3] = {slug, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT verse.edit_proposals($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
     else { api_log("realms: proposals: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
     PQclear(r);
     return true;
   }
   if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
-  if (!strcmp(what, "settings") || !strcmp(what, "place")) {
+  if (!strcmp(what, "revise")) { revise(q, db, slug, key, admin); return true; }
+  if (!strcmp(what, "settings") || !strcmp(what, "place") || !strcmp(what, "switch")) {
     char *body = body_of(q);
     if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
-    const char *v[3] = {slug, body, key};
-    sql_json(q, db, !strcmp(what, "settings") ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.builder_settings($1, $2::jsonb, $3) x"
-                                              : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.builder_place($1, $2::jsonb, $3) x",
-             3, v, what);
+    const char *v[4] = {slug, body, key, admin};
+    sql_json(q, db, !strcmp(what, "settings") ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.edit_settings($1, $2::jsonb, $3, $4::boolean) x"
+                    : !strcmp(what, "place")  ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.edit_place($1, $2::jsonb, $3, $4::boolean) x"
+                                              : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.edit_switch($1, $2::jsonb, $3, $4::boolean) x",
+             4, v, what);
     free(body);
     return true;
   }
@@ -288,8 +354,8 @@ bool realms_route(const request *q) {
     for (size_t i = 0; ok && i < k; i++) ok = id[i] >= '0' && id[i] <= '9';
     if (!ok) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
     memcpy(num, id, k); num[k] = 0;
-    const char *v[4] = {slug, num, !strcmp(end, "/accept") ? "true" : "false", key};
-    sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.builder_decide($1, $2::bigint, $3::boolean, $4) x", 4, v, "decide");
+    const char *v[5] = {slug, num, !strcmp(end, "/accept") ? "true" : "false", key, admin};
+    sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.edit_decide($1, $2::bigint, $3::boolean, $4, $5::boolean) x", 5, v, "decide");
     return true;
   }
   api_json(q->fd, 404, "{\"error\":\"unknown\"}");

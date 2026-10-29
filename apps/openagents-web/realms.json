@@ -6,6 +6,12 @@
     { "id": "house", "name": "HAUNTED HOUSE", "kind": "open", "orbit": { "r": 0.15, "a": 0, "size": 0.028 },
       "realm": {
         "slug": "haunted-house",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": ["map", "voice"], "things": [],
+          "rows": [
+            {"id": "others", "label": "Other visitors", "says": "other visitors walking the house"},
+            {"id": "sounds", "label": "The house's sounds", "says": "the creaks, thunder and sounds of the house"},
+            {"id": "scares", "label": "Lightning and sparks", "says": "the lightning flashes and sparks the haunts throw"},
+            {"id": "chat", "label": "Room chat", "says": "the chat with others in the house"} ] },
         "style": "lowpoly",
         "clock": "fixed:0.0",
         "title": "Haunted House",
@@ -54,6 +60,10 @@
     { "id": "grid", "name": "THE GRID", "kind": "open", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 },
       "realm": {
         "slug": "the-grid",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
+          "rows": [
+            {"id": "robots", "label": "Robots walking their rounds", "says": "the small robots patrolling the grid"},
+            {"id": "names", "label": "Place names in the air", "says": "the names floating over the stations"} ] },
         "style": "lowpoly",
         "clock": "fixed:0.0",
         "title": "The Grid",
@@ -73,6 +83,12 @@
     { "id": "everglade", "name": "EVERGLADE", "kind": "open", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 },
       "realm": {
         "slug": "everglade",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": ["map", "build"], "things": ["crate", "barrel", "bench", "fence", "stall"],
+          "rows": [
+            {"id": "flock", "label": "The flock that follows you", "says": "the birds earned on the river quest that follow whoever walks"},
+            {"id": "floats", "label": "Ducks and lily pads", "says": "ducks and lily pads floating on the river"},
+            {"id": "undergrowth", "label": "Bushes, ferns and rocks", "says": "bushes, ferns and rocks along the tree line"},
+            {"id": "daycycle", "label": "Day turning to night", "says": "the sky turning from day to night; off, it holds at noon"} ] },
         "style": "painterly",
         "clock": "cycle",
         "title": "Everglade",
@@ -89,6 +105,11 @@
     { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
       "realm": {
         "slug": "fairy-forest",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": ["fly"], "things": [],
+          "rows": [
+            {"id": "sparkles", "label": "Fairy dust sparkles", "says": "the fairy dust sparkling behind you"},
+            {"id": "grass", "label": "Wind-swept grass", "says": "the grass swaying in the wind"},
+            {"id": "ridges", "label": "The far ridges", "says": "the ridges far round the valley"} ] },
         "style": "painterly",
         "clock": "fixed:0.5",
         "title": "Fairy Forest",
@@ -102,6 +123,12 @@
     { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "orbit": { "r": 0.3, "a": 2.9, "size": 0.03 },
       "realm": {
         "slug": "dead-gears",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
+          "rows": [
+            {"id": "support", "label": "The support engineer", "says": "the support engineer who fights beside you and repairs the reactor"},
+            {"id": "alarms", "label": "Flashing wave alarms", "says": "the red alarm strips that flash when a wave comes"},
+            {"id": "radar", "label": "The radar", "says": "the radar in the corner of the screen"},
+            {"id": "sparks", "label": "Hit sparks", "says": "sparks and effects when something is hit"} ] },
         "style": "lowpoly",
         "clock": "cycle",
         "title": "Dead Gears",
@@ -185,6 +212,11 @@
     { "id": "icecream", "name": "ICE CREAM MAN", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 3.7, "size": 0.026 },
       "realm": {
         "slug": "ice-cream-man",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
+          "rows": [
+            {"id": "minions", "label": "The Ice Cream Man's minions", "says": "the minions who hunt you with him"},
+            {"id": "weapons", "label": "Weapons to earn and the spear puzzle", "says": "the weapons you can earn and the cabinet's spear puzzle"},
+            {"id": "backrooms", "label": "The backrooms", "says": "the backrooms behind the house"} ] },
         "style": "lowpoly",
         "clock": "fixed:0.5",
         "title": "Ice Cream Man",
@@ -199,6 +231,13 @@
     { "id": "villa", "name": "PLANETARY VILLA", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 5.6, "size": 0.034 },
       "realm": {
         "slug": "hecates-cemetery",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
+          "rows": [
+            {"id": "flight", "label": "The flight in from space", "says": "the flight in from space at the start of a visit; off, a visit starts at the gate"},
+            {"id": "fireflies", "label": "Fireflies over the field", "says": "fireflies over the open field"},
+            {"id": "trail", "label": "A light trail behind you", "says": "the light trail and shimmer behind whoever walks"},
+            {"id": "tips", "label": "First-visit tips", "says": "the guiding tips and beacon for a first visit"},
+            {"id": "others", "label": "Other visitors and their dogs", "says": "other visitors walking here with their dogs"} ] },
         "style": "painterly",
         "clock": "fixed:0.0",
         "title": "Hecate's Cemetery",
