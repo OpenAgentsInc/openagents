@@ -1,0 +1,82 @@
+// Experimental caller-owned HChaCha20/XChaCha20 state. This is not a
+// production secret-use approval: scalar, compiler and register copies remain.
+#load "xchacha20.coax";
+#authority;
+
+#test "owned HChaCha produces the draft subkey" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)i;}
+  nonce:=[16]u8.[0,0,0,9,0,0,0,74,0,0,0,0,49,65,89,39];
+  expected:=[8]u32.[0x423b4182,0xfe7bb227,0x50420ed3,0x737d878a,0xd5e4f9a0,0x53a8748a,0x13c42ec1,0xdcecd326];
+  work:[1]XcWorkspace;for i:0..<32 {work[0].subkey[i]=165;}out:[33]u8;out[32]=165;
+  r:=xc_hchacha(key[..],nonce[..],work[..],out[..],false);
+  #assert r.error==CC_OK && r.written==32 && out[32]==165;
+  for i:0..<8 {#assert cb_load_le32(out[..],i*4).value==expected[i];}for v:work[0].subkey {#assert v==0;}
+}
+#test "owned XChaCha draft vector and refusal" {
+  key:[32]u8;nonce:[24]u8;for i:0..<32 {key[i]=cast(u8)(128+i);}for i:0..<23 {nonce[i]=cast(u8)(64+i);}nonce[23]=88;
+  expected:=[64]u8.[0x11,0x31,0xce,0x9a,0x2a,0x20,0xae,0x0d,0x67,0xc8,0x93,0x5c,0x77,0x89,0xfa,0x10,0x25,0xc9,0xe5,0xbb,0x72,0x0f,0xb9,0x6f,0x11,0x35,0x4f,0xb9,0x7a,0xf0,0xbd,0x9a,0xad,0xec,0x08,0x63,0xba,0x60,0xca,0xc8,0x58,0x2c,0x48,0xf8,0x6c,0xdf,0xc4,0x8e,0xdd,0x46,0xa4,0x86,0x42,0xc5,0xde,0x62,0xcc,0xf1,0x1c,0x7b,0x21,0xbf,0x33,0x7d];
+  work:[1]XcWorkspace;for i:0..<4 {work[0].nonce[i]=165;}input:[65]u8;out:[65]u8;out[64]=165;
+  r:=xc_xor(key[..],nonce[..],0,input[0..<64],work[..],out[..],false);
+  #assert r.error==CC_OK && r.written==64 && out[64]==165;for i:0..<64 {#assert out[i]==expected[i];}
+  for i:0..<65 {out[i]=165;}
+  #assert xc_xor(key[0..<31],nonce[..],0,input[..],work[..],out[..],false).error==CC_KEY;
+  #assert xc_xor(key[..],nonce[0..<23],0,input[..],work[..],out[..],false).error==CC_NONCE;
+  #assert xc_xor(key[..],nonce[..],0,input[..],work[0..<0],out[..],false).error!=CC_OK;
+  #assert xc_xor(key[..],nonce[..],0,input[..],work[..],out[0..<64],false).error==CC_OUTPUT;
+  #assert xc_xor(key[..],nonce[..],0,input[..],work[..],out[..],true).error==CC_ALIAS;
+  #assert xc_xor(key[..],nonce[..],0xffffffff,input[..],work[..],out[..],false).error==CC_COUNTER;
+  for v:out {#assert v==165;}
+}
+#test "owned XChaCha agrees across block boundaries and repeated calls" {
+  key:[32]u8;nonce:[24]u8;input:[129]u8;out:[129]u8;reference:[129]u8;work:[1]XcWorkspace;
+  for i:0..<32 {key[i]=cast(u8)(i*7+3);}for i:0..<24 {nonce[i]=cast(u8)(i*5+1);}for i:0..<129 {input[i]=cast(u8)i;}
+  for n:[9]int.[0,1,63,64,65,66,127,128,129] {
+    #assert xchacha20_xor_checked(key[..],nonce[..],17,input[0..<n],reference[..],false).error==CC_OK;
+    #assert xc_xor(key[..],nonce[..],17,input[0..<n],work[..],out[..],false).error==CC_OK;
+    for i:0..<n {#assert out[i]==reference[i];}
+  }
+}
+XcWorkspace :: struct {initial:[16]u32;state:[16]u32;subkey:[32]u8;nonce:[12]u8;}
+xc_quarter :: (work:[]XcWorkspace,a:int,b:int,c:int,d:int) {
+  work[0].state[a]=add_wrap(work[0].state[a],work[0].state[b]);work[0].state[d]=rotl(work[0].state[d]^work[0].state[a],16);
+  work[0].state[c]=add_wrap(work[0].state[c],work[0].state[d]);work[0].state[b]=rotl(work[0].state[b]^work[0].state[c],12);
+  work[0].state[a]=add_wrap(work[0].state[a],work[0].state[b]);work[0].state[d]=rotl(work[0].state[d]^work[0].state[a],8);
+  work[0].state[c]=add_wrap(work[0].state[c],work[0].state[d]);work[0].state[b]=rotl(work[0].state[b]^work[0].state[c],7);
+}
+xc_rounds :: (work:[]XcWorkspace) {
+  for round:0..<10 {
+    xc_quarter(work,0,4,8,12);xc_quarter(work,1,5,9,13);xc_quarter(work,2,6,10,14);xc_quarter(work,3,7,11,15);
+    xc_quarter(work,0,5,10,15);xc_quarter(work,1,6,11,12);xc_quarter(work,2,7,8,13);xc_quarter(work,3,4,9,14);
+  }
+}
+xc_initial :: (work:[]XcWorkspace,key:[]u8,nonce:[]u8,counter:u32) {
+  work[0].initial[0]=0x61707865;work[0].initial[1]=0x3320646e;work[0].initial[2]=0x79622d32;work[0].initial[3]=0x6b206574;
+  work[0].initial[12]=counter;
+  for i:0..<8 {work[0].initial[4+i]=cb_load_le32(key,i*4).value;}
+ for i:0..<3 {work[0].initial[13+i]=cb_load_le32(nonce,i*4).value;}
+  for i:0..<16 {work[0].state[i]=work[0].initial[i];}
+}
+// Views must be valid, stable, disjoint and accurately described by the host.
+xc_hchacha :: (key:[]u8,nonce:[]u8,work:[]XcWorkspace,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+  error:=hc_admit(key.count,nonce.count,out.count,overlap);if error!=CC_OK {return ChaChaResult.{error=error};}
+  if work.count!=1 {return ChaChaResult.{error=CC_OUTPUT};}
+  work[0]=XcWorkspace.{};xc_initial(work,key,nonce[4..<nonce.count],cb_load_le32(nonce,0).value);xc_rounds(work);
+  for i:0..<8 {source:=ifx i<4 then i else i+8;stored:=cb_store_le32(out,i*4,work[0].state[source]);}
+  return ChaChaResult.{written=32};
+}
+xc_xor :: (key:[]u8,nonce:[]u8,counter:u32,input:[]u8,work:[]XcWorkspace,out:[]u8,overlap:bool)->ChaChaResult #export_c {
+  if key.count!=32 {return ChaChaResult.{error=CC_KEY};}if nonce.count!=24 {return ChaChaResult.{error=CC_NONCE};}
+  error:=cc_admit(32,12,counter,input.count,out.count,overlap);if error!=CC_OK {return ChaChaResult.{error=error};}
+  if work.count!=1 {return ChaChaResult.{error=CC_OUTPUT};}
+  work[0]=XcWorkspace.{};xc_initial(work,key,nonce[4..<nonce.count],cb_load_le32(nonce,0).value);xc_rounds(work);
+  for i:0..<8 {source:=ifx i<4 then i else i+8;stored:=cb_store_le32(work[0].subkey[..],i*4,work[0].state[source]);}
+  for i:0..<8 {work[0].nonce[4+i]=nonce[16+i];}
+  xc_initial(work,work[0].subkey[..],work[0].nonce[..],counter);
+  for block:0..<cc_blocks(input.count) {
+    at:=block*64;work[0].initial[12]=add_wrap(counter,cast(u32)block);
+    for i:0..<16 {work[0].state[i]=work[0].initial[i];}xc_rounds(work);
+    for i:0..<16 {work[0].state[i]=add_wrap(work[0].state[i],work[0].initial[i]);}
+    for j:0..<64 {if at+j>=input.count {break;}stream:=cast(u8)((work[0].state[j/4]>>((j%4)*8))&255);out[at+j]=input[at+j]^stream;}
+  }
+  return ChaChaResult.{written=input.count};
+}
