@@ -233,7 +233,7 @@ try {
           await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 })
         if (await arrive("haunted-house") && !root) {
           const t0 = Date.now()
-          const want = Object.entries(contract).flatMap(([page, evs]) => evs.map((ev) => `${page}/${ev}`))
+          const want = Object.entries(contract).filter(([page]) => !open.some((w) => w.realm!.slug === page)).flatMap(([page, evs]) => evs.map((ev) => `${page}/${ev}`))
           const seen = (leave: boolean) => want.every((w) => sent.has(w) || (!leave && w.endsWith("/world-leave")))
           for (const type of ["keyDown", "keyUp"]) {
             if (type === "keyUp") await until(async () => sent.has("haunt/quest"), 8000)
@@ -263,7 +263,14 @@ try {
     errors = []
     for (let i = 0; i <= k; i++) await key("ArrowRight", "ArrowRight", 39)
     await key("Enter", "Enter", 13)
-    await arrive(slug)
+    if (!(await arrive(slug)) || !contract[slug]) continue
+    // a realm named in the contract (by its slug) sends its events too, world-leave on pagehide
+    const t0 = Date.now(), want = contract[slug].map((ev) => `${slug}/${ev}`)
+    await until(async () => want.every((w) => sent.has(w) || w.endsWith("/world-leave")), 5000)
+    await evaluate("dispatchEvent(new Event('pagehide'))")
+    await until(async () => want.every((w) => sent.has(w)), 4000)
+    const missing = want.filter((w) => !sent.has(w))
+    check(!missing.length, `analytics contract: every ${slug} event sent (${missing.length ? "missing " + missing.join(", ") : want.length + " events"}, ${((Date.now() - t0) / 1000).toFixed(1)} s)`)
   }
   if (!root) for (const name of Object.keys(BY_ADDRESS)) {
     if (open.some((w) => w.realm!.slug === name)) continue
