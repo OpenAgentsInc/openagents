@@ -1,7 +1,7 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.18.1";
+IMPLEMENTATION_VERSION :: "0.18.2";
 STATUS_SCHEMA_VERSION :: 1;
 CATALOGUE :: [95]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},

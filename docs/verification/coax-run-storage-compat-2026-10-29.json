@@ -1,0 +1,37 @@
+{
+  "compiler_sha256": "56f87661b9f1f105598132bf5c45f13e07fea46f4f23249921a22111d58f3ee4",
+  "container_limit": 131072,
+  "event_checks": 177,
+  "event_source_sha256": {
+    "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+    "coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+    "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+    "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/nostr/adapters/json-admission.coax": "fc8ec59f41b9d6bf3dab4facaaadb20a477d8be4580fca522c809354ac0afaa2",
+    "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+    "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+    "coax/lib/nostr/event.coax": "45118f2a7a9b5dc19466099fd0553ab1529de6cf768e16ce70a59df27e88e4d2",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/tests/nostr/event_checks.coax": "465af6cf85dac3bac00735528a165e1607678720f2931b225b05a06ce0868fb4",
+    "coax/tests/nostr/event_fixtures.coax": "47484453878778117a924f79f983ea187eed11aa077a8c13489d9ff76b64c188",
+    "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+    "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+    "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+  },
+  "json_boundary_check": {
+    "peak_containers": 9,
+    "peak_slots": 1049439,
+    "steps": 1048837
+  },
+  "phrase_gate_checks": 146,
+  "schema": "coax.run-storage-compat.v1",
+  "slot_limit": 1572864,
+  "version": "coax0 0.18.2"
+}

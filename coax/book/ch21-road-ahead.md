@@ -1,7 +1,7 @@
 # 21. The road ahead
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.18.1**. Status inventory schema: **1**.
+Current compiler: **coax0 0.18.2**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 Release/status generation now ships: one Coax catalogue supplies the CLI,

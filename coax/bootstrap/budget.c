@@ -212,7 +212,7 @@ uint64_t CB_default_steps(void) {
 }
 
 uint64_t CB_slot_limit(void) {
-  return UINT64_C(1048576);
+  return UINT64_C(1572864);
 }
 
 uint64_t CB_container_limit(void) {

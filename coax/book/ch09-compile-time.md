@@ -724,7 +724,7 @@ the limits and the errors that go with them:
 | Limit | Value | Error |
 | --- | --- | --- |
 | Evaluation work in one compile | 100,000 steps by default; `--run-steps N` selects up to 250,000,000 | `E0400` |
-| Live aggregate storage | 1,048,576 vector capacity slots and 131,072 containers | `E0400` |
+| Live aggregate storage | 1,572,864 vector capacity slots and 131,072 containers | `E0400` |
 | Nested compile-time calls | 64 | `E0403` |
 | Constants depending on constants | 64 deep | `E0403` |
 | Overflow or division by zero | Always an error, in debug and release | `E0407` |

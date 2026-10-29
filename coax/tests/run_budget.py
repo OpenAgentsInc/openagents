@@ -55,7 +55,7 @@ class RunBudgetTests(unittest.TestCase):
                 self.assertIn('exceeded 1 steps', r.stderr)
 
     def test_retained_constants_share_storage_budget(self):
-        head = 'f :: () -> [300000] u8 { a:[300000] u8; return a; }\n'
+        head = 'f :: () -> [500000] u8 { a:[500000] u8; return a; }\n'
         one = head + 'A :: #run f(); main :: () {}'
         two = head + 'A :: #run f(); B :: #run f(); main :: () {}'
         for profile in ((), ('--release',)):
@@ -70,6 +70,14 @@ class RunBudgetTests(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('exceeded 10 steps', r.stderr)
         self.assertEqual(self.invoke(source, 'test', '--run-steps', '1', '--steps', '10000').returncode, 0)
+
+    def test_existing_nostr_json_boundary_check_fits(self):
+        # This graph contains a real one-megabyte input-boundary check. A
+        # capacity chosen below its actual live working set breaks consumers.
+        r = subprocess.run([str(COMPILER), 'test', str(ROOT / 'lib/nostr/json.coax'), '--library'],
+                           text=True, capture_output=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('original input budget is inclusive', r.stdout)
 
     def test_nested_allocation_refuses_in_all_profiles(self):
         source = 'f :: () -> int { a:[1500][1500] u8; return cast(int) a[0][0]; } A :: #run f(); main :: () {}'
@@ -122,7 +130,7 @@ class RunBudgetTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         d = json.loads(r.stdout)
         self.assertEqual(d['run_steps'], 123456)
-        self.assertEqual(d['aggregate_slot_limit'], 1048576)
+        self.assertEqual(d['aggregate_slot_limit'], 1572864)
         self.assertEqual(d['aggregate_container_limit'], 131072)
 
 if __name__ == '__main__': unittest.main()
