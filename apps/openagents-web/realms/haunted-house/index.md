@@ -20,6 +20,8 @@ Eight steps, one at a time, each at an orange orb (the HUD names the step, and a
 
 ## Talking to the characters
 
+The characters are never quite still: they breathe, shift their weight and glance about, now and then with a little hop, each at their own times. Within four metres they turn to you; in a conversation they nod and gesture as they talk; and when a haunt goes off near them they jump back with a shiver (`verse_haunt_life` in `verse/haunt.coax`).
+
 A question you ask goes to our server, where Google's Gemini answers as the character: from who they are, what players taught them and the last ten lines of the conversation (`POST /api/playtest/npc/ask`). When the server can't answer (an error, the day's answers used up, or nothing back in 12 seconds), the character answers from their own lines. What you teach a character is added to what they know in this house and kept with your save.
 
 ## Other players and the chat
