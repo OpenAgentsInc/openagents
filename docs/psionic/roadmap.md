@@ -1,8 +1,8 @@
 # Starting point and roadmap
 
-Status, 2026-10-29: chapters 1–5 implement M0/M1, the artifact slice of M5 and text requests
-on the tested Apple LP64 CPU host, including `CPU-f32-wide-v1` numerics and
-`original-weights-v1` import plus `qwen35-text-v1` rendering/tokenization. Autodiff and full model execution remain `planned`.
+Status, 2026-10-29: chapters 1–6 implement M0/M1, the artifact slice of M5,
+text requests and a bounded causal attention block on the tested Apple LP64 CPU
+host. Autodiff and full model execution remain `planned`.
 [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -115,8 +115,18 @@ Unicode/regex/BPE fixtures, actual original data, rendered-request/token IDs,
 mutation and native debug/release/sanitizer evidence. The evidence uses an
 owned oracle, not an executed upstream model runtime. Upstream reference
 capture, broader request qualification and complete Elephant/Mammoth execution
-remain model gates. Next is chapter 6's attention core; no training dependency
-has been added to the urgent decision-model path.
+remain model gates. Chapter 6 now provides the first bounded causal attention
+block; no training dependency has been added to the urgent decision-model path.
+
+## Chapter 6: attention without training — implemented
+
+[The chapter](../../psionic/book/ch06-attention-without-training.md) and
+[attention library](../../psionic/lib/attention.coax) execute a bounded causal
+dense decoder block with learned RMS scaling, grouped-query attention,
+caller-supplied interleaved rotary tables, SwiGLU and an incremental KV cache.
+Independent full-sequence fixtures and native storage/refusal checks qualify
+this small CPU profile. It does not implement Qwen3.5's exact hybrid block or
+the decision mask. Chapter 7 and real-model qualification remain next.
 
 ## Delivery priority: Elephant, then Mammoth
 
@@ -133,7 +143,7 @@ This change does not publish issue-status updates.
 
 | Priority | Work | Must finish first |
 | --- | --- | --- |
-| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; qualify pinned real artifacts with chapter 4 and extend model-specific reference capture and attention over the shared CPU core. | Chapters 1–5 are shipped. Each real model still needs its own larger execution/resource profile. |
+| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; qualify pinned real artifacts with chapter 4 and extend model-specific reference capture and attention over the shared CPU core. | Chapters 1–6 are shipped. Each real model still needs its own larger execution/resource profile. |
 | Next | Qualify original model artifacts, exact Qwen tokenizer/decision prompts, independent reference capture, and model-specific numerical extensions. | Each task's data/math prerequisites; no training subsystem. |
 | Next | Qwen3.5 dense blocks, block-bidirectional full attention, causal DeltaNet, complete prefix forks and slot readout. | Shared operations/artifacts and exact prompt/state fixtures. |
 | First real model | Complete original-weight Elephant text decisions. | All hybrid layers, exact renderer/readout, bounded state and independent full-model oracles. |
@@ -155,7 +165,7 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Chapters 1–5 are runnable;
+one outline per chapter, with prerequisite notes. Chapters 1–6 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.

@@ -1,5 +1,30 @@
 # Invariants
 
+## Psionic causal attention publishes a complete block and cache entry
+
+`psionic/lib/attention.coax` owns a bounded causal dense block with learned RMS
+scales, row-major Q/K/V/output and SwiGLU matrices, grouped-query heads,
+caller-supplied interleaved rotary coefficients and a position-major KV cache.
+Width is at most 16 with an even head width, hidden width at most 32 and cache
+capacity at most 16. Shape checks precede multiplication. Each score and
+intermediate vector is narrowed to binary32; products and reductions use the
+chapter 3 compensated binary64 profile without FMA or reassociation.
+
+Inputs, weights, coefficients and the live cache prefix must be finite; rotary
+coefficient magnitudes are at most one. The caller owns the chosen rotary
+convention and ensures cache positions are sequential and correspond to the
+same immutable shape, weights and table. A step stages output and the new cache
+entry; failure preserves both. A full pass stages the entire sequence, and a
+failure preserves its public destination. Unused writable tails are unchanged.
+The native adapter observes aliases; valid aligned allocations, truthful
+extents, lifetimes and exclusive access remain caller obligations.
+
+Check: `psionic/check.sh` includes debug/release Coax and zero-survivor
+mutation, independent full-sequence fixtures, native debug/release and
+ASan/UBSan checks, causal isolation and book examples. The chapter 6 record
+scopes the evidence: this small causal profile does not establish Qwen3.5,
+block-bidirectional decision masks or Elephant/Mammoth execution.
+
 ## Psionic text requests publish complete bounded byte/token layouts
 
 `psionic/lib/text.coax` and `psionic/lib/text/` own `qwen35-text-v1`: frozen

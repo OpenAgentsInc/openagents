@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapters 1–5, local/owned machines only. No model downloads or services.
+# Chapters 1–6, local/owned machines only. No model downloads or services.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -17,7 +17,8 @@ python3 -I psionic/tests/weights_fixtures.py --header > "$out/weights-fixtures.h
 # The weights root checks/mutates every imported model-io unit plus JSON/SHA-256.
 python3 -I psionic/tests/text_fixtures.py
 python3 -I psionic/tests/text_oracle.py --header > "$out/text-goldens.h"
-for unit in learn tensor ops-contract ops model-io/weights text; do
+python3 -I psionic/tests/attention_oracle.py --header > "$out/attention-oracle.h"
+for unit in learn tensor ops-contract ops model-io/weights text attention; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -26,7 +27,7 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in learn tensor ops weights text; do
+    for unit in learn tensor ops weights text attention; do
         source="psionic/lib/$unit.coax"
         if [[ $unit == weights ]]; then source=psionic/lib/model-io/weights.coax; fi
         "$coax" c "$source" --library --header "$out/$unit.h" "${flags[@]}" > "$out/$unit.c"
@@ -36,6 +37,7 @@ for mode in debug release; do
             ops) adapter=psionic/platform/ops-memory.c; harness=psionic/tests/ops.c ;;
             weights) adapter=psionic/platform/weights-memory.c; harness=psionic/tests/weights.c ;;
             text) adapter=psionic/platform/text-memory.c; harness=psionic/tests/text.c ;;
+            attention) adapter=psionic/platform/attention-memory.c; harness=psionic/tests/attention.c ;;
         esac
         for native in plain sanitized; do
             sanitizers=()
@@ -50,4 +52,4 @@ for mode in debug release; do
     done
 done
 python3 -I psionic/tests/book.py --coax "$coax"
-echo "Psionic chapters 1–5 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"
+echo "Psionic chapters 1–6 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"

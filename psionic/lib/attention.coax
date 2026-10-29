@@ -1,0 +1,241 @@
+// A bounded causal dense decoder block, CPU-f32-wide-v1.
+#load "ops.coax";
+#authority;
+
+// book:begin types
+PaShape :: struct { width: int; heads: int; kv_heads: int; head_width: int; hidden: int; capacity: int; epsilon: f32; }
+PaStatus :: enum u8 { ok; shape; capacity; alias; number; arithmetic; }
+PaResult :: struct { status: PaStatus; written: int; }
+// book:end types
+
+#test "two causal positions use the mean of visible values" {
+    s := PaShape.{width=2, heads=1, kv_heads=1, head_width=2, hidden=1, capacity=3, epsilon=3};
+    // norm1, Q, K, V, O, norm2, gate, up, down; Q/K and FFN are zero.
+    w := [26] f32.[1,1, 0,0,0,0, 0,0,0,0, 1,0,0,1, 1,0,0,1, 1,1, 0,0, 0,0, 0,0];
+    rope := [6] f32.[1,0, 1,0, 1,0];
+    x := [4] f32.[1,-1, -1,1]; out := [5] f32.[-9,-9,-9,-9,-9];
+    r := pa_forward(s,w[..],rope[..],x[..],2,out[..],false);
+    #assert r.status==PaStatus.ok && r.written==4;
+    #assert out[0]==1.5f32 && out[1]==-1.5f32 && out[2]==-1 && out[3]==1 && out[4]==-9;
+    cache: [12] f32; one: [2] f32;
+    a:=pa_step(s,w[..],rope[..],x[0..<2],0,cache[..],one[..],false);
+    #assert a.status==PaStatus.ok && one[0]==out[0] && one[1]==out[1];
+    b:=pa_step(s,w[..],rope[..],x[2..<4],1,cache[..],one[..],false);
+    #assert b.status==PaStatus.ok && one[0]==out[2] && one[1]==out[3];
+    #assert cache[0]==0.0f32 && cache[1]==0.0f32 && cache[2]==0.5f32 && cache[3]==-0.5f32;
+    #assert cache[4]==0.0f32 && cache[5]==0.0f32 && cache[6]==-0.5f32 && cache[7]==0.5f32;
+}
+#test "shape admission refuses malformed head groups and capacities" {
+    s:=PaShape.{width=4,heads=2,kv_heads=1,head_width=2,hidden=3,capacity=4,epsilon=1};
+    #assert pa_valid(s) && pa_weight_count(s)==92 && pa_cache_count(s)==16 && pa_rope_count(s)==8;
+    s.heads=3;#assert !pa_valid(s);s.heads=2;s.kv_heads=3;#assert !pa_valid(s);
+    s.kv_heads=1;s.head_width=3;#assert !pa_valid(s);s.head_width=2;s.width=0;#assert !pa_valid(s);
+    s.width=4;s.hidden=0;#assert !pa_valid(s);s.hidden=3;s.capacity=0;#assert !pa_valid(s);
+    s.capacity=17;#assert !pa_valid(s);s.capacity=4;s.epsilon=0;#assert !pa_valid(s);
+}
+#test "refusals preserve published output and cache" {
+    s:=PaShape.{width=2,heads=1,kv_heads=1,head_width=2,hidden=1,capacity=1,epsilon=1};
+    w:[26]f32;rope:=[2]f32.[1,0];x:=[2]f32.[1,2];out:=[2]f32.[-7,-7];cache:=[4]f32.[-9,-9,-9,-9];
+    #assert pa_step(s,w[0..<25],rope[..],x[..],0,cache[..],out[..],false).status==PaStatus.capacity;
+    #assert pa_step(s,w[..],rope[..],x[..],1,cache[..],out[..],false).status==PaStatus.capacity;
+    #assert pa_step(s,w[..],rope[..],x[..],0,cache[..],out[..],true).status==PaStatus.alias;
+    rope[0]=2;
+    #assert pa_step(s,w[..],rope[..],x[..],0,cache[..],out[..],false).status==PaStatus.number;
+    for v:out {#assert v==-7;}for v:cache {#assert v==-9;}
+}
+
+// book:begin plan
+pa_valid :: (s: PaShape) -> bool {
+    if s.width/2>8 || s.heads<1 || s.kv_heads<1 || s.head_width<2 || s.hidden<1 || s.hidden>32 || s.capacity<1 || s.capacity>16 {return false;}
+    if s.head_width%2!=0 {return false;}
+    if s.width/s.head_width!=s.heads || s.width%s.head_width!=0 || s.heads%s.kv_heads!=0 {return false;}
+    return psionic_tensor_finite_bits(f32_bits(s.epsilon)) && s.epsilon>0;
+}
+pa_weight_count :: (s: PaShape) -> int {
+    d:=s.width;k:=s.kv_heads*s.head_width;f:=s.hidden;
+    return 2*d+2*d*d+2*k*d+3*f*d;
+}
+pa_cache_count :: (s: PaShape) -> int {return 2*s.capacity*s.kv_heads*s.head_width;}
+pa_rope_count :: (s: PaShape) -> int {return s.capacity*s.head_width;}
+// book:end plan
+
+pa_number :: (x:f32)->bool {return psionic_tensor_finite_bits(f32_bits(x));}
+pa_data_status :: (a:[]f32)->PaStatus {for x:a {if !pa_number(x) {return PaStatus.number;}}return PaStatus.ok;}
+pa_cache_prefix :: (position:int,k:int)->int {return position*2*k;}
+pa_visible :: (position:int)->int {return position+1;}
+pa_narrow :: (value:f64,out:[]f32,index:int)->bool {
+    if !psionic_ops_fits_f32(value) {return false;}
+    out[index]=f32(value);return true;
+}
+pa_linear :: (w:[]f32,offset:int,rows:int,cols:int,x:[]f32,out:[]f32)->bool {
+    for row:0..<rows {
+        sum:PsionicAccumulator;
+        for col:0..<cols {sum=psionic_ops_accumulate(sum,f64(w[offset+row*cols+col])*f64(x[col]));}
+        if !pa_narrow(psionic_ops_total(sum),out,row) {return false;}
+    }
+    return true;
+}
+pa_norm :: (x:[]f32,weights:[]f32,offset:int,epsilon:f32,out:[]f32)->bool {
+    squares:PsionicAccumulator;
+    for value:x {squares=psionic_ops_accumulate(squares,f64(value)*f64(value));}
+    divisor:=sqrt(psionic_ops_total(squares)/f64(x.count)+f64(epsilon));
+    for i:0..<x.count {if !pa_narrow(f64(x[i])/divisor*f64(weights[offset+i]),out,i) {return false;}}
+    return true;
+}
+// Interleaved coordinate pairs; each position's [cos,sin] pairs are shared by heads.
+// book:begin rotate
+pa_rotate :: (v:[]f32,heads:int,dim:int,rope:[]f32,position:int)->bool {
+    for h:0..<heads {
+        for pair:0..<dim/2 {
+            i:=h*dim+2*pair; r:=position*dim+2*pair;
+            x:=f64(v[i]);y:=f64(v[i+1]);c:=f64(rope[r]);s:=f64(rope[r+1]);
+            if !pa_narrow(x*c-y*s,v,i) || !pa_narrow(x*s+y*c,v,i+1) {return false;}
+        }
+    }
+    return true;
+}
+// book:end rotate
+
+// book:begin step
+pa_step :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,position:int,cache:[]f32,out:[]f32,overlap:bool)->PaResult #export_c {
+    if !pa_valid(s) {return PaResult.{status=PaStatus.shape};}
+    d:=s.width;k:=s.kv_heads*s.head_width;f:=s.hidden;
+    if w.count!=pa_weight_count(s) || rope.count!=pa_rope_count(s) || x.count!=d || position<0 || position>=s.capacity || cache.count<pa_cache_count(s) || out.count<d {return PaResult.{status=PaStatus.capacity};}
+    if overlap {return PaResult.{status=PaStatus.alias};}
+    if pa_data_status(w)!=PaStatus.ok {return PaResult.{status=PaStatus.number};}
+    if pa_data_status(rope)!=PaStatus.ok {return PaResult.{status=PaStatus.number};}
+    if pa_data_status(x)!=PaStatus.ok {return PaResult.{status=PaStatus.number};}
+    if pa_data_status(cache[0..<pa_cache_prefix(position,k)])!=PaStatus.ok {return PaResult.{status=PaStatus.number};}
+    for r:rope {if abs(r)>1 {return PaResult.{status=PaStatus.number};}}
+    qoff:=d;koff:=qoff+d*d;voff:=koff+k*d;ooff:=voff+k*d;n2off:=ooff+d*d;goff:=n2off+d;uoff:=goff+f*d;doff:=uoff+f*d;
+    norm:[16]f32;q:[16]f32;key:[16]f32;value:[16]f32;context:[16]f32;projected:[16]f32;residual:[16]f32;gate:[32]f32;up:[32]f32;product:[32]f32;down:[16]f32;result:[16]f32;
+    if !pa_norm(x,w,0,s.epsilon,norm[0..<d]) || !pa_linear(w,qoff,d,d,norm[..],q[..]) || !pa_linear(w,koff,k,d,norm[..],key[..]) || !pa_linear(w,voff,k,d,norm[..],value[..]) {return PaResult.{status=PaStatus.arithmetic};}
+    if !pa_rotate(q[0..<d],s.heads,s.head_width,rope,position) || !pa_rotate(key[0..<k],s.kv_heads,s.head_width,rope,position) {return PaResult.{status=PaStatus.arithmetic};}
+    for head:0..<s.heads {
+        kv:=head/(s.heads/s.kv_heads); scores:[16]f32;mask:[16]u8;visible:=pa_visible(position);
+        for t:0..<visible {
+            sum:PsionicAccumulator;
+            for c:0..<s.head_width {
+                kval:=key[kv*s.head_width+c];if t<position {kval=cache[t*2*k+kv*s.head_width+c];}
+                sum=psionic_ops_accumulate(sum,f64(q[head*s.head_width+c])*f64(kval));
+            }
+            score:=psionic_ops_total(sum)/sqrt(f64(s.head_width));
+            if !pa_narrow(score,scores[..],t) {return PaResult.{status=PaStatus.arithmetic};}
+            mask[t]=1;
+        }
+        maximum:=f64(scores[psionic_ops_argmax(scores[..],mask[..],0,visible)]);
+        denom:PsionicAccumulator;
+        for t:0..<visible {denom=psionic_ops_accumulate(denom,exp(f64(scores[t])-maximum));}
+        total:=psionic_ops_total(denom);
+        for c:0..<s.head_width {
+            sum:PsionicAccumulator;
+            for t:0..<visible {
+                val:=value[kv*s.head_width+c];if t<position {val=cache[t*2*k+k+kv*s.head_width+c];}
+                sum=psionic_ops_accumulate(sum,(exp(f64(scores[t])-maximum)/total)*f64(val));
+            }
+            if !pa_narrow(psionic_ops_total(sum),context[..],head*s.head_width+c) {return PaResult.{status=PaStatus.arithmetic};}
+        }
+    }
+    if !pa_linear(w,ooff,d,d,context[..],projected[..]) {return PaResult.{status=PaStatus.arithmetic};}
+    for i:0..<d {if !pa_narrow(f64(x[i])+f64(projected[i]),residual[..],i) {return PaResult.{status=PaStatus.arithmetic};}}
+    if !pa_norm(residual[0..<d],w,n2off,s.epsilon,norm[0..<d]) || !pa_linear(w,goff,f,d,norm[..],gate[..]) || !pa_linear(w,uoff,f,d,norm[..],up[..]) {return PaResult.{status=PaStatus.arithmetic};}
+    for i:0..<f {
+        g:=f64(gate[i]);e:=exp(-abs(g));sigmoid:=exp((g-abs(g))/2)/(1+e);
+        if !pa_narrow(g*sigmoid*f64(up[i]),product[..],i) {return PaResult.{status=PaStatus.arithmetic};}
+    }
+    if !pa_linear(w,doff,d,f,product[..],down[..]) {return PaResult.{status=PaStatus.arithmetic};}
+    for i:0..<d {if !pa_narrow(f64(residual[i])+f64(down[i]),result[..],i) {return PaResult.{status=PaStatus.arithmetic};}}
+    for i:0..<k {cache[position*2*k+i]=key[i];cache[position*2*k+k+i]=value[i];}
+    for i:0..<d {out[i]=result[i];}
+    return PaResult.{written=d};
+}
+// book:end step
+
+// book:begin full
+pa_forward :: (s:PaShape,w:[]f32,rope:[]f32,x:[]f32,steps:int,out:[]f32,overlap:bool)->PaResult #export_c {
+    if !pa_valid(s) {return PaResult.{status=PaStatus.shape};}
+    if steps<1 {return PaResult.{status=PaStatus.capacity};}
+    if steps>s.capacity {return PaResult.{status=PaStatus.capacity};}
+    if x.count!=steps*s.width {return PaResult.{status=PaStatus.capacity};}
+    if out.count<steps*s.width {return PaResult.{status=PaStatus.capacity};}
+    if overlap {return PaResult.{status=PaStatus.alias};}
+    cache:[512]f32;staged:[256]f32;
+    for p:0..<steps {
+        r:=pa_step(s,w,rope,x[p*s.width..<(p+1)*s.width],p,cache[0..<pa_cache_count(s)],staged[p*s.width..<steps*s.width],false);
+        if r.status!=PaStatus.ok {return PaResult.{status=r.status};}
+    }
+    for i:0..<steps*s.width {out[i]=staged[i];}
+    return PaResult.{written=steps*s.width};
+}
+// book:end full
+
+#test "rotation applies each position to every head in interleaved pairs" {
+    rope := [4] f32.[1,0, 0,1]; v := [4] f32.[1,2, 3,4];
+    #assert pa_rotate(v[..],2,2,rope[..],1);
+    #assert v[0]==-2 && v[1]==1 && v[2]==-4 && v[3]==3;
+    max:=f32_from_bits(0x7f7fffff); v[0]=max;v[1]=max;rope[2]=1;rope[3]=-1;
+    #assert !pa_rotate(v[..],2,2,rope[..],1);
+}
+#test "valid dimensions and workspaces have exact independent limits" {
+    s:=PaShape.{width=16,heads=8,kv_heads=4,head_width=2,hidden=32,capacity=16,epsilon=1};
+    #assert pa_valid(s) && pa_cache_count(s)==256 && pa_rope_count(s)==32;
+    s.width=17;#assert !pa_valid(s);s.width=16;s.hidden=33;#assert !pa_valid(s);
+    s.hidden=32;s.heads=0;#assert !pa_valid(s);s.heads=8;s.kv_heads=0;#assert !pa_valid(s);
+    s.kv_heads=3;#assert !pa_valid(s);s.kv_heads=4;s.head_width=1;#assert !pa_valid(s);
+    s.head_width=2;s.epsilon=-1;#assert !pa_valid(s);
+}
+#test "matrix rows, normalization and narrowing agree with hand calculations" {
+    w:=[4]f32.[1,2,3,4];x:=[2]f32.[3,4];out:=[2]f32.[-1,-1];
+    #assert pa_linear(w[..],0,2,2,x[..],out[..]) && out[0]==11 && out[1]==25;
+    scale:=[2]f32.[2,4];#assert pa_norm(x[..],scale[..],0,3.5f32,out[..]);
+    #assert out[0]==1.5f32 && out[1]==4;
+    max:=f32_from_bits(0x7f7fffff);x[0]=max;x[1]=max;
+    #assert !pa_linear(w[..],0,2,2,x[..],out[..]);
+}
+#test "full forward refuses invalid storage or a bad later token atomically" {
+    s:=PaShape.{width=2,heads=1,kv_heads=1,head_width=2,hidden=1,capacity=2,epsilon=1};
+    w:[26]f32;rope:=[4]f32.[1,0,1,0];x:=[4]f32.[1,2,3,4];out:=[4]f32.[-7,-7,-7,-7];
+    #assert pa_forward(s,w[..],rope[..],x[..],0,out[..],false).status==PaStatus.capacity;
+    #assert pa_forward(s,w[..],rope[..],x[..],3,out[..],false).status==PaStatus.capacity;
+    #assert pa_forward(s,w[..],rope[0..<3],x[..],2,out[..],false).status==PaStatus.capacity;
+    #assert pa_forward(s,w[..],rope[..],x[0..<3],2,out[..],false).status==PaStatus.capacity;
+    #assert pa_forward(s,w[..],rope[..],x[..],2,out[0..<3],false).status==PaStatus.capacity;
+    #assert pa_forward(s,w[..],rope[..],x[..],2,out[..],true).status==PaStatus.alias;
+    max:=f32_from_bits(0x7f7fffff);x[2]=max;x[3]=max;w[0]=max;w[1]=max;w[2]=max;
+    r:=pa_forward(s,w[..],rope[..],x[..],2,out[..],false);
+    #assert r.status==PaStatus.arithmetic && r.written==0;
+    for value:out {#assert value==-7;}
+}
+
+#load "../fixtures/attention/ch06-vectors.coax";
+#test "all request boundaries are independently enforced" {
+    s:=PaShape.{width=2,heads=1,kv_heads=1,head_width=2,hidden=1,capacity=1,epsilon=1};
+    w:[26]f32;rope:=[2]f32.[1,0];x:=[2]f32.[1,2];out:[2]f32;cache:[4]f32;
+    #assert pa_valid(s) && pa_cache_prefix(3,4)==24 && pa_visible(0)==1 && pa_visible(4)==5;
+    #assert pa_step(s,w[..],rope[0..<1],x[..],0,cache[..],out[..],false).status==PaStatus.capacity;
+    #assert pa_step(s,w[..],rope[..],x[0..<1],0,cache[..],out[..],false).status==PaStatus.capacity;
+    #assert pa_step(s,w[..],rope[..],x[..],-1,cache[..],out[..],false).status==PaStatus.capacity;
+    #assert pa_step(s,w[..],rope[..],x[..],0,cache[0..<3],out[..],false).status==PaStatus.capacity;
+    #assert pa_step(s,w[..],rope[..],x[..],0,cache[..],out[0..<1],false).status==PaStatus.capacity;
+    #assert pa_forward(s,w[..],rope[..],x[..],1,out[..],false).status==PaStatus.ok;
+    #assert pa_forward(s,w[0..<25],rope[..],x[..],1,out[..],false).status==PaStatus.capacity;
+    s.heads=0;#assert pa_forward(s,w[..],rope[..],x[..],1,out[..],false).status==PaStatus.shape;
+}
+#test "limits reject every invalid head shape and admit the upper bounds" {
+    s:=PaShape.{width=18,heads=9,kv_heads=1,head_width=2,hidden=32,capacity=16,epsilon=1};
+    #assert !pa_valid(s);s.width=16;s.heads=8;s.kv_heads=8;
+    #assert pa_valid(s);s.width=1;#assert !pa_valid(s);s.width=16;s.heads=17;#assert !pa_valid(s);
+    s.heads=8;s.kv_heads=9;#assert !pa_valid(s);s.kv_heads=8;s.head_width=3;#assert !pa_valid(s);
+    s.head_width=2;s.width=15;#assert !pa_valid(s);s.width=16;s.hidden=-1;#assert !pa_valid(s);
+    s.hidden=32;s.capacity=-1;#assert !pa_valid(s);s.capacity=16;s.heads=3;s.kv_heads=2;#assert !pa_valid(s);
+}
+#test "normalization refuses finite overflow before publishing" {
+    a:=[2]f32.[f32_from_bits(0x7f7fffff),0];w:=[2]f32.[f32_from_bits(0x7f7fffff),1];out:[2]f32;
+    #assert !pa_norm(a[..],w[..],0,1,out[..]);
+    #assert pa_data_status(a[..])==PaStatus.ok && pa_number(1) && !psionic_tensor_finite_bits(0x7f800000);
+}
+#test "untrusted shape integers cannot overflow head admission" {
+    s:=PaShape.{width=16,heads=9223372036854775807,kv_heads=1,head_width=2,hidden=1,capacity=1,epsilon=1};
+    #assert !pa_valid(s);s.heads=1;s.head_width=9223372036854775806;#assert !pa_valid(s);
+    s.head_width=2;s.width=-9223372036854775807;#assert !pa_valid(s);
+}

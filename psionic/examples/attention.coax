@@ -1,0 +1,25 @@
+#load "../lib/attention.coax";
+#import "Basic";
+
+// book:begin example
+main :: () {
+    shape:=PaShape.{width=2,heads=1,kv_heads=1,head_width=2,hidden=1,capacity=3,epsilon=3};
+    // Q/K and feed-forward projections are zero; V and output are identity.
+    weights:=[26]f32.[1,1, 0,0,0,0, 0,0,0,0, 1,0,0,1, 1,0,0,1, 1,1, 0,0, 0,0, 0,0];
+    rotary:=[6]f32.[1,0,1,0,1,0];tokens:=[4]f32.[1,-1,-1,1];out:[4]f32;
+    full:=pa_forward(shape,weights[..],rotary[..],tokens[..],2,out[..],false);
+    #assert full.status==PaStatus.ok;
+    print("full causal block: [%, %, %, %]\n",out[0],out[1],out[2],out[3]);
+    cache:[12]f32;step:[2]f32;
+    for p:0..<2 {
+        r:=pa_step(shape,weights[..],rotary[..],tokens[p*2..<(p+1)*2],p,cache[..],step[..],false);
+        #assert r.status==PaStatus.ok && step[0]==out[p*2] && step[1]==out[p*2+1];
+        print("cached position %: [%, %]\n",p,step[0],step[1]);
+    }
+    #assert cache[2]==0.5f32 && cache[3]==-0.5f32 && cache[6]==-0.5f32 && cache[7]==0.5f32;
+    print("cached values: [%, %], [%, %]\n",cache[2],cache[3],cache[6],cache[7]);
+    r:=pa_step(shape,weights[..],rotary[..],tokens[0..<2],3,cache[..],step[..],false);
+    #assert r.status==PaStatus.capacity;
+    print("refused: position exceeds cache capacity\n");
+}
+// book:end example

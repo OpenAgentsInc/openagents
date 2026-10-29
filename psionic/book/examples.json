@@ -60,6 +60,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/attention.coax",
+      "chapter": "psionic/book/ch06-attention-without-training.md",
+      "stdout": "psionic/fixtures/attention.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

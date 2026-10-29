@@ -4,7 +4,8 @@ Proposal, updated 2026-10-29. [Chapter 1](ch01-learning-a-number.md) and
 [Chapter 2](ch02-shapes-and-storage.md) and
 [Chapter 3](ch03-numbers-and-matrices.md) and
 [Chapter 4](ch04-reading-original-weights.md) and
-[Chapter 5](ch05-text-becomes-a-model-request.md) are runnable on the tested CPU host.
+[Chapter 5](ch05-text-becomes-a-model-request.md) and
+[Chapter 6](ch06-attention-without-training.md) are runnable on the tested CPU host.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -40,7 +41,7 @@ on the shared numerics in I and supplies the forward primitives reused later.
 | --- | --- |
 | [4. Reading original weights](ch04-reading-original-weights.md) — runnable | Bounded original-weights-v1 Safetensors/shard-index parsing, exact identities, BF16/F32 window decoding and typed manifests; complete inventory and malformed-artifact refusals. |
 | [5. Text becomes a model request](ch05-text-becomes-a-model-request.md) — runnable | qwen35-text-v1: frozen Base Labs rendering, Unicode-17 NFC, original Qwen byte-BPE tables, special tokens and exact shared-prefix layouts; explicit resource and structured-entry bounds. |
-| 6. Attention without training | A small dense forward block, positional conventions, grouped-query attention and caches; full-sequence versus incremental results. |
+| [6. Attention without training](ch06-attention-without-training.md) — runnable | A bounded dense causal block, interleaved rotary tables, grouped-query attention and caches; full-sequence versus incremental results. |
 | 7. A hybrid sequence model | The precise Qwen3.5 dense blocks, causal convolution and Gated DeltaNet state transitions alongside full attention. |
 | 8. Decisions have a different mask | Block-bidirectional full attention with causal recurrence; complete prefix snapshots, sequential suffix forks and branch isolation. |
 | 9. Read the options | Slot LM-head readout, probabilities, typed answers and calibration fixtures under the exact decision contract. |
