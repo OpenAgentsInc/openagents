@@ -3,7 +3,8 @@
 Status: first crack live and unlisted, October 29, 2026, at
 https://openagents.com/realms/fairy-forest (task ff-first-crack): the valley,
 the fairy with flight and a glide, Bloom, three creatures and three of the
-heart tree's roots. Not saved yet, no talk, no home or crafting. It is drawn
+heart tree's roots. Not saved yet, no talk, no home or crafting. The
+designer's notes on panes, chat and messages were added the same day. It is drawn
 from what players told us when asked what game they would make: a magical
 fairy forest came up again and again, unprompted, along with caring for
 things until they change, helping people, building a home and a community,
@@ -123,8 +124,42 @@ you told them and what you did for them).
   show on it.
 - **Your forest is shareable:** a link to your home and garden, as a visit
   (the playtest's published worlds).
-- **Visitors:** other players can visit your forest; there is room for the
-  realm's chat later.
+- **Visitors:** other players can visit your forest.
+
+## Talking with other players
+
+- **The chat room:** one room for everyone in the forest, in the style of
+  Horse Isle's: a chat box always on screen, every player's lines in order
+  with their name, open to anyone in the realm. This is in the first
+  version.
+- **The inbox:** direct messages between players. Send a message to any
+  player you've met; it waits in their inbox until they read it, whether
+  they're online or not, and they can answer from there.
+
+## Making the world: panes
+
+The designer's notes, October 29. They hold for building any world on the
+Verse, and Fairy Forest is where they are tried first.
+
+- **No wall of tools.** Edit mode does not open on every pane at once. The
+  agent brings up the pane that fits what you are working on, and
+  only that.
+- **A game from one voice prompt.** Describe a game out loud and the agent
+  answers with its design document as a board: a list of features, each a
+  few words. You check on the ones you want built and check off the ones you
+  don't. The board is what the agent builds from.
+- **Lore.** Working on a character's story, a pane opens for that
+  character's lore. What you write is saved with the character, and the pane
+  comes back the next time you work on them.
+- **Quest design.** Working on a quest, a pane opens with a form for it: who
+  gives it, what is asked, the steps, what you get. Saving the form makes
+  the quest.
+- **Other panes** follow the same rule: one pane for the thing in front of
+  you, short words, saved and brought back later.
+- **Accept or decline.** Every change someone else proposes to a world (a
+  player's, a contributor's or the agent's) reaches its owner as a clear
+  card: what changes, where, and what it looks like before and after, with
+  ACCEPT and DECLINE. Nothing changes the world until the owner accepts.
 
 ## Lore and wandering
 
@@ -159,6 +194,10 @@ you told them and what you did for them).
 - Gardens that grow over real days and change with care.
 - Creatures moving in and building homes.
 - Timed courses with shareable links and friends' times.
+- The chat room and the inbox.
+- Panes: the agent bringing up the right pane, the design board from a voice
+  prompt, the lore and quest-design panes, and accept-or-decline cards for
+  the world's owner.
 
 ## Not in the first version
 
