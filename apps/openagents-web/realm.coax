@@ -688,6 +688,7 @@ draw_voice :: (r: [] Realm, out: [] f32, at: int, talking: string) -> int {
   s0 := slot_box(r, 0); s1 := slot_box(r, SLOTS - 1);
   h := 52 * k;
   y0 := ifx phone(r) then s0.y1 + 10 * k else s0.y0 - 10 * k - h;
+  if talking.count > 0 { y0 = talk_box(r).y0 - 10 * k - h; }   // over the conversation, not across it
   b := Box.{x0 = ifx phone(r) then s0.x0 else s0.x0 - 120 * k, y0 = y0, x1 = s1.x1, y1 = y0 + h};
   plate(r, b, 0.88, LOOK_PLAIN);
   v := draw_fit(d, out, at, label, b.x0 + 12 * k, b.y0 + 17 * k, 7 * k, GAP, SPACE, orange(k, 0.95), b.x1 - b.x0 - 24 * k);

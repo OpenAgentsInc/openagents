@@ -2,8 +2,8 @@
 // microphone plays a recorded question, a real click turns VOICE on, and the
 // page must hear it and play the house's reply. Nothing is heard on this
 // Mac (--mute-audio) and no window opens.
-// TALK=NAME: first E, which talks to whoever is near where you arrive
-// (Mortimer, in the yard); NAME must then answer, through the same character
+// TALK=NAME: first turn to Mortimer, near where you arrive in the yard, and
+// press E to talk to him; NAME must then answer, through the same character
 // chat as a typed question, and the voice host must speak it as NAME.
 //   [TALK=NAME] bun coax/web/voice/browser-smoke.ts PAGE_URL [FIXTURE.wav]
 // PAGE_URL is the Haunted House, with ?voice=ws://127.0.0.1:8787 for a host on this Mac.
@@ -16,6 +16,8 @@ const W = 1440, H = 900
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const profile = mkdtempSync(join(tmpdir(), "coax-voice-"))
 const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run",
+  // The audio service's sandbox can't read the fixture: without this the fake microphone is silent.
+  "--disable-features=AudioServiceSandbox,AudioServiceOutOfProcess",
   "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", `--window-size=${W},${H}`,
   "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${resolve(wav)}%noloop`,
   "--autoplay-policy=no-user-gesture-required", "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
@@ -39,11 +41,21 @@ try {
   const value = async (js: string) => (await send("Runtime.evaluate", { expression: js, returnByValue: true })).result?.result?.value
   await send("Runtime.enable")
   await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false })
+  // One speaker id for every run: the host meters speakers per day (--max-speakers), and a fresh
+  // profile's random id would take a visitor's place each time.
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("verse.voice.speaker", "web-5e0e0e0e0e0e") } catch {}` })
   await send("Page.navigate", { url })
   for (let i = 0; i < 60 && !(await value("!!globalThis.coaxial?.ready")); i++) await Bun.sleep(500)
   await Bun.sleep(3000)
   const talk = process.env.TALK ?? ""
   if (talk) {
+    // Look around to the right until Mortimer, by the path behind you, is near enough to talk to (800 px of drag at 1440x900).
+    for (let k = 0; k < 4; k++) {
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", x: 700, y: 400, button: "left", clickCount: 1 })
+      for (let i = 1; i <= 10; i++) await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 700 + 20 * i, y: 400, button: "left", buttons: 1 })
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 900, y: 400, button: "left", clickCount: 1 })
+      await Bun.sleep(700)
+    }
     for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "e", code: "KeyE", text: type === "keyDown" ? "e" : undefined, windowsVirtualKeyCode: 69 })
     await Bun.sleep(800)
   }

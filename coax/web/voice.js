@@ -251,6 +251,8 @@ export function startVoice({ send, route, wasmUrl }) {
       else if (k === CONTROL.PING) control(CONTROL.PONG);
     } else if (kind === MSG.ERROR) {
       console.warn("voice host:", string(0));
+      // Refused before the welcome (the day's voice used up, too many speakers): trying again won't help today.
+      if (!welcomed && x.vw_field(0) === 3) { off(WORDS[3]); return; }
       show(phase === "thinking" || phase === "heard" ? "listening" : phase, WORDS[x.vw_field(0)] || "Voice hit a problem. Try again.");
     }
   }
