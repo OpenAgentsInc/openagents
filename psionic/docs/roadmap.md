@@ -3,16 +3,19 @@
 Status, 2026-10-29: chapters 1–10 implement M0/M1, the artifact slice of M5,
 text requests, bounded Qwen-style layers and authenticated original-weight
 Elephant text decisions on the tested Apple LP64 CPU host. Mammoth and autodiff
-remain `planned`. The independent [chapter 34 format decoder](../book/ch41-original-mxfp4-weights.md)
-now implements bounded original MXFP4 bytes. [Chapter 35](../book/ch42-a-few-experts-then-a-router.md)
-adds bounded top-k routing and tiny resident affine mixtures.
-[Chapter 36](../book/ch43-attention-with-sinks-and-a-window.md) adds sink/window
-attention, split-half YaRN, a bounded biased projection and clamped activation
-under a named wide CPU profile. Original full-size projection/block execution,
-checkpoint binding and complete gpt-oss execution remain planned.
-[Chapter 44](../book/ch44-the-harmony-format.md) now adds the original byte-rank
-tokenizer, reasoning-effort templates and typed Harmony render/parse gates.
-This is a bounded Unicode-17 text profile, not tool execution or generation.
+remain `planned`. GPT-OSS chapters 41–48 now implement original-format decoding,
+original 20b/120b **CPU reference** execution, Harmony, seeded sampling,
+correct speculative verification and bounded-schema tools. These are slow
+reference implementations. GPU execution and serving throughput are open gates.
+
+**The next GPT-OSS delivery is the device track in the
+[book plan](../book/PLAN.md#gpt-oss-device-delivery-order): resident original
+20b weights on the RTX 4080 → complete CUDA generation → batched prefill →
+measured throughput and bounded serving → 120b on sufficient device memory →
+batched speculation → device tool integration.** Existing Coax CUDA emission,
+BF16 kernels and driver effects are reused. Do not call this branch complete
+for practical inference until the recorded device throughput gates pass.
+
 [Run the first chapter](../book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../../docs/verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine

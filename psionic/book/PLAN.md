@@ -15,8 +15,10 @@ The [first gpt-oss format chapter, 41](ch41-original-mxfp4-weights.md), is also
 runnable as a bounded CPU decoder. [Chapter 42](ch42-a-few-experts-then-a-router.md)
 adds the bounded top-k router and tiny affine experts.
 [Chapter 43](ch43-attention-with-sinks-and-a-window.md) adds bounded sink/window
-attention, split-half YaRN, biased projection and clamped activation. Complete
-gpt-oss execution is still planned.
+attention, split-half YaRN, biased projection and clamped activation. Chapters
+45–48 now provide CPU reference execution, sampling, speculative verification
+and a finite-schema tool round trip. **GPU execution and useful throughput are
+not complete.** The device sequence below is the next GPT-OSS delivery path.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -182,10 +184,34 @@ the memory plan of 22 and the sampling of 30.
 | [42. A few experts, then a router](ch42-a-few-experts-then-a-router.md) — runnable: bounded CPU | A tiny MoE with directly checkable choices, ties, weighting, dispatch/gather and expert-residency budgets; then gpt-oss's selected-only softmax over sorted top-four logits, under an explicit wide CPU and lowest-ID-tie profile. Original gate projection and BF16 parity remain separate. |
 | [43. Attention with sinks and a window](ch43-attention-with-sinks-and-a-window.md) — runnable: bounded wide CPU | Learned per-head sink logits that join each softmax denominator without contributing a value; a 128-token banded window on alternate layers beside full attention, with a window-bounded cache; YaRN rotary scaling (base 150,000, factor 32 over 4,096 original positions); a reusable bounded biased projection; and the clamped SwiGLU (alpha 1.702, limit 7, plus-one linear term). Projected-Q/K/V execution supports 64/8 heads, windows through 128 and absolute positions through 131,071; full attention is limited to 128 tokens. Full-size original projections and whole-block/model qualification remain chapter 45 gates. |
 | [44. The harmony format](ch44-the-harmony-format.md) — runnable: bounded text profile | Original o200k byte ranks and case-sensitive splitting with Unicode-17 properties, shared byte-BPE and separately pinned table identity (201,088 vocabulary entries). Typed system/developer/user/assistant/tool framing, low/medium/high reasoning templates, ordinary-text marker isolation and strict full/completion parsing of analysis/commentary/final, with exact return/call stops and atomic publication. Bounds: 64 messages, 16,384 IDs and 65,536 decoded bytes; optional header extensions and tool execution remain separate. |
-| [45. Execute gpt-oss-20b](ch45-execute-gpt-oss-20b.md) — runnable: bounded CPU | Complete authenticated original BF16/MXFP4 execution, seeded temperature/top-k/top-p sampling, independent dense intermediate/router/logit references, exact cached/replay checks and measured CPU residency. Implements the sampling primitives needed here without completing chapter 37’s broader scope. |
-| [46. Execute gpt-oss-120b](ch46-execute-gpt-oss-120b.md) — runnable: bounded CPU | The same CPU engine with 36 layers and 128 experts, separately authenticated seven-shard originals, independent full-stack references and measured resident memory on the 128 GiB host. Offload remains a separate profile for smaller hosts. |
-| [47. Let the small model guess](ch47-let-the-small-model-guess.md) — runnable: bounded CPU | Standard acceptance, positive-residual correction and all-match bonus, complete KV snapshots/replay and prompt n-grams. Exact tiny sampled checks and original 20b→120b greedy parity for draft limits 1/2/4; measured serial target batch 1 is slower than target alone, so no acceleration claim. |
-| [48. Call a tool](ch48-call-a-tool.md) — runnable: bounded CPU | Commentary handoffs with a bounded root-object JSON-schema enum masking the vocabulary before sampling; explicit host grant, named tool result and final-only display. Original 20b forced named calculator round trip; general schemas and autonomous tool choice remain separate profiles. |
+| [45. Execute gpt-oss-20b](ch45-execute-gpt-oss-20b.md) — CPU reference complete; GPU throughput open | Complete authenticated original BF16/MXFP4 execution, seeded temperature/top-k/top-p sampling, independent dense intermediate/router/logit references, exact cached/replay checks and measured CPU residency. Implements the sampling primitives needed here without completing chapter 37’s broader scope. |
+| [46. Execute gpt-oss-120b](ch46-execute-gpt-oss-120b.md) — CPU reference complete; GPU throughput open | The same CPU engine with 36 layers and 128 experts, separately authenticated seven-shard originals, independent full-stack references and measured resident memory on the 128 GiB host. Offload remains a separate profile for smaller hosts. |
+| [47. Let the small model guess](ch47-let-the-small-model-guess.md) — correctness reference complete; fast device verification open | Standard acceptance, positive-residual correction and all-match bonus, complete KV snapshots/replay and prompt n-grams. Exact tiny sampled checks and original 20b→120b greedy parity for draft limits 1/2/4; measured serial target batch 1 is slower than target alone, so no acceleration claim. |
+| [48. Call a tool](ch48-call-a-tool.md) — bounded reference complete; device serving integration open | Commentary handoffs with a bounded root-object JSON-schema enum masking the vocabulary before sampling; explicit host grant, named tool result and final-only display. Original 20b forced named calculator round trip; general schemas and autonomous tool choice remain separate profiles. |
+
+
+### GPT-OSS device delivery order
+
+The CPU chapters establish a numerical reference. They do not complete the
+usable-inference goal. Advance this track before adding another model family.
+The lettered chapters preserve existing chapter numbers and other agents' rows;
+26, 27 and 29 supply shared device infrastructure as it becomes available.
+
+| Order | Chapter / milestone | Completion gate |
+| --- | --- | --- |
+| 1 | **45a. Original weights stay on the GPU** | A pure Coax memory/dispatch plan admits the complete original 20b payload, immutable packed MXFP4 experts, persistent activations and a bounded KV cache; actual allocation on the 16 GiB RTX 4080 succeeds with measured headroom. Authenticate/upload once. Coax kernels qualify BF16 and fused original-MXFP4 products on small fixtures and original-shaped projections. |
+| 2 | **45b. A complete CUDA decoder** | Norm, projections, YaRN, sink/window attention, routing, selected experts, residuals and head execute on device. Original 20b logits/routes meet a tolerance frozen before comparison with recorded CPU references. A complete Harmony turn runs with no per-layer activation/route downloads or weight transfers. |
+| 3 | **45c. Prefill together, decode efficiently** | Batch prompt tokens into matrix products; group tokens by expert; tiled sink/window attention and fused small operations. Shared memory/reductions/matrix instructions extend Coax compute where measurements require them. Report time to first token separately from steady decode, with exact model/context/build identities. |
+| 4 | **45d. Throughput is a gate** | On the 4080, fixed 1,024-token input/128-token output workload, seeded requests, warm-up and at least five repeats. Initial goals: median single-stream decode at least 25 tokens/s and 1,024-token warm prefill at most 2 s; these are unmeasured goals, never claims. Record P50/P95, allocation/peak device memory, transfers and phase times; compare an installed packaged reference on the same device. Add bounded continuous batching and KV allocation, and measure aggregate plus per-request rates at concurrency 1/4/8. |
+| 5 | **46a. Fit 120b on the right device** | Use the same device engine on enough resident memory: qualify a Metal compute backend on the 128 GiB Mac, or an explicitly available larger/multiple CUDA device configuration. The 4080 cannot keep the complete original 120b weights resident. Hardware acquisition and new hosted machines remain owner decisions. |
+| 6 | **47a. Verify a draft block in parallel** | Batched device target verification and rollback of only speculative state, preserving overwritten sliding slots. Greedy parity and tiny sampled-law checks remain required; measure actual acceptance and a net latency gain over the qualified target-only device path before enabling speculation by default. |
+| 7 | **48a. Device generation calls a tool** | Reuse the same resident engine, bounded schema masks, grant checks, cancellation and final-only display in the streamed device path. No CPU fallback hidden in throughput measurements. |
+
+Check-first development uses small owned fixtures, recorded original answers and
+focused changed-code checks. Full CPU model execution and whole mutation roots
+are not routine iteration gates. Small real-device qualification precedes each
+full-model GPU measurement. No hand-written arithmetic kernels or served BLAS
+runtime is introduced; Coax owns kernels and decisions, and C owns device effects.
 
 The torch reference upcasts MXFP4 to BF16, so a converted BF16 checkpoint is
 not the original artifact; chapter 41 decodes the original blocks. The
