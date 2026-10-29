@@ -1,0 +1,105 @@
+// Authored event checks load into the real module, not a parallel decoder.
+#test "field names decode escapes and remain exact" {
+  names:=[7]string.["id","pubkey","created_at","kind","tags","content","sig"];
+  for i:0..<7 {#assert ne_field(names[i])==i+1;}
+  #assert ne_field("\\u0069d")==1 && ne_field("Id")==0 && ne_field("unknown")==0 && ne_field("")==0;
+}
+#test "strict event hex narrows the generic codec" {
+  out:[2]u8;
+  #assert ne_lower_hex("01af",out[..]) && out[0]==1 && out[1]==175;
+  #assert !ne_lower_hex("01AF",out[..]) && !ne_lower_hex("01ag",out[..]);
+  #assert !ne_lower_hex("01",out[..]) && !ne_lower_hex("01afff",out[..]);
+}
+#forall "the additional hex admission excludes exactly uppercase A through F" c:0..<256 {
+  raw:=[2]u8.[48,cast(u8)c];out:[1]u8;
+  allowed:=(c>=48 && c<=57) || (c>=97 && c<=102);
+  #assert ne_lower_hex(cast(string)raw[..],out[..])==allowed;
+}
+#test "tag shape, empty positions and exact bounded cardinalities" {
+  j:[1]Json;e:[1]NostrEvent;
+  json_start(j[..],"[[],[\"x\",\"a\"]]");#assert json_next(j[..])!=JSON_ERROR;
+  #assert ne_tags(j[..],e[..]) && e[0].tags==2 && e[0].tags_from==0 && e[0].tags_to==14;
+  json_start(j[..],"{}");#assert json_next(j[..])!=JSON_ERROR;#assert !ne_tags(j[..],e[..]);
+  json_start(j[..],"[\"x\"]");#assert json_next(j[..])!=JSON_ERROR;#assert !ne_tags(j[..],e[..]);
+  json_start(j[..],"[[1]]");#assert json_next(j[..])!=JSON_ERROR;#assert !ne_tags(j[..],e[..]);
+  json_start(j[..],"[[\"x\"]]");#assert json_next(j[..])!=JSON_ERROR;e[0].tags=NE_MAX_TAGS;#assert !ne_tags(j[..],e[..]);
+  json_start(j[..],"[[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\"]]");#assert json_next(j[..])!=JSON_ERROR;e[0].tags=0;#assert ne_tags(j[..],e[..]);
+  json_start(j[..],"[[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\",\"q\"]]");#assert json_next(j[..])!=JSON_ERROR;e[0].tags=0;#assert !ne_tags(j[..],e[..]);
+}
+#test "serializer preserves order and uses the shared exact JSON writer" {
+  out:[128]u8;decoded:[128]u8;
+  n:=ne_write_tags("[[],[\"a\",\"\\u00e9\"],[\"a\",\"/\\n\"]]",out[..],0,decoded[..]);
+  #assert n==27 && cast(string)out[0..<n]=="[[],[\"a\",\"é\"],[\"a\",\"/\\n\"]]";
+  #assert ne_write_tags("{}",out[..],0,decoded[..])==-1;
+  #assert ne_write_tags("[1]",out[..],0,decoded[..])==-1;
+  #assert ne_write_tags("[[1]]",out[..],0,decoded[..])==-1;
+  #assert ne_write_tags("[[\"abc\"]]",out[..],0,decoded[0..<1])==-1;
+  #assert ne_write_tags("[[\"abc\"]]",out[0..<1],0,decoded[..])==-1;
+}
+#test "no metadata record itself grants verification or freshness" {
+  e:NostrEvent;e.error=NE_OK;e.written=7;
+  #assert !e.verified;
+  valid:=ne_verified(e,true);#assert valid.verified && valid.error==NE_OK && valid.written==7;
+  invalid:=ne_verified(e,false);#assert !invalid.verified && invalid.error==NE_SIGNATURE && invalid.written==0;
+  #assert ne_same_id(e);e.id[31]=1;#assert !ne_same_id(e);
+}
+#test "entry refusal precedes output access and never grants verification" {
+  out:[1]u8;out[0]=77;
+  #assert nostr_event_read("{}",out[..],true).error==NE_ALIAS;
+  #assert nostr_event_read("{",out[..],false).error==NE_JSON;
+  #assert nostr_event_read("{",out[..],false).admission==JA_JSON;
+  #assert nostr_event_read("{\"x\":1,\"x\":2}",out[..],false).admission==JA_DUPLICATE;
+  #assert nostr_event_read("{}",out[..],false).error==NE_SHAPE;
+  #assert nostr_event_verify_vartime("{}",out[..],false).error==NE_SHAPE;
+  #assert out[0]==77;
+}
+
+#load "event_fixtures.coax";
+#test "canonical preimage and computed ID use exact decoded fields" {
+  out:[1024]u8;e:=nostr_event_read(NE_FIXTURE,out[..],false);
+  #assert e.error==NE_OK && !e.verified && e.written==NE_PREIMAGE.count;
+  #assert cast(string)out[0..<e.written]==NE_PREIMAGE && e.original==NE_FIXTURE;
+  #assert e.kind==1 && e.created_at==0 && e.tags==3;
+  h:[64]u8;r:=hex_encode_checked(cast(string)e.computed_id[..],h[..],false);
+  #assert r.error==NC_OK && cast(string)h[..]==NE_FIXTURE_ID;
+  decoded:[64]u8;count:=json_unescape(e.original[e.content_from..<e.content_to],decoded[..]);
+  expected:=[16]u8.[97,34,92,10,13,9,8,12,0,195,169,240,159,152,128,47];
+  #assert count==16;for i:0..<16 {#assert decoded[i]==expected[i];}
+  bad:=nostr_event_verify_vartime(NE_FIXTURE,out[..],false);
+  #assert bad.error==NE_SIGNATURE && !bad.verified && bad.written==0;
+  #assert nostr_event_read(NE_FIXTURE,out[0..<1],false).error==NE_OUTPUT;
+}
+#test "truthful view metadata enforces the independent inclusive budgets" {
+  #assert NE_MAX_INPUT==ja_policy(0).input;
+  #assert ne_io(0,0,false)==NE_OK && ne_io(NE_MAX_INPUT,NE_MAX_OUTPUT,false)==NE_OK;
+  #assert ne_io(-1,0,false)==NE_LIMIT && ne_io(NE_MAX_INPUT+1,0,false)==NE_LIMIT;
+  #assert ne_io(0,-1,false)==NE_OUTPUT && ne_io(0,NE_MAX_OUTPUT+1,false)==NE_OUTPUT;
+  #assert ne_io(-1,-1,true)==NE_ALIAS;
+}
+#forall "every ID byte participates in exact equality" i:0..<32 {
+  e:NostrEvent;e.id[i]=1;#assert !ne_same_id(e);
+  e.computed_id[i]=1;#assert ne_same_id(e);
+}
+#forall "required shapes and decoded duplicate keys refuse" i:0..<NE_BAD_EVENTS.count {
+  e:=ne_parse(NE_BAD_EVENTS[i]);#assert e.error==NE_BAD_ERRORS[i] && !e.verified && e.written==0;
+}
+#test "unknown fields and wire spellings are retained without entering the ID" {
+  out:[1024]u8;e:=nostr_event_read(NE_UNKNOWN,out[..],false);
+  #assert e.error==NE_OK && e.original==NE_UNKNOWN && e.written==NE_PREIMAGE.count;
+  #assert cast(string)out[0..<e.written]==NE_PREIMAGE && !e.verified;
+  wrong:=ne_parse(NE_FIXTURE);wrong.id[0]^=1;#assert !ne_same_id(wrong);
+}
+#test "empty content and tag list serialize while malformed internal text refuses" {
+  out:[1024]u8;e:=nostr_event_read(NE_EMPTY,out[..],false);
+  #assert e.error==NE_OK && e.written==NE_EMPTY_PREIMAGE.count && e.tags==0 && e.kind==0;
+  #assert cast(string)out[0..<e.written]==NE_EMPTY_PREIMAGE;
+  broken:NostrEvent;broken.original="[]\\ud800";broken.tags_to=2;broken.content_from=2;broken.content_to=8;
+  #assert ne_serialize(broken,out[..])<0;
+}
+#test "nonzero safe timestamp is hashed and wrong advertised ID is refused" {
+  out:[1024]u8;e:=nostr_event_read(NE_MAXIMUM,out[..],false);
+  #assert e.error==NE_OK && e.created_at==JA_SAFE && e.kind==65535;
+  #assert e.written==NE_MAXIMUM_PREIMAGE.count && cast(string)out[0..<e.written]==NE_MAXIMUM_PREIMAGE;
+  bad:=nostr_event_read(NE_WRONG_ID,out[..],false);
+  #assert bad.error==NE_ID && !bad.verified && bad.written==0;
+}

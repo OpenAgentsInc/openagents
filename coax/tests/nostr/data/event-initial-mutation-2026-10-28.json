@@ -1,0 +1,240 @@
+{
+  "checks": {
+    "default_step_limit": 20000000,
+    "failed": 0,
+    "groups": 177
+  },
+  "focused": {
+    "asan_ubsan": true,
+    "cases_per_native_profile": 156,
+    "compiler": "coax0 0.17.0",
+    "compiler_sha256": "867bf5549dc4d4b20f698415280e92a81491b29c2dc201eec911e9d7d3faeeb2",
+    "dependency_graph": {
+      "descriptors": [],
+      "schema_version": 1,
+      "sources": [
+        "coax/lib/nostr/event.coax",
+        "coax/lib/nostr/adapters/json-admission.coax",
+        "coax/lib/nostr/json.coax",
+        "coax/lib/nostr/fixtures/json_suite.coax",
+        "coax/lib/nostr/fixtures/coax_relay.coax",
+        "coax/lib/nostr/adapters/json-policy.coax",
+        "coax/lib/nostr/hex.coax",
+        "coax/lib/nostr/codecs-common.coax",
+        "coax/lib/crypto/schnorr.coax",
+        "coax/lib/crypto/secp_mult.coax",
+        "coax/lib/crypto/secp_group.coax",
+        "coax/lib/crypto/secp_field.coax",
+        "coax/lib/crypto/bytes.coax",
+        "coax/lib/crypto/secp_scalar.coax",
+        "coax/tests/nostr/scalar_fixtures.coax",
+        "coax/lib/crypto/sha256.coax",
+        "coax/lib/proto/fingerprint.coax",
+        "coax/tests/nostr/schnorr_checks.coax",
+        "coax/tests/nostr/schnorr_fixtures.coax",
+        "coax/tests/nostr/event_checks.coax",
+        "coax/tests/nostr/event_fixtures.coax"
+      ]
+    },
+    "elapsed_seconds": 21.79890587500995,
+    "independent_bigint_signature_checks": 8,
+    "independent_preimages": 96,
+    "native": [
+      {
+        "artifact_sha256": "0dcf9a7d50afc922450f474be2bbb3ac6bd899a95f7ed64a902929373cf094a8",
+        "generated_c_sha256": "63cf45c890a3d612fb09895e591846452a09ffe9e670e0987f255cac62ba8a41",
+        "mode": "checked"
+      },
+      {
+        "artifact_sha256": "7167effa9c546c3d996ff88ed4f7347b5870893f526b384d6143265763e005c2",
+        "generated_c_sha256": "0a51504602dede2e204f5a95de650217e8665ac9efe5f4433ce31ebb8b74f7b9",
+        "mode": "release"
+      }
+    ],
+    "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "native_target": "arm64-apple-darwin25.4.0",
+    "profile": {
+      "decoded_content": 65536,
+      "input": 262144,
+      "output": 262144,
+      "raw_string": 65536,
+      "safe_integer": 9007199254740991,
+      "tags": 2000,
+      "values_per_tag": 16
+    },
+    "schema": "coax.nostr-event.v1",
+    "scope": "bounded public NIP-01 read/hash/verify correctness; no author/scope/freshness admission, signing, production-key or physical-iOS claim",
+    "seeded_emitted_faults": [
+      {
+        "artifact_sha256": "1d1f121265d2a8b84975366459d0c0723953d0ac09413b62ac28ca8ceb64755b",
+        "correct_error": 7,
+        "detected": true,
+        "fault": "missing-id",
+        "mutated_c_sha256": "fcdee3355029caac41627178f882691cf97712dfaff970bdada868764e7969a0",
+        "observed_error": 0
+      },
+      {
+        "artifact_sha256": "f732e13cfcdf45466aa2b95597c540abf153fa0c161c723f52ace9df6b3c5478",
+        "correct_error": 8,
+        "detected": true,
+        "fault": "signature-bypass",
+        "mutated_c_sha256": "c032418aa1d13ac41d1fd18ab53b2302a6647e9d2e8a2f5335b304837d50fbd2",
+        "observed_error": 0
+      },
+      {
+        "artifact_sha256": "73c305cbd77d908662e2b326b7b3af4a4fba68112c8f882530fd3fe788e75243",
+        "correct_error": 0,
+        "detected": true,
+        "fault": "lost-content-field",
+        "mutated_c_sha256": "ccf7078476a0f78ca8dce76bce7e5df870d99e09beae3d59de905002e903e36b",
+        "observed_error": 2
+      },
+      {
+        "artifact_sha256": "a07cb934dbdef2b7855291061c448e7637f05c3ef022d1d641d60cea415f0180",
+        "correct_error": 0,
+        "detected": true,
+        "fault": "lost-tags",
+        "mutated_c_sha256": "734123051e651e3184d360f249a4670773d714fbfffeefc46ca659453d11b30d",
+        "observed_error": 7
+      }
+    ],
+    "sources": {
+      "coax/lib/crypto/bytes.coax": "af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd",
+      "coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+      "coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+      "coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+      "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "coax/lib/nostr/adapters/json-admission.coax": "fc8ec59f41b9d6bf3dab4facaaadb20a477d8be4580fca522c809354ac0afaa2",
+      "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+      "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+      "coax/lib/nostr/event.coax": "45118f2a7a9b5dc19466099fd0553ab1529de6cf768e16ce70a59df27e88e4d2",
+      "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+      "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+      "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+      "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "coax/tests/nostr/event.py": "d2460bcb0f0767df28f69a6c96be2651eca3e2bc73a9d2f6e1c284123dd72752",
+      "coax/tests/nostr/event_checks.coax": "465af6cf85dac3bac00735528a165e1607678720f2931b225b05a06ce0868fb4",
+      "coax/tests/nostr/event_fixtures.coax": "47484453878778117a924f79f983ea187eed11aa077a8c13489d9ff76b64c188",
+      "coax/tests/nostr/event_reference.cjs": "767c8b1025441d9394f746ea17df7e5415c0eeab2fbbecff2341cf2d44638401",
+      "coax/tests/nostr/event_wasm.c": "f427f1b0aacd0eac0eb69ce3a62824edc65e4aad227f028b4eae8c81a604b6b3",
+      "coax/tests/nostr/event_wasm.cjs": "e4cbb4c898965d331431dc9f4fb22bf885c7715f312892297641cc68c717742e",
+      "coax/tests/nostr/make_event_fixtures.py": "dbff151401e132f1eb4ef94f746c3c6d6caaf9d3aa3c7eb257d238e071cc9efe",
+      "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+      "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+    },
+    "temporary_bytes": 5062746,
+    "wasm": [
+      {
+        "artifact_sha256": "9cc6952c28069637d21d16f8eb39bd065df079514155dd10df704712c04e4fc7",
+        "cases": 156,
+        "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+        "failures": 0,
+        "mode": "checked",
+        "target": "wasm32-wasip1"
+      },
+      {
+        "artifact_sha256": "63c172e2990a3bc7aae5ef737482e0cc238e28443052631f03c0dc19e4d94976",
+        "cases": 156,
+        "engine": "Nodev26.12.1 V814.6.202.34-node.40",
+        "failures": 0,
+        "mode": "release",
+        "target": "wasm32-wasip1"
+      }
+    ],
+    "wasm_stack_bytes": 1048576
+  },
+  "mutation": {
+    "exemptions": 0,
+    "filtered": false,
+    "killed": 3618,
+    "log_sha256": "bcb119c811d25213a9c3b79c0f0e2000ddd64f027ee1a0c4e4fd139ce6518291",
+    "survived": 13,
+    "survivor_sites": [
+      {
+        "change": "70 became 71",
+        "column": 34,
+        "line": 32,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "0 became 1",
+        "column": 49,
+        "line": 66,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "0 became 1",
+        "column": 58,
+        "line": 78,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "false became true",
+        "column": 16,
+        "line": 81,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "1 became 2",
+        "column": 45,
+        "line": 101,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "1 became 2",
+        "column": 51,
+        "line": 105,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "'<' became '<='",
+        "column": 62,
+        "line": 106,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "0 became 1",
+        "column": 63,
+        "line": 106,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "'<' became '<='",
+        "column": 30,
+        "line": 141,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "0 became 1",
+        "column": 31,
+        "line": 141,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "the assignment was removed",
+        "column": 10,
+        "line": 143,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "5 became 6",
+        "column": 46,
+        "line": 143,
+        "path": "coax/lib/nostr/event.coax"
+      },
+      {
+        "change": "0 became 1",
+        "column": 54,
+        "line": 95,
+        "path": "coax/lib/nostr/adapters/json-admission.coax"
+      }
+    ],
+    "total": 3631
+  },
+  "schema": "coax.nostr-event-initial-mutation.v1",
+  "scope": "Initial exhaustive counterexamples retained before refactoring; this is a failed gate, not acceptance or production approval. Source was uncommitted during the run; its Git snapshot is created after completion."
+}
