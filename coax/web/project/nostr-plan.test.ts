@@ -149,3 +149,11 @@ test("verified project publication waits for the real runner authority closure",
   expect(t.acceptance.join(" ")).toContain("production-max");
   expect(t.body).toContain("200-issue/1,562-event");
 });
+
+test("HOST projections bind decrypted source without delaying other projections", () => {
+  expect(reaches("nostr-host-proto-adapter", "nip44-v2")).toBe(true)
+  expect(reaches("nostr-host-proto-adapter", "nostr-proto-adapters")).toBe(true)
+  expect(reaches("host-grants", "nostr-host-proto-adapter")).toBe(true)
+  expect(reaches("nostr-proto-adapters", "nip44-v2")).toBe(false)
+  expect(tasks.get("nostr-host-proto-adapter").body).toContain("plaintext supplied alongside an envelope is not evidence")
+})

@@ -1059,6 +1059,7 @@
         "nostr-hex-base64"
       ],
       "blocks": [
+        "nostr-host-proto-adapter",
         "nip59-seal-wrap",
         "ios-coax-nostr-native",
         "crypto-target-conformance",
@@ -2228,7 +2229,7 @@
         "nostr",
         "coax"
       ],
-      "body": "Use existing generated root proto codecs in real domains; preserve original Nostr/JWS/HOST bytes, compare projections and enforce bounds/presence/unknown policy. DTOs grant no authority and protobuf bytes never replace signature preimages.",
+      "body": "Use existing generated root proto codecs in real domains; preserve original Nostr/JWS bytes, compare projections and enforce bounds/presence/unknown policy. DTOs grant no authority and protobuf bytes never replace signature preimages.",
       "files": [
         "coax/lib/nostr/adapters/",
         "proto/nostr/",
@@ -2244,6 +2245,7 @@
         "nostr-support-profiles"
       ],
       "blocks": [
+        "nostr-host-proto-adapter",
         "host-grants",
         "block-owner-admission",
         "coord-fenced-claims",
@@ -2332,6 +2334,7 @@
       ],
       "blocked_by": [
         "nostr-proto-adapters",
+        "nostr-host-proto-adapter",
         "nostr-event-sign",
         "fi-jws-verifier"
       ],
@@ -3510,6 +3513,22 @@
       ],
       "blocked_by": ["schnorr-verify"],
       "blocks": ["schnorr-sign"]
+    },
+    {
+      "slug": "nostr-host-proto-adapter",
+      "parent": "m-host-reach",
+      "title": "Bind HOST grant projections to the original encrypted envelope",
+      "size": "M",
+      "labels": ["nostr", "coax", "crypto"],
+      "body": "HOST access stores a projected grant alongside its original host-signed, device-encrypted event. A plaintext supplied alongside an envelope is not evidence that the envelope produced it. Use the actual verified original-event and NIP-44 decrypt path before comparing all supported unscoped grant fields and retaining the exact envelope; reject unsupported scoped grants. The projection itself never grants identity, freshness, rights or authority. Keep Nostr/FI adapters independently usable before HOST decryption is available.",
+      "files": ["coax/lib/nostr/adapters/", "coax/lib/nostr/host/", "proto/openagents/host/", "coax/tests/nostr/"],
+      "acceptance": [
+        "Real generated HOST Access codecs preserve the exact signed original through round trips; an independently produced encrypted grant is verified, decrypted and compared field by field with its projected grant",
+        "Tampered envelope, wrong device key, substituted plaintext, changed projected fields and unsupported scope refuse before any HOST effect; decoded owner or verified-like flags cannot grant authority",
+        "Coax checks and complete mutation have zero survivors; checked/release native and Wasm and supported iOS targets exercise real interoperability and bounded failure paths without production secrets"
+      ],
+      "blocked_by": ["nostr-proto-adapters", "nip44-v2"],
+      "blocks": ["host-grants"]
     }
   ]
 }
