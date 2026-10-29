@@ -18,7 +18,7 @@ import threading
 CHAT_PORT = int(os.environ["CHAT_PORT"])
 cwork = tempfile.mkdtemp()
 OURS = "sk-ant-api03-OURS-test-" + "o" * 40
-GOOD_API = "sk-ant-api03-good-" + "a" * 40 + "WXYZ"
+GOOD_API = "sk-ant-usr01-good-" + "a" * 40 + "WXYZ"   # not only sk-ant-api: the models list decides
 BAD_API = "sk-ant-api03-bad-" + "b" * 40
 GOOD_OAT = "sk-ant-oat01-good-" + "c" * 40 + "OATK"
 BAD_OAT = "sk-ant-oat01-bad-" + "d" * 40

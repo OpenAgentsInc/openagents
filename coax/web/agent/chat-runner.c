@@ -171,7 +171,7 @@ static void credential(int fd, const char *body) {
   text out = {0};
   size_t n = strlen(cred);
   bool shape = n >= 24 && n <= 400 && strlen(owner) == 64 &&
-               ((!strcmp(kind, "api") && !strncmp(cred, "sk-ant-api", 10)) || (!strcmp(kind, "oauth") && !strncmp(cred, "sk-ant-oat", 10)));
+               ((!strcmp(kind, "api") && !strncmp(cred, "sk-ant-", 7) && strncmp(cred, "sk-ant-oat", 10)) || (!strcmp(kind, "oauth") && !strncmp(cred, "sk-ant-oat", 10)));
   for (size_t i = 0; shape && i < n; i++) if (!((cred[i] >= 'a' && cred[i] <= 'z') || (cred[i] >= 'A' && cred[i] <= 'Z') || (cred[i] >= '0' && cred[i] <= '9') || cred[i] == '-' || cred[i] == '_')) shape = false;
   if (!shape) snprintf(why, sizeof why, "that is not an Anthropic API key or a Claude subscription token");
   else if (!seal_ready) snprintf(why, sizeof why, "saving keys is not set up on this server");

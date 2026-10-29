@@ -281,6 +281,33 @@
       ]
     },
     {
+      "slug": "chat-project-keys",
+      "parent": "chat",
+      "title": "Project agents on the member's own Claude key or subscription token",
+      "size": "M",
+      "labels": [
+        "agent",
+        "security"
+      ],
+      "body": "One credential store per signed-in pubkey, shared with /chat: the same KEY item on each project page. A project turn runs on the credential of the member who sent the message, with no cap from us and no charge to the project's $10 a day; with none saved, on OpenAgents' key under that cap. Another member's credential is never used. The runner gets the asker's sealed credential with the turn and passes exactly one variable to the CLI child (fresh CLAUDE_CONFIG_DIR, no --bare); an expired token says so and is marked expired.\n\nSpec: `docs/chat.md`.",
+      "files": [
+        "coax/web/api/migrations/0023_agent_credentials.sql",
+        "coax/web/api/private.c",
+        "coax/web/agent/runner.c",
+        "apps/openagents-web/private.coax"
+      ],
+      "acceptance": [
+        "A project turn on the fixture runs on the member's saved subscription token",
+        "With none saved it runs on OpenAgents' key under the cap",
+        "Another member's credential is never used",
+        "No credential appears in the logs"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "chat-launch"
+      ]
+    },
+    {
       "slug": "chat-launch",
       "parent": "chat",
       "title": "/chat live for admins",
@@ -298,7 +325,8 @@
         "chat-api",
         "chat-runner",
         "chat-page",
-        "chat-key"
+        "chat-key",
+        "chat-project-keys"
       ],
       "blocks": []
     }

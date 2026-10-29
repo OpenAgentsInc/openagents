@@ -12,6 +12,11 @@
 #   --file PATH picks the repository file the check appends to (default project/plan.md)
 #   live-check.py ... --slug SLUG refused  this project's agent answers 404, like no project
 #   live-check.py ... --slug SLUG capped   the next ask is refused with the day's limit
+#   live-check.py ... --slug SLUG key --token FILE --other OTHER.key
+#       KEY: the member saves the subscription token in FILE and their turn runs
+#       on it; a second member (OTHER.key, invited by the first) with none runs
+#       on OpenAgents' key, never the first member's; REMOVE puts the first
+#       back on ours. The token is read from FILE and never printed.
 import json, os, subprocess, sys, tempfile, time, urllib.error, urllib.request
 
 args = sys.argv[1:]
@@ -24,6 +29,8 @@ SLUG = opt("--slug")
 FILE = opt("--file", "project/plan.md")
 KEY = opt("--key", os.path.expanduser("~/work/.secrets/openagents-analytics-admin.key"))
 SIGN = opt("--sign", os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "oa-admin", "sign"))
+TOKEN = opt("--token")
+OTHER = opt("--other")
 MODE = args[0] if args else "tools"
 failed = 0
 
@@ -63,8 +70,8 @@ def signed(method, op, body=None):
         return s, b
 
 
-def session():
-    pub = subprocess.run([SIGN, "--key", KEY, "--pubkey"], capture_output=True, text=True, check=True).stdout.strip()
+def session(key=None):
+    pub = subprocess.run([SIGN, "--key", key or KEY, "--pubkey"], capture_output=True, text=True, check=True).stdout.strip()
     s, inv = signed("POST", "invite", {"pubkey": pub})
     if s != 200:
         return None
@@ -119,6 +126,44 @@ if not cookie:
     sys.exit(1)
 s, st = signed("GET", "state")
 v0, doc0 = st["version"], st["doc"]
+
+if MODE == "key":
+    if OTHER and not os.path.exists(OTHER):
+        subprocess.run([SIGN, "--new", OTHER], capture_output=True, check=True)
+    cookie_b = session(OTHER)
+    check("a second member signs in", cookie_b is not None)
+
+    def talk(c):
+        s, b, _ = http("GET", f"{ORIGIN}/projects/{SLUG}/api/talk", None, {"Cookie": f"oa_project={c}"})
+        return b if s == 200 else ""
+
+    def ask(c, text):
+        s, b = page("ask", {"text": text}, c)
+        tid = b.get("turn") if isinstance(b, dict) else None
+        for _ in range(150):
+            u = next((l.split("|") for l in talk(c).split("\n") if l.startswith(f"U|{tid}|")), None)
+            if u and u[3] in ("done", "failed", "stopped", "refused"):
+                return u
+            time.sleep(2)
+        return u
+
+    def kline(c):
+        return next((l.split("|") for l in talk(c).split("\n") if l.startswith("K|")), None)
+
+    page("key_remove", {}, cookie); page("key_remove", {}, cookie_b)
+    s, b = page("key", {"credential": open(TOKEN).read().strip()}, cookie)
+    check("the member's subscription token is checked and saved; kind and last four only", s == 200 and isinstance(b, dict) and b.get("kind") == "oauth" and "sk-ant" not in json.dumps(b), (s, str(b)[:120]))
+    check("their panel shows their key", (kline(cookie) or [""])[1:2] == ["oauth"], kline(cookie))
+    u = ask(cookie, "Automated check: reply with exactly the word ok. Use no tools.")
+    check("their turn runs on their own token", u and u[3] == "done" and u[15] == "own", u and (u[3], u[8][:200], u[15]))
+    check("the other member's panel shows no key of theirs", kline(cookie_b) == ["K", "", "", "0"], kline(cookie_b))
+    u = ask(cookie_b, "Automated check: reply with exactly the word ok. Use no tools.")
+    check("the other member's turn runs on OpenAgents' key, never the first member's", u and u[3] == "done" and u[15] == "openagents", u and (u[3], u[8][:200], u[15]))
+    s, b = page("key_remove", {}, cookie)
+    check("REMOVE deletes it", s == 200 and kline(cookie) == ["K", "", "", "0"], kline(cookie))
+    u = ask(cookie, "Automated check: reply with exactly the word ok. Use no tools.")
+    check("with none saved, their turn runs on OpenAgents' key under the cap", u and u[3] == "done" and u[15] == "openagents", u and (u[3], u[8][:200], u[15]))
+    sys.exit(1 if failed else 0)
 
 if MODE == "capped":
     s, b = page("ask", {"text": "Automated check: say hello."}, cookie)
