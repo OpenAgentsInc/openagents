@@ -18,6 +18,13 @@
 // on the server too (/api/playtest/progress/fairy-forest/main, the player's
 // key); on the next visit the newer of the two is added back. Where you are
 // is kept the same way by place-face.h.
+//
+// Talking to a creature (ff-talk, verse/fairy-forest/talk.coax): a question
+// the page writes goes to the character chat (/api/playtest/npc/ask) with
+// the browser's player key, so the creature remembers that player; a
+// browser with no key yet is given one first (POST /api/playtest/player),
+// which the host keeps (action 5). The answer goes back to the page. While
+// you talk you stand still, and what you type is never tracked.
 #include "fairy.h"
 #include "Player.h"
 #include "Grid.h"
@@ -25,6 +32,7 @@
 #include "analytics-face.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
@@ -54,6 +62,14 @@ static coax_v_t_Stream sv(void) { return (coax_v_t_Stream){&stream, 1}; }
 #define CLIMB 3.2f        /* m/s: the steady climb while Space is held, beating on */
 #define CEILING 40.0f     /* m over the ground: beats stop lifting here */
 #define DIVE -7.0f        /* m/s: the fall while Shift is held in the air, wings folded */
+
+#define NPC_URL "/api/playtest/npc/ask"
+#define PLAYER_URL "/api/playtest/player"
+static int32_t ask_id = -1, mint_id = -1;
+static bool facts_seen, has_player, mint_tried;
+static char player_out[1024];
+static void ask_out(uint32_t state);
+static uint32_t player_n;          // the minted player's record while the host is to keep it (action 5)
 
 static coax_t_Fairy *fairy(uint32_t state) { return (coax_t_Fairy *)(uintptr_t)state; }
 static coax_v_t_Fairy at(uint32_t state) { return (coax_v_t_Fairy){fairy(state), 1}; }
@@ -178,8 +194,11 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   now += dt;
   fairy_golden(at(state), golden);
   fairy_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
+  // while you talk you stand still: no walking, no wing beats
+  bool talking = fairy_talking(at(state));
+  if (talking) { sticks.pad_x = 0; sticks.pad_y = 0; sticks.jump = false; sticks.run = false; g->key_x = 0; g->key_y = 0; g->jump = false; g->run = false; }
   // a thumb held still on the right half, past a tap's time, is Space held
-  bool thumb_held = sticks.look_on && !sticks.travelled && now - sticks.since > 0.3;
+  bool thumb_held = !talking && sticks.look_on && !sticks.travelled && now - sticks.since > 0.3;
   bool jump = g->jump || sticks.jump || thumb_held;
   int64_t taps = fairy_taps(at(state)) + (sticks.jump ? 1 : 0);
   bool afloat = swim.medium >= 2;
@@ -229,12 +248,64 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     float fy = aspect * 1.25f; fy = fy < 0.95f ? 0.95f : fy > 1.9f ? 1.9f : fy;
     fairy_stream_frame(sv(), (coax_v_f32){u.data + at_water, u.count - at_water}, golden ? 2.0 : now, small, eye[0], eye[1], eye[2], 2.0f / (fy * (h > 1 ? h : 1)));
   }
+  ask_out(state);
   place_frame(state);
   keep_progress(state, false);
   track_frame(tr(), dt, w, h, scale);
   if (n > 0) track_loaded(tr(), track_cstr("load-fairy-forest"));
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
+}
+
+// The page's question, once the browser has a player key (or minting one failed).
+static void ask_out(uint32_t state) {
+  int64_t n = fairy_ask(at(state));
+  if (n <= 0 || ask_id >= 0 || !facts_seen) return;
+  if (!has_player && !mint_tried) {
+    mint_tried = true;
+    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    if (mint_id < 0) mint_id = -1;
+    return;
+  }
+  if (mint_id >= 0) return;
+  ask_id = coaxial_http((uint32_t)(uintptr_t)NPC_URL, sizeof NPC_URL - 1, (uint32_t)(uintptr_t)fairy(state)->ask.e, (uint32_t)n, 1 | 4 | 8);
+  fairy_ask_sent(at(state));
+  if (ask_id < 0) { ask_id = -1; fairy_answer(at(state), (coax_string){"0\n", 2}); }
+}
+static bool has_line(uint32_t length, const char *prefix) {
+  size_t k = strlen(prefix);
+  const char *p = (const char *)inbox, *end = p + length;
+  for (const char *line = p; line < end;) {
+    const char *nl = memchr(line, '\n', (size_t)(end - line));
+    if (!nl) nl = end;
+    if ((size_t)(nl - line) > k && !memcmp(line, prefix, k)) return true;
+    line = nl + 1;
+  }
+  return false;
+}
+// The talk's messages: the facts (the visit's stamp, a player key or not), a minted key, an answer.
+static bool talk_message(uint32_t state, int32_t kind, uint32_t length) {
+  if (kind == 600) {
+    facts_seen = true;
+    if (has_line(length, "player=")) has_player = true;
+    fairy_facts(at(state), (coax_string){(const char *)inbox, length});
+    return false;
+  }
+  if (mint_id >= 0 && kind == 512 + mint_id) {
+    mint_id = -1;
+    if (length > 4 && !memcmp(inbox, "200\n", 4) && length - 4 <= sizeof player_out) {
+      memcpy(player_out, inbox + 4, length - 4);
+      player_n = length - 4;
+      has_player = true;
+    }
+    return true;
+  }
+  if (ask_id >= 0 && kind == 512 + ask_id) {
+    ask_id = -1;
+    fairy_answer(at(state), (coax_string){(const char *)inbox, length});
+    return true;
+  }
+  return false;
 }
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)fairy(state)->draws.e; }
@@ -251,7 +322,7 @@ EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { (vo
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   start(state);
-  track_key(tr(), key, false);
+  track_key(tr(), key, fairy_talking(at(state)));
   bool used = fairy_key(at(state), key, mods);
   track_drain(&track_state);
   return used ? 1u : 0u;
@@ -276,12 +347,37 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (kind == 1) { fairy_typed(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (talk_message(state, kind, length)) return;
   if (progress_message(state, kind, length)) return;
   if (place_message(state, kind, inbox, length)) return;
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
-// The host takes one action at a time: the save's (4) first, else the place's.
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return keep_n ? 4 : place_action(); }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)kept; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return place_out_now ? place_outbox_len() : keep_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; if (place_out_now) { place_done(); return; } keep_n = 0; }
+// The host takes one action at a time: the save's (4) first, then a minted player (5), else the place's.
+static int32_t action_now;
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
+  (void)state;
+  place_out_now = false;
+  action_now = keep_n ? 4 : player_n ? 5 : place_action();
+  return action_now;
+}
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) {
+  (void)state;
+  if (action_now == 5) return (uint32_t)(uintptr_t)player_out;
+  return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)kept;
+}
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) {
+  (void)state;
+  if (action_now == 5) return player_n;
+  return place_out_now ? place_outbox_len() : keep_n;
+}
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) {
+  (void)state;
+  if (action_now == 5) { player_n = 0; }
+  else if (place_out_now) place_done();
+  else keep_n = 0;
+  action_now = 0;
+}
+// While you talk, the phone's keyboard comes up over the typed line (the host's field, put where the page draws it).
+EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return fairy_talking(at(state)) ? 1 : 0; }
+EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)fairy(state)->field.e; }

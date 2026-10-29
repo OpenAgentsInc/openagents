@@ -6,6 +6,9 @@
 // each have one trouble, that their glade has faded; bloom a glade's
 // patches and its creature is happy (the glyph over its head says how it
 // feels), and one of the heart tree's five roots wakes and glows.
+// The creatures talk (ff-talk, verse/fairy-forest/talk.coax): E by one, or
+// a click or tap on it, opens a talk pane; you type, and its answer comes
+// from the character chat, which knows its trouble and remembers you.
 //
 // The layout, the fade and the troubles are verse/fairy-forest/forest.coax;
 // the stream and the pond are verse/fairy-forest/stream.coax (verse/water.coax
@@ -31,6 +34,7 @@
 #load "../../verse/camera.coax";
 #load "../../verse/terrain.coax";
 #load "../../verse/fairy-forest/forest.coax";
+#load "../../verse/fairy-forest/talk.coax";
 #load "place-orbit.coax";
 
 VERTEX_FLOATS :: 16;
@@ -81,12 +85,19 @@ FERNS :: 70;               // x, z, yaw, size
 
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16; HOLD_JUMP :: 32;
 HOLD_TURN_LEFT :: 64; HOLD_TURN_RIGHT :: 128; HOLD_TILT_UP :: 256; HOLD_TILT_DOWN :: 512;
-KEY_ESCAPE :: -1; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_BACKSPACE :: -3; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 LOOK_DRAG :: 0.0055;
 WHEEL_ZOOM :: 0.006;
 NEWS_TIME :: 4.5;
 HEART_NEWS_TIME :: 9.0;
 GOLDEN_TIME :: 2.0;
+// Talking to a creature (verse/fairy-forest/talk.coax).
+TALK_LINES :: 8;           // the talk kept for the next question
+LINE_BYTES :: 300;
+TYPED :: 200;
+ASK_BYTES :: 8192;
+ANSWER_WAIT :: 30.0;       // seconds before an unanswered question is given up
+TAP_TALK_NEAR :: 22.0;     // metres: a creature this near can be clicked or tapped to talk
 
 // The HUD's colours: a cream ink and a soft gold.
 CREAM_R :: 0.97; CREAM_G :: 0.94; CREAM_B :: 0.86;
@@ -130,6 +141,19 @@ Fairy :: struct {
   sparks: [18 * 4] f32; spark_next: int; spark_clock: f32;
   taps: int;   // Space presses not yet taken by the face: each is one wing beat
   mine: bool;  // shapes now laid out are her own: the near fade (fairy.wgsl) leaves them be
+  // talking: a creature passing by, who you talk to (creature + 1, 0 none), what was said and what you type
+  remark_creature: int;
+  talk: int;
+  line_npc: [TALK_LINES] bool; line_len: [TALK_LINES] int; line_text: [TALK_LINES * LINE_BYTES] u8; line_n: int;
+  typed: [TYPED] u8; typed_n: int;
+  ask: [ASK_BYTES] u8; ask_n: int;          // a question for the face to send
+  waiting: bool; waited: f32;
+  visit: [24] u8; visit_n: int;             // this visit's stamp: the page facts' now
+  field: [4] f32;                           // where the typed line is drawn (x0, y0, x1, y1, device pixels)
+  bye_button: Box; talk_button: Box; talk_finger: int; talk_finger_on: bool;
+  pane_top: f32;                            // the talk pane's top edge, while you talk
+  seen_x: [FF_CREATURES] f32; seen_y: [FF_CREATURES] f32; seen_r: [FF_CREATURES] f32; seen_on: [FF_CREATURES] bool;
+  tap_creature: int; tap_finger: int;       // a finger put down on a creature (creature + 1, 0 none)
 }
 
 // ---- small things
@@ -498,6 +522,7 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if s[0].talk > 0 { return talk_key(s, key, mods); }
   if key == 'e' || key == 'E' { s[0].use = true; return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
@@ -521,9 +546,19 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 // it; any other finger is the face's (the sticks).
 fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
+  talking := s[0].talk > 0;
+  if talking && talk_pointer(s, x, y, phase, id) { return true; }
   if kind != 0 {
     s[0].touch = true;
+    if talking { return false; }
     if phase == 0 && in_box(s[0].button, x, y) { s[0].button_finger = id; s[0].button_on = true; return true; }
+    // a finger on a creature talks to it when it lifts there
+    if phase == 0 && creature_at(s, x, y) >= 0 { s[0].tap_creature = creature_at(s, x, y) + 1; s[0].tap_finger = id; return true; }
+    if s[0].tap_creature > 0 && id == s[0].tap_finger {
+      if phase == 2 && creature_at(s, x, y) == s[0].tap_creature - 1 { talk_to(s, s[0].tap_creature - 1); }
+      if phase >= 2 { s[0].tap_creature = 0; }
+      return true;
+    }
     if id != s[0].button_finger { return false; }
     if phase == 1 { s[0].button_on = in_box(s[0].button, x, y); return true; }
     if phase == 2 && in_box(s[0].button, x, y) { s[0].use = true; }
@@ -540,7 +575,11 @@ fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -
     s[0].drag_x = x; s[0].drag_y = y;
     return true;
   }
-  if phase == 2 && s[0].drag_travel < 6 && s[0].button.x1 > s[0].button.x0 { s[0].use = true; }
+  if phase == 2 && s[0].drag_travel < 6 && !talking {
+    c := creature_at(s, x, y);
+    if c >= 0 { talk_to(s, c); }
+    else if s[0].button.x1 > s[0].button.x0 { s[0].use = true; }
+  }
   s[0].drag_on = false;
   return true;
 }
@@ -575,6 +614,141 @@ fairy_jump :: (s: [] Fairy) -> bool #export_c { return s[0].jump; }
 // quick tap between two frames still beats), and none left after.
 fairy_taps :: (s: [] Fairy) -> int #export_c { n := s[0].taps; s[0].taps = 0; return n; }
 fairy_phone :: (s: [] Fairy) -> bool #export_c { return phone(s); }
+
+// ---- talking (ff-talk, verse/fairy-forest/talk.coax)
+
+// The creature drawn under (x, y), near enough to talk to, or -1.
+creature_at :: (s: [] Fairy, x: f32, y: f32) -> int {
+  best := -1; bd := 1000000.0f32;
+  for c: 0..<FF_CREATURES {
+    if !s[0].seen_on[c] { continue; }
+    dx := x - s[0].seen_x[c]; dy := y - s[0].seen_y[c];
+    d := dx * dx + dy * dy;
+    r := s[0].seen_r[c];
+    if d < r * r && d < bd { bd = d; best = c; }
+  }
+  return best;
+}
+
+add_line :: (s: [] Fairy, npc: bool, text: string) {
+  if s[0].line_n == TALK_LINES {
+    for k: 1..<TALK_LINES {
+      s[0].line_npc[k - 1] = s[0].line_npc[k]; s[0].line_len[k - 1] = s[0].line_len[k];
+      for b: 0..<LINE_BYTES { s[0].line_text[(k - 1) * LINE_BYTES + b] = s[0].line_text[k * LINE_BYTES + b]; }
+    }
+    s[0].line_n -= 1;
+  }
+  k := s[0].line_n;
+  n := 0;
+  for i: 0..<text.count { if n < LINE_BYTES { s[0].line_text[k * LINE_BYTES + n] = text[i]; n += 1; } }
+  s[0].line_npc[k] = npc; s[0].line_len[k] = n;
+  s[0].line_n = k + 1;
+}
+line_of :: (s: [] Fairy, k: int) -> string { return cast(string) s[0].line_text[k * LINE_BYTES..<k * LINE_BYTES + s[0].line_len[k]]; }
+typed_text :: (s: [] Fairy) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
+
+// Talking to creature c: it starts with what is on its mind, its trouble or its thanks.
+talk_to :: (s: [] Fairy, c: int) {
+  if c < 0 || c >= FF_CREATURES { return; }
+  s[0].talk = c + 1; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
+  s[0].held = 0; s[0].use = false; s[0].taps = 0; s[0].talk_finger_on = false;
+  add_line(s, true, ff_says(s[0].forest[..], c));
+}
+end_talk :: (s: [] Fairy) { s[0].talk = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0; s[0].talk_finger_on = false; }
+
+// What you typed goes to the face as a question, with the talk so far.
+send_typed :: (s: [] Fairy) {
+  if s[0].talk <= 0 || s[0].waiting || s[0].typed_n == 0 { return; }
+  lines: [TALK_LINES] FfLine;
+  for k: 0..<s[0].line_n { lines[k] = FfLine.{npc = s[0].line_npc[k], text = line_of(s, k)}; }
+  n := ff_ask_body(s[0].ask[..], s[0].forest[..], s[0].talk - 1, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n]);
+  if n == 0 { return; }
+  s[0].ask_n = n;
+  add_line(s, false, typed_text(s));
+  s[0].typed_n = 0;
+  s[0].waiting = true; s[0].waited = 0;
+}
+
+// A key while you talk: it types, Enter says it, Backspace takes a letter
+// back, Esc ends the talk. Keys with Ctrl or Cmd are the browser's.
+talk_key :: (s: [] Fairy, key: int, mods: int) -> bool {
+  if key == KEY_ESCAPE { end_talk(s); return true; }
+  if key == KEY_ENTER { send_typed(s); return true; }
+  if key == KEY_BACKSPACE {
+    n := s[0].typed_n;
+    while n > 0 { n -= 1; if (s[0].typed[n] & 0xC0) != 0x80 { break; } }
+    s[0].typed_n = n;
+    return true;
+  }
+  if (mods & 10) != 0 { return false; }
+  if key < 32 || key == 127 { return key >= 0; }
+  c := key; n := s[0].typed_n;
+  size := ifx c < 0x80 then 1 else ifx c < 0x800 then 2 else ifx c < 0x10000 then 3 else 4;
+  if n + size > TYPED { return true; }
+  if size == 1 { s[0].typed[n] = cast(u8) c; }
+  if size == 2 { s[0].typed[n] = cast(u8) (0xC0 | (c >> 6)); s[0].typed[n + 1] = cast(u8) (0x80 | (c & 63)); }
+  if size == 3 { s[0].typed[n] = cast(u8) (0xE0 | (c >> 12)); s[0].typed[n + 1] = cast(u8) (0x80 | ((c >> 6) & 63)); s[0].typed[n + 2] = cast(u8) (0x80 | (c & 63)); }
+  if size == 4 {
+    s[0].typed[n] = cast(u8) (0xF0 | (c >> 18)); s[0].typed[n + 1] = cast(u8) (0x80 | ((c >> 12) & 63));
+    s[0].typed[n + 2] = cast(u8) (0x80 | ((c >> 6) & 63)); s[0].typed[n + 3] = cast(u8) (0x80 | (c & 63));
+  }
+  s[0].typed_n = n + size;
+  return true;
+}
+
+// While you talk: BYE, pressed and lifted on it, ends it; the pane takes the
+// fingers and clicks on it (a tap there brings the phone's keyboard back).
+talk_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 && in_box(s[0].bye_button, x, y) { s[0].talk_finger = id; s[0].talk_finger_on = true; return true; }
+  if s[0].talk_finger_on && id == s[0].talk_finger {
+    if phase == 2 && in_box(s[0].bye_button, x, y) { end_talk(s); }
+    if phase >= 2 { s[0].talk_finger_on = false; }
+    return true;
+  }
+  return phase == 0 && s[0].pane_top > 0 && y >= s[0].pane_top;
+}
+
+// The face's side: the question to send (its bytes in ask), that it went,
+// the answer ("STATUS\n" then the server's JSON), and the page facts.
+fairy_ask :: (s: [] Fairy) -> int #export_c { return s[0].ask_n; }
+fairy_ask_sent :: (s: [] Fairy) #export_c { s[0].ask_n = 0; }
+fairy_answer :: (s: [] Fairy, reply: string) #export_c {
+  if s[0].talk <= 0 || !s[0].waiting { return; }
+  s[0].waiting = false;
+  ok := reply.count > 4 && reply[0..<4] == "200\n";
+  text: [LINE_BYTES] u8;
+  n := ifx ok then ff_answer_text(reply[4..<reply.count], text[..]) else 0;
+  if n > 0 { add_line(s, true, cast(string) text[0..<n]); return; }
+  // no answer: what is on its mind, as a creature would say it again
+  add_line(s, true, ff_says(s[0].forest[..], s[0].talk - 1));
+}
+// Text typed into the host's field or pasted (message 1): added to what you type while you talk.
+fairy_typed :: (s: [] Fairy, text: string) #export_c {
+  if s[0].talk <= 0 { return; }
+  for i: 0..<text.count {
+    c := text[i];
+    if c == '\n' || c == '\r' { send_typed(s); continue; }
+    if c < 32 || s[0].typed_n >= TYPED { continue; }
+    s[0].typed[s[0].typed_n] = c; s[0].typed_n += 1;
+  }
+}
+// The page facts (key=value lines): now= is this visit's stamp, so the
+// server tells this visit's words from an earlier visit's.
+fairy_facts :: (s: [] Fairy, facts: string) #export_c {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > 4 && facts[i..<i + 4] == "now=" {
+      n := 0;
+      for k: i + 4..<e { if n < 24 { s[0].visit[n] = facts[k]; n += 1; } }
+      s[0].visit_n = n;
+    }
+    i = e + 1;
+  }
+}
+// While you talk, the phone's keyboard comes up over the typed line, and you stand still.
+fairy_wants_text :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0; }
+fairy_talking :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0; }
 
 // ---- the scene
 
@@ -1453,16 +1627,19 @@ play :: (s: [] Fairy, you: Point) {
   if s[0].use {
     i := ff_patch_near(f, you.x, you.z);
     if i >= 0 { done := ff_bloom(f, i, s[0].time); }
+    else if s[0].near_creature >= 0 && s[0].talk == 0 { talk_to(s, s[0].near_creature); }
     s[0].use = false;
   }
   ff_step(f, s[0].time);
-  s[0].near_creature = -1;
-  bd := f32(FF_TALK_NEAR);
+  s[0].near_creature = -1; s[0].remark_creature = -1;
+  bd := f32(FF_TALK_NEAR); rd := f32(FF_REMARK_NEAR);
   for c: 0..<FF_CREATURES {
     dx := you.x - FF_CREATURE[c * 4]; dz := you.z - FF_CREATURE[c * 4 + 1];
     d := sqrt(dx * dx + dz * dz);
     if d < bd { bd = d; s[0].near_creature = c; }
+    if d < rd { rd = d; s[0].remark_creature = c; }
   }
+  if s[0].near_creature >= 0 { s[0].remark_creature = -1; }
 }
 
 // ---- the HUD
@@ -1532,13 +1709,24 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   n = draw_text(out, n, line2, gutter + 14 * k, gutter + 22 * k + cap + small, small, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
   // the mood glyphs over the creatures in view
   for c: 0..<FF_CREATURES {
+    s[0].seen_on[c] = false;
     x := FF_CREATURE[c * 4]; z := FF_CREATURE[c * 4 + 1];
     lift := ifx cast(int) FF_CREATURE[c * 4 + 3] == 4 then 2.9f32 else 1.6f32;   // the owl sits on its stone
     p := project(u, v3(x, ground_at(s, x, z) + lift, z), w, h);
     if p.x < -1000 || p.z > 60 { continue; }
     r := clamp(150 * k / hi(p.z, 1), 5 * k, 15 * k);
     n = mood_glyph(s, out, n, p.x, p.y, r, ff_mood(f, c), k);
+    // where a click or a tap on it talks to it: its glyph and its body under it
+    if p.z < f32(TAP_TALK_NEAR) {
+      s[0].seen_on[c] = true;
+      body := project(u, v3(x, ground_at(s, x, z) + lift * 0.4, z), w, h);
+      s[0].seen_x[c] = p.x; s[0].seen_y[c] = (p.y + body.y) / 2;
+      s[0].seen_r[c] = hi(abs(body.y - p.y) * 0.75 + r, 28 * k);
+    }
   }
+  s[0].pane_top = 0;
+  s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if s[0].talk > 0 { return conversation(s, out, u, n); }
   // the hint at the foot
   line := hint(s);
   hs := 7.5 * k;
@@ -1553,6 +1741,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   said := "";
   who := "";
   if s[0].near_creature >= 0 { said = ff_says(f, s[0].near_creature); who = FF_CREATURE_NAMES[s[0].near_creature]; }
+  else if s[0].remark_creature >= 0 { said = ff_remark(f, s[0].remark_creature); who = FF_CREATURE_NAMES[s[0].remark_creature]; }
   if f[0].news >= 0 && f[0].news < FF_ROOTS && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
   if f[0].news == FF_NEWS_HEART && s[0].time - f[0].news_at < f64(HEART_NEWS_TIME) { said = "THE FOREST IS AWAKE, AND IT IS YOURS TO WANDER"; who = "THE HEART TREE BLOOMS"; }
   if said.count > 0 {
@@ -1567,13 +1756,13 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     n = draw_text(out, n, said, (w - sw) / 2, b.y1 - 11 * k, sc, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
     above = b.y0;
   }
-  // BLOOM (or LIGHT): E on a computer, a button on a phone
-  s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  // BLOOM (or LIGHT, or TALK): E on a computer, a button on a phone
   near_patch := ff_patch_near(f, you.x, you.z);
-  if near_patch >= 0 {
+  if near_patch >= 0 || s[0].near_creature >= 0 {
     bc := 9 * k;
     // the Old Ring's stones are lit, not bloomed
-    verb := ifx cast(int) FF_PATCH[near_patch * 4 + 3] == FF_OLD_RING then "LIGHT" else "BLOOM";
+    verb := ifx near_patch < 0 then (ifx phone(s) then "TALK" else FF_TALK_TO[s[0].near_creature])
+            else ifx cast(int) FF_PATCH[near_patch * 4 + 3] == FF_OLD_RING then "LIGHT" else "BLOOM";
     if phone(s) {
       bw := hi(text_width(verb, bc) + 40 * k, 120 * k); bh := 46 * k;
       b := Box.{x0 = w - 16 * k - bw, y0 = above - 12 * k - bh, x1 = w - 16 * k, y1 = above - 12 * k};
@@ -1597,6 +1786,90 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     }
     kx := ox + pad_x * r; ky := oy - pad_y * r;
     if lit(out, n, kx - 0.01, ky, kx + 0.01, ky, 14 * k, 0.8, 6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  }
+  return n;
+}
+
+FF_TALK_TO :: [5] string.["TALK TO BRAMBLE", "TALK TO PIP", "TALK TO CLOVER", "TALK TO BURDOCK", "TALK TO HOLLOW"];
+
+// The talk, along the bottom: who you talk to, the last thing they said,
+// what you said before it, what you are typing, and BYE.
+conversation :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  gutter := 16 * k;
+  pw := lo(w - 2 * gutter, 760 * k);
+  x0 := (w - pw) / 2; x1 := x0 + pw;
+  cap := 8.5 * k; lead := cap * 2.1;
+  c := s[0].talk - 1;
+  // the last thing they said, wrapped to at most four lines, and the line you said before it
+  said := ""; mine := "";
+  last := -1;
+  for q: 0..<s[0].line_n { if s[0].line_npc[q] { last = q; } }
+  if s[0].waiting { last = s[0].line_n; }
+  for q: 0..<s[0].line_n {
+    if q == last { said = line_of(s, q); }
+    if q < last && !s[0].line_npc[q] { mine = line_of(s, q); }
+  }
+  inner := pw - 32 * k;
+  starts: [5] int; ends: [5] int; lines := 0; from := 0;
+  next: [1] int;
+  while from < said.count && lines < 4 {
+    e := wrap(said, from, inner / cap, GAP, SPACE, false, next[..]);
+    starts[lines] = from; ends[lines] = e; lines += 1;
+    if next[0] <= from { break; }
+    from = next[0];
+  }
+  shown_lines := ifx lines < 1 then 1 else lines;
+  mine_h := ifx mine.count > 0 then cap * 0.85 + 16 * k else 0.0f32;
+  ph := 30 * k + cap + 10 * k + mine_h + f32(shown_lines) * lead + 12 * k + cap + 26 * k;
+  y0 := h - gutter - ph;
+  s[0].pane_top = y0;
+  plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x1, y1 = h - gutter}, 0.9, 0);
+  n := at;
+  y := y0 + 18 * k + cap;
+  n = draw_text(out, n, FF_CREATURE_NAMES[c], x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  // BYE, top right of the pane
+  bw := text_width("BYE", 8 * k) + 28 * k;
+  bb := Box.{x0 = x1 - 10 * k - bw, y0 = y0 + 8 * k, x1 = x1 - 10 * k, y1 = y0 + 8 * k + 34 * k};
+  s[0].bye_button = bb;
+  plate(s, u, bb, 0.85, ifx s[0].talk_finger_on then 3.0f32 else 1.0f32);
+  n = draw_text(out, n, "BYE", bb.x0 + 14 * k, bb.y1 - 13 * k, 8 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  y += 10 * k;
+  if mine.count > 0 {
+    mc := cap * 0.85;
+    y += mc + 12 * k;
+    // what you said, cut to the pane (the answer sits a little below it)
+    shown := mine; tw := text_width("YOU · ", mc) + text_width(shown, mc);
+    while tw > inner && shown.count > 1 { shown = shown[0..<shown.count - 1]; tw = text_width("YOU · ", mc) + text_width(shown, mc); }
+    n = draw_text(out, n, "YOU · ", x0 + 16 * k, y, mc, GAP, SPACE, ink(k, 0.8, GOLD_R, GOLD_G, GOLD_B), false, false);
+    n = draw_text(out, n, shown, x0 + 16 * k + text_width("YOU · ", mc), y, mc, GAP, SPACE, ink(k, 0.7, CREAM_R, CREAM_G, CREAM_B), false, false);
+  }
+  if mine.count > 0 { y += 4 * k; }
+  for q: 0..<shown_lines {
+    y += lead;
+    if s[0].waiting && q == 0 {
+      dots := ifx (cast(int) (s[0].time * 3)) % 3 == 0 then "." else ifx (cast(int) (s[0].time * 3)) % 3 == 1 then ". ." else ". . .";
+      n = draw_text(out, n, dots, x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.7, CREAM_R, CREAM_G, CREAM_B), false, false);
+    } else if q < lines && ends[q] > starts[q] {
+      n = draw_text(out, n, said[starts[q]..<ends[q]], x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
+    }
+  }
+  // what you type, or how to
+  y += 12 * k + cap + 4 * k;
+  s[0].field[0] = x0 + 12 * k; s[0].field[1] = y - cap - 10 * k; s[0].field[2] = x1 - 12 * k; s[0].field[3] = y + 10 * k;
+  if s[0].typed_n > 0 {
+    typed := typed_text(s);
+    tw := text_width(typed, cap);
+    // the end of a long line stays in view
+    shown := typed; skip := 0;
+    while tw > inner - 2 * cap && skip < typed.count { skip += 1; while skip < typed.count && (typed[skip] & 0xC0) == 0x80 { skip += 1; } shown = typed[skip..<typed.count]; tw = text_width(shown, cap); }
+    n = draw_text(out, n, shown, x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false);
+    cx := x0 + 16 * k + tw + 3 * k;
+    if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, y, cx, y - cap, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
+  } else if !s[0].waiting {
+    help := ifx phone(s) then "TYPE TO SAY SOMETHING" else "TYPE TO SAY SOMETHING · ENTER SAYS IT · ESC ENDS";
+    n = draw_text(out, n, help, x0 + 16 * k, y, cap * 0.85, GAP, SPACE, ink(k, 0.6, CREAM_R, CREAM_G, CREAM_B), false, false);
   }
   return n;
 }
@@ -1638,6 +1911,10 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   shown := add(v3(feet.x, 0, feet.z), v3(0, ground_at(s, feet.x, feet.z) + feet.y, 0));
   s[0].feet = shown;
   play(s, shown);
+  if s[0].waiting {
+    s[0].waited += t;
+    if s[0].waited > f32(ANSWER_WAIT) { s[0].ask_n = 0; fairy_answer(s, "0\n"); }
+  }
 
   shot := camera_frame(s, shown, vx, vz, t);
 
@@ -1768,6 +2045,51 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 4);
   nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].forest[0].bloomed[0];
+}
+
+#test "E by a creature talks to it: you type, Enter asks, the answer shows, Esc ends; a click on it talks too" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  nv := 0;
+  // beside the hedgehog, no patch at hand
+  hx := FF_CREATURE[0] - 1.5; hz := FF_CREATURE[1] + 1.5;
+  for k: 0..<2 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, hx, 0, hz, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].near_creature == 0 && ff_patch_near(g[0].forest[..], hx, hz) < 0;
+  fairy_facts(g[..], "tab=x\nnow=1730000000000\nplayer=");
+  #assert fairy_key(g[..], 'e', 0);
+  nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, hx, 0, hz, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert fairy_talking(g[..]) && fairy_wants_text(g[..]) && g[0].line_n == 1 && line_of(g[..], 0) == FF_SAYS[0];
+  #assert g[0].pane_top > 0 && g[0].bye_button.x1 > g[0].bye_button.x0 && g[0].button.x1 == 0;
+  // E and Space type while you talk; they neither bloom nor flap
+  #assert fairy_key(g[..], 'H', 1) && fairy_key(g[..], 'i', 0) && fairy_key(g[..], ' ', 0) && g[0].taps == 0;
+  fairy_typed(g[..], "there");
+  #assert typed_text(g[..]) == "Hi there";
+  #assert fairy_key(g[..], KEY_ENTER, 0);
+  #assert fairy_ask(g[..]) > 0 && g[0].waiting && g[0].typed_n == 0;
+  body := cast(string) g[0].ask[0..<fairy_ask(g[..])];
+  #assert ff_has(body, "\"name\":\"Bramble\"") && ff_has(body, "\"visit\":\"1730000000000\"") && ff_has(body, "\"question\":\"Hi there\"");
+  fairy_ask_sent(g[..]);
+  fairy_answer(g[..], "200\n{\"text\":\"Oh, a fairy! Will you wake my flowers?\",\"model\":\"m\"}");
+  #assert !g[0].waiting && g[0].line_n == 3 && line_of(g[..], 2) == "Oh, a fairy! Will you wake my flowers?";
+  // no answer: what is on its mind again
+  fairy_typed(g[..], "Hello?\n");
+  #assert g[0].waiting;
+  fairy_answer(g[..], "503\n{}");
+  #assert line_of(g[..], g[0].line_n - 1) == FF_SAYS[0];
+  nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, hx, 0, hz, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert fairy_key(g[..], KEY_ESCAPE, 0) && !fairy_talking(g[..]);
+  // a click on the hedgehog talks to it
+  nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, hx, 0, hz, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].seen_on[0];
+  cx := g[0].seen_x[0]; cy := g[0].seen_y[0];
+  #assert fairy_pointer(g[..], cx, cy, 0, 0, 1) && fairy_pointer(g[..], cx, cy, 2, 0, 1);
+  #assert fairy_talking(g[..]) && g[0].talk == 1;
+  // BYE ends it
+  nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, hx, 0, hz, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  b := g[0].bye_button;
+  #assert fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 0, 2) && fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 0, 2);
+  #assert !fairy_talking(g[..]);
 }
 
 // What the player library (verse/player.coax) stands on: a wall whose top is

@@ -1,0 +1,204 @@
+// Fairy Forest's creatures talk (task ff-talk, verse/fairy-forest/README.md
+// "The core: helping people"): who each one is, what it says as you pass,
+// and the question's body for the character chat (POST
+// /api/playtest/npc/ask, coax/web/api/npc.c). The server remembers a player
+// for each of them by name (migrations/0031_npc_memory.sql), so what you
+// told one on an earlier visit it can recall. Its trouble and how far you
+// have helped go into what it knows, so it asks for help while its glade is
+// grey and thanks you once it is green again. The page (fairy.coax) opens
+// the talk; its face (fairy-face.c) sends the body and hands back the answer.
+//   coax/bin/coax test apps/openagents-web/fairy.coax   (these checks run with the page's)
+
+FF_WORLD :: "Fairy Forest";
+FF_TALK_CONTROLS :: "W A S D or the arrows walk, Shift runs, drag the mouse to look, the wheel zooms. Space flaps the wings up, holding it climbs, letting go glides down, and Shift in the air dives. On a phone the left thumb walks, the right looks, and a tap on the right side flaps. E, or the BLOOM button, at a grey patch of flowers blooms it; at the Old Ring's dark stones it lights them. E near a creature, or a click or tap on it, talks to it; type and press Enter to say something, and Esc or BYE ends the talk. Bloom every patch in a glade and one of the heart tree's five roots wakes; all five and the heart tree blooms.";
+FF_VALLEY :: "Fairy Forest is a valley round the heart tree, which has fallen asleep, and since then the forest has faded to grey. Five glades lie round it: Mossbank, soft hills and mushrooms, where the fairy woke; the Reeds, the marsh by the pond under the stream; Lanternwood, tall trees whose fruit glows; Thornfall to the north, brambles round a fallen giant tree; and the Old Ring to the south, nine standing stones that hold the forest's lore. The one talking to you is a small fairy, newly woken, who can bloom faded flowers back to colour.";
+FF_REMARK_NEAR :: 12.0;    // metres: near enough to hear a creature's passing remark
+
+// Who each creature is, for the chat (at most 120 letters: the server's cap).
+FF_PERSONA :: [5] string.[
+  "a shy, fussy hedgehog of Mossbank who lives in a burrow by the mushrooms",
+  "a frog of the Reeds who leads the pond's frog choir, proud of his deep voice",
+  "a young rabbit of Lanternwood, a little afraid of the dark, who loves the glowing fruit",
+  "an old badger of Thornfall, gruff but kind, who has lived by the fallen giant tree all his life",
+  "an old owl who keeps the lore of the Old Ring's standing stones, slow and gentle"
+];
+// The trouble, as the creature would put it.
+FF_TROUBLE :: [5] string.[
+  "Mossbank has gone grey, and the flowers by your burrow won't wake. There are three faded patches in Mossbank.",
+  "The Reeds have gone grey and the pond has gone quiet: the frog choir can't sing until the bank flowers again. There are two faded patches in the Reeds.",
+  "Lanternwood's lights have gone out and you can't find your way in the dark. There are three faded patches in Lanternwood.",
+  "Brambles have grown over your way home, thorns everywhere round the fallen giant tree. There are three bramble thickets in Thornfall; bloomed, they turn into wild roses.",
+  "The Old Ring's stones have gone dark, and with them what the forest remembers. Three of the stones can be lit again. You know the fade came when the heart tree fell asleep, and that the heart tree is the forest's own heart."
+];
+// What each says as you pass, a little way off: while its glade is grey, and once it is green.
+FF_REMARKS :: [10] string.[
+  "THE MOSS SMELLS OF NOTHING TODAY.",           "MY BURROW IS COSY AGAIN.",
+  "IS IT FAR TO THE REEDS? I'VE NOT HOPPED THAT FAR IN AGES.", "LISTEN TO THE CHOIR.",
+  "IT'S SO DARK UNDER THESE TREES.",              "THE FRUIT IS GLOWING. LOOK!",
+  "MIND THE THORNS, LITTLE ONE.",                 "SMELL THOSE ROSES.",
+  "THE STONES ARE COLD AND QUIET.",               "THE STONES ARE SINGING TONIGHT."
+];
+
+ff_remark :: (f: [] Forest, c: int) -> string {
+  if c < 0 || c >= FF_CREATURES { return ""; }
+  return FF_REMARKS[c * 2 + (ifx ff_mood(f, c) == MOOD_HAPPY then 1 else 0)];
+}
+// A creature's name as it goes by: "BRAMBLE" is Bramble.
+ff_name :: (c: int, out: [] u8) -> int {
+  if c < 0 || c >= FF_CREATURES { return 0; }
+  name := FF_CREATURE_NAMES[c];
+  n := 0;
+  for i: 0..<name.count {
+    if n >= out.count { break; }
+    ch := name[i];
+    out[n] = ifx i > 0 && ch >= 'A' && ch <= 'Z' then ch + 32 else ch;
+    n += 1;
+  }
+  return n;
+}
+
+// ---- the question's body: JSON, every text escaped
+
+ff_json :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count {
+    c := text[i];
+    if n + 2 >= out.count { return n; }
+    if c == '"' || c == '\\' { out[n] = '\\'; out[n + 1] = c; n += 2; continue; }
+    out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1;
+  }
+  return n;
+}
+ff_raw :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
+  return n;
+}
+ff_field :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> int {
+  n := ff_raw(out, at, ifx comma then ",\"" else "\"");
+  n = ff_raw(out, n, name);
+  n = ff_raw(out, n, "\":\"");
+  n = ff_json(out, n, text);
+  return ff_raw(out, n, "\"");
+}
+ff_digit :: (out: [] u8, at: int, v: int) -> int {
+  if at >= out.count { return at; }
+  out[at] = cast(u8) ('0' + clamp_i(v, 0, 9));
+  return at + 1;
+}
+clamp_i :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
+
+// What creature c knows now: the valley, its trouble, how far the fairy
+// has helped it, the roots and the heart tree.
+ff_knows :: (out: [] u8, at: int, f: [] Forest, c: int) -> int {
+  g := cast(int) FF_CREATURE[c * 4 + 2];
+  done := ff_glade_done(f, g); all := ff_glade_patches(g);
+  n := ff_json(out, at, FF_VALLEY);
+  n = ff_json(out, n, " Your trouble: ");
+  n = ff_json(out, n, FF_TROUBLE[c]);
+  n = ff_json(out, n, " Patches the fairy has bloomed in your glade so far: ");
+  n = ff_digit(out, n, done); n = ff_json(out, n, " of "); n = ff_digit(out, n, all); n = ff_json(out, n, ".");
+  if done >= all {
+    n = ff_json(out, n, " Your trouble is solved: the fairy talking to you did it. Thank them warmly, and say what has changed for you.");
+  } else if done > 0 {
+    n = ff_json(out, n, " The fairy has started to help you; say what is still grey and where.");
+  } else {
+    n = ff_json(out, n, " Ask the fairy for help with it, kindly.");
+  }
+  n = ff_json(out, n, " Roots of the heart tree awake: ");
+  n = ff_digit(out, n, ff_roots_awake(f)); n = ff_json(out, n, " of 5.");
+  if f[0].heart { n = ff_json(out, n, " The heart tree has bloomed and colour is back in the whole valley: the fairy saved the forest."); }
+  n = ff_json(out, n, " Speak as a small forest creature: one or two short sentences, simple words, never more than about thirty words.");
+  return n;
+}
+
+// One line of the talk so far: who said it (true: the creature) and what.
+FfLine :: struct { npc: bool; text: string; }
+
+// The body for /api/playtest/npc/ask: creature c, the talk so far (oldest
+// first), the question and this visit's stamp. The bytes written, or 0 when
+// it didn't fit.
+ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: string, visit: string) -> int {
+  if c < 0 || c >= FF_CREATURES { return 0; }
+  name: [16] u8;
+  nn := ff_name(c, name[..]);
+  n := ff_raw(out, 0, "{\"npc\":{");
+  n = ff_field(out, n, "name", cast(string) name[0..<nn], false);
+  n = ff_field(out, n, "role", FF_PERSONA[c], true);
+  n = ff_field(out, n, "greet", ff_says(f, c), true);
+  n = ff_raw(out, n, ",\"knowledge\":\"");
+  n = ff_knows(out, n, f, c);
+  n = ff_raw(out, n, "\"}");
+  n = ff_field(out, n, "world", FF_WORLD, true);
+  n = ff_field(out, n, "controls", FF_TALK_CONTROLS, true);
+  n = ff_field(out, n, "visit", visit, true);
+  n = ff_raw(out, n, ",\"history\":[");
+  for k: 0..<lines.count {
+    n = ff_raw(out, n, ifx k > 0 then ",{\"from\":\"" else "{\"from\":\"");
+    n = ff_raw(out, n, ifx lines[k].npc then "npc\"" else "player\"");
+    n = ff_field(out, n, "text", lines[k].text, true);
+    n = ff_raw(out, n, "}");
+  }
+  n = ff_raw(out, n, "]");
+  n = ff_field(out, n, "question", question, true);
+  n = ff_raw(out, n, "}");
+  if n >= out.count - 1 { return 0; }
+  return n;
+}
+
+// The "text" of the server's answer, unescaped, into out; its length.
+ff_answer_text :: (body: string, out: [] u8) -> int {
+  key := "\"text\":\"";
+  i := 0; found := -1;
+  while i + key.count <= body.count { if body[i..<i + key.count] == key { found = i + key.count; break; } i += 1; }
+  if found < 0 { return 0; }
+  n := 0; i = found;
+  while i < body.count && body[i] != '"' && n < out.count {
+    c := body[i];
+    if c == '\\' && i + 1 < body.count {
+      e := body[i + 1];
+      if e == 'u' { out[n] = '\''; n += 1; i += 6; continue; }   // a rare escape: a stand-in
+      out[n] = ifx e == 'n' || e == 't' || e == 'r' then cast(u8) ' ' else e; n += 1; i += 2; continue;
+    }
+    out[n] = c; n += 1; i += 1;
+  }
+  return n;
+}
+
+ff_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+#test "every creature has a persona under the server's cap, a trouble and two remarks" {
+  for c: 0..<FF_CREATURES {
+    #assert FF_PERSONA[c].count > 20 && FF_PERSONA[c].count <= 120;
+    #assert FF_TROUBLE[c].count > 20 && FF_REMARKS[c * 2].count > 0 && FF_REMARKS[c * 2 + 1].count > 0;
+  }
+  name: [16] u8;
+  #assert cast(string) name[0..<ff_name(3, name[..])] == "Burdock";
+}
+
+#test "the question's body is JSON, its trouble and help in what the creature knows" {
+  f: [1] Forest; f[0].news = -1;
+  out: [8192] u8;
+  lines := [2] FfLine.[FfLine.{npc = true, text = "Hello."}, FfLine.{npc = false, text = "I'm \"Wren\"\nhi"}];
+  n := ff_ask_body(out[..], f[..], 0, lines[..], "What's wrong?", "1730000000000");
+  body := cast(string) out[0..<n];
+  #assert n > 0 && body[0] == '{' && body[n - 1] == '}';
+  #assert ff_has(body, "{\"npc\":{\"name\":\"Bramble\",\"role\":\"a shy, fussy hedgehog");
+  #assert ff_has(body, "so far: 0 of 3.") && ff_has(body, "Ask the fairy for help");
+  #assert ff_has(body, "\"world\":\"Fairy Forest\"") && ff_has(body, "{\"from\":\"player\",\"text\":\"I'm \\\"Wren\\\" hi\"}");
+  #assert ff_has(body, "\"question\":\"What's wrong?\"}");
+  // helped: it thanks you
+  for i: 1..<4 { #assert ff_bloom(f[..], i, 1); }
+  n = ff_ask_body(out[..], f[..], 0, lines[0..<0], "Hi", "1");
+  body = cast(string) out[0..<n];
+  #assert ff_has(body, "so far: 3 of 3.") && ff_has(body, "Thank them warmly") && ff_has(body, "\"history\":[]");
+  small: [64] u8;
+  #assert ff_ask_body(small[..], f[..], 0, lines[..], "x", "1") == 0 && ff_ask_body(out[..], f[..], FF_CREATURES, lines[..], "x", "1") == 0;
+  t: [64] u8;
+  m := ff_answer_text("{\"text\":\"Oh, \\\"thank\\\" you!\\nTruly.\",\"model\":\"g\"}", t[..]);
+  #assert cast(string) t[0..<m] == "Oh, \"thank\" you! Truly.";
+}
