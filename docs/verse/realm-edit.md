@@ -7,7 +7,7 @@ edit a realm, EDIT opens the same layer in each one.
 
 ## Who may edit
 
-The server decides, for any realm slug (`coax/web/api/migrations/0049_realm_edit.sql`,
+The server decides, for any realm slug (`coax/web/api/migrations/0050_realm_edit.sql`,
 `verse.edit_role`):
 
 - **owner**: a made realm's maker (its player key or account), or a hand-built realm's owner account.

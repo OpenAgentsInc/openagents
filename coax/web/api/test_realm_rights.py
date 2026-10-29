@@ -1,5 +1,5 @@
 # Every realm edits the way Build your own realm does (byo-every-realm; realms.c,
-# migrations/0049_realm_edit.sql): every realm in realms.json has an owner account and admins, and
+# migrations/0050_realm_edit.sql): every realm in realms.json has an owner account and admins, and
 # the server decides, for any slug, who may switch the board, change the settings, place at once and
 # settle cards. test.py runs this file after test_realm_builder.py (call, check, sql, pt, nip98,
 # b_call, b_player and builder_fake come from them).

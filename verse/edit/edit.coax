@@ -3,7 +3,7 @@
 // lifted out of Build your own realm (apps/openagents-web/builder.coax, myrealm.coax) so a hand-built
 // realm and a made one edit the same way.
 //
-// The server decides everything (coax/web/api/migrations/0049_realm_edit.sql): GET
+// The server decides everything (coax/web/api/migrations/0050_realm_edit.sql): GET
 // /api/playtest/realms/<slug> says the viewer's role, the board's rows and the tools the realm's code
 // honours. An owner or an admin gets EDIT; it opens one pane at a time (the panes rule,
 // verse/fairy-forest/README.md): THE BOARD (each row a checkbox; a tap switches it for everyone,

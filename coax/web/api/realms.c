@@ -12,7 +12,7 @@
 //   POST /api/playtest/realms/<slug>/settings {tools}  -> 200 {tools}; 403 not an owner or admin
 //   POST /api/playtest/realms/<slug>/switch {row, on}  -> 200 {row, on}; 403, 404 (one row of the board)
 //   POST /api/playtest/realms/<slug>/revise {prompt}   -> 200 {plan, changed}; 400, 403, 429, 502, 503
-// Any realm: a made one or a hand-built one from realms.json (migrations/0049_realm_edit.sql decides
+// Any realm: a made one or a hand-built one from realms.json (migrations/0050_realm_edit.sql decides
 // who is its owner, an admin or a visitor; a site admin, admin_who, is an admin of every realm).
 //   POST /api/playtest/realms/<slug>/place {thing, x, z, yaw}   -> 200 {placed} | {proposed}; 403
 //   GET  /api/playtest/realms/<slug>/proposals         -> text/plain, the owner's cards ("" for anyone else)
@@ -220,7 +220,7 @@ static void make(const request *q, PGconn *db, const char *key) {
   free(answer); free(slug);
 }
 
-// ---- talking revises a realm's board (migrations/0049_realm_edit.sql): asked here, the model's
+// ---- talking revises a realm's board (migrations/0050_realm_edit.sql): asked here, the model's
 // answer kept by a child, as a plan is. ?as=lines answers the board's rows as lines.
 static void revise_answer(int fd, const char *asked, const char *request, bool lines) {
   const char *model = env_or("OA_BUILDER_MODEL", "gemini-3.8-flash");
