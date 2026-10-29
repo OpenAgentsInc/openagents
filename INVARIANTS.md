@@ -1,5 +1,27 @@
 # Invariants
 
+## Psionic hybrid primitives stage attention and recurrent work
+
+`psionic/lib/delta.coax`, `qwen-attention.coax` and `qwen-matvec.coax` own
+bounded Qwen-style convolution/recurrence, split-half rotary and gated grouped
+attention, and original BF16/F32 row projections. Bounds include 16 key heads,
+48 value heads, 128-wide recurrent dimensions, 32 full-attention query heads,
+256-wide full heads, 16,384 visible positions and 32,768 matrix rows/columns.
+The delta `A_log` upper bound is 80. Shape admission precedes multiplication.
+
+The delta step stages the next convolution history, recurrent matrix and output
+before publishing any of them. Full-attention preparation and matvec publish
+only complete outputs; masked attention stages output in scratch. Finite input,
+coefficient, mask, capacity and overlap checks are explicit; scratch may change
+on arithmetic failure. Callers must keep valid aligned allocations, truthful
+extents and exclusive access; native wrappers only observe address ranges.
+
+Check: `psionic/check.sh` includes debug/release authority and mutation gates,
+independent scalar fixture generators and native plain/sanitized runs. The
+[hybrid verification](docs/verification/psionic-hybrid-2026-10-29.md) defines
+the scope; these primitives do not yet run a complete model or establish
+upstream numerical parity.
+
 ## Psionic causal attention publishes a complete block and cache entry
 
 `psionic/lib/attention.coax` owns a bounded causal dense block with learned RMS

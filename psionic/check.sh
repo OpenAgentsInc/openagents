@@ -18,7 +18,9 @@ python3 -I psionic/tests/weights_fixtures.py --header > "$out/weights-fixtures.h
 python3 -I psionic/tests/text_fixtures.py
 python3 -I psionic/tests/text_oracle.py --header > "$out/text-goldens.h"
 python3 -I psionic/tests/attention_oracle.py --header > "$out/attention-oracle.h"
-for unit in learn tensor ops-contract ops model-io/weights text attention; do
+python3 -I psionic/tests/delta_oracle.py --header > "$out/delta-oracle.h"
+python3 -I psionic/tests/qwen_attention_oracle.py --header > "$out/qwen-attention-oracle.h"
+for unit in learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -27,7 +29,7 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in learn tensor ops weights text attention; do
+    for unit in learn tensor ops weights text attention delta qwen-attention qwen-matvec; do
         source="psionic/lib/$unit.coax"
         if [[ $unit == weights ]]; then source=psionic/lib/model-io/weights.coax; fi
         "$coax" c "$source" --library --header "$out/$unit.h" "${flags[@]}" > "$out/$unit.c"
@@ -38,6 +40,9 @@ for mode in debug release; do
             weights) adapter=psionic/platform/weights-memory.c; harness=psionic/tests/weights.c ;;
             text) adapter=psionic/platform/text-memory.c; harness=psionic/tests/text.c ;;
             attention) adapter=psionic/platform/attention-memory.c; harness=psionic/tests/attention.c ;;
+            delta) adapter=psionic/platform/delta-memory.c; harness=psionic/tests/delta.c ;;
+            qwen-attention) adapter=psionic/platform/qwen-attention-memory.c; harness=psionic/tests/qwen_attention.c ;;
+            qwen-matvec) adapter=psionic/platform/qwen-matvec-memory.c; harness=psionic/tests/qwen_matvec.c ;;
         esac
         for native in plain sanitized; do
             sanitizers=()

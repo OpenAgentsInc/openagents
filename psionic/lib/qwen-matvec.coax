@@ -1,0 +1,66 @@
+// Row-major original BF16/F32 matrix-vector projection for the hybrid model.
+#load "ops.coax";
+#authority;
+QmDtype :: enum u8 { bf16; f32; }
+QmStatus :: enum u8 { ok; shape; capacity; alias; number; arithmetic; }
+QmResult :: struct { status:QmStatus; written:int; }
+
+#test "BF16 and F32 original rows produce the same rectangular projection" {
+    bf:=[8]u8.[0x80,0x3f, 0x00,0x40, 0x40,0x40, 0x80,0x40];
+    fp:=[16]u8.[0,0,0x80,0x3f, 0,0,0,0x40, 0,0,0x40,0x40, 0,0,0x80,0x40];
+    x:=[2]f32.[1,2];out:=[3]f32.[-7,-7,-7];work:=[3]f32.[-9,-9,-9];
+    a:=qm_project(QmDtype.bf16,2,2,bf[..],x[..],out[..],work[..],false);
+    #assert a.status==QmStatus.ok && a.written==2 && out[0]==5 && out[1]==11 && out[2]==-7;
+    b:=qm_project(QmDtype.f32,2,2,fp[..],x[..],out[..],work[..],false);
+    #assert b.status==QmStatus.ok && b.written==2 && out[0]==5 && out[1]==11 && work[2]==-9;
+}
+#test "non-finite original bits and malformed sizes refuse atomically" {
+    w:=[4]u8.[0,0x3f,0x80,0x7f];x:=[2]f32.[1,2];out:=[1]f32.[-7];work:=[1]f32.[-9];
+    #assert qm_project(QmDtype.bf16,1,2,w[..],x[..],out[..],work[..],false).status==QmStatus.number;
+    #assert qm_project(QmDtype.bf16,1,2,w[0..<3],x[..],out[..],work[..],false).status==QmStatus.capacity;
+    #assert qm_project(QmDtype.bf16,1,2,w[..],x[..],out[..],work[..],true).status==QmStatus.alias;
+    #assert !qm_valid(2,1,2);
+    #assert qm_project(QmDtype.bf16,9223372036854775807,2,w[..],x[..],out[..],work[..],false).status==QmStatus.shape;
+    #assert out[0]==-7 && work[0]==-9;
+}
+qm_valid :: (tag:u8,rows:int,cols:int)->bool {
+    return tag<=1 && rows>=1 && rows<=32768 && cols>=1 && cols<=32768;
+}
+qm_bytes :: (dtype:QmDtype,rows:int,cols:int)->int {
+    size:=2;if dtype==QmDtype.f32 {size=4;}return rows*cols*size;
+}
+qm_bits :: (dtype:QmDtype,w:[]u8,index:int)->u32 {
+    if dtype==QmDtype.bf16 {p:=2*index;return (u32(w[p]) | (u32(w[p+1])<<8))<<16;}
+    p:=4*index;return u32(w[p]) | (u32(w[p+1])<<8) | (u32(w[p+2])<<16) | (u32(w[p+3])<<24);
+}
+// book:begin matvec
+qm_project :: (dtype:QmDtype,rows:int,cols:int,w:[]u8,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+    if !qm_valid(cast(u8)dtype,rows,cols) {return QmResult.{status=QmStatus.shape};}
+    if w.count!=qm_bytes(dtype,rows,cols) || x.count!=cols || out.count<rows || work.count<rows {return QmResult.{status=QmStatus.capacity};}
+    if overlap {return QmResult.{status=QmStatus.alias};}
+    for value:x {if !psionic_tensor_finite_bits(f32_bits(value)) {return QmResult.{status=QmStatus.number};}}
+    for i:0..<rows*cols {if !psionic_tensor_finite_bits(qm_bits(dtype,w,i)) {return QmResult.{status=QmStatus.number};}}
+    for row:0..<rows {
+        acc:PsionicAccumulator;
+        for col:0..<cols {acc=psionic_ops_accumulate(acc,f64(f32_from_bits(qm_bits(dtype,w,row*cols+col)))*f64(x[col]));}
+        value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return QmResult.{status=QmStatus.arithmetic};}
+        work[row]=f32(value);
+    }
+    for i:0..<rows {out[i]=work[i];}
+    return QmResult.{written=rows};
+}
+// book:end matvec
+#test "large matrix endpoints and all little-endian byte positions are explicit" {
+    #assert qm_valid(0,1,1) && qm_valid(1,32768,32768);
+    #assert !qm_valid(0,0,1) && !qm_valid(0,1,0) && !qm_valid(0,32769,1) && !qm_valid(0,1,32769);
+    bytes:=[8]u8.[0x44,0x33,0x22,0x11, 0xcd,0xab,0x23,0x45];
+    #assert qm_bits(QmDtype.f32,bytes[..],0)==0x11223344 && qm_bits(QmDtype.f32,bytes[..],1)==0x4523abcd;
+}
+#test "every encoded weight is checked, including first and final matrix elements" {
+    w:=[12]u8.[0,0x80,0,0,0,0,0,0,0,0,0,0];x:=[3]f32.[1,1,1];out:=[2]f32.[-7,-7];work:=[2]f32.[-9,-9];
+    w[0]=0x80;w[1]=0x7f;
+    #assert qm_project(QmDtype.bf16,2,3,w[..],x[..],out[..],work[..],false).status==QmStatus.number;
+    w[0]=0;w[1]=0;w[10]=0x80;w[11]=0x7f;
+    #assert qm_project(QmDtype.bf16,2,3,w[..],x[..],out[..],work[..],false).status==QmStatus.number;
+    #assert out[0]==-7 && out[1]==-7 && work[0]==-9 && work[1]==-9;
+}

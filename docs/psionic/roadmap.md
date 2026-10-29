@@ -128,6 +128,10 @@ Independent full-sequence fixtures and native storage/refusal checks qualify
 this small CPU profile. It does not implement Qwen3.5's exact hybrid block or
 the decision mask. Chapter 7 and real-model qualification remain next.
 
+[The hybrid kernel progress note](hybrid-kernels.md) records model-specific
+recurrent, attention and original-weight projection primitives now under
+construction for chapter 7.
+
 ## Delivery priority: Elephant, then Mammoth
 
 The owner priority is [native Elephant and Mammoth](model-targets.md), with

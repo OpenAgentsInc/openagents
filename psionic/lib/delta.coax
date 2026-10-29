@@ -1,0 +1,142 @@
+// Qwen-style causal depthwise convolution and gated delta recurrence.
+#load "ops.coax";
+#authority;
+// book:begin types
+PdShape :: struct { key_heads:int; value_heads:int; key_dim:int; value_dim:int; epsilon:f32; }
+PdStatus :: enum u8 { ok; shape; capacity; alias; number; arithmetic; }
+PdResult :: struct { status:PdStatus; written:int; }
+// book:end types
+
+#test "the source model head layouts fit without signed overflow" {
+    elephant:=PdShape.{key_heads=16,value_heads=32,key_dim=128,value_dim=128,epsilon=0.000001f32};
+    mammoth:=PdShape.{key_heads=16,value_heads=48,key_dim=128,value_dim=128,epsilon=0.000001f32};
+    #assert pd_valid(elephant) && pd_valid(mammoth);
+    #assert pd_channels(elephant)==8192 && pd_channels(mammoth)==10240;
+    #assert pd_states(elephant)==524288 && pd_states(mammoth)==786432;
+    bad:=mammoth;bad.key_heads=9223372036854775807;#assert !pd_valid(bad);
+    bad=mammoth;bad.value_heads=49;#assert !pd_valid(bad);
+    bad=mammoth;bad.value_heads=31;#assert !pd_valid(bad);
+    bad=mammoth;bad.key_dim=129;#assert !pd_valid(bad);
+    bad=mammoth;bad.value_dim=0;#assert !pd_valid(bad);
+    bad=mammoth;bad.epsilon=0;#assert !pd_valid(bad);
+}
+#test "the one-channel convolution shifts only the oldest samples" {
+    s:=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1};
+    // q/k/v are zero; each of three channels has weights [0,0,0,1].
+    input:=[21]f32.[0,0,0, 0,0,0,1, 0,0,0,1, 0,0,0,1, 0,0,0,0, 1,1];
+    history:=[9]f32.[1,2,3, 4,5,6, 7,8,9];state:=[1]f32.[0];out:=[1]f32.[-7];work:[14]f32;
+    r:=pd_step(s,input[..],history[..],state[..],out[..],work[..],false);
+    #assert r.status==PdStatus.ok && r.written==1 && out[0]==0;
+    want:=[9]f32.[2,3,0,5,6,0,8,9,0];
+    for i:0..<9 {#assert history[i]==want[i];}
+}
+#test "refusals leave output, recurrence and convolution history unchanged" {
+    s:=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1};
+    input:[21]f32;history:=[9]f32.[1,2,3,4,5,6,7,8,9];state:=[1]f32.[4];out:=[1]f32.[-7];work:[14]f32;
+    #assert pd_step(s,input[0..<20],history[..],state[..],out[..],work[..],false).status==PdStatus.capacity;
+    #assert pd_step(s,input[..],history[..],state[..],out[..],work[..],true).status==PdStatus.alias;
+    #assert out[0]==-7 && state[0]==4;
+    for i:0..<9 {#assert history[i]==f32(i+1);}
+}
+// book:begin layout
+pd_valid :: (s:PdShape)->bool {
+    if s.key_heads<1 || s.key_heads>16 || s.value_heads<1 || s.value_heads>48 {return false;}
+    if s.key_dim<1 || s.key_dim>128 || s.value_dim<1 || s.value_dim>128 {return false;}
+    if s.value_heads%s.key_heads!=0 {return false;}
+    return psionic_tensor_finite_bits(f32_bits(s.epsilon)) && s.epsilon>0;
+}
+pd_key_base :: (heads:int,dim:int,base:int)->int {return heads*dim+base;}
+pd_channels :: (s:PdShape)->int {return 2*s.key_heads*s.key_dim+s.value_heads*s.value_dim;}
+pd_states :: (s:PdShape)->int {return s.value_heads*s.key_dim*s.value_dim;}
+pd_input_count :: (s:PdShape)->int {return 5*pd_channels(s)+4*s.value_heads+s.value_heads*s.value_dim+s.value_dim;}
+pd_work_count :: (s:PdShape)->int {return 4*pd_channels(s)+pd_states(s)+s.value_heads*s.value_dim;}
+// book:end layout
+pd_data_status :: (a:[]f32)->PdStatus {for x:a {if !psionic_tensor_finite_bits(f32_bits(x)) {return PdStatus.number;}}return PdStatus.ok;}
+pd_put :: (value:f64,a:[]f32,i:int)->bool {
+    if !psionic_ops_fits_f32(value) {return false;}
+    a[i]=f32(value);return true;
+}
+pd_sigmoid :: (x:f64)->f64 {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
+pd_silu :: (x:f64)->f64 {return x*pd_sigmoid(x);}
+pd_softplus :: (x:f64)->f64 {
+    return (x+abs(x))/2+log(1+exp(-abs(x)));
+}
+// book:begin step
+pd_step :: (s:PdShape,input:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f32,overlap:bool)->PdResult #export_c {
+    if !pd_valid(s) {return PdResult.{status=PdStatus.shape};}
+    c:=pd_channels(s);n:=pd_states(s);v:=s.value_heads*s.value_dim;h:=s.value_heads;
+    if input.count!=pd_input_count(s) || history.count!=3*c || state.count!=n || out.count<v || work.count<pd_work_count(s) {return PdResult.{status=PdStatus.capacity};}
+    if overlap {return PdResult.{status=PdStatus.alias};}
+    if pd_data_status(input)!=PdStatus.ok {return PdResult.{status=PdStatus.number};}
+    if pd_data_status(history)!=PdStatus.ok {return PdResult.{status=PdStatus.number};}
+    if pd_data_status(state)!=PdStatus.ok {return PdResult.{status=PdStatus.number};}
+    aoff:=5*c;boff:=aoff+h;logoff:=boff+h;dtoff:=logoff+h;zoff:=dtoff+h;gammaoff:=zoff+v;
+    conv:=work[0..<c];next_history:=work[c..<4*c];next_state:=work[4*c..<4*c+n];draft:=work[4*c+n..<4*c+n+v];
+    for i:0..<h {if input[logoff+i]>80 {return PdResult.{status=PdStatus.number};}}
+    for channel:0..<c {
+        acc:PsionicAccumulator;
+        for t:0..<4 {
+            item:=input[channel];if t<3 {item=history[channel*3+t];}
+            acc=psionic_ops_accumulate(acc,f64(item)*f64(input[c+channel*4+t]));
+        }
+        if !pd_put(pd_silu(psionic_ops_total(acc)),conv,channel) {return PdResult.{status=PdStatus.arithmetic};}
+        next_history[channel*3]=history[channel*3+1];next_history[channel*3+1]=history[channel*3+2];next_history[channel*3+2]=input[channel];
+    }
+    // Each value head shares the corresponding query/key head.
+    for head:0..<h {
+        key_head:=head/(h/s.key_heads);qbase:=key_head*s.key_dim;kbase:=pd_key_base(s.key_heads,s.key_dim,qbase);vbase:=2*s.key_heads*s.key_dim+head*s.value_dim;
+        qsq:PsionicAccumulator;ksq:PsionicAccumulator;
+        for i:0..<s.key_dim {qsq=psionic_ops_accumulate(qsq,f64(conv[qbase+i])*f64(conv[qbase+i]));ksq=psionic_ops_accumulate(ksq,f64(conv[kbase+i])*f64(conv[kbase+i]));}
+        qdiv:=sqrt(psionic_ops_total(qsq)+0.000001)*sqrt(f64(s.key_dim));kdiv:=sqrt(psionic_ops_total(ksq)+0.000001);
+        beta:=pd_sigmoid(f64(input[boff+head]));decay:=exp(-exp(f64(input[logoff+head]))*pd_softplus(f64(input[aoff+head])+f64(input[dtoff+head])));
+        for col:0..<s.value_dim {
+            memory:PsionicAccumulator;
+            for row:0..<s.key_dim {idx:=(head*s.key_dim+row)*s.value_dim+col;memory=psionic_ops_accumulate(memory,f64(state[idx])*decay*f64(conv[kbase+row])/kdiv);}
+            delta:=(f64(conv[vbase+col])-psionic_ops_total(memory))*beta;
+            result:PsionicAccumulator;
+            for row:0..<s.key_dim {
+                idx:=(head*s.key_dim+row)*s.value_dim+col;
+                updated:=f64(state[idx])*decay+f64(conv[kbase+row])/kdiv*delta;
+                if !pd_put(updated,next_state,idx) {return PdResult.{status=PdStatus.arithmetic};}
+                result=psionic_ops_accumulate(result,f64(conv[qbase+row])/qdiv*f64(next_state[idx]));
+            }
+            if !pd_put(psionic_ops_total(result),draft,head*s.value_dim+col) {return PdResult.{status=PdStatus.arithmetic};}
+        }
+        squares:PsionicAccumulator;
+        for col:0..<s.value_dim {x:=f64(draft[head*s.value_dim+col]);squares=psionic_ops_accumulate(squares,x*x);}
+        denom:=sqrt(psionic_ops_total(squares)/f64(s.value_dim)+f64(s.epsilon));
+        for col:0..<s.value_dim {
+            idx:=head*s.value_dim+col;
+            result:=f64(draft[idx])/denom*f64(input[gammaoff+col])*pd_silu(f64(input[zoff+idx]));
+            if !pd_put(result,draft,idx) {return PdResult.{status=PdStatus.arithmetic};}
+        }
+    }
+    for i:0..<3*c {history[i]=next_history[i];}
+    for i:0..<n {state[i]=next_state[i];}
+    for i:0..<v {out[i]=draft[i];}
+    return PdResult.{written=v};
+}
+// book:end step
+
+#load "../fixtures/hybrid/delta-vectors.coax";
+#test "each recurrent dimension and workspace endpoint is independently checked" {
+    s:=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1};
+    #assert pd_valid(s) && pd_input_count(s)==21 && pd_work_count(s)==14;
+    bad:=s;bad.key_heads=0;#assert !pd_valid(bad);bad=s;bad.key_heads=17;bad.value_heads=17;#assert !pd_valid(bad);
+    bad=s;bad.value_heads=0;#assert !pd_valid(bad);bad=s;bad.value_heads=49;#assert !pd_valid(bad);
+    bad=s;bad.key_dim=0;#assert !pd_valid(bad);bad=s;bad.key_dim=129;#assert !pd_valid(bad);
+    bad=s;bad.value_dim=129;#assert !pd_valid(bad);
+    #assert pd_key_base(2,3,3)==9 && pd_key_base(1,1,0)==1;
+    array:=[1]f32.[0];#assert !pd_put(1e100,array[..],0) && array[0]==0;
+}
+#test "decay parameter admission includes both endpoints and each head" {
+    s:=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1};
+    input:[21]f32;history:[9]f32;state:[1]f32;out:[1]f32;work:[14]f32;
+    input[17]=80;#assert pd_step(s,input[..],history[..],state[..],out[..],work[..],false).status==PdStatus.ok;
+    input[17]=81;#assert pd_step(s,input[..],history[..],state[..],out[..],work[..],false).status==PdStatus.number;
+}
+#test "every value head checks its own decay parameter" {
+    s:=PdShape.{key_heads=1,value_heads=2,key_dim=1,value_dim=1,epsilon=1};
+    input:[31]f32;history:[12]f32;state:[2]f32;out:[2]f32;work:[20]f32;
+    input[25]=81;#assert pd_step(s,input[..],history[..],state[..],out[..],work[..],false).status==PdStatus.number;
+}

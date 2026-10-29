@@ -1,0 +1,174 @@
+// Qwen3.5 full-attention projection preparation, bounded CPU reference.
+#load "ops.coax";
+#authority;
+// book:begin types
+QfShape :: struct { heads:int; kv_heads:int; head_dim:int; rotary_dim:int; epsilon:f32; }
+QfStatus :: enum u8 { ok; shape; capacity; alias; number; arithmetic; mask; }
+QfResult :: struct { status:QfStatus; written:int; }
+// book:end types
+
+#test "split-half rotation follows per-head offset RMS and preserves the unrotated tail" {
+    s:=QfShape.{heads=2,kv_heads=1,head_dim=4,rotary_dim=2,epsilon=3};
+    // per head q[4], gate[4]; key[4], value[4], q/k scales[4], rope[cos,sin]
+    input:=[34]f32.[1,1,1,1, 0,1,2,3, 1,1,1,1, 4,5,6,7, 1,1,1,1, 5,6,7,8, 0,0,0,0, 0,0,0,0, 0,1];
+    out:[24]f32;
+    r:=qf_prepare(s,input[..],out[..],false);
+    #assert r.status==QfStatus.ok && r.written==24;
+    for h:0..<2 {#assert out[h*4]==-0.5f32 && out[h*4+1]==0.5f32 && out[h*4+2]==0.5f32 && out[h*4+3]==0.5f32;}
+    for i:0..<8 {#assert out[8+i]==f32(i);}
+    #assert out[16]==-0.5f32 && out[17]==0.5f32 && out[18]==0.5f32 && out[19]==0.5f32;
+    for i:0..<4 {#assert out[20+i]==f32(i+5);}
+}
+#test "real attention dimensions and shape errors are admitted safely" {
+    a:=QfShape.{heads=16,kv_heads=4,head_dim=256,rotary_dim=64,epsilon=0.000001f32};
+    b:=QfShape.{heads=24,kv_heads=4,head_dim=256,rotary_dim=64,epsilon=0.000001f32};
+    #assert qf_valid(a) && qf_valid(b);
+    #assert qf_input_count(a)==10816 && qf_output_count(a)==10240;
+    #assert qf_input_count(b)==14912 && qf_output_count(b)==14336;
+    a.heads=9223372036854775807;#assert !qf_valid(a);a=b;a.kv_heads=5;#assert !qf_valid(a);
+    a=b;a.rotary_dim=63;#assert !qf_valid(a);a=b;a.rotary_dim=258;#assert !qf_valid(a);
+    a=b;a.head_dim=0;#assert !qf_valid(a);a=b;a.epsilon=0;#assert !qf_valid(a);
+}
+#test "preparation refuses bad lengths and overlap without publishing" {
+    s:=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1};
+    input:[14]f32;out:=[8]f32.[-7,-7,-7,-7,-7,-7,-7,-7];
+    #assert qf_prepare(s,input[0..<13],out[..],false).status==QfStatus.capacity;
+    #assert qf_prepare(s,input[..],out[0..<7],false).status==QfStatus.capacity;
+    #assert qf_prepare(s,input[..],out[..],true).status==QfStatus.alias;
+    input[12]=2;#assert qf_prepare(s,input[..],out[..],false).status==QfStatus.number;
+    for x:out {#assert x==-7;}
+}
+// book:begin layout
+qf_valid :: (s:QfShape)->bool {
+    if s.heads<1 || s.heads>32 || s.kv_heads<1 || s.kv_heads>16 {return false;}
+    if s.head_dim<1 || s.head_dim>256 || s.rotary_dim<0 || s.rotary_dim>s.head_dim {return false;}
+    if s.rotary_dim%2!=0 || s.heads%s.kv_heads!=0 {return false;}
+    return psionic_tensor_finite_bits(f32_bits(s.epsilon)) && s.epsilon>0;
+}
+qf_input_count :: (s:QfShape)->int {return 2*s.heads*s.head_dim+2*s.kv_heads*s.head_dim+2*s.head_dim+s.rotary_dim;}
+qf_output_count :: (s:QfShape)->int {return 2*s.heads*s.head_dim+2*s.kv_heads*s.head_dim;}
+// book:end layout
+qf_data_status :: (a:[]f32)->QfStatus {for x:a {if !psionic_tensor_finite_bits(f32_bits(x)) {return QfStatus.number;}}return QfStatus.ok;}
+qf_put :: (value:f64,a:[]f32,i:int)->bool {if !psionic_ops_fits_f32(value) {return false;}a[i]=f32(value);return true;}
+qf_norm :: (input:[]f32,base:int,scale:int,dim:int,epsilon:f32,out:[]f32,start:int)->bool {
+    squares:PsionicAccumulator;
+    for i:0..<dim {x:=f64(input[base+i]);squares=psionic_ops_accumulate(squares,x*x);}
+    div:=sqrt(psionic_ops_total(squares)/f64(dim)+f64(epsilon));
+    for i:0..<dim {if !qf_put(f64(input[base+i])/div*(1+f64(input[scale+i])),out,start+i) {return false;}}
+    return true;
+}
+// book:begin rotate
+qf_rotate :: (a:[]f32,start:int,rotary:int,rope:[]f32)->bool {
+    half:=rotary/2;
+    for i:0..<half {
+        x:=f64(a[start+i]);y:=f64(a[start+half+i]);c:=f64(rope[2*i]);s:=f64(rope[2*i+1]);
+        if !qf_put(x*c-y*s,a,start+i) || !qf_put(y*c+x*s,a,start+half+i) {return false;}
+    }
+    return true;
+}
+// book:end rotate
+// book:begin prepare
+qf_prepare :: (s:QfShape,input:[]f32,out:[]f32,overlap:bool)->QfResult #export_c {
+    if !qf_valid(s) {return QfResult.{status=QfStatus.shape};}
+    if input.count!=qf_input_count(s) || out.count<qf_output_count(s) {return QfResult.{status=QfStatus.capacity};}
+    if overlap {return QfResult.{status=QfStatus.alias};}
+    if qf_data_status(input)!=QfStatus.ok {return QfResult.{status=QfStatus.number};}
+    d:=s.head_dim;q:=s.heads*d;k:=s.kv_heads*d;kin:=2*q;vin:=kin+k;qscale:=vin+k;kscale:=qscale+d;roff:=kscale+d;
+    for i:0..<s.rotary_dim {if abs(input[roff+i])>1 {return QfResult.{status=QfStatus.number};}}
+    draft:[24576]f32;
+    for h:0..<s.heads {
+        if !qf_norm(input,h*2*d,qscale,d,s.epsilon,draft[..],h*d) {return QfResult.{status=QfStatus.arithmetic};}
+        if !qf_rotate(draft[..],h*d,s.rotary_dim,input[roff..<roff+s.rotary_dim]) {return QfResult.{status=QfStatus.arithmetic};}
+        for i:0..<d {draft[q+h*d+i]=input[h*2*d+d+i];}
+    }
+    for h:0..<s.kv_heads {
+        if !qf_norm(input,kin+h*d,kscale,d,s.epsilon,draft[..],2*q+h*d) {return QfResult.{status=QfStatus.arithmetic};}
+        if !qf_rotate(draft[..],2*q+h*d,s.rotary_dim,input[roff..<roff+s.rotary_dim]) {return QfResult.{status=QfStatus.arithmetic};}
+        for i:0..<d {draft[2*q+k+h*d+i]=input[vin+h*d+i];}
+    }
+    n:=qf_output_count(s);for i:0..<n {out[i]=draft[i];}
+    return QfResult.{written=n};
+}
+// book:end prepare
+
+#load "../fixtures/hybrid/qwen-attention-vectors.coax";
+#test "each shape endpoint is independently admitted or refused" {
+    s:=QfShape.{heads=32,kv_heads=16,head_dim=256,rotary_dim=0,epsilon=1};#assert qf_valid(s);
+    s.heads=33;s.kv_heads=1;#assert !qf_valid(s);s.heads=17;s.kv_heads=17;#assert !qf_valid(s);
+    s.heads=1;s.kv_heads=1;s.head_dim=1;#assert qf_valid(s);
+    s.head_dim=257;#assert !qf_valid(s);s.head_dim=2;s.rotary_dim=-1;#assert !qf_valid(s);
+    s.rotary_dim=0;s.heads=0;#assert !qf_valid(s);s.heads=1;s.kv_heads=0;#assert !qf_valid(s);
+}
+#test "wide normalization and split-half rotation refuse overflow" {
+    max:=f32_from_bits(0x7f7fffff);out:=[4]f32.[0,0,0,0];
+    #assert !qf_put(1e100,out[..],0) && out[0]==0;
+    input:=[4]f32.[max,0,max,1];#assert !qf_norm(input[..],0,2,2,1,out[..],0);
+    out[0]=max;out[1]=max;rope:=[2]f32.[1,-1];#assert !qf_rotate(out[..],0,2,rope[..]);
+}
+#test "each rotary coefficient is checked" {
+    s:=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1};
+    input:[14]f32;out:[8]f32;input[13]=2;
+    #assert qf_prepare(s,input[..],out[..],false).status==QfStatus.number;
+}
+#test "grouped attention uses only allowed values and gates each head" {
+    s:=QfShape.{heads=2,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1};
+    input:=[16]f32.[0,0,0,0, 0,0,0,0, 1,2,3,4, 2,4,6,8];
+    mask:=[2]u8.[1,1];out:=[5]f32.[-7,-7,-7,-7,-7];scratch:[4]f32;
+    r:=qf_attend(s,2,input[..],mask[..],out[..],scratch[..],false);
+    #assert r.status==QfStatus.ok && r.written==4;
+    #assert out[0]==2 && out[1]==3 && out[2]==2 && out[3]==3 && out[4]==-7;
+    mask[1]=0;r=qf_attend(s,2,input[..],mask[..],out[..],scratch[..],false);
+    #assert r.status==QfStatus.ok && out[0]==1 && out[1]==2 && out[2]==1 && out[3]==2;
+}
+#test "empty and malformed masks and short views refuse before publication" {
+    s:=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1};
+    input:[8]f32;mask:=[1]u8.[0];out:=[2]f32.[-7,-7];scratch:=[2]f32.[-9,-9];
+    #assert qf_attend(s,1,input[..],mask[..],out[..],scratch[..],false).status==QfStatus.mask;
+    mask[0]=2;#assert qf_attend(s,1,input[..],mask[..],out[..],scratch[..],false).status==QfStatus.mask;
+    #assert qf_attend(s,0,input[..],mask[..],out[..],scratch[..],false).status==QfStatus.capacity;
+    #assert qf_attend(s,1,input[0..<7],mask[..],out[..],scratch[..],false).status==QfStatus.capacity;
+    #assert qf_attend(s,1,input[..],mask[..],out[..],scratch[..],true).status==QfStatus.alias;
+    for x:out {#assert x==-7;}for x:scratch {#assert x==-9;}
+}
+qf_token_count :: (tokens:int)->bool {return tokens>=1 && tokens<=16384;}
+qf_attend_count :: (s:QfShape,tokens:int)->int {return 2*s.heads*s.head_dim+2*tokens*s.kv_heads*s.head_dim;}
+qf_sigmoid :: (x:f64)->f64 {e:=exp(-abs(x));return exp((x-abs(x))/2)/(1+e);}
+// book:begin attend
+qf_attend :: (s:QfShape,tokens:int,input:[]f32,mask:[]u8,out:[]f32,scratch:[]f32,overlap:bool)->QfResult #export_c {
+    if !qf_valid(s) {return QfResult.{status=QfStatus.shape};}
+    if !qf_token_count(tokens) {return QfResult.{status=QfStatus.capacity};}
+    q:=s.heads*s.head_dim;k:=s.kv_heads*s.head_dim;
+    if input.count!=qf_attend_count(s,tokens) || mask.count!=tokens || out.count<q || scratch.count<q {return QfResult.{status=QfStatus.capacity};}
+    if overlap {return QfResult.{status=QfStatus.alias};}
+    if qf_data_status(input)!=QfStatus.ok {return QfResult.{status=QfStatus.number};}
+    any:=false;for value:mask {if value>1 {return QfResult.{status=QfStatus.mask};}if value==1 {any=true;}}
+    if !any {return QfResult.{status=QfStatus.mask};}
+    ko:=2*q;vo:=ko+tokens*k;scores:[16384]f32;
+    for head:0..<s.heads {
+        kv:=head/(s.heads/s.kv_heads);
+        for t:0..<tokens {
+            if mask[t]==1 {
+                sum:PsionicAccumulator;
+                for i:0..<s.head_dim {sum=psionic_ops_accumulate(sum,f64(input[head*s.head_dim+i])*f64(input[ko+t*k+kv*s.head_dim+i]));}
+                if !qf_put(psionic_ops_total(sum)/sqrt(f64(s.head_dim)),scores[..],t) {return QfResult.{status=QfStatus.arithmetic};}
+            }
+        }
+        max:=f64(scores[psionic_ops_argmax(scores[..],mask,0,tokens)]);denom:PsionicAccumulator;
+        for t:0..<tokens {if mask[t]==1 {denom=psionic_ops_accumulate(denom,exp(f64(scores[t])-max));}}
+        for i:0..<s.head_dim {
+            sum:PsionicAccumulator;
+            for t:0..<tokens {if mask[t]==1 {prob:=exp(f64(scores[t])-max)/psionic_ops_total(denom);sum=psionic_ops_accumulate(sum,prob*f64(input[vo+t*k+kv*s.head_dim+i]));}}
+            idx:=head*s.head_dim+i;
+            if !qf_put(psionic_ops_total(sum)*qf_sigmoid(f64(input[q+idx])),scratch,idx) {return QfResult.{status=QfStatus.arithmetic};}
+        }
+    }
+    for i:0..<q {out[i]=scratch[i];}
+    return QfResult.{written=q};
+}
+// book:end attend
+#test "attention token and mask limits include their exact endpoints" {
+    #assert !qf_token_count(0) && qf_token_count(1) && qf_token_count(16384) && !qf_token_count(16385);
+    s:=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1};
+    input:[12]f32;mask:=[2]u8.[1,2];out:[2]f32;scratch:[2]f32;
+    #assert qf_attend(s,2,input[..],mask[..],out[..],scratch[..],false).status==QfStatus.mask;
+}

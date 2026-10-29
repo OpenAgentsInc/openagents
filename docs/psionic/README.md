@@ -1,7 +1,7 @@
 # Psionic in Coax
 
-Status, 2026-10-29: chapters 1–5 implement M0/M1, the bounded original-weight
-artifact slice of M5 and the text-request/tokenizer profile on the tested CPU host. Autodiff and full model execution
+Status, 2026-10-29: chapters 1–6 implement M0/M1, bounded original-weight
+artifacts, text requests and a small causal attention block on the tested CPU host. Autodiff and full model execution
 remain proposed. The
 [Coax library and book](../../psionic/README.md) train a bounded scalar CPU model
 and implement bounded contiguous storage plus dense row/matrix numerics.
@@ -25,6 +25,7 @@ refusals, and execution evidence throughout that progression.
 | Document | Purpose |
 | --- | --- |
 | [Research and lessons](research.md) | What we read in this repository's history, `~/work/psionic`, `~/work/ml-book`, and `coax/book/`; pinned sources and lessons. |
+| [Hybrid kernel progress](hybrid-kernels.md) | Bounded Qwen-style recurrent, attention and original-weight projection primitives; current qualification and remaining work. |
 | [Architecture and considerations](architecture.md) | What belongs in Coax, storage and numerical contracts, compiler limits, and the eventual backend boundary. |
 | [Starting point and roadmap](roadmap.md) | A concrete first change, a chapter sequence, dependencies, and acceptance gates. |
 | [NVIDIA breadth and target survey](nvidia-breadth.md) | Proposed retrieval, vision, motion, speech, physics, hybrid/MoE, world-model and robotics studies; pinned sources and data/terms distinctions. |
@@ -73,8 +74,7 @@ now adds original Safetensors/BF16/F32 inventory, exact-byte identities, complet
 shard/index/manifest admission and bounded finite decoding.
 [Chapter 5](../../psionic/book/ch05-text-becomes-a-model-request.md) now implements
 the frozen text renderer, Unicode-17 NFC, original-Qwen byte-BPE and shared
-token-prefix layout under explicit budgets. Next is the attention/forward core
-for the early Elephant/Mammoth path.
+token-prefix layout under explicit budgets. [Chapter 6](../../psionic/book/ch06-attention-without-training.md) adds a small causal attention block. The next work is the model-specific [hybrid forward core](hybrid-kernels.md).
 The learning path replaces the hand-written gradient with autodiff over those
 same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.
