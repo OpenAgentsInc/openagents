@@ -391,7 +391,8 @@
         "hc-pet-customize"
       ],
       "blocks": [
-        "hc-launch-review"
+        "hc-launch-review",
+        "hc-emotes-live"
       ],
       "needs": [
         "verse:verse-authored-motions"
@@ -467,7 +468,8 @@
       ],
       "blocks": [
         "hc-memorial-share",
-        "hc-safety"
+        "hc-safety",
+        "hc-memorial-media"
       ]
     },
     {
@@ -734,6 +736,95 @@
         "hc-memorial-page"
       ],
       "blocks": [
+        "hc-launch-review",
+        "hc-report-review",
+        "hc-memorial-media"
+      ]
+    },
+    {
+      "slug": "hc-report-review",
+      "parent": "hc-launch",
+      "title": "The review queue as a page: open reports with hide, keep and restore",
+      "size": "M",
+      "labels": [
+        "safety",
+        "web",
+        "admin"
+      ],
+      "body": "Reports only reach an admin through GET /api/villa/reports today. Draw the queue in Coax at /admin/reports, beside /admin/analytics and behind the same admin login: every open report (what it is, how many reported it, what it said, why), with HIDE and KEEP on each, and the recent decisions with RESTORE on what was hidden. Hiding is reversible: a hidden memorial, note, photo or chat line is held, not deleted, until an admin restores it or its owner deletes it.",
+      "files": [
+        "apps/openagents-web/admin.coax",
+        "apps/openagents-web/admin/reports/",
+        "coax/web/api/admin.c",
+        "coax/web/api/migrations/0033_villa_review.sql",
+        "coax/web/api/test_villa.py"
+      ],
+      "acceptance": [
+        "An admin logged in at /admin/analytics opens /admin/reports and sees each open report once",
+        "HIDE, KEEP and RESTORE work from the page and the queue updates",
+        "Anyone else sees ADMINS ONLY and nothing more",
+        "test_villa.py and admin.coax's checks pass"
+      ],
+      "blocked_by": [
+        "hc-safety"
+      ],
+      "blocks": [
+        "hc-launch-review"
+      ]
+    },
+    {
+      "slug": "hc-memorial-media",
+      "parent": "hc-memorial",
+      "title": "The photos and videos you shared, on the memorial",
+      "size": "M",
+      "labels": [
+        "web",
+        "server"
+      ],
+      "body": "Uploads are kept but never shown, while the upload screen says they're for the avatar and the memorial. The owner chooses which photos and videos the memorial shows (none until they do, since the screen promised only they see them); the memorial draws them in Coax, a video muted and looping, served from the private bucket only while the memorial is placed and the file is shown. A shown photo or video can be reported like the rest of the memorial.",
+      "files": [
+        "apps/openagents-web/villapet.coax",
+        "coax/web/host.js",
+        "coax/web/api/villa.c",
+        "coax/web/api/migrations/0033_villa_review.sql",
+        "coax/web/api/test_villa.py"
+      ],
+      "acceptance": [
+        "A photo and a video the owner shows appear on the memorial for someone logged out, on desktop and phone",
+        "A file the owner hasn't shown, or has deleted, can't be fetched by anyone else",
+        "The upload screen says what the memorial shows",
+        "A shown file can be reported and hidden by an admin"
+      ],
+      "blocked_by": [
+        "hc-memorial-page",
+        "hc-safety"
+      ],
+      "blocks": [
+        "hc-launch-review"
+      ]
+    },
+    {
+      "slug": "hc-emotes-live",
+      "parent": "hc-pet",
+      "title": "Agent-made emotes, checked once against the real model",
+      "size": "S",
+      "labels": [
+        "agents",
+        "ai"
+      ],
+      "body": "The emote agent (0032_villa_emotes.sql) was built against a fake model. Ask Gemini on Vertex AI (Google first) for emotes from a few real sentences, run each answer through the engine's motion check the way the page does, and fix whatever a real answer breaks: the prompt, the parsing or the retry.",
+      "files": [
+        "coax/web/api/migrations/0033_villa_review.sql",
+        "coax/web/api/test_villa.py"
+      ],
+      "acceptance": [
+        "Several sentences give motions the engine accepts and plays, from the real model",
+        "Whatever a real answer broke is fixed and has a check"
+      ],
+      "blocked_by": [
+        "hc-emotes"
+      ],
+      "blocks": [
         "hc-launch-review"
       ]
     },
@@ -755,7 +846,10 @@
         "hc-analytics",
         "hc-safety",
         "hc-memorial-share",
-        "hc-emotes"
+        "hc-emotes",
+        "hc-report-review",
+        "hc-memorial-media",
+        "hc-emotes-live"
       ],
       "blocks": []
     }
