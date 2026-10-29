@@ -1,5 +1,7 @@
 # Conditional field guard proof
 
+This is historical evidence for the pre-admission source graph. The [changed-source reproof](2026-10-29-secp-field-guard-reproof.md) records the later raw-peer boundary and its own reproduction artifacts.
+
 This evidence concerns the three source assertions reached from the pinned fixed-base and variable-base multiplication roots: `secp_field.coax:239` and `secp_field32.coax:70,92`. The arithmetic proof establishes that these assertions succeed under the caller conditions below. The assertions remain in the source, and the source auditor still reports secret-derived guard obligations; this report is not an automatic audit waiver, target-code constant-time finding, erasure finding, or production-secret approval.
 
 The exact source and query hashes, compiler and solver identities, generated-artifact hashes, counterexamples, and results are recorded in [the accompanying JSON](2026-10-29-secp-field-guard-proof.json). The model is conditional: independent manual source-to-model and caller review found no remaining arithmetic gap for the pinned roots under the stated premises. The model is not a machine-verified translation of the source.

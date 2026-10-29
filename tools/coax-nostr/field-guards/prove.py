@@ -18,7 +18,7 @@ PINS = {
     'coax/lib/crypto/secp_mult_base.coax':'a82d9737aee8f0c45d6827880042e9b9ad22cd18bedde1ed6dad7b956fc1fe71',
     'coax/lib/crypto/secp_mult_base_web.coax':'3ca9989b48ff368d1511fe9d81e4f91ec9f8f93d4099c6cf4cf0aa31fd391220',
     'coax/lib/crypto/secp_mult_base_native.coax':'5aa9f59a44265e5e812d3081dbd663f1690eaea3482221c7584a90e76adfb8c6',
-    'coax/lib/crypto/secp_mult_const.coax':'60957c9aacf9412b82b56083bf3c02e8159a3f18ec62e5f847b305844201d0cf',
+    'coax/lib/crypto/secp_mult_const.coax':'d3eaa65e81815c69069549224a66bb8f2962228482963060c3ef0f4de3ff6b2e',
     'coax/lib/crypto/secp_scalar.coax':'daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a',
     'coax/lib/crypto/bytes.coax':'af7b98d78a60dcf3fd13964e20e80d5c8fddd7554571b168a9dba983234ae4bd',
 }
@@ -74,7 +74,8 @@ def field32_fold(words,top):
 def as_int(words): return sum(words[i]*(B**i) for i in range(8))
 
 def obligations():
-    out=[];q,c1,c2,c3,wide=norm_model(8)
+    out=[]
+    q,c1,c2,c3,wide=norm_model(8)
     out.append(solve('normalize_guard_and_word_bounds',q,z3.Or(c1>7,c2>1,c3!=0,*[z3.Or(x<0,x>=U) for x in wide])))
     q,c1,_,_,_=norm_model(9);out.append(solve('widened_magnitude_breaks_carry_bound',q,c1>7,'sat'))
     a=[z3.Int('add_a%d'%i) for i in range(8)];b=[z3.Int('add_b%d'%i) for i in range(8)]
@@ -123,6 +124,11 @@ def obligations():
     out.append(solve('word_equality_is_complete_mask',[],mask!=z3.If(left==right,z3.BitVecVal((1<<64)-1,64),z3.BitVecVal(0,64))))
     a,b,m=z3.BitVecs('select_a select_b select_mask',32);choice=b^((a^b)&m)
     out.append(solve('complete_mask_selects_one_input',[z3.Or(m==0,m==z3.BitVecVal((1<<32)-1,32))],choice!=z3.If(m==0,b,a)))
+    peer=[z3.Int('peer_%d'%i) for i in range(30)]
+    limits=[8*((1<<(22 if i%10==9 else 26))-1) for i in range(30)]
+    tests=[peer[i]<=limits[i] for i in range(30)]
+    out.append(solve('raw_peer_admission_bounds_all_coordinates',domain(peer,U)+tests,z3.Or(*[peer[i]>limits[i] for i in range(30)])))
+    out.append(solve('omitting_peer_limb_check_is_unsafe',domain(peer,U)+tests[:19]+tests[20:],peer[19]>limits[19],'sat'))
     return out
 
 def main():
