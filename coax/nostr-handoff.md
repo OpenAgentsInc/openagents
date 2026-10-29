@@ -97,20 +97,24 @@ An automatic cybersecurity review stopped the signer source-model investigation
 as a potential cybersecurity risk. #4828 was noted and released; do not treat
 that investigation as complete or bypass the restriction.
 
-The normal release queue was stopped after its in-flight release completed:
+The previous serialized release queue was stopped after its in-flight release:
 `af1e47acdf` passed staging and production, log
-`/tmp/coax-held-51f4-claim-release.log`. `91aa0186d8` gates the Haunted House
-walk on a completed nonempty scene frame, and `238f697bec` updates the galaxy
+`/tmp/coax-held-51f4-claim-release.log`. After #161a completed, a new serialized
+release of `ced1bc1552` passed staging and production; the published project
+index confirms #161a done in `d42b3c1c2f`. Its log is
+`/tmp/coax-nostr-161a-done-release.log` and rollback snapshot is
+`20261029T162422Z`. No release or validator process from this effort remains
+running. The newer release includes the live relay's latest events; the older
+individual queued snapshots were not replayed. `91aa0186d8` gates the Haunted
+House walk on a completed nonempty scene frame, and `238f697bec` updates the galaxy
 reference for the intentionally removed Coding tag; the earlier intermittent
 0.3%-lit production frame was not reproduced or proven. Both previous failures
-rolled back or stopped at staging, and thresholds were not loosened. No release
-process from this queue remains running. The remaining held claim/done release
-labels are in `/tmp/codex-nostr-release-queue.sh` after `51f4-claim`, with
+rolled back or stopped at staging, and thresholds were not loosened. The
+historical held claim/done release labels are in `/tmp/codex-nostr-release-queue.sh` after `51f4-claim`, with
 additional `966b-claim` and `f539-claim` in
-`/tmp/codex-nostr-extra-releases.txt`. Those are obligations, not completed
-releases. At this host each full release took about 15 minutes, not 15 seconds.
-Before resuming, verify the current main's compiler provenance; release one at
-a time and stop on the first failure. Never rerun unrelated code checks merely
+`/tmp/codex-nostr-extra-releases.txt`. Those individual releases were not run;
+check current relay and site state before deciding what, if anything, remains to publish. Release one at a time
+and stop on the first failure. Never rerun unrelated code checks merely
 because another main commit arrived.
 
 
