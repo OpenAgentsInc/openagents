@@ -1,0 +1,131 @@
+// Bind one original hybrid layer to typed execution views.
+#load "access.coax";
+#load "../qwen-model.coax";
+#authority;
+PmNeed :: struct {suffix:string;shape:P5Shape;parameter:bool;}
+PmResult :: struct {status:PwStatus;layer:QeLayer;written:int;}
+#test "a complete linear layer binds only its exact original tensors" {
+    ls:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    fs:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=ls,full=fs,state=QpShape.{linear_layers=3,full_layers=1,capacity=1,delta=ls.delta,attention=fs.attention}};
+    names:=[14]string.["model.language_model.layers.0.input_layernorm.weight","model.language_model.layers.0.post_attention_layernorm.weight","model.language_model.layers.0.linear_attn.conv1d.weight","model.language_model.layers.0.linear_attn.A_log","model.language_model.layers.0.linear_attn.dt_bias","model.language_model.layers.0.linear_attn.norm.weight","model.language_model.layers.0.linear_attn.in_proj_qkv.weight","model.language_model.layers.0.linear_attn.in_proj_z.weight","model.language_model.layers.0.linear_attn.in_proj_a.weight","model.language_model.layers.0.linear_attn.in_proj_b.weight","model.language_model.layers.0.linear_attn.out_proj.weight","model.language_model.layers.0.mlp.gate_proj.weight","model.language_model.layers.0.mlp.up_proj.weight","model.language_model.layers.0.mlp.down_proj.weight"];
+    dims:=[14]P5Shape.[P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]},P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]},P5Shape.{rank=3,dims=[5]int.[3,1,4,0,0]},P5Shape.{rank=1,dims=[5]int.[1,0,0,0,0]},P5Shape.{rank=1,dims=[5]int.[1,0,0,0,0]},P5Shape.{rank=1,dims=[5]int.[1,0,0,0,0]},P5Shape.{rank=2,dims=[5]int.[3,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[1,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[1,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[1,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[2,1,0,0,0]},P5Shape.{rank=2,dims=[5]int.[1,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[1,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[2,1,0,0,0]}];
+    bytes:[78]u8;inv:[14]P5Tensor;at:=0;
+    for i:0..<14 {z:=p5_shape_size(dims[i],PwDtype.bf16);inv[i]=P5Tensor.{name=names[i],shape=dims[i],elements=z.elements,begin=at,end=at+z.bytes};word:=f32_bits(f32(i+1))>>16;for j:0..<z.elements {bytes[at+2*j]=cast(u8)(word&255);bytes[at+2*j+1]=cast(u8)(word>>8);}at+=z.bytes;}
+    #assert at==78;files:=[1]PaFile.[PaFile.{data=bytes[..]}];out:[20]f32;work:[20]f32;out[19]=-7;
+    r:=pm_layer(shape,0,inv[..],files[..],out[..],work[..],false);
+    #assert r.status==PwStatus.ok && r.written==19 && r.layer.kind==cast(u8)QeKind.linear && out[19]==-7;
+    #assert r.layer.linear.input_norm.count==2 && r.layer.linear.post_norm.count==2 && r.layer.linear.conv.count==12 && r.layer.linear.a_log.count==1 && r.layer.linear.dt.count==1 && r.layer.linear.delta_norm.count==1 && r.layer.linear.qkv.count==12 && r.layer.linear.down.count==4;
+    #assert r.layer.linear.input_norm[0]==1 && r.layer.linear.post_norm[0]==2 && r.layer.linear.conv[0]==3;
+    #assert r.layer.linear.a_log[0]==4 && r.layer.linear.dt[0]==5 && r.layer.linear.delta_norm[0]==6;
+    #assert qm_bits(QmDtype.bf16,r.layer.linear.qkv,0)==f32_bits(7.0f32) && qm_bits(QmDtype.bf16,r.layer.linear.z,0)==f32_bits(8.0f32);
+    #assert qm_bits(QmDtype.bf16,r.layer.linear.a,0)==f32_bits(9.0f32) && qm_bits(QmDtype.bf16,r.layer.linear.b,0)==f32_bits(10.0f32);
+    #assert qm_bits(QmDtype.bf16,r.layer.linear.mixer_out,0)==f32_bits(11.0f32) && qm_bits(QmDtype.bf16,r.layer.linear.gate,0)==f32_bits(12.0f32);
+    #assert qm_bits(QmDtype.bf16,r.layer.linear.up,0)==f32_bits(13.0f32) && qm_bits(QmDtype.bf16,r.layer.linear.down,0)==f32_bits(14.0f32);
+    exact:=pm_layer(shape,0,inv[..],files[..],out[0..<19],work[0..<19],false);#assert exact.status==PwStatus.ok && exact.written==19;
+    out[0]=-7;inv[0].name="missing";bad:=pm_layer(shape,0,inv[..],files[..],out[..],work[..],false);#assert bad.status==PwStatus.manifest && out[0]==-7;
+    inv[0].name=names[0];#assert pm_layer(shape,0,inv[..],files[..],out[0..<18],work[..],false).status==PwStatus.capacity;
+    #assert pm_layer(shape,0,inv[..],files[..],out[..],work[..],true).status==PwStatus.alias;
+    #assert pm_layer(shape,0,inv[0..<0],files[..],out[..],work[..],true).status==PwStatus.manifest;
+    #assert pm_layer(shape,0,inv[..],files[0..<0],out[..],work[..],false).status==PwStatus.manifest;
+}
+pm_s1 :: (a:int)->P5Shape {return P5Shape.{rank=1,dims=[5]int.[a,0,0,0,0]};}
+pm_s2 :: (a:int,b:int)->P5Shape {return P5Shape.{rank=2,dims=[5]int.[a,b,0,0,0]};}
+pm_s3 :: (a:int,b:int,c:int)->P5Shape {return P5Shape.{rank=3,dims=[5]int.[a,b,c,0,0]};}
+pm_full :: (layer:int)->bool {return (layer+1)%4==0;}
+pm_name :: (layer:int,suffix:string,out:[]u8)->int {
+    if layer<0 || layer>=64 || !pw_name(suffix) {return -1;}
+    n:=json_raw(out,0,"model.language_model.layers.");n=json_write_int(out,n,layer);n=json_raw(out,n,".");return json_raw(out,n,suffix);
+}
+pm_needs :: (s:QeShape,full:bool,needs:[]PmNeed)->int {
+    d:=s.linear.width;f:=s.linear.hidden;
+    needs[0]=PmNeed.{suffix="input_layernorm.weight",shape=pm_s1(d),parameter=true};
+    needs[1]=PmNeed.{suffix="post_attention_layernorm.weight",shape=pm_s1(d),parameter=true};
+    if !full {
+        c:=pd_channels(s.linear.delta);v:=s.linear.delta.value_heads*s.linear.delta.value_dim;h:=s.linear.delta.value_heads;
+        needs[2]=PmNeed.{suffix="linear_attn.conv1d.weight",shape=pm_s3(c,1,4),parameter=true};
+        needs[3]=PmNeed.{suffix="linear_attn.A_log",shape=pm_s1(h),parameter=true};
+        needs[4]=PmNeed.{suffix="linear_attn.dt_bias",shape=pm_s1(h),parameter=true};
+        needs[5]=PmNeed.{suffix="linear_attn.norm.weight",shape=pm_s1(s.linear.delta.value_dim),parameter=true};
+        needs[6]=PmNeed.{suffix="linear_attn.in_proj_qkv.weight",shape=pm_s2(c,d)};
+        needs[7]=PmNeed.{suffix="linear_attn.in_proj_z.weight",shape=pm_s2(v,d)};
+        needs[8]=PmNeed.{suffix="linear_attn.in_proj_a.weight",shape=pm_s2(h,d)};
+        needs[9]=PmNeed.{suffix="linear_attn.in_proj_b.weight",shape=pm_s2(h,d)};
+        needs[10]=PmNeed.{suffix="linear_attn.out_proj.weight",shape=pm_s2(d,v)};
+        needs[11]=PmNeed.{suffix="mlp.gate_proj.weight",shape=pm_s2(f,d)};
+        needs[12]=PmNeed.{suffix="mlp.up_proj.weight",shape=pm_s2(f,d)};
+        needs[13]=PmNeed.{suffix="mlp.down_proj.weight",shape=pm_s2(d,f)};return 14;
+    }
+    q:=s.full.attention.heads*s.full.attention.head_dim;k:=s.full.attention.kv_heads*s.full.attention.head_dim;dim:=s.full.attention.head_dim;
+    needs[2]=PmNeed.{suffix="self_attn.q_norm.weight",shape=pm_s1(dim),parameter=true};
+    needs[3]=PmNeed.{suffix="self_attn.k_norm.weight",shape=pm_s1(dim),parameter=true};
+    needs[4]=PmNeed.{suffix="self_attn.q_proj.weight",shape=pm_s2(2*q,d)};
+    needs[5]=PmNeed.{suffix="self_attn.k_proj.weight",shape=pm_s2(k,d)};
+    needs[6]=PmNeed.{suffix="self_attn.v_proj.weight",shape=pm_s2(k,d)};
+    needs[7]=PmNeed.{suffix="self_attn.o_proj.weight",shape=pm_s2(d,q)};
+    needs[8]=PmNeed.{suffix="mlp.gate_proj.weight",shape=pm_s2(f,d)};
+    needs[9]=PmNeed.{suffix="mlp.up_proj.weight",shape=pm_s2(f,d)};
+    needs[10]=PmNeed.{suffix="mlp.down_proj.weight",shape=pm_s2(d,f)};return 11;
+}
+pm_prepare :: (view:PaView,target:[]f32)->PwStatus {
+    if view.status!=PwStatus.ok {return view.status;}
+    if view.dtype!=PwDtype.bf16 || target.count!=view.elements {return PwStatus.capacity;}
+    for i:0..<view.elements {if !psionic_tensor_finite_bits(qm_bits(QmDtype.bf16,view.data,i)) {return PwStatus.number;}}
+    for i:0..<view.elements {target[i]=f32_from_bits(qm_bits(QmDtype.bf16,view.data,i));}return PwStatus.ok;
+}
+pm_layer :: (shape:QeShape,layer:int,inventory:[]P5Tensor,files:[]PaFile,out:[]f32,work:[]f32,overlap:bool)->PmResult #export_c {
+    if !qe_valid(shape) || shape.linear.dtype!=QmDtype.bf16 || shape.state.linear_layers!=3*shape.state.full_layers || layer<0 || layer>=shape.state.linear_layers+shape.state.full_layers {return PmResult.{status=PwStatus.shape};}
+    full:=pm_full(layer);needs:[14]PmNeed;n:=pm_needs(shape,full,needs[..]);params:=0;offset:[6]int;
+    for i:0..<n {if needs[i].parameter {offset[i]=params;z:=p5_shape_size(needs[i].shape,PwDtype.bf16);if z.status!=PwStatus.ok {return PmResult.{status=z.status};}params+=z.elements;}}
+    if out.count<params || work.count<params {return PmResult.{status=PwStatus.capacity};}
+    if !pa_counts_valid(inventory.count,files.count) {return PmResult.{status=PwStatus.manifest};}
+    if overlap {return PmResult.{status=PwStatus.alias};}
+    views:[14]PaView;
+    for i:0..<n {
+        name:[128]u8;name_count:=pm_name(layer,needs[i].suffix,name[..]);
+        v:=pa_view(cast(string)name[0..<name_count],needs[i].shape,PwDtype.bf16,inventory,files);if v.status!=PwStatus.ok {return PmResult.{status=v.status};}
+        views[i]=v;
+        if needs[i].parameter {start:=offset[i];status:=pm_prepare(v,work[start..<start+v.elements]);if status!=PwStatus.ok {return PmResult.{status=status};}}
+    }
+    for i:0..<params {out[i]=work[i];}
+    d:=shape.linear.width;
+    if !full {
+        c:=pd_channels(shape.linear.delta);h:=shape.linear.delta.value_heads;dim:=shape.linear.delta.value_dim;
+        w:=QlWeights.{input_norm=out[offset[0]..<offset[0]+d],post_norm=out[offset[1]..<offset[1]+d],conv=out[offset[2]..<offset[2]+4*c],a_log=out[offset[3]..<offset[3]+h],dt=out[offset[4]..<offset[4]+h],delta_norm=out[offset[5]..<offset[5]+dim],qkv=views[6].data,z=views[7].data,a=views[8].data,b=views[9].data,mixer_out=views[10].data,gate=views[11].data,up=views[12].data,down=views[13].data};
+        return PmResult.{written=params,layer=QeLayer.{kind=cast(u8)QeKind.linear,linear=w}};
+    }
+    dim:=shape.full.attention.head_dim;
+    w:=QhWeights.{input_norm=out[offset[0]..<offset[0]+d],post_norm=out[offset[1]..<offset[1]+d],q_norm=out[offset[2]..<offset[2]+dim],k_norm=out[offset[3]..<offset[3]+dim],q=views[4].data,k=views[5].data,v=views[6].data,mixer_out=views[7].data,gate=views[8].data,up=views[9].data,down=views[10].data};
+    return PmResult.{written=params,layer=QeLayer.{kind=cast(u8)QeKind.full,full=w}};
+}
+#test "a full attention layer binds distinct projection shapes and stages parameters" {
+    ls:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    fs:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=ls,full=fs,state=QpShape.{linear_layers=3,full_layers=1,capacity=1,delta=ls.delta,attention=fs.attention}};
+    names:=[11]string.["model.language_model.layers.3.input_layernorm.weight","model.language_model.layers.3.post_attention_layernorm.weight","model.language_model.layers.3.self_attn.q_norm.weight","model.language_model.layers.3.self_attn.k_norm.weight","model.language_model.layers.3.self_attn.q_proj.weight","model.language_model.layers.3.self_attn.k_proj.weight","model.language_model.layers.3.self_attn.v_proj.weight","model.language_model.layers.3.self_attn.o_proj.weight","model.language_model.layers.3.mlp.gate_proj.weight","model.language_model.layers.3.mlp.up_proj.weight","model.language_model.layers.3.mlp.down_proj.weight"];
+    dims:=[11]P5Shape.[P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]},P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]},P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]},P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]},P5Shape.{rank=2,dims=[5]int.[4,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[2,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[2,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[2,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[1,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[1,2,0,0,0]},P5Shape.{rank=2,dims=[5]int.[2,1,0,0,0]}];
+    bytes:[68]u8;inv:[11]P5Tensor;at:=0;for i:0..<11 {z:=p5_shape_size(dims[i],PwDtype.bf16);inv[i]=P5Tensor.{name=names[i],shape=dims[i],elements=z.elements,begin=at,end=at+z.bytes};word:=f32_bits(f32(i+1))>>16;for j:0..<z.elements {bytes[at+2*j]=cast(u8)(word&255);bytes[at+2*j+1]=cast(u8)(word>>8);}at+=z.bytes;}
+    #assert at==68;files:=[1]PaFile.[PaFile.{data=bytes[..]}];out:=[9]f32.[-7,-7,-7,-7,-7,-7,-7,-7,-7];work:[9]f32;
+    r:=pm_layer(shape,3,inv[..],files[..],out[..],work[..],false);
+    #assert r.status==PwStatus.ok && r.written==8 && r.layer.kind==cast(u8)QeKind.full && out[8]==-7;
+    #assert r.layer.full.input_norm.count==2 && r.layer.full.post_norm.count==2 && r.layer.full.q_norm.count==2 && r.layer.full.k_norm.count==2 && r.layer.full.q.count==16 && r.layer.full.k.count==8 && r.layer.full.down.count==4;
+    #assert r.layer.full.input_norm[0]==1 && r.layer.full.post_norm[0]==2 && r.layer.full.q_norm[0]==3 && r.layer.full.k_norm[0]==4;
+    #assert qm_bits(QmDtype.bf16,r.layer.full.q,0)==f32_bits(5.0f32) && qm_bits(QmDtype.bf16,r.layer.full.k,0)==f32_bits(6.0f32);
+    #assert qm_bits(QmDtype.bf16,r.layer.full.v,0)==f32_bits(7.0f32) && qm_bits(QmDtype.bf16,r.layer.full.mixer_out,0)==f32_bits(8.0f32);
+    #assert qm_bits(QmDtype.bf16,r.layer.full.gate,0)==f32_bits(9.0f32) && qm_bits(QmDtype.bf16,r.layer.full.up,0)==f32_bits(10.0f32) && qm_bits(QmDtype.bf16,r.layer.full.down,0)==f32_bits(11.0f32);
+    more:=shape;more.full.attention.heads=2;needs:[14]PmNeed;#assert pm_needs(more,true,needs[..])==11 && needs[4].shape.dims[0]==8;
+    for i:0..<8 {out[i]=-7;}bytes[0]=128;bytes[1]=127;
+    #assert pm_layer(shape,3,inv[..],files[..],out[..],work[..],false).status==PwStatus.number;for v:out {#assert v==-7;}
+    #assert pm_layer(shape,4,inv[..],files[..],out[..],work[..],false).status==PwStatus.shape;
+    bad:=shape;bad.linear.dtype=QmDtype.f32;bad.full.dtype=QmDtype.f32;#assert pm_layer(bad,3,inv[..],files[..],out[..],work[..],false).status==PwStatus.shape;
+    name:[128]u8;#assert pm_name(63,"mlp.down_proj.weight",name[..])>0;
+    #assert pm_name(-1,"x",name[..])==-1 && pm_name(64,"x",name[..])==-1 && pm_name(0,"",name[..])==-1 && pm_name(0,"x",name[0..<2])==-1;
+    #assert pm_full(3) && !pm_full(0) && pm_full(63);
+}
+
+#test "parameter decoding checks kind and exact target lengths" {
+    data:=[4]u8.[0,0,128,63];v:=PaView.{dtype=PwDtype.f32,data=data[..],elements=1};out:[1]f32;
+    #assert pm_prepare(v,out[..])==PwStatus.capacity;
+    v.dtype=PwDtype.bf16;v.data=data[0..<2];#assert pm_prepare(v,out[0..<0])==PwStatus.capacity;
+    v.data=data[2..<4];#assert pm_prepare(v,out[..])==PwStatus.ok && out[0]==1;
+}

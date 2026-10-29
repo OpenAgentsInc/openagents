@@ -1,5 +1,16 @@
 # Invariants
 
+## Psionic original layer mapping binds validated views
+
+`psionic/lib/model-io/layer-map.coax` maps the fixed hybrid schedule by exact
+name, BF16 shape and finite decoded vectors. It stages owned parameters and
+borrows matrices from caller-owned immutable files. Authentication of the
+inventory, valid disjoint storage and its lifetime remain caller obligations.
+Failed mapping does not publish a layer; scratch may change. Check:
+`psionic/check.sh` covers Coax authority mutation and native plain/sanitized
+checks; the [layer record](docs/verification/psionic-layer-map-2026-10-29.md)
+describes original-file evidence and limits.
+
 ## Psionic token blocks stage model state through full-vocabulary readout
 
 `psionic/lib/qwen-tokens.coax` gathers original-format embedding rows, runs
