@@ -1,0 +1,101 @@
+#load "front-types.coax";
+#load "text.coax";
+#authority;
+
+#test "segments join ordinary neighbors but cannot merge across a typed control" {
+    table:=PT_TOY;s:=[4]DfSegment.[DfSegment.{text="a"},DfSegment.{text="b"},DfSegment.{special=true,control=DfSpecial.user},DfSegment.{text="a"}];
+    out:[128]int;stage:[128]int;temp:[128]int;raw:[512]u8;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
+    r:=df_encode_r1(table[..],s[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false);
+    #assert r.status==PtStatus.ok && r.written==3 && r.work==5 && out[0]==256 && out[1]==DS_USER && out[2]==97;
+    s[1].special=true;s[1].text="";s[1].control=DfSpecial.eos;
+    r=df_encode_r1(table[..],s[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false);
+    #assert r.status==PtStatus.ok && r.written==4 && out[0]==97 && out[1]==DS_EOS && out[2]==DS_USER && out[3]==97;
+    s[0].text="<think>";r=df_encode_r1(table[..],s[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false);#assert r.status==PtStatus.ok;for i:0..<r.written {#assert out[i]!=DS_THINK;}
+    s[0]=DfSegment.{text="a"};s[1]=DfSegment.{text="b"};
+    #assert df_encode_r1(table[..],s[0..<2],out[..],stage[..],temp[..],raw[0..<2],normal[..],scalars[..],symbols[..],false).status==PtStatus.ok;
+    s[1].text="ab";#assert df_encode_r1(table[..],s[0..<2],out[..],stage[..],temp[..],raw[0..<2],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+}
+#test "R1 binding refuses missing specials and all failed publication is atomic" {
+    table:=PT_TOY;s:=[1]DfSegment.[DfSegment.{special=true,control=DfSpecial.dsml}];out:=[1]int.[-7];stage:[128]int;temp:[128]int;raw:[512]u8;normal:[512]u8;scalars:[512]int;symbols:[1024]int;
+    #assert df_encode_r1(table[..],s[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.unsupported && out[0]==-7;
+    s[0].control=DfSpecial.system;#assert df_r1_control(s[0].control)==-1;
+    #assert df_r1_control(DfSpecial.bos)==DS_BOS && df_r1_control(DfSpecial.eos)==DS_EOS && df_r1_control(DfSpecial.assistant)==DS_ASSISTANT && df_r1_control(DfSpecial.think)==DS_THINK && df_r1_control(DfSpecial.end_think)==DS_END_THINK;
+    s[0]=DfSegment.{text="ab"};
+    #assert df_encode_r1(table[..],s[..],out[0..<0],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity && out[0]==-7;
+    #assert df_encode_r1(table[..],s[..],out[..],stage[..],temp[..],raw[0..<1],normal[..],scalars[..],symbols[..],false).status==PtStatus.capacity;
+    #assert df_encode_r1(table[..],s[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],true).status==PtStatus.alias;
+}
+#test "R1 token fragments preserve typed boundaries and plain marker spellings" {
+    table:=PT_TOY;ids:=[2]int.[60,97];out:[128]int;tmp:[128]int;r:=df_r1_units(table[..],ids[..],out[..],tmp[..],false);#assert r.status==PtStatus.ok && r.written==2 && out[0]==60 && out[1]==97;
+    ids[0]=DS_END_THINK;ids[1]=DS_EOS;r=df_r1_units(table[..],ids[..],out[..],tmp[..],false);#assert r.status==PtStatus.ok && r.written==2 && out[0]==262 && out[1]==257;
+    ids[0]=DS_BOS;ids[1]=DS_USER;r=df_r1_units(table[..],ids[..],out[..],tmp[..],false);#assert r.status==PtStatus.ok && out[0]==256 && out[1]==259;
+    ids[0]=DS_ASSISTANT;ids[1]=DS_THINK;r=df_r1_units(table[..],ids[..],out[..],tmp[..],false);#assert r.status==PtStatus.ok && out[0]==260 && out[1]==261;
+    ids[0]=151647;#assert df_r1_units(table[..],ids[..],out[..],tmp[..],false).status==PtStatus.unsupported;
+    ids[0]=-1;#assert df_r1_units(table[..],ids[..],out[..],tmp[..],false).status==PtStatus.range;
+    ids[0]=97;ids[1]=98;#assert df_r1_units(table[..],ids[..],out[0..<1],tmp[..],false).status==PtStatus.capacity;
+    #assert df_r1_units(table[..],ids[..],out[..],tmp[0..<1],false).status==PtStatus.capacity;
+    #assert df_r1_units(table[..],ids[..],out[..],tmp[..],true).status==PtStatus.alias;
+    #assert df_r1_units(table[..],ids[..],out[0..<2],tmp[0..<2],false).status==PtStatus.ok;
+    #assert df_r1_ordinary(151642) && !df_r1_ordinary(151643);
+    #assert df_units_count(4096) && !df_units_count(4097);
+    ids[0]=256;ids[1]=256;r=df_r1_units(table[..],ids[..],out[0..<4],tmp[0..<4],false);
+    #assert r.status==PtStatus.ok && r.written==4 && out[0]==97 && out[1]==98 && out[2]==97 && out[3]==98;
+}
+#test "segment aggregate budget and final token counts have exact endpoints" {
+    bytes:[65537]u8;s:[513]DfSegment;
+    #assert df_front_segments(s[0..<512])==PtStatus.ok && df_front_segments(s[..])==PtStatus.size;
+    s[0].text=cast(string)bytes[0..<65536];#assert df_front_segments(s[0..<1])==PtStatus.ok;
+    s[0].text=cast(string)bytes[..];#assert df_front_segments(s[0..<1])==PtStatus.size;
+    s[0].text=cast(string)bytes[0..<32768];s[1].text=cast(string)bytes[0..<32768];#assert df_front_segments(s[0..<2])==PtStatus.ok;
+    s[1].text=cast(string)bytes[0..<32769];#assert df_front_segments(s[0..<2])==PtStatus.size;
+    s[0].special=true;#assert df_front_segments(s[0..<1])==PtStatus.unsupported;
+    #assert df_front_work(16777215,1) && !df_front_work(16777216,1) && df_front_work(0,16777216) && !df_front_work(0,16777217);
+    #assert df_front_counts(16384,16384)==PtStatus.ok && df_front_counts(16385,20000)==PtStatus.size && df_front_counts(1,0)==PtStatus.capacity;
+    table:=PT_TOY;segments:=[1]DfSegment.[DfSegment.{special=true,control=DfSpecial.bos}];out:[1]int;stage:[1]int;temp:[1]int;raw:[1]u8;normal:[1]u8;scalars:[1]int;symbols:[1]int;
+    #assert df_encode_r1(table[..],segments[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.ok && out[0]==DS_BOS;
+    segments[0].text="a";#assert df_encode_r1(table[..],segments[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.unsupported;
+    segments[0]=DfSegment.{text="a"};#assert df_encode_r1(table[..],segments[..],out[..],stage[..],temp[..],raw[..],normal[..],scalars[..],symbols[..],false).status==PtStatus.ok;
+}
+df_r1_control :: (control:DfSpecial)->int {
+    if control==DfSpecial.bos {return DS_BOS;}if control==DfSpecial.eos {return DS_EOS;}
+    if control==DfSpecial.user {return DS_USER;}if control==DfSpecial.assistant {return DS_ASSISTANT;}
+    if control==DfSpecial.think {return DS_THINK;}if control==DfSpecial.end_think {return DS_END_THINK;}return -1;
+}
+df_front_segments :: (segments:[]DfSegment)->PtStatus {
+    if segments.count>512 {return PtStatus.size;}total:=0;
+    for s:segments {if s.special {if s.text.count!=0 || df_r1_control(s.control)==-1 {return PtStatus.unsupported;}}
+        else {if s.text.count>65536-total {return PtStatus.size;}total+=s.text.count;}}
+    return PtStatus.ok;
+}
+df_front_work :: (used:int,more:int)->bool {return more<=16777216-used;}
+df_front_counts :: (tokens:int,capacity:int)->PtStatus {if !pt_token_count(tokens) {return PtStatus.size;}if tokens>capacity {return PtStatus.capacity;}return PtStatus.ok;}
+df_r1_ordinary :: (id:int)->bool {return id<151643;}
+df_units_count :: (n:int)->bool {return n<=4096;}
+// book:begin encode
+df_encode_r1 :: (table:[]u8,segments:[]DfSegment,output:[]int,stage:[]int,temp:[]int,raw:[]u8,normal:[]u8,scalars:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}valid:=df_front_segments(segments);if valid!=PtStatus.ok {return PtResult.{status=valid};}
+    n:=0;bytes:=0;work:=0;
+    // A sentinel iteration flushes the final plain run. Only a real special
+    // boundary breaks BPE; splitting a plain run into segments changes nothing.
+    for i:0..<segments.count+1 {
+        control:=i==segments.count;if !control {control=segments[i].special;}
+        if control {
+            if bytes!=0 {r:=ds_encode(table,cast(string)raw[0..<bytes],stage[n..<stage.count],temp,normal,scalars,symbols,false);if r.status!=PtStatus.ok {return r;}if !df_front_work(work,r.work) {return PtResult.{status=PtStatus.budget};}work+=r.work;n+=r.written;bytes=0;}
+            if i!=segments.count {s:=segments[i];if n==stage.count {return PtResult.{status=PtStatus.capacity};}stage[n]=df_r1_control(s.control);n+=1;}
+        }else {text:=segments[i].text;if text.count>raw.count-bytes {return PtResult.{status=PtStatus.capacity};}for j:0..<text.count {raw[bytes+j]=text[j];}bytes+=text.count;}
+    }
+    valid=df_front_counts(n,output.count);if valid!=PtStatus.ok {return PtResult.{status=valid};}
+    for i:0..<n {output[i]=stage[i];}return PtResult.{written=n,work=work};
+}
+// book:end encode
+// Convert actual token IDs to parser units, retaining control identity. An
+// ordinary token is never searched for a marker spelling, even across tokens.
+df_r1_units :: (table:[]u8,ids:[]int,output:[]int,stage:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}if !df_units_count(ids.count) {return PtResult.{status=PtStatus.size};}
+    t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}n:=0;
+    for id:ids {control:=-1;for k:0..<8 {mapped:=df_r1_control(cast(DfSpecial)k);if mapped!=-1 && id==mapped {control=256+k;}}
+        if control!=-1 {if n==stage.count {return PtResult.{status=PtStatus.capacity};}stage[n]=control;n+=1;}
+        else {if !df_r1_ordinary(id) {return PtResult.{status=PtStatus.unsupported};}span:=pt_span(table,t,id);if span.status!=PtStatus.ok {return PtResult.{status=span.status};}count:=span.end-span.begin;if count>stage.count-n {return PtResult.{status=PtStatus.capacity};}for j:0..<count {stage[n+j]=cast(int)table[span.begin+j];}n+=count;}
+        if !df_units_count(n) {return PtResult.{status=PtStatus.size};}
+    }if n>output.count {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n};
+}

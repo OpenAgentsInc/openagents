@@ -280,6 +280,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-front.coax",
+      "chapter": "psionic/book/ch057-deepseeks-front-door.md",
+      "stdout": "psionic/fixtures/deepseek-front.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

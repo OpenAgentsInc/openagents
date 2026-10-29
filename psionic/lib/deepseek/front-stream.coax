@@ -1,0 +1,205 @@
+#load "front-types.coax";
+#authority;
+#load "../../fixtures/deepseek/front-goldens.coax";
+
+#test "independent tool oracle streams names escaped string arguments raw JSON and multiple calls" {
+    units:=DFF_UNITS;out:[256]DfEvent;tmp:[256]DfEvent;r:=df_feed(DfState.{},units[..],out[..],tmp[..],false);
+    #assert r.status==DfStatus.ok && r.written==DFF_BYTES.count && r.state.phase==9 && r.state.call==2;
+    for i:0..<r.written {#assert cast(int)out[i].kind==DFF_KINDS[i] && out[i].call==DFF_CALLS[i] && cast(int)out[i].byte==DFF_BYTES[i];}
+    #assert df_end(r.state,true).status==DfStatus.ok;
+    s:=DfState.{};n:=0;
+    for i:0..<DFF_UNITS.count {x:=df_feed(s,units[i..<i+1],out[..],tmp[..],false);#assert x.status==DfStatus.ok;for j:0..<x.written {#assert cast(int)out[j].kind==DFF_KINDS[n] && out[j].call==DFF_CALLS[n] && cast(int)out[j].byte==DFF_BYTES[n];n+=1;}s=x.state;}
+    #assert n==DFF_BYTES.count && s.phase==9;
+}
+
+#test "stream failures are atomic and malformed controls and names refuse" {
+    units:=DFF_UNITS;out:[256]DfEvent;tmp:[256]DfEvent;out[0].byte=99;s:=DfState.{};
+    #assert df_feed(s,units[..],out[0..<1],tmp[..],false).status==DfStatus.capacity && out[0].byte==99;
+    #assert df_feed(s,units[..],out[..],tmp[0..<1],false).status==DfStatus.capacity && out[0].byte==99;
+    #assert df_feed(s,units[..],out[..],tmp[..],true).status==DfStatus.alias;
+    bad:=[1]int.[256];r:=df_feed(s,bad[..],out[..],tmp[..],false);#assert r.status==DfStatus.format && r.state.total==0 && out[0].byte==99;
+    #assert df_feed(DfState.{finished=true},bad[..],out[..],tmp[..],false).status==DfStatus.state;
+    #assert df_feed(DfState.{phase=10},bad[..],out[..],tmp[..],false).status==DfStatus.state;
+    #assert df_feed(DfState.{phase=-1},bad[..],out[..],tmp[..],false).status==DfStatus.state;
+    #assert df_feed(DfState.{total=65536},bad[..],out[..],tmp[..],false).status==DfStatus.budget;
+    bad[0]=65;#assert df_feed(DfState.{phase=3,name=64},bad[..],out[..],tmp[..],false).status==DfStatus.budget;
+    #assert df_feed(DfState.{phase=5,key=64},bad[..],out[..],tmp[..],false).status==DfStatus.budget;
+    bad[0]=33;#assert df_feed(DfState.{phase=3},bad[..],out[..],tmp[..],false).status==DfStatus.format;
+    bad[0]=65;#assert df_feed(DfState.{phase=9},bad[..],out[..],tmp[..],false).status==DfStatus.format;
+    #assert df_end(DfState.{finished=true},true).status==DfStatus.state;
+}
+
+// Checks precede the parser. These are typed token fragments, not marker strings.
+#test "literal markers remain text and only a finish event completes a stream" {
+    units:=[18]int.[60,47,116,104,105,110,107,62,262,65,60,116,104,105,110,107,62,257];
+    events:[128]DfEvent;stage:[128]DfEvent;s:=DfState.{};
+    r:=df_feed(s,units[..],events[..],stage[..],false);#assert r.status==DfStatus.ok && r.state.phase==9;
+    #assert r.written==16 && events[0].kind==DfKind.reasoning && events[8].kind==DfKind.content;
+    #assert df_end(r.state,false).status==DfStatus.incomplete;
+    #assert df_end(r.state,true).status==DfStatus.ok && df_end(r.state,true).state.finished;
+    #assert df_end(s,true).status==DfStatus.incomplete;
+}
+#test "UTF8 crosses chunks and rejects overlong surrogate and out of range scalars" {
+    out:[128]DfEvent;tmp:[128]DfEvent;a:=[2]int.[240,159];b:=[2]int.[152,128];s:=DfState.{phase=1};
+    r:=df_feed(s,a[..],out[..],tmp[..],false);#assert r.status==DfStatus.ok && r.written==0;
+    #assert df_end(r.state,false).status==DfStatus.incomplete;
+    r=df_feed(r.state,b[..],out[..],tmp[..],false);#assert r.status==DfStatus.ok && r.written==4 && out[0].byte==240 && out[3].byte==128;
+    bad:=[4]int.[240,128,128,128];#assert df_feed(s,bad[..],out[..],tmp[..],false).status==DfStatus.utf8;
+    bad=[4]int.[237,160,128,65];#assert df_feed(s,bad[..],out[..],tmp[..],false).status==DfStatus.utf8;
+    bad=[4]int.[244,144,128,128];#assert df_feed(s,bad[..],out[..],tmp[..],false).status==DfStatus.utf8;
+    bad=[4]int.[226,65,128,65];#assert df_feed(s,bad[..],out[..],tmp[..],false).status==DfStatus.utf8;
+}
+#test "identifier whitespace and escape boundaries are exact" {
+    allowed:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-.";
+    for c:0..<257 {expected:=false;for a:allowed {if c==cast(int)a {expected=true;}}#assert df_identifier(c)==expected;
+        #assert df_space(c)==(c==9 || c==10 || c==13 || c==32);}
+    events:[16]DfEvent;hex:="0123456789abcdef";
+    for c:0..<33 {w:=df_escape(DfWriter.{events=events[..]},1,cast(u8)c);#assert w.status==DfStatus.ok;
+        if c==32 {#assert w.written==1 && events[0].byte==32;}
+        else {#assert w.written==6 && events[0].byte==92 && events[1].byte==117 && events[2].byte==48 && events[3].byte==48 && events[4].byte==hex[c>>4] && events[5].byte==hex[c&15];}}
+    for phase:0..<10 {if phase==3 || phase==6 || phase==7 || phase==8 {#assert df_marker(phase,1)=="" && df_marker(phase,0)!="";}}
+}
+#test "UTF8 endpoints and accumulator continuation obey Unicode scalar boundaries" {
+    cases:=[10]string.["","߿","ࠀ","퟿","","￿","𐀀","􏿿","😀","é"];
+    cps:=[10]int.[128,2047,2048,55295,57344,65535,65536,1114111,128512,233];out:[32]DfEvent;
+    for k:0..<cases.count {s:=DfState.{phase=1};w:=DfWriter.{events=out[..]};for c:cases[k] {r:=df_data(s,cast(int)c,DfKind.content,false,w);#assert r.w.status==DfStatus.ok;s=r.s;w=r.w;}#assert s.cp==cps[k] && s.utf_count==0 && s.left==0 && w.written==cases[k].count;}
+    for c:0..<257 {if c==128 || c==192 || c==193 || c==245 || c==255 {#assert df_data(DfState.{},c,DfKind.content,false,DfWriter.{events=out[..]}).w.status==DfStatus.utf8;}}
+    #assert df_data(DfState.{},-1,DfKind.content,false,DfWriter.{events=out[..]}).w.status==DfStatus.format;
+    #assert df_data(DfState.{},256,DfKind.content,false,DfWriter.{events=out[..]}).w.status==DfStatus.format;
+    s:=DfState.{left=1,utf_count=2,cp=895,minimum=2048};#assert df_data(s,191,DfKind.content,false,DfWriter.{events=out[..]}).w.status==DfStatus.utf8;
+    #assert df_data(s,192,DfKind.content,false,DfWriter.{events=out[..]}).w.status==DfStatus.utf8;
+    mixed:="😀éࠀ";u:[16]int;for i:0..<mixed.count {u[i]=cast(int)mixed[i];}tmp:[32]DfEvent;
+    #assert df_feed(DfState.{phase=1},u[0..<mixed.count],out[..],tmp[..],false).status==DfStatus.ok;
+    overlong:=[3]int.[224,128,128];#assert df_feed(DfState.{phase=1},overlong[..],out[..],tmp[..],false).status==DfStatus.utf8;
+}
+#test "call key name limits and state transitions include exact boundaries" {
+    out:[128]DfEvent;w:=DfWriter.{events=out[..]};
+    #assert df_matched(DfState.{phase=1,left=1},0,w).w.status==DfStatus.utf8;
+    #assert df_matched(DfState.{phase=2,call=64},0,w).w.status==DfStatus.budget;
+    r:=df_matched(DfState.{phase=2,call=63,name=7,keys=4},0,w);#assert r.w.status==DfStatus.ok && r.s.call==64 && r.s.name==0 && r.s.keys==0;
+    #assert df_matched(DfState.{phase=3},0,w).w.status==DfStatus.format;
+    #assert df_matched(DfState.{phase=3,name=1},0,w).w.status==DfStatus.ok;
+    #assert df_matched(DfState.{phase=4,keys=64},0,w).w.status==DfStatus.budget;
+    r=df_matched(DfState.{phase=4,keys=63,key=3},0,w);#assert r.w.status==DfStatus.ok && r.s.keys==64 && r.s.key==0;
+    #assert df_matched(DfState.{phase=5},0,w).w.status==DfStatus.format;
+    #assert df_matched(DfState.{phase=5,key=1},0,w).w.status==DfStatus.ok;
+    r=df_unmatched(DfState.{phase=3,name=63},65,w);#assert r.s.name==64 && r.w.status==DfStatus.ok;
+    r=df_unmatched(DfState.{phase=5,key=63},65,w);#assert r.s.key==64 && r.w.status==DfStatus.ok;
+    #assert df_unmatched(DfState.{phase=8},32,w).w.status==DfStatus.ok;
+    #assert df_unmatched(DfState.{phase=8},65,w).w.status==DfStatus.format;
+    #assert df_unmatched(DfState.{phase=9},32,w).w.status==DfStatus.format;
+}
+#test "chunk budgets and exact output capacity remain resumable" {
+    bytes:[4097]int;for i:0..<4097 {bytes[i]=65;}out:[4096]DfEvent;tmp:[4096]DfEvent;
+    r:=df_feed(DfState.{},bytes[0..<4096],out[..],tmp[..],false);#assert r.status==DfStatus.ok && r.written==4096 && r.state.total==4096;
+    #assert df_feed(DfState.{},bytes[..],out[..],tmp[..],false).status==DfStatus.budget;
+    r=df_feed(DfState.{total=65535},bytes[0..<1],out[..],tmp[..],false);#assert r.status==DfStatus.ok && r.state.total==65536;
+}
+
+df_put :: (w:DfWriter,kind:DfKind,call:int,c:u8)->DfWriter {
+    r:=w;if r.status!=DfStatus.ok {return r;}
+    if r.written==r.events.count {r.status=DfStatus.capacity;return r;}
+    r.events[r.written]=DfEvent.{kind=kind,call=call,byte=c};r.written+=1;return r;
+}
+df_text :: (w:DfWriter,kind:DfKind,call:int,text:string)->DfWriter {
+    r:=w;for c:text {r=df_put(r,kind,call,c);}return r;
+}
+df_escape :: (w:DfWriter,call:int,c:u8)->DfWriter {
+    if c==34 || c==92 {r:=df_put(w,DfKind.arguments,call,92);return df_put(r,DfKind.arguments,call,c);}
+    if c<32 {r:=df_text(w,DfKind.arguments,call,"\\u00");hex:="0123456789abcdef";r=df_put(r,DfKind.arguments,call,hex[cast(int)c/16]);return df_put(r,DfKind.arguments,call,hex[cast(int)c%16]);}
+    return df_put(w,DfKind.arguments,call,c);
+}
+// The bounded pending window matches typed units. @, ~ and ! here stand for
+// DSML, end_think and EOS controls; ordinary bytes with those spellings differ.
+df_marker :: (phase:int,branch:int)->string {
+    if phase==0 {return ifx branch==0 then "~" else "<@ calls>";}
+    if phase==1 {return ifx branch==0 then "!" else "<@ calls>";}
+    if phase==2 {return ifx branch==0 then "<@ invoke name=\"" else "</@ calls>";}
+    if phase==3 {return ifx branch==0 then "\">" else "";}
+    if phase==4 {return ifx branch==0 then "<@ parameter name=\"" else "</@ invoke>";}
+    if phase==5 {return ifx branch==0 then "\" string=\"true\">" else "\" string=\"false\">";}
+    if phase==6 || phase==7 {return ifx branch==0 then "</@ parameter>" else "";}
+    if phase==8 {return ifx branch==0 then "!" else "";}return "";
+}
+df_pattern_unit :: (c:u8)->int {
+    if c==64 {return 263;}if c==126 {return 262;}if c==33 {return 257;}return cast(int)c;
+}
+df_identifier :: (c:int)->bool {return (c>=65 && c<=90) || (c>=97 && c<=122) || (c>=48 && c<=57) || c==95 || c==45 || c==46;}
+df_space :: (c:int)->bool {return c==32 || c==10 || c==13 || c==9;}
+// Emit a scalar only after its final byte is valid. Never expose partial UTF8.
+df_data :: (state:DfState,c:int,kind:DfKind,escaped:bool,writer:DfWriter)->DfStep {
+    s:=state;w:=writer;
+    if c<0 || c>255 {w.status=DfStatus.format;return DfStep.{s=s,w=w};}
+    if s.left==0 {
+        if c<128 {w=ifx escaped then df_escape(w,s.call,cast(u8)c) else df_put(w,kind,s.call,cast(u8)c);return DfStep.{s=s,w=w};}
+        if c>=194 && c<=223 {s.left=1;s.cp=c-192;s.minimum=128;}
+        else if c>=224 && c<=239 {s.left=2;s.cp=c-224;s.minimum=2048;}
+        else if c>=240 && c<=244 {s.left=3;s.cp=c-240;s.minimum=65536;}
+        else {w.status=DfStatus.utf8;return DfStep.{s=s,w=w};}
+        s.utf[0]=cast(u8)c;s.utf_count=1;return DfStep.{s=s,w=w};
+    }
+    if c<128 || c>191 {w.status=DfStatus.utf8;return DfStep.{s=s,w=w};}
+    s.cp=s.cp*64+c-128;s.utf[s.utf_count]=cast(u8)c;s.utf_count+=1;s.left-=1;
+    if s.left==0 {
+        if s.cp<s.minimum || s.cp>1114111 || (s.cp>=55296 && s.cp<=57343) {w.status=DfStatus.utf8;return DfStep.{s=s,w=w};}
+        for i:0..<s.utf_count {w=df_put(w,kind,s.call,s.utf[i]);}s.utf_count=0;
+    }return DfStep.{s=s,w=w};
+}
+df_unmatched :: (state:DfState,c:int,writer:DfWriter)->DfStep {
+    s:=state;w:=writer;
+    if s.phase==0 || s.phase==1 {kind:=ifx s.phase==0 then DfKind.reasoning else DfKind.content;return df_data(s,c,kind,false,w);}
+    if s.phase==6 || s.phase==7 {return df_data(s,c,DfKind.arguments,s.phase==6,w);}
+    if s.phase==3 || s.phase==5 {
+        if !df_identifier(c) {w.status=DfStatus.format;return DfStep.{s=s,w=w};}
+        if s.phase==3 {if s.name==64 {w.status=DfStatus.budget;return DfStep.{s=s,w=w};}s.name+=1;w=df_put(w,DfKind.name,s.call,cast(u8)c);}
+        else {if s.key==64 {w.status=DfStatus.budget;return DfStep.{s=s,w=w};}s.key+=1;w=df_put(w,DfKind.arguments,s.call,cast(u8)c);}
+        return DfStep.{s=s,w=w};
+    }
+    if (s.phase==2 || s.phase==4 || s.phase==8) && df_space(c) {return DfStep.{s=s,w=w};}
+    w.status=DfStatus.format;return DfStep.{s=s,w=w};
+}
+df_matched :: (state:DfState,branch:int,writer:DfWriter)->DfStep {
+    s:=state;w:=writer;
+    if s.left!=0 {w.status=DfStatus.utf8;return DfStep.{s=s,w=w};}
+    if s.phase==0 || s.phase==1 {if branch==1 {s.phase=2;}else {s.phase=ifx s.phase==0 then 1 else 9;}}
+    else if s.phase==2 {
+        if branch==1 {s.phase=8;}
+        else {if s.call==64 {w.status=DfStatus.budget;return DfStep.{s=s,w=w};}s.call+=1;s.name=0;s.keys=0;s.phase=3;w=df_put(w,DfKind.tool_begin,s.call,0);}
+    }
+    else if s.phase==3 {if s.name==0 {w.status=DfStatus.format;return DfStep.{s=s,w=w};}s.phase=4;w=df_text(w,DfKind.arguments,s.call,"{");}
+    else if s.phase==4 {
+        if branch==1 {s.phase=2;w=df_text(w,DfKind.arguments,s.call,"}");w=df_put(w,DfKind.tool_end,s.call,0);}
+        else {if s.keys==64 {w.status=DfStatus.budget;return DfStep.{s=s,w=w};}if s.keys!=0 {w=df_text(w,DfKind.arguments,s.call,",");}w=df_text(w,DfKind.arguments,s.call,"\"");s.keys+=1;s.key=0;s.phase=5;}
+    }
+    else if s.phase==5 {if s.key==0 {w.status=DfStatus.format;return DfStep.{s=s,w=w};}w=df_text(w,DfKind.arguments,s.call,"\":");if branch==0 {w=df_text(w,DfKind.arguments,s.call,"\"");s.phase=6;}else {s.phase=7;}}
+    else if s.phase==6 || s.phase==7 {if s.phase==6 {w=df_text(w,DfKind.arguments,s.call,"\"");}s.phase=4;}
+    else if s.phase==8 {s.phase=9;}
+    return DfStep.{s=s,w=w};
+}
+df_push :: (state:DfState,c:int,writer:DfWriter)->DfStep {
+    s:=state;w:=writer;s.pending[s.count]=c;s.count+=1;
+    while s.count!=0 {
+        prefix:=false;matched:=-1;
+        for branch:0..<2 {m:=df_marker(s.phase,branch);if m.count!=0 && s.count<=m.count {same:=true;for i:0..<s.count {if s.pending[i]!=df_pattern_unit(m[i]) {same=false;}}if same {prefix=true;if s.count==m.count {matched=branch;}}}}
+        if matched!=-1 {s.count=0;r:=df_matched(s,matched,w);return r;}
+        if prefix {return DfStep.{s=s,w=w};}
+        first:=s.pending[0];for i:1..<s.count {s.pending[i-1]=s.pending[i];}s.count-=1;
+        r:=df_unmatched(s,first,w);s=r.s;w=r.w;if w.status!=DfStatus.ok {return r;}
+    }return DfStep.{s=s,w=w};
+}
+// book:begin feed
+df_feed :: (state:DfState,units:[]int,output:[]DfEvent,stage:[]DfEvent,overlap:bool)->DfResult #export_c {
+    if overlap {return DfResult.{status=DfStatus.alias,state=state};}
+    if state.finished || state.phase<0 || state.phase>9 {return DfResult.{status=DfStatus.state,state=state};}
+    if units.count>4096 || units.count>65536-state.total {return DfResult.{status=DfStatus.budget,state=state};}
+    s:=state;w:=DfWriter.{events=stage};
+    for c:units {r:=df_push(s,c,w);s=r.s;w=r.w;if w.status!=DfStatus.ok {return DfResult.{status=w.status,state=state};}}
+    if w.written>output.count {return DfResult.{status=DfStatus.capacity,state=state};}
+    for i:0..<w.written {output[i]=stage[i];}s.total+=units.count;return DfResult.{state=s,written=w.written};
+}
+df_end :: (state:DfState,finish:bool)->DfResult #export_c {
+    if state.finished {return DfResult.{status=DfStatus.state,state=state};}
+    if !finish || state.phase!=9 || state.count!=0 || state.left!=0 {return DfResult.{status=DfStatus.incomplete,state=state};}
+    s:=state;s.finished=true;return DfResult.{state=s};
+}
+// book:end feed

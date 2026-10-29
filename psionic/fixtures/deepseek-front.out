@@ -1,0 +1,4 @@
+recipe: 9 segments; user/tool text stays ordinary
+tool search_1: {"query":"a\"\\\u000a\u0009\u0000😀","count":12}
+tool empty: {}
+EOS without finish: incomplete; EOS with finish: complete

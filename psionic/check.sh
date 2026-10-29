@@ -27,6 +27,13 @@ cc=${COAX_CC:-cc}
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == deepseek/front || $chapter == deepseek/front-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
+    fi
+    if [[ $chapter == deepseek ]]; then
+        env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == deepseek || $chapter == deepseek/* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
     fi
@@ -239,7 +246,8 @@ fi
 
 if [[ $deepseek == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
-    phase "DeepSeek chapter 56"
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
+    phase "DeepSeek chapters 56–57"
 fi
 python3 -I psionic/tests/book.py --coax "$coax" --jobs "$jobs"
 phase book

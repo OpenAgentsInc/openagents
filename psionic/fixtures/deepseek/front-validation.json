@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "profile": "deepseek-front-v1",
+  "date": "2026-10-29",
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93"
+  },
+  "native_compiler": "gcc (GCC) 15.2.0",
+  "sources": {
+    "psionic/lib/deepseek/front.coax": "642a4eab8fd7b8df53dd481a752b5c28d0d602d04de3aa2591e058a49c6331ec",
+    "psionic/lib/deepseek/front-recipe.coax": "fe427c0ac1f794396ba82ca17b8d752bccb24b7f25500855ef6ca5aa2afb1fc0",
+    "psionic/lib/deepseek/front-types.coax": "457cad0fcc98d173f889aa9d169787512afb73f7aae450fe0c1c679cc1778ac8",
+    "psionic/lib/deepseek/front-stream.coax": "444c54a81687d211a7eef196f454fad12c78305e09e564bbfa7577446c375560",
+    "psionic/fixtures/deepseek/front-goldens.coax": "38885225332991977179119ed0b25cec06e45872061c022048fee162af4fa06d",
+    "psionic/lib/deepseek/front-encode.coax": "d6974c3152fab37e629f01070b8a4f6b6895fc3feca68093f65b7a77cdb32ba1",
+    "psionic/lib/deepseek/text.coax": "8ba0cfada1feccee79d9e044c5c963675bae5043c4bbce6498173cc9ad0c96dd",
+    "psionic/lib/deepseek/math.coax": "46c5191d9d0222b9a7283c6acef89c62995cbd27e6aadb04e67493ce14b0005d",
+    "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+    "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681",
+    "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+    "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+    "psionic/lib/deepseek/weights.coax": "1ab3beb4d47a39a69f0eca080ccade04efaf197778b11c5c473dda6671bf2f8c",
+    "psionic/lib/deepseek/plan.coax": "c73ddf0b11d50d97ca027cc55a6f36ff0cf089b5a3b65812f4e0a3517ddb3466",
+    "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+    "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/crypto/bytes.coax": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "psionic/fixtures/deepseek/tiny/model.coax": "c4f7e37643fe882f9d41c61f2cfe87b28e5a8dfea0d0a5343e3b95a9f5fd039a",
+    "psionic/fixtures/deepseek/original/targets.coax": "5e6b7b02b91d5513555e8deed4b328a4cbf9afd9a9d3750aa3bc20cac76e5776",
+    "psionic/fixtures/deepseek/text-goldens.coax": "5c6bad70125275ecdf0ec7d3426ffec52d5c8155c4e936e5a163ed06ffc78c41",
+    "psionic/platform/deepseek-front-memory.c": "2e30008ea0268a364a2ca706d459a45e14e9a8c4e1b50df928e18a7d55517234",
+    "psionic/platform/deepseek-front-memory.h": "481e671c3c0980cca73624cf1d0a4aa73fca9d2573c615a50c1a1bbe28925c24",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/deepseek_front_native.c": "bc6f03e8d286515031143412ae359cb09ea65b6882fd6be4e531ca46ce23cacb",
+    "psionic/tests/deepseek_front_fixture.py": "34b22a747fe2fc75c1709d7eec082e4db12b2d519aa42f4c291cf235a541f6f0",
+    "psionic/tests/check_deepseek_front.sh": "8f2bb69ecbed87bfaeb9da1996c13fcdd1286a97f84daa90fae1b910ca8a2501",
+    "psionic/examples/deepseek-front.coax": "0cf346e5ad65871980c1f8cb1785a3375f94f65d887214e1557e64cd814a6c75",
+    "psionic/fixtures/deepseek-front.out": "04365732c5dd8c9b44fc61c173eddb7696f0e05d98f6dd0b79bb215d24c03d7d",
+    "psionic/fixtures/deepseek/front-goldens.h": "ebfc9015bb612a5e1a916b3cb07514c933e33c4defa098da03129b966167b9b2",
+    "psionic/fixtures/deepseek/text-goldens.h": "2bf52fffe080ca8f265d68403ca8193a0d957df3f243da8b9c8212ea4983ce72",
+    "psionic/fixtures/deepseek/original/r1.pst": "431e00e6be54a8bb51003c661c8d78ab0bf53c552d604eeb7733603eef75906a"
+  },
+  "checks": {
+    "command": "psionic/tests/check_deepseek_front.sh",
+    "coax_checks_per_mode": 175,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "native": [
+      "plain",
+      "ASan+UBSan"
+    ],
+    "native_flags": "-std=c11 -O0/-O3 -g -ffp-contract=off -fno-fast-math",
+    "split_pairs": 32896,
+    "stream_units": 255,
+    "oracle_events": 104,
+    "long_stream_units": 65536,
+    "original_bpe_cases": 22,
+    "expected_example": "psionic/fixtures/deepseek-front.out"
+  },
+  "mutation": {
+    "front-recipe": {
+      "command": "coax/bin/coax mutate psionic/lib/deepseek/front-recipe.coax --jobs 4 --run-steps 4000000",
+      "report": "95 mutants, 95 killed, 0 survived"
+    },
+    "front-stream": {
+      "command": "coax/bin/coax mutate psionic/lib/deepseek/front-stream.coax --jobs 4 --run-steps 4000000",
+      "report": "466 mutants, 466 killed, 0 survived"
+    },
+    "front-encode": {
+      "command": "coax/bin/coax mutate psionic/lib/deepseek/front-encode.coax --jobs 16 --run-steps 4000000",
+      "report": "2926 mutants, 2926 killed, 0 survived"
+    }
+  },
+  "book_structure": {
+    "programs": 29,
+    "source_linked_listings": 117,
+    "command": "python3 -I psionic/tests/book.py",
+    "exact_new_example_modes": [
+      "debug",
+      "release"
+    ]
+  }
+}

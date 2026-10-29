@@ -1,5 +1,32 @@
 # Invariants
 
+## Psionic DeepSeek front-door boundaries survive tokenization and streaming
+
+`psionic/lib/deepseek/front*.coax` owns `deepseek-front-v1`: a bounded
+V4.1-style text recipe and DSML stream protocol, plus an explicitly separate
+R1 tokenizer adapter. Ordinary message/tool strings never become control IDs.
+Adjacent plain fragments join before BPE; only typed specials split runs.
+R1 has no system/DSML control mapping and refuses those boundaries. Its
+existing chapter 56 history/decoder contract is unchanged. Original V4.1
+tokenizer/model qualification and full recipe options remain separate gates.
+
+Streaming consumes typed bytes/controls once, retaining only a fixed delimiter
+window and incomplete UTF-8 scalar. It emits reasoning, content, tool names
+and escaped string/raw argument fragments separately. Malformed framing and
+UTF-8 refuse; raw JSON validity, schema checks and tool grants belong to a
+consumer. A closed frame grants nothing. EOS requires a separate normal finish
+event; transport EOF and truncated syntax remain incomplete. Failed feeds
+preserve public events and return the supplied state; successful prior chunks
+remain committed. Caller-owned staging may change. The caller supplies valid
+types/extents, admitted immutable tokenizer data, live borrowed strings,
+exclusive disjoint writable storage and only initial/returned parser states.
+
+Check: `psionic/tests/check_deepseek_front.sh` covers owned protocol oracles,
+all 32,896 split pairs, all truncations, original BPE vectors, native
+debug/release plain/ASan/UBSan and book output. `psionic/check.sh --only
+deepseek/front --jobs 8` also runs zero-survivor authority mutation. Scope
+and evidence: [chapter 57 record](docs/verification/psionic-ch57-2026-10-29.md).
+
 ## Psionic DeepSeek R1 distill owns a separate dense CPU profile
 
 `psionic/lib/deepseek/` implements `deepseek-r1-qwen2-cpu-wide-v1` for the

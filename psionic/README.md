@@ -24,6 +24,11 @@ tokenizer and typed Harmony rendering/parsing with exact completion stops.
 add seeded generation, standard speculative verification and a constrained tool
 round trip. The supported CPU and finite-schema profiles state their limits.
 
+[Chapter 56](book/ch056-execute-a-deepseek-r1-distill.md) executes the original
+DeepSeek R1 Qwen distill as a dense CPU reference. [Chapter 57](book/ch057-deepseeks-front-door.md)
+adds typed recipe boundaries, independent plain-run tokenization and a bounded
+UTF-8/DSML streaming protocol with explicit finish handling.
+
 [Chapters 45a–45c](book/ch045a-original-weights-stay-on-the-gpu.md) add resident
 original 20b CUDA execution, complete greedy Harmony generation and batched
 prefill on the RTX 4080. [Run a prompt](book/ch045b-a-complete-cuda-decoder.md)

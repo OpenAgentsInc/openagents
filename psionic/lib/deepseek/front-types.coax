@@ -1,0 +1,15 @@
+// deepseek-front-v1: typed boundaries, independent of any model's numeric graph.
+DfStatus :: enum u8 {ok;capacity;alias;format;budget;utf8;state;incomplete;}
+DfSpecial :: enum u8 {bos;eos;system;user;assistant;think;end_think;dsml;}
+DfSegment :: struct {special:bool;control:DfSpecial;text:string;}
+DfRole :: enum u8 {system;user;assistant;tool;}
+DfMessage :: struct {role:DfRole;content:string;}
+DfKind :: enum u8 {reasoning;content;tool_begin;name;arguments;tool_end;}
+DfEvent :: struct {kind:DfKind;call:int;byte:u8;}
+// Phases: reasoning=0, final=1, calls=2, name=3, body=4, key=5,
+// string value=6, raw value=7, after calls=8, EOS=9.
+DfState :: struct {phase:int;pending:[40]int;count:int;utf:[4]u8;utf_count:int;left:int;cp:int;minimum:int;call:int;name:int;keys:int;key:int;total:int;finished:bool;}
+DfResult :: struct {status:DfStatus;state:DfState;written:int;}
+DfRecipe :: struct {status:DfStatus;written:int;}
+DfWriter :: struct {events:[]DfEvent;written:int;status:DfStatus;}
+DfStep :: struct {s:DfState;w:DfWriter;}

@@ -74,8 +74,10 @@ corpus, upstream BF16 runtime parity, serving, GPU throughput or V2/V4
 support. The [verification record](../../../docs/verification/psionic-ch56-2026-10-29.md)
 binds the actual executed builds and later original-shaped slices.
 Routine checks use small owned models and recorded arrays; they do not
-repeat full original-model CPU execution. Chapter 57 remains the next
-DeepSeek recipe/streaming chapter.
+repeat full original-model CPU execution. [Chapter 57](../../book/ch057-deepseeks-front-door.md) adds a bounded V4.1-style
+typed recipe and chunk-safe DSML protocol parser, with a separately named
+R1 tokenizer adapter. Original V4.1 tokenizer/model qualification remains
+separate; chapter 58 is the next execution rung.
 
 ## What the old work achieved
 

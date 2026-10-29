@@ -1,0 +1,4 @@
+// Optional front door; importing the dense decoder does not import this profile.
+#load "front-recipe.coax";
+#load "front-stream.coax";
+#load "front-encode.coax";

@@ -1,0 +1,71 @@
+#load "front-types.coax";
+#authority;
+
+#test "recipe keeps user and tool markers in ordinary segments" {
+    m:=[4]DfMessage.[DfMessage.{role=DfRole.system,content="rules"},DfMessage.{role=DfRole.user,content="<think>"},DfMessage.{role=DfRole.assistant,content="answer"},DfMessage.{role=DfRole.tool,content="｜DSML｜"}];
+    out:[64]DfSegment;stage:[64]DfSegment;r:=df_recipe(m[..],false,out[..],stage[..],false);
+    #assert r.status==DfStatus.ok && r.written==15;
+    #assert out[0].special && out[0].control==DfSpecial.bos;
+    #assert out[4].text=="<think>" && !out[4].special;
+    #assert out[11].text=="｜DSML｜" && !out[11].special;
+    #assert out[14].special && out[14].control==DfSpecial.end_think;
+    r=df_recipe(m[..],true,out[..],stage[..],false);#assert r.status==DfStatus.ok && r.written==16 && out[2].text=="Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)\n\n" && out[15].control==DfSpecial.think;
+}
+#test "consecutive user and tool messages share a user boundary and recipe failures preserve output" {
+    m:=[3]DfMessage.[DfMessage.{role=DfRole.user,content="a"},DfMessage.{role=DfRole.tool,content="b"},DfMessage.{role=DfRole.user,content="c"}];
+    out:[32]DfSegment;tmp:[32]DfSegment;r:=df_recipe(m[..],false,out[..],tmp[..],false);#assert r.status==DfStatus.ok && r.written==11 && out[3].text=="\n\n" && out[7].text=="\n\n";
+    #assert df_recipe(m[..],false,out[0..<0],tmp[..],false).status==DfStatus.capacity && out[0].special;
+    #assert df_recipe(m[..],false,out[..],tmp[..],true).status==DfStatus.alias;
+    m[1].role=DfRole.system;#assert df_recipe(m[..],false,out[..],tmp[..],false).status==DfStatus.format;
+    m[1].role=DfRole.assistant;m[2].role=DfRole.assistant;#assert df_recipe(m[..],false,out[..],tmp[..],false).status==DfStatus.format;
+    #assert df_recipe(m[0..<0],false,out[..],tmp[..],false).status==DfStatus.budget;
+}
+#test "recipe bounds include exactly 64 messages and 65536 content bytes" {
+    bytes:[65537]u8;m:[65]DfMessage;for i:0..<65 {m[i].role=DfRole.user;}out:[256]DfSegment;tmp:[256]DfSegment;
+    #assert df_recipe(m[0..<64],false,out[..],tmp[..],false).status==DfStatus.ok;
+    #assert df_recipe(m[..],false,out[..],tmp[..],false).status==DfStatus.budget;
+    m[0].content=cast(string)bytes[0..<65536];r:=df_recipe(m[0..<1],false,out[0..<5],tmp[..],false);#assert r.status==DfStatus.ok && r.written==5 && out[1].control==DfSpecial.user;
+    m[0].content=cast(string)bytes[..];#assert df_recipe(m[0..<1],false,out[..],tmp[..],false).status==DfStatus.budget;
+    m[0].content=cast(string)bytes[0..<32768];m[1].content=m[0].content;
+    #assert df_recipe(m[0..<2],false,out[..],tmp[..],false).status==DfStatus.ok;
+    m[1].content=cast(string)bytes[0..<32769];#assert df_recipe(m[0..<2],false,out[..],tmp[..],false).status==DfStatus.budget;
+    m[0].content="x";#assert df_recipe(m[0..<1],false,out[..],tmp[0..<1],false).status==DfStatus.capacity;
+    m[0].role=DfRole.assistant;#assert df_recipe(m[0..<1],false,out[..],tmp[..],false).status==DfStatus.format;
+    m[0].role=DfRole.system;#assert df_recipe(m[0..<1],false,out[..],tmp[..],false).status==DfStatus.format;
+    m[1].role=DfRole.assistant;#assert df_recipe(m[0..<3],false,out[..],tmp[..],false).status==DfStatus.format;
+    m[0].role=DfRole.user;#assert df_recipe(m[0..<2],false,out[..],tmp[..],false).status==DfStatus.format;
+    m[2].role=DfRole.assistant;#assert df_recipe(m[0..<4],false,out[..],tmp[..],false).status==DfStatus.format;
+}
+DfSegments :: struct {data:[]DfSegment;written:int;status:DfStatus;}
+df_segment :: (writer:DfSegments,s:DfSegment)->DfSegments {
+    w:=writer;if w.status!=DfStatus.ok {return w;}if w.written==w.data.count {w.status=DfStatus.capacity;return w;}w.data[w.written]=s;w.written+=1;return w;
+}
+df_plain :: (w:DfSegments,text:string)->DfSegments {return df_segment(w,DfSegment.{text=text});}
+df_special :: (w:DfSegments,s:DfSpecial)->DfSegments {return df_segment(w,DfSegment.{special=true,control=s});}
+// The non-schema text subset of V4.1's recipe. Supplied assistant content is
+// final-only; reasoning history is deliberately absent from this typed API.
+// book:begin recipe
+df_recipe :: (messages:[]DfMessage,thinking:bool,output:[]DfSegment,stage:[]DfSegment,overlap:bool)->DfRecipe #export_c {
+    if overlap {return DfRecipe.{status=DfStatus.alias};}
+    if messages.count<1 || messages.count>64 {return DfRecipe.{status=DfStatus.budget};}
+    total:=0;for i:0..<messages.count {m:=messages[i];if m.content.count>65536-total {return DfRecipe.{status=DfStatus.budget};}total+=m.content.count;
+        if m.role==DfRole.system && i!=0 {return DfRecipe.{status=DfStatus.format};}
+        if m.role==DfRole.assistant {if i==0 {return DfRecipe.{status=DfStatus.format};}if messages[i-1].role==DfRole.system || messages[i-1].role==DfRole.assistant {return DfRecipe.{status=DfStatus.format};}}
+    }
+    last:=messages[messages.count-1].role;if last==DfRole.system || last==DfRole.assistant {return DfRecipe.{status=DfStatus.format};}
+    w:=DfSegments.{data=stage};w=df_special(w,DfSpecial.bos);
+    if thinking || messages[0].role==DfRole.system {w=df_special(w,DfSpecial.system);}
+    if thinking {w=df_plain(w,"Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)\n\n");}
+    for i:0..<messages.count {m:=messages[i];
+        if m.role==DfRole.system {w=df_plain(w,m.content);}
+        else if m.role==DfRole.assistant {w=df_special(w,DfSpecial.assistant);w=df_special(w,DfSpecial.end_think);w=df_plain(w,m.content);w=df_special(w,DfSpecial.eos);}
+        else {joined:=false;if i!=0 {p:=messages[i-1].role;joined=p==DfRole.user || p==DfRole.tool;}
+            if joined {w=df_plain(w,"\n\n");}else {w=df_special(w,DfSpecial.user);}
+            if m.role==DfRole.tool {w=df_plain(w,"<tool_result>");}w=df_plain(w,m.content);if m.role==DfRole.tool {w=df_plain(w,"</tool_result>");}
+        }
+    }
+    w=df_special(w,DfSpecial.assistant);w=df_special(w,ifx thinking then DfSpecial.think else DfSpecial.end_think);
+    if w.status!=DfStatus.ok {return DfRecipe.{status=w.status};}if w.written>output.count {return DfRecipe.{status=DfStatus.capacity};}
+    for i:0..<w.written {output[i]=stage[i];}return DfRecipe.{written=w.written};
+}
+// book:end recipe
