@@ -1,0 +1,58 @@
+// Numeric admission of AEAD regions; host must prove allocation/liveness,
+// truthful extents and exclusive access, and select the actual pointer width.
+#load "scrypt_admission.coax";
+#authority;
+
+#test "disjoint AEAD spans admit seal and open bounds" {
+  spans:=[7]AeadSpan.[AeadSpan.{address=10000,length=100},AeadSpan.{address=20000,length=200},AeadSpan.{address=30000,length=32},AeadSpan.{address=40000,length=24},AeadSpan.{address=50000,length=5},AeadSpan.{address=60000,length=17},AeadSpan.{address=70000,length=33}];
+  #assert aa_admit(spans[..],true,false) && aa_admit(spans[..],true,true);
+  spans[5].length=33;spans[6].length=17;#assert aa_admit(spans[..],false,true);
+  spans[5].length=16;spans[6].length=0;spans[6].address=0;#assert aa_admit(spans[..],false,true);
+  #assert !aa_admit(spans[0..<6],false,true);
+}
+#test "every pairwise alias rejects" {
+  spans:=[7]AeadSpan.[AeadSpan.{address=10000,length=100},AeadSpan.{address=20000,length=200},AeadSpan.{address=30000,length=32},AeadSpan.{address=40000,length=24},AeadSpan.{address=50000,length=5},AeadSpan.{address=60000,length=17},AeadSpan.{address=70000,length=33}];
+  for i:0..<7 {for j:(i+1)..<7 {candidate:=spans;candidate[j].address=candidate[i].address;#assert !aa_admit(candidate[..],true,false);}}
+}
+#test "bad widths, lengths, nulls and overflow fail closed" {
+  r:=[7]AeadSpan.[AeadSpan.{address=10000,length=100},AeadSpan.{address=20000,length=200},AeadSpan.{address=30000,length=32},AeadSpan.{address=40000,length=24},AeadSpan.{address=50000,length=5},AeadSpan.{address=60000,length=17},AeadSpan.{address=70000,length=33}];
+  bad:=r;bad[0].length=0;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[1].length=0;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[2].length=31;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[3].length=23;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[4].length=1025;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[5].length=4097;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[6].length=32;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[4].address=0;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[6].address=cast(u64)18446744073709551600;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[6].address=cast(u64)4294967280;#assert !aa_admit(bad[..],true,true) && aa_admit(bad[..],true,false);
+  bad=r;bad[5].length=15;#assert !aa_admit(bad[..],false,false);
+  bad=r;bad[5].length=4113;#assert !aa_admit(bad[..],false,false);
+  bad=r;bad[0].address=0;#assert !aa_admit(bad[..],true,false);
+  bad=r;bad[0].length=1;bad[1].length=1;#assert aa_admit(bad[..],true,false);
+  distant:=[7]AeadSpan.[AeadSpan.{address=10000000,length=1048577},AeadSpan.{address=20000000,length=200},AeadSpan.{address=30000000,length=32},AeadSpan.{address=40000000,length=24},AeadSpan.{address=50000000,length=1024},AeadSpan.{address=60000000,length=4096},AeadSpan.{address=70000000,length=4112}];
+  #assert !aa_admit(distant[..],true,false);distant[0].length=1048576;#assert aa_admit(distant[..],true,false);
+  distant[1].length=1048577;#assert !aa_admit(distant[..],true,false);distant[1].length=200;
+  distant[6].length=1048577;#assert !aa_admit(distant[..],true,false);distant[6].length=4112;
+  distant[5].length=4097;distant[6].length=4113;#assert !aa_admit(distant[..],true,false);
+  distant[5].length=4112;distant[6].length=4096;#assert aa_admit(distant[..],false,false);
+  distant[5].length=4113;distant[6].length=4097;#assert !aa_admit(distant[..],false,false);
+  distant[5].length=33;distant[6].length=16;#assert !aa_admit(distant[..],false,false);
+}
+
+AeadSpan :: struct {address:u64;length:int;}
+// Order: operation, workspace, key, nonce, AAD, input, output. Empty spans
+// carry no access; all nonempty spans are bounded and pairwise disjoint.
+aa_admit :: (spans:[]AeadSpan,seal:bool,narrow:bool)->bool #export_c {
+  if spans.count!=7 {return false;}
+  for i:0..<7 {
+    s:=spans[i];if !sa_span(s.address,s.length,1048576) {return false;}
+    if narrow && !sa_span32(s.address,s.length) {return false;}
+  }
+  if spans[0].length<1 || spans[1].length<1 || spans[2].length!=32 || spans[3].length!=24 || spans[4].length>1024 {return false;}
+  n:=spans[5].length;capacity:=spans[6].length;
+  if seal {if n>4096 || capacity<n+16 {return false;}}
+  else {if n<16 || n>4112 || capacity<n-16 {return false;}}
+  for i:1..<7 {for j:0..<i {if sa_overlap(spans[i].address,spans[i].length,spans[j].address,spans[j].length) {return false;}}}
+  return true;
+}
