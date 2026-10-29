@@ -1,0 +1,3 @@
+// One translation unit shares the model/Harmony ABI without duplicate runtimes.
+#load "../gptoss/device-host.coax";
+#load "host.coax";

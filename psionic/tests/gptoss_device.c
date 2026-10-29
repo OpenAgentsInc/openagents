@@ -23,6 +23,7 @@ static void *alloc(size_t n,size_t width){void *p=calloc(n?n:1,width);assert(p);
 static void *load(const char *path,size_t *n){int fd=open(path,O_RDONLY);assert(fd>=0);struct stat st;assert(!fstat(fd,&st) && st.st_size>0);*n=(size_t)st.st_size;void *p=mmap(NULL,*n,PROT_READ,MAP_PRIVATE,fd,0);assert(p!=MAP_FAILED);assert(!close(fd));return p;}
 static void save(const char *dir,int step,const char *kind,const void *data,size_t n){char path[4096];assert(snprintf(path,sizeof path,"%s/step%d.%s",dir,step,kind)>0);FILE *f=fopen(path,"wb");assert(f && fwrite(data,1,n,f)==n);assert(!fclose(f));}
 static void compare(const float *got,const float *expected,int64_t n,const char *field){double largest=0;for(int64_t i=0;i<n;i++){double e=fabs((double)got[i]-expected[i])/(1+fabs(expected[i]));assert(isfinite(got[i]));if(e>largest)largest=e;}printf("%s max scaled error %.9g; fixed bound 0.0005\n",field,largest);assert(largest<0.0005);}
+static int cancel_prompt(void *context){(*(int*)context)++;return 1;}
 static void tiny(int cpu,const char *source,size_t source_bytes,const char *file){
     size_t bytes;void *data=load(file,&bytes);coax_t_GFile files[]={{str("tiny.safetensors"),bv(data,(int64_t)bytes)}};coax_t_GProfile p={.shape=tiny_shape,.pins={tiny_artifacts,1},.specs={tiny_specs,33}};PgSession *s=NULL;coax_t_GResult why;
     if(!cpu){PgSession *refused=NULL;coax_t_GResult preflight;coax_t_GFile empty={0};TRY(pg_open(p,(coax_v_t_GFile){&empty,1},source,source_bytes,0,&refused,&preflight));assert(!refused && preflight.status==COAX_GStatus_budget);puts("zero-budget preflight refuses before reading invalid artifact bytes");}
@@ -37,6 +38,9 @@ static void tiny(int cpu,const char *source,size_t source_bytes,const char *file
         compare(logits,tiny_logits[3],16,"batch logits");compare(trace,tiny_trace[3],128,"batch trace");compare(weights,tiny_weights[3],4,"batch mixture");assert(!memcmp(ids,tiny_routes[3],sizeof ids));
         TRY(pg_read(s,16,after,cache_bytes));assert(!memcmp(before,after,cache_bytes));
     }
+    int calls=0,interrupted=0;TRY(pg_prefill_poll(s,tiny_tokens,1,4,0,4,control,cancel_prompt,&calls,&interrupted));assert(interrupted && calls==1);
+    TRY(pg_read(s,24,control,64));TRY(pg_read(s,16,after,cache_bytes));assert(control[2]==4 && !memcmp(before,after,cache_bytes));
+    puts("cancelled prefill returns before the next chunk and preserves committed state");
     puts("batched prefill splits 1/3, 2/2, 3/1 and 4 preserve all serial cache bytes");
     int64_t bad_tokens[]={1,16};assert(pg_prefill(s,bad_tokens,2,4,0,4,control)==PC_ARGUMENT);
     TRY(pg_read(s,24,control,64));assert(!control[0] && control[2]==4);

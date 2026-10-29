@@ -1,0 +1,55 @@
+#load "types.coax";
+#authority;
+#test "flat tool schemas admit primitive fields and reject unsupported promises" {
+    nodes:[128]RsNode;arena:[2048]u8;
+    text:="{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\",\"enum\":[\"Paris\",\"Chicago\"]}},\"required\":[\"city\"],\"additionalProperties\":false}";
+    r:=rs_json(text,nodes[..],arena[..]);#assert r.ok && rs_schema(nodes[..],0);
+    bad:="{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"array\"}}}";r=rs_json(bad,nodes[..],arena[..]);#assert r.ok && !rs_schema(nodes[..],0);
+}
+rs_schema :: (nodes:[]RsNode,index:int)->bool {
+    keys:=[5]string.["type","properties","required","additionalProperties","description"];
+    if !rs_keys(nodes,index,keys[..]) || rs_string(nodes,rs_get(nodes,index,"type"))!="object" {return false;}
+    props:=rs_get(nodes,index,"properties");if !rs_kind(nodes,props,JSON_OBJECT) {return false;}
+    ap:=rs_get(nodes,index,"additionalProperties");if ap>=0 && nodes[ap].kind!=JSON_TRUE && nodes[ap].kind!=JSON_FALSE {return false;}
+    i:=props+1;n:=0;while i<nodes[props].next {n+=1;if n>16 || nodes[i].key.count<1 || nodes[i].key.count>64 {return false;}
+        pk:=[3]string.["type","description","enum"];if !rs_keys(nodes,i,pk[..]) {return false;}kind:=rs_string(nodes,rs_get(nodes,i,"type"));if kind!="string" && kind!="number" && kind!="integer" && kind!="boolean" {return false;}
+        en:=rs_get(nodes,i,"enum");if en>=0 {if kind!="string" || nodes[en].kind!=JSON_ARRAY {return false;}j:=en+1;count:=0;while j<nodes[en].next {if nodes[j].kind!=JSON_STRING || nodes[j].text.count>1024 {return false;}for k:en+1..<j {if nodes[k].text==nodes[j].text {return false;}}count+=1;j=nodes[j].next;}if count<1 || count>16 {return false;}}
+        desc:=rs_get(nodes,i,"description");if desc>=0 && (nodes[desc].kind!=JSON_STRING || nodes[desc].text.count>1024) {return false;}i=nodes[i].next;
+    }
+    required:=rs_get(nodes,index,"required");if required>=0 {if nodes[required].kind!=JSON_ARRAY {return false;}j:=required+1;count:=0;while j<nodes[required].next {if nodes[j].kind!=JSON_STRING || rs_get(nodes,props,nodes[j].text)<0 {return false;}for k:required+1..<j {if nodes[k].text==nodes[j].text {return false;}}count+=1;if count>16 {return false;}j=nodes[j].next;}}
+    desc:=rs_get(nodes,index,"description");if desc>=0 && (nodes[desc].kind!=JSON_STRING || nodes[desc].text.count>1024) {return false;}
+    return true;
+}
+rs_required :: (nodes:[]RsNode,schema:int,key:string)->bool {r:=rs_get(nodes,schema,"required");if r<0 {return false;}i:=r+1;while i<nodes[r].next {if nodes[i].text==key {return true;}i=nodes[i].next;}return false;}
+rs_arguments :: (schema_nodes:[]RsNode,schema:int,body:string,nodes:[]RsNode,arena:[]u8)->bool #export_c {
+    r:=rs_json(body,nodes,arena);if !r.ok || nodes[0].kind!=JSON_OBJECT || body.count>8192 {return false;}
+    props:=rs_get(schema_nodes,schema,"properties");i:=props+1;while i<schema_nodes[props].next {if rs_required(schema_nodes,schema,schema_nodes[i].key) && rs_get(nodes,0,schema_nodes[i].key)<0 {return false;}i=schema_nodes[i].next;}
+    ap:=rs_get(schema_nodes,schema,"additionalProperties");i=1;while i<nodes[0].next {field:=rs_get(schema_nodes,props,nodes[i].key);if field<0 {if ap>=0 && schema_nodes[ap].kind==JSON_FALSE {return false;}i=nodes[i].next;continue;}
+        kind:=rs_string(schema_nodes,rs_get(schema_nodes,field,"type"));actual:=nodes[i].kind;
+        if (kind=="string" && actual!=JSON_STRING) || ((kind=="number" || kind=="integer") && actual!=JSON_NUMBER) || (kind=="boolean" && actual!=JSON_TRUE && actual!=JSON_FALSE) {return false;}
+        if kind=="integer" && !json_int(nodes[i].text).ok {return false;}en:=rs_get(schema_nodes,field,"enum");if en>=0 {found:=false;j:=en+1;while j<schema_nodes[en].next {if schema_nodes[j].text==nodes[i].text {found=true;}j=schema_nodes[j].next;}if !found {return false;}}i=nodes[i].next;
+    }return true;
+}
+rs_tool_prompt :: (tools:[]RsTool,nodes:[]RsNode,out:[]u8)->int #export_c {
+    w:=[1]RsWriter.[RsWriter.{data=out}];rs_put(w[..],"# Tools\n\n## functions\n\nnamespace functions {\n\n");
+    for tool:tools {if tool.description.count>0 {rs_put(w[..],"// ");for c:tool.description {one:=[1]u8.[ifx c==10 || c==13 then cast(u8)32 else c];rs_put(w[..],cast(string)one[..]);}rs_put(w[..],"\n");}
+        rs_put(w[..],"type ");rs_put(w[..],tool.name);rs_put(w[..]," = (_: {\n");props:=rs_get(nodes,tool.schema,"properties");i:=props+1;
+        while i<nodes[props].next {rs_quote(w[..],nodes[i].key);if !rs_required(nodes,tool.schema,nodes[i].key) {rs_put(w[..],"?");}rs_put(w[..],": ");en:=rs_get(nodes,i,"enum");
+            if en>=0 {j:=en+1;first:=true;while j<nodes[en].next {if !first {rs_put(w[..]," | ");}rs_quote(w[..],nodes[j].text);first=false;j=nodes[j].next;}}
+            else {kind:=rs_string(nodes,rs_get(nodes,i,"type"));rs_put(w[..],ifx kind=="integer" then "number" else kind);}rs_put(w[..],",\n");i=nodes[i].next;
+        }rs_put(w[..],"}) => any;\n\n");
+    }rs_put(w[..],"} // namespace functions");return w[0].at;
+}
+
+#test "tool argument admission and prompt have independent expected bytes" {
+    nodes:[128]RsNode;arena:[2048]u8;a:[64]RsNode;b:[1024]u8;out:[4096]u8;
+    schema:="{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\",\"enum\":[\"Paris\",\"Chicago\"]}},\"required\":[\"city\"],\"additionalProperties\":false}";
+    #assert rs_json(schema,nodes[..],arena[..]).ok;
+    #assert rs_required(nodes[..],0,"city") && !rs_required(nodes[..],0,"x");
+    #assert rs_arguments(nodes[..],0,"{\"city\":\"Paris\"}",a[..],b[..]);
+    #assert !rs_arguments(nodes[..],0,"{}",a[..],b[..]) && !rs_arguments(nodes[..],0,"{\"city\":3}",a[..],b[..]);
+    #assert !rs_arguments(nodes[..],0,"{\"city\":\"Rome\"}",a[..],b[..]) && !rs_arguments(nodes[..],0,"{\"city\":\"Paris\",\"x\":1}",a[..],b[..]);
+    tools:=[1]RsTool.[RsTool.{name="weather",schema=0,description="a\nb"}];n:=rs_tool_prompt(tools[..],nodes[..],out[..]);
+    #assert n>0 && cast(string)out[0..<n]=="# Tools\n\n## functions\n\nnamespace functions {\n\n// a b\ntype weather = (_: {\n\"city\": \"Paris\" | \"Chicago\",\n}) => any;\n\n} // namespace functions";
+    #assert rs_tool_prompt(tools[..],nodes[..],out[0..<1])== -1;
+}

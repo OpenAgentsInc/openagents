@@ -1,0 +1,16 @@
+// Test-only owned continuations; never linked by the production build.
+#load "host.coax";
+#test "owned API continuations have real typed Harmony endings" {
+    table:=HS_TOY;r:=RsRequest.{};items:=[1]RsItem.[RsItem.{kind=1,text="Hi"}];tools:[1]RsTool;out:[1024]int;
+    n:=rs_fixture(table[..],r,items[..],tools[0..<0],out[..]);#assert n>0 && out[n-1]==200002;
+    #assert rs_fixture_stop(200012,1,256)==2 && rs_fixture_stop(200002,1,256)==1 && rs_fixture_stop(8,256,256)==3 && rs_fixture_stop(8,1,256)==0;
+}
+rs_fixture :: (table:[]u8,r:RsRequest,items:[]RsItem,tools:[]RsTool,out:[]int)->int #export_c {
+    messages:=[2]HmMessage.[HmMessage.{role=HmRole.assistant,channel=HmChannel.analysis,body="Owned fixture reasoning."},HmMessage.{role=HmRole.assistant,channel=HmChannel.final,ending=HmEnd.turn,body="Hello from Psionic."}];
+    recipient:[64]u8;
+    if r.tools>0 && r.choice==0 && items[r.items-1].kind!=4 {w:=[1]RsWriter.[RsWriter.{data=recipient[..]}];rs_put(w[..],"functions.");rs_put(w[..],tools[0].name);messages[1]=HmMessage.{role=HmRole.assistant,channel=HmChannel.commentary,ending=HmEnd.call,recipient=cast(string)recipient[0..<w[0].at],body="{\"city\":\"Paris\"}"};}
+    if r.items>0 && items[r.items-1].kind==4 {messages[1].body="The weather is sunny.";}
+    tokens:[1024]int;stage:[1024]int;symbols:[1024]int;head:[32]int;h:=hs_encode_checked(table,"assistant",head[..],stage[..],symbols[..],false);p:=hm_render_checked(table,messages[..],false,tokens[..],stage[..],symbols[..],false);
+    if h.status!=PtStatus.ok || p.status!=HmStatus.ok || p.written-1-h.written>out.count {return -1;}n:=p.written-1-h.written;for i:0..<n {out[i]=tokens[1+h.written+i];}return n;
+}
+rs_fixture_stop :: (token:int,count:int,limit:int)->int #export_c {if token==200002 {return 1;}if token==200012 {return 2;}if count>=limit {return 3;}return 0;}

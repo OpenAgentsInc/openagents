@@ -2452,6 +2452,17 @@ under a declared contract, because the OpenAI shape requires arbitrary
 JSON Schema there. That is the one place a schema rides as data, and it is
 marked `Opaque` with contract `json-schema-2020-12`.
 
+### 16.2.1 Psionic Responses serving profile
+
+The new `openagents.psionic.responses.v1alpha1` contract and
+[`psionic-gptoss-responses-v1` profile](../../proto/openagents/psionic/responses/v1alpha1/README.md)
+define the bounded Coax-native original-20b consumer of `POST /v1/responses`.
+Its normalized DTOs live in `proto/`; its external representation is Responses
+JSON, with typed reasoning, messages, function handoffs and semantic SSE.
+This separate alpha contract does not revise the preserved inference.v1 identity.
+Unsupported capabilities refuse explicitly; runtime evidence is recorded by
+its serving implementation and does not follow from this schema alone.
+
 ### 16.3 `openagents.receipt.v1`
 
 **Purpose.** The one record of what a service did with a request:

@@ -1,0 +1,3 @@
+// Production API ABI. No fixture generator is imported by this root.
+#load "wire.coax";
+#load "http.coax";

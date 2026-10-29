@@ -1,0 +1,56 @@
+syntax = "proto3";
+package openagents.psionic.responses.v1alpha1;
+import "openagents/options/v1alpha1/options.proto";
+// Normalized internal projection of psionic-gptoss-responses-v1 JSON. The
+// external wire is POST /v1/responses; this is not a replacement inference.v1.
+message Item {
+  enum Kind { KIND_UNSPECIFIED = 0; MESSAGE = 1; REASONING = 2; FUNCTION_CALL = 3; FUNCTION_CALL_OUTPUT = 4; }
+  Kind kind = 1;
+  optional string role = 2;
+  optional string phase = 3;
+  // Shared output projection; request admission separately bounds text to 16384.
+  optional string text = 4 [(openagents.options.v1alpha1.max_bytes) = 65536];
+  optional string id = 5;
+  optional string name = 6;
+  optional string call_id = 7;
+  optional string arguments = 8;
+  optional string status = 9;
+}
+message FunctionTool {
+  string name = 1 [(openagents.options.v1alpha1.max_bytes) = 48];
+  string description = 2 [(openagents.options.v1alpha1.max_bytes) = 1024];
+  // Bounded flat-object JSON Schema, the explicitly named profile below.
+  bytes parameters_json = 3 [(openagents.options.v1alpha1.max_bytes) = 65536];
+}
+message CreateRequest {
+  option (openagents.options.v1alpha1.contract) = "psionic-gptoss-responses-v1";
+  option (openagents.options.v1alpha1.max_message_bytes) = 65536;
+  optional string model = 1;
+  optional string instructions = 2 [(openagents.options.v1alpha1.max_bytes) = 16384];
+  repeated Item input = 3 [(openagents.options.v1alpha1.max_count) = 48];
+  repeated FunctionTool tools = 4 [(openagents.options.v1alpha1.max_count) = 8];
+  optional uint32 max_output_tokens = 5;
+  optional bool stream = 6;
+  optional string reasoning_effort = 7;
+  optional string tool_choice = 8;
+  optional bytes metadata_json = 9;
+}
+message Usage { uint32 input_tokens = 1; uint32 output_tokens = 2; uint32 reasoning_tokens = 3; }
+message Response {
+  string id = 1;
+  string model = 2;
+  string status = 3;
+  repeated Item output = 4;
+  Usage usage = 5;
+  optional string incomplete_reason = 6;
+}
+message Error { string type = 1; string code = 2; optional string param = 3; string message = 4; }
+message StreamEvent {
+  string type = 1;
+  uint64 sequence_number = 2;
+  optional string item_id = 3;
+  optional uint32 output_index = 4;
+  optional uint32 content_index = 5;
+  optional string delta = 6;
+  optional Response response = 7;
+}

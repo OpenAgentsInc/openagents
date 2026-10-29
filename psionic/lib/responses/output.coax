@@ -1,0 +1,94 @@
+#load "request.coax";
+#authority;
+RsOutput :: struct {status:int=200;count:int;reasoning:int;code:string;}
+#test "snapshots hold unfinished headers and expose typed analysis separately" {
+    table:=HS_TOY;ids:[256]int;stage:[256]int;symbols:[1024]int;out:[64]RsItem;bytes:[65536]u8;nodes:[8]RsNode;tools:[1]RsTool;
+    prefix:=[1]int.[200005];r:=rs_snapshot(table[..],prefix[..],false,tools[0..<0],nodes[..],out[..],bytes[..]);#assert r.status==200 && r.count==0;
+    m:=[2]HmMessage.[HmMessage.{role=HmRole.assistant,channel=HmChannel.analysis,body="a"},HmMessage.{role=HmRole.assistant,channel=HmChannel.final,ending=HmEnd.turn,body="hello"}];
+    p:=hm_render_checked(table[..],m[..],false,ids[..],stage[..],symbols[..],false);#assert p.status==HmStatus.ok;
+    // Strip the initial start+ordinary assistant header: toy encoding is nine bytes.
+    r=rs_snapshot(table[..],ids[10..<p.written],true,tools[0..<0],nodes[..],out[..],bytes[..]);#assert r.status==200 && r.count==2 && out[0].kind==2 && out[1].text=="hello" && out[1].status==1;
+    #assert rs_context(2048,1) && !rs_context(2048,2) && !rs_context(0,1);
+    #assert rs_liveness(100,101,true,true)==0 && rs_liveness(100,120100,true,true)==504 && rs_liveness(100,101,false,true)==499 && rs_liveness(100,101,true,false)==503;
+    #assert rs_connections(7) && !rs_connections(8) && !rs_connections(-1);
+}
+rs_context :: (prefix:int,limit:int)->bool #export_c {return prefix>0 && limit>=1 && limit<=512 && prefix<=RS_CONTEXT && prefix+limit-1<=RS_CONTEXT;}
+rs_liveness :: (start:int,now:int,connected:bool,healthy:bool)->int #export_c {if !connected {return 499;}if !healthy {return 503;}if now<start || now-start>=120000 {return 504;}return 0;}
+rs_connections :: (count:int)->bool #export_c {return count>=0 && count<8;}
+// Reparse only the bounded generated continuation. Synthetic closing controls
+// allow a provisional typed snapshot, never a claim of model completion.
+rs_snapshot :: (table:[]u8,generated:[]int,terminal:bool,tools:[]RsTool,nodes:[]RsNode,out:[]RsItem,bytes:[]u8)->RsOutput #export_c {
+    raw:[1024]int;tokens:[1024]int;formats:[64]bool;stage:[32]int;symbols:[1024]int;head:[32]int;
+    h:=hs_encode_checked(table,"assistant",head[..],stage[..],symbols[..],false);if h.status!=PtStatus.ok || generated.count>512 {return RsOutput.{status=502,code="invalid_model_output"};}
+    raw[0]=200006;for i:0..<h.written {raw[1+i]=head[i];}base:=1+h.written;raw_count:=base+generated.count;for i:0..<generated.count {raw[base+i]=generated[i];}
+    n:=rs_format_headers(table,raw[0..<raw_count],tokens[..],formats[..]);if n<0 {return RsOutput.{status=502,code="unsupported_model_format"};}
+    start:=0;body:= -1;for i:0..<n {if tokens[i]==200006 {start=i;body= -1;}if tokens[i]==200008 {body=i+1;}}
+    synthetic:=false;end:=n;
+    if body<0 {end=start;if terminal && generated.count>0 && (generated[generated.count-1]==200002 || generated[generated.count-1]==200012) {return RsOutput.{status=502,code="invalid_model_header"};}}
+    else if n==0 || (tokens[n-1]!=200007 && tokens[n-1]!=200002 && tokens[n-1]!=200012) {synthetic=true;}
+    records:[64]HmRecord;draft:[64]HmRecord;work:[65536]u8;p:=HmResult.{};trim:=0;
+    while true {if synthetic {tokens[end]=200007;}p=hm_parse_checked(table,tokens[0..<end+(ifx synthetic then 1 else 0)],false,records[..],draft[..],bytes,work[..],false);
+        if synthetic && p.status==HmStatus.syntax {tokens[end]=200012;p=hm_parse_checked(table,tokens[0..<end+1],false,records[..],draft[..],bytes,work[..],false);}
+        if p.status==HmStatus.ok {break;}
+        if synthetic && p.status==HmStatus.tokenizer && p.cause==PtStatus.utf8 && end>body && trim<4 && !terminal {end-=1;trim+=1;continue;}
+        return RsOutput.{status=502,code="invalid_model_output"};
+    }
+    if p.written>out.count {return RsOutput.{status=502,code="output_capacity"};}r:=RsOutput.{count=p.written};
+    for i:0..<p.written {record:=records[i];if record.role!=HmRole.assistant {return RsOutput.{status=502,code="invalid_model_role"};}text:=cast(string)bytes[record.body_begin..<record.body_end];recipient:=cast(string)bytes[record.recipient_begin..<record.recipient_end];open:=synthetic && i==p.written-1;item:=RsItem.{role="assistant",text=text,status=ifx open then (ifx terminal then 2 else 0) else 1};
+        if recipient.count>0 {if recipient.count<11 || recipient[0..<10]!="functions." || record.channel!=HmChannel.commentary {return RsOutput.{status=502,code="invalid_tool_recipient"};}item.kind=3;item.name=recipient[10..<recipient.count];item.arguments=text;found:= -1;for k:0..<tools.count {if tools[k].name==item.name {found=k;}}if found<0 {return RsOutput.{status=502,code="unlisted_tool"};}
+            if !open {an:[256]RsNode;aa:[8192]u8;if !rs_arguments(nodes,tools[found].schema,text,an[..],aa[..]) {return RsOutput.{status=502,code="invalid_tool_arguments"};}}
+        }else if record.channel==HmChannel.analysis {item.kind=2;}
+        else {item.kind=1;item.phase=ifx record.channel==HmChannel.commentary then "commentary" else "final_answer";}
+        if formats[i] && item.kind!=3 {return RsOutput.{status=502,code="unsupported_model_format"};}
+        out[i]=item;
+    }
+    // Count actual analysis body IDs; headers and controls still count in total usage.
+    t:=hs_layout(table);channel:="";hb:[256]u8;ha:=0;header:=true;body_analysis:=false;
+    for k:base..<raw_count {id:=raw[k];if id==200006 {header=true;ha=0;channel="";}else if header && id==200005 {ha=0;channel="channel";}else if header && id==200008 {header=false;body_analysis=channel=="channel" && cast(string)hb[0..<ha]=="analysis";}else if header {if channel=="channel" && id<199998 {c:=hm_copy_token(table,t,id,hb[..],ha);if c.status==PtStatus.ok {ha+=c.written;}}}else if id==200007 || id==200002 || id==200012 {body_analysis=false;}else if body_analysis {r.reasoning+=1;}}
+    return r;
+}
+#test "UTF-8 is held across token splits and tool arguments require a listed schema" {
+    table:=HS_TOY;out:[64]RsItem;bytes:[65536]u8;nodes:[64]RsNode;arena:[1024]u8;tools:[1]RsTool;
+    ids:=[10]int.[200005,102,105,110,97,108,200008,195,169,200002];
+    r:=rs_snapshot(table[..],ids[0..<8],false,tools[0..<0],nodes[..],out[..],bytes[..]);#assert r.status==200 && r.count==1 && out[0].text=="" && out[0].status==0;
+    r=rs_snapshot(table[..],ids[..],true,tools[0..<0],nodes[..],out[..],bytes[..]);#assert r.status==200 && out[0].text=="é" && out[0].status==1 && r.reasoning==0;
+    #assert rs_snapshot(table[..],ids[0..<8],true,tools[0..<0],nodes[..],out[..],bytes[..]).status==502;
+    #assert rs_json("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",nodes[..],arena[..]).ok;tools[0]=RsTool.{name="weather",schema=0};
+    m:=[1]HmMessage.[HmMessage.{role=HmRole.assistant,channel=HmChannel.commentary,recipient="functions.weather",ending=HmEnd.call,body="{}"}];tokens:[128]int;stage:[128]int;symbols:[1024]int;p:=hm_render_checked(table[..],m[..],false,tokens[..],stage[..],symbols[..],false);
+    #assert p.status==HmStatus.ok;r=rs_snapshot(table[..],tokens[10..<p.written],true,tools[..],nodes[..],out[..],bytes[..]);#assert r.status==200 && out[0].kind==3 && out[0].arguments=="{}";
+    #assert rs_snapshot(table[..],tokens[10..<p.written],true,tools[0..<0],nodes[..],out[..],bytes[..]).status==502;
+}
+
+// GPT-OSS may attach <|constrain|>json to a function header. This separate
+// Responses adapter accepts that one label, trims framing whitespace, and
+// feeds the unchanged strict Harmony text parser. It never drops body controls.
+rs_format_headers :: (table:[]u8,raw:[]int,out:[]int,formats:[]bool)->int {
+    if raw.count>1024 || out.count<1024 || formats.count<64 {return -1;}
+    for k:0..<64 {formats[k]=false;}i:=0;n:=0;record:= -1;
+    decoded:[512]u8;work:[512]u8;encoded:[512]int;stage:[512]int;symbols:[1024]int;
+    while i<raw.count {
+        if raw[i]==200006 {record+=1;if record>=64 {return -1;}body:=i+1;fmt:= -1;channel:= -1;
+            while body<raw.count && raw[body]!=200008 && raw[body]!=200006 {if raw[body]==200003 {if fmt>=0 {return -1;}fmt=body;}if raw[body]==200005 {channel=body;}body+=1;}
+            if body<raw.count && raw[body]==200008 && fmt>=0 {
+                f:=hs_decode_checked(table,raw[fmt+1..<body],decoded[..],work[..],false);if f.status!=PtStatus.ok || cast(string)decoded[0..<f.written]!="json" || channel>fmt {return -1;}
+                out[n]=200006;n+=1;parts:=ifx channel>=0 then 2 else 1;
+                for part:0..<parts {begin:=ifx part==0 then i+1 else channel+1;end:=ifx part==0 && channel>=0 then channel else fmt;
+                    d:=hs_decode_checked(table,raw[begin..<end],decoded[..],work[..],false);if d.status!=PtStatus.ok {return -1;}length:=d.written;while length>0 && decoded[length-1]==32 {length-=1;}
+                    e:=hs_encode_checked(table,cast(string)decoded[0..<length],encoded[..],stage[..],symbols[..],false);if e.status!=PtStatus.ok || n+e.written+2>out.count {return -1;}if part==1 {out[n]=200005;n+=1;}for k:0..<e.written {out[n]=encoded[k];n+=1;}
+                }out[n]=200008;n+=1;formats[record]=true;i=body+1;continue;
+            }
+        }
+        if n>=out.count {return -1;}out[n]=raw[i];n+=1;i+=1;
+    }return n;
+}
+#test "Responses accepts only json function-header format metadata" {
+    table:=HS_TOY;m:=[1]HmMessage.[HmMessage.{role=HmRole.assistant,channel=HmChannel.commentary,recipient="functions.weather",ending=HmEnd.call,body="{}"}];
+    ids:[128]int;stage:[128]int;symbols:[1024]int;raw:[1024]int;normalized:[1024]int;formats:[64]bool;
+    p:=hm_render_checked(table[..],m[..],false,ids[..],stage[..],symbols[..],false);#assert p.status==HmStatus.ok;at:=0;
+    for id:ids[0..<p.written] {if id==200008 {raw[at]=32;raw[at+1]=200003;raw[at+2]=106;raw[at+3]=115;raw[at+4]=111;raw[at+5]=110;at+=6;}raw[at]=id;at+=1;}
+    count:=rs_format_headers(table[..],raw[0..<at],normalized[..],formats[..]);#assert count==p.written && formats[0];for k:0..<count {#assert normalized[k]==ids[k];}
+    nodes:[32]RsNode;arena:[256]u8;#assert rs_json("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",nodes[..],arena[..]).ok;
+    tools:=[1]RsTool.[RsTool.{name="weather",schema=0}];items:[64]RsItem;bytes:[65536]u8;
+    r:=rs_snapshot(table[..],raw[10..<at],true,tools[..],nodes[..],items[..],bytes[..]);#assert r.status==200 && r.count==1 && items[0].arguments=="{}";
+    for k:0..<at {if raw[k]==200003 {raw[k+1]=120;}}#assert rs_format_headers(table[..],raw[0..<at],normalized[..],formats[..])== -1;
+}

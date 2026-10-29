@@ -88,17 +88,21 @@ PcStatus pg_step(PgSession *s,int64_t token,int64_t position,int choose,int64_t 
     PcStatus code=pg_execute(s,p);if(code)return code;
     if(wait){PcStatus code=pg_wait(s);if(code)return code;return pg_read(s,24,control,8*8);}return PC_OK;
 }
-PcStatus pg_prefill(PgSession *s,const int64_t *tokens,int64_t count,int64_t position,int choose,int64_t limit,int64_t control[8]){
+PcStatus pg_prefill_poll(PgSession *s,const int64_t *tokens,int64_t count,int64_t position,int choose,int64_t limit,int64_t control[8],PgPoll poll,void *context,int *interrupted){
+    *interrupted=0;
     if(s->poisoned)return PC_DRIVER;
     coax_t_GResult admitted=gd_prompt(s->shape,position,(coax_v_s64){(int64_t*)tokens,count});
     if(admitted.status){snprintf(s->error,sizeof s->error,"Coax prompt refused: %u",admitted.status);return PC_ARGUMENT;}
     PcStatus code=pg_upload(s,s->buffers[42],tokens,(size_t)count*8);if(code){s->poisoned=1;return code;}
-    for(int64_t first=0;first<count;){int64_t n=gd_chunk(first,count,s->plan.batch);
+    for(int64_t first=0;first<count;){if(poll && poll(context)){*interrupted=1;return PC_OK;}int64_t n=gd_chunk(first,count,s->plan.batch);
         coax_t_GDProgram p=gd_batch_program(s->shape,s->plan,(coax_v_t_GDParam){s->params,s->param_count},position+first,first,n,choose && first+n==count,limit,(coax_v_t_GDOp){s->ops,s->plan.max_ops},(coax_v_t_GDArg){s->args,s->plan.max_args});
         if(p.status){snprintf(s->error,sizeof s->error,"Coax prompt program refused: %u",p.status);return PC_ARGUMENT;}
         code=pg_execute(s,p);if(code)return code;code=pg_read(s,24,control,64);if(code)return code;
         if(control[0])return PC_OK;first+=n;
     }return PC_OK;
+}
+PcStatus pg_prefill(PgSession *s,const int64_t *tokens,int64_t count,int64_t position,int choose,int64_t limit,int64_t control[8]){
+    int interrupted;return pg_prefill_poll(s,tokens,count,position,choose,limit,control,NULL,NULL,&interrupted);
 }
 PcStatus pg_read(PgSession *s,int slot,void *out,size_t bytes){if(slot<0 || slot>=gd_buffer_count() || bytes>(size_t)(s->plan.counts.e[slot]*s->plan.width.e[slot]))return PC_ARGUMENT;
 #ifdef PSIONIC_DEVICE_TEST

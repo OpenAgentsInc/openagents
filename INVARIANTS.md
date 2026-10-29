@@ -55,6 +55,38 @@ probabilities and near ties, exact boundary checks, native debug/release
 plain/ASan/UBSan and exact book output. See the
 [chapter 59 record](docs/verification/psionic-ch59-2026-10-29.md).
 
+## Psionic Responses serving preserves typed state and exclusive GPU access
+
+`psionic/lib/responses/` owns `psionic-gptoss-responses-v1`: bounded HTTP/JSON
+admission, bearer authentication, flat tool schemas, stateless Harmony mapping,
+response lifecycle and semantic SSE. Original 20b generation uses the existing
+resident CUDA profile, one exclusive request, 2048 positions and greedy output
+limits. C owns sockets/clocks/threads/device effects; no tool executes here.
+The fixture generator is absent from the production import root.
+
+Raw reasoning is transported as a typed reasoning item, separately from final
+text. Current tool-turn analysis survives replay; completed prior analysis is
+removed. Provisional typed API text is streamable, while the CLI's complete-final
+display gate remains unchanged. Argument deltas and incomplete calls grant
+nothing. A complete function handoff must name an admitted tool and satisfy its
+schema. Unsupported capabilities refuse before model effects; malformed model
+output fails rather than fabricating success. This profile is not universal
+Open Responses compliance or constrained GPU decoding.
+
+HTTP bytes, item/node/UTF-8 work and event buffers are bounded. Serialization
+state commits after a complete batch fits; failed sends cancel rather than
+retry partial events. Disconnect/deadline decisions run between tokens and
+committed prefill chunks. Earlier chunks remain committed; the next request
+resets the cache. A device failure makes the worker unavailable. Immutable
+admitted artifact/table lifetime, truthful native extents and exclusive spans
+remain caller duties. The listener is loopback-only and logs no request content.
+
+Check: `psionic/tests/check_responses.sh` covers owned HTTP, typed replay, SSE,
+debug/release and native plain/ASan/UBSan. The existing device harness additionally
+checks prefill cancellation preserves committed state. SDK/schema and actual
+original GPU evidence, numerical scope and operational limits are in the
+[Responses record](docs/verification/psionic-responses-2026-10-29.md).
+
 ## Psionic DeepSeek front-door boundaries survive tokenization and streaming
 
 `psionic/lib/deepseek/front*.coax` owns `deepseek-front-v1`: a bounded

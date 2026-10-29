@@ -1,0 +1,58 @@
+#load "output.coax";
+#authority;
+RsUsage :: struct {input:int;output:int;reasoning:int;}
+RsStream :: struct {sequence:int;opened:int;lengths:[64]int;closed:[64]bool;started:bool;terminal:bool;}
+#test "response and SSE serialize escaped typed items with stable identities" {
+    raw:[16]u8;id:[32]u8;#assert rs_random_id(raw[..],id[..])==32 && cast(string)id[..]=="00000000000000000000000000000000";
+    out:[16384]u8;items:=[2]RsItem.[RsItem.{kind=2,text="secret",status=1},RsItem.{kind=1,phase="final_answer",text="a\n\"b",status=1}];r:=RsRequest.{};
+    n:=rs_response(r,cast(string)id[..],1,2,items[..],RsUsage.{input=3,output=4,reasoning=1},1,"",out[..]);nodes:[256]RsNode;arena:[4096]u8;#assert n>0 && rs_json(cast(string)out[0..<n],nodes[..],arena[..]).ok;
+    state:[1]RsStream;#assert rs_events(state[..],r,cast(string)id[..],1,2,items[..],RsUsage.{},1,"",0,out[0..<16])== -1 && state[0].sequence==0 && !state[0].started;
+    n=rs_events(state[..],r,cast(string)id[..],1,2,items[..],RsUsage.{input=3,output=4},1,"",0,out[..]);#assert n>0 && state[0].terminal && state[0].sequence>10;
+    #assert rs_events(state[..],r,cast(string)id[..],1,2,items[..],RsUsage.{},1,"",0,out[..])== -1;
+    w:=[1]RsWriter.[RsWriter.{data=out[..]}];rs_identity(w[..],"msg_",cast(string)id[..],1);#assert cast(string)out[0..<w[0].at]=="\"msg_00000000000000000000000000000000_1\"";
+    w[0].at=0;rs_item_write(w[..],items[0],cast(string)id[..],0,false);#assert w[0].at>0;
+    w[0].at=0;rs_part(w[..],items[0],true);#assert cast(string)out[0..<w[0].at]=="{\"type\":\"reasoning_text\",\"text\":\"\"}";
+    w[0].at=0;rs_response_write(w[..],r,cast(string)id[..],1,2,items[..],RsUsage.{},1,"");#assert w[0].at>0;
+    w[0].at=0;rs_event_start(w[..],"test",0);rs_event_end(w[..]);#assert w[0].at>0;
+    #assert rs_error(400,"bad","input",out[..])>0 && rs_static(2,true,out[..])>0 && rs_static(4,false,out[..])>0;
+}
+rs_random_id :: (random:[]u8,out:[]u8)->int #export_c {if random.count!=16 || out.count<32 {return -1;}hex:="0123456789abcdef";for i:0..<16 {out[2*i]=hex[cast(int)(random[i]/16)];out[2*i+1]=hex[cast(int)(random[i]%16)];}return 32;}
+rs_identity :: (w:[]RsWriter,prefix:string,id:string,index:int) {rs_put(w,"\"");rs_put(w,prefix);rs_put(w,id);if index>=0 {rs_put(w,"_");rs_int(w,index);}rs_put(w,"\"");}
+rs_part :: (w:[]RsWriter,item:RsItem,empty:bool) {rs_put(w,ifx item.kind==2 then "{\"type\":\"reasoning_text\",\"text\":" else "{\"type\":\"output_text\",\"text\":");rs_quote(w,ifx empty then "" else item.text);if item.kind==1 {rs_put(w,",\"annotations\":[],\"logprobs\":[]");}rs_put(w,"}");}
+rs_item_write :: (w:[]RsWriter,item:RsItem,id:string,index:int,empty:bool) {
+    rs_put(w,"{\"id\":");rs_identity(w,ifx item.kind==1 then "msg_" else ifx item.kind==2 then "rs_" else "fc_",id,index);rs_put(w,",\"type\":");rs_quote(w,ifx item.kind==1 then "message" else ifx item.kind==2 then "reasoning" else "function_call");rs_put(w,",\"status\":");rs_quote(w,ifx empty || item.status==0 then "in_progress" else ifx item.status==1 then "completed" else "incomplete");
+    if item.kind==3 {rs_put(w,",\"name\":");rs_quote(w,item.name);rs_put(w,",\"call_id\":");rs_identity(w,"call_",id,index);rs_put(w,",\"arguments\":");rs_quote(w,ifx empty then "" else item.arguments);}
+    else {if item.kind==1 {rs_put(w,",\"role\":\"assistant\",\"phase\":");rs_quote(w,item.phase);}else {rs_put(w,",\"summary\":[]");}rs_put(w,",\"content\":[");if !empty {rs_part(w,item,false);}rs_put(w,"]");}rs_put(w,"}");
+}
+rs_response_write :: (w:[]RsWriter,r:RsRequest,id:string,created:int,finished:int,items:[]RsItem,usage:RsUsage,status:int,code:string) {
+    rs_put(w,"{\"id\":");rs_identity(w,"resp_",id,-1);rs_put(w,",\"object\":\"response\",\"created_at\":");rs_int(w,created);rs_put(w,",\"completed_at\":");if status==0 {rs_put(w,"null");}else {rs_int(w,finished);}rs_put(w,",\"status\":");rs_quote(w,ifx status==0 then "in_progress" else ifx status==1 then "completed" else ifx status==2 then "incomplete" else "failed");
+    rs_put(w,",\"error\":");if status==3 {rs_put(w,"{\"code\":\"server_error\",\"message\":");rs_quote(w,code);rs_put(w,"}");}else {rs_put(w,"null");}rs_put(w,",\"incomplete_details\":");rs_put(w,ifx status==2 then "{\"reason\":\"max_output_tokens\"}" else "null");
+    rs_put(w,",\"model\":\"gpt-oss-20b\",\"previous_response_id\":null,\"instructions\":");if r.instructions.count>0 {rs_quote(w,r.instructions);}else {rs_put(w,"null");}rs_put(w,",\"output\":[");for i:0..<items.count {if i>0 {rs_put(w,",");}rs_item_write(w,items[i],id,i,false);}rs_put(w,"],\"tools\":");rs_put(w,r.raw_tools);rs_put(w,",\"tool_choice\":");rs_quote(w,ifx r.choice==1 then "none" else "auto");
+    rs_put(w,",\"parallel_tool_calls\":false,\"truncation\":\"disabled\",\"max_output_tokens\":");rs_int(w,r.limit);rs_put(w,",\"max_tool_calls\":null,\"temperature\":0,\"top_p\":1,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"text\":{\"format\":{\"type\":\"text\"}},\"reasoning\":{\"effort\":");efforts:=[3]string.["low","medium","high"];rs_quote(w,efforts[r.effort]);rs_put(w,",\"summary\":null},\"metadata\":");rs_put(w,r.metadata);rs_put(w,",\"store\":false,\"background\":false,\"service_tier\":\"default\",\"safety_identifier\":null,\"prompt_cache_key\":null,\"usage\":");
+    if status==0 {rs_put(w,"null");}else {rs_put(w,"{\"input_tokens\":");rs_int(w,usage.input);rs_put(w,",\"output_tokens\":");rs_int(w,usage.output);rs_put(w,",\"total_tokens\":");rs_int(w,usage.input+usage.output);rs_put(w,",\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":");rs_int(w,usage.reasoning);rs_put(w,"}}");}rs_put(w,"}");
+}
+rs_response :: (r:RsRequest,id:string,created:int,finished:int,items:[]RsItem,usage:RsUsage,status:int,code:string,out:[]u8)->int #export_c {w:=[1]RsWriter.[RsWriter.{data=out}];rs_response_write(w[..],r,id,created,finished,items,usage,status,code);return w[0].at;}
+rs_event_start :: (w:[]RsWriter,event:string,sequence:int) {rs_put(w,"event: ");rs_put(w,event);rs_put(w,"\ndata: {\"type\":");rs_quote(w,event);rs_put(w,",\"sequence_number\":");rs_int(w,sequence);}
+rs_event_end :: (w:[]RsWriter) {rs_put(w,"}\n\n");}
+// State commits only after the complete event batch fits. C writes a batch
+// once; disconnects cancel the request instead of retrying partially sent bytes.
+rs_events :: (state:[]RsStream,r:RsRequest,id:string,created:int,finished:int,items:[]RsItem,usage:RsUsage,status:int,code:string,profile:int,out:[]u8)->int #export_c {
+    if state.count<1 || state[0].terminal || items.count>64 {return -1;}s:=state[0];w:=[1]RsWriter.[RsWriter.{data=out}];
+    if !s.started {for event:[2]string.["response.created","response.in_progress"] {rs_event_start(w[..],event,s.sequence);s.sequence+=1;rs_put(w[..],",\"response\":");rs_response_write(w[..],r,id,created,finished,items[0..<0],RsUsage.{},0,"");rs_event_end(w[..]);}s.started=true;}
+    for i:0..<items.count {item:=items[i];prefix:=ifx item.kind==1 then "msg_" else ifx item.kind==2 then "rs_" else "fc_";
+        if i>=s.opened {rs_event_start(w[..],"response.output_item.added",s.sequence);s.sequence+=1;rs_put(w[..],",\"output_index\":");rs_int(w[..],i);rs_put(w[..],",\"item\":");rs_item_write(w[..],item,id,i,true);rs_event_end(w[..]);s.opened+=1;
+            if item.kind!=3 {rs_event_start(w[..],"response.content_part.added",s.sequence);s.sequence+=1;rs_put(w[..],",\"output_index\":");rs_int(w[..],i);rs_put(w[..],",\"item_id\":");rs_identity(w[..],prefix,id,i);rs_put(w[..],",\"content_index\":0,\"part\":");rs_part(w[..],item,true);rs_event_end(w[..]);}
+        }
+        text:=ifx item.kind==3 then item.arguments else item.text;length:=s.lengths[i];if text.count<length {return -1;}
+        root:=ifx item.kind==1 then "response.output_text" else ifx item.kind==3 then "response.function_call_arguments" else ifx profile==1 then "response.reasoning" else "response.reasoning_text";
+        if text.count>length {eventbuf:[128]u8;ew:=[1]RsWriter.[RsWriter.{data=eventbuf[..]}];rs_put(ew[..],root);rs_put(ew[..],".delta");rs_event_start(w[..],cast(string)eventbuf[0..<ew[0].at],s.sequence);s.sequence+=1;rs_put(w[..],",\"output_index\":");rs_int(w[..],i);rs_put(w[..],",\"item_id\":");rs_identity(w[..],prefix,id,i);if item.kind!=3 {rs_put(w[..],",\"content_index\":0");}rs_put(w[..],",\"delta\":");rs_quote(w[..],text[length..<text.count]);rs_event_end(w[..]);s.lengths[i]=text.count;}
+        if (item.status!=0 || status!=0) && !s.closed[i] {eventbuf:[128]u8;ew:=[1]RsWriter.[RsWriter.{data=eventbuf[..]}];rs_put(ew[..],root);rs_put(ew[..],".done");rs_event_start(w[..],cast(string)eventbuf[0..<ew[0].at],s.sequence);s.sequence+=1;rs_put(w[..],",\"output_index\":");rs_int(w[..],i);rs_put(w[..],",\"item_id\":");rs_identity(w[..],prefix,id,i);if item.kind!=3 {rs_put(w[..],",\"content_index\":0,\"text\":");}else {rs_put(w[..],",\"arguments\":");}rs_quote(w[..],text);rs_event_end(w[..]);
+            if item.kind!=3 {rs_event_start(w[..],"response.content_part.done",s.sequence);s.sequence+=1;rs_put(w[..],",\"output_index\":");rs_int(w[..],i);rs_put(w[..],",\"item_id\":");rs_identity(w[..],prefix,id,i);rs_put(w[..],",\"content_index\":0,\"part\":");rs_part(w[..],item,false);rs_event_end(w[..]);}
+            rs_event_start(w[..],"response.output_item.done",s.sequence);s.sequence+=1;rs_put(w[..],",\"output_index\":");rs_int(w[..],i);rs_put(w[..],",\"item\":");rs_item_write(w[..],item,id,i,false);rs_event_end(w[..]);s.closed[i]=true;
+        }
+    }
+    if status!=0 {rs_event_start(w[..],ifx status==1 then "response.completed" else ifx status==2 then "response.incomplete" else "response.failed",s.sequence);s.sequence+=1;rs_put(w[..],",\"response\":");rs_response_write(w[..],r,id,created,finished,items,usage,status,code);rs_event_end(w[..]);s.terminal=true;}
+    if w[0].at<0 {return -1;}state[0]=s;return w[0].at;
+}
+rs_error :: (status:int,code:string,param:string,out:[]u8)->int #export_c {w:=[1]RsWriter.[RsWriter.{data=out}];rs_put(w[..],"{\"error\":{\"type\":");rs_quote(w[..],ifx status==401 then "authentication_error" else ifx status>=500 then "server_error" else "invalid_request_error");rs_put(w[..],",\"code\":");rs_quote(w[..],code);rs_put(w[..],",\"param\":");if param.count>0 {rs_quote(w[..],param);}else {rs_put(w[..],"null");}rs_put(w[..],",\"message\":");rs_quote(w[..],code);rs_put(w[..],"}}");return w[0].at;}
+rs_static :: (route:int,healthy:bool,out:[]u8)->int #export_c {w:=[1]RsWriter.[RsWriter.{data=out}];rs_put(w[..],ifx route==2 then "{\"object\":\"list\",\"data\":[{\"id\":\"gpt-oss-20b\",\"object\":\"model\",\"created\":0,\"owned_by\":\"psionic\"}]}" else ifx healthy then "{\"status\":\"ok\"}" else "{\"status\":\"unavailable\"}");return w[0].at;}

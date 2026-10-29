@@ -39,6 +39,12 @@ with `psionic/run-gptoss.sh`; [focused checks](tests/check_gptoss_device.sh)
 use owned tiny weights by default. Device throughput has separate measured
 gates in the plan.
 
+[Chapter 48b](book/ch048b-serve-responses.md) adds a Responses-native loopback
+API over the resident original 20b worker: typed reasoning/function replay,
+incremental SSE and SDK checks. [Serve it](docs/serving/responses.md) with
+`psionic/serve-gptoss.sh`; run `psionic/tests/check_responses.sh` for focused
+owned HTTP checks.
+
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch001-learning-a-number.md), then
 [Chapter 2: Shapes and storage](book/ch002-shapes-and-storage.md) and
@@ -160,7 +166,8 @@ Chapter 9 provides CPU slot readout given full-vocabulary logits and explicit
 temperature; it does not load calibration artifacts or serialize responses.
 Chapter 10 authenticates and executes a typed Elephant text decision on the CPU;
 see [execution progress](docs/model-execution-progress.md). Mammoth
-end-to-end qualification, autodiff, GPU execution and serving remain planned.
+end-to-end qualification and autodiff remain planned. Original gpt-oss 20b
+GPU execution and a bounded Responses edge are qualified separately above.
 
 Chapter [56: Execute a DeepSeek R1 distill](book/ch056-execute-a-deepseek-r1-distill.md)
 adds a bounded original BF16 Qwen2 CPU reference with its own pinned tokenizer,

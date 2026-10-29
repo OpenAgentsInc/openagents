@@ -1,0 +1,93 @@
+#load "schema.coax";
+#load "../harmony.coax";
+#authority;
+// Admission publishes borrowed strings into caller-owned request storage. On a
+// refusal no model effect is allowed; scratch/items may have changed.
+#test "request defaults, exact greedy policy and replay matching" {
+    n:[1024]RsNode;a:[65536]u8;b:[65536]u8;i:[48]RsItem;t:[8]RsTool;
+    r:=rs_request("{\"model\":\"gpt-oss-20b\",\"input\":\"Hi\"}",n[..],a[..],b[..],i[..],t[..]);#assert r.status==200 && r.items==1 && r.limit==256 && i[0].text=="Hi";
+    #assert rs_request("{\"model\":\"gpt-oss-20b\",\"input\":\"Hi\",\"temperature\":1e-999}",n[..],a[..],b[..],i[..],t[..]).status==400;
+    #assert rs_request("{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"reasoning\":{\"effort\":3}}",n[..],a[..],b[..],i[..],t[..]).status==400;
+    #assert rs_request("{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"top_p\":1.0}",n[..],a[..],b[..],i[..],t[..]).status==200;
+    #assert rs_request("{\"model\":\"other\",\"input\":\"Hi\"}",n[..],a[..],b[..],i[..],t[..]).status==404;
+    #assert rs_request("{\"model\":\"gpt-oss-20b\",\"input\":[{\"type\":\"function_call_output\",\"call_id\":\"x\",\"output\":\"oops\"}]}",n[..],a[..],b[..],i[..],t[..]).status==400;
+    #assert !rs_id("") && rs_id("call_1") && !rs_id("a b");
+    #assert rs_json("[\"a\"]",n[..],a[..]).ok;#assert rs_content(n[..],0,0,b[..])== -1;
+    #assert rs_json("[{\"type\":\"input_text\",\"text\":\"ab\"},{\"type\":\"input_text\",\"text\":\"cd\"}]",n[..],a[..]).ok;#assert rs_content(n[..],0,0,b[..])==4 && cast(string)b[0..<4]=="abcd";
+    x:=[4]RsItem.[RsItem.{kind=2,text="old"},RsItem.{kind=1,role="assistant",phase="final_answer",text="done"},RsItem.{kind=2,text="keep"},RsItem.{kind=4}];#assert rs_analysis_start(x[..])==2;
+    x[3].kind=1;#assert rs_analysis_start(x[..])==4;
+    messages:[64]HmMessage;work:[65536]u8;st:[1024]u8;
+    r=rs_request("{\"model\":\"gpt-oss-20b\",\"input\":\"Hi\"}",n[..],a[..],b[..],i[..],t[..]);
+    #assert rs_messages(r,i[..],t[..],n[..],messages[..],work[..],st[..])==2 && messages[1].role==HmRole.user;
+}
+rs_id :: (s:string)->bool {if s.count<1 || s.count>128 {return false;}for c:s {if !((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='_'||c=='-') {return false;}}return true;}
+// kind 0=input text, 1=assistant output, 2=raw reasoning.
+rs_content :: (nodes:[]RsNode,index:int,kind:int,out:[]u8)->int {
+    if rs_kind(nodes,index,JSON_STRING) {s:=nodes[index].text;if s.count>out.count || s.count>16384 {return -1;}for k:0..<s.count {out[k]=s[k];}return s.count;}
+    if !rs_kind(nodes,index,JSON_ARRAY) {return -1;}w:=[1]RsWriter.[RsWriter.{data=out}];i:=index+1;
+    while i<nodes[index].next {keys:=[5]string.["type","text","annotations","logprobs","parsed"];if !rs_keys(nodes,i,keys[..]) {return -1;}if !rs_null(nodes,rs_get(nodes,i,"parsed")) {return -1;}
+        ty:=rs_string(nodes,rs_get(nodes,i,"type"));
+        if (kind==0 && ty!="input_text" && ty!="text") || (kind==1 && ty!="output_text" && ty!="text") || (kind==2 && ty!="reasoning_text") {return -1;}
+        text:=rs_get(nodes,i,"text");if !rs_kind(nodes,text,JSON_STRING) {return -1;}rs_put(w[..],nodes[text].text);i=nodes[i].next;
+    }if w[0].at>16384 {return -1;}return w[0].at;
+}
+rs_request :: (text:string,nodes:[]RsNode,arena:[]u8,content:[]u8,items:[]RsItem,tools:[]RsTool)->RsRequest #export_c {
+    parsed:=rs_json(text,nodes,arena);if !parsed.ok {return rs_bad("invalid_json","");}
+    keys:=[24]string.["model","input","instructions","max_output_tokens","stream","reasoning","tools","tool_choice","parallel_tool_calls","store","previous_response_id","background","temperature","top_p","presence_penalty","frequency_penalty","top_logprobs","text","metadata","include","stream_options","truncation","service_tier","max_tool_calls"];
+    if !rs_keys(nodes,0,keys[..]) {return rs_bad("unsupported_parameter","");}r:=RsRequest.{nodes=parsed.count};
+    model:=rs_string(nodes,rs_get(nodes,0,"model"));if model!=RS_MODEL && model!="openai/gpt-oss-20b" {return RsRequest.{status=404,code="model_not_found",param="model"};}
+    flags:=[3]string.["store","background","parallel_tool_calls"];for key:flags {if !rs_flag(nodes,rs_get(nodes,0,key),false) {return rs_bad("unsupported_parameter",key);}}
+    if !rs_null(nodes,rs_get(nodes,0,"previous_response_id")) {return rs_bad("stateless_replay_required","previous_response_id");}
+    stream:=rs_get(nodes,0,"stream");if !rs_null(nodes,stream) {if nodes[stream].kind!=JSON_TRUE && nodes[stream].kind!=JSON_FALSE {return rs_bad("invalid_parameter","stream");}r.stream=nodes[stream].kind==JSON_TRUE;}
+    zeroes:=[4]string.["temperature","presence_penalty","frequency_penalty","top_logprobs"];for key:zeroes {v:=rs_get(nodes,0,key);if !rs_null(nodes,v) && (nodes[v].kind!=JSON_NUMBER || !rs_zero(nodes[v].text)) {return rs_bad("unsupported_parameter",key);}}
+    v:=rs_get(nodes,0,"top_p");if !rs_null(nodes,v) && (nodes[v].kind!=JSON_NUMBER || !rs_one(nodes[v].text)) {return rs_bad("unsupported_parameter","top_p");}
+    v=rs_get(nodes,0,"max_output_tokens");if !rs_null(nodes,v) {num:=json_int(nodes[v].text);if nodes[v].kind!=JSON_NUMBER || !num.ok || num.value<1 || num.value>512 {return rs_bad("invalid_parameter","max_output_tokens");}r.limit=num.value;}
+    v=rs_get(nodes,0,"instructions");if !rs_null(nodes,v) {if nodes[v].kind!=JSON_STRING || nodes[v].text.count>16384 {return rs_bad("invalid_parameter","instructions");}r.instructions=nodes[v].text;}
+    v=rs_get(nodes,0,"reasoning");if !rs_null(nodes,v) {rk:=[2]string.["effort","summary"];if !rs_keys(nodes,v,rk[..]) || !rs_null(nodes,rs_get(nodes,v,"summary")) {return rs_bad("unsupported_parameter","reasoning");}ep:=rs_get(nodes,v,"effort");if !rs_null(nodes,ep) && (nodes[ep].kind!=JSON_STRING || nodes[ep].text.count==0) {return rs_bad("unsupported_parameter","reasoning.effort");}e:=rs_string(nodes,ep);if e=="medium" {r.effort=1;}else if e=="high" {r.effort=2;}else if e!="low" && e!="" {return rs_bad("unsupported_parameter","reasoning.effort");}}
+    v=rs_get(nodes,0,"tool_choice");if !rs_null(nodes,v) {choice:=rs_string(nodes,v);if choice=="none" {r.choice=1;}else if choice!="auto" {return rs_bad("unsupported_parameter","tool_choice");}}
+    v=rs_get(nodes,0,"tools");if !rs_null(nodes,v) {if nodes[v].kind!=JSON_ARRAY {return rs_bad("invalid_parameter","tools");}r.raw_tools=rs_raw(text,nodes,v);i:=v+1;
+        while i<nodes[v].next {tk:=[5]string.["type","name","description","parameters","strict"];name:=rs_string(nodes,rs_get(nodes,i,"name"));schema:=rs_get(nodes,i,"parameters");desc:=rs_get(nodes,i,"description");
+            if r.tools>=8 || r.tools>=tools.count || !rs_keys(nodes,i,tk[..]) || rs_string(nodes,rs_get(nodes,i,"type"))!="function" || !rs_name(name) || !rs_schema(nodes,schema) || !rs_flag(nodes,rs_get(nodes,i,"strict"),false) {return rs_bad("unsupported_tool_schema","tools");}
+            if !rs_null(nodes,desc) && (nodes[desc].kind!=JSON_STRING || nodes[desc].text.count>1024) {return rs_bad("invalid_parameter","tools.description");}
+            for k:0..<r.tools {if tools[k].name==name {return rs_bad("duplicate_tool","tools");}}tools[r.tools]=RsTool.{name=name,description=rs_string(nodes,desc),schema=schema};r.tools+=1;i=nodes[i].next;
+        }
+    }
+    v=rs_get(nodes,0,"metadata");if !rs_null(nodes,v) {if nodes[v].kind!=JSON_OBJECT {return rs_bad("invalid_parameter","metadata");}i:=v+1;n:=0;while i<nodes[v].next {n+=1;if n>16 || nodes[i].key.count>64 || nodes[i].kind!=JSON_STRING || nodes[i].text.count>512 {return rs_bad("invalid_parameter","metadata");}i=nodes[i].next;}r.metadata=rs_raw(text,nodes,v);}
+    v=rs_get(nodes,0,"include");if !rs_null(nodes,v) && (!rs_kind(nodes,v,JSON_ARRAY) || nodes[v].next!=v+1) {return rs_bad("unsupported_parameter","include");}
+    v=rs_get(nodes,0,"stream_options");if !rs_null(nodes,v) {sk:=[1]string.["include_obfuscation"];if !rs_keys(nodes,v,sk[..]) || !rs_flag(nodes,rs_get(nodes,v,"include_obfuscation"),false) {return rs_bad("unsupported_parameter","stream_options");}}
+    v=rs_get(nodes,0,"text");if !rs_null(nodes,v) {tk:=[1]string.["format"];f:=rs_get(nodes,v,"format");fk:=[1]string.["type"];if !rs_keys(nodes,v,tk[..]) || !rs_keys(nodes,f,fk[..]) || rs_string(nodes,rs_get(nodes,f,"type"))!="text" {return rs_bad("unsupported_parameter","text");}}
+    v=rs_get(nodes,0,"truncation");if !rs_null(nodes,v) && rs_string(nodes,v)!="disabled" {return rs_bad("unsupported_parameter","truncation");}
+    v=rs_get(nodes,0,"service_tier");if !rs_null(nodes,v) && rs_string(nodes,v)!="default" && rs_string(nodes,v)!="auto" {return rs_bad("unsupported_parameter","service_tier");}
+    if !rs_null(nodes,rs_get(nodes,0,"max_tool_calls")) {return rs_bad("unsupported_parameter","max_tool_calls");}
+    v=rs_get(nodes,0,"input");if rs_kind(nodes,v,JSON_STRING) {if items.count<1 || nodes[v].text.count>16384 {return rs_bad("input_too_large","input");}items[0]=RsItem.{kind=1,role="user",text=nodes[v].text};r.items=1;return r;}
+    if !rs_kind(nodes,v,JSON_ARRAY) {return rs_bad("invalid_parameter","input");}i:=v+1;at:=0;pending:= -1;
+    while i<nodes[v].next {if r.items>=48 || r.items>=items.count {return rs_bad("input_too_large","input");}ity:=rs_get(nodes,i,"type");if !rs_null(nodes,ity) && nodes[ity].kind!=JSON_STRING {return rs_bad("unsupported_input","input");}ty:=rs_string(nodes,ity);item:=RsItem.{id=rs_string(nodes,rs_get(nodes,i,"id"))};ck:=[15]string.["type","id","role","phase","content","status","summary","name","call_id","arguments","encrypted_content","namespace","async_","caller","parsed_arguments"];
+        if ty=="function_call_output" {okeys:=[4]string.["type","id","call_id","output"];if !rs_keys(nodes,i,okeys[..]) || pending<0 {return rs_bad("unmatched_tool_output","input");}item.kind=4;item.call_id=rs_string(nodes,rs_get(nodes,i,"call_id"));item.name=items[pending].name;output:=rs_get(nodes,i,"output");if item.call_id!=items[pending].call_id || !rs_kind(nodes,output,JSON_STRING) || nodes[output].text.count>16384 {return rs_bad("unmatched_tool_output","input");}item.text=nodes[output].text;pending= -1;}
+        else {if !rs_null(nodes,rs_get(nodes,i,"encrypted_content")) || !rs_null(nodes,rs_get(nodes,i,"namespace")) || !rs_null(nodes,rs_get(nodes,i,"async_")) || !rs_null(nodes,rs_get(nodes,i,"caller")) || !rs_null(nodes,rs_get(nodes,i,"parsed_arguments")) {return rs_bad("unsupported_input","input");}st:=rs_get(nodes,i,"status");if !rs_null(nodes,st) && rs_string(nodes,st)!="completed" {return rs_bad("incomplete_input_item","input");}if !rs_keys(nodes,i,ck[..]) {return rs_bad("unsupported_input","input");}
+            if ty=="message" || ty=="" {if pending>=0 {return rs_bad("unmatched_tool_call","input");}item.kind=1;item.role=rs_string(nodes,rs_get(nodes,i,"role"));if item.role!="user" && item.role!="assistant" && item.role!="system" && item.role!="developer" {return rs_bad("unsupported_role","input");}phase:=rs_get(nodes,i,"phase");if !rs_null(nodes,phase) && nodes[phase].kind!=JSON_STRING {return rs_bad("unsupported_phase","input");}item.phase=rs_string(nodes,phase);if item.role=="assistant" {if item.phase=="" {item.phase="final_answer";}if item.phase!="final_answer" && item.phase!="commentary" {return rs_bad("unsupported_phase","input");}}else if item.phase!="" {return rs_bad("unsupported_phase","input");}
+                size:=rs_content(nodes,rs_get(nodes,i,"content"),ifx item.role=="assistant" then 1 else 0,content[at..<content.count]);if size<0 {return rs_bad("unsupported_content","input");}item.text=cast(string)content[at..<at+size];at+=size;
+            }else if ty=="reasoning" {item.kind=2;summary:=rs_get(nodes,i,"summary");if !rs_null(nodes,summary) && (!rs_kind(nodes,summary,JSON_ARRAY) || nodes[summary].next!=summary+1) {return rs_bad("unsupported_summary","input");}size:=rs_content(nodes,rs_get(nodes,i,"content"),2,content[at..<content.count]);if size<0 {return rs_bad("raw_reasoning_required","input");}item.text=cast(string)content[at..<at+size];at+=size;
+            }else if ty=="function_call" {if pending>=0 {return rs_bad("parallel_tools_unsupported","input");}item.kind=3;item.name=rs_string(nodes,rs_get(nodes,i,"name"));item.call_id=rs_string(nodes,rs_get(nodes,i,"call_id"));item.arguments=rs_string(nodes,rs_get(nodes,i,"arguments"));an:[128]RsNode;aa:[8192]u8;if !rs_name(item.name) || !rs_id(item.call_id) || item.arguments.count>8192 || !rs_json(item.arguments,an[..],aa[..]).ok || an[0].kind!=JSON_OBJECT {return rs_bad("invalid_tool_call","input");}for k:0..<r.items {if items[k].kind==3 && items[k].call_id==item.call_id {return rs_bad("duplicate_call_id","input");}}pending=r.items;
+            }else {return rs_bad("unsupported_input","input");}
+        }items[r.items]=item;r.items+=1;i=nodes[i].next;
+    }if pending>=0 || r.items==0 {return rs_bad("unmatched_tool_call","input");}return r;
+}
+rs_analysis_start :: (items:[]RsItem)->int {if items.count<1 || items[items.count-1].kind!=4 {return items.count;}start:=0;for i:0..<items.count {if items[i].kind==1 && items[i].role=="assistant" && items[i].phase=="final_answer" {start=i+1;}}return start;}
+rs_messages :: (r:RsRequest,items:[]RsItem,tools:[]RsTool,nodes:[]RsNode,out:[]HmMessage,work:[]u8,system_work:[]u8)->int #export_c {
+    if r.status!=200 || r.items>items.count || r.tools>tools.count || out.count<r.items+2 {return -1;}sys:=hm_system_checked(r.effort,work,system_work,false);if sys.status!=PtStatus.ok {return -1;}out[0]=HmMessage.{role=HmRole.system,body=cast(string)work[0..<sys.written]};n:=1;at:=sys.written;
+    begin:=at;w:=[1]RsWriter.[RsWriter.{data=work,at=at}];rs_put(w[..],r.instructions);if r.tools>0 && r.choice==0 {rs_put(w[..],"\n\n");at=w[0].at;if at<0 {return -1;}size:=rs_tool_prompt(tools[0..<r.tools],nodes,work[at..<work.count]);if size<0 {return -1;}w[0].at+=size;}at=w[0].at;if at<0 {return -1;}if at>begin {out[n]=HmMessage.{role=HmRole.developer,body=cast(string)work[begin..<at]};n+=1;}
+    first:=rs_analysis_start(items[0..<r.items]);for i:0..<r.items {item:=items[i];m:=HmMessage.{body=item.text};if item.kind==2 {if i<first {continue;}m.role=HmRole.assistant;m.channel=HmChannel.analysis;}
+        else if item.kind==3 || item.kind==4 {begin=at;w[0].at=at;rs_put(w[..],"functions.");rs_put(w[..],item.name);at=w[0].at;if at<0 {return -1;}name:=cast(string)work[begin..<at];if item.kind==3 {m.role=HmRole.assistant;m.channel=HmChannel.commentary;m.recipient=name;m.ending=HmEnd.call;m.body=item.arguments;}else {m.role=HmRole.tool;m.channel=HmChannel.commentary;m.name=name;m.recipient="assistant";}}
+        else {if item.role=="system" {m.role=HmRole.system;}else if item.role=="developer" {m.role=HmRole.developer;}else if item.role=="user" {m.role=HmRole.user;}else {m.role=HmRole.assistant;m.channel=ifx item.phase=="commentary" then HmChannel.commentary else HmChannel.final;m.ending=ifx item.phase=="commentary" then HmEnd.message else HmEnd.turn;}}
+        out[n]=m;n+=1;
+    }return n;
+}
+#test "stateless replay drops prior completed analysis and retains current tool analysis" {
+    n:[1024]RsNode;a:[65536]u8;b:[65536]u8;i:[48]RsItem;t:[8]RsTool;m:[64]HmMessage;w:[65536]u8;s:[1024]u8;
+    text:="{\"model\":\"gpt-oss-20b\",\"input\":[{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"old private\"}],\"summary\":[]},{\"role\":\"assistant\",\"content\":\"old final\"},{\"role\":\"user\",\"content\":\"Weather?\"},{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"current private\"}],\"summary\":[]},{\"type\":\"function_call\",\"name\":\"weather\",\"call_id\":\"call_x\",\"arguments\":\"{}\"},{\"type\":\"function_call_output\",\"call_id\":\"call_x\",\"output\":\"sunny\"}]}";
+    r:=rs_request(text,n[..],a[..],b[..],i[..],t[..]);#assert r.status==200 && r.items==6;
+    count:=rs_messages(r,i[..],t[..],n[..],m[..],w[..],s[..]);#assert count==6 && m[1].body=="old final" && m[3].body=="current private" && m[3].channel==HmChannel.analysis;
+    #assert m[4].recipient=="functions.weather" && m[4].ending==HmEnd.call && m[5].name=="functions.weather" && m[5].recipient=="assistant";
+    bad:=[8]string.["{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"model\":\"gpt-oss-20b\"}","{\"model\":\"gpt-oss-20b\",\"input\":[{\"role\":\"tool\",\"content\":\"x\"}]}","{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"max_output_tokens\":513}","{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"stream\":1}","{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"tools\":[{\"type\":\"web_search\"}]}","{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"reasoning\":{\"effort\":\"max\"}}","{\"model\":\"gpt-oss-20b\",\"input\":\"x\",\"unknown\":null}","{\"model\":\"gpt-oss-20b\",\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_image\"}]}]}"];
+    for x:bad {#assert rs_request(x,n[..],a[..],b[..],i[..],t[..]).status==400;}
+}

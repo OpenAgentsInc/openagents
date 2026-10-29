@@ -33,6 +33,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == deepseek/router || $chapter == deepseek/router-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_router.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == responses || $chapter == responses/* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_responses.sh
+    fi
     if [[ $chapter == deepseek/front || $chapter == deepseek/front-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
     fi
@@ -253,6 +256,7 @@ phase "native debug/release, plain and ASan/UBSan"
 if [[ $gptoss == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_gptoss.sh
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_gptoss_device.sh
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_responses.sh
     phase "gpt-oss chapters"
 fi
 

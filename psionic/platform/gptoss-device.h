@@ -10,6 +10,9 @@ PcStatus pg_reset(PgSession *session);
 PcStatus pg_step(PgSession *session,int64_t token,int64_t position,int choose,int64_t limit,int wait,int64_t control[8]);
 /* IDs validated before upload. Each bounded chunk commits atomically;
    control carries logical failures, separate from a platform failure. */
+typedef int (*PgPoll)(void *context);
+/* Poll observes a Coax cancellation/deadline decision between committed chunks. */
+PcStatus pg_prefill_poll(PgSession *session,const int64_t *tokens,int64_t count,int64_t position,int choose,int64_t limit,int64_t control[8],PgPoll poll,void *context,int *interrupted);
 PcStatus pg_prefill(PgSession *session,const int64_t *tokens,int64_t count,int64_t position,int choose,int64_t limit,int64_t control[8]);
 PcStatus pg_read(PgSession *session,int slot,void *out,size_t bytes);
 
