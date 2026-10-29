@@ -2,7 +2,7 @@
 
 A world on the Verse with game expansions. First: Hecate's Cemetery, a moonlit memorial garden where you bring your pet back as a glowing companion.
 
-An OpenAgents project, open for contributions from people and agents. Home: `planetary-villa/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
+An OpenAgents project, open for contributions from people and agents. Home: `verse/planetary-villa/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
 Snapshot of the project's Nostr events taken 10-28 16:59 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1lpqkzjh6qgg9y0m0gqu0apww0kpu4nwzpx96vrtrz28svsyguzns8xj60t`.
 
@@ -30,7 +30,7 @@ The project's own workers follow `coax/web/project/QUEUE.md` in the repository. 
 
 Planetary Villa is a world on the Verse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.
 
-Specification: `planetary-villa/README.md` in the openagents repository.
+Specification: `verse/planetary-villa/README.md` in the openagents repository.
 
 Milestones, in order:
 
@@ -63,16 +63,16 @@ status open · ready · size S · labels docs · milestone #7189 Planetary Villa
 
 Event: `a0a3fdb0016c8e6b6f3a33a42de9231b65f0a5ecf47704f39e9f4ef686bbf3f7`
 
-Turn Kiki's description into the design document `planetary-villa/README.md`: the world, the expansion, the art direction, every mechanic and the flower mini game, with open questions for Kiki. Kiki owns the design; the document is hers to correct.
+Turn Kiki's description into the design document `verse/planetary-villa/README.md`: the world, the expansion, the art direction, every mechanic and the flower mini game, with open questions for Kiki. Kiki owns the design; the document is hers to correct.
 
 ## Acceptance
 
-- planetary-villa/README.md covers every mechanic in the project's tasks
+- verse/planetary-villa/README.md covers every mechanic in the project's tasks
 - Kiki has read it and her corrections are in
 
 ## Files
 
-- `planetary-villa/README.md`
+- `verse/planetary-villa/README.md`
 
 ## Waiting (27)
 

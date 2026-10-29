@@ -5,7 +5,7 @@
     "slug": "hecates-cemetery",
     "title": "Hecate's Cemetery: the first Planetary Villa expansion",
     "body": "Planetary Villa is a world on the Verse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.",
-    "spec": "planetary-villa/README.md",
+    "spec": "verse/planetary-villa/README.md",
     "labels": [
       "planetary-villa",
       "verse"
@@ -76,12 +76,12 @@
       "labels": [
         "docs"
       ],
-      "body": "Turn Kiki's description into the design document `planetary-villa/README.md`: the world, the expansion, the art direction, every mechanic and the flower mini game, with open questions for Kiki. Kiki owns the design; the document is hers to correct.",
+      "body": "Turn Kiki's description into the design document `verse/planetary-villa/README.md`: the world, the expansion, the art direction, every mechanic and the flower mini game, with open questions for Kiki. Kiki owns the design; the document is hers to correct.",
       "files": [
-        "planetary-villa/README.md"
+        "verse/planetary-villa/README.md"
       ],
       "acceptance": [
-        "planetary-villa/README.md covers every mechanic in the project's tasks",
+        "verse/planetary-villa/README.md covers every mechanic in the project's tasks",
         "Kiki has read it and her corrections are in"
       ],
       "blocked_by": [],
