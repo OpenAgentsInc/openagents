@@ -1,5 +1,6 @@
 {
   "landing": ["session-start", "page-view"],
   "galaxy": ["page-view"],
-  "haunt": ["page-view", "world-enter", "load-engine", "area", "objective", "quest", "click", "world-leave"]
+  "haunt": ["page-view", "world-enter", "load-engine", "area", "objective", "quest", "click", "world-leave"],
+  "ice-cream-man": ["page-view", "world-enter", "load-engine", "world-leave"]
 }

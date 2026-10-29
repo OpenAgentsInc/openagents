@@ -482,6 +482,9 @@ icecream_pointer :: (s: [] IceScene, x: f32, y: f32, phase: int, kind: int, id: 
 icecream_trace_ready :: (s: [] IceScene) -> bool #export_c { return ice_trace_ready(s[0].plays[..]); }
 icecream_trace_sent :: (s: [] IceScene) #export_c { ice_trace_sent(s[0].plays[..]); }
 icecream_trace_len :: (s: [] IceScene) -> int #export_c { return s[0].plays[0].trace_n; }
+icecream_save_ready :: (s: [] IceScene) -> bool #export_c { return ice_play_save_ready(s[0].plays[..]); }
+icecream_save :: (s: [] IceScene) -> int #export_c { return ice_play_save(s[0].plays[..]); }
+icecream_load :: (s: [] IceScene, text: string) #export_c { ice_play_load(s[0].plays[..], s[0].games[..], text); }
 icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].plays[..], s[0].games[..], out); }
 
 // ---- checks

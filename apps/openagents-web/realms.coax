@@ -9,5 +9,5 @@ PLANET_KIND :: [PLANETS] int.[KIND_LOCKED, KIND_OPEN, KIND_LOCKED, KIND_LOCKED, 
 PLANET_R :: [PLANETS] f32.[0, 0.15, 0.42, 0.46, 0.34, 0.37, 0.3, 0.21, 0.3, 0.26, 0.22];
 PLANET_A :: [PLANETS] f32.[0, 0, 2.4, 0.5, 4.2, 3.25, 5.4, 4.65, 1.15, 1.9, 3.7];
 PLANET_SIZE :: [PLANETS] f32.[0.075, 0.028, 0.05, 0.045, 0.032, 0.043, 0.036, 0.024, 0.03, 0.026, 0.026];
-PLANET_LISTED :: [PLANETS] bool.[true, true, true, true, true, true, true, false, false, false, false];
+PLANET_LISTED :: [PLANETS] bool.[true, true, true, true, true, true, true, false, false, false, true];
 PLANET_PATH :: [PLANETS] string.["", "/realm/haunted-house", "", "", "", "", "", "/realm/everglade", "/realm/dead-gears", "/realm/fixture", "/realm/ice-cream-man"];

@@ -11,6 +11,7 @@
 
 #load "font.coax";
 #load "ui.coax";
+#load "analytics.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -555,7 +556,7 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     buttons[button_n] = CardButton.{label = "Galaxy", act = A_GALAXY * 256}; button_n += 1;
   }
   // The sheet: its width, the lines wrapped to it, the buttons in rows.
-  cw := lo(520 * k, w - 32 * k);
+  cw := lo(600 * k, w - 32 * k);
   pad := 20 * k;
   tcap := h_fit_cap(title, 17 * k, cw - 2 * pad);
   lcap := ifx w < 640 * k then 8 * k else 9 * k;

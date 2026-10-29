@@ -83,14 +83,15 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realm/fixture/assets/fixture.pack"]
       } },
-    { "id": "icecream", "name": "ICE CREAM MAN", "kind": "open", "listed": false, "orbit": { "r": 0.22, "a": 3.7, "size": 0.026 },
+    { "id": "icecream", "name": "ICE CREAM MAN", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 3.7, "size": 0.026 },
       "realm": {
         "slug": "ice-cream-man",
         "title": "Ice Cream Man",
         "description": "Ice Cream Man, a Verse realm in the browser: find three keys and escape a seeded house before the Ice Cream Man scoops you, played on the same Coax code as the game's rules.",
-        "alt": "Enter the Verse",
+        "alt": "The kid in the Ice Cream Man's house: find three keys and get out before he scoops you",
         "module": "icecream",
         "slot": "ice-cream-man",
+        "card": "/realm/ice-cream-man/og.jpg",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realm/ice-cream-man/assets/IceCream.indices"]
       } }
