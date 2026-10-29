@@ -157,3 +157,10 @@ test("HOST projections bind decrypted source without delaying other projections"
   expect(reaches("nostr-proto-adapters", "nip44-v2")).toBe(false)
   expect(tasks.get("nostr-host-proto-adapter").body).toContain("plaintext supplied alongside an envelope is not evidence")
 })
+
+test("source-preserving adapters wait for checked generated validators", () => {
+  expect(reaches("nostr-proto-adapters", "proto-generated-checks")).toBe(true)
+  const task = tasks.get("proto-generated-checks")
+  expect(task.body).toContain("Do not bypass generated validators")
+  expect(task.acceptance.join(" ")).toContain("zero survivors")
+})

@@ -2245,7 +2245,8 @@
       ],
       "blocked_by": [
         "nostr-event",
-        "nostr-support-profiles"
+        "nostr-support-profiles",
+        "proto-generated-checks"
       ],
       "blocks": [
         "nostr-host-proto-adapter",
@@ -3566,6 +3567,22 @@
       ],
       "blocked_by": ["crypto-secure-zero"],
       "blocks": ["crypto-ecdh-xonly"]
+    },
+    {
+      "slug": "proto-generated-checks",
+      "parent": "m-projections",
+      "title": "Check generated protobuf validators in real Coax consumers",
+      "size": "L",
+      "labels": ["nostr", "coax", "protocol"],
+      "body": "The event and FI adapters exercise real descriptor-generated protobuf validators, but full reachable mutation exposes untested generated per-message branches. Some existing validator guards couple foreign-view metadata to large field-count limits that cannot be independently exercised by current bounded Coax checks. Make the importer emit validators and meaningful checks whose actual consumer closures meet the existing authority gate; preserve exact protobuf compatibility, trusted-host premises, public limits and the default check budget. Do not bypass generated validators, waive mutants, or substitute hand-written codecs.",
+      "files": ["coax/lib/proto/", "coax/lib/compiler/", "coax/bootstrap/", "coax/tests/proto/", "coax/tests/nostr/", "proto/", "apps/openagents-ios/"],
+      "acceptance": [
+        "The actual generated event and FI validator closures execute positive, malformed, canonical/noncanonical, presence, unknown-field, limit and budget cases in Coax checks and full mutation with zero survivors and no equivalence waivers, without raising existing compiler or checker limits",
+        "Protoc interoperability, checked/release native and Wasm, malformed foreign-view and alias cases, compiler bootstrap and affected iOS paths pass on exact recorded source and tool identities; Python remains unnecessary to build the compiler",
+        "Independent review establishes source/generated correspondence, nested field/depth/byte/count limits and fail-closed behavior; generated DTOs remain unverified and grant no authority"
+      ],
+      "blocked_by": [],
+      "blocks": ["nostr-proto-adapters"]
     }
   ]
 }
