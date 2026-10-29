@@ -1,0 +1,42 @@
+// Experimental bounded one-shot HMAC with caller-owned keyed state.
+// The host must erase the complete workspace; scalar/compiler copies remain.
+#load "hmac.coax";
+#load "sha256_workspace.coax";
+#authority;
+#test "owned HMAC RFC 4231 case one" {
+  key:[20]u8;for i:0..<20 {key[i]=0x0b;}text:="Hi There";input:[8]u8;for i:0..<8 {input[i]=text[i];}
+  expected:=[32]u8.[0xb0,0x34,0x4c,0x61,0xd8,0xdb,0x38,0x53,0x5c,0xa8,0xaf,0xce,0xaf,0x0b,0xf1,0x2b,0x88,0x1d,0xc2,0x00,0xc9,0x83,0x3d,0xa7,0x26,0xe9,0x37,0x6c,0x2e,0x32,0xcf,0xf7];
+  work:[1]HmacOwned;out:[33]u8;out[32]=165;
+  #assert hmac_owned(key[..],input[..],work[..],out[..],false);for i:0..<32 {#assert out[i]==expected[i];}#assert out[32]==165;
+}
+#test "owned HMAC matches long, exact-block and short keys" {
+  key:[129]u8;msg:[129]u8;reference:[32]u8;out:[32]u8;work:[1]HmacOwned;
+  for i:0..<129 {key[i]=cast(u8)i;msg[i]=cast(u8)(128-i);}
+  for k:[6]int.[0,1,63,64,65,129] {for n:[5]int.[0,1,55,64,129] {
+    #assert hmac_sha256_checked(key[0..<k],msg[0..<n],reference[..],false)==SHA_OK;
+    #assert hmac_owned(key[0..<k],msg[0..<n],work[..],out[..],false);
+    for i:0..<32 {#assert out[i]==reference[i];}
+  }}
+}
+#test "owned HMAC rejects admission before effects" {
+  key:[1]u8;input:[1]u8;out:[32]u8;work:[1]HmacOwned;work[0].digest[0]=42;
+  for i:0..<32 {out[i]=165;}
+  #assert !hmac_owned(key[..],input[..],work[0..<0],out[..],false);
+  #assert !hmac_owned(key[..],input[..],work[..],out[0..<31],false);
+  #assert !hmac_owned(key[..],input[..],work[..],out[..],true);
+  #assert work[0].digest[0]==42;for v:out {#assert v==165;}
+}
+HmacOwned :: struct {sha:[1]ShaOwned;key:[64]u8;pad:[64]u8;digest:[32]u8;}
+// All views must be live, stable and disjoint; overlap is a truthful host fact.
+hmac_owned :: (key:[]u8,input:[]u8,work:[]HmacOwned,out:[]u8,overlap:bool)->bool #export_c {
+  if work.count!=1 || hmac_sha256_request(key.count,input.count,out.count,overlap)!=SHA_OK {return false;}
+  work[0]=HmacOwned.{};
+  if key.count>64 {
+    ok:=so_init(work[0].sha[..]) && so_update(work[0].sha[..],key,false) && so_finish(work[0].sha[..],work[0].digest[..],false);if !ok {return ok;}
+    for i:0..<32 {work[0].key[i]=work[0].digest[i];}
+  } else {for i:0..<key.count {work[0].key[i]=key[i];}}
+  for i:0..<64 {work[0].pad[i]=work[0].key[i]^0x36;}
+  inner:=so_init(work[0].sha[..]) && so_update(work[0].sha[..],work[0].pad[..],false) && so_update(work[0].sha[..],input,false) && so_finish(work[0].sha[..],work[0].digest[..],false);if !inner {return inner;}
+  for i:0..<64 {work[0].pad[i]=work[0].key[i]^0x5c;}
+  return so_init(work[0].sha[..]) && so_update(work[0].sha[..],work[0].pad[..],false) && so_update(work[0].sha[..],work[0].digest[..],false) && so_finish(work[0].sha[..],out,false);
+}
