@@ -1,0 +1,20 @@
+{
+  "coax/bin/coax": "5388de6c9c976ff6328fd2f4f4aa3433e28d529deaac5f78a74abaab39c52498",
+  "psionic/lib/model-io/rank5-bundle.coax": "08b6c244555df26c733c37dd3ce67833597780976d3c66c0b5697ce74f5f9618",
+  "psionic/lib/model-io/rank5.coax": "b763f1b5077e1ab7b6b7f8ce43ed44bf17c597d7f4a6cf7a7f0b6fa1c69319e5",
+  "psionic/lib/model-io/bundle.coax": "399ad277d2c76a5407ffa9acc53f911437152bfc8c252d75fce06202baea8c2a",
+  "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+  "psionic/fixtures/models/rank5/fixture.coax": "00d5b1bbad3b28fb5dbb3274de82700965a5dce27af95634b7b43f878a7af4db",
+  "psionic/fixtures/models/elephant/manifest.json": "4744758962cc73b7e6954c4385cda209ea29c3d9247f524fa14855ca245eedc3",
+  "psionic/fixtures/models/mammoth/manifest.json": "4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019",
+  "psionic/tests/elephant_manifest.py": "8cd310518b454106f5f07347a8fabbe5f8c43b0cb9d7e588ff47940ca5a2079a",
+  "psionic/tests/mammoth_manifest.py": "d90936a1d5e2be57448a30da1cc27c73ddab15506bedd82b4e4b8be816f3e800",
+  "psionic/tests/elephant_bundle.c": "fb282b988e1b14103b26bf82c0b563242ded559cba6be42c5dec8fcd3e8bf57b",
+  "psionic/tests/mammoth_bundle.c": "3dec8c589ac7b9148e9ab22293cb196e615cc7045275d758768a812c66e2f6c7",
+  "psionic/tests/mammoth_index.c": "61209a03151516eae78d5314a9713aa13b3d8ee2be6810e78f1b7891db2c7472",
+  "psionic/tests/rank5-index-runtime.coax": "8e9d210f1750950159ce52e096ad3ae98a7bc47f50b417066322d487ed59b8ed",
+  "psionic/tests/rank5_bundle.c": "e5b83dbb2a9c56fd93d158b631fc0a5776761c0012cf0fa51ec2856c24a2d206",
+  "psionic/platform/rank5-bundle-memory.c": "3adf7b68ac8cd59b25dc87d3cef362601836af41eb08b97eab3196b82df3626d",
+  "psionic/platform/rank5-bundle-memory.h": "0bdb9d66b54c49956b73449cf36f7c3af8623ee011887eb2afe81384049b5422",
+  "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e"
+}

@@ -1,5 +1,20 @@
 # Invariants
 
+## Psionic rank-five bundles bind complete original identities
+
+`psionic/lib/model-io/rank5-bundle.coax` authenticates caller-pinned config,
+tokenizer, index and every shard, validates all rank-five inventory metadata
+and binds the complete caller-supplied tensor manifest before publishing it.
+The sharded index must map each tensor exactly once and its declared total
+bytes and optional total parameters must match the scanned originals. The
+caller supplies trustworthy pins and keeps borrowed files and names immutable
+and alive; C observes address ranges only. The rank-four v1 contract remains
+separate.
+
+Check: `psionic/check.sh` includes zero-survivor authority mutation and native
+plain/sanitized tests; the [bundle record](docs/verification/psionic-original-bundles-2026-10-29.md)
+distinguishes original-file evidence from model execution.
+
 ## Psionic rank-five original inventory and tensor access
 
 `psionic/lib/model-io/rank5.coax` validates every BF16/F32 tensor, retaining up

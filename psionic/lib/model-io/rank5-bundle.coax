@@ -1,0 +1,196 @@
+// Rank-five bundle binding preserves original-weights-v1 as a separate profile.
+#load "rank5.coax";
+#load "bundle.coax";
+#load "../../fixtures/models/rank5/fixture.coax";
+#authority;
+P5Spec :: struct { name:string; shape:P5Shape; dtype:PwDtype; shard:int; }
+#test "rank five bundle binds every original byte and every expected axis" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;file:=P5_FILE;
+    id:=PwIdentity.{origin="owned",revision="v2",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA};
+    shards:=[1]PwShard.[PwShard.{name="model.safetensors",data=file[..],size=file.count,sha=P5_SHA}];
+    specs:=[2]P5Spec.[P5Spec.{name="vision",shape=P5Shape.{rank=5,dims=[5]int.[1,1,1,1,1]}},P5Spec.{name="bias",dtype=PwDtype.f32}];
+    out:[2]P5Tensor;draft:[2]P5Tensor;index:[1]u8;
+    r:=p5_bundle_checked(id,config[..],tokenizer[..],index[0..<0],shards[..],specs[..],out[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==2 && r.bytes==6 && out[0].name=="vision" && out[0].shape.rank==5;
+    for k:0..<10 {
+        pin:=id;files:=shards;expected:=specs;cfg:=config;alias:=false;
+        if k==0 {pin.origin="";}if k==1 {pin.revision="";}if k==2 {pin.config_sha="bad";}
+        if k==3 {cfg[0]=0;}if k==4 {files[0].size-=1;}if k==5 {files[0].sha=CH04_CONFIG_JSON_SHA;}
+        if k==6 {expected[0].shape.dims[4]=2;}if k==7 {expected[0].name="missing";}
+        if k==8 {expected[1]=expected[0];}if k==9 {alias=true;}
+        before:=out;q:=p5_bundle_checked(pin,cfg[..],tokenizer[..],index[..],files[..],expected[..],out[..],draft[..],alias);
+        #assert q.status!=PwStatus.ok && q.written==0;for i:0..<2 {#assert out[i].name==before[i].name && out[i].begin==before[i].begin;}
+    }
+}
+#test "rank five shape equality includes the final axis" {
+    a:=P5Shape.{rank=5,dims=[5]int.[1,2,3,4,5]};b:=a;#assert p5_same_shape(a,b);
+    for i:0..<5 {b=a;b.dims[i]+=1;#assert !p5_same_shape(a,b);}b=a;b.rank=4;#assert !p5_same_shape(a,b);
+}
+
+p5_find :: (inventory:[]P5Tensor,name:string)->int {
+    for i:0..<inventory.count {if inventory[i].name==name {return i;}}return -1;
+}
+p5_same_shape :: (a:P5Shape,b:P5Shape)->bool {
+    if a.rank!=b.rank {return false;}
+    for i:0..<5 {if a.dims[i]!=b.dims[i] {return false;}}return true;
+}
+// A bounded HF weight_map must cover the entire admitted inventory exactly once.
+p5_index :: (text:string,shards:[]PwShard,inventory:[]P5Tensor,payload:int)->PwStatus {
+    j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
+    if json_next(j[..])!=JSON_OBJECT {return PwStatus.json;}
+    map:=false;meta:=false;total:=payload;mapped:=0;t:=json_next(j[..]);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return PwStatus.json;}key:=json_text(j[..]);
+        if key=="metadata" {
+            if meta {return PwStatus.duplicate;}meta=true;
+            if json_next(j[..])!=JSON_OBJECT {return PwStatus.schema;}
+            size_seen:=false;parameters_seen:=false;part:=json_next(j[..]);
+            while part!=JSON_OBJECT_END {
+                if part!=JSON_STRING {return PwStatus.json;}field:=json_text(j[..]);
+                if field!="total_size" && field!="total_parameters" {return PwStatus.schema;}
+                if field=="total_size" {if size_seen {return PwStatus.duplicate;}size_seen=true;}
+                else {if parameters_seen {return PwStatus.duplicate;}parameters_seen=true;}
+                if json_next(j[..])!=JSON_NUMBER {return PwStatus.schema;}
+                n:=pw_integer(json_text(j[..]));if n.status!=PwStatus.ok {return n.status;}
+                if field=="total_size" {total=n.value;}
+                else {
+                    parameters:=p5_parameters(inventory);if parameters.status!=PwStatus.ok {return parameters.status;}
+                    if n.value!=parameters.bytes {return PwStatus.manifest;}
+                }
+                part=json_next(j[..]);
+            }
+            if !size_seen {return PwStatus.schema;}
+        } else if key=="weight_map" {
+            if map {return PwStatus.duplicate;}map=true;
+            if json_next(j[..])!=JSON_OBJECT {return PwStatus.schema;}
+            part:=json_next(j[..]);
+            while part!=JSON_OBJECT_END {
+                if part!=JSON_STRING {return PwStatus.json;}name:=json_text(j[..]);
+                at:=p5_find(inventory,name);if at<0 {return PwStatus.manifest;}
+                if inventory[at].indexed {return PwStatus.duplicate;}
+                if json_next(j[..])!=JSON_STRING {return PwStatus.schema;}
+                if json_text(j[..])!=shards[inventory[at].shard].name {return PwStatus.manifest;}
+                inventory[at].indexed=true;mapped+=1;part=json_next(j[..]);
+            }
+        } else {return PwStatus.schema;}
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return PwStatus.json;}
+    if !map || mapped!=inventory.count || total!=payload {return PwStatus.manifest;}return PwStatus.ok;
+}
+p5_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards:[]PwShard,specs:[]P5Spec,output:[]P5Tensor,draft:[]P5Tensor,overlap:bool)->PwResult #export_c {
+    if !pw_bundle_counts(shards.count,specs.count,output.count,draft.count,config.count,tokenizer.count,index.count) {return PwResult.{status=PwStatus.size};}
+    if overlap {return PwResult.{status=PwStatus.alias};}
+    if !pw_name(id.origin) || !pw_name(id.revision) {return PwResult.{status=PwStatus.manifest};}
+    if !pw_digest(config,id.config_sha) || !pw_digest(tokenizer,id.tokenizer_sha) {return PwResult.{status=PwStatus.digest};}
+    if index.count==0 {
+        if shards.count!=1 || id.index_sha!="" {return PwResult.{status=PwStatus.manifest};}
+    } else {if !pw_digest(index,id.index_sha) {return PwResult.{status=PwStatus.digest};}}
+    budget:=pw_sizes(shards);if budget.status!=PwStatus.ok {return budget;}
+    count:=0;payload:=0;
+    for i:0..<shards.count {
+        s:=shards[i];
+        if !pw_basename(s.name) || s.size!=s.data.count {return PwResult.{status=PwStatus.manifest};}
+        for k:0..<i {if shards[k].name==s.name {return PwResult.{status=PwStatus.duplicate};}}
+        if !pw_digest(s.data,s.sha) {return PwResult.{status=PwStatus.digest};}
+        r:=p5_scan(s.data,draft,count,i);if r.status!=PwStatus.ok {return r;}count+=r.written;payload+=r.bytes;
+    }
+    if count!=specs.count {return PwResult.{status=PwStatus.manifest};}
+    inventory:=draft[0..<count];
+    if pw_has_index(index.count) {status:=p5_index(cast(string)index,shards,inventory,payload);if status!=PwStatus.ok {return PwResult.{status=status};}}
+    for i:0..<specs.count {
+        s:=specs[i];at:=p5_find(inventory,s.name);if at<0 {return PwResult.{status=PwStatus.manifest};}
+        for k:0..<i {if specs[k].name==s.name {return PwResult.{status=PwStatus.duplicate};}}
+        t:=inventory[at];if s.shard!=t.shard || s.dtype!=t.dtype || !p5_same_shape(s.shape,t.shape) {return PwResult.{status=PwStatus.manifest};}
+    }
+    for i:0..<specs.count {output[i]=inventory[p5_find(inventory,specs[i].name)];}
+    return PwResult.{written=count,bytes=payload};
+}
+
+#test "rank5 bundle: two original shards and a complete index agree by name, not header order" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;a:=CH04_MODEL_00001_OF_00002_SAFETENSORS;b:=CH04_MODEL_00002_OF_00002_SAFETENSORS;index:=CH04_MODEL_SAFETENSORS_INDEX_JSON;
+    id:=PwIdentity.{origin="owned",revision="v1",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA,index_sha=CH04_MODEL_SAFETENSORS_INDEX_JSON_SHA};
+    shards:=[2]PwShard.[PwShard.{name="model-00001-of-00002.safetensors",data=a[..],size=a.count,sha=CH04_MODEL_00001_OF_00002_SAFETENSORS_SHA},PwShard.{name="model-00002-of-00002.safetensors",data=b[..],size=b.count,sha=CH04_MODEL_00002_OF_00002_SAFETENSORS_SHA}];
+    specs:=[3]P5Spec.[P5Spec.{name="scale",shard=1},P5Spec.{name="linear.weight",shape=P5Shape.{rank=2,dims=[5]int.[2,3,0,0,0]}},P5Spec.{name="linear.bias",shard=1,dtype=PwDtype.f32,shape=P5Shape.{rank=1,dims=[5]int.[2,0,0,0,0]}}];
+    out:[3]P5Tensor;draft:[3]P5Tensor;
+    r:=p5_bundle_checked(id,config[..],tokenizer[..],index[..],shards[..],specs[..],out[..],draft[..],false);
+    #assert r.status==PwStatus.ok && r.written==3 && r.bytes==22;
+    #assert out[0].shard==1 && out[1].shard==0 && out[2].shard==1;
+    #assert p5_bundle_checked(id,config[..],tokenizer[..],index[0..<0],shards[..],specs[..],out[..],draft[..],false).status==PwStatus.manifest;
+    shards[1].name=shards[0].name;
+    #assert p5_bundle_checked(id,config[..],tokenizer[..],index[..],shards[..],specs[..],out[..],draft[..],false).status==PwStatus.duplicate;
+}
+#test "rank5 bundle: index duplicates, omissions, unknown names and wrong shards are refused" {
+    cases:=[16]string.[
+        "{\"metadata\":{\"total_size\":4},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"weight_map\":{\"y\":\"b.safetensors\",\"x\":\"a.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"b.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"a.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"a.safetensors\",\"z\":\"b.safetensors\"}}",
+        "{\"weight_map\":{\"x\":\"a.safetensors\",\"x\":\"a.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":3},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":4},\"metadata\":{\"total_size\":4}}",
+        "{\"weight_map\":{},\"weight_map\":{}}",
+        "{\"metadata\":{\"total_size\":4}}",
+        "{\"metadata\":{\"total_size\":-1},\"weight_map\":{}}",
+        "{\"weight_map\":{\"x\":1}}",
+        "{\"weight_map\":[]}","{\"extra\":{}}","{} trailing","[]"];
+    shards:=[2]PwShard.[PwShard.{name="a.safetensors"},PwShard.{name="b.safetensors"}];
+    for i:0..<cases.count {
+        inv:=[2]P5Tensor.[P5Tensor.{name="x"},P5Tensor.{name="y",shard=1}];
+        status:=p5_index(cases[i],shards[..],inv[..],4);
+        if i<2 {#assert status==PwStatus.ok && inv[0].indexed && inv[1].indexed;}
+        else {#assert status!=PwStatus.ok;}
+        if i==5 || i==7 || i==8 {#assert status==PwStatus.duplicate;}
+    }
+    a:=P5Shape.{rank=4,dims=[5]int.[1,2,3,4,0]};b:=a;
+    #assert p5_same_shape(a,b);b.rank=3;#assert !p5_same_shape(a,b);b=a;
+    for i:0..<5 {b.dims[i]+=1;#assert !p5_same_shape(a,b);b=a;}
+}
+
+#test "index metadata checks both total bytes and optional total parameters" {
+    shards:=[2]PwShard.[PwShard.{name="a.safetensors"},PwShard.{name="b.safetensors"}];
+    cases:=[8]string.[
+        "{\"metadata\":{\"total_parameters\":2,\"total_size\":4},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":4,\"total_parameters\":2},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_parameters\":3,\"total_size\":4},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_parameters\":2},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":4,\"total_size\":4},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":4,\"total_parameters\":2,\"total_parameters\":2},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":4,\"total_parameters\":-1},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}",
+        "{\"metadata\":{\"total_size\":4,\"extra\":2},\"weight_map\":{\"x\":\"a.safetensors\",\"y\":\"b.safetensors\"}}"];
+    for i:0..<cases.count {
+        inv:=[2]P5Tensor.[P5Tensor.{name="x",elements=1},P5Tensor.{name="y",shard=1,elements=1}];
+        status:=p5_index(cases[i],shards[..],inv[..],4);
+        if i<2 {#assert status==PwStatus.ok;}else {#assert status!=PwStatus.ok;}
+    }
+}
+#test "individual bundle pin and spec failures retain their exact status" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;file:=P5_FILE;index:[1]u8;
+    id:=PwIdentity.{origin="owned",revision="v2",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA};
+    shards:=[1]PwShard.[PwShard.{name="model.safetensors",data=file[..],size=file.count,sha=P5_SHA}];
+    specs:=[2]P5Spec.[P5Spec.{name="vision",shape=P5Shape.{rank=5,dims=[5]int.[1,1,1,1,1]}},P5Spec.{name="bias",dtype=PwDtype.f32}];out:[2]P5Tensor;draft:[2]P5Tensor;
+    empty:[1]P5Tensor;#assert p5_find(empty[0..<0],"x")==-1 && p5_find(empty[..],"x")==-1;
+    for k:0..<13 {
+        pin:=id;files:=shards;expected:=specs;cfg:=config;tok:=tokenizer;status:=PwStatus.manifest;
+        if k==0 {pin.origin="";}if k==1 {pin.revision="";}if k==2 {pin.config_sha="bad";status=PwStatus.digest;}
+        if k==3 {pin.tokenizer_sha="bad";status=PwStatus.digest;}if k==4 {cfg[0]=0;status=PwStatus.digest;}if k==5 {tok[0]=0;status=PwStatus.digest;}
+        if k==6 {pin.index_sha="bad";}if k==7 {files[0].name="bad.bin";}if k==8 {files[0].size-=1;}
+        if k==9 {expected[0].shard=1;}if k==10 {expected[0].dtype=PwDtype.f32;}if k==11 {expected[0].shape.dims[4]=2;}
+        if k==12 {expected[1]=expected[0];status=PwStatus.duplicate;}
+        r:=p5_bundle_checked(pin,cfg[..],tok[..],index[0..<0],files[..],expected[..],out[..],draft[..],false);#assert r.status==status && r.written==0;
+    }
+}
+#test "parameter sums admit exact bounds and refuse before integer overflow" {
+    inv:=[2]P5Tensor.[P5Tensor.{elements=0},P5Tensor.{elements=2}];
+    r:=p5_parameters(inv[..]);#assert r.status==PwStatus.ok && r.bytes==2;
+    inv[0].elements=-1;#assert p5_parameters(inv[..]).status==PwStatus.size;
+    inv[0].elements=2;inv[1].elements=PW_BUNDLE_MAX-2;r=p5_parameters(inv[..]);#assert r.status==PwStatus.ok && r.bytes==PW_BUNDLE_MAX;
+    inv[1].elements=PW_BUNDLE_MAX-1;#assert p5_parameters(inv[..]).status==PwStatus.size;
+    inv[0].elements=PW_BUNDLE_MAX+1;inv[1].elements=0;#assert p5_parameters(inv[..]).status==PwStatus.size;
+}
+
+p5_parameters :: (inventory:[]P5Tensor)->PwResult {
+    parameters:=0;for tensor:inventory {if tensor.elements<0 || tensor.elements>PW_BUNDLE_MAX-parameters {return PwResult.{status=PwStatus.size};}parameters+=tensor.elements;}
+    return PwResult.{bytes=parameters};
+}

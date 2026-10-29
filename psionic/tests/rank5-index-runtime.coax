@@ -1,0 +1,5 @@
+// Expose the real index validator for an owned native verification harness.
+#load "../lib/model-io/rank5-bundle.coax";
+p5_validate_index_test :: (index:[]u8,shards:[]PwShard,inventory:[]P5Tensor,payload:int)->PwStatus #export_c {
+    return p5_index(cast(string)index,shards,inventory,payload);
+}
