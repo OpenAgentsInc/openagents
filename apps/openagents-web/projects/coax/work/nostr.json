@@ -1021,7 +1021,8 @@
       ],
       "blocked_by": [
         "secp-mult-const",
-        "crypto-secure-zero"
+        "crypto-secure-zero",
+        "crypto-public-view-audit"
       ],
       "blocks": [
         "nip44-v2",
@@ -3292,7 +3293,8 @@
       "blocks": [
         "secp-mult-const",
         "crypto-field-secret-guards",
-        "crypto-classified-root-audit"
+        "crypto-classified-root-audit",
+        "crypto-public-view-audit"
       ]
     },
     {
@@ -3362,7 +3364,7 @@
         "Affected full policy checks, full mutation with zero survivors and independent security review pass; record source, classification, profile and tool identities without target or production approval"
       ],
       "blocked_by": ["crypto-secret-aggregate-closure", "crypto-secret-public-loop-summaries"],
-      "blocks": ["secp-mult-const", "crypto-reviewed-guard-binding", "crypto-total-secret-field"]
+      "blocks": ["secp-mult-const", "crypto-reviewed-guard-binding", "crypto-total-secret-field", "crypto-public-view-audit"]
     },
     {
       "slug": "crypto-reviewed-guard-binding",
@@ -3414,6 +3416,23 @@
       ],
       "blocked_by": ["crypto-field-secret-guards", "crypto-reviewed-guard-binding", "crypto-total-secret-field"],
       "blocks": ["secp-mult-const"]
+    },
+    {
+      "slug": "crypto-public-view-audit",
+      "parent": "m-assurance",
+      "title": "Analyze classified public views and transitive effects at ECDH entry",
+      "size": "L",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Extend the source-bound audit for explicitly classified public and secret byte views and public-only callees, using the actual ECDH entry as a witness. The current whole-entry audit refuses the secret view parameter; a separate fixed-array adapter also refuses the public variable-time lift. Preserve all-secret defaults and fail-closed behavior. Host-provided extents, lifetimes, disjointness and classifications are explicit caller premises, not facts established by the source auditor. No target timing, hidden-copy erasure or production approval follows.",
+      "files": ["tools/coax-nostr/secret-check/", "coax/lib/crypto/secret-flow.coax", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Opt-in declarations bind the exact compiled source graph, root, ordered parameter names, types, view element types, fixed extents, mutability, classifications and admitted ownership facts; unknown or changed declarations refuse, all-secret defaults remain unchanged and no region is fabricated",
+        "Public-only callees are analyzed with every actual input and transitive reached effect proven public; forbidden and unknown calls, secret branches and indices, unsupported aliases, view escapes and effects still fail closed",
+        "Independent adversarial tests cover public and secret flips, wrong or unknown extents, aliases and overlaps, view writes and escape, nested public calls and transitive taint, joins, loops, early returns and forbidden callees without increasing audit limits",
+        "Analyze the exact source-hashed ECDH entry with its stated host and caller premises, retaining all guards and refusals; affected full checks, zero-survivor mutation and independent review pass without claiming target timing, hidden-copy erasure or production approval"
+      ],
+      "blocked_by": ["crypto-classified-root-audit", "crypto-secret-public-loop-summaries"],
+      "blocks": ["crypto-ecdh-xonly"]
     }
   ]
 }
