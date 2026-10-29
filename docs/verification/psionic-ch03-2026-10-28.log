@@ -1,0 +1,188 @@
+coax0 0.16.0
+ok   #test the first update has an exact independent oracle (1 case, 606 steps)
+ok   #test sixteen updates predict the held-out example within a declared bound (1 case, 2507 steps)
+ok   #forall count admission includes both endpoints (361 cases, 14932 steps)
+ok   #forall step admission includes both endpoints (67 cases, 3904 steps)
+ok   #forall each trace needs the initial loss and every update (196 cases, 11232 steps)
+ok   #test admission precedence and signed metadata (1 case, 331 steps)
+ok   #test number admission includes signs, subnormals and the exact limit (1 case, 594 steps)
+ok   #test malformed training leaves both caller spans untouched (1 case, 2017 steps)
+ok   #test an unstable update is refused before publication (1 case, 286 steps)
+ok   #test a nonzero starting weight learns a second relation (1 case, 555 steps)
+ok   #test statistics and predictions use all samples and admit negative values (1 case, 466 steps)
+ok   #test maximum samples and updates execute, including signed zero (1 case, 31966 steps)
+ok   #test an update can leave the domain after several accepted steps (1 case, 673 steps)
+13 checks, 13 passed, 0 failed
+ok   #test the first update has an exact independent oracle (1 case, 606 steps)
+ok   #test sixteen updates predict the held-out example within a declared bound (1 case, 2507 steps)
+ok   #forall count admission includes both endpoints (361 cases, 14932 steps)
+ok   #forall step admission includes both endpoints (67 cases, 3904 steps)
+ok   #forall each trace needs the initial loss and every update (196 cases, 11232 steps)
+ok   #test admission precedence and signed metadata (1 case, 331 steps)
+ok   #test number admission includes signs, subnormals and the exact limit (1 case, 594 steps)
+ok   #test malformed training leaves both caller spans untouched (1 case, 2017 steps)
+ok   #test an unstable update is refused before publication (1 case, 286 steps)
+ok   #test a nonzero starting weight learns a second relation (1 case, 555 steps)
+ok   #test statistics and predictions use all samples and admit negative values (1 case, 466 steps)
+ok   #test maximum samples and updates execute, including signed zero (1 case, 31966 steps)
+ok   #test an update can leave the domain after several accepted steps (1 case, 673 steps)
+13 checks, 13 passed, 0 failed
+65 mutants, 65 killed, 0 survived
+ok   #test a scalar has one element and no axes (1 case, 334 steps)
+ok   #test row-major layouts for every supported rank (1 case, 1298 steps)
+ok   #forall rank endpoints (7 cases, 1598 steps)
+ok   #forall active axes must be positive (20 cases, 3908 steps)
+ok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)
+ok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)
+ok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)
+ok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)
+ok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)
+ok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)
+ok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)
+ok   #test scalar storage is one real float (1 case, 215 steps)
+12 checks, 12 passed, 0 failed
+ok   #test a scalar has one element and no axes (1 case, 334 steps)
+ok   #test row-major layouts for every supported rank (1 case, 1298 steps)
+ok   #forall rank endpoints (7 cases, 1598 steps)
+ok   #forall active axes must be positive (20 cases, 3908 steps)
+ok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)
+ok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)
+ok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)
+ok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)
+ok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)
+ok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)
+ok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)
+ok   #test scalar storage is one real float (1 case, 215 steps)
+12 checks, 12 passed, 0 failed
+68 mutants, 68 killed, 0 survived
+ok   #test each operation has an explicit storage plan (1 case, 3167 steps)
+ok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)
+ok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)
+ok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)
+ok   #test a scalar has one element and no axes (1 case, 334 steps)
+ok   #test row-major layouts for every supported rank (1 case, 1298 steps)
+ok   #forall rank endpoints (7 cases, 1598 steps)
+ok   #forall active axes must be positive (20 cases, 3908 steps)
+ok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)
+ok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)
+ok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)
+ok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)
+ok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)
+ok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)
+ok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)
+ok   #test scalar storage is one real float (1 case, 215 steps)
+16 checks, 16 passed, 0 failed
+ok   #test each operation has an explicit storage plan (1 case, 3167 steps)
+ok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)
+ok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)
+ok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)
+ok   #test a scalar has one element and no axes (1 case, 334 steps)
+ok   #test row-major layouts for every supported rank (1 case, 1298 steps)
+ok   #forall rank endpoints (7 cases, 1598 steps)
+ok   #forall active axes must be positive (20 cases, 3908 steps)
+ok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)
+ok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)
+ok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)
+ok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)
+ok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)
+ok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)
+ok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)
+ok   #test scalar storage is one real float (1 case, 215 steps)
+16 checks, 16 passed, 0 failed
+151 mutants, 151 killed, 0 survived
+ok   #test compensation retains small terms in either order (1 case, 257 steps)
+ok   #test maximum selection keeps the first allowed index on ties (1 case, 376 steps)
+ok   #test rectangular matrices and matrix vectors have exact integer oracles (1 case, 3470 steps)
+ok   #test addition, row sums and row dots reuse the same admitted storage (1 case, 2826 steps)
+ok   #forall signed dot products agree with their derived polynomial (5 cases, 3877 steps)
+ok   #test wide reductions retain cancellation and avoid f32 product overflow (1 case, 2103 steps)
+ok   #test gather follows requested rows, including repeats (1 case, 2607 steps)
+ok   #test masked softmax is stable, shift invariant and never substitutes for an empty row (1 case, 4996 steps)
+ok   #test RMSNorm and LayerNorm use population statistics and epsilon inside the root (1 case, 3105 steps)
+ok   #test arithmetic failure keeps the destination and exposes only staged scratch (1 case, 1123 steps)
+ok   #test request and alias refusal precede data reads and all writes (1 case, 864 steps)
+ok   #test each operation has an explicit storage plan (1 case, 3167 steps)
+ok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)
+ok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)
+ok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)
+ok   #test a scalar has one element and no axes (1 case, 334 steps)
+ok   #test row-major layouts for every supported rank (1 case, 1298 steps)
+ok   #forall rank endpoints (7 cases, 1598 steps)
+ok   #forall active axes must be positive (20 cases, 3908 steps)
+ok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)
+ok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)
+ok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)
+ok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)
+ok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)
+ok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)
+ok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)
+ok   #test scalar storage is one real float (1 case, 215 steps)
+27 checks, 27 passed, 0 failed
+ok   #test compensation retains small terms in either order (1 case, 257 steps)
+ok   #test maximum selection keeps the first allowed index on ties (1 case, 376 steps)
+ok   #test rectangular matrices and matrix vectors have exact integer oracles (1 case, 3470 steps)
+ok   #test addition, row sums and row dots reuse the same admitted storage (1 case, 2826 steps)
+ok   #forall signed dot products agree with their derived polynomial (5 cases, 3877 steps)
+ok   #test wide reductions retain cancellation and avoid f32 product overflow (1 case, 2103 steps)
+ok   #test gather follows requested rows, including repeats (1 case, 2607 steps)
+ok   #test masked softmax is stable, shift invariant and never substitutes for an empty row (1 case, 4996 steps)
+ok   #test RMSNorm and LayerNorm use population statistics and epsilon inside the root (1 case, 3105 steps)
+ok   #test arithmetic failure keeps the destination and exposes only staged scratch (1 case, 1123 steps)
+ok   #test request and alias refusal precede data reads and all writes (1 case, 864 steps)
+ok   #test each operation has an explicit storage plan (1 case, 3167 steps)
+ok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)
+ok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)
+ok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)
+ok   #test a scalar has one element and no axes (1 case, 334 steps)
+ok   #test row-major layouts for every supported rank (1 case, 1298 steps)
+ok   #forall rank endpoints (7 cases, 1598 steps)
+ok   #forall active axes must be positive (20 cases, 3908 steps)
+ok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)
+ok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)
+ok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)
+ok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)
+ok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)
+ok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)
+ok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)
+ok   #test scalar storage is one real float (1 case, 215 steps)
+27 checks, 27 passed, 0 failed
+296 mutants, 296 killed, 0 survived
+native learn debug plain:
+16-step weight 1.99999964; loss 3.19744231e-13; held-out prediction 5.99999905
+native oracles, refusals, aliases and publication checks pass
+native learn debug sanitized:
+16-step weight 1.99999964; loss 3.19744231e-13; held-out prediction 5.99999905
+native oracles, refusals, aliases and publication checks pass
+native tensor debug plain:
+121 independent layouts/copies and 1555 row-major indices pass
+1048576-element copy, representation, refusal, alias and publication checks pass
+native tensor debug sanitized:
+121 independent layouts/copies and 1555 row-major indices pass
+1048576-element copy, representation, refusal, alias and publication checks pass
+native ops debug plain:
+120 independent Decimal(120) cases cover all eight operations
+1048576 matrix multiply-adds, magnitude, mask, alias and publication checks pass
+native ops debug sanitized:
+120 independent Decimal(120) cases cover all eight operations
+1048576 matrix multiply-adds, magnitude, mask, alias and publication checks pass
+native learn release plain:
+16-step weight 1.99999964; loss 3.19744231e-13; held-out prediction 5.99999905
+native oracles, refusals, aliases and publication checks pass
+native learn release sanitized:
+16-step weight 1.99999964; loss 3.19744231e-13; held-out prediction 5.99999905
+native oracles, refusals, aliases and publication checks pass
+native tensor release plain:
+121 independent layouts/copies and 1555 row-major indices pass
+1048576-element copy, representation, refusal, alias and publication checks pass
+native tensor release sanitized:
+121 independent layouts/copies and 1555 row-major indices pass
+1048576-element copy, representation, refusal, alias and publication checks pass
+native ops release plain:
+120 independent Decimal(120) cases cover all eight operations
+1048576 matrix multiply-adds, magnitude, mask, alias and publication checks pass
+native ops release sanitized:
+120 independent Decimal(120) cases cover all eight operations
+1048576 matrix multiply-adds, magnitude, mask, alias and publication checks pass
+book structure: 4 programs, 15 source-linked listings, local links pass
+book execution: 8 runs match output and exit status
+Psionic chapters 1–3 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book

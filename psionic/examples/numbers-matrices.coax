@@ -1,0 +1,59 @@
+#load "../lib/ops.coax";
+#import "Basic";
+
+// book:begin example
+main :: () {
+    a := [6] f32.[1, 2, 3, 4, 5, 6]; b := [6] f32.[7, 8, 9, 10, 11, 12];
+    ids := [3] int.[1, 0, 1]; mask := [2] u8.[1, 1];
+    out: [10] f32; scratch: [10] f32;
+    // Every writable local array is disjoint from the read-only operands.
+    matrix := psionic_ops_checked(PsionicRequest.{op = PsionicOp.matmul, rows = 2, width = 3, columns = 2},
+        a[..], b[..], ids[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert matrix.status == PsionicOpStatus.ok && matrix.written == 4;
+    #assert out[0] == 58 && out[1] == 64 && out[2] == 139 && out[3] == 154;
+    print("matmul [2,3] x [3,2]: [%, %, %, %]\n", out[0], out[1], out[2], out[3]);
+
+    sum := psionic_ops_checked(PsionicRequest.{op = PsionicOp.sum, rows = 2, width = 3},
+        a[..], b[0..<0], ids[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert sum.status == PsionicOpStatus.ok && out[0] == 6 && out[1] == 15;
+    print("row sums: [%, %]\n", out[0], out[1]);
+    dot := psionic_ops_checked(PsionicRequest.{op = PsionicOp.dot, rows = 2, width = 3},
+        a[..], a[..], ids[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert dot.status == PsionicOpStatus.ok && out[0] == 14 && out[1] == 77;
+    print("row dots with themselves: [%, %]\n", out[0], out[1]);
+    add := psionic_ops_checked(PsionicRequest.{rows = 2, width = 3},
+        a[..], a[..], ids[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert add.status == PsionicOpStatus.ok && out[0] == 2 && out[5] == 12;
+    print("add: first = %, last = %\n", out[0], out[5]);
+
+    gather := psionic_ops_checked(PsionicRequest.{op = PsionicOp.gather, rows = 2, width = 3, columns = 3},
+        a[..], b[0..<0], ids[..], mask[0..<0], out[..], scratch[..], false);
+    #assert gather.status == PsionicOpStatus.ok && gather.written == 9;
+    #assert out[0] == 4 && out[3] == 1 && out[8] == 6;
+    print("gather [1,0,1]: first = %, middle = %, last = %\n", out[0], out[3], out[8]);
+
+    logits := [2] f32.[1000, 1000];
+    softmax := psionic_ops_checked(PsionicRequest.{op = PsionicOp.softmax, rows = 1, width = 2},
+        logits[..], b[0..<0], ids[0..<0], mask[..], out[..], scratch[..], false);
+    #assert softmax.status == PsionicOpStatus.ok && out[0] == 0.5f32 && out[1] == 0.5f32;
+    print("softmax [1000,1000]: [%, %]\n", out[0], out[1]);
+    values := [2] f32.[3, 4];
+    rms := psionic_ops_checked(PsionicRequest.{op = PsionicOp.rmsnorm, rows = 1, width = 2, epsilon = 3.5},
+        values[..], b[0..<0], ids[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert rms.status == PsionicOpStatus.ok && out[0] == 0.75f32 && out[1] == 1;
+    print("RMSNorm [3,4], epsilon 3.5: [%, %]\n", out[0], out[1]);
+    values[0] = 1; values[1] = 3;
+    layer := psionic_ops_checked(PsionicRequest.{op = PsionicOp.layernorm, rows = 1, width = 2, epsilon = 3},
+        values[..], b[0..<0], ids[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert layer.status == PsionicOpStatus.ok && out[0] == -0.5f32 && out[1] == 0.5f32;
+    print("LayerNorm [1,3], epsilon 3: [%, %]\n", out[0], out[1]);
+
+    mask[0] = 0; mask[1] = 0;
+    for i: 0..<10 { out[i] = -7; scratch[i] = -9; }
+    refused := psionic_ops_checked(PsionicRequest.{op = PsionicOp.softmax, rows = 1, width = 2},
+        logits[..], b[0..<0], ids[0..<0], mask[..], out[..], scratch[..], false);
+    #assert refused.status == PsionicOpStatus.mask && refused.written == 0;
+    for i: 0..<10 { #assert out[i] == -7 && scratch[i] == -9; }
+    print("refused: all-masked row; destination and scratch unchanged\n");
+}
+// book:end example

@@ -1,12 +1,13 @@
 # Psionic in Coax
 
-Status, 2026-10-28: M0 and chapter 2 shape/storage admission are implemented;
-dense numerics and later milestones remain proposed. The
+Status, 2026-10-28: chapters 1–3 implement M0/M1 on the tested CPU host;
+autodiff, artifact import and later model milestones remain proposed. The
 [Coax library and book](../../psionic/README.md) train a bounded scalar CPU model
-and admit contiguous shapes with checked indexing and caller-owned storage.
+and implement bounded contiguous storage plus dense row/matrix numerics.
 Run `psionic/check.sh` from the repository root.
-[Chapter 1 verification](../verification/psionic-m0-2026-10-28.md) and
-[chapter 2 verification](../verification/psionic-ch02-2026-10-28.md) state the
+[Chapter 1 verification](../verification/psionic-m0-2026-10-28.md),
+[chapter 2 verification](../verification/psionic-ch02-2026-10-28.md), and
+[chapter 3 verification](../verification/psionic-ch03-2026-10-28.md) state the
 tested scopes. The retired Rust workspace remains historical input.
 
 Build Psionic as a Coax library whose book explains and exercises the actual
@@ -62,8 +63,10 @@ authored checks and a compiled native host.
 [Chapter 2](../../psionic/book/ch02-shapes-and-storage.md) now implements bounded
 shape/storage admission, row-major indexing and staged copy.
 [Its verification](../verification/psionic-ch02-2026-10-28.md) records the tested
-scope. The next chapter adds scalar CPU matrix operations. The early forward
-path then implements Elephant and Mammoth.
+scope. [Chapter 3](../../psionic/book/ch03-numbers-and-matrices.md) now adds
+CPU matrix/reduction/gather/softmax/normalization operations under an explicit
+wide-accumulation profile. Next comes bounded weight-artifact import and the
+early Elephant/Mammoth forward path.
 The learning path replaces the hand-written gradient with autodiff over those
 same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.
@@ -72,8 +75,9 @@ The [roadmap](roadmap.md) specifies the boundaries of each step.
 
 - One authored Coax implementation per responsibility. Chapter programs call
   the library; small derivations are clearly identified as teaching steps.
-- CPU first, explicit `f32` operations, caller-owned storage, synchronous
-  execution, and a narrow contiguous layout. Generality follows working uses.
+- CPU first, `f32` storage with named accumulation profiles, caller-owned
+  buffers, synchronous execution, and a narrow contiguous layout. Generality
+  follows working uses.
 - Training and inference share operations and model state. A usable serving
   wrapper does not establish a complete ML framework.
 - Every implemented claim has a command and a bounded meaning. New backends,

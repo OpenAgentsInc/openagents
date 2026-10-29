@@ -359,5 +359,6 @@ coordinate and expected output; the final value should still be 60. Then
 try a nonzero inactive dimension and check that both writable arrays stay
 unchanged on refusal.
 
-Next we will build dense CPU operations over this admitted storage. Shapes,
+[Next we build dense CPU operations](ch03-numbers-and-matrices.md) over this
+admitted storage. Shapes,
 counts and publication boundaries stay explicit while the numerical work grows.

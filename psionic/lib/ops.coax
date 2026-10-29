@@ -1,0 +1,286 @@
+// CPU-f32-wide-v1: f32 storage, compensated f64 reductions, one checked narrowing.
+#load "ops-contract.coax";
+#authority;
+PsionicAccumulator :: struct { sum: f64; correction: f64; }
+
+#test "compensation retains small terms in either order" {
+    for order: 0..<2 {
+        s := PsionicAccumulator.{sum = 1e20, correction = 0.25}; value: f64 = 1;
+        if order == 1 { s.sum = 1; value = 1e20; }
+        n := psionic_ops_accumulate(s, value);
+        #assert n.sum == 1e20 && n.correction == 1.25;
+        z := psionic_ops_accumulate(n, -1e20);
+        #assert psionic_ops_total(z) == 1.25;
+    }
+    bound := f64(f32_from_bits(0x7f7fffff));
+    #assert psionic_ops_fits_f32(bound) && psionic_ops_fits_f32(-bound);
+    #assert !psionic_ops_fits_f32(2 * bound) && !psionic_ops_fits_f32(-2 * bound);
+}
+#test "maximum selection keeps the first allowed index on ties" {
+    a := [4] f32.[5, 5, -2, 5]; mask := [4] u8.[1, 1, 1, 1];
+    #assert psionic_ops_argmax(a[..], mask[..], 0, 4) == 0;
+    mask[0] = 0;
+    #assert psionic_ops_argmax(a[..], mask[..], 0, 4) == 1;
+    #assert psionic_ops_argmax(a[..], mask[..], 2, 2) == 1;
+    for i: 0..<4 { mask[i] = 0; }
+    #assert psionic_ops_argmax(a[..], mask[..], 0, 4) == -1;
+}
+#test "rectangular matrices and matrix vectors have exact integer oracles" {
+    a := [6] f32.[1, 2, 3, 4, 5, 6]; b := [6] f32.[7, 8, 9, 10, 11, 12];
+    indices: [1] int; mask: [1] u8;
+    out := [5] f32.[-7, -7, -7, -7, -7]; scratch := [5] f32.[-9, -9, -9, -9, -9];
+    r := psionic_ops_checked(PsionicRequest.{op = PsionicOp.matmul, rows = 2, width = 3, columns = 2},
+        a[..], b[..], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert r.status == PsionicOpStatus.ok && r.written == 4;
+    want := [4] f32.[58, 64, 139, 154];
+    for i: 0..<4 { #assert out[i] == want[i] && scratch[i] == want[i]; }
+    #assert out[4] == -7 && scratch[4] == -9;
+    vector := [3] f32.[1, -1, 2];
+    v := psionic_ops_checked(PsionicRequest.{op = PsionicOp.matmul, rows = 2, width = 3, columns = 1},
+        a[..], vector[..], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert v.status == PsionicOpStatus.ok && v.written == 2 && out[0] == 5 && out[1] == 11;
+}
+#test "addition, row sums and row dots reuse the same admitted storage" {
+    a := [6] f32.[1, 2, 3, 4, 5, 6]; indices: [1] int; mask: [1] u8;
+    out: [7] f32; scratch: [7] f32;
+    add := psionic_ops_checked(PsionicRequest.{rows = 2, width = 3}, a[..], a[..], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert add.status == PsionicOpStatus.ok && add.written == 6;
+    for i: 0..<6 { #assert out[i] == a[i] * 2; }
+    sum := psionic_ops_checked(PsionicRequest.{op = PsionicOp.sum, rows = 2, width = 3}, a[..], a[0..<0], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert sum.status == PsionicOpStatus.ok && sum.written == 2 && out[0] == 6 && out[1] == 15;
+    dot := psionic_ops_checked(PsionicRequest.{op = PsionicOp.dot, rows = 2, width = 3}, a[..], a[..], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert dot.status == PsionicOpStatus.ok && dot.written == 2 && out[0] == 14 && out[1] == 77;
+}
+#forall "signed dot products agree with their derived polynomial" x: -2..<3 {
+    a := [3] f32.[f32(x), 3, -2]; b := [3] f32.[2, f32(x), 1];
+    indices: [1] int; mask: [1] u8; out: [1] f32; scratch: [1] f32;
+    r := psionic_ops_checked(PsionicRequest.{op = PsionicOp.dot, rows = 1, width = 3}, a[..], b[..], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert r.status == PsionicOpStatus.ok && out[0] == f32(5*x - 2);
+}
+#test "wide reductions retain cancellation and avoid f32 product overflow" {
+    a := [3] f32.[1e20, 1, -1e20]; b := [3] f32.[1, 1, 1];
+    indices: [1] int; mask: [1] u8; out: [1] f32; scratch: [1] f32;
+    sum := psionic_ops_checked(PsionicRequest.{op = PsionicOp.sum, rows = 1, width = 3}, a[..], b[0..<0], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert sum.status == PsionicOpStatus.ok && out[0] == 1;
+    dot := psionic_ops_checked(PsionicRequest.{op = PsionicOp.dot, rows = 1, width = 3}, a[..], b[..], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert dot.status == PsionicOpStatus.ok && out[0] == 1;
+    a[0] = f32_from_bits(0x7f7fffff); a[1] = a[0];
+    b[0] = a[0]; b[1] = -a[0];
+    huge := psionic_ops_checked(PsionicRequest.{op = PsionicOp.dot, rows = 1, width = 2}, a[0..<2], b[0..<2], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert huge.status == PsionicOpStatus.ok && out[0] == 0;
+}
+#test "gather follows requested rows, including repeats" {
+    a := [6] f32.[10, 20, 30, 40, 50, 60]; idx := [3] int.[2, 0, 2]; mask: [1] u8;
+    out := [7] f32.[-7, -7, -7, -7, -7, -7, -7]; scratch := [7] f32.[-9, -9, -9, -9, -9, -9, -9];
+    req := PsionicRequest.{op = PsionicOp.gather, rows = 3, width = 2, columns = 3};
+    r := psionic_ops_checked(req, a[..], a[0..<0], idx[..], mask[0..<0], out[..], scratch[..], false);
+    want := [6] f32.[50, 60, 10, 20, 50, 60];
+    #assert r.status == PsionicOpStatus.ok && r.written == 6;
+    for i: 0..<6 { #assert out[i] == want[i] && scratch[i] == want[i]; }
+    #assert out[6] == -7 && scratch[6] == -9;
+    for bad: -1..<4 {
+        if bad < 0 || bad >= 3 {
+            idx[2] = bad;
+            failed := psionic_ops_checked(req, a[..], a[0..<0], idx[..], mask[0..<0], out[..], scratch[..], false);
+            #assert failed.status == PsionicOpStatus.index && failed.written == 0;
+            for i: 0..<6 { #assert out[i] == want[i] && scratch[i] == want[i]; }
+        }
+    }
+}
+#test "masked softmax is stable, shift invariant and never substitutes for an empty row" {
+    a := [6] f32.[1000, 1001, 1002, -1000, -999, -998]; mask := [6] u8.[1, 0, 1, 1, 0, 1];
+    indices: [1] int; out: [7] f32; scratch: [7] f32;
+    req := PsionicRequest.{op = PsionicOp.softmax, rows = 2, width = 3};
+    r := psionic_ops_checked(req, a[..], a[0..<0], indices[0..<0], mask[..], out[..], scratch[..], false);
+    #assert r.status == PsionicOpStatus.ok && r.written == 6;
+    #assert abs(out[0] - 0.119202922f32) <= 0.00000003f32 && abs(out[2] - 0.880797078f32) <= 0.0000001f32;
+    #assert out[1] == 0 && out[4] == 0 && out[0] == out[3] && out[2] == out[5];
+    #assert abs(out[0] + out[2] - 1) <= 0.00000012f32;
+    mask[0] = 1; mask[1] = 0; mask[2] = 0;
+    one := psionic_ops_checked(req, a[..], a[0..<0], indices[0..<0], mask[..], out[..], scratch[..], false);
+    #assert one.status == PsionicOpStatus.ok && out[0] == 1 && out[1] == 0 && out[2] == 0;
+    for i: 0..<7 { out[i] = -7; scratch[i] = -9; }
+    mask[3] = 0; mask[5] = 0;
+    empty := psionic_ops_checked(req, a[..], a[0..<0], indices[0..<0], mask[..], out[..], scratch[..], false);
+    #assert empty.status == PsionicOpStatus.mask && empty.written == 0;
+    mask[3] = 2; mask[5] = 1;
+    invalid := psionic_ops_checked(req, a[..], a[0..<0], indices[0..<0], mask[..], out[..], scratch[..], false);
+    #assert invalid.status == PsionicOpStatus.mask && invalid.written == 0;
+    mask[0] = 0; mask[2] = 0; mask[3] = 1;
+    first_empty := psionic_ops_checked(req, a[..], a[0..<0], indices[0..<0], mask[..], out[..], scratch[..], false);
+    #assert first_empty.status == PsionicOpStatus.mask && first_empty.written == 0;
+    mask[0] = 2; mask[2] = 1;
+    first_invalid := psionic_ops_checked(req, a[..], a[0..<0], indices[0..<0], mask[..], out[..], scratch[..], false);
+    #assert first_invalid.status == PsionicOpStatus.mask && first_invalid.written == 0;
+    for i: 0..<7 { #assert out[i] == -7 && scratch[i] == -9; }
+}
+#test "RMSNorm and LayerNorm use population statistics and epsilon inside the root" {
+    a := [4] f32.[-1, 1, 3, 5]; indices: [1] int; mask: [1] u8; out: [5] f32; scratch: [5] f32;
+    layer := psionic_ops_checked(PsionicRequest.{op = PsionicOp.layernorm, rows = 2, width = 2, epsilon = 3},
+        a[..], a[0..<0], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert layer.status == PsionicOpStatus.ok && layer.written == 4;
+    #assert out[0] == -0.5f32 && out[1] == 0.5f32 && out[2] == -0.5f32 && out[3] == 0.5f32;
+    rms := psionic_ops_checked(PsionicRequest.{op = PsionicOp.rmsnorm, rows = 1, width = 2, epsilon = 3},
+        a[0..<2], a[0..<0], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert rms.status == PsionicOpStatus.ok && rms.written == 2 && out[0] == -0.5f32 && out[1] == 0.5f32;
+    a[0] = 3; a[1] = 4;
+    other := psionic_ops_checked(PsionicRequest.{op = PsionicOp.rmsnorm, rows = 1, width = 2, epsilon = 3.5},
+        a[0..<2], a[0..<0], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert other.status == PsionicOpStatus.ok && out[0] == 0.75f32 && out[1] == 1;
+    a[0] = 32;
+    single := psionic_ops_checked(PsionicRequest.{op = PsionicOp.layernorm, rows = 1, width = 1, epsilon = 1},
+        a[0..<1], a[0..<0], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert single.status == PsionicOpStatus.ok && out[0] == 0;
+}
+#test "arithmetic failure keeps the destination and exposes only staged scratch" {
+    a := [2] f32.[1, f32_from_bits(0x7f7fffff)]; b := [2] f32.[2, f32_from_bits(0x7f7fffff)];
+    indices: [1] int; mask: [1] u8; out := [3] f32.[-7, -7, -7]; scratch := [3] f32.[-9, -9, -9];
+    r := psionic_ops_checked(PsionicRequest.{rows = 1, width = 2}, a[..], b[..], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert r.status == PsionicOpStatus.arithmetic && r.written == 0;
+    for v: out { #assert v == -7; }
+    #assert scratch[0] == 3 && scratch[1] == -9 && scratch[2] == -9;
+    a[0] = a[1];
+    sum := psionic_ops_checked(PsionicRequest.{op = PsionicOp.sum, rows = 1, width = 2}, a[..], b[0..<0], indices[0..<0], mask[0..<0], out[..], scratch[..], false);
+    #assert sum.status == PsionicOpStatus.arithmetic && sum.written == 0;
+}
+#test "request and alias refusal precede data reads and all writes" {
+    a := [1] f32.[1]; idx: [1] int; mask: [1] u8; out := [1] f32.[-7]; scratch := [1] f32.[-9];
+    bad := psionic_ops_checked(PsionicRequest.{}, a[..], a[..], idx[0..<0], mask[0..<0], out[..], scratch[..], true);
+    #assert bad.status == PsionicOpStatus.shape && bad.written == 0;
+    short := psionic_ops_checked(PsionicRequest.{rows = 1, width = 1}, a[0..<0], a[..], idx[0..<0], mask[0..<0], out[..], scratch[..], true);
+    #assert short.status == PsionicOpStatus.capacity && short.written == 0;
+    alias := psionic_ops_checked(PsionicRequest.{rows = 1, width = 1}, a[..], a[..], idx[0..<0], mask[0..<0], out[..], scratch[..], true);
+    #assert alias.status == PsionicOpStatus.alias && alias.written == 0 && out[0] == -7 && scratch[0] == -9;
+}
+
+// Error-free TwoSum residual plus a correction accumulator; no reassociation/FMA.
+// book:begin accumulate
+psionic_ops_accumulate :: (s: PsionicAccumulator, value: f64) -> PsionicAccumulator {
+    next := s.sum + value;
+    virtual_value := next - s.sum;
+    error := (s.sum - (next - virtual_value)) + (value - virtual_value);
+    return PsionicAccumulator.{sum = next, correction = s.correction + error};
+}
+psionic_ops_total :: (s: PsionicAccumulator) -> f64 { return s.sum + s.correction; }
+// book:end accumulate
+psionic_ops_fits_f32 :: (value: f64) -> bool { return abs(value) <= 3.4028234663852886e38; }
+
+// book:begin reduce
+psionic_ops_row_sum :: (a: [] f32, base: int, width: int) -> f64 {
+    acc: PsionicAccumulator;
+    for k: 0..<width { acc = psionic_ops_accumulate(acc, f64(a[base + k])); }
+    return psionic_ops_total(acc);
+}
+psionic_ops_reduce :: (r: PsionicRequest, a: [] f32, b: [] f32, row: int, column: int) -> f64 {
+    if r.op == PsionicOp.sum { return psionic_ops_row_sum(a, row * r.width, r.width); }
+    acc: PsionicAccumulator;
+    for k: 0..<r.width {
+        value := f64(a[row * r.width + k]);
+        if r.op == PsionicOp.dot { value *= f64(b[row * r.width + k]); }
+        else { value *= f64(b[k * r.columns + column]); }
+        acc = psionic_ops_accumulate(acc, value);
+    }
+    return psionic_ops_total(acc);
+}
+// book:end reduce
+
+// Private row helper: base/width and mask bytes are already admitted.
+psionic_ops_argmax :: (a: [] f32, mask: [] u8, base: int, width: int) -> int {
+    best := -1;
+    for col: 0..<width {
+        if mask[base + col] == 1 {
+            if best < 0 { best = col; }
+            else if a[base + col] > a[base + best] { best = col; }
+        }
+    }
+    return best;
+}
+
+// book:begin softmax
+psionic_ops_softmax_row :: (r: PsionicRequest, a: [] f32, mask: [] u8, scratch: [] f32, base: int) {
+    maximum := f64(a[base + psionic_ops_argmax(a, mask, base, r.width)]);
+    acc: PsionicAccumulator;
+    for col: 0..<r.width {
+        if mask[base + col] == 1 { acc = psionic_ops_accumulate(acc, exp(f64(a[base + col]) - maximum)); }
+    }
+    denominator := psionic_ops_total(acc);
+    for col: 0..<r.width {
+        probability: f64 = 0;
+        if mask[base + col] == 1 { probability = exp(f64(a[base + col]) - maximum) / denominator; }
+        scratch[base + col] = f32(probability);
+    }
+}
+// book:end softmax
+
+// book:begin norm
+psionic_ops_norm_row :: (r: PsionicRequest, a: [] f32, scratch: [] f32, base: int) {
+    mean: f64 = 0;
+    if r.op == PsionicOp.layernorm { mean = psionic_ops_row_sum(a, base, r.width) / f64(r.width); }
+    squares: PsionicAccumulator;
+    for col: 0..<r.width {
+        centered := f64(a[base + col]) - mean;
+        squares = psionic_ops_accumulate(squares, centered * centered);
+    }
+    denominator := sqrt(psionic_ops_total(squares) / f64(r.width) + f64(r.epsilon));
+    for col: 0..<r.width { scratch[base + col] = f32((f64(a[base + col]) - mean) / denominator); }
+}
+// book:end norm
+
+// Private: plan, finite data, indices and mask contents have already been admitted.
+psionic_ops_compute :: (r: PsionicRequest, a: [] f32, b: [] f32, indices: [] int, mask: [] u8, scratch: [] f32) -> PsionicOpStatus {
+    if r.op == PsionicOp.add {
+        for i: 0..<a.count {
+            value := f64(a[i]) + f64(b[i]);
+            if !psionic_ops_fits_f32(value) { return PsionicOpStatus.arithmetic; }
+            scratch[i] = f32(value);
+        }
+    } else if r.op == PsionicOp.sum || r.op == PsionicOp.dot || r.op == PsionicOp.matmul {
+        columns := 1;
+        if r.op == PsionicOp.matmul { columns = r.columns; }
+        for row: 0..<r.rows {
+            for col: 0..<columns {
+                value := psionic_ops_reduce(r, a, b, row, col);
+                if !psionic_ops_fits_f32(value) { return PsionicOpStatus.arithmetic; }
+                scratch[row * columns + col] = f32(value);
+            }
+        }
+    } else if r.op == PsionicOp.gather {
+        for row: 0..<r.columns {
+            for col: 0..<r.width { scratch[row * r.width + col] = a[indices[row] * r.width + col]; }
+        }
+    } else {
+        for row: 0..<r.rows {
+            if r.op == PsionicOp.softmax { psionic_ops_softmax_row(r, a, mask, scratch, row * r.width); }
+            else { psionic_ops_norm_row(r, a, scratch, row * r.width); }
+        }
+    }
+    return PsionicOpStatus.ok;
+}
+
+// book:begin checked
+psionic_ops_checked :: (r: PsionicRequest, a: [] f32, b: [] f32, indices: [] int, mask: [] u8,
+        destination: [] f32, scratch: [] f32, overlap: bool) -> PsionicResult #export_c {
+    p := psionic_ops_admit(r, a.count, b.count, indices.count, mask.count, destination.count, scratch.count, overlap);
+    if p.status != PsionicOpStatus.ok { return PsionicResult.{status = p.status}; }
+    for value: a { if !psionic_tensor_finite_bits(f32_bits(value)) { return PsionicResult.{status = PsionicOpStatus.number}; } }
+    for value: b { if !psionic_tensor_finite_bits(f32_bits(value)) { return PsionicResult.{status = PsionicOpStatus.number}; } }
+    for index: indices {
+        if index < 0 || index >= r.rows { return PsionicResult.{status = PsionicOpStatus.index}; }
+    }
+    if r.op == PsionicOp.softmax {
+        for row: 0..<r.rows {
+            allowed := false;
+            for col: 0..<r.width {
+                value := mask[row * r.width + col];
+                if value > 1 { return PsionicResult.{status = PsionicOpStatus.mask}; }
+                allowed = allowed || value == 1;
+            }
+            if !allowed { return PsionicResult.{status = PsionicOpStatus.mask}; }
+        }
+    }
+    status := psionic_ops_compute(r, a, b, indices, mask, scratch);
+    if status != PsionicOpStatus.ok { return PsionicResult.{status = status}; }
+    for i: 0..<p.output { destination[i] = scratch[i]; }
+    return PsionicResult.{status = PsionicOpStatus.ok, written = p.output};
+}
+// book:end checked

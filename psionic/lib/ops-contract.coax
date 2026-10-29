@@ -1,0 +1,138 @@
+// Chapter 3 CPU-f32-wide-v1: resource and request admission, separate from kernels.
+#load "tensor.coax";
+#authority;
+
+PsionicMacLimit :: 1048576;
+
+// book:begin request
+PsionicOp :: enum u8 { add; sum; dot; matmul; gather; softmax; rmsnorm; layernorm; }
+PsionicOpStatus :: enum u8 { ok; operation; shape; limit; parameter; capacity; alias; number; index; mask; arithmetic; }
+PsionicRequest :: struct { op: PsionicOp; rows: int; width: int; columns: int; epsilon: f32; }
+PsionicPlan :: struct { status: PsionicOpStatus; a: int; b: int; indices: int; mask: int; output: int; }
+PsionicResult :: struct { status: PsionicOpStatus; written: int; }
+// book:end request
+
+#test "each operation has an explicit storage plan" {
+    expected_b := [8] int.[6, 0, 6, 12, 0, 0, 0, 0];
+    expected_out := [8] int.[6, 2, 2, 8, 12, 6, 6, 6];
+    for tag: 0..<8 {
+        r := PsionicRequest.{op = cast(PsionicOp) tag, rows = 2, width = 3};
+        if tag == 3 || tag == 4 { r.columns = 4; }
+        if tag >= 6 { r.epsilon = 0.25f32; }
+        p := psionic_ops_plan(r);
+        #assert p.status == PsionicOpStatus.ok && p.a == 6 && p.b == expected_b[tag] && p.output == expected_out[tag];
+        if tag == 4 { #assert p.indices == 4; } else { #assert p.indices == 0; }
+        if tag == 5 { #assert p.mask == 6; } else { #assert p.mask == 0; }
+    }
+}
+#test "invalid metadata and work refuse before storage admission" {
+    #assert PsionicMacLimit == 1048576;
+    #assert psionic_ops_work_fits(1048576, 1) && !psionic_ops_work_fits(1048577, 1);
+    #assert psionic_ops_work_fits(1, 1048576) && !psionic_ops_work_fits(1, 1048577);
+    #assert !psionic_ops_work_fits(0, 1) && !psionic_ops_work_fits(1, 0);
+    #assert !psionic_ops_work_fits(-1, 1) && !psionic_ops_work_fits(1, -1);
+    #assert !psionic_ops_work_fits(9223372036854775807, 2);
+    #assert !psionic_ops_known_tag(8);
+    #assert !psionic_ops_known_tag(255);
+    for extent: -1..<2 {
+        if extent < 1 {
+            #assert psionic_ops_plan(PsionicRequest.{rows = extent, width = 1}).status == PsionicOpStatus.shape;
+            #assert psionic_ops_plan(PsionicRequest.{rows = 1, width = extent}).status == PsionicOpStatus.shape;
+        }
+    }
+    #assert psionic_ops_plan(PsionicRequest.{rows = 1, width = 1048576}).status == PsionicOpStatus.ok;
+    #assert psionic_ops_plan(PsionicRequest.{rows = 1, width = 1048577}).status == PsionicOpStatus.limit;
+    #assert psionic_ops_plan(PsionicRequest.{rows = 9223372036854775807, width = 2}).status == PsionicOpStatus.limit;
+    for op: 3..<5 {
+        #assert psionic_ops_plan(PsionicRequest.{op = cast(PsionicOp) op, rows = 1, width = 1}).status == PsionicOpStatus.shape;
+        #assert psionic_ops_plan(PsionicRequest.{op = cast(PsionicOp) op, rows = 1, width = 2, columns = 1048576}).status == PsionicOpStatus.limit;
+    }
+    #assert psionic_ops_plan(PsionicRequest.{op = PsionicOp.matmul, rows = 1048576, width = 1, columns = 2}).status == PsionicOpStatus.limit;
+    #assert psionic_ops_plan(PsionicRequest.{op = PsionicOp.matmul, rows = 1, width = 1024, columns = 1024}).status == PsionicOpStatus.ok;
+    #assert psionic_ops_plan(PsionicRequest.{op = PsionicOp.matmul, rows = 2, width = 1024, columns = 512}).status == PsionicOpStatus.ok;
+    #assert psionic_ops_plan(PsionicRequest.{op = PsionicOp.matmul, rows = 2, width = 1024, columns = 513}).status == PsionicOpStatus.limit;
+    #assert psionic_ops_plan(PsionicRequest.{rows = 1, width = 1, columns = 1}).status == PsionicOpStatus.parameter;
+    #assert psionic_ops_plan(PsionicRequest.{rows = 1, width = 1, epsilon = 1}).status == PsionicOpStatus.parameter;
+    for tag: 6..<8 {
+        for epsilon: -1..<2 {
+            r := psionic_ops_plan(PsionicRequest.{op = cast(PsionicOp) tag, rows = 1, width = 1, epsilon = f32(epsilon)});
+            if epsilon == 1 { #assert r.status == PsionicOpStatus.ok; }
+            else { #assert r.status == PsionicOpStatus.parameter; }
+        }
+        #assert psionic_ops_plan(PsionicRequest.{op = cast(PsionicOp) tag, rows = 1, width = 1, epsilon = f32_from_bits(1)}).status == PsionicOpStatus.ok;
+    }
+}
+#forall "every span has its own exact or capacity contract" a: 0..<4, b: 0..<4, out: 0..<4, scratch: 0..<4 {
+    r := psionic_ops_admit(PsionicRequest.{rows = 1, width = 2}, a, b, 0, 0, out, scratch, false);
+    if a == 2 && b == 2 && out >= 2 && scratch >= 2 { #assert r.status == PsionicOpStatus.ok && r.output == 2; }
+    else {
+        #assert r.status == PsionicOpStatus.capacity && r.a == 0 && r.b == 0 && r.indices == 0 && r.mask == 0 && r.output == 0;
+    }
+}
+#test "auxiliary counts, signed extents and precedence are checked" {
+    gather := PsionicRequest.{op = PsionicOp.gather, rows = 2, width = 1, columns = 2};
+    softmax := PsionicRequest.{op = PsionicOp.softmax, rows = 1, width = 2};
+    #assert psionic_ops_admit(gather, 2, 0, 2, 0, 2, 2, false).status == PsionicOpStatus.ok;
+    #assert psionic_ops_admit(gather, 2, 0, 1, 0, 2, 2, false).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(gather, 2, 0, 3, 0, 2, 2, false).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(softmax, 2, 0, 0, 2, 2, 2, false).status == PsionicOpStatus.ok;
+    #assert psionic_ops_admit(softmax, 2, 0, 0, 1, 2, 2, false).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(softmax, 2, 0, 0, 3, 2, 2, false).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(gather, 2, 1, 2, 0, 2, 2, true).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(gather, 2, 0, 2, 1, 2, 2, true).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(gather, -1, 0, 2, 0, 2, 2, true).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(gather, 2, 0, 2, 0, -1, 2, true).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(gather, 2, 0, 2, 0, 2, -1, true).status == PsionicOpStatus.capacity;
+    #assert psionic_ops_admit(gather, 2, 0, 2, 0, 2, 2, true).status == PsionicOpStatus.alias;
+    #assert psionic_ops_admit(PsionicRequest.{}, 0, 0, 0, 0, 0, 0, true).status == PsionicOpStatus.shape;
+}
+
+psionic_ops_work_fits :: (outputs: int, inner: int) -> bool {
+    if outputs < 1 || inner < 1 { return false; }
+    return outputs <= PsionicMacLimit / inner;
+}
+
+psionic_ops_known_tag :: (tag: u8) -> bool { return tag <= 7; }
+
+// book:begin plan
+psionic_ops_plan :: (r: PsionicRequest) -> PsionicPlan #export_c {
+    if !psionic_ops_known_tag(cast(u8) r.op) { return PsionicPlan.{status = PsionicOpStatus.operation}; }
+    a := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[r.rows, r.width, 0, 0]});
+    if a.status == PsionicTensorStatus.limit { return PsionicPlan.{status = PsionicOpStatus.limit}; }
+    if a.status != PsionicTensorStatus.ok { return PsionicPlan.{status = PsionicOpStatus.shape}; }
+    p := PsionicPlan.{a = a.elements, output = a.elements};
+    if r.op == PsionicOp.add || r.op == PsionicOp.dot { p.b = a.elements; }
+    if r.op == PsionicOp.sum || r.op == PsionicOp.dot { p.output = r.rows; }
+    if r.op == PsionicOp.matmul || r.op == PsionicOp.gather {
+        other := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[r.columns, r.width, 0, 0]});
+        if other.status == PsionicTensorStatus.limit { return PsionicPlan.{status = PsionicOpStatus.limit}; }
+        if other.status != PsionicTensorStatus.ok { return PsionicPlan.{status = PsionicOpStatus.shape}; }
+        if r.op == PsionicOp.matmul {
+            output := psionic_tensor_layout(PsionicShape.{rank = 2, dims = [4] int.[r.rows, r.columns, 0, 0]});
+            if output.status != PsionicTensorStatus.ok { return PsionicPlan.{status = PsionicOpStatus.limit}; }
+            if !psionic_ops_work_fits(output.elements, r.width) { return PsionicPlan.{status = PsionicOpStatus.limit}; }
+            p.b = other.elements; p.output = output.elements;
+        } else { p.indices = r.columns; p.output = other.elements; }
+    } else {
+        if r.columns != 0 { return PsionicPlan.{status = PsionicOpStatus.parameter}; }
+    }
+    if r.op == PsionicOp.softmax { p.mask = a.elements; }
+    if r.op == PsionicOp.rmsnorm || r.op == PsionicOp.layernorm {
+        if !psionic_tensor_finite_bits(f32_bits(r.epsilon)) || r.epsilon <= 0 { return PsionicPlan.{status = PsionicOpStatus.parameter}; }
+    } else {
+        if r.epsilon != 0 { return PsionicPlan.{status = PsionicOpStatus.parameter}; }
+    }
+    return p;
+}
+// book:end plan
+
+psionic_ops_admit :: (r: PsionicRequest, a: int, b: int, indices: int, mask: int,
+        output: int, scratch: int, overlap: bool) -> PsionicPlan #export_c {
+    p := psionic_ops_plan(r);
+    if p.status != PsionicOpStatus.ok { return p; }
+    if a != p.a || b != p.b || indices != p.indices || mask != p.mask || output < p.output || scratch < p.output {
+        return PsionicPlan.{status = PsionicOpStatus.capacity};
+    }
+    if overlap { return PsionicPlan.{status = PsionicOpStatus.alias}; }
+    return p;
+}

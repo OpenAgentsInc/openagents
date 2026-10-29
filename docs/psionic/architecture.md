@@ -1,9 +1,10 @@
 # Architecture and considerations
 
-Status: chapters 1–2 implement bounded scalar learning and contiguous CPU
-shape/storage admission in [psionic/](../../psionic/README.md). Dense numerical
-operations, autodiff, artifact and accelerator contracts below remain proposed. The [source survey](research.md) supplies
-their motivation; each increment needs fresh checks and native evidence.
+Status: chapters 1–3 implement bounded scalar learning, contiguous CPU storage
+and the `CPU-f32-wide-v1` numerical profile in [psionic/](../../psionic/README.md).
+Autodiff, artifact and accelerator contracts below remain proposed.
+The [source survey](research.md) supplies their motivation; each increment
+needs fresh checks and native evidence.
 
 ## One library with a small beginning
 
@@ -16,7 +17,7 @@ Current layout, with future modules added as chapters require them:
 
 ```text
 psionic/
-  lib/          authored Coax; admission and scalar model, dense operations later
+  lib/          authored Coax; admission, scalar model, shapes and CPU operations
   book/         chapters, contents, source references, example manifest
   examples/     small drivers that load the actual library
   platform/     C ABI host: allocation, files, clocks; device bindings later
@@ -42,8 +43,9 @@ Chapter 2 implements the shape/storage portion of these contracts in
 elements, canonical zero inactive dimensions and checked row-major offsets.
 Its staged copy requires an exact logical input view and sufficient separate
 destination/scratch capacity; it accepts every finite binary32 value. Later
-arithmetic kernels must state their own numeric domains. The first dense
-contract should retain:
+arithmetic kernels must state their own numeric domains. Chapter 3 now
+implements a bounded row/matrix profile over that storage. These contracts
+continue to apply:
 
 - `f32` values, row-major contiguous storage, rank at most four, rank-zero
   scalars containing one element, and positive dimensions for non-scalars.
@@ -94,6 +96,17 @@ Claim determinism by execution profile. Exact integer/index/state transitions,
 fixed-profile CPU replay, floating-point comparisons across devices, and model
 quality are separate contracts. Equal generated text is weak numerical
 evidence; teacher-forced intermediate tensors and logits localize errors.
+
+The implemented [chapter 3 profile](../../psionic/book/ch03-numbers-and-matrices.md)
+uses explicit binary64 products/compensated reductions over binary32 storage;
+it does not alter M0's arithmetic. Add/sum/dot/matmul narrow once per output
+with a finite-range check. Masked softmax validates all logits and binary mask
+bytes, refuses an all-masked row, and uses wide max subtraction. RMSNorm and
+LayerNorm are unscaled row cores with positive finite epsilon inside the root.
+The plan admits exact typed operand counts and at most 1,048,576 matmul
+multiply-adds. Arithmetic failure can dirty scratch but cannot publish a
+partial destination. Decimal(120) tooling supplies independent bounded fixtures;
+this is one tested CPU profile, not a cross-backend equivalence claim.
 
 ## Learning is part of the foundation
 

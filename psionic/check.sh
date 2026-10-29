@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapters 1–2, local/owned machines only. No model downloads or services.
+# Chapters 1–3, local/owned machines only. No model downloads or services.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -12,7 +12,8 @@ fi
 out=$(mktemp -d "${TMPDIR:-/tmp}/psionic-check.XXXXXX")
 trap 'rm -rf "$out"' EXIT
 "$coax" version
-for unit in learn tensor; do
+python3 -I psionic/tests/ops_oracle.py > "$out/ops-oracle.h"
+for unit in learn tensor ops-contract ops; do
     "$coax" test "psionic/lib/$unit.coax"
     "$coax" test "psionic/lib/$unit.coax" --release
     "$coax" mutate "psionic/lib/$unit.coax"
@@ -21,11 +22,12 @@ for mode in debug release; do
     flags=()
     opt=-O0
     if [[ $mode == release ]]; then flags+=(--release); opt=-O2; fi
-    for unit in learn tensor; do
+    for unit in learn tensor ops; do
         "$coax" c "psionic/lib/$unit.coax" --library --header "$out/$unit.h" "${flags[@]}" > "$out/$unit.c"
         case "$unit" in
             learn) adapter=psionic/platform/memory.c; harness=psionic/tests/native.c ;;
             tensor) adapter=psionic/platform/tensor-memory.c; harness=psionic/tests/tensor.c ;;
+            ops) adapter=psionic/platform/ops-memory.c; harness=psionic/tests/ops.c ;;
         esac
         for native in plain sanitized; do
             sanitizers=()
@@ -40,4 +42,4 @@ for mode in debug release; do
     done
 done
 python3 -I psionic/tests/book.py --coax "$coax"
-echo "Psionic chapters 1–2 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"
+echo "Psionic chapters 1–3 pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"

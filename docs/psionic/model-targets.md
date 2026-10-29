@@ -6,7 +6,7 @@ follows on the same engine. Their inference delivery does not wait for the
 book's autodiff, language-model training, or nanochat pipeline chapters.
 
 These are planned capabilities. Current Psionic implements the bounded scalar
-trainer and chapter 2 shape/storage admission. [The project queue](https://openagents.com/projects/psionic)
+trainer, chapter 2 storage admission and chapter 3 bounded CPU numerics. [The project queue](https://openagents.com/projects/psionic)
 and [roadmap](roadmap.md) define the actual dependencies and acceptance.
 
 ## Evidence and pins

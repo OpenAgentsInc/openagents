@@ -1,7 +1,8 @@
 # Proposed table of contents
 
 Proposal, 2026-10-28. [Chapter 1](ch01-learning-a-number.md) and
-[Chapter 2](ch02-shapes-and-storage.md) are runnable on the tested CPU host.
+[Chapter 2](ch02-shapes-and-storage.md) and
+[Chapter 3](ch03-numbers-and-matrices.md) are runnable on the tested CPU host.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -26,7 +27,7 @@ is proposed here; this revision does not add or renumber live project issues.
 | --- | --- |
 | 1. Learning a number — runnable | Learn `y = 2x`; derive the loss and gradient, verify the first update, and predict a held-out value. |
 | [2. Shapes and storage](ch02-shapes-and-storage.md) — runnable | Admit bounded dimensions, caller-owned buffers, scratch and aliases; refuse malformed work before publishing output. |
-| 3. Numbers and matrices | Dot/matmul, gather, stable reductions, softmax and normalization, with independent numerical contracts. |
+| [3. Numbers and matrices](ch03-numbers-and-matrices.md) — runnable | Dot/matmul, gather, stable reductions, softmax and normalization, with independent numerical contracts. |
 
 ## II. Open weights early: Elephant and Mammoth
 

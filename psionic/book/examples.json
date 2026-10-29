@@ -30,6 +30,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/numbers-matrices.coax",
+      "chapter": "psionic/book/ch03-numbers-and-matrices.md",
+      "stdout": "psionic/fixtures/numbers-matrices.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

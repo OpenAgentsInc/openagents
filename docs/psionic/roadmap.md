@@ -1,8 +1,8 @@
 # Starting point and roadmap
 
-Status, 2026-10-28: M0 and the shape/storage portion of M1 are implemented
-on the tested Apple LP64 CPU host. Dense numerics and later model studies
-remain `planned`.
+Status, 2026-10-28: chapters 1–3 implement M0/M1 on the tested Apple LP64 CPU
+host, including the bounded `CPU-f32-wide-v1` numerical profile. Artifact
+import, autodiff and later model studies remain `planned`.
 [Run the first chapter](../../psionic/book/ch01-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../verification/psionic-m0-2026-10-28.md)
 records the scope. Later chapter titles are working names; gates determine
@@ -63,7 +63,25 @@ profile; larger model buffers need an explicitly qualified profile.
 
 [The verification record](../verification/psionic-ch02-2026-10-28.md) retains
 Coax checks/mutation and actual native debug/release/sanitizer evidence. M1 is
-still partial: dense numerical operations belong to chapter 3.
+complete with chapter 3 below, under its explicit teaching-profile limits.
+
+## Chapter 3: numbers and matrices — implemented
+
+[The chapter](../../psionic/book/ch03-numbers-and-matrices.md) implements
+`CPU-f32-wide-v1`: binary32 storage, explicit binary64 products and compensated
+reductions, one checked narrowing per output, and staged publication. The
+[operation contracts](../../psionic/lib/ops-contract.coax) and
+[kernels](../../psionic/lib/ops.coax) cover add, row sum/dot, matmul/matvec,
+row gather, binary-masked softmax, and unscaled RMSNorm/LayerNorm. Empty rows,
+invalid masks/indices, non-finite data and computed range failures have explicit
+refusals. Matmul work is capped at 1,048,576 multiply-add pairs.
+
+[The retained verification](../verification/psionic-ch03-2026-10-28.md) combines
+authored checks/mutation, independent Decimal(120) fixtures and real native
+storage/magnitude/limit cases. Learned affine normalization, broadcasting,
+strides, larger model resource profiles and new backends remain separate work.
+Next is chapter 4's bounded original-weight reader; the Elephant/Mammoth
+priority remains unchanged.
 
 ## Delivery priority: Elephant, then Mammoth
 
@@ -74,13 +92,13 @@ the existing decision/nanochat dependency graph, acceptance checks and stable
 issue slugs. The NVIDIA breadth and expanded contents below are proposals;
 this update does not add project issues. The existing queue source
 is [work/roadmap.json](../../apps/openagents-web/projects/psionic/work/roadmap.json).
-The signed queue records M0 complete; chapter 2 now implements the shape/storage
-increment in source. This change does not publish issue-status updates.
+The signed queue records M0 complete; chapters 2–3 now implement M1 in source.
+This change does not publish issue-status updates.
 
 | Priority | Work | Must finish first |
 | --- | --- | --- |
-| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; build dense numerics over the admitted shape/storage API. | M0 and chapter 2 are shipped. Contract research can proceed independently. |
-| Next | Dense operations, safetensors/BF16, exact Qwen tokenizer/decision prompts, independent reference capture. | Each task's data/math prerequisites; no training subsystem. |
+| Now | Pin both model bundles/nanochat, reference contracts and license/provenance; start bounded artifact reading over the shared CPU core. | Chapters 1–3 are shipped. Each real model still needs its own larger execution/resource profile. |
+| Next | Safetensors/BF16, exact Qwen tokenizer/decision prompts, independent reference capture, and model-specific numerical extensions. | Each task's data/math prerequisites; no training subsystem. |
 | Next | Qwen3.5 dense blocks, block-bidirectional full attention, causal DeltaNet, complete prefix forks and slot readout. | Shared operations/artifacts and exact prompt/state fixtures. |
 | First real model | Complete original-weight Elephant text decisions. | All hybrid layers, exact renderer/readout, bounded state and independent full-model oracles. |
 | Immediately after | Complete original-weight Mammoth using the same engine. | Elephant implementation, Mammoth-specific dimensions, shards, memory and real-weight evidence. |
@@ -101,7 +119,7 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../../psionic/book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Chapters 1–2 are runnable;
+one outline per chapter, with prerequisite notes. Chapters 1–3 are runnable;
 chapter numbers and part boundaries are provisional. The new
 [NVIDIA breadth survey](nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.
@@ -139,7 +157,7 @@ the broader model studies extend that map without changing signed issue IDs.
 | Branch / existing milestone coverage | What it actually needs | Completion gate |
 | --- | --- | --- |
 | M0: scalar learning — implemented | Current tested CPU subset | `psionic/check.sh`, retained native/mutation/sanitizer/book evidence. |
-| M1: shapes implemented; dense numerics planned | M0 | Chapter 2 ships checked shape/storage/index/copy with native and mutation evidence. Chapter 3 still needs independent dot/matmul/gather/reduction/normalization oracles. |
+| M1: bounded CPU foundations — implemented | M0 | Chapters 2–3 ship shape/storage and add/sum/dot/matmul/gather/masked-softmax/unscaled-normalization operations. Exact small fixtures, Decimal references, resource gates and native debug/release/sanitizer evidence qualify the named CPU teaching profile. |
 | Urgent decision inference | M1, bounded artifacts/tokenizer, exact Qwen hybrid and decision contract | Complete original-weight Elephant, then Mammoth; masks, prefix isolation, slot probabilities and real-weight request evidence. Chapters 4–11. |
 | M5: artifacts and resumable state | Artifact admission after M1; optimizer/data state once training exists | Early safetensors/BF16 with exact identities; later deterministic packing and model/optimizer/RNG/data-state resume. Chapters 4 and 24. |
 | M6–M8: performance, devices, quantization | Concrete operators and CPU references; original-weight evidence before quantization claims | Measured budgets, real generated-kernel execution, device lifetimes and separately qualified approximate profiles. Chapters 12–15 accompany decision work. |

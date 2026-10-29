@@ -1,5 +1,35 @@
 # Invariants
 
+## Psionic CPU numerical operations publish only complete admitted results
+
+`psionic/lib/ops-contract.coax` owns `CPU-f32-wide-v1` operation/resource
+admission; `psionic/lib/ops.coax` owns its checked data boundary and kernels.
+The profile has contiguous binary32 row/matrix storage, explicit binary64
+products and compensated reductions, round-to-nearest arithmetic without
+FMA/reassociation, and one narrowing per output. Shapes/typed counts reuse the
+1,048,576-element cap; matmul also admits at most 1,048,576 multiply-add pairs
+by a division-before-multiplication check. It does not inherit M0's magnitude
+cap or silently change that trainer's arithmetic.
+
+All float operands, including masked logits/unselected rows, must be finite.
+Masks are bytes 0/1 with an allowed value in every row. Indices, canonical
+parameters, exact read-only view counts and disjoint writable capacities are
+validated before staging. Unscaled RMSNorm/LayerNorm put positive finite
+epsilon inside the root. Add/sum/dot/matmul refuse a computed wide value
+outside the finite binary32 interval. Every failure reports zero written;
+pre-execution refusal preserves all spans, arithmetic failure may dirty scratch
+but leaves destination unchanged. Success preserves read-only storage and
+unused writable tails. Typed native adapters only observe ranges; C callers
+retain pointer/extent/alignment/lifetime and exclusive-access obligations.
+
+Check: `psionic/check.sh` runs each authority root's debug/release checks and
+zero-survivor mutation gate, Decimal(120) fixtures independent of the Coax
+algorithms, analytic cancellation/magnitude cases, actual short/aliased typed
+storage and a maximum-work matmul in plain/sanitized debug/release builds,
+plus all earlier chapters and source-linked book/transcript checks. See
+`docs/verification/psionic-ch03-2026-10-28.md`. This qualifies a bounded CPU
+profile, not learned affine layers, arbitrary layouts, gradients or devices.
+
 ## Psionic tensor storage admits shapes before touching caller data
 
 `psionic/lib/tensor.coax` owns contiguous binary32 shape/index/copy admission:
@@ -17,12 +47,13 @@ The shared native `psionic/platform/spans.h` observes address ranges; Coax owns
 admission. Native callers still own pointer validity, truthful allocation
 extent, alignment, lifetime and exclusive access during the call.
 
-Check: `psionic/check.sh` runs both chapters' Coax debug/release checks and
+Check: `psionic/check.sh` runs the chapters' Coax debug/release checks and
 zero-survivor authority mutation gates, independent native layouts/indices,
 short allocations, aliases/non-finite representations and a maximum-size copy
 in plain/sanitized debug/release builds, plus source-linked book/transcript
-checks. See `docs/verification/psionic-ch02-2026-10-28.md`. Dense operations,
-autodiff and GPU execution remain planned; these checks are bounded evidence,
+checks. See `docs/verification/psionic-ch02-2026-10-28.md`. Chapter 3 now adds
+a separately qualified dense CPU profile. Autodiff and GPU execution remain
+planned; these checks are bounded evidence,
 not general memory safety or concurrent atomic publication.
 
 ## Psionic's first trainer publishes only completed bounded work
