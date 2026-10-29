@@ -15,6 +15,9 @@ const string = (i: number) => dec.decode(u8(x.vw_text(), x.vw_string(i)).slice()
 const bytes = new Uint8Array(await Bun.file(wav).arrayBuffer())
 const pcm = new Int16Array(bytes.buffer.slice(44))
 const frame = x.vw_start(16000)
+// EPOCH=N starts this client's media epoch at N, as a phone that cut a reply
+// and reconnected; like the phone it drops a reply stamped with an older one.
+if (process.env.EPOCH) x.vw_set_epoch(Number(process.env.EPOCH))
 const ws = new WebSocket(host); ws.binaryType = "arraybuffer"
 const send = (n: number) => { if (n) ws.send(u8(x.vw_out(), n).slice()) }
 const t0 = Date.now(); let turn = "", ended = 0, welcomed = false, reply = "", audio = 0, endAt = 0, firstAudio = 0, done = false
@@ -23,7 +26,7 @@ ws.onmessage = (e) => {
   const k = x.vw_decode(b.length)
   if (k === 2) { welcomed = true; console.log(`welcome from ${string(0)}`) }
   else if (k === 5) { const p = x.vw_field(0), t = string(0); if (p === 3) console.log(`heard "${t}"`) }
-  else if (k === 6) { reply = string(0); if (x.vw_field(3)) x.vw_set_epoch(x.vw_field(3)) }
+  else if (k === 6) { const e = x.vw_field(3); if (e && e < x.vw_epoch()) console.log(`stale reply: epoch ${e} < ${x.vw_epoch()}`); else { reply = string(0); if (e) x.vw_set_epoch(e) } }
   else if (k === 3) { if (x.vw_push()) { audio += x.vw_field(4); if (!firstAudio) firstAudio = Date.now() } }
   else if (k === 4 && x.vw_field(0) === 8) done = true
   else if (k === 9) { console.log(`error: ${string(0)}`); done = true }

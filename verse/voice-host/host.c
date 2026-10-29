@@ -1075,7 +1075,18 @@ static void on_hello(session *s, const oa_voice_hello *h) {
         s->observe ? " observe" : "");
 }
 
+// The client's media epoch outlives a connection: a phone that cut a reply
+// and reconnected is ahead of this new session, and drops every reply
+// stamped with an older epoch as stale. Any frame the client sends that
+// carries a later epoch moves this session up to it.
+static void adopt_epoch(session *s, uint64_t client_epoch) {
+  if (client_epoch <= oa_voice_epoch(s->v)) return;
+  uint64_t e = oa_voice_set_epoch(s->v, client_epoch);
+  logf_("%s: client epoch %llu, epoch now %llu", s->sid, (unsigned long long)client_epoch, (unsigned long long)e);
+}
+
 static void on_control(session *s, const oa_voice_control *c) {
+  if (c->kind != OA_CONTROL_BARGE_IN && c->kind != OA_CONTROL_CANCEL) adopt_epoch(s, c->media_epoch);
   switch (c->kind) {
   case OA_CONTROL_TURN_START: start_turn(s, c); break;
   case OA_CONTROL_TURN_END: {
@@ -1141,7 +1152,7 @@ static void on_frame(session *s, const uint8_t *p, size_t n) {
     return;
   }
   switch (m.kind) {
-  case OA_MSG_AUDIO: on_uplink_audio(s, &m.u.audio); break;
+  case OA_MSG_AUDIO: adopt_epoch(s, m.u.audio.media_epoch); on_uplink_audio(s, &m.u.audio); break;
   case OA_MSG_CONTROL: on_control(s, &m.u.control); break;
   case OA_MSG_DECISION: {
     // The seam for an external decider: applied to this session's engine.
