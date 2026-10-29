@@ -1,7 +1,7 @@
 # 20. Inside coax0
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.21.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.22.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 The driver embeds the version and status from a generated header. The authored
@@ -75,6 +75,16 @@ generated from the
 `.coax` sources by an earlier
 `coax`. These are the *seeds*. They're checked in, and nobody edits them by
 hand.
+
+The bootstrap compiles a private source snapshot and checks that it matches the
+target inputs before installing artifacts, so a transient edit in the original
+checkout cannot become an unnoticed build input. A successful bootstrap also
+writes a compiler build record. It binds the compiler and its Coax-checked verifier to a digest of the compiler inputs and
+build configuration. A site release checks a copied snapshot against its
+clean target tree before staging. A change elsewhere in the repository does
+not force a compiler rebuild. The record detects mismatches; it is not a
+signature or proof against someone who can replace both the record and the
+artifacts, and it does not content-pin the host SDK.
 
 From the repository root, the build is one command:
 

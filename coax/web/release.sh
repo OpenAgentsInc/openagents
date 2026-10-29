@@ -76,8 +76,10 @@ commit="$(git -C "$repo" rev-parse --short "$ref")"
 tree="$(mktemp -d)/release"
 git -C "$repo" worktree add -q --detach "$tree" "$commit"
 echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
-# The compiler is built per worktree; reuse this checkout's if the tree has none.
-[[ -x "$tree/coax/bin/coax" ]] || { mkdir -p "$tree/coax/bin"; cp "$repo/coax/bin/coax" "$tree/coax/bin/"; }
+# Use only a snapshot whose checked build record matches this target tree.
+# Input/binary consistency is not a signature against a hostile local writer.
+"$tree/coax/provenance.sh" install "$tree" "$repo/coax/bin"
+COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax"
 
 if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"

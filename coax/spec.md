@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.21.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.22.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -107,6 +107,19 @@ stops after checking and compile-time evaluation, without invoking the C
 compiler or executing `main`. `coax c` prints the generated C. `coax lib`
 and `coax header` produce an object file and a C header for `#export_c`
 procedures; `coax layout` reports struct layouts.
+
+A bootstrap compiles from a private copy of its declared compiler inputs and
+compares that snapshot with the original inputs before installing artifacts.
+A completed bootstrap records the compiler input identity and the hashes of its
+binary and checked provenance helper. Site release copies those artifacts to
+its clean target worktree and verifies the record against that worktree before
+staging. Inputs include compiler sources, checked seeds and Coax modules,
+bootstrap and release validation scripts, toolchain identifiers and relevant
+build configuration. Unrelated source changes do not invalidate the record.
+The record is a local consistency check, not a signature, a hermetic toolchain
+attestation or proof of correctness. A hostile writer able to replace both
+artifacts and record can forge it; operating-system headers and libraries are
+identified only through their environment and toolchain, not content-pinned.
 
 The evaluator uses the checked AST. Bytecode is not required to prove
 compile-time semantics; adopt an internal bytecode representation only if

@@ -1,0 +1,29 @@
+// Consistency checks for compiler build records; these do not authenticate a
+// hostile local writer or prove that a build is correct.
+#authority;
+#test "only complete matching lowercase digests are admitted" {
+ a := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+ b := "1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+ #assert PV_match(a,a,a,a,a,a);
+ #assert !PV_match(a,b,a,a,a,a) && !PV_match(a,a,a,b,a,a) && !PV_match(a,a,a,a,a,b);
+ #assert !PV_match("", "", a,a,a,a);
+ invalid := "0123456789abcdeg0123456789abcdef0123456789abcdef0123456789abcdef";
+ #assert !PV_match(invalid,invalid,a,a,a,a);
+ #assert !PV_match(a,a,invalid,invalid,a,a);
+ #assert !PV_match(a,a,a,a,invalid,invalid);
+ #assert !PV_match("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef",a,a,a,a,a);
+ #assert !PV_match(a,a,a,a,a,"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg");
+}
+#forall "digest character admission" c:0..<256 {
+ #assert PV_hex_char(cast(u8)c)==((c>=48 && c<=57) || (c>=97 && c<=102));
+}
+
+PV_hex_char :: (c:u8)->bool {return (c>=48 && c<=57) || (c>=97 && c<=102);}
+PV_digest :: (s:string)->bool {
+ if s.count!=64 {return false;}
+ for c:s {if !PV_hex_char(c) {return false;}}
+ return true;
+}
+PV_match :: (input:string,recorded_input:string,binary:string,recorded_binary:string,helper:string,recorded_helper:string)->bool #export_c {
+ return PV_digest(input) && PV_digest(binary) && PV_digest(helper) && input==recorded_input && binary==recorded_binary && helper==recorded_helper;
+}
