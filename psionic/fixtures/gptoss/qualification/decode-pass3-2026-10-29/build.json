@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "checkout_base": "5db755201d06712dda259aaf108f755569136e06",
+  "baseline_product_commit": "9097c360ef",
+  "profile": "gpt-oss-cuda-f32-v1",
+  "api_profile": "psionic-gptoss-responses-v1",
+  "original_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+  "context_capacity": 2048,
+  "concurrency": 1,
+  "native_compiler": "GCC 15.2.0",
+  "flags": [
+    "-std=c11",
+    "-O3",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "paired_extra_flags": [
+    "-DPSIONIC_DEVICE_TEST"
+  ],
+  "host_coax_sha256": "c5acf492faaef7ea8450245c44b454e69b208f83d9594e874be4d06eb3d3ae1a",
+  "cuda_emitter_sha256": "0634fac1dc50a9eb2c9bf18e51486b567d996dcdfe47e9d66112c847f010eb46",
+  "nvrtc": "13.2",
+  "gpu_observation_after_measurement": "NVIDIA GeForce RTX 4080, 595.71.05, 42, 210 MHz, 405 MHz, P8",
+  "artifacts_sha256": {
+    "model-speed3": "59f0619d5b6d68893a0acdd4cb4212b64a57cf2d7cc1cdacb999a17f8762b294",
+    "device-host.c": "64cb4d33c86355a1d2be42f902b50b24090b8fe755cbb699dcbac61ec6128213",
+    "device-host.h": "d51381b671a005cfb4f242fe451973350af53e112a4e15939a4cf76d5cf42953",
+    "gptoss_speed.c": "593c55a968dccf37112e9b6b608cc83472d98c664e7f2ea2df1e13d7720a4525",
+    "candidate.cu": "72df8e2ef7ee4f5342697087df1d09822956ac7671b6677d45bf2a311b6b8759",
+    "server/responses-server": "2b6ba2ea460c5e4c5e5c76178658f197a437055acebecf8db1ad6777afe415c5",
+    "server/device-host.c": "76a46e39661ed085d96b21029fac7d4dd46e53db6b1fb2a1acd5cf762fb56187",
+    "server/device-host.h": "8de59a4859989dc9ac2ee428b3cb176af44fa85d5efd381c9dca2aef7b30f8e1"
+  },
+  "sources_sha256": {
+    "psionic/lib/gptoss/device-host.coax": "8404ebc50481e765014b11b16006e751d9eb3811934aacbef147ecc3be3116d6",
+    "psionic/lib/gptoss/device-replay.coax": "d3f828c9f5f8706a40a6168949ef871a67a1e620b7297b057e2e811b662cf1a7",
+    "psionic/lib/gptoss/device-plan.coax": "567c9b7b45246e99f8b4a51ff235b56a3eeefcce67c30b263b75bc84e0dc1d53",
+    "psionic/lib/gptoss/device-kernels.coax": "5ac4d2948b9a0d98dd893c9ae06837bcc412eaaff8545cdd61354042af682613",
+    "psionic/platform/gptoss-device.c": "e83662ecf4207890c6bea1af62109ee7aa80b82f81e7a1bbd58e6117e8e0878d",
+    "psionic/platform/gptoss-device.h": "7a989ef16ff5da90a2317899e9310f41450e9e21527aaf608a0a7b186288a892",
+    "psionic/platform/cuda-host.c": "cb861bc53ed6f49bbdfb291f11ea16d8998a4fb22f1bd8442bcc4f2ec6b1b222",
+    "psionic/platform/cuda-host.h": "515b5b33e596efb0962db60e78e989d2cfdac8d30508205424e594d2bcc3b86c",
+    "psionic/platform/responses-server.c": "757fed14c688064d4982d1f81f7fc85cb2025a46ee4382aacbd15bb91e68743f",
+    "psionic/tests/gptoss_replay.c": "d18a7aa6cffe936f0c4e06f72fa7d5926e828e9ecc395d616767e50011404a10",
+    "psionic/tests/gptoss_speed.c": "a17d0e6e3e4243a340a2cea9b279d8ce5036d4615df955e3f34681f962a28fa3",
+    "psionic/tests/responses_speed.py": "7b30f4bf59a4d73e1941d9cce8bd8e3687d404ddd32becc13cb04adf35fe80b9"
+  },
+  "notes": [
+    "Both paired variants use identical Coax program and identical generated CUDA; --host-replay disables graph replay only in variant 0.",
+    "Both core variants include one ordered control download/wait; removal of the old duplicate wait is common to them, making this a graph-only comparison.",
+    "measured-harness.c retains the exact benchmark source used. The final harness additionally disables graphs in its other module-comparison modes and refuses builds without PSIONIC_DEVICE_TEST; the measured --host-replay path is unchanged. The final harness compile passes.",
+    "Generated CUDA is byte-identical to the qualified pass-2 candidate (45 entry points).",
+    "GPU tiny graph/stream public-state parity and native late-failure checks pass. CPU tiny plain/ASan/UBSan debug/release pass. GPU ASan launch was skipped: cuInit returned CUDA out-of-memory under that sanitizer process; no GPU ASan pass is claimed.",
+    "Five paired repeats are a smoke benchmark; no concurrency or full mutation root runs.",
+    "Rejected experiment logs retain exploratory owned-slice timings; discarded experimental generated modules were not retained and no shipped speed claim depends on those logs.",
+    "Fresh HTTP baseline is the prior qualified pass-2 executable, same unchanged generated CUDA and same original model. Sequential candidate/baseline batches, not alternating pairs."
+  ],
+  "http_baseline_artifacts_sha256": "44af39977b973214daafc566ea033a0c5f85b7fa2f599190c0d1485018ccde33",
+  "http_comparison": {
+    "baseline": "previous qualified pass-2 executable",
+    "candidate": "graph replay and one ordered control-download wait",
+    "order": [
+      "candidate batch",
+      "baseline batch"
+    ],
+    "method": "one warm-up and five measured requests per batch on the same GPU in one window; batches were sequential, not alternating pairs",
+    "baseline_median_output_ids_per_second": 56.578851443444,
+    "candidate_median_output_ids_per_second": 56.74697519586806,
+    "rate_change_percent": 0.29714946156536026,
+    "conclusion": "negligible HTTP change in this small sample; no meaningful endpoint latency or throughput gain claimed"
+  }
+}

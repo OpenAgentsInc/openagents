@@ -1,0 +1,10 @@
+Focused checks (no full mutation roots, no original CPU inference):
+- check_gptoss_device.sh: debug/release Coax kernels and prefill; native owned-tiny plain/ASan/UBSan; plan example and book links PASS.
+- device-replay.coax after final added ring-wrap check: debug/release 136/136 PASS.
+- GPU gptoss_replay.c: exact complete-public-state parity over reset, window wrap, choose topology and asynchronous interleave PASS.
+- GPU gptoss_device.c: independent owned tiny vectors, split-prefill parity, cancellation, invalid sequence and late arithmetic publication failure PASS.
+- Original paired model: all complete caches/logits/traces/routes and greedy output IDs/stops bitwise equal PASS.
+- Actual original GPU Responses: text, SSE, typed replay, function handoff, cancellation/reuse, busy/limits/errors, SDK and supported schemas PASS.
+- Final benchmark harness compile PASS; measured --host-replay path is unchanged from retained measured-harness.c.
+- GPU ASan was not available: driver cuInit returned CUDA error 2 (out of memory) in the sanitizer process. CPU native ASan/UBSan and ordinary GPU checks passed.
+- After rebase and SUMMARY navigation update: book structure: 40 programs, 174 source-linked listings, local links pass PASS. Unrelated chapter changes did not alter decoder dependencies.

@@ -1,0 +1,31 @@
+device NVIDIA GeForce RTX 4080 compute 8.9 free=15527641088 total=16711352320
+zero-budget preflight refuses before reading invalid artifact bytes
+tiny backend=CUDA admission=0.069717 s
+logits max scaled error 3.9783401e-07; fixed bound 0.0005
+trace max scaled error 7.04732587e-07; fixed bound 0.0005
+mixture max scaled error 2.07705914e-08; fixed bound 0.0005
+logits max scaled error 9.07333894e-07; fixed bound 0.0005
+trace max scaled error 1.05453446e-06; fixed bound 0.0005
+mixture max scaled error 3.74882427e-08; fixed bound 0.0005
+logits max scaled error 4.07954737e-07; fixed bound 0.0005
+trace max scaled error 1.06710544e-06; fixed bound 0.0005
+mixture max scaled error 3.96620366e-08; fixed bound 0.0005
+logits max scaled error 5.60604059e-07; fixed bound 0.0005
+trace max scaled error 7.45049718e-07; fixed bound 0.0005
+mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+batch logits max scaled error 5.60604059e-07; fixed bound 0.0005
+batch trace max scaled error 7.45049718e-07; fixed bound 0.0005
+batch mixture max scaled error 2.03340626e-08; fixed bound 0.0005
+cancelled prefill returns before the next chunk and preserves committed state
+batched prefill splits 1/3, 2/2, 3/1 and 4 preserve all serial cache bytes
+invalid prompt IDs and mismatched sequential position preserve public state
+late serial and batch head failure preserves the full public cache and logits

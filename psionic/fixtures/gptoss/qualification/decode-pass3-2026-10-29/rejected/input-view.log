@@ -1,0 +1,21 @@
+owned compact slices: four resident experts, IDs 0/1/2/3; vocabulary head omitted
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=0 repeat=0 milliseconds=0.195110
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=1 repeat=0 milliseconds=0.193843
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=0 repeat=1 milliseconds=0.194944
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=1 repeat=1 milliseconds=0.193808
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=0 repeat=2 milliseconds=0.195126
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=1 repeat=2 milliseconds=0.193741
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=0 repeat=3 milliseconds=0.194730
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=1 repeat=3 milliseconds=0.193760
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=0 repeat=4 milliseconds=0.194838
+decode_product kind=mxfp4 rows=5760 cols=2880 block=128 variant=1 repeat=4 milliseconds=0.193939
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=0 repeat=0 milliseconds=0.105741
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=1 repeat=0 milliseconds=0.100483
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=0 repeat=1 milliseconds=0.105142
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=1 repeat=1 milliseconds=0.101904
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=0 repeat=2 milliseconds=0.104464
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=1 repeat=2 milliseconds=0.100944
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=0 repeat=3 milliseconds=0.105184
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=1 repeat=3 milliseconds=0.100563
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=0 repeat=4 milliseconds=0.105440
+decode_product kind=mxfp4 rows=2880 cols=2880 block=128 variant=1 repeat=4 milliseconds=0.100714

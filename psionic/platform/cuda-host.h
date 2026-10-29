@@ -62,6 +62,15 @@ PcStatus pc_stream(PcStream *stream);
 PcStatus pc_event(PcEvent *event);
 PcStatus pc_destroy_stream(PcStream stream);
 PcStatus pc_destroy_event(PcEvent event);
+/* Explicit linear graph: node indices are insertion order. Calls require
+   exclusive host access; caller waits before replacing or freeing a program. */
+typedef void *PcProgram;
+PcStatus pc_program_create(size_t capacity,PcProgram *program);
+PcStatus pc_program_add(PcProgram p,PcKernel kernel,int64_t items,int block,const PcArg *args,int count);
+PcStatus pc_program_ready(PcProgram p);
+PcStatus pc_program_set(PcProgram p,size_t node,PcKernel kernel,int64_t items,int block,const PcArg *args,int count);
+PcStatus pc_program_replay(PcProgram p,PcStream stream);
+PcStatus pc_program_free(PcProgram p);
 typedef void *PcGraph;
 /* Recorded launch replay: everything issued to `stream` between begin and end
    (and to streams joined to it by events) becomes one replayable graph. */

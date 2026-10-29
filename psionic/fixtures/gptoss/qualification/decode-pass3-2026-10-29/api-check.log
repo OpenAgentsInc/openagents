@@ -1,0 +1,3 @@
+Original GPU function handoff and typed SDK replay: PASS; input/output IDs: 118 29 172 38
+Responses HTTP, typed replay, SSE, limits, cancellation, OpenAI SDK, Open Responses schemas: PASS
+SSE first event 0.021s, request 0.518s; input=63, output=16

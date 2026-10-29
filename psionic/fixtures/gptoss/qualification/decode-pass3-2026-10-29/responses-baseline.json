@@ -1,0 +1,61 @@
+{
+  "profile": "psionic-gptoss-responses-v1",
+  "workload": "list integers 1..100; greedy; 128 output IDs; one connection",
+  "output_state_sha256": "3d49e04347f243cbbe1deeea20975ca8134e835775fdbb3e900feb351e41f126",
+  "runs": [
+    {
+      "repeat": 0,
+      "input_tokens": 70,
+      "output_tokens": 128,
+      "seconds": 2.2682464590179734,
+      "first_delta_seconds": 0.30663962502148934,
+      "first_visible_text_seconds": 0.573122500005411,
+      "end_to_end_output_tokens_per_second": 56.43125749898316
+    },
+    {
+      "repeat": 1,
+      "input_tokens": 70,
+      "output_tokens": 128,
+      "seconds": 2.262624124996364,
+      "first_delta_seconds": 0.3278053340036422,
+      "first_visible_text_seconds": 0.6751693340193015,
+      "end_to_end_output_tokens_per_second": 56.571482017679664
+    },
+    {
+      "repeat": 2,
+      "input_tokens": 70,
+      "output_tokens": 128,
+      "seconds": 2.260365374997491,
+      "first_delta_seconds": 0.30354633400565945,
+      "first_visible_text_seconds": 0.565287375007756,
+      "end_to_end_output_tokens_per_second": 56.628013070737325
+    },
+    {
+      "repeat": 3,
+      "input_tokens": 70,
+      "output_tokens": 128,
+      "seconds": 2.252067416004138,
+      "first_delta_seconds": 0.30029841599753127,
+      "first_visible_text_seconds": 0.5606764160038438,
+      "end_to_end_output_tokens_per_second": 56.83666443125911
+    },
+    {
+      "repeat": 4,
+      "input_tokens": 70,
+      "output_tokens": 128,
+      "seconds": 2.2623294169898145,
+      "first_delta_seconds": 0.35808158401050605,
+      "first_visible_text_seconds": 0.5718207919853739,
+      "end_to_end_output_tokens_per_second": 56.578851443444
+    }
+  ],
+  "median_seconds": 2.2623294169898145,
+  "median_output_tokens_per_second": 56.578851443444,
+  "median_first_delta_seconds": 0.30663962502148934,
+  "median_first_visible_text_seconds": 0.5718207919853739,
+  "limitations": [
+    "End-to-end rate includes tokenization, reset, prefill, decoding, serialization and transport.",
+    "Semantic first delta follows Harmony header generation; it is not the first selected token.",
+    "Five repeats are a smoke benchmark, not production capacity qualification."
+  ]
+}

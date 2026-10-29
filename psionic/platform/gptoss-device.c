@@ -8,8 +8,10 @@ struct PgSession {
     coax_t_GShape shape;coax_t_GDPlan plan;coax_t_GDParam *params;int64_t param_count;
     coax_t_GDOp *ops;coax_t_GDArg *args;PcBuffer *buffers;PcModule module;PcKernel *kernels;
     PcStream stream;int cpu,poisoned;char error[256];
+    PcProgram replay;coax_t_GDOp *recorded_ops;coax_t_GDArg *recorded_args;int64_t *changes;
+    int64_t recorded_count,recorded_arg_count;
 #ifdef PSIONIC_DEVICE_TEST
-    int profile;double *seconds;int *launches;
+    int profile,replay_disabled;double *seconds;int *launches;
 #endif
 };
 static void *pg_address(PgSession *s,coax_t_GDRef r){return (void*)(uintptr_t)(s->buffers[r.buffer]+(uint64_t)r.offset);}
@@ -43,6 +45,7 @@ static PcStatus pg_create(coax_t_GProfile profile,coax_v_t_GFile files,const cha
     *why=gd_params(profile,(coax_v_t_GDParam){s->params,s->param_count});if(why->status)goto refused;
     if(!gd_packed_fits(s->plan,why->bytes)){why->status=COAX_GStatus_capacity;goto refused;}
     if(!cpu)for(int64_t i=0;i<gd_kernel_count();i++){coax_string name=gd_kernel_name(i);char label[128];if(name.count<1 || name.count>=127){code=PC_ARGUMENT;goto failed;}memcpy(label,name.data,(size_t)name.count);label[name.count]=0;code=pc_kernel(s->module,label,&s->kernels[i]);if(code)goto failed;}
+    if(!cpu){s->recorded_ops=calloc((size_t)s->plan.max_ops,sizeof *s->recorded_ops);s->recorded_args=calloc((size_t)s->plan.max_args,sizeof *s->recorded_args);s->changes=calloc((size_t)s->plan.max_ops,sizeof *s->changes);if(!s->recorded_ops || !s->recorded_args || !s->changes){code=PC_MEMORY;goto failed;}}
     code=pg_allocate(s,0,(size_t)s->plan.upload.e[0]);if(code)goto failed;
     for(int64_t i=0;i<s->param_count;i++){coax_t_GDParam p=s->params[i];code=pg_upload(s,s->buffers[0]+(uint64_t)p.device,files.data[p.file].data.data+p.begin,(size_t)p.bytes);if(code)goto failed;}
     for(int i=0;i<gd_buffer_count();i++){code=pg_allocate(s,16+i,(size_t)(s->plan.counts.e[i]*s->plan.width.e[i]));if(code)goto failed;}
@@ -82,11 +85,34 @@ static PcStatus pg_execute(PgSession *s,coax_t_GDProgram p){
     }
     return PC_OK;
 }
+/* Every node depends on its predecessor. Coax compares the last installed
+   descriptors with this admitted program; only the listed nodes are updated.
+   This path is entered only for synchronous steps, after prior work completed. */
+static PcStatus pg_replay(PgSession *s,coax_t_GDProgram p){
+    coax_t_GDReplay delta=gd_replay_changes((coax_v_t_GDOp){s->recorded_ops,s->recorded_count},(coax_v_t_GDArg){s->recorded_args,s->recorded_arg_count},(coax_v_t_GDOp){s->ops,p.ops},(coax_v_t_GDArg){s->args,p.args},(coax_v_s64){s->changes,s->plan.max_ops});
+    if(delta.status)return PC_ARGUMENT;PcStatus code=PC_OK;int build=!s->replay || delta.rebuild;
+    if(build){if(s->replay){code=pc_program_free(s->replay);s->replay=NULL;if(code)goto failed;}code=pc_program_create((size_t)p.ops,&s->replay);if(code)goto failed;}
+    int64_t count=build?p.ops:delta.updates;
+    for(int64_t j=0;j<count;j++){int64_t i=build?j:s->changes[j];coax_t_GDOp op=s->ops[i];coax_t_GDArg *a=s->args+op.first;PcArg arguments[24];
+        for(int64_t k=0;k<op.count;k++)arguments[k]=(PcArg){.kind=a[k].view?PC_ARG_VIEW:PC_ARG_INT,.i=a[k].value,.data=a[k].view?(PcBuffer)(uintptr_t)pg_address(s,a[k].ref):0,.count=a[k].ref.count};
+        code=build?pc_program_add(s->replay,s->kernels[op.kind],op.items,(int)op.block,arguments,(int)op.count):pc_program_set(s->replay,(size_t)i,s->kernels[op.kind],op.items,(int)op.block,arguments,(int)op.count);if(code)goto failed;
+    }
+    if(build){code=pc_program_ready(s->replay);if(code)goto failed;}
+    code=pc_program_replay(s->replay,s->stream);if(code)goto failed;
+    memcpy(s->recorded_ops,s->ops,(size_t)p.ops*sizeof *s->ops);memcpy(s->recorded_args,s->args,(size_t)p.args*sizeof *s->args);s->recorded_count=p.ops;s->recorded_arg_count=p.args;return PC_OK;
+failed:s->poisoned=1;return code;
+}
 PcStatus pg_step(PgSession *s,int64_t token,int64_t position,int choose,int64_t limit,int wait,int64_t control[8]){
     if(s->poisoned)return PC_DRIVER;coax_t_GDProgram p=gd_program(s->shape,s->plan,(coax_v_t_GDParam){s->params,s->param_count},position,token,choose!=0,limit,(coax_v_t_GDOp){s->ops,s->plan.max_ops},(coax_v_t_GDArg){s->args,s->plan.max_args});
     if(p.status){snprintf(s->error,sizeof s->error,"Coax device program refused: %u",p.status);return PC_ARGUMENT;}
-    PcStatus code=pg_execute(s,p);if(code)return code;
-    if(wait){PcStatus code=pg_wait(s);if(code)return code;return pg_read(s,24,control,8*8);}return PC_OK;
+    int instrumented=0,disabled=0;
+#ifdef PSIONIC_DEVICE_TEST
+    instrumented=s->profile;disabled=s->replay_disabled;
+#endif
+    int replay=gd_replay_allowed(!s->cpu,wait!=0,instrumented,disabled);
+    PcStatus code=replay?pg_replay(s,p):pg_execute(s,p);if(code)return code;
+    /* The ordered download and its wait also complete the preceding graph. */
+    if(wait)return pg_read(s,24,control,8*8);return PC_OK;
 }
 PcStatus pg_prefill_poll(PgSession *s,const int64_t *tokens,int64_t count,int64_t position,int choose,int64_t limit,int64_t control[8],PgPoll poll,void *context,int *interrupted){
     *interrupted=0;
@@ -123,11 +149,11 @@ void pg_close(PgSession *s){if(!s)return;
 #ifdef PSIONIC_DEVICE_TEST
     if(s->cpu){if(s->buffers)for(int i=0;i<16+gd_buffer_count();i++)free((void*)(uintptr_t)s->buffers[i]);}else
 #endif
-    {if(s->stream)pc_sync_stream(s->stream);if(s->buffers)for(int i=0;i<16+gd_buffer_count();i++)if(s->buffers[i])pc_free(s->buffers[i]);if(s->module)pc_unload(s->module);if(s->stream)pc_destroy_stream(s->stream);}
+    {if(s->stream)pc_sync_stream(s->stream);if(s->replay)pc_program_free(s->replay);if(s->buffers)for(int i=0;i<16+gd_buffer_count();i++)if(s->buffers[i])pc_free(s->buffers[i]);if(s->module)pc_unload(s->module);if(s->stream)pc_destroy_stream(s->stream);}
 #ifdef PSIONIC_DEVICE_TEST
     free(s->seconds);free(s->launches);
 #endif
-    free(s->buffers);free(s->params);free(s->ops);free(s->args);free(s->kernels);free(s);
+    free(s->recorded_ops);free(s->recorded_args);free(s->changes);free(s->buffers);free(s->params);free(s->ops);free(s->args);free(s->kernels);free(s);
 }
 coax_t_GDPlan pg_plan(const PgSession *s){return s->plan;}
 coax_t_GShape pg_shape(const PgSession *s){return s->shape;}

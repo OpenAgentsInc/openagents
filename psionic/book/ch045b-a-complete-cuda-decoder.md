@@ -106,7 +106,7 @@ limits are in the [decode-speed record](../../docs/verification/psionic-decode-s
 
 Both numerical and backend profiles retain their identity: this change removes
 address overhead rather than changing the model's arithmetic. Prefill, matrix
-hardware, graph replay and concurrent scheduling remain separate measurements.
+hardware, [graph replay](ch045f-replay-the-device-program.md) and concurrent scheduling have separate measurements.
 
 ## Move the next bottleneck
 

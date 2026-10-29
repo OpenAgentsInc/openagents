@@ -1,0 +1,13 @@
+{
+  "baseline": "previous qualified pass-2 executable",
+  "candidate": "graph replay and one ordered control-download wait",
+  "order": [
+    "candidate batch",
+    "baseline batch"
+  ],
+  "method": "one warm-up and five measured requests per batch on the same GPU in one window; batches were sequential, not alternating pairs",
+  "baseline_median_output_ids_per_second": 56.578851443444,
+  "candidate_median_output_ids_per_second": 56.74697519586806,
+  "rate_change_percent": 0.29714946156536026,
+  "conclusion": "negligible HTTP change in this small sample; no meaningful endpoint latency or throughput gain claimed"
+}

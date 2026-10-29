@@ -223,6 +223,12 @@ There is no reciprocal substitution or change to sink mass/reduction order.
 Coax admits shapes, byte budgets, tensor-relative u32 index bounds, all kernel
 views and the ordered launch program; C performs effects. The native session
 has no automatic CPU fallback. Authentication and upload happen once.
+Synchronous decode may replay an ordered CUDA graph of that admitted program.
+Coax compares semantic descriptors and lists dynamic node updates or a topology
+rebuild. Each node depends on its predecessor; immutable bindings retain their
+session lifetime. CPU emulation, asynchronous submission and per-kernel
+instrumentation use ordinary launches. A control download waits for the step
+before the next graph update; closing destroys graphs before buffers/modules.
 
 Single-token steps publish cache/logits/diagnostics only after all numeric
 flags succeed, then advance position. Batched prefill uses causal per-query

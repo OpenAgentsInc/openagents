@@ -90,8 +90,10 @@ bench_dir=$(mktemp -d /tmp/psionic-bench.XXXXXX)
 coax/bin/coax c psionic/lib/responses/server-host.coax --library --release \
   --header "$bench_dir/device-host.h" > "$bench_dir/device-host.c"
 coax/bin/coax cuda psionic/lib/gptoss/device-kernels.coax > "$bench_dir/after.cu"
+python3 psionic/tests/gptoss_device_bindings.py "$bench_dir/device-host.h" \
+  > "$bench_dir/gptoss-device-cpu.h"
 cc -std=c11 -O3 -g -ffp-contract=off -fno-fast-math \
-  -I"$bench_dir" -Ipsionic/platform psionic/tests/gptoss_speed.c \
+  -DPSIONIC_DEVICE_TEST -I"$bench_dir" -Ipsionic/platform psionic/tests/gptoss_speed.c \
   "$bench_dir/device-host.c" psionic/platform/cuda-host.c -ldl -lm \
   -o "$bench_dir/paired"
 ```
@@ -113,6 +115,11 @@ python3 psionic/tests/gptoss_speed_report.py \
 ```
 
 Omit `--baseline-plan` when both modules use the same Coax dispatch program.
+For submission-only comparisons, pass the same module twice and use
+`--host-replay` instead. This explicitly enables graph replay only in variant 1;
+other harness modes disable replay so replacing test kernel tables cannot reuse
+stale graph bindings. The benchmark requires `PSIONIC_DEVICE_TEST`; production
+sessions retain their immutable module and expose no such switch.
 Then check actual HTTP on a dedicated test instance with its key already in the
 environment; the benchmark sends six bounded requests and checks a state digest:
 
@@ -139,7 +146,7 @@ qualification. Startup and multi-user improvements have their own metrics.
 | P0 | Remove repeated cache/address work | Hoist head/row/slot bases, use admitted power-of-two ring masks, and create bounded subviews outside inner loops. Keep generic-shape coverage. |
 | P0 | Profile norm, softmax, routing and head separately | The largest cost can move after expert products improve. Optimize measured total contribution. |
 | P0 | Tune block size and row/lane mapping per kernel | Sweep actual original shapes, register count and spills; retain the smallest measured policy, not a universal block size. |
-| P0 | Avoid duplicate stream waits | Queue the control download behind kernels on the same ordered stream and synchronize once. Check failure propagation and poisoned-session behavior. |
+| Done, pass 3 | Avoid duplicate stream waits | Queue the control download behind kernels on the same ordered stream and synchronize once. Check failure propagation and poisoned-session behavior. |
 | P0 | Remove bounds/division work proven redundant by admission | Keep views checked; specialize safe constants only when code size, compilation and actual runtime improve. |
 | P1 | Compute norm denominators once | Current output lanes repeat the same ordered reduction. Share the exact f64 denominator; account for added launches/barriers. |
 | Done, pass 2 | Parallelize softmax normalization divisions | Preserve the original ordered denominator and each f64 division; avoid reciprocal replacement. |
@@ -173,7 +180,7 @@ qualification. Startup and multi-user improvements have their own metrics.
 | P0 | Measure first visible text separately from reasoning | Early creation/reasoning events are not the visible answer; report both distributions. |
 | P1 | Dedicated model thread and overlapped output work | Keep the CUDA context and worker on one owned thread; move parsing/sending off its critical path under explicit bounded queues. |
 | P1 | Cache immutable launch bindings | Pre-admit coefficients/views and patch bounded token/position scalars in Coax; preserve all dynamic checks. |
-| P1 | CUDA graph replay | Coax constructs a repeatable program; device-side dynamic controls avoid rebuilding per-position graphs. Check reset, poison, cancellation and rollback. |
+| Done for synchronous decode, pass 3 | CUDA graph replay | Coax compares admitted descriptors; update only changed nodes in a retained ordered graph. Device-side control scalars and batched-prefill graphs remain future experiments. |
 | P1 | Bounded asynchronous decode/lookahead | Overlap host parsing/sending with GPU work; avoid computing past a return/handoff or cancellation without an explicit rollback rule. |
 | P1 | Pinned control-transfer memory and event completion | Measure pageable-copy overhead and per-token host wakeups; keep lifetimes and failure handling explicit. |
 | P1 | Batch harmless transport writes | Balance syscall count against first-delta/tail latency; respect slow clients and never merge semantic items. TCP_NODELAY is already enabled. |
@@ -234,3 +241,42 @@ improves 39.218 → 53.157 IDs/s and short greedy decode 53.974 → 62.453 IDs/s
 The endpoint measures 54.481 output IDs/s including prefill and transport.
 First-visible latency is explicitly recorded and is not claimed improved;
 further phase/transport attribution remains a next measurement.
+
+## Third pass: ordered graph replay
+
+[Chapter 45f](../../book/ch045f-replay-the-device-program.md) now implements
+Coax descriptor deltas and synchronous decode replay. Kernel arithmetic and
+generated CUDA are unchanged. The adapter retains an ordered node chain,
+updates changing scalar/view bindings, and submits one graph. CPU emulation,
+asynchronous work and per-kernel profiling keep ordinary launches. A single
+ordered control download/wait replaces the old redundant pre-download wait.
+
+The [third-pass record](../../../docs/verification/psionic-decode-pass3-2026-10-29.md)
+and [raw samples](../../fixtures/gptoss/qualification/decode-pass3-2026-10-29/)
+retain all results. Both paired core variants use the same single download/wait;
+the measured comparison therefore isolates graph replay:
+
+| Workload | Ordinary launches | Graph replay | Change |
+| --- | ---: | ---: | ---: |
+| 1024 input / 128 forced IDs | 53.789 decode IDs/s | 54.236 decode IDs/s | +0.8% |
+| 70 input / 128 greedy IDs | 63.174 decode IDs/s | 64.007 decode IDs/s | +1.3% |
+| Fresh HTTP batches, including all request work | 56.579 output IDs/s | 56.747 output IDs/s | Negligible (+0.3%) |
+
+Complete state and output IDs remain bitwise equal. Five HTTP samples follow
+a warm-up per variant; candidate and baseline batches run sequentially, so this
+is a weaker comparison than alternating core pairs. Candidate response time is
+2.255627 s, first semantic delta 0.309761 s and first visible text 0.568112 s.
+The fresh baseline is 2.262329 / 0.306640 / 0.571821 s respectively. No
+meaningful API latency gain is claimed. Compare with a fresh baseline before
+attributing a historical timing difference to an optimization.
+
+Rejected owned-slice experiments included a smaller FP4 nibble lookup,
+quarter-word extraction, hoisted input subviews and two/four-row expert tiles.
+None produced a convincing useful win; row tiles were neutral or slower.
+They are absent from the shipped kernels. The retained exploratory logs do not
+constitute a qualified alternative backend.
+
+Next, prioritize coefficient/matrix execution and prefill rather than expecting
+large submission-only gains. Device-side controls could remove graph updates;
+measure that against this small ceiling. Keep matrix instructions, fusion,
+prefill replay and concurrency as separate behavior/performance gates.

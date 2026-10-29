@@ -1,0 +1,60 @@
+// Replay eligibility and semantic descriptor changes belong to Coax. CUDA
+// objects and copies of the last submitted descriptors belong to the host.
+#load "device-plan.coax";
+#authority;
+GDReplay :: struct {status:GStatus;rebuild:bool;updates:int;}
+
+#test "replay requires a completed GPU step without per-kernel instrumentation" {
+    #assert gd_replay_allowed(true,true,false,false);
+    #assert !gd_replay_allowed(false,true,false,false);
+    #assert !gd_replay_allowed(true,false,false,false);
+    #assert !gd_replay_allowed(true,true,true,false);
+    #assert !gd_replay_allowed(true,true,false,true);
+}
+#test "replay compares semantic arguments and admits updates atomically" {
+    old:=[2]GDOp.[GDOp.{kind=0,items=1,count=1},GDOp.{kind=1,items=32,first=1,count=1}];
+    next:=old;args:=[2]GDArg.[GDArg.{value=7},GDArg.{view=true,ref=GDRef.{buffer=16,count=32,elem=4}}];other:=args;changes:=[2]int.[-1,-1];
+    r:=gd_replay_changes(old[..],args[..],next[..],other[..],changes[..]);#assert r.status==GStatus.ok && !r.rebuild && r.updates==0 && changes[0]==-1;
+    other[0].value=-1;next[1].items=64;
+    r=gd_replay_changes(old[..],args[..],next[..],other[..],changes[..]);#assert r.updates==2 && changes[0]==0 && changes[1]==1;
+    changes[0]=-1;r=gd_replay_changes(old[..],args[..],next[..],other[..],changes[0..<1]);#assert r.status==GStatus.capacity && changes[0]==-1;
+    next=old;other=args;other[1].ref.offset=128;r=gd_replay_changes(old[..],args[..],next[..],other[..],changes[..]);#assert r.updates==1 && changes[0]==1;
+    other=args;other[1].value=999;r=gd_replay_changes(old[..],args[..],next[..],other[..],changes[..]);#assert r.updates==0;
+    next[1].kind=2;r=gd_replay_changes(old[..],args[..],next[..],other[..],changes[..]);#assert r.rebuild;
+    r=gd_replay_changes(old[0..<1],args[..],old[..],args[..],changes[..]);#assert r.rebuild;
+    next=old;next[1].first=2;r=gd_replay_changes(old[..],args[..],next[..],other[..],changes[..]);#assert r.status==GStatus.capacity;
+}
+#test "admitted programs patch positions across a ring wrap and rebuild selection topology" {
+    shape:=GT_SHAPE;shape.capacity=256;pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;
+    profile:=GProfile.{shape=shape,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    plan:=gd_plan(shape,pins[..],1000000000,1000000000);a:[192]GDOp;b:[192]GDOp;aa:[4608]GDArg;bb:[4608]GDArg;changes:[192]int;
+    x:=gd_program(shape,plan,params[..],127,1,true,200,a[..],aa[..]);y:=gd_program(shape,plan,params[..],128,2,true,201,b[..],bb[..]);
+    #assert x.status==GStatus.ok && y.status==GStatus.ok;
+    r:=gd_replay_changes(a[0..<x.ops],aa[0..<x.args],b[0..<y.ops],bb[0..<y.args],changes[..]);
+    #assert r.status==GStatus.ok && !r.rebuild && r.updates==10 && changes[0]==0 && changes[r.updates-1]==y.ops-1;
+    y=gd_program(shape,plan,params[..],128,2,false,201,b[..],bb[..]);
+    r=gd_replay_changes(a[0..<x.ops],aa[0..<x.args],b[0..<y.ops],bb[0..<y.args],changes[..]);#assert r.rebuild;
+}
+gd_replay_allowed :: (gpu:bool,wait:bool,instrumented:bool,disabled:bool)->bool #export_c {return gpu && wait && !instrumented && !disabled;}
+gd_replay_valid :: (ops:[]GDOp,args:[]GDArg)->bool {
+    for op:ops {if op.kind<0 || op.kind>=gd_kernel_count() || op.items<1 || op.items>4294967295 || op.block<1 || op.block>1024 || op.first<0 || op.first>args.count || op.count<0 || op.count>24 || op.count>args.count-op.first {return false;}}
+    return true;
+}
+gd_replay_changed :: (a:GDOp,aa:[]GDArg,b:GDOp,bb:[]GDArg)->bool {
+    if a.items!=b.items || a.block!=b.block {return true;}
+    for j:0..<a.count {x:=aa[a.first+j];y:=bb[b.first+j];if x.view!=y.view {return true;}
+        if x.view {if x.ref.buffer!=y.ref.buffer || x.ref.offset!=y.ref.offset || x.ref.count!=y.ref.count || x.ref.elem!=y.ref.elem {return true;}}
+        else if x.value!=y.value {return true;}
+    }return false;
+}
+// Inputs have already passed gd_program admission. This second boundary
+// checks descriptor spans; it does not re-admit model weights or allocations.
+gd_replay_changes :: (old:[]GDOp,aa:[]GDArg,next:[]GDOp,bb:[]GDArg,changes:[]int)->GDReplay #export_c {
+    if !gd_replay_valid(old,aa) || !gd_replay_valid(next,bb) {return GDReplay.{status=GStatus.capacity};}
+    if old.count!=next.count {return GDReplay.{rebuild=true};}
+    for i:0..<old.count {if old[i].kind!=next[i].kind || old[i].count!=next[i].count {return GDReplay.{rebuild=true};}}
+    count:=0;for i:0..<old.count {if gd_replay_changed(old[i],aa,next[i],bb) {count+=1;}}
+    if changes.count<count {return GDReplay.{status=GStatus.capacity};}
+    cursor:=0;for i:0..<old.count {if gd_replay_changed(old[i],aa,next[i],bb) {changes[cursor]=i;cursor+=1;}}
+    return GDReplay.{updates=count};
+}
