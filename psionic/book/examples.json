@@ -250,6 +250,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/softmax-limits.coax",
+      "chapter": "psionic/book/ch172-from-hard-max-to-softmax.md",
+      "stdout": "psionic/fixtures/softmax-limits.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,198 @@
+// From hard-max to softmax: when a soft attention read still returns the exact stored value.
+#load "exact-memory.coax";
+#load "ops.coax";
+#authority;
+
+SmFormat :: enum u8 {f64;f32;bf16;}
+SmStatus :: enum u8 {ok;missing;range;capacity;beta;unstable;alias;}
+SmRead :: struct {status:SmStatus;value:int;mixed:f64;exact:bool;}
+SmScan :: struct {until:int;failure:int;}
+SmLimit :: struct {status:SmStatus;same:SmScan;near:SmScan;}
+
+SM_SHIFT_MAX :: 700;
+SM_BETA_MAX :: 1000000;
+
+#test "formats round as binary64, binary32 and bfloat16" {
+    third:=1.0/3.0;
+    #assert sm_round(third,SmFormat.f64)==third;
+    #assert sm_round(third,SmFormat.f32)==f64(f32(third)) && sm_round(third,SmFormat.f32)!=third;
+    #assert sm_round(third,SmFormat.bf16)==f64(f32_from_bits(0x3eab0000));
+    // bfloat16 keeps 8 significant bits: 257 rounds to 256 (ties to even), 259 to 260.
+    #assert sm_round(257,SmFormat.bf16)==256 && sm_round(259,SmFormat.bf16)==260 && sm_round(258,SmFormat.bf16)==258;
+    #assert sm_round(-259,SmFormat.bf16)==-260 && sm_round(256,SmFormat.bf16)==256;
+    #assert sm_round(16777217,SmFormat.f32)==16777216 && sm_round(16777217,SmFormat.f64)==16777217;
+}
+#test "nearest integer and the shift limit" {
+    #assert sm_nearest(2.4)==2 && sm_nearest(2.6)==3 && sm_nearest(-2.4)==-2 && sm_nearest(-2.6)==-3;
+    #assert sm_nearest(0.4)==0 && sm_nearest(-0.4)==0 && sm_nearest(7)==7 && sm_nearest(-7)==-7;
+    #assert sm_nearest(2.5)==3 && sm_nearest(-2.5)==-2 && sm_nearest(-0.5)==0 && sm_nearest(0)==0;
+    #assert sm_shift_ok(700) && !sm_shift_ok(700.5) && sm_shift_ok(-1000);
+}
+#test "the analytic bound is ln(4V)" {
+    #assert abs(sm_beta_bound(1000)-log(4000.0))<0.000000000001;
+    #assert abs(sm_beta_bound(1)-log(4.0))<0.000000000001;
+    #assert sm_beta_bound(0)==0 && sm_beta_bound(EM_VALUE_MAX+1)==0;
+    #assert abs(sm_beta_bound(EM_VALUE_MAX)-log(4.0*f64(EM_VALUE_MAX)))<0.000000000001;
+}
+#test "a sharp enough softmax reads the latest write exactly" {
+    keys:=[5]int.[7,3,7,9,3];values:=[5]int.[10,20,30,40,50];beta:=sm_beta_bound(50)+1;
+    for f:0..<3 {
+        fmt:=cast(SmFormat)f;
+        a:=sm_read(keys[..],values[..],5,7,beta,fmt);#assert a.status==SmStatus.ok && a.value==30 && a.exact;
+        b:=sm_read(keys[..],values[..],5,3,beta,fmt);#assert b.status==SmStatus.ok && b.value==50 && b.exact;
+        #assert abs(a.mixed-30)<0.5 && abs(b.mixed-50)<0.5;
+    }
+    #assert sm_read(keys[..],values[..],5,8,beta,SmFormat.f64).status==SmStatus.missing;
+    #assert sm_read(keys[..],values[..],6,7,beta,SmFormat.f64).status==SmStatus.capacity;
+    #assert sm_read(keys[..],values[..],5,EM_KEY_MAX+1,beta,SmFormat.f64).status==SmStatus.range;
+    #assert sm_read(keys[..],values[..],5,7,0,SmFormat.f64).status==SmStatus.beta;
+    #assert sm_read(keys[..],values[..],5,7,-1,SmFormat.f64).status==SmStatus.beta;
+    #assert sm_read(keys[..],values[..],5,7,f64(SM_BETA_MAX),SmFormat.f64).status==SmStatus.ok;
+    #assert sm_read(keys[..],values[..],5,7,f64(SM_BETA_MAX)+1,SmFormat.f64).status==SmStatus.beta;
+    values[0]=EM_VALUE_MAX+1;#assert sm_read(keys[..],values[..],5,7,beta,SmFormat.f64).status==SmStatus.range;values[0]=10;
+    values[2]=EM_VALUE_MAX+1;#assert sm_read(keys[..],values[..],5,7,beta,SmFormat.f64).status==SmStatus.range;
+    values[2]=-EM_VALUE_MAX-1;#assert sm_read(keys[..],values[..],5,7,beta,SmFormat.f64).status==SmStatus.range;
+    values[2]=EM_VALUE_MAX;#assert sm_read(keys[..],values[..],5,7,30,SmFormat.f64).value==EM_VALUE_MAX;
+    values[2]=-EM_VALUE_MAX;#assert sm_read(keys[..],values[..],5,7,30,SmFormat.f64).value==-EM_VALUE_MAX;
+}
+#test "below the bound, the earlier writes leak into the read" {
+    // The latest of eight writes of key 2 holds 1000; the earlier ones hold -1000.
+    keys:=[8]int.[2,2,2,2,2,2,2,2];values:=[8]int.[-1000,-1000,-1000,-1000,-1000,-1000,-1000,1000];
+    v:=1000;above:=sm_read(keys[..],values[..],8,2,sm_beta_bound(v)+0.01,SmFormat.f64);
+    #assert above.status==SmStatus.ok && above.exact && above.value==1000;
+    below:=sm_read(keys[..],values[..],8,2,sm_beta_bound(v)-1,SmFormat.f64);
+    #assert below.status==SmStatus.ok && !below.exact && below.value<1000;
+    one:=sm_read(keys[7..<8],values[7..<8],1,2,0.001,SmFormat.f64);#assert one.exact && one.mixed==1000;
+}
+#test "bfloat16 scores tie where binary32 scores still separate" {
+    // Key 16 against itself scores 256 * (T + 1); bfloat16 cannot tell 768 + 0 from 768 + 1.
+    keys:=[2]int.[16,16];values:=[2]int.[-1000,1000];beta:=sm_beta_bound(1000)+1;
+    #assert sm_read(keys[..],values[..],2,16,beta,SmFormat.f32).exact;
+    b:=sm_read(keys[..],values[..],2,16,beta,SmFormat.bf16);#assert b.status==SmStatus.ok && !b.exact && b.value==0;
+}
+#test "limits scan doubling trace lengths until the first failure" {
+    keys:[64]int;values:[64]int;beta:=sm_beta_bound(1000)+1;
+    a:=sm_limit(16,1000,beta,SmFormat.f64,keys[..],values[..],false);
+    #assert a.status==SmStatus.ok && a.same.until==64 && a.same.failure==0 && a.near.until==64 && a.near.failure==0;
+    #assert sm_limit(16,1000,beta,SmFormat.f64,keys[0..<0],values[..],false).status==SmStatus.capacity;
+    #assert sm_limit(16,1000,beta,SmFormat.f64,keys[..],values[0..<8],false).status==SmStatus.capacity;
+    #assert sm_limit(0,1000,beta,SmFormat.f64,keys[..],values[..],false).status==SmStatus.range;
+    #assert sm_limit(EM_KEY_MAX+1,1000,beta,SmFormat.f64,keys[..],values[..],false).status==SmStatus.range;
+    #assert sm_limit(16,0,beta,SmFormat.f64,keys[..],values[..],false).status==SmStatus.range;
+    #assert sm_limit(16,EM_VALUE_MAX+1,beta,SmFormat.f64,keys[..],values[..],false).status==SmStatus.range;
+    #assert sm_limit(16,1000,beta,SmFormat.f64,keys[..],values[..],true).status==SmStatus.alias;
+    #assert sm_limit(1,1,beta,SmFormat.f64,keys[0..<2],values[0..<2],false).status==SmStatus.ok;
+    one:=sm_limit(EM_KEY_MAX,EM_VALUE_MAX,30,SmFormat.f64,keys[0..<1],values[0..<1],false);
+    #assert one.same.until==1 && one.near.until==1;
+    short:=sm_limit(16,1000,beta,SmFormat.f64,keys[0..<48],values[..],false);
+    #assert short.same.until==32 && short.near.until==32;
+    // At the largest key the neighbour is k - 1; k + 1 would be out of range.
+    e:=sm_limit(EM_KEY_MAX,1000,beta,SmFormat.f64,keys[..],values[..],false);
+    #assert e.near.until==64 && e.same.until==64;
+}
+#test "each stream fails for its own reason" {
+    // Fresh scratch for every scan, so nothing left by an earlier scan can stand in for a write.
+    beta:=sm_beta_bound(1000)+1;
+    k1:[64]int;v1:[64]int;w:=sm_limit(256,1000,beta,SmFormat.f32,k1[..],v1[..],false);
+    #assert w.same.until==32 && w.same.failure==64 && w.near.until==64 && w.near.failure==0;
+    k2:[64]int;v2:[64]int;b:=sm_limit(16,1000,beta,SmFormat.bf16,k2[..],v2[..],false);
+    #assert b.same.until==1 && b.same.failure==2 && b.near.until==1 && b.near.failure==2;
+    k3:[64]int;v3:[64]int;c:=sm_limit(16,1000,sm_beta_bound(1000)-1,SmFormat.f64,k3[..],v3[..],false);
+    #assert c.same.until==1 && c.same.failure==2 && c.near.until==64 && c.near.failure==0;
+    // Values in [-1, 1] at a very soft beta: the neighbour's -1 leaks enough to break the read.
+    k4:[64]int;v4:[64]int;d:=sm_limit(16,1,0.4,SmFormat.f64,k4[..],v4[..],false);
+    #assert d.near.until==1 && d.near.failure==2 && d.same.until==1 && d.same.failure==2;
+}
+
+// book:begin format
+// A number format rounds every value a transformer would hold: scores,
+// logits, probabilities and the stored values themselves.
+sm_round :: (x:f64,format:SmFormat)->f64 {
+    if format==SmFormat.f64 {return x;}
+    bits:=f32_bits(f32(x));
+    if format==SmFormat.bf16 {bits=(bits+0x7fff+((bits>>16)&1))&0xffff0000;}
+    return f64(f32_from_bits(bits));
+}
+// book:end format
+
+// Round half up: truncate x + 0.5, then step down where truncation rounded a
+// negative value up.
+sm_nearest :: (x:f64)->int {
+    r:=cast(int)(x+0.5);
+    if f64(r)>x+0.5 {r-=1;}
+    return r;
+}
+sm_shift_ok :: (d:f64)->bool {return d<=f64(SM_SHIFT_MAX);}
+
+// book:begin bound
+// The smallest sharpness that keeps every read exact, for values in [-V, V].
+sm_beta_bound :: (v:int)->f64 #export_c {
+    if v<1 || v>EM_VALUE_MAX {return 0;}
+    return log(4.0*f64(v));
+}
+// book:end bound
+
+// book:begin read
+// Softmax over recency-weighted scores at sharpness `beta`, every quantity
+// rounded to `format`, then the weighted value rounded to the nearest integer.
+// Exact means that integer is the value a hard-max read returns.
+sm_read :: (keys:[]int,values:[]int,count:int,q:int,beta:f64,format:SmFormat)->SmRead #export_c {
+    hard:=em_read(keys,values,count,q);
+    if hard.status==EmStatus.capacity {return SmRead.{status=SmStatus.capacity};}
+    if hard.status==EmStatus.range {return SmRead.{status=SmStatus.range};}
+    if hard.status==EmStatus.missing {return SmRead.{status=SmStatus.missing};}
+    if !(beta>0) || beta>f64(SM_BETA_MAX) {return SmRead.{status=SmStatus.beta};}
+    for t:0..<count {if values[t]< -EM_VALUE_MAX || values[t]>EM_VALUE_MAX {return SmRead.{status=SmStatus.range};}}
+    b:=hard.position;
+    top:=sm_logit(keys[b],q,b,count,beta,format);
+    z:PsionicAccumulator;
+    for t:0..<count {
+        d:=sm_logit(keys[t],q,t,count,beta,format)-top;
+        if !sm_shift_ok(d) {return SmRead.{status=SmStatus.unstable};}
+        z=psionic_ops_accumulate(z,exp(d));
+    }
+    total:=psionic_ops_total(z);y:PsionicAccumulator;
+    for t:0..<count {
+        w:=sm_round(exp(sm_logit(keys[t],q,t,count,beta,format)-top)/total,format);
+        y=psionic_ops_accumulate(y,w*sm_round(f64(values[t]),format));
+    }
+    mixed:=psionic_ops_total(y);value:=sm_nearest(mixed);
+    return SmRead.{value=value,mixed=mixed,exact=value==values[b]};
+}
+// The chapter 166 score with the recency term a transformer needs: scaled by
+// count + 1 so that position t breaks ties but never outweighs a key mismatch.
+sm_logit :: (k:int,q:int,t:int,count:int,beta:f64,format:SmFormat)->f64 {
+    score:=em_score(k,q)*(count+1)+t;
+    return sm_round(beta*sm_round(f64(score),format),format);
+}
+// book:end read
+
+// book:begin limit
+// Two adversarial streams of length n at the largest key magnitude k. Near:
+// one write of +v to k, then n - 1 writes of -v to the neighbouring key k - 1.
+// Same: n writes to k, the latest holding +v and the rest -v. Each stream's n
+// doubles from 1 up to the scratch length until its read is wrong.
+sm_scan :: (near:bool,k:int,v:int,beta:f64,format:SmFormat,keys:[]int,values:[]int)->SmScan {
+    result:SmScan;n:=1;
+    while n<=keys.count {
+        if near {
+            keys[0]=k;values[0]=v;
+            for t:1..<n {keys[t]=k-1;values[t]=-v;}
+        } else {
+            for t:0..<n {keys[t]=k;values[t]=-v;}
+            values[n-1]=v;
+        }
+        if !sm_read(keys,values,n,k,beta,format).exact {result.failure=n;return result;}
+        result.until=n;n*=2;
+    }
+    return result;
+}
+sm_limit :: (k:int,v:int,beta:f64,format:SmFormat,keys:[]int,values:[]int,overlap:bool)->SmLimit #export_c {
+    if keys.count<1 || values.count<keys.count {return SmLimit.{status=SmStatus.capacity};}
+    if k<1 || k>EM_KEY_MAX || v<1 || v>EM_VALUE_MAX {return SmLimit.{status=SmStatus.range};}
+    if overlap {return SmLimit.{status=SmStatus.alias};}
+    r:=SmLimit.{near=sm_scan(true,k,v,beta,format,keys,values)};
+    r.same=sm_scan(false,k,v,beta,format,keys,values);
+    return r;
+}
+// book:end limit

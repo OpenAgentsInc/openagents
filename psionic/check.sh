@@ -54,6 +54,7 @@ python3 -I psionic/tests/ops_oracle.py > "$out/ops-oracle.h"
 python3 -I psionic/tests/mxfp4_oracle.py --header > "$out/mxfp4-oracle.h"
 python3 -I psionic/tests/moe_oracle.py --header > "$out/moe-oracle.h"
 python3 -I psionic/tests/trace_oracle.py --header > "$out/trace-oracle.h"
+python3 -I psionic/tests/soft_oracle.py --header > "$out/soft-oracle.h"
 python3 -I psionic/tests/gptoss_oracle.py --header > "$out/gptoss-oracle.h"
 "$text_python" -I psionic/tests/harmony_fixtures.py
 "$text_python" -I psionic/tests/harmony_oracle.py --header > "$out/harmony-goldens.h"
@@ -78,8 +79,8 @@ python3 -I psionic/tests/elephant_reference_fixture.py
 python3 -I psionic/tests/elephant_reference_fixture.py --check-output psionic/fixtures/models/elephant/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine exact-memory harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality)
-native_units=(exact-memory harmony gptoss-attention moe mxfp4 learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
+coax_units=(trace-machine exact-memory soft-memory harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tensor ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality)
+native_units=(exact-memory soft-memory harmony gptoss-attention moe mxfp4 learn tensor ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
         weights|rank5|rank5-bundle|access|layer-map|model-map) echo "psionic/lib/model-io/$1.coax" ;;
@@ -92,6 +93,7 @@ native_harness() {
         harmony) adapter=psionic/platform/harmony-memory.c; harness=psionic/tests/harmony.c ;;
         gptoss-attention) adapter=psionic/platform/gptoss-attention-memory.c; harness=psionic/tests/gptoss_attention.c ;;
         exact-memory) adapter=psionic/platform/trace-memory.c; harness=psionic/tests/trace.c ;;
+        soft-memory) adapter=psionic/platform/soft-spans.c; harness=psionic/tests/soft.c ;;
         moe) adapter=psionic/platform/moe-memory.c; harness=psionic/tests/moe.c ;;
         mxfp4) adapter=psionic/platform/mxfp4-memory.c; harness=psionic/tests/mxfp4.c ;;
         learn) adapter=psionic/platform/memory.c; harness=psionic/tests/native.c ;;

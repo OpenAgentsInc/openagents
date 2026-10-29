@@ -1,0 +1,14 @@
+values in [-1000, 1000]: exact for every trace length once beta > ln(4V) = 8.294049640102028
+binary64 keys up to 16: exact through 65536 writes
+binary64 keys up to 256: exact through 65536 writes
+binary64 keys up to 4096: exact through 65536 writes
+binary64 keys up to 65536: exact through 65536 writes
+binary32 keys up to 16: exact through 8192 writes, wrong at 16384
+binary32 keys up to 256: exact through 32 writes, wrong at 64
+binary32 keys up to 4096: exact through 1 writes, wrong at 2
+binary32 keys up to 65536: exact through 1 writes, wrong at 2
+bfloat16 keys up to 16: exact through 1 writes, wrong at 2
+bfloat16 keys up to 256: exact through 1 writes, wrong at 2
+bfloat16 keys up to 4096: exact through 1 writes, wrong at 2
+bfloat16 keys up to 65536: exact through 1 writes, wrong at 2
+binary64 at beta = ln(4V) - 1: exact through 1 writes, wrong at 2

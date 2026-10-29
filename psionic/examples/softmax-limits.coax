@@ -1,0 +1,28 @@
+#import "Basic";
+#load "../lib/soft-memory.coax";
+
+// book:begin example
+main :: () {
+    v:=1000;bound:=sm_beta_bound(v);
+    print("values in [-%, %]: exact for every trace length once beta > ln(4V) = %\n",v,v,bound);
+    keys:[65536]int;values:[65536]int;
+    names:=[3]string.["binary64","binary32","bfloat16"];
+    sizes:=[4]int.[16,256,4096,65536];
+    for f:0..<3 {
+        for i:0..<4 {
+            r:=sm_limit(sizes[i],v,bound+1,cast(SmFormat)f,keys[..],values[..],false);
+            #assert r.status==SmStatus.ok;
+            report(names[f],sizes[i],r);
+        }
+    }
+    r:=sm_limit(16,v,bound-1,SmFormat.f64,keys[..],values[..],false);
+    first:=r.same;if r.near.until<first.until {first=r.near;}
+    print("binary64 at beta = ln(4V) - 1: exact through % writes, wrong at %\n",first.until,first.failure);
+}
+// The earlier of the two streams' failures.
+report :: (name:string,k:int,r:SmLimit) {
+    first:=r.same;if r.near.until<first.until {first=r.near;}
+    if first.failure==0 {print("% keys up to %: exact through % writes\n",name,k,first.until);}
+    else {print("% keys up to %: exact through % writes, wrong at %\n",name,k,first.until,first.failure);}
+}
+// book:end example

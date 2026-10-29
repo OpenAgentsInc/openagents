@@ -43,8 +43,9 @@ run examples directly without the check command.
 | [56. Execute a DeepSeek R1 distill](ch056-execute-a-deepseek-r1-distill.md) | Runnable: original BF16 CPU reference | Qwen2 execution, original tokenizer BOS and stripped-history recipe, greedy generation, separate reasoning/final intervals. |
 | [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md) | Runnable: bounded CPU reference interpreter | Admit and run a small integer stack machine whose four-token-per-step trace and SHA-256 digest identify the run; a refused run publishes nothing. |
 | [166. Attention as exact memory](ch166-attention-as-exact-memory.md) | Runnable: bounded CPU, integer scores | Parabolic keys and hard-max reads return exactly the latest write or refuse; the machine with attention as its only memory reproduces the interpreter's digest. |
+| [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md) | Runnable: bounded CPU, binary64/binary32/bfloat16 rounding | Prove softmax reads stay exact for any trace length once β ≥ ln(4V), and measure where binary32 and bfloat16 rounding breaks them. |
 
-Chapters 41–48 start an independent gpt-oss branch, and 165–166 open Part XXIII (programs compiled into weights); chapter 11 and chapters 13–40 remain planned.
+Chapters 41–48 start an independent gpt-oss branch, and 165, 166 and 172 open Part XXIII (programs compiled into weights); chapter 11 and chapters 13–40 remain planned.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful
