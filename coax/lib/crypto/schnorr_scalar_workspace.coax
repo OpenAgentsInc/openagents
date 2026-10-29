@@ -1,0 +1,43 @@
+// Experimental BIP-340 scalar preparation. Not a signer or secret-use approval.
+#load "secp_scalar.coax";
+#authority;
+#test "private scalar admission is masked at order boundaries" {
+  key:[32]u8;work:[1]SignScalar;out:[32]u8;
+  #assert ss_key(key[..],work[..],false) && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+  work[0].wide[8]=1;key[31]=1;#assert ss_key(key[..],work[..],false) && work[0].valid==1 && sc_equal(work[0].safe,sc_small(1));
+  key[31]=3;#assert ss_key(key[..],work[..],false) && work[0].valid==1 && sc_equal(work[0].safe,sc_small(3));
+  #assert ss_write(SC_N,key[..]);#assert ss_key(key[..],work[..],false) && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+  key[31]-=1;#assert ss_key(key[..],work[..],false) && work[0].valid==1;
+  #assert ss_write(work[0].safe,out[..]);for i:0..<32 {#assert out[i]==key[i];}
+  key[31]+=2;#assert ss_key(key[..],work[..],false) && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+  for i:0..<32 {key[i]=255;}#assert ss_key(key[..],work[..],false) && work[0].valid==0 && sc_equal(work[0].safe,sc_small(1));
+}
+#test "parity adjustment and fixed-width output" {
+  a:=sc_small(3);neg:=sc_negate(a);out:[33]u8;out[32]=165;
+  #assert sc_equal(ss_even(a,0),a) && sc_equal(ss_even(a,1),neg);
+  #assert ss_write(a,out[..]) && out[31]==3 && out[32]==165;
+  out[0]=165;#assert !ss_write(a,out[0..<31]) && out[0]==165;
+}
+#test "private scalar admission refuses invalid metadata before touching state" {
+  key:[33]u8;work:[1]SignScalar;work[0].valid=9;
+  #assert !ss_key(key[0..<31],work[..],false) && !ss_key(key[..],work[..],false);
+  #assert !ss_key(key[0..<32],work[0..<0],false) && !ss_key(key[0..<32],work[..],true);
+  #assert work[0].valid==9;
+}
+SignScalar :: struct {raw:ScScalar;safe:ScScalar;wide:[9]u32;valid:u64;}
+// The host owns stable disjoint key/work views and truthful alias information.
+// Invalid secret values map to one for subsequent fixed-work computation;
+// the caller must preserve the validity bit and refuse eventual publication.
+ss_key :: (key:[]u8,work:[]SignScalar,overlap:bool)->bool #export_c {
+  if work.count!=1 || key.count!=32 || overlap {return false;}
+  bits: u32;for i:0..<8 {work[0].raw.limbs[i]=cb_load_be32(key,(7-i)*4).value;work[0].wide[i]=work[0].raw.limbs[i];bits|=work[0].raw.limbs[i];}
+  work[0].wide[8]=0;work[0].valid=sc_subtract_n(work[0].wide).borrow & (sc_zero_bit(bits)^1);
+  work[0].safe=sc_select(work[0].valid,work[0].raw,sc_small(1));return true;
+}
+// Internal parity bit is already known to be zero or one.
+ss_even :: (scalar:ScScalar,odd:u64)->ScScalar {return sc_select(odd,sc_negate(scalar),scalar);}
+// Internal callers provide a canonical scalar and stable disjoint output.
+ss_write :: (scalar:ScScalar,out:[]u8)->bool {
+  if !cb_span(out.count,0,32) {return false;}
+  for i:0..<8 {stored:=cb_store_be32(out,(7-i)*4,scalar.limbs[i]);}return true;
+}

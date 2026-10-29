@@ -1,0 +1,6 @@
+// Test-only adapter for comparing parity normalization to an integer oracle.
+#load "../../lib/crypto/schnorr_scalar_workspace.coax";
+ss_probe_even :: (work:[]SignScalar,odd:u64,out:[]u8)->bool #export_c {
+  if work.count!=1 || odd>1 {return false;}
+  return ss_write(ss_even(work[0].safe,odd),out);
+}
