@@ -23,8 +23,10 @@ export type Golden = { lit: number; settle: number; blocks: number }
 // clock: how its time of day runs (cycle, fixed:T with T 0 midnight to 1, or real: the visitor's time).
 export const STYLES = ["lowpoly", "painterly", "photoreal"] as const
 export type Style = (typeof STYLES)[number]
+// ruleset: the rules a realm plays by (verse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
+export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style }
-export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; uploads?: string; card?: string; style: Style; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; style: Style; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -77,6 +79,8 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
       if (!drawn.includes(ps) && !(declared === undefined && PACK_STYLE_PENDING.has(r.slug)))
         throw new Error(`realms.json: ${r.slug} is drawn ${drawn.join(" and ")} but its pack ${pack} is ${ps} (verse/packs/${pack}.json "style")`)
     }
+    // its ruleset (verse/rules/<ruleset>.coax): a realm without one casts nothing
+    if (r.ruleset !== undefined && !RULESETS.includes(r.ruleset)) throw new Error(`realms.json: ${r.slug}: ruleset is one of ${RULESETS.join(", ")}, not ${JSON.stringify(r.ruleset)}`)
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
@@ -116,6 +120,7 @@ export function page(r: Realm): string {
   const card = `https://openagents.com${r.card ?? "/verse/og-verse.jpg"}`
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
+    + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
     + (r.uploads ? ` data-uploads="${esc(r.uploads)}"` : "")
     + ` data-style="${r.style}" data-clock="${r.clock}"`
     + (r.zones?.length ? ` data-zones="${r.zones.map((z) => `${z.id}:${z.style ?? r.style}`).join(" ")}"` : "")

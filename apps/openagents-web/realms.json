@@ -80,6 +80,7 @@
         "alt": "Everglade, the forest city: take a quest from the board",
         "card": "/realms/everglade/og.jpg",
         "voice": "everglade",
+        "ruleset": "srd5",
         "module": "everglade",
         "slot": "everglade",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },

@@ -1,0 +1,295 @@
+// The SRD 5e ruleset (System Reference Document 5.2.1, CC BY 4.0), the one a
+// realm opts into with realms.json "ruleset": "srd5" (the page facts' ruleset=
+// line). A realm without a ruleset loads none of this and casts nothing.
+// Everglade opts in (docs/verse/everglade.md, Spells and destruction).
+//
+// What is here, as the previous Rust engine had it (`0b401561a0^:
+// crates/verse-world/src/spells/dice.rs`, `crates/verse-zone-everglade/src/
+// zones/everglade/demolition/meteor.rs` and destructible-buildings.md's
+// Damage model):
+//
+// - Dice: a SplitMix64 stream from a seed, every face equally likely
+//   (rejection sampling), sums of NdS, and a saving throw (d20 + modifier
+//   against a DC).
+// - Spells: level, range, area (sphere or cylinder radius), damage type and
+//   dice (two kinds at most), the save and what a success does, the cast
+//   time in seconds (the combat model's: real time on the world's clock).
+// - Objects: armor class by material and hit points by size and
+//   resilience (Breaking Objects), immune to poison and psychic damage;
+//   resistance halves, vulnerability doubles. An unattended object fails
+//   every saving throw, so it takes a spell's full damage.
+// - Conditions the spells use (Prone), and damage types.
+//
+// Units are metres (5 ft is 1.5 m) and seconds. Everything is prefixed srd_
+// so a realm can load it beside its own helpers.
+//   coax/bin/coax test --library verse/rules/srd5.coax
+
+SRD_RULESET :: "srd5";   // realms.json "ruleset"
+
+// ---- dice
+
+SrdDice :: struct { seed: u64; state: u64; rolled: u64; }
+
+SRD_LOW32 :: 0xFFFFFFFF;
+srd_wmul :: (a: u64, b: u64) -> u64 {
+  al := a & SRD_LOW32; ah := a >> 32; bl := b & SRD_LOW32; bh := b >> 32;
+  lo := al * bl;
+  high := (((ah * bl) & SRD_LOW32) + ((al * bh) & SRD_LOW32) + (lo >> 32)) & SRD_LOW32;
+  return (high << 32) | (lo & SRD_LOW32);
+}
+srd_wadd :: (a: u64, b: u64) -> u64 {
+  lo := (a & SRD_LOW32) + (b & SRD_LOW32);
+  high := ((a >> 32) + (b >> 32) + (lo >> 32)) & SRD_LOW32;
+  return (high << 32) | (lo & SRD_LOW32);
+}
+
+srd_dice :: (seed: u64) -> SrdDice { return SrdDice.{seed = seed, state = seed, rolled = 0}; }
+
+// The next 64 bits of the stream (SplitMix64, as dice.rs).
+srd_next :: (d: [] SrdDice) -> u64 {
+  d[0].state = srd_wadd(d[0].state, 0x9E3779B97F4A7C15);
+  z := d[0].state;
+  z = srd_wmul(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
+  z = srd_wmul(z ^ (z >> 27), 0x94D049BB133111EB);
+  return z ^ (z >> 31);
+}
+
+// One die of `sides` faces, 1 to sides. Rejection on the top 32 bits keeps
+// every face equally likely.
+srd_roll :: (d: [] SrdDice, sides: int) -> int {
+  n := ifx sides < 1 then 1 else sides;
+  d[0].rolled += 1;
+  span: u64 = 4294967296;
+  zone := span - span % cast(u64) n;
+  while true {
+    v := srd_next(d) >> 32;
+    if v < zone { return cast(int) (v % cast(u64) n) + 1; }
+  }
+  return 1;
+}
+// NdS.
+srd_sum :: (d: [] SrdDice, count: int, sides: int) -> int {
+  t := 0;
+  for i: 0..<count { t += srd_roll(d, sides); }
+  return t;
+}
+// A number from 0 up to 1 off the same stream (for where a meteor lands, not for rules).
+srd_unit :: (d: [] SrdDice) -> f32 { top: f32 = 16777216.0; return f32(srd_next(d) >> 40) / top; }
+
+// A saving throw: d20 + modifier against dc. A natural 20 is not an
+// automatic success for a save in the SRD; the total decides.
+SrdSave :: struct { roll: int; total: int; dc: int; success: bool; }
+srd_save :: (d: [] SrdDice, modifier: int, dc: int) -> SrdSave {
+  r := srd_roll(d, 20);
+  return SrdSave.{roll = r, total = r + modifier, dc = dc, success = r + modifier >= dc};
+}
+// A caster's spell save DC: 8 + proficiency bonus + spellcasting modifier.
+srd_spell_dc :: (proficiency: int, modifier: int) -> int { return 8 + proficiency + modifier; }
+
+// ---- damage types
+
+DMG_NONE :: 0; DMG_ACID :: 1; DMG_BLUDGEONING :: 2; DMG_COLD :: 3; DMG_FIRE :: 4; DMG_FORCE :: 5;
+DMG_LIGHTNING :: 6; DMG_NECROTIC :: 7; DMG_PIERCING :: 8; DMG_POISON :: 9; DMG_PSYCHIC :: 10;
+DMG_RADIANT :: 11; DMG_SLASHING :: 12; DMG_THUNDER :: 13;
+DMG_TYPES :: 14;
+DMG_NAME :: [14] string.["none", "acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic",
+  "piercing", "poison", "psychic", "radiant", "slashing", "thunder"];
+
+// ---- conditions (only those the spells here give)
+
+COND_PRONE :: 1;   // knocked down: 1.5 s in real time (the combat model's knocked-down debuff)
+PRONE_SECONDS :: 1.5;
+
+// ---- objects (SRD 5.2.1, Breaking Objects)
+
+// Materials and their armor class (Object Armor Class).
+MAT_CLOTH :: 0; MAT_GLASS :: 1; MAT_WOOD :: 2; MAT_STONE :: 3; MAT_IRON :: 4; MAT_MITHRAL :: 5; MAT_ADAMANTINE :: 6;
+MATERIALS :: 7;
+MAT_AC :: [7] int.[11, 13, 15, 17, 19, 21, 23];
+MAT_NAME :: [7] string.["cloth", "glass", "wood", "stone", "iron", "mithral", "adamantine"];
+
+// Sizes and hit points (Object Hit Points): fragile and resilient, as dice
+// and their averages. Huge and Gargantuan objects are treated as Large
+// sections, as the SRD says to.
+SIZE_TINY :: 0; SIZE_SMALL :: 1; SIZE_MEDIUM :: 2; SIZE_LARGE :: 3;
+SIZES :: 4;
+SIZE_NAME :: [4] string.["Tiny", "Small", "Medium", "Large"];
+HP_FRAGILE_DICE :: [4] int.[1, 1, 1, 1];        // 1d4, 1d6, 1d8, 1d10
+HP_RESILIENT_DICE :: [4] int.[2, 3, 4, 5];      // 2d4, 3d6, 4d8, 5d10
+HP_SIDES :: [4] int.[4, 6, 8, 10];
+HP_FRAGILE :: [4] int.[2, 3, 4, 5];
+HP_RESILIENT :: [4] int.[5, 10, 18, 27];
+
+SrdObject :: struct { material: int; size: int; resilient: bool; ac: int; hp: int; }
+srd_object :: (material: int, size: int, resilient: bool) -> SrdObject {
+  m := ifx material < 0 || material >= MATERIALS then MAT_WOOD else material;
+  z := ifx size < 0 || size >= SIZES then SIZE_MEDIUM else size;
+  hp := ifx resilient then HP_RESILIENT[z] else HP_FRAGILE[z];
+  return SrdObject.{material = m, size = z, resilient = resilient, ac = MAT_AC[m], hp = hp};
+}
+
+// The damage an object takes of a type: immune to poison and psychic;
+// resistance halves (rounded down), vulnerability doubles. A glass object is
+// vulnerable to bludgeoning and thunder (ours, after Shatter and the old
+// engine's glass), stone and iron resist fire.
+srd_object_damage :: (o: SrdObject, amount: int, kind: int) -> int {
+  if amount <= 0 { return 0; }
+  if kind == DMG_POISON || kind == DMG_PSYCHIC { return 0; }
+  if o.material == MAT_GLASS && (kind == DMG_BLUDGEONING || kind == DMG_THUNDER) { return amount * 2; }
+  if (o.material == MAT_STONE || o.material == MAT_IRON) && kind == DMG_FIRE { return amount / 2; }
+  return amount;
+}
+
+// ---- spells
+
+AREA_SPHERE :: 0; AREA_CYLINDER :: 1; AREA_LINE :: 2;
+SAVE_NONE :: 0; SAVE_STR :: 1; SAVE_DEX :: 2; SAVE_CON :: 3;
+ON_SAVE_NONE :: 0; ON_SAVE_HALF :: 1;   // what a success does
+
+SrdSpell :: struct {
+  name: string;
+  level: int;
+  range: f32;        // metres from the caster to the point
+  area: int;
+  radius: f32;       // metres: a sphere's or cylinder's radius, a line's width
+  height: f32;       // a cylinder's height, a line's length
+  count: int;        // how many points it strikes (Meteor Swarm's four)
+  dice: int; sides: int; kind: int;          // its damage
+  dice2: int; sides2: int; kind2: int;       // a second damage (0 none)
+  save: int; on_save: int;
+  bar: f32;          // seconds of cast bar
+  srd: bool;         // the SRD's spell, or one of ours (named in the card)
+}
+
+SPELL_METEOR_SWARM :: 0; SPELL_THUNDERBOLT :: 1; SPELL_MEGA_THUNDERBOLT :: 2; SPELL_WATER_ORB :: 3;
+SPELL_CALL_LIGHTNING :: 4; SPELL_FIREBALL :: 5; SPELL_LIGHTNING_BOLT :: 6;
+SPELLS :: 7;
+
+// Meteor Swarm (level 9): four 40-foot spheres of fire within a mile, 20d6
+// fire and 20d6 bludgeoning, a Dexterity save for half. The old engine's
+// yard and Everglade tuned it for buildings: six meteors on a 6 m ring, 4 m
+// blasts, 2.5 s cast, 36 m range (any surface in sight with destruction on).
+// The Thunderbolt and the Mega Thunderbolt are the Grove's own (not SRD):
+// 12d10 lightning to creatures, 20d10 to structures; the Mega five times
+// that. The Water Orb is the Water Lab's homebrew, after Control Water
+// (level 4): an orb of water that grows while held and is thrown, 6d10
+// bludgeoning where it bursts (ours). Call Lightning (level 3), Fireball
+// (level 3) and Lightning Bolt (level 3) are the SRD's.
+srd_spell :: (i: int) -> SrdSpell {
+  s: SrdSpell;
+  if i == SPELL_METEOR_SWARM {
+    s = SrdSpell.{name = "Meteor Swarm", level = 9, range = 1609, area = AREA_SPHERE, radius = 12, height = 0, count = 4,
+                  dice = 20, sides = 6, kind = DMG_FIRE, dice2 = 20, sides2 = 6, kind2 = DMG_BLUDGEONING,
+                  save = SAVE_DEX, on_save = ON_SAVE_HALF, bar = 2.5, srd = true};
+  } else if i == SPELL_THUNDERBOLT {
+    s = SrdSpell.{name = "Thunderbolt", level = 6, range = 36, area = AREA_SPHERE, radius = 3.4, height = 0, count = 1,
+                  dice = 20, sides = 10, kind = DMG_LIGHTNING, dice2 = 0, sides2 = 0, kind2 = DMG_NONE,
+                  save = SAVE_DEX, on_save = ON_SAVE_HALF, bar = 1.2, srd = false};
+  } else if i == SPELL_MEGA_THUNDERBOLT {
+    s = SrdSpell.{name = "Mega Thunderbolt", level = 9, range = 36, area = AREA_SPHERE, radius = 5.8, height = 0, count = 1,
+                  dice = 100, sides = 10, kind = DMG_LIGHTNING, dice2 = 0, sides2 = 0, kind2 = DMG_NONE,
+                  save = SAVE_DEX, on_save = ON_SAVE_HALF, bar = 0.5, srd = false};
+  } else if i == SPELL_WATER_ORB {
+    s = SrdSpell.{name = "Water Orb", level = 4, range = 90, area = AREA_SPHERE, radius = 3, height = 0, count = 1,
+                  dice = 6, sides = 10, kind = DMG_BLUDGEONING, dice2 = 0, sides2 = 0, kind2 = DMG_NONE,
+                  save = SAVE_STR, on_save = ON_SAVE_HALF, bar = 0.6, srd = false};
+  } else if i == SPELL_CALL_LIGHTNING {
+    s = SrdSpell.{name = "Call Lightning", level = 3, range = 36, area = AREA_CYLINDER, radius = 1.5, height = 18, count = 1,
+                  dice = 3, sides = 10, kind = DMG_LIGHTNING, dice2 = 0, sides2 = 0, kind2 = DMG_NONE,
+                  save = SAVE_DEX, on_save = ON_SAVE_HALF, bar = 1.0, srd = true};
+  } else if i == SPELL_FIREBALL {
+    s = SrdSpell.{name = "Fireball", level = 3, range = 45, area = AREA_SPHERE, radius = 6, height = 0, count = 1,
+                  dice = 8, sides = 6, kind = DMG_FIRE, dice2 = 0, sides2 = 0, kind2 = DMG_NONE,
+                  save = SAVE_DEX, on_save = ON_SAVE_HALF, bar = 1.0, srd = true};
+  } else {
+    s = SrdSpell.{name = "Lightning Bolt", level = 3, range = 30, area = AREA_LINE, radius = 1.5, height = 30, count = 1,
+                  dice = 8, sides = 6, kind = DMG_LIGHTNING, dice2 = 0, sides2 = 0, kind2 = DMG_NONE,
+                  save = SAVE_DEX, on_save = ON_SAVE_HALF, bar = 1.0, srd = true};
+  }
+  return s;
+}
+
+// A spell's damage, rolled once per cast (the SRD rolls once for every
+// target), each kind kept apart for the targets' immunities.
+SrdDamage :: struct { amount: int; kind: int; amount2: int; kind2: int; }
+srd_roll_damage :: (d: [] SrdDice, s: SrdSpell) -> SrdDamage {
+  r: SrdDamage;
+  r.amount = srd_sum(d, s.dice, s.sides); r.kind = s.kind;
+  if s.dice2 > 0 { r.amount2 = srd_sum(d, s.dice2, s.sides2); r.kind2 = s.kind2; }
+  return r;
+}
+// What an unattended object takes of it, scaled by share (1 at a blast's
+// middle, falling to 0 at its edge: the old engine's buildings tuning).
+srd_object_takes :: (o: SrdObject, dmg: SrdDamage, share: f32) -> int {
+  k := ifx share < 0 then 0.0f32 else ifx share > 1 then 1.0f32 else share;
+  a := srd_object_damage(o, cast(int) (f32(dmg.amount) * k + 0.5), dmg.kind);
+  b := srd_object_damage(o, cast(int) (f32(dmg.amount2) * k + 0.5), dmg.kind2);
+  return a + b;
+}
+
+// ---- checks
+
+#test "srd5: the dice are seeded, in range and use every face" {
+  a: [1] SrdDice; b: [1] SrdDice;
+  a[0] = srd_dice(42); b[0] = srd_dice(42);
+  seen: [6] int;
+  for i: 0..<600 {
+    x := srd_roll(a[..], 6);
+    #assert x >= 1 && x <= 6 && x == srd_roll(b[..], 6);
+    seen[x - 1] += 1;
+  }
+  for f: 0..<6 { #assert seen[f] > 60; }
+  #assert a[0].rolled == 600;
+  c: [1] SrdDice; c[0] = srd_dice(43);
+  same := 0;
+  for i: 0..<50 { if srd_roll(c[..], 20) == srd_roll(a[..], 20) { same += 1; } }
+  #assert same < 15;
+}
+
+#test "srd5: 20d6 sums between 20 and 120 and averages near 70" {
+  d: [1] SrdDice; d[0] = srd_dice(7);
+  total := 0;
+  for i: 0..<200 { x := srd_sum(d[..], 20, 6); #assert x >= 20 && x <= 120; total += x; }
+  #assert total / 200 > 64 && total / 200 < 76;
+}
+
+#test "srd5: the object table is the SRD's" {
+  #assert srd_object(MAT_WOOD, SIZE_LARGE, true).ac == 15 && srd_object(MAT_WOOD, SIZE_LARGE, true).hp == 27;
+  #assert srd_object(MAT_STONE, SIZE_MEDIUM, true).ac == 17 && srd_object(MAT_STONE, SIZE_MEDIUM, true).hp == 18;
+  #assert srd_object(MAT_GLASS, SIZE_TINY, false).ac == 13 && srd_object(MAT_GLASS, SIZE_TINY, false).hp == 2;
+  #assert srd_object(MAT_IRON, SIZE_SMALL, true).ac == 19 && srd_object(MAT_IRON, SIZE_SMALL, true).hp == 10;
+  #assert srd_object(MAT_CLOTH, SIZE_MEDIUM, false).ac == 11 && srd_object(MAT_ADAMANTINE, SIZE_LARGE, false).ac == 23;
+}
+
+#test "srd5: objects are immune to poison and psychic, glass breaks to blows, stone resists fire" {
+  wood := srd_object(MAT_WOOD, SIZE_LARGE, true);
+  #assert srd_object_damage(wood, 30, DMG_POISON) == 0 && srd_object_damage(wood, 30, DMG_PSYCHIC) == 0;
+  #assert srd_object_damage(wood, 30, DMG_FIRE) == 30;
+  #assert srd_object_damage(srd_object(MAT_GLASS, SIZE_SMALL, false), 3, DMG_BLUDGEONING) == 6;
+  #assert srd_object_damage(srd_object(MAT_STONE, SIZE_LARGE, true), 31, DMG_FIRE) == 15;
+}
+
+#test "srd5: Meteor Swarm rolls its two kinds once and a blast's edge does nothing" {
+  m := srd_spell(SPELL_METEOR_SWARM);
+  #assert m.level == 9 && m.dice == 20 && m.sides == 6 && m.kind == DMG_FIRE && m.kind2 == DMG_BLUDGEONING && m.save == SAVE_DEX;
+  d: [1] SrdDice; d[0] = srd_dice(1);
+  dmg := srd_roll_damage(d[..], m);
+  #assert dmg.amount >= 20 && dmg.amount <= 120 && dmg.amount2 >= 20 && dmg.amount2 <= 120;
+  wall := srd_object(MAT_WOOD, SIZE_LARGE, true);
+  #assert srd_object_takes(wall, dmg, 1) == dmg.amount + dmg.amount2;
+  #assert srd_object_takes(wall, dmg, 0) == 0;
+  t := srd_spell(SPELL_THUNDERBOLT);
+  #assert t.dice == 20 && t.sides == 10 && t.kind == DMG_LIGHTNING && !t.srd;
+  #assert srd_spell(SPELL_MEGA_THUNDERBOLT).dice == 100;
+  #assert srd_spell(SPELL_CALL_LIGHTNING).dice == 3 && srd_spell(SPELL_CALL_LIGHTNING).sides == 10;
+}
+
+#test "srd5: a save is d20 plus its modifier against the DC" {
+  d: [1] SrdDice; d[0] = srd_dice(5);
+  dc := srd_spell_dc(4, 5);
+  #assert dc == 17;
+  for i: 0..<100 {
+    s := srd_save(d[..], 2, dc);
+    #assert s.roll >= 1 && s.roll <= 20 && s.total == s.roll + 2 && s.success == (s.total >= 17);
+  }
+}
