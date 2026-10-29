@@ -153,6 +153,19 @@ const PACK_PARTS = ["data", "storage", "index", "layers"], PACK_KIND = 605;
 const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PACK_SOUND = 5;
 const assets = parseAssets((script && script.dataset.assets) || "");
 let last = 0;
+// This is a completed indexed scene frame in the current engine generation,
+// after all outstanding shader loads have settled. Pixel/error checks still
+// decide whether the frame actually looks correct.
+let sceneEpoch = 0, pendingSceneEpoch = -1, installedGeneration = 0, shaderLoads = 0;
+function invalidateScene() {
+  sceneEpoch += 1; pendingSceneEpoch = -1;
+  globalThis.coaxial.sceneReady = false;
+}
+function beginEngine() {
+  const generation = ++wanted;
+  invalidateScene();
+  return generation;
+}
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
 
 // ---- engine: compile, check its layout, keep or start over its state
@@ -196,6 +209,8 @@ async function loadEngine(bytes, generation) {
   if (golden) x.coaxial_golden?.(1);
   x.coaxial_quality?.(arena.state, golden ? 0 : quality);
   engine = { exports: x, layout };
+  installedGeneration = generation;
+  invalidateScene();
   if (script?.dataset.text) send(2, script.dataset.text);
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
   sendHash();
@@ -546,6 +561,9 @@ function useSans() {
 }
 
 async function loadShaders() {
+  shaderLoads += 1;
+  invalidateScene();
+  try {
   const { device, format } = gpu;
   const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
   if (/var\s+sans_atlas\b/.test(code)) useSans();
@@ -598,6 +616,10 @@ async function loadShaders() {
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; // swapped whole, at the next frame
   gpu.particles = sc ? await particlePipeline(post) : null;
   return true;
+  } finally {
+    shaderLoads -= 1;
+    invalidateScene();
+  }
 }
 
 // The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
@@ -1081,6 +1103,17 @@ function frame(now) {
   const texture = context.getCurrentTexture();
   const readback = probe && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  if (draws && shaderLoads === 0 && installedGeneration === wanted && !globalThis.coaxial.sceneReady && pendingSceneEpoch !== sceneEpoch) {
+    let nonempty = false;
+    for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) { nonempty = true; break; }
+    if (nonempty) {
+      const epoch = sceneEpoch, generation = installedGeneration, frameEngine = engine, frameGpu = gpu, frameScene = gpu.scene;
+      pendingSceneEpoch = epoch;
+      device.queue.onSubmittedWorkDone().then(() => {
+        if (epoch === sceneEpoch && generation === wanted && shaderLoads === 0 && engine === frameEngine && gpu === frameGpu && gpu.scene === frameScene) globalThis.coaxial.sceneReady = true;
+      }, (error) => { if (epoch === sceneEpoch) say(`scene frame: ${error?.message || error}`, true); });
+    }
+  }
   document.documentElement.classList.add("gpu");
   if (readback) report(readback, texture);
   if (x.coaxial_sounds) playSounds(x);
@@ -1138,7 +1171,7 @@ function send(kind, text = "") {
   x.coaxial_message(arena.state, kind, bytes.length);
   after(false);
 }
-globalThis.coaxial = { send, ready: false };
+globalThis.coaxial = { send, ready: false, sceneReady: false };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
 if (script?.dataset.drops) startDrops({ send });
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.
@@ -1341,7 +1374,7 @@ function live() {
     if (m.kind === "error") { say(m.text, true); return; }
     if (m.kind === "wgsl" && gpu) { if (await loadShaders()) say(`shaders swapped in ${Math.round(performance.now() - t0)} ms`); return; }
     if (m.kind === "wasm") {
-      const generation = ++wanted;
+      const generation = beginEngine();
       try {
         if (await fetchEngine(generation)) say(`${app} rebuilt in ${m.ms} ms, swapped in ${Math.round(performance.now() - t0)} ms`);
       } catch (e) { say(`${app}: ${e.message}`, true); }
@@ -1352,7 +1385,7 @@ function live() {
 
 async function main() {
   try {
-    await fetchEngine(++wanted);
+    await fetchEngine(beginEngine());
     // No usable WebGPU after all: show the page's text, as written.
     if (!(await startGpu())) { document.documentElement.classList.remove("gpu"); return; }
     observeSize();

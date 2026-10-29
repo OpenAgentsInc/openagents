@@ -188,6 +188,12 @@ try {
     const ready = await until(async () => (await evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
     check(ready, `${name}: the engine started`)
     await until(async () => !inflight.size && Date.now() - quietSince > 1500, 30000)
+    // Engine readiness precedes GPU setup and asset delivery. The house must
+    // submit a nonempty indexed scene frame before its unchanged pixel check.
+    if (name === "haunted-house") {
+      const drawn = await until(async () => (await evaluate("globalThis.coaxial?.sceneReady === true")) === true, 20000)
+      check(drawn, `${name}: a scene frame completed`)
+    }
     await Bun.sleep(page.settle)
     const bytes = await shot(), image = png(bytes), share = lit(image)
     check(errors.length === 0, `${name}: no errors${errors.length ? ` (${errors.join("; ")})` : ""}`)

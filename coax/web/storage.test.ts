@@ -43,7 +43,7 @@ E("coaxial_uniform_floats") int uf(void){return 4;}
 E("coaxial_frame") int frame(int a,int b,int c,int w,int h,float p,float dt,int s){return 0;}
 E("coaxial_inbox") uintptr_t inbox(State*s){return(uintptr_t)s->inbox;}
 E("coaxial_inbox_cap") int cap(void){return capacity;}
-E("coaxial_message") void message(State*s,int kind,int n){s->replies++;s->kind=kind;s->length=n;}
+E("coaxial_message") void message(State*s,int kind,int n){if(kind<768 || kind>=800)return;s->replies++;s->kind=kind;s->length=n;}
 E("probe_count") int count(State*s){return s->replies;}
 E("probe_kind") int kind(State*s){return s->kind;}
 E("probe_length") int length(State*s){return s->length;}
@@ -86,9 +86,10 @@ beforeAll(async () => {
       globalThis.makeByteStorage=makeByteStorage;
       globalThis.reloadEngine=bytes=>loadEngine(bytes,++wanted);
     `, { headers: { 'Content-Type': 'text/javascript' } })
-    if (path === '/entropy.js' || path === '/entropy-import.js') return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
+    if (['/entropy.js', '/entropy-import.js', '/drop.js', '/uploads.js', '/voice.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
     if (path === '/probe.wasm') return new Response(readFileSync(join(temp, 'probe.wasm')), { headers: { 'Content-Type': 'application/wasm' } })
     if (path === '/probe.wgsl') return new Response(shader)
+    if (path === '/api/auth/me') return new Response('', { status: 401 })
     return new Response('<!doctype html><html><body><canvas id="coaxial"></canvas><script type="module" src="/host.js" data-app="probe" data-wasm="/probe.wasm"></script></body></html>', { headers: { 'Content-Type': 'text/html' } })
   } })
   chrome = Bun.spawn([process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--headless=new', '--mute-audio', `--user-data-dir=${join(temp, 'chrome')}`, '--no-first-run', '--hide-scrollbars', '--enable-unsafe-webgpu', '--use-angle=metal', '--remote-debugging-port=0', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' })
