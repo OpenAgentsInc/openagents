@@ -1,0 +1,115 @@
+// One isolated decision from complete token IDs and their shared-prefix boundary.
+#load "qwen-tokens.coax";
+#load "qwen-rope.coax";
+#authority;
+QsLayout :: struct {state:int;rope:int;rope_work:int;engine:int;total:int;}
+#test "a request processes its prefix and suffix as distinct attention blocks" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=64,rotary_dim=64,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=linear.delta,attention=full.attention}};
+    zero:[512]u8;norm:[2]f32;qnorm:[64]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=zero[0..<12],z=zero[0..<4],a=zero[0..<4],b=zero[0..<4],mixer_out=zero[0..<4],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=qnorm[..],k_norm=qnorm[..],q=zero[..],k=zero[0..<256],v=zero[0..<256],mixer_out=zero[0..<256],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    layers:=[2]QeLayer.[QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fw}];
+    embedding:=[16]u8.[0,64,128,64,0,0,0,0,0,0,0,0,0,0,0,0];head:=[16]u8.[128,63,0,0,0,0,128,63,128,191,0,0,0,0,128,191];
+    model:=QxModel.{shape=shape,layers=layers[..],vocab=4,embedding=embedding[..],head=head[..],final_norm=norm[..]};
+    tokens:=[2]int.[0,0];slots:=[2]int.[0,1];state:[394]f32;for i:0..<394 {state[i]=-7;}
+    out:=[3]f64.[-7,-7,-7];prob:[4]f64;work:[71000]f32;
+    r:=qs_decide(model,tokens[..],1,state[..],QrKind.choice,1,slots[..],out[..],prob[..],work[..],false);
+    #assert r.status==QxStatus.ok && r.answer.best==1 && abs(out[0]-0.35365245499220305)<0.000001 && out[2]==-7;
+    for i:0..<266 {#assert state[i]==0;}for i:266..<394 {#assert state[i]==-7;}
+    before:=state;out[0]=-7;out[1]=-7;tokens[1]=4;
+    bad:=qs_decide(model,tokens[..],1,state[..],QrKind.choice,1,slots[..],out[..],prob[..],work[..],false);
+    #assert bad.status==QxStatus.index && out[0]==-7 && out[1]==-7;for i:0..<394 {#assert state[i]==before[i];}
+}
+qs_layout :: (model:QxModel,count:int,prefix:int)->QsLayout {
+    p:QsLayout;p.rope=qp_total(model.shape.state);p.rope_work=p.rope+count*64;p.engine=p.rope_work+count*64;
+    first:=qx_layout(model,0,prefix).total;second:=qx_layout(model,prefix,count-prefix).total;
+    p.total=p.engine+first+second;return p;
+}
+qs_decide :: (model:QxModel,tokens:[]int,prefix:int,state:[]f32,kind:QrKind,temperature:f32,slots:[]int,out:[]f64,prob:[]f64,work:[]f32,overlap:bool)->QxResult #export_c {
+    s:=model.shape;count:=tokens.count;
+    if !qe_valid(s) || s.full.attention.rotary_dim!=64 || !qr_vocab_valid(model.vocab) || !qr_valid(cast(u8)kind,slots.count,temperature) {return QxResult.{status=QxStatus.shape};}
+    if count<1 {return QxResult.{status=QxStatus.capacity};}
+    if count>s.state.capacity {return QxResult.{status=QxStatus.capacity};}
+    if prefix<0 || prefix>=count {return QxResult.{status=QxStatus.capacity};}
+    p:=qs_layout(model,count,prefix);
+    if state.count!=qp_total(s.state) || out.count<slots.count || prob.count<2*slots.count || work.count<p.total {return QxResult.{status=QxStatus.capacity};}
+    if overlap {return QxResult.{status=QxStatus.alias};}
+    staged:=work[p.state..<p.rope];rope:=work[p.rope..<p.rope_work];rope_work:=work[p.rope_work..<p.engine];engine:=work[p.engine..<p.total];
+    linear:=s.state.linear_layers*qp_linear_count(s.state);for i:0..<linear {staged[i]=0;}
+    coefficients:=qw_rope(0,count,rope,rope_work,false);if coefficients.status!=QwStatus.ok {return QxResult.{status=QxStatus.model,cause=cast(int)coefficients.status};}
+    n:=slots.count;
+    if prefix>0 {
+        first:=qx_block(model,tokens[0..<prefix],rope[0..<prefix*64],0,staged,kind,temperature,slots,prob[0..<n],prob[n..<2*n],engine,false);
+        if first.status!=QxStatus.ok {return first;}
+    }
+    answer:=qx_block(model,tokens[prefix..<count],rope[prefix*64..<count*64],prefix,staged,kind,temperature,slots,out,prob[0..<n],engine,false);
+    if answer.status!=QxStatus.ok {return answer;}
+    for i:0..<linear {state[i]=staged[i];}
+    full:=qp_full_count(s.state);live:=qp_live_full(s.state,count);
+    for layer:0..<s.state.full_layers {base:=linear+layer*full;for i:0..<live {state[base+i]=staged[base+i];}}
+    return answer;
+}
+
+#test "request boundaries refuse before state publication and empty prefix is supported" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=64,rotary_dim=64,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=1,full_layers=1,capacity=3,delta=linear.delta,attention=full.attention}};
+    zero:[512]u8;norm:[2]f32;qnorm:[64]f32;conv:[12]f32;scalar:[1]f32;gain:=[1]f32.[1];
+    lw:=QlWeights.{input_norm=norm[..],post_norm=norm[..],conv=conv[..],a_log=scalar[..],dt=scalar[..],delta_norm=gain[..],qkv=zero[0..<12],z=zero[0..<4],a=zero[0..<4],b=zero[0..<4],mixer_out=zero[0..<4],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=qnorm[..],k_norm=qnorm[..],q=zero[..],k=zero[0..<256],v=zero[0..<256],mixer_out=zero[0..<256],gate=zero[0..<4],up=zero[0..<4],down=zero[0..<4]};
+    layers:=[2]QeLayer.[QeLayer.{kind=cast(u8)QeKind.linear,linear=lw},QeLayer.{kind=cast(u8)QeKind.full,full=fw}];
+    embedding:=[16]u8.[0,64,128,64,0,0,0,0,0,0,0,0,0,0,0,0];head:=[16]u8.[128,63,0,0,0,0,128,63,128,191,0,0,0,0,128,191];
+    model:=QxModel.{shape=shape,layers=layers[..],vocab=4,embedding=embedding[..],head=head[..],final_norm=norm[..]};
+    tokens:=[2]int.[0,0];slots:=[2]int.[0,1];state:[394]f32;for i:0..<394 {state[i]=-7;}
+    out:=[3]f64.[-7,-7,-7];prob:[4]f64;work:[71000]f32;
+    plan:=qs_layout(model,2,1);#assert plan.state==0 && plan.rope==394 && plan.rope_work==522 && plan.engine==650 && plan.total<work.count;
+    #assert plan.total==plan.engine+qx_layout(model,0,1).total+qx_layout(model,1,1).total;
+    for k:0..<10 {
+        m:=model;tt:=tokens[..];p:=1;st:=state[..];output:=out[..];aux:=prob[..];scratch:=work[..];alias:=false;temperature:f32=1;
+        if k==0 {p=-1;}if k==1 {p=2;}if k==2 {tt=tokens[0..<0];}if k==3 {st=state[0..<393];}
+        if k==4 {output=out[0..<1];}if k==5 {aux=prob[0..<3];}if k==6 {scratch=work[0..<plan.total-1];}
+        if k==7 {alias=true;}if k==8 {temperature=0;}if k==9 {m.shape.full.attention.rotary_dim=2;}
+        r:=qs_decide(m,tt,p,st,QrKind.choice,temperature,slots[..],output,aux,scratch,alias);
+        expected:=QxStatus.capacity;if k==7 {expected=QxStatus.alias;}if k==8 || k==9 {expected=QxStatus.shape;}
+        #assert r.status==expected;for v:state {#assert v==-7;}for v:out {#assert v==-7;}
+    }
+    for k:0..<5 {
+        m:=model;tt:=tokens[..];prefix:=1;long:=[4]int.[0,0,0,0];
+        if k==0 {m.shape.linear.width=0;}if k==1 {m.vocab=0;}if k==2 {tt=long[..];}if k==3 {prefix=tt.count;}if k==4 {m.shape.full.attention.rotary_dim=2;}
+        work[0]=-7;prob[0]=-7;result:=qs_decide(m,tt,prefix,state[..],QrKind.choice,1,slots[..],out[..],prob[..],work[..],false);
+        expected:=QxStatus.shape;if k==2 || k==3 {expected=QxStatus.capacity;}
+        #assert result.status==expected && work[0]==-7 && prob[0]==-7;
+    }
+    conv[0]=3e38f32;
+    for i:0..<work.count {work[i]=7;}
+    r:=qs_decide(model,tokens[0..<1],0,state[..],QrKind.choice,1,slots[..],out[0..<2],prob[..],work[..],false);
+    #assert r.status==QxStatus.ok && r.answer.best==1 && abs(out[0]-0.35365245499220305)<0.000001;
+    for i:0..<138 {#assert state[i]==0;}for i:138..<394 {#assert state[i]==-7;}
+    smaller:=model;smaller.shape.state.capacity=2;smaller.shape.full.capacity=2;
+    exact:=qs_layout(smaller,2,1);r=qs_decide(smaller,tokens[..],1,state[0..<266],QrKind.choice,1,slots[..],out[0..<2],prob[..],work[0..<exact.total],false);
+    #assert r.status==QxStatus.ok;
+    one:=[1]int.[0];single_plan:=qs_layout(model,2,1);
+    r=qs_decide(model,tokens[..],1,state[..],QrKind.choice,1,one[..],out[0..<1],prob[0..<2],work[0..<single_plan.total],false);
+    #assert r.status==QxStatus.ok && out[0]==1;
+}
+#test "two nonzero full layers retain their separate prefix and rotary positions" {
+    linear:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    full:=QhShape.{width=2,hidden=1,capacity=3,attention=QfShape.{heads=1,kv_heads=1,head_dim=64,rotary_dim=64,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=linear,full=full,state=QpShape.{linear_layers=0,full_layers=2,capacity=3,delta=linear.delta,attention=full.attention}};
+    q:[512]u8;k:[256]u8;v:[256]u8;o:[256]u8;ff:[4]u8;norm:[2]f32;qn:[64]f32;
+    q[0]=128;q[1]=63;q[6]=128;q[7]=63;k[0]=128;k[1]=63;k[6]=128;k[7]=63;v[0]=128;v[1]=63;v[6]=128;v[7]=63;o[0]=128;o[1]=63;o[130]=128;o[131]=63;
+    fw:=QhWeights.{input_norm=norm[..],post_norm=norm[..],q_norm=qn[..],k_norm=qn[..],q=q[..],k=k[..],v=v[..],mixer_out=o[..],gate=ff[..],up=ff[..],down=ff[..]};
+    layers:=[2]QeLayer.[QeLayer.{kind=cast(u8)QeKind.full,full=fw},QeLayer.{kind=cast(u8)QeKind.full,full=fw}];
+    embedding:=[16]u8.[0,64,128,64,128,64,0,64,0,0,0,0,0,0,0,0];head:=[16]u8.[128,63,0,0,0,0,128,63,128,191,0,0,0,0,128,191];
+    model:=QxModel.{shape=shape,layers=layers[..],vocab=4,embedding=embedding[..],head=head[..],final_norm=norm[..]};tokens:=[2]int.[0,1];slots:=[2]int.[0,1];
+    state:[768]f32;reference:[768]f32;for i:0..<768 {state[i]=-7;}out:[2]f64;prob:[4]f64;work:[150000]f32;
+    r:=qs_decide(model,tokens[..],1,state[..],QrKind.choice,1,slots[..],out[..],prob[..],work[..],false);#assert r.status==QxStatus.ok;
+    rope:[128]f32;rope_work:[128]f32;#assert qw_rope(0,2,rope[..],rope_work[..],false).status==QwStatus.ok;
+    expected:[2]f64;temp:[2]f64;engine:[80000]f32;
+    a:=qx_block(model,tokens[0..<1],rope[0..<64],0,reference[..],QrKind.choice,1,slots[..],expected[..],temp[..],engine[..],false);#assert a.status==QxStatus.ok;
+    b:=qx_block(model,tokens[1..<2],rope[64..<128],1,reference[..],QrKind.choice,1,slots[..],expected[..],temp[..],engine[..],false);#assert b.status==QxStatus.ok;
+    #assert abs(out[0]-expected[0])<0.000000001 && abs(r.answer.mass-b.answer.mass)<0.000000001;
+    for layer:0..<2 {base:=layer*384;for i:0..<256 {#assert abs(state[base+i]-reference[base+i])<0.000001f32;}for i:256..<384 {#assert state[base+i]==-7;}}
+}

@@ -1,5 +1,16 @@
 # Invariants
 
+## Psionic request blocks start fresh and publish atomically
+
+`psionic/lib/qwen-request.coax` executes a caller-specified token stream in
+prefix and suffix blocks, with a fresh linear state and deterministic rotary
+positions. Live state and probabilities publish only on success; scratch may
+change. Authentication, tokenizer and split identity, slots, allocation,
+alignment, lifetimes and exclusive access remain caller obligations. Check:
+`psionic/check.sh` covers authority mutation and native plain/sanitized checks;
+the [request record](docs/verification/psionic-request-blocks-2026-10-29.md)
+describes the tested cases and limits.
+
 ## Psionic original layer mapping binds validated views
 
 `psionic/lib/model-io/layer-map.coax` maps the fixed hybrid schedule by exact
