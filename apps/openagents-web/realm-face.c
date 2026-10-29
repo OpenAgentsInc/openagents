@@ -733,9 +733,10 @@ static void choose_particles(float ex, float ey, float ez) {
   if (an > 64) an = 64;
   for (int64_t i = 0; i < ln; i++) {
     coax_t_HauntLight l = house.lights.data[i];
-    float *o = lamp_floats + i * 8, *g = lights[i].color.e, *p = lights[i].position.e;
+    float *o = lamp_floats + i * 8, *g = lights[i].color.e;
+    coax_t_HauntPoint p = verse_haunt_light_flame(house, i);
     bool lit = g[0] + g[1] + g[2] > 0;
-    o[0] = p[0]; o[1] = p[1]; o[2] = p[2]; o[3] = l.radius;
+    o[0] = p.x; o[1] = p.y; o[2] = p.z; o[3] = l.radius;
     o[4] = l.color.x; o[5] = l.color.y; o[6] = l.color.z; o[7] = lit ? l.flicker : 0;
   }
   for (int64_t i = 0; i < an; i++) {

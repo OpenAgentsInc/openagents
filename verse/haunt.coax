@@ -254,6 +254,25 @@ verse_haunt_lights :: (s:Haunt,t:f64,out:[]HauntGPUlight)->int #export_c {
  goal:=verse_haunt_goal(s);gain=ifx s.quest<8 then 0.8+sin(f*3.2)*0.35 else 0.0f32;
  out[s.light_count+1].position=[4]f32.[goal.x,1.15,goal.z,3];out[s.light_count+1].color=[4]f32.[gain,gain*0.55,gain*0.12,1];return s.light_count+2;
 }
+// Where light i's flame burns: the first flame (motion 4) on the light's
+// own object, where that object now stands, else the light itself. A wall
+// torch's light sits back in the wall; its embers come off the flame.
+verse_haunt_light_flame :: (s:Haunt,i:int)->HauntPoint #export_c {
+ if i<0 || i>=s.light_count{return hh_p(0,0,0);}l:=s.lights[i];owner:=hh_find(s,l.parent);if owner<0{return l.pos;}p:=s.entities[owner];
+ for k:0..<s.entity_count {e:=s.entities[k];if e.motion==4 && e.parent==l.parent {return hh_mounted(p,e.mount);}}
+ return hh_mounted(p,l.mount);
+}
+#test "a torch's embers come off its flame, not its light in the wall" {
+ es:[3]HauntEntity;es[0].id="torch";es[0].pos=hh_p(5,1,20);es[0].scale=1;es[0].yaw=3.14159265;
+ es[1].id="torch/flame-0";es[1].parent="torch";es[1].motion=4;es[1].mount=hh_p(0,0.6,0.02);
+ es[2].id="lamp";es[2].pos=hh_p(1,1,1);es[2].scale=1;
+ ls:[3]HauntLight;ls[0].parent="torch";ls[0].pos=hh_p(5,1.8,20.4);ls[0].mount=hh_p(0,0.8,-0.4);ls[1].parent="lamp";ls[1].pos=hh_p(1,2,1);ls[1].mount=hh_p(0,1,0);ls[2].pos=hh_p(9,2,9);
+ s:Haunt;s.entities=es[..];s.entity_count=3;s.lights=ls[..];s.light_count=3;
+ f:=verse_haunt_light_flame(s,0);#assert abs(f.x-5)<0.001 && abs(f.y-1.6)<0.001 && abs(f.z-19.98)<0.001;
+ es[0].pos.x=6;s.entities=es[..];f=verse_haunt_light_flame(s,0);#assert abs(f.x-6)<0.001;
+ f=verse_haunt_light_flame(s,1);#assert abs(f.y-2)<0.001;
+ f=verse_haunt_light_flame(s,2);#assert f.x==9;
+}
 // What you can use is in reach and in front of the camera: within HH_AIM
 // (38°) of the flat look direction, -(sin heading, cos heading). The one
 // nearest the centre of view wins; a thing at your feet counts as ahead.
