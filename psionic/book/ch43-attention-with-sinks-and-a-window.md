@@ -1,6 +1,6 @@
-# 36. Attention with sinks and a window
+# 43. Attention with sinks and a window
 
-Chapter 35 selected experts. Before those experts can become part of a gpt-oss
+Chapter 42 selected experts. Before those experts can become part of a gpt-oss
 layer, we need its attention and activation rules. Several look familiar from
 chapter 6, but their details change the answer: a learned sink absorbs attention
 mass, half the layers forget old keys, rotary coefficients exceed one, and the
@@ -31,7 +31,7 @@ Q/K/V vectors and per-head sink logits. This chapter qualifies bounded CPU
 primitives; original checkpoint binding and a complete decoder remain chapter
 38's work. Read chapters [3](ch03-numbers-and-matrices.md),
 [6](ch06-attention-without-training.md) and
-[35](ch35-a-few-experts-then-a-router.md) first.
+[35](ch42-a-few-experts-then-a-router.md) first.
 
 ## Let the sink keep some probability
 
@@ -381,7 +381,7 @@ and context in `f32`, and disables reassociation and FP contraction. It does
 not claim Torch/BF16 bitwise parity, original checkpoint execution, a complete
 attention block or a GPU implementation. Full-size full-context attention,
 normalization/residual composition, original projection/expert binding and
-complete-model intermediate/logit references remain explicit chapter 38 gates.
+complete-model intermediate/logit references remain explicit chapter 45 gates.
 
 The next branch chapter is **37. The harmony format**: turn structured messages
 into the exact model token stream and read its channel and turn boundaries.

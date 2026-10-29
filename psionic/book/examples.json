@@ -113,7 +113,7 @@
     },
     {
       "source": "psionic/examples/original-mxfp4.coax",
-      "chapter": "psionic/book/ch34-original-mxfp4-weights.md",
+      "chapter": "psionic/book/ch41-original-mxfp4-weights.md",
       "stdout": "psionic/fixtures/original-mxfp4.out",
       "exit_status": 0,
       "modes": [
@@ -123,7 +123,7 @@
     },
     {
       "source": "psionic/examples/few-experts.coax",
-      "chapter": "psionic/book/ch35-a-few-experts-then-a-router.md",
+      "chapter": "psionic/book/ch42-a-few-experts-then-a-router.md",
       "stdout": "psionic/fixtures/few-experts.out",
       "exit_status": 0,
       "modes": [
@@ -133,7 +133,7 @@
     },
     {
       "source": "psionic/examples/attention-sinks.coax",
-      "chapter": "psionic/book/ch36-attention-with-sinks-and-a-window.md",
+      "chapter": "psionic/book/ch43-attention-with-sinks-and-a-window.md",
       "stdout": "psionic/fixtures/attention-sinks.out",
       "exit_status": 0,
       "modes": [

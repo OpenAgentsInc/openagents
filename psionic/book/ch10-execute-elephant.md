@@ -151,7 +151,7 @@ Three things matter beyond the arithmetic:
 - **The shared prefix need not be recomputed.** Here 49 of the 86 tokens are
   the shared state. A request with several questions computes them once and
   forks per question, as chapter 8 describes.
-- **A response time below one second needs a GPU.** Chapters 25 and 29 give
+- **A response time below one second needs a GPU.** Chapters 26 and 30 give
   Coax a compute subset and a CUDA backend. An RTX 4080 has about 16 GB of
   memory, slightly less than the BF16 weights, so the decision runs layer by
   layer over the whole prompt, keeps most layers resident and streams the

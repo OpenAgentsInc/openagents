@@ -10,10 +10,10 @@ Proposal, updated 2026-10-29. [Chapter 1](ch01-learning-a-number.md) and
 [Chapter 8](ch08-decisions-have-a-different-mask.md) and
 [Chapter 9](ch09-read-the-options.md) and
 [Chapter 10](ch10-execute-elephant.md) are runnable on the tested CPU host.
-The [first gpt-oss format chapter, 34](ch34-original-mxfp4-weights.md), is also
-runnable as a bounded CPU decoder. [Chapter 35](ch35-a-few-experts-then-a-router.md)
+The [first gpt-oss format chapter, 41](ch41-original-mxfp4-weights.md), is also
+runnable as a bounded CPU decoder. [Chapter 42](ch42-a-few-experts-then-a-router.md)
 adds the bounded top-k router and tiny affine experts.
-[Chapter 36](ch36-attention-with-sinks-and-a-window.md) adds bounded sink/window
+[Chapter 43](ch43-attention-with-sinks-and-a-window.md) adds bounded sink/window
 attention, split-half YaRN, biased projection and clamped activation. Complete
 gpt-oss execution is still planned.
 The remaining chapters below are outlines, not implemented capabilities. A
@@ -24,7 +24,7 @@ listings use `jai` Markdown fences.
 **The first delivery path is 1–3 → 4–10 (Elephant) → 11 (Mammoth) → 12–13
 (published decision semantics, qualified honestly) → 14–18 (a live decision
 API) → 19–21 (a first mesh of Pylons serving the same API).**
-Throughput and device work in 22–29 begins as soon as it has concrete
+Throughput and device work in 22–35 begins as soon as it has concrete
 operations and CPU oracles. Neither generic training, gpt-oss, Mistral,
 DeepSeek, the mesh, a smaller imported model nor the NVIDIA branches blocks
 those two decision models. [Model targets](../docs/targets/model-targets.md)
@@ -116,22 +116,36 @@ reads it. Part XX adds trust levels, attested machines and model splits.
 ## V. Make execution measurable, parallel and portable
 
 These chapters accompany real consumers in II; their placement is explanatory.
+The device path comes first, because sub-second decisions need it: a compute
+subset in Coax, whole-prompt attention and DeltaNet kernels, fusion and graph
+replay, then CUDA on the RTX 4080 and Metal on Apple GPUs. Several designs come
+from [llama.cpp](../docs/llama-cpp.md), reimplemented in Coax with their own
+checks; llama.cpp itself is a benchmark comparator, never a dependency.
 
 | Chapter | What we build and check |
 | --- | --- |
 | 22. Measure the work and plan the memory | Fixed CPU numerical references, peak memory, latency samples and a reproducible workload before optimizing. Measured compute and memory bandwidth for the host, and the arithmetic intensity of prefill and decode against that roofline, so every later optimization names the bottleneck it targets. A residency plan for each model: compute directly from mapped BF16 rows without f32 expansion, separate persistent/state/scratch bytes, and refuse requests whose plan does not fit. |
-| 23. Use every core | Fixed work partitioning and tree-ordered merges so every output is byte-identical at 1, 2, 4 and 8 workers; a host thread pool calling Coax kernels on disjoint ranges until Coax jobs exist, then the same replay gate on jobs. |
-| 24. Many questions at once | Batched suffix forks from one prefix snapshot, proven equal to the sequential forks of chapter 8; reuse of prefix state across requests keyed by model identity and exact token prefix, with bounded eviction. |
-| 25. A Coax compute subset | The compiler's missing buffer, integer index, bounded loop, work-item and binding subset, proven on one small matrix-vector kernel: generated source compiles, real device execution matches the CPU oracle, negative admission refuses. |
-| 26. Attention in tiles | Online-softmax attention over key/value tiles that never materializes the full score matrix, with chunked prefill. The changed reduction order gets its own named profile and stated tolerance against the CPU reference, and the block-bidirectional mask, sinks and windows must still hold. |
-| 27. Elephant and Mammoth on Metal | Generated kernels, Metal bindings and completion/lifetime rules for the full decision path; qualify Elephant, then Mammoth, against the same CPU references. Apple GPUs have no double precision and flush subnormals, so the device profile states its own accumulation (compensated float-float sums, exhaustively checked transcendentals, host-built rotary tables) rather than inheriting chapter 3's binary64 profile. |
-| 28. Quantized weights and caches | One specified derived block format (chapter 34's MXFP4 decoder is a candidate), then an optional quantized KV cache; independent decode vectors, partial-row refusal, separate model profiles, and measured memory against quality: perplexity on fixed text, chapter 12's decision metrics and a product evaluation, each compared with the original weights and required to differ by less than run-to-run noise. Aggressive 2–3-bit consumer profiles carry a quality card (top-1 agreement and KL against the original, task scores) and never inherit the original's evidence. |
-| 29. A second device backend | Optional CUDA branch: Linux/ABI admission, Coax-generated arithmetic, device execution and comparisons with the same CPU oracles. |
+| 23. Benchmark against llama.cpp and cuBLAS | The same model, the same quantized file and the same prompt shapes run through Psionic and a packaged llama.cpp build: prompt processing and generation at fixed lengths, decision-shaped runs (a shared prefix plus suffixes), warm-up then at least five repetitions reported as mean and standard deviation, on a quiet machine with recorded clocks; cuBLAS products on the same shapes as an opt-in comparator for Psionic's own kernels, never a dependency. |
+| 24. Use every core | Fixed work partitioning and tree-ordered merges so every output is byte-identical at 1, 2, 4 and 8 workers; a host thread pool calling Coax kernels on disjoint ranges until Coax jobs exist, then the same replay gate on jobs. |
+| 25. Many questions at once | Batched suffix forks from one prefix snapshot, proven equal to the sequential forks of chapter 8; reuse of prefix state across requests keyed by model identity and exact token prefix, with bounded eviction. |
+| 26. A Coax compute subset | The compiler's missing buffer, integer index, bounded loop, work-item and binding subset, proven on one small matrix-vector kernel: generated source compiles, real device execution matches the CPU oracle, negative admission refuses. |
+| 27. Attention in tiles | Online-softmax attention over key/value tiles that never materializes the full score matrix, with chunked prefill. The changed reduction order gets its own named profile and stated tolerance against the CPU reference, and the block-bidirectional mask, sinks and windows must still hold. Grouped-query attention loads each key/value head once for every query head that shares it. |
+| 28. DeltaNet in chunks | Whole-prompt Gated DeltaNet prefill in chunks (the WY form: the chunk's triangular system solved by forward substitution, state carried in f32 between chunks), proven equal within a named profile to chapter 7's token-by-token recurrence, with state snapshots at chunk boundaries that chapter 8's forks and speculative rollback can reuse. |
+| 29. Fuse and replay | Fused device operations (normalization with its scale, gate and up projections with their activation, expert routing, a recurrent step with its cache write), each admitted only when its buffers provably do not overlap, and a decode or prefill step recorded once and replayed as a device graph; each fusion keeps its unfused result within tolerance. |
+| 30. Elephant and Mammoth on CUDA | The first device backend, on an RTX 4080: Coax-generated PTX or CUDA C compiled by the driver or NVRTC, device buffers, launches and completion; whole-prompt prefill with chapters 27–29, the weights that do not fit in memory streamed layer by layer, and the complete decision qualified against the CPU reference. The prior bar on this GPU is about 0.2 s for a 1,000-token decision on a 9B hybrid. |
+| 31. Elephant and Mammoth on Metal | The same generated kernels for Apple GPUs, Metal bindings and completion/lifetime rules for the full decision path; qualify Elephant, then Mammoth, against the same CPU references. Apple GPUs have no double precision and flush subnormals, so the device profile states its own accumulation (compensated float-float sums, exhaustively checked transcendentals, host-built rotary tables) rather than inheriting chapter 3's binary64 profile. Tuning tables keyed by Apple GPU family and command buffers encoded in parallel. |
+| 32. Integer matrix products | Activations quantized per block to 8 bits with stored sums, dot products accumulated exactly in 32-bit integers, then scaled: a row kernel for a few tokens and a tiled int8 tensor-core kernel for whole prompts, exact on the integer part and within a stated tolerance overall against chapter 3. |
+| 33. Read a GGUF file | A bounded GGUF reader: magic, version, counts, typed metadata, tensor descriptors, alignment and data offsets, with every count, product and padding checked before use; checked on pinned upstream files and malformed headers. It opens most published quantized checkpoints. |
+| 34. Quantized weights and caches | Q8_0 first (about 8.5 bits per weight, small enough to keep Elephant resident on a 16 GB GPU), then the 4- and 6-bit K-quants with importance-weighted quantization and per-tensor mixes (chapter 41's MXFP4 decoder is also a candidate), then an optional quantized KV cache; independent decode vectors, partial-row refusal, separate model profiles, and measured memory against quality: perplexity on fixed text, chapter 12's decision metrics and a product evaluation, each compared with the original weights and required to differ by less than run-to-run noise. Aggressive 2–3-bit consumer profiles carry a quality card (top-1 agreement and KL against the original, task scores) and never inherit the original's evidence. |
+| 35. K-quants and lattice quants | Decoders for the 2- to 6-bit K-quant blocks and the non-uniform and lattice-codebook formats (IQ4, IQ3, IQ2), each with independent decode vectors and the quality card of chapter 34 (mean KL divergence, same-top-token rate, perplexity with its error), measured against the original weights. |
 
-NVIDIA model compatibility does not require CUDA. Metal and CUDA are separate
+NVIDIA model compatibility does not require CUDA. CUDA and Metal are separate
 backend projects; neither upstream speed claims nor a reference runtime
-establishes Psionic execution. Chapter 29 needs a qualified Linux target,
-which Coax does not yet claim. Chapters 23 and 24 change scheduling, never
+establishes Psionic execution. CUDA comes first because it is the fastest
+device on hand. Chapter 30 relies on Coax running on Linux, which works on the
+development machine but is not yet a qualified Coax target; cuBLAS appears only
+in chapter 23's comparisons. Quantized profiles (32–35) never inherit the
+original weights' evidence. Chapters 24 and 25 change scheduling, never
 results: each must reproduce its single-worker or sequential output exactly
 under the named CPU profile before it counts.
 
@@ -139,14 +153,15 @@ under the named CPU profile before it counts.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 30. Choosing the next token | A named counter-based RNG with explicit seed/counter progression; temperature, top-k and top-p with stated tie rules; stop conditions and streamed tokens with cancellation; constrained decoding that masks the vocabulary to a grammar or JSON schema using chapter 5's tokenizer tables. |
-| 31. Search the Coax book | Nemotron-3-Embed-1B-BF16: exact query/document formatting, bidirectional attention, padding-aware average pooling, normalization and held-out retrieval. |
-| 32. Continue a passage | Llama-3.1-Minitron-4B-Width-Base: exact head dimensions/position rules, full-versus-cached logits, and deterministic and seeded continuation through chapter 30. |
-| 33. Run in the browser | Psionic CPU kernels compiled to Wasm through Coaxial, then WebGPU compute once Coax emits it; serve chapter 31's search on openagents.com with natively precomputed document embeddings and a separately selected query encoder small enough to download. |
+| 36. Tokenizers and chat templates | The other tokenizer families (SentencePiece, WordPiece, Unigram) beside chapter 5's byte-pair encoder, and a bounded subset of the Jinja chat-template language, checked against published tokenizer vectors whose expected ids come from the upstream tokenizers and against real model templates. |
+| 37. Choosing the next token | A named counter-based RNG with explicit seed/counter progression; temperature, top-k and top-p with stated tie rules; stop conditions and streamed tokens with cancellation; constrained decoding that masks the vocabulary to a grammar or JSON schema using chapter 5's tokenizer tables. |
+| 38. Search the Coax book | Nemotron-3-Embed-1B-BF16: exact query/document formatting, bidirectional attention, padding-aware average pooling, normalization and held-out retrieval. |
+| 39. Continue a passage | Llama-3.1-Minitron-4B-Width-Base: exact head dimensions/position rules, full-versus-cached logits, and deterministic and seeded continuation through chapter 37. |
+| 40. Run in the browser | Psionic CPU kernels compiled to Wasm through Coaxial, then WebGPU compute once Coax emits it; serve chapter 38's search on openagents.com with natively precomputed document embeddings and a separately selected query encoder small enough to download. |
 
 These are forward-only applications of I–II, with their own architecture
 profiles. Constrained decoding is a sampling contract, not a parser of model
-output after the fact: a token outside the grammar is never offered. Chapter 33
+output after the fact: a token outside the grammar is never offered. Chapter 40
 is a separate target with its own ABI, memory-growth and numerical evidence;
 a Mac result does not qualify it. The optional small import lab in appendix A
 can help readers with limited memory; it is not an extra dependency of
@@ -162,17 +177,17 @@ the memory plan of 22 and the sampling of 30.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [34. Original MXFP4 weights](ch34-original-mxfp4-weights.md) — runnable: bounded CPU format decoder | The checkpoint's own MoE format: 32 FP4 (E2M1) values packed into 16 bytes per block, with one biased power-of-two scale per block in a separate `.scales` tensor. Decode every code at every admitted scale exactly into `f32` against an independent table, refuse partial blocks and out-of-range scales, and keep this original format distinct from chapter 28's derived quantization profile. |
-| [35. A few experts, then a router](ch35-a-few-experts-then-a-router.md) — runnable: bounded CPU | A tiny MoE with directly checkable choices, ties, weighting, dispatch/gather and expert-residency budgets; then gpt-oss's selected-only softmax over sorted top-four logits, under an explicit wide CPU and lowest-ID-tie profile. Original gate projection and BF16 parity remain separate. |
-| [36. Attention with sinks and a window](ch36-attention-with-sinks-and-a-window.md) — runnable: bounded wide CPU | Learned per-head sink logits that join each softmax denominator without contributing a value; a 128-token banded window on alternate layers beside full attention, with a window-bounded cache; YaRN rotary scaling (base 150,000, factor 32 over 4,096 original positions); a reusable bounded biased projection; and the clamped SwiGLU (alpha 1.702, limit 7, plus-one linear term). Projected-Q/K/V execution supports 64/8 heads, windows through 128 and absolute positions through 131,071; full attention is limited to 128 tokens. Full-size original projections and whole-block/model qualification remain chapter 38 gates. |
-| 37. The harmony format | The o200k_harmony tokenizer through chapter 5's byte-BPE engine, with its own split pattern, ranks and special tokens (201,088 vocabulary entries); render system, developer, user, assistant and tool messages with reasoning effort; parse `analysis`, `commentary` and `final` channels and stop on `<\|return\|>` or `<\|call\|>`; refuse malformed streams. |
-| 38. Execute gpt-oss-20b | 24 layers and 32 experts: complete original-weight generation with chapter 30's sampling; independent token, intermediate, router-choice and logit references; full versus cached logits; measured residency for the separately pinned `original/` checkpoint files. |
-| 39. Execute gpt-oss-120b | The same engine with 36 layers and 128 experts; a residency plan for its separately pinned `original/` files, mapping experts in and out where memory requires it, measured on the machine that runs it. |
-| 40. Let the small model guess | Speculative decoding: gpt-oss-20b drafts for gpt-oss-120b (one tokenizer), plus n-gram drafts from the prompt. The standard acceptance rule keeps the target's distribution: greedy output must match the target alone token for token, and sampled acceptance probabilities are computed exactly on tiny-vocabulary fixtures. Measured acceptance rate, draft length and the batch size at which the gain disappears. |
-| 41. Call a tool | Function calls on the `commentary` channel with arguments constrained to their JSON schema by chapter 30, and results returned as tool messages. The host executes tools under its own authority; `analysis` text never reaches an end user. |
+| [41. Original MXFP4 weights](ch41-original-mxfp4-weights.md) — runnable: bounded CPU format decoder | The checkpoint's own MoE format: 32 FP4 (E2M1) values packed into 16 bytes per block, with one biased power-of-two scale per block in a separate `.scales` tensor. Decode every code at every admitted scale exactly into `f32` against an independent table, refuse partial blocks and out-of-range scales, and keep this original format distinct from chapter 34's derived quantization profile. |
+| [42. A few experts, then a router](ch42-a-few-experts-then-a-router.md) — runnable: bounded CPU | A tiny MoE with directly checkable choices, ties, weighting, dispatch/gather and expert-residency budgets; then gpt-oss's selected-only softmax over sorted top-four logits, under an explicit wide CPU and lowest-ID-tie profile. Original gate projection and BF16 parity remain separate. |
+| [43. Attention with sinks and a window](ch43-attention-with-sinks-and-a-window.md) — runnable: bounded wide CPU | Learned per-head sink logits that join each softmax denominator without contributing a value; a 128-token banded window on alternate layers beside full attention, with a window-bounded cache; YaRN rotary scaling (base 150,000, factor 32 over 4,096 original positions); a reusable bounded biased projection; and the clamped SwiGLU (alpha 1.702, limit 7, plus-one linear term). Projected-Q/K/V execution supports 64/8 heads, windows through 128 and absolute positions through 131,071; full attention is limited to 128 tokens. Full-size original projections and whole-block/model qualification remain chapter 45 gates. |
+| 44. The harmony format | The o200k_harmony tokenizer through chapter 5's byte-BPE engine, with its own split pattern, ranks and special tokens (201,088 vocabulary entries); render system, developer, user, assistant and tool messages with reasoning effort; parse `analysis`, `commentary` and `final` channels and stop on `<\|return\|>` or `<\|call\|>`; refuse malformed streams. |
+| 45. Execute gpt-oss-20b | 24 layers and 32 experts: complete original-weight generation with chapter 37's sampling; independent token, intermediate, router-choice and logit references; full versus cached logits; measured residency for the separately pinned `original/` checkpoint files. |
+| 46. Execute gpt-oss-120b | The same engine with 36 layers and 128 experts; a residency plan for its separately pinned `original/` files, mapping experts in and out where memory requires it, measured on the machine that runs it. |
+| 47. Let the small model guess | Speculative decoding: gpt-oss-20b drafts for gpt-oss-120b (one tokenizer), plus n-gram drafts from the prompt. The standard acceptance rule keeps the target's distribution: greedy output must match the target alone token for token, and sampled acceptance probabilities are computed exactly on tiny-vocabulary fixtures. Measured acceptance rate, draft length and the batch size at which the gain disappears. |
+| 48. Call a tool | Function calls on the `commentary` channel with arguments constrained to their JSON schema by chapter 37, and results returned as tool messages. The host executes tools under its own authority; `analysis` text never reaches an end user. |
 
 The torch reference upcasts MXFP4 to BF16, so a converted BF16 checkpoint is
-not the original artifact; chapter 34 decodes the original blocks. The
+not the original artifact; chapter 41 decodes the original blocks. The
 reference torch, Triton and Metal implementations are read as untrusted
 source, not executed, and their browser and Python tools are explicitly
 educational upstream, so Psionic does not adopt them. The 20b model's
@@ -191,13 +206,13 @@ Part XX, across a mesh.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 42. Execute Ministral 3 | Ministral-3-3B (Apache-2.0, BF16 originals): the Tekken tokenizer through chapter 5's byte-BPE engine with its own pinned tables, Mistral's chat and reasoning format, and a dense grouped-query decoder with its long-context rotary scaling; token, intermediate and logit references. |
-| 43. Original FP8 weights | E4M3 values with one scale per 128×128 block, including Large 4's power-of-two (UE8M0) scales: exact decode of every code at every admitted scale against an independent table, partial-block and scale refusals, and FP8 originals kept distinct from chapter 28's derived profiles. The reference's dynamic FP8 activations are a separate approximate profile. |
-| 44. A coding agent | Devstral-Small-2-24B (Apache-2.0, FP8): Mistral's function-calling format with arguments constrained by chapter 30, and long-context requests through chapters 26 and 112; first measured against a fixed coding-task set. |
-| 45. Attention through a latent | Multi-head latent attention: queries and keys split into rotary and non-rotary parts, keys and values reconstructed from a low-rank latent, and the absorbed projections that let decode attend in latent space. The compressed cache's size is accounted exactly, and the absorbed form is compared with the expanded one. |
-| 46. Execute Mistral Small 4 | Mistral-Small-4-119B (Apache-2.0, FP8, 241.9 GB of originals): latent attention plus 128 routed experts with four selected and one shared expert, extending chapter 35's router. Measured residency on one large-memory machine, or the expert paging of chapter 39. |
-| 47. Sparse attention and shared layers | Large 4's attention features on tiny fixtures and selected real layers: a lightning indexer that picks the top 2,048 keys per query (FP8 indexer), indexer and KV sharing across layers from the pinned source map, no rotary positions on every fourth layer, tanh soft-capping of logits at 30, and YaRN scaling (factor 2048 over 512 positions) to 1,048,576. |
-| 48. The model's own draft head | Large 4's embedded multi-token-prediction draft head as a speculator under chapter 40's acceptance rule: identical greedy output, exact acceptance probabilities on tiny fixtures, and measured acceptance and draft length. |
+| 49. Execute Ministral 3 | Ministral-3-3B (Apache-2.0, BF16 originals): the Tekken tokenizer through chapter 5's byte-BPE engine with its own pinned tables, Mistral's chat and reasoning format, and a dense grouped-query decoder with its long-context rotary scaling; token, intermediate and logit references. |
+| 50. Original FP8 weights | E4M3 values with one scale per 128×128 block, including Large 4's power-of-two (UE8M0) scales: exact decode of every code at every admitted scale against an independent table, partial-block and scale refusals, and FP8 originals kept distinct from chapter 34's derived profiles. The reference's dynamic FP8 activations are a separate approximate profile. |
+| 51. A coding agent | Devstral-Small-2-24B (Apache-2.0, FP8): Mistral's function-calling format with arguments constrained by chapter 37, and long-context requests through chapters 27 and 119; first measured against a fixed coding-task set. |
+| 52. Attention through a latent | Multi-head latent attention: queries and keys split into rotary and non-rotary parts, keys and values reconstructed from a low-rank latent, and the absorbed projections that let decode attend in latent space. The compressed cache's size is accounted exactly, and the absorbed form is compared with the expanded one. |
+| 53. Execute Mistral Small 4 | Mistral-Small-4-119B (Apache-2.0, FP8, 241.9 GB of originals): latent attention plus 128 routed experts with four selected and one shared expert, extending chapter 42's router. Measured residency on one large-memory machine, or the expert paging of chapter 46. |
+| 54. Sparse attention and shared layers | Large 4's attention features on tiny fixtures and selected real layers: a lightning indexer that picks the top 2,048 keys per query (FP8 indexer), indexer and KV sharing across layers from the pinned source map, no rotary positions on every fourth layer, tanh soft-capping of logits at 30, and YaRN scaling (factor 2048 over 512 positions) to 1,048,576. |
+| 55. The model's own draft head | Large 4's embedded multi-token-prediction draft head as a speculator under chapter 47's acceptance rule: identical greedy output, exact acceptance probabilities on tiny fixtures, and measured acceptance and draft length. |
 
 Ministral 3, Devstral Small 2, Mistral Small 4 and Mistral Large 3 are Apache-2.0.
 Large 4 uses the Mistral Ecosystem Open-Weight License. It permits internal
@@ -219,26 +234,26 @@ failure.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 49. Execute a DeepSeek R1 distill | R1-Distill-Qwen-1.5B through the shared dense path: the distill's own tokenizer, BOS from the tokenizer rather than the config, a template that strips earlier reasoning, and separate reasoning and final output. |
-| 50. DeepSeek's front door | The recipe layer in Coax. Special tokens are inserted by boundary, never by spelling, so user or tool text that spells a marker stays text. Segments between specials encode independently. A streaming parser carries incomplete UTF-8 and multi-token delimiters across chunks in linear time and emits tool names and escaped arguments as they arrive. A stream that ends without a finish event is reported incomplete. |
-| 51. Execute DeepSeek V2-Lite | 16B total, 2.4B active: DeepSeek's latent attention (sharing chapter 45's math) with 64 routed and 2 shared experts, compared in compressed and expanded form with router and combine parity and cache continuation. Fits one Mac. |
-| 52. Routers that balance themselves | V3-style selection with a bias used only for choosing experts and unbiased scores for weighting, V4.1's square-root-softplus scores and route scale, explicit lowest-id tie rules, and router-margin records so near ties are visible in every comparison. |
-| 53. Compressed and shared attention | V4.1's attention: a 128-token window ring, a gated pooling compressor (ratio 2) and an ungated one (ratio 1), a single shared KV head with an attention sink, KV and indexer state reused across layers from pinned source layers, and candidate blocks chosen at one layer and read by the layers after it. Chunked and whole prompts give identical state. |
-| 54. Many residual streams | Hyper-connections: four parallel residual streams mixed by pre, post and Sinkhorn-normalized 4×4 coefficients (20 iterations), with the collapse that reads the previous sub-block's mix, which must cross any stage boundary. |
-| 55. Memory by lookup | Engram: hashed n-gram tables (up to 4-grams over a normalized, compressed vocabulary) with prime bucket layouts and the reference's fixed per-layer multipliers reproduced exactly; tables of about 101 GB each read a few rows per token from mapped files or disk, never loaded whole. |
-| 56. V4.1's expert weights | 384 routed experts and one shared expert in FP4 E2M1 with one UE8M0 scale per 32 elements along K. This is not MXFP4: the scales are separate tensors, the nibble order differs and a 0xFF scale is NaN. Clamped SwiGLU, and route weights applied before the down projection. Exact decode vectors for every code and scale. |
-| 57. Hot experts in fast memory | An exact expert cache: residency seeded from a recorded routing profile, decayed-frequency heat with a swap threshold, copies between steps, misses served by a host lane or from mapped files, and next-layer gate prefetch. The cache changes only where an expert runs, never its result. |
-| 58. Prefill layer by layer | Layer-major chunked prefill that reads each expert once per chunk instead of once per token, then grouped block-scaled matrix products; chunk size from a per-step time budget, and a check that no configuration silently disables chunking. |
-| 59. Pack the cache exactly | Window KV in FP8 and compressed and index keys in FP4 where the reference already rounds to those grids, bit-checked against it; the memory of step buffers, which scale with chunk size, budgeted separately from the cache. |
-| 60. A decode step with no host waits | The whole decode step as one recorded device command sequence: expert ids that stay on the device, sampling on the device so a stage returns a token rather than logits, and a host that schedules step N+1 while step N runs, with buffer lifetimes that allow speculative lengths to be learned a step late. |
-| 61. Execute DeepSeek V4.1 Flash on one machine | The complete model, 510.3 GB of originals: one large GPU or a large-memory Mac with experts from the cache of chapter 57 and Engram from disk, qualified under chapter 13 against a reference capture and measured for time to first token, tokens per second and memory. |
-| 62. Verify drafts by expected gain | The checkpoint's own draft layers, fixed-length verification first, then variable-length verification chosen from a trained confidence head and a measured cost curve, reported as committed tokens per unit time rather than projected acceptance. |
+| 56. Execute a DeepSeek R1 distill | R1-Distill-Qwen-1.5B through the shared dense path: the distill's own tokenizer, BOS from the tokenizer rather than the config, a template that strips earlier reasoning, and separate reasoning and final output. |
+| 57. DeepSeek's front door | The recipe layer in Coax. Special tokens are inserted by boundary, never by spelling, so user or tool text that spells a marker stays text. Segments between specials encode independently. A streaming parser carries incomplete UTF-8 and multi-token delimiters across chunks in linear time and emits tool names and escaped arguments as they arrive. A stream that ends without a finish event is reported incomplete. |
+| 58. Execute DeepSeek V2-Lite | 16B total, 2.4B active: DeepSeek's latent attention (sharing chapter 52's math) with 64 routed and 2 shared experts, compared in compressed and expanded form with router and combine parity and cache continuation. Fits one Mac. |
+| 59. Routers that balance themselves | V3-style selection with a bias used only for choosing experts and unbiased scores for weighting, V4.1's square-root-softplus scores and route scale, explicit lowest-id tie rules, and router-margin records so near ties are visible in every comparison. |
+| 60. Compressed and shared attention | V4.1's attention: a 128-token window ring, a gated pooling compressor (ratio 2) and an ungated one (ratio 1), a single shared KV head with an attention sink, KV and indexer state reused across layers from pinned source layers, and candidate blocks chosen at one layer and read by the layers after it. Chunked and whole prompts give identical state. |
+| 61. Many residual streams | Hyper-connections: four parallel residual streams mixed by pre, post and Sinkhorn-normalized 4×4 coefficients (20 iterations), with the collapse that reads the previous sub-block's mix, which must cross any stage boundary. |
+| 62. Memory by lookup | Engram: hashed n-gram tables (up to 4-grams over a normalized, compressed vocabulary) with prime bucket layouts and the reference's fixed per-layer multipliers reproduced exactly; tables of about 101 GB each read a few rows per token from mapped files or disk, never loaded whole. |
+| 63. V4.1's expert weights | 384 routed experts and one shared expert in FP4 E2M1 with one UE8M0 scale per 32 elements along K. This is not MXFP4: the scales are separate tensors, the nibble order differs and a 0xFF scale is NaN. Clamped SwiGLU, and route weights applied before the down projection. Exact decode vectors for every code and scale. |
+| 64. Hot experts in fast memory | An exact expert cache: residency seeded from a recorded routing profile, decayed-frequency heat with a swap threshold, copies between steps, misses served by a host lane or from mapped files, and next-layer gate prefetch. The cache changes only where an expert runs, never its result. |
+| 65. Prefill layer by layer | Layer-major chunked prefill that reads each expert once per chunk instead of once per token, then grouped block-scaled matrix products; chunk size from a per-step time budget, and a check that no configuration silently disables chunking. |
+| 66. Pack the cache exactly | Window KV in FP8 and compressed and index keys in FP4 where the reference already rounds to those grids, bit-checked against it; the memory of step buffers, which scale with chunk size, budgeted separately from the cache. |
+| 67. A decode step with no host waits | The whole decode step as one recorded device command sequence: expert ids that stay on the device, sampling on the device so a stage returns a token rather than logits, and a host that schedules step N+1 while step N runs, with buffer lifetimes that allow speculative lengths to be learned a step late. |
+| 68. Execute DeepSeek V4.1 Flash on one machine | The complete model, 510.3 GB of originals: one large GPU or a large-memory Mac with experts from the cache of chapter 64 and Engram from disk, qualified under chapter 13 against a reference capture and measured for time to first token, tokens per second and memory. |
+| 69. Verify drafts by expected gain | The checkpoint's own draft layers, fixed-length verification first, then variable-length verification chosen from a trained confidence head and a measured cost curve, reported as committed tokens per unit time rather than projected acceptance. |
 
 The reference implementation's exact arithmetic depended on its hardware and
 parallel layout, so qualification compares distributions, not bits; chapter
 13 sets the rules. The serving facts DeepSeek has published (prefill and
 decode on different groups, expert parallelism only inside a fast domain, a
-shared prefix cache of 128-token pages) inform chapters 112, 113, 118 and 119.
+shared prefix cache of 128-token pages) inform chapters 119, 120, 125 and 126.
 DeepSeek's own engine, kernels and libraries are references read as source,
 not dependencies. V3/R1-scale checkpoints and V4.1 split into stages run in
 Part XX.
@@ -247,14 +262,14 @@ Part XX.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 63. Learning with arrays | A small classifier using the shared operations, initially with explicit gradients and SGD. |
-| 64. Gradients as a program | A bounded reverse-mode tape, saved values, accumulation and parameter identity; analytic and finite-difference checks. |
-| 65. Learn a physical system | A supervised oscillator or cooling surrogate from our own deterministic solver; held-out parameters, one-step error and repeated rollout stability. |
-| 66. Bytes and a small language model | A real byte vocabulary, bigram likelihood, fixed licensed splits, named RNG and complete tiny training/generation. |
-| 67. Differentiate a decoder | Backward operations for the complete causal attention/FFN path; causal isolation and gradient coverage. |
-| 68. Train the whole tiny decoder | A complete small transformer with training, held-out likelihood and generation; keep it as a permanent regression. |
+| 70. Learning with arrays | A small classifier using the shared operations, initially with explicit gradients and SGD. |
+| 71. Gradients as a program | A bounded reverse-mode tape, saved values, accumulation and parameter identity; analytic and finite-difference checks. |
+| 72. Learn a physical system | A supervised oscillator or cooling surrogate from our own deterministic solver; held-out parameters, one-step error and repeated rollout stability. |
+| 73. Bytes and a small language model | A real byte vocabulary, bigram likelihood, fixed licensed splits, named RNG and complete tiny training/generation. |
+| 74. Differentiate a decoder | Backward operations for the complete causal attention/FFN path; causal isolation and gradient coverage. |
+| 75. Train the whole tiny decoder | A complete small transformer with training, held-out likelihood and generation; keep it as a permanent regression. |
 
-Chapter 65 needs 63–64, not language-model training. It is our first physics
+Chapter 72 needs 63–64, not language-model training. It is our first physics
 chapter, much earlier than pretrained geometry or weather models. It uses
 ordinary supervised learning; higher-order physics-informed derivatives are
 a separate extension in appendix C.
@@ -263,9 +278,9 @@ a separate extension in appendix C.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 69. Data and resumable state | Provenance, disjoint splits, document packing, model/optimizer/RNG/data counters and exact resume under a named profile. |
-| 70. Learn a tokenizer | Deterministic byte-BPE training in Coax with explicit tie rules and a pinned pretokenization pattern (nanochat's two-digit number groups); the trained table round-trips through chapter 5's encoder, and an independent oracle reproduces the merges. |
-| 71. AdamW, then Muon | Independent update derivations, parameter groups, precision and the exact pinned nanochat optimizer behavior. |
+| 76. Data and resumable state | Provenance, disjoint splits, document packing, model/optimizer/RNG/data counters and exact resume under a named profile. |
+| 77. Learn a tokenizer | Deterministic byte-BPE training in Coax with explicit tie rules and a pinned pretokenization pattern (nanochat's two-digit number groups); the trained table round-trips through chapter 5's encoder, and an independent oracle reproduces the merges. |
+| 78. AdamW, then Muon | Independent update derivations, parameter groups, precision and the exact pinned nanochat optimizer behavior. |
 
 Data admission begins with the first trainer. These chapters consolidate it
 before longer runs rather than postponing provenance until this part.
@@ -274,21 +289,21 @@ before longer runs rather than postponing provenance until this part.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 72. Execute nanochat exactly | Pinned BPE/conversation rules, inert checkpoint export, every enabled forward feature and cached inference. |
-| 73. Differentiate nanochat | Gradients for every enabled feature; tiny independent comparisons and complete parameter coverage. |
-| 74. A complete pretraining run | Tokenizer training from 70, initialization, schedules, accumulation, token budgets, packing, resume and held-out loss/bits-per-byte; tiny first, measured scale later. |
-| 75. Supervised conversations and tools | Assistant/tool loss masks and validation; bounded Nemotron-Agentic-v1/OpenCodeReasoning subsets with provenance and base-skill regression. |
-| 76. Continued pretraining and task adaptation | A separately specified domain workload, data mixture, retention checks and promotion criteria. This is a Psionic extension, not a stage claimed from the pinned nanochat speedrun. |
-| 77. Preferences and reward models | HelpSteer3 pairwise data, ranking/reward losses and an optional separately specified DPO experiment; held-out comparisons and reward-model limitations. |
-| 78. Learn from rollouts | The pinned nanochat on-policy, mean-centered-reward recipe; bounded rollouts, independent gradient/reward checks and held-out task results. |
-| 79. Post-train a decision model | Qualified hybrid backward/adapters, selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. |
-| 80. Distill Mammoth into Elephant | Mammoth's slot distributions as soft targets on a recorded request corpus; KL/cross-entropy over slots, held-out agreement and chapter 12's quality metrics, with Elephant's cost measured against Mammoth's. |
+| 79. Execute nanochat exactly | Pinned BPE/conversation rules, inert checkpoint export, every enabled forward feature and cached inference. |
+| 80. Differentiate nanochat | Gradients for every enabled feature; tiny independent comparisons and complete parameter coverage. |
+| 81. A complete pretraining run | Tokenizer training from 70, initialization, schedules, accumulation, token budgets, packing, resume and held-out loss/bits-per-byte; tiny first, measured scale later. |
+| 82. Supervised conversations and tools | Assistant/tool loss masks and validation; bounded Nemotron-Agentic-v1/OpenCodeReasoning subsets with provenance and base-skill regression. |
+| 83. Continued pretraining and task adaptation | A separately specified domain workload, data mixture, retention checks and promotion criteria. This is a Psionic extension, not a stage claimed from the pinned nanochat speedrun. |
+| 84. Preferences and reward models | HelpSteer3 pairwise data, ranking/reward losses and an optional separately specified DPO experiment; held-out comparisons and reward-model limitations. |
+| 85. Learn from rollouts | The pinned nanochat on-policy, mean-centered-reward recipe; bounded rollouts, independent gradient/reward checks and held-out task results. |
+| 86. Post-train a decision model | Qualified hybrid backward/adapters, selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. |
+| 87. Distill Mammoth into Elephant | Mammoth's slot distributions as soft targets on a recorded request corpus; KL/cross-entropy over slots, held-out agreement and chapter 12's quality metrics, with Elephant's cost measured against Mammoth's. |
 
 The [nanochat study](../docs/targets/nanochat.md) is the compatibility
 contract. Its current speedrun trains a tokenizer and a base model and runs
-SFT; RL is a separate program. Chapter 78 depends on SFT and its own reward
+SFT; RL is a separate program. Chapter 85 depends on SFT and its own reward
 contracts, not on completing preference learning or continued pretraining.
-Chapters 79–80 need the decision forward path, chapter 12's evaluation and the
+Chapters 86–87 need the decision forward path, chapter 12's evaluation and the
 shared training machinery, not nanochat RL. A distilled student is a new
 model profile with its own evidence; it inherits neither model's results.
 No generic PPO, KL penalty or broad RLHF parity is implied.
@@ -297,27 +312,27 @@ No generic PPO, KL penalty or broad RLHF parity is implied.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 81. Pixels, convolutions and patches | Exact resize/channel/range conventions, convolution, sampling and patch projection with tiny independent fixtures. |
-| 82. Elephant and Mammoth see | The pinned Qwen3.5 vision encoder and projector, exact image preprocessing, image token layout and multimodal rotary positions; image-bearing decision requests with their own reference captures. |
-| 83. See with C-RADIO | C-RADIOv3-B feature outputs, visual-asset retrieval and a small Psionic-trained head over frozen features. |
-| 84. Compress and reconstruct an image | The older Cosmos-0.1-Tokenizer-CI8x8, including wavelets, normalization and decoder; inspect latent/reconstruction numerics. |
-| 85. Noise, diffusion and flow | Train a tiny generative example; distinguish objectives, schedules, conditioning and reproducible sampling. |
+| 88. Pixels, convolutions and patches | Exact resize/channel/range conventions, convolution, sampling and patch projection with tiny independent fixtures. |
+| 89. Elephant and Mammoth see | The pinned Qwen3.5 vision encoder and projector, exact image preprocessing, image token layout and multimodal rotary positions; image-bearing decision requests with their own reference captures. |
+| 90. See with C-RADIO | C-RADIOv3-B feature outputs, visual-asset retrieval and a small Psionic-trained head over frozen features. |
+| 91. Compress and reconstruct an image | The older Cosmos-0.1-Tokenizer-CI8x8, including wavelets, normalization and decoder; inspect latent/reconstruction numerics. |
+| 92. Noise, diffusion and flow | Train a tiny generative example; distinguish objectives, schedules, conditioning and reproducible sampling. |
 
-Chapter 82 extends the priority decision models and needs only 81 and the
+Chapter 89 extends the priority decision models and needs only 88 and the
 Elephant/Mammoth forward path; text-only qualification does not carry over.
-Chapter 83 needs the shared forward core and 81; its trained head also needs
-63–64. Chapter 84 is an older teaching target, not a promise of Cosmos3 codec
-compatibility. Chapter 85 introduces the methods later world/robotics models
+Chapter 90 needs the shared forward core and 81; its trained head also needs
+63–64. Chapter 91 is an older teaching target, not a promise of Cosmos3 codec
+compatibility. Chapter 92 introduces the methods later world/robotics models
 need; it does not qualify their architectures.
 
 ## XIV. Motion for Verse
 
 | Chapter | What we build and check |
 | --- | --- |
-| 86. Poses have conventions | Rotation representations, skeleton hierarchy, root coordinates, units, timing and retargeting fixtures. |
-| 87. Motion tokens become poses | A tiny codebook/VQ decoder and masked-token generation; known token-to-pose and pose-continuity checks. |
-| 88. Execute MotionBricks | One pinned SOMA package: root timing/trajectory, masked motion-token transformer and VQ-VAE decoder, with full trajectory references. |
-| 89. Put generated motion in Verse | An explicit skeleton/target interface, bounded generation and animation handoff; a reproducible destination-to-pose scene. |
+| 93. Poses have conventions | Rotation representations, skeleton hierarchy, root coordinates, units, timing and retargeting fixtures. |
+| 94. Motion tokens become poses | A tiny codebook/VQ decoder and masked-token generation; known token-to-pose and pose-continuity checks. |
+| 95. Execute MotionBricks | One pinned SOMA package: root timing/trajectory, masked motion-token transformer and VQ-VAE decoder, with full trajectory references. |
+| 96. Put generated motion in Verse | An explicit skeleton/target interface, bounded generation and animation handoff; a reproducible destination-to-pose scene. |
 
 This is the preferred first major Verse ML demonstration after useful vision
 features. It reuses attention, common image/codebook operators where required,
@@ -328,15 +343,15 @@ Unitree G1 is a separate embodiment/profile, not an interchangeable asset.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 90. Waveforms and spectral features | Sample/rate/channel admission, windowing, tiny DFT → FFT/inverse, spectrogram/mel and exact feature normalization. |
-| 91. A speech encoder | FastConformer convolution/attention, subsampling and length/mask propagation, compared against fixed intermediate tensors. |
-| 92. Transcribe with Parakeet | parakeet-tdt-0.6b-v3, token-duration-transducer decoding and bounded utterances; WER/CER and language slices. |
-| 93. Transcribe while someone speaks | Chunked streaming input (Voxtral-Mini-4B-Realtime, Apache-2.0, is a candidate alongside Parakeet) with carried encoder/decoder state, partial and final hypotheses, measured per-chunk latency against a stated budget, and integration with the voice engine's end-of-turn and barge-in through `verse/platform/voice.h`. |
-| 94. Speak the answer | One separately selected and pinned text-to-speech checkpoint (Voxtral-4B-TTS is a candidate, but its CC BY-NC 4.0 weights exclude commercial use): text normalization, acoustic model, vocoder, streamed audio frames into the voice engine's playback path; intelligibility (ASR round trip through 92) and latency evidence. |
+| 97. Waveforms and spectral features | Sample/rate/channel admission, windowing, tiny DFT → FFT/inverse, spectrogram/mel and exact feature normalization. |
+| 98. A speech encoder | FastConformer convolution/attention, subsampling and length/mask propagation, compared against fixed intermediate tensors. |
+| 99. Transcribe with Parakeet | parakeet-tdt-0.6b-v3, token-duration-transducer decoding and bounded utterances; WER/CER and language slices. |
+| 100. Transcribe while someone speaks | Chunked streaming input (Voxtral-Mini-4B-Realtime, Apache-2.0, is a candidate alongside Parakeet) with carried encoder/decoder state, partial and final hypotheses, measured per-chunk latency against a stated budget, and integration with the voice engine's end-of-turn and barge-in through `verse/platform/voice.h`. |
+| 101. Speak the answer | One separately selected and pinned text-to-speech checkpoint (Voxtral-4B-TTS is a candidate, but its CC BY-NC 4.0 weights exclude commercial use): text normalization, acoustic model, vocoder, streamed audio frames into the voice engine's playback path; intelligibility (ASR round trip through 92) and latency evidence. |
 
 This branch starts from shared convolution/attention and spectral operations;
 it need not wait for motion. Spectral primitives are shared with physics.
-Offline transcription in 92 does not establish streaming latency; 93 does,
+Offline transcription in 99 does not establish streaming latency; 93 does,
 for its named host and chunk size. The text-to-speech target still needs a
 survey entry with its weights, code and data terms before 94 is selected.
 Neither chapter changes the voice engine's consent or floor rules.
@@ -345,14 +360,14 @@ Neither chapter changes the voice engine's consent or floor rules.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 95. A spectral neural operator | Tiny DFT/FFT references, complex arithmetic, truncation and spectral layers on a small field; reuse the spectral core from 90. |
-| 96. Learn Darcy flow | Reimplement the PhysicsNeMo FNO architecture/recipe on bounded reproducibly generated data; compare against a solver on held-out fields. |
-| 97. A field around a shape | Signed distances, point clouds, spatial neighborhood queries, point convolutions and local aggregation with tiny geometric oracles. |
-| 98. Execute DoMINO | domino_drivaerml, a bounded DrivAerML subset, exact preprocessing, surface/volume outputs and physical error measures. |
-| 99. Forecast on a sphere | Optional FourCastNet3 branch: spherical operators, variable/grid conventions, geographic weighting and multi-step forecast evaluation. |
+| 102. A spectral neural operator | Tiny DFT/FFT references, complex arithmetic, truncation and spectral layers on a small field; reuse the spectral core from 90. |
+| 103. Learn Darcy flow | Reimplement the PhysicsNeMo FNO architecture/recipe on bounded reproducibly generated data; compare against a solver on held-out fields. |
+| 104. A field around a shape | Signed distances, point clouds, spatial neighborhood queries, point convolutions and local aggregation with tiny geometric oracles. |
+| 105. Execute DoMINO | domino_drivaerml, a bounded DrivAerML subset, exact preprocessing, surface/volume outputs and physical error measures. |
+| 106. Forecast on a sphere | Optional FourCastNet3 branch: spherical operators, variable/grid conventions, geographic weighting and multi-step forecast evaluation. |
 
 The first physics result is already in 65. FNO adds field learning; DoMINO
-adds geometry-specific operations. Chapter 99 is an alternative specialty,
+adds geometry-specific operations. Chapter 106 is an alternative specialty,
 not a successor that must wait for DoMINO. Its field/activation budgets and
 ERA5 acquisition/terms need their own qualification. The Darcy recipe is not
 a pretrained checkpoint. None of these models replaces Verse's authoritative
@@ -362,24 +377,24 @@ simulation without a separate consumer contract.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 100. A recurrence you can inspect | Tiny state-space transitions, causal convolution, chunked/whole-sequence versus token-step execution and independent state reset. |
-| 101. Execute Nemotron Nano | NVIDIA-Nemotron-3-Nano-4B-BF16: the complete Mamba-2/Transformer hybrid and all recurrent/cache state. |
-| 102. Execute Nemotron Lightning | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16: combine the exact hybrid and MoE profiles; floating point before NVFP4 or speculation. |
+| 107. A recurrence you can inspect | Tiny state-space transitions, causal convolution, chunked/whole-sequence versus token-step execution and independent state reset. |
+| 108. Execute Nemotron Nano | NVIDIA-Nemotron-3-Nano-4B-BF16: the complete Mamba-2/Transformer hybrid and all recurrent/cache state. |
+| 109. Execute Nemotron Lightning | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16: combine the exact hybrid and MoE profiles; floating point before NVFP4 or speculation. |
 
 This branch can follow dense inference and performance work without waiting
 for motion or physics. Qwen Gated DeltaNet support does not establish Mamba-2
-support. The router is chapter 35 in Part VII. Active parameter count is not total checkpoint residency. Bolt's
+support. The router is chapter 42 in Part VII. Active parameter count is not total checkpoint residency. Bolt's
 different Gemma-4 architecture is an optional study in appendix B.
 
 ## XVIII. World models and embodied policies
 
 | Chapter | What we build and check |
 | --- | --- |
-| 103. Sequences of observations | Temporal/multimodal representations, a tiny conditioned generation task and codec/scheduler contracts. |
-| 104. One complete Cosmos3-Edge path | Qualify one bounded conditioned generation path across its autoregressive/diffusion towers and exact codecs; numerical and physical evaluations stay distinct. |
-| 105. Imitation before robotics scale | A tiny policy trained/evaluated in simulation, with action/state normalization and a bounded PhysicalAI SingleArm data exercise. |
-| 106. Execute a GR00T policy | GR00T-N1.7-3B as a candidate, subject to its unresolved artifact-license inconsistency; exact VLA/flow-matching action path for one embodiment. |
-| 107. Close the simulated control loop | Action chunks, observation timing, resets, held-out task success and failure recovery under the selected embodiment. |
+| 110. Sequences of observations | Temporal/multimodal representations, a tiny conditioned generation task and codec/scheduler contracts. |
+| 111. One complete Cosmos3-Edge path | Qualify one bounded conditioned generation path across its autoregressive/diffusion towers and exact codecs; numerical and physical evaluations stay distinct. |
+| 112. Imitation before robotics scale | A tiny policy trained/evaluated in simulation, with action/state normalization and a bounded PhysicalAI SingleArm data exercise. |
+| 113. Execute a GR00T policy | GR00T-N1.7-3B as a candidate, subject to its unresolved artifact-license inconsistency; exact VLA/flow-matching action path for one embodiment. |
+| 114. Close the simulated control loop | Action chunks, observation timing, resets, held-out task success and failure recovery under the selected embodiment. |
 
 Cosmos needs mature vision, temporal representations and generative methods.
 The robotics path needs vision/language, shared training, action conventions
@@ -397,30 +412,30 @@ rollout and metering decide in Coax, with `#authority` files and
 zero-survivor mutation where they decide work, money or policy. The host
 does network, process and device effects only, as the
 [Coaxial dev server](../../coax/web.md) already does for the website. It
-grows Part III's first deployment: chapter 108 generalizes the timing of
-14, chapter 109 the server of 16, and chapters 111–117 add what one resident
+grows Part III's first deployment: chapter 115 generalizes the timing of
+14, chapter 116 the server of 16, and chapters 118–124 add what one resident
 model serving one decision at a time leaves out.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 108. Benchmark a service, not a kernel | Time to first token, inter-token latency, per-user and total tokens per second, and end-to-end versus inference-only time at P50, P90, P95 and P99. A load generator with a named RNG reproduces input/output length distributions, request contents, sampling parameters and jittered arrival patterns; recorded traffic can be replayed as a shadow. A fixed baseline is required, and only one variable changes per run. |
-| 109. Serve a model with an honest capability | Shared System One protocol integration, versioned manifests, bounded requests, cancellation and evidence for each model/backend/profile; request and response schemas start in `proto/`. |
-| 110. Clients, streams and background jobs | Streamed tokens and audio over a bidirectional connection, session reuse, cancellation that reaches the scheduler, and asynchronous jobs that are acknowledged at once and complete later under their own deadline; an OpenAI-compatible Responses edge is translated into the System One contract, not the other way round. |
-| 111. Continuous batching and a fair scheduler | Token-level batching that admits and retires requests every step under a state-memory budget, chunked prefill interleaved with decode, preemption and priority classes. Every request's output must be identical to running it alone (batch invariance), which the fixed reduction order makes testable. |
-| 112. Paged state and a tiered prefix cache | Fixed-size pages for KV cache and for hybrid recurrent snapshots; a prefix cache across requests that spills from device to host memory to local disk, with measured hit rate, eviction and time to first token on hits versus misses. Prefixes are found through a content-hashed chain of 128-token pages; pages never depend on a compute machine staying alive, restore overlaps layer by layer with compute, and retention is set per traffic type. Any approximate reconstruction, such as bounded sliding-window replay, is its own profile and never enters an exact cache identity. |
-| 113. Route, queue and scale replicas | A cache-aware and adapter-aware router, a bounded priority queue, and a replica autoscaler (minimum and maximum replicas, window, scale-down delay, concurrency target, scale to zero). The policies are pure Coax, checked against a deterministic discrete-event simulation of recorded and synthetic traffic before any machine runs them. Prefill cost is modelled from uncached tokens and the prefix they attend to, with length buckets and engines that pull work; decode balances both request count and total cache length per replica. |
-| 114. Start fast | Cold start split into machine, process, weights and kernel startup and measured separately; content-addressed weight delivery from chapter 4's identities, mapped loading, and generated-kernel caches keyed by device, compiler and source identity. |
-| 115. Ship without downtime | Canary rollout with gradual traffic ramps and automatic revert, driven by both latency objectives and golden requests whose outputs must match retained evidence; draining in-flight requests before a replica stops. |
-| 116. Observe, meter and price | Volume, input/output lengths, status counts, latency percentiles, replicas, utilization and queue depth; audit logs that record changes and no user content by default; per-request usage records bound to execution evidence and a pricing policy in an `#authority` file. Settlement stays in the Bitcoin wallet, outside Psionic. |
-| 117. Survive failures | Health checks, cordoning a failing device or machine, idempotent retries, active-active and active-passive failover between machines or regions, data-residency routing, isolation of tool execution and protection of weights. |
-| 118. Disaggregate prefill and decode | Conditional disaggregation: separate prefill and decode workers exchange a complete state snapshot (chapter 8's identity-bound claim, extended for transfer) as a versioned message; a prefill queue, a local-prefill threshold and an xPyD ratio that adjusts to traffic. Only after chapters 108 and 111 measure that prefill interference is the bottleneck. DeepSeek's published layout (small prefill groups, large decode groups, a separate vision encoder role, scaling prefill on unserved tokens and decode on requests in flight) is the reference design. |
-| 119. Split a model across devices | Tensor parallelism for latency and expert parallelism for gpt-oss, DeepSeek and other MoE throughput: collectives, sharded weights and state, and results compared with the single-device reference. Expert parallelism stays inside one fast interconnect domain, with data-parallel attention, redundant experts rebalanced from a load window and balance reported as busiest over mean, measured by time rather than token count. |
-| 120. A pipeline of models | A compound voice workload (voice activity, transcription, decision model, speech) with each stage scaled separately in one cluster, an end-to-end latency budget per stage and a measured cost for each network hop. |
-| 121. A decision model steers voice | Elephant as the voice engine's `decisions:<model>` decider: proposals pass the existing never-awaited gate (clamping, confidence floor, epoch and deadline fences, recorded drop reasons); a slow or absent model can only fail to steer, never stall a frame. |
-| 122. Train across devices | One real homogeneous topology: gradient collectives (shared with 119), sharding/resume, numerical comparisons and measured scaling. |
+| 115. Benchmark a service, not a kernel | Time to first token, inter-token latency, per-user and total tokens per second, and end-to-end versus inference-only time at P50, P90, P95 and P99. A load generator with a named RNG reproduces input/output length distributions, request contents, sampling parameters and jittered arrival patterns; recorded traffic can be replayed as a shadow. A fixed baseline is required, and only one variable changes per run. |
+| 116. Serve a model with an honest capability | Shared System One protocol integration, versioned manifests, bounded requests, cancellation and evidence for each model/backend/profile; request and response schemas start in `proto/`. |
+| 117. Clients, streams and background jobs | Streamed tokens and audio over a bidirectional connection, session reuse, cancellation that reaches the scheduler, and asynchronous jobs that are acknowledged at once and complete later under their own deadline; an OpenAI-compatible Responses edge is translated into the System One contract, not the other way round. |
+| 118. Continuous batching and a fair scheduler | Token-level batching that admits and retires requests every step under a state-memory budget, chunked prefill interleaved with decode, preemption and priority classes. Every request's output must be identical to running it alone (batch invariance), which the fixed reduction order makes testable. |
+| 119. Paged state and a tiered prefix cache | Fixed-size pages for KV cache and for hybrid recurrent snapshots; a prefix cache across requests that spills from device to host memory to local disk, with measured hit rate, eviction and time to first token on hits versus misses. Prefixes are found through a content-hashed chain of 128-token pages; pages never depend on a compute machine staying alive, restore overlaps layer by layer with compute, and retention is set per traffic type. Any approximate reconstruction, such as bounded sliding-window replay, is its own profile and never enters an exact cache identity. |
+| 120. Route, queue and scale replicas | A cache-aware and adapter-aware router, a bounded priority queue, and a replica autoscaler (minimum and maximum replicas, window, scale-down delay, concurrency target, scale to zero). The policies are pure Coax, checked against a deterministic discrete-event simulation of recorded and synthetic traffic before any machine runs them. Prefill cost is modelled from uncached tokens and the prefix they attend to, with length buckets and engines that pull work; decode balances both request count and total cache length per replica. |
+| 121. Start fast | Cold start split into machine, process, weights and kernel startup and measured separately; content-addressed weight delivery from chapter 4's identities, mapped loading, and generated-kernel caches keyed by device, compiler and source identity. |
+| 122. Ship without downtime | Canary rollout with gradual traffic ramps and automatic revert, driven by both latency objectives and golden requests whose outputs must match retained evidence; draining in-flight requests before a replica stops. |
+| 123. Observe, meter and price | Volume, input/output lengths, status counts, latency percentiles, replicas, utilization and queue depth; audit logs that record changes and no user content by default; per-request usage records bound to execution evidence and a pricing policy in an `#authority` file. Settlement stays in the Bitcoin wallet, outside Psionic. |
+| 124. Survive failures | Health checks, cordoning a failing device or machine, idempotent retries, active-active and active-passive failover between machines or regions, data-residency routing, isolation of tool execution and protection of weights. |
+| 125. Disaggregate prefill and decode | Conditional disaggregation: separate prefill and decode workers exchange a complete state snapshot (chapter 8's identity-bound claim, extended for transfer) as a versioned message; a prefill queue, a local-prefill threshold and an xPyD ratio that adjusts to traffic. Only after chapters 115 and 118 measure that prefill interference is the bottleneck. DeepSeek's published layout (small prefill groups, large decode groups, a separate vision encoder role, scaling prefill on unserved tokens and decode on requests in flight) is the reference design. |
+| 126. Split a model across devices | Tensor parallelism for latency and expert parallelism for gpt-oss, DeepSeek and other MoE throughput: collectives, sharded weights and state, and results compared with the single-device reference. Expert parallelism stays inside one fast interconnect domain, with data-parallel attention, redundant experts rebalanced from a load window and balance reported as busiest over mean, measured by time rather than token count. |
+| 127. A pipeline of models | A compound voice workload (voice activity, transcription, decision model, speech) with each stage scaled separately in one cluster, an end-to-end latency budget per stage and a measured cost for each network hop. |
+| 128. A decision model steers voice | Elephant as the voice engine's `decisions:<model>` decider: proposals pass the existing never-awaited gate (clamping, confidence floor, epoch and deadline fences, recorded drop reasons); a slow or absent model can only fail to steer, never stall a frame. |
+| 129. Train across devices | One real homogeneous topology: gradient collectives (shared with 119), sharding/resume, numerical comparisons and measured scaling. |
 
 Serving can begin after the first qualified decision model and an actual
-consumer contract. Chapter 121 is the first consumer: it needs 12's published
+consumer contract. Chapter 128 is the first consumer: it needs 12's published
 semantics and 108's measured latency, and the gate stays the authority over
 what a decision may change. The more traffic a deployment has, the more of
 this part it can justify: disaggregation, multi-device inference and global
@@ -436,7 +451,7 @@ selected backend.
 A mesh pools memory and compute across machines that are loosely connected,
 over ordinary networks rather than device interconnects. Part IV's Pylons
 route whole decisions to whole machines; this part splits a model that no
-single machine holds. Chapter 119 is the tightly coupled case in one machine
+single machine holds. Chapter 126 is the tightly coupled case in one machine
 or rack. The design follows the
 [Mesh-LLM lessons](../docs/serving/mesh.md) recorded before the reset, with
 the trust rules from the earlier private-inference work. Coax decides
@@ -445,20 +460,20 @@ transport, files and devices.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 123. Split a model into stages | A stage boundary contract derived from the model: a typed list of everything that crosses it (hidden state, residual streams, shared-KV and recurrent sidebands), bound to the artifact, stage range and protocol version. Two stages must match the whole model on identical tokens: logits, greedy output, cached continuation. Dense Ministral 3 first, with raw activations. |
-| 124. Stage packages | Each stage fetches and loads only its own tensors and required shared assets, verified chunk by chunk against chapter 4's identities. Fetched bytes, materialized bytes, peak memory and time to readiness are measured separately. |
-| 125. Peers, transport and discovery | Encrypted peer connections with the direct or relayed path recorded and measured; private meshes joined by invitation, public ones discovered through Part IV's NIP-PYLON beacons, whose model groups advertise a head and its stages; an owner control plane separate from the inference plane. |
-| 126. Place the model | Run whole on one machine if it fits, else route the whole request to a peer, else split. Splitting uses per-layer memory and measured stage and link costs, and states its objective: the sum of stage times for one request's latency, or the slowest stage for throughput. The placement planner is pure Coax, checked in simulation. |
-| 127. Stage lifecycle and fencing | Load downstream stages first and publish the entry route only when every stage is ready. A topology generation fences out stale commands, and partial failures withdraw the route and release memory. Each live sequence declares whether it drains, fails or restores. |
-| 128. Experts across machines and from disk | Expert parallelism over a mesh with routed tokens and gathered outputs, and expert streaming from local disk for MoE models larger than memory; measured against chapter 46's single-machine results. |
-| 129. Route by saved work | Mesh-wide cache-aware routing that compares queue delay plus restore and suffix-prefill cost against cold prefill. Cache advertisements are bounded, short-lived, salted hints that never contain raw tokens; claimed hits that turn out to be missing fall back, and the realized saving is recorded. |
-| 130. Compress activations exactly | Codec negotiation with a mandatory raw fallback and round-trip equality of each frame, with the full encode, decode and copy cost measured. Lossy activation formats are a separate profile with their own quality evaluation. |
-| 131. Who can read the prompt | Trust levels computed from evidence: a peer serving the request reads it; a hardened process on a machine its owner controls is harder to snoop on, not private; only an attested hardware enclave running a logged release is private. Requests are routed by sensitivity and fail closed rather than falling back. |
-| 132. Check a peer's work | Sampled re-execution of a peer's work on a trusted node. Results match exactly only when both sides run the same backend profile, and are otherwise compared within that profile's tolerance. Signed usage receipts per stage, a pricing policy in an `#authority` file, and settlement in Bitcoin through the wallet, outside Psionic. |
-| 133. Work with Mesh-LLM | A Psionic server attached to an existing Mesh-LLM mesh through its plugin endpoint interface, serving the OpenAI-compatible and `/systemone` decision contracts so the mesh can route to it. Payments interoperate with its token-metered Lightning exchange (deposit first, then settle from reported usage) through our own wallet. Its code is read as untrusted source; joining a public mesh is an owner decision. |
-| 134. DeepSeek V4.1 Flash across stages | Contiguous layer stages on several devices or machines. The boundary carries the four residual streams, the previous mix, source KV and indexer state, chosen candidate blocks and Engram history, in BF16 rather than F32. Generation fencing and stage recovery apply, and every split must match chapter 61's one-machine result on identical tokens, with per-hop latency recorded. |
-| 135. Mistral Large 3 across a mesh | Mistral-Large-3-675B (Apache-2.0, 681.5 GB of originals): latent attention and 128-expert routing placed across machines, with parity against the whole-model reference on selected layers and tokens, per-hop latency and per-stage memory. |
-| 136. Le Chonk across a mesh | Mistral Large 4 with all of Part VI: 1,060.6 GB of FP8 originals placed across machines, sparse attention and shared layers crossing stage boundaries, the built-in draft head, and recorded parity, latency and cost. Serving it to others is subject to its licence. |
+| 130. Split a model into stages | A stage boundary contract derived from the model: a typed list of everything that crosses it (hidden state, residual streams, shared-KV and recurrent sidebands), bound to the artifact, stage range and protocol version. Two stages must match the whole model on identical tokens: logits, greedy output, cached continuation. Dense Ministral 3 first, with raw activations. |
+| 131. Stage packages | Each stage fetches and loads only its own tensors and required shared assets, verified chunk by chunk against chapter 4's identities. Fetched bytes, materialized bytes, peak memory and time to readiness are measured separately. |
+| 132. Peers, transport and discovery | Encrypted peer connections with the direct or relayed path recorded and measured; private meshes joined by invitation, public ones discovered through Part IV's NIP-PYLON beacons, whose model groups advertise a head and its stages; an owner control plane separate from the inference plane. |
+| 133. Place the model | Run whole on one machine if it fits, else route the whole request to a peer, else split. Splitting uses per-layer memory and measured stage and link costs, and states its objective: the sum of stage times for one request's latency, or the slowest stage for throughput. The placement planner is pure Coax, checked in simulation. |
+| 134. Stage lifecycle and fencing | Load downstream stages first and publish the entry route only when every stage is ready. A topology generation fences out stale commands, and partial failures withdraw the route and release memory. Each live sequence declares whether it drains, fails or restores. |
+| 135. Experts across machines and from disk | Expert parallelism over a mesh with routed tokens and gathered outputs, and expert streaming from local disk for MoE models larger than memory; measured against chapter 53's single-machine results. |
+| 136. Route by saved work | Mesh-wide cache-aware routing that compares queue delay plus restore and suffix-prefill cost against cold prefill. Cache advertisements are bounded, short-lived, salted hints that never contain raw tokens; claimed hits that turn out to be missing fall back, and the realized saving is recorded. |
+| 137. Compress activations exactly | Codec negotiation with a mandatory raw fallback and round-trip equality of each frame, with the full encode, decode and copy cost measured. Lossy activation formats are a separate profile with their own quality evaluation. |
+| 138. Who can read the prompt | Trust levels computed from evidence: a peer serving the request reads it; a hardened process on a machine its owner controls is harder to snoop on, not private; only an attested hardware enclave running a logged release is private. Requests are routed by sensitivity and fail closed rather than falling back. |
+| 139. Check a peer's work | Sampled re-execution of a peer's work on a trusted node. Results match exactly only when both sides run the same backend profile, and are otherwise compared within that profile's tolerance. Signed usage receipts per stage, a pricing policy in an `#authority` file, and settlement in Bitcoin through the wallet, outside Psionic. |
+| 140. Work with Mesh-LLM | A Psionic server attached to an existing Mesh-LLM mesh through its plugin endpoint interface, serving the OpenAI-compatible and `/systemone` decision contracts so the mesh can route to it. Payments interoperate with its token-metered Lightning exchange (deposit first, then settle from reported usage) through our own wallet. Its code is read as untrusted source; joining a public mesh is an owner decision. |
+| 141. DeepSeek V4.1 Flash across stages | Contiguous layer stages on several devices or machines. The boundary carries the four residual streams, the previous mix, source KV and indexer state, chosen candidate blocks and Engram history, in BF16 rather than F32. Generation fencing and stage recovery apply, and every split must match chapter 68's one-machine result on identical tokens, with per-hop latency recorded. |
+| 142. Mistral Large 3 across a mesh | Mistral-Large-3-675B (Apache-2.0, 681.5 GB of originals): latent attention and 135-expert routing placed across machines, with parity against the whole-model reference on selected layers and tokens, per-hop latency and per-stage memory. |
+| 143. Le Chonk across a mesh | Mistral Large 4 with all of Part VI: 1,060.6 GB of FP8 originals placed across machines, sparse attention and shared layers crossing stage boundaries, the built-in draft head, and recorded parity, latency and cost. Serving it to others is subject to its licence. |
 
 A mesh multiplies failure modes: placement plans, advertisements and
 handshakes are not evidence of correct execution. Each split earns its own
@@ -478,48 +493,48 @@ peers or offering Large 4 as a service each need owner approval.
 
 | Path | Prerequisites | First complete payoff |
 | --- | --- | --- |
-| Urgent decisions | 1–3, then 4–9 | Elephant 10, Mammoth 11, published semantics 12; Metal 25–27 advances alongside. |
+| Urgent decisions | 1–3, then 4–9 | Elephant 10, Mammoth 11, published semantics 12; Metal 26–31 advances alongside. |
 | Live decision API | 10–11 and 13; an owner-approved host | Timing 14 → resident model 15 → `/v1/systemone` 16 → running live 17 → measured optimizations 18. |
 | First Pylon mesh | Part III's API and `coax/lib/nostr` | A Pylon answering decisions 19 → the API fanning out 20 → receipts and checks 21. |
-| Decision throughput | 10 and 22; Coax jobs for the second half of 23 | Byte-identical parallel CPU 23; batched forks and prefix reuse 24. |
-| Generation | Shared dense inference and 5's tokenizer tables | Sampling and constrained decoding 30 → continuation 32. |
-| Mistral | 4–6, 22, 30 and the router in 35; 40 for drafting | Ministral 3 42 → FP8 43 → Devstral 44 → latent attention 45 → Small 4 46 → Large 4 components 47–48. |
-| DeepSeek | 4–6, 13, 22, 30 and the router in 35; latent attention 45 | R1 distill 49 → recipe 50 → V2-Lite 51 → V4.1 components 52–56 → engine techniques 57–60 → V4.1 Flash on one machine 61 → drafts 62; across stages 134. |
-| gpt-oss | 4–6, 22 and 30; the router in 35 | MXFP4 34 → 20b 38 → 120b 39 → speculative decoding 40; tool calls 41. |
-| Retrieval / dense continuation | Shared storage, artifacts, tokenizer and attention; each exact model profile | 31 / 32; browser search 33 once Coax Wasm/WebGPU compute exists. |
-| Training / nanochat | 63–64, 66–71 and exact nanochat forward/backward | Tiny pretraining 74 → SFT 75 → the specific rollout recipe 78. |
-| Decision post-training | 10–12, 64 and hybrid backward | Adaptation 79; Mammoth-to-Elephant distillation 80. |
-| Early physics | 63–64 and an owned deterministic solver | Surrogate and rollout checks 65. |
-| Vision | Shared forward core and 81; gradients for a trained head | Elephant/Mammoth images 82; C-RADIO 83; learned image codec 84 is a separate branch. |
-| Verse motion | Shared forward core, required codec operators and 86–87 | MotionBricks 88 → Verse 89. |
-| Speech | Shared convolution/attention and 90–91 | Parakeet 92 → streaming 93; text-to-speech 94 after its target is selected. |
-| Scientific ML | Shared training/spectral core for FNO; geometry operators for DoMINO | Darcy 96 or DoMINO 98; spherical weather 99 branches independently. |
-| Hybrid / MoE language | Shared dense inference, state-space 100 and exact profiles; router 35 (Part VII) for Lightning | Nano 101 → Lightning 102. |
-| World generation | Shared vision/codec, diffusion/flow 85 and temporal 103 | One Cosmos3-Edge path 104. |
-| Robot policies | Shared vision/language, training, flow 85 and imitation/embodiment 105 | GR00T 106 → simulated closed loop 107, conditional on artifact terms. |
-| Production hosting | A qualified model, 22's measurements and a consumer contract | Benchmark 108 → server and clients 109–110 → batching and cache 111–112 → routing, scaling, rollout, metering 113–117. |
-| Large-scale serving | Measured need from 108 and 111; two or more devices | Disaggregation 118; tensor/expert parallelism 119. |
-| Voice / training scale | 12, 108 and the voice gate / a resumable trainer plus backend | Voice pipeline 120 and decision steering 121 / distributed training 122. |
-| Mesh inference | 123's two-stage parity, 22's measurements and network transport | Packages and placement 124–127 → experts and routing 128–130 → trust and verification 131–132 → Mesh-LLM interoperation 133 → DeepSeek V4.1 across stages 134 → Mistral Large 3 135 → Le Chonk 136. |
+| Decision throughput | 10 and 22; Coax jobs for the second half of 24 | Byte-identical parallel CPU 24; batched forks and prefix reuse 25. |
+| Generation | Shared dense inference and 5's tokenizer tables | Sampling and constrained decoding 37 → continuation 39. |
+| Mistral | 4–6, 22, 37 and the router in 42; 47 for drafting | Ministral 3 49 → FP8 50 → Devstral 51 → latent attention 52 → Small 4 53 → Large 4 components 54–55. |
+| DeepSeek | 4–6, 13, 22, 37 and the router in 42; latent attention 52 | R1 distill 56 → recipe 57 → V2-Lite 58 → V4.1 components 59–63 → engine techniques 64–67 → V4.1 Flash on one machine 68 → drafts 69; across stages 141. |
+| gpt-oss | 4–6, 22 and 37; the router in 42 | MXFP4 41 → 20b 45 → 120b 46 → speculative decoding 47; tool calls 48. |
+| Retrieval / dense continuation | Shared storage, artifacts, tokenizer and attention; each exact model profile | 38 / 39; browser search 40 once Coax Wasm/WebGPU compute exists. |
+| Training / nanochat | 70–71, 73–78 and exact nanochat forward/backward | Tiny pretraining 81 → SFT 82 → the specific rollout recipe 85. |
+| Decision post-training | 10–12, 71 and hybrid backward | Adaptation 86; Mammoth-to-Elephant distillation 87. |
+| Early physics | 70–71 and an owned deterministic solver | Surrogate and rollout checks 72. |
+| Vision | Shared forward core and 88; gradients for a trained head | Elephant/Mammoth images 89; C-RADIO 90; learned image codec 91 is a separate branch. |
+| Verse motion | Shared forward core, required codec operators and 93–94 | MotionBricks 95 → Verse 96. |
+| Speech | Shared convolution/attention and 97–98 | Parakeet 99 → streaming 100; text-to-speech 101 after its target is selected. |
+| Scientific ML | Shared training/spectral core for FNO; geometry operators for DoMINO | Darcy 103 or DoMINO 105; spherical weather 106 branches independently. |
+| Hybrid / MoE language | Shared dense inference, state-space 107 and exact profiles; router 42 (Part VII) for Lightning | Nano 108 → Lightning 109. |
+| World generation | Shared vision/codec, diffusion/flow 92 and temporal 110 | One Cosmos3-Edge path 111. |
+| Robot policies | Shared vision/language, training, flow 92 and imitation/embodiment 112 | GR00T 113 → simulated closed loop 114, conditional on artifact terms. |
+| Production hosting | A qualified model, 22's measurements and a consumer contract | Benchmark 115 → server and clients 116–117 → batching and cache 118–119 → routing, scaling, rollout, metering 120–124. |
+| Large-scale serving | Measured need from 115 and 118; two or more devices | Disaggregation 125; tensor/expert parallelism 126. |
+| Voice / training scale | 12, 115 and the voice gate / a resumable trainer plus backend | Voice pipeline 127 and decision steering 128 / distributed training 129. |
+| Mesh inference | 130's two-stage parity, 22's measurements and network transport | Packages and placement 131–134 → experts and routing 135–137 → trust and verification 138–139 → Mesh-LLM interoperation 140 → DeepSeek V4.1 across stages 141 → Mistral Large 3 142 → Le Chonk 143. |
 
 ## Coax features each branch needs
 
 Psionic is a consumer of the [Coax roadmap](../../coax/ROADMAP.md), not a
 place to work around it. The current compiler (see
-[Coax book chapter 29](../../coax/book/ch21-road-ahead.md)) lacks these; a
+[Coax book chapter 21](../../coax/book/ch21-road-ahead.md)) lacks these; a
 chapter that needs one names the smallest language change, its real consumer
 case and its verification gate, and stays planned until the feature runs.
 
 | Missing in Coax today | Where Psionic needs it | Until then |
 | --- | --- | --- |
-| Buffer/index/loop/dispatch GPU compute; `coax metal` emits scalar `f32`/`bool` helpers only ([ch14](../../coax/book/ch14-gpu.md)) | 25–27, 29, 33 | CPU references; no hand-written tensor shaders. |
-| WGSL emission | 33 | Wasm CPU kernels only. |
-| Jobs, threads and a memory model ([ch12](../../coax/book/ch12-jobs.md), stage 5 not started) | 23, 24, 60, 109–113, 123–132 | A host thread pool calling Coax on disjoint ranges, with the replay gate. |
-| `f16`/`bf16`, FP8 and FP4 scalar types | 22, 28, 34, 43, 56, every BF16 kernel | Decode from `u8`/`u16` bits, as chapter 4 does. |
-| Generics over numeric types ([ch08](../../coax/book/ch08-generics.md)) | Every multi-dtype kernel, 28 | One concrete procedure per dtype. |
-| SIMD lanes (`for_simd`) and vector/matrix types ([ch11](../../coax/book/ch11-data-layout.md)) | 22–23, 86–89 | Scalar loops; measure before asking. |
-| Pointers, dynamic arrays and allocators ([ch06](../../coax/book/ch06-memory.md)) | 22, 24 caches, 39, 57 and 128 expert paging, 69 | Host-owned views with explicit capacities. |
-| A qualified Linux target ([ch18](../../coax/book/ch18-targets.md)) and asynchronous I/O with deadlines and cancellation ([ch23](../../coax/book/ch23-asynchronous-work.md)) | 16–21, 29, 109–122 on hosted machines, 123–136 on mixed peers | Apple CPU and Metal only. |
+| Buffer/index/loop/dispatch GPU compute; `coax metal` emits scalar `f32`/`bool` helpers only ([ch14](../../coax/book/ch14-gpu.md)) | 26–31, 30, 40 | CPU references; no hand-written tensor shaders. |
+| WGSL emission | 40 | Wasm CPU kernels only. |
+| Jobs, threads and a memory model ([ch12](../../coax/book/ch12-jobs.md), stage 5 not started) | 24, 25, 67, 116–120, 130–139 | A host thread pool calling Coax on disjoint ranges, with the replay gate. |
+| `f16`/`bf16`, FP8 and FP4 scalar types | 22, 34, 41, 50, 63, every BF16 kernel | Decode from `u8`/`u16` bits, as chapter 4 does. |
+| Generics over numeric types ([ch08](../../coax/book/ch08-generics.md)) | Every multi-dtype kernel, 34 | One concrete procedure per dtype. |
+| SIMD lanes (`for_simd`) and vector/matrix types ([ch11](../../coax/book/ch11-data-layout.md)) | 22–24, 93–96 | Scalar loops; measure before asking. |
+| Pointers, dynamic arrays and allocators ([ch06](../../coax/book/ch06-memory.md)) | 22, 25 caches, 46, 64 and 135 expert paging, 76 | Host-owned views with explicit capacities. |
+| A qualified Linux target ([ch18](../../coax/book/ch18-targets.md)) and asynchronous I/O with deadlines and cancellation ([ch23](../../coax/book/ch23-asynchronous-work.md)) | 16–21, 30, 116–129 on hosted machines, 130–143 on mixed peers | Apple CPU and Metal only. |
 
 Stable issue slugs describe existing work; chapter numbers are provisional.
 When a branch is selected, split it into concrete issues with the same

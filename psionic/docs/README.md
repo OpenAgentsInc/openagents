@@ -33,6 +33,7 @@ refusals, and execution evidence throughout that progression.
 | [DeepSeek natively](targets/deepseek.md) | The pre-reset DeepSeek V4.1 Flash work condensed: the architecture, what was achieved and measured, why numerical parity failed, the efficiency techniques to rebuild in Coax, and what Psionic does not adopt. |
 | [Mistral target survey](targets/mistral.md) | The Mistral ladder from Ministral 3 to Mistral Large 4 (Le Chonk): pinned revisions, licences, the features each model adds and Large 4's model-as-a-service licence boundary. |
 | [Inference across a mesh](serving/mesh.md) | Mesh-LLM lessons carried forward and updated, Darkbloom and private-inference trust lessons, and re-execution checks for peers. |
+| [What Psionic takes from llama.cpp](llama-cpp.md) | Designs to reimplement in Coax by chapter (attention, chunked DeltaNet, fusion, integer products, GGUF, quantization, tokenizers, serving), independent fixtures, format notes, fair benchmarking and licensing. |
 | [gpt-oss target survey](targets/gpt-oss.md) | Pinned gpt-oss-20b/120b and harmony sources: MXFP4 originals, sink/window attention, expert routing, the response format, and what Psionic does not adopt. |
 | [NVIDIA breadth and target survey](targets/nvidia-breadth.md) | Proposed retrieval, vision, motion, speech, physics, hybrid/MoE, world-model and robotics studies; pinned sources and data/terms distinctions. |
 | [Development process](process.md) | How prose, checks, library code, examples, and evidence move together. |

@@ -1,4 +1,4 @@
-# 35. A few experts, then a router
+# 42. A few experts, then a router
 
 A mixture of experts gives a token several possible computations. A router
 selects a few of them, each selected expert produces a vector, and a weighted
@@ -25,7 +25,7 @@ missing selected expert refused without output
 ```
 
 This is the next independent gpt-oss branch chapter after
-[original MXFP4 weights](ch34-original-mxfp4-weights.md). Its small matrix
+[original MXFP4 weights](ch41-original-mxfp4-weights.md). Its small matrix
 operations use the shared [chapter 3 kernels](ch03-numbers-and-matrices.md).
 The example requires no downloaded weights or upstream runtime.
 
@@ -253,6 +253,6 @@ The next gpt-oss chapter adds attention sinks, windowing and its clamped
 SwiGLU. A complete original MLP still needs normalized inputs, the learned
 router matrix and bias, original expert projections and biases, nonlinear
 activation, and the residual connection. Our tiny experts return the mixture
-alone. Chapter 34's decoded MXFP4 values will feed those later operators;
+alone. Chapter 41's decoded MXFP4 values will feed those later operators;
 this chapter's synthetic affine parameters and routing tests do not qualify
 a complete gpt-oss checkpoint.

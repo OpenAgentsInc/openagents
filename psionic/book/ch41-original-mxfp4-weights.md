@@ -1,11 +1,11 @@
-# 34. Original MXFP4 weights
+# 41. Original MXFP4 weights
 
 The first gpt-oss chapter starts with its expert weights. A reader that only
 understands BF16 would misread them: the original expert projections contain
 packed four-bit numbers and a separate scale for each group. We will decode
 those bytes exactly into a bounded window of `f32` storage.
 
-This chapter starts an independent branch. Chapters 11–33 remain planned; you
+This chapter starts an independent branch. Chapters 11–40 remain planned; you
 need the storage and number representations of chapters 2–4, not their future
 model implementations. There is no model download or upstream runtime in the
 example or checks.
@@ -197,4 +197,4 @@ This is format compatibility, not gpt-oss generation. The
 complete original-file admission and full-model evidence follow separately.
 [Harmony's format](https://github.com/openai/harmony/blob/abd677f7ac962629c808197caa1feb9e3e95d2b0/docs/format.md)
 is required for eventual conversations; its tokenizer and streaming parser
-belong to chapter 37. Nothing in this byte decoder establishes that behavior.
+belong to chapter 44. Nothing in this byte decoder establishes that behavior.

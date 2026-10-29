@@ -117,17 +117,17 @@ The rest of the ladder comes from the support plan:
 
 | Technique | Source | Chapter |
 | --- | --- | --- |
-| Expert cache with decayed-frequency heat, routing-profile seeding, host lane for misses, next-layer gate prefetch | Project Maya (MIT, ideas reimplemented); old single-box work | 57 |
-| Layer-major chunked prefill, then grouped block-scaled products | Maya; old W17 work | 58 |
-| FP8/FP4 packed KV where the reference already rounds | Maya; NVIDIA FLARE's compact records (528/288/68 bytes per entry) | 59 |
-| One recorded device sequence per decode step; device-side routing ids and sampling; host one step ahead | Old CUDA-graph stages; DeepSeek's asynchronous scheduler (after SGLang and NanoFlow) | 60 |
-| Engram served from mapped files or disk by row | FLARE's direct-I/O Engram; old host-mapped gather (3.2 µs) | 55 |
-| Fixed then variable-length draft verification from a confidence head and a cost curve | DeepSeek's DSpark (+6% at its batch sizes) | 62 |
-| Prefix cache of 128-token pages via content-hashed chains, storage independent of compute, per-traffic retention | DeepSeek 3FS cache (96% hit rate on 77K-token average inputs) | 112 |
-| Prefill cost model, length buckets, pull scheduling; decode balancing on requests plus cache length | DeepSeek's load balancers | 113 |
-| Small prefill groups, large decode groups, separate vision role; scale on unserved tokens and requests in flight | DeepSeek's serving layout (prefill:decode near 1:1) | 118 |
-| Expert parallelism only inside a fast domain; data-parallel attention; redundant experts rebalanced from a load window | DeepSeek; busiest/mean 1.03–1.09 reported | 119 |
-| Special tokens by boundary, chunk-safe streaming parser | DeepSeek's recipe | 50 |
+| Expert cache with decayed-frequency heat, routing-profile seeding, host lane for misses, next-layer gate prefetch | Project Maya (MIT, ideas reimplemented); old single-box work | 64 |
+| Layer-major chunked prefill, then grouped block-scaled products | Maya; old W17 work | 65 |
+| FP8/FP4 packed KV where the reference already rounds | Maya; NVIDIA FLARE's compact records (528/288/68 bytes per entry) | 66 |
+| One recorded device sequence per decode step; device-side routing ids and sampling; host one step ahead | Old CUDA-graph stages; DeepSeek's asynchronous scheduler (after SGLang and NanoFlow) | 67 |
+| Engram served from mapped files or disk by row | FLARE's direct-I/O Engram; old host-mapped gather (3.2 µs) | 62 |
+| Fixed then variable-length draft verification from a confidence head and a cost curve | DeepSeek's DSpark (+6% at its batch sizes) | 69 |
+| Prefix cache of 128-token pages via content-hashed chains, storage independent of compute, per-traffic retention | DeepSeek 3FS cache (96% hit rate on 77K-token average inputs) | 119 |
+| Prefill cost model, length buckets, pull scheduling; decode balancing on requests plus cache length | DeepSeek's load balancers | 120 |
+| Small prefill groups, large decode groups, separate vision role; scale on unserved tokens and requests in flight | DeepSeek's serving layout (prefill:decode near 1:1) | 125 |
+| Expert parallelism only inside a fast domain; data-parallel attention; redundant experts rebalanced from a load window | DeepSeek; busiest/mean 1.03–1.09 reported | 126 |
+| Special tokens by boundary, chunk-safe streaming parser | DeepSeek's recipe | 57 |
 
 DeepSeek reported 60K uncached prefill tokens/s and 14K decode tokens/s per
 card, with users seeing 230 tokens/s. These show what batching at scale is

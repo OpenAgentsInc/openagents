@@ -1,10 +1,10 @@
 # gpt-oss as an inference target
 
-Survey updated 2026-10-29. [Chapter 34](../../book/ch34-original-mxfp4-weights.md)
+Survey updated 2026-10-29. [Chapter 41](../../book/ch41-original-mxfp4-weights.md)
 now implements the bounded original-format CPU decoder;
-[chapter 35](../../book/ch35-a-few-experts-then-a-router.md) adds a bounded
+[chapter 42](../../book/ch42-a-few-experts-then-a-router.md) adds a bounded
 top-k router and tiny affine mixture.
-[Chapter 36](../../book/ch36-attention-with-sinks-and-a-window.md) adds bounded
+[Chapter 43](../../book/ch43-attention-with-sinks-and-a-window.md) adds bounded
 sink/window attention, split-half YaRN, biased projection and clamped SwiGLU.
 Full-model execution and Harmony remain planned. No weights were downloaded, and no upstream
 setup, inference or tool code was run. Psionic would implement the behavior in
@@ -58,7 +58,7 @@ also shows:
 These are exactly the details where a generic MoE or attention block would be
 silently wrong.
 
-Chapter 35 implements the selected-only top-k formula for 1–128 logits and
+Chapter 42 implements the selected-only top-k formula for 1–128 logits and
 1–4 selected experts, including synthetic 32/128-expert top-four fixtures.
 Its `cpu-topk-affine-v1` profile has explicit lowest-ID ties, f32 routing
 weights with wide accumulation and width-16 affine teaching experts. It does
@@ -128,7 +128,7 @@ is o200k_base's pattern and ranks plus harmony special tokens through ID
   model's single-80 GB-GPU target are upstream claims. Chapter 22's residency
   plan measures each model on the machine it runs on.
 - **Upstream sampling defaults.** The recommended temperature 1.0 and top-p 1.0
-  become explicit parameters under chapter 30's named RNG, not hidden defaults.
+  become explicit parameters under chapter 37's named RNG, not hidden defaults.
 
 ## Evidence for each model
 
@@ -139,9 +139,9 @@ logits, full versus cached results, harmony render/parse round trips, and
 schema-constrained tool calls. The 20b model does not qualify the 120b
 model. Text is the only modality.
 
-## Chapter 36 implementation boundary
+## Chapter 43 implementation boundary
 
-[Attention with sinks and a window](../../book/ch36-attention-with-sinks-and-a-window.md)
+[Attention with sinks and a window](../../book/ch43-attention-with-sinks-and-a-window.md)
 now provides `gpt-oss-attention-cpu-wide-v1` in
 [`gptoss-attention.coax`](../../lib/gptoss-attention.coax) and
 [`gptoss-math.coax`](../../lib/gptoss-math.coax). Projected f32 Q/K/V execution
@@ -160,5 +160,5 @@ activation results. Native debug/release and sanitizer gates cover 64/8 heads,
 [verification record](../../../docs/verification/psionic-ch36-2026-10-29.md).
 The arithmetic is wide CPU with f32 storage; it does not claim original Torch
 float/BF16 parity, original checkpoint admission or complete generation.
-Chapter 37's harmony framing is the next independent branch gate; chapter 38
+Chapter 44's harmony framing is the next independent branch gate; chapter 45
 still needs complete original-weight execution and intermediate/logit references.

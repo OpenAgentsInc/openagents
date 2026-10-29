@@ -11,11 +11,11 @@ Chapter 6 executes a small causal dense attention block with a KV cache.
 Chapter 7 composes Qwen-style linear and full-attention layers with separate states.
 Chapter 8 adds decision blocks and forks their complete live hybrid state.
 Chapter 9 converts vocabulary logits to option probabilities and typed statistics.
-[Chapter 34](book/ch34-original-mxfp4-weights.md) starts the independent gpt-oss
+[Chapter 41](book/ch41-original-mxfp4-weights.md) starts the independent gpt-oss
 branch with an exact bounded decoder for its original MXFP4 byte groups.
-[Chapter 35](book/ch35-a-few-experts-then-a-router.md) adds sorted top-k routing
+[Chapter 42](book/ch42-a-few-experts-then-a-router.md) adds sorted top-k routing
 and a complete tiny affine mixture with explicit resident budgets.
-[Chapter 36](book/ch36-attention-with-sinks-and-a-window.md) adds sink/window
+[Chapter 43](book/ch43-attention-with-sinks-and-a-window.md) adds sink/window
 attention, split-half YaRN, biased projection and the clamped expert activation.
 
 Start with [the book](book/README.md) and

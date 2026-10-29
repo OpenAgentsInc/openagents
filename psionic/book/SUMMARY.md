@@ -11,14 +11,14 @@
 - [8. Decisions have a different mask](ch08-decisions-have-a-different-mask.md)
 - [9. Read the options](ch09-read-the-options.md)
 - [10. Execute Elephant](ch10-execute-elephant.md)
-- [34. Original MXFP4 weights](ch34-original-mxfp4-weights.md) — first gpt-oss branch chapter
-- [35. A few experts, then a router](ch35-a-few-experts-then-a-router.md)
-- [36. Attention with sinks and a window](ch36-attention-with-sinks-and-a-window.md)
+- [41. Original MXFP4 weights](ch41-original-mxfp4-weights.md) — first gpt-oss branch chapter
+- [42. A few experts, then a router](ch42-a-few-experts-then-a-router.md)
+- [43. Attention with sinks and a window](ch43-attention-with-sinks-and-a-window.md)
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–10 and 34–36 are runnable. Chapters 11–33 and the remaining outlines
+Chapters 1–10 and 41–43 are runnable. Chapters 11–40 and the remaining outlines
 remain proposed.
