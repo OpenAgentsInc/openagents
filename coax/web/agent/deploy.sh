@@ -47,7 +47,7 @@ deploy() {  # service api-origin repos-secret model
     --no-allow-unauthenticated --service-account "$sa" --no-cpu-throttling \
     --port 8080 --cpu 1 --memory 2Gi --min-instances 0 --max-instances 1 --concurrency 20 --timeout 900 \
     --set-secrets "$secrets" \
-    --set-env-vars "^@^OA_API_ORIGIN=$2@OA_AGENT_MODEL=$4@OA_AGENT_REPOS=$repos" --quiet 2>&1 | grep -E "ERROR|revision" || true
+    --set-env-vars "^|^OA_API_ORIGIN=$2|OA_AGENT_MODEL=$4|OA_AGENT_REPOS=$repos" --quiet 2>&1 | grep -E "ERROR|revision" || true
   gcloud run services add-iam-policy-binding "$1" --project "$project" --region "$region" \
     --member "serviceAccount:$invoker" --role roles/run.invoker --quiet >/dev/null
   echo "  ok    $1 ($n repositories)"
