@@ -841,11 +841,19 @@ FAIRY_HEAD_R :: 0.135;      // its radius; the hair's crown reaches about 0.16
 FAIRY_WING_ROOT :: 1.22;     // the wings' roots: on the upper back, under the shoulders
 FAIRY_WING_BACK :: 0.1;     // behind the spine
 FAIRY_WING_SIDE :: 0.05;    // out from it
-WING_UP_LONG :: 0.92; WING_UP_WIDE :: 0.42;
-WING_LOW_LONG :: 0.66; WING_LOW_WIDE :: 0.34;
-WING_TAIL_LONG :: 0.5; WING_TAIL_WIDE :: 0.14;
+WING_UP_LONG :: 1.25; WING_UP_WIDE :: 0.8;
+WING_LOW_LONG :: 0.9; WING_LOW_WIDE :: 0.6;
+WING_TAIL_LONG :: 0.7; WING_TAIL_WIDE :: 0.27;
 
 Wing :: struct { root: Point; along: Point; across: Point; flat: Point; reach: f32; wide: f32; }
+
+// A wing's outline (fairy.wgsl wing_half, the same curve): at p from its
+// root (0) to its tip (1), its half width as a share of its oval's. Narrow at
+// the root, full a little past the middle, coming to a point at the tip.
+wing_half :: (p: f32) -> f32 {
+  q := clamp01(p);
+  return clamp01(1.9 * pow(q, 0.6) * (1 - q));
+}
 
 // One wing: pair 0 the upper, 1 the lower, 2 the long trailing tails; side
 // +1 her right, -1 her left; beat -1 (down) to 1 (up). Each sweeps out and
@@ -873,14 +881,20 @@ fairy_wing :: (feet: Point, face: f32, pair: int, side: f32, beat: f32) -> Wing 
 // and narrowing to b, so it reads as a rounded, tapered arm, leg or lock of
 // hair (not a stick).
 soft :: (s: [] Fairy, look: int, a: Point, b: Point, wa: f32, wb: f32, side: Point, c: Point) {
+  swell(s, look, a, b, wa, (wa + wb) * 0.5, wb, side, c);
+}
+// The same with a middle width of its own (a calf's swell, a lock's fullness):
+// five long ellipsoids overlapping by half, so the steps between them don't show.
+swell :: (s: [] Fairy, look: int, a: Point, b: Point, wa: f32, wm: f32, wb: f32, side: Point, c: Point) {
   d := sub(b, a);
   l := length(d);
   if !(l > 0.0001) { return; }
   along := times(d, 1 / l);
   across := unit_or(cross(along, side), v3(0, 0, 1));
-  for i: 0..<3 {
-    f := (f32(i) + 0.5) / 3;
-    w := lerp(wa, wb, f);
+  for i: 0..<5 {
+    f := (f32(i) + 0.5) / 5;
+    // a quadratic through the three widths
+    w := wa * (1 - f) * (1 - 2 * f) + wm * 4 * f * (1 - f) + wb * f * (2 * f - 1);
     ellipsoid(s, look, add(a, times(d, f)), times(along, l * 0.8), times(across, w), w, c);
   }
 }
@@ -935,17 +949,20 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
     knee := add(thigh_top, times(down, 0.44));
     shin := add(times(ahead, sin(a - bend)), v3(0, -cos(a - bend), 0));
     ankle := add(knee, times(shin, 0.4));
-    soft(s, LOOK_SKIN, thigh_top, knee, 0.095, 0.062, right, skin);
-    // the boot: knee-high, with a turned-down cuff, a pointed toe and a platform sole
-    soft(s, LOOK_CLOTH, add(knee, times(shin, 0.02)), ankle, 0.07, 0.055, right, violet);
-    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(knee, times(shin, 0.04)), face, 0, 0.12, 0.07, 0.11, violet.x * 1.15, violet.y * 1.2, violet.z);
+    swell(s, LOOK_SKIN, add(thigh_top, v3(0, 0.03, 0)), knee, 0.135, 0.11, 0.075, right, skin);
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, knee, face, 0, 0.078, 0.08, 0.078, skin.x, skin.y, skin.z);
+    // the boot: knee-high and fitted, swelling at the calf and narrow at the
+    // ankle, a scalloped cuff, a pointed toe and a small heel
+    swell(s, LOOK_CLOTH, add(knee, times(shin, 0.03)), ankle, 0.082, 0.088, 0.05, right, violet);
+    for m: 0..<4 {
+      an := face + f32(m) * 1.5708 + 0.785;
+      cuff := add(add(knee, times(shin, 0.05)), v3(sin(an) * 0.045, 0, cos(an) * 0.045));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, cuff, an, 0.4, 0.06, 0.06, 0.03, violet.x * 1.15, violet.y * 1.25, violet.z);
+    }
     toe_dir := unit_or(add(ahead, times(shin, ifx flying then 1.2f32 else 0.1f32)), ahead);
     heel := add(ankle, times(shin, 0.03));
     ellipsoid(s, LOOK_CLOTH, add(heel, times(toe_dir, 0.05)), times(shin, 0.07), times(toe_dir, 0.2), 0.075, violet);
-    if !flying {
-      sole := add(feet, add(times(right, 0.075 * sign), add(times(ahead, sin(a) * 0.3 + 0.06), v3(0, 0.025, 0))));
-      shape(s, SHAPE_BOX, LOOK_CLOTH, sole, face, 0, 0.08, 0.04, 0.13, violet.x * 0.55, violet.y * 0.5, violet.z * 0.6);
-    }
+    limb(s, SHAPE_CONE, LOOK_CLOTH, add(heel, add(times(toe_dir, -0.03), times(shin, 0.02))), add(heel, add(times(toe_dir, -0.02), times(shin, 0.08))), 0.035, violet.x * 0.5, violet.y * 0.45, violet.z * 0.6);
   }
   // the body: hips, a narrow waist, the bodice, and a short layered skirt
   ellipsoid(s, LOOK_CLOTH, add(hip, v3(0, 0.07, 0)), v3(0, 0.2, 0), times(ahead, 0.19), 0.27, violet);
@@ -982,9 +999,10 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
     fore := unit_or(add(upper, add(times(ahead, 0.3), v3(0, ifx flying then 0.45f32 else 0.0f32, 0))), upper);
     if on_hip { fore = unit_or(sub(add(hip, add(times(right, 0.17 * sign), v3(0, 0.1, 0))), elbow), upper); }
     wrist := add(elbow, times(fore, 0.24));
-    soft(s, LOOK_SKIN, shoulder, elbow, 0.052, 0.04, ahead, skin);
+    swell(s, LOOK_SKIN, shoulder, elbow, 0.062, 0.056, 0.042, ahead, skin);
+    shape(s, SHAPE_SPHERE, LOOK_SKIN, elbow, face, 0, 0.044, 0.044, 0.044, skin.x, skin.y, skin.z);
     shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(shoulder, times(upper, 0.18)), face, 0, 0.09, 0.03, 0.09, gold.x, gold.y, gold.z);
-    soft(s, LOOK_CLOTH, elbow, wrist, 0.044, 0.034, ahead, violet);
+    swell(s, LOOK_CLOTH, elbow, wrist, 0.05, 0.048, 0.034, ahead, violet);
     palm := add(wrist, times(fore, 0.045));
     ellipsoid(s, LOOK_CLOTH, palm, times(fore, 0.08), times(ahead, 0.06), 0.032, violet);
     thumb := add(wrist, add(times(fore, 0.03), times(ahead, 0.03)));
@@ -1014,34 +1032,40 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
   }
   shape(s, SHAPE_SPHERE, LOOK_SKIN, add(head, add(times(ahead, hr * 0.98), v3(0, -0.035, 0))), face, 0, 0.016, 0.022, 0.016, skin.x, skin.y * 0.94, skin.z * 0.94);
   shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(times(ahead, hr * 0.86), v3(0, -0.085, 0))), face, 0, 0.038, 0.012, 0.016, 0.92, 0.32, 0.45);
-  // hair: a full crown, a sweeping fringe, locks framing her face, and long
-  // swooping locks down her back to her waist
-  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.03, 0), times(ahead, -0.03))), face, 0, hr * 2.25, hr * 2.15, hr * 2.25, hair.x, hair.y, hair.z);
-  for k: 0..<3 {
-    off := (f32(k) - 1) * 0.06;
-    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(times(ahead, hr * 0.7), add(times(right, off + 0.02), v3(0, 0.1 - abs(off) * 0.5, 0)))), face + 0.4, 0.7, 0.1, 0.06, 0.09, hair.x * 1.06, hair.y * 1.06, hair.z);
+  // hair: a full crown with volume on top, sweeping bangs, long locks
+  // framing her face to her waist, and a great mass down her back whose
+  // locks fan out behind and to the sides; in flight it streams back
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.035, 0), times(ahead, -0.03))), face, 0, hr * 2.3, hr * 2.2, hr * 2.3, hair.x, hair.y, hair.z);
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(v3(0, 0.11, 0), times(ahead, -0.05))), face, -0.3, hr * 2.0, hr * 1.2, hr * 2.0, hair.x * 1.05, hair.y * 1.05, hair.z);
+  for k: 0..<5 {
+    off := (f32(k) - 2) * 0.045;
+    bang := add(head, add(times(ahead, hr * 0.78), add(times(right, off), v3(0, 0.085 - abs(off) * 0.4, 0))));
+    limb(s, SHAPE_CONE, LOOK_CLOTH, add(bang, v3(0, 0.05, -0.0)), add(bang, add(times(right, off * 0.6 + 0.02), add(times(ahead, 0.02), v3(0, -0.06, 0)))), 0.07, hair.x * 1.05, hair.y * 1.05, hair.z);
   }
   sway := ifx flying then 0.12f32 * sin(t * 4) else 0.03f32 * sin(t * 1.4);
-  trail := ifx flying then 0.25f32 else 0.0f32;    // in flight the hair streams back
+  trail := ifx flying then 0.3f32 else 0.0f32;    // in flight the hair streams back
   for side: 0..<2 {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
-    from := add(head, add(times(right, 0.11 * sign), add(times(ahead, 0.03), v3(0, -0.02, 0))));
-    mid := add(from, add(times(right, 0.04 * sign), add(times(ahead, -0.02 - trail * 0.3), v3(0, -0.22, 0))));
-    soft(s, LOOK_CLOTH, from, mid, 0.055, 0.04, ahead, hair);
-    soft(s, LOOK_CLOTH, mid, add(mid, add(times(right, -0.01 * sign), add(times(ahead, -0.02 - trail * 0.3), v3(0, -0.16, 0)))), 0.04, 0.02, ahead, hair);
+    from := add(head, add(times(right, 0.12 * sign), add(times(ahead, 0.02), v3(0, 0.0, 0))));
+    mid := add(from, add(times(right, 0.1 * sign), add(times(ahead, -0.04 - trail * 0.3), v3(0, -0.34, 0))));
+    tip := add(mid, add(times(right, 0.08 * sign), add(times(ahead, -0.06 - trail * 0.4), v3(0, -0.36 + trail * 0.3, 0))));
+    swell(s, LOOK_CLOTH, from, mid, 0.11, 0.13, 0.12, ahead, hair);
+    swell(s, LOOK_CLOTH, mid, tip, 0.12, 0.1, 0.03, ahead, hair);
   }
   // the mass of it behind her head and shoulders
-  ellipsoid(s, LOOK_CLOTH, add(head, add(times(ahead, -0.1), v3(0, -0.14, 0))), v3(0, 0.42, 0), times(ahead, 0.16), 0.36, hair);
-  for k: 0..<5 {
-    off := (f32(k) - 2) * 0.055;
-    from := add(head, add(times(ahead, -0.1), add(times(right, off), v3(0, 0.0, 0))));
+  ellipsoid(s, LOOK_CLOTH, add(head, add(times(ahead, -0.11 - trail * 0.2), v3(0, -0.18, 0))), v3(0, 0.5, 0), times(ahead, 0.18), 0.44, hair);
+  for k: 0..<7 {
+    off := (f32(k) - 3) * 0.06;
+    from := add(head, add(times(ahead, -0.12), add(times(right, off), v3(0, -0.02, 0))));
     wave := sin(t * 1.6 + f32(k)) * 0.03 + sway;
-    mid := add(from, add(times(ahead, -0.08 - trail - wave), add(times(right, off * 1.3), v3(0, -0.36 + trail * 0.2, 0))));
-    tip := add(mid, add(times(ahead, -0.02 - trail * 1.2 + wave), add(times(right, off * 0.3 + 0.04 * sin(f32(k) * 1.7)), v3(0, -0.36 + trail * 0.5 + abs(off) * 0.4, 0))));
-    shade := 0.9 + 0.12 * hash1(f32(k), 1);
+    mid := add(from, add(times(ahead, -0.1 - trail - wave), add(times(right, off * 1.05), v3(0, -0.36 + trail * 0.2, 0))));
+    tip := add(mid, add(times(ahead, -0.06 - trail * 1.2 + wave), add(times(right, off * 0.9 + 0.03 * sin(f32(k) * 1.7)), v3(0, -0.36 + trail * 0.5 + abs(off) * 0.3, 0))));
+    curl := add(tip, add(times(right, off * 0.3), add(times(ahead, 0.03), v3(0, -0.06, 0))));
+    shade := 0.88 + 0.16 * hash1(f32(k), 1);
     c := v3(hair.x * shade, hair.y * shade, hair.z * shade);
-    soft(s, LOOK_CLOTH, from, mid, 0.15, 0.13, right, c);
-    soft(s, LOOK_CLOTH, mid, tip, 0.13, 0.04, right, c);
+    swell(s, LOOK_CLOTH, from, mid, 0.15, 0.18, 0.17, right, c);
+    swell(s, LOOK_CLOTH, mid, tip, 0.17, 0.15, 0.07, right, c);
+    limb(s, SHAPE_CONE, LOOK_CLOTH, tip, curl, 0.06, c.x, c.y, c.z);
   }
   // a star clip in her hair
   clip := add(head, add(times(right, -0.13), add(v3(0, 0.1, 0), times(ahead, 0.02))));
@@ -1059,6 +1083,12 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
       c := add(w.root, times(w.along, w.reach * 0.5));
       tint := ifx pair == 0 then v3(0.45, 0.92, 1.0) else ifx pair == 1 then v3(0.95, 0.55, 1.0) else v3(0.7, 0.6, 1.0);
       oriented(s, SHAPE_SPHERE, LOOK_WING, c, times(w.across, w.wide), times(w.along, w.reach), times(w.flat, 0.02), tint.x, tint.y, tint.z);
+      // a smaller inner panel laid over it, a jewel colour of its own
+      if pair < 2 {
+        inner := add(w.root, add(times(w.along, w.reach * 0.42), times(w.flat, -0.012)));
+        jewel := ifx pair == 0 then v3(0.75, 0.5, 1.0) else v3(1.0, 0.75, 0.45);
+        oriented(s, SHAPE_SPHERE, LOOK_WING, inner, times(w.across, w.wide * 0.55), times(w.along, w.reach * 0.62), times(w.flat, 0.02), jewel.x, jewel.y, jewel.z);
+      }
     }
   }
   shadow(s, u, feet.x, feet.z, lo(0.45 + air * 0.08, 0.9), clamp(0.6 - air * 0.12, 0.15, 0.6));
@@ -1559,6 +1589,8 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
               for k: 0..<24 {
                 a := f32(k) * f32(TAU) / 24;
                 for ring: 1..<5 {
+                  // only where the wing is drawn: inside its pointed outline
+                  if abs(sin(a)) * f32(ring) / 4 > wing_half(0.5 + 0.5 * cos(a) * f32(ring) / 4) { continue; }
                   q := add(c, add(times(w.along, cos(a) * w.reach * 0.5 * f32(ring) / 4), times(w.across, sin(a) * w.wide * 0.5 * f32(ring) / 4)));
                   pq := project(u[..], q, 1280, 800);
                   looks += 1;

@@ -379,7 +379,7 @@ fn grass_vertex(id: u32, cell: u32) -> S {
   let gy = ground_h(xz);
   if (path_distance(xz) < u.grass2.z + 0.15 || gy < u.grass2.y + 0.08 || length(xz) < 5.0) { tall = 0.0; }
   if (tall < 0.02) { o.pos = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
-  tall *= mix(0.6, 1.25, restored(xz).x);   // restored meadows grow tall
+  tall *= mix(0.42, 1.25, restored(xz).x);   // restored meadows grow tall
   let yaw = h4 * TAU;
   let across = vec3f(cos(yaw), 0.0, sin(yaw)) * 0.03;
   let base = vec3f(xz.x, gy - 0.02, xz.y);
@@ -388,7 +388,10 @@ fn grass_vertex(id: u32, cell: u32) -> S {
   if (corner == 0u) { w = base - across; }
   if (corner == 1u) { w = base + across; }
   if (corner == 2u) {
-    var lean = WIND * sin(wind_bend(xz));
+    // faded grass sways less, and each blade leans its own way, so a faded
+    // meadow never reads as one slant of streaks
+    let rr = restored(xz).x;
+    var lean = WIND * sin(wind_bend(xz)) * mix(0.4, 1.0, rr) + vec2f(cos(yaw * 1.7), sin(yaw * 1.7)) * 0.14;
     let you = vec2f(u.grass2.w, u.you_z);
     let away = xz - you;
     let dy = length(away);
@@ -464,7 +467,10 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     base = mix(base, vec3f(0.58, 0.46, 0.26), smoothstep(u.grass2.y + 0.5, u.grass2.y - 0.1, s.world.y));
     shadow = blob_shadows(xz);
   } else if (look == 98u) {
-    base = ground_colour(xz) * mix(0.78, 1.2, s.tint.x) * (0.94 + 0.12 * s.tint.y);
+    // the root-to-tip shading flattens where the grass is faded, so faded
+    // blades read as soft grass rather than streaks
+    let rr = restored(xz).x;
+    base = ground_colour(xz) * mix(1.0 - 0.22 * (0.35 + 0.65 * rr), 1.0 + 0.2 * (0.35 + 0.65 * rr), s.tint.x) * (0.94 + 0.12 * s.tint.y);
     base = mix(base, base * vec3f(1.2, 1.08, 0.7), s.tint.x * 0.6);
     shadow = blob_shadows(xz);
   } else if (look == 3u || look == 6u) {
@@ -477,18 +483,25 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     // a wing: veins fanning from its root, a bright rim, and between them a
     // thin membrane the light shows through (every other pixel of it drawn)
     let q = s.local.xy * 2.0;
+    // a pointed outline (fairy.coax wing_half): narrow at the root, full past
+    // the middle, coming to a point at the tip
+    let along = clamp((q.y + 1.0) * 0.5, 0.0, 1.0);
+    let half = clamp(1.9 * pow(along, 0.6) * (1.0 - along), 0.0, 1.0);
+    if (abs(q.x) > half) { discard; }
     let fan = atan2(q.x, q.y + 1.0);
     let vein = 1.0 - smoothstep(0.035, 0.09, abs(fract(fan * 2.4 + 0.5) - 0.5));
-    let rim = smoothstep(0.78, 0.96, length(q));
+    let rim = smoothstep(0.72, 0.92, abs(q.x) / max(half, 0.001));
     let cross_vein = 1.0 - smoothstep(0.02, 0.06, abs(fract(length(q + vec2f(0.0, 1.0)) * 2.2) - 0.5) - 0.44);
     let solid = max(max(vein, rim), cross_vein * 0.6);
     let cell = vec2u(s.pos.xy) % 2u;
     if (solid < 0.5 && (cell.x + cell.y) % 2u == 0u) { discard; }
     // jewel-like: the tint runs to rose-gold toward the edge, with a glinting rim
-    let out = smoothstep(0.25, 0.95, length(q));
-    base = mix(base, vec3f(1.0, 0.55, 0.85), out * 0.55);
-    base = mix(base * 0.8, mix(base, vec3f(1.0), 0.55), solid);
-    base += vec3f(1.0, 0.9, 0.7) * rim * 0.35;
+    // jewel-like: tint at the root, rose through the middle, gold at the
+    // tip, and a glowing rim
+    base = mix(base, vec3f(1.0, 0.36, 0.8), smoothstep(0.15, 0.55, along) * 0.85);
+    base = mix(base, vec3f(1.0, 0.78, 0.3), smoothstep(0.55, 0.92, along) * 0.8);
+    base = mix(base * 0.8, mix(base, vec3f(1.0), 0.3), solid);
+    base += vec3f(1.0, 0.92, 0.75) * rim * 0.7;
     glow = 0.8; keep = true;
   } else if (look == 7u) {
     keep = true;
