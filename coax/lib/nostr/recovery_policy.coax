@@ -1,0 +1,143 @@
+// Work-in-progress check-first specification for a recovery policy model.
+#authority;
+#test "recovery accepts only the exact committed checkpoint" {
+ committed:RcCheckpoint;committed.schema=1;committed.generation=7;
+ committed.store[0]=1;committed.digest[31]=2;
+ candidate:=committed;
+ #assert rc_recovery_match(committed,candidate);
+ candidate.generation=6;#assert !rc_recovery_match(committed,candidate);candidate=committed;
+ candidate.generation=8;#assert !rc_recovery_match(committed,candidate);candidate=committed;
+ candidate.schema=2;#assert !rc_recovery_match(committed,candidate);candidate=committed;
+ for i:0..<32 {candidate.store[i]^=1;#assert !rc_recovery_match(committed,candidate);candidate.store[i]^=1;}
+ for i:0..<32 {candidate.digest[i]^=1;#assert !rc_recovery_match(committed,candidate);candidate.digest[i]^=1;}
+ candidate.schema=0;#assert !rc_recovery_match(candidate,candidate);candidate=committed;
+ candidate.generation=0;#assert !rc_recovery_match(candidate,candidate);
+}
+#test "checkpoint advance binds store schema and next generation" {
+ old:RcCheckpoint;old.schema=1;old.generation=4;old.store[2]=6;old.digest[3]=8;
+ next:=old;next.generation=5;next.digest[4]=9;
+ #assert rc_next_checkpoint(old,next);
+ wrong:=next;wrong.generation=4;#assert !rc_next_checkpoint(old,wrong);
+ wrong.generation=6;#assert !rc_next_checkpoint(old,wrong);
+ wrong=next;wrong.schema=2;#assert !rc_next_checkpoint(old,wrong);
+ wrong=next;wrong.store[2]^=1;#assert !rc_next_checkpoint(old,wrong);
+ wrong=old;wrong.schema=0;#assert !rc_next_checkpoint(wrong,next);
+ wrong=old;wrong.generation=0;#assert !rc_next_checkpoint(wrong,next);
+ wrong=old;wrong.generation=RC_MAX_GENERATION;#assert !rc_next_checkpoint(wrong,next);
+}
+#test "publication requires durability checkpoint and private staging in order" {
+ old:RcCheckpoint;old.schema=3;old.generation=4;next:=old;next.generation=5;next.digest[0]=1;
+ a:=rc_begin(old,next);#assert a.phase==RC_PREPARED && !rc_ack_under_fence(a,next);
+ #assert rc_event(a,RC_STAGE_PRIVATE).phase==RC_FAILED;
+ a=rc_event(a,RC_DURABLE);#assert a.phase==RC_DURABLE_SNAPSHOT && !rc_ack_under_fence(a,next);
+ #assert rc_event(a,RC_STAGE_PRIVATE).phase==RC_FAILED;
+ a=rc_event(a,RC_SEND_CAS);#assert a.phase==RC_WAIT_CHECKPOINT && !rc_ack_under_fence(a,next);
+ #assert rc_observe(a,old).phase==RC_WAIT_CHECKPOINT;
+ #assert !rc_ack_under_fence(rc_observe(a,old),old);
+ other:=next;other.digest[0]=9;#assert rc_observe(a,other).phase==RC_FAILED;
+ confirmed:=rc_observe(a,next);#assert confirmed.phase==RC_CHECKPOINTED && !rc_ack_under_fence(confirmed,next);
+ confirmed=rc_event(confirmed,RC_STAGE_PRIVATE);#assert confirmed.phase==RC_STAGED_PRIVATE && rc_ack_under_fence(confirmed,next);
+ // An observed checkpoint may advance before private staging. The latest trusted
+ // observation must still be held under a separate real writer fence.
+ newer:=next;newer.generation=6;newer.digest[0]=2;
+ #assert !rc_ack_under_fence(confirmed,newer);
+ #assert !rc_ack_under_fence(confirmed,old);
+ #assert rc_event(confirmed,RC_SEND_CAS).phase==RC_FAILED;
+ #assert rc_observe(confirmed,next).phase==RC_FAILED;
+}
+#test "unknown operations and invalid attempts fail closed" {
+ old:RcCheckpoint;old.schema=1;old.generation=1;next:=old;next.generation=2;
+ bad:=old;#assert rc_begin(old,bad).phase==RC_FAILED;
+ a:=rc_begin(old,next);#assert rc_event(a,0).phase==RC_FAILED;
+ #assert rc_event(a,99).phase==RC_FAILED;
+ #assert rc_observe(a,next).phase==RC_FAILED;
+ a.phase=99;#assert !rc_ack_under_fence(a,next) && rc_event(a,RC_DURABLE).phase==RC_FAILED;
+}
+
+
+#test "only the three declared event edges advance" {
+ old:RcCheckpoint;old.schema=1;old.generation=1;next:=old;next.generation=2;
+ for phase:0..<7 {
+  for event:0..<5 {
+   a:=RcAttempt.{base=old,candidate=next,phase=cast(u32)phase};
+   r:=rc_event(a,cast(u32)event);expected:=cast(u32)RC_FAILED;
+   if cast(u32)phase==RC_PREPARED && cast(u32)event==RC_DURABLE {expected=RC_DURABLE_SNAPSHOT;}
+   if cast(u32)phase==RC_DURABLE_SNAPSHOT && cast(u32)event==RC_SEND_CAS {expected=RC_WAIT_CHECKPOINT;}
+   if cast(u32)phase==RC_CHECKPOINTED && cast(u32)event==RC_STAGE_PRIVATE {expected=RC_STAGED_PRIVATE;}
+   #assert r.phase==expected;
+  }
+ }
+}
+#test "unavailable checkpoints cannot confirm or recover" {
+ empty:RcCheckpoint;valid:RcCheckpoint;valid.schema=1;valid.generation=1;
+ #assert !rc_recovery_match(empty,valid) && !rc_recovery_match(valid,empty);
+ later:=valid;later.generation=2;a:=rc_begin(valid,later);
+ a=rc_event(a,RC_DURABLE);a=rc_event(a,RC_SEND_CAS);
+ #assert rc_observe(a,empty).phase==RC_FAILED;
+ #assert !rc_ack_under_fence(rc_observe(a,empty),empty);
+}
+#test "last representable generation has no successor" {
+ old:RcCheckpoint;old.schema=1;old.generation=RC_MAX_GENERATION-1;
+ next:=old;next.generation=RC_MAX_GENERATION;
+ #assert rc_next_checkpoint(old,next);
+ #assert !rc_next_checkpoint(next,old);
+}
+
+// Abstract policy only. There is no trusted checkpoint or durable provider in
+// this module, and no operation here authenticates the observations supplied
+// by a caller. Never expose this as a recovery or publication authority.
+RcCheckpoint :: struct {store:[32]u8;schema:u32;generation:u64;digest:[32]u8;}
+RcAttempt :: struct {base:RcCheckpoint;candidate:RcCheckpoint;phase:u32;}
+RC_MAX_GENERATION :: cast(u64) 18446744073709551615;
+RC_FAILED :: cast(u32) 0;
+RC_PREPARED :: cast(u32) 1;
+RC_DURABLE_SNAPSHOT :: cast(u32) 2;
+RC_WAIT_CHECKPOINT :: cast(u32) 3;
+RC_CHECKPOINTED :: cast(u32) 4;
+RC_STAGED_PRIVATE :: cast(u32) 5;
+RC_DURABLE :: cast(u32) 1;
+RC_SEND_CAS :: cast(u32) 2;
+RC_STAGE_PRIVATE :: cast(u32) 3;
+rc_valid :: (c:RcCheckpoint)->bool {return c.schema!=0 && c.generation!=0;}
+rc_equal_bytes :: (a:[32]u8,b:[32]u8)->bool {
+ for i:0..<32 {if a[i]!=b[i] {return false;}}return true;
+}
+// Both arguments must be independently observed by the trusted host: the
+// authoritative checkpoint and a digest computed over the exact stored bytes.
+// Equality alone is not event authentication, safe storage or publication.
+rc_recovery_match :: (checkpoint:RcCheckpoint,snapshot:RcCheckpoint)->bool {
+ return rc_valid(checkpoint) && checkpoint.schema==snapshot.schema && checkpoint.generation==snapshot.generation && rc_equal_bytes(checkpoint.store,snapshot.store) && rc_equal_bytes(checkpoint.digest,snapshot.digest);
+}
+rc_next_checkpoint :: (base:RcCheckpoint,next:RcCheckpoint)->bool {
+ if !rc_valid(base) || base.generation==RC_MAX_GENERATION {return false;}
+ return base.schema==next.schema && rc_equal_bytes(base.store,next.store) && next.generation==base.generation+1;
+}
+rc_begin :: (base:RcCheckpoint,candidate:RcCheckpoint)->RcAttempt {
+ if !rc_next_checkpoint(base,candidate) {return RcAttempt.{};}
+ return RcAttempt.{base=base,candidate=candidate,phase=RC_PREPARED};
+}
+// This models observations, not effects. In particular RC_DURABLE must mean
+// immutable candidate bytes are durably committed before the trusted CAS.
+// RC_STAGE_PRIVATE must not make the staged frame externally observable.
+rc_event :: (a:RcAttempt,event:u32)->RcAttempt {
+ result:=a;
+ if a.phase==RC_PREPARED && cast(u32)event==RC_DURABLE {result.phase=RC_DURABLE_SNAPSHOT;return result;}
+ if a.phase==RC_DURABLE_SNAPSHOT && cast(u32)event==RC_SEND_CAS {result.phase=RC_WAIT_CHECKPOINT;return result;}
+ if a.phase==RC_CHECKPOINTED && cast(u32)event==RC_STAGE_PRIVATE {result.phase=RC_STAGED_PRIVATE;return result;}
+ return RcAttempt.{};
+}
+// A read of the old checkpoint is inconclusive: an outstanding CAS can still
+// win. The host must not ACK or overwrite either frame on that observation.
+rc_observe :: (a:RcAttempt,observed:RcCheckpoint)->RcAttempt {
+ if a.phase!=RC_WAIT_CHECKPOINT {return RcAttempt.{};}
+ if rc_recovery_match(a.candidate,observed) {result:=a;result.phase=RC_CHECKPOINTED;return result;}
+ if rc_recovery_match(a.base,observed) {return a;}
+ return RcAttempt.{};
+}
+// Model predicate only. A real cross-process writer fence must already cover
+// the authoritative read, external publication and acknowledgement without a gap.
+// The supplied checkpoint cannot establish that the fence exists or that the
+// read is authentic and linearizable. This is never publication authority.
+rc_ack_under_fence :: (a:RcAttempt,current:RcCheckpoint)->bool {
+ return a.phase==RC_STAGED_PRIVATE && rc_recovery_match(a.candidate,current);
+}

@@ -1,0 +1,25 @@
+// Test-only adapter for the abstract recovery policy. No provider authority.
+#load "../../lib/nostr/recovery_policy.coax";
+rf_checkpoint :: (generation:u64,schema:u32,store:u32,digest:u32)->RcCheckpoint {
+ c:RcCheckpoint;c.generation=generation;c.schema=schema;
+ for i:0..<4 {c.store[i]=cast,trunc(u8)(store >> (i*8));c.digest[i]=cast,trunc(u8)(digest >> (i*8));}
+ return c;
+}
+rf_match :: (ag:u64,as:u32,ai:u32,ah:u32,bg:u64,bs:u32,bi:u32,bh:u32)->bool #export_c {
+ return rc_recovery_match(rf_checkpoint(ag,as,ai,ah),rf_checkpoint(bg,bs,bi,bh));
+}
+rf_next :: (ag:u64,as:u32,ai:u32,ah:u32,bg:u64,bs:u32,bi:u32,bh:u32)->bool #export_c {
+ return rc_next_checkpoint(rf_checkpoint(ag,as,ai,ah),rf_checkpoint(bg,bs,bi,bh));
+}
+rf_event :: (phase:u32,event:u32)->u32 #export_c {
+ old:=rf_checkpoint(1,1,11,22);candidate:=rf_checkpoint(2,1,11,33);
+ return rc_event(RcAttempt.{base=old,candidate=candidate,phase=phase},event).phase;
+}
+rf_observe :: (phase:u32,generation:u64,schema:u32,identity:u32,digest:u32)->u32 #export_c {
+ old:=rf_checkpoint(1,1,11,22);candidate:=rf_checkpoint(2,1,11,33);
+ return rc_observe(RcAttempt.{base=old,candidate=candidate,phase=phase},rf_checkpoint(generation,schema,identity,digest)).phase;
+}
+rf_ack :: (phase:u32,generation:u64,schema:u32,identity:u32,digest:u32)->bool #export_c {
+ candidate:=rf_checkpoint(2,1,11,33);
+ return rc_ack_under_fence(RcAttempt.{candidate=candidate,phase=phase},rf_checkpoint(generation,schema,identity,digest));
+}
