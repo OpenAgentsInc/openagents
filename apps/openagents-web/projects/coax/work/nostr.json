@@ -308,6 +308,23 @@
       ]
     },
     {
+      "slug": "crypto-byte-load32-total",
+      "parent": "m-assurance",
+      "title": "Prove and implement a total typed four-byte load",
+      "size": "M",
+      "labels": ["nostr", "crypto", "coax"],
+      "body": "Evaluate the independently reviewed fixed four-byte u32 accumulator as a scoped alternative to checked u64-to-u32 narrowing. Preserve the public ABI, exact endian order, immutable input, zero-valued refusal and all 64-bit APIs. The signer audit may instead use an equivalently proved bounded-load summary; neither this task nor a passing vector suite alone grants a source-audit or timing approval.",
+      "files": ["coax/lib/crypto/bytes.coax", "coax/tests/nostr/", "docs/verification/"],
+      "acceptance": [
+        "Machine-check four-byte old/new equivalence and no lost bits or overflow, with satisfiable incorrect-width and initialization controls; independently review source-to-model and ABI correspondence",
+        "Independent endian vectors and exact four-byte, short, malformed extent and offset cases pass checked/release native, Wasm and relevant iOS targets; inputs and 64-bit APIs remain unchanged",
+        "Affected byte-helper authority checks and full reference mutation have zero survivors with exact source, compiler and tool identities",
+        "Revalidate affected SHA, ECDH, scrypt and signer callers against their stated graphs and targets without asserting source-audit or target timing approval"
+      ],
+      "blocked_by": ["crypto-bytes"],
+      "blocks": []
+    },
+    {
       "slug": "crypto-vectors-pinned",
       "parent": "m0-hashes",
       "title": "Pin the official test vectors with their sources and hashes",
