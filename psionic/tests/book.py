@@ -29,7 +29,7 @@ def check():
     linked = set()
     listings = 0
     docs = [ROOT / "psionic/README.md", *sorted((ROOT / "psionic/book").glob("*.md"))]
-    pattern = r"<!-- source: ([^ ]+) ([^ ]+) -->\n```coax\n(.*?)\n```"
+    pattern = r"<!-- source: ([^ ]+) ([^ ]+) -->\n```jai\n(.*?)\n```"
     for doc in docs:
         text = doc.read_text()
         assert text.endswith("\n") and text.count("```") % 2 == 0, f"bad structure: {doc}"

@@ -116,7 +116,7 @@ caller-owned storage. Read [Coax's memory chapter](../../coax/book/ch06-memory.m
 for the details of views.
 
 <!-- source: psionic/lib/learn.coax moments -->
-```coax
+```jai
 psionic_moments :: (xs: [] f32, ys: [] f32, weight: f32) -> PsionicStats {
     loss: f32 = 0; gradient: f32 = 0;
     for i: 0..<xs.count {
@@ -191,7 +191,7 @@ domain returns `update`; there is no clamping or silent retry.
 The shared trainer is:
 
 <!-- source: psionic/lib/learn.coax trainer -->
-```coax
+```jai
 psionic_train_checked :: (xs: [] f32, ys: [] f32, initial_weight: f32, steps: int,
         trace: [] f32, scratch: [] f32, overlap: bool) -> PsionicTraining #export_c {
     status := psionic_admit(xs.count, ys.count, steps, trace.count, scratch.count, overlap);
@@ -244,7 +244,7 @@ This is the complete successful example, calling the same library used by
 the native tests:
 
 <!-- source: psionic/examples/learn-number.coax example -->
-```coax
+```jai
 #load "../lib/learn.coax";
 #import "Basic";
 

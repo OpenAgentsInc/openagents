@@ -618,7 +618,7 @@ profile limit violations. Selected event integers and JWS time fields must fit
 ±(2^53−1); unknown numeric bytes remain untouched. The older generic `json_int`
 helper keeps its documented ±2^53 range.
 
-```coax
+```jai
 #load "../../coax/lib/nostr/adapters/json-admission.coax";
 #import "Basic";
 main :: () {

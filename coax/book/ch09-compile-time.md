@@ -442,7 +442,7 @@ These are ordinary records, with `schema_version` equal to 1. You can pass
 them to procedures or build an inspector table once during compilation:
 
 <!-- checked-source: examples/layout-reflection.coax -->
-```coax
+```jai
 Transform :: struct {x:f32;y:f32;selected:bool;}
 FIELDS :: #run transform_fields();
 

@@ -26,7 +26,7 @@ The demo loads its checked policy from
 Here are its types:
 
 <!-- checked-source: examples/lib/ch23_request_policy.coax -->
-```coax
+```jai
 RequestPhase :: enum u8 { idle; running; succeeded; failed; cancelled; expired; }
 Request :: struct { epoch: u32; phase: RequestPhase; deadline: u64; value: int; }
 ```
@@ -48,7 +48,7 @@ clock correction must not unexpectedly extend an operation.
 Start with the behavior you need to preserve. The source writes its
 checks before the implementations, including this trace:
 
-```coax
+```jai
 first := request_begin(Request.{}, 10, 20);
 second := request_begin(request_cancel(first), 11, 30);
 stale := request_complete(second, first.epoch, 12, true, 99);
@@ -63,7 +63,7 @@ Its `99` must never replace the new operation's result.
 The implementations are short. Completion is the important one:
 
 <!-- checked-source: examples/lib/ch23_request_policy.coax -->
-```coax
+```jai
 request_complete :: (s: Request, epoch: u32, now: u64, ok: bool, value: int) -> Request #export_c {
     if s.phase != RequestPhase.running || epoch != s.epoch { return s; }
     r := request_tick(s, now);

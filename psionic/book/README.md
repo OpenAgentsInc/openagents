@@ -9,6 +9,8 @@ You need basic programming and enough arithmetic to multiply and average two
 numbers. It explains the small amount of calculus as it goes. For the
 language, use [the Coax book](../../coax/book/README.md).
 
+Coax source listings use the `jai` Markdown fence for syntax highlighting.
+
 Commands run from the OpenAgents repository root. `psionic/check.sh` checks the
 whole current book and library. Build once with `coax/build.sh` if you want to
 run examples directly without the check command.

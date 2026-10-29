@@ -1309,7 +1309,7 @@ loops you've seen in this chapter.
 
 Coax0.16.0 adds `mul_wide` for two64-bit unsigned words:
 
-```coax
+```jai
 product := mul_wide(cast(u64)18446744073709551615, cast(u64)2);
 // product.hi == 1; product.lo == 18446744073709551614
 ```

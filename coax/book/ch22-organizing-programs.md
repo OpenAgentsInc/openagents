@@ -24,7 +24,7 @@ coax/bin/coax run coax/book/examples/ch22_sources.coax
 It prints `42`. The entry file imports printing and loads a source unit:
 
 <!-- checked-source: examples/ch22_sources.coax -->
-```coax
+```jai
 #import "Basic";
 #load "lib/ch22_numbers.coax";
 #test "a loaded type has one identity" { #assert cells_total(Cell.{value=20},Cell.{value=22})==42; }
@@ -34,7 +34,7 @@ main :: () { print("%\n",cells_total(Cell.{value=20},Cell.{value=22})); }
 That unit loads a shared type next to itself:
 
 <!-- checked-source: examples/lib/ch22_numbers.coax -->
-```coax
+```jai
 #load "ch22_types.coax";
 #test "negative and positive cells" { #assert cells_total(Cell.{value= -2},Cell.{value=3})==1; }
 cells_total :: (a: Cell, b: Cell) -> int { return a.value+b.value; }

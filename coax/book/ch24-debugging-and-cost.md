@@ -19,7 +19,7 @@ lldb /tmp/coax-debug
 The loaded procedure is small enough to inspect directly:
 
 <!-- checked-source: examples/ch24_debug/adjust.coax -->
-```coax
+```jai
 twice :: (value:int)->int {
   total:=value*2;
   total+=2;
