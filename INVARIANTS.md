@@ -1,5 +1,23 @@
 # Invariants
 
+## Psionic token blocks stage model state through full-vocabulary readout
+
+`psionic/lib/qwen-tokens.coax` gathers original-format embedding rows, runs
+caller-bound hybrid layers, applies the final offset RMS norm and projects all
+vocabulary rows in chunks before reading the requested slots. It stages state
+until readout succeeds; errors preserve public state and probabilities. The
+caller owns authenticated immutable weights, complete layer mapping, token and
+slot identity, rotary positions and state history. `qwen-rope.coax` supplies
+the pinned 64-dimensional text-only Qwen rotary coefficients. Native adapters
+observe addresses, while valid allocations, extents, alignment, lifetimes and
+exclusive access remain caller duties. These primitives alone do not implement
+a complete request or a service.
+
+Check: `psionic/check.sh` includes debug/release authority mutation and native
+plain/sanitized checks, including a vocabulary larger than one projection
+chunk. Original model and independent runtime qualifications are recorded
+separately.
+
 ## Psionic decision-model targets use pinned original identities
 
 `psionic/lib/decision-models.coax` exposes only the pinned Elephant and Mammoth
