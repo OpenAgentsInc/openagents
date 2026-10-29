@@ -320,7 +320,7 @@ deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c {
   if kind == HOST_HIDDEN { s[0].paused = true; s[0].held = 0; release_fingers(s); }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_PAGE {
-    if track_begin(s[0].track[..], "world-enter") { track_str(s[0].track[..], "world", "dead-gears"); track_end(s[0].track[..]); }
+    track_world(s[0].track[..], "dead-gears");
   }
 }
 
@@ -1008,11 +1008,11 @@ lights :: (s: [] DeadGears, u: [] f32) {
   put3(u, U_SUN, sun.x, sun.y, sun.z, strength);
   put3(u, U_SUNC, lerp(1.0, 1.0, gold), lerp(0.94, 0.6, gold), lerp(0.84, 0.34, gold), 0);
   dim := (1 - 0.75 * night) * 1.5;
-  put3(u, U_SKY, lerp(0.30, 0.34, gold) * dim, lerp(0.35, 0.27, gold) * dim, lerp(0.44, 0.3, gold) * dim, 0);
+  put3(u, U_SKY, lerp(0.30, 0.40, gold) * dim, lerp(0.35, 0.29, gold) * dim, lerp(0.44, 0.22, gold) * dim, 0);
   put3(u, U_GND, lerp(0.08, 0.1, gold) * dim, lerp(0.09, 0.07, gold) * dim, lerp(0.11, 0.07, gold) * dim, 0);
   put3(u, U_ZEN, lerp(0.17, 0.09, gold) * (1 - 0.6 * night), lerp(0.23, 0.1, gold) * (1 - 0.6 * night), lerp(0.32, 0.19, gold) * (1 - 0.5 * night), alarm_level(s));
-  put3(u, U_HOR, lerp(0.38, 0.62, gold) * (1 - 0.55 * night), lerp(0.42, 0.36, gold) * (1 - 0.6 * night), lerp(0.47, 0.25, gold) * (1 - 0.6 * night), night);
-  put3(u, U_FOG, lerp(0.05, 0.07, gold), lerp(0.06, 0.05, gold), lerp(0.075, 0.05, gold), clamp(s[0].fire_flash / 0.1, 0, 1));
+  put3(u, U_HOR, lerp(0.38, 0.70, gold) * (1 - 0.55 * night), lerp(0.42, 0.40, gold) * (1 - 0.6 * night), lerp(0.47, 0.22, gold) * (1 - 0.6 * night), night);
+  put3(u, U_FOG, lerp(0.05, 0.08, gold), lerp(0.06, 0.055, gold), lerp(0.075, 0.04, gold), clamp(s[0].fire_flash / 0.1, 0, 1));
   lamp := 0.45 + 0.75 * night;
   s[0].light_n = 0; s[0].shadow_n = 0;
   z := -22;
